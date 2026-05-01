@@ -26,6 +26,19 @@ go.work.sum
 
 # env file
 .env
+.env.local
+.env.*.local
+
+# Config files with sensitive data (use .env instead)
+configs/*.yaml
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.csr
+certs/
+keys/
 
 # Editor/IDE
 # .idea/

@@ -2,12 +2,12 @@ package biz
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"math/rand"
+	"math/big"
 	"sort"
 	"strings"
-	"time"
 )
 
 const (
@@ -54,13 +54,11 @@ type ChannelRepo interface {
 
 type ChannelUsecase struct {
 	repo ChannelRepo
-	rng  *rand.Rand
 }
 
 func NewChannelUsecase(repo ChannelRepo) *ChannelUsecase {
 	return &ChannelUsecase{
 		repo: repo,
-		rng:  rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -97,7 +95,12 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 		return nil, ErrChannelNotFound
 	}
 
-	selected := candidates[uc.rng.Intn(len(candidates))]
+		// Use crypto/rand for secure random selection
+		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(candidates))))
+		if err != nil {
+			return nil, err
+		}
+		selected := candidates[nBig.Int64()]
 	return uc.repo.FindByID(ctx, selected.ChannelID)
 }
 

@@ -6,7 +6,7 @@ server:
 data:
   database:
     driver: mysql
-    source: root:password@tcp(127.0.0.1:3306)/oneapi
+    source: ${DATABASE_DSN:-root:password@tcp(127.0.0.1:3306)/oneapi}
   redis:
-    addr: 127.0.0.1:6379
+    addr: ${REDIS_ADDR:-127.0.0.1:6379}
 

@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
+	applogger "micro-one-api/internal/pkg/logger"
 )
 
 // Provider defines the interface for calling upstream providers
@@ -185,7 +188,11 @@ func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 
 				var chunk StreamChunk
 				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-					fmt.Printf("failed to parse SSE chunk: %v, data: %s\n", err, data)
+					applogger.Log.Warn("failed to parse SSE chunk",
+						zap.Error(err),
+						zap.Int("data_length", len(data)),
+						zap.String("data_preview", applogger.TruncateString(data, 100)),
+					)
 					continue
 				}
 				chunkChan <- chunk
@@ -193,7 +200,7 @@ func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 		}
 
 		if err := scanner.Err(); err != nil {
-			fmt.Printf("scanner error: %v\n", err)
+			applogger.Log.Error("scanner error", zap.Error(err))
 		}
 	}()
 

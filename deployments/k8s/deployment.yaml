@@ -1,0 +1,236 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay-gateway
+  namespace: one-api
+  labels:
+    app: relay-gateway
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: relay-gateway
+  template:
+    metadata:
+      labels:
+        app: relay-gateway
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: relay-gateway
+      automountServiceAccountToken: false  # Don't auto-mount service account token
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534  # nobody user
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+        readOnlyRootFilesystem: true
+      containers:
+      - name: relay-gateway
+        image: your-registry/relay-gateway:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - NET_BIND_SERVICE
+          privileged: false
+          readOnlyRootFilesystem: true
+        env:
+        - name: IDENTITY_GRPC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: identity-grpc-endpoint
+        - name: CHANNEL_GRPC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: channel-grpc-endpoint
+        - name: RATE_LIMIT_REQUESTS_PER_SECOND
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: rate-limit-rps
+        - name: RATE_LIMIT_BURST
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: rate-limit-burst
+        - name: CORS_ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: cors-origins
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: log-level
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: relay-gateway
+  namespace: one-api
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/relay-gateway-role
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relay-gateway
+  namespace: one-api
+  labels:
+    app: relay-gateway
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: relay-gateway
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: one-api
+data:
+  identity-grpc-endpoint: "identity-service:9001"
+  channel-grpc-endpoint: "channel-service:9002"
+  rate-limit-rps: "100"
+  rate-limit-burst: "200"
+  cors-origins: "https://yourdomain.com,https://app.yourdomain.com"
+  log-level: "info"
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: relay-gateway-netpol
+  namespace: one-api
+spec:
+  podSelector:
+    matchLabels:
+      app: relay-gateway
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow communication with identity service
+  - to:
+    - podSelector:
+        matchLabels:
+          app: identity-service
+    ports:
+    - protocol: TCP
+      port: 9001
+  # Allow communication with channel service
+  - to:
+    - podSelector:
+        matchLabels:
+          app: channel-service
+    ports:
+    - protocol: TCP
+      port: 9002
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: relay-gateway-pdb
+  namespace: one-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: relay-gateway
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: relay-gateway-hpa
+  namespace: one-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: relay-gateway
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

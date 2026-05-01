@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"strings"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"micro-one-api/api/identity/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/internal/pkg/errors"
+	applogger "micro-one-api/internal/pkg/logger"
 	relayprovider "micro-one-api/internal/relay/provider"
 
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
@@ -137,7 +139,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 	for chunk := range chunkChan {
 		jsonData, err := json.Marshal(chunk)
 		if err != nil {
-			fmt.Printf("failed to marshal chunk: %v\n", err)
+			applogger.Log.Warn("failed to marshal chunk", zap.Error(err))
 			continue
 		}
 

@@ -156,6 +156,82 @@ clean:
 	rm -rf bin/
 	rm -rf logs/
 
+.PHONY: security-scan
+# run security scanning
+security-scan:
+	@echo "Running security scans..."
+	@echo "1. Running gosec (SAST)..."
+	@if ! command -v gosec &> /dev/null; then \
+		go install github.com/securego/gosec/v2/cmd/gosec@latest; \
+	fi
+	@gosec ./... || echo "gosec found issues"
+	@echo "2. Running govulncheck (SCA)..."
+	@if ! command -v govulncheck &> /dev/null; then \
+		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+	fi
+	@govulncheck ./... || echo "govulncheck found vulnerabilities"
+	@echo "3. Running gitleaks (secret scanning)..."
+	@if ! command -v gitleaks &> /dev/null; then \
+		go install github.com/zricethezav/gitleaks/v8/cmd/gitleaks@latest; \
+	fi
+	@gitleaks detect --source . || echo "gitleaks found secrets"
+	@echo "Security scans completed!"
+
+.PHONY: security-sast
+# run static application security testing
+security-sast:
+	@if ! command -v gosec &> /dev/null; then \
+		go install github.com/securego/gosec/v2/cmd/gosec@latest; \
+	fi
+	@gosec -fmt json -out gosec-report.json ./...
+
+.PHONY: security-sca
+# run software composition analysis
+security-sca:
+	@if ! command -v govulncheck &> /dev/null; then \
+		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+	fi
+	@govulncheck -json ./... > vulncheck-report.json
+
+.PHONY: security-secrets
+# scan for secrets in code
+security-secrets:
+	@if ! command -v gitleaks &> /dev/null; then \
+		go install github.com/zricethezav/gitleaks/v8/cmd/gitleaks@latest; \
+	fi
+	@gitleaks detect --source . --verbose --report-path gitleaks-report.json
+
+.PHONY: security-sbom
+# generate software bill of materials
+security-sbom:
+	@if ! command -v syft &> /dev/null; then \
+		go install github.com/anchore/syft/cmd/syft@latest; \
+	fi
+	@syft . -o spdx-json > sbom.json
+	@echo "SBOM generated: sbom.json"
+
+.PHONY: security-check
+# comprehensive security check
+security-check: security-sast security-sca security-secrets security-sbom
+	@echo "Comprehensive security check completed!"
+	@echo "Reports generated:"
+	@echo "  - gosec-report.json"
+	@echo "  - vulncheck-report.json"
+	@echo "  - gitleaks-report.json"
+	@echo "  - sbom.json"
+
+.PHONY: security-fix
+# attempt to fix common security issues
+security-fix:
+	@echo "Running security fixes..."
+	@echo "1. Checking for hardcoded credentials..."
+	@! grep -r "password\|secret\|token\|api[_-]?key" --include="*.go" --include="*.yaml" --include="*.yml" . | grep -v ".git/" | grep -v "vendor/" | grep -v "test/" || echo "Potential hardcoded credentials found - please review manually"
+	@echo "2. Checking for insecure HTTP..."
+	@! grep -r "http://" --include="*.go" --include="*.yaml" . | grep -v ".git/" | grep -v "vendor/" || echo "Insecure HTTP usage found - please review manually"
+	@echo "3. Checking for fmt.Printf in production code..."
+	@! grep -r "fmt.Printf" --include="*.go" . | grep -v ".git/" | grep -v "vendor/" | grep -v "test/" || echo "fmt.Printf found in production code - please use structured logging"
+	@echo "Security fix check completed!"
+
 .PHONY: all
 # generate all
 all: api config generate

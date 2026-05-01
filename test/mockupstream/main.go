@@ -3,26 +3,35 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	relayprovider "micro-one-api/internal/relay/provider"
+	applogger "micro-one-api/internal/pkg/logger"
 )
+
+var log *zap.SugaredLogger
+
+func init() {
+	// Initialize logger for mock server
+	if err := applogger.Initialize("info", "console"); err != nil {
+		panic(fmt.Sprintf("failed to initialize logger: %v", err))
+	}
+	log = applogger.Log.Sugar()
+}
 
 func main() {
 	port := "9999"
-	if p := ""; p != "" {
-		port = p
-	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/chat/completions", handleChatCompletions)
 	mux.HandleFunc("/health", handleHealth)
 
-	log.Printf("Mock Upstream server listening on port %s", port)
+	log.Infof("Mock Upstream server listening on port %s", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		panic(fmt.Sprintf("failed to start server: %v", err))
+		log.Fatalf("failed to start server: %v", err)
 	}
 }
 
@@ -39,7 +48,9 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Received chat completions request: model=%s, messages=%d, auth=%s", req.Model, len(req.Messages), authHeader)
+	// Safe logging - don't log sensitive auth header
+	log.Infof("Received chat completions request: model=%s, messages=%d, has_auth=%v",
+		req.Model, len(req.Messages), authHeader != "")
 
 	content := fmt.Sprintf("Response to: %s", req.Messages[0].Content)
 	if len(req.Messages) > 0 {
