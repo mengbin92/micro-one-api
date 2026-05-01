@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package api.relay.v1;
+
+option go_package = "micro-one-api/api/relay/v1;relayv1";
+
+service RelayService {}
+

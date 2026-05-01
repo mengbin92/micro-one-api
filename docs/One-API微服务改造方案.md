@@ -699,40 +699,19 @@ async workers:
 
 ```text
 micro-one-api/
-  apps/
-    api-gateway/
-    relay-gateway/
-    admin-api/
-    worker-monitor/
-    worker-log/
-  services/
-    identity-service/
-    channel-service/
-    billing-service/
-    config-service/
-    notification-service/
-  pkg/
-    proto/
-    sdk/
-    events/
-    observability/
-    auth/
-  deployments/
-    docker-compose/
-    k8s/
-  docs/
-```
-
-如果希望控制复杂度，也可以采用“模块化单仓”：
-
-```text
-micro-one-api/
+  api/
   cmd/
     relay-gateway/
     admin-api/
     identity-service/
     channel-service/
     billing-service/
+  configs/
+    relay-gateway.yaml
+    admin-api.yaml
+    identity-service.yaml
+    channel-service.yaml
+    billing-service.yaml
   internal/
     identity/
     channel/
@@ -740,12 +719,23 @@ micro-one-api/
     config/
     relay/
     logsvc/
-  pkg/
-    proto/
-    event/
+    pkg/
+      auth/
+      errors/
+      events/
+      xgrpc/
+      xhttp/
+      xtrace/
+  third_party/
+    google/
+    validate/
+  deployments/
+    docker-compose/
+    k8s/
+  docs/
 ```
 
-我更建议先走第二种：单仓多服务，更符合当前代码体量和团队维护成本。
+这也是当前仓库已经采用的方向：单仓、多服务、共享 `api/` 和 `internal/pkg/`，更符合当前代码体量和团队维护成本。
 
 ## 10. 技术实施清单
 
@@ -905,4 +895,3 @@ micro-one-api/
 2. `服务间 API / gRPC proto 草案`
 3. `数据库拆分与表结构设计`
 4. `第一阶段实施任务清单`
-

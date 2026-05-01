@@ -1,0 +1,13 @@
+server:
+  http:
+    addr: 0.0.0.0:8000
+  grpc:
+    addr: 0.0.0.0:9000
+clients:
+  identity:
+    endpoint: 127.0.0.1:9001
+  channel:
+    endpoint: 127.0.0.1:9002
+  billing:
+    endpoint: 127.0.0.1:9003
+

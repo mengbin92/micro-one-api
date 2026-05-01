@@ -1,0 +1,12 @@
+server:
+  http:
+    addr: 0.0.0.0:8003
+  grpc:
+    addr: 0.0.0.0:9003
+data:
+  database:
+    driver: mysql
+    source: root:password@tcp(127.0.0.1:3306)/oneapi
+  redis:
+    addr: 127.0.0.1:6379
+

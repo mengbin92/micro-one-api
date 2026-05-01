@@ -15,7 +15,7 @@
 
 1. 单仓。
 2. 多 Kratos 服务。
-3. 共享 `api/`、`pkg/`、`third_party/`。
+3. 共享 `api/`、`internal/pkg/`、`third_party/`。
 
 这样既符合 `one-api` 当前体量，也能控制复杂度。
 
@@ -124,57 +124,50 @@ micro-one-api/
     channel/v1/
     billing/v1/
     relay/v1/
-  app/
-    relay-gateway/
-      cmd/
-        relay-gateway/
-      configs/
-      internal/
-        biz/
-        data/
-        service/
-        server/
-      Dockerfile
+  cmd/
     admin-api/
-      cmd/
-      configs/
-      internal/
-        biz/
-        data/
-        service/
-        server/
-    identity-service/
-      cmd/
-      configs/
-      internal/
-        biz/
-        data/
-        service/
-        server/
-    channel-service/
-      cmd/
-      configs/
-      internal/
-        biz/
-        data/
-        service/
-        server/
     billing-service/
-      cmd/
-      configs/
-      internal/
-        biz/
-        data/
-        service/
-        server/
-  pkg/
-    auth/
-    errors/
-    model/
-    events/
-    xtrace/
-    xhttp/
-    xgrpc/
+    channel-service/
+    identity-service/
+    relay-gateway/
+  configs/
+    admin-api.yaml
+    billing-service.yaml
+    channel-service.yaml
+    identity-service.yaml
+    relay-gateway.yaml
+  internal/
+    admin/
+      data/
+      server/
+      service/
+    billing/
+      biz/
+      data/
+      server/
+      service/
+    channel/
+      biz/
+      data/
+      server/
+      service/
+    identity/
+      biz/
+      data/
+      server/
+      service/
+    relay/
+      biz/
+      data/
+      server/
+      service/
+    pkg/
+      auth/
+      errors/
+      events/
+      xgrpc/
+      xhttp/
+      xtrace/
   third_party/
     google/
     validate/
@@ -187,8 +180,9 @@ micro-one-api/
 这里的关键点是：
 
 1. `api/` 放所有 proto。
-2. `app/` 放各服务实现。
-3. `pkg/` 放共享组件，但只放真正稳定、无业务归属的公共能力。
+2. `cmd/` 放各服务入口。
+3. `internal/` 放服务实现与共享内部组件。
+4. `internal/pkg/` 放共享组件，但只放真正稳定、无业务归属的公共能力。
 
 ## 5. Kratos 分层映射建议
 
@@ -219,8 +213,8 @@ micro-one-api/
 
 1. `server/http.go`
 2. `server/grpc.go`
-3. `pkg/xhttp/middleware`
-4. `pkg/xgrpc/middleware`
+3. `internal/pkg/xhttp`
+4. `internal/pkg/xgrpc`
 
 ### 当前 `relay/`
 
@@ -242,32 +236,31 @@ micro-one-api/
 以 `billing-service` 为例：
 
 ```text
-app/billing-service/
-  cmd/billing-service/
-    main.go
-    wire.go
-    wire_gen.go
-  configs/
-    config.yaml
-  internal/
-    biz/
-      account.go
-      reservation.go
-      ledger.go
-      billing.go
-      repo.go
-    data/
-      data.go
-      account_repo.go
-      reservation_repo.go
-      ledger_repo.go
-      redis.go
-      gorm.go
-    service/
-      billing.go
-    server/
-      grpc.go
-      http.go
+cmd/billing-service/
+  main.go
+  wire.go
+  wire_gen.go
+configs/
+  billing-service.yaml
+internal/billing/
+  biz/
+    account.go
+    reservation.go
+    ledger.go
+    billing.go
+    repo.go
+  data/
+    data.go
+    account_repo.go
+    reservation_repo.go
+    ledger_repo.go
+    redis.go
+    gorm.go
+  service/
+    billing.go
+  server/
+    grpc.go
+    http.go
 ```
 
 建议约束：
@@ -334,7 +327,7 @@ api/
 建议结构：
 
 ```text
-app/relay-gateway/internal/
+internal/relay/
   biz/
     relay/
       usecase.go
@@ -481,12 +474,13 @@ Kratos 不限制 ORM，但结合当前项目，建议：
 先在当前仓库落：
 
 1. `api/` proto 目录。
-2. `app/identity-service`
-3. `app/channel-service`
-4. `app/billing-service`
-5. `app/admin-api`
-6. `app/relay-gateway`
-7. `pkg/` 公共包。
+2. `cmd/*` 服务入口目录。
+3. `internal/identity`
+4. `internal/channel`
+5. `internal/billing`
+6. `internal/admin`
+7. `internal/relay`
+8. `internal/pkg` 公共内部包。
 
 ### 第二阶段：先迁用户与渠道
 
@@ -578,4 +572,3 @@ Kratos 不限制 ORM，但结合当前项目，建议：
 2. `proto 草案`
 3. `billing-service 表结构设计`
 4. `relay-gateway 调用链时序图`
-

@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package api.channel.v1;
+
+option go_package = "micro-one-api/api/channel/v1;channelv1";
+
+service ChannelService {
+  rpc SelectChannel(SelectChannelRequest) returns (SelectChannelReply);
+  rpc GetChannel(GetChannelRequest) returns (GetChannelReply);
+  rpc ListAvailableModels(ListAvailableModelsRequest) returns (ListAvailableModelsReply);
+}
+
+message SelectChannelRequest {
+  string group = 1;
+  string model = 2;
+  bool exclude_first_priority = 3;
+}
+
+message SelectChannelReply {
+  ChannelInfo channel = 1;
+}
+
+message GetChannelRequest {
+  int64 channel_id = 1;
+}
+
+message GetChannelReply {
+  ChannelInfo channel = 1;
+}
+
+message ListAvailableModelsRequest {
+  string group = 1;
+}
+
+message ListAvailableModelsReply {
+  repeated string models = 1;
+}
+
+message ChannelInfo {
+  int64 id = 1;
+  int32 type = 2;
+  string name = 3;
+  int32 status = 4;
+  string base_url = 5;
+  string group = 6;
+  string models = 7;
+  int64 priority = 8;
+  string key = 9;
+  ChannelConfig config = 10;
+}
+
+message ChannelConfig {
+  string api_version = 1;
+  string region = 2;
+  string library_id = 3;
+  string plugin = 4;
+  string vertex_ai_project_id = 5;
+}
+

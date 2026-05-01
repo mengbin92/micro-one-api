@@ -1,0 +1,11 @@
+server:
+  http:
+    addr: 0.0.0.0:3000
+clients:
+  identity:
+    endpoint: 127.0.0.1:9001
+  channel:
+    endpoint: 127.0.0.1:9002
+  billing:
+    endpoint: 127.0.0.1:9003
+

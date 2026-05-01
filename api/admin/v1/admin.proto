@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package api.admin.v1;
+
+option go_package = "micro-one-api/api/admin/v1;adminv1";
+
+service AdminService {}
+
