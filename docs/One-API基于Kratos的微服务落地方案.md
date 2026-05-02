@@ -564,11 +564,147 @@ Kratos 不限制 ORM，但结合当前项目，建议：
 
 ---
 
+## 16. 迁移进度核查清单（截至 2026/05/02）
+
+### 16.1 骨架层 — ✅ 已完成
+
+| 构件 | 状态 | 备注 |
+|------|------|------|
+| `cmd/` 5 个服务入口 | ✅ | relay-gateway / admin-api / identity-service / channel-service / billing-service |
+| `internal/` DDD 目录 | ✅ | biz / data / service / server 四层均已创建 |
+| `api/` proto 定义 | ✅ | 5 个 .proto 文件均已生成 |
+| `configs/` 配置文件 | ✅ | 5 个 .yaml 文件均已创建 |
+| `internal/pkg/` 共享包 | ✅ | auth / errors / events / grpc / middleware / model / logger / timeout / tls / validation / xdb / xgrpc / xhttp / xtrace |
+| `third_party/` | ✅ | google / validate proto 依赖 |
+| `migrations/billing/` | ✅ | 6 个 SQL 迁移文件 |
+| `deployments/` | ✅ | Docker / K8s 部署文件 |
+| 旧 one-api 目录清理 | ✅ | controller/ / model/ / middleware/ / relay/ / monitor/ / web/ 已移除 |
+
+### 16.2 服务实现层 — ❌ 存在大量遗漏
+
+#### 16.2.1 `identity-service` — 缺失 4 个 RPC
+
+| 计划 RPC | 当前状态 |
+|----------|----------|
+| `ValidateToken` | ✅ 已实现 |
+| `GetAuthSnapshot` | ✅ 已实现 |
+| `GetUser` | ✅ 已实现 |
+| `Login` | ❌ 未实现 |
+| `Register` | ❌ 未实现 |
+| `CreateAccessToken` | ❌ 未实现 |
+| `ListUsers` | ❌ 未实现 |
+| `ManageUser` | ❌ 未实现 |
+
+#### 16.2.2 `channel-service` — 缺失 4 个 RPC
+
+| 计划 RPC | 当前状态 |
+|----------|----------|
+| `SelectChannel` | ✅ 已实现 |
+| `GetChannel` | ✅ 已实现 |
+| `ListAvailableModels` | ✅ 已实现 |
+| `ListChannels` | ❌ 未实现 |
+| `CreateChannel` | ❌ 未实现 |
+| `UpdateChannel` | ❌ 未实现 |
+| `ChangeChannelStatus` | ❌ 未实现 |
+
+#### 16.2.3 `billing-service` — ✅ 核心 RPC 完整，但有 proto 质量问题
+
+- 6 个核心 RPC 均已实现（ReserveQuota / CommitQuota / ReleaseQuota / TopUpQuota / RedeemCode / GetAccountSnapshot）
+- ❌ **proto 文件中存在重复定义**：`TopUpQuota`、`CreateRedeemCode`、`CreateRedeemCodesBatch`、`GetRedeemCode`、`ListRedeemCodes`、`SearchRedeemCodes`、`UpdateRedeemCode`、`DeleteRedeemCode` 均出现两次，会导致编译失败或生成重复 symbol
+
+#### 16.2.4 `admin-api` — 职责大幅缩水
+
+| 计划职责 | 当前状态 |
+|----------|----------|
+| 聚合用户管理 | ❌ 未实现 |
+| 聚合渠道管理 | ❌ 未实现 |
+| 聚合选项管理 | ❌ 未实现 |
+| 日志查询 | ❌ 未实现 |
+| 充值 / 兑换码 | ✅ 已实现（复用 billing.proto） |
+
+当前 `admin-api` 实际上只是 `billing-service` 的代理，没有承担管理端 BFF 的职责。
+
+#### 16.2.5 `relay-gateway` — 架构不完整
+
+| 计划内容 | 当前状态 |
+|----------|----------|
+| `RelayService` proto 契约 | ❌ 服务定义为**空壳**（`service RelayService {}`） |
+| OpenAI 兼容 HTTP 接口 | ✅ `service/openai.go` 直接实现，未走 proto |
+| 渠道选择调用 `channel-service` | ❌ 未集成 |
+| 账务预扣/提交/释放调用 `billing-service` | ❌ 未集成 |
+| `data/client/` 服务间调用封装 | ❌ 不存在 |
+| `data/provider/` 上游模型适配 | ❌ 仅有基础 data.go，无 provider 目录 |
+| 重试策略 `biz/retry.go` | ❌ 不存在 |
+| 流式处理 `biz/stream.go` | ❌ 不存在 |
+| 模型映射 `biz/model_mapping.go` | ❌ 不存在 |
+
+### 16.3 基础设施层 — ❌ 未完成
+
+| 项目 | 计划 | 当前状态 |
+|------|------|----------|
+| 依赖注入 | wire | ❌ 无任何 `wire.go` / `wire_gen.go` |
+| 配置加载 | Kratos `config` 包加载 YAML | ❌ 所有 `main.go` 直接读取 `os.Getenv()`，配置文件未被使用 |
+| 第二阶段服务 | config-service / log-service / monitor-worker / notify-worker | ❌ 均未创建 |
+
+### 16.4 配置一致性 — ❌ 存在多处不一致
+
+| 服务 | configs/*.yaml 端口 | main.go 默认端口 |
+|------|---------------------|-----------------|
+| relay-gateway | http=:3000, grpc=:9003 | http=:8080（无 gRPC） |
+| identity-service | http=:8001, grpc=:9001 | 仅 gRPC=:9001（无 HTTP） |
+| channel-service | http=:8002, grpc=:9002 | 仅 gRPC=:9002（无 HTTP） |
+| billing-service | http=:8004, grpc=:9004 | ✅ 一致 |
+| admin-api | http=:8000, grpc=:9000 | grpc=:9005（config 为 :9000） |
+
+### 16.5 第二阶段服务 — ❌ 完全未开始
+
+计划第二阶段交付的 4 个服务均未创建：
+
+- `config-service` — 动态业务配置管理
+- `log-service` — 日志聚合服务
+- `monitor-worker` — 监控与告警 worker
+- `notify-worker` — 通知 worker
+
+---
+
+## 17. 遗漏汇总与优先级建议
+
+### 严重阻塞（P0）
+
+1. **billing.proto 去重** — 有 8 个 RPC 重复定义，proto 编译会报 `duplicate symbol` 错误
+2. **main.go 接入 Kratos config** — 当前完全不使用 configs/ 下的 YAML，配置体系形同虚设
+3. **relay-gateway 补全 proto 契约** — `RelayService {}` 为空，无法作为服务间契约
+
+### 高优先级（P1）
+
+4. **wire 依赖注入** — 无 wire.go，所有服务手动 `New` 对象，违背方案设计
+5. **identity-service 补全 RPC** — Login / Register / CreateAccessToken / ListUsers / ManageUser 缺失
+6. **channel-service 补全 RPC** — ListChannels / CreateChannel / UpdateChannel / ChangeChannelStatus 缺失
+7. **relay-gateway 集成 channel-service 调用** — 渠道路由逻辑未接入
+8. **relay-gateway 集成 billing-service 调用** — 预扣/提交/释放逻辑未接入
+9. **admin-api 补全管理端职责** — 用户/渠道/选项管理接口缺失
+
+### 中优先级（P2）
+
+10. **relay-gateway data/provider 目录** — 非 OpenAI 模型适配能力
+11. **relay-gateway data/client 目录** — 服务间 gRPC 调用封装
+12. **relay 重试与流式处理** — biz/retry.go / biz/stream.go
+13. **配置端口一致性修复** — 所有服务 HTTP/gRPC 端口需与 configs/ 对齐
+14. **relay model_mapping** — 模型能力映射
+
+### 低优先级（P3）
+
+15. **第二阶段服务** — config-service / log-service / monitor-worker / notify-worker
+
+---
+
 ## 附：建议下一步立即补的文档或产物
 
 如果后面继续推进，最值得马上补的是：
 
-1. `Kratos 单仓目录脚手架`
-2. `proto 草案`
-3. `billing-service 表结构设计`
-4. `relay-gateway 调用链时序图`
+1. `billing.proto 重复 RPC 去重修复`
+2. `Kratos config 包接入 main.go`（wire + config loader）
+3. `identity-service 剩余 RPC 补全`
+4. `channel-service 剩余 RPC 补全`
+5. `relay-gateway proto 契约补全 + 集成 channel/billing 服务调用`
+6. `admin-api 管理端 BFF 职责补全`
