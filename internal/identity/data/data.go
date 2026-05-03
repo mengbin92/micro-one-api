@@ -10,23 +10,26 @@ import (
 	"micro-one-api/internal/identity/biz"
 	"micro-one-api/internal/pkg/xdb"
 
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type Repository struct {
 	db           *gorm.DB
+	redis        *redis.Client
 	usersByID    map[int64]*biz.User
 	tokensByKey  map[string]*biz.Token
 	identityLock sync.RWMutex
 }
 
 type userModel struct {
-	ID          int64  `gorm:"column:id"`
-	Username    string `gorm:"column:username;uniqueIndex"`
-	DisplayName string `gorm:"column:display_name"`
-	Email       string `gorm:"column:email"`
-	Group       string `gorm:"column:group"`
-	Status      int32  `gorm:"column:status"`
+	ID           int64  `gorm:"column:id"`
+	Username     string `gorm:"column:username;uniqueIndex"`
+	DisplayName  string `gorm:"column:display_name"`
+	Email        string `gorm:"column:email"`
+	Group        string `gorm:"column:group"`
+	Status       int32  `gorm:"column:status"`
+	PasswordHash string `gorm:"column:password_hash"`
 }
 
 func (userModel) TableName() string { return "users" }
@@ -61,18 +64,27 @@ func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Repository{db: db}, nil
+	redisAddr := os.Getenv("REDIS_ADDR")
+	rdb := xdb.NewRedisClient(redisAddr)
+	if rdb != nil {
+		if pingErr := rdb.Ping(context.Background()).Err(); pingErr != nil {
+			rdb.Close()
+			rdb = nil
+		}
+	}
+	return &Repository{db: db, redis: rdb}, nil
 }
 
 func newMemoryRepository() *Repository {
 	return &Repository{
 		usersByID: map[int64]*biz.User{
 			1: {
-				ID:          1,
-				Username:    "root",
-				DisplayName: "Root User",
-				Group:       "default",
-				Status:      biz.UserStatusEnabled,
+				ID:           1,
+				Username:     "root",
+				DisplayName:  "Root User",
+				Group:        "default",
+				Status:       biz.UserStatusEnabled,
+				PasswordHash: "$2a$10$PizUqaAa4Zkpmbt0zcR3ouRiWZunVYRrA7I3UD64K0Qqcdh2Cq132", // "password"
 			},
 		},
 		tokensByKey: map[string]*biz.Token{
@@ -217,12 +229,13 @@ func (r *Repository) findUserByIDDB(ctx context.Context, userID int64) (*biz.Use
 		return nil, err
 	}
 	return &biz.User{
-		ID:          model.ID,
-		Username:    model.Username,
-		DisplayName: model.DisplayName,
-		Email:       model.Email,
-		Group:       model.Group,
-		Status:      model.Status,
+		ID:           model.ID,
+		Username:     model.Username,
+		DisplayName:  model.DisplayName,
+		Email:        model.Email,
+		Group:        model.Group,
+		Status:       model.Status,
+		PasswordHash: model.PasswordHash,
 	}, nil
 }
 
@@ -235,22 +248,24 @@ func (r *Repository) findUserByUsernameDB(ctx context.Context, username string) 
 		return nil, err
 	}
 	return &biz.User{
-		ID:          model.ID,
-		Username:    model.Username,
-		DisplayName: model.DisplayName,
-		Email:       model.Email,
-		Group:       model.Group,
-		Status:      model.Status,
+		ID:           model.ID,
+		Username:     model.Username,
+		DisplayName:  model.DisplayName,
+		Email:        model.Email,
+		Group:        model.Group,
+		Status:       model.Status,
+		PasswordHash: model.PasswordHash,
 	}, nil
 }
 
 func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 	model := userModel{
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		Email:       user.Email,
-		Group:       user.Group,
-		Status:      user.Status,
+		Username:     user.Username,
+		DisplayName:  user.DisplayName,
+		Email:        user.Email,
+		Group:        user.Group,
+		Status:       user.Status,
+		PasswordHash: user.PasswordHash,
 	}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		return err

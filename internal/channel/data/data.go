@@ -10,11 +10,13 @@ import (
 	"micro-one-api/internal/channel/biz"
 	"micro-one-api/internal/pkg/xdb"
 
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type Repository struct {
 	db       *gorm.DB
+	redis    *redis.Client
 	channels map[int64]*biz.Channel
 	lock     sync.RWMutex
 }
@@ -61,7 +63,15 @@ func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Repository{db: db}, nil
+	redisAddr := os.Getenv("REDIS_ADDR")
+	rdb := xdb.NewRedisClient(redisAddr)
+	if rdb != nil {
+		if pingErr := rdb.Ping(context.Background()).Err(); pingErr != nil {
+			rdb.Close()
+			rdb = nil
+		}
+	}
+	return &Repository{db: db, redis: rdb}, nil
 }
 
 func newMemoryRepository() *Repository {

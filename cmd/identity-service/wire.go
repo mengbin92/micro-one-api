@@ -19,6 +19,7 @@ var ProviderSet = wire.NewSet(
 	biz.NewIdentityUsecase,
 	service.NewIdentityService,
 	server.NewGRPCServer,
+	server.NewHTTPServer,
 )
 
 func InitApp(confPath string) (*kratos.App, func(), error) {
@@ -31,9 +32,10 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 func newApp(cfg *identitycfg.Config, svc *service.IdentityService) (*kratos.App, func()) {
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr)
 	app := kratos.New(
 		kratos.Name("identity-service"),
-		kratos.Server(grpcSrv),
+		kratos.Server(grpcSrv, httpSrv),
 	)
 	return app, func() {}
 }

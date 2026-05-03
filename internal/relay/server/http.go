@@ -53,7 +53,7 @@ func NewHTTPServer(
 func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	srv.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
 	srv.HandleFunc("/v1/models", s.handleModels)
-	srv.HandleFunc("/health", s.handleHealth)
+	srv.HandleFunc("/healthz", s.handleHealth)
 }
 
 func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Request) {

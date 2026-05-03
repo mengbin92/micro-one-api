@@ -16,16 +16,15 @@ func NewHTTPServer(addr string, svc *service.NotifyService) *khttp.Server {
 	srv.HandleFunc("/v1/notifications", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			svc.ListNotifications(w, r)
+			svc.HandleListNotifications(w, r)
 		case http.MethodPost:
-			svc.CreateNotification(w, r)
+			svc.HandleCreateNotification(w, r)
 		default:
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		}
 	})
 	srv.HandleFunc("/v1/notifications/", func(w http.ResponseWriter, r *http.Request) {
-		// GET /v1/notifications/{id}
-		svc.GetNotification(w, r)
+		svc.HandleGetNotification(w, r)
 	})
 	srv.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

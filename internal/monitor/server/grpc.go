@@ -1,6 +1,7 @@
 package server
 
 import (
+	monitorv1 "micro-one-api/api/monitor/v1"
 	"micro-one-api/internal/monitor/service"
 
 	kgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
@@ -11,7 +12,6 @@ func NewGRPCServer(addr string, svc *service.MonitorService) *kgrpc.Server {
 	srv := kgrpc.NewServer(
 		kgrpc.Address(addr),
 	)
-	// Register gRPC service handlers here when proto is defined.
-	_ = svc
+	monitorv1.RegisterMonitorServiceServer(srv, svc)
 	return srv
 }

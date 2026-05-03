@@ -43,10 +43,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	uc := biz.NewIdentityUsecase(repo)
 	svc := service.NewIdentityService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr)
 
 	app := kratos.New(
 		kratos.Name("identity-service"),
-		kratos.Server(grpcSrv),
+		kratos.Server(grpcSrv, httpSrv),
 	)
 
 	return app, func() {}, nil

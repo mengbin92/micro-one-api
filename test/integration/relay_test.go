@@ -113,7 +113,7 @@ func TestRelayIntegration(t *testing.T) {
 	time.Sleep(100 * time.Millisecond) // Give servers time to start
 
 	t.Run("GetHealth", func(t *testing.T) {
-		resp, err := http.Get("http://localhost:19000/health")
+		resp, err := http.Get("http://localhost:19000/healthz")
 		if err != nil {
 			t.Fatalf("failed to get health: %v", err)
 		}

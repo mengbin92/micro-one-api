@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"micro-one-api/internal/pkg/events"
 )
 
 var (
@@ -32,11 +34,15 @@ type ConfigRepo interface {
 
 // ConfigUsecase implements business logic for config-service.
 type ConfigUsecase struct {
-	repo ConfigRepo
+	repo     ConfigRepo
+	eventBus events.EventBus
 }
 
-func NewConfigUsecase(repo ConfigRepo) *ConfigUsecase {
-	return &ConfigUsecase{repo: repo}
+func NewConfigUsecase(repo ConfigRepo, eventBus events.EventBus) *ConfigUsecase {
+	if eventBus == nil {
+		eventBus = events.NewMemoryEventBus()
+	}
+	return &ConfigUsecase{repo: repo, eventBus: eventBus}
 }
 
 func (uc *ConfigUsecase) GetConfig(ctx context.Context, namespace, key string) (*ConfigEntry, error) {
@@ -67,12 +73,20 @@ func (uc *ConfigUsecase) SetConfig(ctx context.Context, namespace, key, value, c
 		Comment:   comment,
 		UpdatedAt: time.Now(),
 	}
-	return uc.repo.Set(ctx, entry)
+	if err := uc.repo.Set(ctx, entry); err != nil {
+		return err
+	}
+	_ = uc.eventBus.Publish(ctx, events.TopicConfigChanged, entry)
+	return nil
 }
 
 func (uc *ConfigUsecase) DeleteConfig(ctx context.Context, namespace, key string) error {
 	if key == "" {
 		return ErrInvalidKey
 	}
-	return uc.repo.Delete(ctx, namespace, key)
+	if err := uc.repo.Delete(ctx, namespace, key); err != nil {
+		return err
+	}
+	_ = uc.eventBus.Publish(ctx, events.TopicConfigChanged, &ConfigEntry{Namespace: namespace, Key: key})
+	return nil
 }

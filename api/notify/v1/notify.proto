@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package api.notify.v1;
+
+option go_package = "micro-one-api/api/notify/v1;notifyv1";
+
+service NotifyService {
+  rpc CreateNotification(CreateNotificationRequest) returns (CreateNotificationResponse);
+  rpc GetNotification(GetNotificationRequest) returns (GetNotificationResponse);
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc UpdateNotificationStatus(UpdateNotificationStatusRequest) returns (UpdateNotificationStatusResponse);
+}
+
+message CreateNotificationRequest {
+  string type = 1;
+  string recipient = 2;
+  string subject = 3;
+  string content = 4;
+}
+
+message NotificationItem {
+  int64 id = 1;
+  string type = 2;
+  string recipient = 3;
+  string subject = 4;
+  string content = 5;
+  string status = 6;
+  int32 retry_count = 7;
+  int64 created_at = 8;
+  int64 sent_at = 9;
+}
+
+message CreateNotificationResponse {
+  NotificationItem notification = 1;
+}
+
+message GetNotificationRequest {
+  int64 id = 1;
+}
+
+message GetNotificationResponse {
+  NotificationItem notification = 1;
+}
+
+message ListNotificationsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string type = 3;
+  string status = 4;
+}
+
+message ListNotificationsResponse {
+  repeated NotificationItem items = 1;
+  int64 total = 2;
+}
+
+message UpdateNotificationStatusRequest {
+  int64 id = 1;
+  string status = 2;
+}
+
+message UpdateNotificationStatusResponse {
+  bool success = 1;
+}

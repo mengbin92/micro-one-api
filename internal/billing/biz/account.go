@@ -16,13 +16,10 @@ func (a *Account) AvailableQuota() int64 {
 	return a.Quota - a.FrozenQuota
 }
 
+// GroupRatio returns the ratio for this account's group using default ratios.
+// Prefer using BillingUsecase.getGroupRatio() which supports externalized config.
 func (a *Account) GroupRatio() float64 {
-	ratios := map[string]float64{
-		"default": 1.0,
-		"vip":     0.5,  // VIP 用户享受 5 折优惠
-		"svip":    0.3,  // SVIP 用户享受 3 折优惠
-	}
-
+	ratios := DefaultGroupRatios()
 	if ratio, ok := ratios[a.Group]; ok {
 		return ratio
 	}

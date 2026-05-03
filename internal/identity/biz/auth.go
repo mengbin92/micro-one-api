@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -30,12 +32,13 @@ var (
 )
 
 type User struct {
-	ID          int64
-	Username    string
-	DisplayName string
-	Email       string
-	Group       string
-	Status      int32
+	ID           int64
+	Username     string
+	DisplayName  string
+	Email        string
+	Group        string
+	Status       int32
+	PasswordHash string
 }
 
 type Token struct {
@@ -145,8 +148,12 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password string)
 	if user.Status != UserStatusEnabled {
 		return nil, "", ErrUserDisabled
 	}
-	// Password verification would go here using bcrypt or similar
-	// For now, accept any non-empty password
+	if user.PasswordHash == "" {
+		return nil, "", ErrInvalidPassword
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return nil, "", ErrInvalidPassword
+	}
 	token := uc.generateToken()
 	tokenRecord := &Token{
 		UserID:         user.ID,
@@ -166,12 +173,17 @@ func (uc *IdentityUsecase) Register(ctx context.Context, username, password, ema
 	if existing != nil {
 		return nil, ErrUserExists
 	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
 	user := &User{
-		Username:    username,
-		DisplayName: username,
-		Email:       email,
-		Group:       group,
-		Status:      UserStatusEnabled,
+		Username:     username,
+		DisplayName:  username,
+		Email:        email,
+		Group:        group,
+		Status:       UserStatusEnabled,
+		PasswordHash: string(hash),
 	}
 	if err := uc.repo.CreateUser(ctx, user); err != nil {
 		return nil, err

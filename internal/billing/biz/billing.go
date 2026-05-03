@@ -14,6 +14,7 @@ type BillingUsecase struct {
 	reservationRepo ReservationRepo
 	ledgerRepo      LedgerRepo
 	redeemRepo      RedeemRepo
+	groupRatios     map[string]float64
 }
 
 func NewBillingUsecase(
@@ -21,22 +22,37 @@ func NewBillingUsecase(
 	reservationRepo ReservationRepo,
 	ledgerRepo LedgerRepo,
 	redeemRepo RedeemRepo,
+	groupRatios map[string]float64,
 ) *BillingUsecase {
+	if len(groupRatios) == 0 {
+		groupRatios = DefaultGroupRatios()
+	}
 	return &BillingUsecase{
 		accountRepo:     accountRepo,
 		reservationRepo: reservationRepo,
 		ledgerRepo:      ledgerRepo,
 		redeemRepo:      redeemRepo,
+		groupRatios:     groupRatios,
 	}
 }
 
 func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string) (*Reservation, error) {
+	if requestID != "" {
+		existing, err := uc.reservationRepo.FindByRequestID(ctx, requestID)
+		if err != nil {
+			return nil, fmt.Errorf("find by request id: %w", err)
+		}
+		if existing != nil && (existing.IsReserved() || existing.IsCommitted()) {
+			return existing, nil
+		}
+	}
+
 	account, err := uc.accountRepo.GetAccountSnapshot(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get account snapshot: %w", err)
 	}
 
-	groupRatio := account.GroupRatio()
+	groupRatio := uc.getGroupRatio(account.Group)
 	cost := int64(float64(estimatedTokens) * groupRatio)
 
 	if cost <= 0 {
@@ -94,7 +110,7 @@ func (uc *BillingUsecase) CommitQuota(ctx context.Context, reservationID string,
 		return 0, 0, fmt.Errorf("get account snapshot: %w", err)
 	}
 
-	groupRatio := account.GroupRatio()
+	groupRatio := uc.getGroupRatio(account.Group)
 	actualCost := int64(float64(actualTokens) * groupRatio)
 
 	if actualCost <= 0 {
@@ -407,6 +423,22 @@ func (uc *BillingUsecase) RedeemCode(ctx context.Context, userID, code string) (
 
 func (uc *BillingUsecase) ListLedgers(ctx context.Context, userID string, page, pageSize int32) ([]*Ledger, int64, error) {
 	return uc.ledgerRepo.ListLedgers(ctx, userID, page, pageSize)
+}
+
+func (uc *BillingUsecase) getGroupRatio(group string) float64 {
+	if ratio, ok := uc.groupRatios[group]; ok {
+		return ratio
+	}
+	return 1.0
+}
+
+// DefaultGroupRatios returns the default group-to-ratio mapping.
+func DefaultGroupRatios() map[string]float64 {
+	return map[string]float64{
+		"default": 1.0,
+		"vip":     0.5,
+		"svip":    0.3,
+	}
 }
 
 func generateReservationID() string {

@@ -40,13 +40,14 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 
-	uc := biz.NewChannelUsecase(repo)
+	uc := biz.NewChannelUsecase(repo, nil)
 	svc := service.NewChannelService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr)
 
 	app := kratos.New(
 		kratos.Name("channel-service"),
-		kratos.Server(grpcSrv),
+		kratos.Server(grpcSrv, httpSrv),
 	)
 
 	return app, func() {}, nil

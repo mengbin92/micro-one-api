@@ -14,19 +14,17 @@ func NewHTTPServer(addr string, svc *service.LogService) *khttp.Server {
 		khttp.Address(addr),
 	)
 	srv.HandleFunc("/v1/logs", func(w http.ResponseWriter, r *http.Request) {
-		// GET /v1/logs (list) or POST /v1/logs (ingest)
 		switch r.Method {
 		case http.MethodGet:
-			svc.ListLogs(w, r)
+			svc.HandleListLogs(w, r)
 		case http.MethodPost:
-			svc.IngestLog(w, r)
+			svc.HandleIngestLog(w, r)
 		default:
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		}
 	})
 	srv.HandleFunc("/v1/logs/", func(w http.ResponseWriter, r *http.Request) {
-		// GET /v1/logs/{id}
-		svc.GetLog(w, r)
+		svc.HandleGetLog(w, r)
 	})
 	srv.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

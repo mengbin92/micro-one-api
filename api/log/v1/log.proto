@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package api.log.v1;
+
+option go_package = "micro-one-api/api/log/v1;logv1";
+
+service LogService {
+  rpc GetLog(GetLogRequest) returns (GetLogResponse);
+  rpc ListLogs(ListLogsRequest) returns (ListLogsResponse);
+  rpc IngestLog(IngestLogRequest) returns (IngestLogResponse);
+}
+
+message GetLogRequest {
+  int64 id = 1;
+}
+
+message GetLogResponse {
+  int64 id = 1;
+  string level = 2;
+  string message = 3;
+  string source = 4;
+  string request_id = 5;
+  int64 user_id = 6;
+  int64 created_at = 7;
+}
+
+message ListLogsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string type = 3;
+}
+
+message ListLogsResponse {
+  repeated GetLogResponse items = 1;
+  int64 total = 2;
+}
+
+message IngestLogRequest {
+  string level = 1;
+  string message = 2;
+  string source = 3;
+  string request_id = 4;
+  int64 user_id = 5;
+}
+
+message IngestLogResponse {
+  int64 id = 1;
+}

@@ -22,6 +22,7 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	admincfg "micro-one-api/internal/admin/config"
 	"micro-one-api/internal/admin/data"
+	adminserver "micro-one-api/internal/admin/server"
 	"micro-one-api/internal/admin/service"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -89,9 +90,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	grpcSrv := grpcx.NewServer(grpcx.Address(cfg.Server.GRPC.Addr))
 	adminv1.RegisterAdminServiceServer(grpcSrv, adminSvc)
 
+	httpSrv := adminserver.NewHTTPServer(cfg.Server.HTTP.Addr)
+
 	app := kratos.New(
 		kratos.Name("admin-api"),
-		kratos.Server(grpcSrv),
+		kratos.Server(grpcSrv, httpSrv),
 	)
 
 	cleanup := func() {

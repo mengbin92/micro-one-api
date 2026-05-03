@@ -40,7 +40,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 
-	uc := biz.NewConfigUsecase(repo)
+	uc := biz.NewConfigUsecase(repo, nil)
 	svc := service.NewConfigService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)

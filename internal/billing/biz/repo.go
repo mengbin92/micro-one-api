@@ -11,6 +11,7 @@ type AccountRepo interface {
 type ReservationRepo interface {
 	CreateReservation(ctx context.Context, reservation *Reservation) error
 	GetReservation(ctx context.Context, reservationID string) (*Reservation, error)
+	FindByRequestID(ctx context.Context, requestID string) (*Reservation, error)
 	UpdateReservationStatus(ctx context.Context, reservationID string, status string) error
 	GetExpiredReservations(ctx context.Context) ([]*Reservation, error)
 }

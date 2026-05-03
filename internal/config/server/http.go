@@ -16,17 +16,16 @@ func NewHTTPServer(addr string, svc *service.ConfigService) *khttp.Server {
 	srv.HandleFunc("/v1/configs/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			// Distinguish between /v1/configs/{ns} and /v1/configs/{ns}/{key}
 			rest := r.URL.Path[len("/v1/configs/"):]
 			if countSlashes(rest) >= 1 {
-				svc.GetConfig(w, r)
+				svc.HandleGetConfig(w, r)
 			} else {
-				svc.ListConfigs(w, r)
+				svc.HandleListConfigs(w, r)
 			}
 		case http.MethodPut:
-			svc.SetConfig(w, r)
+			svc.HandleSetConfig(w, r)
 		case http.MethodDelete:
-			svc.DeleteConfig(w, r)
+			svc.HandleDeleteConfig(w, r)
 		default:
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		}

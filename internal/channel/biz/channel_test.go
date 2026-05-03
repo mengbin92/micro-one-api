@@ -109,7 +109,7 @@ func TestChannelUsecase_SelectChannel_SingleChannel(t *testing.T) {
 		},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	channel, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
 	if err != nil {
 		t.Fatalf("SelectChannel() error = %v", err)
@@ -125,7 +125,7 @@ func TestChannelUsecase_SelectChannel_NoAvailableChannels(t *testing.T) {
 		abilities: map[string][]Ability{},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	_, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
 	if err != ErrChannelNotFound {
 		t.Fatalf("expected ErrChannelNotFound, got: %v", err)
@@ -148,7 +148,7 @@ func TestChannelUsecase_SelectChannel_PriorityOrdering(t *testing.T) {
 		},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	channel, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
 	if err != nil {
 		t.Fatalf("SelectChannel() error = %v", err)
@@ -172,7 +172,7 @@ func TestChannelUsecase_SelectChannel_SamePriorityRandom(t *testing.T) {
 		},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	results := make(map[int64]int)
 
 	for i := 0; i < 50; i++ {
@@ -207,7 +207,7 @@ func TestChannelUsecase_SelectChannel_ExcludeFirstPriority(t *testing.T) {
 		},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 
 	channel, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", true)
 	if err != nil {
@@ -235,7 +235,7 @@ func TestChannelUsecase_SelectChannel_FilterDisabled(t *testing.T) {
 		},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	channel, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
 	if err != nil {
 		t.Fatalf("SelectChannel() error = %v", err)
@@ -257,7 +257,7 @@ func TestChannelUsecase_SelectChannel_AllDisabled(t *testing.T) {
 		},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	_, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
 	if err != ErrChannelNotFound {
 		t.Fatalf("expected ErrChannelNotFound, got: %v", err)
@@ -282,7 +282,7 @@ func TestChannelUsecase_GetChannel(t *testing.T) {
 		abilities: map[string][]Ability{},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	channel, err := uc.GetChannel(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("GetChannel() error = %v", err)
@@ -304,7 +304,7 @@ func TestChannelUsecase_GetChannel_NotFound(t *testing.T) {
 		abilities: map[string][]Ability{},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	_, err := uc.GetChannel(context.Background(), 999)
 	if err != ErrChannelNotFound {
 		t.Fatalf("expected ErrChannelNotFound, got: %v", err)
@@ -331,7 +331,7 @@ func TestChannelUsecase_ListAvailableModels(t *testing.T) {
 		},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	models, err := uc.ListAvailableModels(context.Background(), "default")
 	if err != nil {
 		t.Fatalf("ListAvailableModels() error = %v", err)
@@ -355,7 +355,7 @@ func TestChannelUsecase_ListAvailableModels_NoChannels(t *testing.T) {
 		abilities: map[string][]Ability{},
 	}
 
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, nil)
 	models, err := uc.ListAvailableModels(context.Background(), "default")
 	if err != nil {
 		t.Fatalf("ListAvailableModels() error = %v", err)

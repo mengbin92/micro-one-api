@@ -6,20 +6,37 @@ import (
 )
 
 const (
-	ReasonUnknown         = "UNKNOWN"
-	ReasonUnauthorized    = "UNAUTHORIZED"
-	ReasonChannelNotFound = "CHANNEL_NOT_FOUND"
-	ReasonQuotaNotEnough  = "QUOTA_NOT_ENOUGH"
-	ReasonInvalidRequest  = "INVALID_REQUEST"
-	ReasonModelForbidden  = "MODEL_FORBIDDEN"
-	ReasonUserDisabled    = "USER_DISABLED"
+	ReasonUnknown            = "UNKNOWN"
+	ReasonUnauthorized       = "UNAUTHORIZED"
+	ReasonChannelNotFound    = "CHANNEL_NOT_FOUND"
+	ReasonQuotaNotEnough     = "QUOTA_NOT_ENOUGH"
+	ReasonInvalidRequest     = "INVALID_REQUEST"
+	ReasonModelForbidden     = "MODEL_FORBIDDEN"
+	ReasonUserDisabled       = "USER_DISABLED"
 	ReasonServiceUnavailable = "SERVICE_UNAVAILABLE"
-	ReasonBadGateway      = "BAD_GATEWAY"
-	ReasonTokenDisabled   = "TOKEN_DISABLED"
-	ReasonTokenExpired    = "TOKEN_EXPIRED"
-	ReasonTokenExhausted  = "TOKEN_EXHAUSTED"
-	ReasonTokenNotFound   = "TOKEN_NOT_FOUND"
-	ReasonUserNotFound    = "USER_NOT_FOUND"
+	ReasonBadGateway         = "BAD_GATEWAY"
+	ReasonTokenDisabled      = "TOKEN_DISABLED"
+	ReasonTokenExpired       = "TOKEN_EXPIRED"
+	ReasonTokenExhausted     = "TOKEN_EXHAUSTED"
+	ReasonTokenNotFound      = "TOKEN_NOT_FOUND"
+	ReasonUserNotFound       = "USER_NOT_FOUND"
+
+	// Config domain
+	ReasonConfigNotFound = "CONFIG_NOT_FOUND"
+	ReasonConfigExists   = "CONFIG_ALREADY_EXISTS"
+	ReasonInvalidKey     = "INVALID_CONFIG_KEY"
+
+	// Log domain
+	ReasonLogNotFound = "LOG_NOT_FOUND"
+
+	// Monitor domain
+	ReasonHealthCheckNotFound = "HEALTH_CHECK_NOT_FOUND"
+	ReasonAlertRuleNotFound   = "ALERT_RULE_NOT_FOUND"
+	ReasonInvalidAlertRule    = "INVALID_ALERT_RULE"
+
+	// Notify domain
+	ReasonNotificationNotFound = "NOTIFICATION_NOT_FOUND"
+	ReasonInvalidNotification  = "INVALID_NOTIFICATION"
 )
 
 // HTTPStatusCode defines the mapping from error reasons to HTTP status codes
@@ -37,7 +54,16 @@ var HTTPStatusCode = map[string]int{
 	ReasonTokenExpired:     401,
 	ReasonTokenExhausted:    401,
 	ReasonTokenNotFound:    401,
-	ReasonUserNotFound:     404,
+	ReasonUserNotFound:       404,
+	ReasonConfigNotFound:     404,
+	ReasonConfigExists:       409,
+	ReasonInvalidKey:         400,
+	ReasonLogNotFound:        404,
+	ReasonHealthCheckNotFound: 404,
+	ReasonAlertRuleNotFound:  404,
+	ReasonInvalidAlertRule:   400,
+	ReasonNotificationNotFound: 404,
+	ReasonInvalidNotification:  400,
 }
 
 // GetHTTPStatusCode returns the HTTP status code for a given error reason
@@ -156,4 +182,66 @@ func IsServiceUnavailable(err error) bool {
 		return false
 	}
 	return e.Reason == ReasonServiceUnavailable || e.Reason == ReasonChannelNotFound
+}
+
+// MapConfigError maps config biz errors to structured errors
+func MapConfigError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch err.Error() {
+	case "config not found":
+		return &Error{Reason: ReasonConfigNotFound, Message: "config not found"}
+	case "config already exists":
+		return &Error{Reason: ReasonConfigExists, Message: "config already exists"}
+	case "invalid config key":
+		return &Error{Reason: ReasonInvalidKey, Message: "invalid config key"}
+	default:
+		return &Error{Reason: ReasonUnknown, Message: err.Error()}
+	}
+}
+
+// MapLogError maps log biz errors to structured errors
+func MapLogError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch err.Error() {
+	case "log entry not found":
+		return &Error{Reason: ReasonLogNotFound, Message: "log entry not found"}
+	default:
+		return &Error{Reason: ReasonUnknown, Message: err.Error()}
+	}
+}
+
+// MapMonitorError maps monitor biz errors to structured errors
+func MapMonitorError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch err.Error() {
+	case "health check not found":
+		return &Error{Reason: ReasonHealthCheckNotFound, Message: "health check not found"}
+	case "alert rule not found":
+		return &Error{Reason: ReasonAlertRuleNotFound, Message: "alert rule not found"}
+	case "invalid alert rule":
+		return &Error{Reason: ReasonInvalidAlertRule, Message: "invalid alert rule"}
+	default:
+		return &Error{Reason: ReasonUnknown, Message: err.Error()}
+	}
+}
+
+// MapNotifyError maps notify biz errors to structured errors
+func MapNotifyError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch err.Error() {
+	case "notification not found":
+		return &Error{Reason: ReasonNotificationNotFound, Message: "notification not found"}
+	case "invalid notification":
+		return &Error{Reason: ReasonInvalidNotification, Message: "invalid notification"}
+	default:
+		return &Error{Reason: ReasonUnknown, Message: err.Error()}
+	}
 }

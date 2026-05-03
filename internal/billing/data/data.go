@@ -1,17 +1,19 @@
 package data
 
 import (
+	"context"
 	"os"
 
 	"micro-one-api/internal/billing/biz"
 	"micro-one-api/internal/pkg/xdb"
 
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type Data struct {
 	db    *gorm.DB
-	redis interface{}
+	redis *redis.Client
 
 	accountRepo     biz.AccountRepo
 	reservationRepo biz.ReservationRepo
@@ -36,9 +38,18 @@ func NewData(dsn ...string) (*Data, error) {
 		return nil, err
 	}
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	rdb := xdb.NewRedisClient(redisAddr)
+	if rdb != nil {
+		if pingErr := xdb.PingRedis(context.Background(), rdb); pingErr != nil {
+			rdb.Close()
+			rdb = nil
+		}
+	}
+
 	d := &Data{
 		db:    db,
-		redis: nil,
+		redis: rdb,
 	}
 
 	d.accountRepo = NewAccountRepo(d)
@@ -66,6 +77,9 @@ func (d *Data) RedeemRepo() biz.RedeemRepo {
 }
 
 func (d *Data) Close() error {
+	if d.redis != nil {
+		d.redis.Close()
+	}
 	if d.db != nil {
 		sqlDB, err := d.db.DB()
 		if err != nil {

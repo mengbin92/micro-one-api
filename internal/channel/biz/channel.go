@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	"micro-one-api/internal/pkg/events"
+
 	"github.com/bytedance/sonic"
 )
 
@@ -59,12 +61,17 @@ type ChannelRepo interface {
 }
 
 type ChannelUsecase struct {
-	repo ChannelRepo
+	repo     ChannelRepo
+	eventBus events.EventBus
 }
 
-func NewChannelUsecase(repo ChannelRepo) *ChannelUsecase {
+func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUsecase {
+	if eventBus == nil {
+		eventBus = events.NewMemoryEventBus()
+	}
 	return &ChannelUsecase{
-		repo: repo,
+		repo:     repo,
+		eventBus: eventBus,
 	}
 }
 
@@ -123,19 +130,35 @@ func (uc *ChannelUsecase) ListChannels(ctx context.Context, page, pageSize int32
 }
 
 func (uc *ChannelUsecase) CreateChannel(ctx context.Context, channel *Channel) error {
-	return uc.repo.CreateChannel(ctx, channel)
+	if err := uc.repo.CreateChannel(ctx, channel); err != nil {
+		return err
+	}
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
+	return nil
 }
 
 func (uc *ChannelUsecase) UpdateChannel(ctx context.Context, channel *Channel) error {
-	return uc.repo.UpdateChannel(ctx, channel)
+	if err := uc.repo.UpdateChannel(ctx, channel); err != nil {
+		return err
+	}
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
+	return nil
 }
 
 func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) error {
-	return uc.repo.DeleteChannel(ctx, channelID)
+	if err := uc.repo.DeleteChannel(ctx, channelID); err != nil {
+		return err
+	}
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID})
+	return nil
 }
 
 func (uc *ChannelUsecase) ChangeChannelStatus(ctx context.Context, channelID int64, status int32) error {
-	return uc.repo.ChangeStatus(ctx, channelID, status)
+	if err := uc.repo.ChangeStatus(ctx, channelID, status); err != nil {
+		return err
+	}
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID, Status: status})
+	return nil
 }
 
 func SplitCSV(input string) []string {

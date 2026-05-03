@@ -504,7 +504,7 @@ func equalStringSlices(a, b []string) bool {
 func TestIdentityUsecase_Login_Success(t *testing.T) {
 	repo := &mockIdentityRepo{
 		users: map[int64]*User{
-			1: {ID: 1, Username: "alice", Status: UserStatusEnabled, Group: "default"},
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled, Group: "default", PasswordHash: "$2a$10$kn5rAQzaqKF4ncbcPWkllOMaoDBbTuwHgDJ6jobkei0tGyB8ICeWm"},
 		},
 		tokens: make(map[string]*Token),
 	}
@@ -562,12 +562,12 @@ func TestIdentityUsecase_Login_UserDisabled(t *testing.T) {
 func TestIdentityUsecase_Login_CreatesToken(t *testing.T) {
 	repo := &mockIdentityRepo{
 		users: map[int64]*User{
-			1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled, PasswordHash: "$2a$10$kn5rAQzaqKF4ncbcPWkllOMaoDBbTuwHgDJ6jobkei0tGyB8ICeWm"},
 		},
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
-	_, token, err := uc.Login(context.Background(), "alice", "secret")
+	_, token, err := uc.Login(context.Background(), "alice", "secret123")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}

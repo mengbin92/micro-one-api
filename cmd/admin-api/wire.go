@@ -8,6 +8,7 @@ import (
 	"github.com/google/wire"
 
 	admincfg "micro-one-api/internal/admin/config"
+	"micro-one-api/internal/admin/server"
 	"micro-one-api/internal/admin/service"
 )
 
@@ -26,9 +27,10 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 func newApp(cfg *admincfg.Config, svc *service.AdminService) (*kratos.App, func()) {
 	grpcSrv := newGRPCServer(cfg, svc)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr)
 	app := kratos.New(
 		kratos.Name("admin-api"),
-		kratos.Server(grpcSrv),
+		kratos.Server(grpcSrv, httpSrv),
 	)
 	return app, func() {}
 }

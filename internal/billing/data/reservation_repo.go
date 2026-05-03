@@ -62,6 +62,29 @@ func (r *reservationRepo) GetReservation(ctx context.Context, reservationID stri
 	}, nil
 }
 
+func (r *reservationRepo) FindByRequestID(ctx context.Context, requestID string) (*biz.Reservation, error) {
+	var model reservationModel
+	if err := r.data.db.WithContext(ctx).Where("request_id = ?", requestID).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &biz.Reservation{
+		ReservationID: model.ReservationID,
+		UserID:       model.UserID,
+		RequestID:    model.RequestID,
+		Amount:       model.Amount,
+		Status:       model.Status,
+		Model:        stringFromPtr(model.Model),
+		ChannelID:    stringFromPtr(model.ChannelID),
+		CreatedAt:    model.CreatedAt,
+		UpdatedAt:    model.UpdatedAt,
+		ExpiredAt:    timeFromPtr(model.ExpiredAt),
+	}, nil
+}
+
 func (r *reservationRepo) UpdateReservationStatus(ctx context.Context, reservationID string, status string) error {
 	return r.data.db.WithContext(ctx).Model(&reservationModel{}).
 		Where("reservation_id = ?", reservationID).

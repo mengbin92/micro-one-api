@@ -46,11 +46,16 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 
+	groupRatios := cfg.Billing.GroupRatios
+	if len(groupRatios) == 0 {
+		groupRatios = biz.DefaultGroupRatios()
+	}
 	uc := biz.NewBillingUsecase(
 		d.AccountRepo(),
 		d.ReservationRepo(),
 		d.LedgerRepo(),
 		d.RedeemRepo(),
+		groupRatios,
 	)
 	svc := service.NewBillingService(uc)
 

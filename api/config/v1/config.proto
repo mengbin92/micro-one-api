@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package api.config.v1;
+
+option go_package = "micro-one-api/api/config/v1;configv1";
+
+service ConfigService {
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  rpc ListConfigs(ListConfigsRequest) returns (ListConfigsResponse);
+  rpc SetConfig(SetConfigRequest) returns (SetConfigResponse);
+  rpc DeleteConfig(DeleteConfigRequest) returns (DeleteConfigResponse);
+}
+
+message GetConfigRequest {
+  string namespace = 1;
+  string key = 2;
+}
+
+message GetConfigResponse {
+  int64 id = 1;
+  string namespace = 2;
+  string key = 3;
+  string value = 4;
+  string comment = 5;
+  int64 updated_at = 6;
+}
+
+message ListConfigsRequest {
+  string namespace = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListConfigsResponse {
+  repeated GetConfigResponse items = 1;
+  int64 total = 2;
+}
+
+message SetConfigRequest {
+  string namespace = 1;
+  string key = 2;
+  string value = 3;
+  string comment = 4;
+}
+
+message SetConfigResponse {
+  bool success = 1;
+}
+
+message DeleteConfigRequest {
+  string namespace = 1;
+  string key = 2;
+}
+
+message DeleteConfigResponse {
+  bool success = 1;
+}

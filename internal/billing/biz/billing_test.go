@@ -57,6 +57,15 @@ func (m *mockReservationRepo) UpdateReservationStatus(ctx context.Context, reser
 	return nil
 }
 
+func (m *mockReservationRepo) FindByRequestID(ctx context.Context, requestID string) (*Reservation, error) {
+	for _, res := range m.reservations {
+		if res.RequestID == requestID {
+			return res, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *mockReservationRepo) GetExpiredReservations(ctx context.Context) ([]*Reservation, error) {
 	var expired []*Reservation
 	for _, res := range m.reservations {
@@ -174,7 +183,7 @@ func TestReserveQuota_CorrectLogic(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req1", 100, "gpt-4o-mini", "channel1")
 
@@ -211,7 +220,7 @@ func TestCommitQuota_Success_CorrectLogic(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{ledgers: make([]*Ledger, 0)}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	committed, refund, err := uc.CommitQuota(context.Background(), "res1", 80, true)
 
@@ -245,7 +254,7 @@ func TestCommitQuota_Failed_CorrectLogic(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{ledgers: make([]*Ledger, 0)}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	committed, refund, err := uc.CommitQuota(context.Background(), "res1", 0, false)
 
@@ -272,7 +281,7 @@ func TestReserveQuota_InsufficientQuota(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	_, err := uc.ReserveQuota(context.Background(), "user1", "req1", 100, "gpt-4o-mini", "channel1")
 
@@ -302,7 +311,7 @@ func TestCommitQuota_AlreadyCommitted(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	_, _, err := uc.CommitQuota(context.Background(), "res1", 80, true)
 
@@ -332,7 +341,7 @@ func TestReleaseQuota_Success(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{ledgers: make([]*Ledger, 0)}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	err := uc.ReleaseQuota(context.Background(), "res1", "test release")
 
@@ -351,7 +360,7 @@ func TestReleaseQuota_NotFound(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	err := uc.ReleaseQuota(context.Background(), "nonexistent", "test")
 
@@ -373,7 +382,7 @@ func TestGetAccountSnapshot_Success(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	snapshot, err := uc.GetAccountSnapshot(context.Background(), "user1")
 
@@ -398,7 +407,7 @@ func TestTopUpQuota_Success(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{ledgers: make([]*Ledger, 0)}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	newQuota, err := uc.TopUpQuota(context.Background(), "user1", "admin", 500, "test topup")
 
@@ -417,7 +426,7 @@ func TestCreateRedeemCode_Success(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{codes: make(map[string]*RedeemCode)}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	err := uc.CreateRedeemCode(context.Background(), "CODE123", "测试兑换码", 1000, 10, "admin")
 
@@ -459,7 +468,7 @@ func TestRedeemCode_Success(t *testing.T) {
 		records: make([]*RedeemRecord, 0),
 	}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	amount, newQuota, err := uc.RedeemCode(context.Background(), "user1", "CODE123")
 
@@ -480,7 +489,7 @@ func TestRedeemCode_NotFound(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{codes: make(map[string]*RedeemCode)}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	_, _, err := uc.RedeemCode(context.Background(), "user1", "NONEXISTENT")
 
@@ -510,7 +519,7 @@ func TestRedeemCode_UsedUp(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{codes: map[string]*RedeemCode{"CODE123": redeemCode}}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	_, _, err := uc.RedeemCode(context.Background(), "user1", "CODE123")
 
@@ -540,7 +549,7 @@ func TestRedeemCode_Disabled(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{codes: map[string]*RedeemCode{"CODE123": redeemCode}}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	_, _, err := uc.RedeemCode(context.Background(), "user1", "CODE123")
 
@@ -561,7 +570,7 @@ func TestListLedgers_Success(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{ledgers: ledgers}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	result, total, err := uc.ListLedgers(context.Background(), "user1", 1, 10)
 
@@ -584,7 +593,7 @@ func TestReserveQuota_WithGroupRatio(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req1", 100, "gpt-4o-mini", "channel1")
 
@@ -608,7 +617,7 @@ func TestReserveQuota_ZeroCost(t *testing.T) {
 	ledgerRepo := &mockLedgerRepo{}
 	redeemRepo := &mockRedeemRepo{}
 
-	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo)
+	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
 	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req1", 0, "gpt-4o-mini", "channel1")
 

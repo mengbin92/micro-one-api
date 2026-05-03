@@ -70,7 +70,7 @@ func setupChannelWithUpstream(t *testing.T, addr, upstreamURL string) (func(), c
 			},
 		},
 	}
-	uc := channelbiz.NewChannelUsecase(repo)
+	uc := channelbiz.NewChannelUsecase(repo, nil)
 	svc := channelservice.NewChannelService(uc)
 	grpcSrv := grpc.NewServer()
 	channelv1.RegisterChannelServiceServer(grpcSrv, svc)
@@ -228,7 +228,7 @@ func TestChatCompletions_ModelMapping(t *testing.T) {
 			},
 		},
 	}
-	channelUc := channelbiz.NewChannelUsecase(channelRepo)
+	channelUc := channelbiz.NewChannelUsecase(channelRepo, nil)
 	channelSvc := channelservice.NewChannelService(channelUc)
 	channelGrpc := grpc.NewServer()
 	channelv1.RegisterChannelServiceServer(channelGrpc, channelSvc)

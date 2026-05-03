@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package api.monitor.v1;
+
+option go_package = "micro-one-api/api/monitor/v1;monitorv1";
+
+service MonitorService {
+  rpc SaveHealthCheck(SaveHealthCheckRequest) returns (SaveHealthCheckResponse);
+  rpc ListHealthChecks(ListHealthChecksRequest) returns (ListHealthChecksResponse);
+  rpc GetLatestHealthCheck(GetLatestHealthCheckRequest) returns (GetLatestHealthCheckResponse);
+  rpc CreateAlertRule(CreateAlertRuleRequest) returns (CreateAlertRuleResponse);
+  rpc ListAlertRules(ListAlertRulesRequest) returns (ListAlertRulesResponse);
+}
+
+message SaveHealthCheckRequest {
+  string service_name = 1;
+  string status = 2;
+  int64 response_time = 3;
+}
+
+message SaveHealthCheckResponse {
+  bool success = 1;
+}
+
+message ListHealthChecksRequest {
+  string service_name = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message HealthCheckItem {
+  int64 id = 1;
+  string service_name = 2;
+  string status = 3;
+  int64 response_time = 4;
+  int64 checked_at = 5;
+}
+
+message ListHealthChecksResponse {
+  repeated HealthCheckItem items = 1;
+  int64 total = 2;
+}
+
+message GetLatestHealthCheckRequest {
+  string service_name = 1;
+}
+
+message GetLatestHealthCheckResponse {
+  HealthCheckItem check = 1;
+}
+
+message CreateAlertRuleRequest {
+  string name = 1;
+  string service_name = 2;
+  string metric = 3;
+  double threshold = 4;
+  string operator = 5;
+  int32 duration = 6;
+  bool enabled = 7;
+}
+
+message AlertRuleItem {
+  int64 id = 1;
+  string name = 2;
+  string service_name = 3;
+  string metric = 4;
+  double threshold = 5;
+  string operator = 6;
+  int32 duration = 7;
+  bool enabled = 8;
+  int64 created_at = 9;
+}
+
+message CreateAlertRuleResponse {
+  AlertRuleItem rule = 1;
+}
+
+message ListAlertRulesRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ListAlertRulesResponse {
+  repeated AlertRuleItem items = 1;
+  int64 total = 2;
+}

@@ -154,7 +154,7 @@ func setupInMemoryChannelService(t *testing.T, addr string) (func(), channelv1.C
 		},
 	}
 
-	uc := channelbiz.NewChannelUsecase(repo)
+	uc := channelbiz.NewChannelUsecase(repo, nil)
 	svc := channelservice.NewChannelService(uc)
 
 	server := grpc.NewServer()
