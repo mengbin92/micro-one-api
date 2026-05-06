@@ -166,6 +166,9 @@ func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatComple
 - [x] Admin-api HTTP 路由可访问（/v1/users, /v1/channels, /v1/logs 等）
 - [x] Redis Event Bus 实现完成（internal/pkg/events/redis.go）
 - [x] Anthropic Provider 实现完成（internal/relay/provider/anthropic.go）
+- [x] OpenTelemetry + Jaeger 链路追踪集成完成（internal/pkg/xtrace/trace.go）
+- [x] 对账定时调度完成（internal/billing/biz/reconciliation_job.go）
+- [x] 二期服务集成测试通过（test/integration/phase2_test.go）
 
 ## 6. 实施完成状态
 
@@ -177,10 +180,12 @@ func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatComple
 | 4 | Redis Event Bus | ✅ 完成 | `internal/pkg/events/redis.go` |
 | 5 | Anthropic Provider | ✅ 完成 | `internal/relay/provider/anthropic.go`, `internal/relay/provider/factory.go` |
 
-### 待后续迭代
+### P2 迭代完成
 
-| # | 任务 | 优先级 | 说明 |
-|---|------|--------|------|
-| 6 | 链路追踪集成 | P2 | xtrace 包需补充 Jaeger 配置 |
-| 7 | 对账定时调度 | P2 | billing-service main 中添加 cron |
-| 8 | 二期服务集成测试 | P2 | 补充 config/log/monitor/notify 测试 |
+| # | 任务 | 状态 | 修改文件 |
+|---|------|------|----------|
+| 6 | 链路追踪集成 | ✅ 完成 | `internal/pkg/xtrace/trace.go` (OpenTelemetry + Jaeger OTLP HTTP) |
+| 7 | 对账定时调度 | ✅ 完成 | `internal/billing/biz/reconciliation_job.go`, `cmd/billing-service/wire_gen.go` |
+| 8 | 二期服务集成测试 | ✅ 完成 | `test/integration/phase2_test.go` |
+
+> 详细实施方案见 `docs/p2-iteration-design.md`
