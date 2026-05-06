@@ -1,84 +1,68 @@
 # P2 迭代设计方案
 
 > 基于 `gap-analysis-and-fix-plan.md` 中标记的 P2 待办事项，制定详细实施方案。
+> 最后更新：2026/05/06 — 已与实际实现对齐
 
 ## 1. 迭代范围
 
-| # | 任务 | 优先级 | 预计工作量 | 依赖 |
-|---|------|--------|-----------|------|
-| 1 | 链路追踪 Jaeger 集成 | P2-High | 2h | 无 |
-| 2 | 对账任务定时调度 | P2-Medium | 1h | 无 |
-| 3 | 二期服务集成测试 | P2-Medium | 3h | 无 |
+| # | 任务 | 优先级 | 状态 | 依赖 |
+|---|------|--------|------|------|
+| 1 | 链路追踪 Jaeger 集成 | P2-High | ✅ 已完成 | 无 |
+| 2 | 对账任务定时调度 | P2-Medium | ✅ 已完成 | 无 |
+| 3 | 二期服务集成测试 | P2-Medium | ✅ 已完成 | 无 |
 
 ## 2. 任务 1：链路追踪 Jaeger 集成
 
-### 2.1 现状分析
+### 2.1 实现方案
 
-`internal/pkg/xtrace/trace.go` 已存在但仅包含基础结构，未实际集成 OpenTelemetry + Jaeger。
-
-### 2.2 设计方案
-
-**技术选型**：OpenTelemetry SDK + Jaeger Exporter
+**技术选型**：OpenTelemetry SDK + OTLP HTTP Exporter（Jaeger 兼容）
 
 **架构**：
 ```
-Service → OTel SDK → Jaeger Collector → Jaeger UI
+Service → OTel SDK → OTLP HTTP → Jaeger Collector → Jaeger UI
 ```
 
-**实现步骤**：
+**实现文件**：`internal/pkg/xtrace/trace.go`
 
-1. **扩展 xtrace 包**：
-   ```go
-   // internal/pkg/xtrace/trace.go
-   type Config struct {
-       Endpoint string // Jaeger endpoint
-       Service  string // Service name
-       Enabled  bool   // Enable/disable tracing
-   }
+**核心结构**：
+```go
+type Config struct {
+    Enabled    bool    `yaml:"enabled"`
+    Endpoint   string  `yaml:"endpoint"`    // e.g. "http://jaeger:4318/v1/traces"
+    Service    string  `yaml:"service"`     // service name
+    SampleRate float64 `yaml:"sample_rate"` // 0.0 - 1.0
+}
 
-   func InitTracer(cfg Config) (func(), error) {
-       // 1. Create OTel exporter (OTLP/HTTP to Jaeger)
-       // 2. Create resource with service name
-       // 3. Create TracerProvider
-       // 4. Set global TracerProvider
-       // 5. Return shutdown function
-   }
-   ```
+func InitTracer(cfg Config) (func(), error)
+```
 
-2. **各服务 main.go 集成**：
-   ```go
-   shutdown, err := xtrace.InitTracer(xtrace.Config{
-       Endpoint: cfg.Trace.Endpoint,
-       Service:  "identity-service",
-       Enabled:  cfg.Trace.Enabled,
-   })
-   defer shutdown()
-   ```
+**实现要点**：
+- 使用 `otlptracehttp` exporter（HTTP 协议，非 gRPC）
+- `TraceIDRatioBased` 采样器，支持可配采样率
+- 默认采样率 1.0（全量采集）
+- 返回 shutdown 函数，应用退出时调用
+- 保留原有 `TraceIDHeader` 中间件（X-Trace-ID）
 
-3. **gRPC 拦截器自动注入**：
-   ```go
-   // 在 server/grpc.go 中添加
-   grpcSrv := grpc.NewServer(
-       grpc.UnaryInterceptor(otelgrpc.UnaryServerInterceptor()),
-       grpc.StreamInterceptor(otelgrpc.StreamServerInterceptor()),
-   )
-   ```
+**集成方式**：各服务 main.go 中调用
+```go
+shutdown, err := xtrace.InitTracer(xtrace.Config{
+    Endpoint: cfg.Trace.Endpoint,
+    Service:  "identity-service",
+    Enabled:  cfg.Trace.Enabled,
+})
+defer shutdown()
+```
 
-4. **HTTP 中间件自动注入**：
-   ```go
-   // 在 server/http.go 中添加
-   srv.Use(otelhttp.NewMiddleware("service-name"))
-   ```
-
-**配置文件扩展**：
+**配置示例**（添加到各服务 configs/*.yaml）：
 ```yaml
 trace:
-  enabled: true
+  enabled: false           # 开发环境可关闭
   endpoint: "http://jaeger:4318/v1/traces"
+  service: "identity-service"
   sample_rate: 1.0
 ```
 
-**Docker Compose 扩展**：
+**Docker Compose 扩展**（可选，按需添加）：
 ```yaml
 jaeger:
   image: jaegertracing/all-in-one:latest
@@ -89,7 +73,7 @@ jaeger:
     COLLECTOR_OTLP_ENABLED: true
 ```
 
-### 2.3 验证标准
+### 2.2 验证标准
 
 - [ ] Jaeger UI 可访问 (http://localhost:16686)
 - [ ] 请求链路可在 Jaeger 中查看
@@ -97,138 +81,94 @@ jaeger:
 
 ## 3. 任务 2：对账任务定时调度
 
-### 3.1 现状分析
+### 3.1 实现方案
 
-`internal/billing/biz/reconciliation.go` 已实现 `ReconciliationUsecase`，包含：
-- 清理过期 reservation
-- 检查账户 quota 一致性
-
-但无定时触发机制。
-
-### 3.2 设计方案
-
-**技术选型**：使用 `robfig/cron/v3` 实现定时调度
+**技术选型**：使用 `time.Ticker` 实现定时调度（轻量，无需额外依赖）
 
 **架构**：
 ```
 billing-service main.go
-  └── Cron Scheduler
-        └── ReconciliationJob (每小时)
-              └── ReconciliationUsecase.RunReconciliation()
+  └── ReconciliationJob (time.Ticker)
+        └── ReconciliationUsecase.RunReconciliation()
 ```
 
-**实现步骤**：
+**实现文件**：`internal/billing/biz/reconciliation_job.go`
 
-1. **添加 cron 依赖**：
-   ```bash
-   go get github.com/robfig/cron/v3
-   ```
+**核心结构**：
+```go
+type ReconciliationJob struct {
+    uc            *ReconciliationUsecase
+    checkInterval time.Duration
+    stopChan      chan struct{}
+}
 
-2. **在 billing-service main.go 中添加调度**：
-   ```go
-   // cmd/billing-service/main.go
-   c := cron.New()
-   c.AddFunc("0 * * * *", func() { // 每小时执行
-       result, err := reconUsecase.RunReconciliation(context.Background())
-       if err != nil {
-           logger.Errorf("reconciliation failed: %v", err)
-       } else {
-           logger.Infof("reconciliation completed: expired=%d, inconsistencies=%d",
-               result.ExpiredCleaned, len(result.AccountInconsistencies))
-       }
-   })
-   c.Start()
-   defer c.Stop()
-   ```
+func NewReconciliationJob(uc *ReconciliationUsecase, checkInterval time.Duration) *ReconciliationJob
+func (j *ReconciliationJob) Start(ctx context.Context)
+func (j *ReconciliationJob) Stop()
+```
 
-3. **配置化调度频率**：
-   ```yaml
-   billing:
-     reconciliation:
-       enabled: true
-       schedule: "0 * * * *"  # cron expression
-   ```
+**实现要点**：
+- 启动时立即执行一次对账
+- 之后按 `checkInterval` 周期执行（默认 1 小时）
+- 支持 context 取消和 stopChan 双重停止机制
+- 日志输出：run_at、expired_cleaned、total_accounts、inconsistencies
 
-### 3.3 验证标准
+**集成方式**：`cmd/billing-service/wire_gen.go` 中启动
+```go
+ctx, cancel := context.WithCancel(context.Background())
+reconJob := biz.NewReconciliationJob(reconUc, 1*time.Hour)
+go reconJob.Start(ctx)
+// shutdown 时调用 reconJob.Stop() 和 cancel()
+```
 
-- [ ] 对账任务按配置频率执行
+**选择 time.Ticker 而非 robfig/cron 的原因**：
+- 项目已有 `CleanupJob` 使用相同模式，保持一致
+- 对账场景只需固定间隔，不需要 cron 表达式的灵活性
+- 减少外部依赖
+
+### 3.2 验证标准
+
+- [ ] 对账任务在 billing-service 启动时立即执行一次
+- [ ] 之后每小时自动执行
 - [ ] 过期 reservation 被正确清理
 - [ ] 账户不一致被检测并记录
 
 ## 4. 任务 3：二期服务集成测试
 
-### 4.1 现状分析
+### 4.1 实现方案
 
-当前集成测试仅覆盖 relay 流程（`test/integration/relay_test.go`）。
-
-二期服务（config, log, monitor, notify）缺少端到端测试。
-
-### 4.2 设计方案
+**实现文件**：`test/integration/phase2_test.go`（单文件，包含所有测试）
 
 **测试范围**：
 
-| 服务 | 测试场景 |
-|------|---------|
-| config-service | CRUD 配置项、事件通知 |
-| log-service | 日志写入、查询、过滤 |
-| monitor-service | 健康检查保存、告警规则 CRUD |
-| notify-service | 通知创建、状态更新、列表查询 |
+| 服务 | 测试场景 | 测试函数 |
+|------|---------|---------|
+| config-service | Set+Get、List、Delete | `TestConfigIntegration` |
+| log-service | Ingest+Get、List | `TestLogIntegration` |
+| monitor-service | Save+ListHealthChecks、Create+ListAlertRules | `TestMonitorIntegration` |
+| notify-service | Create+Get、List+Filter、UpdateStatus | `TestNotifyIntegration` |
 
-**实现步骤**：
+**测试架构**：
+- 每个服务使用内存 test repo（无外部依赖）
+- 每个服务独立 gRPC server，监听不同端口（19010-19013）
+- 测试完成后通过 cleanup 函数关闭 server
 
-1. **创建测试辅助函数**：
-   ```go
-   // test/integration/helpers.go
-   func setupConfigService(t *testing.T, addr string) (func(), configv1.ConfigServiceClient)
-   func setupLogService(t *testing.T, addr string) (func(), logv1.LogServiceClient)
-   func setupMonitorService(t *testing.T, addr string) (func(), monitorv1.MonitorServiceClient)
-   func setupNotifyService(t *testing.T, addr string) (func(), notifyv1.NotifyServiceClient)
-   ```
+**test repo 实现**：
+- `testConfigRepo` — 实现 `configbiz.ConfigRepo` 接口
+- `testLogRepo` — 实现 `logbiz.LogRepo` 接口
+- `testMonitorRepo` — 实现 `monitorbiz.MonitorRepo` 接口
+- `testNotifyRepo` — 实现 `notifybiz.NotifyRepo` 接口
 
-2. **编写各服务测试**：
-   ```go
-   // test/integration/config_test.go
-   func TestConfigIntegration(t *testing.T) {
-       cleanup, client := setupConfigService(t, "127.0.0.1:19010")
-       defer cleanup()
+### 4.2 验证标准
 
-       t.Run("SetAndGet", func(t *testing.T) { ... })
-       t.Run("ListAndDelete", func(t *testing.T) { ... })
-   }
-   ```
+- [x] 4 个服务各有至少 2 个测试场景
+- [x] 测试可独立运行，无数据污染
+- [x] `go test ./test/integration/...` 全部通过
 
-3. **测试数据隔离**：每个测试使用独立 namespace 避免冲突
+## 5. 相关提交
 
-### 4.3 验证标准
-
-- [ ] 4 个服务各有至少 3 个测试场景
-- [ ] 测试可独立运行，无数据污染
-- [ ] `go test ./test/integration/...` 全部通过
-
-## 5. 实施顺序
-
-```
-Phase 1: 链路追踪集成 (2h)
-  ├── xtrace 包扩展
-  ├── 各服务 main.go 集成
-  └── Docker Compose Jaeger 配置
-
-Phase 2: 对账定时调度 (1h)
-  ├── 添加 cron 依赖
-  └── billing-service 调度集成
-
-Phase 3: 二期服务集成测试 (3h)
-  ├── 测试辅助函数
-  ├── config-service 测试
-  ├── log-service 测试
-  ├── monitor-service 测试
-  └── notify-service 测试
-```
-
-## 6. 风险与缓解
-
-| 风险 | 影响 | 缓解措施 |
-|------|------|----------|
-| Jaeger 增加部署复杂度 | 运维成本 | 使用 all-in-one 镜像，开发环境可选关闭 |
-| Cron 任务与主进程竞争资源 | 性能影响 | 限制并发、设置超时 |
-| 集成测试依赖外部服务 | CI 不稳定 | 使用 mock 或 testcontainers |
+| 提交 | 内容 |
+|------|------|
+| `06fa443` | feat: implement P2 iteration - tracing, reconciliation job, integration tests |
+| `5a9478c` | docs: update gap analysis with P2 completion status |
+| `3f78762` | docs: update design doc with P2 iteration completion status |
