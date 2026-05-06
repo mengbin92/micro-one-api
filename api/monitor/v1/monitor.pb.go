@@ -749,6 +749,326 @@ func (x *ListAlertRulesResponse) GetTotal() int64 {
 	return 0
 }
 
+type GetAlertRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAlertRuleRequest) Reset() {
+	*x = GetAlertRuleRequest{}
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAlertRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAlertRuleRequest) ProtoMessage() {}
+
+func (x *GetAlertRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAlertRuleRequest.ProtoReflect.Descriptor instead.
+func (*GetAlertRuleRequest) Descriptor() ([]byte, []int) {
+	return file_api_monitor_v1_monitor_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetAlertRuleRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+type GetAlertRuleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rule          *AlertRuleItem         `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAlertRuleResponse) Reset() {
+	*x = GetAlertRuleResponse{}
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAlertRuleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAlertRuleResponse) ProtoMessage() {}
+
+func (x *GetAlertRuleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAlertRuleResponse.ProtoReflect.Descriptor instead.
+func (*GetAlertRuleResponse) Descriptor() ([]byte, []int) {
+	return file_api_monitor_v1_monitor_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetAlertRuleResponse) GetRule() *AlertRuleItem {
+	if x != nil {
+		return x.Rule
+	}
+	return nil
+}
+
+type UpdateAlertRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	ServiceName   string                 `protobuf:"bytes,3,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	Metric        string                 `protobuf:"bytes,4,opt,name=metric,proto3" json:"metric,omitempty"`
+	Threshold     float64                `protobuf:"fixed64,5,opt,name=threshold,proto3" json:"threshold,omitempty"`
+	Operator      string                 `protobuf:"bytes,6,opt,name=operator,proto3" json:"operator,omitempty"`
+	Duration      int32                  `protobuf:"varint,7,opt,name=duration,proto3" json:"duration,omitempty"`
+	Enabled       bool                   `protobuf:"varint,8,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateAlertRuleRequest) Reset() {
+	*x = UpdateAlertRuleRequest{}
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateAlertRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateAlertRuleRequest) ProtoMessage() {}
+
+func (x *UpdateAlertRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateAlertRuleRequest.ProtoReflect.Descriptor instead.
+func (*UpdateAlertRuleRequest) Descriptor() ([]byte, []int) {
+	return file_api_monitor_v1_monitor_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *UpdateAlertRuleRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *UpdateAlertRuleRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateAlertRuleRequest) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
+}
+
+func (x *UpdateAlertRuleRequest) GetMetric() string {
+	if x != nil {
+		return x.Metric
+	}
+	return ""
+}
+
+func (x *UpdateAlertRuleRequest) GetThreshold() float64 {
+	if x != nil {
+		return x.Threshold
+	}
+	return 0
+}
+
+func (x *UpdateAlertRuleRequest) GetOperator() string {
+	if x != nil {
+		return x.Operator
+	}
+	return ""
+}
+
+func (x *UpdateAlertRuleRequest) GetDuration() int32 {
+	if x != nil {
+		return x.Duration
+	}
+	return 0
+}
+
+func (x *UpdateAlertRuleRequest) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+type UpdateAlertRuleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateAlertRuleResponse) Reset() {
+	*x = UpdateAlertRuleResponse{}
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateAlertRuleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateAlertRuleResponse) ProtoMessage() {}
+
+func (x *UpdateAlertRuleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateAlertRuleResponse.ProtoReflect.Descriptor instead.
+func (*UpdateAlertRuleResponse) Descriptor() ([]byte, []int) {
+	return file_api_monitor_v1_monitor_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *UpdateAlertRuleResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+type DeleteAlertRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAlertRuleRequest) Reset() {
+	*x = DeleteAlertRuleRequest{}
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAlertRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAlertRuleRequest) ProtoMessage() {}
+
+func (x *DeleteAlertRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAlertRuleRequest.ProtoReflect.Descriptor instead.
+func (*DeleteAlertRuleRequest) Descriptor() ([]byte, []int) {
+	return file_api_monitor_v1_monitor_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *DeleteAlertRuleRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+type DeleteAlertRuleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAlertRuleResponse) Reset() {
+	*x = DeleteAlertRuleResponse{}
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAlertRuleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAlertRuleResponse) ProtoMessage() {}
+
+func (x *DeleteAlertRuleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_monitor_v1_monitor_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAlertRuleResponse.ProtoReflect.Descriptor instead.
+func (*DeleteAlertRuleResponse) Descriptor() ([]byte, []int) {
+	return file_api_monitor_v1_monitor_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *DeleteAlertRuleResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 var File_api_monitor_v1_monitor_proto protoreflect.FileDescriptor
 
 const file_api_monitor_v1_monitor_proto_rawDesc = "" +
@@ -804,13 +1124,35 @@ const file_api_monitor_v1_monitor_proto_rawDesc = "" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\"c\n" +
 	"\x16ListAlertRulesResponse\x123\n" +
 	"\x05items\x18\x01 \x03(\v2\x1d.api.monitor.v1.AlertRuleItemR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x03R\x05total2\x93\x04\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\"%\n" +
+	"\x13GetAlertRuleRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\"I\n" +
+	"\x14GetAlertRuleResponse\x121\n" +
+	"\x04rule\x18\x01 \x01(\v2\x1d.api.monitor.v1.AlertRuleItemR\x04rule\"\xe7\x01\n" +
+	"\x16UpdateAlertRuleRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
+	"\fservice_name\x18\x03 \x01(\tR\vserviceName\x12\x16\n" +
+	"\x06metric\x18\x04 \x01(\tR\x06metric\x12\x1c\n" +
+	"\tthreshold\x18\x05 \x01(\x01R\tthreshold\x12\x1a\n" +
+	"\boperator\x18\x06 \x01(\tR\boperator\x12\x1a\n" +
+	"\bduration\x18\a \x01(\x05R\bduration\x12\x18\n" +
+	"\aenabled\x18\b \x01(\bR\aenabled\"3\n" +
+	"\x17UpdateAlertRuleResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"(\n" +
+	"\x16DeleteAlertRuleRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\"3\n" +
+	"\x17DeleteAlertRuleResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\xb6\x06\n" +
 	"\x0eMonitorService\x12b\n" +
 	"\x0fSaveHealthCheck\x12&.api.monitor.v1.SaveHealthCheckRequest\x1a'.api.monitor.v1.SaveHealthCheckResponse\x12e\n" +
 	"\x10ListHealthChecks\x12'.api.monitor.v1.ListHealthChecksRequest\x1a(.api.monitor.v1.ListHealthChecksResponse\x12q\n" +
 	"\x14GetLatestHealthCheck\x12+.api.monitor.v1.GetLatestHealthCheckRequest\x1a,.api.monitor.v1.GetLatestHealthCheckResponse\x12b\n" +
-	"\x0fCreateAlertRule\x12&.api.monitor.v1.CreateAlertRuleRequest\x1a'.api.monitor.v1.CreateAlertRuleResponse\x12_\n" +
-	"\x0eListAlertRules\x12%.api.monitor.v1.ListAlertRulesRequest\x1a&.api.monitor.v1.ListAlertRulesResponseB(Z&micro-one-api/api/monitor/v1;monitorv1b\x06proto3"
+	"\x0fCreateAlertRule\x12&.api.monitor.v1.CreateAlertRuleRequest\x1a'.api.monitor.v1.CreateAlertRuleResponse\x12Y\n" +
+	"\fGetAlertRule\x12#.api.monitor.v1.GetAlertRuleRequest\x1a$.api.monitor.v1.GetAlertRuleResponse\x12_\n" +
+	"\x0eListAlertRules\x12%.api.monitor.v1.ListAlertRulesRequest\x1a&.api.monitor.v1.ListAlertRulesResponse\x12b\n" +
+	"\x0fUpdateAlertRule\x12&.api.monitor.v1.UpdateAlertRuleRequest\x1a'.api.monitor.v1.UpdateAlertRuleResponse\x12b\n" +
+	"\x0fDeleteAlertRule\x12&.api.monitor.v1.DeleteAlertRuleRequest\x1a'.api.monitor.v1.DeleteAlertRuleResponseB(Z&micro-one-api/api/monitor/v1;monitorv1b\x06proto3"
 
 var (
 	file_api_monitor_v1_monitor_proto_rawDescOnce sync.Once
@@ -824,7 +1166,7 @@ func file_api_monitor_v1_monitor_proto_rawDescGZIP() []byte {
 	return file_api_monitor_v1_monitor_proto_rawDescData
 }
 
-var file_api_monitor_v1_monitor_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_api_monitor_v1_monitor_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_api_monitor_v1_monitor_proto_goTypes = []any{
 	(*SaveHealthCheckRequest)(nil),       // 0: api.monitor.v1.SaveHealthCheckRequest
 	(*SaveHealthCheckResponse)(nil),      // 1: api.monitor.v1.SaveHealthCheckResponse
@@ -838,27 +1180,40 @@ var file_api_monitor_v1_monitor_proto_goTypes = []any{
 	(*CreateAlertRuleResponse)(nil),      // 9: api.monitor.v1.CreateAlertRuleResponse
 	(*ListAlertRulesRequest)(nil),        // 10: api.monitor.v1.ListAlertRulesRequest
 	(*ListAlertRulesResponse)(nil),       // 11: api.monitor.v1.ListAlertRulesResponse
+	(*GetAlertRuleRequest)(nil),          // 12: api.monitor.v1.GetAlertRuleRequest
+	(*GetAlertRuleResponse)(nil),         // 13: api.monitor.v1.GetAlertRuleResponse
+	(*UpdateAlertRuleRequest)(nil),       // 14: api.monitor.v1.UpdateAlertRuleRequest
+	(*UpdateAlertRuleResponse)(nil),      // 15: api.monitor.v1.UpdateAlertRuleResponse
+	(*DeleteAlertRuleRequest)(nil),       // 16: api.monitor.v1.DeleteAlertRuleRequest
+	(*DeleteAlertRuleResponse)(nil),      // 17: api.monitor.v1.DeleteAlertRuleResponse
 }
 var file_api_monitor_v1_monitor_proto_depIdxs = []int32{
 	3,  // 0: api.monitor.v1.ListHealthChecksResponse.items:type_name -> api.monitor.v1.HealthCheckItem
 	3,  // 1: api.monitor.v1.GetLatestHealthCheckResponse.check:type_name -> api.monitor.v1.HealthCheckItem
 	8,  // 2: api.monitor.v1.CreateAlertRuleResponse.rule:type_name -> api.monitor.v1.AlertRuleItem
 	8,  // 3: api.monitor.v1.ListAlertRulesResponse.items:type_name -> api.monitor.v1.AlertRuleItem
-	0,  // 4: api.monitor.v1.MonitorService.SaveHealthCheck:input_type -> api.monitor.v1.SaveHealthCheckRequest
-	2,  // 5: api.monitor.v1.MonitorService.ListHealthChecks:input_type -> api.monitor.v1.ListHealthChecksRequest
-	5,  // 6: api.monitor.v1.MonitorService.GetLatestHealthCheck:input_type -> api.monitor.v1.GetLatestHealthCheckRequest
-	7,  // 7: api.monitor.v1.MonitorService.CreateAlertRule:input_type -> api.monitor.v1.CreateAlertRuleRequest
-	10, // 8: api.monitor.v1.MonitorService.ListAlertRules:input_type -> api.monitor.v1.ListAlertRulesRequest
-	1,  // 9: api.monitor.v1.MonitorService.SaveHealthCheck:output_type -> api.monitor.v1.SaveHealthCheckResponse
-	4,  // 10: api.monitor.v1.MonitorService.ListHealthChecks:output_type -> api.monitor.v1.ListHealthChecksResponse
-	6,  // 11: api.monitor.v1.MonitorService.GetLatestHealthCheck:output_type -> api.monitor.v1.GetLatestHealthCheckResponse
-	9,  // 12: api.monitor.v1.MonitorService.CreateAlertRule:output_type -> api.monitor.v1.CreateAlertRuleResponse
-	11, // 13: api.monitor.v1.MonitorService.ListAlertRules:output_type -> api.monitor.v1.ListAlertRulesResponse
-	9,  // [9:14] is the sub-list for method output_type
-	4,  // [4:9] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	8,  // 4: api.monitor.v1.GetAlertRuleResponse.rule:type_name -> api.monitor.v1.AlertRuleItem
+	0,  // 5: api.monitor.v1.MonitorService.SaveHealthCheck:input_type -> api.monitor.v1.SaveHealthCheckRequest
+	2,  // 6: api.monitor.v1.MonitorService.ListHealthChecks:input_type -> api.monitor.v1.ListHealthChecksRequest
+	5,  // 7: api.monitor.v1.MonitorService.GetLatestHealthCheck:input_type -> api.monitor.v1.GetLatestHealthCheckRequest
+	7,  // 8: api.monitor.v1.MonitorService.CreateAlertRule:input_type -> api.monitor.v1.CreateAlertRuleRequest
+	12, // 9: api.monitor.v1.MonitorService.GetAlertRule:input_type -> api.monitor.v1.GetAlertRuleRequest
+	10, // 10: api.monitor.v1.MonitorService.ListAlertRules:input_type -> api.monitor.v1.ListAlertRulesRequest
+	14, // 11: api.monitor.v1.MonitorService.UpdateAlertRule:input_type -> api.monitor.v1.UpdateAlertRuleRequest
+	16, // 12: api.monitor.v1.MonitorService.DeleteAlertRule:input_type -> api.monitor.v1.DeleteAlertRuleRequest
+	1,  // 13: api.monitor.v1.MonitorService.SaveHealthCheck:output_type -> api.monitor.v1.SaveHealthCheckResponse
+	4,  // 14: api.monitor.v1.MonitorService.ListHealthChecks:output_type -> api.monitor.v1.ListHealthChecksResponse
+	6,  // 15: api.monitor.v1.MonitorService.GetLatestHealthCheck:output_type -> api.monitor.v1.GetLatestHealthCheckResponse
+	9,  // 16: api.monitor.v1.MonitorService.CreateAlertRule:output_type -> api.monitor.v1.CreateAlertRuleResponse
+	13, // 17: api.monitor.v1.MonitorService.GetAlertRule:output_type -> api.monitor.v1.GetAlertRuleResponse
+	11, // 18: api.monitor.v1.MonitorService.ListAlertRules:output_type -> api.monitor.v1.ListAlertRulesResponse
+	15, // 19: api.monitor.v1.MonitorService.UpdateAlertRule:output_type -> api.monitor.v1.UpdateAlertRuleResponse
+	17, // 20: api.monitor.v1.MonitorService.DeleteAlertRule:output_type -> api.monitor.v1.DeleteAlertRuleResponse
+	13, // [13:21] is the sub-list for method output_type
+	5,  // [5:13] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_api_monitor_v1_monitor_proto_init() }
@@ -872,7 +1227,7 @@ func file_api_monitor_v1_monitor_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_monitor_v1_monitor_proto_rawDesc), len(file_api_monitor_v1_monitor_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

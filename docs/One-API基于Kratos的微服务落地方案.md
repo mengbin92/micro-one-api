@@ -630,7 +630,7 @@ Kratos 不限制 ORM，但结合当前项目，建议：
 
 | 计划内容 | 当前状态 |
 |----------|----------|
-| `RelayService` proto 契约 | ⚠️ 空壳（relay-gateway 使用 HTTP，不依赖 gRPC 契约） |
+| `RelayService` proto 契约 | ✅ 已实现 — `internal/relay/service/relay.go` 实现 ChatCompletion + ListModels，`server/grpc.go` 注册服务 |
 | OpenAI 兼容 HTTP 接口 | ✅ `service/openai.go` 完整实现 |
 | 渠道选择调用 `channel-service` | ✅ 已集成（SelectChannel / ListAvailableModels） |
 | 账务预扣/提交/释放调用 `billing-service` | ✅ 已集成（ReserveQuota / CommitQuota / ReleaseQuota） |
@@ -661,7 +661,7 @@ Kratos 不限制 ORM，但结合当前项目，建议：
 
 | 服务 | configs/*.yaml 端口 | 实际运行端口 | 状态 |
 |------|---------------------|---------------|------|
-| relay-gateway | http=:3000 | :3000 | ✅ 一致（无 gRPC） |
+| relay-gateway | http=:3000, grpc=:9003 | http=:3000, grpc=:9003 | ✅ 一致 |
 | identity-service | http=:8001, grpc=:9001 | http=:8001, grpc=:9001 | ✅ 一致 |
 | channel-service | http=:8002, grpc=:9002 | http=:8002, grpc=:9002 | ✅ 一致 |
 | billing-service | http=:8004, grpc=:9004 | http=:8004, grpc=:9004 | ✅ 一致 |
@@ -724,7 +724,13 @@ Kratos 不限制 ORM，但结合当前项目，建议：
 2. ~~**链路追踪**~~ — ✅ 已完成 — OpenTelemetry + Jaeger OTLP HTTP 集成，支持采样率配置
 3. **服务治理** — 可考虑接入 consul/nacos 等注册中心，替代静态端点配置
 4. **API 文档** — 可考虑接入 swagger/OpenAPI 自动生成 API 文档
-5. **gRPC Proto 定义** — 二期服务目前仅有 HTTP API，建议补充 proto 定义以支持 gRPC 服务间调用
+5. ~~**gRPC Proto 定义**~~ — ✅ 已完成 — 所有服务均有完整 proto 定义 + gRPC server 注册（含 relay-gateway）
+
+### Proto 补全与 gRPC 对齐 — ✅ 已完成
+
+- ~~relay-gateway gRPC server 空壳~~ — ✅ 已实现 `RelayGrpcService`（ChatCompletion + ListModels）
+- ~~monitor proto 缺 RPC~~ — ✅ 已补全 GetAlertRule / UpdateAlertRule / DeleteAlertRule
+- ~~monitor HTTP 缺路由~~ — ✅ 已补全 GET/PUT/DELETE `/v1/alert-rules/{id}`
 
 ### 安全修复（P0）— ✅ 已完成
 
@@ -764,7 +770,7 @@ Kratos 不限制 ORM，但结合当前项目，建议：
 
 ### 后续迭代建议
 
-11. **二期服务 Proto 定义** — 为 config / log / monitor / notify 服务补充 proto 定义
+11. ~~**二期服务 Proto 定义**~~ — ✅ 已完成 — config/log/monitor/notify/relay 均有完整 proto 定义 + gRPC server 注册
 12. ~~**二期服务单元测试**~~ — ✅ 已完成 — 4 个服务 biz + data 层单元测试
 13. ~~**集成测试增强**~~ — ✅ 已完成 — `test/integration/phase2_test.go` 覆盖 config/log/monitor/notify 四个服务端到端测试
 14. **性能优化** — 缓存策略、连接池配置、限流细化

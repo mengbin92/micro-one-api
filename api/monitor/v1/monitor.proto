@@ -9,7 +9,10 @@ service MonitorService {
   rpc ListHealthChecks(ListHealthChecksRequest) returns (ListHealthChecksResponse);
   rpc GetLatestHealthCheck(GetLatestHealthCheckRequest) returns (GetLatestHealthCheckResponse);
   rpc CreateAlertRule(CreateAlertRuleRequest) returns (CreateAlertRuleResponse);
+  rpc GetAlertRule(GetAlertRuleRequest) returns (GetAlertRuleResponse);
   rpc ListAlertRules(ListAlertRulesRequest) returns (ListAlertRulesResponse);
+  rpc UpdateAlertRule(UpdateAlertRuleRequest) returns (UpdateAlertRuleResponse);
+  rpc DeleteAlertRule(DeleteAlertRuleRequest) returns (DeleteAlertRuleResponse);
 }
 
 message SaveHealthCheckRequest {
@@ -83,4 +86,35 @@ message ListAlertRulesRequest {
 message ListAlertRulesResponse {
   repeated AlertRuleItem items = 1;
   int64 total = 2;
+}
+
+message GetAlertRuleRequest {
+  int64 id = 1;
+}
+
+message GetAlertRuleResponse {
+  AlertRuleItem rule = 1;
+}
+
+message UpdateAlertRuleRequest {
+  int64 id = 1;
+  string name = 2;
+  string service_name = 3;
+  string metric = 4;
+  double threshold = 5;
+  string operator = 6;
+  int32 duration = 7;
+  bool enabled = 8;
+}
+
+message UpdateAlertRuleResponse {
+  bool success = 1;
+}
+
+message DeleteAlertRuleRequest {
+  int64 id = 1;
+}
+
+message DeleteAlertRuleResponse {
+  bool success = 1;
 }

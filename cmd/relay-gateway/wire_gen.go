@@ -25,6 +25,7 @@ import (
 	relaycfg "micro-one-api/internal/relay/config"
 	relaydata "micro-one-api/internal/relay/data"
 	relayprovider "micro-one-api/internal/relay/provider"
+	relayservice "micro-one-api/internal/relay/service"
 	"micro-one-api/internal/relay/server"
 )
 
@@ -180,9 +181,12 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	srv := khttp.NewServer(khttp.Address(cfg.Server.HTTP.Addr), khttp.Timeout(providerTimeout))
 	httpServer.RegisterRoutes(srv)
 
+	grpcSvc := relayservice.NewRelayGrpcService(identityClient, channelClient, billingClient, providerFactory, relayUsecase)
+	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, grpcSvc)
+
 	kratosOpts := []kratos.Option{
 		kratos.Name("relay-gateway"),
-		kratos.Server(srv),
+		kratos.Server(srv, grpcSrv),
 	}
 	if registrar != nil {
 		kratosOpts = append(kratosOpts, kratos.Registrar(registrar))

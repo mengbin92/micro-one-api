@@ -1,6 +1,8 @@
 server:
   http:
     addr: 0.0.0.0:3000
+  grpc:
+    addr: 0.0.0.0:9003
 registry:
   type: ${REGISTRY_TYPE:-}
   consul:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/bytedance/sonic"
 
@@ -90,6 +91,50 @@ func (s *MonitorService) CreateAlertRule(ctx context.Context, req *monitorv1.Cre
 			CreatedAt:   rule.CreatedAt.Unix(),
 		},
 	}, nil
+}
+
+func (s *MonitorService) GetAlertRule(ctx context.Context, req *monitorv1.GetAlertRuleRequest) (*monitorv1.GetAlertRuleResponse, error) {
+	rule, err := s.uc.GetAlertRule(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return &monitorv1.GetAlertRuleResponse{
+		Rule: &monitorv1.AlertRuleItem{
+			Id:          rule.ID,
+			Name:        rule.Name,
+			ServiceName: rule.ServiceName,
+			Metric:      rule.Metric,
+			Threshold:   rule.Threshold,
+			Operator:    rule.Operator,
+			Duration:    int32(rule.Duration),
+			Enabled:     rule.Enabled,
+			CreatedAt:   rule.CreatedAt.Unix(),
+		},
+	}, nil
+}
+
+func (s *MonitorService) UpdateAlertRule(ctx context.Context, req *monitorv1.UpdateAlertRuleRequest) (*monitorv1.UpdateAlertRuleResponse, error) {
+	rule := &biz.AlertRule{
+		ID:          req.Id,
+		Name:        req.Name,
+		ServiceName: req.ServiceName,
+		Metric:      req.Metric,
+		Threshold:   req.Threshold,
+		Operator:    req.Operator,
+		Duration:    int(req.Duration),
+		Enabled:     req.Enabled,
+	}
+	if err := s.uc.UpdateAlertRule(ctx, rule); err != nil {
+		return nil, err
+	}
+	return &monitorv1.UpdateAlertRuleResponse{Success: true}, nil
+}
+
+func (s *MonitorService) DeleteAlertRule(ctx context.Context, req *monitorv1.DeleteAlertRuleRequest) (*monitorv1.DeleteAlertRuleResponse, error) {
+	if err := s.uc.DeleteAlertRule(ctx, req.Id); err != nil {
+		return nil, err
+	}
+	return &monitorv1.DeleteAlertRuleResponse{Success: true}, nil
 }
 
 func (s *MonitorService) ListAlertRules(ctx context.Context, req *monitorv1.ListAlertRulesRequest) (*monitorv1.ListAlertRulesResponse, error) {
@@ -216,6 +261,85 @@ func (s *MonitorService) HandleCreateAlertRule(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusCreated, alertRuleToMap(rule))
+}
+
+func (s *MonitorService) HandleGetAlertRule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	id, err := extractIDFromPath(r.URL.Path, "/v1/alert-rules/")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid alert rule id")
+		return
+	}
+	rule, err := s.uc.GetAlertRule(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, alertRuleToMap(rule))
+}
+
+func (s *MonitorService) HandleUpdateAlertRule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	id, err := extractIDFromPath(r.URL.Path, "/v1/alert-rules/")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid alert rule id")
+		return
+	}
+	var body struct {
+		Name        string  `json:"name"`
+		ServiceName string  `json:"service_name"`
+		Metric      string  `json:"metric"`
+		Threshold   float64 `json:"threshold"`
+		Operator    string  `json:"operator"`
+		Duration    int     `json:"duration"`
+		Enabled     *bool   `json:"enabled"`
+	}
+	if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	enabled := false
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	rule := &biz.AlertRule{
+		ID: id, Name: body.Name, ServiceName: body.ServiceName, Metric: body.Metric,
+		Threshold: body.Threshold, Operator: body.Operator, Duration: body.Duration, Enabled: enabled,
+	}
+	if err := s.uc.UpdateAlertRule(r.Context(), rule); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *MonitorService) HandleDeleteAlertRule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	id, err := extractIDFromPath(r.URL.Path, "/v1/alert-rules/")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid alert rule id")
+		return
+	}
+	if err := s.uc.DeleteAlertRule(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func extractIDFromPath(path, prefix string) (int64, error) {
+	idStr := strings.TrimPrefix(path, prefix)
+	idStr = strings.TrimRight(idStr, "/")
+	return strconv.ParseInt(idStr, 10, 64)
 }
 
 func alertRuleToMap(rule *biz.AlertRule) map[string]interface{} {
