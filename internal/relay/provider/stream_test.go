@@ -5,10 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestMain(m *testing.M) {
+	// Allow connections to localhost for testing (mock upstream servers)
+	os.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	os.Exit(m.Run())
+}
 
 func TestOpenAIProvider_ChatCompletionsStream(t *testing.T) {
 	chunkCount := 0

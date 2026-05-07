@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -16,6 +17,11 @@ import (
 	identitybiz "micro-one-api/internal/identity/biz"
 	identityservice "micro-one-api/internal/identity/service"
 )
+
+func init() {
+	// Allow connections to localhost for testing (mock upstream servers)
+	os.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+}
 
 // setupInMemoryIdentityService starts an in-memory identity service for testing
 func setupInMemoryIdentityService(t *testing.T, addr string) (func(), identityv1.IdentityServiceClient) {
