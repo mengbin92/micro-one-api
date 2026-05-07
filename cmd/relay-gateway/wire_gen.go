@@ -10,11 +10,11 @@ import (
 
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
-	"github.com/go-kratos/kratos/v2/config/file"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"micro-one-api/internal/pkg/xconfig"
 	"micro-one-api/api/channel/v1"
 	billingv1 "micro-one-api/api/billing/v1"
 	identityv1 "micro-one-api/api/identity/v1"
@@ -30,8 +30,8 @@ import (
 )
 
 func loadConfig(confPath string) (*relaycfg.Config, error) {
-	source := file.NewSource(confPath)
-	kratosCfg := kconfig.New(kconfig.WithSource(source))
+	source := xconfig.NewEnvFileSource(confPath)
+	kratosCfg := kconfig.New(kconfig.WithSource(source), kconfig.WithResolveActualTypes(true))
 	defer kratosCfg.Close()
 	if err := kratosCfg.Load(); err != nil {
 		return nil, err

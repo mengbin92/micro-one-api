@@ -7,9 +7,9 @@ import (
 
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
-	"github.com/go-kratos/kratos/v2/config/file"
 
 	logcfg "micro-one-api/internal/log/config"
+	"micro-one-api/internal/pkg/xconfig"
 	"micro-one-api/internal/log/biz"
 	"micro-one-api/internal/log/data"
 	"micro-one-api/internal/log/server"
@@ -18,8 +18,8 @@ import (
 )
 
 func loadConfig(confPath string) (*logcfg.Config, error) {
-	source := file.NewSource(confPath)
-	kratosCfg := kconfig.New(kconfig.WithSource(source))
+	source := xconfig.NewEnvFileSource(confPath)
+	kratosCfg := kconfig.New(kconfig.WithSource(source), kconfig.WithResolveActualTypes(true))
 	defer kratosCfg.Close()
 	if err := kratosCfg.Load(); err != nil {
 		return nil, err

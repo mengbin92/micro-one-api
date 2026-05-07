@@ -13,7 +13,7 @@ services:
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     volumes:
       - mysql_data:/var/lib/mysql
-      - ../../migrations/billing:/docker-entrypoint-initdb.d
+      - ../../migrations:/docker-entrypoint-initdb.d
     networks:
       - backend
     restart: unless-stopped
@@ -25,7 +25,7 @@ services:
       start_period: 30s
 
   redis:
-    image: redis:7-alpine
+    image: redis:8.4
     container_name: redis
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
     volumes:
@@ -49,7 +49,7 @@ services:
         SERVICE_NAME: identity-service
     container_name: identity-service
     environment:
-      - CONF_PATH=configs/identity-service.yaml
+      - CONF_PATH=/configs/identity-service.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -80,7 +80,7 @@ services:
         SERVICE_NAME: channel-service
     container_name: channel-service
     environment:
-      - CONF_PATH=configs/channel-service.yaml
+      - CONF_PATH=/configs/channel-service.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -110,7 +110,7 @@ services:
         SERVICE_NAME: billing-service
     container_name: billing-service
     environment:
-      - CONF_PATH=configs/billing-service.yaml
+      - CONF_PATH=/configs/billing-service.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -140,7 +140,7 @@ services:
         SERVICE_NAME: admin-api
     container_name: admin-api
     environment:
-      - CONF_PATH=configs/admin-api.yaml
+      - CONF_PATH=/configs/admin-api.yaml
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
@@ -149,7 +149,7 @@ services:
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     ports:
-      - "3000:3000"
+      - "3000:8000"
     depends_on:
       - identity-service
       - channel-service
@@ -175,7 +175,7 @@ services:
         SERVICE_NAME: config-service
     container_name: config-service
     environment:
-      - CONF_PATH=configs/config-service.yaml
+      - CONF_PATH=/configs/config-service.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -205,7 +205,7 @@ services:
         SERVICE_NAME: log-service
     container_name: log-service
     environment:
-      - CONF_PATH=configs/log-service.yaml
+      - CONF_PATH=/configs/log-service.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -235,7 +235,7 @@ services:
         SERVICE_NAME: monitor-worker
     container_name: monitor-worker
     environment:
-      - CONF_PATH=configs/monitor-worker.yaml
+      - CONF_PATH=/configs/monitor-worker.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -265,7 +265,7 @@ services:
         SERVICE_NAME: notify-worker
     container_name: notify-worker
     environment:
-      - CONF_PATH=configs/notify-worker.yaml
+      - CONF_PATH=/configs/notify-worker.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -297,7 +297,7 @@ services:
         SERVICE_NAME: relay-gateway
     container_name: relay-gateway
     environment:
-      - CONF_PATH=configs/relay-gateway.yaml
+      - CONF_PATH=/configs/relay-gateway.yaml
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - BILLING_GRPC_ENDPOINT=billing-service:9004

@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
-	"github.com/go-kratos/kratos/v2/config/file"
 	grpcx "github.com/go-kratos/kratos/v2/transport/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -22,6 +21,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	admincfg "micro-one-api/internal/admin/config"
+	"micro-one-api/internal/pkg/xconfig"
 	"micro-one-api/internal/admin/data"
 	adminserver "micro-one-api/internal/admin/server"
 	"micro-one-api/internal/admin/service"
@@ -31,8 +31,8 @@ import (
 )
 
 func loadConfig(confPath string) (*admincfg.Config, error) {
-	source := file.NewSource(confPath)
-	kratosCfg := kconfig.New(kconfig.WithSource(source))
+	source := xconfig.NewEnvFileSource(confPath)
+	kratosCfg := kconfig.New(kconfig.WithSource(source), kconfig.WithResolveActualTypes(true))
 	defer kratosCfg.Close()
 	if err := kratosCfg.Load(); err != nil {
 		return nil, err

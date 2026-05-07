@@ -10,11 +10,11 @@ registry:
     health_check_interval: 10
 clients:
   identity:
-    endpoint: 127.0.0.1:9001
+    endpoint: ${IDENTITY_GRPC_ENDPOINT:-127.0.0.1:9001}
   channel:
-    endpoint: 127.0.0.1:9002
+    endpoint: ${CHANNEL_GRPC_ENDPOINT:-127.0.0.1:9002}
   billing:
-    endpoint: 127.0.0.1:9004
+    endpoint: ${BILLING_GRPC_ENDPOINT:-127.0.0.1:9004}
 data:
   database:
     driver: mysql
