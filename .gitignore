@@ -43,3 +43,4 @@ keys/
 # Editor/IDE
 # .idea/
 # .vscode/
+test/e2e/e2e-test
