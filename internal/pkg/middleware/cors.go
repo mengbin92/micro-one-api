@@ -46,6 +46,17 @@ func CORS(config *CORSConfig) func(http.Handler) http.Handler {
 		config = DefaultCORSConfig()
 	}
 
+	// Reject wildcard origin with credentials (insecure per CORS spec)
+	if config.AllowCredentials {
+		for _, origin := range config.AllowedOrigins {
+			if origin == "*" {
+				applogger.Log.Warn("CORS: wildcard origin with AllowCredentials is insecure, disabling AllowCredentials")
+				config.AllowCredentials = false
+				break
+			}
+		}
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")

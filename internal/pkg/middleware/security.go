@@ -5,12 +5,34 @@ import (
 	crypto_rand "crypto/rand"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 	applogger "micro-one-api/internal/pkg/logger"
 )
+
+// controlCharsRegex matches control characters (CRLF, newlines, tabs, etc.)
+var controlCharsRegex = regexp.MustCompile(`[\x00-\x1f\x7f]`)
+
+// sanitizeLogField removes control characters from a string to prevent log injection
+func sanitizeLogField(s string) string {
+	return controlCharsRegex.ReplaceAllString(s, "")
+}
+
+// sanitizeRequestID validates and sanitizes a request ID, rejecting values
+// containing control characters or exceeding 128 bytes.
+func sanitizeRequestID(id string) string {
+	if len(id) > 128 {
+		return ""
+	}
+	sanitized := controlCharsRegex.ReplaceAllString(id, "")
+	if sanitized != id {
+		return ""
+	}
+	return sanitized
+}
 
 // SecurityHeaders adds security-related HTTP headers to responses
 func SecurityHeaders(next http.Handler) http.Handler {
@@ -63,7 +85,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 // RequestID adds a unique request ID to each request for tracing
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestID := r.Header.Get("X-Request-ID")
+		requestID := sanitizeRequestID(r.Header.Get("X-Request-ID"))
 		if requestID == "" {
 			requestID = generateRequestID()
 		}
@@ -82,9 +104,9 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		startTime := time.Now()
 		applogger.Log.Info("HTTP request started",
 			zap.String("method", r.Method),
-			zap.String("path", r.URL.Path),
+			zap.String("path", sanitizeLogField(r.URL.Path)),
 			zap.String("remote_addr", r.RemoteAddr),
-			zap.String("user_agent", r.UserAgent()),
+			zap.String("user_agent", sanitizeLogField(r.UserAgent())),
 			zap.String("request_id", GetRequestID(r.Context())),
 		)
 
@@ -95,7 +117,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		// Log response
 		applogger.Log.Info("HTTP request completed",
 			zap.String("method", r.Method),
-			zap.String("path", r.URL.Path),
+			zap.String("path", sanitizeLogField(r.URL.Path)),
 			zap.String("request_id", GetRequestID(r.Context())),
 			zap.Int("status", wrapped.status),
 			zap.Duration("duration", time.Since(startTime)),

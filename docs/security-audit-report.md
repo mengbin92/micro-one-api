@@ -30,8 +30,8 @@
 | 中危 (Medium) | 14 |
 | 低危 (Low) | 8 |
 | 信息 (Info) | 5 (正面发现) |
-| 已修复 | 15 |
-| 待修复 | 22 |
+| 已修复 | 25 |
+| 待修复 | 12 |
 
 ---
 
@@ -115,7 +115,7 @@
 - **CWE**: CWE-306 (关键功能缺少认证)
 - **文件**: `internal/log/server/http.go:17-29`
 - **描述**: 所有日志端点 (GET/POST /v1/logs, GET /v1/logs/{id}) 完全无认证。攻击者可读取所有日志或注入虚假日志。
-- **修复状态**: ❌ 待修复
+- **修复状态**: ✅ 已修复 (添加 SERVICE_TOKEN Bearer 认证中间件)
 
 #### V-05 [HIGH] 计费对账端点无认证
 
@@ -123,7 +123,7 @@
 - **CWE**: CWE-306 (关键功能缺少认证)
 - **文件**: `internal/billing/server/http.go:17`
 - **描述**: `/v1/reconciliation` 端点无认证，可被反复触发导致数据库负载或计费竞态。
-- **修复状态**: ❌ 待修复
+- **修复状态**: ✅ 已修复 (添加 SERVICE_TOKEN Bearer 认证中间件)
 
 #### V-06 [HIGH] IP 欺骗绕过速率限制
 
@@ -210,7 +210,7 @@
 - **CWE**: CWE-295 (不当证书验证)
 - **文件**: `internal/pkg/tls/config.go:111-115`
 - **描述**: TLS 未启用时，HTTP 客户端配置 `InsecureSkipVerify: true`，允许 MITM 攻击。
-- **修复状态**: ❌ 待修复
+- **修复状态**: ✅ 已修复 (默认 InsecureSkipVerify 为 false)
 
 #### V-12 [MEDIUM] Redis 客户端无密码认证支持
 
@@ -267,7 +267,7 @@
 - **CWE**: CWE-117 (日志输出不当处理)
 - **文件**: `internal/pkg/middleware/security.go:83-89`
 - **描述**: `r.UserAgent()` 和 `X-Request-ID` header 值直接写入日志，可被用于注入虚假日志条目。
-- **修复状态**: ❌ 低优先级
+- **修复状态**: ✅ 已修复 (添加控制字符过滤 sanitizeLogField)
 
 #### V-17 [MEDIUM] Request ID Header 注入
 
@@ -275,7 +275,7 @@
 - **CWE**: CWE-113 (HTTP Header CRLF 注入)
 - **文件**: `internal/pkg/middleware/security.go:65-76`
 - **描述**: `X-Request-ID` 客户端值未经验证直接回写 response header 和存入 context。
-- **修复状态**: ❌ 低优先级
+- **修复状态**: ✅ 已修复 (添加 sanitizeRequestID 验证，拒绝控制字符和超长值)
 
 ---
 
@@ -304,7 +304,7 @@
 - **CWE**: CWE-400 (不受控资源消耗)
 - **文件**: `internal/pkg/middleware/ratelimit.go:17-21`
 - **描述**: `clients map[string]*ClientLimiter` 无最大限制。攻击者用大量唯一 IP 发送请求可耗尽内存。
-- **修复状态**: ❌ 待修复
+- **修复状态**: ✅ 已修复 (添加 maxClients 上限，默认 100000)
 
 #### V-20 [MEDIUM] 错误消息泄露内部信息
 
@@ -349,7 +349,7 @@
 - **CWE**: CWE-942 (宽松跨域策略)
 - **文件**: `internal/pkg/middleware/cors.go:95`
 - **描述**: 若 `CORS_ALLOWED_ORIGINS` 设为 `*`，配合 `AllowCredentials: true` 可被利用。
-- **修复状态**: ❌ 低优先级
+- **修复状态**: ✅ 已修复 (检测到 wildcard + credentials 时自动禁用 credentials)
 
 #### V-24 [LOW] K8s 内部服务缺少 NetworkPolicy
 
@@ -357,7 +357,7 @@
 - **CWE**: CWE-668 (资源暴露到错误领域)
 - **文件**: `deployments/k8s/`
 - **描述**: 仅 relay-gateway 有 NetworkPolicy，其他服务无网络隔离。
-- **修复状态**: ❌ 待修复
+- **修复状态**: ✅ 已修复 (为所有内部服务添加 NetworkPolicy)
 
 #### V-25 [LOW] Docker Compose 暴露过多端口
 
@@ -386,7 +386,7 @@
 - **CWE**: CWE-1104 (使用未维护的第三方组件)
 - **文件**: `.github/workflows/security.yml`
 - **描述**: `actions/checkout@v3`, `actions/setup-go@v4` 等使用旧版本。
-- **修复状态**: ❌ 低优先级
+- **修复状态**: ✅ 已修复 (升级到最新稳定版本，pin trivy-action)
 
 ---
 
@@ -460,7 +460,7 @@
 - **CWE**: CWE-532 (日志文件中插入敏感信息)
 - **文件**: `internal/pkg/logger/logger.go:69-82`
 - **描述**: `Sanitize()` 函数存在但大部分日志路径直接使用 `applogger.Log` 而非 `SafeLogger`。
-- **修复状态**: ❌ 待修复
+- **修复状态**: ✅ 已修复 (SafeLogger 现在也 sanitizes zap.Field 值，新增 Basic auth 和 JWT 模式)
 
 ---
 
@@ -475,7 +475,7 @@
 - **MITRE ATT&CK**: T1090 (代理)
 - **文件**: `internal/relay/provider/provider.go:104`
 - **描述**: channel 的 `base_url` 来自数据库，无 URL 验证、scheme 限制或允许列表。管理员可设为内部网络地址 (如 `http://169.254.169.254/`) 进行 SSRF。
-- **修复状态**: ❌ 待修复
+- **修复状态**: ✅ 已修复 (添加 URL scheme 验证、私有/保留 IP 拦截、localhost 拦截)
 
 ---
 
@@ -538,27 +538,38 @@
 
 ## 4. 修复状态
 
-### ✅ 已修复 (15 项)
+### ✅ 已修复 (25 项)
 
 | ID | 描述 | 修复内容 |
 |----|------|----------|
+| V-04 | 日志服务无认证 | 添加 SERVICE_TOKEN Bearer 认证中间件 |
+| V-05 | 计费对账无认证 | 添加 SERVICE_TOKEN Bearer 认证中间件 |
 | V-06 | IP 欺骗绕过速率限制 | 移除 X-Forwarded-For 信任, 使用 RemoteAddr |
 | V-10 | Gemini API 密钥暴露在 URL | 改用 Authorization header |
+| V-11 | InsecureSkipVerify | 默认 InsecureSkipVerify 为 false |
+| V-12 | Redis 无密码支持 | 添加密码参数 |
+| V-13 | 取模偏差 | 使用 crypto/rand.Int 消除偏差 |
 | V-14 | Gemini URL 路径注入 | 添加 model name 正则验证 |
 | V-15 | 兑换码 LIKE 注入 | 添加 escapeLike |
+| V-16 | 日志注入 | 添加控制字符过滤 sanitizeLogField |
+| V-17 | Request ID Header 注入 | 添加 sanitizeRequestID 验证 |
+| V-19 | 内存速率限制器无边界 | 添加 maxClients 上限 (默认 100000) |
 | V-20 | 错误消息泄露 | 部分修复: admin http.go 和 identity service |
 | V-21 | 无密码强度验证 | 添加最小长度 8 位 |
 | V-22 | 配置文件默认密码 | 移除 YAML 中的默认密码 |
+| V-23 | CORS 通配符 | 检测 wildcard + credentials 时自动禁用 credentials |
+| V-24 | K8s NetworkPolicy | 为所有内部服务添加 NetworkPolicy |
 | V-25 | Docker Compose 端口暴露 | 内部服务移除端口映射 |
+| V-27 | GitHub Actions 版本 | 升级到最新稳定版本, pin trivy-action |
 | V-30 | OAuth state cookie 未删除 | 验证后删除 cookie |
 | V-31 | 用户枚举 | 统一 Login 错误消息 |
-| V-13 | 取模偏差 | 使用 crypto/rand.Int 消除偏差 |
-| V-12 | Redis 无密码支持 | 添加密码参数 |
+| V-34 | 日志脱敏未统一 | SafeLogger sanitizes zap.Field, 新增 Basic/JWT 模式 |
+| V-35 | SSRF via base_url | 添加 URL scheme 验证、私有 IP 拦截 |
 | V-36 | 预测性 Request ID | 使用 crypto/rand |
 | V-37 | 请求体大小无限制 | 添加 io.LimitReader (10MB) |
 | V-38 | 弱哈希 | 使用 SHA-256 |
 
-### ❌ 待修复 (22 项)
+### ❌ 待修复 (12 项)
 
 需要架构级改造:
 - V-01: gRPC 认证拦截器 Token 提取
@@ -573,19 +584,10 @@
 - V-09: API 密钥明文存储
 - V-32: JWT 撤销机制
 
-可逐步修复:
-- V-04: 日志服务无认证
-- V-05: 计费对账无认证
-- V-11: InsecureSkipVerify
-- V-16: 日志注入
-- V-17: Request ID Header 注入
-- V-19: 内存速率限制器无边界
-- V-23: CORS 通配符
-- V-24: K8s NetworkPolicy
-- V-27: GitHub Actions 版本
+低优先级:
 - V-28: 登录无速率限制
-- V-34: 日志脱敏未统一
-- V-35: SSRF via base_url
+- V-39: mTLS 可选验证
+- V-40: PKCS#12 默认密码
 
 ---
 
@@ -593,9 +595,9 @@
 
 | 可利用性 | 影响高 | 影响中 | 影响低 |
 |----------|--------|--------|--------|
-| **易利用** | V-01, V-02, V-08, V-18 | V-06, V-14, V-15 | V-16, V-17 |
-| **中等** | V-03, V-09, V-22, V-29 | V-07, V-20, V-30 | V-13, V-23 |
-| **难利用** | V-11, V-35 | V-31, V-34 | V-32, V-39, V-40 |
+| **易利用** | V-01, V-02, V-08, V-18 | ~~V-06~~, ~~V-14~~, ~~V-15~~ | ~~V-16~~, ~~V-17~~ |
+| **中等** | V-03, V-09, ~~V-22~~, V-29 | V-07, V-20, ~~V-30~~ | ~~V-13~~, ~~V-23~~ |
+| **难利用** | ~~V-11~~, ~~V-35~~ | ~~V-31~~, ~~V-34~~ | V-32, V-39, V-40 |
 
 ---
 
@@ -608,21 +610,21 @@
 4. 启用 gRPC TLS (V-08)
 
 ### P1 - 短期修复 (1-2 周)
-1. 添加 SSRF 防护 - base_url 验证 (V-35)
+1. ~~添加 SSRF 防护 - base_url 验证 (V-35)~~ ✅
 2. 添加 API 密钥加密存储 (V-09)
 3. 添加登录速率限制 (V-28)
 4. 限制 OAuth 默认配额 (V-07)
-5. 为日志/计费服务添加认证 (V-04, V-05)
+5. ~~为日志/计费服务添加认证 (V-04, V-05)~~ ✅
 
 ### P2 - 中期修复 (1 月)
-1. 内存速率限制器添加上限 (V-19)
-2. 统一日志脱敏 (V-34)
+1. ~~内存速率限制器添加上限 (V-19)~~ ✅
+2. ~~统一日志脱敏 (V-34)~~ ✅
 3. 添加 JWT 撤销机制 (V-32)
-4. K8s NetworkPolicy (V-24)
-5. 修复 InsecureSkipVerify (V-11)
+4. ~~K8s NetworkPolicy (V-24)~~ ✅
+5. ~~修复 InsecureSkipVerify (V-11)~~ ✅
 
 ### P3 - 低优先级
-1. GitHub Actions 版本更新 (V-27)
-2. 日志注入防护 (V-16, V-17)
-3. CORS 通配符限制 (V-23)
+1. ~~GitHub Actions 版本更新 (V-27)~~ ✅
+2. ~~日志注入防护 (V-16, V-17)~~ ✅
+3. ~~CORS 通配符限制 (V-23)~~ ✅
 4. PKCS#12 密码 (V-40)

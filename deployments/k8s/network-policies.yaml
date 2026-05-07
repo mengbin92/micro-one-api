@@ -1,0 +1,359 @@
+# NetworkPolicies for internal services
+# Restricts ingress to only relay-gateway and admin-api, plus health checks from kubelet
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: identity-service-netpol
+  namespace: one-api
+spec:
+  podSelector:
+    matchLabels:
+      app: identity-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: relay-gateway
+    - podSelector:
+        matchLabels:
+          app: admin-api
+    ports:
+    - protocol: TCP
+      port: 9001
+    - protocol: TCP
+      port: 8001
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow MySQL
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 3306
+  # Allow Redis
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: channel-service-netpol
+  namespace: one-api
+spec:
+  podSelector:
+    matchLabels:
+      app: channel-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: relay-gateway
+    - podSelector:
+        matchLabels:
+          app: admin-api
+    ports:
+    - protocol: TCP
+      port: 9002
+    - protocol: TCP
+      port: 8002
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 3306
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow outbound to upstream API providers
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: billing-service-netpol
+  namespace: one-api
+spec:
+  podSelector:
+    matchLabels:
+      app: billing-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: relay-gateway
+    - podSelector:
+        matchLabels:
+          app: admin-api
+    ports:
+    - protocol: TCP
+      port: 9004
+    - protocol: TCP
+      port: 8004
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 3306
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: admin-api-netpol
+  namespace: one-api
+spec:
+  podSelector:
+    matchLabels:
+      app: admin-api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+    - protocol: TCP
+      port: 9000
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow communication with all internal services
+  - to:
+    - podSelector:
+        matchLabels:
+          app: identity-service
+    ports:
+    - protocol: TCP
+      port: 9001
+  - to:
+    - podSelector:
+        matchLabels:
+          app: channel-service
+    ports:
+    - protocol: TCP
+      port: 9002
+  - to:
+    - podSelector:
+        matchLabels:
+          app: billing-service
+    ports:
+    - protocol: TCP
+      port: 9004
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 3306
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: config-service-netpol
+  namespace: one-api
+spec:
+  podSelector:
+    matchLabels:
+      app: config-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: relay-gateway
+    - podSelector:
+        matchLabels:
+          app: admin-api
+    ports:
+    - protocol: TCP
+      port: 9005
+    - protocol: TCP
+      port: 8005
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 3306
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: log-service-netpol
+  namespace: one-api
+spec:
+  podSelector:
+    matchLabels:
+      app: log-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: relay-gateway
+    - podSelector:
+        matchLabels:
+          app: admin-api
+    ports:
+    - protocol: TCP
+      port: 9006
+    - protocol: TCP
+      port: 8006
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 3306
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: monitor-worker-netpol
+  namespace: one-api
+spec:
+  podSelector:
+    matchLabels:
+      app: monitor-worker
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: admin-api
+    ports:
+    - protocol: TCP
+      port: 9007
+    - protocol: TCP
+      port: 8007
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 3306
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: notify-worker-netpol
+  namespace: one-api
+spec:
+  podSelector:
+    matchLabels:
+      app: notify-worker
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: admin-api
+    ports:
+    - protocol: TCP
+      port: 9008
+    - protocol: TCP
+      port: 8008
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 3306
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 6379

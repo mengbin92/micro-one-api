@@ -19,6 +19,8 @@ var (
 // Sensitive data patterns for redaction
 var (
 	authHeaderRegex = regexp.MustCompile(`Bearer\s+[A-Za-z0-9\-_\.]+`)
+	basicAuthRegex  = regexp.MustCompile(`Basic\s+[A-Za-z0-9+/=]+`)
+	jwtRegex        = regexp.MustCompile(`eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+`)
 	apiKeyRegex     = regexp.MustCompile(`api[_-]?key["\']?\s*[:=]\s*["\']?([A-Za-z0-9\-_\.]+)`)
 	tokenRegex      = regexp.MustCompile(`token["\']?\s*[:=]\s*["\']?([A-Za-z0-9\-_\.]+)`)
 	passwordRegex   = regexp.MustCompile(`password["\']?\s*[:=]\s*["\']?([^\s"\']+)`)
@@ -69,6 +71,10 @@ func Initialize(level string, format string) error {
 func Sanitize(input string) string {
 	// Redact authorization headers
 	input = authHeaderRegex.ReplaceAllString(input, "Bearer ***REDACTED***")
+	// Redact Basic auth headers
+	input = basicAuthRegex.ReplaceAllString(input, "Basic ***REDACTED***")
+	// Redact JWT tokens
+	input = jwtRegex.ReplaceAllString(input, "***JWT_REDACTED***")
 	// Redact API keys
 	input = apiKeyRegex.ReplaceAllString(input, `api_key:"***REDACTED***"`)
 	// Redact tokens
@@ -79,6 +85,17 @@ func Sanitize(input string) string {
 	input = dsnRegex.ReplaceAllString(input, ":***REDACTED***@")
 
 	return input
+}
+
+// sanitizeField sanitizes a single zap field value if it contains sensitive data
+func sanitizeField(field zap.Field) zap.Field {
+	if field.Type == zapcore.StringType {
+		sanitized := Sanitize(field.String)
+		if sanitized != field.String {
+			return zap.String(field.Key, sanitized)
+		}
+	}
+	return field
 }
 
 // TruncateString truncates a string to a maximum length and adds ellipsis if needed
@@ -105,29 +122,38 @@ func NewSafeLogger(logger *zap.Logger) *SafeLogger {
 	return &SafeLogger{logger: logger}
 }
 
+// sanitizeFields sanitizes all string-type zap fields
+func sanitizeFields(fields []zap.Field) []zap.Field {
+	sanitized := make([]zap.Field, len(fields))
+	for i, f := range fields {
+		sanitized[i] = sanitizeField(f)
+	}
+	return sanitized
+}
+
 // Debug logs a debug message with sanitization
 func (sl *SafeLogger) Debug(msg string, fields ...zap.Field) {
-	sl.logger.Debug(Sanitize(msg), fields...)
+	sl.logger.Debug(Sanitize(msg), sanitizeFields(fields)...)
 }
 
 // Info logs an info message with sanitization
 func (sl *SafeLogger) Info(msg string, fields ...zap.Field) {
-	sl.logger.Info(Sanitize(msg), fields...)
+	sl.logger.Info(Sanitize(msg), sanitizeFields(fields)...)
 }
 
 // Warn logs a warning message with sanitization
 func (sl *SafeLogger) Warn(msg string, fields ...zap.Field) {
-	sl.logger.Warn(Sanitize(msg), fields...)
+	sl.logger.Warn(Sanitize(msg), sanitizeFields(fields)...)
 }
 
 // Error logs an error message with sanitization
 func (sl *SafeLogger) Error(msg string, fields ...zap.Field) {
-	sl.logger.Error(Sanitize(msg), fields...)
+	sl.logger.Error(Sanitize(msg), sanitizeFields(fields)...)
 }
 
 // Fatal logs a fatal message with sanitization and exits
 func (sl *SafeLogger) Fatal(msg string, fields ...zap.Field) {
-	sl.logger.Fatal(Sanitize(msg), fields...)
+	sl.logger.Fatal(Sanitize(msg), sanitizeFields(fields)...)
 }
 
 // With creates a child logger with additional fields

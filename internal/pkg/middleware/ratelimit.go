@@ -16,10 +16,11 @@ import (
 
 // RateLimiter implements a simple in-memory rate limiter
 type RateLimiter struct {
-	clients map[string]*ClientLimiter
-	mutex   sync.RWMutex
-	rate    int
-	burst   int
+	clients    map[string]*ClientLimiter
+	mutex      sync.RWMutex
+	rate       int
+	burst      int
+	maxClients int
 }
 
 // ClientLimiter tracks rate limiting for a single client
@@ -34,6 +35,7 @@ type RateLimitConfig struct {
 	RequestsPerSecond int
 	Burst             int
 	Window            time.Duration
+	MaxClients        int
 }
 
 // DefaultRateLimitConfig returns default rate limiting configuration
@@ -52,10 +54,18 @@ func DefaultRateLimitConfig() *RateLimitConfig {
 		}
 	}
 
+	maxClients := 100000
+	if maxStr := os.Getenv("RATE_LIMIT_MAX_CLIENTS"); maxStr != "" {
+		if val, err := strconv.Atoi(maxStr); err == nil && val > 0 {
+			maxClients = val
+		}
+	}
+
 	return &RateLimitConfig{
 		RequestsPerSecond: rps,
 		Burst:             burst,
 		Window:            time.Minute,
+		MaxClients:        maxClients,
 	}
 }
 
@@ -66,9 +76,10 @@ func NewRateLimiter(config *RateLimitConfig) *RateLimiter {
 	}
 
 	return &RateLimiter{
-		clients: make(map[string]*ClientLimiter),
-		rate:    config.RequestsPerSecond,
-		burst:   config.Burst,
+		clients:    make(map[string]*ClientLimiter),
+		rate:       config.RequestsPerSecond,
+		burst:      config.Burst,
+		maxClients: config.MaxClients,
 	}
 }
 
@@ -81,6 +92,13 @@ func (rl *RateLimiter) Allow(key string) bool {
 	client, exists := rl.clients[key]
 
 	if !exists {
+		// Enforce max clients limit to prevent memory exhaustion
+		if len(rl.clients) >= rl.maxClients {
+			applogger.Log.Warn("Rate limiter max clients reached",
+				zap.Int("max_clients", rl.maxClients),
+			)
+			return false
+		}
 		client = &ClientLimiter{
 			tokens:   rl.burst - 1,
 			lastSeen: now,

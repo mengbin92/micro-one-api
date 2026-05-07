@@ -111,7 +111,7 @@ func CreateServerCredentials(config *TLSConfig) (credentials.TransportCredential
 func CreateHTTPClientConfig(config *TLSConfig) (*tls.Config, error) {
 	if !config.Enabled {
 		return &tls.Config{
-			InsecureSkipVerify: true, // For development only
+			InsecureSkipVerify: false,
 		}, nil
 	}
 

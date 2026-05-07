@@ -28,7 +28,7 @@ func (f *ProviderFactory) CreateProvider(channelType int32, baseURL, apiKey stri
 		return NewGeminiProvider(baseURL, apiKey, f.defaultTimeout), nil
 	default:
 		// Default to OpenAI-compatible for unknown types
-		return NewOpenAIProvider(baseURL, apiKey, f.defaultTimeout), nil
+		return NewOpenAIProvider(baseURL, apiKey, f.defaultTimeout)
 	}
 }
 

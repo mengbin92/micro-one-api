@@ -52,7 +52,10 @@ func TestOpenAIProvider_ChatCompletionsStream(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewOpenAIProvider(server.URL, "test-api-key", 30*time.Second)
+	provider, err := NewOpenAIProvider(server.URL, "test-api-key", 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewOpenAIProvider() error = %v", err)
+	}
 
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o-mini",
@@ -91,7 +94,10 @@ func TestOpenAIProvider_ChatCompletionsStream_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewOpenAIProvider(server.URL, "test-api-key", 30*time.Second)
+	provider, err := NewOpenAIProvider(server.URL, "test-api-key", 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewOpenAIProvider() error = %v", err)
+	}
 
 	req := &ChatCompletionsRequest{
 		Model:    "gpt-4o-mini",
@@ -99,7 +105,7 @@ func TestOpenAIProvider_ChatCompletionsStream_Error(t *testing.T) {
 		Stream:   true,
 	}
 
-	_, err := provider.ChatCompletionsStream(context.Background(), req)
+	_, err = provider.ChatCompletionsStream(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error for unauthorized request")
 	}
@@ -145,7 +151,10 @@ func TestOpenAIProvider_ChatCompletions(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewOpenAIProvider(server.URL, "test-api-key", 30*time.Second)
+	provider, err := NewOpenAIProvider(server.URL, "test-api-key", 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewOpenAIProvider() error = %v", err)
+	}
 	resp, err := provider.ChatCompletions(context.Background(), &ChatCompletionsRequest{
 		Model: "gpt-4o-mini",
 		Messages: []Message{
@@ -174,8 +183,11 @@ func TestOpenAIProvider_ChatCompletions_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewOpenAIProvider(server.URL, "test-api-key", 30*time.Second)
-	_, err := provider.ChatCompletions(context.Background(), &ChatCompletionsRequest{
+	provider, err := NewOpenAIProvider(server.URL, "test-api-key", 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewOpenAIProvider() error = %v", err)
+	}
+	_, err = provider.ChatCompletions(context.Background(), &ChatCompletionsRequest{
 		Model:    "gpt-4o-mini",
 		Messages: []Message{{Role: "user", Content: "Hello"}},
 	})
@@ -212,7 +224,10 @@ func TestProviderFactory_DefaultTimeout(t *testing.T) {
 }
 
 func TestNewOpenAIProvider_DefaultTimeout(t *testing.T) {
-	provider := NewOpenAIProvider("https://api.openai.com", "sk-test", 0)
+	provider, err := NewOpenAIProvider("https://api.openai.com", "sk-test", 0)
+	if err != nil {
+		t.Fatalf("NewOpenAIProvider() error = %v", err)
+	}
 	if provider.timeout != 30*time.Second {
 		t.Fatalf("expected 30s default timeout, got %v", provider.timeout)
 	}

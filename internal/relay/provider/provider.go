@@ -6,7 +6,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -84,8 +87,68 @@ type OpenAIProvider struct {
 	timeout    time.Duration
 }
 
+// validateBaseURL checks that a base URL is safe from SSRF attacks.
+// It rejects non-http(s) schemes and private/internal/reserved IP addresses.
+// Set PROVIDER_DISABLE_SSRF_CHECK=true to bypass validation (for testing only).
+func validateBaseURL(rawURL string) error {
+	if os.Getenv("PROVIDER_DISABLE_SSRF_CHECK") == "true" {
+		return nil
+	}
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("URL scheme must be http or https, got: %s", scheme)
+	}
+
+	hostname := u.Hostname()
+	if hostname == "" {
+		return fmt.Errorf("URL has no hostname")
+	}
+
+	// Check for localhost
+	lower := strings.ToLower(hostname)
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") {
+		return fmt.Errorf("localhost URLs are not allowed")
+	}
+
+	// Resolve hostname to IP and check for private/reserved ranges
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		return fmt.Errorf("failed to resolve hostname: %w", err)
+	}
+
+	for _, ip := range ips {
+		if isPrivateOrReservedIP(ip) {
+			return fmt.Errorf("URL resolves to private/reserved IP: %s", ip)
+		}
+	}
+
+	return nil
+}
+
+// isPrivateOrReservedIP checks if an IP address is in a private, loopback,
+// link-local, or other reserved range.
+func isPrivateOrReservedIP(ip net.IP) bool {
+	return ip.IsLoopback() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsPrivate() ||
+		ip.IsUnspecified() ||
+		// Cloud metadata endpoint (169.254.169.254)
+		ip.Equal(net.IPv4(169, 254, 169, 254))
+}
+
 // NewOpenAIProvider creates a new OpenAI-compatible provider
-func NewOpenAIProvider(baseURL, apiKey string, timeout time.Duration) *OpenAIProvider {
+func NewOpenAIProvider(baseURL, apiKey string, timeout time.Duration) (*OpenAIProvider, error) {
+	if err := validateBaseURL(baseURL); err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
@@ -96,7 +159,7 @@ func NewOpenAIProvider(baseURL, apiKey string, timeout time.Duration) *OpenAIPro
 		baseURL: baseURL,
 		apiKey:  apiKey,
 		timeout: timeout,
-	}
+	}, nil
 }
 
 // ChatCompletions sends a chat completions request to the upstream provider
