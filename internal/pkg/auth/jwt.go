@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"crypto/rand"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -18,6 +20,18 @@ type JWTClaims struct {
 	Roles       []string `json:"roles"`
 	jwt.RegisteredClaims
 }
+
+// revokedEntry tracks a revoked token's JTI with expiry time
+type revokedEntry struct {
+	expiresAt time.Time
+}
+
+// revocationBlocklist is a global in-memory JWT revocation list
+var (
+	revocationList   = make(map[string]*revokedEntry)
+	revocationMutex  sync.RWMutex
+	revocationCleaned time.Time
+)
 
 // JWTManager manages JWT token creation and validation
 type JWTManager struct {
@@ -54,6 +68,13 @@ func NewJWTManager() (*JWTManager, error) {
 	}, nil
 }
 
+// generateJTI creates a random JWT ID
+func generateJTI() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)
+}
+
 // GenerateServiceToken generates a JWT token for a service
 func (jm *JWTManager) GenerateServiceToken(serviceName, serviceType string, roles []string) (string, error) {
 	now := time.Now()
@@ -62,6 +83,7 @@ func (jm *JWTManager) GenerateServiceToken(serviceName, serviceType string, role
 		ServiceType: serviceType,
 		Roles:       roles,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        generateJTI(),
 			Issuer:    jm.issuer,
 			Subject:   serviceName,
 			Audience:  []string{"micro-one-api"},
@@ -118,10 +140,87 @@ func (jm *JWTManager) ValidateServiceToken(tokenString string) (*JWTClaims, erro
 			return nil, fmt.Errorf("token expired")
 		}
 
+		// Check revocation blocklist
+		if claims.ID != "" && isTokenRevoked(claims.ID) {
+			return nil, fmt.Errorf("token has been revoked")
+		}
+
 		return claims, nil
 	}
 
 	return nil, fmt.Errorf("invalid token claims")
+}
+
+// isTokenRevoked checks if a JTI is in the revocation blocklist
+func isTokenRevoked(jti string) bool {
+	revocationMutex.RLock()
+	defer revocationMutex.RUnlock()
+	entry, exists := revocationList[jti]
+	if !exists {
+		return false
+	}
+	if time.Now().After(entry.expiresAt) {
+		return false // expired, will be cleaned up
+	}
+	return true
+}
+
+// RevokeToken adds a token's JTI to the revocation blocklist.
+// The JTI remains in the blocklist until the token would have expired.
+func (jm *JWTManager) RevokeToken(tokenString string) error {
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return jm.secretKey, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to parse token for revocation: %w", err)
+	}
+
+	claims, ok := token.Claims.(*JWTClaims)
+	if !ok {
+		return fmt.Errorf("invalid token claims")
+	}
+
+	if claims.ID == "" {
+		return fmt.Errorf("token has no JTI claim, cannot revoke")
+	}
+
+	revocationMutex.Lock()
+	defer revocationMutex.Unlock()
+
+	revocationList[claims.ID] = &revokedEntry{
+		expiresAt: claims.ExpiresAt.Time,
+	}
+
+	// Periodically clean up expired entries
+	cleanupRevocationList()
+
+	applogger.Log.Info("Token revoked",
+		zap.String("jti", claims.ID),
+		zap.String("service", claims.ServiceName),
+	)
+
+	return nil
+}
+
+// cleanupRevocationList removes expired entries from the blocklist.
+// Must be called with revocationMutex held.
+func cleanupRevocationList() {
+	now := time.Now()
+	// Only clean up once per minute
+	if now.Sub(revocationCleaned) < time.Minute {
+		return
+	}
+	revocationCleaned = now
+	for jti, entry := range revocationList {
+		if now.After(entry.expiresAt) {
+			delete(revocationList, jti)
+		}
+	}
 }
 
 // RefreshToken refreshes a JWT token

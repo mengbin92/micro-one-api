@@ -3,10 +3,12 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
@@ -180,29 +182,43 @@ func (a *AuthInterceptor) validateRequest(ctx context.Context, method string) er
 	return nil
 }
 
-// extractTokenFromContext extracts JWT token from gRPC metadata
+// extractTokenFromContext extracts JWT token from gRPC metadata.
+// It first checks for mTLS client certificates, then falls back to
+// reading the "authorization" key from gRPC incoming metadata.
 func extractTokenFromContext(ctx context.Context) (string, error) {
-	md, ok := peer.FromContext(ctx)
-	if !ok {
-		return "", fmt.Errorf("no peer info")
-	}
-
-	// Try to get token from metadata
-	if token := md.AuthInfo; token != nil {
-		// If using TLS client certs, the AuthInfo will contain TLS info
-		if tlsInfo, ok := token.(credentials.TLSInfo); ok {
+	// Check for mTLS client certificates
+	p, ok := peer.FromContext(ctx)
+	if ok && p.AuthInfo != nil {
+		if tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo); ok {
 			if len(tlsInfo.State.PeerCertificates) > 0 {
-				// mTLS authentication successful
 				applogger.Log.Debug("mTLS authentication successful")
 				return "", nil // No JWT needed for mTLS
 			}
 		}
 	}
 
-	// Try to get token from custom metadata
-	// Note: In gRPC, metadata is passed via context
-	// This is a simplified implementation
-	return "", fmt.Errorf("token not found in metadata")
+	// Read JWT from gRPC incoming metadata "authorization" key
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("no gRPC metadata in context")
+	}
+
+	values := md.Get("authorization")
+	if len(values) == 0 {
+		return "", fmt.Errorf("authorization metadata not found")
+	}
+
+	authHeader := values[0]
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return "", fmt.Errorf("invalid authorization format, expected Bearer token")
+	}
+
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" {
+		return "", fmt.Errorf("empty Bearer token")
+	}
+
+	return token, nil
 }
 
 // getRequestIDFromContext extracts request ID from context

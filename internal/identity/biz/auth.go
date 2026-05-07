@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -80,15 +83,37 @@ type IdentityRepo interface {
 	ListUsers(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*User, int64, error)
 }
 
-type IdentityUsecase struct {
-	repo IdentityRepo
-	now  func() time.Time
+// loginAttempt tracks failed login attempts for rate limiting
+type loginAttempt struct {
+	count    int
+	lastSeen time.Time
 }
 
+type IdentityUsecase struct {
+	repo         IdentityRepo
+	now          func() time.Time
+	defaultQuota int64
+	loginLimiter map[string]*loginAttempt
+	loginMutex   sync.Mutex
+}
+
+const (
+	maxLoginAttempts = 5
+	loginLockoutTime = 5 * time.Minute
+)
+
 func NewIdentityUsecase(repo IdentityRepo) *IdentityUsecase {
+	defaultQuota := int64(1000000) // 1M tokens
+	if v := os.Getenv("DEFAULT_USER_QUOTA"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			defaultQuota = n
+		}
+	}
 	return &IdentityUsecase{
-		repo: repo,
-		now:  time.Now,
+		repo:         repo,
+		now:          time.Now,
+		defaultQuota: defaultQuota,
+		loginLimiter: make(map[string]*loginAttempt),
 	}
 }
 
@@ -144,30 +169,92 @@ func (uc *IdentityUsecase) GetUser(ctx context.Context, userID int64) (*User, er
 	return uc.repo.FindUserByID(ctx, userID)
 }
 
+// checkLoginRateLimit checks if a username is rate-limited due to too many failed attempts.
+func (uc *IdentityUsecase) checkLoginRateLimit(username string) error {
+	uc.loginMutex.Lock()
+	defer uc.loginMutex.Unlock()
+
+	attempt, exists := uc.loginLimiter[username]
+	if !exists {
+		return nil
+	}
+
+	// Clean up expired entries
+	if uc.now().Sub(attempt.lastSeen) > loginLockoutTime {
+		delete(uc.loginLimiter, username)
+		return nil
+	}
+
+	if attempt.count >= maxLoginAttempts {
+		return fmt.Errorf("too many failed login attempts, try again later")
+	}
+
+	return nil
+}
+
+// recordLoginFailure increments the failed login attempt counter.
+func (uc *IdentityUsecase) recordLoginFailure(username string) {
+	uc.loginMutex.Lock()
+	defer uc.loginMutex.Unlock()
+
+	attempt, exists := uc.loginLimiter[username]
+	if !exists {
+		uc.loginLimiter[username] = &loginAttempt{count: 1, lastSeen: uc.now()}
+		return
+	}
+
+	// Reset if lockout period has passed
+	if uc.now().Sub(attempt.lastSeen) > loginLockoutTime {
+		uc.loginLimiter[username] = &loginAttempt{count: 1, lastSeen: uc.now()}
+		return
+	}
+
+	attempt.count++
+	attempt.lastSeen = uc.now()
+}
+
+// clearLoginAttempts removes rate limit state for a successful login.
+func (uc *IdentityUsecase) clearLoginAttempts(username string) {
+	uc.loginMutex.Lock()
+	defer uc.loginMutex.Unlock()
+	delete(uc.loginLimiter, username)
+}
+
 func (uc *IdentityUsecase) Login(ctx context.Context, username, password string) (*User, string, error) {
 	if username == "" || password == "" {
 		return nil, "", ErrInvalidPassword
 	}
+
+	if err := uc.checkLoginRateLimit(username); err != nil {
+		return nil, "", err
+	}
+
 	user, err := uc.repo.FindUserByUsername(ctx, username)
 	if err != nil {
+		uc.recordLoginFailure(username)
 		return nil, "", err
 	}
 	if user.Status != UserStatusEnabled {
 		return nil, "", ErrUserDisabled
 	}
 	if user.PasswordHash == "" {
+		uc.recordLoginFailure(username)
 		return nil, "", ErrInvalidPassword
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		uc.recordLoginFailure(username)
 		return nil, "", ErrInvalidPassword
 	}
+
+	uc.clearLoginAttempts(username)
+
 	token := uc.generateToken()
 	tokenRecord := &Token{
-		UserID:         user.ID,
-		Key:            token,
-		Status:         TokenStatusEnabled,
-		UnlimitedQuota: true,
-		Models:         []string{},
+		UserID:      user.ID,
+		Key:         token,
+		Status:      TokenStatusEnabled,
+		RemainQuota: uc.defaultQuota,
+		Models:      []string{},
 	}
 	if err := uc.repo.CreateToken(ctx, tokenRecord); err != nil {
 		return nil, "", err
@@ -320,11 +407,11 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 	// Generate token
 	token := uc.generateToken()
 	tokenRecord := &Token{
-		UserID:         user.ID,
-		Key:            token,
-		Status:         TokenStatusEnabled,
-		UnlimitedQuota: true,
-		Models:         []string{},
+		UserID:      user.ID,
+		Key:         token,
+		Status:      TokenStatusEnabled,
+		RemainQuota: uc.defaultQuota,
+		Models:      []string{},
 	}
 	if err := uc.repo.CreateToken(ctx, tokenRecord); err != nil {
 		return nil, "", err

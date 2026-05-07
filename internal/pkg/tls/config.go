@@ -95,11 +95,11 @@ func CreateServerCredentials(config *TLSConfig) (credentials.TransportCredential
 		return nil, fmt.Errorf("failed to load server certificate: %w", err)
 	}
 
-	// Create TLS config with mTLS
+	// Create TLS config with mandatory mTLS
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		ClientCAs:    caCertPool,
-		ClientAuth:   tls.VerifyClientCertIfGiven, // Require client cert if provided
+		ClientAuth:   tls.RequireAndVerifyClientCert,
 		MinVersion:   tls.VersionTLS12,
 		MaxVersion:   tls.VersionTLS13,
 	}

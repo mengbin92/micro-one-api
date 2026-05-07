@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"micro-one-api/internal/channel/biz"
+	appcrypto "micro-one-api/internal/pkg/crypto"
 	"micro-one-api/internal/pkg/xdb"
 
 	"github.com/redis/go-redis/v9"
@@ -20,6 +21,7 @@ type Repository struct {
 	redis    *redis.Client
 	channels map[int64]*biz.Channel
 	lock     sync.RWMutex
+	encKey   []byte // AES key for encrypting API keys at rest (nil = no encryption)
 }
 
 type channelModel struct {
@@ -73,7 +75,11 @@ func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 			rdb = nil
 		}
 	}
-	return &Repository{db: db, redis: rdb}, nil
+	repo := &Repository{db: db, redis: rdb}
+	if key := os.Getenv("CHANNEL_ENCRYPTION_KEY"); key != "" {
+		repo.encKey = []byte(key)
+	}
+	return repo, nil
 }
 
 func newMemoryRepository() *Repository {
@@ -189,7 +195,7 @@ func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Chan
 		Group:    model.Group,
 		Models:   biz.SplitCSV(model.Models),
 		Priority: priority,
-		Key:      model.Key,
+		Key:      r.decryptKey(model.Key),
 		Config:   biz.DecodeChannelConfig(model.Config),
 	}, nil
 }
@@ -328,12 +334,12 @@ func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, k
 }
 
 func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) error {
-	model := channelToModel(channel)
+	model := r.channelToModel(channel)
 	return r.db.WithContext(ctx).Create(model).Error
 }
 
 func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) error {
-	model := channelToModel(channel)
+	model := r.channelToModel(channel)
 	return r.db.WithContext(ctx).Model(&channelModel{}).Where("id = ?", channel.ID).Updates(map[string]interface{}{
 		"name":     model.Name,
 		"base_url": model.BaseURL,
@@ -351,6 +357,32 @@ func (r *Repository) deleteChannelDB(ctx context.Context, channelID int64) error
 
 func (r *Repository) changeStatusDB(ctx context.Context, channelID int64, status int32) error {
 	return r.db.WithContext(ctx).Model(&channelModel{}).Where("id = ?", channelID).Update("status", status).Error
+}
+
+// encryptKey encrypts an API key for storage. Returns plaintext if no encryption key is set.
+func (r *Repository) encryptKey(key string) string {
+	if r.encKey == nil || key == "" {
+		return key
+	}
+	encrypted, err := appcrypto.Encrypt(key, r.encKey)
+	if err != nil {
+		// Log error but return plaintext to avoid data loss
+		return key
+	}
+	return encrypted
+}
+
+// decryptKey decrypts an API key from storage. Returns as-is if no encryption key is set.
+func (r *Repository) decryptKey(key string) string {
+	if r.encKey == nil || key == "" {
+		return key
+	}
+	decrypted, err := appcrypto.Decrypt(key, r.encKey)
+	if err != nil {
+		// If decryption fails, assume it's stored as plaintext (migration scenario)
+		return key
+	}
+	return decrypted
 }
 
 func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
@@ -371,12 +403,12 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 		Group:    m.Group,
 		Models:   biz.SplitCSV(m.Models),
 		Priority: priority,
-		Key:      m.Key,
+		Key:      r.decryptKey(m.Key),
 		Config:   biz.DecodeChannelConfig(m.Config),
 	}
 }
 
-func channelToModel(ch *biz.Channel) *channelModel {
+func (r *Repository) channelToModel(ch *biz.Channel) *channelModel {
 	return &channelModel{
 		ID:      ch.ID,
 		Type:    ch.Type,
@@ -386,7 +418,7 @@ func channelToModel(ch *biz.Channel) *channelModel {
 		Models:  ch.ModelsCSV(),
 		Group:   ch.Group,
 		Priority: int64Ptr(ch.Priority),
-		Key:     ch.Key,
+		Key:     r.encryptKey(ch.Key),
 		Config:  "{}",
 	}
 }

@@ -89,8 +89,12 @@ chmod 644 "$CERTS_DIR"/*.crt
 
 # Generate PKCS#12 format for client certificate (optional)
 echo -e "${YELLOW}Generating PKCS#12 format for client certificate...${NC}"
+PKCS12_PASS="${PKCS12_PASSWORD:-changeme}"
+if [ "$PKCS12_PASS" = "changeme" ]; then
+    echo -e "${YELLOW}Warning: Using default PKCS#12 password. Set PKCS12_PASSWORD env var for production.${NC}"
+fi
 openssl pkcs12 -export -out "$CERTS_DIR/client.p12" -inkey "$CERTS_DIR/client.key" \
-    -in "$CERTS_DIR/client.crt" -certfile "$CERTS_DIR/ca.crt" -passout pass:changeme
+    -in "$CERTS_DIR/client.crt" -certfile "$CERTS_DIR/ca.crt" -passout "pass:$PKCS12_PASS"
 
 # Display certificate information
 echo -e "\n${GREEN}=== Certificate Information ===${NC}"

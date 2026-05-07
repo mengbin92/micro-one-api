@@ -85,13 +85,12 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	}
 
 	tlsConfig := apptls.LoadTLSConfig()
-	enableAuth := os.Getenv("ENABLE_AUTH") == "true"
+	enableAuth := os.Getenv("ENABLE_AUTH") != "false" // Default to true; set ENABLE_AUTH=false to disable
 	var serviceAuth *appauth.ServiceAuthConfig
 	if enableAuth {
 		serviceAuth, err = appauth.LoadServiceAuthConfig()
 		if err != nil {
-			fmt.Printf("Warning: Failed to load service auth config: %v\n", err)
-			enableAuth = false
+			return nil, nil, fmt.Errorf("failed to load service auth config (set ENABLE_AUTH=false to skip): %w", err)
 		}
 	}
 
