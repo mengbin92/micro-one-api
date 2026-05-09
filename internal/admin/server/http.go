@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/subtle"
+	_ "embed"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -14,6 +15,9 @@ import (
 
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
+
+//go:embed static/admin.html
+var adminHTML string
 
 // AdminAuth creates a middleware that validates Bearer token against ADMIN_TOKEN env var.
 // If ADMIN_TOKEN is not set, the middleware rejects all requests to protected endpoints.
@@ -45,6 +49,8 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	)
 
 	// Health and metrics (unauthenticated)
+	srv.HandleFunc("/", handleAdminPage)
+	srv.HandleFunc("/admin", handleAdminPage)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
 	})
@@ -135,6 +141,16 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	}))
 
 	return srv
+}
+
+func handleAdminPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(adminHTML))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {

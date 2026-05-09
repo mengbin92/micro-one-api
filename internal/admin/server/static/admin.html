@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>micro-one-api admin</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #667085;
+      --line: #d8dde6;
+      --accent: #2563eb;
+      --danger: #b42318;
+      --ok: #067647;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 20px 24px 36px;
+    }
+    .auth {
+      display: grid;
+      grid-template-columns: minmax(180px, 360px) auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+    input, select, button, textarea {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      padding: 8px 10px;
+    }
+    textarea { min-height: 72px; resize: vertical; }
+    button {
+      cursor: pointer;
+      border-color: #b8c3d4;
+      background: #fff;
+      white-space: nowrap;
+    }
+    button.primary {
+      color: #fff;
+      border-color: var(--accent);
+      background: var(--accent);
+    }
+    button.danger { color: var(--danger); }
+    nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    nav button.active {
+      color: #fff;
+      border-color: #344054;
+      background: #344054;
+    }
+    section { display: none; }
+    section.active { display: block; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+    th {
+      background: #eef2f7;
+      color: #344054;
+      font-weight: 700;
+    }
+    .status {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+    .ok { color: var(--ok); }
+    .bad { color: var(--danger); }
+    @media (max-width: 760px) {
+      header { align-items: stretch; flex-direction: column; }
+      .auth { grid-template-columns: 1fr; }
+      main { padding: 16px; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>micro-one-api admin</h1>
+    <div class="auth">
+      <input id="token" type="password" placeholder="ADMIN_TOKEN">
+      <button id="saveToken">Save token</button>
+      <span id="status" class="status"></span>
+    </div>
+  </header>
+  <main>
+    <nav>
+      <button data-tab="users" class="active">Users</button>
+      <button data-tab="channels">Channels</button>
+      <button data-tab="redeem">Redeem codes</button>
+      <button data-tab="logs">Logs</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+
+    <section id="users" class="active">
+      <div class="panel">
+        <h2>Create user</h2>
+        <div class="grid">
+          <input id="userUsername" placeholder="username">
+          <input id="userEmail" placeholder="email">
+          <input id="userPassword" type="password" placeholder="password">
+          <input id="userGroup" placeholder="group" value="default">
+        </div>
+        <button class="primary" id="createUser">Create</button>
+      </div>
+      <div class="toolbar"><button id="loadUsers">Refresh users</button></div>
+      <div id="usersTable"></div>
+    </section>
+
+    <section id="channels">
+      <div class="panel">
+        <h2>Create channel</h2>
+        <div class="grid">
+          <input id="channelName" placeholder="name">
+          <input id="channelType" type="number" placeholder="type" value="1">
+          <input id="channelBaseURL" placeholder="base url">
+          <input id="channelKey" placeholder="api key">
+          <input id="channelModels" placeholder="models" value="gpt-4o-mini">
+          <input id="channelGroup" placeholder="group" value="default">
+        </div>
+        <button class="primary" id="createChannel">Create</button>
+      </div>
+      <div class="toolbar"><button id="loadChannels">Refresh channels</button></div>
+      <div id="channelsTable"></div>
+    </section>
+
+    <section id="redeem">
+      <div class="panel">
+        <h2>Create batch</h2>
+        <div class="grid">
+          <input id="redeemName" placeholder="name">
+          <input id="redeemAmount" type="number" placeholder="amount" value="1000">
+          <input id="redeemCount" type="number" placeholder="uses per code" value="1">
+          <input id="redeemBatchSize" type="number" placeholder="batch size" value="10">
+        </div>
+        <button class="primary" id="createRedeemBatch">Create batch</button>
+      </div>
+      <div class="toolbar"><button id="loadRedeem">Refresh redeem codes</button></div>
+      <div id="redeemTable"></div>
+    </section>
+
+    <section id="logs">
+      <div class="toolbar">
+        <button id="loadLogs">Refresh logs</button>
+        <button id="loadLogStats">Load stats</button>
+      </div>
+      <pre id="logStats" class="panel"></pre>
+      <div id="logsTable"></div>
+    </section>
+
+    <section id="settings">
+      <div class="panel">
+        <h2>System options</h2>
+        <div class="grid">
+          <input id="siteTitle" placeholder="site title">
+          <input id="theme" placeholder="theme">
+          <label><input id="registrationEnabled" type="checkbox"> registration enabled</label>
+        </div>
+        <textarea id="notice" placeholder="notice"></textarea>
+        <button class="primary" id="saveSettings">Save settings</button>
+      </div>
+      <div class="toolbar"><button id="loadSettings">Refresh settings</button></div>
+    </section>
+  </main>
+  <script>
+    const state = { token: localStorage.getItem('adminToken') || '' };
+    const statusEl = document.getElementById('status');
+    document.getElementById('token').value = state.token;
+
+    function setStatus(message, ok = true) {
+      statusEl.textContent = message;
+      statusEl.className = ok ? 'status ok' : 'status bad';
+    }
+    function headers() {
+      return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.token };
+    }
+    async function api(path, options = {}) {
+      const res = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
+      const text = await res.text();
+      let data;
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+      if (!res.ok) throw new Error(data.error || data.message || res.statusText);
+      return data;
+    }
+    function table(rows, columns, actions) {
+      if (!rows || rows.length === 0) return '<p class="status">No data</p>';
+      const head = columns.map(c => `<th>${c.label}</th>`).join('') + (actions ? '<th>Actions</th>' : '');
+      const body = rows.map(row => {
+        const cells = columns.map(c => `<td>${String(row[c.key] ?? '')}</td>`).join('');
+        const actionCell = actions ? `<td>${actions(row)}</td>` : '';
+        return `<tr>${cells}${actionCell}</tr>`;
+      }).join('');
+      return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+    function bind(id, fn) { document.getElementById(id).addEventListener('click', fn); }
+
+    document.querySelectorAll('nav button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    bind('saveToken', () => {
+      state.token = document.getElementById('token').value.trim();
+      localStorage.setItem('adminToken', state.token);
+      setStatus('Token saved');
+    });
+
+    async function loadUsers() {
+      const data = await api('/v1/users?page=1&page_size=50');
+      document.getElementById('usersTable').innerHTML = table(data.users, [
+        { key: 'id', label: 'ID' }, { key: 'username', label: 'Username' },
+        { key: 'email', label: 'Email' }, { key: 'group', label: 'Group' },
+        { key: 'status', label: 'Status' }
+      ], row => `<button class="danger" onclick="deleteUser(${row.id})">Delete</button>`);
+    }
+    window.deleteUser = async id => { await api('/v1/users/' + id, { method: 'DELETE' }); await loadUsers(); };
+    bind('loadUsers', () => loadUsers().catch(e => setStatus(e.message, false)));
+    bind('createUser', async () => {
+      await api('/v1/users', { method: 'POST', body: JSON.stringify({
+        username: userUsername.value, email: userEmail.value, password: userPassword.value, group: userGroup.value
+      })});
+      await loadUsers();
+    });
+
+    async function loadChannels() {
+      const data = await api('/v1/channels?page=1&page_size=50');
+      document.getElementById('channelsTable').innerHTML = table(data.channels, [
+        { key: 'id', label: 'ID' }, { key: 'name', label: 'Name' }, { key: 'type', label: 'Type' },
+        { key: 'group', label: 'Group' }, { key: 'models', label: 'Models' }, { key: 'status', label: 'Status' }
+      ], row => `<button onclick="testChannel(${row.id})">Test</button> <button class="danger" onclick="deleteChannel(${row.id})">Delete</button>`);
+    }
+    window.testChannel = async id => { const data = await api('/api/channel/test/' + id); setStatus(data.data.message || 'Channel tested'); };
+    window.deleteChannel = async id => { await api('/v1/channels/' + id, { method: 'DELETE' }); await loadChannels(); };
+    bind('loadChannels', () => loadChannels().catch(e => setStatus(e.message, false)));
+    bind('createChannel', async () => {
+      await api('/v1/channels', { method: 'POST', body: JSON.stringify({
+        name: channelName.value, type: Number(channelType.value), base_url: channelBaseURL.value,
+        key: channelKey.value, models: channelModels.value, group: channelGroup.value
+      })});
+      await loadChannels();
+    });
+
+    async function loadRedeem() {
+      const data = await api('/v1/redeem-codes?page=1&page_size=50');
+      document.getElementById('redeemTable').innerHTML = table(data.codes, [
+        { key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }, { key: 'amount', label: 'Amount' },
+        { key: 'count', label: 'Count' }, { key: 'status', label: 'Status' }
+      ]);
+    }
+    bind('loadRedeem', () => loadRedeem().catch(e => setStatus(e.message, false)));
+    bind('createRedeemBatch', async () => {
+      const data = await api('/v1/redeem-codes/batch', { method: 'POST', body: JSON.stringify({
+        name: redeemName.value, amount: Number(redeemAmount.value), count: Number(redeemCount.value),
+        batch_size: Number(redeemBatchSize.value), operator_id: 'admin-ui'
+      })});
+      setStatus('Created ' + (data.codes || []).length + ' codes');
+      await loadRedeem();
+    });
+
+    async function loadLogs() {
+      const data = await api('/v1/logs?page=1&page_size=50');
+      document.getElementById('logsTable').innerHTML = table(data.logs, [
+        { key: 'user_id', label: 'User' }, { key: 'type', label: 'Type' },
+        { key: 'amount', label: 'Amount' }, { key: 'balance_after', label: 'Balance' },
+        { key: 'remark', label: 'Remark' }
+      ]);
+    }
+    bind('loadLogs', () => loadLogs().catch(e => setStatus(e.message, false)));
+    bind('loadLogStats', async () => {
+      const data = await api('/api/log/stat');
+      logStats.textContent = JSON.stringify(data.data, null, 2);
+    });
+
+    async function loadSettings() {
+      const data = await api('/v1/system/options');
+      const opt = data.options || {};
+      siteTitle.value = opt.site_title || '';
+      theme.value = opt.theme || '';
+      notice.value = opt.notice || '';
+      registrationEnabled.checked = !!opt.registration_enabled;
+    }
+    bind('loadSettings', () => loadSettings().catch(e => setStatus(e.message, false)));
+    bind('saveSettings', async () => {
+      await api('/v1/system/options', { method: 'PUT', body: JSON.stringify({ options: {
+        site_title: siteTitle.value, theme: theme.value, notice: notice.value,
+        registration_enabled: registrationEnabled.checked
+      }})});
+      setStatus('Settings saved');
+    });
+
+    loadUsers().catch(() => {});
+  </script>
+</body>
+</html>

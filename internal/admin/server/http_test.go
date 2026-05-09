@@ -117,6 +117,21 @@ func TestAdminHTTPStatusIsUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPPageIsServed(t *testing.T) {
+	srv := NewHTTPServer(":0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "micro-one-api admin") {
+		t.Fatalf("admin page was not served: %s", rec.Body.String())
+	}
+}
+
 func TestAdminHTTPCreateChannel(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	channelClient := &adminHTTPChannelClient{}
