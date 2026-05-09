@@ -8,8 +8,8 @@ import (
 	adminv1 "micro-one-api/api/admin/v1"
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
-	identityv1 "micro-one-api/api/identity/v1"
 	commonv1 "micro-one-api/api/common/v1"
+	identityv1 "micro-one-api/api/identity/v1"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -49,10 +49,10 @@ func NewAdminService(
 // TopUpQuota 充值
 func (s *AdminService) TopUpQuota(ctx context.Context, req *adminv1.TopUpQuotaRequest) (*adminv1.TopUpQuotaResponse, error) {
 	billingReq := &billingv1.TopUpQuotaRequest{
-		UserId:      req.UserId,
-		Amount:      req.Amount,
-		OperatorId:  req.OperatorId,
-		Remark:      req.Remark,
+		UserId:     req.UserId,
+		Amount:     req.Amount,
+		OperatorId: req.OperatorId,
+		Remark:     req.Remark,
 	}
 
 	resp, err := s.billingClient.TopUpQuota(ctx, billingReq)
@@ -71,8 +71,8 @@ func (s *AdminService) TopUpQuota(ctx context.Context, req *adminv1.TopUpQuotaRe
 	}
 
 	return &adminv1.TopUpQuotaResponse{
-		Success:    true,
-		NewQuota:   resp.NewQuota,
+		Success:  true,
+		NewQuota: resp.NewQuota,
 	}, nil
 }
 
@@ -392,8 +392,8 @@ func (s *AdminService) CreateUser(ctx context.Context, req *adminv1.AdminCreateU
 		Username:    req.Username,
 		DisplayName: req.DisplayName,
 		Email:       req.Email,
-		Password:   req.Password,
-		Group:      req.Group,
+		Password:    req.Password,
+		Group:       req.Group,
 		Quota:       req.Quota,
 	})
 	if err != nil {
@@ -429,10 +429,23 @@ func (s *AdminService) DeleteUser(ctx context.Context, req *adminv1.AdminDeleteU
 }
 
 func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUserQuotaRequest) (*adminv1.ResetUserQuotaResponse, error) {
-	// Reset quota via TopUpQuota (set quota to absolute value)
-	_, err := s.billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
+	snapshot, err := s.billingClient.GetAccountSnapshot(ctx, &billingv1.GetAccountSnapshotRequest{
+		UserId: fmt.Sprintf("%d", req.UserId),
+	})
+	if err != nil {
+		return &adminv1.ResetUserQuotaResponse{Success: false, Message: err.Error()}, nil
+	}
+	currentQuota := int64(0)
+	if snapshot != nil && snapshot.Snapshot != nil {
+		currentQuota = snapshot.Snapshot.Quota
+	}
+	delta := req.NewQuota - currentQuota
+	if delta == 0 {
+		return &adminv1.ResetUserQuotaResponse{Success: true, Message: "ok"}, nil
+	}
+	_, err = s.billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
 		UserId:     fmt.Sprintf("%d", req.UserId),
-		Amount:     req.NewQuota,
+		Amount:     delta,
 		OperatorId: req.OperatorId,
 		Remark:     req.Remark,
 	})
@@ -440,6 +453,26 @@ func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUse
 		return &adminv1.ResetUserQuotaResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.ResetUserQuotaResponse{Success: true, Message: "ok"}, nil
+}
+
+func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[string]interface{}, error) {
+	resp, err := s.channelClient.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: channelID})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Channel == nil {
+		return nil, status.Error(codes.NotFound, "channel not found")
+	}
+	return map[string]interface{}{
+		"success":    true,
+		"channel_id": resp.Channel.Id,
+		"name":       resp.Channel.Name,
+		"type":       resp.Channel.Type,
+		"status":     resp.Channel.Status,
+		"group":      resp.Channel.Group,
+		"models":     resp.Channel.Models,
+		"message":    "channel metadata resolved",
+	}, nil
 }
 
 // ========== 渠道管理 ==========
@@ -464,14 +497,14 @@ func (s *AdminService) ListChannels(ctx context.Context, req *adminv1.AdminListC
 
 func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCreateChannelRequest) (*adminv1.AdminCreateChannelResponse, error) {
 	resp, err := s.channelClient.CreateChannel(ctx, &channelv1.CreateChannelRequest{
-		Name:    req.Name,
-		Type:    req.Type,
-		BaseUrl: req.BaseUrl,
-		Key:     req.Key,
-		Models:  req.Models,
-		Group:   req.Group,
+		Name:     req.Name,
+		Type:     req.Type,
+		BaseUrl:  req.BaseUrl,
+		Key:      req.Key,
+		Models:   req.Models,
+		Group:    req.Group,
 		Priority: req.Priority,
-		Config:  req.Config,
+		Config:   req.Config,
 	})
 	if err != nil {
 		return &adminv1.AdminCreateChannelResponse{Success: false, Message: err.Error()}, nil
@@ -487,12 +520,12 @@ func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpda
 	resp, err := s.channelClient.UpdateChannel(ctx, &channelv1.UpdateChannelRequest{
 		ChannelId: req.ChannelId,
 		Name:      req.Name,
-		BaseUrl:  req.BaseUrl,
-		Key:      req.Key,
-		Models:   req.Models,
-		Group:    req.Group,
-		Priority: req.Priority,
-		Config:   req.Config,
+		BaseUrl:   req.BaseUrl,
+		Key:       req.Key,
+		Models:    req.Models,
+		Group:     req.Group,
+		Priority:  req.Priority,
+		Config:    req.Config,
 	})
 	if err != nil {
 		return &adminv1.AdminUpdateChannelResponse{Success: false, Message: err.Error()}, nil
@@ -663,6 +696,34 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 	return &adminv1.ListLogsResponse{
 		Logs:  logs,
 		Total: billingResp.Total,
+	}, nil
+}
+
+func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsRequest) (map[string]interface{}, error) {
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.PageSize <= 0 {
+		req.PageSize = 1000
+	}
+	resp, err := s.ListLogs(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	countByType := map[string]int64{}
+	amountByType := map[string]int64{}
+	totalAmount := int64(0)
+	for _, entry := range resp.Logs {
+		countByType[entry.Type]++
+		amountByType[entry.Type] += entry.Amount
+		totalAmount += entry.Amount
+	}
+	return map[string]interface{}{
+		"total":          resp.Total,
+		"sampled_count":  len(resp.Logs),
+		"total_amount":   totalAmount,
+		"count_by_type":  countByType,
+		"amount_by_type": amountByType,
 	}, nil
 }
 

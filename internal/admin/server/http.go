@@ -92,6 +92,12 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	srv.HandleFunc("/v1/logs", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleListLogs(w, r, svc)
 	}))
+	srv.HandleFunc("/api/log/stat", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleLogStats(w, r, svc, false)
+	}))
+	srv.HandleFunc("/api/log/self/stat", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleLogStats(w, r, svc, true)
+	}))
 
 	srv.HandleFunc("/v1/account", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleGetAccount(w, r, svc)
@@ -100,14 +106,32 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	srv.HandleFunc("/v1/redeem-codes", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleRedeemCodes(w, r, svc)
 	}))
+	srv.HandleFunc("/v1/redeem-codes/batch", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleRedeemCodesBatch(w, r, svc)
+	}))
 	srv.HandlePrefix("/v1/redeem-codes/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleRedeemCodeByCode(w, r, svc)
 	}))
 	srv.HandleFunc("/v1/topup", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleTopUp(w, r, svc)
 	}))
+	srv.HandleFunc("/v1/users/reset-quota", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleResetUserQuota(w, r, svc)
+	}))
 	srv.HandleFunc("/api/topup", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleTopUp(w, r, svc)
+	}))
+	srv.HandleFunc("/api/channel/test", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleTestChannels(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/channel/test/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleTestChannel(w, r, svc)
+	}))
+	srv.HandleFunc("/api/channel/update_balance", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleChannelBalanceUnsupported(w, r)
+	}))
+	srv.HandlePrefix("/api/channel/update_balance/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleChannelBalanceUnsupported(w, r)
 	}))
 
 	return srv
@@ -191,6 +215,10 @@ func handleUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminServi
 }
 
 func handleUserByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/users/"), "/") == "reset-quota" {
+		handleResetUserQuota(w, r, svc)
+		return
+	}
 	userID, ok := parsePathID(r.URL.Path, "/v1/users/")
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
@@ -302,6 +330,66 @@ func handleChannelByID(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	}
 }
 
+func handleTestChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	page := getQueryInt32(r, "page", 1)
+	pageSize := getQueryInt32(r, "page_size", 100)
+	resp, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	results := make([]map[string]interface{}, 0, len(resp.Channels))
+	for _, channel := range resp.Channels {
+		results = append(results, map[string]interface{}{
+			"success":    true,
+			"channel_id": channel.Id,
+			"name":       channel.Name,
+			"type":       channel.Type,
+			"status":     channel.Status,
+			"group":      channel.Group,
+			"models":     channel.Models,
+			"message":    "channel metadata resolved",
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "", "data": results})
+}
+
+func handleTestChannel(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	channelID, ok := parsePathID(r.URL.Path, "/api/channel/test/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid channel id"})
+		return
+	}
+	result, err := svc.TestChannel(r.Context(), channelID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"success": false, "message": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "", "data": result})
+}
+
+func handleChannelBalanceUnsupported(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusNotImplemented, map[string]interface{}{
+		"success": false,
+		"message": "channel balance refresh requires provider-specific balance adapters",
+	})
+}
+
 func handleListChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	page := getQueryInt32(r, "page", 1)
 	pageSize := getQueryInt32(r, "page_size", 20)
@@ -379,6 +467,31 @@ func handleListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func handleLogStats(w http.ResponseWriter, r *http.Request, svc *service.AdminService, selfOnly bool) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	userID := r.URL.Query().Get("user_id")
+	if selfOnly && userID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "user_id is required"})
+		return
+	}
+	stats, err := svc.GetLogStats(r.Context(), &adminv1.ListLogsRequest{
+		Page:      1,
+		PageSize:  1000,
+		UserId:    userID,
+		Type:      r.URL.Query().Get("type"),
+		StartTime: getQueryInt64(r, "start_time", 0),
+		EndTime:   getQueryInt64(r, "end_time", 0),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "", "data": stats})
+}
+
 func handleGetAccount(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -427,6 +540,19 @@ func handleRedeemCodes(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func handleRedeemCodesBatch(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var req adminv1.CreateRedeemCodesBatchRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	resp, err := svc.CreateRedeemCodesBatch(r.Context(), &req)
+	writeServiceResponse(w, resp, err)
 }
 
 func handleRedeemCodeByCode(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -480,6 +606,19 @@ func handleTopUp(w http.ResponseWriter, r *http.Request, svc *service.AdminServi
 		return
 	}
 	resp, err := svc.TopUpQuota(r.Context(), &req)
+	writeServiceResponse(w, resp, err)
+}
+
+func handleResetUserQuota(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var req adminv1.ResetUserQuotaRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	resp, err := svc.ResetUserQuota(r.Context(), &req)
 	writeServiceResponse(w, resp, err)
 }
 
