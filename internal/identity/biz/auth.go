@@ -77,6 +77,7 @@ type IdentityRepo interface {
 	FindTokenByKey(ctx context.Context, key string) (*Token, error)
 	FindUserByID(ctx context.Context, userID int64) (*User, error)
 	FindUserByUsername(ctx context.Context, username string) (*User, error)
+	FindUserByEmail(ctx context.Context, email string) (*User, error)
 	FindUserByOAuth(ctx context.Context, provider, oauthID string) (*User, error)
 	CreateUser(ctx context.Context, user *User) error
 	UpdateUser(ctx context.Context, user *User) error
@@ -409,6 +410,25 @@ func (uc *IdentityUsecase) UpdateUser(ctx context.Context, userID int64, display
 
 func (uc *IdentityUsecase) DeleteUser(ctx context.Context, userID int64) error {
 	return uc.repo.DeleteUser(ctx, userID)
+}
+
+func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, password string) error {
+	if email == "" || password == "" {
+		return ErrInvalidPassword
+	}
+	if len(password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
+	}
+	user, err := uc.repo.FindUserByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = string(hash)
+	return uc.repo.UpdateUser(ctx, user)
 }
 
 func (uc *IdentityUsecase) generateToken() string {

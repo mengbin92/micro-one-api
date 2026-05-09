@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"micro-one-api/internal/identity/biz"
 	identitydata "micro-one-api/internal/identity/data"
+	"micro-one-api/internal/pkg/oauth"
 )
 
 func TestIdentityHTTPRegisterLoginAndSelf(t *testing.T) {
@@ -82,6 +84,62 @@ func TestIdentityHTTPTokenCRUD(t *testing.T) {
 	}
 	if !strings.Contains(listRec.Body.String(), `"total":2`) {
 		t.Fatalf("list token response mismatch: %s", listRec.Body.String())
+	}
+}
+
+func TestIdentityHTTPPasswordReset(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	if _, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default"); err != nil {
+		t.Fatal(err)
+	}
+	srv := NewHTTPServer(":0", uc, nil)
+
+	resetReq := httptest.NewRequest(http.MethodGet, "/api/reset_password?email=alice@example.com", nil)
+	resetRec := httptest.NewRecorder()
+	srv.ServeHTTP(resetRec, resetReq)
+	if resetRec.Code != http.StatusOK {
+		t.Fatalf("reset request status = %d, body=%s", resetRec.Code, resetRec.Body.String())
+	}
+	resetToken := extractJSONField(resetRec.Body.String(), "token")
+	if resetToken == "" {
+		t.Fatalf("reset token missing: %s", resetRec.Body.String())
+	}
+
+	confirmReq := httptest.NewRequest(http.MethodPost, "/api/user/reset", strings.NewReader(`{"email":"alice@example.com","token":"`+resetToken+`","password":"newpass123"}`))
+	confirmRec := httptest.NewRecorder()
+	srv.ServeHTTP(confirmRec, confirmReq)
+	if confirmRec.Code != http.StatusOK {
+		t.Fatalf("confirm status = %d, body=%s", confirmRec.Code, confirmRec.Body.String())
+	}
+	if !strings.Contains(confirmRec.Body.String(), `"success":true`) {
+		t.Fatalf("password reset failed: %s", confirmRec.Body.String())
+	}
+
+	if _, _, err := uc.Login(context.Background(), "alice", "newpass123"); err != nil {
+		t.Fatalf("login with reset password failed: %v", err)
+	}
+}
+
+func TestIdentityHTTPOAuthLegacyAliasRedirects(t *testing.T) {
+	registry := oauth.NewProviderRegistry()
+	registry.Register(oauth.NewGitHubProvider(oauth.Config{
+		ClientID:    "client-id",
+		RedirectURL: "http://localhost/callback",
+	}))
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, registry)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/oauth/github", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302, body=%s", rec.Code, rec.Body.String())
+	}
+	if location := rec.Header().Get("Location"); !strings.Contains(location, "github.com/login/oauth/authorize") {
+		t.Fatalf("unexpected redirect location: %s", location)
 	}
 }
 

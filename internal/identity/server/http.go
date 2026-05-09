@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"micro-one-api/internal/identity/biz"
 	"micro-one-api/internal/pkg/metrics"
@@ -23,6 +25,12 @@ func NewHTTPServer(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.Pr
 
 	// OAuth endpoints
 	if oauthRegistry != nil {
+		srv.HandleFunc("/api/oauth/github", func(w http.ResponseWriter, r *http.Request) {
+			handleLegacyOAuth(w, r, oauthRegistry, "github")
+		})
+		srv.HandleFunc("/api/oauth/google", func(w http.ResponseWriter, r *http.Request) {
+			handleLegacyOAuth(w, r, oauthRegistry, "google")
+		})
 		srv.HandleFunc("/v1/oauth/providers", func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"providers": oauthRegistry.Names(),
@@ -48,11 +56,23 @@ func NewHTTPServer(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.Pr
 	srv.HandleFunc("/api/user/login", func(w http.ResponseWriter, r *http.Request) {
 		handleLogin(w, r, uc)
 	})
+	srv.HandleFunc("/api/user/logout", func(w http.ResponseWriter, r *http.Request) {
+		handleLogout(w, r)
+	})
 	srv.HandleFunc("/api/user/self", func(w http.ResponseWriter, r *http.Request) {
 		handleSelf(w, r, uc)
 	})
 	srv.HandleFunc("/api/user/available_models", func(w http.ResponseWriter, r *http.Request) {
 		handleAvailableModels(w, r, uc)
+	})
+	srv.HandleFunc("/api/verification", func(w http.ResponseWriter, r *http.Request) {
+		handleEmailVerification(w, r)
+	})
+	srv.HandleFunc("/api/reset_password", func(w http.ResponseWriter, r *http.Request) {
+		handleResetPasswordRequest(w, r)
+	})
+	srv.HandleFunc("/api/user/reset", func(w http.ResponseWriter, r *http.Request) {
+		handleResetPassword(w, r, uc)
 	})
 	srv.HandleFunc("/api/user/token", func(w http.ResponseWriter, r *http.Request) {
 		handleCreateUserToken(w, r, uc)
@@ -70,6 +90,18 @@ type apiResponse struct {
 	Success bool        `json:"success"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
+}
+
+type verificationRecord struct {
+	Code string
+	At   time.Time
+}
+
+var verificationStore = struct {
+	sync.Mutex
+	items map[string]verificationRecord
+}{
+	items: make(map[string]verificationRecord),
 }
 
 func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
@@ -125,6 +157,14 @@ func handleLogin(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase
 	})
 }
 
+func handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: ""})
+}
+
 func handleSelf(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
@@ -154,6 +194,84 @@ func handleAvailableModels(w http.ResponseWriter, r *http.Request, uc *biz.Ident
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: snapshot.AllowedModels})
+}
+
+func handleEmailVerification(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	email := r.URL.Query().Get("email")
+	if email == "" {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "email is required"})
+		return
+	}
+	code := generateState()[:6]
+	verificationStore.Lock()
+	verificationStore.items["v:"+email] = verificationRecord{Code: code, At: time.Now()}
+	verificationStore.Unlock()
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"email": email, "verification_code": code}})
+}
+
+func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	email := r.URL.Query().Get("email")
+	if email == "" {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "email is required"})
+		return
+	}
+	code := generateState()[:6]
+	verificationStore.Lock()
+	verificationStore.items["r:"+email] = verificationRecord{Code: code, At: time.Now()}
+	verificationStore.Unlock()
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"email": email, "token": code}})
+}
+
+func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	var req struct {
+		Email    string `json:"email"`
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Email == "" || req.Token == "" {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid parameter"})
+		return
+	}
+	verificationStore.Lock()
+	record, ok := verificationStore.items["r:"+req.Email]
+	verificationStore.Unlock()
+	if !ok || record.Code != req.Token {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "重置链接非法或已过期"})
+		return
+	}
+	password := req.Password
+	if password == "" {
+		password = generateState()[:12]
+	}
+	if err := uc.ResetPasswordByEmail(r.Context(), req.Email, password); err != nil {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"password": password}})
+}
+
+func handleLegacyOAuth(w http.ResponseWriter, r *http.Request, registry *oauth.ProviderRegistry, providerName string) {
+	provider, ok := registry.Get(providerName)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider: " + providerName})
+		return
+	}
+	handleOAuthAuthorize(w, r, provider)
 }
 
 func handleCreateUserToken(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {

@@ -222,6 +222,15 @@ func (m *testIdentityRepo) FindUserByUsername(ctx context.Context, username stri
 	return nil, identitybiz.ErrUserNotFound
 }
 
+func (m *testIdentityRepo) FindUserByEmail(ctx context.Context, email string) (*identitybiz.User, error) {
+	for _, u := range m.users {
+		if u.Email == email {
+			return u, nil
+		}
+	}
+	return nil, identitybiz.ErrUserNotFound
+}
+
 func (m *testIdentityRepo) FindUserByOAuth(ctx context.Context, provider, oauthID string) (*identitybiz.User, error) {
 	for _, u := range m.users {
 		if u.OAuthProvider == provider && u.OAuthID == oauthID {

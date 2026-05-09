@@ -120,6 +120,21 @@ func (r *Repository) FindUserByUsername(ctx context.Context, username string) (*
 	return nil, biz.ErrUserNotFound
 }
 
+func (r *Repository) FindUserByEmail(ctx context.Context, email string) (*biz.User, error) {
+	if r.db != nil {
+		return r.findUserByEmailDB(ctx, email)
+	}
+	r.identityLock.RLock()
+	defer r.identityLock.RUnlock()
+	for _, u := range r.usersByID {
+		if u.Email == email {
+			cloned := *u
+			return &cloned, nil
+		}
+	}
+	return nil, biz.ErrUserNotFound
+}
+
 func (r *Repository) FindUserByOAuth(ctx context.Context, provider, oauthID string) (*biz.User, error) {
 	if r.db != nil {
 		return r.findUserByOAuthDB(ctx, provider, oauthID)
@@ -337,6 +352,27 @@ func (r *Repository) findUserByIDDB(ctx context.Context, userID int64) (*biz.Use
 func (r *Repository) findUserByUsernameDB(ctx context.Context, username string) (*biz.User, error) {
 	var model userModel
 	if err := r.db.WithContext(ctx).Where("username = ?", username).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, biz.ErrUserNotFound
+		}
+		return nil, err
+	}
+	return &biz.User{
+		ID:            model.ID,
+		Username:      model.Username,
+		DisplayName:   model.DisplayName,
+		Email:         model.Email,
+		Group:         model.Group,
+		Status:        model.Status,
+		PasswordHash:  model.PasswordHash,
+		OAuthProvider: model.OAuthProvider,
+		OAuthID:       model.OAuthID,
+	}, nil
+}
+
+func (r *Repository) findUserByEmailDB(ctx context.Context, email string) (*biz.User, error) {
+	var model userModel
+	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrUserNotFound
 		}
