@@ -7,6 +7,7 @@
 package adminv1
 
 import (
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	v1 "micro-one-api/api/common/v1"
@@ -2942,7 +2943,7 @@ var File_api_admin_v1_admin_proto protoreflect.FileDescriptor
 
 const file_api_admin_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/admin/v1/admin.proto\x12\fapi.admin.v1\x1a\x1aapi/common/v1/common.proto\"}\n" +
+	"\x18api/admin/v1/admin.proto\x12\fapi.admin.v1\x1a\x1aapi/common/v1/common.proto\x1a\x1cgoogle/api/annotations.proto\"}\n" +
 	"\x11TopUpQuotaRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x16\n" +
 	"\x06amount\x18\x02 \x01(\x03R\x06amount\x12\x1f\n" +
@@ -3149,35 +3150,36 @@ const file_api_admin_v1_admin_proto_rawDesc = "" +
 	"\freference_id\x18\x06 \x01(\tR\vreferenceId\x12\x16\n" +
 	"\x06remark\x18\a \x01(\tR\x06remark\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\b \x01(\x03R\tcreatedAt2\xc1\x11\n" +
+	"created_at\x18\b \x01(\x03R\tcreatedAt2\xe7\x12\n" +
 	"\fAdminService\x12O\n" +
 	"\n" +
 	"TopUpQuota\x12\x1f.api.admin.v1.TopUpQuotaRequest\x1a .api.admin.v1.TopUpQuotaResponse\x12a\n" +
 	"\x10CreateRedeemCode\x12%.api.admin.v1.CreateRedeemCodeRequest\x1a&.api.admin.v1.CreateRedeemCodeResponse\x12s\n" +
 	"\x16CreateRedeemCodesBatch\x12+.api.admin.v1.CreateRedeemCodesBatchRequest\x1a,.api.admin.v1.CreateRedeemCodesBatchResponse\x12U\n" +
-	"\rGetRedeemCode\x12\".api.admin.v1.GetRedeemCodeRequest\x1a .api.admin.v1.RedeemCodeResponse\x12^\n" +
-	"\x0fListRedeemCodes\x12$.api.admin.v1.ListRedeemCodesRequest\x1a%.api.admin.v1.ListRedeemCodesResponse\x12d\n" +
+	"\rGetRedeemCode\x12\".api.admin.v1.GetRedeemCodeRequest\x1a .api.admin.v1.RedeemCodeResponse\x12x\n" +
+	"\x0fListRedeemCodes\x12$.api.admin.v1.ListRedeemCodesRequest\x1a%.api.admin.v1.ListRedeemCodesResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/redeem-codes\x12d\n" +
 	"\x11SearchRedeemCodes\x12&.api.admin.v1.SearchRedeemCodesRequest\x1a'.api.admin.v1.RedeemCodesSearchResponse\x12a\n" +
 	"\x10UpdateRedeemCode\x12%.api.admin.v1.UpdateRedeemCodeRequest\x1a&.api.admin.v1.UpdateRedeemCodeResponse\x12a\n" +
 	"\x10DeleteRedeemCode\x12%.api.admin.v1.DeleteRedeemCodeRequest\x1a&.api.admin.v1.DeleteRedeemCodeResponse\x12W\n" +
-	"\x0eListUserLedger\x12#.api.admin.v1.ListUserLedgerRequest\x1a .api.admin.v1.UserLedgerResponse\x12i\n" +
-	"\x12GetAccountSnapshot\x12'.api.admin.v1.GetAccountSnapshotRequest\x1a*.api.admin.v1.AdminAccountSnapshotResponse\x12V\n" +
-	"\tListUsers\x12#.api.admin.v1.AdminListUsersRequest\x1a$.api.admin.v1.AdminListUsersResponse\x12Y\n" +
+	"\x0eListUserLedger\x12#.api.admin.v1.ListUserLedgerRequest\x1a .api.admin.v1.UserLedgerResponse\x12~\n" +
+	"\x12GetAccountSnapshot\x12'.api.admin.v1.GetAccountSnapshotRequest\x1a*.api.admin.v1.AdminAccountSnapshotResponse\"\x13\x82\xd3\xe4\x93\x02\r\x12\v/v1/account\x12i\n" +
+	"\tListUsers\x12#.api.admin.v1.AdminListUsersRequest\x1a$.api.admin.v1.AdminListUsersResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/users\x12Y\n" +
 	"\n" +
 	"CreateUser\x12$.api.admin.v1.AdminCreateUserRequest\x1a%.api.admin.v1.AdminCreateUserResponse\x12Y\n" +
 	"\n" +
 	"UpdateUser\x12$.api.admin.v1.AdminUpdateUserRequest\x1a%.api.admin.v1.AdminUpdateUserResponse\x12Y\n" +
 	"\n" +
 	"DeleteUser\x12$.api.admin.v1.AdminDeleteUserRequest\x1a%.api.admin.v1.AdminDeleteUserResponse\x12[\n" +
-	"\x0eResetUserQuota\x12#.api.admin.v1.ResetUserQuotaRequest\x1a$.api.admin.v1.ResetUserQuotaResponse\x12_\n" +
-	"\fListChannels\x12&.api.admin.v1.AdminListChannelsRequest\x1a'.api.admin.v1.AdminListChannelsResponse\x12b\n" +
+	"\x0eResetUserQuota\x12#.api.admin.v1.ResetUserQuotaRequest\x1a$.api.admin.v1.ResetUserQuotaResponse\x12u\n" +
+	"\fListChannels\x12&.api.admin.v1.AdminListChannelsRequest\x1a'.api.admin.v1.AdminListChannelsResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/channels\x12b\n" +
 	"\rCreateChannel\x12'.api.admin.v1.AdminCreateChannelRequest\x1a(.api.admin.v1.AdminCreateChannelResponse\x12b\n" +
 	"\rUpdateChannel\x12'.api.admin.v1.AdminUpdateChannelRequest\x1a(.api.admin.v1.AdminUpdateChannelResponse\x12b\n" +
 	"\rDeleteChannel\x12'.api.admin.v1.AdminDeleteChannelRequest\x1a(.api.admin.v1.AdminDeleteChannelResponse\x12t\n" +
-	"\x13ChangeChannelStatus\x12-.api.admin.v1.AdminChangeChannelStatusRequest\x1a..api.admin.v1.AdminChangeChannelStatusResponse\x12a\n" +
-	"\x10GetSystemOptions\x12%.api.admin.v1.GetSystemOptionsRequest\x1a&.api.admin.v1.GetSystemOptionsResponse\x12j\n" +
-	"\x13UpdateSystemOptions\x12(.api.admin.v1.UpdateSystemOptionsRequest\x1a).api.admin.v1.UpdateSystemOptionsResponse\x12I\n" +
-	"\bListLogs\x12\x1d.api.admin.v1.ListLogsRequest\x1a\x1e.api.admin.v1.ListLogsResponseB$Z\"micro-one-api/api/admin/v1;adminv1b\x06proto3"
+	"\x13ChangeChannelStatus\x12-.api.admin.v1.AdminChangeChannelStatusRequest\x1a..api.admin.v1.AdminChangeChannelStatusResponse\x12}\n" +
+	"\x10GetSystemOptions\x12%.api.admin.v1.GetSystemOptionsRequest\x1a&.api.admin.v1.GetSystemOptionsResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/system/options\x12\x89\x01\n" +
+	"\x13UpdateSystemOptions\x12(.api.admin.v1.UpdateSystemOptionsRequest\x1a).api.admin.v1.UpdateSystemOptionsResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\x1a\x12/v1/system/options\x12[\n" +
+	"\bListLogs\x12\x1d.api.admin.v1.ListLogsRequest\x1a\x1e.api.admin.v1.ListLogsResponse\"\x10\x82\xd3\xe4\x93\x02\n" +
+	"\x12\b/v1/logsB$Z\"micro-one-api/api/admin/v1;adminv1b\x06proto3"
 
 var (
 	file_api_admin_v1_admin_proto_rawDescOnce sync.Once

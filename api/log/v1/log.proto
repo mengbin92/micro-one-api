@@ -2,12 +2,27 @@ syntax = "proto3";
 
 package api.log.v1;
 
+import "google/api/annotations.proto";
+
 option go_package = "micro-one-api/api/log/v1;logv1";
 
 service LogService {
-  rpc GetLog(GetLogRequest) returns (GetLogResponse);
-  rpc ListLogs(ListLogsRequest) returns (ListLogsResponse);
-  rpc IngestLog(IngestLogRequest) returns (IngestLogResponse);
+  rpc GetLog(GetLogRequest) returns (GetLogResponse) {
+    option (google.api.http) = {
+      get: "/v1/logs/{id}"
+    };
+  }
+  rpc ListLogs(ListLogsRequest) returns (ListLogsResponse) {
+    option (google.api.http) = {
+      get: "/v1/logs"
+    };
+  }
+  rpc IngestLog(IngestLogRequest) returns (IngestLogResponse) {
+    option (google.api.http) = {
+      post: "/v1/logs"
+      body: "*"
+    };
+  }
 }
 
 message GetLogRequest {

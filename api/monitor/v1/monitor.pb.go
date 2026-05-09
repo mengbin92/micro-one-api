@@ -7,6 +7,7 @@
 package monitorv1
 
 import (
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -1073,7 +1074,7 @@ var File_api_monitor_v1_monitor_proto protoreflect.FileDescriptor
 
 const file_api_monitor_v1_monitor_proto_rawDesc = "" +
 	"\n" +
-	"\x1capi/monitor/v1/monitor.proto\x12\x0eapi.monitor.v1\"x\n" +
+	"\x1capi/monitor/v1/monitor.proto\x12\x0eapi.monitor.v1\x1a\x1cgoogle/api/annotations.proto\"x\n" +
 	"\x16SaveHealthCheckRequest\x12!\n" +
 	"\fservice_name\x18\x01 \x01(\tR\vserviceName\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12#\n" +
@@ -1143,16 +1144,16 @@ const file_api_monitor_v1_monitor_proto_rawDesc = "" +
 	"\x16DeleteAlertRuleRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\"3\n" +
 	"\x17DeleteAlertRuleResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2\xb6\x06\n" +
-	"\x0eMonitorService\x12b\n" +
-	"\x0fSaveHealthCheck\x12&.api.monitor.v1.SaveHealthCheckRequest\x1a'.api.monitor.v1.SaveHealthCheckResponse\x12e\n" +
-	"\x10ListHealthChecks\x12'.api.monitor.v1.ListHealthChecksRequest\x1a(.api.monitor.v1.ListHealthChecksResponse\x12q\n" +
-	"\x14GetLatestHealthCheck\x12+.api.monitor.v1.GetLatestHealthCheckRequest\x1a,.api.monitor.v1.GetLatestHealthCheckResponse\x12b\n" +
-	"\x0fCreateAlertRule\x12&.api.monitor.v1.CreateAlertRuleRequest\x1a'.api.monitor.v1.CreateAlertRuleResponse\x12Y\n" +
-	"\fGetAlertRule\x12#.api.monitor.v1.GetAlertRuleRequest\x1a$.api.monitor.v1.GetAlertRuleResponse\x12_\n" +
-	"\x0eListAlertRules\x12%.api.monitor.v1.ListAlertRulesRequest\x1a&.api.monitor.v1.ListAlertRulesResponse\x12b\n" +
-	"\x0fUpdateAlertRule\x12&.api.monitor.v1.UpdateAlertRuleRequest\x1a'.api.monitor.v1.UpdateAlertRuleResponse\x12b\n" +
-	"\x0fDeleteAlertRule\x12&.api.monitor.v1.DeleteAlertRuleRequest\x1a'.api.monitor.v1.DeleteAlertRuleResponseB(Z&micro-one-api/api/monitor/v1;monitorv1b\x06proto3"
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\xa8\b\n" +
+	"\x0eMonitorService\x12\x80\x01\n" +
+	"\x0fSaveHealthCheck\x12&.api.monitor.v1.SaveHealthCheckRequest\x1a'.api.monitor.v1.SaveHealthCheckResponse\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/health-checks\x12\x80\x01\n" +
+	"\x10ListHealthChecks\x12'.api.monitor.v1.ListHealthChecksRequest\x1a(.api.monitor.v1.ListHealthChecksResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/health-checks\x12\x93\x01\n" +
+	"\x14GetLatestHealthCheck\x12+.api.monitor.v1.GetLatestHealthCheckRequest\x1a,.api.monitor.v1.GetLatestHealthCheckResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/health-checks/latest\x12~\n" +
+	"\x0fCreateAlertRule\x12&.api.monitor.v1.CreateAlertRuleRequest\x1a'.api.monitor.v1.CreateAlertRuleResponse\"\x1a\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/alert-rules\x12w\n" +
+	"\fGetAlertRule\x12#.api.monitor.v1.GetAlertRuleRequest\x1a$.api.monitor.v1.GetAlertRuleResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/alert-rules/{id}\x12x\n" +
+	"\x0eListAlertRules\x12%.api.monitor.v1.ListAlertRulesRequest\x1a&.api.monitor.v1.ListAlertRulesResponse\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/alert-rules\x12\x83\x01\n" +
+	"\x0fUpdateAlertRule\x12&.api.monitor.v1.UpdateAlertRuleRequest\x1a'.api.monitor.v1.UpdateAlertRuleResponse\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\x1a\x14/v1/alert-rules/{id}\x12\x80\x01\n" +
+	"\x0fDeleteAlertRule\x12&.api.monitor.v1.DeleteAlertRuleRequest\x1a'.api.monitor.v1.DeleteAlertRuleResponse\"\x1c\x82\xd3\xe4\x93\x02\x16*\x14/v1/alert-rules/{id}B(Z&micro-one-api/api/monitor/v1;monitorv1b\x06proto3"
 
 var (
 	file_api_monitor_v1_monitor_proto_rawDescOnce sync.Once

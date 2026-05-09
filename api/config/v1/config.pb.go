@@ -7,6 +7,7 @@
 package configv1
 
 import (
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -481,7 +482,7 @@ var File_api_config_v1_config_proto protoreflect.FileDescriptor
 
 const file_api_config_v1_config_proto_rawDesc = "" +
 	"\n" +
-	"\x1aapi/config/v1/config.proto\x12\rapi.config.v1\"B\n" +
+	"\x1aapi/config/v1/config.proto\x12\rapi.config.v1\x1a\x1cgoogle/api/annotations.proto\"B\n" +
 	"\x10GetConfigRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"\xa2\x01\n" +
@@ -511,12 +512,12 @@ const file_api_config_v1_config_proto_rawDesc = "" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"0\n" +
 	"\x14DeleteConfigResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2\xde\x02\n" +
-	"\rConfigService\x12N\n" +
-	"\tGetConfig\x12\x1f.api.config.v1.GetConfigRequest\x1a .api.config.v1.GetConfigResponse\x12T\n" +
-	"\vListConfigs\x12!.api.config.v1.ListConfigsRequest\x1a\".api.config.v1.ListConfigsResponse\x12N\n" +
-	"\tSetConfig\x12\x1f.api.config.v1.SetConfigRequest\x1a .api.config.v1.SetConfigResponse\x12W\n" +
-	"\fDeleteConfig\x12\".api.config.v1.DeleteConfigRequest\x1a#.api.config.v1.DeleteConfigResponseB&Z$micro-one-api/api/config/v1;configv1b\x06proto3"
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\xf7\x03\n" +
+	"\rConfigService\x12u\n" +
+	"\tGetConfig\x12\x1f.api.config.v1.GetConfigRequest\x1a .api.config.v1.GetConfigResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/configs/{namespace}/{key}\x12u\n" +
+	"\vListConfigs\x12!.api.config.v1.ListConfigsRequest\x1a\".api.config.v1.ListConfigsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/configs/{namespace}\x12x\n" +
+	"\tSetConfig\x12\x1f.api.config.v1.SetConfigRequest\x1a .api.config.v1.SetConfigResponse\"(\x82\xd3\xe4\x93\x02\":\x01*\x1a\x1d/v1/configs/{namespace}/{key}\x12~\n" +
+	"\fDeleteConfig\x12\".api.config.v1.DeleteConfigRequest\x1a#.api.config.v1.DeleteConfigResponse\"%\x82\xd3\xe4\x93\x02\x1f*\x1d/v1/configs/{namespace}/{key}B&Z$micro-one-api/api/config/v1;configv1b\x06proto3"
 
 var (
 	file_api_config_v1_config_proto_rawDescOnce sync.Once

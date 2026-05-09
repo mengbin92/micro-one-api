@@ -3,6 +3,7 @@ syntax = "proto3";
 package api.admin.v1;
 
 import "api/common/v1/common.proto";
+import "google/api/annotations.proto";
 
 option go_package = "micro-one-api/api/admin/v1;adminv1";
 
@@ -12,33 +13,62 @@ service AdminService {
   rpc CreateRedeemCode(CreateRedeemCodeRequest) returns (CreateRedeemCodeResponse);
   rpc CreateRedeemCodesBatch(CreateRedeemCodesBatchRequest) returns (CreateRedeemCodesBatchResponse);
   rpc GetRedeemCode(GetRedeemCodeRequest) returns (RedeemCodeResponse);
-  rpc ListRedeemCodes(ListRedeemCodesRequest) returns (ListRedeemCodesResponse);
+  rpc ListRedeemCodes(ListRedeemCodesRequest) returns (ListRedeemCodesResponse) {
+    option (google.api.http) = {
+      get: "/v1/redeem-codes"
+    };
+  }
   rpc SearchRedeemCodes(SearchRedeemCodesRequest) returns (RedeemCodesSearchResponse);
   rpc UpdateRedeemCode(UpdateRedeemCodeRequest) returns (UpdateRedeemCodeResponse);
   rpc DeleteRedeemCode(DeleteRedeemCodeRequest) returns (DeleteRedeemCodeResponse);
   rpc ListUserLedger(ListUserLedgerRequest) returns (UserLedgerResponse);
-  rpc GetAccountSnapshot(GetAccountSnapshotRequest) returns (AdminAccountSnapshotResponse);
+  rpc GetAccountSnapshot(GetAccountSnapshotRequest) returns (AdminAccountSnapshotResponse) {
+    option (google.api.http) = {
+      get: "/v1/account"
+    };
+  }
 
   // ========== 用户管理（透传 identity-service）==========
-  rpc ListUsers(AdminListUsersRequest) returns (AdminListUsersResponse);
+  rpc ListUsers(AdminListUsersRequest) returns (AdminListUsersResponse) {
+    option (google.api.http) = {
+      get: "/v1/users"
+    };
+  }
   rpc CreateUser(AdminCreateUserRequest) returns (AdminCreateUserResponse);
   rpc UpdateUser(AdminUpdateUserRequest) returns (AdminUpdateUserResponse);
   rpc DeleteUser(AdminDeleteUserRequest) returns (AdminDeleteUserResponse);
   rpc ResetUserQuota(ResetUserQuotaRequest) returns (ResetUserQuotaResponse);
 
   // ========== 渠道管理（透传 channel-service）==========
-  rpc ListChannels(AdminListChannelsRequest) returns (AdminListChannelsResponse);
+  rpc ListChannels(AdminListChannelsRequest) returns (AdminListChannelsResponse) {
+    option (google.api.http) = {
+      get: "/v1/channels"
+    };
+  }
   rpc CreateChannel(AdminCreateChannelRequest) returns (AdminCreateChannelResponse);
   rpc UpdateChannel(AdminUpdateChannelRequest) returns (AdminUpdateChannelResponse);
   rpc DeleteChannel(AdminDeleteChannelRequest) returns (AdminDeleteChannelResponse);
   rpc ChangeChannelStatus(AdminChangeChannelStatusRequest) returns (AdminChangeChannelStatusResponse);
 
   // ========== 系统配置管理 ==========
-  rpc GetSystemOptions(GetSystemOptionsRequest) returns (GetSystemOptionsResponse);
-  rpc UpdateSystemOptions(UpdateSystemOptionsRequest) returns (UpdateSystemOptionsResponse);
+  rpc GetSystemOptions(GetSystemOptionsRequest) returns (GetSystemOptionsResponse) {
+    option (google.api.http) = {
+      get: "/v1/system/options"
+    };
+  }
+  rpc UpdateSystemOptions(UpdateSystemOptionsRequest) returns (UpdateSystemOptionsResponse) {
+    option (google.api.http) = {
+      put: "/v1/system/options"
+      body: "*"
+    };
+  }
 
   // ========== 日志查询 ==========
-  rpc ListLogs(ListLogsRequest) returns (ListLogsResponse);
+  rpc ListLogs(ListLogsRequest) returns (ListLogsResponse) {
+    option (google.api.http) = {
+      get: "/v1/logs"
+    };
+  }
 }
 
 // ========== 账务：充值 ==========

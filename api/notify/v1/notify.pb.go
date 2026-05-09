@@ -7,6 +7,7 @@
 package notifyv1
 
 import (
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -549,7 +550,7 @@ var File_api_notify_v1_notify_proto protoreflect.FileDescriptor
 
 const file_api_notify_v1_notify_proto_rawDesc = "" +
 	"\n" +
-	"\x1aapi/notify/v1/notify.proto\x12\rapi.notify.v1\"\x81\x01\n" +
+	"\x1aapi/notify/v1/notify.proto\x12\rapi.notify.v1\x1a\x1cgoogle/api/annotations.proto\"\x81\x01\n" +
 	"\x19CreateNotificationRequest\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1c\n" +
 	"\trecipient\x18\x02 \x01(\tR\trecipient\x12\x18\n" +
@@ -585,12 +586,12 @@ const file_api_notify_v1_notify_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"<\n" +
 	" UpdateNotificationStatusResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2\xc1\x03\n" +
-	"\rNotifyService\x12i\n" +
-	"\x12CreateNotification\x12(.api.notify.v1.CreateNotificationRequest\x1a).api.notify.v1.CreateNotificationResponse\x12`\n" +
-	"\x0fGetNotification\x12%.api.notify.v1.GetNotificationRequest\x1a&.api.notify.v1.GetNotificationResponse\x12f\n" +
-	"\x11ListNotifications\x12'.api.notify.v1.ListNotificationsRequest\x1a(.api.notify.v1.ListNotificationsResponse\x12{\n" +
-	"\x18UpdateNotificationStatus\x12..api.notify.v1.UpdateNotificationStatusRequest\x1a/.api.notify.v1.UpdateNotificationStatusResponseB&Z$micro-one-api/api/notify/v1;notifyv1b\x06proto3"
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\xc8\x04\n" +
+	"\rNotifyService\x12\x87\x01\n" +
+	"\x12CreateNotification\x12(.api.notify.v1.CreateNotificationRequest\x1a).api.notify.v1.CreateNotificationResponse\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/notifications\x12\x80\x01\n" +
+	"\x0fGetNotification\x12%.api.notify.v1.GetNotificationRequest\x1a&.api.notify.v1.GetNotificationResponse\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/notifications/{id}\x12\x81\x01\n" +
+	"\x11ListNotifications\x12'.api.notify.v1.ListNotificationsRequest\x1a(.api.notify.v1.ListNotificationsResponse\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/notifications\x12\xa5\x01\n" +
+	"\x18UpdateNotificationStatus\x12..api.notify.v1.UpdateNotificationStatusRequest\x1a/.api.notify.v1.UpdateNotificationStatusResponse\"(\x82\xd3\xe4\x93\x02\":\x01*\x1a\x1d/v1/notifications/{id}/statusB&Z$micro-one-api/api/notify/v1;notifyv1b\x06proto3"
 
 var (
 	file_api_notify_v1_notify_proto_rawDescOnce sync.Once

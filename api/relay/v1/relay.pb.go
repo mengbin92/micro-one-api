@@ -7,6 +7,7 @@
 package relayv1
 
 import (
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -505,7 +506,7 @@ var File_api_relay_v1_relay_proto protoreflect.FileDescriptor
 
 const file_api_relay_v1_relay_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/relay/v1/relay.proto\x12\fapi.relay.v1\"\xe2\x01\n" +
+	"\x18api/relay/v1/relay.proto\x12\fapi.relay.v1\x1a\x1cgoogle/api/annotations.proto\"\xe2\x01\n" +
 	"\x15ChatCompletionRequest\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x121\n" +
 	"\bmessages\x18\x02 \x03(\v2\x15.api.relay.v1.MessageR\bmessages\x12\x16\n" +
@@ -540,11 +541,12 @@ const file_api_relay_v1_relay_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06object\x18\x02 \x01(\tR\x06object\x12\x18\n" +
 	"\acreated\x18\x03 \x01(\x03R\acreated\x12\x19\n" +
-	"\bowned_by\x18\x04 \x01(\tR\aownedBy2\xbc\x01\n" +
-	"\fRelayService\x12[\n" +
-	"\x0eChatCompletion\x12#.api.relay.v1.ChatCompletionRequest\x1a$.api.relay.v1.ChatCompletionResponse\x12O\n" +
+	"\bowned_by\x18\x04 \x01(\tR\aownedBy2\xf1\x01\n" +
+	"\fRelayService\x12|\n" +
+	"\x0eChatCompletion\x12#.api.relay.v1.ChatCompletionRequest\x1a$.api.relay.v1.ChatCompletionResponse\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/chat/completions\x12c\n" +
 	"\n" +
-	"ListModels\x12\x1f.api.relay.v1.ListModelsRequest\x1a .api.relay.v1.ListModelsResponseB$Z\"micro-one-api/api/relay/v1;relayv1b\x06proto3"
+	"ListModels\x12\x1f.api.relay.v1.ListModelsRequest\x1a .api.relay.v1.ListModelsResponse\"\x12\x82\xd3\xe4\x93\x02\f\x12\n" +
+	"/v1/modelsB$Z\"micro-one-api/api/relay/v1;relayv1b\x06proto3"
 
 var (
 	file_api_relay_v1_relay_proto_rawDescOnce sync.Once

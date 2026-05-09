@@ -2,11 +2,22 @@ syntax = "proto3";
 
 package api.relay.v1;
 
+import "google/api/annotations.proto";
+
 option go_package = "micro-one-api/api/relay/v1;relayv1";
 
 service RelayService {
-  rpc ChatCompletion(ChatCompletionRequest) returns (ChatCompletionResponse);
-  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+  rpc ChatCompletion(ChatCompletionRequest) returns (ChatCompletionResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/completions"
+      body: "*"
+    };
+  }
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse) {
+    option (google.api.http) = {
+      get: "/v1/models"
+    };
+  }
 }
 
 message ChatCompletionRequest {

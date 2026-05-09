@@ -2,13 +2,33 @@ syntax = "proto3";
 
 package api.notify.v1;
 
+import "google/api/annotations.proto";
+
 option go_package = "micro-one-api/api/notify/v1;notifyv1";
 
 service NotifyService {
-  rpc CreateNotification(CreateNotificationRequest) returns (CreateNotificationResponse);
-  rpc GetNotification(GetNotificationRequest) returns (GetNotificationResponse);
-  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
-  rpc UpdateNotificationStatus(UpdateNotificationStatusRequest) returns (UpdateNotificationStatusResponse);
+  rpc CreateNotification(CreateNotificationRequest) returns (CreateNotificationResponse) {
+    option (google.api.http) = {
+      post: "/v1/notifications"
+      body: "*"
+    };
+  }
+  rpc GetNotification(GetNotificationRequest) returns (GetNotificationResponse) {
+    option (google.api.http) = {
+      get: "/v1/notifications/{id}"
+    };
+  }
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse) {
+    option (google.api.http) = {
+      get: "/v1/notifications"
+    };
+  }
+  rpc UpdateNotificationStatus(UpdateNotificationStatusRequest) returns (UpdateNotificationStatusResponse) {
+    option (google.api.http) = {
+      put: "/v1/notifications/{id}/status"
+      body: "*"
+    };
+  }
 }
 
 message CreateNotificationRequest {

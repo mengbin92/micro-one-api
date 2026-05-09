@@ -2,13 +2,32 @@ syntax = "proto3";
 
 package api.config.v1;
 
+import "google/api/annotations.proto";
+
 option go_package = "micro-one-api/api/config/v1;configv1";
 
 service ConfigService {
-  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
-  rpc ListConfigs(ListConfigsRequest) returns (ListConfigsResponse);
-  rpc SetConfig(SetConfigRequest) returns (SetConfigResponse);
-  rpc DeleteConfig(DeleteConfigRequest) returns (DeleteConfigResponse);
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse) {
+    option (google.api.http) = {
+      get: "/v1/configs/{namespace}/{key}"
+    };
+  }
+  rpc ListConfigs(ListConfigsRequest) returns (ListConfigsResponse) {
+    option (google.api.http) = {
+      get: "/v1/configs/{namespace}"
+    };
+  }
+  rpc SetConfig(SetConfigRequest) returns (SetConfigResponse) {
+    option (google.api.http) = {
+      put: "/v1/configs/{namespace}/{key}"
+      body: "*"
+    };
+  }
+  rpc DeleteConfig(DeleteConfigRequest) returns (DeleteConfigResponse) {
+    option (google.api.http) = {
+      delete: "/v1/configs/{namespace}/{key}"
+    };
+  }
 }
 
 message GetConfigRequest {

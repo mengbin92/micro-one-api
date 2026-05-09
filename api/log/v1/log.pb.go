@@ -7,6 +7,7 @@
 package logv1
 
 import (
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -394,7 +395,7 @@ var File_api_log_v1_log_proto protoreflect.FileDescriptor
 const file_api_log_v1_log_proto_rawDesc = "" +
 	"\n" +
 	"\x14api/log/v1/log.proto\x12\n" +
-	"api.log.v1\"\x1f\n" +
+	"api.log.v1\x1a\x1cgoogle/api/annotations.proto\"\x1f\n" +
 	"\rGetLogRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\"\xbf\x01\n" +
 	"\x0eGetLogResponse\x12\x0e\n" +
@@ -422,12 +423,13 @@ const file_api_log_v1_log_proto_rawDesc = "" +
 	"request_id\x18\x04 \x01(\tR\trequestId\x12\x17\n" +
 	"\auser_id\x18\x05 \x01(\x03R\x06userId\"#\n" +
 	"\x11IngestLogResponse\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id2\xde\x01\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id2\x9c\x02\n" +
 	"\n" +
-	"LogService\x12?\n" +
-	"\x06GetLog\x12\x19.api.log.v1.GetLogRequest\x1a\x1a.api.log.v1.GetLogResponse\x12E\n" +
-	"\bListLogs\x12\x1b.api.log.v1.ListLogsRequest\x1a\x1c.api.log.v1.ListLogsResponse\x12H\n" +
-	"\tIngestLog\x12\x1c.api.log.v1.IngestLogRequest\x1a\x1d.api.log.v1.IngestLogResponseB Z\x1emicro-one-api/api/log/v1;logv1b\x06proto3"
+	"LogService\x12V\n" +
+	"\x06GetLog\x12\x19.api.log.v1.GetLogRequest\x1a\x1a.api.log.v1.GetLogResponse\"\x15\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/logs/{id}\x12W\n" +
+	"\bListLogs\x12\x1b.api.log.v1.ListLogsRequest\x1a\x1c.api.log.v1.ListLogsResponse\"\x10\x82\xd3\xe4\x93\x02\n" +
+	"\x12\b/v1/logs\x12]\n" +
+	"\tIngestLog\x12\x1c.api.log.v1.IngestLogRequest\x1a\x1d.api.log.v1.IngestLogResponse\"\x13\x82\xd3\xe4\x93\x02\r:\x01*\"\b/v1/logsB Z\x1emicro-one-api/api/log/v1;logv1b\x06proto3"
 
 var (
 	file_api_log_v1_log_proto_rawDescOnce sync.Once

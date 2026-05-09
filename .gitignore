@@ -24,6 +24,9 @@ profile.cov
 go.work
 go.work.sum
 
+# Generated OpenAPI document
+openapi.yaml
+
 # env file
 .env
 .env.local

@@ -2,17 +2,54 @@ syntax = "proto3";
 
 package api.monitor.v1;
 
+import "google/api/annotations.proto";
+
 option go_package = "micro-one-api/api/monitor/v1;monitorv1";
 
 service MonitorService {
-  rpc SaveHealthCheck(SaveHealthCheckRequest) returns (SaveHealthCheckResponse);
-  rpc ListHealthChecks(ListHealthChecksRequest) returns (ListHealthChecksResponse);
-  rpc GetLatestHealthCheck(GetLatestHealthCheckRequest) returns (GetLatestHealthCheckResponse);
-  rpc CreateAlertRule(CreateAlertRuleRequest) returns (CreateAlertRuleResponse);
-  rpc GetAlertRule(GetAlertRuleRequest) returns (GetAlertRuleResponse);
-  rpc ListAlertRules(ListAlertRulesRequest) returns (ListAlertRulesResponse);
-  rpc UpdateAlertRule(UpdateAlertRuleRequest) returns (UpdateAlertRuleResponse);
-  rpc DeleteAlertRule(DeleteAlertRuleRequest) returns (DeleteAlertRuleResponse);
+  rpc SaveHealthCheck(SaveHealthCheckRequest) returns (SaveHealthCheckResponse) {
+    option (google.api.http) = {
+      post: "/v1/health-checks"
+      body: "*"
+    };
+  }
+  rpc ListHealthChecks(ListHealthChecksRequest) returns (ListHealthChecksResponse) {
+    option (google.api.http) = {
+      get: "/v1/health-checks"
+    };
+  }
+  rpc GetLatestHealthCheck(GetLatestHealthCheckRequest) returns (GetLatestHealthCheckResponse) {
+    option (google.api.http) = {
+      get: "/v1/health-checks/latest"
+    };
+  }
+  rpc CreateAlertRule(CreateAlertRuleRequest) returns (CreateAlertRuleResponse) {
+    option (google.api.http) = {
+      post: "/v1/alert-rules"
+      body: "*"
+    };
+  }
+  rpc GetAlertRule(GetAlertRuleRequest) returns (GetAlertRuleResponse) {
+    option (google.api.http) = {
+      get: "/v1/alert-rules/{id}"
+    };
+  }
+  rpc ListAlertRules(ListAlertRulesRequest) returns (ListAlertRulesResponse) {
+    option (google.api.http) = {
+      get: "/v1/alert-rules"
+    };
+  }
+  rpc UpdateAlertRule(UpdateAlertRuleRequest) returns (UpdateAlertRuleResponse) {
+    option (google.api.http) = {
+      put: "/v1/alert-rules/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteAlertRule(DeleteAlertRuleRequest) returns (DeleteAlertRuleResponse) {
+    option (google.api.http) = {
+      delete: "/v1/alert-rules/{id}"
+    };
+  }
 }
 
 message SaveHealthCheckRequest {
