@@ -4,7 +4,9 @@ import (
 	"context"
 	crypto_rand "crypto/rand"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,11 +56,210 @@ func NewHTTPServer(
 // RegisterRoutes registers HTTP routes to a Kratos *khttp.Server.
 func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	srv.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
+	srv.HandleFunc("/v1/completions", s.handleRawRelay("/completions", true))
+	srv.HandleFunc("/v1/embeddings", s.handleRawRelay("/embeddings", false))
+	srv.HandleFunc("/v1/images/generations", s.handleRawRelay("/images/generations", true))
+	srv.HandleFunc("/v1/audio/transcriptions", s.handleRawRelay("/audio/transcriptions", true))
+	srv.HandleFunc("/v1/audio/translations", s.handleRawRelay("/audio/translations", true))
+	srv.HandleFunc("/v1/audio/speech", s.handleRawRelay("/audio/speech", false))
+	srv.HandleFunc("/v1/moderations", s.handleRawRelay("/moderations", false))
+	srv.HandlePrefix("/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
 	srv.HandleFunc("/v1/models", s.handleModels)
 	srv.HandleFunc("/healthz", s.handleHealth)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
 	})
+}
+
+func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			s.writeError(w, http.StatusUnauthorized, "missing authorization header")
+			return
+		}
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			s.writeError(w, http.StatusUnauthorized, "invalid authorization header format")
+			return
+		}
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token == "" {
+			s.writeError(w, http.StatusUnauthorized, "missing token")
+			return
+		}
+
+		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024*1024))
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, "failed to read request body")
+			return
+		}
+
+		clientModel := extractRawModel(body)
+		if clientModel == "" {
+			clientModel = defaultRawModel(upstreamPath)
+		}
+		if requireModel && clientModel == "" {
+			s.writeError(w, http.StatusBadRequest, "model is required")
+			return
+		}
+
+		plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
+			Token: token,
+			Model: clientModel,
+		})
+		if err != nil {
+			s.handleRelayPlanError(w, err)
+			return
+		}
+
+		var upstreamResp *relayprovider.RawResponse
+		retryExecutor := s.relayUsecase.NewRetryExecutor()
+		result := retryExecutor.Execute(r.Context(), plan.Auth.Group, clientModel, func(ctx context.Context, ch *relaybiz.Channel) error {
+			requestID := generateRequestID()
+			reservation, reserveErr := s.reserveQuota(
+				ctx,
+				fmt.Sprintf("%d", plan.Auth.UserID),
+				requestID,
+				estimateRawTokens(body),
+				plan.ResolvedModel,
+				fmt.Sprintf("%d", ch.ID),
+			)
+			if reserveErr != nil {
+				return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
+			}
+
+			provider, provErr := s.providerFactory.CreateProvider(ch.Type, ch.BaseURL, ch.Key)
+			if provErr != nil {
+				_ = s.releaseQuota(ctx, reservation.ReservationId, "failed to create provider")
+				return fmt.Errorf("failed to create provider: %w", provErr)
+			}
+
+			resp, forwardErr := provider.Forward(ctx, &relayprovider.RawRequest{
+				Method: r.Method,
+				Path:   upstreamPath,
+				Query:  r.URL.RawQuery,
+				Header: r.Header.Clone(),
+				Body:   body,
+			})
+			if forwardErr != nil {
+				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
+				return forwardErr
+			}
+
+			_ = s.commitQuota(ctx, reservation.ReservationId, extractTotalTokens(resp.Body, estimateRawTokens(body)), true)
+			upstreamResp = resp
+			return nil
+		})
+
+		if result.Err != nil {
+			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
+			return
+		}
+		if upstreamResp == nil {
+			s.writeError(w, http.StatusBadGateway, "upstream service error")
+			return
+		}
+
+		writeRawResponse(w, upstreamResp)
+	}
+}
+
+func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
+	const prefix = "/v1/oneapi/proxy/"
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing authorization header")
+		return
+	}
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		s.writeError(w, http.StatusUnauthorized, "invalid authorization header format")
+		return
+	}
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing token")
+		return
+	}
+
+	rest := strings.TrimPrefix(r.URL.Path, prefix)
+	channelPart, targetPart, ok := strings.Cut(rest, "/")
+	if !ok || channelPart == "" || targetPart == "" {
+		s.writeError(w, http.StatusBadRequest, "invalid proxy path")
+		return
+	}
+	channelID, err := parsePositiveInt64(channelPart)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid channel id")
+		return
+	}
+
+	authSnapshot, err := s.getAuthSnapshot(r.Context(), token)
+	if err != nil {
+		s.handleIdentityError(w, err)
+		return
+	}
+
+	channelReply, err := s.channelClient.GetChannel(r.Context(), &channelv1.GetChannelRequest{ChannelId: channelID})
+	if err != nil {
+		s.handleChannelError(w, err)
+		return
+	}
+	if channelReply.Channel == nil {
+		s.writeError(w, http.StatusNotFound, "channel not found")
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024*1024))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	model := extractRawModel(body)
+	if model == "" {
+		model = "proxy"
+	}
+
+	reservation, err := s.reserveQuota(
+		r.Context(),
+		fmt.Sprintf("%d", authSnapshot.UserId),
+		generateRequestID(),
+		estimateRawTokens(body),
+		model,
+		fmt.Sprintf("%d", channelReply.Channel.Id),
+	)
+	if err != nil {
+		s.writeError(w, http.StatusPaymentRequired, "quota reservation failed")
+		return
+	}
+
+	provider, err := s.providerFactory.CreateProvider(channelReply.Channel.Type, channelReply.Channel.BaseUrl, channelReply.Channel.Key)
+	if err != nil {
+		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "failed to create provider")
+		s.writeError(w, http.StatusInternalServerError, "failed to create provider")
+		return
+	}
+
+	resp, err := provider.Forward(r.Context(), &relayprovider.RawRequest{
+		Method: r.Method,
+		Path:   "/" + targetPart,
+		Query:  r.URL.RawQuery,
+		Header: r.Header.Clone(),
+		Body:   body,
+	})
+	if err != nil {
+		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream error")
+		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(err)), "upstream service error")
+		return
+	}
+
+	_ = s.commitQuota(r.Context(), reservation.ReservationId, extractTotalTokens(resp.Body, estimateRawTokens(body)), true)
+	writeRawResponse(w, resp)
 }
 
 func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -460,6 +661,88 @@ func (s *HTTPServer) estimateTokens(req *relayprovider.ChatCompletionsRequest) i
 func (s *HTTPServer) calculateActualTokens(resp *relayprovider.ChatCompletionsResponse) int64 {
 	// resp.Usage 不是指针，是值类型
 	return int64(resp.Usage.TotalTokens)
+}
+
+func extractRawModel(body []byte) string {
+	var payload map[string]interface{}
+	if err := sonic.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	model, _ := payload["model"].(string)
+	return strings.TrimSpace(model)
+}
+
+func defaultRawModel(upstreamPath string) string {
+	switch upstreamPath {
+	case "/embeddings":
+		return "text-embedding-ada-002"
+	case "/moderations":
+		return "text-moderation-latest"
+	case "/audio/speech":
+		return "tts-1"
+	default:
+		return ""
+	}
+}
+
+func estimateRawTokens(body []byte) int64 {
+	tokens := int64(len(body) / 4)
+	if tokens < 1 {
+		return 1
+	}
+	return tokens + 100
+}
+
+func extractTotalTokens(body []byte, fallback int64) int64 {
+	var payload struct {
+		Usage struct {
+			TotalTokens int64 `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := sonic.Unmarshal(body, &payload); err != nil {
+		return fallback
+	}
+	if payload.Usage.TotalTokens <= 0 {
+		return fallback
+	}
+	return payload.Usage.TotalTokens
+}
+
+func writeRawResponse(w http.ResponseWriter, resp *relayprovider.RawResponse) {
+	for key, values := range resp.Header {
+		if isRelayHopByHopHeader(key) {
+			continue
+		}
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(resp.Body)
+}
+
+func isRelayHopByHopHeader(key string) bool {
+	switch strings.ToLower(key) {
+	case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+		"te", "trailer", "transfer-encoding", "upgrade":
+		return true
+	default:
+		return false
+	}
+}
+
+func parsePositiveInt64(value string) (int64, error) {
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if id <= 0 {
+		return 0, fmt.Errorf("id must be positive")
+	}
+	return id, nil
 }
 
 func generateRequestID() string {

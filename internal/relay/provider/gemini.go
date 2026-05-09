@@ -40,6 +40,12 @@ func NewGeminiProvider(baseURL, apiKey string, timeout time.Duration) *GeminiPro
 	}
 }
 
+// Forward is not supported for Gemini because non-chat OpenAI-compatible
+// endpoints require endpoint-specific request and response conversion.
+func (p *GeminiProvider) Forward(ctx context.Context, req *RawRequest) (*RawResponse, error) {
+	return nil, fmt.Errorf("raw forwarding is not supported by gemini provider")
+}
+
 // Gemini API request/response structures
 
 type geminiRequest struct {
@@ -62,7 +68,7 @@ type geminiGenerationConfig struct {
 }
 
 type geminiResponse struct {
-	Candidates    []geminiCandidate  `json:"candidates"`
+	Candidates    []geminiCandidate   `json:"candidates"`
 	UsageMetadata geminiUsageMetadata `json:"usageMetadata"`
 }
 
@@ -79,7 +85,7 @@ type geminiUsageMetadata struct {
 
 // Gemini SSE stream wrapper
 type geminiStreamWrapper struct {
-	Candidates []geminiCandidate  `json:"candidates"`
+	Candidates    []geminiCandidate   `json:"candidates"`
 	UsageMetadata geminiUsageMetadata `json:"usageMetadata"`
 }
 

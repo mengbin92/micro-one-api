@@ -22,15 +22,33 @@ import (
 type Provider interface {
 	ChatCompletions(ctx context.Context, req *ChatCompletionsRequest) (*ChatCompletionsResponse, error)
 	ChatCompletionsStream(ctx context.Context, req *ChatCompletionsRequest) (<-chan StreamChunk, error)
+	Forward(ctx context.Context, req *RawRequest) (*RawResponse, error)
+}
+
+// RawRequest represents an API request that should be forwarded without
+// endpoint-specific schema conversion.
+type RawRequest struct {
+	Method string
+	Path   string
+	Query  string
+	Header http.Header
+	Body   []byte
+}
+
+// RawResponse is the upstream response for a forwarded raw request.
+type RawResponse struct {
+	StatusCode int
+	Header     http.Header
+	Body       []byte
 }
 
 // ChatCompletionsRequest represents a standardized chat completions request
 type ChatCompletionsRequest struct {
-	Model       string        `json:"model"`
-	Messages    []Message     `json:"messages"`
-	Stream      bool          `json:"stream"`
-	Temperature *float64      `json:"temperature,omitempty"`
-	MaxTokens   *int          `json:"max_tokens,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Stream      bool      `json:"stream"`
+	Temperature *float64  `json:"temperature,omitempty"`
+	MaxTokens   *int      `json:"max_tokens,omitempty"`
 }
 
 // Message represents a chat message
@@ -160,6 +178,70 @@ func NewOpenAIProvider(baseURL, apiKey string, timeout time.Duration) (*OpenAIPr
 		apiKey:  apiKey,
 		timeout: timeout,
 	}, nil
+}
+
+// Forward sends a raw OpenAI-compatible request to the upstream provider.
+func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("raw request is nil")
+	}
+	method := req.Method
+	if method == "" {
+		method = http.MethodPost
+	}
+
+	upstreamURL := strings.TrimRight(p.baseURL, "/") + "/" + strings.TrimLeft(req.Path, "/")
+	if req.Query != "" {
+		upstreamURL += "?" + req.Query
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, method, upstreamURL, bytes.NewReader(req.Body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create raw request: %w", err)
+	}
+	copyForwardHeaders(httpReq.Header, req.Header)
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send raw request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read raw response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+	}
+
+	return &RawResponse{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header.Clone(),
+		Body:       respBody,
+	}, nil
+}
+
+func copyForwardHeaders(dst http.Header, src http.Header) {
+	for key, values := range src {
+		if isHopByHopHeader(key) || strings.EqualFold(key, "Authorization") {
+			continue
+		}
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}
+
+func isHopByHopHeader(key string) bool {
+	switch strings.ToLower(key) {
+	case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+		"te", "trailer", "transfer-encoding", "upgrade":
+		return true
+	default:
+		return false
+	}
 }
 
 // ChatCompletions sends a chat completions request to the upstream provider

@@ -40,14 +40,20 @@ func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) *Anthro
 	}
 }
 
+// Forward is not supported for Anthropic because non-chat OpenAI-compatible
+// endpoints require endpoint-specific request and response conversion.
+func (p *AnthropicProvider) Forward(ctx context.Context, req *RawRequest) (*RawResponse, error) {
+	return nil, fmt.Errorf("raw forwarding is not supported by anthropic provider")
+}
+
 // Anthropic API request/response structures
 
 type anthropicRequest struct {
-	Model     string            `json:"model"`
+	Model     string             `json:"model"`
 	Messages  []anthropicMessage `json:"messages"`
-	System    string            `json:"system,omitempty"`
-	MaxTokens int               `json:"max_tokens"`
-	Stream    bool              `json:"stream,omitempty"`
+	System    string             `json:"system,omitempty"`
+	MaxTokens int                `json:"max_tokens"`
+	Stream    bool               `json:"stream,omitempty"`
 }
 
 type anthropicMessage struct {
