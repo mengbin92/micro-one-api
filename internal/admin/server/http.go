@@ -53,14 +53,36 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+	srv.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "",
+			"data": map[string]interface{}{
+				"version":              "micro-one-api",
+				"system_name":          "micro-one-api",
+				"registration_enabled": true,
+				"email_verification":   false,
+				"github_oauth":         false,
+				"wechat_login":         false,
+				"turnstile_check":      false,
+				"display_in_currency":  false,
+			},
+		})
+	})
 
 	// Protected admin endpoints
 	srv.HandleFunc("/v1/users", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
-		handleListUsers(w, r, svc)
+		handleUsers(w, r, svc)
+	}))
+	srv.HandlePrefix("/v1/users/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleUserByID(w, r, svc)
 	}))
 
 	srv.HandleFunc("/v1/channels", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
-		handleListChannels(w, r, svc)
+		handleChannels(w, r, svc)
+	}))
+	srv.HandlePrefix("/v1/channels/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleChannelByID(w, r, svc)
 	}))
 
 	srv.HandleFunc("/v1/system/options", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +98,16 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	}))
 
 	srv.HandleFunc("/v1/redeem-codes", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
-		handleListRedeemCodes(w, r, svc)
+		handleRedeemCodes(w, r, svc)
+	}))
+	srv.HandlePrefix("/v1/redeem-codes/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleRedeemCodeByCode(w, r, svc)
+	}))
+	srv.HandleFunc("/v1/topup", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleTopUp(w, r, svc)
+	}))
+	srv.HandleFunc("/api/topup", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleTopUp(w, r, svc)
 	}))
 
 	return srv
@@ -112,12 +143,77 @@ func getQueryInt64(r *http.Request, key string, defaultVal int64) int64 {
 	return v
 }
 
-func handleListUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
-	if r.Method != http.MethodGet {
+func decodeBody(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return false
+	}
+	return true
+}
+
+func parsePathID(path, prefix string) (int64, bool) {
+	idPart := strings.TrimPrefix(path, prefix)
+	idPart = strings.Trim(idPart, "/")
+	if idPart == "" || strings.Contains(idPart, "/") {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(idPart, 10, 64)
+	return id, err == nil && id > 0
+}
+
+func parsePathValue(path, prefix string) (string, bool) {
+	value := strings.TrimPrefix(path, prefix)
+	value = strings.Trim(value, "/")
+	return value, value != "" && !strings.Contains(value, "/")
+}
+
+func handleUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	switch r.Method {
+	case http.MethodGet:
+		handleListUsers(w, r, svc)
+	case http.MethodPost:
+		var req adminv1.AdminCreateUserRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		resp, err := svc.CreateUser(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var req adminv1.AdminUpdateUserRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		resp, err := svc.UpdateUser(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func handleUserByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	userID, ok := parsePathID(r.URL.Path, "/v1/users/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
 		return
 	}
+	switch r.Method {
+	case http.MethodDelete:
+		resp, err := svc.DeleteUser(r.Context(), &adminv1.AdminDeleteUserRequest{UserId: userID})
+		writeServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var req adminv1.AdminUpdateUserRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		req.UserId = userID
+		resp, err := svc.UpdateUser(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
 
+func handleListUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	page := getQueryInt32(r, "page", 1)
 	pageSize := getQueryInt32(r, "page_size", 20)
 	keyword := r.URL.Query().Get("keyword")
@@ -138,12 +234,75 @@ func handleListUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminS
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func handleListChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
-	if r.Method != http.MethodGet {
+func handleChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	switch r.Method {
+	case http.MethodGet:
+		handleListChannels(w, r, svc)
+	case http.MethodPost:
+		var req adminv1.AdminCreateChannelRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		resp, err := svc.CreateChannel(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var req adminv1.AdminUpdateChannelRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		resp, err := svc.UpdateChannel(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func handleChannelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	rest := strings.TrimPrefix(r.URL.Path, "/v1/channels/")
+	if strings.HasSuffix(rest, "/status") {
+		idPart := strings.TrimSuffix(rest, "/status")
+		channelID, err := strconv.ParseInt(strings.Trim(idPart, "/"), 10, 64)
+		if err != nil || channelID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid channel id"})
+			return
+		}
+		if r.Method != http.MethodPut {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		var req adminv1.AdminChangeChannelStatusRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		req.ChannelId = channelID
+		resp, err := svc.ChangeChannelStatus(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
 		return
 	}
 
+	channelID, ok := parsePathID(r.URL.Path, "/v1/channels/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid channel id"})
+		return
+	}
+	switch r.Method {
+	case http.MethodDelete:
+		resp, err := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channelID})
+		writeServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var req adminv1.AdminUpdateChannelRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		req.ChannelId = channelID
+		resp, err := svc.UpdateChannel(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func handleListChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	page := getQueryInt32(r, "page", 1)
 	pageSize := getQueryInt32(r, "page_size", 20)
 	keyword := r.URL.Query().Get("keyword")
@@ -242,12 +401,61 @@ func handleGetAccount(w http.ResponseWriter, r *http.Request, svc *service.Admin
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func handleListRedeemCodes(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
-	if r.Method != http.MethodGet {
+func handleRedeemCodes(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	switch r.Method {
+	case http.MethodGet:
+		if r.URL.Query().Get("keyword") != "" {
+			resp, err := svc.SearchRedeemCodes(r.Context(), &adminv1.SearchRedeemCodesRequest{Keyword: r.URL.Query().Get("keyword")})
+			writeServiceResponse(w, resp, err)
+			return
+		}
+		handleListRedeemCodes(w, r, svc)
+	case http.MethodPost:
+		var req adminv1.CreateRedeemCodeRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		resp, err := svc.CreateRedeemCode(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var req adminv1.UpdateRedeemCodeRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		resp, err := svc.UpdateRedeemCode(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func handleRedeemCodeByCode(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	code, ok := parsePathValue(r.URL.Path, "/v1/redeem-codes/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid redeem code"})
 		return
 	}
+	switch r.Method {
+	case http.MethodGet:
+		resp, err := svc.GetRedeemCode(r.Context(), &adminv1.GetRedeemCodeRequest{Code: code})
+		writeServiceResponse(w, resp, err)
+	case http.MethodDelete:
+		resp, err := svc.DeleteRedeemCode(r.Context(), &adminv1.DeleteRedeemCodeRequest{Code: code})
+		writeServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var req adminv1.UpdateRedeemCodeRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		req.Code = code
+		resp, err := svc.UpdateRedeemCode(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
 
+func handleListRedeemCodes(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	page := getQueryInt32(r, "page", 1)
 	pageSize := getQueryInt32(r, "page_size", 20)
 
@@ -255,6 +463,27 @@ func handleListRedeemCodes(w http.ResponseWriter, r *http.Request, svc *service.
 		Page:     page,
 		PageSize: pageSize,
 	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func handleTopUp(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var req adminv1.TopUpQuotaRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	resp, err := svc.TopUpQuota(r.Context(), &req)
+	writeServiceResponse(w, resp, err)
+}
+
+func writeServiceResponse(w http.ResponseWriter, resp interface{}, err error) {
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return

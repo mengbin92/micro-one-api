@@ -41,6 +41,45 @@ func TestHTTPServerRawRoutesAreRegistered(t *testing.T) {
 	}
 }
 
+func TestHTTPServerRetrieveModelCompatibility(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models/gpt-4o-mini", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"id":"gpt-4o-mini"`) {
+		t.Fatalf("model response missing id: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"permission"`) {
+		t.Fatalf("model response missing permission: %s", rec.Body.String())
+	}
+}
+
+func TestHTTPServerAPIStatusCompatibility(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("status response missing success: %s", rec.Body.String())
+	}
+}
+
 func TestHTTPServerRawRouteRequiresAuthorization(t *testing.T) {
 	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
 	srv := khttp.NewServer()

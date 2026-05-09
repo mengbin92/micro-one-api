@@ -65,6 +65,8 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	srv.HandleFunc("/v1/moderations", s.handleRawRelay("/moderations", false))
 	srv.HandlePrefix("/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
 	srv.HandleFunc("/v1/models", s.handleModels)
+	srv.HandlePrefix("/v1/models/", http.HandlerFunc(s.handleRetrieveModel))
+	srv.HandleFunc("/api/status", s.handleAPIStatus)
 	srv.HandleFunc("/healthz", s.handleHealth)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
@@ -471,8 +473,74 @@ func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, response)
 }
 
+func (s *HTTPServer) handleRetrieveModel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	const prefix = "/v1/models/"
+	modelID := strings.TrimPrefix(r.URL.Path, prefix)
+	if modelID == "" || strings.Contains(modelID, "/") {
+		s.writeError(w, http.StatusNotFound, "model not found")
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, openAIModelResponse(modelID))
+}
+
+func (s *HTTPServer) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "",
+		"data": map[string]interface{}{
+			"version":              "micro-one-api",
+			"system_name":          "micro-one-api",
+			"email_verification":   false,
+			"github_oauth":         false,
+			"wechat_login":         false,
+			"turnstile_check":      false,
+			"display_in_currency":  false,
+			"registration_enabled": true,
+		},
+	})
+}
+
 func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func openAIModelResponse(modelID string) map[string]interface{} {
+	permissionID := "modelperm-micro-one-api"
+	return map[string]interface{}{
+		"id":       modelID,
+		"object":   "model",
+		"created":  1626777600,
+		"owned_by": "organization",
+		"permission": []map[string]interface{}{
+			{
+				"id":                   permissionID,
+				"object":               "model_permission",
+				"created":              1626777600,
+				"allow_create_engine":  true,
+				"allow_sampling":       true,
+				"allow_logprobs":       true,
+				"allow_search_indices": false,
+				"allow_view":           true,
+				"allow_fine_tuning":    false,
+				"organization":         "*",
+				"group":                nil,
+				"is_blocking":          false,
+			},
+		},
+		"root":   modelID,
+		"parent": nil,
+	}
 }
 
 func (s *HTTPServer) getAuthSnapshot(ctx context.Context, token string) (*identityv1.GetAuthSnapshotReply, error) {
