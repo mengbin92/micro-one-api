@@ -1024,6 +1024,40 @@ func TestIdentityUsecase_UpdateSelf_UpdatesPassword(t *testing.T) {
 	}
 }
 
+func TestIdentityUsecase_UpdateSelfEmail_UpdatesEmail(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", DisplayName: "Alice", Email: "old@example.com", Group: "default", Status: UserStatusEnabled},
+		},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+
+	if err := uc.UpdateSelfEmail(context.Background(), 1, "new@example.com"); err != nil {
+		t.Fatalf("UpdateSelfEmail() error = %v", err)
+	}
+	if repo.users[1].Email != "new@example.com" {
+		t.Fatalf("email = %s, want new@example.com", repo.users[1].Email)
+	}
+}
+
+func TestIdentityUsecase_UpdateSelfEmail_PreservesOtherFields(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", DisplayName: "Alice", Email: "old@example.com", Group: "vip", Status: UserStatusDisabled},
+		},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+
+	if err := uc.UpdateSelfEmail(context.Background(), 1, "new@example.com"); err != nil {
+		t.Fatalf("UpdateSelfEmail() error = %v", err)
+	}
+	if repo.users[1].Username != "alice" || repo.users[1].DisplayName != "Alice" || repo.users[1].Group != "vip" || repo.users[1].Status != UserStatusDisabled {
+		t.Fatalf("unexpected preserved fields: %+v", repo.users[1])
+	}
+}
+
 // ========== DeleteUser Tests ==========
 
 func TestIdentityUsecase_DeleteUser_Success(t *testing.T) {

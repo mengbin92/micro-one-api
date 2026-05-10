@@ -523,6 +523,18 @@ func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, usernam
 	return uc.repo.UpdateUser(ctx, user)
 }
 
+func (uc *IdentityUsecase) UpdateSelfEmail(ctx context.Context, userID int64, email string) error {
+	if strings.TrimSpace(email) == "" {
+		return fmt.Errorf("email is required")
+	}
+	user, err := uc.repo.FindUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	user.Email = email
+	return uc.repo.UpdateUser(ctx, user)
+}
+
 func (uc *IdentityUsecase) DeleteUser(ctx context.Context, userID int64) error {
 	return uc.repo.DeleteUser(ctx, userID)
 }

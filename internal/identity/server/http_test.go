@@ -139,6 +139,79 @@ func TestIdentityHTTPRegisterRejectsInvalidAffCode(t *testing.T) {
 	}
 }
 
+func TestIdentityHTTPEmailBindRequiresAuth(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/oauth/email/bind?email=new@example.com&code=123456", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestIdentityHTTPEmailBindRejectsInvalidCode(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/oauth/email/bind?email=new@example.com&code=bad", nil)
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":false`) {
+		t.Fatalf("bind response mismatch: %s", rec.Body.String())
+	}
+}
+
+func TestIdentityHTTPEmailBindUpdatesEmail(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	verifyReq := httptest.NewRequest(http.MethodGet, "/api/verification?email=new@example.com", nil)
+	verifyRec := httptest.NewRecorder()
+	srv.ServeHTTP(verifyRec, verifyReq)
+	if verifyRec.Code != http.StatusOK {
+		t.Fatalf("verification status = %d, body=%s", verifyRec.Code, verifyRec.Body.String())
+	}
+	code := extractJSONField(verifyRec.Body.String(), "verification_code")
+	if code == "" {
+		t.Fatalf("verification code missing: %s", verifyRec.Body.String())
+	}
+
+	bindReq := httptest.NewRequest(http.MethodGet, "/api/oauth/email/bind?email=new@example.com&code="+code, nil)
+	bindReq.Header.Set("Authorization", "Bearer "+authToken)
+	bindRec := httptest.NewRecorder()
+	srv.ServeHTTP(bindRec, bindReq)
+	if bindRec.Code != http.StatusOK {
+		t.Fatalf("bind status = %d, body=%s", bindRec.Code, bindRec.Body.String())
+	}
+	if !strings.Contains(bindRec.Body.String(), `"success":true`) {
+		t.Fatalf("bind response mismatch: %s", bindRec.Body.String())
+	}
+
+	selfReq := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	selfReq.Header.Set("Authorization", "Bearer "+authToken)
+	selfRec := httptest.NewRecorder()
+	srv.ServeHTTP(selfRec, selfReq)
+	if selfRec.Code != http.StatusOK {
+		t.Fatalf("self status = %d, body=%s", selfRec.Code, selfRec.Body.String())
+	}
+	if !strings.Contains(selfRec.Body.String(), `"email":"new@example.com"`) {
+		t.Fatalf("self response missing new email: %s", selfRec.Body.String())
+	}
+}
+
 func TestIdentityHTTPSelfUpdateRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)

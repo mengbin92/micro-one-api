@@ -73,6 +73,9 @@ func NewHTTPServer(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.Pr
 	srv.HandleFunc("/api/user/aff", func(w http.ResponseWriter, r *http.Request) {
 		handleAffCode(w, r, uc)
 	})
+	srv.HandleFunc("/api/oauth/email/bind", func(w http.ResponseWriter, r *http.Request) {
+		handleEmailBind(w, r, uc)
+	})
 	srv.HandleFunc("/api/user/dashboard", func(w http.ResponseWriter, r *http.Request) {
 		handleUserDashboard(w, r, uc, billingClient)
 	})
@@ -160,6 +163,36 @@ func handleAffCode(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUseca
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: code})
+}
+
+func handleEmailBind(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	snapshot, err := authSnapshotFromRequest(r, uc)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
+		return
+	}
+	email := r.URL.Query().Get("email")
+	code := r.URL.Query().Get("code")
+	if email == "" || code == "" {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid parameter"})
+		return
+	}
+	verificationStore.Lock()
+	record, ok := verificationStore.items["v:"+email]
+	verificationStore.Unlock()
+	if !ok || record.Code != code {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "验证码错误或已过期"})
+		return
+	}
+	if err := uc.UpdateSelfEmail(r.Context(), snapshot.UserID, email); err != nil {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: ""})
 }
 
 func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {

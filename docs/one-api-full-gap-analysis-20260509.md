@@ -48,16 +48,17 @@
 | 公告/内容兼容入口缺失 | config-service 已暴露 `/api/notice`、`/api/about`、`/api/home_page_content` 基础兼容入口 |
 | 分组查询兼容入口缺失 | relay-gateway 已暴露 `/api/group` 基础兼容入口 |
 | 渠道测试与余额兼容入口缺失 | admin-api 已暴露 `/api/channel/test`、`/api/channel/test/{id}`、`/api/channel/update_balance`、`/api/channel/update_balance/{id}` 基础兼容入口 |
+| 邮箱绑定缺失 | identity-service 新增 `/api/oauth/email/bind`，使用 `/api/verification` 验证码绑定当前用户邮箱 |
 
 ## 仍未完全实现
 
 | 分类 | one-api 能力 | 当前缺口 |
 | --- | --- | --- |
 | Web 前端 | `web/default`、`web/air`、`web/berry` 三套主题与页面 | 当前仓库没有完整前端应用 |
-| 用户自助 API | `/api/user/*` 邮箱绑定等完整体验 | 已补注册、登录、self 查询/更新/删除、dashboard 账户快照、token、aff、topup、available_models；仍缺邮箱绑定等完整体验 |
+| 用户自助 API | `/api/user/*` 完整前端体验 | 已补注册、登录、self 查询/更新/删除、邮箱绑定、dashboard 账户快照、token、aff、topup、available_models；仍缺更完整前端体验 |
 | 用户 dashboard 图表 | One API `dashboard` 返回按天/模型日志统计 | 当前先返回 billing account snapshot，仍缺 usage log 的按天/模型聚合图表 |
 | Token 管理 | `/api/token/*` 列表、搜索、创建、更新、删除、状态 | 缺完整 token 管理 HTTP API 和数据模型对齐 |
-| OAuth/SSO | GitHub、OIDC、飞书、微信、绑定邮箱 | 当前只具备部分 OAuth 基础能力，未对齐 One API 的完整路由和前端流程 |
+| OAuth/SSO | GitHub、OIDC、飞书、微信 | 已补邮箱绑定；当前只具备部分 OAuth 基础能力，未对齐 One API 的完整路由和前端流程 |
 | 日志 API | `/api/log/*` 完整日志字段、管理日志搜索、删除历史日志 | 已补用户 self 查询/搜索/统计；仍缺 One API 完整日志字段和部分管理日志操作 |
 | 公告/内容 | `/api/notice`、`/api/about`、`/api/home_page_content` | 已有基础兼容入口；仍缺完整前端内容管理体验 |
 | 渠道测试与余额 | `/api/channel/test`、`/update_balance` | 已有基础兼容入口；仍缺真实渠道余额查询实现 |
@@ -73,7 +74,7 @@
 
 目标：让已有微服务能力通过 One API 风格 HTTP 路由可用。
 
-1. 补邮箱绑定等 `/api/user/*` 和 `/api/oauth/*` 剩余用户体验路由。
+1. 补 GitHub/OIDC/飞书/微信等 `/api/oauth/*` 剩余用户体验路由。
 2. 补 dashboard 按天/模型 usage log 聚合图表。
 3. 补 One API 完整日志字段、历史日志删除和管理搜索。
 4. 补内容、分组、渠道余额的完整管理体验。
