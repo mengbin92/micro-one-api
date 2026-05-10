@@ -490,6 +490,103 @@ func TestIdentityHTTPTokenCRUD(t *testing.T) {
 	}
 }
 
+func TestIdentityHTTPTokenPathGetAndDelete(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/token/", strings.NewReader(`{"name":"path-token","models":["gpt-4o-mini"]}`))
+	createReq.Header.Set("Authorization", "Bearer "+authToken)
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body=%s", createRec.Code, createRec.Body.String())
+	}
+	tokenID := extractJSONNumberField(createRec.Body.String(), "id")
+	if tokenID == "" {
+		t.Fatalf("token id missing: %s", createRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/token/"+tokenID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+authToken)
+	getRec := httptest.NewRecorder()
+	srv.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, body=%s", getRec.Code, getRec.Body.String())
+	}
+	if !strings.Contains(getRec.Body.String(), `"name":"path-token"`) {
+		t.Fatalf("get response mismatch: %s", getRec.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/token/"+tokenID, nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+authToken)
+	deleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if !strings.Contains(deleteRec.Body.String(), `"success":true`) {
+		t.Fatalf("delete response mismatch: %s", deleteRec.Body.String())
+	}
+}
+
+func TestIdentityHTTPTokenSearchRoute(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	for _, name := range []string{"alpha-token", "beta-token"} {
+		req := httptest.NewRequest(http.MethodPost, "/api/token/", strings.NewReader(`{"name":"`+name+`"}`))
+		req.Header.Set("Authorization", "Bearer "+authToken)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("create %s status = %d, body=%s", name, rec.Code, rec.Body.String())
+		}
+	}
+
+	searchReq := httptest.NewRequest(http.MethodGet, "/api/token/search?keyword=alpha", nil)
+	searchReq.Header.Set("Authorization", "Bearer "+authToken)
+	searchRec := httptest.NewRecorder()
+	srv.ServeHTTP(searchRec, searchReq)
+	if searchRec.Code != http.StatusOK {
+		t.Fatalf("search status = %d, body=%s", searchRec.Code, searchRec.Body.String())
+	}
+	body := searchRec.Body.String()
+	if !strings.Contains(body, `"name":"alpha-token"`) || strings.Contains(body, `"name":"beta-token"`) {
+		t.Fatalf("search response mismatch: %s", body)
+	}
+}
+
+func TestIdentityHTTPTokenUpdateAcceptsBodyID(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/token/", strings.NewReader(`{"name":"old-name"}`))
+	createReq.Header.Set("Authorization", "Bearer "+authToken)
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	tokenID := extractJSONNumberField(createRec.Body.String(), "id")
+	if tokenID == "" {
+		t.Fatalf("token id missing: %s", createRec.Body.String())
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/token/", strings.NewReader(`{"id":`+tokenID+`,"name":"new-name","models":["gpt-4o-mini"],"status":1}`))
+	updateReq.Header.Set("Authorization", "Bearer "+authToken)
+	updateRec := httptest.NewRecorder()
+	srv.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, body=%s", updateRec.Code, updateRec.Body.String())
+	}
+	if !strings.Contains(updateRec.Body.String(), `"success":true`) || !strings.Contains(updateRec.Body.String(), `"name":"new-name"`) {
+		t.Fatalf("update response mismatch: %s", updateRec.Body.String())
+	}
+}
+
 func TestIdentityHTTPPasswordReset(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
@@ -588,6 +685,20 @@ func extractJSONField(body, key string) string {
 	end := strings.Index(rest, `"`)
 	if end < 0 {
 		return ""
+	}
+	return rest[:end]
+}
+
+func extractJSONNumberField(body, key string) string {
+	prefix := `"` + key + `":`
+	idx := strings.Index(body, prefix)
+	if idx < 0 {
+		return ""
+	}
+	rest := body[idx+len(prefix):]
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
 	}
 	return rest[:end]
 }

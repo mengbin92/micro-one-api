@@ -94,9 +94,9 @@ func NewHTTPServer(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.Pr
 	srv.HandleFunc("/api/user/token", func(w http.ResponseWriter, r *http.Request) {
 		handleCreateUserToken(w, r, uc)
 	})
-	srv.HandleFunc("/api/token/", func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/token/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handleTokens(w, r, uc)
-	})
+	}))
 	srv.HandleFunc("/api/token", func(w http.ResponseWriter, r *http.Request) {
 		handleTokens(w, r, uc)
 	})
@@ -506,11 +506,8 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		}
 		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: tokenToMap(token, true)})
 	case http.MethodPut:
-		if !hasTokenID {
-			writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "token id is required"})
-			return
-		}
 		var req struct {
+			ID             int64    `json:"id"`
 			Name           string   `json:"name"`
 			Models         []string `json:"models"`
 			ExpiredAt      int64    `json:"expired_time"`
@@ -520,6 +517,14 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		}
 		req.RemainQuota = -1
 		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if !hasTokenID {
+			tokenID = req.ID
+			hasTokenID = tokenID > 0
+		}
+		if !hasTokenID {
+			writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "token id is required"})
 			return
 		}
 		token, err := uc.UpdateAccessToken(r.Context(), snapshot.UserID, tokenID, req.Name, req.Models, req.ExpiredAt, req.Status, req.RemainQuota, req.UnlimitedQuota)
