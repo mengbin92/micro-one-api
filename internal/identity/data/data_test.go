@@ -73,6 +73,29 @@ func TestFindUserByUsername_NotFound(t *testing.T) {
 	}
 }
 
+// ========== FindUserByAffCode Tests ==========
+
+func TestFindUserByAffCode_Success(t *testing.T) {
+	repo := newTestRepo()
+	repo.usersByID[1] = &biz.User{ID: 1, Username: "alice", AffCode: "AFF12345", Status: biz.UserStatusEnabled}
+
+	user, err := repo.FindUserByAffCode(context.Background(), "AFF12345")
+	if err != nil {
+		t.Fatalf("FindUserByAffCode() error = %v", err)
+	}
+	if user.ID != 1 {
+		t.Fatalf("unexpected user ID: %d", user.ID)
+	}
+}
+
+func TestFindUserByAffCode_NotFound(t *testing.T) {
+	repo := newTestRepo()
+	_, err := repo.FindUserByAffCode(context.Background(), "NONE")
+	if err != biz.ErrUserNotFound {
+		t.Fatalf("expected ErrUserNotFound, got: %v", err)
+	}
+}
+
 // ========== CreateUser Tests ==========
 
 func TestCreateUser_Success(t *testing.T) {
@@ -120,6 +143,23 @@ func TestUpdateUser_Success(t *testing.T) {
 	}
 }
 
+func TestUpdateUser_PersistsAffFields(t *testing.T) {
+	repo := newTestRepo()
+	repo.usersByID[1] = &biz.User{ID: 1, Username: "alice", Status: biz.UserStatusEnabled}
+
+	updated := &biz.User{ID: 1, Username: "alice", Status: biz.UserStatusEnabled, AffCode: "AFF12345", InviterID: 99}
+	err := repo.UpdateUser(context.Background(), updated)
+	if err != nil {
+		t.Fatalf("UpdateUser() error = %v", err)
+	}
+	if repo.usersByID[1].AffCode != "AFF12345" {
+		t.Fatalf("aff code not updated: %s", repo.usersByID[1].AffCode)
+	}
+	if repo.usersByID[1].InviterID != 99 {
+		t.Fatalf("inviter id not updated: %d", repo.usersByID[1].InviterID)
+	}
+}
+
 func TestUpdateUser_NotFound(t *testing.T) {
 	repo := newTestRepo()
 	updated := &biz.User{ID: 999, Username: "nobody"}
@@ -147,6 +187,28 @@ func TestDeleteUser_Success(t *testing.T) {
 func TestDeleteUser_NotFound(t *testing.T) {
 	repo := newTestRepo()
 	err := repo.DeleteUser(context.Background(), 999)
+	if err != biz.ErrUserNotFound {
+		t.Fatalf("expected ErrUserNotFound, got: %v", err)
+	}
+}
+
+// ========== IncreaseUserQuota Tests ==========
+
+func TestIncreaseUserQuota_Success(t *testing.T) {
+	repo := newTestRepo()
+	repo.usersByID[1] = &biz.User{ID: 1, Username: "alice"}
+
+	if err := repo.IncreaseUserQuota(context.Background(), 1, 250); err != nil {
+		t.Fatalf("IncreaseUserQuota() error = %v", err)
+	}
+	if repo.usersByID[1].Quota != 250 {
+		t.Fatalf("quota = %d, want 250", repo.usersByID[1].Quota)
+	}
+}
+
+func TestIncreaseUserQuota_NotFound(t *testing.T) {
+	repo := newTestRepo()
+	err := repo.IncreaseUserQuota(context.Background(), 999, 250)
 	if err != biz.ErrUserNotFound {
 		t.Fatalf("expected ErrUserNotFound, got: %v", err)
 	}

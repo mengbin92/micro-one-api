@@ -65,6 +65,9 @@ func NewHTTPServer(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.Pr
 	srv.HandleFunc("/api/user/available_models", func(w http.ResponseWriter, r *http.Request) {
 		handleAvailableModels(w, r, uc)
 	})
+	srv.HandleFunc("/api/user/aff", func(w http.ResponseWriter, r *http.Request) {
+		handleAffCode(w, r, uc)
+	})
 	srv.HandleFunc("/api/verification", func(w http.ResponseWriter, r *http.Request) {
 		handleEmailVerification(w, r)
 	})
@@ -114,6 +117,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 		Password string `json:"password"`
 		Email    string `json:"email"`
 		Group    string `json:"group"`
+		AffCode  string `json:"aff_code"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -121,12 +125,30 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 	if req.Group == "" {
 		req.Group = "default"
 	}
-	user, err := uc.Register(r.Context(), req.Username, req.Password, req.Email, req.Group)
+	user, err := uc.RegisterWithAffCode(r.Context(), req.Username, req.Password, req.Email, req.Group, req.AffCode)
 	if err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"user_id": user.ID}})
+}
+
+func handleAffCode(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	snapshot, err := authSnapshotFromRequest(r, uc)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
+		return
+	}
+	code, err := uc.GetOrCreateAffCode(r.Context(), snapshot.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: code})
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {

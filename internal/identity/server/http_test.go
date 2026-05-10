@@ -51,6 +51,90 @@ func TestIdentityHTTPRegisterLoginAndSelf(t *testing.T) {
 	}
 }
 
+func TestIdentityHTTPAffCodeRequiresAuth(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/aff", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestIdentityHTTPAffCodeReturnsUserCode(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	if _, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default"); err != nil {
+		t.Fatal(err)
+	}
+	_, authToken, err := uc.Login(context.Background(), "alice", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewHTTPServer(":0", uc, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/aff", nil)
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) || extractJSONField(rec.Body.String(), "data") == "" {
+		t.Fatalf("aff response mismatch: %s", rec.Body.String())
+	}
+}
+
+func TestIdentityHTTPRegisterAcceptsAffCode(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewHTTPServer(":0", uc, nil)
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	registerRec := httptest.NewRecorder()
+	srv.ServeHTTP(registerRec, registerReq)
+
+	if registerRec.Code != http.StatusOK {
+		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	}
+	if !strings.Contains(registerRec.Body.String(), `"success":true`) {
+		t.Fatalf("register failed: %s", registerRec.Body.String())
+	}
+	bob, err := repo.FindUserByUsername(context.Background(), "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bob.InviterID != inviter.ID {
+		t.Fatalf("inviter id = %d, want %d", bob.InviterID, inviter.ID)
+	}
+}
+
+func TestIdentityHTTPRegisterRejectsInvalidAffCode(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"NONE"}`))
+	registerRec := httptest.NewRecorder()
+	srv.ServeHTTP(registerRec, registerReq)
+
+	if registerRec.Code != http.StatusOK {
+		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	}
+	if !strings.Contains(registerRec.Body.String(), `"success":false`) {
+		t.Fatalf("expected failed registration: %s", registerRec.Body.String())
+	}
+}
+
 func TestIdentityHTTPTokenCRUD(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)

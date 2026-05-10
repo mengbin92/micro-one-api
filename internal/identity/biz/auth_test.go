@@ -46,6 +46,15 @@ func (m *mockIdentityRepo) FindUserByEmail(ctx context.Context, email string) (*
 	return nil, ErrUserNotFound
 }
 
+func (m *mockIdentityRepo) FindUserByAffCode(ctx context.Context, affCode string) (*User, error) {
+	for _, u := range m.users {
+		if u.AffCode == affCode {
+			return u, nil
+		}
+	}
+	return nil, ErrUserNotFound
+}
+
 func (m *mockIdentityRepo) FindUserByOAuth(ctx context.Context, provider, oauthID string) (*User, error) {
 	for _, u := range m.users {
 		if u.OAuthProvider == provider && u.OAuthID == oauthID {
@@ -68,6 +77,15 @@ func (m *mockIdentityRepo) UpdateUser(ctx context.Context, user *User) error {
 
 func (m *mockIdentityRepo) DeleteUser(ctx context.Context, userID int64) error {
 	delete(m.users, userID)
+	return nil
+}
+
+func (m *mockIdentityRepo) IncreaseUserQuota(ctx context.Context, userID int64, amount int64) error {
+	user, ok := m.users[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	user.Quota += amount
 	return nil
 }
 
@@ -659,6 +677,98 @@ func TestIdentityUsecase_Register_Success(t *testing.T) {
 	}
 	if user.Status != UserStatusEnabled {
 		t.Fatalf("expected enabled status, got: %d", user.Status)
+	}
+	if user.AffCode == "" {
+		t.Fatal("expected aff code to be generated")
+	}
+}
+
+func TestIdentityUsecase_RegisterWithAffCode_SetsInviterID(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled, AffCode: "INVITE01"},
+		},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+
+	user, err := uc.RegisterWithAffCode(context.Background(), "bob", "password123", "bob@example.com", "default", "INVITE01")
+	if err != nil {
+		t.Fatalf("RegisterWithAffCode() error = %v", err)
+	}
+	if user.InviterID != 1 {
+		t.Fatalf("inviter id = %d, want 1", user.InviterID)
+	}
+	if user.AffCode == "" {
+		t.Fatal("expected new user aff code")
+	}
+}
+
+func TestIdentityUsecase_RegisterWithAffCode_InvalidCode(t *testing.T) {
+	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
+	uc := NewIdentityUsecase(repo)
+
+	_, err := uc.RegisterWithAffCode(context.Background(), "bob", "password123", "bob@example.com", "default", "NONE")
+	if err == nil || err.Error() != "invalid aff code" {
+		t.Fatalf("expected invalid aff code, got: %v", err)
+	}
+}
+
+func TestIdentityUsecase_GetOrCreateAffCode_ReturnsExisting(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users:  map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled, AffCode: "EXISTING"}},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+
+	code, err := uc.GetOrCreateAffCode(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetOrCreateAffCode() error = %v", err)
+	}
+	if code != "EXISTING" {
+		t.Fatalf("code = %q, want EXISTING", code)
+	}
+}
+
+func TestIdentityUsecase_GetOrCreateAffCode_GeneratesWhenMissing(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users:  map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled}},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+
+	code, err := uc.GetOrCreateAffCode(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetOrCreateAffCode() error = %v", err)
+	}
+	if code == "" {
+		t.Fatal("expected generated code")
+	}
+	if repo.users[1].AffCode != code {
+		t.Fatalf("persisted code = %q, want %q", repo.users[1].AffCode, code)
+	}
+}
+
+func TestIdentityUsecase_RegisterWithAffCode_AppliesConfiguredBonuses(t *testing.T) {
+	t.Setenv("INVITEE_BONUS_QUOTA", "25")
+	t.Setenv("INVITER_BONUS_QUOTA", "50")
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled, AffCode: "INVITE01", Quota: 100},
+		},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+
+	user, err := uc.RegisterWithAffCode(context.Background(), "bob", "password123", "bob@example.com", "default", "INVITE01")
+	if err != nil {
+		t.Fatalf("RegisterWithAffCode() error = %v", err)
+	}
+	if repo.users[1].Quota != 150 {
+		t.Fatalf("inviter quota = %d, want 150", repo.users[1].Quota)
+	}
+	if user.Quota != 25 {
+		t.Fatalf("invitee quota = %d, want 25", user.Quota)
 	}
 }
 

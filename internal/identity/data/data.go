@@ -32,6 +32,9 @@ type userModel struct {
 	PasswordHash  string `gorm:"column:password_hash"`
 	OAuthProvider string `gorm:"column:oauth_provider;index"`
 	OAuthID       string `gorm:"column:oauth_id;index"`
+	Quota         int64  `gorm:"column:quota"`
+	AffCode       string `gorm:"column:aff_code;uniqueIndex"`
+	InviterID     int64  `gorm:"column:inviter_id;index"`
 }
 
 func (userModel) TableName() string { return "users" }
@@ -135,6 +138,21 @@ func (r *Repository) FindUserByEmail(ctx context.Context, email string) (*biz.Us
 	return nil, biz.ErrUserNotFound
 }
 
+func (r *Repository) FindUserByAffCode(ctx context.Context, affCode string) (*biz.User, error) {
+	if r.db != nil {
+		return r.findUserByAffCodeDB(ctx, affCode)
+	}
+	r.identityLock.RLock()
+	defer r.identityLock.RUnlock()
+	for _, u := range r.usersByID {
+		if u.AffCode == affCode {
+			cloned := *u
+			return &cloned, nil
+		}
+	}
+	return nil, biz.ErrUserNotFound
+}
+
 func (r *Repository) FindUserByOAuth(ctx context.Context, provider, oauthID string) (*biz.User, error) {
 	if r.db != nil {
 		return r.findUserByOAuthDB(ctx, provider, oauthID)
@@ -184,6 +202,20 @@ func (r *Repository) DeleteUser(ctx context.Context, userID int64) error {
 		return biz.ErrUserNotFound
 	}
 	delete(r.usersByID, userID)
+	return nil
+}
+
+func (r *Repository) IncreaseUserQuota(ctx context.Context, userID int64, amount int64) error {
+	if r.db != nil {
+		return r.increaseUserQuotaDB(ctx, userID, amount)
+	}
+	r.identityLock.Lock()
+	defer r.identityLock.Unlock()
+	user, ok := r.usersByID[userID]
+	if !ok {
+		return biz.ErrUserNotFound
+	}
+	user.Quota += amount
 	return nil
 }
 
@@ -336,17 +368,7 @@ func (r *Repository) findUserByIDDB(ctx context.Context, userID int64) (*biz.Use
 		}
 		return nil, err
 	}
-	return &biz.User{
-		ID:            model.ID,
-		Username:      model.Username,
-		DisplayName:   model.DisplayName,
-		Email:         model.Email,
-		Group:         model.Group,
-		Status:        model.Status,
-		PasswordHash:  model.PasswordHash,
-		OAuthProvider: model.OAuthProvider,
-		OAuthID:       model.OAuthID,
-	}, nil
+	return userModelToBiz(model), nil
 }
 
 func (r *Repository) findUserByUsernameDB(ctx context.Context, username string) (*biz.User, error) {
@@ -357,17 +379,7 @@ func (r *Repository) findUserByUsernameDB(ctx context.Context, username string) 
 		}
 		return nil, err
 	}
-	return &biz.User{
-		ID:            model.ID,
-		Username:      model.Username,
-		DisplayName:   model.DisplayName,
-		Email:         model.Email,
-		Group:         model.Group,
-		Status:        model.Status,
-		PasswordHash:  model.PasswordHash,
-		OAuthProvider: model.OAuthProvider,
-		OAuthID:       model.OAuthID,
-	}, nil
+	return userModelToBiz(model), nil
 }
 
 func (r *Repository) findUserByEmailDB(ctx context.Context, email string) (*biz.User, error) {
@@ -378,17 +390,18 @@ func (r *Repository) findUserByEmailDB(ctx context.Context, email string) (*biz.
 		}
 		return nil, err
 	}
-	return &biz.User{
-		ID:            model.ID,
-		Username:      model.Username,
-		DisplayName:   model.DisplayName,
-		Email:         model.Email,
-		Group:         model.Group,
-		Status:        model.Status,
-		PasswordHash:  model.PasswordHash,
-		OAuthProvider: model.OAuthProvider,
-		OAuthID:       model.OAuthID,
-	}, nil
+	return userModelToBiz(model), nil
+}
+
+func (r *Repository) findUserByAffCodeDB(ctx context.Context, affCode string) (*biz.User, error) {
+	var model userModel
+	if err := r.db.WithContext(ctx).Where("aff_code = ?", affCode).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, biz.ErrUserNotFound
+		}
+		return nil, err
+	}
+	return userModelToBiz(model), nil
 }
 
 func (r *Repository) findUserByOAuthDB(ctx context.Context, provider, oauthID string) (*biz.User, error) {
@@ -399,17 +412,7 @@ func (r *Repository) findUserByOAuthDB(ctx context.Context, provider, oauthID st
 		}
 		return nil, err
 	}
-	return &biz.User{
-		ID:            model.ID,
-		Username:      model.Username,
-		DisplayName:   model.DisplayName,
-		Email:         model.Email,
-		Group:         model.Group,
-		Status:        model.Status,
-		PasswordHash:  model.PasswordHash,
-		OAuthProvider: model.OAuthProvider,
-		OAuthID:       model.OAuthID,
-	}, nil
+	return userModelToBiz(model), nil
 }
 
 func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
@@ -422,6 +425,9 @@ func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 		PasswordHash:  user.PasswordHash,
 		OAuthProvider: user.OAuthProvider,
 		OAuthID:       user.OAuthID,
+		Quota:         user.Quota,
+		AffCode:       user.AffCode,
+		InviterID:     user.InviterID,
 	}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		return err
@@ -436,7 +442,22 @@ func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
 		"email":        user.Email,
 		"group":        user.Group,
 		"status":       user.Status,
+		"aff_code":     user.AffCode,
+		"inviter_id":   user.InviterID,
 	}).Error
+}
+
+func (r *Repository) increaseUserQuotaDB(ctx context.Context, userID int64, amount int64) error {
+	result := r.db.WithContext(ctx).Model(&userModel{}).
+		Where("id = ?", userID).
+		Update("quota", gorm.Expr("quota + ?", amount))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return biz.ErrUserNotFound
+	}
+	return nil
 }
 
 func (r *Repository) deleteUserDB(ctx context.Context, userID int64) error {
@@ -529,6 +550,23 @@ func tokenModelToBiz(model tokenModel) *biz.Token {
 	}
 }
 
+func userModelToBiz(model userModel) *biz.User {
+	return &biz.User{
+		ID:            model.ID,
+		Username:      model.Username,
+		DisplayName:   model.DisplayName,
+		Email:         model.Email,
+		Group:         model.Group,
+		Status:        model.Status,
+		PasswordHash:  model.PasswordHash,
+		OAuthProvider: model.OAuthProvider,
+		OAuthID:       model.OAuthID,
+		Quota:         model.Quota,
+		AffCode:       model.AffCode,
+		InviterID:     model.InviterID,
+	}
+}
+
 func (r *Repository) listUsersDB(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*biz.User, int64, error) {
 	var models []userModel
 	query := r.db.WithContext(ctx).Model(&userModel{})
@@ -558,6 +596,9 @@ func (r *Repository) listUsersDB(ctx context.Context, page, pageSize int32, keyw
 			Email:       m.Email,
 			Group:       m.Group,
 			Status:      m.Status,
+			Quota:       m.Quota,
+			AffCode:     m.AffCode,
+			InviterID:   m.InviterID,
 		}
 	}
 	return users, total, nil

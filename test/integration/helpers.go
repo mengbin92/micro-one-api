@@ -231,6 +231,15 @@ func (m *testIdentityRepo) FindUserByEmail(ctx context.Context, email string) (*
 	return nil, identitybiz.ErrUserNotFound
 }
 
+func (m *testIdentityRepo) FindUserByAffCode(ctx context.Context, affCode string) (*identitybiz.User, error) {
+	for _, u := range m.users {
+		if u.AffCode == affCode {
+			return u, nil
+		}
+	}
+	return nil, identitybiz.ErrUserNotFound
+}
+
 func (m *testIdentityRepo) FindUserByOAuth(ctx context.Context, provider, oauthID string) (*identitybiz.User, error) {
 	for _, u := range m.users {
 		if u.OAuthProvider == provider && u.OAuthID == oauthID {
@@ -253,6 +262,15 @@ func (m *testIdentityRepo) UpdateUser(ctx context.Context, user *identitybiz.Use
 
 func (m *testIdentityRepo) DeleteUser(ctx context.Context, userID int64) error {
 	delete(m.users, userID)
+	return nil
+}
+
+func (m *testIdentityRepo) IncreaseUserQuota(ctx context.Context, userID int64, amount int64) error {
+	user, ok := m.users[userID]
+	if !ok {
+		return identitybiz.ErrUserNotFound
+	}
+	user.Quota += amount
 	return nil
 }
 

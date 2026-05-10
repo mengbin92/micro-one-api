@@ -48,6 +48,9 @@ type User struct {
 	PasswordHash  string
 	OAuthProvider string
 	OAuthID       string
+	Quota         int64
+	AffCode       string
+	InviterID     int64
 }
 
 type Token struct {
@@ -78,10 +81,12 @@ type IdentityRepo interface {
 	FindUserByID(ctx context.Context, userID int64) (*User, error)
 	FindUserByUsername(ctx context.Context, username string) (*User, error)
 	FindUserByEmail(ctx context.Context, email string) (*User, error)
+	FindUserByAffCode(ctx context.Context, affCode string) (*User, error)
 	FindUserByOAuth(ctx context.Context, provider, oauthID string) (*User, error)
 	CreateUser(ctx context.Context, user *User) error
 	UpdateUser(ctx context.Context, user *User) error
 	DeleteUser(ctx context.Context, userID int64) error
+	IncreaseUserQuota(ctx context.Context, userID int64, amount int64) error
 	CreateToken(ctx context.Context, token *Token) error
 	FindTokenByID(ctx context.Context, userID, tokenID int64) (*Token, error)
 	ListTokens(ctx context.Context, userID int64, page, pageSize int32, keyword string) ([]*Token, int64, error)
@@ -270,14 +275,30 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password string)
 }
 
 func (uc *IdentityUsecase) Register(ctx context.Context, username, password, email, group string) (*User, error) {
+	return uc.RegisterWithAffCode(ctx, username, password, email, group, "")
+}
+
+func (uc *IdentityUsecase) RegisterWithAffCode(ctx context.Context, username, password, email, group, affCode string) (*User, error) {
 	existing, _ := uc.repo.FindUserByUsername(ctx, username)
 	if existing != nil {
 		return nil, ErrUserExists
+	}
+	var inviter *User
+	if strings.TrimSpace(affCode) != "" {
+		found, err := uc.repo.FindUserByAffCode(ctx, strings.TrimSpace(affCode))
+		if err != nil {
+			return nil, fmt.Errorf("invalid aff code")
+		}
+		inviter = found
 	}
 	if len(password) < 8 {
 		return nil, fmt.Errorf("password must be at least 8 characters")
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	newAffCode, err := uc.generateUniqueAffCode(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -288,11 +309,74 @@ func (uc *IdentityUsecase) Register(ctx context.Context, username, password, ema
 		Group:        group,
 		Status:       UserStatusEnabled,
 		PasswordHash: string(hash),
+		AffCode:      newAffCode,
+	}
+	if inviter != nil {
+		user.InviterID = inviter.ID
+		user.Quota = positiveEnvInt64("INVITEE_BONUS_QUOTA")
 	}
 	if err := uc.repo.CreateUser(ctx, user); err != nil {
 		return nil, err
 	}
+	if inviter != nil {
+		if bonus := positiveEnvInt64("INVITER_BONUS_QUOTA"); bonus > 0 {
+			if err := uc.repo.IncreaseUserQuota(ctx, inviter.ID, bonus); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return user, nil
+}
+
+func (uc *IdentityUsecase) GetOrCreateAffCode(ctx context.Context, userID int64) (string, error) {
+	user, err := uc.repo.FindUserByID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(user.AffCode) != "" {
+		return user.AffCode, nil
+	}
+	code, err := uc.generateUniqueAffCode(ctx)
+	if err != nil {
+		return "", err
+	}
+	user.AffCode = code
+	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+func (uc *IdentityUsecase) generateUniqueAffCode(ctx context.Context) (string, error) {
+	for i := 0; i < 5; i++ {
+		code := uc.generateAffCode()
+		if _, err := uc.repo.FindUserByAffCode(ctx, code); errors.Is(err, ErrUserNotFound) {
+			return code, nil
+		}
+	}
+	return "", fmt.Errorf("failed to generate unique aff code")
+}
+
+func (uc *IdentityUsecase) generateAffCode() string {
+	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, 8)
+	for i := range b {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+			continue
+		}
+		b[i] = letters[n.Int64()]
+	}
+	return string(b)
+}
+
+func positiveEnvInt64(key string) int64 {
+	value, err := strconv.ParseInt(os.Getenv(key), 10, 64)
+	if err != nil || value < 0 {
+		return 0
+	}
+	return value
 }
 
 func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, name string, models []string, expireAt int64) (*Token, error) {

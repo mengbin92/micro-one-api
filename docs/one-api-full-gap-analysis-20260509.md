@@ -41,6 +41,7 @@
 | 路径型管理操作缺失 | 新增 `/v1/users/{id}`、`/v1/channels/{id}`、`/v1/channels/{id}/status`、`/v1/redeem-codes/{code}` |
 | One API 管理充值兼容入口缺失 | 新增 `/api/topup`，同时保留 `/v1/topup` |
 | 路由行为缺少测试 | 新增 admin HTTP 测试和 relay 兼容端点测试 |
+| 用户邀请缺失 | 新增 aff code 设计和实现：用户邀请码、注册绑定邀请关系、`/api/user/aff`、可配置邀请奖励 |
 
 ## 仍未完全实现
 
@@ -51,7 +52,6 @@
 | Token 管理 | `/api/token/*` 列表、搜索、创建、更新、删除、状态 | 缺完整 token 管理 HTTP API 和数据模型对齐 |
 | OAuth/SSO | GitHub、OIDC、飞书、微信、绑定邮箱 | 当前只具备部分 OAuth 基础能力，未对齐 One API 的完整路由和前端流程 |
 | 公告/内容 | `/api/notice`、`/api/about`、`/api/home_page_content` | 系统配置已有基础字段，但兼容 API 未完整暴露 |
-| 用户邀请 | aff code、邀请奖励 | 未完整实现 |
 | 渠道测试与余额 | `/api/channel/test`、`/update_balance` | 缺 One API 风格渠道探活/余额查询 HTTP API |
 | 分组管理 | `/api/group` | 只有分组字段和倍率配置，缺完整 HTTP 管理 API |
 | 全量 provider 适配 | one-api 支持数十种渠道专用适配器 | 当前以 OpenAI-compatible 原样转发为主，仅补了 Anthropic/Gemini 等有限适配 |
