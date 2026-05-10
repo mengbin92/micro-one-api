@@ -9,6 +9,7 @@ import (
 
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 
+	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/internal/log/service"
 	"micro-one-api/internal/pkg/metrics"
 )
@@ -43,10 +44,14 @@ func ServiceAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // NewHTTPServer wires HTTP transport for log-service.
-func NewHTTPServer(addr string, svc *service.LogService) *khttp.Server {
+func NewHTTPServer(addr string, svc *service.LogService, identityClients ...identityv1.IdentityServiceClient) *khttp.Server {
 	srv := khttp.NewServer(
 		khttp.Address(addr),
 	)
+	var identityClient identityv1.IdentityServiceClient
+	if len(identityClients) > 0 {
+		identityClient = identityClients[0]
+	}
 
 	// Health and metrics (unauthenticated)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +77,15 @@ func NewHTTPServer(addr string, svc *service.LogService) *khttp.Server {
 	srv.HandleFunc("/v1/logs/", ServiceAuth(func(w http.ResponseWriter, r *http.Request) {
 		svc.HandleGetLog(w, r)
 	}))
+	srv.HandleFunc("/api/log/self", func(w http.ResponseWriter, r *http.Request) {
+		svc.HandleOneAPIUserLogs(w, r, identityClient)
+	})
+	srv.HandleFunc("/api/log/self/search", func(w http.ResponseWriter, r *http.Request) {
+		svc.HandleOneAPIUserLogSearch(w, r, identityClient)
+	})
+	srv.HandleFunc("/api/log/self/stat", func(w http.ResponseWriter, r *http.Request) {
+		svc.HandleOneAPIUserLogStats(w, r, identityClient)
+	})
 
 	return srv
 }

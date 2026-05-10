@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"google.golang.org/grpc"
 
+	identityv1 "micro-one-api/api/identity/v1"
 	logv1 "micro-one-api/api/log/v1"
 	"micro-one-api/internal/log/biz"
 )
@@ -151,16 +153,140 @@ func (s *LogService) HandleIngestLog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, logEntryToMap(entry))
 }
 
+func (s *LogService) HandleOneAPIUserLogs(w http.ResponseWriter, r *http.Request, identityClient identityv1.IdentityServiceClient) {
+	if r.Method != http.MethodGet {
+		writeOneAPI(w, http.StatusMethodNotAllowed, false, "method not allowed", nil)
+		return
+	}
+	userID, ok := authUserIDFromRequest(w, r, identityClient)
+	if !ok {
+		return
+	}
+	page, pageSize := oneAPIPage(r)
+	entries, _, err := s.uc.ListUserLogs(r.Context(), userID, page, pageSize, r.URL.Query().Get("type"), "")
+	if err != nil {
+		writeOneAPI(w, http.StatusOK, false, err.Error(), nil)
+		return
+	}
+	writeOneAPI(w, http.StatusOK, true, "", logEntriesToMaps(entries))
+}
+
+func (s *LogService) HandleOneAPIUserLogSearch(w http.ResponseWriter, r *http.Request, identityClient identityv1.IdentityServiceClient) {
+	if r.Method != http.MethodGet {
+		writeOneAPI(w, http.StatusMethodNotAllowed, false, "method not allowed", nil)
+		return
+	}
+	userID, ok := authUserIDFromRequest(w, r, identityClient)
+	if !ok {
+		return
+	}
+	page, pageSize := oneAPIPage(r)
+	entries, _, err := s.uc.ListUserLogs(r.Context(), userID, page, pageSize, r.URL.Query().Get("type"), r.URL.Query().Get("keyword"))
+	if err != nil {
+		writeOneAPI(w, http.StatusOK, false, err.Error(), nil)
+		return
+	}
+	writeOneAPI(w, http.StatusOK, true, "", logEntriesToMaps(entries))
+}
+
+func (s *LogService) HandleOneAPIUserLogStats(w http.ResponseWriter, r *http.Request, identityClient identityv1.IdentityServiceClient) {
+	if r.Method != http.MethodGet {
+		writeOneAPI(w, http.StatusMethodNotAllowed, false, "method not allowed", nil)
+		return
+	}
+	userID, ok := authUserIDFromRequest(w, r, identityClient)
+	if !ok {
+		return
+	}
+	entries, total, err := s.uc.ListUserLogs(r.Context(), userID, 1, 1000, r.URL.Query().Get("type"), "")
+	if err != nil {
+		writeOneAPI(w, http.StatusOK, false, err.Error(), nil)
+		return
+	}
+	countByType := map[string]int64{}
+	for _, entry := range entries {
+		countByType[entry.Level]++
+	}
+	writeOneAPI(w, http.StatusOK, true, "", map[string]interface{}{
+		"total":         total,
+		"sampled_count": len(entries),
+		"count_by_type": countByType,
+	})
+}
+
 func logEntryToMap(e *biz.LogEntry) map[string]interface{} {
 	return map[string]interface{}{
 		"id":         e.ID,
 		"level":      e.Level,
+		"type":       e.Level,
 		"message":    e.Message,
 		"source":     e.Source,
 		"request_id": e.RequestID,
 		"user_id":    e.UserID,
-		"created_at": e.CreatedAt,
+		"created_at": e.CreatedAt.Unix(),
 	}
+}
+
+func logEntriesToMaps(entries []*biz.LogEntry) []map[string]interface{} {
+	items := make([]map[string]interface{}, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, logEntryToMap(entry))
+	}
+	return items
+}
+
+func authUserIDFromRequest(w http.ResponseWriter, r *http.Request, identityClient identityv1.IdentityServiceClient) (int64, bool) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		writeOneAPI(w, http.StatusUnauthorized, false, "unauthorized", nil)
+		return 0, false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	if token == "" {
+		writeOneAPI(w, http.StatusUnauthorized, false, "unauthorized", nil)
+		return 0, false
+	}
+	if identityClient == nil {
+		writeOneAPI(w, http.StatusServiceUnavailable, false, "identity service unavailable", nil)
+		return 0, false
+	}
+	resp, err := identityClient.GetAuthSnapshot(r.Context(), &identityv1.GetAuthSnapshotRequest{Token: token}, grpc.WaitForReady(false))
+	if err != nil || resp.GetUserId() == 0 || !resp.GetUserEnabled() || !resp.GetTokenEnabled() {
+		writeOneAPI(w, http.StatusUnauthorized, false, "unauthorized", nil)
+		return 0, false
+	}
+	return resp.GetUserId(), true
+}
+
+func oneAPIPage(r *http.Request) (int32, int32) {
+	page := int32(1)
+	if pRaw := r.URL.Query().Get("p"); pRaw != "" {
+		if p, err := strconv.ParseInt(pRaw, 10, 32); err == nil && p >= 0 {
+			page = int32(p) + 1
+		}
+	} else if pageRaw := r.URL.Query().Get("page"); pageRaw != "" {
+		if p, err := strconv.ParseInt(pageRaw, 10, 32); err == nil && p > 0 {
+			page = int32(p)
+		}
+	}
+	pageSize := int32(20)
+	if raw := r.URL.Query().Get("page_size"); raw != "" {
+		if n, err := strconv.ParseInt(raw, 10, 32); err == nil && n > 0 {
+			pageSize = int32(n)
+		}
+	}
+	return page, pageSize
+}
+
+func writeOneAPI(w http.ResponseWriter, status int, success bool, message string, data interface{}) {
+	resp := map[string]interface{}{
+		"success": success,
+		"message": message,
+	}
+	if data != nil {
+		resp["data"] = data
+	}
+	writeJSON(w, status, resp)
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {

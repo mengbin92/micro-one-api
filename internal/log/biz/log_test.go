@@ -2,14 +2,15 @@ package biz
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
 
 type mockLogRepo struct {
-	entries map[int64]*LogEntry
-	seq     int64
-	getErr  error
+	entries   map[int64]*LogEntry
+	seq       int64
+	getErr    error
 	createErr error
 	listErr   error
 }
@@ -35,6 +36,35 @@ func (m *mockLogRepo) List(ctx context.Context, page, pageSize int32, level, sou
 			continue
 		}
 		if source != "" && e.Source != source {
+			continue
+		}
+		result = append(result, e)
+	}
+	total := int64(len(result))
+	start := int((page - 1) * pageSize)
+	if start >= len(result) {
+		return nil, total, nil
+	}
+	end := start + int(pageSize)
+	if end > len(result) {
+		end = len(result)
+	}
+	return result[start:end], total, nil
+}
+
+func (m *mockLogRepo) ListByUser(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*LogEntry, int64, error) {
+	if m.listErr != nil {
+		return nil, 0, m.listErr
+	}
+	var result []*LogEntry
+	for _, e := range m.entries {
+		if e.UserID != userID {
+			continue
+		}
+		if level != "" && e.Level != level {
+			continue
+		}
+		if keyword != "" && !strings.Contains(e.Message, keyword) {
 			continue
 		}
 		result = append(result, e)

@@ -25,6 +25,7 @@ type LogEntry struct {
 type LogRepo interface {
 	Get(ctx context.Context, id int64) (*LogEntry, error)
 	List(ctx context.Context, page, pageSize int32, level, source, keyword string) ([]*LogEntry, int64, error)
+	ListByUser(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*LogEntry, int64, error)
 	Create(ctx context.Context, entry *LogEntry) error
 }
 
@@ -49,6 +50,16 @@ func (uc *LogUsecase) ListLogs(ctx context.Context, page, pageSize int32, level,
 		pageSize = 50
 	}
 	return uc.repo.List(ctx, page, pageSize, level, source, keyword)
+}
+
+func (uc *LogUsecase) ListUserLogs(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*LogEntry, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 200 {
+		pageSize = 50
+	}
+	return uc.repo.ListByUser(ctx, userID, page, pageSize, level, keyword)
 }
 
 func (uc *LogUsecase) IngestLog(ctx context.Context, entry *LogEntry) error {

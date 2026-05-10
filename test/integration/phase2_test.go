@@ -199,6 +199,16 @@ func (r *testLogRepo) List(ctx context.Context, page, pageSize int32, level, sou
 	return result, int64(len(result)), nil
 }
 
+func (r *testLogRepo) ListByUser(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*logbiz.LogEntry, int64, error) {
+	var result []*logbiz.LogEntry
+	for _, l := range r.logs {
+		if l.UserID == userID && (level == "" || l.Level == level) {
+			result = append(result, l)
+		}
+	}
+	return result, int64(len(result)), nil
+}
+
 func setupLogService(t *testing.T, addr string) (func(), logv1.LogServiceClient) {
 	repo := &testLogRepo{}
 	uc := logbiz.NewLogUsecase(repo)

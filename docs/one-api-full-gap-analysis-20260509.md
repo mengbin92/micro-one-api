@@ -44,6 +44,10 @@
 | 用户邀请缺失 | 新增 aff code 设计和实现：用户邀请码、注册绑定邀请关系、`/api/user/aff`、可配置邀请奖励 |
 | 用户账务自助入口缺失 | 新增 `/api/user/dashboard` 账户快照和 `/api/user/topup` 兑换码充值兼容入口 |
 | 用户自助资料管理缺失 | 新增 `PUT /api/user/self` 更新用户名、展示名、密码，以及 `DELETE /api/user/self` 删除当前用户 |
+| 用户自助日志缺失 | log-service 新增 `/api/log/self`、`/api/log/self/search`、`/api/log/self/stat`，按 Bearer 用户过滤日志 |
+| 公告/内容兼容入口缺失 | config-service 已暴露 `/api/notice`、`/api/about`、`/api/home_page_content` 基础兼容入口 |
+| 分组查询兼容入口缺失 | relay-gateway 已暴露 `/api/group` 基础兼容入口 |
+| 渠道测试与余额兼容入口缺失 | admin-api 已暴露 `/api/channel/test`、`/api/channel/test/{id}`、`/api/channel/update_balance`、`/api/channel/update_balance/{id}` 基础兼容入口 |
 
 ## 仍未完全实现
 
@@ -54,9 +58,10 @@
 | 用户 dashboard 图表 | One API `dashboard` 返回按天/模型日志统计 | 当前先返回 billing account snapshot，仍缺 usage log 的按天/模型聚合图表 |
 | Token 管理 | `/api/token/*` 列表、搜索、创建、更新、删除、状态 | 缺完整 token 管理 HTTP API 和数据模型对齐 |
 | OAuth/SSO | GitHub、OIDC、飞书、微信、绑定邮箱 | 当前只具备部分 OAuth 基础能力，未对齐 One API 的完整路由和前端流程 |
-| 公告/内容 | `/api/notice`、`/api/about`、`/api/home_page_content` | 系统配置已有基础字段，但兼容 API 未完整暴露 |
-| 渠道测试与余额 | `/api/channel/test`、`/update_balance` | 缺 One API 风格渠道探活/余额查询 HTTP API |
-| 分组管理 | `/api/group` | 只有分组字段和倍率配置，缺完整 HTTP 管理 API |
+| 日志 API | `/api/log/*` 完整日志字段、管理日志搜索、删除历史日志 | 已补用户 self 查询/搜索/统计；仍缺 One API 完整日志字段和部分管理日志操作 |
+| 公告/内容 | `/api/notice`、`/api/about`、`/api/home_page_content` | 已有基础兼容入口；仍缺完整前端内容管理体验 |
+| 渠道测试与余额 | `/api/channel/test`、`/update_balance` | 已有基础兼容入口；仍缺真实渠道余额查询实现 |
+| 分组管理 | `/api/group` | 已有基础查询入口；仍缺完整分组配置管理 API |
 | 全量 provider 适配 | one-api 支持数十种渠道专用适配器 | 当前以 OpenAI-compatible 原样转发为主，仅补了 Anthropic/Gemini 等有限适配 |
 | 图片编辑/变体、文件、微调、Assistants、Threads | one-api 中多数也返回 NotImplemented | 当前也未实现，保持未支持状态 |
 | Cloudflare Turnstile | 注册/重置等风控 | 未完整实现 |
@@ -69,16 +74,16 @@
 目标：让已有微服务能力通过 One API 风格 HTTP 路由可用。
 
 1. 补邮箱绑定等 `/api/user/*` 和 `/api/oauth/*` 剩余用户体验路由。
-2. 补 `/api/notice`、`/api/about`、`/api/home_page_content`，映射到 system options。
-3. 补 `/api/group`，从渠道和账务配置聚合可用分组。
-4. 补 dashboard 按天/模型 usage log 聚合图表。
+2. 补 dashboard 按天/模型 usage log 聚合图表。
+3. 补 One API 完整日志字段、历史日志删除和管理搜索。
+4. 补内容、分组、渠道余额的完整管理体验。
 
 ### Phase 2：管理端能力对齐
 
 目标：覆盖 One API 管理后台常用操作。
 
 1. 渠道测试、批量测试、渠道余额刷新。
-2. 日志统计 `/api/log/stat`、`/api/log/self/stat`。
+2. 管理日志搜索、历史日志删除和完整统计。
 3. 兑换码批量创建和导出。
 4. 用户额度重置语义修正：当前 `ResetUserQuota` 通过充值近似实现，后续应改成绝对设置或账务调账。
 

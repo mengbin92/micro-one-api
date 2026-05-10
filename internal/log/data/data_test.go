@@ -89,3 +89,44 @@ func TestMemoryRepository_List(t *testing.T) {
 		}
 	})
 }
+
+func TestMemoryRepository_ListByUser(t *testing.T) {
+	repo := newMemoryRepository()
+	_ = repo.Create(context.Background(), &biz.LogEntry{Level: "info", Message: "user one request", Source: "relay", UserID: 1, CreatedAt: time.Now()})
+	_ = repo.Create(context.Background(), &biz.LogEntry{Level: "error", Message: "user two failed", Source: "relay", UserID: 2, CreatedAt: time.Now()})
+	_ = repo.Create(context.Background(), &biz.LogEntry{Level: "info", Message: "user two completed", Source: "relay", UserID: 2, CreatedAt: time.Now()})
+
+	entries, total, err := repo.ListByUser(context.Background(), 2, 1, 20, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("total = %d, want 2", total)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("len(entries) = %d, want 2", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.UserID != 2 {
+			t.Fatalf("entry user_id = %d, want 2", entry.UserID)
+		}
+	}
+}
+
+func TestMemoryRepository_ListByUserFiltersKeyword(t *testing.T) {
+	repo := newMemoryRepository()
+	_ = repo.Create(context.Background(), &biz.LogEntry{Level: "info", Message: "target message from user one", Source: "relay", UserID: 1, CreatedAt: time.Now()})
+	_ = repo.Create(context.Background(), &biz.LogEntry{Level: "info", Message: "target message from user two", Source: "relay", UserID: 2, CreatedAt: time.Now()})
+	_ = repo.Create(context.Background(), &biz.LogEntry{Level: "info", Message: "other message from user two", Source: "relay", UserID: 2, CreatedAt: time.Now()})
+
+	entries, total, err := repo.ListByUser(context.Background(), 2, 1, 20, "", "target")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("total = %d, want 1", total)
+	}
+	if len(entries) != 1 || entries[0].UserID != 2 || entries[0].Message != "target message from user two" {
+		t.Fatalf("unexpected entries: %+v", entries)
+	}
+}

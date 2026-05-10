@@ -69,6 +69,10 @@ func newMemoryRepository() *Repository {
 	}
 }
 
+func NewMemoryRepositoryForTest() *Repository {
+	return &Repository{mem: map[int64]*biz.LogEntry{}}
+}
+
 func (r *Repository) Get(ctx context.Context, id int64) (*biz.LogEntry, error) {
 	if r.db != nil {
 		return r.getDB(ctx, id)
@@ -81,6 +85,13 @@ func (r *Repository) List(ctx context.Context, page, pageSize int32, level, sour
 		return r.listDB(ctx, page, pageSize, level, source, keyword)
 	}
 	return r.listMemory(page, pageSize, level, source, keyword)
+}
+
+func (r *Repository) ListByUser(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*biz.LogEntry, int64, error) {
+	if r.db != nil {
+		return r.listByUserDB(ctx, userID, page, pageSize, level, keyword)
+	}
+	return r.listByUserMemory(userID, page, pageSize, level, keyword)
 }
 
 func (r *Repository) Create(ctx context.Context, entry *biz.LogEntry) error {
@@ -118,6 +129,38 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, so
 	}
 	if source != "" {
 		query = query.Where("source = ?", source)
+	}
+	if keyword != "" {
+		query = query.Where("message LIKE ?", "%"+escapeLike(keyword)+"%")
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	offset := (page - 1) * pageSize
+	var models []logModel
+	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order("id DESC").Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+	entries := make([]*biz.LogEntry, len(models))
+	for i, m := range models {
+		entries[i] = &biz.LogEntry{
+			ID:        m.ID,
+			Level:     m.Level,
+			Message:   m.Message,
+			Source:    m.Source,
+			RequestID: m.RequestID,
+			UserID:    m.UserID,
+			CreatedAt: time.Unix(m.CreatedAt, 0),
+		}
+	}
+	return entries, total, nil
+}
+
+func (r *Repository) listByUserDB(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*biz.LogEntry, int64, error) {
+	query := r.db.WithContext(ctx).Model(&logModel{}).Where("user_id = ?", userID)
+	if level != "" {
+		query = query.Where("level = ?", level)
 	}
 	if keyword != "" {
 		query = query.Where("message LIKE ?", "%"+escapeLike(keyword)+"%")
@@ -184,6 +227,35 @@ func (r *Repository) listMemory(page, pageSize int32, level, source, keyword str
 			continue
 		}
 		if source != "" && entry.Source != source {
+			continue
+		}
+		if keyword != "" && !contains(entry.Message, keyword) {
+			continue
+		}
+		cloned := *entry
+		all = append(all, &cloned)
+	}
+	total := int64(len(all))
+	start := int((page - 1) * pageSize)
+	if start >= len(all) {
+		return nil, total, nil
+	}
+	end := start + int(pageSize)
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[start:end], total, nil
+}
+
+func (r *Repository) listByUserMemory(userID int64, page, pageSize int32, level, keyword string) ([]*biz.LogEntry, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var all []*biz.LogEntry
+	for _, entry := range r.mem {
+		if entry.UserID != userID {
+			continue
+		}
+		if level != "" && entry.Level != level {
 			continue
 		}
 		if keyword != "" && !contains(entry.Message, keyword) {
