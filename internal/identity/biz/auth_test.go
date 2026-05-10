@@ -968,6 +968,62 @@ func TestIdentityUsecase_UpdateUser_PartialUpdate(t *testing.T) {
 	}
 }
 
+func TestIdentityUsecase_UpdateSelf_UpdatesProfile(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", DisplayName: "Old Name", Email: "alice@example.com", Group: "default", Status: UserStatusEnabled},
+		},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+
+	err := uc.UpdateSelf(context.Background(), 1, "alice2", "Alice Two", "")
+	if err != nil {
+		t.Fatalf("UpdateSelf() error = %v", err)
+	}
+	if repo.users[1].Username != "alice2" {
+		t.Fatalf("username = %s, want alice2", repo.users[1].Username)
+	}
+	if repo.users[1].DisplayName != "Alice Two" {
+		t.Fatalf("display name = %s, want Alice Two", repo.users[1].DisplayName)
+	}
+	if repo.users[1].Email != "alice@example.com" || repo.users[1].Group != "default" {
+		t.Fatalf("unexpected preserved fields: email=%s group=%s", repo.users[1].Email, repo.users[1].Group)
+	}
+}
+
+func TestIdentityUsecase_UpdateSelf_RejectsDuplicateUsername(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", DisplayName: "Alice", Status: UserStatusEnabled},
+			2: {ID: 2, Username: "bob", DisplayName: "Bob", Status: UserStatusEnabled},
+		},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+
+	err := uc.UpdateSelf(context.Background(), 1, "bob", "", "")
+	if !errors.Is(err, ErrUserExists) {
+		t.Fatalf("expected ErrUserExists, got: %v", err)
+	}
+}
+
+func TestIdentityUsecase_UpdateSelf_UpdatesPassword(t *testing.T) {
+	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
+	uc := NewIdentityUsecase(repo)
+	user, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "newpass123"); err != nil {
+		t.Fatalf("UpdateSelf() error = %v", err)
+	}
+	if _, _, err := uc.Login(context.Background(), "alice", "newpass123"); err != nil {
+		t.Fatalf("login with new password failed: %v", err)
+	}
+}
+
 // ========== DeleteUser Tests ==========
 
 func TestIdentityUsecase_DeleteUser_Success(t *testing.T) {

@@ -492,6 +492,37 @@ func (uc *IdentityUsecase) UpdateUser(ctx context.Context, userID int64, display
 	return uc.repo.UpdateUser(ctx, user)
 }
 
+func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, username, displayName, password string) error {
+	user, err := uc.repo.FindUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if username != "" && username != user.Username {
+		existing, err := uc.repo.FindUserByUsername(ctx, username)
+		if err == nil && existing != nil && existing.ID != userID {
+			return ErrUserExists
+		}
+		if err != nil && !errors.Is(err, ErrUserNotFound) {
+			return err
+		}
+		user.Username = username
+	}
+	if displayName != "" {
+		user.DisplayName = displayName
+	}
+	if password != "" {
+		if len(password) < 8 {
+			return fmt.Errorf("password must be at least 8 characters")
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		user.PasswordHash = string(hash)
+	}
+	return uc.repo.UpdateUser(ctx, user)
+}
+
 func (uc *IdentityUsecase) DeleteUser(ctx context.Context, userID int64) error {
 	return uc.repo.DeleteUser(ctx, userID)
 }

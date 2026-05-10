@@ -139,6 +139,97 @@ func TestIdentityHTTPRegisterRejectsInvalidAffCode(t *testing.T) {
 	}
 }
 
+func TestIdentityHTTPSelfUpdateRequiresAuth(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/user/self", strings.NewReader(`{"username":"alice2"}`))
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestIdentityHTTPSelfUpdateChangesCurrentUser(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/user/self", strings.NewReader(`{"username":"alice2","display_name":"Alice Two","password":"newpass123"}`))
+	updateReq.Header.Set("Authorization", "Bearer "+authToken)
+	updateRec := httptest.NewRecorder()
+	srv.ServeHTTP(updateRec, updateReq)
+
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, body=%s", updateRec.Code, updateRec.Body.String())
+	}
+	if !strings.Contains(updateRec.Body.String(), `"success":true`) {
+		t.Fatalf("update response mismatch: %s", updateRec.Body.String())
+	}
+
+	_, newToken, err := uc.Login(context.Background(), "alice2", "newpass123")
+	if err != nil {
+		t.Fatalf("login with updated credentials failed: %v", err)
+	}
+	selfReq := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	selfReq.Header.Set("Authorization", "Bearer "+newToken)
+	selfRec := httptest.NewRecorder()
+	srv.ServeHTTP(selfRec, selfReq)
+
+	if selfRec.Code != http.StatusOK {
+		t.Fatalf("self status = %d, body=%s", selfRec.Code, selfRec.Body.String())
+	}
+	if !strings.Contains(selfRec.Body.String(), `"username":"alice2"`) || !strings.Contains(selfRec.Body.String(), `"display_name":"Alice Two"`) {
+		t.Fatalf("self response mismatch: %s", selfRec.Body.String())
+	}
+}
+
+func TestIdentityHTTPSelfDeleteRequiresAuth(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/user/self", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestIdentityHTTPSelfDeleteRemovesCurrentUser(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/user/self", nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+authToken)
+	deleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteRec, deleteReq)
+
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if !strings.Contains(deleteRec.Body.String(), `"success":true`) {
+		t.Fatalf("delete response mismatch: %s", deleteRec.Body.String())
+	}
+
+	selfReq := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	selfReq.Header.Set("Authorization", "Bearer "+authToken)
+	selfRec := httptest.NewRecorder()
+	srv.ServeHTTP(selfRec, selfReq)
+
+	if selfRec.Code != http.StatusUnauthorized {
+		t.Fatalf("self status after delete = %d, want 401, body=%s", selfRec.Code, selfRec.Body.String())
+	}
+}
+
 func TestIdentityHTTPDashboardRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)

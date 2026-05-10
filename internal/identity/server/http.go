@@ -274,21 +274,42 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSelf(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
-		return
-	}
 	snapshot, err := authSnapshotFromRequest(r, uc)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
 		return
 	}
-	user, err := uc.GetUser(r.Context(), snapshot.UserID)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
-		return
+	switch r.Method {
+	case http.MethodGet:
+		user, err := uc.GetUser(r.Context(), snapshot.UserID)
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: userToMap(user)})
+	case http.MethodPut:
+		var req struct {
+			Username    string `json:"username"`
+			DisplayName string `json:"display_name"`
+			Password    string `json:"password"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if err := uc.UpdateSelf(r.Context(), snapshot.UserID, req.Username, req.DisplayName, req.Password); err != nil {
+			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: ""})
+	case http.MethodDelete:
+		if err := uc.DeleteUser(r.Context(), snapshot.UserID); err != nil {
+			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: ""})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 	}
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: userToMap(user)})
 }
 
 func handleAvailableModels(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
