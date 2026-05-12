@@ -619,6 +619,66 @@ func TestIdentityHTTPTokenUpdateAcceptsBodyID(t *testing.T) {
 	}
 }
 
+func TestIdentityHTTPTokenOneAPIFields(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/token/", strings.NewReader(`{
+		"name":"field-token",
+		"models":["gpt-4o-mini"],
+		"remain_quota":500,
+		"unlimited_quota":true,
+		"subnet":"192.168.0.0/16"
+	}`))
+	createReq.Header.Set("Authorization", "Bearer "+authToken)
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body=%s", createRec.Code, createRec.Body.String())
+	}
+	body := createRec.Body.String()
+	for _, want := range []string{
+		`"created_time":`,
+		`"accessed_time":`,
+		`"used_quota":0`,
+		`"remain_quota":500`,
+		`"unlimited_quota":true`,
+		`"subnet":"192.168.0.0/16"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("create response missing %s: %s", want, body)
+		}
+	}
+
+	tokenID := extractJSONNumberField(body, "id")
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/token/", strings.NewReader(`{
+		"id":`+tokenID+`,
+		"name":"field-token-updated",
+		"status":1,
+		"remain_quota":250,
+		"unlimited_quota":false,
+		"subnet":"10.0.0.0/8"
+	}`))
+	updateReq.Header.Set("Authorization", "Bearer "+authToken)
+	updateRec := httptest.NewRecorder()
+	srv.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, body=%s", updateRec.Code, updateRec.Body.String())
+	}
+	updateBody := updateRec.Body.String()
+	for _, want := range []string{
+		`"remain_quota":250`,
+		`"unlimited_quota":false`,
+		`"subnet":"10.0.0.0/8"`,
+	} {
+		if !strings.Contains(updateBody, want) {
+			t.Fatalf("update response missing %s: %s", want, updateBody)
+		}
+	}
+}
+
 func TestIdentityHTTPPasswordReset(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)

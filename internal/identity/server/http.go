@@ -524,10 +524,13 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"items": items, "total": total}})
 	case http.MethodPost:
 		var req struct {
-			Name      string   `json:"name"`
-			Models    []string `json:"models"`
-			ExpiredAt int64    `json:"expired_time"`
-			ExpireAt  int64    `json:"expire_at"`
+			Name           string   `json:"name"`
+			Models         []string `json:"models"`
+			ExpiredAt      int64    `json:"expired_time"`
+			ExpireAt       int64    `json:"expire_at"`
+			RemainQuota    int64    `json:"remain_quota"`
+			UnlimitedQuota bool     `json:"unlimited_quota"`
+			Subnet         string   `json:"subnet"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -536,7 +539,11 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		if expireAt == 0 {
 			expireAt = req.ExpireAt
 		}
-		token, err := uc.CreateAccessToken(r.Context(), snapshot.UserID, req.Name, req.Models, expireAt)
+		token, err := uc.CreateAccessToken(r.Context(), snapshot.UserID, req.Name, req.Models, expireAt, biz.CreateAccessTokenOptions{
+			RemainQuota:    req.RemainQuota,
+			UnlimitedQuota: req.UnlimitedQuota,
+			Subnet:         req.Subnet,
+		})
 		if err != nil {
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
@@ -551,6 +558,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			Status         int32    `json:"status"`
 			RemainQuota    int64    `json:"remain_quota"`
 			UnlimitedQuota bool     `json:"unlimited_quota"`
+			Subnet         string   `json:"subnet"`
 		}
 		req.RemainQuota = -1
 		if !decodeJSON(w, r, &req) {
@@ -564,7 +572,15 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "token id is required"})
 			return
 		}
-		token, err := uc.UpdateAccessToken(r.Context(), snapshot.UserID, tokenID, req.Name, req.Models, req.ExpiredAt, req.Status, req.RemainQuota, req.UnlimitedQuota)
+		token, err := uc.UpdateAccessTokenWithOptions(r.Context(), snapshot.UserID, tokenID, biz.UpdateAccessTokenOptions{
+			Name:           req.Name,
+			Models:         req.Models,
+			ExpireAt:       req.ExpiredAt,
+			Status:         req.Status,
+			RemainQuota:    req.RemainQuota,
+			UnlimitedQuota: req.UnlimitedQuota,
+			Subnet:         req.Subnet,
+		})
 		if err != nil {
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
@@ -649,8 +665,12 @@ func tokenToMap(token *biz.Token, includeKey bool) map[string]interface{} {
 		"expired_time":    token.ExpiredAt,
 		"remain_quota":    token.RemainQuota,
 		"unlimited_quota": token.UnlimitedQuota,
+		"used_quota":      token.UsedQuota,
 		"models":          token.Models,
 		"created_at":      token.CreatedAt,
+		"created_time":    token.CreatedAt,
+		"accessed_time":   token.AccessedAt,
+		"subnet":          token.Subnet,
 	}
 	if includeKey {
 		data["key"] = token.Key

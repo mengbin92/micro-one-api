@@ -45,10 +45,14 @@ type tokenModel struct {
 	Name           string  `gorm:"column:name"`
 	Key            string  `gorm:"column:key"`
 	Status         int32   `gorm:"column:status"`
+	CreatedTime    int64   `gorm:"column:created_time"`
+	AccessedTime   int64   `gorm:"column:accessed_time"`
 	ExpiredTime    int64   `gorm:"column:expired_time"`
 	RemainQuota    int64   `gorm:"column:remain_quota"`
 	UnlimitedQuota bool    `gorm:"column:unlimited_quota"`
+	UsedQuota      int64   `gorm:"column:used_quota"`
 	Models         *string `gorm:"column:models"`
+	Subnet         *string `gorm:"column:subnet"`
 	CreatedAt      int64   `gorm:"column:created_at"`
 }
 
@@ -475,8 +479,12 @@ func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error 
 		ExpiredTime:    token.ExpiredAt,
 		RemainQuota:    token.RemainQuota,
 		UnlimitedQuota: token.UnlimitedQuota,
+		UsedQuota:      token.UsedQuota,
 		Models:         strPtr(strings.Join(token.Models, ",")),
+		Subnet:         strPtr(token.Subnet),
 		CreatedAt:      token.CreatedAt,
+		CreatedTime:    token.CreatedAt,
+		AccessedTime:   token.AccessedAt,
 	}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		return err
@@ -522,7 +530,10 @@ func (r *Repository) updateTokenDB(ctx context.Context, token *biz.Token) error 
 			"expired_time":    token.ExpiredAt,
 			"remain_quota":    token.RemainQuota,
 			"unlimited_quota": token.UnlimitedQuota,
+			"used_quota":      token.UsedQuota,
 			"models":          strings.Join(token.Models, ","),
+			"subnet":          token.Subnet,
+			"accessed_time":   token.AccessedAt,
 		}).Error
 }
 
@@ -547,9 +558,28 @@ func tokenModelToBiz(model tokenModel) *biz.Token {
 		ExpiredAt:      model.ExpiredTime,
 		RemainQuota:    model.RemainQuota,
 		UnlimitedQuota: model.UnlimitedQuota,
+		UsedQuota:      model.UsedQuota,
+		AccessedAt:     firstNonZero(model.AccessedTime, model.CreatedAt, model.CreatedTime),
+		Subnet:         stringPtrValue(model.Subnet),
 		Models:         biz.SplitCSVPtr(model.Models),
-		CreatedAt:      model.CreatedAt,
+		CreatedAt:      firstNonZero(model.CreatedTime, model.CreatedAt),
 	}
+}
+
+func firstNonZero(values ...int64) int64 {
+	for _, value := range values {
+		if value != 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func stringPtrValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func userModelToBiz(model userModel) *biz.User {

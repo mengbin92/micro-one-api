@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,23 +31,39 @@ func (c *adminHTTPIdentityClient) DeleteUser(ctx context.Context, req *identityv
 type adminHTTPChannelClient struct {
 	channelv1.ChannelServiceClient
 	createdName string
+	created     *channelv1.CreateChannelRequest
+	updated     *channelv1.UpdateChannelRequest
 }
 
 func (c *adminHTTPChannelClient) CreateChannel(ctx context.Context, req *channelv1.CreateChannelRequest, opts ...grpc.CallOption) (*channelv1.CreateChannelResponse, error) {
 	c.createdName = req.Name
+	c.created = req
 	return &channelv1.CreateChannelResponse{Success: true, Message: "created", ChannelId: 101}, nil
+}
+
+func (c *adminHTTPChannelClient) UpdateChannel(ctx context.Context, req *channelv1.UpdateChannelRequest, opts ...grpc.CallOption) (*channelv1.UpdateChannelResponse, error) {
+	c.updated = req
+	return &channelv1.UpdateChannelResponse{Success: true, Message: "updated"}, nil
 }
 
 func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChannelRequest, opts ...grpc.CallOption) (*channelv1.GetChannelReply, error) {
 	return &channelv1.GetChannelReply{
 		Channel: &commonv1.ChannelInfo{
-			Id:      req.ChannelId,
-			Name:    "openai",
-			Type:    1,
-			Status:  1,
-			Group:   "default",
-			Models:  "gpt-4o",
-			BaseUrl: "https://api.example.com/v1",
+			Id:                 req.ChannelId,
+			Name:               "openai",
+			Type:               1,
+			Status:             1,
+			Group:              "default",
+			Models:             "gpt-4o",
+			BaseUrl:            "https://api.example.com/v1",
+			Weight:             3,
+			TestTime:           1710000000,
+			ResponseTime:       245,
+			Balance:            12.5,
+			BalanceUpdatedTime: 1710000100,
+			UsedQuota:          900,
+			ModelMapping:       `{"gpt-4o":"gpt-4o-mini"}`,
+			SystemPrompt:       "be concise",
 		},
 	}, nil
 }
@@ -54,7 +71,20 @@ func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.
 func (c *adminHTTPChannelClient) ListChannels(ctx context.Context, req *channelv1.ListChannelsRequest, opts ...grpc.CallOption) (*channelv1.ListChannelsResponse, error) {
 	return &channelv1.ListChannelsResponse{
 		Channels: []*commonv1.ChannelSummary{
-			{Id: 101, Name: "openai", Type: 1, Status: 1, Group: "default", Models: "gpt-4o"},
+			{
+				Id:                 101,
+				Name:               "openai",
+				Type:               1,
+				Status:             1,
+				Group:              "default",
+				Models:             "gpt-4o",
+				Weight:             3,
+				TestTime:           1710000000,
+				ResponseTime:       245,
+				Balance:            12.5,
+				BalanceUpdatedTime: 1710000100,
+				UsedQuota:          900,
+			},
 		},
 		Total: 1,
 	}, nil
@@ -230,6 +260,65 @@ func TestAdminHTTPOptionPutAcceptsFlatBody(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPOptionOneAPIListAndUpdate(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	store := &adminHTTPSystemOptionsStore{values: map[string]string{
+		"SystemName":      "Compat API",
+		"RegisterEnabled": "false",
+		"Theme":           "default",
+		"SMTPToken":       "hidden",
+	}}
+	srv := newAdminHTTPOptionTestServer(store)
+	req := httptest.NewRequest(http.MethodGet, "/api/option/", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var listResp struct {
+		Success bool `json:"success"`
+		Data    []struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("decode option response: %v, body=%s", err, rec.Body.String())
+	}
+	options := map[string]string{}
+	for _, item := range listResp.Data {
+		options[item.Key] = item.Value
+	}
+	for key, want := range map[string]string{
+		"SystemName":      "Compat API",
+		"RegisterEnabled": "false",
+		"Theme":           "default",
+	} {
+		if options[key] != want {
+			t.Fatalf("option %s = %q, want %q; body=%s", key, options[key], want, rec.Body.String())
+		}
+	}
+	if _, ok := options["SMTPToken"]; ok {
+		t.Fatalf("secret option was exposed: %s", rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/api/option/", strings.NewReader(`{"key":"Theme","value":"dark"}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if store.values["Theme"] != "dark" {
+		t.Fatalf("Theme was not updated: %+v", store.values)
+	}
+}
+
 func TestAdminHTTPCreateChannel(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	channelClient := &adminHTTPChannelClient{}
@@ -248,6 +337,70 @@ func TestAdminHTTPCreateChannel(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"channel_id":101`) {
 		t.Fatalf("create response missing channel id: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPChannelOneAPIFields(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	channelClient := &adminHTTPChannelClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, channelClient, &adminHTTPBillingClient{})
+	createBody := `{"name":"openai","type":1,"base_url":"https://api.example.com/v1","key":"sk-test","models":"gpt-4o","group":"default","priority":1,"weight":3,"model_mapping":"{\"gpt-4o\":\"gpt-4o-mini\"}","system_prompt":"be concise"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/channels", strings.NewReader(createBody))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if channelClient.created == nil {
+		t.Fatal("create channel was not called")
+	}
+	if channelClient.created.Weight != 3 || channelClient.created.ModelMapping != `{"gpt-4o":"gpt-4o-mini"}` || channelClient.created.SystemPrompt != "be concise" {
+		t.Fatalf("create request one-api fields mismatch: %+v", channelClient.created)
+	}
+
+	updateBody := `{"weight":5,"model_mapping":"{\"gpt-4o\":\"gpt-4o\"}","system_prompt":"updated prompt"}`
+	req = httptest.NewRequest(http.MethodPut, "/v1/channels/101", strings.NewReader(updateBody))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if channelClient.updated == nil {
+		t.Fatal("update channel was not called")
+	}
+	if channelClient.updated.ChannelId != 101 || channelClient.updated.Weight != 5 || channelClient.updated.ModelMapping != `{"gpt-4o":"gpt-4o"}` || channelClient.updated.SystemPrompt != "updated prompt" {
+		t.Fatalf("update request one-api fields mismatch: %+v", channelClient.updated)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/channels", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var list struct {
+		Channels []map[string]any `json:"channels"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode list response: %v, body=%s", err, rec.Body.String())
+	}
+	if len(list.Channels) != 1 {
+		t.Fatalf("channels length = %d, want 1", len(list.Channels))
+	}
+	channel := list.Channels[0]
+	for _, key := range []string{"weight", "test_time", "response_time", "balance", "balance_updated_time", "used_quota"} {
+		if _, ok := channel[key]; !ok {
+			t.Fatalf("list channel missing %s: %s", key, rec.Body.String())
+		}
 	}
 }
 

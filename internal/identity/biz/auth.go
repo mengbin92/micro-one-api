@@ -62,6 +62,9 @@ type Token struct {
 	ExpiredAt      int64
 	RemainQuota    int64
 	UnlimitedQuota bool
+	UsedQuota      int64
+	AccessedAt     int64
+	Subnet         string
 	Models         []string
 	CreatedAt      int64
 }
@@ -379,7 +382,23 @@ func positiveEnvInt64(key string) int64 {
 	return value
 }
 
-func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, name string, models []string, expireAt int64) (*Token, error) {
+type CreateAccessTokenOptions struct {
+	RemainQuota    int64
+	UnlimitedQuota bool
+	Subnet         string
+}
+
+type UpdateAccessTokenOptions struct {
+	Name           string
+	Models         []string
+	ExpireAt       int64
+	Status         int32
+	RemainQuota    int64
+	UnlimitedQuota bool
+	Subnet         string
+}
+
+func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, name string, models []string, expireAt int64, opts ...CreateAccessTokenOptions) (*Token, error) {
 	user, err := uc.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -387,15 +406,26 @@ func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, 
 	if user.Status != UserStatusEnabled {
 		return nil, ErrUserDisabled
 	}
+	options := CreateAccessTokenOptions{RemainQuota: uc.defaultQuota}
+	if len(opts) > 0 {
+		options = opts[0]
+		if options.RemainQuota == 0 {
+			options.RemainQuota = uc.defaultQuota
+		}
+	}
+	now := uc.now().Unix()
 	token := &Token{
-		UserID:      userID,
-		Name:        name,
-		Key:         uc.generateToken(),
-		Status:      TokenStatusEnabled,
-		ExpiredAt:   expireAt,
-		RemainQuota: uc.defaultQuota,
-		Models:      models,
-		CreatedAt:   uc.now().Unix(),
+		UserID:         userID,
+		Name:           name,
+		Key:            uc.generateToken(),
+		Status:         TokenStatusEnabled,
+		ExpiredAt:      expireAt,
+		RemainQuota:    options.RemainQuota,
+		UnlimitedQuota: options.UnlimitedQuota,
+		Subnet:         options.Subnet,
+		Models:         models,
+		CreatedAt:      now,
+		AccessedAt:     now,
 	}
 	if err := uc.repo.CreateToken(ctx, token); err != nil {
 		return nil, err
@@ -415,26 +445,38 @@ func (uc *IdentityUsecase) GetAccessToken(ctx context.Context, userID, tokenID i
 }
 
 func (uc *IdentityUsecase) UpdateAccessToken(ctx context.Context, userID, tokenID int64, name string, models []string, expireAt int64, status int32, remainQuota int64, unlimitedQuota bool) (*Token, error) {
+	return uc.UpdateAccessTokenWithOptions(ctx, userID, tokenID, UpdateAccessTokenOptions{
+		Name:           name,
+		Models:         models,
+		ExpireAt:       expireAt,
+		Status:         status,
+		RemainQuota:    remainQuota,
+		UnlimitedQuota: unlimitedQuota,
+	})
+}
+
+func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, userID, tokenID int64, opts UpdateAccessTokenOptions) (*Token, error) {
 	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
 	if err != nil {
 		return nil, err
 	}
-	if name != "" {
-		token.Name = name
+	if opts.Name != "" {
+		token.Name = opts.Name
 	}
-	if models != nil {
-		token.Models = models
+	if opts.Models != nil {
+		token.Models = opts.Models
 	}
-	if expireAt != 0 {
-		token.ExpiredAt = expireAt
+	if opts.ExpireAt != 0 {
+		token.ExpiredAt = opts.ExpireAt
 	}
-	if status != 0 {
-		token.Status = status
+	if opts.Status != 0 {
+		token.Status = opts.Status
 	}
-	if remainQuota >= 0 {
-		token.RemainQuota = remainQuota
+	if opts.RemainQuota >= 0 {
+		token.RemainQuota = opts.RemainQuota
 	}
-	token.UnlimitedQuota = unlimitedQuota
+	token.UnlimitedQuota = opts.UnlimitedQuota
+	token.Subnet = opts.Subnet
 	if err := uc.repo.UpdateToken(ctx, token); err != nil {
 		return nil, err
 	}

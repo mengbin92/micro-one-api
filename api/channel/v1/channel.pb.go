@@ -448,6 +448,9 @@ type CreateChannelRequest struct {
 	Group         string                 `protobuf:"bytes,6,opt,name=group,proto3" json:"group,omitempty"`
 	Priority      int64                  `protobuf:"varint,7,opt,name=priority,proto3" json:"priority,omitempty"`
 	Config        *v1.ChannelConfig      `protobuf:"bytes,8,opt,name=config,proto3" json:"config,omitempty"`
+	Weight        uint32                 `protobuf:"varint,9,opt,name=weight,proto3" json:"weight,omitempty"`
+	ModelMapping  string                 `protobuf:"bytes,10,opt,name=model_mapping,json=modelMapping,proto3" json:"model_mapping,omitempty"`
+	SystemPrompt  string                 `protobuf:"bytes,11,opt,name=system_prompt,json=systemPrompt,proto3" json:"system_prompt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -538,6 +541,27 @@ func (x *CreateChannelRequest) GetConfig() *v1.ChannelConfig {
 	return nil
 }
 
+func (x *CreateChannelRequest) GetWeight() uint32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+func (x *CreateChannelRequest) GetModelMapping() string {
+	if x != nil {
+		return x.ModelMapping
+	}
+	return ""
+}
+
+func (x *CreateChannelRequest) GetSystemPrompt() string {
+	if x != nil {
+		return x.SystemPrompt
+	}
+	return ""
+}
+
 type CreateChannelResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
@@ -608,6 +632,9 @@ type UpdateChannelRequest struct {
 	Group         string                 `protobuf:"bytes,6,opt,name=group,proto3" json:"group,omitempty"`
 	Priority      int64                  `protobuf:"varint,7,opt,name=priority,proto3" json:"priority,omitempty"`
 	Config        *v1.ChannelConfig      `protobuf:"bytes,8,opt,name=config,proto3" json:"config,omitempty"`
+	Weight        uint32                 `protobuf:"varint,9,opt,name=weight,proto3" json:"weight,omitempty"`
+	ModelMapping  string                 `protobuf:"bytes,10,opt,name=model_mapping,json=modelMapping,proto3" json:"model_mapping,omitempty"`
+	SystemPrompt  string                 `protobuf:"bytes,11,opt,name=system_prompt,json=systemPrompt,proto3" json:"system_prompt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -696,6 +723,27 @@ func (x *UpdateChannelRequest) GetConfig() *v1.ChannelConfig {
 		return x.Config
 	}
 	return nil
+}
+
+func (x *UpdateChannelRequest) GetWeight() uint32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+func (x *UpdateChannelRequest) GetModelMapping() string {
+	if x != nil {
+		return x.ModelMapping
+	}
+	return ""
+}
+
+func (x *UpdateChannelRequest) GetSystemPrompt() string {
+	if x != nil {
+		return x.SystemPrompt
+	}
+	return ""
 }
 
 type UpdateChannelResponse struct {
@@ -979,7 +1027,7 @@ const file_api_channel_v1_channel_proto_rawDesc = "" +
 	"\x04type\x18\x06 \x01(\x05R\x04type\"g\n" +
 	"\x14ListChannelsResponse\x129\n" +
 	"\bchannels\x18\x01 \x03(\v2\x1d.api.common.v1.ChannelSummaryR\bchannels\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x03R\x05total\"\xeb\x01\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\"\xcd\x02\n" +
 	"\x14CreateChannelRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\x05R\x04type\x12\x19\n" +
@@ -988,12 +1036,16 @@ const file_api_channel_v1_channel_proto_rawDesc = "" +
 	"\x06models\x18\x05 \x01(\tR\x06models\x12\x14\n" +
 	"\x05group\x18\x06 \x01(\tR\x05group\x12\x1a\n" +
 	"\bpriority\x18\a \x01(\x03R\bpriority\x124\n" +
-	"\x06config\x18\b \x01(\v2\x1c.api.common.v1.ChannelConfigR\x06config\"j\n" +
+	"\x06config\x18\b \x01(\v2\x1c.api.common.v1.ChannelConfigR\x06config\x12\x16\n" +
+	"\x06weight\x18\t \x01(\rR\x06weight\x12#\n" +
+	"\rmodel_mapping\x18\n" +
+	" \x01(\tR\fmodelMapping\x12#\n" +
+	"\rsystem_prompt\x18\v \x01(\tR\fsystemPrompt\"j\n" +
 	"\x15CreateChannelResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1d\n" +
 	"\n" +
-	"channel_id\x18\x03 \x01(\x03R\tchannelId\"\xf6\x01\n" +
+	"channel_id\x18\x03 \x01(\x03R\tchannelId\"\xd8\x02\n" +
 	"\x14UpdateChannelRequest\x12\x1d\n" +
 	"\n" +
 	"channel_id\x18\x01 \x01(\x03R\tchannelId\x12\x12\n" +
@@ -1003,7 +1055,11 @@ const file_api_channel_v1_channel_proto_rawDesc = "" +
 	"\x06models\x18\x05 \x01(\tR\x06models\x12\x14\n" +
 	"\x05group\x18\x06 \x01(\tR\x05group\x12\x1a\n" +
 	"\bpriority\x18\a \x01(\x03R\bpriority\x124\n" +
-	"\x06config\x18\b \x01(\v2\x1c.api.common.v1.ChannelConfigR\x06config\"K\n" +
+	"\x06config\x18\b \x01(\v2\x1c.api.common.v1.ChannelConfigR\x06config\x12\x16\n" +
+	"\x06weight\x18\t \x01(\rR\x06weight\x12#\n" +
+	"\rmodel_mapping\x18\n" +
+	" \x01(\tR\fmodelMapping\x12#\n" +
+	"\rsystem_prompt\x18\v \x01(\tR\fsystemPrompt\"K\n" +
 	"\x15UpdateChannelResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"5\n" +

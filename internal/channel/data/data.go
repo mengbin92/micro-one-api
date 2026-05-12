@@ -25,16 +25,25 @@ type Repository struct {
 }
 
 type channelModel struct {
-	ID       int64   `gorm:"column:id"`
-	Type     int32   `gorm:"column:type"`
-	Key      string  `gorm:"column:key"`
-	Status   int32   `gorm:"column:status"`
-	Name     string  `gorm:"column:name"`
-	BaseURL  *string `gorm:"column:base_url"`
-	Models   string  `gorm:"column:models"`
-	Group    string  `gorm:"column:group"`
-	Priority *int64  `gorm:"column:priority"`
-	Config   string  `gorm:"column:config"`
+	ID                 int64   `gorm:"column:id"`
+	Type               int32   `gorm:"column:type"`
+	Key                string  `gorm:"column:key"`
+	Status             int32   `gorm:"column:status"`
+	Name               string  `gorm:"column:name"`
+	Weight             *uint   `gorm:"column:weight"`
+	CreatedTime        int64   `gorm:"column:created_time"`
+	TestTime           int64   `gorm:"column:test_time"`
+	ResponseTime       int64   `gorm:"column:response_time"`
+	BaseURL            *string `gorm:"column:base_url"`
+	Balance            float64 `gorm:"column:balance"`
+	BalanceUpdatedTime int64   `gorm:"column:balance_updated_time"`
+	Models             string  `gorm:"column:models"`
+	Group              string  `gorm:"column:group"`
+	UsedQuota          int64   `gorm:"column:used_quota"`
+	ModelMapping       *string `gorm:"column:model_mapping"`
+	Priority           *int64  `gorm:"column:priority"`
+	Config             string  `gorm:"column:config"`
+	SystemPrompt       *string `gorm:"column:system_prompt"`
 }
 
 func (channelModel) TableName() string { return "channels" }
@@ -187,16 +196,25 @@ func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Chan
 		priority = *model.Priority
 	}
 	return &biz.Channel{
-		ID:       model.ID,
-		Type:     model.Type,
-		Name:     model.Name,
-		Status:   model.Status,
-		BaseURL:  baseURL,
-		Group:    model.Group,
-		Models:   biz.SplitCSV(model.Models),
-		Priority: priority,
-		Key:      r.decryptKey(model.Key),
-		Config:   biz.DecodeChannelConfig(model.Config),
+		ID:                 model.ID,
+		Type:               model.Type,
+		Name:               model.Name,
+		Status:             model.Status,
+		BaseURL:            baseURL,
+		Group:              model.Group,
+		Models:             biz.SplitCSV(model.Models),
+		Priority:           priority,
+		Key:                r.decryptKey(model.Key),
+		Weight:             derefUint(model.Weight),
+		CreatedTime:        model.CreatedTime,
+		TestTime:           model.TestTime,
+		ResponseTime:       model.ResponseTime,
+		Balance:            model.Balance,
+		BalanceUpdatedTime: model.BalanceUpdatedTime,
+		UsedQuota:          model.UsedQuota,
+		ModelMapping:       derefString(model.ModelMapping),
+		SystemPrompt:       derefString(model.SystemPrompt),
+		Config:             biz.DecodeChannelConfig(model.Config),
 	}, nil
 }
 
@@ -341,13 +359,16 @@ func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) 
 func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) error {
 	model := r.channelToModel(channel)
 	return r.db.WithContext(ctx).Model(&channelModel{}).Where("id = ?", channel.ID).Updates(map[string]interface{}{
-		"name":     model.Name,
-		"base_url": model.BaseURL,
-		"key":      model.Key,
-		"models":   model.Models,
-		"group":    model.Group,
-		"priority": model.Priority,
-		"config":   model.Config,
+		"name":          model.Name,
+		"base_url":      model.BaseURL,
+		"key":           model.Key,
+		"models":        model.Models,
+		"group":         model.Group,
+		"priority":      model.Priority,
+		"weight":        model.Weight,
+		"model_mapping": model.ModelMapping,
+		"system_prompt": model.SystemPrompt,
+		"config":        model.Config,
 	}).Error
 }
 
@@ -395,36 +416,71 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 		priority = *m.Priority
 	}
 	return &biz.Channel{
-		ID:       m.ID,
-		Type:     m.Type,
-		Name:     m.Name,
-		Status:   m.Status,
-		BaseURL:  baseURL,
-		Group:    m.Group,
-		Models:   biz.SplitCSV(m.Models),
-		Priority: priority,
-		Key:      r.decryptKey(m.Key),
-		Config:   biz.DecodeChannelConfig(m.Config),
+		ID:                 m.ID,
+		Type:               m.Type,
+		Name:               m.Name,
+		Status:             m.Status,
+		BaseURL:            baseURL,
+		Group:              m.Group,
+		Models:             biz.SplitCSV(m.Models),
+		Priority:           priority,
+		Key:                r.decryptKey(m.Key),
+		Weight:             derefUint(m.Weight),
+		CreatedTime:        m.CreatedTime,
+		TestTime:           m.TestTime,
+		ResponseTime:       m.ResponseTime,
+		Balance:            m.Balance,
+		BalanceUpdatedTime: m.BalanceUpdatedTime,
+		UsedQuota:          m.UsedQuota,
+		ModelMapping:       derefString(m.ModelMapping),
+		SystemPrompt:       derefString(m.SystemPrompt),
+		Config:             biz.DecodeChannelConfig(m.Config),
 	}
 }
 
 func (r *Repository) channelToModel(ch *biz.Channel) *channelModel {
 	return &channelModel{
-		ID:      ch.ID,
-		Type:    ch.Type,
-		Name:    ch.Name,
-		Status:  ch.Status,
-		BaseURL: strPtr(ch.BaseURL),
-		Models:  ch.ModelsCSV(),
-		Group:   ch.Group,
-		Priority: int64Ptr(ch.Priority),
-		Key:     r.encryptKey(ch.Key),
-		Config:  "{}",
+		ID:                 ch.ID,
+		Type:               ch.Type,
+		Name:               ch.Name,
+		Status:             ch.Status,
+		BaseURL:            strPtr(ch.BaseURL),
+		Weight:             uintPtr(ch.Weight),
+		CreatedTime:        ch.CreatedTime,
+		TestTime:           ch.TestTime,
+		ResponseTime:       ch.ResponseTime,
+		Balance:            ch.Balance,
+		BalanceUpdatedTime: ch.BalanceUpdatedTime,
+		Models:             ch.ModelsCSV(),
+		Group:              ch.Group,
+		UsedQuota:          ch.UsedQuota,
+		ModelMapping:       stringPtr(ch.ModelMapping),
+		Priority:           int64Ptr(ch.Priority),
+		Key:                r.encryptKey(ch.Key),
+		Config:             "{}",
+		SystemPrompt:       stringPtr(ch.SystemPrompt),
 	}
 }
 
 func strPtr(s string) *string { return &s }
 func int64Ptr(i int64) *int64 { return &i }
+func uintPtr(i uint32) *uint {
+	v := uint(i)
+	return &v
+}
+func stringPtr(s string) *string { return &s }
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+func derefUint(u *uint) uint32 {
+	if u == nil {
+		return 0
+	}
+	return uint32(*u)
+}
 
 func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")

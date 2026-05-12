@@ -33,6 +33,12 @@ message ChannelSummary {
   int64 priority = 6;
   int64 created_at = 7;
   string models = 8;
+  uint32 weight = 9;
+  int64 test_time = 10;
+  int64 response_time = 11;
+  double balance = 12;
+  int64 balance_updated_time = 13;
+  int64 used_quota = 14;
 }
 
 // ========== 渠道配置 ==========
@@ -58,6 +64,14 @@ message ChannelInfo {
   int64 priority = 8;
   string key = 9;
   ChannelConfig config = 10;
+  uint32 weight = 11;
+  int64 test_time = 12;
+  int64 response_time = 13;
+  double balance = 14;
+  int64 balance_updated_time = 15;
+  int64 used_quota = 16;
+  string model_mapping = 17;
+  string system_prompt = 18;
 }
 
 // ========== 账户快照 ==========

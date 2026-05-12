@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	adminv1 "micro-one-api/api/admin/v1"
-	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/internal/admin/service"
 	"micro-one-api/internal/pkg/metrics"
 
@@ -468,18 +467,29 @@ func handleGetSystemOptions(w http.ResponseWriter, r *http.Request, svc *service
 func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	switch r.Method {
 	case http.MethodGet:
-		resp, err := svc.GetSystemOptions(r.Context(), &adminv1.GetSystemOptionsRequest{})
+		options, err := svc.ListOneAPIOptions(r.Context())
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		resp := map[string]interface{}{
 			"success": true,
 			"message": "",
-			"data":    systemOptionsToOneAPIMap(resp.GetOptions()),
-		})
+			"data":    options,
+		}
+		for _, option := range options {
+			switch option.Key {
+			case "SystemName":
+				resp["site_title"] = option.Value
+			case "RegisterEnabled":
+				resp["registration_enabled"] = option.Value == "true"
+			}
+		}
+		writeJSON(w, http.StatusOK, resp)
 	case http.MethodPut:
 		var raw struct {
+			Key                 string `json:"key"`
+			Value               string `json:"value"`
 			SiteTitle           string `json:"site_title"`
 			RegistrationEnabled *bool  `json:"registration_enabled"`
 			Options             *struct {
@@ -491,46 +501,53 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
-		siteTitle := raw.SiteTitle
-		registrationEnabled := raw.RegistrationEnabled
-		if raw.Options != nil {
-			if raw.Options.SiteTitle != "" {
-				siteTitle = raw.Options.SiteTitle
+		if raw.Key != "" {
+			resp, err := svc.UpdateOneAPIOption(r.Context(), raw.Key, raw.Value)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				return
 			}
-			if raw.Options.RegistrationEnabled != nil {
-				registrationEnabled = raw.Options.RegistrationEnabled
-			}
-		}
-		enabled := true
-		if registrationEnabled != nil {
-			enabled = *registrationEnabled
-		}
-		resp, err := svc.UpdateSystemOptions(r.Context(), &adminv1.UpdateSystemOptionsRequest{
-			Options: &commonv1.SystemOptions{
-				SiteTitle:           siteTitle,
-				RegistrationEnabled: enabled,
-			},
-		})
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"success": resp.GetSuccess(),
+				"message": resp.GetMessage(),
+			})
 			return
 		}
+		updates := map[string]string{}
+		if raw.SiteTitle != "" {
+			updates["SystemName"] = raw.SiteTitle
+		}
+		if raw.RegistrationEnabled != nil {
+			updates["RegisterEnabled"] = strconv.FormatBool(*raw.RegistrationEnabled)
+		}
+		if raw.Options != nil {
+			if raw.Options.SiteTitle != "" {
+				updates["SystemName"] = raw.Options.SiteTitle
+			}
+			if raw.Options.RegistrationEnabled != nil {
+				updates["RegisterEnabled"] = strconv.FormatBool(*raw.Options.RegistrationEnabled)
+			}
+		}
+		for key, value := range updates {
+			resp, err := svc.UpdateOneAPIOption(r.Context(), key, value)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				return
+			}
+			if !resp.GetSuccess() {
+				writeJSON(w, http.StatusOK, map[string]interface{}{
+					"success": false,
+					"message": resp.GetMessage(),
+				})
+				return
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"success": resp.GetSuccess(),
-			"message": resp.GetMessage(),
+			"success": true,
+			"message": "",
 		})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func systemOptionsToOneAPIMap(options *commonv1.SystemOptions) map[string]interface{} {
-	if options == nil {
-		return map[string]interface{}{}
-	}
-	return map[string]interface{}{
-		"site_title":           options.GetSiteTitle(),
-		"registration_enabled": options.GetRegistrationEnabled(),
 	}
 }
 

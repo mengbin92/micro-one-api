@@ -147,17 +147,23 @@ func (x *UserInfo) GetLastLoginAt() int64 {
 }
 
 type ChannelSummary struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Type          int32                  `protobuf:"varint,3,opt,name=type,proto3" json:"type,omitempty"`
-	Group         string                 `protobuf:"bytes,4,opt,name=group,proto3" json:"group,omitempty"`
-	Status        int32                  `protobuf:"varint,5,opt,name=status,proto3" json:"status,omitempty"`
-	Priority      int64                  `protobuf:"varint,6,opt,name=priority,proto3" json:"priority,omitempty"`
-	CreatedAt     int64                  `protobuf:"varint,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	Models        string                 `protobuf:"bytes,8,opt,name=models,proto3" json:"models,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Type               int32                  `protobuf:"varint,3,opt,name=type,proto3" json:"type,omitempty"`
+	Group              string                 `protobuf:"bytes,4,opt,name=group,proto3" json:"group,omitempty"`
+	Status             int32                  `protobuf:"varint,5,opt,name=status,proto3" json:"status,omitempty"`
+	Priority           int64                  `protobuf:"varint,6,opt,name=priority,proto3" json:"priority,omitempty"`
+	CreatedAt          int64                  `protobuf:"varint,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Models             string                 `protobuf:"bytes,8,opt,name=models,proto3" json:"models,omitempty"`
+	Weight             uint32                 `protobuf:"varint,9,opt,name=weight,proto3" json:"weight,omitempty"`
+	TestTime           int64                  `protobuf:"varint,10,opt,name=test_time,json=testTime,proto3" json:"test_time,omitempty"`
+	ResponseTime       int64                  `protobuf:"varint,11,opt,name=response_time,json=responseTime,proto3" json:"response_time,omitempty"`
+	Balance            float64                `protobuf:"fixed64,12,opt,name=balance,proto3" json:"balance,omitempty"`
+	BalanceUpdatedTime int64                  `protobuf:"varint,13,opt,name=balance_updated_time,json=balanceUpdatedTime,proto3" json:"balance_updated_time,omitempty"`
+	UsedQuota          int64                  `protobuf:"varint,14,opt,name=used_quota,json=usedQuota,proto3" json:"used_quota,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ChannelSummary) Reset() {
@@ -246,6 +252,48 @@ func (x *ChannelSummary) GetModels() string {
 	return ""
 }
 
+func (x *ChannelSummary) GetWeight() uint32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+func (x *ChannelSummary) GetTestTime() int64 {
+	if x != nil {
+		return x.TestTime
+	}
+	return 0
+}
+
+func (x *ChannelSummary) GetResponseTime() int64 {
+	if x != nil {
+		return x.ResponseTime
+	}
+	return 0
+}
+
+func (x *ChannelSummary) GetBalance() float64 {
+	if x != nil {
+		return x.Balance
+	}
+	return 0
+}
+
+func (x *ChannelSummary) GetBalanceUpdatedTime() int64 {
+	if x != nil {
+		return x.BalanceUpdatedTime
+	}
+	return 0
+}
+
+func (x *ChannelSummary) GetUsedQuota() int64 {
+	if x != nil {
+		return x.UsedQuota
+	}
+	return 0
+}
+
 type ChannelConfig struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	ApiVersion        string                 `protobuf:"bytes,1,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
@@ -323,19 +371,27 @@ func (x *ChannelConfig) GetVertexAiProjectId() string {
 }
 
 type ChannelInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Type          int32                  `protobuf:"varint,2,opt,name=type,proto3" json:"type,omitempty"`
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Status        int32                  `protobuf:"varint,4,opt,name=status,proto3" json:"status,omitempty"`
-	BaseUrl       string                 `protobuf:"bytes,5,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
-	Group         string                 `protobuf:"bytes,6,opt,name=group,proto3" json:"group,omitempty"`
-	Models        string                 `protobuf:"bytes,7,opt,name=models,proto3" json:"models,omitempty"`
-	Priority      int64                  `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
-	Key           string                 `protobuf:"bytes,9,opt,name=key,proto3" json:"key,omitempty"`
-	Config        *ChannelConfig         `protobuf:"bytes,10,opt,name=config,proto3" json:"config,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type               int32                  `protobuf:"varint,2,opt,name=type,proto3" json:"type,omitempty"`
+	Name               string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Status             int32                  `protobuf:"varint,4,opt,name=status,proto3" json:"status,omitempty"`
+	BaseUrl            string                 `protobuf:"bytes,5,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	Group              string                 `protobuf:"bytes,6,opt,name=group,proto3" json:"group,omitempty"`
+	Models             string                 `protobuf:"bytes,7,opt,name=models,proto3" json:"models,omitempty"`
+	Priority           int64                  `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	Key                string                 `protobuf:"bytes,9,opt,name=key,proto3" json:"key,omitempty"`
+	Config             *ChannelConfig         `protobuf:"bytes,10,opt,name=config,proto3" json:"config,omitempty"`
+	Weight             uint32                 `protobuf:"varint,11,opt,name=weight,proto3" json:"weight,omitempty"`
+	TestTime           int64                  `protobuf:"varint,12,opt,name=test_time,json=testTime,proto3" json:"test_time,omitempty"`
+	ResponseTime       int64                  `protobuf:"varint,13,opt,name=response_time,json=responseTime,proto3" json:"response_time,omitempty"`
+	Balance            float64                `protobuf:"fixed64,14,opt,name=balance,proto3" json:"balance,omitempty"`
+	BalanceUpdatedTime int64                  `protobuf:"varint,15,opt,name=balance_updated_time,json=balanceUpdatedTime,proto3" json:"balance_updated_time,omitempty"`
+	UsedQuota          int64                  `protobuf:"varint,16,opt,name=used_quota,json=usedQuota,proto3" json:"used_quota,omitempty"`
+	ModelMapping       string                 `protobuf:"bytes,17,opt,name=model_mapping,json=modelMapping,proto3" json:"model_mapping,omitempty"`
+	SystemPrompt       string                 `protobuf:"bytes,18,opt,name=system_prompt,json=systemPrompt,proto3" json:"system_prompt,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ChannelInfo) Reset() {
@@ -436,6 +492,62 @@ func (x *ChannelInfo) GetConfig() *ChannelConfig {
 		return x.Config
 	}
 	return nil
+}
+
+func (x *ChannelInfo) GetWeight() uint32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+func (x *ChannelInfo) GetTestTime() int64 {
+	if x != nil {
+		return x.TestTime
+	}
+	return 0
+}
+
+func (x *ChannelInfo) GetResponseTime() int64 {
+	if x != nil {
+		return x.ResponseTime
+	}
+	return 0
+}
+
+func (x *ChannelInfo) GetBalance() float64 {
+	if x != nil {
+		return x.Balance
+	}
+	return 0
+}
+
+func (x *ChannelInfo) GetBalanceUpdatedTime() int64 {
+	if x != nil {
+		return x.BalanceUpdatedTime
+	}
+	return 0
+}
+
+func (x *ChannelInfo) GetUsedQuota() int64 {
+	if x != nil {
+		return x.UsedQuota
+	}
+	return 0
+}
+
+func (x *ChannelInfo) GetModelMapping() string {
+	if x != nil {
+		return x.ModelMapping
+	}
+	return ""
+}
+
+func (x *ChannelInfo) GetSystemPrompt() string {
+	if x != nil {
+		return x.SystemPrompt
+	}
+	return ""
 }
 
 type AccountSnapshot struct {
@@ -1333,7 +1445,7 @@ const file_api_common_v1_common_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\n" +
 	" \x01(\x03R\tcreatedAt\x12\"\n" +
-	"\rlast_login_at\x18\v \x01(\x03R\vlastLoginAt\"\xc9\x01\n" +
+	"\rlast_login_at\x18\v \x01(\x03R\vlastLoginAt\"\x8e\x03\n" +
 	"\x0eChannelSummary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -1343,7 +1455,15 @@ const file_api_common_v1_common_proto_rawDesc = "" +
 	"\bpriority\x18\x06 \x01(\x03R\bpriority\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\a \x01(\x03R\tcreatedAt\x12\x16\n" +
-	"\x06models\x18\b \x01(\tR\x06models\"\xb0\x01\n" +
+	"\x06models\x18\b \x01(\tR\x06models\x12\x16\n" +
+	"\x06weight\x18\t \x01(\rR\x06weight\x12\x1b\n" +
+	"\ttest_time\x18\n" +
+	" \x01(\x03R\btestTime\x12#\n" +
+	"\rresponse_time\x18\v \x01(\x03R\fresponseTime\x12\x18\n" +
+	"\abalance\x18\f \x01(\x01R\abalance\x120\n" +
+	"\x14balance_updated_time\x18\r \x01(\x03R\x12balanceUpdatedTime\x12\x1d\n" +
+	"\n" +
+	"used_quota\x18\x0e \x01(\x03R\tusedQuota\"\xb0\x01\n" +
 	"\rChannelConfig\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x16\n" +
@@ -1351,7 +1471,7 @@ const file_api_common_v1_common_proto_rawDesc = "" +
 	"\n" +
 	"library_id\x18\x03 \x01(\tR\tlibraryId\x12\x16\n" +
 	"\x06plugin\x18\x04 \x01(\tR\x06plugin\x12/\n" +
-	"\x14vertex_ai_project_id\x18\x05 \x01(\tR\x11vertexAiProjectId\"\x8a\x02\n" +
+	"\x14vertex_ai_project_id\x18\x05 \x01(\tR\x11vertexAiProjectId\"\x99\x04\n" +
 	"\vChannelInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\x05R\x04type\x12\x12\n" +
@@ -1363,7 +1483,16 @@ const file_api_common_v1_common_proto_rawDesc = "" +
 	"\bpriority\x18\b \x01(\x03R\bpriority\x12\x10\n" +
 	"\x03key\x18\t \x01(\tR\x03key\x124\n" +
 	"\x06config\x18\n" +
-	" \x01(\v2\x1c.api.common.v1.ChannelConfigR\x06config\"\xde\x01\n" +
+	" \x01(\v2\x1c.api.common.v1.ChannelConfigR\x06config\x12\x16\n" +
+	"\x06weight\x18\v \x01(\rR\x06weight\x12\x1b\n" +
+	"\ttest_time\x18\f \x01(\x03R\btestTime\x12#\n" +
+	"\rresponse_time\x18\r \x01(\x03R\fresponseTime\x12\x18\n" +
+	"\abalance\x18\x0e \x01(\x01R\abalance\x120\n" +
+	"\x14balance_updated_time\x18\x0f \x01(\x03R\x12balanceUpdatedTime\x12\x1d\n" +
+	"\n" +
+	"used_quota\x18\x10 \x01(\x03R\tusedQuota\x12#\n" +
+	"\rmodel_mapping\x18\x11 \x01(\tR\fmodelMapping\x12#\n" +
+	"\rsystem_prompt\x18\x12 \x01(\tR\fsystemPrompt\"\xde\x01\n" +
 	"\x0fAccountSnapshot\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
 	"\x05quota\x18\x02 \x01(\x03R\x05quota\x12\x1d\n" +

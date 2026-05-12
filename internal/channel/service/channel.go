@@ -69,15 +69,23 @@ func toChannelInfo(channel *biz.Channel) *commonv1.ChannelInfo {
 		return nil
 	}
 	return &commonv1.ChannelInfo{
-		Id:       channel.ID,
-		Type:     channel.Type,
-		Name:     channel.Name,
-		Status:   channel.Status,
-		BaseUrl:  channel.BaseURL,
-		Group:    channel.Group,
-		Models:   channel.ModelsCSV(),
-		Priority: channel.Priority,
-		Key:      channel.Key,
+		Id:                 channel.ID,
+		Type:               channel.Type,
+		Name:               channel.Name,
+		Status:             channel.Status,
+		BaseUrl:            channel.BaseURL,
+		Group:              channel.Group,
+		Models:             channel.ModelsCSV(),
+		Priority:           channel.Priority,
+		Key:                channel.Key,
+		Weight:             channel.Weight,
+		TestTime:           channel.TestTime,
+		ResponseTime:       channel.ResponseTime,
+		Balance:            channel.Balance,
+		BalanceUpdatedTime: channel.BalanceUpdatedTime,
+		UsedQuota:          channel.UsedQuota,
+		ModelMapping:       channel.ModelMapping,
+		SystemPrompt:       channel.SystemPrompt,
 		Config: &commonv1.ChannelConfig{
 			ApiVersion:        channel.Config.APIVersion,
 			Region:            channel.Config.Region,
@@ -93,14 +101,20 @@ func toChannelSummary(channel *biz.Channel) *commonv1.ChannelSummary {
 		return nil
 	}
 	return &commonv1.ChannelSummary{
-		Id:        channel.ID,
-		Name:      channel.Name,
-		Type:      channel.Type,
-		Group:     channel.Group,
-		Status:    channel.Status,
-		Priority:  channel.Priority,
-		CreatedAt: 0,
-		Models:    channel.ModelsCSV(),
+		Id:                 channel.ID,
+		Name:               channel.Name,
+		Type:               channel.Type,
+		Group:              channel.Group,
+		Status:             channel.Status,
+		Priority:           channel.Priority,
+		CreatedAt:          channel.CreatedTime,
+		Models:             channel.ModelsCSV(),
+		Weight:             channel.Weight,
+		TestTime:           channel.TestTime,
+		ResponseTime:       channel.ResponseTime,
+		Balance:            channel.Balance,
+		BalanceUpdatedTime: channel.BalanceUpdatedTime,
+		UsedQuota:          channel.UsedQuota,
 	}
 }
 
@@ -121,21 +135,28 @@ func (s *ChannelService) ListChannels(ctx context.Context, req *channelv1.ListCh
 }
 
 func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.CreateChannelRequest) (*channelv1.CreateChannelResponse, error) {
+	cfg := commonv1.ChannelConfig{}
+	if req.Config != nil {
+		cfg = *req.Config
+	}
 	channel := &biz.Channel{
-		Type:     req.Type,
-		Name:     req.Name,
-		BaseURL:  req.BaseUrl,
-		Key:      req.Key,
-		Models:   biz.SplitCSV(req.Models),
-		Group:    req.Group,
-		Priority: req.Priority,
-		Status:   biz.ChannelStatusEnabled,
+		Type:         req.Type,
+		Name:         req.Name,
+		BaseURL:      req.BaseUrl,
+		Key:          req.Key,
+		Models:       biz.SplitCSV(req.Models),
+		Group:        req.Group,
+		Priority:     req.Priority,
+		Status:       biz.ChannelStatusEnabled,
+		Weight:       req.Weight,
+		ModelMapping: req.ModelMapping,
+		SystemPrompt: req.SystemPrompt,
 		Config: biz.ChannelConfig{
-			APIVersion:        req.Config.ApiVersion,
-			Region:            req.Config.Region,
-			LibraryID:         req.Config.LibraryId,
-			Plugin:            req.Config.Plugin,
-			VertexAIProjectID: req.Config.VertexAiProjectId,
+			APIVersion:        cfg.ApiVersion,
+			Region:            cfg.Region,
+			LibraryID:         cfg.LibraryId,
+			Plugin:            cfg.Plugin,
+			VertexAIProjectID: cfg.VertexAiProjectId,
 		},
 	}
 	if err := s.uc.CreateChannel(ctx, channel); err != nil {
@@ -176,6 +197,24 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 	}
 	if req.Priority != 0 {
 		channel.Priority = req.Priority
+	}
+	if req.Weight != 0 {
+		channel.Weight = req.Weight
+	}
+	if req.ModelMapping != "" {
+		channel.ModelMapping = req.ModelMapping
+	}
+	if req.SystemPrompt != "" {
+		channel.SystemPrompt = req.SystemPrompt
+	}
+	if req.Config != nil {
+		channel.Config = biz.ChannelConfig{
+			APIVersion:        req.Config.ApiVersion,
+			Region:            req.Config.Region,
+			LibraryID:         req.Config.LibraryId,
+			Plugin:            req.Config.Plugin,
+			VertexAIProjectID: req.Config.VertexAiProjectId,
+		}
 	}
 	if err := s.uc.UpdateChannel(ctx, channel); err != nil {
 		return &channelv1.UpdateChannelResponse{

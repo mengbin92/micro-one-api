@@ -29,16 +29,25 @@ type ChannelConfig struct {
 
 // Channel describes the channel snapshot selected for relay.
 type Channel struct {
-	ID       int64
-	Type     int32
-	Name     string
-	Status   int32
-	BaseURL  string
-	Group    string
-	Models   []string
-	Priority int64
-	Key      string
-	Config   ChannelConfig
+	ID                 int64
+	Type               int32
+	Name               string
+	Status             int32
+	BaseURL            string
+	Group              string
+	Models             []string
+	Priority           int64
+	Key                string
+	Weight             uint32
+	CreatedTime        int64
+	TestTime           int64
+	ResponseTime       int64
+	Balance            float64
+	BalanceUpdatedTime int64
+	UsedQuota          int64
+	ModelMapping       string
+	SystemPrompt       string
+	Config             ChannelConfig
 }
 
 type Ability struct {
@@ -108,12 +117,12 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 		return nil, ErrChannelNotFound
 	}
 
-		// Use crypto/rand for secure random selection
-		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(candidates))))
-		if err != nil {
-			return nil, err
-		}
-		selected := candidates[nBig.Int64()]
+	// Use crypto/rand for secure random selection
+	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(candidates))))
+	if err != nil {
+		return nil, err
+	}
+	selected := candidates[nBig.Int64()]
 	return uc.repo.FindByID(ctx, selected.ChannelID)
 }
 

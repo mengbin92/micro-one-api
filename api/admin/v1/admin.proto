@@ -290,6 +290,9 @@ message AdminCreateChannelRequest {
   string group = 6;
   int64 priority = 7;
   common.v1.ChannelConfig config = 8;
+  uint32 weight = 9;
+  string model_mapping = 10;
+  string system_prompt = 11;
 }
 
 message AdminCreateChannelResponse {
@@ -307,6 +310,9 @@ message AdminUpdateChannelRequest {
   string group = 6;
   int64 priority = 7;
   common.v1.ChannelConfig config = 8;
+  uint32 weight = 9;
+  string model_mapping = 10;
+  string system_prompt = 11;
 }
 
 message AdminUpdateChannelResponse {

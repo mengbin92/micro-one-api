@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	adminv1 "micro-one-api/api/admin/v1"
@@ -29,6 +31,11 @@ type AdminService struct {
 type SystemOptionsStore interface {
 	Get(key string) (string, error)
 	Set(key, value string) error
+}
+
+type OneAPIOption struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // NewAdminService creates a new admin service
@@ -497,14 +504,17 @@ func (s *AdminService) ListChannels(ctx context.Context, req *adminv1.AdminListC
 
 func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCreateChannelRequest) (*adminv1.AdminCreateChannelResponse, error) {
 	resp, err := s.channelClient.CreateChannel(ctx, &channelv1.CreateChannelRequest{
-		Name:     req.Name,
-		Type:     req.Type,
-		BaseUrl:  req.BaseUrl,
-		Key:      req.Key,
-		Models:   req.Models,
-		Group:    req.Group,
-		Priority: req.Priority,
-		Config:   req.Config,
+		Name:         req.Name,
+		Type:         req.Type,
+		BaseUrl:      req.BaseUrl,
+		Key:          req.Key,
+		Models:       req.Models,
+		Group:        req.Group,
+		Priority:     req.Priority,
+		Config:       req.Config,
+		Weight:       req.Weight,
+		ModelMapping: req.ModelMapping,
+		SystemPrompt: req.SystemPrompt,
 	})
 	if err != nil {
 		return &adminv1.AdminCreateChannelResponse{Success: false, Message: err.Error()}, nil
@@ -518,14 +528,17 @@ func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCrea
 
 func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpdateChannelRequest) (*adminv1.AdminUpdateChannelResponse, error) {
 	resp, err := s.channelClient.UpdateChannel(ctx, &channelv1.UpdateChannelRequest{
-		ChannelId: req.ChannelId,
-		Name:      req.Name,
-		BaseUrl:   req.BaseUrl,
-		Key:       req.Key,
-		Models:    req.Models,
-		Group:     req.Group,
-		Priority:  req.Priority,
-		Config:    req.Config,
+		ChannelId:    req.ChannelId,
+		Name:         req.Name,
+		BaseUrl:      req.BaseUrl,
+		Key:          req.Key,
+		Models:       req.Models,
+		Group:        req.Group,
+		Priority:     req.Priority,
+		Config:       req.Config,
+		Weight:       req.Weight,
+		ModelMapping: req.ModelMapping,
+		SystemPrompt: req.SystemPrompt,
 	})
 	if err != nil {
 		return &adminv1.AdminUpdateChannelResponse{Success: false, Message: err.Error()}, nil
@@ -564,6 +577,119 @@ func (s *AdminService) ChangeChannelStatus(ctx context.Context, req *adminv1.Adm
 }
 
 // ========== 系统配置 ==========
+
+var oneAPIOptionDefaults = map[string]string{
+	"PasswordLoginEnabled":             "true",
+	"PasswordRegisterEnabled":          "true",
+	"EmailVerificationEnabled":         "false",
+	"GitHubOAuthEnabled":               "false",
+	"OidcEnabled":                      "false",
+	"WeChatAuthEnabled":                "false",
+	"TurnstileCheckEnabled":            "false",
+	"RegisterEnabled":                  "true",
+	"AutomaticDisableChannelEnabled":   "false",
+	"AutomaticEnableChannelEnabled":    "false",
+	"ApproximateTokenEnabled":          "false",
+	"LogConsumeEnabled":                "true",
+	"DisplayInCurrencyEnabled":         "false",
+	"DisplayTokenStatEnabled":          "true",
+	"ChannelDisableThreshold":          "0",
+	"EmailDomainRestrictionEnabled":    "false",
+	"EmailDomainWhitelist":             "",
+	"SMTPServer":                       "",
+	"SMTPFrom":                         "",
+	"SMTPPort":                         "587",
+	"SMTPAccount":                      "",
+	"Notice":                           "",
+	"About":                            "",
+	"HomePageContent":                  "",
+	"Footer":                           "",
+	"SystemName":                       "One-API",
+	"Logo":                             "",
+	"ServerAddress":                    "",
+	"GitHubClientId":                   "",
+	"WeChatServerAddress":              "",
+	"WeChatAccountQRCodeImageURL":      "",
+	"MessagePusherAddress":             "",
+	"TurnstileSiteKey":                 "",
+	"QuotaForNewUser":                  "0",
+	"QuotaForInviter":                  "0",
+	"QuotaForInvitee":                  "0",
+	"QuotaRemindThreshold":             "0",
+	"PreConsumedQuota":                 "0",
+	"ModelRatio":                       "{}",
+	"GroupRatio":                       "{}",
+	"CompletionRatio":                  "{}",
+	"TopUpLink":                        "",
+	"ChatLink":                         "",
+	"QuotaPerUnit":                     "500000",
+	"RetryTimes":                       "0",
+	"Theme":                            "default",
+}
+
+func (s *AdminService) ListOneAPIOptions(context.Context) ([]OneAPIOption, error) {
+	values := make(map[string]string, len(oneAPIOptionDefaults))
+	for key, value := range oneAPIOptionDefaults {
+		values[key] = value
+	}
+	if s.systemOptsRepo != nil {
+		for key := range values {
+			if v, err := s.systemOptsRepo.Get(key); err == nil && v != "" {
+				values[key] = v
+			}
+		}
+		if v, err := s.systemOptsRepo.Get("site_title"); err == nil && v != "" && values["SystemName"] == oneAPIOptionDefaults["SystemName"] {
+			values["SystemName"] = v
+		}
+		if v, err := s.systemOptsRepo.Get("registration_enabled"); err == nil && v != "" && values["RegisterEnabled"] == oneAPIOptionDefaults["RegisterEnabled"] {
+			values["RegisterEnabled"] = v
+		}
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		if strings.HasSuffix(key, "Token") || strings.HasSuffix(key, "Secret") {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	options := make([]OneAPIOption, 0, len(keys))
+	for _, key := range keys {
+		options = append(options, OneAPIOption{Key: key, Value: values[key]})
+	}
+	return options, nil
+}
+
+func (s *AdminService) UpdateOneAPIOption(_ context.Context, key, value string) (*adminv1.UpdateSystemOptionsResponse, error) {
+	if s.systemOptsRepo == nil {
+		return &adminv1.UpdateSystemOptionsResponse{
+			Success: false,
+			Message: "system options storage not configured",
+		}, nil
+	}
+	if key == "" {
+		return &adminv1.UpdateSystemOptionsResponse{
+			Success: false,
+			Message: "option key is required",
+		}, nil
+	}
+	if err := s.systemOptsRepo.Set(key, value); err != nil {
+		return &adminv1.UpdateSystemOptionsResponse{
+			Success: false,
+			Message: fmt.Sprintf("failed to save %s: %v", key, err),
+		}, nil
+	}
+	switch key {
+	case "SystemName":
+		_ = s.systemOptsRepo.Set("site_title", value)
+	case "RegisterEnabled":
+		_ = s.systemOptsRepo.Set("registration_enabled", value)
+	}
+	return &adminv1.UpdateSystemOptionsResponse{
+		Success: true,
+		Message: "",
+	}, nil
+}
 
 func (s *AdminService) GetSystemOptions(ctx context.Context, req *adminv1.GetSystemOptionsRequest) (*adminv1.GetSystemOptionsResponse, error) {
 	siteTitle := "One-API"
