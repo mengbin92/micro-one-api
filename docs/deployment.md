@@ -105,6 +105,11 @@ kubectl create secret tls api-tls-secret \
   --cert=api.yourdomain.com.crt \
   --key=api.yourdomain.com.key \
   -n one-api
+
+# 服务间 HTTP 调用令牌（admin-api 代理删除 log-service 业务日志时使用）
+kubectl create secret generic service-token-secret \
+  --from-literal=token='replace-with-a-long-random-token' \
+  -n one-api
 ```
 
 ### 3.4 部署服务
@@ -151,6 +156,7 @@ kubectl logs -f deployment/relay-gateway -n one-api
 | `REDIS_ADDR` | Redis 地址 | - |
 | `LOG_LEVEL` | 日志级别 | `info` |
 | `LOG_FORMAT` | 日志格式 (json/text) | `json` |
+| `SERVICE_TOKEN` | 服务间 HTTP 调用令牌；admin-api 删除业务日志时转发到 log-service 使用 | - |
 
 ### 4.2 Relay Gateway 专用
 
@@ -162,6 +168,17 @@ kubectl logs -f deployment/relay-gateway -n one-api
 | `RATE_LIMIT_REQUESTS_PER_SECOND` | 每秒请求数限制 | `100` |
 | `RATE_LIMIT_BURST` | 突发请求上限 | `200` |
 | `CORS_ALLOWED_ORIGINS` | CORS 允许的源 | - |
+
+### 4.3 Admin API 专用
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `IDENTITY_GRPC_ENDPOINT` | identity-service gRPC 地址 | - |
+| `CHANNEL_GRPC_ENDPOINT` | channel-service gRPC 地址 | - |
+| `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 | - |
+| `LOG_HTTP_ENDPOINT` | log-service HTTP 地址；未配置时 `/api/log/` 删除保持禁用兼容响应 | - |
+
+`/api/log/` 的 `DELETE` 仅删除 `log-service` 中的业务日志，并要求传入 `end_time`。该操作不会删除 `billing-service` 的 ledger/账务流水。
 
 ## 5. 健康检查与监控
 

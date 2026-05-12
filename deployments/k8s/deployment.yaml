@@ -152,6 +152,7 @@ data:
   identity-grpc-endpoint: "identity-service:9001"
   channel-grpc-endpoint: "channel-service:9002"
   billing-grpc-endpoint: "billing-service:9004"
+  log-http-endpoint: "http://log-service:8006"
   redis-addr: "redis:6379"
   rate-limit-rps: "100"
   rate-limit-burst: "200"

@@ -66,6 +66,18 @@ spec:
             configMapKeyRef:
               name: app-config
               key: billing-grpc-endpoint
+        - name: LOG_HTTP_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: log-http-endpoint
+              optional: true
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: service-token-secret
+              key: token
+              optional: true
         - name: LOG_LEVEL
           valueFrom:
             configMapKeyRef:
