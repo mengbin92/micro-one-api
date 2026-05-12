@@ -207,6 +207,10 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 	if req.SystemPrompt != "" {
 		channel.SystemPrompt = req.SystemPrompt
 	}
+	if req.Balance != 0 || req.BalanceUpdatedTime != 0 {
+		channel.Balance = req.Balance
+		channel.BalanceUpdatedTime = req.BalanceUpdatedTime
+	}
 	if req.Config != nil {
 		channel.Config = biz.ChannelConfig{
 			APIVersion:        req.Config.ApiVersion,

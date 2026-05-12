@@ -2,8 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +29,7 @@ type AdminService struct {
 	identityClient identityv1.IdentityServiceClient
 	channelClient  channelv1.ChannelServiceClient
 	systemOptsRepo SystemOptionsStore
+	httpClient     *http.Client
 }
 
 // SystemOptionsStore is the interface for system options persistence.
@@ -50,6 +55,7 @@ func NewAdminService(
 		identityClient: identityClient,
 		channelClient:  channelClient,
 		systemOptsRepo: systemOptsRepo,
+		httpClient:     &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -569,6 +575,224 @@ func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpda
 		Success: resp.Success,
 		Message: resp.Message,
 	}, nil
+}
+
+type ChannelBalanceRefreshResult struct {
+	Success            bool    `json:"success"`
+	ChannelID          int64   `json:"channel_id"`
+	Provider           string  `json:"provider,omitempty"`
+	Balance            float64 `json:"balance,omitempty"`
+	BalanceUpdatedTime int64   `json:"balance_updated_time,omitempty"`
+	Message            string  `json:"message,omitempty"`
+}
+
+func (s *AdminService) RefreshChannelBalance(ctx context.Context, channelID int64) (*ChannelBalanceRefreshResult, error) {
+	channel, err := s.GetChannel(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	return s.refreshChannelBalance(ctx, channel)
+}
+
+func (s *AdminService) RefreshAllChannelBalances(ctx context.Context) ([]*ChannelBalanceRefreshResult, error) {
+	resp, err := s.channelClient.ListChannels(ctx, &channelv1.ListChannelsRequest{Page: 1, PageSize: 1000, Status: 1})
+	if err != nil {
+		return nil, err
+	}
+	results := make([]*ChannelBalanceRefreshResult, 0, len(resp.GetChannels()))
+	for _, summary := range resp.GetChannels() {
+		channel, err := s.GetChannel(ctx, summary.GetId())
+		if err != nil {
+			results = append(results, &ChannelBalanceRefreshResult{Success: false, ChannelID: summary.GetId(), Message: err.Error()})
+			continue
+		}
+		result, err := s.refreshChannelBalance(ctx, channel)
+		if err != nil {
+			results = append(results, &ChannelBalanceRefreshResult{Success: false, ChannelID: summary.GetId(), Message: err.Error()})
+			continue
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func (s *AdminService) refreshChannelBalance(ctx context.Context, channel *commonv1.ChannelInfo) (*ChannelBalanceRefreshResult, error) {
+	adapter := balanceAdapterForChannel(channel)
+	if adapter == nil {
+		return &ChannelBalanceRefreshResult{
+			Success:   false,
+			ChannelID: channel.GetId(),
+			Message:   "unsupported channel balance provider",
+		}, nil
+	}
+	balance, err := adapter.fetch(ctx, s.httpClient, channel)
+	if err != nil {
+		return &ChannelBalanceRefreshResult{
+			Success:   false,
+			ChannelID: channel.GetId(),
+			Provider:  adapter.name,
+			Message:   err.Error(),
+		}, nil
+	}
+	now := time.Now().Unix()
+	resp, err := s.channelClient.UpdateChannel(ctx, &channelv1.UpdateChannelRequest{
+		ChannelId:          channel.GetId(),
+		Balance:            balance,
+		BalanceUpdatedTime: now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !resp.GetSuccess() {
+		message := resp.GetMessage()
+		if message == "" {
+			message = "failed to persist channel balance"
+		}
+		return &ChannelBalanceRefreshResult{Success: false, ChannelID: channel.GetId(), Provider: adapter.name, Message: message}, nil
+	}
+	return &ChannelBalanceRefreshResult{
+		Success:            true,
+		ChannelID:          channel.GetId(),
+		Provider:           adapter.name,
+		Balance:            balance,
+		BalanceUpdatedTime: now,
+	}, nil
+}
+
+type channelBalanceAdapter struct {
+	name  string
+	fetch func(context.Context, *http.Client, *commonv1.ChannelInfo) (float64, error)
+}
+
+func balanceAdapterForChannel(channel *commonv1.ChannelInfo) *channelBalanceAdapter {
+	host := ""
+	if parsed, err := url.Parse(channel.GetBaseUrl()); err == nil {
+		host = strings.ToLower(parsed.Host)
+	}
+	switch {
+	case strings.Contains(host, "openrouter"):
+		return &channelBalanceAdapter{name: "openrouter_credits", fetch: fetchOpenRouterBalance}
+	case strings.Contains(host, "siliconflow"):
+		return &channelBalanceAdapter{name: "siliconflow_user_info", fetch: fetchSiliconFlowBalance}
+	case strings.Contains(host, "deepseek"):
+		return &channelBalanceAdapter{name: "deepseek_balance", fetch: fetchDeepSeekBalance}
+	case channel.GetType() == 1:
+		return &channelBalanceAdapter{name: "openai_dashboard", fetch: fetchOpenAIDashboardBalance}
+	default:
+		return nil
+	}
+}
+
+func fetchOpenAIDashboardBalance(ctx context.Context, client *http.Client, channel *commonv1.ChannelInfo) (float64, error) {
+	endpoint := trimV1Base(channel.GetBaseUrl()) + "/dashboard/billing/credit_grants"
+	payload, err := fetchBalancePayload(ctx, client, endpoint, channel.GetKey())
+	if err != nil {
+		return 0, err
+	}
+	return firstFloat(payload, "total_available", "total_granted")
+}
+
+func fetchOpenRouterBalance(ctx context.Context, client *http.Client, channel *commonv1.ChannelInfo) (float64, error) {
+	endpoint := trimV1Base(channel.GetBaseUrl()) + "/api/v1/credits"
+	payload, err := fetchBalancePayload(ctx, client, endpoint, channel.GetKey())
+	if err != nil {
+		return 0, err
+	}
+	data, _ := payload["data"].(map[string]interface{})
+	if total, ok := floatFromMap(data, "total_credits"); ok {
+		if used, usedOK := floatFromMap(data, "total_usage"); usedOK {
+			return total - used, nil
+		}
+		return total, nil
+	}
+	return firstFloat(payload, "total_available", "balance")
+}
+
+func fetchSiliconFlowBalance(ctx context.Context, client *http.Client, channel *commonv1.ChannelInfo) (float64, error) {
+	endpoint := strings.TrimRight(channel.GetBaseUrl(), "/") + "/user/info"
+	payload, err := fetchBalancePayload(ctx, client, endpoint, channel.GetKey())
+	if err != nil {
+		return 0, err
+	}
+	if data, _ := payload["data"].(map[string]interface{}); data != nil {
+		if balance, ok := floatFromMap(data, "balance"); ok {
+			return balance, nil
+		}
+	}
+	return firstFloat(payload, "balance", "total_available")
+}
+
+func fetchDeepSeekBalance(ctx context.Context, client *http.Client, channel *commonv1.ChannelInfo) (float64, error) {
+	endpoint := trimV1Base(channel.GetBaseUrl()) + "/user/balance"
+	payload, err := fetchBalancePayload(ctx, client, endpoint, channel.GetKey())
+	if err != nil {
+		return 0, err
+	}
+	if infos, ok := payload["balance_infos"].([]interface{}); ok {
+		total := 0.0
+		for _, item := range infos {
+			info, _ := item.(map[string]interface{})
+			if balance, ok := floatFromMap(info, "total_balance"); ok {
+				total += balance
+			}
+		}
+		return total, nil
+	}
+	return firstFloat(payload, "balance", "total_available")
+}
+
+func fetchBalancePayload(ctx context.Context, client *http.Client, endpoint, key string) (map[string]interface{}, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("balance upstream returned status %d", resp.StatusCode)
+	}
+	var payload map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func trimV1Base(baseURL string) string {
+	base := strings.TrimRight(baseURL, "/")
+	return strings.TrimSuffix(base, "/v1")
+}
+
+func firstFloat(payload map[string]interface{}, keys ...string) (float64, error) {
+	for _, key := range keys {
+		if value, ok := floatFromMap(payload, key); ok {
+			return value, nil
+		}
+	}
+	return 0, fmt.Errorf("balance field not found")
+}
+
+func floatFromMap(payload map[string]interface{}, key string) (float64, bool) {
+	if payload == nil {
+		return 0, false
+	}
+	switch value := payload[key].(type) {
+	case float64:
+		return value, true
+	case int64:
+		return float64(value), true
+	case string:
+		parsed, err := strconv.ParseFloat(value, 64)
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func (s *AdminService) DeleteChannel(ctx context.Context, req *adminv1.AdminDeleteChannelRequest) (*adminv1.AdminDeleteChannelResponse, error) {

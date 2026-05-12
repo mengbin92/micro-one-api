@@ -73,6 +73,8 @@ type adminHTTPChannelClient struct {
 	created     *channelv1.CreateChannelRequest
 	updated     *channelv1.UpdateChannelRequest
 	deletedID   int64
+	baseURL     string
+	chType      int32
 }
 
 func (c *adminHTTPChannelClient) CreateChannel(ctx context.Context, req *channelv1.CreateChannelRequest, opts ...grpc.CallOption) (*channelv1.CreateChannelResponse, error) {
@@ -92,15 +94,24 @@ func (c *adminHTTPChannelClient) DeleteChannel(ctx context.Context, req *channel
 }
 
 func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChannelRequest, opts ...grpc.CallOption) (*channelv1.GetChannelReply, error) {
+	baseURL := c.baseURL
+	if baseURL == "" {
+		baseURL = "https://api.example.com/v1"
+	}
+	chType := c.chType
+	if chType == 0 {
+		chType = 1
+	}
 	return &channelv1.GetChannelReply{
 		Channel: &commonv1.ChannelInfo{
 			Id:                 req.ChannelId,
 			Name:               "openai",
-			Type:               1,
+			Type:               chType,
 			Status:             1,
 			Group:              "default",
 			Models:             "gpt-4o",
-			BaseUrl:            "https://api.example.com/v1",
+			BaseUrl:            baseURL,
+			Key:                "sk-test",
 			Weight:             3,
 			TestTime:           1710000000,
 			ResponseTime:       245,
@@ -734,6 +745,41 @@ func TestAdminHTTPTestChannel(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"channel_id":101`) {
 		t.Fatalf("channel test response mismatch: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPUpdateChannelBalanceRefreshesSupportedChannel(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/dashboard/billing/credit_grants" {
+			t.Fatalf("upstream path = %q, want /dashboard/billing/credit_grants", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer sk-test" {
+			t.Fatalf("authorization header = %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"total_available":42.5}`))
+	}))
+	defer upstream.Close()
+
+	channelClient := &adminHTTPChannelClient{baseURL: upstream.URL + "/v1"}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, channelClient, &adminHTTPBillingClient{})
+	req := httptest.NewRequest(http.MethodGet, "/api/channel/update_balance/101", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if channelClient.updated == nil || channelClient.updated.ChannelId != 101 {
+		t.Fatalf("channel update was not called: %+v", channelClient.updated)
+	}
+	for _, want := range []string{`"success":true`, `"channel_id":101`, `"balance":42.5`, `"provider":"openai_dashboard"`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("balance response missing %s: %s", want, rec.Body.String())
+		}
 	}
 }
 

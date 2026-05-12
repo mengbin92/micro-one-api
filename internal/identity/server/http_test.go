@@ -407,6 +407,58 @@ func TestIdentityHTTPDashboardBillingUsageReturnsOpenAIShape(t *testing.T) {
 	}
 }
 
+func TestIdentityHTTPDashboardBillingSubscriptionReturnsOpenAIShape(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
+		snapshot: &commonv1.AccountSnapshot{
+			Quota:     1000,
+			UsedQuota: 123,
+		},
+	})
+
+	for _, path := range []string{"/dashboard/billing/subscription", "/v1/dashboard/billing/subscription"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+authToken)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200, body=%s", path, rec.Code, rec.Body.String())
+		}
+		body := rec.Body.String()
+		for _, want := range []string{
+			`"object":"billing_subscription"`,
+			`"has_payment_method":false`,
+			`"soft_limit_usd":1000`,
+			`"hard_limit_usd":1000`,
+			`"system_hard_limit_usd":1000`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s response missing %s: %s", path, want, body)
+			}
+		}
+	}
+}
+
+func TestIdentityHTTPDashboardBillingSubscriptionRequiresAuth(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard/billing/subscription", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"type":"one_api_error"`) {
+		t.Fatalf("error response mismatch: %s", rec.Body.String())
+	}
+}
+
 func TestIdentityHTTPTopUpRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
@@ -732,6 +784,45 @@ func TestIdentityHTTPOAuthLegacyAliasRedirects(t *testing.T) {
 	}
 	if location := rec.Header().Get("Location"); !strings.Contains(location, "github.com/login/oauth/authorize") {
 		t.Fatalf("unexpected redirect location: %s", location)
+	}
+}
+
+func TestIdentityHTTPOAuthStateReturnsStateAndCookie(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/oauth/state", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"state"`) {
+		t.Fatalf("state response mismatch: %s", rec.Body.String())
+	}
+	if cookie := rec.Result().Cookies(); len(cookie) == 0 || cookie[0].Name != "oauth_state" {
+		t.Fatalf("oauth state cookie was not set: %+v", cookie)
+	}
+}
+
+func TestIdentityHTTPOneAPIOAuthAliasesAreStableWhenProviderDisabled(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	for _, path := range []string{"/api/oauth/oidc", "/api/oauth/lark", "/api/oauth/wechat", "/api/oauth/wechat/bind"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200, body=%s", path, rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), `"success":false`) || !strings.Contains(rec.Body.String(), "disabled") {
+			t.Fatalf("%s disabled response mismatch: %s", path, rec.Body.String())
+		}
 	}
 }
 

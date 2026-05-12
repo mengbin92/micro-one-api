@@ -41,6 +41,54 @@ func TestHTTPServerRawRoutesAreRegistered(t *testing.T) {
 	}
 }
 
+func TestHTTPServerUnsupportedOpenAIRoutesReturnStableNotImplemented(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodPost, "/v1/edits", `{}`},
+		{http.MethodPost, "/v1/engines/text-embedding-ada-002/embeddings", `{}`},
+		{http.MethodGet, "/v1/files", ``},
+		{http.MethodPost, "/v1/files", `{}`},
+		{http.MethodGet, "/v1/files/file-123", ``},
+		{http.MethodDelete, "/v1/files/file-123", ``},
+		{http.MethodPost, "/v1/fine_tuning/jobs", `{}`},
+		{http.MethodGet, "/v1/fine_tuning/jobs", ``},
+		{http.MethodGet, "/v1/fine_tuning/jobs/ftjob-123", ``},
+		{http.MethodPost, "/v1/fine_tuning/jobs/ftjob-123/cancel", ``},
+		{http.MethodGet, "/v1/assistants", ``},
+		{http.MethodPost, "/v1/assistants", `{}`},
+		{http.MethodGet, "/v1/assistants/asst-123", ``},
+		{http.MethodPost, "/v1/threads", `{}`},
+		{http.MethodGet, "/v1/threads/thread-123", ``},
+		{http.MethodPost, "/v1/threads/thread-123/messages", `{}`},
+		{http.MethodGet, "/v1/threads/thread-123/messages", ``},
+		{http.MethodPost, "/v1/threads/thread-123/runs", `{}`},
+		{http.MethodGet, "/v1/threads/thread-123/runs", ``},
+		{http.MethodGet, "/v1/threads/thread-123/runs/run-123", ``},
+	}
+
+	for _, tc := range cases {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		rec := httptest.NewRecorder()
+
+		srv.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotImplemented {
+			t.Fatalf("%s %s status = %d, want 501, body=%s", tc.method, tc.path, rec.Code, rec.Body.String())
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, `"error"`) || !strings.Contains(body, `"type":"one_api_not_implemented"`) {
+			t.Fatalf("%s %s error shape mismatch: %s", tc.method, tc.path, body)
+		}
+	}
+}
+
 func TestHTTPServerRetrieveModelCompatibility(t *testing.T) {
 	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
 	srv := khttp.NewServer()

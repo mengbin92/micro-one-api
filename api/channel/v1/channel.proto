@@ -91,6 +91,8 @@ message UpdateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
+  double balance = 12;
+  int64 balance_updated_time = 13;
 }
 
 message UpdateChannelResponse {

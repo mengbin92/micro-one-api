@@ -106,15 +106,17 @@ func TestChannelServiceOneAPIFields(t *testing.T) {
 	}
 
 	updateResp, err := svc.UpdateChannel(context.Background(), &channelv1.UpdateChannelRequest{
-		ChannelId:    1,
-		Weight:       7,
-		ModelMapping: `{"gpt-4o":"gpt-4o"}`,
-		SystemPrompt: "updated",
+		ChannelId:          1,
+		Weight:             7,
+		ModelMapping:       `{"gpt-4o":"gpt-4o"}`,
+		SystemPrompt:       "updated",
+		Balance:            42.5,
+		BalanceUpdatedTime: 1710000300,
 	})
 	if err != nil {
 		t.Fatalf("UpdateChannel() error = %v", err)
 	}
-	if !updateResp.Success || repo.updated.Weight != 7 || repo.updated.ModelMapping != `{"gpt-4o":"gpt-4o"}` || repo.updated.SystemPrompt != "updated" {
+	if !updateResp.Success || repo.updated.Weight != 7 || repo.updated.ModelMapping != `{"gpt-4o":"gpt-4o"}` || repo.updated.SystemPrompt != "updated" || repo.updated.Balance != 42.5 || repo.updated.BalanceUpdatedTime != 1710000300 {
 		t.Fatalf("UpdateChannel() one-api fields mismatch: resp=%+v updated=%+v", updateResp, repo.updated)
 	}
 }

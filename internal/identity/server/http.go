@@ -45,6 +45,16 @@ func NewHTTPServer(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.Pr
 			handleOAuth(w, r, oauthRegistry, uc)
 		})
 	}
+	srv.HandleFunc("/api/oauth/state", handleOAuthState)
+	for _, providerName := range []string{"oidc", "lark", "wechat"} {
+		name := providerName
+		srv.HandleFunc("/api/oauth/"+name, func(w http.ResponseWriter, r *http.Request) {
+			handleOneAPIOAuthAlias(w, r, oauthRegistry, name)
+		})
+	}
+	srv.HandleFunc("/api/oauth/wechat/bind", func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIOAuthAlias(w, r, oauthRegistry, "wechat")
+	})
 
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
@@ -84,6 +94,12 @@ func NewHTTPServer(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.Pr
 	})
 	srv.HandleFunc("/v1/dashboard/billing/usage", func(w http.ResponseWriter, r *http.Request) {
 		handleDashboardBillingUsage(w, r, uc, billingClient)
+	})
+	srv.HandleFunc("/dashboard/billing/subscription", func(w http.ResponseWriter, r *http.Request) {
+		handleDashboardBillingSubscription(w, r, uc, billingClient)
+	})
+	srv.HandleFunc("/v1/dashboard/billing/subscription", func(w http.ResponseWriter, r *http.Request) {
+		handleDashboardBillingSubscription(w, r, uc, billingClient)
 	})
 	srv.HandleFunc("/api/user/topup", func(w http.ResponseWriter, r *http.Request) {
 		handleUserTopUp(w, r, uc, billingClient)
@@ -261,6 +277,47 @@ func handleDashboardBillingUsage(w http.ResponseWriter, r *http.Request, uc *biz
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"object":      "list",
 		"total_usage": usedQuota * 100,
+	})
+}
+
+func handleDashboardBillingSubscription(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	snapshot, err := authSnapshotFromRequest(r, uc)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": map[string]interface{}{"message": "unauthorized", "type": "one_api_error"}})
+		return
+	}
+	if billingClient == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"error": map[string]interface{}{"message": "billing service unavailable", "type": "one_api_error"}})
+		return
+	}
+	resp, err := billingClient.GetAccountSnapshot(r.Context(), &billingv1.GetAccountSnapshotRequest{
+		UserId: strconv.FormatInt(snapshot.UserID, 10),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"error": map[string]interface{}{"message": err.Error(), "type": "one_api_error"}})
+		return
+	}
+	limit := int64(0)
+	if resp.GetSnapshot() != nil {
+		limit = resp.GetSnapshot().GetQuota()
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"object":                "billing_subscription",
+		"has_payment_method":    false,
+		"canceled":              false,
+		"canceled_at":           nil,
+		"delinquent":            nil,
+		"access_until":          0,
+		"soft_limit_usd":        limit,
+		"hard_limit_usd":        limit,
+		"system_hard_limit_usd": limit,
+		"soft_limit":            limit,
+		"hard_limit":            limit,
+		"system_hard_limit":     limit,
 	})
 }
 
@@ -468,6 +525,29 @@ func handleLegacyOAuth(w http.ResponseWriter, r *http.Request, registry *oauth.P
 	provider, ok := registry.Get(providerName)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider: " + providerName})
+		return
+	}
+	handleOAuthAuthorize(w, r, provider)
+}
+
+func handleOAuthState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	state := generateState()
+	setOAuthStateCookie(w, state)
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"state": state}})
+}
+
+func handleOneAPIOAuthAlias(w http.ResponseWriter, r *http.Request, registry *oauth.ProviderRegistry, providerName string) {
+	if registry == nil {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: providerName + " oauth disabled"})
+		return
+	}
+	provider, ok := registry.Get(providerName)
+	if !ok {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: providerName + " oauth disabled"})
 		return
 	}
 	handleOAuthAuthorize(w, r, provider)
@@ -715,6 +795,11 @@ func handleOAuth(w http.ResponseWriter, r *http.Request, registry *oauth.Provide
 
 func handleOAuthAuthorize(w http.ResponseWriter, r *http.Request, provider oauth.Provider) {
 	state := generateState()
+	setOAuthStateCookie(w, state)
+	http.Redirect(w, r, provider.AuthURL(state), http.StatusFound)
+}
+
+func setOAuthStateCookie(w http.ResponseWriter, state string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "oauth_state",
 		Value:    state,
@@ -724,7 +809,6 @@ func handleOAuthAuthorize(w http.ResponseWriter, r *http.Request, provider oauth
 		MaxAge:   300,
 		SameSite: http.SameSiteLaxMode,
 	})
-	http.Redirect(w, r, provider.AuthURL(state), http.StatusFound)
 }
 
 func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.Provider, uc *biz.IdentityUsecase) {

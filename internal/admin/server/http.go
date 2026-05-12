@@ -161,10 +161,10 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 		handleTestChannel(w, r, svc)
 	}))
 	srv.HandleFunc("/api/channel/update_balance", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
-		handleChannelBalanceUnsupported(w, r)
+		handleUpdateChannelBalances(w, r, svc)
 	}))
 	srv.HandlePrefix("/api/channel/update_balance/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
-		handleChannelBalanceUnsupported(w, r)
+		handleUpdateChannelBalance(w, r, svc)
 	}))
 	srv.HandlePrefix("/api/channel/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIChannelByID(w, r, svc)
@@ -686,15 +686,35 @@ func handleTestChannel(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "", "data": result})
 }
 
-func handleChannelBalanceUnsupported(w http.ResponseWriter, r *http.Request) {
+func handleUpdateChannelBalances(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	writeJSON(w, http.StatusNotImplemented, map[string]interface{}{
-		"success": false,
-		"message": "channel balance refresh requires provider-specific balance adapters",
-	})
+	results, err := svc.RefreshAllChannelBalances(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", results))
+}
+
+func handleUpdateChannelBalance(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	channelID, ok := parsePathID(r.URL.Path, "/api/channel/update_balance/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid channel id", nil))
+		return
+	}
+	result, err := svc.RefreshChannelBalance(r.Context(), channelID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(result.Success, result.Message, result))
 }
 
 func handleListChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {

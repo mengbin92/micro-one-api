@@ -71,6 +71,16 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	srv.HandleFunc("/v1/audio/translations", s.handleRawRelay("/audio/translations", true))
 	srv.HandleFunc("/v1/audio/speech", s.handleRawRelay("/audio/speech", false))
 	srv.HandleFunc("/v1/moderations", s.handleRawRelay("/moderations", false))
+	srv.HandleFunc("/v1/edits", s.handleUnsupportedOpenAIRoute("edits"))
+	srv.HandlePrefix("/v1/engines/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("engines")))
+	srv.HandleFunc("/v1/files", s.handleUnsupportedOpenAIRoute("files"))
+	srv.HandlePrefix("/v1/files/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("files")))
+	srv.HandleFunc("/v1/fine_tuning/jobs", s.handleUnsupportedOpenAIRoute("fine_tuning.jobs"))
+	srv.HandlePrefix("/v1/fine_tuning/jobs/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("fine_tuning.jobs")))
+	srv.HandleFunc("/v1/assistants", s.handleUnsupportedOpenAIRoute("assistants"))
+	srv.HandlePrefix("/v1/assistants/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("assistants")))
+	srv.HandleFunc("/v1/threads", s.handleUnsupportedOpenAIRoute("threads"))
+	srv.HandlePrefix("/v1/threads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("threads")))
 	srv.HandlePrefix("/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
 	srv.HandleFunc("/v1/models", s.handleModels)
 	srv.HandlePrefix("/v1/models/", http.HandlerFunc(s.handleRetrieveModel))
@@ -190,6 +200,19 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		}
 
 		writeRawResponse(w, upstreamResp)
+	}
+}
+
+func (s *HTTPServer) handleUnsupportedOpenAIRoute(feature string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.writeJSON(w, http.StatusNotImplemented, map[string]interface{}{
+			"error": map[string]interface{}{
+				"message": fmt.Sprintf("%s is not implemented", feature),
+				"type":    "one_api_not_implemented",
+				"param":   nil,
+				"code":    "not_implemented",
+			},
+		})
 	}
 }
 
