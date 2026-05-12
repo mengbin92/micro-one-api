@@ -39,3 +39,16 @@ func TestProviderFactoryAzureRequiresBaseURL(t *testing.T) {
 		t.Fatal("expected azure provider without base_url to fail")
 	}
 }
+
+func TestProviderFactoryCreatesVoyageAIProvider(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	factory := NewProviderFactory(time.Second)
+	provider, err := factory.CreateProvider(ChannelTypeVoyageAI, "https://api.voyageai.com/v1", "key")
+	if err != nil {
+		t.Fatalf("CreateProvider(VoyageAI) error = %v", err)
+	}
+	if _, ok := provider.(*VoyageAIProvider); !ok {
+		t.Fatalf("provider = %T, want *VoyageAIProvider", provider)
+	}
+}

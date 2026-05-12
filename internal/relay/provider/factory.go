@@ -40,6 +40,8 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 			return nil, fmt.Errorf("azure channel requires base_url")
 		}
 		return NewAzureProvider(baseURL, apiKey, config.APIVersion, f.defaultTimeout)
+	case ChannelTypeVoyageAI:
+		return NewVoyageAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	case ChannelTypeOpenAI,
 		ChannelTypeDeepSeek,
 		ChannelTypeMistral,
@@ -53,8 +55,7 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		ChannelTypeTogether,
 		ChannelTypeFireworks,
 		ChannelTypePerplexity,
-		ChannelTypeNovita,
-		ChannelTypeVoyageAI:
+		ChannelTypeNovita:
 		return NewOpenAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	default:
 		// Default to OpenAI-compatible for unknown types

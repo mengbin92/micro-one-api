@@ -162,3 +162,70 @@ func TestAzureProviderForwardAddsDeploymentPathAndAPIVersion(t *testing.T) {
 		t.Fatalf("azure request should omit model from body, got %s", gotBody)
 	}
 }
+
+func TestVoyageAIProviderForwardEmbeddingsConvertsResponseToOpenAIShape(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotPath string
+	var gotAuth string
+	var gotBody string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"object":"embedding","embedding":[0.1,0.2],"index":0}],"model":"voyage-3","usage":{"total_tokens":7}}`))
+	}))
+	defer upstream.Close()
+
+	provider, err := NewVoyageAIProvider(upstream.URL+"/v1", "pa-voyage-key", time.Second)
+	if err != nil {
+		t.Fatalf("NewVoyageAIProvider: %v", err)
+	}
+	resp, err := provider.Forward(context.Background(), &RawRequest{
+		Method: http.MethodPost,
+		Path:   "/embeddings",
+		Header: http.Header{"Authorization": []string{"Bearer caller-token"}},
+		Body:   []byte(`{"model":"voyage-3","input":"hello"}`),
+	})
+	if err != nil {
+		t.Fatalf("Forward returned error: %v", err)
+	}
+
+	if gotPath != "/v1/embeddings" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if gotAuth != "Bearer pa-voyage-key" {
+		t.Fatalf("auth = %q", gotAuth)
+	}
+	if gotBody != `{"model":"voyage-3","input":"hello"}` {
+		t.Fatalf("body = %q", gotBody)
+	}
+	body := string(resp.Body)
+	for _, want := range []string{`"object":"list"`, `"embedding":[0.1,0.2]`, `"prompt_tokens":7`, `"total_tokens":7`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("response missing %s: %s", want, body)
+		}
+	}
+}
+
+func TestVoyageAIProviderRejectsUnsupportedRawPath(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	provider, err := NewVoyageAIProvider("https://api.voyageai.com/v1", "pa-voyage-key", time.Second)
+	if err != nil {
+		t.Fatalf("NewVoyageAIProvider: %v", err)
+	}
+	_, err = provider.Forward(context.Background(), &RawRequest{
+		Method: http.MethodPost,
+		Path:   "/chat/completions",
+		Body:   []byte(`{"model":"voyage-3"}`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("error = %v, want not supported", err)
+	}
+}
