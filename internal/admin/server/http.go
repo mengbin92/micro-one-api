@@ -77,6 +77,12 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	})
 
 	// Protected admin endpoints
+	srv.HandleFunc("/api/user/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIUsers(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/user/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIUserByID(w, r, svc)
+	}))
 	srv.HandleFunc("/v1/users", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUsers(w, r, svc)
 	}))
@@ -84,6 +90,12 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 		handleUserByID(w, r, svc)
 	}))
 
+	srv.HandleFunc("/api/channel/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIChannels(w, r, svc)
+	}))
+	srv.HandleFunc("/api/channel/models", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIChannelModels(w, r, svc)
+	}))
 	srv.HandleFunc("/v1/channels", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleChannels(w, r, svc)
 	}))
@@ -106,6 +118,12 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	}))
 	srv.HandleFunc("/api/log/self/stat", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleLogStats(w, r, svc, true)
+	}))
+	srv.HandleFunc("/api/log/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPILogs(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/log/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPILogByID(w, r, svc)
 	}))
 
 	srv.HandleFunc("/v1/account", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +165,9 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	}))
 	srv.HandlePrefix("/api/channel/update_balance/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleChannelBalanceUnsupported(w, r)
+	}))
+	srv.HandlePrefix("/api/channel/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIChannelByID(w, r, svc)
 	}))
 
 	return srv
@@ -190,6 +211,62 @@ func getQueryInt64(r *http.Request, key string, defaultVal int64) int64 {
 		return defaultVal
 	}
 	return v
+}
+
+func oneAPIPage(r *http.Request) int32 {
+	if raw := r.URL.Query().Get("p"); raw != "" {
+		p, err := strconv.ParseInt(raw, 10, 32)
+		if err != nil || p < 0 {
+			return 1
+		}
+		return int32(p + 1)
+	}
+	return getQueryInt32(r, "page", 1)
+}
+
+func oneAPIPageSize(r *http.Request) int32 {
+	if size := getQueryInt32(r, "page_size", 0); size > 0 {
+		return size
+	}
+	if size := getQueryInt32(r, "size", 0); size > 0 {
+		return size
+	}
+	return 20
+}
+
+func apiResponse(success bool, message string, data interface{}) map[string]interface{} {
+	resp := map[string]interface{}{
+		"success": success,
+		"message": message,
+	}
+	if data != nil {
+		resp["data"] = data
+	}
+	return resp
+}
+
+func writeOneAPIServiceResponse(w http.ResponseWriter, resp interface{}, err error) {
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	success := true
+	message := ""
+	switch v := resp.(type) {
+	case *adminv1.AdminCreateUserResponse:
+		success, message = v.GetSuccess(), v.GetMessage()
+	case *adminv1.AdminUpdateUserResponse:
+		success, message = v.GetSuccess(), v.GetMessage()
+	case *adminv1.AdminDeleteUserResponse:
+		success, message = v.GetSuccess(), v.GetMessage()
+	case *adminv1.AdminCreateChannelResponse:
+		success, message = v.GetSuccess(), v.GetMessage()
+	case *adminv1.AdminUpdateChannelResponse:
+		success, message = v.GetSuccess(), v.GetMessage()
+	case *adminv1.AdminDeleteChannelResponse:
+		success, message = v.GetSuccess(), v.GetMessage()
+	}
+	writeJSON(w, http.StatusOK, apiResponse(success, message, resp))
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
@@ -237,6 +314,95 @@ func handleUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminServi
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func handleOneAPIUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	switch r.Method {
+	case http.MethodGet:
+		if strings.Trim(r.URL.Path, "/") == "api/user/search" {
+			handleOneAPISearchUsers(w, r, svc)
+			return
+		}
+		handleOneAPIListUsers(w, r, svc)
+	case http.MethodPost:
+		var req adminv1.AdminCreateUserRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		resp, err := svc.CreateUser(r.Context(), &req)
+		writeOneAPIServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var raw struct {
+			ID int64 `json:"id"`
+			adminv1.AdminUpdateUserRequest
+		}
+		if !decodeBody(w, r, &raw) {
+			return
+		}
+		req := raw.AdminUpdateUserRequest
+		if req.UserId == 0 {
+			req.UserId = raw.ID
+		}
+		resp, err := svc.UpdateUser(r.Context(), &req)
+		writeOneAPIServiceResponse(w, resp, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func handleOneAPIUserByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if strings.Trim(r.URL.Path, "/") == "api/user/search" {
+		handleOneAPIUsers(w, r, svc)
+		return
+	}
+	userID, ok := parsePathID(r.URL.Path, "/api/user/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid user id", nil))
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		user, err := svc.GetUser(r.Context(), userID)
+		if err != nil {
+			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse(true, "", user))
+	case http.MethodDelete:
+		resp, err := svc.DeleteUser(r.Context(), &adminv1.AdminDeleteUserRequest{UserId: userID})
+		writeOneAPIServiceResponse(w, resp, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func handleOneAPIListUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	resp, err := svc.ListUsers(r.Context(), &adminv1.AdminListUsersRequest{
+		Page:     oneAPIPage(r),
+		PageSize: oneAPIPageSize(r),
+		Group:    r.URL.Query().Get("group"),
+		Status:   getQueryInt32(r, "status", 0),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetUsers()))
+}
+
+func handleOneAPISearchUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	resp, err := svc.ListUsers(r.Context(), &adminv1.AdminListUsersRequest{
+		Page:     1,
+		PageSize: oneAPIPageSize(r),
+		Keyword:  r.URL.Query().Get("keyword"),
+		Group:    r.URL.Query().Get("group"),
+		Status:   getQueryInt32(r, "status", 0),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetUsers()))
 }
 
 func handleUserByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -308,6 +474,122 @@ func handleChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func handleOneAPIChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	switch r.Method {
+	case http.MethodGet:
+		if strings.Trim(r.URL.Path, "/") == "api/channel/search" {
+			handleOneAPISearchChannels(w, r, svc)
+			return
+		}
+		handleOneAPIListChannels(w, r, svc)
+	case http.MethodPost:
+		var req adminv1.AdminCreateChannelRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		resp, err := svc.CreateChannel(r.Context(), &req)
+		writeOneAPIServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var raw struct {
+			ID int64 `json:"id"`
+			adminv1.AdminUpdateChannelRequest
+		}
+		if !decodeBody(w, r, &raw) {
+			return
+		}
+		req := raw.AdminUpdateChannelRequest
+		if req.ChannelId == 0 {
+			req.ChannelId = raw.ID
+		}
+		resp, err := svc.UpdateChannel(r.Context(), &req)
+		writeOneAPIServiceResponse(w, resp, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func handleOneAPIChannelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	trimmed := strings.Trim(r.URL.Path, "/")
+	if trimmed == "api/channel/search" || trimmed == "api/channel/models" {
+		handleOneAPIChannels(w, r, svc)
+		return
+	}
+	channelID, ok := parsePathID(r.URL.Path, "/api/channel/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid channel id", nil))
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		channel, err := svc.GetChannel(r.Context(), channelID)
+		if err != nil {
+			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse(true, "", channel))
+	case http.MethodDelete:
+		resp, err := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channelID})
+		writeOneAPIServiceResponse(w, resp, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func handleOneAPIListChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	resp, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
+		Page:     oneAPIPage(r),
+		PageSize: oneAPIPageSize(r),
+		Group:    r.URL.Query().Get("group"),
+		Status:   getQueryInt32(r, "status", 0),
+		Type:     getQueryInt32(r, "type", 0),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetChannels()))
+}
+
+func handleOneAPISearchChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	resp, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
+		Page:     1,
+		PageSize: oneAPIPageSize(r),
+		Keyword:  r.URL.Query().Get("keyword"),
+		Group:    r.URL.Query().Get("group"),
+		Status:   getQueryInt32(r, "status", 0),
+		Type:     getQueryInt32(r, "type", 0),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetChannels()))
+}
+
+func handleOneAPIChannelModels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	resp, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{Page: 1, PageSize: 1000})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	models := map[int64][]string{}
+	for _, channel := range resp.GetChannels() {
+		var names []string
+		for _, model := range strings.Split(channel.GetModels(), ",") {
+			model = strings.TrimSpace(model)
+			if model != "" {
+				names = append(names, model)
+			}
+		}
+		models[channel.GetId()] = names
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", models))
 }
 
 func handleChannelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -602,6 +884,46 @@ func handleLogStats(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "", "data": stats})
+}
+
+func handleOneAPILogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if strings.Trim(r.URL.Path, "/") == "api/log/search" {
+		handleOneAPISearchLogs(w, r, svc)
+		return
+	}
+	handleOneAPIListLogs(w, r, svc)
+}
+
+func handleOneAPILogByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if strings.Trim(r.URL.Path, "/") == "api/log/search" {
+		handleOneAPISearchLogs(w, r, svc)
+		return
+	}
+	writeJSON(w, http.StatusNotImplemented, apiResponse(false, "log delete is not implemented", nil))
+}
+
+func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	resp, err := svc.ListLogs(r.Context(), &adminv1.ListLogsRequest{
+		Page:      oneAPIPage(r),
+		PageSize:  oneAPIPageSize(r),
+		UserId:    r.URL.Query().Get("user_id"),
+		Type:      r.URL.Query().Get("type"),
+		StartTime: getQueryInt64(r, "start_time", 0),
+		EndTime:   getQueryInt64(r, "end_time", 0),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetLogs()))
+}
+
+func handleOneAPISearchLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	handleOneAPIListLogs(w, r, svc)
 }
 
 func handleGetAccount(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {

@@ -394,6 +394,17 @@ func (s *AdminService) ListUsers(ctx context.Context, req *adminv1.AdminListUser
 	}, nil
 }
 
+func (s *AdminService) GetUser(ctx context.Context, userID int64) (*commonv1.UserInfo, error) {
+	resp, err := s.identityClient.GetUser(ctx, &identityv1.GetUserRequest{UserId: userID})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.User == nil {
+		return nil, status.Error(codes.NotFound, "user not found")
+	}
+	return resp.User, nil
+}
+
 func (s *AdminService) CreateUser(ctx context.Context, req *adminv1.AdminCreateUserRequest) (*adminv1.AdminCreateUserResponse, error) {
 	resp, err := s.identityClient.CreateUser(ctx, &identityv1.CreateUserRequest{
 		Username:    req.Username,
@@ -502,6 +513,17 @@ func (s *AdminService) ListChannels(ctx context.Context, req *adminv1.AdminListC
 	}, nil
 }
 
+func (s *AdminService) GetChannel(ctx context.Context, channelID int64) (*commonv1.ChannelInfo, error) {
+	resp, err := s.channelClient.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: channelID})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Channel == nil {
+		return nil, status.Error(codes.NotFound, "channel not found")
+	}
+	return resp.Channel, nil
+}
+
 func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCreateChannelRequest) (*adminv1.AdminCreateChannelResponse, error) {
 	resp, err := s.channelClient.CreateChannel(ctx, &channelv1.CreateChannelRequest{
 		Name:         req.Name,
@@ -579,52 +601,52 @@ func (s *AdminService) ChangeChannelStatus(ctx context.Context, req *adminv1.Adm
 // ========== 系统配置 ==========
 
 var oneAPIOptionDefaults = map[string]string{
-	"PasswordLoginEnabled":             "true",
-	"PasswordRegisterEnabled":          "true",
-	"EmailVerificationEnabled":         "false",
-	"GitHubOAuthEnabled":               "false",
-	"OidcEnabled":                      "false",
-	"WeChatAuthEnabled":                "false",
-	"TurnstileCheckEnabled":            "false",
-	"RegisterEnabled":                  "true",
-	"AutomaticDisableChannelEnabled":   "false",
-	"AutomaticEnableChannelEnabled":    "false",
-	"ApproximateTokenEnabled":          "false",
-	"LogConsumeEnabled":                "true",
-	"DisplayInCurrencyEnabled":         "false",
-	"DisplayTokenStatEnabled":          "true",
-	"ChannelDisableThreshold":          "0",
-	"EmailDomainRestrictionEnabled":    "false",
-	"EmailDomainWhitelist":             "",
-	"SMTPServer":                       "",
-	"SMTPFrom":                         "",
-	"SMTPPort":                         "587",
-	"SMTPAccount":                      "",
-	"Notice":                           "",
-	"About":                            "",
-	"HomePageContent":                  "",
-	"Footer":                           "",
-	"SystemName":                       "One-API",
-	"Logo":                             "",
-	"ServerAddress":                    "",
-	"GitHubClientId":                   "",
-	"WeChatServerAddress":              "",
-	"WeChatAccountQRCodeImageURL":      "",
-	"MessagePusherAddress":             "",
-	"TurnstileSiteKey":                 "",
-	"QuotaForNewUser":                  "0",
-	"QuotaForInviter":                  "0",
-	"QuotaForInvitee":                  "0",
-	"QuotaRemindThreshold":             "0",
-	"PreConsumedQuota":                 "0",
-	"ModelRatio":                       "{}",
-	"GroupRatio":                       "{}",
-	"CompletionRatio":                  "{}",
-	"TopUpLink":                        "",
-	"ChatLink":                         "",
-	"QuotaPerUnit":                     "500000",
-	"RetryTimes":                       "0",
-	"Theme":                            "default",
+	"PasswordLoginEnabled":           "true",
+	"PasswordRegisterEnabled":        "true",
+	"EmailVerificationEnabled":       "false",
+	"GitHubOAuthEnabled":             "false",
+	"OidcEnabled":                    "false",
+	"WeChatAuthEnabled":              "false",
+	"TurnstileCheckEnabled":          "false",
+	"RegisterEnabled":                "true",
+	"AutomaticDisableChannelEnabled": "false",
+	"AutomaticEnableChannelEnabled":  "false",
+	"ApproximateTokenEnabled":        "false",
+	"LogConsumeEnabled":              "true",
+	"DisplayInCurrencyEnabled":       "false",
+	"DisplayTokenStatEnabled":        "true",
+	"ChannelDisableThreshold":        "0",
+	"EmailDomainRestrictionEnabled":  "false",
+	"EmailDomainWhitelist":           "",
+	"SMTPServer":                     "",
+	"SMTPFrom":                       "",
+	"SMTPPort":                       "587",
+	"SMTPAccount":                    "",
+	"Notice":                         "",
+	"About":                          "",
+	"HomePageContent":                "",
+	"Footer":                         "",
+	"SystemName":                     "One-API",
+	"Logo":                           "",
+	"ServerAddress":                  "",
+	"GitHubClientId":                 "",
+	"WeChatServerAddress":            "",
+	"WeChatAccountQRCodeImageURL":    "",
+	"MessagePusherAddress":           "",
+	"TurnstileSiteKey":               "",
+	"QuotaForNewUser":                "0",
+	"QuotaForInviter":                "0",
+	"QuotaForInvitee":                "0",
+	"QuotaRemindThreshold":           "0",
+	"PreConsumedQuota":               "0",
+	"ModelRatio":                     "{}",
+	"GroupRatio":                     "{}",
+	"CompletionRatio":                "{}",
+	"TopUpLink":                      "",
+	"ChatLink":                       "",
+	"QuotaPerUnit":                   "500000",
+	"RetryTimes":                     "0",
+	"Theme":                          "default",
 }
 
 func (s *AdminService) ListOneAPIOptions(context.Context) ([]OneAPIOption, error) {

@@ -21,6 +21,45 @@ import (
 type adminHTTPIdentityClient struct {
 	identityv1.IdentityServiceClient
 	deletedUserID int64
+	createdUser   *identityv1.CreateUserRequest
+	updatedUser   *identityv1.UpdateUserRequest
+}
+
+func (c *adminHTTPIdentityClient) GetUser(ctx context.Context, req *identityv1.GetUserRequest, opts ...grpc.CallOption) (*identityv1.GetUserReply, error) {
+	return &identityv1.GetUserReply{
+		User: &commonv1.UserInfo{
+			Id:          req.UserId,
+			Username:    "alice",
+			DisplayName: "Alice",
+			Email:       "alice@example.com",
+			Group:       "default",
+			Status:      1,
+			Quota:       500,
+		},
+	}, nil
+}
+
+func (c *adminHTTPIdentityClient) ListUsers(ctx context.Context, req *identityv1.ListUsersRequest, opts ...grpc.CallOption) (*identityv1.ListUsersResponse, error) {
+	username := "alice"
+	if req.Keyword != "" {
+		username = req.Keyword
+	}
+	return &identityv1.ListUsersResponse{
+		Users: []*commonv1.UserInfo{
+			{Id: 42, Username: username, DisplayName: "Alice", Email: "alice@example.com", Group: "default", Status: 1},
+		},
+		Total: 1,
+	}, nil
+}
+
+func (c *adminHTTPIdentityClient) CreateUser(ctx context.Context, req *identityv1.CreateUserRequest, opts ...grpc.CallOption) (*identityv1.CreateUserResponse, error) {
+	c.createdUser = req
+	return &identityv1.CreateUserResponse{Success: true, Message: "created", UserId: 42}, nil
+}
+
+func (c *adminHTTPIdentityClient) UpdateUser(ctx context.Context, req *identityv1.UpdateUserRequest, opts ...grpc.CallOption) (*identityv1.UpdateUserResponse, error) {
+	c.updatedUser = req
+	return &identityv1.UpdateUserResponse{Success: true, Message: "updated"}, nil
 }
 
 func (c *adminHTTPIdentityClient) DeleteUser(ctx context.Context, req *identityv1.DeleteUserRequest, opts ...grpc.CallOption) (*identityv1.DeleteUserResponse, error) {
@@ -33,6 +72,7 @@ type adminHTTPChannelClient struct {
 	createdName string
 	created     *channelv1.CreateChannelRequest
 	updated     *channelv1.UpdateChannelRequest
+	deletedID   int64
 }
 
 func (c *adminHTTPChannelClient) CreateChannel(ctx context.Context, req *channelv1.CreateChannelRequest, opts ...grpc.CallOption) (*channelv1.CreateChannelResponse, error) {
@@ -44,6 +84,11 @@ func (c *adminHTTPChannelClient) CreateChannel(ctx context.Context, req *channel
 func (c *adminHTTPChannelClient) UpdateChannel(ctx context.Context, req *channelv1.UpdateChannelRequest, opts ...grpc.CallOption) (*channelv1.UpdateChannelResponse, error) {
 	c.updated = req
 	return &channelv1.UpdateChannelResponse{Success: true, Message: "updated"}, nil
+}
+
+func (c *adminHTTPChannelClient) DeleteChannel(ctx context.Context, req *channelv1.DeleteChannelRequest, opts ...grpc.CallOption) (*channelv1.DeleteChannelResponse, error) {
+	c.deletedID = req.ChannelId
+	return &channelv1.DeleteChannelResponse{Success: true, Message: "deleted"}, nil
 }
 
 func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChannelRequest, opts ...grpc.CallOption) (*channelv1.GetChannelReply, error) {
@@ -404,6 +449,63 @@ func TestAdminHTTPChannelOneAPIFields(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPOneAPIChannelRoutes(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	channelClient := &adminHTTPChannelClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, channelClient, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/channel/?p=0", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"data"`) || !strings.Contains(rec.Body.String(), `"weight":3`) {
+		t.Fatalf("list response is not one-api shaped: %s", rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/channel/search?keyword=openai", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"openai"`) {
+		t.Fatalf("search response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/channel/101", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"model_mapping":"{\"gpt-4o\":\"gpt-4o-mini\"}"`) {
+		t.Fatalf("get response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/channel/", strings.NewReader(`{"name":"openai","type":1,"base_url":"https://api.example.com/v1","key":"sk-test","models":"gpt-4o","group":"default","priority":1}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || channelClient.createdName != "openai" || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("create response mismatch: status=%d created=%q body=%s", rec.Code, channelClient.createdName, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/api/channel/", strings.NewReader(`{"id":101,"name":"openai-updated","models":"gpt-4o"}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || channelClient.updated == nil || channelClient.updated.ChannelId != 101 {
+		t.Fatalf("update response mismatch: status=%d updated=%+v body=%s", rec.Code, channelClient.updated, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/channel/101", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || channelClient.deletedID != 101 {
+		t.Fatalf("delete response mismatch: status=%d deleted=%d body=%s", rec.Code, channelClient.deletedID, rec.Body.String())
+	}
+}
+
 func TestAdminHTTPDeleteUserByPathID(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	identityClient := &adminHTTPIdentityClient{}
@@ -419,6 +521,60 @@ func TestAdminHTTPDeleteUserByPathID(t *testing.T) {
 	}
 	if identityClient.deletedUserID != 42 {
 		t.Fatalf("deleted user id = %d, want 42", identityClient.deletedUserID)
+	}
+}
+
+func TestAdminHTTPOneAPIUserRoutes(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	identityClient := &adminHTTPIdentityClient{}
+	srv := newAdminHTTPTestServer(identityClient, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/?p=0", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"username":"alice"`) {
+		t.Fatalf("list response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/user/search?keyword=bob", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"username":"bob"`) {
+		t.Fatalf("search response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/user/42", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"email":"alice@example.com"`) {
+		t.Fatalf("get response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/user/", strings.NewReader(`{"username":"alice","display_name":"Alice","email":"alice@example.com","password":"secret","group":"default","quota":500}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || identityClient.createdUser == nil || identityClient.createdUser.Username != "alice" {
+		t.Fatalf("create response mismatch: status=%d created=%+v body=%s", rec.Code, identityClient.createdUser, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/api/user/", strings.NewReader(`{"id":42,"display_name":"Alice Updated","email":"alice@example.com","group":"default","status":1}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || identityClient.updatedUser == nil || identityClient.updatedUser.UserId != 42 {
+		t.Fatalf("update response mismatch: status=%d updated=%+v body=%s", rec.Code, identityClient.updatedUser, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/user/42", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || identityClient.deletedUserID != 42 {
+		t.Fatalf("delete response mismatch: status=%d deleted=%d body=%s", rec.Code, identityClient.deletedUserID, rec.Body.String())
 	}
 }
 
@@ -540,6 +696,27 @@ func TestAdminHTTPLogStats(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"total_amount":75`) {
 		t.Fatalf("log stats mismatch: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPOneAPILogRoutes(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/log/?p=0&type=topup", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"type":"topup"`) {
+		t.Fatalf("log list response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/log/search?user_id=42&type=consume", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"type":"consume"`) {
+		t.Fatalf("log search response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
