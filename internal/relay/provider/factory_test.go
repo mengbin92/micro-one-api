@@ -19,6 +19,9 @@ func TestResolveOpenAICompatibleBaseURL(t *testing.T) {
 		{name: "moonshot", channelType: ChannelTypeMoonshot, want: "https://api.moonshot.cn/v1"},
 		{name: "groq", channelType: ChannelTypeGroq, want: "https://api.groq.com/openai/v1"},
 		{name: "cohere", channelType: ChannelTypeCohere, want: "https://api.cohere.com/compatibility/v1"},
+		{name: "zhipu", channelType: ChannelTypeZhipu, want: "https://open.bigmodel.cn/api/paas/v4"},
+		{name: "tongyi", channelType: ChannelTypeTongyi, want: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+		{name: "voyageai", channelType: ChannelTypeVoyageAI, want: "https://api.voyageai.com/v1"},
 		{name: "unknown", channelType: 999, want: "https://api.openai.com/v1"},
 	}
 	for _, tt := range tests {

@@ -47,11 +47,14 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		ChannelTypeGroq,
 		ChannelTypeCohere,
 		ChannelTypeBaichuan,
+		ChannelTypeZhipu,
+		ChannelTypeTongyi,
 		ChannelTypeMinimax,
 		ChannelTypeTogether,
 		ChannelTypeFireworks,
 		ChannelTypePerplexity,
-		ChannelTypeNovita:
+		ChannelTypeNovita,
+		ChannelTypeVoyageAI:
 		return NewOpenAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	default:
 		// Default to OpenAI-compatible for unknown types
@@ -78,6 +81,10 @@ func resolveOpenAICompatibleBaseURL(channelType int32, baseURL string) string {
 		return "https://api.cohere.com/compatibility/v1"
 	case ChannelTypeBaichuan:
 		return "https://api.baichuan-ai.com/v1"
+	case ChannelTypeZhipu:
+		return "https://open.bigmodel.cn/api/paas/v4"
+	case ChannelTypeTongyi:
+		return "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	case ChannelTypeMinimax:
 		return "https://api.minimax.chat/v1"
 	case ChannelTypeTogether:
@@ -88,6 +95,8 @@ func resolveOpenAICompatibleBaseURL(channelType int32, baseURL string) string {
 		return "https://api.perplexity.ai"
 	case ChannelTypeNovita:
 		return "https://api.novita.ai/v3/openai"
+	case ChannelTypeVoyageAI:
+		return "https://api.voyageai.com/v1"
 	default:
 		return "https://api.openai.com/v1"
 	}
