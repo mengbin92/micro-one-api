@@ -43,6 +43,11 @@ type OneAPIOption struct {
 	Value string `json:"value"`
 }
 
+type GroupConfig struct {
+	Group string  `json:"group"`
+	Ratio float64 `json:"ratio"`
+}
+
 // NewAdminService creates a new admin service
 func NewAdminService(
 	billingClient billingv1.BillingServiceClient,
@@ -913,6 +918,102 @@ func (s *AdminService) GetOneAPIOption(_ context.Context, key string) (string, e
 		}
 	}
 	return oneAPIOptionDefaults[key], nil
+}
+
+func (s *AdminService) ListGroups(ctx context.Context) ([]GroupConfig, error) {
+	ratios, err := s.groupRatios(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := ratios["default"]; !ok {
+		ratios["default"] = 1
+	}
+	keys := make([]string, 0, len(ratios))
+	for group := range ratios {
+		keys = append(keys, group)
+	}
+	sort.Strings(keys)
+	result := make([]GroupConfig, 0, len(keys))
+	for _, group := range keys {
+		result = append(result, GroupConfig{Group: group, Ratio: ratios[group]})
+	}
+	return result, nil
+}
+
+func (s *AdminService) UpsertGroup(ctx context.Context, group string, ratio float64) (*GroupConfig, error) {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		return nil, fmt.Errorf("group is required")
+	}
+	if ratio <= 0 {
+		return nil, fmt.Errorf("ratio must be greater than 0")
+	}
+	ratios, err := s.groupRatios(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ratios[group] = ratio
+	if err := s.saveGroupRatios(ratios); err != nil {
+		return nil, err
+	}
+	return &GroupConfig{Group: group, Ratio: ratio}, nil
+}
+
+func (s *AdminService) DeleteGroup(ctx context.Context, group string) (*GroupConfig, error) {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		return nil, fmt.Errorf("group is required")
+	}
+	if group == "default" {
+		return nil, fmt.Errorf("default group cannot be deleted")
+	}
+	ratios, err := s.groupRatios(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ratio := ratios[group]
+	delete(ratios, group)
+	if _, ok := ratios["default"]; !ok {
+		ratios["default"] = 1
+	}
+	if err := s.saveGroupRatios(ratios); err != nil {
+		return nil, err
+	}
+	return &GroupConfig{Group: group, Ratio: ratio}, nil
+}
+
+func (s *AdminService) groupRatios(ctx context.Context) (map[string]float64, error) {
+	raw, err := s.GetOneAPIOption(ctx, "GroupRatio")
+	if err != nil {
+		return nil, err
+	}
+	ratios := map[string]float64{}
+	if strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), &ratios); err != nil {
+			return nil, fmt.Errorf("invalid GroupRatio option: %w", err)
+		}
+	}
+	return ratios, nil
+}
+
+func (s *AdminService) saveGroupRatios(ratios map[string]float64) error {
+	if s.systemOptsRepo == nil {
+		return fmt.Errorf("system options storage not configured")
+	}
+	keys := make([]string, 0, len(ratios))
+	for group := range ratios {
+		keys = append(keys, group)
+	}
+	sort.Strings(keys)
+	ordered := make(map[string]float64, len(keys))
+	for _, group := range keys {
+		ordered[group] = ratios[group]
+	}
+	payload, err := json.Marshal(ordered)
+	if err != nil {
+		return err
+	}
+	return s.systemOptsRepo.Set("GroupRatio", string(payload))
 }
 
 func (s *AdminService) UpdateOneAPIOption(_ context.Context, key, value string) (*adminv1.UpdateSystemOptionsResponse, error) {

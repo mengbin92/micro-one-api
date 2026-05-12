@@ -78,7 +78,9 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	srv.HandleFunc("/api/notice", handleContentRoute(svc, "Notice"))
 	srv.HandleFunc("/api/about", handleContentRoute(svc, "About"))
 	srv.HandleFunc("/api/home_page_content", handleContentRoute(svc, "HomePageContent"))
-	srv.HandleFunc("/api/group", AdminAuth(handleGroupManagementUnsupported))
+	srv.HandleFunc("/api/group", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleGroupManagement(w, r, svc)
+	}))
 
 	// Protected admin endpoints
 	srv.HandleFunc("/api/user/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -315,10 +317,45 @@ func handleContentWrite(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	writeJSON(w, http.StatusOK, apiResponse(resp.GetSuccess(), resp.GetMessage(), nil))
 }
 
-func handleGroupManagementUnsupported(w http.ResponseWriter, r *http.Request) {
+func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	switch r.Method {
-	case http.MethodPost, http.MethodPut, http.MethodDelete:
-		writeJSON(w, http.StatusNotImplemented, apiResponse(false, "group management storage is not implemented", nil))
+	case http.MethodGet:
+		groups, err := svc.ListGroups(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse(true, "", groups))
+	case http.MethodPost, http.MethodPut:
+		var req struct {
+			Group string  `json:"group"`
+			Name  string  `json:"name"`
+			Ratio float64 `json:"ratio"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if req.Group == "" {
+			req.Group = req.Name
+		}
+		result, err := svc.UpsertGroup(r.Context(), req.Group, req.Ratio)
+		if err != nil {
+			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
+	case http.MethodDelete:
+		group := r.URL.Query().Get("group")
+		if group == "" {
+			group = r.URL.Query().Get("name")
+		}
+		result, err := svc.DeleteGroup(r.Context(), group)
+		if err != nil {
+			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}

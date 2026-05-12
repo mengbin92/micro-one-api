@@ -422,20 +422,61 @@ func TestAdminHTTPContentRoutesExposeAndManageContent(t *testing.T) {
 	}
 }
 
-func TestAdminHTTPGroupManagementReturnsStableUnsupportedResponse(t *testing.T) {
+func TestAdminHTTPGroupManagementUsesGroupRatioOption(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
-	srv := newAdminHTTPOptionTestServer(&adminHTTPSystemOptionsStore{values: map[string]string{}})
-	req := httptest.NewRequest(http.MethodPost, "/api/group", strings.NewReader(`{"group":"vip","ratio":2}`))
+	store := &adminHTTPSystemOptionsStore{values: map[string]string{
+		"GroupRatio": `{"default":1,"vip":2}`,
+	}}
+	srv := newAdminHTTPOptionTestServer(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/group", nil)
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rec := httptest.NewRecorder()
-
 	srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501, body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"success":false`) || !strings.Contains(rec.Body.String(), "group management storage is not implemented") {
-		t.Fatalf("group unsupported response mismatch: %s", rec.Body.String())
+	for _, want := range []string{`"success":true`, `"group":"default"`, `"ratio":1`, `"group":"vip"`, `"ratio":2`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("group list response missing %s: %s", want, rec.Body.String())
+		}
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/group", strings.NewReader(`{"group":"vip","ratio":2}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("group create/update response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if store.values["GroupRatio"] != `{"default":1,"vip":2}` {
+		t.Fatalf("GroupRatio after post = %s", store.values["GroupRatio"])
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/api/group", strings.NewReader(`{"group":"vip","ratio":3.5}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("group update response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if store.values["GroupRatio"] != `{"default":1,"vip":3.5}` {
+		t.Fatalf("GroupRatio after put = %s", store.values["GroupRatio"])
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/group?group=vip", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("group delete response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if store.values["GroupRatio"] != `{"default":1}` {
+		t.Fatalf("GroupRatio after delete = %s", store.values["GroupRatio"])
 	}
 }
 
