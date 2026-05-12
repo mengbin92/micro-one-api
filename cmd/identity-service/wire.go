@@ -55,3 +55,40 @@ func registrationPolicyFromConfig(cfg *identitycfg.Config) server.RegistrationPo
 		TurnstileSecret:               cfg.Registration.TurnstileSecret,
 	}
 }
+
+func setupOAuth(cfg *identitycfg.Config) *oauth.ProviderRegistry {
+	registry := oauth.NewProviderRegistry()
+	baseURL := cfg.OAuth.BaseURL
+	if baseURL == "" {
+		baseURL = "http://localhost:8001"
+	}
+
+	if cfg.OAuth.GitHub.Enabled && cfg.OAuth.GitHub.ClientID != "" {
+		registry.Register(oauth.NewGitHubProvider(oauth.Config{
+			ClientID:     cfg.OAuth.GitHub.ClientID,
+			ClientSecret: cfg.OAuth.GitHub.ClientSecret,
+			RedirectURL:  baseURL + "/v1/oauth/github/callback",
+		}))
+	}
+	if cfg.OAuth.Google.Enabled && cfg.OAuth.Google.ClientID != "" {
+		registry.Register(oauth.NewGoogleProvider(oauth.Config{
+			ClientID:     cfg.OAuth.Google.ClientID,
+			ClientSecret: cfg.OAuth.Google.ClientSecret,
+			RedirectURL:  baseURL + "/v1/oauth/google/callback",
+		}))
+	}
+	if cfg.OAuth.OIDC.Enabled && cfg.OAuth.OIDC.ClientID != "" && cfg.OAuth.OIDC.AuthorizeURL != "" && cfg.OAuth.OIDC.TokenURL != "" && cfg.OAuth.OIDC.UserInfoURL != "" {
+		registry.Register(oauth.NewOIDCProvider(oauth.OIDCConfig{
+			Config: oauth.Config{
+				ClientID:     cfg.OAuth.OIDC.ClientID,
+				ClientSecret: cfg.OAuth.OIDC.ClientSecret,
+				RedirectURL:  baseURL + "/v1/oauth/oidc/callback",
+			},
+			AuthorizeURL: cfg.OAuth.OIDC.AuthorizeURL,
+			TokenURL:     cfg.OAuth.OIDC.TokenURL,
+			UserInfoURL:  cfg.OAuth.OIDC.UserInfoURL,
+			Scopes:       cfg.OAuth.OIDC.Scopes,
+		}))
+	}
+	return registry
+}

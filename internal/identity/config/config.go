@@ -41,6 +41,7 @@ type RedisConfig struct {
 type OAuthConfig struct {
 	GitHub  OAuthProviderConfig `json:"github"`
 	Google  OAuthProviderConfig `json:"google"`
+	OIDC    OIDCProviderConfig  `json:"oidc"`
 	BaseURL string              `json:"base_url"`
 }
 
@@ -48,6 +49,16 @@ type OAuthProviderConfig struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 	Enabled      bool   `json:"enabled"`
+}
+
+type OIDCProviderConfig struct {
+	ClientID     string   `json:"client_id"`
+	ClientSecret string   `json:"client_secret"`
+	Enabled      bool     `json:"enabled"`
+	AuthorizeURL string   `json:"authorize_url"`
+	TokenURL     string   `json:"token_url"`
+	UserInfoURL  string   `json:"user_info_url"`
+	Scopes       []string `json:"scopes"`
 }
 
 type RegistrationConfig struct {

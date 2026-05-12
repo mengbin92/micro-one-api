@@ -24,6 +24,14 @@ oauth:
     enabled: ${OAUTH_GOOGLE_ENABLED:-false}
     client_id: ${OAUTH_GOOGLE_CLIENT_ID:-}
     client_secret: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+  oidc:
+    enabled: ${OAUTH_OIDC_ENABLED:-false}
+    client_id: ${OAUTH_OIDC_CLIENT_ID:-}
+    client_secret: ${OAUTH_OIDC_CLIENT_SECRET:-}
+    authorize_url: ${OAUTH_OIDC_AUTHORIZE_URL:-}
+    token_url: ${OAUTH_OIDC_TOKEN_URL:-}
+    user_info_url: ${OAUTH_OIDC_USER_INFO_URL:-}
+    scopes: ${OAUTH_OIDC_SCOPES:-[openid,email,profile]}
 registration:
   disabled: ${REGISTRATION_DISABLED:-false}
   email_domain_restriction_enabled: ${REGISTRATION_EMAIL_DOMAIN_RESTRICTION_ENABLED:-false}

@@ -913,6 +913,33 @@ func TestIdentityHTTPOneAPIOAuthAliasesAreStableWhenProviderDisabled(t *testing.
 	}
 }
 
+func TestIdentityHTTPOneAPIOIDCAliasRedirectsWhenProviderEnabled(t *testing.T) {
+	registry := oauth.NewProviderRegistry()
+	registry.Register(oauth.NewOIDCProvider(oauth.OIDCConfig{
+		Config: oauth.Config{
+			ClientID:    "client-id",
+			RedirectURL: "http://localhost/v1/oauth/oidc/callback",
+		},
+		AuthorizeURL: "https://idp.example.com/oauth2/authorize",
+		TokenURL:     "https://idp.example.com/oauth2/token",
+		UserInfoURL:  "https://idp.example.com/oauth2/userinfo",
+	}))
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	srv := NewHTTPServer(":0", uc, registry)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/oauth/oidc", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302, body=%s", rec.Code, rec.Body.String())
+	}
+	if location := rec.Header().Get("Location"); !strings.Contains(location, "idp.example.com/oauth2/authorize") {
+		t.Fatalf("unexpected redirect location: %s", location)
+	}
+}
+
 type identityHTTPBillingClient struct {
 	billingv1.BillingServiceClient
 	snapshot       *commonv1.AccountSnapshot

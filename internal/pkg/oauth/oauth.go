@@ -38,6 +38,14 @@ type Config struct {
 	RedirectURL  string
 }
 
+type OIDCConfig struct {
+	Config
+	AuthorizeURL string
+	TokenURL     string
+	UserInfoURL  string
+	Scopes       []string
+}
+
 // ProviderRegistry holds registered OAuth providers.
 type ProviderRegistry struct {
 	providers map[string]Provider
@@ -288,5 +296,102 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		Email:       gUser.Email,
 		DisplayName: gUser.Name,
 		AvatarURL:   gUser.Picture,
+	}, nil
+}
+
+type oidcProvider struct {
+	cfg        OIDCConfig
+	httpClient *http.Client
+}
+
+func NewOIDCProvider(cfg OIDCConfig) Provider {
+	if len(cfg.Scopes) == 0 {
+		cfg.Scopes = []string{"openid", "email", "profile"}
+	}
+	return &oidcProvider{
+		cfg:        cfg,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+func (p *oidcProvider) Name() string { return "oidc" }
+
+func (p *oidcProvider) AuthURL(state string) string {
+	params := url.Values{
+		"client_id":     {p.cfg.ClientID},
+		"redirect_uri":  {p.cfg.RedirectURL},
+		"response_type": {"code"},
+		"scope":         {strings.Join(p.cfg.Scopes, " ")},
+		"state":         {state},
+	}
+	return p.cfg.AuthorizeURL + "?" + params.Encode()
+}
+
+func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, error) {
+	data := url.Values{
+		"code":          {code},
+		"client_id":     {p.cfg.ClientID},
+		"client_secret": {p.cfg.ClientSecret},
+		"redirect_uri":  {p.cfg.RedirectURL},
+		"grant_type":    {"authorization_code"},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.TokenURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("oidc token exchange: %w", err)
+	}
+	defer resp.Body.Close()
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		IDToken     string `json:"id_token"`
+		Error       string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, fmt.Errorf("oidc token decode: %w", err)
+	}
+	if tokenResp.Error != "" {
+		return nil, fmt.Errorf("oidc oauth error: %s", tokenResp.Error)
+	}
+	userReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.UserInfoURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	userReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+	userResp, err := p.httpClient.Do(userReq)
+	if err != nil {
+		return nil, fmt.Errorf("oidc user fetch: %w", err)
+	}
+	defer userResp.Body.Close()
+	var user struct {
+		Sub     string `json:"sub"`
+		Email   string `json:"email"`
+		Name    string `json:"name"`
+		Picture string `json:"picture"`
+	}
+	if err := json.NewDecoder(userResp.Body).Decode(&user); err != nil {
+		return nil, fmt.Errorf("oidc user decode: %w", err)
+	}
+	username := user.Email
+	if idx := strings.Index(username, "@"); idx > 0 {
+		username = username[:idx]
+	}
+	if username == "" {
+		username = "oidc-" + user.Sub
+	}
+	displayName := user.Name
+	if displayName == "" {
+		displayName = username
+	}
+	return &UserInfo{
+		Provider:    "oidc",
+		ProviderID:  user.Sub,
+		Username:    username,
+		Email:       user.Email,
+		DisplayName: displayName,
+		AvatarURL:   user.Picture,
 	}, nil
 }

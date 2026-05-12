@@ -105,5 +105,18 @@ func setupOAuth(cfg *identitycfg.Config) *oauth.ProviderRegistry {
 			RedirectURL:  baseURL + "/v1/oauth/google/callback",
 		}))
 	}
+	if cfg.OAuth.OIDC.Enabled && cfg.OAuth.OIDC.ClientID != "" && cfg.OAuth.OIDC.AuthorizeURL != "" && cfg.OAuth.OIDC.TokenURL != "" && cfg.OAuth.OIDC.UserInfoURL != "" {
+		registry.Register(oauth.NewOIDCProvider(oauth.OIDCConfig{
+			Config: oauth.Config{
+				ClientID:     cfg.OAuth.OIDC.ClientID,
+				ClientSecret: cfg.OAuth.OIDC.ClientSecret,
+				RedirectURL:  baseURL + "/v1/oauth/oidc/callback",
+			},
+			AuthorizeURL: cfg.OAuth.OIDC.AuthorizeURL,
+			TokenURL:     cfg.OAuth.OIDC.TokenURL,
+			UserInfoURL:  cfg.OAuth.OIDC.UserInfoURL,
+			Scopes:       cfg.OAuth.OIDC.Scopes,
+		}))
+	}
 	return registry
 }
