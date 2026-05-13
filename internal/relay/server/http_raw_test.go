@@ -52,6 +52,11 @@ func TestHTTPServerUnsupportedOpenAIRoutesReturnStableNotImplemented(t *testing.
 		body   string
 	}{
 		{http.MethodPost, "/v1/edits", `{}`},
+		{http.MethodPost, "/v1/responses", `{}`},
+		{http.MethodGet, "/v1/responses/resp-123", ``},
+		{http.MethodDelete, "/v1/responses/resp-123", ``},
+		{http.MethodPost, "/v1/responses/resp-123/cancel", ``},
+		{http.MethodGet, "/v1/responses/resp-123/input_items", ``},
 		{http.MethodGet, "/v1/engines", ``},
 		{http.MethodPost, "/v1/engines/text-embedding-ada-002/embeddings", `{}`},
 		{http.MethodGet, "/v1/files", ``},

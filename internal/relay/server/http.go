@@ -73,6 +73,8 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	srv.HandleFunc("/v1/audio/speech", s.handleRawRelay("/audio/speech", false))
 	srv.HandleFunc("/v1/moderations", s.handleRawRelay("/moderations", false))
 	srv.HandleFunc("/v1/edits", s.handleUnsupportedOpenAIRoute("edits"))
+	srv.HandleFunc("/v1/responses", s.handleUnsupportedOpenAIRoute("responses"))
+	srv.HandlePrefix("/v1/responses/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("responses")))
 	srv.HandleFunc("/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
 	srv.HandlePrefix("/v1/engines/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("engines")))
 	srv.HandleFunc("/v1/files", s.handleUnsupportedOpenAIRoute("files"))
