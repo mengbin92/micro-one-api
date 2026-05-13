@@ -1000,7 +1000,7 @@ func TestIdentityHTTPOneAPIOAuthAliasesAreStableWhenProviderDisabled(t *testing.
 	uc := biz.NewIdentityUsecase(repo)
 	srv := NewHTTPServer(":0", uc, nil)
 
-	for _, path := range []string{"/api/oauth/oidc", "/api/oauth/lark", "/api/oauth/lark/bind", "/api/oauth/wechat", "/api/oauth/wechat/bind"} {
+	for _, path := range []string{"/api/oauth/oidc", "/api/oauth/lark", "/api/oauth/lark/bind", "/api/oauth/wechat", "/api/oauth/wechat/bind", "/api/oauth/telegram/login", "/api/oauth/telegram/bind"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		srv.ServeHTTP(rec, req)

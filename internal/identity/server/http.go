@@ -85,6 +85,12 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	srv.HandleFunc("/api/oauth/lark/bind", func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIOAuthAlias(w, r, oauthRegistry, "lark")
 	})
+	srv.HandleFunc("/api/oauth/telegram/login", func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIOAuthAlias(w, r, oauthRegistry, "telegram")
+	})
+	srv.HandleFunc("/api/oauth/telegram/bind", func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIOAuthAlias(w, r, oauthRegistry, "telegram")
+	})
 
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
