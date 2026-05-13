@@ -75,6 +75,7 @@ type adminHTTPChannelClient struct {
 	deletedID   int64
 	baseURL     string
 	chType      int32
+	statuses    []int32
 }
 
 func (c *adminHTTPChannelClient) CreateChannel(ctx context.Context, req *channelv1.CreateChannelRequest, opts ...grpc.CallOption) (*channelv1.CreateChannelResponse, error) {
@@ -91,6 +92,11 @@ func (c *adminHTTPChannelClient) UpdateChannel(ctx context.Context, req *channel
 func (c *adminHTTPChannelClient) DeleteChannel(ctx context.Context, req *channelv1.DeleteChannelRequest, opts ...grpc.CallOption) (*channelv1.DeleteChannelResponse, error) {
 	c.deletedID = req.ChannelId
 	return &channelv1.DeleteChannelResponse{Success: true, Message: "deleted"}, nil
+}
+
+func (c *adminHTTPChannelClient) ChangeChannelStatus(ctx context.Context, req *channelv1.ChangeChannelStatusRequest, opts ...grpc.CallOption) (*channelv1.ChangeChannelStatusResponse, error) {
+	c.statuses = append(c.statuses, req.Status)
+	return &channelv1.ChangeChannelStatusResponse{Success: true, Message: "updated"}, nil
 }
 
 func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChannelRequest, opts ...grpc.CallOption) (*channelv1.GetChannelReply, error) {
@@ -619,6 +625,25 @@ func TestAdminHTTPOneAPIChannelRoutes(t *testing.T) {
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || channelClient.deletedID != 101 {
 		t.Fatalf("delete response mismatch: status=%d deleted=%d body=%s", rec.Code, channelClient.deletedID, rec.Body.String())
+	}
+
+	for _, tc := range []struct {
+		path       string
+		wantStatus int32
+	}{
+		{"/api/channel/disable/101", 2},
+		{"/api/channel/enable/101", 1},
+	} {
+		req = httptest.NewRequest(http.MethodPost, tc.path, nil)
+		req.Header.Set("Authorization", "Bearer admin-token")
+		rec = httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+			t.Fatalf("%s response mismatch: status=%d body=%s", tc.path, rec.Code, rec.Body.String())
+		}
+		if got := channelClient.statuses[len(channelClient.statuses)-1]; got != tc.wantStatus {
+			t.Fatalf("%s status = %d, want %d", tc.path, got, tc.wantStatus)
+		}
 	}
 }
 

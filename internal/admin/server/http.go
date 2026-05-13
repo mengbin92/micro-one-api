@@ -174,6 +174,12 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	srv.HandlePrefix("/api/channel/update_balance/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUpdateChannelBalance(w, r, svc)
 	}))
+	srv.HandlePrefix("/api/channel/disable/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIChannelStatusAlias(w, r, svc, 2, "/api/channel/disable/")
+	}))
+	srv.HandlePrefix("/api/channel/enable/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIChannelStatusAlias(w, r, svc, 1, "/api/channel/enable/")
+	}))
 	srv.HandlePrefix("/api/channel/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIChannelByID(w, r, svc)
 	}))
@@ -809,6 +815,23 @@ func handleUpdateChannelBalance(w http.ResponseWriter, r *http.Request, svc *ser
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(result.Success, result.Message, result))
+}
+
+func handleOneAPIChannelStatusAlias(w http.ResponseWriter, r *http.Request, svc *service.AdminService, status int32, prefix string) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	channelID, ok := parsePathID(r.URL.Path, prefix)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid channel id", nil))
+		return
+	}
+	resp, err := svc.ChangeChannelStatus(r.Context(), &adminv1.AdminChangeChannelStatusRequest{
+		ChannelId: channelID,
+		Status:    status,
+	})
+	writeOneAPIServiceResponse(w, resp, err)
 }
 
 func handleListChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
