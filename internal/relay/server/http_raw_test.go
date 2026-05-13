@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -177,6 +178,45 @@ func TestHTTPServerAPIStatusCompatibility(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"success":true`) {
 		t.Fatalf("status response missing success: %s", rec.Body.String())
 	}
+}
+
+func TestHTTPServerAPIModelsReturnsOneAPIChannelModelMap(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/models", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Success bool                `json:"success"`
+		Data    map[string][]string `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v, body=%s", err, rec.Body.String())
+	}
+	if !body.Success {
+		t.Fatalf("success = false, body=%s", rec.Body.String())
+	}
+	if !containsString(body.Data["1"], "gpt-4o-mini") {
+		t.Fatalf("openai channel models missing gpt-4o-mini: %s", rec.Body.String())
+	}
+	if !containsString(body.Data["6"], "deepseek-chat") {
+		t.Fatalf("deepseek channel models missing deepseek-chat: %s", rec.Body.String())
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestHTTPServerRawRouteRequiresAuthorization(t *testing.T) {

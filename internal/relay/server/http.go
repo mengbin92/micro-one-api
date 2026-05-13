@@ -668,26 +668,79 @@ func (s *HTTPServer) handleDashboardModels(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	group := r.URL.Query().Get("group")
-	if group == "" {
-		group = "default"
-	}
-	modelsReply, err := s.listAvailableModels(r.Context(), group)
-	if err != nil {
-		s.writeJSON(w, http.StatusOK, map[string]interface{}{
-			"success": false,
-			"message": "failed to list models",
-			"data":    map[string][]string{},
-		})
-		return
-	}
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "",
-		"data": map[string][]string{
-			group: modelsReply.Models,
-		},
+		"data":    oneAPIChannelModelsByType(),
 	})
+}
+
+func oneAPIChannelModelsByType() map[string][]string {
+	return map[string][]string{
+		"1": {
+			"gpt-4o-mini",
+			"gpt-4o",
+			"gpt-4-turbo",
+			"gpt-3.5-turbo",
+			"text-embedding-3-small",
+			"text-embedding-3-large",
+		},
+		"2": {
+			"claude-3-5-sonnet-20241022",
+			"claude-3-5-haiku-20241022",
+			"claude-3-opus-20240229",
+			"claude-3-sonnet-20240229",
+			"claude-3-haiku-20240307",
+		},
+		"3": {
+			"gemini-pro",
+			"gemini-pro-vision",
+		},
+		"6": {
+			"deepseek-chat",
+			"deepseek-reasoner",
+		},
+		"7": {
+			"mistral-large-latest",
+			"mistral-small-latest",
+		},
+		"8": {
+			"glm-4",
+			"glm-4v",
+			"glm-3-turbo",
+		},
+		"9": {
+			"moonshot-v1-8k",
+			"moonshot-v1-32k",
+			"moonshot-v1-128k",
+		},
+		"11": {
+			"command-r",
+			"command-r-plus",
+		},
+		"13": {
+			"qwen-turbo",
+			"qwen-plus",
+			"qwen-max",
+			"qwen-max-longcontext",
+			"text-embedding-v1",
+		},
+		"22": {
+			"voyage-3",
+			"voyage-3-lite",
+			"voyage-code-3",
+		},
+		"23": {
+			"openai/gpt-4o-mini",
+			"openai/gpt-4o",
+			"anthropic/claude-3.5-sonnet",
+		},
+		"24": {
+			"deepseek-ai/DeepSeek-V3",
+			"deepseek-ai/DeepSeek-R1",
+			"Qwen/Qwen2.5-72B-Instruct",
+		},
+	}
 }
 
 func (s *HTTPServer) handleGroups(w http.ResponseWriter, r *http.Request) {
