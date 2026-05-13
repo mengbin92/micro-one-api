@@ -700,6 +700,17 @@ func handleChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 
 func handleOneAPIChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	trimmed := strings.Trim(r.URL.Path, "/")
+	switch trimmed {
+	case "api/channel/disabled":
+		handleOneAPIDeleteDisabledChannels(w, r, svc)
+		return
+	case "api/channel/batch":
+		handleOneAPIBatchDeleteChannels(w, r, svc)
+		return
+	case "api/channel/fix":
+		handleOneAPIFixChannels(w, r)
+		return
+	}
 	if trimmed != "api/channel" && trimmed != "api/channel/search" {
 		handleOneAPIChannelByID(w, r, svc)
 		return
@@ -739,7 +750,8 @@ func handleOneAPIChannels(w http.ResponseWriter, r *http.Request, svc *service.A
 
 func handleOneAPIChannelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	trimmed := strings.Trim(r.URL.Path, "/")
-	if trimmed == "api/channel" || trimmed == "api/channel/search" || trimmed == "api/channel/models" {
+	if trimmed == "api/channel" || trimmed == "api/channel/search" || trimmed == "api/channel/models" ||
+		trimmed == "api/channel/disabled" || trimmed == "api/channel/batch" || trimmed == "api/channel/fix" {
 		handleOneAPIChannels(w, r, svc)
 		return
 	}
@@ -762,6 +774,79 @@ func handleOneAPIChannelByID(w http.ResponseWriter, r *http.Request, svc *servic
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+func handleOneAPIDeleteDisabledChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodDelete {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	resp, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
+		Page:     1,
+		PageSize: 1000,
+		Status:   2,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		return
+	}
+	deleted := 0
+	for _, channel := range resp.GetChannels() {
+		delResp, delErr := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channel.GetId()})
+		if delErr != nil {
+			writeJSON(w, http.StatusOK, apiResponse(false, delErr.Error(), deleted))
+			return
+		}
+		if delResp != nil && !delResp.GetSuccess() {
+			writeJSON(w, http.StatusOK, apiResponse(false, delResp.GetMessage(), deleted))
+			return
+		}
+		deleted++
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", deleted))
+}
+
+func handleOneAPIBatchDeleteChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if len(req.IDs) == 0 {
+		writeJSON(w, http.StatusOK, apiResponse(false, "ids are required", nil))
+		return
+	}
+	deleted := 0
+	for _, id := range req.IDs {
+		if id <= 0 {
+			writeJSON(w, http.StatusOK, apiResponse(false, "invalid channel id", deleted))
+			return
+		}
+		delResp, delErr := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: id})
+		if delErr != nil {
+			writeJSON(w, http.StatusOK, apiResponse(false, delErr.Error(), deleted))
+			return
+		}
+		if delResp != nil && !delResp.GetSuccess() {
+			writeJSON(w, http.StatusOK, apiResponse(false, delResp.GetMessage(), deleted))
+			return
+		}
+		deleted++
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", deleted))
+}
+
+func handleOneAPIFixChannels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", 0))
 }
 
 func handleOneAPIListChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {

@@ -77,6 +77,7 @@ type adminHTTPChannelClient struct {
 	created     *channelv1.CreateChannelRequest
 	updated     *channelv1.UpdateChannelRequest
 	deletedID   int64
+	deletedIDs  []int64
 	baseURL     string
 	chType      int32
 	statuses    []int32
@@ -95,6 +96,7 @@ func (c *adminHTTPChannelClient) UpdateChannel(ctx context.Context, req *channel
 
 func (c *adminHTTPChannelClient) DeleteChannel(ctx context.Context, req *channelv1.DeleteChannelRequest, opts ...grpc.CallOption) (*channelv1.DeleteChannelResponse, error) {
 	c.deletedID = req.ChannelId
+	c.deletedIDs = append(c.deletedIDs, req.ChannelId)
 	return &channelv1.DeleteChannelResponse{Success: true, Message: "deleted"}, nil
 }
 
@@ -135,24 +137,37 @@ func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.
 }
 
 func (c *adminHTTPChannelClient) ListChannels(ctx context.Context, req *channelv1.ListChannelsRequest, opts ...grpc.CallOption) (*channelv1.ListChannelsResponse, error) {
+	active := &commonv1.ChannelSummary{
+		Id:                 101,
+		Name:               "openai",
+		Type:               1,
+		Status:             1,
+		Group:              "default",
+		Models:             "gpt-4o",
+		Weight:             3,
+		TestTime:           1710000000,
+		ResponseTime:       245,
+		Balance:            12.5,
+		BalanceUpdatedTime: 1710000100,
+		UsedQuota:          900,
+	}
+	disabled := &commonv1.ChannelSummary{
+		Id:     102,
+		Name:   "disabled",
+		Type:   1,
+		Status: 2,
+		Group:  "default",
+		Models: "gpt-4o",
+	}
+	channels := []*commonv1.ChannelSummary{active}
+	if req.Status == 2 {
+		channels = []*commonv1.ChannelSummary{disabled}
+	} else if req.Status != 0 && req.Status != 1 {
+		channels = nil
+	}
 	return &channelv1.ListChannelsResponse{
-		Channels: []*commonv1.ChannelSummary{
-			{
-				Id:                 101,
-				Name:               "openai",
-				Type:               1,
-				Status:             1,
-				Group:              "default",
-				Models:             "gpt-4o",
-				Weight:             3,
-				TestTime:           1710000000,
-				ResponseTime:       245,
-				Balance:            12.5,
-				BalanceUpdatedTime: 1710000100,
-				UsedQuota:          900,
-			},
-		},
-		Total: 1,
+		Channels: channels,
+		Total:    int64(len(channels)),
 	}, nil
 }
 
@@ -676,6 +691,45 @@ func TestAdminHTTPOneAPIChannelRoutes(t *testing.T) {
 		if got := channelClient.statuses[len(channelClient.statuses)-1]; got != tc.wantStatus {
 			t.Fatalf("%s status = %d, want %d", tc.path, got, tc.wantStatus)
 		}
+	}
+}
+
+func TestAdminHTTPOneAPIChannelBulkCompatibilityRoutes(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	channelClient := &adminHTTPChannelClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, channelClient, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/channel/disabled", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"data":1`) {
+		t.Fatalf("disabled cleanup response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if len(channelClient.deletedIDs) != 1 || channelClient.deletedIDs[0] != 102 {
+		t.Fatalf("disabled cleanup deleted IDs = %+v, want [102]", channelClient.deletedIDs)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/channel/batch", strings.NewReader(`{"ids":[101,103]}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"data":2`) {
+		t.Fatalf("batch delete response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if len(channelClient.deletedIDs) != 3 || channelClient.deletedIDs[1] != 101 || channelClient.deletedIDs[2] != 103 {
+		t.Fatalf("batch delete deleted IDs = %+v, want suffix [101 103]", channelClient.deletedIDs)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/channel/fix", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"data":0`) {
+		t.Fatalf("fix response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
