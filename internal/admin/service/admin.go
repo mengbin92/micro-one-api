@@ -670,9 +670,13 @@ type channelBalanceAdapter struct {
 }
 
 const (
+	channelTypeOpenAI      int32 = 1
+	channelTypeDeepSeek    int32 = 6
 	channelTypeOpenRouter  int32 = 23
 	channelTypeSiliconFlow int32 = 24
 
+	openAIDefaultBaseURL      = "https://api.openai.com/v1"
+	deepSeekDefaultBaseURL    = "https://api.deepseek.com/v1"
 	openRouterDefaultBaseURL  = "https://openrouter.ai/api/v1"
 	siliconFlowDefaultBaseURL = "https://api.siliconflow.cn/v1"
 )
@@ -687,6 +691,8 @@ func balanceAdapterForChannel(channel *commonv1.ChannelInfo) *channelBalanceAdap
 		return &channelBalanceAdapter{name: "openrouter_credits", fetch: fetchOpenRouterBalance}
 	case channel.GetType() == channelTypeSiliconFlow:
 		return &channelBalanceAdapter{name: "siliconflow_user_info", fetch: fetchSiliconFlowBalance}
+	case channel.GetType() == channelTypeDeepSeek:
+		return &channelBalanceAdapter{name: "deepseek_balance", fetch: fetchDeepSeekBalance}
 	case strings.Contains(host, "openrouter"):
 		return &channelBalanceAdapter{name: "openrouter_credits", fetch: fetchOpenRouterBalance}
 	case strings.Contains(host, "siliconflow"):
@@ -701,12 +707,20 @@ func balanceAdapterForChannel(channel *commonv1.ChannelInfo) *channelBalanceAdap
 }
 
 func fetchOpenAIDashboardBalance(ctx context.Context, client *http.Client, channel *commonv1.ChannelInfo) (float64, error) {
-	endpoint := trimV1Base(channel.GetBaseUrl()) + "/dashboard/billing/credit_grants"
+	endpoint := openAIDashboardBalanceEndpoint(channel)
 	payload, err := fetchBalancePayload(ctx, client, endpoint, channel.GetKey())
 	if err != nil {
 		return 0, err
 	}
 	return firstFloat(payload, "total_available", "total_granted")
+}
+
+func openAIDashboardBalanceEndpoint(channel *commonv1.ChannelInfo) string {
+	base := strings.TrimRight(channel.GetBaseUrl(), "/")
+	if base == "" {
+		base = openAIDefaultBaseURL
+	}
+	return strings.TrimRight(trimV1Base(base), "/") + "/dashboard/billing/credit_grants"
 }
 
 func fetchOpenRouterBalance(ctx context.Context, client *http.Client, channel *commonv1.ChannelInfo) (float64, error) {
@@ -759,7 +773,7 @@ func siliconFlowBalanceEndpoint(channel *commonv1.ChannelInfo) string {
 }
 
 func fetchDeepSeekBalance(ctx context.Context, client *http.Client, channel *commonv1.ChannelInfo) (float64, error) {
-	endpoint := trimV1Base(channel.GetBaseUrl()) + "/user/balance"
+	endpoint := deepSeekBalanceEndpoint(channel)
 	payload, err := fetchBalancePayload(ctx, client, endpoint, channel.GetKey())
 	if err != nil {
 		return 0, err
@@ -775,6 +789,14 @@ func fetchDeepSeekBalance(ctx context.Context, client *http.Client, channel *com
 		return total, nil
 	}
 	return firstFloat(payload, "balance", "total_available")
+}
+
+func deepSeekBalanceEndpoint(channel *commonv1.ChannelInfo) string {
+	base := strings.TrimRight(channel.GetBaseUrl(), "/")
+	if base == "" {
+		base = deepSeekDefaultBaseURL
+	}
+	return strings.TrimRight(trimV1Base(base), "/") + "/user/balance"
 }
 
 func fetchBalancePayload(ctx context.Context, client *http.Client, endpoint, key string) (map[string]interface{}, error) {

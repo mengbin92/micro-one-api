@@ -12,6 +12,7 @@ func TestBalanceAdapterForChannelUsesProviderTypeDefaults(t *testing.T) {
 		channelType int32
 		want        string
 	}{
+		{name: "deepseek", channelType: channelTypeDeepSeek, want: "deepseek_balance"},
 		{name: "openrouter", channelType: 23, want: "openrouter_credits"},
 		{name: "siliconflow", channelType: 24, want: "siliconflow_user_info"},
 	}
@@ -36,6 +37,18 @@ func TestBalanceEndpointForChannelUsesProviderDefaults(t *testing.T) {
 		endpointFor func(*commonv1.ChannelInfo) string
 		want        string
 	}{
+		{
+			name:        "openai default",
+			channel:     &commonv1.ChannelInfo{Type: channelTypeOpenAI},
+			endpointFor: openAIDashboardBalanceEndpoint,
+			want:        "https://api.openai.com/dashboard/billing/credit_grants",
+		},
+		{
+			name:        "deepseek default",
+			channel:     &commonv1.ChannelInfo{Type: channelTypeDeepSeek},
+			endpointFor: deepSeekBalanceEndpoint,
+			want:        "https://api.deepseek.com/user/balance",
+		},
 		{
 			name:        "openrouter default",
 			channel:     &commonv1.ChannelInfo{Type: channelTypeOpenRouter},
