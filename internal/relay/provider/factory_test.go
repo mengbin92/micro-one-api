@@ -22,6 +22,8 @@ func TestResolveOpenAICompatibleBaseURL(t *testing.T) {
 		{name: "zhipu", channelType: ChannelTypeZhipu, want: "https://open.bigmodel.cn/api/paas/v4"},
 		{name: "tongyi", channelType: ChannelTypeTongyi, want: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
 		{name: "voyageai", channelType: ChannelTypeVoyageAI, want: "https://api.voyageai.com/v1"},
+		{name: "openrouter", channelType: ChannelTypeOpenRouter, want: "https://openrouter.ai/api/v1"},
+		{name: "siliconflow", channelType: ChannelTypeSiliconFlow, want: "https://api.siliconflow.cn/v1"},
 		{name: "unknown", channelType: 999, want: "https://api.openai.com/v1"},
 	}
 	for _, tt := range tests {
@@ -50,5 +52,20 @@ func TestProviderFactoryCreatesVoyageAIProvider(t *testing.T) {
 	}
 	if _, ok := provider.(*VoyageAIProvider); !ok {
 		t.Fatalf("provider = %T, want *VoyageAIProvider", provider)
+	}
+}
+
+func TestProviderFactoryCreatesOpenAICompatibleProvidersForExpandedDefaults(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	factory := NewProviderFactory(time.Second)
+	for _, channelType := range []int32{ChannelTypeOpenRouter, ChannelTypeSiliconFlow} {
+		provider, err := factory.CreateProvider(channelType, "", "key")
+		if err != nil {
+			t.Fatalf("CreateProvider(%d) error = %v", channelType, err)
+		}
+		if _, ok := provider.(*OpenAIProvider); !ok {
+			t.Fatalf("provider for channel type %d = %T, want *OpenAIProvider", channelType, provider)
+		}
 	}
 }

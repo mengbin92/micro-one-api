@@ -55,7 +55,9 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		ChannelTypeTogether,
 		ChannelTypeFireworks,
 		ChannelTypePerplexity,
-		ChannelTypeNovita:
+		ChannelTypeNovita,
+		ChannelTypeOpenRouter,
+		ChannelTypeSiliconFlow:
 		return NewOpenAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	default:
 		// Default to OpenAI-compatible for unknown types
@@ -98,6 +100,10 @@ func resolveOpenAICompatibleBaseURL(channelType int32, baseURL string) string {
 		return "https://api.novita.ai/v3/openai"
 	case ChannelTypeVoyageAI:
 		return "https://api.voyageai.com/v1"
+	case ChannelTypeOpenRouter:
+		return "https://openrouter.ai/api/v1"
+	case ChannelTypeSiliconFlow:
+		return "https://api.siliconflow.cn/v1"
 	default:
 		return "https://api.openai.com/v1"
 	}
@@ -105,26 +111,28 @@ func resolveOpenAICompatibleBaseURL(channelType int32, baseURL string) string {
 
 // Common channel types (these should align with one-api channel types)
 const (
-	ChannelTypeOpenAI     int32 = 1
-	ChannelTypeAnthropic  int32 = 2
-	ChannelTypeGemini     int32 = 3
-	ChannelTypeClaude     int32 = 4
-	ChannelTypeAzure      int32 = 5
-	ChannelTypeDeepSeek   int32 = 6
-	ChannelTypeMistral    int32 = 7
-	ChannelTypeZhipu      int32 = 8
-	ChannelTypeMoonshot   int32 = 9
-	ChannelTypeGroq       int32 = 10
-	ChannelTypeCohere     int32 = 11
-	ChannelTypeBaichuan   int32 = 12
-	ChannelTypeTongyi     int32 = 13
-	ChannelTypeHunyuan    int32 = 14
-	ChannelTypeMinimax    int32 = 15
-	ChannelTypeXingchen   int32 = 16
-	ChannelTypeBedrock    int32 = 17
-	ChannelTypeTogether   int32 = 18
-	ChannelTypeFireworks  int32 = 19
-	ChannelTypePerplexity int32 = 20
-	ChannelTypeNovita     int32 = 21
-	ChannelTypeVoyageAI   int32 = 22
+	ChannelTypeOpenAI      int32 = 1
+	ChannelTypeAnthropic   int32 = 2
+	ChannelTypeGemini      int32 = 3
+	ChannelTypeClaude      int32 = 4
+	ChannelTypeAzure       int32 = 5
+	ChannelTypeDeepSeek    int32 = 6
+	ChannelTypeMistral     int32 = 7
+	ChannelTypeZhipu       int32 = 8
+	ChannelTypeMoonshot    int32 = 9
+	ChannelTypeGroq        int32 = 10
+	ChannelTypeCohere      int32 = 11
+	ChannelTypeBaichuan    int32 = 12
+	ChannelTypeTongyi      int32 = 13
+	ChannelTypeHunyuan     int32 = 14
+	ChannelTypeMinimax     int32 = 15
+	ChannelTypeXingchen    int32 = 16
+	ChannelTypeBedrock     int32 = 17
+	ChannelTypeTogether    int32 = 18
+	ChannelTypeFireworks   int32 = 19
+	ChannelTypePerplexity  int32 = 20
+	ChannelTypeNovita      int32 = 21
+	ChannelTypeVoyageAI    int32 = 22
+	ChannelTypeOpenRouter  int32 = 23
+	ChannelTypeSiliconFlow int32 = 24
 )
