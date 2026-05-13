@@ -54,6 +54,12 @@ spec:
             secretKeyRef:
               name: db-credentials
               key: dsn
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: service-token-secret
+              key: token
+              optional: true
         resources:
           requests:
             memory: "64Mi"

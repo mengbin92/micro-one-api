@@ -106,7 +106,7 @@ kubectl create secret tls api-tls-secret \
   --key=api.yourdomain.com.key \
   -n one-api
 
-# 服务间 HTTP 调用令牌（admin-api 代理删除 log-service 业务日志时使用）
+# 服务间 HTTP 调用令牌（admin-api 和 log-service 共享）
 kubectl create secret generic service-token-secret \
   --from-literal=token='replace-with-a-long-random-token' \
   -n one-api
@@ -178,7 +178,7 @@ kubectl logs -f deployment/relay-gateway -n one-api
 | `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 | - |
 | `LOG_HTTP_ENDPOINT` | log-service HTTP 地址；未配置时 `/api/log/` 删除保持禁用兼容响应 | - |
 
-`/api/log/` 的 `DELETE` 仅删除 `log-service` 中的业务日志，并要求传入 `end_time`。该操作不会删除 `billing-service` 的 ledger/账务流水。
+`/api/log/` 的 `DELETE` 仅删除 `log-service` 中的业务日志，并要求传入 `end_time`。该操作不会删除 `billing-service` 的 ledger/账务流水。启用该能力时，`admin-api` 和 `log-service` 必须配置相同的 `SERVICE_TOKEN`。
 
 ## 5. 健康检查与监控
 
