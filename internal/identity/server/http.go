@@ -125,6 +125,9 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	srv.HandleFunc("/api/user/invitation", func(w http.ResponseWriter, r *http.Request) {
 		handleAffCode(w, r, uc)
 	})
+	srv.HandleFunc("/api/user/aff_transfer", func(w http.ResponseWriter, r *http.Request) {
+		handleAffTransferDisabled(w, r, uc)
+	})
 	srv.HandleFunc("/api/oauth/email/bind", func(w http.ResponseWriter, r *http.Request) {
 		handleEmailBind(w, r, uc)
 	})
@@ -323,6 +326,18 @@ func handleAffCode(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUseca
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: code})
+}
+
+func handleAffTransferDisabled(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
+		return
+	}
+	if _, err := authSnapshotFromRequest(r, uc); err != nil {
+		writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "aff transfer is not supported"})
 }
 
 func handleEmailBind(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {

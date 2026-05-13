@@ -95,6 +95,25 @@ func TestIdentityHTTPAffCodeReturnsUserCode(t *testing.T) {
 	}
 }
 
+func TestIdentityHTTPAffTransferReturnsDisabledCompatibilityResponse(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/user/aff_transfer", strings.NewReader(`{"quota":500000}`))
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":false`) || !strings.Contains(rec.Body.String(), "aff transfer is not supported") {
+		t.Fatalf("aff transfer response mismatch: %s", rec.Body.String())
+	}
+}
+
 func TestIdentityHTTPRegisterAcceptsAffCode(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
