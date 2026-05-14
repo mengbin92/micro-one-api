@@ -8,8 +8,9 @@ import (
 )
 
 type mockIdentityRepo struct {
-	tokens map[string]*Token
-	users  map[int64]*User
+	tokens          map[string]*Token
+	users           map[int64]*User
+	oauthIdentities map[string]*OAuthIdentity
 }
 
 func (m *mockIdentityRepo) FindTokenByKey(ctx context.Context, key string) (*Token, error) {
@@ -64,6 +65,41 @@ func (m *mockIdentityRepo) FindUserByOAuth(ctx context.Context, provider, oauthI
 	return nil, ErrOAuthUserNotFound
 }
 
+func (m *mockIdentityRepo) FindOAuthIdentity(ctx context.Context, provider, providerID string) (*OAuthIdentity, error) {
+	identity, ok := m.oauthIdentities[provider+":"+providerID]
+	if !ok {
+		return nil, ErrOAuthUserNotFound
+	}
+	return identity, nil
+}
+
+func (m *mockIdentityRepo) FindOAuthIdentityByUserProvider(ctx context.Context, userID int64, provider string) (*OAuthIdentity, error) {
+	for _, identity := range m.oauthIdentities {
+		if identity.UserID == userID && identity.Provider == provider {
+			return identity, nil
+		}
+	}
+	return nil, ErrOAuthUserNotFound
+}
+
+func (m *mockIdentityRepo) CreateOAuthIdentity(ctx context.Context, identity *OAuthIdentity) error {
+	if m.oauthIdentities == nil {
+		m.oauthIdentities = map[string]*OAuthIdentity{}
+	}
+	key := identity.Provider + ":" + identity.ProviderID
+	if existing, ok := m.oauthIdentities[key]; ok && existing.UserID != identity.UserID {
+		return ErrOAuthAlreadyBound
+	}
+	for _, existing := range m.oauthIdentities {
+		if existing.UserID == identity.UserID && existing.Provider == identity.Provider {
+			return ErrOAuthAlreadyBound
+		}
+	}
+	identity.ID = int64(len(m.oauthIdentities) + 1)
+	m.oauthIdentities[key] = identity
+	return nil
+}
+
 func (m *mockIdentityRepo) CreateUser(ctx context.Context, user *User) error {
 	user.ID = int64(len(m.users) + 1)
 	m.users[user.ID] = user
@@ -91,9 +127,8 @@ func (m *mockIdentityRepo) IncreaseUserQuota(ctx context.Context, userID int64, 
 
 func TestIdentityUsecase_BindOAuthIdentityUpdatesCurrentUser(t *testing.T) {
 	repo := &mockIdentityRepo{
-		users: map[int64]*User{
-			1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
-		},
+		users:           map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled}},
+		oauthIdentities: map[string]*OAuthIdentity{},
 	}
 	uc := NewIdentityUsecase(repo)
 
@@ -101,8 +136,36 @@ func TestIdentityUsecase_BindOAuthIdentityUpdatesCurrentUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BindOAuthIdentity() error = %v", err)
 	}
-	if user.OAuthProvider != "wechat" || user.OAuthID != "openid-1" {
-		t.Fatalf("bound oauth mismatch: %+v", user)
+	if user.OAuthProvider != "" || user.OAuthID != "" {
+		t.Fatalf("legacy user oauth fields should not be overwritten: %+v", user)
+	}
+	identity := repo.oauthIdentities["wechat:openid-1"]
+	if identity == nil || identity.UserID != 1 {
+		t.Fatalf("oauth identity was not created: %+v", repo.oauthIdentities)
+	}
+}
+
+func TestIdentityUsecase_BindOAuthIdentityAllowsMultipleProvidersForSameUser(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users:           map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled}},
+		oauthIdentities: map[string]*OAuthIdentity{},
+	}
+	uc := NewIdentityUsecase(repo)
+
+	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "github", "gh-1"); err != nil {
+		t.Fatalf("BindOAuthIdentity(github) error = %v", err)
+	}
+	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "oidc", "oidc-1"); err != nil {
+		t.Fatalf("BindOAuthIdentity(oidc) error = %v", err)
+	}
+	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "lark", "lark-1"); err != nil {
+		t.Fatalf("BindOAuthIdentity(lark) error = %v", err)
+	}
+	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "wechat", "wechat-1"); err != nil {
+		t.Fatalf("BindOAuthIdentity(wechat) error = %v", err)
+	}
+	if len(repo.oauthIdentities) != 4 {
+		t.Fatalf("identity count = %d, want 4", len(repo.oauthIdentities))
 	}
 }
 
@@ -110,13 +173,72 @@ func TestIdentityUsecase_BindOAuthIdentityRejectsDuplicateProviderIdentity(t *te
 	repo := &mockIdentityRepo{
 		users: map[int64]*User{
 			1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
-			2: {ID: 2, Username: "bob", Status: UserStatusEnabled, OAuthProvider: "lark", OAuthID: "union-1"},
+			2: {ID: 2, Username: "bob", Status: UserStatusEnabled},
+		},
+		oauthIdentities: map[string]*OAuthIdentity{
+			"lark:union-1": {ID: 1, UserID: 2, Provider: "lark", ProviderID: "union-1"},
 		},
 	}
 	uc := NewIdentityUsecase(repo)
 
-	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "lark", "union-1"); err == nil {
+	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "lark", "union-1"); !errors.Is(err, ErrOAuthAlreadyBound) {
 		t.Fatal("BindOAuthIdentity() expected duplicate identity error")
+	}
+}
+
+func TestIdentityUsecase_BindOAuthIdentityRejectsDuplicateProviderForSameUser(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
+		},
+		oauthIdentities: map[string]*OAuthIdentity{
+			"github:gh-1": {ID: 1, UserID: 1, Provider: "github", ProviderID: "gh-1"},
+		},
+	}
+	uc := NewIdentityUsecase(repo)
+
+	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "github", "gh-2"); !errors.Is(err, ErrOAuthAlreadyBound) {
+		t.Fatal("BindOAuthIdentity() expected duplicate provider error")
+	}
+}
+
+func TestIdentityUsecase_OAuthLoginFindsUserByOAuthIdentity(t *testing.T) {
+	repo := &mockIdentityRepo{
+		tokens: map[string]*Token{},
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
+		},
+		oauthIdentities: map[string]*OAuthIdentity{
+			"oidc:sub-1": {ID: 1, UserID: 1, Provider: "oidc", ProviderID: "sub-1"},
+		},
+	}
+	uc := NewIdentityUsecase(repo)
+
+	user, _, err := uc.OAuthLogin(context.Background(), "oidc", "sub-1", "ignored", "ignored@example.com", "Ignored")
+	if err != nil {
+		t.Fatalf("OAuthLogin() error = %v", err)
+	}
+	if user.ID != 1 || user.Username != "alice" {
+		t.Fatalf("OAuthLogin() user = %+v, want alice", user)
+	}
+}
+
+func TestIdentityUsecase_OAuthLoginFallsBackToLegacyOAuthFields(t *testing.T) {
+	repo := &mockIdentityRepo{
+		tokens: map[string]*Token{},
+		users: map[int64]*User{
+			1: {ID: 1, Username: "legacy", Status: UserStatusEnabled, OAuthProvider: "github", OAuthID: "gh-1"},
+		},
+		oauthIdentities: map[string]*OAuthIdentity{},
+	}
+	uc := NewIdentityUsecase(repo)
+
+	user, _, err := uc.OAuthLogin(context.Background(), "github", "gh-1", "ignored", "ignored@example.com", "Ignored")
+	if err != nil {
+		t.Fatalf("OAuthLogin() error = %v", err)
+	}
+	if user.ID != 1 || user.Username != "legacy" {
+		t.Fatalf("OAuthLogin() user = %+v, want legacy", user)
 	}
 }
 

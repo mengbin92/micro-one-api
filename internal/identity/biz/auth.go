@@ -54,6 +54,15 @@ type User struct {
 	InviterID     int64
 }
 
+type OAuthIdentity struct {
+	ID         int64
+	UserID     int64
+	Provider   string
+	ProviderID string
+	CreatedAt  int64
+	UpdatedAt  int64
+}
+
 type Token struct {
 	ID             int64
 	UserID         int64
@@ -87,6 +96,9 @@ type IdentityRepo interface {
 	FindUserByEmail(ctx context.Context, email string) (*User, error)
 	FindUserByAffCode(ctx context.Context, affCode string) (*User, error)
 	FindUserByOAuth(ctx context.Context, provider, oauthID string) (*User, error)
+	FindOAuthIdentity(ctx context.Context, provider, providerID string) (*OAuthIdentity, error)
+	FindOAuthIdentityByUserProvider(ctx context.Context, userID int64, provider string) (*OAuthIdentity, error)
+	CreateOAuthIdentity(ctx context.Context, identity *OAuthIdentity) error
 	CreateUser(ctx context.Context, user *User) error
 	UpdateUser(ctx context.Context, user *User) error
 	DeleteUser(ctx context.Context, userID int64) error
@@ -616,8 +628,20 @@ func (uc *IdentityUsecase) generateToken() string {
 
 // OAuthLogin finds or creates a user by OAuth provider identity, then returns a token.
 func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, username, email, displayName string) (*User, string, error) {
-	// Try to find existing OAuth user
-	user, err := uc.repo.FindUserByOAuth(ctx, provider, oauthID)
+	identity, err := uc.repo.FindOAuthIdentity(ctx, provider, oauthID)
+	if err != nil && !errors.Is(err, ErrOAuthUserNotFound) {
+		return nil, "", err
+	}
+	var user *User
+	if identity != nil {
+		user, err = uc.repo.FindUserByID(ctx, identity.UserID)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	if user == nil {
+		user, err = uc.repo.FindUserByOAuth(ctx, provider, oauthID)
+	}
 	if err != nil && !errors.Is(err, ErrOAuthUserNotFound) {
 		return nil, "", err
 	}
@@ -638,6 +662,21 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 		}
 		if err := uc.repo.CreateUser(ctx, user); err != nil {
 			return nil, "", err
+		}
+		_, identityErr := uc.repo.FindOAuthIdentity(ctx, provider, oauthID)
+		if errors.Is(identityErr, ErrOAuthUserNotFound) {
+			now := uc.now().Unix()
+			if err := uc.repo.CreateOAuthIdentity(ctx, &OAuthIdentity{
+				UserID:     user.ID,
+				Provider:   provider,
+				ProviderID: oauthID,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}); err != nil {
+				return nil, "", err
+			}
+		} else if identityErr != nil {
+			return nil, "", identityErr
 		}
 	}
 
@@ -674,20 +713,38 @@ func (uc *IdentityUsecase) BindOAuthIdentity(ctx context.Context, userID int64, 
 	if user.Status != UserStatusEnabled {
 		return nil, ErrUserDisabled
 	}
-	boundUser, err := uc.repo.FindUserByOAuth(ctx, provider, oauthID)
+	boundIdentity, err := uc.repo.FindOAuthIdentity(ctx, provider, oauthID)
 	if err != nil && !errors.Is(err, ErrOAuthUserNotFound) {
 		return nil, err
 	}
-	if boundUser != nil && boundUser.ID != userID {
+	if boundIdentity != nil && boundIdentity.UserID != userID {
 		return nil, ErrOAuthAlreadyBound
 	}
-	if user.OAuthProvider != "" && (user.OAuthProvider != provider || user.OAuthID != oauthID) {
-		return nil, ErrOAuthAlreadyBound
-	}
-	user.OAuthProvider = provider
-	user.OAuthID = oauthID
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+	userProviderIdentity, err := uc.repo.FindOAuthIdentityByUserProvider(ctx, userID, provider)
+	if err != nil && !errors.Is(err, ErrOAuthUserNotFound) {
 		return nil, err
+	}
+	if userProviderIdentity != nil && userProviderIdentity.ProviderID != oauthID {
+		return nil, ErrOAuthAlreadyBound
+	}
+	legacyUser, err := uc.repo.FindUserByOAuth(ctx, provider, oauthID)
+	if err != nil && !errors.Is(err, ErrOAuthUserNotFound) {
+		return nil, err
+	}
+	if legacyUser != nil && legacyUser.ID != userID {
+		return nil, ErrOAuthAlreadyBound
+	}
+	if userProviderIdentity == nil {
+		now := uc.now().Unix()
+		if err := uc.repo.CreateOAuthIdentity(ctx, &OAuthIdentity{
+			UserID:     userID,
+			Provider:   provider,
+			ProviderID: oauthID,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}); err != nil {
+			return nil, err
+		}
 	}
 	return user, nil
 }

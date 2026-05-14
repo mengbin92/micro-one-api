@@ -60,6 +60,9 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 		srv.HandleFunc("/api/oauth/github", func(w http.ResponseWriter, r *http.Request) {
 			handleLegacyOAuth(w, r, oauthRegistry, "github")
 		})
+		srv.HandleFunc("/api/oauth/github/bind", func(w http.ResponseWriter, r *http.Request) {
+			handleOneAPIOAuthBind(w, r, oauthRegistry, uc, "github")
+		})
 		srv.HandleFunc("/api/oauth/google", func(w http.ResponseWriter, r *http.Request) {
 			handleLegacyOAuth(w, r, oauthRegistry, "google")
 		})
@@ -79,6 +82,9 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 			handleOneAPIOAuthAlias(w, r, oauthRegistry, name)
 		})
 	}
+	srv.HandleFunc("/api/oauth/oidc/bind", func(w http.ResponseWriter, r *http.Request) {
+		handleOneAPIOAuthBind(w, r, oauthRegistry, uc, "oidc")
+	})
 	srv.HandleFunc("/api/oauth/wechat/bind", func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIOAuthBind(w, r, oauthRegistry, uc, "wechat")
 	})

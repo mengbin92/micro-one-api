@@ -10,8 +10,10 @@ import (
 // newTestRepo creates an in-memory repository for testing.
 func newTestRepo() *Repository {
 	return &Repository{
-		usersByID:   make(map[int64]*biz.User),
-		tokensByKey: make(map[string]*biz.Token),
+		usersByID:           make(map[int64]*biz.User),
+		tokensByKey:         make(map[string]*biz.Token),
+		oauthIdentities:     make(map[string]*biz.OAuthIdentity),
+		nextOAuthIdentityID: 1,
 	}
 }
 
@@ -93,6 +95,52 @@ func TestFindUserByAffCode_NotFound(t *testing.T) {
 	_, err := repo.FindUserByAffCode(context.Background(), "NONE")
 	if err != biz.ErrUserNotFound {
 		t.Fatalf("expected ErrUserNotFound, got: %v", err)
+	}
+}
+
+func TestOAuthIdentityMemoryRepositoryCreatesAndFindsIdentity(t *testing.T) {
+	repo := newTestRepo()
+	identity := &biz.OAuthIdentity{UserID: 1, Provider: "github", ProviderID: "gh-1"}
+
+	if err := repo.CreateOAuthIdentity(context.Background(), identity); err != nil {
+		t.Fatalf("CreateOAuthIdentity() error = %v", err)
+	}
+	if identity.ID == 0 {
+		t.Fatal("expected identity ID to be assigned")
+	}
+	found, err := repo.FindOAuthIdentity(context.Background(), "github", "gh-1")
+	if err != nil {
+		t.Fatalf("FindOAuthIdentity() error = %v", err)
+	}
+	if found.UserID != 1 {
+		t.Fatalf("identity user id = %d, want 1", found.UserID)
+	}
+	byUser, err := repo.FindOAuthIdentityByUserProvider(context.Background(), 1, "github")
+	if err != nil {
+		t.Fatalf("FindOAuthIdentityByUserProvider() error = %v", err)
+	}
+	if byUser.ProviderID != "gh-1" {
+		t.Fatalf("identity provider id = %q, want gh-1", byUser.ProviderID)
+	}
+}
+
+func TestOAuthIdentityMemoryRepositoryRejectsDuplicateIdentity(t *testing.T) {
+	repo := newTestRepo()
+	if err := repo.CreateOAuthIdentity(context.Background(), &biz.OAuthIdentity{UserID: 1, Provider: "oidc", ProviderID: "sub-1"}); err != nil {
+		t.Fatalf("CreateOAuthIdentity() error = %v", err)
+	}
+	if err := repo.CreateOAuthIdentity(context.Background(), &biz.OAuthIdentity{UserID: 2, Provider: "oidc", ProviderID: "sub-1"}); err == nil {
+		t.Fatal("CreateOAuthIdentity() expected duplicate provider identity error")
+	}
+}
+
+func TestOAuthIdentityMemoryRepositoryRejectsDuplicateUserProvider(t *testing.T) {
+	repo := newTestRepo()
+	if err := repo.CreateOAuthIdentity(context.Background(), &biz.OAuthIdentity{UserID: 1, Provider: "wechat", ProviderID: "openid-1"}); err != nil {
+		t.Fatalf("CreateOAuthIdentity() error = %v", err)
+	}
+	if err := repo.CreateOAuthIdentity(context.Background(), &biz.OAuthIdentity{UserID: 1, Provider: "wechat", ProviderID: "openid-2"}); err == nil {
+		t.Fatal("CreateOAuthIdentity() expected duplicate user provider error")
 	}
 }
 

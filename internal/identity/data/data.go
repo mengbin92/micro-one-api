@@ -15,11 +15,13 @@ import (
 )
 
 type Repository struct {
-	db           *gorm.DB
-	redis        *redis.Client
-	usersByID    map[int64]*biz.User
-	tokensByKey  map[string]*biz.Token
-	identityLock sync.RWMutex
+	db                  *gorm.DB
+	redis               *redis.Client
+	usersByID           map[int64]*biz.User
+	tokensByKey         map[string]*biz.Token
+	oauthIdentities     map[string]*biz.OAuthIdentity
+	nextOAuthIdentityID int64
+	identityLock        sync.RWMutex
 }
 
 type userModel struct {
@@ -58,6 +60,17 @@ type tokenModel struct {
 
 func (tokenModel) TableName() string { return "tokens" }
 
+type oauthIdentityModel struct {
+	ID         int64  `gorm:"column:id"`
+	UserID     int64  `gorm:"column:user_id"`
+	Provider   string `gorm:"column:provider"`
+	ProviderID string `gorm:"column:provider_id"`
+	CreatedAt  int64  `gorm:"column:created_at"`
+	UpdatedAt  int64  `gorm:"column:updated_at"`
+}
+
+func (oauthIdentityModel) TableName() string { return "user_oauth_identities" }
+
 func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 	var dbDSN string
 	if len(dsn) > 0 && dsn[0] != "" {
@@ -89,8 +102,10 @@ func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 
 func newMemoryRepository() *Repository {
 	return &Repository{
-		usersByID:   make(map[int64]*biz.User),
-		tokensByKey: make(map[string]*biz.Token),
+		usersByID:           make(map[int64]*biz.User),
+		tokensByKey:         make(map[string]*biz.Token),
+		oauthIdentities:     make(map[string]*biz.OAuthIdentity),
+		nextOAuthIdentityID: 1,
 	}
 }
 
@@ -170,6 +185,64 @@ func (r *Repository) FindUserByOAuth(ctx context.Context, provider, oauthID stri
 		}
 	}
 	return nil, biz.ErrOAuthUserNotFound
+}
+
+func (r *Repository) FindOAuthIdentity(ctx context.Context, provider, providerID string) (*biz.OAuthIdentity, error) {
+	if r.db != nil {
+		return r.findOAuthIdentityDB(ctx, provider, providerID)
+	}
+	r.identityLock.RLock()
+	defer r.identityLock.RUnlock()
+	identity, ok := r.oauthIdentities[oauthIdentityKey(provider, providerID)]
+	if !ok {
+		return nil, biz.ErrOAuthUserNotFound
+	}
+	cloned := *identity
+	return &cloned, nil
+}
+
+func (r *Repository) FindOAuthIdentityByUserProvider(ctx context.Context, userID int64, provider string) (*biz.OAuthIdentity, error) {
+	if r.db != nil {
+		return r.findOAuthIdentityByUserProviderDB(ctx, userID, provider)
+	}
+	r.identityLock.RLock()
+	defer r.identityLock.RUnlock()
+	for _, identity := range r.oauthIdentities {
+		if identity.UserID == userID && identity.Provider == provider {
+			cloned := *identity
+			return &cloned, nil
+		}
+	}
+	return nil, biz.ErrOAuthUserNotFound
+}
+
+func (r *Repository) CreateOAuthIdentity(ctx context.Context, identity *biz.OAuthIdentity) error {
+	if r.db != nil {
+		return r.createOAuthIdentityDB(ctx, identity)
+	}
+	r.identityLock.Lock()
+	defer r.identityLock.Unlock()
+	if r.oauthIdentities == nil {
+		r.oauthIdentities = make(map[string]*biz.OAuthIdentity)
+	}
+	key := oauthIdentityKey(identity.Provider, identity.ProviderID)
+	if _, ok := r.oauthIdentities[key]; ok {
+		return biz.ErrOAuthAlreadyBound
+	}
+	for _, existing := range r.oauthIdentities {
+		if existing.UserID == identity.UserID && existing.Provider == identity.Provider {
+			return biz.ErrOAuthAlreadyBound
+		}
+	}
+	if r.nextOAuthIdentityID <= 0 {
+		r.nextOAuthIdentityID = int64(len(r.oauthIdentities) + 1)
+	}
+	cloned := *identity
+	cloned.ID = r.nextOAuthIdentityID
+	r.nextOAuthIdentityID++
+	r.oauthIdentities[key] = &cloned
+	identity.ID = cloned.ID
+	return nil
 }
 
 func (r *Repository) CreateUser(ctx context.Context, user *biz.User) error {
@@ -419,6 +492,46 @@ func (r *Repository) findUserByOAuthDB(ctx context.Context, provider, oauthID st
 	return userModelToBiz(model), nil
 }
 
+func (r *Repository) findOAuthIdentityDB(ctx context.Context, provider, providerID string) (*biz.OAuthIdentity, error) {
+	var model oauthIdentityModel
+	if err := r.db.WithContext(ctx).Where("provider = ? AND provider_id = ?", provider, providerID).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, biz.ErrOAuthUserNotFound
+		}
+		return nil, err
+	}
+	return oauthIdentityModelToBiz(model), nil
+}
+
+func (r *Repository) findOAuthIdentityByUserProviderDB(ctx context.Context, userID int64, provider string) (*biz.OAuthIdentity, error) {
+	var model oauthIdentityModel
+	if err := r.db.WithContext(ctx).Where("user_id = ? AND provider = ?", userID, provider).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, biz.ErrOAuthUserNotFound
+		}
+		return nil, err
+	}
+	return oauthIdentityModelToBiz(model), nil
+}
+
+func (r *Repository) createOAuthIdentityDB(ctx context.Context, identity *biz.OAuthIdentity) error {
+	model := oauthIdentityModel{
+		UserID:     identity.UserID,
+		Provider:   identity.Provider,
+		ProviderID: identity.ProviderID,
+		CreatedAt:  identity.CreatedAt,
+		UpdatedAt:  identity.UpdatedAt,
+	}
+	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			return biz.ErrOAuthAlreadyBound
+		}
+		return err
+	}
+	identity.ID = model.ID
+	return nil
+}
+
 func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 	model := userModel{
 		Username:      user.Username,
@@ -598,6 +711,21 @@ func userModelToBiz(model userModel) *biz.User {
 		Quota:         model.Quota,
 		AffCode:       model.AffCode,
 		InviterID:     model.InviterID,
+	}
+}
+
+func oauthIdentityKey(provider, providerID string) string {
+	return provider + ":" + providerID
+}
+
+func oauthIdentityModelToBiz(model oauthIdentityModel) *biz.OAuthIdentity {
+	return &biz.OAuthIdentity{
+		ID:         model.ID,
+		UserID:     model.UserID,
+		Provider:   model.Provider,
+		ProviderID: model.ProviderID,
+		CreatedAt:  model.CreatedAt,
+		UpdatedAt:  model.UpdatedAt,
 	}
 }
 

@@ -193,8 +193,9 @@ func setupInMemoryChannelService(t *testing.T, addr string) (func(), channelv1.C
 }
 
 type testIdentityRepo struct {
-	tokens map[string]*identitybiz.Token
-	users  map[int64]*identitybiz.User
+	tokens          map[string]*identitybiz.Token
+	users           map[int64]*identitybiz.User
+	oauthIdentities map[string]*identitybiz.OAuthIdentity
 }
 
 func (m *testIdentityRepo) FindTokenByKey(ctx context.Context, key string) (*identitybiz.Token, error) {
@@ -247,6 +248,41 @@ func (m *testIdentityRepo) FindUserByOAuth(ctx context.Context, provider, oauthI
 		}
 	}
 	return nil, identitybiz.ErrOAuthUserNotFound
+}
+
+func (m *testIdentityRepo) FindOAuthIdentity(ctx context.Context, provider, providerID string) (*identitybiz.OAuthIdentity, error) {
+	identity, ok := m.oauthIdentities[provider+":"+providerID]
+	if !ok {
+		return nil, identitybiz.ErrOAuthUserNotFound
+	}
+	return identity, nil
+}
+
+func (m *testIdentityRepo) FindOAuthIdentityByUserProvider(ctx context.Context, userID int64, provider string) (*identitybiz.OAuthIdentity, error) {
+	for _, identity := range m.oauthIdentities {
+		if identity.UserID == userID && identity.Provider == provider {
+			return identity, nil
+		}
+	}
+	return nil, identitybiz.ErrOAuthUserNotFound
+}
+
+func (m *testIdentityRepo) CreateOAuthIdentity(ctx context.Context, identity *identitybiz.OAuthIdentity) error {
+	if m.oauthIdentities == nil {
+		m.oauthIdentities = map[string]*identitybiz.OAuthIdentity{}
+	}
+	key := identity.Provider + ":" + identity.ProviderID
+	if _, ok := m.oauthIdentities[key]; ok {
+		return identitybiz.ErrOAuthAlreadyBound
+	}
+	for _, existing := range m.oauthIdentities {
+		if existing.UserID == identity.UserID && existing.Provider == identity.Provider {
+			return identitybiz.ErrOAuthAlreadyBound
+		}
+	}
+	identity.ID = int64(len(m.oauthIdentities) + 1)
+	m.oauthIdentities[key] = identity
+	return nil
 }
 
 func (m *testIdentityRepo) CreateUser(ctx context.Context, user *identitybiz.User) error {

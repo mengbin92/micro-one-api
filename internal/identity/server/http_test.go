@@ -1077,30 +1077,39 @@ func TestIdentityHTTPOAuthBindRequiresAuthenticatedUser(t *testing.T) {
 }
 
 func TestIdentityHTTPOAuthBindUpdatesCurrentUser(t *testing.T) {
-	registry := oauth.NewProviderRegistry()
-	registry.Register(&fakeOAuthProvider{name: "wechat", providerID: "openid-1"})
-	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
-	user, authToken := registerAndLoginForHTTPTest(t, uc)
-	srv := NewHTTPServer(":0", uc, registry)
+	for _, tt := range []struct {
+		provider   string
+		providerID string
+		path       string
+	}{
+		{provider: "github", providerID: "gh-1", path: "/api/oauth/github/bind?code=oauth-code"},
+		{provider: "oidc", providerID: "sub-1", path: "/api/oauth/oidc/bind?code=oauth-code"},
+		{provider: "lark", providerID: "open-1", path: "/api/oauth/lark/bind?code=oauth-code"},
+		{provider: "wechat", providerID: "openid-1", path: "/api/oauth/wechat/bind?code=oauth-code"},
+	} {
+		t.Run(tt.provider, func(t *testing.T) {
+			registry := oauth.NewProviderRegistry()
+			registry.Register(&fakeOAuthProvider{name: tt.provider, providerID: tt.providerID})
+			repo := identitydata.NewMemoryRepositoryForTest()
+			uc := biz.NewIdentityUsecase(repo)
+			_, authToken := registerAndLoginForHTTPTest(t, uc)
+			srv := NewHTTPServer(":0", uc, registry)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/oauth/wechat/bind?code=oauth-code", nil)
-	req.Header.Set("Authorization", "Bearer "+authToken)
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Header.Set("Authorization", "Bearer "+authToken)
+			rec := httptest.NewRecorder()
+			srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(rec.Body.String(), `"success":true`) {
-		t.Fatalf("bind response mismatch: %s", rec.Body.String())
-	}
-	bound, err := uc.GetUser(context.Background(), user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bound.OAuthProvider != "wechat" || bound.OAuthID != "openid-1" {
-		t.Fatalf("bound user mismatch: %+v", bound)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), `"success":true`) {
+				t.Fatalf("bind response mismatch: %s", rec.Body.String())
+			}
+			if _, err := repo.FindOAuthIdentity(context.Background(), tt.provider, tt.providerID); err != nil {
+				t.Fatalf("bound identity was not persisted: %v", err)
+			}
+		})
 	}
 }
 
