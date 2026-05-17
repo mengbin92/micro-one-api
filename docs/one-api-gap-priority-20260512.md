@@ -56,6 +56,17 @@ These gaps affect upstream provider coverage.
 | Provider-native adapters | Anthropic and Gemini have dedicated adapters; many providers use generic OpenAI-compatible forwarding. | Add adapters based on actual channel demand: Baidu, Ali, Xunfei, Tencent, Zhipu, Volcano/Doubao, Ollama, Replicate, Cloudflare, VertexAI, OpenRouter, SiliconFlow, and others. |
 | Provider model defaults | `/api/models` and `/api/channel/models` provide basic data from current config/channels. | Expand provider default base URLs, model lists, and metadata where the frontend expects One API's built-in provider catalog. |
 
+### 2026-05-17 Refresh
+
+Backend compatibility items in Priority 1 have been mostly closed by follow-up changes: OAuth/OIDC/Lark/WeChat and bind flows, Turnstile and email-domain registration checks, channel balance refresh for supported providers, dashboard billing subscription routes, stable NotImplemented OpenAI route surface, safe log deletion, group management, and content management now have route-level support and tests.
+
+Provider catalog parity is partially improved: `/api/models` keeps the legacy One API channel-type-to-model-list response and now also returns provider metadata including provider name, default base URL, required config fields, adapter state, and OpenAI-compatible/native support flags. The catalog explicitly marks providers that still require native adapters so unsupported types do not appear as silently supported relay paths.
+
+Still out of scope for the current backend gap pass:
+- Full web frontend remains deferred.
+- Native adapters are still needed for Cloudflare, VertexAI, Replicate, Baidu, Xunfei, Tencent Hunyuan, and other provider-specific protocols.
+- Provider model lists are intentionally conservative defaults and should be expanded with real provider demand.
+
 ## Completion Plan
 
 This is the concrete follow-up plan for the remaining gaps. Each item should land as a small branch with route-level tests first, then implementation.

@@ -24,6 +24,8 @@ func TestResolveOpenAICompatibleBaseURL(t *testing.T) {
 		{name: "voyageai", channelType: ChannelTypeVoyageAI, want: "https://api.voyageai.com/v1"},
 		{name: "openrouter", channelType: ChannelTypeOpenRouter, want: "https://openrouter.ai/api/v1"},
 		{name: "siliconflow", channelType: ChannelTypeSiliconFlow, want: "https://api.siliconflow.cn/v1"},
+		{name: "ollama", channelType: ChannelTypeOllama, want: "http://localhost:11434/v1"},
+		{name: "doubao", channelType: ChannelTypeDoubao, want: "https://ark.cn-beijing.volces.com/api/v3"},
 		{name: "unknown", channelType: 999, want: "https://api.openai.com/v1"},
 	}
 	for _, tt := range tests {
@@ -59,7 +61,7 @@ func TestProviderFactoryCreatesOpenAICompatibleProvidersForExpandedDefaults(t *t
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
 	factory := NewProviderFactory(time.Second)
-	for _, channelType := range []int32{ChannelTypeOpenRouter, ChannelTypeSiliconFlow} {
+	for _, channelType := range []int32{ChannelTypeOpenRouter, ChannelTypeSiliconFlow, ChannelTypeOllama, ChannelTypeDoubao} {
 		provider, err := factory.CreateProvider(channelType, "", "key")
 		if err != nil {
 			t.Fatalf("CreateProvider(%d) error = %v", channelType, err)
@@ -73,7 +75,16 @@ func TestProviderFactoryCreatesOpenAICompatibleProvidersForExpandedDefaults(t *t
 func TestProviderFactoryRejectsKnownNativeProvidersWithoutAdapters(t *testing.T) {
 	factory := NewProviderFactory(time.Second)
 
-	for _, channelType := range []int32{ChannelTypeHunyuan, ChannelTypeXingchen, ChannelTypeBedrock} {
+	for _, channelType := range []int32{
+		ChannelTypeHunyuan,
+		ChannelTypeXingchen,
+		ChannelTypeBedrock,
+		ChannelTypeCloudflare,
+		ChannelTypeVertexAI,
+		ChannelTypeReplicate,
+		ChannelTypeBaidu,
+		ChannelTypeXunfei,
+	} {
 		if _, err := factory.CreateProvider(channelType, "", "key"); err == nil {
 			t.Fatalf("CreateProvider(%d) error = nil, want unsupported provider error", channelType)
 		}

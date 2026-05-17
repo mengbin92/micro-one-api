@@ -210,6 +210,52 @@ func TestHTTPServerAPIModelsReturnsOneAPIChannelModelMap(t *testing.T) {
 	}
 }
 
+func TestHTTPServerAPIModelsReturnsProviderCatalogMetadata(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/models", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Success  bool `json:"success"`
+		Metadata map[string]struct {
+			Name                 string   `json:"name"`
+			DefaultBaseURL       string   `json:"default_base_url"`
+			RequiredConfigFields []string `json:"required_config_fields"`
+			Adapter              string   `json:"adapter"`
+			NativeSupported      bool     `json:"native_supported"`
+			OpenAICompatible     bool     `json:"openai_compatible"`
+		} `json:"metadata"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v, body=%s", err, rec.Body.String())
+	}
+	if !body.Success {
+		t.Fatalf("success = false, body=%s", rec.Body.String())
+	}
+	azure := body.Metadata["5"]
+	if azure.Name != "Azure OpenAI" || azure.DefaultBaseURL != "" || !containsString(azure.RequiredConfigFields, "base_url") || !containsString(azure.RequiredConfigFields, "api_version") || azure.Adapter != "native" || !azure.NativeSupported {
+		t.Fatalf("azure metadata mismatch: %+v body=%s", azure, rec.Body.String())
+	}
+	hunyuan := body.Metadata["14"]
+	if hunyuan.Name != "Tencent Hunyuan" || hunyuan.Adapter != "native_required" || hunyuan.NativeSupported || hunyuan.OpenAICompatible {
+		t.Fatalf("hunyuan metadata mismatch: %+v body=%s", hunyuan, rec.Body.String())
+	}
+	ollama := body.Metadata["25"]
+	if ollama.Name != "Ollama" || ollama.DefaultBaseURL != "http://localhost:11434/v1" || !ollama.OpenAICompatible {
+		t.Fatalf("ollama metadata mismatch: %+v body=%s", ollama, rec.Body.String())
+	}
+	if !containsString(body.Metadata["26"].RequiredConfigFields, "account_id") {
+		t.Fatalf("cloudflare metadata missing account_id: %+v body=%s", body.Metadata["26"], rec.Body.String())
+	}
+}
+
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

@@ -42,7 +42,14 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		return NewAzureProvider(baseURL, apiKey, config.APIVersion, f.defaultTimeout)
 	case ChannelTypeVoyageAI:
 		return NewVoyageAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
-	case ChannelTypeHunyuan, ChannelTypeXingchen, ChannelTypeBedrock:
+	case ChannelTypeHunyuan,
+		ChannelTypeXingchen,
+		ChannelTypeBedrock,
+		ChannelTypeCloudflare,
+		ChannelTypeVertexAI,
+		ChannelTypeReplicate,
+		ChannelTypeBaidu,
+		ChannelTypeXunfei:
 		return nil, fmt.Errorf("channel type %d requires a native provider adapter", channelType)
 	case ChannelTypeOpenAI,
 		ChannelTypeDeepSeek,
@@ -59,7 +66,9 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		ChannelTypePerplexity,
 		ChannelTypeNovita,
 		ChannelTypeOpenRouter,
-		ChannelTypeSiliconFlow:
+		ChannelTypeSiliconFlow,
+		ChannelTypeOllama,
+		ChannelTypeDoubao:
 		return NewOpenAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	default:
 		// Default to OpenAI-compatible for unknown types
@@ -106,6 +115,10 @@ func resolveOpenAICompatibleBaseURL(channelType int32, baseURL string) string {
 		return "https://openrouter.ai/api/v1"
 	case ChannelTypeSiliconFlow:
 		return "https://api.siliconflow.cn/v1"
+	case ChannelTypeOllama:
+		return "http://localhost:11434/v1"
+	case ChannelTypeDoubao:
+		return "https://ark.cn-beijing.volces.com/api/v3"
 	default:
 		return "https://api.openai.com/v1"
 	}
@@ -137,4 +150,11 @@ const (
 	ChannelTypeVoyageAI    int32 = 22
 	ChannelTypeOpenRouter  int32 = 23
 	ChannelTypeSiliconFlow int32 = 24
+	ChannelTypeOllama      int32 = 25
+	ChannelTypeCloudflare  int32 = 26
+	ChannelTypeVertexAI    int32 = 27
+	ChannelTypeReplicate   int32 = 28
+	ChannelTypeBaidu       int32 = 29
+	ChannelTypeXunfei      int32 = 30
+	ChannelTypeDoubao      int32 = 31
 )
