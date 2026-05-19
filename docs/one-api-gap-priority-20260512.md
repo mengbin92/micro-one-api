@@ -1,14 +1,14 @@
 # One API Remaining Gap Priority List
 
 > Branch: `docs/one-api-gap-refresh-20260512`
-> Date: 2026-05-12 (main table refreshed 2026-05-19; topup/affiliate/pay clarified 2026-05-19; balance-refresh semantics shipped 2026-05-19; reconciliation review surface shipped 2026-05-20)
+> Date: 2026-05-12 (main table refreshed 2026-05-19; topup/affiliate/pay clarified 2026-05-19; balance-refresh semantics shipped 2026-05-19; reconciliation review surface shipped 2026-05-20; provider-native adapters paused 2026-05-20)
 > Source: current `develop` code and sibling `../one-api`.
 
 ## Summary
 
 The project now covers the core microservice skeleton, OpenAI-compatible relay path, token validation, channel selection, billing reservation/commit/release flow, structured usage logs, user dashboard aggregation (usage + subscription), expanded token/channel/option fields, OAuth/SSO and bind flows for GitHub/Google/OIDC/Lark/WeChat/Telegram with Turnstile and email-domain enforcement, channel balance refresh with explicit stay-enabled-but-stale semantics for unsupported providers and audit-visible tracking columns plus opt-in auto-disable on persistent failure for supported providers, group and content management, a wide NotImplemented-stable OpenAI route surface, redemption-code top-up (`/api/user/topup`) and admin quota grant (`/api/topup`) with ledger writes, registration-time invitation bonus credit through the billing service, and a persisted reconciliation run history with admin review endpoints.
 
-It is still not a full One API product. The largest remaining gap is the full web frontend, plus native adapters for non-OpenAI-compatible providers. Online payment and a standalone affiliate-transfer endpoint are intentionally out of scope: upstream one-api does not implement either in its backend (its Air theme frontend calls `/api/user/pay` / `/api/user/amount` but the routes are never registered server-side, and there is no `aff_transfer` endpoint or `aff_quota` field upstream).
+It is still not a full One API product. The largest remaining gap is the full web frontend. Provider-native adapters for the eight non-OpenAI-compatible upstreams (Hunyuan, Xingchen, Bedrock, Cloudflare, VertexAI, Replicate, Baidu, Xunfei) are **paused** pending sandbox credentials or a staging deployment — see "Provider-Native Adapters — Paused" below. Online payment and a standalone affiliate-transfer endpoint are intentionally out of scope: upstream one-api does not implement either in its backend (its Air theme frontend calls `/api/user/pay` / `/api/user/amount` but the routes are never registered server-side, and there is no `aff_transfer` endpoint or `aff_quota` field upstream).
 
 ## Recently Completed
 
@@ -62,7 +62,30 @@ These items from earlier priority lists are now implemented:
 
 | Area | Current State | Needed Work |
 | --- | --- | --- |
-| Provider-native adapters | Anthropic, Gemini, Azure, and the OpenAI-compatible family have adapters; eight providers explicitly return `requires a native provider adapter`: Hunyuan, Xingchen, Bedrock, Cloudflare, VertexAI, Replicate, Baidu, Xunfei. | Add native adapters in demand order. Each adapter must cover request conversion, response conversion, streaming, usage extraction, and error mapping. |
+| Provider-native adapters | Anthropic, Gemini, Azure, and the OpenAI-compatible family have adapters; eight providers explicitly return `requires a native provider adapter`: Hunyuan, Xingchen, Bedrock, Cloudflare, VertexAI, Replicate, Baidu, Xunfei. | **Paused 2026-05-20.** Add native adapters in demand order — each must cover request conversion, response conversion, streaming, usage extraction, and error mapping. See "Provider-Native Adapters — Paused" below for the reason and the order to resume in. |
+
+## Provider-Native Adapters — Paused
+
+This phase is **on hold as of 2026-05-20** and should not be picked up without the prerequisites below.
+
+Reason: each of the eight providers has a non-trivial, provider-specific auth model — Bedrock SigV4, Xunfei HMAC + WebSocket, Baidu access-token OAuth flow with caching, VertexAI GCP service-account JWT, Hunyuan Tencent Cloud signature v3, plus simpler Bearer-token shapes for Cloudflare/Replicate. A pure code-port from upstream one-api without access to real provider credentials produces adapters that compile and pass mocks but cannot be validated end-to-end; the same is true for the streaming and usage-extraction paths whose quirks only surface against live endpoints.
+
+Resume criteria (any one is enough to unblock the adapter in question):
+- Provider sandbox credentials available to the implementer.
+- A staging deployment with a real channel of that provider type, so live smoke tests can confirm the adapter before merge.
+- Explicit decision to ship a code-only port with a documented "untested against live endpoint" caveat in the adapter file.
+
+Suggested resume order (simplest auth first → highest validation cost last):
+1. Cloudflare Workers AI — Bearer token, near OpenAI-compatible JSON shape.
+2. Replicate — Bearer token, async prediction-poll model.
+3. Baidu (Wenxin) — `access_token` exchange via API key + secret, cached.
+4. Hunyuan (Tencent) — Tencent Cloud signature v3.
+5. VertexAI — GCP service-account JWT signing.
+6. Bedrock (AWS) — SigV4.
+7. Xunfei (iFlytek) — HMAC + WebSocket streaming.
+8. Xingchen (China Telecom) — least documented; defer until demand is demonstrated.
+
+Each provider should land as its own commit with: adapter implementation, factory.go wiring, request/response/stream/usage/error tests, and provider catalog defaults (base URL, supported models, required config fields). Keep the `requires a native provider adapter` error in `factory.go` for any provider that has not yet been ported, so the channel remains rejected rather than silently routed through the OpenAI-compatible fallback.
 
 ## Disabled Placeholder Routes
 
@@ -93,22 +116,10 @@ Acceptance:
 - An admin can manage users, channels, redemptions, logs, and options from the UI.
 - Browser smoke tests cover the primary user and admin workflows.
 
-### 2. Provider-Native Adapters
-
-Goal: improve quality and reliability for non-OpenAI-compatible upstreams.
-
-Scope:
-- Add native adapters in demand order for Baidu, Hunyuan, Xunfei, Cloudflare, VertexAI, Bedrock, Replicate, Xingchen.
-- For each adapter, cover request conversion, response conversion, streaming, usage extraction, and error mapping.
-
-Acceptance:
-- Each adapter has non-streaming, streaming, usage, and upstream-error tests.
-- Provider defaults include base URL, supported models, and required channel config fields.
-
 ## Recommended Execution Order
 
 1. Build or migrate the full web frontend against the current `/api/*` compatibility layer.
-2. Add provider-native adapters in demand order, starting with the highest-traffic non-OpenAI-compatible channels.
+2. Resume provider-native adapters per the order in "Provider-Native Adapters — Paused" once credentials or staging access are available.
 
 ## Documentation Policy
 
