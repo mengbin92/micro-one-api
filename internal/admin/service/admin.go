@@ -596,6 +596,79 @@ type ChannelBalanceRefreshResult struct {
 	Disabled                          bool    `json:"disabled,omitempty"`
 }
 
+type ReconciliationDiscrepancyView struct {
+	UserID          string `json:"user_id"`
+	ExpectedQuota   int64  `json:"expected_quota"`
+	ActualQuota     int64  `json:"actual_quota"`
+	LedgerNetAmount int64  `json:"ledger_net_amount"`
+	FrozenQuota     int64  `json:"frozen_quota"`
+}
+
+type ReconciliationRunView struct {
+	RunID             int64                           `json:"run_id"`
+	RunAt             int64                           `json:"run_at"`
+	ExpiredCleaned    int32                           `json:"expired_cleaned"`
+	TotalAccounts     int32                           `json:"total_accounts"`
+	TotalReservations int32                           `json:"total_reservations"`
+	DiscrepancyCount  int32                           `json:"discrepancy_count"`
+	Discrepancies     []ReconciliationDiscrepancyView `json:"discrepancies,omitempty"`
+}
+
+type ListReconciliationRunsResult struct {
+	Runs  []*ReconciliationRunView `json:"runs"`
+	Total int64                    `json:"total"`
+}
+
+func (s *AdminService) ListReconciliationRuns(ctx context.Context, page, pageSize int32) (*ListReconciliationRunsResult, error) {
+	if s.billingClient == nil {
+		return &ListReconciliationRunsResult{Runs: []*ReconciliationRunView{}}, nil
+	}
+	resp, err := s.billingClient.ListReconciliationRuns(ctx, &billingv1.ListReconciliationRunsRequest{Page: page, PageSize: pageSize})
+	if err != nil {
+		return nil, err
+	}
+	out := &ListReconciliationRunsResult{Total: resp.GetTotal(), Runs: make([]*ReconciliationRunView, 0, len(resp.GetRuns()))}
+	for _, run := range resp.GetRuns() {
+		out.Runs = append(out.Runs, reconciliationRunFromProto(run))
+	}
+	return out, nil
+}
+
+func (s *AdminService) GetReconciliationRun(ctx context.Context, runID int64) (*ReconciliationRunView, error) {
+	if s.billingClient == nil {
+		return nil, nil
+	}
+	resp, err := s.billingClient.GetReconciliationRun(ctx, &billingv1.GetReconciliationRunRequest{RunId: runID})
+	if err != nil {
+		return nil, err
+	}
+	return reconciliationRunFromProto(resp.GetRun()), nil
+}
+
+func reconciliationRunFromProto(run *billingv1.ReconciliationRun) *ReconciliationRunView {
+	if run == nil {
+		return nil
+	}
+	view := &ReconciliationRunView{
+		RunID:             run.GetRunId(),
+		RunAt:             run.GetRunAt(),
+		ExpiredCleaned:    run.GetExpiredCleaned(),
+		TotalAccounts:     run.GetTotalAccounts(),
+		TotalReservations: run.GetTotalReservations(),
+		DiscrepancyCount:  run.GetDiscrepancyCount(),
+	}
+	for _, d := range run.GetDiscrepancies() {
+		view.Discrepancies = append(view.Discrepancies, ReconciliationDiscrepancyView{
+			UserID:          d.GetUserId(),
+			ExpectedQuota:   d.GetExpectedQuota(),
+			ActualQuota:     d.GetActualQuota(),
+			LedgerNetAmount: d.GetLedgerNetAmount(),
+			FrozenQuota:     d.GetFrozenQuota(),
+		})
+	}
+	return view
+}
+
 func (s *AdminService) RefreshChannelBalance(ctx context.Context, channelID int64) (*ChannelBalanceRefreshResult, error) {
 	channel, err := s.GetChannel(ctx, channelID)
 	if err != nil {

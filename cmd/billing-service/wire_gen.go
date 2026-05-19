@@ -63,6 +63,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		d.AccountRepo(),
 		d.ReservationRepo(),
 		d.ReconciliationRepo(),
+		d.ReconciliationRunStore(),
 	)
 	svc := service.NewBillingService(uc, reconUc)
 

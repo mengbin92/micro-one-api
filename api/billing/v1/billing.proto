@@ -22,6 +22,8 @@ service BillingService {
   rpc UpdateRedeemCode(UpdateRedeemCodeRequest) returns (UpdateRedeemCodeResponse);
   rpc DeleteRedeemCode(DeleteRedeemCodeRequest) returns (DeleteRedeemCodeResponse);
   rpc ListLedger(ListLedgerRequest) returns (ListLedgerResponse);
+  rpc ListReconciliationRuns(ListReconciliationRunsRequest) returns (ListReconciliationRunsResponse);
+  rpc GetReconciliationRun(GetReconciliationRunRequest) returns (GetReconciliationRunResponse);
 }
 
 // ========== 配额预扣 ==========
@@ -193,4 +195,42 @@ message ListLedgerRequest {
 message ListLedgerResponse {
   repeated common.v1.LedgerEntry entries = 1;
   int64 total = 2;
+}
+
+// ========== 对账 ==========
+
+message ReconciliationRun {
+  int64 run_id = 1;
+  int64 run_at = 2;
+  int32 expired_cleaned = 3;
+  int32 total_accounts = 4;
+  int32 total_reservations = 5;
+  int32 discrepancy_count = 6;
+  repeated ReconciliationDiscrepancy discrepancies = 7;
+}
+
+message ReconciliationDiscrepancy {
+  string user_id = 1;
+  int64 expected_quota = 2;
+  int64 actual_quota = 3;
+  int64 ledger_net_amount = 4;
+  int64 frozen_quota = 5;
+}
+
+message ListReconciliationRunsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ListReconciliationRunsResponse {
+  repeated ReconciliationRun runs = 1;
+  int64 total = 2;
+}
+
+message GetReconciliationRunRequest {
+  int64 run_id = 1;
+}
+
+message GetReconciliationRunResponse {
+  ReconciliationRun run = 1;
 }

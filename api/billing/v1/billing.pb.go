@@ -1647,6 +1647,366 @@ func (x *ListLedgerResponse) GetTotal() int64 {
 	return 0
 }
 
+type ReconciliationRun struct {
+	state             protoimpl.MessageState       `protogen:"open.v1"`
+	RunId             int64                        `protobuf:"varint,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	RunAt             int64                        `protobuf:"varint,2,opt,name=run_at,json=runAt,proto3" json:"run_at,omitempty"`
+	ExpiredCleaned    int32                        `protobuf:"varint,3,opt,name=expired_cleaned,json=expiredCleaned,proto3" json:"expired_cleaned,omitempty"`
+	TotalAccounts     int32                        `protobuf:"varint,4,opt,name=total_accounts,json=totalAccounts,proto3" json:"total_accounts,omitempty"`
+	TotalReservations int32                        `protobuf:"varint,5,opt,name=total_reservations,json=totalReservations,proto3" json:"total_reservations,omitempty"`
+	DiscrepancyCount  int32                        `protobuf:"varint,6,opt,name=discrepancy_count,json=discrepancyCount,proto3" json:"discrepancy_count,omitempty"`
+	Discrepancies     []*ReconciliationDiscrepancy `protobuf:"bytes,7,rep,name=discrepancies,proto3" json:"discrepancies,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ReconciliationRun) Reset() {
+	*x = ReconciliationRun{}
+	mi := &file_api_billing_v1_billing_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReconciliationRun) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReconciliationRun) ProtoMessage() {}
+
+func (x *ReconciliationRun) ProtoReflect() protoreflect.Message {
+	mi := &file_api_billing_v1_billing_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReconciliationRun.ProtoReflect.Descriptor instead.
+func (*ReconciliationRun) Descriptor() ([]byte, []int) {
+	return file_api_billing_v1_billing_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ReconciliationRun) GetRunId() int64 {
+	if x != nil {
+		return x.RunId
+	}
+	return 0
+}
+
+func (x *ReconciliationRun) GetRunAt() int64 {
+	if x != nil {
+		return x.RunAt
+	}
+	return 0
+}
+
+func (x *ReconciliationRun) GetExpiredCleaned() int32 {
+	if x != nil {
+		return x.ExpiredCleaned
+	}
+	return 0
+}
+
+func (x *ReconciliationRun) GetTotalAccounts() int32 {
+	if x != nil {
+		return x.TotalAccounts
+	}
+	return 0
+}
+
+func (x *ReconciliationRun) GetTotalReservations() int32 {
+	if x != nil {
+		return x.TotalReservations
+	}
+	return 0
+}
+
+func (x *ReconciliationRun) GetDiscrepancyCount() int32 {
+	if x != nil {
+		return x.DiscrepancyCount
+	}
+	return 0
+}
+
+func (x *ReconciliationRun) GetDiscrepancies() []*ReconciliationDiscrepancy {
+	if x != nil {
+		return x.Discrepancies
+	}
+	return nil
+}
+
+type ReconciliationDiscrepancy struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	UserId          string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	ExpectedQuota   int64                  `protobuf:"varint,2,opt,name=expected_quota,json=expectedQuota,proto3" json:"expected_quota,omitempty"`
+	ActualQuota     int64                  `protobuf:"varint,3,opt,name=actual_quota,json=actualQuota,proto3" json:"actual_quota,omitempty"`
+	LedgerNetAmount int64                  `protobuf:"varint,4,opt,name=ledger_net_amount,json=ledgerNetAmount,proto3" json:"ledger_net_amount,omitempty"`
+	FrozenQuota     int64                  `protobuf:"varint,5,opt,name=frozen_quota,json=frozenQuota,proto3" json:"frozen_quota,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ReconciliationDiscrepancy) Reset() {
+	*x = ReconciliationDiscrepancy{}
+	mi := &file_api_billing_v1_billing_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReconciliationDiscrepancy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReconciliationDiscrepancy) ProtoMessage() {}
+
+func (x *ReconciliationDiscrepancy) ProtoReflect() protoreflect.Message {
+	mi := &file_api_billing_v1_billing_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReconciliationDiscrepancy.ProtoReflect.Descriptor instead.
+func (*ReconciliationDiscrepancy) Descriptor() ([]byte, []int) {
+	return file_api_billing_v1_billing_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *ReconciliationDiscrepancy) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *ReconciliationDiscrepancy) GetExpectedQuota() int64 {
+	if x != nil {
+		return x.ExpectedQuota
+	}
+	return 0
+}
+
+func (x *ReconciliationDiscrepancy) GetActualQuota() int64 {
+	if x != nil {
+		return x.ActualQuota
+	}
+	return 0
+}
+
+func (x *ReconciliationDiscrepancy) GetLedgerNetAmount() int64 {
+	if x != nil {
+		return x.LedgerNetAmount
+	}
+	return 0
+}
+
+func (x *ReconciliationDiscrepancy) GetFrozenQuota() int64 {
+	if x != nil {
+		return x.FrozenQuota
+	}
+	return 0
+}
+
+type ListReconciliationRunsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Page          int32                  `protobuf:"varint,1,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListReconciliationRunsRequest) Reset() {
+	*x = ListReconciliationRunsRequest{}
+	mi := &file_api_billing_v1_billing_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListReconciliationRunsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListReconciliationRunsRequest) ProtoMessage() {}
+
+func (x *ListReconciliationRunsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_billing_v1_billing_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListReconciliationRunsRequest.ProtoReflect.Descriptor instead.
+func (*ListReconciliationRunsRequest) Descriptor() ([]byte, []int) {
+	return file_api_billing_v1_billing_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ListReconciliationRunsRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListReconciliationRunsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+type ListReconciliationRunsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Runs          []*ReconciliationRun   `protobuf:"bytes,1,rep,name=runs,proto3" json:"runs,omitempty"`
+	Total         int64                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListReconciliationRunsResponse) Reset() {
+	*x = ListReconciliationRunsResponse{}
+	mi := &file_api_billing_v1_billing_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListReconciliationRunsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListReconciliationRunsResponse) ProtoMessage() {}
+
+func (x *ListReconciliationRunsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_billing_v1_billing_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListReconciliationRunsResponse.ProtoReflect.Descriptor instead.
+func (*ListReconciliationRunsResponse) Descriptor() ([]byte, []int) {
+	return file_api_billing_v1_billing_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ListReconciliationRunsResponse) GetRuns() []*ReconciliationRun {
+	if x != nil {
+		return x.Runs
+	}
+	return nil
+}
+
+func (x *ListReconciliationRunsResponse) GetTotal() int64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+type GetReconciliationRunRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RunId         int64                  `protobuf:"varint,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReconciliationRunRequest) Reset() {
+	*x = GetReconciliationRunRequest{}
+	mi := &file_api_billing_v1_billing_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReconciliationRunRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReconciliationRunRequest) ProtoMessage() {}
+
+func (x *GetReconciliationRunRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_billing_v1_billing_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReconciliationRunRequest.ProtoReflect.Descriptor instead.
+func (*GetReconciliationRunRequest) Descriptor() ([]byte, []int) {
+	return file_api_billing_v1_billing_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *GetReconciliationRunRequest) GetRunId() int64 {
+	if x != nil {
+		return x.RunId
+	}
+	return 0
+}
+
+type GetReconciliationRunResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Run           *ReconciliationRun     `protobuf:"bytes,1,opt,name=run,proto3" json:"run,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReconciliationRunResponse) Reset() {
+	*x = GetReconciliationRunResponse{}
+	mi := &file_api_billing_v1_billing_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReconciliationRunResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReconciliationRunResponse) ProtoMessage() {}
+
+func (x *GetReconciliationRunResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_billing_v1_billing_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReconciliationRunResponse.ProtoReflect.Descriptor instead.
+func (*GetReconciliationRunResponse) Descriptor() ([]byte, []int) {
+	return file_api_billing_v1_billing_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *GetReconciliationRunResponse) GetRun() *ReconciliationRun {
+	if x != nil {
+		return x.Run
+	}
+	return nil
+}
+
 var File_api_billing_v1_billing_proto protoreflect.FileDescriptor
 
 const file_api_billing_v1_billing_proto_rawDesc = "" +
@@ -1765,8 +2125,31 @@ const file_api_billing_v1_billing_proto_rawDesc = "" +
 	"\bend_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aendTime\"`\n" +
 	"\x12ListLedgerResponse\x124\n" +
 	"\aentries\x18\x01 \x03(\v2\x1a.api.common.v1.LedgerEntryR\aentries\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x03R\x05total2\xe4\n" +
-	"\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\"\xbe\x02\n" +
+	"\x11ReconciliationRun\x12\x15\n" +
+	"\x06run_id\x18\x01 \x01(\x03R\x05runId\x12\x15\n" +
+	"\x06run_at\x18\x02 \x01(\x03R\x05runAt\x12'\n" +
+	"\x0fexpired_cleaned\x18\x03 \x01(\x05R\x0eexpiredCleaned\x12%\n" +
+	"\x0etotal_accounts\x18\x04 \x01(\x05R\rtotalAccounts\x12-\n" +
+	"\x12total_reservations\x18\x05 \x01(\x05R\x11totalReservations\x12+\n" +
+	"\x11discrepancy_count\x18\x06 \x01(\x05R\x10discrepancyCount\x12O\n" +
+	"\rdiscrepancies\x18\a \x03(\v2).api.billing.v1.ReconciliationDiscrepancyR\rdiscrepancies\"\xcd\x01\n" +
+	"\x19ReconciliationDiscrepancy\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12%\n" +
+	"\x0eexpected_quota\x18\x02 \x01(\x03R\rexpectedQuota\x12!\n" +
+	"\factual_quota\x18\x03 \x01(\x03R\vactualQuota\x12*\n" +
+	"\x11ledger_net_amount\x18\x04 \x01(\x03R\x0fledgerNetAmount\x12!\n" +
+	"\ffrozen_quota\x18\x05 \x01(\x03R\vfrozenQuota\"P\n" +
+	"\x1dListReconciliationRunsRequest\x12\x12\n" +
+	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\"m\n" +
+	"\x1eListReconciliationRunsResponse\x125\n" +
+	"\x04runs\x18\x01 \x03(\v2!.api.billing.v1.ReconciliationRunR\x04runs\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\"4\n" +
+	"\x1bGetReconciliationRunRequest\x12\x15\n" +
+	"\x06run_id\x18\x01 \x01(\x03R\x05runId\"S\n" +
+	"\x1cGetReconciliationRunResponse\x123\n" +
+	"\x03run\x18\x01 \x01(\v2!.api.billing.v1.ReconciliationRunR\x03run2\xd0\f\n" +
 	"\x0eBillingService\x12Y\n" +
 	"\fReserveQuota\x12#.api.billing.v1.ReserveQuotaRequest\x1a$.api.billing.v1.ReserveQuotaResponse\x12V\n" +
 	"\vCommitQuota\x12\".api.billing.v1.CommitQuotaRequest\x1a#.api.billing.v1.CommitQuotaResponse\x12Y\n" +
@@ -1784,7 +2167,9 @@ const file_api_billing_v1_billing_proto_rawDesc = "" +
 	"\x10UpdateRedeemCode\x12'.api.billing.v1.UpdateRedeemCodeRequest\x1a(.api.billing.v1.UpdateRedeemCodeResponse\x12e\n" +
 	"\x10DeleteRedeemCode\x12'.api.billing.v1.DeleteRedeemCodeRequest\x1a(.api.billing.v1.DeleteRedeemCodeResponse\x12S\n" +
 	"\n" +
-	"ListLedger\x12!.api.billing.v1.ListLedgerRequest\x1a\".api.billing.v1.ListLedgerResponseB(Z&micro-one-api/api/billing/v1;billingv1b\x06proto3"
+	"ListLedger\x12!.api.billing.v1.ListLedgerRequest\x1a\".api.billing.v1.ListLedgerResponse\x12w\n" +
+	"\x16ListReconciliationRuns\x12-.api.billing.v1.ListReconciliationRunsRequest\x1a..api.billing.v1.ListReconciliationRunsResponse\x12q\n" +
+	"\x14GetReconciliationRun\x12+.api.billing.v1.GetReconciliationRunRequest\x1a,.api.billing.v1.GetReconciliationRunResponseB(Z&micro-one-api/api/billing/v1;billingv1b\x06proto3"
 
 var (
 	file_api_billing_v1_billing_proto_rawDescOnce sync.Once
@@ -1798,7 +2183,7 @@ func file_api_billing_v1_billing_proto_rawDescGZIP() []byte {
 	return file_api_billing_v1_billing_proto_rawDescData
 }
 
-var file_api_billing_v1_billing_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_api_billing_v1_billing_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_api_billing_v1_billing_proto_goTypes = []any{
 	(*ReserveQuotaRequest)(nil),            // 0: api.billing.v1.ReserveQuotaRequest
 	(*ReserveQuotaResponse)(nil),           // 1: api.billing.v1.ReserveQuotaResponse
@@ -1828,52 +2213,65 @@ var file_api_billing_v1_billing_proto_goTypes = []any{
 	(*DeleteRedeemCodeResponse)(nil),       // 25: api.billing.v1.DeleteRedeemCodeResponse
 	(*ListLedgerRequest)(nil),              // 26: api.billing.v1.ListLedgerRequest
 	(*ListLedgerResponse)(nil),             // 27: api.billing.v1.ListLedgerResponse
-	(*v1.AccountSnapshot)(nil),             // 28: api.common.v1.AccountSnapshot
-	(*v1.RedeemCode)(nil),                  // 29: api.common.v1.RedeemCode
-	(*timestamppb.Timestamp)(nil),          // 30: google.protobuf.Timestamp
-	(*v1.LedgerEntry)(nil),                 // 31: api.common.v1.LedgerEntry
+	(*ReconciliationRun)(nil),              // 28: api.billing.v1.ReconciliationRun
+	(*ReconciliationDiscrepancy)(nil),      // 29: api.billing.v1.ReconciliationDiscrepancy
+	(*ListReconciliationRunsRequest)(nil),  // 30: api.billing.v1.ListReconciliationRunsRequest
+	(*ListReconciliationRunsResponse)(nil), // 31: api.billing.v1.ListReconciliationRunsResponse
+	(*GetReconciliationRunRequest)(nil),    // 32: api.billing.v1.GetReconciliationRunRequest
+	(*GetReconciliationRunResponse)(nil),   // 33: api.billing.v1.GetReconciliationRunResponse
+	(*v1.AccountSnapshot)(nil),             // 34: api.common.v1.AccountSnapshot
+	(*v1.RedeemCode)(nil),                  // 35: api.common.v1.RedeemCode
+	(*timestamppb.Timestamp)(nil),          // 36: google.protobuf.Timestamp
+	(*v1.LedgerEntry)(nil),                 // 37: api.common.v1.LedgerEntry
 }
 var file_api_billing_v1_billing_proto_depIdxs = []int32{
-	28, // 0: api.billing.v1.GetAccountSnapshotResponse.snapshot:type_name -> api.common.v1.AccountSnapshot
-	29, // 1: api.billing.v1.GetRedeemCodeResponse.redeem_code:type_name -> api.common.v1.RedeemCode
-	29, // 2: api.billing.v1.ListRedeemCodesResponse.codes:type_name -> api.common.v1.RedeemCode
-	29, // 3: api.billing.v1.SearchRedeemCodesResponse.codes:type_name -> api.common.v1.RedeemCode
-	30, // 4: api.billing.v1.ListLedgerRequest.start_time:type_name -> google.protobuf.Timestamp
-	30, // 5: api.billing.v1.ListLedgerRequest.end_time:type_name -> google.protobuf.Timestamp
-	31, // 6: api.billing.v1.ListLedgerResponse.entries:type_name -> api.common.v1.LedgerEntry
-	0,  // 7: api.billing.v1.BillingService.ReserveQuota:input_type -> api.billing.v1.ReserveQuotaRequest
-	2,  // 8: api.billing.v1.BillingService.CommitQuota:input_type -> api.billing.v1.CommitQuotaRequest
-	4,  // 9: api.billing.v1.BillingService.ReleaseQuota:input_type -> api.billing.v1.ReleaseQuotaRequest
-	6,  // 10: api.billing.v1.BillingService.GetAccountSnapshot:input_type -> api.billing.v1.GetAccountSnapshotRequest
-	8,  // 11: api.billing.v1.BillingService.TopUpQuota:input_type -> api.billing.v1.TopUpQuotaRequest
-	10, // 12: api.billing.v1.BillingService.CreateRedeemCode:input_type -> api.billing.v1.CreateRedeemCodeRequest
-	12, // 13: api.billing.v1.BillingService.CreateRedeemCodesBatch:input_type -> api.billing.v1.CreateRedeemCodesBatchRequest
-	14, // 14: api.billing.v1.BillingService.RedeemCode:input_type -> api.billing.v1.RedeemCodeRequest
-	16, // 15: api.billing.v1.BillingService.GetRedeemCode:input_type -> api.billing.v1.GetRedeemCodeRequest
-	18, // 16: api.billing.v1.BillingService.ListRedeemCodes:input_type -> api.billing.v1.ListRedeemCodesRequest
-	20, // 17: api.billing.v1.BillingService.SearchRedeemCodes:input_type -> api.billing.v1.SearchRedeemCodesRequest
-	22, // 18: api.billing.v1.BillingService.UpdateRedeemCode:input_type -> api.billing.v1.UpdateRedeemCodeRequest
-	24, // 19: api.billing.v1.BillingService.DeleteRedeemCode:input_type -> api.billing.v1.DeleteRedeemCodeRequest
-	26, // 20: api.billing.v1.BillingService.ListLedger:input_type -> api.billing.v1.ListLedgerRequest
-	1,  // 21: api.billing.v1.BillingService.ReserveQuota:output_type -> api.billing.v1.ReserveQuotaResponse
-	3,  // 22: api.billing.v1.BillingService.CommitQuota:output_type -> api.billing.v1.CommitQuotaResponse
-	5,  // 23: api.billing.v1.BillingService.ReleaseQuota:output_type -> api.billing.v1.ReleaseQuotaResponse
-	7,  // 24: api.billing.v1.BillingService.GetAccountSnapshot:output_type -> api.billing.v1.GetAccountSnapshotResponse
-	9,  // 25: api.billing.v1.BillingService.TopUpQuota:output_type -> api.billing.v1.TopUpQuotaResponse
-	11, // 26: api.billing.v1.BillingService.CreateRedeemCode:output_type -> api.billing.v1.CreateRedeemCodeResponse
-	13, // 27: api.billing.v1.BillingService.CreateRedeemCodesBatch:output_type -> api.billing.v1.CreateRedeemCodesBatchResponse
-	15, // 28: api.billing.v1.BillingService.RedeemCode:output_type -> api.billing.v1.RedeemCodeResponse
-	17, // 29: api.billing.v1.BillingService.GetRedeemCode:output_type -> api.billing.v1.GetRedeemCodeResponse
-	19, // 30: api.billing.v1.BillingService.ListRedeemCodes:output_type -> api.billing.v1.ListRedeemCodesResponse
-	21, // 31: api.billing.v1.BillingService.SearchRedeemCodes:output_type -> api.billing.v1.SearchRedeemCodesResponse
-	23, // 32: api.billing.v1.BillingService.UpdateRedeemCode:output_type -> api.billing.v1.UpdateRedeemCodeResponse
-	25, // 33: api.billing.v1.BillingService.DeleteRedeemCode:output_type -> api.billing.v1.DeleteRedeemCodeResponse
-	27, // 34: api.billing.v1.BillingService.ListLedger:output_type -> api.billing.v1.ListLedgerResponse
-	21, // [21:35] is the sub-list for method output_type
-	7,  // [7:21] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	34, // 0: api.billing.v1.GetAccountSnapshotResponse.snapshot:type_name -> api.common.v1.AccountSnapshot
+	35, // 1: api.billing.v1.GetRedeemCodeResponse.redeem_code:type_name -> api.common.v1.RedeemCode
+	35, // 2: api.billing.v1.ListRedeemCodesResponse.codes:type_name -> api.common.v1.RedeemCode
+	35, // 3: api.billing.v1.SearchRedeemCodesResponse.codes:type_name -> api.common.v1.RedeemCode
+	36, // 4: api.billing.v1.ListLedgerRequest.start_time:type_name -> google.protobuf.Timestamp
+	36, // 5: api.billing.v1.ListLedgerRequest.end_time:type_name -> google.protobuf.Timestamp
+	37, // 6: api.billing.v1.ListLedgerResponse.entries:type_name -> api.common.v1.LedgerEntry
+	29, // 7: api.billing.v1.ReconciliationRun.discrepancies:type_name -> api.billing.v1.ReconciliationDiscrepancy
+	28, // 8: api.billing.v1.ListReconciliationRunsResponse.runs:type_name -> api.billing.v1.ReconciliationRun
+	28, // 9: api.billing.v1.GetReconciliationRunResponse.run:type_name -> api.billing.v1.ReconciliationRun
+	0,  // 10: api.billing.v1.BillingService.ReserveQuota:input_type -> api.billing.v1.ReserveQuotaRequest
+	2,  // 11: api.billing.v1.BillingService.CommitQuota:input_type -> api.billing.v1.CommitQuotaRequest
+	4,  // 12: api.billing.v1.BillingService.ReleaseQuota:input_type -> api.billing.v1.ReleaseQuotaRequest
+	6,  // 13: api.billing.v1.BillingService.GetAccountSnapshot:input_type -> api.billing.v1.GetAccountSnapshotRequest
+	8,  // 14: api.billing.v1.BillingService.TopUpQuota:input_type -> api.billing.v1.TopUpQuotaRequest
+	10, // 15: api.billing.v1.BillingService.CreateRedeemCode:input_type -> api.billing.v1.CreateRedeemCodeRequest
+	12, // 16: api.billing.v1.BillingService.CreateRedeemCodesBatch:input_type -> api.billing.v1.CreateRedeemCodesBatchRequest
+	14, // 17: api.billing.v1.BillingService.RedeemCode:input_type -> api.billing.v1.RedeemCodeRequest
+	16, // 18: api.billing.v1.BillingService.GetRedeemCode:input_type -> api.billing.v1.GetRedeemCodeRequest
+	18, // 19: api.billing.v1.BillingService.ListRedeemCodes:input_type -> api.billing.v1.ListRedeemCodesRequest
+	20, // 20: api.billing.v1.BillingService.SearchRedeemCodes:input_type -> api.billing.v1.SearchRedeemCodesRequest
+	22, // 21: api.billing.v1.BillingService.UpdateRedeemCode:input_type -> api.billing.v1.UpdateRedeemCodeRequest
+	24, // 22: api.billing.v1.BillingService.DeleteRedeemCode:input_type -> api.billing.v1.DeleteRedeemCodeRequest
+	26, // 23: api.billing.v1.BillingService.ListLedger:input_type -> api.billing.v1.ListLedgerRequest
+	30, // 24: api.billing.v1.BillingService.ListReconciliationRuns:input_type -> api.billing.v1.ListReconciliationRunsRequest
+	32, // 25: api.billing.v1.BillingService.GetReconciliationRun:input_type -> api.billing.v1.GetReconciliationRunRequest
+	1,  // 26: api.billing.v1.BillingService.ReserveQuota:output_type -> api.billing.v1.ReserveQuotaResponse
+	3,  // 27: api.billing.v1.BillingService.CommitQuota:output_type -> api.billing.v1.CommitQuotaResponse
+	5,  // 28: api.billing.v1.BillingService.ReleaseQuota:output_type -> api.billing.v1.ReleaseQuotaResponse
+	7,  // 29: api.billing.v1.BillingService.GetAccountSnapshot:output_type -> api.billing.v1.GetAccountSnapshotResponse
+	9,  // 30: api.billing.v1.BillingService.TopUpQuota:output_type -> api.billing.v1.TopUpQuotaResponse
+	11, // 31: api.billing.v1.BillingService.CreateRedeemCode:output_type -> api.billing.v1.CreateRedeemCodeResponse
+	13, // 32: api.billing.v1.BillingService.CreateRedeemCodesBatch:output_type -> api.billing.v1.CreateRedeemCodesBatchResponse
+	15, // 33: api.billing.v1.BillingService.RedeemCode:output_type -> api.billing.v1.RedeemCodeResponse
+	17, // 34: api.billing.v1.BillingService.GetRedeemCode:output_type -> api.billing.v1.GetRedeemCodeResponse
+	19, // 35: api.billing.v1.BillingService.ListRedeemCodes:output_type -> api.billing.v1.ListRedeemCodesResponse
+	21, // 36: api.billing.v1.BillingService.SearchRedeemCodes:output_type -> api.billing.v1.SearchRedeemCodesResponse
+	23, // 37: api.billing.v1.BillingService.UpdateRedeemCode:output_type -> api.billing.v1.UpdateRedeemCodeResponse
+	25, // 38: api.billing.v1.BillingService.DeleteRedeemCode:output_type -> api.billing.v1.DeleteRedeemCodeResponse
+	27, // 39: api.billing.v1.BillingService.ListLedger:output_type -> api.billing.v1.ListLedgerResponse
+	31, // 40: api.billing.v1.BillingService.ListReconciliationRuns:output_type -> api.billing.v1.ListReconciliationRunsResponse
+	33, // 41: api.billing.v1.BillingService.GetReconciliationRun:output_type -> api.billing.v1.GetReconciliationRunResponse
+	26, // [26:42] is the sub-list for method output_type
+	10, // [10:26] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_api_billing_v1_billing_proto_init() }
@@ -1887,7 +2285,7 @@ func file_api_billing_v1_billing_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_billing_v1_billing_proto_rawDesc), len(file_api_billing_v1_billing_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -1,14 +1,14 @@
 # One API Remaining Gap Priority List
 
 > Branch: `docs/one-api-gap-refresh-20260512`
-> Date: 2026-05-12 (main table refreshed 2026-05-19; topup/affiliate/pay clarified 2026-05-19; balance-refresh semantics shipped 2026-05-19)
+> Date: 2026-05-12 (main table refreshed 2026-05-19; topup/affiliate/pay clarified 2026-05-19; balance-refresh semantics shipped 2026-05-19; reconciliation review surface shipped 2026-05-20)
 > Source: current `develop` code and sibling `../one-api`.
 
 ## Summary
 
-The project now covers the core microservice skeleton, OpenAI-compatible relay path, token validation, channel selection, billing reservation/commit/release flow, structured usage logs, user dashboard aggregation (usage + subscription), expanded token/channel/option fields, OAuth/SSO and bind flows for GitHub/Google/OIDC/Lark/WeChat/Telegram with Turnstile and email-domain enforcement, channel balance refresh with explicit stay-enabled-but-stale semantics for unsupported providers and audit-visible tracking columns plus opt-in auto-disable on persistent failure for supported providers, group and content management, a wide NotImplemented-stable OpenAI route surface, redemption-code top-up (`/api/user/topup`) and admin quota grant (`/api/topup`) with ledger writes, and registration-time invitation bonus credit through the billing service.
+The project now covers the core microservice skeleton, OpenAI-compatible relay path, token validation, channel selection, billing reservation/commit/release flow, structured usage logs, user dashboard aggregation (usage + subscription), expanded token/channel/option fields, OAuth/SSO and bind flows for GitHub/Google/OIDC/Lark/WeChat/Telegram with Turnstile and email-domain enforcement, channel balance refresh with explicit stay-enabled-but-stale semantics for unsupported providers and audit-visible tracking columns plus opt-in auto-disable on persistent failure for supported providers, group and content management, a wide NotImplemented-stable OpenAI route surface, redemption-code top-up (`/api/user/topup`) and admin quota grant (`/api/topup`) with ledger writes, registration-time invitation bonus credit through the billing service, and a persisted reconciliation run history with admin review endpoints.
 
-It is still not a full One API product. The largest remaining gaps are the full web frontend, native adapters for non-OpenAI-compatible providers, and an admin-facing reconciliation review surface. Online payment and a standalone affiliate-transfer endpoint are intentionally out of scope: upstream one-api does not implement either in its backend (its Air theme frontend calls `/api/user/pay` / `/api/user/amount` but the routes are never registered server-side, and there is no `aff_transfer` endpoint or `aff_quota` field upstream).
+It is still not a full One API product. The largest remaining gap is the full web frontend, plus native adapters for non-OpenAI-compatible providers. Online payment and a standalone affiliate-transfer endpoint are intentionally out of scope: upstream one-api does not implement either in its backend (its Air theme frontend calls `/api/user/pay` / `/api/user/amount` but the routes are never registered server-side, and there is no `aff_transfer` endpoint or `aff_quota` field upstream).
 
 ## Recently Completed
 
@@ -24,6 +24,12 @@ These items from earlier priority lists are now implemented:
 | Online payment placeholder shape | `/api/user/pay` and `/api/user/amount` now return the canonical `{success:false, message:"online payment is not configured"}` shape instead of the ad-hoc `{success:false, message:"disabled", data:"..."}` shape. Routes remain intentionally disabled. |
 | Balance refresh — failure semantics | Unsupported providers now return `success=true, skipped=true` with a clarifying message instead of an error; the channel is left enabled with whatever stale balance it had. Supported providers persist a `balance_refresh_last_error`, `balance_refresh_last_success_time`, and `consecutive_balance_refresh_failures` per attempt (new columns added in migration `020_add_channel_balance_refresh_tracking.sql`). When `AutomaticDisableChannelEnabled=true` AND `ChannelDisableThreshold > 0`, persistent failures that reach the threshold flip the channel status to disabled. Default options (`false` / `0`) preserve current behavior. |
 | Balance persistence bug fix | `Repository.updateChannelDB`'s Updates map previously omitted `balance` and `balance_updated_time`, so admin-triggered refreshes silently dropped persistence outside of the in-memory test repo. Map now includes all balance + tracking columns. |
+
+### Since 2026-05-20
+
+| Area | Current State |
+| --- | --- |
+| Reconciliation review surface | Reconciliation runs are now persisted via migration `021_create_reconciliation_runs.sql` (run history + JSON-encoded discrepancies). New billing RPCs `ListReconciliationRuns` / `GetReconciliationRun` expose the history, and the admin service surfaces them at `GET /api/reconciliation` (paginated list) and `GET /api/reconciliation/{id}` (drill-down with discrepancies), both gated by `AdminAuth`. The existing `/v1/reconciliation` endpoint on billing-service still triggers an immediate run; that result is now also persisted. |
 
 ### Since 2026-05-12
 
@@ -57,7 +63,6 @@ These items from earlier priority lists are now implemented:
 | Area | Current State | Needed Work |
 | --- | --- | --- |
 | Provider-native adapters | Anthropic, Gemini, Azure, and the OpenAI-compatible family have adapters; eight providers explicitly return `requires a native provider adapter`: Hunyuan, Xingchen, Bedrock, Cloudflare, VertexAI, Replicate, Baidu, Xunfei. | Add native adapters in demand order. Each adapter must cover request conversion, response conversion, streaming, usage extraction, and error mapping. |
-| Reconciliation surface for admin | `ReconciliationUsecase` runs on schedule but lacks an admin-facing review UI/API beyond raw `/v1/reconciliation`. | Add an admin endpoint that exposes recent reconciliation runs and discrepancies, gated behind admin auth. |
 
 ## Disabled Placeholder Routes
 
@@ -100,23 +105,10 @@ Acceptance:
 - Each adapter has non-streaming, streaming, usage, and upstream-error tests.
 - Provider defaults include base URL, supported models, and required channel config fields.
 
-### 3. Reconciliation Review Surface
-
-Goal: make the existing reconciliation job operationally useful from admin.
-
-Scope:
-- Admin endpoint listing recent reconciliation runs and per-user discrepancies.
-- Drill-down to the underlying ledger entries.
-
-Acceptance:
-- Admin auth required; non-admin returns existing error shape.
-- Tests cover empty, mixed, and discrepancy-only runs.
-
 ## Recommended Execution Order
 
 1. Build or migrate the full web frontend against the current `/api/*` compatibility layer.
 2. Add provider-native adapters in demand order, starting with the highest-traffic non-OpenAI-compatible channels.
-3. Expose the reconciliation review surface to admins.
 
 ## Documentation Policy
 

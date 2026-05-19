@@ -20,6 +20,7 @@ type Data struct {
 	ledgerRepo      biz.LedgerRepo
 	redeemRepo      biz.RedeemRepo
 	reconRepo       biz.ReconciliationRepo
+	reconRunStore   biz.ReconciliationRunStore
 }
 
 func NewData(dsn ...string) (*Data, error) {
@@ -59,6 +60,7 @@ func NewData(dsn ...string) (*Data, error) {
 	d.ledgerRepo = NewLedgerRepo(d)
 	d.redeemRepo = NewRedeemRepo(d)
 	d.reconRepo = NewReconciliationRepo(d)
+	d.reconRunStore = NewReconciliationRunRepo(d)
 
 	return d, nil
 }
@@ -81,6 +83,10 @@ func (d *Data) RedeemRepo() biz.RedeemRepo {
 
 func (d *Data) ReconciliationRepo() biz.ReconciliationRepo {
 	return d.reconRepo
+}
+
+func (d *Data) ReconciliationRunStore() biz.ReconciliationRunStore {
+	return d.reconRunStore
 }
 
 func (d *Data) Close() error {

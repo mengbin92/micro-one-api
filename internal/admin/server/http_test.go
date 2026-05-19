@@ -179,10 +179,16 @@ func (c *adminHTTPChannelClient) ListChannels(ctx context.Context, req *channelv
 
 type adminHTTPBillingClient struct {
 	billingv1.BillingServiceClient
-	topupUserID       string
-	topupAmount       int64
-	batchCreated      bool
-	deletedRedeemCode string
+	topupUserID         string
+	topupAmount         int64
+	batchCreated        bool
+	deletedRedeemCode   string
+	reconRuns           []*billingv1.ReconciliationRun
+	reconRunsByID       map[int64]*billingv1.ReconciliationRun
+	reconListErr        error
+	reconGetErr         error
+	reconListLastReq    *billingv1.ListReconciliationRunsRequest
+	reconGetLastRunID   int64
 }
 
 func (c *adminHTTPBillingClient) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuotaRequest, opts ...grpc.CallOption) (*billingv1.TopUpQuotaResponse, error) {
@@ -235,6 +241,26 @@ func (c *adminHTTPBillingClient) ListLedger(ctx context.Context, req *billingv1.
 		},
 		Total: 2,
 	}, nil
+}
+
+func (c *adminHTTPBillingClient) ListReconciliationRuns(ctx context.Context, req *billingv1.ListReconciliationRunsRequest, opts ...grpc.CallOption) (*billingv1.ListReconciliationRunsResponse, error) {
+	c.reconListLastReq = req
+	if c.reconListErr != nil {
+		return nil, c.reconListErr
+	}
+	return &billingv1.ListReconciliationRunsResponse{Runs: c.reconRuns, Total: int64(len(c.reconRuns))}, nil
+}
+
+func (c *adminHTTPBillingClient) GetReconciliationRun(ctx context.Context, req *billingv1.GetReconciliationRunRequest, opts ...grpc.CallOption) (*billingv1.GetReconciliationRunResponse, error) {
+	c.reconGetLastRunID = req.GetRunId()
+	if c.reconGetErr != nil {
+		return nil, c.reconGetErr
+	}
+	run, ok := c.reconRunsByID[req.GetRunId()]
+	if !ok {
+		return &billingv1.GetReconciliationRunResponse{}, nil
+	}
+	return &billingv1.GetReconciliationRunResponse{Run: run}, nil
 }
 
 type adminHTTPSystemOptionsStore struct {
@@ -1362,5 +1388,118 @@ func TestAdminHTTPResetUserQuotaUsesDelta(t *testing.T) {
 	}
 	if billingClient.topupAmount != 300 {
 		t.Fatalf("topup delta = %d, want 300", billingClient.topupAmount)
+	}
+}
+
+func TestAdminHTTPReconciliationRunsRequiresAdminAuth(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/reconciliation", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 without admin token, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminHTTPReconciliationRunsListEmpty(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	billingClient := &adminHTTPBillingClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/reconciliation", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{`"success":true`, `"runs":[]`, `"total":0`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("empty list missing %s: %s", want, rec.Body.String())
+		}
+	}
+}
+
+func TestAdminHTTPReconciliationRunsListMixed(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	billingClient := &adminHTTPBillingClient{
+		reconRuns: []*billingv1.ReconciliationRun{
+			{RunId: 2, RunAt: 1715000000, ExpiredCleaned: 0, TotalAccounts: 10, DiscrepancyCount: 0},
+			{
+				RunId: 1, RunAt: 1714900000, ExpiredCleaned: 3, TotalAccounts: 10, DiscrepancyCount: 1,
+				Discrepancies: []*billingv1.ReconciliationDiscrepancy{
+					{UserId: "42", ExpectedQuota: 1000, ActualQuota: 750, LedgerNetAmount: 1000, FrozenQuota: 0},
+				},
+			},
+		},
+	}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/reconciliation?page=1&page_size=20", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if billingClient.reconListLastReq == nil || billingClient.reconListLastReq.GetPage() != 1 || billingClient.reconListLastReq.GetPageSize() != 20 {
+		t.Fatalf("ListReconciliationRuns called with %+v", billingClient.reconListLastReq)
+	}
+	for _, want := range []string{`"success":true`, `"run_id":2`, `"run_id":1`, `"discrepancy_count":1`, `"user_id":"42"`, `"expected_quota":1000`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("mixed list missing %s: %s", want, rec.Body.String())
+		}
+	}
+}
+
+func TestAdminHTTPReconciliationRunByIDReturnsDiscrepancies(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	billingClient := &adminHTTPBillingClient{
+		reconRunsByID: map[int64]*billingv1.ReconciliationRun{
+			7: {
+				RunId: 7, RunAt: 1714800000, ExpiredCleaned: 1, TotalAccounts: 5, TotalReservations: 2, DiscrepancyCount: 1,
+				Discrepancies: []*billingv1.ReconciliationDiscrepancy{
+					{UserId: "9", ExpectedQuota: 200, ActualQuota: 50, LedgerNetAmount: 200, FrozenQuota: 0},
+				},
+			},
+		},
+	}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/reconciliation/7", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if billingClient.reconGetLastRunID != 7 {
+		t.Fatalf("GetReconciliationRun called with run_id=%d, want 7", billingClient.reconGetLastRunID)
+	}
+	for _, want := range []string{`"run_id":7`, `"discrepancy_count":1`, `"user_id":"9"`, `"actual_quota":50`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("drill-down response missing %s: %s", want, rec.Body.String())
+		}
+	}
+}
+
+func TestAdminHTTPReconciliationRunByIDNotFound(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	billingClient := &adminHTTPBillingClient{reconRunsByID: map[int64]*billingv1.ReconciliationRun{}}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/reconciliation/999", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404, body=%s", rec.Code, rec.Body.String())
 	}
 }

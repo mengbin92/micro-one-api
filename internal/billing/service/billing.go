@@ -314,3 +314,50 @@ func (s *BillingService) HandleReconciliation(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(result)
 }
+
+func (s *BillingService) ListReconciliationRuns(ctx context.Context, req *billingv1.ListReconciliationRunsRequest) (*billingv1.ListReconciliationRunsResponse, error) {
+	runs, total, err := s.reconUc.ListReconciliationRuns(ctx, req.GetPage(), req.GetPageSize())
+	if err != nil {
+		return nil, err
+	}
+	resp := &billingv1.ListReconciliationRunsResponse{Total: total}
+	for _, run := range runs {
+		resp.Runs = append(resp.Runs, reconciliationRunToProto(run))
+	}
+	return resp, nil
+}
+
+func (s *BillingService) GetReconciliationRun(ctx context.Context, req *billingv1.GetReconciliationRunRequest) (*billingv1.GetReconciliationRunResponse, error) {
+	run, err := s.reconUc.GetReconciliationRun(ctx, req.GetRunId())
+	if err != nil {
+		return nil, err
+	}
+	if run == nil {
+		return &billingv1.GetReconciliationRunResponse{}, nil
+	}
+	return &billingv1.GetReconciliationRunResponse{Run: reconciliationRunToProto(run)}, nil
+}
+
+func reconciliationRunToProto(run *biz.ReconciliationResult) *billingv1.ReconciliationRun {
+	if run == nil {
+		return nil
+	}
+	out := &billingv1.ReconciliationRun{
+		RunId:             run.RunID,
+		RunAt:             run.RunAt.Unix(),
+		ExpiredCleaned:    int32(run.ExpiredCleaned),
+		TotalAccounts:     int32(run.TotalAccounts),
+		TotalReservations: int32(run.TotalReservations),
+		DiscrepancyCount:  int32(len(run.AccountInconsistencies)),
+	}
+	for _, d := range run.AccountInconsistencies {
+		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{
+			UserId:          d.UserID,
+			ExpectedQuota:   d.ExpectedQuota,
+			ActualQuota:     d.ActualQuota,
+			LedgerNetAmount: d.LedgerNetAmount,
+			FrozenQuota:     d.FrozenQuota,
+		})
+	}
+	return out
+}

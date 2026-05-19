@@ -178,6 +178,12 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	srv.HandlePrefix("/api/channel/update_balance/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUpdateChannelBalance(w, r, svc)
 	}))
+	srv.HandlePrefix("/api/reconciliation/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleReconciliationRunByID(w, r, svc)
+	}))
+	srv.HandleFunc("/api/reconciliation", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleReconciliationRuns(w, r, svc)
+	}))
 	srv.HandlePrefix("/api/channel/disable/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIChannelStatusAlias(w, r, svc, 2, "/api/channel/disable/")
 	}))
@@ -1073,6 +1079,43 @@ func handleUpdateChannelBalance(w http.ResponseWriter, r *http.Request, svc *ser
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(result.Success, result.Message, result))
+}
+
+func handleReconciliationRuns(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	page := getQueryInt32(r, "page", 1)
+	pageSize := getQueryInt32(r, "page_size", 50)
+	result, err := svc.ListReconciliationRuns(r.Context(), page, pageSize)
+	if err != nil {
+		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", result))
+}
+
+func handleReconciliationRunByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	runID, ok := parsePathID(r.URL.Path, "/api/reconciliation/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid run id", nil))
+		return
+	}
+	run, err := svc.GetReconciliationRun(r.Context(), runID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		return
+	}
+	if run == nil {
+		writeJSON(w, http.StatusNotFound, apiResponse(false, "reconciliation run not found", nil))
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", run))
 }
 
 func handleOneAPIChannelStatusAlias(w http.ResponseWriter, r *http.Request, svc *service.AdminService, status int32, prefix string) {

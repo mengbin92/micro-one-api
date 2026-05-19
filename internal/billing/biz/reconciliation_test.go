@@ -54,7 +54,7 @@ func TestRunReconciliation_ExpiredReservations(t *testing.T) {
 		reservations: []*Reservation{expiredRes},
 	}
 
-	uc := NewReconciliationUsecase(accountRepo, reservationRepo, reconRepo)
+	uc := NewReconciliationUsecase(accountRepo, reservationRepo, reconRepo, nil)
 	result, err := uc.RunReconciliation(context.Background())
 
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestRunReconciliation_QuotaConsistency(t *testing.T) {
 		ledgerSums: map[string]int64{"user1": 500}, // mismatch: quota=1000, ledger=500
 	}
 
-	uc := NewReconciliationUsecase(accountRepo, reservationRepo, reconRepo)
+	uc := NewReconciliationUsecase(accountRepo, reservationRepo, reconRepo, nil)
 	result, err := uc.RunReconciliation(context.Background())
 
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestRunReconciliation_NoInconsistencies(t *testing.T) {
 		ledgerSums: map[string]int64{"user1": 1000},
 	}
 
-	uc := NewReconciliationUsecase(accountRepo, reservationRepo, reconRepo)
+	uc := NewReconciliationUsecase(accountRepo, reservationRepo, reconRepo, nil)
 	result, err := uc.RunReconciliation(context.Background())
 
 	require.NoError(t, err)
