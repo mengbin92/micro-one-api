@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { adminApiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
+import { ExportButton } from '@/components/admin/ExportButton';
+import { SortableHeader } from '@/components/admin/SortableHeader';
+import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
   TableBody,
@@ -36,6 +39,7 @@ export function AdminLogsPage() {
   const [page, setPage] = useState(1);
   const [userId, setUserId] = useState('');
   const [type, setType] = useState('');
+  const [sort, setSort] = useState<SortState<LogEntry>>({ key: null, direction: null });
 
   const { data: logs, isLoading } = useQuery({
     queryKey: ['admin-logs', page, userId, type],
@@ -53,6 +57,8 @@ export function AdminLogsPage() {
   function formatQuota(q: string) {
     return (parseInt(q || '0') / 500000).toFixed(2);
   }
+
+  const visibleLogs = useMemo(() => sortRows(logs ?? [], sort), [logs, sort]);
 
   return (
     <div className="space-y-4">
@@ -87,6 +93,22 @@ export function AdminLogsPage() {
         >
           Clear
         </Button>
+        <div className="ml-auto">
+          <ExportButton
+            filename="admin-billing-logs.csv"
+            rows={visibleLogs}
+            columns={[
+              { key: 'id', label: 'ID' },
+              { key: 'userId', label: 'User ID' },
+              { key: 'type', label: 'Type' },
+              { key: 'amount', label: 'Amount' },
+              { key: 'balanceAfter', label: 'Balance After' },
+              { key: 'referenceId', label: 'Reference' },
+              { key: 'remark', label: 'Remark' },
+              { key: 'createdAt', label: 'Created At' },
+            ]}
+          />
+        </div>
       </div>
 
       {isLoading ? (
@@ -100,17 +122,25 @@ export function AdminLogsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
-                  <TableHead>User ID</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Amount</TableHead>
+                  <SortableHeader<LogEntry> columnKey="userId" sort={sort} onSortChange={setSort}>
+                    User ID
+                  </SortableHeader>
+                  <SortableHeader<LogEntry> columnKey="type" sort={sort} onSortChange={setSort}>
+                    Type
+                  </SortableHeader>
+                  <SortableHeader<LogEntry> columnKey="amount" sort={sort} onSortChange={setSort}>
+                    Amount
+                  </SortableHeader>
                   <TableHead>Balance After</TableHead>
                   <TableHead>Reference</TableHead>
                   <TableHead>Remark</TableHead>
-                  <TableHead>Created At</TableHead>
+                  <SortableHeader<LogEntry> columnKey="createdAt" sort={sort} onSortChange={setSort}>
+                    Created At
+                  </SortableHeader>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {logs.map((log) => (
+                {visibleLogs.map((log) => (
                   <TableRow key={log.id}>
                     <TableCell className="font-mono text-sm">{log.id}</TableCell>
                     <TableCell className="font-mono text-sm">{log.userId}</TableCell>

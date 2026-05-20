@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -6,7 +7,10 @@ import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
 import { AdminPagination } from '@/components/admin/AdminPagination';
 import { AdminTableToolbar } from '@/components/admin/AdminTableToolbar';
+import { ExportButton } from '@/components/admin/ExportButton';
+import { SortableHeader } from '@/components/admin/SortableHeader';
 import { useAdminTableState } from '@/hooks/useAdminTableState';
+import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
   TableBody,
@@ -45,6 +49,9 @@ export function AdminChannelsPage() {
   const { page, pageSize, search, setPage, setPageSize, setSearch, clearSearch } = useAdminTableState({
     storageKey: 'channels',
   });
+  const [sort, setSort] = useState<SortState<Channel>>({ key: null, direction: null });
+  const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const queryClient = useQueryClient();
 
   const { data: channels, isLoading } = useQuery({
@@ -80,6 +87,15 @@ export function AdminChannelsPage() {
     },
   });
 
+  const visibleChannels = useMemo(() => {
+    const filtered = (channels ?? []).filter((channel) => {
+      const statusMatches = !statusFilter || String(channel.status) === statusFilter;
+      const typeMatches = !typeFilter || String(channel.type) === typeFilter;
+      return statusMatches && typeMatches;
+    });
+    return sortRows(filtered, sort);
+  }, [channels, statusFilter, typeFilter, sort]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -91,12 +107,56 @@ export function AdminChannelsPage() {
         searchPlaceholder="Search by name..."
         onSearchChange={setSearch}
         onClear={clearSearch}
+        actions={
+          <ExportButton
+            filename="admin-channels.csv"
+            rows={visibleChannels}
+            columns={[
+              { key: 'id', label: 'ID' },
+              { key: 'name', label: 'Name' },
+              { key: 'type', label: 'Type' },
+              { key: 'group', label: 'Group' },
+              { key: 'priority', label: 'Priority' },
+              { key: 'balance', label: 'Balance' },
+              { key: 'status', label: 'Status' },
+              { key: 'usedQuota', label: 'Used Quota' },
+            ]}
+          />
+        }
       />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          className="h-8 rounded-md border bg-background px-2 text-sm"
+          aria-label="Filter channels by status"
+        >
+          <option value="">All statuses</option>
+          <option value="1">Active</option>
+          <option value="2">Disabled</option>
+        </select>
+        <select
+          value={typeFilter}
+          onChange={(event) => setTypeFilter(event.target.value)}
+          className="h-8 rounded-md border bg-background px-2 text-sm"
+          aria-label="Filter channels by provider"
+        >
+          <option value="">All providers</option>
+          {Object.entries(PROVIDER_NAMES).map(([type, name]) => (
+            <option key={type} value={type}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {isLoading ? (
         <TableSkeleton columns={['ID', 'Name', 'Type', 'Group', 'Priority', 'Balance', 'Status', 'Actions']} />
       ) : !channels || channels.length === 0 ? (
         <EmptyState title="No channels found" description="Try clearing the search term or checking another page." />
+      ) : visibleChannels.length === 0 ? (
+        <EmptyState title="No channels match the filters" description="Clear the table filters to show the loaded rows." />
       ) : (
         <>
           <div className="border rounded-lg overflow-x-auto">
@@ -104,17 +164,29 @@ export function AdminChannelsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Group</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Balance</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableHeader<Channel> columnKey="name" sort={sort} onSortChange={setSort}>
+                    Name
+                  </SortableHeader>
+                  <SortableHeader<Channel> columnKey="type" sort={sort} onSortChange={setSort}>
+                    Type
+                  </SortableHeader>
+                  <SortableHeader<Channel> columnKey="group" sort={sort} onSortChange={setSort}>
+                    Group
+                  </SortableHeader>
+                  <SortableHeader<Channel> columnKey="priority" sort={sort} onSortChange={setSort}>
+                    Priority
+                  </SortableHeader>
+                  <SortableHeader<Channel> columnKey="balance" sort={sort} onSortChange={setSort}>
+                    Balance
+                  </SortableHeader>
+                  <SortableHeader<Channel> columnKey="status" sort={sort} onSortChange={setSort}>
+                    Status
+                  </SortableHeader>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {channels.map((ch) => (
+                {visibleChannels.map((ch) => (
                   <TableRow key={ch.id}>
                     <TableCell className="font-mono text-sm">{ch.id}</TableCell>
                     <TableCell className="font-medium">{ch.name}</TableCell>

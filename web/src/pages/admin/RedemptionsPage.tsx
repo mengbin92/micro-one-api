@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
+import { ExportButton } from '@/components/admin/ExportButton';
+import { SortableHeader } from '@/components/admin/SortableHeader';
+import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
   TableBody,
@@ -37,6 +40,8 @@ interface RedeemCode {
 export function AdminRedemptionsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sort, setSort] = useState<SortState<RedeemCode>>({ key: null, direction: null });
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newCodeName, setNewCodeName] = useState('');
   const [newCodeAmount, setNewCodeAmount] = useState('');
@@ -96,6 +101,11 @@ export function AdminRedemptionsPage() {
     }
     toast.error('Name and a positive quota amount are required');
   };
+
+  const visibleCodes = useMemo(() => {
+    const filtered = (codes ?? []).filter((code) => !statusFilter || String(code.status) === statusFilter);
+    return sortRows(filtered, sort);
+  }, [codes, statusFilter, sort]);
 
   return (
     <div className="space-y-4">
@@ -160,33 +170,70 @@ export function AdminRedemptionsPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
         />
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          className="h-8 rounded-md border bg-background px-2 text-sm"
+          aria-label="Filter redemption codes by status"
+        >
+          <option value="">All statuses</option>
+          <option value="1">Active</option>
+          <option value="2">Used</option>
+        </select>
         <Button variant="outline" onClick={() => setSearch('')}>
           Clear
         </Button>
+        <div className="ml-auto">
+          <ExportButton
+            filename="admin-redemptions.csv"
+            rows={visibleCodes}
+            columns={[
+              { key: 'code', label: 'Code' },
+              { key: 'name', label: 'Name' },
+              { key: 'amount', label: 'Amount' },
+              { key: 'count', label: 'Count' },
+              { key: 'status', label: 'Status' },
+              { key: 'createdBy', label: 'Created By' },
+              { key: 'createdAt', label: 'Created At' },
+            ]}
+          />
+        </div>
       </div>
 
       {isLoading ? (
         <TableSkeleton columns={['Code', 'Name', 'Amount', 'Count', 'Status', 'Created By', 'Created At', 'Actions']} />
       ) : !codes || codes.length === 0 ? (
         <EmptyState title="No redemption codes found" description="Create codes for quota grants or clear the search term." />
+      ) : visibleCodes.length === 0 ? (
+        <EmptyState title="No redemption codes match the filters" description="Clear the table filters to show the loaded rows." />
       ) : (
         <>
           <div className="border rounded-lg overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Amount</TableHead>
+                  <SortableHeader<RedeemCode> columnKey="code" sort={sort} onSortChange={setSort}>
+                    Code
+                  </SortableHeader>
+                  <SortableHeader<RedeemCode> columnKey="name" sort={sort} onSortChange={setSort}>
+                    Name
+                  </SortableHeader>
+                  <SortableHeader<RedeemCode> columnKey="amount" sort={sort} onSortChange={setSort}>
+                    Amount
+                  </SortableHeader>
                   <TableHead>Count</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableHeader<RedeemCode> columnKey="status" sort={sort} onSortChange={setSort}>
+                    Status
+                  </SortableHeader>
                   <TableHead>Created By</TableHead>
-                  <TableHead>Created At</TableHead>
+                  <SortableHeader<RedeemCode> columnKey="createdAt" sort={sort} onSortChange={setSort}>
+                    Created At
+                  </SortableHeader>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {codes.map((code) => (
+                {visibleCodes.map((code) => (
                   <TableRow key={code.code}>
                     <TableCell className="font-mono text-sm">{code.code}</TableCell>
                     <TableCell className="font-medium">{code.name}</TableCell>
