@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
+import { AdminPagination } from '@/components/admin/AdminPagination';
+import { AdminTableToolbar } from '@/components/admin/AdminTableToolbar';
+import { useAdminTableState } from '@/hooks/useAdminTableState';
 import {
   Table,
   TableBody,
@@ -41,16 +42,17 @@ const PROVIDER_NAMES: Record<number, string> = {
 };
 
 export function AdminChannelsPage() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
+  const { page, pageSize, search, setPage, setPageSize, setSearch, clearSearch } = useAdminTableState({
+    storageKey: 'channels',
+  });
   const queryClient = useQueryClient();
 
   const { data: channels, isLoading } = useQuery({
-    queryKey: ['admin-channels', page, search],
+    queryKey: ['admin-channels', page, pageSize, search],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('page', page.toString());
-      params.set('page_size', '20');
+      params.set('page_size', pageSize.toString());
       if (search) params.set('keyword', search);
       const res = await adminApiClient.get(`/channel?${params}`);
       return res.data.data as Channel[];
@@ -84,17 +86,12 @@ export function AdminChannelsPage() {
         <h2 className="text-2xl font-semibold">Channels Management</h2>
       </div>
 
-      <div className="flex items-center gap-4">
-        <Input
-          placeholder="Search by name..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
-        />
-        <Button variant="outline" onClick={() => setSearch('')}>
-          Clear
-        </Button>
-      </div>
+      <AdminTableToolbar
+        search={search}
+        searchPlaceholder="Search by name..."
+        onSearchChange={setSearch}
+        onClear={clearSearch}
+      />
 
       {isLoading ? (
         <TableSkeleton columns={['ID', 'Name', 'Type', 'Group', 'Priority', 'Balance', 'Status', 'Actions']} />
@@ -164,15 +161,13 @@ export function AdminChannelsPage() {
             </Table>
           </div>
 
-          <div className="flex items-center justify-between">
-            <Button variant="outline" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
-              Previous
-            </Button>
-            <span className="text-sm text-muted-foreground">Page {page}</span>
-            <Button variant="outline" onClick={() => setPage((p) => p + 1)} disabled={!channels || channels.length < 20}>
-              Next
-            </Button>
-          </div>
+          <AdminPagination
+            page={page}
+            pageSize={pageSize}
+            hasNextPage={!!channels && channels.length >= pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </>
       )}
     </div>

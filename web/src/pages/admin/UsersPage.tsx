@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
+import { AdminPagination } from '@/components/admin/AdminPagination';
+import { AdminTableToolbar } from '@/components/admin/AdminTableToolbar';
+import { useAdminTableState } from '@/hooks/useAdminTableState';
 import {
   Table,
   TableBody,
@@ -28,16 +29,17 @@ interface User {
 }
 
 export function AdminUsersPage() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
+  const { page, pageSize, search, setPage, setPageSize, setSearch, clearSearch } = useAdminTableState({
+    storageKey: 'users',
+  });
   const queryClient = useQueryClient();
 
   const { data: users, isLoading } = useQuery({
-    queryKey: ['admin-users', page, search],
+    queryKey: ['admin-users', page, pageSize, search],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('page', page.toString());
-      params.set('page_size', '20');
+      params.set('page_size', pageSize.toString());
       if (search) params.set('keyword', search);
       const res = await adminApiClient.get(`/user?${params}`);
       return res.data.data as User[];
@@ -65,17 +67,12 @@ export function AdminUsersPage() {
         <h2 className="text-2xl font-semibold">Users Management</h2>
       </div>
 
-      <div className="flex items-center gap-4">
-        <Input
-          placeholder="Search by username or email..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
-        />
-        <Button variant="outline" onClick={() => setSearch('')}>
-          Clear
-        </Button>
-      </div>
+      <AdminTableToolbar
+        search={search}
+        searchPlaceholder="Search by username or email..."
+        onSearchChange={setSearch}
+        onClear={clearSearch}
+      />
 
       {isLoading ? (
         <TableSkeleton columns={['ID', 'Username', 'Display Name', 'Email', 'Group', 'Quota', 'Used', 'Status', 'Actions']} />
@@ -137,15 +134,13 @@ export function AdminUsersPage() {
             </Table>
           </div>
 
-          <div className="flex items-center justify-between">
-            <Button variant="outline" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
-              Previous
-            </Button>
-            <span className="text-sm text-muted-foreground">Page {page}</span>
-            <Button variant="outline" onClick={() => setPage((p) => p + 1)} disabled={!users || users.length < 20}>
-              Next
-            </Button>
-          </div>
+          <AdminPagination
+            page={page}
+            pageSize={pageSize}
+            hasNextPage={!!users && users.length >= pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </>
       )}
     </div>
