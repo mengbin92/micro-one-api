@@ -41,6 +41,6 @@ describe('useAdminTableState', () => {
 
     expect(result.current.page).toBe(1);
     expect(result.current.pageSize).toBe(100);
-    expect(window.localStorage.getItem('admin-table:users:page-size')).toBe('100');
+    expect(window.localStorage.getItem('web:admin-page-size')).toBe('100');
   });
 });

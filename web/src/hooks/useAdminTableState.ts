@@ -1,4 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
+import { getPreference, setPreference } from '@/lib/preferences';
 
 interface UseAdminTableStateOptions {
   storageKey: string;
@@ -10,12 +11,11 @@ function readPositiveInt(value: string | null, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-export function useAdminTableState({ storageKey, defaultPageSize = 20 }: UseAdminTableStateOptions) {
+export function useAdminTableState({ defaultPageSize = 20 }: UseAdminTableStateOptions) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const pageSizeStorageKey = `admin-table:${storageKey}:page-size`;
-  const storedPageSize = window.localStorage.getItem(pageSizeStorageKey);
+  const preferredPageSize = getPreference('admin-page-size', defaultPageSize);
   const page = readPositiveInt(searchParams.get('page'), 1);
-  const pageSize = readPositiveInt(searchParams.get('page_size'), readPositiveInt(storedPageSize, defaultPageSize));
+  const pageSize = readPositiveInt(searchParams.get('page_size'), preferredPageSize);
   const search = searchParams.get('search') ?? '';
 
   const updateParams = (updates: Record<string, string | number | null>) => {
@@ -38,7 +38,7 @@ export function useAdminTableState({ storageKey, defaultPageSize = 20 }: UseAdmi
     search,
     setPage: (nextPage: number) => updateParams({ page: Math.max(1, nextPage) }),
     setPageSize: (nextPageSize: number) => {
-      window.localStorage.setItem(pageSizeStorageKey, String(nextPageSize));
+      setPreference('admin-page-size', nextPageSize);
       updateParams({ page: 1, page_size: nextPageSize });
     },
     setSearch: (nextSearch: string) => updateParams({ page: 1, search: nextSearch.trim() }),
