@@ -23,6 +23,7 @@ import {
 import { apiClient } from '@/lib/api';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
+import { unwrapApiData } from '@/lib/api-response';
 
 interface Token {
   id: number;
@@ -42,7 +43,7 @@ export function TokensPage() {
     queryKey: ['tokens'],
     queryFn: async () => {
       const res = await apiClient.get('/token');
-      return res.data.data as Token[];
+      return unwrapApiData<Token[]>(res.data);
     },
   });
 

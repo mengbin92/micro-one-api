@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiClient } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
+import { unwrapApiData } from '@/lib/api-response';
 
 export function LoginPage() {
   const [username, setUsername] = useState('');
@@ -26,14 +27,13 @@ export function LoginPage() {
         password,
       });
 
-      if (response.data.success && response.data.data) {
-        localStorage.setItem('token', response.data.data);
+      const token = unwrapApiData<string>(response.data, 'Login failed');
+      if (token) {
+        localStorage.setItem('token', token);
         toast.success('Signed in');
         navigate('/dashboard');
       } else {
-        const message = response.data.message || 'Login failed';
-        setError(message);
-        toast.error(message);
+        throw new Error('Login failed');
       }
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Network error');

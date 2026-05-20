@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApiClient } from '@/lib/api';
+import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 
 interface OptionItem {
   key: string;
@@ -66,16 +67,14 @@ export function AdminOptionsPage() {
     queryKey: ['admin-options'],
     queryFn: async () => {
       const res = await adminApiClient.get('/option/');
-      return res.data.data as OptionItem[];
+      return unwrapApiData<OptionItem[]>(res.data);
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ key, value }: OptionItem) => {
       const res = await adminApiClient.put('/option/', { key, value });
-      if (res.data.success === false) {
-        throw new Error(res.data.message || 'Option update failed');
-      }
+      ensureApiSuccess(res.data, 'Option update failed');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-options'] });
