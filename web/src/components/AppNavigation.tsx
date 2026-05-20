@@ -104,10 +104,8 @@ export function AppNavigation() {
     </Button>
   ) : (
     <Dialog open={adminDialogOpen} onOpenChange={setAdminDialogOpen}>
-      <DialogTrigger>
-        <Button variant="outline" size="sm">
-          Admin
-        </Button>
+      <DialogTrigger render={<Button variant="outline" size="sm" />}>
+        Admin
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
