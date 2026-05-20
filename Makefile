@@ -62,8 +62,15 @@ proto: api config
 
 .PHONY: build
 # build
-build:
+build: web-build
 	go build ./...
+
+.PHONY: web-build
+# build web frontend
+web-build:
+	cd web && npm ci && npm run build
+	mkdir -p internal/admin/server/static/web
+	cp -r web/dist/* internal/admin/server/static/web/
 
 .PHONY: generate
 # generate

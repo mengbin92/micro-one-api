@@ -50,3 +50,7 @@ keys/
 # Local git worktrees
 .worktrees/
 test/e2e/e2e-test
+web/node_modules
+web/dist
+web/.env
+internal/admin/server/static/web/
