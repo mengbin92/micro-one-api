@@ -30,6 +30,7 @@ These items from earlier priority lists are now implemented:
 | Area | Current State |
 | --- | --- |
 | Reconciliation review surface | Reconciliation runs are now persisted via migration `021_create_reconciliation_runs.sql` (run history + JSON-encoded discrepancies). New billing RPCs `ListReconciliationRuns` / `GetReconciliationRun` expose the history, and the admin service surfaces them at `GET /api/reconciliation` (paginated list) and `GET /api/reconciliation/{id}` (drill-down with discrepancies), both gated by `AdminAuth`. The existing `/v1/reconciliation` endpoint on billing-service still triggers an immediate run; that result is now also persisted. |
+| Log deletion deployment prerequisites | `docs/deployment.md` §4.3 now explicitly documents the `LOG_HTTP_ENDPOINT` + `SERVICE_TOKEN` prerequisites and the inert-route behavior when missing. `admin-api` emits a startup WARN (`log delete proxy disabled: missing [...]`) when either variable is unset. The route remains registered and continues to return the stable `501 / log delete is not configured` shape at request time. |
 
 ### Since 2026-05-12
 

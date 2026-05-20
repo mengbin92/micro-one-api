@@ -178,7 +178,18 @@ kubectl logs -f deployment/relay-gateway -n one-api
 | `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 | - |
 | `LOG_HTTP_ENDPOINT` | log-service HTTP 地址；未配置时 `/api/log/` 删除保持禁用兼容响应 | - |
 
-`/api/log/` 的 `DELETE` 仅删除 `log-service` 中的业务日志，并要求传入 `end_time`。该操作不会删除 `billing-service` 的 ledger/账务流水。启用该能力时，`admin-api` 和 `log-service` 必须配置相同的 `SERVICE_TOKEN`。
+#### 日志删除前置条件
+
+`/api/log/` 的 `DELETE` 仅删除 `log-service` 中的业务日志，并要求传入 `end_time`。该操作不会删除 `billing-service` 的 ledger/账务流水。
+
+**启用该能力的硬性前置条件（缺一不可）：**
+
+1. `admin-api` 必须配置 `LOG_HTTP_ENDPOINT`，指向 `log-service` 的 HTTP 地址。
+2. `admin-api` 与 `log-service` 必须配置**相同的** `SERVICE_TOKEN`。
+
+未满足上述条件时：
+- `admin-api` 启动会输出 `log delete proxy disabled: missing [...]` 的 WARN 日志；
+- 路由保持注册，但实际调用返回 `501 NotImplemented` 的稳定占位响应（`{"success":false,"message":"log delete is not configured"}`）。
 
 ## 5. 健康检查与监控
 

@@ -17,6 +17,8 @@ func main() {
 	logger := log.NewStdLogger(os.Stdout)
 	helper := log.NewHelper(logger)
 
+	warnIfLogDeleteUnconfigured(helper)
+
 	app, cleanup, err := InitApp(confPath)
 	if err != nil {
 		helper.Errorf("failed to create app: %v", err)
