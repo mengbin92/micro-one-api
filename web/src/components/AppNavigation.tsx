@@ -1,11 +1,13 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { MobileNav } from '@/components/MobileNav';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { adminApiClient } from '@/lib/api';
+import { canAccessAdmin, type AdminAccessSnapshot } from '@/lib/admin-access';
 import {
   Dialog,
   DialogContent,
@@ -72,13 +74,45 @@ export function AppNavigation() {
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [adminInput, setAdminInput] = useState('');
+  const [adminSnapshot, setAdminSnapshot] = useState<AdminAccessSnapshot | null>(null);
   const isWide = useMediaQuery('(min-width: 768px)');
-  const isAdmin = !!adminToken;
+  const effectiveAdminSnapshot = adminToken ? adminSnapshot : null;
+  const isAdmin = canAccessAdmin({ adminToken, snapshot: effectiveAdminSnapshot });
   const effectiveMobileOpen = !isWide && mobileOpen;
+
+  useEffect(() => {
+    if (!adminToken) {
+      return;
+    }
+
+    let cancelled = false;
+    adminApiClient
+      .get('/admin/access', { validateStatus: (status) => status < 500 })
+      .then((response) => {
+        if (cancelled) return;
+        if (response.status === 401) {
+          localStorage.removeItem('adminToken');
+          setAdminToken('');
+          setAdminSnapshot(null);
+          return;
+        }
+        setAdminSnapshot(response.data?.data ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAdminSnapshot(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [adminToken]);
 
   const handleSetAdminToken = () => {
     localStorage.setItem('adminToken', adminInput);
     setAdminToken(adminInput);
+    setAdminSnapshot(null);
     setAdminInput('');
     setAdminDialogOpen(false);
     setMobileOpen(false);
@@ -88,6 +122,7 @@ export function AppNavigation() {
   const handleClearAdminToken = () => {
     localStorage.removeItem('adminToken');
     setAdminToken('');
+    setAdminSnapshot(null);
     setMobileOpen(false);
     toast.success('Admin access disabled');
   };

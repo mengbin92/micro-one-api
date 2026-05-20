@@ -2,7 +2,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import { AppNavigation } from './AppNavigation';
+import { server } from '@/test/msw/server';
 
 function renderNavigation() {
   return render(
@@ -20,13 +22,31 @@ describe('AppNavigation', () => {
     expect(screen.getByRole('link', { name: 'Tokens' })).toBeInTheDocument();
   });
 
-  it('renders admin links when an admin token exists', () => {
+  it('renders admin links when an admin token exists', async () => {
     window.localStorage.setItem('adminToken', 'admin-token');
+    server.use(
+      http.get('/api/admin/access', () =>
+        HttpResponse.json({
+          success: true,
+          data: { admin: true },
+        }),
+      ),
+    );
 
     renderNavigation();
 
-    expect(screen.getByRole('link', { name: 'Users' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Users' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Options' })).toBeInTheDocument();
+  });
+
+  it('clears admin token when access snapshot is rejected', async () => {
+    window.localStorage.setItem('adminToken', 'admin-token');
+    server.use(http.get('/api/admin/access', () => new HttpResponse(null, { status: 401 })));
+
+    renderNavigation();
+
+    expect(await screen.findByRole('button', { name: 'Admin' })).toBeInTheDocument();
+    expect(window.localStorage.getItem('adminToken')).toBeNull();
   });
 
   it('opens and closes the mobile menu', async () => {

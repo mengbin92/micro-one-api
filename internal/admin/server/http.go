@@ -98,6 +98,7 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	srv.HandlePrefix("/api/group", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleGroupManagement(w, r, svc)
 	}))
+	srv.HandleFunc("/api/admin/access", AdminAuth(handleAdminAccess))
 
 	// Protected admin endpoints
 	srv.HandlePrefix("/api/user/disable/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -248,6 +249,14 @@ func writeCSV(w http.ResponseWriter, filename string, header []string, rows [][]
 		_ = writer.Write(row)
 	}
 	writer.Flush()
+}
+
+func handleAdminAccess(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]bool{"admin": true}))
 }
 
 func handleAdminPage(w http.ResponseWriter, r *http.Request) {

@@ -1012,6 +1012,36 @@ func TestAdminHTTPOneAPIExportRoutesRequireAuth(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPAccessSnapshot(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/access", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"admin":true`) {
+		t.Fatalf("access snapshot mismatch: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPAccessSnapshotRequiresAuth(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/access", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAdminHTTPOneAPIRootAliasesAcceptNoTrailingSlash(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})

@@ -43,6 +43,15 @@ export async function mockApi(page: Page) {
     });
   });
 
+  await page.route('**/api/admin/access', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: { admin: true },
+      },
+    });
+  });
+
   await page.route('**/api/option/', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.fulfill({ json: { success: true } });
