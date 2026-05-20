@@ -26,6 +26,39 @@ export async function mockApi(page: Page) {
     });
   });
 
+  await page.route('**/api/user/export**', async (route) => {
+    await route.fulfill({
+      contentType: 'text/csv',
+      body: 'id,username\n1,alice\n',
+    });
+  });
+
+  await page.route('**/api/user?**', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fulfill({ json: { success: true } });
+      return;
+    }
+
+    await route.fulfill({
+      json: {
+        success: true,
+        data: [
+          {
+            id: '1',
+            username: 'alice',
+            displayName: 'Alice',
+            email: 'alice@example.com',
+            group: 'default',
+            status: 1,
+            quota: '5000000',
+            usedQuota: '1000000',
+            createdAt: '1710000000',
+          },
+        ],
+      },
+    });
+  });
+
   await page.route('**/api/user/dashboard', async (route) => {
     await route.fulfill({
       json: {

@@ -1,9 +1,24 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { mockApi } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page);
 });
+
+async function seedAdminSession(page: Page) {
+  await page.goto('/login');
+  await page.evaluate(() => {
+    localStorage.setItem('token', 'test-user-token');
+    localStorage.setItem('adminToken', 'test-admin-token');
+  });
+}
+
+async function openMobileNavIfVisible(page: Page) {
+  const openNavigation = page.getByRole('button', { name: /open navigation/i });
+  if (await openNavigation.isVisible()) {
+    await openNavigation.click();
+  }
+}
 
 test('unauthenticated dashboard redirects to login', async ({ page }) => {
   await page.goto('/dashboard');
@@ -25,22 +40,15 @@ test('login stores token and shows dashboard', async ({ page }) => {
 });
 
 test('admin token enables Options nav', async ({ page }) => {
-  await page.goto('/login');
-  await page.evaluate(() => {
-    localStorage.setItem('token', 'test-user-token');
-    localStorage.setItem('adminToken', 'test-admin-token');
-  });
+  await seedAdminSession(page);
   await page.goto('/dashboard');
+  await openMobileNavIfVisible(page);
 
   await expect(page.getByRole('link', { name: 'Options' })).toBeVisible();
 });
 
 test('admin options renders core settings', async ({ page }) => {
-  await page.goto('/login');
-  await page.evaluate(() => {
-    localStorage.setItem('token', 'test-user-token');
-    localStorage.setItem('adminToken', 'test-admin-token');
-  });
+  await seedAdminSession(page);
   await page.goto('/admin/options');
 
   await expect(page.getByRole('heading', { name: 'System Options' })).toBeVisible();
@@ -59,11 +67,7 @@ test('admin users sends sort and filter params', async ({ page }) => {
     await route.continue();
   });
 
-  await page.goto('/login');
-  await page.evaluate(() => {
-    localStorage.setItem('token', 'test-user-token');
-    localStorage.setItem('adminToken', 'test-admin-token');
-  });
+  await seedAdminSession(page);
   await page.goto('/admin/users');
   await page.getByLabel('Filter users by status').selectOption('1');
   await page.getByRole('button', { name: /sort by username/i }).click();
@@ -71,4 +75,47 @@ test('admin users sends sort and filter params', async ({ page }) => {
   expect(
     requests.some((url) => url.includes('status=1') && url.includes('sort=username') && url.includes('order=asc')),
   ).toBe(true);
+});
+
+test('mobile navigation exposes admin links and closes after navigation', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-chrome', 'mobile-only coverage');
+
+  await seedAdminSession(page);
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: /open navigation/i }).click();
+  await expect(page.getByRole('link', { name: 'Options' })).toBeVisible();
+  await page.getByRole('link', { name: 'Options' }).click();
+
+  await expect(page).toHaveURL(/\/admin\/options$/);
+  await expect(page.getByRole('dialog')).toBeHidden();
+});
+
+test('admin users page size persists after reload', async ({ page }) => {
+  await seedAdminSession(page);
+  await page.goto('/admin/users');
+  await page.getByLabel('Rows per page').selectOption('50');
+  await expect(page).toHaveURL(/page_size=50/);
+
+  await page.reload();
+
+  await expect(page.getByLabel('Rows per page')).toHaveValue('50');
+});
+
+test('admin users export sends current filters to backend export route', async ({ page }) => {
+  const requests: string[] = [];
+  await page.route('**/api/user/export**', async (route) => {
+    requests.push(route.request().url());
+    await route.fulfill({
+      contentType: 'text/csv',
+      body: 'id,username\n1,alice\n',
+    });
+  });
+
+  await seedAdminSession(page);
+  await page.goto('/admin/users');
+  await page.getByLabel('Filter users by status').selectOption('1');
+  await page.getByRole('button', { name: /export csv/i }).click();
+
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  expect(requests.some((url) => url.includes('status=1') && url.includes('format=csv'))).toBe(true);
 });
