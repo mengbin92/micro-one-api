@@ -187,6 +187,16 @@ clean:
 	rm -rf bin/
 	rm -rf logs/
 
+.PHONY: migrate
+# apply pending DB migrations; reads MIGRATIONS_DSN or SQL_DSN
+migrate:
+	go run ./cmd/migrate -dir ./migrations
+
+.PHONY: migrate-status
+# print migration status without applying anything
+migrate-status:
+	go run ./cmd/migrate -dir ./migrations -status
+
 .PHONY: security-scan
 # run security scanning
 security-scan:

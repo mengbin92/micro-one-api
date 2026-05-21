@@ -358,37 +358,92 @@ func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, k
 }
 
 func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) error {
-	model := r.channelToModel(channel)
-	return r.db.WithContext(ctx).Create(model).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		model := r.channelToModel(channel)
+		if err := tx.Create(model).Error; err != nil {
+			return err
+		}
+		channel.ID = model.ID
+		return r.syncAbilitiesTx(tx, channel)
+	})
 }
 
 func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) error {
-	model := r.channelToModel(channel)
-	return r.db.WithContext(ctx).Model(&channelModel{}).Where("id = ?", channel.ID).Updates(map[string]interface{}{
-		"name":                                 model.Name,
-		"base_url":                             model.BaseURL,
-		"key":                                  model.Key,
-		"models":                               model.Models,
-		"group":                                model.Group,
-		"priority":                             model.Priority,
-		"weight":                               model.Weight,
-		"model_mapping":                        model.ModelMapping,
-		"system_prompt":                        model.SystemPrompt,
-		"config":                               model.Config,
-		"balance":                              model.Balance,
-		"balance_updated_time":                 model.BalanceUpdatedTime,
-		"balance_refresh_last_error":           model.BalanceRefreshLastError,
-		"balance_refresh_last_success_time":    model.BalanceRefreshLastSuccessTime,
-		"consecutive_balance_refresh_failures": model.ConsecutiveBalanceRefreshFailures,
-	}).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		model := r.channelToModel(channel)
+		if err := tx.Model(&channelModel{}).Where("id = ?", channel.ID).Updates(map[string]interface{}{
+			"name":                                 model.Name,
+			"base_url":                             model.BaseURL,
+			"key":                                  model.Key,
+			"models":                               model.Models,
+			"group":                                model.Group,
+			"priority":                             model.Priority,
+			"weight":                               model.Weight,
+			"model_mapping":                        model.ModelMapping,
+			"system_prompt":                        model.SystemPrompt,
+			"config":                               model.Config,
+			"balance":                              model.Balance,
+			"balance_updated_time":                 model.BalanceUpdatedTime,
+			"balance_refresh_last_error":           model.BalanceRefreshLastError,
+			"balance_refresh_last_success_time":    model.BalanceRefreshLastSuccessTime,
+			"consecutive_balance_refresh_failures": model.ConsecutiveBalanceRefreshFailures,
+		}).Error; err != nil {
+			return err
+		}
+		return r.syncAbilitiesTx(tx, channel)
+	})
 }
 
 func (r *Repository) deleteChannelDB(ctx context.Context, channelID int64) error {
-	return r.db.WithContext(ctx).Where("id = ?", channelID).Delete(&channelModel{}).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id = ?", channelID).Delete(&channelModel{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("channel_id = ?", channelID).Delete(&abilityModel{}).Error
+	})
 }
 
 func (r *Repository) changeStatusDB(ctx context.Context, channelID int64, status int32) error {
-	return r.db.WithContext(ctx).Model(&channelModel{}).Where("id = ?", channelID).Update("status", status).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&channelModel{}).Where("id = ?", channelID).Update("status", status).Error; err != nil {
+			return err
+		}
+		enabled := status == biz.ChannelStatusEnabled
+		return tx.Model(&abilityModel{}).Where("channel_id = ?", channelID).Update("enabled", enabled).Error
+	})
+}
+
+// syncAbilitiesTx rewrites ability rows for one channel: every old row for
+// channel_id is deleted, then a fresh row is inserted for each (group, model)
+// pair derived from the channel. Caller MUST pass an active gorm transaction.
+func (r *Repository) syncAbilitiesTx(tx *gorm.DB, channel *biz.Channel) error {
+	if err := tx.Where("channel_id = ?", channel.ID).Delete(&abilityModel{}).Error; err != nil {
+		return err
+	}
+	enabled := channel.Status == biz.ChannelStatusEnabled
+	priority := channel.Priority
+	rows := make([]abilityModel, 0)
+	for _, group := range biz.SplitCSV(channel.Group) {
+		if group == "" {
+			continue
+		}
+		for _, model := range channel.Models {
+			if model == "" {
+				continue
+			}
+			rows = append(rows, abilityModel{
+				Group:     group,
+				Model:     model,
+				ChannelID: channel.ID,
+				Enabled:   enabled,
+				Priority:  &priority,
+			})
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	return tx.Create(&rows).Error
 }
 
 // encryptKey encrypts an API key for storage. Returns plaintext if no encryption key is set.
