@@ -287,16 +287,18 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 					Choices: []struct {
 						Index int `json:"index"`
 						Delta struct {
-							Role    string `json:"role,omitempty"`
-							Content string `json:"content,omitempty"`
+							Role             string `json:"role,omitempty"`
+							Content          string `json:"content,omitempty"`
+							ReasoningContent any    `json:"reasoning_content,omitempty"`
 						} `json:"delta"`
 						FinishReason *string `json:"finish_reason,omitempty"`
 					}{
 						{
 							Index: 0,
 							Delta: struct {
-								Role    string `json:"role,omitempty"`
-								Content string `json:"content,omitempty"`
+								Role             string `json:"role,omitempty"`
+								Content          string `json:"content,omitempty"`
+								ReasoningContent any    `json:"reasoning_content,omitempty"`
 							}{
 								Content: event.Delta.Text,
 							},

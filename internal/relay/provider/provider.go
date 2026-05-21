@@ -51,10 +51,15 @@ type ChatCompletionsRequest struct {
 	MaxTokens   *int      `json:"max_tokens,omitempty"`
 }
 
-// Message represents a chat message
+// Message represents a chat message.
+//
+// ReasoningContent is a passthrough field for upstream "thinking mode" responses
+// (e.g. DeepSeek-R1, Xiaomi MiMo). The relay does not interpret it; clients that
+// receive it should echo it back on the next turn for upstreams that require it.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role             string `json:"role"`
+	Content          string `json:"content"`
+	ReasoningContent any    `json:"reasoning_content,omitempty"`
 }
 
 // ChatCompletionsResponse represents a standardized chat completions response
@@ -90,8 +95,9 @@ type StreamChunk struct {
 	Choices []struct {
 		Index int `json:"index"`
 		Delta struct {
-			Role    string `json:"role,omitempty"`
-			Content string `json:"content,omitempty"`
+			Role             string `json:"role,omitempty"`
+			Content          string `json:"content,omitempty"`
+			ReasoningContent any    `json:"reasoning_content,omitempty"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason,omitempty"`
 	} `json:"choices"`
