@@ -46,6 +46,10 @@ func (p *GeminiProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 	return nil, fmt.Errorf("raw forwarding is not supported by gemini provider")
 }
 
+func (p *GeminiProvider) ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error) {
+	return nil, fmt.Errorf("raw stream forwarding is not supported by gemini provider")
+}
+
 // Gemini API request/response structures
 
 type geminiRequest struct {

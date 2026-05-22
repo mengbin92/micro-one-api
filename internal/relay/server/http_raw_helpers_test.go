@@ -14,11 +14,18 @@ import (
 
 type rawIdentityClient struct {
 	identityv1.IdentityServiceClient
+	userIDByToken map[string]int64
 }
 
 func (c rawIdentityClient) GetAuthSnapshot(ctx context.Context, req *identityv1.GetAuthSnapshotRequest, opts ...grpc.CallOption) (*identityv1.GetAuthSnapshotReply, error) {
+	userID := int64(42)
+	if c.userIDByToken != nil {
+		if mapped, ok := c.userIDByToken[req.Token]; ok {
+			userID = mapped
+		}
+	}
 	return &identityv1.GetAuthSnapshotReply{
-		UserId:        42,
+		UserId:        userID,
 		TokenId:       7,
 		Group:         "default",
 		AllowedModels: []string{},

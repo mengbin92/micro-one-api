@@ -23,6 +23,7 @@ type Provider interface {
 	ChatCompletions(ctx context.Context, req *ChatCompletionsRequest) (*ChatCompletionsResponse, error)
 	ChatCompletionsStream(ctx context.Context, req *ChatCompletionsRequest) (<-chan StreamChunk, error)
 	Forward(ctx context.Context, req *RawRequest) (*RawResponse, error)
+	ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error)
 }
 
 // RawRequest represents an API request that should be forwarded without
@@ -40,6 +41,14 @@ type RawResponse struct {
 	StatusCode int
 	Header     http.Header
 	Body       []byte
+}
+
+// RawStreamResponse is the upstream streaming response for a forwarded raw
+// request. The caller owns Body and must close it.
+type RawStreamResponse struct {
+	StatusCode int
+	Header     http.Header
+	Body       io.ReadCloser
 }
 
 // ChatCompletionsRequest represents a standardized chat completions request
@@ -239,6 +248,49 @@ func copyForwardHeaders(dst http.Header, src http.Header) {
 			dst.Add(key, value)
 		}
 	}
+}
+
+// ForwardStream sends a raw OpenAI-compatible request and returns the upstream
+// response body without buffering it.
+func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("raw request is nil")
+	}
+	method := req.Method
+	if method == "" {
+		method = http.MethodPost
+	}
+
+	upstreamURL := strings.TrimRight(p.baseURL, "/") + "/" + strings.TrimLeft(req.Path, "/")
+	if req.Query != "" {
+		upstreamURL += "?" + req.Query
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, method, upstreamURL, bytes.NewReader(req.Body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create raw request: %w", err)
+	}
+	copyForwardHeaders(httpReq.Header, req.Header)
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send raw request: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read raw response: %w", readErr)
+		}
+		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+	}
+
+	return &RawStreamResponse{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header.Clone(),
+		Body:       resp.Body,
+	}, nil
 }
 
 func isHopByHopHeader(key string) bool {

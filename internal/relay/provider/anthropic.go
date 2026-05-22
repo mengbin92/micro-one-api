@@ -46,6 +46,10 @@ func (p *AnthropicProvider) Forward(ctx context.Context, req *RawRequest) (*RawR
 	return nil, fmt.Errorf("raw forwarding is not supported by anthropic provider")
 }
 
+func (p *AnthropicProvider) ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error) {
+	return nil, fmt.Errorf("raw stream forwarding is not supported by anthropic provider")
+}
+
 // Anthropic API request/response structures
 
 type anthropicRequest struct {

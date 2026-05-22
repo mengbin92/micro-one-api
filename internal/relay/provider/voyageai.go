@@ -42,6 +42,10 @@ func (p *VoyageAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatC
 	return nil, fmt.Errorf("voyageai chat completions stream is not supported")
 }
 
+func (p *VoyageAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error) {
+	return nil, fmt.Errorf("raw stream forwarding is not supported by voyageai provider")
+}
+
 func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("raw request is nil")

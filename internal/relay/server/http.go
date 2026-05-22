@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -37,6 +38,14 @@ type HTTPServer struct {
 	logClient       logv1.LogServiceClient
 	providerFactory *relayprovider.ProviderFactory
 	relayUsecase    *relaybiz.RelayUsecase
+	responsesMu     sync.RWMutex
+	responseRoutes  map[string]responseRoute
+}
+
+type responseRoute struct {
+	Model   string
+	Channel relaybiz.Channel
+	UserID  int64
 }
 
 // NewHTTPServer creates a new HTTP server for Kratos.
@@ -59,6 +68,7 @@ func NewHTTPServer(
 		logClient:       logClient,
 		providerFactory: providerFactory,
 		relayUsecase:    relayUsecase,
+		responseRoutes:  make(map[string]responseRoute),
 	}
 }
 
@@ -75,8 +85,8 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	srv.HandleFunc("/v1/audio/speech", s.handleRawRelay("/audio/speech", false))
 	srv.HandleFunc("/v1/moderations", s.handleRawRelay("/moderations", false))
 	srv.HandleFunc("/v1/edits", s.handleUnsupportedOpenAIRoute("edits"))
-	srv.HandleFunc("/v1/responses", s.handleUnsupportedOpenAIRoute("responses"))
-	srv.HandlePrefix("/v1/responses/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("responses")))
+	srv.HandleFunc("/v1/responses", s.handleResponsesRelay)
+	srv.HandlePrefix("/v1/responses/", http.HandlerFunc(s.handleResponsesRelay))
 	srv.HandleFunc("/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
 	srv.HandlePrefix("/v1/engines/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("engines")))
 	srv.HandleFunc("/v1/files", s.handleUnsupportedOpenAIRoute("files"))
@@ -225,6 +235,329 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 
 		writeRawResponse(w, upstreamResp)
 	}
+}
+
+func (s *HTTPServer) handleResponsesRelay(w http.ResponseWriter, r *http.Request) {
+	upstreamPath := r.URL.Path
+	if strings.HasPrefix(upstreamPath, "/v1/") {
+		upstreamPath = strings.TrimPrefix(upstreamPath, "/v1")
+	}
+
+	if r.URL.Path == "/v1/responses" || r.URL.Path == "/v1/responses/input_tokens" || r.URL.Path == "/v1/responses/compact" {
+		if r.Method != http.MethodPost {
+			s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		s.handleResponsesCreateLike(w, r, upstreamPath)
+		return
+	}
+
+	responseID, ok := parseResponsesResourcePath(r.Method, r.URL.Path)
+	if !ok {
+		s.writeError(w, http.StatusNotFound, "response not found")
+		return
+	}
+	s.handleResponsesResource(w, r, upstreamPath, responseID)
+}
+
+func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Request, upstreamPath string) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing authorization header")
+		return
+	}
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		s.writeError(w, http.StatusUnauthorized, "invalid authorization header format")
+		return
+	}
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing token")
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024*1024))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+
+	clientModel := extractRawModel(body)
+	if clientModel == "" {
+		if previousRoute, ok := s.lookupResponseRoute(extractPreviousResponseID(body)); ok {
+			s.forwardResponsesToStoredRoute(w, r, upstreamPath, body, token, previousRoute, isRawStreamRequest(body))
+			return
+		}
+		s.writeError(w, http.StatusBadRequest, "model is required")
+		return
+	}
+
+	plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
+		Token: token,
+		Model: clientModel,
+	})
+	if err != nil {
+		s.handleRelayPlanError(w, err)
+		return
+	}
+
+	var upstreamResp *relayprovider.RawResponse
+	var responseChannel *relaybiz.Channel
+	retryExecutor := s.relayUsecase.NewRetryExecutor()
+	result := retryExecutor.Execute(r.Context(), plan.Auth.Group, clientModel, func(ctx context.Context, ch *relaybiz.Channel) error {
+		startedAt := time.Now()
+		requestID := generateRequestID()
+		reservation, reserveErr := s.reserveQuota(
+			ctx,
+			fmt.Sprintf("%d", plan.Auth.UserID),
+			requestID,
+			estimateRawTokens(body),
+			plan.ResolvedModel,
+			fmt.Sprintf("%d", ch.ID),
+		)
+		if reserveErr != nil {
+			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
+		}
+
+		if isRawStreamRequest(body) {
+			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
+			if streamErr != nil {
+				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream stream error")
+				return streamErr
+			}
+			defer streamResp.Body.Close()
+			writeRawStreamResponse(w, streamResp)
+			usage := estimateRawTokens(body)
+			_ = s.commitQuota(ctx, reservation.ReservationId, usage, true)
+			s.ingestUsageLog(ctx, usageLogInput{
+				UserID:      plan.Auth.UserID,
+				TokenID:     plan.Auth.TokenID,
+				RequestID:   requestID,
+				ModelName:   clientModel,
+				Quota:       usage,
+				ChannelID:   ch.ID,
+				ElapsedTime: time.Since(startedAt).Milliseconds(),
+				IsStream:    true,
+			})
+			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
+			responseChannel = ch
+			return nil
+		}
+
+		resp, forwardErr := s.forwardResponsesRaw(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
+		if forwardErr != nil {
+			_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
+			return forwardErr
+		}
+
+		usage := extractRawUsage(resp.Body, estimateRawTokens(body))
+		_ = s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true)
+		s.ingestUsageLog(ctx, usageLogInput{
+			UserID:           plan.Auth.UserID,
+			TokenID:          plan.Auth.TokenID,
+			RequestID:        requestID,
+			ModelName:        clientModel,
+			Quota:            usage.TotalTokens,
+			PromptTokens:     usage.PromptTokens,
+			CompletionTokens: usage.CompletionTokens,
+			ChannelID:        ch.ID,
+			ElapsedTime:      time.Since(startedAt).Milliseconds(),
+			IsStream:         false,
+		})
+		upstreamResp = resp
+		responseChannel = ch
+		return nil
+	})
+
+	if result.Err != nil {
+		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
+		return
+	}
+	if upstreamResp == nil || responseChannel == nil {
+		s.writeError(w, http.StatusBadGateway, "upstream service error")
+		return
+	}
+
+	if upstreamResp.Body == nil {
+		return
+	}
+	if responseID := extractResponseID(upstreamResp.Body); responseID != "" {
+		s.storeResponseRoute(responseID, responseRoute{Model: clientModel, Channel: *responseChannel, UserID: plan.Auth.UserID})
+	}
+	writeRawResponse(w, upstreamResp)
+}
+
+func (s *HTTPServer) handleResponsesResource(w http.ResponseWriter, r *http.Request, upstreamPath, responseID string) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing authorization header")
+		return
+	}
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		s.writeError(w, http.StatusUnauthorized, "invalid authorization header format")
+		return
+	}
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing token")
+		return
+	}
+
+	route, ok := s.lookupResponseRoute(responseID)
+	if !ok {
+		s.writeJSON(w, http.StatusNotFound, map[string]interface{}{
+			"error": map[string]interface{}{
+				"message": "response route not found",
+				"type":    "invalid_request_error",
+				"param":   "response_id",
+				"code":    "response_not_found",
+			},
+		})
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024*1024))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	s.forwardResponsesToStoredRoute(w, r, upstreamPath, body, token, route, false)
+}
+
+func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *http.Request, upstreamPath string, body []byte, token string, route responseRoute, stream bool) {
+	authSnapshot, err := s.getAuthSnapshot(r.Context(), token)
+	if err != nil {
+		s.handleIdentityError(w, err)
+		return
+	}
+	if route.UserID != 0 && route.UserID != authSnapshot.UserId {
+		s.writeJSON(w, http.StatusNotFound, map[string]interface{}{
+			"error": map[string]interface{}{
+				"message": "response route not found",
+				"type":    "invalid_request_error",
+				"param":   "response_id",
+				"code":    "response_not_found",
+			},
+		})
+		return
+	}
+
+	requestID := generateRequestID()
+	reservation, err := s.reserveQuota(
+		r.Context(),
+		fmt.Sprintf("%d", authSnapshot.UserId),
+		requestID,
+		estimateRawTokens(body),
+		route.Model,
+		fmt.Sprintf("%d", route.Channel.ID),
+	)
+	if err != nil {
+		s.writeError(w, http.StatusPaymentRequired, "quota reservation failed")
+		return
+	}
+
+	startedAt := time.Now()
+	if stream {
+		streamResp, err := s.forwardResponsesRawStream(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
+		if err != nil {
+			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
+			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(err)), "upstream service error")
+			return
+		}
+		defer streamResp.Body.Close()
+		writeRawStreamResponse(w, streamResp)
+		usage := estimateRawTokens(body)
+		_ = s.commitQuota(r.Context(), reservation.ReservationId, usage, true)
+		s.ingestUsageLog(r.Context(), usageLogInput{
+			UserID:      authSnapshot.UserId,
+			TokenID:     authSnapshot.TokenId,
+			RequestID:   requestID,
+			ModelName:   route.Model,
+			Quota:       usage,
+			ChannelID:   route.Channel.ID,
+			ElapsedTime: time.Since(startedAt).Milliseconds(),
+			IsStream:    true,
+		})
+		return
+	}
+
+	resp, err := s.forwardResponsesRaw(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
+	if err != nil {
+		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream error")
+		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(err)), "upstream service error")
+		return
+	}
+
+	usage := extractRawUsage(resp.Body, estimateRawTokens(body))
+	_ = s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true)
+	s.ingestUsageLog(r.Context(), usageLogInput{
+		UserID:           authSnapshot.UserId,
+		TokenID:          authSnapshot.TokenId,
+		RequestID:        requestID,
+		ModelName:        route.Model,
+		Quota:            usage.TotalTokens,
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		ChannelID:        route.Channel.ID,
+		ElapsedTime:      time.Since(startedAt).Milliseconds(),
+		IsStream:         false,
+	})
+	if responseID := extractResponseID(resp.Body); responseID != "" {
+		route.UserID = authSnapshot.UserId
+		s.storeResponseRoute(responseID, route)
+	}
+	writeRawResponse(w, resp)
+}
+
+func (s *HTTPServer) forwardResponsesRaw(ctx context.Context, ch *relaybiz.Channel, method, path, query string, header http.Header, body []byte) (*relayprovider.RawResponse, error) {
+	provider, err := s.providerFactory.CreateProviderWithConfig(ch.Type, ch.BaseURL, ch.Key, relayprovider.ProviderConfig{
+		APIVersion: ch.Config.APIVersion,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+	return provider.Forward(ctx, &relayprovider.RawRequest{
+		Method: method,
+		Path:   path,
+		Query:  query,
+		Header: header,
+		Body:   body,
+	})
+}
+
+func (s *HTTPServer) forwardResponsesRawStream(ctx context.Context, ch *relaybiz.Channel, method, path, query string, header http.Header, body []byte) (*relayprovider.RawStreamResponse, error) {
+	provider, err := s.providerFactory.CreateProviderWithConfig(ch.Type, ch.BaseURL, ch.Key, relayprovider.ProviderConfig{
+		APIVersion: ch.Config.APIVersion,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+	return provider.ForwardStream(ctx, &relayprovider.RawRequest{
+		Method: method,
+		Path:   path,
+		Query:  query,
+		Header: header,
+		Body:   body,
+	})
+}
+
+func (s *HTTPServer) storeResponseRoute(responseID string, route responseRoute) {
+	if responseID == "" {
+		return
+	}
+	s.responsesMu.Lock()
+	defer s.responsesMu.Unlock()
+	s.responseRoutes[responseID] = route
+}
+
+func (s *HTTPServer) lookupResponseRoute(responseID string) (responseRoute, bool) {
+	if responseID == "" {
+		return responseRoute{}, false
+	}
+	s.responsesMu.RLock()
+	defer s.responsesMu.RUnlock()
+	route, ok := s.responseRoutes[responseID]
+	return route, ok
 }
 
 func providerConfigFromChannelInfo(channel *commonv1.ChannelInfo) relayprovider.ProviderConfig {
@@ -923,6 +1256,101 @@ func extractRawModel(body []byte) string {
 	return strings.TrimSpace(model)
 }
 
+func isRawStreamRequest(body []byte) bool {
+	var payload map[string]interface{}
+	if err := sonic.Unmarshal(body, &payload); err != nil {
+		return false
+	}
+	stream, _ := payload["stream"].(bool)
+	return stream
+}
+
+func extractPreviousResponseID(body []byte) string {
+	var payload map[string]interface{}
+	if err := sonic.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	responseID, _ := payload["previous_response_id"].(string)
+	return strings.TrimSpace(responseID)
+}
+
+func extractResponseID(body []byte) string {
+	var payload struct {
+		ID string `json:"id"`
+	}
+	if err := sonic.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(payload.ID)
+}
+
+type rawUsage struct {
+	PromptTokens     int64
+	CompletionTokens int64
+	TotalTokens      int64
+}
+
+func extractRawUsage(body []byte, fallback int64) rawUsage {
+	var payload struct {
+		TotalTokens int64 `json:"total_tokens"`
+		Usage       struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+			InputTokens      int64 `json:"input_tokens"`
+			OutputTokens     int64 `json:"output_tokens"`
+			TotalTokens      int64 `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := sonic.Unmarshal(body, &payload); err != nil {
+		return rawUsage{TotalTokens: fallback}
+	}
+	promptTokens := payload.Usage.PromptTokens
+	if promptTokens == 0 {
+		promptTokens = payload.Usage.InputTokens
+	}
+	completionTokens := payload.Usage.CompletionTokens
+	if completionTokens == 0 {
+		completionTokens = payload.Usage.OutputTokens
+	}
+	totalTokens := payload.Usage.TotalTokens
+	if totalTokens == 0 && promptTokens+completionTokens > 0 {
+		totalTokens = promptTokens + completionTokens
+	}
+	if totalTokens == 0 {
+		totalTokens = payload.TotalTokens
+	}
+	if totalTokens <= 0 {
+		totalTokens = fallback
+	}
+	return rawUsage{
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		TotalTokens:      totalTokens,
+	}
+}
+
+func parseResponsesResourcePath(method, path string) (string, bool) {
+	const prefix = "/v1/responses/"
+	rest := strings.TrimPrefix(path, prefix)
+	if rest == "" || rest == path {
+		return "", false
+	}
+	parts := strings.Split(rest, "/")
+	if parts[0] == "" {
+		return "", false
+	}
+	switch {
+	case len(parts) == 1 && (method == http.MethodGet || method == http.MethodDelete):
+		return parts[0], true
+	case len(parts) == 2 && parts[1] == "cancel" && method == http.MethodPost:
+		return parts[0], true
+	case len(parts) == 2 && parts[1] == "input_items" && method == http.MethodGet:
+		return parts[0], true
+	default:
+		return "", false
+	}
+}
+
 func defaultRawModel(upstreamPath string) string {
 	switch upstreamPath {
 	case "/embeddings":
@@ -945,18 +1373,7 @@ func estimateRawTokens(body []byte) int64 {
 }
 
 func extractTotalTokens(body []byte, fallback int64) int64 {
-	var payload struct {
-		Usage struct {
-			TotalTokens int64 `json:"total_tokens"`
-		} `json:"usage"`
-	}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
-		return fallback
-	}
-	if payload.Usage.TotalTokens <= 0 {
-		return fallback
-	}
-	return payload.Usage.TotalTokens
+	return extractRawUsage(body, fallback).TotalTokens
 }
 
 func writeRawResponse(w http.ResponseWriter, resp *relayprovider.RawResponse) {
@@ -973,6 +1390,37 @@ func writeRawResponse(w http.ResponseWriter, resp *relayprovider.RawResponse) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(resp.Body)
+}
+
+func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStreamResponse) {
+	for key, values := range resp.Header {
+		if isRelayHopByHopHeader(key) {
+			continue
+		}
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "text/event-stream")
+	}
+	w.WriteHeader(resp.StatusCode)
+	if flusher, ok := w.(http.Flusher); ok {
+		_, _ = io.Copy(&flushWriter{w: w, flusher: flusher}, resp.Body)
+		return
+	}
+	_, _ = io.Copy(w, resp.Body)
+}
+
+type flushWriter struct {
+	w       http.ResponseWriter
+	flusher http.Flusher
+}
+
+func (w *flushWriter) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	w.flusher.Flush()
+	return n, err
 }
 
 func isRelayHopByHopHeader(key string) bool {

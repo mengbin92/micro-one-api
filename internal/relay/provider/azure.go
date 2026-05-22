@@ -146,6 +146,10 @@ func (p *AzureProvider) Forward(ctx context.Context, req *RawRequest) (*RawRespo
 	return &RawResponse{StatusCode: resp.StatusCode, Header: resp.Header.Clone(), Body: respBody}, nil
 }
 
+func (p *AzureProvider) ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error) {
+	return nil, fmt.Errorf("raw stream forwarding is not supported by azure provider")
+}
+
 func (p *AzureProvider) endpoint(deployment, path, rawQuery string) (string, error) {
 	deployment = strings.TrimSpace(deployment)
 	u, err := url.Parse(p.baseURL)

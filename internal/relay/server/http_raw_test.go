@@ -53,11 +53,6 @@ func TestHTTPServerUnsupportedOpenAIRoutesReturnStableNotImplemented(t *testing.
 		body   string
 	}{
 		{http.MethodPost, "/v1/edits", `{}`},
-		{http.MethodPost, "/v1/responses", `{}`},
-		{http.MethodGet, "/v1/responses/resp-123", ``},
-		{http.MethodDelete, "/v1/responses/resp-123", ``},
-		{http.MethodPost, "/v1/responses/resp-123/cancel", ``},
-		{http.MethodGet, "/v1/responses/resp-123/input_items", ``},
 		{http.MethodGet, "/v1/engines", ``},
 		{http.MethodPost, "/v1/engines/text-embedding-ada-002/embeddings", `{}`},
 		{http.MethodGet, "/v1/files", ``},
@@ -340,6 +335,357 @@ func TestHTTPServerRawRelayForwardsResponseAndCommitsBilling(t *testing.T) {
 	}
 	if got := logClient.entries[0]; got.ModelName != "text-embedding-ada-002" || got.Quota != 17 || got.ChannelId != 11 {
 		t.Fatalf("usage log mismatch: model=%q quota=%d channel=%d", got.ModelName, got.Quota, got.ChannelId)
+	}
+}
+
+func TestHTTPServerResponsesCreateForwardsAndCommitsResponsesUsage(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotPath string
+	var gotAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"resp_test_123",
+			"object":"response",
+			"model":"gpt-4o-mini",
+			"status":"completed",
+			"usage":{"input_tokens":8,"output_tokens":5,"total_tokens":13}
+		}`))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	logClient := &rawLogClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping"}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if gotPath != "/v1/responses" {
+		t.Fatalf("upstream path = %q", gotPath)
+	}
+	if gotAuth != "Bearer sk-upstream" {
+		t.Fatalf("upstream auth = %q", gotAuth)
+	}
+	if !strings.Contains(rec.Body.String(), `"id":"resp_test_123"`) {
+		t.Fatalf("response body was not forwarded: %s", rec.Body.String())
+	}
+	if billingClient.commits != 1 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+	if len(logClient.entries) != 1 {
+		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
+	}
+	gotLog := logClient.entries[0]
+	if gotLog.ModelName != "gpt-4o-mini" || gotLog.Quota != 13 || gotLog.PromptTokens != 8 || gotLog.CompletionTokens != 5 {
+		t.Fatalf("usage log mismatch: model=%q quota=%d prompt=%d completion=%d", gotLog.ModelName, gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens)
+	}
+}
+
+func TestHTTPServerResponsesCreateStreamsRawSSE(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotPath string
+	var gotStream bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		var payload map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		gotStream, _ = payload["stream"].(bool)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"pong\"}\n\n"))
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	logClient := &rawLogClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping","stream":true}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if gotPath != "/v1/responses" || !gotStream {
+		t.Fatalf("upstream path=%q stream=%v", gotPath, gotStream)
+	}
+	if contentType := rec.Header().Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
+		t.Fatalf("content-type = %q, want text/event-stream", contentType)
+	}
+	if !strings.Contains(rec.Body.String(), `response.output_text.delta`) || !strings.Contains(rec.Body.String(), `data: [DONE]`) {
+		t.Fatalf("stream body was not forwarded: %s", rec.Body.String())
+	}
+	if billingClient.commits != 1 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+	if len(logClient.entries) != 1 || !logClient.entries[0].IsStream {
+		t.Fatalf("stream usage log mismatch: entries=%d", len(logClient.entries))
+	}
+}
+
+func TestHTTPServerResponsesRetrieveUsesStoredResponseRoute(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotPaths []string
+	var gotMethods []string
+	var gotQueries []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		gotMethods = append(gotMethods, r.Method)
+		gotQueries = append(gotQueries, r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/responses":
+			_, _ = w.Write([]byte(`{"id":"resp_test_123","object":"response","model":"gpt-4o-mini","usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}`))
+		case "/v1/responses/resp_test_123":
+			_, _ = w.Write([]byte(`{"id":"resp_test_123","object":"response","status":"completed"}`))
+		case "/v1/responses/resp_test_123/input_items":
+			_, _ = w.Write([]byte(`{"object":"list","data":[]}`))
+		case "/v1/responses/resp_test_123/cancel":
+			_, _ = w.Write([]byte(`{"id":"resp_test_123","object":"response","status":"cancelled"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping"}`))
+	createReq.Header.Set("Authorization", "Bearer user-token")
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200, body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   string
+	}{
+		{http.MethodGet, "/v1/responses/resp_test_123", "", `"status":"completed"`},
+		{http.MethodGet, "/v1/responses/resp_test_123/input_items?limit=1", "", `"object":"list"`},
+		{http.MethodPost, "/v1/responses/resp_test_123/cancel", "{}", `"status":"cancelled"`},
+		{http.MethodDelete, "/v1/responses/resp_test_123", "", `"status":"completed"`},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		req.Header.Set("Authorization", "Bearer user-token")
+		if tc.body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s %s status = %d, want 200, body=%s", tc.method, tc.path, rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), tc.want) {
+			t.Fatalf("%s %s body was not forwarded: %s", tc.method, tc.path, rec.Body.String())
+		}
+	}
+
+	wantPaths := []string{
+		"/v1/responses",
+		"/v1/responses/resp_test_123",
+		"/v1/responses/resp_test_123/input_items",
+		"/v1/responses/resp_test_123/cancel",
+		"/v1/responses/resp_test_123",
+	}
+	wantMethods := []string{http.MethodPost, http.MethodGet, http.MethodGet, http.MethodPost, http.MethodDelete}
+	if len(gotPaths) != len(wantPaths) {
+		t.Fatalf("upstream paths = %#v, want %#v", gotPaths, wantPaths)
+	}
+	for i := range wantPaths {
+		if gotPaths[i] != wantPaths[i] || gotMethods[i] != wantMethods[i] {
+			t.Fatalf("upstream call %d = %s %s, want %s %s", i, gotMethods[i], gotPaths[i], wantMethods[i], wantPaths[i])
+		}
+	}
+	if gotQueries[2] != "limit=1" {
+		t.Fatalf("input_items query = %q, want limit=1", gotQueries[2])
+	}
+	if billingClient.commits != 5 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+}
+
+func TestHTTPServerResponsesInputTokensForwardsStandardEndpoint(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"response.input_tokens","total_tokens":11,"usage":{"input_tokens":11,"total_tokens":11}}`))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses/input_tokens", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping"}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if gotPath != "/v1/responses/input_tokens" {
+		t.Fatalf("upstream path = %q", gotPath)
+	}
+	if !strings.Contains(rec.Body.String(), `"total_tokens":11`) {
+		t.Fatalf("response body was not forwarded: %s", rec.Body.String())
+	}
+	if billingClient.commits != 1 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+}
+
+func TestHTTPServerResponsesStoredRouteIsScopedToCreatingUser(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	upstreamCalls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp_test_123","object":"response","model":"gpt-4o-mini","usage":{"total_tokens":5}}`))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{userIDByToken: map[string]int64{
+		"user-token":  42,
+		"other-token": 99,
+	}}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping"}`))
+	createReq.Header.Set("Authorization", "Bearer user-token")
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200, body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	retrieveReq := httptest.NewRequest(http.MethodGet, "/v1/responses/resp_test_123", nil)
+	retrieveReq.Header.Set("Authorization", "Bearer other-token")
+	retrieveRec := httptest.NewRecorder()
+	srv.ServeHTTP(retrieveRec, retrieveReq)
+
+	if retrieveRec.Code != http.StatusNotFound {
+		t.Fatalf("retrieve status = %d, want 404, body=%s", retrieveRec.Code, retrieveRec.Body.String())
+	}
+	if upstreamCalls != 1 {
+		t.Fatalf("upstream calls = %d, want 1", upstreamCalls)
+	}
+	if billingClient.commits != 1 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
 	}
 }
 
