@@ -116,6 +116,51 @@ func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeN
 	return result, changed, nil
 }
 
+func (r *paymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*biz.PaymentOrder, bool, error) {
+	var result *biz.PaymentOrder
+	changed := false
+
+	err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var po PaymentOrder
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("trade_no = ? OR provider_trade_no = ?", tradeNo, tradeNo).
+			First(&po).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+
+		order := toBizPaymentOrder(&po)
+		if po.Status == biz.PaymentOrderStatusClosed || po.Status == biz.PaymentOrderStatusPaid {
+			result = order
+			return nil
+		}
+		if po.Status != biz.PaymentOrderStatusPending {
+			return fmt.Errorf("payment order status %q cannot be marked closed", po.Status)
+		}
+
+		now := time.Now()
+		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]interface{}{
+			"status":            biz.PaymentOrderStatusClosed,
+			"provider_trade_no": providerTradeNo,
+			"updated_at":        now,
+		}).Error; err != nil {
+			return err
+		}
+		po.Status = biz.PaymentOrderStatusClosed
+		po.ProviderTradeNo = providerTradeNo
+		po.UpdatedAt = now
+		result = toBizPaymentOrder(&po)
+		changed = true
+		return nil
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to mark payment order closed: %w", err)
+	}
+	return result, changed, nil
+}
+
 func toPOPaymentOrder(order *biz.PaymentOrder) *PaymentOrder {
 	return &PaymentOrder{
 		ID:               uint(order.ID),

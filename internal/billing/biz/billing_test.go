@@ -228,7 +228,7 @@ func TestCommitQuota_Success_CorrectLogic(t *testing.T) {
 	assert.Equal(t, int64(80), committed)
 	assert.Equal(t, int64(20), refund)             // 100 - 80 = 20 退还
 	assert.Equal(t, int64(0), account.FrozenQuota) // 冻结配额应该被释放
-	assert.Equal(t, int64(820), account.Quota)     // 900 - 80 = 820 实际消费
+	assert.Equal(t, int64(920), account.Quota)     // 预扣 100 后退还 20，实际净消费 80
 	assert.Len(t, ledgerRepo.ledgers, 2)           // 应该有 2 个 ledger: 消费和退还
 }
 

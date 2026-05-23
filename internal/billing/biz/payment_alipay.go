@@ -34,7 +34,9 @@ type AlipayConfig struct {
 	FormURL              string `json:"form_url"`
 	AppID                string `json:"app_id"`
 	PrivateKey           string `json:"private_key"`
+	PrivateKeyPath       string `json:"private_key_path"`
 	PublicKey            string `json:"public_key"`
+	PublicKeyPath        string `json:"public_key_path"`
 	NotifyURL            string `json:"notify_url"`
 	ReturnURL            string `json:"return_url"`
 	AppCertPath          string `json:"app_cert_path"`
@@ -54,7 +56,11 @@ func (p *alipayPaymentProvider) CreateOrder(ctx context.Context, order *PaymentO
 	if !p.config.Enabled {
 		return nil, errors.New("alipay payment is disabled")
 	}
-	if p.config.FormURL == "" || p.config.AppID == "" || p.config.PrivateKey == "" || p.config.NotifyURL == "" {
+	privateKey, err := p.privateKey()
+	if err != nil {
+		return nil, err
+	}
+	if p.config.FormURL == "" || p.config.AppID == "" || privateKey == "" || p.config.NotifyURL == "" {
 		return nil, errors.New("alipay payment is not configured")
 	}
 	params := map[string]string{
@@ -72,8 +78,8 @@ func (p *alipayPaymentProvider) CreateOrder(ctx context.Context, order *PaymentO
 	if err := p.addCertParams(params); err != nil {
 		return nil, err
 	}
-	params["sign"] = signAlipayParams(params, p.config.PrivateKey)
-	payURL, err := alipayAutoSubmitForm(p.config.FormURL, params)
+	params["sign"] = signAlipayParams(params, privateKey)
+	payURL, err := alipayGatewayURL(p.config.FormURL, params)
 	if err != nil {
 		return nil, err
 	}
@@ -82,14 +88,18 @@ func (p *alipayPaymentProvider) CreateOrder(ctx context.Context, order *PaymentO
 }
 
 func (p *alipayPaymentProvider) VerifyNotify(ctx context.Context, params map[string]string) (*PaymentNotify, error) {
-	if p.config.PublicKey == "" {
+	publicKey, err := p.publicKey()
+	if err != nil {
+		return nil, err
+	}
+	if publicKey == "" {
 		return nil, errors.New("alipay public key is required")
 	}
 	signature := params["sign"]
 	if signature == "" {
 		return nil, errors.New("alipay sign is required")
 	}
-	if err := verifyAlipaySign(params, signature, p.config.PublicKey); err != nil {
+	if err := verifyAlipaySign(params, signature, publicKey); err != nil {
 		return nil, err
 	}
 	tradeNo := firstNonEmptyString(params["out_trade_no"])
@@ -102,6 +112,131 @@ func (p *alipayPaymentProvider) VerifyNotify(ctx context.Context, params map[str
 		Success:         strings.EqualFold(params["trade_status"], "TRADE_SUCCESS") || strings.EqualFold(params["trade_status"], "TRADE_FINISHED"),
 		Channel:         PaymentChannelAlipay,
 		Raw:             copyStringMap(params),
+	}, nil
+}
+
+func (p *alipayPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOrder) (*PaymentProviderStatus, error) {
+	if order == nil {
+		return nil, errors.New("payment order is required")
+	}
+	if !p.config.Enabled {
+		return nil, errors.New("alipay payment is disabled")
+	}
+	privateKey, err := p.privateKey()
+	if err != nil {
+		return nil, err
+	}
+	if p.config.FormURL == "" || p.config.AppID == "" || privateKey == "" {
+		return nil, errors.New("alipay payment is not configured")
+	}
+	params := map[string]string{
+		"app_id":      p.config.AppID,
+		"method":      "alipay.trade.query",
+		"format":      "JSON",
+		"charset":     "utf-8",
+		"sign_type":   "RSA2",
+		"timestamp":   time.Now().Format("2006-01-02 15:04:05"),
+		"version":     "1.0",
+		"biz_content": fmt.Sprintf(`{"out_trade_no":"%s"}`, order.TradeNo),
+	}
+	if err := p.addCertParams(params); err != nil {
+		return nil, err
+	}
+	params["sign"] = signAlipayParams(params, privateKey)
+	queryURL, err := alipayGatewayURL(p.config.FormURL, params)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, queryURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("alipay trade query failed with status %d", resp.StatusCode)
+	}
+	return p.parseTradeQueryResponse(body)
+}
+
+func (p *alipayPaymentProvider) privateKey() (string, error) {
+	return firstNonEmptyStringOrFile(p.config.PrivateKey, p.config.PrivateKeyPath)
+}
+
+func (p *alipayPaymentProvider) publicKey() (string, error) {
+	return firstNonEmptyStringOrFile(p.config.PublicKey, p.config.PublicKeyPath)
+}
+
+func firstNonEmptyStringOrFile(value, path string) (string, error) {
+	if strings.TrimSpace(value) != "" {
+		return value, nil
+	}
+	if strings.TrimSpace(path) == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+func (p *alipayPaymentProvider) parseTradeQueryResponse(body []byte) (*PaymentProviderStatus, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, err
+	}
+	raw, ok := envelope["alipay_trade_query_response"]
+	if !ok {
+		return nil, errors.New("alipay trade query response is missing")
+	}
+	publicKey, err := p.publicKey()
+	if err != nil {
+		return nil, err
+	}
+	if publicKey != "" {
+		var signature string
+		if signRaw, ok := envelope["sign"]; ok {
+			_ = json.Unmarshal(signRaw, &signature)
+		}
+		if signature != "" {
+			if err := verifyRSA2(string(raw), signature, publicKey); err != nil {
+				return nil, err
+			}
+		}
+	}
+	var response struct {
+		Code        string `json:"code"`
+		Msg         string `json:"msg"`
+		SubCode     string `json:"sub_code"`
+		SubMsg      string `json:"sub_msg"`
+		OutTradeNo  string `json:"out_trade_no"`
+		TradeNo     string `json:"trade_no"`
+		TradeStatus string `json:"trade_status"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return nil, err
+	}
+	if response.Code != "10000" {
+		return &PaymentProviderStatus{
+			TradeNo:         response.OutTradeNo,
+			ProviderTradeNo: response.TradeNo,
+			TradeStatus:     response.TradeStatus,
+		}, nil
+	}
+	return &PaymentProviderStatus{
+		TradeNo:         response.OutTradeNo,
+		ProviderTradeNo: response.TradeNo,
+		TradeStatus:     response.TradeStatus,
+		Paid:            strings.EqualFold(response.TradeStatus, "TRADE_SUCCESS") || strings.EqualFold(response.TradeStatus, "TRADE_FINISHED"),
+		Closed:          strings.EqualFold(response.TradeStatus, "TRADE_CLOSED"),
 	}, nil
 }
 
@@ -179,6 +314,22 @@ func alipayAutoSubmitForm(formURL string, params map[string]string) (string, err
 	}
 	b.WriteString(`</form><script>document.getElementById('alipayForm').submit();</script>`)
 	return b.String(), nil
+}
+
+func alipayGatewayURL(formURL string, params map[string]string) (string, error) {
+	u, err := url.Parse(formURL)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	for key, value := range params {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		q.Set(key, value)
+	}
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 func verifyAlipaySign(params map[string]string, signature, publicKeyPEM string) error {

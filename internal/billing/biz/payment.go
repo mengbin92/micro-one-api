@@ -57,6 +57,14 @@ type PaymentProviderOrder struct {
 	ProviderTradeNo string
 }
 
+type PaymentProviderStatus struct {
+	TradeNo         string
+	ProviderTradeNo string
+	TradeStatus     string
+	Paid            bool
+	Closed          bool
+}
+
 type PaymentNotify struct {
 	TradeNo         string
 	ProviderTradeNo string
@@ -69,10 +77,15 @@ type PaymentRepo interface {
 	CreateOrder(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error)
 	GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error)
 	MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder) error) (*PaymentOrder, bool, error)
+	MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error)
 }
 
 type PaymentProvider interface {
 	CreateOrder(ctx context.Context, order *PaymentOrder) (*PaymentProviderOrder, error)
+}
+
+type PaymentStatusQuerier interface {
+	QueryOrder(ctx context.Context, order *PaymentOrder) (*PaymentProviderStatus, error)
 }
 
 type PaymentNotifyVerifier interface {
@@ -130,7 +143,11 @@ func (uc *PaymentUsecase) GetOrderByTradeNo(ctx context.Context, tradeNo string)
 	if tradeNo == "" {
 		return nil, errors.New("trade_no is required")
 	}
-	return uc.repo.GetOrderByTradeNo(ctx, tradeNo)
+	order, err := uc.repo.GetOrderByTradeNo(ctx, tradeNo)
+	if err != nil || order == nil {
+		return order, err
+	}
+	return uc.refreshProviderStatus(ctx, order)
 }
 
 func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, error) {
@@ -145,6 +162,38 @@ func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTr
 	}
 	if order == nil {
 		return nil, errors.New("payment order not found")
+	}
+	return order, nil
+}
+
+func (uc *PaymentUsecase) refreshProviderStatus(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error) {
+	if order.Status != PaymentOrderStatusPending || order.Channel != PaymentChannelAlipay {
+		return order, nil
+	}
+	querier, ok := uc.provider.(PaymentStatusQuerier)
+	if !ok {
+		return order, nil
+	}
+	status, err := querier.QueryOrder(ctx, order)
+	if err != nil || status == nil {
+		return order, nil
+	}
+	providerTradeNo := firstNonEmptyString(status.ProviderTradeNo, order.ProviderTradeNo)
+	if status.Paid {
+		paid, err := uc.MarkOrderPaid(ctx, order.TradeNo, providerTradeNo)
+		if err != nil {
+			return nil, err
+		}
+		return paid, nil
+	}
+	if status.Closed {
+		closed, _, err := uc.repo.MarkOrderClosed(ctx, order.TradeNo, providerTradeNo)
+		if err != nil {
+			return nil, err
+		}
+		if closed != nil {
+			return closed, nil
+		}
 	}
 	return order, nil
 }
@@ -230,4 +279,19 @@ func (p *routedPaymentProvider) CreateOrder(ctx context.Context, order *PaymentO
 		return nil, fmt.Errorf("payment channel %q is not configured", order.Channel)
 	}
 	return provider.CreateOrder(ctx, order)
+}
+
+func (p *routedPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOrder) (*PaymentProviderStatus, error) {
+	if p == nil || order == nil {
+		return nil, nil
+	}
+	provider, ok := p.providers[order.Channel]
+	if !ok {
+		return nil, nil
+	}
+	querier, ok := provider.(PaymentStatusQuerier)
+	if !ok {
+		return nil, nil
+	}
+	return querier.QueryOrder(ctx, order)
 }

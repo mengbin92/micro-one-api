@@ -20,3 +20,18 @@ billing:
     default: 1.0
     vip: 1.0
     svip: 1.0
+payment:
+  quota_per_unit: ${PAYMENT_QUOTA_PER_UNIT:-500000}
+  alipay:
+    enabled: ${ALIPAY_ENABLED:-false}
+    form_url: ${ALIPAY_FORM_URL:-https://openapi-sandbox.dl.alipaydev.com/gateway.do}
+    app_id: ${ALIPAY_APP_ID:-}
+    private_key: ${ALIPAY_PRIVATE_KEY:-}
+    private_key_path: ${ALIPAY_PRIVATE_KEY_PATH:-}
+    public_key: ${ALIPAY_PUBLIC_KEY:-}
+    public_key_path: ${ALIPAY_PUBLIC_KEY_PATH:-}
+    notify_url: ${ALIPAY_NOTIFY_URL:-}
+    return_url: ${ALIPAY_RETURN_URL:-}
+    app_cert_path: ${ALIPAY_APP_CERT_PATH:-}
+    root_cert_path: ${ALIPAY_ROOT_CERT_PATH:-}
+    alipay_public_cert_path: ${ALIPAY_PUBLIC_CERT_PATH:-}

@@ -69,15 +69,15 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 
 	reservation := &Reservation{
 		ReservationID: reservationID,
-		UserID:       userID,
-		RequestID:    requestID,
-		Amount:       cost,
-		Status:       ReservationStatusReserved,
-		Model:        model,
-		ChannelID:    channelID,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		ExpiredAt:    expiredAt,
+		UserID:        userID,
+		RequestID:     requestID,
+		Amount:        cost,
+		Status:        ReservationStatusReserved,
+		Model:         model,
+		ChannelID:     channelID,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		ExpiredAt:     expiredAt,
 	}
 
 	if err := uc.reservationRepo.CreateReservation(ctx, reservation); err != nil {
@@ -128,16 +128,10 @@ func (uc *BillingUsecase) CommitQuota(ctx context.Context, reservationID string,
 			return 0, 0, fmt.Errorf("release frozen quota: %w", err)
 		}
 
-		if _, err := uc.accountRepo.UpdateQuota(ctx, reservation.UserID, -actualCost, LedgerTypeConsume); err != nil {
-			return 0, 0, fmt.Errorf("update quota: %w", err)
-		}
-
-		balanceAfter := account.Quota - actualCost
-
 		ledger := &Ledger{
 			UserID:       reservation.UserID,
 			Amount:       -actualCost,
-			BalanceAfter: balanceAfter,
+			BalanceAfter: account.Quota,
 			Type:         LedgerTypeConsume,
 			ReferenceID:  reservationID,
 			Remark:       fmt.Sprintf("model=%s, tokens=%d", reservation.Model, actualTokens),
@@ -148,11 +142,11 @@ func (uc *BillingUsecase) CommitQuota(ctx context.Context, reservationID string,
 		}
 
 		if diff > 0 {
-			if _, err := uc.accountRepo.UpdateQuota(ctx, reservation.UserID, diff, LedgerTypeRefund); err != nil {
+			refundBalanceAfter, err := uc.accountRepo.UpdateQuota(ctx, reservation.UserID, diff, LedgerTypeRefund)
+			if err != nil {
 				return 0, 0, fmt.Errorf("refund quota: %w", err)
 			}
 
-			refundBalanceAfter := balanceAfter + diff
 			refundLedger := &Ledger{
 				UserID:       reservation.UserID,
 				Amount:       diff,

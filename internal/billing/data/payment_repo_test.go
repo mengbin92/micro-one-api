@@ -45,3 +45,34 @@ func TestPaymentRepo_CreateAndMarkPaid(t *testing.T) {
 	require.Equal(t, biz.PaymentAssetIssueStatusIssued, paid.AssetIssueStatus)
 	require.NotNil(t, paid.PaidAt)
 }
+
+func TestPaymentRepo_MarkOrderClosed(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&PaymentOrder{}))
+
+	repo := NewPaymentRepo(&Data{db: db})
+	created, err := repo.CreateOrder(context.Background(), &biz.PaymentOrder{
+		UserID:           "42",
+		TradeNo:          "PAY-1",
+		Channel:          biz.PaymentChannelAlipay,
+		AssetType:        biz.PaymentAssetTypeQuota,
+		AssetAmount:      500000,
+		MoneyCents:       1000,
+		Currency:         "CNY",
+		Status:           biz.PaymentOrderStatusPending,
+		AssetIssueStatus: biz.PaymentAssetIssueStatusPending,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	closed, changed, err := repo.MarkOrderClosed(context.Background(), "PAY-1", "provider-1")
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.NotNil(t, closed)
+	require.Equal(t, biz.PaymentOrderStatusClosed, closed.Status)
+	require.Equal(t, "provider-1", closed.ProviderTradeNo)
+	require.Nil(t, closed.PaidAt)
+}
