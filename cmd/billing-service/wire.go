@@ -17,6 +17,11 @@ import (
 var ProviderSet = wire.NewSet(
 	data.NewData,
 	biz.NewBillingUsecase,
+	biz.NewPaymentAssetIssuer,
+	biz.NewMockPaymentProvider,
+	biz.NewConfiguredPaymentProvider,
+	biz.NewAlipayPaymentProvider,
+	biz.NewPaymentUsecase,
 	biz.NewReconciliationUsecase,
 	service.NewBillingService,
 	server.NewGRPCServer,

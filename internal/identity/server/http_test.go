@@ -804,14 +804,24 @@ func TestIdentityHTTPOnlinePaymentCompatibilityRoutesAreDisabled(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
-	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{})
+	billingClient := &identityHTTPBillingClient{
+		createOrderResponse: &billingv1.PaymentOrderResponse{
+			Success: true,
+			Order: &billingv1.PaymentOrder{
+				TradeNo:   "PAY-TEST",
+				PayUrl:    "mock://payment/PAY-TEST",
+				AssetType: "quota",
+			},
+		},
+	}
+	srv := NewHTTPServer(":0", uc, nil, billingClient)
 
 	for _, tc := range []struct {
 		path string
 		body string
 	}{
-		{"/api/user/amount", `{"amount":10,"top_up_code":""}`},
-		{"/api/user/pay", `{"amount":10,"payment_method":"wechat"}`},
+		{"/api/user/amount", `{"amount":10,"payment_method":"alipay"}`},
+		{"/api/user/pay", `{"amount":10,"payment_method":"alipay"}`},
 	} {
 		req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Authorization", "Bearer "+authToken)
@@ -821,8 +831,8 @@ func TestIdentityHTTPOnlinePaymentCompatibilityRoutesAreDisabled(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s status = %d, want 200, body=%s", tc.path, rec.Code, rec.Body.String())
 		}
-		if !strings.Contains(rec.Body.String(), `"success":false`) || !strings.Contains(rec.Body.String(), "online payment is not configured") {
-			t.Fatalf("%s disabled response mismatch: %s", tc.path, rec.Body.String())
+		if !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"trade_no":"PAY-TEST"`) {
+			t.Fatalf("%s response mismatch: %s", tc.path, rec.Body.String())
 		}
 	}
 }
@@ -1223,8 +1233,10 @@ type identityHTTPBillingClient struct {
 	billingv1.BillingServiceClient
 	snapshot       *commonv1.AccountSnapshot
 	redeemResponse *billingv1.RedeemCodeResponse
+	createOrderResponse *billingv1.PaymentOrderResponse
 	redeemCode     string
 	topUpCalls     []capturedTopUp
+	createOrderCalls []billingv1.CreatePaymentOrderRequest
 }
 
 type capturedTopUp struct {
@@ -1278,6 +1290,14 @@ func (c *identityHTTPBillingClient) RedeemCode(ctx context.Context, req *billing
 		return &billingv1.RedeemCodeResponse{Success: true}, nil
 	}
 	return c.redeemResponse, nil
+}
+
+func (c *identityHTTPBillingClient) CreatePaymentOrder(ctx context.Context, req *billingv1.CreatePaymentOrderRequest, opts ...grpc.CallOption) (*billingv1.PaymentOrderResponse, error) {
+	c.createOrderCalls = append(c.createOrderCalls, *req)
+	if c.createOrderResponse == nil {
+		return &billingv1.PaymentOrderResponse{Success: true, Order: &billingv1.PaymentOrder{TradeNo: "PAY-TEST", PayUrl: "mock://payment/PAY-TEST"}}, nil
+	}
+	return c.createOrderResponse, nil
 }
 
 func (c *identityHTTPBillingClient) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuotaRequest, opts ...grpc.CallOption) (*billingv1.TopUpQuotaResponse, error) {

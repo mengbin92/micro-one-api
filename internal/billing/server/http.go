@@ -60,6 +60,12 @@ func NewHTTPServer(addr string, svc *service.BillingService) *khttp.Server {
 
 	// Protected reconciliation endpoint
 	srv.HandleFunc("/v1/reconciliation", ServiceAuth(svc.HandleReconciliation))
+	srv.HandleFunc("/api/v1/user/payments/alipay/notify", func(w http.ResponseWriter, r *http.Request) {
+		svc.HandleAlipayNotify(w, r)
+	})
+	srv.HandleFunc("/api/user/payments/alipay/notify", func(w http.ResponseWriter, r *http.Request) {
+		svc.HandleAlipayNotify(w, r)
+	})
 
 	return srv
 }

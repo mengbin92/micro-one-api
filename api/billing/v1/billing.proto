@@ -22,6 +22,9 @@ service BillingService {
   rpc UpdateRedeemCode(UpdateRedeemCodeRequest) returns (UpdateRedeemCodeResponse);
   rpc DeleteRedeemCode(DeleteRedeemCodeRequest) returns (DeleteRedeemCodeResponse);
   rpc ListLedger(ListLedgerRequest) returns (ListLedgerResponse);
+  rpc CreatePaymentOrder(CreatePaymentOrderRequest) returns (PaymentOrderResponse);
+  rpc GetPaymentOrderByTradeNo(GetPaymentOrderByTradeNoRequest) returns (PaymentOrderResponse);
+  rpc MarkPaymentOrderPaid(MarkPaymentOrderPaidRequest) returns (PaymentOrderResponse);
   rpc ListReconciliationRuns(ListReconciliationRunsRequest) returns (ListReconciliationRunsResponse);
   rpc GetReconciliationRun(GetReconciliationRunRequest) returns (GetReconciliationRunResponse);
 }
@@ -195,6 +198,51 @@ message ListLedgerRequest {
 message ListLedgerResponse {
   repeated common.v1.LedgerEntry entries = 1;
   int64 total = 2;
+}
+
+// ========== 支付订单 ==========
+
+message PaymentOrder {
+  int64 id = 1;
+  string user_id = 2;
+  string trade_no = 3;
+  string channel = 4;
+  string asset_type = 5;
+  int64 asset_amount = 6;
+  int64 money_cents = 7;
+  string currency = 8;
+  string status = 9;
+  string provider_trade_no = 10;
+  string provider_payload = 11;
+  string pay_url = 12;
+  string asset_issue_status = 13;
+  google.protobuf.Timestamp paid_at = 14;
+  google.protobuf.Timestamp created_at = 15;
+  google.protobuf.Timestamp updated_at = 16;
+}
+
+message CreatePaymentOrderRequest {
+  string user_id = 1;
+  string channel = 2;
+  string asset_type = 3;
+  int64 asset_amount = 4;
+  int64 money_cents = 5;
+  string currency = 6;
+}
+
+message GetPaymentOrderByTradeNoRequest {
+  string trade_no = 1;
+}
+
+message MarkPaymentOrderPaidRequest {
+  string trade_no = 1;
+  string provider_trade_no = 2;
+}
+
+message PaymentOrderResponse {
+  bool success = 1;
+  string error_message = 2;
+  PaymentOrder order = 3;
 }
 
 // ========== 对账 ==========

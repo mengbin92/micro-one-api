@@ -1,12 +1,16 @@
 package config
 
-import appregistry "micro-one-api/internal/pkg/registry"
+import (
+	"micro-one-api/internal/billing/biz"
+	appregistry "micro-one-api/internal/pkg/registry"
+)
 
 // Config holds the billing-service configuration.
 type Config struct {
 	Server   ServerConfig       `json:"server"`
 	Data     DataConfig         `json:"data"`
 	Billing  BillingConfig      `json:"billing"`
+	Payment  biz.PaymentConfig  `json:"payment"`
 	Registry appregistry.Config `json:"registry"`
 }
 

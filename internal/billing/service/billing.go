@@ -16,12 +16,14 @@ import (
 
 type BillingService struct {
 	billingv1.UnimplementedBillingServiceServer
-	uc         *biz.BillingUsecase
-	reconUc    *biz.ReconciliationUsecase
+	uc             *biz.BillingUsecase
+	paymentUc      *biz.PaymentUsecase
+	alipayVerifier biz.PaymentNotifyVerifier
+	reconUc        *biz.ReconciliationUsecase
 }
 
-func NewBillingService(uc *biz.BillingUsecase, reconUc *biz.ReconciliationUsecase) *BillingService {
-	return &BillingService{uc: uc, reconUc: reconUc}
+func NewBillingService(uc *biz.BillingUsecase, reconUc *biz.ReconciliationUsecase, paymentUc *biz.PaymentUsecase, alipayVerifier biz.PaymentNotifyVerifier) *BillingService {
+	return &BillingService{uc: uc, reconUc: reconUc, paymentUc: paymentUc, alipayVerifier: alipayVerifier}
 }
 
 func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest) (*billingv1.ReserveQuotaResponse, error) {
@@ -285,6 +287,102 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 	}, nil
 }
 
+func (s *BillingService) CreatePaymentOrder(ctx context.Context, req *billingv1.CreatePaymentOrderRequest) (*billingv1.PaymentOrderResponse, error) {
+	if s.paymentUc == nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
+	}
+	order, err := s.paymentUc.CreateOrder(ctx, biz.CreatePaymentOrderRequest{
+		UserID:      req.GetUserId(),
+		Channel:     req.GetChannel(),
+		AssetType:   req.GetAssetType(),
+		AssetAmount: req.GetAssetAmount(),
+		MoneyCents:  req.GetMoneyCents(),
+		Currency:    req.GetCurrency(),
+	})
+	if err != nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+	return &billingv1.PaymentOrderResponse{Success: true, Order: toProtoPaymentOrder(order)}, nil
+}
+
+func (s *BillingService) GetPaymentOrderByTradeNo(ctx context.Context, req *billingv1.GetPaymentOrderByTradeNoRequest) (*billingv1.PaymentOrderResponse, error) {
+	if s.paymentUc == nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
+	}
+	order, err := s.paymentUc.GetOrderByTradeNo(ctx, req.GetTradeNo())
+	if err != nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+	if order == nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment order not found"}, nil
+	}
+	return &billingv1.PaymentOrderResponse{Success: true, Order: toProtoPaymentOrder(order)}, nil
+}
+
+func (s *BillingService) MarkPaymentOrderPaid(ctx context.Context, req *billingv1.MarkPaymentOrderPaidRequest) (*billingv1.PaymentOrderResponse, error) {
+	if s.paymentUc == nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
+	}
+	order, err := s.paymentUc.MarkOrderPaid(ctx, req.GetTradeNo(), req.GetProviderTradeNo())
+	if err != nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+	return &billingv1.PaymentOrderResponse{Success: true, Order: toProtoPaymentOrder(order)}, nil
+}
+
+func (s *BillingService) HandleAlipayNotify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeNotifyResponse(w, false)
+		return
+	}
+	if s.alipayVerifier == nil {
+		writeNotifyResponse(w, false)
+		return
+	}
+	notify, err := s.alipayVerifier.VerifyNotify(r.Context(), parseFormValues(r))
+	if err != nil {
+		writeNotifyResponse(w, false)
+		return
+	}
+	if !notify.Success {
+		writeNotifyResponse(w, true)
+		return
+	}
+	if s.paymentUc == nil {
+		writeNotifyResponse(w, false)
+		return
+	}
+	if _, err := s.paymentUc.MarkOrderPaid(r.Context(), notify.TradeNo, notify.ProviderTradeNo); err != nil {
+		writeNotifyResponse(w, false)
+		return
+	}
+	writeNotifyResponse(w, true)
+}
+
+func toProtoPaymentOrder(order *biz.PaymentOrder) *billingv1.PaymentOrder {
+	if order == nil {
+		return nil
+	}
+	return &billingv1.PaymentOrder{
+		Id:               order.ID,
+		UserId:           order.UserID,
+		TradeNo:          order.TradeNo,
+		Channel:          order.Channel,
+		AssetType:        order.AssetType,
+		AssetAmount:      order.AssetAmount,
+		MoneyCents:       order.MoneyCents,
+		Currency:         order.Currency,
+		Status:           order.Status,
+		ProviderTradeNo:  order.ProviderTradeNo,
+		ProviderPayload:  order.ProviderPayload,
+		PayUrl:           order.PayURL,
+		AssetIssueStatus: order.AssetIssueStatus,
+		PaidAt:           toProtoTimestampPtr(order.PaidAt),
+		CreatedAt:        toProtoTimestamp(order.CreatedAt),
+		UpdatedAt:        toProtoTimestamp(order.UpdatedAt),
+	}
+}
+
 func toProtoTimestamp(t time.Time) *timestamppb.Timestamp {
 	if t.IsZero() {
 		return nil
@@ -293,6 +391,50 @@ func toProtoTimestamp(t time.Time) *timestamppb.Timestamp {
 		Seconds: t.Unix(),
 		Nanos:   int32(t.Nanosecond()),
 	}
+}
+
+func toProtoTimestampPtr(t *time.Time) *timestamppb.Timestamp {
+	if t == nil {
+		return nil
+	}
+	return toProtoTimestamp(*t)
+}
+
+func parseFormValues(r *http.Request) map[string]string {
+	if err := r.ParseForm(); err != nil {
+		return parseQueryValues(r)
+	}
+	params := make(map[string]string, len(r.Form))
+	for key, values := range r.Form {
+		if len(values) > 0 {
+			params[key] = values[0]
+		}
+	}
+	for key, values := range r.URL.Query() {
+		if _, ok := params[key]; !ok && len(values) > 0 {
+			params[key] = values[0]
+		}
+	}
+	return params
+}
+
+func parseQueryValues(r *http.Request) map[string]string {
+	params := map[string]string{}
+	for key, values := range r.URL.Query() {
+		if len(values) > 0 {
+			params[key] = values[0]
+		}
+	}
+	return params
+}
+
+func writeNotifyResponse(w http.ResponseWriter, ok bool) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if ok {
+		_, _ = w.Write([]byte("success"))
+		return
+	}
+	_, _ = w.Write([]byte("fail"))
 }
 
 // HandleReconciliation triggers a billing reconciliation and returns the result as JSON.

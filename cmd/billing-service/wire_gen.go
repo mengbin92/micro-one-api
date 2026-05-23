@@ -65,7 +65,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		d.ReconciliationRepo(),
 		d.ReconciliationRunStore(),
 	)
-	svc := service.NewBillingService(uc, reconUc)
+	paymentProvider := biz.NewConfiguredPaymentProvider(cfg.Payment)
+	paymentAssetIssuer := biz.NewPaymentAssetIssuer(uc)
+	paymentUc := biz.NewPaymentUsecase(d.PaymentRepo(), paymentProvider, paymentAssetIssuer)
+	alipayVerifier := biz.NewAlipayPaymentProvider(cfg.Payment.Alipay)
+	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)
 
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)

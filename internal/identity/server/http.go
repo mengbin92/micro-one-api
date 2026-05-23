@@ -160,10 +160,10 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 		handleUserTopUp(w, r, uc, billingClient)
 	})
 	srv.HandleFunc("/api/user/amount", func(w http.ResponseWriter, r *http.Request) {
-		handleOnlinePaymentDisabled(w, r, uc)
+		handleCreatePaymentOrder(w, r, uc, billingClient)
 	})
 	srv.HandleFunc("/api/user/pay", func(w http.ResponseWriter, r *http.Request) {
-		handleOnlinePaymentDisabled(w, r, uc)
+		handleCreatePaymentOrder(w, r, uc, billingClient)
 	})
 	srv.HandleFunc("/api/verification", func(w http.ResponseWriter, r *http.Request) {
 		handleEmailVerification(w, r)
@@ -557,16 +557,80 @@ func handleUserTopUp(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUse
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: resp.GetAmount()})
 }
 
-func handleOnlinePaymentDisabled(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
+func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 		return
 	}
-	if _, err := authSnapshotFromRequest(r, uc); err != nil {
+	snapshot, err := authSnapshotFromRequest(r, uc)
+	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "unauthorized"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "online payment is not configured"})
+	if billingClient == nil {
+		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "billing service unavailable"})
+		return
+	}
+	var req struct {
+		Amount        float64 `json:"amount"`
+		PaymentMethod string  `json:"payment_method"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Amount <= 0 {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount must be positive"})
+		return
+	}
+	if req.PaymentMethod == "" {
+		req.PaymentMethod = "alipay"
+	}
+	switch req.PaymentMethod {
+	case "alipay", "wechat", "mock":
+	default:
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid payment_method"})
+		return
+	}
+	assetAmount := int64(req.Amount * 500000)
+	if assetAmount <= 0 {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount too small"})
+		return
+	}
+	moneyCents := int64(req.Amount * 100)
+	if moneyCents <= 0 {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "amount too small"})
+		return
+	}
+	resp, err := billingClient.CreatePaymentOrder(r.Context(), &billingv1.CreatePaymentOrderRequest{
+		UserId:      strconv.FormatInt(snapshot.UserID, 10),
+		Channel:     req.PaymentMethod,
+		AssetType:   "quota",
+		AssetAmount: assetAmount,
+		MoneyCents:  moneyCents,
+		Currency:    "CNY",
+	})
+	if err != nil {
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+		return
+	}
+	if !resp.GetSuccess() {
+		message := resp.GetErrorMessage()
+		if message == "" {
+			message = "payment order creation failed"
+		}
+		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: message})
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse{
+		Success: true,
+		Message: "",
+		Data: map[string]interface{}{
+			"trade_no":   resp.GetOrder().GetTradeNo(),
+			"pay_url":    resp.GetOrder().GetPayUrl(),
+			"order":      resp.GetOrder(),
+			"asset_type": resp.GetOrder().GetAssetType(),
+		},
+	})
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
