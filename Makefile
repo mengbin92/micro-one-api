@@ -62,7 +62,7 @@ proto: api config
 
 .PHONY: build
 # build
-build: web-build
+build: proto web-build
 	go build ./...
 
 .PHONY: web-build
@@ -85,7 +85,7 @@ tidy:
 
 .PHONY: test
 # test
-test:
+test: proto
 	go test ./...
 
 .PHONY: run-identity

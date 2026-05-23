@@ -24,6 +24,14 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Generate protobuf code
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          make init
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make api
+
       - name: Run gosec (SAST)
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
@@ -104,10 +112,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
+
+      - name: Generate protobuf code
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          make init
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make api
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
@@ -130,6 +151,14 @@ jobs:
 
       - name: Install go-licenses
         run: go install github.com/google/go-licenses@latest
+
+      - name: Generate protobuf code
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          make init
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make api
 
       - name: Check licenses
         run: |
