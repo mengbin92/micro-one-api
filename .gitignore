@@ -57,3 +57,4 @@ web/node_modules
 web/dist
 web/.env
 internal/admin/server/static/web/
+cert/
