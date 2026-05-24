@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	adminv1 "micro-one-api/api/admin/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -58,6 +59,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 	// Health and metrics (unauthenticated)
 	srv.HandleFunc("/", handleAdminPage)
 	srv.HandleFunc("/admin", handleAdminPage)
+	srv.HandleFunc("/admin/", handleAdminPage)
 	// SPA client-side routes — must mirror entries in web/src/router.tsx
 	srv.HandleFunc("/login", handleAdminPage)
 	srv.HandleFunc("/dashboard", handleAdminPage)
@@ -116,6 +118,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 		handleGroupManagement(w, r, svc)
 	}))
 	srv.HandleFunc("/api/admin/access", AdminAuth(handleAdminAccess))
+	srv.HandleFunc("/api/admin/summary", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleAdminSummary(w, r, svc)
+	}))
 
 	// Protected admin endpoints
 	srv.HandlePrefix("/api/user/disable/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -292,6 +297,137 @@ func handleAdminAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]bool{"admin": true}))
+}
+
+func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	users, err := svc.ListUsers(r.Context(), &adminv1.AdminListUsersRequest{Page: 1, PageSize: 5})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse(false, "failed to load users", nil))
+		return
+	}
+	activeUsers, err := svc.ListUsers(r.Context(), &adminv1.AdminListUsersRequest{Page: 1, PageSize: 1, Status: 1})
+	if err != nil {
+		activeUsers = &adminv1.AdminListUsersResponse{}
+	}
+	channels, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{Page: 1, PageSize: 5})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse(false, "failed to load channels", nil))
+		return
+	}
+	activeChannels, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{Page: 1, PageSize: 1, Status: 1})
+	if err != nil {
+		activeChannels = &adminv1.AdminListChannelsResponse{}
+	}
+	logs, err := svc.ListLogs(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 8})
+	if err != nil {
+		logs = &adminv1.ListLogsResponse{}
+	}
+	stats, err := svc.GetLogStats(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 1000})
+	if err != nil {
+		stats = map[string]interface{}{}
+	}
+	options, err := svc.ListOneAPIOptions(r.Context())
+	if err != nil {
+		options = nil
+	}
+
+	requestCount := int64(0)
+	quotaUsed := int64(0)
+	models := map[string]struct{}{}
+	requestCount = interfaceToInt64(stats["total"])
+	quotaUsed = interfaceToInt64(stats["total_amount"])
+	totalBalance := float64(0)
+	staleBalanceCount := 0
+	now := time.Now().Unix()
+	for _, channel := range channels.GetChannels() {
+		totalBalance += channel.GetBalance()
+		if channel.GetBalanceUpdatedTime() == 0 || now-channel.GetBalanceUpdatedTime() > 24*60*60 {
+			staleBalanceCount++
+		}
+		for _, model := range strings.Split(channel.GetModels(), ",") {
+			model = strings.TrimSpace(model)
+			if model != "" {
+				models[model] = struct{}{}
+			}
+		}
+	}
+	configuredModels := len(models)
+	if configuredModels == 0 {
+		configuredModels = len(oneAPIChannelModelCatalog())
+	}
+
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+		"totals": map[string]interface{}{
+			"users":                  users.GetTotal(),
+			"active_users":           activeUsers.GetTotal(),
+			"channels":               channels.GetTotal(),
+			"active_channels":        activeChannels.GetTotal(),
+			"configured_models":      configuredModels,
+			"request_count":          requestCount,
+			"quota_used":             quotaUsed,
+			"channel_balance":        totalBalance,
+			"stale_balance_channels": staleBalanceCount,
+			"log_count":              logs.GetTotal(),
+		},
+		"recent_users":    users.GetUsers(),
+		"channels":        channels.GetChannels(),
+		"recent_logs":     logs.GetLogs(),
+		"usage_stats":     stats,
+		"model_catalog":   oneAPIChannelModelCatalog(),
+		"pricing_options": optionsByKey(options, "ModelRatio", "CompletionRatio", "GroupRatio", "QuotaPerUnit"),
+		"payment_summary": paymentSummaryFromLogs(logs.GetLogs()),
+	}))
+}
+
+func interfaceToInt64(value interface{}) int64 {
+	switch v := value.(type) {
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	case json.Number:
+		n, _ := v.Int64()
+		return n
+	default:
+		return 0
+	}
+}
+
+func optionsByKey(options []service.OneAPIOption, keys ...string) map[string]string {
+	wanted := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		wanted[key] = struct{}{}
+	}
+	result := make(map[string]string, len(keys))
+	for _, option := range options {
+		if _, ok := wanted[option.Key]; ok {
+			result[option.Key] = option.Value
+		}
+	}
+	return result
+}
+
+func paymentSummaryFromLogs(logs []*adminv1.LogEntry) map[string]interface{} {
+	orderCount := int64(0)
+	amount := int64(0)
+	for _, log := range logs {
+		switch log.GetType() {
+		case "recharge", "redeem", "refund":
+			orderCount++
+			amount += log.GetAmount()
+		}
+	}
+	return map[string]interface{}{
+		"recent_order_count": orderCount,
+		"recent_amount":      amount,
+	}
 }
 
 func handleAdminPage(w http.ResponseWriter, r *http.Request) {

@@ -45,7 +45,9 @@ describe('AppNavigation', () => {
 
     renderNavigation();
 
-    expect(await screen.findByRole('button', { name: 'Admin' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '仪表盘' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Admin' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
     expect(window.localStorage.getItem('adminToken')).toBeNull();
   });
 

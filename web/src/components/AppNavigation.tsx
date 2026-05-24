@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Languages,
   LogOut,
+  MonitorCog,
   ScrollText,
   Settings2,
   Ticket,
@@ -21,20 +22,11 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { MobileNav } from '@/components/MobileNav';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { adminApiClient, apiClient } from '@/lib/api';
 import { canAccessAdmin, type AdminAccessSnapshot } from '@/lib/admin-access';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -76,6 +68,7 @@ const secondaryUserLinks: SecondaryNavItem[] = [
 ];
 
 const adminLinks: NavItem[] = [
+  { to: '/admin', label: '总览', ariaLabel: 'Admin Overview', icon: MonitorCog },
   { to: '/admin/users', label: '用户', ariaLabel: 'Users', icon: Users },
   { to: '/admin/channels', label: '渠道', ariaLabel: 'Channels', icon: Database },
   { to: '/admin/logs', label: '日志', ariaLabel: 'Logs', icon: ScrollText },
@@ -88,6 +81,7 @@ const routeTitles: Record<string, string> = {
   '/tokens': 'API 密钥',
   '/usage': '使用记录',
   '/orders': '我的订单',
+  '/admin': '管理总览',
   '/admin/users': '用户管理',
   '/admin/channels': '渠道管理',
   '/admin/logs': '系统日志',
@@ -194,9 +188,7 @@ export function AppNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
   const [adminToken, setAdminToken] = useState(localStorage.getItem('adminToken') || '');
-  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [adminInput, setAdminInput] = useState('');
   const [adminSnapshot, setAdminSnapshot] = useState<AdminAccessSnapshot | null>(null);
   const [user, setUser] = useState<UserSelf | null>(null);
   const [account, setAccount] = useState<AccountDashboard | null>(null);
@@ -259,16 +251,6 @@ export function AppNavigation() {
     };
   }, [adminToken]);
 
-  const handleSetAdminToken = () => {
-    localStorage.setItem('adminToken', adminInput);
-    setAdminToken(adminInput);
-    setAdminSnapshot(null);
-    setAdminInput('');
-    setAdminDialogOpen(false);
-    setMobileOpen(false);
-    toast.success('Admin access enabled');
-  };
-
   const handleClearAdminToken = () => {
     localStorage.removeItem('adminToken');
     setAdminToken('');
@@ -287,30 +269,7 @@ export function AppNavigation() {
     <Button variant="outline" size="sm" onClick={handleClearAdminToken}>
       退出管理
     </Button>
-  ) : (
-    <Dialog open={adminDialogOpen} onOpenChange={setAdminDialogOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" aria-label="Admin" />}>
-        管理
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Admin Access</DialogTitle>
-          <DialogDescription>Enter your admin token to access management features.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 pt-4">
-          <Input
-            type="password"
-            placeholder="Admin Token"
-            value={adminInput}
-            onChange={(event) => setAdminInput(event.target.value)}
-          />
-          <Button onClick={handleSetAdminToken} disabled={!adminInput.trim()} className="w-full">
-            Confirm
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+  ) : null;
 
   const sidebar = (
     <div className="flex h-full flex-col bg-white dark:bg-card">

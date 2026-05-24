@@ -2,6 +2,7 @@
 import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { AdminRoute } from '@/components/AdminRoute';
 import { PageLoading } from '@/components/PageLoading';
 
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })));
@@ -9,6 +10,9 @@ const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ 
 const TokensPage = lazy(() => import('@/pages/TokensPage').then((m) => ({ default: m.TokensPage })));
 const UsagePage = lazy(() => import('@/pages/UsagePage').then((m) => ({ default: m.UsagePage })));
 const OrdersPage = lazy(() => import('@/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })));
+const AdminOverviewPage = lazy(() =>
+  import('@/pages/admin/OverviewPage').then((m) => ({ default: m.AdminOverviewPage }))
+);
 const AdminUsersPage = lazy(() => import('@/pages/admin/UsersPage').then((m) => ({ default: m.AdminUsersPage })));
 const AdminChannelsPage = lazy(() =>
   import('@/pages/admin/ChannelsPage').then((m) => ({ default: m.AdminChannelsPage }))
@@ -55,24 +59,34 @@ export const router = createBrowserRouter([
         element: withSuspense(<OrdersPage />),
       },
       {
-        path: 'admin/users',
-        element: withSuspense(<AdminUsersPage />),
-      },
-      {
-        path: 'admin/channels',
-        element: withSuspense(<AdminChannelsPage />),
-      },
-      {
-        path: 'admin/logs',
-        element: withSuspense(<AdminLogsPage />),
-      },
-      {
-        path: 'admin/redemptions',
-        element: withSuspense(<AdminRedemptionsPage />),
-      },
-      {
-        path: 'admin/options',
-        element: withSuspense(<AdminOptionsPage />),
+        path: 'admin',
+        element: <AdminRoute />,
+        children: [
+          {
+            index: true,
+            element: withSuspense(<AdminOverviewPage />),
+          },
+          {
+            path: 'users',
+            element: withSuspense(<AdminUsersPage />),
+          },
+          {
+            path: 'channels',
+            element: withSuspense(<AdminChannelsPage />),
+          },
+          {
+            path: 'logs',
+            element: withSuspense(<AdminLogsPage />),
+          },
+          {
+            path: 'redemptions',
+            element: withSuspense(<AdminRedemptionsPage />),
+          },
+          {
+            path: 'options',
+            element: withSuspense(<AdminOptionsPage />),
+          },
+        ],
       },
     ],
   },

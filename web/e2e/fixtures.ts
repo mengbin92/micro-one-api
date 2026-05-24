@@ -85,6 +85,48 @@ export async function mockApi(page: Page) {
     });
   });
 
+  await page.route('**/api/admin/summary', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          totals: {
+            users: 12,
+            active_users: 10,
+            channels: 3,
+            active_channels: 2,
+            configured_models: 5,
+            request_count: 42,
+            quota_used: 750000,
+            prompt_tokens: 300,
+            completion_tokens: 500,
+            channel_balance: 88.5,
+            stale_balance_channels: 1,
+            log_count: 4,
+          },
+          recent_users: [
+            { id: 1, username: 'alice', display_name: 'Alice', email: 'alice@example.com', group: 'default', status: 1 },
+          ],
+          channels: [
+            { id: 1, name: 'openai-main', type: 1, group: 'default', status: 1, models: 'gpt-4o-mini,gpt-4o', balance: 88.5 },
+          ],
+          recent_logs: [
+            { id: 1, user_id: '1', type: 'consume', amount: -150000, model_name: 'gpt-4o-mini', endpoint: '/v1/chat/completions', created_at: 1779200000 },
+            { id: 2, user_id: '1', type: 'recharge', amount: 500000, created_at: 1779200100 },
+          ],
+          model_catalog: [{ id: 'gpt-4o-mini', owned_by: 'openai' }],
+          pricing_options: {
+            ModelRatio: '{"gpt-4o-mini":0.15}',
+            CompletionRatio: '{"gpt-4o-mini":1}',
+            GroupRatio: '{"default":1}',
+            QuotaPerUnit: '500000',
+          },
+          payment_summary: { recent_order_count: 1, recent_amount: 500000 },
+        },
+      },
+    });
+  });
+
   await page.route('**/api/option/', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.fulfill({ json: { success: true } });

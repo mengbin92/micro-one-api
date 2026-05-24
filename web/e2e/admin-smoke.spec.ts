@@ -34,8 +34,8 @@ test('login stores token and shows dashboard', async ({ page }) => {
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-  await expect(page.getByText('Remaining Quota')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Alice/ })).toBeVisible();
+  await expect(page.getByText('剩余额度')).toBeVisible();
   await expect(page.evaluate(() => localStorage.getItem('token'))).resolves.toBe('test-user-token');
 });
 
@@ -44,7 +44,30 @@ test('admin token enables Options nav', async ({ page }) => {
   await page.goto('/dashboard');
   await openMobileNavIfVisible(page);
 
+  await expect(page.getByRole('link', { name: 'Admin Overview' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Options' })).toBeVisible();
+});
+
+test('regular user shell does not show admin login control', async ({ page }) => {
+  await page.goto('/login');
+  await page.evaluate(() => {
+    localStorage.setItem('token', 'test-user-token');
+    localStorage.removeItem('adminToken');
+  });
+  await page.goto('/dashboard');
+
+  await expect(page.getByRole('button', { name: 'Admin' })).toBeHidden();
+  await expect(page.getByRole('link', { name: 'Admin Overview' })).toBeHidden();
+});
+
+test('admin overview renders operational status', async ({ page }) => {
+  await seedAdminSession(page);
+  await page.goto('/admin');
+
+  await expect(page.getByRole('heading', { name: '管理总览' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '上游供应商' })).toBeVisible();
+  await expect(page.getByText('openai-main')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '最近调用与订单动态' })).toBeVisible();
 });
 
 test('admin options renders core settings', async ({ page }) => {
@@ -72,9 +95,9 @@ test('admin users sends sort and filter params', async ({ page }) => {
   await page.getByLabel('Filter users by status').selectOption('1');
   await page.getByRole('button', { name: /sort by username/i }).click();
 
-  expect(
-    requests.some((url) => url.includes('status=1') && url.includes('sort=username') && url.includes('order=asc')),
-  ).toBe(true);
+  await expect
+    .poll(() => requests.some((url) => url.includes('status=1') && url.includes('sort=username') && url.includes('order=asc')))
+    .toBe(true);
 });
 
 test('mobile navigation exposes admin links and closes after navigation', async ({ page }, testInfo) => {
