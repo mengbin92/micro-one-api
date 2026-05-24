@@ -37,7 +37,7 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 
 	return &billingv1.ReserveQuotaResponse{
 		Success:        true,
-		ReservationId:   reservation.ReservationID,
+		ReservationId:  reservation.ReservationID,
 		ReservedAmount: reservation.Amount,
 	}, nil
 }
@@ -59,9 +59,9 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 	}
 
 	return &billingv1.CommitQuotaResponse{
-		Success:        true,
+		Success:         true,
 		CommittedAmount: committedAmount,
-		RefundAmount:   refundAmount,
+		RefundAmount:    refundAmount,
 	}, nil
 }
 
@@ -344,6 +344,30 @@ func (s *BillingService) MarkPaymentOrderPaid(ctx context.Context, req *billingv
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	return &billingv1.PaymentOrderResponse{Success: true, Order: toProtoPaymentOrder(order)}, nil
+}
+
+func (s *BillingService) ListPaymentOrders(ctx context.Context, req *billingv1.ListPaymentOrdersRequest) (*billingv1.ListPaymentOrdersResponse, error) {
+	if s.paymentUc == nil {
+		return &billingv1.ListPaymentOrdersResponse{}, nil
+	}
+	orders, total, err := s.paymentUc.ListOrders(ctx, biz.ListPaymentOrdersRequest{
+		Page:      req.GetPage(),
+		PageSize:  req.GetPageSize(),
+		UserID:    req.GetUserId(),
+		Status:    req.GetStatus(),
+		Channel:   req.GetChannel(),
+		TradeNo:   req.GetTradeNo(),
+		StartTime: req.GetStartTime(),
+		EndTime:   req.GetEndTime(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp := &billingv1.ListPaymentOrdersResponse{Total: total}
+	for _, order := range orders {
+		resp.Orders = append(resp.Orders, toProtoPaymentOrder(order))
+	}
+	return resp, nil
 }
 
 func (s *BillingService) HandleAlipayNotify(w http.ResponseWriter, r *http.Request) {

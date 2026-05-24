@@ -36,6 +36,7 @@ describe('AppNavigation', () => {
     renderNavigation();
 
     expect(await screen.findByRole('link', { name: 'Users' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Payment Orders' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Options' })).toBeInTheDocument();
   });
 

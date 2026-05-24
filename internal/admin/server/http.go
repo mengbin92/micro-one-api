@@ -16,6 +16,7 @@ import (
 	"time"
 
 	adminv1 "micro-one-api/api/admin/v1"
+	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/internal/admin/service"
 	"micro-one-api/internal/pkg/metrics"
@@ -69,6 +70,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 	srv.HandleFunc("/admin/users", handleAdminPage)
 	srv.HandleFunc("/admin/channels", handleAdminPage)
 	srv.HandleFunc("/admin/logs", handleAdminPage)
+	srv.HandleFunc("/admin/payment-orders", handleAdminPage)
 	srv.HandleFunc("/admin/redemptions", handleAdminPage)
 	srv.HandleFunc("/admin/options", handleAdminPage)
 	// Static assets bundled by Vite
@@ -212,6 +214,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 	srv.HandleFunc("/api/topup", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleTopUp(w, r, svc)
 	}))
+	srv.HandleFunc("/api/payment/orders", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handlePaymentOrders(w, r, svc)
+	}))
 	srv.HandleFunc("/api/channel/test", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleTestChannels(w, r, svc)
 	}))
@@ -327,6 +332,10 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if err != nil {
 		logs = &adminv1.ListLogsResponse{}
 	}
+	paymentOrders, err := svc.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{Page: 1, PageSize: 8})
+	if err != nil {
+		paymentOrders = &billingv1.ListPaymentOrdersResponse{}
+	}
 	stats, err := svc.GetLogStats(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 1000})
 	if err != nil {
 		stats = map[string]interface{}{}
@@ -377,10 +386,11 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		"recent_users":    users.GetUsers(),
 		"channels":        channels.GetChannels(),
 		"recent_logs":     logs.GetLogs(),
+		"payment_orders":  paymentOrders.GetOrders(),
 		"usage_stats":     stats,
 		"model_catalog":   oneAPIChannelModelCatalog(),
 		"pricing_options": optionsByKey(options, "ModelRatio", "CompletionRatio", "GroupRatio", "QuotaPerUnit"),
-		"payment_summary": paymentSummaryFromLogs(logs.GetLogs()),
+		"payment_summary": paymentSummaryFromOrders(paymentOrders),
 	}))
 }
 
@@ -414,18 +424,17 @@ func optionsByKey(options []service.OneAPIOption, keys ...string) map[string]str
 	return result
 }
 
-func paymentSummaryFromLogs(logs []*adminv1.LogEntry) map[string]interface{} {
-	orderCount := int64(0)
+func paymentSummaryFromOrders(resp *billingv1.ListPaymentOrdersResponse) map[string]interface{} {
 	amount := int64(0)
-	for _, log := range logs {
-		switch log.GetType() {
-		case "recharge", "redeem", "refund":
-			orderCount++
-			amount += log.GetAmount()
+	total := int64(0)
+	if resp != nil {
+		total = resp.GetTotal()
+		for _, order := range resp.GetOrders() {
+			amount += order.GetAssetAmount()
 		}
 	}
 	return map[string]interface{}{
-		"recent_order_count": orderCount,
+		"recent_order_count": total,
 		"recent_amount":      amount,
 	}
 }
@@ -2009,6 +2018,31 @@ func handleResetUserQuota(w http.ResponseWriter, r *http.Request, svc *service.A
 	}
 	resp, err := svc.ResetUserQuota(r.Context(), &req)
 	writeServiceResponse(w, resp, err)
+}
+
+func handlePaymentOrders(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	resp, err := svc.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{
+		Page:      getQueryInt32(r, "page", 1),
+		PageSize:  getQueryInt32(r, "page_size", 20),
+		UserId:    r.URL.Query().Get("user_id"),
+		Status:    r.URL.Query().Get("status"),
+		Channel:   r.URL.Query().Get("channel"),
+		TradeNo:   r.URL.Query().Get("trade_no"),
+		StartTime: getQueryInt64(r, "start_time", 0),
+		EndTime:   getQueryInt64(r, "end_time", 0),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse(false, err.Error(), nil))
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+		"orders": resp.GetOrders(),
+		"total":  resp.GetTotal(),
+	}))
 }
 
 func writeServiceResponse(w http.ResponseWriter, resp interface{}, err error) {

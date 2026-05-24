@@ -25,6 +25,7 @@ service BillingService {
   rpc CreatePaymentOrder(CreatePaymentOrderRequest) returns (PaymentOrderResponse);
   rpc GetPaymentOrderByTradeNo(GetPaymentOrderByTradeNoRequest) returns (PaymentOrderResponse);
   rpc MarkPaymentOrderPaid(MarkPaymentOrderPaidRequest) returns (PaymentOrderResponse);
+  rpc ListPaymentOrders(ListPaymentOrdersRequest) returns (ListPaymentOrdersResponse);
   rpc ListReconciliationRuns(ListReconciliationRunsRequest) returns (ListReconciliationRunsResponse);
   rpc GetReconciliationRun(GetReconciliationRunRequest) returns (GetReconciliationRunResponse);
 }
@@ -249,6 +250,22 @@ message PaymentOrderResponse {
   bool success = 1;
   string error_message = 2;
   PaymentOrder order = 3;
+}
+
+message ListPaymentOrdersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string user_id = 3;
+  string status = 4;
+  string channel = 5;
+  string trade_no = 6;
+  int64 start_time = 7;
+  int64 end_time = 8;
+}
+
+message ListPaymentOrdersResponse {
+  repeated PaymentOrder orders = 1;
+  int64 total = 2;
 }
 
 // ========== 对账 ==========

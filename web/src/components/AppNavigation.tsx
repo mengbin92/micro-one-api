@@ -72,6 +72,7 @@ const adminLinks: NavItem[] = [
   { to: '/admin/users', label: '用户', ariaLabel: 'Users', icon: Users },
   { to: '/admin/channels', label: '渠道', ariaLabel: 'Channels', icon: Database },
   { to: '/admin/logs', label: '日志', ariaLabel: 'Logs', icon: ScrollText },
+  { to: '/admin/payment-orders', label: '订单', ariaLabel: 'Payment Orders', icon: CreditCard },
   { to: '/admin/redemptions', label: '兑换码', ariaLabel: 'Redemptions', icon: Ticket },
   { to: '/admin/options', label: '设置', ariaLabel: 'Options', icon: Settings2 },
 ];
@@ -85,6 +86,7 @@ const routeTitles: Record<string, string> = {
   '/admin/users': '用户管理',
   '/admin/channels': '渠道管理',
   '/admin/logs': '系统日志',
+  '/admin/payment-orders': '支付订单',
   '/admin/redemptions': '兑换码',
   '/admin/options': '系统设置',
 };

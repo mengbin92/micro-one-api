@@ -100,6 +100,48 @@ test('admin users sends sort and filter params', async ({ page }) => {
     .toBe(true);
 });
 
+test('admin payment orders sends filters to backend', async ({ page }) => {
+  const requests: string[] = [];
+  await page.route('**/api/payment/orders**', async (route) => {
+    requests.push(route.request().url());
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          orders: [
+            {
+              id: 1,
+              user_id: '42',
+              trade_no: 'PAY-1',
+              channel: 'alipay',
+              asset_amount: 500000,
+              money_cents: 1000,
+              currency: 'CNY',
+              status: 'paid',
+              provider_trade_no: 'ALI-1',
+              asset_issue_status: 'issued',
+              created_at: { seconds: 1779200000 },
+            },
+          ],
+          total: 1,
+        },
+      },
+    });
+  });
+
+  await seedAdminSession(page);
+  await page.goto('/admin/payment-orders');
+  await expect(page.getByRole('heading', { name: /支付订单/ })).toBeVisible();
+  await page.getByLabel('Filter payment orders by status').selectOption('paid');
+  await page.getByLabel('Filter payment orders by channel').selectOption('alipay');
+  await page.getByLabel('Filter payment orders by user id').fill('42');
+
+  await expect
+    .poll(() => requests.some((url) => url.includes('status=paid') && url.includes('channel=alipay') && url.includes('user_id=42')))
+    .toBe(true);
+  await expect(page.getByText('PAY-1')).toBeVisible();
+});
+
 test('mobile navigation exposes admin links and closes after navigation', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-chrome', 'mobile-only coverage');
 

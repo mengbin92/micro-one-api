@@ -61,6 +61,53 @@ func (r *paymentRepo) GetOrderByTradeNo(ctx context.Context, tradeNo string) (*b
 	return toBizPaymentOrder(&po), nil
 }
 
+func (r *paymentRepo) ListOrders(ctx context.Context, req biz.ListPaymentOrdersRequest) ([]*biz.PaymentOrder, int64, error) {
+	page := req.Page
+	pageSize := req.PageSize
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	query := r.data.db.WithContext(ctx).Model(&PaymentOrder{})
+	if req.UserID != "" {
+		query = query.Where("user_id = ?", req.UserID)
+	}
+	if req.Status != "" {
+		query = query.Where("status = ?", req.Status)
+	}
+	if req.Channel != "" {
+		query = query.Where("channel = ?", req.Channel)
+	}
+	if req.TradeNo != "" {
+		like := "%" + req.TradeNo + "%"
+		query = query.Where("trade_no LIKE ? OR provider_trade_no LIKE ?", like, like)
+	}
+	if req.StartTime > 0 {
+		query = query.Where("created_at >= ?", time.Unix(req.StartTime, 0))
+	}
+	if req.EndTime > 0 {
+		query = query.Where("created_at <= ?", time.Unix(req.EndTime, 0))
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count payment orders: %w", err)
+	}
+
+	var rows []PaymentOrder
+	offset := (page - 1) * pageSize
+	if err := query.Offset(int(offset)).Limit(int(pageSize)).Order("id DESC").Find(&rows).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to list payment orders: %w", err)
+	}
+	orders := make([]*biz.PaymentOrder, len(rows))
+	for i := range rows {
+		orders[i] = toBizPaymentOrder(&rows[i])
+	}
+	return orders, total, nil
+}
+
 func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*biz.PaymentOrder) error) (*biz.PaymentOrder, bool, error) {
 	var result *biz.PaymentOrder
 	changed := false

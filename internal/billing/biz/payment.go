@@ -51,6 +51,17 @@ type CreatePaymentOrderRequest struct {
 	Currency    string
 }
 
+type ListPaymentOrdersRequest struct {
+	Page      int32
+	PageSize  int32
+	UserID    string
+	Status    string
+	Channel   string
+	TradeNo   string
+	StartTime int64
+	EndTime   int64
+}
+
 type PaymentProviderOrder struct {
 	PayURL          string
 	Payload         string
@@ -76,6 +87,7 @@ type PaymentNotify struct {
 type PaymentRepo interface {
 	CreateOrder(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error)
 	GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error)
+	ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error)
 	MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder) error) (*PaymentOrder, bool, error)
 	MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error)
 }
@@ -148,6 +160,19 @@ func (uc *PaymentUsecase) GetOrderByTradeNo(ctx context.Context, tradeNo string)
 		return order, err
 	}
 	return uc.refreshProviderStatus(ctx, order)
+}
+
+func (uc *PaymentUsecase) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.PageSize <= 0 {
+		req.PageSize = 20
+	}
+	if req.PageSize > 100 {
+		req.PageSize = 100
+	}
+	return uc.repo.ListOrders(ctx, req)
 }
 
 func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, error) {

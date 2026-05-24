@@ -179,16 +179,17 @@ func (c *adminHTTPChannelClient) ListChannels(ctx context.Context, req *channelv
 
 type adminHTTPBillingClient struct {
 	billingv1.BillingServiceClient
-	topupUserID       string
-	topupAmount       int64
-	batchCreated      bool
-	deletedRedeemCode string
-	reconRuns         []*billingv1.ReconciliationRun
-	reconRunsByID     map[int64]*billingv1.ReconciliationRun
-	reconListErr      error
-	reconGetErr       error
-	reconListLastReq  *billingv1.ListReconciliationRunsRequest
-	reconGetLastRunID int64
+	topupUserID        string
+	topupAmount        int64
+	batchCreated       bool
+	deletedRedeemCode  string
+	reconRuns          []*billingv1.ReconciliationRun
+	reconRunsByID      map[int64]*billingv1.ReconciliationRun
+	reconListErr       error
+	reconGetErr        error
+	reconListLastReq   *billingv1.ListReconciliationRunsRequest
+	reconGetLastRunID  int64
+	paymentListLastReq *billingv1.ListPaymentOrdersRequest
 }
 
 func (c *adminHTTPBillingClient) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuotaRequest, opts ...grpc.CallOption) (*billingv1.TopUpQuotaResponse, error) {
@@ -240,6 +241,31 @@ func (c *adminHTTPBillingClient) ListLedger(ctx context.Context, req *billingv1.
 			{UserId: "42", Type: "consume", Amount: -25, BalanceAfter: 575, CreatedAt: timestamppb.Now()},
 		},
 		Total: 2,
+	}, nil
+}
+
+func (c *adminHTTPBillingClient) ListPaymentOrders(ctx context.Context, req *billingv1.ListPaymentOrdersRequest, opts ...grpc.CallOption) (*billingv1.ListPaymentOrdersResponse, error) {
+	c.paymentListLastReq = req
+	return &billingv1.ListPaymentOrdersResponse{
+		Orders: []*billingv1.PaymentOrder{
+			{
+				Id:               1,
+				UserId:           "42",
+				TradeNo:          "PAY-1",
+				Channel:          "alipay",
+				AssetType:        "quota",
+				AssetAmount:      500000,
+				MoneyCents:       1000,
+				Currency:         "CNY",
+				Status:           "paid",
+				ProviderTradeNo:  "ALI-1",
+				AssetIssueStatus: "issued",
+				PaidAt:           timestamppb.Now(),
+				CreatedAt:        timestamppb.Now(),
+				UpdatedAt:        timestamppb.Now(),
+			},
+		},
+		Total: 1,
 	}, nil
 }
 
@@ -1106,6 +1132,30 @@ func TestAdminHTTPCreateRedeemCodesBatch(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"code-a"`) {
 		t.Fatalf("batch response missing codes: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPListPaymentOrders(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	billingClient := &adminHTTPBillingClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
+	req := httptest.NewRequest(http.MethodGet, "/api/payment/orders?page=2&page_size=50&user_id=42&status=paid&channel=alipay&trade_no=PAY", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	got := billingClient.paymentListLastReq
+	if got == nil || got.GetPage() != 2 || got.GetPageSize() != 50 || got.GetUserId() != "42" || got.GetStatus() != "paid" || got.GetChannel() != "alipay" || got.GetTradeNo() != "PAY" {
+		t.Fatalf("ListPaymentOrders called with %+v", got)
+	}
+	for _, want := range []string{`"success":true`, `"orders":`, `"trade_no":"PAY-1"`, `"total":1`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("response missing %s: %s", want, rec.Body.String())
+		}
 	}
 }
 

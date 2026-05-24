@@ -353,6 +353,13 @@ func (s *AdminService) ListUserLedger(ctx context.Context, req *adminv1.ListUser
 	}, nil
 }
 
+func (s *AdminService) ListPaymentOrders(ctx context.Context, req *billingv1.ListPaymentOrdersRequest) (*billingv1.ListPaymentOrdersResponse, error) {
+	if s.billingClient == nil {
+		return &billingv1.ListPaymentOrdersResponse{}, nil
+	}
+	return s.billingClient.ListPaymentOrders(ctx, req)
+}
+
 // GetAccountSnapshot 获取账户快照
 func (s *AdminService) GetAccountSnapshot(ctx context.Context, req *adminv1.GetAccountSnapshotRequest) (*adminv1.AdminAccountSnapshotResponse, error) {
 	billingReq := &billingv1.GetAccountSnapshotRequest{

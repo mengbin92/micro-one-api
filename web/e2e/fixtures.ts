@@ -127,6 +127,33 @@ export async function mockApi(page: Page) {
     });
   });
 
+  await page.route('**/api/payment/orders**', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          orders: [
+            {
+              id: 1,
+              user_id: '1',
+              trade_no: 'PAY-1',
+              channel: 'alipay',
+              asset_type: 'quota',
+              asset_amount: 500000,
+              money_cents: 1000,
+              currency: 'CNY',
+              status: 'paid',
+              provider_trade_no: 'ALI-1',
+              asset_issue_status: 'issued',
+              created_at: { seconds: 1779200000 },
+            },
+          ],
+          total: 1,
+        },
+      },
+    });
+  });
+
   await page.route('**/api/option/', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.fulfill({ json: { success: true } });

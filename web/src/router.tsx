@@ -18,6 +18,9 @@ const AdminChannelsPage = lazy(() =>
   import('@/pages/admin/ChannelsPage').then((m) => ({ default: m.AdminChannelsPage }))
 );
 const AdminLogsPage = lazy(() => import('@/pages/admin/LogsPage').then((m) => ({ default: m.AdminLogsPage })));
+const AdminPaymentOrdersPage = lazy(() =>
+  import('@/pages/admin/PaymentOrdersPage').then((m) => ({ default: m.AdminPaymentOrdersPage }))
+);
 const AdminRedemptionsPage = lazy(() =>
   import('@/pages/admin/RedemptionsPage').then((m) => ({ default: m.AdminRedemptionsPage }))
 );
@@ -77,6 +80,10 @@ export const router = createBrowserRouter([
           {
             path: 'logs',
             element: withSuspense(<AdminLogsPage />),
+          },
+          {
+            path: 'payment-orders',
+            element: withSuspense(<AdminPaymentOrdersPage />),
           },
           {
             path: 'redemptions',

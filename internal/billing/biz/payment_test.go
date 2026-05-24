@@ -22,6 +22,14 @@ func (r *memoryPaymentRepo) GetOrderByTradeNo(ctx context.Context, tradeNo strin
 	return &copy, nil
 }
 
+func (r *memoryPaymentRepo) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
+	if r.order == nil {
+		return nil, 0, nil
+	}
+	copy := *r.order
+	return []*PaymentOrder{&copy}, 1, nil
+}
+
 func (r *memoryPaymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder) error) (*PaymentOrder, bool, error) {
 	if r.order == nil || r.order.TradeNo != tradeNo {
 		return nil, false, nil
