@@ -14,6 +14,9 @@ registry:
   consul:
     address: ${CONSUL_ADDR:-127.0.0.1:8500}
     health_check_interval: 10
+clients:
+  billing:
+    endpoint: ${BILLING_GRPC_ENDPOINT:-127.0.0.1:9004}
 oauth:
   base_url: ${OAUTH_BASE_URL:-http://localhost:8001}
   github:

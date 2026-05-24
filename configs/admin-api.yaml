@@ -11,6 +11,7 @@ registry:
 clients:
   identity:
     endpoint: ${IDENTITY_GRPC_ENDPOINT:-127.0.0.1:9001}
+    http_endpoint: ${IDENTITY_HTTP_ENDPOINT:-http://127.0.0.1:8001}
   channel:
     endpoint: ${CHANNEL_GRPC_ENDPOINT:-127.0.0.1:9002}
   billing:
@@ -19,4 +20,3 @@ data:
   database:
     driver: mysql
     source: ${DATABASE_DSN}
-

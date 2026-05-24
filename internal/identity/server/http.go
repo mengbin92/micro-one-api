@@ -1089,8 +1089,17 @@ func tokenToMap(token *biz.Token, includeKey bool) map[string]interface{} {
 	}
 	if includeKey {
 		data["key"] = token.Key
+	} else {
+		data["masked_key"] = maskTokenKey(token.Key)
 	}
 	return data
+}
+
+func maskTokenKey(key string) string {
+	if len(key) <= 8 {
+		return strings.Repeat("*", len(key))
+	}
+	return key[:4] + strings.Repeat("*", len(key)-8) + key[len(key)-4:]
 }
 
 // handleOAuth routes /v1/oauth/{provider}/{action} requests.

@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"strconv"
@@ -48,10 +49,11 @@ func AdminAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // NewHTTPServer wires HTTP transport for admin-api.
-func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
+func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint ...string) *khttp.Server {
 	srv := khttp.NewServer(
 		khttp.Address(addr),
 	)
+	identityProxy := newServiceReverseProxy(firstString(identityHTTPEndpoint))
 
 	// Health and metrics (unauthenticated)
 	srv.HandleFunc("/", handleAdminPage)
@@ -66,7 +68,7 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	srv.HandleFunc("/admin/redemptions", handleAdminPage)
 	srv.HandleFunc("/admin/options", handleAdminPage)
 	// Static assets bundled by Vite
-	srv.HandleFunc("/assets/", handleAdminPage)
+	srv.HandlePrefix("/assets/", http.HandlerFunc(handleAdminPage))
 	srv.HandleFunc("/favicon.svg", handleAdminPage)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
@@ -95,6 +97,18 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	srv.HandleFunc("/api/notice", handleContentRoute(svc, "Notice"))
 	srv.HandleFunc("/api/about", handleContentRoute(svc, "About"))
 	srv.HandleFunc("/api/home_page_content", handleContentRoute(svc, "HomePageContent"))
+	if identityProxy != nil {
+		srv.HandleFunc("/api/user/register", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/login", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/logout", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/self", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/dashboard", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/quota", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/amount", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/pay", identityProxy.ServeHTTP)
+		srv.HandleFunc("/api/token", identityProxy.ServeHTTP)
+		srv.HandlePrefix("/api/token/", identityProxy)
+	}
 	srv.HandlePrefix("/api/group", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleGroupManagement(w, r, svc)
 	}))
@@ -225,6 +239,24 @@ func NewHTTPServer(addr string, svc *service.AdminService) *khttp.Server {
 	}))
 
 	return srv
+}
+
+func firstString(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func newServiceReverseProxy(endpoint string) *httputil.ReverseProxy {
+	if strings.TrimSpace(endpoint) == "" {
+		return nil
+	}
+	target, err := url.Parse(endpoint)
+	if err != nil {
+		return nil
+	}
+	return httputil.NewSingleHostReverseProxy(target)
 }
 
 func requireCSVExport(w http.ResponseWriter, r *http.Request) bool {

@@ -52,6 +52,7 @@ services:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      - BILLING_GRPC_ENDPOINT=billing-service:9004
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     depends_on:
@@ -155,6 +156,7 @@ services:
     environment:
       - CONF_PATH=/configs/admin-api.yaml
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
+      - IDENTITY_HTTP_ENDPOINT=http://identity-service:8001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN is required}

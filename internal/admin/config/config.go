@@ -35,12 +35,13 @@ type GRPCConfig struct {
 
 type ClientsConfig struct {
 	Identity identityClientConfig `json:"identity"`
-	Channel  channelClientConfig `json:"channel"`
+	Channel  channelClientConfig  `json:"channel"`
 	Billing  billingClientConfig  `json:"billing"`
 }
 
 type identityClientConfig struct {
-	Endpoint string `json:"endpoint"`
+	Endpoint     string `json:"endpoint"`
+	HTTPEndpoint string `json:"http_endpoint"`
 }
 
 type channelClientConfig struct {

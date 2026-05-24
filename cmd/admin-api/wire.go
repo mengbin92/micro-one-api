@@ -27,7 +27,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 func newApp(cfg *admincfg.Config, svc *service.AdminService) (*kratos.App, func()) {
 	grpcSrv := newGRPCServer(cfg, svc)
-	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc, cfg.Clients.Identity.HTTPEndpoint)
 	app := kratos.New(
 		kratos.Name("admin-api"),
 		kratos.Server(grpcSrv, httpSrv),

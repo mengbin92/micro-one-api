@@ -27,7 +27,8 @@ export function LoginPage() {
         password,
       });
 
-      const token = unwrapApiData<string>(response.data, 'Login failed');
+      const data = unwrapApiData<string | { token?: string }>(response.data, 'Login failed');
+      const token = typeof data === 'string' ? data : data?.token;
       if (token) {
         localStorage.setItem('token', token);
         toast.success('Signed in');

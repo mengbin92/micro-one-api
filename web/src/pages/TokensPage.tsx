@@ -28,10 +28,26 @@ import { unwrapApiData } from '@/lib/api-response';
 interface Token {
   id: number;
   name: string;
-  key: string;
+  key?: string;
+  masked_key?: string;
   status: number;
   remain_quota: number;
   created_time: number;
+}
+
+interface TokenListData {
+  items?: Token[];
+  total?: number;
+}
+
+function normalizeTokens(data: Token[] | TokenListData): Token[] {
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (Array.isArray(data?.items)) {
+    return data.items;
+  }
+  return [];
 }
 
 export function TokensPage() {
@@ -43,7 +59,7 @@ export function TokensPage() {
     queryKey: ['tokens'],
     queryFn: async () => {
       const res = await apiClient.get('/token');
-      return unwrapApiData<Token[]>(res.data);
+      return normalizeTokens(unwrapApiData<Token[] | TokenListData>(res.data));
     },
   });
 
@@ -134,7 +150,7 @@ export function TokensPage() {
               {tokens.map((token) => (
                 <TableRow key={token.id}>
                   <TableCell className="font-medium">{token.name}</TableCell>
-                  <TableCell className="font-mono text-sm">{token.key}</TableCell>
+                  <TableCell className="font-mono text-sm">{token.key || token.masked_key || 'Hidden'}</TableCell>
                   <TableCell>
                     <span
                       className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -146,8 +162,10 @@ export function TokensPage() {
                       {token.status === 1 ? 'Active' : 'Disabled'}
                     </span>
                   </TableCell>
-                  <TableCell>{token.remain_quota.toLocaleString()}</TableCell>
-                  <TableCell>{new Date(token.created_time * 1000).toLocaleDateString()}</TableCell>
+                  <TableCell>{(token.remain_quota ?? 0).toLocaleString()}</TableCell>
+                  <TableCell>
+                    {token.created_time ? new Date(token.created_time * 1000).toLocaleDateString() : '—'}
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="destructive"

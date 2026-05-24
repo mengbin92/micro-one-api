@@ -6,7 +6,10 @@ package main
 import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/google/wire"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
+	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/internal/identity/biz"
 	identitycfg "micro-one-api/internal/identity/config"
 	"micro-one-api/internal/identity/data"
@@ -34,12 +37,22 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 func newApp(cfg *identitycfg.Config, svc *service.IdentityService, uc *biz.IdentityUsecase, oauthRegistry *oauth.ProviderRegistry) (*kratos.App, func()) {
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
-	httpSrv := server.NewHTTPServerWithRegistrationPolicy(cfg.Server.HTTP.Addr, uc, oauthRegistry, registrationPolicyFromConfig(cfg))
+	var billingClient billingv1.BillingServiceClient
+	var billingConn *grpc.ClientConn
+	if cfg.Clients.Billing.Endpoint != "" {
+		billingConn, _ = grpc.NewClient(cfg.Clients.Billing.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		billingClient = billingv1.NewBillingServiceClient(billingConn)
+	}
+	httpSrv := server.NewHTTPServerWithRegistrationPolicy(cfg.Server.HTTP.Addr, uc, oauthRegistry, registrationPolicyFromConfig(cfg), billingClient)
 	app := kratos.New(
 		kratos.Name("identity-service"),
 		kratos.Server(grpcSrv, httpSrv),
 	)
-	return app, func() {}
+	return app, func() {
+		if billingConn != nil {
+			billingConn.Close()
+		}
+	}
 }
 
 func registrationPolicyFromConfig(cfg *identitycfg.Config) server.RegistrationPolicy {

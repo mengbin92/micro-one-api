@@ -6,6 +6,7 @@ import appregistry "micro-one-api/internal/pkg/registry"
 type Config struct {
 	Server       ServerConfig       `json:"server"`
 	Data         DataConfig         `json:"data"`
+	Clients      ClientsConfig      `json:"clients"`
 	OAuth        OAuthConfig        `json:"oauth"`
 	Registration RegistrationConfig `json:"registration"`
 	Registry     appregistry.Config `json:"registry"`
@@ -36,6 +37,14 @@ type DatabaseConfig struct {
 
 type RedisConfig struct {
 	Addr string `json:"addr"`
+}
+
+type ClientsConfig struct {
+	Billing BillingClientConfig `json:"billing"`
+}
+
+type BillingClientConfig struct {
+	Endpoint string `json:"endpoint"`
 }
 
 type OAuthConfig struct {

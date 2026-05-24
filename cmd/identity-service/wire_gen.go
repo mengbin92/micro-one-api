@@ -7,7 +7,10 @@ import (
 
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
+	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/internal/identity/biz"
 	identitycfg "micro-one-api/internal/identity/config"
 	"micro-one-api/internal/identity/data"
@@ -50,7 +53,16 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	// Setup OAuth providers
 	oauthRegistry := setupOAuth(cfg)
-	httpSrv := server.NewHTTPServerWithRegistrationPolicy(cfg.Server.HTTP.Addr, uc, oauthRegistry, registrationPolicyFromConfig(cfg))
+	var billingClient billingv1.BillingServiceClient
+	var billingConn *grpc.ClientConn
+	if cfg.Clients.Billing.Endpoint != "" {
+		billingConn, err = grpc.NewClient(cfg.Clients.Billing.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to connect to billing service: %w", err)
+		}
+		billingClient = billingv1.NewBillingServiceClient(billingConn)
+	}
+	httpSrv := server.NewHTTPServerWithRegistrationPolicy(cfg.Server.HTTP.Addr, uc, oauthRegistry, registrationPolicyFromConfig(cfg), billingClient)
 
 	// Setup service registration
 	registrar, rErr := appregistry.NewRegistrar(cfg.Registry)
@@ -67,7 +79,13 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	}
 	app := kratos.New(kratosOpts...)
 
-	return app, func() {}, nil
+	cleanup := func() {
+		if billingConn != nil {
+			billingConn.Close()
+		}
+	}
+
+	return app, cleanup, nil
 }
 
 func registrationPolicyFromConfig(cfg *identitycfg.Config) server.RegistrationPolicy {

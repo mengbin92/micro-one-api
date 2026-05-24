@@ -26,17 +26,29 @@ interface UserSelf {
   id: number;
   username: string;
   display_name: string;
-  quota: number;
-  used_quota: number;
   role: number;
+}
+
+interface AccountDashboard {
+  quota?: number;
+  used_quota?: number;
+  request_count?: number;
+  frozen_quota?: number;
+  group?: string;
+  group_ratio?: number;
+  usage?: UsageItem[];
 }
 
 function formatQuota(q: number) {
   return (q / 500000).toFixed(2);
 }
 
+function numberOrZero(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
 export function DashboardPage() {
-  const { data: user, isLoading: isUserLoading } = useQuery({
+  const { isLoading: isUserLoading } = useQuery({
     queryKey: ['user-self'],
     queryFn: async () => {
       const res = await apiClient.get('/user/self');
@@ -44,21 +56,25 @@ export function DashboardPage() {
     },
   });
 
-  const { data: usage, isLoading } = useQuery({
-    queryKey: ['dashboard-usage'],
+  const { data: dashboard, isLoading } = useQuery({
+    queryKey: ['dashboard-summary'],
     queryFn: async () => {
       const res = await apiClient.get('/user/dashboard');
-      return res.data.data as UsageItem[];
+      return res.data.data as AccountDashboard;
     },
   });
 
-  const items = usage ?? [];
+  const items = Array.isArray(dashboard?.usage) ? dashboard.usage : [];
   const totalCount = items.reduce((s, x) => s + (x.count || 0), 0);
   const totalQuota = items.reduce((s, x) => s + (x.quota || 0), 0);
   const totalTokens = items.reduce(
     (s, x) => s + (x.prompt_tokens || 0) + (x.completion_tokens || 0),
     0
   );
+  const remainingQuota = numberOrZero(dashboard?.quota);
+  const usedQuota = numberOrZero(dashboard?.used_quota);
+  const requestCount = items.length > 0 ? totalCount : numberOrZero(dashboard?.request_count);
+  const quotaTotal = items.length > 0 ? totalQuota : usedQuota;
 
   return (
     <div className="space-y-6">
@@ -76,7 +92,7 @@ export function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{user ? formatQuota(user.quota) : '—'}</p>
+                <p className="text-2xl font-bold">{dashboard ? formatQuota(remainingQuota) : '—'}</p>
               </CardContent>
             </Card>
             <Card>
@@ -84,7 +100,7 @@ export function DashboardPage() {
                 <CardTitle className="text-sm font-medium text-muted-foreground">Used Quota</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{user ? formatQuota(user.used_quota) : '—'}</p>
+                <p className="text-2xl font-bold">{dashboard ? formatQuota(usedQuota) : '—'}</p>
               </CardContent>
             </Card>
             <Card>
@@ -94,7 +110,7 @@ export function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{totalCount.toLocaleString()}</p>
+                <p className="text-2xl font-bold">{requestCount.toLocaleString()}</p>
               </CardContent>
             </Card>
             <Card>
@@ -108,7 +124,7 @@ export function DashboardPage() {
                   {totalTokens > 0 ? `${(totalTokens / 1000).toFixed(1)}K` : '—'}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Quota: {formatQuota(totalQuota)}
+                  Quota: {formatQuota(quotaTotal)}
                 </p>
               </CardContent>
             </Card>
