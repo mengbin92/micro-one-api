@@ -51,6 +51,17 @@ type RawStreamResponse struct {
 	Body       io.ReadCloser
 }
 
+// UpstreamHTTPError preserves the upstream status and response body for callers
+// that need endpoint-specific fallback behavior.
+type UpstreamHTTPError struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (e *UpstreamHTTPError) Error() string {
+	return fmt.Sprintf("upstream error: status=%d, body=%s", e.StatusCode, string(e.Body))
+}
+
 // ChatCompletionsRequest represents a standardized chat completions request
 type ChatCompletionsRequest struct {
 	Model       string    `json:"model"`
@@ -229,7 +240,7 @@ func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
 	}
 
 	return &RawResponse{
@@ -283,7 +294,7 @@ func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*R
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read raw response: %w", readErr)
 		}
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
 	}
 
 	return &RawStreamResponse{
@@ -332,7 +343,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
 	}
 
 	var response ChatCompletionsResponse
@@ -368,7 +379,7 @@ func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
 	}
 
 	return readOpenAIStream(resp), nil

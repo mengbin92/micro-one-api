@@ -474,6 +474,167 @@ func TestHTTPServerResponsesCreateStreamsRawSSE(t *testing.T) {
 	}
 }
 
+func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotPaths []string
+	var chatPayload map[string]interface{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/responses":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
+		case "/v1/chat/completions":
+			_ = json.NewDecoder(r.Body).Decode(&chatPayload)
+			_, _ = w.Write([]byte(`{
+				"id":"chatcmpl_fallback_123",
+				"object":"chat.completion",
+				"created":1710000000,
+				"model":"gpt-4o-mini",
+				"choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],
+				"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	logClient := &rawLogClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping"}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if got := strings.Join(gotPaths, ","); got != "/v1/responses,/v1/chat/completions" {
+		t.Fatalf("upstream paths = %q", got)
+	}
+	if chatPayload["model"] != "gpt-4o-mini" {
+		t.Fatalf("fallback chat model = %v", chatPayload["model"])
+	}
+	if !strings.Contains(rec.Body.String(), `"object":"response"`) || !strings.Contains(rec.Body.String(), `"output_text":"pong"`) {
+		t.Fatalf("fallback response mismatch: %s", rec.Body.String())
+	}
+	if billingClient.commits != 1 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+	if len(logClient.entries) != 1 {
+		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
+	}
+	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].Endpoint != "/chat/completions" {
+		t.Fatalf("commit endpoint mismatch: %#v", billingClient.commitRequests)
+	}
+	gotLog := logClient.entries[0]
+	if gotLog.Quota != 6 || gotLog.PromptTokens != 4 || gotLog.CompletionTokens != 2 {
+		t.Fatalf("usage log mismatch: quota=%d prompt=%d completion=%d", gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens)
+	}
+}
+
+func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotPaths []string
+	var chatStream bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		switch r.URL.Path {
+		case "/v1/responses":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
+		case "/v1/chat/completions":
+			var payload map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			chatStream, _ = payload["stream"].(bool)
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"po"},"finish_reason":null}]}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"ng"},"finish_reason":null}]}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}` + "\n\n"))
+			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	logClient := &rawLogClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping","stream":true}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if got := strings.Join(gotPaths, ","); got != "/v1/responses,/v1/chat/completions" {
+		t.Fatalf("upstream paths = %q", got)
+	}
+	if !chatStream {
+		t.Fatal("fallback chat request was not streaming")
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `response.output_text.delta`) || !strings.Contains(body, `"delta":"po"`) || !strings.Contains(body, `data: [DONE]`) {
+		t.Fatalf("fallback stream body mismatch: %s", body)
+	}
+	if billingClient.commits != 1 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].Endpoint != "/chat/completions" {
+		t.Fatalf("commit endpoint mismatch: %#v", billingClient.commitRequests)
+	}
+	if len(logClient.entries) != 1 || !logClient.entries[0].IsStream {
+		t.Fatalf("stream usage log mismatch: entries=%#v", logClient.entries)
+	}
+}
+
 func TestHTTPServerResponsesRetrieveUsesStoredResponseRoute(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
@@ -808,6 +969,59 @@ func TestHTTPServerChatCompletionWritesUsageLogOnSuccess(t *testing.T) {
 	}
 	if got.ChannelId != 11 || got.TokenName != "token-7" || got.IsStream {
 		t.Fatalf("log metadata mismatch: channel=%d token=%q stream=%v", got.ChannelId, got.TokenName, got.IsStream)
+	}
+}
+
+func TestHTTPServerChatCompletionRejectsFailedReservation(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"usage":{"total_tokens":1}}`))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{reserveSuccess: false, reserveMessage: "insufficient quota"}
+	logClient := &rawLogClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusPaymentRequired {
+		t.Fatalf("status = %d, want 402, body=%s", rec.Code, rec.Body.String())
+	}
+	if upstreamCalled {
+		t.Fatal("upstream was called after failed reservation")
+	}
+	if billingClient.commits != 0 {
+		t.Fatalf("commits = %d, want 0", billingClient.commits)
+	}
+	if len(logClient.entries) != 0 {
+		t.Fatalf("usage logs = %d, want 0", len(logClient.entries))
 	}
 }
 

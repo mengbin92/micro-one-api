@@ -94,13 +94,25 @@ func (c *rawLogClient) IngestLog(ctx context.Context, req *logv1.IngestLogReques
 
 type rawBillingClient struct {
 	billingv1.BillingServiceClient
-	commits  int
-	releases int
+	commits        int
+	commitRequests []*billingv1.CommitQuotaRequest
+	releases       int
+	reserveSuccess bool
+	reserveMessage string
+	commitSuccess  bool
+	commitMessage  string
+	releaseSuccess bool
+	releaseMessage string
 }
 
 func (c *rawBillingClient) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReserveQuotaResponse, error) {
+	success := c.reserveSuccess
+	if !success && c.reserveMessage == "" {
+		success = true
+	}
 	return &billingv1.ReserveQuotaResponse{
-		Success:        true,
+		Success:        success,
+		ErrorMessage:   c.reserveMessage,
 		ReservationId:  "reservation-1",
 		ReservedAmount: req.EstimatedTokens,
 	}, nil
@@ -108,10 +120,19 @@ func (c *rawBillingClient) ReserveQuota(ctx context.Context, req *billingv1.Rese
 
 func (c *rawBillingClient) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest, opts ...grpc.CallOption) (*billingv1.CommitQuotaResponse, error) {
 	c.commits++
-	return &billingv1.CommitQuotaResponse{Success: true, CommittedAmount: req.ActualTokens}, nil
+	c.commitRequests = append(c.commitRequests, req)
+	success := c.commitSuccess
+	if !success && c.commitMessage == "" {
+		success = true
+	}
+	return &billingv1.CommitQuotaResponse{Success: success, ErrorMessage: c.commitMessage, CommittedAmount: req.ActualTokens}, nil
 }
 
 func (c *rawBillingClient) ReleaseQuota(ctx context.Context, req *billingv1.ReleaseQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReleaseQuotaResponse, error) {
 	c.releases++
-	return &billingv1.ReleaseQuotaResponse{Success: true}, nil
+	success := c.releaseSuccess
+	if !success && c.releaseMessage == "" {
+		success = true
+	}
+	return &billingv1.ReleaseQuotaResponse{Success: success, ErrorMessage: c.releaseMessage}, nil
 }

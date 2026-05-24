@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	crypto_rand "crypto/rand"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -209,17 +210,21 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			}
 
 			actualTokens := extractTotalTokens(resp.Body, estimateRawTokens(body))
-			_ = s.commitQuota(ctx, reservation.ReservationId, actualTokens, true)
-			s.ingestUsageLog(ctx, usageLogInput{
+			logInput := usageLogInput{
 				UserID:      plan.Auth.UserID,
 				TokenID:     plan.Auth.TokenID,
 				RequestID:   requestID,
+				Endpoint:    upstreamPath,
 				ModelName:   clientModel,
 				Quota:       actualTokens,
 				ChannelID:   ch.ID,
 				ElapsedTime: time.Since(startedAt).Milliseconds(),
 				IsStream:    false,
-			})
+			}
+			if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
+				return err
+			}
+			s.ingestUsageLog(ctx, logInput)
 			upstreamResp = resp
 			return nil
 		})
@@ -322,23 +327,56 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		if isRawStreamRequest(body) {
 			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 			if streamErr != nil {
+				if shouldFallbackResponsesToChat(upstreamPath, streamErr) {
+					fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), body)
+					if fallbackErr == nil && fallbackResp.Stream != nil {
+						defer fallbackResp.Stream.Body.Close()
+						writeRawStreamResponse(w, fallbackResp.Stream)
+						usage := fallbackResp.Usage.TotalTokens
+						if usage <= 0 {
+							usage = estimateRawTokens(body)
+						}
+						logInput := usageLogInput{
+							UserID:      plan.Auth.UserID,
+							TokenID:     plan.Auth.TokenID,
+							RequestID:   requestID,
+							Endpoint:    "/chat/completions",
+							ModelName:   clientModel,
+							Quota:       usage,
+							ChannelID:   ch.ID,
+							ElapsedTime: time.Since(startedAt).Milliseconds(),
+							IsStream:    true,
+						}
+						if err := s.commitQuota(ctx, reservation.ReservationId, usage, true, logInput); err != nil {
+							return err
+						}
+						s.ingestUsageLog(ctx, logInput)
+						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
+						responseChannel = ch
+						return nil
+					}
+				}
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream stream error")
 				return streamErr
 			}
 			defer streamResp.Body.Close()
 			writeRawStreamResponse(w, streamResp)
 			usage := estimateRawTokens(body)
-			_ = s.commitQuota(ctx, reservation.ReservationId, usage, true)
-			s.ingestUsageLog(ctx, usageLogInput{
+			logInput := usageLogInput{
 				UserID:      plan.Auth.UserID,
 				TokenID:     plan.Auth.TokenID,
 				RequestID:   requestID,
+				Endpoint:    upstreamPath,
 				ModelName:   clientModel,
 				Quota:       usage,
 				ChannelID:   ch.ID,
 				ElapsedTime: time.Since(startedAt).Milliseconds(),
 				IsStream:    true,
-			})
+			}
+			if err := s.commitQuota(ctx, reservation.ReservationId, usage, true, logInput); err != nil {
+				return err
+			}
+			s.ingestUsageLog(ctx, logInput)
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
 			responseChannel = ch
 			return nil
@@ -346,16 +384,45 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 
 		resp, forwardErr := s.forwardResponsesRaw(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 		if forwardErr != nil {
+			if shouldFallbackResponsesToChat(upstreamPath, forwardErr) {
+				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), body)
+				if fallbackErr == nil && fallbackResp.Response != nil {
+					usage := fallbackResp.Usage
+					if usage.TotalTokens <= 0 {
+						usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(body))
+					}
+					logInput := usageLogInput{
+						UserID:           plan.Auth.UserID,
+						TokenID:          plan.Auth.TokenID,
+						RequestID:        requestID,
+						Endpoint:         "/chat/completions",
+						ModelName:        clientModel,
+						Quota:            usage.TotalTokens,
+						PromptTokens:     usage.PromptTokens,
+						CompletionTokens: usage.CompletionTokens,
+						ChannelID:        ch.ID,
+						ElapsedTime:      time.Since(startedAt).Milliseconds(),
+						IsStream:         false,
+					}
+					if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
+						return err
+					}
+					s.ingestUsageLog(ctx, logInput)
+					upstreamResp = fallbackResp.Response
+					responseChannel = ch
+					return nil
+				}
+			}
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
 			return forwardErr
 		}
 
 		usage := extractRawUsage(resp.Body, estimateRawTokens(body))
-		_ = s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true)
-		s.ingestUsageLog(ctx, usageLogInput{
+		logInput := usageLogInput{
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
 			RequestID:        requestID,
+			Endpoint:         upstreamPath,
 			ModelName:        clientModel,
 			Quota:            usage.TotalTokens,
 			PromptTokens:     usage.PromptTokens,
@@ -363,7 +430,11 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			ChannelID:        ch.ID,
 			ElapsedTime:      time.Since(startedAt).Milliseconds(),
 			IsStream:         false,
-		})
+		}
+		if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
+			return err
+		}
+		s.ingestUsageLog(ctx, logInput)
 		upstreamResp = resp
 		responseChannel = ch
 		return nil
@@ -467,17 +538,22 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		defer streamResp.Body.Close()
 		writeRawStreamResponse(w, streamResp)
 		usage := estimateRawTokens(body)
-		_ = s.commitQuota(r.Context(), reservation.ReservationId, usage, true)
-		s.ingestUsageLog(r.Context(), usageLogInput{
+		logInput := usageLogInput{
 			UserID:      authSnapshot.UserId,
 			TokenID:     authSnapshot.TokenId,
 			RequestID:   requestID,
+			Endpoint:    upstreamPath,
 			ModelName:   route.Model,
 			Quota:       usage,
 			ChannelID:   route.Channel.ID,
 			ElapsedTime: time.Since(startedAt).Milliseconds(),
 			IsStream:    true,
-		})
+		}
+		if err := s.commitQuota(r.Context(), reservation.ReservationId, usage, true, logInput); err != nil {
+			s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
+			return
+		}
+		s.ingestUsageLog(r.Context(), logInput)
 		return
 	}
 
@@ -489,11 +565,11 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	}
 
 	usage := extractRawUsage(resp.Body, estimateRawTokens(body))
-	_ = s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true)
-	s.ingestUsageLog(r.Context(), usageLogInput{
+	logInput := usageLogInput{
 		UserID:           authSnapshot.UserId,
 		TokenID:          authSnapshot.TokenId,
 		RequestID:        requestID,
+		Endpoint:         upstreamPath,
 		ModelName:        route.Model,
 		Quota:            usage.TotalTokens,
 		PromptTokens:     usage.PromptTokens,
@@ -501,7 +577,12 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		ChannelID:        route.Channel.ID,
 		ElapsedTime:      time.Since(startedAt).Milliseconds(),
 		IsStream:         false,
-	})
+	}
+	if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
+		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
+		return
+	}
+	s.ingestUsageLog(r.Context(), logInput)
 	if responseID := extractResponseID(resp.Body); responseID != "" {
 		route.UserID = authSnapshot.UserId
 		s.storeResponseRoute(responseID, route)
@@ -636,10 +717,12 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		model = "proxy"
 	}
 
+	requestID := generateRequestID()
+	startedAt := time.Now()
 	reservation, err := s.reserveQuota(
 		r.Context(),
 		fmt.Sprintf("%d", authSnapshot.UserId),
-		generateRequestID(),
+		requestID,
 		estimateRawTokens(body),
 		model,
 		fmt.Sprintf("%d", channelReply.Channel.Id),
@@ -669,7 +752,24 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = s.commitQuota(r.Context(), reservation.ReservationId, extractTotalTokens(resp.Body, estimateRawTokens(body)), true)
+	totalTokens := extractTotalTokens(resp.Body, estimateRawTokens(body))
+	usage := extractRawUsage(resp.Body, totalTokens)
+	if err := s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true, usageLogInput{
+		UserID:           authSnapshot.UserId,
+		TokenID:          authSnapshot.TokenId,
+		RequestID:        requestID,
+		Endpoint:         "/" + targetPart,
+		ModelName:        model,
+		Quota:            totalTokens,
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		ChannelID:        channelReply.Channel.Id,
+		ElapsedTime:      time.Since(startedAt).Milliseconds(),
+		IsStream:         false,
+	}); err != nil {
+		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
+		return
+	}
 	writeRawResponse(w, resp)
 }
 
@@ -747,6 +847,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				UserID:    plan.Auth.UserID,
 				TokenID:   plan.Auth.TokenID,
 				RequestID: requestID,
+				Endpoint:  "/v1/chat/completions",
 				ModelName: clientModel,
 				ChannelID: ch.ID,
 				IsStream:  true,
@@ -763,11 +864,11 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 		// Success — commit quota and return
 		actualTokens := s.calculateActualTokens(resp)
-		_ = s.commitQuota(ctx, reservation.ReservationId, actualTokens, true)
-		s.ingestUsageLog(ctx, usageLogInput{
+		logInput := usageLogInput{
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
 			RequestID:        requestID,
+			Endpoint:         "/v1/chat/completions",
 			ModelName:        clientModel,
 			Quota:            actualTokens,
 			PromptTokens:     int64(resp.Usage.PromptTokens),
@@ -775,7 +876,11 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			ChannelID:        ch.ID,
 			ElapsedTime:      time.Since(startedAt).Milliseconds(),
 			IsStream:         false,
-		})
+		}
+		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
+			return err
+		}
+		s.ingestUsageLog(ctx, logInput)
 		s.writeJSON(w, http.StatusOK, resp)
 		return nil
 	})
@@ -845,11 +950,17 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			totalTokens = estimatedTokens
 			completionTokens = estimatedTokens
 		}
-		_ = s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true)
 		logInput.Quota = totalTokens
 		logInput.PromptTokens = promptTokens
 		logInput.CompletionTokens = completionTokens
 		logInput.ElapsedTime = time.Since(startedAt).Milliseconds()
+		if logInput.Endpoint == "" {
+			logInput.Endpoint = "/v1/chat/completions"
+		}
+		if err := s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true, logInput); err != nil {
+			s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
+			return
+		}
 		s.ingestUsageLog(r.Context(), logInput)
 	} else {
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "stream error")
@@ -860,6 +971,7 @@ type usageLogInput struct {
 	UserID           int64
 	TokenID          int64
 	RequestID        string
+	Endpoint         string
 	ModelName        string
 	Quota            int64
 	PromptTokens     int64
@@ -1200,17 +1312,39 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 		Model:           model,
 		ChannelId:       channelID,
 	}
-	return s.billingClient.ReserveQuota(ctx, req)
+	resp, err := s.billingClient.ReserveQuota(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || !resp.GetSuccess() {
+		return resp, stderrors.New(billingErrorMessage(resp, "reserve quota failed"))
+	}
+	return resp, nil
 }
 
-func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actualTokens int64, success bool) error {
+func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actualTokens int64, success bool, details ...usageLogInput) error {
 	req := &billingv1.CommitQuotaRequest{
 		ReservationId: reservationID,
 		ActualTokens:  actualTokens,
 		Success:       success,
 	}
-	_, err := s.billingClient.CommitQuota(ctx, req)
-	return err
+	if len(details) > 0 {
+		detail := details[0]
+		req.TokenName = fmt.Sprintf("token-%d", detail.TokenID)
+		req.Endpoint = detail.Endpoint
+		req.PromptTokens = detail.PromptTokens
+		req.CompletionTokens = detail.CompletionTokens
+		req.ElapsedTime = detail.ElapsedTime
+		req.IsStream = detail.IsStream
+	}
+	resp, err := s.billingClient.CommitQuota(ctx, req)
+	if err != nil {
+		return err
+	}
+	if resp == nil || !resp.GetSuccess() {
+		return stderrors.New(billingErrorMessage(resp, "commit quota failed"))
+	}
+	return nil
 }
 
 func (s *HTTPServer) releaseQuota(ctx context.Context, reservationID, reason string) error {
@@ -1218,8 +1352,28 @@ func (s *HTTPServer) releaseQuota(ctx context.Context, reservationID, reason str
 		ReservationId: reservationID,
 		Reason:        reason,
 	}
-	_, err := s.billingClient.ReleaseQuota(ctx, req)
-	return err
+	resp, err := s.billingClient.ReleaseQuota(ctx, req)
+	if err != nil {
+		return err
+	}
+	if resp == nil || !resp.GetSuccess() {
+		return stderrors.New(billingErrorMessage(resp, "release quota failed"))
+	}
+	return nil
+}
+
+type billingFailure interface {
+	GetErrorMessage() string
+}
+
+func billingErrorMessage(resp billingFailure, fallback string) string {
+	if resp == nil {
+		return fallback
+	}
+	if msg := strings.TrimSpace(resp.GetErrorMessage()); msg != "" {
+		return msg
+	}
+	return fallback
 }
 
 func (s *HTTPServer) estimateTokens(req *relayprovider.ChatCompletionsRequest) int64 {
