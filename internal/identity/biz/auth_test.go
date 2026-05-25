@@ -1281,7 +1281,7 @@ func TestIdentityUsecase_SetRole_PromoteCommonToAdmin(t *testing.T) {
 	}, tokens: make(map[string]*Token)}
 	uc := NewIdentityUsecase(repo)
 
-	got, err := uc.SetRole(context.Background(), 7, RoleAdminUser)
+	got, err := uc.SetRole(context.Background(), nil, 7, RoleAdminUser)
 	if err != nil {
 		t.Fatalf("SetRole: %v", err)
 	}
@@ -1302,7 +1302,7 @@ func TestIdentityUsecase_SetRole_DemoteAdminToCommon(t *testing.T) {
 	}, tokens: make(map[string]*Token)}
 	uc := NewIdentityUsecase(repo)
 
-	got, err := uc.SetRole(context.Background(), 7, RoleCommonUser)
+	got, err := uc.SetRole(context.Background(), nil, 7, RoleCommonUser)
 	if err != nil {
 		t.Fatalf("SetRole: %v", err)
 	}
@@ -1317,7 +1317,7 @@ func TestIdentityUsecase_SetRole_RootCannotBeChanged(t *testing.T) {
 	}, tokens: make(map[string]*Token)}
 	uc := NewIdentityUsecase(repo)
 
-	if _, err := uc.SetRole(context.Background(), 1, RoleCommonUser); !errors.Is(err, ErrCannotChangeRootRole) {
+	if _, err := uc.SetRole(context.Background(), nil, 1, RoleCommonUser); !errors.Is(err, ErrCannotChangeRootRole) {
 		t.Fatalf("expected ErrCannotChangeRootRole, got %v", err)
 	}
 	if repo.users[1].Role != RoleRootUser {
@@ -1332,10 +1332,96 @@ func TestIdentityUsecase_SetRole_RejectsRootValueAndInvalid(t *testing.T) {
 	uc := NewIdentityUsecase(repo)
 
 	// Granting root via SetRole is not allowed — root is only set by bootstrap.
-	if _, err := uc.SetRole(context.Background(), 7, RoleRootUser); !errors.Is(err, ErrInvalidRole) {
+	if _, err := uc.SetRole(context.Background(), nil, 7, RoleRootUser); !errors.Is(err, ErrInvalidRole) {
 		t.Fatalf("expected ErrInvalidRole for root, got %v", err)
 	}
-	if _, err := uc.SetRole(context.Background(), 7, 42); !errors.Is(err, ErrInvalidRole) {
+	if _, err := uc.SetRole(context.Background(), nil, 7, 42); !errors.Is(err, ErrInvalidRole) {
 		t.Fatalf("expected ErrInvalidRole for 42, got %v", err)
+	}
+}
+
+func TestIdentityUsecase_SetRole_OperatorMustBeAdmin(t *testing.T) {
+	common := &User{ID: 5, Username: "bob", Role: RoleCommonUser, Status: UserStatusEnabled}
+	repo := &mockIdentityRepo{users: map[int64]*User{
+		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
+	}, tokens: make(map[string]*Token)}
+	uc := NewIdentityUsecase(repo)
+
+	if _, err := uc.SetRole(context.Background(), common, 7, RoleAdminUser); !errors.Is(err, ErrOperatorNotAdmin) {
+		t.Fatalf("expected ErrOperatorNotAdmin, got %v", err)
+	}
+}
+
+func TestIdentityUsecase_SetRole_OperatorCannotChangeSelf(t *testing.T) {
+	op := &User{ID: 9, Username: "ops", Role: RoleAdminUser, Status: UserStatusEnabled}
+	repo := &mockIdentityRepo{users: map[int64]*User{
+		9: op,
+	}, tokens: make(map[string]*Token)}
+	uc := NewIdentityUsecase(repo)
+
+	if _, err := uc.SetRole(context.Background(), op, 9, RoleCommonUser); !errors.Is(err, ErrCannotChangeSelf) {
+		t.Fatalf("expected ErrCannotChangeSelf, got %v", err)
+	}
+}
+
+func TestIdentityUsecase_SetRole_OperatorCannotOutrankTarget(t *testing.T) {
+	// Admin tries to demote another admin → both at role 10, operator
+	// does not strictly outrank, so this must be refused.
+	op := &User{ID: 9, Username: "ops", Role: RoleAdminUser, Status: UserStatusEnabled}
+	repo := &mockIdentityRepo{users: map[int64]*User{
+		8: {ID: 8, Username: "peer", Role: RoleAdminUser, Status: UserStatusEnabled},
+	}, tokens: make(map[string]*Token)}
+	uc := NewIdentityUsecase(repo)
+
+	if _, err := uc.SetRole(context.Background(), op, 8, RoleCommonUser); !errors.Is(err, ErrCannotOutrankOperator) {
+		t.Fatalf("expected ErrCannotOutrankOperator, got %v", err)
+	}
+}
+
+func TestIdentityUsecase_SetRole_OperatorCannotPromoteToOwnRole(t *testing.T) {
+	// Admin tries to promote a common user to admin (its own rank) →
+	// refused: new role must be strictly below operator role.
+	op := &User{ID: 9, Username: "ops", Role: RoleAdminUser, Status: UserStatusEnabled}
+	repo := &mockIdentityRepo{users: map[int64]*User{
+		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
+	}, tokens: make(map[string]*Token)}
+	uc := NewIdentityUsecase(repo)
+
+	if _, err := uc.SetRole(context.Background(), op, 7, RoleAdminUser); !errors.Is(err, ErrCannotOutrankOperator) {
+		t.Fatalf("expected ErrCannotOutrankOperator, got %v", err)
+	}
+}
+
+func TestIdentityUsecase_SetRole_RootCanPromoteAdmin(t *testing.T) {
+	root := &User{ID: 1, Username: "root", Role: RoleRootUser, Status: UserStatusEnabled}
+	repo := &mockIdentityRepo{users: map[int64]*User{
+		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
+	}, tokens: make(map[string]*Token)}
+	uc := NewIdentityUsecase(repo)
+
+	got, err := uc.SetRole(context.Background(), root, 7, RoleAdminUser)
+	if err != nil {
+		t.Fatalf("root should be able to promote common → admin: %v", err)
+	}
+	if got.Role != RoleAdminUser {
+		t.Fatalf("returned role = %d, want %d", got.Role, RoleAdminUser)
+	}
+}
+
+func TestIdentityUsecase_SetRole_AdminCanDemoteCommonUserNoOp(t *testing.T) {
+	// Admin demoting a common user to common is a no-op but should
+	// succeed (defensive: avoids 500s on idempotent UI clicks).
+	op := &User{ID: 9, Username: "ops", Role: RoleAdminUser, Status: UserStatusEnabled}
+	repo := &mockIdentityRepo{users: map[int64]*User{
+		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
+	}, tokens: make(map[string]*Token)}
+	uc := NewIdentityUsecase(repo)
+
+	got, err := uc.SetRole(context.Background(), op, 7, RoleCommonUser)
+	if err != nil {
+		t.Fatalf("admin should be able to set common→common (no-op): %v", err)
+	}
+	if got.Role != RoleCommonUser {
+		t.Fatalf("role = %d, want %d", got.Role, RoleCommonUser)
 	}
 }

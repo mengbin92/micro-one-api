@@ -205,7 +205,21 @@ func (s *IdentityService) DeleteUser(ctx context.Context, req *identityv1.Delete
 }
 
 func (s *IdentityService) SetUserRole(ctx context.Context, req *identityv1.SetUserRoleRequest) (*identityv1.SetUserRoleResponse, error) {
-	user, err := s.uc.SetRole(ctx, req.UserId, req.Role)
+	var operator *biz.User
+	if req.OperatorUserId > 0 {
+		op, err := s.uc.GetUser(ctx, req.OperatorUserId)
+		if err != nil {
+			if applogger.Log != nil {
+				applogger.Log.Warn("SetUserRole operator lookup failed", zap.Error(err))
+			}
+			return &identityv1.SetUserRoleResponse{
+				Success: false,
+				Message: "operator not found",
+			}, nil
+		}
+		operator = op
+	}
+	user, err := s.uc.SetRole(ctx, operator, req.UserId, req.Role)
 	if err != nil {
 		if applogger.Log != nil {
 			applogger.Log.Warn("SetUserRole failed", zap.Error(err))

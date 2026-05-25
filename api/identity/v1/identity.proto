@@ -150,9 +150,15 @@ message DeleteUserResponse {
 // SetUserRoleRequest sets the role of an existing user. The role value
 // must match a biz.Role* constant (0/1/10). Role 100 (root) cannot be
 // granted or revoked via this RPC.
+//
+// operator_user_id identifies the admin issuing the change. When set
+// (> 0) identity-service enforces operator-vs-target rank checks; when
+// 0 the call is treated as a system-level invocation that bypasses those
+// checks (used by bootstrap and the admin-reset CLI).
 message SetUserRoleRequest {
   int64 user_id = 1;
   int32 role = 2;
+  int64 operator_user_id = 3;
 }
 
 message SetUserRoleResponse {

@@ -269,6 +269,11 @@ message ResetUserQuotaResponse {
 message AdminSetUserRoleRequest {
   int64 user_id = 1;
   int32 role = 2;
+  // Operator (admin issuing the change). When 0, admin-api treats the
+  // call as a system-level invocation that bypasses operator-vs-target
+  // rank checks; HTTP gateways should populate it from the request's
+  // X-Operator-User-Id header.
+  int64 operator_user_id = 3;
 }
 
 message AdminSetUserRoleResponse {

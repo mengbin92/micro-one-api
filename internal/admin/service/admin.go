@@ -473,8 +473,9 @@ func (s *AdminService) DeleteUser(ctx context.Context, req *adminv1.AdminDeleteU
 
 func (s *AdminService) SetUserRole(ctx context.Context, req *adminv1.AdminSetUserRoleRequest) (*adminv1.AdminSetUserRoleResponse, error) {
 	resp, err := s.identityClient.SetUserRole(ctx, &identityv1.SetUserRoleRequest{
-		UserId: req.UserId,
-		Role:   req.Role,
+		UserId:         req.UserId,
+		Role:           req.Role,
+		OperatorUserId: req.OperatorUserId,
 	})
 	if err != nil {
 		return &adminv1.AdminSetUserRoleResponse{Success: false, Message: err.Error()}, nil

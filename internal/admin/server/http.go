@@ -819,11 +819,23 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 		// user to admin; demote returns them to common. Root cannot be
 		// changed via this endpoint — that constraint is enforced by
 		// identity-service so we just surface its error.
+		//
+		// X-Operator-User-Id identifies the calling admin so identity-service
+		// can enforce operator-vs-target rank rules. When the header is
+		// missing the call is treated as a system invocation that skips
+		// those checks — fine for now because admin-api is gated by the
+		// shared ADMIN_TOKEN; flip to required once admin auth moves to
+		// per-user sessions.
 		newRole := int32(10) // admin
 		if req.Action == "demote" {
 			newRole = 1 // common user
 		}
-		resp, err := svc.SetUserRole(r.Context(), &adminv1.AdminSetUserRoleRequest{UserId: userID, Role: newRole})
+		operatorID, _ := strconv.ParseInt(strings.TrimSpace(r.Header.Get("X-Operator-User-Id")), 10, 64)
+		resp, err := svc.SetUserRole(r.Context(), &adminv1.AdminSetUserRoleRequest{
+			UserId:         userID,
+			Role:           newRole,
+			OperatorUserId: operatorID,
+		})
 		if err != nil || !resp.GetSuccess() {
 			message := ""
 			if resp != nil {

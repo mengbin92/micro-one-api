@@ -126,6 +126,21 @@ go run ./cmd/relay-gateway
 
 代码内务必通过 `user.IsAdmin()` / `user.IsRoot()` 判定,**不要**再用 `user.Username == "admin"`。
 
+##### 调用 promote/demote 时的操作者约束
+
+`/api/user/manage` 的 `promote` / `demote` 动作会触发 identity-service 的 `SetUserRole`。
+当请求头 `X-Operator-User-Id: <user_id>` 存在时,会按下列规则强校验:
+
+1. 操作者必须存在,且角色 ≥ `RoleAdminUser`
+2. 操作者不能修改自己的角色
+3. 操作者必须**严格**高于目标用户的当前角色(同级 admin 之间无法互相降级)
+4. 新角色必须**严格**低于操作者角色(admin 不能把别人提升到 admin)
+5. root 用户的角色不可被任何人修改;`SetRole` 也不会授予 root 角色
+
+未带 `X-Operator-User-Id` 时按"系统调用"处理,仅执行 root 保护与角色合法性检查——
+之所以保留这条豁免,是因为当前 admin-api 由共享 `ADMIN_TOKEN` 鉴权,没有具体 operator 身份。
+后续若切换为每用户 session 鉴权,可在 admin/server 入口处把它升级为必填。
+
 ### channel-service
 - `CHANNEL_GRPC_ADDR` - gRPC 监听地址（默认: 127.0.0.1:9002）
 - `CHANNEL_SQL_DSN` - 数据库连接字符串（测试环境可为空）

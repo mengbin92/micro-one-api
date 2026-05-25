@@ -554,8 +554,11 @@ func (uc *IdentityUsecase) UpdateUser(ctx context.Context, userID int64, display
 }
 
 var (
-	ErrInvalidRole          = errors.New("invalid role")
-	ErrCannotChangeRootRole = errors.New("cannot change root user role")
+	ErrInvalidRole           = errors.New("invalid role")
+	ErrCannotChangeRootRole  = errors.New("cannot change root user role")
+	ErrOperatorNotAdmin      = errors.New("operator is not an admin")
+	ErrCannotChangeSelf      = errors.New("operator cannot change own role")
+	ErrCannotOutrankOperator = errors.New("target role would meet or exceed operator role")
 )
 
 // SetRole updates a user's role. The new role must be one of the named
@@ -563,11 +566,36 @@ var (
 // allowed — the root account is only created by bootstrap. Demoting an
 // existing root user is also refused so an admin cannot accidentally lock
 // every operator out of the system.
-func (uc *IdentityUsecase) SetRole(ctx context.Context, userID int64, role int32) (*User, error) {
+//
+// When operator is non-nil it MUST already be loaded from the database
+// (transport layer decides where it came from — JWT, header, etc.). The
+// following checks apply:
+//   - operator must be admin or higher
+//   - operator cannot change its own role
+//   - operator must strictly outrank the target user (you cannot demote
+//     someone at or above your own rank)
+//   - new role must be strictly below operator's role (you cannot promote
+//     someone to your own level or above)
+//
+// Passing operator == nil represents a system-level call (e.g. bootstrap,
+// admin-reset CLI) and skips operator-vs-target comparisons. The
+// root-protection and invalid-role checks still apply.
+func (uc *IdentityUsecase) SetRole(ctx context.Context, operator *User, userID int64, role int32) (*User, error) {
 	switch role {
 	case RoleGuestUser, RoleCommonUser, RoleAdminUser:
 	default:
 		return nil, ErrInvalidRole
+	}
+	if operator != nil {
+		if !operator.IsAdmin() {
+			return nil, ErrOperatorNotAdmin
+		}
+		if operator.ID == userID {
+			return nil, ErrCannotChangeSelf
+		}
+		if role >= operator.Role {
+			return nil, ErrCannotOutrankOperator
+		}
 	}
 	user, err := uc.repo.FindUserByID(ctx, userID)
 	if err != nil {
@@ -575,6 +603,9 @@ func (uc *IdentityUsecase) SetRole(ctx context.Context, userID int64, role int32
 	}
 	if user.IsRoot() {
 		return nil, ErrCannotChangeRootRole
+	}
+	if operator != nil && user.Role >= operator.Role {
+		return nil, ErrCannotOutrankOperator
 	}
 	if user.Role == role {
 		return user, nil

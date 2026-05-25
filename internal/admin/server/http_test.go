@@ -1088,6 +1088,7 @@ func TestAdminHTTPOneAPIUserManageRoute(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(`{"username":"alice","action":"promote"}`))
 	req.Header.Set("Authorization", "Bearer admin-token")
+	req.Header.Set("X-Operator-User-Id", "1")
 	rec = httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -1096,6 +1097,9 @@ func TestAdminHTTPOneAPIUserManageRoute(t *testing.T) {
 	}
 	if identityClient.setRoleReq == nil || identityClient.setRoleReq.GetRole() != 10 {
 		t.Fatalf("promote did not call SetUserRole(role=10): got %+v", identityClient.setRoleReq)
+	}
+	if identityClient.setRoleReq.GetOperatorUserId() != 1 {
+		t.Fatalf("operator_user_id not plumbed through: got %d, want 1", identityClient.setRoleReq.GetOperatorUserId())
 	}
 	if !strings.Contains(rec.Body.String(), `"role":10`) {
 		t.Fatalf("promote response missing role=10: %s", rec.Body.String())
@@ -1111,6 +1115,9 @@ func TestAdminHTTPOneAPIUserManageRoute(t *testing.T) {
 	}
 	if identityClient.setRoleReq == nil || identityClient.setRoleReq.GetRole() != 1 {
 		t.Fatalf("demote did not call SetUserRole(role=1): got %+v", identityClient.setRoleReq)
+	}
+	if identityClient.setRoleReq.GetOperatorUserId() != 0 {
+		t.Fatalf("demote without X-Operator-User-Id should send operator_user_id=0, got %d", identityClient.setRoleReq.GetOperatorUserId())
 	}
 }
 
