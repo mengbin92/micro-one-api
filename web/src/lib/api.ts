@@ -29,6 +29,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('userId');
+      localStorage.removeItem('userRole');
       toast.error('Session expired. Please sign in again.');
       window.location.href = '/login';
     }
@@ -36,7 +37,9 @@ apiClient.interceptors.response.use(
   }
 );
 
-// Admin API client: uses adminToken for Authorization
+// Admin API client: admin endpoints now accept the signed-in user's session
+// token (backend authorises by role >= admin). The shared ADMIN_TOKEN remains
+// a backend-only backdoor and is no longer entered from the UI.
 export const adminApiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -46,9 +49,9 @@ export const adminApiClient = axios.create({
 
 adminApiClient.interceptors.request.use(
   (config) => {
-    const adminToken = localStorage.getItem('adminToken');
-    if (adminToken) {
-      config.headers.Authorization = `Bearer ${adminToken}`;
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     const operatorId = localStorage.getItem('userId');
     if (operatorId && operatorId !== '0') {
@@ -63,9 +66,11 @@ adminApiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('adminToken');
-      toast.error('Admin token invalid or expired. Please re-enter.');
-      window.location.reload();
+      localStorage.removeItem('token');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('userRole');
+      toast.error('Session expired. Please sign in again.');
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }

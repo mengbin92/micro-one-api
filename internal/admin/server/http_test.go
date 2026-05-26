@@ -26,6 +26,17 @@ type adminHTTPIdentityClient struct {
 	updatedUser   *identityv1.UpdateUserRequest
 	userStatuses  []int32
 	setRoleReq    *identityv1.SetUserRoleRequest
+	// session-token guard knobs
+	validateUserID int64
+	validateValid  bool
+	userRole       int32
+}
+
+func (c *adminHTTPIdentityClient) ValidateToken(ctx context.Context, req *identityv1.ValidateTokenRequest, opts ...grpc.CallOption) (*identityv1.ValidateTokenReply, error) {
+	return &identityv1.ValidateTokenReply{
+		Valid:  c.validateValid,
+		UserId: c.validateUserID,
+	}, nil
 }
 
 func (c *adminHTTPIdentityClient) GetUser(ctx context.Context, req *identityv1.GetUserRequest, opts ...grpc.CallOption) (*identityv1.GetUserReply, error) {
@@ -38,6 +49,7 @@ func (c *adminHTTPIdentityClient) GetUser(ctx context.Context, req *identityv1.G
 			Group:       "default",
 			Status:      1,
 			Quota:       500,
+			Role:        c.userRole,
 		},
 	}, nil
 }
@@ -1118,6 +1130,90 @@ func TestAdminHTTPOneAPIUserManageRoute(t *testing.T) {
 	}
 	if identityClient.setRoleReq.GetOperatorUserId() != 0 {
 		t.Fatalf("demote without X-Operator-User-Id should send operator_user_id=0, got %d", identityClient.setRoleReq.GetOperatorUserId())
+	}
+}
+
+func TestAdminGuardUserSessionTokenWithAdminRole(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "")
+	identityClient := &adminHTTPIdentityClient{validateValid: true, validateUserID: 7, userRole: 10}
+	srv := newAdminHTTPTestServer(identityClient, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/access", nil)
+	req.Header.Set("Authorization", "Bearer user-session-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"role":10`) {
+		t.Fatalf("access response missing role=10: %s", rec.Body.String())
+	}
+}
+
+func TestAdminGuardUserSessionTokenWithoutAdminRoleRejected(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "")
+	identityClient := &adminHTTPIdentityClient{validateValid: true, validateUserID: 7, userRole: 1}
+	srv := newAdminHTTPTestServer(identityClient, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/access", nil)
+	req.Header.Set("Authorization", "Bearer user-session-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminGuardUserSessionTokenOverridesOperatorId(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "")
+	identityClient := &adminHTTPIdentityClient{validateValid: true, validateUserID: 7, userRole: 10}
+	srv := newAdminHTTPTestServer(identityClient, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(`{"username":"alice","action":"promote"}`))
+	req.Header.Set("Authorization", "Bearer user-session-token")
+	req.Header.Set("X-Operator-User-Id", "999") // spoofed; guard must overwrite it
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("promote response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if identityClient.setRoleReq.GetOperatorUserId() != 7 {
+		t.Fatalf("operator_user_id should be overwritten to authenticated user 7, got %d", identityClient.setRoleReq.GetOperatorUserId())
+	}
+}
+
+func TestAdminGuardRejectsInvalidSessionToken(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "")
+	identityClient := &adminHTTPIdentityClient{validateValid: false}
+	srv := newAdminHTTPTestServer(identityClient, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/access", nil)
+	req.Header.Set("Authorization", "Bearer bogus")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminGuardSharedTokenReportsRootRole(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/access", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"role":100`) {
+		t.Fatalf("shared-token access should report root role=100: %s", rec.Body.String())
 	}
 }
 

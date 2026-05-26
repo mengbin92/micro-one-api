@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -485,6 +486,40 @@ func (s *AdminService) SetUserRole(ctx context.Context, req *adminv1.AdminSetUse
 		Message: resp.Message,
 		Role:    resp.Role,
 	}, nil
+}
+
+// RoleAdmin is the minimum role granting admin-api access. Mirrors
+// biz.RoleAdminUser; duplicated here so the admin package does not depend
+// on identity's biz layer.
+const RoleAdmin int32 = 10
+
+// RoleRoot mirrors biz.RoleRootUser and is reported for system-level
+// (shared ADMIN_TOKEN) access.
+const RoleRoot int32 = 100
+
+// ErrAdminUnauthorized is returned when a session token is invalid or its
+// user lacks the admin role.
+var ErrAdminUnauthorized = errors.New("unauthorized")
+
+// AuthorizeAdminToken validates a user session token and returns the owning
+// user's id and role. It is used by the admin HTTP guard to authorise
+// per-user admin access without the shared ADMIN_TOKEN.
+func (s *AdminService) AuthorizeAdminToken(ctx context.Context, token string) (int64, int32, error) {
+	if s.identityClient == nil {
+		return 0, 0, ErrAdminUnauthorized
+	}
+	vr, err := s.identityClient.ValidateToken(ctx, &identityv1.ValidateTokenRequest{Token: token})
+	if err != nil {
+		return 0, 0, err
+	}
+	if !vr.GetValid() {
+		return 0, 0, ErrAdminUnauthorized
+	}
+	ur, err := s.identityClient.GetUser(ctx, &identityv1.GetUserRequest{UserId: vr.GetUserId()})
+	if err != nil {
+		return 0, 0, err
+	}
+	return vr.GetUserId(), ur.GetUser().GetRole(), nil
 }
 
 func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUserQuotaRequest) (*adminv1.ResetUserQuotaResponse, error) {

@@ -20,13 +20,12 @@ import {
   WalletCards,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { MobileNav } from '@/components/MobileNav';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { adminApiClient, apiClient } from '@/lib/api';
-import { canAccessAdmin, type AdminAccessSnapshot } from '@/lib/admin-access';
+import { apiClient } from '@/lib/api';
+import { canAccessAdmin } from '@/lib/admin-access';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -192,14 +191,15 @@ function SecondaryLinks({ onNavigate }: { onNavigate?: () => void }) {
 export function AppNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [adminToken, setAdminToken] = useState(localStorage.getItem('adminToken') || '');
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [adminSnapshot, setAdminSnapshot] = useState<AdminAccessSnapshot | null>(null);
+  const [role, setRole] = useState<number | null>(() => {
+    const stored = localStorage.getItem('userRole');
+    return stored != null && stored !== '' ? Number(stored) : null;
+  });
   const [user, setUser] = useState<UserSelf | null>(null);
   const [account, setAccount] = useState<AccountDashboard | null>(null);
   const isWide = useMediaQuery('(min-width: 768px)');
-  const effectiveAdminSnapshot = adminToken ? adminSnapshot : null;
-  const isAdmin = canAccessAdmin({ adminToken, snapshot: effectiveAdminSnapshot });
+  const isAdmin = canAccessAdmin({ role });
   const effectiveMobileOpen = !isWide && mobileOpen;
   const currentTitle = routeTitles[location.pathname] ?? '仪表盘';
   const displayName = user?.display_name || user?.username || '用户';
@@ -218,6 +218,10 @@ export function AppNavigation() {
         if (self?.id != null) {
           localStorage.setItem('userId', String(self.id));
         }
+        if (typeof self?.role === 'number') {
+          localStorage.setItem('userRole', String(self.role));
+          setRole(self.role);
+        }
       }
 
       const dashboardResult = results[1];
@@ -231,60 +235,20 @@ export function AppNavigation() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!adminToken) {
-      return;
-    }
-
-    let cancelled = false;
-    adminApiClient
-      .get('/admin/access', { validateStatus: (status) => status < 500 })
-      .then((response) => {
-        if (cancelled) return;
-        if (response.status === 401) {
-          localStorage.removeItem('adminToken');
-          setAdminToken('');
-          setAdminSnapshot(null);
-          return;
-        }
-        setAdminSnapshot(response.data?.data ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setAdminSnapshot(null);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [adminToken]);
-
-  const handleClearAdminToken = () => {
-    localStorage.removeItem('adminToken');
-    setAdminToken('');
-    setAdminSnapshot(null);
-    setMobileOpen(false);
-    toast.success('Admin access disabled');
-  };
-
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('adminToken');
     localStorage.removeItem('userId');
+    localStorage.removeItem('userRole');
     navigate('/login', { replace: true });
   };
 
   const adminControl = isAdmin ? (
-    <Button variant="outline" size="sm" onClick={handleClearAdminToken}>
-      退出管理
-    </Button>
-  ) : (
     <Link to="/admin" aria-label="进入管理" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
       <MonitorCog className="size-4" />
       进入管理
     </Link>
-  );
+  ) : null;
 
   const sidebar = (
     <div className="flex h-full flex-col bg-white dark:bg-card">

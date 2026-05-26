@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"embed"
 	"encoding/csv"
@@ -27,26 +28,46 @@ import (
 //go:embed all:static/web
 var webFS embed.FS
 
-// AdminAuth creates a middleware that validates Bearer token against ADMIN_TOKEN env var.
-// If ADMIN_TOKEN is not set, the middleware rejects all requests to protected endpoints.
-func AdminAuth(next http.HandlerFunc) http.HandlerFunc {
+// adminRoleContextKey carries the resolved role of an authorised admin
+// request so downstream handlers (e.g. /api/admin/access) can report it.
+type adminRoleContextKey struct{}
+
+// newAdminGuard returns a middleware that authorises admin requests using
+// either the shared ADMIN_TOKEN (system-level, treated as root) or a user
+// session token whose owner has role >= RoleAdmin. When the user-token path
+// is taken, X-Operator-User-Id is overwritten with the authenticated user id
+// so identity-service's operator-vs-target checks cannot be spoofed.
+//
+// ADMIN_TOKEN being unset no longer rejects everything: the per-user path
+// still works, which is what lets admins use the console without the shared
+// token.
+func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.HandlerFunc {
 	adminToken := os.Getenv("ADMIN_TOKEN")
-	return func(w http.ResponseWriter, r *http.Request) {
-		if adminToken == "" {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "admin token not configured"})
-			return
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing or invalid authorization header"})
+				return
+			}
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+
+			if adminToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(adminToken)) == 1 {
+				next(w, r.WithContext(context.WithValue(r.Context(), adminRoleContextKey{}, service.RoleRoot)))
+				return
+			}
+
+			if svc != nil {
+				userID, role, err := svc.AuthorizeAdminToken(r.Context(), token)
+				if err == nil && role >= service.RoleAdmin {
+					r.Header.Set("X-Operator-User-Id", strconv.FormatInt(userID, 10))
+					next(w, r.WithContext(context.WithValue(r.Context(), adminRoleContextKey{}, role)))
+					return
+				}
+			}
+
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid admin credentials"})
 		}
-		authHeader := r.Header.Get("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing or invalid authorization header"})
-			return
-		}
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if subtle.ConstantTimeCompare([]byte(token), []byte(adminToken)) != 1 {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid admin token"})
-			return
-		}
-		next(w, r)
 	}
 }
 
@@ -56,6 +77,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 		khttp.Address(addr),
 	)
 	identityProxy := newServiceReverseProxy(firstString(identityHTTPEndpoint))
+	adminAuth := newAdminGuard(svc)
 
 	// Health and metrics (unauthenticated)
 	srv.HandleFunc("/", handleAdminPage)
@@ -102,9 +124,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 			},
 		})
 	})
-	srv.HandleFunc("/api/notice", handleContentRoute(svc, "Notice"))
-	srv.HandleFunc("/api/about", handleContentRoute(svc, "About"))
-	srv.HandleFunc("/api/home_page_content", handleContentRoute(svc, "HomePageContent"))
+	srv.HandleFunc("/api/notice", handleContentRoute(adminAuth, svc, "Notice"))
+	srv.HandleFunc("/api/about", handleContentRoute(adminAuth, svc, "About"))
+	srv.HandleFunc("/api/home_page_content", handleContentRoute(adminAuth, svc, "HomePageContent"))
 	if identityProxy != nil {
 		srv.HandleFunc("/api/user/register", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/login", identityProxy.ServeHTTP)
@@ -120,141 +142,141 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 		srv.HandleFunc("/api/token", identityProxy.ServeHTTP)
 		srv.HandlePrefix("/api/token/", identityProxy)
 	}
-	srv.HandlePrefix("/api/group", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/group", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleGroupManagement(w, r, svc)
 	}))
-	srv.HandleFunc("/api/admin/access", AdminAuth(handleAdminAccess))
-	srv.HandleFunc("/api/admin/summary", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/admin/access", adminAuth(handleAdminAccess))
+	srv.HandleFunc("/api/admin/summary", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleAdminSummary(w, r, svc)
 	}))
 
 	// Protected admin endpoints
-	srv.HandlePrefix("/api/user/disable/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/user/disable/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIUserStatusAlias(w, r, svc, 2, "/api/user/disable/")
 	}))
-	srv.HandlePrefix("/api/user/enable/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/user/enable/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIUserStatusAlias(w, r, svc, 1, "/api/user/enable/")
 	}))
-	srv.HandleFunc("/api/user/export", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/user/export", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIExportUsers(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/user/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/user/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIUserByID(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/user", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/user", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIUsers(w, r, svc)
 	}))
-	srv.HandleFunc("/v1/users", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/users", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUsers(w, r, svc)
 	}))
-	srv.HandlePrefix("/v1/users/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/v1/users/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUserByID(w, r, svc)
 	}))
 
-	srv.HandleFunc("/api/channel/models", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/channel/models", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIChannelModels(w, r, svc)
 	}))
-	srv.HandleFunc("/v1/channels", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/channels", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleChannels(w, r, svc)
 	}))
-	srv.HandlePrefix("/v1/channels/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/v1/channels/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleChannelByID(w, r, svc)
 	}))
 
-	srv.HandleFunc("/v1/system/options", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/system/options", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleGetSystemOptions(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/option", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/option", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIOptions(w, r, svc)
 	}))
 
-	srv.HandleFunc("/v1/logs", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/logs", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleListLogs(w, r, svc)
 	}))
-	srv.HandleFunc("/api/log/stat", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/log/stat", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleLogStats(w, r, svc, false)
 	}))
-	srv.HandleFunc("/api/log/self/stat", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/log/self/stat", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleLogStats(w, r, svc, true)
 	}))
-	srv.HandleFunc("/api/log/export", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/log/export", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIExportLogs(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/log/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/log/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPILogByID(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/log", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/log", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPILogs(w, r, svc)
 	}))
 
-	srv.HandleFunc("/v1/account", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/account", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleGetAccount(w, r, svc)
 	}))
 
-	srv.HandleFunc("/v1/redeem-codes", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/redeem-codes", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleRedeemCodes(w, r, svc)
 	}))
-	srv.HandleFunc("/v1/redeem-codes/batch", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/redeem-codes/batch", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleRedeemCodesBatch(w, r, svc)
 	}))
-	srv.HandlePrefix("/v1/redeem-codes/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/v1/redeem-codes/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleRedeemCodeByCode(w, r, svc)
 	}))
-	srv.HandleFunc("/api/redemption/export", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/redemption/export", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIExportRedemptions(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/redemption/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/redemption/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIRedemptionByCode(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/redemption", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/redemption", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIRedemptions(w, r, svc)
 	}))
-	srv.HandleFunc("/v1/topup", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/topup", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleTopUp(w, r, svc)
 	}))
-	srv.HandleFunc("/v1/users/reset-quota", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/v1/users/reset-quota", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleResetUserQuota(w, r, svc)
 	}))
-	srv.HandleFunc("/api/topup", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/topup", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleTopUp(w, r, svc)
 	}))
-	srv.HandleFunc("/api/payment/orders", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/payment/orders", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handlePaymentOrders(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/payment/orders/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/payment/orders/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handlePaymentOrderByTradeNo(w, r, svc)
 	}))
-	srv.HandleFunc("/api/channel/test", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/channel/test", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleTestChannels(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/channel/test/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/channel/test/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleTestChannel(w, r, svc)
 	}))
-	srv.HandleFunc("/api/channel/update_balance", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/channel/update_balance", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUpdateChannelBalances(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/channel/update_balance/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/channel/update_balance/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUpdateChannelBalance(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/reconciliation/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/reconciliation/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleReconciliationRunByID(w, r, svc)
 	}))
-	srv.HandleFunc("/api/reconciliation", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/reconciliation", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleReconciliationRuns(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/channel/disable/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/channel/disable/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIChannelStatusAlias(w, r, svc, 2, "/api/channel/disable/")
 	}))
-	srv.HandlePrefix("/api/channel/enable/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/channel/enable/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIChannelStatusAlias(w, r, svc, 1, "/api/channel/enable/")
 	}))
-	srv.HandleFunc("/api/channel/export", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/api/channel/export", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIExportChannels(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/channel/", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/channel/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIChannelByID(w, r, svc)
 	}))
-	srv.HandlePrefix("/api/channel", AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+	srv.HandlePrefix("/api/channel", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIChannels(w, r, svc)
 	}))
 
@@ -308,7 +330,8 @@ func handleAdminAccess(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]bool{"admin": true}))
+	role, _ := r.Context().Value(adminRoleContextKey{}).(int32)
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"admin": true, "role": role}))
 }
 
 func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -557,7 +580,7 @@ func writeOneAPIServiceResponse(w http.ResponseWriter, resp interface{}, err err
 	writeJSON(w, http.StatusOK, apiResponse(success, message, resp))
 }
 
-func handleContentRoute(svc *service.AdminService, key string) http.HandlerFunc {
+func handleContentRoute(adminAuth func(http.HandlerFunc) http.HandlerFunc, svc *service.AdminService, key string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			value, err := svc.GetOneAPIOption(r.Context(), key)
@@ -568,7 +591,7 @@ func handleContentRoute(svc *service.AdminService, key string) http.HandlerFunc 
 			writeJSON(w, http.StatusOK, apiResponse(true, "", value))
 			return
 		}
-		AdminAuth(func(w http.ResponseWriter, r *http.Request) {
+		adminAuth(func(w http.ResponseWriter, r *http.Request) {
 			handleContentWrite(w, r, svc, key)
 		})(w, r)
 	}
