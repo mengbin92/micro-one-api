@@ -404,6 +404,40 @@ func TestAdminHTTPProxiesUserPaymentOrderDetail(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPProxiesUserTopUp(t *testing.T) {
+	var gotPath string
+	var gotBody string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotBody = body["key"]
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":500000}`))
+	}))
+	defer upstream.Close()
+
+	srv := newAdminHTTPTestServerWithIdentityEndpoint(upstream.URL)
+	req := httptest.NewRequest(http.MethodPost, "/api/user/topup", strings.NewReader(`{"key":"CODE-1000"}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if gotPath != "/api/user/topup" {
+		t.Fatalf("proxied path = %q, want /api/user/topup", gotPath)
+	}
+	if gotBody != "CODE-1000" {
+		t.Fatalf("proxied key = %q, want CODE-1000", gotBody)
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("response was not proxied: %s", rec.Body.String())
+	}
+}
+
 func TestAdminHTTPPageIsServed(t *testing.T) {
 	srv := NewHTTPServer(":0", nil)
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
@@ -428,7 +462,7 @@ func TestAdminHTTPPageIsServed(t *testing.T) {
 
 func TestAdminHTTPPageSPARouteFallback(t *testing.T) {
 	srv := NewHTTPServer(":0", nil)
-	for _, path := range []string{"/", "/login", "/register", "/dashboard", "/tokens", "/admin/options"} {
+	for _, path := range []string{"/", "/login", "/register", "/dashboard", "/tokens", "/redeem", "/admin/options"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		srv.ServeHTTP(rec, req)
@@ -1352,6 +1386,29 @@ func TestAdminHTTPCreateRedeemCodesBatch(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"code-a"`) {
 		t.Fatalf("batch response missing codes: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPOneAPIRedemptionPostCreatesBatchAndReturnsCodes(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	billingClient := &adminHTTPBillingClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
+	req := httptest.NewRequest(http.MethodPost, "/api/redemption", strings.NewReader(`{"name":"batch","amount":100,"count":2,"operator_id":"root"}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !billingClient.batchCreated {
+		t.Fatal("batch create was not called")
+	}
+	for _, want := range []string{`"success":true`, `"codes":["code-a","code-b"]`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("response missing %s: %s", want, rec.Body.String())
+		}
 	}
 }
 

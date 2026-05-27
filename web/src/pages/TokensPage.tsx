@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,6 +54,8 @@ function normalizeTokens(data: Token[] | TokenListData): Token[] {
 export function TokensPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
+  const [createdToken, setCreatedToken] = useState<Token | null>(null);
+  const [revealedKeys, setRevealedKeys] = useState<Record<number, string>>({});
   const queryClient = useQueryClient();
 
   const { data: tokens, isLoading } = useQuery({
@@ -66,11 +69,17 @@ export function TokensPage() {
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
       const res = await apiClient.post('/token', { name });
-      return res.data;
+      return unwrapApiData<Token>(res.data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tokens'] });
-      setIsCreateOpen(false);
+    onSuccess: (token) => {
+      if (token.key) {
+        setRevealedKeys((current) => ({ ...current, [token.id]: token.key as string }));
+      }
+      setCreatedToken(token);
+      queryClient.setQueryData<Token[]>(['tokens'], (current = []) => {
+        const withoutCreated = current.filter((item) => item.id !== token.id);
+        return [token, ...withoutCreated];
+      });
       setNewTokenName('');
       toast.success('Token created');
     },
@@ -94,13 +103,30 @@ export function TokensPage() {
     toast.error('Token name is required');
   };
 
+  const handleCreateOpenChange = (open: boolean) => {
+    setIsCreateOpen(open);
+    if (!open) {
+      setCreatedToken(null);
+      setNewTokenName('');
+    }
+  };
+
+  const copyKey = async (key: string) => {
+    try {
+      await navigator.clipboard.writeText(key);
+      toast.success('Token copied');
+    } catch {
+      toast.error('Unable to copy token');
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-semibold">Tokens</h2>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger>
-            <Button>Create Token</Button>
+        <Dialog open={isCreateOpen} onOpenChange={handleCreateOpenChange}>
+          <DialogTrigger render={<Button />}>
+            Create Token
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -117,6 +143,17 @@ export function TokensPage() {
                   placeholder="My Token"
                 />
               </div>
+              {createdToken?.key && (
+                <div className="space-y-2">
+                  <Label htmlFor="created-token-key">API Key</Label>
+                  <div className="flex gap-2">
+                    <Input id="created-token-key" readOnly value={createdToken.key} className="font-mono text-xs" />
+                    <Button type="button" variant="outline" size="icon" onClick={() => copyKey(createdToken.key as string)} aria-label="Copy token">
+                      <Copy />
+                    </Button>
+                  </div>
+                </div>
+              )}
               <Button
                 onClick={handleCreate}
                 disabled={createMutation.isPending || !newTokenName.trim()}
@@ -150,7 +187,7 @@ export function TokensPage() {
               {tokens.map((token) => (
                 <TableRow key={token.id}>
                   <TableCell className="font-medium">{token.name}</TableCell>
-                  <TableCell className="font-mono text-sm">{token.key || token.masked_key || 'Hidden'}</TableCell>
+                  <TableCell className="font-mono text-sm">{revealedKeys[token.id] || token.key || token.masked_key || 'Hidden'}</TableCell>
                   <TableCell>
                     <span
                       className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

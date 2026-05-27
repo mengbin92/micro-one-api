@@ -347,9 +347,9 @@ export function DashboardPage() {
               </span>
               <ChevronRight className="size-5 shrink-0 text-slate-300" />
             </Link>
-            <button
-              type="button"
-              className="flex w-full items-center gap-4 rounded-lg border border-slate-100 p-5 text-left opacity-70 dark:border-white/10"
+            <Link
+              to="/redeem"
+              className="flex items-center gap-4 rounded-lg border border-slate-100 p-5 transition-colors hover:border-violet-200 hover:bg-violet-50/50 dark:border-white/10 dark:hover:bg-violet-500/10"
             >
               <span className="grid size-14 place-items-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
                 <Gift className="size-6" />
@@ -359,7 +359,7 @@ export function DashboardPage() {
                 <span className="mt-1 block text-sm font-medium text-slate-400">使用兑换码为账户充值</span>
               </span>
               <ChevronRight className="size-5 shrink-0 text-slate-300" />
-            </button>
+            </Link>
           </CardContent>
         </Card>
       </section>

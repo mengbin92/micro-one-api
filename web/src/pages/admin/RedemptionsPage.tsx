@@ -62,6 +62,7 @@ export function AdminRedemptionsPage() {
   const [newCodeName, setNewCodeName] = useState('');
   const [newCodeAmount, setNewCodeAmount] = useState('');
   const [newCodeCount, setNewCodeCount] = useState('1');
+  const [generatedCodes, setGeneratedCodes] = useState<string[]>([]);
   const queryClient = useQueryClient();
   const statusFilter = filters.status ?? '';
   const sort = { key: sortKey as keyof RedeemCode | null, direction: sortDirection } satisfies SortState<RedeemCode>;
@@ -96,15 +97,18 @@ export function AdminRedemptionsPage() {
     mutationFn: async () => {
       const amount = Math.floor(parseFloat(newCodeAmount) * 500000);
       const count = parseInt(newCodeCount);
-      await adminApiClient.post('/redemption', {
+      const res = await adminApiClient.post('/redemption', {
         name: newCodeName,
         amount,
         count,
+        batch_size: count,
       });
+      return (res.data?.data?.codes ?? res.data?.codes ?? []) as string[];
     },
-    onSuccess: () => {
+    onSuccess: (codes) => {
       queryClient.invalidateQueries({ queryKey: ['admin-redemptions'] });
       setIsCreateOpen(false);
+      setGeneratedCodes(codes);
       setNewCodeName('');
       setNewCodeAmount('');
       setNewCodeCount('1');
@@ -128,6 +132,7 @@ export function AdminRedemptionsPage() {
 
   const handleCreate = () => {
     if (newCodeName.trim() && newCodeAmount && parseFloat(newCodeAmount) > 0) {
+      setGeneratedCodes([]);
       createMutation.mutate();
       return;
     }
@@ -143,8 +148,8 @@ export function AdminRedemptionsPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">Redemption Codes</h2>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger>
-            <Button>Create Code</Button>
+          <DialogTrigger render={<Button />}>
+            Create Code
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -231,6 +236,19 @@ export function AdminRedemptionsPage() {
           />
         </div>
       </div>
+
+      {generatedCodes.length > 0 && (
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="mb-2 text-sm font-medium">Generated Codes</div>
+          <div className="flex flex-wrap gap-2">
+            {generatedCodes.map((code) => (
+              <span key={code} className="rounded-md border bg-background px-2 py-1 font-mono text-sm">
+                {code}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <TableSkeleton columns={['Code', 'Name', 'Amount', 'Count', 'Status', 'Created By', 'Created At', 'Actions']} />

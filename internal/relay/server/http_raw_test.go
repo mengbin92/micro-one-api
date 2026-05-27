@@ -621,7 +621,37 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 	if !chatStream {
 		t.Fatal("fallback chat request was not streaming")
 	}
-	if body := rec.Body.String(); !strings.Contains(body, `response.output_text.delta`) || !strings.Contains(body, `"delta":"po"`) || !strings.Contains(body, `data: [DONE]`) {
+	body := rec.Body.String()
+	for _, want := range []string{
+		`event: response.created`,
+		`"type":"response.created"`,
+		`event: response.in_progress`,
+		`"type":"response.in_progress"`,
+		`event: response.output_item.added`,
+		`"type":"response.output_item.added"`,
+		`event: response.content_part.added`,
+		`"type":"response.content_part.added"`,
+		`event: response.output_text.delta`,
+		`"type":"response.output_text.delta"`,
+		`"delta":"po"`,
+		`event: response.output_text.done`,
+		`"type":"response.output_text.done"`,
+		`event: response.content_part.done`,
+		`"type":"response.content_part.done"`,
+		`event: response.output_item.done`,
+		`"type":"response.output_item.done"`,
+		`event: response.completed`,
+		`"type":"response.completed"`,
+		`data: [DONE]`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("fallback stream body missing %s: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `"response_id":"chatcmpl_stream_123"`) {
+		t.Fatalf("fallback stream leaked chat completion id as response_id: %s", body)
+	}
+	if !strings.Contains(body, `"response_id":"resp_`) {
 		t.Fatalf("fallback stream body mismatch: %s", body)
 	}
 	if billingClient.commits != 1 || billingClient.releases != 0 {
@@ -632,6 +662,96 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 	}
 	if len(logClient.entries) != 1 || !logClient.entries[0].IsStream {
 		t.Fatalf("stream usage log mismatch: entries=%#v", logClient.entries)
+	}
+}
+
+func TestResponsesRequestToChatCompletionsMapsMaxOutputTokens(t *testing.T) {
+	body, stream, err := responsesRequestToChatCompletionsBody([]byte(`{"model":"gpt-4o-mini","input":"ping","max_output_tokens":123,"stream":true}`))
+	if err != nil {
+		t.Fatalf("responsesRequestToChatCompletionsBody error: %v", err)
+	}
+	if !stream {
+		t.Fatal("stream = false, want true")
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v, body=%s", err, string(body))
+	}
+	if got := payload["max_tokens"]; got != float64(123) {
+		t.Fatalf("max_tokens = %#v, want 123; body=%s", got, string(body))
+	}
+	if _, ok := payload["max_output_tokens"]; ok {
+		t.Fatalf("chat body should not include max_output_tokens: %s", string(body))
+	}
+}
+
+func TestResponsesRequestToChatCompletionsConvertsCodexPayload(t *testing.T) {
+	body, stream, err := responsesRequestToChatCompletionsBody([]byte(`{
+		"model":"mimo-v2.5-pro",
+		"input":[
+			{"type":"message","role":"developer","content":[
+				{"type":"input_text","text":"system rules"},
+				{"type":"input_text","text":"tool rules"}
+			]},
+			{"type":"message","role":"user","content":[
+				{"type":"input_text","text":"只回复 pong"}
+			]}
+		],
+		"tools":[
+			{"type":"function","name":"exec_command","description":"run shell","parameters":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}},
+			{"type":"custom","name":"apply_patch","description":"patch files"},
+			{"type":"web_search","external_web_access":false}
+		],
+		"tool_choice":{"type":"function","name":"exec_command"},
+		"parallel_tool_calls":true,
+		"prompt_cache_key":"thread_123",
+		"client_metadata":{"x-codex-installation-id":"install_123"},
+		"stream":true
+	}`))
+	if err != nil {
+		t.Fatalf("responsesRequestToChatCompletionsBody error: %v", err)
+	}
+	if !stream {
+		t.Fatal("stream = false, want true")
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v, body=%s", err, string(body))
+	}
+	messages, ok := payload["messages"].([]interface{})
+	if !ok || len(messages) != 2 {
+		t.Fatalf("messages mismatch: %#v body=%s", payload["messages"], string(body))
+	}
+	first := messages[0].(map[string]interface{})
+	if first["role"] != "system" || first["content"] != "system rules\ntool rules" {
+		t.Fatalf("developer message was not converted to system text: %#v", first)
+	}
+	second := messages[1].(map[string]interface{})
+	if second["role"] != "user" || second["content"] != "只回复 pong" {
+		t.Fatalf("user message mismatch: %#v", second)
+	}
+	tools, ok := payload["tools"].([]interface{})
+	if !ok || len(tools) != 1 {
+		t.Fatalf("tools mismatch: %#v body=%s", payload["tools"], string(body))
+	}
+	tool := tools[0].(map[string]interface{})
+	if tool["type"] != "function" {
+		t.Fatalf("tool type = %#v, want function", tool["type"])
+	}
+	fn, ok := tool["function"].(map[string]interface{})
+	if !ok || fn["name"] != "exec_command" || fn["description"] != "run shell" {
+		t.Fatalf("function tool was not converted: %#v", tool)
+	}
+	if _, ok := payload["parallel_tool_calls"]; ok {
+		t.Fatalf("chat body should not include Responses-only parallel_tool_calls: %s", string(body))
+	}
+	choice := payload["tool_choice"].(map[string]interface{})
+	if choice["type"] != "function" {
+		t.Fatalf("tool_choice type mismatch: %#v", choice)
+	}
+	choiceFn := choice["function"].(map[string]interface{})
+	if choiceFn["name"] != "exec_command" {
+		t.Fatalf("tool_choice function mismatch: %#v", choice)
 	}
 }
 

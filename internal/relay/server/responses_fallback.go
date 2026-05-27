@@ -95,10 +95,17 @@ func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
 	}
 	copyOptionalRawField(chat, raw, "temperature")
 	copyOptionalRawField(chat, raw, "max_tokens")
+	if _, ok := chat["max_tokens"]; !ok {
+		copyOptionalRawFieldAs(chat, raw, "max_output_tokens", "max_tokens")
+	}
 	copyOptionalRawField(chat, raw, "top_p")
 	copyOptionalRawField(chat, raw, "stop")
-	copyOptionalRawField(chat, raw, "tools")
-	copyOptionalRawField(chat, raw, "tool_choice")
+	if tools := responsesToolsToChatTools(raw["tools"]); len(tools) > 0 {
+		chat["tools"] = tools
+		if toolChoice, ok := responsesToolChoiceToChatToolChoice(raw["tool_choice"]); ok {
+			chat["tool_choice"] = toolChoice
+		}
+	}
 	if stream {
 		chat["stream"] = true
 		chat["stream_options"] = map[string]interface{}{"include_usage": true}
@@ -113,6 +120,12 @@ func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
 func copyOptionalRawField(dst, src map[string]interface{}, key string) {
 	if value, ok := src[key]; ok {
 		dst[key] = value
+	}
+}
+
+func copyOptionalRawFieldAs(dst, src map[string]interface{}, srcKey, dstKey string) {
+	if value, ok := src[srcKey]; ok {
+		dst[dstKey] = value
 	}
 }
 
@@ -139,10 +152,35 @@ func responseInputItemToMessage(item interface{}) (map[string]interface{}, bool)
 	if !ok {
 		return nil, false
 	}
-	role, _ := m["role"].(string)
-	if strings.TrimSpace(role) == "" {
-		role = "user"
+	itemType, _ := m["type"].(string)
+	switch itemType {
+	case "function_call":
+		arguments, _ := m["arguments"].(string)
+		if strings.TrimSpace(arguments) == "" {
+			arguments = "{}"
+		}
+		return map[string]interface{}{
+			"role": "assistant",
+			"tool_calls": []map[string]interface{}{
+				{
+					"id":   stringField(m, "call_id"),
+					"type": "function",
+					"function": map[string]interface{}{
+						"name":      stringField(m, "name"),
+						"arguments": arguments,
+					},
+				},
+			},
+		}, true
+	case "function_call_output":
+		return map[string]interface{}{
+			"role":         "tool",
+			"tool_call_id": stringField(m, "call_id"),
+			"content":      stringField(m, "output"),
+		}, true
 	}
+	role, _ := m["role"].(string)
+	role = responsesRoleToChatRole(role)
 	if content, ok := m["content"].(string); ok {
 		return map[string]interface{}{"role": role, "content": content}, true
 	}
@@ -153,6 +191,22 @@ func responseInputItemToMessage(item interface{}) (map[string]interface{}, bool)
 		return map[string]interface{}{"role": role, "content": text}, true
 	}
 	return nil, false
+}
+
+func responsesRoleToChatRole(role string) string {
+	trimmed := strings.TrimSpace(role)
+	if trimmed == "" {
+		return "user"
+	}
+	if strings.EqualFold(trimmed, "developer") {
+		return "system"
+	}
+	return trimmed
+}
+
+func stringField(m map[string]interface{}, key string) string {
+	value, _ := m[key].(string)
+	return value
 }
 
 func responseContentPartsToText(parts []interface{}) string {
@@ -170,6 +224,71 @@ func responseContentPartsToText(parts []interface{}) string {
 		}
 	}
 	return b.String()
+}
+
+func responsesToolsToChatTools(raw interface{}) []map[string]interface{} {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	tools := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		tool, ok := item.(map[string]interface{})
+		if !ok || stringField(tool, "type") != "function" {
+			continue
+		}
+		function := map[string]interface{}{}
+		if nested, ok := tool["function"].(map[string]interface{}); ok {
+			copyOptionalRawField(function, nested, "name")
+			copyOptionalRawField(function, nested, "description")
+			copyOptionalRawField(function, nested, "parameters")
+			copyOptionalRawField(function, nested, "strict")
+		} else {
+			copyOptionalRawField(function, tool, "name")
+			copyOptionalRawField(function, tool, "description")
+			copyOptionalRawField(function, tool, "parameters")
+			copyOptionalRawField(function, tool, "strict")
+		}
+		if strings.TrimSpace(stringField(function, "name")) == "" {
+			continue
+		}
+		tools = append(tools, map[string]interface{}{
+			"type":     "function",
+			"function": function,
+		})
+	}
+	return tools
+}
+
+func responsesToolChoiceToChatToolChoice(raw interface{}) (interface{}, bool) {
+	switch value := raw.(type) {
+	case string:
+		if strings.TrimSpace(value) == "" {
+			return nil, false
+		}
+		return value, true
+	case map[string]interface{}:
+		if stringField(value, "type") != "function" {
+			return value, true
+		}
+		name := stringField(value, "name")
+		if name == "" {
+			if function, ok := value["function"].(map[string]interface{}); ok {
+				name = stringField(function, "name")
+			}
+		}
+		if strings.TrimSpace(name) == "" {
+			return nil, false
+		}
+		return map[string]interface{}{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name": name,
+			},
+		}, true
+	default:
+		return nil, false
+	}
 }
 
 func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
@@ -257,7 +376,49 @@ func transformChatCompletionStreamToResponses(resp *relayprovider.RawStreamRespo
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		responseID := "resp_" + generateRequestID()
-		_, _ = fmt.Fprintf(writer, "data: {\"type\":\"response.created\",\"response\":{\"id\":%q,\"object\":\"response\",\"status\":\"in_progress\"}}\n\n", responseID)
+		outputItemID := "msg_" + responseID
+		writeResponsesSSE(writer, map[string]interface{}{
+			"type": "response.created",
+			"response": map[string]interface{}{
+				"id":     responseID,
+				"object": "response",
+				"status": "in_progress",
+				"output": []interface{}{},
+			},
+		})
+		writeResponsesSSE(writer, map[string]interface{}{
+			"type":        "response.in_progress",
+			"response_id": responseID,
+			"response": map[string]interface{}{
+				"id":     responseID,
+				"object": "response",
+				"status": "in_progress",
+			},
+		})
+		writeResponsesSSE(writer, map[string]interface{}{
+			"type":         "response.output_item.added",
+			"response_id":  responseID,
+			"output_index": 0,
+			"item": map[string]interface{}{
+				"id":      outputItemID,
+				"type":    "message",
+				"role":    "assistant",
+				"status":  "in_progress",
+				"content": []interface{}{},
+			},
+		})
+		writeResponsesSSE(writer, map[string]interface{}{
+			"type":          "response.content_part.added",
+			"response_id":   responseID,
+			"item_id":       outputItemID,
+			"output_index":  0,
+			"content_index": 0,
+			"part": map[string]interface{}{
+				"type": "output_text",
+				"text": "",
+			},
+		})
+		var text strings.Builder
 		for scanner.Scan() {
 			line := scanner.Text()
 			data, ok := strings.CutPrefix(line, "data: ")
@@ -267,26 +428,84 @@ func transformChatCompletionStreamToResponses(resp *relayprovider.RawStreamRespo
 			if strings.TrimSpace(data) == "[DONE]" {
 				break
 			}
-			event, done := chatCompletionStreamDataToResponseEvent(responseID, []byte(data))
+			event, delta, done := chatCompletionStreamDataToResponseEvent(responseID, outputItemID, []byte(data))
 			if event != nil {
-				encoded, err := sonic.Marshal(event)
-				if err == nil {
-					_, _ = writer.Write([]byte("data: "))
-					_, _ = writer.Write(encoded)
-					_, _ = writer.Write([]byte("\n\n"))
-				}
+				writeResponsesSSE(writer, event)
+			}
+			if delta != "" {
+				text.WriteString(delta)
 			}
 			if done {
 				break
 			}
 		}
-		_, _ = fmt.Fprintf(writer, "data: {\"type\":\"response.completed\",\"response\":{\"id\":%q,\"object\":\"response\",\"status\":\"completed\"}}\n\n", responseID)
+		writeResponsesSSE(writer, map[string]interface{}{
+			"type":          "response.content_part.done",
+			"response_id":   responseID,
+			"item_id":       outputItemID,
+			"output_index":  0,
+			"content_index": 0,
+			"part": map[string]interface{}{
+				"type": "output_text",
+				"text": text.String(),
+			},
+		})
+		writeResponsesSSE(writer, map[string]interface{}{
+			"type":         "response.output_item.done",
+			"response_id":  responseID,
+			"output_index": 0,
+			"item": map[string]interface{}{
+				"id":     outputItemID,
+				"type":   "message",
+				"role":   "assistant",
+				"status": "completed",
+				"content": []map[string]interface{}{
+					{"type": "output_text", "text": text.String()},
+				},
+			},
+		})
+		writeResponsesSSE(writer, map[string]interface{}{
+			"type":        "response.completed",
+			"response_id": responseID,
+			"response": map[string]interface{}{
+				"id":     responseID,
+				"object": "response",
+				"status": "completed",
+				"output": []map[string]interface{}{
+					{
+						"id":     outputItemID,
+						"type":   "message",
+						"role":   "assistant",
+						"status": "completed",
+						"content": []map[string]interface{}{
+							{"type": "output_text", "text": text.String()},
+						},
+					},
+				},
+				"output_text": text.String(),
+			},
+		})
 		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
 	}()
 	return &relayprovider.RawStreamResponse{StatusCode: resp.StatusCode, Header: header, Body: reader}
 }
 
-func chatCompletionStreamDataToResponseEvent(responseID string, data []byte) (map[string]interface{}, bool) {
+func writeResponsesSSE(w io.Writer, event map[string]interface{}) {
+	encoded, err := sonic.Marshal(event)
+	if err != nil {
+		return
+	}
+	if eventType, ok := event["type"].(string); ok && eventType != "" {
+		_, _ = w.Write([]byte("event: "))
+		_, _ = w.Write([]byte(eventType))
+		_, _ = w.Write([]byte("\n"))
+	}
+	_, _ = w.Write([]byte("data: "))
+	_, _ = w.Write(encoded)
+	_, _ = w.Write([]byte("\n\n"))
+}
+
+func chatCompletionStreamDataToResponseEvent(responseID, outputItemID string, data []byte) (map[string]interface{}, string, bool) {
 	var chunk struct {
 		ID      string `json:"id"`
 		Model   string `json:"model"`
@@ -303,31 +522,31 @@ func chatCompletionStreamDataToResponseEvent(responseID string, data []byte) (ma
 		} `json:"usage"`
 	}
 	if err := sonic.Unmarshal(data, &chunk); err != nil {
-		return nil, false
-	}
-	if chunk.ID != "" {
-		responseID = chunk.ID
+		return nil, "", false
 	}
 	if len(chunk.Choices) == 0 {
-		return nil, false
+		return nil, "", false
 	}
 	if chunk.Choices[0].Delta.Content != "" {
+		delta := chunk.Choices[0].Delta.Content
 		return map[string]interface{}{
 			"type":            "response.output_text.delta",
 			"response_id":     responseID,
+			"item_id":         outputItemID,
 			"output_index":    0,
 			"content_index":   0,
-			"delta":           chunk.Choices[0].Delta.Content,
+			"delta":           delta,
 			"fallback_source": "chat_completions",
-		}, false
+		}, delta, false
 	}
 	if chunk.Choices[0].FinishReason != nil {
 		return map[string]interface{}{
 			"type":          "response.output_text.done",
 			"response_id":   responseID,
+			"item_id":       outputItemID,
 			"output_index":  0,
 			"content_index": 0,
-		}, true
+		}, "", true
 	}
-	return nil, false
+	return nil, "", false
 }

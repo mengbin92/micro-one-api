@@ -9,6 +9,7 @@ async function seedAdminSession(page: Page) {
   await page.goto('/login');
   await page.evaluate(() => {
     localStorage.setItem('token', 'test-user-token');
+    localStorage.setItem('userRole', '10');
     localStorage.setItem('adminToken', 'test-admin-token');
   });
 }
@@ -123,6 +124,95 @@ test('admin users sends sort and filter params', async ({ page }) => {
     .toBe(true);
 });
 
+test('admin channels creates a channel from the web page', async ({ page }) => {
+  const channelRequests: unknown[] = [];
+  await page.route('**/api/channel**', async (route) => {
+    if (route.request().method() === 'POST') {
+      channelRequests.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: {
+          success: true,
+          data: { success: true, message: 'created', channel_id: 101 },
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        success: true,
+        data: [
+          {
+            id: '101',
+            name: 'openai-main',
+            type: 1,
+            group: 'default',
+            models: 'gpt-4o-mini',
+            status: 1,
+            priority: '1',
+            balance: 12.5,
+          },
+        ],
+      },
+    });
+  });
+
+  await seedAdminSession(page);
+  await page.goto('/admin/channels');
+  await page.getByRole('button', { name: 'Create Channel' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create Channel' });
+  await dialog.getByLabel('Name').fill('openai-main');
+  await dialog.getByLabel('Base URL').fill('https://api.example.com/v1');
+  await dialog.getByLabel('API Key').fill('sk-test');
+  await dialog.getByLabel('Models').fill('gpt-4o-mini');
+  await dialog.getByLabel('Group').fill('default');
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+
+  await expect.poll(() => channelRequests.length).toBe(1);
+  expect(channelRequests[0]).toMatchObject({
+    name: 'openai-main',
+    type: 1,
+    base_url: 'https://api.example.com/v1',
+    key: 'sk-test',
+    models: 'gpt-4o-mini',
+    group: 'default',
+  });
+});
+
+test('admin redemptions shows generated code values after creation', async ({ page }) => {
+  await page.route('**/api/redemption**', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            success: true,
+            codes: ['redeem-a', 'redeem-b'],
+          },
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        success: true,
+        data: [],
+      },
+    });
+  });
+
+  await seedAdminSession(page);
+  await page.goto('/admin/redemptions');
+  await page.getByRole('button', { name: 'Create Code' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create Redemption Code' });
+  await dialog.getByLabel('Name').fill('Campaign');
+  await dialog.getByLabel('Amount (quota)').fill('10');
+  await dialog.getByLabel('Count').fill('2');
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+
+  await expect(page.getByText('redeem-a')).toBeVisible();
+  await expect(page.getByText('redeem-b')).toBeVisible();
+});
+
 test('admin payment orders sends filters to backend', async ({ page }) => {
   const requests: string[] = [];
   await page.route('**/api/payment/orders**', async (route) => {
@@ -201,6 +291,37 @@ test('recharge page can be opened and creates alipay order', async ({ page }) =>
   expect(paymentPage.url()).toBe('about:blank');
   await expect(page.getByText(/测试订单已创建/)).toBeVisible();
   await paymentPage.close();
+});
+
+test('regular user can open and redeem a code', async ({ page }) => {
+  const redeemRequests: unknown[] = [];
+  await page.route('**/api/user/topup', async (route) => {
+    redeemRequests.push(route.request().postDataJSON());
+    await route.fulfill({
+      json: {
+        success: true,
+        data: 500000,
+      },
+    });
+  });
+
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'test-user-token');
+    localStorage.setItem('userRole', '1');
+    localStorage.removeItem('adminToken');
+  });
+  await page.goto('/dashboard');
+  await openMobileNavIfVisible(page);
+  await page.getByRole('link', { name: '兑换码' }).click();
+
+  await expect(page).toHaveURL(/\/redeem$/);
+  await expect(page.getByRole('heading', { name: '兑换码充值' })).toBeVisible();
+  await page.getByLabel('兑换码').fill('CODE-1000');
+  await page.getByRole('button', { name: '立即兑换' }).click();
+
+  await expect.poll(() => redeemRequests.length).toBe(1);
+  expect(redeemRequests[0]).toMatchObject({ key: 'CODE-1000' });
+  await expect(page.getByText(/已到账/)).toBeVisible();
 });
 
 test('orders page shows admin payment orders', async ({ page }) => {

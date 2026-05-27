@@ -1,0 +1,67 @@
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
+import { describe, expect, it } from 'vitest';
+import { TokensPage } from './TokensPage';
+import { renderWithQuery } from '@/test/render';
+import { server } from '@/test/msw/server';
+
+describe('TokensPage', () => {
+  it('shows the full API key returned by token creation', async () => {
+    const user = userEvent.setup();
+    const fullKey = 'sk-full-token-value-created-once';
+    const maskedKey = 'sk-f************************once';
+    let created = false;
+
+    server.use(
+      http.get('/api/token', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            items: created
+              ? [
+                  {
+                    id: 1,
+                    name: 'test key',
+                    masked_key: maskedKey,
+                    status: 1,
+                    remain_quota: 0,
+                    created_time: 1760000000,
+                  },
+                ]
+              : [],
+            total: created ? 1 : 0,
+          },
+        }),
+      ),
+      http.post('/api/token', async () => {
+        created = true;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            id: 1,
+            name: 'test key',
+            key: fullKey,
+            status: 1,
+            remain_quota: 0,
+            created_time: 1760000000,
+          },
+        });
+      }),
+    );
+
+    renderWithQuery(<TokensPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Create Token' }));
+    await user.type(screen.getByLabelText('Token Name'), 'test key');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByDisplayValue(fullKey)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText(fullKey)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(maskedKey)).not.toBeInTheDocument();
+  });
+});

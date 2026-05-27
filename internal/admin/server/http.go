@@ -90,6 +90,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 	srv.HandleFunc("/tokens", handleAdminPage)
 	srv.HandleFunc("/usage", handleAdminPage)
 	srv.HandleFunc("/recharge", handleAdminPage)
+	srv.HandleFunc("/redeem", handleAdminPage)
 	srv.HandleFunc("/orders", handleAdminPage)
 	srv.HandleFunc("/admin/users", handleAdminPage)
 	srv.HandleFunc("/admin/channels", handleAdminPage)
@@ -137,6 +138,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 		srv.HandleFunc("/api/user/logs", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/payment/orders", identityProxy.ServeHTTP)
 		srv.HandlePrefix("/api/user/payment/orders/", identityProxy)
+		srv.HandleFunc("/api/user/topup", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/amount", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/user/pay", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/token", identityProxy.ServeHTTP)
@@ -576,6 +578,10 @@ func writeOneAPIServiceResponse(w http.ResponseWriter, resp interface{}, err err
 		success, message = v.GetSuccess(), v.GetMessage()
 	case *adminv1.AdminDeleteChannelResponse:
 		success, message = v.GetSuccess(), v.GetMessage()
+	case *adminv1.CreateRedeemCodeResponse:
+		success, message = v.GetSuccess(), v.GetErrorMessage()
+	case *adminv1.CreateRedeemCodesBatchResponse:
+		success, message = v.GetSuccess(), v.GetErrorMessage()
 	}
 	writeJSON(w, http.StatusOK, apiResponse(success, message, resp))
 }
@@ -1982,11 +1988,14 @@ func handleOneAPIRedemptions(w http.ResponseWriter, r *http.Request, svc *servic
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetCodes()))
 	case http.MethodPost:
-		var req adminv1.CreateRedeemCodeRequest
+		var req adminv1.CreateRedeemCodesBatchRequest
 		if !decodeBody(w, r, &req) {
 			return
 		}
-		resp, err := svc.CreateRedeemCode(r.Context(), &req)
+		if req.BatchSize == 0 {
+			req.BatchSize = req.Count
+		}
+		resp, err := svc.CreateRedeemCodesBatch(r.Context(), &req)
 		writeOneAPIServiceResponse(w, resp, err)
 	case http.MethodPut:
 		var req adminv1.UpdateRedeemCodeRequest

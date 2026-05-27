@@ -3,6 +3,26 @@ import { toast } from 'sonner';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+function requestPath(error: unknown): string {
+  if (!error || typeof error !== 'object') return '';
+  const config = (error as { config?: { url?: string } }).config;
+  return config?.url ?? '';
+}
+
+export function isSessionAuthPath(path: string) {
+  return path.startsWith('/user/') || path === '/token' || path.startsWith('/token/');
+}
+
+export function clearUserSession() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('userId');
+  localStorage.removeItem('userRole');
+}
+
+export function clearAdminSession() {
+  localStorage.removeItem('adminToken');
+}
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -26,10 +46,8 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('userId');
-      localStorage.removeItem('userRole');
+    if (error.response?.status === 401 && isSessionAuthPath(requestPath(error))) {
+      clearUserSession();
       toast.error('Session expired. Please sign in again.');
       window.location.href = '/login';
     }
@@ -66,11 +84,8 @@ adminApiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('userId');
-      localStorage.removeItem('userRole');
-      toast.error('Session expired. Please sign in again.');
-      window.location.href = '/login';
+      clearAdminSession();
+      toast.error('Admin permission is required.');
     }
     return Promise.reject(error);
   }

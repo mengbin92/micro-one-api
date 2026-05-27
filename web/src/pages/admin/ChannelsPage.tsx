@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
 import { AdminPagination } from '@/components/admin/AdminPagination';
@@ -20,6 +22,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 interface Channel {
   id: string;
@@ -64,6 +74,15 @@ export function AdminChannelsPage() {
     storageKey: 'channels',
     filters: ['status', 'type'],
   });
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newChannelName, setNewChannelName] = useState('');
+  const [newChannelType, setNewChannelType] = useState('1');
+  const [newChannelBaseUrl, setNewChannelBaseUrl] = useState('');
+  const [newChannelKey, setNewChannelKey] = useState('');
+  const [newChannelModels, setNewChannelModels] = useState('');
+  const [newChannelGroup, setNewChannelGroup] = useState('default');
+  const [newChannelPriority, setNewChannelPriority] = useState('0');
+  const [newChannelWeight, setNewChannelWeight] = useState('1');
   const queryClient = useQueryClient();
   const sort = { key: sortKey as keyof Channel | null, direction: sortDirection } satisfies SortState<Channel>;
   const statusFilter = filters.status ?? '';
@@ -85,6 +104,34 @@ export function AdminChannelsPage() {
       });
       const res = await adminApiClient.get(`/channel?${params}`);
       return res.data.data as Channel[];
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      await adminApiClient.post('/channel', {
+        name: newChannelName.trim(),
+        type: parseInt(newChannelType, 10),
+        base_url: newChannelBaseUrl.trim(),
+        key: newChannelKey.trim(),
+        models: newChannelModels.trim(),
+        group: newChannelGroup.trim(),
+        priority: parseInt(newChannelPriority || '0', 10),
+        weight: parseInt(newChannelWeight || '1', 10),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
+      setIsCreateOpen(false);
+      setNewChannelName('');
+      setNewChannelType('1');
+      setNewChannelBaseUrl('');
+      setNewChannelKey('');
+      setNewChannelModels('');
+      setNewChannelGroup('default');
+      setNewChannelPriority('0');
+      setNewChannelWeight('1');
+      toast.success('Channel created');
     },
   });
 
@@ -113,10 +160,83 @@ export function AdminChannelsPage() {
     return sortRows(channels ?? [], sort);
   }, [channels, sort]);
 
+  const handleCreate = () => {
+    if (!newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelModels.trim() || !newChannelGroup.trim()) {
+      toast.error('Name, base URL, API key, models, and group are required');
+      return;
+    }
+    createMutation.mutate();
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">Channels Management</h2>
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <DialogTrigger render={<Button />}>
+            Create Channel
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Create Channel</DialogTitle>
+              <DialogDescription>Add an upstream provider channel.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 pt-2 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="channel-name">Name</Label>
+                <Input id="channel-name" value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} placeholder="openai-main" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="channel-type">Provider</Label>
+                <select
+                  id="channel-type"
+                  value={newChannelType}
+                  onChange={(event) => setNewChannelType(event.target.value)}
+                  className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+                >
+                  {Object.entries(PROVIDER_NAMES).map(([type, name]) => (
+                    <option key={type} value={type}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="channel-base-url">Base URL</Label>
+                <Input id="channel-base-url" value={newChannelBaseUrl} onChange={(e) => setNewChannelBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="channel-key">API Key</Label>
+                <Input id="channel-key" type="password" value={newChannelKey} onChange={(e) => setNewChannelKey(e.target.value)} placeholder="sk-..." />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="channel-models">Models</Label>
+                <Input id="channel-models" value={newChannelModels} onChange={(e) => setNewChannelModels(e.target.value)} placeholder="gpt-4o-mini,gpt-4o" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="channel-group">Group</Label>
+                <Input id="channel-group" value={newChannelGroup} onChange={(e) => setNewChannelGroup(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="channel-priority">Priority</Label>
+                  <Input id="channel-priority" type="number" value={newChannelPriority} onChange={(e) => setNewChannelPriority(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="channel-weight">Weight</Label>
+                  <Input id="channel-weight" type="number" min="1" value={newChannelWeight} onChange={(e) => setNewChannelWeight(e.target.value)} />
+                </div>
+              </div>
+              <Button
+                onClick={handleCreate}
+                disabled={createMutation.isPending || !newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelModels.trim() || !newChannelGroup.trim()}
+                className="sm:col-span-2"
+              >
+                {createMutation.isPending ? 'Creating...' : 'Create'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <AdminTableToolbar

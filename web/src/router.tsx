@@ -11,6 +11,7 @@ const TokensPage = lazy(() => import('@/pages/TokensPage').then((m) => ({ defaul
 const UsagePage = lazy(() => import('@/pages/UsagePage').then((m) => ({ default: m.UsagePage })));
 const OrdersPage = lazy(() => import('@/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })));
 const RechargePage = lazy(() => import('@/pages/RechargePage').then((m) => ({ default: m.RechargePage })));
+const RedeemPage = lazy(() => import('@/pages/RedeemPage').then((m) => ({ default: m.RedeemPage })));
 const AdminOverviewPage = lazy(() =>
   import('@/pages/admin/OverviewPage').then((m) => ({ default: m.AdminOverviewPage }))
 );
@@ -65,6 +66,10 @@ export const router = createBrowserRouter([
       {
         path: 'recharge',
         element: withSuspense(<RechargePage />),
+      },
+      {
+        path: 'redeem',
+        element: withSuspense(<RedeemPage />),
       },
       {
         path: 'orders',
