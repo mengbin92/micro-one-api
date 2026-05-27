@@ -665,6 +665,100 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 	}
 }
 
+func TestHTTPServerResponsesCreateStreamFallbackConvertsToolCalls(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var chatStream bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/responses":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
+		case "/v1/chat/completions":
+			var payload map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			chatStream, _ = payload["stream"].(bool)
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_tool_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_exec_123","type":"function","function":{"name":"exec_command","arguments":"{\"cmd\":"}}]},"finish_reason":null}]}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_tool_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"date\"}"}}]},"finish_reason":null}]}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_tool_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":3,"total_tokens":12}}` + "\n\n"))
+			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	logClient := &rawLogClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{
+		"model":"gpt-4o-mini",
+		"input":"run date",
+		"tools":[{"type":"function","name":"exec_command","parameters":{"type":"object"}}],
+		"stream":true
+	}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !chatStream {
+		t.Fatal("fallback chat request was not streaming")
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`event: response.output_item.added`,
+		`"type":"function_call"`,
+		`"call_id":"call_exec_123"`,
+		`"name":"exec_command"`,
+		`event: response.function_call_arguments.delta`,
+		`"delta":"{\"cmd\":"`,
+		`"delta":"\"date\"}"`,
+		`event: response.function_call_arguments.done`,
+		`"arguments":"{\"cmd\":\"date\"}"`,
+		`event: response.output_item.done`,
+		`event: response.completed`,
+		`data: [DONE]`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("fallback tool stream body missing %s: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `response.output_text.done`) {
+		t.Fatalf("tool-call fallback should not emit text-done events: %s", body)
+	}
+	if billingClient.commits != 1 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+	if len(logClient.entries) != 1 || !logClient.entries[0].IsStream {
+		t.Fatalf("stream usage log mismatch: entries=%#v", logClient.entries)
+	}
+}
+
 func TestResponsesRequestToChatCompletionsMapsMaxOutputTokens(t *testing.T) {
 	body, stream, err := responsesRequestToChatCompletionsBody([]byte(`{"model":"gpt-4o-mini","input":"ping","max_output_tokens":123,"stream":true}`))
 	if err != nil {

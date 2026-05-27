@@ -395,30 +395,7 @@ func transformChatCompletionStreamToResponses(resp *relayprovider.RawStreamRespo
 				"status": "in_progress",
 			},
 		})
-		writeResponsesSSE(writer, map[string]interface{}{
-			"type":         "response.output_item.added",
-			"response_id":  responseID,
-			"output_index": 0,
-			"item": map[string]interface{}{
-				"id":      outputItemID,
-				"type":    "message",
-				"role":    "assistant",
-				"status":  "in_progress",
-				"content": []interface{}{},
-			},
-		})
-		writeResponsesSSE(writer, map[string]interface{}{
-			"type":          "response.content_part.added",
-			"response_id":   responseID,
-			"item_id":       outputItemID,
-			"output_index":  0,
-			"content_index": 0,
-			"part": map[string]interface{}{
-				"type": "output_text",
-				"text": "",
-			},
-		})
-		var text strings.Builder
+		state := newResponsesStreamFallbackState(responseID, outputItemID)
 		for scanner.Scan() {
 			line := scanner.Text()
 			data, ok := strings.CutPrefix(line, "data: ")
@@ -428,66 +405,287 @@ func transformChatCompletionStreamToResponses(resp *relayprovider.RawStreamRespo
 			if strings.TrimSpace(data) == "[DONE]" {
 				break
 			}
-			event, delta, done := chatCompletionStreamDataToResponseEvent(responseID, outputItemID, []byte(data))
-			if event != nil {
-				writeResponsesSSE(writer, event)
-			}
-			if delta != "" {
-				text.WriteString(delta)
-			}
+			done := state.writeChunk(writer, []byte(data))
 			if done {
 				break
 			}
 		}
-		writeResponsesSSE(writer, map[string]interface{}{
-			"type":          "response.content_part.done",
-			"response_id":   responseID,
-			"item_id":       outputItemID,
+		state.finish(writer)
+		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+	}()
+	return &relayprovider.RawStreamResponse{StatusCode: resp.StatusCode, Header: header, Body: reader}
+}
+
+type responsesStreamFallbackState struct {
+	responseID    string
+	textItemID    string
+	textStarted   bool
+	text          strings.Builder
+	toolByIndex   map[int]*responsesStreamToolCall
+	toolOrder     []int
+	nextToolIndex int
+	hasToolCalls  bool
+}
+
+type responsesStreamToolCall struct {
+	Index     int
+	ItemID    string
+	CallID    string
+	Name      string
+	Arguments strings.Builder
+	Added     bool
+}
+
+func newResponsesStreamFallbackState(responseID, textItemID string) *responsesStreamFallbackState {
+	return &responsesStreamFallbackState{
+		responseID:  responseID,
+		textItemID:  textItemID,
+		toolByIndex: make(map[int]*responsesStreamToolCall),
+	}
+}
+
+func (s *responsesStreamFallbackState) writeChunk(w io.Writer, data []byte) bool {
+	var chunk chatCompletionStreamChunk
+	if err := sonic.Unmarshal(data, &chunk); err != nil {
+		return false
+	}
+	if len(chunk.Choices) == 0 {
+		return false
+	}
+	done := false
+	for _, choice := range chunk.Choices {
+		if choice.Delta.Content != "" {
+			s.writeTextDelta(w, choice.Delta.Content)
+		}
+		for _, toolCall := range choice.Delta.ToolCalls {
+			s.writeToolCallDelta(w, toolCall)
+		}
+		if choice.FinishReason != nil {
+			done = true
+		}
+	}
+	return done
+}
+
+func (s *responsesStreamFallbackState) writeTextDelta(w io.Writer, delta string) {
+	if !s.textStarted {
+		s.textStarted = true
+		writeResponsesSSE(w, map[string]interface{}{
+			"type":         "response.output_item.added",
+			"response_id":  s.responseID,
+			"output_index": 0,
+			"item": map[string]interface{}{
+				"id":      s.textItemID,
+				"type":    "message",
+				"role":    "assistant",
+				"status":  "in_progress",
+				"content": []interface{}{},
+			},
+		})
+		writeResponsesSSE(w, map[string]interface{}{
+			"type":          "response.content_part.added",
+			"response_id":   s.responseID,
+			"item_id":       s.textItemID,
 			"output_index":  0,
 			"content_index": 0,
 			"part": map[string]interface{}{
 				"type": "output_text",
-				"text": text.String(),
+				"text": "",
 			},
 		})
-		writeResponsesSSE(writer, map[string]interface{}{
-			"type":         "response.output_item.done",
-			"response_id":  responseID,
-			"output_index": 0,
+	}
+	s.text.WriteString(delta)
+	writeResponsesSSE(w, map[string]interface{}{
+		"type":            "response.output_text.delta",
+		"response_id":     s.responseID,
+		"item_id":         s.textItemID,
+		"output_index":    0,
+		"content_index":   0,
+		"delta":           delta,
+		"fallback_source": "chat_completions",
+	})
+}
+
+func (s *responsesStreamFallbackState) writeToolCallDelta(w io.Writer, delta chatCompletionStreamToolCallDelta) {
+	tool, ok := s.toolByIndex[delta.Index]
+	if !ok {
+		tool = &responsesStreamToolCall{
+			Index:  delta.Index,
+			ItemID: fmt.Sprintf("fc_%s_%d", s.responseID, delta.Index),
+			CallID: delta.ID,
+			Name:   delta.Function.Name,
+		}
+		if strings.TrimSpace(tool.CallID) == "" {
+			tool.CallID = fmt.Sprintf("call_%s_%d", s.responseID, delta.Index)
+		}
+		s.toolByIndex[delta.Index] = tool
+		s.toolOrder = append(s.toolOrder, delta.Index)
+	} else {
+		if delta.ID != "" {
+			tool.CallID = delta.ID
+		}
+		if delta.Function.Name != "" {
+			tool.Name = delta.Function.Name
+		}
+	}
+	if delta.Function.Arguments != "" {
+		tool.Arguments.WriteString(delta.Function.Arguments)
+	}
+	if !tool.Added {
+		tool.Added = true
+		s.hasToolCalls = true
+		writeResponsesSSE(w, map[string]interface{}{
+			"type":         "response.output_item.added",
+			"response_id":  s.responseID,
+			"output_index": s.nextToolIndex,
 			"item": map[string]interface{}{
-				"id":     outputItemID,
-				"type":   "message",
-				"role":   "assistant",
-				"status": "completed",
-				"content": []map[string]interface{}{
-					{"type": "output_text", "text": text.String()},
-				},
+				"id":        tool.ItemID,
+				"type":      "function_call",
+				"status":    "in_progress",
+				"call_id":   tool.CallID,
+				"name":      tool.Name,
+				"arguments": "",
 			},
 		})
-		writeResponsesSSE(writer, map[string]interface{}{
-			"type":        "response.completed",
-			"response_id": responseID,
-			"response": map[string]interface{}{
-				"id":     responseID,
-				"object": "response",
-				"status": "completed",
-				"output": []map[string]interface{}{
-					{
-						"id":     outputItemID,
-						"type":   "message",
-						"role":   "assistant",
-						"status": "completed",
-						"content": []map[string]interface{}{
-							{"type": "output_text", "text": text.String()},
-						},
+		s.nextToolIndex++
+	}
+	if delta.Function.Arguments != "" {
+		writeResponsesSSE(w, map[string]interface{}{
+			"type":         "response.function_call_arguments.delta",
+			"response_id":  s.responseID,
+			"item_id":      tool.ItemID,
+			"output_index": tool.Index,
+			"delta":        delta.Function.Arguments,
+		})
+	}
+}
+
+func (s *responsesStreamFallbackState) finish(w io.Writer) {
+	if s.hasToolCalls {
+		s.finishToolCalls(w)
+		return
+	}
+	s.finishText(w)
+}
+
+func (s *responsesStreamFallbackState) finishText(w io.Writer) {
+	if !s.textStarted {
+		s.writeTextDelta(w, "")
+	}
+	text := s.text.String()
+	writeResponsesSSE(w, map[string]interface{}{
+		"type":          "response.output_text.done",
+		"response_id":   s.responseID,
+		"item_id":       s.textItemID,
+		"output_index":  0,
+		"content_index": 0,
+	})
+	writeResponsesSSE(w, map[string]interface{}{
+		"type":          "response.content_part.done",
+		"response_id":   s.responseID,
+		"item_id":       s.textItemID,
+		"output_index":  0,
+		"content_index": 0,
+		"part": map[string]interface{}{
+			"type": "output_text",
+			"text": text,
+		},
+	})
+	writeResponsesSSE(w, map[string]interface{}{
+		"type":         "response.output_item.done",
+		"response_id":  s.responseID,
+		"output_index": 0,
+		"item": map[string]interface{}{
+			"id":     s.textItemID,
+			"type":   "message",
+			"role":   "assistant",
+			"status": "completed",
+			"content": []map[string]interface{}{
+				{"type": "output_text", "text": text},
+			},
+		},
+	})
+	writeResponsesSSE(w, map[string]interface{}{
+		"type":        "response.completed",
+		"response_id": s.responseID,
+		"response": map[string]interface{}{
+			"id":     s.responseID,
+			"object": "response",
+			"status": "completed",
+			"output": []map[string]interface{}{
+				{
+					"id":     s.textItemID,
+					"type":   "message",
+					"role":   "assistant",
+					"status": "completed",
+					"content": []map[string]interface{}{
+						{"type": "output_text", "text": text},
 					},
 				},
-				"output_text": text.String(),
 			},
+			"output_text": text,
+		},
+	})
+}
+
+func (s *responsesStreamFallbackState) finishToolCalls(w io.Writer) {
+	output := make([]map[string]interface{}, 0, len(s.toolOrder))
+	for outputIndex, toolIndex := range s.toolOrder {
+		tool := s.toolByIndex[toolIndex]
+		arguments := tool.Arguments.String()
+		writeResponsesSSE(w, map[string]interface{}{
+			"type":         "response.function_call_arguments.done",
+			"response_id":  s.responseID,
+			"item_id":      tool.ItemID,
+			"output_index": outputIndex,
+			"arguments":    arguments,
 		})
-		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
-	}()
-	return &relayprovider.RawStreamResponse{StatusCode: resp.StatusCode, Header: header, Body: reader}
+		item := map[string]interface{}{
+			"id":        tool.ItemID,
+			"type":      "function_call",
+			"status":    "completed",
+			"call_id":   tool.CallID,
+			"name":      tool.Name,
+			"arguments": arguments,
+		}
+		writeResponsesSSE(w, map[string]interface{}{
+			"type":         "response.output_item.done",
+			"response_id":  s.responseID,
+			"output_index": outputIndex,
+			"item":         item,
+		})
+		output = append(output, item)
+	}
+	writeResponsesSSE(w, map[string]interface{}{
+		"type":        "response.completed",
+		"response_id": s.responseID,
+		"response": map[string]interface{}{
+			"id":     s.responseID,
+			"object": "response",
+			"status": "completed",
+			"output": output,
+		},
+	})
+}
+
+type chatCompletionStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content   string                              `json:"content"`
+			ToolCalls []chatCompletionStreamToolCallDelta `json:"tool_calls"`
+		} `json:"delta"`
+		FinishReason *string `json:"finish_reason"`
+	} `json:"choices"`
+}
+
+type chatCompletionStreamToolCallDelta struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 func writeResponsesSSE(w io.Writer, event map[string]interface{}) {
@@ -503,50 +701,4 @@ func writeResponsesSSE(w io.Writer, event map[string]interface{}) {
 	_, _ = w.Write([]byte("data: "))
 	_, _ = w.Write(encoded)
 	_, _ = w.Write([]byte("\n\n"))
-}
-
-func chatCompletionStreamDataToResponseEvent(responseID, outputItemID string, data []byte) (map[string]interface{}, string, bool) {
-	var chunk struct {
-		ID      string `json:"id"`
-		Model   string `json:"model"`
-		Choices []struct {
-			Delta struct {
-				Content string `json:"content"`
-			} `json:"delta"`
-			FinishReason *string `json:"finish_reason"`
-		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int64 `json:"prompt_tokens"`
-			CompletionTokens int64 `json:"completion_tokens"`
-			TotalTokens      int64 `json:"total_tokens"`
-		} `json:"usage"`
-	}
-	if err := sonic.Unmarshal(data, &chunk); err != nil {
-		return nil, "", false
-	}
-	if len(chunk.Choices) == 0 {
-		return nil, "", false
-	}
-	if chunk.Choices[0].Delta.Content != "" {
-		delta := chunk.Choices[0].Delta.Content
-		return map[string]interface{}{
-			"type":            "response.output_text.delta",
-			"response_id":     responseID,
-			"item_id":         outputItemID,
-			"output_index":    0,
-			"content_index":   0,
-			"delta":           delta,
-			"fallback_source": "chat_completions",
-		}, delta, false
-	}
-	if chunk.Choices[0].FinishReason != nil {
-		return map[string]interface{}{
-			"type":          "response.output_text.done",
-			"response_id":   responseID,
-			"item_id":       outputItemID,
-			"output_index":  0,
-			"content_index": 0,
-		}, "", true
-	}
-	return nil, "", false
 }
