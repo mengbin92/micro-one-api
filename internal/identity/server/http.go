@@ -1165,7 +1165,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "token id is required"})
 			return
 		}
-		if err := uc.DeleteAccessToken(r.Context(), snapshot.UserID, tokenID); err != nil {
+		if err := uc.DeleteAccessTokenForAuth(r.Context(), snapshot, tokenID); err != nil {
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
 		}

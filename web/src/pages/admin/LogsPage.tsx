@@ -10,6 +10,7 @@ import { ExportButton } from '@/components/admin/ExportButton';
 import { SortableHeader } from '@/components/admin/SortableHeader';
 import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
+import { unwrapApiData } from '@/lib/api-response';
 import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
@@ -78,7 +79,7 @@ export function AdminLogsPage() {
         filters: { user_id: userId, type },
       });
       const res = await adminApiClient.get(`/log?${params}`);
-      return res.data.data as LogEntry[];
+      return unwrapApiData<LogEntry[]>(res.data);
     },
   });
 

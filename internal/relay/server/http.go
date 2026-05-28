@@ -31,6 +31,8 @@ import (
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
+const postResponseWriteTimeout = 10 * time.Second
+
 // HTTPServer handles HTTP requests for relay-gateway.
 type HTTPServer struct {
 	identityClient  identityv1.IdentityServiceClient
@@ -347,10 +349,11 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 							ElapsedTime: time.Since(startedAt).Milliseconds(),
 							IsStream:    true,
 						}
-						if err := s.commitQuota(ctx, reservation.ReservationId, usage, true, logInput); err != nil {
-							return err
+						if err := s.commitQuotaAfterResponse(reservation.ReservationId, usage, true, logInput); err != nil {
+							s.logPostResponseCommitError(err)
+						} else {
+							s.ingestUsageLogAfterResponse(logInput)
 						}
-						s.ingestUsageLog(ctx, logInput)
 						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 						responseChannel = ch
 						return nil
@@ -373,10 +376,11 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				ElapsedTime: time.Since(startedAt).Milliseconds(),
 				IsStream:    true,
 			}
-			if err := s.commitQuota(ctx, reservation.ReservationId, usage, true, logInput); err != nil {
-				return err
+			if err := s.commitQuotaAfterResponse(reservation.ReservationId, usage, true, logInput); err != nil {
+				s.logPostResponseCommitError(err)
+			} else {
+				s.ingestUsageLogAfterResponse(logInput)
 			}
-			s.ingestUsageLog(ctx, logInput)
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
 			responseChannel = ch
 			return nil
@@ -549,11 +553,11 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			ElapsedTime: time.Since(startedAt).Milliseconds(),
 			IsStream:    true,
 		}
-		if err := s.commitQuota(r.Context(), reservation.ReservationId, usage, true, logInput); err != nil {
-			s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
-			return
+		if err := s.commitQuotaAfterResponse(reservation.ReservationId, usage, true, logInput); err != nil {
+			s.logPostResponseCommitError(err)
+		} else {
+			s.ingestUsageLogAfterResponse(logInput)
 		}
-		s.ingestUsageLog(r.Context(), logInput)
 		return
 	}
 
@@ -957,11 +961,11 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		if logInput.Endpoint == "" {
 			logInput.Endpoint = "/v1/chat/completions"
 		}
-		if err := s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true, logInput); err != nil {
-			s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
-			return
+		if err := s.commitQuotaAfterResponse(reservation.ReservationId, totalTokens, true, logInput); err != nil {
+			s.logPostResponseCommitError(err)
+		} else {
+			s.ingestUsageLogAfterResponse(logInput)
 		}
-		s.ingestUsageLog(r.Context(), logInput)
 	} else {
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "stream error")
 	}
@@ -1003,6 +1007,28 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 	})
 	if err != nil && applogger.Log != nil {
 		applogger.Log.Warn("failed to ingest usage log", zap.Error(err))
+	}
+}
+
+func postResponseContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(context.Background()), postResponseWriteTimeout)
+}
+
+func (s *HTTPServer) commitQuotaAfterResponse(reservationID string, actualTokens int64, success bool, details ...usageLogInput) error {
+	ctx, cancel := postResponseContext()
+	defer cancel()
+	return s.commitQuota(ctx, reservationID, actualTokens, success, details...)
+}
+
+func (s *HTTPServer) ingestUsageLogAfterResponse(in usageLogInput) {
+	ctx, cancel := postResponseContext()
+	defer cancel()
+	s.ingestUsageLog(ctx, in)
+}
+
+func (s *HTTPServer) logPostResponseCommitError(err error) {
+	if err != nil && applogger.Log != nil {
+		applogger.Log.Warn("failed to commit quota after response was written", zap.Error(err))
 	}
 }
 

@@ -16,7 +16,7 @@ clients:
   billing:
     endpoint: ${BILLING_GRPC_ENDPOINT:-127.0.0.1:9004}
   log:
-    endpoint: ${LOG_GRPC_ENDPOINT:-127.0.0.1:9005}
+    endpoint: ${LOG_GRPC_ENDPOINT:-127.0.0.1:9006}
 retry:
   max_attempts: 3
   initial_interval: 500ms

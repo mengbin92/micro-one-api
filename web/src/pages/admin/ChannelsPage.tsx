@@ -13,6 +13,7 @@ import { ExportButton } from '@/components/admin/ExportButton';
 import { SortableHeader } from '@/components/admin/SortableHeader';
 import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
+import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
@@ -103,13 +104,13 @@ export function AdminChannelsPage() {
         filters,
       });
       const res = await adminApiClient.get(`/channel?${params}`);
-      return res.data.data as Channel[];
+      return unwrapApiData<Channel[]>(res.data);
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      await adminApiClient.post('/channel', {
+      const res = await adminApiClient.post('/channel', {
         name: newChannelName.trim(),
         type: parseInt(newChannelType, 10),
         base_url: newChannelBaseUrl.trim(),
@@ -119,6 +120,7 @@ export function AdminChannelsPage() {
         priority: parseInt(newChannelPriority || '0', 10),
         weight: parseInt(newChannelWeight || '1', 10),
       });
+      ensureApiSuccess(res.data, 'Channel create failed');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
@@ -137,11 +139,13 @@ export function AdminChannelsPage() {
 
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, currentStatus }: { id: string; currentStatus: number }) => {
+      let res;
       if (currentStatus === 1) {
-        await adminApiClient.post(`/channel/disable/${id}`);
+        res = await adminApiClient.post(`/channel/disable/${id}`);
       } else {
-        await adminApiClient.post(`/channel/enable/${id}`);
+        res = await adminApiClient.post(`/channel/enable/${id}`);
       }
+      ensureApiSuccess(res.data, 'Channel status update failed');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
@@ -151,7 +155,8 @@ export function AdminChannelsPage() {
 
   const refreshBalanceMutation = useMutation({
     mutationFn: async (id: string) => {
-      await adminApiClient.get(`/channel/update_balance/${id}`);
+      const res = await adminApiClient.get(`/channel/update_balance/${id}`);
+      ensureApiSuccess(res.data, 'Channel balance refresh failed');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-channels'] });

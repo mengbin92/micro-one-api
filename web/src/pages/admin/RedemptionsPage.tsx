@@ -12,6 +12,7 @@ import { ExportButton } from '@/components/admin/ExportButton';
 import { SortableHeader } from '@/components/admin/SortableHeader';
 import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
+import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
@@ -38,6 +39,10 @@ interface RedeemCode {
   status: number;
   createdBy: string;
   createdAt: string;
+}
+
+interface CreateRedemptionPayload {
+  codes?: string[];
 }
 
 export function AdminRedemptionsPage() {
@@ -89,7 +94,7 @@ export function AdminRedemptionsPage() {
         filters: { status: statusFilter },
       });
       const res = await adminApiClient.get(`/redemption?${params}`);
-      return res.data.data as RedeemCode[];
+      return unwrapApiData<RedeemCode[]>(res.data);
     },
   });
 
@@ -103,7 +108,8 @@ export function AdminRedemptionsPage() {
         count,
         batch_size: count,
       });
-      return (res.data?.data?.codes ?? res.data?.codes ?? []) as string[];
+      const payload = unwrapApiData<CreateRedemptionPayload>(res.data, 'Redemption code create failed');
+      return payload.codes ?? [];
     },
     onSuccess: (codes) => {
       queryClient.invalidateQueries({ queryKey: ['admin-redemptions'] });
@@ -118,7 +124,8 @@ export function AdminRedemptionsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (code: string) => {
-      await adminApiClient.delete(`/redemption/${code}`);
+      const res = await adminApiClient.delete(`/redemption/${code}`);
+      ensureApiSuccess(res.data, 'Redemption code delete failed');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-redemptions'] });

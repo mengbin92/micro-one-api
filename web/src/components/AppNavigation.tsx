@@ -26,6 +26,7 @@ import { MobileNav } from '@/components/MobileNav';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { apiClient } from '@/lib/api';
 import { canAccessAdmin } from '@/lib/admin-access';
+import { unwrapApiData } from '@/lib/api-response';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -214,7 +215,7 @@ export function AppNavigation() {
 
       const userResult = results[0];
       if (userResult.status === 'fulfilled') {
-        const self = (userResult.value.data?.data ?? null) as UserSelf | null;
+        const self = unwrapApiData<UserSelf | null>(userResult.value.data);
         setUser(self);
         if (self?.id != null) {
           localStorage.setItem('userId', String(self.id));
@@ -227,7 +228,7 @@ export function AppNavigation() {
 
       const dashboardResult = results[1];
       if (dashboardResult.status === 'fulfilled') {
-        setAccount(dashboardResult.value.data?.data ?? null);
+        setAccount(unwrapApiData<AccountDashboard | null>(dashboardResult.value.data));
       }
     });
 

@@ -84,25 +84,30 @@ func (c rawChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChan
 
 type rawLogClient struct {
 	logv1.LogServiceClient
-	entries []*logv1.IngestLogRequest
+	entries               []*logv1.IngestLogRequest
+	failOnCanceledContext bool
 }
 
 func (c *rawLogClient) IngestLog(ctx context.Context, req *logv1.IngestLogRequest, opts ...grpc.CallOption) (*logv1.IngestLogResponse, error) {
+	if c.failOnCanceledContext && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	c.entries = append(c.entries, req)
 	return &logv1.IngestLogResponse{Id: int64(len(c.entries))}, nil
 }
 
 type rawBillingClient struct {
 	billingv1.BillingServiceClient
-	commits        int
-	commitRequests []*billingv1.CommitQuotaRequest
-	releases       int
-	reserveSuccess bool
-	reserveMessage string
-	commitSuccess  bool
-	commitMessage  string
-	releaseSuccess bool
-	releaseMessage string
+	commits               int
+	commitRequests        []*billingv1.CommitQuotaRequest
+	releases              int
+	reserveSuccess        bool
+	reserveMessage        string
+	commitSuccess         bool
+	commitMessage         string
+	releaseSuccess        bool
+	releaseMessage        string
+	failOnCanceledContext bool
 }
 
 func (c *rawBillingClient) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReserveQuotaResponse, error) {
@@ -119,6 +124,9 @@ func (c *rawBillingClient) ReserveQuota(ctx context.Context, req *billingv1.Rese
 }
 
 func (c *rawBillingClient) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest, opts ...grpc.CallOption) (*billingv1.CommitQuotaResponse, error) {
+	if c.failOnCanceledContext && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	c.commits++
 	c.commitRequests = append(c.commitRequests, req)
 	success := c.commitSuccess

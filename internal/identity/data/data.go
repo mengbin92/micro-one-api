@@ -341,6 +341,9 @@ func (r *Repository) ListTokens(ctx context.Context, userID int64, page, pageSiz
 		if token.UserID != userID {
 			continue
 		}
+		if strings.TrimSpace(token.Name) == "" {
+			continue
+		}
 		if keyword != "" && !strings.Contains(token.Name, keyword) && !strings.Contains(token.Key, keyword) {
 			continue
 		}
@@ -619,7 +622,7 @@ func (r *Repository) listTokensDB(ctx context.Context, userID int64, page, pageS
 		pageSize = 20
 	}
 	var models []tokenModel
-	query := r.db.WithContext(ctx).Model(&tokenModel{}).Where("user_id = ?", userID)
+	query := r.db.WithContext(ctx).Model(&tokenModel{}).Where("user_id = ? AND TRIM(COALESCE(name, '')) <> ''", userID)
 	if keyword != "" {
 		like := "%" + escapeLike(keyword) + "%"
 		query = query.Where("name LIKE ? OR `key` LIKE ?", like, like)

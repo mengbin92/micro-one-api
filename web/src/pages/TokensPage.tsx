@@ -24,7 +24,7 @@ import {
 import { apiClient } from '@/lib/api';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
-import { unwrapApiData } from '@/lib/api-response';
+import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 
 interface Token {
   id: number;
@@ -87,11 +87,15 @@ export function TokensPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await apiClient.delete(`/token/${id}`);
+      const res = await apiClient.delete(`/token/${id}`);
+      ensureApiSuccess(res.data, 'Token delete failed');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tokens'] });
       toast.success('Token deleted');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Token delete failed');
     },
   });
 

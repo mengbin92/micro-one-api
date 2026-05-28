@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageLoading } from '@/components/PageLoading';
 import { apiClient } from '@/lib/api';
 import { isAdminRole } from '@/lib/admin-access';
+import { unwrapApiData } from '@/lib/api-response';
 
 function readStoredRole(): number | null {
   const raw = localStorage.getItem('userRole');
@@ -24,7 +25,7 @@ export function AdminRoute() {
       .get('/user/self')
       .then((response) => {
         if (cancelled) return;
-        const data = response.data?.data as { role?: number } | null;
+        const data = unwrapApiData<{ role?: number } | null>(response.data);
         const nextRole = typeof data?.role === 'number' ? data.role : 0;
         localStorage.setItem('userRole', String(nextRole));
         setRole(nextRole);

@@ -1045,8 +1045,52 @@ func TestIdentityHTTPTokenCRUD(t *testing.T) {
 	if listRec.Code != http.StatusOK {
 		t.Fatalf("list token status = %d, body=%s", listRec.Code, listRec.Body.String())
 	}
-	if !strings.Contains(listRec.Body.String(), `"total":2`) {
+	if !strings.Contains(listRec.Body.String(), `"total":1`) {
 		t.Fatalf("list token response mismatch: %s", listRec.Body.String())
+	}
+	if strings.Contains(listRec.Body.String(), authToken) {
+		t.Fatalf("list token response exposed session token: %s", listRec.Body.String())
+	}
+}
+
+func TestIdentityHTTPTokenDeleteCurrentSessionRejected(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/token/", nil)
+	listReq.Header.Set("Authorization", "Bearer "+authToken)
+	listRec := httptest.NewRecorder()
+	srv.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body=%s", listRec.Code, listRec.Body.String())
+	}
+	if !strings.Contains(listRec.Body.String(), `"total":0`) {
+		t.Fatalf("list should hide session tokens: %s", listRec.Body.String())
+	}
+
+	snapshot, err := uc.GetAuthSnapshot(context.Background(), authToken)
+	if err != nil {
+		t.Fatalf("GetAuthSnapshot() error = %v", err)
+	}
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/token/"+strconv.FormatInt(snapshot.TokenID, 10), nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+authToken)
+	deleteRec := httptest.NewRecorder()
+	srv.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if !strings.Contains(deleteRec.Body.String(), `"success":false`) || !strings.Contains(deleteRec.Body.String(), "cannot delete current session token") {
+		t.Fatalf("delete response mismatch: %s", deleteRec.Body.String())
+	}
+
+	selfReq := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	selfReq.Header.Set("Authorization", "Bearer "+authToken)
+	selfRec := httptest.NewRecorder()
+	srv.ServeHTTP(selfRec, selfReq)
+	if selfRec.Code != http.StatusOK {
+		t.Fatalf("session should remain valid after rejected delete, status = %d, body=%s", selfRec.Code, selfRec.Body.String())
 	}
 }
 

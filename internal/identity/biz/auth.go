@@ -38,6 +38,7 @@ var (
 	ErrTokenExpired      = errors.New("token expired")
 	ErrTokenExhausted    = errors.New("token exhausted")
 	ErrTokenDisabled     = errors.New("token disabled")
+	ErrTokenInUse        = errors.New("cannot delete current session token")
 	ErrUserDisabled      = errors.New("user disabled")
 	ErrUserNotFound      = errors.New("user not found")
 	ErrTokenNotFound     = errors.New("token not found")
@@ -504,6 +505,16 @@ func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, use
 
 func (uc *IdentityUsecase) DeleteAccessToken(ctx context.Context, userID, tokenID int64) error {
 	return uc.repo.DeleteToken(ctx, userID, tokenID)
+}
+
+func (uc *IdentityUsecase) DeleteAccessTokenForAuth(ctx context.Context, auth *AuthSnapshot, tokenID int64) error {
+	if auth == nil {
+		return ErrInvalidToken
+	}
+	if auth.TokenID == tokenID {
+		return ErrTokenInUse
+	}
+	return uc.DeleteAccessToken(ctx, auth.UserID, tokenID)
 }
 
 func (uc *IdentityUsecase) ListUsers(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*User, int64, error) {

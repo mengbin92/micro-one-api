@@ -474,6 +474,75 @@ func TestHTTPServerResponsesCreateStreamsRawSSE(t *testing.T) {
 	}
 }
 
+func TestHTTPServerResponsesStreamCommitsAfterRequestContextCanceled(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"pong\"}\n\n"))
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{failOnCanceledContext: true}
+	logClient := &rawLogClient{failOnCanceledContext: true}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping","stream":true}`)).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	baseRec := httptest.NewRecorder()
+	rec := &cancelOnFirstWriteRecorder{ResponseRecorder: baseRec, cancel: cancel}
+
+	srv.ServeHTTP(rec, req)
+
+	if baseRec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", baseRec.Code, baseRec.Body.String())
+	}
+	if billingClient.commits != 1 {
+		t.Fatalf("commits = %d, want 1", billingClient.commits)
+	}
+	if len(logClient.entries) != 1 {
+		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
+	}
+}
+
+type cancelOnFirstWriteRecorder struct {
+	*httptest.ResponseRecorder
+	cancel func()
+	done   bool
+}
+
+func (r *cancelOnFirstWriteRecorder) Write(p []byte) (int, error) {
+	n, err := r.ResponseRecorder.Write(p)
+	if !r.done {
+		r.done = true
+		r.cancel()
+	}
+	return n, err
+}
+
+func (r *cancelOnFirstWriteRecorder) Flush() {}
+
 func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 

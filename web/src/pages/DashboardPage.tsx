@@ -141,7 +141,7 @@ export function DashboardPage() {
     queryKey: ['user-self'],
     queryFn: async () => {
       const res = await apiClient.get('/user/self');
-      return res.data.data as UserSelf;
+      return unwrapApiData<UserSelf>(res.data);
     },
   });
 
@@ -149,7 +149,7 @@ export function DashboardPage() {
     queryKey: ['dashboard-summary'],
     queryFn: async () => {
       const res = await apiClient.get('/user/dashboard');
-      return res.data.data as AccountDashboard;
+      return unwrapApiData<AccountDashboard>(res.data);
     },
   });
 

@@ -11,6 +11,7 @@ import { ExportButton } from '@/components/admin/ExportButton';
 import { SortableHeader } from '@/components/admin/SortableHeader';
 import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
+import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
@@ -105,17 +106,19 @@ export function AdminUsersPage() {
         filters,
       });
       const res = await adminApiClient.get(`/user?${params}`);
-      return res.data.data as User[];
+      return unwrapApiData<User[]>(res.data);
     },
   });
 
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, currentStatus }: { id: string; currentStatus: number }) => {
+      let res;
       if (currentStatus === 1) {
-        await adminApiClient.post(`/user/disable/${id}`);
+        res = await adminApiClient.post(`/user/disable/${id}`);
       } else {
-        await adminApiClient.post(`/user/enable/${id}`);
+        res = await adminApiClient.post(`/user/enable/${id}`);
       }
+      ensureApiSuccess(res.data, 'Failed to update user status');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
@@ -126,9 +129,7 @@ export function AdminUsersPage() {
   const setRoleMutation = useMutation({
     mutationFn: async ({ username, action }: { username: string; action: 'promote' | 'demote' }) => {
       const res = await adminApiClient.post('/user/manage', { username, action });
-      if (res.data && res.data.success === false) {
-        throw new Error(res.data.message || 'Failed to update role');
-      }
+      ensureApiSuccess(res.data, 'Failed to update role');
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
