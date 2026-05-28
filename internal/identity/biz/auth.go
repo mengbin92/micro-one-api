@@ -105,6 +105,7 @@ type Token struct {
 type AuthSnapshot struct {
 	UserID        int64
 	TokenID       int64
+	TokenName     string
 	Group         string
 	AllowedModels []string
 	UserEnabled   bool
@@ -209,6 +210,7 @@ func (uc *IdentityUsecase) GetAuthSnapshot(ctx context.Context, key string) (*Au
 	return &AuthSnapshot{
 		UserID:        user.ID,
 		TokenID:       token.ID,
+		TokenName:     token.Name,
 		Group:         user.Group,
 		AllowedModels: append([]string(nil), token.Models...),
 		UserEnabled:   true,

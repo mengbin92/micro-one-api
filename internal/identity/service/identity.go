@@ -7,11 +7,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	identityv1 "micro-one-api/api/identity/v1"
 	commonv1 "micro-one-api/api/common/v1"
+	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/internal/identity/biz"
-	applogger "micro-one-api/internal/pkg/logger"
 	"micro-one-api/internal/pkg/errors"
+	applogger "micro-one-api/internal/pkg/logger"
 )
 
 // IdentityService is the transport layer entry for identity-service.
@@ -57,6 +57,7 @@ func (s *IdentityService) GetAuthSnapshot(ctx context.Context, req *identityv1.G
 	return &identityv1.GetAuthSnapshotReply{
 		UserId:        snapshot.UserID,
 		TokenId:       snapshot.TokenID,
+		TokenName:     snapshot.TokenName,
 		Group:         snapshot.Group,
 		AllowedModels: snapshot.AllowedModels,
 		UserEnabled:   snapshot.UserEnabled,

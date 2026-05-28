@@ -1330,7 +1330,7 @@ func TestHTTPServerChatCompletionWritesUsageLogOnSuccess(t *testing.T) {
 	if got.Quota != 12 || got.PromptTokens != 7 || got.CompletionTokens != 5 {
 		t.Fatalf("log usage = quota:%d prompt:%d completion:%d", got.Quota, got.PromptTokens, got.CompletionTokens)
 	}
-	if got.ChannelId != 11 || got.TokenName != "token-7" || got.IsStream {
+	if got.ChannelId != 11 || got.TokenName != "test-token" || got.IsStream {
 		t.Fatalf("log metadata mismatch: channel=%d token=%q stream=%v", got.ChannelId, got.TokenName, got.IsStream)
 	}
 }

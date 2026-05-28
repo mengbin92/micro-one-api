@@ -52,6 +52,7 @@ func (c *identityClient) GetAuthSnapshot(ctx context.Context, token string) (*bi
 	return &biz.AuthSnapshot{
 		UserID:        resp.UserId,
 		TokenID:       resp.TokenId,
+		TokenName:     resp.TokenName,
 		Group:         resp.Group,
 		AllowedModels: append([]string(nil), resp.AllowedModels...),
 		UserEnabled:   resp.UserEnabled,

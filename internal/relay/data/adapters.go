@@ -27,6 +27,7 @@ func (a *IdentityAdapter) GetAuthSnapshot(ctx context.Context, token string) (*r
 	return &relaybiz.AuthSnapshot{
 		UserID:        reply.UserId,
 		TokenID:       reply.TokenId,
+		TokenName:     reply.TokenName,
 		Group:         reply.Group,
 		AllowedModels: reply.AllowedModels,
 		UserEnabled:   reply.UserEnabled,

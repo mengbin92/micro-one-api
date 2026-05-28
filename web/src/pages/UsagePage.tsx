@@ -70,6 +70,10 @@ function totalTokens(log: UsageLog) {
   return log.quota || (log.prompt_tokens || 0) + (log.completion_tokens || 0);
 }
 
+function hasTokenBreakdown(log: UsageLog) {
+  return (log.prompt_tokens || 0) > 0 || (log.completion_tokens || 0) > 0;
+}
+
 export function UsagePage() {
   const [page, setPage] = useState(1);
   const [type, setType] = useState('consume');
@@ -163,9 +167,11 @@ export function UsagePage() {
                     <TableCell>
                       <div className="text-sm font-semibold">
                         {totalTokens(log).toLocaleString()}
-                        <div className="text-xs text-slate-400">
-                          输入 {(log.prompt_tokens || 0).toLocaleString()} / 输出 {(log.completion_tokens || 0).toLocaleString()}
-                        </div>
+                        {hasTokenBreakdown(log) ? (
+                          <div className="text-xs text-slate-400">
+                            输入 {(log.prompt_tokens || 0).toLocaleString()} / 输出 {(log.completion_tokens || 0).toLocaleString()}
+                          </div>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell className="font-semibold text-emerald-600">{formatQuota(Math.abs(log.amount ?? 0))}</TableCell>

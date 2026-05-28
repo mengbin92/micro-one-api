@@ -216,6 +216,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			logInput := usageLogInput{
 				UserID:      plan.Auth.UserID,
 				TokenID:     plan.Auth.TokenID,
+				TokenName:   plan.Auth.TokenName,
 				RequestID:   requestID,
 				Endpoint:    upstreamPath,
 				ModelName:   clientModel,
@@ -339,6 +340,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						logInput := usageLogInput{
 							UserID:           plan.Auth.UserID,
 							TokenID:          plan.Auth.TokenID,
+							TokenName:        plan.Auth.TokenName,
 							RequestID:        requestID,
 							Endpoint:         "/chat/completions",
 							ModelName:        clientModel,
@@ -368,6 +370,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			logInput := usageLogInput{
 				UserID:           plan.Auth.UserID,
 				TokenID:          plan.Auth.TokenID,
+				TokenName:        plan.Auth.TokenName,
 				RequestID:        requestID,
 				Endpoint:         upstreamPath,
 				ModelName:        clientModel,
@@ -400,6 +403,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					logInput := usageLogInput{
 						UserID:           plan.Auth.UserID,
 						TokenID:          plan.Auth.TokenID,
+						TokenName:        plan.Auth.TokenName,
 						RequestID:        requestID,
 						Endpoint:         "/chat/completions",
 						ModelName:        clientModel,
@@ -427,6 +431,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		logInput := usageLogInput{
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
+			TokenName:        plan.Auth.TokenName,
 			RequestID:        requestID,
 			Endpoint:         upstreamPath,
 			ModelName:        clientModel,
@@ -547,6 +552,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		logInput := usageLogInput{
 			UserID:           authSnapshot.UserId,
 			TokenID:          authSnapshot.TokenId,
+			TokenName:        authSnapshot.TokenName,
 			RequestID:        requestID,
 			Endpoint:         upstreamPath,
 			ModelName:        route.Model,
@@ -576,6 +582,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	logInput := usageLogInput{
 		UserID:           authSnapshot.UserId,
 		TokenID:          authSnapshot.TokenId,
+		TokenName:        authSnapshot.TokenName,
 		RequestID:        requestID,
 		Endpoint:         upstreamPath,
 		ModelName:        route.Model,
@@ -765,6 +772,7 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 	if err := s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true, usageLogInput{
 		UserID:           authSnapshot.UserId,
 		TokenID:          authSnapshot.TokenId,
+		TokenName:        authSnapshot.TokenName,
 		RequestID:        requestID,
 		Endpoint:         "/" + targetPart,
 		ModelName:        model,
@@ -854,6 +862,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			s.handleStreamingResponse(w, r, provider, &req, reservation, usageLogInput{
 				UserID:    plan.Auth.UserID,
 				TokenID:   plan.Auth.TokenID,
+				TokenName: plan.Auth.TokenName,
 				RequestID: requestID,
 				Endpoint:  "/v1/chat/completions",
 				ModelName: clientModel,
@@ -875,6 +884,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		logInput := usageLogInput{
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
+			TokenName:        plan.Auth.TokenName,
 			RequestID:        requestID,
 			Endpoint:         "/v1/chat/completions",
 			ModelName:        clientModel,
@@ -978,6 +988,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 type usageLogInput struct {
 	UserID           int64
 	TokenID          int64
+	TokenName        string
 	RequestID        string
 	Endpoint         string
 	ModelName        string
@@ -1000,7 +1011,7 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		Source:           "relay-gateway",
 		RequestId:        in.RequestID,
 		UserId:           in.UserID,
-		TokenName:        fmt.Sprintf("token-%d", in.TokenID),
+		TokenName:        usageTokenName(in),
 		ModelName:        in.ModelName,
 		Quota:            in.Quota,
 		PromptTokens:     in.PromptTokens,
@@ -1360,7 +1371,7 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 	}
 	if len(details) > 0 {
 		detail := details[0]
-		req.TokenName = fmt.Sprintf("token-%d", detail.TokenID)
+		req.TokenName = usageTokenName(detail)
 		req.Endpoint = detail.Endpoint
 		req.PromptTokens = detail.PromptTokens
 		req.CompletionTokens = detail.CompletionTokens
@@ -1375,6 +1386,13 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 		return stderrors.New(billingErrorMessage(resp, "commit quota failed"))
 	}
 	return nil
+}
+
+func usageTokenName(in usageLogInput) string {
+	if strings.TrimSpace(in.TokenName) != "" {
+		return strings.TrimSpace(in.TokenName)
+	}
+	return fmt.Sprintf("token-%d", in.TokenID)
 }
 
 func (s *HTTPServer) releaseQuota(ctx context.Context, reservationID, reason string) error {
@@ -1625,9 +1643,7 @@ func estimateRawUsage(body []byte) rawUsage {
 	promptTokens := estimateRawPromptTokens(body)
 	completionTokens := int64(100)
 	return rawUsage{
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TotalTokens:      promptTokens + completionTokens,
+		TotalTokens: promptTokens + completionTokens,
 	}
 }
 

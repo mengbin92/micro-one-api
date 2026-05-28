@@ -21,6 +21,7 @@ type RelayRequest struct {
 type AuthSnapshot struct {
 	UserID        int64
 	TokenID       int64
+	TokenName     string
 	Group         string
 	AllowedModels []string
 	UserEnabled   bool

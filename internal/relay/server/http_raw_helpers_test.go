@@ -27,6 +27,7 @@ func (c rawIdentityClient) GetAuthSnapshot(ctx context.Context, req *identityv1.
 	return &identityv1.GetAuthSnapshotReply{
 		UserId:        userID,
 		TokenId:       7,
+		TokenName:     "test-token",
 		Group:         "default",
 		AllowedModels: []string{},
 		UserEnabled:   true,

@@ -526,6 +526,7 @@ func TestIdentityUsecase_GetAuthSnapshot_Valid(t *testing.T) {
 			"valid-token": {
 				ID:             1,
 				UserID:         1,
+				Name:           "valid-token-name",
 				Key:            "valid-token",
 				Status:         TokenStatusEnabled,
 				ExpiredAt:      time.Now().Add(time.Hour).Unix(),
@@ -555,6 +556,9 @@ func TestIdentityUsecase_GetAuthSnapshot_Valid(t *testing.T) {
 	}
 	if snapshot.TokenID != 1 {
 		t.Fatalf("unexpected token ID: %d", snapshot.TokenID)
+	}
+	if snapshot.TokenName != "valid-token-name" {
+		t.Fatalf("unexpected token name: %q", snapshot.TokenName)
 	}
 	if snapshot.Group != "default" {
 		t.Fatalf("unexpected group: %s", snapshot.Group)
