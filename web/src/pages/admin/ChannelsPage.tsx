@@ -333,9 +333,9 @@ export function AdminChannelsPage() {
                     <TableCell className="font-medium">{ch.name}</TableCell>
                     <TableCell>{PROVIDER_NAMES[ch.type] || `Type ${ch.type}`}</TableCell>
                     <TableCell>{ch.group}</TableCell>
-                    <TableCell className="hidden lg:table-cell">{ch.priority}</TableCell>
+                    <TableCell className="hidden lg:table-cell">{ch.priority ?? 0}</TableCell>
                     <TableCell className="hidden md:table-cell">
-                      {ch.balance !== undefined ? `$${ch.balance.toFixed(2)}` : '—'}
+                      {ch.balance != null ? `$${ch.balance.toFixed(2)}` : '$0.00'}
                     </TableCell>
                     <TableCell>
                       <span
