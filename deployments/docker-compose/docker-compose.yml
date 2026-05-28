@@ -324,7 +324,8 @@ services:
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - LOG_GRPC_ENDPOINT=log-service:9006
       - RELAY_HTTP_ADDR=:8080
-      - RELAY_PROVIDER_TIMEOUT=30s
+      - UPSTREAM_TIMEOUT=300s
+      - RELAY_PROVIDER_TIMEOUT=300s
       - RATE_LIMIT_REQUESTS_PER_SECOND=100
       - RATE_LIMIT_BURST=200
       - CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://app.yourdomain.com

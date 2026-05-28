@@ -521,8 +521,8 @@ func TestProviderFactory_CreateProvider(t *testing.T) {
 
 func TestProviderFactory_DefaultTimeout(t *testing.T) {
 	factory := NewProviderFactory(0)
-	if factory.defaultTimeout != 30*time.Second {
-		t.Fatalf("expected 30s default timeout, got %v", factory.defaultTimeout)
+	if factory.defaultTimeout != time.Minute {
+		t.Fatalf("expected 1m default timeout, got %v", factory.defaultTimeout)
 	}
 }
 

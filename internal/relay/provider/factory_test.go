@@ -90,3 +90,10 @@ func TestProviderFactoryRejectsKnownNativeProvidersWithoutAdapters(t *testing.T)
 		}
 	}
 }
+
+func TestProviderFactoryDefaultTimeoutMatchesLongResponsesCalls(t *testing.T) {
+	factory := NewProviderFactory(0)
+	if factory.defaultTimeout != time.Minute {
+		t.Fatalf("default timeout = %v, want 1m", factory.defaultTimeout)
+	}
+}

@@ -17,7 +17,7 @@ type ProviderConfig struct {
 // NewProviderFactory creates a new provider factory
 func NewProviderFactory(defaultTimeout time.Duration) *ProviderFactory {
 	if defaultTimeout == 0 {
-		defaultTimeout = 30 * time.Second
+		defaultTimeout = time.Minute
 	}
 	return &ProviderFactory{
 		defaultTimeout: defaultTimeout,

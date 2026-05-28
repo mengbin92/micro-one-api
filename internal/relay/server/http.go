@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	crypto_rand "crypto/rand"
+	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"io"
@@ -332,24 +333,23 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				if shouldFallbackResponsesToChat(upstreamPath, streamErr) {
 					fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), body)
 					if fallbackErr == nil && fallbackResp.Stream != nil {
-						defer fallbackResp.Stream.Body.Close()
-						writeRawStreamResponse(w, fallbackResp.Stream)
-						usage := fallbackResp.Usage.TotalTokens
-						if usage <= 0 {
-							usage = estimateRawTokens(body)
-						}
+						usage := newRawStreamUsageTracker(estimateRawUsage(body))
+						writeRawStreamResponse(w, fallbackResp.Stream, usage)
+						actualUsage := usage.Usage()
 						logInput := usageLogInput{
-							UserID:      plan.Auth.UserID,
-							TokenID:     plan.Auth.TokenID,
-							RequestID:   requestID,
-							Endpoint:    "/chat/completions",
-							ModelName:   clientModel,
-							Quota:       usage,
-							ChannelID:   ch.ID,
-							ElapsedTime: time.Since(startedAt).Milliseconds(),
-							IsStream:    true,
+							UserID:           plan.Auth.UserID,
+							TokenID:          plan.Auth.TokenID,
+							RequestID:        requestID,
+							Endpoint:         "/chat/completions",
+							ModelName:        clientModel,
+							Quota:            actualUsage.TotalTokens,
+							PromptTokens:     actualUsage.PromptTokens,
+							CompletionTokens: actualUsage.CompletionTokens,
+							ChannelID:        ch.ID,
+							ElapsedTime:      time.Since(startedAt).Milliseconds(),
+							IsStream:         true,
 						}
-						if err := s.commitQuotaAfterResponse(reservation.ReservationId, usage, true, logInput); err != nil {
+						if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 							s.logPostResponseCommitError(err)
 						} else {
 							s.ingestUsageLogAfterResponse(logInput)
@@ -362,21 +362,23 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream stream error")
 				return streamErr
 			}
-			defer streamResp.Body.Close()
-			writeRawStreamResponse(w, streamResp)
-			usage := estimateRawTokens(body)
+			usage := newRawStreamUsageTracker(estimateRawUsage(body))
+			writeRawStreamResponse(w, streamResp, usage)
+			actualUsage := usage.Usage()
 			logInput := usageLogInput{
-				UserID:      plan.Auth.UserID,
-				TokenID:     plan.Auth.TokenID,
-				RequestID:   requestID,
-				Endpoint:    upstreamPath,
-				ModelName:   clientModel,
-				Quota:       usage,
-				ChannelID:   ch.ID,
-				ElapsedTime: time.Since(startedAt).Milliseconds(),
-				IsStream:    true,
+				UserID:           plan.Auth.UserID,
+				TokenID:          plan.Auth.TokenID,
+				RequestID:        requestID,
+				Endpoint:         upstreamPath,
+				ModelName:        clientModel,
+				Quota:            actualUsage.TotalTokens,
+				PromptTokens:     actualUsage.PromptTokens,
+				CompletionTokens: actualUsage.CompletionTokens,
+				ChannelID:        ch.ID,
+				ElapsedTime:      time.Since(startedAt).Milliseconds(),
+				IsStream:         true,
 			}
-			if err := s.commitQuotaAfterResponse(reservation.ReservationId, usage, true, logInput); err != nil {
+			if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
 				s.ingestUsageLogAfterResponse(logInput)
@@ -539,21 +541,23 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(err)), "upstream service error")
 			return
 		}
-		defer streamResp.Body.Close()
-		writeRawStreamResponse(w, streamResp)
-		usage := estimateRawTokens(body)
+		usage := newRawStreamUsageTracker(estimateRawUsage(body))
+		writeRawStreamResponse(w, streamResp, usage)
+		actualUsage := usage.Usage()
 		logInput := usageLogInput{
-			UserID:      authSnapshot.UserId,
-			TokenID:     authSnapshot.TokenId,
-			RequestID:   requestID,
-			Endpoint:    upstreamPath,
-			ModelName:   route.Model,
-			Quota:       usage,
-			ChannelID:   route.Channel.ID,
-			ElapsedTime: time.Since(startedAt).Milliseconds(),
-			IsStream:    true,
+			UserID:           authSnapshot.UserId,
+			TokenID:          authSnapshot.TokenId,
+			RequestID:        requestID,
+			Endpoint:         upstreamPath,
+			ModelName:        route.Model,
+			Quota:            actualUsage.TotalTokens,
+			PromptTokens:     actualUsage.PromptTokens,
+			CompletionTokens: actualUsage.CompletionTokens,
+			ChannelID:        route.Channel.ID,
+			ElapsedTime:      time.Since(startedAt).Milliseconds(),
+			IsStream:         true,
 		}
-		if err := s.commitQuotaAfterResponse(reservation.ReservationId, usage, true, logInput); err != nil {
+		if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
 		} else {
 			s.ingestUsageLogAfterResponse(logInput)
@@ -1471,41 +1475,106 @@ type rawUsage struct {
 }
 
 func extractRawUsage(body []byte, fallback int64) rawUsage {
-	var payload struct {
-		TotalTokens int64 `json:"total_tokens"`
-		Usage       struct {
-			PromptTokens     int64 `json:"prompt_tokens"`
-			CompletionTokens int64 `json:"completion_tokens"`
-			InputTokens      int64 `json:"input_tokens"`
-			OutputTokens     int64 `json:"output_tokens"`
-			TotalTokens      int64 `json:"total_tokens"`
-		} `json:"usage"`
-	}
+	var payload interface{}
 	if err := sonic.Unmarshal(body, &payload); err != nil {
 		return rawUsage{TotalTokens: fallback}
 	}
-	promptTokens := payload.Usage.PromptTokens
-	if promptTokens == 0 {
-		promptTokens = payload.Usage.InputTokens
+	return normalizeRawUsage(extractRawUsageValue(payload), fallback)
+}
+
+func extractRawUsageValue(value interface{}) rawUsage {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		var usage rawUsage
+		if nested, ok := typed["usage"]; ok {
+			usage = extractRawUsageValue(nested)
+		}
+		usage = mergeRawUsage(usage, rawUsage{
+			PromptTokens:     numberField(typed, "prompt_tokens", "input_tokens"),
+			CompletionTokens: numberField(typed, "completion_tokens", "output_tokens"),
+			TotalTokens:      numberField(typed, "total_tokens"),
+		})
+		if usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 {
+			return usage
+		}
+		for _, nested := range typed {
+			usage = extractRawUsageValue(nested)
+			if usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 {
+				return usage
+			}
+		}
+	case []interface{}:
+		for _, item := range typed {
+			usage := extractRawUsageValue(item)
+			if usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 {
+				return usage
+			}
+		}
 	}
-	completionTokens := payload.Usage.CompletionTokens
-	if completionTokens == 0 {
-		completionTokens = payload.Usage.OutputTokens
+	return rawUsage{}
+}
+
+func mergeRawUsage(primary, fallback rawUsage) rawUsage {
+	if primary.PromptTokens == 0 {
+		primary.PromptTokens = fallback.PromptTokens
 	}
-	totalTokens := payload.Usage.TotalTokens
-	if totalTokens == 0 && promptTokens+completionTokens > 0 {
-		totalTokens = promptTokens + completionTokens
+	if primary.CompletionTokens == 0 {
+		primary.CompletionTokens = fallback.CompletionTokens
 	}
-	if totalTokens == 0 {
-		totalTokens = payload.TotalTokens
+	if primary.TotalTokens == 0 {
+		primary.TotalTokens = fallback.TotalTokens
 	}
-	if totalTokens <= 0 {
-		totalTokens = fallback
+	return primary
+}
+
+func normalizeRawUsage(usage rawUsage, fallback int64) rawUsage {
+	return normalizeRawUsageWithFallback(usage, rawUsage{TotalTokens: fallback})
+}
+
+func normalizeRawUsageWithFallback(usage rawUsage, fallback rawUsage) rawUsage {
+	if usage.TotalTokens == 0 && usage.PromptTokens+usage.CompletionTokens > 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
-	return rawUsage{
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TotalTokens:      totalTokens,
+	if usage.TotalTokens <= 0 {
+		usage.TotalTokens = fallback.TotalTokens
+	}
+	if usage.PromptTokens == 0 {
+		usage.PromptTokens = fallback.PromptTokens
+	}
+	if usage.CompletionTokens == 0 {
+		usage.CompletionTokens = fallback.CompletionTokens
+	}
+	return usage
+}
+
+func numberField(m map[string]interface{}, keys ...string) int64 {
+	for _, key := range keys {
+		if value, ok := m[key]; ok {
+			if number := int64Value(value); number != 0 {
+				return number
+			}
+		}
+	}
+	return 0
+}
+
+func int64Value(value interface{}) int64 {
+	switch v := value.(type) {
+	case float64:
+		return int64(v)
+	case float32:
+		return int64(v)
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	case int32:
+		return int64(v)
+	case json.Number:
+		n, _ := v.Int64()
+		return n
+	default:
+		return 0
 	}
 }
 
@@ -1544,12 +1613,26 @@ func defaultRawModel(upstreamPath string) string {
 	}
 }
 
-func estimateRawTokens(body []byte) int64 {
+func estimateRawPromptTokens(body []byte) int64 {
 	tokens := int64(len(body) / 4)
 	if tokens < 1 {
 		return 1
 	}
-	return tokens + 100
+	return tokens
+}
+
+func estimateRawUsage(body []byte) rawUsage {
+	promptTokens := estimateRawPromptTokens(body)
+	completionTokens := int64(100)
+	return rawUsage{
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		TotalTokens:      promptTokens + completionTokens,
+	}
+}
+
+func estimateRawTokens(body []byte) int64 {
+	return estimateRawUsage(body).TotalTokens
 }
 
 func extractTotalTokens(body []byte, fallback int64) int64 {
@@ -1572,7 +1655,49 @@ func writeRawResponse(w http.ResponseWriter, resp *relayprovider.RawResponse) {
 	_, _ = w.Write(resp.Body)
 }
 
-func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStreamResponse) {
+type rawStreamUsageTracker struct {
+	fallback rawUsage
+	usage    rawUsage
+	pending  string
+}
+
+func newRawStreamUsageTracker(fallback rawUsage) *rawStreamUsageTracker {
+	return &rawStreamUsageTracker{fallback: fallback}
+}
+
+func (t *rawStreamUsageTracker) Observe(chunk []byte) {
+	usage := extractRawUsage(chunk, 0)
+	if usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 {
+		t.usage = mergeRawUsage(usage, t.usage)
+	}
+}
+
+func (t *rawStreamUsageTracker) ObserveBytes(p []byte) {
+	t.pending += string(p)
+	for {
+		line, rest, ok := strings.Cut(t.pending, "\n")
+		if !ok {
+			break
+		}
+		t.pending = rest
+		data, ok := strings.CutPrefix(strings.TrimSpace(line), "data: ")
+		if !ok || data == "" || data == "[DONE]" {
+			continue
+		}
+		t.Observe([]byte(data))
+	}
+}
+
+func (t *rawStreamUsageTracker) Usage() rawUsage {
+	if strings.TrimSpace(t.pending) != "" {
+		t.ObserveBytes([]byte("\n"))
+	}
+	return normalizeRawUsageWithFallback(t.usage, t.fallback)
+}
+
+func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStreamResponse, usageTracker ...*rawStreamUsageTracker) {
+	defer resp.Body.Close()
+
 	for key, values := range resp.Header {
 		if isRelayHopByHopHeader(key) {
 			continue
@@ -1586,21 +1711,47 @@ func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStream
 	}
 	w.WriteHeader(resp.StatusCode)
 	if flusher, ok := w.(http.Flusher); ok {
-		_, _ = io.Copy(&flushWriter{w: w, flusher: flusher}, resp.Body)
+		_, _ = io.Copy(&flushWriter{w: w, flusher: flusher, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
 		return
 	}
-	_, _ = io.Copy(w, resp.Body)
+	_, _ = io.Copy(&streamUsageWriter{w: w, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
+}
+
+func firstRawStreamUsageTracker(trackers []*rawStreamUsageTracker) *rawStreamUsageTracker {
+	if len(trackers) == 0 {
+		return nil
+	}
+	return trackers[0]
 }
 
 type flushWriter struct {
-	w       http.ResponseWriter
-	flusher http.Flusher
+	w            http.ResponseWriter
+	flusher      http.Flusher
+	usageTracker *rawStreamUsageTracker
 }
 
 func (w *flushWriter) Write(p []byte) (int, error) {
+	observeStreamUsage(w.usageTracker, p)
 	n, err := w.w.Write(p)
 	w.flusher.Flush()
 	return n, err
+}
+
+type streamUsageWriter struct {
+	w            io.Writer
+	usageTracker *rawStreamUsageTracker
+}
+
+func (w *streamUsageWriter) Write(p []byte) (int, error) {
+	observeStreamUsage(w.usageTracker, p)
+	return w.w.Write(p)
+}
+
+func observeStreamUsage(tracker *rawStreamUsageTracker, p []byte) {
+	if tracker == nil {
+		return
+	}
+	tracker.ObserveBytes(p)
 }
 
 func isRelayHopByHopHeader(key string) bool {

@@ -20,6 +20,7 @@ import (
 	logv1 "micro-one-api/api/log/v1"
 	appauth "micro-one-api/internal/pkg/auth"
 	appregistry "micro-one-api/internal/pkg/registry"
+	apptimeout "micro-one-api/internal/pkg/timeout"
 	apptls "micro-one-api/internal/pkg/tls"
 	"micro-one-api/internal/pkg/xconfig"
 	relaybiz "micro-one-api/internal/relay/biz"
@@ -95,7 +96,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		}
 	}
 
-	providerTimeout := 30 * time.Second
+	providerTimeout := apptimeout.GetUpstreamTimeout()
 	if timeoutStr := os.Getenv("RELAY_PROVIDER_TIMEOUT"); timeoutStr != "" {
 		if duration, err := time.ParseDuration(timeoutStr); err == nil {
 			providerTimeout = duration

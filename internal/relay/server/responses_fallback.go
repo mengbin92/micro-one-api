@@ -421,6 +421,7 @@ type responsesStreamFallbackState struct {
 	textItemID    string
 	textStarted   bool
 	text          strings.Builder
+	usage         rawUsage
 	toolByIndex   map[int]*responsesStreamToolCall
 	toolOrder     []int
 	nextToolIndex int
@@ -448,6 +449,13 @@ func (s *responsesStreamFallbackState) writeChunk(w io.Writer, data []byte) bool
 	var chunk chatCompletionStreamChunk
 	if err := sonic.Unmarshal(data, &chunk); err != nil {
 		return false
+	}
+	if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
+		s.usage = rawUsage{
+			PromptTokens:     int64(chunk.Usage.PromptTokens),
+			CompletionTokens: int64(chunk.Usage.CompletionTokens),
+			TotalTokens:      int64(chunk.Usage.TotalTokens),
+		}
 	}
 	if len(chunk.Choices) == 0 {
 		return false
@@ -624,6 +632,7 @@ func (s *responsesStreamFallbackState) finishText(w io.Writer) {
 				},
 			},
 			"output_text": text,
+			"usage":       responsesUsageMap(s.usage),
 		},
 	})
 }
@@ -664,6 +673,7 @@ func (s *responsesStreamFallbackState) finishToolCalls(w io.Writer) {
 			"object": "response",
 			"status": "completed",
 			"output": output,
+			"usage":  responsesUsageMap(s.usage),
 		},
 	})
 }
@@ -676,6 +686,22 @@ type chatCompletionStreamChunk struct {
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+func responsesUsageMap(usage rawUsage) map[string]interface{} {
+	if usage.TotalTokens == 0 && usage.PromptTokens+usage.CompletionTokens > 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+	return map[string]interface{}{
+		"input_tokens":  usage.PromptTokens,
+		"output_tokens": usage.CompletionTokens,
+		"total_tokens":  usage.TotalTokens,
+	}
 }
 
 type chatCompletionStreamToolCallDelta struct {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	billingv1 "micro-one-api/api/billing/v1"
+	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/internal/identity/biz"
 	"micro-one-api/internal/pkg/metrics"
 	"micro-one-api/internal/pkg/oauth"
@@ -473,51 +474,107 @@ func handleUserLogs(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	resp, err := billingClient.ListLedger(r.Context(), &billingv1.ListLedgerRequest{
-		UserId:   strconv.FormatInt(snapshot.UserID, 10),
-		Page:     page,
-		PageSize: pageSize,
-	})
-	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
-		return
+	logType := strings.TrimSpace(r.URL.Query().Get("type"))
+	userID := strconv.FormatInt(snapshot.UserID, 10)
+
+	var entries []*commonv1.LedgerEntry
+	var total int64
+	if logType == "" {
+		resp, err := billingClient.ListLedger(r.Context(), &billingv1.ListLedgerRequest{
+			UserId:   userID,
+			Page:     page,
+			PageSize: pageSize,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+			return
+		}
+		entries = resp.GetEntries()
+		total = resp.GetTotal()
+	} else {
+		var err error
+		entries, total, err = listFilteredLedgerEntries(r.Context(), billingClient, userID, page, pageSize, logType)
+		if err != nil {
+			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+			return
+		}
 	}
 
-	logType := strings.TrimSpace(r.URL.Query().Get("type"))
-	items := make([]map[string]interface{}, 0, len(resp.GetEntries()))
-	for _, entry := range resp.GetEntries() {
-		if logType != "" && entry.GetType() != logType {
-			continue
-		}
-		createdAt := int64(0)
-		if entry.GetCreatedAt() != nil {
-			createdAt = entry.GetCreatedAt().AsTime().Unix()
-		}
-		items = append(items, map[string]interface{}{
-			"id":                entry.GetId(),
-			"user_id":           entry.GetUserId(),
-			"type":              entry.GetType(),
-			"amount":            entry.GetAmount(),
-			"balance_after":     entry.GetBalanceAfter(),
-			"reference_id":      entry.GetReferenceId(),
-			"remark":            entry.GetRemark(),
-			"created_at":        createdAt,
-			"token_name":        entry.GetTokenName(),
-			"model_name":        entry.GetModelName(),
-			"quota":             entry.GetQuota(),
-			"prompt_tokens":     entry.GetPromptTokens(),
-			"completion_tokens": entry.GetCompletionTokens(),
-			"channel_id":        entry.GetChannelId(),
-			"elapsed_time":      entry.GetElapsedTime(),
-			"is_stream":         entry.GetIsStream(),
-			"endpoint":          entry.GetEndpoint(),
-		})
+	items := make([]map[string]interface{}, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, ledgerEntryToMap(entry))
 	}
 
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{
 		"items": items,
-		"total": resp.GetTotal(),
+		"total": total,
 	}})
+}
+
+func listFilteredLedgerEntries(ctx context.Context, billingClient billingv1.BillingServiceClient, userID string, page, pageSize int32, logType string) ([]*commonv1.LedgerEntry, int64, error) {
+	const scanPageSize int32 = 100
+
+	matches := make([]*commonv1.LedgerEntry, 0, pageSize)
+	scanned := int64(0)
+	totalLedgers := int64(1)
+	for scanPage := int32(1); scanned < totalLedgers; scanPage++ {
+		resp, err := billingClient.ListLedger(ctx, &billingv1.ListLedgerRequest{
+			UserId:   userID,
+			Page:     scanPage,
+			PageSize: scanPageSize,
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+		totalLedgers = resp.GetTotal()
+		entries := resp.GetEntries()
+		if len(entries) == 0 {
+			break
+		}
+		scanned += int64(len(entries))
+		for _, entry := range entries {
+			if entry.GetType() == logType {
+				matches = append(matches, entry)
+			}
+		}
+	}
+
+	total := int64(len(matches))
+	start := int((page - 1) * pageSize)
+	if start >= len(matches) {
+		return []*commonv1.LedgerEntry{}, total, nil
+	}
+	end := start + int(pageSize)
+	if end > len(matches) {
+		end = len(matches)
+	}
+	return matches[start:end], total, nil
+}
+
+func ledgerEntryToMap(entry *commonv1.LedgerEntry) map[string]interface{} {
+	createdAt := int64(0)
+	if entry.GetCreatedAt() != nil {
+		createdAt = entry.GetCreatedAt().AsTime().Unix()
+	}
+	return map[string]interface{}{
+		"id":                entry.GetId(),
+		"user_id":           entry.GetUserId(),
+		"type":              entry.GetType(),
+		"amount":            entry.GetAmount(),
+		"balance_after":     entry.GetBalanceAfter(),
+		"reference_id":      entry.GetReferenceId(),
+		"remark":            entry.GetRemark(),
+		"created_at":        createdAt,
+		"token_name":        entry.GetTokenName(),
+		"model_name":        entry.GetModelName(),
+		"quota":             entry.GetQuota(),
+		"prompt_tokens":     entry.GetPromptTokens(),
+		"completion_tokens": entry.GetCompletionTokens(),
+		"channel_id":        entry.GetChannelId(),
+		"elapsed_time":      entry.GetElapsedTime(),
+		"is_stream":         entry.GetIsStream(),
+		"endpoint":          entry.GetEndpoint(),
+	}
 }
 
 func handleDashboardBillingUsage(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {

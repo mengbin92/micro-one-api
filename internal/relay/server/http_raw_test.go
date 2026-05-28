@@ -409,6 +409,20 @@ func TestHTTPServerResponsesCreateForwardsAndCommitsResponsesUsage(t *testing.T)
 	}
 }
 
+func TestExtractRawUsageFindsNestedResponsesUsage(t *testing.T) {
+	usage := extractRawUsage([]byte(`{
+		"type":"response.completed",
+		"response":{
+			"id":"resp_test_123",
+			"usage":{"input_tokens":21,"output_tokens":9,"total_tokens":30}
+		}
+	}`), 100)
+
+	if usage.TotalTokens != 30 || usage.PromptTokens != 21 || usage.CompletionTokens != 9 {
+		t.Fatalf("usage = total:%d prompt:%d completion:%d", usage.TotalTokens, usage.PromptTokens, usage.CompletionTokens)
+	}
+}
+
 func TestHTTPServerResponsesCreateStreamsRawSSE(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
@@ -471,6 +485,65 @@ func TestHTTPServerResponsesCreateStreamsRawSSE(t *testing.T) {
 	}
 	if len(logClient.entries) != 1 || !logClient.entries[0].IsStream {
 		t.Fatalf("stream usage log mismatch: entries=%d", len(logClient.entries))
+	}
+}
+
+func TestHTTPServerResponsesCreateStreamsRawSSECommitsUsage(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"pong\"}\n\n"))
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":7,\"total_tokens\":18}}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	logClient := &rawLogClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping","stream":true}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if len(billingClient.commitRequests) != 1 {
+		t.Fatalf("commit requests = %d, want 1", len(billingClient.commitRequests))
+	}
+	commit := billingClient.commitRequests[0]
+	if commit.ActualTokens != 18 || commit.PromptTokens != 11 || commit.CompletionTokens != 7 {
+		t.Fatalf("commit usage = total:%d prompt:%d completion:%d", commit.ActualTokens, commit.PromptTokens, commit.CompletionTokens)
+	}
+	if len(logClient.entries) != 1 {
+		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
+	}
+	got := logClient.entries[0]
+	if got.Quota != 18 || got.PromptTokens != 11 || got.CompletionTokens != 7 || !got.IsStream {
+		t.Fatalf("log usage = quota:%d prompt:%d completion:%d stream:%v", got.Quota, got.PromptTokens, got.CompletionTokens, got.IsStream)
 	}
 }
 
@@ -731,6 +804,13 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 	}
 	if len(logClient.entries) != 1 || !logClient.entries[0].IsStream {
 		t.Fatalf("stream usage log mismatch: entries=%#v", logClient.entries)
+	}
+	gotLog := logClient.entries[0]
+	if gotLog.Quota != 6 || gotLog.PromptTokens != 4 || gotLog.CompletionTokens != 2 {
+		t.Fatalf("stream usage log = quota:%d prompt:%d completion:%d", gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens)
+	}
+	if !strings.Contains(body, `"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}`) {
+		t.Fatalf("fallback stream response missing responses usage: %s", body)
 	}
 }
 
