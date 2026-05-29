@@ -1026,7 +1026,14 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 }
 
 func postResponseContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(context.Background()), postResponseWriteTimeout)
+	return detachedBillingContext(context.Background())
+}
+
+func detachedBillingContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(context.WithoutCancel(parent), postResponseWriteTimeout)
 }
 
 func (s *HTTPServer) commitQuotaAfterResponse(reservationID string, actualTokens int64, success bool, details ...usageLogInput) error {
@@ -1378,7 +1385,9 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 		req.ElapsedTime = detail.ElapsedTime
 		req.IsStream = detail.IsStream
 	}
-	resp, err := s.billingClient.CommitQuota(ctx, req)
+	billingCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+	resp, err := s.billingClient.CommitQuota(billingCtx, req)
 	if err != nil {
 		return err
 	}
@@ -1400,7 +1409,9 @@ func (s *HTTPServer) releaseQuota(ctx context.Context, reservationID, reason str
 		ReservationId: reservationID,
 		Reason:        reason,
 	}
-	resp, err := s.billingClient.ReleaseQuota(ctx, req)
+	billingCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+	resp, err := s.billingClient.ReleaseQuota(billingCtx, req)
 	if err != nil {
 		return err
 	}

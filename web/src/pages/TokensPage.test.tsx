@@ -7,6 +7,34 @@ import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
 describe('TokensPage', () => {
+  it('does not show unnamed session tokens as API keys', async () => {
+    server.use(
+      http.get('/api/token', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            items: [
+              {
+                id: 1,
+                name: '',
+                masked_key: 'sess********oken',
+                status: 1,
+                remain_quota: 1000,
+                created_time: 1760000000,
+              },
+            ],
+            total: 1,
+          },
+        }),
+      ),
+    );
+
+    renderWithQuery(<TokensPage />);
+
+    expect(await screen.findByText('No tokens yet')).toBeInTheDocument();
+    expect(screen.queryByText('sess********oken')).not.toBeInTheDocument();
+  });
+
   it('shows the full API key returned by token creation', async () => {
     const user = userEvent.setup();
     const fullKey = 'sk-full-token-value-created-once';

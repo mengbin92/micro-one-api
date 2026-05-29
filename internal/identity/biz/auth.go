@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -42,6 +43,7 @@ var (
 	ErrUserDisabled      = errors.New("user disabled")
 	ErrUserNotFound      = errors.New("user not found")
 	ErrTokenNotFound     = errors.New("token not found")
+	ErrTokenNameRequired = errors.New("token name is required")
 	ErrUserExists        = errors.New("user already exists")
 	ErrInvalidPassword   = errors.New("invalid password")
 	ErrOAuthUserNotFound = errors.New("oauth user not found")
@@ -112,6 +114,14 @@ type AuthSnapshot struct {
 	TokenEnabled  bool
 }
 
+type UserSessionClaims struct {
+	UserID    int64  `json:"user_id"`
+	Username  string `json:"username"`
+	Role      int32  `json:"role"`
+	TokenType string `json:"token_type"`
+	jwt.RegisteredClaims
+}
+
 type IdentityRepo interface {
 	FindTokenByKey(ctx context.Context, key string) (*Token, error)
 	FindUserByID(ctx context.Context, userID int64) (*User, error)
@@ -142,11 +152,14 @@ type loginAttempt struct {
 }
 
 type IdentityUsecase struct {
-	repo         IdentityRepo
-	now          func() time.Time
-	defaultQuota int64
-	loginLimiter map[string]*loginAttempt
-	loginMutex   sync.Mutex
+	repo            IdentityRepo
+	now             func() time.Time
+	defaultQuota    int64
+	sessionSecret   []byte
+	sessionIssuer   string
+	sessionDuration time.Duration
+	loginLimiter    map[string]*loginAttempt
+	loginMutex      sync.Mutex
 }
 
 const (
@@ -161,11 +174,35 @@ func NewIdentityUsecase(repo IdentityRepo) *IdentityUsecase {
 			defaultQuota = n
 		}
 	}
+	sessionSecret := []byte(os.Getenv("JWT_SECRET_KEY"))
+	if len(sessionSecret) == 0 {
+		sessionSecret = make([]byte, 32)
+		if _, err := rand.Read(sessionSecret); err != nil {
+			panic("crypto/rand failed: " + err.Error())
+		}
+	}
+	sessionIssuer := os.Getenv("JWT_ISSUER")
+	if sessionIssuer == "" {
+		sessionIssuer = "micro-one-api"
+	}
+	sessionDuration := 24 * time.Hour
+	if v := os.Getenv("USER_JWT_TOKEN_DURATION"); v != "" {
+		if duration, err := time.ParseDuration(v); err == nil && duration > 0 {
+			sessionDuration = duration
+		}
+	} else if v := os.Getenv("JWT_TOKEN_DURATION"); v != "" {
+		if duration, err := time.ParseDuration(v); err == nil && duration > 0 {
+			sessionDuration = duration
+		}
+	}
 	return &IdentityUsecase{
-		repo:         repo,
-		now:          time.Now,
-		defaultQuota: defaultQuota,
-		loginLimiter: make(map[string]*loginAttempt),
+		repo:            repo,
+		now:             time.Now,
+		defaultQuota:    defaultQuota,
+		sessionSecret:   sessionSecret,
+		sessionIssuer:   sessionIssuer,
+		sessionDuration: sessionDuration,
+		loginLimiter:    make(map[string]*loginAttempt),
 	}
 }
 
@@ -215,6 +252,51 @@ func (uc *IdentityUsecase) GetAuthSnapshot(ctx context.Context, key string) (*Au
 		AllowedModels: append([]string(nil), token.Models...),
 		UserEnabled:   true,
 		TokenEnabled:  true,
+	}, nil
+}
+
+func (uc *IdentityUsecase) ValidateSessionToken(ctx context.Context, tokenString string) (*User, error) {
+	tokenString = strings.TrimSpace(strings.TrimPrefix(tokenString, "Bearer "))
+	if tokenString == "" {
+		return nil, ErrInvalidToken
+	}
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}),
+		jwt.WithIssuer(uc.sessionIssuer),
+		jwt.WithAudience("micro-one-api-web"),
+	)
+	token, err := parser.ParseWithClaims(tokenString, &UserSessionClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return uc.sessionSecret, nil
+	})
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+	claims, ok := token.Claims.(*UserSessionClaims)
+	if !ok || !token.Valid || claims.TokenType != "user_session" || claims.UserID <= 0 {
+		return nil, ErrInvalidToken
+	}
+	user, err := uc.repo.FindUserByID(ctx, claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if user.Status != UserStatusEnabled {
+		return nil, ErrUserDisabled
+	}
+	return user, nil
+}
+
+func (uc *IdentityUsecase) GetSessionSnapshot(ctx context.Context, token string) (*AuthSnapshot, error) {
+	user, err := uc.ValidateSessionToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	return &AuthSnapshot{
+		UserID:       user.ID,
+		TokenID:      0,
+		TokenName:    "web-session",
+		Group:        user.Group,
+		UserEnabled:  true,
+		TokenEnabled: true,
 	}, nil
 }
 
@@ -301,15 +383,8 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password string)
 
 	uc.clearLoginAttempts(username)
 
-	token := uc.generateToken()
-	tokenRecord := &Token{
-		UserID:      user.ID,
-		Key:         token,
-		Status:      TokenStatusEnabled,
-		RemainQuota: uc.defaultQuota,
-		Models:      []string{},
-	}
-	if err := uc.repo.CreateToken(ctx, tokenRecord); err != nil {
+	token, err := uc.generateSessionToken(user)
+	if err != nil {
 		return nil, "", err
 	}
 	return user, token, nil
@@ -428,6 +503,10 @@ func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, 
 	if user.Status != UserStatusEnabled {
 		return nil, ErrUserDisabled
 	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, ErrTokenNameRequired
+	}
 	options := CreateAccessTokenOptions{RemainQuota: uc.defaultQuota}
 	if len(opts) > 0 {
 		options = opts[0]
@@ -459,11 +538,29 @@ func (uc *IdentityUsecase) ListAccessTokens(ctx context.Context, userID int64, p
 	if _, err := uc.repo.FindUserByID(ctx, userID); err != nil {
 		return nil, 0, err
 	}
-	return uc.repo.ListTokens(ctx, userID, page, pageSize, keyword)
+	tokens, _, err := uc.repo.ListTokens(ctx, userID, page, pageSize, keyword)
+	if err != nil {
+		return nil, 0, err
+	}
+	filtered := make([]*Token, 0, len(tokens))
+	for _, token := range tokens {
+		if token == nil || strings.TrimSpace(token.Name) == "" {
+			continue
+		}
+		filtered = append(filtered, token)
+	}
+	return filtered, int64(len(filtered)), nil
 }
 
 func (uc *IdentityUsecase) GetAccessToken(ctx context.Context, userID, tokenID int64) (*Token, error) {
-	return uc.repo.FindTokenByID(ctx, userID, tokenID)
+	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(token.Name) == "" {
+		return nil, ErrTokenNotFound
+	}
+	return token, nil
 }
 
 func (uc *IdentityUsecase) UpdateAccessToken(ctx context.Context, userID, tokenID int64, name string, models []string, expireAt int64, status int32, remainQuota int64, unlimitedQuota bool) (*Token, error) {
@@ -481,6 +578,9 @@ func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, use
 	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
 	if err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(token.Name) == "" {
+		return nil, ErrTokenNotFound
 	}
 	if opts.Name != "" {
 		token.Name = opts.Name
@@ -506,6 +606,13 @@ func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, use
 }
 
 func (uc *IdentityUsecase) DeleteAccessToken(ctx context.Context, userID, tokenID int64) error {
+	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(token.Name) == "" {
+		return ErrTokenNotFound
+	}
 	return uc.repo.DeleteToken(ctx, userID, tokenID)
 }
 
@@ -709,6 +816,30 @@ func (uc *IdentityUsecase) generateToken() string {
 	return string(b)
 }
 
+func (uc *IdentityUsecase) generateSessionToken(user *User) (string, error) {
+	if user == nil || user.ID <= 0 {
+		return "", ErrUserNotFound
+	}
+	now := uc.now()
+	claims := UserSessionClaims{
+		UserID:    user.ID,
+		Username:  user.Username,
+		Role:      user.Role,
+		TokenType: "user_session",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        uc.generateToken(),
+			Issuer:    uc.sessionIssuer,
+			Subject:   strconv.FormatInt(user.ID, 10),
+			Audience:  []string{"micro-one-api-web"},
+			ExpiresAt: jwt.NewNumericDate(now.Add(uc.sessionDuration)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(uc.sessionSecret)
+}
+
 // OAuthLogin finds or creates a user by OAuth provider identity, then returns a token.
 func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, username, email, displayName string) (*User, string, error) {
 	identity, err := uc.repo.FindOAuthIdentity(ctx, provider, oauthID)
@@ -767,16 +898,8 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 		return nil, "", ErrUserDisabled
 	}
 
-	// Generate token
-	token := uc.generateToken()
-	tokenRecord := &Token{
-		UserID:      user.ID,
-		Key:         token,
-		Status:      TokenStatusEnabled,
-		RemainQuota: uc.defaultQuota,
-		Models:      []string{},
-	}
-	if err := uc.repo.CreateToken(ctx, tokenRecord); err != nil {
+	token, err := uc.generateSessionToken(user)
+	if err != nil {
 		return nil, "", err
 	}
 

@@ -28,7 +28,7 @@ import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 
 interface Token {
   id: number;
-  name: string;
+  name?: string;
   key?: string;
   masked_key?: string;
   status: number;
@@ -42,11 +42,12 @@ interface TokenListData {
 }
 
 function normalizeTokens(data: Token[] | TokenListData): Token[] {
+  const onlyNamedTokens = (items: Token[]) => items.filter((token) => token.name?.trim());
   if (Array.isArray(data)) {
-    return data;
+    return onlyNamedTokens(data);
   }
   if (Array.isArray(data?.items)) {
-    return data.items;
+    return onlyNamedTokens(data.items);
   }
   return [];
 }

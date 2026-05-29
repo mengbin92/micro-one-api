@@ -599,6 +599,29 @@ func TestHTTPServerResponsesStreamCommitsAfterRequestContextCanceled(t *testing.
 	}
 }
 
+func TestHTTPServerBillingMutationsIgnoreCanceledRequestContext(t *testing.T) {
+	billingClient := &rawBillingClient{failOnCanceledContext: true}
+	srv := &HTTPServer{billingClient: billingClient}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := srv.commitQuota(ctx, "reservation-1", 12, true, usageLogInput{
+		TokenName:        "token-1",
+		Endpoint:         "/v1/responses",
+		PromptTokens:     5,
+		CompletionTokens: 7,
+	}); err != nil {
+		t.Fatalf("commitQuota error = %v", err)
+	}
+	if err := srv.releaseQuota(ctx, "reservation-2", "upstream error"); err != nil {
+		t.Fatalf("releaseQuota error = %v", err)
+	}
+	if billingClient.commits != 1 || billingClient.releases != 1 {
+		t.Fatalf("billing mutations = commits:%d releases:%d, want 1/1", billingClient.commits, billingClient.releases)
+	}
+}
+
 type cancelOnFirstWriteRecorder struct {
 	*httptest.ResponseRecorder
 	cancel func()

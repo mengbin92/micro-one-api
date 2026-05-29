@@ -798,7 +798,7 @@ func TestIdentityUsecase_Login_UserDisabled(t *testing.T) {
 	}
 }
 
-func TestIdentityUsecase_Login_CreatesToken(t *testing.T) {
+func TestIdentityUsecase_Login_IssuesSessionJWTWithoutCreatingAPIToken(t *testing.T) {
 	repo := &mockIdentityRepo{
 		users: map[int64]*User{
 			1: {ID: 1, Username: "alice", Status: UserStatusEnabled, PasswordHash: "$2a$10$kn5rAQzaqKF4ncbcPWkllOMaoDBbTuwHgDJ6jobkei0tGyB8ICeWm"},
@@ -810,11 +810,15 @@ func TestIdentityUsecase_Login_CreatesToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
-	if len(repo.tokens) != 1 {
-		t.Fatalf("expected 1 token created, got: %d", len(repo.tokens))
+	if len(repo.tokens) != 0 {
+		t.Fatalf("expected no API token to be created, got: %d", len(repo.tokens))
 	}
-	if repo.tokens[token] == nil {
-		t.Fatal("token not found in repo")
+	user, err := uc.ValidateSessionToken(context.Background(), token)
+	if err != nil {
+		t.Fatalf("ValidateSessionToken() error = %v", err)
+	}
+	if user.ID != 1 {
+		t.Fatalf("ValidateSessionToken() user id = %d, want 1", user.ID)
 	}
 }
 
@@ -996,6 +1000,47 @@ func TestIdentityUsecase_CreateAccessToken_UserDisabled(t *testing.T) {
 	_, err := uc.CreateAccessToken(context.Background(), 1, "token", nil, 0)
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got: %v", err)
+	}
+}
+
+func TestIdentityUsecase_CreateAccessToken_RequiresName(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
+		},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+	_, err := uc.CreateAccessToken(context.Background(), 1, "  ", nil, 0)
+	if !errors.Is(err, ErrTokenNameRequired) {
+		t.Fatalf("expected ErrTokenNameRequired, got: %v", err)
+	}
+	if len(repo.tokens) != 0 {
+		t.Fatalf("expected no token to be created, got: %d", len(repo.tokens))
+	}
+}
+
+func TestIdentityUsecase_ListAccessTokens_HidesSessionTokens(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
+		},
+		tokens: map[string]*Token{
+			"session-token": {ID: 1, UserID: 1, Key: "session-token", Name: "", Status: TokenStatusEnabled},
+			"api-token":     {ID: 2, UserID: 1, Key: "api-token", Name: "work-token", Status: TokenStatusEnabled},
+			"blank-token":   {ID: 3, UserID: 1, Key: "blank-token", Name: "   ", Status: TokenStatusEnabled},
+		},
+	}
+	uc := NewIdentityUsecase(repo)
+	tokens, total, err := uc.ListAccessTokens(context.Background(), 1, 1, 20, "")
+	if err != nil {
+		t.Fatalf("ListAccessTokens() error = %v", err)
+	}
+	if total != 1 || len(tokens) != 1 {
+		t.Fatalf("expected 1 visible token, got total=%d len=%d", total, len(tokens))
+	}
+	if tokens[0].Key != "api-token" {
+		t.Fatalf("unexpected visible token: %+v", tokens[0])
 	}
 }
 

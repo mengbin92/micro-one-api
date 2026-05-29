@@ -1053,7 +1053,7 @@ func TestIdentityHTTPTokenCRUD(t *testing.T) {
 	}
 }
 
-func TestIdentityHTTPTokenDeleteCurrentSessionRejected(t *testing.T) {
+func TestIdentityHTTPSessionTokenIsNotAPIToken(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
@@ -1067,22 +1067,11 @@ func TestIdentityHTTPTokenDeleteCurrentSessionRejected(t *testing.T) {
 		t.Fatalf("list status = %d, body=%s", listRec.Code, listRec.Body.String())
 	}
 	if !strings.Contains(listRec.Body.String(), `"total":0`) {
-		t.Fatalf("list should hide session tokens: %s", listRec.Body.String())
+		t.Fatalf("list should not include the session token as an API key: %s", listRec.Body.String())
 	}
 
-	snapshot, err := uc.GetAuthSnapshot(context.Background(), authToken)
-	if err != nil {
-		t.Fatalf("GetAuthSnapshot() error = %v", err)
-	}
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/token/"+strconv.FormatInt(snapshot.TokenID, 10), nil)
-	deleteReq.Header.Set("Authorization", "Bearer "+authToken)
-	deleteRec := httptest.NewRecorder()
-	srv.ServeHTTP(deleteRec, deleteReq)
-	if deleteRec.Code != http.StatusOK {
-		t.Fatalf("delete status = %d, body=%s", deleteRec.Code, deleteRec.Body.String())
-	}
-	if !strings.Contains(deleteRec.Body.String(), `"success":false`) || !strings.Contains(deleteRec.Body.String(), "cannot delete current session token") {
-		t.Fatalf("delete response mismatch: %s", deleteRec.Body.String())
+	if _, err := uc.GetAuthSnapshot(context.Background(), authToken); err == nil {
+		t.Fatal("session token should not be accepted as an API auth snapshot")
 	}
 
 	selfReq := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)

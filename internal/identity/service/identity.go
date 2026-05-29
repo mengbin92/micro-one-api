@@ -37,14 +37,14 @@ func (s *IdentityService) GetUserModel(ctx context.Context, userID int64) (*biz.
 }
 
 func (s *IdentityService) ValidateToken(ctx context.Context, req *identityv1.ValidateTokenRequest) (*identityv1.ValidateTokenReply, error) {
-	token, err := s.uc.ValidateToken(ctx, req.Token)
+	user, err := s.uc.ValidateSessionToken(ctx, req.Token)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
 	}
 	return &identityv1.ValidateTokenReply{
 		Valid:   true,
-		UserId:  token.UserID,
-		TokenId: token.ID,
+		UserId:  user.ID,
+		TokenId: 0,
 		Message: "ok",
 	}, nil
 }

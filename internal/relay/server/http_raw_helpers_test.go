@@ -138,6 +138,9 @@ func (c *rawBillingClient) CommitQuota(ctx context.Context, req *billingv1.Commi
 }
 
 func (c *rawBillingClient) ReleaseQuota(ctx context.Context, req *billingv1.ReleaseQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReleaseQuotaResponse, error) {
+	if c.failOnCanceledContext && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	c.releases++
 	success := c.releaseSuccess
 	if !success && c.releaseMessage == "" {

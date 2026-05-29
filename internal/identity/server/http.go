@@ -1249,7 +1249,7 @@ func authSnapshotFromRequest(r *http.Request, uc *biz.IdentityUsecase) (*biz.Aut
 	if token == "" {
 		return nil, biz.ErrInvalidToken
 	}
-	return uc.GetAuthSnapshot(r.Context(), token)
+	return uc.GetSessionSnapshot(r.Context(), token)
 }
 
 func parseTokenID(path string) (int64, bool) {

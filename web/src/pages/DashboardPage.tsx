@@ -49,6 +49,7 @@ interface AccountDashboard {
 
 interface Token {
   id: number;
+  name?: string;
   status: number;
 }
 
@@ -80,11 +81,12 @@ function numberOrZero(value: unknown) {
 }
 
 function normalizeTokens(data: Token[] | TokenListData): Token[] {
+  const onlyNamedTokens = (items: Token[]) => items.filter((token) => token.name?.trim());
   if (Array.isArray(data)) {
-    return data;
+    return onlyNamedTokens(data);
   }
   if (Array.isArray(data?.items)) {
-    return data.items;
+    return onlyNamedTokens(data.items);
   }
   return [];
 }
