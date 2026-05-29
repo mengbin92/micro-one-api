@@ -174,6 +174,15 @@ func (e *RetryExecutor) Execute(
 	group, model string,
 	fn func(ctx context.Context, ch *Channel) error,
 ) *ExecuteResult {
+	return e.ExecuteWithInitialChannel(ctx, group, model, nil, fn)
+}
+
+func (e *RetryExecutor) ExecuteWithInitialChannel(
+	ctx context.Context,
+	group, model string,
+	initialChannel *Channel,
+	fn func(ctx context.Context, ch *Channel) error,
+) *ExecuteResult {
 	maxAttempts := e.policy.MaxAttempts
 	if maxAttempts <= 0 {
 		maxAttempts = 1
@@ -202,6 +211,8 @@ func (e *RetryExecutor) Execute(
 				}
 			}
 			lastChannel = ch
+		} else if initialChannel != nil {
+			lastChannel = initialChannel
 		} else {
 			// First attempt: select channel normally
 			ch, selErr := e.selector.SelectChannel(ctx, group, model, false)

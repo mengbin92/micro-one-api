@@ -105,11 +105,19 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 		}
 	}
 
-	// 4. Select channel using the client-facing model name. Channel abilities are
-	// keyed by the models exposed to clients; resolvedModel is only for upstream calls.
+	// 4. Select channel using the client-facing model name first. Existing
+	// channel abilities are commonly keyed by the exposed names. If that fails
+	// and the model mapper rewrote the name, fall back to the resolved upstream
+	// model so deployments can expose aliases without duplicating abilities.
 	channel, err := uc.channel.SelectChannel(ctx, authSnapshot.Group, req.Model, false)
 	if err != nil {
-		return nil, err
+		if resolvedModel == req.Model {
+			return nil, err
+		}
+		channel, err = uc.channel.SelectChannel(ctx, authSnapshot.Group, resolvedModel, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &RelayPlan{

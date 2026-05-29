@@ -30,7 +30,7 @@ func shouldFallbackResponsesToChat(path string, err error) bool {
 		return false
 	}
 	switch upstreamErr.StatusCode {
-	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented, http.StatusBadGateway, http.StatusServiceUnavailable:
+	case http.StatusBadRequest, http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented, http.StatusBadGateway, http.StatusServiceUnavailable:
 		return true
 	default:
 		return false

@@ -30,14 +30,23 @@ func (testChannelClient) SelectChannel(_ context.Context, group, model string, _
 }
 
 type recordingChannelClient struct {
-	models []string
+	models      []string
+	failModels  map[string]error
+	channelName string
 }
 
 func (c *recordingChannelClient) SelectChannel(_ context.Context, group, model string, _ bool) (*Channel, error) {
 	c.models = append(c.models, model)
+	if err := c.failModels[model]; err != nil {
+		return nil, err
+	}
+	name := c.channelName
+	if name == "" {
+		name = group + ":" + model
+	}
 	return &Channel{
 		ID:      1,
-		Name:    group + ":" + model,
+		Name:    name,
 		BaseURL: "https://api.openai.com/v1",
 	}, nil
 }
@@ -128,6 +137,38 @@ func TestRelayUsecasePlan_WithModelMapping(t *testing.T) {
 	}
 	if len(channelClient.models) != 1 || channelClient.models[0] != "gpt-4o" {
 		t.Fatalf("expected channel selection with client model gpt-4o, got %v", channelClient.models)
+	}
+}
+
+func TestRelayUsecasePlan_SelectsResolvedModelWhenClientModelHasNoChannel(t *testing.T) {
+	mapper := &ModelMapper{
+		models: map[string]*ModelEntry{
+			"gpt-5": {ActualName: "mimo-v2.5-pro", Capabilities: []string{"function_call", "streaming"}},
+		},
+	}
+	channelClient := &recordingChannelClient{
+		failModels:  map[string]error{"gpt-5": errors.New("no available channel")},
+		channelName: "mimo-channel",
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, mapper, nil)
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "gpt-5"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.ResolvedModel != "mimo-v2.5-pro" {
+		t.Fatalf("resolved model = %q, want mimo-v2.5-pro", plan.ResolvedModel)
+	}
+	if plan.Channel.Name != "mimo-channel" {
+		t.Fatalf("channel name = %q, want mimo-channel", plan.Channel.Name)
+	}
+	wantModels := []string{"gpt-5", "mimo-v2.5-pro"}
+	if len(channelClient.models) != len(wantModels) {
+		t.Fatalf("selected models = %v, want %v", channelClient.models, wantModels)
+	}
+	for i, want := range wantModels {
+		if channelClient.models[i] != want {
+			t.Fatalf("selected models = %v, want %v", channelClient.models, wantModels)
+		}
 	}
 }
 

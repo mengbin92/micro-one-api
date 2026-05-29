@@ -49,9 +49,10 @@ type HTTPServer struct {
 }
 
 type responseRoute struct {
-	Model   string
-	Channel relaybiz.Channel
-	UserID  int64
+	Model         string
+	ResolvedModel string
+	Channel       relaybiz.Channel
+	UserID        int64
 }
 
 // NewHTTPServer creates a new HTTP server for Kratos.
@@ -177,10 +178,11 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			s.handleRelayPlanError(w, err)
 			return
 		}
+		upstreamBody := rewriteRawModel(body, plan.ResolvedModel)
 
 		var upstreamResp *relayprovider.RawResponse
 		retryExecutor := s.relayUsecase.NewRetryExecutor()
-		result := retryExecutor.Execute(r.Context(), plan.Auth.Group, clientModel, func(ctx context.Context, ch *relaybiz.Channel) error {
+		result := retryExecutor.ExecuteWithInitialChannel(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, func(ctx context.Context, ch *relaybiz.Channel) error {
 			startedAt := time.Now()
 			requestID := generateRequestID()
 			reservation, reserveErr := s.reserveQuota(
@@ -208,7 +210,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				Path:   upstreamPath,
 				Query:  r.URL.RawQuery,
 				Header: r.Header.Clone(),
-				Body:   body,
+				Body:   upstreamBody,
 			})
 			if forwardErr != nil {
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
@@ -312,18 +314,19 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		s.handleRelayPlanError(w, err)
 		return
 	}
+	upstreamBody := rewriteRawModel(body, plan.ResolvedModel)
 
 	var upstreamResp *relayprovider.RawResponse
 	var responseChannel *relaybiz.Channel
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.Execute(r.Context(), plan.Auth.Group, clientModel, func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithInitialChannel(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		requestID := generateRequestID()
 		reservation, reserveErr := s.reserveQuota(
 			ctx,
 			fmt.Sprintf("%d", plan.Auth.UserID),
 			requestID,
-			estimateRawTokens(body),
+			estimateRawTokens(upstreamBody),
 			plan.ResolvedModel,
 			fmt.Sprintf("%d", ch.ID),
 		)
@@ -332,12 +335,12 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		}
 
 		if isRawStreamRequest(body) {
-			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
+			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), upstreamBody)
 			if streamErr != nil {
 				if shouldFallbackResponsesToChat(upstreamPath, streamErr) {
-					fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), body)
+					fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), upstreamBody)
 					if fallbackErr == nil && fallbackResp.Stream != nil {
-						usage := newRawStreamUsageTracker(estimateRawUsage(body))
+						usage := newRawStreamUsageTracker(estimateRawUsage(upstreamBody))
 						writeRawStreamResponse(w, fallbackResp.Stream, usage)
 						actualUsage := usage.Usage()
 						logInput := usageLogInput{
@@ -361,13 +364,16 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						}
 						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 						responseChannel = ch
+						if responseID := usage.ResponseID(); responseID != "" {
+							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID})
+						}
 						return nil
 					}
 				}
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream stream error")
 				return streamErr
 			}
-			usage := newRawStreamUsageTracker(estimateRawUsage(body))
+			usage := newRawStreamUsageTracker(estimateRawUsage(upstreamBody))
 			writeRawStreamResponse(w, streamResp, usage)
 			actualUsage := usage.Usage()
 			logInput := usageLogInput{
@@ -391,17 +397,20 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			}
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
 			responseChannel = ch
+			if responseID := usage.ResponseID(); responseID != "" {
+				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID})
+			}
 			return nil
 		}
 
-		resp, forwardErr := s.forwardResponsesRaw(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
+		resp, forwardErr := s.forwardResponsesRaw(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), upstreamBody)
 		if forwardErr != nil {
 			if shouldFallbackResponsesToChat(upstreamPath, forwardErr) {
-				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), body)
+				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), upstreamBody)
 				if fallbackErr == nil && fallbackResp.Response != nil {
 					usage := fallbackResp.Usage
 					if usage.TotalTokens <= 0 {
-						usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(body))
+						usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(upstreamBody))
 					}
 					logInput := usageLogInput{
 						UserID:           plan.Auth.UserID,
@@ -430,7 +439,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			return forwardErr
 		}
 
-		usage := extractRawUsage(resp.Body, estimateRawTokens(body))
+		usage := extractRawUsage(resp.Body, estimateRawTokens(upstreamBody))
 		logInput := usageLogInput{
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
@@ -467,7 +476,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if responseID := extractResponseID(upstreamResp.Body); responseID != "" {
-		s.storeResponseRoute(responseID, responseRoute{Model: clientModel, Channel: *responseChannel, UserID: plan.Auth.UserID})
+		s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *responseChannel, UserID: plan.Auth.UserID})
 	}
 	writeRawResponse(w, upstreamResp)
 }
@@ -528,6 +537,8 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	}
 
 	requestID := generateRequestID()
+	resolvedModel := routeResolvedModel(route)
+	fallbackBody := ensureRawModel(body, resolvedModel)
 	reservation, err := s.reserveQuota(
 		r.Context(),
 		fmt.Sprintf("%d", authSnapshot.UserId),
@@ -545,6 +556,39 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	if stream {
 		streamResp, err := s.forwardResponsesRawStream(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 		if err != nil {
+			if shouldFallbackResponsesToChat(upstreamPath, err) {
+				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody)
+				if fallbackErr == nil && fallbackResp.Stream != nil {
+					usage := newRawStreamUsageTracker(estimateRawUsage(fallbackBody))
+					writeRawStreamResponse(w, fallbackResp.Stream, usage)
+					actualUsage := usage.Usage()
+					logInput := usageLogInput{
+						UserID:           authSnapshot.UserId,
+						TokenID:          authSnapshot.TokenId,
+						TokenName:        authSnapshot.TokenName,
+						RequestID:        requestID,
+						Endpoint:         "/chat/completions",
+						ModelName:        route.Model,
+						Quota:            actualUsage.TotalTokens,
+						PromptTokens:     actualUsage.PromptTokens,
+						CompletionTokens: actualUsage.CompletionTokens,
+						ChannelID:        route.Channel.ID,
+						ElapsedTime:      time.Since(startedAt).Milliseconds(),
+						IsStream:         true,
+					}
+					if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+						s.logPostResponseCommitError(err)
+					} else {
+						s.ingestUsageLogAfterResponse(logInput)
+					}
+					if responseID := usage.ResponseID(); responseID != "" {
+						route.UserID = authSnapshot.UserId
+						route.ResolvedModel = resolvedModel
+						s.storeResponseRoute(responseID, route)
+					}
+					return
+				}
+			}
 			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
 			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(err)), "upstream service error")
 			return
@@ -571,11 +615,50 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		} else {
 			s.ingestUsageLogAfterResponse(logInput)
 		}
+		if responseID := usage.ResponseID(); responseID != "" {
+			route.UserID = authSnapshot.UserId
+			s.storeResponseRoute(responseID, route)
+		}
 		return
 	}
 
 	resp, err := s.forwardResponsesRaw(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 	if err != nil {
+		if shouldFallbackResponsesToChat(upstreamPath, err) {
+			fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody)
+			if fallbackErr == nil && fallbackResp.Response != nil {
+				usage := fallbackResp.Usage
+				if usage.TotalTokens <= 0 {
+					usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(fallbackBody))
+				}
+				logInput := usageLogInput{
+					UserID:           authSnapshot.UserId,
+					TokenID:          authSnapshot.TokenId,
+					TokenName:        authSnapshot.TokenName,
+					RequestID:        requestID,
+					Endpoint:         "/chat/completions",
+					ModelName:        route.Model,
+					Quota:            usage.TotalTokens,
+					PromptTokens:     usage.PromptTokens,
+					CompletionTokens: usage.CompletionTokens,
+					ChannelID:        route.Channel.ID,
+					ElapsedTime:      time.Since(startedAt).Milliseconds(),
+					IsStream:         false,
+				}
+				if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
+					s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
+					return
+				}
+				s.ingestUsageLog(r.Context(), logInput)
+				if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
+					route.UserID = authSnapshot.UserId
+					route.ResolvedModel = resolvedModel
+					s.storeResponseRoute(responseID, route)
+				}
+				writeRawResponse(w, fallbackResp.Response)
+				return
+			}
+		}
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream error")
 		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(err)), "upstream service error")
 		return
@@ -843,7 +926,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 	// Use RetryExecutor for upstream calls with channel fallback
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.Execute(r.Context(), plan.Auth.Group, clientModel, func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithInitialChannel(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		// Reserve quota
 		requestID := generateRequestID()
@@ -1354,7 +1437,7 @@ func (s *HTTPServer) handleRelayPlanError(w http.ResponseWriter, err error) {
 		return
 	}
 	if errors.IsServiceUnavailable(err) {
-		s.writeError(w, http.StatusServiceUnavailable, "service unavailable")
+		s.writeError(w, http.StatusServiceUnavailable, "no available channel")
 		return
 	}
 
@@ -1371,8 +1454,17 @@ func (s *HTTPServer) handleRelayPlanError(w http.ResponseWriter, err error) {
 		case codes.Unavailable:
 			s.writeError(w, http.StatusServiceUnavailable, "service unavailable")
 		default:
+			if strings.Contains(st.Message(), "no available channel") || strings.Contains(st.Message(), "channel not found") {
+				s.writeError(w, http.StatusServiceUnavailable, "no available channel")
+				return
+			}
 			s.writeError(w, http.StatusInternalServerError, "internal server error")
 		}
+		return
+	}
+
+	if strings.Contains(err.Error(), "no available channel") || strings.Contains(err.Error(), "channel not found") {
+		s.writeError(w, http.StatusServiceUnavailable, "no available channel")
 		return
 	}
 
@@ -1556,6 +1648,58 @@ func extractRawModel(body []byte) string {
 	}
 	model, _ := payload["model"].(string)
 	return strings.TrimSpace(model)
+}
+
+func rewriteRawModel(body []byte, model string) []byte {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return body
+	}
+	var payload map[string]interface{}
+	if err := sonic.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	if _, ok := payload["model"]; !ok {
+		return body
+	}
+	current, _ := payload["model"].(string)
+	if strings.TrimSpace(current) == model {
+		return body
+	}
+	payload["model"] = model
+	rewritten, err := sonic.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return rewritten
+}
+
+func ensureRawModel(body []byte, model string) []byte {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return body
+	}
+	var payload map[string]interface{}
+	if err := sonic.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	current, _ := payload["model"].(string)
+	if strings.TrimSpace(current) == model {
+		return body
+	}
+	payload["model"] = model
+	rewritten, err := sonic.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return rewritten
+}
+
+func routeResolvedModel(route responseRoute) string {
+	if strings.TrimSpace(route.ResolvedModel) != "" {
+		return strings.TrimSpace(route.ResolvedModel)
+	}
+	return strings.TrimSpace(route.Model)
 }
 
 func isRawStreamRequest(body []byte) bool {
@@ -1772,9 +1916,10 @@ func writeRawResponse(w http.ResponseWriter, resp *relayprovider.RawResponse) {
 }
 
 type rawStreamUsageTracker struct {
-	fallback rawUsage
-	usage    rawUsage
-	pending  string
+	fallback   rawUsage
+	usage      rawUsage
+	responseID string
+	pending    string
 }
 
 func newRawStreamUsageTracker(fallback rawUsage) *rawStreamUsageTracker {
@@ -1782,6 +1927,9 @@ func newRawStreamUsageTracker(fallback rawUsage) *rawStreamUsageTracker {
 }
 
 func (t *rawStreamUsageTracker) Observe(chunk []byte) {
+	if t.responseID == "" {
+		t.responseID = extractRawStreamResponseID(chunk)
+	}
 	usage := extractRawUsage(chunk, 0)
 	if usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 {
 		t.usage = mergeRawUsage(usage, t.usage)
@@ -1809,6 +1957,42 @@ func (t *rawStreamUsageTracker) Usage() rawUsage {
 		t.ObserveBytes([]byte("\n"))
 	}
 	return normalizeRawUsageWithFallback(t.usage, t.fallback)
+}
+
+func (t *rawStreamUsageTracker) ResponseID() string {
+	if strings.TrimSpace(t.pending) != "" {
+		t.ObserveBytes([]byte("\n"))
+	}
+	return t.responseID
+}
+
+func extractRawStreamResponseID(chunk []byte) string {
+	var payload interface{}
+	if err := sonic.Unmarshal(chunk, &payload); err != nil {
+		return ""
+	}
+	return extractRawStreamResponseIDValue(payload)
+}
+
+func extractRawStreamResponseIDValue(value interface{}) string {
+	typed, ok := value.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	if responseID, _ := typed["response_id"].(string); strings.TrimSpace(responseID) != "" {
+		return strings.TrimSpace(responseID)
+	}
+	if response, ok := typed["response"].(map[string]interface{}); ok {
+		if responseID, _ := response["id"].(string); strings.TrimSpace(responseID) != "" {
+			return strings.TrimSpace(responseID)
+		}
+	}
+	if object, _ := typed["object"].(string); object == "response" {
+		if responseID, _ := typed["id"].(string); strings.TrimSpace(responseID) != "" {
+			return strings.TrimSpace(responseID)
+		}
+	}
+	return ""
 }
 
 func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStreamResponse, usageTracker ...*rawStreamUsageTracker) {

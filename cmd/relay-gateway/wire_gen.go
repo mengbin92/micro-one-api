@@ -47,7 +47,16 @@ func loadConfig(confPath string) (*relaycfg.Config, error) {
 
 // newModelMapper creates a ModelMapper from config, returning nil on error.
 func newModelMapper(cfg *relaycfg.Config) *relaybiz.ModelMapper {
-	mapper, err := relaybiz.NewModelMapper(cfg.Models.Path)
+	path := cfg.Models.Path
+	if path == "" {
+		for _, candidate := range []string{"/configs/models.yaml", "configs/models.yaml"} {
+			if _, err := os.Stat(candidate); err == nil {
+				path = candidate
+				break
+			}
+		}
+	}
+	mapper, err := relaybiz.NewModelMapper(path)
 	if err != nil {
 		fmt.Printf("Warning: Failed to load models config: %v\n", err)
 		return nil

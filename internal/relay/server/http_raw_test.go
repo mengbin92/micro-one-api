@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -465,6 +466,71 @@ func TestHTTPServerResponsesCreateForwardsAndCommitsResponsesUsage(t *testing.T)
 	}
 }
 
+func TestHTTPServerResponsesCreateRewritesMappedModel(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotBody string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp_test_123","object":"response","model":"mimo-v2.5-pro","usage":{"total_tokens":5}}`))
+	}))
+	defer upstream.Close()
+
+	cfgPath := t.TempDir() + "/models.yaml"
+	if err := os.WriteFile(cfgPath, []byte(`models:
+  gpt-5:
+    actual_name: mimo-v2.5-pro
+    capabilities: [function_call, streaming]
+`), 0o600); err != nil {
+		t.Fatalf("write model config: %v", err)
+	}
+	modelMapper, err := relaybiz.NewModelMapper(cfgPath)
+	if err != nil {
+		t.Fatalf("NewModelMapper: %v", err)
+	}
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		modelMapper,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5","input":"ping"}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(gotBody, `"model":"mimo-v2.5-pro"`) {
+		t.Fatalf("upstream body did not contain resolved model: %s", gotBody)
+	}
+	if strings.Contains(gotBody, `"model":"gpt-5"`) {
+		t.Fatalf("upstream body leaked client model: %s", gotBody)
+	}
+}
+
 func TestExtractRawUsageFindsNestedResponsesUsage(t *testing.T) {
 	usage := extractRawUsage([]byte(`{
 		"type":"response.completed",
@@ -600,6 +666,79 @@ func TestHTTPServerResponsesCreateStreamsRawSSECommitsUsage(t *testing.T) {
 	got := logClient.entries[0]
 	if got.Quota != 18 || got.PromptTokens != 11 || got.CompletionTokens != 7 || !got.IsStream {
 		t.Fatalf("log usage = quota:%d prompt:%d completion:%d stream:%v", got.Quota, got.PromptTokens, got.CompletionTokens, got.IsStream)
+	}
+}
+
+func TestHTTPServerResponsesCreateStreamStoresRouteForPreviousResponse(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotBodies []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		gotBodies = append(gotBodies, string(body))
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		if len(gotBodies) == 1 {
+			_, _ = w.Write([]byte("event: response.created\n"))
+			_, _ = w.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream_123\",\"object\":\"response\",\"status\":\"in_progress\"}}\n\n"))
+			w.(http.Flusher).Flush()
+			_, _ = w.Write([]byte("data: {\"type\":\"response.completed\",\"response_id\":\"resp_stream_123\",\"response\":{\"id\":\"resp_stream_123\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"total_tokens\":5}}}\n\n"))
+			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+			return
+		}
+		_, _ = w.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream_456\",\"object\":\"response\",\"status\":\"in_progress\"}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o-mini","input":"ping","stream":true}`))
+	createReq.Header.Set("Authorization", "Bearer user-token")
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200, body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	nextReq := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"previous_response_id":"resp_stream_123","input":"continue","stream":true}`))
+	nextReq.Header.Set("Authorization", "Bearer user-token")
+	nextReq.Header.Set("Content-Type", "application/json")
+	nextRec := httptest.NewRecorder()
+	srv.ServeHTTP(nextRec, nextReq)
+
+	if nextRec.Code != http.StatusOK {
+		t.Fatalf("next status = %d, want 200, body=%s", nextRec.Code, nextRec.Body.String())
+	}
+	if len(gotBodies) != 2 {
+		t.Fatalf("upstream calls = %d, want 2", len(gotBodies))
+	}
+	if !strings.Contains(gotBodies[1], `"previous_response_id":"resp_stream_123"`) {
+		t.Fatalf("next request was not forwarded through stored route: %s", gotBodies[1])
+	}
+	if billingClient.commits != 2 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
 	}
 }
 
@@ -778,6 +917,115 @@ func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
 	}
 }
 
+func TestShouldFallbackResponsesToChatIncludesProviderBadRequest(t *testing.T) {
+	err := &relayprovider.UpstreamHTTPError{
+		StatusCode: http.StatusBadRequest,
+		Body:       []byte(`{"error":{"message":"responses not supported"}}`),
+	}
+
+	if !shouldFallbackResponsesToChat("/responses", err) {
+		t.Fatal("expected responses bad request to fall back to chat completions")
+	}
+	if shouldFallbackResponsesToChat("/responses/input_tokens", err) {
+		t.Fatal("input_tokens should not fall back to chat completions")
+	}
+}
+
+func TestHTTPServerResponsesPreviousResponseFallsBackToChatCompletions(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var chatPayloads []map[string]interface{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/responses":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
+		case "/v1/chat/completions":
+			var payload map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			chatPayloads = append(chatPayloads, payload)
+			_, _ = w.Write([]byte(`{
+				"id":"chatcmpl_fallback_123",
+				"object":"chat.completion",
+				"created":1710000000,
+				"model":"mimo-v2.5-pro",
+				"choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],
+				"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	cfgPath := t.TempDir() + "/models.yaml"
+	if err := os.WriteFile(cfgPath, []byte(`models:
+  gpt-5:
+    actual_name: mimo-v2.5-pro
+    capabilities: [function_call, streaming]
+`), 0o600); err != nil {
+		t.Fatalf("write model config: %v", err)
+	}
+	modelMapper, err := relaybiz.NewModelMapper(cfgPath)
+	if err != nil {
+		t.Fatalf("NewModelMapper: %v", err)
+	}
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		modelMapper,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5","input":"ping"}`))
+	createReq.Header.Set("Authorization", "Bearer user-token")
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200, body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	var createBody struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &createBody); err != nil {
+		t.Fatalf("decode create response: %v, body=%s", err, createRec.Body.String())
+	}
+	nextReq := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"previous_response_id":"`+createBody.ID+`","input":"continue"}`))
+	nextReq.Header.Set("Authorization", "Bearer user-token")
+	nextReq.Header.Set("Content-Type", "application/json")
+	nextRec := httptest.NewRecorder()
+	srv.ServeHTTP(nextRec, nextReq)
+
+	if nextRec.Code != http.StatusOK {
+		t.Fatalf("next status = %d, want 200, body=%s", nextRec.Code, nextRec.Body.String())
+	}
+	if len(chatPayloads) != 2 {
+		t.Fatalf("chat fallback calls = %d, want 2", len(chatPayloads))
+	}
+	if chatPayloads[1]["model"] != "mimo-v2.5-pro" {
+		t.Fatalf("previous response fallback model = %v, want mimo-v2.5-pro", chatPayloads[1]["model"])
+	}
+	if billingClient.commits != 2 || billingClient.releases != 0 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+}
+
 func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
@@ -888,8 +1136,10 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 	if gotLog.Quota != 6 || gotLog.PromptTokens != 4 || gotLog.CompletionTokens != 2 {
 		t.Fatalf("stream usage log = quota:%d prompt:%d completion:%d", gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens)
 	}
-	if !strings.Contains(body, `"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}`) {
-		t.Fatalf("fallback stream response missing responses usage: %s", body)
+	for _, want := range []string{`"usage":`, `"input_tokens":4`, `"output_tokens":2`, `"total_tokens":6`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("fallback stream response missing responses usage field %s: %s", want, body)
+		}
 	}
 }
 

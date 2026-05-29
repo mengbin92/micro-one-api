@@ -118,6 +118,20 @@ func TestRetryExecutor_Execute_Success(t *testing.T) {
 	assert.Equal(t, 0, result.Attempt)
 }
 
+func TestRetryExecutor_ExecuteWithInitialChannel_UsesPlannedChannelFirst(t *testing.T) {
+	selector := &mockChannelSelector{}
+	exec := NewRetryExecutor(DefaultRetryPolicy(), selector)
+
+	result := exec.ExecuteWithInitialChannel(context.Background(), "default", "mimo-v2.5-pro", &Channel{ID: 9, Name: "planned"}, func(_ context.Context, ch *Channel) error {
+		assert.Equal(t, int64(9), ch.ID)
+		return nil
+	})
+
+	assert.NoError(t, result.Err)
+	assert.Equal(t, 0, result.Attempt)
+	assert.Equal(t, 0, selector.callIdx)
+}
+
 func TestRetryExecutor_Execute_RetryOnRetryableError(t *testing.T) {
 	selector := &mockChannelSelector{
 		channels: []*Channel{

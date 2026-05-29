@@ -7,13 +7,13 @@ type Config struct {
 	Server   ServerConfig       `json:"server"`
 	Clients  ClientsConfig      `json:"clients"`
 	Retry    RetryConfig        `json:"retry"`
-	Models   ModelsConfig       `json:"models"`
+	Models   ModelsConfig       `json:"models" yaml:"models"`
 	Registry appregistry.Config `json:"registry"`
 }
 
 // ModelsConfig holds model mapping configuration.
 type ModelsConfig struct {
-	Path string `json:"path"`
+	Path string `json:"path" yaml:"path"`
 }
 
 type ServerConfig struct {
