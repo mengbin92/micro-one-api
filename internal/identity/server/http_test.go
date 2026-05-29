@@ -1204,7 +1204,6 @@ func TestIdentityHTTPTokenOneAPIFields(t *testing.T) {
 		`"created_time":`,
 		`"accessed_time":`,
 		`"used_quota":0`,
-		`"remain_quota":500`,
 		`"unlimited_quota":true`,
 		`"subnet":"192.168.0.0/16"`,
 	} {
@@ -1231,7 +1230,7 @@ func TestIdentityHTTPTokenOneAPIFields(t *testing.T) {
 	updateBody := updateRec.Body.String()
 	for _, want := range []string{
 		`"remain_quota":250`,
-		`"unlimited_quota":false`,
+		`"unlimited_quota":true`,
 		`"subnet":"10.0.0.0/8"`,
 	} {
 		if !strings.Contains(updateBody, want) {

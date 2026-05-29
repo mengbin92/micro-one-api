@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Pencil, RefreshCw, Save } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
@@ -47,6 +48,15 @@ interface Channel {
   usedQuota: string;
 }
 
+interface ChannelEditDraft {
+  id: string;
+  name: string;
+  models: string;
+  group: string;
+  priority: string;
+  weight: string;
+}
+
 const PROVIDER_NAMES: Record<number, string> = {
   1: 'OpenAI',
   2: 'Anthropic',
@@ -84,6 +94,7 @@ export function AdminChannelsPage() {
   const [newChannelGroup, setNewChannelGroup] = useState('default');
   const [newChannelPriority, setNewChannelPriority] = useState('0');
   const [newChannelWeight, setNewChannelWeight] = useState('1');
+  const [editingChannel, setEditingChannel] = useState<ChannelEditDraft | null>(null);
   const queryClient = useQueryClient();
   const sort = { key: sortKey as keyof Channel | null, direction: sortDirection } satisfies SortState<Channel>;
   const statusFilter = filters.status ?? '';
@@ -153,6 +164,26 @@ export function AdminChannelsPage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async (draft: ChannelEditDraft) => {
+      const res = await adminApiClient.put('/channel', {
+        id: Number(draft.id),
+        channel_id: Number(draft.id),
+        name: draft.name.trim(),
+        models: draft.models.trim(),
+        group: draft.group.trim(),
+        priority: parseInt(draft.priority || '0', 10),
+        weight: parseInt(draft.weight || '1', 10),
+      });
+      ensureApiSuccess(res.data, 'Channel update failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
+      setEditingChannel(null);
+      toast.success('Channel configuration saved');
+    },
+  });
+
   const refreshBalanceMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await adminApiClient.get(`/channel/update_balance/${id}`);
@@ -174,6 +205,26 @@ export function AdminChannelsPage() {
       return;
     }
     createMutation.mutate();
+  };
+
+  const openEdit = (channel: Channel) => {
+    setEditingChannel({
+      id: String(channel.id),
+      name: channel.name ?? '',
+      models: channel.models ?? '',
+      group: channel.group ?? 'default',
+      priority: String(channel.priority ?? '0'),
+      weight: String(channel.weight ?? 1),
+    });
+  };
+
+  const handleUpdate = () => {
+    if (!editingChannel) return;
+    if (!editingChannel.name.trim() || !editingChannel.models.trim() || !editingChannel.group.trim()) {
+      toast.error('Name, models, and group are required');
+      return;
+    }
+    updateMutation.mutate(editingChannel);
   };
 
   return (
@@ -246,6 +297,73 @@ export function AdminChannelsPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Dialog open={!!editingChannel} onOpenChange={(open) => !open && setEditingChannel(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Model Configuration</DialogTitle>
+            <DialogDescription>Edit the models and routing settings for this channel.</DialogDescription>
+          </DialogHeader>
+          {editingChannel && (
+            <div className="grid gap-4 pt-2 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="edit-channel-name">Name</Label>
+                <Input
+                  id="edit-channel-name"
+                  value={editingChannel.name}
+                  onChange={(event) => setEditingChannel({ ...editingChannel, name: event.target.value })}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="edit-channel-models">Models</Label>
+                <Input
+                  id="edit-channel-models"
+                  value={editingChannel.models}
+                  onChange={(event) => setEditingChannel({ ...editingChannel, models: event.target.value })}
+                  placeholder="gpt-4o-mini,gpt-4o"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-channel-group">Group</Label>
+                <Input
+                  id="edit-channel-group"
+                  value={editingChannel.group}
+                  onChange={(event) => setEditingChannel({ ...editingChannel, group: event.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-channel-priority">Priority</Label>
+                  <Input
+                    id="edit-channel-priority"
+                    type="number"
+                    value={editingChannel.priority}
+                    onChange={(event) => setEditingChannel({ ...editingChannel, priority: event.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-channel-weight">Weight</Label>
+                  <Input
+                    id="edit-channel-weight"
+                    type="number"
+                    min="1"
+                    value={editingChannel.weight}
+                    onChange={(event) => setEditingChannel({ ...editingChannel, weight: event.target.value })}
+                  />
+                </div>
+              </div>
+              <Button
+                onClick={handleUpdate}
+                disabled={updateMutation.isPending || !editingChannel.name.trim() || !editingChannel.models.trim() || !editingChannel.group.trim()}
+                className="sm:col-span-2"
+              >
+                <Save className="size-4" />
+                {updateMutation.isPending ? 'Saving...' : 'Save Configuration'}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AdminTableToolbar
         search={search}
@@ -357,9 +475,18 @@ export function AdminChannelsPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => openEdit(ch)}
+                      >
+                        <Pencil className="size-3.5" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => refreshBalanceMutation.mutate(ch.id)}
                         disabled={refreshBalanceMutation.isPending}
                       >
+                        <RefreshCw className="size-3.5" />
                         Refresh
                       </Button>
                       <Button

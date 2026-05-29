@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,7 @@ import (
 )
 
 const postResponseWriteTimeout = 10 * time.Second
+const defaultQuotaPerUSD = 500000
 
 // HTTPServer handles HTTP requests for relay-gateway.
 type HTTPServer struct {
@@ -91,6 +93,7 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	srv.HandleFunc("/v1/edits", s.handleUnsupportedOpenAIRoute("edits"))
 	srv.HandleFunc("/v1/responses", s.handleResponsesRelay)
 	srv.HandlePrefix("/v1/responses/", http.HandlerFunc(s.handleResponsesRelay))
+	srv.HandleFunc("/v1/usage", s.handleUsage)
 	srv.HandleFunc("/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
 	srv.HandlePrefix("/v1/engines/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("engines")))
 	srv.HandleFunc("/v1/files", s.handleUnsupportedOpenAIRoute("files"))
@@ -1118,6 +1121,92 @@ func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeJSON(w, http.StatusOK, response)
+}
+
+func (s *HTTPServer) handleUsage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing authorization header")
+		return
+	}
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		s.writeError(w, http.StatusUnauthorized, "invalid authorization header format")
+		return
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	if token == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing token")
+		return
+	}
+
+	authSnapshot, err := s.getAuthSnapshot(r.Context(), token)
+	if err != nil {
+		s.handleIdentityError(w, err)
+		return
+	}
+	if s.billingClient == nil {
+		s.writeError(w, http.StatusServiceUnavailable, "billing service unavailable")
+		return
+	}
+	resp, err := s.billingClient.GetAccountSnapshot(r.Context(), &billingv1.GetAccountSnapshotRequest{
+		UserId: strconv.FormatInt(authSnapshot.UserId, 10),
+	})
+	if err != nil {
+		s.writeError(w, http.StatusBadGateway, "billing service error")
+		return
+	}
+	account := resp.GetSnapshot()
+	if account == nil {
+		s.writeError(w, http.StatusBadGateway, "billing account not found")
+		return
+	}
+
+	remaining := account.GetQuota()
+	used := account.GetUsedQuota()
+	frozen := account.GetFrozenQuota()
+	quotaPerUSD := quotaPerUSDFromEnv()
+	remainingUSD := float64(remaining) / float64(quotaPerUSD)
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"mode":      "unrestricted",
+		"isValid":   true,
+		"is_active": true,
+		"status":    "active",
+		"user_id":   account.GetUserId(),
+		"planName":  "钱包余额",
+		"remaining": remainingUSD,
+		"balance":   remainingUSD,
+		"unit":      "USD",
+		"quota": map[string]interface{}{
+			"remaining": remaining,
+			"used":      used,
+			"frozen":    frozen,
+			"unit":      "quota",
+			"per_usd":   quotaPerUSD,
+		},
+		"usage": map[string]interface{}{
+			"total": map[string]interface{}{
+				"cost":     used,
+				"requests": account.GetRequestCount(),
+			},
+		},
+	})
+}
+
+func quotaPerUSDFromEnv() int64 {
+	raw := strings.TrimSpace(os.Getenv("PAYMENT_QUOTA_PER_UNIT"))
+	if raw == "" {
+		return defaultQuotaPerUSD
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value <= 0 {
+		return defaultQuotaPerUSD
+	}
+	return value
 }
 
 func (s *HTTPServer) handleRetrieveModel(w http.ResponseWriter, r *http.Request) {

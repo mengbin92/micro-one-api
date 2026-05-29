@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
+import { quotaPerUnitFromOptions, quotaToCurrencyUnits } from '@/lib/quota';
 
 interface AdminTotals {
   users?: number;
@@ -67,6 +68,8 @@ interface AdminSummary {
   payment_summary?: {
     recent_order_count?: number;
     recent_amount?: number;
+    recent_amount_cents?: number;
+    recent_amount_money_cents?: number;
   };
 }
 
@@ -92,12 +95,16 @@ function numberValue(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function formatQuota(value?: number | string) {
-  return (numberValue(value) / 500000).toFixed(4);
+function formatQuota(value?: number | string, quotaPerUnit?: number) {
+  return quotaToCurrencyUnits(value, quotaPerUnit).toFixed(4);
 }
 
 function formatInteger(value?: number): string {
   return numberValue(value).toLocaleString();
+}
+
+function formatMoneyCents(value?: number | string) {
+  return `¥${(numberValue(value) / 100).toFixed(2)}`;
 }
 
 function formatDate(value?: number | string) {
@@ -170,8 +177,13 @@ export function AdminOverviewPage() {
   const users = data?.recent_users ?? [];
   const modelRatio = parsePricingMap(data?.pricing_options?.ModelRatio);
   const completionRatio = parsePricingMap(data?.pricing_options?.CompletionRatio);
+  const quotaPerUnit = quotaPerUnitFromOptions(data?.pricing_options);
   const configuredModels = totals.configured_models || modelCount(channels) || data?.model_catalog?.length || 0;
-  const paymentAmount = data?.payment_summary?.recent_amount ?? 0;
+  const paymentAmountCents =
+    data?.payment_summary?.recent_amount_cents ??
+    data?.payment_summary?.recent_amount_money_cents ??
+    data?.payment_summary?.recent_amount ??
+    0;
 
   return (
     <div className="space-y-6">
@@ -186,7 +198,7 @@ export function AdminOverviewPage() {
           <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/channels" />}>
             渠道配置
           </Button>
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/options" />}>
+          <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/pricing" />}>
             模型价格
           </Button>
         </div>
@@ -208,12 +220,12 @@ export function AdminOverviewPage() {
         <StatCard
           title="调用请求"
           value={formatInteger(totals.request_count)}
-          detail={`${formatQuota(totals.quota_used)} 配额消耗`}
+          detail={`${formatQuota(totals.quota_used, quotaPerUnit)} 配额消耗`}
           icon={Activity}
         />
         <StatCard
           title="账务记录"
-          value={formatQuota(paymentAmount)}
+          value={formatMoneyCents(paymentAmountCents)}
           detail={`${formatInteger(data?.payment_summary?.recent_order_count)} 条近期充值/兑换/退款`}
           icon={CreditCard}
         />
@@ -245,7 +257,7 @@ export function AdminOverviewPage() {
             <LineChart className="size-10 text-violet-600" />
             <div>
               <div className="text-sm font-semibold text-slate-500">配额消耗</div>
-              <div className="text-2xl font-black">{formatQuota(totals.quota_used)}</div>
+              <div className="text-2xl font-black">{formatQuota(totals.quota_used, quotaPerUnit)}</div>
               <div className="text-xs font-medium text-slate-400">{Object.keys(completionRatio).length} 个输出倍率项</div>
             </div>
           </CardContent>

@@ -20,6 +20,8 @@ billing:
     default: 1.0
     vip: 1.0
     svip: 1.0
+  model_ratios: ${BILLING_MODEL_RATIOS:-{}}
+  completion_ratios: ${BILLING_COMPLETION_RATIOS:-{}}
 payment:
   quota_per_unit: ${PAYMENT_QUOTA_PER_UNIT:-500000}
   alipay:

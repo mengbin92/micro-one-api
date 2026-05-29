@@ -42,6 +42,8 @@ type RedisConfig struct {
 }
 
 type BillingConfig struct {
-	ReservationTimeout string            `json:"reservation_timeout"`
+	ReservationTimeout string             `json:"reservation_timeout"`
 	GroupRatios        map[string]float64 `json:"group_ratios"`
+	ModelRatios        map[string]float64 `json:"model_ratios"`
+	CompletionRatios   map[string]float64 `json:"completion_ratios"`
 }

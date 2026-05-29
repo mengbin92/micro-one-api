@@ -417,13 +417,13 @@ func TestIdentityUsecase_ValidateToken_TokenStatusExpired(t *testing.T) {
 	}
 }
 
-func TestIdentityUsecase_ValidateToken_TokenExhausted(t *testing.T) {
+func TestIdentityUsecase_ValidateToken_ZeroRemainQuotaAllowed(t *testing.T) {
 	repo := &mockIdentityRepo{
 		tokens: map[string]*Token{
-			"exhausted-token": {
+			"zero-remain-token": {
 				ID:             1,
 				UserID:         1,
-				Key:            "exhausted-token",
+				Key:            "zero-remain-token",
 				Status:         TokenStatusEnabled,
 				ExpiredAt:      time.Now().Add(time.Hour).Unix(),
 				RemainQuota:    0,
@@ -436,9 +436,12 @@ func TestIdentityUsecase_ValidateToken_TokenExhausted(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.ValidateToken(context.Background(), "exhausted-token")
-	if !errors.Is(err, ErrTokenExhausted) {
-		t.Fatalf("expected ErrTokenExhausted, got: %v", err)
+	token, err := uc.ValidateToken(context.Background(), "zero-remain-token")
+	if err != nil {
+		t.Fatalf("ValidateToken() unexpected error: %v", err)
+	}
+	if token == nil || token.Key != "zero-remain-token" {
+		t.Fatalf("token = %+v, want zero-remain-token", token)
 	}
 }
 

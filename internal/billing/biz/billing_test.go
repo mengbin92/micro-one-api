@@ -97,6 +97,14 @@ func (m *mockLedgerRepo) ListLedgers(ctx context.Context, userID string, page, p
 	return m.ledgers, int64(len(m.ledgers)), nil
 }
 
+type mockPricingStore struct {
+	config PricingConfig
+}
+
+func (m mockPricingStore) GetPricingConfig(context.Context) (PricingConfig, error) {
+	return m.config, nil
+}
+
 type mockRedeemRepo struct {
 	codes   map[string]*RedeemCode
 	records []*RedeemRecord
@@ -656,6 +664,54 @@ func TestReserveQuota_WithGroupRatio(t *testing.T) {
 	assert.NotNil(t, reservation)
 	// VIP 组的倍率是 0.5，所以 100 tokens 只需要 50 配额
 	assert.Equal(t, int64(50), reservation.Amount)
+}
+
+func TestCommitQuota_UsesModelAndCompletionRatios(t *testing.T) {
+	account := &Account{UserID: "user1", Quota: 1000, Group: "default"}
+	accountRepo := &mockAccountRepo{account: account}
+	reservationRepo := &mockReservationRepo{reservations: make(map[string]*Reservation)}
+	ledgerRepo := &mockLedgerRepo{}
+	redeemRepo := &mockRedeemRepo{}
+	uc := NewBillingUsecaseWithPricing(accountRepo, reservationRepo, ledgerRepo, redeemRepo, PricingConfig{
+		ModelRatios:      map[string]float64{"gpt-4o-mini": 2},
+		CompletionRatios: map[string]float64{"gpt-4o-mini": 3},
+	})
+
+	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req-price", 100, "gpt-4o-mini", "channel1")
+	require.NoError(t, err)
+	assert.Equal(t, int64(200), reservation.Amount)
+
+	committed, refund, err := uc.CommitQuotaWithUsage(context.Background(), reservation.ReservationID, 100, true, LedgerUsage{
+		PromptTokens:     10,
+		CompletionTokens: 20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(140), committed)
+	assert.Equal(t, int64(60), refund)
+	assert.Equal(t, int64(860), account.Quota)
+	require.Len(t, ledgerRepo.ledgers, 1)
+	assert.Equal(t, int64(-140), ledgerRepo.ledgers[0].Amount)
+	assert.Equal(t, int64(860), ledgerRepo.ledgers[0].BalanceAfter)
+}
+
+func TestReserveQuota_UsesDynamicPricingStore(t *testing.T) {
+	account := &Account{UserID: "user1", Quota: 1000, Group: "vip"}
+	accountRepo := &mockAccountRepo{account: account}
+	reservationRepo := &mockReservationRepo{reservations: make(map[string]*Reservation)}
+	ledgerRepo := &mockLedgerRepo{}
+	redeemRepo := &mockRedeemRepo{}
+	uc := NewBillingUsecaseWithPricing(accountRepo, reservationRepo, ledgerRepo, redeemRepo, PricingConfig{
+		GroupRatios: map[string]float64{"vip": 10},
+		ModelRatios: map[string]float64{"gpt-4o-mini": 10},
+		PricingStore: mockPricingStore{config: PricingConfig{
+			GroupRatios: map[string]float64{"vip": 0.5},
+			ModelRatios: map[string]float64{"gpt-4o-mini": 0.2},
+		}},
+	})
+
+	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req-dynamic", 100, "gpt-4o-mini", "channel1")
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), reservation.Amount)
 }
 
 // 测试零成本请求

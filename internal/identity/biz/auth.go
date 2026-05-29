@@ -226,9 +226,6 @@ func (uc *IdentityUsecase) ValidateToken(ctx context.Context, key string) (*Toke
 	if token.ExpiredAt > 0 && token.ExpiredAt < uc.now().Unix() {
 		return nil, ErrTokenExpired
 	}
-	if !token.UnlimitedQuota && token.RemainQuota <= 0 {
-		return nil, ErrTokenExhausted
-	}
 	return token, nil
 }
 
@@ -507,11 +504,14 @@ func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, 
 	if name == "" {
 		return nil, ErrTokenNameRequired
 	}
-	options := CreateAccessTokenOptions{RemainQuota: uc.defaultQuota}
+	options := CreateAccessTokenOptions{RemainQuota: uc.defaultQuota, UnlimitedQuota: true}
 	if len(opts) > 0 {
 		options = opts[0]
 		if options.RemainQuota == 0 {
 			options.RemainQuota = uc.defaultQuota
+		}
+		if !options.UnlimitedQuota {
+			options.UnlimitedQuota = true
 		}
 	}
 	now := uc.now().Unix()
@@ -597,7 +597,7 @@ func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, use
 	if opts.RemainQuota >= 0 {
 		token.RemainQuota = opts.RemainQuota
 	}
-	token.UnlimitedQuota = opts.UnlimitedQuota
+	token.UnlimitedQuota = true
 	token.Subnet = opts.Subnet
 	if err := uc.repo.UpdateToken(ctx, token); err != nil {
 		return nil, err

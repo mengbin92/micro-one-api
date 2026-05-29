@@ -34,7 +34,6 @@ interface Token {
   key?: string;
   masked_key?: string;
   status: number;
-  remain_quota: number;
   created_time: number;
 }
 
@@ -201,7 +200,7 @@ export function TokensPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['Name', 'Key', 'Status', 'Quota', 'Created', 'Actions']} />
+        <TableSkeleton columns={['Name', 'Key', 'Status', 'Created', 'Actions']} />
       ) : !tokens || tokens.length === 0 ? (
         <EmptyState title="No tokens yet" description="Create a token to start calling the API." />
       ) : (
@@ -212,7 +211,6 @@ export function TokensPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Key</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Quota</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -233,7 +231,6 @@ export function TokensPage() {
                       {token.status === 1 ? 'Active' : 'Disabled'}
                     </span>
                   </TableCell>
-                  <TableCell>{(token.remain_quota ?? 0).toLocaleString()}</TableCell>
                   <TableCell>
                     {token.created_time ? new Date(token.created_time * 1000).toLocaleDateString() : '—'}
                   </TableCell>
