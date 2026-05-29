@@ -14,12 +14,12 @@ import (
 	kconfig "github.com/go-kratos/kratos/v2/config"
 
 	"micro-one-api/internal/billing/biz"
-	"micro-one-api/internal/pkg/xconfig"
 	bcfg "micro-one-api/internal/billing/config"
 	"micro-one-api/internal/billing/data"
 	"micro-one-api/internal/billing/server"
 	"micro-one-api/internal/billing/service"
 	appregistry "micro-one-api/internal/pkg/registry"
+	"micro-one-api/internal/pkg/xconfig"
 )
 
 func loadConfig(confPath string) (*bcfg.Config, error) {
@@ -48,16 +48,21 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 
-	groupRatios := cfg.Billing.GroupRatios
-	if len(groupRatios) == 0 {
-		groupRatios = biz.DefaultGroupRatios()
+	pricing := biz.PricingConfig{
+		GroupRatios:      cfg.Billing.GroupRatios,
+		ModelRatios:      cfg.Billing.ModelRatios,
+		CompletionRatios: cfg.Billing.CompletionRatios,
+		PricingStore:     d.PricingConfigStore(),
 	}
-	uc := biz.NewBillingUsecase(
+	if len(pricing.GroupRatios) == 0 {
+		pricing.GroupRatios = biz.DefaultGroupRatios()
+	}
+	uc := biz.NewBillingUsecaseWithPricing(
 		d.AccountRepo(),
 		d.ReservationRepo(),
 		d.LedgerRepo(),
 		d.RedeemRepo(),
-		groupRatios,
+		pricing,
 	)
 	reconUc := biz.NewReconciliationUsecase(
 		d.AccountRepo(),

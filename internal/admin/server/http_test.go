@@ -208,6 +208,8 @@ type adminHTTPBillingClient struct {
 	reconGetErr        error
 	reconListLastReq   *billingv1.ListReconciliationRunsRequest
 	reconGetLastRunID  int64
+	paymentOrders      []*billingv1.PaymentOrder
+	paymentTotal       int64
 	paymentListLastReq *billingv1.ListPaymentOrdersRequest
 	paymentGetLastReq  *billingv1.GetPaymentOrderByTradeNoRequest
 }
@@ -266,6 +268,13 @@ func (c *adminHTTPBillingClient) ListLedger(ctx context.Context, req *billingv1.
 
 func (c *adminHTTPBillingClient) ListPaymentOrders(ctx context.Context, req *billingv1.ListPaymentOrdersRequest, opts ...grpc.CallOption) (*billingv1.ListPaymentOrdersResponse, error) {
 	c.paymentListLastReq = req
+	if c.paymentOrders != nil {
+		total := c.paymentTotal
+		if total == 0 {
+			total = int64(len(c.paymentOrders))
+		}
+		return &billingv1.ListPaymentOrdersResponse{Orders: c.paymentOrders, Total: total}, nil
+	}
 	return &billingv1.ListPaymentOrdersResponse{
 		Orders: []*billingv1.PaymentOrder{
 			{
@@ -1433,6 +1442,38 @@ func TestAdminHTTPListPaymentOrders(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("response missing %s: %s", want, rec.Body.String())
 		}
+	}
+}
+
+func TestAdminHTTPSummaryCountsOnlyPaidPaymentOrders(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	billingClient := &adminHTTPBillingClient{
+		paymentOrders: []*billingv1.PaymentOrder{
+			{TradeNo: "PAY-PAID", Status: "paid", AssetAmount: 500000, MoneyCents: 10000},
+			{TradeNo: "PAY-PENDING", Status: "pending", AssetAmount: 999999, MoneyCents: 20000},
+		},
+		paymentTotal: 2,
+	}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/summary", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if billingClient.paymentListLastReq == nil || billingClient.paymentListLastReq.GetStatus() != "paid" {
+		t.Fatalf("summary payment request = %+v, want status=paid", billingClient.paymentListLastReq)
+	}
+	for _, want := range []string{`"recent_order_count":1`, `"recent_amount":10000`, `"recent_amount_cents":10000`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("summary response missing %s: %s", want, rec.Body.String())
+		}
+	}
+	if strings.Contains(rec.Body.String(), `"recent_amount":30000`) {
+		t.Fatalf("pending order was included in summary: %s", rec.Body.String())
 	}
 }
 

@@ -109,6 +109,7 @@ type rawBillingClient struct {
 	releaseSuccess        bool
 	releaseMessage        string
 	failOnCanceledContext bool
+	accountSnapshot       *commonv1.AccountSnapshot
 }
 
 func (c *rawBillingClient) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest, opts ...grpc.CallOption) (*billingv1.ReserveQuotaResponse, error) {
@@ -147,4 +148,19 @@ func (c *rawBillingClient) ReleaseQuota(ctx context.Context, req *billingv1.Rele
 		success = true
 	}
 	return &billingv1.ReleaseQuotaResponse{Success: success, ErrorMessage: c.releaseMessage}, nil
+}
+
+func (c *rawBillingClient) GetAccountSnapshot(ctx context.Context, req *billingv1.GetAccountSnapshotRequest, opts ...grpc.CallOption) (*billingv1.GetAccountSnapshotResponse, error) {
+	if c.accountSnapshot != nil {
+		return &billingv1.GetAccountSnapshotResponse{Snapshot: c.accountSnapshot}, nil
+	}
+	return &billingv1.GetAccountSnapshotResponse{Snapshot: &commonv1.AccountSnapshot{
+		UserId:       req.UserId,
+		Quota:        1234,
+		UsedQuota:    56,
+		RequestCount: 7,
+		Group:        "default",
+		GroupRatio:   1,
+		FrozenQuota:  8,
+	}}, nil
 }

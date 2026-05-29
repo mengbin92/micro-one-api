@@ -162,6 +162,7 @@ services:
       - IDENTITY_HTTP_ENDPOINT=http://identity-service:8001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - LOG_HTTP_ENDPOINT=http://log-service:8006
       - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
@@ -324,6 +325,7 @@ services:
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - LOG_GRPC_ENDPOINT=log-service:9006
       - RELAY_HTTP_ADDR=:8080
+      - PAYMENT_QUOTA_PER_UNIT=${PAYMENT_QUOTA_PER_UNIT:-500000}
       - UPSTREAM_TIMEOUT=300s
       - RELAY_PROVIDER_TIMEOUT=300s
       - RATE_LIMIT_REQUESTS_PER_SECOND=100

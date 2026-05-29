@@ -94,6 +94,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 	srv.HandleFunc("/orders", handleAdminPage)
 	srv.HandleFunc("/admin/users", handleAdminPage)
 	srv.HandleFunc("/admin/channels", handleAdminPage)
+	srv.HandleFunc("/admin/pricing", handleAdminPage)
 	srv.HandleFunc("/admin/logs", handleAdminPage)
 	srv.HandleFunc("/admin/payment-orders", handleAdminPage)
 	srv.HandleFunc("/admin/redemptions", handleAdminPage)
@@ -364,7 +365,7 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if err != nil {
 		logs = &adminv1.ListLogsResponse{}
 	}
-	paymentOrders, err := svc.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{Page: 1, PageSize: 8})
+	paymentOrders, err := svc.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{Page: 1, PageSize: 8, Status: "paid"})
 	if err != nil {
 		paymentOrders = &billingv1.ListPaymentOrdersResponse{}
 	}
@@ -460,14 +461,24 @@ func paymentSummaryFromOrders(resp *billingv1.ListPaymentOrdersResponse) map[str
 	amount := int64(0)
 	total := int64(0)
 	if resp != nil {
-		total = resp.GetTotal()
+		allReturnedPaid := true
 		for _, order := range resp.GetOrders() {
-			amount += order.GetAssetAmount()
+			if order.GetStatus() != "paid" {
+				allReturnedPaid = false
+				continue
+			}
+			total++
+			amount += order.GetMoneyCents()
+		}
+		if allReturnedPaid {
+			total = resp.GetTotal()
 		}
 	}
 	return map[string]interface{}{
-		"recent_order_count": total,
-		"recent_amount":      amount,
+		"recent_order_count":        total,
+		"recent_amount_cents":       amount,
+		"recent_amount_money_cents": amount,
+		"recent_amount":             amount,
 	}
 }
 

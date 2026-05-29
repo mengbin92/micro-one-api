@@ -6,16 +6,27 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 )
 
+type PricingConfig struct {
+	GroupRatios      map[string]float64
+	ModelRatios      map[string]float64
+	CompletionRatios map[string]float64
+	PricingStore     PricingConfigStore
+}
+
 type BillingUsecase struct {
-	accountRepo     AccountRepo
-	reservationRepo ReservationRepo
-	ledgerRepo      LedgerRepo
-	redeemRepo      RedeemRepo
-	groupRatios     map[string]float64
+	accountRepo      AccountRepo
+	reservationRepo  ReservationRepo
+	ledgerRepo       LedgerRepo
+	redeemRepo       RedeemRepo
+	pricingStore     PricingConfigStore
+	groupRatios      map[string]float64
+	modelRatios      map[string]float64
+	completionRatios map[string]float64
 }
 
 func NewBillingUsecase(
@@ -25,15 +36,31 @@ func NewBillingUsecase(
 	redeemRepo RedeemRepo,
 	groupRatios map[string]float64,
 ) *BillingUsecase {
+	return NewBillingUsecaseWithPricing(accountRepo, reservationRepo, ledgerRepo, redeemRepo, PricingConfig{
+		GroupRatios: groupRatios,
+	})
+}
+
+func NewBillingUsecaseWithPricing(
+	accountRepo AccountRepo,
+	reservationRepo ReservationRepo,
+	ledgerRepo LedgerRepo,
+	redeemRepo RedeemRepo,
+	pricing PricingConfig,
+) *BillingUsecase {
+	groupRatios := pricing.GroupRatios
 	if len(groupRatios) == 0 {
 		groupRatios = DefaultGroupRatios()
 	}
 	return &BillingUsecase{
-		accountRepo:     accountRepo,
-		reservationRepo: reservationRepo,
-		ledgerRepo:      ledgerRepo,
-		redeemRepo:      redeemRepo,
-		groupRatios:     groupRatios,
+		accountRepo:      accountRepo,
+		reservationRepo:  reservationRepo,
+		ledgerRepo:       ledgerRepo,
+		redeemRepo:       redeemRepo,
+		pricingStore:     pricing.PricingStore,
+		groupRatios:      groupRatios,
+		modelRatios:      normalizePositiveRatios(pricing.ModelRatios),
+		completionRatios: normalizePositiveRatios(pricing.CompletionRatios),
 	}
 }
 
@@ -53,8 +80,7 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 		return nil, fmt.Errorf("get account snapshot: %w", err)
 	}
 
-	groupRatio := uc.getGroupRatio(account.Group)
-	cost := int64(float64(estimatedTokens) * groupRatio)
+	cost := uc.calculateCost(ctx, account.Group, model, estimatedTokens, 0)
 
 	if cost <= 0 {
 		cost = 1
@@ -124,8 +150,7 @@ func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationI
 		return 0, 0, fmt.Errorf("get account snapshot: %w", err)
 	}
 
-	groupRatio := uc.getGroupRatio(account.Group)
-	actualCost := int64(float64(actualTokens) * groupRatio)
+	actualCost := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
 
 	if actualCost <= 0 {
 		actualCost = 1
@@ -133,23 +158,34 @@ func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationI
 
 	if success {
 		diff := reservation.Amount - actualCost
-
-		if err := uc.reservationRepo.UpdateReservationStatus(ctx, reservationID, ReservationStatusCommitted); err != nil {
-			return 0, 0, fmt.Errorf("update reservation status: %w", err)
-		}
+		balanceAfter := account.Quota
 
 		if err := uc.accountRepo.UpdateFrozenQuota(ctx, reservation.UserID, -reservation.Amount); err != nil {
 			return 0, 0, fmt.Errorf("release frozen quota: %w", err)
 		}
 
-		if err := uc.accountRepo.UpdateUsage(ctx, reservation.UserID, actualCost, 1); err != nil {
-			return 0, 0, fmt.Errorf("update usage: %w", err)
+		if diff > 0 {
+			newQuota, err := uc.accountRepo.UpdateQuota(ctx, reservation.UserID, diff, LedgerTypeRefund)
+			if err != nil {
+				return 0, 0, fmt.Errorf("refund quota: %w", err)
+			}
+			balanceAfter = newQuota
+		} else if diff < 0 {
+			newQuota, err := uc.accountRepo.UpdateQuota(ctx, reservation.UserID, diff, LedgerTypeConsume)
+			if err != nil {
+				return 0, 0, fmt.Errorf("charge additional quota: %w", err)
+			}
+			balanceAfter = newQuota
+		}
+
+		if err := uc.reservationRepo.UpdateReservationStatus(ctx, reservationID, ReservationStatusCommitted); err != nil {
+			return 0, 0, fmt.Errorf("update reservation status: %w", err)
 		}
 
 		ledger := &Ledger{
 			UserID:           reservation.UserID,
 			Amount:           -actualCost,
-			BalanceAfter:     account.Quota,
+			BalanceAfter:     balanceAfter,
 			Type:             LedgerTypeConsume,
 			ReferenceID:      reservationID,
 			Remark:           fmt.Sprintf("model=%s, tokens=%d", reservation.Model, actualTokens),
@@ -168,13 +204,15 @@ func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationI
 			return 0, 0, fmt.Errorf("create ledger: %w", err)
 		}
 
-		if diff > 0 {
-			if _, err := uc.accountRepo.UpdateQuota(ctx, reservation.UserID, diff, LedgerTypeRefund); err != nil {
-				return 0, 0, fmt.Errorf("refund quota: %w", err)
-			}
+		if err := uc.accountRepo.UpdateUsage(ctx, reservation.UserID, actualCost, 1); err != nil {
+			return 0, 0, fmt.Errorf("update usage: %w", err)
 		}
 
-		return actualCost, diff, nil
+		refund := int64(0)
+		if diff > 0 {
+			refund = diff
+		}
+		return actualCost, refund, nil
 	} else {
 		if err := uc.reservationRepo.UpdateReservationStatus(ctx, reservationID, ReservationStatusReleased); err != nil {
 			return 0, 0, fmt.Errorf("update reservation status: %w", err)
@@ -436,11 +474,88 @@ func (uc *BillingUsecase) ListLedgers(ctx context.Context, userID string, page, 
 	return uc.ledgerRepo.ListLedgers(ctx, userID, page, pageSize)
 }
 
-func (uc *BillingUsecase) getGroupRatio(group string) float64 {
-	if ratio, ok := uc.groupRatios[group]; ok {
+func (uc *BillingUsecase) getGroupRatio(pricing PricingConfig, group string) float64 {
+	if ratio, ok := pricing.GroupRatios[group]; ok {
 		return ratio
 	}
 	return 1.0
+}
+
+func (uc *BillingUsecase) getModelRatio(pricing PricingConfig, model string) float64 {
+	if ratio, ok := pricing.ModelRatios[model]; ok {
+		return ratio
+	}
+	return 1.0
+}
+
+func (uc *BillingUsecase) getCompletionRatio(pricing PricingConfig, model string) float64 {
+	if ratio, ok := pricing.CompletionRatios[model]; ok {
+		return ratio
+	}
+	return 1.0
+}
+
+func (uc *BillingUsecase) calculateCost(ctx context.Context, group, model string, promptTokens, completionTokens int64) int64 {
+	pricing := uc.pricingConfig(ctx)
+	prompt := float64(maxInt64(promptTokens, 0))
+	completion := float64(maxInt64(completionTokens, 0))
+	cost := (prompt + completion*uc.getCompletionRatio(pricing, model)) * uc.getModelRatio(pricing, model) * uc.getGroupRatio(pricing, group)
+	if cost <= 0 {
+		return 0
+	}
+	return int64(math.Ceil(cost))
+}
+
+func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, model string, actualTokens int64, usage LedgerUsage) int64 {
+	if usage.PromptTokens > 0 || usage.CompletionTokens > 0 {
+		return uc.calculateCost(ctx, group, model, usage.PromptTokens, usage.CompletionTokens)
+	}
+	return uc.calculateCost(ctx, group, model, actualTokens, 0)
+}
+
+func (uc *BillingUsecase) pricingConfig(ctx context.Context) PricingConfig {
+	config := PricingConfig{
+		GroupRatios:      uc.groupRatios,
+		ModelRatios:      uc.modelRatios,
+		CompletionRatios: uc.completionRatios,
+	}
+	if uc.pricingStore == nil {
+		return config
+	}
+	dynamic, err := uc.pricingStore.GetPricingConfig(ctx)
+	if err != nil {
+		return config
+	}
+	if len(dynamic.GroupRatios) > 0 {
+		config.GroupRatios = normalizePositiveRatios(dynamic.GroupRatios)
+	}
+	if len(dynamic.ModelRatios) > 0 {
+		config.ModelRatios = normalizePositiveRatios(dynamic.ModelRatios)
+	}
+	if len(dynamic.CompletionRatios) > 0 {
+		config.CompletionRatios = normalizePositiveRatios(dynamic.CompletionRatios)
+	}
+	return config
+}
+
+func normalizePositiveRatios(input map[string]float64) map[string]float64 {
+	if len(input) == 0 {
+		return map[string]float64{}
+	}
+	out := make(map[string]float64, len(input))
+	for key, ratio := range input {
+		if key != "" && ratio > 0 {
+			out[key] = ratio
+		}
+	}
+	return out
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // DefaultGroupRatios returns the default group-to-ratio mapping.

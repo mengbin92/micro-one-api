@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	commonv1 "micro-one-api/api/common/v1"
 	relaybiz "micro-one-api/internal/relay/biz"
 	relaydata "micro-one-api/internal/relay/data"
 	relayprovider "micro-one-api/internal/relay/provider"
@@ -172,6 +173,61 @@ func TestHTTPServerAPIStatusCompatibility(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"success":true`) {
 		t.Fatalf("status response missing success: %s", rec.Body.String())
+	}
+}
+
+func TestHTTPServerUsageReturnsBalanceForAPIKey(t *testing.T) {
+	t.Setenv("PAYMENT_QUOTA_PER_UNIT", "500000")
+	httpServer := NewHTTPServer(
+		rawIdentityClient{userIDByToken: map[string]int64{"test-token": 42}},
+		nil,
+		&rawBillingClient{accountSnapshot: &commonv1.AccountSnapshot{
+			UserId:       "42",
+			Quota:        1000000,
+			UsedQuota:    250000,
+			RequestCount: 9,
+			Group:        "default",
+			GroupRatio:   1,
+			FrozenQuota:  50000,
+		}},
+		nil,
+		nil,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/usage", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Mode      string  `json:"mode"`
+		IsValid   bool    `json:"isValid"`
+		Remaining float64 `json:"remaining"`
+		Balance   float64 `json:"balance"`
+		Unit      string  `json:"unit"`
+		PlanName  string  `json:"planName"`
+		Quota     struct {
+			Remaining int64  `json:"remaining"`
+			Used      int64  `json:"used"`
+			Frozen    int64  `json:"frozen"`
+			Unit      string `json:"unit"`
+			PerUSD    int64  `json:"per_usd"`
+		} `json:"quota"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v, body=%s", err, rec.Body.String())
+	}
+	if body.Mode != "unrestricted" || !body.IsValid || body.Remaining != 2 || body.Balance != 2 || body.Unit != "USD" || body.PlanName != "钱包余额" {
+		t.Fatalf("usage summary mismatch: %+v", body)
+	}
+	if body.Quota.Remaining != 1000000 || body.Quota.Used != 250000 || body.Quota.Frozen != 50000 || body.Quota.Unit != "quota" || body.Quota.PerUSD != 500000 {
+		t.Fatalf("quota mismatch: %+v", body.Quota)
 	}
 }
 

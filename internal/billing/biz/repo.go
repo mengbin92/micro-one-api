@@ -33,3 +33,7 @@ type RedeemRepo interface {
 	DeleteRedeemCode(ctx context.Context, code string) error
 	CreateRedeemRecord(ctx context.Context, record *RedeemRecord) error
 }
+
+type PricingConfigStore interface {
+	GetPricingConfig(ctx context.Context) (PricingConfig, error)
+}
