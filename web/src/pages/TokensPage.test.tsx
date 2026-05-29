@@ -35,7 +35,7 @@ describe('TokensPage', () => {
     expect(screen.queryByText('sess********oken')).not.toBeInTheDocument();
   });
 
-  it('shows the full API key returned by token creation', async () => {
+  it('shows the full API key only in the creation dialog', async () => {
     const user = userEvent.setup();
     const fullKey = 'sk-full-token-value-created-once';
     const maskedKey = 'sk-f************************once';
@@ -85,11 +85,20 @@ describe('TokensPage', () => {
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByDisplayValue('test key')).toBeInTheDocument();
     expect(within(dialog).getByDisplayValue(fullKey)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText(fullKey)).toBeInTheDocument();
+      expect(screen.getByText(maskedKey)).toBeInTheDocument();
     });
-    expect(screen.queryByText(maskedKey)).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue(fullKey)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue(fullKey)).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(fullKey)).not.toBeInTheDocument();
+    expect(screen.getByText(maskedKey)).toBeInTheDocument();
   });
 });

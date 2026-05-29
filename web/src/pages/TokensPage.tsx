@@ -15,8 +15,10 @@ import {
 } from '@/components/ui/table';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -52,11 +54,28 @@ function normalizeTokens(data: Token[] | TokenListData): Token[] {
   return [];
 }
 
+function maskApiKey(key?: string): string | undefined {
+  if (!key) {
+    return undefined;
+  }
+  if (key.length <= 8) {
+    return '*'.repeat(key.length);
+  }
+  return `${key.slice(0, 4)}${'*'.repeat(key.length - 8)}${key.slice(-4)}`;
+}
+
+function tokenForList(token: Token): Token {
+  const { key, ...safeToken } = token;
+  return {
+    ...safeToken,
+    masked_key: token.masked_key || maskApiKey(key) || safeToken.masked_key,
+  };
+}
+
 export function TokensPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
   const [createdToken, setCreatedToken] = useState<Token | null>(null);
-  const [revealedKeys, setRevealedKeys] = useState<Record<number, string>>({});
   const queryClient = useQueryClient();
 
   const { data: tokens, isLoading } = useQuery({
@@ -73,13 +92,11 @@ export function TokensPage() {
       return unwrapApiData<Token>(res.data);
     },
     onSuccess: (token) => {
-      if (token.key) {
-        setRevealedKeys((current) => ({ ...current, [token.id]: token.key as string }));
-      }
       setCreatedToken(token);
       queryClient.setQueryData<Token[]>(['tokens'], (current = []) => {
+        const safeToken = tokenForList(token);
         const withoutCreated = current.filter((item) => item.id !== token.id);
-        return [token, ...withoutCreated];
+        return [safeToken, ...withoutCreated];
       });
       setNewTokenName('');
       toast.success('Token created');
@@ -135,18 +152,24 @@ export function TokensPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New Token</DialogTitle>
-              <DialogDescription>Enter a name for your new API token.</DialogDescription>
+              <DialogTitle>{createdToken?.key ? 'Token Created' : 'Create New Token'}</DialogTitle>
+              <DialogDescription>
+                {createdToken?.key ? 'Copy this API key now. It will not be shown again.' : 'Enter a name for your new API token.'}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div className="space-y-2">
                 <Label htmlFor="token-name">Token Name</Label>
-                <Input
-                  id="token-name"
-                  value={newTokenName}
-                  onChange={(e) => setNewTokenName(e.target.value)}
-                  placeholder="My Token"
-                />
+                {createdToken?.key ? (
+                  <Input id="token-name" readOnly value={createdToken.name || newTokenName} />
+                ) : (
+                  <Input
+                    id="token-name"
+                    value={newTokenName}
+                    onChange={(e) => setNewTokenName(e.target.value)}
+                    placeholder="My Token"
+                  />
+                )}
               </div>
               {createdToken?.key && (
                 <div className="space-y-2">
@@ -159,13 +182,19 @@ export function TokensPage() {
                   </div>
                 </div>
               )}
-              <Button
-                onClick={handleCreate}
-                disabled={createMutation.isPending || !newTokenName.trim()}
-                className="w-full"
-              >
-                {createMutation.isPending ? 'Creating...' : 'Create'}
-              </Button>
+              {createdToken?.key ? (
+                <DialogFooter>
+                  <DialogClose render={<Button className="w-full" />}>Done</DialogClose>
+                </DialogFooter>
+              ) : (
+                <Button
+                  onClick={handleCreate}
+                  disabled={createMutation.isPending || !newTokenName.trim()}
+                  className="w-full"
+                >
+                  {createMutation.isPending ? 'Creating...' : 'Create'}
+                </Button>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -192,7 +221,7 @@ export function TokensPage() {
               {tokens.map((token) => (
                 <TableRow key={token.id}>
                   <TableCell className="font-medium">{token.name}</TableCell>
-                  <TableCell className="font-mono text-sm">{revealedKeys[token.id] || token.key || token.masked_key || 'Hidden'}</TableCell>
+                  <TableCell className="font-mono text-sm">{token.masked_key || 'Hidden'}</TableCell>
                   <TableCell>
                     <span
                       className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
