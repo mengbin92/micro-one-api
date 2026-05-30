@@ -94,6 +94,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 	srv.HandleFunc("/recharge", handleAdminPage)
 	srv.HandleFunc("/redeem", handleAdminPage)
 	srv.HandleFunc("/orders", handleAdminPage)
+	srv.HandleFunc("/profile", handleAdminPage)
 	srv.HandleFunc("/admin/users", handleAdminPage)
 	srv.HandleFunc("/admin/channels", handleAdminPage)
 	srv.HandleFunc("/admin/pricing", handleAdminPage)
@@ -126,6 +127,94 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 				"turnstile_check":      false,
 				"display_in_currency":  false,
 			},
+		})
+	})
+
+	srv.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		// Authenticate user
+		authHeader := r.Header.Get("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
+				"error": map[string]interface{}{
+					"message": "missing or invalid authorization header",
+					"type":    "invalid_request_error",
+				},
+			})
+			return
+		}
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		
+		// Validate token with identity service
+		validated, err := svc.ValidateToken(r.Context(), token)
+		if err != nil || !validated {
+			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
+				"error": map[string]interface{}{
+					"message": "invalid API key",
+					"type":    "invalid_request_error",
+				},
+			})
+			return
+		}
+
+		// Get models from active channels
+		channels, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
+			Page:     1,
+			PageSize: 1000,
+			Status:   1, // active channels only
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]interface{}{
+				"error": map[string]interface{}{
+					"message": "failed to fetch available models",
+					"type":    "server_error",
+				},
+			})
+			return
+		}
+
+		// Collect unique models from channels
+		modelSet := map[string]string{} // model -> provider
+		for _, ch := range channels.GetChannels() {
+			if ch.GetModels() == "" {
+				continue
+			}
+			for _, model := range strings.Split(ch.GetModels(), ",") {
+				model = strings.TrimSpace(model)
+				if model != "" {
+					if _, exists := modelSet[model]; !exists {
+						modelSet[model] = providerNameFromType(ch.GetType())
+					}
+				}
+			}
+		}
+
+		// If no models from channels, return empty list
+		// (don't use fallback catalog as it may show unavailable models)
+
+		// Build response
+		type modelItem struct {
+			ID      string `json:"id"`
+			Object  string `json:"object"`
+			Created int64  `json:"created"`
+			OwnedBy string `json:"owned_by"`
+		}
+		data := make([]modelItem, 0, len(modelSet))
+		for model, ownedBy := range modelSet {
+			data = append(data, modelItem{
+				ID:      model,
+				Object:  "model",
+				Created: 1626777600,
+				OwnedBy: ownedBy,
+			})
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"object": "list",
+			"data":   data,
 		})
 	})
 	srv.HandleFunc("/api/pricing", func(w http.ResponseWriter, r *http.Request) {
@@ -366,9 +455,10 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if err != nil {
 		activeChannels = &adminv1.AdminListChannelsResponse{}
 	}
-	logs, err := svc.ListLogs(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 8})
+	recentLogs, recentLogsTotal, err := svc.ListLedgerEntries(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 8})
 	if err != nil {
-		logs = &adminv1.ListLogsResponse{}
+		recentLogs = []map[string]interface{}{}
+		recentLogsTotal = 0
 	}
 	paymentOrders, err := svc.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{Page: 1, PageSize: 8, Status: "paid"})
 	if err != nil {
@@ -419,11 +509,11 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 			"quota_used":             quotaUsed,
 			"channel_balance":        totalBalance,
 			"stale_balance_channels": staleBalanceCount,
-			"log_count":              logs.GetTotal(),
+			"log_count":              recentLogsTotal,
 		},
 		"recent_users":    users.GetUsers(),
 		"channels":        channels.GetChannels(),
-		"recent_logs":     logs.GetLogs(),
+		"recent_logs":     recentLogs,
 		"payment_orders":  paymentOrders.GetOrders(),
 		"usage_stats":     stats,
 		"model_catalog":   oneAPIChannelModelCatalog(),
@@ -644,6 +734,92 @@ func paymentSummaryFromOrders(resp *billingv1.ListPaymentOrdersResponse) map[str
 	}
 }
 
+
+func userInfoToMap(u *commonv1.UserInfo, quota, usedQuota int64) map[string]interface{} {
+	return map[string]interface{}{
+		"id":           u.GetId(),
+		"username":     u.GetUsername(),
+		"displayName":  u.GetDisplayName(),
+		"email":        u.GetEmail(),
+		"group":        u.GetGroup(),
+		"status":       u.GetStatus(),
+		"role":         u.GetRole(),
+		"quota":        strconv.FormatInt(quota, 10),
+		"usedQuota":    strconv.FormatInt(usedQuota, 10),
+		"createdAt":    strconv.FormatInt(u.GetCreatedAt(), 10),
+	}
+}
+
+
+func providerNameFromType(channelType int32) string {
+	switch channelType {
+	case 1:
+		return "openai"
+	case 2:
+		return "openai" // openai-sb
+	case 3:
+		return "openai" // openai-tts
+	case 4:
+		return "anthropic"
+	case 5:
+		return "google" // gemini
+	case 6:
+		return "azure"
+	case 7:
+		return "deepseek"
+	case 8:
+		return "tongyi" // qwen
+	case 9:
+		return "zhipu" // glm
+	case 10:
+		return "moonshot"
+	case 11:
+		return "mistral"
+	case 12:
+		return "cohere"
+	case 13:
+		return "perplexity"
+	case 14:
+		return "voyageai"
+	default:
+		return "organization"
+	}
+}
+
+func enrichUsersWithBilling(ctx context.Context, svc *service.AdminService, users []*commonv1.UserInfo) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(users))
+
+	// Collect user IDs for batch query
+	userIDs := make([]string, 0, len(users))
+	for _, u := range users {
+		userIDs = append(userIDs, strconv.FormatInt(u.GetId(), 10))
+	}
+
+	// Batch fetch account snapshots
+	var accounts map[string]*commonv1.AccountInfo
+	if svc != nil && len(userIDs) > 0 {
+		var err error
+		accounts, err = svc.BatchGetAccountSnapshots(ctx, userIDs)
+		if err != nil {
+			accounts = map[string]*commonv1.AccountInfo{}
+		}
+	}
+
+	// Build result with enriched data
+	for _, u := range users {
+		var quota, usedQuota int64
+		if accounts != nil {
+			userID := strconv.FormatInt(u.GetId(), 10)
+			if acc, ok := accounts[userID]; ok {
+				quota = acc.GetQuota()
+				usedQuota = acc.GetUsedQuota()
+			}
+		}
+		result = append(result, userInfoToMap(u, quota, usedQuota))
+	}
+	return result
+}
+
 func handleAdminPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -729,6 +905,29 @@ func apiResponse(success bool, message string, data interface{}) map[string]inte
 		resp["data"] = data
 	}
 	return resp
+}
+
+// logEntryToJSON converts a proto LogEntry to a camelCase JSON map for frontend compatibility.
+func logEntryToJSON(entry *adminv1.LogEntry) map[string]interface{} {
+	return map[string]interface{}{
+		"id":            entry.GetId(),
+		"userId":        entry.GetUserId(),
+		"type":          entry.GetType(),
+		"amount":        entry.GetAmount(),
+		"balanceAfter":  entry.GetBalanceAfter(),
+		"referenceId":   entry.GetReferenceId(),
+		"remark":        entry.GetRemark(),
+		"createdAt":     entry.GetCreatedAt(),
+	}
+}
+
+// logEntriesToJSON converts a slice of proto LogEntries to camelCase JSON maps.
+func logEntriesToJSON(entries []*adminv1.LogEntry) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, logEntryToJSON(entry))
+	}
+	return result
 }
 
 func writeOneAPIServiceResponse(w http.ResponseWriter, resp interface{}, err error) {
@@ -1110,7 +1309,7 @@ func handleOneAPIListUsers(w http.ResponseWriter, r *http.Request, svc *service.
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetUsers()))
+	writeJSON(w, http.StatusOK, apiResponse(true, "", enrichUsersWithBilling(r.Context(), svc, resp.GetUsers())))
 }
 
 func handleOneAPIExportUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -1156,7 +1355,7 @@ func handleOneAPISearchUsers(w http.ResponseWriter, r *http.Request, svc *servic
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetUsers()))
+	writeJSON(w, http.StatusOK, apiResponse(true, "", enrichUsersWithBilling(r.Context(), svc, resp.GetUsers())))
 }
 
 func handleUserByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -1847,7 +2046,7 @@ func handleListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 	startTime := getQueryInt64(r, "start_time", 0)
 	endTime := getQueryInt64(r, "end_time", 0)
 
-	resp, err := svc.ListLogs(r.Context(), &adminv1.ListLogsRequest{
+	entries, total, err := svc.ListLedgerEntries(r.Context(), &adminv1.ListLogsRequest{
 		Page:      page,
 		PageSize:  pageSize,
 		UserId:    userID,
@@ -1859,7 +2058,11 @@ func handleListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+		"logs":  entries,
+		"total": total,
+	}))
 }
 
 func handleLogStats(w http.ResponseWriter, r *http.Request, svc *service.AdminService, selfOnly bool) {
@@ -1968,7 +2171,7 @@ func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
-	resp, err := svc.ListLogs(r.Context(), &adminv1.ListLogsRequest{
+	entries, _, err := svc.ListLedgerEntries(r.Context(), &adminv1.ListLogsRequest{
 		Page:      oneAPIPage(r),
 		PageSize:  oneAPIPageSize(r),
 		UserId:    r.URL.Query().Get("user_id"),
@@ -1980,7 +2183,7 @@ func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.A
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetLogs()))
+	writeJSON(w, http.StatusOK, apiResponse(true, "", entries))
 }
 
 func handleOneAPIExportLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {

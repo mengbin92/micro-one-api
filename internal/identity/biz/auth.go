@@ -737,7 +737,7 @@ func (uc *IdentityUsecase) SetRole(ctx context.Context, operator *User, userID i
 	return user, nil
 }
 
-func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, username, displayName, password string) error {
+func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, username, displayName, password string, updateDisplayName bool) error {
 	user, err := uc.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return err
@@ -752,7 +752,7 @@ func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, usernam
 		}
 		user.Username = username
 	}
-	if displayName != "" {
+	if updateDisplayName {
 		user.DisplayName = displayName
 	}
 	if password != "" {

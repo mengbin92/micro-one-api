@@ -229,6 +229,18 @@ func (c *adminHTTPBillingClient) GetAccountSnapshot(ctx context.Context, req *bi
 	}, nil
 }
 
+func (c *adminHTTPBillingClient) BatchGetAccountSnapshots(ctx context.Context, req *billingv1.BatchGetAccountSnapshotsRequest, opts ...grpc.CallOption) (*billingv1.BatchGetAccountSnapshotsResponse, error) {
+	snapshots := make(map[string]*commonv1.AccountSnapshot, len(req.GetUserIds()))
+	for _, userID := range req.GetUserIds() {
+		snapshots[userID] = &commonv1.AccountSnapshot{
+			UserId:    userID,
+			Quota:     500,
+			UsedQuota: 100,
+		}
+	}
+	return &billingv1.BatchGetAccountSnapshotsResponse{Snapshots: snapshots}, nil
+}
+
 func (c *adminHTTPBillingClient) CreateRedeemCodesBatch(ctx context.Context, req *billingv1.CreateRedeemCodesBatchRequest, opts ...grpc.CallOption) (*billingv1.CreateRedeemCodesBatchResponse, error) {
 	c.batchCreated = true
 	return &billingv1.CreateRedeemCodesBatchResponse{Success: true, Codes: []string{"code-a", "code-b"}}, nil

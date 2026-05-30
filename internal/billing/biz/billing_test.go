@@ -20,6 +20,14 @@ func (m *mockAccountRepo) GetAccountSnapshot(ctx context.Context, userID string)
 	return m.account, nil
 }
 
+func (m *mockAccountRepo) BatchGetAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*Account, error) {
+	result := make(map[string]*Account, len(userIDs))
+	for _, userID := range userIDs {
+		result[userID] = m.account
+	}
+	return result, nil
+}
+
 func (m *mockAccountRepo) UpdateQuota(ctx context.Context, userID string, delta int64, operationType string) (int64, error) {
 	if delta < 0 && m.account.Quota+delta < 0 {
 		return 0, ErrInsufficientQuota
@@ -94,6 +102,14 @@ func (m *mockLedgerRepo) CreateLedger(ctx context.Context, ledger *Ledger) error
 }
 
 func (m *mockLedgerRepo) ListLedgers(ctx context.Context, userID string, page, pageSize int32) ([]*Ledger, int64, error) {
+	return m.ledgers, int64(len(m.ledgers)), nil
+}
+
+func (m *mockLedgerRepo) ListLedgersWithTimeRange(ctx context.Context, userID string, page, pageSize int32, startTime, endTime time.Time) ([]*Ledger, int64, error) {
+	return m.ledgers, int64(len(m.ledgers)), nil
+}
+
+func (m *mockLedgerRepo) ListLedgersWithFilters(ctx context.Context, userID string, page, pageSize int32, ledgerType string, startTime, endTime time.Time) ([]*Ledger, int64, error) {
 	return m.ledgers, int64(len(m.ledgers)), nil
 }
 

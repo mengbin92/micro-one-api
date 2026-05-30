@@ -302,6 +302,10 @@ func (uc *BillingUsecase) GetAccountSnapshot(ctx context.Context, userID string)
 	return uc.accountRepo.GetAccountSnapshot(ctx, userID)
 }
 
+func (uc *BillingUsecase) BatchGetAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*Account, error) {
+	return uc.accountRepo.BatchGetAccountSnapshots(ctx, userIDs)
+}
+
 func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID string, amount int64, remark string) (int64, error) {
 	_, err := uc.accountRepo.GetAccountSnapshot(ctx, userID)
 	if err != nil {
@@ -485,6 +489,14 @@ func (uc *BillingUsecase) RedeemCode(ctx context.Context, userID, code string) (
 
 func (uc *BillingUsecase) ListLedgers(ctx context.Context, userID string, page, pageSize int32) ([]*Ledger, int64, error) {
 	return uc.ledgerRepo.ListLedgers(ctx, userID, page, pageSize)
+}
+
+func (uc *BillingUsecase) ListLedgersWithTimeRange(ctx context.Context, userID string, page, pageSize int32, startTime, endTime time.Time) ([]*Ledger, int64, error) {
+	return uc.ledgerRepo.ListLedgersWithTimeRange(ctx, userID, page, pageSize, startTime, endTime)
+}
+
+func (uc *BillingUsecase) ListLedgersWithFilters(ctx context.Context, userID string, page, pageSize int32, ledgerType string, startTime, endTime time.Time) ([]*Ledger, int64, error) {
+	return uc.ledgerRepo.ListLedgersWithFilters(ctx, userID, page, pageSize, ledgerType, startTime, endTime)
 }
 
 func (uc *BillingUsecase) getGroupRatio(pricing PricingConfig, group string) float64 {

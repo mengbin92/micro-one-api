@@ -22,6 +22,7 @@ service BillingService {
   rpc UpdateRedeemCode(UpdateRedeemCodeRequest) returns (UpdateRedeemCodeResponse);
   rpc DeleteRedeemCode(DeleteRedeemCodeRequest) returns (DeleteRedeemCodeResponse);
   rpc ListLedger(ListLedgerRequest) returns (ListLedgerResponse);
+  rpc BatchGetAccountSnapshots(BatchGetAccountSnapshotsRequest) returns (BatchGetAccountSnapshotsResponse);
   rpc CreatePaymentOrder(CreatePaymentOrderRequest) returns (PaymentOrderResponse);
   rpc GetPaymentOrderByTradeNo(GetPaymentOrderByTradeNoRequest) returns (PaymentOrderResponse);
   rpc MarkPaymentOrderPaid(MarkPaymentOrderPaidRequest) returns (PaymentOrderResponse);
@@ -87,6 +88,14 @@ message GetAccountSnapshotRequest {
 
 message GetAccountSnapshotResponse {
   common.v1.AccountSnapshot snapshot = 1;
+}
+
+message BatchGetAccountSnapshotsRequest {
+  repeated string user_ids = 1;
+}
+
+message BatchGetAccountSnapshotsResponse {
+  map<string, common.v1.AccountSnapshot> snapshots = 1;
 }
 
 // ========== 充值 ==========
@@ -201,6 +210,7 @@ message ListLedgerRequest {
   int32 page_size = 3;
   google.protobuf.Timestamp start_time = 4;
   google.protobuf.Timestamp end_time = 5;
+  string type = 6;
 }
 
 message ListLedgerResponse {

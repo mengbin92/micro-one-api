@@ -47,15 +47,12 @@ interface AdminChannel {
 
 interface AdminLog {
   id: string | number;
-  user_id?: string;
   userId?: string;
   type?: string;
   amount?: number | string;
-  model_name?: string;
   modelName?: string;
   endpoint?: string;
-  created_at?: number;
-  createdAt?: string;
+  createdAt?: number;
 }
 
 interface AdminSummary {
@@ -384,12 +381,12 @@ export function AdminOverviewPage() {
                 <TableBody>
                   {logs.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell className="font-mono text-xs">{log.user_id || log.userId || '-'}</TableCell>
+                      <TableCell className="font-mono text-xs">{log.userId || '-'}</TableCell>
                       <TableCell>{LOG_TYPE_NAMES[log.type || ''] || log.type || '-'}</TableCell>
-                      <TableCell>{log.model_name || log.modelName || '-'}</TableCell>
+                      <TableCell>{log.modelName || '-'}</TableCell>
                       <TableCell className="font-semibold">{formatQuota(log.amount)}</TableCell>
                       <TableCell className="font-mono text-xs">{log.endpoint || '-'}</TableCell>
-                      <TableCell>{formatDate(log.created_at || log.createdAt)}</TableCell>
+                      <TableCell>{formatDate(log.createdAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

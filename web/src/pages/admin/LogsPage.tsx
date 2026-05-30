@@ -32,6 +32,11 @@ interface LogEntry {
   createdAt: string;
 }
 
+interface LogListData {
+  logs?: LogEntry[];
+  total?: number;
+}
+
 const LOG_TYPE_NAMES: Record<string, string> = {
   redeem: 'Redeem',
   recharge: 'Recharge',
@@ -68,7 +73,7 @@ export function AdminLogsPage() {
   exportParams.set('format', 'csv');
   const exportHref = `/log/export?${exportParams}`;
 
-  const { data: logs, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['admin-logs', page, pageSize, userId, type, sortKey, sortDirection],
     queryFn: async () => {
       const params = buildAdminListParams({
@@ -79,7 +84,10 @@ export function AdminLogsPage() {
         filters: { user_id: userId, type },
       });
       const res = await adminApiClient.get(`/log?${params}`);
-      return unwrapApiData<LogEntry[]>(res.data);
+      const payload = unwrapApiData<LogEntry[] | LogListData>(res.data);
+      return Array.isArray(payload)
+        ? { logs: payload, total: payload.length }
+        : { logs: payload.logs ?? [], total: payload.total ?? payload.logs?.length ?? 0 };
     },
   });
 
@@ -87,7 +95,9 @@ export function AdminLogsPage() {
     return (parseInt(q || '0') / 500000).toFixed(2);
   }
 
-  const visibleLogs = useMemo(() => sortRows(logs ?? [], sort), [logs, sort]);
+  const logs = data?.logs ?? [];
+  const total = data?.total ?? logs.length;
+  const visibleLogs = useMemo(() => sortRows(logs, sort), [logs, sort]);
 
   return (
     <div className="space-y-4">
@@ -195,7 +205,7 @@ export function AdminLogsPage() {
           <AdminPagination
             page={page}
             pageSize={pageSize}
-            hasNextPage={!!logs && logs.length >= pageSize}
+            hasNextPage={page * pageSize < total}
             onPageChange={setPage}
             onPageSizeChange={setPageSize}
           />

@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"micro-one-api/internal/billing/biz"
 
@@ -109,4 +110,44 @@ func (r *accountRepo) UpdateFrozenQuota(ctx context.Context, userID string, delt
 	// 计算新值
 	newFrozenQuota := account.FrozenQuota + delta
 	return r.data.db.WithContext(ctx).Table("users").Where("id = ?", userID).Update("frozen_quota", newFrozenQuota).Error
+}
+
+func (r *accountRepo) BatchGetAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*biz.Account, error) {
+	if len(userIDs) == 0 {
+		return map[string]*biz.Account{}, nil
+	}
+
+	var users []struct {
+		ID           int64  `gorm:"column:id"`
+		Username     string `gorm:"column:username"`
+		DisplayName  string `gorm:"column:display_name"`
+		Group        string `gorm:"column:group"`
+		Quota        int64  `gorm:"column:quota"`
+		UsedQuota    int64  `gorm:"column:used_quota"`
+		RequestCount int64  `gorm:"column:request_count"`
+		FrozenQuota  int64  `gorm:"column:frozen_quota"`
+		Status       int32  `gorm:"column:status"`
+	}
+
+	if err := r.data.db.WithContext(ctx).Table("users").Where("id IN ?", userIDs).Find(&users).Error; err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]*biz.Account, len(users))
+	for _, user := range users {
+		userID := strconv.FormatInt(user.ID, 10)
+		result[userID] = &biz.Account{
+			UserID:       userID,
+			Username:     user.Username,
+			DisplayName:  user.DisplayName,
+			Group:        user.Group,
+			Quota:        user.Quota,
+			UsedQuota:    user.UsedQuota,
+			RequestCount: user.RequestCount,
+			FrozenQuota:  user.FrozenQuota,
+			Status:       user.Status,
+		}
+	}
+
+	return result, nil
 }

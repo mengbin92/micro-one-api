@@ -917,6 +917,28 @@ func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
 	}
 }
 
+func TestChatCompletionResponseToResponsesAcceptsInputOutputUsage(t *testing.T) {
+	body, usage, err := chatCompletionResponseToResponses([]byte(`{
+		"id":"chatcmpl_fallback_123",
+		"object":"chat.completion",
+		"created":1710000000,
+		"model":"gpt-4o-mini",
+		"choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],
+		"usage":{"input_tokens":31,"output_tokens":17,"total_tokens":48}
+	}`))
+	if err != nil {
+		t.Fatalf("chatCompletionResponseToResponses error: %v", err)
+	}
+	if usage.PromptTokens != 31 || usage.CompletionTokens != 17 || usage.TotalTokens != 48 {
+		t.Fatalf("usage = prompt:%d completion:%d total:%d", usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens)
+	}
+	for _, want := range []string{`"input_tokens":31`, `"output_tokens":17`, `"total_tokens":48`} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("fallback response missing %s: %s", want, string(body))
+		}
+	}
+}
+
 func TestShouldFallbackResponsesToChatIncludesProviderBadRequest(t *testing.T) {
 	err := &relayprovider.UpstreamHTTPError{
 		StatusCode: http.StatusBadRequest,
@@ -1045,7 +1067,8 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 			w.Header().Set("Content-Type", "text/event-stream")
 			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"po"},"finish_reason":null}]}` + "\n\n"))
 			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"ng"},"finish_reason":null}]}` + "\n\n"))
-			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[],"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}}` + "\n\n"))
 			_, _ = w.Write([]byte("data: [DONE]\n\n"))
 		default:
 			http.NotFound(w, r)
@@ -1140,6 +1163,18 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 		if !strings.Contains(body, want) {
 			t.Fatalf("fallback stream response missing responses usage field %s: %s", want, body)
 		}
+	}
+}
+
+func TestResponsesStreamFallbackAcceptsInputOutputUsage(t *testing.T) {
+	state := newResponsesStreamFallbackState("resp_test", "msg_resp_test")
+	var out strings.Builder
+	done := state.writeChunk(&out, []byte(`{"id":"chatcmpl_stream_123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"input_tokens":29,"output_tokens":11,"total_tokens":40}}`))
+	if !done {
+		t.Fatal("writeChunk done = false, want true")
+	}
+	if state.usage.PromptTokens != 29 || state.usage.CompletionTokens != 11 || state.usage.TotalTokens != 40 {
+		t.Fatalf("usage = prompt:%d completion:%d total:%d", state.usage.PromptTokens, state.usage.CompletionTokens, state.usage.TotalTokens)
 	}
 }
 

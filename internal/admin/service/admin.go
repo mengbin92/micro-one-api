@@ -401,6 +401,36 @@ func (s *AdminService) GetAccountSnapshot(ctx context.Context, req *adminv1.GetA
 	}, nil
 }
 
+// BatchGetAccountSnapshots 批量获取账户快照
+func (s *AdminService) BatchGetAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*commonv1.AccountInfo, error) {
+	if s.billingClient == nil || len(userIDs) == 0 {
+		return map[string]*commonv1.AccountInfo{}, nil
+	}
+
+	resp, err := s.billingClient.BatchGetAccountSnapshots(ctx, &billingv1.BatchGetAccountSnapshotsRequest{
+		UserIds: userIDs,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	accounts := make(map[string]*commonv1.AccountInfo, len(resp.GetSnapshots()))
+	for userID, snapshot := range resp.GetSnapshots() {
+		if snapshot != nil {
+			accounts[userID] = &commonv1.AccountInfo{
+				UserId:       snapshot.GetUserId(),
+				Group:        snapshot.GetGroup(),
+				Quota:        snapshot.GetQuota(),
+				UsedQuota:    snapshot.GetUsedQuota(),
+				RequestCount: snapshot.GetRequestCount(),
+				FrozenQuota:  snapshot.GetFrozenQuota(),
+			}
+		}
+	}
+
+	return accounts, nil
+}
+
 // ========== 用户管理 ==========
 
 func (s *AdminService) ListUsers(ctx context.Context, req *adminv1.AdminListUsersRequest) (*adminv1.AdminListUsersResponse, error) {
@@ -520,6 +550,19 @@ func (s *AdminService) AuthorizeAdminToken(ctx context.Context, token string) (i
 		return 0, 0, err
 	}
 	return vr.GetUserId(), ur.GetUser().GetRole(), nil
+}
+
+// ValidateToken validates a user token and returns true if valid.
+// This is a simpler version of AuthorizeAdminToken that doesn't check admin role.
+func (s *AdminService) ValidateToken(ctx context.Context, token string) (bool, error) {
+	if s.identityClient == nil {
+		return false, fmt.Errorf("identity service not available")
+	}
+	vr, err := s.identityClient.ValidateToken(ctx, &identityv1.ValidateTokenRequest{Token: token})
+	if err != nil {
+		return false, err
+	}
+	return vr.GetValid(), nil
 }
 
 func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUserQuotaRequest) (*adminv1.ResetUserQuotaResponse, error) {
@@ -1388,10 +1431,12 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		pageSize = 20
 	}
 
+	// Build billing request with all filters
 	billingReq := &billingv1.ListLedgerRequest{
 		UserId:   req.UserId,
 		Page:     page,
 		PageSize: pageSize,
+		Type:     req.Type,
 	}
 
 	// Pass time range filters to billing service
@@ -1404,6 +1449,7 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		billingReq.EndTime = ts
 	}
 
+	// Billing service now supports type filtering server-side
 	billingResp, err := s.billingClient.ListLedger(ctx, billingReq)
 	if err != nil {
 		st, ok := status.FromError(err)
@@ -1421,17 +1467,12 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 
 	logs := make([]*adminv1.LogEntry, 0, len(billingResp.Entries))
 	for _, entry := range billingResp.Entries {
-		// Filter by type client-side (billing service doesn't support type filter)
-		if req.Type != "" && entry.Type != req.Type {
-			continue
-		}
-
 		var createdAt int64
 		if entry.CreatedAt != nil {
 			createdAt = entry.CreatedAt.AsTime().Unix()
 		}
 		logs = append(logs, &adminv1.LogEntry{
-			Id:           0, // LedgerEntry.Id is string, LogEntry.Id is int64
+			Id:           parseInt64(entry.Id),
 			UserId:       entry.UserId,
 			Type:         entry.Type,
 			Amount:       entry.Amount,
@@ -1476,6 +1517,69 @@ func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsReq
 	}, nil
 }
 
+// ListLedgerEntries returns raw billing ledger entries with all fields preserved.
+// This is used for admin API responses that need full entry data.
+func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListLogsRequest) ([]map[string]interface{}, int64, error) {
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+
+	billingReq := &billingv1.ListLedgerRequest{
+		UserId:   req.UserId,
+		Page:     page,
+		PageSize: pageSize,
+		Type:     req.Type,
+	}
+
+	if req.StartTime > 0 {
+		ts := timestamppb.New(time.Unix(req.StartTime, 0))
+		billingReq.StartTime = ts
+	}
+	if req.EndTime > 0 {
+		ts := timestamppb.New(time.Unix(req.EndTime, 0))
+		billingReq.EndTime = ts
+	}
+
+	billingResp, err := s.billingClient.ListLedger(ctx, billingReq)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	entries := make([]map[string]interface{}, 0, len(billingResp.GetEntries()))
+	for _, entry := range billingResp.GetEntries() {
+		var createdAt int64
+		if entry.GetCreatedAt() != nil {
+			createdAt = entry.GetCreatedAt().AsTime().Unix()
+		}
+		entries = append(entries, map[string]interface{}{
+			"id":               parseInt64(entry.GetId()),
+			"userId":           entry.GetUserId(),
+			"type":             entry.GetType(),
+			"amount":           entry.GetAmount(),
+			"balanceAfter":     entry.GetBalanceAfter(),
+			"referenceId":      entry.GetReferenceId(),
+			"remark":           entry.GetRemark(),
+			"createdAt":        createdAt,
+			"tokenName":        entry.GetTokenName(),
+			"modelName":        entry.GetModelName(),
+			"quota":            entry.GetQuota(),
+			"promptTokens":     entry.GetPromptTokens(),
+			"completionTokens": entry.GetCompletionTokens(),
+			"channelId":        entry.GetChannelId(),
+			"elapsedTime":      entry.GetElapsedTime(),
+			"isStream":         entry.GetIsStream(),
+			"endpoint":         entry.GetEndpoint(),
+		})
+	}
+
+	return entries, billingResp.GetTotal(), nil
+}
+
 // 辅助函数：将 time.Time 转换为 Unix 时间戳
 func toUnixTimestamp(t time.Time) int64 {
 	if t.IsZero() {
@@ -1495,4 +1599,9 @@ func fromUnixTimestamp(ts int64) time.Time {
 // 辅助函数：创建错误响应
 func errorResponse(message string) error {
 	return status.Error(codes.Internal, fmt.Sprintf("internal error: %s", message))
+}
+
+func parseInt64(s string) int64 {
+	n, _ := strconv.ParseInt(s, 10, 64)
+	return n
 }

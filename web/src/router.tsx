@@ -13,6 +13,7 @@ const PricingPage = lazy(() => import('@/pages/PricingPage').then((m) => ({ defa
 const OrdersPage = lazy(() => import('@/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })));
 const RechargePage = lazy(() => import('@/pages/RechargePage').then((m) => ({ default: m.RechargePage })));
 const RedeemPage = lazy(() => import('@/pages/RedeemPage').then((m) => ({ default: m.RedeemPage })));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 const AdminOverviewPage = lazy(() =>
   import('@/pages/admin/OverviewPage').then((m) => ({ default: m.AdminOverviewPage }))
 );
@@ -82,6 +83,10 @@ export const router = createBrowserRouter([
       {
         path: 'orders',
         element: withSuspense(<OrdersPage />),
+      },
+      {
+        path: 'profile',
+        element: withSuspense(<ProfilePage />),
       },
       {
         path: 'admin',

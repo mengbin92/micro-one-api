@@ -99,6 +99,30 @@ func (s *BillingService) GetAccountSnapshot(ctx context.Context, req *billingv1.
 	}, nil
 }
 
+func (s *BillingService) BatchGetAccountSnapshots(ctx context.Context, req *billingv1.BatchGetAccountSnapshotsRequest) (*billingv1.BatchGetAccountSnapshotsResponse, error) {
+	accounts, err := s.uc.BatchGetAccountSnapshots(ctx, req.GetUserIds())
+	if err != nil {
+		return nil, err
+	}
+
+	snapshots := make(map[string]*commonv1.AccountSnapshot, len(accounts))
+	for userID, account := range accounts {
+		snapshots[userID] = &commonv1.AccountSnapshot{
+			UserId:       account.UserID,
+			Quota:        account.Quota,
+			UsedQuota:    account.UsedQuota,
+			RequestCount: account.RequestCount,
+			Group:        account.Group,
+			GroupRatio:   account.GroupRatio(),
+			FrozenQuota:  account.FrozenQuota,
+		}
+	}
+
+	return &billingv1.BatchGetAccountSnapshotsResponse{
+		Snapshots: snapshots,
+	}, nil
+}
+
 func (s *BillingService) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuotaRequest) (*billingv1.TopUpQuotaResponse, error) {
 	newQuota, err := s.uc.TopUpQuota(ctx, req.UserId, req.OperatorId, req.Amount, req.Remark)
 	if err != nil {
@@ -266,11 +290,34 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 	if page <= 0 {
 		page = 1
 	}
-	if pageSize <= 0 || pageSize > 100 {
+	if pageSize <= 0 {
 		pageSize = 20
 	}
+	// Allow up to 1000 for dashboard/statistics queries
+	if pageSize > 1000 {
+		pageSize = 1000
+	}
 
-	ledgers, total, err := s.uc.ListLedgers(ctx, req.UserId, page, pageSize)
+	var ledgers []*biz.Ledger
+	var total int64
+	var err error
+
+	// Parse time range
+	var startTime, endTime time.Time
+	if req.GetStartTime().IsValid() {
+		startTime = req.GetStartTime().AsTime()
+	}
+	if req.GetEndTime().IsValid() {
+		endTime = req.GetEndTime().AsTime()
+	}
+
+	// Use filtered query if type or time range is specified
+	ledgerType := req.GetType()
+	if ledgerType != "" || !startTime.IsZero() || !endTime.IsZero() {
+		ledgers, total, err = s.uc.ListLedgersWithFilters(ctx, req.UserId, page, pageSize, ledgerType, startTime, endTime)
+	} else {
+		ledgers, total, err = s.uc.ListLedgers(ctx, req.UserId, page, pageSize)
+	}
 	if err != nil {
 		return nil, err
 	}

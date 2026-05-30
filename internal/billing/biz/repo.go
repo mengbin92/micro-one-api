@@ -1,9 +1,13 @@
 package biz
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type AccountRepo interface {
 	GetAccountSnapshot(ctx context.Context, userID string) (*Account, error)
+	BatchGetAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*Account, error)
 	UpdateQuota(ctx context.Context, userID string, delta int64, operationType string) (int64, error)
 	UpdateUsage(ctx context.Context, userID string, usedQuotaDelta, requestCountDelta int64) error
 	UpdateFrozenQuota(ctx context.Context, userID string, delta int64) error
@@ -20,6 +24,8 @@ type ReservationRepo interface {
 type LedgerRepo interface {
 	CreateLedger(ctx context.Context, ledger *Ledger) error
 	ListLedgers(ctx context.Context, userID string, page, pageSize int32) ([]*Ledger, int64, error)
+	ListLedgersWithTimeRange(ctx context.Context, userID string, page, pageSize int32, startTime, endTime time.Time) ([]*Ledger, int64, error)
+	ListLedgersWithFilters(ctx context.Context, userID string, page, pageSize int32, ledgerType string, startTime, endTime time.Time) ([]*Ledger, int64, error)
 }
 
 type RedeemRepo interface {
