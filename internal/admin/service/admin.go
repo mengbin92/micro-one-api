@@ -522,6 +522,19 @@ func (s *AdminService) AuthorizeAdminToken(ctx context.Context, token string) (i
 	return vr.GetUserId(), ur.GetUser().GetRole(), nil
 }
 
+// ValidateToken validates a user token and returns true if valid.
+// This is a simpler version of AuthorizeAdminToken that doesn't check admin role.
+func (s *AdminService) ValidateToken(ctx context.Context, token string) (bool, error) {
+	if s.identityClient == nil {
+		return false, fmt.Errorf("identity service not available")
+	}
+	vr, err := s.identityClient.ValidateToken(ctx, &identityv1.ValidateTokenRequest{Token: token})
+	if err != nil {
+		return false, err
+	}
+	return vr.GetValid(), nil
+}
+
 func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUserQuotaRequest) (*adminv1.ResetUserQuotaResponse, error) {
 	snapshot, err := s.billingClient.GetAccountSnapshot(ctx, &billingv1.GetAccountSnapshotRequest{
 		UserId: fmt.Sprintf("%d", req.UserId),
@@ -1388,16 +1401,67 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		pageSize = 20
 	}
 
-	// When filtering by type, we need to fetch more entries and filter client-side
-	// because the billing service doesn't support type filtering
-	fetchSize := pageSize
-	if req.Type != "" {
-		fetchSize = pageSize * 10 // Fetch more to account for filtering
-		if fetchSize > 1000 {
-			fetchSize = 1000
+	// When no type filter, use server-side pagination directly
+	if req.Type == "" {
+		billingReq := &billingv1.ListLedgerRequest{
+			UserId:   req.UserId,
+			Page:     page,
+			PageSize: pageSize,
 		}
+
+		// Pass time range filters to billing service
+		if req.StartTime > 0 {
+			ts := timestamppb.New(time.Unix(req.StartTime, 0))
+			billingReq.StartTime = ts
+		}
+		if req.EndTime > 0 {
+			ts := timestamppb.New(time.Unix(req.EndTime, 0))
+			billingReq.EndTime = ts
+		}
+
+		billingResp, err := s.billingClient.ListLedger(ctx, billingReq)
+		if err != nil {
+			st, ok := status.FromError(err)
+			if ok {
+				return &adminv1.ListLogsResponse{
+					Logs:  []*adminv1.LogEntry{},
+					Total: 0,
+				}, fmt.Errorf("failed to list ledger: %s", st.Message())
+			}
+			return &adminv1.ListLogsResponse{
+				Logs:  []*adminv1.LogEntry{},
+				Total: 0,
+			}, fmt.Errorf("failed to list ledger: %w", err)
+		}
+
+		logs := make([]*adminv1.LogEntry, 0, len(billingResp.Entries))
+		for _, entry := range billingResp.Entries {
+			var createdAt int64
+			if entry.CreatedAt != nil {
+				createdAt = entry.CreatedAt.AsTime().Unix()
+			}
+			logs = append(logs, &adminv1.LogEntry{
+				Id:           parseInt64(entry.Id),
+				UserId:       entry.UserId,
+				Type:         entry.Type,
+				Amount:       entry.Amount,
+				BalanceAfter: entry.BalanceAfter,
+				ReferenceId:  entry.ReferenceId,
+				Remark:       entry.Remark,
+				CreatedAt:    createdAt,
+			})
+		}
+
+		return &adminv1.ListLogsResponse{
+			Logs:  logs,
+			Total: billingResp.Total,
+		}, nil
 	}
 
+	// When filtering by type, we need to fetch entries and filter client-side
+	// because the billing service doesn't support type filtering
+	// Fetch a reasonable batch size to ensure we have enough filtered results
+	fetchSize := int32(1000)
 	billingReq := &billingv1.ListLedgerRequest{
 		UserId:   req.UserId,
 		Page:     1,
@@ -1429,14 +1493,17 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		}, fmt.Errorf("failed to list ledger: %w", err)
 	}
 
-	// Convert all entries
-	allLogs := make([]*adminv1.LogEntry, 0, len(billingResp.Entries))
+	// Convert and filter entries by type
+	filteredLogs := make([]*adminv1.LogEntry, 0, len(billingResp.Entries))
 	for _, entry := range billingResp.Entries {
+		if entry.Type != req.Type {
+			continue
+		}
 		var createdAt int64
 		if entry.CreatedAt != nil {
 			createdAt = entry.CreatedAt.AsTime().Unix()
 		}
-		allLogs = append(allLogs, &adminv1.LogEntry{
+		filteredLogs = append(filteredLogs, &adminv1.LogEntry{
 			Id:           parseInt64(entry.Id),
 			UserId:       entry.UserId,
 			Type:         entry.Type,
@@ -1448,28 +1515,17 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		})
 	}
 
-	// Apply type filter if specified
-	if req.Type != "" {
-		filtered := make([]*adminv1.LogEntry, 0, len(allLogs))
-		for _, log := range allLogs {
-			if log.Type == req.Type {
-				filtered = append(filtered, log)
-			}
-		}
-		allLogs = filtered
-	}
-
-	// Apply pagination
-	total := int64(len(allLogs))
+	// Apply pagination to filtered results
+	total := int64(len(filteredLogs))
 	start := int((page - 1) * pageSize)
-	if start > len(allLogs) {
-		start = len(allLogs)
+	if start > len(filteredLogs) {
+		start = len(filteredLogs)
 	}
 	end := start + int(pageSize)
-	if end > len(allLogs) {
-		end = len(allLogs)
+	if end > len(filteredLogs) {
+		end = len(filteredLogs)
 	}
-	pagedLogs := allLogs[start:end]
+	pagedLogs := filteredLogs[start:end]
 
 	return &adminv1.ListLogsResponse{
 		Logs:  pagedLogs,

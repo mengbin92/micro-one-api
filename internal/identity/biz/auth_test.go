@@ -1189,7 +1189,7 @@ func TestIdentityUsecase_UpdateSelf_UpdatesProfile(t *testing.T) {
 	}
 	uc := NewIdentityUsecase(repo)
 
-	err := uc.UpdateSelf(context.Background(), 1, "alice2", "Alice Two", "")
+	err := uc.UpdateSelf(context.Background(), 1, "alice2", "Alice Two", "", true)
 	if err != nil {
 		t.Fatalf("UpdateSelf() error = %v", err)
 	}
@@ -1214,7 +1214,7 @@ func TestIdentityUsecase_UpdateSelf_RejectsDuplicateUsername(t *testing.T) {
 	}
 	uc := NewIdentityUsecase(repo)
 
-	err := uc.UpdateSelf(context.Background(), 1, "bob", "", "")
+	err := uc.UpdateSelf(context.Background(), 1, "bob", "", "", false)
 	if !errors.Is(err, ErrUserExists) {
 		t.Fatalf("expected ErrUserExists, got: %v", err)
 	}
@@ -1228,7 +1228,7 @@ func TestIdentityUsecase_UpdateSelf_UpdatesPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "newpass123"); err != nil {
+	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "newpass123", false); err != nil {
 		t.Fatalf("UpdateSelf() error = %v", err)
 	}
 	if _, _, err := uc.Login(context.Background(), "alice", "newpass123"); err != nil {

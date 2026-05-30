@@ -146,6 +146,19 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 			})
 			return
 		}
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		
+		// Validate token with identity service
+		validated, err := svc.ValidateToken(r.Context(), token)
+		if err != nil || !validated {
+			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
+				"error": map[string]interface{}{
+					"message": "invalid API key",
+					"type":    "invalid_request_error",
+				},
+			})
+			return
+		}
 
 		// Get models from active channels
 		channels, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
