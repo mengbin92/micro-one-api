@@ -105,18 +105,16 @@ func (s *BillingService) BatchGetAccountSnapshots(ctx context.Context, req *bill
 		return nil, err
 	}
 
-	snapshots := make(map[string]*billingv1.GetAccountSnapshotResponse, len(accounts))
+	snapshots := make(map[string]*commonv1.AccountSnapshot, len(accounts))
 	for userID, account := range accounts {
-		snapshots[userID] = &billingv1.GetAccountSnapshotResponse{
-			Snapshot: &commonv1.AccountSnapshot{
-				UserId:       account.UserID,
-				Quota:        account.Quota,
-				UsedQuota:    account.UsedQuota,
-				RequestCount: account.RequestCount,
-				Group:        account.Group,
-				GroupRatio:   account.GroupRatio(),
-				FrozenQuota:  account.FrozenQuota,
-			},
+		snapshots[userID] = &commonv1.AccountSnapshot{
+			UserId:       account.UserID,
+			Quota:        account.Quota,
+			UsedQuota:    account.UsedQuota,
+			RequestCount: account.RequestCount,
+			Group:        account.Group,
+			GroupRatio:   account.GroupRatio(),
+			FrozenQuota:  account.FrozenQuota,
 		}
 	}
 

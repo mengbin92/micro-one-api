@@ -407,29 +407,24 @@ func (s *AdminService) BatchGetAccountSnapshots(ctx context.Context, userIDs []s
 		return map[string]*commonv1.AccountInfo{}, nil
 	}
 
-	// Use individual calls in parallel since we don't have a true batch API
-	type result struct {
-		UserID  string
-		Account *commonv1.AccountInfo
+	resp, err := s.billingClient.BatchGetAccountSnapshots(ctx, &billingv1.BatchGetAccountSnapshotsRequest{
+		UserIds: userIDs,
+	})
+	if err != nil {
+		return nil, err
 	}
-	ch := make(chan result, len(userIDs))
 
-	for _, userID := range userIDs {
-		go func(uid string) {
-			snap, err := s.GetAccountSnapshot(ctx, &adminv1.GetAccountSnapshotRequest{UserId: uid})
-			if err == nil && snap.GetAccount() != nil {
-				ch <- result{UserID: uid, Account: snap.GetAccount()}
-			} else {
-				ch <- result{UserID: uid}
+	accounts := make(map[string]*commonv1.AccountInfo, len(resp.GetSnapshots()))
+	for userID, snapshot := range resp.GetSnapshots() {
+		if snapshot != nil {
+			accounts[userID] = &commonv1.AccountInfo{
+				UserId:       snapshot.GetUserId(),
+				Group:        snapshot.GetGroup(),
+				Quota:        snapshot.GetQuota(),
+				UsedQuota:    snapshot.GetUsedQuota(),
+				RequestCount: snapshot.GetRequestCount(),
+				FrozenQuota:  snapshot.GetFrozenQuota(),
 			}
-		}(userID)
-	}
-
-	accounts := make(map[string]*commonv1.AccountInfo, len(userIDs))
-	for range userIDs {
-		r := <-ch
-		if r.Account != nil {
-			accounts[r.UserID] = r.Account
 		}
 	}
 
