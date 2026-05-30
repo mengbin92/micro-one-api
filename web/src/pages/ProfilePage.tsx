@@ -70,8 +70,8 @@ export function ProfilePage() {
         if (password !== confirmPassword) {
           throw new Error('两次输入的密码不一致');
         }
-        if (password.length < 6) {
-          throw new Error('密码长度不能少于6位');
+        if (password.length < 8) {
+          throw new Error('密码长度不能少于8位');
         }
         payload.password = password;
       }

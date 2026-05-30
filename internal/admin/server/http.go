@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
 	"os"
@@ -136,38 +135,81 @@ func NewHTTPServer(addr string, svc *service.AdminService, identityHTTPEndpoint 
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
-		// Try to get models from identity proxy
-		if identityProxy != nil {
-			// Create a new request to get available models
-			modelReq, _ := http.NewRequestWithContext(r.Context(), "GET", "/api/user/available_models", nil)
-			modelReq.Header = r.Header.Clone()
-			// Use a response recorder to capture the response
-			rec := httptest.NewRecorder()
-			identityProxy.ServeHTTP(rec, modelReq)
-			if rec.Code == http.StatusOK {
-				var apiResp struct {
-					Success bool     `json:"success"`
-					Data    []string `json:"data"`
-				}
-				if json.NewDecoder(rec.Body).Decode(&apiResp) == nil && apiResp.Success {
-					// Convert to OpenAI format
-					type modelItem struct {
-						ID      string `json:"id"`
-						Object  string `json:"object"`
-						Created int64  `json:"created"`
-						OwnedBy string `json:"owned_by"`
+		// Authenticate user
+		authHeader := r.Header.Get("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
+				"error": map[string]interface{}{
+					"message": "missing or invalid authorization header",
+					"type":    "invalid_request_error",
+				},
+			})
+			return
+		}
+
+		// Get models from active channels
+		channels, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
+			Page:     1,
+			PageSize: 1000,
+			Status:   1, // active channels only
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]interface{}{
+				"error": map[string]interface{}{
+					"message": "failed to fetch available models",
+					"type":    "server_error",
+				},
+			})
+			return
+		}
+
+		// Collect unique models from channels
+		modelSet := map[string]string{} // model -> provider
+		for _, ch := range channels.GetChannels() {
+			if ch.GetModels() == "" {
+				continue
+			}
+			for _, model := range strings.Split(ch.GetModels(), ",") {
+				model = strings.TrimSpace(model)
+				if model != "" {
+					if _, exists := modelSet[model]; !exists {
+						modelSet[model] = providerNameFromType(ch.GetType())
 					}
-					data := make([]modelItem, 0, len(apiResp.Data))
-					for _, m := range apiResp.Data {
-						data = append(data, modelItem{ID: m, Object: "model", Created: 0, OwnedBy: "organization"})
-					}
-					writeJSON(w, http.StatusOK, map[string]interface{}{"object": "list", "data": data})
-					return
 				}
 			}
 		}
-		// Fallback: return empty list
-		writeJSON(w, http.StatusOK, map[string]interface{}{"object": "list", "data": []interface{}{}})
+
+		// If no models from channels, use fallback catalog
+		if len(modelSet) == 0 {
+			for _, m := range oneAPIChannelModelCatalog() {
+				if id, ok := m["id"].(string); ok {
+					ownedBy, _ := m["owned_by"].(string)
+					modelSet[id] = ownedBy
+				}
+			}
+		}
+
+		// Build response
+		type modelItem struct {
+			ID      string `json:"id"`
+			Object  string `json:"object"`
+			Created int64  `json:"created"`
+			OwnedBy string `json:"owned_by"`
+		}
+		data := make([]modelItem, 0, len(modelSet))
+		for model, ownedBy := range modelSet {
+			data = append(data, modelItem{
+				ID:      model,
+				Object:  "model",
+				Created: 1626777600,
+				OwnedBy: ownedBy,
+			})
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"object": "list",
+			"data":   data,
+		})
 	})
 	srv.HandleFunc("/api/pricing", func(w http.ResponseWriter, r *http.Request) {
 		handleReadonlyPricing(w, r, svc)
@@ -698,6 +740,42 @@ func userInfoToMap(u *commonv1.UserInfo, quota, usedQuota int64) map[string]inte
 		"quota":        strconv.FormatInt(quota, 10),
 		"usedQuota":    strconv.FormatInt(usedQuota, 10),
 		"createdAt":    strconv.FormatInt(u.GetCreatedAt(), 10),
+	}
+}
+
+
+func providerNameFromType(channelType int32) string {
+	switch channelType {
+	case 1:
+		return "openai"
+	case 2:
+		return "openai" // openai-sb
+	case 3:
+		return "openai" // openai-tts
+	case 4:
+		return "anthropic"
+	case 5:
+		return "google" // gemini
+	case 6:
+		return "azure"
+	case 7:
+		return "deepseek"
+	case 8:
+		return "tongyi" // qwen
+	case 9:
+		return "zhipu" // glm
+	case 10:
+		return "moonshot"
+	case 11:
+		return "mistral"
+	case 12:
+		return "cohere"
+	case 13:
+		return "perplexity"
+	case 14:
+		return "voyageai"
+	default:
+		return "organization"
 	}
 }
 

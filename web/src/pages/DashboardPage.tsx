@@ -45,6 +45,16 @@ interface AccountDashboard {
   group?: string;
   group_ratio?: number;
   usage?: UsageItem[];
+  today_quota?: number;
+  today_prompt_tokens?: number;
+  today_completion_tokens?: number;
+  avg_latency?: number;
+  model_distribution?: ModelDistributionItem[];
+}
+
+interface ModelDistributionItem {
+  model: string;
+  tokens: number;
 }
 
 interface Token {
@@ -173,7 +183,10 @@ export function DashboardPage() {
   const usedQuota = numberOrZero(dashboard?.used_quota);
   const requestCount = items.length > 0 ? totalCount : numberOrZero(dashboard?.request_count);
   const todayRequests = latest?.count ?? 0;
-  const todayQuota = latest?.quota ?? 0;
+  const todayQuota = dashboard?.today_quota ?? latest?.quota ?? 0;
+  const todayPromptTokens = dashboard?.today_prompt_tokens ?? latest?.prompt_tokens ?? 0;
+  const todayCompletionTokens = dashboard?.today_completion_tokens ?? latest?.completion_tokens ?? 0;
+  const avgLatency = dashboard?.avg_latency ?? 0;
   const chartData = items.map((item) => ({
     ...item,
     label: item.date || item.day,
@@ -184,10 +197,20 @@ export function DashboardPage() {
   const activeTokenCount = tokens?.filter((token) => token.status === 1).length ?? tokenCount;
   const isSummaryLoading = isUserLoading || isLoading || isTokensLoading;
   const displayName = user?.display_name || user?.username || '用户';
-  const pieData = [
-    { name: '输入 Tokens', value: promptTokens, color: '#f97316' },
-    { name: '输出 Tokens', value: completionTokens, color: '#2563eb' },
-  ].filter((item) => item.value > 0);
+
+  // Model distribution from backend
+  const modelDistribution = dashboard?.model_distribution ?? [];
+  const modelColors = ['#f97316', '#2563eb', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4', '#f59e0b', '#6366f1', '#ec4899', '#14b8a6'];
+  const pieData = modelDistribution.length > 0
+    ? modelDistribution.map((item, index) => ({
+        name: item.model,
+        value: item.tokens,
+        color: modelColors[index % modelColors.length],
+      }))
+    : [
+        { name: '输入 Tokens', value: promptTokens, color: '#f97316' },
+        { name: '输出 Tokens', value: completionTokens, color: '#2563eb' },
+      ].filter((item) => item.value > 0);
   const distributionData = pieData.length > 0 ? pieData : [{ name: '总 Tokens', value: totalTokens || 1, color: '#f97316' }];
 
   return (
@@ -210,8 +233,8 @@ export function DashboardPage() {
             <MetricCard title="已用额度" value={`$${formatQuota(usedQuota, 4)}`} subtitle="累计消耗" tone="purple" icon={Sparkles} />
             <MetricCard title="调用次数" value={requestCount.toLocaleString()} subtitle={`今日 ${todayRequests.toLocaleString()}`} tone="green" icon={BarChart3} />
             <MetricCard title="API 密钥" value={tokenCount.toLocaleString()} subtitle={`可用 ${activeTokenCount.toLocaleString()}`} tone="blue" icon={KeyRound} />
-            <MetricCard title="今日消耗" value={`$${formatQuota(todayQuota, 4)}`} subtitle={`今日 Token ${compactNumber((latest?.prompt_tokens || 0) + (latest?.completion_tokens || 0))}`} tone="amber" icon={Box} />
-            <MetricCard title="平均延迟" value="-" subtitle="等待网关统计" tone="blue" icon={Zap} />
+            <MetricCard title="今日消耗" value={`$${formatQuota(todayQuota, 4)}`} subtitle={`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)}`} tone="amber" icon={Box} />
+            <MetricCard title="平均延迟" value={avgLatency > 0 ? `${avgLatency}ms` : "-"} subtitle={avgLatency > 0 ? `${totalCount} 次调用` : "暂无数据"} tone="blue" icon={Zap} />
           </>
         )}
       </section>
@@ -279,7 +302,7 @@ export function DashboardPage() {
         <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
           <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
             <CardTitle className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">
-              模型分布
+              {modelDistribution.length > 0 ? "模型分布" : "Token 分布"}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">

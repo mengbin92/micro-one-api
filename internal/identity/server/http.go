@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sort"
 	"time"
 
 	billingv1 "micro-one-api/api/billing/v1"
@@ -465,6 +466,8 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		Quota             int64
 		PromptTokens      int64
 		CompletionTokens  int64
+		TotalElapsedTime  int64
+		ConsumeCount      int64
 	}
 	dayMap := map[string]*dailyUsage{}
 	// Initialize all 7 days
@@ -472,6 +475,18 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		key := d.Format("2006-01-02")
 		dayMap[key] = &dailyUsage{Date: key}
 	}
+
+	// Model distribution aggregation
+	modelTokens := map[string]int64{}
+
+	// Today stats (consume only)
+	todayKey := startOfDay.Format("2006-01-02")
+	var todayQuota int64
+	var todayPromptTokens int64
+	var todayCompletionTokens int64
+	var totalElapsedTime int64
+	var consumeCount int64
+
 	if ledgerErr == nil && ledgerResp != nil {
 		for _, entry := range ledgerResp.GetEntries() {
 			var ts time.Time
@@ -479,14 +494,42 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 				ts = entry.GetCreatedAt().AsTime()
 			}
 			key := ts.Format("2006-01-02")
+
+			// Only count "consume" type for usage stats
+			isConsume := entry.GetType() == "consume"
+
 			if day, ok := dayMap[key]; ok {
-				day.Count++
-				day.Quota += entry.GetAmount()
-				day.PromptTokens += entry.GetPromptTokens()
-				day.CompletionTokens += entry.GetCompletionTokens()
+				if isConsume {
+					day.Count++
+					day.Quota += entry.GetQuota()
+					day.PromptTokens += entry.GetPromptTokens()
+					day.CompletionTokens += entry.GetCompletionTokens()
+					day.TotalElapsedTime += entry.GetElapsedTime()
+					day.ConsumeCount++
+				}
+			}
+
+			// Model distribution (consume only)
+			if isConsume {
+				modelName := entry.GetModelName()
+				if modelName != "" {
+					modelTokens[modelName] += entry.GetPromptTokens() + entry.GetCompletionTokens()
+				}
+
+				// Today stats
+				if key == todayKey {
+					todayQuota += entry.GetQuota()
+					todayPromptTokens += entry.GetPromptTokens()
+					todayCompletionTokens += entry.GetCompletionTokens()
+				}
+
+				// Average latency
+				totalElapsedTime += entry.GetElapsedTime()
+				consumeCount++
 			}
 		}
 	}
+
 	// Build sorted usage array
 	var usageArr []map[string]interface{}
 	for d := sevenDaysAgo; !d.After(startOfDay); d = d.AddDate(0, 0, 1) {
@@ -501,14 +544,49 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		})
 	}
 
+	// Calculate average latency (ms)
+	var avgLatency int64
+	if consumeCount > 0 {
+		avgLatency = totalElapsedTime / consumeCount
+	}
+
+	// Build model distribution array (top 10)
+	type modelStat struct {
+		Model string
+		Tokens int64
+	}
+	var modelList []modelStat
+	for model, tokens := range modelTokens {
+		modelList = append(modelList, modelStat{Model: model, Tokens: tokens})
+	}
+	// Sort by tokens desc
+	sort.Slice(modelList, func(i, j int) bool {
+		return modelList[i].Tokens > modelList[j].Tokens
+	})
+	var modelDistribution []map[string]interface{}
+	for i, m := range modelList {
+		if i >= 10 {
+			break
+		}
+		modelDistribution = append(modelDistribution, map[string]interface{}{
+			"model":  m.Model,
+			"tokens": m.Tokens,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{
-		"quota":         account.GetQuota(),
-		"used_quota":    account.GetUsedQuota(),
-		"request_count": account.GetRequestCount(),
-		"group":         account.GetGroup(),
-		"group_ratio":   account.GetGroupRatio(),
-		"frozen_quota":  account.GetFrozenQuota(),
-		"usage":         usageArr,
+		"quota":              account.GetQuota(),
+		"used_quota":         account.GetUsedQuota(),
+		"request_count":      account.GetRequestCount(),
+		"group":              account.GetGroup(),
+		"group_ratio":        account.GetGroupRatio(),
+		"frozen_quota":       account.GetFrozenQuota(),
+		"usage":              usageArr,
+		"today_quota":        todayQuota,
+		"today_prompt_tokens":     todayPromptTokens,
+		"today_completion_tokens": todayCompletionTokens,
+		"avg_latency":        avgLatency,
+		"model_distribution": modelDistribution,
 	}})
 }
 
@@ -959,14 +1037,18 @@ func handleSelf(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase)
 		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: userToMap(user)})
 	case http.MethodPut:
 		var req struct {
-			Username    string `json:"username"`
-			DisplayName string `json:"display_name"`
-			Password    string `json:"password"`
+			Username    string  `json:"username"`
+			DisplayName *string `json:"display_name"`
+			Password    string  `json:"password"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		if err := uc.UpdateSelf(r.Context(), snapshot.UserID, req.Username, req.DisplayName, req.Password); err != nil {
+		displayName := ""
+		if req.DisplayName != nil {
+			displayName = *req.DisplayName
+		}
+		if err := uc.UpdateSelf(r.Context(), snapshot.UserID, req.Username, displayName, req.Password, req.DisplayName != nil); err != nil {
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
 		}

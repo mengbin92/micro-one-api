@@ -1388,10 +1388,20 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		pageSize = 20
 	}
 
+	// When filtering by type, we need to fetch more entries and filter client-side
+	// because the billing service doesn't support type filtering
+	fetchSize := pageSize
+	if req.Type != "" {
+		fetchSize = pageSize * 10 // Fetch more to account for filtering
+		if fetchSize > 1000 {
+			fetchSize = 1000
+		}
+	}
+
 	billingReq := &billingv1.ListLedgerRequest{
 		UserId:   req.UserId,
-		Page:     page,
-		PageSize: pageSize,
+		Page:     1,
+		PageSize: fetchSize,
 	}
 
 	// Pass time range filters to billing service
@@ -1419,18 +1429,14 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		}, fmt.Errorf("failed to list ledger: %w", err)
 	}
 
-	logs := make([]*adminv1.LogEntry, 0, len(billingResp.Entries))
+	// Convert all entries
+	allLogs := make([]*adminv1.LogEntry, 0, len(billingResp.Entries))
 	for _, entry := range billingResp.Entries {
-		// Filter by type client-side (billing service doesn't support type filter)
-		if req.Type != "" && entry.Type != req.Type {
-			continue
-		}
-
 		var createdAt int64
 		if entry.CreatedAt != nil {
 			createdAt = entry.CreatedAt.AsTime().Unix()
 		}
-		logs = append(logs, &adminv1.LogEntry{
+		allLogs = append(allLogs, &adminv1.LogEntry{
 			Id:           parseInt64(entry.Id),
 			UserId:       entry.UserId,
 			Type:         entry.Type,
@@ -1442,9 +1448,32 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		})
 	}
 
+	// Apply type filter if specified
+	if req.Type != "" {
+		filtered := make([]*adminv1.LogEntry, 0, len(allLogs))
+		for _, log := range allLogs {
+			if log.Type == req.Type {
+				filtered = append(filtered, log)
+			}
+		}
+		allLogs = filtered
+	}
+
+	// Apply pagination
+	total := int64(len(allLogs))
+	start := int((page - 1) * pageSize)
+	if start > len(allLogs) {
+		start = len(allLogs)
+	}
+	end := start + int(pageSize)
+	if end > len(allLogs) {
+		end = len(allLogs)
+	}
+	pagedLogs := allLogs[start:end]
+
 	return &adminv1.ListLogsResponse{
-		Logs:  logs,
-		Total: billingResp.Total,
+		Logs:  pagedLogs,
+		Total: total,
 	}, nil
 }
 
