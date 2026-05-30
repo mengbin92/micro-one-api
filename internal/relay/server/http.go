@@ -217,20 +217,23 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				return forwardErr
 			}
 
-			actualTokens := extractTotalTokens(resp.Body, estimateRawTokens(body))
+			usage := extractRawUsage(resp.Body, estimateRawTokens(body))
 			logInput := usageLogInput{
-				UserID:      plan.Auth.UserID,
-				TokenID:     plan.Auth.TokenID,
-				TokenName:   plan.Auth.TokenName,
-				RequestID:   requestID,
-				Endpoint:    upstreamPath,
-				ModelName:   clientModel,
-				Quota:       actualTokens,
-				ChannelID:   ch.ID,
-				ElapsedTime: time.Since(startedAt).Milliseconds(),
-				IsStream:    false,
+				UserID:           plan.Auth.UserID,
+				TokenID:          plan.Auth.TokenID,
+				TokenName:        plan.Auth.TokenName,
+				RequestID:        requestID,
+				Endpoint:         upstreamPath,
+				ModelName:        clientModel,
+				Quota:            usage.TotalTokens,
+				PromptTokens:     usage.PromptTokens,
+				CompletionTokens: usage.CompletionTokens,
+				CacheReadTokens:  usage.CacheReadTokens,
+				ChannelID:        ch.ID,
+				ElapsedTime:      time.Since(startedAt).Milliseconds(),
+				IsStream:         false,
 			}
-			if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
+			if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				return err
 			}
 			s.ingestUsageLog(ctx, logInput)
@@ -1941,7 +1944,9 @@ func estimateRawUsage(body []byte) rawUsage {
 	promptTokens := estimateRawPromptTokens(body)
 	completionTokens := int64(100)
 	return rawUsage{
-		TotalTokens: promptTokens + completionTokens,
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		TotalTokens:      promptTokens + completionTokens,
 	}
 }
 

@@ -234,7 +234,7 @@ export function DashboardPage() {
             <MetricCard title="调用次数" value={requestCount.toLocaleString()} subtitle={`今日 ${todayRequests.toLocaleString()}`} tone="green" icon={BarChart3} />
             <MetricCard title="API 密钥" value={tokenCount.toLocaleString()} subtitle={`可用 ${activeTokenCount.toLocaleString()}`} tone="blue" icon={KeyRound} />
             <MetricCard title="今日消耗" value={`$${formatQuota(todayQuota, 4)}`} subtitle={`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)}`} tone="amber" icon={Box} />
-            <MetricCard title="平均延迟" value={avgLatency > 0 ? `${avgLatency}ms` : "-"} subtitle={avgLatency > 0 ? `${totalCount} 次调用` : "暂无数据"} tone="blue" icon={Zap} />
+            <MetricCard title="平均延迟" value={avgLatency > 0 ? `${(avgLatency / 1000).toFixed(2)}s` : "-"} subtitle={avgLatency > 0 ? `${totalCount} 次调用` : "暂无数据"} tone="blue" icon={Zap} />
           </>
         )}
       </section>

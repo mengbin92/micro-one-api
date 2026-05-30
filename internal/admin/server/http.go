@@ -455,9 +455,10 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if err != nil {
 		activeChannels = &adminv1.AdminListChannelsResponse{}
 	}
-	logs, err := svc.ListLogs(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 8})
+	recentLogs, recentLogsTotal, err := svc.ListLedgerEntries(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 8})
 	if err != nil {
-		logs = &adminv1.ListLogsResponse{}
+		recentLogs = []map[string]interface{}{}
+		recentLogsTotal = 0
 	}
 	paymentOrders, err := svc.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{Page: 1, PageSize: 8, Status: "paid"})
 	if err != nil {
@@ -508,11 +509,11 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 			"quota_used":             quotaUsed,
 			"channel_balance":        totalBalance,
 			"stale_balance_channels": staleBalanceCount,
-			"log_count":              logs.GetTotal(),
+			"log_count":              recentLogsTotal,
 		},
 		"recent_users":    users.GetUsers(),
 		"channels":        channels.GetChannels(),
-		"recent_logs":     logs.GetLogs(),
+		"recent_logs":     recentLogs,
 		"payment_orders":  paymentOrders.GetOrders(),
 		"usage_stats":     stats,
 		"model_catalog":   oneAPIChannelModelCatalog(),
@@ -904,6 +905,29 @@ func apiResponse(success bool, message string, data interface{}) map[string]inte
 		resp["data"] = data
 	}
 	return resp
+}
+
+// logEntryToJSON converts a proto LogEntry to a camelCase JSON map for frontend compatibility.
+func logEntryToJSON(entry *adminv1.LogEntry) map[string]interface{} {
+	return map[string]interface{}{
+		"id":            entry.GetId(),
+		"userId":        entry.GetUserId(),
+		"type":          entry.GetType(),
+		"amount":        entry.GetAmount(),
+		"balanceAfter":  entry.GetBalanceAfter(),
+		"referenceId":   entry.GetReferenceId(),
+		"remark":        entry.GetRemark(),
+		"createdAt":     entry.GetCreatedAt(),
+	}
+}
+
+// logEntriesToJSON converts a slice of proto LogEntries to camelCase JSON maps.
+func logEntriesToJSON(entries []*adminv1.LogEntry) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, logEntryToJSON(entry))
+	}
+	return result
 }
 
 func writeOneAPIServiceResponse(w http.ResponseWriter, resp interface{}, err error) {
@@ -2022,7 +2046,7 @@ func handleListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 	startTime := getQueryInt64(r, "start_time", 0)
 	endTime := getQueryInt64(r, "end_time", 0)
 
-	resp, err := svc.ListLogs(r.Context(), &adminv1.ListLogsRequest{
+	entries, total, err := svc.ListLedgerEntries(r.Context(), &adminv1.ListLogsRequest{
 		Page:      page,
 		PageSize:  pageSize,
 		UserId:    userID,
@@ -2034,7 +2058,11 @@ func handleListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+		"logs":  entries,
+		"total": total,
+	}))
 }
 
 func handleLogStats(w http.ResponseWriter, r *http.Request, svc *service.AdminService, selfOnly bool) {
@@ -2143,7 +2171,7 @@ func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
-	resp, err := svc.ListLogs(r.Context(), &adminv1.ListLogsRequest{
+	entries, _, err := svc.ListLedgerEntries(r.Context(), &adminv1.ListLogsRequest{
 		Page:      oneAPIPage(r),
 		PageSize:  oneAPIPageSize(r),
 		UserId:    r.URL.Query().Get("user_id"),
@@ -2155,7 +2183,7 @@ func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.A
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", resp.GetLogs()))
+	writeJSON(w, http.StatusOK, apiResponse(true, "", entries))
 }
 
 func handleOneAPIExportLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {

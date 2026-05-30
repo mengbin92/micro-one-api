@@ -1517,6 +1517,69 @@ func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsReq
 	}, nil
 }
 
+// ListLedgerEntries returns raw billing ledger entries with all fields preserved.
+// This is used for admin API responses that need full entry data.
+func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListLogsRequest) ([]map[string]interface{}, int64, error) {
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+
+	billingReq := &billingv1.ListLedgerRequest{
+		UserId:   req.UserId,
+		Page:     page,
+		PageSize: pageSize,
+		Type:     req.Type,
+	}
+
+	if req.StartTime > 0 {
+		ts := timestamppb.New(time.Unix(req.StartTime, 0))
+		billingReq.StartTime = ts
+	}
+	if req.EndTime > 0 {
+		ts := timestamppb.New(time.Unix(req.EndTime, 0))
+		billingReq.EndTime = ts
+	}
+
+	billingResp, err := s.billingClient.ListLedger(ctx, billingReq)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	entries := make([]map[string]interface{}, 0, len(billingResp.GetEntries()))
+	for _, entry := range billingResp.GetEntries() {
+		var createdAt int64
+		if entry.GetCreatedAt() != nil {
+			createdAt = entry.GetCreatedAt().AsTime().Unix()
+		}
+		entries = append(entries, map[string]interface{}{
+			"id":               parseInt64(entry.GetId()),
+			"userId":           entry.GetUserId(),
+			"type":             entry.GetType(),
+			"amount":           entry.GetAmount(),
+			"balanceAfter":     entry.GetBalanceAfter(),
+			"referenceId":      entry.GetReferenceId(),
+			"remark":           entry.GetRemark(),
+			"createdAt":        createdAt,
+			"tokenName":        entry.GetTokenName(),
+			"modelName":        entry.GetModelName(),
+			"quota":            entry.GetQuota(),
+			"promptTokens":     entry.GetPromptTokens(),
+			"completionTokens": entry.GetCompletionTokens(),
+			"channelId":        entry.GetChannelId(),
+			"elapsedTime":      entry.GetElapsedTime(),
+			"isStream":         entry.GetIsStream(),
+			"endpoint":         entry.GetEndpoint(),
+		})
+	}
+
+	return entries, billingResp.GetTotal(), nil
+}
+
 // 辅助函数：将 time.Time 转换为 Unix 时间戳
 func toUnixTimestamp(t time.Time) int64 {
 	if t.IsZero() {

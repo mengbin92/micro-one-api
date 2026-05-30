@@ -306,6 +306,8 @@ func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 		Usage struct {
 			PromptTokens     int64 `json:"prompt_tokens"`
 			CompletionTokens int64 `json:"completion_tokens"`
+			InputTokens      int64 `json:"input_tokens"`
+			OutputTokens     int64 `json:"output_tokens"`
 			TotalTokens      int64 `json:"total_tokens"`
 		} `json:"usage"`
 	}
@@ -329,6 +331,12 @@ func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 		PromptTokens:     chat.Usage.PromptTokens,
 		CompletionTokens: chat.Usage.CompletionTokens,
 		TotalTokens:      chat.Usage.TotalTokens,
+	}
+	if usage.PromptTokens == 0 {
+		usage.PromptTokens = chat.Usage.InputTokens
+	}
+	if usage.CompletionTokens == 0 {
+		usage.CompletionTokens = chat.Usage.OutputTokens
 	}
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
@@ -405,10 +413,7 @@ func transformChatCompletionStreamToResponses(resp *relayprovider.RawStreamRespo
 			if strings.TrimSpace(data) == "[DONE]" {
 				break
 			}
-			done := state.writeChunk(writer, []byte(data))
-			if done {
-				break
-			}
+			state.writeChunk(writer, []byte(data))
 		}
 		state.finish(writer)
 		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
@@ -450,10 +455,18 @@ func (s *responsesStreamFallbackState) writeChunk(w io.Writer, data []byte) bool
 	if err := sonic.Unmarshal(data, &chunk); err != nil {
 		return false
 	}
-	if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
+	if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.InputTokens > 0 || chunk.Usage.OutputTokens > 0 {
+		promptTokens := chunk.Usage.PromptTokens
+		if promptTokens == 0 {
+			promptTokens = chunk.Usage.InputTokens
+		}
+		completionTokens := chunk.Usage.CompletionTokens
+		if completionTokens == 0 {
+			completionTokens = chunk.Usage.OutputTokens
+		}
 		s.usage = rawUsage{
-			PromptTokens:     int64(chunk.Usage.PromptTokens),
-			CompletionTokens: int64(chunk.Usage.CompletionTokens),
+			PromptTokens:     int64(promptTokens),
+			CompletionTokens: int64(completionTokens),
 			TotalTokens:      int64(chunk.Usage.TotalTokens),
 		}
 	}
@@ -689,6 +702,8 @@ type chatCompletionStreamChunk struct {
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
+		InputTokens      int `json:"input_tokens"`
+		OutputTokens     int `json:"output_tokens"`
 		TotalTokens      int `json:"total_tokens"`
 	} `json:"usage"`
 }

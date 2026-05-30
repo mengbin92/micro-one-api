@@ -290,8 +290,12 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 	if page <= 0 {
 		page = 1
 	}
-	if pageSize <= 0 || pageSize > 100 {
+	if pageSize <= 0 {
 		pageSize = 20
+	}
+	// Allow up to 1000 for dashboard/statistics queries
+	if pageSize > 1000 {
+		pageSize = 1000
 	}
 
 	var ledgers []*biz.Ledger
