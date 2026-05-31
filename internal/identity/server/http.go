@@ -448,17 +448,29 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	}
 	account := resp.GetSnapshot()
 
-	// Fetch recent ledger entries for usage trend (last 7 days, up to 1000 entries)
+	// Fetch recent ledger entries for usage trend (last 7 days, paginated)
 	now := time.Now()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	sevenDaysAgo := startOfDay.AddDate(0, 0, -6)
-	ledgerResp, ledgerErr := billingClient.ListLedger(r.Context(), &billingv1.ListLedgerRequest{
-		UserId:    userID,
-		Page:      1,
-		PageSize:  1000,
-		StartTime: timestamppb.New(sevenDaysAgo),
-		EndTime:   timestamppb.New(now),
-	})
+
+	var allEntries []*commonv1.LedgerEntry
+	const pageSize int32 = 1000
+	for page := int32(1); ; page++ {
+		ledgerResp, ledgerErr := billingClient.ListLedger(r.Context(), &billingv1.ListLedgerRequest{
+			UserId:    userID,
+			Page:      page,
+			PageSize:  pageSize,
+			StartTime: timestamppb.New(sevenDaysAgo),
+			EndTime:   timestamppb.New(now),
+		})
+		if ledgerErr != nil || ledgerResp == nil {
+			break
+		}
+		allEntries = append(allEntries, ledgerResp.GetEntries()...)
+		if int32(len(ledgerResp.GetEntries())) < pageSize || int64(len(allEntries)) >= ledgerResp.GetTotal() {
+			break
+		}
+	}
 
 	type dailyUsage struct {
 		Date              string
@@ -487,8 +499,8 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	var totalElapsedTime int64
 	var consumeCount int64
 
-	if ledgerErr == nil && ledgerResp != nil {
-		for _, entry := range ledgerResp.GetEntries() {
+	{
+		for _, entry := range allEntries {
 			var ts time.Time
 			if entry.GetCreatedAt() != nil {
 				ts = entry.GetCreatedAt().AsTime()

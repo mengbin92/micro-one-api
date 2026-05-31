@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -610,12 +611,10 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 	uc := biz.NewIdentityUsecase(repo)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 
-	// Simulate mimo-v2.5-pro pricing: 1M tokens at $0.435/1M input + $0.87/1M output
-	// quota = 1000000 (raw token count), amount = -217500 (actual cost in quota units)
+	// Simulate mimo-v2.5-pro pricing: 1M input-only tokens at $0.435/1M tokens.
+	// 1000000 * $0.435/1000000 = $0.435 → 0.435 * 500000 = 217500 quota units.
+	// quota = 1000000 (raw token count), amount = -217500 (actual cost in quota units).
 	// The dashboard must show today_quota = 217500, NOT 1000000.
-	quotaRawTokens := int64(1000000)
-	amountQuotaCost := int64(-217500)
-
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
 			Quota:        5000000,
@@ -629,15 +628,15 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 				Id:               "1",
 				UserId:           "1",
 				Type:             "consume",
-				Amount:           amountQuotaCost,
+				Amount:           -217500,
 				BalanceAfter:     4782500,
 				ReferenceId:      "res-1",
 				Remark:           "model=mimo-v2.5-pro, tokens=1000000",
 				CreatedAt:        timestamppb.Now(),
 				ModelName:        "mimo-v2.5-pro",
-				Quota:            quotaRawTokens,
-				PromptTokens:     600000,
-				CompletionTokens: 400000,
+				Quota:            1000000,
+				PromptTokens:     1000000,
+				CompletionTokens: 0,
 			},
 		},
 	})
@@ -650,26 +649,53 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
-	body := rec.Body.String()
+
+	var resp struct {
+		Data struct {
+			UsedQuota             int64 `json:"used_quota"`
+			TodayQuota            int64 `json:"today_quota"`
+			TodayPromptTokens     int64 `json:"today_prompt_tokens"`
+			TodayCompletionTokens int64 `json:"today_completion_tokens"`
+			Usage                 []struct {
+				Date              string `json:"date"`
+				Quota             int64  `json:"quota"`
+				PromptTokens      int64  `json:"prompt_tokens"`
+				CompletionTokens  int64  `json:"completion_tokens"`
+			} `json:"usage"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v, body=%s", err, rec.Body.String())
+	}
+	d := resp.Data
 
 	// today_quota must be |amount| (217500), NOT quota (1000000)
-	if !strings.Contains(body, `"today_quota":217500`) {
-		t.Fatalf("today_quota should be 217500 (|amount|), got body=%s", body)
+	if d.TodayQuota != 217500 {
+		t.Errorf("today_quota = %d, want 217500 (|amount|)", d.TodayQuota)
 	}
-	// Must NOT contain the raw token count as today_quota
-	if strings.Contains(body, `"today_quota":1000000`) {
-		t.Fatalf("today_quota should NOT be 1000000 (raw token count), got body=%s", body)
-	}
-	// used_quota from account snapshot should still be correct
-	if !strings.Contains(body, `"used_quota":217500`) {
-		t.Fatalf("used_quota should be 217500, got body=%s", body)
+	// used_quota from account snapshot should match
+	if d.UsedQuota != 217500 {
+		t.Errorf("used_quota = %d, want 217500", d.UsedQuota)
 	}
 	// Token counts should still reflect raw values
-	if !strings.Contains(body, `"today_prompt_tokens":600000`) {
-		t.Fatalf("today_prompt_tokens should be 600000, got body=%s", body)
+	if d.TodayPromptTokens != 1000000 {
+		t.Errorf("today_prompt_tokens = %d, want 1000000", d.TodayPromptTokens)
 	}
-	if !strings.Contains(body, `"today_completion_tokens":400000`) {
-		t.Fatalf("today_completion_tokens should be 400000, got body=%s", body)
+	if d.TodayCompletionTokens != 0 {
+		t.Errorf("today_completion_tokens = %d, want 0", d.TodayCompletionTokens)
+	}
+
+	// Verify 7-day usage chart also uses |amount|, not quota
+	todayStr := time.Now().Format("2006-01-02")
+	for _, u := range d.Usage {
+		if u.Date == todayStr {
+			if u.Quota != 217500 {
+				t.Errorf("usage[%s].quota = %d, want 217500 (|amount|), not 1000000 (raw tokens)", todayStr, u.Quota)
+			}
+			if u.PromptTokens != 1000000 {
+				t.Errorf("usage[%s].prompt_tokens = %d, want 1000000", todayStr, u.PromptTokens)
+			}
+		}
 	}
 }
 
