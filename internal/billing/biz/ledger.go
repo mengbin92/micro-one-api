@@ -28,3 +28,19 @@ type Ledger struct {
 	Endpoint         string
 	CreatedAt        time.Time
 }
+
+// DailyAggregate holds per-day aggregated ledger stats (consume only).
+type DailyAggregate struct {
+	Date             string
+	Quota            int64 // SUM(ABS(amount))
+	PromptTokens     int64
+	CompletionTokens int64
+	Count            int64
+	ElapsedTime      int64
+}
+
+// ModelAggregate holds per-model aggregated token stats (consume only).
+type ModelAggregate struct {
+	Model  string
+	Tokens int64
+}

@@ -29,6 +29,7 @@ service BillingService {
   rpc ListPaymentOrders(ListPaymentOrdersRequest) returns (ListPaymentOrdersResponse);
   rpc ListReconciliationRuns(ListReconciliationRunsRequest) returns (ListReconciliationRunsResponse);
   rpc GetReconciliationRun(GetReconciliationRunRequest) returns (GetReconciliationRunResponse);
+  rpc AggregateLedgerByDate(AggregateLedgerByDateRequest) returns (AggregateLedgerByDateResponse);
 }
 
 // ========== 配额预扣 ==========
@@ -315,4 +316,36 @@ message GetReconciliationRunRequest {
 
 message GetReconciliationRunResponse {
   ReconciliationRun run = 1;
+}
+
+// ========== 按日聚合 ==========
+
+message AggregateLedgerByDateRequest {
+  string user_id = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  string type = 4; // 默认 "consume"
+}
+
+message AggregateLedgerByDateResponse {
+  repeated DailyUsage daily = 1;
+  repeated ModelUsage models = 2;
+  int64 total_quota = 3;
+  int64 total_prompt_tokens = 4;
+  int64 total_completion_tokens = 5;
+  int64 total_count = 6;
+}
+
+message DailyUsage {
+  string date = 1;
+  int64 quota = 2;              // SUM(ABS(amount))
+  int64 prompt_tokens = 3;
+  int64 completion_tokens = 4;
+  int64 count = 5;
+  int64 elapsed_time = 6;
+}
+
+message ModelUsage {
+  string model = 1;
+  int64 tokens = 2;
 }

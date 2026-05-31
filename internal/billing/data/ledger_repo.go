@@ -230,3 +230,71 @@ func (r *ledgerRepo) ListLedgersWithFilters(ctx context.Context, userID string, 
 
 	return ledgers, total, nil
 }
+
+func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, ledgerType string, startTime, endTime time.Time) ([]*biz.DailyAggregate, []*biz.ModelAggregate, error) {
+	// Per-day aggregation
+	type dailyRow struct {
+		Date             string
+		Quota            int64
+		PromptTokens     int64
+		CompletionTokens int64
+		Count            int64
+		ElapsedTime      int64
+	}
+	var dailyRows []dailyRow
+	err := r.data.db.WithContext(ctx).Raw(`
+		SELECT DATE(created_at) AS date,
+		       SUM(ABS(amount)) AS quota,
+		       SUM(prompt_tokens) AS prompt_tokens,
+		       SUM(completion_tokens) AS completion_tokens,
+		       COUNT(*) AS count,
+		       SUM(elapsed_time) AS elapsed_time
+		FROM billing_ledgers
+		WHERE user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?
+		GROUP BY DATE(created_at)
+		ORDER BY date
+	`, userID, ledgerType, startTime, endTime).Scan(&dailyRows).Error
+	if err != nil {
+		return nil, nil, err
+	}
+
+	daily := make([]*biz.DailyAggregate, len(dailyRows))
+	for i, row := range dailyRows {
+		daily[i] = &biz.DailyAggregate{
+			Date:             row.Date,
+			Quota:            row.Quota,
+			PromptTokens:     row.PromptTokens,
+			CompletionTokens: row.CompletionTokens,
+			Count:            row.Count,
+			ElapsedTime:      row.ElapsedTime,
+		}
+	}
+
+	// Per-model aggregation
+	type modelRow struct {
+		Model  string
+		Tokens int64
+	}
+	var modelRows []modelRow
+	err = r.data.db.WithContext(ctx).Raw(`
+		SELECT model_name AS model,
+		       SUM(prompt_tokens + completion_tokens) AS tokens
+		FROM billing_ledgers
+		WHERE user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?
+		GROUP BY model_name
+		ORDER BY tokens DESC
+	`, userID, ledgerType, startTime, endTime).Scan(&modelRows).Error
+	if err != nil {
+		return nil, nil, err
+	}
+
+	models := make([]*biz.ModelAggregate, len(modelRows))
+	for i, row := range modelRows {
+		models[i] = &biz.ModelAggregate{
+			Model:  row.Model,
+			Tokens: row.Tokens,
+		}
+	}
+
+	return daily, models, nil
+}

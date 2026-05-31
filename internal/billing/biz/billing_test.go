@@ -113,6 +113,10 @@ func (m *mockLedgerRepo) ListLedgersWithFilters(ctx context.Context, userID stri
 	return m.ledgers, int64(len(m.ledgers)), nil
 }
 
+func (m *mockLedgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, ledgerType string, startTime, endTime time.Time) ([]*DailyAggregate, []*ModelAggregate, error) {
+	return nil, nil, nil
+}
+
 type mockPricingStore struct {
 	config PricingConfig
 }

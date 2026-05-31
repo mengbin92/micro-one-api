@@ -613,8 +613,8 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 
 	// Simulate mimo-v2.5-pro pricing: 1M input-only tokens at $0.435/1M tokens.
 	// 1000000 * $0.435/1000000 = $0.435 → 0.435 * 500000 = 217500 quota units.
-	// quota = 1000000 (raw token count), amount = -217500 (actual cost in quota units).
-	// The dashboard must show today_quota = 217500, NOT 1000000.
+	// The aggregate RPC returns |amount| (217500) directly, not raw token count (1000000).
+	todayStr := time.Now().Format("2006-01-02")
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
 			Quota:        5000000,
@@ -623,21 +623,24 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 			Group:        "default",
 			GroupRatio:   1,
 		},
-		ledgerEntries: []*commonv1.LedgerEntry{
-			{
-				Id:               "1",
-				UserId:           "1",
-				Type:             "consume",
-				Amount:           -217500,
-				BalanceAfter:     4782500,
-				ReferenceId:      "res-1",
-				Remark:           "model=mimo-v2.5-pro, tokens=1000000",
-				CreatedAt:        timestamppb.Now(),
-				ModelName:        "mimo-v2.5-pro",
-				Quota:            1000000,
-				PromptTokens:     1000000,
-				CompletionTokens: 0,
+		aggregateResponse: &billingv1.AggregateLedgerByDateResponse{
+			Daily: []*billingv1.DailyUsage{
+				{
+					Date:             todayStr,
+					Quota:            217500,
+					PromptTokens:     1000000,
+					CompletionTokens: 0,
+					Count:            1,
+					ElapsedTime:      100,
+				},
 			},
+			Models: []*billingv1.ModelUsage{
+				{Model: "mimo-v2.5-pro", Tokens: 1000000},
+			},
+			TotalQuota:           217500,
+			TotalPromptTokens:    1000000,
+			TotalCompletionTokens: 0,
+			TotalCount:           1,
 		},
 	})
 
@@ -686,7 +689,6 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 	}
 
 	// Verify 7-day usage chart also uses |amount|, not quota
-	todayStr := time.Now().Format("2006-01-02")
 	for _, u := range d.Usage {
 		if u.Date == todayStr {
 			if u.Quota != 217500 {
@@ -1550,6 +1552,7 @@ type identityHTTPBillingClient struct {
 	lastPaymentGetReq   *billingv1.GetPaymentOrderByTradeNoRequest
 	paymentGetResponse  *billingv1.PaymentOrderResponse
 	ledgerEntries       []*commonv1.LedgerEntry // custom entries; nil = use default
+	aggregateResponse   *billingv1.AggregateLedgerByDateResponse
 }
 
 type capturedTopUp struct {
@@ -1712,6 +1715,17 @@ func (c *identityHTTPBillingClient) ListLedger(ctx context.Context, req *billing
 			},
 		},
 		Total: 2,
+	}, nil
+}
+
+func (c *identityHTTPBillingClient) AggregateLedgerByDate(ctx context.Context, req *billingv1.AggregateLedgerByDateRequest, opts ...grpc.CallOption) (*billingv1.AggregateLedgerByDateResponse, error) {
+	if c.aggregateResponse != nil {
+		return c.aggregateResponse, nil
+	}
+	// Default: empty aggregation
+	return &billingv1.AggregateLedgerByDateResponse{
+		Daily:  []*billingv1.DailyUsage{},
+		Models: []*billingv1.ModelUsage{},
 	}, nil
 }
 

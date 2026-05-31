@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sort"
 	"time"
 
 	billingv1 "micro-one-api/api/billing/v1"
@@ -448,107 +447,50 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	}
 	account := resp.GetSnapshot()
 
-	// Fetch recent ledger entries for usage trend (last 7 days, paginated)
+	// Fetch aggregated ledger data for usage trend (last 7 days, server-side aggregation)
 	now := time.Now()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	sevenDaysAgo := startOfDay.AddDate(0, 0, -6)
 
-	var allEntries []*commonv1.LedgerEntry
-	const pageSize int32 = 1000
-	for page := int32(1); ; page++ {
-		ledgerResp, ledgerErr := billingClient.ListLedger(r.Context(), &billingv1.ListLedgerRequest{
-			UserId:    userID,
-			Page:      page,
-			PageSize:  pageSize,
-			StartTime: timestamppb.New(sevenDaysAgo),
-			EndTime:   timestamppb.New(now),
-		})
-		if ledgerErr != nil || ledgerResp == nil {
-			break
-		}
-		allEntries = append(allEntries, ledgerResp.GetEntries()...)
-		if int32(len(ledgerResp.GetEntries())) < pageSize || int64(len(allEntries)) >= ledgerResp.GetTotal() {
-			break
-		}
-	}
+	aggResp, aggErr := billingClient.AggregateLedgerByDate(r.Context(), &billingv1.AggregateLedgerByDateRequest{
+		UserId:    userID,
+		StartTime: timestamppb.New(sevenDaysAgo),
+		EndTime:   timestamppb.New(now),
+		Type:      "consume",
+	})
 
+	// Build lookup from aggregated daily data
 	type dailyUsage struct {
-		Date              string
-		Count             int64
-		Quota             int64
-		PromptTokens      int64
-		CompletionTokens  int64
-		TotalElapsedTime  int64
-		ConsumeCount      int64
+		Quota            int64
+		PromptTokens     int64
+		CompletionTokens int64
+		Count            int64
+		ElapsedTime      int64
 	}
 	dayMap := map[string]*dailyUsage{}
-	// Initialize all 7 days
 	for d := sevenDaysAgo; !d.After(startOfDay); d = d.AddDate(0, 0, 1) {
-		key := d.Format("2006-01-02")
-		dayMap[key] = &dailyUsage{Date: key}
+		dayMap[d.Format("2006-01-02")] = &dailyUsage{}
 	}
 
-	// Model distribution aggregation
-	modelTokens := map[string]int64{}
+	var todayQuota, todayPromptTokens, todayCompletionTokens int64
+	var totalElapsedTime, consumeCount int64
 
-	// Today stats (consume only)
-	todayKey := startOfDay.Format("2006-01-02")
-	var todayQuota int64
-	var todayPromptTokens int64
-	var todayCompletionTokens int64
-	var totalElapsedTime int64
-	var consumeCount int64
-
-	{
-		for _, entry := range allEntries {
-			var ts time.Time
-			if entry.GetCreatedAt() != nil {
-				ts = entry.GetCreatedAt().AsTime()
+	if aggErr == nil && aggResp != nil {
+		for _, d := range aggResp.GetDaily() {
+			if day, ok := dayMap[d.GetDate()]; ok {
+				day.Quota = d.GetQuota()
+				day.PromptTokens = d.GetPromptTokens()
+				day.CompletionTokens = d.GetCompletionTokens()
+				day.Count = d.GetCount()
+				day.ElapsedTime = d.GetElapsedTime()
 			}
-			key := ts.Format("2006-01-02")
-
-			// Only count "consume" type for usage stats
-			isConsume := entry.GetType() == "consume"
-
-			if day, ok := dayMap[key]; ok {
-				if isConsume {
-					day.Count++
-					// Use |amount| (actual quota cost) instead of quota (raw token count)
-					amount := entry.GetAmount()
-					if amount < 0 {
-						amount = -amount
-					}
-					day.Quota += amount
-					day.PromptTokens += entry.GetPromptTokens()
-					day.CompletionTokens += entry.GetCompletionTokens()
-					day.TotalElapsedTime += entry.GetElapsedTime()
-					day.ConsumeCount++
-				}
+			if d.GetDate() == startOfDay.Format("2006-01-02") {
+				todayQuota = d.GetQuota()
+				todayPromptTokens = d.GetPromptTokens()
+				todayCompletionTokens = d.GetCompletionTokens()
 			}
-
-			// Model distribution (consume only)
-			if isConsume {
-				modelName := entry.GetModelName()
-				if modelName != "" {
-					modelTokens[modelName] += entry.GetPromptTokens() + entry.GetCompletionTokens()
-				}
-
-				// Today stats
-				if key == todayKey {
-					// Use |amount| (actual quota cost) instead of quota (raw token count)
-					todayAmount := entry.GetAmount()
-					if todayAmount < 0 {
-						todayAmount = -todayAmount
-					}
-					todayQuota += todayAmount
-					todayPromptTokens += entry.GetPromptTokens()
-					todayCompletionTokens += entry.GetCompletionTokens()
-				}
-
-				// Average latency
-				totalElapsedTime += entry.GetElapsedTime()
-				consumeCount++
-			}
+			totalElapsedTime += d.GetElapsedTime()
+			consumeCount += d.GetCount()
 		}
 	}
 
@@ -558,7 +500,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		key := d.Format("2006-01-02")
 		day := dayMap[key]
 		usageArr = append(usageArr, map[string]interface{}{
-			"date":              day.Date,
+			"date":              key,
 			"count":             day.Count,
 			"quota":             day.Quota,
 			"prompt_tokens":     day.PromptTokens,
@@ -566,49 +508,39 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		})
 	}
 
-	// Calculate average latency (ms)
+	// Average latency (ms)
 	var avgLatency int64
 	if consumeCount > 0 {
 		avgLatency = totalElapsedTime / consumeCount
 	}
 
-	// Build model distribution array (top 10)
-	type modelStat struct {
-		Model string
-		Tokens int64
-	}
-	var modelList []modelStat
-	for model, tokens := range modelTokens {
-		modelList = append(modelList, modelStat{Model: model, Tokens: tokens})
-	}
-	// Sort by tokens desc
-	sort.Slice(modelList, func(i, j int) bool {
-		return modelList[i].Tokens > modelList[j].Tokens
-	})
+	// Model distribution (top 10, from server-side aggregation)
 	var modelDistribution []map[string]interface{}
-	for i, m := range modelList {
-		if i >= 10 {
-			break
+	if aggErr == nil && aggResp != nil {
+		for i, m := range aggResp.GetModels() {
+			if i >= 10 {
+				break
+			}
+			modelDistribution = append(modelDistribution, map[string]interface{}{
+				"model":  m.GetModel(),
+				"tokens": m.GetTokens(),
+			})
 		}
-		modelDistribution = append(modelDistribution, map[string]interface{}{
-			"model":  m.Model,
-			"tokens": m.Tokens,
-		})
 	}
 
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{
-		"quota":              account.GetQuota(),
-		"used_quota":         account.GetUsedQuota(),
-		"request_count":      account.GetRequestCount(),
-		"group":              account.GetGroup(),
-		"group_ratio":        account.GetGroupRatio(),
-		"frozen_quota":       account.GetFrozenQuota(),
-		"usage":              usageArr,
-		"today_quota":        todayQuota,
+		"quota":                   account.GetQuota(),
+		"used_quota":              account.GetUsedQuota(),
+		"request_count":           account.GetRequestCount(),
+		"group":                   account.GetGroup(),
+		"group_ratio":             account.GetGroupRatio(),
+		"frozen_quota":            account.GetFrozenQuota(),
+		"usage":                   usageArr,
+		"today_quota":             todayQuota,
 		"today_prompt_tokens":     todayPromptTokens,
 		"today_completion_tokens": todayCompletionTokens,
-		"avg_latency":        avgLatency,
-		"model_distribution": modelDistribution,
+		"avg_latency":             avgLatency,
+		"model_distribution":      modelDistribution,
 	}})
 }
 

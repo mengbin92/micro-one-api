@@ -351,6 +351,60 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 	}, nil
 }
 
+func (s *BillingService) AggregateLedgerByDate(ctx context.Context, req *billingv1.AggregateLedgerByDateRequest) (*billingv1.AggregateLedgerByDateResponse, error) {
+	ledgerType := req.GetType()
+	if ledgerType == "" {
+		ledgerType = "consume"
+	}
+
+	var startTime, endTime time.Time
+	if req.GetStartTime().IsValid() {
+		startTime = req.GetStartTime().AsTime()
+	}
+	if req.GetEndTime().IsValid() {
+		endTime = req.GetEndTime().AsTime()
+	}
+
+	daily, models, err := s.uc.AggregateLedgerByDate(ctx, req.GetUserId(), ledgerType, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+
+	dailyProto := make([]*billingv1.DailyUsage, len(daily))
+	var totalQuota, totalPrompt, totalCompletion, totalCount int64
+	for i, d := range daily {
+		dailyProto[i] = &billingv1.DailyUsage{
+			Date:             d.Date,
+			Quota:            d.Quota,
+			PromptTokens:     d.PromptTokens,
+			CompletionTokens: d.CompletionTokens,
+			Count:            d.Count,
+			ElapsedTime:      d.ElapsedTime,
+		}
+		totalQuota += d.Quota
+		totalPrompt += d.PromptTokens
+		totalCompletion += d.CompletionTokens
+		totalCount += d.Count
+	}
+
+	modelsProto := make([]*billingv1.ModelUsage, len(models))
+	for i, m := range models {
+		modelsProto[i] = &billingv1.ModelUsage{
+			Model:  m.Model,
+			Tokens: m.Tokens,
+		}
+	}
+
+	return &billingv1.AggregateLedgerByDateResponse{
+		Daily:                dailyProto,
+		Models:               modelsProto,
+		TotalQuota:           totalQuota,
+		TotalPromptTokens:    totalPrompt,
+		TotalCompletionTokens: totalCompletion,
+		TotalCount:           totalCount,
+	}, nil
+}
+
 func (s *BillingService) CreatePaymentOrder(ctx context.Context, req *billingv1.CreatePaymentOrderRequest) (*billingv1.PaymentOrderResponse, error) {
 	if s.paymentUc == nil {
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
