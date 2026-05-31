@@ -501,7 +501,12 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 			if day, ok := dayMap[key]; ok {
 				if isConsume {
 					day.Count++
-					day.Quota += entry.GetQuota()
+					// Use |amount| (actual quota cost) instead of quota (raw token count)
+					amount := entry.GetAmount()
+					if amount < 0 {
+						amount = -amount
+					}
+					day.Quota += amount
 					day.PromptTokens += entry.GetPromptTokens()
 					day.CompletionTokens += entry.GetCompletionTokens()
 					day.TotalElapsedTime += entry.GetElapsedTime()
@@ -518,7 +523,12 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 
 				// Today stats
 				if key == todayKey {
-					todayQuota += entry.GetQuota()
+					// Use |amount| (actual quota cost) instead of quota (raw token count)
+					todayAmount := entry.GetAmount()
+					if todayAmount < 0 {
+						todayAmount = -todayAmount
+					}
+					todayQuota += todayAmount
 					todayPromptTokens += entry.GetPromptTokens()
 					todayCompletionTokens += entry.GetCompletionTokens()
 				}
