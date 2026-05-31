@@ -243,7 +243,7 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 	}
 	var dailyRows []dailyRow
 	err := r.data.db.WithContext(ctx).Raw(`
-		SELECT DATE(created_at) AS date,
+		SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS date,
 		       SUM(ABS(amount)) AS quota,
 		       SUM(prompt_tokens) AS prompt_tokens,
 		       SUM(completion_tokens) AS completion_tokens,
@@ -251,7 +251,7 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 		       SUM(elapsed_time) AS elapsed_time
 		FROM billing_ledgers
 		WHERE user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?
-		GROUP BY DATE(created_at)
+		GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
 		ORDER BY date
 	`, userID, ledgerType, startTime, endTime).Scan(&dailyRows).Error
 	if err != nil {
