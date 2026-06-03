@@ -37,6 +37,8 @@ interface LogListData {
   total?: number;
 }
 
+const EMPTY_LOGS: LogEntry[] = [];
+
 const LOG_TYPE_NAMES: Record<string, string> = {
   redeem: 'Redeem',
   recharge: 'Recharge',
@@ -62,7 +64,10 @@ export function AdminLogsPage() {
   });
   const userId = filters.user_id ?? '';
   const type = filters.type ?? '';
-  const sort = { key: sortKey as keyof LogEntry | null, direction: sortDirection } satisfies SortState<LogEntry>;
+  const sort = useMemo(
+    () => ({ key: sortKey as keyof LogEntry | null, direction: sortDirection }) satisfies SortState<LogEntry>,
+    [sortKey, sortDirection],
+  );
   const exportParams = buildAdminListParams({
     page,
     pageSize,
@@ -95,7 +100,7 @@ export function AdminLogsPage() {
     return (parseInt(q || '0') / 500000).toFixed(2);
   }
 
-  const logs = data?.logs ?? [];
+  const logs = data?.logs ?? EMPTY_LOGS;
   const total = data?.total ?? logs.length;
   const visibleLogs = useMemo(() => sortRows(logs, sort), [logs, sort]);
 

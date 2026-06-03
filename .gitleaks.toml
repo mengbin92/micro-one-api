@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow documented placeholder bearer token examples."
+paths = ['''docs/deployment\.md''']
+regexes = ['''YOUR_TOKEN''']
+condition = "AND"

@@ -46,8 +46,9 @@ func envOr(key, fallback string) string {
 // ── Shared state across subtests ──
 
 type e2eState struct {
-	token  string
-	userID int64
+	sessionToken string
+	apiToken     string
+	userID       int64
 }
 
 // ── Test Suite ──
@@ -61,6 +62,7 @@ func TestE2E_FullFlow(t *testing.T) {
 	// Phase 1: Identity
 	t.Run("Identity/Register", func(t *testing.T) { stepRegister(t, ctx, state) })
 	t.Run("Identity/Login", func(t *testing.T) { stepLogin(t, ctx, state) })
+	t.Run("Identity/CreateAPIToken", func(t *testing.T) { stepCreateAPIToken(t, state) })
 	t.Run("Identity/ValidateToken", func(t *testing.T) { stepValidateToken(t, ctx, state) })
 	t.Run("Identity/GetAuthSnapshot", func(t *testing.T) { stepGetAuthSnapshot(t, ctx, state) })
 
@@ -149,11 +151,48 @@ func stepLogin(t *testing.T, ctx context.Context, state *e2eState) {
 	if resp.Token == "" {
 		t.Fatal("login returned empty token")
 	}
-	state.token = resp.Token
+	state.sessionToken = resp.Token
 	if state.userID == 0 {
 		state.userID = resp.UserId
 	}
 	t.Logf("login token=%s...", resp.Token[:min(8, len(resp.Token))])
+}
+
+func stepCreateAPIToken(t *testing.T, state *e2eState) {
+	payload, _ := json.Marshal(map[string]interface{}{
+		"name":            "e2e-api-token",
+		"models":          []string{testModel},
+		"unlimited_quota": true,
+	})
+
+	req, _ := http.NewRequest("POST", adminHTTPBase+"/api/token", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+state.sessionToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("create API token failed: %v", err)
+	}
+	defer resp.Body.Close()
+	body := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create API token returned %d: %s", resp.StatusCode, body)
+	}
+	var result struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Key string `json:"key"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if !result.Success || result.Data.Key == "" {
+		t.Fatalf("create API token not successful: %s", body)
+	}
+	state.apiToken = result.Data.Key
+	t.Logf("created API token=%s...", state.apiToken[:min(8, len(state.apiToken))])
 }
 
 func stepValidateToken(t *testing.T, ctx context.Context, state *e2eState) {
@@ -161,7 +200,7 @@ func stepValidateToken(t *testing.T, ctx context.Context, state *e2eState) {
 	defer conn.Close()
 	client := identityv1.NewIdentityServiceClient(conn)
 
-	resp, err := client.ValidateToken(ctx, &identityv1.ValidateTokenRequest{Token: state.token})
+	resp, err := client.ValidateToken(ctx, &identityv1.ValidateTokenRequest{Token: state.sessionToken})
 	if err != nil {
 		t.Fatalf("validate token failed: %v", err)
 	}
@@ -179,7 +218,7 @@ func stepGetAuthSnapshot(t *testing.T, ctx context.Context, state *e2eState) {
 	defer conn.Close()
 	client := identityv1.NewIdentityServiceClient(conn)
 
-	resp, err := client.GetAuthSnapshot(ctx, &identityv1.GetAuthSnapshotRequest{Token: state.token})
+	resp, err := client.GetAuthSnapshot(ctx, &identityv1.GetAuthSnapshotRequest{Token: state.apiToken})
 	if err != nil {
 		t.Fatalf("get auth snapshot failed: %v", err)
 	}
@@ -209,7 +248,7 @@ func stepRelayHealth(t *testing.T) {
 
 func stepListModels(t *testing.T, state *e2eState) {
 	req, _ := http.NewRequest("GET", relayHTTPBase+"/v1/models", nil)
-	req.Header.Set("Authorization", "Bearer "+state.token)
+	req.Header.Set("Authorization", "Bearer "+state.apiToken)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -256,7 +295,7 @@ func stepChatCompletion(t *testing.T, state *e2eState) {
 
 	req, _ := http.NewRequest("POST", relayHTTPBase+"/v1/chat/completions", bytes.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+state.token)
+	req.Header.Set("Authorization", "Bearer "+state.apiToken)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -652,7 +691,7 @@ func stepAdminTopUp(t *testing.T, state *e2eState) {
 	body := readBody(t, resp)
 
 	var result struct {
-		Success bool  `json:"success"`
+		Success  bool  `json:"success"`
 		NewQuota int64 `json:"new_quota"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -706,4 +745,3 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "..."
 }
-

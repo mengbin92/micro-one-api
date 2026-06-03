@@ -64,7 +64,8 @@ export function RechargePage() {
   });
 
   const createPayment = useMutation({
-    mutationFn: async (_variables: PaymentMutationVariables) => {
+    mutationFn: async (variables: PaymentMutationVariables) => {
+      void variables;
       const res = await apiClient.post('/user/pay', {
         amount,
         payment_method: 'alipay',

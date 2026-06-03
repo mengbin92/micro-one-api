@@ -89,9 +89,13 @@ tidy:
 	go mod tidy
 
 .PHONY: test
-# test
-test: proto
-	go test ./...
+# run tests that do not require externally started services
+test: test-unit
+
+.PHONY: test-unit
+# run unit and integration tests, excluding local-service e2e suite
+test-unit: proto
+	go test $$(go list ./... | grep -v '/test/e2e/suite$$' | grep -v '/web/node_modules/')
 
 .PHONY: run-identity
 # run identity-service

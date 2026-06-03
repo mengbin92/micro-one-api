@@ -116,19 +116,54 @@ wait_running "relay-gateway" 20
 
 log "All services ready."
 
-# ── Step 1: Update test channel to point to mock upstream ──
+# ── Step 1: Prepare test channel pointing to mock upstream ──
 
-log "Updating test channel to point to mock-upstream..."
-docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -e \
-    "UPDATE channels SET base_url='http://mock-upstream:9999', \`key\`='sk-mock-key' WHERE id=1;" 2>/dev/null
+log "Preparing test channel for mock-upstream..."
+docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -e "
+INSERT INTO channels (
+    type, \`key\`, status, name, base_url, models, \`group\`, priority, config,
+    weight, created_time, test_time, response_time, balance, balance_updated_time,
+    used_quota, model_mapping, system_prompt
+)
+SELECT
+    1, 'sk-mock-key', 0, 'e2e-mock-openai', 'http://mock-upstream:9999',
+    'gpt-3.5-turbo,gpt-4', 'default', 1, '{}',
+    1, UNIX_TIMESTAMP(), 0, 0, 0, 0,
+    0, '', NULL
+WHERE NOT EXISTS (
+    SELECT 1 FROM channels WHERE name = 'e2e-mock-openai'
+);
 
-# Verify update
+UPDATE channels
+SET
+    type = 1,
+    \`key\` = 'sk-mock-key',
+    status = 0,
+    base_url = 'http://mock-upstream:9999',
+    models = 'gpt-3.5-turbo,gpt-4',
+    \`group\` = 'default',
+    priority = 1,
+    weight = 1
+WHERE name = 'e2e-mock-openai';
+
+SET @channel_id := (SELECT id FROM channels WHERE name = 'e2e-mock-openai' LIMIT 1);
+
+DELETE FROM abilities WHERE channel_id = @channel_id;
+INSERT INTO abilities (\`group\`, model, channel_id, enabled, priority)
+VALUES
+    ('default', 'gpt-3.5-turbo', @channel_id, 1, 1),
+    ('default', 'gpt-4', @channel_id, 1, 1);
+" 2>/dev/null
+
+# Verify test channel
 channel_url=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
-    "SELECT base_url FROM channels WHERE id=1;" 2>/dev/null)
-if [ "$channel_url" = "http://mock-upstream:9999" ]; then
-    log "Channel updated: $channel_url"
+    "SELECT base_url FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
+ability_count=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
+    "SELECT COUNT(*) FROM abilities a JOIN channels c ON c.id=a.channel_id WHERE c.name='e2e-mock-openai' AND a.enabled=1;" 2>/dev/null)
+if [ "$channel_url" = "http://mock-upstream:9999" ] && [ "$ability_count" -ge 2 ]; then
+    log "Test channel ready: $channel_url"
 else
-    fail "Channel update failed: got '$channel_url'"
+    fail "Test channel setup failed: url='$channel_url', abilities='$ability_count'"
     exit 1
 fi
 

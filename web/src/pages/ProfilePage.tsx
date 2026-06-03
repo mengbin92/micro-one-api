@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
@@ -55,12 +55,6 @@ export function ProfilePage() {
       return unwrapApiData<{ quota?: number; used_quota?: number }>(res.data);
     },
   });
-
-  useEffect(() => {
-    if (user) {
-      setDisplayName(user.display_name || '');
-    }
-  }, [user]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -138,7 +132,14 @@ export function ProfilePage() {
           个人资料
         </h2>
         {!editing ? (
-          <Button onClick={() => setEditing(true)}>编辑资料</Button>
+          <Button
+            onClick={() => {
+              setDisplayName(user.display_name || '');
+              setEditing(true);
+            }}
+          >
+            编辑资料
+          </Button>
         ) : (
           <div className="flex gap-2">
             <Button
