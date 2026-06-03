@@ -2,7 +2,7 @@
 # Usage: docker build --build-arg SERVICE_NAME=relay-gateway -f Dockerfile ../..
 ARG SERVICE_NAME=relay-gateway
 
-FROM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates nodejs npm
 
