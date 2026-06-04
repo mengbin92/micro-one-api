@@ -1,235 +1,213 @@
 # micro-one-api
 
-基于 `one-api` 的微服务化重构仓库，当前主要沉淀：
+`micro-one-api` 是一个基于 Go Kratos 的多服务 AI API 网关与管理系统。项目参考了 [one-api](https://github.com/songquanpeng/one-api) 的多渠道 OpenAI API 分发思路，也参考了 [sub2api](https://github.com/Wei-Shaw/sub2api) 对订阅额度、账号池、限流和用量管理的设计方向，并将核心能力拆分为更清晰的微服务边界。
 
-1. 现有 `one-api` 项目的结构分析。
-2. 微服务拆分与迁移路径设计。
-3. 基于 `go-kratos` 的落地架构方案。
-4. 第一阶段 Kratos 工程骨架、proto 契约与 gRPC 调用链落地。
-5. 第二阶段 OpenAI 兼容 HTTP 网关与主链路完整实现。
+本项目面向需要统一管理多个上游模型供应商、内部额度、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-## 文档
+## 功能概览
 
-1. [部署运维文档](./docs/deployment.md)
+- OpenAI 兼容 API 网关：支持 `/v1/chat/completions`、`/v1/models`、`/v1/responses` 以及 embeddings、audio、image、moderations 等 raw relay 路由。
+- 多渠道模型分发：支持渠道优先级、同优先级负载均衡、禁用渠道过滤、模型白名单和模型映射。
+- 多供应商适配：支持 OpenAI-compatible 渠道，并包含 Anthropic、Gemini、Azure、VoyageAI 等 provider 适配器；DeepSeek、Moonshot、Groq、Tongyi、OpenRouter、SiliconFlow、Ollama、Doubao 等按 OpenAI-compatible 方式转发。
+- 用户与令牌管理：支持用户鉴权、令牌状态、过期时间、额度检查、模型权限和用户角色控制。
+- 配额与账务：提供额度预扣、释放、结算、ledger、兑换码、支付订单和用量记录等能力。
+- 管理后台：提供 React/Vite 前端和 `admin-api` BFF，用于管理用户、令牌、渠道、订单、兑换码、用量和系统配置。
+- 监控与日志：提供健康检查、Prometheus metrics、业务日志聚合、监控 worker 和通知 worker。
+- 部署形态：支持本地开发、Docker Compose 和 Kubernetes 部署。
 
-## 当前结构
+## 架构
 
-当前仓库已按最新 `go-kratos/kratos-layout` 风格组织为：
+当前仓库按 Kratos 服务边界组织：
 
-1. `api/` - gRPC 和 HTTP API 定义
-2. `cmd/` - 各服务的主程序入口
-3. `configs/` - 配置文件
-4. `internal/` - 各服务的内部实现
-5. `third_party/` - 第三方 proto 文件
-6. `test/` - 集成测试和 mock 服务
+| 服务 | 职责 |
+|------|------|
+| `relay-gateway` | OpenAI 兼容 HTTP 网关，负责鉴权、选路、额度预扣、上游转发和响应透传 |
+| `admin-api` | 管理端 BFF，并托管或代理管理前端静态资源 |
+| `identity-service` | 用户、角色、登录鉴权、Token 校验与权限判断 |
+| `channel-service` | 渠道、模型、分组、优先级和可用渠道选择 |
+| `billing-service` | 额度、账务流水、兑换码、支付订单和扣费结算 |
+| `config-service` | 动态配置管理 |
+| `log-service` | 业务日志写入、查询和删除代理 |
+| `monitor-worker` | 监控任务与告警触发 |
+| `notify-worker` | 通知发送 |
 
-## 第二阶段完成状态
+目录结构：
 
-第二阶段已完成以下功能：
+| 目录 | 说明 |
+|------|------|
+| `api/` | gRPC、HTTP 和 OpenAPI 相关 proto 定义及生成代码 |
+| `cmd/` | 各服务入口 |
+| `configs/` | 服务配置文件 |
+| `internal/` | 各服务业务实现和公共包 |
+| `migrations/` | MySQL schema 迁移 |
+| `web/` | 管理后台前端 |
+| `deployments/` | Docker、Docker Compose 和 Kubernetes 部署文件 |
+| `docs/` | 部署运维文档 |
+| `test/` | 集成测试和端到端测试 |
 
-### 核心服务
+## 快速开始
 
-1. **identity-service** - 用户鉴权服务
-   - Token 验证（状态、过期时间、额度检查）
-   - 用户状态验证
-   - 模型白名单支持
-   - 完整的错误映射到 gRPC/HTTP 状态码
+### Docker Compose
 
-2. **channel-service** - 渠道管理服务
-   - 渠道选择与优先级排序
-   - 同优先级随机负载均衡
-   - 禁用渠道过滤
-   - 可用模型列表查询
-
-3. **relay-gateway** - OpenAI 兼容 HTTP 网关
-   - `/v1/chat/completions` - 聊天补全接口（支持流式和非流式）
-   - `/v1/models` - 模型列表接口
-   - `/health` - 健康检查接口
-   - Token 鉴权与模型权限校验
-   - Provider 适配器支持多种上游
-   - SSE 流式响应透传
-
-### 测试覆盖
-
-- **单元测试**: identity、channel、provider 完整测试覆盖
-- **集成测试**: 端到端主链路验证
-- **错误处理**: 完整的 gRPC 到 HTTP 错误码映射
-
-## 快速启动
-
-### 方式一：使用 Makefile（推荐）
+适合开发、测试和功能验收。
 
 ```bash
-# 启动所有服务
+cd deployments/docker-compose
+docker compose up -d
+```
+
+默认需要在 `deployments/docker-compose/.env` 或环境变量中提供：
+
+- `MYSQL_ROOT_PASSWORD`
+- `DATABASE_DSN`
+- `REDIS_PASSWORD`
+- `JWT_SECRET_KEY`
+- `SERVICE_TOKEN`
+- `ADMIN_TOKEN`
+
+服务启动后可访问：
+
+- 管理后台：`http://localhost:3000`
+- Relay API：`http://localhost:8080`
+- 健康检查：`http://localhost:8080/healthz`
+
+首次启动时，如果 `users` 表为空，`identity-service` 会创建初始 root 管理员。可通过 `INITIAL_ADMIN_USERNAME`、`INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_PASSWORD` 指定；未设置密码时会生成随机密码并在服务日志中打印一次。
+
+### 本地开发
+
+生成 proto 和构建：
+
+```bash
+make proto
+make build
+```
+
+运行核心三服务的内存/本地链路：
+
+```bash
 make run-all
-
-# 停止所有服务
-make stop-all
-
-# 单独启动服务
-make run-identity   # 启动 identity-service
-make run-channel    # 启动 channel-service
-make run-relay      # 启动 relay-gateway
 ```
 
-### 方式二：手动启动
+手动运行单个服务：
 
-1. 启动 identity-service：
 ```bash
-IDENTITY_GRPC_ADDR=127.0.0.1:9001 \
-IDENTITY_SQL_DSN="" \
-go run ./cmd/identity-service
+make run-identity
+make run-channel
+make run-relay
 ```
 
-2. 启动 channel-service：
+构建管理前端：
+
 ```bash
-CHANNEL_GRPC_ADDR=127.0.0.1:9002 \
-CHANNEL_SQL_DSN="" \
-go run ./cmd/channel-service
+make web-dist
 ```
 
-3. 启动 relay-gateway：
+完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+## API 示例
+
+### 健康检查
+
 ```bash
-IDENTITY_GRPC_ENDPOINT=127.0.0.1:9001 \
-CHANNEL_GRPC_ENDPOINT=127.0.0.1:9002 \
-RELAY_HTTP_ADDR=:8080 \
-RELAY_PROVIDER_TIMEOUT=30s \
-go run ./cmd/relay-gateway
+curl http://localhost:8080/healthz
 ```
 
-## 环境变量
+### 模型列表
 
-### identity-service
-- `IDENTITY_GRPC_ADDR` - gRPC 监听地址（默认: 127.0.0.1:9001）
-- `IDENTITY_SQL_DSN` - 数据库连接字符串（测试环境可为空）
-- `INITIAL_ADMIN_USERNAME` - 首次启动创建的管理员用户名（默认: `admin`）
-- `INITIAL_ADMIN_EMAIL` - 首次启动创建的管理员邮箱（默认: `admin@example.com`）
-- `INITIAL_ADMIN_PASSWORD` - 首次启动创建的管理员密码；**未设置时随机生成 16 字符并打印到 identity-service 日志一次**
-
-> 仅在 `users` 表为空时才会创建,已有用户则跳过;请关注启动日志中的 `INITIAL ADMIN CREATED` 块以获取随机密码。
-> 忘记密码可用离线工具 `go run ./cmd/admin-reset -username admin` 重置(读取 `ADMIN_RESET_DSN` / `IDENTITY_SQL_DSN` / `SQL_DSN`);
-> 通过 `-role` 可设置角色(0=guest, 1=user, 10=admin, 100=root),创建新用户时不指定默认 100。
-
-#### 用户角色
-
-`users.role` 字段(migration 025 加入)决定权限,数值越大越高:
-
-| 数值 | 角色 | 含义 |
-|---|---|---|
-| 0   | `RoleGuestUser`  | 访客 |
-| 1   | `RoleCommonUser` | 默认普通用户(注册即此角色) |
-| 10  | `RoleAdminUser`  | 管理员(通过 `user.IsAdmin()` 判定) |
-| 100 | `RoleRootUser`   | 首启 bootstrap 创建的超级管理员 |
-
-代码内务必通过 `user.IsAdmin()` / `user.IsRoot()` 判定,**不要**再用 `user.Username == "admin"`。
-
-##### 调用 promote/demote 时的操作者约束
-
-`/api/user/manage` 的 `promote` / `demote` 动作会触发 identity-service 的 `SetUserRole`。
-当请求头 `X-Operator-User-Id: <user_id>` 存在时,会按下列规则强校验:
-
-1. 操作者必须存在,且角色 ≥ `RoleAdminUser`
-2. 操作者不能修改自己的角色
-3. 操作者必须**严格**高于目标用户的当前角色(同级 admin 之间无法互相降级)
-4. 新角色必须**严格**低于操作者角色(admin 不能把别人提升到 admin)
-5. root 用户的角色不可被任何人修改;`SetRole` 也不会授予 root 角色
-
-未带 `X-Operator-User-Id` 时按"系统调用"处理,仅执行 root 保护与角色合法性检查——
-之所以保留这条豁免,是因为当前 admin-api 由共享 `ADMIN_TOKEN` 鉴权,没有具体 operator 身份。
-后续若切换为每用户 session 鉴权,可在 admin/server 入口处把它升级为必填。
-
-### channel-service
-- `CHANNEL_GRPC_ADDR` - gRPC 监听地址（默认: 127.0.0.1:9002）
-- `CHANNEL_SQL_DSN` - 数据库连接字符串（测试环境可为空）
-
-### relay-gateway
-- `IDENTITY_GRPC_ENDPOINT` - identity-service gRPC 地址
-- `CHANNEL_GRPC_ENDPOINT` - channel-service gRPC 地址
-- `RELAY_HTTP_ADDR` - HTTP 监听地址（默认: :8080）
-- `RELAY_PROVIDER_TIMEOUT` - 上游请求超时时间（默认: 30s）
-
-## API 测试
-
-### 1. 健康检查
 ```bash
-curl http://localhost:8080/health
-```
-
-### 2. 获取模型列表
-```bash
-curl -H "Authorization: Bearer test-token" \
+curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:8080/v1/models
 ```
 
-### 3. 聊天补全
+### Chat Completions
+
 ```bash
-# 非流式响应
 curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer test-token" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [
-      {"role": "user", "content": "Hello, world!"}
+      {"role": "user", "content": "Hello"}
     ]
   }'
+```
 
-# 流式响应
+流式响应：
+
+```bash
 curl -X POST http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer test-token" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [
-      {"role": "user", "content": "Hello, streaming!"}
+      {"role": "user", "content": "Hello streaming"}
     ],
     "stream": true
   }'
 ```
 
+## 配置要点
+
+常用环境变量：
+
+| 变量 | 说明 |
+|------|------|
+| `CONF_PATH` | 服务配置文件路径，例如 `configs/relay-gateway.yaml` |
+| `DATABASE_DSN` | MySQL 连接字符串 |
+| `REDIS_ADDR` / `REDIS_PASSWORD` | Redis 地址与密码 |
+| `JWT_SECRET_KEY` | 用户登录和鉴权相关密钥 |
+| `SERVICE_TOKEN` | 服务间 HTTP 调用令牌 |
+| `ADMIN_TOKEN` | 管理 API 兼容鉴权令牌 |
+| `IDENTITY_GRPC_ENDPOINT` | identity-service gRPC 地址 |
+| `CHANNEL_GRPC_ENDPOINT` | channel-service gRPC 地址 |
+| `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 |
+| `RELAY_HTTP_ADDR` | relay-gateway HTTP 监听地址 |
+| `RELAY_PROVIDER_TIMEOUT` | 上游 provider 请求超时 |
+| `RATE_LIMIT_REQUESTS_PER_SECOND` / `RATE_LIMIT_BURST` | 网关限流参数 |
+| `CORS_ALLOWED_ORIGINS` | CORS 允许来源 |
+| `ADMIN_WEB_ROOT` | admin-api 使用的外部前端构建目录 |
+
+更多配置见 [.env.example](./.env.example) 和 [docs/deployment.md](./docs/deployment.md)。
+
 ## 测试
 
 ```bash
-# 运行所有测试
+# 单元测试和不依赖外部服务的集成测试
 make test
 
-# 运行集成测试
-make dev-test-integration
-
-# 运行单个服务测试
+# 指定模块测试
 make dev-test-identity
 make dev-test-channel
 make dev-test-provider
+
+# Docker Compose 端到端测试
+make test-e2e
 ```
 
-## 第二阶段验收标准
+## 安全提醒
 
-第二阶段完成标准已全部满足：
+- 生产环境必须替换 `JWT_SECRET_KEY`、`SERVICE_TOKEN`、`ADMIN_TOKEN`、数据库密码和 Redis 密码。
+- 不要将真实上游 API Key、订阅凭证、支付私钥或管理员密码提交到仓库。
+- 建议生产环境开启 HTTPS，并按需启用 mTLS、IP 过滤、限流和密钥轮换。
+- 管理后台和 Relay API 应分别配置访问控制，不建议直接裸露在公网。
+- 使用第三方模型、API、订阅或账号池时，应确认你拥有合法授权，并遵守对应服务条款。
 
-- [x] `identity-service` 真实鉴权可用
-- [x] `channel-service` 真实渠道选择可用
-- [x] `relay-gateway` OpenAI 兼容 HTTP 主链路可用
-- [x] `/v1/models` 和 `/v1/chat/completions` 可本地验收
-- [x] 有 mock upstream 集成验证
-- [x] 主要 usecase 有单元测试覆盖
-- [x] billing 只作为明确接口边界存在，没有被绕过或散落实现
+## 免责声明
 
-## 已知限制
+本项目仅作为 AI API 网关、渠道调度、额度管理和微服务架构实践工具提供。使用者应自行确保部署、配置、账号来源、API Key 来源、调用内容、支付能力和数据处理行为符合适用法律法规及第三方服务条款。
 
-1. **账务系统**: 仅预留 billing 接口，完整扣费逻辑在第三阶段实现
-2. **Provider 适配**: 当前仅支持 OpenAI-compatible 适配器，其他 provider 待后续支持
-3. **数据库**: 当前使用内存数据源，真实数据库连接待配置
+项目维护者不提供任何第三方模型服务、订阅账号、API Key 或绕过访问限制的能力，也不对使用者因滥用、违规接入、账号封禁、额度损失、数据泄露、业务中断或其他后果承担责任。
 
-## 后续计划
+完整免责声明见 [DISCLAIMER.md](./DISCLAIMER.md)。
 
-第三阶段将重点关注：
-1. 完整账务扣费逻辑
-2. 更多 Provider 适配器（如 Anthropic、Gemini、Azure 等）
-3. 后台管理 API 迁移
-4. 真实数据库集成
+## 致谢
 
-## 鸣谢
+- [one-api](https://github.com/songquanpeng/one-api)：提供了多渠道 OpenAI API 管理与分发系统的设计参考。
+- [sub2api](https://github.com/Wei-Shaw/sub2api)：提供了订阅转 API、账号池、额度分发和限流管理等场景参考。
+- [go-kratos/kratos](https://github.com/go-kratos/kratos)：提供了微服务框架与工程实践基础。
 
-感谢 [one-api](https://github.com/songquanpeng/one-api) 项目提供的原始架构与实现基础，本仓库中的分析与改造方案均基于该项目展开。
+## 许可证
 
-感谢 [go-kratos/kratos](https://github.com/go-kratos/kratos) 项目提供的微服务框架设计与工程实践参考。
+本项目使用 [MIT License](./LICENSE)。
