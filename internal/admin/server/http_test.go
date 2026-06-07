@@ -280,6 +280,16 @@ func (c *adminHTTPBillingClient) ListLedger(ctx context.Context, req *billingv1.
 	}, nil
 }
 
+func (c *adminHTTPBillingClient) AggregateUsage(ctx context.Context, req *billingv1.AggregateUsageRequest, opts ...grpc.CallOption) (*billingv1.AggregateUsageResponse, error) {
+	return &billingv1.AggregateUsageResponse{
+		Buckets: []*billingv1.UsageBucket{
+			{Type: "topup", Quota: 100, Count: 1},
+			{Type: "consume", Quota: 75, Count: 3},
+		},
+		Totals: &billingv1.UsageTotals{Quota: 175, Count: 4},
+	}, nil
+}
+
 func (c *adminHTTPBillingClient) ListPaymentOrders(ctx context.Context, req *billingv1.ListPaymentOrdersRequest, opts ...grpc.CallOption) (*billingv1.ListPaymentOrdersResponse, error) {
 	c.paymentListLastReq = req
 	if c.paymentOrders != nil {

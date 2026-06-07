@@ -406,6 +406,60 @@ func (s *BillingService) AggregateLedgerByDate(ctx context.Context, req *billing
 	}, nil
 }
 
+func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.AggregateUsageRequest) (*billingv1.AggregateUsageResponse, error) {
+	filter := biz.UsageFilter{
+		GroupBy:   req.GetGroupBy(),
+		UserID:    req.GetUserId(),
+		ChannelID: req.GetChannelId(),
+		Model:     req.GetModel(),
+		Type:      req.GetType(),
+		Limit:     int(req.GetLimit()),
+	}
+	if req.GetStartTime().IsValid() {
+		filter.StartTime = req.GetStartTime().AsTime()
+	}
+	if req.GetEndTime().IsValid() {
+		filter.EndTime = req.GetEndTime().AsTime()
+	}
+
+	buckets, totals, err := s.uc.AggregateUsage(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	bucketsProto := make([]*billingv1.UsageBucket, len(buckets))
+	for i, b := range buckets {
+		bucketsProto[i] = &billingv1.UsageBucket{
+			UserId:           b.UserID,
+			ChannelId:        b.ChannelID,
+			Model:            b.Model,
+			TokenName:        b.TokenName,
+			Type:             b.Type,
+			Day:              b.Day,
+			Hour:             b.Hour,
+			Quota:            b.Quota,
+			PromptTokens:     b.PromptTokens,
+			CompletionTokens: b.CompletionTokens,
+			Count:            b.Count,
+			ElapsedTime:      b.ElapsedTime,
+		}
+	}
+
+	if totals == nil {
+		totals = &biz.UsageTotals{}
+	}
+	return &billingv1.AggregateUsageResponse{
+		Buckets: bucketsProto,
+		Totals: &billingv1.UsageTotals{
+			Quota:            totals.Quota,
+			PromptTokens:     totals.PromptTokens,
+			CompletionTokens: totals.CompletionTokens,
+			Count:            totals.Count,
+			ElapsedTime:      totals.ElapsedTime,
+		},
+	}, nil
+}
+
 func (s *BillingService) CreatePaymentOrder(ctx context.Context, req *billingv1.CreatePaymentOrderRequest) (*billingv1.PaymentOrderResponse, error) {
 	if s.paymentUc == nil {
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil

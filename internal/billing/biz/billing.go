@@ -503,6 +503,12 @@ func (uc *BillingUsecase) AggregateLedgerByDate(ctx context.Context, userID stri
 	return uc.ledgerRepo.AggregateLedgerByDate(ctx, userID, ledgerType, startTime, endTime)
 }
 
+// AggregateUsage runs a multi-dimensional SQL aggregation over the ledger.
+// An empty filter.Type means "all ledger types" (no type filter).
+func (uc *BillingUsecase) AggregateUsage(ctx context.Context, filter UsageFilter) ([]*UsageBucket, *UsageTotals, error) {
+	return uc.ledgerRepo.AggregateUsage(ctx, filter)
+}
+
 func (uc *BillingUsecase) getGroupRatio(pricing PricingConfig, group string) float64 {
 	if ratio, ok := pricing.GroupRatios[group]; ok {
 		return ratio

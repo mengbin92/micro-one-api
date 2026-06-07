@@ -1489,29 +1489,41 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 	}, nil
 }
 
+// GetLogStats returns ledger statistics computed by real SQL aggregation in the
+// billing service (GROUP BY type), rather than summing a sampled page of rows.
+// total_amount is the true consumed quota (ABS sum of consume entries).
 func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsRequest) (map[string]interface{}, error) {
-	if req.Page <= 0 {
-		req.Page = 1
+	aggReq := &billingv1.AggregateUsageRequest{
+		GroupBy: []string{"type"},
+		UserId:  req.UserId,
 	}
-	if req.PageSize <= 0 {
-		req.PageSize = 1000
+	if req.StartTime > 0 {
+		aggReq.StartTime = timestamppb.New(time.Unix(req.StartTime, 0))
 	}
-	resp, err := s.ListLogs(ctx, req)
+	if req.EndTime > 0 {
+		aggReq.EndTime = timestamppb.New(time.Unix(req.EndTime, 0))
+	}
+
+	resp, err := s.billingClient.AggregateUsage(ctx, aggReq)
 	if err != nil {
-		return nil, err
+		if st, ok := status.FromError(err); ok {
+			return nil, fmt.Errorf("failed to aggregate usage: %s", st.Message())
+		}
+		return nil, fmt.Errorf("failed to aggregate usage: %w", err)
 	}
+
 	countByType := map[string]int64{}
 	amountByType := map[string]int64{}
-	totalAmount := int64(0)
-	for _, entry := range resp.Logs {
-		countByType[entry.Type]++
-		amountByType[entry.Type] += entry.Amount
-		totalAmount += entry.Amount
+	totalCount := int64(0)
+	for _, bucket := range resp.GetBuckets() {
+		countByType[bucket.GetType()] = bucket.GetCount()
+		amountByType[bucket.GetType()] = bucket.GetQuota()
+		totalCount += bucket.GetCount()
 	}
+
 	return map[string]interface{}{
-		"total":          resp.Total,
-		"sampled_count":  len(resp.Logs),
-		"total_amount":   totalAmount,
+		"total":          totalCount,
+		"total_amount":   amountByType["consume"],
 		"count_by_type":  countByType,
 		"amount_by_type": amountByType,
 	}, nil

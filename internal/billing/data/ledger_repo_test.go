@@ -250,3 +250,77 @@ func TestLedgerRepo_AggregateLedgerByDate_Empty(t *testing.T) {
 	assert.Empty(t, daily)
 	assert.Empty(t, models)
 }
+
+func TestLedgerRepo_AggregateUsage_ByChannelCrossUser(t *testing.T) {
+	db := setupLedgerTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	data := &Data{db: db}
+	repo := NewLedgerRepo(data)
+	ctx := context.Background()
+
+	seed := []*biz.Ledger{
+		{UserID: "u1", Amount: -100, Type: "consume", ModelName: "gpt-a", ChannelID: 1, PromptTokens: 10, CompletionTokens: 5, ElapsedTime: 100},
+		{UserID: "u2", Amount: -50, Type: "consume", ModelName: "gpt-a", ChannelID: 1, PromptTokens: 4, CompletionTokens: 2, ElapsedTime: 40},
+		{UserID: "u1", Amount: -25, Type: "consume", ModelName: "gpt-b", ChannelID: 2, PromptTokens: 3, CompletionTokens: 1, ElapsedTime: 20},
+		{UserID: "u1", Amount: 1000, Type: "recharge", ChannelID: 0},
+	}
+	for _, l := range seed {
+		require.NoError(t, repo.CreateLedger(ctx, l))
+	}
+
+	// Aggregate consume usage grouped by channel, across all users.
+	buckets, totals, err := repo.AggregateUsage(ctx, biz.UsageFilter{
+		GroupBy: []string{biz.UsageDimChannel},
+		Type:    "consume",
+	})
+	require.NoError(t, err)
+	require.Len(t, buckets, 2)
+
+	// Ordered by quota desc: channel 1 (150) before channel 2 (25).
+	assert.Equal(t, int64(1), buckets[0].ChannelID)
+	assert.Equal(t, int64(150), buckets[0].Quota)
+	assert.Equal(t, int64(2), buckets[0].Count)
+	assert.Equal(t, int64(2), buckets[1].ChannelID)
+	assert.Equal(t, int64(25), buckets[1].Quota)
+
+	// Totals exclude the recharge row (consume filter) -> 175.
+	assert.Equal(t, int64(175), totals.Quota)
+	assert.Equal(t, int64(3), totals.Count)
+}
+
+func TestLedgerRepo_AggregateUsage_ByType_AllTypes(t *testing.T) {
+	db := setupLedgerTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	data := &Data{db: db}
+	repo := NewLedgerRepo(data)
+	ctx := context.Background()
+
+	for _, l := range []*biz.Ledger{
+		{UserID: "u1", Amount: -100, Type: "consume"},
+		{UserID: "u1", Amount: -40, Type: "consume"},
+		{UserID: "u1", Amount: 1000, Type: "recharge"},
+	} {
+		require.NoError(t, repo.CreateLedger(ctx, l))
+	}
+
+	// Empty Type => no type filter, aggregate every type.
+	buckets, totals, err := repo.AggregateUsage(ctx, biz.UsageFilter{GroupBy: []string{biz.UsageDimType}})
+	require.NoError(t, err)
+	require.Len(t, buckets, 2)
+
+	byType := map[string]int64{}
+	for _, b := range buckets {
+		byType[b.Type] = b.Quota
+	}
+	assert.Equal(t, int64(140), byType["consume"])
+	assert.Equal(t, int64(1000), byType["recharge"])
+	assert.Equal(t, int64(1140), totals.Quota)
+}

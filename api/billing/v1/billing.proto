@@ -30,6 +30,7 @@ service BillingService {
   rpc ListReconciliationRuns(ListReconciliationRunsRequest) returns (ListReconciliationRunsResponse);
   rpc GetReconciliationRun(GetReconciliationRunRequest) returns (GetReconciliationRunResponse);
   rpc AggregateLedgerByDate(AggregateLedgerByDateRequest) returns (AggregateLedgerByDateResponse);
+  rpc AggregateUsage(AggregateUsageRequest) returns (AggregateUsageResponse);
 }
 
 // ========== 配额预扣 ==========
@@ -348,4 +349,48 @@ message DailyUsage {
 message ModelUsage {
   string model = 1;
   int64 tokens = 2;
+}
+
+// ========== 多维用量聚合 ==========
+
+// AggregateUsageRequest 跨用户、多维度的真实 SQL 聚合（替代抽样统计）。
+message AggregateUsageRequest {
+  // 维度：user | channel | model | token | type | day | hour。可组合，按顺序生成分组键。
+  repeated string group_by = 1;
+  string user_id = 2;     // 可选：限定用户
+  int64 channel_id = 3;   // 可选：限定渠道（0 表示不限定）
+  string model = 4;       // 可选：限定模型
+  string type = 5;        // 可选：账本类型，默认 "consume"
+  google.protobuf.Timestamp start_time = 6;
+  google.protobuf.Timestamp end_time = 7;
+  int32 limit = 8;        // 可选：返回前 N 个桶（按 quota 降序），0 表示不限制
+}
+
+message AggregateUsageResponse {
+  repeated UsageBucket buckets = 1;
+  UsageTotals totals = 2;
+}
+
+// UsageBucket 一个分组维度组合下的聚合值。
+message UsageBucket {
+  string user_id = 1;
+  int64 channel_id = 2;
+  string model = 3;
+  string token_name = 4;
+  string type = 5;
+  string day = 6;   // YYYY-MM-DD（当 group_by 含 day）
+  string hour = 7;  // YYYY-MM-DD HH（当 group_by 含 hour）
+  int64 quota = 8;  // SUM(ABS(amount))
+  int64 prompt_tokens = 9;
+  int64 completion_tokens = 10;
+  int64 count = 11;
+  int64 elapsed_time = 12;
+}
+
+message UsageTotals {
+  int64 quota = 1;
+  int64 prompt_tokens = 2;
+  int64 completion_tokens = 3;
+  int64 count = 4;
+  int64 elapsed_time = 5;
 }

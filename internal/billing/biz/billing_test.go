@@ -117,6 +117,10 @@ func (m *mockLedgerRepo) AggregateLedgerByDate(ctx context.Context, userID strin
 	return nil, nil, nil
 }
 
+func (m *mockLedgerRepo) AggregateUsage(ctx context.Context, filter UsageFilter) ([]*UsageBucket, *UsageTotals, error) {
+	return nil, &UsageTotals{}, nil
+}
+
 type mockPricingStore struct {
 	config PricingConfig
 }
