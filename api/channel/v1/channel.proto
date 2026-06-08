@@ -13,6 +13,7 @@ service ChannelService {
   rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse);
   rpc CreateChannel(CreateChannelRequest) returns (CreateChannelResponse);
   rpc UpdateChannel(UpdateChannelRequest) returns (UpdateChannelResponse);
+  rpc RecordChannelUsage(RecordChannelUsageRequest) returns (RecordChannelUsageResponse);
   rpc DeleteChannel(DeleteChannelRequest) returns (DeleteChannelResponse);
   rpc ChangeChannelStatus(ChangeChannelStatusRequest) returns (ChangeChannelStatusResponse);
 }
@@ -102,6 +103,16 @@ message UpdateChannelRequest {
 }
 
 message UpdateChannelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RecordChannelUsageRequest {
+  int64 channel_id = 1;
+  int64 quota = 2;
+}
+
+message RecordChannelUsageResponse {
   bool success = 1;
   string message = 2;
 }

@@ -488,9 +488,13 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 
 	requestCount := int64(0)
 	quotaUsed := int64(0)
+	upstreamCost := int64(0)
+	grossProfit := int64(0)
 	models := map[string]struct{}{}
 	requestCount = interfaceToInt64(stats["total"])
 	quotaUsed = interfaceToInt64(stats["total_amount"])
+	upstreamCost = interfaceToInt64(stats["upstream_cost"])
+	grossProfit = interfaceToInt64(stats["gross_profit"])
 	totalBalance := float64(0)
 	staleBalanceCount := 0
 	now := time.Now().Unix()
@@ -520,6 +524,8 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 			"configured_models":      configuredModels,
 			"request_count":          requestCount,
 			"quota_used":             quotaUsed,
+			"upstream_cost":          upstreamCost,
+			"gross_profit":           grossProfit,
 			"channel_balance":        totalBalance,
 			"stale_balance_channels": staleBalanceCount,
 			"log_count":              recentLogsTotal,

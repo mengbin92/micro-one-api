@@ -435,6 +435,13 @@ func (m *testChannelRepo) UpdateChannel(ctx context.Context, channel *channelbiz
 	return nil
 }
 
+func (m *testChannelRepo) RecordUsage(ctx context.Context, channelID int64, quota int64) error {
+	if ch, ok := m.channels[channelID]; ok {
+		ch.UsedQuota += quota
+	}
+	return nil
+}
+
 func (m *testChannelRepo) DeleteChannel(ctx context.Context, channelID int64) error {
 	delete(m.channels, channelID)
 	return nil

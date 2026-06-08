@@ -9,9 +9,11 @@ import (
 )
 
 type channelServiceRepo struct {
-	channel *biz.Channel
-	created *biz.Channel
-	updated *biz.Channel
+	channel           *biz.Channel
+	created           *biz.Channel
+	updated           *biz.Channel
+	recordedChannelID int64
+	recordedQuota     int64
 }
 
 func (r *channelServiceRepo) FindByID(ctx context.Context, channelID int64) (*biz.Channel, error) {
@@ -38,6 +40,12 @@ func (r *channelServiceRepo) CreateChannel(ctx context.Context, channel *biz.Cha
 
 func (r *channelServiceRepo) UpdateChannel(ctx context.Context, channel *biz.Channel) error {
 	r.updated = channel
+	return nil
+}
+
+func (r *channelServiceRepo) RecordUsage(ctx context.Context, channelID int64, quota int64) error {
+	r.recordedChannelID = channelID
+	r.recordedQuota += quota
 	return nil
 }
 

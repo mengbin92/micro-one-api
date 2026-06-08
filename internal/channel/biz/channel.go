@@ -68,6 +68,7 @@ type ChannelRepo interface {
 	ListChannels(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*Channel, int64, error)
 	CreateChannel(ctx context.Context, channel *Channel) error
 	UpdateChannel(ctx context.Context, channel *Channel) error
+	RecordUsage(ctx context.Context, channelID int64, quota int64) error
 	DeleteChannel(ctx context.Context, channelID int64) error
 	ChangeStatus(ctx context.Context, channelID int64, status int32) error
 }
@@ -154,6 +155,17 @@ func (uc *ChannelUsecase) UpdateChannel(ctx context.Context, channel *Channel) e
 		return err
 	}
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
+	return nil
+}
+
+func (uc *ChannelUsecase) RecordUsage(ctx context.Context, channelID int64, quota int64) error {
+	if quota <= 0 {
+		return nil
+	}
+	if err := uc.repo.RecordUsage(ctx, channelID, quota); err != nil {
+		return err
+	}
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID})
 	return nil
 }
 

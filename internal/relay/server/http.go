@@ -1594,7 +1594,29 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 	if resp == nil || !resp.GetSuccess() {
 		return stderrors.New(billingErrorMessage(resp, "commit quota failed"))
 	}
+	if len(details) > 0 {
+		s.recordChannelUsage(ctx, details[0].ChannelID, actualTokens)
+	}
 	return nil
+}
+
+func (s *HTTPServer) recordChannelUsage(ctx context.Context, channelID int64, quota int64) {
+	if s.channelClient == nil || channelID <= 0 || quota <= 0 {
+		return
+	}
+	channelCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+	resp, err := s.channelClient.RecordChannelUsage(channelCtx, &channelv1.RecordChannelUsageRequest{
+		ChannelId: channelID,
+		Quota:     quota,
+	})
+	if err != nil && applogger.Log != nil {
+		applogger.Log.Warn("failed to record channel usage", zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.Error(err))
+		return
+	}
+	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
+		applogger.Log.Warn("failed to record channel usage", zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.String("message", resp.GetMessage()))
+	}
 }
 
 func usageTokenName(in usageLogInput) string {

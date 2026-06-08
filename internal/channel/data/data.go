@@ -159,6 +159,23 @@ func (r *Repository) UpdateChannel(ctx context.Context, channel *biz.Channel) er
 	return nil
 }
 
+func (r *Repository) RecordUsage(ctx context.Context, channelID int64, quota int64) error {
+	if quota <= 0 {
+		return nil
+	}
+	if r.db != nil {
+		return r.recordUsageDB(ctx, channelID, quota)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	channel, ok := r.channels[channelID]
+	if !ok {
+		return biz.ErrChannelNotFound
+	}
+	channel.UsedQuota += quota
+	return nil
+}
+
 func (r *Repository) DeleteChannel(ctx context.Context, channelID int64) error {
 	if r.db != nil {
 		return r.deleteChannelDB(ctx, channelID)
@@ -180,6 +197,19 @@ func (r *Repository) ChangeStatus(ctx context.Context, channelID int64, status i
 		return biz.ErrChannelNotFound
 	}
 	ch.Status = status
+	return nil
+}
+
+func (r *Repository) recordUsageDB(ctx context.Context, channelID int64, quota int64) error {
+	tx := r.db.WithContext(ctx).Model(&channelModel{}).
+		Where("id = ?", channelID).
+		UpdateColumn("used_quota", gorm.Expr("used_quota + ?", quota))
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if tx.RowsAffected == 0 {
+		return biz.ErrChannelNotFound
+	}
 	return nil
 }
 

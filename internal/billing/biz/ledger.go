@@ -10,13 +10,14 @@ const (
 )
 
 type Ledger struct {
-	ID           uint
-	UserID       string
-	Amount       int64
-	BalanceAfter int64
-	Type         string
-	ReferenceID  string
-	Remark       string
+	ID               uint
+	UserID           string
+	Amount           int64
+	UpstreamCost     int64
+	BalanceAfter     int64
+	Type             string
+	ReferenceID      string
+	Remark           string
 	TokenName        string
 	ModelName        string
 	Quota            int64
@@ -78,6 +79,8 @@ type UsageBucket struct {
 	Day              string
 	Hour             string
 	Quota            int64
+	UpstreamCost     int64
+	GrossProfit      int64
 	PromptTokens     int64
 	CompletionTokens int64
 	Count            int64
@@ -87,6 +90,8 @@ type UsageBucket struct {
 // UsageTotals holds grand totals across all buckets.
 type UsageTotals struct {
 	Quota            int64
+	UpstreamCost     int64
+	GrossProfit      int64
 	PromptTokens     int64
 	CompletionTokens int64
 	Count            int64

@@ -50,6 +50,7 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		PromptTokens:     req.PromptTokens,
 		CompletionTokens: req.CompletionTokens,
 		CacheReadTokens:  req.CacheReadTokens,
+		UpstreamCost:     firstPositiveInt64(req.UpstreamCost, req.ActualCost),
 		ElapsedTime:      req.ElapsedTime,
 		IsStream:         req.IsStream,
 	})
@@ -438,6 +439,8 @@ func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.Aggr
 			Day:              b.Day,
 			Hour:             b.Hour,
 			Quota:            b.Quota,
+			UpstreamCost:     b.UpstreamCost,
+			GrossProfit:      b.GrossProfit,
 			PromptTokens:     b.PromptTokens,
 			CompletionTokens: b.CompletionTokens,
 			Count:            b.Count,
@@ -452,12 +455,23 @@ func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.Aggr
 		Buckets: bucketsProto,
 		Totals: &billingv1.UsageTotals{
 			Quota:            totals.Quota,
+			UpstreamCost:     totals.UpstreamCost,
+			GrossProfit:      totals.GrossProfit,
 			PromptTokens:     totals.PromptTokens,
 			CompletionTokens: totals.CompletionTokens,
 			Count:            totals.Count,
 			ElapsedTime:      totals.ElapsedTime,
 		},
 	}, nil
+}
+
+func firstPositiveInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func (s *BillingService) CreatePaymentOrder(ctx context.Context, req *billingv1.CreatePaymentOrderRequest) (*billingv1.PaymentOrderResponse, error) {

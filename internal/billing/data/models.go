@@ -19,17 +19,17 @@ type accountModel struct {
 func (accountModel) TableName() string { return "users" }
 
 type reservationModel struct {
-	ID           uint      `gorm:"primaryKey;column:id"`
-	ReservationID string   `gorm:"uniqueIndex;column:reservation_id"`
-	UserID       string   `gorm:"index;column:user_id"`
-	RequestID    string   `gorm:"index;column:request_id"`
-	Amount       int64    `gorm:"column:amount"`
-	Status       string   `gorm:"column:status"`
-	Model        *string  `gorm:"column:model"`
-	ChannelID    *string  `gorm:"column:channel_id"`
-	CreatedAt    time.Time `gorm:"column:created_at"`
-	UpdatedAt    time.Time `gorm:"column:updated_at"`
-	ExpiredAt    *time.Time `gorm:"index;column:expired_at"`
+	ID            uint       `gorm:"primaryKey;column:id"`
+	ReservationID string     `gorm:"uniqueIndex;column:reservation_id"`
+	UserID        string     `gorm:"index;column:user_id"`
+	RequestID     string     `gorm:"index;column:request_id"`
+	Amount        int64      `gorm:"column:amount"`
+	Status        string     `gorm:"column:status"`
+	Model         *string    `gorm:"column:model"`
+	ChannelID     *string    `gorm:"column:channel_id"`
+	CreatedAt     time.Time  `gorm:"column:created_at"`
+	UpdatedAt     time.Time  `gorm:"column:updated_at"`
+	ExpiredAt     *time.Time `gorm:"index;column:expired_at"`
 }
 
 func (reservationModel) TableName() string { return "billing_reservations" }
@@ -38,6 +38,7 @@ type ledgerModel struct {
 	ID               uint      `gorm:"primaryKey;column:id"`
 	UserID           string    `gorm:"index;column:user_id"`
 	Amount           int64     `gorm:"column:amount"`
+	UpstreamCost     int64     `gorm:"column:upstream_cost"`
 	BalanceAfter     int64     `gorm:"column:balance_after"`
 	Type             string    `gorm:"index;column:type"`
 	ReferenceID      *string   `gorm:"index;column:reference_id"`

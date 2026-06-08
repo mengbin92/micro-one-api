@@ -120,6 +120,10 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			ActualTokens:  actualTokens,
 			Success:       true,
 		})
+		_, _ = s.channelClient.RecordChannelUsage(ctx, &channelv1.RecordChannelUsageRequest{
+			ChannelId: ch.ID,
+			Quota:     actualTokens,
+		})
 		return nil
 	})
 

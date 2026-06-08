@@ -1514,18 +1514,32 @@ func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsReq
 
 	countByType := map[string]int64{}
 	amountByType := map[string]int64{}
+	upstreamCostByType := map[string]int64{}
+	grossProfitByType := map[string]int64{}
 	totalCount := int64(0)
+	upstreamCost := int64(0)
+	grossProfit := int64(0)
 	for _, bucket := range resp.GetBuckets() {
 		countByType[bucket.GetType()] = bucket.GetCount()
 		amountByType[bucket.GetType()] = bucket.GetQuota()
+		upstreamCostByType[bucket.GetType()] = bucket.GetUpstreamCost()
+		grossProfitByType[bucket.GetType()] = bucket.GetGrossProfit()
 		totalCount += bucket.GetCount()
+	}
+	if totals := resp.GetTotals(); totals != nil {
+		upstreamCost = totals.GetUpstreamCost()
+		grossProfit = totals.GetGrossProfit()
 	}
 
 	return map[string]interface{}{
-		"total":          totalCount,
-		"total_amount":   amountByType["consume"],
-		"count_by_type":  countByType,
-		"amount_by_type": amountByType,
+		"total":                 totalCount,
+		"total_amount":          amountByType["consume"],
+		"upstream_cost":         upstreamCost,
+		"gross_profit":          grossProfit,
+		"count_by_type":         countByType,
+		"amount_by_type":        amountByType,
+		"upstream_cost_by_type": upstreamCostByType,
+		"gross_profit_by_type":  grossProfitByType,
 	}, nil
 }
 

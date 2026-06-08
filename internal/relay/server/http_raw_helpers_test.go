@@ -37,10 +37,11 @@ func (c rawIdentityClient) GetAuthSnapshot(ctx context.Context, req *identityv1.
 
 type rawChannelClient struct {
 	channelv1.ChannelServiceClient
-	baseURL    string
-	key        string
-	chType     int32
-	apiVersion string
+	baseURL       string
+	key           string
+	chType        int32
+	apiVersion    string
+	usageRequests []*channelv1.RecordChannelUsageRequest
 }
 
 func (c rawChannelClient) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest, opts ...grpc.CallOption) (*channelv1.SelectChannelReply, error) {
@@ -81,6 +82,11 @@ func (c rawChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChan
 			Config:  &commonv1.ChannelConfig{ApiVersion: c.apiVersion},
 		},
 	}, nil
+}
+
+func (c rawChannelClient) RecordChannelUsage(ctx context.Context, req *channelv1.RecordChannelUsageRequest, opts ...grpc.CallOption) (*channelv1.RecordChannelUsageResponse, error) {
+	c.usageRequests = append(c.usageRequests, req)
+	return &channelv1.RecordChannelUsageResponse{Success: true, Message: "ok"}, nil
 }
 
 type rawLogClient struct {

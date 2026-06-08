@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"micro-one-api/internal/billing/biz"
+
+	"gorm.io/gorm"
 )
 
 type ledgerRepo struct {
@@ -22,6 +24,7 @@ func (r *ledgerRepo) CreateLedger(ctx context.Context, ledger *biz.Ledger) error
 	model := &ledgerModel{
 		UserID:           ledger.UserID,
 		Amount:           ledger.Amount,
+		UpstreamCost:     ledger.UpstreamCost,
 		BalanceAfter:     ledger.BalanceAfter,
 		Type:             ledger.Type,
 		ReferenceID:      stringPtr(ledger.ReferenceID),
@@ -74,6 +77,7 @@ func (r *ledgerRepo) ListLedgers(ctx context.Context, userID string, page, pageS
 			ID:               model.ID,
 			UserID:           model.UserID,
 			Amount:           model.Amount,
+			UpstreamCost:     model.UpstreamCost,
 			BalanceAfter:     model.BalanceAfter,
 			Type:             model.Type,
 			ReferenceID:      stringFromPtr(model.ReferenceID),
@@ -140,6 +144,7 @@ func (r *ledgerRepo) ListLedgersWithTimeRange(ctx context.Context, userID string
 			ID:               model.ID,
 			UserID:           model.UserID,
 			Amount:           model.Amount,
+			UpstreamCost:     model.UpstreamCost,
 			BalanceAfter:     model.BalanceAfter,
 			Type:             model.Type,
 			ReferenceID:      stringFromPtr(model.ReferenceID),
@@ -214,6 +219,7 @@ func (r *ledgerRepo) ListLedgersWithFilters(ctx context.Context, userID string, 
 			ID:               model.ID,
 			UserID:           model.UserID,
 			Amount:           model.Amount,
+			UpstreamCost:     model.UpstreamCost,
 			BalanceAfter:     model.BalanceAfter,
 			Type:             model.Type,
 			ReferenceID:      stringFromPtr(model.ReferenceID),
@@ -365,6 +371,8 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 
 	selectParts = append(selectParts,
 		"COALESCE(SUM(ABS(amount)), 0) AS quota",
+		"COALESCE(SUM(upstream_cost), 0) AS upstream_cost",
+		"COALESCE(SUM(ABS(amount) - upstream_cost), 0) AS gross_profit",
 		"COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens",
 		"COALESCE(SUM(completion_tokens), 0) AS completion_tokens",
 		"COUNT(1) AS count",
@@ -372,25 +380,7 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	)
 
 	db := r.data.db.WithContext(ctx).Table("billing_ledgers")
-
-	if filter.Type != "" {
-		db = db.Where("type = ?", filter.Type)
-	}
-	if filter.UserID != "" {
-		db = db.Where("user_id = ?", filter.UserID)
-	}
-	if filter.ChannelID != 0 {
-		db = db.Where("channel_id = ?", filter.ChannelID)
-	}
-	if filter.Model != "" {
-		db = db.Where("model_name = ?", filter.Model)
-	}
-	if !filter.StartTime.IsZero() {
-		db = db.Where("created_at >= ?", filter.StartTime)
-	}
-	if !filter.EndTime.IsZero() {
-		db = db.Where("created_at <= ?", filter.EndTime)
-	}
+	db = applyUsageFilters(db, filter)
 
 	db = db.Select(strings.Join(selectParts, ", "))
 	if len(groupParts) > 0 {
@@ -410,6 +400,8 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 		GDay             string
 		GHour            string
 		Quota            int64
+		UpstreamCost     int64
+		GrossProfit      int64
 		PromptTokens     int64
 		CompletionTokens int64
 		Count            int64
@@ -433,19 +425,78 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 			Day:              row.GDay,
 			Hour:             row.GHour,
 			Quota:            row.Quota,
+			UpstreamCost:     row.UpstreamCost,
+			GrossProfit:      row.GrossProfit,
 			PromptTokens:     row.PromptTokens,
 			CompletionTokens: row.CompletionTokens,
 			Count:            row.Count,
 			ElapsedTime:      row.ElapsedTime,
 		}
-		totals.Quota += row.Quota
-		totals.PromptTokens += row.PromptTokens
-		totals.CompletionTokens += row.CompletionTokens
-		totals.Count += row.Count
-		totals.ElapsedTime += row.ElapsedTime
 	}
 
+	totals, err := r.aggregateUsageTotals(ctx, filter)
+	if err != nil {
+		return nil, nil, err
+	}
 	return buckets, totals, nil
+}
+
+func (r *ledgerRepo) aggregateUsageTotals(ctx context.Context, filter biz.UsageFilter) (*biz.UsageTotals, error) {
+	type totalRow struct {
+		Quota            int64
+		UpstreamCost     int64
+		GrossProfit      int64
+		PromptTokens     int64
+		CompletionTokens int64
+		Count            int64
+		ElapsedTime      int64
+	}
+	var row totalRow
+	err := applyUsageFilters(r.data.db.WithContext(ctx).Table("billing_ledgers"), filter).
+		Select(strings.Join([]string{
+			"COALESCE(SUM(ABS(amount)), 0) AS quota",
+			"COALESCE(SUM(upstream_cost), 0) AS upstream_cost",
+			"COALESCE(SUM(ABS(amount) - upstream_cost), 0) AS gross_profit",
+			"COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens",
+			"COALESCE(SUM(completion_tokens), 0) AS completion_tokens",
+			"COUNT(1) AS count",
+			"COALESCE(SUM(elapsed_time), 0) AS elapsed_time",
+		}, ", ")).
+		Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return &biz.UsageTotals{
+		Quota:            row.Quota,
+		UpstreamCost:     row.UpstreamCost,
+		GrossProfit:      row.GrossProfit,
+		PromptTokens:     row.PromptTokens,
+		CompletionTokens: row.CompletionTokens,
+		Count:            row.Count,
+		ElapsedTime:      row.ElapsedTime,
+	}, nil
+}
+
+func applyUsageFilters(db *gorm.DB, filter biz.UsageFilter) *gorm.DB {
+	if filter.Type != "" {
+		db = db.Where("type = ?", filter.Type)
+	}
+	if filter.UserID != "" {
+		db = db.Where("user_id = ?", filter.UserID)
+	}
+	if filter.ChannelID != 0 {
+		db = db.Where("channel_id = ?", filter.ChannelID)
+	}
+	if filter.Model != "" {
+		db = db.Where("model_name = ?", filter.Model)
+	}
+	if !filter.StartTime.IsZero() {
+		db = db.Where("created_at >= ?", filter.StartTime)
+	}
+	if !filter.EndTime.IsZero() {
+		db = db.Where("created_at <= ?", filter.EndTime)
+	}
+	return db
 }
 
 // dateExprs returns dialect-specific SQL expressions formatting created_at into

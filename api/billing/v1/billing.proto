@@ -62,6 +62,9 @@ message CommitQuotaRequest {
   int64 elapsed_time = 9;
   bool is_stream = 10;
   int64 cache_read_tokens = 11;
+  // Optional upstream cost override in quota units. When omitted, billing-service
+  // calculates it from upstream pricing config.
+  int64 upstream_cost = 12;
 }
 
 message CommitQuotaResponse {
@@ -385,6 +388,8 @@ message UsageBucket {
   int64 completion_tokens = 10;
   int64 count = 11;
   int64 elapsed_time = 12;
+  int64 upstream_cost = 13;
+  int64 gross_profit = 14;
 }
 
 message UsageTotals {
@@ -393,4 +398,6 @@ message UsageTotals {
   int64 completion_tokens = 3;
   int64 count = 4;
   int64 elapsed_time = 5;
+  int64 upstream_cost = 6;
+  int64 gross_profit = 7;
 }

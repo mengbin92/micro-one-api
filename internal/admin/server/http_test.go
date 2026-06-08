@@ -284,9 +284,9 @@ func (c *adminHTTPBillingClient) AggregateUsage(ctx context.Context, req *billin
 	return &billingv1.AggregateUsageResponse{
 		Buckets: []*billingv1.UsageBucket{
 			{Type: "topup", Quota: 100, Count: 1},
-			{Type: "consume", Quota: 75, Count: 3},
+			{Type: "consume", Quota: 75, UpstreamCost: 25, GrossProfit: 50, Count: 3},
 		},
-		Totals: &billingv1.UsageTotals{Quota: 175, Count: 4},
+		Totals: &billingv1.UsageTotals{Quota: 175, UpstreamCost: 25, GrossProfit: 150, Count: 4},
 	}, nil
 }
 

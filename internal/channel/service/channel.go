@@ -240,6 +240,19 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 	}, nil
 }
 
+func (s *ChannelService) RecordChannelUsage(ctx context.Context, req *channelv1.RecordChannelUsageRequest) (*channelv1.RecordChannelUsageResponse, error) {
+	if err := s.uc.RecordUsage(ctx, req.ChannelId, req.Quota); err != nil {
+		return &channelv1.RecordChannelUsageResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+	return &channelv1.RecordChannelUsageResponse{
+		Success: true,
+		Message: "ok",
+	}, nil
+}
+
 func (s *ChannelService) DeleteChannel(ctx context.Context, req *channelv1.DeleteChannelRequest) (*channelv1.DeleteChannelResponse, error) {
 	if err := s.uc.DeleteChannel(ctx, req.ChannelId); err != nil {
 		return &channelv1.DeleteChannelResponse{
