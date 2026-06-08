@@ -214,6 +214,7 @@ type adminHTTPBillingClient struct {
 	paymentTotal       int64
 	paymentListLastReq *billingv1.ListPaymentOrdersRequest
 	paymentGetLastReq  *billingv1.GetPaymentOrderByTradeNoRequest
+	aggregateReqs      []*billingv1.AggregateUsageRequest
 }
 
 func (c *adminHTTPBillingClient) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuotaRequest, opts ...grpc.CallOption) (*billingv1.TopUpQuotaResponse, error) {
@@ -281,6 +282,30 @@ func (c *adminHTTPBillingClient) ListLedger(ctx context.Context, req *billingv1.
 }
 
 func (c *adminHTTPBillingClient) AggregateUsage(ctx context.Context, req *billingv1.AggregateUsageRequest, opts ...grpc.CallOption) (*billingv1.AggregateUsageResponse, error) {
+	c.aggregateReqs = append(c.aggregateReqs, req)
+	switch {
+	case len(req.GetGroupBy()) == 1 && req.GetGroupBy()[0] == "model":
+		return &billingv1.AggregateUsageResponse{
+			Buckets: []*billingv1.UsageBucket{
+				{Model: "gpt-4o", Quota: 75, UpstreamCost: 25, GrossProfit: 50, Count: 3},
+			},
+			Totals: &billingv1.UsageTotals{Quota: 75, UpstreamCost: 25, GrossProfit: 50, Count: 3},
+		}, nil
+	case len(req.GetGroupBy()) == 1 && req.GetGroupBy()[0] == "channel":
+		return &billingv1.AggregateUsageResponse{
+			Buckets: []*billingv1.UsageBucket{
+				{ChannelId: 101, Quota: 75, UpstreamCost: 100, GrossProfit: -25, Count: 3},
+			},
+			Totals: &billingv1.UsageTotals{Quota: 75, UpstreamCost: 100, GrossProfit: -25, Count: 3},
+		}, nil
+	case len(req.GetGroupBy()) == 1 && req.GetGroupBy()[0] == "user":
+		return &billingv1.AggregateUsageResponse{
+			Buckets: []*billingv1.UsageBucket{
+				{UserId: "42", Quota: 75, UpstreamCost: 25, GrossProfit: 50, Count: 3},
+			},
+			Totals: &billingv1.UsageTotals{Quota: 75, UpstreamCost: 25, GrossProfit: 50, Count: 3},
+		}, nil
+	}
 	return &billingv1.AggregateUsageResponse{
 		Buckets: []*billingv1.UsageBucket{
 			{Type: "topup", Quota: 100, Count: 1},
@@ -1561,6 +1586,9 @@ func TestAdminHTTPSummaryCountsOnlyPaidPaymentOrders(t *testing.T) {
 			{TradeNo: "PAY-PENDING", Status: "pending", AssetAmount: 999999, MoneyCents: 20000},
 		},
 		paymentTotal: 2,
+		reconRuns: []*billingv1.ReconciliationRun{
+			{RunId: 7, RunAt: 1710000000, DiscrepancyCount: 1, TotalAccounts: 2, TotalChannels: 1},
+		},
 	}
 	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/summary", nil)
@@ -1575,7 +1603,23 @@ func TestAdminHTTPSummaryCountsOnlyPaidPaymentOrders(t *testing.T) {
 	if billingClient.paymentListLastReq == nil || billingClient.paymentListLastReq.GetStatus() != "paid" {
 		t.Fatalf("summary payment request = %+v, want status=paid", billingClient.paymentListLastReq)
 	}
-	for _, want := range []string{`"recent_order_count":1`, `"recent_amount":10000`, `"recent_amount_cents":10000`} {
+	for _, want := range []string{
+		`"recent_order_count":1`,
+		`"recent_amount":10000`,
+		`"recent_amount_cents":10000`,
+		`"cost_analysis":`,
+		`"gross_margin":`,
+		`"top_models":`,
+		`"model":"gpt-4o"`,
+		`"top_channels":`,
+		`"name":"openai"`,
+		`"top_users":`,
+		`"user_id":"42"`,
+		`"alerts":`,
+		`"negative_profit"`,
+		`"reconciliation_discrepancy"`,
+		`"latest_reconciliation":`,
+	} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("summary response missing %s: %s", want, rec.Body.String())
 		}

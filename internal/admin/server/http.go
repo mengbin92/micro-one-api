@@ -481,6 +481,22 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if err != nil {
 		stats = map[string]interface{}{}
 	}
+	topModels, err := svc.AggregateUsageTopN(r.Context(), "model", 5)
+	if err != nil {
+		topModels = []service.UsageAggregateView{}
+	}
+	topChannels, err := svc.AggregateUsageTopN(r.Context(), "channel", 5)
+	if err != nil {
+		topChannels = []service.UsageAggregateView{}
+	}
+	topUsers, err := svc.AggregateUsageTopN(r.Context(), "user", 5)
+	if err != nil {
+		topUsers = []service.UsageAggregateView{}
+	}
+	reconciliation, err := svc.ListReconciliationRuns(r.Context(), 1, 1)
+	if err != nil {
+		reconciliation = &service.ListReconciliationRunsResult{}
+	}
 	options, err := svc.ListOneAPIOptions(r.Context())
 	if err != nil {
 		options = nil
@@ -530,20 +546,152 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 			"stale_balance_channels": staleBalanceCount,
 			"log_count":              recentLogsTotal,
 		},
-		"recent_users":    users.GetUsers(),
-		"channels":        channels.GetChannels(),
-		"recent_logs":     recentLogs,
-		"payment_orders":  paymentOrders.GetOrders(),
-		"usage_stats":     stats,
-		"model_catalog":   oneAPIChannelModelCatalog(),
-		"pricing_options": optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "QuotaPerUnit"),
-		"payment_summary": paymentSummaryFromOrders(paymentOrders),
+		"recent_users":          users.GetUsers(),
+		"channels":              channels.GetChannels(),
+		"recent_logs":           recentLogs,
+		"payment_orders":        paymentOrders.GetOrders(),
+		"usage_stats":           stats,
+		"cost_analysis":         costAnalysisSummary(quotaUsed, upstreamCost, grossProfit),
+		"top_models":            usageAggregateViewsToMaps(topModels),
+		"top_channels":          enrichChannelUsage(topChannels, channels.GetChannels()),
+		"top_users":             usageAggregateViewsToMaps(topUsers),
+		"alerts":                adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation),
+		"latest_reconciliation": latestReconciliationRun(reconciliation),
+		"model_catalog":         oneAPIChannelModelCatalog(),
+		"pricing_options":       optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "QuotaPerUnit"),
+		"payment_summary":       paymentSummaryFromOrders(paymentOrders),
 	}))
+}
+
+func costAnalysisSummary(quotaUsed, upstreamCost, grossProfit int64) map[string]interface{} {
+	margin := float64(0)
+	if quotaUsed > 0 {
+		margin = float64(grossProfit) / float64(quotaUsed)
+	}
+	return map[string]interface{}{
+		"revenue_quota": quotaUsed,
+		"upstream_cost": upstreamCost,
+		"gross_profit":  grossProfit,
+		"gross_margin":  margin,
+		"profitable":    grossProfit >= 0,
+	}
+}
+
+func usageAggregateViewsToMaps(items []service.UsageAggregateView) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		out = append(out, usageAggregateViewToMap(item))
+	}
+	return out
+}
+
+func usageAggregateViewToMap(item service.UsageAggregateView) map[string]interface{} {
+	return map[string]interface{}{
+		"key":               item.Key,
+		"user_id":           item.UserID,
+		"channel_id":        item.ChannelID,
+		"model":             item.Model,
+		"token_name":        item.TokenName,
+		"type":              item.Type,
+		"quota":             item.Quota,
+		"upstream_cost":     item.UpstreamCost,
+		"gross_profit":      item.GrossProfit,
+		"prompt_tokens":     item.PromptTokens,
+		"completion_tokens": item.CompletionTokens,
+		"count":             item.Count,
+		"elapsed_time":      item.ElapsedTime,
+	}
+}
+
+func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1.ChannelSummary) []map[string]interface{} {
+	channelByID := map[int64]*commonv1.ChannelSummary{}
+	for _, channel := range channels {
+		channelByID[channel.GetId()] = channel
+	}
+	out := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		row := usageAggregateViewToMap(item)
+		if channel := channelByID[item.ChannelID]; channel != nil {
+			row["name"] = channel.GetName()
+			row["status"] = channel.GetStatus()
+			row["balance"] = channel.GetBalance()
+			row["balance_updated_time"] = channel.GetBalanceUpdatedTime()
+			row["used_quota"] = channel.GetUsedQuota()
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []service.UsageAggregateView, reconciliation *service.ListReconciliationRunsResult) []map[string]interface{} {
+	alerts := []map[string]interface{}{}
+	now := time.Now().Unix()
+	for _, channel := range channels {
+		if channel.GetStatus() != 1 {
+			continue
+		}
+		if channel.GetBalanceUpdatedTime() == 0 || now-channel.GetBalanceUpdatedTime() > 24*60*60 {
+			alerts = append(alerts, map[string]interface{}{
+				"type":       "stale_balance",
+				"severity":   "warning",
+				"channel_id": channel.GetId(),
+				"message":    "渠道余额超过 24 小时未刷新",
+			})
+		}
+		if channel.GetBalanceUpdatedTime() > 0 && channel.GetBalance() <= 1 {
+			alerts = append(alerts, map[string]interface{}{
+				"type":       "low_balance",
+				"severity":   "critical",
+				"channel_id": channel.GetId(),
+				"message":    "渠道余额低于 1 USD",
+			})
+		}
+	}
+	for _, item := range topChannels {
+		if item.GrossProfit < 0 {
+			alerts = append(alerts, map[string]interface{}{
+				"type":         "negative_profit",
+				"severity":     "critical",
+				"channel_id":   item.ChannelID,
+				"gross_profit": item.GrossProfit,
+				"message":      "渠道用量毛利为负",
+			})
+		}
+	}
+	if latest := latestReconciliationRun(reconciliation); latest != nil {
+		if count := interfaceToInt64(latest["discrepancy_count"]); count > 0 {
+			alerts = append(alerts, map[string]interface{}{
+				"type":              "reconciliation_discrepancy",
+				"severity":          "critical",
+				"run_id":            latest["run_id"],
+				"discrepancy_count": count,
+				"message":           "最近一次对账存在差异",
+			})
+		}
+	}
+	return alerts
+}
+
+func latestReconciliationRun(reconciliation *service.ListReconciliationRunsResult) map[string]interface{} {
+	if reconciliation == nil || len(reconciliation.Runs) == 0 || reconciliation.Runs[0] == nil {
+		return nil
+	}
+	run := reconciliation.Runs[0]
+	return map[string]interface{}{
+		"run_id":             run.RunID,
+		"run_at":             run.RunAt,
+		"discrepancy_count":  run.DiscrepancyCount,
+		"total_accounts":     run.TotalAccounts,
+		"total_channels":     run.TotalChannels,
+		"total_reservations": run.TotalReservations,
+	}
 }
 
 func interfaceToInt64(value interface{}) int64 {
 	switch v := value.(type) {
 	case int:
+		return int64(v)
+	case int32:
 		return int64(v)
 	case int64:
 		return v

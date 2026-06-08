@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Boxes, CreditCard, Database, Gauge, LineChart, ScrollText, Users } from 'lucide-react';
+import { Activity, AlertTriangle, Boxes, CreditCard, Database, Gauge, LineChart, Scale, ScrollText, TrendingUp, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
@@ -18,6 +18,8 @@ interface AdminTotals {
   configured_models?: number;
   request_count?: number;
   quota_used?: number;
+  upstream_cost?: number;
+  gross_profit?: number;
   channel_balance?: number;
   stale_balance_channels?: number;
   log_count?: number;
@@ -55,11 +57,55 @@ interface AdminLog {
   createdAt?: number;
 }
 
+interface UsageAggregateItem {
+  key?: string;
+  user_id?: string;
+  channel_id?: number;
+  model?: string;
+  name?: string;
+  quota?: number;
+  upstream_cost?: number;
+  gross_profit?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  count?: number;
+  balance?: number;
+  status?: number;
+}
+
+interface SummaryAlert {
+  type?: string;
+  severity?: string;
+  channel_id?: number;
+  run_id?: number;
+  message?: string;
+}
+
+interface CostAnalysis {
+  revenue_quota?: number;
+  upstream_cost?: number;
+  gross_profit?: number;
+  gross_margin?: number;
+  profitable?: boolean;
+}
+
+interface ReconciliationSummary {
+  run_id?: number;
+  run_at?: number;
+  discrepancy_count?: number;
+}
+
 interface AdminSummary {
   totals?: AdminTotals;
   recent_users?: AdminUser[];
   channels?: AdminChannel[];
   recent_logs?: AdminLog[];
+  cost_analysis?: CostAnalysis;
+  top_models?: UsageAggregateItem[];
+  top_channels?: UsageAggregateItem[];
+  top_users?: UsageAggregateItem[];
+  alerts?: SummaryAlert[];
+  latest_reconciliation?: ReconciliationSummary;
   model_catalog?: Array<{ id?: string; owned_by?: string }>;
   pricing_options?: Record<string, string>;
   payment_summary?: {
@@ -102,6 +148,10 @@ function formatInteger(value?: number): string {
 
 function formatMoneyCents(value?: number | string) {
   return `$${(numberValue(value) / 100).toFixed(2)}`;
+}
+
+function formatMargin(value?: number) {
+  return `${(numberValue(value) * 100).toFixed(1)}%`;
 }
 
 function formatDate(value?: number | string) {
@@ -169,6 +219,48 @@ function StatCard({
   );
 }
 
+function CostCard({
+  title,
+  value,
+  detail,
+  icon: Icon,
+  tone,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+  icon: typeof Users;
+  tone: 'green' | 'red' | 'blue' | 'amber';
+}) {
+  const styles = {
+    green: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+    red: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300',
+    blue: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
+    amber: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+  }[tone];
+
+  return (
+    <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+      <CardContent className="flex items-center gap-4 p-5">
+        <div className={`grid size-11 place-items-center rounded-lg ${styles}`}>
+          <Icon className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">{title}</div>
+          <div className="mt-1 truncate text-2xl font-black text-slate-950 dark:text-white">{value}</div>
+          <div className="mt-1 text-xs font-medium text-slate-400">{detail}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function topItemLabel(item: UsageAggregateItem, kind: 'model' | 'channel' | 'user') {
+  if (kind === 'model') return item.model || item.key || '-';
+  if (kind === 'channel') return item.name || (item.channel_id ? `#${item.channel_id}` : item.key || '-');
+  return item.user_id || item.key || '-';
+}
+
 export function AdminOverviewPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-summary'],
@@ -182,6 +274,12 @@ export function AdminOverviewPage() {
   const channels = data?.channels ?? [];
   const logs = data?.recent_logs ?? [];
   const users = data?.recent_users ?? [];
+  const costAnalysis = data?.cost_analysis ?? {};
+  const topModels = data?.top_models ?? [];
+  const topChannels = data?.top_channels ?? [];
+  const topUsers = data?.top_users ?? [];
+  const alerts = data?.alerts ?? [];
+  const latestReconciliation = data?.latest_reconciliation;
   const modelPrice = parseModelPriceMap(data?.pricing_options?.ModelPrice);
   const modelRatio = parsePricingMap(data?.pricing_options?.ModelRatio);
   const completionRatio = parsePricingMap(data?.pricing_options?.CompletionRatio);
@@ -239,6 +337,37 @@ export function AdminOverviewPage() {
         />
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <CostCard
+          title="用户侧收入"
+          value={formatQuota(costAnalysis.revenue_quota ?? totals.quota_used, quotaPerUnit)}
+          detail="consume 账本计费配额"
+          icon={TrendingUp}
+          tone="green"
+        />
+        <CostCard
+          title="上游成本"
+          value={formatQuota(costAnalysis.upstream_cost ?? totals.upstream_cost, quotaPerUnit)}
+          detail="渠道侧成本汇总"
+          icon={Database}
+          tone="blue"
+        />
+        <CostCard
+          title="毛利"
+          value={formatQuota(costAnalysis.gross_profit ?? totals.gross_profit, quotaPerUnit)}
+          detail={`毛利率 ${formatMargin(costAnalysis.gross_margin)}`}
+          icon={LineChart}
+          tone={numberValue(costAnalysis.gross_profit ?? totals.gross_profit) >= 0 ? 'green' : 'red'}
+        />
+        <CostCard
+          title="告警"
+          value={formatInteger(alerts.length)}
+          detail={latestReconciliation?.run_id ? `最近对账 #${latestReconciliation.run_id}` : '暂无对账记录'}
+          icon={AlertTriangle}
+          tone={alerts.length > 0 ? 'amber' : 'green'}
+        />
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
           <CardContent className="flex items-center gap-4 p-5">
@@ -268,6 +397,159 @@ export function AdminOverviewPage() {
               <div className="text-2xl font-black">{formatQuota(totals.quota_used, quotaPerUnit)}</div>
               <div className="text-xs font-medium text-slate-400">{Object.keys(completionRatio).length} 个兼容倍率项</div>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-4">
+        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+            <CardTitle role="heading" aria-level={3}>Top 模型</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="p-4">
+                <TableSkeleton columns={['模型', '收入', '成本', '毛利']} rows={5} />
+              </div>
+            ) : topModels.length === 0 ? (
+              <EmptyState title="暂无模型用量" description="产生调用后会显示模型收入和成本。" />
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>模型</TableHead>
+                      <TableHead>收入</TableHead>
+                      <TableHead>成本</TableHead>
+                      <TableHead>毛利</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {topModels.map((item) => (
+                      <TableRow key={item.key || item.model}>
+                        <TableCell className="font-semibold">{topItemLabel(item, 'model')}</TableCell>
+                        <TableCell>{formatQuota(item.quota, quotaPerUnit)}</TableCell>
+                        <TableCell>{formatQuota(item.upstream_cost, quotaPerUnit)}</TableCell>
+                        <TableCell className={numberValue(item.gross_profit) < 0 ? 'font-semibold text-red-600' : 'font-semibold text-emerald-600'}>
+                          {formatQuota(item.gross_profit, quotaPerUnit)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+            <CardTitle role="heading" aria-level={3}>Top 渠道</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="p-4">
+                <TableSkeleton columns={['渠道', '余额', '收入', '毛利']} rows={5} />
+              </div>
+            ) : topChannels.length === 0 ? (
+              <EmptyState title="暂无渠道用量" description="渠道产生调用后会显示收入、成本和余额状态。" />
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>渠道</TableHead>
+                      <TableHead>余额</TableHead>
+                      <TableHead>收入</TableHead>
+                      <TableHead>毛利</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {topChannels.map((item) => (
+                      <TableRow key={item.channel_id || item.key}>
+                        <TableCell className="font-semibold">{topItemLabel(item, 'channel')}</TableCell>
+                        <TableCell>${numberValue(item.balance).toFixed(2)}</TableCell>
+                        <TableCell>{formatQuota(item.quota, quotaPerUnit)}</TableCell>
+                        <TableCell className={numberValue(item.gross_profit) < 0 ? 'font-semibold text-red-600' : 'font-semibold text-emerald-600'}>
+                          {formatQuota(item.gross_profit, quotaPerUnit)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+            <CardTitle role="heading" aria-level={3}>Top 用户</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="p-4">
+                <TableSkeleton columns={['用户', '请求', '收入', '毛利']} rows={5} />
+              </div>
+            ) : topUsers.length === 0 ? (
+              <EmptyState title="暂无用户用量" description="产生调用后会显示高消耗用户。" />
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>用户</TableHead>
+                      <TableHead>请求</TableHead>
+                      <TableHead>收入</TableHead>
+                      <TableHead>毛利</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {topUsers.map((item) => (
+                      <TableRow key={item.user_id || item.key}>
+                        <TableCell className="font-mono text-xs">{topItemLabel(item, 'user')}</TableCell>
+                        <TableCell>{formatInteger(item.count)}</TableCell>
+                        <TableCell>{formatQuota(item.quota, quotaPerUnit)}</TableCell>
+                        <TableCell className={numberValue(item.gross_profit) < 0 ? 'font-semibold text-red-600' : 'font-semibold text-emerald-600'}>
+                          {formatQuota(item.gross_profit, quotaPerUnit)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+            <CardTitle role="heading" aria-level={3}>风险告警</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4">
+            {isLoading ? (
+              <TableSkeleton columns={['类型', '对象']} rows={4} />
+            ) : alerts.length === 0 ? (
+              <EmptyState title="暂无告警" description="渠道余额、毛利和对账差异正常。" />
+            ) : (
+              alerts.slice(0, 5).map((alert, index) => (
+                <div key={`${alert.type}-${alert.channel_id || alert.run_id || index}`} className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <div className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-200">
+                    <AlertTriangle className="size-4" />
+                    {alert.message || alert.type || '告警'}
+                  </div>
+                  <div className="mt-1 text-xs font-medium text-amber-700/80 dark:text-amber-200/80">
+                    {alert.channel_id ? `渠道 #${alert.channel_id}` : alert.run_id ? `对账 #${alert.run_id}` : alert.severity || '-'}
+                  </div>
+                </div>
+              ))
+            )}
+            {latestReconciliation?.run_id ? (
+              <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/reconciliation" />}>
+                <Scale className="size-4" />
+                查看对账
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       </div>
