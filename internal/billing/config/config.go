@@ -7,11 +7,13 @@ import (
 
 // Config holds the billing-service configuration.
 type Config struct {
-	Server   ServerConfig       `json:"server"`
-	Data     DataConfig         `json:"data"`
-	Billing  BillingConfig      `json:"billing"`
-	Payment  biz.PaymentConfig  `json:"payment"`
-	Registry appregistry.Config `json:"registry"`
+	Server      ServerConfig        `json:"server"`
+	Data        DataConfig          `json:"data"`
+	Billing     BillingConfig       `json:"billing"`
+	Payment     biz.PaymentConfig   `json:"payment"`
+	Clients     ClientsConfig       `json:"clients"`
+	Recon       ReconAlertConfig    `json:"recon"`
+	Registry    appregistry.Config  `json:"registry"`
 }
 
 type ServerConfig struct {
@@ -46,4 +48,23 @@ type BillingConfig struct {
 	GroupRatios        map[string]float64 `json:"group_ratios"`
 	ModelRatios        map[string]float64 `json:"model_ratios"`
 	CompletionRatios   map[string]float64 `json:"completion_ratios"`
+}
+
+// ClientsConfig holds gRPC endpoints for downstream services used by the
+// billing service. An empty Endpoint disables the client (notify alerts will
+// be silently dropped if notifier endpoint is empty).
+type ClientsConfig struct {
+	Notify NotifyClientConfig `json:"notify"`
+}
+
+type NotifyClientConfig struct {
+	Endpoint   string `json:"endpoint"`
+	NotifyType string `json:"notify_type"`
+}
+
+// ReconAlertConfig configures reconciliation job alert delivery.
+type ReconAlertConfig struct {
+	Enabled     bool     `json:"enabled"`
+	Recipients  []string `json:"recipients"`
+	Interval    string   `json:"interval"`
 }

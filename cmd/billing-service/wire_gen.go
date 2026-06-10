@@ -12,7 +12,10 @@ import (
 
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
+	notifyv1 "micro-one-api/api/notify/v1"
 	"micro-one-api/internal/billing/biz"
 	bcfg "micro-one-api/internal/billing/config"
 	"micro-one-api/internal/billing/data"
@@ -76,6 +79,32 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	alipayVerifier := biz.NewAlipayPaymentProvider(cfg.Payment.Alipay)
 	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)
 
+	// Build the optional notify-worker gRPC client. When the endpoint is empty
+	// or alerts are disabled, the job receives a noop notifier so legacy log
+	// behaviour is preserved.
+	var notifyConn *grpc.ClientConn
+	var notifier biz.Notifier = biz.NoopNotifier()
+	interval := 1 * time.Hour
+	recipients := []string{"admin"}
+	if cfg.Recon.Enabled {
+		if cfg.Recon.Interval != "" {
+			if d, parseErr := time.ParseDuration(cfg.Recon.Interval); parseErr == nil && d > 0 {
+				interval = d
+			}
+		}
+		if len(cfg.Recon.Recipients) > 0 {
+			recipients = cfg.Recon.Recipients
+		}
+		if cfg.Clients.Notify.Endpoint != "" {
+			notifyConn, err = grpc.NewClient(cfg.Clients.Notify.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				return nil, nil, fmt.Errorf("dial notify endpoint: %w", err)
+			}
+			client := notifyv1.NewNotifyServiceClient(notifyConn)
+			notifier = newGRPCNotifier(client, cfg.Clients.Notify.NotifyType)
+		}
+	}
+
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)
 
@@ -95,7 +124,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cleanupJob := biz.NewCleanupJob(uc, 1*time.Minute)
-	reconJob := biz.NewReconciliationJob(reconUc, 1*time.Hour)
+	reconJobOpts := []biz.JobOption{
+		biz.WithNotifier(notifier),
+		biz.WithRecipients(recipients),
+	}
+	reconJob := biz.NewReconciliationJob(reconUc, interval, reconJobOpts...)
 	go cleanupJob.Start(ctx)
 	go reconJob.Start(ctx)
 	go func() {
@@ -107,5 +140,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		reconJob.Stop()
 	}()
 
-	return app, func() { d.Close(); cancel() }, nil
+	return app, func() {
+		d.Close()
+		cancel()
+		if notifyConn != nil {
+			_ = notifyConn.Close()
+		}
+	}, nil
 }

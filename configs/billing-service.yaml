@@ -22,6 +22,14 @@ billing:
     svip: 1.0
   model_ratios: ${BILLING_MODEL_RATIOS:-{}}
   completion_ratios: ${BILLING_COMPLETION_RATIOS:-{}}
+clients:
+  notify:
+    endpoint: ${NOTIFY_GRPC_ENDPOINT:-}
+    notify_type: event
+recon:
+  enabled: ${RECON_ALERT_ENABLED:-true}
+  recipients: ${RECON_ALERT_RECIPIENTS:-[admin]}
+  interval: ${RECON_ALERT_INTERVAL:-1h}
 payment:
   quota_per_unit: ${PAYMENT_QUOTA_PER_UNIT:-500000}
   alipay:

@@ -130,12 +130,18 @@ services:
       - ALIPAY_ROOT_CERT_PATH=${ALIPAY_ROOT_CERT_PATH:-}
       - ALIPAY_PUBLIC_CERT_PATH=${ALIPAY_PUBLIC_CERT_PATH:-}
       - LOG_LEVEL=info
+      - NOTIFY_GRPC_ENDPOINT=${NOTIFY_GRPC_ENDPOINT:-notify-worker:9008}
+      - RECON_ALERT_ENABLED=${RECON_ALERT_ENABLED:-true}
+      - RECON_ALERT_RECIPIENTS=${RECON_ALERT_RECIPIENTS:-[admin]}
+      - RECON_ALERT_INTERVAL=${RECON_ALERT_INTERVAL:-1h}
       - LOG_FORMAT=json
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      notify-worker:
+        condition: service_started
     networks:
       - backend
     restart: unless-stopped
