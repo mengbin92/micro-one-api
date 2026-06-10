@@ -234,6 +234,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				ElapsedTime:      time.Since(startedAt).Milliseconds(),
 				IsStream:         false,
 			}
+			logUpstreamUsage(logInput)
 			if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				return err
 			}
@@ -365,6 +366,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 							s.logPostResponseCommitError(err)
 						} else {
+							logUpstreamUsage(logInput)
 							s.ingestUsageLogAfterResponse(logInput)
 						}
 						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
@@ -399,6 +401,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
+				logUpstreamUsage(logInput)
 				s.ingestUsageLogAfterResponse(logInput)
 			}
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
@@ -436,6 +439,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 						return err
 					}
+					logUpstreamUsage(logInput)
 					s.ingestUsageLog(ctx, logInput)
 					upstreamResp = fallbackResp.Response
 					responseChannel = ch
@@ -465,6 +469,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 			return err
 		}
+		logUpstreamUsage(logInput)
 		s.ingestUsageLog(ctx, logInput)
 		upstreamResp = resp
 		responseChannel = ch
@@ -998,6 +1003,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err
 		}
+		logUpstreamUsage(logInput)
 		s.ingestUsageLog(ctx, logInput)
 		s.writeJSON(w, http.StatusOK, resp)
 		return nil
@@ -1081,6 +1087,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		if err := s.commitQuotaAfterResponse(reservation.ReservationId, totalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
 		} else {
+			logUpstreamUsage(logInput)
 			s.ingestUsageLogAfterResponse(logInput)
 		}
 	} else {
@@ -1108,7 +1115,7 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 	if s.logClient == nil {
 		return
 	}
-	message := fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.ChannelID)
+	message := fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID)
 	_, err := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{
 		Level:            "consume",
 		Message:          message,
@@ -1120,6 +1127,7 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		Quota:            in.Quota,
 		PromptTokens:     in.PromptTokens,
 		CompletionTokens: in.CompletionTokens,
+		CacheReadTokens:  in.CacheReadTokens,
 		ChannelId:        in.ChannelID,
 		ElapsedTime:      in.ElapsedTime,
 		IsStream:         in.IsStream,
@@ -1127,6 +1135,51 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 	if err != nil && applogger.Log != nil {
 		applogger.Log.Warn("failed to ingest usage log", zap.Error(err))
 	}
+}
+
+func logUpstreamUsage(in usageLogInput) {
+	cacheRatio := float64(0)
+	if in.PromptTokens > 0 {
+		cacheRatio = float64(in.CacheReadTokens) / float64(in.PromptTokens)
+	}
+	nonCachedInputTokens := in.PromptTokens
+	if in.CacheReadTokens > 0 {
+		nonCachedInputTokens = in.PromptTokens - in.CacheReadTokens
+		if nonCachedInputTokens < 0 {
+			nonCachedInputTokens = 0
+		}
+	}
+	if applogger.Log == nil {
+		fmt.Printf("INFO msg=\"upstream usage reported\" request_id=%s endpoint=%s model=%s user_id=%d channel_id=%d is_stream=%t total_tokens=%d upstream_input_tokens=%d input_tokens=%d output_tokens=%d cache_read_tokens=%d cache_read_input_ratio=%.6f\n",
+			in.RequestID,
+			in.Endpoint,
+			in.ModelName,
+			in.UserID,
+			in.ChannelID,
+			in.IsStream,
+			in.Quota,
+			in.PromptTokens,
+			nonCachedInputTokens,
+			in.CompletionTokens,
+			in.CacheReadTokens,
+			cacheRatio,
+		)
+		return
+	}
+	applogger.Log.Info("upstream usage reported",
+		zap.String("request_id", in.RequestID),
+		zap.String("endpoint", in.Endpoint),
+		zap.String("model", in.ModelName),
+		zap.Int64("user_id", in.UserID),
+		zap.Int64("channel_id", in.ChannelID),
+		zap.Bool("is_stream", in.IsStream),
+		zap.Int64("total_tokens", in.Quota),
+		zap.Int64("upstream_input_tokens", in.PromptTokens),
+		zap.Int64("input_tokens", nonCachedInputTokens),
+		zap.Int64("output_tokens", in.CompletionTokens),
+		zap.Int64("cache_read_tokens", in.CacheReadTokens),
+		zap.Float64("cache_read_input_ratio", cacheRatio),
+	)
 }
 
 func postResponseContext() (context.Context, context.CancelFunc) {

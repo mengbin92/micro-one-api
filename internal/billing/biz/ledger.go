@@ -23,6 +23,7 @@ type Ledger struct {
 	Quota            int64
 	PromptTokens     int64
 	CompletionTokens int64
+	CacheReadTokens  int64
 	ChannelID        int64
 	ElapsedTime      int64
 	IsStream         bool
@@ -36,6 +37,7 @@ type DailyAggregate struct {
 	Quota            int64 // SUM(ABS(amount))
 	PromptTokens     int64
 	CompletionTokens int64
+	CacheReadTokens  int64
 	Count            int64
 	ElapsedTime      int64
 }
@@ -83,6 +85,7 @@ type UsageBucket struct {
 	GrossProfit      int64
 	PromptTokens     int64
 	CompletionTokens int64
+	CacheReadTokens  int64
 	Count            int64
 	ElapsedTime      int64
 }
@@ -94,6 +97,7 @@ type UsageTotals struct {
 	GrossProfit      int64
 	PromptTokens     int64
 	CompletionTokens int64
+	CacheReadTokens  int64
 	Count            int64
 	ElapsedTime      int64
 }

@@ -552,7 +552,7 @@ func TestIdentityHTTPUserLogsUsesAuthenticatedUser(t *testing.T) {
 	if !strings.Contains(body, `"success":true`) || !strings.Contains(body, `"type":"consume"`) {
 		t.Fatalf("logs response mismatch: %s", body)
 	}
-	for _, want := range []string{`"model_name":"mimo-v2.5"`, `"prompt_tokens":10`, `"completion_tokens":15`, `"endpoint":"/v1/chat/completions"`} {
+	for _, want := range []string{`"model_name":"mimo-v2.5"`, `"prompt_tokens":10`, `"completion_tokens":15`, `"cache_read_tokens":4`, `"endpoint":"/v1/chat/completions"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("logs response missing %s: %s", want, body)
 		}
@@ -630,6 +630,7 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 					Quota:            217500,
 					PromptTokens:     1000000,
 					CompletionTokens: 0,
+					CacheReadTokens:  250000,
 					Count:            1,
 					ElapsedTime:      100,
 				},
@@ -659,11 +660,13 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 			TodayQuota            int64 `json:"today_quota"`
 			TodayPromptTokens     int64 `json:"today_prompt_tokens"`
 			TodayCompletionTokens int64 `json:"today_completion_tokens"`
+			TodayCacheReadTokens  int64 `json:"today_cache_read_tokens"`
 			Usage                 []struct {
 				Date             string `json:"date"`
 				Quota            int64  `json:"quota"`
 				PromptTokens     int64  `json:"prompt_tokens"`
 				CompletionTokens int64  `json:"completion_tokens"`
+				CacheReadTokens  int64  `json:"cache_read_tokens"`
 			} `json:"usage"`
 		} `json:"data"`
 	}
@@ -687,6 +690,9 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 	if d.TodayCompletionTokens != 0 {
 		t.Errorf("today_completion_tokens = %d, want 0", d.TodayCompletionTokens)
 	}
+	if d.TodayCacheReadTokens != 250000 {
+		t.Errorf("today_cache_read_tokens = %d, want 250000", d.TodayCacheReadTokens)
+	}
 
 	// Verify 7-day usage chart also uses |amount|, not quota
 	for _, u := range d.Usage {
@@ -696,6 +702,9 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 			}
 			if u.PromptTokens != 1000000 {
 				t.Errorf("usage[%s].prompt_tokens = %d, want 1000000", todayStr, u.PromptTokens)
+			}
+			if u.CacheReadTokens != 250000 {
+				t.Errorf("usage[%s].cache_read_tokens = %d, want 250000", todayStr, u.CacheReadTokens)
 			}
 		}
 	}
@@ -1779,6 +1788,7 @@ func (c *identityHTTPBillingClient) ListLedger(ctx context.Context, req *billing
 				Quota:            25,
 				PromptTokens:     10,
 				CompletionTokens: 15,
+				CacheReadTokens:  4,
 				ChannelId:        2,
 				ElapsedTime:      123,
 				Endpoint:         "/v1/chat/completions",

@@ -63,6 +63,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 			quota INTEGER DEFAULT 0,
 			prompt_tokens INTEGER DEFAULT 0,
 			completion_tokens INTEGER DEFAULT 0,
+			cache_read_tokens INTEGER DEFAULT 0,
 			channel_id INTEGER DEFAULT 0,
 			elapsed_time INTEGER DEFAULT 0,
 			is_stream INTEGER DEFAULT 0,

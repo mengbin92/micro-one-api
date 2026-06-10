@@ -481,6 +481,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		Quota            int64
 		PromptTokens     int64
 		CompletionTokens int64
+		CacheReadTokens  int64
 		Count            int64
 		ElapsedTime      int64
 	}
@@ -489,7 +490,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		dayMap[d.Format("2006-01-02")] = &dailyUsage{}
 	}
 
-	var todayQuota, todayPromptTokens, todayCompletionTokens int64
+	var todayQuota, todayPromptTokens, todayCompletionTokens, todayCacheReadTokens int64
 	var totalElapsedTime, consumeCount int64
 
 	if aggResp != nil {
@@ -498,6 +499,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 				day.Quota = d.GetQuota()
 				day.PromptTokens = d.GetPromptTokens()
 				day.CompletionTokens = d.GetCompletionTokens()
+				day.CacheReadTokens = d.GetCacheReadTokens()
 				day.Count = d.GetCount()
 				day.ElapsedTime = d.GetElapsedTime()
 			}
@@ -505,6 +507,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 				todayQuota = d.GetQuota()
 				todayPromptTokens = d.GetPromptTokens()
 				todayCompletionTokens = d.GetCompletionTokens()
+				todayCacheReadTokens = d.GetCacheReadTokens()
 			}
 			totalElapsedTime += d.GetElapsedTime()
 			consumeCount += d.GetCount()
@@ -522,6 +525,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 			"quota":             day.Quota,
 			"prompt_tokens":     day.PromptTokens,
 			"completion_tokens": day.CompletionTokens,
+			"cache_read_tokens": day.CacheReadTokens,
 		})
 	}
 
@@ -559,6 +563,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		"today_quota":             todayQuota,
 		"today_prompt_tokens":     todayPromptTokens,
 		"today_completion_tokens": todayCompletionTokens,
+		"today_cache_read_tokens": todayCacheReadTokens,
 		"avg_latency":             avgLatency,
 		"model_distribution":      modelDistribution,
 	}})
@@ -680,6 +685,7 @@ func ledgerEntryToMap(entry *commonv1.LedgerEntry) map[string]interface{} {
 		"quota":             entry.GetQuota(),
 		"prompt_tokens":     entry.GetPromptTokens(),
 		"completion_tokens": entry.GetCompletionTokens(),
+		"cache_read_tokens": entry.GetCacheReadTokens(),
 		"channel_id":        entry.GetChannelId(),
 		"elapsed_time":      entry.GetElapsedTime(),
 		"is_stream":         entry.GetIsStream(),

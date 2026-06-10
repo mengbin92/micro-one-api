@@ -32,6 +32,7 @@ func setupLedgerTestDB(t *testing.T) *gorm.DB {
 			quota INTEGER DEFAULT 0,
 			prompt_tokens INTEGER DEFAULT 0,
 			completion_tokens INTEGER DEFAULT 0,
+			cache_read_tokens INTEGER DEFAULT 0,
 			channel_id INTEGER DEFAULT 0,
 			elapsed_time INTEGER DEFAULT 0,
 			is_stream INTEGER DEFAULT 0,
@@ -67,6 +68,7 @@ func TestLedgerRepo_CreateLedger(t *testing.T) {
 		Quota:            12,
 		PromptTokens:     7,
 		CompletionTokens: 5,
+		CacheReadTokens:  3,
 		ChannelID:        3,
 		ElapsedTime:      123,
 		Endpoint:         "/v1/chat/completions",
@@ -88,6 +90,7 @@ func TestLedgerRepo_CreateLedger(t *testing.T) {
 	assert.Equal(t, "token-1", model.TokenName)
 	assert.Equal(t, "gpt-test", model.ModelName)
 	assert.Equal(t, int64(12), model.Quota)
+	assert.Equal(t, int64(3), model.CacheReadTokens)
 }
 
 func TestLedgerRepo_ListLedgers(t *testing.T) {
@@ -186,13 +189,13 @@ func TestLedgerRepo_AggregateLedgerByDate(t *testing.T) {
 
 	// Insert test data: two days, two models, quota != |amount| (simulates ModelPrice billing)
 	err := db.Exec(`
-		INSERT INTO billing_ledgers (user_id, amount, balance_after, type, model_name, quota, prompt_tokens, completion_tokens, elapsed_time, created_at)
+		INSERT INTO billing_ledgers (user_id, amount, balance_after, type, model_name, quota, prompt_tokens, completion_tokens, cache_read_tokens, elapsed_time, created_at)
 		VALUES
-			('u1', -217500, 782500, 'consume', 'mimo-v2.5-pro', 1000000, 600000, 400000, 500, ?),
-			('u1', -100, 782400, 'consume', 'gpt-4o', 200, 100, 100, 200, ?),
-			('u1', -300, 782100, 'consume', 'mimo-v2.5-pro', 500, 300, 200, 300, ?),
-			('u1', 500000, 1282100, 'recharge', '', 0, 0, 0, 0, ?),
-			('u2', -999, 0, 'consume', 'other-model', 999, 500, 499, 100, ?)
+			('u1', -217500, 782500, 'consume', 'mimo-v2.5-pro', 1000000, 600000, 400000, 120000, 500, ?),
+			('u1', -100, 782400, 'consume', 'gpt-4o', 200, 100, 100, 20, 200, ?),
+			('u1', -300, 782100, 'consume', 'mimo-v2.5-pro', 500, 300, 200, 30, 300, ?),
+			('u1', 500000, 1282100, 'recharge', '', 0, 0, 0, 0, 0, ?),
+			('u2', -999, 0, 'consume', 'other-model', 999, 500, 499, 50, 100, ?)
 	`, today, today, yesterday, yesterday, today).Error
 	require.NoError(t, err)
 
@@ -214,6 +217,7 @@ func TestLedgerRepo_AggregateLedgerByDate(t *testing.T) {
 	assert.Equal(t, int64(300), daily[0].Quota) // |amount|, NOT quota(500)
 	assert.Equal(t, int64(300), daily[0].PromptTokens)
 	assert.Equal(t, int64(200), daily[0].CompletionTokens)
+	assert.Equal(t, int64(30), daily[0].CacheReadTokens)
 	assert.Equal(t, int64(1), daily[0].Count)
 
 	// Today: 2 entries, amount=(-217500)+(-100), quota=217600
@@ -221,6 +225,7 @@ func TestLedgerRepo_AggregateLedgerByDate(t *testing.T) {
 	assert.Equal(t, int64(217600), daily[1].Quota) // 217500 + 100
 	assert.Equal(t, int64(600100), daily[1].PromptTokens)
 	assert.Equal(t, int64(400100), daily[1].CompletionTokens)
+	assert.Equal(t, int64(120020), daily[1].CacheReadTokens)
 	assert.Equal(t, int64(2), daily[1].Count)
 
 	// Models: mimo-v2.5-pro (1M+500 tokens) > gpt-4o (200 tokens)
@@ -266,9 +271,9 @@ func TestLedgerRepo_AggregateUsage_ByChannelCrossUser(t *testing.T) {
 	ctx := context.Background()
 
 	seed := []*biz.Ledger{
-		{UserID: "u1", Amount: -100, UpstreamCost: 30, Type: "consume", ModelName: "gpt-a", ChannelID: 1, PromptTokens: 10, CompletionTokens: 5, ElapsedTime: 100},
-		{UserID: "u2", Amount: -50, UpstreamCost: 20, Type: "consume", ModelName: "gpt-a", ChannelID: 1, PromptTokens: 4, CompletionTokens: 2, ElapsedTime: 40},
-		{UserID: "u1", Amount: -25, UpstreamCost: 10, Type: "consume", ModelName: "gpt-b", ChannelID: 2, PromptTokens: 3, CompletionTokens: 1, ElapsedTime: 20},
+		{UserID: "u1", Amount: -100, UpstreamCost: 30, Type: "consume", ModelName: "gpt-a", ChannelID: 1, PromptTokens: 10, CompletionTokens: 5, CacheReadTokens: 2, ElapsedTime: 100},
+		{UserID: "u2", Amount: -50, UpstreamCost: 20, Type: "consume", ModelName: "gpt-a", ChannelID: 1, PromptTokens: 4, CompletionTokens: 2, CacheReadTokens: 1, ElapsedTime: 40},
+		{UserID: "u1", Amount: -25, UpstreamCost: 10, Type: "consume", ModelName: "gpt-b", ChannelID: 2, PromptTokens: 3, CompletionTokens: 1, CacheReadTokens: 1, ElapsedTime: 20},
 		{UserID: "u1", Amount: 1000, Type: "recharge", ChannelID: 0},
 	}
 	for _, l := range seed {
@@ -288,6 +293,7 @@ func TestLedgerRepo_AggregateUsage_ByChannelCrossUser(t *testing.T) {
 	assert.Equal(t, int64(150), buckets[0].Quota)
 	assert.Equal(t, int64(50), buckets[0].UpstreamCost)
 	assert.Equal(t, int64(100), buckets[0].GrossProfit)
+	assert.Equal(t, int64(3), buckets[0].CacheReadTokens)
 	assert.Equal(t, int64(2), buckets[0].Count)
 	assert.Equal(t, int64(2), buckets[1].ChannelID)
 	assert.Equal(t, int64(25), buckets[1].Quota)
@@ -296,6 +302,7 @@ func TestLedgerRepo_AggregateUsage_ByChannelCrossUser(t *testing.T) {
 	assert.Equal(t, int64(175), totals.Quota)
 	assert.Equal(t, int64(60), totals.UpstreamCost)
 	assert.Equal(t, int64(115), totals.GrossProfit)
+	assert.Equal(t, int64(4), totals.CacheReadTokens)
 	assert.Equal(t, int64(3), totals.Count)
 }
 

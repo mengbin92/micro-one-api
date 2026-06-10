@@ -28,6 +28,7 @@ interface UsageItem {
   quota: number;
   prompt_tokens?: number;
   completion_tokens?: number;
+  cache_read_tokens?: number;
 }
 
 interface UserSelf {
@@ -48,6 +49,7 @@ interface AccountDashboard {
   today_quota?: number;
   today_prompt_tokens?: number;
   today_completion_tokens?: number;
+  today_cache_read_tokens?: number;
   avg_latency?: number;
   model_distribution?: ModelDistributionItem[];
 }
@@ -88,6 +90,13 @@ function compactNumber(value: number) {
 
 function numberOrZero(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function nonCachedInputTokens(item: UsageItem) {
+  const inputTokens = item.prompt_tokens || 0;
+  const cacheReadTokens = item.cache_read_tokens || 0;
+  if (cacheReadTokens <= 0) return inputTokens;
+  return Math.max(0, inputTokens - cacheReadTokens);
 }
 
 function normalizeTokens(data: Token[] | TokenListData): Token[] {
@@ -176,22 +185,25 @@ export function DashboardPage() {
   const items = Array.isArray(dashboard?.usage) ? dashboard.usage : [];
   const latest = items.at(-1);
   const totalCount = items.reduce((s, x) => s + (x.count || 0), 0);
-  const promptTokens = items.reduce((s, x) => s + (x.prompt_tokens || 0), 0);
+  const promptTokens = items.reduce((s, x) => s + nonCachedInputTokens(x), 0);
   const completionTokens = items.reduce((s, x) => s + (x.completion_tokens || 0), 0);
-  const totalTokens = promptTokens + completionTokens;
+  const cacheReadTokens = items.reduce((s, x) => s + (x.cache_read_tokens || 0), 0);
+  const totalTokens = promptTokens + completionTokens + cacheReadTokens;
   const remainingQuota = numberOrZero(dashboard?.quota);
   const usedQuota = numberOrZero(dashboard?.used_quota);
   const requestCount = items.length > 0 ? totalCount : numberOrZero(dashboard?.request_count);
   const todayRequests = latest?.count ?? 0;
   const todayQuota = dashboard?.today_quota ?? latest?.quota ?? 0;
-  const todayPromptTokens = dashboard?.today_prompt_tokens ?? latest?.prompt_tokens ?? 0;
+  const todayPromptTokens = latest ? nonCachedInputTokens(latest) : dashboard?.today_prompt_tokens ?? 0;
   const todayCompletionTokens = dashboard?.today_completion_tokens ?? latest?.completion_tokens ?? 0;
+  const todayCacheReadTokens = dashboard?.today_cache_read_tokens ?? latest?.cache_read_tokens ?? 0;
   const avgLatency = dashboard?.avg_latency ?? 0;
   const chartData = items.map((item) => ({
     ...item,
     label: item.date || item.day,
-    input_tokens: item.prompt_tokens || 0,
+    input_tokens: nonCachedInputTokens(item),
     output_tokens: item.completion_tokens || 0,
+    cache_read_tokens: item.cache_read_tokens || 0,
   }));
   const tokenCount = tokens?.length ?? 0;
   const activeTokenCount = tokens?.filter((token) => token.status === 1).length ?? tokenCount;
@@ -233,7 +245,7 @@ export function DashboardPage() {
             <MetricCard title="已用额度" value={`$${formatQuota(usedQuota, 4)}`} subtitle="累计消耗" tone="purple" icon={Sparkles} />
             <MetricCard title="调用次数" value={requestCount.toLocaleString()} subtitle={`今日 ${todayRequests.toLocaleString()}`} tone="green" icon={BarChart3} />
             <MetricCard title="API 密钥" value={tokenCount.toLocaleString()} subtitle={`可用 ${activeTokenCount.toLocaleString()}`} tone="blue" icon={KeyRound} />
-            <MetricCard title="今日消耗" value={`$${formatQuota(todayQuota, 4)}`} subtitle={`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)}`} tone="amber" icon={Box} />
+            <MetricCard title="今日消耗" value={`$${formatQuota(todayQuota, 4)}`} subtitle={`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)} / 缓存 ${compactNumber(todayCacheReadTokens)}`} tone="amber" icon={Box} />
             <MetricCard title="平均延迟" value={avgLatency > 0 ? `${(avgLatency / 1000).toFixed(2)}s` : "-"} subtitle={avgLatency > 0 ? `${totalCount} 次调用` : "暂无数据"} tone="blue" icon={Zap} />
           </>
         )}
@@ -251,7 +263,7 @@ export function DashboardPage() {
                   总量 {compactNumber(totalTokens)} Tokens
                 </p>
                 <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-                  输入 {compactNumber(promptTokens)} / 输出 {compactNumber(completionTokens)}
+                  输入 {compactNumber(promptTokens)} / 输出 {compactNumber(completionTokens)} / 缓存 {compactNumber(cacheReadTokens)}
                 </p>
               </div>
               <div className="h-11 rounded-lg border border-slate-200 px-4 text-sm font-bold leading-11 text-slate-700 dark:border-white/10 dark:text-slate-200">
@@ -271,6 +283,10 @@ export function DashboardPage() {
                     <linearGradient id="inputTokens" x1="0" x2="0" y1="0" y2="1">
                       <stop offset="0%" stopColor="#f97316" stopOpacity={0.24} />
                       <stop offset="100%" stopColor="#f97316" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="cacheReadTokens" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.20} />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" vertical={false} />
@@ -292,6 +308,14 @@ export function DashboardPage() {
                     stroke="#2563eb"
                     strokeWidth={3}
                     fill="transparent"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="cache_read_tokens"
+                    name="缓存 Tokens"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    fill="url(#cacheReadTokens)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -333,6 +357,12 @@ export function DashboardPage() {
                       {entry.name}
                     </div>
                   ))}
+                  {cacheReadTokens > 0 ? (
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                      <span className="size-3 rounded-full bg-emerald-500" />
+                      缓存 Tokens {compactNumber(cacheReadTokens)}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}

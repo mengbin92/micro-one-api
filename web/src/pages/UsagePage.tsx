@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowDown, ArrowUp, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
@@ -28,6 +30,7 @@ interface UsageLog {
   quota?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
+  cache_read_tokens?: number;
   elapsed_time?: number;
   is_stream?: boolean;
 }
@@ -66,12 +69,149 @@ function formatDuration(value?: number) {
   return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${value}ms`;
 }
 
-function totalTokens(log: UsageLog) {
-  return log.quota || (log.prompt_tokens || 0) + (log.completion_tokens || 0);
+function nonCachedInputTokens(log: UsageLog) {
+  const inputTokens = log.prompt_tokens || 0;
+  const cacheReadTokens = log.cache_read_tokens || 0;
+  if (cacheReadTokens <= 0) return inputTokens;
+  return Math.max(0, inputTokens - cacheReadTokens);
+}
+
+function displayTotalTokens(log: UsageLog) {
+  return log.quota || nonCachedInputTokens(log) + (log.completion_tokens || 0) + (log.cache_read_tokens || 0);
 }
 
 function hasTokenBreakdown(log: UsageLog) {
-  return (log.prompt_tokens || 0) > 0 || (log.completion_tokens || 0) > 0;
+  return (log.prompt_tokens || 0) > 0 || (log.completion_tokens || 0) > 0 || (log.cache_read_tokens || 0) > 0;
+}
+
+function compactToken(value?: number) {
+  const safeValue = value || 0;
+  if (safeValue >= 1000000) return `${(safeValue / 1000000).toFixed(2)}M`;
+  if (safeValue >= 1000) return `${(safeValue / 1000).toFixed(1)}K`;
+  return safeValue.toLocaleString();
+}
+
+interface TooltipState {
+  x: number;
+  y: number;
+  placement: 'top' | 'bottom';
+}
+
+function TokenUsageTooltip({
+  inputTokens,
+  upstreamInputTokens,
+  outputTokens,
+  cacheReadTokens,
+  total,
+  state,
+}: {
+  inputTokens: number;
+  upstreamInputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  total: number;
+  state: TooltipState;
+}) {
+  return createPortal(
+    <div
+      className="pointer-events-none fixed z-[100] w-44 rounded-lg bg-slate-950 px-4 py-3 text-xs font-medium text-slate-300 shadow-xl dark:bg-slate-900"
+      style={{
+        left: state.x,
+        top: state.y,
+        transform: state.placement === 'top' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
+      }}
+    >
+      <div className="mb-2 text-sm font-bold text-white">Token 明细</div>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-4">
+          <span>输入 Token</span>
+          <span className="font-bold text-white">{inputTokens.toLocaleString()}</span>
+        </div>
+        {cacheReadTokens > 0 ? (
+          <div className="flex items-center justify-between gap-4 text-slate-500">
+            <span>上游输入 Token</span>
+            <span className="font-bold">{upstreamInputTokens.toLocaleString()}</span>
+          </div>
+        ) : null}
+        <div className="flex items-center justify-between gap-4">
+          <span>输出 Token</span>
+          <span className="font-bold text-white">{outputTokens.toLocaleString()}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span>缓存读取 Token</span>
+          <span className="font-bold text-white">{cacheReadTokens.toLocaleString()}</span>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-4 border-t border-white/10 pt-2">
+          <span>总 Token</span>
+          <span className="font-bold text-sky-300">{total.toLocaleString()}</span>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function TokenUsageCell({ log }: { log: UsageLog }) {
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const upstreamInputTokens = log.prompt_tokens || 0;
+  const inputTokens = nonCachedInputTokens(log);
+  const outputTokens = log.completion_tokens || 0;
+  const cacheReadTokens = log.cache_read_tokens || 0;
+  const total = displayTotalTokens(log);
+
+  if (!hasTokenBreakdown(log)) {
+    return <span className="text-sm font-semibold">{(log.quota || 0).toLocaleString()}</span>;
+  }
+
+  function showTooltip(event: React.MouseEvent<HTMLDivElement> | React.FocusEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const tooltipHeight = cacheReadTokens > 0 ? 164 : 144;
+    const gap = 10;
+    const hasRoomAbove = rect.top > tooltipHeight + gap;
+    const nextX = Math.min(Math.max(rect.left + rect.width / 2, 96), window.innerWidth - 96);
+    setTooltip({
+      x: nextX,
+      y: hasRoomAbove ? rect.top - gap : rect.bottom + gap,
+      placement: hasRoomAbove ? 'top' : 'bottom',
+    });
+  }
+
+  return (
+    <div
+      className="relative inline-flex min-w-[130px] flex-col gap-1"
+      tabIndex={0}
+      onMouseEnter={showTooltip}
+      onMouseMove={showTooltip}
+      onMouseLeave={() => setTooltip(null)}
+      onFocus={showTooltip}
+      onBlur={() => setTooltip(null)}
+    >
+      <div className="flex items-center gap-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        <span className="inline-flex items-center gap-1 tabular-nums">
+          <ArrowDown className="size-3.5 text-emerald-500" />
+          {compactToken(inputTokens)}
+        </span>
+        <span className="inline-flex items-center gap-1 tabular-nums">
+          <ArrowUp className="size-3.5 text-violet-500" />
+          {compactToken(outputTokens)}
+        </span>
+      </div>
+      <div className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 dark:text-sky-300">
+        <Database className="size-3.5" />
+        <span className="tabular-nums">{compactToken(cacheReadTokens)}</span>
+      </div>
+      {tooltip ? (
+        <TokenUsageTooltip
+          inputTokens={inputTokens}
+          upstreamInputTokens={upstreamInputTokens}
+          outputTokens={outputTokens}
+          cacheReadTokens={cacheReadTokens}
+          total={total}
+          state={tooltip}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 export function UsagePage() {
@@ -165,14 +305,7 @@ export function UsagePage() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <div className="text-sm font-semibold">
-                        {totalTokens(log).toLocaleString()}
-                        {hasTokenBreakdown(log) ? (
-                          <div className="text-xs text-slate-400">
-                            输入 {(log.prompt_tokens || 0).toLocaleString()} / 输出 {(log.completion_tokens || 0).toLocaleString()}
-                          </div>
-                        ) : null}
-                      </div>
+                      <TokenUsageCell log={log} />
                     </TableCell>
                     <TableCell className="font-semibold text-emerald-600">{formatQuota(Math.abs(log.amount ?? 0))}</TableCell>
                     <TableCell>{formatDuration(log.elapsed_time)}</TableCell>

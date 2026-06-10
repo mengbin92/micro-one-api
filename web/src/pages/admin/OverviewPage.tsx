@@ -68,6 +68,7 @@ interface UsageAggregateItem {
   gross_profit?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
+  cache_read_tokens?: number;
   count?: number;
   balance?: number;
   status?: number;

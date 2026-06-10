@@ -447,6 +447,7 @@ export interface components {
             channelId?: string;
             elapsedTime?: string;
             isStream?: boolean;
+            cacheReadTokens?: string;
         };
         "api.log.v1.IngestLogRequest": {
             level?: string;
@@ -463,6 +464,7 @@ export interface components {
             channelId?: string;
             elapsedTime?: string;
             isStream?: boolean;
+            cacheReadTokens?: string;
         };
         "api.log.v1.IngestLogResponse": {
             id?: string;

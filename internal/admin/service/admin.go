@@ -752,6 +752,7 @@ type UsageAggregateView struct {
 	GrossProfit      int64  `json:"gross_profit"`
 	PromptTokens     int64  `json:"prompt_tokens"`
 	CompletionTokens int64  `json:"completion_tokens"`
+	CacheReadTokens  int64  `json:"cache_read_tokens"`
 	Count            int64  `json:"count"`
 	ElapsedTime      int64  `json:"elapsed_time"`
 }
@@ -805,6 +806,7 @@ func usageAggregateViewFromBucket(bucket *billingv1.UsageBucket, groupBy string)
 		GrossProfit:      bucket.GetGrossProfit(),
 		PromptTokens:     bucket.GetPromptTokens(),
 		CompletionTokens: bucket.GetCompletionTokens(),
+		CacheReadTokens:  bucket.GetCacheReadTokens(),
 		Count:            bucket.GetCount(),
 		ElapsedTime:      bucket.GetElapsedTime(),
 	}
@@ -1693,6 +1695,7 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"quota":            entry.GetQuota(),
 			"promptTokens":     entry.GetPromptTokens(),
 			"completionTokens": entry.GetCompletionTokens(),
+			"cacheReadTokens":  entry.GetCacheReadTokens(),
 			"channelId":        entry.GetChannelId(),
 			"elapsedTime":      entry.GetElapsedTime(),
 			"isStream":         entry.GetIsStream(),

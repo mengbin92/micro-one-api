@@ -35,6 +35,7 @@ type logModel struct {
 	Quota            int64  `gorm:"column:quota"`
 	PromptTokens     int64  `gorm:"column:prompt_tokens"`
 	CompletionTokens int64  `gorm:"column:completion_tokens"`
+	CacheReadTokens  int64  `gorm:"column:cache_read_tokens"`
 	ChannelID        int64  `gorm:"column:channel_id"`
 	ElapsedTime      int64  `gorm:"column:elapsed_time"`
 	IsStream         bool   `gorm:"column:is_stream"`
@@ -148,6 +149,7 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.LogEntry, error)
 		Quota:            m.Quota,
 		PromptTokens:     m.PromptTokens,
 		CompletionTokens: m.CompletionTokens,
+		CacheReadTokens:  m.CacheReadTokens,
 		ChannelID:        m.ChannelID,
 		ElapsedTime:      m.ElapsedTime,
 		IsStream:         m.IsStream,
@@ -219,6 +221,7 @@ func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
 		Quota:            entry.Quota,
 		PromptTokens:     entry.PromptTokens,
 		CompletionTokens: entry.CompletionTokens,
+		CacheReadTokens:  entry.CacheReadTokens,
 		ChannelID:        entry.ChannelID,
 		ElapsedTime:      entry.ElapsedTime,
 		IsStream:         entry.IsStream,
@@ -250,7 +253,7 @@ func (r *Repository) deleteDB(ctx context.Context, filter biz.DeleteLogsFilter) 
 
 func (r *Repository) usageByUserDB(ctx context.Context, userID int64, startTime, endTime time.Time) ([]*biz.UsageStat, error) {
 	query := r.db.WithContext(ctx).Table("logs").
-		Select("FROM_UNIXTIME(created_at, '%Y-%m-%d') AS day, model_name, COUNT(1) AS request_count, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens").
+		Select("FROM_UNIXTIME(created_at, '%Y-%m-%d') AS day, model_name, COUNT(1) AS request_count, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens").
 		Where("user_id = ? AND model_name <> ''", userID)
 	if !startTime.IsZero() {
 		query = query.Where("created_at >= ?", startTime.Unix())
@@ -280,6 +283,7 @@ func logModelToEntry(m logModel) *biz.LogEntry {
 		Quota:            m.Quota,
 		PromptTokens:     m.PromptTokens,
 		CompletionTokens: m.CompletionTokens,
+		CacheReadTokens:  m.CacheReadTokens,
 		ChannelID:        m.ChannelID,
 		ElapsedTime:      m.ElapsedTime,
 		IsStream:         m.IsStream,
@@ -417,6 +421,7 @@ func (r *Repository) usageByUserMemory(userID int64, startTime, endTime time.Tim
 		stat.Quota += entry.Quota
 		stat.PromptTokens += entry.PromptTokens
 		stat.CompletionTokens += entry.CompletionTokens
+		stat.CacheReadTokens += entry.CacheReadTokens
 	}
 	stats := make([]*biz.UsageStat, 0, len(statsByKey))
 	for _, stat := range statsByKey {

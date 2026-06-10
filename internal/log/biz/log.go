@@ -26,6 +26,7 @@ type LogEntry struct {
 	Quota            int64
 	PromptTokens     int64
 	CompletionTokens int64
+	CacheReadTokens  int64
 	ChannelID        int64
 	ElapsedTime      int64
 	IsStream         bool
@@ -39,6 +40,7 @@ type UsageStat struct {
 	Quota            int64  `json:"quota"`
 	PromptTokens     int64  `json:"prompt_tokens"`
 	CompletionTokens int64  `json:"completion_tokens"`
+	CacheReadTokens  int64  `json:"cache_read_tokens"`
 }
 
 type DeleteLogsFilter struct {

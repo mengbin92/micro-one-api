@@ -48,6 +48,7 @@ type ledgerModel struct {
 	Quota            int64     `gorm:"column:quota"`
 	PromptTokens     int64     `gorm:"column:prompt_tokens"`
 	CompletionTokens int64     `gorm:"column:completion_tokens"`
+	CacheReadTokens  int64     `gorm:"column:cache_read_tokens"`
 	ChannelID        int64     `gorm:"column:channel_id"`
 	ElapsedTime      int64     `gorm:"column:elapsed_time"`
 	IsStream         bool      `gorm:"column:is_stream"`

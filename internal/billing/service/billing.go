@@ -340,6 +340,7 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 			Quota:            ledger.Quota,
 			PromptTokens:     ledger.PromptTokens,
 			CompletionTokens: ledger.CompletionTokens,
+			CacheReadTokens:  ledger.CacheReadTokens,
 			ChannelId:        ledger.ChannelID,
 			ElapsedTime:      ledger.ElapsedTime,
 			IsStream:         ledger.IsStream,
@@ -373,19 +374,21 @@ func (s *BillingService) AggregateLedgerByDate(ctx context.Context, req *billing
 	}
 
 	dailyProto := make([]*billingv1.DailyUsage, len(daily))
-	var totalQuota, totalPrompt, totalCompletion, totalCount int64
+	var totalQuota, totalPrompt, totalCompletion, totalCacheRead, totalCount int64
 	for i, d := range daily {
 		dailyProto[i] = &billingv1.DailyUsage{
 			Date:             d.Date,
 			Quota:            d.Quota,
 			PromptTokens:     d.PromptTokens,
 			CompletionTokens: d.CompletionTokens,
+			CacheReadTokens:  d.CacheReadTokens,
 			Count:            d.Count,
 			ElapsedTime:      d.ElapsedTime,
 		}
 		totalQuota += d.Quota
 		totalPrompt += d.PromptTokens
 		totalCompletion += d.CompletionTokens
+		totalCacheRead += d.CacheReadTokens
 		totalCount += d.Count
 	}
 
@@ -403,6 +406,7 @@ func (s *BillingService) AggregateLedgerByDate(ctx context.Context, req *billing
 		TotalQuota:            totalQuota,
 		TotalPromptTokens:     totalPrompt,
 		TotalCompletionTokens: totalCompletion,
+		TotalCacheReadTokens:  totalCacheRead,
 		TotalCount:            totalCount,
 	}, nil
 }
@@ -443,6 +447,7 @@ func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.Aggr
 			GrossProfit:      b.GrossProfit,
 			PromptTokens:     b.PromptTokens,
 			CompletionTokens: b.CompletionTokens,
+			CacheReadTokens:  b.CacheReadTokens,
 			Count:            b.Count,
 			ElapsedTime:      b.ElapsedTime,
 		}
@@ -459,6 +464,7 @@ func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.Aggr
 			GrossProfit:      totals.GrossProfit,
 			PromptTokens:     totals.PromptTokens,
 			CompletionTokens: totals.CompletionTokens,
+			CacheReadTokens:  totals.CacheReadTokens,
 			Count:            totals.Count,
 			ElapsedTime:      totals.ElapsedTime,
 		},

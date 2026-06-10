@@ -212,6 +212,7 @@ func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationI
 			Quota:            actualTokens,
 			PromptTokens:     usage.PromptTokens,
 			CompletionTokens: usage.CompletionTokens,
+			CacheReadTokens:  usage.CacheReadTokens,
 			ChannelID:        parseInt64Default(reservation.ChannelID, 0),
 			ElapsedTime:      usage.ElapsedTime,
 			IsStream:         usage.IsStream,

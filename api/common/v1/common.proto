@@ -150,6 +150,7 @@ message LedgerEntry {
   int64 elapsed_time = 15;
   bool is_stream = 16;
   string endpoint = 17;
+  int64 cache_read_tokens = 18;
 }
 
 // ========== 流水信息（管理端视图）==========

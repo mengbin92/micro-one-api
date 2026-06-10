@@ -351,6 +351,7 @@ message AggregateLedgerByDateResponse {
   int64 total_prompt_tokens = 4;
   int64 total_completion_tokens = 5;
   int64 total_count = 6;
+  int64 total_cache_read_tokens = 7;
 }
 
 message DailyUsage {
@@ -360,6 +361,7 @@ message DailyUsage {
   int64 completion_tokens = 4;
   int64 count = 5;
   int64 elapsed_time = 6;
+  int64 cache_read_tokens = 7;
 }
 
 message ModelUsage {
@@ -403,6 +405,7 @@ message UsageBucket {
   int64 elapsed_time = 12;
   int64 upstream_cost = 13;
   int64 gross_profit = 14;
+  int64 cache_read_tokens = 15;
 }
 
 message UsageTotals {
@@ -413,4 +416,5 @@ message UsageTotals {
   int64 elapsed_time = 5;
   int64 upstream_cost = 6;
   int64 gross_profit = 7;
+  int64 cache_read_tokens = 8;
 }

@@ -46,6 +46,7 @@ message GetLogResponse {
   int64 channel_id = 14;
   int64 elapsed_time = 15;
   bool is_stream = 16;
+  int64 cache_read_tokens = 17;
 }
 
 message ListLogsRequest {
@@ -74,6 +75,7 @@ message IngestLogRequest {
   int64 channel_id = 12;
   int64 elapsed_time = 13;
   bool is_stream = 14;
+  int64 cache_read_tokens = 15;
 }
 
 message IngestLogResponse {

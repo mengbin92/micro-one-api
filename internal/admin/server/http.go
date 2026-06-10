@@ -598,6 +598,7 @@ func usageAggregateViewToMap(item service.UsageAggregateView) map[string]interfa
 		"gross_profit":      item.GrossProfit,
 		"prompt_tokens":     item.PromptTokens,
 		"completion_tokens": item.CompletionTokens,
+		"cache_read_tokens": item.CacheReadTokens,
 		"count":             item.Count,
 		"elapsed_time":      item.ElapsedTime,
 	}
