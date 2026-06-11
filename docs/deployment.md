@@ -338,7 +338,7 @@ scrape_configs:
 
 ## 8. 数据库迁移
 
-SQL 迁移文件位于 `migrations/billing/`，Docker Compose 启动时自动执行。
+SQL 迁移文件位于仓库根目录的 `migrations/`，Docker Compose 启动 MySQL 时会自动执行。
 
 手动迁移：
 
@@ -346,6 +346,6 @@ SQL 迁移文件位于 `migrations/billing/`，Docker Compose 启动时自动执
 # 进入 MySQL
 docker compose exec mysql mysql -u root -p oneapi
 
-# 执行迁移文件
+# 执行迁移文件示例
 source /docker-entrypoint-initdb.d/001_create_users.sql
 ```
