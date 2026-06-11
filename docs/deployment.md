@@ -30,11 +30,11 @@ Micro-One-API 由 9 个微服务组成：
 ### 2.2 启动
 
 ```bash
-# 设置 MySQL root 密码
-export MYSQL_ROOT_PASSWORD=your_secure_password
+cd deployments/docker-compose
+cp .env.example .env
+# 编辑 .env，至少替换数据库、Redis 和服务密钥
 
 # 启动全部服务
-cd deployments/docker-compose
 docker compose up -d
 
 # 查看服务状态
