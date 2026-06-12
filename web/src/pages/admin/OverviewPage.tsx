@@ -62,6 +62,7 @@ interface UsageAggregateItem {
   user_id?: string;
   channel_id?: number;
   model?: string;
+  token_name?: string;
   name?: string;
   quota?: number;
   upstream_cost?: number;
@@ -105,6 +106,7 @@ interface AdminSummary {
   top_models?: UsageAggregateItem[];
   top_channels?: UsageAggregateItem[];
   top_users?: UsageAggregateItem[];
+  top_tokens?: UsageAggregateItem[];
   alerts?: SummaryAlert[];
   latest_reconciliation?: ReconciliationSummary;
   model_catalog?: Array<{ id?: string; owned_by?: string }>;
@@ -145,6 +147,13 @@ function formatQuota(value?: number | string, quotaPerUnit?: number) {
 
 function formatInteger(value?: number): string {
   return numberValue(value).toLocaleString();
+}
+
+function formatCompactInteger(value?: number): string {
+  const n = numberValue(value);
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
 }
 
 function formatMoneyCents(value?: number | string) {
@@ -191,6 +200,10 @@ function modelCount(channels: AdminChannel[]) {
       .forEach((model) => models.add(model));
   });
   return models.size;
+}
+
+function totalTokens(item: UsageAggregateItem) {
+  return numberValue(item.prompt_tokens) + numberValue(item.completion_tokens) + numberValue(item.cache_read_tokens);
 }
 
 function StatCard({
@@ -256,10 +269,84 @@ function CostCard({
   );
 }
 
-function topItemLabel(item: UsageAggregateItem, kind: 'model' | 'channel' | 'user') {
+function topItemLabel(item: UsageAggregateItem, kind: 'model' | 'channel' | 'user' | 'token') {
   if (kind === 'model') return item.model || item.key || '-';
   if (kind === 'channel') return item.name || (item.channel_id ? `#${item.channel_id}` : item.key || '-');
+  if (kind === 'token') return item.token_name || item.key || '-';
   return item.user_id || item.key || '-';
+}
+
+function TopUsageChartCard({
+  title,
+  kind,
+  items,
+  isLoading,
+  emptyTitle,
+  emptyDescription,
+  quotaPerUnit,
+}: {
+  title: string;
+  kind: 'model' | 'channel' | 'user' | 'token';
+  items: UsageAggregateItem[];
+  isLoading: boolean;
+  emptyTitle: string;
+  emptyDescription: string;
+  quotaPerUnit: number;
+}) {
+  const maxQuota = Math.max(1, ...items.map((item) => Math.abs(numberValue(item.quota))));
+  const barStyles = {
+    model: 'bg-blue-600 dark:bg-blue-400',
+    channel: 'bg-emerald-600 dark:bg-emerald-400',
+    user: 'bg-orange-600 dark:bg-orange-400',
+    token: 'bg-violet-600 dark:bg-violet-400',
+  }[kind];
+
+  return (
+    <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+      <CardHeader className="border-b border-slate-100 dark:border-white/10">
+        <CardTitle role="heading" aria-level={3}>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="p-4">
+        {isLoading ? (
+          <TableSkeleton columns={['对象', '消耗', '占比']} rows={5} />
+        ) : items.length === 0 ? (
+          <EmptyState title={emptyTitle} description={emptyDescription} />
+        ) : (
+          <div className="space-y-4">
+            {items.map((item, index) => {
+              const quota = Math.abs(numberValue(item.quota));
+              const width = `${Math.max(4, (quota / maxQuota) * 100)}%`;
+              const label = topItemLabel(item, kind);
+              return (
+                <div key={`${kind}-${item.key || item.user_id || item.channel_id || item.model || item.token_name || index}`} className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-slate-100 text-xs font-black text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                        {index + 1}
+                      </span>
+                      <span className="truncate text-sm font-bold text-slate-900 dark:text-white" title={label}>
+                        {label}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-sm font-black text-slate-950 dark:text-white">
+                      {formatQuota(quota, quotaPerUnit)}
+                    </span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
+                    <div className={`h-full rounded-full ${barStyles}`} style={{ width }} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-400">
+                    <span>{formatCompactInteger(item.count)} 次请求</span>
+                    <span>{formatCompactInteger(totalTokens(item))} tokens</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export function AdminOverviewPage() {
@@ -279,6 +366,7 @@ export function AdminOverviewPage() {
   const topModels = data?.top_models ?? [];
   const topChannels = data?.top_channels ?? [];
   const topUsers = data?.top_users ?? [];
+  const topTokens = data?.top_tokens ?? [];
   const alerts = data?.alerts ?? [];
   const latestReconciliation = data?.latest_reconciliation;
   const modelPrice = parseModelPriceMap(data?.pricing_options?.ModelPrice);
@@ -403,127 +491,46 @@ export function AdminOverviewPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-4">
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
-            <CardTitle role="heading" aria-level={3}>Top 模型</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="p-4">
-                <TableSkeleton columns={['模型', '收入', '成本', '毛利']} rows={5} />
-              </div>
-            ) : topModels.length === 0 ? (
-              <EmptyState title="暂无模型用量" description="产生调用后会显示模型收入和成本。" />
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>模型</TableHead>
-                      <TableHead>收入</TableHead>
-                      <TableHead>成本</TableHead>
-                      <TableHead>毛利</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {topModels.map((item) => (
-                      <TableRow key={item.key || item.model}>
-                        <TableCell className="font-semibold">{topItemLabel(item, 'model')}</TableCell>
-                        <TableCell>{formatQuota(item.quota, quotaPerUnit)}</TableCell>
-                        <TableCell>{formatQuota(item.upstream_cost, quotaPerUnit)}</TableCell>
-                        <TableCell className={numberValue(item.gross_profit) < 0 ? 'font-semibold text-red-600' : 'font-semibold text-emerald-600'}>
-                          {formatQuota(item.gross_profit, quotaPerUnit)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <TopUsageChartCard
+          title="高消耗用户"
+          kind="user"
+          items={topUsers}
+          isLoading={isLoading}
+          emptyTitle="暂无用户用量"
+          emptyDescription="产生调用后会显示高消耗用户。"
+          quotaPerUnit={quotaPerUnit}
+        />
+        <TopUsageChartCard
+          title="高消耗模型"
+          kind="model"
+          items={topModels}
+          isLoading={isLoading}
+          emptyTitle="暂无模型用量"
+          emptyDescription="产生调用后会显示模型消耗排行。"
+          quotaPerUnit={quotaPerUnit}
+        />
+        <TopUsageChartCard
+          title="高消耗渠道"
+          kind="channel"
+          items={topChannels}
+          isLoading={isLoading}
+          emptyTitle="暂无渠道用量"
+          emptyDescription="渠道产生调用后会显示消耗排行。"
+          quotaPerUnit={quotaPerUnit}
+        />
+        <TopUsageChartCard
+          title="高消耗 Token"
+          kind="token"
+          items={topTokens}
+          isLoading={isLoading}
+          emptyTitle="暂无 Token 用量"
+          emptyDescription="API Token 产生调用后会显示消耗排行。"
+          quotaPerUnit={quotaPerUnit}
+        />
+      </div>
 
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
-            <CardTitle role="heading" aria-level={3}>Top 渠道</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="p-4">
-                <TableSkeleton columns={['渠道', '余额', '收入', '毛利']} rows={5} />
-              </div>
-            ) : topChannels.length === 0 ? (
-              <EmptyState title="暂无渠道用量" description="渠道产生调用后会显示收入、成本和余额状态。" />
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>渠道</TableHead>
-                      <TableHead>余额</TableHead>
-                      <TableHead>收入</TableHead>
-                      <TableHead>毛利</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {topChannels.map((item) => (
-                      <TableRow key={item.channel_id || item.key}>
-                        <TableCell className="font-semibold">{topItemLabel(item, 'channel')}</TableCell>
-                        <TableCell>${numberValue(item.balance).toFixed(2)}</TableCell>
-                        <TableCell>{formatQuota(item.quota, quotaPerUnit)}</TableCell>
-                        <TableCell className={numberValue(item.gross_profit) < 0 ? 'font-semibold text-red-600' : 'font-semibold text-emerald-600'}>
-                          {formatQuota(item.gross_profit, quotaPerUnit)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
-            <CardTitle role="heading" aria-level={3}>Top 用户</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="p-4">
-                <TableSkeleton columns={['用户', '请求', '收入', '毛利']} rows={5} />
-              </div>
-            ) : topUsers.length === 0 ? (
-              <EmptyState title="暂无用户用量" description="产生调用后会显示高消耗用户。" />
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>用户</TableHead>
-                      <TableHead>请求</TableHead>
-                      <TableHead>收入</TableHead>
-                      <TableHead>毛利</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {topUsers.map((item) => (
-                      <TableRow key={item.user_id || item.key}>
-                        <TableCell className="font-mono text-xs">{topItemLabel(item, 'user')}</TableCell>
-                        <TableCell>{formatInteger(item.count)}</TableCell>
-                        <TableCell>{formatQuota(item.quota, quotaPerUnit)}</TableCell>
-                        <TableCell className={numberValue(item.gross_profit) < 0 ? 'font-semibold text-red-600' : 'font-semibold text-emerald-600'}>
-                          {formatQuota(item.gross_profit, quotaPerUnit)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+      <div className="grid gap-6 xl:grid-cols-4">
+        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10 xl:col-span-4">
           <CardHeader className="border-b border-slate-100 dark:border-white/10">
             <CardTitle role="heading" aria-level={3}>风险告警</CardTitle>
           </CardHeader>

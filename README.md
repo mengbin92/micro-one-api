@@ -57,6 +57,8 @@
 
 ```bash
 cd deployments/docker-compose
+cp .env.example .env
+# 编辑 .env，至少替换数据库、Redis 和服务密钥
 docker compose up -d
 ```
 

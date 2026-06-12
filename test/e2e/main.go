@@ -78,16 +78,23 @@ func main() {
 
 		initialQuota := stepVerifyAccount(ctx, userID)
 
-		logf("Step 4: List models")
-		stepListModels(token)
+		logf("Step 4: Create API token")
+		apiToken := stepCreateAPIToken(ctx, userID)
+		if apiToken == "" {
+			summary()
+			os.Exit(1)
+		}
 
-		logf("Step 5: Chat completion")
-		stepChatCompletion(token)
+		logf("Step 5: List models")
+		stepListModels(apiToken)
 
-		logf("Step 6: Verify billing")
+		logf("Step 6: Chat completion")
+		stepChatCompletion(apiToken)
+
+		logf("Step 7: Verify billing")
 		stepVerifyBilling(ctx, userID, initialQuota)
 
-		logf("Step 7: Verify admin logs")
+		logf("Step 8: Verify admin logs")
 		stepVerifyLogs(userID)
 	}
 
@@ -204,6 +211,32 @@ func stepVerifyAccount(_ context.Context, userID int64) int64 {
 	}
 	pass(fmt.Sprintf("verify-account (quota=%d, group=%s)", result.Account.Quota, result.Account.Group))
 	return result.Account.Quota
+}
+
+func stepCreateAPIToken(ctx context.Context, userID int64) string {
+	conn := grpcDial(identityGRPCEndpoint)
+	defer conn.Close()
+	client := identityv1.NewIdentityServiceClient(conn)
+
+	resp, err := client.CreateAccessToken(ctx, &identityv1.CreateAccessTokenRequest{
+		UserId: userID,
+		Name:   "e2e-api-token",
+		Models: []string{testModel},
+	})
+	if err != nil {
+		fail("create-api-token", err.Error())
+		return ""
+	}
+	if !resp.Success {
+		fail("create-api-token", resp.Message)
+		return ""
+	}
+	if resp.Token == "" {
+		fail("create-api-token", "returned empty token")
+		return ""
+	}
+	pass(fmt.Sprintf("create-api-token (token=%s...)", resp.Token[:8]))
+	return resp.Token
 }
 
 func stepListModels(token string) {

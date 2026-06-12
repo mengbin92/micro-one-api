@@ -1,73 +1,54 @@
-# React + TypeScript + Vite
+# micro-one-api admin web
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+`web/` 是 micro-one-api 的管理后台前端，基于 React、TypeScript、Vite、React Router、TanStack Query 和 shadcn/base-ui 组件实现。
 
-Currently, two official plugins are available:
+## 常用命令
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+# 安装依赖
+npm ci
 
-## React Compiler
+# 本地开发
+npm run dev
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+# 类型检查并构建生产产物
+npm run build
 
-## Expanding the ESLint configuration
+# 运行单元测试
+npm run test
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# 运行 ESLint
+npm run lint
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+生产构建产物输出到 `web/dist`。Docker Compose 部署会把该目录挂载到 `admin-api` 容器的 `/web`，并通过 `ADMIN_WEB_ROOT=/web` 读取静态资源。
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## API 类型
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+前端 API 类型由仓库根目录的 `openapi.yaml` 生成：
+
+```bash
+npm run generate:api
+```
+
+当后端 proto 或 OpenAPI 输出变化后，先在仓库根目录运行 `make proto`，再回到 `web/` 运行 `npm run generate:api`。
+
+## 测试
+
+前端单元测试使用 Vitest：
+
+```bash
+npm run test
+```
+
+端到端测试使用 Playwright：
+
+```bash
+npm run test:e2e
+```
+
+Playwright 测试需要可访问的前后端服务。完整后端发布验收优先使用仓库根目录的 Docker E2E 脚本：
+
+```bash
+make test-e2e
 ```

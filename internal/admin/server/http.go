@@ -493,6 +493,10 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if err != nil {
 		topUsers = []service.UsageAggregateView{}
 	}
+	topTokens, err := svc.AggregateUsageTopN(r.Context(), "token", 5)
+	if err != nil {
+		topTokens = []service.UsageAggregateView{}
+	}
 	reconciliation, err := svc.ListReconciliationRuns(r.Context(), 1, 1)
 	if err != nil {
 		reconciliation = &service.ListReconciliationRunsResult{}
@@ -555,6 +559,7 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		"top_models":            usageAggregateViewsToMaps(topModels),
 		"top_channels":          enrichChannelUsage(topChannels, channels.GetChannels()),
 		"top_users":             usageAggregateViewsToMaps(topUsers),
+		"top_tokens":            usageAggregateViewsToMaps(topTokens),
 		"alerts":                adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation),
 		"latest_reconciliation": latestReconciliationRun(reconciliation),
 		"model_catalog":         oneAPIChannelModelCatalog(),

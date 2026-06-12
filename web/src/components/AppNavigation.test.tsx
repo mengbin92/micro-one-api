@@ -6,9 +6,9 @@ import { http, HttpResponse } from 'msw';
 import { AppNavigation } from './AppNavigation';
 import { server } from '@/test/msw/server';
 
-function renderNavigation() {
+function renderNavigation(initialPath = '/dashboard') {
   return render(
-    <MemoryRouter initialEntries={['/dashboard']}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <AppNavigation />
     </MemoryRouter>
   );
@@ -53,6 +53,18 @@ describe('AppNavigation', () => {
     expect(screen.getByRole('link', { name: 'Payment Orders' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Options' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '进入管理' })).toHaveAttribute('href', '/admin');
+  });
+
+  it('only highlights admin overview on the exact admin route', async () => {
+    window.localStorage.setItem('userRole', '10');
+    mockSelf(10);
+
+    renderNavigation('/admin/users');
+
+    const overviewLink = await screen.findByRole('link', { name: 'Admin Overview' });
+    const usersLink = screen.getByRole('link', { name: 'Users' });
+    expect(overviewLink).not.toHaveClass('text-blue-600');
+    expect(usersLink).toHaveClass('text-blue-600');
   });
 
   it('hides admin nav and entry link for non-admin users', async () => {

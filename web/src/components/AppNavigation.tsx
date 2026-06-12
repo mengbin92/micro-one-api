@@ -125,6 +125,7 @@ function NavigationLinks({
           <NavLink
             key={link.to}
             to={link.to}
+            end={link.to === '/admin'}
             aria-label={link.ariaLabel}
             className={({ isActive }) =>
               cn(

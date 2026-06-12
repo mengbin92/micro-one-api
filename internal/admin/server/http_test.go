@@ -305,6 +305,13 @@ func (c *adminHTTPBillingClient) AggregateUsage(ctx context.Context, req *billin
 			},
 			Totals: &billingv1.UsageTotals{Quota: 75, UpstreamCost: 25, GrossProfit: 50, Count: 3},
 		}, nil
+	case len(req.GetGroupBy()) == 1 && req.GetGroupBy()[0] == "token":
+		return &billingv1.AggregateUsageResponse{
+			Buckets: []*billingv1.UsageBucket{
+				{TokenName: "prod-key", Quota: 75, UpstreamCost: 25, GrossProfit: 50, PromptTokens: 1200, CompletionTokens: 600, CacheReadTokens: 300, Count: 3},
+			},
+			Totals: &billingv1.UsageTotals{Quota: 75, UpstreamCost: 25, GrossProfit: 50, PromptTokens: 1200, CompletionTokens: 600, CacheReadTokens: 300, Count: 3},
+		}, nil
 	}
 	return &billingv1.AggregateUsageResponse{
 		Buckets: []*billingv1.UsageBucket{
@@ -1615,6 +1622,8 @@ func TestAdminHTTPSummaryCountsOnlyPaidPaymentOrders(t *testing.T) {
 		`"name":"openai"`,
 		`"top_users":`,
 		`"user_id":"42"`,
+		`"top_tokens":`,
+		`"token_name":"prod-key"`,
 		`"alerts":`,
 		`"negative_profit"`,
 		`"reconciliation_discrepancy"`,

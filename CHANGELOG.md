@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-12
+
+### Added
+- **管理后台 Top 用量图表**: `OverviewPage` 增加 Top N 渠道 / 模型用量图表
+  (`web/src/pages/admin/OverviewPage.tsx`),导航接入"用量排行"入口
+  (`AppNavigation`),并补齐对应单测 (`AppNavigation.test.tsx`)。
+
+### Changed
+- 前端构建优化: `web/vite.config.ts` 增加 chunk 拆分策略,
+  拆分 vendor / 路由懒加载 / ECharts 等公共依赖,降低首屏包体积。
+
+### Fixed
+- 端到端测试与 docker-compose 环境文档对齐: 补齐
+  `deployments/docker-compose/.env.example` 的 e2e token / 通知相关变量;
+  `test/e2e/main.go` 修正 token 流程以匹配实际 relay 行为;
+  同步更新 `.env.example` 与 `docs/deployment.md` / `README.md` 文档。
+
 ## [0.2.0] - 2026-06-10
 
 ### Added

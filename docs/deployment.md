@@ -30,11 +30,11 @@ Micro-One-API 由 9 个微服务组成：
 ### 2.2 启动
 
 ```bash
-# 设置 MySQL root 密码
-export MYSQL_ROOT_PASSWORD=your_secure_password
+cd deployments/docker-compose
+cp .env.example .env
+# 编辑 .env，至少替换数据库、Redis 和服务密钥
 
 # 启动全部服务
-cd deployments/docker-compose
 docker compose up -d
 
 # 查看服务状态
@@ -338,7 +338,7 @@ scrape_configs:
 
 ## 8. 数据库迁移
 
-SQL 迁移文件位于 `migrations/billing/`，Docker Compose 启动时自动执行。
+SQL 迁移文件位于仓库根目录的 `migrations/`，Docker Compose 启动 MySQL 时会自动执行。
 
 手动迁移：
 
@@ -346,6 +346,6 @@ SQL 迁移文件位于 `migrations/billing/`，Docker Compose 启动时自动执
 # 进入 MySQL
 docker compose exec mysql mysql -u root -p oneapi
 
-# 执行迁移文件
+# 执行迁移文件示例
 source /docker-entrypoint-initdb.d/001_create_users.sql
 ```
