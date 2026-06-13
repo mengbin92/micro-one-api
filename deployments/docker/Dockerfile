@@ -14,6 +14,8 @@ RUN go mod download && go mod verify
 COPY . .
 
 ARG SERVICE_NAME
+ARG TARGETOS
+ARG TARGETARCH
 RUN if [ "$SERVICE_NAME" = "admin-api" ]; then \
       cd web && npm ci && npm run build && \
       rm -rf /app/internal/admin/server/static/web && \
@@ -21,7 +23,7 @@ RUN if [ "$SERVICE_NAME" = "admin-api" ]; then \
       cp -r /app/web/dist/* /app/internal/admin/server/static/web/; \
     fi
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags='-s -w -extldflags "-static"' \
     -installsuffix cgo \
     -o /app/bin/service ./cmd/${SERVICE_NAME}
