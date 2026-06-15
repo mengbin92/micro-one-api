@@ -4,7 +4,7 @@ ARG SERVICE_NAME=relay-gateway
 
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
-RUN apk add --no-cache git ca-certificates nodejs npm
+RUN apk add --no-cache git ca-certificates nodejs npm make protobuf protobuf-dev
 
 WORKDIR /app
 
@@ -16,6 +16,8 @@ COPY . .
 ARG SERVICE_NAME
 ARG TARGETOS
 ARG TARGETARCH
+RUN make proto-tools && make proto
+
 RUN if [ "$SERVICE_NAME" = "admin-api" ]; then \
       cd web && npm ci && npm run build && \
       rm -rf /app/internal/admin/server/static/web && \

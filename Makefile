@@ -10,6 +10,7 @@ else
 INTERNAL_PROTO_FILES := $(shell find internal -name '*.proto')
 API_PROTO_FILES := $(shell find api -name '*.proto')
 endif
+PROTO_SYSTEM_INCLUDE_DIRS := $(strip $(foreach dir,/usr/include /usr/local/include /opt/homebrew/include,$(if $(wildcard $(dir)/google/protobuf/descriptor.proto),--proto_path=$(dir))))
 
 .PHONY: init
 # init env
@@ -21,12 +22,21 @@ init:
 	go install github.com/google/gnostic/cmd/protoc-gen-openapi@latest
 	go install github.com/google/wire/cmd/wire@latest
 
+.PHONY: proto-tools
+# install protobuf generators needed by make proto
+proto-tools:
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@latest
+	go install github.com/google/gnostic/cmd/protoc-gen-openapi@latest
+
 .PHONY: config
 # generate internal proto
 config:
 ifneq ($(strip $(INTERNAL_PROTO_FILES)),)
 	protoc --proto_path=./internal \
 		--proto_path=./third_party \
+		$(PROTO_SYSTEM_INCLUDE_DIRS) \
 		--go_out=paths=source_relative:./internal \
 		$(INTERNAL_PROTO_FILES)
 else
@@ -40,6 +50,7 @@ ifneq ($(strip $(API_PROTO_FILES)),)
 	protoc \
 		--proto_path=. \
 		--proto_path=./third_party \
+		$(PROTO_SYSTEM_INCLUDE_DIRS) \
 		--go_out=paths=source_relative:. \
 		--go-http_out=paths=source_relative:. \
 		--go-grpc_out=paths=source_relative,require_unimplemented_servers=false:. \

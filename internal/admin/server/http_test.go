@@ -615,9 +615,9 @@ func TestAdminHTTPEmbeddedLoginBundleIncludesRegistration(t *testing.T) {
 	loginChunk := adminHTTPGetBody(t, srv, "/assets/"+loginChunkPath)
 
 	for _, want := range []string{
-		"Create a new account",
 		"/user/register",
-		"Confirm password",
+		"confirm-password",
+		"注册账号",
 	} {
 		if !strings.Contains(loginChunk, want) {
 			t.Fatalf("embedded login chunk missing %q", want)

@@ -20,6 +20,13 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
@@ -27,6 +34,9 @@ jobs:
         run: |
           make init
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Build embedded admin frontend
+        run: make web-build
 
       - name: Run tests
         run: make test
