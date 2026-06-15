@@ -2,6 +2,9 @@ package biz
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -57,6 +60,41 @@ func (m *mockNotifyRepo) UpdateStatus(ctx context.Context, id int64, status stri
 	n.Status = status
 	if status == NotifyStatusSent {
 		n.SentAt = time.Now()
+	}
+	return nil
+}
+
+func (m *mockNotifyRepo) ListPending(ctx context.Context, limit int32, maxRetry int) ([]*Notification, error) {
+	items := make([]*Notification, 0)
+	for _, n := range m.entries {
+		if n.Status != NotifyStatusPending || n.RetryCount >= maxRetry {
+			continue
+		}
+		items = append(items, n)
+		if int32(len(items)) >= limit {
+			break
+		}
+	}
+	return items, nil
+}
+
+func (m *mockNotifyRepo) MarkFailed(ctx context.Context, id int64) error {
+	n, ok := m.entries[id]
+	if !ok {
+		return ErrNotificationNotFound
+	}
+	n.Status = NotifyStatusFailed
+	return nil
+}
+
+func (m *mockNotifyRepo) RecordFailure(ctx context.Context, id int64, maxRetry int) error {
+	n, ok := m.entries[id]
+	if !ok {
+		return ErrNotificationNotFound
+	}
+	n.RetryCount++
+	if n.RetryCount >= maxRetry {
+		n.Status = NotifyStatusFailed
 	}
 	return nil
 }
@@ -226,6 +264,97 @@ func TestNotifyUsecase_MarkFailed(t *testing.T) {
 	got, _ := uc.GetNotification(context.Background(), n.ID)
 	if got.Status != NotifyStatusFailed {
 		t.Fatalf("expected failed, got %s", got.Status)
+	}
+}
+
+func TestNotifyUsecase_RecordFailureRetriesBeforeFailed(t *testing.T) {
+	repo := newMockNotifyRepo()
+	uc := NewNotifyUsecase(repo)
+	n, _ := uc.CreateNotification(context.Background(), NotifyTypeWebhook, "https://example.com", "s", "c")
+
+	if err := uc.RecordFailure(context.Background(), n.ID, 2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, _ := uc.GetNotification(context.Background(), n.ID)
+	if got.Status != NotifyStatusPending || got.RetryCount != 1 {
+		t.Fatalf("expected pending retry 1, got status=%s retry=%d", got.Status, got.RetryCount)
+	}
+
+	if err := uc.RecordFailure(context.Background(), n.ID, 2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, _ = uc.GetNotification(context.Background(), n.ID)
+	if got.Status != NotifyStatusFailed || got.RetryCount != 2 {
+		t.Fatalf("expected failed retry 2, got status=%s retry=%d", got.Status, got.RetryCount)
+	}
+}
+
+type stubSender struct {
+	err error
+}
+
+func (s stubSender) Send(ctx context.Context, n *Notification) error {
+	return s.err
+}
+
+func TestDispatcherDispatchOnceMarksSent(t *testing.T) {
+	repo := newMockNotifyRepo()
+	uc := NewNotifyUsecase(repo)
+	n, _ := uc.CreateNotification(context.Background(), NotifyTypeWebhook, "https://example.com", "s", "c")
+	dispatcher := NewDispatcher(uc, stubSender{}, time.Second, 10, 3)
+
+	if err := dispatcher.DispatchOnce(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, _ := uc.GetNotification(context.Background(), n.ID)
+	if got.Status != NotifyStatusSent {
+		t.Fatalf("expected sent, got %s", got.Status)
+	}
+}
+
+func TestDispatcherDispatchOnceRecordsFailure(t *testing.T) {
+	repo := newMockNotifyRepo()
+	uc := NewNotifyUsecase(repo)
+	n, _ := uc.CreateNotification(context.Background(), NotifyTypeWebhook, "https://example.com", "s", "c")
+	dispatcher := NewDispatcher(uc, stubSender{err: errors.New("send failed")}, time.Second, 10, 2)
+
+	if err := dispatcher.DispatchOnce(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, _ := uc.GetNotification(context.Background(), n.ID)
+	if got.Status != NotifyStatusPending || got.RetryCount != 1 {
+		t.Fatalf("expected pending retry 1, got status=%s retry=%d", got.Status, got.RetryCount)
+	}
+}
+
+func TestMultiSenderWebhook(t *testing.T) {
+	var called bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("expected json content type, got %s", r.Header.Get("Content-Type"))
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	sender := NewMultiSender(SenderConfig{})
+	err := sender.Send(context.Background(), &Notification{
+		ID:        1,
+		Type:      NotifyTypeWebhook,
+		Recipient: srv.URL,
+		Subject:   "alert",
+		Content:   "content",
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected webhook to be called")
 	}
 }
 

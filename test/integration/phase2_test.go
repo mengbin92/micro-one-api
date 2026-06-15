@@ -501,6 +501,42 @@ func (r *testNotifyRepo) UpdateStatus(ctx context.Context, id int64, status stri
 	return notifybiz.ErrNotificationNotFound
 }
 
+func (r *testNotifyRepo) ListPending(ctx context.Context, limit int32, maxRetry int) ([]*notifybiz.Notification, error) {
+	var result []*notifybiz.Notification
+	for _, n := range r.notifications {
+		if n.Status == notifybiz.NotifyStatusPending && n.RetryCount < maxRetry {
+			result = append(result, n)
+			if int32(len(result)) >= limit {
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+func (r *testNotifyRepo) MarkFailed(ctx context.Context, id int64) error {
+	for _, n := range r.notifications {
+		if n.ID == id {
+			n.Status = notifybiz.NotifyStatusFailed
+			return nil
+		}
+	}
+	return notifybiz.ErrNotificationNotFound
+}
+
+func (r *testNotifyRepo) RecordFailure(ctx context.Context, id int64, maxRetry int) error {
+	for _, n := range r.notifications {
+		if n.ID == id {
+			n.RetryCount++
+			if n.RetryCount >= maxRetry {
+				n.Status = notifybiz.NotifyStatusFailed
+			}
+			return nil
+		}
+	}
+	return notifybiz.ErrNotificationNotFound
+}
+
 func setupNotifyService(t *testing.T, addr string) (func(), notifyv1.NotifyServiceClient) {
 	repo := &testNotifyRepo{}
 	uc := notifybiz.NewNotifyUsecase(repo)

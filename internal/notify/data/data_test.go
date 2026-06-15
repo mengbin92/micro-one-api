@@ -123,3 +123,38 @@ func TestMemoryRepository_UpdateStatus(t *testing.T) {
 		}
 	})
 }
+
+func TestMemoryRepository_ListPendingAndRecordFailure(t *testing.T) {
+	repo := newMemoryRepository()
+	n := &biz.Notification{
+		Type:      biz.NotifyTypeWebhook,
+		Recipient: "https://example.com",
+		Status:    biz.NotifyStatusPending,
+		CreatedAt: time.Now(),
+	}
+	_ = repo.Create(context.Background(), n)
+
+	items, err := repo.ListPending(context.Background(), 20, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != n.ID {
+		t.Fatalf("expected created pending notification, got %+v", items)
+	}
+
+	if err := repo.RecordFailure(context.Background(), n.ID, 2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, _ := repo.Get(context.Background(), n.ID)
+	if got.Status != biz.NotifyStatusPending || got.RetryCount != 1 {
+		t.Fatalf("expected pending retry 1, got status=%s retry=%d", got.Status, got.RetryCount)
+	}
+
+	if err := repo.RecordFailure(context.Background(), n.ID, 2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, _ = repo.Get(context.Background(), n.ID)
+	if got.Status != biz.NotifyStatusFailed || got.RetryCount != 2 {
+		t.Fatalf("expected failed retry 2, got status=%s retry=%d", got.Status, got.RetryCount)
+	}
+}

@@ -19,4 +19,8 @@ notify_svc:
   smtp_host: ${NOTIFY_SMTP_HOST:-}
   smtp_port: ${NOTIFY_SMTP_PORT:-587}
   smtp_user: ${NOTIFY_SMTP_USER:-}
+  smtp_pass: ${NOTIFY_SMTP_PASS:-}
   smtp_from: ${NOTIFY_SMTP_FROM:-}
+  dispatch_interval: ${NOTIFY_DISPATCH_INTERVAL:-30s}
+  dispatch_batch: ${NOTIFY_DISPATCH_BATCH:-20}
+  max_retry: ${NOTIFY_MAX_RETRY:-3}

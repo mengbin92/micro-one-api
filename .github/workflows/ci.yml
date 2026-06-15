@@ -74,7 +74,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [ relay-gateway, admin-api ]
+        service:
+          - identity-service
+          - channel-service
+          - billing-service
+          - admin-api
+          - config-service
+          - log-service
+          - monitor-worker
+          - notify-worker
+          - relay-gateway
         platform: [ linux/amd64, linux/arm64 ]
     steps:
       - name: Checkout code

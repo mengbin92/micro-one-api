@@ -94,11 +94,32 @@ func (r *Repository) List(ctx context.Context, page, pageSize int32, notifyType,
 	return r.listMemory(page, pageSize, notifyType, status)
 }
 
+func (r *Repository) ListPending(ctx context.Context, limit int32, maxRetry int) ([]*biz.Notification, error) {
+	if r.db != nil {
+		return r.listPendingDB(ctx, limit, maxRetry)
+	}
+	return r.listPendingMemory(limit, maxRetry), nil
+}
+
 func (r *Repository) UpdateStatus(ctx context.Context, id int64, status string) error {
 	if r.db != nil {
 		return r.updateStatusDB(ctx, id, status)
 	}
 	return r.updateStatusMemory(id, status)
+}
+
+func (r *Repository) MarkFailed(ctx context.Context, id int64) error {
+	if r.db != nil {
+		return r.markFailedDB(ctx, id)
+	}
+	return r.markFailedMemory(id)
+}
+
+func (r *Repository) RecordFailure(ctx context.Context, id int64, maxRetry int) error {
+	if r.db != nil {
+		return r.recordFailureDB(ctx, id, maxRetry)
+	}
+	return r.recordFailureMemory(id, maxRetry)
 }
 
 // DB implementations
@@ -175,6 +196,32 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, notifyTyp
 	return entries, total, nil
 }
 
+func (r *Repository) listPendingDB(ctx context.Context, limit int32, maxRetry int) ([]*biz.Notification, error) {
+	var models []notificationModel
+	if err := r.db.WithContext(ctx).
+		Where("status = ? AND retry_count < ?", biz.NotifyStatusPending, maxRetry).
+		Order("id ASC").
+		Limit(int(limit)).
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	entries := make([]*biz.Notification, len(models))
+	for i, m := range models {
+		entries[i] = &biz.Notification{
+			ID:         m.ID,
+			Type:       m.Type,
+			Recipient:  m.Recipient,
+			Subject:    m.Subject,
+			Content:    m.Content,
+			Status:     m.Status,
+			RetryCount: m.RetryCount,
+			CreatedAt:  time.Unix(m.CreatedAt, 0),
+			SentAt:     time.Unix(m.SentAt, 0),
+		}
+	}
+	return entries, nil
+}
+
 func (r *Repository) updateStatusDB(ctx context.Context, id int64, status string) error {
 	updates := map[string]interface{}{
 		"status": status,
@@ -183,6 +230,19 @@ func (r *Repository) updateStatusDB(ctx context.Context, id int64, status string
 		updates["sent_at"] = time.Now().Unix()
 	}
 	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *Repository) markFailedDB(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status": biz.NotifyStatusFailed,
+	}).Error
+}
+
+func (r *Repository) recordFailureDB(ctx context.Context, id int64, maxRetry int) error {
+	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status":      gorm.Expr("CASE WHEN retry_count + 1 >= ? THEN ? ELSE status END", maxRetry, biz.NotifyStatusFailed),
+		"retry_count": gorm.Expr("retry_count + ?", 1),
+	}).Error
 }
 
 // Memory implementations
@@ -233,6 +293,23 @@ func (r *Repository) listMemory(page, pageSize int32, notifyType, status string)
 	return all[start:end], total, nil
 }
 
+func (r *Repository) listPendingMemory(limit int32, maxRetry int) []*biz.Notification {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	items := make([]*biz.Notification, 0)
+	for _, n := range r.mem {
+		if n.Status != biz.NotifyStatusPending || n.RetryCount >= maxRetry {
+			continue
+		}
+		cloned := *n
+		items = append(items, &cloned)
+		if int32(len(items)) >= limit {
+			break
+		}
+	}
+	return items
+}
+
 func (r *Repository) updateStatusMemory(id int64, status string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -243,6 +320,31 @@ func (r *Repository) updateStatusMemory(id int64, status string) error {
 	n.Status = status
 	if status == biz.NotifyStatusSent {
 		n.SentAt = time.Now()
+	}
+	return nil
+}
+
+func (r *Repository) markFailedMemory(id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n, ok := r.mem[id]
+	if !ok {
+		return biz.ErrNotificationNotFound
+	}
+	n.Status = biz.NotifyStatusFailed
+	return nil
+}
+
+func (r *Repository) recordFailureMemory(id int64, maxRetry int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n, ok := r.mem[id]
+	if !ok {
+		return biz.ErrNotificationNotFound
+	}
+	n.RetryCount++
+	if n.RetryCount >= maxRetry {
+		n.Status = biz.NotifyStatusFailed
 	}
 	return nil
 }
