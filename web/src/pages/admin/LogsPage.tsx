@@ -75,6 +75,20 @@ const LOG_TYPE_NAMES: Record<string, string> = {
   refund: 'Refund',
 };
 
+function datetimeLocalToUnixSeconds(value: string) {
+  const millis = new Date(value).getTime();
+  if (!Number.isFinite(millis) || millis <= 0) return '';
+  return String(Math.floor(millis / 1000));
+}
+
+function unixSecondsToDatetimeLocal(value: string | undefined) {
+  const seconds = Number(value ?? 0);
+  if (!Number.isFinite(seconds) || seconds <= 0) return '';
+  const date = new Date(seconds * 1000);
+  const offsetMillis = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMillis).toISOString().slice(0, 16);
+}
+
 export function AdminLogsPage() {
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const [isCleanOpen, setIsCleanOpen] = useState(false);
@@ -93,10 +107,12 @@ export function AdminLogsPage() {
   } = useAdminTableState({
     storageKey: 'logs',
     defaultPageSize: 50,
-    filters: ['user_id', 'type'],
+    filters: ['user_id', 'type', 'start_time', 'end_time'],
   });
   const userId = filters.user_id ?? '';
   const type = filters.type ?? '';
+  const startTime = filters.start_time ?? '';
+  const endTime = filters.end_time ?? '';
   const sort = useMemo(
     () => ({ key: sortKey as keyof LogEntry | null, direction: sortDirection }) satisfies SortState<LogEntry>,
     [sortKey, sortDirection],
@@ -106,20 +122,20 @@ export function AdminLogsPage() {
     pageSize,
     sortKey,
     sortDirection,
-    filters: { user_id: userId, type },
+    filters: { user_id: userId, type, start_time: startTime, end_time: endTime },
   });
   exportParams.set('format', 'csv');
   const exportHref = `/log/export?${exportParams}`;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-logs', page, pageSize, userId, type, sortKey, sortDirection],
+    queryKey: ['admin-logs', page, pageSize, userId, type, startTime, endTime, sortKey, sortDirection],
     queryFn: async () => {
       const params = buildAdminListParams({
         page,
         pageSize,
         sortKey,
         sortDirection,
-        filters: { user_id: userId, type },
+        filters: { user_id: userId, type, start_time: startTime, end_time: endTime },
       });
       const res = await adminApiClient.get(`/log?${params}`);
       const payload = unwrapApiData<LogEntry[] | LogListData>(res.data);
@@ -145,6 +161,7 @@ export function AdminLogsPage() {
         throw new Error('End time is required');
       }
       const params = new URLSearchParams({ end_time: String(endTime) });
+      if (startTime) params.set('start_time', startTime);
       if (userId) params.set('user_id', userId);
       if (type) params.set('type', type);
       const res = await adminApiClient.delete(`/log?${params}`);
@@ -235,6 +252,8 @@ export function AdminLogsPage() {
           onClick={() => {
             setFilter('user_id', '');
             setFilter('type', '');
+            setFilter('start_time', '');
+            setFilter('end_time', '');
           }}
         >
           Clear
@@ -258,6 +277,33 @@ export function AdminLogsPage() {
               { key: 'remark', label: 'Remark' },
               { key: 'createdAt', label: 'Created At' },
             ]}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="log-start-time" className="text-xs text-muted-foreground">
+            From
+          </Label>
+          <Input
+            id="log-start-time"
+            type="datetime-local"
+            value={unixSecondsToDatetimeLocal(startTime)}
+            onChange={(event) => setFilter('start_time', datetimeLocalToUnixSeconds(event.target.value))}
+            className="w-auto"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="log-end-time" className="text-xs text-muted-foreground">
+            To
+          </Label>
+          <Input
+            id="log-end-time"
+            type="datetime-local"
+            value={unixSecondsToDatetimeLocal(endTime)}
+            onChange={(event) => setFilter('end_time', datetimeLocalToUnixSeconds(event.target.value))}
+            className="w-auto"
           />
         </div>
       </div>

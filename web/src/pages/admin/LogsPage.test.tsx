@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router-dom';
@@ -8,6 +8,35 @@ import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
 describe('AdminLogsPage', () => {
+  it('passes time range filters to the log list request', async () => {
+    const listRequest = { url: null as URL | null };
+
+    server.use(
+      http.get('/api/log', ({ request }) => {
+        listRequest.url = new URL(request.url);
+        return HttpResponse.json({
+          success: true,
+          data: {
+            logs: [],
+            total: 0,
+          },
+        });
+      }),
+    );
+
+    renderWithQuery(
+      <MemoryRouter initialEntries={['/admin/logs?start_time=1760000000&end_time=1760003600']}>
+        <AdminLogsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('No logs found');
+    await waitFor(() => {
+      expect(listRequest.url?.searchParams.get('start_time')).toBe('1760000000');
+      expect(listRequest.url?.searchParams.get('end_time')).toBe('1760003600');
+    });
+  });
+
   it('opens log details from the billing log table', async () => {
     const user = userEvent.setup();
 
