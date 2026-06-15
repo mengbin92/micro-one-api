@@ -139,6 +139,7 @@ func UpstreamStatus(err error) int {
 // It mirrors ChannelClient but adds the excludeFirstPriority parameter for fallback.
 type ChannelSelector interface {
 	SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error)
+	RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error
 }
 
 // RetryExecutor orchestrates retry attempts with channel fallback.
@@ -222,12 +223,16 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 			lastChannel = ch
 		}
 
+		startedAt := time.Now()
 		err := fn(ctx, lastChannel)
+		responseTime := time.Since(startedAt).Milliseconds()
 		if err == nil {
+			e.recordHealth(ctx, lastChannel, true, "", responseTime)
 			return &ExecuteResult{Channel: lastChannel, Attempt: attempt}
 		}
 
 		lastErr = err
+		e.recordHealth(ctx, lastChannel, false, err.Error(), responseTime)
 
 		// If not retryable, fail immediately
 		if !e.policy.IsRetryable(err) {
@@ -236,4 +241,11 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 	}
 
 	return &ExecuteResult{Channel: lastChannel, Err: lastErr, Attempt: maxAttempts}
+}
+
+func (e *RetryExecutor) recordHealth(ctx context.Context, ch *Channel, success bool, message string, responseTime int64) {
+	if e.selector == nil || ch == nil || ch.ID <= 0 {
+		return
+	}
+	_ = e.selector.RecordChannelHealth(ctx, ch.ID, success, message, responseTime)
 }

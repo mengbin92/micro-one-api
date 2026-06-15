@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 type mockChannelRepo struct {
@@ -75,6 +76,29 @@ func (m *mockChannelRepo) RecordUsage(ctx context.Context, channelID int64, quot
 		ch.UsedQuota += quota
 	}
 	return nil
+}
+
+func (m *mockChannelRepo) RecordHealth(ctx context.Context, event ChannelHealthEvent, threshold int32, cooldown time.Duration) (*Channel, error) {
+	ch, ok := m.channels[event.ChannelID]
+	if !ok {
+		return nil, ErrChannelNotFound
+	}
+	if event.Success {
+		ch.HealthStatus = ChannelHealthHealthy
+		ch.HealthLastError = ""
+		ch.HealthConsecutiveFailures = 0
+		ch.CircuitOpenedUntil = 0
+	} else {
+		ch.HealthLastError = event.Error
+		ch.HealthConsecutiveFailures++
+		if ch.HealthConsecutiveFailures >= threshold {
+			ch.HealthStatus = ChannelHealthUnavailable
+			ch.CircuitOpenedUntil = event.CheckedAt.Add(cooldown).Unix()
+		} else {
+			ch.HealthStatus = ChannelHealthDegraded
+		}
+	}
+	return ch, nil
 }
 
 func (m *mockChannelRepo) DeleteChannel(ctx context.Context, channelID int64) error {
@@ -162,6 +186,58 @@ func TestChannelUsecase_SelectChannel_PriorityOrdering(t *testing.T) {
 	}
 	if channel.ID != 2 {
 		t.Fatalf("expected highest priority channel (ID=2), got ID=%d", channel.ID)
+	}
+}
+
+func TestChannelUsecase_SelectChannel_SkipsOpenCircuit(t *testing.T) {
+	now := time.Unix(1000, 0)
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{
+			1: {ID: 1, Name: "open-circuit", Status: ChannelStatusEnabled, Priority: 20, HealthStatus: ChannelHealthUnavailable, CircuitOpenedUntil: now.Add(time.Minute).Unix()},
+			2: {ID: 2, Name: "healthy", Status: ChannelStatusEnabled, Priority: 10, HealthStatus: ChannelHealthHealthy},
+		},
+		abilities: map[string][]Ability{
+			"default:gpt-4o-mini": {
+				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 20},
+				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 10},
+			},
+		},
+	}
+
+	uc := NewChannelUsecase(repo, nil)
+	uc.now = func() time.Time { return now }
+	channel, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
+	if err != nil {
+		t.Fatalf("SelectChannel() error = %v", err)
+	}
+	if channel.ID != 2 {
+		t.Fatalf("expected healthy fallback channel, got ID=%d", channel.ID)
+	}
+}
+
+func TestChannelUsecase_SelectChannel_AllowsHalfOpenAfterCooldown(t *testing.T) {
+	now := time.Unix(1000, 0)
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{
+			1: {ID: 1, Name: "cooldown-ended", Status: ChannelStatusEnabled, Priority: 20, HealthStatus: ChannelHealthUnavailable, CircuitOpenedUntil: now.Add(-time.Second).Unix()},
+			2: {ID: 2, Name: "healthy", Status: ChannelStatusEnabled, Priority: 10, HealthStatus: ChannelHealthHealthy},
+		},
+		abilities: map[string][]Ability{
+			"default:gpt-4o-mini": {
+				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 20},
+				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 10},
+			},
+		},
+	}
+
+	uc := NewChannelUsecase(repo, nil)
+	uc.now = func() time.Time { return now }
+	channel, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
+	if err != nil {
+		t.Fatalf("SelectChannel() error = %v", err)
+	}
+	if channel.ID != 1 {
+		t.Fatalf("expected half-open channel, got ID=%d", channel.ID)
 	}
 }
 

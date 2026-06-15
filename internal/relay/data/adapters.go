@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
@@ -89,4 +90,20 @@ func (a *ChannelAdapter) SelectChannel(ctx context.Context, group, model string,
 		relayChannel.Config.APIVersion = ch.Config.ApiVersion
 	}
 	return relayChannel, nil
+}
+
+func (a *ChannelAdapter) RecordChannelHealth(ctx context.Context, channelID int64, success bool, message string, responseTime int64) error {
+	reply, err := a.client.RecordChannelHealth(ctx, &channelv1.RecordChannelHealthRequest{
+		ChannelId:    channelID,
+		Success:      success,
+		Error:        message,
+		ResponseTime: responseTime,
+	})
+	if err != nil {
+		return err
+	}
+	if reply != nil && !reply.GetSuccess() {
+		return errors.New(reply.GetMessage())
+	}
+	return nil
 }

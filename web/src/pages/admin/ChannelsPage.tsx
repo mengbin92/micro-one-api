@@ -46,6 +46,14 @@ interface Channel {
   balance: number;
   balanceUpdatedTime: string;
   usedQuota: string;
+  healthStatus?: string;
+  health_status?: string;
+  healthLastError?: string;
+  health_last_error?: string;
+  healthConsecutiveFailures?: number;
+  health_consecutive_failures?: number;
+  circuitOpenedUntil?: string | number;
+  circuit_opened_until?: string | number;
 }
 
 interface ChannelEditDraft {
@@ -66,6 +74,28 @@ const PROVIDER_NAMES: Record<number, string> = {
   23: 'OpenRouter',
   37: 'SiliconFlow',
 };
+
+function channelHealthStatus(channel: Channel) {
+  return channel.healthStatus || channel.health_status || 'healthy';
+}
+
+function channelHealthError(channel: Channel) {
+  return channel.healthLastError || channel.health_last_error || '';
+}
+
+function channelHealthFailures(channel: Channel) {
+  return Number(channel.healthConsecutiveFailures ?? channel.health_consecutive_failures ?? 0);
+}
+
+function channelCircuitUntil(channel: Channel) {
+  return Number(channel.circuitOpenedUntil ?? channel.circuit_opened_until ?? 0);
+}
+
+function healthBadgeClass(status: string) {
+  if (status === 'unavailable') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+  if (status === 'degraded') return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
+  return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+}
 
 export function AdminChannelsPage() {
   const {
@@ -192,6 +222,17 @@ export function AdminChannelsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
       toast.success('Channel balance refreshed');
+    },
+  });
+
+  const testChannelMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await adminApiClient.get(`/channel/test/${id}`);
+      ensureApiSuccess(res.data, 'Channel health probe failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
+      toast.success('Channel health probe completed');
     },
   });
 
@@ -382,6 +423,7 @@ export function AdminChannelsPage() {
               { key: 'group', label: 'Group' },
               { key: 'priority', label: 'Priority' },
               { key: 'balance', label: 'Balance' },
+              { key: 'healthStatus', label: 'Health' },
               { key: 'status', label: 'Status' },
               { key: 'usedQuota', label: 'Used Quota' },
             ]}
@@ -416,7 +458,7 @@ export function AdminChannelsPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', 'Name', 'Type', 'Group', 'Priority', 'Balance', 'Status', 'Actions']} />
+        <TableSkeleton columns={['ID', 'Name', 'Type', 'Group', 'Priority', 'Balance', 'Health', 'Status', 'Actions']} />
       ) : !channels || channels.length === 0 ? (
         <EmptyState title="No channels found" description="Try clearing the search term or checking another page." />
       ) : visibleChannels.length === 0 ? (
@@ -443,6 +485,7 @@ export function AdminChannelsPage() {
                   <SortableHeader<Channel> columnKey="balance" sort={sort} onSortChange={setSort} className="hidden md:table-cell">
                     Balance
                   </SortableHeader>
+                  <TableHead className="hidden xl:table-cell">Health</TableHead>
                   <SortableHeader<Channel> columnKey="status" sort={sort} onSortChange={setSort}>
                     Status
                   </SortableHeader>
@@ -459,6 +502,20 @@ export function AdminChannelsPage() {
                     <TableCell className="hidden lg:table-cell">{ch.priority ?? 0}</TableCell>
                     <TableCell className="hidden md:table-cell">
                       {ch.balance != null ? `$${ch.balance.toFixed(2)}` : '$0.00'}
+                    </TableCell>
+                    <TableCell className="hidden xl:table-cell">
+                      <div className="flex flex-col gap-1">
+                        <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-xs font-medium ${healthBadgeClass(channelHealthStatus(ch))}`}>
+                          {channelHealthStatus(ch)}
+                        </span>
+                        {channelHealthFailures(ch) > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            {channelHealthFailures(ch)} failures
+                            {channelCircuitUntil(ch) > 0 ? ` · until ${new Date(channelCircuitUntil(ch) * 1000).toLocaleString()}` : ''}
+                          </span>
+                        )}
+                        {channelHealthError(ch) && <span className="max-w-48 truncate text-xs text-muted-foreground">{channelHealthError(ch)}</span>}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <span
@@ -488,6 +545,14 @@ export function AdminChannelsPage() {
                       >
                         <RefreshCw className="size-3.5" />
                         Refresh
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => testChannelMutation.mutate(ch.id)}
+                        disabled={testChannelMutation.isPending}
+                      >
+                        Test
                       </Button>
                       <Button
                         variant="outline"

@@ -165,6 +165,11 @@ kubectl logs -f deployment/relay-gateway -n one-api
 | `IDENTITY_GRPC_ENDPOINT` | identity-service gRPC 地址 | - |
 | `CHANNEL_GRPC_ENDPOINT` | channel-service gRPC 地址 | - |
 | `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 | - |
+| `CHANNEL_HEALTH_FAILURE_THRESHOLD` | 渠道连续失败熔断阈值 | `3` |
+| `CHANNEL_HEALTH_COOLDOWN` | 渠道熔断冷却时间，过期后允许半开重试 | `5m` |
+| `CHANNEL_HEALTH_CHECK_ENABLED` | monitor-worker 是否定时探测渠道 `/models` | `true` |
+| `CHANNEL_HEALTH_CHECK_INTERVAL` | 定时渠道健康探测间隔 | `5m` |
+| `CHANNEL_HEALTH_CHECK_TIMEOUT` | 单个渠道健康探测超时 | `10s` |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` | 每秒请求数限制 | `100` |
 | `RATE_LIMIT_BURST` | 突发请求上限 | `200` |
 | `CORS_ALLOWED_ORIGINS` | CORS 允许的源 | - |

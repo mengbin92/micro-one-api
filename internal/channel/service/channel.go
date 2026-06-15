@@ -86,6 +86,12 @@ func toChannelInfo(channel *biz.Channel) *commonv1.ChannelInfo {
 		BalanceRefreshLastError:           channel.BalanceRefreshLastError,
 		BalanceRefreshLastSuccessTime:     channel.BalanceRefreshLastSuccessTime,
 		ConsecutiveBalanceRefreshFailures: channel.ConsecutiveBalanceRefreshFailures,
+		HealthStatus:                      channel.HealthStatus,
+		HealthLastError:                   channel.HealthLastError,
+		HealthLastSuccessTime:             channel.HealthLastSuccessTime,
+		HealthLastFailureTime:             channel.HealthLastFailureTime,
+		HealthConsecutiveFailures:         channel.HealthConsecutiveFailures,
+		CircuitOpenedUntil:                channel.CircuitOpenedUntil,
 		UsedQuota:                         channel.UsedQuota,
 		ModelMapping:                      channel.ModelMapping,
 		SystemPrompt:                      channel.SystemPrompt,
@@ -118,6 +124,7 @@ func toChannelSummary(channel *biz.Channel) *commonv1.ChannelSummary {
 		Balance:            channel.Balance,
 		BalanceUpdatedTime: channel.BalanceUpdatedTime,
 		UsedQuota:          channel.UsedQuota,
+		HealthStatus:       channel.HealthStatus,
 	}
 }
 
@@ -248,6 +255,25 @@ func (s *ChannelService) RecordChannelUsage(ctx context.Context, req *channelv1.
 		}, nil
 	}
 	return &channelv1.RecordChannelUsageResponse{
+		Success: true,
+		Message: "ok",
+	}, nil
+}
+
+func (s *ChannelService) RecordChannelHealth(ctx context.Context, req *channelv1.RecordChannelHealthRequest) (*channelv1.RecordChannelHealthResponse, error) {
+	event := biz.ChannelHealthEvent{
+		ChannelID:    req.ChannelId,
+		Success:      req.Success,
+		Error:        req.Error,
+		ResponseTime: req.ResponseTime,
+	}
+	if err := s.uc.RecordHealth(ctx, event); err != nil {
+		return &channelv1.RecordChannelHealthResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+	return &channelv1.RecordChannelHealthResponse{
 		Success: true,
 		Message: "ok",
 	}, nil

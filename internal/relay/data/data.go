@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
@@ -85,6 +86,22 @@ func (c *channelClient) SelectChannel(ctx context.Context, group, model string, 
 		Priority: info.Priority,
 		Key:      info.Key,
 	}, nil
+}
+
+func (c *channelClient) RecordChannelHealth(ctx context.Context, channelID int64, success bool, message string, responseTime int64) error {
+	resp, err := c.client.RecordChannelHealth(ctx, &channelv1.RecordChannelHealthRequest{
+		ChannelId:    channelID,
+		Success:      success,
+		Error:        message,
+		ResponseTime: responseTime,
+	})
+	if err != nil {
+		return err
+	}
+	if resp != nil && !resp.GetSuccess() {
+		return errors.New(resp.GetMessage())
+	}
+	return nil
 }
 
 func splitCSV(input string) []string {

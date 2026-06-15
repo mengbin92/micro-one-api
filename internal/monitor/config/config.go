@@ -7,6 +7,7 @@ type Config struct {
 	Server   ServerConfig       `json:"server"`
 	Data     DataConfig         `json:"data"`
 	Monitor  MonitorSVCConfig   `json:"monitor_svc"`
+	Clients  ClientsConfig      `json:"clients"`
 	Registry appregistry.Config `json:"registry"`
 }
 
@@ -37,6 +38,14 @@ type RedisConfig struct {
 	Addr string `json:"addr"`
 }
 
+type ClientsConfig struct {
+	Channel ChannelClientConfig `json:"channel"`
+}
+
+type ChannelClientConfig struct {
+	Endpoint string `json:"endpoint"`
+}
+
 // MonitorSVCConfig holds monitor-worker-specific settings.
 type MonitorSVCConfig struct {
 	// CollectIntervalSec is the metrics collection interval in seconds.
@@ -45,4 +54,10 @@ type MonitorSVCConfig struct {
 	AlertRetentionDays int `json:"alert_retention_days"`
 	// NotifyEmail is the recipient for alert notifications.
 	NotifyEmail string `json:"notify_email"`
+	// ChannelHealthCheckEnabled enables periodic upstream channel probes.
+	ChannelHealthCheckEnabled bool `json:"channel_health_check_enabled"`
+	// ChannelHealthCheckInterval is the probe interval (for example "5m").
+	ChannelHealthCheckInterval string `json:"channel_health_check_interval"`
+	// ChannelHealthCheckTimeout is the per-channel probe timeout.
+	ChannelHealthCheckTimeout string `json:"channel_health_check_timeout"`
 }

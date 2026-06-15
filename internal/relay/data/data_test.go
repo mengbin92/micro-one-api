@@ -8,7 +8,7 @@ import (
 // mockIdentityClient implements biz.IdentityClient for testing.
 type mockIdentityClient struct {
 	snapshot *mockAuthSnapshot
-	err     error
+	err      error
 }
 
 type mockAuthSnapshot struct {
@@ -49,6 +49,10 @@ func (m *mockChannelClient) SelectChannel(ctx context.Context, group, model stri
 		return nil, m.err
 	}
 	return m.channel, nil
+}
+
+func (m *mockChannelClient) RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error {
+	return nil
 }
 
 func TestSplitCSV(t *testing.T) {

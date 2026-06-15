@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/internal/channel/biz"
@@ -14,6 +15,7 @@ type channelServiceRepo struct {
 	updated           *biz.Channel
 	recordedChannelID int64
 	recordedQuota     int64
+	healthEvent       *biz.ChannelHealthEvent
 }
 
 func (r *channelServiceRepo) FindByID(ctx context.Context, channelID int64) (*biz.Channel, error) {
@@ -49,9 +51,35 @@ func (r *channelServiceRepo) RecordUsage(ctx context.Context, channelID int64, q
 	return nil
 }
 
+func (r *channelServiceRepo) RecordHealth(ctx context.Context, event biz.ChannelHealthEvent, threshold int32, cooldown time.Duration) (*biz.Channel, error) {
+	r.healthEvent = &event
+	return r.channel, nil
+}
+
 func (r *channelServiceRepo) DeleteChannel(ctx context.Context, channelID int64) error { return nil }
 func (r *channelServiceRepo) ChangeStatus(ctx context.Context, channelID int64, status int32) error {
 	return nil
+}
+
+func TestChannelService_RecordChannelHealth(t *testing.T) {
+	repo := &channelServiceRepo{channel: &biz.Channel{ID: 7, Status: biz.ChannelStatusEnabled}}
+	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
+
+	resp, err := svc.RecordChannelHealth(context.Background(), &channelv1.RecordChannelHealthRequest{
+		ChannelId:    7,
+		Success:      false,
+		Error:        "status=502",
+		ResponseTime: 321,
+	})
+	if err != nil {
+		t.Fatalf("RecordChannelHealth() error = %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("RecordChannelHealth() success = false: %s", resp.Message)
+	}
+	if repo.healthEvent == nil || repo.healthEvent.ChannelID != 7 || repo.healthEvent.Success || repo.healthEvent.Error != "status=502" || repo.healthEvent.ResponseTime != 321 {
+		t.Fatalf("unexpected health event: %+v", repo.healthEvent)
+	}
 }
 
 func TestChannelServiceOneAPIFields(t *testing.T) {

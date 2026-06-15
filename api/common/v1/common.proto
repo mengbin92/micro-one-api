@@ -41,6 +41,12 @@ message ChannelSummary {
   double balance = 12;
   int64 balance_updated_time = 13;
   int64 used_quota = 14;
+  string health_status = 15;
+  string health_last_error = 16;
+  int64 health_last_success_time = 17;
+  int64 health_last_failure_time = 18;
+  int32 health_consecutive_failures = 19;
+  int64 circuit_opened_until = 20;
 }
 
 // ========== 渠道配置 ==========
@@ -77,6 +83,12 @@ message ChannelInfo {
   string balance_refresh_last_error = 19;
   int64 balance_refresh_last_success_time = 20;
   int32 consecutive_balance_refresh_failures = 21;
+  string health_status = 22;
+  string health_last_error = 23;
+  int64 health_last_success_time = 24;
+  int64 health_last_failure_time = 25;
+  int32 health_consecutive_failures = 26;
+  int64 circuit_opened_until = 27;
 }
 
 // ========== 账户快照 ==========
