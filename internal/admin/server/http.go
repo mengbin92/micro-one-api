@@ -2335,7 +2335,21 @@ func handleOneAPILogByID(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		handleOneAPILogs(w, r, svc)
 		return
 	}
-	writeJSON(w, http.StatusNotImplemented, apiResponse(false, "log delete is not implemented", nil))
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	idText := strings.TrimPrefix(trimmed, "api/log/")
+	idText = strings.Trim(idText, "/")
+	if idText == "" || strings.Contains(idText, "/") {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid log id", nil))
+		return
+	}
+	if _, err := strconv.ParseInt(idText, 10, 64); err != nil {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid log id", nil))
+		return
+	}
+	handleOneAPIGetLog(w, r, idText)
 }
 
 func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
@@ -2344,7 +2358,7 @@ func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serviceToken := os.Getenv("SERVICE_TOKEN")
-	targetURL, err := logDeleteURLFromEnv()
+	targetURL, err := logServiceURLFromEnv("/v1/logs")
 	if err != nil || serviceToken == "" {
 		writeJSON(w, http.StatusNotImplemented, apiResponse(false, "log delete is not configured", nil))
 		return
@@ -2379,13 +2393,52 @@ func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, apiResponse(true, "", payload))
 }
 
-func logDeleteURLFromEnv() (*url.URL, error) {
-	return logDeleteURL(strings.TrimSpace(os.Getenv("LOG_HTTP_ENDPOINT")))
+func handleOneAPIGetLog(w http.ResponseWriter, r *http.Request, idText string) {
+	serviceToken := os.Getenv("SERVICE_TOKEN")
+	targetURL, err := logServiceURLFromEnv("/v1/logs/" + idText)
+	if err != nil || serviceToken == "" {
+		writeJSON(w, http.StatusNotImplemented, apiResponse(false, "log detail is not configured", nil))
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL.String(), nil)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse(false, "failed to create log detail request", nil))
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+serviceToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, apiResponse(false, "log service unavailable", nil))
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, apiResponse(false, "failed to read log service response", nil))
+		return
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		writeJSON(w, resp.StatusCode, apiResponse(false, string(body), nil))
+		return
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"raw": string(body)}))
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", payload))
 }
 
-func logDeleteURL(endpoint string) (*url.URL, error) {
+func logServiceURLFromEnv(path string) (*url.URL, error) {
+	return logServiceURL(strings.TrimSpace(os.Getenv("LOG_HTTP_ENDPOINT")), path)
+}
+
+func logServiceURL(endpoint, path string) (*url.URL, error) {
 	if endpoint == "" {
 		return nil, errors.New("missing log endpoint")
+	}
+	if !strings.HasPrefix(path, "/") || strings.Contains(path, "?") || strings.Contains(path, "#") {
+		return nil, errors.New("log service path must be absolute and clean")
 	}
 	u, err := url.Parse(endpoint)
 	if err != nil {
@@ -2397,7 +2450,7 @@ func logDeleteURL(endpoint string) (*url.URL, error) {
 	if u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("log endpoint must be an origin URL")
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/v1/logs"
+	u.Path = strings.TrimRight(u.Path, "/") + path
 	u.RawPath = ""
 	u.ForceQuery = false
 	return u, nil

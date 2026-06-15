@@ -1831,25 +1831,93 @@ func TestAdminHTTPOneAPILogDeleteRequiresEndTime(t *testing.T) {
 	}
 }
 
-func TestLogDeleteURLUsesConfiguredOriginAndFixedPath(t *testing.T) {
-	got, err := logDeleteURL("https://logs.example.com/base/")
+func TestAdminHTTPOneAPILogDetailProxiesToLogService(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	t.Setenv("SERVICE_TOKEN", "service-token")
+
+	var gotAuth string
+	logService := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/logs/123" {
+			t.Fatalf("unexpected log-service request: %s %s", r.Method, r.URL.Path)
+		}
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":123,"type":"consume","message":"ok"}`))
+	}))
+	defer logService.Close()
+	t.Setenv("LOG_HTTP_ENDPOINT", logService.URL)
+
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+	req := httptest.NewRequest(http.MethodGet, "/api/log/123", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if gotAuth != "Bearer service-token" {
+		t.Fatalf("auth = %q", gotAuth)
+	}
+	for _, want := range []string{`"success":true`, `"id":123`, `"type":"consume"`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("detail response missing %s: %s", want, rec.Body.String())
+		}
+	}
+}
+
+func TestAdminHTTPOneAPILogDetailRequiresConfiguredLogService(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	t.Setenv("SERVICE_TOKEN", "service-token")
+
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+	req := httptest.NewRequest(http.MethodGet, "/api/log/123", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want 501, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "log detail is not configured") {
+		t.Fatalf("detail configuration response mismatch: %s", rec.Body.String())
+	}
+}
+
+func TestLogServiceURLUsesConfiguredOriginAndFixedPath(t *testing.T) {
+	got, err := logServiceURL("https://logs.example.com/base/", "/v1/logs")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.String() != "https://logs.example.com/base/v1/logs" {
-		t.Fatalf("logDeleteURL = %q", got.String())
+		t.Fatalf("logServiceURL = %q", got.String())
+	}
+
+	got, err = logServiceURL("https://logs.example.com/base/", "/v1/logs/123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.String() != "https://logs.example.com/base/v1/logs/123" {
+		t.Fatalf("logServiceURL = %q", got.String())
 	}
 }
 
-func TestLogDeleteURLRejectsUnsafeEndpointShapes(t *testing.T) {
+func TestLogServiceURLRejectsUnsafeEndpointShapes(t *testing.T) {
 	for _, endpoint := range []string{
 		"file:///tmp/logs",
 		"https://user:pass@logs.example.com",
 		"https://logs.example.com?target=http://metadata",
 		"https://logs.example.com/#fragment",
 	} {
-		if _, err := logDeleteURL(endpoint); err == nil {
-			t.Fatalf("logDeleteURL accepted %q", endpoint)
+		if _, err := logServiceURL(endpoint, "/v1/logs"); err == nil {
+			t.Fatalf("logServiceURL accepted %q", endpoint)
+		}
+	}
+	for _, path := range []string{"v1/logs", "/v1/logs?target=http://metadata", "/v1/logs#fragment"} {
+		if _, err := logServiceURL("https://logs.example.com", path); err == nil {
+			t.Fatalf("logServiceURL accepted path %q", path)
 		}
 	}
 }
