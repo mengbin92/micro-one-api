@@ -156,7 +156,7 @@ kubectl logs -f deployment/relay-gateway -n one-api
 | `REDIS_ADDR` | Redis 地址 | - |
 | `LOG_LEVEL` | 日志级别 | `info` |
 | `LOG_FORMAT` | 日志格式 (json/text) | `json` |
-| `SERVICE_TOKEN` | 服务间 HTTP 调用令牌；admin-api 删除业务日志时转发到 log-service 使用 | - |
+| `SERVICE_TOKEN` | 服务间 HTTP 调用令牌；admin-api 访问 log-service 详情与清理接口时使用 | - |
 
 ### 4.2 Relay Gateway 专用
 
@@ -176,7 +176,7 @@ kubectl logs -f deployment/relay-gateway -n one-api
 | `IDENTITY_GRPC_ENDPOINT` | identity-service gRPC 地址 | - |
 | `CHANNEL_GRPC_ENDPOINT` | channel-service gRPC 地址 | - |
 | `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 | - |
-| `LOG_HTTP_ENDPOINT` | log-service HTTP 地址；未配置时 `/api/log/` 删除保持禁用兼容响应 | - |
+| `LOG_HTTP_ENDPOINT` | log-service HTTP 地址；未配置时 `/api/log/{id}` 详情与 `/api/log/` 清理保持禁用兼容响应 | - |
 | `ADMIN_WEB_ROOT` | 管理前端静态文件目录；目录内必须有 `index.html`，未配置或不可用时使用二进制内嵌资源 | - |
 
 #### 管理前端静态资源
@@ -202,9 +202,9 @@ docker-compose up -d admin-api
 
 后续只更新前端时，重新执行 `make web-dist` 并刷新浏览器即可；必要时可 `docker-compose restart admin-api`。
 
-#### 日志删除前置条件
+#### 日志代理前置条件
 
-`/api/log/` 的 `DELETE` 仅删除 `log-service` 中的业务日志，并要求传入 `end_time`。该操作不会删除 `billing-service` 的 ledger/账务流水。
+`/api/log/{id}` 的 `GET` 和 `/api/log/` 的 `DELETE` 都走 `log-service` HTTP 代理。`GET` 用于查看单条业务日志详情，`DELETE` 仅删除 `log-service` 中的业务日志，并要求传入 `end_time`。这些操作都不会删除 `billing-service` 的 ledger/账务流水。
 
 **启用该能力的硬性前置条件（缺一不可）：**
 
@@ -212,8 +212,8 @@ docker-compose up -d admin-api
 2. `admin-api` 与 `log-service` 必须配置**相同的** `SERVICE_TOKEN`。
 
 未满足上述条件时：
-- `admin-api` 启动会输出 `log delete proxy disabled: missing [...]` 的 WARN 日志；
-- 路由保持注册，但实际调用返回 `501 NotImplemented` 的稳定占位响应（`{"success":false,"message":"log delete is not configured"}`）。
+- `admin-api` 启动会输出 `log service proxy disabled: missing [...]` 的 WARN 日志；
+- 路由保持注册，但实际调用返回 `501 NotImplemented` 的稳定占位响应（`{"success":false,"message":"log detail is not configured"}` 或 `{"success":false,"message":"log delete is not configured"}`）。
 
 ## 5. 健康检查与监控
 
