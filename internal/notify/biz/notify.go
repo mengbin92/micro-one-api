@@ -55,7 +55,10 @@ func NewNotifyUsecase(repo NotifyRepo) *NotifyUsecase {
 }
 
 func (uc *NotifyUsecase) CreateNotification(ctx context.Context, notifyType, recipient, subject, content string) (*Notification, error) {
-	if notifyType == "" || recipient == "" {
+	if notifyType == "" {
+		return nil, ErrInvalidNotification
+	}
+	if recipient == "" && notifyType == NotifyTypeEmail {
 		return nil, ErrInvalidNotification
 	}
 	n := &Notification{

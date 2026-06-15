@@ -25,10 +25,10 @@ billing:
 clients:
   notify:
     endpoint: ${NOTIFY_GRPC_ENDPOINT:-}
-    notify_type: event
+    notify_type: ${RECON_ALERT_NOTIFY_TYPE:-event}
 recon:
   enabled: ${RECON_ALERT_ENABLED:-true}
-  recipients: ${RECON_ALERT_RECIPIENTS:-[admin]}
+  recipients: ${RECON_ALERT_RECIPIENTS:-[""]}
   interval: ${RECON_ALERT_INTERVAL:-1h}
 payment:
   quota_per_unit: ${PAYMENT_QUOTA_PER_UNIT:-500000}

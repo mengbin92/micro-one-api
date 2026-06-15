@@ -13,6 +13,7 @@ type ReconciliationJob struct {
 	uc            *ReconciliationUsecase
 	notifier      Notifier
 	recipients    []string
+	notifyType    string
 	checkInterval time.Duration
 	stopChan      chan struct{}
 }
@@ -26,11 +27,21 @@ func WithNotifier(n Notifier) JobOption {
 	return func(j *ReconciliationJob) { j.notifier = n }
 }
 
-// WithRecipients sets the alert recipients. Defaults to ["admin"].
+// WithRecipients sets the alert recipients. Defaults to [""], which lets
+// notify-worker use its configured channel fallback (for example webhook_url).
 func WithRecipients(recipients []string) JobOption {
 	return func(j *ReconciliationJob) {
 		if len(recipients) > 0 {
 			j.recipients = recipients
+		}
+	}
+}
+
+// WithNotifyType sets the notification channel type used for reconciliation alerts.
+func WithNotifyType(notifyType string) JobOption {
+	return func(j *ReconciliationJob) {
+		if notifyType != "" {
+			j.notifyType = notifyType
 		}
 	}
 }
@@ -44,7 +55,8 @@ func NewReconciliationJob(uc *ReconciliationUsecase, checkInterval time.Duration
 		uc:            uc,
 		checkInterval: checkInterval,
 		stopChan:      make(chan struct{}),
-		recipients:    []string{"admin"},
+		recipients:    []string{""},
+		notifyType:    "event",
 	}
 	for _, opt := range opts {
 		opt(j)
@@ -125,7 +137,7 @@ func (j *ReconciliationJob) dispatchAlerts(ctx context.Context, result *Reconcil
 
 	var errs []string
 	for _, recipient := range j.recipients {
-		if err := j.notifier.CreateNotification(ctx, "event", recipient, subject, content); err != nil {
+		if err := j.notifier.CreateNotification(ctx, j.notifyType, recipient, subject, content); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", recipient, err))
 			continue
 		}

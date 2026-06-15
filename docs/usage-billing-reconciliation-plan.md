@@ -9,7 +9,8 @@
 - [x] **Phase 2** — 成本/利润分析（`migrations/029` 加 `upstream_cost`，账本写入上游成本）
 - [x] **Phase 3** — 渠道对账（`RunReconciliation` 增渠道维度 + ledger/log 双写校验）
 - [x] **Phase 4** — 告警（`notify-worker` 投递差异通知，可配置收件人；dashboard 成本健康面板已上线）
-- [ ] **后续** — Top-N 图表（管理后台可选）、告警通道扩展（邮件/IM）
+- [x] **后续** — Top-N 图表、notify-worker webhook/SMTP 实际投递与重试
+- [ ] **后续** — 告警通道扩展（IM 等）
 
 ## 一、架构现状
 

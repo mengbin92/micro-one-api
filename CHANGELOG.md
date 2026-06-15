@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `notify-worker` 支持 pending 通知实际投递：webhook/event 走 HTTP POST，email 走 SMTP，
+  并支持失败重试与最终 failed 状态。
+- CI Docker 构建矩阵覆盖全部服务镜像。
+
+### Changed
+- 对账告警通知类型可通过 `RECON_ALERT_NOTIFY_TYPE` 配置；
+  `RECON_ALERT_RECIPIENTS` 文档改为 webhook URL / email 目标语义。
+
 ## [0.2.1] - 2026-06-12
 
 ### Added

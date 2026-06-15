@@ -278,6 +278,40 @@ curl -X POST http://localhost:8004/v1/reconciliation
 0 * * * * curl -s -X POST http://billing-service:8004/v1/reconciliation >> /var/log/reconciliation.log
 ```
 
+### 6.1 对账告警投递
+
+`billing-service` 可以把对账差异写入 `notify-worker`，再由 `notify-worker` 发送到 webhook 或 SMTP：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `NOTIFY_GRPC_ENDPOINT` | notify-worker gRPC 地址；留空时只记录日志 | - |
+| `RECON_ALERT_ENABLED` | 是否启用对账告警 | `true` |
+| `RECON_ALERT_NOTIFY_TYPE` | 告警类型：`event` / `webhook` / `email` | `event` |
+| `RECON_ALERT_RECIPIENTS` | JSON 数组；webhook/event 可填 URL 或留空走 `NOTIFY_WEBHOOK_URL`，email 填邮箱 | `[""]` |
+| `RECON_ALERT_INTERVAL` | 自动对账间隔 | `1h` |
+| `NOTIFY_WEBHOOK_URL` | 默认 webhook 地址，供 `event` / `webhook` 告警 fallback 使用 | - |
+| `NOTIFY_SMTP_HOST` / `NOTIFY_SMTP_PORT` / `NOTIFY_SMTP_USER` / `NOTIFY_SMTP_PASS` / `NOTIFY_SMTP_FROM` | SMTP 邮件投递配置 | - |
+
+Webhook 示例：
+
+```bash
+RECON_ALERT_NOTIFY_TYPE=event
+RECON_ALERT_RECIPIENTS=[""]
+NOTIFY_WEBHOOK_URL=https://hooks.example.com/micro-one-api
+```
+
+Email 示例：
+
+```bash
+RECON_ALERT_NOTIFY_TYPE=email
+RECON_ALERT_RECIPIENTS=["ops@example.com"]
+NOTIFY_SMTP_HOST=smtp.example.com
+NOTIFY_SMTP_PORT=587
+NOTIFY_SMTP_USER=ops@example.com
+NOTIFY_SMTP_PASS=change-me
+NOTIFY_SMTP_FROM=ops@example.com
+```
+
 ## 7. 故障排查
 
 ### 7.1 服务无法启动

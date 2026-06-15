@@ -142,6 +142,16 @@ func TestNotifyUsecase_CreateNotification(t *testing.T) {
 			t.Fatalf("expected ErrInvalidNotification, got %v", err)
 		}
 	})
+
+	t.Run("event allows empty recipient for configured fallback", func(t *testing.T) {
+		n, err := uc.CreateNotification(context.Background(), NotifyTypeEvent, "", "s", "c")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if n.Recipient != "" {
+			t.Fatalf("expected empty recipient, got %s", n.Recipient)
+		}
+	})
 }
 
 func TestNotifyUsecase_GetNotification(t *testing.T) {

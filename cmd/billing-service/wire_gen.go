@@ -85,7 +85,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	var notifyConn *grpc.ClientConn
 	var notifier biz.Notifier = biz.NoopNotifier()
 	interval := 1 * time.Hour
-	recipients := []string{"admin"}
+	recipients := []string{""}
 	if cfg.Recon.Enabled {
 		if cfg.Recon.Interval != "" {
 			if d, parseErr := time.ParseDuration(cfg.Recon.Interval); parseErr == nil && d > 0 {
@@ -127,6 +127,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	reconJobOpts := []biz.JobOption{
 		biz.WithNotifier(notifier),
 		biz.WithRecipients(recipients),
+		biz.WithNotifyType(cfg.Clients.Notify.NotifyType),
 	}
 	reconJob := biz.NewReconciliationJob(reconUc, interval, reconJobOpts...)
 	go cleanupJob.Start(ctx)
