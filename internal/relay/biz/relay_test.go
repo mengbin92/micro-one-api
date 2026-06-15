@@ -29,6 +29,10 @@ func (testChannelClient) SelectChannel(_ context.Context, group, model string, _
 	}, nil
 }
 
+func (testChannelClient) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
+	return nil
+}
+
 type recordingChannelClient struct {
 	models      []string
 	failModels  map[string]error
@@ -49,6 +53,10 @@ func (c *recordingChannelClient) SelectChannel(_ context.Context, group, model s
 		Name:    name,
 		BaseURL: "https://api.openai.com/v1",
 	}, nil
+}
+
+func (c *recordingChannelClient) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
+	return nil
 }
 
 func TestRelayUsecasePlan(t *testing.T) {
@@ -97,6 +105,10 @@ type testChannelClientError struct {
 
 func (c testChannelClientError) SelectChannel(_ context.Context, _, _ string, _ bool) (*Channel, error) {
 	return nil, c.err
+}
+
+func (c testChannelClientError) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
+	return nil
 }
 
 func TestRelayUsecasePlan_ChannelError(t *testing.T) {

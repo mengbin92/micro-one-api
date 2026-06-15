@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- 渠道健康状态与自动熔断：relay 上游调用会回写成功/失败和响应时间，
+  channel-service 连续失败达到阈值后跳过该渠道，冷却期后允许半开恢复；
+  管理后台渠道列表展示健康状态、失败次数和熔断冷却时间，并支持手动触发
+  `/models` 健康探测。
+- monitor-worker 支持定时探测启用渠道的 `/models` 健康状态。
+- 新增 `CHANNEL_HEALTH_FAILURE_THRESHOLD`、`CHANNEL_HEALTH_COOLDOWN`、
+  `CHANNEL_HEALTH_CHECK_ENABLED`、`CHANNEL_HEALTH_CHECK_INTERVAL`、
+  `CHANNEL_HEALTH_CHECK_TIMEOUT` 配置项。
+
 ## [0.2.2] - 2026-06-15
 
 ### Added

@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"testing"
+	"time"
 
 	"micro-one-api/internal/channel/biz"
 
@@ -24,7 +25,7 @@ func setupChannelTestDB(t *testing.T) *Repository {
 		CREATE TABLE channels (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			type INTEGER DEFAULT 0,
-			` + "`key`" + ` TEXT,
+			`+"`key`"+` TEXT,
 			status INTEGER DEFAULT 0,
 			name TEXT,
 			weight INTEGER DEFAULT 0,
@@ -37,8 +38,14 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			balance_refresh_last_error TEXT,
 			balance_refresh_last_success_time INTEGER DEFAULT 0,
 			consecutive_balance_refresh_failures INTEGER DEFAULT 0,
+			health_status TEXT DEFAULT 'healthy',
+			health_last_error TEXT,
+			health_last_success_time INTEGER DEFAULT 0,
+			health_last_failure_time INTEGER DEFAULT 0,
+			health_consecutive_failures INTEGER DEFAULT 0,
+			circuit_opened_until INTEGER DEFAULT 0,
 			models TEXT,
-			` + "`group`" + ` TEXT DEFAULT 'default',
+			`+"`group`"+` TEXT DEFAULT 'default',
 			used_quota INTEGER DEFAULT 0,
 			model_mapping TEXT DEFAULT '',
 			priority INTEGER DEFAULT 0,
@@ -50,7 +57,7 @@ func setupChannelTestDB(t *testing.T) *Repository {
 	require.NoError(t, db.Exec(`
 		CREATE TABLE abilities (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			` + "`group`" + ` TEXT NOT NULL DEFAULT 'default',
+			`+"`group`"+` TEXT NOT NULL DEFAULT 'default',
 			model TEXT NOT NULL,
 			channel_id INTEGER NOT NULL,
 			enabled INTEGER DEFAULT 1,
@@ -92,9 +99,9 @@ func TestCreateChannel_PopulatesAbilities(t *testing.T) {
 
 	// Verify row content: enabled mirrors channel.Status; priority mirrors channel.Priority.
 	wantPairs := map[string]bool{
-		"default:claude-opus-4-7":  false,
+		"default:claude-opus-4-7":   false,
 		"default:claude-sonnet-4-6": false,
-		"premium:claude-opus-4-7":  false,
+		"premium:claude-opus-4-7":   false,
 		"premium:claude-sonnet-4-6": false,
 	}
 	for _, r := range rows {
@@ -224,4 +231,49 @@ func TestChangeStatus_UpdatesAbilitiesEnabled(t *testing.T) {
 
 	rows = loadAbilities(t, repo, ch.ID)
 	assert.True(t, rows[0].Enabled, "ability.enabled should be true after re-enabling channel")
+}
+
+func TestRecordHealth_OpensAndResetsCircuit(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	ch := &biz.Channel{
+		Name:   "health-check",
+		Group:  "default",
+		Models: []string{"gpt-4o"},
+		Status: biz.ChannelStatusEnabled,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	failedAt := time.Unix(100, 0)
+	updated, err := repo.RecordHealth(ctx, biz.ChannelHealthEvent{
+		ChannelID:    ch.ID,
+		Success:      false,
+		Error:        "status=502",
+		ResponseTime: 1500,
+		CheckedAt:    failedAt,
+	}, 1, 5*time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, biz.ChannelHealthUnavailable, updated.HealthStatus)
+	assert.Equal(t, "status=502", updated.HealthLastError)
+	assert.EqualValues(t, 1, updated.HealthConsecutiveFailures)
+	assert.Equal(t, failedAt.Add(5*time.Minute).Unix(), updated.CircuitOpenedUntil)
+
+	stored, err := repo.FindByID(ctx, ch.ID)
+	require.NoError(t, err)
+	assert.Equal(t, biz.ChannelHealthUnavailable, stored.HealthStatus)
+	assert.Equal(t, int64(1500), stored.ResponseTime)
+
+	succeededAt := time.Unix(500, 0)
+	updated, err = repo.RecordHealth(ctx, biz.ChannelHealthEvent{
+		ChannelID:    ch.ID,
+		Success:      true,
+		ResponseTime: 120,
+		CheckedAt:    succeededAt,
+	}, 1, 5*time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, biz.ChannelHealthHealthy, updated.HealthStatus)
+	assert.Equal(t, "", updated.HealthLastError)
+	assert.EqualValues(t, 0, updated.HealthConsecutiveFailures)
+	assert.EqualValues(t, 0, updated.CircuitOpenedUntil)
+	assert.Equal(t, succeededAt.Unix(), updated.HealthLastSuccessTime)
 }

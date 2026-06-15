@@ -442,6 +442,29 @@ func (m *testChannelRepo) RecordUsage(ctx context.Context, channelID int64, quot
 	return nil
 }
 
+func (m *testChannelRepo) RecordHealth(ctx context.Context, event channelbiz.ChannelHealthEvent, threshold int32, cooldown time.Duration) (*channelbiz.Channel, error) {
+	ch, ok := m.channels[event.ChannelID]
+	if !ok {
+		return nil, channelbiz.ErrChannelNotFound
+	}
+	if event.Success {
+		ch.HealthStatus = channelbiz.ChannelHealthHealthy
+		ch.HealthLastError = ""
+		ch.HealthConsecutiveFailures = 0
+		ch.CircuitOpenedUntil = 0
+	} else {
+		ch.HealthLastError = event.Error
+		ch.HealthConsecutiveFailures++
+		if ch.HealthConsecutiveFailures >= threshold {
+			ch.HealthStatus = channelbiz.ChannelHealthUnavailable
+			ch.CircuitOpenedUntil = event.CheckedAt.Add(cooldown).Unix()
+		} else {
+			ch.HealthStatus = channelbiz.ChannelHealthDegraded
+		}
+	}
+	return ch, nil
+}
+
 func (m *testChannelRepo) DeleteChannel(ctx context.Context, channelID int64) error {
 	delete(m.channels, channelID)
 	return nil

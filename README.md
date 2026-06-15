@@ -173,6 +173,8 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 |
 | `RELAY_HTTP_ADDR` | relay-gateway HTTP 监听地址 |
 | `RELAY_PROVIDER_TIMEOUT` | 上游 provider 请求超时 |
+| `CHANNEL_HEALTH_FAILURE_THRESHOLD` / `CHANNEL_HEALTH_COOLDOWN` | 渠道自动熔断阈值和冷却时间；默认连续 3 次上游失败后跳过 5 分钟 |
+| `CHANNEL_HEALTH_CHECK_ENABLED` / `CHANNEL_HEALTH_CHECK_INTERVAL` / `CHANNEL_HEALTH_CHECK_TIMEOUT` | monitor-worker 定时渠道 `/models` 健康探测开关、间隔和单次超时 |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` / `RATE_LIMIT_BURST` | 网关限流参数 |
 | `CORS_ALLOWED_ORIGINS` | CORS 允许来源 |
 | `ADMIN_WEB_ROOT` | admin-api 使用的外部前端构建目录 |

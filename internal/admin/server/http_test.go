@@ -105,6 +105,7 @@ type adminHTTPChannelClient struct {
 	existingFailureCount int32
 	existingLastError    string
 	existingLastSuccess  int64
+	healthReq            *channelv1.RecordChannelHealthRequest
 }
 
 func (c *adminHTTPChannelClient) CreateChannel(ctx context.Context, req *channelv1.CreateChannelRequest, opts ...grpc.CallOption) (*channelv1.CreateChannelResponse, error) {
@@ -127,6 +128,11 @@ func (c *adminHTTPChannelClient) DeleteChannel(ctx context.Context, req *channel
 func (c *adminHTTPChannelClient) ChangeChannelStatus(ctx context.Context, req *channelv1.ChangeChannelStatusRequest, opts ...grpc.CallOption) (*channelv1.ChangeChannelStatusResponse, error) {
 	c.statuses = append(c.statuses, req.Status)
 	return &channelv1.ChangeChannelStatusResponse{Success: true, Message: "updated"}, nil
+}
+
+func (c *adminHTTPChannelClient) RecordChannelHealth(ctx context.Context, req *channelv1.RecordChannelHealthRequest, opts ...grpc.CallOption) (*channelv1.RecordChannelHealthResponse, error) {
+	c.healthReq = req
+	return &channelv1.RecordChannelHealthResponse{Success: true, Message: "ok"}, nil
 }
 
 func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChannelRequest, opts ...grpc.CallOption) (*channelv1.GetChannelReply, error) {
@@ -159,6 +165,7 @@ func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.
 			BalanceRefreshLastError:           c.existingLastError,
 			BalanceRefreshLastSuccessTime:     c.existingLastSuccess,
 			ConsecutiveBalanceRefreshFailures: c.existingFailureCount,
+			HealthStatus:                      "healthy",
 		},
 	}, nil
 }
@@ -177,6 +184,7 @@ func (c *adminHTTPChannelClient) ListChannels(ctx context.Context, req *channelv
 		Balance:            12.5,
 		BalanceUpdatedTime: 1710000100,
 		UsedQuota:          900,
+		HealthStatus:       "healthy",
 	}
 	disabled := &commonv1.ChannelSummary{
 		Id:     102,
@@ -1924,7 +1932,20 @@ func TestLogServiceURLRejectsUnsafeEndpointShapes(t *testing.T) {
 
 func TestAdminHTTPTestChannel(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
-	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("upstream path = %q, want /v1/models", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer sk-test" {
+			t.Fatalf("authorization header = %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[]}`))
+	}))
+	defer upstream.Close()
+	channel := &adminHTTPChannelClient{baseURL: upstream.URL + "/v1"}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, channel, &adminHTTPBillingClient{})
 	req := httptest.NewRequest(http.MethodGet, "/api/channel/test/101", nil)
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rec := httptest.NewRecorder()
@@ -1936,6 +1957,9 @@ func TestAdminHTTPTestChannel(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"channel_id":101`) {
 		t.Fatalf("channel test response mismatch: %s", rec.Body.String())
+	}
+	if channel.healthReq == nil || !channel.healthReq.Success || channel.healthReq.ChannelId != 101 {
+		t.Fatalf("health request mismatch: %+v", channel.healthReq)
 	}
 }
 

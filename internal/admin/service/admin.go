@@ -17,6 +17,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	relayprovider "micro-one-api/internal/relay/provider"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -26,11 +27,12 @@ import (
 // AdminService is the transport layer entry for admin-api.
 type AdminService struct {
 	adminv1.UnimplementedAdminServiceServer
-	billingClient  billingv1.BillingServiceClient
-	identityClient identityv1.IdentityServiceClient
-	channelClient  channelv1.ChannelServiceClient
-	systemOptsRepo SystemOptionsStore
-	httpClient     *http.Client
+	billingClient   billingv1.BillingServiceClient
+	identityClient  identityv1.IdentityServiceClient
+	channelClient   channelv1.ChannelServiceClient
+	systemOptsRepo  SystemOptionsStore
+	httpClient      *http.Client
+	providerFactory *relayprovider.ProviderFactory
 }
 
 // SystemOptionsStore is the interface for system options persistence.
@@ -57,11 +59,12 @@ func NewAdminService(
 	systemOptsRepo SystemOptionsStore,
 ) *AdminService {
 	return &AdminService{
-		billingClient:  billingClient,
-		identityClient: identityClient,
-		channelClient:  channelClient,
-		systemOptsRepo: systemOptsRepo,
-		httpClient:     &http.Client{Timeout: 10 * time.Second},
+		billingClient:   billingClient,
+		identityClient:  identityClient,
+		channelClient:   channelClient,
+		systemOptsRepo:  systemOptsRepo,
+		httpClient:      &http.Client{Timeout: 10 * time.Second},
+		providerFactory: relayprovider.NewProviderFactory(10 * time.Second),
 	}
 }
 
@@ -593,6 +596,7 @@ func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUse
 }
 
 func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[string]interface{}, error) {
+	startedAt := time.Now()
 	resp, err := s.channelClient.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: channelID})
 	if err != nil {
 		return nil, err
@@ -600,16 +604,89 @@ func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[st
 	if resp == nil || resp.Channel == nil {
 		return nil, status.Error(codes.NotFound, "channel not found")
 	}
-	return map[string]interface{}{
+	channel := resp.Channel
+	result := map[string]interface{}{
 		"success":    true,
-		"channel_id": resp.Channel.Id,
-		"name":       resp.Channel.Name,
-		"type":       resp.Channel.Type,
-		"status":     resp.Channel.Status,
-		"group":      resp.Channel.Group,
-		"models":     resp.Channel.Models,
-		"message":    "channel metadata resolved",
-	}, nil
+		"channel_id": channel.Id,
+		"name":       channel.Name,
+		"type":       channel.Type,
+		"status":     channel.Status,
+		"group":      channel.Group,
+		"models":     channel.Models,
+	}
+	if !supportsModelsHealthProbe(channel.GetType()) {
+		result["skipped"] = true
+		result["message"] = "channel metadata resolved; active probe is not supported for this provider"
+		return result, nil
+	}
+	provider, err := s.providerFactory.CreateProviderWithConfig(channel.GetType(), channel.GetBaseUrl(), channel.GetKey(), relayprovider.ProviderConfig{
+		APIVersion: channel.GetConfig().GetApiVersion(),
+	})
+	if err != nil {
+		_ = s.recordChannelHealth(ctx, channelID, false, err.Error(), time.Since(startedAt).Milliseconds())
+		return nil, err
+	}
+	probeResp, err := provider.Forward(ctx, &relayprovider.RawRequest{
+		Method: http.MethodGet,
+		Path:   "/models",
+		Header: http.Header{"Accept": []string{"application/json"}},
+	})
+	responseTime := time.Since(startedAt).Milliseconds()
+	if err != nil {
+		_ = s.recordChannelHealth(ctx, channelID, false, err.Error(), responseTime)
+		return nil, err
+	}
+	_ = s.recordChannelHealth(ctx, channelID, true, "", responseTime)
+	result["message"] = "channel health probe succeeded"
+	result["response_time"] = responseTime
+	result["status_code"] = probeResp.StatusCode
+	result["health_status"] = "healthy"
+	return result, nil
+}
+
+func (s *AdminService) recordChannelHealth(ctx context.Context, channelID int64, success bool, message string, responseTime int64) error {
+	if s.channelClient == nil || channelID <= 0 {
+		return nil
+	}
+	resp, err := s.channelClient.RecordChannelHealth(ctx, &channelv1.RecordChannelHealthRequest{
+		ChannelId:    channelID,
+		Success:      success,
+		Error:        message,
+		ResponseTime: responseTime,
+	})
+	if err != nil {
+		return err
+	}
+	if resp != nil && !resp.GetSuccess() {
+		return errors.New(resp.GetMessage())
+	}
+	return nil
+}
+
+func supportsModelsHealthProbe(channelType int32) bool {
+	switch channelType {
+	case relayprovider.ChannelTypeOpenAI,
+		relayprovider.ChannelTypeDeepSeek,
+		relayprovider.ChannelTypeMistral,
+		relayprovider.ChannelTypeMoonshot,
+		relayprovider.ChannelTypeGroq,
+		relayprovider.ChannelTypeCohere,
+		relayprovider.ChannelTypeBaichuan,
+		relayprovider.ChannelTypeZhipu,
+		relayprovider.ChannelTypeTongyi,
+		relayprovider.ChannelTypeMinimax,
+		relayprovider.ChannelTypeTogether,
+		relayprovider.ChannelTypeFireworks,
+		relayprovider.ChannelTypePerplexity,
+		relayprovider.ChannelTypeNovita,
+		relayprovider.ChannelTypeOpenRouter,
+		relayprovider.ChannelTypeSiliconFlow,
+		relayprovider.ChannelTypeOllama,
+		relayprovider.ChannelTypeDoubao:
+		return true
+	default:
+		return false
+	}
 }
 
 // ========== 渠道管理 ==========

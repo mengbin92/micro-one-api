@@ -963,7 +963,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		}
 
 		if req.Stream {
-			s.handleStreamingResponse(w, r, provider, &req, reservation, usageLogInput{
+			return s.handleStreamingResponse(w, r, provider, &req, reservation, usageLogInput{
 				UserID:    plan.Auth.UserID,
 				TokenID:   plan.Auth.TokenID,
 				TokenName: plan.Auth.TokenName,
@@ -973,7 +973,6 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				ChannelID: ch.ID,
 				IsStream:  true,
 			})
-			return nil
 		}
 
 		// Non-streaming call
@@ -1014,22 +1013,20 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Request, provider relayprovider.Provider, req *relayprovider.ChatCompletionsRequest, reservation *billingv1.ReserveQuotaResponse, logInput usageLogInput) {
+func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Request, provider relayprovider.Provider, req *relayprovider.ChatCompletionsRequest, reservation *billingv1.ReserveQuotaResponse, logInput usageLogInput) error {
 	startedAt := time.Now()
 	chunkChan, err := provider.ChatCompletionsStream(r.Context(), req)
 	if err != nil {
 		// 流式请求失败，释放预扣配额
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
-		s.writeError(w, http.StatusBadGateway, "upstream stream error")
-		return
+		return err
 	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		// 流式不支持，释放预扣配额
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "streaming not supported")
-		s.writeError(w, http.StatusInternalServerError, "streaming not supported")
-		return
+		return stderrors.New("streaming not supported")
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -1093,6 +1090,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 	} else {
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "stream error")
 	}
+	return nil
 }
 
 type usageLogInput struct {

@@ -11,6 +11,7 @@ type IdentityClient interface {
 
 type ChannelClient interface {
 	SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error)
+	RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error
 }
 
 type RelayRequest struct {

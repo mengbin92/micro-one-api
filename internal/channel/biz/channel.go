@@ -5,8 +5,11 @@ import (
 	"crypto/rand"
 	"errors"
 	"math/big"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"micro-one-api/internal/pkg/events"
 
@@ -15,6 +18,13 @@ import (
 
 const (
 	ChannelStatusEnabled = 1
+
+	ChannelHealthHealthy     = "healthy"
+	ChannelHealthDegraded    = "degraded"
+	ChannelHealthUnavailable = "unavailable"
+
+	defaultHealthFailureThreshold = 3
+	defaultHealthCooldown         = 5 * time.Minute
 )
 
 var ErrChannelNotFound = errors.New("channel not found")
@@ -47,6 +57,12 @@ type Channel struct {
 	BalanceRefreshLastError           string
 	BalanceRefreshLastSuccessTime     int64
 	ConsecutiveBalanceRefreshFailures int32
+	HealthStatus                      string
+	HealthLastError                   string
+	HealthLastSuccessTime             int64
+	HealthLastFailureTime             int64
+	HealthConsecutiveFailures         int32
+	CircuitOpenedUntil                int64
 	UsedQuota                         int64
 	ModelMapping                      string
 	SystemPrompt                      string
@@ -61,6 +77,14 @@ type Ability struct {
 	Priority  int64
 }
 
+type ChannelHealthEvent struct {
+	ChannelID    int64
+	Success      bool
+	Error        string
+	ResponseTime int64
+	CheckedAt    time.Time
+}
+
 type ChannelRepo interface {
 	FindByID(ctx context.Context, channelID int64) (*Channel, error)
 	ListAbilitiesByGroupAndModel(ctx context.Context, group, model string) ([]Ability, error)
@@ -69,13 +93,17 @@ type ChannelRepo interface {
 	CreateChannel(ctx context.Context, channel *Channel) error
 	UpdateChannel(ctx context.Context, channel *Channel) error
 	RecordUsage(ctx context.Context, channelID int64, quota int64) error
+	RecordHealth(ctx context.Context, event ChannelHealthEvent, threshold int32, cooldown time.Duration) (*Channel, error)
 	DeleteChannel(ctx context.Context, channelID int64) error
 	ChangeStatus(ctx context.Context, channelID int64, status int32) error
 }
 
 type ChannelUsecase struct {
-	repo     ChannelRepo
-	eventBus events.EventBus
+	repo                   ChannelRepo
+	eventBus               events.EventBus
+	now                    func() time.Time
+	healthFailureThreshold int32
+	healthCooldown         time.Duration
 }
 
 func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUsecase {
@@ -83,8 +111,11 @@ func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUseca
 		eventBus = events.NewMemoryEventBus()
 	}
 	return &ChannelUsecase{
-		repo:     repo,
-		eventBus: eventBus,
+		repo:                   repo,
+		eventBus:               eventBus,
+		now:                    time.Now,
+		healthFailureThreshold: healthFailureThresholdFromEnv(),
+		healthCooldown:         healthCooldownFromEnv(),
 	}
 }
 
@@ -100,34 +131,38 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 		return abilities[i].Priority > abilities[j].Priority
 	})
 
-	var candidates []Ability
+	skipPriority := int64(0)
 	if excludeFirstPriority {
-		highest := abilities[0].Priority
-		for _, ability := range abilities {
-			if ability.Priority != highest {
-				candidates = append(candidates, ability)
+		skipPriority = abilities[0].Priority
+	}
+	for i := 0; i < len(abilities); {
+		priority := abilities[i].Priority
+		tier := make([]*Channel, 0)
+		for i < len(abilities) && abilities[i].Priority == priority {
+			ability := abilities[i]
+			i++
+			if excludeFirstPriority && priority == skipPriority {
+				continue
+			}
+			channel, err := uc.repo.FindByID(ctx, ability.ChannelID)
+			if err != nil {
+				continue
+			}
+			if channel.SelectableAt(uc.now()) {
+				tier = append(tier, channel)
 			}
 		}
-	} else {
-		highest := abilities[0].Priority
-		for _, ability := range abilities {
-			if ability.Priority == highest {
-				candidates = append(candidates, ability)
-			}
+		if len(tier) == 0 {
+			continue
 		}
+		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(tier))))
+		if err != nil {
+			return nil, err
+		}
+		return tier[nBig.Int64()], nil
 	}
 
-	if len(candidates) == 0 {
-		return nil, ErrChannelNotFound
-	}
-
-	// Use crypto/rand for secure random selection
-	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(candidates))))
-	if err != nil {
-		return nil, err
-	}
-	selected := candidates[nBig.Int64()]
-	return uc.repo.FindByID(ctx, selected.ChannelID)
+	return nil, ErrChannelNotFound
 }
 
 func (uc *ChannelUsecase) GetChannel(ctx context.Context, channelID int64) (*Channel, error) {
@@ -166,6 +201,21 @@ func (uc *ChannelUsecase) RecordUsage(ctx context.Context, channelID int64, quot
 		return err
 	}
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID})
+	return nil
+}
+
+func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthEvent) error {
+	if event.ChannelID <= 0 {
+		return ErrChannelNotFound
+	}
+	if event.CheckedAt.IsZero() {
+		event.CheckedAt = uc.now()
+	}
+	channel, err := uc.repo.RecordHealth(ctx, event, uc.healthFailureThreshold, uc.healthCooldown)
+	if err != nil {
+		return err
+	}
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
 	return nil
 }
 
@@ -208,4 +258,41 @@ func DecodeChannelConfig(input string) ChannelConfig {
 
 func (c *Channel) ModelsCSV() string {
 	return strings.Join(c.Models, ",")
+}
+
+func (c *Channel) EffectiveHealthStatus() string {
+	if strings.TrimSpace(c.HealthStatus) == "" {
+		return ChannelHealthHealthy
+	}
+	return c.HealthStatus
+}
+
+func (c *Channel) SelectableAt(now time.Time) bool {
+	if c == nil || c.Status != ChannelStatusEnabled {
+		return false
+	}
+	if c.EffectiveHealthStatus() != ChannelHealthUnavailable {
+		return true
+	}
+	return c.CircuitOpenedUntil > 0 && now.Unix() >= c.CircuitOpenedUntil
+}
+
+func healthFailureThresholdFromEnv() int32 {
+	if v := strings.TrimSpace(os.Getenv("CHANNEL_HEALTH_FAILURE_THRESHOLD")); v != "" {
+		n, err := strconv.ParseInt(v, 10, 32)
+		if err == nil && n > 0 {
+			return int32(n)
+		}
+	}
+	return defaultHealthFailureThreshold
+}
+
+func healthCooldownFromEnv() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("CHANNEL_HEALTH_COOLDOWN")); v != "" {
+		duration, err := time.ParseDuration(v)
+		if err == nil && duration > 0 {
+			return duration
+		}
+	}
+	return defaultHealthCooldown
 }

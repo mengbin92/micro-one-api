@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"micro-one-api/internal/channel/biz"
 	appcrypto "micro-one-api/internal/pkg/crypto"
@@ -41,6 +42,12 @@ type channelModel struct {
 	BalanceRefreshLastError           *string `gorm:"column:balance_refresh_last_error"`
 	BalanceRefreshLastSuccessTime     int64   `gorm:"column:balance_refresh_last_success_time"`
 	ConsecutiveBalanceRefreshFailures int32   `gorm:"column:consecutive_balance_refresh_failures"`
+	HealthStatus                      string  `gorm:"column:health_status"`
+	HealthLastError                   *string `gorm:"column:health_last_error"`
+	HealthLastSuccessTime             int64   `gorm:"column:health_last_success_time"`
+	HealthLastFailureTime             int64   `gorm:"column:health_last_failure_time"`
+	HealthConsecutiveFailures         int32   `gorm:"column:health_consecutive_failures"`
+	CircuitOpenedUntil                int64   `gorm:"column:circuit_opened_until"`
 	Models                            string  `gorm:"column:models"`
 	Group                             string  `gorm:"column:group"`
 	UsedQuota                         int64   `gorm:"column:used_quota"`
@@ -176,6 +183,22 @@ func (r *Repository) RecordUsage(ctx context.Context, channelID int64, quota int
 	return nil
 }
 
+func (r *Repository) RecordHealth(ctx context.Context, event biz.ChannelHealthEvent, threshold int32, cooldown time.Duration) (*biz.Channel, error) {
+	if r.db != nil {
+		return r.recordHealthDB(ctx, event, threshold, cooldown)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	channel, ok := r.channels[event.ChannelID]
+	if !ok {
+		return nil, biz.ErrChannelNotFound
+	}
+	applyHealthEvent(channel, event, threshold, cooldown)
+	cloned := *channel
+	cloned.Models = append([]string(nil), channel.Models...)
+	return &cloned, nil
+}
+
 func (r *Repository) DeleteChannel(ctx context.Context, channelID int64) error {
 	if r.db != nil {
 		return r.deleteChannelDB(ctx, channelID)
@@ -213,6 +236,36 @@ func (r *Repository) recordUsageDB(ctx context.Context, channelID int64, quota i
 	return nil
 }
 
+func (r *Repository) recordHealthDB(ctx context.Context, event biz.ChannelHealthEvent, threshold int32, cooldown time.Duration) (*biz.Channel, error) {
+	var updated *biz.Channel
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var model channelModel
+		if err := tx.Where("id = ?", event.ChannelID).First(&model).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrChannelNotFound
+			}
+			return err
+		}
+		channel := r.modelToChannel(&model)
+		applyHealthEvent(channel, event, threshold, cooldown)
+		if err := tx.Model(&channelModel{}).Where("id = ?", event.ChannelID).Updates(map[string]interface{}{
+			"test_time":                   channel.TestTime,
+			"response_time":               channel.ResponseTime,
+			"health_status":               channel.EffectiveHealthStatus(),
+			"health_last_error":           stringPtr(channel.HealthLastError),
+			"health_last_success_time":    channel.HealthLastSuccessTime,
+			"health_last_failure_time":    channel.HealthLastFailureTime,
+			"health_consecutive_failures": channel.HealthConsecutiveFailures,
+			"circuit_opened_until":        channel.CircuitOpenedUntil,
+		}).Error; err != nil {
+			return err
+		}
+		updated = channel
+		return nil
+	})
+	return updated, err
+}
+
 func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Channel, error) {
 	var model channelModel
 	if err := r.db.WithContext(ctx).Where("id = ?", channelID).First(&model).Error; err != nil {
@@ -248,6 +301,12 @@ func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Chan
 		BalanceRefreshLastError:           derefString(model.BalanceRefreshLastError),
 		BalanceRefreshLastSuccessTime:     model.BalanceRefreshLastSuccessTime,
 		ConsecutiveBalanceRefreshFailures: model.ConsecutiveBalanceRefreshFailures,
+		HealthStatus:                      model.HealthStatus,
+		HealthLastError:                   derefString(model.HealthLastError),
+		HealthLastSuccessTime:             model.HealthLastSuccessTime,
+		HealthLastFailureTime:             model.HealthLastFailureTime,
+		HealthConsecutiveFailures:         model.HealthConsecutiveFailures,
+		CircuitOpenedUntil:                model.CircuitOpenedUntil,
 		UsedQuota:                         model.UsedQuota,
 		ModelMapping:                      derefString(model.ModelMapping),
 		SystemPrompt:                      derefString(model.SystemPrompt),
@@ -418,6 +477,12 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 			"balance_refresh_last_error":           model.BalanceRefreshLastError,
 			"balance_refresh_last_success_time":    model.BalanceRefreshLastSuccessTime,
 			"consecutive_balance_refresh_failures": model.ConsecutiveBalanceRefreshFailures,
+			"health_status":                        model.HealthStatus,
+			"health_last_error":                    model.HealthLastError,
+			"health_last_success_time":             model.HealthLastSuccessTime,
+			"health_last_failure_time":             model.HealthLastFailureTime,
+			"health_consecutive_failures":          model.HealthConsecutiveFailures,
+			"circuit_opened_until":                 model.CircuitOpenedUntil,
 		}).Error; err != nil {
 			return err
 		}
@@ -531,6 +596,12 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 		BalanceRefreshLastError:           derefString(m.BalanceRefreshLastError),
 		BalanceRefreshLastSuccessTime:     m.BalanceRefreshLastSuccessTime,
 		ConsecutiveBalanceRefreshFailures: m.ConsecutiveBalanceRefreshFailures,
+		HealthStatus:                      m.HealthStatus,
+		HealthLastError:                   derefString(m.HealthLastError),
+		HealthLastSuccessTime:             m.HealthLastSuccessTime,
+		HealthLastFailureTime:             m.HealthLastFailureTime,
+		HealthConsecutiveFailures:         m.HealthConsecutiveFailures,
+		CircuitOpenedUntil:                m.CircuitOpenedUntil,
 		UsedQuota:                         m.UsedQuota,
 		ModelMapping:                      derefString(m.ModelMapping),
 		SystemPrompt:                      derefString(m.SystemPrompt),
@@ -554,6 +625,12 @@ func (r *Repository) channelToModel(ch *biz.Channel) *channelModel {
 		BalanceRefreshLastError:           stringPtr(ch.BalanceRefreshLastError),
 		BalanceRefreshLastSuccessTime:     ch.BalanceRefreshLastSuccessTime,
 		ConsecutiveBalanceRefreshFailures: ch.ConsecutiveBalanceRefreshFailures,
+		HealthStatus:                      ch.EffectiveHealthStatus(),
+		HealthLastError:                   stringPtr(ch.HealthLastError),
+		HealthLastSuccessTime:             ch.HealthLastSuccessTime,
+		HealthLastFailureTime:             ch.HealthLastFailureTime,
+		HealthConsecutiveFailures:         ch.HealthConsecutiveFailures,
+		CircuitOpenedUntil:                ch.CircuitOpenedUntil,
 		Models:                            ch.ModelsCSV(),
 		Group:                             ch.Group,
 		UsedQuota:                         ch.UsedQuota,
@@ -587,6 +664,38 @@ func derefUint(u *uint) uint32 {
 		return 0
 	}
 	return v
+}
+
+func applyHealthEvent(channel *biz.Channel, event biz.ChannelHealthEvent, threshold int32, cooldown time.Duration) {
+	if event.CheckedAt.IsZero() {
+		event.CheckedAt = time.Now()
+	}
+	checkedAt := event.CheckedAt.Unix()
+	channel.TestTime = checkedAt
+	channel.ResponseTime = event.ResponseTime
+	if event.Success {
+		channel.HealthStatus = biz.ChannelHealthHealthy
+		channel.HealthLastError = ""
+		channel.HealthLastSuccessTime = checkedAt
+		channel.HealthConsecutiveFailures = 0
+		channel.CircuitOpenedUntil = 0
+		return
+	}
+	channel.HealthLastError = event.Error
+	channel.HealthLastFailureTime = checkedAt
+	channel.HealthConsecutiveFailures++
+	if threshold <= 0 {
+		threshold = 1
+	}
+	if channel.HealthConsecutiveFailures >= threshold {
+		channel.HealthStatus = biz.ChannelHealthUnavailable
+		if cooldown > 0 {
+			channel.CircuitOpenedUntil = event.CheckedAt.Add(cooldown).Unix()
+		}
+		return
+	}
+	channel.HealthStatus = biz.ChannelHealthDegraded
+	channel.CircuitOpenedUntil = 0
 }
 
 func escapeLike(s string) string {

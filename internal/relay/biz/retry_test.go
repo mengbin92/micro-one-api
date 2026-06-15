@@ -90,8 +90,16 @@ func TestUpstreamStatus(t *testing.T) {
 
 // mockChannelSelector implements ChannelSelector for testing.
 type mockChannelSelector struct {
-	channels []*Channel
-	callIdx  int
+	channels     []*Channel
+	callIdx      int
+	healthEvents []healthEvent
+}
+
+type healthEvent struct {
+	channelID    int64
+	success      bool
+	err          string
+	responseTime int64
 }
 
 func (m *mockChannelSelector) SelectChannel(_ context.Context, _, _ string, excludeFirst bool) (*Channel, error) {
@@ -101,6 +109,16 @@ func (m *mockChannelSelector) SelectChannel(_ context.Context, _, _ string, excl
 	ch := m.channels[m.callIdx]
 	m.callIdx++
 	return ch, nil
+}
+
+func (m *mockChannelSelector) RecordChannelHealth(_ context.Context, channelID int64, success bool, err string, responseTime int64) error {
+	m.healthEvents = append(m.healthEvents, healthEvent{
+		channelID:    channelID,
+		success:      success,
+		err:          err,
+		responseTime: responseTime,
+	})
+	return nil
 }
 
 func TestRetryExecutor_Execute_Success(t *testing.T) {
@@ -160,6 +178,13 @@ func TestRetryExecutor_Execute_RetryOnRetryableError(t *testing.T) {
 	assert.NoError(t, result.Err)
 	assert.Equal(t, 1, result.Attempt)
 	assert.Equal(t, int64(2), result.Channel.ID) // second channel
+	if len(selector.healthEvents) != 2 {
+		t.Fatalf("health events = %d, want 2", len(selector.healthEvents))
+	}
+	assert.False(t, selector.healthEvents[0].success)
+	assert.Equal(t, int64(1), selector.healthEvents[0].channelID)
+	assert.True(t, selector.healthEvents[1].success)
+	assert.Equal(t, int64(2), selector.healthEvents[1].channelID)
 }
 
 func TestRetryExecutor_Execute_NonRetryableFailsImmediately(t *testing.T) {
