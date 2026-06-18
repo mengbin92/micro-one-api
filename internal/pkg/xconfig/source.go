@@ -19,8 +19,7 @@ type EnvFileSource struct {
 }
 
 func NewEnvFileSource(path string) config.Source {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &EnvFileSource{path: path, ctx: ctx, cancel: cancel}
+	return &EnvFileSource{path: path}
 }
 
 func (s *EnvFileSource) Load() ([]*config.KeyValue, error) {
@@ -37,7 +36,10 @@ func (s *EnvFileSource) Load() ([]*config.KeyValue, error) {
 }
 
 func (s *EnvFileSource) Watch() (config.Watcher, error) {
-	return &noopWatcher{ctx: s.ctx, cancel: s.cancel}, nil
+	ctx, cancel := context.WithCancel(context.Background())
+	s.ctx = ctx
+	s.cancel = cancel
+	return &noopWatcher{ctx: ctx, cancel: cancel}, nil
 }
 
 // noopWatcher blocks on Next() until the context is cancelled.

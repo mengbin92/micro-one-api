@@ -9,6 +9,7 @@ import (
 
 	"micro-one-api/internal/billing/service"
 	"micro-one-api/internal/pkg/metrics"
+	"micro-one-api/internal/pkg/xhttp"
 
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
@@ -44,9 +45,7 @@ func ServiceAuth(next http.HandlerFunc) http.HandlerFunc {
 
 // NewHTTPServer wires HTTP transport for billing-service.
 func NewHTTPServer(addr string, svc *service.BillingService) *khttp.Server {
-	srv := khttp.NewServer(
-		khttp.Address(addr),
-	)
+	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 
 	// Health and metrics (unauthenticated)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {

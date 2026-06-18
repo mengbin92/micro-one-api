@@ -12,6 +12,7 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/internal/log/service"
 	"micro-one-api/internal/pkg/metrics"
+	"micro-one-api/internal/pkg/xhttp"
 )
 
 // ServiceAuth creates a middleware that validates Bearer token against SERVICE_TOKEN env var.
@@ -45,9 +46,7 @@ func ServiceAuth(next http.HandlerFunc) http.HandlerFunc {
 
 // NewHTTPServer wires HTTP transport for log-service.
 func NewHTTPServer(addr string, svc *service.LogService, identityClients ...identityv1.IdentityServiceClient) *khttp.Server {
-	srv := khttp.NewServer(
-		khttp.Address(addr),
-	)
+	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	var identityClient identityv1.IdentityServiceClient
 	if len(identityClients) > 0 {
 		identityClient = identityClients[0]

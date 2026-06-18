@@ -7,13 +7,12 @@ import (
 
 	"micro-one-api/internal/notify/service"
 	"micro-one-api/internal/pkg/metrics"
+	"micro-one-api/internal/pkg/xhttp"
 )
 
 // NewHTTPServer wires HTTP transport for notify-worker.
 func NewHTTPServer(addr string, svc *service.NotifyService) *khttp.Server {
-	srv := khttp.NewServer(
-		khttp.Address(addr),
-	)
+	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	srv.HandleFunc("/v1/notifications", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

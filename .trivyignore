@@ -1,0 +1,5 @@
+# github.com/go-kratos/kratos/v2 v2.9.2 has no released fixed module version
+# as of 2026-06-18; the upstream fix commit is not reachable via Go modules.
+# The app explicitly configures safe Kratos 404/405 fallback handlers via
+# internal/pkg/xhttp.SafeKratosServerOptions to avoid http.DefaultServeMux.
+CVE-2026-6993

@@ -25,6 +25,7 @@ import (
 	"micro-one-api/internal/admin/service"
 	"micro-one-api/internal/pkg/metrics"
 	"micro-one-api/internal/pkg/safecast"
+	"micro-one-api/internal/pkg/xhttp"
 
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
@@ -84,9 +85,7 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 // Optional arguments are kept for backwards-compatible tests and older wire
 // call sites: first is identity HTTP endpoint, second is external web root.
 func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *khttp.Server {
-	srv := khttp.NewServer(
-		khttp.Address(addr),
-	)
+	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	identityProxy := newServiceReverseProxy(optionString(options, 0))
 	webAssets := newAdminWebAssets(optionString(options, 1))
 	handlePage := webAssets.handlePage
@@ -2364,13 +2363,7 @@ func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	targetURL.RawQuery = r.URL.RawQuery
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodDelete, targetURL.String(), nil)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse(false, "failed to create log delete request", nil))
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+serviceToken)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doLogServiceRequest(r.Context(), http.MethodDelete, targetURL, serviceToken)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, apiResponse(false, "log service unavailable", nil))
 		return
@@ -2400,13 +2393,7 @@ func handleOneAPIGetLog(w http.ResponseWriter, r *http.Request, idText string) {
 		writeJSON(w, http.StatusNotImplemented, apiResponse(false, "log detail is not configured", nil))
 		return
 	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL.String(), nil)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse(false, "failed to create log detail request", nil))
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+serviceToken)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doLogServiceRequest(r.Context(), http.MethodGet, targetURL, serviceToken)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, apiResponse(false, "log service unavailable", nil))
 		return
@@ -2450,10 +2437,47 @@ func logServiceURL(endpoint, path string) (*url.URL, error) {
 	if u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("log endpoint must be an origin URL")
 	}
+	if !isAllowedLogServiceOrigin(u.Scheme, u.Hostname()) {
+		return nil, errors.New("log endpoint origin is not allowed")
+	}
 	u.Path = strings.TrimRight(u.Path, "/") + path
 	u.RawPath = ""
 	u.ForceQuery = false
 	return u, nil
+}
+
+func doLogServiceRequest(ctx context.Context, method string, targetURL *url.URL, serviceToken string) (*http.Response, error) {
+	if targetURL == nil || serviceToken == "" {
+		return nil, errors.New("missing log service request config")
+	}
+	if targetURL.Scheme != "http" && targetURL.Scheme != "https" {
+		return nil, errors.New("invalid log service scheme")
+	}
+	if targetURL.Host == "" || targetURL.User != nil || !isAllowedLogServiceOrigin(targetURL.Scheme, targetURL.Hostname()) {
+		return nil, errors.New("invalid log service origin")
+	}
+	req, err := http.NewRequestWithContext(ctx, method, targetURL.String(), nil) // #nosec G704 -- targetURL is built from LOG_HTTP_ENDPOINT and validated by logServiceURL/doLogServiceRequest.
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+serviceToken)
+	return http.DefaultClient.Do(req) // #nosec G704 -- request URL is validated to an allowed log-service origin above.
+}
+
+func isAllowedLogServiceOrigin(scheme, host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	if scheme == "https" {
+		return true
+	}
+	return host == "localhost" ||
+		host == "127.0.0.1" ||
+		host == "::1" ||
+		host == "log-service" ||
+		strings.HasSuffix(host, ".svc") ||
+		strings.HasSuffix(host, ".svc.cluster.local")
 }
 
 func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {

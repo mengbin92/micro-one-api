@@ -303,7 +303,7 @@ func (r *Repository) listPendingMemory(limit int32, maxRetry int) []*biz.Notific
 		}
 		cloned := *n
 		items = append(items, &cloned)
-		if int32(len(items)) >= limit {
+		if len(items) >= int(limit) {
 			break
 		}
 	}

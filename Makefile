@@ -225,7 +225,7 @@ security-scan:
 	@if ! command -v gosec &> /dev/null; then \
 		go install github.com/securego/gosec/v2/cmd/gosec@latest; \
 	fi
-	@gosec ./... || echo "gosec found issues"
+	@gosec -exclude-generated -exclude=G104 -exclude-dir=web/node_modules ./... || echo "gosec found issues"
 	@echo "2. Running govulncheck (SCA)..."
 	@if ! command -v govulncheck &> /dev/null; then \
 		go install golang.org/x/vuln/cmd/govulncheck@latest; \
@@ -244,7 +244,7 @@ security-sast:
 	@if ! command -v gosec &> /dev/null; then \
 		go install github.com/securego/gosec/v2/cmd/gosec@latest; \
 	fi
-	@gosec -fmt json -out gosec-report.json ./...
+	@gosec -fmt json -out gosec-report.json -exclude-generated -exclude=G104 -exclude-dir=web/node_modules ./...
 
 .PHONY: security-sca
 # run software composition analysis

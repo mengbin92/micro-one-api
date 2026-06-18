@@ -6,7 +6,7 @@
 // Usage:
 //
 //	admin-reset -username admin -password 'new-secret'
-//	admin-reset -username admin                       # generates a random one
+//	admin-reset -username admin -generated-password-file ./admin-password.txt
 //
 // DSN is read from ADMIN_RESET_DSN, falling back to IDENTITY_SQL_DSN, then
 // SQL_DSN. Password is hashed with bcrypt before update.
@@ -38,6 +38,7 @@ func main() {
 	var (
 		username = flag.String("username", "admin", "username to reset (created if missing)")
 		password = flag.String("password", "", "new password; if empty, a random 16-char hex password is generated")
+		passFile = flag.String("generated-password-file", "", "file to write the generated password when -password is empty; created with mode 0600")
 		email    = flag.String("email", "", "email to set when creating a new user (ignored on reset unless -role is also set)")
 		quota    = flag.Int64("quota", 1_000_000, "quota to set when creating a new user (ignored on reset)")
 		role     = flag.Int("role", -1, "role to set (0=guest, 1=user, 10=admin, 100=root); negative means leave unchanged on reset, default to 100 on create")
@@ -57,8 +58,13 @@ func main() {
 	}
 
 	plain := *password
+	generatedPasswordFile := strings.TrimSpace(*passFile)
 	generated := false
 	if plain == "" {
+		if generatedPasswordFile == "" {
+			fmt.Fprintln(os.Stderr, "error: -password or -generated-password-file is required")
+			os.Exit(2)
+		}
 		buf := make([]byte, 8)
 		if _, err := rand.Read(buf); err != nil {
 			fmt.Fprintf(os.Stderr, "error: generate password: %v\n", err)
@@ -94,12 +100,27 @@ func main() {
 		verb = "created admin"
 	}
 	if generated {
+		if err := writeGeneratedPasswordFile(generatedPasswordFile, plain); err != nil {
+			fmt.Fprintf(os.Stderr, "error: write generated password file: %v\n", err)
+			os.Exit(1)
+		}
 		fmt.Printf("%s %q\n", verb, uname)
-		fmt.Printf("generated password: %s\n", plain)
-		fmt.Println("Save it now — it will not be printed again.")
+		fmt.Printf("generated password written to %q\n", generatedPasswordFile)
 		return
 	}
 	fmt.Printf("%s %q (password from -password flag)\n", verb, uname)
+}
+
+func writeGeneratedPasswordFile(path, password string) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- CLI caller explicitly selects the one-time password output file; O_EXCL and 0600 prevent overwrite and broad reads.
+	if err != nil {
+		return err
+	}
+	if _, err := file.WriteString(password + "\n"); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
 
 func pickDSN() string {

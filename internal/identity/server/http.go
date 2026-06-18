@@ -19,6 +19,7 @@ import (
 	"micro-one-api/internal/identity/biz"
 	"micro-one-api/internal/pkg/metrics"
 	"micro-one-api/internal/pkg/oauth"
+	"micro-one-api/internal/pkg/xhttp"
 
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -52,9 +53,7 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	if registrationPolicy.TurnstileCheckEnabled && registrationPolicy.TurnstileVerifyHandler == nil {
 		registrationPolicy.TurnstileVerifyHandler = &defaultTurnstileVerifier{client: &http.Client{Timeout: 10 * time.Second}}
 	}
-	srv := khttp.NewServer(
-		khttp.Address(addr),
-	)
+	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	var billingClient billingv1.BillingServiceClient
 	if len(billingClients) > 0 {
 		billingClient = billingClients[0]
@@ -603,7 +602,7 @@ func handleUserLogs(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 		return
 	}
 
-	items := make([]map[string]interface{}, 0, len(resp.GetEntries()))
+	items := make([]map[string]interface{}, 0)
 	for _, entry := range resp.GetEntries() {
 		items = append(items, ledgerEntryToMap(entry))
 	}
@@ -1045,7 +1044,12 @@ func handleEmailVerification(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "email is required"})
 		return
 	}
-	code := generateState()[:6]
+	state, err := generateState()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate verification code"})
+		return
+	}
+	code := state[:6]
 	verificationStore.Lock()
 	verificationStore.items["v:"+email] = verificationRecord{Code: code, At: time.Now()}
 	verificationStore.Unlock()
@@ -1062,7 +1066,12 @@ func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "email is required"})
 		return
 	}
-	code := generateState()[:6]
+	state, err := generateState()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate reset token"})
+		return
+	}
+	code := state[:6]
 	verificationStore.Lock()
 	verificationStore.items["r:"+email] = verificationRecord{Code: code, At: time.Now()}
 	verificationStore.Unlock()
@@ -1095,7 +1104,12 @@ func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	}
 	password := req.Password
 	if password == "" {
-		password = generateState()[:12]
+		state, err := generateState()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate password"})
+			return
+		}
+		password = state[:12]
 	}
 	if err := uc.ResetPasswordByEmail(r.Context(), req.Email, password); err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
@@ -1118,7 +1132,11 @@ func handleOAuthState(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 		return
 	}
-	state := generateState()
+	state, err := generateState()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate oauth state"})
+		return
+	}
 	setOAuthStateCookie(w, state)
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"state": state}})
 }
@@ -1161,7 +1179,11 @@ func handleOneAPIOAuthBind(w http.ResponseWriter, r *http.Request, registry *oau
 			writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "invalid token"})
 			return
 		}
-		state := generateState()
+		state, err := generateState()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate oauth state"})
+			return
+		}
 		oauthBindStore.Lock()
 		oauthBindStore.items[state] = oauthBindRecord{Token: token, At: time.Now(), Provider: providerName}
 		oauthBindStore.Unlock()
@@ -1480,22 +1502,47 @@ func handleOAuth(w http.ResponseWriter, r *http.Request, registry *oauth.Provide
 }
 
 func handleOAuthAuthorize(w http.ResponseWriter, r *http.Request, provider oauth.Provider) {
-	state := generateState()
+	state, err := generateState()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate oauth state"})
+		return
+	}
 	authURL := provider.AuthURL(state)
-	if !isSafeOAuthAuthorizeURL(authURL) {
+	safeURL, ok := safeOAuthAuthorizeURL(authURL)
+	if !ok {
 		writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "invalid oauth authorize URL"})
 		return
 	}
 	setOAuthStateCookie(w, state)
-	http.Redirect(w, r, authURL, http.StatusFound)
+	http.Redirect(w, r, safeURL.String(), http.StatusFound) // #nosec G710 -- OAuth provider URL is parsed and constrained by safeOAuthAuthorizeURL before redirect.
+}
+
+func safeOAuthAuthorizeURL(rawURL string) (*url.URL, bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, false
+	}
+	if u.Host == "" || u.User != nil {
+		return nil, false
+	}
+	if u.Scheme != "https" && !(u.Scheme == "http" && isLocalOAuthHost(u.Hostname())) {
+		return nil, false
+	}
+	return u, true
+}
+
+func isLocalOAuthHost(host string) bool {
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
 }
 
 func isSafeOAuthAuthorizeURL(rawURL string) bool {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return false
-	}
-	return (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && u.User == nil
+	_, ok := safeOAuthAuthorizeURL(rawURL)
+	return ok
 }
 
 func setOAuthStateCookie(w http.ResponseWriter, state string) {
@@ -1560,10 +1607,12 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 	})
 }
 
-func generateState() string {
+func generateState() (string, error) {
 	b := make([]byte, 16)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {

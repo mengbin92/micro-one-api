@@ -7,13 +7,12 @@ import (
 
 	"micro-one-api/internal/monitor/service"
 	"micro-one-api/internal/pkg/metrics"
+	"micro-one-api/internal/pkg/xhttp"
 )
 
 // NewHTTPServer wires HTTP transport for monitor-worker.
 func NewHTTPServer(addr string, svc *service.MonitorService) *khttp.Server {
-	srv := khttp.NewServer(
-		khttp.Address(addr),
-	)
+	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	srv.HandleFunc("/v1/health-checks", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

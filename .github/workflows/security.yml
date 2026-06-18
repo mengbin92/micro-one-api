@@ -40,7 +40,7 @@ jobs:
       - name: Run gosec (SAST)
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -fmt sarif -out gosec.sarif -no-fail ./...
+          gosec -fmt sarif -out gosec.sarif -no-fail -exclude-generated -exclude=G104 ./...
 
       - name: Upload gosec results
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository

@@ -23,6 +23,7 @@ import (
 	apptimeout "micro-one-api/internal/pkg/timeout"
 	apptls "micro-one-api/internal/pkg/tls"
 	"micro-one-api/internal/pkg/xconfig"
+	"micro-one-api/internal/pkg/xhttp"
 	relaybiz "micro-one-api/internal/relay/biz"
 	relaycfg "micro-one-api/internal/relay/config"
 	relaydata "micro-one-api/internal/relay/data"
@@ -207,7 +208,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
 
-	srv := khttp.NewServer(khttp.Address(cfg.Server.HTTP.Addr), khttp.Timeout(providerTimeout))
+	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(cfg.Server.HTTP.Addr), khttp.Timeout(providerTimeout))...)
 	httpServer.RegisterRoutes(srv)
 
 	grpcSvc := relayservice.NewRelayGrpcService(identityClient, channelClient, billingClient, providerFactory, relayUsecase)

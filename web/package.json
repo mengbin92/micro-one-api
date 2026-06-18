@@ -59,5 +59,11 @@
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
     "vitest": "^4.1.6"
+  },
+  "overrides": {
+    "@babel/core": "^7.29.6",
+    "form-data": "^4.0.6",
+    "hono": "^4.12.25",
+    "js-yaml": "^4.2.0"
   }
 }
