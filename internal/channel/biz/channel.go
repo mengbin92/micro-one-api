@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"sort"
@@ -25,6 +26,8 @@ const (
 
 	defaultHealthFailureThreshold = 3
 	defaultHealthCooldown         = 5 * time.Minute
+	defaultHealthAlertNotifyType  = "event"
+	defaultHealthAlertTimeout     = 5 * time.Second
 )
 
 var ErrChannelNotFound = errors.New("channel not found")
@@ -85,6 +88,16 @@ type ChannelHealthEvent struct {
 	CheckedAt    time.Time
 }
 
+type Notifier interface {
+	CreateNotification(ctx context.Context, notifyType, recipient, subject, content string) error
+}
+
+type HealthAlertConfig struct {
+	Enabled    bool
+	NotifyType string
+	Recipients []string
+}
+
 type ChannelRepo interface {
 	FindByID(ctx context.Context, channelID int64) (*Channel, error)
 	ListAbilitiesByGroupAndModel(ctx context.Context, group, model string) ([]Ability, error)
@@ -104,6 +117,8 @@ type ChannelUsecase struct {
 	now                    func() time.Time
 	healthFailureThreshold int32
 	healthCooldown         time.Duration
+	notifier               Notifier
+	healthAlert            HealthAlertConfig
 }
 
 func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUsecase {
@@ -116,6 +131,17 @@ func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUseca
 		now:                    time.Now,
 		healthFailureThreshold: healthFailureThresholdFromEnv(),
 		healthCooldown:         healthCooldownFromEnv(),
+	}
+}
+
+func (uc *ChannelUsecase) ConfigureHealthAlert(notifier Notifier, cfg HealthAlertConfig) {
+	uc.notifier = notifier
+	uc.healthAlert = cfg
+	if uc.healthAlert.NotifyType == "" {
+		uc.healthAlert.NotifyType = defaultHealthAlertNotifyType
+	}
+	if len(uc.healthAlert.Recipients) == 0 {
+		uc.healthAlert.Recipients = []string{""}
 	}
 }
 
@@ -211,11 +237,18 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 	if event.CheckedAt.IsZero() {
 		event.CheckedAt = uc.now()
 	}
+	previous, err := uc.repo.FindByID(ctx, event.ChannelID)
+	if err != nil {
+		return err
+	}
+	previousSnapshot := *previous
+	previousSnapshot.Models = append([]string(nil), previous.Models...)
 	channel, err := uc.repo.RecordHealth(ctx, event, uc.healthFailureThreshold, uc.healthCooldown)
 	if err != nil {
 		return err
 	}
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
+	uc.notifyUnavailable(ctx, &previousSnapshot, channel, event)
 	return nil
 }
 
@@ -275,6 +308,52 @@ func (c *Channel) SelectableAt(now time.Time) bool {
 		return true
 	}
 	return c.CircuitOpenedUntil > 0 && now.Unix() >= c.CircuitOpenedUntil
+}
+
+func (uc *ChannelUsecase) notifyUnavailable(ctx context.Context, previous, current *Channel, event ChannelHealthEvent) {
+	if uc.notifier == nil || !uc.healthAlert.Enabled || current == nil {
+		return
+	}
+	if previous != nil && previous.EffectiveHealthStatus() == ChannelHealthUnavailable {
+		return
+	}
+	if current.EffectiveHealthStatus() != ChannelHealthUnavailable {
+		return
+	}
+	notifyType := uc.healthAlert.NotifyType
+	if notifyType == "" {
+		notifyType = defaultHealthAlertNotifyType
+	}
+	recipients := uc.healthAlert.Recipients
+	if len(recipients) == 0 {
+		recipients = []string{""}
+	}
+	subject := fmt.Sprintf("Channel unavailable: %s", current.Name)
+	content := channelUnavailableAlertContent(current, event)
+	notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultHealthAlertTimeout)
+	defer cancel()
+	for _, recipient := range recipients {
+		_ = uc.notifier.CreateNotification(notifyCtx, notifyType, recipient, subject, content)
+	}
+}
+
+func channelUnavailableAlertContent(channel *Channel, event ChannelHealthEvent) string {
+	var b strings.Builder
+	b.WriteString("A channel has become unavailable.\n")
+	b.WriteString(fmt.Sprintf("Channel: %s (ID: %d)\n", channel.Name, channel.ID))
+	b.WriteString(fmt.Sprintf("Group: %s\n", channel.Group))
+	b.WriteString(fmt.Sprintf("Models: %s\n", channel.ModelsCSV()))
+	b.WriteString(fmt.Sprintf("Consecutive failures: %d\n", channel.HealthConsecutiveFailures))
+	if channel.CircuitOpenedUntil > 0 {
+		b.WriteString(fmt.Sprintf("Circuit opened until: %s\n", time.Unix(channel.CircuitOpenedUntil, 0).Format(time.RFC3339)))
+	}
+	if event.ResponseTime > 0 {
+		b.WriteString(fmt.Sprintf("Response time: %dms\n", event.ResponseTime))
+	}
+	if strings.TrimSpace(event.Error) != "" {
+		b.WriteString(fmt.Sprintf("Last error: %s\n", event.Error))
+	}
+	return b.String()
 }
 
 func healthFailureThresholdFromEnv() int32 {

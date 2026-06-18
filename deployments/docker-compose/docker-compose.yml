@@ -88,11 +88,17 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - LOG_LEVEL=info
       - LOG_FORMAT=json
+      - NOTIFY_GRPC_ENDPOINT=${NOTIFY_GRPC_ENDPOINT:-notify-worker:9008}
+      - CHANNEL_HEALTH_ALERT_ENABLED=${CHANNEL_HEALTH_ALERT_ENABLED:-true}
+      - CHANNEL_HEALTH_ALERT_NOTIFY_TYPE=${CHANNEL_HEALTH_ALERT_NOTIFY_TYPE:-webhook}
+      - CHANNEL_HEALTH_ALERT_RECIPIENTS=${CHANNEL_HEALTH_ALERT_RECIPIENTS:-[""]}
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      notify-worker:
+        condition: service_started
     networks:
       - backend
     restart: unless-stopped

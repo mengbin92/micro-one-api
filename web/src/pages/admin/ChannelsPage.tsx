@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Pencil, RefreshCw, Save } from 'lucide-react';
+import { AlertTriangle, Pencil, RefreshCw, Save } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
@@ -97,6 +97,22 @@ function healthBadgeClass(status: string) {
   return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
 }
 
+export function summarizeChannelHealth(channels: Channel[] = []) {
+  const unhealthy = channels.filter((channel) => {
+    const status = channelHealthStatus(channel);
+    return status === 'unavailable' || status === 'degraded';
+  });
+  const unavailable = unhealthy.filter((channel) => channelHealthStatus(channel) === 'unavailable');
+  const degraded = unhealthy.filter((channel) => channelHealthStatus(channel) === 'degraded');
+  const primary = unavailable[0] ?? degraded[0] ?? null;
+  return {
+    unhealthy,
+    unavailable,
+    degraded,
+    primary,
+  };
+}
+
 export function AdminChannelsPage() {
   const {
     page,
@@ -126,6 +142,10 @@ export function AdminChannelsPage() {
   const [newChannelWeight, setNewChannelWeight] = useState('1');
   const [editingChannel, setEditingChannel] = useState<ChannelEditDraft | null>(null);
   const queryClient = useQueryClient();
+  const invalidateChannelQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-channels-health'] });
+  };
   const sort = { key: sortKey as keyof Channel | null, direction: sortDirection } satisfies SortState<Channel>;
   const statusFilter = filters.status ?? '';
   const typeFilter = filters.type ?? '';
@@ -149,6 +169,15 @@ export function AdminChannelsPage() {
     },
   });
 
+  const { data: healthChannels, refetch: refetchHealthChannels, isFetching: isFetchingHealthChannels } = useQuery({
+    queryKey: ['admin-channels-health'],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: '1', page_size: '1000', status: '1' });
+      const res = await adminApiClient.get(`/channel?${params}`);
+      return unwrapApiData<Channel[]>(res.data);
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const res = await adminApiClient.post('/channel', {
@@ -164,7 +193,7 @@ export function AdminChannelsPage() {
       ensureApiSuccess(res.data, 'Channel create failed');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
+      invalidateChannelQueries();
       setIsCreateOpen(false);
       setNewChannelName('');
       setNewChannelType('1');
@@ -189,7 +218,7 @@ export function AdminChannelsPage() {
       ensureApiSuccess(res.data, 'Channel status update failed');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
+      invalidateChannelQueries();
       toast.success('Channel status updated');
     },
   });
@@ -208,7 +237,7 @@ export function AdminChannelsPage() {
       ensureApiSuccess(res.data, 'Channel update failed');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
+      invalidateChannelQueries();
       setEditingChannel(null);
       toast.success('Channel configuration saved');
     },
@@ -220,7 +249,7 @@ export function AdminChannelsPage() {
       ensureApiSuccess(res.data, 'Channel balance refresh failed');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
+      invalidateChannelQueries();
       toast.success('Channel balance refreshed');
     },
   });
@@ -231,7 +260,7 @@ export function AdminChannelsPage() {
       ensureApiSuccess(res.data, 'Channel health probe failed');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-channels'] });
+      invalidateChannelQueries();
       toast.success('Channel health probe completed');
     },
   });
@@ -239,6 +268,7 @@ export function AdminChannelsPage() {
   const visibleChannels = useMemo(() => {
     return sortRows(channels ?? [], sort);
   }, [channels, sort]);
+  const healthSummary = useMemo(() => summarizeChannelHealth(healthChannels ?? []), [healthChannels]);
 
   const handleCreate = () => {
     if (!newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelModels.trim() || !newChannelGroup.trim()) {
@@ -430,6 +460,55 @@ export function AdminChannelsPage() {
           />
         }
       />
+
+      {healthSummary.unhealthy.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-2">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-300" />
+            <div className="min-w-0 space-y-1">
+              <div className="font-medium">
+                {healthSummary.unavailable.length > 0
+                  ? `${healthSummary.unavailable.length} channel${healthSummary.unavailable.length > 1 ? 's are' : ' is'} unavailable`
+                  : `${healthSummary.degraded.length} channel${healthSummary.degraded.length > 1 ? 's are' : ' is'} degraded`}
+              </div>
+              {healthSummary.primary && (
+                <div className="truncate text-xs text-amber-900/80 dark:text-amber-100/80">
+                  {healthSummary.primary.name}
+                  {channelHealthError(healthSummary.primary) ? ` · ${channelHealthError(healthSummary.primary)}` : ''}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setFilter('status', '1');
+                setPage(1);
+                if (healthSummary.primary?.name) {
+                  setSearch(healthSummary.primary.name);
+                }
+                void refetchHealthChannels();
+                invalidateChannelQueries();
+              }}
+            >
+              View Channel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void refetchHealthChannels()}
+              disabled={isFetchingHealthChannels}
+            >
+              <RefreshCw className="size-3.5" />
+              {isFetchingHealthChannels ? 'Refreshing' : 'Refresh'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <select

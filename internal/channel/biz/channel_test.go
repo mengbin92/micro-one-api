@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -9,6 +10,27 @@ import (
 type mockChannelRepo struct {
 	channels  map[int64]*Channel
 	abilities map[string][]Ability
+}
+
+type recordedNotification struct {
+	notifyType string
+	recipient  string
+	subject    string
+	content    string
+}
+
+type recordingNotifier struct {
+	notifications []recordedNotification
+}
+
+func (n *recordingNotifier) CreateNotification(ctx context.Context, notifyType, recipient, subject, content string) error {
+	n.notifications = append(n.notifications, recordedNotification{
+		notifyType: notifyType,
+		recipient:  recipient,
+		subject:    subject,
+		content:    content,
+	})
+	return nil
 }
 
 func (m *mockChannelRepo) FindByID(ctx context.Context, channelID int64) (*Channel, error) {
@@ -344,6 +366,92 @@ func TestChannelUsecase_SelectChannel_AllDisabled(t *testing.T) {
 	_, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
 	if err != ErrChannelNotFound {
 		t.Fatalf("expected ErrChannelNotFound, got: %v", err)
+	}
+}
+
+func TestChannelUsecase_RecordHealth_NotifiesWhenChannelBecomesUnavailable(t *testing.T) {
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{
+			1: {
+				ID:                        1,
+				Name:                      "primary-openai",
+				Status:                    ChannelStatusEnabled,
+				Group:                     "default",
+				Models:                    []string{"gpt-4o"},
+				HealthStatus:              ChannelHealthDegraded,
+				HealthConsecutiveFailures: 1,
+			},
+		},
+		abilities: map[string][]Ability{},
+	}
+	notifier := &recordingNotifier{}
+	uc := NewChannelUsecase(repo, nil)
+	uc.healthFailureThreshold = 2
+	uc.healthCooldown = time.Minute
+	uc.ConfigureHealthAlert(notifier, HealthAlertConfig{
+		Enabled:    true,
+		NotifyType: "webhook",
+		Recipients: []string{"https://hooks.example.com/ops"},
+	})
+
+	err := uc.RecordHealth(context.Background(), ChannelHealthEvent{
+		ChannelID:    1,
+		Success:      false,
+		Error:        "status=502",
+		ResponseTime: 321,
+		CheckedAt:    time.Unix(1000, 0),
+	})
+	if err != nil {
+		t.Fatalf("RecordHealth() error = %v", err)
+	}
+	if len(notifier.notifications) != 1 {
+		t.Fatalf("expected one notification, got %d", len(notifier.notifications))
+	}
+	got := notifier.notifications[0]
+	if got.notifyType != "webhook" || got.recipient != "https://hooks.example.com/ops" {
+		t.Fatalf("unexpected notification target: %+v", got)
+	}
+	if got.subject != "Channel unavailable: primary-openai" {
+		t.Fatalf("unexpected subject: %q", got.subject)
+	}
+	if !strings.Contains(got.content, "Channel: primary-openai (ID: 1)") || !strings.Contains(got.content, "Last error: status=502") {
+		t.Fatalf("unexpected content: %q", got.content)
+	}
+}
+
+func TestChannelUsecase_RecordHealth_DoesNotRepeatUnavailableNotification(t *testing.T) {
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{
+			1: {
+				ID:                        1,
+				Name:                      "primary-openai",
+				Status:                    ChannelStatusEnabled,
+				Group:                     "default",
+				Models:                    []string{"gpt-4o"},
+				HealthStatus:              ChannelHealthUnavailable,
+				HealthConsecutiveFailures: 3,
+				CircuitOpenedUntil:        time.Unix(1000, 0).Add(time.Minute).Unix(),
+			},
+		},
+		abilities: map[string][]Ability{},
+	}
+	notifier := &recordingNotifier{}
+	uc := NewChannelUsecase(repo, nil)
+	uc.healthFailureThreshold = 2
+	uc.healthCooldown = time.Minute
+	uc.ConfigureHealthAlert(notifier, HealthAlertConfig{Enabled: true})
+
+	err := uc.RecordHealth(context.Background(), ChannelHealthEvent{
+		ChannelID: 1,
+		Success:   false,
+		Error:     "status=503",
+		CheckedAt: time.Unix(1001, 0),
+	})
+	if err != nil {
+		t.Fatalf("RecordHealth() error = %v", err)
+	}
+	if len(notifier.notifications) != 0 {
+		t.Fatalf("expected no repeated notifications, got %d", len(notifier.notifications))
 	}
 }
 

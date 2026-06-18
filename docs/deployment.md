@@ -173,6 +173,9 @@ kubectl logs -f deployment/relay-gateway -n one-api
 | `CHANNEL_HEALTH_CHECK_ENABLED` | monitor-worker 是否定时探测渠道 `/models` | `true` |
 | `CHANNEL_HEALTH_CHECK_INTERVAL` | 定时渠道健康探测间隔 | `5m` |
 | `CHANNEL_HEALTH_CHECK_TIMEOUT` | 单个渠道健康探测超时 | `10s` |
+| `CHANNEL_HEALTH_ALERT_ENABLED` | 渠道首次进入 `unavailable` 时是否投递通知 | `false` |
+| `CHANNEL_HEALTH_ALERT_NOTIFY_TYPE` | 告警类型：`event` / `webhook` / `email` | `event` |
+| `CHANNEL_HEALTH_ALERT_RECIPIENTS` | JSON 数组；webhook/event 可填 URL 或留空走 `NOTIFY_WEBHOOK_URL`，email 填邮箱 | `[""]` |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` | 每秒请求数限制 | `100` |
 | `RATE_LIMIT_BURST` | 突发请求上限 | `200` |
 | `CORS_ALLOWED_ORIGINS` | CORS 允许的源 | - |
@@ -288,11 +291,14 @@ curl -X POST http://localhost:8004/v1/reconciliation
 
 ### 6.1 对账告警投递
 
-`billing-service` 可以把对账差异写入 `notify-worker`，再由 `notify-worker` 发送到 webhook 或 SMTP：
+`channel-service` 可以把渠道不可用告警写入 `notify-worker`，`billing-service` 可以把对账差异写入 `notify-worker`，再由 `notify-worker` 发送到 webhook 或 SMTP：
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `NOTIFY_GRPC_ENDPOINT` | notify-worker gRPC 地址；留空时只记录日志 | - |
+| `NOTIFY_GRPC_ENDPOINT` | notify-worker gRPC 地址；留空时不投递通知 | - |
+| `CHANNEL_HEALTH_ALERT_ENABLED` | 渠道首次进入 `unavailable` 时是否投递通知 | `false` |
+| `CHANNEL_HEALTH_ALERT_NOTIFY_TYPE` | 渠道不可用告警类型：`event` / `webhook` / `email` | `event` |
+| `CHANNEL_HEALTH_ALERT_RECIPIENTS` | JSON 数组；webhook/event 可填 URL 或留空走 `NOTIFY_WEBHOOK_URL`，email 填邮箱 | `[""]` |
 | `RECON_ALERT_ENABLED` | 是否启用对账告警 | `true` |
 | `RECON_ALERT_NOTIFY_TYPE` | 告警类型：`event` / `webhook` / `email` | `event` |
 | `RECON_ALERT_RECIPIENTS` | JSON 数组；webhook/event 可填 URL 或留空走 `NOTIFY_WEBHOOK_URL`，email 填邮箱 | `[""]` |
