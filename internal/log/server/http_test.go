@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -149,6 +150,26 @@ func TestLogHTTPDeleteLogsDeletesMatchingServiceLogs(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"deleted":1`) {
 		t.Fatalf("delete response mismatch: %s", rec.Body.String())
+	}
+}
+
+func TestLogHTTPIngestSanitizesMessage(t *testing.T) {
+	t.Setenv("SERVICE_TOKEN", "service-token")
+	srv := newLogHTTPServerForTest(t, &logHTTPIdentityClient{})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/logs", strings.NewReader(`{"level":"info","message":"Authorization: Bearer secret-token","source":"test"}`))
+	req.Header.Set("Authorization", "Bearer service-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201, body=%s", rec.Code, rec.Body.String())
+	}
+	body, _ := io.ReadAll(rec.Body)
+	if strings.Contains(string(body), "secret-token") {
+		t.Fatalf("response leaked token: %s", string(body))
+	}
+	if !strings.Contains(string(body), "***REDACTED***") {
+		t.Fatalf("response missing redaction: %s", string(body))
 	}
 }
 

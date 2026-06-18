@@ -146,6 +146,20 @@ func (m *mockLogRepo) Delete(ctx context.Context, filter DeleteLogsFilter) (int6
 	return deleted, nil
 }
 
+func (m *mockLogRepo) DeleteBefore(ctx context.Context, before time.Time) (int64, error) {
+	if before.IsZero() {
+		return 0, nil
+	}
+	var deleted int64
+	for id, entry := range m.entries {
+		if entry.CreatedAt.Before(before) {
+			delete(m.entries, id)
+			deleted++
+		}
+	}
+	return deleted, nil
+}
+
 func newMockLogRepo(entries ...*LogEntry) *mockLogRepo {
 	m := &mockLogRepo{entries: make(map[int64]*LogEntry)}
 	for _, e := range entries {
@@ -239,6 +253,37 @@ func TestLogUsecase_IngestLog(t *testing.T) {
 			t.Fatalf("expected CreatedAt preserved, got %v", entry.CreatedAt)
 		}
 	})
+}
+
+func TestLogUsecase_CleanupExpiredLogs(t *testing.T) {
+	now := time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)
+	repo := newMockLogRepo(
+		&LogEntry{ID: 1, Level: "info", CreatedAt: now.Add(-31 * 24 * time.Hour)},
+		&LogEntry{ID: 2, Level: "info", CreatedAt: now.Add(-29 * 24 * time.Hour)},
+	)
+	uc := NewLogUsecase(repo)
+
+	deleted, err := uc.CleanupExpiredLogs(context.Background(), 30, now)
+	if err != nil {
+		t.Fatalf("CleanupExpiredLogs() error = %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", deleted)
+	}
+	if _, err := repo.Get(context.Background(), 1); err != ErrLogNotFound {
+		t.Fatalf("entry 1 should be deleted, err=%v", err)
+	}
+	if _, err := repo.Get(context.Background(), 2); err != nil {
+		t.Fatalf("entry 2 should remain, err=%v", err)
+	}
+
+	deleted, err = uc.CleanupExpiredLogs(context.Background(), 0, now)
+	if err != nil {
+		t.Fatalf("CleanupExpiredLogs disabled error = %v", err)
+	}
+	if deleted != 0 {
+		t.Fatalf("disabled cleanup deleted = %d, want 0", deleted)
+	}
 }
 
 func TestLogUsecase_ListLogs(t *testing.T) {

@@ -59,6 +59,7 @@ type LogRepo interface {
 	UsageByUser(ctx context.Context, userID int64, startTime, endTime time.Time) ([]*UsageStat, error)
 	Create(ctx context.Context, entry *LogEntry) error
 	Delete(ctx context.Context, filter DeleteLogsFilter) (int64, error)
+	DeleteBefore(ctx context.Context, before time.Time) (int64, error)
 }
 
 // LogUsecase implements business logic for log-service.
@@ -103,6 +104,17 @@ func (uc *LogUsecase) IngestLog(ctx context.Context, entry *LogEntry) error {
 		entry.CreatedAt = time.Now()
 	}
 	return uc.repo.Create(ctx, entry)
+}
+
+func (uc *LogUsecase) CleanupExpiredLogs(ctx context.Context, retentionDays int, now time.Time) (int64, error) {
+	if retentionDays <= 0 {
+		return 0, nil
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	cutoff := now.Add(-time.Duration(retentionDays) * 24 * time.Hour)
+	return uc.repo.DeleteBefore(ctx, cutoff)
 }
 
 func (uc *LogUsecase) DeleteLogs(ctx context.Context, filter DeleteLogsFilter) (int64, error) {

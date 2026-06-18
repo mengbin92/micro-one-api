@@ -3,18 +3,18 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
+	"go.uber.org/zap"
 
-	logcfg "micro-one-api/internal/log/config"
-	"micro-one-api/internal/pkg/xconfig"
 	"micro-one-api/internal/log/biz"
+	logcfg "micro-one-api/internal/log/config"
 	"micro-one-api/internal/log/data"
 	"micro-one-api/internal/log/server"
 	"micro-one-api/internal/log/service"
+	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
+	"micro-one-api/internal/pkg/xconfig"
 )
 
 func loadConfig(confPath string) (*logcfg.Config, error) {
@@ -47,10 +47,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	svc := service.NewLogService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)
+	cleanupRetention := startLogRetentionCleanup(uc, cfg.Log.RetentionDays)
 
 	registrar, rErr := appregistry.NewRegistrar(cfg.Registry)
 	if rErr != nil {
-		fmt.Printf("Warning: Failed to create registrar: %v\n", rErr)
+		applogger.Log.Warn("failed to create registrar", zap.Error(rErr))
 	}
 
 	kratosOpts := []kratos.Option{
@@ -63,5 +64,5 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	app := kratos.New(kratosOpts...)
 
-	return app, func() {}, nil
+	return app, cleanupRetention, nil
 }

@@ -157,6 +157,9 @@ kubectl logs -f deployment/relay-gateway -n one-api
 | `LOG_LEVEL` | 日志级别 | `info` |
 | `LOG_FORMAT` | 日志格式 (json/text) | `json` |
 | `SERVICE_TOKEN` | 服务间 HTTP 调用令牌；admin-api 访问 log-service 详情与清理接口时使用 | - |
+| `LOG_MEMORY_MODE` | 允许 log-service 在无数据库 DSN 时使用内存日志仓库；仅用于开发/测试 | `false` |
+| `LOG_RETENTION_DAYS` | log-service 业务日志保留天数，`0` 表示不自动清理 | `30` |
+| `LOG_GRPC_AUTH` | 是否启用 log-service gRPC 服务令牌鉴权；启用前需确保客户端会发送 Bearer token | `false` |
 
 ### 4.2 Relay Gateway 专用
 

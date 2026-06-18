@@ -3,18 +3,18 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
+	"go.uber.org/zap"
 
-	configcfg "micro-one-api/internal/config/config"
-	"micro-one-api/internal/pkg/xconfig"
 	"micro-one-api/internal/config/biz"
+	configcfg "micro-one-api/internal/config/config"
 	"micro-one-api/internal/config/data"
 	"micro-one-api/internal/config/server"
 	"micro-one-api/internal/config/service"
+	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
+	"micro-one-api/internal/pkg/xconfig"
 )
 
 func loadConfig(confPath string) (*configcfg.Config, error) {
@@ -50,7 +50,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	registrar, rErr := appregistry.NewRegistrar(cfg.Registry)
 	if rErr != nil {
-		fmt.Printf("Warning: Failed to create registrar: %v\n", rErr)
+		applogger.Log.Warn("failed to create registrar", zap.Error(rErr))
 	}
 
 	kratosOpts := []kratos.Option{

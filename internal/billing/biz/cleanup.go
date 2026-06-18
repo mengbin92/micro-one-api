@@ -2,8 +2,11 @@ package biz
 
 import (
 	"context"
-	"log"
 	"time"
+
+	"go.uber.org/zap"
+
+	applogger "micro-one-api/internal/pkg/logger"
 )
 
 type CleanupJob struct {
@@ -28,13 +31,13 @@ func (j *CleanupJob) Start(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			if err := j.cleanupExpiredReservations(ctx); err != nil {
-				log.Printf("cleanup expired reservations failed: %v", err)
+				applogger.Log.Warn("cleanup expired reservations failed", zap.Error(err))
 			}
 		case <-ctx.Done():
-			log.Println("cleanup job stopped")
+			applogger.Log.Info("cleanup job stopped", zap.String("reason", "context canceled"))
 			return
 		case <-j.stopChan:
-			log.Println("cleanup job stopped")
+			applogger.Log.Info("cleanup job stopped", zap.String("reason", "stop requested"))
 			return
 		}
 	}
@@ -52,13 +55,13 @@ func (j *CleanupJob) cleanupExpiredReservations(ctx context.Context) error {
 
 	for _, reservation := range reservations {
 		if err := j.uc.ReleaseQuota(ctx, reservation.ReservationID, "reservation expired"); err != nil {
-			log.Printf("failed to release expired reservation %s: %v", reservation.ReservationID, err)
+			applogger.Log.Warn("failed to release expired reservation", zap.String("reservation_id", reservation.ReservationID), zap.Error(err))
 		} else {
-			log.Printf("released expired reservation %s", reservation.ReservationID)
+			applogger.Log.Info("released expired reservation", zap.String("reservation_id", reservation.ReservationID))
 		}
 
 		if err := j.uc.reservationRepo.UpdateReservationStatus(ctx, reservation.ReservationID, ReservationStatusExpired); err != nil {
-			log.Printf("failed to update reservation status to expired: %v", err)
+			applogger.Log.Warn("failed to update reservation status to expired", zap.String("reservation_id", reservation.ReservationID), zap.Error(err))
 		}
 	}
 

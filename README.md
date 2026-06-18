@@ -168,6 +168,8 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `JWT_SECRET_KEY` | 用户登录和鉴权相关密钥 |
 | `SERVICE_TOKEN` | 服务间 HTTP 调用令牌 |
 | `ADMIN_TOKEN` | 管理 API 兼容鉴权令牌 |
+| `LOG_MEMORY_MODE` | 允许 log-service 无数据库时使用内存日志，仅用于开发/测试 |
+| `LOG_RETENTION_DAYS` | log-service 业务日志保留天数 |
 | `IDENTITY_GRPC_ENDPOINT` | identity-service gRPC 地址 |
 | `CHANNEL_GRPC_ENDPOINT` | channel-service gRPC 地址 |
 | `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 |

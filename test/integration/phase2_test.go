@@ -218,6 +218,10 @@ func (r *testLogRepo) Delete(ctx context.Context, filter logbiz.DeleteLogsFilter
 	return 0, nil
 }
 
+func (r *testLogRepo) DeleteBefore(ctx context.Context, before time.Time) (int64, error) {
+	return 0, nil
+}
+
 func setupLogService(t *testing.T, addr string) (func(), logv1.LogServiceClient) {
 	repo := &testLogRepo{}
 	uc := logbiz.NewLogUsecase(repo)

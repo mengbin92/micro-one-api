@@ -13,6 +13,7 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	logv1 "micro-one-api/api/log/v1"
 	"micro-one-api/internal/log/biz"
+	applogger "micro-one-api/internal/pkg/logger"
 )
 
 // LogService is the transport layer entry for log-service.
@@ -68,7 +69,7 @@ func (s *LogService) ListLogs(ctx context.Context, req *logv1.ListLogsRequest) (
 func (s *LogService) IngestLog(ctx context.Context, req *logv1.IngestLogRequest) (*logv1.IngestLogResponse, error) {
 	entry := &biz.LogEntry{
 		Level:            req.Level,
-		Message:          req.Message,
+		Message:          applogger.Sanitize(req.Message),
 		Source:           req.Source,
 		RequestID:        req.RequestId,
 		UserID:           req.UserId,
@@ -176,7 +177,7 @@ func (s *LogService) HandleIngestLog(w http.ResponseWriter, r *http.Request) {
 	}
 	entry := &biz.LogEntry{
 		Level:     body.Level,
-		Message:   body.Message,
+		Message:   applogger.Sanitize(body.Message),
 		Source:    body.Source,
 		RequestID: body.RequestID,
 		UserID:    body.UserID,

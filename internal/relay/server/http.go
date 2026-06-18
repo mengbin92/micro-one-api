@@ -1111,9 +1111,10 @@ type usageLogInput struct {
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 	if s.logClient == nil {
+		metrics.UsageLogIngestTotal.WithLabelValues("skipped").Inc()
 		return
 	}
-	message := fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID)
+	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
 	_, err := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{
 		Level:            "consume",
 		Message:          message,
@@ -1131,8 +1132,11 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		IsStream:         in.IsStream,
 	})
 	if err != nil && applogger.Log != nil {
+		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()
 		applogger.Log.Warn("failed to ingest usage log", zap.Error(err))
+		return
 	}
+	metrics.UsageLogIngestTotal.WithLabelValues("success").Inc()
 }
 
 func logUpstreamUsage(in usageLogInput) {
@@ -1146,23 +1150,6 @@ func logUpstreamUsage(in usageLogInput) {
 		if nonCachedInputTokens < 0 {
 			nonCachedInputTokens = 0
 		}
-	}
-	if applogger.Log == nil {
-		fmt.Printf("INFO msg=\"upstream usage reported\" request_id=%s endpoint=%s model=%s user_id=%d channel_id=%d is_stream=%t total_tokens=%d upstream_input_tokens=%d input_tokens=%d output_tokens=%d cache_read_tokens=%d cache_read_input_ratio=%.6f\n",
-			in.RequestID,
-			in.Endpoint,
-			in.ModelName,
-			in.UserID,
-			in.ChannelID,
-			in.IsStream,
-			in.Quota,
-			in.PromptTokens,
-			nonCachedInputTokens,
-			in.CompletionTokens,
-			in.CacheReadTokens,
-			cacheRatio,
-		)
-		return
 	}
 	applogger.Log.Info("upstream usage reported",
 		zap.String("request_id", in.RequestID),

@@ -3,7 +3,9 @@ package data
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,13 +56,21 @@ func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 		}
 	}
 	if dbDSN == "" {
-		return newMemoryRepository(), nil
+		if allowMemoryRepository() {
+			return newMemoryRepository(), nil
+		}
+		return nil, fmt.Errorf("log database DSN is required; set LOG_SQL_DSN/SQL_DSN or LOG_MEMORY_MODE=true for development")
 	}
 	db, err := xdb.OpenMySQL(dbDSN)
 	if err != nil {
 		return nil, err
 	}
 	return &Repository{db: db}, nil
+}
+
+func allowMemoryRepository() bool {
+	allowed, _ := strconv.ParseBool(os.Getenv("LOG_MEMORY_MODE"))
+	return allowed
 }
 
 func newMemoryRepository() *Repository {
@@ -116,6 +126,17 @@ func (r *Repository) Delete(ctx context.Context, filter biz.DeleteLogsFilter) (i
 		return r.deleteDB(ctx, filter)
 	}
 	return r.deleteMemory(filter), nil
+}
+
+func (r *Repository) DeleteBefore(ctx context.Context, before time.Time) (int64, error) {
+	if before.IsZero() {
+		return 0, nil
+	}
+	if r.db != nil {
+		result := r.db.WithContext(ctx).Where("created_at < ?", before.Unix()).Delete(&logModel{})
+		return result.RowsAffected, result.Error
+	}
+	return r.deleteBeforeMemory(before), nil
 }
 
 func (r *Repository) UsageByUser(ctx context.Context, userID int64, startTime, endTime time.Time) ([]*biz.UsageStat, error) {
@@ -392,6 +413,19 @@ func (r *Repository) deleteMemory(filter biz.DeleteLogsFilter) int64 {
 		}
 		delete(r.mem, id)
 		deleted++
+	}
+	return deleted
+}
+
+func (r *Repository) deleteBeforeMemory(before time.Time) int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var deleted int64
+	for id, entry := range r.mem {
+		if entry.CreatedAt.Before(before) {
+			delete(r.mem, id)
+			deleted++
+		}
 	}
 	return deleted
 }

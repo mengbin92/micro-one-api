@@ -13,6 +13,7 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
 	grpcx "github.com/go-kratos/kratos/v2/transport/grpc"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -24,6 +25,7 @@ import (
 	"micro-one-api/internal/admin/data"
 	adminserver "micro-one-api/internal/admin/server"
 	"micro-one-api/internal/admin/service"
+	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
 	"micro-one-api/internal/pkg/xconfig"
 
@@ -54,11 +56,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	// Setup service discovery
 	discovery, dErr := appregistry.NewDiscovery(cfg.Registry)
 	if dErr != nil {
-		fmt.Printf("Warning: Failed to create service discovery: %v\n", dErr)
+		applogger.Log.Warn("failed to create service discovery", zap.Error(dErr))
 	}
 	registrar, rErr := appregistry.NewRegistrar(cfg.Registry)
 	if rErr != nil {
-		fmt.Printf("Warning: Failed to create registrar: %v\n", rErr)
+		applogger.Log.Warn("failed to create registrar", zap.Error(rErr))
 	}
 
 	resolver := appregistry.NewResolver(discovery)
@@ -102,7 +104,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		if dbErr == nil {
 			systemOptsRepo = data.NewSystemOptionsRepo(db)
 		} else {
-			fmt.Printf("Warning: Failed to connect to system options DB: %v\n", dbErr)
+			applogger.Log.Warn("failed to connect to system options DB", zap.Error(dbErr))
 		}
 	}
 

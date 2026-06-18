@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,26 @@ func TestMemoryRepository_CreateAndGet(t *testing.T) {
 	}
 	if got.Message != "test error" {
 		t.Fatalf("expected 'test error', got %s", got.Message)
+	}
+}
+
+func TestNewRepositoryFromEnvRequiresDSNUnlessMemoryModeEnabled(t *testing.T) {
+	t.Setenv("LOG_SQL_DSN", "")
+	t.Setenv("SQL_DSN", "")
+	t.Setenv("LOG_MEMORY_MODE", "")
+
+	_, err := NewRepositoryFromEnv("")
+	if err == nil || !strings.Contains(err.Error(), "LOG_MEMORY_MODE=true") {
+		t.Fatalf("expected explicit memory mode error, got %v", err)
+	}
+
+	t.Setenv("LOG_MEMORY_MODE", "true")
+	repo, err := NewRepositoryFromEnv("")
+	if err != nil {
+		t.Fatalf("NewRepositoryFromEnv() error = %v", err)
+	}
+	if repo.db != nil || repo.mem == nil {
+		t.Fatalf("expected memory repository, got db=%v mem=%v", repo.db, repo.mem)
 	}
 }
 
@@ -146,6 +167,29 @@ func TestMemoryRepository_Delete(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Delete() error = %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", deleted)
+	}
+	entries, total, err := repo.List(context.Background(), 1, 20, "", "", "")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if total != 2 || len(entries) != 2 {
+		t.Fatalf("remaining total=%d len=%d, want 2", total, len(entries))
+	}
+}
+
+func TestMemoryRepository_DeleteBefore(t *testing.T) {
+	repo := NewMemoryRepositoryForTest()
+	base := time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)
+	_ = repo.Create(context.Background(), &biz.LogEntry{Level: "info", Message: "old", CreatedAt: base.Add(-time.Hour)})
+	_ = repo.Create(context.Background(), &biz.LogEntry{Level: "info", Message: "boundary", CreatedAt: base})
+	_ = repo.Create(context.Background(), &biz.LogEntry{Level: "info", Message: "new", CreatedAt: base.Add(time.Hour)})
+
+	deleted, err := repo.DeleteBefore(context.Background(), base)
+	if err != nil {
+		t.Fatalf("DeleteBefore() error = %v", err)
 	}
 	if deleted != 1 {
 		t.Fatalf("deleted = %d, want 1", deleted)

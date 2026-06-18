@@ -3,7 +3,9 @@ package main
 import (
 	"os"
 
-	"github.com/go-kratos/kratos/v2/log"
+	"go.uber.org/zap"
+
+	applogger "micro-one-api/internal/pkg/logger"
 
 	_ "github.com/go-kratos/kratos/v2/config/file"
 )
@@ -14,18 +16,18 @@ func main() {
 		confPath = "configs/channel-service.yaml"
 	}
 
-	logger := log.NewStdLogger(os.Stdout)
-	helper := log.NewHelper(logger)
+	applogger.InitializeStartupLogger()
+	defer applogger.Sync()
 
 	app, cleanup, err := InitApp(confPath)
 	if err != nil {
-		helper.Errorf("failed to create app: %v", err)
+		applogger.Log.Error("failed to create app", zap.Error(err))
 		os.Exit(1)
 	}
 	defer cleanup()
 
 	if err := app.Run(); err != nil {
-		helper.Errorf("failed to run app: %v", err)
+		applogger.Log.Error("failed to run app", zap.Error(err))
 		os.Exit(1)
 	}
 }

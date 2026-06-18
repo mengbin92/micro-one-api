@@ -3,9 +3,12 @@ package biz
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
+
+	applogger "micro-one-api/internal/pkg/logger"
 )
 
 // ReconciliationJob runs periodic billing reconciliation tasks.
@@ -77,10 +80,10 @@ func (j *ReconciliationJob) Start(ctx context.Context) {
 		case <-ticker.C:
 			j.runReconciliation(ctx)
 		case <-ctx.Done():
-			log.Println("reconciliation job stopped")
+			applogger.Log.Info("reconciliation job stopped", zap.String("reason", "context canceled"))
 			return
 		case <-j.stopChan:
-			log.Println("reconciliation job stopped")
+			applogger.Log.Info("reconciliation job stopped", zap.String("reason", "stop requested"))
 			return
 		}
 	}
@@ -94,35 +97,48 @@ func (j *ReconciliationJob) Stop() {
 func (j *ReconciliationJob) runReconciliation(ctx context.Context) {
 	result, err := j.uc.RunReconciliation(ctx)
 	if err != nil {
-		log.Printf("reconciliation failed: %v", err)
+		applogger.Log.Error("reconciliation failed", zap.Error(err))
 		return
 	}
 
-	log.Printf("reconciliation completed: run_at=%s, expired_cleaned=%d, total_accounts=%d, inconsistencies=%d",
-		result.RunAt.Format(time.RFC3339),
-		result.ExpiredCleaned,
-		result.TotalAccounts,
-		result.DiscrepancyCount(),
+	applogger.Log.Info("reconciliation completed",
+		zap.Time("run_at", result.RunAt),
+		zap.Int("expired_cleaned", result.ExpiredCleaned),
+		zap.Int("total_accounts", result.TotalAccounts),
+		zap.Int("inconsistencies", result.DiscrepancyCount()),
 	)
 
 	for _, inc := range result.AccountInconsistencies {
-		log.Printf("account inconsistency: user_id=%s, expected=%d, actual=%d, frozen=%d",
-			inc.UserID, inc.ExpectedQuota, inc.ActualQuota, inc.FrozenQuota)
+		applogger.Log.Warn("account inconsistency",
+			zap.String("user_id", inc.UserID),
+			zap.Int64("expected", inc.ExpectedQuota),
+			zap.Int64("actual", inc.ActualQuota),
+			zap.Int64("frozen", inc.FrozenQuota),
+		)
 	}
 	for _, inc := range result.ChannelInconsistencies {
-		log.Printf("channel inconsistency: channel_id=%d, expected=%d, actual=%d, diff=%d, upstream_cost=%d",
-			inc.ChannelID, inc.ExpectedUsedQuota, inc.ActualUsedQuota, inc.Difference, inc.UpstreamCost)
+		applogger.Log.Warn("channel inconsistency",
+			zap.Int64("channel_id", inc.ChannelID),
+			zap.Int64("expected", inc.ExpectedUsedQuota),
+			zap.Int64("actual", inc.ActualUsedQuota),
+			zap.Int64("diff", inc.Difference),
+			zap.Int64("upstream_cost", inc.UpstreamCost),
+		)
 	}
 	for _, inc := range result.LogInconsistencies {
-		log.Printf("ledger/log inconsistency: ledger_count=%d, log_count=%d, count_diff=%d, quota_diff=%d",
-			inc.LedgerCount, inc.LogCount, inc.CountDiff, inc.QuotaDiff)
+		applogger.Log.Warn("ledger log inconsistency",
+			zap.Int64("ledger_count", inc.LedgerCount),
+			zap.Int64("log_count", inc.LogCount),
+			zap.Int64("count_diff", inc.CountDiff),
+			zap.Int64("quota_diff", inc.QuotaDiff),
+		)
 	}
 
 	if j.notifier == nil || result.DiscrepancyCount() == 0 {
 		return
 	}
 	if err := j.dispatchAlerts(ctx, result); err != nil {
-		log.Printf("reconciliation alert dispatch failed: %v", err)
+		applogger.Log.Warn("reconciliation alert dispatch failed", zap.Error(err))
 	}
 }
 
@@ -141,7 +157,7 @@ func (j *ReconciliationJob) dispatchAlerts(ctx context.Context, result *Reconcil
 			errs = append(errs, fmt.Sprintf("%s: %v", recipient, err))
 			continue
 		}
-		log.Printf("reconciliation alert sent: recipient=%s, discrepancies=%d", recipient, result.DiscrepancyCount())
+		applogger.Log.Info("reconciliation alert sent", zap.String("recipient", recipient), zap.Int("discrepancies", result.DiscrepancyCount()))
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("notify: %s", strings.Join(errs, "; "))

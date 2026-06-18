@@ -86,6 +86,17 @@ var (
 		},
 		[]string{"model", "status"},
 	)
+
+	// UsageLogIngestTotal counts usage log ingestion attempts by status.
+	UsageLogIngestTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "micro_one_api",
+			Subsystem: "log",
+			Name:      "usage_ingest_total",
+			Help:      "Total usage log ingestion attempts",
+		},
+		[]string{"status"},
+	)
 )
 
 func init() {
@@ -97,6 +108,7 @@ func init() {
 		ActiveRequests,
 		BillingReservationsTotal,
 		ChannelSelectionTotal,
+		UsageLogIngestTotal,
 	)
 }
 

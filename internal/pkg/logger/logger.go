@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -13,7 +14,8 @@ import (
 
 var (
 	// Default logger instance
-	Log *zap.Logger
+	Log = zap.NewNop()
+	mu  sync.RWMutex
 )
 
 // Sensitive data patterns for redaction
@@ -56,13 +58,20 @@ func Initialize(level string, format string) error {
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 
 	var err error
-	Log, err = config.Build(
+	logger, err := config.Build(
 		zap.AddCallerSkip(1),
 		zap.AddStacktrace(zapcore.ErrorLevel),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
+	if service := os.Getenv("SERVICE_NAME"); service != "" {
+		logger = logger.With(zap.String("service", service))
+	}
+
+	mu.Lock()
+	Log = logger
+	mu.Unlock()
 
 	return nil
 }
@@ -163,8 +172,11 @@ func (sl *SafeLogger) With(fields ...zap.Field) *SafeLogger {
 
 // Sync flushes any buffered log entries
 func Sync() error {
-	if Log != nil {
-		return Log.Sync()
+	mu.RLock()
+	logger := Log
+	mu.RUnlock()
+	if logger != nil {
+		return logger.Sync()
 	}
 	return nil
 }
@@ -184,9 +196,25 @@ func InitializeFromEnv() error {
 	return Initialize(level, format)
 }
 
+// MustInitializeFromEnv initializes the package logger or falls back to a no-op
+// logger if zap setup fails. It returns the initialization error for callers
+// that want to report startup diagnostics without risking nil logger panics.
+func MustInitializeFromEnv() error {
+	if err := InitializeFromEnv(); err != nil {
+		mu.Lock()
+		Log = zap.NewNop()
+		mu.Unlock()
+		return err
+	}
+	return nil
+}
+
 // SetOutput sets the output destination for the logger
 func SetOutput(w io.Writer) error {
-	if Log == nil {
+	mu.RLock()
+	initialized := Log != nil
+	mu.RUnlock()
+	if !initialized {
 		return fmt.Errorf("logger not initialized")
 	}
 
@@ -214,7 +242,13 @@ func SetOutput(w io.Writer) error {
 
 	encoder := zapcore.NewJSONEncoder(encoderConfig)
 	core := zapcore.NewCore(encoder, zapcore.AddSync(w), zapcore.InfoLevel)
-	Log = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	if service := os.Getenv("SERVICE_NAME"); service != "" {
+		logger = logger.With(zap.String("service", service))
+	}
+	mu.Lock()
+	Log = logger
+	mu.Unlock()
 
 	return nil
 }

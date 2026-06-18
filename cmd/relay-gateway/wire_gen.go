@@ -11,6 +11,7 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -19,6 +20,7 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	logv1 "micro-one-api/api/log/v1"
 	appauth "micro-one-api/internal/pkg/auth"
+	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
 	apptimeout "micro-one-api/internal/pkg/timeout"
 	apptls "micro-one-api/internal/pkg/tls"
@@ -59,7 +61,7 @@ func newModelMapper(cfg *relaycfg.Config) *relaybiz.ModelMapper {
 	}
 	mapper, err := relaybiz.NewModelMapper(path)
 	if err != nil {
-		fmt.Printf("Warning: Failed to load models config: %v\n", err)
+		applogger.Log.Warn("failed to load models config", zap.String("path", path), zap.Error(err))
 		return nil
 	}
 	return mapper
@@ -116,11 +118,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	// Setup service discovery
 	discovery, err := appregistry.NewDiscovery(cfg.Registry)
 	if err != nil {
-		fmt.Printf("Warning: Failed to create service discovery: %v\n", err)
+		applogger.Log.Warn("failed to create service discovery", zap.Error(err))
 	}
 	registrar, err := appregistry.NewRegistrar(cfg.Registry)
 	if err != nil {
-		fmt.Printf("Warning: Failed to create registrar: %v\n", err)
+		applogger.Log.Warn("failed to create registrar", zap.Error(err))
 	}
 
 	resolver := appregistry.NewResolver(discovery)
@@ -223,7 +225,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	}
 	app := kratos.New(kratosOpts...)
 
-	fmt.Printf("Starting relay-gateway on %s\n", cfg.Server.HTTP.Addr)
+	applogger.Log.Info("relay-gateway starting", zap.String("http_addr", cfg.Server.HTTP.Addr))
 
 	cleanup := func() {
 		identityConn.Close()

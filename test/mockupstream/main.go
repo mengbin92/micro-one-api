@@ -12,14 +12,11 @@ import (
 	relayprovider "micro-one-api/internal/relay/provider"
 )
 
-var log *zap.SugaredLogger
-
 func init() {
 	// Initialize logger for mock server
 	if err := applogger.Initialize("info", "console"); err != nil {
 		panic(fmt.Sprintf("failed to initialize logger: %v", err))
 	}
-	log = applogger.Log.Sugar()
 }
 
 func main() {
@@ -29,7 +26,7 @@ func main() {
 	mux.HandleFunc("/chat/completions", handleChatCompletions)
 	mux.HandleFunc("/health", handleHealth)
 
-	log.Infof("Mock Upstream server listening on port %s", port)
+	applogger.Log.Info("mock upstream server listening", zap.String("port", port))
 	server := &http.Server{
 		Addr:              ":" + port,
 		Handler:           mux,
@@ -39,7 +36,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("failed to start server: %v", err)
+		applogger.Log.Fatal("failed to start server", zap.Error(err))
 	}
 }
 
@@ -57,8 +54,11 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Safe logging - don't log sensitive auth header
-	log.Infof("Received chat completions request: model=%s, messages=%d, has_auth=%v",
-		req.Model, len(req.Messages), authHeader != "")
+	applogger.Log.Info("received chat completions request",
+		zap.String("model", req.Model),
+		zap.Int("messages", len(req.Messages)),
+		zap.Bool("has_auth", authHeader != ""),
+	)
 
 	content := fmt.Sprintf("Response to: %s", req.Messages[0].Content)
 	if len(req.Messages) > 0 {

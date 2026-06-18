@@ -5,11 +5,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
-	"github.com/go-kratos/kratos/v2/log"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -19,6 +18,7 @@ import (
 	"micro-one-api/internal/identity/data"
 	"micro-one-api/internal/identity/server"
 	"micro-one-api/internal/identity/service"
+	applogger "micro-one-api/internal/pkg/logger"
 	"micro-one-api/internal/pkg/oauth"
 	appregistry "micro-one-api/internal/pkg/registry"
 	"micro-one-api/internal/pkg/xconfig"
@@ -71,7 +71,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	// Setup service registration
 	registrar, rErr := appregistry.NewRegistrar(cfg.Registry)
 	if rErr != nil {
-		fmt.Printf("Warning: Failed to create registrar: %v\n", rErr)
+		applogger.Log.Warn("failed to create registrar", zap.Error(rErr))
 	}
 
 	kratosOpts := []kratos.Option{
@@ -97,27 +97,24 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 // admin-reset tool or retry later. A generated password is printed once and
 // will not be recoverable, so it is logged at WARN level with a clear marker.
 func bootstrapAdmin(uc *biz.IdentityUsecase) {
-	helper := log.NewHelper(log.NewStdLogger(os.Stdout))
 	result, err := uc.EnsureRootAdmin(context.Background())
 	if err != nil {
-		helper.Warnf("admin bootstrap skipped: %v", err)
+		applogger.Log.Warn("admin bootstrap skipped", zap.Error(err))
 		return
 	}
 	if !result.Created {
 		return
 	}
 	if result.Generated {
-		helper.Warnf("======== INITIAL ADMIN CREATED ========")
-		helper.Warnf("username: %s", result.Username)
-		helper.Warnf("email:    %s", result.Email)
-		helper.Warnf("password: %s", result.PlainPassword)
-		helper.Warnf("This password was randomly generated and will NOT be shown again.")
-		helper.Warnf("Save it now, then log in and change it immediately.")
-		helper.Warnf("To pre-set a password, set INITIAL_ADMIN_PASSWORD before first start.")
-		helper.Warnf("=======================================")
+		applogger.Log.Warn("initial admin created with generated password",
+			zap.String("username", result.Username),
+			zap.String("email", result.Email),
+			zap.String("password", result.PlainPassword),
+			zap.String("notice", "This password was randomly generated and will NOT be shown again. Save it now, then log in and change it immediately."),
+		)
 		return
 	}
-	helper.Infof("initial admin %q created from INITIAL_ADMIN_PASSWORD env var", result.Username)
+	applogger.Log.Info("initial admin created from INITIAL_ADMIN_PASSWORD env var", zap.String("username", result.Username))
 }
 
 func registrationPolicyFromConfig(cfg *identitycfg.Config) server.RegistrationPolicy {

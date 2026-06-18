@@ -5,11 +5,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/google/wire"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	channelv1 "micro-one-api/api/channel/v1"
@@ -19,6 +19,7 @@ import (
 	"micro-one-api/internal/monitor/data"
 	"micro-one-api/internal/monitor/server"
 	"micro-one-api/internal/monitor/service"
+	applogger "micro-one-api/internal/pkg/logger"
 )
 
 var ProviderSet = wire.NewSet(
@@ -69,7 +70,7 @@ func newChannelHealthChecker(cfg *monitorcfg.Config) (*biz.ChannelHealthChecker,
 	}
 	conn, err := grpc.NewClient(cfg.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		fmt.Printf("Warning: Failed to create channel health client: %v\n", err)
+		applogger.Log.Warn("failed to create channel health client", zap.Error(err))
 		return nil, nil
 	}
 	checker := biz.NewChannelHealthChecker(channelv1.NewChannelServiceClient(conn), biz.ChannelHealthCheckerConfig{
