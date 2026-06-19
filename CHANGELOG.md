@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-06-19
+
+### Added
+- `notify-worker` 新增企业 IM 通知通道：企业微信、钉钉、飞书/Lark 和 Slack。
+- 渠道健康告警与对账告警的通知类型支持 `wecom`、`dingtalk`、`feishu`、`slack`。
+- 新增 `NOTIFY_WECOM_WEBHOOK_URL`、`NOTIFY_DINGTALK_WEBHOOK_URL`、
+  `NOTIFY_FEISHU_WEBHOOK_URL`、`NOTIFY_SLACK_WEBHOOK_URL` 配置项。
+
+### Changed
+- 企业微信和钉钉支持配置完整 webhook URL，也支持仅配置 key / access_token 自动拼接。
+- 部署文档、README 与示例环境变量补齐企业 IM 告警配置说明。
+
+## [0.2.4] - 2026-06-19
+
+### Added
+- 补充渠道健康告警配置文档与 docker-compose 示例环境变量说明。
+
+### Changed
+- README 最新发布指针更新到 v0.2.4。
+
 ## [0.2.3] - 2026-06-18
 
 ### Added
