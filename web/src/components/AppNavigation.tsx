@@ -1,8 +1,8 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Activity,
   BarChart3,
-  Bell,
   ChevronsLeft,
   CreditCard,
   Database,
@@ -17,6 +17,7 @@ import {
   ScrollText,
   Settings2,
   Ticket,
+  TrendingUp,
   UserCircle,
   Users,
   WalletCards,
@@ -25,6 +26,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { MobileNav } from '@/components/MobileNav';
+import { NotificationPanel } from '@/components/NotificationPanel';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { apiClient } from '@/lib/api';
 import { canAccessAdmin } from '@/lib/admin-access';
@@ -75,6 +77,8 @@ const adminLinks: NavItem[] = [
   { to: '/admin', label: '总览', ariaLabel: 'Admin Overview', icon: MonitorCog },
   { to: '/admin/users', label: '用户', ariaLabel: 'Users', icon: Users },
   { to: '/admin/channels', label: '渠道', ariaLabel: 'Channels', icon: Database },
+  { to: '/admin/channel-health', label: '健康监控', ariaLabel: 'Channel Health', icon: Activity },
+  { to: '/admin/cost-analysis', label: '成本分析', ariaLabel: 'Cost Analysis', icon: TrendingUp },
   { to: '/admin/pricing', label: '模型价格', ariaLabel: 'Model Pricing', icon: ReceiptText },
   { to: '/admin/logs', label: '日志', ariaLabel: 'Logs', icon: ScrollText },
   { to: '/admin/payment-orders', label: '订单', ariaLabel: 'Payment Orders', icon: CreditCard },
@@ -95,6 +99,8 @@ const routeTitles: Record<string, string> = {
   '/admin': '管理总览',
   '/admin/users': '用户管理',
   '/admin/channels': '渠道管理',
+  '/admin/channel-health': '健康监控',
+  '/admin/cost-analysis': '成本分析',
   '/admin/pricing': '模型价格',
   '/admin/logs': '系统日志',
   '/admin/payment-orders': '支付订单',
@@ -203,6 +209,7 @@ export function AppNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
   const [role, setRole] = useState<number | null>(() => {
     const stored = localStorage.getItem('userRole');
     return stored != null && stored !== '' ? Number(stored) : null;
@@ -324,9 +331,6 @@ export function AppNavigation() {
           </h1>
 
           <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
-            <Button type="button" variant="outline" size="icon-sm" aria-label="Notifications" className="hidden sm:inline-flex">
-              <Bell className="size-4" />
-            </Button>
             <Button type="button" variant="outline" size="sm" className="hidden gap-2 sm:inline-flex">
               <Languages className="size-4" />
               CN ZH
@@ -336,6 +340,7 @@ export function AppNavigation() {
               {formatQuota(account?.quota)}
             </div>
             <ThemeToggle />
+            <NotificationPanel open={notificationOpen} onOpenChange={setNotificationOpen} />
             {adminControl}
             <button
               type="button"
