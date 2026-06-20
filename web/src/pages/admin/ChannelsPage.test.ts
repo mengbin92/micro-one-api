@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { summarizeChannelHealth } from './ChannelsPage';
+import { summarizeChannelHealth } from './channel-health-summary';
 
 describe('summarizeChannelHealth', () => {
   it('counts unavailable and degraded active channel health states', () => {

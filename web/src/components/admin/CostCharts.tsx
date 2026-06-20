@@ -46,6 +46,14 @@ interface CostBreakdownData {
   color: string;
 }
 
+interface PieLabelProps {
+  name?: string;
+  value?: number;
+  payload?: {
+    value?: number;
+  };
+}
+
 const COLORS = {
   revenue: '#10b981',
   cost: '#ef4444',
@@ -301,7 +309,7 @@ export function CostBreakdownChart({ data }: { data: CostBreakdownData[] }) {
             innerRadius="60%"
             outerRadius="80%"
             paddingAngle={2}
-            label={(props: any) => {
+            label={(props: PieLabelProps) => {
               const name = props.name || '';
               const value = props.payload?.value ?? props.value ?? 0;
               // Show actual dollar amount instead of percentage to match the data being passed

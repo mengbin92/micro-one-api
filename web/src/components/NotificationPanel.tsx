@@ -154,8 +154,9 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
 
   // Fetch unread count periodically - always running, even when closed
   useEffect(() => {
-    // Initial fetch
-    fetchUnreadCount();
+    const initialFetch = window.setTimeout(() => {
+      fetchUnreadCount();
+    }, 0);
 
     // Poll every 30 seconds
     const interval = setInterval(() => {
@@ -164,15 +165,20 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
 
     return () => {
       mountedRef.current = false;
+      window.clearTimeout(initialFetch);
       clearInterval(interval);
     };
   }, [fetchUnreadCount]);
 
   // Fetch full notifications when panel opens or filter changes
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+
+    const timeout = window.setTimeout(() => {
       fetchNotifications();
-    }
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [open, fetchNotifications]);
 
   // Auto-refresh every 30s when open

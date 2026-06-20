@@ -16,6 +16,7 @@ import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { sortRows, type SortState } from '@/lib/table-utils';
+import { summarizeChannelHealth } from './channel-health-summary';
 import {
   Table,
   TableBody,
@@ -95,22 +96,6 @@ function healthBadgeClass(status: string) {
   if (status === 'unavailable') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
   if (status === 'degraded') return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
   return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-}
-
-export function summarizeChannelHealth(channels: Channel[] = []) {
-  const unhealthy = channels.filter((channel) => {
-    const status = channelHealthStatus(channel);
-    return status === 'unavailable' || status === 'degraded';
-  });
-  const unavailable = unhealthy.filter((channel) => channelHealthStatus(channel) === 'unavailable');
-  const degraded = unhealthy.filter((channel) => channelHealthStatus(channel) === 'degraded');
-  const primary = unavailable[0] ?? degraded[0] ?? null;
-  return {
-    unhealthy,
-    unavailable,
-    degraded,
-    primary,
-  };
 }
 
 export function AdminChannelsPage() {

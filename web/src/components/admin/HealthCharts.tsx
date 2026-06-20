@@ -44,6 +44,11 @@ interface UptimeData {
   color: string;
 }
 
+interface PieLabelProps {
+  name?: string;
+  percent?: number;
+}
+
 interface FailureRateData {
   timestamp: string;
   rate: number;
@@ -184,7 +189,7 @@ export function UptimePieChart({ data }: { data: UptimeData[] }) {
           innerRadius="60%"
           outerRadius="80%"
           paddingAngle={2}
-          label={(props: any) => {
+          label={(props: PieLabelProps) => {
             const name = props.name || '';
             const percent = props.percent ?? 0;
             return `${name} ${(percent * 100).toFixed(0)}%`;

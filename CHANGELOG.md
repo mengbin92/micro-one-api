@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-06-20
+
+### Added
+- 管理后台新增通知面板，支持查看通知历史、按发送状态筛选、刷新列表和 pending 数量徽标。
+- 管理后台新增渠道健康与成本分析页面，补齐健康趋势、成本、收入、毛利等可视化图表组件。
+
+### Fixed
+- 管理后台通知接口改为经 `admin-api` 代理到 `notify-worker`，避免前端直接依赖 worker 地址。
+- 通知面板兼容 `notify-worker` 直接返回 `{items,total}` 的列表响应格式。
+- `admin-api` 补齐 `/admin/channel-health`、`/admin/cost-analysis` 等 SPA 路由，修复刷新或直达页面时的路由回退问题。
+
 ## [0.2.5] - 2026-06-19
 
 ### Added
