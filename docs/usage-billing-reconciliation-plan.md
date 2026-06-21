@@ -1,18 +1,28 @@
-# 用量统计 / 成本分析 / 对账能力 — 调研与改进计划
+# 用量统计 / 成本分析 / 对账能力 — 阶段复盘
 
 > 分支：`feature/usage-billing-reconciliation`
 > 范围：`billing-service`、`log-service`、`channel-service` 及 `admin` / `relay` 相关聚合链路
 
-## 进度状态(截至 2026-06-10)
+## 当前状态(截至 2026-06-21)
 
 - [x] **Phase 1** — DB 聚合下沉 + admin 接线 + 索引（`migrations/028` + 多维聚合 RPC）
 - [x] **Phase 2** — 成本/利润分析（`migrations/029` 加 `upstream_cost`，账本写入上游成本）
 - [x] **Phase 3** — 渠道对账（`RunReconciliation` 增渠道维度 + ledger/log 双写校验）
 - [x] **Phase 4** — 告警（`notify-worker` 投递差异通知，可配置收件人；dashboard 成本健康面板已上线）
 - [x] **后续** — Top-N 图表、notify-worker webhook/SMTP 实际投递与重试
-- [ ] **后续** — 告警通道扩展（IM 等）
+- [x] **后续** — 告警通道扩展（企业微信、钉钉、飞书/Lark、Slack）
 
-## 一、架构现状
+本文件最初用于规划 v0.2.0 之后的用量、成本、对账与告警能力。相关能力已在 v0.2.0 至 v0.2.6 期间陆续落地：
+
+- v0.2.0 完成多维 SQL 聚合、成本/毛利、渠道对账和对账告警。
+- v0.2.1 增加 Top-N 用量图表。
+- v0.2.2 增加 webhook/email 实际投递与重试。
+- v0.2.5 增加企业 IM 通知通道。
+- v0.2.6 增加管理后台通知面板、渠道健康与成本分析入口。
+
+以下内容保留为原始问题分析与实施路线记录；其中“核心缺陷”和“建议起点”反映的是规划时状态，不代表当前版本仍然缺失。
+
+## 一、原始架构现状
 
 微服务架构（Kratos 框架），相关三块：
 
@@ -28,14 +38,14 @@
 - `billing_ledgers`（权威账本，`type=consume`，负数金额，含 prompt/completion tokens、channel_id、elapsed_time）—— `internal/billing/biz/billing.go:198`
 - `logs`（`level=consume`，冗余的用量副本）—— `internal/relay/server/http.go:1107`
 
-## 二、已有能力
+## 二、规划时已有能力
 
 1. **按日/按模型聚合**：`AggregateLedgerByDate`（`internal/billing/data/ledger_repo.go:235`）—— 但在内存里 group by，且 **admin 层从未调用**（grep 无结果）。
 2. **用户自助用量**：`GET /api/log/self/stat` 走 SQL `GROUP BY day, model`（`internal/log/data/data.go:251`），是目前唯一真正落库聚合的统计。
 3. **渠道余额刷新**：`RefreshChannelBalance` 适配 OpenAI/DeepSeek/OpenRouter/SiliconFlow，记录失败计数与自动禁用（`internal/admin/service/admin.go:780`）。
 4. **对账**：`RunReconciliation`（`internal/billing/biz/reconciliation.go:70`）—— 仅做 ①清理过期预留 ②校验 `account.quota` 与 ledger 净额之差（容差 100）。
 
-## 三、核心缺陷（按严重度）
+## 三、原始核心缺陷（按严重度）
 
 ### 🔴 1. Admin 全局统计是"抽样"，不是真统计
 `GetLogStats`（`internal/admin/service/admin.go:1492`）拉最多 1000 条日志在内存里求和。dashboard 的 `request_count` / `quota_used` 在数据量大时**系统性偏低且不可信**。`AggregateLedgerByDate` 已存在却没接上。
@@ -55,7 +65,7 @@ ledger 与 logs 可能漂移（两次独立 RPC）；`billing_ledgers` 无 `(mod
 ### 🟡 6. 渠道 `used_quota` 累加链路未验证
 relay 提交时是否回写 channel 用量未见证据 —— 若没有，渠道成本侧数据是死的。
 
-## 四、改进计划（分阶段）
+## 四、已执行的改进计划（分阶段）
 
 ### Phase 1 — 让统计可信（地基，必做）
 - **DB 层聚合下沉**：给 `ledger_repo` 增加多维聚合方法（按 user / channel / model / token / 分组 / 小时|日），用 SQL `GROUP BY` 替代内存循环。
@@ -78,9 +88,17 @@ relay 提交时是否回写 channel 用量未见证据 —— 若没有，渠道
 - `web/src/pages/DashboardPage.tsx` 增加成本/利润、渠道余额健康、Top-N 图表。
 - 余额过低 / 渠道亏损 / 对账差异 → 走已有 `notify` 服务告警。
 
-## 五、建议起点
+## 五、原始建议起点
 
 Phase 1 性价比最高 —— 它修复"dashboard 数字是错的"这个最严重问题，且全部基于已有结构（`AggregateLedgerByDate` 扩展 + 接线 + 索引），风险低、无需改数据模型。
+
+## 六、后续建议
+
+当前阶段更适合围绕稳定性和可运营性继续推进：
+
+- 补充管理后台通知面板、渠道健康页和成本分析页的端到端用例。
+- 增加对账任务和渠道健康探测的运行指标，便于在 Prometheus 中观察成功率、耗时和失败原因。
+- 将通知投递失败原因结构化展示到管理后台，减少排查时对服务日志的依赖。
 
 ## 附：关键代码位置索引
 
