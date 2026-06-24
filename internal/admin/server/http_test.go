@@ -582,6 +582,19 @@ func TestAdminHTTPNotificationProxyRewritesListPath(t *testing.T) {
 	}
 }
 
+func TestParseReverseProxyTargetRejectsUnsafeEndpoints(t *testing.T) {
+	for _, endpoint := range []string{
+		"",
+		"notify-worker:8008",
+		"file:///tmp/socket",
+		"http:///missing-host",
+	} {
+		if _, err := parseReverseProxyTarget(endpoint); err == nil {
+			t.Fatalf("parseReverseProxyTarget(%q) succeeded, want error", endpoint)
+		}
+	}
+}
+
 func TestAdminHTTPPageUsesExternalWebRoot(t *testing.T) {
 	webRoot := t.TempDir()
 	if err := os.Mkdir(filepath.Join(webRoot, "assets"), 0o755); err != nil {

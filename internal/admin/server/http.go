@@ -413,14 +413,29 @@ func optionString(values []string, index int) string {
 }
 
 func newServiceReverseProxy(endpoint string) *httputil.ReverseProxy {
-	if strings.TrimSpace(endpoint) == "" {
-		return nil
-	}
-	target, err := url.Parse(endpoint)
+	target, err := parseReverseProxyTarget(endpoint)
 	if err != nil {
 		return nil
 	}
-	return httputil.NewSingleHostReverseProxy(target)
+	return httputil.NewSingleHostReverseProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
+}
+
+func parseReverseProxyTarget(endpoint string) (*url.URL, error) {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return nil, errors.New("empty reverse proxy endpoint")
+	}
+	target, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	if target.Scheme != "http" && target.Scheme != "https" {
+		return nil, errors.New("reverse proxy endpoint must use http or https")
+	}
+	if target.Host == "" {
+		return nil, errors.New("reverse proxy endpoint must include a host")
+	}
+	return target, nil
 }
 
 func requireCSVExport(w http.ResponseWriter, r *http.Request) bool {
@@ -2857,11 +2872,11 @@ func newNotifyWorkerProxy() *httputil.ReverseProxy {
 		// Default to notify-worker's HTTP port
 		endpoint = "http://notify-worker:8008"
 	}
-	target, err := url.Parse(endpoint)
+	target, err := parseReverseProxyTarget(endpoint)
 	if err != nil {
 		return nil
 	}
-	return httputil.NewSingleHostReverseProxy(target)
+	return httputil.NewSingleHostReverseProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
 }
 
 // handleNotifyProxy proxies requests to the notify-worker's /v1/notifications endpoint.

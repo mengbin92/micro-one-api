@@ -34,3 +34,12 @@ func TestWriteGeneratedPasswordFileCreatesPrivateFile(t *testing.T) {
 		t.Fatal("writeGeneratedPasswordFile overwrote an existing file")
 	}
 }
+
+func TestWriteGeneratedPasswordFileRejectsUnsafePaths(t *testing.T) {
+	if err := writeGeneratedPasswordFile("relative-password.txt", "secret-pass"); err == nil {
+		t.Fatal("writeGeneratedPasswordFile accepted a relative path")
+	}
+	if err := writeGeneratedPasswordFile(t.TempDir(), "secret-pass"); err == nil {
+		t.Fatal("writeGeneratedPasswordFile accepted a directory path")
+	}
+}

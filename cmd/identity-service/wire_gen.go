@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-kratos/kratos/v2"
@@ -138,7 +139,11 @@ func logGeneratedAdminPassword(result *biz.BootstrapResult) {
 }
 
 func writeGeneratedPasswordFile(path, password string) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- operator explicitly selects the one-time password output file; O_EXCL and 0600 prevent overwrite and broad reads.
+	cleanPath, err := validateGeneratedPasswordFilePath(path)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(cleanPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304,G703 -- operator selects this absolute one-time password output file; path is cleaned, must not be a directory, and O_EXCL/0600 prevent overwrite and broad reads.
 	if err != nil {
 		return err
 	}
@@ -147,6 +152,23 @@ func writeGeneratedPasswordFile(path, password string) error {
 		return err
 	}
 	return file.Close()
+}
+
+func validateGeneratedPasswordFilePath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("password file path is required")
+	}
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("password file path must be absolute")
+	}
+	cleanPath := filepath.Clean(path)
+	if info, err := os.Stat(cleanPath); err == nil && info.IsDir() {
+		return "", fmt.Errorf("password file path must not be a directory")
+	} else if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	return cleanPath, nil
 }
 
 func registrationPolicyFromConfig(cfg *identitycfg.Config) server.RegistrationPolicy {

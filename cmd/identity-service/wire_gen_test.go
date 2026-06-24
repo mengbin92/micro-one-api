@@ -80,6 +80,15 @@ func TestLogGeneratedAdminPasswordWritesPrivateFileWithoutLoggingSecret(t *testi
 	}
 }
 
+func TestWriteGeneratedPasswordFileRejectsUnsafePaths(t *testing.T) {
+	if err := writeGeneratedPasswordFile("relative-password.txt", "secret-pass"); err == nil {
+		t.Fatal("writeGeneratedPasswordFile accepted a relative path")
+	}
+	if err := writeGeneratedPasswordFile(t.TempDir(), "secret-pass"); err == nil {
+		t.Fatal("writeGeneratedPasswordFile accepted a directory path")
+	}
+}
+
 func TestSetupOAuthRegistersOIDCWhenConfigured(t *testing.T) {
 	registry := setupOAuth(&identitycfg.Config{
 		OAuth: identitycfg.OAuthConfig{
