@@ -62,7 +62,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 
 	// Read the first frame: it must be a response.create JSON object carrying a
 	// model field (the Codex CLI always opens the connection this way).
-	readCtx, cancelRead := context.WithTimeout(ctx, openAIWSFirstMessageTimeout)
+	readCtx, cancelRead := context.WithTimeout(ctx, s.openAIWSFirstMessageTimeout())
 	msgType, firstMessage, err := clientFrameConn.ReadFrame(readCtx)
 	cancelRead()
 	if err != nil {
@@ -88,13 +88,44 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 
 	// Authenticate + plan (model mapping, channel selection). The first frame
 	// is JSON-rewritten with the resolved upstream model before dialing.
-	plan, err := s.relayUsecase.Plan(ctx, relaybiz.RelayRequest{
-		Token: token,
-		Model: clientModel,
-	})
-	if err != nil {
-		s.closeOpenAIWSWithPlanError(wsConn, err)
-		return
+	//
+	// Sticky routing: if the client opens the connection with a
+	// previous_response_id that maps to a stored route (created by an earlier
+	// turn on this server), reuse that channel so the upstream session chain is
+	// preserved. This mirrors the HTTP path's forwardResponsesToStoredRoute. If
+	// no stored route matches, fall through to normal channel selection.
+	var plan *relaybiz.RelayPlan
+	previousResponseID := extractOpenAIWSPreviousResponseIDFromRequest(firstMessage)
+	if previousResponseID != "" {
+		if route, ok := s.lookupResponseRoute(previousResponseID); ok {
+			authSnapshot, authErr := s.getAuthSnapshot(ctx, token)
+			if authErr == nil && (route.UserID == 0 || route.UserID == authSnapshot.UserId) {
+				plan = &relaybiz.RelayPlan{
+					Auth: &relaybiz.AuthSnapshot{
+						UserID:        authSnapshot.UserId,
+						TokenID:       authSnapshot.TokenId,
+						TokenName:     authSnapshot.TokenName,
+						Group:         authSnapshot.Group,
+						AllowedModels: authSnapshot.AllowedModels,
+						UserEnabled:   authSnapshot.UserEnabled,
+						TokenEnabled:  authSnapshot.TokenEnabled,
+					},
+					Channel:       &route.Channel,
+					ResolvedModel: routeResolvedModel(route),
+				}
+			}
+		}
+	}
+	if plan == nil {
+		normalPlan, planErr := s.relayUsecase.Plan(ctx, relaybiz.RelayRequest{
+			Token: token,
+			Model: clientModel,
+		})
+		if planErr != nil {
+			s.closeOpenAIWSWithPlanError(wsConn, planErr)
+			return
+		}
+		plan = normalPlan
 	}
 
 	rewrittenFirstMessage := rewriteOpenAIWSModel(firstMessage, clientModel, plan.ResolvedModel)
@@ -117,7 +148,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	}
 
 	dialer := newCoderWSUpstreamDialer()
-	dialCtx, cancelDial := context.WithTimeout(ctx, openAIWSDialTimeoutDefault)
+	dialCtx, cancelDial := context.WithTimeout(ctx, s.openAIWSDialTimeout())
 	upstreamConn, statusCode, handshakeHeaders, err := dialer.Dial(dialCtx, wsURL, headers)
 	cancelDial()
 	if err != nil {
@@ -163,6 +194,16 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 			}
 		} else {
 			s.ingestUsageLogAfterResponse(logInput)
+		}
+		// Bind the upstream response id to this channel so follow-up turns
+		// carrying previous_response_id route to the same upstream session.
+		if turn.requestID != "" {
+			s.storeResponseRoute(turn.requestID, responseRoute{
+				Model:         clientModel,
+				ResolvedModel: plan.ResolvedModel,
+				Channel:       *plan.Channel,
+				UserID:        plan.Auth.UserID,
+			})
 		}
 		turnCommits++
 	}
@@ -337,11 +378,68 @@ func isOpenAIWSUpgradeRequest(r *http.Request) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(r.Header.Get("Connection"))), "upgrade")
 }
 
-// openAIWSWriteTimeout / openAIWSIdleTimeout provide tunable timeouts with
-// sensible defaults for the relay. They can be wired to config in a follow-up.
-func (s *HTTPServer) openAIWSWriteTimeout() time.Duration { return 2 * time.Minute }
-func (s *HTTPServer) openAIWSIdleTimeout() time.Duration  { return 5 * time.Minute }
+// openAIWSWriteTimeout / openAIWSIdleTimeout / openAIWSDialTimeout /
+// openAIWSFirstMessageTimeout resolve the relay timeouts from config (set via
+// SetOpenAIWSTimeouts) with sensible defaults. Zero / unset values fall back.
+func (s *HTTPServer) openAIWSWriteTimeout() time.Duration {
+	if s != nil && s.wsTimeouts.writeTimeout > 0 {
+		return s.wsTimeouts.writeTimeout
+	}
+	return 2 * time.Minute
+}
+
+func (s *HTTPServer) openAIWSIdleTimeout() time.Duration {
+	if s != nil && s.wsTimeouts.idleTimeout > 0 {
+		return s.wsTimeouts.idleTimeout
+	}
+	return 5 * time.Minute
+}
+
+func (s *HTTPServer) openAIWSDialTimeout() time.Duration {
+	if s != nil && s.wsTimeouts.dialTimeout > 0 {
+		return s.wsTimeouts.dialTimeout
+	}
+	return openAIWSDialTimeoutDefault
+}
+
+func (s *HTTPServer) openAIWSFirstMessageTimeout() time.Duration {
+	if s != nil && s.wsTimeouts.firstMessageTimeout > 0 {
+		return s.wsTimeouts.firstMessageTimeout
+	}
+	return openAIWSFirstMessageTimeout
+}
 
 // errOpenAIWSForwarderUnused is retained to keep the `errors` import meaningful
 // if future code paths add direct error construction here.
 var _ = errors.New
+
+// extractOpenAIWSResponseIDFromEvent pulls the response id from an upstream WS
+// event frame (response.created / response.completed / ...). It reuses the same
+// JSON shape as the HTTP stream path: response.id (preferred) or response_id.
+func extractOpenAIWSResponseIDFromEvent(payload []byte) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	if node, _ := sonic.Get(payload, "response", "id"); node.Exists() {
+		if rid, _ := node.String(); strings.TrimSpace(rid) != "" {
+			return strings.TrimSpace(rid)
+		}
+	}
+	if node, _ := sonic.Get(payload, "response_id"); node.Exists() {
+		if rid, _ := node.String(); strings.TrimSpace(rid) != "" {
+			return strings.TrimSpace(rid)
+		}
+	}
+	return ""
+}
+
+// extractOpenAIWSPreviousResponseIDFromRequest pulls previous_response_id from a
+// client response.create frame, mirroring the HTTP extractPreviousResponseID.
+func extractOpenAIWSPreviousResponseIDFromRequest(payload []byte) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	node, _ := sonic.Get(payload, "previous_response_id")
+	rid, _ := node.String()
+	return strings.TrimSpace(rid)
+}

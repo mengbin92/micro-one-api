@@ -47,6 +47,16 @@ type HTTPServer struct {
 	relayUsecase    *relaybiz.RelayUsecase
 	responsesMu     sync.RWMutex
 	responseRoutes  map[string]responseRoute
+	wsTimeouts      openAIWSTimeouts
+}
+
+// openAIWSTimeouts holds parsed durations for the Responses WebSocket relay.
+// Zero values fall back to defaults in the relay server.
+type openAIWSTimeouts struct {
+	writeTimeout        time.Duration
+	idleTimeout         time.Duration
+	dialTimeout         time.Duration
+	firstMessageTimeout time.Duration
 }
 
 type responseRoute struct {
@@ -77,6 +87,21 @@ func NewHTTPServer(
 		providerFactory: providerFactory,
 		relayUsecase:    relayUsecase,
 		responseRoutes:  make(map[string]responseRoute),
+	}
+}
+
+// SetOpenAIWSTimeouts configures the Responses WebSocket relay timeouts. It is
+// optional; when not called the forwarder uses built-in defaults. Durations are
+// parsed from the relay config string fields (see wire_gen.go).
+func (s *HTTPServer) SetOpenAIWSTimeouts(writeTimeout, idleTimeout, dialTimeout, firstMessageTimeout time.Duration) {
+	if s == nil {
+		return
+	}
+	s.wsTimeouts = openAIWSTimeouts{
+		writeTimeout:        writeTimeout,
+		idleTimeout:         idleTimeout,
+		dialTimeout:         dialTimeout,
+		firstMessageTimeout: firstMessageTimeout,
 	}
 }
 
