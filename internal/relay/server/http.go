@@ -123,6 +123,9 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	srv.HandleFunc("/v1/threads", s.handleUnsupportedOpenAIRoute("threads"))
 	srv.HandlePrefix("/v1/threads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("threads")))
 	srv.HandlePrefix("/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
+
+	// Anthropic Messages API inbound endpoint (for Claude Code CLI / native Anthropic SDK clients)
+	srv.HandleFunc("/v1/messages", s.handleAnthropicMessages)
 	srv.HandleFunc("/v1/models", s.handleModels)
 	srv.HandlePrefix("/v1/models/", http.HandlerFunc(s.handleRetrieveModel))
 	srv.HandleFunc("/api/status", s.handleAPIStatus)
