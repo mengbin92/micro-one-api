@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -47,6 +49,27 @@ type HTTPServer struct {
 	relayUsecase    *relaybiz.RelayUsecase
 	responsesMu     sync.RWMutex
 	responseRoutes  map[string]responseRoute
+	wsTimeouts      openAIWSTimeouts
+	wsPool          *openAIWSConnPool
+	wsSticky        *openAIWSStickyStore
+	wsPoolCfg       openAIWSPoolConfig
+}
+
+// openAIWSTimeouts holds parsed durations for the Responses WebSocket relay.
+// Zero values fall back to defaults in the relay server.
+type openAIWSTimeouts struct {
+	writeTimeout        time.Duration
+	idleTimeout         time.Duration
+	dialTimeout         time.Duration
+	firstMessageTimeout time.Duration
+}
+
+// openAIWSPoolConfig holds connection-pool + failover tunables. Zero values
+// fall back to defaults.
+type openAIWSPoolConfig struct {
+	maxConnsPerChannel  int
+	failoverMaxSwitches int
+	stickyTTL           time.Duration
 }
 
 type responseRoute struct {
@@ -77,6 +100,51 @@ func NewHTTPServer(
 		providerFactory: providerFactory,
 		relayUsecase:    relayUsecase,
 		responseRoutes:  make(map[string]responseRoute),
+	}
+}
+
+// SetOpenAIWSTimeouts configures the Responses WebSocket relay timeouts. It is
+// optional; when not called the forwarder uses built-in defaults. Durations are
+// parsed from the relay config string fields (see wire_gen.go).
+func (s *HTTPServer) SetOpenAIWSTimeouts(writeTimeout, idleTimeout, dialTimeout, firstMessageTimeout time.Duration) {
+	if s == nil {
+		return
+	}
+	s.wsTimeouts = openAIWSTimeouts{
+		writeTimeout:        writeTimeout,
+		idleTimeout:         idleTimeout,
+		dialTimeout:         dialTimeout,
+		firstMessageTimeout: firstMessageTimeout,
+	}
+}
+
+// SetOpenAIWSStickyStore configures the cross-process response->channel sticky
+// store backed by Redis. Pass a nil client to use in-memory only.
+func (s *HTTPServer) SetOpenAIWSStickyStore(rdb *redis.Client) {
+	if s == nil {
+		return
+	}
+	s.wsSticky = newOpenAIWSStickyStore(rdb)
+}
+
+// SetOpenAIWSConnPool configures the upstream connection pool. Must be called
+// after SetOpenAIWSTimeouts since it reads the dial timeout.
+func (s *HTTPServer) SetOpenAIWSConnPool() {
+	if s == nil {
+		return
+	}
+	s.wsPool = newOpenAIWSConnPool(s.openAIWSDialTimeout())
+}
+
+// SetOpenAIWSPoolConfig configures pool + failover tunables.
+func (s *HTTPServer) SetOpenAIWSPoolConfig(maxConnsPerChannel, failoverMaxSwitches int, stickyTTL time.Duration) {
+	if s == nil {
+		return
+	}
+	s.wsPoolCfg = openAIWSPoolConfig{
+		maxConnsPerChannel:  maxConnsPerChannel,
+		failoverMaxSwitches: failoverMaxSwitches,
+		stickyTTL:           stickyTTL,
 	}
 }
 
@@ -260,6 +328,15 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 }
 
 func (s *HTTPServer) handleResponsesRelay(w http.ResponseWriter, r *http.Request) {
+	// Codex Responses WebSocket: when the client sends an Upgrade: websocket
+	// request against /v1/responses, hand off to the WS forwarder instead of
+	// the HTTP/SSE path. This is the ingress point for the new Responses WS
+	// protocol used by the Codex CLI.
+	if isOpenAIWSUpgradeRequest(r) {
+		s.handleResponsesWebSocket(r.Context(), w, r)
+		return
+	}
+
 	upstreamPath := r.URL.Path
 	if strings.HasPrefix(upstreamPath, "/v1/") {
 		upstreamPath = strings.TrimPrefix(upstreamPath, "/v1")

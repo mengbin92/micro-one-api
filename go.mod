@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/bytedance/sonic v1.15.1
+	github.com/coder/websocket v1.8.14
 	github.com/go-kratos/kratos/contrib/registry/consul/v2 v2.0.0-20260404020628-f149714c1d54
 	github.com/go-kratos/kratos/v2 v2.9.2
 	github.com/go-sql-driver/mysql v1.7.0

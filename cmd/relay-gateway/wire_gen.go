@@ -25,6 +25,7 @@ import (
 	apptimeout "micro-one-api/internal/pkg/timeout"
 	apptls "micro-one-api/internal/pkg/tls"
 	"micro-one-api/internal/pkg/xconfig"
+	"micro-one-api/internal/pkg/xdb"
 	"micro-one-api/internal/pkg/xhttp"
 	relaybiz "micro-one-api/internal/relay/biz"
 	relaycfg "micro-one-api/internal/relay/config"
@@ -210,6 +211,22 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
 
+	// Configure Responses WebSocket relay timeouts from config (with defaults).
+	{
+		wsWrite, _ := time.ParseDuration(cfg.OpenAIWS.GetOpenAIWSWriteTimeout())
+		wsIdle, _ := time.ParseDuration(cfg.OpenAIWS.GetOpenAIWSIdleTimeout())
+		wsDial, _ := time.ParseDuration(cfg.OpenAIWS.GetOpenAIWSDialTimeout())
+		wsFirst, _ := time.ParseDuration(cfg.OpenAIWS.GetOpenAIWSFirstMessageTimeout())
+		httpServer.SetOpenAIWSTimeouts(wsWrite, wsIdle, wsDial, wsFirst)
+		httpServer.SetOpenAIWSConnPool()
+		httpServer.SetOpenAIWSPoolConfig(
+			cfg.OpenAIWS.GetOpenAIWSMaxConnsPerChannel(),
+			cfg.OpenAIWS.GetOpenAIWSFailoverMaxSwitches(),
+			parseDurationOrDefault(cfg.OpenAIWS.GetOpenAIWSStickyTTL(), time.Hour),
+		)
+		httpServer.SetOpenAIWSStickyStore(xdb.NewRedisClient(cfg.OpenAIWS.RedisAddr, cfg.OpenAIWS.RedisPassword))
+	}
+
 	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(cfg.Server.HTTP.Addr), khttp.Timeout(providerTimeout))...)
 	httpServer.RegisterRoutes(srv)
 
@@ -270,4 +287,12 @@ func (t *tokenAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[
 
 func (t *tokenAuth) RequireTransportSecurity() bool {
 	return true
+}
+
+// parseDurationOrDefault parses a duration string, returning the default on error.
+func parseDurationOrDefault(s string, def time.Duration) time.Duration {
+	if d, err := time.ParseDuration(s); err == nil {
+		return d
+	}
+	return def
 }
