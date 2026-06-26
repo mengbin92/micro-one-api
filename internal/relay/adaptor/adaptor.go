@@ -68,6 +68,12 @@ type RelayContext struct {
 	RequestID     string
 	RawBody       []byte // client raw request body (for passthrough/mimicry)
 
+	// InboundHeader is the client's original request headers. OAuth adaptors use
+	// it to detect genuine first-party clients (so mimicry is only applied to
+	// third-party callers) and to forward client-specific headers. API-key
+	// adaptors ignore it.
+	InboundHeader http.Header
+
 	// HTTPClient is the client used to call the upstream. Adaptors MAY use it
 	// in BuildUpstreamRequest when they need to issue the request themselves;
 	// the MVP providers own their own client and ignore this field.

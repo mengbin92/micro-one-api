@@ -4,12 +4,63 @@ import appregistry "micro-one-api/internal/pkg/registry"
 
 // Config holds the relay-gateway configuration.
 type Config struct {
-	Server   ServerConfig       `json:"server"`
-	Clients  ClientsConfig      `json:"clients"`
-	Retry    RetryConfig        `json:"retry"`
-	Models   ModelsConfig       `json:"models" yaml:"models"`
-	Registry appregistry.Config `json:"registry"`
-	OpenAIWS OpenAIWSConfig     `json:"openai_ws" yaml:"openai_ws"`
+	Server        ServerConfig       `json:"server"`
+	Clients       ClientsConfig      `json:"clients"`
+	Retry         RetryConfig        `json:"retry"`
+	Models        ModelsConfig       `json:"models" yaml:"models"`
+	Registry      appregistry.Config `json:"registry"`
+	OpenAIWS      OpenAIWSConfig     `json:"openai_ws" yaml:"openai_ws"`
+	HybridAdaptor HybridAdaptorConfig `json:"hybrid_adaptor" yaml:"hybrid_adaptor"`
+}
+
+// HybridAdaptorConfig controls the hybrid adaptor layer (plan §十). The
+// feature flag Enabled gates whether the new adaptor-based request path is
+// used; when false (the default) the gateway keeps using the existing
+// provider-factory path unchanged, so the MVP can ship behind the flag and be
+// rolled back instantly.
+type HybridAdaptorConfig struct {
+	// Enabled turns on the hybrid adaptor request path. When false, the
+	// relay gateway behaves exactly as before (provider-factory direct call).
+	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// IdentityTTL is the TTL for cached subscription-account fingerprints. A
+	// zero value caches indefinitely (the in-process default).
+	IdentityTTL string `json:"identity_ttl" yaml:"identity_ttl"`
+
+	// RefreshInterval is how often the background token-refresh task scans
+	// for soon-to-expire accounts. Defaults to 10m.
+	RefreshInterval string `json:"refresh_interval" yaml:"refresh_interval"`
+
+	// RefreshLookahead is how far ahead the refresh task looks for expiring
+	// accounts. Defaults to 24h.
+	RefreshLookahead string `json:"refresh_lookahead" yaml:"refresh_lookahead"`
+}
+
+// GetHybridAdaptorEnabled reports whether the hybrid adaptor path is enabled.
+func (c HybridAdaptorConfig) GetHybridAdaptorEnabled() bool { return c.Enabled }
+
+// GetIdentityTTL returns the fingerprint cache TTL with default.
+func (c HybridAdaptorConfig) GetIdentityTTL() string {
+	if c.IdentityTTL == "" {
+		return "24h"
+	}
+	return c.IdentityTTL
+}
+
+// GetRefreshInterval returns the background refresh interval with default.
+func (c HybridAdaptorConfig) GetRefreshInterval() string {
+	if c.RefreshInterval == "" {
+		return "10m"
+	}
+	return c.RefreshInterval
+}
+
+// GetRefreshLookahead returns the refresh lookahead window with default.
+func (c HybridAdaptorConfig) GetRefreshLookahead() string {
+	if c.RefreshLookahead == "" {
+		return "24h"
+	}
+	return c.RefreshLookahead
 }
 
 // OpenAIWSConfig holds tunables for the Codex Responses WebSocket relay

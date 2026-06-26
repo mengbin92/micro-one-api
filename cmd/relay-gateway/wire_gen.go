@@ -30,7 +30,9 @@ import (
 	relayadaptor "micro-one-api/internal/relay/adaptor"
 	relaybiz "micro-one-api/internal/relay/biz"
 	relaycfg "micro-one-api/internal/relay/config"
+	relaycredential "micro-one-api/internal/relay/credential"
 	relaydata "micro-one-api/internal/relay/data"
+	relayidentity "micro-one-api/internal/relay/identity"
 	relayprovider "micro-one-api/internal/relay/provider"
 	"micro-one-api/internal/relay/server"
 	relayservice "micro-one-api/internal/relay/service"
@@ -207,6 +209,52 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	// providers. Existing server code still calls providerFactory directly;
 	// the registry is exercised by the feature-flag-controlled new path.
 	relayadaptor.SetProviderFactory(providerFactory)
+
+	// --- Hybrid adaptor: identity + credential layers (plan §4.4/§4.5) ---
+	// The identity service caches subscription-account fingerprints; the
+	// credential layer resolves OAuth access tokens (refreshing on demand).
+	// When the hybrid_adaptor feature flag is off these are still constructed
+	// (cheap) but never used on the request path.
+	identityTTL := parseDurationOrDefault(cfg.HybridAdaptor.GetIdentityTTL(), 24*time.Hour)
+	identityService := relayidentity.NewIdentityService(identityTTL)
+	relayadaptor.SetIdentityService(identityService)
+
+	// AccountLookup: the MVP uses an in-process noop lookup so the gateway can
+	// boot without a subscription-account RPC. A full deployment replaces this
+	// with a gRPC-backed lookup against the channel-service.
+	accountLookup := relaycredential.NewNoopAccountLookup()
+	tokenFactory := func(platform relayidentity.Platform) relaycredential.TokenProvider {
+		switch platform {
+		case relayidentity.PlatformClaude:
+			return relaycredential.NewClaudeTokenProvider(accountLookup)
+		case relayidentity.PlatformCodex:
+			return relaycredential.NewOpenAITokenProvider(accountLookup)
+		default:
+			return nil
+		}
+	}
+	relayadaptor.SetTokenProviderFactory(tokenFactory)
+
+	// Background token-refresh task. Started only when the feature flag is on.
+	var refreshTask *relaycredential.RefreshTask
+	if cfg.HybridAdaptor.GetHybridAdaptorEnabled() {
+		refreshTask = relaycredential.NewRefreshTask(
+			map[relaycredential.Platform]relaycredential.TokenProvider{
+				relaycredential.PlatformClaude: relaycredential.NewClaudeTokenProvider(accountLookup),
+				relaycredential.PlatformCodex:  relaycredential.NewOpenAITokenProvider(accountLookup),
+			},
+			accountLookup,
+			func(accountID int64) relaycredential.Platform {
+				return accountLookup.PlatformOf(accountID)
+			},
+			relaycredential.RefreshTaskConfig{
+				Interval:  parseDurationOrDefault(cfg.HybridAdaptor.GetRefreshInterval(), 10*time.Minute),
+				Lookahead: parseDurationOrDefault(cfg.HybridAdaptor.GetRefreshLookahead(), 24*time.Hour),
+			},
+		)
+		refreshTask.Start()
+	}
+	_ = refreshTask // referenced in cleanup below
 	modelMapper := newModelMapper(cfg)
 	retryPolicy := newRetryPolicy(cfg)
 
@@ -216,6 +264,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	relayUsecase := relaybiz.NewRelayUsecase(identityAdapter, channelAdapter, modelMapper, retryPolicy)
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
+	httpServer.SetHybridAdaptorEnabled(cfg.HybridAdaptor.GetHybridAdaptorEnabled())
 
 	// Configure Responses WebSocket relay timeouts from config (with defaults).
 	{
@@ -251,6 +300,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	applogger.Log.Info("relay-gateway starting", zap.String("http_addr", cfg.Server.HTTP.Addr))
 
 	cleanup := func() {
+		if refreshTask != nil {
+			refreshTask.Stop()
+		}
 		identityConn.Close()
 		channelConn.Close()
 		billingConn.Close()

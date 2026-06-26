@@ -16,4 +16,12 @@ var (
 	// errNoChannel is returned when a relay context has no channel (e.g. a
 	// subscription-account request that did not populate Account either).
 	errNoChannel = errors.New("adaptor: relay context has no channel")
+
+	// errNoTokenProviderFactory is returned when the OAuth adaptor registry has
+	// not been wired via SetTokenProviderFactory.
+	errNoTokenProviderFactory = errors.New("adaptor: token provider factory is not configured (call SetTokenProviderFactory)")
+
+	// errUnknownOAuthPlatform is returned when an OAuth adaptor is requested for
+	// a platform that has no registered adaptor.
+	errUnknownOAuthPlatform = errors.New("adaptor: unknown OAuth platform")
 )

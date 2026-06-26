@@ -53,6 +53,10 @@ type HTTPServer struct {
 	wsPool          *openAIWSConnPool
 	wsSticky        *openAIWSStickyStore
 	wsPoolCfg       openAIWSPoolConfig
+
+	// hybridAdaptorEnabled gates the new adaptor-based request path (plan §十).
+	// When false the gateway uses the legacy provider-factory path unchanged.
+	hybridAdaptorEnabled bool
 }
 
 // openAIWSTimeouts holds parsed durations for the Responses WebSocket relay.
@@ -100,6 +104,29 @@ func NewHTTPServer(
 		providerFactory: providerFactory,
 		relayUsecase:    relayUsecase,
 		responseRoutes:  make(map[string]responseRoute),
+	}
+}
+
+// SetHybridAdaptorEnabled turns on the hybrid adaptor request path. When true,
+// subscription-account channel types (Codex/Claude OAuth) are routed through
+// the relay/adaptor layer instead of the provider factory. API-key channels are
+// unaffected and continue to use the existing path either way.
+func (s *HTTPServer) SetHybridAdaptorEnabled(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.hybridAdaptorEnabled = enabled
+}
+
+// isSubscriptionChannel reports whether the channel type is a subscription
+// account handled by the OAuth adaptor layer. These types are only routed
+// through the adaptor when the hybrid feature flag is enabled.
+func isSubscriptionChannel(t int32) bool {
+	switch t {
+	case relayprovider.ChannelTypeCodexOAuth, relayprovider.ChannelTypeClaudeOAuth:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1014,6 +1041,20 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	})
 	if err != nil {
 		s.handleRelayPlanError(w, err)
+		return
+	}
+
+	// Subscription-account channels (Codex/Claude OAuth) are routed through the
+	// hybrid adaptor layer when the feature flag is on. The adaptor owns the
+	// full upstream interaction (protocol conversion, identity mimicry, OAuth
+	// token, stream bridging). API-key channels fall through to the existing
+	// provider-factory path below.
+	if s.hybridAdaptorEnabled && plan.Channel != nil && isSubscriptionChannel(plan.Channel.Type) {
+		// req.Model still holds the client-facing model name at this point (it is
+		// reassigned to the resolved model only further below). Reconstruct the raw
+		// body from the decoded request since the original body was consumed.
+		rawBody, _ := sonic.Marshal(req)
+		s.handleChatCompletionsViaAdaptor(w, r, plan, req.Model, rawBody)
 		return
 	}
 
@@ -2302,3 +2343,4 @@ func generateRequestID() string {
 	}
 	return fmt.Sprintf("req_%x", b)
 }
+
