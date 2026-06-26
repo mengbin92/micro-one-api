@@ -2,7 +2,7 @@
 
 > 分支：`feature/hybrid-relay-adaptor-apicompat`（基于 `develop`）
 > 创建日期：2026-06-26
-> 状态：草案 / 待评审
+> 状态：已评审
 
 ## 一、背景与目标
 
@@ -12,8 +12,8 @@ micro-one-api 需要同时支持两类上游：
    这类上游本质是标准 OpenAI 兼容端点，核心需求是"广度聚合 + 协议格式互转 + 多渠道路由/重试/熔断"。
    **参考实现：new-api 的 Adaptor 模式。**
 
-2. **少数订阅账号深度利用**（ChatGPT Plus/Pro OAuth、Claude Pro OAuth、Gemini OAuth 等）：
-   这类上游是 OAuth 订阅账号，不能简单当 API Key 透传，核心需求是"客户端身份伪装 + 协议链式转换 + OAuth token 刷新 + 配额窗口感知"。
+2. **少数订阅账号深度利用**（首批仅 Codex 订阅、Claude Code 订阅）：
+   这类上游是订阅账号，不能简单当 API Key 透传，核心需求是"客户端身份伪装 + 协议链式转换 + token 刷新 + 配额窗口感知"。
    **参考实现：sub2api 的 apicompat + Identity/Fingerprint/Mimicry 体系。**
 
 **核心思路**：用 new-api 的 Adaptor 抽象做"厂商广度聚合"的外层骨架，用 sub2api 的
@@ -37,14 +37,14 @@ internal/relay/
   └── data/                gRPC 客户端适配（identity/channel/billing）
 ```
 
-### 2.2 现有转换链路（以 OpenAI 为枢纽）
+### 2.2 现有转换链路（ChatCompletions 主干，Responses 旁路存在）
 
 ```
-客户端协议          内部枢纽格式              上游 Provider
+客户端协议          内部处理格式              上游 Provider
 /v1/chat/completions → ChatCompletionsRequest → OpenAIProvider.ChatCompletions()
 /v1/messages(Anthropic) → ChatCompletionsRequest → XXXProvider.ChatCompletions()
                          (anthropic_inbound.go 做转换)
-/v1/responses        → RawRequest(透传)      → Provider.Forward/ForwardStream()
+/v1/responses        → OpenAIResponsesRequest → responses handler / fallback
 ```
 
 **问题**：
@@ -107,23 +107,24 @@ internal/relay/
 
 ### 3.2 核心设计决策
 
-**决策 1：以 OpenAI Responses 为协议转换枢纽（而非 ChatCompletions）**
+**决策 1：订阅深度链路以 OpenAI Responses 为协议转换枢纽**
 
 理由：
-- 订阅账号（Codex/ChatGPT）上游只接受 Responses 格式，ChatCompletions 无法覆盖
+- 首批订阅账号（Codex / Claude Code）上游分别依赖 Responses / Anthropic Messages，单靠 ChatCompletions 无法覆盖
 - Responses 是最"富"的格式（reasoning/thinking、tool、structured output 都有原生表达）
 - sub2api 已验证"以 Responses 为枢纽"的链式转换可行（CC→Responses→Anthropic）
-- ChatCompletions 退化为"只是一种客户端入站/出站协议"，不再作为内部中枢
+- ChatCompletions 保留为客户端入站/出站协议和 API Key 厂商兼容路径，不作为订阅深度链路的唯一中枢
 
 **决策 2：Adaptor 接口吸收 new-api 的 ConvertXxx 方法 + sub2api 的身份处理**
 
 不再用当前薄薄的 `Provider` 接口，而是引入"Adaptor"层，每个上游一个 adaptor 实现，
 内部决定是走"API Key 直转"还是"OAuth 伪装转发"。
 
-**决策 3：Channel 扩展为 Channel + SubscriptionAccount 双模型**
+**决策 3：Channel 与 SubscriptionAccount 分层，不互相冒充**
 
 - `Channel`（保留）：描述 API Key 厂商渠道（Type/BaseURL/Key/Models）
-- `SubscriptionAccount`（新增）：描述 OAuth 订阅账号（Platform/AccountType/Credentials/Quota/Fingerprint）
+- `SubscriptionAccount`（新增）：描述订阅账号（Platform/AccountType/Credentials/Quota/Fingerprint）
+- 选择器层分别处理 `Channel` 和 `SubscriptionAccount`，避免把订阅账号硬塞进 Channel 类型里
 
 ---
 
@@ -152,7 +153,8 @@ type RelayContext struct {
     InboundFormat  Format      // 客户端入站协议
     ClientModel    string      // 客户端请求的模型名
     ResolvedModel  string      // 映射后的上游模型名
-    Channel        *ChannelRef // 选中的渠道/账号
+    Channel        *ChannelRef // 选中的 API Key 渠道
+    Account        *AccountRef // 选中的订阅账号
     IsStream       bool
     UserID         int64
     RequestID      string
@@ -203,8 +205,8 @@ func init() {
     Register(ChannelTypeAnthropic, func() Adaptor { return &AnthropicAdaptor{} })
     Register(ChannelTypeDeepSeek, func() Adaptor { return &OpenAICompatibleAdaptor{...} })
     // ...
-    Register(ChannelTypeCodexOAuth, func() Adaptor { return &CodexOAuthAdaptor{} })       // 订阅
-    Register(ChannelTypeClaudeOAuth, func() Adaptor { return &ClaudeOAuthAdaptor{} })     // 订阅
+    Register(SubscriptionPlatformCodex, func() Adaptor { return &CodexOAuthAdaptor{} })   // 订阅
+    Register(SubscriptionPlatformClaude, func() Adaptor { return &ClaudeOAuthAdaptor{} }) // 订阅
 }
 ```
 
@@ -221,7 +223,6 @@ relay/adaptor/
 ├── azure.go                AzureAdaptor
 ├── codex_oauth.go          ★ CodexOAuthAdaptor（ChatGPT 订阅，Responses 透传+伪装）
 ├── claude_oauth.go         ★ ClaudeOAuthAdaptor（Claude 订阅，Messages+伪装）
-├── gemini_oauth.go         ★ GeminiOAuthAdaptor（Gemini 订阅）
 └── codex_oauth_test.go
 ```
 
@@ -232,7 +233,7 @@ OpenAICompatibleAdaptor（API Key 厂商，广度）
    ├── 内部直接调 apicompat（如需协议转换）或直接透传
    └── 不做身份伪装
 
-ClaudeOAuthAdaptor（订阅深度）
+CodexOAuthAdaptor / ClaudeOAuthAdaptor（订阅深度）
    ├── 内部调 apicompat（Responses/CC → Anthropic）
    ├── 内部调 identity.Fingerprint + Mimicry
    └── 内部调 credential.TokenProvider 拿 access_token
@@ -259,8 +260,9 @@ relay/apicompat/
   移植时统一为 sonic（性能更好且已是项目依赖）
 - 流式 SSE 事件转换状态机（`AnthropicEventToResponsesState` 等）整体保留，
   适配 micro-one-api 的 `StreamChunk` / SSE writer
+- 首批只落地 Codex / Claude Code 所需的请求与流式转换，其余协议支路后续再补
 
-**转换矩阵**（枢纽 = Responses）：
+**转换矩阵**（订阅深度链路的枢纽 = Responses）：
 
 ```
                 ┌─────────────────┐
@@ -314,7 +316,6 @@ relay/credential/
 ├── token_provider.go       TokenProvider 接口
 ├── claude_token_provider.go Claude OAuth 刷新
 ├── openai_token_provider.go Codex/ChatGPT OAuth 刷新
-├── gemini_token_provider.go Gemini OAuth 刷新
 └── refresh_task.go         后台刷新任务
 ```
 
@@ -342,8 +343,8 @@ type TokenProvider interface {
 CREATE TABLE `subscription_accounts` (
   `id`              BIGINT NOT NULL AUTO_INCREMENT,
   `name`            VARCHAR(128) NOT NULL,
-  `platform`        VARCHAR(32) NOT NULL,            -- anthropic/openai/gemini/antigravity
-  `account_type`    VARCHAR(32) NOT NULL,            -- oauth/apikey/setup_token/service_account/bedrock
+  `platform`        VARCHAR(32) NOT NULL,            -- codex/claude
+  `account_type`    VARCHAR(32) NOT NULL,            -- oauth/setup_token
   `credentials`     TEXT NOT NULL,                   -- 加密存储 access_token/refresh_token/account_id
   `extra`           TEXT,                            -- plan_type/quota_window/fingerprint_base 等
   `group_id`        VARCHAR(64) NOT NULL DEFAULT 'default',
@@ -365,21 +366,15 @@ CREATE TABLE `subscription_accounts` (
 );
 ```
 
-#### 4.6.2 Channel 表扩展（可选，用于关联订阅账号）
+#### 4.6.2 不把订阅账号包装成特殊 Channel
 
-订阅账号也可作为"特殊 Channel"存在，通过扩展 `channels.type` 加入 OAuth 类型：
+首批实现里，`Channel` 只保留给 API Key 厂商；订阅账号用 `SubscriptionAccount` 作为一等实体，不再伪装成特殊 `channels.type`。
 
-```go
-// provider/factory.go 新增订阅渠道类型
-const (
-    ChannelTypeCodexOAuth  int32 = 100  // ChatGPT 订阅
-    ChannelTypeClaudeOAuth int32 = 101  // Claude 订阅
-    ChannelTypeGeminiOAuth int32 = 102  // Gemini 订阅
-)
-```
+这样做的好处是：
 
-Channel 的 `Key` 字段存储 `subscription_account_id`，adaptor 从 SubscriptionAccount 表取凭证。
-这样 **SelectChannel 逻辑无需改动**，订阅账号和 API Key 渠道统一参与优先级/权重选择。
+- 路由边界清晰，选择器可以分别处理渠道和订阅账号
+- 订阅账号状态、指纹、token 过期时间不用塞进 Channel 的通用字段
+- 后续扩展新的订阅平台时，不需要重新定义 Channel 类型
 
 #### 4.6.3 proto 扩展
 
@@ -416,15 +411,15 @@ service ChannelService {
 
 ## 五、转发流程（以 Claude OAuth 订阅为例）
 
-### 场景：客户端用 OpenAI ChatCompletions 协议调用 Claude 订阅账号
+### 场景：客户端用 OpenAI ChatCompletions 协议调用 Claude Code 订阅账号
 
 ```
 客户端 POST /v1/chat/completions  {model:"claude-sonnet-4", messages:[...], stream:true}
 
 1. server/handleChatCompletions
-   - auth → Plan → SelectChannel(选中 ClaudeOAuth Channel)
+   - auth → Plan → SelectSubscriptionAccount(选中 Claude Code 订阅账号)
 
-2. adaptor.GetAdaptor(ChannelTypeClaudeOAuth) → ClaudeOAuthAdaptor
+2. adaptor.GetSubscriptionAdaptor(ClaudeCode) → ClaudeOAuthAdaptor
 
 3. adaptor.ConvertRequest(ctx, FormatOpenAIChatCompletions, body)
    - 调 apicompat.ChatCompletionsToResponses(body)
@@ -458,9 +453,9 @@ service ChannelService {
 客户端 POST /v1/messages  {model:"gpt-5", ...}  （Claude Code CLI 风格）
 
 1. server/handleAnthropicMessages
-   - auth → Plan → SelectChannel(选中 CodexOAuth Channel)
+   - auth → Plan → SelectSubscriptionAccount(选中 Codex 订阅账号)
 
-2. adaptor.GetAdaptor(ChannelTypeCodexOAuth) → CodexOAuthAdaptor
+2. adaptor.GetSubscriptionAdaptor(Codex) → CodexOAuthAdaptor
 
 3. adaptor.ConvertRequest(ctx, FormatAnthropicMessages, body)
    - apicompat.AnthropicToResponses(body)
@@ -509,30 +504,29 @@ service ChannelService {
 
 **交付物**：apicompat 包 + 转换测试通过
 
-### Phase 3：订阅账号数据模型
+### Phase 3：订阅账号数据模型与选择器
 
 **目标**：支持存储和管理 OAuth 订阅账号。
 
 - [ ] migration 创建 `subscription_accounts` 表
 - [ ] channel-service 新增 SubscriptionAccount CRUD RPC
 - [ ] admin-service 新增订阅账号管理 API
-- [ ] Channel 表 type 扩展 OAuth 类型（100/101/102）
-- [ ] relay/biz SelectChannel 支持订阅账号参与选择
+- [ ] relay/biz 新增 `SelectSubscriptionAccount`
+- [ ] relay/biz 将订阅账号选择与 API Key 渠道选择分离
 
 **交付物**：订阅账号可创建、存储、选择
 
 ### Phase 4：身份伪装 + 凭证层（订阅深度）
 
-**目标**：Claude/Codex OAuth 订阅账号可正常调用，含伪装和刷新。
+**目标**：Claude Code / Codex 订阅账号可正常调用，含伪装和刷新。
 
 - [ ] 移植 `identity/`（Fingerprint + Mimicry + Metadata 重写）
 - [ ] 移植 `credential/`（TokenProvider + 后台刷新任务）
 - [ ] 实现 `ClaudeOAuthAdaptor`（集成 apicompat + identity + credential）
 - [ ] 实现 `CodexOAuthAdaptor`（集成 apicompat + credential）
-- [ ] 实现 `GeminiOAuthAdaptor`
 - [ ] 端到端测试：真实订阅账号调用
 
-**交付物**：三大订阅平台 OAuth 账号可深度利用
+**交付物**：首批两类订阅账号可深度利用
 
 ### Phase 5：生产化
 
@@ -582,10 +576,8 @@ internal/relay/
 │   ├── base.go                 BaseAdaptor（共享 HTTP/header 工具）
 │   ├── openai_compatible.go    30+ API Key 厂商 adaptor
 │   ├── anthropic.go            Anthropic API Key adaptor
-│   ├── gemini.go / azure.go
 │   ├── codex_oauth.go          ★ ChatGPT 订阅 adaptor（含伪装）
 │   ├── claude_oauth.go         ★ Claude 订阅 adaptor（含伪装）
-│   └── gemini_oauth.go         ★ Gemini 订阅 adaptor
 ├── apicompat/                  ★ 新增：转换内核（移植自 sub2api）
 │   ├── types.go
 │   ├── anthropic_to_responses.go
@@ -602,7 +594,6 @@ internal/relay/
 │   ├── token_provider.go
 │   ├── claude_token_provider.go
 │   ├── openai_token_provider.go
-│   ├── gemini_token_provider.go
 │   └── refresh_task.go
 ├── biz/                        编排层（保留增强）
 │   ├── relay.go                Plan + RetryExecutor（不变）
@@ -616,3 +607,25 @@ internal/relay/
 ├── service/                    gRPC service（不变）
 └── data/                       gRPC 客户端（扩展 SubscriptionAccount）
 ```
+
+---
+
+## 十、建议的 MVP 切入点
+
+优先做一个可验证、可回滚的最小闭环，而不是一次性铺开全部能力：
+
+1. 先保留现有 `provider` / `channel` 逻辑不变，只新增 `adaptor` 外层包装。
+2. 先移植 `apicompat` 的 `ChatCompletions ⇄ Responses` 和 `Responses ⇄ Anthropic`。
+3. 先支持两类上游：
+   - 大量 API Key 厂商：继续走 adaptor 直转
+   - 少数订阅账号：走 `apicompat + credential + identity`
+4. 先只做两个深度场景：
+   - Claude OAuth
+   - Codex / ChatGPT OAuth
+5. 先把身份伪装限定为“请求头 + metadata + TLS 指纹”三层，不扩展到更复杂的行为模拟。
+
+这样可以在不推翻现有 relay 结构的前提下，先验证：
+
+- 广度聚合是否仍然稳定
+- Responses 中枢是否足够承接订阅协议
+- 伪装层是否真的能提高订阅账号可用性
