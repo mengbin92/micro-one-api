@@ -5,6 +5,22 @@ All notable changes to `micro-one-api` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.9] - 2026-06-26
+
+### Added
+- 新增 Codex Responses WebSocket 协议入站支持：relay-gateway 在 `POST /v1/responses` 上探测 `Upgrade: websocket` 请求，自动切换为 WebSocket 双向转发，可直接作为 Codex CLI 的 WebSocket 后端；非 Upgrade 请求仍走原 HTTP/SSE 路径，向后兼容。
+- 客户端 ↔ 上游双向 pump 逐帧镜像转发 Codex 事件，按 turn 解析 usage 并复用现有 reserve / commit / release 计费与 usage 日志链路。
+- 新增上游连接池：每渠道空闲连接缓存，经 Ping 健康检查后复用，支持每渠道最大连接数（默认 8）与空闲淘汰（默认 5 分钟）。
+- 新增跨进程会话粘滞：`response_id → channel_id` 绑定双写本地热缓存与 Redis，多副本部署下保持多轮会话同一渠道；未配置 Redis 时降级为纯内存。
+- 新增多渠道故障转移：上游 dial 失败或首字节前的可重试错误自动按优先级换渠道（默认最多切换 2 次），字节已下发即停止 failover。
+- 新增 `openai_ws` 配置块（超时、连接池、failover、sticky、Redis），所有字段可选。
+- 依赖新增 `github.com/coder/websocket v1.8.14`。
+
+### Security
+- gosec SAST：本次新增代码（`openai_ws_*`）0 issues。
+- govulncheck SCA：0 vulnerabilities。
+- gitleaks 密钥扫描：本次新增代码 0 leaks（全仓 2 条命中为 README/推广文档中的 `YOUR_TOKEN` 占位符，非真实密钥）。
+
 ## [Unreleased]
 
 ## [0.2.8] - 2026-06-25
