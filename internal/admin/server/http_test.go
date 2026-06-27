@@ -1797,6 +1797,10 @@ func TestAdminHTTPSummaryCountsOnlyPaidPaymentOrders(t *testing.T) {
 		`"negative_profit"`,
 		`"reconciliation_discrepancy"`,
 		`"latest_reconciliation":`,
+		`"subscription_accounts":1`,
+		`"active_subscription_accounts":1`,
+		`"account_id":"acc_123"`,
+		`"platform":"codex"`,
 	} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("summary response missing %s: %s", want, rec.Body.String())

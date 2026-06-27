@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Boxes, CreditCard, Database, Gauge, LineChart, Scale, ScrollText, TrendingUp, Users } from 'lucide-react';
+import { Activity, AlertTriangle, Boxes, CreditCard, Database, Gauge, KeyRound, LineChart, Scale, TrendingUp, Users } from 'lucide-react';
+
 import { Link } from 'react-router-dom';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
@@ -23,6 +24,8 @@ interface AdminTotals {
   channel_balance?: number;
   stale_balance_channels?: number;
   log_count?: number;
+  subscription_accounts?: number;
+  active_subscription_accounts?: number;
 }
 
 interface AdminUser {
@@ -33,6 +36,24 @@ interface AdminUser {
   email?: string;
   group?: string;
   status?: number;
+}
+
+interface AdminSubscriptionAccount {
+  id?: number;
+  name?: string;
+  platform?: string;
+  account_type?: string;
+  accountType?: string;
+  status?: number;
+  group?: string;
+  models?: string;
+  priority?: number;
+  account_id?: string;
+  accountId?: string;
+  expires_at?: number;
+  expiresAt?: number;
+  updated_at?: number;
+  updatedAt?: number;
 }
 
 interface AdminChannel {
@@ -101,6 +122,7 @@ interface AdminSummary {
   totals?: AdminTotals;
   recent_users?: AdminUser[];
   channels?: AdminChannel[];
+  subscription_accounts?: AdminSubscriptionAccount[];
   recent_logs?: AdminLog[];
   cost_analysis?: CostAnalysis;
   top_models?: UsageAggregateItem[];
@@ -135,6 +157,20 @@ const LOG_TYPE_NAMES: Record<string, string> = {
   redeem: '兑换',
   refund: '退款',
 };
+
+const SUBSCRIPTION_PLATFORM_LABELS: Record<string, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+};
+
+function subscriptionPlatformLabel(platform?: string) {
+  if (!platform) return '-';
+  return SUBSCRIPTION_PLATFORM_LABELS[platform] ?? platform;
+}
+
+function subscriptionStatusLabel(status?: number) {
+  return status === 1 ? '启用' : '停用';
+}
 
 function numberValue(value: unknown): number {
   const parsed = Number(value ?? 0);
@@ -360,6 +396,7 @@ export function AdminOverviewPage() {
 
   const totals = data?.totals ?? {};
   const channels = data?.channels ?? [];
+  const subscriptionAccounts = data?.subscription_accounts ?? [];
   const logs = data?.recent_logs ?? [];
   const users = data?.recent_users ?? [];
   const costAnalysis = data?.cost_analysis ?? {};
@@ -396,6 +433,9 @@ export function AdminOverviewPage() {
           <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/pricing" />}>
             模型价格
           </Button>
+          <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/subscription-accounts" />}>
+            订阅账号
+          </Button>
         </div>
       </div>
 
@@ -411,6 +451,12 @@ export function AdminOverviewPage() {
           value={formatInteger(totals.channels)}
           detail={`${formatInteger(totals.active_channels)} 个启用渠道`}
           icon={Database}
+        />
+        <StatCard
+          title="订阅账号"
+          value={formatInteger(totals.subscription_accounts)}
+          detail={`${formatInteger(totals.active_subscription_accounts)} 个启用账号`}
+          icon={KeyRound}
         />
         <StatCard
           title="调用请求"
@@ -605,6 +651,92 @@ export function AdminOverviewPage() {
 
         <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
           <CardHeader className="border-b border-slate-100 dark:border-white/10">
+            <CardTitle role="heading" aria-level={3}>订阅账号</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="p-4">
+                <TableSkeleton columns={['名称', '平台', '分组', '优先级', '过期', '状态']} rows={5} />
+              </div>
+            ) : subscriptionAccounts.length === 0 ? (
+              <EmptyState title="暂无订阅账号" description="新建 Claude / Codex 订阅账号后会显示在这里。" />
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>名称</TableHead>
+                      <TableHead>平台</TableHead>
+                      <TableHead>分组</TableHead>
+                      <TableHead className="hidden md:table-cell">优先级</TableHead>
+                      <TableHead className="hidden lg:table-cell">过期</TableHead>
+                      <TableHead>状态</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {subscriptionAccounts.map((account) => (
+                      <TableRow key={account.id}>
+                        <TableCell className="font-semibold">{account.name || `#${account.id}`}</TableCell>
+                        <TableCell>{subscriptionPlatformLabel(account.platform)}</TableCell>
+                        <TableCell>{account.group || '-'}</TableCell>
+                        <TableCell className="hidden md:table-cell">{formatInteger(account.priority ?? 0)}</TableCell>
+                        <TableCell className="hidden lg:table-cell">{formatDate(account.expires_at ?? account.expiresAt)}</TableCell>
+                        <TableCell>{subscriptionStatusLabel(account.status)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+            <CardTitle role="heading" aria-level={3}>最近调用与订单动态</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="p-4">
+                <TableSkeleton columns={['用户', '类型', '模型', '费用', '端点', '时间']} rows={8} />
+              </div>
+            ) : logs.length === 0 ? (
+              <EmptyState title="暂无流水" description="用户调用、充值、兑换或退款后会显示在这里。" />
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>用户</TableHead>
+                      <TableHead>类型</TableHead>
+                      <TableHead>模型</TableHead>
+                      <TableHead>费用</TableHead>
+                      <TableHead>端点</TableHead>
+                      <TableHead>时间</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="font-mono text-xs">{log.userId || '-'}</TableCell>
+                        <TableCell>{LOG_TYPE_NAMES[log.type || ''] || log.type || '-'}</TableCell>
+                        <TableCell>{log.modelName || '-'}</TableCell>
+                        <TableCell className="font-semibold">{formatQuota(log.amount)}</TableCell>
+                        <TableCell className="font-mono text-xs">{log.endpoint || '-'}</TableCell>
+                        <TableCell>{formatDate(log.createdAt)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <CardHeader className="border-b border-slate-100 dark:border-white/10">
             <CardTitle role="heading" aria-level={3}>最近用户</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -640,51 +772,6 @@ export function AdminOverviewPage() {
           </CardContent>
         </Card>
       </div>
-
-      <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-        <CardHeader className="border-b border-slate-100 dark:border-white/10">
-          <CardTitle role="heading" aria-level={3} className="flex items-center gap-2">
-            <ScrollText className="size-5" />
-            最近调用与订单动态
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-4">
-              <TableSkeleton columns={['用户', '类型', '模型', '费用', '端点', '时间']} rows={8} />
-            </div>
-          ) : logs.length === 0 ? (
-            <EmptyState title="暂无流水" description="用户调用、充值、兑换或退款后会显示在这里。" />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>用户</TableHead>
-                    <TableHead>类型</TableHead>
-                    <TableHead>模型</TableHead>
-                    <TableHead>费用</TableHead>
-                    <TableHead>端点</TableHead>
-                    <TableHead>时间</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="font-mono text-xs">{log.userId || '-'}</TableCell>
-                      <TableCell>{LOG_TYPE_NAMES[log.type || ''] || log.type || '-'}</TableCell>
-                      <TableCell>{log.modelName || '-'}</TableCell>
-                      <TableCell className="font-semibold">{formatQuota(log.amount)}</TableCell>
-                      <TableCell className="font-mono text-xs">{log.endpoint || '-'}</TableCell>
-                      <TableCell>{formatDate(log.createdAt)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

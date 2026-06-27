@@ -91,6 +91,8 @@ test('admin overview renders operational status', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '管理总览' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '上游供应商' })).toBeVisible();
   await expect(page.getByText('openai-main')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '订阅账号' })).toBeVisible();
+  await expect(page.getByText('claude-pro-1')).toBeVisible();
   await expect(page.getByRole('heading', { name: '最近调用与订单动态' })).toBeVisible();
 });
 

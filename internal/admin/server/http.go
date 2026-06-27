@@ -551,6 +551,15 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		options = nil
 	}
 
+	subscriptionAccounts, err := svc.ListSubscriptionAccounts(r.Context(), &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 5})
+	if err != nil {
+		subscriptionAccounts = &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}
+	}
+	activeSubscriptionAccounts, err := svc.ListSubscriptionAccounts(r.Context(), &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 1, Status: 1})
+	if err != nil {
+		activeSubscriptionAccounts = &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}
+	}
+
 	requestCount := int64(0)
 	quotaUsed := int64(0)
 	upstreamCost := int64(0)
@@ -582,21 +591,24 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
 		"totals": map[string]interface{}{
-			"users":                  users.GetTotal(),
-			"active_users":           activeUsers.GetTotal(),
-			"channels":               channels.GetTotal(),
-			"active_channels":        activeChannels.GetTotal(),
-			"configured_models":      configuredModels,
-			"request_count":          requestCount,
-			"quota_used":             quotaUsed,
-			"upstream_cost":          upstreamCost,
-			"gross_profit":           grossProfit,
-			"channel_balance":        totalBalance,
-			"stale_balance_channels": staleBalanceCount,
-			"log_count":              recentLogsTotal,
+			"users":                        users.GetTotal(),
+			"active_users":                 activeUsers.GetTotal(),
+			"channels":                     channels.GetTotal(),
+			"active_channels":              activeChannels.GetTotal(),
+			"configured_models":            configuredModels,
+			"request_count":                requestCount,
+			"quota_used":                   quotaUsed,
+			"upstream_cost":                upstreamCost,
+			"gross_profit":                 grossProfit,
+			"channel_balance":              totalBalance,
+			"stale_balance_channels":       staleBalanceCount,
+			"log_count":                    recentLogsTotal,
+			"subscription_accounts":        subscriptionAccounts.GetTotal(),
+			"active_subscription_accounts": activeSubscriptionAccounts.GetTotal(),
 		},
 		"recent_users":          users.GetUsers(),
 		"channels":              channels.GetChannels(),
+		"subscription_accounts": subscriptionAccounts.GetAccounts(),
 		"recent_logs":           recentLogs,
 		"payment_orders":        paymentOrders.GetOrders(),
 		"usage_stats":           stats,

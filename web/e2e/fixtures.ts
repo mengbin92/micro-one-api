@@ -132,12 +132,17 @@ export async function mockApi(page: Page) {
             channel_balance: 88.5,
             stale_balance_channels: 1,
             log_count: 4,
+            subscription_accounts: 2,
+            active_subscription_accounts: 1,
           },
           recent_users: [
             { id: 1, username: 'alice', display_name: 'Alice', email: 'alice@example.com', group: 'default', status: 1 },
           ],
           channels: [
             { id: 1, name: 'openai-main', type: 1, group: 'default', status: 1, models: 'gpt-4o-mini,gpt-4o', balance: 88.5 },
+          ],
+          subscription_accounts: [
+            { id: 1, name: 'claude-pro-1', platform: 'claude', account_type: 'oauth', status: 1, group: 'default', models: 'claude-sonnet-4-5', priority: 0, account_id: 'acct-123', expires_at: 1800000000, updated_at: 1700000000 },
           ],
           recent_logs: [
             { id: 1, user_id: '1', type: 'consume', amount: -150000, model_name: 'gpt-4o-mini', endpoint: '/v1/chat/completions', created_at: 1779200000 },
