@@ -20,8 +20,13 @@ import (
 	"micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	logv1 "micro-one-api/api/log/v1"
+	appaudit "micro-one-api/internal/pkg/audit"
 	appauth "micro-one-api/internal/pkg/auth"
+	appcache "micro-one-api/internal/pkg/cache"
+	"micro-one-api/internal/pkg/events"
+	appgrpc "micro-one-api/internal/pkg/grpc"
 	applogger "micro-one-api/internal/pkg/logger"
+	appmiddleware "micro-one-api/internal/pkg/middleware"
 	appregistry "micro-one-api/internal/pkg/registry"
 	apptimeout "micro-one-api/internal/pkg/timeout"
 	apptls "micro-one-api/internal/pkg/tls"
@@ -204,6 +209,14 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	billingClient = billingv1.NewBillingServiceClient(billingConn)
 	logClient = logv1.NewLogServiceClient(logConn)
 
+	resilienceTimeout := parseDurationOrDefault(cfg.Resilience.Timeout, 3*time.Second)
+	if cfg.Resilience.Enabled {
+		identityClient = relaydata.NewResilientIdentityClient(identityClient, resilienceTimeout)
+		channelClient = relaydata.NewResilientChannelClient(channelClient, resilienceTimeout)
+		billingClient = relaydata.NewResilientBillingClient(billingClient, resilienceTimeout)
+		logClient = relaydata.NewResilientLogClient(logClient, resilienceTimeout)
+	}
+
 	providerFactory := relayprovider.NewProviderFactory(providerTimeout)
 	// Wire the adaptor registry with the shared provider factory so the
 	// hybrid adaptor layer (relay/adaptor) can dispatch to the same upstream
@@ -269,6 +282,21 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		refreshTask.Start()
 	}
 	_ = refreshTask // referenced in cleanup below
+	redisAddr := cfg.Redis.Addr
+	redisPassword := cfg.Redis.Password
+	if redisAddr == "" {
+		redisAddr = cfg.OpenAIWS.RedisAddr
+		redisPassword = cfg.OpenAIWS.RedisPassword
+	}
+	redisClient := xdb.NewRedisClient(redisAddr, redisPassword)
+	eventBus := events.NewConfiguredEventBus(redisClient, "relay-gateway")
+	authLoader := appcache.NewAuthCacheLoader(identityClient, nil, resilienceTimeout)
+	authCache, err := appcache.NewAuthCache(redisClient, nil, authLoader.Load)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create auth cache: %w", err)
+	}
+	identityClient = relaydata.NewCachedIdentityClient(identityClient, authCache)
+
 	modelMapper := newModelMapper(cfg)
 	retryPolicy := newRetryPolicy(cfg)
 
@@ -279,8 +307,22 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
 	httpServer.SetHybridAdaptorEnabled(cfg.HybridAdaptor.GetHybridAdaptorEnabled())
+	httpServer.SetRelayOrchestratorEnabled(cfg.RelayOrchestrator.GetRelayOrchestratorEnabled())
 	httpServer.SetSubscriptionAccountResolver(accountResolver)
 	httpServer.SetOAuthHTTPClient(oauthHTTPClient)
+	var routeMiddleware []func(http.Handler) http.Handler
+	if cfg.Idempotency.Enabled {
+		ttl := parseDurationOrDefault(cfg.Idempotency.TTL, 24*time.Hour)
+		routeMiddleware = append(routeMiddleware, appmiddleware.NewIdempotencyMiddleware(redisClient, &appmiddleware.IdempotencyConfig{
+			Header:    "Idempotency-Key",
+			TTL:       ttl,
+			CacheKeys: true,
+		}).Handler)
+	}
+	if cfg.Audit.Enabled {
+		routeMiddleware = append(routeMiddleware, appaudit.NewMiddleware(appaudit.NewAuditor(true)).Handler)
+	}
+	httpServer.UseRouteMiddleware(routeMiddleware...)
 
 	// Configure Responses WebSocket relay timeouts from config (with defaults).
 	{
@@ -295,14 +337,22 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 			cfg.OpenAIWS.GetOpenAIWSFailoverMaxSwitches(),
 			parseDurationOrDefault(cfg.OpenAIWS.GetOpenAIWSStickyTTL(), time.Hour),
 		)
-		httpServer.SetOpenAIWSStickyStore(xdb.NewRedisClient(cfg.OpenAIWS.RedisAddr, cfg.OpenAIWS.RedisPassword))
+		httpServer.SetOpenAIWSStickyStore(redisClient)
 	}
 
 	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(cfg.Server.HTTP.Addr), khttp.Timeout(providerTimeout))...)
 	httpServer.RegisterRoutes(srv)
 
 	grpcSvc := relayservice.NewRelayGrpcService(identityClient, channelClient, billingClient, providerFactory, relayUsecase)
-	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, grpcSvc)
+	var relayGRPCOpts []grpc.ServerOption
+	if cfg.MTLS.Enabled {
+		mtlsOpts, err := appgrpc.MTLSServerOptions(cfg.MTLS.CertFile, cfg.MTLS.KeyFile, cfg.MTLS.CAFile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create relay mTLS server options: %w", err)
+		}
+		relayGRPCOpts = append(relayGRPCOpts, mtlsOpts...)
+	}
+	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, grpcSvc, relayGRPCOpts...)
 
 	kratosOpts := []kratos.Option{
 		kratos.Name("relay-gateway"),
@@ -318,6 +368,13 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	cleanup := func() {
 		if refreshTask != nil {
 			refreshTask.Stop()
+		}
+		_ = authCache.Close()
+		if closer, ok := eventBus.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
+		if redisClient != nil {
+			_ = redisClient.Close()
 		}
 		identityConn.Close()
 		channelConn.Close()

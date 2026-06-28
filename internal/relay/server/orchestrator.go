@@ -7,8 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	apperrors "micro-one-api/internal/pkg/errors"
 	relaybiz "micro-one-api/internal/relay/biz"
 	relayprovider "micro-one-api/internal/relay/provider"
 	"micro-one-api/internal/relay/server/forwarder"
@@ -86,6 +91,20 @@ type Usage struct {
 	TotalTokens      int64
 }
 
+// Reservation captures a quota reservation made before upstream forwarding.
+type Reservation struct {
+	ID string
+}
+
+// RelayLifecycleHooks integrates side effects that are owned by the outer
+// server layer, such as billing and usage logging.
+type RelayLifecycleHooks interface {
+	ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated Usage) (*Reservation, error)
+	CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage Usage, success bool, latency time.Duration) error
+	ReleaseQuota(ctx context.Context, reservation *Reservation, reason string) error
+	LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool)
+}
+
 // OrchestratorConfig holds configuration for the orchestrator.
 type OrchestratorConfig struct {
 	// MaxAttempts is the maximum number of retry attempts (including initial).
@@ -119,6 +138,7 @@ type relayOrchestrator struct {
 	config          *OrchestratorConfig
 	relayUsecase    *relaybiz.RelayUsecase
 	providerFactory *relayprovider.ProviderFactory
+	hooks           RelayLifecycleHooks
 }
 
 // NewRelayOrchestrator creates a new orchestrator instance.
@@ -129,6 +149,12 @@ func NewRelayOrchestrator(relayUsecase *relaybiz.RelayUsecase, cfg *Orchestrator
 // NewRelayOrchestratorWithProviderFactory creates a relay orchestrator that can
 // execute the upstream forwarding stage.
 func NewRelayOrchestratorWithProviderFactory(relayUsecase *relaybiz.RelayUsecase, providerFactory *relayprovider.ProviderFactory, cfg *OrchestratorConfig) Orchestrator {
+	return NewRelayOrchestratorWithDependencies(relayUsecase, providerFactory, nil, cfg)
+}
+
+// NewRelayOrchestratorWithDependencies creates a relay orchestrator with
+// optional lifecycle hooks for quota and logging side effects.
+func NewRelayOrchestratorWithDependencies(relayUsecase *relaybiz.RelayUsecase, providerFactory *relayprovider.ProviderFactory, hooks RelayLifecycleHooks, cfg *OrchestratorConfig) Orchestrator {
 	if cfg == nil {
 		cfg = DefaultOrchestratorConfig()
 	}
@@ -136,6 +162,7 @@ func NewRelayOrchestratorWithProviderFactory(relayUsecase *relaybiz.RelayUsecase
 		config:          cfg,
 		relayUsecase:    relayUsecase,
 		providerFactory: providerFactory,
+		hooks:           hooks,
 	}
 }
 
@@ -181,6 +208,13 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		result.Latency = time.Since(startTime)
 		return result, err
 	}
+	if plan == nil || plan.Auth == nil || plan.Channel == nil {
+		err := fmt.Errorf("relay plan is incomplete")
+		result.Error = err
+		result.StatusCode = http.StatusServiceUnavailable
+		result.Latency = time.Since(startTime)
+		return result, err
+	}
 
 	// Store resolved information in result
 	result.ChannelID = plan.Channel.ID
@@ -220,10 +254,26 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		return result, err
 	}
 
+	if req.RequestID == "" {
+		req.RequestID = generateRequestID()
+	}
+	estimatedUsage := estimateUsageFromBody(body)
+	var reservation *Reservation
+	if o.hooks != nil {
+		reservation, err = o.hooks.ReserveQuota(ctx, plan, req, estimatedUsage)
+		if err != nil {
+			result.Error = err
+			result.StatusCode = http.StatusPaymentRequired
+			result.Latency = time.Since(startTime)
+			return result, err
+		}
+	}
+
 	if req.IsStream {
 		streamForwarder := forwarder.NewStreamForwarder(o.providerFactory)
 		resp, chunks, err := streamForwarder.ForwardRequest(ctx, plan, endpoint, body, req.Headers)
 		if err != nil {
+			o.releaseReservedQuota(ctx, reservation, "upstream stream error")
 			result.Error = err
 			result.StatusCode = mapUpstreamOrInternalStatus(err)
 			result.Latency = time.Since(startTime)
@@ -231,7 +281,17 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		}
 		result.StatusCode = resp.StatusCode
 		result.Headers = resp.Header.Clone()
-		result.Response = newChunkReadCloser(chunks)
+		result.Response = newChunkReadCloser(chunks, func(streamUsage Usage) error {
+			if streamUsage.TotalTokens == 0 {
+				streamUsage = estimatedUsage
+			}
+			latency := time.Since(startTime)
+			if err := o.commitReservedQuota(context.Background(), plan, req, reservation, streamUsage, true, latency); err != nil {
+				return err
+			}
+			o.logUsage(context.Background(), plan, req, streamUsage, latency, true)
+			return nil
+		})
 		result.Latency = time.Since(startTime)
 		return result, nil
 	}
@@ -239,6 +299,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 	nonStreamForwarder := forwarder.NewNonStreamForwarder(o.providerFactory)
 	resp, bodyReader, usage, err := nonStreamForwarder.ForwardRequest(ctx, plan, endpoint, body, req.Headers)
 	if err != nil {
+		o.releaseReservedQuota(ctx, reservation, "upstream error")
 		result.Error = err
 		result.StatusCode = mapUpstreamOrInternalStatus(err)
 		result.Latency = time.Since(startTime)
@@ -254,6 +315,20 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			TotalTokens:      usage.TotalTokens,
 		}
 	}
+	if result.Usage == nil || result.Usage.TotalTokens == 0 {
+		result.Usage = &estimatedUsage
+	}
+	if o.hooks != nil {
+		latency := time.Since(startTime)
+		if err := o.commitReservedQuota(ctx, plan, req, reservation, *result.Usage, resp.StatusCode < http.StatusBadRequest, latency); err != nil {
+			_ = bodyReader.Close()
+			result.Error = err
+			result.StatusCode = http.StatusPaymentRequired
+			result.Latency = latency
+			return result, err
+		}
+		o.logUsage(ctx, plan, req, *result.Usage, latency, false)
+	}
 
 	result.Latency = time.Since(startTime)
 	return result, nil
@@ -261,8 +336,32 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 
 // statusCodeFromError converts an error to an HTTP status code.
 func statusCodeFromError(err error) int {
-	// This is a placeholder - actual implementation will check error types
-	// and return appropriate status codes (401, 403, 429, 500, etc.)
+	if err == nil {
+		return http.StatusOK
+	}
+	if apperrors.IsUnauthorized(err) {
+		return http.StatusUnauthorized
+	}
+	if apperrors.IsForbidden(err) || strings.Contains(err.Error(), "not allowed") {
+		return http.StatusForbidden
+	}
+	if apperrors.IsServiceUnavailable(err) || strings.Contains(err.Error(), "no available channel") || strings.Contains(err.Error(), "channel not found") {
+		return http.StatusServiceUnavailable
+	}
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.NotFound:
+			return http.StatusUnauthorized
+		case codes.PermissionDenied:
+			return http.StatusForbidden
+		case codes.ResourceExhausted:
+			return http.StatusTooManyRequests
+		case codes.Unavailable:
+			return http.StatusServiceUnavailable
+		case codes.InvalidArgument:
+			return http.StatusBadRequest
+		}
+	}
 	return http.StatusInternalServerError
 }
 
@@ -301,12 +400,20 @@ func mapUpstreamOrInternalStatus(err error) int {
 }
 
 type chunkReadCloser struct {
-	chunks <-chan []byte
-	buf    *bytes.Reader
+	chunks   <-chan []byte
+	buf      *bytes.Reader
+	onClose  func(Usage) error
+	usage    Usage
+	closeErr error
+	closed   bool
 }
 
-func newChunkReadCloser(chunks <-chan []byte) io.ReadCloser {
-	return &chunkReadCloser{chunks: chunks, buf: bytes.NewReader(nil)}
+func newChunkReadCloser(chunks <-chan []byte, onClose ...func(Usage) error) io.ReadCloser {
+	var closeFn func(Usage) error
+	if len(onClose) > 0 {
+		closeFn = onClose[0]
+	}
+	return &chunkReadCloser{chunks: chunks, buf: bytes.NewReader(nil), onClose: closeFn}
 }
 
 func (r *chunkReadCloser) Read(p []byte) (int, error) {
@@ -315,13 +422,76 @@ func (r *chunkReadCloser) Read(p []byte) (int, error) {
 		if !ok {
 			return 0, io.EOF
 		}
+		if len(chunk) == 0 {
+			continue
+		}
+		r.usage = mergeUsage(r.usage, usageFromBody(chunk))
 		r.buf = bytes.NewReader(chunk)
 	}
 	return r.buf.Read(p)
 }
 
 func (r *chunkReadCloser) Close() error {
+	if r.closed {
+		return r.closeErr
+	}
+	r.closed = true
 	for range r.chunks {
 	}
-	return nil
+	if r.onClose != nil {
+		r.closeErr = r.onClose(r.usage)
+	}
+	return r.closeErr
+}
+
+func (o *relayOrchestrator) releaseReservedQuota(ctx context.Context, reservation *Reservation, reason string) {
+	if o.hooks == nil || reservation == nil {
+		return
+	}
+	_ = o.hooks.ReleaseQuota(ctx, reservation, reason)
+}
+
+func (o *relayOrchestrator) commitReservedQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage Usage, success bool, latency time.Duration) error {
+	if o.hooks == nil || reservation == nil {
+		return nil
+	}
+	return o.hooks.CommitQuota(ctx, plan, req, reservation, usage, success, latency)
+}
+
+func (o *relayOrchestrator) logUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool) {
+	if o.hooks == nil {
+		return
+	}
+	o.hooks.LogUsage(ctx, plan, req, usage, latency, stream)
+}
+
+func estimateUsageFromBody(body []byte) Usage {
+	raw := estimateRawUsage(body)
+	return Usage{
+		PromptTokens:     raw.PromptTokens,
+		CompletionTokens: raw.CompletionTokens,
+		TotalTokens:      raw.TotalTokens,
+	}
+}
+
+func usageFromBody(body []byte) Usage {
+	raw := extractRawUsage(body, 0)
+	return Usage{
+		PromptTokens:     raw.PromptTokens,
+		CompletionTokens: raw.CompletionTokens,
+		TotalTokens:      raw.TotalTokens,
+	}
+}
+
+func mergeUsage(primary, fallback Usage) Usage {
+	if primary.PromptTokens == 0 {
+		primary.PromptTokens = fallback.PromptTokens
+	}
+	if primary.CompletionTokens == 0 {
+		primary.CompletionTokens = fallback.CompletionTokens
+	}
+	if primary.TotalTokens == 0 {
+		primary.TotalTokens = fallback.TotalTokens
+	}
+	return primary
 }

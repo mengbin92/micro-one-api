@@ -4,13 +4,54 @@ import appregistry "micro-one-api/internal/pkg/registry"
 
 // Config holds the relay-gateway configuration.
 type Config struct {
-	Server        ServerConfig        `json:"server"`
-	Clients       ClientsConfig       `json:"clients"`
-	Retry         RetryConfig         `json:"retry"`
-	Models        ModelsConfig        `json:"models" yaml:"models"`
-	Registry      appregistry.Config  `json:"registry"`
-	OpenAIWS      OpenAIWSConfig      `json:"openai_ws" yaml:"openai_ws"`
-	HybridAdaptor HybridAdaptorConfig `json:"hybrid_adaptor" yaml:"hybrid_adaptor"`
+	Server            ServerConfig            `json:"server"`
+	Clients           ClientsConfig           `json:"clients"`
+	Retry             RetryConfig             `json:"retry"`
+	Models            ModelsConfig            `json:"models" yaml:"models"`
+	Registry          appregistry.Config      `json:"registry"`
+	Redis             RedisConfig             `json:"redis" yaml:"redis"`
+	OpenAIWS          OpenAIWSConfig          `json:"openai_ws" yaml:"openai_ws"`
+	HybridAdaptor     HybridAdaptorConfig     `json:"hybrid_adaptor" yaml:"hybrid_adaptor"`
+	RelayOrchestrator RelayOrchestratorConfig `json:"relay_orchestrator" yaml:"relay_orchestrator"`
+	Idempotency       IdempotencyConfig       `json:"idempotency" yaml:"idempotency"`
+	Audit             AuditConfig             `json:"audit" yaml:"audit"`
+	Resilience        ResilienceConfig        `json:"resilience" yaml:"resilience"`
+	MTLS              MTLSConfig              `json:"mtls" yaml:"mtls"`
+}
+
+// RelayOrchestratorConfig controls the handler -> orchestrator -> forwarder
+// route for chat completions. Disabled by default.
+type RelayOrchestratorConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+// GetRelayOrchestratorEnabled reports whether the orchestrator route is enabled.
+func (c RelayOrchestratorConfig) GetRelayOrchestratorEnabled() bool { return c.Enabled }
+
+type IdempotencyConfig struct {
+	Enabled bool   `json:"enabled" yaml:"enabled"`
+	TTL     string `json:"ttl" yaml:"ttl"`
+}
+
+type AuditConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+type ResilienceConfig struct {
+	Enabled bool   `json:"enabled" yaml:"enabled"`
+	Timeout string `json:"timeout" yaml:"timeout"`
+}
+
+type RedisConfig struct {
+	Addr     string `json:"addr" yaml:"addr"`
+	Password string `json:"password" yaml:"password"`
+}
+
+type MTLSConfig struct {
+	Enabled  bool   `json:"enabled" yaml:"enabled"`
+	CertFile string `json:"cert_file" yaml:"cert_file"`
+	KeyFile  string `json:"key_file" yaml:"key_file"`
+	CAFile   string `json:"ca_file" yaml:"ca_file"`
 }
 
 // HybridAdaptorConfig controls the hybrid adaptor layer (plan §十). The

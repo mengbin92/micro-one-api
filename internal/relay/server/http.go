@@ -33,8 +33,6 @@ import (
 	relaybiz "micro-one-api/internal/relay/biz"
 	relaycredential "micro-one-api/internal/relay/credential"
 	relayprovider "micro-one-api/internal/relay/provider"
-
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
 const postResponseWriteTimeout = 10 * time.Second
@@ -58,6 +56,12 @@ type HTTPServer struct {
 	// hybridAdaptorEnabled gates the new adaptor-based request path (plan §十).
 	// When false the gateway uses the legacy provider-factory path unchanged.
 	hybridAdaptorEnabled bool
+
+	// relayOrchestratorEnabled gates the handler -> orchestrator -> forwarder
+	// request path for /v1/chat/completions. It remains disabled by default so
+	// the legacy billing path is preserved unless explicitly enabled.
+	relayOrchestratorEnabled bool
+	routeMiddleware          []func(http.Handler) http.Handler
 
 	// accountResolver resolves subscription-account metadata (real account id,
 	// upstream account id, fingerprint) for subscription-typed channels. nil
@@ -88,11 +92,11 @@ type openAIWSPoolConfig struct {
 }
 
 type responseRoute struct {
-	Model                  string
-	ResolvedModel          string
-	Channel                relaybiz.Channel
-	UserID                 int64
-	SubscriptionAccountID  int64
+	Model                 string
+	ResolvedModel         string
+	Channel               relaybiz.Channel
+	UserID                int64
+	SubscriptionAccountID int64
 }
 
 // NewHTTPServer creates a new HTTP server for Kratos.
@@ -128,6 +132,22 @@ func (s *HTTPServer) SetHybridAdaptorEnabled(enabled bool) {
 		return
 	}
 	s.hybridAdaptorEnabled = enabled
+}
+
+// SetRelayOrchestratorEnabled turns on the orchestrator-based chat route.
+func (s *HTTPServer) SetRelayOrchestratorEnabled(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.relayOrchestratorEnabled = enabled
+}
+
+// UseRouteMiddleware applies middleware to routes registered by RegisterRoutes.
+func (s *HTTPServer) UseRouteMiddleware(middleware ...func(http.Handler) http.Handler) {
+	if s == nil {
+		return
+	}
+	s.routeMiddleware = append(s.routeMiddleware, middleware...)
 }
 
 // SetSubscriptionAccountResolver wires the resolver that maps a
@@ -207,63 +227,6 @@ func (s *HTTPServer) SetOpenAIWSPoolConfig(maxConnsPerChannel, failoverMaxSwitch
 	}
 }
 
-// RegisterRoutes registers HTTP routes to a Kratos *khttp.Server.
-func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
-	srv.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
-	srv.HandleFunc("/v1/completions", s.handleRawRelay("/completions", true))
-	srv.HandleFunc("/v1/embeddings", s.handleRawRelay("/embeddings", false))
-	srv.HandleFunc("/v1/images/generations", s.handleRawRelay("/images/generations", true))
-	srv.HandleFunc("/v1/images/edits", s.handleUnsupportedOpenAIRoute("images.edits"))
-	srv.HandleFunc("/v1/images/variations", s.handleUnsupportedOpenAIRoute("images.variations"))
-	srv.HandleFunc("/v1/audio/transcriptions", s.handleRawRelay("/audio/transcriptions", true))
-	srv.HandleFunc("/v1/audio/translations", s.handleRawRelay("/audio/translations", true))
-	srv.HandleFunc("/v1/audio/speech", s.handleRawRelay("/audio/speech", false))
-	srv.HandleFunc("/v1/moderations", s.handleRawRelay("/moderations", false))
-	srv.HandleFunc("/v1/edits", s.handleUnsupportedOpenAIRoute("edits"))
-	srv.HandleFunc("/v1/responses", s.handleResponsesRelay)
-	srv.HandlePrefix("/v1/responses/", http.HandlerFunc(s.handleResponsesRelay))
-	srv.HandleFunc("/v1/usage", s.handleUsage)
-	srv.HandleFunc("/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
-	srv.HandlePrefix("/v1/engines/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("engines")))
-	srv.HandleFunc("/v1/files", s.handleUnsupportedOpenAIRoute("files"))
-	srv.HandlePrefix("/v1/files/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("files")))
-	srv.HandleFunc("/v1/fine-tunes", s.handleUnsupportedOpenAIRoute("fine-tunes"))
-	srv.HandlePrefix("/v1/fine-tunes/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("fine-tunes")))
-	srv.HandleFunc("/v1/fine_tuning/jobs", s.handleUnsupportedOpenAIRoute("fine_tuning.jobs"))
-	srv.HandlePrefix("/v1/fine_tuning/jobs/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("fine_tuning.jobs")))
-	srv.HandleFunc("/v1/batches", s.handleUnsupportedOpenAIRoute("batches"))
-	srv.HandlePrefix("/v1/batches/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("batches")))
-	srv.HandleFunc("/v1/uploads", s.handleUnsupportedOpenAIRoute("uploads"))
-	srv.HandlePrefix("/v1/uploads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("uploads")))
-	srv.HandleFunc("/v1/vector_stores", s.handleUnsupportedOpenAIRoute("vector_stores"))
-	srv.HandlePrefix("/v1/vector_stores/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("vector_stores")))
-	srv.HandleFunc("/v1/evals", s.handleUnsupportedOpenAIRoute("evals"))
-	srv.HandlePrefix("/v1/evals/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("evals")))
-	srv.HandleFunc("/v1/containers", s.handleUnsupportedOpenAIRoute("containers"))
-	srv.HandlePrefix("/v1/containers/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("containers")))
-	srv.HandlePrefix("/v1/fine_tuning/alpha/graders/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("graders")))
-	srv.HandlePrefix("/v1/realtime/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("realtime")))
-	srv.HandleFunc("/v1/conversations", s.handleUnsupportedOpenAIRoute("conversations"))
-	srv.HandlePrefix("/v1/conversations/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("conversations")))
-	srv.HandleFunc("/v1/assistants", s.handleUnsupportedOpenAIRoute("assistants"))
-	srv.HandlePrefix("/v1/assistants/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("assistants")))
-	srv.HandleFunc("/v1/threads", s.handleUnsupportedOpenAIRoute("threads"))
-	srv.HandlePrefix("/v1/threads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("threads")))
-	srv.HandlePrefix("/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
-
-	// Anthropic Messages API inbound endpoint (for Claude Code CLI / native Anthropic SDK clients)
-	srv.HandleFunc("/v1/messages", s.handleAnthropicMessages)
-	srv.HandleFunc("/v1/models", s.handleModels)
-	srv.HandlePrefix("/v1/models/", http.HandlerFunc(s.handleRetrieveModel))
-	srv.HandleFunc("/api/status", s.handleAPIStatus)
-	srv.HandleFunc("/api/models", s.handleDashboardModels)
-	srv.HandleFunc("/api/group", s.handleGroups)
-	srv.HandleFunc("/healthz", s.handleHealth)
-	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		metrics.Handler().ServeHTTP(w, r)
-	})
-}
-
 func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -323,7 +286,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				estimateRawTokens(body),
 				plan.ResolvedModel,
 				fmt.Sprintf("%d", ch.ID),
-			subscriptionAccountIDFromPlan(plan),
+				subscriptionAccountIDFromPlan(plan),
 			)
 			if reserveErr != nil {
 				return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
@@ -478,8 +441,8 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			estimateRawTokens(upstreamBody),
 			plan.ResolvedModel,
 			fmt.Sprintf("%d", ch.ID),
-		subscriptionAccountIDFromPlan(plan),
-			)
+			subscriptionAccountIDFromPlan(plan),
+		)
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
 		}
@@ -1020,20 +983,20 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 	totalTokens := extractTotalTokens(resp.Body, estimateRawTokens(body))
 	usage := extractRawUsage(resp.Body, totalTokens)
 	if err := s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true, usageLogInput{
-		UserID:           authSnapshot.UserId,
-		TokenID:          authSnapshot.TokenId,
-		TokenName:        authSnapshot.TokenName,
-		RequestID:        requestID,
-		Endpoint:         "/" + targetPart,
-		ModelName:        model,
-		Quota:            totalTokens,
-		PromptTokens:     usage.PromptTokens,
-		CompletionTokens: usage.CompletionTokens,
-		CacheReadTokens:  usage.CacheReadTokens,
-		ChannelID:        channelReply.Channel.Id,
+		UserID:                authSnapshot.UserId,
+		TokenID:               authSnapshot.TokenId,
+		TokenName:             authSnapshot.TokenName,
+		RequestID:             requestID,
+		Endpoint:              "/" + targetPart,
+		ModelName:             model,
+		Quota:                 totalTokens,
+		PromptTokens:          usage.PromptTokens,
+		CompletionTokens:      usage.CompletionTokens,
+		CacheReadTokens:       usage.CacheReadTokens,
+		ChannelID:             channelReply.Channel.Id,
 		SubscriptionAccountID: 0,
-		ElapsedTime:      time.Since(startedAt).Milliseconds(),
-		IsStream:         false,
+		ElapsedTime:           time.Since(startedAt).Milliseconds(),
+		IsStream:              false,
 	}); err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
 		return
@@ -1126,15 +1089,15 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 		if req.Stream {
 			return s.handleStreamingResponse(w, r, provider, &req, reservation, usageLogInput{
-				UserID:    plan.Auth.UserID,
-				TokenID:   plan.Auth.TokenID,
-				TokenName: plan.Auth.TokenName,
-				RequestID: requestID,
-				Endpoint:  "/v1/chat/completions",
-				ModelName: clientModel,
-				ChannelID: ch.ID,
+				UserID:                plan.Auth.UserID,
+				TokenID:               plan.Auth.TokenID,
+				TokenName:             plan.Auth.TokenName,
+				RequestID:             requestID,
+				Endpoint:              "/v1/chat/completions",
+				ModelName:             clientModel,
+				ChannelID:             ch.ID,
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
-				IsStream:  true,
+				IsStream:              true,
 			})
 		}
 
@@ -1257,20 +1220,20 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 }
 
 type usageLogInput struct {
-	UserID           int64
-	TokenID          int64
-	TokenName        string
-	RequestID        string
-	Endpoint         string
-	ModelName        string
-	Quota            int64
-	PromptTokens     int64
-	CompletionTokens int64
-	CacheReadTokens  int64
-	ChannelID        int64
+	UserID                int64
+	TokenID               int64
+	TokenName             string
+	RequestID             string
+	Endpoint              string
+	ModelName             string
+	Quota                 int64
+	PromptTokens          int64
+	CompletionTokens      int64
+	CacheReadTokens       int64
+	ChannelID             int64
 	SubscriptionAccountID int64
-	ElapsedTime      int64
-	IsStream         bool
+	ElapsedTime           int64
+	IsStream              bool
 }
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
@@ -1280,21 +1243,21 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 	}
 	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
 	_, err := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{
-		Level:            "consume",
-		Message:          message,
-		Source:           "relay-gateway",
-		RequestId:        in.RequestID,
-		UserId:           in.UserID,
-		TokenName:        usageTokenName(in),
-		ModelName:        in.ModelName,
-		Quota:            in.Quota,
-		PromptTokens:     in.PromptTokens,
-		CompletionTokens: in.CompletionTokens,
-		CacheReadTokens:      in.CacheReadTokens,
-		ChannelId:            in.ChannelID,
+		Level:                 "consume",
+		Message:               message,
+		Source:                "relay-gateway",
+		RequestId:             in.RequestID,
+		UserId:                in.UserID,
+		TokenName:             usageTokenName(in),
+		ModelName:             in.ModelName,
+		Quota:                 in.Quota,
+		PromptTokens:          in.PromptTokens,
+		CompletionTokens:      in.CompletionTokens,
+		CacheReadTokens:       in.CacheReadTokens,
+		ChannelId:             in.ChannelID,
 		SubscriptionAccountId: in.SubscriptionAccountID,
-		ElapsedTime:          in.ElapsedTime,
-		IsStream:             in.IsStream,
+		ElapsedTime:           in.ElapsedTime,
+		IsStream:              in.IsStream,
 	})
 	if err != nil && applogger.Log != nil {
 		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()

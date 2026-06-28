@@ -89,11 +89,11 @@ type subscriptionAccountModel struct {
 	CreatedAt    int64   `gorm:"column:created_at"`
 	UpdatedAt    int64   `gorm:"column:updated_at"`
 
-	LastUsedAt        int64   `gorm:"column:last_used_at"`
-	RateLimitedUntil  int64   `gorm:"column:rate_limited_until"`
-	QuotaUsedPercent  float32 `gorm:"column:quota_used_percent"`
-	QuotaResetAt      int64   `gorm:"column:quota_reset_at"`
-	Concurrency       int32   `gorm:"column:concurrency"`
+	LastUsedAt       int64   `gorm:"column:last_used_at"`
+	RateLimitedUntil int64   `gorm:"column:rate_limited_until"`
+	QuotaUsedPercent float32 `gorm:"column:quota_used_percent"`
+	QuotaResetAt     int64   `gorm:"column:quota_reset_at"`
+	Concurrency      int32   `gorm:"column:concurrency"`
 }
 
 func (subscriptionAccountModel) TableName() string { return "subscription_accounts" }
@@ -148,6 +148,13 @@ func newMemoryRepository() *Repository {
 		channels:    make(map[int64]*biz.Channel),
 		subAccounts: make(map[int64]*biz.SubscriptionAccount),
 	}
+}
+
+func (r *Repository) Redis() *redis.Client {
+	if r == nil {
+		return nil
+	}
+	return r.redis
 }
 
 func (r *Repository) FindByID(ctx context.Context, channelID int64) (*biz.Channel, error) {
@@ -958,23 +965,23 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 		baseURL = *m.BaseURL
 	}
 	return &biz.SubscriptionAccount{
-		ID:           m.ID,
-		Name:         m.Name,
-		Platform:     m.Platform,
-		AccountType:  m.AccountType,
-		Status:       m.Status,
-		Group:        m.Group,
-		Models:       biz.SplitCSV(m.Models),
-		Priority:     m.Priority,
-		BaseURL:      baseURL,
-		AccessToken:  r.decryptKey(derefString(m.AccessToken)),
-		RefreshToken: r.decryptKey(derefString(m.RefreshToken)),
-		ExpiresAt:    m.ExpiresAt,
-		AccountID:    m.AccountID,
-		Fingerprint:  derefString(m.Fingerprint),
-		Metadata:     derefString(m.Metadata),
-		CreatedAt:    m.CreatedAt,
-		UpdatedAt:    m.UpdatedAt,
+		ID:               m.ID,
+		Name:             m.Name,
+		Platform:         m.Platform,
+		AccountType:      m.AccountType,
+		Status:           m.Status,
+		Group:            m.Group,
+		Models:           biz.SplitCSV(m.Models),
+		Priority:         m.Priority,
+		BaseURL:          baseURL,
+		AccessToken:      r.decryptKey(derefString(m.AccessToken)),
+		RefreshToken:     r.decryptKey(derefString(m.RefreshToken)),
+		ExpiresAt:        m.ExpiresAt,
+		AccountID:        m.AccountID,
+		Fingerprint:      derefString(m.Fingerprint),
+		Metadata:         derefString(m.Metadata),
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
 		LastUsedAt:       m.LastUsedAt,
 		RateLimitedUntil: m.RateLimitedUntil,
 		QuotaUsedPercent: m.QuotaUsedPercent,
@@ -985,23 +992,23 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 
 func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) *subscriptionAccountModel {
 	return &subscriptionAccountModel{
-		ID:           a.ID,
-		Name:         a.Name,
-		Platform:     a.Platform,
-		AccountType:  a.AccountType,
-		Status:       a.Status,
-		Group:        a.Group,
-		Models:       a.ModelsCSV(),
-		Priority:     a.Priority,
-		BaseURL:      strPtr(a.BaseURL),
-		AccessToken:  stringPtr(r.encryptKey(a.AccessToken)),
-		RefreshToken: stringPtr(r.encryptKey(a.RefreshToken)),
-		ExpiresAt:    a.ExpiresAt,
-		AccountID:    a.AccountID,
-		Fingerprint:  stringPtr(a.Fingerprint),
-		Metadata:     stringPtr(a.Metadata),
-		CreatedAt:    a.CreatedAt,
-		UpdatedAt:    a.UpdatedAt,
+		ID:               a.ID,
+		Name:             a.Name,
+		Platform:         a.Platform,
+		AccountType:      a.AccountType,
+		Status:           a.Status,
+		Group:            a.Group,
+		Models:           a.ModelsCSV(),
+		Priority:         a.Priority,
+		BaseURL:          strPtr(a.BaseURL),
+		AccessToken:      stringPtr(r.encryptKey(a.AccessToken)),
+		RefreshToken:     stringPtr(r.encryptKey(a.RefreshToken)),
+		ExpiresAt:        a.ExpiresAt,
+		AccountID:        a.AccountID,
+		Fingerprint:      stringPtr(a.Fingerprint),
+		Metadata:         stringPtr(a.Metadata),
+		CreatedAt:        a.CreatedAt,
+		UpdatedAt:        a.UpdatedAt,
 		LastUsedAt:       a.LastUsedAt,
 		RateLimitedUntil: a.RateLimitedUntil,
 		QuotaUsedPercent: a.QuotaUsedPercent,

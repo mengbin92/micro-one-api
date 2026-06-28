@@ -12,6 +12,7 @@ import (
 	"micro-one-api/internal/config/data"
 	"micro-one-api/internal/config/server"
 	"micro-one-api/internal/config/service"
+	"micro-one-api/internal/pkg/events"
 	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
 	"micro-one-api/internal/pkg/xconfig"
@@ -43,7 +44,8 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 
-	uc := biz.NewConfigUsecase(repo, nil)
+	eventBus := events.NewConfiguredEventBus(repo.Redis(), "config-service")
+	uc := biz.NewConfigUsecase(repo, eventBus)
 	svc := service.NewConfigService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)

@@ -112,11 +112,16 @@ func (b *StreamEventBus) consumeLoop(topic string) {
 		default:
 		}
 
-		// Read new messages
-		msgs, err := b.redis.XRead(b.ctx, &redis.XReadArgs{
-			Streams: []string{topic, ">"},
-			Count:   10,
-			Block:   b.readTimeout,
+		// Read new messages through the consumer group created in Subscribe.
+		// XReadGroup is required here; XRead would deliver messages outside the
+		// group while the later XAck would acknowledge a message that was never
+		// assigned to this consumer.
+		msgs, err := b.redis.XReadGroup(b.ctx, &redis.XReadGroupArgs{
+			Group:    b.consumerGroup,
+			Consumer: b.consumerID,
+			Streams:  []string{topic, ">"},
+			Count:    10,
+			Block:    b.readTimeout,
 		}).Result()
 
 		if err != nil {

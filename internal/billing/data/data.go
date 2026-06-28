@@ -101,6 +101,20 @@ func (d *Data) ReconciliationRunStore() biz.ReconciliationRunStore {
 	return d.reconRunStore
 }
 
+func (d *Data) Redis() *redis.Client {
+	if d == nil {
+		return nil
+	}
+	return d.redis
+}
+
+func (d *Data) DB() *gorm.DB {
+	if d == nil {
+		return nil
+	}
+	return d.db
+}
+
 func (d *Data) Close() error {
 	if d.redis != nil {
 		d.redis.Close()
