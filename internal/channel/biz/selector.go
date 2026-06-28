@@ -181,19 +181,41 @@ func (s *WeightedSelector) UpdateChannel(channel *commonv1.ChannelInfo) {
 func (s *WeightedSelector) updateChannelLocked(channel *commonv1.ChannelInfo) {
 	if existing, ok := s.channels[channel.Id]; ok {
 		existing.channel = channel
+		existing.weight = configuredSelectorWeight(channel)
+		if openUntil := selectorCircuitOpenUntil(channel); openUntil > existing.circuitOpenUntil {
+			existing.circuitOpenUntil = openUntil
+		}
 		// Keep runtime state (latency, errors, etc.)
 		return
 	}
 
 	// Initialize new channel state
 	s.channels[channel.Id] = &channelState{
-		channel:       channel,
-		weight:        uint32(channel.Priority), // Use priority as weight
-		currentWeight: 0,
-		recentLatency: NewSlidingWindow(100),
-		recentErrors:  NewSlidingCounter(60 * time.Second),
-		maxConcurrent: 100, // Default max concurrent
+		channel:          channel,
+		weight:           configuredSelectorWeight(channel),
+		currentWeight:    0,
+		recentLatency:    NewSlidingWindow(100),
+		recentErrors:     NewSlidingCounter(60 * time.Second),
+		maxConcurrent:    100, // Default max concurrent
+		circuitOpenUntil: selectorCircuitOpenUntil(channel),
 	}
+}
+
+func configuredSelectorWeight(channel *commonv1.ChannelInfo) uint32 {
+	if channel.Weight > 0 {
+		return channel.Weight
+	}
+	if channel.Priority > 0 {
+		return uint32(channel.Priority)
+	}
+	return 1
+}
+
+func selectorCircuitOpenUntil(channel *commonv1.ChannelInfo) int64 {
+	if channel.CircuitOpenedUntil <= 0 {
+		return 0
+	}
+	return time.Unix(channel.CircuitOpenedUntil, 0).UnixNano()
 }
 
 // RemoveChannel removes a channel from the selector.

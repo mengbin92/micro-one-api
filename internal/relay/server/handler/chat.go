@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/bytedance/sonic"
 
@@ -24,34 +26,34 @@ func NewChatHandler(orchestrator server.Orchestrator) *ChatHandler {
 
 // ChatCompletionsRequest represents the OpenAI Chat Completions API request.
 type ChatCompletionsRequest struct {
-	Model            string          `json:"model"`
-	Messages         []ChatMessage  `json:"messages"`
-	MaxTokens        *int            `json:"max_tokens,omitempty"`
-	Temperature      *float64        `json:"temperature,omitempty"`
-	TopP             *float64        `json:"top_p,omitempty"`
-	N                *int            `json:"n,omitempty"`
-	Stream           bool            `json:"stream,omitempty"`
-	Stop             any             `json:"stop,omitempty"`
-	PresencePenalty  *float64        `json:"presence_penalty,omitempty"`
-	FrequencyPenalty *float64        `json:"frequency_penalty,omitempty"`
-	LogitBias        any             `json:"logit_bias,omitempty"`
-	User             string          `json:"user,omitempty"`
-	Functions        any             `json:"functions,omitempty"`
-	FunctionCall     any             `json:"function_call,omitempty"`
-	Tools            any             `json:"tools,omitempty"`
-	ToolChoice       any             `json:"tool_choice,omitempty"`
-	ResponseFormat   any             `json:"response_format,omitempty"`
-	Seed             *int64          `json:"seed,omitempty"`
+	Model            string        `json:"model"`
+	Messages         []ChatMessage `json:"messages"`
+	MaxTokens        *int          `json:"max_tokens,omitempty"`
+	Temperature      *float64      `json:"temperature,omitempty"`
+	TopP             *float64      `json:"top_p,omitempty"`
+	N                *int          `json:"n,omitempty"`
+	Stream           bool          `json:"stream,omitempty"`
+	Stop             any           `json:"stop,omitempty"`
+	PresencePenalty  *float64      `json:"presence_penalty,omitempty"`
+	FrequencyPenalty *float64      `json:"frequency_penalty,omitempty"`
+	LogitBias        any           `json:"logit_bias,omitempty"`
+	User             string        `json:"user,omitempty"`
+	Functions        any           `json:"functions,omitempty"`
+	FunctionCall     any           `json:"function_call,omitempty"`
+	Tools            any           `json:"tools,omitempty"`
+	ToolChoice       any           `json:"tool_choice,omitempty"`
+	ResponseFormat   any           `json:"response_format,omitempty"`
+	Seed             *int64        `json:"seed,omitempty"`
 }
 
 // ChatMessage represents a message in the chat conversation.
 type ChatMessage struct {
-	Role         string         `json:"role"`
-	Content      any            `json:"content"`
-	Name         string         `json:"name,omitempty"`
-	FunctionCall any            `json:"function_call,omitempty"`
-	ToolCalls    any            `json:"tool_calls,omitempty"`
-	ToolCallID   string         `json:"tool_call_id,omitempty"`
+	Role         string `json:"role"`
+	Content      any    `json:"content"`
+	Name         string `json:"name,omitempty"`
+	FunctionCall any    `json:"function_call,omitempty"`
+	ToolCalls    any    `json:"tool_calls,omitempty"`
+	ToolCallID   string `json:"tool_call_id,omitempty"`
 }
 
 // ServeHTTP handles the HTTP request for chat completions.
@@ -98,7 +100,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Token:    token,
 		Model:    req.Model,
 		Endpoint: server.EndpointChatCompletions,
-		Body:     nil, // Will be set by forwarder
+		Body:     bytes.NewReader(body),
 		IsStream: req.Stream,
 		Headers:  r.Header,
 	}
@@ -106,13 +108,15 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Execute orchestration
 	result, err := h.orchestrator.Execute(r.Context(), relayReq)
 	if err != nil {
-		// Handle error - write appropriate response
-		h.writeError(w, result.StatusCode, err.Error())
+		status := http.StatusInternalServerError
+		if result != nil && result.StatusCode != 0 {
+			status = result.StatusCode
+		}
+		h.writeError(w, status, err.Error())
 		return
 	}
 
-	// TODO: Forward response to client
-	// This will be implemented by the forwarder
+	writeRelayResult(w, result)
 }
 
 // extractBearerToken extracts the Bearer token from the Authorization header.
@@ -143,4 +147,40 @@ func (h *ChatHandler) writeError(w http.ResponseWriter, status int, message stri
 		},
 	}
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func writeRelayResult(w http.ResponseWriter, result *server.RelayResult) {
+	if result == nil || result.Response == nil {
+		http.Error(w, "empty upstream response", http.StatusBadGateway)
+		return
+	}
+	defer result.Response.Close()
+
+	for key, values := range result.Headers {
+		if isHopByHopHeader(key) {
+			continue
+		}
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	status := result.StatusCode
+	if status == 0 {
+		status = http.StatusOK
+	}
+	w.WriteHeader(status)
+	_, _ = io.Copy(w, result.Response)
+}
+
+func isHopByHopHeader(key string) bool {
+	switch strings.ToLower(key) {
+	case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+		"te", "trailer", "transfer-encoding", "upgrade":
+		return true
+	default:
+		return false
+	}
 }

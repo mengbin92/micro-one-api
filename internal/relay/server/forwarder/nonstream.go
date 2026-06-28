@@ -1,7 +1,10 @@
 package forwarder
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -35,14 +38,38 @@ func (f *NonStreamForwarder) ForwardRequest(
 	body []byte,
 	headers http.Header,
 ) (response *http.Response, bodyReader io.ReadCloser, usage *Usage, err error) {
-	// TODO: Implement non-streaming forwarder
-	// This will:
-	// 1. Create provider instance from plan.Channel
-	// 2. Build upstream request
-	// 3. Execute call
-	// 4. Parse response and extract usage
+	if f == nil || f.providerFactory == nil {
+		return nil, nil, nil, fmt.Errorf("non-stream forwarder unavailable: no provider factory configured")
+	}
+	if plan == nil || plan.Channel == nil {
+		return nil, nil, nil, fmt.Errorf("non-stream forwarder requires a selected channel")
+	}
 
-	return nil, nil, nil, nil
+	provider, err := f.providerFactory.CreateProviderWithConfig(plan.Channel.Type, plan.Channel.BaseURL, plan.Channel.Key, relayprovider.ProviderConfig{
+		APIVersion: plan.Channel.Config.APIVersion,
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	rawResp, err := provider.Forward(ctx, &relayprovider.RawRequest{
+		Method: http.MethodPost,
+		Path:   endpoint,
+		Header: headers,
+		Body:   body,
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	bodyReader = io.NopCloser(bytes.NewReader(rawResp.Body))
+	response = &http.Response{
+		StatusCode: rawResp.StatusCode,
+		Header:     rawResp.Header.Clone(),
+		Body:       io.NopCloser(bytes.NewReader(rawResp.Body)),
+	}
+	usage = extractUsage(rawResp.Body)
+	return response, bodyReader, usage, nil
 }
 
 // Usage represents token usage extracted from response.
@@ -54,6 +81,26 @@ type Usage struct {
 
 // Close closes the forwarder and releases resources.
 func (f *NonStreamForwarder) Close() error {
-	// TODO: Cleanup resources
 	return nil
+}
+
+func extractUsage(body []byte) *Usage {
+	var payload struct {
+		Usage struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+			TotalTokens      int64 `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	if payload.Usage.PromptTokens == 0 && payload.Usage.CompletionTokens == 0 && payload.Usage.TotalTokens == 0 {
+		return nil
+	}
+	return &Usage{
+		PromptTokens:     payload.Usage.PromptTokens,
+		CompletionTokens: payload.Usage.CompletionTokens,
+		TotalTokens:      payload.Usage.TotalTokens,
+	}
 }

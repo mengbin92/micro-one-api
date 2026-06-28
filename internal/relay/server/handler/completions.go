@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 
@@ -41,10 +42,10 @@ func (h *CompletionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Model    string   `json:"model"`
-		Prompt   any      `json:"prompt"`
-		MaxTokens *int    `json:"max_tokens,omitempty"`
-		Stream   bool     `json:"stream,omitempty"`
+		Model     string `json:"model"`
+		Prompt    any    `json:"prompt"`
+		MaxTokens *int   `json:"max_tokens,omitempty"`
+		Stream    bool   `json:"stream,omitempty"`
 	}
 	if err := sonic.Unmarshal(body, &req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
@@ -55,18 +56,22 @@ func (h *CompletionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Token:    token,
 		Model:    req.Model,
 		Endpoint: server.EndpointCompletions,
-		Body:     nil,
+		Body:     bytes.NewReader(body),
 		IsStream: req.Stream,
 		Headers:  r.Header,
 	}
 
 	result, err := h.orchestrator.Execute(r.Context(), relayReq)
 	if err != nil {
-		h.writeError(w, result.StatusCode, err.Error())
+		status := http.StatusInternalServerError
+		if result != nil && result.StatusCode != 0 {
+			status = result.StatusCode
+		}
+		h.writeError(w, status, err.Error())
 		return
 	}
 
-	// TODO: Forward response to client
+	writeRelayResult(w, result)
 }
 
 func (h *CompletionsHandler) writeError(w http.ResponseWriter, status int, message string) {

@@ -2,6 +2,8 @@ package forwarder
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 
 	relaybiz "micro-one-api/internal/relay/biz"
@@ -33,28 +35,66 @@ func (f *StreamForwarder) ForwardRequest(
 	body []byte,
 	headers http.Header,
 ) (response *http.Response, chunks <-chan []byte, err error) {
-	// TODO: Implement streaming forwarder
-	// This will:
-	// 1. Create provider instance from plan.Channel
-	// 2. Build upstream request
-	// 3. Execute streaming call
-	// 4. Return SSE chunk channel
+	if f == nil || f.providerFactory == nil {
+		return nil, nil, fmt.Errorf("stream forwarder unavailable: no provider factory configured")
+	}
+	if plan == nil || plan.Channel == nil {
+		return nil, nil, fmt.Errorf("stream forwarder requires a selected channel")
+	}
 
-	return nil, nil, nil
+	provider, err := f.providerFactory.CreateProviderWithConfig(plan.Channel.Type, plan.Channel.BaseURL, plan.Channel.Key, relayprovider.ProviderConfig{
+		APIVersion: plan.Channel.Config.APIVersion,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	streamResp, err := provider.ForwardStream(ctx, &relayprovider.RawRequest{
+		Method: http.MethodPost,
+		Path:   endpoint,
+		Header: headers,
+		Body:   body,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	response = &http.Response{
+		StatusCode: streamResp.StatusCode,
+		Header:     streamResp.Header.Clone(),
+		Body:       streamResp.Body,
+	}
+	return response, readChunks(streamResp.Body), nil
 }
 
 // ProcessChunk processes a single stream chunk from upstream.
 func (f *StreamForwarder) ProcessChunk(chunk []byte) ([]byte, error) {
-	// TODO: Implement chunk processing
-	// This may:
-	// 1. Parse chunk format
-	// 2. Transform data if needed
-	// 3. Extract usage information
 	return chunk, nil
 }
 
 // Close closes the streaming connection.
 func (f *StreamForwarder) Close() error {
-	// TODO: Cleanup resources
 	return nil
+}
+
+func readChunks(body io.ReadCloser) <-chan []byte {
+	chunks := make(chan []byte, 16)
+	go func() {
+		defer close(chunks)
+		defer body.Close()
+
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := body.Read(buf)
+			if n > 0 {
+				chunk := make([]byte, n)
+				copy(chunk, buf[:n])
+				chunks <- chunk
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return chunks
 }

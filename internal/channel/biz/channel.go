@@ -14,6 +14,8 @@ import (
 
 	"micro-one-api/internal/pkg/events"
 
+	commonv1 "micro-one-api/api/common/v1"
+
 	"github.com/bytedance/sonic"
 )
 
@@ -99,11 +101,11 @@ type SubscriptionAccount struct {
 	// cooldown and upstream subscription quota-window tracking. Surfaced on
 	// the summary so the admin health page can render subscription-account
 	// status without a separate query.
-	LastUsedAt        int64
-	RateLimitedUntil  int64
-	QuotaUsedPercent  float32
-	QuotaResetAt      int64
-	Concurrency       int32
+	LastUsedAt       int64
+	RateLimitedUntil int64
+	QuotaUsedPercent float32
+	QuotaResetAt     int64
+	Concurrency      int32
 }
 
 type Ability struct {
@@ -169,6 +171,7 @@ type ChannelUsecase struct {
 	healthCooldown         time.Duration
 	notifier               Notifier
 	healthAlert            HealthAlertConfig
+	selector               *WeightedSelector
 }
 
 func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUsecase {
@@ -181,6 +184,7 @@ func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUseca
 		now:                    time.Now,
 		healthFailureThreshold: healthFailureThresholdFromEnv(),
 		healthCooldown:         healthCooldownFromEnv(),
+		selector:               NewWeightedSelector(),
 	}
 }
 
@@ -231,11 +235,15 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 		if len(tier) == 0 {
 			continue
 		}
-		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(tier))))
+		selected, err := uc.selector.Select(ctx, group, channelsToSelectorCandidates(tier))
 		if err != nil {
 			return nil, err
 		}
-		return tier[nBig.Int64()], nil
+		for _, channel := range tier {
+			if channel.ID == selected.Id {
+				return channel, nil
+			}
+		}
 	}
 
 	return nil, ErrChannelNotFound
@@ -383,9 +391,39 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 	if err != nil {
 		return err
 	}
+	if uc.selector != nil {
+		uc.selector.RecordHealth(event.ChannelID, event.Success, event.ResponseTime, event.Error)
+	}
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
 	uc.notifyUnavailable(ctx, &previousSnapshot, channel, event)
 	return nil
+}
+
+func channelsToSelectorCandidates(channels []*Channel) []*commonv1.ChannelInfo {
+	candidates := make([]*commonv1.ChannelInfo, 0, len(channels))
+	for _, ch := range channels {
+		if ch == nil {
+			continue
+		}
+		candidates = append(candidates, &commonv1.ChannelInfo{
+			Id:                    ch.ID,
+			Type:                  ch.Type,
+			Name:                  ch.Name,
+			Status:                ch.Status,
+			BaseUrl:               ch.BaseURL,
+			Group:                 ch.Group,
+			Models:                strings.Join(ch.Models, ","),
+			Priority:              ch.Priority,
+			Key:                   ch.Key,
+			Weight:                ch.Weight,
+			ResponseTime:          ch.ResponseTime,
+			HealthStatus:          ch.HealthStatus,
+			HealthLastError:       ch.HealthLastError,
+			CircuitOpenedUntil:    ch.CircuitOpenedUntil,
+			HealthLastFailureTime: ch.HealthLastFailureTime,
+		})
+	}
+	return candidates
 }
 
 func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) error {

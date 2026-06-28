@@ -1,12 +1,17 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 
 	relaybiz "micro-one-api/internal/relay/biz"
+	relayprovider "micro-one-api/internal/relay/provider"
+	"micro-one-api/internal/relay/server/forwarder"
 )
 
 // APIEndpoint represents a specific API endpoint type.
@@ -111,22 +116,26 @@ func DefaultOrchestratorConfig() *OrchestratorConfig {
 
 // relayOrchestrator is the concrete implementation of Orchestrator.
 type relayOrchestrator struct {
-	config     *OrchestratorConfig
-	relayUsecase *relaybiz.RelayUsecase
-	// Additional dependencies will be added:
-	// - billing coordinator
-	// - forwarder factory
-	// - logger
+	config          *OrchestratorConfig
+	relayUsecase    *relaybiz.RelayUsecase
+	providerFactory *relayprovider.ProviderFactory
 }
 
 // NewRelayOrchestrator creates a new orchestrator instance.
 func NewRelayOrchestrator(relayUsecase *relaybiz.RelayUsecase, cfg *OrchestratorConfig) Orchestrator {
+	return NewRelayOrchestratorWithProviderFactory(relayUsecase, nil, cfg)
+}
+
+// NewRelayOrchestratorWithProviderFactory creates a relay orchestrator that can
+// execute the upstream forwarding stage.
+func NewRelayOrchestratorWithProviderFactory(relayUsecase *relaybiz.RelayUsecase, providerFactory *relayprovider.ProviderFactory, cfg *OrchestratorConfig) Orchestrator {
 	if cfg == nil {
 		cfg = DefaultOrchestratorConfig()
 	}
 	return &relayOrchestrator{
-		config:      cfg,
-		relayUsecase: relayUsecase,
+		config:          cfg,
+		relayUsecase:    relayUsecase,
+		providerFactory: providerFactory,
 	}
 }
 
@@ -144,7 +153,21 @@ func NewRelayOrchestrator(relayUsecase *relaybiz.RelayUsecase, cfg *Orchestrator
 // 8. Logging: Log the request for billing and analytics
 func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*RelayResult, error) {
 	startTime := time.Now()
-	result := &RelayResult{}
+	result := &RelayResult{StatusCode: http.StatusOK}
+	if req == nil {
+		err := fmt.Errorf("relay request is nil")
+		result.Error = err
+		result.StatusCode = http.StatusBadRequest
+		result.Latency = time.Since(startTime)
+		return result, err
+	}
+	if o == nil || o.relayUsecase == nil {
+		err := fmt.Errorf("relay orchestrator unavailable: no relay usecase configured")
+		result.Error = err
+		result.StatusCode = http.StatusInternalServerError
+		result.Latency = time.Since(startTime)
+		return result, err
+	}
 
 	// Stage 1-3: Planning (auth, model mapping, channel selection)
 	// This reuses the existing RelayUsecase.Plan() logic
@@ -165,15 +188,72 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		result.SubscriptionAccountID = plan.Account.ID
 	}
 
-	// TODO: Stage 4: Quota Reservation
-	// This will be implemented by the BillingCoordinator
+	if req.Body == nil {
+		err := fmt.Errorf("relay request body is nil")
+		result.Error = err
+		result.StatusCode = http.StatusBadRequest
+		result.Latency = time.Since(startTime)
+		return result, err
+	}
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		result.Error = err
+		result.StatusCode = http.StatusBadRequest
+		result.Latency = time.Since(startTime)
+		return result, err
+	}
+	body = rewriteRequestModel(body, plan.ResolvedModel)
 
-	// TODO: Stage 5: Request Forwarding
-	// This will be implemented by the Forwarder
+	endpoint := endpointPath(req.Endpoint)
+	if endpoint == "" {
+		err := fmt.Errorf("unsupported endpoint %q", req.Endpoint)
+		result.Error = err
+		result.StatusCode = http.StatusNotFound
+		result.Latency = time.Since(startTime)
+		return result, err
+	}
+	if o.providerFactory == nil {
+		err := fmt.Errorf("relay orchestrator unavailable: no provider factory configured")
+		result.Error = err
+		result.StatusCode = http.StatusInternalServerError
+		result.Latency = time.Since(startTime)
+		return result, err
+	}
 
-	// TODO: Stage 6-7: Response Processing and Quota Commit/Release
+	if req.IsStream {
+		streamForwarder := forwarder.NewStreamForwarder(o.providerFactory)
+		resp, chunks, err := streamForwarder.ForwardRequest(ctx, plan, endpoint, body, req.Headers)
+		if err != nil {
+			result.Error = err
+			result.StatusCode = mapUpstreamOrInternalStatus(err)
+			result.Latency = time.Since(startTime)
+			return result, err
+		}
+		result.StatusCode = resp.StatusCode
+		result.Headers = resp.Header.Clone()
+		result.Response = newChunkReadCloser(chunks)
+		result.Latency = time.Since(startTime)
+		return result, nil
+	}
 
-	// TODO: Stage 8: Logging
+	nonStreamForwarder := forwarder.NewNonStreamForwarder(o.providerFactory)
+	resp, bodyReader, usage, err := nonStreamForwarder.ForwardRequest(ctx, plan, endpoint, body, req.Headers)
+	if err != nil {
+		result.Error = err
+		result.StatusCode = mapUpstreamOrInternalStatus(err)
+		result.Latency = time.Since(startTime)
+		return result, err
+	}
+	result.StatusCode = resp.StatusCode
+	result.Headers = resp.Header.Clone()
+	result.Response = bodyReader
+	if usage != nil {
+		result.Usage = &Usage{
+			PromptTokens:     usage.PromptTokens,
+			CompletionTokens: usage.CompletionTokens,
+			TotalTokens:      usage.TotalTokens,
+		}
+	}
 
 	result.Latency = time.Since(startTime)
 	return result, nil
@@ -184,4 +264,64 @@ func statusCodeFromError(err error) int {
 	// This is a placeholder - actual implementation will check error types
 	// and return appropriate status codes (401, 403, 429, 500, etc.)
 	return http.StatusInternalServerError
+}
+
+func endpointPath(endpoint APIEndpoint) string {
+	switch endpoint {
+	case EndpointChatCompletions:
+		return "/chat/completions"
+	case EndpointCompletions:
+		return "/completions"
+	default:
+		return ""
+	}
+}
+
+func rewriteRequestModel(body []byte, model string) []byte {
+	if model == "" || len(body) == 0 {
+		return body
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	payload["model"] = model
+	rewritten, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return rewritten
+}
+
+func mapUpstreamOrInternalStatus(err error) int {
+	if upstreamErr, ok := err.(*relayprovider.UpstreamHTTPError); ok {
+		return upstreamErr.StatusCode
+	}
+	return http.StatusBadGateway
+}
+
+type chunkReadCloser struct {
+	chunks <-chan []byte
+	buf    *bytes.Reader
+}
+
+func newChunkReadCloser(chunks <-chan []byte) io.ReadCloser {
+	return &chunkReadCloser{chunks: chunks, buf: bytes.NewReader(nil)}
+}
+
+func (r *chunkReadCloser) Read(p []byte) (int, error) {
+	for r.buf.Len() == 0 {
+		chunk, ok := <-r.chunks
+		if !ok {
+			return 0, io.EOF
+		}
+		r.buf = bytes.NewReader(chunk)
+	}
+	return r.buf.Read(p)
+}
+
+func (r *chunkReadCloser) Close() error {
+	for range r.chunks {
+	}
+	return nil
 }
