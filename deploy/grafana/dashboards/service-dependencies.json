@@ -1,0 +1,120 @@
+{
+  "dashboard": {
+    "title": "Service Dependencies Health",
+    "tags": ["services", "dependencies", "micro-one-api"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Circuit Breaker States",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "micro_one_api_resilience_circuit_breaker_state",
+            "legendFormat": "{{service}}: {{value}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 2}
+              ]
+            },
+            "mappings": [
+              {"type": "value", "value": "0", "text": "Closed"},
+              {"type": "value", "value": "1", "text": "Half-Open"},
+              {"type": "value", "value": "2", "text": "Open"}
+            ]
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Circuit Breaker Trips",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_resilience_circuit_breaker_trips_total[5m])",
+            "legendFormat": "{{service}}"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Degradation Level",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "micro_one_api_resilience_degradation_level",
+            "legendFormat": "{{service}}: {{value}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "orange", "value": 2},
+                {"color": "red", "value": 3}
+              ]
+            },
+            "mappings": [
+              {"type": "value", "value": "0", "text": "None"},
+              {"type": "value", "value": "1", "text": "Cached"},
+              {"type": "value", "value": "2", "text": "Async"},
+              {"type": "value", "value": "3", "text": "Minimal"}
+            ]
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "gRPC Latency (P95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(micro_one_api_dependency_grpc_latency_seconds_bucket[5m]))",
+            "legendFormat": "{{service}}.{{method}}"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "gRPC Error Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_dependency_grpc_errors_total[5m])",
+            "legendFormat": "{{service}}.{{method}} - {{error_code}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Fallback Activations",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_resilience_fallback_activations_total[5m])",
+            "legendFormat": "{{service}} - {{strategy}}"
+          }
+        ]
+      }
+    ]
+  }
+}
