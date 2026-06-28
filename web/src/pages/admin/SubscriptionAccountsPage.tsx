@@ -49,26 +49,27 @@ interface SubscriptionAccountSummary {
 }
 
 // Mirrors common.v1.SubscriptionAccountInfo JSON tags returned by
-// GET /api/subscription-accounts/{id}. Access/refresh tokens are masked
-// server-side, so we treat them as opaque strings.
+// GET /api/subscription-accounts/{id}. The protobuf-generated JSON uses
+// snake_case keys, and nullable string fields come back as null, so they are
+// typed as optional and coerced to "" in toDraft().
 interface SubscriptionAccountInfo {
   id: number;
   name: string;
   platform: string;
-  accountType: string;
+  account_type: string;
   status: number;
   group: string;
   models: string;
   priority: number;
-  baseUrl: string;
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
-  accountId: string;
-  fingerprint: string;
-  metadata: string;
-  createdAt: number;
-  updatedAt: number;
+  base_url: string | null;
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  account_id: string | null;
+  fingerprint: string | null;
+  metadata: string | null;
+  created_at: number;
+  updated_at: number;
 }
 
 interface SubscriptionAccountEditDraft {
@@ -154,17 +155,17 @@ function toDraft(account: SubscriptionAccountInfo): SubscriptionAccountEditDraft
   return {
     id: account.id,
     name: account.name,
-    accountType: account.accountType,
+    accountType: account.account_type,
     group: account.group,
     models: account.models,
     priority: String(account.priority ?? 0),
-    baseUrl: account.baseUrl,
+    baseUrl: account.base_url ?? '',
     accessToken: '',
     refreshToken: '',
-    expiresAt: account.expiresAt ? String(account.expiresAt) : '',
-    accountId: account.accountId,
-    fingerprint: account.fingerprint,
-    metadata: account.metadata,
+    expiresAt: account.expires_at ? String(account.expires_at) : '',
+    accountId: account.account_id ?? '',
+    fingerprint: account.fingerprint ?? '',
+    metadata: account.metadata ?? '',
   };
 }
 

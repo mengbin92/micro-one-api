@@ -486,9 +486,14 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
   const { data: accounts, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ['admin-subscription-accounts-health'],
     queryFn: async () => {
+      // The list endpoint is /api/subscription-accounts (plural, alias of
+      // /v1/subscription-accounts). It returns { accounts, total } directly —
+      // NOT the { success, data } envelope used by one-api compat shims — so
+      // we read res.data.accounts instead of unwrapApiData(...).
       const params = new URLSearchParams({ page: '1', page_size: '1000' });
-      const res = await adminApiClient.get(`/subscription-account?${params}`);
-      return unwrapApiData<SubscriptionAccountSummary[]>(res.data);
+      const res = await adminApiClient.get(`/subscription-accounts?${params}`);
+      const payload = res.data as { accounts?: SubscriptionAccountSummary[]; total?: number };
+      return payload.accounts ?? [];
     },
     refetchInterval: autoRefresh ? 30000 : false,
   });

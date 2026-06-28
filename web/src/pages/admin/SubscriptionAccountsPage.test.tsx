@@ -7,6 +7,9 @@ import { AdminSubscriptionAccountsPage } from './SubscriptionAccountsPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
+// baseAccount mirrors the list-summary shape (camelCase). The detail endpoint
+// (GET /:id) returns SubscriptionAccountInfo in snake_case; detailAccount below
+// is used wherever toDraft() is exercised.
 const baseAccount = {
   id: 1,
   name: 'claude-pro-1',
@@ -19,6 +22,28 @@ const baseAccount = {
   accountId: 'acct-123',
   expiresAt: 1800000000,
   updatedAt: 1700000000,
+};
+
+// detailAccount mirrors GET /api/subscription-accounts/{id} (snake_case JSON,
+// nullable string fields as null) returned by common.v1.SubscriptionAccountInfo.
+const detailAccount = {
+  id: 1,
+  name: 'claude-pro-1',
+  platform: 'claude',
+  account_type: 'oauth',
+  status: 1,
+  group: 'default',
+  models: 'claude-sonnet-4-5',
+  priority: 0,
+  base_url: null,
+  access_token: 'sk-******',
+  refresh_token: 'rt-******',
+  expires_at: 1800000000,
+  account_id: 'acct-123',
+  fingerprint: null,
+  metadata: null,
+  created_at: 1700000000,
+  updated_at: 1700000000,
 };
 
 describe('AdminSubscriptionAccountsPage', () => {
@@ -103,6 +128,51 @@ describe('AdminSubscriptionAccountsPage', () => {
       access_token: 'sk-test-access',
       refresh_token: 'rt-test-refresh',
       account_type: 'oauth',
+    });
+  });
+
+  it('edits an account (loads detail, updates models) without trim() crash', async () => {
+    const user = userEvent.setup();
+    const updates: Array<Record<string, unknown>> = [];
+
+    server.use(
+      http.get('/api/subscription-accounts', () =>
+        HttpResponse.json({ accounts: [baseAccount], total: 1 }),
+      ),
+      http.get('/api/subscription-accounts/:id', () =>
+        HttpResponse.json(detailAccount),
+      ),
+      http.put('/api/subscription-accounts/:id', async ({ request }) => {
+        updates.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ success: true, message: '' });
+      }),
+    );
+
+    renderWithQuery(
+      <MemoryRouter>
+        <AdminSubscriptionAccountsPage />
+      </MemoryRouter>,
+    );
+
+    const row = await screen.findByText('claude-pro-1');
+    const actions = row.closest('tr')!;
+    await user.click(within(actions).getByRole('button', { name: '编辑' }));
+
+    const modelsInput = await screen.findByLabelText('模型（逗号分隔）');
+    await user.clear(modelsInput);
+    await user.type(modelsInput, 'claude-sonnet-4-5,claude-opus-4-1');
+
+    await user.click(screen.getByRole('button', { name: '保存配置' }));
+
+    await waitFor(() => expect(updates).toHaveLength(1));
+    // The update payload must use snake_case keys and the models must be trimmed.
+    expect(updates[0]).toMatchObject({
+      account_type: 'oauth',
+      base_url: '',
+      account_id: 'acct-123',
+      fingerprint: '',
+      metadata: '',
+      models: 'claude-sonnet-4-5,claude-opus-4-1',
     });
   });
 

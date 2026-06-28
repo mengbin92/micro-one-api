@@ -697,6 +697,12 @@ func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1
 // platform, status and lifecycle metadata to each usage-aggregate row keyed by
 // subscription_account_id, so the cost-analysis dashboard can render
 // human-readable rows instead of bare numeric ids.
+//
+// Rows whose SubscriptionAccountID == 0 represent requests that were NOT served
+// by a subscription account (plain API-key channels). They must be excluded
+// here: otherwise the entire non-subscription usage collapses into a single
+// "subscription_account_id = 0" bucket whose cost equals the total channel
+// cost, which would make the "订阅账号成本" card wrongly display channel cost.
 func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, accounts []*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
 	accountByID := map[int64]*commonv1.SubscriptionAccountSummary{}
 	for _, account := range accounts {
@@ -707,6 +713,12 @@ func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, accounts
 	// best-effort: unresolved ids still surface as rows with a fallback label.
 	out := make([]map[string]interface{}, 0, len(items))
 	for _, item := range items {
+		// Skip the synthetic "no subscription account" bucket (id == 0) so the
+		// subscription-account cost card only reflects real subscription-account
+		// usage, not channel usage that happens to share subscription_account_id=0.
+		if item.SubscriptionAccountID == 0 {
+			continue
+		}
 		row := usageAggregateViewToMap(item)
 		if account := accountByID[item.SubscriptionAccountID]; account != nil {
 			row["name"] = account.GetName()
@@ -714,7 +726,7 @@ func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, accounts
 			row["status"] = account.GetStatus()
 			row["account_id"] = account.GetAccountId()
 			row["expires_at"] = account.GetExpiresAt()
-		} else if item.SubscriptionAccountID != 0 {
+		} else {
 			row["name"] = fmt.Sprintf("订阅账号 #%d", item.SubscriptionAccountID)
 		}
 		out = append(out, row)

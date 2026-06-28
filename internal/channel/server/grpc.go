@@ -3,6 +3,7 @@ package server
 import (
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/internal/channel/service"
+	apptimeout "micro-one-api/internal/pkg/timeout"
 
 	kgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
 )
@@ -11,6 +12,7 @@ import (
 func NewGRPCServer(addr string, svc *service.ChannelService) *kgrpc.Server {
 	srv := kgrpc.NewServer(
 		kgrpc.Address(addr),
+		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
 	)
 	channelv1.RegisterChannelServiceServer(srv, svc)
 	return srv
