@@ -50,11 +50,34 @@ service AdminService {
   rpc UpdateChannel(AdminUpdateChannelRequest) returns (AdminUpdateChannelResponse);
   rpc DeleteChannel(AdminDeleteChannelRequest) returns (AdminDeleteChannelResponse);
   rpc ChangeChannelStatus(AdminChangeChannelStatusRequest) returns (AdminChangeChannelStatusResponse);
-  rpc ListSubscriptionAccounts(AdminListSubscriptionAccountsRequest) returns (AdminListSubscriptionAccountsResponse);
-  rpc CreateSubscriptionAccount(AdminCreateSubscriptionAccountRequest) returns (AdminCreateSubscriptionAccountResponse);
-  rpc UpdateSubscriptionAccount(AdminUpdateSubscriptionAccountRequest) returns (AdminUpdateSubscriptionAccountResponse);
-  rpc DeleteSubscriptionAccount(AdminDeleteSubscriptionAccountRequest) returns (AdminDeleteSubscriptionAccountResponse);
-  rpc ChangeSubscriptionAccountStatus(AdminChangeSubscriptionAccountStatusRequest) returns (AdminChangeSubscriptionAccountStatusResponse);
+  rpc ListSubscriptionAccounts(AdminListSubscriptionAccountsRequest) returns (AdminListSubscriptionAccountsResponse) {
+    option (google.api.http) = {
+      get: "/v1/subscription-accounts"
+    };
+  };
+  rpc CreateSubscriptionAccount(AdminCreateSubscriptionAccountRequest) returns (AdminCreateSubscriptionAccountResponse) {
+    option (google.api.http) = {
+      post: "/v1/subscription-accounts"
+      body: "*"
+    };
+  };
+  rpc UpdateSubscriptionAccount(AdminUpdateSubscriptionAccountRequest) returns (AdminUpdateSubscriptionAccountResponse) {
+    option (google.api.http) = {
+      put: "/v1/subscription-accounts/{id}"
+      body: "*"
+    };
+  };
+  rpc DeleteSubscriptionAccount(AdminDeleteSubscriptionAccountRequest) returns (AdminDeleteSubscriptionAccountResponse) {
+    option (google.api.http) = {
+      delete: "/v1/subscription-accounts/{account_id}"
+    };
+  };
+  rpc ChangeSubscriptionAccountStatus(AdminChangeSubscriptionAccountStatusRequest) returns (AdminChangeSubscriptionAccountStatusResponse) {
+    option (google.api.http) = {
+      put: "/v1/subscription-accounts/{account_id}/status"
+      body: "*"
+    };
+  };
 
   // ========== 系统配置管理 ==========
   rpc GetSystemOptions(GetSystemOptionsRequest) returns (GetSystemOptionsResponse) {
