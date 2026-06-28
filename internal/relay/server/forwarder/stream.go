@@ -2,7 +2,6 @@ package forwarder
 
 import (
 	"context"
-	"io"
 	"net/http"
 
 	relaybiz "micro-one-api/internal/relay/biz"

@@ -7,7 +7,6 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"micro-one-api/internal/relay/biz"
 	"micro-one-api/internal/relay/server"
 )
 

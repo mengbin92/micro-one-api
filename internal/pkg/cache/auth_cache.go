@@ -30,7 +30,7 @@ func NewAuthCache(
 		Prefix:      "auth",
 	}
 
-	cache, err := NewMultiLevelCache[identityv1.GetAuthSnapshotReply](
+	cache, err := NewMultiLevelCache(
 		redisClient,
 		eventBus,
 		loader,

@@ -30,10 +30,19 @@ func NewChannelCache(
 		Prefix:      "channel",
 	}
 
-	cache, err := NewMultiLevelCache[[]*commonv1.ChannelInfo](
+	// Wrap the loader to return pointer to slice
+	wrappedLoader := func(ctx context.Context, key string) (*[]*commonv1.ChannelInfo, error) {
+		data, err := loader(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		return &data, nil
+	}
+
+	cache, err := NewMultiLevelCache(
 		redisClient,
 		eventBus,
-		loader,
+		wrappedLoader,
 		"channel",
 		cfg,
 	)
@@ -47,7 +56,14 @@ func NewChannelCache(
 // Get retrieves channels for a group+model combination.
 func (c *ChannelCache) Get(ctx context.Context, group, model string) ([]*commonv1.ChannelInfo, error) {
 	key := fmt.Sprintf("%s:%s", group, model)
-	return c.cache.Get(ctx, key)
+	data, err := c.cache.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return nil, fmt.Errorf("cache returned nil data")
+	}
+	return *data, nil
 }
 
 // Set stores channels for a group+model combination.

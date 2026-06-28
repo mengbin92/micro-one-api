@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/dgraph-io/ristretto"
@@ -12,6 +11,7 @@ import (
 
 	"micro-one-api/internal/pkg/events"
 	"micro-one-api/internal/pkg/metrics"
+	"micro-one-api/pkg/jsonx"
 )
 
 // CacheLoader defines the function to load data on cache miss.
@@ -20,7 +20,7 @@ type CacheLoader[T any] func(ctx context.Context, key string) (*T, error)
 // MultiLevelCache provides L1 (local) + L2 (Redis) caching
 // with event-driven invalidation.
 type MultiLevelCache[T any] struct {
-	l1       *ristretto.Cache[string, *entry[T]]
+	l1       *ristretto.Cache
 	l2       *redis.Client
 	prefix   string
 	ttl      time.Duration
@@ -77,7 +77,7 @@ func NewMultiLevelCache[T any](
 	}
 
 	// Initialize L1 cache
-	l1, err := ristretto.NewCache(&ristretto.Config[string, *entry[T]]{
+	l1, err := ristretto.NewCache(&ristretto.Config{
 		NumCounters: int64(float64(cfg.L1CacheSize) * 10),
 		MaxCost:     cfg.L1CacheSize,
 		BufferItems: 64,
@@ -105,14 +105,14 @@ func (c *MultiLevelCache[T]) Get(ctx context.Context, key string) (*T, error) {
 
 	// L1 check
 	if val, ok := c.l1.Get(cacheKey); ok {
-		entry := val
-		if !entry.expired() {
+		entry, ok := val.(*entry[T])
+		if ok && !entry.expired() {
 			c.metrics.recordL1Hit()
 			metrics.CacheHits.WithLabelValues(c.metrics.cacheName, "l1").Inc()
 			metrics.CacheLatency.WithLabelValues(c.metrics.cacheName, "get", "l1").Observe(time.Since(start).Seconds())
 			return entry.data, nil
 		}
-		// Entry expired, remove it
+		// Entry expired or invalid type, remove it
 		c.l1.Del(cacheKey)
 	}
 
@@ -224,16 +224,12 @@ func (c *MultiLevelCache[T]) populateL1(key string, value *T) {
 
 // marshal serializes a value for storage.
 func (c *MultiLevelCache[T]) marshal(value *T) ([]byte, error) {
-	// TODO: Use sonic or similar for JSON marshaling
-	// For now, this is a placeholder
-	return nil, fmt.Errorf("marshal not implemented")
+	return jsonx.Marshal(value)
 }
 
 // unmarshal deserializes a value from storage.
 func (c *MultiLevelCache[T]) unmarshal(data []byte, value *T) error {
-	// TODO: Use sonic or similar for JSON unmarshaling
-	// For now, this is a placeholder
-	return fmt.Errorf("unmarshal not implemented")
+	return jsonx.Unmarshal(data, value)
 }
 
 // cacheMetrics holds metrics for a cache instance.
@@ -297,8 +293,11 @@ func (c *MultiLevelCache[T]) InvalidateByPattern(ctx context.Context, pattern st
 
 // Size returns the approximate number of items in the cache.
 func (c *MultiLevelCache[T]) Size() (l1, l2 int64) {
-	if c.l1 != nil {
-		l1 = c.l1.KeyCount()
+	if c.l1 != nil && c.l1.Metrics != nil {
+		// Use the metrics to get approximate size
+		keysAdded := int64(c.l1.Metrics.KeysAdded())
+		keysEvicted := int64(c.l1.Metrics.KeysEvicted())
+		l1 = max(0, keysAdded-keysEvicted)
 	}
 	// L2 size is expensive to compute, skip for now
 	return l1, 0
