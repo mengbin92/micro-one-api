@@ -4,7 +4,10 @@ ARG SERVICE_NAME=relay-gateway
 
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
-RUN apk add --no-cache git ca-certificates nodejs npm make protobuf protobuf-dev
+# build-base pulls gcc + musl-dev, required for CGO (mattn/go-sqlite3).
+# sqlite-libs is the runtime dep for the SQLite3 driver, shipped in the
+# alpine final image.
+RUN apk add --no-cache git ca-certificates nodejs npm make protobuf protobuf-dev build-base sqlite-libs
 
 WORKDIR /app
 
@@ -25,13 +28,18 @@ RUN if [ "$SERVICE_NAME" = "admin-api" ]; then \
       cp -r /app/web/dist/* /app/internal/admin/server/static/web/; \
     fi
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+# CGO is required by github.com/mattn/go-sqlite3. Build with CGO_ENABLED=1
+# so the lite deployment (DATABASE_DRIVER=sqlite3) works.
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags='-s -w -extldflags "-static"' \
-    -installsuffix cgo \
     -o /app/bin/service ./cmd/${SERVICE_NAME}
 
-# Final minimal image
-FROM scratch
+# Final image: alpine instead of scratch because CGO-linked binaries
+# depend on the musl libc and libsqlite3. The image is still small
+# (alpine:3.20 + sqlite-libs) and runs as the unprivileged 65534 user.
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates sqlite-libs
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/bin/service /service

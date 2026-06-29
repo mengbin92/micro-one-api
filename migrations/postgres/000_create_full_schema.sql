@@ -256,6 +256,11 @@ CREATE TABLE IF NOT EXISTS system_options (
 -- Billing
 -- ============================================================
 
+-- Note: billing_*, payment_orders, and subscription tables store timestamps
+-- as TIMESTAMPTZ because the corresponding GORM models in
+-- internal/billing/data declare them as time.Time. Using BIGINT (epoch
+-- seconds) here would force the data layer to do manual marshalling on
+-- every write/read and would silently truncate sub-second precision.
 CREATE TABLE IF NOT EXISTS billing_reservations (
   id BIGSERIAL PRIMARY KEY,
   reservation_id TEXT NOT NULL UNIQUE,
@@ -265,9 +270,9 @@ CREATE TABLE IF NOT EXISTS billing_reservations (
   status TEXT NOT NULL,
   model TEXT DEFAULT NULL,
   channel_id TEXT DEFAULT NULL,
-  created_at BIGINT DEFAULT 0,
-  updated_at BIGINT DEFAULT 0,
-  expired_at BIGINT DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expired_at TIMESTAMPTZ,
   subscription_account_id TEXT DEFAULT '0'
 );
 
@@ -283,7 +288,7 @@ CREATE TABLE IF NOT EXISTS billing_ledgers (
   type TEXT NOT NULL,
   reference_id TEXT DEFAULT NULL,
   remark TEXT,
-  created_at BIGINT DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   token_name TEXT DEFAULT '',
   model_name TEXT DEFAULT '',
   quota BIGINT DEFAULT 0,
@@ -335,7 +340,7 @@ CREATE TABLE IF NOT EXISTS billing_redeem_records (
   amount BIGINT NOT NULL,
   quota_before BIGINT NOT NULL,
   quota_after BIGINT NOT NULL,
-  created_at BIGINT DEFAULT 0
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_billing_redeem_records_user_id    ON billing_redeem_records(user_id);
@@ -346,9 +351,13 @@ CREATE INDEX IF NOT EXISTS idx_billing_redeem_records_created_at ON billing_rede
 -- Payment orders
 -- ============================================================
 
+-- user_id is TEXT here (matches the GORM model internal/billing/data/payment_repo.go)
+-- even though the MySQL/SQLite baselines use BIGINT/INTEGER. Storing an int
+-- in a TEXT column is fine; the data layer is responsible for
+-- stringifying/parsing on read and write.
 CREATE TABLE IF NOT EXISTS payment_orders (
   id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL,
+  user_id TEXT NOT NULL,
   trade_no TEXT NOT NULL UNIQUE,
   channel TEXT NOT NULL,
   asset_type TEXT NOT NULL,
@@ -359,9 +368,9 @@ CREATE TABLE IF NOT EXISTS payment_orders (
   provider_trade_no TEXT DEFAULT '',
   provider_payload TEXT,
   pay_url TEXT,
-  paid_at BIGINT DEFAULT 0,
-  created_at BIGINT NOT NULL DEFAULT 0,
-  updated_at BIGINT NOT NULL DEFAULT 0,
+  paid_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   asset_issue_status TEXT NOT NULL DEFAULT 'pending'
 );
 
@@ -447,4 +456,6 @@ CREATE INDEX IF NOT EXISTS idx_subscription_account_abilities_model_group_platfo
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version TEXT NOT NULL PRIMARY KEY,
   applied_at BIGINT NOT NULL DEFAULT 0
+);
+ BIGINT NOT NULL DEFAULT 0
 );

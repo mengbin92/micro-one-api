@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"os/signal"
@@ -27,6 +26,7 @@ import (
 	"micro-one-api/internal/admin/service"
 	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
+	"micro-one-api/internal/pkg/xdb"
 	"micro-one-api/internal/pkg/xconfig"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -100,9 +100,18 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	// System options repo (optional — skip if DB not configured)
 	var systemOptsRepo service.SystemOptionsStore
 	if cfg.Data.Database.Source != "" {
-		db, dbErr := sql.Open(cfg.Data.Database.Driver, cfg.Data.Database.Source)
+		// Use xdb.OpenSQL so the right driver is registered:
+		//   * "sqlite3" → mattn/go-sqlite3 (CGO)
+		//   * "postgres" → pgx (jackc/pgx/v5/stdlib, registered as "pgx")
+		//   * "mysql" → go-sql-driver/mysql (registered as "mysql")
+		// xdb.OpenSQLWithPool also clamps SQLite3 to a single-writer
+		// connection pool and applies the default pragmas.
+		db, dbErr := xdb.OpenSQL(cfg.Data.Database.Driver, cfg.Data.Database.Source)
 		if dbErr == nil {
-			systemOptsRepo = data.NewSystemOptionsRepo(db)
+			// Pass the configured driver so the repo picks the right
+			// placeholder syntax ("?" vs "$N") and the right upsert
+			// clause (ON DUPLICATE KEY UPDATE vs ON CONFLICT ... DO UPDATE).
+			systemOptsRepo = data.NewSystemOptionsRepoWithDriver(db, cfg.Data.Database.Driver)
 		} else {
 			applogger.Log.Warn("failed to connect to system options DB", zap.Error(dbErr))
 		}

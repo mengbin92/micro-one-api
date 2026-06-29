@@ -77,6 +77,13 @@ func main() {
 	}
 
 	runner := migrate.New(db, *dir).WithBaseline(*baseline)
+	// Pin the driver explicitly so the runner uses the right
+	// tableExists query and the right bind-parameter placeholder for
+	// the active dialect. Without this, the runner defaults to MySQL
+	// semantics, which break on Postgres (DATABASE() missing, ? placeholders
+	// rejected by pgx) and on SQLite (no information_schema, so tableExists
+	// has to fall back to sqlite_master).
+	runner = migrate.NewWithDriver(db, *dir, drv).WithBaseline(*baseline)
 	ctx := context.Background()
 
 	if *status {

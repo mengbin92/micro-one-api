@@ -28,10 +28,42 @@ import (
 	"micro-one-api/internal/pkg/safefile"
 )
 
+// rebind rewrites "?" placeholders to "$1, $2, ..." when the target
+// driver is Postgres. The naive, single-pass scanner below is sufficient
+// for the migration files in this project (no quoted strings, no
+// dollar-quoted blocks, no ? inside line comments) but is intentionally
+// defensive: we count "?" characters, not just occurrences, and we leave
+// the SQL untouched for non-Postgres drivers.
+func rebind(query string, pgPlaceholder bool) string {
+	if !pgPlaceholder {
+		return query
+	}
+	var sb strings.Builder
+	sb.Grow(len(query) + 8)
+	n := 1
+	for i := 0; i < len(query); i++ {
+		c := query[i]
+		if c == '?' {
+			fmt.Fprintf(&sb, "$%d", n)
+			n++
+			continue
+		}
+		sb.WriteByte(c)
+	}
+	return sb.String()
+}
+
 // Runner applies SQL migration files against a database.
 type Runner struct {
 	db  *sql.DB
 	dir string
+	// driver is the canonical driver name (one of "mysql", "sqlite3",
+	// "postgres"). It is set explicitly via NewWithDriver. An empty
+	// value (legacy New constructor) means "behave like MySQL when
+	// possible, fall back to sqlite_master otherwise". The driver
+	// controls which table-existence query and which bind-parameter
+	// placeholder the runner uses.
+	driver string
 	// BaselineVersion is the highest migration version that should be
 	// considered already applied when the runner is invoked for the first
 	// time against an existing database (brownfield). Files with version <=
@@ -56,9 +88,36 @@ type MigrationStatus struct {
 // from scratch.
 var brownfieldMarkerTables = []string{"users", "channels"}
 
-// New constructs a Runner.
+// New constructs a Runner for the given *sql.DB. The driver is not
+// auto-inferred (Go's database/sql does not expose the registered
+// name of the driver bound to a *sql.DB), so the runner defaults to
+// MySQL semantics with a sqlite_master fallback for tableExists —
+// the historical behaviour. Callers that need SQLite3 or Postgres
+// semantics should use NewWithDriver.
 func New(db *sql.DB, dir string) *Runner {
-	return &Runner{db: db, dir: dir}
+	return &Runner{db: db, dir: dir, driver: ""}
+}
+
+// NewWithDriver constructs a Runner that pins a specific canonical driver
+// name ("mysql", "sqlite3", or "postgres"). Useful for tests and for
+// callers that want to short-circuit the inference. The driver argument
+// is normalised via NormalizeDriverName.
+func NewWithDriver(db *sql.DB, dir, driver string) *Runner {
+	return &Runner{db: db, dir: dir, driver: NormalizeDriverName(driver)}
+}
+
+// NormalizeDriverName normalises a driver name to one of
+// {"mysql", "sqlite3", "postgres"}. "postgresql" and "pgx" are aliased to
+// "postgres"; the empty string is allowed and means "default to MySQL".
+func NormalizeDriverName(name string) string {
+	drv := strings.ToLower(strings.TrimSpace(name))
+	switch drv {
+	case "postgresql", "pgx":
+		return "postgres"
+	case "sqlite":
+		return "sqlite3"
+	}
+	return drv
 }
 
 // WithBaseline sets the brownfield baseline cutoff version (file basename
@@ -67,6 +126,21 @@ func (r *Runner) WithBaseline(version string) *Runner {
 	r.BaselineVersion = version
 	return r
 }
+
+// isPostgres reports whether the runner is bound to a Postgres driver.
+// It is used to decide whether bind-parameter placeholders need to be
+// rewritten from "?" to "$N".
+func (r *Runner) isPostgres() bool {
+	switch r.driver {
+	case "postgres", "postgresql", "pgx":
+		return true
+	default:
+		return false
+	}
+}
+
+// usePgPlaceholder is the rebind trigger for migration statements.
+func (r *Runner) usePgPlaceholder() bool { return r.isPostgres() }
 
 // Apply applies all pending migrations in order and returns the list of
 // migration versions that were actually executed (excludes brownfield-baselined
@@ -214,30 +288,67 @@ func (r *Runner) detectBrownfield(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// tableExists works for both MySQL (information_schema.tables filtered by
-// current database) and sqlite (sqlite_master). Try MySQL form first; on
-// error fall back to sqlite_master.
+// tableExists returns whether a table with the given name exists in the
+// current database. The query is dialect-specific when the runner was
+// constructed with a known driver (NewWithDriver). When the driver is
+// unknown (the legacy New constructor) we probe information_schema
+// first and fall back to sqlite_master; this keeps the existing
+// MySQL default while still letting the SQLite-only test suite
+// (which calls New without a driver) detect the schema.
 func (r *Runner) tableExists(ctx context.Context, name string) (bool, error) {
-	var n int
-	mysqlRow := r.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?`,
-		name)
-	if err := mysqlRow.Scan(&n); err == nil {
+	switch r.driver {
+	case "postgres", "postgresql", "pgx":
+		var n int
+		err := r.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1`,
+			name).Scan(&n)
+		if err != nil {
+			return false, err
+		}
+		return n > 0, nil
+	case "sqlite", "sqlite3":
+		var n int
+		err := r.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`,
+			name).Scan(&n)
+		if err != nil {
+			return false, err
+		}
+		return n > 0, nil
+	case "mysql":
+		var n int
+		err := r.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?`,
+			name).Scan(&n)
+		if err != nil {
+			return false, err
+		}
+		return n > 0, nil
+	default:
+		// Unknown driver: try MySQL form, then fall back to sqlite_master.
+		// This is the behaviour of the legacy New(db, dir) constructor
+		// before the runner learned about Postgres. It keeps the existing
+		// MySQL path working while letting SQLite tests run unmodified.
+		var n int
+		err := r.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?`,
+			name).Scan(&n)
+		if err == nil {
+			return n > 0, nil
+		}
+		err = r.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`,
+			name).Scan(&n)
+		if err != nil {
+			return false, err
+		}
 		return n > 0, nil
 	}
-	// Fallback for engines without information_schema (e.g. sqlite in tests).
-	sqliteRow := r.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`,
-		name)
-	if err := sqliteRow.Scan(&n); err != nil {
-		return false, err
-	}
-	return n > 0, nil
 }
 
 func (r *Runner) markApplied(ctx context.Context, version string) error {
-	_, err := r.db.ExecContext(ctx,
-		"INSERT INTO schema_migrations (version) VALUES (?)", version)
+	stmt := rebind("INSERT INTO schema_migrations (version) VALUES (?)", r.usePgPlaceholder())
+	_, err := r.db.ExecContext(ctx, stmt, version)
 	return err
 }
 
@@ -258,12 +369,15 @@ func (r *Runner) applyOne(ctx context.Context, path, version string) error {
 	}()
 
 	for _, stmt := range splitStatements(string(body)) {
-		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+		// Migration files use "?" placeholders; Postgres (pgx) requires
+		// "$N" instead. rebind is a no-op for non-Postgres drivers.
+		bound := rebind(stmt, r.usePgPlaceholder())
+		if _, err := tx.ExecContext(ctx, bound); err != nil {
 			return fmt.Errorf("exec stmt: %w\nstatement: %s", err, stmt)
 		}
 	}
-	if _, err := tx.ExecContext(ctx,
-		"INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
+	insertApplied := rebind("INSERT INTO schema_migrations (version) VALUES (?)", r.usePgPlaceholder())
+	if _, err := tx.ExecContext(ctx, insertApplied, version); err != nil {
 		return fmt.Errorf("record applied: %w", err)
 	}
 	return tx.Commit()
