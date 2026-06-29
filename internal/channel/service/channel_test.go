@@ -11,8 +11,11 @@ import (
 
 type channelServiceRepo struct {
 	channel           *biz.Channel
+	account           *biz.SubscriptionAccount
 	created           *biz.Channel
 	updated           *biz.Channel
+	createdAccount    *biz.SubscriptionAccount
+	updatedAccount    *biz.SubscriptionAccount
 	recordedChannelID int64
 	recordedQuota     int64
 	healthEvent       *biz.ChannelHealthEvent
@@ -24,6 +27,46 @@ func (r *channelServiceRepo) FindByID(ctx context.Context, channelID int64) (*bi
 
 func (r *channelServiceRepo) ListAbilitiesByGroupAndModel(ctx context.Context, group, model string) ([]biz.Ability, error) {
 	return []biz.Ability{{Group: group, Model: model, ChannelID: r.channel.ID, Enabled: true, Priority: r.channel.Priority}}, nil
+}
+
+func (r *channelServiceRepo) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error) {
+	if r.account != nil && r.account.ID == accountID {
+		return r.account, nil
+	}
+	return nil, biz.ErrSubscriptionAccountNotFound
+}
+
+func (r *channelServiceRepo) ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
+	if r.account == nil {
+		return nil, nil
+	}
+	return []biz.SubscriptionAccountAbility{{Group: group, Model: model, Platform: platform, AccountID: r.account.ID, Enabled: true, Priority: r.account.Priority}}, nil
+}
+
+func (r *channelServiceRepo) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
+	if r.account == nil {
+		return nil, 0, nil
+	}
+	return []*biz.SubscriptionAccount{r.account}, 1, nil
+}
+
+func (r *channelServiceRepo) CreateSubscriptionAccount(ctx context.Context, account *biz.SubscriptionAccount) error {
+	r.createdAccount = account
+	account.ID = 201
+	return nil
+}
+
+func (r *channelServiceRepo) UpdateSubscriptionAccount(ctx context.Context, account *biz.SubscriptionAccount) error {
+	r.updatedAccount = account
+	return nil
+}
+
+func (r *channelServiceRepo) DeleteSubscriptionAccount(ctx context.Context, accountID int64) error {
+	return nil
+}
+
+func (r *channelServiceRepo) ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error {
+	return nil
 }
 
 func (r *channelServiceRepo) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
@@ -154,5 +197,55 @@ func TestChannelServiceOneAPIFields(t *testing.T) {
 	}
 	if !updateResp.Success || repo.updated.Weight != 7 || repo.updated.ModelMapping != `{"gpt-4o":"gpt-4o"}` || repo.updated.SystemPrompt != "updated" || repo.updated.Balance != 42.5 || repo.updated.BalanceUpdatedTime != 1710000300 {
 		t.Fatalf("UpdateChannel() one-api fields mismatch: resp=%+v updated=%+v", updateResp, repo.updated)
+	}
+}
+
+func TestChannelServiceSubscriptionAccountCRUD(t *testing.T) {
+	repo := &channelServiceRepo{
+		account: &biz.SubscriptionAccount{
+			ID:           11,
+			Name:         "codex",
+			Platform:     "codex",
+			AccountType:  "oauth",
+			Status:       biz.ChannelStatusEnabled,
+			Group:        "default",
+			Models:       []string{"gpt-5"},
+			Priority:     9,
+			AccountID:    "acc_123",
+			AccessToken:  "sk-secret-access-token-value",
+			RefreshToken: "rt-secret-refresh-token-value",
+		},
+	}
+	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
+
+	createResp, err := svc.CreateSubscriptionAccount(context.Background(), &channelv1.CreateSubscriptionAccountRequest{
+		Name:        "new",
+		Platform:    "claude",
+		AccountType: "oauth",
+		Group:       "default",
+		Models:      "claude-sonnet-4-20250514",
+		Priority:    7,
+		AccountId:   "acc_456",
+	})
+	if err != nil || !createResp.Success || repo.createdAccount == nil || repo.createdAccount.ID != 201 {
+		t.Fatalf("CreateSubscriptionAccount() mismatch: resp=%+v err=%v account=%+v", createResp, err, repo.createdAccount)
+	}
+
+	getResp, err := svc.GetSubscriptionAccount(context.Background(), &channelv1.GetSubscriptionAccountRequest{AccountId: 11})
+	if err != nil || getResp.Account == nil || getResp.Account.Name != "codex" {
+		t.Fatalf("GetSubscriptionAccount() mismatch: resp=%+v err=%v", getResp, err)
+	}
+	// H3: the management surface must never return cleartext OAuth tokens.
+	if getResp.Account.AccessToken == "sk-secret-access-token-value" || getResp.Account.RefreshToken == "rt-secret-refresh-token-value" {
+		t.Fatalf("GetSubscriptionAccount() leaked cleartext tokens: access=%q refresh=%q", getResp.Account.AccessToken, getResp.Account.RefreshToken)
+	}
+
+	updateResp, err := svc.UpdateSubscriptionAccount(context.Background(), &channelv1.UpdateSubscriptionAccountRequest{
+		Id:     11,
+		Name:   "codex-updated",
+		Models: "gpt-5-codex",
+	})
+	if err != nil || !updateResp.Success || repo.updatedAccount == nil || repo.updatedAccount.Name != "codex-updated" {
+		t.Fatalf("UpdateSubscriptionAccount() mismatch: resp=%+v err=%v account=%+v", updateResp, err, repo.updatedAccount)
 	}
 }

@@ -157,4 +157,10 @@ const (
 	ChannelTypeBaidu       int32 = 29
 	ChannelTypeXunfei      int32 = 30
 	ChannelTypeDoubao      int32 = 31
+
+	// Subscription-account channel types. These are first-class upstream types
+	// handled by the adaptor layer's OAuth adaptors rather than the standard
+	// provider factory. They are registered in relay/adaptor/register.go.
+	ChannelTypeCodexOAuth  int32 = 32 // ChatGPT / Codex subscription (Responses API)
+	ChannelTypeClaudeOAuth int32 = 33 // Claude Code subscription (Anthropic Messages API)
 )

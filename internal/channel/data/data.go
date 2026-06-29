@@ -19,11 +19,12 @@ import (
 )
 
 type Repository struct {
-	db       *gorm.DB
-	redis    *redis.Client
-	channels map[int64]*biz.Channel
-	lock     sync.RWMutex
-	encKey   []byte // AES key for encrypting API keys at rest (nil = no encryption)
+	db          *gorm.DB
+	redis       *redis.Client
+	channels    map[int64]*biz.Channel
+	subAccounts map[int64]*biz.SubscriptionAccount
+	lock        sync.RWMutex
+	encKey      []byte // AES key for encrypting API keys at rest (nil = no encryption)
 }
 
 type channelModel struct {
@@ -69,6 +70,46 @@ type abilityModel struct {
 
 func (abilityModel) TableName() string { return "abilities" }
 
+type subscriptionAccountModel struct {
+	ID           int64   `gorm:"column:id"`
+	Name         string  `gorm:"column:name"`
+	Platform     string  `gorm:"column:platform"`
+	AccountType  string  `gorm:"column:account_type"`
+	Status       int32   `gorm:"column:status"`
+	Group        string  `gorm:"column:group"`
+	Models       string  `gorm:"column:models"`
+	Priority     int64   `gorm:"column:priority"`
+	BaseURL      *string `gorm:"column:base_url"`
+	AccessToken  *string `gorm:"column:access_token"`
+	RefreshToken *string `gorm:"column:refresh_token"`
+	ExpiresAt    int64   `gorm:"column:expires_at"`
+	AccountID    string  `gorm:"column:account_id"`
+	Fingerprint  *string `gorm:"column:fingerprint"`
+	Metadata     *string `gorm:"column:metadata"`
+	CreatedAt    int64   `gorm:"column:created_at"`
+	UpdatedAt    int64   `gorm:"column:updated_at"`
+
+	LastUsedAt       int64   `gorm:"column:last_used_at"`
+	RateLimitedUntil int64   `gorm:"column:rate_limited_until"`
+	QuotaUsedPercent float32 `gorm:"column:quota_used_percent"`
+	QuotaResetAt     int64   `gorm:"column:quota_reset_at"`
+	Concurrency      int32   `gorm:"column:concurrency"`
+}
+
+func (subscriptionAccountModel) TableName() string { return "subscription_accounts" }
+
+type subscriptionAccountAbilityModel struct {
+	ID        int64  `gorm:"column:id"`
+	Group     string `gorm:"column:group"`
+	Model     string `gorm:"column:model"`
+	Platform  string `gorm:"column:platform"`
+	AccountID int64  `gorm:"column:account_id"`
+	Enabled   bool   `gorm:"column:enabled"`
+	Priority  *int64 `gorm:"column:priority"`
+}
+
+func (subscriptionAccountAbilityModel) TableName() string { return "subscription_account_abilities" }
+
 func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 	var dbDSN string
 	if len(dsn) > 0 && dsn[0] != "" {
@@ -104,8 +145,16 @@ func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 
 func newMemoryRepository() *Repository {
 	return &Repository{
-		channels: make(map[int64]*biz.Channel),
+		channels:    make(map[int64]*biz.Channel),
+		subAccounts: make(map[int64]*biz.SubscriptionAccount),
 	}
+}
+
+func (r *Repository) Redis() *redis.Client {
+	if r == nil {
+		return nil
+	}
+	return r.redis
 }
 
 func (r *Repository) FindByID(ctx context.Context, channelID int64) (*biz.Channel, error) {
@@ -120,6 +169,118 @@ func (r *Repository) ListAbilitiesByGroupAndModel(ctx context.Context, group, mo
 		return r.listAbilitiesByGroupAndModelDB(ctx, group, model)
 	}
 	return r.listAbilitiesByGroupAndModelMemory(ctx, group, model)
+}
+
+func (r *Repository) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error) {
+	if r.db != nil {
+		return r.findSubscriptionAccountByIDDB(ctx, accountID)
+	}
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	account, ok := r.subAccounts[accountID]
+	if !ok {
+		return nil, biz.ErrSubscriptionAccountNotFound
+	}
+	cloned := *account
+	cloned.Models = append([]string(nil), account.Models...)
+	return &cloned, nil
+}
+
+func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
+	if r.db != nil {
+		return r.listSubscriptionAccountAbilitiesDB(ctx, group, model, platform)
+	}
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	abilities := make([]biz.SubscriptionAccountAbility, 0)
+	for _, account := range r.subAccounts {
+		if account.Status != biz.ChannelStatusEnabled {
+			continue
+		}
+		if platform != "" && account.Platform != platform {
+			continue
+		}
+		for _, accountGroup := range biz.SplitCSV(account.Group) {
+			if accountGroup != group {
+				continue
+			}
+			for _, accountModel := range account.Models {
+				if accountModel != model {
+					continue
+				}
+				abilities = append(abilities, biz.SubscriptionAccountAbility{
+					Group:     group,
+					Model:     model,
+					Platform:  account.Platform,
+					AccountID: account.ID,
+					Enabled:   true,
+					Priority:  account.Priority,
+				})
+			}
+		}
+	}
+	return abilities, nil
+}
+
+func (r *Repository) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
+	if r.db != nil {
+		return r.listSubscriptionAccountsDB(ctx, page, pageSize, keyword, group, status, platform)
+	}
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	var result []*biz.SubscriptionAccount
+	for _, account := range r.subAccounts {
+		result = append(result, account)
+	}
+	return result, int64(len(result)), nil
+}
+
+func (r *Repository) CreateSubscriptionAccount(ctx context.Context, account *biz.SubscriptionAccount) error {
+	if r.db != nil {
+		return r.createSubscriptionAccountDB(ctx, account)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	account.ID = int64(len(r.subAccounts) + 1)
+	r.subAccounts[account.ID] = account
+	return nil
+}
+
+func (r *Repository) UpdateSubscriptionAccount(ctx context.Context, account *biz.SubscriptionAccount) error {
+	if r.db != nil {
+		return r.updateSubscriptionAccountDB(ctx, account)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if _, ok := r.subAccounts[account.ID]; !ok {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	r.subAccounts[account.ID] = account
+	return nil
+}
+
+func (r *Repository) DeleteSubscriptionAccount(ctx context.Context, accountID int64) error {
+	if r.db != nil {
+		return r.deleteSubscriptionAccountDB(ctx, accountID)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	delete(r.subAccounts, accountID)
+	return nil
+}
+
+func (r *Repository) ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error {
+	if r.db != nil {
+		return r.changeSubscriptionAccountStatusDB(ctx, accountID, status)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	account, ok := r.subAccounts[accountID]
+	if !ok {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	account.Status = status
+	return nil
 }
 
 func (r *Repository) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
@@ -221,6 +382,131 @@ func (r *Repository) ChangeStatus(ctx context.Context, channelID int64, status i
 	}
 	ch.Status = status
 	return nil
+}
+
+func (r *Repository) findSubscriptionAccountByIDDB(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error) {
+	var model subscriptionAccountModel
+	if err := r.db.WithContext(ctx).Where("id = ?", accountID).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, biz.ErrSubscriptionAccountNotFound
+		}
+		return nil, err
+	}
+	return r.subscriptionAccountModelToBiz(&model), nil
+}
+
+func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
+	query := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
+		Where("`group` = ? AND model = ? AND enabled = ?", group, model, true)
+	if platform != "" {
+		query = query.Where("platform = ?", platform)
+	}
+	var rows []subscriptionAccountAbilityModel
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	abilities := make([]biz.SubscriptionAccountAbility, 0, len(rows))
+	for _, row := range rows {
+		priority := int64(0)
+		if row.Priority != nil {
+			priority = *row.Priority
+		}
+		abilities = append(abilities, biz.SubscriptionAccountAbility{
+			Group:     row.Group,
+			Model:     row.Model,
+			Platform:  row.Platform,
+			AccountID: row.AccountID,
+			Enabled:   row.Enabled,
+			Priority:  priority,
+		})
+	}
+	return abilities, nil
+}
+
+func (r *Repository) listSubscriptionAccountsDB(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
+	query := r.db.WithContext(ctx).Model(&subscriptionAccountModel{})
+	if keyword != "" {
+		query = query.Where("name LIKE ? OR account_id LIKE ?", "%"+escapeLike(keyword)+"%", "%"+escapeLike(keyword)+"%")
+	}
+	if group != "" {
+		query = query.Where("`group` = ?", group)
+	}
+	if status != 0 {
+		query = query.Where("status = ?", status)
+	}
+	if platform != "" {
+		query = query.Where("platform = ?", platform)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	offset := (page - 1) * pageSize
+	var models []subscriptionAccountModel
+	if err := query.Offset(int(offset)).Limit(int(pageSize)).Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+	result := make([]*biz.SubscriptionAccount, len(models))
+	for i, m := range models {
+		result[i] = r.subscriptionAccountModelToBiz(&m)
+	}
+	return result, total, nil
+}
+
+func (r *Repository) createSubscriptionAccountDB(ctx context.Context, account *biz.SubscriptionAccount) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		model := r.subscriptionAccountBizToModel(account)
+		if err := tx.Create(model).Error; err != nil {
+			return err
+		}
+		account.ID = model.ID
+		return r.syncSubscriptionAccountAbilitiesTx(tx, account)
+	})
+}
+
+func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *biz.SubscriptionAccount) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		model := r.subscriptionAccountBizToModel(account)
+		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
+			"name":          model.Name,
+			"platform":      model.Platform,
+			"account_type":  model.AccountType,
+			"status":        model.Status,
+			"group":         model.Group,
+			"models":        model.Models,
+			"priority":      model.Priority,
+			"base_url":      model.BaseURL,
+			"access_token":  model.AccessToken,
+			"refresh_token": model.RefreshToken,
+			"expires_at":    model.ExpiresAt,
+			"account_id":    model.AccountID,
+			"fingerprint":   model.Fingerprint,
+			"metadata":      model.Metadata,
+			"updated_at":    model.UpdatedAt,
+		}).Error; err != nil {
+			return err
+		}
+		return r.syncSubscriptionAccountAbilitiesTx(tx, account)
+	})
+}
+
+func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id = ?", accountID).Delete(&subscriptionAccountModel{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("account_id = ?", accountID).Delete(&subscriptionAccountAbilityModel{}).Error
+	})
+}
+
+func (r *Repository) changeSubscriptionAccountStatusDB(ctx context.Context, accountID int64, status int32) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Update("status", status).Error; err != nil {
+			return err
+		}
+		enabled := status == biz.ChannelStatusEnabled
+		return tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", enabled).Error
+	})
 }
 
 func (r *Repository) recordUsageDB(ctx context.Context, channelID int64, quota int64) error {
@@ -542,6 +828,37 @@ func (r *Repository) syncAbilitiesTx(tx *gorm.DB, channel *biz.Channel) error {
 	return tx.Create(&rows).Error
 }
 
+func (r *Repository) syncSubscriptionAccountAbilitiesTx(tx *gorm.DB, account *biz.SubscriptionAccount) error {
+	if err := tx.Where("account_id = ?", account.ID).Delete(&subscriptionAccountAbilityModel{}).Error; err != nil {
+		return err
+	}
+	enabled := account.Status == biz.ChannelStatusEnabled
+	priority := account.Priority
+	rows := make([]subscriptionAccountAbilityModel, 0)
+	for _, group := range biz.SplitCSV(account.Group) {
+		if group == "" {
+			continue
+		}
+		for _, model := range account.Models {
+			if model == "" {
+				continue
+			}
+			rows = append(rows, subscriptionAccountAbilityModel{
+				Group:     group,
+				Model:     model,
+				Platform:  account.Platform,
+				AccountID: account.ID,
+				Enabled:   enabled,
+				Priority:  &priority,
+			})
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	return tx.Create(&rows).Error
+}
+
 // encryptKey encrypts an API key for storage. Returns plaintext if no encryption key is set.
 func (r *Repository) encryptKey(key string) string {
 	if r.encKey == nil || key == "" {
@@ -639,6 +956,64 @@ func (r *Repository) channelToModel(ch *biz.Channel) *channelModel {
 		Key:                               r.encryptKey(ch.Key),
 		Config:                            "{}",
 		SystemPrompt:                      stringPtr(ch.SystemPrompt),
+	}
+}
+
+func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) *biz.SubscriptionAccount {
+	baseURL := ""
+	if m.BaseURL != nil {
+		baseURL = *m.BaseURL
+	}
+	return &biz.SubscriptionAccount{
+		ID:               m.ID,
+		Name:             m.Name,
+		Platform:         m.Platform,
+		AccountType:      m.AccountType,
+		Status:           m.Status,
+		Group:            m.Group,
+		Models:           biz.SplitCSV(m.Models),
+		Priority:         m.Priority,
+		BaseURL:          baseURL,
+		AccessToken:      r.decryptKey(derefString(m.AccessToken)),
+		RefreshToken:     r.decryptKey(derefString(m.RefreshToken)),
+		ExpiresAt:        m.ExpiresAt,
+		AccountID:        m.AccountID,
+		Fingerprint:      derefString(m.Fingerprint),
+		Metadata:         derefString(m.Metadata),
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
+		LastUsedAt:       m.LastUsedAt,
+		RateLimitedUntil: m.RateLimitedUntil,
+		QuotaUsedPercent: m.QuotaUsedPercent,
+		QuotaResetAt:     m.QuotaResetAt,
+		Concurrency:      m.Concurrency,
+	}
+}
+
+func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) *subscriptionAccountModel {
+	return &subscriptionAccountModel{
+		ID:               a.ID,
+		Name:             a.Name,
+		Platform:         a.Platform,
+		AccountType:      a.AccountType,
+		Status:           a.Status,
+		Group:            a.Group,
+		Models:           a.ModelsCSV(),
+		Priority:         a.Priority,
+		BaseURL:          strPtr(a.BaseURL),
+		AccessToken:      stringPtr(r.encryptKey(a.AccessToken)),
+		RefreshToken:     stringPtr(r.encryptKey(a.RefreshToken)),
+		ExpiresAt:        a.ExpiresAt,
+		AccountID:        a.AccountID,
+		Fingerprint:      stringPtr(a.Fingerprint),
+		Metadata:         stringPtr(a.Metadata),
+		CreatedAt:        a.CreatedAt,
+		UpdatedAt:        a.UpdatedAt,
+		LastUsedAt:       a.LastUsedAt,
+		RateLimitedUntil: a.RateLimitedUntil,
+		QuotaUsedPercent: a.QuotaUsedPercent,
+		QuotaResetAt:     a.QuotaResetAt,
+		Concurrency:      a.Concurrency,
 	}
 }
 

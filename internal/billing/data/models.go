@@ -26,8 +26,9 @@ type reservationModel struct {
 	Amount        int64      `gorm:"column:amount"`
 	Status        string     `gorm:"column:status"`
 	Model         *string    `gorm:"column:model"`
-	ChannelID     *string    `gorm:"column:channel_id"`
-	CreatedAt     time.Time  `gorm:"column:created_at"`
+	ChannelID              *string    `gorm:"column:channel_id"`
+	SubscriptionAccountID *string    `gorm:"column:subscription_account_id"`
+	CreatedAt             time.Time  `gorm:"column:created_at"`
 	UpdatedAt     time.Time  `gorm:"column:updated_at"`
 	ExpiredAt     *time.Time `gorm:"index;column:expired_at"`
 }
@@ -50,6 +51,7 @@ type ledgerModel struct {
 	CompletionTokens int64     `gorm:"column:completion_tokens"`
 	CacheReadTokens  int64     `gorm:"column:cache_read_tokens"`
 	ChannelID        int64     `gorm:"column:channel_id"`
+	SubscriptionAccountID int64 `gorm:"column:subscription_account_id"`
 	ElapsedTime      int64     `gorm:"column:elapsed_time"`
 	IsStream         bool      `gorm:"column:is_stream"`
 	Endpoint         string    `gorm:"column:endpoint"`

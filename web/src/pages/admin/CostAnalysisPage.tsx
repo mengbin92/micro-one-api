@@ -54,6 +54,18 @@ interface AdminSummary {
     gross_profit?: number;
     count?: number;
   }>;
+  top_subscription_accounts?: Array<{
+    name?: string;
+    platform?: string;
+    status?: number;
+    account_id?: string;
+    expires_at?: number;
+    subscription_account_id?: number;
+    quota?: number;
+    upstream_cost?: number;
+    gross_profit?: number;
+    count?: number;
+  }>;
 }
 
 function formatQuota(q: number, digits = 2) {
@@ -154,6 +166,19 @@ export function CostAnalysisPage() {
       cost: (c.upstream_cost ?? 0) / 500000,
       quota: (c.quota ?? 0) / 500000,
       profit: (c.gross_profit ?? 0) / 500000,
+    }));
+  }, [summary]);
+
+  const topSubscriptionAccounts = useMemo(() => {
+    const accounts = summary?.top_subscription_accounts ?? [];
+    return accounts.map((a) => ({
+      name: a.name || 'Unknown',
+      platform: a.platform || '',
+      status: a.status ?? 0,
+      cost: (a.upstream_cost ?? 0) / 500000,
+      quota: (a.quota ?? 0) / 500000,
+      profit: (a.gross_profit ?? 0) / 500000,
+      count: a.count ?? 0,
     }));
   }, [summary]);
 
@@ -321,6 +346,40 @@ export function CostAnalysisPage() {
                     <div className="font-medium text-foreground">{item.name}</div>
                     <div className="text-xs text-muted-foreground">
                       成本: ${item.cost.toFixed(2)} | 收入: ${item.quota.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className={cn(
+                    'text-sm font-medium',
+                    item.profit > 0 ? 'text-green-600' : 'text-red-600'
+                  )}>
+                    {item.profit > 0 ? '+' : ''}${item.profit.toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Top Subscription Accounts by Cost */}
+      {hasData && topSubscriptionAccounts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl font-black">订阅账号成本 TOP 5</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {topSubscriptionAccounts.slice(0, 5).map((item, index) => (
+                <div key={index} className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <div className="font-medium text-foreground">
+                      {item.name}
+                      {item.platform && (
+                        <span className="ml-2 text-xs text-muted-foreground">{item.platform}</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      成本: ${item.cost.toFixed(2)} | 收入: ${item.quota.toFixed(2)} | 调用: {item.count}
                     </div>
                   </div>
                   <div className={cn(

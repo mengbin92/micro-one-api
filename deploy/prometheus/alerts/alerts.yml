@@ -1,0 +1,215 @@
+# Prometheus Alert Rules for micro-one-api
+# Based on ARCHITECTURE_REFACTOR.md §8.2
+
+groups:
+  # === Relay Gateway Alerts ===
+  - name: relay-gateway
+    interval: 30s
+    rules:
+      - alert: HighRelayErrorRate
+        expr: |
+          rate(micro_one_api_http_requests_total{service="relay-gateway",status=~"5.."}[5m])
+          / rate(micro_one_api_http_requests_total{service="relay-gateway"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          service: relay-gateway
+        annotations:
+          summary: "Relay gateway error rate > 5%"
+          description: "Relay gateway is experiencing {{ $value | humanizePercentage }} error rate over the last 5 minutes"
+
+      - alert: HighUpstreamLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(micro_one_api_relay_upstream_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: "P95 upstream latency > 30s"
+          description: "P95 upstream latency is {{ $value | humanizeDuration }}"
+
+      - alert: HighRetryRate
+        expr: |
+          rate(micro_one_api_relay_retry_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: "High retry rate detected"
+          description: "Retry rate is {{ $value }}/s"
+
+  # === Circuit Breaker Alerts ===
+  - name: circuit-breakers
+    interval: 30s
+    rules:
+      - alert: CircuitBreakerOpen
+        expr: micro_one_api_resilience_circuit_breaker_state == 2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker open for {{ $labels.service }}"
+          description: "Circuit breaker for {{ $labels.service }} has been open for 1 minute"
+
+      - alert: CircuitBreakerHalfOpen
+        expr: micro_one_api_resilience_circuit_breaker_state == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breaker half-open for {{ $labels.service }}"
+          description: "Circuit breaker for {{ $labels.service }} has been in half-open state for 5 minutes"
+
+      - alert: CircuitBreakerFrequentTrips
+        expr: |
+          rate(micro_one_api_resilience_circuit_breaker_trips_total[10m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frequent circuit breaker trips for {{ $labels.service }}"
+          description: "Circuit breaker is tripping more than once every 10 minutes"
+
+  # === Cache Alerts ===
+  - name: cache-performance
+    interval: 30s
+    rules:
+      - alert: CacheHitRateLow
+        expr: |
+          rate(micro_one_api_cache_hits_total{level="l1"}[5m])
+          / (rate(micro_one_api_cache_hits_total{level="l1"}[5m]) + rate(micro_one_api_cache_misses_total{5m])) < 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "L1 cache hit rate < 80% for {{ $labels.cache }}"
+          description: "L1 cache hit rate for {{ $labels.cache }} is {{ $value | humanizePercentage }}"
+
+      - alert: CacheHighEvictionRate
+        expr: |
+          rate(micro_one_api_cache_evictions_total{level="l1"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High cache eviction rate for {{ $labels.cache }}"
+          description: "Cache eviction rate is {{ $value }}/s"
+
+  # === Billing Alerts ===
+  - name: billing-performance
+    interval: 30s
+    rules:
+      - alert: BillingSettlementLag
+        expr: |
+          histogram_quantile(0.99,
+            rate(micro_one_api_billing_settlement_lag_seconds_bucket[5m])) > 60
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Billing settlement lag > 60s at P99"
+          description: "P99 billing settlement lag is {{ $value | humanizeDuration }}"
+
+      - alert: AsyncBillingQueueFull
+        expr: micro_one_api_billing_async_queue_size > 10000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Async billing queue is almost full"
+          description: "Async billing queue has {{ $value }} pending items"
+
+      - alert: HighQuotaCheckFallbackRate
+        expr: |
+          rate(micro_one_api_billing_quota_check_fallback_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High quota check fallback rate"
+          description: "Quota check is falling back at {{ $value }}/s - reason: {{ $labels.reason }}"
+
+  # === Service Dependency Alerts ===
+  - name: service-dependencies
+    interval: 30s
+    rules:
+      - alert: ServiceHighGRPCLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(micro_one_api_dependency_grpc_latency_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High gRPC latency to {{ $labels.service }}"
+          description: "P95 gRPC latency to {{ $labels.service }}.{{ $labels.method }} is {{ $value | humanizeDuration }}"
+
+      - alert: ServiceHighGRPCErrorRate
+        expr: |
+          rate(micro_one_api_dependency_grpc_errors_total[5m])
+          / rate(micro_one_api_dependency_grpc_latency_seconds_count[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High gRPC error rate to {{ $labels.service }}"
+          description: "gRPC error rate to {{ $labels.service }} is {{ $value | humanizePercentage }}"
+
+  # === Degradation Alerts ===
+  - name: degradation
+    interval: 30s
+    rules:
+      - alert: ServiceInCachedMode
+        expr: micro_one_api_resilience_degradation_level == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} running in cached mode"
+          description: "Service is using cached data due to dependency issues"
+
+      - alert: ServiceInAsyncMode
+        expr: micro_one_api_resilience_degradation_level == 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} running in async billing mode"
+          description: "Service is using async billing due to billing service issues"
+
+      - alert: ServiceInMinimalMode
+        expr: micro_one_api_resilience_degradation_level == 3
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} running in minimal mode"
+          description: "Service is running with minimal functionality due to multiple dependencies failing"
+
+  # === Channel Health Alerts ===
+  - name: channel-health
+    interval: 1m
+    rules:
+      - alert: ChannelHighFailureRate
+        expr: |
+          rate(micro_one_api_monitor_channel_health_probe_total{status="failed"}[5m])
+          / rate(micro_one_api_monitor_channel_health_probe_total[5m]) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High channel failure rate"
+          description: "Channel failure rate is {{ $value | humanizePercentage }}"
+
+      - alert: HealthCheckNotRunning
+        expr: |
+          time() - max(micro_one_api_monitor_channel_health_check_run_duration_seconds_timestamp) > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Channel health check not running"
+          description: "Channel health check hasn't run in the last 5 minutes"

@@ -91,6 +91,8 @@ test('admin overview renders operational status', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '管理总览' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '上游供应商' })).toBeVisible();
   await expect(page.getByText('openai-main')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '订阅账号' })).toBeVisible();
+  await expect(page.getByText('claude-pro-1')).toBeVisible();
   await expect(page.getByRole('heading', { name: '最近调用与订单动态' })).toBeVisible();
 });
 
@@ -376,4 +378,64 @@ test('admin users export sends current filters to backend export route', async (
 
   await expect.poll(() => requests.length).toBeGreaterThan(0);
   expect(requests.some((url) => url.includes('status=1') && url.includes('format=csv'))).toBe(true);
+});
+
+
+test('admin subscription accounts page lists and creates accounts', async ({ page }) => {
+  const createRequests: unknown[] = [];
+  await page.route('**/api/subscription-accounts**', async (route) => {
+    const method = route.request().method();
+    const pathname = new URL(route.request().url()).pathname;
+    if (method === 'POST') {
+      createRequests.push(route.request().postDataJSON());
+      await route.fulfill({ json: { success: true, message: '', account_id: 2 } });
+      return;
+    }
+    if (/\/api\/subscription-accounts\/?$/.test(pathname)) {
+      await route.fulfill({
+        json: {
+          accounts: [
+            {
+              id: 1,
+              name: 'claude-pro-1',
+              platform: 'claude',
+              accountType: 'oauth',
+              status: 1,
+              group: 'default',
+              models: 'claude-sonnet-4-5',
+              priority: 0,
+              accountId: 'acct-123',
+              expiresAt: 1800000000,
+              updatedAt: 1700000000,
+            },
+          ],
+          total: 1,
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: { success: true, message: '' },
+    });
+  });
+
+  await seedAdminSession(page);
+  await page.goto('/admin/subscription-accounts');
+
+  await expect(page.getByRole('heading', { name: '订阅账号管理' })).toBeVisible();
+  await expect(page.getByText('claude-pro-1')).toBeVisible();
+
+  await page.getByRole('button', { name: /新建订阅账号/ }).click();
+  const dialog = page.getByRole('dialog', { name: '新建订阅账号' });
+  await dialog.getByLabel('名称').fill('codex-team');
+  await dialog.getByLabel('Access Token').fill('sk-test-access');
+  await dialog.getByLabel('Refresh Token').fill('rt-test-refresh');
+  await dialog.getByRole('button', { name: '创建', exact: true }).click();
+
+  await expect.poll(() => createRequests.length).toBe(1);
+  expect(createRequests[0]).toMatchObject({
+    name: 'codex-team',
+    access_token: 'sk-test-access',
+    refresh_token: 'rt-test-refresh',
+  });
 });

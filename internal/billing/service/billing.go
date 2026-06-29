@@ -28,7 +28,7 @@ func NewBillingService(uc *biz.BillingUsecase, reconUc *biz.ReconciliationUsecas
 }
 
 func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest) (*billingv1.ReserveQuotaResponse, error) {
-	reservation, err := s.uc.ReserveQuota(ctx, req.UserId, req.RequestId, req.EstimatedTokens, req.Model, req.ChannelId)
+	reservation, err := s.uc.ReserveQuota(ctx, req.UserId, req.RequestId, req.EstimatedTokens, req.Model, req.ChannelId, req.SubscriptionAccountId)
 	if err != nil {
 		return &billingv1.ReserveQuotaResponse{
 			Success:      false,
@@ -45,14 +45,15 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 
 func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest) (*billingv1.CommitQuotaResponse, error) {
 	committedAmount, refundAmount, err := s.uc.CommitQuotaWithUsage(ctx, req.ReservationId, req.ActualTokens, req.Success, biz.LedgerUsage{
-		TokenName:        req.TokenName,
-		Endpoint:         req.Endpoint,
-		PromptTokens:     req.PromptTokens,
-		CompletionTokens: req.CompletionTokens,
-		CacheReadTokens:  req.CacheReadTokens,
-		UpstreamCost:     firstPositiveInt64(req.UpstreamCost, req.ActualCost),
-		ElapsedTime:      req.ElapsedTime,
-		IsStream:         req.IsStream,
+		TokenName:             req.TokenName,
+		Endpoint:              req.Endpoint,
+		PromptTokens:          req.PromptTokens,
+		CompletionTokens:      req.CompletionTokens,
+		CacheReadTokens:       req.CacheReadTokens,
+		UpstreamCost:          firstPositiveInt64(req.UpstreamCost, req.ActualCost),
+		ElapsedTime:           req.ElapsedTime,
+		IsStream:              req.IsStream,
+		SubscriptionAccountID: req.SubscriptionAccountId,
 	})
 	if err != nil {
 		return &billingv1.CommitQuotaResponse{
@@ -315,7 +316,9 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 
 	// Use filtered query if type or time range is specified
 	ledgerType := req.GetType()
-	if ledgerType != "" || !startTime.IsZero() || !endTime.IsZero() {
+	if req.GetSubscriptionAccountId() != 0 {
+		ledgers, total, err = s.uc.ListLedgersBySubscriptionAccount(ctx, req.GetSubscriptionAccountId(), page, pageSize)
+	} else if ledgerType != "" || !startTime.IsZero() || !endTime.IsZero() {
 		ledgers, total, err = s.uc.ListLedgersWithFilters(ctx, req.UserId, page, pageSize, ledgerType, startTime, endTime)
 	} else {
 		ledgers, total, err = s.uc.ListLedgers(ctx, req.UserId, page, pageSize)
@@ -341,10 +344,11 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 			PromptTokens:     ledger.PromptTokens,
 			CompletionTokens: ledger.CompletionTokens,
 			CacheReadTokens:  ledger.CacheReadTokens,
-			ChannelId:        ledger.ChannelID,
-			ElapsedTime:      ledger.ElapsedTime,
-			IsStream:         ledger.IsStream,
-			Endpoint:         ledger.Endpoint,
+			ChannelId:            ledger.ChannelID,
+			SubscriptionAccountId: ledger.SubscriptionAccountID,
+			ElapsedTime:          ledger.ElapsedTime,
+			IsStream:             ledger.IsStream,
+			Endpoint:             ledger.Endpoint,
 		}
 	}
 
@@ -413,12 +417,13 @@ func (s *BillingService) AggregateLedgerByDate(ctx context.Context, req *billing
 
 func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.AggregateUsageRequest) (*billingv1.AggregateUsageResponse, error) {
 	filter := biz.UsageFilter{
-		GroupBy:   req.GetGroupBy(),
-		UserID:    req.GetUserId(),
-		ChannelID: req.GetChannelId(),
-		Model:     req.GetModel(),
-		Type:      req.GetType(),
-		Limit:     int(req.GetLimit()),
+		GroupBy:              req.GetGroupBy(),
+		UserID:               req.GetUserId(),
+		ChannelID:            req.GetChannelId(),
+		SubscriptionAccountID: req.GetSubscriptionAccountId(),
+		Model:                req.GetModel(),
+		Type:                 req.GetType(),
+		Limit:                int(req.GetLimit()),
 	}
 	if req.GetStartTime().IsValid() {
 		filter.StartTime = req.GetStartTime().AsTime()
@@ -435,9 +440,10 @@ func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.Aggr
 	bucketsProto := make([]*billingv1.UsageBucket, len(buckets))
 	for i, b := range buckets {
 		bucketsProto[i] = &billingv1.UsageBucket{
-			UserId:           b.UserID,
-			ChannelId:        b.ChannelID,
-			Model:            b.Model,
+			UserId:               b.UserID,
+			ChannelId:            b.ChannelID,
+			SubscriptionAccountId: b.SubscriptionAccountID,
+			Model:                b.Model,
 			TokenName:        b.TokenName,
 			Type:             b.Type,
 			Day:              b.Day,

@@ -16,8 +16,9 @@ type Reservation struct {
 	Amount       int64
 	Status       string
 	Model        string
-	ChannelID    string
-	CreatedAt    time.Time
+	ChannelID              string
+	SubscriptionAccountID string
+	CreatedAt             time.Time
 	UpdatedAt    time.Time
 	ExpiredAt    time.Time
 }

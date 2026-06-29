@@ -8,6 +8,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/internal/relay/biz"
+	relaycredential "micro-one-api/internal/relay/credential"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -17,6 +18,7 @@ import (
 type Data struct {
 	Identity biz.IdentityClient
 	Channel  biz.ChannelClient
+	Accounts relaycredential.SubscriptionAccountResolver
 }
 
 func NewData(identityEndpoint, channelEndpoint string) (*Data, error) {
@@ -36,6 +38,7 @@ func NewData(identityEndpoint, channelEndpoint string) (*Data, error) {
 		Channel: &channelClient{
 			client: channelv1.NewChannelServiceClient(channelConn),
 		},
+		Accounts: NewChannelSubscriptionAccountStore(channelv1.NewChannelServiceClient(channelConn)),
 	}, nil
 }
 
@@ -63,6 +66,36 @@ func (c *identityClient) GetAuthSnapshot(ctx context.Context, token string) (*bi
 
 type channelClient struct {
 	client channelv1.ChannelServiceClient
+}
+
+func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*biz.SubscriptionAccount, error) {
+	resp, err := c.client.SelectSubscriptionAccount(ctx, &channelv1.SelectSubscriptionAccountRequest{
+		Group:                group,
+		Model:                model,
+		Platform:             platform,
+		ExcludeFirstPriority: excludeFirstPriority,
+	})
+	if err != nil {
+		return nil, err
+	}
+	info := resp.GetAccount()
+	if info == nil {
+		return nil, nil
+	}
+	return &biz.SubscriptionAccount{
+		ID:          info.GetId(),
+		Name:        info.GetName(),
+		Platform:    info.GetPlatform(),
+		AccountType: info.GetAccountType(),
+		Status:      info.GetStatus(),
+		BaseURL:     info.GetBaseUrl(),
+		Group:       info.GetGroup(),
+		Models:      splitCSV(info.GetModels()),
+		Priority:    info.GetPriority(),
+		AccessToken: info.GetAccessToken(),
+		AccountID:   info.GetAccountId(),
+		Fingerprint: info.GetFingerprint(),
+	}, nil
 }
 
 func (c *channelClient) SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*biz.Channel, error) {

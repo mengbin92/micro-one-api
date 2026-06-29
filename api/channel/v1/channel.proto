@@ -8,6 +8,13 @@ option go_package = "micro-one-api/api/channel/v1;channelv1";
 
 service ChannelService {
   rpc SelectChannel(SelectChannelRequest) returns (SelectChannelReply);
+  rpc SelectSubscriptionAccount(SelectSubscriptionAccountRequest) returns (SelectSubscriptionAccountReply);
+  rpc GetSubscriptionAccount(GetSubscriptionAccountRequest) returns (GetSubscriptionAccountReply);
+  rpc ListSubscriptionAccounts(ListSubscriptionAccountsRequest) returns (ListSubscriptionAccountsResponse);
+  rpc CreateSubscriptionAccount(CreateSubscriptionAccountRequest) returns (CreateSubscriptionAccountResponse);
+  rpc UpdateSubscriptionAccount(UpdateSubscriptionAccountRequest) returns (UpdateSubscriptionAccountResponse);
+  rpc DeleteSubscriptionAccount(DeleteSubscriptionAccountRequest) returns (DeleteSubscriptionAccountResponse);
+  rpc ChangeSubscriptionAccountStatus(ChangeSubscriptionAccountStatusRequest) returns (ChangeSubscriptionAccountStatusResponse);
   rpc GetChannel(GetChannelRequest) returns (GetChannelReply);
   rpc ListAvailableModels(ListAvailableModelsRequest) returns (ListAvailableModelsReply);
   rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse);
@@ -27,6 +34,25 @@ message SelectChannelRequest {
 
 message SelectChannelReply {
   common.v1.ChannelInfo channel = 1;
+}
+
+message SelectSubscriptionAccountRequest {
+  string group = 1;
+  string model = 2;
+  string platform = 3;
+  bool exclude_first_priority = 4;
+}
+
+message SelectSubscriptionAccountReply {
+  common.v1.SubscriptionAccountInfo account = 1;
+}
+
+message GetSubscriptionAccountRequest {
+  int64 account_id = 1;
+}
+
+message GetSubscriptionAccountReply {
+  common.v1.SubscriptionAccountInfo account = 1;
 }
 
 message GetChannelRequest {
@@ -59,6 +85,82 @@ message ListChannelsRequest {
 message ListChannelsResponse {
   repeated common.v1.ChannelSummary channels = 1;
   int64 total = 2;
+}
+
+message ListSubscriptionAccountsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;
+  string group = 4;
+  int32 status = 5;
+  string platform = 6;
+}
+
+message ListSubscriptionAccountsResponse {
+  repeated common.v1.SubscriptionAccountSummary accounts = 1;
+  int64 total = 2;
+}
+
+message CreateSubscriptionAccountRequest {
+  string name = 1;
+  string platform = 2;
+  string account_type = 3;
+  string group = 4;
+  string models = 5;
+  int64 priority = 6;
+  string base_url = 7;
+  string access_token = 8;
+  string refresh_token = 9;
+  int64 expires_at = 10;
+  string account_id = 11;
+  string fingerprint = 12;
+  string metadata = 13;
+}
+
+message CreateSubscriptionAccountResponse {
+  bool success = 1;
+  string message = 2;
+  int64 account_id = 3;
+}
+
+message UpdateSubscriptionAccountRequest {
+  int64 id = 1;
+  string name = 2;
+  string account_type = 3;
+  string group = 4;
+  string models = 5;
+  int64 priority = 6;
+  string base_url = 7;
+  string access_token = 8;
+  string refresh_token = 9;
+  int64 expires_at = 10;
+  string account_id = 11;
+  string fingerprint = 12;
+  string metadata = 13;
+}
+
+message UpdateSubscriptionAccountResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DeleteSubscriptionAccountRequest {
+  int64 account_id = 1;
+}
+
+message DeleteSubscriptionAccountResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ChangeSubscriptionAccountStatusRequest {
+  int64 account_id = 1;
+  int32 status = 2;
+}
+
+message ChangeSubscriptionAccountStatusResponse {
+  bool success = 1;
+  string message = 2;
 }
 
 message CreateChannelRequest {

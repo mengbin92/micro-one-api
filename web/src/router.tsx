@@ -21,6 +21,9 @@ const AdminUsersPage = lazy(() => import('@/pages/admin/UsersPage').then((m) => 
 const AdminChannelsPage = lazy(() =>
   import('@/pages/admin/ChannelsPage').then((m) => ({ default: m.AdminChannelsPage }))
 );
+const AdminSubscriptionAccountsPage = lazy(() =>
+  import('@/pages/admin/SubscriptionAccountsPage').then((m) => ({ default: m.AdminSubscriptionAccountsPage }))
+);
 const AdminPricingPage = lazy(() =>
   import('@/pages/admin/PricingPage').then((m) => ({ default: m.AdminPricingPage }))
 );
@@ -112,6 +115,10 @@ export const router = createBrowserRouter([
           {
             path: 'channels',
             element: withSuspense(<AdminChannelsPage />),
+          },
+          {
+            path: 'subscription-accounts',
+            element: withSuspense(<AdminSubscriptionAccountsPage />),
           },
           {
             path: 'channel-health',

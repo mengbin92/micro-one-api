@@ -41,6 +41,7 @@ message ReserveQuotaRequest {
   int64 estimated_tokens = 3;
   string model = 4;
   string channel_id = 5;
+  int64 subscription_account_id = 6;  // 订阅账号 ID（0 = 非订阅账号请求）
 }
 
 message ReserveQuotaResponse {
@@ -65,6 +66,7 @@ message CommitQuotaRequest {
   // Optional upstream cost override in quota units. When omitted, billing-service
   // calculates it from upstream pricing config.
   int64 upstream_cost = 12;
+  int64 subscription_account_id = 13;  // 订阅账号 ID（0 = 非订阅账号请求；覆盖预留时记录的账号）
 }
 
 message CommitQuotaResponse {
@@ -216,6 +218,7 @@ message ListLedgerRequest {
   google.protobuf.Timestamp start_time = 4;
   google.protobuf.Timestamp end_time = 5;
   string type = 6;
+  int64 subscription_account_id = 7;  // 可选：限定订阅账号（0 表示不限定）
 }
 
 message ListLedgerResponse {
@@ -373,7 +376,7 @@ message ModelUsage {
 
 // AggregateUsageRequest 跨用户、多维度的真实 SQL 聚合（替代抽样统计）。
 message AggregateUsageRequest {
-  // 维度：user | channel | model | token | type | day | hour。可组合，按顺序生成分组键。
+  // 维度：user | channel | model | token | type | day | hour | subscription_account。可组合，按顺序生成分组键。
   repeated string group_by = 1;
   string user_id = 2;     // 可选：限定用户
   int64 channel_id = 3;   // 可选：限定渠道（0 表示不限定）
@@ -382,6 +385,7 @@ message AggregateUsageRequest {
   google.protobuf.Timestamp start_time = 6;
   google.protobuf.Timestamp end_time = 7;
   int32 limit = 8;        // 可选：返回前 N 个桶（按 quota 降序），0 表示不限制
+  int64 subscription_account_id = 9;  // 可选：限定订阅账号（0 表示不限定）
 }
 
 message AggregateUsageResponse {
@@ -406,6 +410,7 @@ message UsageBucket {
   int64 upstream_cost = 13;
   int64 gross_profit = 14;
   int64 cache_read_tokens = 15;
+  int64 subscription_account_id = 16;  // 订阅账号 ID（当 group_by 含 subscription_account）
 }
 
 message UsageTotals {

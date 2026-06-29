@@ -1,0 +1,124 @@
+{
+  "dashboard": {
+    "title": "Billing Performance",
+    "tags": ["billing", "quota", "micro-one-api"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Quota Operations Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_billing_reservations_total[5m])",
+            "legendFormat": "Reservations - {{status}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Reservation Duration (P95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(micro_one_api_billing_reserve_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{mode}}"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Commit Duration (P95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(micro_one_api_billing_commit_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{mode}}"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Async Billing Queue Size",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "micro_one_api_billing_async_queue_size",
+            "legendFormat": "Queue Size"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Settlement Lag (P99)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, rate(micro_one_api_billing_settlement_lag_seconds_bucket[5m]))",
+            "legendFormat": "Settlement Lag"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Quota Check Fallbacks",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_billing_quota_check_fallback_total[5m])",
+            "legendFormat": "{{reason}}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Quota Cache Hit Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_billing_quota_cache_hits_total[5m]) / (rate(micro_one_api_billing_quota_cache_hits_total[5m]) + rate(micro_one_api_billing_quota_cache_misses_total[5m])) * 100",
+            "legendFormat": "{{level}}"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Reconciliation Lagged Transactions",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "targets": [
+          {
+            "expr": "micro_one_api_billing_reconciliation_lagged_transactions",
+            "legendFormat": "Lagged Transactions"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Quota Balance & Frozen Amount",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
+        "targets": [
+          {
+            "expr": "micro_one_api_billing_quota_balance_remaining",
+            "legendFormat": "Balance - {{user_group}}"
+          },
+          {
+            "expr": "micro_one_api_billing_quota_frozen_amount",
+            "legendFormat": "Frozen"
+          }
+        ]
+      }
+    ]
+  }
+}

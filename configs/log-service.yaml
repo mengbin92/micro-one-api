@@ -17,3 +17,7 @@ registry:
 log_svc:
   retention_days: ${LOG_RETENTION_DAYS:-30}
   batch_size: ${LOG_BATCH_SIZE:-100}
+
+partition:
+  enabled: ${PARTITION_ENABLED:-false}
+  interval: ${PARTITION_INTERVAL:-24h}

@@ -7,17 +7,19 @@
 *.dll
 *.so
 *.dylib
-# Executables without extension
-relay-gateway
-admin-api
-identity-service
-channel-service
-billing-service
-config-service
-log-service
-monitor-worker
-notify-worker
-migrate
+# Executables without extension (anchored to repo root so they don't
+# match the cmd/<service>/ source directories, which previously caused
+# cmd/log-service/partition.go to be ignored and break CI builds)
+/relay-gateway
+/admin-api
+/identity-service
+/channel-service
+/billing-service
+/config-service
+/log-service
+/monitor-worker
+/notify-worker
+/migrate
 
 # Test binary, built with `go test -c`
 *.test
@@ -72,3 +74,8 @@ cert/
 .claude
 # Local build/save outputs
 dist/
+
+# Subscription account import payloads (contain plaintext OAuth tokens)
+subscription-account.*.payload.json
+
+*.tar

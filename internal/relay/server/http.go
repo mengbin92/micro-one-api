@@ -2,12 +2,9 @@ package server
 
 import (
 	"context"
-	crypto_rand "crypto/rand"
-	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"os"
 	"strconv"
@@ -31,9 +28,8 @@ import (
 	applogger "micro-one-api/internal/pkg/logger"
 	"micro-one-api/internal/pkg/metrics"
 	relaybiz "micro-one-api/internal/relay/biz"
+	relaycredential "micro-one-api/internal/relay/credential"
 	relayprovider "micro-one-api/internal/relay/provider"
-
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
 const postResponseWriteTimeout = 10 * time.Second
@@ -53,6 +49,26 @@ type HTTPServer struct {
 	wsPool          *openAIWSConnPool
 	wsSticky        *openAIWSStickyStore
 	wsPoolCfg       openAIWSPoolConfig
+
+	// hybridAdaptorEnabled gates the new adaptor-based request path (plan §十).
+	// When false the gateway uses the legacy provider-factory path unchanged.
+	hybridAdaptorEnabled bool
+
+	// relayOrchestratorEnabled gates the handler -> orchestrator -> forwarder
+	// request path for /v1/chat/completions. It remains disabled by default so
+	// the legacy billing path is preserved unless explicitly enabled.
+	relayOrchestratorEnabled bool
+	routeMiddleware          []func(http.Handler) http.Handler
+
+	// accountResolver resolves subscription-account metadata (real account id,
+	// upstream account id, fingerprint) for subscription-typed channels. nil
+	// when the hybrid path is disabled.
+	accountResolver relaycredential.SubscriptionAccountResolver
+
+	// oauthHTTPClient is the HTTP client used for subscription-account
+	// upstream calls. It mirrors the provider-factory timeout so OAuth calls
+	// don't outlive the configured upstream timeout.
+	oauthHTTPClient *http.Client
 }
 
 // openAIWSTimeouts holds parsed durations for the Responses WebSocket relay.
@@ -73,10 +89,11 @@ type openAIWSPoolConfig struct {
 }
 
 type responseRoute struct {
-	Model         string
-	ResolvedModel string
-	Channel       relaybiz.Channel
-	UserID        int64
+	Model                 string
+	ResolvedModel         string
+	Channel               relaybiz.Channel
+	UserID                int64
+	SubscriptionAccountID int64
 }
 
 // NewHTTPServer creates a new HTTP server for Kratos.
@@ -100,6 +117,65 @@ func NewHTTPServer(
 		providerFactory: providerFactory,
 		relayUsecase:    relayUsecase,
 		responseRoutes:  make(map[string]responseRoute),
+	}
+}
+
+// SetHybridAdaptorEnabled turns on the hybrid adaptor request path. When true,
+// subscription-account channel types (Codex/Claude OAuth) are routed through
+// the relay/adaptor layer instead of the provider factory. API-key channels are
+// unaffected and continue to use the existing path either way.
+func (s *HTTPServer) SetHybridAdaptorEnabled(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.hybridAdaptorEnabled = enabled
+}
+
+// SetRelayOrchestratorEnabled turns on the orchestrator-based chat route.
+func (s *HTTPServer) SetRelayOrchestratorEnabled(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.relayOrchestratorEnabled = enabled
+}
+
+// UseRouteMiddleware applies middleware to routes registered by RegisterRoutes.
+func (s *HTTPServer) UseRouteMiddleware(middleware ...func(http.Handler) http.Handler) {
+	if s == nil {
+		return
+	}
+	s.routeMiddleware = append(s.routeMiddleware, middleware...)
+}
+
+// SetSubscriptionAccountResolver wires the resolver that maps a
+// subscription-typed channel to the underlying subscription-account metadata.
+// Required when the hybrid adaptor path is enabled.
+func (s *HTTPServer) SetSubscriptionAccountResolver(r relaycredential.SubscriptionAccountResolver) {
+	if s == nil {
+		return
+	}
+	s.accountResolver = r
+}
+
+// SetOAuthHTTPClient sets the HTTP client used for subscription-account
+// upstream calls. It should carry the gateway's upstream timeout so OAuth
+// calls do not hang indefinitely.
+func (s *HTTPServer) SetOAuthHTTPClient(c *http.Client) {
+	if s == nil {
+		return
+	}
+	s.oauthHTTPClient = c
+}
+
+// isSubscriptionChannel reports whether the channel type is a subscription
+// account handled by the OAuth adaptor layer. These types are only routed
+// through the adaptor when the hybrid feature flag is enabled.
+func isSubscriptionChannel(t int32) bool {
+	switch t {
+	case relayprovider.ChannelTypeCodexOAuth, relayprovider.ChannelTypeClaudeOAuth:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -146,63 +222,6 @@ func (s *HTTPServer) SetOpenAIWSPoolConfig(maxConnsPerChannel, failoverMaxSwitch
 		failoverMaxSwitches: failoverMaxSwitches,
 		stickyTTL:           stickyTTL,
 	}
-}
-
-// RegisterRoutes registers HTTP routes to a Kratos *khttp.Server.
-func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
-	srv.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
-	srv.HandleFunc("/v1/completions", s.handleRawRelay("/completions", true))
-	srv.HandleFunc("/v1/embeddings", s.handleRawRelay("/embeddings", false))
-	srv.HandleFunc("/v1/images/generations", s.handleRawRelay("/images/generations", true))
-	srv.HandleFunc("/v1/images/edits", s.handleUnsupportedOpenAIRoute("images.edits"))
-	srv.HandleFunc("/v1/images/variations", s.handleUnsupportedOpenAIRoute("images.variations"))
-	srv.HandleFunc("/v1/audio/transcriptions", s.handleRawRelay("/audio/transcriptions", true))
-	srv.HandleFunc("/v1/audio/translations", s.handleRawRelay("/audio/translations", true))
-	srv.HandleFunc("/v1/audio/speech", s.handleRawRelay("/audio/speech", false))
-	srv.HandleFunc("/v1/moderations", s.handleRawRelay("/moderations", false))
-	srv.HandleFunc("/v1/edits", s.handleUnsupportedOpenAIRoute("edits"))
-	srv.HandleFunc("/v1/responses", s.handleResponsesRelay)
-	srv.HandlePrefix("/v1/responses/", http.HandlerFunc(s.handleResponsesRelay))
-	srv.HandleFunc("/v1/usage", s.handleUsage)
-	srv.HandleFunc("/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
-	srv.HandlePrefix("/v1/engines/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("engines")))
-	srv.HandleFunc("/v1/files", s.handleUnsupportedOpenAIRoute("files"))
-	srv.HandlePrefix("/v1/files/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("files")))
-	srv.HandleFunc("/v1/fine-tunes", s.handleUnsupportedOpenAIRoute("fine-tunes"))
-	srv.HandlePrefix("/v1/fine-tunes/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("fine-tunes")))
-	srv.HandleFunc("/v1/fine_tuning/jobs", s.handleUnsupportedOpenAIRoute("fine_tuning.jobs"))
-	srv.HandlePrefix("/v1/fine_tuning/jobs/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("fine_tuning.jobs")))
-	srv.HandleFunc("/v1/batches", s.handleUnsupportedOpenAIRoute("batches"))
-	srv.HandlePrefix("/v1/batches/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("batches")))
-	srv.HandleFunc("/v1/uploads", s.handleUnsupportedOpenAIRoute("uploads"))
-	srv.HandlePrefix("/v1/uploads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("uploads")))
-	srv.HandleFunc("/v1/vector_stores", s.handleUnsupportedOpenAIRoute("vector_stores"))
-	srv.HandlePrefix("/v1/vector_stores/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("vector_stores")))
-	srv.HandleFunc("/v1/evals", s.handleUnsupportedOpenAIRoute("evals"))
-	srv.HandlePrefix("/v1/evals/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("evals")))
-	srv.HandleFunc("/v1/containers", s.handleUnsupportedOpenAIRoute("containers"))
-	srv.HandlePrefix("/v1/containers/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("containers")))
-	srv.HandlePrefix("/v1/fine_tuning/alpha/graders/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("graders")))
-	srv.HandlePrefix("/v1/realtime/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("realtime")))
-	srv.HandleFunc("/v1/conversations", s.handleUnsupportedOpenAIRoute("conversations"))
-	srv.HandlePrefix("/v1/conversations/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("conversations")))
-	srv.HandleFunc("/v1/assistants", s.handleUnsupportedOpenAIRoute("assistants"))
-	srv.HandlePrefix("/v1/assistants/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("assistants")))
-	srv.HandleFunc("/v1/threads", s.handleUnsupportedOpenAIRoute("threads"))
-	srv.HandlePrefix("/v1/threads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("threads")))
-	srv.HandlePrefix("/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
-
-	// Anthropic Messages API inbound endpoint (for Claude Code CLI / native Anthropic SDK clients)
-	srv.HandleFunc("/v1/messages", s.handleAnthropicMessages)
-	srv.HandleFunc("/v1/models", s.handleModels)
-	srv.HandlePrefix("/v1/models/", http.HandlerFunc(s.handleRetrieveModel))
-	srv.HandleFunc("/api/status", s.handleAPIStatus)
-	srv.HandleFunc("/api/models", s.handleDashboardModels)
-	srv.HandleFunc("/api/group", s.handleGroups)
-	srv.HandleFunc("/healthz", s.handleHealth)
-	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		metrics.Handler().ServeHTTP(w, r)
-	})
 }
 
 func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http.HandlerFunc {
@@ -264,6 +283,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				estimateRawTokens(body),
 				plan.ResolvedModel,
 				fmt.Sprintf("%d", ch.ID),
+				subscriptionAccountIDFromPlan(plan),
 			)
 			if reserveErr != nil {
 				return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
@@ -399,6 +419,10 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		s.handleRelayPlanError(w, err)
 		return
 	}
+	if s.hybridAdaptorEnabled && plan.Channel != nil && isSubscriptionChannel(plan.Channel.Type) {
+		s.handleResponsesCreateLikeViaAdaptor(w, r, plan, clientModel, body)
+		return
+	}
 	upstreamBody := rewriteRawModel(body, plan.ResolvedModel)
 
 	var upstreamResp *relayprovider.RawResponse
@@ -414,6 +438,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			estimateRawTokens(upstreamBody),
 			plan.ResolvedModel,
 			fmt.Sprintf("%d", ch.ID),
+			subscriptionAccountIDFromPlan(plan),
 		)
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
@@ -452,7 +477,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 						responseChannel = ch
 						if responseID := usage.ResponseID(); responseID != "" {
-							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID})
+							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 						}
 						return nil
 					}
@@ -487,7 +512,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
 			responseChannel = ch
 			if responseID := usage.ResponseID(); responseID != "" {
-				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID})
+				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 			}
 			return nil
 		}
@@ -569,7 +594,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if responseID := extractResponseID(upstreamResp.Body); responseID != "" {
-		s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *responseChannel, UserID: plan.Auth.UserID})
+		s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *responseChannel, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 	}
 	writeRawResponse(w, upstreamResp)
 }
@@ -639,6 +664,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		estimateRawTokens(body),
 		route.Model,
 		fmt.Sprintf("%d", route.Channel.ID),
+		route.SubscriptionAccountID,
 	)
 	if err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "quota reservation failed")
@@ -924,6 +950,7 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		estimateRawTokens(body),
 		model,
 		fmt.Sprintf("%d", channelReply.Channel.Id),
+		0,
 	)
 	if err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "quota reservation failed")
@@ -953,19 +980,20 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 	totalTokens := extractTotalTokens(resp.Body, estimateRawTokens(body))
 	usage := extractRawUsage(resp.Body, totalTokens)
 	if err := s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true, usageLogInput{
-		UserID:           authSnapshot.UserId,
-		TokenID:          authSnapshot.TokenId,
-		TokenName:        authSnapshot.TokenName,
-		RequestID:        requestID,
-		Endpoint:         "/" + targetPart,
-		ModelName:        model,
-		Quota:            totalTokens,
-		PromptTokens:     usage.PromptTokens,
-		CompletionTokens: usage.CompletionTokens,
-		CacheReadTokens:  usage.CacheReadTokens,
-		ChannelID:        channelReply.Channel.Id,
-		ElapsedTime:      time.Since(startedAt).Milliseconds(),
-		IsStream:         false,
+		UserID:                authSnapshot.UserId,
+		TokenID:               authSnapshot.TokenId,
+		TokenName:             authSnapshot.TokenName,
+		RequestID:             requestID,
+		Endpoint:              "/" + targetPart,
+		ModelName:             model,
+		Quota:                 totalTokens,
+		PromptTokens:          usage.PromptTokens,
+		CompletionTokens:      usage.CompletionTokens,
+		CacheReadTokens:       usage.CacheReadTokens,
+		ChannelID:             channelReply.Channel.Id,
+		SubscriptionAccountID: 0,
+		ElapsedTime:           time.Since(startedAt).Milliseconds(),
+		IsStream:              false,
 	}); err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
 		return
@@ -1017,6 +1045,20 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Subscription-account channels (Codex/Claude OAuth) are routed through the
+	// hybrid adaptor layer when the feature flag is on. The adaptor owns the
+	// full upstream interaction (protocol conversion, identity mimicry, OAuth
+	// token, stream bridging). API-key channels fall through to the existing
+	// provider-factory path below.
+	if s.hybridAdaptorEnabled && plan.Channel != nil && isSubscriptionChannel(plan.Channel.Type) {
+		// req.Model still holds the client-facing model name at this point (it is
+		// reassigned to the resolved model only further below). Reconstruct the raw
+		// body from the decoded request since the original body was consumed.
+		rawBody, _ := sonic.Marshal(req)
+		s.handleChatCompletionsViaAdaptor(w, r, plan, req.Model, rawBody)
+		return
+	}
+
 	clientModel := req.Model
 
 	// Use resolved model name for upstream calls
@@ -1029,7 +1071,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// Reserve quota
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(&req)
-		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, plan.ResolvedModel, fmt.Sprintf("%d", ch.ID))
+		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, plan.ResolvedModel, fmt.Sprintf("%d", ch.ID), subscriptionAccountIDFromPlan(plan))
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
 		}
@@ -1044,14 +1086,15 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 		if req.Stream {
 			return s.handleStreamingResponse(w, r, provider, &req, reservation, usageLogInput{
-				UserID:    plan.Auth.UserID,
-				TokenID:   plan.Auth.TokenID,
-				TokenName: plan.Auth.TokenName,
-				RequestID: requestID,
-				Endpoint:  "/v1/chat/completions",
-				ModelName: clientModel,
-				ChannelID: ch.ID,
-				IsStream:  true,
+				UserID:                plan.Auth.UserID,
+				TokenID:               plan.Auth.TokenID,
+				TokenName:             plan.Auth.TokenName,
+				RequestID:             requestID,
+				Endpoint:              "/v1/chat/completions",
+				ModelName:             clientModel,
+				ChannelID:             ch.ID,
+				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
+				IsStream:              true,
 			})
 		}
 
@@ -1174,19 +1217,20 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 }
 
 type usageLogInput struct {
-	UserID           int64
-	TokenID          int64
-	TokenName        string
-	RequestID        string
-	Endpoint         string
-	ModelName        string
-	Quota            int64
-	PromptTokens     int64
-	CompletionTokens int64
-	CacheReadTokens  int64
-	ChannelID        int64
-	ElapsedTime      int64
-	IsStream         bool
+	UserID                int64
+	TokenID               int64
+	TokenName             string
+	RequestID             string
+	Endpoint              string
+	ModelName             string
+	Quota                 int64
+	PromptTokens          int64
+	CompletionTokens      int64
+	CacheReadTokens       int64
+	ChannelID             int64
+	SubscriptionAccountID int64
+	ElapsedTime           int64
+	IsStream              bool
 }
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
@@ -1196,20 +1240,21 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 	}
 	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
 	_, err := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{
-		Level:            "consume",
-		Message:          message,
-		Source:           "relay-gateway",
-		RequestId:        in.RequestID,
-		UserId:           in.UserID,
-		TokenName:        usageTokenName(in),
-		ModelName:        in.ModelName,
-		Quota:            in.Quota,
-		PromptTokens:     in.PromptTokens,
-		CompletionTokens: in.CompletionTokens,
-		CacheReadTokens:  in.CacheReadTokens,
-		ChannelId:        in.ChannelID,
-		ElapsedTime:      in.ElapsedTime,
-		IsStream:         in.IsStream,
+		Level:                 "consume",
+		Message:               message,
+		Source:                "relay-gateway",
+		RequestId:             in.RequestID,
+		UserId:                in.UserID,
+		TokenName:             usageTokenName(in),
+		ModelName:             in.ModelName,
+		Quota:                 in.Quota,
+		PromptTokens:          in.PromptTokens,
+		CompletionTokens:      in.CompletionTokens,
+		CacheReadTokens:       in.CacheReadTokens,
+		ChannelId:             in.ChannelID,
+		SubscriptionAccountId: in.SubscriptionAccountID,
+		ElapsedTime:           in.ElapsedTime,
+		IsStream:              in.IsStream,
 	})
 	if err != nil && applogger.Log != nil {
 		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()
@@ -1669,13 +1714,14 @@ func (s *HTTPServer) writeJSON(w http.ResponseWriter, statusCode int, data inter
 
 // 配额管理方法
 
-func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string) (*billingv1.ReserveQuotaResponse, error) {
+func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64) (*billingv1.ReserveQuotaResponse, error) {
 	req := &billingv1.ReserveQuotaRequest{
-		UserId:          userID,
-		RequestId:       requestID,
-		EstimatedTokens: estimatedTokens,
-		Model:           model,
-		ChannelId:       channelID,
+		UserId:                userID,
+		RequestId:             requestID,
+		EstimatedTokens:       estimatedTokens,
+		Model:                 model,
+		ChannelId:             channelID,
+		SubscriptionAccountId: subscriptionAccountID,
 	}
 	resp, err := s.billingClient.ReserveQuota(ctx, req)
 	if err != nil {
@@ -1702,6 +1748,7 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 		req.CacheReadTokens = detail.CacheReadTokens
 		req.ElapsedTime = detail.ElapsedTime
 		req.IsStream = detail.IsStream
+		req.SubscriptionAccountId = detail.SubscriptionAccountID
 	}
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
@@ -1812,493 +1859,4 @@ func cacheReadTokensFromProviderUsage(usage relayprovider.Usage) int64 {
 		}
 	}
 	return 0
-}
-
-func extractRawModel(body []byte) string {
-	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
-		return ""
-	}
-	model, _ := payload["model"].(string)
-	return strings.TrimSpace(model)
-}
-
-func rewriteRawModel(body []byte, model string) []byte {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return body
-	}
-	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
-		return body
-	}
-	if _, ok := payload["model"]; !ok {
-		return body
-	}
-	current, _ := payload["model"].(string)
-	if strings.TrimSpace(current) == model {
-		return body
-	}
-	payload["model"] = model
-	rewritten, err := sonic.Marshal(payload)
-	if err != nil {
-		return body
-	}
-	return rewritten
-}
-
-func ensureRawModel(body []byte, model string) []byte {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return body
-	}
-	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
-		return body
-	}
-	current, _ := payload["model"].(string)
-	if strings.TrimSpace(current) == model {
-		return body
-	}
-	payload["model"] = model
-	rewritten, err := sonic.Marshal(payload)
-	if err != nil {
-		return body
-	}
-	return rewritten
-}
-
-func routeResolvedModel(route responseRoute) string {
-	if strings.TrimSpace(route.ResolvedModel) != "" {
-		return strings.TrimSpace(route.ResolvedModel)
-	}
-	return strings.TrimSpace(route.Model)
-}
-
-func isRawStreamRequest(body []byte) bool {
-	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
-		return false
-	}
-	stream, _ := payload["stream"].(bool)
-	return stream
-}
-
-func extractPreviousResponseID(body []byte) string {
-	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
-		return ""
-	}
-	responseID, _ := payload["previous_response_id"].(string)
-	return strings.TrimSpace(responseID)
-}
-
-func extractResponseID(body []byte) string {
-	var payload struct {
-		ID string `json:"id"`
-	}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(payload.ID)
-}
-
-type rawUsage struct {
-	PromptTokens     int64
-	CompletionTokens int64
-	CacheReadTokens  int64
-	TotalTokens      int64
-}
-
-func extractRawUsage(body []byte, fallback int64) rawUsage {
-	var payload interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
-		return rawUsage{TotalTokens: fallback}
-	}
-	return normalizeRawUsage(extractRawUsageValue(payload), fallback)
-}
-
-func extractRawUsageValue(value interface{}) rawUsage {
-	switch typed := value.(type) {
-	case map[string]interface{}:
-		var usage rawUsage
-		if nested, ok := typed["usage"]; ok {
-			usage = extractRawUsageValue(nested)
-		}
-		usage = mergeRawUsage(usage, rawUsage{
-			PromptTokens:     numberField(typed, "prompt_tokens", "input_tokens"),
-			CompletionTokens: numberField(typed, "completion_tokens", "output_tokens"),
-			CacheReadTokens:  cacheReadTokensFromUsageMap(typed),
-			TotalTokens:      numberField(typed, "total_tokens"),
-		})
-		if hasRawUsage(usage) {
-			return usage
-		}
-		for _, nested := range typed {
-			usage = extractRawUsageValue(nested)
-			if hasRawUsage(usage) {
-				return usage
-			}
-		}
-	case []interface{}:
-		for _, item := range typed {
-			usage := extractRawUsageValue(item)
-			if hasRawUsage(usage) {
-				return usage
-			}
-		}
-	}
-	return rawUsage{}
-}
-
-func mergeRawUsage(primary, fallback rawUsage) rawUsage {
-	if primary.PromptTokens == 0 {
-		primary.PromptTokens = fallback.PromptTokens
-	}
-	if primary.CompletionTokens == 0 {
-		primary.CompletionTokens = fallback.CompletionTokens
-	}
-	if primary.CacheReadTokens == 0 {
-		primary.CacheReadTokens = fallback.CacheReadTokens
-	}
-	if primary.TotalTokens == 0 {
-		primary.TotalTokens = fallback.TotalTokens
-	}
-	return primary
-}
-
-func normalizeRawUsage(usage rawUsage, fallback int64) rawUsage {
-	return normalizeRawUsageWithFallback(usage, rawUsage{TotalTokens: fallback})
-}
-
-func normalizeRawUsageWithFallback(usage rawUsage, fallback rawUsage) rawUsage {
-	if usage.TotalTokens == 0 && usage.PromptTokens+usage.CompletionTokens > 0 {
-		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-	}
-	if usage.TotalTokens <= 0 {
-		usage.TotalTokens = fallback.TotalTokens
-	}
-	if usage.PromptTokens == 0 {
-		usage.PromptTokens = fallback.PromptTokens
-	}
-	if usage.CompletionTokens == 0 {
-		usage.CompletionTokens = fallback.CompletionTokens
-	}
-	return usage
-}
-
-func hasRawUsage(usage rawUsage) bool {
-	return usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.CacheReadTokens > 0
-}
-
-func cacheReadTokensFromUsageMap(m map[string]interface{}) int64 {
-	if value := numberField(m, "cache_read_tokens", "cached_tokens"); value != 0 {
-		return value
-	}
-	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
-		details, ok := m[key].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if value := numberField(details, "cache_read_tokens", "cached_tokens"); value != 0 {
-			return value
-		}
-	}
-	return 0
-}
-
-func numberField(m map[string]interface{}, keys ...string) int64 {
-	for _, key := range keys {
-		if value, ok := m[key]; ok {
-			if number := int64Value(value); number != 0 {
-				return number
-			}
-		}
-	}
-	return 0
-}
-
-func int64Value(value interface{}) int64 {
-	switch v := value.(type) {
-	case float64:
-		return int64(v)
-	case float32:
-		return int64(v)
-	case int:
-		return int64(v)
-	case int64:
-		return v
-	case int32:
-		return int64(v)
-	case json.Number:
-		n, _ := v.Int64()
-		return n
-	default:
-		return 0
-	}
-}
-
-func parseResponsesResourcePath(method, path string) (string, bool) {
-	const prefix = "/v1/responses/"
-	rest := strings.TrimPrefix(path, prefix)
-	if rest == "" || rest == path {
-		return "", false
-	}
-	parts := strings.Split(rest, "/")
-	if parts[0] == "" {
-		return "", false
-	}
-	switch {
-	case len(parts) == 1 && (method == http.MethodGet || method == http.MethodDelete):
-		return parts[0], true
-	case len(parts) == 2 && parts[1] == "cancel" && method == http.MethodPost:
-		return parts[0], true
-	case len(parts) == 2 && parts[1] == "input_items" && method == http.MethodGet:
-		return parts[0], true
-	default:
-		return "", false
-	}
-}
-
-func defaultRawModel(upstreamPath string) string {
-	switch upstreamPath {
-	case "/embeddings":
-		return "text-embedding-ada-002"
-	case "/moderations":
-		return "text-moderation-latest"
-	case "/audio/speech":
-		return "tts-1"
-	default:
-		return ""
-	}
-}
-
-func estimateRawPromptTokens(body []byte) int64 {
-	tokens := int64(len(body) / 4)
-	if tokens < 1 {
-		return 1
-	}
-	return tokens
-}
-
-func estimateRawUsage(body []byte) rawUsage {
-	promptTokens := estimateRawPromptTokens(body)
-	completionTokens := int64(100)
-	return rawUsage{
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TotalTokens:      promptTokens + completionTokens,
-	}
-}
-
-func estimateRawTokens(body []byte) int64 {
-	return estimateRawUsage(body).TotalTokens
-}
-
-func extractTotalTokens(body []byte, fallback int64) int64 {
-	return extractRawUsage(body, fallback).TotalTokens
-}
-
-func writeRawResponse(w http.ResponseWriter, resp *relayprovider.RawResponse) {
-	for key, values := range resp.Header {
-		if isRelayHopByHopHeader(key) || strings.EqualFold(key, "Content-Type") {
-			continue
-		}
-		for _, value := range values {
-			w.Header().Add(key, value)
-		}
-	}
-	w.Header().Set("Content-Type", safeRawContentType(resp.Header.Get("Content-Type"), "application/json"))
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(resp.StatusCode)
-	_, _ = w.Write(resp.Body) // #nosec G705 -- upstream content type is constrained and nosniff is set above.
-}
-
-func safeRawContentType(contentType, fallback string) string {
-	contentType = strings.TrimSpace(contentType)
-	if contentType == "" {
-		return fallback
-	}
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return "application/octet-stream"
-	}
-	mediaType = strings.ToLower(mediaType)
-	switch {
-	case mediaType == "application/json",
-		mediaType == "application/x-ndjson",
-		mediaType == "application/octet-stream",
-		mediaType == "text/event-stream",
-		strings.HasSuffix(mediaType, "+json"):
-		return contentType
-	default:
-		return "application/octet-stream"
-	}
-}
-
-type rawStreamUsageTracker struct {
-	fallback   rawUsage
-	usage      rawUsage
-	responseID string
-	pending    string
-}
-
-func newRawStreamUsageTracker(fallback rawUsage) *rawStreamUsageTracker {
-	return &rawStreamUsageTracker{fallback: fallback}
-}
-
-func (t *rawStreamUsageTracker) Observe(chunk []byte) {
-	if t.responseID == "" {
-		t.responseID = extractRawStreamResponseID(chunk)
-	}
-	usage := extractRawUsage(chunk, 0)
-	if hasRawUsage(usage) {
-		t.usage = mergeRawUsage(usage, t.usage)
-	}
-}
-
-func (t *rawStreamUsageTracker) ObserveBytes(p []byte) {
-	t.pending += string(p)
-	for {
-		line, rest, ok := strings.Cut(t.pending, "\n")
-		if !ok {
-			break
-		}
-		t.pending = rest
-		data, ok := strings.CutPrefix(strings.TrimSpace(line), "data: ")
-		if !ok || data == "" || data == "[DONE]" {
-			continue
-		}
-		t.Observe([]byte(data))
-	}
-}
-
-func (t *rawStreamUsageTracker) Usage() rawUsage {
-	if strings.TrimSpace(t.pending) != "" {
-		t.ObserveBytes([]byte("\n"))
-	}
-	return normalizeRawUsageWithFallback(t.usage, t.fallback)
-}
-
-func (t *rawStreamUsageTracker) ResponseID() string {
-	if strings.TrimSpace(t.pending) != "" {
-		t.ObserveBytes([]byte("\n"))
-	}
-	return t.responseID
-}
-
-func extractRawStreamResponseID(chunk []byte) string {
-	var payload interface{}
-	if err := sonic.Unmarshal(chunk, &payload); err != nil {
-		return ""
-	}
-	return extractRawStreamResponseIDValue(payload)
-}
-
-func extractRawStreamResponseIDValue(value interface{}) string {
-	typed, ok := value.(map[string]interface{})
-	if !ok {
-		return ""
-	}
-	if responseID, _ := typed["response_id"].(string); strings.TrimSpace(responseID) != "" {
-		return strings.TrimSpace(responseID)
-	}
-	if response, ok := typed["response"].(map[string]interface{}); ok {
-		if responseID, _ := response["id"].(string); strings.TrimSpace(responseID) != "" {
-			return strings.TrimSpace(responseID)
-		}
-	}
-	if object, _ := typed["object"].(string); object == "response" {
-		if responseID, _ := typed["id"].(string); strings.TrimSpace(responseID) != "" {
-			return strings.TrimSpace(responseID)
-		}
-	}
-	return ""
-}
-
-func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStreamResponse, usageTracker ...*rawStreamUsageTracker) {
-	defer resp.Body.Close()
-
-	for key, values := range resp.Header {
-		if isRelayHopByHopHeader(key) || strings.EqualFold(key, "Content-Type") {
-			continue
-		}
-		for _, value := range values {
-			w.Header().Add(key, value)
-		}
-	}
-	w.Header().Set("Content-Type", safeRawContentType(resp.Header.Get("Content-Type"), "text/event-stream"))
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(resp.StatusCode)
-	if flusher, ok := w.(http.Flusher); ok {
-		_, _ = io.Copy(&flushWriter{w: w, flusher: flusher, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
-		return
-	}
-	_, _ = io.Copy(&streamUsageWriter{w: w, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
-}
-
-func firstRawStreamUsageTracker(trackers []*rawStreamUsageTracker) *rawStreamUsageTracker {
-	if len(trackers) == 0 {
-		return nil
-	}
-	return trackers[0]
-}
-
-type flushWriter struct {
-	w            http.ResponseWriter
-	flusher      http.Flusher
-	usageTracker *rawStreamUsageTracker
-}
-
-func (w *flushWriter) Write(p []byte) (int, error) {
-	observeStreamUsage(w.usageTracker, p)
-	n, err := w.w.Write(p)
-	w.flusher.Flush()
-	return n, err
-}
-
-type streamUsageWriter struct {
-	w            io.Writer
-	usageTracker *rawStreamUsageTracker
-}
-
-func (w *streamUsageWriter) Write(p []byte) (int, error) {
-	observeStreamUsage(w.usageTracker, p)
-	return w.w.Write(p)
-}
-
-func observeStreamUsage(tracker *rawStreamUsageTracker, p []byte) {
-	if tracker == nil {
-		return
-	}
-	tracker.ObserveBytes(p)
-}
-
-func isRelayHopByHopHeader(key string) bool {
-	switch strings.ToLower(key) {
-	case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-		"te", "trailer", "transfer-encoding", "upgrade":
-		return true
-	default:
-		return false
-	}
-}
-
-func parsePositiveInt64(value string) (int64, error) {
-	id, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	if id <= 0 {
-		return 0, fmt.Errorf("id must be positive")
-	}
-	return id, nil
-}
-
-func generateRequestID() string {
-	b := make([]byte, 16)
-	if _, err := crypto_rand.Read(b); err != nil {
-		return fmt.Sprintf("req_%d", time.Now().UnixNano())
-	}
-	return fmt.Sprintf("req_%x", b)
 }

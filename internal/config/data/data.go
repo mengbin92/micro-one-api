@@ -76,6 +76,13 @@ func newMemoryRepository() *Repository {
 	}
 }
 
+func (r *Repository) Redis() *redis.Client {
+	if r == nil {
+		return nil
+	}
+	return r.redis
+}
+
 func (r *Repository) Get(ctx context.Context, namespace, key string) (*biz.ConfigEntry, error) {
 	if r.db != nil {
 		return r.getDB(ctx, namespace, key)

@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"gorm.io/gorm"
 
 	notifyv1 "micro-one-api/api/notify/v1"
 	"micro-one-api/internal/billing/biz"
@@ -22,6 +23,7 @@ import (
 	"micro-one-api/internal/billing/data"
 	"micro-one-api/internal/billing/server"
 	"micro-one-api/internal/billing/service"
+	appdb "micro-one-api/internal/pkg/db"
 	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
 	"micro-one-api/internal/pkg/xconfig"
@@ -69,6 +71,16 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		d.RedeemRepo(),
 		pricing,
 	)
+	var asyncBilling *biz.AsyncBillingUsecase
+	if cfg.Billing.Async.Enabled {
+		asyncBilling = biz.NewAsyncBillingUsecase(
+			uc,
+			d.Redis(),
+			defaultInt(cfg.Billing.Async.QueueSize, 1000),
+			defaultInt(cfg.Billing.Async.BatchSize, 100),
+			parseDurationOrDefault(cfg.Billing.Async.BatchInterval, 5*time.Second),
+		)
+	}
 	reconUc := biz.NewReconciliationUsecase(
 		d.AccountRepo(),
 		d.ReservationRepo(),
@@ -134,6 +146,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	reconJob := biz.NewReconciliationJob(reconUc, interval, reconJobOpts...)
 	go cleanupJob.Start(ctx)
 	go reconJob.Start(ctx)
+	partitionStop := startPartitionMaintenance(ctx, d.DB(), cfg.Partition)
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -141,13 +154,74 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		cancel()
 		cleanupJob.Stop()
 		reconJob.Stop()
+		if partitionStop != nil {
+			partitionStop()
+		}
 	}()
 
 	return app, func() {
 		d.Close()
 		cancel()
+		if asyncBilling != nil {
+			_ = asyncBilling.Close()
+		}
+		if partitionStop != nil {
+			partitionStop()
+		}
 		if notifyConn != nil {
 			_ = notifyConn.Close()
 		}
 	}, nil
+}
+
+func startPartitionMaintenance(ctx context.Context, db *gorm.DB, cfg bcfg.PartitionConfig) func() {
+	if !cfg.Enabled || db == nil {
+		return nil
+	}
+	maintenanceCtx, cancel := context.WithCancel(ctx)
+	pm := appdb.NewPartitionManager(db)
+	interval := parseDurationOrDefault(cfg.Interval, 24*time.Hour)
+	tables := cfg.PartitionTables()
+	runMaintenance := func() {
+		for _, table := range tables {
+			if err := pm.PartitionMaintenanceForTable(maintenanceCtx, table); err != nil {
+				applogger.Log.Warn("partition maintenance failed",
+					zap.String("table", table), zap.Error(err))
+			}
+		}
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		// Run once immediately so newly-enabled services don't wait a full
+		// interval before their first partition is created.
+		runMaintenance()
+		for {
+			select {
+			case <-maintenanceCtx.Done():
+				return
+			case <-ticker.C:
+				runMaintenance()
+			}
+		}
+	}()
+	return cancel
+}
+
+func parseDurationOrDefault(raw string, fallback time.Duration) time.Duration {
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func defaultInt(value, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+	return value
 }

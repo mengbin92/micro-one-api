@@ -55,6 +55,8 @@ interface LogEntry {
   completion_tokens?: string | number;
   cache_read_tokens?: string | number;
   channel?: string | number;
+  subscription_account_id?: number;
+  subscriptionAccountId?: number;
   elapsed_time?: string | number;
   is_stream?: boolean;
 }
@@ -107,12 +109,13 @@ export function AdminLogsPage() {
   } = useAdminTableState({
     storageKey: 'logs',
     defaultPageSize: 50,
-    filters: ['user_id', 'type', 'start_time', 'end_time'],
+    filters: ['user_id', 'type', 'start_time', 'end_time', 'subscription_account_id'],
   });
   const userId = filters.user_id ?? '';
   const type = filters.type ?? '';
   const startTime = filters.start_time ?? '';
   const endTime = filters.end_time ?? '';
+  const subscriptionAccountId = filters.subscription_account_id ?? '';
   const sort = useMemo(
     () => ({ key: sortKey as keyof LogEntry | null, direction: sortDirection }) satisfies SortState<LogEntry>,
     [sortKey, sortDirection],
@@ -122,7 +125,7 @@ export function AdminLogsPage() {
     pageSize,
     sortKey,
     sortDirection,
-    filters: { user_id: userId, type, start_time: startTime, end_time: endTime },
+    filters: { user_id: userId, type, start_time: startTime, end_time: endTime, subscription_account_id: subscriptionAccountId },
   });
   exportParams.set('format', 'csv');
   const exportHref = `/log/export?${exportParams}`;
@@ -213,6 +216,7 @@ export function AdminLogsPage() {
         ['Model', selectedLog.model_name],
         ['Token', selectedLog.token_name],
         ['Channel', selectedLog.channel],
+        ['Subscription Account', selectedLog.subscription_account_id ?? selectedLog.subscriptionAccountId],
         ['Quota', formatRawQuota(selectedLog.quota ?? selectedLog.amount)],
         ['Prompt Tokens', selectedLog.prompt_tokens],
         ['Completion Tokens', selectedLog.completion_tokens],
@@ -247,6 +251,12 @@ export function AdminLogsPage() {
           <option value="consume">Consume</option>
           <option value="refund">Refund</option>
         </select>
+        <Input
+          placeholder="订阅账号 ID"
+          value={subscriptionAccountId}
+          onChange={(e) => setFilter('subscription_account_id', e.target.value.trim())}
+          className="max-w-xs"
+        />
         <Button
           variant="outline"
           onClick={() => {
@@ -254,6 +264,7 @@ export function AdminLogsPage() {
             setFilter('type', '');
             setFilter('start_time', '');
             setFilter('end_time', '');
+            setFilter('subscription_account_id', '');
           }}
         >
           Clear
@@ -274,6 +285,7 @@ export function AdminLogsPage() {
               { key: 'amount', label: 'Amount' },
               { key: 'balanceAfter', label: 'Balance After' },
               { key: 'referenceId', label: 'Reference' },
+              { key: 'subscriptionAccountId', label: 'Subscription Account' },
               { key: 'remark', label: 'Remark' },
               { key: 'createdAt', label: 'Created At' },
             ]}
@@ -309,7 +321,7 @@ export function AdminLogsPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', 'User ID', 'Type', 'Amount', 'Balance After', 'Reference', 'Remark', 'Created At', 'Actions']} rows={8} />
+        <TableSkeleton columns={['ID', 'User ID', 'Type', 'Amount', 'Balance After', 'Subscription Account', 'Reference', 'Remark', 'Created At', 'Actions']} rows={8} />
       ) : !logs || logs.length === 0 ? (
         <EmptyState title="No logs found" description="Adjust the filters or check back after billing events are recorded." />
       ) : (
@@ -329,6 +341,7 @@ export function AdminLogsPage() {
                     Amount
                   </SortableHeader>
                   <TableHead className="hidden md:table-cell">Balance After</TableHead>
+                  <TableHead className="hidden lg:table-cell">Subscription Account</TableHead>
                   <TableHead className="hidden lg:table-cell">Reference</TableHead>
                   <TableHead className="hidden lg:table-cell">Remark</TableHead>
                   <SortableHeader<LogEntry> columnKey="createdAt" sort={sort} onSortChange={setSort}>

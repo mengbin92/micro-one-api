@@ -34,11 +34,12 @@ func (r *ledgerRepo) CreateLedger(ctx context.Context, ledger *biz.Ledger) error
 		Quota:            ledger.Quota,
 		PromptTokens:     ledger.PromptTokens,
 		CompletionTokens: ledger.CompletionTokens,
-		CacheReadTokens:  ledger.CacheReadTokens,
-		ChannelID:        ledger.ChannelID,
-		ElapsedTime:      ledger.ElapsedTime,
-		IsStream:         ledger.IsStream,
-		Endpoint:         ledger.Endpoint,
+		CacheReadTokens:      ledger.CacheReadTokens,
+		ChannelID:            ledger.ChannelID,
+		SubscriptionAccountID: ledger.SubscriptionAccountID,
+		ElapsedTime:          ledger.ElapsedTime,
+		IsStream:             ledger.IsStream,
+		Endpoint:             ledger.Endpoint,
 	}
 
 	return r.data.db.WithContext(ctx).Create(model).Error
@@ -89,8 +90,9 @@ func (r *ledgerRepo) ListLedgers(ctx context.Context, userID string, page, pageS
 			PromptTokens:     model.PromptTokens,
 			CompletionTokens: model.CompletionTokens,
 			CacheReadTokens:  model.CacheReadTokens,
-			ChannelID:        model.ChannelID,
-			ElapsedTime:      model.ElapsedTime,
+			ChannelID:            model.ChannelID,
+			SubscriptionAccountID: model.SubscriptionAccountID,
+			ElapsedTime:          model.ElapsedTime,
 			IsStream:         model.IsStream,
 			Endpoint:         model.Endpoint,
 			CreatedAt:        model.CreatedAt,
@@ -157,8 +159,9 @@ func (r *ledgerRepo) ListLedgersWithTimeRange(ctx context.Context, userID string
 			PromptTokens:     model.PromptTokens,
 			CompletionTokens: model.CompletionTokens,
 			CacheReadTokens:  model.CacheReadTokens,
-			ChannelID:        model.ChannelID,
-			ElapsedTime:      model.ElapsedTime,
+			ChannelID:            model.ChannelID,
+			SubscriptionAccountID: model.SubscriptionAccountID,
+			ElapsedTime:          model.ElapsedTime,
 			IsStream:         model.IsStream,
 			Endpoint:         model.Endpoint,
 			CreatedAt:        model.CreatedAt,
@@ -233,11 +236,63 @@ func (r *ledgerRepo) ListLedgersWithFilters(ctx context.Context, userID string, 
 			PromptTokens:     model.PromptTokens,
 			CompletionTokens: model.CompletionTokens,
 			CacheReadTokens:  model.CacheReadTokens,
-			ChannelID:        model.ChannelID,
-			ElapsedTime:      model.ElapsedTime,
+			ChannelID:            model.ChannelID,
+			SubscriptionAccountID: model.SubscriptionAccountID,
+			ElapsedTime:          model.ElapsedTime,
 			IsStream:         model.IsStream,
 			Endpoint:         model.Endpoint,
 			CreatedAt:        model.CreatedAt,
+		}
+	}
+
+	return ledgers, total, nil
+}
+
+// ListLedgersBySubscriptionAccount returns ledger entries attributed to a
+// specific subscription account, ordered newest-first.
+func (r *ledgerRepo) ListLedgersBySubscriptionAccount(ctx context.Context, subscriptionAccountID int64, page, pageSize int32) ([]*biz.Ledger, int64, error) {
+	var models []ledgerModel
+	var total int64
+
+	offset := (page - 1) * pageSize
+
+	countQuery := r.data.db.WithContext(ctx).Model(&ledgerModel{}).Where("subscription_account_id = ?", subscriptionAccountID)
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	fetchQuery := r.data.db.WithContext(ctx).Where("subscription_account_id = ?", subscriptionAccountID)
+	if err := fetchQuery.
+		Order("created_at DESC").
+		Limit(int(pageSize)).
+		Offset(int(offset)).
+		Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+
+	ledgers := make([]*biz.Ledger, len(models))
+	for i, model := range models {
+		ledgers[i] = &biz.Ledger{
+			ID:                    model.ID,
+			UserID:                model.UserID,
+			Amount:                model.Amount,
+			UpstreamCost:          model.UpstreamCost,
+			BalanceAfter:          model.BalanceAfter,
+			Type:                  model.Type,
+			ReferenceID:           stringFromPtr(model.ReferenceID),
+			Remark:                stringFromPtr(model.Remark),
+			TokenName:             model.TokenName,
+			ModelName:             model.ModelName,
+			Quota:                 model.Quota,
+			PromptTokens:          model.PromptTokens,
+			CompletionTokens:      model.CompletionTokens,
+			CacheReadTokens:       model.CacheReadTokens,
+			ChannelID:             model.ChannelID,
+			SubscriptionAccountID: model.SubscriptionAccountID,
+			ElapsedTime:           model.ElapsedTime,
+			IsStream:              model.IsStream,
+			Endpoint:              model.Endpoint,
+			CreatedAt:             model.CreatedAt,
 		}
 	}
 
@@ -354,13 +409,14 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	// dimension -> (select expression, output column alias)
 	type dim struct{ expr, alias string }
 	allowed := map[string]dim{
-		biz.UsageDimUser:    {"user_id", "g_user"},
-		biz.UsageDimChannel: {"channel_id", "g_channel"},
-		biz.UsageDimModel:   {"model_name", "g_model"},
-		biz.UsageDimToken:   {"token_name", "g_token"},
-		biz.UsageDimType:    {"type", "g_type"},
-		biz.UsageDimDay:     {dayExpr, "g_day"},
-		biz.UsageDimHour:    {hourExpr, "g_hour"},
+		biz.UsageDimUser:               {"user_id", "g_user"},
+		biz.UsageDimChannel:            {"channel_id", "g_channel"},
+		biz.UsageDimModel:              {"model_name", "g_model"},
+		biz.UsageDimToken:              {"token_name", "g_token"},
+		biz.UsageDimType:               {"type", "g_type"},
+		biz.UsageDimDay:                {dayExpr, "g_day"},
+		biz.UsageDimHour:               {hourExpr, "g_hour"},
+		biz.UsageDimSubscriptionAccount: {"subscription_account_id", "g_subscription_account"},
 	}
 
 	selectParts := make([]string, 0, len(filter.GroupBy)+5)
@@ -403,6 +459,7 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	type aggRow struct {
 		GUser            string
 		GChannel         int64
+		GSubscriptionAccount int64
 		GModel           string
 		GToken           string
 		GType            string
@@ -427,9 +484,10 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	for i := range rows {
 		row := rows[i]
 		buckets[i] = &biz.UsageBucket{
-			UserID:           row.GUser,
-			ChannelID:        row.GChannel,
-			Model:            row.GModel,
+			UserID:               row.GUser,
+			ChannelID:            row.GChannel,
+			SubscriptionAccountID: row.GSubscriptionAccount,
+			Model:                row.GModel,
 			TokenName:        row.GToken,
 			Type:             row.GType,
 			Day:              row.GDay,
@@ -500,6 +558,9 @@ func applyUsageFilters(db *gorm.DB, filter biz.UsageFilter) *gorm.DB {
 	}
 	if filter.ChannelID != 0 {
 		db = db.Where("channel_id = ?", filter.ChannelID)
+	}
+	if filter.SubscriptionAccountID != 0 {
+		db = db.Where("subscription_account_id = ?", filter.SubscriptionAccountID)
 	}
 	if filter.Model != "" {
 		db = db.Where("model_name = ?", filter.Model)

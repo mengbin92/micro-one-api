@@ -29,3 +29,16 @@ retry:
     - 503
 models:
   path: /configs/models.yaml
+
+# Hybrid adaptor layer: routes subscription-account (Codex/Claude OAuth)
+# channel types through the OAuth adaptor path instead of the default
+# provider-factory direct call. Required when subscription accounts are
+# configured — otherwise requests for subscription-account models (e.g.
+# gpt-5, gpt-5.5 served by chatgpt-pro-1) fall through to the default
+# OpenAI provider path which uses the (empty) channel key and fails with
+# 502 "upstream service error".
+hybrid_adaptor:
+  enabled: true
+  identity_ttl: 24h
+  refresh_interval: 10m
+  refresh_lookahead: 24h

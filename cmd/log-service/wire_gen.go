@@ -3,6 +3,8 @@
 package main
 
 import (
+	"context"
+
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
 	"go.uber.org/zap"
@@ -49,6 +51,12 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)
 	cleanupRetention := startLogRetentionCleanup(uc, cfg.Log.RetentionDays)
 
+	// Partition maintenance for the `logs` table. Gated by the partition
+	// feature flag (default off); a no-op when the repository is in-memory.
+	// REVIEW_v4 §六 listed this as a remaining optional optimization item.
+	partitionCtx, partitionCancel := context.WithCancel(context.Background())
+	partitionStop := startPartitionMaintenance(partitionCtx, repo.DB(), cfg.Partition)
+
 	registrar, rErr := appregistry.NewRegistrar(cfg.Registry)
 	if rErr != nil {
 		applogger.Log.Warn("failed to create registrar", zap.Error(rErr))
@@ -64,5 +72,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	app := kratos.New(kratosOpts...)
 
-	return app, cleanupRetention, nil
+	return app, func() {
+		cleanupRetention()
+		partitionCancel()
+		if partitionStop != nil {
+			partitionStop()
+		}
+	}, nil
 }

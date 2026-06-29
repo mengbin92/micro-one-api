@@ -34,6 +34,7 @@ func setupLedgerTestDB(t *testing.T) *gorm.DB {
 			completion_tokens INTEGER DEFAULT 0,
 			cache_read_tokens INTEGER DEFAULT 0,
 			channel_id INTEGER DEFAULT 0,
+			subscription_account_id INTEGER DEFAULT 0,
 			elapsed_time INTEGER DEFAULT 0,
 			is_stream INTEGER DEFAULT 0,
 			endpoint TEXT DEFAULT '',

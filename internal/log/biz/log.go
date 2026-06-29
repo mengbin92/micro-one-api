@@ -27,9 +27,10 @@ type LogEntry struct {
 	PromptTokens     int64
 	CompletionTokens int64
 	CacheReadTokens  int64
-	ChannelID        int64
-	ElapsedTime      int64
-	IsStream         bool
+	ChannelID              int64
+	SubscriptionAccountID  int64
+	ElapsedTime            int64
+	IsStream               bool
 }
 
 // UsageStat is a One API-style usage aggregate grouped by day and model.

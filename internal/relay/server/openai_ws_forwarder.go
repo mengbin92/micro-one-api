@@ -139,7 +139,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	// Reservations mirror the HTTP path: estimate tokens from the request body
 	// and commit per terminal turn.
 	requestID := generateRequestID()
-	reservation, err := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimateRawTokens(rewrittenFirstMessage), plan.ResolvedModel, fmt.Sprintf("%d", plan.Channel.ID))
+	reservation, err := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimateRawTokens(rewrittenFirstMessage), plan.ResolvedModel, fmt.Sprintf("%d", plan.Channel.ID), subscriptionAccountIDFromPlan(plan))
 	if err != nil {
 		closeOpenAIWSClientConn(wsConn, coderws.StatusTryAgainLater, "quota reservation failed")
 		return

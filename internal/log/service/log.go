@@ -47,10 +47,11 @@ func (s *LogService) GetLog(ctx context.Context, req *logv1.GetLogRequest) (*log
 		Quota:            entry.Quota,
 		PromptTokens:     entry.PromptTokens,
 		CompletionTokens: entry.CompletionTokens,
-		CacheReadTokens:  entry.CacheReadTokens,
-		ChannelId:        entry.ChannelID,
-		ElapsedTime:      entry.ElapsedTime,
-		IsStream:         entry.IsStream,
+		CacheReadTokens:      entry.CacheReadTokens,
+		ChannelId:            entry.ChannelID,
+		SubscriptionAccountId: entry.SubscriptionAccountID,
+		ElapsedTime:          entry.ElapsedTime,
+		IsStream:             entry.IsStream,
 	}, nil
 }
 
@@ -79,10 +80,11 @@ func (s *LogService) IngestLog(ctx context.Context, req *logv1.IngestLogRequest)
 		Quota:            req.Quota,
 		PromptTokens:     req.PromptTokens,
 		CompletionTokens: req.CompletionTokens,
-		CacheReadTokens:  req.CacheReadTokens,
-		ChannelID:        req.ChannelId,
-		ElapsedTime:      req.ElapsedTime,
-		IsStream:         req.IsStream,
+		CacheReadTokens:      req.CacheReadTokens,
+		ChannelID:            req.ChannelId,
+		SubscriptionAccountID: req.SubscriptionAccountId,
+		ElapsedTime:          req.ElapsedTime,
+		IsStream:             req.IsStream,
 	}
 	if err := s.uc.IngestLog(ctx, entry); err != nil {
 		return nil, err
@@ -105,10 +107,11 @@ func logEntryToProto(e *biz.LogEntry) *logv1.GetLogResponse {
 		Quota:            e.Quota,
 		PromptTokens:     e.PromptTokens,
 		CompletionTokens: e.CompletionTokens,
-		CacheReadTokens:  e.CacheReadTokens,
-		ChannelId:        e.ChannelID,
-		ElapsedTime:      e.ElapsedTime,
-		IsStream:         e.IsStream,
+		CacheReadTokens:      e.CacheReadTokens,
+		ChannelId:            e.ChannelID,
+		SubscriptionAccountId: e.SubscriptionAccountID,
+		ElapsedTime:          e.ElapsedTime,
+		IsStream:             e.IsStream,
 	}
 }
 

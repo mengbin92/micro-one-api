@@ -45,3 +45,10 @@ payment:
     app_cert_path: "${ALIPAY_APP_CERT_PATH:-}"
     root_cert_path: "${ALIPAY_ROOT_CERT_PATH:-}"
     alipay_public_cert_path: "${ALIPAY_PUBLIC_CERT_PATH:-}"
+
+partition:
+  enabled: ${PARTITION_ENABLED:-false}
+  interval: ${PARTITION_INTERVAL:-24h}
+  # Tables to maintain. Defaults to both partitioned tables when unset.
+  # Set to ["billing_ledgers"] when log-service owns the logs table.
+  tables: ${PARTITION_TABLES:-["logs", "billing_ledgers"]}

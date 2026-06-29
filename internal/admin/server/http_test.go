@@ -97,11 +97,15 @@ type adminHTTPChannelClient struct {
 	createdName          string
 	created              *channelv1.CreateChannelRequest
 	updated              *channelv1.UpdateChannelRequest
+	createdAccount       *channelv1.CreateSubscriptionAccountRequest
+	updatedAccount       *channelv1.UpdateSubscriptionAccountRequest
 	deletedID            int64
+	deletedAccountID     int64
 	deletedIDs           []int64
 	baseURL              string
 	chType               int32
 	statuses             []int32
+	accountStatuses      []int32
 	existingFailureCount int32
 	existingLastError    string
 	existingLastSuccess  int64
@@ -133,6 +137,61 @@ func (c *adminHTTPChannelClient) ChangeChannelStatus(ctx context.Context, req *c
 func (c *adminHTTPChannelClient) RecordChannelHealth(ctx context.Context, req *channelv1.RecordChannelHealthRequest, opts ...grpc.CallOption) (*channelv1.RecordChannelHealthResponse, error) {
 	c.healthReq = req
 	return &channelv1.RecordChannelHealthResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPChannelClient) CreateSubscriptionAccount(ctx context.Context, req *channelv1.CreateSubscriptionAccountRequest, opts ...grpc.CallOption) (*channelv1.CreateSubscriptionAccountResponse, error) {
+	c.createdAccount = req
+	return &channelv1.CreateSubscriptionAccountResponse{Success: true, Message: "created", AccountId: 201}, nil
+}
+
+func (c *adminHTTPChannelClient) UpdateSubscriptionAccount(ctx context.Context, req *channelv1.UpdateSubscriptionAccountRequest, opts ...grpc.CallOption) (*channelv1.UpdateSubscriptionAccountResponse, error) {
+	c.updatedAccount = req
+	return &channelv1.UpdateSubscriptionAccountResponse{Success: true, Message: "updated"}, nil
+}
+
+func (c *adminHTTPChannelClient) DeleteSubscriptionAccount(ctx context.Context, req *channelv1.DeleteSubscriptionAccountRequest, opts ...grpc.CallOption) (*channelv1.DeleteSubscriptionAccountResponse, error) {
+	c.deletedAccountID = req.AccountId
+	return &channelv1.DeleteSubscriptionAccountResponse{Success: true, Message: "deleted"}, nil
+}
+
+func (c *adminHTTPChannelClient) ChangeSubscriptionAccountStatus(ctx context.Context, req *channelv1.ChangeSubscriptionAccountStatusRequest, opts ...grpc.CallOption) (*channelv1.ChangeSubscriptionAccountStatusResponse, error) {
+	c.accountStatuses = append(c.accountStatuses, req.Status)
+	return &channelv1.ChangeSubscriptionAccountStatusResponse{Success: true, Message: "updated"}, nil
+}
+
+func (c *adminHTTPChannelClient) GetSubscriptionAccount(ctx context.Context, req *channelv1.GetSubscriptionAccountRequest, opts ...grpc.CallOption) (*channelv1.GetSubscriptionAccountReply, error) {
+	return &channelv1.GetSubscriptionAccountReply{
+		Account: &commonv1.SubscriptionAccountInfo{
+			Id:          req.AccountId,
+			Name:        "codex",
+			Platform:    "codex",
+			AccountType: "oauth",
+			Status:      1,
+			Group:       "default",
+			Models:      "gpt-5",
+			Priority:    10,
+			AccountId:   "acc_123",
+		},
+	}, nil
+}
+
+func (c *adminHTTPChannelClient) ListSubscriptionAccounts(ctx context.Context, req *channelv1.ListSubscriptionAccountsRequest, opts ...grpc.CallOption) (*channelv1.ListSubscriptionAccountsResponse, error) {
+	return &channelv1.ListSubscriptionAccountsResponse{
+		Accounts: []*commonv1.SubscriptionAccountSummary{
+			{
+				Id:          201,
+				Name:        "codex",
+				Platform:    "codex",
+				AccountType: "oauth",
+				Status:      1,
+				Group:       "default",
+				Models:      "gpt-5",
+				Priority:    10,
+				AccountId:   "acc_123",
+			},
+		},
+		Total: 1,
+	}, nil
 }
 
 func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChannelRequest, opts ...grpc.CallOption) (*channelv1.GetChannelReply, error) {
@@ -1052,6 +1111,61 @@ func TestAdminHTTPChannelOneAPIFields(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPSubscriptionAccountRoutes(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	channelClient := &adminHTTPChannelClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, channelClient, &adminHTTPBillingClient{})
+
+	createBody := `{"name":"codex","platform":"codex","account_type":"oauth","group":"default","models":"gpt-5","priority":10,"access_token":"access","account_id":"acc_123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/subscription-accounts", strings.NewReader(createBody))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || channelClient.createdAccount == nil || channelClient.createdAccount.Platform != "codex" || !strings.Contains(rec.Body.String(), `"account_id":201`) {
+		t.Fatalf("create subscription account mismatch: status=%d created=%+v body=%s", rec.Code, channelClient.createdAccount, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/subscription-accounts?platform=codex", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"accounts"`) || !strings.Contains(rec.Body.String(), `"codex"`) {
+		t.Fatalf("list subscription accounts mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/subscription-accounts/201", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"account_id":"acc_123"`) {
+		t.Fatalf("get subscription account mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/v1/subscription-accounts/201", strings.NewReader(`{"name":"codex-updated","models":"gpt-5-codex"}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || channelClient.updatedAccount == nil || channelClient.updatedAccount.Id != 201 || channelClient.updatedAccount.Models != "gpt-5-codex" {
+		t.Fatalf("update subscription account mismatch: status=%d updated=%+v body=%s", rec.Code, channelClient.updatedAccount, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/v1/subscription-accounts/201/status", strings.NewReader(`{"status":2}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || len(channelClient.accountStatuses) != 1 || channelClient.accountStatuses[0] != 2 {
+		t.Fatalf("status subscription account mismatch: status=%d statuses=%v body=%s", rec.Code, channelClient.accountStatuses, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/v1/subscription-accounts/201", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || channelClient.deletedAccountID != 201 {
+		t.Fatalf("delete subscription account mismatch: status=%d deleted=%d body=%s", rec.Code, channelClient.deletedAccountID, rec.Body.String())
+	}
+}
+
 func TestAdminHTTPOneAPIChannelRoutes(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	channelClient := &adminHTTPChannelClient{}
@@ -1683,6 +1797,10 @@ func TestAdminHTTPSummaryCountsOnlyPaidPaymentOrders(t *testing.T) {
 		`"negative_profit"`,
 		`"reconciliation_discrepancy"`,
 		`"latest_reconciliation":`,
+		`"subscription_accounts":1`,
+		`"active_subscription_accounts":1`,
+		`"account_id":"acc_123"`,
+		`"platform":"codex"`,
 	} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("summary response missing %s: %s", want, rec.Body.String())

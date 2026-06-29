@@ -65,6 +65,45 @@ func setupChannelTestDB(t *testing.T) *Repository {
 		)
 	`).Error)
 
+	require.NoError(t, db.Exec(`
+		CREATE TABLE subscription_accounts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL DEFAULT '',
+			platform TEXT NOT NULL,
+			account_type TEXT NOT NULL DEFAULT 'oauth',
+			status INTEGER DEFAULT 1,
+			`+"`group`"+` TEXT DEFAULT 'default',
+			models TEXT,
+			priority INTEGER DEFAULT 0,
+			base_url TEXT,
+			access_token TEXT,
+			refresh_token TEXT,
+			expires_at INTEGER DEFAULT 0,
+			account_id TEXT DEFAULT '',
+			fingerprint TEXT,
+			metadata TEXT,
+			created_at INTEGER DEFAULT 0,
+			updated_at INTEGER DEFAULT 0,
+			last_used_at INTEGER DEFAULT 0,
+			rate_limited_until INTEGER DEFAULT 0,
+			quota_used_percent REAL DEFAULT 0,
+			quota_reset_at INTEGER DEFAULT 0,
+			concurrency INTEGER DEFAULT 1
+		)
+	`).Error)
+
+	require.NoError(t, db.Exec(`
+		CREATE TABLE subscription_account_abilities (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			`+"`group`"+` TEXT NOT NULL DEFAULT 'default',
+			model TEXT NOT NULL,
+			platform TEXT NOT NULL,
+			account_id INTEGER NOT NULL,
+			enabled INTEGER DEFAULT 1,
+			priority INTEGER DEFAULT 0
+		)
+	`).Error)
+
 	return &Repository{db: db}
 }
 
@@ -73,6 +112,13 @@ func loadAbilities(t *testing.T, repo *Repository, channelID int64) []abilityMod
 	t.Helper()
 	var rows []abilityModel
 	require.NoError(t, repo.db.Where("channel_id = ?", channelID).Order("`group` ASC, model ASC").Find(&rows).Error)
+	return rows
+}
+
+func loadSubscriptionAbilities(t *testing.T, repo *Repository, accountID int64) []subscriptionAccountAbilityModel {
+	t.Helper()
+	var rows []subscriptionAccountAbilityModel
+	require.NoError(t, repo.db.Where("account_id = ?", accountID).Order("`group` ASC, model ASC").Find(&rows).Error)
 	return rows
 }
 
@@ -231,6 +277,64 @@ func TestChangeStatus_UpdatesAbilitiesEnabled(t *testing.T) {
 
 	rows = loadAbilities(t, repo, ch.ID)
 	assert.True(t, rows[0].Enabled, "ability.enabled should be true after re-enabling channel")
+}
+
+func TestCreateSubscriptionAccount_PopulatesAbilities(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	account := &biz.SubscriptionAccount{
+		Name:        "codex",
+		Platform:    "codex",
+		AccountType: "oauth",
+		Status:      biz.ChannelStatusEnabled,
+		Group:       "default,premium",
+		Models:      []string{"gpt-5", "gpt-5-codex"},
+		Priority:    30,
+		AccountID:   "acc_1",
+	}
+
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
+	require.NotZero(t, account.ID)
+
+	rows := loadSubscriptionAbilities(t, repo, account.ID)
+	assert.Len(t, rows, 4)
+	for _, r := range rows {
+		assert.True(t, r.Enabled)
+		require.NotNil(t, r.Priority)
+		assert.EqualValues(t, 30, *r.Priority)
+		assert.Equal(t, "codex", r.Platform)
+	}
+}
+
+func TestSelectSubscriptionAccount_ByPriority(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	acc1 := &biz.SubscriptionAccount{
+		Name:      "low",
+		Platform:  "codex",
+		Status:    biz.ChannelStatusEnabled,
+		Group:     "default",
+		Models:    []string{"gpt-5"},
+		Priority:  1,
+		AccountID: "acc_1",
+	}
+	acc2 := &biz.SubscriptionAccount{
+		Name:      "high",
+		Platform:  "codex",
+		Status:    biz.ChannelStatusEnabled,
+		Group:     "default",
+		Models:    []string{"gpt-5"},
+		Priority:  9,
+		AccountID: "acc_2",
+	}
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, acc1))
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, acc2))
+
+	got, err := biz.NewChannelUsecase(repo, nil).SelectSubscriptionAccount(ctx, "default", "gpt-5", "codex", false)
+	require.NoError(t, err)
+	assert.Equal(t, acc2.ID, got.ID)
 }
 
 func TestRecordHealth_OpensAndResetsCircuit(t *testing.T) {

@@ -38,8 +38,9 @@ type logModel struct {
 	PromptTokens     int64  `gorm:"column:prompt_tokens"`
 	CompletionTokens int64  `gorm:"column:completion_tokens"`
 	CacheReadTokens  int64  `gorm:"column:cache_read_tokens"`
-	ChannelID        int64  `gorm:"column:channel_id"`
-	ElapsedTime      int64  `gorm:"column:elapsed_time"`
+	ChannelID              int64  `gorm:"column:channel_id"`
+	SubscriptionAccountID  int64  `gorm:"column:subscription_account_id"`
+	ElapsedTime            int64  `gorm:"column:elapsed_time"`
 	IsStream         bool   `gorm:"column:is_stream"`
 }
 
@@ -91,6 +92,17 @@ func newMemoryRepository() *Repository {
 
 func NewMemoryRepositoryForTest() *Repository {
 	return &Repository{mem: map[int64]*biz.LogEntry{}}
+}
+
+// DB returns the underlying *gorm.DB used by the repository, or nil when the
+// repository is backed by the in-memory store. It is exposed so the
+// log-service can run periodic partition maintenance (REVIEW_v4 §六) without
+// the data package depending on the db utilities.
+func (r *Repository) DB() *gorm.DB {
+	if r == nil {
+		return nil
+	}
+	return r.db
 }
 
 func (r *Repository) Get(ctx context.Context, id int64) (*biz.LogEntry, error) {
@@ -170,10 +182,11 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.LogEntry, error)
 		Quota:            m.Quota,
 		PromptTokens:     m.PromptTokens,
 		CompletionTokens: m.CompletionTokens,
-		CacheReadTokens:  m.CacheReadTokens,
-		ChannelID:        m.ChannelID,
-		ElapsedTime:      m.ElapsedTime,
-		IsStream:         m.IsStream,
+		CacheReadTokens:      m.CacheReadTokens,
+		ChannelID:            m.ChannelID,
+		SubscriptionAccountID: m.SubscriptionAccountID,
+		ElapsedTime:          m.ElapsedTime,
+		IsStream:             m.IsStream,
 	}, nil
 }
 
@@ -242,10 +255,11 @@ func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
 		Quota:            entry.Quota,
 		PromptTokens:     entry.PromptTokens,
 		CompletionTokens: entry.CompletionTokens,
-		CacheReadTokens:  entry.CacheReadTokens,
-		ChannelID:        entry.ChannelID,
-		ElapsedTime:      entry.ElapsedTime,
-		IsStream:         entry.IsStream,
+		CacheReadTokens:      entry.CacheReadTokens,
+		ChannelID:            entry.ChannelID,
+		SubscriptionAccountID: entry.SubscriptionAccountID,
+		ElapsedTime:          entry.ElapsedTime,
+		IsStream:             entry.IsStream,
 	}
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		return err
@@ -304,10 +318,11 @@ func logModelToEntry(m logModel) *biz.LogEntry {
 		Quota:            m.Quota,
 		PromptTokens:     m.PromptTokens,
 		CompletionTokens: m.CompletionTokens,
-		CacheReadTokens:  m.CacheReadTokens,
-		ChannelID:        m.ChannelID,
-		ElapsedTime:      m.ElapsedTime,
-		IsStream:         m.IsStream,
+		CacheReadTokens:      m.CacheReadTokens,
+		ChannelID:            m.ChannelID,
+		SubscriptionAccountID: m.SubscriptionAccountID,
+		ElapsedTime:          m.ElapsedTime,
+		IsStream:             m.IsStream,
 	}
 }
 

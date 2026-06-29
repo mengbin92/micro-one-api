@@ -767,6 +767,111 @@ func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpda
 	}, nil
 }
 
+func (s *AdminService) ListSubscriptionAccounts(ctx context.Context, req *adminv1.AdminListSubscriptionAccountsRequest) (*adminv1.AdminListSubscriptionAccountsResponse, error) {
+	resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
+		Page:     req.Page,
+		PageSize: req.PageSize,
+		Keyword:  req.Keyword,
+		Group:    req.Group,
+		Status:   req.Status,
+		Platform: req.Platform,
+	})
+	if err != nil {
+		return &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}, nil
+	}
+	return &adminv1.AdminListSubscriptionAccountsResponse{
+		Accounts: resp.Accounts,
+		Total:    resp.Total,
+	}, nil
+}
+
+func (s *AdminService) GetSubscriptionAccount(ctx context.Context, accountID int64) (*commonv1.SubscriptionAccountInfo, error) {
+	resp, err := s.channelClient.GetSubscriptionAccount(ctx, &channelv1.GetSubscriptionAccountRequest{AccountId: accountID})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Account == nil {
+		return nil, status.Error(codes.NotFound, "subscription account not found")
+	}
+	return resp.Account, nil
+}
+
+func (s *AdminService) CreateSubscriptionAccount(ctx context.Context, req *adminv1.AdminCreateSubscriptionAccountRequest) (*adminv1.AdminCreateSubscriptionAccountResponse, error) {
+	resp, err := s.channelClient.CreateSubscriptionAccount(ctx, &channelv1.CreateSubscriptionAccountRequest{
+		Name:         req.Name,
+		Platform:     req.Platform,
+		AccountType:  req.AccountType,
+		Group:        req.Group,
+		Models:       req.Models,
+		Priority:     req.Priority,
+		BaseUrl:      req.BaseUrl,
+		AccessToken:  req.AccessToken,
+		RefreshToken: req.RefreshToken,
+		ExpiresAt:    req.ExpiresAt,
+		AccountId:    req.AccountId,
+		Fingerprint:  req.Fingerprint,
+		Metadata:     req.Metadata,
+	})
+	if err != nil {
+		return &adminv1.AdminCreateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &adminv1.AdminCreateSubscriptionAccountResponse{
+		Success:   resp.Success,
+		Message:   resp.Message,
+		AccountId: resp.AccountId,
+	}, nil
+}
+
+func (s *AdminService) UpdateSubscriptionAccount(ctx context.Context, req *adminv1.AdminUpdateSubscriptionAccountRequest) (*adminv1.AdminUpdateSubscriptionAccountResponse, error) {
+	resp, err := s.channelClient.UpdateSubscriptionAccount(ctx, &channelv1.UpdateSubscriptionAccountRequest{
+		Id:           req.Id,
+		Name:         req.Name,
+		AccountType:  req.AccountType,
+		Group:        req.Group,
+		Models:       req.Models,
+		Priority:     req.Priority,
+		BaseUrl:      req.BaseUrl,
+		AccessToken:  req.AccessToken,
+		RefreshToken: req.RefreshToken,
+		ExpiresAt:    req.ExpiresAt,
+		AccountId:    req.AccountId,
+		Fingerprint:  req.Fingerprint,
+		Metadata:     req.Metadata,
+	})
+	if err != nil {
+		return &adminv1.AdminUpdateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &adminv1.AdminUpdateSubscriptionAccountResponse{
+		Success: resp.Success,
+		Message: resp.Message,
+	}, nil
+}
+
+func (s *AdminService) DeleteSubscriptionAccount(ctx context.Context, req *adminv1.AdminDeleteSubscriptionAccountRequest) (*adminv1.AdminDeleteSubscriptionAccountResponse, error) {
+	resp, err := s.channelClient.DeleteSubscriptionAccount(ctx, &channelv1.DeleteSubscriptionAccountRequest{AccountId: req.AccountId})
+	if err != nil {
+		return &adminv1.AdminDeleteSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &adminv1.AdminDeleteSubscriptionAccountResponse{
+		Success: resp.Success,
+		Message: resp.Message,
+	}, nil
+}
+
+func (s *AdminService) ChangeSubscriptionAccountStatus(ctx context.Context, req *adminv1.AdminChangeSubscriptionAccountStatusRequest) (*adminv1.AdminChangeSubscriptionAccountStatusResponse, error) {
+	resp, err := s.channelClient.ChangeSubscriptionAccountStatus(ctx, &channelv1.ChangeSubscriptionAccountStatusRequest{
+		AccountId: req.AccountId,
+		Status:    req.Status,
+	})
+	if err != nil {
+		return &adminv1.AdminChangeSubscriptionAccountStatusResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &adminv1.AdminChangeSubscriptionAccountStatusResponse{
+		Success: resp.Success,
+		Message: resp.Message,
+	}, nil
+}
+
 type ChannelBalanceRefreshResult struct {
 	Success                           bool    `json:"success"`
 	ChannelID                         int64   `json:"channel_id"`
@@ -818,9 +923,10 @@ type ListReconciliationRunsResult struct {
 }
 
 type UsageAggregateView struct {
-	Key              string `json:"key"`
-	UserID           string `json:"user_id,omitempty"`
-	ChannelID        int64  `json:"channel_id,omitempty"`
+	Key                   string `json:"key"`
+	UserID                string `json:"user_id,omitempty"`
+	ChannelID             int64  `json:"channel_id,omitempty"`
+	SubscriptionAccountID int64 `json:"subscription_account_id,omitempty"`
 	Model            string `json:"model,omitempty"`
 	TokenName        string `json:"token_name,omitempty"`
 	Type             string `json:"type,omitempty"`
@@ -873,9 +979,10 @@ func (s *AdminService) AggregateUsageTopN(ctx context.Context, groupBy string, l
 
 func usageAggregateViewFromBucket(bucket *billingv1.UsageBucket, groupBy string) UsageAggregateView {
 	view := UsageAggregateView{
-		UserID:           bucket.GetUserId(),
-		ChannelID:        bucket.GetChannelId(),
-		Model:            bucket.GetModel(),
+		UserID:                bucket.GetUserId(),
+		ChannelID:             bucket.GetChannelId(),
+		SubscriptionAccountID: bucket.GetSubscriptionAccountId(),
+		Model:                 bucket.GetModel(),
 		TokenName:        bucket.GetTokenName(),
 		Type:             bucket.GetType(),
 		Quota:            bucket.GetQuota(),
@@ -892,6 +999,8 @@ func usageAggregateViewFromBucket(bucket *billingv1.UsageBucket, groupBy string)
 		view.Key = bucket.GetUserId()
 	case "channel":
 		view.Key = strconv.FormatInt(bucket.GetChannelId(), 10)
+	case "subscription_account":
+		view.Key = strconv.FormatInt(bucket.GetSubscriptionAccountId(), 10)
 	case "model":
 		view.Key = bucket.GetModel()
 	case "token":
@@ -1773,8 +1882,9 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"promptTokens":     entry.GetPromptTokens(),
 			"completionTokens": entry.GetCompletionTokens(),
 			"cacheReadTokens":  entry.GetCacheReadTokens(),
-			"channelId":        entry.GetChannelId(),
-			"elapsedTime":      entry.GetElapsedTime(),
+			"channelId":             entry.GetChannelId(),
+			"subscriptionAccountId": entry.GetSubscriptionAccountId(),
+			"elapsedTime":           entry.GetElapsedTime(),
 			"isStream":         entry.GetIsStream(),
 			"endpoint":         entry.GetEndpoint(),
 		})

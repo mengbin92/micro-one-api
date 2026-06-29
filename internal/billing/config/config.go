@@ -7,13 +7,14 @@ import (
 
 // Config holds the billing-service configuration.
 type Config struct {
-	Server      ServerConfig        `json:"server"`
-	Data        DataConfig          `json:"data"`
-	Billing     BillingConfig       `json:"billing"`
-	Payment     biz.PaymentConfig   `json:"payment"`
-	Clients     ClientsConfig       `json:"clients"`
-	Recon       ReconAlertConfig    `json:"recon"`
-	Registry    appregistry.Config  `json:"registry"`
+	Server    ServerConfig       `json:"server"`
+	Data      DataConfig         `json:"data"`
+	Billing   BillingConfig      `json:"billing"`
+	Payment   biz.PaymentConfig  `json:"payment"`
+	Clients   ClientsConfig      `json:"clients"`
+	Recon     ReconAlertConfig   `json:"recon"`
+	Partition PartitionConfig    `json:"partition"`
+	Registry  appregistry.Config `json:"registry"`
 }
 
 type ServerConfig struct {
@@ -48,6 +49,14 @@ type BillingConfig struct {
 	GroupRatios        map[string]float64 `json:"group_ratios"`
 	ModelRatios        map[string]float64 `json:"model_ratios"`
 	CompletionRatios   map[string]float64 `json:"completion_ratios"`
+	Async              AsyncBillingConfig `json:"async"`
+}
+
+type AsyncBillingConfig struct {
+	Enabled       bool   `json:"enabled"`
+	QueueSize     int    `json:"queue_size"`
+	BatchSize     int    `json:"batch_size"`
+	BatchInterval string `json:"batch_interval"`
 }
 
 // ClientsConfig holds gRPC endpoints for downstream services used by the
@@ -64,7 +73,23 @@ type NotifyClientConfig struct {
 
 // ReconAlertConfig configures reconciliation job alert delivery.
 type ReconAlertConfig struct {
-	Enabled     bool     `json:"enabled"`
-	Recipients  []string `json:"recipients"`
-	Interval    string   `json:"interval"`
+	Enabled    bool     `json:"enabled"`
+	Recipients []string `json:"recipients"`
+	Interval   string   `json:"interval"`
+}
+
+type PartitionConfig struct {
+	Enabled  bool     `json:"enabled"`
+	Interval string   `json:"interval"`
+	Tables   []string `json:"tables"`
+}
+
+// PartitionTables returns the tables to maintain, defaulting to both
+// partitioned tables when unset (backward compatible with v4 which ran
+// PartitionMaintenance across both tables).
+func (c PartitionConfig) PartitionTables() []string {
+	if len(c.Tables) > 0 {
+		return c.Tables
+	}
+	return []string{"logs", "billing_ledgers"}
 }

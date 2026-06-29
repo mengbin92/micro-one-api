@@ -1774,6 +1774,69 @@ func TestHTTPServerChatCompletionRejectsFailedReservation(t *testing.T) {
 	}
 }
 
+func TestHTTPServerChatCompletionOrchestratorRouteCommitsAndLogs(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("upstream path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12},"choices":[]}`))
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	logClient := &rawLogClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	httpServer.SetRelayOrchestratorEnabled(true)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202, body=%s", rec.Code, rec.Body.String())
+	}
+	if billingClient.commits != 1 {
+		t.Fatalf("commits = %d, want 1", billingClient.commits)
+	}
+	commit := billingClient.commitRequests[0]
+	if commit.ActualTokens != 12 || commit.PromptTokens != 7 || commit.CompletionTokens != 5 {
+		t.Fatalf("commit usage = quota:%d prompt:%d completion:%d", commit.ActualTokens, commit.PromptTokens, commit.CompletionTokens)
+	}
+	if commit.Endpoint != "/v1/chat/completions" || commit.TokenName != "test-token" || commit.IsStream {
+		t.Fatalf("commit metadata mismatch: endpoint=%q token=%q stream=%v", commit.Endpoint, commit.TokenName, commit.IsStream)
+	}
+	if len(logClient.entries) != 1 {
+		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
+	}
+	if logClient.entries[0].Quota != 12 || logClient.entries[0].ChannelId != 11 {
+		t.Fatalf("log entry = %#v", logClient.entries[0])
+	}
+}
+
 func TestHTTPServerStreamingChatCompletionWritesPreciseUsageLogOnSuccess(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
@@ -1926,5 +1989,26 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 	}
 	if gotPath != "/v1/custom/path" {
 		t.Fatalf("path = %q", gotPath)
+	}
+}
+
+func TestHTTPServerRouteMiddlewareWrapsRegisteredRoutes(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	var called bool
+	httpServer.UseRouteMiddleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			next.ServeHTTP(w, r)
+		})
+	})
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{}`))
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if !called {
+		t.Fatal("route middleware was not called")
 	}
 }

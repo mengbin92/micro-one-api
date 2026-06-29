@@ -8,6 +8,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	relaybiz "micro-one-api/internal/relay/biz"
+	relaycredential "micro-one-api/internal/relay/credential"
 )
 
 // IdentityAdapter wraps a gRPC IdentityServiceClient to implement biz.IdentityClient.
@@ -60,6 +61,40 @@ type ChannelAdapter struct {
 // NewChannelAdapter creates a new ChannelAdapter.
 func NewChannelAdapter(client channelv1.ChannelServiceClient) *ChannelAdapter {
 	return &ChannelAdapter{client: client}
+}
+
+func (a *ChannelAdapter) Resolve(ctx context.Context, channelID int64) (*relaycredential.SubscriptionAccountMetadata, error) {
+	return NewChannelSubscriptionAccountStore(a.client).Resolve(ctx, channelID)
+}
+
+func (a *ChannelAdapter) SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*relaybiz.SubscriptionAccount, error) {
+	reply, err := a.client.SelectSubscriptionAccount(ctx, &channelv1.SelectSubscriptionAccountRequest{
+		Group:                group,
+		Model:                model,
+		Platform:             platform,
+		ExcludeFirstPriority: excludeFirstPriority,
+	})
+	if err != nil {
+		return nil, err
+	}
+	account := reply.GetAccount()
+	if account == nil {
+		return nil, nil
+	}
+	return &relaybiz.SubscriptionAccount{
+		ID:          account.GetId(),
+		Name:        account.GetName(),
+		Platform:    account.GetPlatform(),
+		AccountType: account.GetAccountType(),
+		Status:      account.GetStatus(),
+		BaseURL:     account.GetBaseUrl(),
+		Group:       account.GetGroup(),
+		Models:      splitModels(account.GetModels()),
+		Priority:    account.GetPriority(),
+		AccessToken: account.GetAccessToken(),
+		AccountID:   account.GetAccountId(),
+		Fingerprint: account.GetFingerprint(),
+	}, nil
 }
 
 func (a *ChannelAdapter) SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*relaybiz.Channel, error) {

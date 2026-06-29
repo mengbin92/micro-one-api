@@ -197,6 +197,49 @@ func init() {
 		ChannelHealthProbeTotal,
 		ChannelHealthProbeDuration,
 	)
+
+	// Register resilience metrics
+	prometheus.MustRegister(
+		CircuitBreakerState,
+		CircuitBreakerTrips,
+		CircuitBreakerRequests,
+		CircuitBreakerFailures,
+		DegradationLevel,
+		DegradationDuration,
+		FallbackActivation,
+		CacheHits,
+		CacheMisses,
+		CacheEvictions,
+		CacheLatency,
+		CacheSize,
+		RelayUpstreamDuration,
+		RelayRetryCount,
+		RelayFailoverCount,
+		RelayOrchestratorDuration,
+		ServiceDependencyLatency,
+		ServiceDependencyErrors,
+	)
+
+	// Register billing metrics
+	prometheus.MustRegister(
+		BillingReserveDuration,
+		BillingCommitDuration,
+		BillingReleaseDuration,
+		BillingSettlementLag,
+		QuotaCheckFallback,
+		QuotaCacheHits,
+		QuotaCacheMisses,
+		AsyncBillingQueueSize,
+		AsyncBillingSettlementDuration,
+		AsyncBillingFallbackToSync,
+		AsyncBillingDroppedFlushes,
+		LedgerWriteDuration,
+		ReservationExpirationCount,
+		ReconciliationLaggedTransactions,
+		QuotaUsageCurrent,
+		QuotaBalanceRemaining,
+		QuotaFrozenAmount,
+	)
 }
 
 // Handler returns an HTTP handler that serves Prometheus metrics.

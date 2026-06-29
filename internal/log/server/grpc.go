@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/subtle"
+	apptimeout "micro-one-api/internal/pkg/timeout"
 	"os"
 	"strings"
 
@@ -18,7 +19,10 @@ import (
 
 // NewGRPCServer wires gRPC transport for log-service.
 func NewGRPCServer(addr string, svc *service.LogService) *kgrpc.Server {
-	opts := []kgrpc.ServerOption{kgrpc.Address(addr)}
+	opts := []kgrpc.ServerOption{
+		kgrpc.Address(addr),
+		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
+	}
 	if os.Getenv("LOG_GRPC_AUTH") == "true" {
 		serviceToken := os.Getenv("SERVICE_TOKEN")
 		opts = append(opts,

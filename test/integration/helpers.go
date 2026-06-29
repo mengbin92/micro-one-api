@@ -398,6 +398,34 @@ func (m *testChannelRepo) ListAbilitiesByGroupAndModel(ctx context.Context, grou
 	return enabled, nil
 }
 
+func (m *testChannelRepo) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*channelbiz.SubscriptionAccount, error) {
+	return nil, channelbiz.ErrSubscriptionAccountNotFound
+}
+
+func (m *testChannelRepo) ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]channelbiz.SubscriptionAccountAbility, error) {
+	return nil, nil
+}
+
+func (m *testChannelRepo) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*channelbiz.SubscriptionAccount, int64, error) {
+	return nil, 0, nil
+}
+
+func (m *testChannelRepo) CreateSubscriptionAccount(ctx context.Context, account *channelbiz.SubscriptionAccount) error {
+	return nil
+}
+
+func (m *testChannelRepo) UpdateSubscriptionAccount(ctx context.Context, account *channelbiz.SubscriptionAccount) error {
+	return channelbiz.ErrSubscriptionAccountNotFound
+}
+
+func (m *testChannelRepo) DeleteSubscriptionAccount(ctx context.Context, accountID int64) error {
+	return nil
+}
+
+func (m *testChannelRepo) ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error {
+	return channelbiz.ErrSubscriptionAccountNotFound
+}
+
 func (m *testChannelRepo) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
 	uniqueModels := make(map[string]bool)
 	for key, abilities := range m.abilities {

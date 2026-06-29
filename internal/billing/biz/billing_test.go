@@ -117,6 +117,10 @@ func (m *mockLedgerRepo) AggregateLedgerByDate(ctx context.Context, userID strin
 	return nil, nil, nil
 }
 
+func (m *mockLedgerRepo) ListLedgersBySubscriptionAccount(ctx context.Context, subscriptionAccountID int64, page, pageSize int32) ([]*Ledger, int64, error) {
+	return m.ledgers, int64(len(m.ledgers)), nil
+}
+
 func (m *mockLedgerRepo) AggregateUsage(ctx context.Context, filter UsageFilter) ([]*UsageBucket, *UsageTotals, error) {
 	return nil, &UsageTotals{}, nil
 }
@@ -225,7 +229,7 @@ func TestReserveQuota_CorrectLogic(t *testing.T) {
 
 	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
-	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req1", 100, "gpt-4o-mini", "channel1")
+	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req1", 100, "gpt-4o-mini", "channel1", 0)
 
 	require.NoError(t, err)
 	assert.NotNil(t, reservation)
@@ -323,7 +327,7 @@ func TestReserveQuota_InsufficientQuota(t *testing.T) {
 
 	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
-	_, err := uc.ReserveQuota(context.Background(), "user1", "req1", 100, "gpt-4o-mini", "channel1")
+	_, err := uc.ReserveQuota(context.Background(), "user1", "req1", 100, "gpt-4o-mini", "channel1", 0)
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrInsufficientQuota)
@@ -682,7 +686,7 @@ func TestReserveQuota_WithGroupRatio(t *testing.T) {
 
 	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
-	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req1", 100, "gpt-4o-mini", "channel1")
+	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req1", 100, "gpt-4o-mini", "channel1", 0)
 
 	require.NoError(t, err)
 	assert.NotNil(t, reservation)
@@ -701,7 +705,7 @@ func TestCommitQuota_UsesModelAndCompletionRatios(t *testing.T) {
 		CompletionRatios: map[string]float64{"gpt-4o-mini": 3},
 	})
 
-	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req-price", 100, "gpt-4o-mini", "channel1")
+	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req-price", 100, "gpt-4o-mini", "channel1", 0)
 	require.NoError(t, err)
 	assert.Equal(t, int64(200), reservation.Amount)
 
@@ -736,7 +740,7 @@ func TestCommitQuota_UsesModelPrices(t *testing.T) {
 		},
 	})
 
-	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req-model-price", 100, "gpt-5.5", "channel1")
+	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req-model-price", 100, "gpt-5.5", "channel1", 0)
 	require.NoError(t, err)
 	assert.Equal(t, int64(33), reservation.Amount)
 
@@ -766,7 +770,7 @@ func TestReserveQuota_UsesDynamicPricingStore(t *testing.T) {
 		}},
 	})
 
-	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req-dynamic", 100, "gpt-4o-mini", "channel1")
+	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req-dynamic", 100, "gpt-4o-mini", "channel1", 0)
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), reservation.Amount)
 }
@@ -787,7 +791,7 @@ func TestReserveQuota_ZeroCost(t *testing.T) {
 
 	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
-	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req1", 0, "gpt-4o-mini", "channel1")
+	reservation, err := uc.ReserveQuota(context.Background(), "user1", "req1", 0, "gpt-4o-mini", "channel1", 0)
 
 	require.NoError(t, err)
 	assert.NotNil(t, reservation)

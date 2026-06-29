@@ -20,6 +20,7 @@ import (
 	"micro-one-api/internal/channel/data"
 	"micro-one-api/internal/channel/server"
 	"micro-one-api/internal/channel/service"
+	"micro-one-api/internal/pkg/events"
 	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
 	"micro-one-api/internal/pkg/xconfig"
@@ -51,7 +52,8 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 
-	uc := biz.NewChannelUsecase(repo, nil)
+	eventBus := events.NewConfiguredEventBus(repo.Redis(), "channel-service")
+	uc := biz.NewChannelUsecase(repo, eventBus)
 	notifyConn, err := configureHealthAlert(uc)
 	if err != nil {
 		return nil, nil, err

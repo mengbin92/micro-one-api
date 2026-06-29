@@ -79,7 +79,7 @@ func NewBillingUsecaseWithPricing(
 	}
 }
 
-func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string) (*Reservation, error) {
+func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64) (*Reservation, error) {
 	if requestID != "" {
 		existing, err := uc.reservationRepo.FindByRequestID(ctx, requestID)
 		if err != nil {
@@ -115,9 +115,10 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 		RequestID:     requestID,
 		Amount:        cost,
 		Status:        ReservationStatusReserved,
-		Model:         model,
-		ChannelID:     channelID,
-		CreatedAt:     now,
+		Model:                model,
+		ChannelID:             channelID,
+		SubscriptionAccountID: strconv.FormatInt(subscriptionAccountID, 10),
+		CreatedAt:             now,
 		UpdatedAt:     now,
 		ExpiredAt:     expiredAt,
 	}
@@ -142,14 +143,15 @@ func (uc *BillingUsecase) CommitQuota(ctx context.Context, reservationID string,
 }
 
 type LedgerUsage struct {
-	TokenName        string
-	Endpoint         string
-	PromptTokens     int64
-	CompletionTokens int64
-	CacheReadTokens  int64
-	UpstreamCost     int64
-	ElapsedTime      int64
-	IsStream         bool
+	TokenName             string
+	Endpoint              string
+	PromptTokens          int64
+	CompletionTokens      int64
+	CacheReadTokens       int64
+	UpstreamCost          int64
+	ElapsedTime           int64
+	IsStream              bool
+	SubscriptionAccountID int64 // optional override; 0 = use the reservation's account
 }
 
 func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationID string, actualTokens int64, success bool, usage LedgerUsage) (int64, int64, error) {
@@ -214,6 +216,7 @@ func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationI
 			CompletionTokens: usage.CompletionTokens,
 			CacheReadTokens:  usage.CacheReadTokens,
 			ChannelID:        parseInt64Default(reservation.ChannelID, 0),
+			SubscriptionAccountID: resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID),
 			ElapsedTime:      usage.ElapsedTime,
 			IsStream:         usage.IsStream,
 			Endpoint:         usage.Endpoint,
@@ -505,6 +508,10 @@ func (uc *BillingUsecase) ListLedgersWithFilters(ctx context.Context, userID str
 	return uc.ledgerRepo.ListLedgersWithFilters(ctx, userID, page, pageSize, ledgerType, startTime, endTime)
 }
 
+func (uc *BillingUsecase) ListLedgersBySubscriptionAccount(ctx context.Context, subscriptionAccountID int64, page, pageSize int32) ([]*Ledger, int64, error) {
+	return uc.ledgerRepo.ListLedgersBySubscriptionAccount(ctx, subscriptionAccountID, page, pageSize)
+}
+
 func (uc *BillingUsecase) AggregateLedgerByDate(ctx context.Context, userID string, ledgerType string, startTime, endTime time.Time) ([]*DailyAggregate, []*ModelAggregate, error) {
 	return uc.ledgerRepo.AggregateLedgerByDate(ctx, userID, ledgerType, startTime, endTime)
 }
@@ -719,6 +726,17 @@ func parseInt64Default(value string, fallback int64) int64 {
 		return fallback
 	}
 	return parsed
+}
+
+// resolveSubscriptionAccountID prefers a non-zero override (the per-request
+// account id captured by the relay) and falls back to the reservation's
+// account id so the finalized ledger is attributed correctly even when the
+// commit payload omits it.
+func resolveSubscriptionAccountID(override int64, reservationValue string) int64 {
+	if override != 0 {
+		return override
+	}
+	return parseInt64Default(reservationValue, 0)
 }
 
 func generateRedeemCode() string {

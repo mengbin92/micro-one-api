@@ -50,6 +50,34 @@ service AdminService {
   rpc UpdateChannel(AdminUpdateChannelRequest) returns (AdminUpdateChannelResponse);
   rpc DeleteChannel(AdminDeleteChannelRequest) returns (AdminDeleteChannelResponse);
   rpc ChangeChannelStatus(AdminChangeChannelStatusRequest) returns (AdminChangeChannelStatusResponse);
+  rpc ListSubscriptionAccounts(AdminListSubscriptionAccountsRequest) returns (AdminListSubscriptionAccountsResponse) {
+    option (google.api.http) = {
+      get: "/v1/subscription-accounts"
+    };
+  };
+  rpc CreateSubscriptionAccount(AdminCreateSubscriptionAccountRequest) returns (AdminCreateSubscriptionAccountResponse) {
+    option (google.api.http) = {
+      post: "/v1/subscription-accounts"
+      body: "*"
+    };
+  };
+  rpc UpdateSubscriptionAccount(AdminUpdateSubscriptionAccountRequest) returns (AdminUpdateSubscriptionAccountResponse) {
+    option (google.api.http) = {
+      put: "/v1/subscription-accounts/{id}"
+      body: "*"
+    };
+  };
+  rpc DeleteSubscriptionAccount(AdminDeleteSubscriptionAccountRequest) returns (AdminDeleteSubscriptionAccountResponse) {
+    option (google.api.http) = {
+      delete: "/v1/subscription-accounts/{account_id}"
+    };
+  };
+  rpc ChangeSubscriptionAccountStatus(AdminChangeSubscriptionAccountStatusRequest) returns (AdminChangeSubscriptionAccountStatusResponse) {
+    option (google.api.http) = {
+      put: "/v1/subscription-accounts/{account_id}/status"
+      body: "*"
+    };
+  };
 
   // ========== 系统配置管理 ==========
   rpc GetSystemOptions(GetSystemOptionsRequest) returns (GetSystemOptionsResponse) {
@@ -352,6 +380,82 @@ message AdminChangeChannelStatusRequest {
 }
 
 message AdminChangeChannelStatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message AdminListSubscriptionAccountsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;
+  string group = 4;
+  int32 status = 5;
+  string platform = 6;
+}
+
+message AdminListSubscriptionAccountsResponse {
+  repeated common.v1.SubscriptionAccountSummary accounts = 1;
+  int64 total = 2;
+}
+
+message AdminCreateSubscriptionAccountRequest {
+  string name = 1;
+  string platform = 2;
+  string account_type = 3;
+  string group = 4;
+  string models = 5;
+  int64 priority = 6;
+  string base_url = 7;
+  string access_token = 8;
+  string refresh_token = 9;
+  int64 expires_at = 10;
+  string account_id = 11;
+  string fingerprint = 12;
+  string metadata = 13;
+}
+
+message AdminCreateSubscriptionAccountResponse {
+  bool success = 1;
+  string message = 2;
+  int64 account_id = 3;
+}
+
+message AdminUpdateSubscriptionAccountRequest {
+  int64 id = 1;
+  string name = 2;
+  string account_type = 3;
+  string group = 4;
+  string models = 5;
+  int64 priority = 6;
+  string base_url = 7;
+  string access_token = 8;
+  string refresh_token = 9;
+  int64 expires_at = 10;
+  string account_id = 11;
+  string fingerprint = 12;
+  string metadata = 13;
+}
+
+message AdminUpdateSubscriptionAccountResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message AdminDeleteSubscriptionAccountRequest {
+  int64 account_id = 1;
+}
+
+message AdminDeleteSubscriptionAccountResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message AdminChangeSubscriptionAccountStatusRequest {
+  int64 account_id = 1;
+  int32 status = 2;
+}
+
+message AdminChangeSubscriptionAccountStatusResponse {
   bool success = 1;
   string message = 2;
 }

@@ -9,8 +9,10 @@ import (
 )
 
 type mockChannelRepo struct {
-	channels  map[int64]*Channel
-	abilities map[string][]Ability
+	channels     map[int64]*Channel
+	accounts     map[int64]*SubscriptionAccount
+	abilities    map[string][]Ability
+	accAbilities map[string][]SubscriptionAccountAbility
 }
 
 type recordedNotification struct {
@@ -55,6 +57,72 @@ func (m *mockChannelRepo) ListAbilitiesByGroupAndModel(ctx context.Context, grou
 		}
 	}
 	return enabled, nil
+}
+
+func (m *mockChannelRepo) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error) {
+	if m.accounts == nil {
+		return nil, ErrSubscriptionAccountNotFound
+	}
+	account, ok := m.accounts[accountID]
+	if !ok {
+		return nil, ErrSubscriptionAccountNotFound
+	}
+	return account, nil
+}
+
+func (m *mockChannelRepo) ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]SubscriptionAccountAbility, error) {
+	if len(m.accAbilities) == 0 {
+		return nil, nil
+	}
+	key := platform + ":" + group + ":" + model
+	abilities, ok := m.accAbilities[key]
+	if !ok {
+		return nil, nil
+	}
+	enabled := make([]SubscriptionAccountAbility, 0, len(abilities))
+	for _, ability := range abilities {
+		if ability.Enabled {
+			enabled = append(enabled, ability)
+		}
+	}
+	return enabled, nil
+}
+
+func (m *mockChannelRepo) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*SubscriptionAccount, int64, error) {
+	var result []*SubscriptionAccount
+	for _, acc := range m.accounts {
+		result = append(result, acc)
+	}
+	return result, int64(len(result)), nil
+}
+
+func (m *mockChannelRepo) CreateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error {
+	if m.accounts == nil {
+		m.accounts = make(map[int64]*SubscriptionAccount)
+	}
+	account.ID = int64(len(m.accounts) + 1)
+	m.accounts[account.ID] = account
+	return nil
+}
+
+func (m *mockChannelRepo) UpdateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error {
+	if m.accounts == nil {
+		m.accounts = make(map[int64]*SubscriptionAccount)
+	}
+	m.accounts[account.ID] = account
+	return nil
+}
+
+func (m *mockChannelRepo) DeleteSubscriptionAccount(ctx context.Context, accountID int64) error {
+	delete(m.accounts, accountID)
+	return nil
+}
+
+func (m *mockChannelRepo) ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error {
+	if acc, ok := m.accounts[accountID]; ok {
+		acc.Status = status
+	}
+	return nil
 }
 
 func (m *mockChannelRepo) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
@@ -567,7 +635,7 @@ func TestChannelUsecase_RecordHealth_NotifiesMultipleRecipients(t *testing.T) {
 	expectedRecipients := map[string]bool{
 		"https://hooks.example.com/ops":    false,
 		"https://hooks.example.com/oncall": false,
-		"admin@example.com":               false,
+		"admin@example.com":                false,
 	}
 	for _, notif := range notifier.notifications {
 		if _, ok := expectedRecipients[notif.recipient]; !ok {

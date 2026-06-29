@@ -17,6 +17,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/EmptyState';
 import { MetricCardsSkeleton } from '@/components/LoadingStates';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { HealthDistributionChart } from '@/components/admin/HealthCharts';
 import { cn } from '@/lib/utils';
 
@@ -431,6 +439,9 @@ export function ChannelHealthPage() {
         </CardContent>
       </Card>
 
+      {/* Subscription Account Token Health */}
+      <SubscriptionAccountHealth autoRefresh={autoRefresh} />
+
       {/* Health Info */}
       <Card className="bg-muted/50">
         <CardContent className="p-4">
@@ -451,6 +462,182 @@ export function ChannelHealthPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+interface SubscriptionAccountSummary {
+  id: number;
+  name: string;
+  platform: string;
+  status: number;
+  account_type?: string;
+  group?: string;
+  account_id?: string;
+  expires_at?: number;
+  updated_at?: number;
+  last_used_at?: number;
+  rate_limited_until?: number;
+  quota_used_percent?: number;
+  quota_reset_at?: number;
+  concurrency?: number;
+}
+
+function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
+  const { data: accounts, isLoading, dataUpdatedAt } = useQuery({
+    queryKey: ['admin-subscription-accounts-health'],
+    queryFn: async () => {
+      // The list endpoint is /api/subscription-accounts (plural, alias of
+      // /v1/subscription-accounts). It returns { accounts, total } directly —
+      // NOT the { success, data } envelope used by one-api compat shims — so
+      // we read res.data.accounts instead of unwrapApiData(...).
+      const params = new URLSearchParams({ page: '1', page_size: '1000' });
+      const res = await adminApiClient.get(`/subscription-accounts?${params}`);
+      const payload = res.data as { accounts?: SubscriptionAccountSummary[]; total?: number };
+      return payload.accounts ?? [];
+    },
+    refetchInterval: autoRefresh ? 30000 : false,
+  });
+  // Derive "now" from the query's last-updated timestamp so token-expiry
+  // badges refresh together with polling, without calling Date.now() in render.
+  const now = dataUpdatedAt ? Math.floor(dataUpdatedAt / 1000) : 0;
+
+  const all = accounts ?? [];
+  const active = all.filter((a) => a.status === 1);
+  // Token health: expired / expiring soon (<1h) / rate-limited / healthy
+  const expired = active.filter((a) => a.expires_at && a.expires_at > 0 && a.expires_at <= now);
+  const expiringSoon = active.filter((a) => a.expires_at && a.expires_at > now && a.expires_at - now < 3600);
+  const rateLimited = active.filter((a) => a.rate_limited_until && a.rate_limited_until > now);
+  const healthy = active.filter((a) => {
+    const expOk = !a.expires_at || a.expires_at === 0 || a.expires_at > now + 3600;
+    const rateOk = !a.rate_limited_until || a.rate_limited_until <= now;
+    return expOk && rateOk;
+  });
+
+  function accountTokenStatus(a: SubscriptionAccountSummary): string {
+    if (a.status !== 1) return 'disabled';
+    if (a.expires_at && a.expires_at > 0 && a.expires_at <= now) return 'expired';
+    if (a.expires_at && a.expires_at > now && a.expires_at - now < 3600) return 'expiring';
+    if (a.rate_limited_until && a.rate_limited_until > now) return 'rate-limited';
+    return 'healthy';
+  }
+
+  function statusBadge(status: string) {
+    if (status === 'expired') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+    if (status === 'expiring') return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
+    if (status === 'rate-limited') return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+    if (status === 'disabled') return 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200';
+    return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+  }
+
+  function statusLabel(status: string) {
+    switch (status) {
+      case 'expired': return 'Token 已过期';
+      case 'expiring': return '即将过期';
+      case 'rate-limited': return '已被限流';
+      case 'disabled': return '已禁用';
+      default: return '正常';
+    }
+  }
+
+  function formatTime(ts?: number): string {
+    if (!ts || ts === 0) return '-';
+    try {
+      return new Date(ts * 1000).toLocaleString('zh-CN');
+    } catch {
+      return String(ts);
+    }
+  }
+
+  if (isLoading) {
+    return <MetricCardsSkeleton />;
+  }
+
+  if (all.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl font-black">订阅账号 Token 健康</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmptyState
+            title="暂无订阅账号"
+            description="配置 Codex / Claude OAuth 订阅账号后，这里会展示 Token 过期、限流等健康状态"
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-xl font-black">订阅账号 Token 健康</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="rounded-lg border p-3">
+            <div className="text-2xl font-black text-blue-600">{all.length}</div>
+            <div className="text-xs text-muted-foreground">总账号数</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-2xl font-black text-green-600">{healthy.length}</div>
+            <div className="text-xs text-muted-foreground">Token 正常</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-2xl font-black text-amber-600">{expiringSoon.length}</div>
+            <div className="text-xs text-muted-foreground">即将过期</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-2xl font-black text-red-600">{expired.length}</div>
+            <div className="text-xs text-muted-foreground">已过期</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-2xl font-black text-orange-600">{rateLimited.length}</div>
+            <div className="text-xs text-muted-foreground">被限流</div>
+          </div>
+        </div>
+
+        <div className="border rounded-lg overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>名称</TableHead>
+                <TableHead>平台</TableHead>
+                <TableHead className="hidden md:table-cell">上游账号</TableHead>
+                <TableHead>过期时间</TableHead>
+                <TableHead className="hidden md:table-cell">最近使用</TableHead>
+                <TableHead className="hidden lg:table-cell">配额用量</TableHead>
+                <TableHead>状态</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {all.map((account) => {
+                const status = accountTokenStatus(account);
+                return (
+                  <TableRow key={account.id}>
+                    <TableCell className="font-medium">{account.name}</TableCell>
+                    <TableCell>{account.platform}</TableCell>
+                    <TableCell className="hidden md:table-cell font-mono text-xs">
+                      {account.account_id || '-'}
+                    </TableCell>
+                    <TableCell className="text-xs">{formatTime(account.expires_at)}</TableCell>
+                    <TableCell className="hidden md:table-cell text-xs">{formatTime(account.last_used_at)}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {account.quota_used_percent ? `${account.quota_used_percent.toFixed(1)}%` : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <span className={cn('inline-block rounded px-2 py-0.5 text-xs font-medium', statusBadge(status))}>
+                        {statusLabel(status)}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

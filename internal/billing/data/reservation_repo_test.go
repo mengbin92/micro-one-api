@@ -27,6 +27,7 @@ func setupReservationTestDB(t *testing.T) *gorm.DB {
 			status TEXT,
 			model TEXT,
 			channel_id TEXT,
+			subscription_account_id TEXT,
 			created_at DATETIME,
 			updated_at DATETIME,
 			expired_at DATETIME

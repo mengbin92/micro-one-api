@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -117,6 +118,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/admin/reconciliation", handlePage)
 	srv.HandleFunc("/admin/redemptions", handlePage)
 	srv.HandleFunc("/admin/options", handlePage)
+	srv.HandleFunc("/admin/subscription-accounts", handlePage)
 	// Static assets bundled by Vite
 	srv.HandlePrefix("/assets/", http.HandlerFunc(handlePage))
 	srv.HandleFunc("/favicon.svg", handlePage)
@@ -293,6 +295,23 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	}))
 	srv.HandlePrefix("/v1/channels/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleChannelByID(w, r, svc)
+	}))
+	srv.HandleFunc("/v1/subscription-accounts", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionAccounts(w, r, svc)
+	}))
+	srv.HandlePrefix("/v1/subscription-accounts/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionAccountByID(w, r, svc)
+	}))
+
+	// /api/subscription-accounts aliases reuse the canonical /v1/subscription-accounts
+	// handlers so the web admin client (baseURL /api) can manage subscription accounts
+	// through the same code path. Unlike the one-api compat shims (/api/channel), these
+	// mirrors are thin: the request/response shapes already match the web client.
+	srv.HandleFunc("/api/subscription-accounts", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionAccounts(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/subscription-accounts/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionAccountByID(w, r, svc)
 	}))
 
 	srv.HandleFunc("/v1/system/options", adminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -524,6 +543,10 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if err != nil {
 		topTokens = []service.UsageAggregateView{}
 	}
+	topSubscriptionAccounts, err := svc.AggregateUsageTopN(r.Context(), "subscription_account", 5)
+	if err != nil {
+		topSubscriptionAccounts = []service.UsageAggregateView{}
+	}
 	reconciliation, err := svc.ListReconciliationRuns(r.Context(), 1, 1)
 	if err != nil {
 		reconciliation = &service.ListReconciliationRunsResult{}
@@ -531,6 +554,15 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	options, err := svc.ListOneAPIOptions(r.Context())
 	if err != nil {
 		options = nil
+	}
+
+	subscriptionAccounts, err := svc.ListSubscriptionAccounts(r.Context(), &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 5})
+	if err != nil {
+		subscriptionAccounts = &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}
+	}
+	activeSubscriptionAccounts, err := svc.ListSubscriptionAccounts(r.Context(), &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 1, Status: 1})
+	if err != nil {
+		activeSubscriptionAccounts = &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}
 	}
 
 	requestCount := int64(0)
@@ -564,21 +596,24 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
 		"totals": map[string]interface{}{
-			"users":                  users.GetTotal(),
-			"active_users":           activeUsers.GetTotal(),
-			"channels":               channels.GetTotal(),
-			"active_channels":        activeChannels.GetTotal(),
-			"configured_models":      configuredModels,
-			"request_count":          requestCount,
-			"quota_used":             quotaUsed,
-			"upstream_cost":          upstreamCost,
-			"gross_profit":           grossProfit,
-			"channel_balance":        totalBalance,
-			"stale_balance_channels": staleBalanceCount,
-			"log_count":              recentLogsTotal,
+			"users":                        users.GetTotal(),
+			"active_users":                 activeUsers.GetTotal(),
+			"channels":                     channels.GetTotal(),
+			"active_channels":              activeChannels.GetTotal(),
+			"configured_models":            configuredModels,
+			"request_count":                requestCount,
+			"quota_used":                   quotaUsed,
+			"upstream_cost":                upstreamCost,
+			"gross_profit":                 grossProfit,
+			"channel_balance":              totalBalance,
+			"stale_balance_channels":       staleBalanceCount,
+			"log_count":                    recentLogsTotal,
+			"subscription_accounts":        subscriptionAccounts.GetTotal(),
+			"active_subscription_accounts": activeSubscriptionAccounts.GetTotal(),
 		},
 		"recent_users":          users.GetUsers(),
 		"channels":              channels.GetChannels(),
+		"subscription_accounts": subscriptionAccounts.GetAccounts(),
 		"recent_logs":           recentLogs,
 		"payment_orders":        paymentOrders.GetOrders(),
 		"usage_stats":           stats,
@@ -587,6 +622,7 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		"top_channels":          enrichChannelUsage(topChannels, channels.GetChannels()),
 		"top_users":             usageAggregateViewsToMaps(topUsers),
 		"top_tokens":            usageAggregateViewsToMaps(topTokens),
+		"top_subscription_accounts": enrichSubscriptionAccountUsage(topSubscriptionAccounts, subscriptionAccounts.GetAccounts()),
 		"alerts":                adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation),
 		"latest_reconciliation": latestReconciliationRun(reconciliation),
 		"model_catalog":         oneAPIChannelModelCatalog(),
@@ -621,8 +657,9 @@ func usageAggregateViewToMap(item service.UsageAggregateView) map[string]interfa
 	return map[string]interface{}{
 		"key":               item.Key,
 		"user_id":           item.UserID,
-		"channel_id":        item.ChannelID,
-		"model":             item.Model,
+		"channel_id":             item.ChannelID,
+		"subscription_account_id": item.SubscriptionAccountID,
+		"model":                  item.Model,
 		"token_name":        item.TokenName,
 		"type":              item.Type,
 		"quota":             item.Quota,
@@ -650,6 +687,47 @@ func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1
 			row["balance"] = channel.GetBalance()
 			row["balance_updated_time"] = channel.GetBalanceUpdatedTime()
 			row["used_quota"] = channel.GetUsedQuota()
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// enrichSubscriptionAccountUsage attaches the subscription account name,
+// platform, status and lifecycle metadata to each usage-aggregate row keyed by
+// subscription_account_id, so the cost-analysis dashboard can render
+// human-readable rows instead of bare numeric ids.
+//
+// Rows whose SubscriptionAccountID == 0 represent requests that were NOT served
+// by a subscription account (plain API-key channels). They must be excluded
+// here: otherwise the entire non-subscription usage collapses into a single
+// "subscription_account_id = 0" bucket whose cost equals the total channel
+// cost, which would make the "订阅账号成本" card wrongly display channel cost.
+func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, accounts []*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
+	accountByID := map[int64]*commonv1.SubscriptionAccountSummary{}
+	for _, account := range accounts {
+		accountByID[account.GetId()] = account
+	}
+	// The summary only fetches 5 accounts (the overview list); fetch a fuller
+	// window via the same client when available to resolve more ids. We keep
+	// best-effort: unresolved ids still surface as rows with a fallback label.
+	out := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		// Skip the synthetic "no subscription account" bucket (id == 0) so the
+		// subscription-account cost card only reflects real subscription-account
+		// usage, not channel usage that happens to share subscription_account_id=0.
+		if item.SubscriptionAccountID == 0 {
+			continue
+		}
+		row := usageAggregateViewToMap(item)
+		if account := accountByID[item.SubscriptionAccountID]; account != nil {
+			row["name"] = account.GetName()
+			row["platform"] = account.GetPlatform()
+			row["status"] = account.GetStatus()
+			row["account_id"] = account.GetAccountId()
+			row["expires_at"] = account.GetExpiresAt()
+		} else {
+			row["name"] = fmt.Sprintf("订阅账号 #%d", item.SubscriptionAccountID)
 		}
 		out = append(out, row)
 	}
@@ -1367,16 +1445,20 @@ func handleOneAPIUsers(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	case http.MethodPut:
 		var raw struct {
 			ID int64 `json:"id"`
-			adminv1.AdminUpdateUserRequest
+			*adminv1.AdminUpdateUserRequest
 		}
 		if !decodeBody(w, r, &raw) {
+			return
+		}
+		if raw.AdminUpdateUserRequest == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
 		req := raw.AdminUpdateUserRequest
 		if req.UserId == 0 {
 			req.UserId = raw.ID
 		}
-		resp, err := svc.UpdateUser(r.Context(), &req)
+		resp, err := svc.UpdateUser(r.Context(), req)
 		writeOneAPIServiceResponse(w, resp, err)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -1670,6 +1752,34 @@ func handleChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 	}
 }
 
+func handleSubscriptionAccounts(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	switch r.Method {
+	case http.MethodGet:
+		resp, err := svc.ListSubscriptionAccounts(r.Context(), &adminv1.AdminListSubscriptionAccountsRequest{
+			Page:     getQueryInt32(r, "page", 1),
+			PageSize: getQueryInt32(r, "page_size", 20),
+			Keyword:  r.URL.Query().Get("keyword"),
+			Group:    r.URL.Query().Get("group"),
+			Status:   getQueryInt32(r, "status", 0),
+			Platform: r.URL.Query().Get("platform"),
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+	case http.MethodPost:
+		var req adminv1.AdminCreateSubscriptionAccountRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		resp, err := svc.CreateSubscriptionAccount(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
 func handleOneAPIChannels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	trimmed := strings.Trim(r.URL.Path, "/")
 	switch trimmed {
@@ -1704,17 +1814,89 @@ func handleOneAPIChannels(w http.ResponseWriter, r *http.Request, svc *service.A
 	case http.MethodPut:
 		var raw struct {
 			ID int64 `json:"id"`
-			adminv1.AdminUpdateChannelRequest
+			*adminv1.AdminUpdateChannelRequest
 		}
 		if !decodeBody(w, r, &raw) {
+			return
+		}
+		if raw.AdminUpdateChannelRequest == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
 		req := raw.AdminUpdateChannelRequest
 		if req.ChannelId == 0 {
 			req.ChannelId = raw.ID
 		}
-		resp, err := svc.UpdateChannel(r.Context(), &req)
+		resp, err := svc.UpdateChannel(r.Context(), req)
 		writeOneAPIServiceResponse(w, resp, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+// parseSubscriptionAccountID extracts the numeric account id from either the
+// canonical /v1/subscription-accounts/{id} path or the /api alias used by the
+// web admin client.
+func parseSubscriptionAccountID(path string) (int64, bool) {
+	for _, prefix := range []string{"/v1/subscription-accounts/", "/api/subscription-accounts/"} {
+		if id, ok := parsePathID(path, prefix); ok {
+			return id, true
+		}
+	}
+	return 0, false
+}
+
+func handleSubscriptionAccountByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	// Support both the canonical /v1/subscription-accounts and the /api alias
+	// used by the web admin client (baseURL /api).
+	path := r.URL.Path
+	rest := strings.TrimPrefix(path, "/v1/subscription-accounts/")
+	rest = strings.TrimPrefix(rest, "/api/subscription-accounts/")
+	if strings.HasSuffix(rest, "/status") {
+		idPart := strings.TrimSuffix(rest, "/status")
+		accountID, err := strconv.ParseInt(strings.Trim(idPart, "/"), 10, 64)
+		if err != nil || accountID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription account id"})
+			return
+		}
+		if r.Method != http.MethodPut {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		var req adminv1.AdminChangeSubscriptionAccountStatusRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		req.AccountId = accountID
+		resp, err := svc.ChangeSubscriptionAccountStatus(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+		return
+	}
+
+	accountID, ok := parseSubscriptionAccountID(path)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription account id"})
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		account, err := svc.GetSubscriptionAccount(r.Context(), accountID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, account)
+	case http.MethodDelete:
+		resp, err := svc.DeleteSubscriptionAccount(r.Context(), &adminv1.AdminDeleteSubscriptionAccountRequest{AccountId: accountID})
+		writeServiceResponse(w, resp, err)
+	case http.MethodPut:
+		var req adminv1.AdminUpdateSubscriptionAccountRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		req.Id = accountID
+		resp, err := svc.UpdateSubscriptionAccount(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}

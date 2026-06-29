@@ -1,0 +1,116 @@
+{
+  "dashboard": {
+    "title": "Relay Gateway Overview",
+    "tags": ["relay", "gateway", "micro-one-api"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate (req/s)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_http_requests_total{service=\"relay-gateway\"}[5m])",
+            "legendFormat": "{{method}} {{path}} - {{status}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "P95 Request Latency",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(micro_one_api_http_request_duration_seconds_bucket{service=\"relay-gateway\"}[5m]))",
+            "legendFormat": "{{method}} {{path}}"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Error Rate (%)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_http_requests_total{service=\"relay-gateway\",status=~\"5..\"}[5m]) / rate(micro_one_api_http_requests_total{service=\"relay-gateway\"}[5m]) * 100",
+            "legendFormat": "Error Rate"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Active Requests",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "micro_one_api_http_active_requests{service=\"relay-gateway\"}",
+            "legendFormat": "Active Requests"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Upstream Latency (P95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(micro_one_api_relay_upstream_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{provider}} {{model}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Retry & Failover Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_relay_retry_total[5m])",
+            "legendFormat": "Retry - {{reason}}"
+          },
+          {
+            "expr": "rate(micro_one_api_relay_failover_total[5m])",
+            "legendFormat": "Failover - {{from_channel_type}} → {{to_channel_type}}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Orchestration Duration",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(micro_one_api_relay_orchestration_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95 - {{endpoint}}"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(micro_one_api_relay_orchestration_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50 - {{endpoint}}"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Cache Hit Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "targets": [
+          {
+            "expr": "rate(micro_one_api_cache_hits_total{level=\"l1\"}[5m]) / (rate(micro_one_api_cache_hits_total{level=\"l1\"}[5m]) + rate(micro_one_api_cache_misses_total[5m])) * 100",
+            "legendFormat": "L1 Hit Rate - {{cache}}"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -4,12 +4,117 @@ import appregistry "micro-one-api/internal/pkg/registry"
 
 // Config holds the relay-gateway configuration.
 type Config struct {
-	Server   ServerConfig       `json:"server"`
-	Clients  ClientsConfig      `json:"clients"`
-	Retry    RetryConfig        `json:"retry"`
-	Models   ModelsConfig       `json:"models" yaml:"models"`
-	Registry appregistry.Config `json:"registry"`
-	OpenAIWS OpenAIWSConfig     `json:"openai_ws" yaml:"openai_ws"`
+	Server            ServerConfig            `json:"server"`
+	Clients           ClientsConfig           `json:"clients"`
+	Retry             RetryConfig             `json:"retry"`
+	Models            ModelsConfig            `json:"models" yaml:"models"`
+	Registry          appregistry.Config      `json:"registry"`
+	Redis             RedisConfig             `json:"redis" yaml:"redis"`
+	OpenAIWS          OpenAIWSConfig          `json:"openai_ws" yaml:"openai_ws"`
+	HybridAdaptor     HybridAdaptorConfig     `json:"hybrid_adaptor" yaml:"hybrid_adaptor"`
+	RelayOrchestrator RelayOrchestratorConfig `json:"relay_orchestrator" yaml:"relay_orchestrator"`
+	ChannelCache      ChannelCacheConfig      `json:"channel_cache" yaml:"channel_cache"`
+	Idempotency       IdempotencyConfig       `json:"idempotency" yaml:"idempotency"`
+	Audit             AuditConfig             `json:"audit" yaml:"audit"`
+	Resilience        ResilienceConfig        `json:"resilience" yaml:"resilience"`
+	MTLS              MTLSConfig              `json:"mtls" yaml:"mtls"`
+}
+
+// RelayOrchestratorConfig controls the handler -> orchestrator -> forwarder
+// route for chat completions. Disabled by default.
+type RelayOrchestratorConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+// GetRelayOrchestratorEnabled reports whether the orchestrator route is enabled.
+func (c RelayOrchestratorConfig) GetRelayOrchestratorEnabled() bool { return c.Enabled }
+
+// ChannelCacheConfig controls the multi-level ChannelCache that fronts the
+// channel-service SelectChannel RPC. Disabled by default; when enabled (and
+// Redis is configured) it caches channel-selection results per group+model
+// to cut channel-service gRPC load on hot models. Failover selections
+// (ExcludeFirstPriority=true) always bypass the cache.
+type ChannelCacheConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+// GetChannelCacheEnabled reports whether the channel cache is enabled.
+func (c ChannelCacheConfig) GetChannelCacheEnabled() bool { return c.Enabled }
+
+type IdempotencyConfig struct {
+	Enabled bool   `json:"enabled" yaml:"enabled"`
+	TTL     string `json:"ttl" yaml:"ttl"`
+}
+
+type AuditConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+type ResilienceConfig struct {
+	Enabled bool   `json:"enabled" yaml:"enabled"`
+	Timeout string `json:"timeout" yaml:"timeout"`
+}
+
+type RedisConfig struct {
+	Addr     string `json:"addr" yaml:"addr"`
+	Password string `json:"password" yaml:"password"`
+}
+
+type MTLSConfig struct {
+	Enabled  bool   `json:"enabled" yaml:"enabled"`
+	CertFile string `json:"cert_file" yaml:"cert_file"`
+	KeyFile  string `json:"key_file" yaml:"key_file"`
+	CAFile   string `json:"ca_file" yaml:"ca_file"`
+}
+
+// HybridAdaptorConfig controls the hybrid adaptor layer (plan §十). The
+// feature flag Enabled gates whether the new adaptor-based request path is
+// used; when false (the default) the gateway keeps using the existing
+// provider-factory path unchanged, so the MVP can ship behind the flag and be
+// rolled back instantly.
+type HybridAdaptorConfig struct {
+	// Enabled turns on the hybrid adaptor request path. When false, the
+	// relay gateway behaves exactly as before (provider-factory direct call).
+	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// IdentityTTL is the TTL for cached subscription-account fingerprints. A
+	// zero value caches indefinitely (the in-process default).
+	IdentityTTL string `json:"identity_ttl" yaml:"identity_ttl"`
+
+	// RefreshInterval is how often the background token-refresh task scans
+	// for soon-to-expire accounts. Defaults to 10m.
+	RefreshInterval string `json:"refresh_interval" yaml:"refresh_interval"`
+
+	// RefreshLookahead is how far ahead the refresh task looks for expiring
+	// accounts. Defaults to 24h.
+	RefreshLookahead string `json:"refresh_lookahead" yaml:"refresh_lookahead"`
+}
+
+// GetHybridAdaptorEnabled reports whether the hybrid adaptor path is enabled.
+func (c HybridAdaptorConfig) GetHybridAdaptorEnabled() bool { return c.Enabled }
+
+// GetIdentityTTL returns the fingerprint cache TTL with default.
+func (c HybridAdaptorConfig) GetIdentityTTL() string {
+	if c.IdentityTTL == "" {
+		return "24h"
+	}
+	return c.IdentityTTL
+}
+
+// GetRefreshInterval returns the background refresh interval with default.
+func (c HybridAdaptorConfig) GetRefreshInterval() string {
+	if c.RefreshInterval == "" {
+		return "10m"
+	}
+	return c.RefreshInterval
+}
+
+// GetRefreshLookahead returns the refresh lookahead window with default.
+func (c HybridAdaptorConfig) GetRefreshLookahead() string {
+	if c.RefreshLookahead == "" {
+		return "24h"
+	}
+	return c.RefreshLookahead
 }
 
 // OpenAIWSConfig holds tunables for the Codex Responses WebSocket relay
