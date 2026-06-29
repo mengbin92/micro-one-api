@@ -19,5 +19,5 @@ clients:
     endpoint: ${BILLING_GRPC_ENDPOINT:-127.0.0.1:9004}
 data:
   database:
-    driver: mysql
+    driver: ${DATABASE_DRIVER:-mysql}
     source: ${DATABASE_DSN}

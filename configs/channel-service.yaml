@@ -5,7 +5,7 @@ server:
     addr: 0.0.0.0:9002
 data:
   database:
-    driver: mysql
+    driver: ${DATABASE_DRIVER:-mysql}
     source: ${DATABASE_DSN}
   redis:
     addr: ${REDIS_ADDR:-127.0.0.1:6379}
@@ -14,4 +14,3 @@ registry:
   consul:
     address: ${CONSUL_ADDR:-127.0.0.1:8500}
     health_check_interval: 10
-

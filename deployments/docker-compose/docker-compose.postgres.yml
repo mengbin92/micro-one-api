@@ -1,0 +1,424 @@
+# Postgres deployment. Mirrors the default docker-compose.yml but swaps
+# MySQL for Postgres 16, uses DATABASE_DRIVER=postgres, and runs a
+# one-shot migrate service to apply migrations/postgres baseline.
+#
+# Usage:
+#
+#   cd deployments/docker-compose
+#   cp .env.postgres.example .env
+#   docker compose -f docker-compose.postgres.yml --env-file .env up -d
+
+services:
+  # ────────────── Infrastructure ──────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-micro_one_api}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-micro_one_api}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-micro_one_api} -d ${POSTGRES_DB:-micro_one_api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:8.4
+    container_name: redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ────────────── One-shot migration ──────────────
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.migrate
+    container_name: micro-one-api-migrate
+    environment:
+      - MIGRATIONS_DRIVER=postgres
+      - MIGRATIONS_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: "no"
+
+  # ────────────── Backend Services ──────────────
+
+  identity-service:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE_NAME: identity-service
+    container_name: identity-service
+    environment:
+      - CONF_PATH=/configs/identity-service.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      - BILLING_GRPC_ENDPOINT=billing-service:9004
+      - INITIAL_ADMIN_USERNAME=${INITIAL_ADMIN_USERNAME:-}
+      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL:-}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-}
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+  channel-service:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE_NAME: channel-service
+    container_name: channel-service
+    environment:
+      - CONF_PATH=/configs/channel-service.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - NOTIFY_GRPC_ENDPOINT=${NOTIFY_GRPC_ENDPOINT:-notify-worker:9008}
+      - CHANNEL_HEALTH_ALERT_ENABLED=${CHANNEL_HEALTH_ALERT_ENABLED:-true}
+      - CHANNEL_HEALTH_ALERT_NOTIFY_TYPE=${CHANNEL_HEALTH_ALERT_NOTIFY_TYPE:-webhook}
+      - CHANNEL_HEALTH_ALERT_RECIPIENTS=${CHANNEL_HEALTH_ALERT_RECIPIENTS:-[""]}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      notify-worker:
+        condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+  billing-service:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE_NAME: billing-service
+    container_name: billing-service
+    environment:
+      - CONF_PATH=/configs/billing-service.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - PAYMENT_QUOTA_PER_UNIT=${PAYMENT_QUOTA_PER_UNIT:-500000}
+      - ALIPAY_ENABLED=${ALIPAY_ENABLED:-false}
+      - ALIPAY_FORM_URL=${ALIPAY_FORM_URL:-https://openapi-sandbox.dl.alipaydev.com/gateway.do}
+      - ALIPAY_APP_ID=${ALIPAY_APP_ID:-9021000164603106}
+      - ALIPAY_PRIVATE_KEY=${ALIPAY_PRIVATE_KEY:-}
+      - ALIPAY_PRIVATE_KEY_PATH=${ALIPAY_PRIVATE_KEY_PATH:-/cert/alipay/application_private_key.pem}
+      - ALIPAY_PUBLIC_KEY=${ALIPAY_PUBLIC_KEY:-}
+      - ALIPAY_PUBLIC_KEY_PATH=${ALIPAY_PUBLIC_KEY_PATH:-/cert/alipay/alipay_public_key.pem}
+      - ALIPAY_NOTIFY_URL=${ALIPAY_NOTIFY_URL:-}
+      - ALIPAY_RETURN_URL=${ALIPAY_RETURN_URL:-}
+      - ALIPAY_APP_CERT_PATH=${ALIPAY_APP_CERT_PATH:-}
+      - ALIPAY_ROOT_CERT_PATH=${ALIPAY_ROOT_CERT_PATH:-}
+      - ALIPAY_PUBLIC_CERT_PATH=${ALIPAY_PUBLIC_CERT_PATH:-}
+      - LOG_LEVEL=info
+      - NOTIFY_GRPC_ENDPOINT=${NOTIFY_GRPC_ENDPOINT:-notify-worker:9008}
+      - RECON_ALERT_ENABLED=${RECON_ALERT_ENABLED:-true}
+      - RECON_ALERT_RECIPIENTS=${RECON_ALERT_RECIPIENTS:-[admin]}
+      - RECON_ALERT_INTERVAL=${RECON_ALERT_INTERVAL:-1h}
+      - LOG_FORMAT=json
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+  config-service:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE_NAME: config-service
+    container_name: config-service
+    environment:
+      - CONF_PATH=/configs/config-service.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+  log-service:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE_NAME: log-service
+    container_name: log-service
+    environment:
+      - CONF_PATH=/configs/log-service.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+  monitor-worker:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE_NAME: monitor-worker
+    container_name: monitor-worker
+    environment:
+      - CONF_PATH=/configs/monitor-worker.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+  notify-worker:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE_NAME: notify-worker
+    container_name: notify-worker
+    environment:
+      - CONF_PATH=/configs/notify-worker.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - NOTIFY_WEBHOOK_URL=${NOTIFY_WEBHOOK_URL:-}
+      - NOTIFY_SMTP_HOST=${NOTIFY_SMTP_HOST:-}
+      - NOTIFY_SMTP_PORT=${NOTIFY_SMTP_PORT:-587}
+      - NOTIFY_SMTP_USER=${NOTIFY_SMTP_USER:-}
+      - NOTIFY_SMTP_PASS=${NOTIFY_SMTP_PASS:-}
+      - NOTIFY_SMTP_FROM=${NOTIFY_SMTP_FROM:-}
+      - NOTIFY_DISPATCH_INTERVAL=${NOTIFY_DISPATCH_INTERVAL:-30s}
+      - NOTIFY_DISPATCH_BATCH=${NOTIFY_DISPATCH_BATCH:-20}
+      - NOTIFY_MAX_RETRY=${NOTIFY_MAX_RETRY:-3}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+  # ────────────── API Gateway ──────────────
+
+  relay-gateway:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE_NAME: relay-gateway
+    container_name: relay-gateway
+    environment:
+      - CONF_PATH=/configs/relay-gateway.yaml
+      - IDENTITY_GRPC_ENDPOINT=identity-service:9001
+      - CHANNEL_GRPC_ENDPOINT=channel-service:9002
+      - BILLING_GRPC_ENDPOINT=billing-service:9004
+      - LOG_GRPC_ENDPOINT=log-service:9006
+      - RELAY_HTTP_ADDR=:8080
+      - PAYMENT_QUOTA_PER_UNIT=${PAYMENT_QUOTA_PER_UNIT:-500000}
+      - UPSTREAM_TIMEOUT=300s
+      - RELAY_PROVIDER_TIMEOUT=300s
+      - RATE_LIMIT_REQUESTS_PER_SECOND=100
+      - RATE_LIMIT_BURST=200
+      - CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    ports:
+      - "8080:8080"
+    depends_on:
+      - identity-service
+      - channel-service
+      - billing-service
+      - log-service
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+  admin-api:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      args:
+        SERVICE_NAME: admin-api
+    container_name: admin-api
+    environment:
+      - CONF_PATH=/configs/admin-api.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - IDENTITY_GRPC_ENDPOINT=identity-service:9001
+      - IDENTITY_HTTP_ENDPOINT=http://identity-service:8001
+      - CHANNEL_GRPC_ENDPOINT=channel-service:9002
+      - BILLING_GRPC_ENDPOINT=billing-service:9004
+      - LOG_HTTP_ENDPOINT=http://log-service:8006
+      - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN is required}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      - ADMIN_WEB_ROOT=/web
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    ports:
+      - "3000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      channel-service:
+        condition: service_started
+      billing-service:
+        condition: service_started
+      log-service:
+        condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  backend:
+    driver: bridge

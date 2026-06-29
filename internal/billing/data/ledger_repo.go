@@ -22,24 +22,24 @@ func NewLedgerRepo(data *Data) biz.LedgerRepo {
 
 func (r *ledgerRepo) CreateLedger(ctx context.Context, ledger *biz.Ledger) error {
 	model := &ledgerModel{
-		UserID:           ledger.UserID,
-		Amount:           ledger.Amount,
-		UpstreamCost:     ledger.UpstreamCost,
-		BalanceAfter:     ledger.BalanceAfter,
-		Type:             ledger.Type,
-		ReferenceID:      stringPtr(ledger.ReferenceID),
-		Remark:           stringPtr(ledger.Remark),
-		TokenName:        ledger.TokenName,
-		ModelName:        ledger.ModelName,
-		Quota:            ledger.Quota,
-		PromptTokens:     ledger.PromptTokens,
-		CompletionTokens: ledger.CompletionTokens,
-		CacheReadTokens:      ledger.CacheReadTokens,
-		ChannelID:            ledger.ChannelID,
+		UserID:                ledger.UserID,
+		Amount:                ledger.Amount,
+		UpstreamCost:          ledger.UpstreamCost,
+		BalanceAfter:          ledger.BalanceAfter,
+		Type:                  ledger.Type,
+		ReferenceID:           stringPtr(ledger.ReferenceID),
+		Remark:                stringPtr(ledger.Remark),
+		TokenName:             ledger.TokenName,
+		ModelName:             ledger.ModelName,
+		Quota:                 ledger.Quota,
+		PromptTokens:          ledger.PromptTokens,
+		CompletionTokens:      ledger.CompletionTokens,
+		CacheReadTokens:       ledger.CacheReadTokens,
+		ChannelID:             ledger.ChannelID,
 		SubscriptionAccountID: ledger.SubscriptionAccountID,
-		ElapsedTime:          ledger.ElapsedTime,
-		IsStream:             ledger.IsStream,
-		Endpoint:             ledger.Endpoint,
+		ElapsedTime:           ledger.ElapsedTime,
+		IsStream:              ledger.IsStream,
+		Endpoint:              ledger.Endpoint,
 	}
 
 	return r.data.db.WithContext(ctx).Create(model).Error
@@ -76,26 +76,26 @@ func (r *ledgerRepo) ListLedgers(ctx context.Context, userID string, page, pageS
 	ledgers := make([]*biz.Ledger, len(models))
 	for i, model := range models {
 		ledgers[i] = &biz.Ledger{
-			ID:               model.ID,
-			UserID:           model.UserID,
-			Amount:           model.Amount,
-			UpstreamCost:     model.UpstreamCost,
-			BalanceAfter:     model.BalanceAfter,
-			Type:             model.Type,
-			ReferenceID:      stringFromPtr(model.ReferenceID),
-			Remark:           stringFromPtr(model.Remark),
-			TokenName:        model.TokenName,
-			ModelName:        model.ModelName,
-			Quota:            model.Quota,
-			PromptTokens:     model.PromptTokens,
-			CompletionTokens: model.CompletionTokens,
-			CacheReadTokens:  model.CacheReadTokens,
-			ChannelID:            model.ChannelID,
+			ID:                    model.ID,
+			UserID:                model.UserID,
+			Amount:                model.Amount,
+			UpstreamCost:          model.UpstreamCost,
+			BalanceAfter:          model.BalanceAfter,
+			Type:                  model.Type,
+			ReferenceID:           stringFromPtr(model.ReferenceID),
+			Remark:                stringFromPtr(model.Remark),
+			TokenName:             model.TokenName,
+			ModelName:             model.ModelName,
+			Quota:                 model.Quota,
+			PromptTokens:          model.PromptTokens,
+			CompletionTokens:      model.CompletionTokens,
+			CacheReadTokens:       model.CacheReadTokens,
+			ChannelID:             model.ChannelID,
 			SubscriptionAccountID: model.SubscriptionAccountID,
-			ElapsedTime:          model.ElapsedTime,
-			IsStream:         model.IsStream,
-			Endpoint:         model.Endpoint,
-			CreatedAt:        model.CreatedAt,
+			ElapsedTime:           model.ElapsedTime,
+			IsStream:              model.IsStream,
+			Endpoint:              model.Endpoint,
+			CreatedAt:             model.CreatedAt,
 		}
 	}
 
@@ -145,26 +145,26 @@ func (r *ledgerRepo) ListLedgersWithTimeRange(ctx context.Context, userID string
 	ledgers := make([]*biz.Ledger, len(models))
 	for i, model := range models {
 		ledgers[i] = &biz.Ledger{
-			ID:               model.ID,
-			UserID:           model.UserID,
-			Amount:           model.Amount,
-			UpstreamCost:     model.UpstreamCost,
-			BalanceAfter:     model.BalanceAfter,
-			Type:             model.Type,
-			ReferenceID:      stringFromPtr(model.ReferenceID),
-			Remark:           stringFromPtr(model.Remark),
-			TokenName:        model.TokenName,
-			ModelName:        model.ModelName,
-			Quota:            model.Quota,
-			PromptTokens:     model.PromptTokens,
-			CompletionTokens: model.CompletionTokens,
-			CacheReadTokens:  model.CacheReadTokens,
-			ChannelID:            model.ChannelID,
+			ID:                    model.ID,
+			UserID:                model.UserID,
+			Amount:                model.Amount,
+			UpstreamCost:          model.UpstreamCost,
+			BalanceAfter:          model.BalanceAfter,
+			Type:                  model.Type,
+			ReferenceID:           stringFromPtr(model.ReferenceID),
+			Remark:                stringFromPtr(model.Remark),
+			TokenName:             model.TokenName,
+			ModelName:             model.ModelName,
+			Quota:                 model.Quota,
+			PromptTokens:          model.PromptTokens,
+			CompletionTokens:      model.CompletionTokens,
+			CacheReadTokens:       model.CacheReadTokens,
+			ChannelID:             model.ChannelID,
 			SubscriptionAccountID: model.SubscriptionAccountID,
-			ElapsedTime:          model.ElapsedTime,
-			IsStream:         model.IsStream,
-			Endpoint:         model.Endpoint,
-			CreatedAt:        model.CreatedAt,
+			ElapsedTime:           model.ElapsedTime,
+			IsStream:              model.IsStream,
+			Endpoint:              model.Endpoint,
+			CreatedAt:             model.CreatedAt,
 		}
 	}
 
@@ -222,26 +222,26 @@ func (r *ledgerRepo) ListLedgersWithFilters(ctx context.Context, userID string, 
 	ledgers := make([]*biz.Ledger, len(models))
 	for i, model := range models {
 		ledgers[i] = &biz.Ledger{
-			ID:               model.ID,
-			UserID:           model.UserID,
-			Amount:           model.Amount,
-			UpstreamCost:     model.UpstreamCost,
-			BalanceAfter:     model.BalanceAfter,
-			Type:             model.Type,
-			ReferenceID:      stringFromPtr(model.ReferenceID),
-			Remark:           stringFromPtr(model.Remark),
-			TokenName:        model.TokenName,
-			ModelName:        model.ModelName,
-			Quota:            model.Quota,
-			PromptTokens:     model.PromptTokens,
-			CompletionTokens: model.CompletionTokens,
-			CacheReadTokens:  model.CacheReadTokens,
-			ChannelID:            model.ChannelID,
+			ID:                    model.ID,
+			UserID:                model.UserID,
+			Amount:                model.Amount,
+			UpstreamCost:          model.UpstreamCost,
+			BalanceAfter:          model.BalanceAfter,
+			Type:                  model.Type,
+			ReferenceID:           stringFromPtr(model.ReferenceID),
+			Remark:                stringFromPtr(model.Remark),
+			TokenName:             model.TokenName,
+			ModelName:             model.ModelName,
+			Quota:                 model.Quota,
+			PromptTokens:          model.PromptTokens,
+			CompletionTokens:      model.CompletionTokens,
+			CacheReadTokens:       model.CacheReadTokens,
+			ChannelID:             model.ChannelID,
 			SubscriptionAccountID: model.SubscriptionAccountID,
-			ElapsedTime:          model.ElapsedTime,
-			IsStream:         model.IsStream,
-			Endpoint:         model.Endpoint,
-			CreatedAt:        model.CreatedAt,
+			ElapsedTime:           model.ElapsedTime,
+			IsStream:              model.IsStream,
+			Endpoint:              model.Endpoint,
+			CreatedAt:             model.CreatedAt,
 		}
 	}
 
@@ -409,13 +409,13 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	// dimension -> (select expression, output column alias)
 	type dim struct{ expr, alias string }
 	allowed := map[string]dim{
-		biz.UsageDimUser:               {"user_id", "g_user"},
-		biz.UsageDimChannel:            {"channel_id", "g_channel"},
-		biz.UsageDimModel:              {"model_name", "g_model"},
-		biz.UsageDimToken:              {"token_name", "g_token"},
-		biz.UsageDimType:               {"type", "g_type"},
-		biz.UsageDimDay:                {dayExpr, "g_day"},
-		biz.UsageDimHour:               {hourExpr, "g_hour"},
+		biz.UsageDimUser:                {"user_id", "g_user"},
+		biz.UsageDimChannel:             {"channel_id", "g_channel"},
+		biz.UsageDimModel:               {"model_name", "g_model"},
+		biz.UsageDimToken:               {"token_name", "g_token"},
+		biz.UsageDimType:                {"type", "g_type"},
+		biz.UsageDimDay:                 {dayExpr, "g_day"},
+		biz.UsageDimHour:                {hourExpr, "g_hour"},
 		biz.UsageDimSubscriptionAccount: {"subscription_account_id", "g_subscription_account"},
 	}
 
@@ -457,22 +457,22 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	}
 
 	type aggRow struct {
-		GUser            string
-		GChannel         int64
+		GUser                string
+		GChannel             int64
 		GSubscriptionAccount int64
-		GModel           string
-		GToken           string
-		GType            string
-		GDay             string
-		GHour            string
-		Quota            int64
-		UpstreamCost     int64
-		GrossProfit      int64
-		PromptTokens     int64
-		CompletionTokens int64
-		CacheReadTokens  int64
-		Count            int64
-		ElapsedTime      int64
+		GModel               string
+		GToken               string
+		GType                string
+		GDay                 string
+		GHour                string
+		Quota                int64
+		UpstreamCost         int64
+		GrossProfit          int64
+		PromptTokens         int64
+		CompletionTokens     int64
+		CacheReadTokens      int64
+		Count                int64
+		ElapsedTime          int64
 	}
 	var rows []aggRow
 	if err := db.Scan(&rows).Error; err != nil {
@@ -484,22 +484,22 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 	for i := range rows {
 		row := rows[i]
 		buckets[i] = &biz.UsageBucket{
-			UserID:               row.GUser,
-			ChannelID:            row.GChannel,
+			UserID:                row.GUser,
+			ChannelID:             row.GChannel,
 			SubscriptionAccountID: row.GSubscriptionAccount,
-			Model:                row.GModel,
-			TokenName:        row.GToken,
-			Type:             row.GType,
-			Day:              row.GDay,
-			Hour:             row.GHour,
-			Quota:            row.Quota,
-			UpstreamCost:     row.UpstreamCost,
-			GrossProfit:      row.GrossProfit,
-			PromptTokens:     row.PromptTokens,
-			CompletionTokens: row.CompletionTokens,
-			CacheReadTokens:  row.CacheReadTokens,
-			Count:            row.Count,
-			ElapsedTime:      row.ElapsedTime,
+			Model:                 row.GModel,
+			TokenName:             row.GToken,
+			Type:                  row.GType,
+			Day:                   row.GDay,
+			Hour:                  row.GHour,
+			Quota:                 row.Quota,
+			UpstreamCost:          row.UpstreamCost,
+			GrossProfit:           row.GrossProfit,
+			PromptTokens:          row.PromptTokens,
+			CompletionTokens:      row.CompletionTokens,
+			CacheReadTokens:       row.CacheReadTokens,
+			Count:                 row.Count,
+			ElapsedTime:           row.ElapsedTime,
 		}
 	}
 
@@ -575,10 +575,17 @@ func applyUsageFilters(db *gorm.DB, filter biz.UsageFilter) *gorm.DB {
 }
 
 // dateExprs returns dialect-specific SQL expressions formatting created_at into
-// day (YYYY-MM-DD) and hour (YYYY-MM-DD HH) strings.
+// day (YYYY-MM-DD) and hour (YYYY-MM-DD HH) strings. billing_ledgers.created_at
+// is TIMESTAMPTZ on Postgres and DATETIME on MySQL, so the Postgres branch
+// uses to_char on the timestamp directly while MySQL keeps DATE_FORMAT.
 func (r *ledgerRepo) dateExprs() (day, hour string) {
-	if r.data.db != nil && r.data.db.Dialector != nil && r.data.db.Dialector.Name() == "sqlite" {
-		return "strftime('%Y-%m-%d', created_at)", "strftime('%Y-%m-%d %H', created_at)"
+	if r.data.db != nil && r.data.db.Dialector != nil {
+		switch r.data.db.Dialector.Name() {
+		case "sqlite":
+			return "strftime('%Y-%m-%d', created_at)", "strftime('%Y-%m-%d %H', created_at)"
+		case "postgres":
+			return "to_char(created_at, 'YYYY-MM-DD')", "to_char(created_at, 'YYYY-MM-DD HH')"
+		}
 	}
 	return "DATE_FORMAT(created_at, '%Y-%m-%d')", "DATE_FORMAT(created_at, '%Y-%m-%d %H')"
 }

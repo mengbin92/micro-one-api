@@ -7,9 +7,11 @@
 //	migrate -baseline V  override the brownfield baseline cutoff (default:
 //	                     022_create_schema_migrations)
 //	migrate -dir PATH    override the migrations directory (default: ./migrations)
+//	migrate -driver D    database driver: mysql (default) or sqlite
 //
-// DSN is read from MIGRATIONS_DSN, falling back to SQL_DSN. Must be a MySQL
-// DSN compatible with github.com/go-sql-driver/mysql. The runner appends
+// DSN is read from MIGRATIONS_DSN, falling back to SQL_DSN. The driver is
+// read from MIGRATIONS_DRIVER, falling back to SQL_DRIVER. If the driver
+// is empty, it is inferred from the DSN. For MySQL the runner appends
 // `multiStatements=true` automatically if missing.
 package main
 
@@ -23,8 +25,10 @@ import (
 	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/mattn/go-sqlite3"
 
 	"micro-one-api/internal/pkg/migrate"
+	"micro-one-api/internal/pkg/xdb"
 )
 
 const defaultBaseline = "022_create_schema_migrations"
@@ -34,6 +38,7 @@ func main() {
 		dir      = flag.String("dir", "./migrations", "directory containing .sql migration files")
 		baseline = flag.String("baseline", defaultBaseline, "brownfield baseline cutoff version (file basename without .sql)")
 		status   = flag.Bool("status", false, "print status table and exit without applying")
+		driver   = flag.String("driver", "", "database driver: mysql (default) or sqlite; inferred from DSN when empty")
 	)
 	flag.Parse()
 
@@ -42,9 +47,24 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error: MIGRATIONS_DSN or SQL_DSN must be set")
 		os.Exit(2)
 	}
-	dsn = ensureMultiStatements(dsn)
+	drv := xdb.NormalizeDriver(pickDriver(*driver), dsn)
 
-	db, err := sql.Open("mysql", dsn)
+	var (
+		db  *sql.DB
+		err error
+	)
+	switch drv {
+	case xdb.DriverMySQL:
+		dsn = ensureMultiStatements(dsn)
+		db, err = sql.Open("mysql", dsn)
+	case xdb.DriverSQLite3:
+		db, err = sql.Open("sqlite3", dsn)
+	case xdb.DriverPostgres:
+		db, err = sql.Open(xdb.PostgresDriverName, dsn)
+	default:
+		fmt.Fprintf(os.Stderr, "error: unsupported driver %q\n", drv)
+		os.Exit(2)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: open DB: %v\n", err)
 		os.Exit(1)
@@ -57,6 +77,13 @@ func main() {
 	}
 
 	runner := migrate.New(db, *dir).WithBaseline(*baseline)
+	// Pin the driver explicitly so the runner uses the right
+	// tableExists query and the right bind-parameter placeholder for
+	// the active dialect. Without this, the runner defaults to MySQL
+	// semantics, which break on Postgres (DATABASE() missing, ? placeholders
+	// rejected by pgx) and on SQLite (no information_schema, so tableExists
+	// has to fall back to sqlite_master).
+	runner = migrate.NewWithDriver(db, *dir, drv).WithBaseline(*baseline)
 	ctx := context.Background()
 
 	if *status {
@@ -99,6 +126,16 @@ func pickDSN() string {
 		return v
 	}
 	return os.Getenv("SQL_DSN")
+}
+
+func pickDriver(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if v := os.Getenv("MIGRATIONS_DRIVER"); v != "" {
+		return v
+	}
+	return os.Getenv("SQL_DRIVER")
 }
 
 // ensureMultiStatements appends multiStatements=true to a MySQL DSN if the

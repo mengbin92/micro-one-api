@@ -1,0 +1,54 @@
+# Migrate runner image.
+#
+# Unlike the main service image (which is built with CGO_ENABLED=0 and
+# a scratch base), this image keeps CGO enabled because mattn/go-sqlite3
+# needs it for the SQLite3 driver. The base is alpine rather than scratch
+# to ship the C runtime.
+#
+# Picks the migrations directory automatically based on MIGRATIONS_DRIVER:
+#   * sqlite3  -> /migrations/sqlite
+#   * postgres -> /migrations/postgres
+#   * mysql / empty -> /migrations
+
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates build-base
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+COPY . .
+
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+    -ldflags='-s -w' \
+    -o /app/bin/migrate ./cmd/migrate
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates sqlite-libs bash && \
+    addgroup -S migrate && adduser -S -G migrate migrate
+
+COPY --from=builder /app/bin/migrate /usr/local/bin/migrate
+COPY --from=builder /app/migrations /migrations
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Pick the migration directory based on MIGRATIONS_DRIVER (set at
+# runtime by docker-compose). Falls back to /migrations (the MySQL
+# baseline) when the driver is unknown / unset.
+RUN cat > /usr/local/bin/migrate-entrypoint.sh <<'ENTRY'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${MIGRATIONS_DRIVER:-}" in
+  sqlite3) DIR=/migrations/sqlite ;;
+  postgres|postgresql) DIR=/migrations/postgres ;;
+  *) DIR=/migrations ;;
+esac
+exec /usr/local/bin/migrate -dir "$DIR" "$@"
+ENTRY
+RUN chmod +x /usr/local/bin/migrate-entrypoint.sh
+
+USER migrate
+
+ENTRYPOINT ["/usr/local/bin/migrate-entrypoint.sh"]

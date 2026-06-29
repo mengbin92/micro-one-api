@@ -24,29 +24,29 @@ type Repository struct {
 }
 
 type logModel struct {
-	ID               int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	Level            string `gorm:"column:level;index"`
-	Message          string `gorm:"column:message"`
-	Source           string `gorm:"column:source;index"`
-	RequestID        string `gorm:"column:request_id"`
-	UserID           int64  `gorm:"column:user_id"`
-	CreatedAt        int64  `gorm:"column:created_at;index"`
-	Username         string `gorm:"column:username"`
-	TokenName        string `gorm:"column:token_name"`
-	ModelName        string `gorm:"column:model_name;index"`
-	Quota            int64  `gorm:"column:quota"`
-	PromptTokens     int64  `gorm:"column:prompt_tokens"`
-	CompletionTokens int64  `gorm:"column:completion_tokens"`
-	CacheReadTokens  int64  `gorm:"column:cache_read_tokens"`
-	ChannelID              int64  `gorm:"column:channel_id"`
-	SubscriptionAccountID  int64  `gorm:"column:subscription_account_id"`
-	ElapsedTime            int64  `gorm:"column:elapsed_time"`
-	IsStream         bool   `gorm:"column:is_stream"`
+	ID                    int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	Level                 string `gorm:"column:level;index"`
+	Message               string `gorm:"column:message"`
+	Source                string `gorm:"column:source;index"`
+	RequestID             string `gorm:"column:request_id"`
+	UserID                int64  `gorm:"column:user_id"`
+	CreatedAt             int64  `gorm:"column:created_at;index"`
+	Username              string `gorm:"column:username"`
+	TokenName             string `gorm:"column:token_name"`
+	ModelName             string `gorm:"column:model_name;index"`
+	Quota                 int64  `gorm:"column:quota"`
+	PromptTokens          int64  `gorm:"column:prompt_tokens"`
+	CompletionTokens      int64  `gorm:"column:completion_tokens"`
+	CacheReadTokens       int64  `gorm:"column:cache_read_tokens"`
+	ChannelID             int64  `gorm:"column:channel_id"`
+	SubscriptionAccountID int64  `gorm:"column:subscription_account_id"`
+	ElapsedTime           int64  `gorm:"column:elapsed_time"`
+	IsStream              bool   `gorm:"column:is_stream"`
 }
 
 func (logModel) TableName() string { return "logs" }
 
-func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
+func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 	var dbDSN string
 	if len(dsn) > 0 && dsn[0] != "" {
 		dbDSN = dsn[0]
@@ -62,7 +62,7 @@ func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 		}
 		return nil, fmt.Errorf("log database DSN is required; set LOG_SQL_DSN/SQL_DSN or LOG_MEMORY_MODE=true for development")
 	}
-	db, err := xdb.OpenMySQL(dbDSN)
+	db, err := xdb.Open(xdb.DatabaseConfig{Driver: xdb.NormalizeDriver(driver, dbDSN), DSN: dbDSN})
 	if err != nil {
 		return nil, err
 	}
@@ -169,24 +169,24 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.LogEntry, error)
 		return nil, err
 	}
 	return &biz.LogEntry{
-		ID:               m.ID,
-		Level:            m.Level,
-		Message:          m.Message,
-		Source:           m.Source,
-		RequestID:        m.RequestID,
-		UserID:           m.UserID,
-		CreatedAt:        time.Unix(m.CreatedAt, 0),
-		Username:         m.Username,
-		TokenName:        m.TokenName,
-		ModelName:        m.ModelName,
-		Quota:            m.Quota,
-		PromptTokens:     m.PromptTokens,
-		CompletionTokens: m.CompletionTokens,
-		CacheReadTokens:      m.CacheReadTokens,
-		ChannelID:            m.ChannelID,
+		ID:                    m.ID,
+		Level:                 m.Level,
+		Message:               m.Message,
+		Source:                m.Source,
+		RequestID:             m.RequestID,
+		UserID:                m.UserID,
+		CreatedAt:             time.Unix(m.CreatedAt, 0),
+		Username:              m.Username,
+		TokenName:             m.TokenName,
+		ModelName:             m.ModelName,
+		Quota:                 m.Quota,
+		PromptTokens:          m.PromptTokens,
+		CompletionTokens:      m.CompletionTokens,
+		CacheReadTokens:       m.CacheReadTokens,
+		ChannelID:             m.ChannelID,
 		SubscriptionAccountID: m.SubscriptionAccountID,
-		ElapsedTime:          m.ElapsedTime,
-		IsStream:             m.IsStream,
+		ElapsedTime:           m.ElapsedTime,
+		IsStream:              m.IsStream,
 	}, nil
 }
 
@@ -243,23 +243,23 @@ func (r *Repository) listByUserDB(ctx context.Context, userID int64, page, pageS
 
 func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
 	m := logModel{
-		Level:            entry.Level,
-		Message:          entry.Message,
-		Source:           entry.Source,
-		RequestID:        entry.RequestID,
-		UserID:           entry.UserID,
-		CreatedAt:        entry.CreatedAt.Unix(),
-		Username:         entry.Username,
-		TokenName:        entry.TokenName,
-		ModelName:        entry.ModelName,
-		Quota:            entry.Quota,
-		PromptTokens:     entry.PromptTokens,
-		CompletionTokens: entry.CompletionTokens,
-		CacheReadTokens:      entry.CacheReadTokens,
-		ChannelID:            entry.ChannelID,
+		Level:                 entry.Level,
+		Message:               entry.Message,
+		Source:                entry.Source,
+		RequestID:             entry.RequestID,
+		UserID:                entry.UserID,
+		CreatedAt:             entry.CreatedAt.Unix(),
+		Username:              entry.Username,
+		TokenName:             entry.TokenName,
+		ModelName:             entry.ModelName,
+		Quota:                 entry.Quota,
+		PromptTokens:          entry.PromptTokens,
+		CompletionTokens:      entry.CompletionTokens,
+		CacheReadTokens:       entry.CacheReadTokens,
+		ChannelID:             entry.ChannelID,
 		SubscriptionAccountID: entry.SubscriptionAccountID,
-		ElapsedTime:          entry.ElapsedTime,
-		IsStream:             entry.IsStream,
+		ElapsedTime:           entry.ElapsedTime,
+		IsStream:              entry.IsStream,
 	}
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		return err
@@ -287,8 +287,20 @@ func (r *Repository) deleteDB(ctx context.Context, filter biz.DeleteLogsFilter) 
 }
 
 func (r *Repository) usageByUserDB(ctx context.Context, userID int64, startTime, endTime time.Time) ([]*biz.UsageStat, error) {
+	// logs.created_at stores Unix epoch seconds on every supported dialect, so
+	// we always cast from an integer epoch and only the formatting function
+	// is dialect-specific.
+	dayExpr := "FROM_UNIXTIME(created_at, '%Y-%m-%d')"
+	if r.db != nil && r.db.Dialector != nil {
+		switch r.db.Dialector.Name() {
+		case "sqlite":
+			dayExpr = "strftime('%Y-%m-%d', created_at, 'unixepoch')"
+		case "postgres":
+			dayExpr = "to_char(to_timestamp(created_at), 'YYYY-MM-DD')"
+		}
+	}
 	query := r.db.WithContext(ctx).Table("logs").
-		Select("FROM_UNIXTIME(created_at, '%Y-%m-%d') AS day, model_name, COUNT(1) AS request_count, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens").
+		Select(dayExpr+" AS day, model_name, COUNT(1) AS request_count, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens").
 		Where("user_id = ? AND model_name <> ''", userID)
 	if !startTime.IsZero() {
 		query = query.Where("created_at >= ?", startTime.Unix())
@@ -305,24 +317,24 @@ func (r *Repository) usageByUserDB(ctx context.Context, userID int64, startTime,
 
 func logModelToEntry(m logModel) *biz.LogEntry {
 	return &biz.LogEntry{
-		ID:               m.ID,
-		Level:            m.Level,
-		Message:          m.Message,
-		Source:           m.Source,
-		RequestID:        m.RequestID,
-		UserID:           m.UserID,
-		CreatedAt:        time.Unix(m.CreatedAt, 0),
-		Username:         m.Username,
-		TokenName:        m.TokenName,
-		ModelName:        m.ModelName,
-		Quota:            m.Quota,
-		PromptTokens:     m.PromptTokens,
-		CompletionTokens: m.CompletionTokens,
-		CacheReadTokens:      m.CacheReadTokens,
-		ChannelID:            m.ChannelID,
+		ID:                    m.ID,
+		Level:                 m.Level,
+		Message:               m.Message,
+		Source:                m.Source,
+		RequestID:             m.RequestID,
+		UserID:                m.UserID,
+		CreatedAt:             time.Unix(m.CreatedAt, 0),
+		Username:              m.Username,
+		TokenName:             m.TokenName,
+		ModelName:             m.ModelName,
+		Quota:                 m.Quota,
+		PromptTokens:          m.PromptTokens,
+		CompletionTokens:      m.CompletionTokens,
+		CacheReadTokens:       m.CacheReadTokens,
+		ChannelID:             m.ChannelID,
 		SubscriptionAccountID: m.SubscriptionAccountID,
-		ElapsedTime:          m.ElapsedTime,
-		IsStream:             m.IsStream,
+		ElapsedTime:           m.ElapsedTime,
+		IsStream:              m.IsStream,
 	}
 }
 

@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-29
+
+### Added
+- 新增 SQLite3 Lite 部署模式：`deployments/docker-compose/docker-compose.lite.yml`、`.env.lite.example`、`migrations/sqlite/000_create_full_schema.sql`，单机部署可不再启动 MySQL 容器。
+- 新增 Postgres 部署模式：`deployments/docker-compose/docker-compose.postgres.yml`、`.env.postgres.example`、`migrations/postgres/000_create_full_schema.sql`。
+- 新增统一数据库打开器 `internal/pkg/xdb.Open` / `OpenSQL`，支持 `mysql`、`sqlite3`、`postgres` 三种方言，并支持从 DSN 推断 driver。
+- 新增 SQLite3/Postgres 迁移目录说明与 Issue #4 落地文档。
+
+### Changed
+- 各服务数据库配置改为通过 `DATABASE_DRIVER` 选择方言，默认保持 MySQL 兼容。
+- `cmd/migrate` 支持按 driver 选择表存在性探测与 Postgres `$N` 占位符转换。
+- 主服务 Docker 镜像切换为 CGO-enabled Alpine 构建，以支持 `go-sqlite3`。
+- MySQL 分区维护在 SQLite3/Postgres 下自动 no-op。
+
+### Fixed
+- 修复 `admin-api` system options 在 SQLite3/Postgres 下的连接、占位符与 upsert 兼容性。
+- 修复 billing/log 聚合查询中的 MySQL 专用日期函数，使其兼容 SQLite3/Postgres。
+- 修复 Postgres baseline 中 `time.Time` 字段类型与 GORM 模型不一致的问题。
+
 ## [0.3.0] - 2026-06-29
 
 ### Added
