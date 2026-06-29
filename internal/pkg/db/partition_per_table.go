@@ -19,7 +19,14 @@ import (
 // This avoids cross-service assumptions about shared DSNs and lets each
 // service run its own cron with per-table config. See REVIEW_v4 §六 for
 // context.
+//
+// On non-MySQL backends (e.g. SQLite used by the Lite deployment) this
+// returns nil immediately so the per-service cron can keep ticking
+// without surfacing "no such table: information_schema" errors.
 func (pm *PartitionManager) PartitionMaintenanceForTable(ctx context.Context, tableName string) error {
+	if !pm.Supported {
+		return nil
+	}
 	if err := pm.EnsureFuturePartitions(ctx, tableName, 12); err != nil {
 		return fmt.Errorf("failed to ensure future partitions for %s: %w", tableName, err)
 	}

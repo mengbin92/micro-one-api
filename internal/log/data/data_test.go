@@ -42,13 +42,13 @@ func TestNewRepositoryFromEnvRequiresDSNUnlessMemoryModeEnabled(t *testing.T) {
 	t.Setenv("SQL_DSN", "")
 	t.Setenv("LOG_MEMORY_MODE", "")
 
-	_, err := NewRepositoryFromEnv("")
+	_, err := NewRepositoryFromEnv("", "")
 	if err == nil || !strings.Contains(err.Error(), "LOG_MEMORY_MODE=true") {
 		t.Fatalf("expected explicit memory mode error, got %v", err)
 	}
 
 	t.Setenv("LOG_MEMORY_MODE", "true")
-	repo, err := NewRepositoryFromEnv("")
+	repo, err := NewRepositoryFromEnv("", "")
 	if err != nil {
 		t.Fatalf("NewRepositoryFromEnv() error = %v", err)
 	}

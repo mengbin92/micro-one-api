@@ -25,7 +25,7 @@ type Data struct {
 	reconRunStore   biz.ReconciliationRunStore
 }
 
-func NewData(dsn ...string) (*Data, error) {
+func NewData(driver string, dsn ...string) (*Data, error) {
 	// If DSN is provided via config, use it; otherwise fall back to env vars.
 	var dbDSN string
 	if len(dsn) > 0 && dsn[0] != "" {
@@ -37,7 +37,7 @@ func NewData(dsn ...string) (*Data, error) {
 		}
 	}
 
-	db, err := xdb.OpenMySQL(dbDSN)
+	db, err := xdb.Open(xdb.DatabaseConfig{Driver: xdb.NormalizeDriver(driver, dbDSN), DSN: dbDSN})
 	if err != nil {
 		return nil, err
 	}

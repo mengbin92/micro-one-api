@@ -81,7 +81,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := xdb.OpenMySQL(dsn)
+	db, err := xdb.Open(xdb.DatabaseConfig{DSN: dsn})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: open DB: %v\n", err)
 		os.Exit(1)

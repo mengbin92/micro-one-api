@@ -316,3 +316,19 @@ help:
 	{ lastLine = $$0 }' $(MAKEFILE_LIST)
 
 .DEFAULT_GOAL := help
+
+.PHONY: migrate-sqlite
+# apply pending SQLite3 migrations
+migrate-sqlite:
+	MIGRATIONS_DRIVER=sqlite3 go run ./cmd/migrate -dir ./migrations/sqlite
+
+.PHONY: migrate-postgres
+# apply pending Postgres migrations
+migrate-postgres:
+	MIGRATIONS_DRIVER=postgres go run ./cmd/migrate -dir ./migrations/postgres
+
+.PHONY: test-sqlite
+# run the test suite with a scratch SQLite3 file to catch driver-specific regressions
+test-sqlite:
+	MIGRATIONS_DSN='file:/tmp/micro-one-api-test.db?_busy_timeout=5000&_foreign_keys=on' \
+	MIGRATIONS_DRIVER=sqlite3 go test -count=1 $$(go list ./... | grep -v '/test/e2e/suite$$' | grep -v '/web/node_modules/')

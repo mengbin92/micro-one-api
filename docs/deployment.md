@@ -440,3 +440,68 @@ docker compose exec mysql mysql -u root -p oneapi
 # 执行迁移文件示例
 source /docker-entrypoint-initdb.d/001_create_users.sql
 ```
+
+## 9. 多数据库方言部署
+
+Micro-One-API 在运行时支持 MySQL、SQLite3 和 Postgres 三种数据库方言。方言由配置项 `data.database.driver`（或环境变量 `DATABASE_DRIVER`）选择；DSN 由 `data.database.source`（或 `DATABASE_DSN`）提供。
+
+| 方言 | `driver` | 适用场景 | Compose 文件 |
+| --- | --- | --- | --- |
+| MySQL | `mysql` | 多实例、高并发、生产 | `docker-compose.yml`（默认） |
+| SQLite3 | `sqlite3` | 单机、自托管、低维护 | `docker-compose.lite.yml` |
+| Postgres | `postgres` | 多实例、需要 Postgres 特性 | `docker-compose.postgres.yml` |
+
+驱动也可省略，由 `xdb.InferDriver` 根据 DSN 形状自动推断（`file:*.db`、`.sqlite`/`.sqlite3`/`.db` 后缀 → SQLite3；`postgres://` / `postgresql://` / `host=…` → Postgres；其余默认 MySQL）。
+
+### 9.1 Lite 部署（SQLite3）
+
+Lite 模式去掉了 MySQL 容器和 `docker-entrypoint-initdb.d` 路径，数据落在一个可挂载的 SQLite3 文件卷中。`phase3_partitioning.sql` 在该模式下不适用：`internal/pkg/db.PartitionManager` 检测到非 MySQL 拨号器时会自动把 `Supported` 置为 `false`，所有分区维护调用变成 no-op。
+
+```bash
+cd deployments/docker-compose
+cp .env.lite.example .env
+# 编辑 .env：JWT_SECRET_KEY / SERVICE_TOKEN / ADMIN_TOKEN / REDIS_PASSWORD
+
+# 首次启动会自动跑 migrations/sqlite 下的 baseline（一次性 migrate service）
+docker compose -f docker-compose.lite.yml --env-file .env up -d
+
+# 查看迁移日志
+docker compose -f docker-compose.lite.yml logs migrate
+```
+
+默认 DSN 形如 `file:/data/micro-one-api.db?_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=on`；`xdb.Open` 会自动启用这套 PRAGMA 并把 `MaxOpenConns=1` 以避免写锁竞争。
+
+### 9.2 Postgres 部署
+
+```bash
+cd deployments/docker-compose
+cp .env.postgres.example .env
+# 编辑 .env：POSTGRES_PASSWORD / JWT_SECRET_KEY / SERVICE_TOKEN / ADMIN_TOKEN / REDIS_PASSWORD
+
+docker compose -f docker-compose.postgres.yml --env-file .env up -d
+```
+
+DSN 形如 `host=postgres user=… password=… dbname=micro_one_api port=5432 sslmode=disable`。Go 侧使用 `github.com/jackc/pgx/v5/stdlib`（`sql.Open("pgx", dsn)`），GORM 侧使用 `gorm.io/driver/postgres`。
+
+### 9.3 手动迁移
+
+`cmd/migrate` 接受 `-driver` 和 `-dir` 标志，并会从 `MIGRATIONS_DRIVER` / `MIGRATIONS_DSN` 环境变量读取：
+
+```bash
+# MySQL（默认）
+go run ./cmd/migrate -dir ./migrations
+
+# SQLite3
+MIGRATIONS_DRIVER=sqlite3 \
+MIGRATIONS_DSN='file:/data/micro-one-api.db' \
+  go run ./cmd/migrate -dir ./migrations/sqlite
+
+# Postgres
+MIGRATIONS_DRIVER=postgres \
+MIGRATIONS_DSN='host=127.0.0.1 user=app password=… dbname=micro_one_api port=5432 sslmode=disable' \
+  go run ./cmd/migrate -dir ./migrations/postgres
+```
+
+`migrations/mysql`、`migrations/sqlite`、`migrations/postgres` 三套迁移是分别维护的快照。SQLite3 / Postgres baseline 是单一手写文件（`000_create_full_schema.sql`），由 `docs/issue-4-sqlite-solution.md` 描述的设计取舍决定：MySQL 迁移依赖 `AUTO_INCREMENT`、`ENGINE=InnoDB`、`COMMENT`、前缀索引、`ON UPDATE CURRENT_TIMESTAMP` 等方言特性，逐文件翻译要么丢能力、要么需要条件 SQL runner；snapshot 形式更易于评审与同步。
+
+新增 schema 变更时请同步更新两套迁移目录（MySQL + 对应方言）；CI 会在 PR 上跑 `cmd/migrate -dir ./migrations/<dialect>` 作为防漂移检查。

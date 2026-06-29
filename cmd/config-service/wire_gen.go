@@ -39,7 +39,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		return nil, nil, err
 	}
 
-	repo, err := data.NewRepositoryFromEnv(cfg.Data.Database.Source)
+	repo, err := data.NewRepositoryFromEnv(cfg.Data.Database.Driver, cfg.Data.Database.Source)
 	if err != nil {
 		return nil, nil, err
 	}

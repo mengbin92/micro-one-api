@@ -32,7 +32,7 @@ type configModel struct {
 
 func (configModel) TableName() string { return "configs" }
 
-func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
+func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 	var dbDSN string
 	if len(dsn) > 0 && dsn[0] != "" {
 		dbDSN = dsn[0]
@@ -45,7 +45,7 @@ func NewRepositoryFromEnv(dsn ...string) (*Repository, error) {
 	if dbDSN == "" {
 		return newMemoryRepository(), nil
 	}
-	db, err := xdb.OpenMySQL(dbDSN)
+	db, err := xdb.Open(xdb.DatabaseConfig{Driver: xdb.NormalizeDriver(driver, dbDSN), DSN: dbDSN})
 	if err != nil {
 		return nil, err
 	}

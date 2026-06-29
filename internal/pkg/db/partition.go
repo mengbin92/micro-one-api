@@ -4,6 +4,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -12,13 +13,30 @@ import (
 )
 
 // PartitionManager handles table partition operations.
+//
+// MySQL is the only supported backend: native range partitioning,
+// REORGANIZE PARTITION and information_schema.PARTITIONS are MySQL-only.
+// On any other dialector (e.g. SQLite used by the Lite deployment) the
+// manager reports Supported=false and all maintenance calls become
+// no-ops so the cron tickers can keep running without error.
 type PartitionManager struct {
-	db *gorm.DB
+	db        *gorm.DB
+	Supported bool
 }
 
-// NewPartitionManager creates a new partition manager.
+// NewPartitionManager creates a new partition manager. The Supported
+// flag is set automatically based on the underlying dialector; callers
+// that need to override (e.g. in tests) can construct the struct
+// directly.
 func NewPartitionManager(db *gorm.DB) *PartitionManager {
-	return &PartitionManager{db: db}
+	pm := &PartitionManager{db: db, Supported: true}
+	if db != nil && db.Dialector != nil {
+		name := strings.ToLower(db.Dialector.Name())
+		if name != "mysql" {
+			pm.Supported = false
+		}
+	}
+	return pm
 }
 
 // PartitionInfo contains information about a table partition.
@@ -202,7 +220,15 @@ const LogTable = "logs"
 const BillingLedgersTable = "billing_ledgers"
 
 // PartitionMaintenance performs routine partition maintenance tasks.
+//
+// On non-MySQL backends (e.g. SQLite) this returns nil immediately so the
+// background ticker in log-service / billing-service can keep running
+// without surfacing "no such table: information_schema" errors.
 func (pm *PartitionManager) PartitionMaintenance(ctx context.Context) error {
+	if !pm.Supported {
+		return nil
+	}
+
 	// Ensure 12 months of future partitions exist
 	for _, table := range []string{LogTable, BillingLedgersTable} {
 		if err := pm.EnsureFuturePartitions(ctx, table, 12); err != nil {

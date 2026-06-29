@@ -125,11 +125,15 @@ func TestGetTablePartitionSummary(t *testing.T) {
 }
 
 func TestPartitionMaintenanceForTableUnsupportedTable(t *testing.T) {
+	// Build a manager that looks "supported" so the unsupported-table-name
+	// error path is actually exercised. We use a real (SQLite) gorm.DB
+	// so pm.db is non-nil — the table name is what triggers the error,
+	// not the dialector.
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	pm := NewPartitionManager(db)
+	pm := &PartitionManager{db: db, Supported: true}
 	ctx := context.Background()
 
 	// An unsupported table name must produce an explicit error rather than
@@ -154,5 +158,33 @@ func TestPartitionMaintenanceForTableLogs(t *testing.T) {
 	err = pm.PartitionMaintenanceForTable(ctx, LogTable)
 	if err == nil {
 		t.Logf("PartitionMaintenanceForTable(logs) succeeded on SQLite (unexpected)")
+	}
+}
+
+func TestPartitionManagerNonMySQLNoop(t *testing.T) {
+	// SQLite (Lite deployment) and Postgres (see docker-compose.postgres.yml)
+	// both lack MySQL-style range partitioning. The manager must
+	// automatically detect a non-MySQL dialector and turn all
+	// maintenance calls into no-ops so the cron tickers in
+	// log-service / billing-service can keep running without surfacing
+	// "no such table: information_schema" errors.
+	for _, dsn := range []string{":memory:"} {
+		db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+		if err != nil {
+			t.Fatalf("open sqlite: %v", err)
+		}
+		pm := NewPartitionManager(db)
+		if pm.Supported {
+			t.Fatalf("PartitionManager should be unsupported for SQLite, got Supported=true")
+		}
+		ctx := context.Background()
+		for _, table := range []string{LogTable, BillingLedgersTable, "unknown"} {
+			if err := pm.PartitionMaintenanceForTable(ctx, table); err != nil {
+				t.Errorf("expected no-op on SQLite for %s, got %v", table, err)
+			}
+		}
+		if err := pm.PartitionMaintenance(ctx); err != nil {
+			t.Errorf("expected no-op PartitionMaintenance on SQLite, got %v", err)
+		}
 	}
 }
