@@ -113,7 +113,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	grpcSrv := grpcx.NewServer(grpcx.Address(cfg.Server.GRPC.Addr))
 	adminv1.RegisterAdminServiceServer(grpcSrv, adminSvc)
 
-	httpSrv := adminserver.NewHTTPServer(cfg.Server.HTTP.Addr, adminSvc, cfg.Clients.Identity.HTTPEndpoint, cfg.Server.HTTP.WebRoot)
+	httpSrv := adminserver.NewHTTPServer(cfg.Server.HTTP.Addr, adminSvc, cfg.Clients.Identity.HTTPEndpoint, cfg.Server.HTTP.WebRoot, cfg.Server.GRPC.Addr)
 
 	kratosOpts := []kratos.Option{
 		kratos.Name("admin-api"),

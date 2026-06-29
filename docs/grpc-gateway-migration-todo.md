@@ -18,30 +18,30 @@
 
 目标：proto 注解已齐 + HTTP 路径与手写路由 1:1 对应，迁完收益明确。
 
-- [ ] **config** 服务：`api/config/v1/config.proto` 4 个 RPC 注解齐全，迁移
+- [x] **config** 服务：`api/config/v1/config.proto` 4 个 RPC 注解齐全，迁移
   `internal/config/server/http.go` → grpc-gateway runtime mux。
-- [ ] **log** 服务：`api/log/v1/log.proto` 3 个 RPC 注解齐全，迁移
+- [x] **log** 服务：`api/log/v1/log.proto` 3 个 RPC 注解齐全，迁移
   `internal/log/server/http.go`。注意 `ServiceAuth` 中间件（`SERVICE_TOKEN`）
   需要在 gateway 之外作为 HTTP middleware 保留。
-- [ ] **monitor** 服务：`api/monitor/v1/monitor.proto` 8 个 RPC 注解齐全，迁移
+- [x] **monitor** 服务：`api/monitor/v1/monitor.proto` 8 个 RPC 注解齐全，迁移
   `internal/monitor/server/http.go`。
-- [ ] **notify** 服务：`api/notify/v1/notify.proto` 4 个 RPC 注解齐全，迁移
+- [x] **notify** 服务：`api/notify/v1/notify.proto` 4 个 RPC 注解齐全，迁移
   `internal/notify/server/http.go`。
 
 ### P1 — 半迁：admin 服务
 
-- [ ] admin 服务中已配 `google.api.http` 注解的 RPC（当前 13 个，含本次新增的
+- [x] admin 服务中已配 `google.api.http` 注解的 RPC（当前 13 个，含本次新增的
   5 个 `SubscriptionAccount`）可走 gateway；其余 `/api/...` oneAPI 兼容路径保留
   手写，避免破坏前端兼容层。
 
 ### P2 — 工具链与依赖
 
-- [ ] 引入 `protoc-gen-grpc-gateway`，把 `github.com/grpc-ecosystem/grpc-gateway/v2`
+- [x] 引入 `protoc-gen-grpc-gateway`，把 `github.com/grpc-ecosystem/grpc-gateway/v2`
   从 indirect 提升为 direct 依赖。
-- [ ] 在 `Makefile` 的 `api` 目标加上 `--grpc-gateway_out=paths=source_relative:.`。
-- [ ] 为每个目标服务写一个 `gateway.go`（`runtime.NewServeMux` +
+- [x] 在 `Makefile` 的 `api` 目标加上 `--grpc-gateway_out=paths=source_relative:.`。
+- [x] 为每个目标服务写一个 `gateway.go`（`runtime.NewServeMux` +
   `RegisterXxxHandlerFromEndpoint`），在 `cmd/<service>-api/wire.go` 中接入。
-- [ ] 保留 `/metrics`、`/healthz` 路由（不走 gateway）。
+- [x] 保留 `/metrics`、`/healthz` 路由（不走 gateway）。
 
 ### P3 — 不迁 / 单独评估
 
@@ -54,9 +54,9 @@
 
 ## 验证清单（每次迁移一个服务后跑）
 
-- [ ] `make api` 通过
-- [ ] `go build ./...` 通过
-- [ ] `go test ./internal/<service>/...` 通过
+- [x] `make api` 通过
+- [x] `go build ./...` 通过
+- [x] `go test ./internal/<service>/...` 通过
 - [ ] 启动该服务后 `curl` 验证一条 GET / POST / PUT / DELETE 路径行为与手写版本一致
 - [ ] 确认 `/metrics`、`/healthz` 仍可访问
 

@@ -52,7 +52,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	uc := biz.NewMonitorUsecase(repo)
 	svc := service.NewMonitorService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
-	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, cfg.Server.GRPC.Addr, svc)
 	_, channelCleanup := newChannelHealthChecker(cfg)
 
 	registrar, rErr := appregistry.NewRegistrar(cfg.Registry)

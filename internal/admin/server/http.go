@@ -24,6 +24,7 @@ import (
 	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/internal/admin/service"
+	"micro-one-api/internal/pkg/grpcgateway"
 	"micro-one-api/internal/pkg/metrics"
 	"micro-one-api/internal/pkg/safecast"
 	"micro-one-api/internal/pkg/xhttp"
@@ -84,7 +85,8 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 // NewHTTPServer wires HTTP transport for admin-api.
 //
 // Optional arguments are kept for backwards-compatible tests and older wire
-// call sites: first is identity HTTP endpoint, second is external web root.
+// call sites: first is identity HTTP endpoint, second is external web root,
+// third is the admin gRPC endpoint used by grpc-gateway routes.
 func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *khttp.Server {
 	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	identityProxy := newServiceReverseProxy(optionString(options, 0))
@@ -92,6 +94,10 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	webAssets := newAdminWebAssets(optionString(options, 1))
 	handlePage := webAssets.handlePage
 	adminAuth := newAdminGuard(svc)
+	gw := http.Handler(nil)
+	if grpcAddr := optionString(options, 2); grpcAddr != "" {
+		gw = newGatewayHandler(grpcAddr)
+	}
 
 	// Health and metrics (unauthenticated)
 	srv.HandleFunc("/", handlePage)
@@ -125,11 +131,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
 	})
-	srv.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
-	})
+	srv.HandleFunc("/healthz", grpcgateway.HealthzHandler)
 	srv.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true,
@@ -281,6 +283,10 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 		handleOneAPIUsers(w, r, svc)
 	}))
 	srv.HandleFunc("/v1/users", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		if gw != nil && r.Method == http.MethodGet {
+			gw.ServeHTTP(w, r)
+			return
+		}
 		handleUsers(w, r, svc)
 	}))
 	srv.HandlePrefix("/v1/users/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -291,15 +297,27 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 		handleOneAPIChannelModels(w, r, svc)
 	}))
 	srv.HandleFunc("/v1/channels", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		if gw != nil && r.Method == http.MethodGet {
+			gw.ServeHTTP(w, r)
+			return
+		}
 		handleChannels(w, r, svc)
 	}))
 	srv.HandlePrefix("/v1/channels/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleChannelByID(w, r, svc)
 	}))
 	srv.HandleFunc("/v1/subscription-accounts", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		if gw != nil && (r.Method == http.MethodGet || r.Method == http.MethodPost) {
+			gw.ServeHTTP(w, r)
+			return
+		}
 		handleSubscriptionAccounts(w, r, svc)
 	}))
 	srv.HandlePrefix("/v1/subscription-accounts/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		if gw != nil && (r.Method == http.MethodPut || r.Method == http.MethodDelete) {
+			gw.ServeHTTP(w, r)
+			return
+		}
 		handleSubscriptionAccountByID(w, r, svc)
 	}))
 
@@ -315,6 +333,10 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	}))
 
 	srv.HandleFunc("/v1/system/options", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		if gw != nil && (r.Method == http.MethodGet || r.Method == http.MethodPut) {
+			gw.ServeHTTP(w, r)
+			return
+		}
 		handleGetSystemOptions(w, r, svc)
 	}))
 	srv.HandlePrefix("/api/option", adminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -322,6 +344,10 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	}))
 
 	srv.HandleFunc("/v1/logs", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		if gw != nil && r.Method == http.MethodGet {
+			gw.ServeHTTP(w, r)
+			return
+		}
 		handleListLogs(w, r, svc)
 	}))
 	srv.HandleFunc("/api/log/stat", adminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -341,10 +367,18 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	}))
 
 	srv.HandleFunc("/v1/account", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		if gw != nil && r.Method == http.MethodGet {
+			gw.ServeHTTP(w, r)
+			return
+		}
 		handleGetAccount(w, r, svc)
 	}))
 
 	srv.HandleFunc("/v1/redeem-codes", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		if gw != nil && r.Method == http.MethodGet {
+			gw.ServeHTTP(w, r)
+			return
+		}
 		handleRedeemCodes(w, r, svc)
 	}))
 	srv.HandleFunc("/v1/redeem-codes/batch", adminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -611,23 +645,23 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 			"subscription_accounts":        subscriptionAccounts.GetTotal(),
 			"active_subscription_accounts": activeSubscriptionAccounts.GetTotal(),
 		},
-		"recent_users":          users.GetUsers(),
-		"channels":              channels.GetChannels(),
-		"subscription_accounts": subscriptionAccounts.GetAccounts(),
-		"recent_logs":           recentLogs,
-		"payment_orders":        paymentOrders.GetOrders(),
-		"usage_stats":           stats,
-		"cost_analysis":         costAnalysisSummary(quotaUsed, upstreamCost, grossProfit),
-		"top_models":            usageAggregateViewsToMaps(topModels),
-		"top_channels":          enrichChannelUsage(topChannels, channels.GetChannels()),
-		"top_users":             usageAggregateViewsToMaps(topUsers),
-		"top_tokens":            usageAggregateViewsToMaps(topTokens),
+		"recent_users":              users.GetUsers(),
+		"channels":                  channels.GetChannels(),
+		"subscription_accounts":     subscriptionAccounts.GetAccounts(),
+		"recent_logs":               recentLogs,
+		"payment_orders":            paymentOrders.GetOrders(),
+		"usage_stats":               stats,
+		"cost_analysis":             costAnalysisSummary(quotaUsed, upstreamCost, grossProfit),
+		"top_models":                usageAggregateViewsToMaps(topModels),
+		"top_channels":              enrichChannelUsage(topChannels, channels.GetChannels()),
+		"top_users":                 usageAggregateViewsToMaps(topUsers),
+		"top_tokens":                usageAggregateViewsToMaps(topTokens),
 		"top_subscription_accounts": enrichSubscriptionAccountUsage(topSubscriptionAccounts, subscriptionAccounts.GetAccounts()),
-		"alerts":                adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation),
-		"latest_reconciliation": latestReconciliationRun(reconciliation),
-		"model_catalog":         oneAPIChannelModelCatalog(),
-		"pricing_options":       optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "QuotaPerUnit"),
-		"payment_summary":       paymentSummaryFromOrders(paymentOrders),
+		"alerts":                    adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation),
+		"latest_reconciliation":     latestReconciliationRun(reconciliation),
+		"model_catalog":             oneAPIChannelModelCatalog(),
+		"pricing_options":           optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "QuotaPerUnit"),
+		"payment_summary":           paymentSummaryFromOrders(paymentOrders),
 	}))
 }
 
@@ -655,21 +689,21 @@ func usageAggregateViewsToMaps(items []service.UsageAggregateView) []map[string]
 
 func usageAggregateViewToMap(item service.UsageAggregateView) map[string]interface{} {
 	return map[string]interface{}{
-		"key":               item.Key,
-		"user_id":           item.UserID,
-		"channel_id":             item.ChannelID,
+		"key":                     item.Key,
+		"user_id":                 item.UserID,
+		"channel_id":              item.ChannelID,
 		"subscription_account_id": item.SubscriptionAccountID,
-		"model":                  item.Model,
-		"token_name":        item.TokenName,
-		"type":              item.Type,
-		"quota":             item.Quota,
-		"upstream_cost":     item.UpstreamCost,
-		"gross_profit":      item.GrossProfit,
-		"prompt_tokens":     item.PromptTokens,
-		"completion_tokens": item.CompletionTokens,
-		"cache_read_tokens": item.CacheReadTokens,
-		"count":             item.Count,
-		"elapsed_time":      item.ElapsedTime,
+		"model":                   item.Model,
+		"token_name":              item.TokenName,
+		"type":                    item.Type,
+		"quota":                   item.Quota,
+		"upstream_cost":           item.UpstreamCost,
+		"gross_profit":            item.GrossProfit,
+		"prompt_tokens":           item.PromptTokens,
+		"completion_tokens":       item.CompletionTokens,
+		"cache_read_tokens":       item.CacheReadTokens,
+		"count":                   item.Count,
+		"elapsed_time":            item.ElapsedTime,
 	}
 }
 

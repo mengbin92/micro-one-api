@@ -11,6 +11,7 @@ import (
 
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/internal/log/service"
+	"micro-one-api/internal/pkg/grpcgateway"
 	"micro-one-api/internal/pkg/metrics"
 	"micro-one-api/internal/pkg/xhttp"
 )
@@ -45,39 +46,30 @@ func ServiceAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // NewHTTPServer wires HTTP transport for log-service.
-func NewHTTPServer(addr string, svc *service.LogService, identityClients ...identityv1.IdentityServiceClient) *khttp.Server {
+func NewHTTPServer(addr, grpcAddr string, svc *service.LogService, identityClients ...identityv1.IdentityServiceClient) *khttp.Server {
 	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	var identityClient identityv1.IdentityServiceClient
 	if len(identityClients) > 0 {
 		identityClient = identityClients[0]
 	}
 
+	gw := newGatewayHandler(grpcAddr)
+
 	// Health and metrics (unauthenticated)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
 	})
-	srv.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
-	})
+	srv.HandleFunc("/healthz", grpcgateway.HealthzHandler)
 
 	// Protected log endpoints
 	srv.HandleFunc("/v1/logs", ServiceAuth(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			svc.HandleListLogs(w, r)
-		case http.MethodPost:
-			svc.HandleIngestLog(w, r)
-		case http.MethodDelete:
+		if r.Method == http.MethodDelete {
 			svc.HandleDeleteLogs(w, r)
-		default:
-			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
 		}
+		gw.ServeHTTP(w, r)
 	}))
-	srv.HandleFunc("/v1/logs/", ServiceAuth(func(w http.ResponseWriter, r *http.Request) {
-		svc.HandleGetLog(w, r)
-	}))
+	srv.HandlePrefix("/v1/logs", http.HandlerFunc(ServiceAuth(gw.ServeHTTP)))
 	srv.HandleFunc("/api/log/self", func(w http.ResponseWriter, r *http.Request) {
 		svc.HandleOneAPIUserLogs(w, r, identityClient)
 	})

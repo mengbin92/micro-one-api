@@ -49,22 +49,22 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	uc := biz.NewNotifyUsecase(repo)
 	svc := service.NewNotifyService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
-	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, cfg.Server.GRPC.Addr, svc)
 	dispatchInterval, err := time.ParseDuration(cfg.Notify.DispatchInterval)
 	if err != nil {
 		dispatchInterval = 30 * time.Second
 	}
 	sender := biz.NewMultiSender(biz.SenderConfig{
-		WebhookURL:        cfg.Notify.WebhookURL,
-		SMTPHost:          cfg.Notify.SMTPHost,
-		SMTPPort:          cfg.Notify.SMTPPort,
-		SMTPUser:          cfg.Notify.SMTPUser,
-		SMTPPass:          cfg.Notify.SMTPPass,
-		SMTPFrom:          cfg.Notify.SMTPFrom,
-		WeComWebhookURL:   cfg.Notify.WeComWebhookURL,
+		WebhookURL:         cfg.Notify.WebhookURL,
+		SMTPHost:           cfg.Notify.SMTPHost,
+		SMTPPort:           cfg.Notify.SMTPPort,
+		SMTPUser:           cfg.Notify.SMTPUser,
+		SMTPPass:           cfg.Notify.SMTPPass,
+		SMTPFrom:           cfg.Notify.SMTPFrom,
+		WeComWebhookURL:    cfg.Notify.WeComWebhookURL,
 		DingTalkWebhookURL: cfg.Notify.DingTalkWebhookURL,
-		FeishuWebhookURL:  cfg.Notify.FeishuWebhookURL,
-		SlackWebhookURL:   cfg.Notify.SlackWebhookURL,
+		FeishuWebhookURL:   cfg.Notify.FeishuWebhookURL,
+		SlackWebhookURL:    cfg.Notify.SlackWebhookURL,
 	})
 	dispatcher := biz.NewDispatcher(uc, sender, dispatchInterval, cfg.Notify.DispatchBatch, cfg.Notify.MaxRetry)
 	stopDispatcher := dispatcher.Start(context.Background())

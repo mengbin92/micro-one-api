@@ -48,7 +48,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	uc := biz.NewLogUsecase(repo)
 	svc := service.NewLogService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
-	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, cfg.Server.GRPC.Addr, svc)
 	cleanupRetention := startLogRetentionCleanup(uc, cfg.Log.RetentionDays)
 
 	// Partition maintenance for the `logs` table. Gated by the partition

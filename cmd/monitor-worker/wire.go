@@ -39,7 +39,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 func newApp(cfg *monitorcfg.Config, svc *service.MonitorService) (*kratos.App, func()) {
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
-	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, cfg.Server.GRPC.Addr, svc)
 	_, channelCleanup := newChannelHealthChecker(cfg)
 	app := kratos.New(
 		kratos.Name("monitor-worker"),

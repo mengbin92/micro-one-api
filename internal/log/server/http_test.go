@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	identityv1 "micro-one-api/api/identity/v1"
+	logv1 "micro-one-api/api/log/v1"
 	logbiz "micro-one-api/internal/log/biz"
 	logdata "micro-one-api/internal/log/data"
 	logservice "micro-one-api/internal/log/service"
@@ -161,8 +164,22 @@ func TestLogHTTPIngestSanitizesMessage(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer service-token")
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201, body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var ingested struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&ingested); err != nil {
+		t.Fatalf("decode ingest response: %v", err)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/logs/"+ingested.ID, nil)
+	req.Header.Set("Authorization", "Bearer service-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
 	body, _ := io.ReadAll(rec.Body)
 	if strings.Contains(string(body), "secret-token") {
@@ -205,8 +222,21 @@ func newLogHTTPServerForTest(t *testing.T, identityClient identityv1.IdentitySer
 		}
 	}
 	svc := logservice.NewLogService(uc)
-	if identityClient == nil {
-		return NewHTTPServer(":0", svc)
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
-	return NewHTTPServer(":0", svc, identityClient)
+	grpcSrv := grpc.NewServer()
+	logv1.RegisterLogServiceServer(grpcSrv, svc)
+	go func() {
+		_ = grpcSrv.Serve(lis)
+	}()
+	t.Cleanup(func() {
+		grpcSrv.Stop()
+		lis.Close()
+	})
+	if identityClient == nil {
+		return NewHTTPServer(":0", lis.Addr().String(), svc)
+	}
+	return NewHTTPServer(":0", lis.Addr().String(), svc, identityClient)
 }
