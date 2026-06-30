@@ -53,7 +53,11 @@ func NewStreamEventBus(redisClient *redis.Client, consumerID string) *StreamEven
 // Publish sends an event to a Redis Stream with guaranteed persistence.
 // Events survive process restarts.
 func (b *StreamEventBus) Publish(ctx context.Context, topic string, payload interface{}) error {
-	data, err := sonic.Marshal(payload)
+	data, err := sonic.Marshal(Event{
+		Topic:     topic,
+		Payload:   payload,
+		Timestamp: time.Now(),
+	})
 	if err != nil {
 		return fmt.Errorf("marshal event payload: %w", err)
 	}
