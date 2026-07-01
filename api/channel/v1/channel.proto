@@ -11,6 +11,11 @@ service ChannelService {
   rpc SelectSubscriptionAccount(SelectSubscriptionAccountRequest) returns (SelectSubscriptionAccountReply);
   rpc GetSubscriptionAccount(GetSubscriptionAccountRequest) returns (GetSubscriptionAccountReply);
   rpc ListSubscriptionAccounts(ListSubscriptionAccountsRequest) returns (ListSubscriptionAccountsResponse);
+  rpc ListOAuthRefreshCandidates(ListOAuthRefreshCandidatesRequest) returns (ListOAuthRefreshCandidatesResponse);
+  rpc ClearSubscriptionAccountError(ClearSubscriptionAccountErrorRequest) returns (ClearSubscriptionAccountErrorResponse);
+  rpc SetSubscriptionAccountError(SetSubscriptionAccountErrorRequest) returns (SetSubscriptionAccountErrorResponse);
+  rpc SetTempUnschedulable(SetTempUnschedulableRequest) returns (SetTempUnschedulableResponse);
+  rpc ClearTempUnschedulable(ClearTempUnschedulableRequest) returns (ClearTempUnschedulableResponse);
   rpc CreateSubscriptionAccount(CreateSubscriptionAccountRequest) returns (CreateSubscriptionAccountResponse);
   rpc UpdateSubscriptionAccount(UpdateSubscriptionAccountRequest) returns (UpdateSubscriptionAccountResponse);
   rpc DeleteSubscriptionAccount(DeleteSubscriptionAccountRequest) returns (DeleteSubscriptionAccountResponse);
@@ -99,6 +104,53 @@ message ListSubscriptionAccountsRequest {
 message ListSubscriptionAccountsResponse {
   repeated common.v1.SubscriptionAccountSummary accounts = 1;
   int64 total = 2;
+}
+
+message ListOAuthRefreshCandidatesRequest {
+  int64 within_seconds = 1;
+}
+
+message ListOAuthRefreshCandidatesResponse {
+  repeated int64 account_ids = 1;
+}
+
+message ClearSubscriptionAccountErrorRequest {
+  int64 account_id = 1;
+}
+
+message ClearSubscriptionAccountErrorResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message SetSubscriptionAccountErrorRequest {
+  int64 account_id = 1;
+  string message = 2;
+}
+
+message SetSubscriptionAccountErrorResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message SetTempUnschedulableRequest {
+  int64 account_id = 1;
+  int64 until = 2;
+  string reason = 3;
+}
+
+message SetTempUnschedulableResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ClearTempUnschedulableRequest {
+  int64 account_id = 1;
+}
+
+message ClearTempUnschedulableResponse {
+  bool success = 1;
+  string message = 2;
 }
 
 message CreateSubscriptionAccountRequest {

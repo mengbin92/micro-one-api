@@ -450,6 +450,51 @@ CREATE INDEX IF NOT EXISTS idx_subscription_account_abilities_model_group_platfo
   ON subscription_account_abilities(model, "group", platform);
 
 -- ============================================================
+-- User subscriptions / groups
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS user_subscriptions (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  group_id BIGINT NOT NULL,
+  subscription_name TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  starts_at BIGINT NOT NULL DEFAULT 0,
+  expires_at BIGINT NOT NULL DEFAULT 0,
+  daily_usage_usd NUMERIC(12,4) NOT NULL DEFAULT 0,
+  weekly_usage_usd NUMERIC(12,4) NOT NULL DEFAULT 0,
+  monthly_usage_usd NUMERIC(12,4) NOT NULL DEFAULT 0,
+  daily_window_start BIGINT NOT NULL DEFAULT 0,
+  weekly_window_start BIGINT NOT NULL DEFAULT 0,
+  monthly_window_start BIGINT NOT NULL DEFAULT 0,
+  metadata TEXT DEFAULT NULL,
+  created_at BIGINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_subs_user_id ON user_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_subs_group_id ON user_subscriptions(group_id);
+CREATE INDEX IF NOT EXISTS idx_user_subs_status ON user_subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_user_subs_expires_at ON user_subscriptions(expires_at);
+
+CREATE TABLE IF NOT EXISTS subscription_groups (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL DEFAULT '',
+  platform TEXT NOT NULL,
+  subscription_type TEXT NOT NULL DEFAULT 'standard',
+  daily_limit_usd NUMERIC(12,4) DEFAULT NULL,
+  weekly_limit_usd NUMERIC(12,4) DEFAULT NULL,
+  monthly_limit_usd NUMERIC(12,4) DEFAULT NULL,
+  rate_multiplier NUMERIC(4,2) NOT NULL DEFAULT 1.0,
+  status INTEGER NOT NULL DEFAULT 1,
+  created_at BIGINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_sub_groups_platform ON subscription_groups(platform);
+
+-- ============================================================
 -- Schema migrations bookkeeping (matches internal/pkg/migrate)
 -- ============================================================
 

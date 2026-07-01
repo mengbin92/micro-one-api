@@ -1,8 +1,12 @@
 package server
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 
+	"micro-one-api/internal/channel/biz"
+	channeloauth "micro-one-api/internal/channel/biz/oauth"
 	"micro-one-api/internal/pkg/metrics"
 	"micro-one-api/internal/pkg/xhttp"
 
@@ -10,8 +14,13 @@ import (
 )
 
 // NewHTTPServer wires HTTP transport for channel-service.
-func NewHTTPServer(addr string) *khttp.Server {
+func NewHTTPServer(addr string, usecases ...*biz.ChannelUsecase) *khttp.Server {
 	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
+	var uc *biz.ChannelUsecase
+	if len(usecases) > 0 {
+		uc = usecases[0]
+	}
+	oauthSvc := channeloauth.NewService(uc)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
 	})
@@ -20,5 +29,109 @@ func NewHTTPServer(addr string) *khttp.Server {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+	registerOAuthRoutes(srv, oauthSvc)
 	return srv
+}
+
+func registerOAuthRoutes(srv *khttp.Server, oauthSvc *channeloauth.Service) {
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/claude/auth-url", oauthAuthURLHandler(oauthSvc, channeloauth.PlatformClaude))
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/claude/exchange", oauthExchangeHandler(oauthSvc, channeloauth.PlatformClaude))
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/codex/auth-url", oauthAuthURLHandler(oauthSvc, channeloauth.PlatformCodex))
+	srv.HandleFunc("/api/v1/admin/accounts/subscription/oauth/codex/exchange", oauthExchangeHandler(oauthSvc, channeloauth.PlatformCodex))
+}
+
+type oauthAuthURLRequest struct {
+	RedirectURI string `json:"redirect_uri"`
+}
+
+type oauthExchangeRequest struct {
+	SessionID string `json:"session_id"`
+	State     string `json:"state"`
+	Code      string `json:"code"`
+	Name      string `json:"name"`
+	Group     string `json:"group"`
+	Models    string `json:"models"`
+	Priority  int64  `json:"priority"`
+	BaseURL   string `json:"base_url"`
+	Metadata  string `json:"metadata"`
+}
+
+func oauthAuthURLHandler(oauthSvc *channeloauth.Service, platform string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		var req oauthAuthURLRequest
+		if err := decodeJSON(r, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		result, err := oauthSvc.AuthURL(r.Context(), platform, channeloauth.AuthURLRequest{
+			RedirectURI: req.RedirectURI,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"auth_url":   result.AuthURL,
+			"session_id": result.SessionID,
+			"state":      result.State,
+			"expires_at": result.ExpiresAt,
+		})
+	}
+}
+
+func oauthExchangeHandler(oauthSvc *channeloauth.Service, platform string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		var req oauthExchangeRequest
+		if err := decodeJSON(r, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		result, err := oauthSvc.Exchange(r.Context(), platform, channeloauth.ExchangeRequest{
+			SessionID: req.SessionID,
+			State:     req.State,
+			Code:      req.Code,
+			Name:      req.Name,
+			Group:     req.Group,
+			Models:    req.Models,
+			Priority:  req.Priority,
+			BaseURL:   req.BaseURL,
+			Metadata:  req.Metadata,
+		})
+		if err != nil {
+			status := http.StatusBadGateway
+			if errors.Is(err, channeloauth.ErrInvalidSession) {
+				status = http.StatusBadRequest
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success":    true,
+			"account_id": result.AccountID,
+			"platform":   result.Platform,
+			"metadata":   result.Metadata,
+		})
+	}
+}
+
+func decodeJSON(r *http.Request, dst interface{}) error {
+	if r.Body == nil || r.ContentLength == 0 {
+		return nil
+	}
+	defer r.Body.Close()
+	return json.NewDecoder(r.Body).Decode(dst)
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }

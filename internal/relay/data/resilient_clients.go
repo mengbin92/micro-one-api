@@ -83,6 +83,56 @@ func (c *resilientChannelClient) GetSubscriptionAccount(ctx context.Context, req
 	return resp.(*channelv1.GetSubscriptionAccountReply), nil
 }
 
+func (c *resilientChannelClient) ListOAuthRefreshCandidates(ctx context.Context, req *channelv1.ListOAuthRefreshCandidatesRequest, opts ...grpc.CallOption) (*channelv1.ListOAuthRefreshCandidatesResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		return client.ListOAuthRefreshCandidates(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*channelv1.ListOAuthRefreshCandidatesResponse), nil
+}
+
+func (c *resilientChannelClient) ClearSubscriptionAccountError(ctx context.Context, req *channelv1.ClearSubscriptionAccountErrorRequest, opts ...grpc.CallOption) (*channelv1.ClearSubscriptionAccountErrorResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		return client.ClearSubscriptionAccountError(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*channelv1.ClearSubscriptionAccountErrorResponse), nil
+}
+
+func (c *resilientChannelClient) SetSubscriptionAccountError(ctx context.Context, req *channelv1.SetSubscriptionAccountErrorRequest, opts ...grpc.CallOption) (*channelv1.SetSubscriptionAccountErrorResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		return client.SetSubscriptionAccountError(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*channelv1.SetSubscriptionAccountErrorResponse), nil
+}
+
+func (c *resilientChannelClient) SetTempUnschedulable(ctx context.Context, req *channelv1.SetTempUnschedulableRequest, opts ...grpc.CallOption) (*channelv1.SetTempUnschedulableResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		return client.SetTempUnschedulable(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*channelv1.SetTempUnschedulableResponse), nil
+}
+
+func (c *resilientChannelClient) ClearTempUnschedulable(ctx context.Context, req *channelv1.ClearTempUnschedulableRequest, opts ...grpc.CallOption) (*channelv1.ClearTempUnschedulableResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		return client.ClearTempUnschedulable(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*channelv1.ClearTempUnschedulableResponse), nil
+}
+
 func (c *resilientChannelClient) ListAvailableModels(ctx context.Context, req *channelv1.ListAvailableModelsRequest, opts ...grpc.CallOption) (*channelv1.ListAvailableModelsReply, error) {
 	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
 		return client.ListAvailableModels(ctx, req, opts...)

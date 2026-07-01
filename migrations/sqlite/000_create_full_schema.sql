@@ -434,6 +434,67 @@ CREATE INDEX IF NOT EXISTS idx_subscription_account_abilities_model_group_platfo
   ON subscription_account_abilities(model, "group", platform);
 
 -- ============================================================
+-- User subscriptions / groups
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS user_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  group_id INTEGER NOT NULL,
+  subscription_name TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  starts_at INTEGER NOT NULL DEFAULT 0,
+  expires_at INTEGER NOT NULL DEFAULT 0,
+  daily_usage_usd REAL NOT NULL DEFAULT 0,
+  weekly_usage_usd REAL NOT NULL DEFAULT 0,
+  monthly_usage_usd REAL NOT NULL DEFAULT 0,
+  daily_window_start INTEGER NOT NULL DEFAULT 0,
+  weekly_window_start INTEGER NOT NULL DEFAULT 0,
+  monthly_window_start INTEGER NOT NULL DEFAULT 0,
+  metadata TEXT,
+  created_at INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_subs_user_id ON user_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_subs_group_id ON user_subscriptions(group_id);
+CREATE INDEX IF NOT EXISTS idx_user_subs_status ON user_subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_user_subs_expires_at ON user_subscriptions(expires_at);
+
+CREATE TABLE IF NOT EXISTS subscription_groups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL DEFAULT '',
+  platform TEXT NOT NULL,
+  subscription_type TEXT NOT NULL DEFAULT 'standard',
+  daily_limit_usd REAL DEFAULT NULL,
+  weekly_limit_usd REAL DEFAULT NULL,
+  monthly_limit_usd REAL DEFAULT NULL,
+  rate_multiplier REAL NOT NULL DEFAULT 1.0,
+  status INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_sub_groups_platform ON subscription_groups(platform);
+
+CREATE TABLE IF NOT EXISTS account_quota_snapshots (
+  account_id INTEGER PRIMARY KEY,
+  primary_used_percent REAL,
+  primary_reset_after_seconds INTEGER,
+  primary_window_minutes INTEGER,
+  secondary_used_percent REAL,
+  secondary_reset_after_seconds INTEGER,
+  secondary_window_minutes INTEGER,
+  primary_over_secondary_percent REAL,
+  updated_at DATETIME,
+  snapshot_paused INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_quota_snapshot_updated
+  ON account_quota_snapshots(updated_at);
+
+-- ============================================================
 -- Schema migrations bookkeeping (matches internal/pkg/migrate)
 -- ============================================================
 

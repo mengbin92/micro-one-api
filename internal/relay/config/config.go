@@ -1,6 +1,10 @@
 package config
 
-import appregistry "micro-one-api/internal/pkg/registry"
+import (
+	"fmt"
+
+	appregistry "micro-one-api/internal/pkg/registry"
+)
 
 // Config holds the relay-gateway configuration.
 type Config struct {
@@ -12,6 +16,8 @@ type Config struct {
 	Redis             RedisConfig             `json:"redis" yaml:"redis"`
 	OpenAIWS          OpenAIWSConfig          `json:"openai_ws" yaml:"openai_ws"`
 	HybridAdaptor     HybridAdaptorConfig     `json:"hybrid_adaptor" yaml:"hybrid_adaptor"`
+	SessionSticky     SessionStickyConfig     `json:"session_sticky" yaml:"session_sticky"`
+	Subscription      SubscriptionConfig      `json:"subscription" yaml:"subscription"`
 	RelayOrchestrator RelayOrchestratorConfig `json:"relay_orchestrator" yaml:"relay_orchestrator"`
 	ChannelCache      ChannelCacheConfig      `json:"channel_cache" yaml:"channel_cache"`
 	Idempotency       IdempotencyConfig       `json:"idempotency" yaml:"idempotency"`
@@ -19,6 +25,31 @@ type Config struct {
 	Resilience        ResilienceConfig        `json:"resilience" yaml:"resilience"`
 	MTLS              MTLSConfig              `json:"mtls" yaml:"mtls"`
 }
+
+// SubscriptionConfig controls user subscription quota enforcement at the
+// relay-gateway request entry. Disabled by default.
+type SubscriptionConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+func (c SubscriptionConfig) GetSubscriptionEnabled() bool { return c.Enabled }
+
+// SessionStickyConfig gates cross-session subscription-account stickiness
+// (bug docs/sub2api-borrowable-ideas.md #7): binding a conversation
+// (session_hash) to the subscription account that served it so subsequent
+// turns reuse the same upstream account and hit its prompt cache. Disabled by
+// default. It is a routing-behavior change kept behind its own switch so it can
+// be rolled out / rolled back independently of the hybrid adaptor path; it only
+// takes effect when the hybrid adaptor path is enabled (bind happens in the
+// adaptor failover loop). The binding TTL reuses OpenAIWSConfig.StickyTTL.
+type SessionStickyConfig struct {
+	// Enabled turns on session -> subscription-account stickiness for the
+	// chat-completions and anthropic-messages entry points.
+	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+// GetSessionStickyEnabled reports whether session-account stickiness is enabled.
+func (c SessionStickyConfig) GetSessionStickyEnabled() bool { return c.Enabled }
 
 // RelayOrchestratorConfig controls the handler -> orchestrator -> forwarder
 // route for chat completions. Disabled by default.
@@ -88,6 +119,83 @@ type HybridAdaptorConfig struct {
 	// RefreshLookahead is how far ahead the refresh task looks for expiring
 	// accounts. Defaults to 24h.
 	RefreshLookahead string `json:"refresh_lookahead" yaml:"refresh_lookahead"`
+
+	// TokenRefresh controls the enhanced background token refresh service.
+	TokenRefresh TokenRefreshConfig `json:"token_refresh" yaml:"token_refresh"`
+
+	// RuntimeBlock controls how long a subscription account is cooled down at
+	// runtime after a retryable upstream failure, per status class.
+	RuntimeBlock RuntimeBlockConfig `json:"runtime_block" yaml:"runtime_block"`
+}
+
+// RuntimeBlockConfig tunes the relay-gateway runtime blocker (the short-lived
+// per-account cool-down applied on retryable upstream failures during
+// subscription-account failover). All durations are Go duration strings; empty
+// values fall back to the built-in defaults.
+type RuntimeBlockConfig struct {
+	// RateLimitedDuration cools an account down after a 429. Default 5s.
+	RateLimitedDuration string `json:"rate_limited_duration" yaml:"rate_limited_duration"`
+	// UnauthorizedDuration cools an account down after a 401. Default 2m.
+	UnauthorizedDuration string `json:"unauthorized_duration" yaml:"unauthorized_duration"`
+	// ServerErrorDuration cools an account down after a 5xx. Default 2m.
+	ServerErrorDuration string `json:"server_error_duration" yaml:"server_error_duration"`
+	// OverloadedDuration cools an account down after a 529 (upstream Overloaded).
+	// Distinct from a 429/5xx: the account is not over quota and the upstream is
+	// only momentarily saturated, so the default is short. Default 30s.
+	OverloadedDuration string `json:"overloaded_duration" yaml:"overloaded_duration"`
+	// ActiveGaugeInterval is how often the Redis blocker scans for live blocks
+	// to publish the active-block gauge. Default 30s. Only used when the runtime
+	// blocker is Redis-backed.
+	ActiveGaugeInterval string `json:"active_gauge_interval" yaml:"active_gauge_interval"`
+}
+
+// GetRateLimitedDuration returns the 429 cool-down with default.
+func (c RuntimeBlockConfig) GetRateLimitedDuration() string {
+	if c.RateLimitedDuration == "" {
+		return "5s"
+	}
+	return c.RateLimitedDuration
+}
+
+// GetUnauthorizedDuration returns the 401 cool-down with default.
+func (c RuntimeBlockConfig) GetUnauthorizedDuration() string {
+	if c.UnauthorizedDuration == "" {
+		return "2m"
+	}
+	return c.UnauthorizedDuration
+}
+
+// GetServerErrorDuration returns the 5xx cool-down with default.
+func (c RuntimeBlockConfig) GetServerErrorDuration() string {
+	if c.ServerErrorDuration == "" {
+		return "2m"
+	}
+	return c.ServerErrorDuration
+}
+
+// GetOverloadedDuration returns the 529 cool-down with default.
+func (c RuntimeBlockConfig) GetOverloadedDuration() string {
+	if c.OverloadedDuration == "" {
+		return "30s"
+	}
+	return c.OverloadedDuration
+}
+
+// GetActiveGaugeInterval returns the active-block scan interval with default.
+func (c RuntimeBlockConfig) GetActiveGaugeInterval() string {
+	if c.ActiveGaugeInterval == "" {
+		return "30s"
+	}
+	return c.ActiveGaugeInterval
+}
+
+type TokenRefreshConfig struct {
+	Enabled                  bool   `json:"enabled" yaml:"enabled"`
+	CheckIntervalMinutes     int    `json:"check_interval_minutes" yaml:"check_interval_minutes"`
+	RefreshBeforeExpiryHours int    `json:"refresh_before_expiry_hours" yaml:"refresh_before_expiry_hours"`
+	MaxRetries               int    `json:"max_retries" yaml:"max_retries"`
+	RetryBackoffSeconds      int    `json:"retry_backoff_seconds" yaml:"retry_backoff_seconds"`
+	TempUnschedDuration      string `json:"temp_unsched_duration" yaml:"temp_unsched_duration"`
 }
 
 // GetHybridAdaptorEnabled reports whether the hybrid adaptor path is enabled.
@@ -103,6 +211,9 @@ func (c HybridAdaptorConfig) GetIdentityTTL() string {
 
 // GetRefreshInterval returns the background refresh interval with default.
 func (c HybridAdaptorConfig) GetRefreshInterval() string {
+	if c.TokenRefresh.CheckIntervalMinutes > 0 {
+		return fmt.Sprintf("%dm", c.TokenRefresh.CheckIntervalMinutes)
+	}
 	if c.RefreshInterval == "" {
 		return "10m"
 	}
@@ -111,10 +222,20 @@ func (c HybridAdaptorConfig) GetRefreshInterval() string {
 
 // GetRefreshLookahead returns the refresh lookahead window with default.
 func (c HybridAdaptorConfig) GetRefreshLookahead() string {
+	if c.TokenRefresh.RefreshBeforeExpiryHours > 0 {
+		return fmt.Sprintf("%dh", c.TokenRefresh.RefreshBeforeExpiryHours)
+	}
 	if c.RefreshLookahead == "" {
 		return "24h"
 	}
 	return c.RefreshLookahead
+}
+
+func (c HybridAdaptorConfig) GetTokenRefreshEnabled() bool {
+	if c.TokenRefresh.Enabled {
+		return true
+	}
+	return c.Enabled
 }
 
 // OpenAIWSConfig holds tunables for the Codex Responses WebSocket relay

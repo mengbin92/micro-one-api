@@ -26,6 +26,7 @@ import (
 	"micro-one-api/internal/pkg/events"
 	appgrpc "micro-one-api/internal/pkg/grpc"
 	applogger "micro-one-api/internal/pkg/logger"
+	"micro-one-api/internal/pkg/metrics"
 	appmiddleware "micro-one-api/internal/pkg/middleware"
 	appregistry "micro-one-api/internal/pkg/registry"
 	apptimeout "micro-one-api/internal/pkg/timeout"
@@ -42,6 +43,8 @@ import (
 	relayprovider "micro-one-api/internal/relay/provider"
 	"micro-one-api/internal/relay/server"
 	relayservice "micro-one-api/internal/relay/service"
+	subscriptionbiz "micro-one-api/internal/subscription/biz"
+	subscriptiondata "micro-one-api/internal/subscription/data"
 )
 
 func loadConfig(confPath string) (*relaycfg.Config, error) {
@@ -264,7 +267,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	// Background token-refresh task. Started only when the feature flag is on.
 	var refreshTask *relaycredential.RefreshTask
-	if cfg.HybridAdaptor.GetHybridAdaptorEnabled() {
+	if cfg.HybridAdaptor.GetTokenRefreshEnabled() {
 		refreshTask = relaycredential.NewRefreshTask(
 			map[relaycredential.Platform]relaycredential.TokenProvider{
 				relaycredential.PlatformClaude: claudeTokenProvider,
@@ -275,8 +278,12 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 				return accountLookup.PlatformOf(context.Background(), accountID)
 			},
 			relaycredential.RefreshTaskConfig{
-				Interval:  parseDurationOrDefault(cfg.HybridAdaptor.GetRefreshInterval(), 10*time.Minute),
-				Lookahead: parseDurationOrDefault(cfg.HybridAdaptor.GetRefreshLookahead(), 24*time.Hour),
+				Interval:                  parseDurationOrDefault(cfg.HybridAdaptor.GetRefreshInterval(), 10*time.Minute),
+				Lookahead:                 parseDurationOrDefault(cfg.HybridAdaptor.GetRefreshLookahead(), 24*time.Hour),
+				MaxRetries:                cfg.HybridAdaptor.TokenRefresh.MaxRetries,
+				RetryBackoff:              time.Duration(cfg.HybridAdaptor.TokenRefresh.RetryBackoffSeconds) * time.Second,
+				TempUnschedulableDuration: parseDurationOrDefault(cfg.HybridAdaptor.TokenRefresh.TempUnschedDuration, 10*time.Minute),
+				Hook:                      accountLookup,
 			},
 		)
 		refreshTask.Start()
@@ -320,10 +327,40 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
 	httpServer.SetHybridAdaptorEnabled(cfg.HybridAdaptor.GetHybridAdaptorEnabled())
+	httpServer.SetSubscriptionSessionStickyEnabled(cfg.SessionSticky.GetSessionStickyEnabled())
 	httpServer.SetRelayOrchestratorEnabled(cfg.RelayOrchestrator.GetRelayOrchestratorEnabled())
 	httpServer.SetSubscriptionAccountResolver(accountResolver)
 	httpServer.SetOAuthHTTPClient(oauthHTTPClient)
+	httpServer.SetSubscriptionAccountQuotaRecorder(accountLookup)
+	// When Redis is configured, back the runtime blocker with Redis so all relay
+	// replicas share account cool-down state (a 429/5xx seen by one replica cools
+	// the account down for every replica). Without Redis the blocker stays
+	// in-memory, which is correct for single-replica deployments.
+	httpServer.SetRuntimeBlockDurations(
+		parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetRateLimitedDuration(), 5*time.Second),
+		parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetUnauthorizedDuration(), 2*time.Minute),
+		parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetServerErrorDuration(), 2*time.Minute),
+		parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetOverloadedDuration(), 30*time.Second),
+	)
+	stopBlockerReporter := func() {}
+	if redisClient != nil {
+		redisBlocker := relaybiz.NewRedisRuntimeBlocker(redisClient)
+		httpServer.SetRuntimeBlocker(redisBlocker)
+		stopBlockerReporter = redisBlocker.StartActiveGaugeReporter(
+			parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetActiveGaugeInterval(), 30*time.Second),
+			func(v float64) { metrics.RelayRuntimeBlockActive.Set(v) },
+		)
+	}
 	var routeMiddleware []func(http.Handler) http.Handler
+	if cfg.Subscription.GetSubscriptionEnabled() {
+		subscriptionRepo, subErr := subscriptiondata.NewRepositoryFromEnv(os.Getenv("SQL_DRIVER"))
+		if subErr != nil {
+			return nil, nil, fmt.Errorf("create subscription repository: %w", subErr)
+		}
+		subscriptionUc := subscriptionbiz.NewSubscriptionUsecase(subscriptionRepo, subscriptionRepo)
+		httpServer.SetSubscriptionUsecase(subscriptionUc)
+		routeMiddleware = append(routeMiddleware, httpServer.SubscriptionQuotaMiddleware)
+	}
 	if cfg.Idempotency.Enabled {
 		ttl := parseDurationOrDefault(cfg.Idempotency.TTL, 24*time.Hour)
 		routeMiddleware = append(routeMiddleware, appmiddleware.NewIdempotencyMiddleware(redisClient, &appmiddleware.IdempotencyConfig{
@@ -382,6 +419,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		if refreshTask != nil {
 			refreshTask.Stop()
 		}
+		stopBlockerReporter()
 		_ = authCache.Close()
 		if closer, ok := eventBus.(interface{ Close() error }); ok {
 			_ = closer.Close()

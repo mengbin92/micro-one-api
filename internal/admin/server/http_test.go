@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,6 +17,8 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/internal/admin/service"
+	subscriptionbiz "micro-one-api/internal/subscription/biz"
+	subscriptiondata "micro-one-api/internal/subscription/data"
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -493,6 +496,75 @@ func newAdminHTTPTestServerWithIdentityEndpoint(identityEndpoint string) http.Ha
 func newAdminHTTPOptionTestServer(store service.SystemOptionsStore) http.Handler {
 	adminSvc := service.NewAdminService(nil, nil, nil, store)
 	return NewHTTPServer(":0", adminSvc)
+}
+
+func newAdminHTTPSubscriptionTestServer() http.Handler {
+	adminSvc := service.NewAdminService(nil, nil, nil, nil)
+	repo := subscriptiondata.NewMemoryRepositoryForTest()
+	adminSvc.SetSubscriptionUsecases(
+		subscriptionbiz.NewSubscriptionUsecase(repo, repo),
+		subscriptionbiz.NewGroupUsecase(repo),
+	)
+	return NewHTTPServer(":0", adminSvc)
+}
+
+func TestAdminHTTPSubscriptionManagement(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPSubscriptionTestServer()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/subscription-groups", strings.NewReader(`{"name":"pro","display_name":"Pro","platform":"openai","daily_limit_usd":10,"status":1}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("create group status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/subscription-groups", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	var groupListResp struct {
+		Data []struct {
+			ID int64 `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &groupListResp); err != nil {
+		t.Fatalf("decode group list response: %v, body=%s", err, rec.Body.String())
+	}
+	if len(groupListResp.Data) != 1 || groupListResp.Data[0].ID <= 0 {
+		t.Fatalf("group list response mismatch: %s", rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/subscriptions/assign", strings.NewReader(`{"user_id":42,"group_id":`+strconv.FormatInt(groupListResp.Data[0].ID, 10)+`,"subscription_name":"alice-pro","expires_at":4102444800}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"subscription_name":"alice-pro"`) {
+		t.Fatalf("assign status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/subscriptions?user_id=42", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"user_id":42`) {
+		t.Fatalf("list subscriptions status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/subscriptions/1/reset-quota", strings.NewReader(`{"scope":"all"}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("reset status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/progress?user_id=42", nil)
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"remaining_seconds"`) {
+		t.Fatalf("progress status=%d body=%s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestAdminHTTPStatusIsUnauthenticated(t *testing.T) {

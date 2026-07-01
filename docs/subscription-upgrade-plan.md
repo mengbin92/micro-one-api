@@ -539,6 +539,30 @@ go func(ctx context.Context, userID, groupID int64, costUSD float64) {
 | §G1 | OAuth 授权码流程 | ~900 LoC | **位置调整**:从新建 subscription 包改为 channel-service 内部(见 §6) |
 | §H1 | Prometheus 指标 | ~300 LoC | 与 §3 metrics 合并暴露 |
 
+### 5.3 当前落地状态
+
+§5 已在 relay-gateway 的 Responses 路径落地,本阶段不新增数据库迁移:
+
+- **多层调度入口**:`internal/relay/server/response_scheduler.go`。调度顺序为 `previous_response_id` 精确链路 → `session_hash` 粘性会话 → 原 `RelayUsecase.Plan`。
+- **Previous-Response**:`internal/relay/server/response_route_scheduler.go` 统一本地 route 与 Redis sticky lookup,并拒绝 `msg_` 形态的 message id,避免把 message id 误当 response id。
+- **Sticky Session**:`internal/relay/server/openai_ws_state_store.go` 新增独立 `openai_ws_session:` namespace,避免与 `openai_ws_resp:` response sticky key 冲突;支持 Bind / Lookup / RefreshTTL / Delete。
+- **HTTP/WS 契约**:Responses HTTP body 与 WS 首帧支持 `session_hash` / `sessionHash`;同时支持 `X-Session-Hash` / `OpenAI-Session-Hash` header。header 优先于 body。
+- **接入点**:`POST /v1/responses` HTTP/SSE 与 Responses WebSocket 共用同一 scheduler;命中 session sticky 时复用已绑定 channel,miss 时走原 normal plan 并在成功响应后绑定。
+- **权限边界**:session sticky 命中后仍校验 token 的 allowed models;未配置 sticky store 时保留原 `RelayUsecase.Plan` 行为。
+- **已覆盖测试**:`response_scheduler_test.go`、`response_route_scheduler_test.go`、`openai_ws_pool_test.go` 覆盖 fallback 顺序、message id 拒绝、session TTL/删除/续期和模型白名单。
+
+### 5.4 §6 当前落地状态
+
+§6 已在订阅账号 adaptor 路径落地,本阶段不新增数据库迁移/Proto:
+
+- **AccountPool**:`internal/relay/biz/account_pool.go` 提供 relay-gateway 本地运行时过滤层,当前过滤 `RuntimeBlocker`,保留后续接入 quota window / concurrency 的扩展点。
+- **RuntimeBlocker**:`internal/relay/biz/runtime_blocker.go` 提供 `NoopRuntimeBlocker` 与进程内 `MemoryRuntimeBlocker`;`Block` / `Clear` / `IsBlocked` / `Metrics` 接口独立于 channel-service,不影响持久化账号状态。
+- **选号过滤**:`RelayUsecase` 在订阅账号选择时会跳过 runtime-blocked 账号,并在重选时排除已失败 account id。
+- **FailoverLoop**:`internal/relay/server/http_adaptor.go` 的 subscription adaptor 路径在上游网络错误、`429`、`5xx` 且尚未写客户端响应时,短 TTL 熔断当前账号并选择下一订阅账号重试。
+- **TTL 策略**:`429` 熔断 5 秒,`5xx` 熔断 2 分钟;`401` 的 2 分钟策略已预留在 helper 中,但当前 ErrorPassthrough/OAuth 错误分类仍归 §7。
+- **边界**:本阶段没有实现 Redis runtime block、EWMA 排序、Codex 5h/7d quota window、统一 `passthrough.UpstreamError`;这些继续归 §7/§8。
+- **已覆盖测试**:`account_pool_test.go`、`relay_test.go`、`http_adaptor_test.go` 覆盖 runtime block 过滤、订阅账号 failover 和 retryable upstream status 切换。
+
 ---
 
 ## 6. OAuth 授权码流程(整合修正)
@@ -724,14 +748,15 @@ hybrid_adaptor:
 
 ### 9.2 集成测试
 
-`test/integration/subscription_e2e_test.go` 用 `docker-compose` 拉起 channel-service + identity-service + subscription-service + redis + postgresql,模拟:
+当前集成验收入口为 `./scripts/test-e2e-flow.sh --suite`。脚本使用 `deployments/docker-compose/docker-compose.yml` + `docker-compose.test.yml` 拉起 identity-service、channel-service、billing-service、relay-gateway、admin-api、redis、mysql 与 mock-upstream,并运行 `test/e2e/suite`:
 
-1. **业务流**:admin Assign → user 调 chat completions → CheckQuota 通过 → 计费回写 → 第二次请求 progress 上升
-2. **配额拦截**:user 用完日配额 → 下次请求 429 + Retry-After
-3. **OAuth 流程**:admin 点"绑定 Codex" → 调 auth-url → 模拟浏览器走通 → exchange → subscription_account 创建 → 用 codex account 发请求成功
-4. **粘性命中**:同一 sessionHash 两次请求命中同一账号(unit test 覆盖)
-5. **多账号切换**:3 个账号 token 全 invalid_grant,第 4 次请求得到 401 不是 5xx
-6. **指标可见**:`curl /metrics | grep relay_` 能看到全部新增指标
+1. **业务流**:register/login → create API token → admin topup → user 调 chat completions → billing quota 扣减 → ledger 出现 consume 记录
+2. **模型与选号**:mock channel 写入 `channels` + `abilities`,并显式校验 `channels.status = 1`、`base_url = http://mock-upstream:9999`、ability 数量 ≥ 2
+3. **Admin 路径**:admin access/list/get/update user、list channels、redeem code CRUD、system options、logs
+4. **真实 provider 测试**:`PROVIDER_API_KEY` 未设置时跳过;设置后走 provider/list/stream/relay billing 验证
+5. **指标可见**:`/metrics` 暴露 Prometheus 指标;订阅/relay 指标使用 `micro_one_api_subscription_*` / `micro_one_api_relay_*` 命名空间
+
+本轮验收已在干净 compose volume 上通过 `./scripts/test-e2e-flow.sh --suite`;随后用 `docker-compose -f docker-compose.yml -f docker-compose.test.yml up -d --no-build` 保持测试栈运行。
 
 ### 9.3 Mock 与 fixture
 
@@ -739,7 +764,8 @@ hybrid_adaptor:
 - `internal/relay/scheduling/fake_account_repo_test.go`:可注入 candidates
 - `internal/subscription/biz/fake_repo_test.go`:内存版 SubscriptionRepository
 - `internal/channel/biz/oauth/fake_openai_test.go`:`httptest.Server` 模拟 chatgpt.com/backend-api
-- `test/integration/compose.yaml`:redis:7-alpine + postgresql:16-alpine
+- `deployments/docker-compose/docker-compose.test.yml`:mock-upstream + 暴露 identity/channel/billing gRPC 端口
+- `scripts/test-e2e-flow.sh`:compose E2E 编排、mock channel fixture 注入、Go E2E suite 执行
 
 ---
 
@@ -786,16 +812,16 @@ hybrid_adaptor:
 
 ## 11. 落地 Checklist
 
-- [ ] §1: 业务层 DB + Repository + Usecase 骨架
-- [ ] §2: QuotaChecker + ExpiryChecker
-- [ ] §3: 业务层 HTTP + 用量回写接入
-- [ ] §4: TokenRefreshService
-- [ ] §5: 多层 Scheduler
-- [ ] §6: AccountPool + RuntimeBlocker + FailoverLoop
-- [ ] §7: Codex 5h/7d + ErrorPassthrough + OAuth 整合
-- [ ] §8: Prometheus 指标 + 集成收尾
-- [ ] 集成测试 + compose 拉起
-- [ ] CHANGELOG + 文档更新
+- [x] §1: 业务层 DB + Repository + Usecase 骨架
+- [x] §2: QuotaChecker + ExpiryChecker
+- [x] §3: 业务层 HTTP + 用量回写接入
+- [x] §4: TokenRefreshService
+- [x] §5: 多层 Scheduler
+- [x] §6: AccountPool + RuntimeBlocker + FailoverLoop
+- [x] §7: Codex 5h/7d + ErrorPassthrough + OAuth 整合（Codex 配额 + ErrorPassthrough + channel-service OAuth HTTP 绑定已落地；admin-web 联调仍按独立项跟踪）
+- [x] §8: Prometheus 指标 + 集成收尾（指标已接入；compose E2E/灰度发布仍按下方独立项跟踪）
+- [x] 集成测试 + compose 拉起
+- [x] CHANGELOG + 文档更新
 - [ ] 灰度发布:staging 一周,生产开关默认关闭,按 10% / 50% / 100% 灰度
 
 ---

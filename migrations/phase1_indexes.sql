@@ -36,9 +36,7 @@ ADD INDEX idx_channel_id_created_at (channel_id, created_at);
 ALTER TABLE billing_ledgers
 ADD INDEX idx_model_name_created_at (model_name(64), created_at);
 
--- Index for time-series analysis
-ALTER TABLE billing_ledgers
-ADD INDEX idx_created_at (created_at);
+-- Time-series index idx_created_at is created by 009_create_billing_ledgers.sql.
 
 -- ============================================================================
 -- channels table indexes

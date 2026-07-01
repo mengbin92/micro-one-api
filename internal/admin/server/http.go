@@ -263,6 +263,24 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/api/admin/summary", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleAdminSummary(w, r, svc)
 	}))
+	srv.HandleFunc("/api/v1/subscriptions/progress", func(w http.ResponseWriter, r *http.Request) {
+		handleCurrentSubscriptionProgress(w, r, svc)
+	})
+	srv.HandleFunc("/api/v1/admin/subscriptions", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleUserSubscriptions(w, r, svc)
+	}))
+	srv.HandleFunc("/api/v1/admin/subscriptions/assign", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleAssignSubscription(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/v1/admin/subscriptions/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionByID(w, r, svc)
+	}))
+	srv.HandleFunc("/api/v1/admin/subscription-groups", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionGroups(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/v1/admin/subscription-groups/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionGroupByID(w, r, svc)
+	}))
 
 	// Protected admin endpoints
 	srv.HandlePrefix("/api/user/disable/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -611,23 +629,23 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 			"subscription_accounts":        subscriptionAccounts.GetTotal(),
 			"active_subscription_accounts": activeSubscriptionAccounts.GetTotal(),
 		},
-		"recent_users":          users.GetUsers(),
-		"channels":              channels.GetChannels(),
-		"subscription_accounts": subscriptionAccounts.GetAccounts(),
-		"recent_logs":           recentLogs,
-		"payment_orders":        paymentOrders.GetOrders(),
-		"usage_stats":           stats,
-		"cost_analysis":         costAnalysisSummary(quotaUsed, upstreamCost, grossProfit),
-		"top_models":            usageAggregateViewsToMaps(topModels),
-		"top_channels":          enrichChannelUsage(topChannels, channels.GetChannels()),
-		"top_users":             usageAggregateViewsToMaps(topUsers),
-		"top_tokens":            usageAggregateViewsToMaps(topTokens),
+		"recent_users":              users.GetUsers(),
+		"channels":                  channels.GetChannels(),
+		"subscription_accounts":     subscriptionAccounts.GetAccounts(),
+		"recent_logs":               recentLogs,
+		"payment_orders":            paymentOrders.GetOrders(),
+		"usage_stats":               stats,
+		"cost_analysis":             costAnalysisSummary(quotaUsed, upstreamCost, grossProfit),
+		"top_models":                usageAggregateViewsToMaps(topModels),
+		"top_channels":              enrichChannelUsage(topChannels, channels.GetChannels()),
+		"top_users":                 usageAggregateViewsToMaps(topUsers),
+		"top_tokens":                usageAggregateViewsToMaps(topTokens),
 		"top_subscription_accounts": enrichSubscriptionAccountUsage(topSubscriptionAccounts, subscriptionAccounts.GetAccounts()),
-		"alerts":                adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation),
-		"latest_reconciliation": latestReconciliationRun(reconciliation),
-		"model_catalog":         oneAPIChannelModelCatalog(),
-		"pricing_options":       optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "QuotaPerUnit"),
-		"payment_summary":       paymentSummaryFromOrders(paymentOrders),
+		"alerts":                    adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation),
+		"latest_reconciliation":     latestReconciliationRun(reconciliation),
+		"model_catalog":             oneAPIChannelModelCatalog(),
+		"pricing_options":           optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "QuotaPerUnit"),
+		"payment_summary":           paymentSummaryFromOrders(paymentOrders),
 	}))
 }
 
@@ -655,21 +673,21 @@ func usageAggregateViewsToMaps(items []service.UsageAggregateView) []map[string]
 
 func usageAggregateViewToMap(item service.UsageAggregateView) map[string]interface{} {
 	return map[string]interface{}{
-		"key":               item.Key,
-		"user_id":           item.UserID,
-		"channel_id":             item.ChannelID,
+		"key":                     item.Key,
+		"user_id":                 item.UserID,
+		"channel_id":              item.ChannelID,
 		"subscription_account_id": item.SubscriptionAccountID,
-		"model":                  item.Model,
-		"token_name":        item.TokenName,
-		"type":              item.Type,
-		"quota":             item.Quota,
-		"upstream_cost":     item.UpstreamCost,
-		"gross_profit":      item.GrossProfit,
-		"prompt_tokens":     item.PromptTokens,
-		"completion_tokens": item.CompletionTokens,
-		"cache_read_tokens": item.CacheReadTokens,
-		"count":             item.Count,
-		"elapsed_time":      item.ElapsedTime,
+		"model":                   item.Model,
+		"token_name":              item.TokenName,
+		"type":                    item.Type,
+		"quota":                   item.Quota,
+		"upstream_cost":           item.UpstreamCost,
+		"gross_profit":            item.GrossProfit,
+		"prompt_tokens":           item.PromptTokens,
+		"completion_tokens":       item.CompletionTokens,
+		"cache_read_tokens":       item.CacheReadTokens,
+		"count":                   item.Count,
+		"elapsed_time":            item.ElapsedTime,
 	}
 }
 

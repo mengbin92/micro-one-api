@@ -18,6 +18,7 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	relayprovider "micro-one-api/internal/relay/provider"
+	subscriptionbiz "micro-one-api/internal/subscription/biz"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -33,6 +34,8 @@ type AdminService struct {
 	systemOptsRepo  SystemOptionsStore
 	httpClient      *http.Client
 	providerFactory *relayprovider.ProviderFactory
+	subscriptionUc  *subscriptionbiz.SubscriptionUsecase
+	groupUc         *subscriptionbiz.GroupUsecase
 }
 
 // SystemOptionsStore is the interface for system options persistence.
@@ -66,6 +69,15 @@ func NewAdminService(
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		providerFactory: relayprovider.NewProviderFactory(10 * time.Second),
 	}
+}
+
+// SetSubscriptionUsecases wires optional user-subscription management.
+func (s *AdminService) SetSubscriptionUsecases(subscriptionUc *subscriptionbiz.SubscriptionUsecase, groupUc *subscriptionbiz.GroupUsecase) {
+	if s == nil {
+		return
+	}
+	s.subscriptionUc = subscriptionUc
+	s.groupUc = groupUc
 }
 
 // TopUpQuota 充值
@@ -926,18 +938,18 @@ type UsageAggregateView struct {
 	Key                   string `json:"key"`
 	UserID                string `json:"user_id,omitempty"`
 	ChannelID             int64  `json:"channel_id,omitempty"`
-	SubscriptionAccountID int64 `json:"subscription_account_id,omitempty"`
-	Model            string `json:"model,omitempty"`
-	TokenName        string `json:"token_name,omitempty"`
-	Type             string `json:"type,omitempty"`
-	Quota            int64  `json:"quota"`
-	UpstreamCost     int64  `json:"upstream_cost"`
-	GrossProfit      int64  `json:"gross_profit"`
-	PromptTokens     int64  `json:"prompt_tokens"`
-	CompletionTokens int64  `json:"completion_tokens"`
-	CacheReadTokens  int64  `json:"cache_read_tokens"`
-	Count            int64  `json:"count"`
-	ElapsedTime      int64  `json:"elapsed_time"`
+	SubscriptionAccountID int64  `json:"subscription_account_id,omitempty"`
+	Model                 string `json:"model,omitempty"`
+	TokenName             string `json:"token_name,omitempty"`
+	Type                  string `json:"type,omitempty"`
+	Quota                 int64  `json:"quota"`
+	UpstreamCost          int64  `json:"upstream_cost"`
+	GrossProfit           int64  `json:"gross_profit"`
+	PromptTokens          int64  `json:"prompt_tokens"`
+	CompletionTokens      int64  `json:"completion_tokens"`
+	CacheReadTokens       int64  `json:"cache_read_tokens"`
+	Count                 int64  `json:"count"`
+	ElapsedTime           int64  `json:"elapsed_time"`
 }
 
 func (s *AdminService) ListReconciliationRuns(ctx context.Context, page, pageSize int32) (*ListReconciliationRunsResult, error) {
@@ -983,16 +995,16 @@ func usageAggregateViewFromBucket(bucket *billingv1.UsageBucket, groupBy string)
 		ChannelID:             bucket.GetChannelId(),
 		SubscriptionAccountID: bucket.GetSubscriptionAccountId(),
 		Model:                 bucket.GetModel(),
-		TokenName:        bucket.GetTokenName(),
-		Type:             bucket.GetType(),
-		Quota:            bucket.GetQuota(),
-		UpstreamCost:     bucket.GetUpstreamCost(),
-		GrossProfit:      bucket.GetGrossProfit(),
-		PromptTokens:     bucket.GetPromptTokens(),
-		CompletionTokens: bucket.GetCompletionTokens(),
-		CacheReadTokens:  bucket.GetCacheReadTokens(),
-		Count:            bucket.GetCount(),
-		ElapsedTime:      bucket.GetElapsedTime(),
+		TokenName:             bucket.GetTokenName(),
+		Type:                  bucket.GetType(),
+		Quota:                 bucket.GetQuota(),
+		UpstreamCost:          bucket.GetUpstreamCost(),
+		GrossProfit:           bucket.GetGrossProfit(),
+		PromptTokens:          bucket.GetPromptTokens(),
+		CompletionTokens:      bucket.GetCompletionTokens(),
+		CacheReadTokens:       bucket.GetCacheReadTokens(),
+		Count:                 bucket.GetCount(),
+		ElapsedTime:           bucket.GetElapsedTime(),
 	}
 	switch groupBy {
 	case "user":
@@ -1868,25 +1880,25 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			createdAt = entry.GetCreatedAt().AsTime().Unix()
 		}
 		entries = append(entries, map[string]interface{}{
-			"id":               parseInt64(entry.GetId()),
-			"userId":           entry.GetUserId(),
-			"type":             entry.GetType(),
-			"amount":           entry.GetAmount(),
-			"balanceAfter":     entry.GetBalanceAfter(),
-			"referenceId":      entry.GetReferenceId(),
-			"remark":           entry.GetRemark(),
-			"createdAt":        createdAt,
-			"tokenName":        entry.GetTokenName(),
-			"modelName":        entry.GetModelName(),
-			"quota":            entry.GetQuota(),
-			"promptTokens":     entry.GetPromptTokens(),
-			"completionTokens": entry.GetCompletionTokens(),
-			"cacheReadTokens":  entry.GetCacheReadTokens(),
+			"id":                    parseInt64(entry.GetId()),
+			"userId":                entry.GetUserId(),
+			"type":                  entry.GetType(),
+			"amount":                entry.GetAmount(),
+			"balanceAfter":          entry.GetBalanceAfter(),
+			"referenceId":           entry.GetReferenceId(),
+			"remark":                entry.GetRemark(),
+			"createdAt":             createdAt,
+			"tokenName":             entry.GetTokenName(),
+			"modelName":             entry.GetModelName(),
+			"quota":                 entry.GetQuota(),
+			"promptTokens":          entry.GetPromptTokens(),
+			"completionTokens":      entry.GetCompletionTokens(),
+			"cacheReadTokens":       entry.GetCacheReadTokens(),
 			"channelId":             entry.GetChannelId(),
 			"subscriptionAccountId": entry.GetSubscriptionAccountId(),
 			"elapsedTime":           entry.GetElapsedTime(),
-			"isStream":         entry.GetIsStream(),
-			"endpoint":         entry.GetEndpoint(),
+			"isStream":              entry.GetIsStream(),
+			"endpoint":              entry.GetEndpoint(),
 		})
 	}
 

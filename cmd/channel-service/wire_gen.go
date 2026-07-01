@@ -71,7 +71,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	}
 	svc := service.NewChannelService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
-	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, uc)
 
 	registrar, rErr := appregistry.NewRegistrar(cfg.Registry)
 	if rErr != nil {

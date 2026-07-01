@@ -111,6 +111,7 @@ message SubscriptionAccountInfo {
   string metadata = 15;
   int64 created_at = 16;
   int64 updated_at = 17;
+  int32 concurrency = 18;             // 最大并发请求数(0 表示不限制)
 }
 
 message SubscriptionAccountSummary {

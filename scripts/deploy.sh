@@ -67,6 +67,8 @@ SKIP_MIGRATIONS="${DEPLOY_SKIP_MIGRATIONS:-0}"
 SKIP_UPLOAD="${DEPLOY_SKIP_UPLOAD:-0}"
 SKIP_RESTART="${DEPLOY_SKIP_RESTART:-0}"
 SKIP_FRONTEND="${DEPLOY_SKIP_FRONTEND:-0}"
+SKIP_DB_BACKUP="${DEPLOY_SKIP_DB_BACKUP:-0}"   # 默认 0 = 迁移前先 mysqldump 备份
+UPLOAD_COMPOSE="${DEPLOY_UPLOAD_COMPOSE:-0}"    # 默认 0 = 不上传/不覆盖服务器 compose
 
 DEFAULT_SERVICES=(
     "identity-service"
@@ -187,8 +189,10 @@ if [ "${SKIP_MIGRATIONS}" != "1" ]; then
 
     # 用单引号 heredoc 防止 shell 注入；用 BatchMode 和 fail-fast 让 ssh 行为可控
     if [ "${DRY_RUN}" != "1" ]; then
-        ssh -o BatchMode=yes "${DEPLOY_REMOTE_SERVER}" bash -s <<'REMOTE_EOF'
+        ssh -o BatchMode=yes "${DEPLOY_REMOTE_SERVER}" bash -s -- "${DEPLOY_REMOTE_DIR}" "${SKIP_DB_BACKUP}" <<'REMOTE_EOF'
 set -euo pipefail
+REMOTE_DIR="$1"
+DB_BACKUP="$2"
 
 MYSQL_CONTAINER=$(docker ps --filter "name=mysql" --format "{{.Names}}" | head -n1)
 if [ -z "${MYSQL_CONTAINER}" ]; then
@@ -213,7 +217,17 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 SQL
 
-MIG_DIR="/opt/micro-one-api/migrations-new"
+# 迁移前备份数据库（DB_BACKUP=1 时跳过）
+if [ "${DB_BACKUP}" != "1" ]; then
+    mkdir -p "${REMOTE_DIR}/backups"
+    BK="${REMOTE_DIR}/backups/oneapi-$(date +%Y%m%d-%H%M%S).sql"
+    echo "backup DB -> ${BK}"
+    docker exec -i "${MYSQL_CONTAINER}" \
+        mysqldump --defaults-extra-file=<(printf '[client]\npassword="%s"\n' "$(cat "${MYSQL_PASSWORD_FILE}")") \
+        --single-transaction --routines oneapi > "${BK}"
+fi
+
+MIG_DIR="${REMOTE_DIR}/migrations-new"
 shopt -s nullglob
 # 跳过以 ~ 或 .bak 结尾的临时文件；按字典序排序
 MIGRATIONS=( "${MIG_DIR}"/*.sql )
@@ -248,17 +262,23 @@ if [ "${SKIP_RESTART}" != "1" ]; then
     log "=========================================="
     log "步骤 5/5: 更新服务"
     log "=========================================="
-    if [ -f "${REPO_ROOT}/deployments/docker-compose/docker-compose.yml" ]; then
-        run_cmd scp "${REPO_ROOT}/deployments/docker-compose/docker-compose.yml" \
-            "${DEPLOY_REMOTE_SERVER}:${DEPLOY_REMOTE_DIR}/"
+    # 默认不上传 compose：服务器上使用的是 image: 版 compose，仓库里的是 build: 版，
+    # 覆盖会导致服务器尝试从源码编译。仅在 DEPLOY_UPLOAD_COMPOSE=1 时才上传。
+    if [ "${UPLOAD_COMPOSE}" = "1" ]; then
+        if [ -f "${REPO_ROOT}/deployments/docker-compose/docker-compose.yml" ]; then
+            run_cmd scp "${REPO_ROOT}/deployments/docker-compose/docker-compose.yml" \
+                "${DEPLOY_REMOTE_SERVER}:${DEPLOY_REMOTE_DIR}/"
+        else
+            warn "未找到 deployments/docker-compose/docker-compose.yml，跳过上传"
+        fi
     else
-        warn "未找到 deployments/docker-compose/docker-compose.yml，跳过上传"
+        warn "跳过上传 compose（DEPLOY_UPLOAD_COMPOSE!=1，保留服务器现有 compose）"
     fi
 
     if [ "${DRY_RUN}" != "1" ]; then
-        ssh -o BatchMode=yes "${DEPLOY_REMOTE_SERVER}" bash -s <<'REMOTE_EOF'
+        ssh -o BatchMode=yes "${DEPLOY_REMOTE_SERVER}" bash -s -- "${DEPLOY_REMOTE_DIR}" <<'REMOTE_EOF'
 set -euo pipefail
-cd /opt/micro-one-api
+cd "$1"
 
 # 已通过 scp 上传新 compose；用 `up -d` 让它重新创建变更过的容器
 if docker-compose up -d; then

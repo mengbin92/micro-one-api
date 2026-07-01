@@ -26,8 +26,10 @@ import (
 	"micro-one-api/internal/admin/service"
 	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
-	"micro-one-api/internal/pkg/xdb"
 	"micro-one-api/internal/pkg/xconfig"
+	"micro-one-api/internal/pkg/xdb"
+	subscriptionbiz "micro-one-api/internal/subscription/biz"
+	subscriptiondata "micro-one-api/internal/subscription/data"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -118,6 +120,17 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	}
 
 	adminSvc := service.NewAdminService(billingClient, identityClient, channelClient, systemOptsRepo)
+	if cfg.Data.Database.Source != "" {
+		subscriptionRepo, subErr := subscriptiondata.NewRepositoryFromEnv(cfg.Data.Database.Driver, cfg.Data.Database.Source)
+		if subErr != nil {
+			applogger.Log.Warn("failed to connect to subscription DB", zap.Error(subErr))
+		} else {
+			adminSvc.SetSubscriptionUsecases(
+				subscriptionbiz.NewSubscriptionUsecase(subscriptionRepo, subscriptionRepo),
+				subscriptionbiz.NewGroupUsecase(subscriptionRepo),
+			)
+		}
+	}
 
 	grpcSrv := grpcx.NewServer(grpcx.Address(cfg.Server.GRPC.Addr))
 	adminv1.RegisterAdminServiceServer(grpcSrv, adminSvc)

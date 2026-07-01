@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	relayprovider "micro-one-api/internal/relay/provider"
 )
@@ -42,7 +43,11 @@ type recordingChannelClient struct {
 	subscriptionModels    []string
 	subscriptionPlatforms []string
 	subscription          *SubscriptionAccount
+	subscriptions         []*SubscriptionAccount
 	subscriptionErr       error
+	byID                  map[int64]*SubscriptionAccount
+	getByIDErr            error
+	getByIDCalls          []int64
 }
 
 func (c *recordingChannelClient) SelectChannel(_ context.Context, group, model string, _ bool) (*Channel, error) {
@@ -71,7 +76,36 @@ func (c *recordingChannelClient) SelectSubscriptionAccount(_ context.Context, gr
 	if c.subscriptionErr != nil {
 		return nil, c.subscriptionErr
 	}
+	if len(c.subscriptions) > 0 {
+		idx := len(c.subscriptionModels) - 1
+		if idx >= len(c.subscriptions) {
+			idx = len(c.subscriptions) - 1
+		}
+		return c.subscriptions[idx], nil
+	}
 	return c.subscription, nil
+}
+
+func (c *recordingChannelClient) GetSubscriptionAccountByID(_ context.Context, accountID int64) (*SubscriptionAccount, error) {
+	c.getByIDCalls = append(c.getByIDCalls, accountID)
+	if c.getByIDErr != nil {
+		return nil, c.getByIDErr
+	}
+	if c.byID != nil {
+		if a, ok := c.byID[accountID]; ok {
+			return a, nil
+		}
+		return nil, nil
+	}
+	for _, a := range c.subscriptions {
+		if a != nil && a.ID == accountID {
+			return a, nil
+		}
+	}
+	if c.subscription != nil && c.subscription.ID == accountID {
+		return c.subscription, nil
+	}
+	return nil, nil
 }
 
 func TestRelayUsecasePlan(t *testing.T) {
@@ -263,6 +297,30 @@ func TestRelayUsecasePlan_SelectsClaudeSubscriptionWithPlatformFilter(t *testing
 	}
 }
 
+func TestRelayUsecasePlan_SkipsRuntimeBlockedSubscriptionAccount(t *testing.T) {
+	channelClient := &recordingChannelClient{
+		failModels: map[string]error{"gpt-5": errors.New("no channel available")},
+		subscriptions: []*SubscriptionAccount{
+			{ID: 8, Name: "blocked", Platform: "codex", Status: 1, Group: "default", Models: []string{"gpt-5"}},
+			{ID: 9, Name: "next", Platform: "codex", Status: 1, Group: "default", Models: []string{"gpt-5"}},
+		},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+	blocker := NewMemoryRuntimeBlocker()
+	uc.SetRuntimeBlocker(blocker)
+	if err := blocker.Block(context.Background(), 8, time.Now().Add(time.Minute), "upstream 500"); err != nil {
+		t.Fatalf("Block() error = %v", err)
+	}
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "gpt-5"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != 9 {
+		t.Fatalf("selected account = %+v, want id 9", plan.Account)
+	}
+}
+
 func TestRelayUsecasePlan_APIKeyChannelWinsOverSubscriptionAccount(t *testing.T) {
 	channelClient := &recordingChannelClient{
 		subscription: &SubscriptionAccount{ID: 8, Platform: "codex"},
@@ -278,6 +336,176 @@ func TestRelayUsecasePlan_APIKeyChannelWinsOverSubscriptionAccount(t *testing.T)
 	}
 	if len(channelClient.subscriptionModels) != 0 {
 		t.Fatalf("subscription selector should not be called, got %v", channelClient.subscriptionModels)
+	}
+}
+
+// --- session -> subscription-account stickiness (docs #7) ---
+
+type fakeSessionStore struct {
+	bound     map[string]int64
+	lookups   int
+	refreshed int
+}
+
+func sessKey(group, hash string) string { return group + "|" + hash }
+
+func (f *fakeSessionStore) LookupSessionChannel(_ context.Context, group, hash string) int64 {
+	f.lookups++
+	if f.bound == nil {
+		return 0
+	}
+	return f.bound[sessKey(group, hash)]
+}
+
+func (f *fakeSessionStore) RefreshSessionTTL(_ context.Context, _, _ string, _ time.Duration) bool {
+	f.refreshed++
+	return true
+}
+
+func TestRelayUsecasePlan_StickyHit_SelectsBoundAccount(t *testing.T) {
+	acct := &SubscriptionAccount{ID: 9, Name: "claude-sub", Platform: "claude", Status: 1, Group: "default", Models: []string{"claude-sonnet-4-20250514"}, AccessToken: "tok"}
+	channelClient := &recordingChannelClient{
+		failModels: map[string]error{"claude-sonnet-4-20250514": errors.New("no channel available")},
+		byID:       map[int64]*SubscriptionAccount{9: acct},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+	store := &fakeSessionStore{bound: map[string]int64{sessKey("default", "sess-1"): 9}}
+	uc.SetSessionAccountStore(store, time.Hour, true)
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "claude-sonnet-4-20250514", SessionHash: "sess-1"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != 9 || plan.Account.AccessToken != "tok" {
+		t.Fatalf("account = %+v, want id 9 with token", plan.Account)
+	}
+	if plan.Channel == nil || plan.Channel.ID != 9 || plan.Channel.Type != relayprovider.ChannelTypeClaudeOAuth {
+		t.Fatalf("channel = %+v", plan.Channel)
+	}
+	if len(channelClient.subscriptionModels) != 0 {
+		t.Fatalf("normal selection must not run on sticky hit: %v", channelClient.subscriptionModels)
+	}
+	if len(channelClient.getByIDCalls) != 1 || channelClient.getByIDCalls[0] != 9 {
+		t.Fatalf("getByID calls = %v, want [9]", channelClient.getByIDCalls)
+	}
+	if store.refreshed != 1 {
+		t.Fatalf("refresh count = %d, want 1", store.refreshed)
+	}
+}
+
+func TestRelayUsecasePlan_StickyMiss_FallsBackToNormal(t *testing.T) {
+	channelClient := &recordingChannelClient{
+		failModels:   map[string]error{"claude-sonnet-4-20250514": errors.New("no channel available")},
+		subscription: &SubscriptionAccount{ID: 5, Platform: "claude", Status: 1, Group: "default", Models: []string{"claude-sonnet-4-20250514"}},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+	store := &fakeSessionStore{} // no bindings
+	uc.SetSessionAccountStore(store, time.Hour, true)
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "claude-sonnet-4-20250514", SessionHash: "sess-x"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != 5 {
+		t.Fatalf("account = %+v, want id 5 (normal)", plan.Account)
+	}
+	if store.lookups != 1 {
+		t.Fatalf("lookups = %d, want 1", store.lookups)
+	}
+	if len(channelClient.getByIDCalls) != 0 {
+		t.Fatalf("byID must not be called on miss: %v", channelClient.getByIDCalls)
+	}
+}
+
+func TestRelayUsecasePlan_StickyInvalid_GroupMismatch(t *testing.T) {
+	sticky := &SubscriptionAccount{ID: 9, Platform: "claude", Status: 1, Group: "other", Models: []string{"claude-sonnet-4-20250514"}}
+	normal := &SubscriptionAccount{ID: 5, Platform: "claude", Status: 1, Group: "default", Models: []string{"claude-sonnet-4-20250514"}}
+	channelClient := &recordingChannelClient{
+		failModels:   map[string]error{"claude-sonnet-4-20250514": errors.New("no channel available")},
+		byID:         map[int64]*SubscriptionAccount{9: sticky},
+		subscription: normal,
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+	store := &fakeSessionStore{bound: map[string]int64{sessKey("default", "s"): 9}}
+	uc.SetSessionAccountStore(store, time.Hour, true)
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "t", Model: "claude-sonnet-4-20250514", SessionHash: "s"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != 5 {
+		t.Fatalf("account = %+v, want normal id 5 (cross-group binding must not leak)", plan.Account)
+	}
+}
+
+func TestRelayUsecasePlan_StickyInvalid_ModelSwitch(t *testing.T) {
+	sticky := &SubscriptionAccount{ID: 9, Platform: "claude", Status: 1, Group: "default", Models: []string{"claude-sonnet-4-20250514"}}
+	normal := &SubscriptionAccount{ID: 5, Platform: "codex", Status: 1, Group: "default", Models: []string{"gpt-5"}}
+	channelClient := &recordingChannelClient{
+		failModels:   map[string]error{"gpt-5": errors.New("no channel available")},
+		byID:         map[int64]*SubscriptionAccount{9: sticky},
+		subscription: normal,
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+	store := &fakeSessionStore{bound: map[string]int64{sessKey("default", "s"): 9}}
+	uc.SetSessionAccountStore(store, time.Hour, true)
+
+	// Session bound to a claude account, but this turn asks for a gpt model:
+	// platform no longer matches, so stickiness must be skipped.
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "t", Model: "gpt-5", SessionHash: "s"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != 5 {
+		t.Fatalf("account = %+v, want id 5 (normal codex)", plan.Account)
+	}
+}
+
+func TestRelayUsecasePlan_StickyInvalid_RuntimeBlocked(t *testing.T) {
+	sticky := &SubscriptionAccount{ID: 9, Platform: "claude", Status: 1, Group: "default", Models: []string{"claude-sonnet-4-20250514"}}
+	normal := &SubscriptionAccount{ID: 5, Platform: "claude", Status: 1, Group: "default", Models: []string{"claude-sonnet-4-20250514"}}
+	channelClient := &recordingChannelClient{
+		failModels:   map[string]error{"claude-sonnet-4-20250514": errors.New("no channel available")},
+		byID:         map[int64]*SubscriptionAccount{9: sticky},
+		subscription: normal,
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+	blocker := NewMemoryRuntimeBlocker()
+	uc.SetRuntimeBlocker(blocker)
+	if err := blocker.Block(context.Background(), 9, time.Now().Add(time.Minute), "upstream 500"); err != nil {
+		t.Fatalf("Block() error = %v", err)
+	}
+	store := &fakeSessionStore{bound: map[string]int64{sessKey("default", "s"): 9}}
+	uc.SetSessionAccountStore(store, time.Hour, true)
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "t", Model: "claude-sonnet-4-20250514", SessionHash: "s"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != 5 {
+		t.Fatalf("account = %+v, want id 5 (blocked sticky account skipped)", plan.Account)
+	}
+}
+
+func TestRelayUsecasePlan_StickyDisabled_NoLookup(t *testing.T) {
+	channelClient := &recordingChannelClient{
+		failModels:   map[string]error{"claude-sonnet-4-20250514": errors.New("no channel available")},
+		subscription: &SubscriptionAccount{ID: 5, Platform: "claude", Status: 1, Group: "default", Models: []string{"claude-sonnet-4-20250514"}},
+		byID:         map[int64]*SubscriptionAccount{9: {ID: 9, Platform: "claude", Status: 1, Group: "default", Models: []string{"claude-sonnet-4-20250514"}}},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+	store := &fakeSessionStore{bound: map[string]int64{sessKey("default", "s"): 9}}
+	uc.SetSessionAccountStore(store, time.Hour, false) // disabled
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "t", Model: "claude-sonnet-4-20250514", SessionHash: "s"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != 5 {
+		t.Fatalf("account = %+v, want normal id 5", plan.Account)
+	}
+	if store.lookups != 0 {
+		t.Fatalf("lookups = %d, want 0 when disabled", store.lookups)
 	}
 }
 

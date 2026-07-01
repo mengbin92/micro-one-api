@@ -381,3 +381,62 @@ func TestRecordHealth_OpensAndResetsCircuit(t *testing.T) {
 	assert.EqualValues(t, 0, updated.CircuitOpenedUntil)
 	assert.Equal(t, succeededAt.Unix(), updated.HealthLastSuccessTime)
 }
+
+func TestRecordAccountQuotaSnapshot_PersistsAndUpdatesAccount(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, repo.db.Exec(`
+		CREATE TABLE account_quota_snapshots (
+			account_id INTEGER PRIMARY KEY,
+			primary_used_percent REAL,
+			primary_reset_after_seconds INTEGER,
+			primary_window_minutes INTEGER,
+			secondary_used_percent REAL,
+			secondary_reset_after_seconds INTEGER,
+			secondary_window_minutes INTEGER,
+			primary_over_secondary_percent REAL,
+			updated_at DATETIME,
+			snapshot_paused INTEGER DEFAULT 0
+		)
+	`).Error)
+
+	account := &biz.SubscriptionAccount{
+		Name:      "quota",
+		Platform:  "codex",
+		Status:    biz.ChannelStatusEnabled,
+		Group:     "default",
+		Models:    []string{"gpt-5"},
+		AccountID: "acc_1",
+	}
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
+
+	used := 96.5
+	reset := int32(120)
+	window := int32(300)
+	updatedAt := time.Unix(1000, 0).UTC()
+	require.NoError(t, repo.RecordAccountQuotaSnapshot(ctx, &biz.AccountQuotaSnapshot{
+		AccountID:                account.ID,
+		PrimaryUsedPercent:       &used,
+		PrimaryResetAfterSeconds: &reset,
+		PrimaryWindowMinutes:     &window,
+		UpdatedAt:                updatedAt,
+	}))
+
+	snapshot, err := repo.GetAccountQuotaSnapshot(ctx, account.ID)
+	require.NoError(t, err)
+	require.NotNil(t, snapshot.PrimaryUsedPercent)
+	assert.Equal(t, used, *snapshot.PrimaryUsedPercent)
+	require.NotNil(t, snapshot.PrimaryWindowMinutes)
+	assert.EqualValues(t, window, *snapshot.PrimaryWindowMinutes)
+
+	stored, err := repo.FindSubscriptionAccountByID(ctx, account.ID)
+	require.NoError(t, err)
+	assert.EqualValues(t, used, stored.QuotaUsedPercent)
+	assert.Equal(t, updatedAt.Add(120*time.Second).Unix(), stored.QuotaResetAt)
+
+	require.NoError(t, repo.AutoPauseAccount(ctx, account.ID, "quota exhausted"))
+	stored, err = repo.FindSubscriptionAccountByID(ctx, account.ID)
+	require.NoError(t, err)
+	assert.EqualValues(t, biz.ChannelStatusDisabled, stored.Status)
+	assert.Equal(t, "quota exhausted", stored.LastError)
+}

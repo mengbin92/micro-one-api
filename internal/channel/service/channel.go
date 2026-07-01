@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -18,6 +19,13 @@ type ChannelService struct {
 
 func NewChannelService(uc *biz.ChannelUsecase) *ChannelService {
 	return &ChannelService{uc: uc}
+}
+
+func (s *ChannelService) Usecase() *biz.ChannelUsecase {
+	if s == nil {
+		return nil
+	}
+	return s.uc
 }
 
 func (s *ChannelService) SelectChannelModel(ctx context.Context, group, model string, excludeFirstPriority bool) (*biz.Channel, error) {
@@ -38,6 +46,17 @@ func (s *ChannelService) SelectSubscriptionAccountModel(ctx context.Context, gro
 
 func (s *ChannelService) GetSubscriptionAccountModel(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error) {
 	return s.uc.GetSubscriptionAccount(ctx, accountID)
+}
+
+func (s *ChannelService) GetSubscriptionAccountWithSecrets(ctx context.Context, req *channelv1.GetSubscriptionAccountRequest) (*channelv1.GetSubscriptionAccountReply, error) {
+	account, err := s.uc.GetSubscriptionAccount(ctx, req.AccountId)
+	if err != nil {
+		mappedErr := errors.MapChannelError(err)
+		return nil, mappedErr
+	}
+	return &channelv1.GetSubscriptionAccountReply{
+		Account: toSubscriptionAccountInfoWithSecrets(account, true),
+	}, nil
 }
 
 func (s *ChannelService) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest) (*channelv1.SelectChannelReply, error) {
@@ -74,8 +93,18 @@ func (s *ChannelService) ListAvailableModels(ctx context.Context, req *channelv1
 }
 
 func toSubscriptionAccountInfo(account *biz.SubscriptionAccount) *commonv1.SubscriptionAccountInfo {
+	return toSubscriptionAccountInfoWithSecrets(account, false)
+}
+
+func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, includeSecrets bool) *commonv1.SubscriptionAccountInfo {
 	if account == nil {
 		return nil
+	}
+	accessToken := relaycredential.MaskSecret(account.AccessToken)
+	refreshToken := relaycredential.MaskSecret(account.RefreshToken)
+	if includeSecrets {
+		accessToken = account.AccessToken
+		refreshToken = account.RefreshToken
 	}
 	return &commonv1.SubscriptionAccountInfo{
 		Id:           account.ID,
@@ -87,14 +116,15 @@ func toSubscriptionAccountInfo(account *biz.SubscriptionAccount) *commonv1.Subsc
 		Models:       account.ModelsCSV(),
 		Priority:     account.Priority,
 		BaseUrl:      account.BaseURL,
-		AccessToken:  relaycredential.MaskSecret(account.AccessToken),
-		RefreshToken: relaycredential.MaskSecret(account.RefreshToken),
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 		ExpiresAt:    account.ExpiresAt,
 		AccountId:    account.AccountID,
 		Fingerprint:  account.Fingerprint,
 		Metadata:     account.Metadata,
 		CreatedAt:    account.CreatedAt,
 		UpdatedAt:    account.UpdatedAt,
+		Concurrency:  account.Concurrency,
 	}
 }
 
@@ -103,22 +133,22 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 		return nil
 	}
 	return &commonv1.SubscriptionAccountSummary{
-		Id:          account.ID,
-		Name:        account.Name,
-		Platform:    account.Platform,
-		AccountType: account.AccountType,
-		Status:      account.Status,
-		Group:       account.Group,
-		Models:      account.ModelsCSV(),
-		Priority:    account.Priority,
-		AccountId:   account.AccountID,
-		ExpiresAt:         account.ExpiresAt,
-		UpdatedAt:         account.UpdatedAt,
-		LastUsedAt:        account.LastUsedAt,
-		RateLimitedUntil:  account.RateLimitedUntil,
-		QuotaUsedPercent:  account.QuotaUsedPercent,
-		QuotaResetAt:      account.QuotaResetAt,
-		Concurrency:       account.Concurrency,
+		Id:               account.ID,
+		Name:             account.Name,
+		Platform:         account.Platform,
+		AccountType:      account.AccountType,
+		Status:           account.Status,
+		Group:            account.Group,
+		Models:           account.ModelsCSV(),
+		Priority:         account.Priority,
+		AccountId:        account.AccountID,
+		ExpiresAt:        account.ExpiresAt,
+		UpdatedAt:        account.UpdatedAt,
+		LastUsedAt:       account.LastUsedAt,
+		RateLimitedUntil: account.RateLimitedUntil,
+		QuotaUsedPercent: account.QuotaUsedPercent,
+		QuotaResetAt:     account.QuotaResetAt,
+		Concurrency:      account.Concurrency,
 	}
 }
 
@@ -238,6 +268,47 @@ func (s *ChannelService) ListSubscriptionAccounts(ctx context.Context, req *chan
 		Accounts: result,
 		Total:    total,
 	}, nil
+}
+
+func (s *ChannelService) ListOAuthRefreshCandidates(ctx context.Context, req *channelv1.ListOAuthRefreshCandidatesRequest) (*channelv1.ListOAuthRefreshCandidatesResponse, error) {
+	within := time.Duration(req.GetWithinSeconds()) * time.Second
+	if within <= 0 {
+		within = 24 * time.Hour
+	}
+	ids, err := s.uc.ListOAuthRefreshCandidates(ctx, within)
+	if err != nil {
+		mappedErr := errors.MapChannelError(err)
+		return nil, mappedErr
+	}
+	return &channelv1.ListOAuthRefreshCandidatesResponse{AccountIds: ids}, nil
+}
+
+func (s *ChannelService) ClearSubscriptionAccountError(ctx context.Context, req *channelv1.ClearSubscriptionAccountErrorRequest) (*channelv1.ClearSubscriptionAccountErrorResponse, error) {
+	if err := s.uc.ClearSubscriptionAccountError(ctx, req.GetAccountId()); err != nil {
+		return &channelv1.ClearSubscriptionAccountErrorResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.ClearSubscriptionAccountErrorResponse{Success: true, Message: "ok"}, nil
+}
+
+func (s *ChannelService) SetSubscriptionAccountError(ctx context.Context, req *channelv1.SetSubscriptionAccountErrorRequest) (*channelv1.SetSubscriptionAccountErrorResponse, error) {
+	if err := s.uc.SetSubscriptionAccountError(ctx, req.GetAccountId(), req.GetMessage()); err != nil {
+		return &channelv1.SetSubscriptionAccountErrorResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.SetSubscriptionAccountErrorResponse{Success: true, Message: "ok"}, nil
+}
+
+func (s *ChannelService) SetTempUnschedulable(ctx context.Context, req *channelv1.SetTempUnschedulableRequest) (*channelv1.SetTempUnschedulableResponse, error) {
+	if err := s.uc.SetTempUnschedulable(ctx, req.GetAccountId(), time.Unix(req.GetUntil(), 0), req.GetReason()); err != nil {
+		return &channelv1.SetTempUnschedulableResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.SetTempUnschedulableResponse{Success: true, Message: "ok"}, nil
+}
+
+func (s *ChannelService) ClearTempUnschedulable(ctx context.Context, req *channelv1.ClearTempUnschedulableRequest) (*channelv1.ClearTempUnschedulableResponse, error) {
+	if err := s.uc.ClearTempUnschedulable(ctx, req.GetAccountId()); err != nil {
+		return &channelv1.ClearTempUnschedulableResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.ClearTempUnschedulableResponse{Success: true, Message: "ok"}, nil
 }
 
 func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *channelv1.CreateSubscriptionAccountRequest) (*channelv1.CreateSubscriptionAccountResponse, error) {

@@ -96,6 +96,17 @@ func (m *mockChannelRepo) ListSubscriptionAccounts(ctx context.Context, page, pa
 	return result, int64(len(result)), nil
 }
 
+func (m *mockChannelRepo) ListOAuthRefreshCandidates(ctx context.Context, within time.Duration) ([]int64, error) {
+	threshold := time.Now().Add(within).Unix()
+	var ids []int64
+	for id, acc := range m.accounts {
+		if acc.ExpiresAt > 0 && acc.ExpiresAt <= threshold {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
 func (m *mockChannelRepo) CreateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error {
 	if m.accounts == nil {
 		m.accounts = make(map[int64]*SubscriptionAccount)
@@ -121,6 +132,57 @@ func (m *mockChannelRepo) DeleteSubscriptionAccount(ctx context.Context, account
 func (m *mockChannelRepo) ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error {
 	if acc, ok := m.accounts[accountID]; ok {
 		acc.Status = status
+	}
+	return nil
+}
+
+func (m *mockChannelRepo) SetSubscriptionAccountError(ctx context.Context, accountID int64, message string) error {
+	if acc, ok := m.accounts[accountID]; ok {
+		acc.LastError = message
+	}
+	return nil
+}
+
+func (m *mockChannelRepo) SetTempUnschedulable(ctx context.Context, accountID int64, until time.Time, reason string) error {
+	if acc, ok := m.accounts[accountID]; ok {
+		acc.RateLimitedUntil = until.Unix()
+		acc.LastError = reason
+	}
+	return nil
+}
+
+func (m *mockChannelRepo) ClearTempUnschedulable(ctx context.Context, accountID int64) error {
+	if acc, ok := m.accounts[accountID]; ok {
+		acc.RateLimitedUntil = 0
+	}
+	return nil
+}
+
+func (m *mockChannelRepo) RecordAccountQuotaSnapshot(ctx context.Context, snapshot *AccountQuotaSnapshot) error {
+	if snapshot != nil && m.accounts != nil {
+		if acc, ok := m.accounts[snapshot.AccountID]; ok && snapshot.PrimaryUsedPercent != nil {
+			acc.QuotaUsedPercent = float32(*snapshot.PrimaryUsedPercent)
+		}
+	}
+	return nil
+}
+
+func (m *mockChannelRepo) GetAccountQuotaSnapshot(ctx context.Context, accountID int64) (*AccountQuotaSnapshot, error) {
+	if m.accounts == nil {
+		return nil, ErrSubscriptionAccountNotFound
+	}
+	acc, ok := m.accounts[accountID]
+	if !ok {
+		return nil, ErrSubscriptionAccountNotFound
+	}
+	used := float64(acc.QuotaUsedPercent)
+	return &AccountQuotaSnapshot{AccountID: accountID, PrimaryUsedPercent: &used}, nil
+}
+
+func (m *mockChannelRepo) AutoPauseAccount(ctx context.Context, accountID int64, reason string) error {
+	if acc, ok := m.accounts[accountID]; ok {
+		acc.Status = ChannelStatusDisabled
+		acc.LastError = reason
 	}
 	return nil
 }
@@ -251,6 +313,45 @@ func TestChannelUsecase_SelectChannel_NoAvailableChannels(t *testing.T) {
 	_, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
 	if err != ErrChannelNotFound {
 		t.Fatalf("expected ErrChannelNotFound, got: %v", err)
+	}
+}
+
+func TestChannelUsecase_SelectSubscriptionAccount_SkipsTempUnschedulable(t *testing.T) {
+	now := time.Unix(1710000000, 0)
+	repo := &mockChannelRepo{
+		accounts: map[int64]*SubscriptionAccount{
+			1: {
+				ID:               1,
+				Name:             "cooling",
+				Status:           ChannelStatusEnabled,
+				Platform:         "codex",
+				RateLimitedUntil: now.Add(time.Minute).Unix(),
+				Priority:         10,
+			},
+			2: {
+				ID:       2,
+				Name:     "ready",
+				Status:   ChannelStatusEnabled,
+				Platform: "codex",
+				Priority: 10,
+			},
+		},
+		accAbilities: map[string][]SubscriptionAccountAbility{
+			"codex:default:gpt-5": {
+				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 10},
+				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 2, Enabled: true, Priority: 10},
+			},
+		},
+	}
+	uc := NewChannelUsecase(repo, nil)
+	uc.now = func() time.Time { return now }
+
+	account, err := uc.SelectSubscriptionAccount(context.Background(), "default", "gpt-5", "codex", false)
+	if err != nil {
+		t.Fatalf("SelectSubscriptionAccount() error = %v", err)
+	}
+	if account.ID != 2 {
+		t.Fatalf("selected account = %d, want 2", account.ID)
 	}
 }
 

@@ -50,6 +50,13 @@ func (r *channelServiceRepo) ListSubscriptionAccounts(ctx context.Context, page,
 	return []*biz.SubscriptionAccount{r.account}, 1, nil
 }
 
+func (r *channelServiceRepo) ListOAuthRefreshCandidates(ctx context.Context, within time.Duration) ([]int64, error) {
+	if r.account == nil {
+		return nil, nil
+	}
+	return []int64{r.account.ID}, nil
+}
+
 func (r *channelServiceRepo) CreateSubscriptionAccount(ctx context.Context, account *biz.SubscriptionAccount) error {
 	r.createdAccount = account
 	account.ID = 201
@@ -66,6 +73,44 @@ func (r *channelServiceRepo) DeleteSubscriptionAccount(ctx context.Context, acco
 }
 
 func (r *channelServiceRepo) ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error {
+	return nil
+}
+
+func (r *channelServiceRepo) SetSubscriptionAccountError(ctx context.Context, accountID int64, message string) error {
+	if r.account != nil && r.account.ID == accountID {
+		r.account.LastError = message
+	}
+	return nil
+}
+
+func (r *channelServiceRepo) SetTempUnschedulable(ctx context.Context, accountID int64, until time.Time, reason string) error {
+	if r.account != nil && r.account.ID == accountID {
+		r.account.RateLimitedUntil = until.Unix()
+		r.account.LastError = reason
+	}
+	return nil
+}
+
+func (r *channelServiceRepo) ClearTempUnschedulable(ctx context.Context, accountID int64) error {
+	if r.account != nil && r.account.ID == accountID {
+		r.account.RateLimitedUntil = 0
+	}
+	return nil
+}
+
+func (r *channelServiceRepo) RecordAccountQuotaSnapshot(ctx context.Context, snapshot *biz.AccountQuotaSnapshot) error {
+	return nil
+}
+
+func (r *channelServiceRepo) GetAccountQuotaSnapshot(ctx context.Context, accountID int64) (*biz.AccountQuotaSnapshot, error) {
+	return &biz.AccountQuotaSnapshot{AccountID: accountID}, nil
+}
+
+func (r *channelServiceRepo) AutoPauseAccount(ctx context.Context, accountID int64, reason string) error {
+	if r.account != nil && r.account.ID == accountID {
+		r.account.Status = biz.ChannelStatusDisabled
+		r.account.LastError = reason
+	}
 	return nil
 }
 

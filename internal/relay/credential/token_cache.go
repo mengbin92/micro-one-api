@@ -40,6 +40,12 @@ func (c *tokenCache) set(accountID int64, token string, expiresAt time.Time) {
 	c.m[accountID] = cacheEntry{accessToken: token, expiresAt: expiresAt}
 }
 
+func (c *tokenCache) delete(accountID int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.m, accountID)
+}
+
 // stale reports whether the cached token is within RefreshSkew of expiry (or
 // already expired).
 func (c *tokenCache) stale(accountID int64) bool {

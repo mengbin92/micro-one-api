@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	ChannelStatusEnabled = 1
+	ChannelStatusEnabled  = 1
+	ChannelStatusDisabled = 2
 
 	ChannelHealthHealthy     = "healthy"
 	ChannelHealthDegraded    = "degraded"
@@ -106,6 +107,20 @@ type SubscriptionAccount struct {
 	QuotaUsedPercent float32
 	QuotaResetAt     int64
 	Concurrency      int32
+	LastError        string
+}
+
+type AccountQuotaSnapshot struct {
+	AccountID                   int64
+	PrimaryUsedPercent          *float64
+	PrimaryResetAfterSeconds    *int32
+	PrimaryWindowMinutes        *int32
+	SecondaryUsedPercent        *float64
+	SecondaryResetAfterSeconds  *int32
+	SecondaryWindowMinutes      *int32
+	PrimaryOverSecondaryPercent *float64
+	UpdatedAt                   time.Time
+	SnapshotPaused              bool
 }
 
 type Ability struct {
@@ -149,10 +164,17 @@ type ChannelRepo interface {
 	FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error)
 	ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]SubscriptionAccountAbility, error)
 	ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*SubscriptionAccount, int64, error)
+	ListOAuthRefreshCandidates(ctx context.Context, within time.Duration) ([]int64, error)
 	CreateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error
 	UpdateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error
 	DeleteSubscriptionAccount(ctx context.Context, accountID int64) error
 	ChangeSubscriptionAccountStatus(ctx context.Context, accountID int64, status int32) error
+	SetSubscriptionAccountError(ctx context.Context, accountID int64, message string) error
+	SetTempUnschedulable(ctx context.Context, accountID int64, until time.Time, reason string) error
+	ClearTempUnschedulable(ctx context.Context, accountID int64) error
+	RecordAccountQuotaSnapshot(ctx context.Context, snapshot *AccountQuotaSnapshot) error
+	GetAccountQuotaSnapshot(ctx context.Context, accountID int64) (*AccountQuotaSnapshot, error)
+	AutoPauseAccount(ctx context.Context, accountID int64, reason string) error
 	ListAvailableModels(ctx context.Context, group string) ([]string, error)
 	ListChannels(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*Channel, int64, error)
 	CreateChannel(ctx context.Context, channel *Channel) error
@@ -282,7 +304,7 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 			if err != nil {
 				continue
 			}
-			if account.Status == ChannelStatusEnabled {
+			if account.Status == ChannelStatusEnabled && account.IsSchedulableAt(uc.now()) {
 				tier = append(tier, account)
 			}
 		}
@@ -305,6 +327,48 @@ func (uc *ChannelUsecase) GetSubscriptionAccount(ctx context.Context, accountID 
 
 func (uc *ChannelUsecase) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*SubscriptionAccount, int64, error) {
 	return uc.repo.ListSubscriptionAccounts(ctx, page, pageSize, keyword, group, status, platform)
+}
+
+func (uc *ChannelUsecase) ListOAuthRefreshCandidates(ctx context.Context, within time.Duration) ([]int64, error) {
+	return uc.repo.ListOAuthRefreshCandidates(ctx, within)
+}
+
+func (uc *ChannelUsecase) SetSubscriptionAccountError(ctx context.Context, accountID int64, message string) error {
+	return uc.repo.SetSubscriptionAccountError(ctx, accountID, message)
+}
+
+func (uc *ChannelUsecase) ClearSubscriptionAccountError(ctx context.Context, accountID int64) error {
+	return uc.repo.SetSubscriptionAccountError(ctx, accountID, "")
+}
+
+func (uc *ChannelUsecase) SetTempUnschedulable(ctx context.Context, accountID int64, until time.Time, reason string) error {
+	return uc.repo.SetTempUnschedulable(ctx, accountID, until, reason)
+}
+
+func (uc *ChannelUsecase) ClearTempUnschedulable(ctx context.Context, accountID int64) error {
+	return uc.repo.ClearTempUnschedulable(ctx, accountID)
+}
+
+func (uc *ChannelUsecase) RecordAccountQuotaSnapshot(ctx context.Context, snapshot *AccountQuotaSnapshot) error {
+	if snapshot == nil || snapshot.AccountID <= 0 {
+		return ErrSubscriptionAccountNotFound
+	}
+	if snapshot.UpdatedAt.IsZero() {
+		snapshot.UpdatedAt = uc.now()
+	}
+	return uc.repo.RecordAccountQuotaSnapshot(ctx, snapshot)
+}
+
+func (uc *ChannelUsecase) GetAccountQuotaSnapshot(ctx context.Context, accountID int64) (*AccountQuotaSnapshot, error) {
+	return uc.repo.GetAccountQuotaSnapshot(ctx, accountID)
+}
+
+func (uc *ChannelUsecase) AutoPauseAccount(ctx context.Context, accountID int64, reason string) error {
+	if err := uc.repo.AutoPauseAccount(ctx, accountID, reason); err != nil {
+		return err
+	}
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID, Status: ChannelStatusDisabled})
+	return nil
 }
 
 func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account *SubscriptionAccount) error {
@@ -486,6 +550,13 @@ func (c *Channel) SelectableAt(now time.Time) bool {
 		return true
 	}
 	return c.CircuitOpenedUntil > 0 && now.Unix() >= c.CircuitOpenedUntil
+}
+
+func (a *SubscriptionAccount) IsSchedulableAt(now time.Time) bool {
+	if a == nil || a.Status != ChannelStatusEnabled {
+		return false
+	}
+	return a.RateLimitedUntil <= 0 || now.Unix() >= a.RateLimitedUntil
 }
 
 func (uc *ChannelUsecase) notifyUnavailable(ctx context.Context, previous, current *Channel, event ChannelHealthEvent) {

@@ -53,6 +53,10 @@ func (b *baseTokenProvider) Refresh(ctx context.Context, accountID int64) error 
 	return err
 }
 
+func (b *baseTokenProvider) Invalidate(accountID int64) {
+	b.cache.delete(accountID)
+}
+
 // resolve either seeds the cache from a still-valid stored token or performs a
 // refresh. force=true always refreshes.
 func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force bool) (string, error) {

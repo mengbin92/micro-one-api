@@ -126,7 +126,7 @@ INSERT INTO channels (
     used_quota, model_mapping, system_prompt
 )
 SELECT
-    1, 'sk-mock-key', 0, 'e2e-mock-openai', 'http://mock-upstream:9999',
+    1, 'sk-mock-key', 1, 'e2e-mock-openai', 'http://mock-upstream:9999',
     'gpt-3.5-turbo,gpt-4', 'default', 1, '{}',
     1, UNIX_TIMESTAMP(), 0, 0, 0, 0,
     0, '', NULL
@@ -138,7 +138,7 @@ UPDATE channels
 SET
     type = 1,
     \`key\` = 'sk-mock-key',
-    status = 0,
+    status = 1,
     base_url = 'http://mock-upstream:9999',
     models = 'gpt-3.5-turbo,gpt-4',
     \`group\` = 'default',
@@ -156,14 +156,16 @@ VALUES
 " 2>/dev/null
 
 # Verify test channel
+channel_status=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
+    "SELECT status FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
 channel_url=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
     "SELECT base_url FROM channels WHERE name='e2e-mock-openai' LIMIT 1;" 2>/dev/null)
 ability_count=$(docker exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}" oneapi -N -e \
     "SELECT COUNT(*) FROM abilities a JOIN channels c ON c.id=a.channel_id WHERE c.name='e2e-mock-openai' AND a.enabled=1;" 2>/dev/null)
-if [ "$channel_url" = "http://mock-upstream:9999" ] && [ "$ability_count" -ge 2 ]; then
+if [ "$channel_status" = "1" ] && [ "$channel_url" = "http://mock-upstream:9999" ] && [ "$ability_count" -ge 2 ]; then
     log "Test channel ready: $channel_url"
 else
-    fail "Test channel setup failed: url='$channel_url', abilities='$ability_count'"
+    fail "Test channel setup failed: status='$channel_status', url='$channel_url', abilities='$ability_count'"
     exit 1
 fi
 

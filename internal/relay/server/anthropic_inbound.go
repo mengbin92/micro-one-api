@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -402,8 +403,15 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Read the original body so session_hash (absent from the typed struct)
+	// survives for session stickiness; then decode from those bytes.
+	originalBody, err := io.ReadAll(io.LimitReader(r.Body, 10*1024*1024))
+	if err != nil {
+		s.writeAnthropicError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
 	var anthropicReq anthropicInboundRequest
-	if err := decodeJSON(r.Body, &anthropicReq); err != nil {
+	if err := sonic.Unmarshal(originalBody, &anthropicReq); err != nil {
 		s.writeAnthropicError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -422,9 +430,15 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	sessionHash := ""
+	if s.subscriptionSessionStickyEnabled {
+		sessionHash = extractSessionHashFromRequest(r, originalBody)
+	}
+
 	plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
-		Token: token,
-		Model: anthropicReq.Model,
+		Token:       token,
+		Model:       anthropicReq.Model,
+		SessionHash: sessionHash,
 	})
 	if err != nil {
 		s.handleAnthropicPlanError(w, err)
@@ -433,7 +447,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 
 	if s.hybridAdaptorEnabled && plan.Channel != nil && isSubscriptionChannel(plan.Channel.Type) {
 		rawBody, _ := sonic.Marshal(anthropicReq)
-		s.handleAnthropicMessagesViaAdaptor(w, r, plan, anthropicReq.Model, rawBody)
+		s.handleAnthropicMessagesViaAdaptor(w, r, plan, anthropicReq.Model, rawBody, sessionHash)
 		return
 	}
 
@@ -480,20 +494,20 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 
 		actualTokens := s.calculateActualTokens(resp)
 		logInput := usageLogInput{
-			UserID:           plan.Auth.UserID,
-			TokenID:          plan.Auth.TokenID,
-			TokenName:        plan.Auth.TokenName,
-			RequestID:        requestID,
-			Endpoint:         "/v1/messages",
-			ModelName:        clientModel,
-			Quota:            actualTokens,
-			PromptTokens:     int64(resp.Usage.PromptTokens),
-			CompletionTokens: int64(resp.Usage.CompletionTokens),
-			CacheReadTokens:  cacheReadTokensFromProviderUsage(resp.Usage),
-			ChannelID:        ch.ID,
+			UserID:                plan.Auth.UserID,
+			TokenID:               plan.Auth.TokenID,
+			TokenName:             plan.Auth.TokenName,
+			RequestID:             requestID,
+			Endpoint:              "/v1/messages",
+			ModelName:             clientModel,
+			Quota:                 actualTokens,
+			PromptTokens:          int64(resp.Usage.PromptTokens),
+			CompletionTokens:      int64(resp.Usage.CompletionTokens),
+			CacheReadTokens:       cacheReadTokensFromProviderUsage(resp.Usage),
+			ChannelID:             ch.ID,
 			SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
-			ElapsedTime:      time.Since(startedAt).Milliseconds(),
-			IsStream:         false,
+			ElapsedTime:           time.Since(startedAt).Milliseconds(),
+			IsStream:              false,
 		}
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err

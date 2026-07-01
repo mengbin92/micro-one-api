@@ -15,6 +15,8 @@ import (
 	relaybiz "micro-one-api/internal/relay/biz"
 	relaydata "micro-one-api/internal/relay/data"
 	relayprovider "micro-one-api/internal/relay/provider"
+	subscriptionbiz "micro-one-api/internal/subscription/biz"
+	subscriptiondata "micro-one-api/internal/subscription/data"
 
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
@@ -836,6 +838,34 @@ func TestHTTPServerBillingMutationsIgnoreCanceledRequestContext(t *testing.T) {
 	}
 	if billingClient.commits != 1 || billingClient.releases != 1 {
 		t.Fatalf("billing mutations = commits:%d releases:%d, want 1/1", billingClient.commits, billingClient.releases)
+	}
+}
+
+func TestHTTPServerCommitQuotaRecordsSubscriptionUsage(t *testing.T) {
+	t.Setenv("PAYMENT_QUOTA_PER_UNIT", "100")
+	billingClient := &rawBillingClient{failOnCanceledContext: true}
+	repo := subscriptiondata.NewMemoryRepositoryForTest()
+	group := &subscriptionbiz.SubscriptionGroup{Name: "pro", Platform: "openai", Status: subscriptionbiz.SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	uc := subscriptionbiz.NewSubscriptionUsecase(repo, repo)
+	if _, err := uc.Assign(context.Background(), &subscriptionbiz.AssignSubscriptionRequest{UserID: 42, GroupID: group.ID, ExpiresAt: time.Now().Add(time.Hour).Unix()}); err != nil {
+		t.Fatalf("Assign() error = %v", err)
+	}
+	srv := &HTTPServer{billingClient: billingClient}
+	srv.SetSubscriptionUsecase(uc)
+
+	if err := srv.commitQuota(context.Background(), "reservation-1", 250, true, usageLogInput{UserID: 42}); err != nil {
+		t.Fatalf("commitQuota error = %v", err)
+	}
+
+	progress, err := uc.GetProgress(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("GetProgress() error = %v", err)
+	}
+	if progress.DailyUsed.Used != 2.5 || progress.WeeklyUsed.Used != 2.5 || progress.MonthlyUsed.Used != 2.5 {
+		t.Fatalf("subscription usage = daily:%v weekly:%v monthly:%v, want 2.5", progress.DailyUsed.Used, progress.WeeklyUsed.Used, progress.MonthlyUsed.Used)
 	}
 }
 

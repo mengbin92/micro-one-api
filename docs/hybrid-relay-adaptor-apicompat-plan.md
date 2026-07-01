@@ -530,10 +530,11 @@ service ChannelService {
 
 ### Phase 5：生产化
 
-- [ ] 配额窗口感知（从上游响应头提取 used% / reset_after）
-- [ ] 限流感知（429/overload cooldown）
-- [ ] 粘性会话（session hash → account）
-- [ ] 可观测性：per-adaptor / per-platform metrics
+- [x] 配额窗口感知（Codex 5h/7d quota snapshot 解析、记录与阈值耗尽自动暂停）
+- [x] ErrorPassthrough（subscription adaptor 对上游 `401` / `403` / `429` / `cyber_policy` 透传状态码、body 与 `Retry-After`）
+- [x] 粘性会话（Responses HTTP/WS 支持 `session_hash` / previous-response route → channel）
+- [x] 订阅账号故障转移（上游网络错误、`5xx` 在响应写出前触发 runtime block + account failover）
+- [x] 可观测性：per-adaptor / per-platform metrics（Prometheus 覆盖 adaptor request、failover、runtime block、passthrough、Codex quota snapshot）
 - [ ] 配置项：relay-gateway.yaml 增加 identity/mimicry 开关
 
 ---
@@ -595,6 +596,10 @@ internal/relay/
 │   ├── claude_token_provider.go
 │   ├── openai_token_provider.go
 │   └── refresh_task.go
+├── passthrough/                 ★ 新增：上游错误分类
+│   └── upstream_error.go        Retryable / Passthrough / CyberBlocked
+├── quota/                       ★ 新增：Codex 5h/7d 配额窗口解析
+│   └── codex.go                 quota snapshot + auto-pause threshold
 ├── biz/                        编排层（保留增强）
 │   ├── relay.go                Plan + RetryExecutor（不变）
 │   ├── retry.go                （不变）

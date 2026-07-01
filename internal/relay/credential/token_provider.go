@@ -49,6 +49,12 @@ type TokenProvider interface {
 	Refresh(ctx context.Context, accountID int64) error
 }
 
+// TokenInvalidator is optionally implemented by providers that cache tokens
+// and can evict a single account after a background refresh completes.
+type TokenInvalidator interface {
+	Invalidate(accountID int64)
+}
+
 // AccountLookup resolves the credentials for an account. The credential layer
 // does not own account storage; it queries the channel/identity service via
 // this interface. Implementations translate the gRPC reply into

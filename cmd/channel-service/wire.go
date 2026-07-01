@@ -32,7 +32,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 func newApp(cfg *channelcfg.Config, svc *service.ChannelService) (*kratos.App, func()) {
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
-	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr)
+	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc.Usecase())
 	app := kratos.New(
 		kratos.Name("channel-service"),
 		kratos.Server(grpcSrv, httpSrv),

@@ -14,9 +14,10 @@ import (
 
 // fakeLookup is an in-memory AccountLookup for tests.
 type fakeLookup struct {
-	mu     sync.Mutex
-	store  map[int64]*AccountCredentials
-	stores int32
+	mu       sync.Mutex
+	store    map[int64]*AccountCredentials
+	stores   int32
+	expiring []int64
 }
 
 func newFakeLookup() *fakeLookup {
@@ -41,6 +42,71 @@ func (f *fakeLookup) Store(_ context.Context, id int64, c *AccountCredentials) e
 	atomic.AddInt32(&f.stores, 1)
 	cp := *c
 	f.store[id] = &cp
+	return nil
+}
+
+func (f *fakeLookup) ExpiringSoon(_ context.Context, _ time.Duration) ([]int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int64(nil), f.expiring...), nil
+}
+
+type fakeRefreshProvider struct {
+	mu          sync.Mutex
+	errs        []error
+	calls       int
+	invalidated []int64
+}
+
+func (p *fakeRefreshProvider) GetAccessToken(context.Context, int64) (string, error) {
+	return "token", nil
+}
+
+func (p *fakeRefreshProvider) Refresh(context.Context, int64) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls++
+	if len(p.errs) == 0 {
+		return nil
+	}
+	err := p.errs[0]
+	p.errs = p.errs[1:]
+	return err
+}
+
+func (p *fakeRefreshProvider) Invalidate(accountID int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.invalidated = append(p.invalidated, accountID)
+}
+
+type fakeRefreshHook struct {
+	mu             sync.Mutex
+	success        []int64
+	nonRetryable   []string
+	retryExhausted []string
+	until          []time.Time
+}
+
+func (h *fakeRefreshHook) OnRefreshSuccess(_ context.Context, accountID int64) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.success = append(h.success, accountID)
+	return nil
+}
+
+func (h *fakeRefreshHook) OnRefreshNonRetryable(_ context.Context, accountID int64, reason string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.nonRetryable = append(h.nonRetryable, fmt.Sprintf("%d:%s", accountID, reason))
+	return nil
+}
+
+func (h *fakeRefreshHook) OnRefreshRetryExhausted(_ context.Context, accountID int64, until time.Time, reason string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.retryExhausted = append(h.retryExhausted, fmt.Sprintf("%d:%s", accountID, reason))
+	h.until = append(h.until, until)
 	return nil
 }
 
@@ -199,6 +265,95 @@ func TestRefreshTask_NoOpWithoutScanner(t *testing.T) {
 	time.Sleep(120 * time.Millisecond)
 	task.Stop()
 	// No panic / hang => pass.
+}
+
+func TestRefreshTask_SuccessInvalidatesAndCallsHook(t *testing.T) {
+	lookup := newFakeLookup()
+	lookup.expiring = []int64{42}
+	provider := &fakeRefreshProvider{}
+	hook := &fakeRefreshHook{}
+	task := NewRefreshTask(
+		map[Platform]TokenProvider{PlatformClaude: provider},
+		lookup,
+		func(int64) Platform { return PlatformClaude },
+		RefreshTaskConfig{Interval: time.Second, Lookahead: time.Hour, Hook: hook},
+	)
+	task.sweep()
+	task.Stop()
+
+	if provider.calls != 1 {
+		t.Fatalf("expected 1 refresh call, got %d", provider.calls)
+	}
+	if len(provider.invalidated) != 1 || provider.invalidated[0] != 42 {
+		t.Fatalf("expected account 42 invalidated, got %#v", provider.invalidated)
+	}
+	if len(hook.success) != 1 || hook.success[0] != 42 {
+		t.Fatalf("expected success hook for account 42, got %#v", hook.success)
+	}
+}
+
+func TestRefreshTask_RetryExhaustedMarksTemporarilyUnschedulable(t *testing.T) {
+	lookup := newFakeLookup()
+	lookup.expiring = []int64{7}
+	provider := &fakeRefreshProvider{errs: []error{ErrRefreshFailed, ErrRefreshFailed, ErrRefreshFailed}}
+	hook := &fakeRefreshHook{}
+	task := NewRefreshTask(
+		map[Platform]TokenProvider{PlatformClaude: provider},
+		lookup,
+		func(int64) Platform { return PlatformClaude },
+		RefreshTaskConfig{
+			Interval:                  time.Second,
+			Lookahead:                 time.Hour,
+			MaxRetries:                3,
+			RetryBackoff:              time.Millisecond,
+			TempUnschedulableDuration: time.Minute,
+			Hook:                      hook,
+		},
+	)
+	before := time.Now()
+	task.sweep()
+	task.Stop()
+
+	if provider.calls != 3 {
+		t.Fatalf("expected 3 refresh attempts, got %d", provider.calls)
+	}
+	if len(hook.retryExhausted) != 1 || hook.retryExhausted[0] == "" {
+		t.Fatalf("expected retry-exhausted hook, got %#v", hook.retryExhausted)
+	}
+	if len(hook.until) != 1 || hook.until[0].Before(before.Add(55*time.Second)) {
+		t.Fatalf("expected temp unschedulable deadline near +1m, got %#v", hook.until)
+	}
+}
+
+func TestRefreshTask_NonRetryableDoesNotRetry(t *testing.T) {
+	lookup := newFakeLookup()
+	lookup.expiring = []int64{9}
+	provider := &fakeRefreshProvider{errs: []error{fmt.Errorf("%w: invalid_grant", ErrRefreshFailed)}}
+	hook := &fakeRefreshHook{}
+	task := NewRefreshTask(
+		map[Platform]TokenProvider{PlatformClaude: provider},
+		lookup,
+		func(int64) Platform { return PlatformClaude },
+		RefreshTaskConfig{
+			Interval:     time.Second,
+			Lookahead:    time.Hour,
+			MaxRetries:   3,
+			RetryBackoff: time.Millisecond,
+			Hook:         hook,
+		},
+	)
+	task.sweep()
+	task.Stop()
+
+	if provider.calls != 1 {
+		t.Fatalf("expected non-retryable error to stop after 1 attempt, got %d", provider.calls)
+	}
+	if len(hook.nonRetryable) != 1 || hook.nonRetryable[0] == "" {
+		t.Fatalf("expected non-retryable hook, got %#v", hook.nonRetryable)
+	}
+	if len(hook.retryExhausted) != 0 {
+		t.Fatalf("non-retryable error should not mark retry exhausted: %#v", hook.retryExhausted)
+	}
 }
 
 func TestSentinelErrors(t *testing.T) {

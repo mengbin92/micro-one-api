@@ -191,6 +191,8 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `NOTIFY_WEBHOOK_URL` | notify-worker 默认 webhook 投递地址 |
 | `NOTIFY_SMTP_HOST` / `NOTIFY_SMTP_PORT` / `NOTIFY_SMTP_USER` / `NOTIFY_SMTP_PASS` / `NOTIFY_SMTP_FROM` | notify-worker 邮件投递配置 |
 
+Prometheus 指标通过各服务 `/metrics` 暴露。订阅系统新增 `micro_one_api_subscription_quota_checks_total`、`micro_one_api_subscription_usage_records_total`，relay 订阅账号路径新增 `micro_one_api_relay_subscription_adaptor_requests_total`、`micro_one_api_relay_subscription_failover_total`、`micro_one_api_relay_runtime_blocks_total`、`micro_one_api_relay_upstream_passthrough_total`、`micro_one_api_relay_codex_quota_snapshots_total`、`micro_one_api_relay_codex_quota_used_percent`。
+
 更多配置见 [.env.example](./.env.example) 和 [docs/deployment.md](./docs/deployment.md)。
 
 ## 测试

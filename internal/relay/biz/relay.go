@@ -4,9 +4,15 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"micro-one-api/internal/pkg/metrics"
 	relayprovider "micro-one-api/internal/relay/provider"
 )
+
+// subscriptionAccountStatusEnabled mirrors channel biz ChannelStatusEnabled: a
+// subscription account is only reusable via session stickiness when enabled.
+const subscriptionAccountStatusEnabled int32 = 1
 
 type IdentityClient interface {
 	GetAuthSnapshot(ctx context.Context, token string) (*AuthSnapshot, error)
@@ -19,11 +25,30 @@ type ChannelClient interface {
 
 type SubscriptionAccountClient interface {
 	SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*SubscriptionAccount, error)
+	// GetSubscriptionAccountByID materializes a single subscription account by
+	// its id (with secrets) for session-stickiness reuse. Returns a nil account
+	// (no error) when the id is unknown.
+	GetSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error)
+}
+
+// SessionAccountStore resolves and refreshes the session -> subscription-account
+// binding used for cross-session account stickiness (docs #7). It is satisfied
+// by the server-layer sticky store (openAIWSStickyStore), which stores an int64
+// account id keyed by group+sessionHash with a local hot cache + Redis. Lookup
+// returns 0 on miss or backend error, so a Redis outage degrades to a normal
+// (non-sticky) selection rather than failing the request.
+type SessionAccountStore interface {
+	LookupSessionChannel(ctx context.Context, group, sessionHash string) int64
+	RefreshSessionTTL(ctx context.Context, group, sessionHash string, ttl time.Duration) bool
 }
 
 type RelayRequest struct {
 	Token string
 	Model string
+	// SessionHash, when set and session stickiness is enabled, binds this
+	// conversation to the subscription account that serves it so subsequent
+	// turns reuse the same upstream account (prompt-cache reuse, docs #7).
+	SessionHash string
 }
 
 type AuthSnapshot struct {
@@ -66,6 +91,11 @@ type SubscriptionAccount struct {
 	AccessToken string
 	AccountID   string
 	Fingerprint string
+	// Concurrency is the maximum number of in-flight relay requests this account
+	// will serve at once. 0 means unlimited. Enforced in-process by the relay
+	// gateway (see AccountConcurrencyLimiter) so a single subscription account is
+	// not saturated into upstream 429s.
+	Concurrency int32
 }
 
 // RelayPlan is the result of relay planning, containing all resolved
@@ -93,6 +123,29 @@ type RelayUsecase struct {
 	subscription SubscriptionAccountClient
 	modelMapper  *ModelMapper
 	retryPolicy  *RetryPolicy
+	blocker      RuntimeBlocker
+	accountPool  *AccountPool
+	now          func() time.Time
+
+	// Session -> subscription-account stickiness (docs #7). All nil/false by
+	// default: unless SetSessionAccountStore enables it, Plan behaves exactly as
+	// before.
+	sessionStore  SessionAccountStore
+	stickyTTL     time.Duration
+	stickyEnabled bool
+}
+
+// SetSessionAccountStore wires cross-session subscription-account stickiness.
+// When enabled with a non-nil store, Plan tries to reuse the account bound to
+// the request's SessionHash before falling back to normal priority selection.
+// ttl refreshes the binding on a sticky hit (see openAIWSConfig.StickyTTL).
+func (uc *RelayUsecase) SetSessionAccountStore(store SessionAccountStore, ttl time.Duration, enabled bool) {
+	if uc == nil {
+		return
+	}
+	uc.sessionStore = store
+	uc.stickyTTL = ttl
+	uc.stickyEnabled = enabled && store != nil
 }
 
 // NewRelayUsecase creates a RelayUsecase with the given dependencies.
@@ -111,7 +164,21 @@ func NewRelayUsecase(identity IdentityClient, channel ChannelClient, modelMapper
 		subscription: subscription,
 		modelMapper:  modelMapper,
 		retryPolicy:  retryPolicy,
+		blocker:      NoopRuntimeBlocker{},
+		accountPool:  NewAccountPool(NoopRuntimeBlocker{}),
+		now:          time.Now,
 	}
+}
+
+func (uc *RelayUsecase) SetRuntimeBlocker(blocker RuntimeBlocker) {
+	if uc == nil {
+		return
+	}
+	if blocker == nil {
+		blocker = NoopRuntimeBlocker{}
+	}
+	uc.blocker = blocker
+	uc.accountPool = NewAccountPool(blocker)
 }
 
 // Plan resolves the model name, authenticates the user, validates permissions,
@@ -161,6 +228,16 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			}
 			channelErr = err
 		}
+		// Session stickiness: prefer the subscription account this conversation
+		// was previously bound to (prompt-cache reuse) before normal selection.
+		if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, req.SessionHash, req.Model, resolvedModel); ok {
+			return &RelayPlan{
+				Auth:          authSnapshot,
+				Channel:       ch,
+				Account:       acct,
+				ResolvedModel: resolvedModel,
+			}, nil
+		}
 		subChannel, subAccount, subErr := uc.selectSubscriptionChannel(ctx, authSnapshot.Group, req.Model, resolvedModel)
 		if subErr != nil {
 			if uc.subscription == nil {
@@ -188,9 +265,9 @@ func (uc *RelayUsecase) selectSubscriptionChannel(ctx context.Context, group, cl
 	if uc.subscription == nil {
 		return nil, nil, fmt.Errorf("subscription account selector is not configured")
 	}
-	account, err := uc.selectSubscriptionAccountForModel(ctx, group, clientModel)
+	account, err := uc.selectSubscriptionAccountForModel(ctx, group, clientModel, nil)
 	if err != nil && resolvedModel != clientModel {
-		account, err = uc.selectSubscriptionAccountForModel(ctx, group, resolvedModel)
+		account, err = uc.selectSubscriptionAccountForModel(ctx, group, resolvedModel, nil)
 	}
 	if err != nil {
 		return nil, nil, err
@@ -202,10 +279,112 @@ func (uc *RelayUsecase) selectSubscriptionChannel(ctx context.Context, group, cl
 	return ch, account, nil
 }
 
-func (uc *RelayUsecase) selectSubscriptionAccountForModel(ctx context.Context, group, model string) (*SubscriptionAccount, error) {
+// trySubscriptionSticky returns the subscription account previously bound to
+// this session (and a thin channel view) when stickiness is enabled and the
+// bound account is still a valid, schedulable candidate for the requested
+// model. On any miss it returns ok=false so the caller falls back to normal
+// priority selection. Selection-time outcomes ("miss", "reused_unschedulable")
+// are recorded here; the authoritative "hit"/"rebind" is recorded by the server
+// loop at bind time, since a selected sticky account may still be
+// concurrency-full when it actually runs.
+func (uc *RelayUsecase) trySubscriptionSticky(ctx context.Context, group, sessionHash, clientModel, resolvedModel string) (*Channel, *SubscriptionAccount, bool) {
+	if !uc.stickyEnabled || uc.sessionStore == nil || uc.subscription == nil {
+		return nil, nil, false
+	}
+	sessionHash = strings.TrimSpace(sessionHash)
+	if sessionHash == "" {
+		return nil, nil, false
+	}
+	stickyID := uc.sessionStore.LookupSessionChannel(ctx, group, sessionHash)
+	if stickyID <= 0 {
+		metrics.RelaySubscriptionStickyTotal.WithLabelValues("miss", "unknown").Inc()
+		return nil, nil, false
+	}
+	account, ok := uc.selectStickySubscriptionAccount(ctx, group, clientModel, resolvedModel, stickyID)
+	if !ok {
+		return nil, nil, false
+	}
+	ch, err := subscriptionAccountToChannel(account)
+	if err != nil {
+		metrics.RelaySubscriptionStickyTotal.WithLabelValues("reused_unschedulable", platformOrUnknown(account.Platform)).Inc()
+		return nil, nil, false
+	}
+	if uc.stickyTTL > 0 {
+		uc.sessionStore.RefreshSessionTTL(ctx, group, sessionHash, uc.stickyTTL)
+	}
+	return ch, account, true
+}
+
+// selectStickySubscriptionAccount materializes the bound account by id and
+// validates it is still reusable for this request. Concurrency is deliberately
+// NOT checked here: the selection-time slot count is stale by the time the
+// request runs, so the authoritative check is the in-loop TryAcquire in the
+// server (a full account fails over without cooldown and rebinds).
+func (uc *RelayUsecase) selectStickySubscriptionAccount(ctx context.Context, group, clientModel, resolvedModel string, stickyID int64) (*SubscriptionAccount, bool) {
+	account, err := uc.subscription.GetSubscriptionAccountByID(ctx, stickyID)
+	if err != nil || account == nil || account.ID <= 0 {
+		metrics.RelaySubscriptionStickyTotal.WithLabelValues("reused_unschedulable", "unknown").Inc()
+		return nil, false
+	}
+	if !uc.stickySubscriptionAccountValid(ctx, account, group, clientModel, resolvedModel) {
+		metrics.RelaySubscriptionStickyTotal.WithLabelValues("reused_unschedulable", platformOrUnknown(account.Platform)).Inc()
+		return nil, false
+	}
+	return account, true
+}
+
+// stickySubscriptionAccountValid reports whether a bound account may still serve
+// this request: enabled, same tenancy group, platform+model still match, and not
+// runtime-blocked/paused.
+func (uc *RelayUsecase) stickySubscriptionAccountValid(ctx context.Context, account *SubscriptionAccount, group, clientModel, resolvedModel string) bool {
+	if account.Status != subscriptionAccountStatusEnabled {
+		return false
+	}
+	// Group is the subscription-account tenancy boundary: never reuse a binding
+	// across groups.
+	if account.Group != group {
+		return false
+	}
+	// The bound account's platform must still serve the requested model (guards
+	// mid-session model switches, e.g. claude -> gpt).
+	if !platformServesModel(account.Platform, clientModel) && !platformServesModel(account.Platform, resolvedModel) {
+		return false
+	}
+	if !accountServesModel(account, clientModel, resolvedModel) {
+		return false
+	}
+	return uc.isSubscriptionAccountSchedulable(ctx, account)
+}
+
+func (uc *RelayUsecase) SelectSubscriptionFailover(ctx context.Context, group, clientModel, resolvedModel string, failedAccountIDs map[int64]bool) (*RelayPlan, error) {
+	if uc == nil {
+		return nil, fmt.Errorf("relay usecase unavailable")
+	}
+	if uc.subscription == nil {
+		return nil, fmt.Errorf("subscription account selector is not configured")
+	}
+	account, err := uc.selectSubscriptionAccountForModel(ctx, group, clientModel, failedAccountIDs)
+	if err != nil && resolvedModel != clientModel {
+		account, err = uc.selectSubscriptionAccountForModel(ctx, group, resolvedModel, failedAccountIDs)
+	}
+	if err != nil {
+		return nil, err
+	}
+	ch, err := subscriptionAccountToChannel(account)
+	if err != nil {
+		return nil, err
+	}
+	return &RelayPlan{
+		Channel:       ch,
+		Account:       account,
+		ResolvedModel: resolvedModel,
+	}, nil
+}
+
+func (uc *RelayUsecase) selectSubscriptionAccountForModel(ctx context.Context, group, model string, exclude map[int64]bool) (*SubscriptionAccount, error) {
 	var lastErr error
 	for _, platform := range subscriptionPlatformsForModel(model) {
-		account, err := uc.subscription.SelectSubscriptionAccount(ctx, group, model, platform, false)
+		account, err := uc.selectSchedulableSubscriptionAccount(ctx, group, model, platform, exclude)
 		if err == nil {
 			return account, nil
 		}
@@ -215,6 +394,57 @@ func (uc *RelayUsecase) selectSubscriptionAccountForModel(ctx context.Context, g
 		return nil, lastErr
 	}
 	return nil, fmt.Errorf("subscription account platform cannot be inferred for model %q", model)
+}
+
+func (uc *RelayUsecase) selectSchedulableSubscriptionAccount(ctx context.Context, group, model, platform string, exclude map[int64]bool) (*SubscriptionAccount, error) {
+	if uc.subscription == nil {
+		return nil, fmt.Errorf("subscription account selector is not configured")
+	}
+	const maxAttempts = 8
+	excludedPriority := false
+	localExclude := make(map[int64]bool, len(exclude)+maxAttempts)
+	for id, blocked := range exclude {
+		if blocked {
+			localExclude[id] = true
+		}
+	}
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		account, err := uc.subscription.SelectSubscriptionAccount(ctx, group, model, platform, excludedPriority)
+		if err != nil {
+			return nil, err
+		}
+		if account == nil || account.ID <= 0 {
+			return nil, fmt.Errorf("subscription account not found")
+		}
+		if localExclude[account.ID] {
+			lastErr = fmt.Errorf("subscription account %d excluded", account.ID)
+			excludedPriority = true
+			continue
+		}
+		if !uc.isSubscriptionAccountSchedulable(ctx, account) {
+			localExclude[account.ID] = true
+			lastErr = fmt.Errorf("subscription account %d runtime blocked", account.ID)
+			excludedPriority = true
+			continue
+		}
+		return account, nil
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("subscription account not found")
+}
+
+func (uc *RelayUsecase) isSubscriptionAccountSchedulable(ctx context.Context, account *SubscriptionAccount) bool {
+	now := time.Now()
+	if uc.now != nil {
+		now = uc.now()
+	}
+	if uc.accountPool == nil {
+		return true
+	}
+	return uc.accountPool.IsSchedulable(ctx, account, now)
 }
 
 func subscriptionPlatformsForModel(model string) []string {
@@ -227,6 +457,48 @@ func subscriptionPlatformsForModel(model string) []string {
 	default:
 		return []string{"codex", "claude"}
 	}
+}
+
+// platformServesModel reports whether platform is a candidate platform for the
+// given client-facing model, reusing the model->platform inference.
+func platformServesModel(platform, model string) bool {
+	if strings.TrimSpace(model) == "" {
+		return false
+	}
+	for _, p := range subscriptionPlatformsForModel(model) {
+		if p == platform {
+			return true
+		}
+	}
+	return false
+}
+
+// accountServesModel reports whether the account exposes the requested model.
+// When the account carries no explicit model list we defer to the platform
+// match (see platformServesModel) rather than rejecting the reuse.
+func accountServesModel(account *SubscriptionAccount, clientModel, resolvedModel string) bool {
+	if account == nil || len(account.Models) == 0 {
+		return true
+	}
+	client := strings.TrimSpace(clientModel)
+	resolved := strings.TrimSpace(resolvedModel)
+	for _, m := range account.Models {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		if m == client || (resolved != "" && m == resolved) {
+			return true
+		}
+	}
+	return false
+}
+
+func platformOrUnknown(platform string) string {
+	if strings.TrimSpace(platform) == "" {
+		return "unknown"
+	}
+	return platform
 }
 
 func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error) {

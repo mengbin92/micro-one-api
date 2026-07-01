@@ -101,7 +101,35 @@ func extractPreviousResponseID(body []byte) string {
 		return ""
 	}
 	responseID, _ := payload["previous_response_id"].(string)
-	return strings.TrimSpace(responseID)
+	responseID = strings.TrimSpace(responseID)
+	if !isOpenAIResponseID(responseID) {
+		return ""
+	}
+	return responseID
+}
+
+// extractSessionHash pulls the sticky session hash from a JSON request body.
+func extractSessionHash(body []byte) string {
+	var payload map[string]interface{}
+	if err := sonic.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	for _, key := range []string{"session_hash", "sessionHash"} {
+		sessionHash, _ := payload[key].(string)
+		if sessionHash = strings.TrimSpace(sessionHash); sessionHash != "" {
+			return sessionHash
+		}
+	}
+	return ""
+}
+
+func extractSessionHashFromRequest(r *http.Request, body []byte) string {
+	for _, key := range []string{"X-Session-Hash", "OpenAI-Session-Hash"} {
+		if value := strings.TrimSpace(r.Header.Get(key)); value != "" {
+			return value
+		}
+	}
+	return extractSessionHash(body)
 }
 
 // extractResponseID pulls the top-level "id" field from a body.

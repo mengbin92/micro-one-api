@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
+	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	relaybiz "micro-one-api/internal/relay/biz"
 	relaycredential "micro-one-api/internal/relay/credential"
@@ -77,9 +78,26 @@ func (a *ChannelAdapter) SelectSubscriptionAccount(ctx context.Context, group, m
 	if err != nil {
 		return nil, err
 	}
-	account := reply.GetAccount()
+	return subscriptionAccountInfoToBiz(reply.GetAccount()), nil
+}
+
+// GetSubscriptionAccountByID materializes a single subscription account (with
+// secrets) by id for session-stickiness reuse. Returns (nil, nil) when the id
+// is unknown. It reuses the WithSecrets-preferred by-id RPC shared with the
+// credential/resolver path (see ChannelSubscriptionAccountStore).
+func (a *ChannelAdapter) GetSubscriptionAccountByID(ctx context.Context, accountID int64) (*relaybiz.SubscriptionAccount, error) {
+	reply, err := NewChannelSubscriptionAccountStore(a.client).getSubscriptionAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return subscriptionAccountInfoToBiz(reply.GetAccount()), nil
+}
+
+// subscriptionAccountInfoToBiz maps the shared proto account message into the
+// relay biz account. Returns nil for a nil info so callers surface a clean miss.
+func subscriptionAccountInfoToBiz(account *commonv1.SubscriptionAccountInfo) *relaybiz.SubscriptionAccount {
 	if account == nil {
-		return nil, nil
+		return nil
 	}
 	return &relaybiz.SubscriptionAccount{
 		ID:          account.GetId(),
@@ -94,7 +112,8 @@ func (a *ChannelAdapter) SelectSubscriptionAccount(ctx context.Context, group, m
 		AccessToken: account.GetAccessToken(),
 		AccountID:   account.GetAccountId(),
 		Fingerprint: account.GetFingerprint(),
-	}, nil
+		Concurrency: account.GetConcurrency(),
+	}
 }
 
 func (a *ChannelAdapter) SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*relaybiz.Channel, error) {

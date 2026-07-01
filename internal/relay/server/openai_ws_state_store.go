@@ -13,6 +13,7 @@ import (
 // openAIWSStickyKeyPrefix is the Redis key prefix for cross-process response->channel
 // sticky routing. Mirrors sub2api's sticky_session: prefix semantics.
 const openAIWSStickyKeyPrefix = "openai_ws_resp:"
+const openAIWSSessionStickyKeyPrefix = "openai_ws_session:"
 
 // openAIWSStickyTTL is the default binding TTL. A single Codex turn chain rarely
 // exceeds an hour, so this bounds memory across replicas.
@@ -52,7 +53,7 @@ func (s *openAIWSStickyStore) BindResponseChannel(ctx context.Context, group, re
 		ttl = openAIWSStickyTTL
 	}
 	expiresAt := time.Now().Add(ttl)
-	key := stickyHotKey(group, id)
+	key := stickyHotKey(openAIWSStickyKeyPrefix, group, id)
 	s.hotMu.Lock()
 	s.hot[key] = openAIWSStickyBinding{channelID: channelID, expiresAt: expiresAt}
 	s.maybeSweepLocked()
@@ -74,7 +75,7 @@ func (s *openAIWSStickyStore) LookupResponseChannel(ctx context.Context, group, 
 	if id == "" {
 		return 0
 	}
-	key := stickyHotKey(group, id)
+	key := stickyHotKey(openAIWSStickyKeyPrefix, group, id)
 	now := time.Now()
 	s.hotMu.RLock()
 	if b, ok := s.hot[key]; ok && now.Before(b.expiresAt) {
@@ -101,6 +102,108 @@ func (s *openAIWSStickyStore) LookupResponseChannel(ctx context.Context, group, 
 	return val
 }
 
+func (s *openAIWSStickyStore) BindSessionChannel(ctx context.Context, group, sessionHash string, channelID int64, ttl time.Duration) {
+	id := normalizeStickyResponseID(sessionHash)
+	if id == "" || channelID <= 0 {
+		return
+	}
+	if ttl <= 0 {
+		ttl = openAIWSStickyTTL
+	}
+	expiresAt := time.Now().Add(ttl)
+	key := stickyHotKey(openAIWSSessionStickyKeyPrefix, group, id)
+	s.hotMu.Lock()
+	s.hot[key] = openAIWSStickyBinding{channelID: channelID, expiresAt: expiresAt}
+	s.maybeSweepLocked()
+	s.hotMu.Unlock()
+
+	if s.rdb == nil {
+		return
+	}
+	rCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_ = s.rdb.Set(rCtx, stickySessionRedisKey(group, id), channelID, ttl).Err()
+}
+
+func (s *openAIWSStickyStore) LookupSessionChannel(ctx context.Context, group, sessionHash string) int64 {
+	id := normalizeStickyResponseID(sessionHash)
+	if id == "" {
+		return 0
+	}
+	key := stickyHotKey(openAIWSSessionStickyKeyPrefix, group, id)
+	now := time.Now()
+	s.hotMu.RLock()
+	if b, ok := s.hot[key]; ok && now.Before(b.expiresAt) {
+		ch := b.channelID
+		s.hotMu.RUnlock()
+		return ch
+	}
+	s.hotMu.RUnlock()
+
+	if s.rdb == nil {
+		return 0
+	}
+	rCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	val, err := s.rdb.Get(rCtx, stickySessionRedisKey(group, id)).Int64()
+	if err != nil || val <= 0 {
+		return 0
+	}
+	s.hotMu.Lock()
+	s.hot[key] = openAIWSStickyBinding{channelID: val, expiresAt: now.Add(5 * time.Minute)}
+	s.maybeSweepLocked()
+	s.hotMu.Unlock()
+	return val
+}
+
+func (s *openAIWSStickyStore) RefreshSessionTTL(ctx context.Context, group, sessionHash string, ttl time.Duration) bool {
+	id := normalizeStickyResponseID(sessionHash)
+	if id == "" {
+		return false
+	}
+	if ttl <= 0 {
+		ttl = openAIWSStickyTTL
+	}
+	key := stickyHotKey(openAIWSSessionStickyKeyPrefix, group, id)
+	now := time.Now()
+	refreshed := false
+	s.hotMu.Lock()
+	if b, ok := s.hot[key]; ok && now.Before(b.expiresAt) {
+		b.expiresAt = now.Add(ttl)
+		s.hot[key] = b
+		refreshed = true
+	}
+	s.hotMu.Unlock()
+
+	if s.rdb == nil {
+		return refreshed
+	}
+	rCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if ok, err := s.rdb.Expire(rCtx, stickySessionRedisKey(group, id), ttl).Result(); err == nil && ok {
+		return true
+	}
+	return refreshed
+}
+
+func (s *openAIWSStickyStore) DeleteSession(ctx context.Context, group, sessionHash string) {
+	id := normalizeStickyResponseID(sessionHash)
+	if id == "" {
+		return
+	}
+	key := stickyHotKey(openAIWSSessionStickyKeyPrefix, group, id)
+	s.hotMu.Lock()
+	delete(s.hot, key)
+	s.hotMu.Unlock()
+
+	if s.rdb == nil {
+		return
+	}
+	rCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_ = s.rdb.Del(rCtx, stickySessionRedisKey(group, id)).Err()
+}
+
 func (s *openAIWSStickyStore) maybeSweepLocked() {
 	now := time.Now()
 	if now.Sub(s.lastSweep) < time.Minute {
@@ -123,10 +226,14 @@ func normalizeStickyResponseID(responseID string) string {
 	return strings.TrimSpace(responseID)
 }
 
-func stickyHotKey(group, responseID string) string {
-	return fmt.Sprintf("%s:%s", group, responseID)
+func stickyHotKey(prefix, group, id string) string {
+	return fmt.Sprintf("%s%s:%s", prefix, group, id)
 }
 
 func stickyRedisKey(group, responseID string) string {
 	return openAIWSStickyKeyPrefix + group + ":" + responseID
+}
+
+func stickySessionRedisKey(group, sessionHash string) string {
+	return openAIWSSessionStickyKeyPrefix + group + ":" + sessionHash
 }

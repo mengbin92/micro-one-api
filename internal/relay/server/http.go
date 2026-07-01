@@ -30,6 +30,7 @@ import (
 	relaybiz "micro-one-api/internal/relay/biz"
 	relaycredential "micro-one-api/internal/relay/credential"
 	relayprovider "micro-one-api/internal/relay/provider"
+	subscriptionbiz "micro-one-api/internal/subscription/biz"
 )
 
 const postResponseWriteTimeout = 10 * time.Second
@@ -49,10 +50,19 @@ type HTTPServer struct {
 	wsPool          *openAIWSConnPool
 	wsSticky        *openAIWSStickyStore
 	wsPoolCfg       openAIWSPoolConfig
+	wsScheduler     *OpenAIWSRoutingScheduler
+	runtimeBlockCfg runtimeBlockConfig
 
 	// hybridAdaptorEnabled gates the new adaptor-based request path (plan §十).
 	// When false the gateway uses the legacy provider-factory path unchanged.
 	hybridAdaptorEnabled bool
+
+	// subscriptionSessionStickyEnabled gates cross-session subscription-account
+	// stickiness (docs #7) for the chat-completions and anthropic-messages
+	// entry points. When true, the adaptor loop binds session_hash to the
+	// account that served the request so subsequent turns reuse it. It is a
+	// no-op unless hybridAdaptorEnabled is also true.
+	subscriptionSessionStickyEnabled bool
 
 	// relayOrchestratorEnabled gates the handler -> orchestrator -> forwarder
 	// request path for /v1/chat/completions. It remains disabled by default so
@@ -69,6 +79,24 @@ type HTTPServer struct {
 	// upstream calls. It mirrors the provider-factory timeout so OAuth calls
 	// don't outlive the configured upstream timeout.
 	oauthHTTPClient *http.Client
+
+	// subscriptionUsecase is an optional business-layer hook used to enforce
+	// user subscription quota and record usage after successful commits.
+	subscriptionUsecase *subscriptionbiz.SubscriptionUsecase
+
+	accountQuotaRecorder subscriptionAccountQuotaRecorder
+	runtimeBlocker       relaybiz.RuntimeBlocker
+
+	// accountConcurrency enforces SubscriptionAccount.Concurrency per account
+	// within this process. Never nil after NewHTTPServer.
+	accountConcurrency *relaybiz.AccountConcurrencyLimiter
+}
+
+func (s *HTTPServer) Plan(ctx context.Context, req relaybiz.RelayRequest) (*relaybiz.RelayPlan, error) {
+	if s == nil || s.relayUsecase == nil {
+		return nil, fmt.Errorf("relay usecase unavailable")
+	}
+	return s.relayUsecase.Plan(ctx, req)
 }
 
 // openAIWSTimeouts holds parsed durations for the Responses WebSocket relay.
@@ -86,6 +114,15 @@ type openAIWSPoolConfig struct {
 	maxConnsPerChannel  int
 	failoverMaxSwitches int
 	stickyTTL           time.Duration
+}
+
+// runtimeBlockConfig holds per-status runtime cool-down durations. Zero values
+// fall back to the built-in defaults in runtimeBlockDuration.
+type runtimeBlockConfig struct {
+	rateLimited  time.Duration // 429
+	unauthorized time.Duration // 401
+	serverError  time.Duration // 5xx
+	overloaded   time.Duration // 529
 }
 
 type responseRoute struct {
@@ -109,14 +146,20 @@ func NewHTTPServer(
 	if len(logClients) > 0 {
 		logClient = logClients[0]
 	}
+	runtimeBlocker := relaybiz.NewMemoryRuntimeBlocker()
+	if relayUsecase != nil {
+		relayUsecase.SetRuntimeBlocker(runtimeBlocker)
+	}
 	return &HTTPServer{
-		identityClient:  identityClient,
-		channelClient:   channelClient,
-		billingClient:   billingClient,
-		logClient:       logClient,
-		providerFactory: providerFactory,
-		relayUsecase:    relayUsecase,
-		responseRoutes:  make(map[string]responseRoute),
+		identityClient:     identityClient,
+		channelClient:      channelClient,
+		billingClient:      billingClient,
+		logClient:          logClient,
+		providerFactory:    providerFactory,
+		relayUsecase:       relayUsecase,
+		responseRoutes:     make(map[string]responseRoute),
+		runtimeBlocker:     runtimeBlocker,
+		accountConcurrency: relaybiz.NewAccountConcurrencyLimiter(),
 	}
 }
 
@@ -129,6 +172,34 @@ func (s *HTTPServer) SetHybridAdaptorEnabled(enabled bool) {
 		return
 	}
 	s.hybridAdaptorEnabled = enabled
+}
+
+// SetSubscriptionSessionStickyEnabled turns on session -> subscription-account
+// stickiness for the chat-completions and anthropic-messages entry points. It
+// only takes effect when the hybrid adaptor path is enabled (bind happens in
+// the adaptor failover loop).
+func (s *HTTPServer) SetSubscriptionSessionStickyEnabled(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.subscriptionSessionStickyEnabled = enabled
+	s.syncSessionStickyToUsecase()
+}
+
+// syncSessionStickyToUsecase pushes the current sticky store, TTL and enable
+// flag into the biz RelayUsecase so its Plan can reuse the session-bound
+// account. It is called from both the store and the flag setters so the result
+// is consistent regardless of call order. A nil store is passed as a true nil
+// interface (not a typed-nil) so the usecase correctly treats stickiness as off.
+func (s *HTTPServer) syncSessionStickyToUsecase() {
+	if s == nil || s.relayUsecase == nil {
+		return
+	}
+	var store relaybiz.SessionAccountStore
+	if s.wsSticky != nil {
+		store = s.wsSticky
+	}
+	s.relayUsecase.SetSessionAccountStore(store, s.openAIWSStickyTTL(), s.subscriptionSessionStickyEnabled)
 }
 
 // SetRelayOrchestratorEnabled turns on the orchestrator-based chat route.
@@ -167,6 +238,35 @@ func (s *HTTPServer) SetOAuthHTTPClient(c *http.Client) {
 	s.oauthHTTPClient = c
 }
 
+// SetSubscriptionUsecase wires the optional subscription business hook.
+// When unset the relay gateway behaves exactly as before.
+func (s *HTTPServer) SetSubscriptionUsecase(uc *subscriptionbiz.SubscriptionUsecase) {
+	if s == nil {
+		return
+	}
+	s.subscriptionUsecase = uc
+}
+
+func (s *HTTPServer) SetSubscriptionAccountQuotaRecorder(recorder subscriptionAccountQuotaRecorder) {
+	if s == nil {
+		return
+	}
+	s.accountQuotaRecorder = recorder
+}
+
+func (s *HTTPServer) SetRuntimeBlocker(blocker relaybiz.RuntimeBlocker) {
+	if s == nil {
+		return
+	}
+	if blocker == nil {
+		blocker = relaybiz.NoopRuntimeBlocker{}
+	}
+	s.runtimeBlocker = blocker
+	if s.relayUsecase != nil {
+		s.relayUsecase.SetRuntimeBlocker(blocker)
+	}
+}
+
 // isSubscriptionChannel reports whether the channel type is a subscription
 // account handled by the OAuth adaptor layer. These types are only routed
 // through the adaptor when the hybrid feature flag is enabled.
@@ -176,6 +276,21 @@ func isSubscriptionChannel(t int32) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// SetRuntimeBlockDurations configures the per-status runtime cool-down applied
+// to a subscription account after a retryable upstream failure. Non-positive
+// values keep the built-in defaults (429=5s, 401=2m, 5xx=2m, 529=30s).
+func (s *HTTPServer) SetRuntimeBlockDurations(rateLimited, unauthorized, serverError, overloaded time.Duration) {
+	if s == nil {
+		return
+	}
+	s.runtimeBlockCfg = runtimeBlockConfig{
+		rateLimited:  rateLimited,
+		unauthorized: unauthorized,
+		serverError:  serverError,
+		overloaded:   overloaded,
 	}
 }
 
@@ -201,6 +316,10 @@ func (s *HTTPServer) SetOpenAIWSStickyStore(rdb *redis.Client) {
 		return
 	}
 	s.wsSticky = newOpenAIWSStickyStore(rdb)
+	s.wsScheduler = NewOpenAIWSRoutingScheduler(s)
+	// The same sticky store also backs session -> subscription-account
+	// stickiness in the biz planner (docs #7).
+	s.syncSessionStickyToUsecase()
 }
 
 // SetOpenAIWSConnPool configures the upstream connection pool. Must be called
@@ -402,8 +521,10 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	}
 
 	clientModel := extractRawModel(body)
+	previousResponseID := extractPreviousResponseID(body)
+	sessionHash := extractSessionHashFromRequest(r, body)
 	if clientModel == "" {
-		if previousRoute, ok := s.lookupResponseRoute(extractPreviousResponseID(body)); ok {
+		if previousRoute, ok := s.lookupResponseRouteWithSticky(r.Context(), token, previousResponseID); ok {
 			s.forwardResponsesToStoredRoute(w, r, upstreamPath, body, token, previousRoute, isRawStreamRequest(body))
 			return
 		}
@@ -411,10 +532,15 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
-		Token: token,
-		Model: clientModel,
-	})
+	var plan *relaybiz.RelayPlan
+	if s.wsScheduler != nil {
+		plan, err = s.wsScheduler.ResolvePlan(r.Context(), token, clientModel, previousResponseID, sessionHash)
+	} else {
+		plan, err = s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
+			Token: token,
+			Model: clientModel,
+		})
+	}
 	if err != nil {
 		s.handleRelayPlanError(w, err)
 		return
@@ -590,6 +716,14 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if s.wsScheduler != nil {
+		s.wsScheduler.BindSession(r.Context(), &relaybiz.RelayPlan{
+			Auth:          plan.Auth,
+			Channel:       responseChannel,
+			ResolvedModel: plan.ResolvedModel,
+			Account:       plan.Account,
+		}, sessionHash)
+	}
 	if upstreamResp.Body == nil {
 		return
 	}
@@ -1024,8 +1158,15 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Read the original body so session_hash (which the typed struct does not
+	// carry) survives for session stickiness; then decode from those bytes.
+	originalBody, err := io.ReadAll(io.LimitReader(r.Body, 10*1024*1024))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
 	var req relayprovider.ChatCompletionsRequest
-	if err := decodeJSON(r.Body, &req); err != nil {
+	if err := sonic.Unmarshal(originalBody, &req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1035,10 +1176,16 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	sessionHash := ""
+	if s.subscriptionSessionStickyEnabled {
+		sessionHash = extractSessionHashFromRequest(r, originalBody)
+	}
+
 	// Delegate auth, model validation, model mapping, and channel selection to biz layer
 	plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
-		Token: token,
-		Model: req.Model,
+		Token:       token,
+		Model:       req.Model,
+		SessionHash: sessionHash,
 	})
 	if err != nil {
 		s.handleRelayPlanError(w, err)
@@ -1055,7 +1202,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// reassigned to the resolved model only further below). Reconstruct the raw
 		// body from the decoded request since the original body was consumed.
 		rawBody, _ := sonic.Marshal(req)
-		s.handleChatCompletionsViaAdaptor(w, r, plan, req.Model, rawBody)
+		s.handleChatCompletionsViaAdaptor(w, r, plan, req.Model, rawBody, sessionHash)
 		return
 	}
 
@@ -1760,9 +1907,44 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 		return stderrors.New(billingErrorMessage(resp, "commit quota failed"))
 	}
 	if len(details) > 0 {
-		s.recordChannelUsage(ctx, details[0].ChannelID, actualTokens)
+		detail := details[0]
+		s.recordChannelUsage(ctx, detail.ChannelID, actualTokens)
+		s.recordSubscriptionUsage(ctx, detail.UserID, actualTokens)
 	}
 	return nil
+}
+
+func (s *HTTPServer) recordSubscriptionUsage(ctx context.Context, userID int64, quota int64) {
+	if s.subscriptionUsecase == nil || userID <= 0 || quota <= 0 {
+		metrics.SubscriptionUsageRecordsTotal.WithLabelValues("skipped").Inc()
+		return
+	}
+	costUSD := quotaToUSD(quota)
+	if costUSD <= 0 {
+		metrics.SubscriptionUsageRecordsTotal.WithLabelValues("skipped").Inc()
+		return
+	}
+	subscriptionCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+	if err := s.subscriptionUsecase.RecordUsage(subscriptionCtx, userID, costUSD); err != nil {
+		metrics.SubscriptionUsageRecordsTotal.WithLabelValues("error").Inc()
+		if applogger.Log != nil {
+			applogger.Log.Warn("failed to record subscription usage", zap.Int64("user_id", userID), zap.Float64("cost_usd", costUSD), zap.Error(err))
+		}
+		return
+	}
+	metrics.SubscriptionUsageRecordsTotal.WithLabelValues("success").Inc()
+}
+
+func quotaToUSD(quota int64) float64 {
+	if quota <= 0 {
+		return 0
+	}
+	perUSD := quotaPerUSDFromEnv()
+	if perUSD <= 0 {
+		perUSD = defaultQuotaPerUSD
+	}
+	return float64(quota) / float64(perUSD)
 }
 
 func (s *HTTPServer) recordChannelUsage(ctx context.Context, channelID int64, quota int64) {
