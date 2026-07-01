@@ -46,6 +46,22 @@ var RelaySubscriptionFailoverTotal = prometheus.NewCounterVec(
 	[]string{"reason", "result"},
 )
 
+// RelaySubscriptionStickyTotal counts cross-session subscription-account
+// stickiness outcomes. result: "hit" (served account == bound account),
+// "rebind" (served a different account than bound / previously unbound),
+// "miss" (no binding for the session), "reused_unschedulable" (a binding
+// existed but the account failed validation and normal selection was used).
+// The prompt-cache reuse rate is hit / (hit + rebind + miss) per platform.
+var RelaySubscriptionStickyTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "relay",
+		Name:      "subscription_sticky_total",
+		Help:      "Cross-session subscription account stickiness outcomes",
+	},
+	[]string{"result", "platform"},
+)
+
 // RelayRuntimeBlocksTotal counts runtime account block operations.
 var RelayRuntimeBlocksTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{

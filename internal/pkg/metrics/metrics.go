@@ -247,6 +247,7 @@ func init() {
 		SubscriptionUsageRecordsTotal,
 		RelaySubscriptionAdaptorRequestsTotal,
 		RelaySubscriptionFailoverTotal,
+		RelaySubscriptionStickyTotal,
 		RelayRuntimeBlocksTotal,
 		RelayRuntimeBlockActive,
 		RelayAccountPoolChecksTotal,

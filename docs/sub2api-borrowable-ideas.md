@@ -6,7 +6,8 @@
 
 > **实施状态(2026-07-01 更新)**:三项 🔴 高价值·低成本已全部实现并测试通过 ——
 > #1 同账号重试、#2 账号级并发强制、#3 529 独立冷却。详见各条目下的「✅ 已实现」说明。
-> 其余 🟡/🟢 项仍为待办。
+> **#7 跨会话账号粘性** 已实现(Chat + Anthropic 入口,独立开关默认关;Responses/WS 沿用既有粘性)——
+> 详见 #7 条目下的「✅ 已实现」。其余 🟡/🟢 项(#4、#5、#6)仍为待办。
 
 ## 现状澄清(避免重复造轮子)
 
@@ -27,7 +28,8 @@
 - `SubscriptionAccount.Concurrency`(`internal/channel/biz/channel.go:109`)已一路存到 DB
   (`internal/channel/data/data.go:97`),但调度时**没有信号量真正强制**。
 
-**缺失**:账号级并发强制、账号级会话窗口、账号级计费倍率、负载感知/排队、跨会话账号粘性。
+**缺失**:账号级会话窗口、账号级计费倍率、负载感知/排队。
+(账号级并发强制 #2、跨会话账号粘性 #7 已实现。)
 
 ---
 
@@ -100,20 +102,45 @@
 - **现状**:本项目选不到就 fallback/报错,无排队。
 - **收益**:高并发平滑削峰,而非直接 502。成本较高,账号池紧张时才做。
 
-#### 7. 跨会话账号粘性(会话→账号)
+#### 7. 跨会话账号粘性(会话→账号) ✅ 已实现
 
 - **现状**:已有 response→channel sticky,缺"同一对话尽量固定同一订阅账号"。
 - **sub2api 做法**:`sessionHash → accountID` 缓存。
 - **收益**:对 Codex/Claude 有上下文缓存的上游,粘性显著提升 prompt cache 命中、降成本。
 - **落点**:复用现成 sticky 存储(`config.go:229` StickyTTL + Redis),
   key 从 responseID 扩展到 sessionHash。
+- **✅ 已实现(本期范围:Chat + Anthropic 入口)**:
+  - **候选选择在 biz**:`RelayRequest.SessionHash` 贯穿;`RelayUsecase.Plan` 在解析 auth 得到
+    group 后、订阅选择前,经 `SessionAccountStore.LookupSessionChannel(group, sessionHash)`
+    查绑定账号,`selectStickySubscriptionAccount` 用 `GetSubscriptionAccountByID` 物化并校验
+    (启用状态 / 同 group / platform+model 匹配 / 非 runtime-blocked;**不校验并发**),命中即用并刷新 TTL,
+    未命中回退普通优先级选择。见 `internal/relay/biz/relay.go`。
+  - **bind/rebind 在 server**:`handleSubscriptionAccountViaAdaptor` 失败转移循环在**成功(2xx)** 的
+    实际服务账号上 `bindSubscriptionSession`(`internal/relay/server/http_adaptor.go`);同账号重试 +
+    跨账号 failover 后只绑定一次,故 sticky 账号并发满时自动 failover 到兄弟并**重绑**、不冷却。
+  - **入口取值**:chat/anthropic 先读原始 body 再 typed decode,用现成
+    `extractSessionHashFromRequest`(先 header `X-Session-Hash`/`OpenAI-Session-Hash`,再 body `session_hash`)。
+  - **复用现成存储**:复用 `openAIWSStickyStore`(session→id,内存热缓存 + Redis 兜底,key 前缀
+    `openai_ws_session:`);TTL 复用 `openai_ws.sticky_ttl`(默认 1h);Redis 挂掉时 lookup 返 0 → 静默按 miss。
+  - **独立开关默认关**:`session_sticky.enabled`(`config.go` / `wire_gen.go` /
+    `SetSubscriptionSessionStickyEnabled`),仅在 `hybrid_adaptor.enabled` 打开时生效。
+  - **收益指标**:`RelaySubscriptionStickyTotal{result,platform}`,`result ∈ {hit, rebind, miss,
+    reused_unschedulable}`;**复用率 = hit / (hit + rebind + miss)** 按 platform(claude/codex)拆分,
+    用于评估上游 prompt cache 收益。
+  - **说明 / 后续**:Responses/WS 入口**沿用其既有 session→channel 粘性**,未统一进新的
+    schedulability-aware 账号粘性(避免动已上线关键路径);待指标验证上游确有 prompt cache 收益后,
+    再作为第二步统一。
+  - 测试:`internal/relay/biz/relay_test.go`(`TestRelayUsecasePlan_Sticky*`)、
+    `internal/relay/server/http_adaptor_test.go`(`TestSubscriptionSticky_*`)。
 
 ---
 
 ## 建议优先级
 
 - ~~**先做 #1、#2、#3**~~ ✅ 已全部完成(2026-07-01)。
-- **#7(会话粘性)** 对降本最直接,但需评估上游是否真有 prompt cache 收益 —— 建议下一步。
+- ~~**#7(会话粘性)**~~ ✅ 已完成 Chat + Anthropic 入口(2026-07-01)。
+  下一步:用 `RelaySubscriptionStickyTotal` 复用率验证上游 prompt cache 收益;
+  若有收益,再把 Responses/WS 入口统一进新的账号粘性(第二步)。
 - **#4 / #5** 视商业化精细度决定。
 - **#6** 视账号池规模决定。
 

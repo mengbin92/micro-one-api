@@ -50,3 +50,12 @@ hybrid_adaptor:
     server_error_duration: 2m   # cool-down after an upstream 5xx
     overloaded_duration: 30s    # cool-down after an upstream 529 (Overloaded)
     active_gauge_interval: 30s   # how often the Redis blocker scans for the active-block gauge
+
+# session_sticky binds a conversation (session_hash) to the subscription
+# account that served it so subsequent turns reuse the same upstream account
+# (prompt-cache reuse, docs #7). Applies to the chat-completions and
+# anthropic-messages entry points; the Responses/WS path keeps its own sticky.
+# Disabled by default; only effective when hybrid_adaptor is enabled. The
+# binding TTL reuses openai_ws.sticky_ttl (default 1h).
+session_sticky:
+  enabled: false

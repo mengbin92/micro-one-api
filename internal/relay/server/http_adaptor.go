@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -36,8 +37,9 @@ func (s *HTTPServer) handleChatCompletionsViaAdaptor(
 	plan *relaybiz.RelayPlan,
 	clientModel string,
 	rawBody []byte,
+	sessionHash string,
 ) {
-	s.handleSubscriptionAccountViaAdaptor(w, r, plan, clientModel, rawBody, relayadaptor.FormatOpenAIChatCompletions)
+	s.handleSubscriptionAccountViaAdaptor(w, r, plan, clientModel, rawBody, relayadaptor.FormatOpenAIChatCompletions, sessionHash)
 }
 
 func (s *HTTPServer) handleAnthropicMessagesViaAdaptor(
@@ -46,8 +48,9 @@ func (s *HTTPServer) handleAnthropicMessagesViaAdaptor(
 	plan *relaybiz.RelayPlan,
 	clientModel string,
 	rawBody []byte,
+	sessionHash string,
 ) {
-	s.handleSubscriptionAccountViaAdaptor(w, r, plan, clientModel, rawBody, relayadaptor.FormatAnthropicMessages)
+	s.handleSubscriptionAccountViaAdaptor(w, r, plan, clientModel, rawBody, relayadaptor.FormatAnthropicMessages, sessionHash)
 }
 
 func (s *HTTPServer) handleResponsesCreateLikeViaAdaptor(
@@ -57,7 +60,10 @@ func (s *HTTPServer) handleResponsesCreateLikeViaAdaptor(
 	clientModel string,
 	rawBody []byte,
 ) {
-	s.handleSubscriptionAccountViaAdaptor(w, r, plan, clientModel, rawBody, relayadaptor.FormatOpenAIResponses)
+	// The Responses/WS path keeps its existing session -> channel stickiness
+	// (wsScheduler); it does not participate in the new account-stickiness bind
+	// (empty sessionHash), so the two mechanisms don't double-bind.
+	s.handleSubscriptionAccountViaAdaptor(w, r, plan, clientModel, rawBody, relayadaptor.FormatOpenAIResponses, "")
 }
 
 func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
@@ -67,6 +73,7 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	clientModel string,
 	rawBody []byte,
 	inbound relayadaptor.Format,
+	sessionHash string,
 ) {
 	if plan == nil || plan.Channel == nil {
 		s.writeError(w, http.StatusInternalServerError, "no channel selected")
@@ -104,6 +111,12 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 				continue
 			}
 			metrics.RelaySubscriptionFailoverTotal.WithLabelValues(subscriptionRetryReason(result), "exhausted").Inc()
+		}
+		// Bind the conversation to the account that actually served it (success
+		// only), so the next turn reuses it for prompt-cache hits. A failover
+		// switch naturally rebinds to the sibling that succeeded.
+		if subscriptionAttemptSucceeded(result) {
+			s.bindSubscriptionSession(r.Context(), plan.Auth.Group, sessionHash, current)
 		}
 		result.write(w)
 		return
@@ -503,6 +516,40 @@ func (s *HTTPServer) subscriptionFailoverMaxAttempts() int {
 		return 3
 	}
 	return s.wsPoolCfg.failoverMaxSwitches + 1
+}
+
+// subscriptionAttemptSucceeded reports whether a terminal adaptor result was a
+// successful upstream response (2xx, not a retryable/failed attempt). Only these
+// bind a session -> account stickiness record.
+func subscriptionAttemptSucceeded(result subscriptionAdaptorResult) bool {
+	return result.err == nil && !result.retryable && result.statusCode >= 200 && result.statusCode < 300
+}
+
+// bindSubscriptionSession records that this conversation was served by the given
+// subscription account so the next turn reuses it (docs #7). It is a no-op
+// unless session stickiness is enabled with a sticky store and a non-empty
+// session hash. The prior binding is read to classify the outcome: "hit" when
+// the served account was already the bound one, "rebind" otherwise (including
+// the first bind of a session).
+func (s *HTTPServer) bindSubscriptionSession(ctx context.Context, group, sessionHash string, served *relaybiz.RelayPlan) {
+	if s == nil || !s.subscriptionSessionStickyEnabled || s.wsSticky == nil {
+		return
+	}
+	sessionHash = strings.TrimSpace(sessionHash)
+	if sessionHash == "" {
+		return
+	}
+	servedID := subscriptionAccountIDFromPlan(served)
+	if servedID <= 0 {
+		return
+	}
+	prior := s.wsSticky.LookupSessionChannel(ctx, group, sessionHash)
+	s.wsSticky.BindSessionChannel(ctx, group, sessionHash, servedID, s.openAIWSStickyTTL())
+	result := "rebind"
+	if prior == servedID {
+		result = "hit"
+	}
+	metrics.RelaySubscriptionStickyTotal.WithLabelValues(result, subscriptionMetricPlatform(served)).Inc()
 }
 
 func (s *HTTPServer) blockRuntimeAccount(ctx context.Context, accountID int64, statusCode int, err error) {

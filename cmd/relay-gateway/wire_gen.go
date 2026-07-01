@@ -327,6 +327,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
 	httpServer.SetHybridAdaptorEnabled(cfg.HybridAdaptor.GetHybridAdaptorEnabled())
+	httpServer.SetSubscriptionSessionStickyEnabled(cfg.SessionSticky.GetSessionStickyEnabled())
 	httpServer.SetRelayOrchestratorEnabled(cfg.RelayOrchestrator.GetRelayOrchestratorEnabled())
 	httpServer.SetSubscriptionAccountResolver(accountResolver)
 	httpServer.SetOAuthHTTPClient(oauthHTTPClient)

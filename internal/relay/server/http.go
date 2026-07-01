@@ -57,6 +57,13 @@ type HTTPServer struct {
 	// When false the gateway uses the legacy provider-factory path unchanged.
 	hybridAdaptorEnabled bool
 
+	// subscriptionSessionStickyEnabled gates cross-session subscription-account
+	// stickiness (docs #7) for the chat-completions and anthropic-messages
+	// entry points. When true, the adaptor loop binds session_hash to the
+	// account that served the request so subsequent turns reuse it. It is a
+	// no-op unless hybridAdaptorEnabled is also true.
+	subscriptionSessionStickyEnabled bool
+
 	// relayOrchestratorEnabled gates the handler -> orchestrator -> forwarder
 	// request path for /v1/chat/completions. It remains disabled by default so
 	// the legacy billing path is preserved unless explicitly enabled.
@@ -165,6 +172,34 @@ func (s *HTTPServer) SetHybridAdaptorEnabled(enabled bool) {
 		return
 	}
 	s.hybridAdaptorEnabled = enabled
+}
+
+// SetSubscriptionSessionStickyEnabled turns on session -> subscription-account
+// stickiness for the chat-completions and anthropic-messages entry points. It
+// only takes effect when the hybrid adaptor path is enabled (bind happens in
+// the adaptor failover loop).
+func (s *HTTPServer) SetSubscriptionSessionStickyEnabled(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.subscriptionSessionStickyEnabled = enabled
+	s.syncSessionStickyToUsecase()
+}
+
+// syncSessionStickyToUsecase pushes the current sticky store, TTL and enable
+// flag into the biz RelayUsecase so its Plan can reuse the session-bound
+// account. It is called from both the store and the flag setters so the result
+// is consistent regardless of call order. A nil store is passed as a true nil
+// interface (not a typed-nil) so the usecase correctly treats stickiness as off.
+func (s *HTTPServer) syncSessionStickyToUsecase() {
+	if s == nil || s.relayUsecase == nil {
+		return
+	}
+	var store relaybiz.SessionAccountStore
+	if s.wsSticky != nil {
+		store = s.wsSticky
+	}
+	s.relayUsecase.SetSessionAccountStore(store, s.openAIWSStickyTTL(), s.subscriptionSessionStickyEnabled)
 }
 
 // SetRelayOrchestratorEnabled turns on the orchestrator-based chat route.
@@ -282,6 +317,9 @@ func (s *HTTPServer) SetOpenAIWSStickyStore(rdb *redis.Client) {
 	}
 	s.wsSticky = newOpenAIWSStickyStore(rdb)
 	s.wsScheduler = NewOpenAIWSRoutingScheduler(s)
+	// The same sticky store also backs session -> subscription-account
+	// stickiness in the biz planner (docs #7).
+	s.syncSessionStickyToUsecase()
 }
 
 // SetOpenAIWSConnPool configures the upstream connection pool. Must be called
@@ -1120,8 +1158,15 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Read the original body so session_hash (which the typed struct does not
+	// carry) survives for session stickiness; then decode from those bytes.
+	originalBody, err := io.ReadAll(io.LimitReader(r.Body, 10*1024*1024))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
 	var req relayprovider.ChatCompletionsRequest
-	if err := decodeJSON(r.Body, &req); err != nil {
+	if err := sonic.Unmarshal(originalBody, &req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -1131,10 +1176,16 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	sessionHash := ""
+	if s.subscriptionSessionStickyEnabled {
+		sessionHash = extractSessionHashFromRequest(r, originalBody)
+	}
+
 	// Delegate auth, model validation, model mapping, and channel selection to biz layer
 	plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
-		Token: token,
-		Model: req.Model,
+		Token:       token,
+		Model:       req.Model,
+		SessionHash: sessionHash,
 	})
 	if err != nil {
 		s.handleRelayPlanError(w, err)
@@ -1151,7 +1202,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// reassigned to the resolved model only further below). Reconstruct the raw
 		// body from the decoded request since the original body was consumed.
 		rawBody, _ := sonic.Marshal(req)
-		s.handleChatCompletionsViaAdaptor(w, r, plan, req.Model, rawBody)
+		s.handleChatCompletionsViaAdaptor(w, r, plan, req.Model, rawBody, sessionHash)
 		return
 	}
 

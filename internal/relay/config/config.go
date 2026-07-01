@@ -16,6 +16,7 @@ type Config struct {
 	Redis             RedisConfig             `json:"redis" yaml:"redis"`
 	OpenAIWS          OpenAIWSConfig          `json:"openai_ws" yaml:"openai_ws"`
 	HybridAdaptor     HybridAdaptorConfig     `json:"hybrid_adaptor" yaml:"hybrid_adaptor"`
+	SessionSticky     SessionStickyConfig     `json:"session_sticky" yaml:"session_sticky"`
 	Subscription      SubscriptionConfig      `json:"subscription" yaml:"subscription"`
 	RelayOrchestrator RelayOrchestratorConfig `json:"relay_orchestrator" yaml:"relay_orchestrator"`
 	ChannelCache      ChannelCacheConfig      `json:"channel_cache" yaml:"channel_cache"`
@@ -32,6 +33,23 @@ type SubscriptionConfig struct {
 }
 
 func (c SubscriptionConfig) GetSubscriptionEnabled() bool { return c.Enabled }
+
+// SessionStickyConfig gates cross-session subscription-account stickiness
+// (bug docs/sub2api-borrowable-ideas.md #7): binding a conversation
+// (session_hash) to the subscription account that served it so subsequent
+// turns reuse the same upstream account and hit its prompt cache. Disabled by
+// default. It is a routing-behavior change kept behind its own switch so it can
+// be rolled out / rolled back independently of the hybrid adaptor path; it only
+// takes effect when the hybrid adaptor path is enabled (bind happens in the
+// adaptor failover loop). The binding TTL reuses OpenAIWSConfig.StickyTTL.
+type SessionStickyConfig struct {
+	// Enabled turns on session -> subscription-account stickiness for the
+	// chat-completions and anthropic-messages entry points.
+	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+// GetSessionStickyEnabled reports whether session-account stickiness is enabled.
+func (c SessionStickyConfig) GetSessionStickyEnabled() bool { return c.Enabled }
 
 // RelayOrchestratorConfig controls the handler -> orchestrator -> forwarder
 // route for chat completions. Disabled by default.

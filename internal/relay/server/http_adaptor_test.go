@@ -60,7 +60,7 @@ func TestHandleChatCompletionsViaAdaptor_UsesFallbackMetadata(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
-	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`), "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -117,7 +117,7 @@ func TestHandleChatCompletionsViaAdaptor_PlanAccountWinsOverResolver(t *testing.
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
-	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`), "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -192,7 +192,7 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOnRetryableUpstreamStatus(t *te
 	failoverBefore := testutil.ToFloat64(metrics.RelaySubscriptionFailoverTotal.WithLabelValues("5xx", "switched"))
 	blockBefore := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("5xx"))
 
-	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`), "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -254,7 +254,7 @@ func TestHandleChatCompletionsViaAdaptor_Passthrough429(t *testing.T) {
 	rec := httptest.NewRecorder()
 	passthroughBefore := testutil.ToFloat64(metrics.RelayUpstreamPassthroughTotal.WithLabelValues("RetryablePassthrough", "429"))
 
-	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`), "")
 
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -384,7 +384,7 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOn429(t *testing.T) {
 	failoverBefore := testutil.ToFloat64(metrics.RelaySubscriptionFailoverTotal.WithLabelValues("429", "switched"))
 	blockBefore := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("429"))
 
-	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`), "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -441,7 +441,7 @@ func TestHandleChatCompletionsViaAdaptor_RecordsCodexQuotaSnapshot(t *testing.T)
 	recordedBefore := testutil.ToFloat64(metrics.RelayCodexQuotaSnapshotsTotal.WithLabelValues("recorded"))
 	pausedBefore := testutil.ToFloat64(metrics.RelayCodexQuotaSnapshotsTotal.WithLabelValues("auto_paused"))
 
-	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`), "")
 
 	if recorder.recordedAccountID != 12 {
 		t.Fatalf("recorded account = %d, want 12", recorder.recordedAccountID)
@@ -506,7 +506,7 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOn529(t *testing.T) {
 	failoverBefore := testutil.ToFloat64(metrics.RelaySubscriptionFailoverTotal.WithLabelValues("529", "switched"))
 	blockBefore := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("529"))
 
-	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(body))
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(body), "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -557,7 +557,7 @@ func TestHandleChatCompletionsViaAdaptor_SameAccountRetry(t *testing.T) {
 	rec := httptest.NewRecorder()
 	retriedBefore := testutil.ToFloat64(metrics.RelaySubscriptionFailoverTotal.WithLabelValues("same_account", "retried"))
 
-	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(body))
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(body), "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -626,7 +626,7 @@ func TestHandleChatCompletionsViaAdaptor_ConcurrencyFailover(t *testing.T) {
 	switchBefore := testutil.ToFloat64(metrics.RelaySubscriptionFailoverTotal.WithLabelValues("concurrency", "switched"))
 	blockBefore := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("concurrency"))
 
-	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(body))
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(body), "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -639,6 +639,170 @@ func TestHandleChatCompletionsViaAdaptor_ConcurrencyFailover(t *testing.T) {
 	}
 	if delta := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("concurrency")) - blockBefore; delta != 0 {
 		t.Fatalf("a concurrency-full account must NOT be cooled down, block delta = %v", delta)
+	}
+}
+
+// --- session -> subscription-account stickiness bind/rebind (docs #7) ---
+
+func stickyCodexPlan(accountID int64, concurrency int32) *relaybiz.RelayPlan {
+	return &relaybiz.RelayPlan{
+		Auth:    &relaybiz.AuthSnapshot{UserID: 42, Group: "default"},
+		Channel: &relaybiz.Channel{ID: accountID, Type: relayprovider.ChannelTypeCodexOAuth, BaseURL: "https://example.invalid", Group: "default"},
+		Account: &relaybiz.SubscriptionAccount{
+			ID: accountID, Platform: "codex", AccountType: "oauth", Status: 1, BaseURL: "https://example.invalid",
+			Group: "default", Models: []string{"gpt-5"}, AccessToken: "tok", AccountID: "acct", Concurrency: concurrency,
+		},
+		ResolvedModel: "gpt-5",
+	}
+}
+
+func stickyOKClient() *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return newJSONResponse(`{"id":"r","object":"response","model":"gpt-5","status":"completed","output":[{"type":"message","id":"m","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`), nil
+	})}
+}
+
+func TestSubscriptionSticky_BindOnFirstSuccess(t *testing.T) {
+	relayUsecase := relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, &adaptorFailoverChannelClient{}, nil, nil)
+	httpServer := NewHTTPServer(nil, nil, nil, nil, relayUsecase)
+	httpServer.SetHybridAdaptorEnabled(true)
+	httpServer.SetOpenAIWSStickyStore(nil)
+	httpServer.SetSubscriptionSessionStickyEnabled(true)
+	httpServer.SetOAuthHTTPClient(stickyOKClient())
+
+	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	rebindBefore := testutil.ToFloat64(metrics.RelaySubscriptionStickyTotal.WithLabelValues("rebind", "codex"))
+
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, stickyCodexPlan(42, 0), "gpt-5", []byte(body), "conv-1")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if got := httpServer.wsSticky.LookupSessionChannel(context.Background(), "default", "conv-1"); got != 42 {
+		t.Fatalf("bound account = %d, want 42", got)
+	}
+	if delta := testutil.ToFloat64(metrics.RelaySubscriptionStickyTotal.WithLabelValues("rebind", "codex")) - rebindBefore; delta != 1 {
+		t.Fatalf("rebind metric delta = %v, want 1 (first bind)", delta)
+	}
+}
+
+func TestSubscriptionSticky_ReuseHitSameAccount(t *testing.T) {
+	relayUsecase := relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, &adaptorFailoverChannelClient{}, nil, nil)
+	httpServer := NewHTTPServer(nil, nil, nil, nil, relayUsecase)
+	httpServer.SetHybridAdaptorEnabled(true)
+	httpServer.SetOpenAIWSStickyStore(nil)
+	httpServer.SetSubscriptionSessionStickyEnabled(true)
+	httpServer.SetOAuthHTTPClient(stickyOKClient())
+	httpServer.wsSticky.BindSessionChannel(context.Background(), "default", "conv-2", 42, time.Hour)
+
+	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	hitBefore := testutil.ToFloat64(metrics.RelaySubscriptionStickyTotal.WithLabelValues("hit", "codex"))
+
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, stickyCodexPlan(42, 0), "gpt-5", []byte(body), "conv-2")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if delta := testutil.ToFloat64(metrics.RelaySubscriptionStickyTotal.WithLabelValues("hit", "codex")) - hitBefore; delta != 1 {
+		t.Fatalf("hit metric delta = %v, want 1", delta)
+	}
+	if got := httpServer.wsSticky.LookupSessionChannel(context.Background(), "default", "conv-2"); got != 42 {
+		t.Fatalf("bound account = %d, want 42", got)
+	}
+}
+
+func TestSubscriptionSticky_StickyConcurrencyFull_FailoverRebinds(t *testing.T) {
+	selector := &adaptorFailoverChannelClient{accounts: []*relaybiz.SubscriptionAccount{
+		{
+			ID: 43, Name: "second", Platform: "codex", AccountType: "oauth", Status: 1,
+			BaseURL: "https://example.invalid", Group: "default", Models: []string{"gpt-5"},
+			AccessToken: "second-token", AccountID: "second-account",
+		},
+	}}
+	relayUsecase := relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, selector, nil, nil)
+	httpServer := NewHTTPServer(nil, nil, nil, nil, relayUsecase)
+	httpServer.SetHybridAdaptorEnabled(true)
+	httpServer.wsPoolCfg.failoverMaxSwitches = 1
+	httpServer.SetOpenAIWSStickyStore(nil)
+	httpServer.SetSubscriptionSessionStickyEnabled(true)
+	httpServer.SetOAuthHTTPClient(stickyOKClient())
+
+	// Bind the session to account 42, then saturate 42 so the sticky account is
+	// concurrency-full and the request fails over to the sibling.
+	httpServer.wsSticky.BindSessionChannel(context.Background(), "default", "conv-3", 42, time.Hour)
+	release, ok := httpServer.accountConcurrency.TryAcquire(42, 1)
+	if !ok {
+		t.Fatal("precondition: first acquire must succeed")
+	}
+	defer release()
+
+	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	rebindBefore := testutil.ToFloat64(metrics.RelaySubscriptionStickyTotal.WithLabelValues("rebind", "codex"))
+	blockBefore := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("concurrency"))
+
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, stickyCodexPlan(42, 1), "gpt-5", []byte(body), "conv-3")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if got := httpServer.wsSticky.LookupSessionChannel(context.Background(), "default", "conv-3"); got != 43 {
+		t.Fatalf("session must be rebound to the serving sibling, bound = %d, want 43", got)
+	}
+	if delta := testutil.ToFloat64(metrics.RelaySubscriptionStickyTotal.WithLabelValues("rebind", "codex")) - rebindBefore; delta != 1 {
+		t.Fatalf("rebind metric delta = %v, want 1", delta)
+	}
+	if delta := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("concurrency")) - blockBefore; delta != 0 {
+		t.Fatalf("a concurrency-full sticky account must NOT be cooled down, block delta = %v", delta)
+	}
+}
+
+func TestSubscriptionSticky_DoesNotBindOnUpstreamError(t *testing.T) {
+	relayUsecase := relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, &adaptorFailoverChannelClient{}, nil, nil)
+	httpServer := NewHTTPServer(nil, nil, nil, nil, relayUsecase)
+	httpServer.SetHybridAdaptorEnabled(true)
+	httpServer.wsPoolCfg.failoverMaxSwitches = 1
+	httpServer.SetOpenAIWSStickyStore(nil)
+	httpServer.SetSubscriptionSessionStickyEnabled(true)
+	httpServer.SetOAuthHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return newStatusResponse(http.StatusTooManyRequests, `{"error":{"message":"rate limited"}}`), nil
+	})})
+
+	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, stickyCodexPlan(42, 0), "gpt-5", []byte(body), "conv-4")
+
+	if got := httpServer.wsSticky.LookupSessionChannel(context.Background(), "default", "conv-4"); got != 0 {
+		t.Fatalf("must not bind a session on an upstream error, bound = %d", got)
+	}
+}
+
+func TestSubscriptionSticky_Disabled_NoBind(t *testing.T) {
+	relayUsecase := relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, &adaptorFailoverChannelClient{}, nil, nil)
+	httpServer := NewHTTPServer(nil, nil, nil, nil, relayUsecase)
+	httpServer.SetHybridAdaptorEnabled(true)
+	httpServer.SetOpenAIWSStickyStore(nil)
+	// Sticky flag intentionally left off.
+	httpServer.SetOAuthHTTPClient(stickyOKClient())
+
+	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, stickyCodexPlan(42, 0), "gpt-5", []byte(body), "conv-5")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if got := httpServer.wsSticky.LookupSessionChannel(context.Background(), "default", "conv-5"); got != 0 {
+		t.Fatalf("no binding must be created when the feature is disabled, bound = %d", got)
 	}
 }
 
@@ -668,6 +832,15 @@ func (c *adaptorFailoverChannelClient) SelectSubscriptionAccount(_ context.Conte
 	account := c.accounts[c.calls]
 	c.calls++
 	return account, nil
+}
+
+func (c *adaptorFailoverChannelClient) GetSubscriptionAccountByID(_ context.Context, accountID int64) (*relaybiz.SubscriptionAccount, error) {
+	for _, a := range c.accounts {
+		if a != nil && a.ID == accountID {
+			return a, nil
+		}
+	}
+	return nil, nil
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

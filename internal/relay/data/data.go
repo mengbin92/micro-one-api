@@ -99,6 +99,14 @@ func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, mo
 	}, nil
 }
 
+func (c *channelClient) GetSubscriptionAccountByID(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error) {
+	reply, err := NewChannelSubscriptionAccountStore(c.client).getSubscriptionAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return subscriptionAccountInfoToBiz(reply.GetAccount()), nil
+}
+
 func (c *channelClient) SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*biz.Channel, error) {
 	resp, err := c.client.SelectChannel(ctx, &channelv1.SelectChannelRequest{
 		Group:                group,
