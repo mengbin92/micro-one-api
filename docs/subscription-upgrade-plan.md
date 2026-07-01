@@ -539,6 +539,18 @@ go func(ctx context.Context, userID, groupID int64, costUSD float64) {
 | §G1 | OAuth 授权码流程 | ~900 LoC | **位置调整**:从新建 subscription 包改为 channel-service 内部(见 §6) |
 | §H1 | Prometheus 指标 | ~300 LoC | 与 §3 metrics 合并暴露 |
 
+### 5.3 当前落地状态
+
+§5 已在 relay-gateway 的 Responses 路径落地,本阶段不新增数据库迁移:
+
+- **多层调度入口**:`internal/relay/server/response_scheduler.go`。调度顺序为 `previous_response_id` 精确链路 → `session_hash` 粘性会话 → 原 `RelayUsecase.Plan`。
+- **Previous-Response**:`internal/relay/server/response_route_scheduler.go` 统一本地 route 与 Redis sticky lookup,并拒绝 `msg_` 形态的 message id,避免把 message id 误当 response id。
+- **Sticky Session**:`internal/relay/server/openai_ws_state_store.go` 新增独立 `openai_ws_session:` namespace,避免与 `openai_ws_resp:` response sticky key 冲突;支持 Bind / Lookup / RefreshTTL / Delete。
+- **HTTP/WS 契约**:Responses HTTP body 与 WS 首帧支持 `session_hash` / `sessionHash`;同时支持 `X-Session-Hash` / `OpenAI-Session-Hash` header。header 优先于 body。
+- **接入点**:`POST /v1/responses` HTTP/SSE 与 Responses WebSocket 共用同一 scheduler;命中 session sticky 时复用已绑定 channel,miss 时走原 normal plan 并在成功响应后绑定。
+- **权限边界**:session sticky 命中后仍校验 token 的 allowed models;未配置 sticky store 时保留原 `RelayUsecase.Plan` 行为。
+- **已覆盖测试**:`response_scheduler_test.go`、`response_route_scheduler_test.go`、`openai_ws_pool_test.go` 覆盖 fallback 顺序、message id 拒绝、session TTL/删除/续期和模型白名单。
+
 ---
 
 ## 6. OAuth 授权码流程(整合修正)
@@ -790,7 +802,7 @@ hybrid_adaptor:
 - [x] §2: QuotaChecker + ExpiryChecker
 - [x] §3: 业务层 HTTP + 用量回写接入
 - [x] §4: TokenRefreshService
-- [ ] §5: 多层 Scheduler
+- [x] §5: 多层 Scheduler
 - [ ] §6: AccountPool + RuntimeBlocker + FailoverLoop
 - [ ] §7: Codex 5h/7d + ErrorPassthrough + OAuth 整合
 - [ ] §8: Prometheus 指标 + 集成收尾

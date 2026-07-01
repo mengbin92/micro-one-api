@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- relay-gateway Responses 路径新增 §5 多层调度:优先复用 `previous_response_id` route,其次复用 `session_hash` sticky channel,最后回退到原 `RelayUsecase.Plan`。
+- Responses HTTP/WS sticky session 支持 `session_hash` / `sessionHash` body 字段和 `X-Session-Hash` / `OpenAI-Session-Hash` header,并在 Redis sticky store 中使用独立 `openai_ws_session:` namespace。
+
+### Fixed
+- `previous_response_id` 解析拒绝 `msg_` message id,避免把 message id 误当 Responses route id。
+
 ## [0.3.1] - 2026-06-29
 
 ### Added

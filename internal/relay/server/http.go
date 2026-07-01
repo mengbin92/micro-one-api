@@ -50,6 +50,7 @@ type HTTPServer struct {
 	wsPool          *openAIWSConnPool
 	wsSticky        *openAIWSStickyStore
 	wsPoolCfg       openAIWSPoolConfig
+	wsScheduler     *OpenAIWSRoutingScheduler
 
 	// hybridAdaptorEnabled gates the new adaptor-based request path (plan §十).
 	// When false the gateway uses the legacy provider-factory path unchanged.
@@ -74,6 +75,13 @@ type HTTPServer struct {
 	// subscriptionUsecase is an optional business-layer hook used to enforce
 	// user subscription quota and record usage after successful commits.
 	subscriptionUsecase *subscriptionbiz.SubscriptionUsecase
+}
+
+func (s *HTTPServer) Plan(ctx context.Context, req relaybiz.RelayRequest) (*relaybiz.RelayPlan, error) {
+	if s == nil || s.relayUsecase == nil {
+		return nil, fmt.Errorf("relay usecase unavailable")
+	}
+	return s.relayUsecase.Plan(ctx, req)
 }
 
 // openAIWSTimeouts holds parsed durations for the Responses WebSocket relay.
@@ -215,6 +223,7 @@ func (s *HTTPServer) SetOpenAIWSStickyStore(rdb *redis.Client) {
 		return
 	}
 	s.wsSticky = newOpenAIWSStickyStore(rdb)
+	s.wsScheduler = NewOpenAIWSRoutingScheduler(s)
 }
 
 // SetOpenAIWSConnPool configures the upstream connection pool. Must be called
@@ -416,8 +425,10 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	}
 
 	clientModel := extractRawModel(body)
+	previousResponseID := extractPreviousResponseID(body)
+	sessionHash := extractSessionHashFromRequest(r, body)
 	if clientModel == "" {
-		if previousRoute, ok := s.lookupResponseRoute(extractPreviousResponseID(body)); ok {
+		if previousRoute, ok := s.lookupResponseRouteWithSticky(r.Context(), token, previousResponseID); ok {
 			s.forwardResponsesToStoredRoute(w, r, upstreamPath, body, token, previousRoute, isRawStreamRequest(body))
 			return
 		}
@@ -425,10 +436,15 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	plan, err := s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
-		Token: token,
-		Model: clientModel,
-	})
+	var plan *relaybiz.RelayPlan
+	if s.wsScheduler != nil {
+		plan, err = s.wsScheduler.ResolvePlan(r.Context(), token, clientModel, previousResponseID, sessionHash)
+	} else {
+		plan, err = s.relayUsecase.Plan(r.Context(), relaybiz.RelayRequest{
+			Token: token,
+			Model: clientModel,
+		})
+	}
 	if err != nil {
 		s.handleRelayPlanError(w, err)
 		return
@@ -604,6 +620,14 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if s.wsScheduler != nil {
+		s.wsScheduler.BindSession(r.Context(), &relaybiz.RelayPlan{
+			Auth:          plan.Auth,
+			Channel:       responseChannel,
+			ResolvedModel: plan.ResolvedModel,
+			Account:       plan.Account,
+		}, sessionHash)
+	}
 	if upstreamResp.Body == nil {
 		return
 	}

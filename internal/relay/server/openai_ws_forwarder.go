@@ -91,36 +91,16 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	// Authenticate + plan (model mapping, channel selection). The first frame
 	// is JSON-rewritten with the resolved upstream model before dialing.
 	//
-	// Sticky routing: if the client opens the connection with a
-	// previous_response_id that maps to a stored route (created by an earlier
-	// turn on this server), reuse that channel so the upstream session chain is
-	// preserved. This mirrors the HTTP path's forwardResponsesToStoredRoute. If
-	// no stored route matches, fall through to normal channel selection.
 	var plan *relaybiz.RelayPlan
 	previousResponseID := extractOpenAIWSPreviousResponseIDFromRequest(firstMessage)
-	if previousResponseID != "" {
-		// Try the local in-memory route first, then fall back to the
-		// cross-process Redis-backed sticky store so multi-replica deployments
-		// can resume a session chain started on a different gateway pod.
-		if route, ok := s.lookupResponseRoute(previousResponseID); ok ||
-			(s.wsSticky != nil && s.lookupWSStickyRoute(ctx, token, previousResponseID, &route)) {
-			authSnapshot, authErr := s.getAuthSnapshot(ctx, token)
-			if authErr == nil && (route.UserID == 0 || route.UserID == authSnapshot.UserId) {
-				plan = &relaybiz.RelayPlan{
-					Auth: &relaybiz.AuthSnapshot{
-						UserID:        authSnapshot.UserId,
-						TokenID:       authSnapshot.TokenId,
-						TokenName:     authSnapshot.TokenName,
-						Group:         authSnapshot.Group,
-						AllowedModels: authSnapshot.AllowedModels,
-						UserEnabled:   authSnapshot.UserEnabled,
-						TokenEnabled:  authSnapshot.TokenEnabled,
-					},
-					Channel:       &route.Channel,
-					ResolvedModel: routeResolvedModel(route),
-				}
-			}
+	sessionHash := extractOpenAIWSSessionHashFromRequest(r, firstMessage)
+	if s.wsScheduler != nil {
+		scheduledPlan, planErr := s.wsScheduler.ResolvePlan(ctx, token, clientModel, previousResponseID, sessionHash)
+		if planErr != nil {
+			s.closeOpenAIWSWithPlanError(wsConn, planErr)
+			return
 		}
+		plan = scheduledPlan
 	}
 	if plan == nil {
 		normalPlan, planErr := s.relayUsecase.Plan(ctx, relaybiz.RelayRequest{
@@ -132,6 +112,9 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 			return
 		}
 		plan = normalPlan
+		if s.wsScheduler != nil {
+			s.wsScheduler.BindSession(ctx, plan, sessionHash)
+		}
 	}
 
 	rewrittenFirstMessage := rewriteOpenAIWSModel(firstMessage, clientModel, plan.ResolvedModel)
@@ -151,7 +134,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	// relay error before any data reached the client) we switch to a different
 	// channel and retry, up to the configured switch limit.
 	maxSwitches := s.openAIWSFailoverMaxSwitches()
-	s.runResponsesWSRelayWithFailover(ctx, wsConn, clientFrameConn, r, token, clientModel, plan, rewrittenFirstMessage, reservation, requestID, maxSwitches)
+	s.runResponsesWSRelayWithFailover(ctx, wsConn, clientFrameConn, r, token, clientModel, sessionHash, plan, rewrittenFirstMessage, reservation, requestID, maxSwitches)
 }
 
 // buildOpenAIWSUpstreamTarget computes the upstream Responses WebSocket URL and
@@ -357,7 +340,31 @@ func extractOpenAIWSPreviousResponseIDFromRequest(payload []byte) string {
 	}
 	node, _ := sonic.Get(payload, "previous_response_id")
 	rid, _ := node.String()
-	return strings.TrimSpace(rid)
+	rid = strings.TrimSpace(rid)
+	if !isOpenAIResponseID(rid) {
+		return ""
+	}
+	return rid
+}
+
+func extractOpenAIWSSessionHashFromRequest(r *http.Request, payload []byte) string {
+	if r != nil {
+		for _, key := range []string{"X-Session-Hash", "OpenAI-Session-Hash"} {
+			if value := strings.TrimSpace(r.Header.Get(key)); value != "" {
+				return value
+			}
+		}
+	}
+	if len(payload) == 0 {
+		return ""
+	}
+	for _, key := range []string{"session_hash", "sessionHash"} {
+		node, _ := sonic.Get(payload, key)
+		if value, _ := node.String(); strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // openAIWSFailoverMaxSwitches returns the configured failover switch limit
@@ -393,6 +400,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 	r *http.Request,
 	token string,
 	clientModel string,
+	sessionHash string,
 	plan *relaybiz.RelayPlan,
 	rewrittenFirstMessage []byte,
 	reservation *billingv1.ReserveQuotaResponse,
@@ -482,6 +490,9 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				if s.wsSticky != nil {
 					s.wsSticky.BindResponseChannel(ctx, plan.Auth.Group, turn.requestID, currentChannel.ID, s.openAIWSStickyTTL())
 				}
+			}
+			if s.wsSticky != nil && strings.TrimSpace(sessionHash) != "" {
+				s.wsSticky.BindSessionChannel(ctx, plan.Auth.Group, sessionHash, currentChannel.ID, s.openAIWSStickyTTL())
 			}
 			turnCommits++
 		}
@@ -609,6 +620,42 @@ func (s *HTTPServer) lookupWSStickyRoute(ctx context.Context, token, responseID 
 		return false
 	}
 	channelID := s.wsSticky.LookupResponseChannel(ctx, authSnapshot.Group, responseID)
+	if channelID <= 0 {
+		return false
+	}
+	chInfo, err := s.channelClient.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: channelID})
+	if err != nil || chInfo == nil || chInfo.Channel == nil {
+		return false
+	}
+	ch := relaybiz.Channel{
+		ID:       chInfo.Channel.Id,
+		Type:     chInfo.Channel.Type,
+		Name:     chInfo.Channel.Name,
+		Status:   chInfo.Channel.Status,
+		BaseURL:  chInfo.Channel.BaseUrl,
+		Group:    chInfo.Channel.Group,
+		Priority: chInfo.Channel.Priority,
+		Key:      chInfo.Channel.Key,
+	}
+	if chInfo.Channel.Config != nil {
+		ch.Config = relaybiz.ChannelConfig{APIVersion: chInfo.Channel.Config.ApiVersion}
+	}
+	*route = responseRoute{
+		Channel: ch,
+		UserID:  authSnapshot.UserId,
+	}
+	return true
+}
+
+func (s *HTTPServer) lookupWSStickySessionRoute(ctx context.Context, token, sessionHash string, route *responseRoute) bool {
+	if s == nil || s.wsSticky == nil || route == nil {
+		return false
+	}
+	authSnapshot, err := s.getAuthSnapshot(ctx, token)
+	if err != nil {
+		return false
+	}
+	channelID := s.wsSticky.LookupSessionChannel(ctx, authSnapshot.Group, sessionHash)
 	if channelID <= 0 {
 		return false
 	}

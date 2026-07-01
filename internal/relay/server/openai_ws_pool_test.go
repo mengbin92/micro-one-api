@@ -207,6 +207,39 @@ func TestStickyStoreExpiresBinding(t *testing.T) {
 	}
 }
 
+func TestStickySessionStoreInMemoryOnly(t *testing.T) {
+	store := newOpenAIWSStickyStore(nil)
+	ctx := context.Background()
+
+	store.BindSessionChannel(ctx, "default", "session-a", 42, time.Hour)
+
+	got := store.LookupSessionChannel(ctx, "default", "session-a")
+	if got != 42 {
+		t.Errorf("expected channel 42, got %d", got)
+	}
+
+	if ok := store.RefreshSessionTTL(ctx, "default", "session-a", time.Hour); !ok {
+		t.Fatal("expected RefreshSessionTTL to refresh existing binding")
+	}
+
+	store.DeleteSession(ctx, "default", "session-a")
+	if got := store.LookupSessionChannel(ctx, "default", "session-a"); got != 0 {
+		t.Errorf("expected deleted binding to return 0, got %d", got)
+	}
+}
+
+func TestStickySessionStoreExpiresBinding(t *testing.T) {
+	store := newOpenAIWSStickyStore(nil)
+	ctx := context.Background()
+
+	store.BindSessionChannel(ctx, "default", "session-short", 7, 1*time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
+
+	if got := store.LookupSessionChannel(ctx, "default", "session-short"); got != 0 {
+		t.Errorf("expected expired binding to return 0, got %d", got)
+	}
+}
+
 // TestFailoverMaxSwitchesDefault verifies the config-driven failover limit
 // accessor returns the documented default when no config is set.
 func TestFailoverMaxSwitchesDefault(t *testing.T) {
