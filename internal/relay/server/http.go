@@ -51,6 +51,7 @@ type HTTPServer struct {
 	wsSticky        *openAIWSStickyStore
 	wsPoolCfg       openAIWSPoolConfig
 	wsScheduler     *OpenAIWSRoutingScheduler
+	runtimeBlockCfg runtimeBlockConfig
 
 	// hybridAdaptorEnabled gates the new adaptor-based request path (plan §十).
 	// When false the gateway uses the legacy provider-factory path unchanged.
@@ -102,6 +103,14 @@ type openAIWSPoolConfig struct {
 	maxConnsPerChannel  int
 	failoverMaxSwitches int
 	stickyTTL           time.Duration
+}
+
+// runtimeBlockConfig holds per-status runtime cool-down durations. Zero values
+// fall back to the built-in defaults in runtimeBlockDuration.
+type runtimeBlockConfig struct {
+	rateLimited  time.Duration // 429
+	unauthorized time.Duration // 401
+	serverError  time.Duration // 5xx
 }
 
 type responseRoute struct {
@@ -226,6 +235,20 @@ func isSubscriptionChannel(t int32) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// SetRuntimeBlockDurations configures the per-status runtime cool-down applied
+// to a subscription account after a retryable upstream failure. Non-positive
+// values keep the built-in defaults (429=5s, 401=2m, 5xx=2m).
+func (s *HTTPServer) SetRuntimeBlockDurations(rateLimited, unauthorized, serverError time.Duration) {
+	if s == nil {
+		return
+	}
+	s.runtimeBlockCfg = runtimeBlockConfig{
+		rateLimited:  rateLimited,
+		unauthorized: unauthorized,
+		serverError:  serverError,
 	}
 }
 

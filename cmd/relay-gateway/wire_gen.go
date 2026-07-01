@@ -26,6 +26,7 @@ import (
 	"micro-one-api/internal/pkg/events"
 	appgrpc "micro-one-api/internal/pkg/grpc"
 	applogger "micro-one-api/internal/pkg/logger"
+	"micro-one-api/internal/pkg/metrics"
 	appmiddleware "micro-one-api/internal/pkg/middleware"
 	appregistry "micro-one-api/internal/pkg/registry"
 	apptimeout "micro-one-api/internal/pkg/timeout"
@@ -330,6 +331,24 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	httpServer.SetSubscriptionAccountResolver(accountResolver)
 	httpServer.SetOAuthHTTPClient(oauthHTTPClient)
 	httpServer.SetSubscriptionAccountQuotaRecorder(accountLookup)
+	// When Redis is configured, back the runtime blocker with Redis so all relay
+	// replicas share account cool-down state (a 429/5xx seen by one replica cools
+	// the account down for every replica). Without Redis the blocker stays
+	// in-memory, which is correct for single-replica deployments.
+	httpServer.SetRuntimeBlockDurations(
+		parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetRateLimitedDuration(), 5*time.Second),
+		parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetUnauthorizedDuration(), 2*time.Minute),
+		parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetServerErrorDuration(), 2*time.Minute),
+	)
+	stopBlockerReporter := func() {}
+	if redisClient != nil {
+		redisBlocker := relaybiz.NewRedisRuntimeBlocker(redisClient)
+		httpServer.SetRuntimeBlocker(redisBlocker)
+		stopBlockerReporter = redisBlocker.StartActiveGaugeReporter(
+			parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetActiveGaugeInterval(), 30*time.Second),
+			func(v float64) { metrics.RelayRuntimeBlockActive.Set(v) },
+		)
+	}
 	var routeMiddleware []func(http.Handler) http.Handler
 	if cfg.Subscription.GetSubscriptionEnabled() {
 		subscriptionRepo, subErr := subscriptiondata.NewRepositoryFromEnv(os.Getenv("SQL_DRIVER"))
@@ -398,6 +417,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		if refreshTask != nil {
 			refreshTask.Stop()
 		}
+		stopBlockerReporter()
 		_ = authCache.Close()
 		if closer, ok := eventBus.(interface{ Close() error }); ok {
 			_ = closer.Close()

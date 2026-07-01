@@ -104,6 +104,59 @@ type HybridAdaptorConfig struct {
 
 	// TokenRefresh controls the enhanced background token refresh service.
 	TokenRefresh TokenRefreshConfig `json:"token_refresh" yaml:"token_refresh"`
+
+	// RuntimeBlock controls how long a subscription account is cooled down at
+	// runtime after a retryable upstream failure, per status class.
+	RuntimeBlock RuntimeBlockConfig `json:"runtime_block" yaml:"runtime_block"`
+}
+
+// RuntimeBlockConfig tunes the relay-gateway runtime blocker (the short-lived
+// per-account cool-down applied on retryable upstream failures during
+// subscription-account failover). All durations are Go duration strings; empty
+// values fall back to the built-in defaults.
+type RuntimeBlockConfig struct {
+	// RateLimitedDuration cools an account down after a 429. Default 5s.
+	RateLimitedDuration string `json:"rate_limited_duration" yaml:"rate_limited_duration"`
+	// UnauthorizedDuration cools an account down after a 401. Default 2m.
+	UnauthorizedDuration string `json:"unauthorized_duration" yaml:"unauthorized_duration"`
+	// ServerErrorDuration cools an account down after a 5xx. Default 2m.
+	ServerErrorDuration string `json:"server_error_duration" yaml:"server_error_duration"`
+	// ActiveGaugeInterval is how often the Redis blocker scans for live blocks
+	// to publish the active-block gauge. Default 30s. Only used when the runtime
+	// blocker is Redis-backed.
+	ActiveGaugeInterval string `json:"active_gauge_interval" yaml:"active_gauge_interval"`
+}
+
+// GetRateLimitedDuration returns the 429 cool-down with default.
+func (c RuntimeBlockConfig) GetRateLimitedDuration() string {
+	if c.RateLimitedDuration == "" {
+		return "5s"
+	}
+	return c.RateLimitedDuration
+}
+
+// GetUnauthorizedDuration returns the 401 cool-down with default.
+func (c RuntimeBlockConfig) GetUnauthorizedDuration() string {
+	if c.UnauthorizedDuration == "" {
+		return "2m"
+	}
+	return c.UnauthorizedDuration
+}
+
+// GetServerErrorDuration returns the 5xx cool-down with default.
+func (c RuntimeBlockConfig) GetServerErrorDuration() string {
+	if c.ServerErrorDuration == "" {
+		return "2m"
+	}
+	return c.ServerErrorDuration
+}
+
+// GetActiveGaugeInterval returns the active-block scan interval with default.
+func (c RuntimeBlockConfig) GetActiveGaugeInterval() string {
+	if c.ActiveGaugeInterval == "" {
+		return "30s"
+	}
+	return c.ActiveGaugeInterval
 }
 
 type TokenRefreshConfig struct {

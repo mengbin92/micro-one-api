@@ -13,6 +13,11 @@ const (
 	KindNonRetryable           Kind = "NonRetryable"
 	KindCyberBlocked           Kind = "CyberBlocked"
 	KindPassthrough            Kind = "Passthrough"
+	// KindRetryablePassthrough covers upstream 429s: we first try to fail over
+	// to another subscription account (the upstream account is rate-limited, a
+	// sibling account may still have quota), and only pass the original 429
+	// (with Retry-After) back to the client once every candidate is exhausted.
+	KindRetryablePassthrough Kind = "RetryablePassthrough"
 )
 
 type UpstreamError struct {
@@ -29,7 +34,9 @@ func Classify(statusCode int, body []byte) UpstreamError {
 		return err
 	}
 	switch {
-	case statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden || statusCode == http.StatusTooManyRequests:
+	case statusCode == http.StatusTooManyRequests:
+		err.Kind = KindRetryablePassthrough
+	case statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden:
 		err.Kind = KindPassthrough
 	case statusCode >= 500:
 		err.Kind = KindRetryable
@@ -42,9 +49,9 @@ func Classify(statusCode int, body []byte) UpstreamError {
 }
 
 func (e UpstreamError) RetryableAcrossAccounts() bool {
-	return e.Kind == KindRetryable
+	return e.Kind == KindRetryable || e.Kind == KindRetryablePassthrough
 }
 
 func (e UpstreamError) ShouldPassthrough() bool {
-	return e.Kind == KindPassthrough || e.Kind == KindCyberBlocked
+	return e.Kind == KindPassthrough || e.Kind == KindCyberBlocked || e.Kind == KindRetryablePassthrough
 }

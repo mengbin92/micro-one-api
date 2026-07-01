@@ -42,3 +42,10 @@ hybrid_adaptor:
   identity_ttl: 24h
   refresh_interval: 10m
   refresh_lookahead: 24h
+  # runtime_block tunes the per-account cool-down applied during
+  # subscription-account failover. Empty/omitted fields use the defaults shown.
+  runtime_block:
+    rate_limited_duration: 5s   # cool-down after an upstream 429
+    unauthorized_duration: 2m   # cool-down after an upstream 401
+    server_error_duration: 2m   # cool-down after an upstream 5xx
+    active_gauge_interval: 30s   # how often the Redis blocker scans for the active-block gauge

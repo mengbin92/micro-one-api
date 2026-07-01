@@ -401,7 +401,7 @@ func (s *HTTPServer) blockRuntimeAccount(ctx context.Context, accountID int64, s
 	if s == nil || s.runtimeBlocker == nil || accountID <= 0 {
 		return
 	}
-	duration := runtimeBlockDuration(statusCode)
+	duration := s.runtimeBlockDuration(statusCode)
 	if duration <= 0 {
 		return
 	}
@@ -513,6 +513,9 @@ func subscriptionAdaptorMetricResult(result subscriptionAdaptorResult) string {
 }
 
 func subscriptionRetryReason(result subscriptionAdaptorResult) string {
+	if result.statusCode == http.StatusTooManyRequests {
+		return "429"
+	}
 	if result.statusCode > 0 {
 		return statusClass(result.statusCode)
 	}
@@ -537,16 +540,31 @@ func statusClass(statusCode int) string {
 	}
 }
 
-func runtimeBlockDuration(statusCode int) time.Duration {
-	switch statusCode {
-	case http.StatusTooManyRequests:
-		return 5 * time.Second
-	case http.StatusUnauthorized:
-		return 2 * time.Minute
-	default:
-		if statusCode >= 500 {
-			return 2 * time.Minute
+// runtimeBlockDuration returns how long to cool an account down for a given
+// upstream status, honouring the configured overrides (SetRuntimeBlockDurations)
+// and falling back to the built-in defaults (429=5s, 401=2m, 5xx=2m). Other
+// statuses are not blocked.
+func (s *HTTPServer) runtimeBlockDuration(statusCode int) time.Duration {
+	var cfg runtimeBlockConfig
+	if s != nil {
+		cfg = s.runtimeBlockCfg
+	}
+	switch {
+	case statusCode == http.StatusTooManyRequests:
+		if cfg.rateLimited > 0 {
+			return cfg.rateLimited
 		}
+		return 5 * time.Second
+	case statusCode == http.StatusUnauthorized:
+		if cfg.unauthorized > 0 {
+			return cfg.unauthorized
+		}
+		return 2 * time.Minute
+	case statusCode >= 500:
+		if cfg.serverError > 0 {
+			return cfg.serverError
+		}
+		return 2 * time.Minute
 	}
 	return 0
 }
