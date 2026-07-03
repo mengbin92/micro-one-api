@@ -10,7 +10,7 @@ Micro-One-API 由 9 个微服务组成：
 | admin-api | 3000 | 9000 | 管理端 BFF |
 | identity-service | 8001 | 9001 | 用户认证与鉴权 |
 | channel-service | 8002 | 9002 | 渠道管理与路由 |
-| billing-service | 8004 | 9004 | 配额账务 |
+| billing-service | 8004 | 9004 | 钱包账务 |
 | config-service | 8005 | 9005 | 动态配置管理 |
 | log-service | 8006 | 9006 | 日志聚合 |
 | monitor-worker | 8007 | 9007 | 监控与告警 |
@@ -285,7 +285,7 @@ curl -X POST http://localhost:8004/v1/reconciliation
 
 返回 JSON 包含：
 - `expired_cleaned` — 清理的过期预扣数量
-- `account_inconsistencies` — 配额不一致的账户列表
+- `account_inconsistencies` — 余额不一致的账户列表
 - `total_accounts` — 总账户数
 - `total_reservations` — 当前活跃预抽数
 

@@ -242,8 +242,8 @@ export function DashboardPage() {
           <MetricCardsSkeleton />
         ) : (
           <>
-            <MetricCard title="剩余额度" value={formatMoney(balance)} subtitle="可用余额" tone="orange" icon={WalletCards} />
-            <MetricCard title="已用额度" value={`$${formatAmount(usedAmount, 4)}`} subtitle="累计消耗" tone="purple" icon={Sparkles} />
+            <MetricCard title="钱包余额" value={formatMoney(balance)} subtitle="可用余额" tone="orange" icon={WalletCards} />
+            <MetricCard title="已用金额" value={`$${formatAmount(usedAmount, 4)}`} subtitle="累计消耗" tone="purple" icon={Sparkles} />
             <MetricCard title="调用次数" value={requestCount.toLocaleString()} subtitle={`今日 ${todayRequests.toLocaleString()}`} tone="green" icon={BarChart3} />
             <MetricCard title="API 密钥" value={tokenCount.toLocaleString()} subtitle={`可用 ${activeTokenCount.toLocaleString()}`} tone="blue" icon={KeyRound} />
             <MetricCard title="今日消耗" value={`$${formatAmount(todayAmount, 4)}`} subtitle={`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)} / 缓存 ${compactNumber(todayCacheReadTokens)}`} tone="amber" icon={Box} />

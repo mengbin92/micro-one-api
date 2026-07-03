@@ -1,8 +1,8 @@
 # micro-one-api
 
-`micro-one-api` 是一个基于 Go Kratos 的多服务 AI API 网关与管理系统。项目参考了 [one-api](https://github.com/songquanpeng/one-api) 的多渠道 OpenAI API 分发思路，也参考了 [sub2api](https://github.com/Wei-Shaw/sub2api) 对订阅额度、账号池、限流和用量管理的设计方向，并将核心能力拆分为更清晰的微服务边界。
+`micro-one-api` 是一个基于 Go Kratos 的多服务 AI API 网关与管理系统。项目参考了 [one-api](https://github.com/songquanpeng/one-api) 的多渠道 OpenAI API 分发思路，也参考了 [sub2api](https://github.com/Wei-Shaw/sub2api) 对订阅额度窗口、账号池、限流和用量管理的设计方向，并将核心能力拆分为更清晰的微服务边界。
 
-本项目面向需要统一管理多个上游模型供应商、内部额度、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
+本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
 > 📣 **最新发布**:[v0.2.7 发布公告](./docs/release-v0.2.7.md)(对账与渠道健康 Prometheus 指标) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.2.7)
 
@@ -11,11 +11,11 @@
 - OpenAI 兼容 API 网关：支持 `/v1/chat/completions`、`/v1/models`、`/v1/responses` 以及 embeddings、audio、image、moderations 等 raw relay 路由。
 - 多渠道模型分发：支持渠道优先级、同优先级负载均衡、禁用渠道过滤、模型白名单和模型映射。
 - 多供应商适配：支持 OpenAI-compatible 渠道，并包含 Anthropic、Gemini、Azure、VoyageAI 等 provider 适配器；DeepSeek、Moonshot、Groq、Tongyi、OpenRouter、SiliconFlow、Ollama、Doubao 等按 OpenAI-compatible 方式转发。
-- 用户与令牌管理：支持用户鉴权、令牌状态、过期时间、额度检查、模型权限和用户角色控制。
-- 配额与账务：提供额度预扣、释放、结算、ledger、兑换码、支付订单和用量记录等能力。
+- 用户与令牌管理：支持用户鉴权、令牌状态、过期时间、余额检查、模型权限和用户角色控制。
+- 钱包与账务：提供金额预扣、释放、结算、ledger、兑换码、支付订单和用量记录等能力。
 - 成本与利润分析：`billing_ledgers` 记录上游成本，账本聚合支持收入/成本/毛利维度，可按模型、渠道、用户、Token、时间下钻。
 - 多维用量聚合：用量统计改为 SQL `GROUP BY` 聚合（按用户/渠道/模型/Token/分组/小时|日），告别 admin 抽样估算。
-- 对账与告警：`RunReconciliation` 覆盖账户额度、渠道用量、ledger/log 双写一致性；差异通过 `notify-worker` 投递通知（可配置收件人）。
+- 对账与告警：`RunReconciliation` 覆盖账户余额、渠道用量、ledger/log 双写一致性；差异通过 `notify-worker` 投递通知（可配置收件人）。
 - 成本健康 dashboard：管理后台展示成本/毛利/渠道余额健康指标；用量统计与账本支持缓存 token（`cache_read_tokens`）与命中率展示。
 - 管理后台：提供 React/Vite 前端和 `admin-api` BFF，用于管理用户、令牌、渠道、订单、兑换码、用量和系统配置。
 - 监控与日志：提供健康检查、Prometheus metrics、业务日志聚合、监控 worker 和通知 worker；对账任务与渠道健康探测暴露运行次数、耗时和失败原因指标。
@@ -27,11 +27,11 @@
 
 | 服务 | 职责 |
 |------|------|
-| `relay-gateway` | OpenAI 兼容 HTTP 网关，负责鉴权、选路、额度预扣、上游转发和响应透传 |
+| `relay-gateway` | OpenAI 兼容 HTTP 网关，负责鉴权、选路、金额预扣、上游转发和响应透传 |
 | `admin-api` | 管理端 BFF，并托管或代理管理前端静态资源 |
 | `identity-service` | 用户、角色、登录鉴权、Token 校验与权限判断 |
 | `channel-service` | 渠道、模型、分组、优先级和可用渠道选择 |
-| `billing-service` | 额度、账务流水、兑换码、支付订单和扣费结算 |
+| `billing-service` | 钱包余额、账务流水、兑换码、支付订单和扣费结算 |
 | `config-service` | 动态配置管理 |
 | `log-service` | 业务日志写入、查询和删除代理 |
 | `monitor-worker` | 监控任务与告警触发 |
@@ -220,7 +220,7 @@ make test-e2e
 
 ## 免责声明
 
-本项目仅作为 AI API 网关、渠道调度、额度管理和微服务架构实践工具提供。使用者应自行确保部署、配置、账号来源、API Key 来源、调用内容、支付能力和数据处理行为符合适用法律法规及第三方服务条款。
+本项目仅作为 AI API 网关、渠道调度、钱包账务管理和微服务架构实践工具提供。使用者应自行确保部署、配置、账号来源、API Key 来源、调用内容、支付能力和数据处理行为符合适用法律法规及第三方服务条款。
 
 项目维护者不提供任何第三方模型服务、订阅账号、API Key 或绕过访问限制的能力，也不对使用者因滥用、违规接入、账号封禁、额度损失、数据泄露、业务中断或其他后果承担责任。
 
@@ -229,7 +229,7 @@ make test-e2e
 ## 致谢
 
 - [one-api](https://github.com/songquanpeng/one-api)：提供了多渠道 OpenAI API 管理与分发系统的设计参考。
-- [sub2api](https://github.com/Wei-Shaw/sub2api)：提供了订阅转 API、账号池、额度分发和限流管理等场景参考。
+- [sub2api](https://github.com/Wei-Shaw/sub2api)：提供了订阅转 API、账号池、订阅额度窗口和限流管理等场景参考。
 - [go-kratos/kratos](https://github.com/go-kratos/kratos)：提供了微服务框架与工程实践基础。
 
 ## 许可证

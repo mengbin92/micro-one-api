@@ -69,7 +69,7 @@ function numberValue(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function formatQuota(value: unknown) {
+function formatAmount(value: unknown) {
   return formatAmountUnits(numberValue(value));
 }
 
@@ -115,7 +115,7 @@ function formatAsset(order: PaymentOrder) {
   if (getAssetType(order) === 'subscription') {
     return `订阅分组 #${getGroupID(order) || '-'}`;
   }
-  return formatQuota(getAssetAmount(order));
+  return formatAmount(getAssetAmount(order));
 }
 
 function getMoneyCents(order: PaymentOrder) {

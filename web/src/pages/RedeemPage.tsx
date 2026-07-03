@@ -63,7 +63,7 @@ export function RedeemPage() {
             </div>
             <h2 className="text-3xl font-black tracking-normal text-slate-950 dark:text-white">兑换码充值</h2>
             <p className="mt-2 max-w-xl text-sm font-medium text-slate-500 dark:text-slate-400">
-              输入管理员发放的兑换码，成功后额度会立即入账。
+              输入管理员发放的兑换码，成功后金额会立即入账。
             </p>
 
             <div className="mt-8 space-y-3">

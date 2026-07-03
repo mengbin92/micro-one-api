@@ -40,12 +40,15 @@ Follow-up items:
    terminology for wallet flows, such as invitation bonus env vars and
    `quota_per_unit` pricing option names. New primary names use amount
    terminology; old quota names are read only as compatibility fallbacks.
-4. [ ] Decide whether relay/OpenAI-compatible quota endpoints should stay as a
-   separate compatibility concept. Current relay `PAYMENT_QUOTA_PER_UNIT` and
-   raw quota endpoints were not changed because they are not wallet display
+4. [x] Keep relay/OpenAI-compatible quota endpoints as a separate compatibility
+   concept. Current relay `PAYMENT_QUOTA_PER_UNIT`, raw quota endpoints,
+   channel `used_quota`, log/reconciliation aggregate quota fields, and
+   subscription quota windows stay unchanged because they are protocol,
+   upstream-window, or technical accounting surfaces rather than wallet display
    paths.
 5. [x] Rename frontend helper modules/types from quota-oriented names after the API
    fields are renamed, especially `web/src/lib/quota.ts` and page-local
    `quota` properties that now hold amount units.
-6. [ ] Update product/admin documentation and screenshots after the API/schema naming
-   cleanup, so docs no longer explain user balances in quota terms.
+6. [x] Update product/admin documentation and community images after the
+   API/schema naming cleanup, so docs no longer explain user balances in quota
+   terms.

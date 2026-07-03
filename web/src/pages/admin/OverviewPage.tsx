@@ -461,7 +461,7 @@ export function AdminOverviewPage() {
         <StatCard
           title="调用请求"
           value={formatInteger(totals.request_count)}
-          detail={`${formatQuota(totals.quota_used, quotaPerUnit)} 配额消耗`}
+          detail={`${formatQuota(totals.quota_used, quotaPerUnit)} 金额消耗`}
           icon={Activity}
         />
         <StatCard
@@ -476,7 +476,7 @@ export function AdminOverviewPage() {
         <CostCard
           title="用户侧收入"
           value={formatQuota(costAnalysis.revenue_quota ?? totals.quota_used, quotaPerUnit)}
-          detail="consume 账本计费配额"
+          detail="consume 账本计费金额"
           icon={TrendingUp}
           tone="green"
         />
@@ -528,7 +528,7 @@ export function AdminOverviewPage() {
           <CardContent className="flex items-center gap-4 p-5">
             <LineChart className="size-10 text-violet-600" />
             <div>
-              <div className="text-sm font-semibold text-slate-500">配额消耗</div>
+              <div className="text-sm font-semibold text-slate-500">金额消耗</div>
               <div className="text-2xl font-black">{formatQuota(totals.quota_used, quotaPerUnit)}</div>
               <div className="text-xs font-medium text-slate-400">{Object.keys(completionRatio).length} 个兼容倍率项</div>
             </div>

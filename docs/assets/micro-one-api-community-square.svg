@@ -37,7 +37,7 @@
 
   <text x="100" y="146" class="sans title">Micro-One-API</text>
   <text x="104" y="194" class="sans subtitle">AI API Gateway for multi-provider routing</text>
-  <text x="104" y="232" class="sans subtitle">quota, billing, logs and admin operations</text>
+  <text x="104" y="232" class="sans subtitle">wallet billing, logs and admin operations</text>
 
   <g transform="translate(104 316)" filter="url(#shadow)">
     <rect width="252" height="246" rx="26" fill="#ffffff"/>
@@ -63,7 +63,7 @@
     <rect x="34" y="146" width="196" height="48" rx="15" fill="#ffffff" opacity="0.94"/>
     <text x="58" y="177" class="sans chip">Auth &amp; model rules</text>
     <rect x="34" y="210" width="196" height="48" rx="15" fill="#ffffff" opacity="0.94"/>
-    <text x="58" y="241" class="sans chip">Route + quota</text>
+    <text x="58" y="241" class="sans chip">Route + amount</text>
     <circle cx="48" cy="284" r="10" fill="#a6f3d4"/>
     <text x="66" y="290" class="mono white" style="font-size:16px;opacity:.92">stream relay</text>
   </g>
@@ -96,7 +96,7 @@
       <text x="354" y="104" class="small">models · groups · routing</text>
       <rect x="652" y="40" width="286" height="86" rx="20" fill="#ffffff"/>
       <text x="680" y="78" class="label" style="font-size:22px">Billing</text>
-      <text x="680" y="104" class="small">quota · ledger · orders</text>
+      <text x="680" y="104" class="small">balance · ledger · orders</text>
       <rect x="0" y="154" width="286" height="86" rx="20" fill="#ffffff"/>
       <text x="28" y="192" class="label" style="font-size:22px">Logs</text>
       <text x="28" y="218" class="small">usage · audit · search</text>
@@ -110,5 +110,5 @@
   </g>
 
   <rect x="104" y="1058" width="992" height="52" rx="18" fill="#173042"/>
-  <text x="132" y="1093" class="sans white" style="font-size:20px;font-weight:750;letter-spacing:0">Unified API entry · token and quota control · observable operations · Go Kratos microservices</text>
+  <text x="132" y="1093" class="sans white" style="font-size:20px;font-weight:750;letter-spacing:0">Unified API entry · token and wallet control · observable operations · Go Kratos microservices</text>
 </svg>

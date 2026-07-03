@@ -328,13 +328,13 @@ export function ProfilePage() {
             </CardHeader>
             <CardContent className="p-6 space-y-4">
               <div>
-                <div className="text-xs font-bold text-slate-400">剩余额度</div>
+                <div className="text-xs font-bold text-slate-400">钱包余额</div>
                 <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
                   {formatAmount(dashboard?.balance ?? 0)}
                 </div>
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-400">已用额度</div>
+                <div className="text-xs font-bold text-slate-400">已用金额</div>
                 <div className="text-lg font-black text-slate-700 dark:text-slate-200">
                   {formatAmount(dashboard?.used_amount ?? 0)}
                 </div>

@@ -27,20 +27,20 @@ const FEATURED_OPTIONS = [
   },
   {
     key: 'AmountForNewUser',
-    label: '新用户默认额度',
-    description: '新用户注册时获得的初始额度。',
+    label: '新用户默认金额',
+    description: '新用户注册时获得的初始钱包金额。',
     type: 'amount',
   },
   {
     key: 'AmountForInviter',
-    label: '邀请人奖励额度',
-    description: '成功邀请一位新用户后,邀请人获得的奖励额度。',
+    label: '邀请人奖励金额',
+    description: '成功邀请一位新用户后,邀请人获得的奖励金额。',
     type: 'amount',
   },
   {
     key: 'AmountForInvitee',
-    label: '被邀请人奖励额度',
-    description: '被邀请的新用户获得的奖励额度。',
+    label: '被邀请人奖励金额',
+    description: '被邀请的新用户获得的奖励金额。',
     type: 'amount',
   },
 ] as const;
@@ -126,7 +126,7 @@ export function AdminOptionsPage() {
       <div>
         <h2 className="text-2xl font-semibold">系统选项</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          管理系统注册、额度发放和兼容 one-api 的设置项。
+          管理系统注册、钱包金额发放和兼容 one-api 的设置项。
         </p>
       </div>
 

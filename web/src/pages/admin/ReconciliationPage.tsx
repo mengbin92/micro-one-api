@@ -72,7 +72,7 @@ function formatQuota(value: number) {
 function discrepancyTypeLabel(type?: string) {
   if (type === 'channel_usage') return '渠道用量';
   if (type === 'ledger_log_consume') return '双写一致性';
-  return '账户额度';
+  return '账户余额';
 }
 
 function discrepancyObject(item: ReconciliationDiscrepancy) {
@@ -102,7 +102,7 @@ function discrepancyDiff(item: ReconciliationDiscrepancy) {
 function discrepancyDetail(item: ReconciliationDiscrepancy) {
   if (item.type === 'channel_usage') return `成本 ${formatQuota(item.upstream_cost ?? 0)}`;
   if (item.type === 'ledger_log_consume') return 'consume 记录数 / quota';
-  return `账目净额 ${formatQuota(item.ledger_net_amount ?? 0)}，冻结 ${formatQuota(item.frozen_quota ?? 0)}`;
+  return `账目净额 ${formatQuota(item.ledger_net_amount ?? 0)}，冻结金额 ${formatQuota(item.frozen_quota ?? 0)}`;
 }
 
 export function AdminReconciliationPage() {
@@ -218,7 +218,7 @@ export function AdminReconciliationPage() {
           <DialogHeader>
             <DialogTitle>对账差异详情</DialogTitle>
             <DialogDescription>
-              账户额度、渠道用量计数、billing ledger 与 consume log 双写不一致的记录。
+              账户余额、渠道用量计数、billing ledger 与 consume log 双写不一致的记录。
             </DialogDescription>
           </DialogHeader>
 

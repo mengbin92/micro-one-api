@@ -402,7 +402,7 @@ export function CostAnalysisPage() {
                 <strong>成本分析说明：</strong>数据基于实际使用量和配置的渠道价格计算
               </p>
               <ul className="ml-4 list-disc space-y-1">
-                <li><strong>收入：</strong>用户消耗的配额价值</li>
+                <li><strong>收入：</strong>用户消耗的金额</li>
                 <li><strong>上游成本：</strong>调用外部 API 的实际支出</li>
                 <li><strong>毛利润：</strong>收入减去上游成本（未包含运营成本）</li>
                 <li><strong>毛利率：</strong>毛利润占收入的比例</li>
