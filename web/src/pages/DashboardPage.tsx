@@ -19,14 +19,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/EmptyState';
 import { ChartSkeleton, MetricCardsSkeleton } from '@/components/LoadingStates';
 import { unwrapApiData } from '@/lib/api-response';
-import { formatAmountUnits, formatUSD } from '@/lib/quota';
+import { formatAmountUnits, formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 
 interface UsageItem {
   date?: string;
   day?: string;
   count: number;
-  quota: number;
+  amount: number;
   prompt_tokens?: number;
   completion_tokens?: number;
   cache_read_tokens?: number;
@@ -40,14 +40,14 @@ interface UserSelf {
 }
 
 interface AccountDashboard {
-  quota?: number;
-  used_quota?: number;
+  balance?: number;
+  used_amount?: number;
   request_count?: number;
-  frozen_quota?: number;
+  frozen_amount?: number;
   group?: string;
   group_ratio?: number;
   usage?: UsageItem[];
-  today_quota?: number;
+  today_amount?: number;
   today_prompt_tokens?: number;
   today_completion_tokens?: number;
   today_cache_read_tokens?: number;
@@ -71,7 +71,7 @@ interface TokenListData {
   total?: number;
 }
 
-function formatQuota(q: number, digits = 4) {
+function formatAmount(q: number, digits = 4) {
   return formatAmountUnits(q, digits);
 }
 
@@ -190,11 +190,11 @@ export function DashboardPage() {
   const completionTokens = items.reduce((s, x) => s + (x.completion_tokens || 0), 0);
   const cacheReadTokens = items.reduce((s, x) => s + (x.cache_read_tokens || 0), 0);
   const totalTokens = promptTokens + completionTokens + cacheReadTokens;
-  const remainingQuota = numberOrZero(dashboard?.quota);
-  const usedQuota = numberOrZero(dashboard?.used_quota);
+  const balance = numberOrZero(dashboard?.balance);
+  const usedAmount = numberOrZero(dashboard?.used_amount);
   const requestCount = items.length > 0 ? totalCount : numberOrZero(dashboard?.request_count);
   const todayRequests = latest?.count ?? 0;
-  const todayQuota = dashboard?.today_quota ?? latest?.quota ?? 0;
+  const todayAmount = dashboard?.today_amount ?? latest?.amount ?? 0;
   const todayPromptTokens = latest ? nonCachedInputTokens(latest) : dashboard?.today_prompt_tokens ?? 0;
   const todayCompletionTokens = dashboard?.today_completion_tokens ?? latest?.completion_tokens ?? 0;
   const todayCacheReadTokens = dashboard?.today_cache_read_tokens ?? latest?.cache_read_tokens ?? 0;
@@ -242,11 +242,11 @@ export function DashboardPage() {
           <MetricCardsSkeleton />
         ) : (
           <>
-            <MetricCard title="剩余额度" value={formatMoney(remainingQuota)} subtitle="可用余额" tone="orange" icon={WalletCards} />
-            <MetricCard title="已用额度" value={`$${formatQuota(usedQuota, 4)}`} subtitle="累计消耗" tone="purple" icon={Sparkles} />
+            <MetricCard title="剩余额度" value={formatMoney(balance)} subtitle="可用余额" tone="orange" icon={WalletCards} />
+            <MetricCard title="已用额度" value={`$${formatAmount(usedAmount, 4)}`} subtitle="累计消耗" tone="purple" icon={Sparkles} />
             <MetricCard title="调用次数" value={requestCount.toLocaleString()} subtitle={`今日 ${todayRequests.toLocaleString()}`} tone="green" icon={BarChart3} />
             <MetricCard title="API 密钥" value={tokenCount.toLocaleString()} subtitle={`可用 ${activeTokenCount.toLocaleString()}`} tone="blue" icon={KeyRound} />
-            <MetricCard title="今日消耗" value={`$${formatQuota(todayQuota, 4)}`} subtitle={`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)} / 缓存 ${compactNumber(todayCacheReadTokens)}`} tone="amber" icon={Box} />
+            <MetricCard title="今日消耗" value={`$${formatAmount(todayAmount, 4)}`} subtitle={`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)} / 缓存 ${compactNumber(todayCacheReadTokens)}`} tone="amber" icon={Box} />
             <MetricCard title="平均延迟" value={avgLatency > 0 ? `${(avgLatency / 1000).toFixed(2)}s` : "-"} subtitle={avgLatency > 0 ? `${totalCount} 次调用` : "暂无数据"} tone="blue" icon={Zap} />
           </>
         )}

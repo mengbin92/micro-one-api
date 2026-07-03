@@ -1610,9 +1610,9 @@ func (s *HTTPServer) handleUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remaining := account.GetQuota()
-	used := account.GetUsedQuota()
-	frozen := account.GetFrozenQuota()
+	remaining := account.GetBalance()
+	used := account.GetUsedAmount()
+	frozen := account.GetFrozenAmount()
 	quotaPerUSD := quotaPerUSDFromEnv()
 	remainingUSD := float64(remaining) / float64(quotaPerUSD)
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{

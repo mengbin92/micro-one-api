@@ -105,10 +105,10 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 	userIDStr := strconv.FormatInt(userID, 10)
 	remark := fmt.Sprintf("purchase subscription group=%d (%s)", group.ID, group.Name)
 	deduct, err := s.billingClient.PurchaseSubscription(ctx, &billingv1.PurchaseSubscriptionRequest{
-		UserId:     userIDStr,
-		PriceQuota: group.PriceQuota,
-		GroupId:    group.ID,
-		Remark:     remark,
+		UserId:      userIDStr,
+		PriceAmount: group.PriceQuota,
+		GroupId:     group.ID,
+		Remark:      remark,
 	})
 	if err != nil {
 		return nil, err

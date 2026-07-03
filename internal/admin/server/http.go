@@ -1059,7 +1059,7 @@ func paymentSummaryFromOrders(resp *billingv1.ListPaymentOrdersResponse) map[str
 	}
 }
 
-func userInfoToMap(u *commonv1.UserInfo, quota, usedQuota int64) map[string]interface{} {
+func userInfoToMap(u *commonv1.UserInfo, balance, usedAmount int64) map[string]interface{} {
 	return map[string]interface{}{
 		"id":          u.GetId(),
 		"username":    u.GetUsername(),
@@ -1068,8 +1068,8 @@ func userInfoToMap(u *commonv1.UserInfo, quota, usedQuota int64) map[string]inte
 		"group":       u.GetGroup(),
 		"status":      u.GetStatus(),
 		"role":        u.GetRole(),
-		"quota":       strconv.FormatInt(quota, 10),
-		"usedQuota":   strconv.FormatInt(usedQuota, 10),
+		"balance":     strconv.FormatInt(balance, 10),
+		"usedAmount":  strconv.FormatInt(usedAmount, 10),
 		"createdAt":   strconv.FormatInt(u.GetCreatedAt(), 10),
 	}
 }
@@ -1130,15 +1130,15 @@ func enrichUsersWithBilling(ctx context.Context, svc *service.AdminService, user
 
 	// Build result with enriched data
 	for _, u := range users {
-		var quota, usedQuota int64
+		var balance, usedAmount int64
 		if accounts != nil {
 			userID := strconv.FormatInt(u.GetId(), 10)
 			if acc, ok := accounts[userID]; ok {
-				quota = acc.GetQuota()
-				usedQuota = acc.GetUsedQuota()
+				balance = acc.GetBalance()
+				usedAmount = acc.GetUsedAmount()
 			}
 		}
-		result = append(result, userInfoToMap(u, quota, usedQuota))
+		result = append(result, userInfoToMap(u, balance, usedAmount))
 	}
 	return result
 }
@@ -1705,12 +1705,12 @@ func handleOneAPIExportUsers(w http.ResponseWriter, r *http.Request, svc *servic
 			user.GetDisplayName(),
 			user.GetEmail(),
 			user.GetGroup(),
-			strconv.FormatInt(user.GetQuota(), 10),
-			strconv.FormatInt(user.GetUsedQuota(), 10),
+			strconv.FormatInt(user.GetBalance(), 10),
+			strconv.FormatInt(user.GetUsedAmount(), 10),
 			strconv.FormatInt(int64(user.GetStatus()), 10),
 		})
 	}
-	writeCSV(w, "admin-users.csv", []string{"id", "username", "display_name", "email", "group", "quota", "used_quota", "status"}, rows)
+	writeCSV(w, "admin-users.csv", []string{"id", "username", "display_name", "email", "group", "balance", "used_amount", "status"}, rows)
 }
 
 func handleOneAPISearchUsers(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {

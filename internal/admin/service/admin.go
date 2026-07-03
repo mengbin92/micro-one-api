@@ -105,8 +105,8 @@ func (s *AdminService) TopUpQuota(ctx context.Context, req *adminv1.TopUpQuotaRe
 	}
 
 	return &adminv1.TopUpQuotaResponse{
-		Success:  true,
-		NewQuota: resp.NewQuota,
+		Success:    true,
+		NewBalance: resp.NewBalance,
 	}, nil
 }
 
@@ -407,10 +407,10 @@ func (s *AdminService) GetAccountSnapshot(ctx context.Context, req *adminv1.GetA
 			Username:     "",
 			DisplayName:  "",
 			Group:        resp.Snapshot.Group,
-			Quota:        resp.Snapshot.Quota,
-			UsedQuota:    resp.Snapshot.UsedQuota,
+			Balance:      resp.Snapshot.Balance,
+			UsedAmount:   resp.Snapshot.UsedAmount,
 			RequestCount: resp.Snapshot.RequestCount,
-			FrozenQuota:  resp.Snapshot.FrozenQuota,
+			FrozenAmount: resp.Snapshot.FrozenAmount,
 			Status:       0,
 		},
 	}, nil
@@ -435,10 +435,10 @@ func (s *AdminService) BatchGetAccountSnapshots(ctx context.Context, userIDs []s
 			accounts[userID] = &commonv1.AccountInfo{
 				UserId:       snapshot.GetUserId(),
 				Group:        snapshot.GetGroup(),
-				Quota:        snapshot.GetQuota(),
-				UsedQuota:    snapshot.GetUsedQuota(),
+				Balance:      snapshot.GetBalance(),
+				UsedAmount:   snapshot.GetUsedAmount(),
 				RequestCount: snapshot.GetRequestCount(),
-				FrozenQuota:  snapshot.GetFrozenQuota(),
+				FrozenAmount: snapshot.GetFrozenAmount(),
 			}
 		}
 	}
@@ -483,7 +483,7 @@ func (s *AdminService) CreateUser(ctx context.Context, req *adminv1.AdminCreateU
 		Email:       req.Email,
 		Password:    req.Password,
 		Group:       req.Group,
-		Quota:       req.Quota,
+		Balance:     req.Balance,
 	})
 	if err != nil {
 		return &adminv1.AdminCreateUserResponse{Success: false, Message: err.Error()}, nil
@@ -589,9 +589,9 @@ func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUse
 	}
 	currentQuota := int64(0)
 	if snapshot != nil && snapshot.Snapshot != nil {
-		currentQuota = snapshot.Snapshot.Quota
+		currentQuota = snapshot.Snapshot.Balance
 	}
-	delta := req.NewQuota - currentQuota
+	delta := req.NewBalance - currentQuota
 	if delta == 0 {
 		return &adminv1.ResetUserQuotaResponse{Success: true, Message: "ok"}, nil
 	}

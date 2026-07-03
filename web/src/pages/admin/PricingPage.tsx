@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApiClient } from '@/lib/api';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
-import { AMOUNT_SCALE } from '@/lib/quota';
+import { AMOUNT_SCALE } from '@/lib/amount';
 
 interface OptionItem {
   key: string;

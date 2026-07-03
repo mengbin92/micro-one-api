@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
-import { quotaPerUnitFromOptions, quotaToCurrencyUnits } from '@/lib/quota';
+import { quotaPerUnitFromOptions, quotaToCurrencyUnits } from '@/lib/amount';
 
 interface AdminTotals {
   users?: number;

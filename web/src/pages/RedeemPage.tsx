@@ -7,13 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
-import { formatUSD } from '@/lib/quota';
+import { formatUSD } from '@/lib/amount';
 
 interface AccountDashboard {
-  quota?: number;
+  balance?: number;
 }
 
-function formatQuota(value?: number) {
+function formatAmount(value?: number) {
   return formatUSD(value);
 }
 
@@ -40,7 +40,7 @@ export function RedeemPage() {
       setCode('');
       queryClient.invalidateQueries({ queryKey: ['redeem-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      toast.success(`兑换成功：${formatQuota(amount)}`);
+      toast.success(`兑换成功：${formatAmount(amount)}`);
     },
   });
 
@@ -91,7 +91,7 @@ export function RedeemPage() {
 
             {redeemedAmount !== null && (
               <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-                兑换成功，已到账 {formatQuota(redeemedAmount)}
+                兑换成功，已到账 {formatAmount(redeemedAmount)}
               </div>
             )}
           </div>
@@ -101,7 +101,7 @@ export function RedeemPage() {
               <WalletCards className="size-5" />
               当前余额
             </div>
-            <div className="mt-4 text-5xl font-black">{formatQuota(dashboard?.quota)}</div>
+            <div className="mt-4 text-5xl font-black">{formatAmount(dashboard?.balance)}</div>
             <div className="mt-3 text-sm font-semibold text-violet-100">兑换后可在使用记录和订单中查看账务流水。</div>
           </div>
         </div>

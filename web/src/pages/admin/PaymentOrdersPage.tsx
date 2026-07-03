@@ -10,7 +10,7 @@ import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
-import { formatAmountUnits } from '@/lib/quota';
+import { formatAmountUnits } from '@/lib/amount';
 import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
@@ -104,7 +104,7 @@ function getAssetAmount(order: PaymentOrder) {
 }
 
 function getAssetType(order: PaymentOrder) {
-  return order.asset_type || order.assetType || 'quota';
+  return order.asset_type || order.assetType || 'balance';
 }
 
 function getGroupID(order: PaymentOrder) {

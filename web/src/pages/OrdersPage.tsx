@@ -13,7 +13,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
 import { adminApiClient, apiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
-import { formatAmountUnits } from '@/lib/quota';
+import { formatAmountUnits } from '@/lib/amount';
 import {
   Table,
   TableBody,
@@ -149,7 +149,7 @@ function getAssetAmount(order: PaymentOrder) {
 }
 
 function getAssetType(order: PaymentOrder) {
-  return order.asset_type || order.assetType || 'quota';
+  return order.asset_type || order.assetType || 'balance';
 }
 
 function getGroupID(order: PaymentOrder) {

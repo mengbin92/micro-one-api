@@ -53,7 +53,7 @@ func (c *adminHTTPIdentityClient) GetUser(ctx context.Context, req *identityv1.G
 			Email:       "alice@example.com",
 			Group:       "default",
 			Status:      1,
-			Quota:       500,
+			Balance: 500,
 			Role:        c.userRole,
 		},
 	}, nil
@@ -291,14 +291,14 @@ type adminHTTPBillingClient struct {
 func (c *adminHTTPBillingClient) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuotaRequest, opts ...grpc.CallOption) (*billingv1.TopUpQuotaResponse, error) {
 	c.topupUserID = req.UserId
 	c.topupAmount = req.Amount
-	return &billingv1.TopUpQuotaResponse{Success: true, NewQuota: req.Amount}, nil
+	return &billingv1.TopUpQuotaResponse{Success: true, NewBalance: req.Amount}, nil
 }
 
 func (c *adminHTTPBillingClient) GetAccountSnapshot(ctx context.Context, req *billingv1.GetAccountSnapshotRequest, opts ...grpc.CallOption) (*billingv1.GetAccountSnapshotResponse, error) {
 	return &billingv1.GetAccountSnapshotResponse{
 		Snapshot: &commonv1.AccountSnapshot{
 			UserId: req.UserId,
-			Quota:  500,
+			Balance: 500,
 		},
 	}, nil
 }
@@ -308,8 +308,8 @@ func (c *adminHTTPBillingClient) BatchGetAccountSnapshots(ctx context.Context, r
 	for _, userID := range req.GetUserIds() {
 		snapshots[userID] = &commonv1.AccountSnapshot{
 			UserId:    userID,
-			Quota:     500,
-			UsedQuota: 100,
+			Balance: 500,
+			UsedAmount: 100,
 		}
 	}
 	return &billingv1.BatchGetAccountSnapshotsResponse{Snapshots: snapshots}, nil
@@ -409,7 +409,7 @@ func (c *adminHTTPBillingClient) ListPaymentOrders(ctx context.Context, req *bil
 				UserId:           "42",
 				TradeNo:          "PAY-1",
 				Channel:          "alipay",
-				AssetType:        "quota",
+				AssetType:        "balance",
 				AssetAmount:      1000000,
 				MoneyCents:       1000,
 				Currency:         "CNY",
@@ -457,7 +457,7 @@ func (c *adminHTTPBillingClient) GetPaymentOrderByTradeNo(ctx context.Context, r
 			UserId:           "42",
 			TradeNo:          req.GetTradeNo(),
 			Channel:          "alipay",
-			AssetType:        "quota",
+			AssetType:        "balance",
 			AssetAmount:      1000000,
 			MoneyCents:       1000,
 			Currency:         "CNY",
@@ -2461,7 +2461,7 @@ func TestAdminHTTPResetUserQuotaUsesDelta(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	billingClient := &adminHTTPBillingClient{}
 	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
-	req := httptest.NewRequest(http.MethodPost, "/v1/users/reset-quota", strings.NewReader(`{"user_id":42,"new_quota":800,"operator_id":"root","remark":"reset"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/users/reset-quota", strings.NewReader(`{"user_id":42,"new_balance":800,"operator_id":"root","remark":"reset"}`))
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rec := httptest.NewRecorder()
 

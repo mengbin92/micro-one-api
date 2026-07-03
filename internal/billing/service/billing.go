@@ -92,12 +92,12 @@ func (s *BillingService) GetAccountSnapshot(ctx context.Context, req *billingv1.
 	return &billingv1.GetAccountSnapshotResponse{
 		Snapshot: &commonv1.AccountSnapshot{
 			UserId:       account.UserID,
-			Quota:        account.Quota,
-			UsedQuota:    account.UsedQuota,
+			Balance:      account.Quota,
+			UsedAmount:   account.UsedQuota,
 			RequestCount: account.RequestCount,
 			Group:        account.Group,
 			GroupRatio:   account.GroupRatio(),
-			FrozenQuota:  account.FrozenQuota,
+			FrozenAmount: account.FrozenQuota,
 		},
 	}, nil
 }
@@ -112,12 +112,12 @@ func (s *BillingService) BatchGetAccountSnapshots(ctx context.Context, req *bill
 	for userID, account := range accounts {
 		snapshots[userID] = &commonv1.AccountSnapshot{
 			UserId:       account.UserID,
-			Quota:        account.Quota,
-			UsedQuota:    account.UsedQuota,
+			Balance:      account.Quota,
+			UsedAmount:   account.UsedQuota,
 			RequestCount: account.RequestCount,
 			Group:        account.Group,
 			GroupRatio:   account.GroupRatio(),
-			FrozenQuota:  account.FrozenQuota,
+			FrozenAmount: account.FrozenQuota,
 		}
 	}
 
@@ -136,13 +136,13 @@ func (s *BillingService) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuo
 	}
 
 	return &billingv1.TopUpQuotaResponse{
-		Success:  true,
-		NewQuota: newQuota,
+		Success:    true,
+		NewBalance: newQuota,
 	}, nil
 }
 
 func (s *BillingService) PurchaseSubscription(ctx context.Context, req *billingv1.PurchaseSubscriptionRequest) (*billingv1.PurchaseSubscriptionResponse, error) {
-	newQuota, err := s.uc.PurchaseSubscription(ctx, req.UserId, req.PriceQuota, req.GroupId, req.Remark)
+	newQuota, err := s.uc.PurchaseSubscription(ctx, req.UserId, req.PriceAmount, req.GroupId, req.Remark)
 	if err != nil {
 		return &billingv1.PurchaseSubscriptionResponse{
 			Success:      false,
@@ -151,8 +151,8 @@ func (s *BillingService) PurchaseSubscription(ctx context.Context, req *billingv
 	}
 
 	return &billingv1.PurchaseSubscriptionResponse{
-		Success:  true,
-		NewQuota: newQuota,
+		Success:    true,
+		NewBalance: newQuota,
 	}, nil
 }
 
@@ -296,9 +296,9 @@ func (s *BillingService) RedeemCode(ctx context.Context, req *billingv1.RedeemCo
 	}
 
 	return &billingv1.RedeemCodeResponse{
-		Success:  true,
-		Amount:   amount,
-		NewQuota: newQuota,
+		Success:    true,
+		Amount:     amount,
+		NewBalance: newQuota,
 	}, nil
 }
 

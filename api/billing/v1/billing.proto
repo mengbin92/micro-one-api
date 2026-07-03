@@ -117,24 +117,24 @@ message TopUpQuotaRequest {
 
 message TopUpQuotaResponse {
   bool success = 1;
-  int64 new_quota = 2;
+  int64 new_balance = 2;
   string error_message = 3;
 }
 
-// PurchaseSubscription atomically deducts price_quota from the user's wallet and
+// PurchaseSubscription atomically deducts price_amount from the user's wallet and
 // records a "subscription" ledger entry. It does NOT create the subscription row
 // itself — the caller (admin-api) creates the subscription and, on failure,
-// compensates by topping the quota back up.
+// compensates by topping the balance back up.
 message PurchaseSubscriptionRequest {
   string user_id = 1;
-  int64 price_quota = 2;
+  int64 price_amount = 2;
   int64 group_id = 3;
   string remark = 4;
 }
 
 message PurchaseSubscriptionResponse {
   bool success = 1;
-  int64 new_quota = 2;
+  int64 new_balance = 2;
   string error_message = 3;
 }
 
@@ -175,7 +175,7 @@ message RedeemCodeRequest {
 message RedeemCodeResponse {
   bool success = 1;
   int64 amount = 2;
-  int64 new_quota = 3;
+  int64 new_balance = 3;
   string error_message = 4;
 }
 

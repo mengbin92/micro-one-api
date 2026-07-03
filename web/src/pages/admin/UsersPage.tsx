@@ -12,7 +12,7 @@ import { SortableHeader } from '@/components/admin/SortableHeader';
 import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
-import { formatAmountUnits } from '@/lib/quota';
+import { formatAmountUnits } from '@/lib/amount';
 import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
@@ -31,8 +31,8 @@ interface User {
   group: string;
   status: number;
   role: number;
-  quota: string;
-  usedQuota: string;
+  balance: string;
+  usedAmount: string;
   createdAt: string;
 }
 
@@ -142,7 +142,7 @@ export function AdminUsersPage() {
     },
   });
 
-  function formatQuota(q: string) {
+  function formatAmount(q: string) {
     return formatAmountUnits(q);
   }
 
@@ -173,8 +173,8 @@ export function AdminUsersPage() {
               { key: 'email', label: 'Email' },
               { key: 'group', label: 'Group' },
               { key: 'role', label: 'Role' },
-              { key: 'quota', label: 'Quota' },
-              { key: 'usedQuota', label: 'Used Quota' },
+              { key: 'balance', label: 'Balance' },
+              { key: 'usedAmount', label: 'Used Amount' },
               { key: 'status', label: 'Status' },
               { key: 'createdAt', label: 'Created At' },
             ]}
@@ -203,7 +203,7 @@ export function AdminUsersPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', 'Username', 'Display Name', 'Email', 'Group', 'Role', 'Quota', 'Used', 'Status', 'Actions']} />
+        <TableSkeleton columns={['ID', 'Username', 'Display Name', 'Email', 'Group', 'Role', 'Balance', 'Used', 'Status', 'Actions']} />
       ) : !users || users.length === 0 ? (
         <EmptyState title="No users found" description="Try clearing the search term or checking another page." />
       ) : visibleUsers.length === 0 ? (
@@ -228,8 +228,8 @@ export function AdminUsersPage() {
                   <SortableHeader<User> columnKey="role" sort={sort} onSortChange={setSort}>
                     Role
                   </SortableHeader>
-                  <SortableHeader<User> columnKey="quota" sort={sort} onSortChange={setSort}>
-                    Quota
+                  <SortableHeader<User> columnKey="balance" sort={sort} onSortChange={setSort}>
+                    Balance
                   </SortableHeader>
                   <TableHead>Used</TableHead>
                   <SortableHeader<User> columnKey="status" sort={sort} onSortChange={setSort}>
@@ -258,8 +258,8 @@ export function AdminUsersPage() {
                           {roleLabel(user.role)}
                         </span>
                       </TableCell>
-                      <TableCell>{formatQuota(user.quota)}</TableCell>
-                      <TableCell>{formatQuota(user.usedQuota)}</TableCell>
+                      <TableCell>{formatAmount(user.balance)}</TableCell>
+                      <TableCell>{formatAmount(user.usedAmount)}</TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

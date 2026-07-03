@@ -354,10 +354,10 @@ export interface components {
             username?: string;
             displayName?: string;
             group?: string;
-            quota?: string;
-            usedQuota?: string;
+            balance?: string;
+            usedAmount?: string;
             requestCount?: string;
-            frozenQuota?: string;
+            frozenAmount?: string;
             /** Format: int32 */
             status?: number;
         };
@@ -400,9 +400,9 @@ export interface components {
             group?: string;
             /** Format: int32 */
             status?: number;
-            quota?: string;
-            usedQuota?: string;
-            frozenQuota?: string;
+            balance?: string;
+            usedAmount?: string;
+            frozenAmount?: string;
             createdAt?: string;
             lastLoginAt?: string;
         };

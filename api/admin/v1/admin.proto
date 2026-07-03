@@ -111,7 +111,7 @@ message TopUpQuotaRequest {
 
 message TopUpQuotaResponse {
   bool success = 1;
-  int64 new_quota = 2;
+  int64 new_balance = 2;
   string error_message = 3;
 }
 
@@ -250,7 +250,7 @@ message AdminCreateUserRequest {
   string email = 3;
   string password = 4;
   string group = 5;
-  int64 quota = 6;
+  int64 balance = 6;
 }
 
 message AdminCreateUserResponse {
@@ -265,7 +265,7 @@ message AdminUpdateUserRequest {
   string email = 3;
   string group = 4;
   int32 status = 5;
-  int64 quota = 6;
+  int64 balance = 6;
 }
 
 message AdminUpdateUserResponse {
@@ -284,7 +284,7 @@ message AdminDeleteUserResponse {
 
 message ResetUserQuotaRequest {
   int64 user_id = 1;
-  int64 new_quota = 2;
+  int64 new_balance = 2;
   string operator_id = 3;
   string remark = 4;
 }

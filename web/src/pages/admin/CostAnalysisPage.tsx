@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/EmptyState';
 import { MetricCardsSkeleton } from '@/components/LoadingStates';
 import { ChannelCostComparison, CostBreakdownChart } from '@/components/admin/CostCharts';
-import { amountUnitsToCurrencyUnits, formatUSD } from '@/lib/quota';
+import { amountUnitsToCurrencyUnits, formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 
 interface AdminSummary {

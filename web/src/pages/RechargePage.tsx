@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
-import { amountUnitsToCurrencyUnits } from '@/lib/quota';
+import { amountUnitsToCurrencyUnits } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 
 const DEFAULT_RECHARGE_AMOUNT_MULTIPLIER = 10;
@@ -13,7 +13,7 @@ const RATE = rechargeAmountMultiplier();
 const PRESET_AMOUNTS = [2, 10, 20, 50, 100];
 
 interface AccountDashboard {
-  quota?: number;
+  balance?: number;
 }
 
 interface PaymentOrder {
@@ -144,7 +144,7 @@ export function RechargePage() {
           <h2 className="text-lg font-black text-slate-950 dark:text-white">快捷金额</h2>
           <div className="hidden items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-black text-emerald-600 sm:flex dark:bg-emerald-500/10 dark:text-emerald-300">
             <WalletCards className="size-4" />
-            当前余额 {formatUsd(amountUnitsToUsd(dashboard?.quota))}
+            当前余额 {formatUsd(amountUnitsToUsd(dashboard?.balance))}
           </div>
         </div>
 

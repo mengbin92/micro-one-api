@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
 import { apiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
-import { formatAmountUnits } from '@/lib/quota';
+import { formatAmountUnits } from '@/lib/amount';
 import {
   Table,
   TableBody,

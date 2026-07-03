@@ -168,11 +168,11 @@ func (c *rawBillingClient) GetAccountSnapshot(ctx context.Context, req *billingv
 	}
 	return &billingv1.GetAccountSnapshotResponse{Snapshot: &commonv1.AccountSnapshot{
 		UserId:       req.UserId,
-		Quota:        1234,
-		UsedQuota:    56,
+		Balance: 1234,
+		UsedAmount: 56,
 		RequestCount: 7,
 		Group:        "default",
 		GroupRatio:   1,
-		FrozenQuota:  8,
+		FrozenAmount: 8,
 	}}, nil
 }

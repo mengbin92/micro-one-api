@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApiClient } from '@/lib/api';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
-import { amountUnitsToCurrencyUnits, currencyUnitsToAmountUnits } from '@/lib/quota';
+import { amountUnitsToCurrencyUnits, currencyUnitsToAmountUnits } from '@/lib/amount';
 
 interface OptionItem {
   key: string;

@@ -494,7 +494,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		dayMap[d.Format("2006-01-02")] = &dailyUsage{}
 	}
 
-	var todayQuota, todayPromptTokens, todayCompletionTokens, todayCacheReadTokens int64
+	var todayAmount, todayPromptTokens, todayCompletionTokens, todayCacheReadTokens int64
 	var totalElapsedTime, consumeCount int64
 
 	if aggResp != nil {
@@ -508,7 +508,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 				day.ElapsedTime = d.GetElapsedTime()
 			}
 			if d.GetDate() == startOfDay.Format("2006-01-02") {
-				todayQuota = d.GetQuota()
+				todayAmount = d.GetQuota()
 				todayPromptTokens = d.GetPromptTokens()
 				todayCompletionTokens = d.GetCompletionTokens()
 				todayCacheReadTokens = d.GetCacheReadTokens()
@@ -526,7 +526,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		usageArr = append(usageArr, map[string]interface{}{
 			"date":              key,
 			"count":             day.Count,
-			"quota":             day.Quota,
+			"amount":            day.Quota,
 			"prompt_tokens":     day.PromptTokens,
 			"completion_tokens": day.CompletionTokens,
 			"cache_read_tokens": day.CacheReadTokens,
@@ -557,14 +557,14 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	}
 
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{
-		"quota":                   account.GetQuota(),
-		"used_quota":              account.GetUsedQuota(),
+		"balance":                 account.GetBalance(),
+		"used_amount":             account.GetUsedAmount(),
 		"request_count":           account.GetRequestCount(),
 		"group":                   account.GetGroup(),
 		"group_ratio":             account.GetGroupRatio(),
-		"frozen_quota":            account.GetFrozenQuota(),
+		"frozen_amount":           account.GetFrozenAmount(),
 		"usage":                   usageArr,
-		"today_quota":             todayQuota,
+		"today_amount":            todayAmount,
 		"today_prompt_tokens":     todayPromptTokens,
 		"today_completion_tokens": todayCompletionTokens,
 		"today_cache_read_tokens": todayCacheReadTokens,
@@ -668,7 +668,7 @@ func handleDashboardBillingUsage(w http.ResponseWriter, r *http.Request, uc *biz
 	}
 	usedQuota := int64(0)
 	if resp.GetSnapshot() != nil {
-		usedQuota = resp.GetSnapshot().GetUsedQuota()
+		usedQuota = resp.GetSnapshot().GetUsedAmount()
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"object":      "list",
@@ -699,7 +699,7 @@ func handleDashboardBillingSubscription(w http.ResponseWriter, r *http.Request, 
 	}
 	limit := int64(0)
 	if resp.GetSnapshot() != nil {
-		limit = resp.GetSnapshot().GetQuota()
+		limit = resp.GetSnapshot().GetBalance()
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"object":                "billing_subscription",
@@ -807,7 +807,7 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 	resp, err := billingClient.CreatePaymentOrder(r.Context(), &billingv1.CreatePaymentOrderRequest{
 		UserId:      strconv.FormatInt(snapshot.UserID, 10),
 		Channel:     req.PaymentMethod,
-		AssetType:   "quota",
+		AssetType:   "balance",
 		AssetAmount: assetAmount,
 		MoneyCents:  moneyCents,
 		Currency:    "CNY",

@@ -34,7 +34,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { apiClient } from '@/lib/api';
 import { canAccessAdmin } from '@/lib/admin-access';
 import { unwrapApiData } from '@/lib/api-response';
-import { formatUSD } from '@/lib/quota';
+import { formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -58,8 +58,8 @@ interface UserSelf {
 }
 
 interface AccountDashboard {
-  quota?: number;
-  used_quota?: number;
+  balance?: number;
+  used_amount?: number;
 }
 
 const userLinks: NavItem[] = [
@@ -120,7 +120,7 @@ const routeTitles: Record<string, string> = {
   '/admin/options': '系统设置',
 };
 
-function formatQuota(value?: number) {
+function formatBalance(value?: number) {
   return formatUSD(value);
 }
 
@@ -345,7 +345,7 @@ export function AppNavigation() {
             </Button>
             <div className="hidden h-10 items-center gap-2 rounded-2xl bg-emerald-50 px-4 text-sm font-black text-emerald-600 sm:flex dark:bg-emerald-500/10 dark:text-emerald-300">
               <WalletCards className="size-4" />
-              {formatQuota(account?.quota)}
+              {formatBalance(account?.balance)}
             </div>
             <ThemeToggle />
             {isAdmin && <NotificationPanel open={notificationOpen} onOpenChange={setNotificationOpen} />}

@@ -15,9 +15,9 @@ message UserInfo {
   string email = 4;
   string group = 5;
   int32 status = 6;
-  int64 quota = 7;
-  int64 used_quota = 8;
-  int64 frozen_quota = 9;
+  int64 balance = 7;
+  int64 used_amount = 8;
+  int64 frozen_amount = 9;
   int64 created_at = 10;
   int64 last_login_at = 11;
   // 0=guest, 1=common, 10=admin, 100=root. See biz.Role* constants.
@@ -137,12 +137,12 @@ message SubscriptionAccountSummary {
 
 message AccountSnapshot {
   string user_id = 1;
-  int64 quota = 2;
-  int64 used_quota = 3;
+  int64 balance = 2;
+  int64 used_amount = 3;
   int64 request_count = 4;
   string group = 5;
   double group_ratio = 6;
-  int64 frozen_quota = 7;
+  int64 frozen_amount = 7;
 }
 
 // ========== 账户信息（管理端视图）==========
@@ -152,10 +152,10 @@ message AccountInfo {
   string username = 2;
   string display_name = 3;
   string group = 4;
-  int64 quota = 5;
-  int64 used_quota = 6;
+  int64 balance = 5;
+  int64 used_amount = 6;
   int64 request_count = 7;
-  int64 frozen_quota = 8;
+  int64 frozen_amount = 8;
   int32 status = 9;
 }
 

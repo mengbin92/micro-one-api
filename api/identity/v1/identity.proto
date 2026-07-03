@@ -117,7 +117,7 @@ message CreateUserRequest {
   string email = 3;
   string password = 4;
   string group = 5;
-  int64 quota = 6;
+  int64 balance = 6;
 }
 
 message CreateUserResponse {

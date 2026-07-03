@@ -571,12 +571,12 @@ func TestIdentityHTTPDashboardReturnsAccountSnapshot(t *testing.T) {
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Quota:        1000,
-			UsedQuota:    100,
+			Balance: 1000,
+			UsedAmount: 100,
 			RequestCount: 10,
 			Group:        "default",
 			GroupRatio:   1,
-			FrozenQuota:  0,
+			FrozenAmount: 0,
 		},
 	})
 
@@ -591,12 +591,12 @@ func TestIdentityHTTPDashboardReturnsAccountSnapshot(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`"success":true`,
-		`"quota":1000`,
-		`"used_quota":100`,
+		`"balance":1000`,
+		`"used_amount":100`,
 		`"request_count":10`,
 		`"group":"default"`,
 		`"group_ratio":1`,
-		`"frozen_quota":0`,
+		`"frozen_amount":0`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard response missing %s: %s", want, body)
@@ -604,12 +604,12 @@ func TestIdentityHTTPDashboardReturnsAccountSnapshot(t *testing.T) {
 	}
 }
 
-// TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota verifies that the dashboard
-// sums |ledger.amount| (actual quota cost) rather than ledger.quota (raw token count)
-// for today_quota and the 7-day usage chart. This is a regression test for the bug
+// TestIdentityHTTPDashboardTodayAmountUsesLedgerAmount verifies that the dashboard
+// sums |ledger.amount| (actual cost) rather than ledger.quota (raw token count)
+// for today_amount and the 7-day usage chart. This is a regression test for the bug
 // where models with per-token pricing (ModelPrices) showed inflated "today consumption"
 // because raw token counts were displayed as dollar amounts.
-func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
+func TestIdentityHTTPDashboardTodayAmountUsesLedgerAmount(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
@@ -620,8 +620,8 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 	todayStr := time.Now().Format("2006-01-02")
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Quota:        100000,
-			UsedQuota:    4350,
+			Balance: 100000,
+			UsedAmount: 4350,
 			RequestCount: 1,
 			Group:        "default",
 			GroupRatio:   1,
@@ -659,14 +659,14 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 
 	var resp struct {
 		Data struct {
-			UsedQuota             int64 `json:"used_quota"`
-			TodayQuota            int64 `json:"today_quota"`
+			UsedAmount            int64 `json:"used_amount"`
+			TodayAmount           int64 `json:"today_amount"`
 			TodayPromptTokens     int64 `json:"today_prompt_tokens"`
 			TodayCompletionTokens int64 `json:"today_completion_tokens"`
 			TodayCacheReadTokens  int64 `json:"today_cache_read_tokens"`
 			Usage                 []struct {
 				Date             string `json:"date"`
-				Quota            int64  `json:"quota"`
+				Amount           int64  `json:"amount"`
 				PromptTokens     int64  `json:"prompt_tokens"`
 				CompletionTokens int64  `json:"completion_tokens"`
 				CacheReadTokens  int64  `json:"cache_read_tokens"`
@@ -678,13 +678,13 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 	}
 	d := resp.Data
 
-	// today_quota must be |amount| (4350), NOT quota (1000000)
-	if d.TodayQuota != 4350 {
-		t.Errorf("today_quota = %d, want 4350 (|amount|)", d.TodayQuota)
+	// today_amount must be |amount| (4350), NOT quota (1000000)
+	if d.TodayAmount != 4350 {
+		t.Errorf("today_amount = %d, want 4350 (|amount|)", d.TodayAmount)
 	}
-	// used_quota from account snapshot should match
-	if d.UsedQuota != 4350 {
-		t.Errorf("used_quota = %d, want 4350", d.UsedQuota)
+	// used_amount from account snapshot should match
+	if d.UsedAmount != 4350 {
+		t.Errorf("used_amount = %d, want 4350", d.UsedAmount)
 	}
 	// Token counts should still reflect raw values
 	if d.TodayPromptTokens != 1000000 {
@@ -700,8 +700,8 @@ func TestIdentityHTTPDashboardTodayQuotaUsesAmountNotQuota(t *testing.T) {
 	// Verify 7-day usage chart also uses |amount|, not quota
 	for _, u := range d.Usage {
 		if u.Date == todayStr {
-			if u.Quota != 4350 {
-				t.Errorf("usage[%s].quota = %d, want 4350 (|amount|), not 1000000 (raw tokens)", todayStr, u.Quota)
+			if u.Amount != 4350 {
+				t.Errorf("usage[%s].amount = %d, want 4350 (|amount|), not 1000000 (raw tokens)", todayStr, u.Amount)
 			}
 			if u.PromptTokens != 1000000 {
 				t.Errorf("usage[%s].prompt_tokens = %d, want 1000000", todayStr, u.PromptTokens)
@@ -719,12 +719,12 @@ func TestIdentityHTTPUserReadOnlyCompatibilityAliases(t *testing.T) {
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Quota:        1000,
-			UsedQuota:    100,
+			Balance: 1000,
+			UsedAmount: 100,
 			RequestCount: 10,
 			Group:        "default",
 			GroupRatio:   1,
-			FrozenQuota:  0,
+			FrozenAmount: 0,
 		},
 	})
 
@@ -732,7 +732,7 @@ func TestIdentityHTTPUserReadOnlyCompatibilityAliases(t *testing.T) {
 		path string
 		want string
 	}{
-		{"/api/user/quota", `"quota":1000`},
+		{"/api/user/quota", `"balance":1000`},
 		{"/api/user/models", `"data"`},
 		{"/api/user/invitation", `"success":true`},
 	}
@@ -792,8 +792,8 @@ func TestIdentityHTTPDashboardBillingUsageReturnsOpenAIShape(t *testing.T) {
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Quota:     1000,
-			UsedQuota: 123,
+			Balance: 1000,
+			UsedAmount: 123,
 		},
 	})
 
@@ -824,8 +824,8 @@ func TestIdentityHTTPDashboardBillingSubscriptionReturnsOpenAIShape(t *testing.T
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Quota:     1000,
-			UsedQuota: 123,
+			Balance: 1000,
+			UsedAmount: 123,
 		},
 	})
 
@@ -908,7 +908,7 @@ func TestIdentityHTTPTopUpReturnsRedeemedAmount(t *testing.T) {
 	uc := biz.NewIdentityUsecase(repo)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	billingClient := &identityHTTPBillingClient{
-		redeemResponse: &billingv1.RedeemCodeResponse{Success: true, Amount: 1000, NewQuota: 2000},
+		redeemResponse: &billingv1.RedeemCodeResponse{Success: true, Amount: 1000, NewBalance: 2000},
 	}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
 
@@ -959,7 +959,7 @@ func TestIdentityHTTPOnlinePaymentCompatibilityRoutesAreDisabled(t *testing.T) {
 			Order: &billingv1.PaymentOrder{
 				TradeNo:   "PAY-TEST",
 				PayUrl:    "mock://payment/PAY-TEST",
-				AssetType: "quota",
+				AssetType: "balance",
 			},
 		},
 	}
@@ -988,7 +988,7 @@ func TestIdentityHTTPOnlinePaymentCompatibilityRoutesAreDisabled(t *testing.T) {
 		t.Fatalf("CreatePaymentOrder calls = %d, want 2", len(billingClient.createOrderCalls))
 	}
 	for _, call := range billingClient.createOrderCalls {
-		if call.GetChannel() != "alipay" || call.GetAssetType() != "quota" || call.GetCurrency() != "CNY" {
+		if call.GetChannel() != "alipay" || call.GetAssetType() != "balance" || call.GetCurrency() != "CNY" {
 			t.Fatalf("payment order request mismatch: %+v", call)
 		}
 		if call.GetMoneyCents() != 1000 {
@@ -1751,7 +1751,7 @@ func (c *identityHTTPBillingClient) GetPaymentOrderByTradeNo(ctx context.Context
 			UserId:           "1",
 			TradeNo:          req.GetTradeNo(),
 			Channel:          "alipay",
-			AssetType:        "quota",
+			AssetType:        "balance",
 			AssetAmount:      1000000,
 			MoneyCents:       1000,
 			Currency:         "CNY",
@@ -1775,7 +1775,7 @@ func (c *identityHTTPBillingClient) ListPaymentOrders(ctx context.Context, req *
 				UserId:           req.GetUserId(),
 				TradeNo:          "PAY-USER",
 				Channel:          "alipay",
-				AssetType:        "quota",
+				AssetType:        "balance",
 				AssetAmount:      1000000,
 				MoneyCents:       1000,
 				Currency:         "CNY",
@@ -1795,7 +1795,7 @@ func (c *identityHTTPBillingClient) TopUpQuota(ctx context.Context, req *billing
 		OperatorID: req.GetOperatorId(),
 		Remark:     req.GetRemark(),
 	})
-	return &billingv1.TopUpQuotaResponse{Success: true, NewQuota: req.GetAmount()}, nil
+	return &billingv1.TopUpQuotaResponse{Success: true, NewBalance: req.GetAmount()}, nil
 }
 
 func (c *identityHTTPBillingClient) ListLedger(ctx context.Context, req *billingv1.ListLedgerRequest, opts ...grpc.CallOption) (*billingv1.ListLedgerResponse, error) {

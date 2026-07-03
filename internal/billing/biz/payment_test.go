@@ -75,7 +75,7 @@ type countingPaymentIssuer struct {
 	issued int
 }
 
-func (i *countingPaymentIssuer) IssueQuota(ctx context.Context, order *PaymentOrder) error {
+func (i *countingPaymentIssuer) IssueBalance(ctx context.Context, order *PaymentOrder) error {
 	i.issued++
 	return nil
 }
@@ -84,7 +84,7 @@ func TestPaymentUsecaseGetOrderRefreshesPaidAlipayOrder(t *testing.T) {
 	repo := &memoryPaymentRepo{order: &PaymentOrder{
 		TradeNo:          "PAY-1",
 		Channel:          PaymentChannelAlipay,
-		AssetType:        PaymentAssetTypeQuota,
+		AssetType:        PaymentAssetTypeBalance,
 		Status:           PaymentOrderStatusPending,
 		AssetIssueStatus: PaymentAssetIssueStatusPending,
 	}}
@@ -114,7 +114,7 @@ func TestPaymentUsecaseGetOrderRefreshesClosedAlipayOrder(t *testing.T) {
 	repo := &memoryPaymentRepo{order: &PaymentOrder{
 		TradeNo:          "PAY-1",
 		Channel:          PaymentChannelAlipay,
-		AssetType:        PaymentAssetTypeQuota,
+		AssetType:        PaymentAssetTypeBalance,
 		Status:           PaymentOrderStatusPending,
 		AssetIssueStatus: PaymentAssetIssueStatusPending,
 	}}
@@ -137,7 +137,7 @@ func TestPaymentUsecaseGetOrderRefreshesClosedAlipayOrder(t *testing.T) {
 	}
 }
 
-func TestPaymentUsecasePaidSubscriptionOrderDoesNotIssueQuota(t *testing.T) {
+func TestPaymentUsecasePaidSubscriptionOrderDoesNotIssueBalance(t *testing.T) {
 	repo := &memoryPaymentRepo{order: &PaymentOrder{
 		TradeNo:          "PAY-SUB-1",
 		Channel:          PaymentChannelAlipay,

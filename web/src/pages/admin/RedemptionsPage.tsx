@@ -13,7 +13,7 @@ import { SortableHeader } from '@/components/admin/SortableHeader';
 import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
-import { currencyUnitsToAmountUnits, formatAmountUnits } from '@/lib/quota';
+import { currencyUnitsToAmountUnits, formatAmountUnits } from '@/lib/amount';
 import { sortRows, type SortState } from '@/lib/table-utils';
 import {
   Table,
@@ -134,7 +134,7 @@ export function AdminRedemptionsPage() {
     },
   });
 
-  function formatQuota(q: string) {
+  function formatAmount(q: string) {
     return formatAmountUnits(q);
   }
 
@@ -144,7 +144,7 @@ export function AdminRedemptionsPage() {
       createMutation.mutate();
       return;
     }
-    toast.error('Name and a positive quota amount are required');
+    toast.error('Name and a positive amount are required');
   };
 
   const visibleCodes = useMemo(() => {
@@ -175,7 +175,7 @@ export function AdminRedemptionsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="code-amount">Amount (quota)</Label>
+                <Label htmlFor="code-amount">Amount</Label>
                 <Input
                   id="code-amount"
                   type="number"
@@ -261,7 +261,7 @@ export function AdminRedemptionsPage() {
       {isLoading ? (
         <TableSkeleton columns={['Code', 'Name', 'Amount', 'Count', 'Status', 'Created By', 'Created At', 'Actions']} />
       ) : !codes || codes.length === 0 ? (
-        <EmptyState title="No redemption codes found" description="Create codes for quota grants or clear the search term." />
+        <EmptyState title="No redemption codes found" description="Create codes for balance grants or clear the search term." />
       ) : visibleCodes.length === 0 ? (
         <EmptyState title="No redemption codes match the filters" description="Clear the table filters to show the loaded rows." />
       ) : (
@@ -295,7 +295,7 @@ export function AdminRedemptionsPage() {
                   <TableRow key={code.code}>
                     <TableCell className="font-mono text-sm">{code.code}</TableCell>
                     <TableCell className="font-medium">{code.name}</TableCell>
-                    <TableCell>{formatQuota(code.amount)}</TableCell>
+                    <TableCell>{formatAmount(code.amount)}</TableCell>
                     <TableCell>{code.count}</TableCell>
                     <TableCell>
                       <span

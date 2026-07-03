@@ -17,7 +17,7 @@ const (
 	PaymentAssetIssueStatusPending = "pending"
 	PaymentAssetIssueStatusIssued  = "issued"
 
-	PaymentAssetTypeQuota        = "quota"
+	PaymentAssetTypeBalance      = "balance"
 	PaymentAssetTypeSubscription = "subscription"
 
 	PaymentChannelMock   = "mock"
@@ -115,7 +115,7 @@ type PaymentUsecase struct {
 }
 
 type PaymentAssetIssuer interface {
-	IssueQuota(ctx context.Context, order *PaymentOrder) error
+	IssueBalance(ctx context.Context, order *PaymentOrder) error
 }
 
 // SubscriptionAssigner is an optional interface that payment issuers can
@@ -196,8 +196,8 @@ func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTr
 		return nil, errors.New("trade_no is required")
 	}
 	order, _, err := uc.repo.MarkOrderPaid(ctx, tradeNo, providerTradeNo, func(order *PaymentOrder) error {
-		if order.AssetType == PaymentAssetTypeQuota {
-			if err := uc.issuer.IssueQuota(ctx, order); err != nil {
+		if order.AssetType == PaymentAssetTypeBalance {
+			if err := uc.issuer.IssueBalance(ctx, order); err != nil {
 				return err
 			}
 		}
@@ -253,7 +253,7 @@ func validateCreatePaymentOrderRequest(req CreatePaymentOrderRequest) error {
 	if req.UserID == "" {
 		return errors.New("user_id is required")
 	}
-	if req.AssetType != PaymentAssetTypeQuota && req.AssetType != PaymentAssetTypeSubscription {
+	if req.AssetType != PaymentAssetTypeBalance && req.AssetType != PaymentAssetTypeSubscription {
 		return fmt.Errorf("unsupported payment asset type %q", req.AssetType)
 	}
 	if req.AssetAmount <= 0 {
@@ -278,15 +278,15 @@ func generatePaymentTradeNo(userID string) string {
 	return fmt.Sprintf("PAY%s%s%d", userID, hex.EncodeToString(b[:]), time.Now().Unix())
 }
 
-type quotaPaymentAssetIssuer struct {
+type balancePaymentAssetIssuer struct {
 	billing *BillingUsecase
 }
 
 func NewPaymentAssetIssuer(billing *BillingUsecase) PaymentAssetIssuer {
-	return &quotaPaymentAssetIssuer{billing: billing}
+	return &balancePaymentAssetIssuer{billing: billing}
 }
 
-func (i *quotaPaymentAssetIssuer) IssueQuota(ctx context.Context, order *PaymentOrder) error {
+func (i *balancePaymentAssetIssuer) IssueBalance(ctx context.Context, order *PaymentOrder) error {
 	if i == nil || i.billing == nil {
 		return errors.New("payment asset issuer is not configured")
 	}

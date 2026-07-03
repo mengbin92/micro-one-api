@@ -39,8 +39,8 @@ describe('ProfilePage', () => {
         HttpResponse.json({
           success: true,
           data: {
-            quota: 100000,
-            used_quota: 20000,
+            balance: 100000,
+            used_amount: 20000,
           },
         }),
       ),

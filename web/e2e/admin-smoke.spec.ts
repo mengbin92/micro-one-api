@@ -207,7 +207,7 @@ test('admin redemptions shows generated code values after creation', async ({ pa
   await page.getByRole('button', { name: 'Create Code' }).click();
   const dialog = page.getByRole('dialog', { name: 'Create Redemption Code' });
   await dialog.getByLabel('Name').fill('Campaign');
-  await dialog.getByLabel('Amount (quota)').fill('10');
+  await dialog.getByLabel('Amount').fill('10');
   await dialog.getByLabel('Count').fill('2');
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
 
