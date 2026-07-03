@@ -26,8 +26,24 @@ import (
 )
 
 type PaymentConfig struct {
-	QuotaPerUnit int64        `json:"quota_per_unit"`
-	Alipay       AlipayConfig `json:"alipay"`
+	AmountPerUnit int64        `json:"amount_per_unit"`
+	Alipay        AlipayConfig `json:"alipay"`
+}
+
+func (c *PaymentConfig) UnmarshalJSON(data []byte) error {
+	type paymentConfigAlias PaymentConfig
+	aux := struct {
+		paymentConfigAlias
+		LegacyQuotaPerUnit int64 `json:"quota_per_unit"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*c = PaymentConfig(aux.paymentConfigAlias)
+	if c.AmountPerUnit == 0 {
+		c.AmountPerUnit = aux.LegacyQuotaPerUnit
+	}
+	return nil
 }
 
 type AlipayConfig struct {

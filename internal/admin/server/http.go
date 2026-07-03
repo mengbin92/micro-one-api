@@ -670,7 +670,7 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		"alerts":                    adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation),
 		"latest_reconciliation":     latestReconciliationRun(reconciliation),
 		"model_catalog":             oneAPIChannelModelCatalog(),
-		"pricing_options":           optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "QuotaPerUnit"),
+		"pricing_options":           optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "AmountPerUnit"),
 		"payment_summary":           paymentSummaryFromOrders(paymentOrders),
 	}))
 }
@@ -902,9 +902,9 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 			"success": true,
 			"message": "",
 			"data": map[string]interface{}{
-				"prices":         []readonlyPricingRow{},
-				"quota_per_unit": float64(readonlyPricingUnitScale),
-				"unit":           "1M tokens",
+				"prices":          []readonlyPricingRow{},
+				"amount_per_unit": float64(readonlyPricingUnitScale),
+				"unit":            "1M tokens",
 			},
 		})
 		return
@@ -914,19 +914,19 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	optionMap := optionsByKey(options, "ModelPrice", "ModelRatio", "CompletionRatio", "QuotaPerUnit")
-	quotaPerUnit := parseReadonlyFloatOption(optionMap["QuotaPerUnit"])
-	if quotaPerUnit <= 0 {
-		quotaPerUnit = readonlyPricingUnitScale
+	optionMap := optionsByKey(options, "ModelPrice", "ModelRatio", "CompletionRatio", "AmountPerUnit")
+	amountPerUnit := parseReadonlyFloatOption(optionMap["AmountPerUnit"])
+	if amountPerUnit <= 0 {
+		amountPerUnit = readonlyPricingUnitScale
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "",
 		"data": map[string]interface{}{
-			"prices":         readonlyPricingRows(optionMap, quotaPerUnit),
-			"quota_per_unit": quotaPerUnit,
-			"unit":           "1M tokens",
+			"prices":          readonlyPricingRows(optionMap, amountPerUnit),
+			"amount_per_unit": amountPerUnit,
+			"unit":            "1M tokens",
 		},
 	})
 }

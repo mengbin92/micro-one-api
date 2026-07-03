@@ -291,7 +291,7 @@ func creditInvitationBonus(ctx context.Context, user *biz.User, billingClient bi
 	if user == nil || user.InviterID == 0 || billingClient == nil {
 		return
 	}
-	if bonus := positiveEnvInt64("INVITEE_BONUS_QUOTA"); bonus > 0 {
+	if bonus := positiveEnvInt64("INVITEE_BONUS_AMOUNT", "INVITEE_BONUS_QUOTA"); bonus > 0 {
 		_, _ = billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
 			UserId:     strconv.FormatInt(user.ID, 10),
 			Amount:     bonus,
@@ -299,7 +299,7 @@ func creditInvitationBonus(ctx context.Context, user *biz.User, billingClient bi
 			Remark:     "invitation invitee bonus",
 		})
 	}
-	if bonus := positiveEnvInt64("INVITER_BONUS_QUOTA"); bonus > 0 {
+	if bonus := positiveEnvInt64("INVITER_BONUS_AMOUNT", "INVITER_BONUS_QUOTA"); bonus > 0 {
 		_, _ = billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
 			UserId:     strconv.FormatInt(user.InviterID, 10),
 			Amount:     bonus,
@@ -309,12 +309,19 @@ func creditInvitationBonus(ctx context.Context, user *biz.User, billingClient bi
 	}
 }
 
-func positiveEnvInt64(key string) int64 {
-	value, err := strconv.ParseInt(os.Getenv(key), 10, 64)
-	if err != nil || value < 0 {
-		return 0
+func positiveEnvInt64(keys ...string) int64 {
+	for _, key := range keys {
+		raw, ok := os.LookupEnv(key)
+		if !ok {
+			continue
+		}
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value <= 0 {
+			return 0
+		}
+		return value
 	}
-	return value
+	return 0
 }
 
 func emailDomainAllowed(email string, whitelist []string) bool {

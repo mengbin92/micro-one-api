@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,26 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestPaymentConfigUnmarshalAmountPerUnit(t *testing.T) {
+	var cfg PaymentConfig
+	if err := json.Unmarshal([]byte(`{"amount_per_unit":10000,"quota_per_unit":5000}`), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AmountPerUnit != 10000 {
+		t.Fatalf("amount_per_unit = %d", cfg.AmountPerUnit)
+	}
+}
+
+func TestPaymentConfigUnmarshalLegacyQuotaPerUnit(t *testing.T) {
+	var cfg PaymentConfig
+	if err := json.Unmarshal([]byte(`{"quota_per_unit":5000}`), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AmountPerUnit != 5000 {
+		t.Fatalf("amount_per_unit = %d", cfg.AmountPerUnit)
+	}
+}
 
 func TestAlipayProviderReadsKeyFiles(t *testing.T) {
 	dir := t.TempDir()

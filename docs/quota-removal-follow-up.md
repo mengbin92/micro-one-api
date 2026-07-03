@@ -18,9 +18,14 @@ Status after the wallet API/frontend rename:
 - Done: database/model wallet fields now use `balance`, `used_amount`,
   `frozen_amount`, `balance_before`, and `balance_after` instead of wallet quota
   names.
+- Done: wallet-flow config names now use `AmountPerUnit`,
+  `AmountForNewUser`, `AmountForInviter`, `AmountForInvitee`,
+  `INVITEE_BONUS_AMOUNT`, and `INVITER_BONUS_AMOUNT`. Legacy
+  `QuotaPerUnit`, invitation quota option names, `quota_per_unit`, and
+  invitation bonus quota env vars remain as compatibility fallbacks only.
 - Preserved: relay/OpenAI-compatible quota endpoints, channel usage fields,
-  log/usage aggregate fields, reconciliation quota fields, subscription quota
-  windows, `QuotaPerUnit`, and invitation quota config names.
+  log/usage aggregate fields, reconciliation quota fields, and subscription
+  quota windows.
 
 Follow-up items:
 
@@ -31,9 +36,10 @@ Follow-up items:
    `quota`, such as account balance snapshots, ledger amount columns, and payment
    order asset fields. No migration was added in this branch because the project
    is not live yet.
-3. [ ] Split or remove compatibility config names that still use one-api quota
+3. [x] Split or remove compatibility config names that still use one-api quota
    terminology for wallet flows, such as invitation bonus env vars and
-   `quota_per_unit` pricing option names.
+   `quota_per_unit` pricing option names. New primary names use amount
+   terminology; old quota names are read only as compatibility fallbacks.
 4. [ ] Decide whether relay/OpenAI-compatible quota endpoints should stay as a
    separate compatibility concept. Current relay `PAYMENT_QUOTA_PER_UNIT` and
    raw quota endpoints were not changed because they are not wallet display

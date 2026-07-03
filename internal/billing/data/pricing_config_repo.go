@@ -21,7 +21,7 @@ func (r *PricingConfigRepo) GetPricingConfig(ctx context.Context) (biz.PricingCo
 	rows, err := r.data.db.WithContext(ctx).
 		Table("system_options").
 		Select("option_key, option_value").
-		Where("option_key IN ?", []string{"GroupRatio", "ModelRatio", "CompletionRatio", "ModelPrice", "UpstreamModelPrice", "QuotaPerUnit"}).
+		Where("option_key IN ?", []string{"GroupRatio", "ModelRatio", "CompletionRatio", "ModelPrice", "UpstreamModelPrice", "AmountPerUnit", "QuotaPerUnit"}).
 		Rows()
 	if err != nil {
 		return biz.PricingConfig{}, fmt.Errorf("list pricing options: %w", err)
@@ -45,8 +45,17 @@ func (r *PricingConfigRepo) GetPricingConfig(ctx context.Context) (biz.PricingCo
 		CompletionRatios: parseRatioOption(values["CompletionRatio"]),
 		ModelPrices:      parseModelPriceOption(values["ModelPrice"]),
 		UpstreamPrices:   parseModelPriceOption(values["UpstreamModelPrice"]),
-		QuotaPerUnit:     parseFloatOption(values["QuotaPerUnit"]),
+		AmountPerUnit:    parseFloatOption(firstNonEmpty(values["AmountPerUnit"], values["QuotaPerUnit"])),
 	}, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func parseRatioOption(raw string) map[string]float64 {

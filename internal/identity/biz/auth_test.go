@@ -918,8 +918,8 @@ func TestIdentityUsecase_GetOrCreateAffCode_GeneratesWhenMissing(t *testing.T) {
 }
 
 func TestIdentityUsecase_RegisterWithAffCode_DoesNotApplyBonusesAtBizLayer(t *testing.T) {
-	t.Setenv("INVITEE_BONUS_QUOTA", "25")
-	t.Setenv("INVITER_BONUS_QUOTA", "50")
+	t.Setenv("INVITEE_BONUS_AMOUNT", "25")
+	t.Setenv("INVITER_BONUS_AMOUNT", "50")
 	repo := &mockIdentityRepo{
 		users: map[int64]*User{
 			1: {ID: 1, Username: "alice", Status: UserStatusEnabled, AffCode: "INVITE01", Balance: 100},

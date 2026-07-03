@@ -146,8 +146,8 @@ func TestIdentityHTTPRegisterAcceptsAffCode(t *testing.T) {
 }
 
 func TestIdentityHTTPRegisterWithAffCodeCreditsInvitationBonusViaBilling(t *testing.T) {
-	t.Setenv("INVITEE_BONUS_QUOTA", "25")
-	t.Setenv("INVITER_BONUS_QUOTA", "50")
+	t.Setenv("INVITEE_BONUS_AMOUNT", "25")
+	t.Setenv("INVITER_BONUS_AMOUNT", "50")
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
 	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
@@ -182,9 +182,36 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsInvitationBonusViaBilling(t *test
 	}
 }
 
+func TestIdentityHTTPRegisterWithAffCodeCreditsLegacyInvitationBonusEnv(t *testing.T) {
+	t.Setenv("INVITEE_BONUS_QUOTA", "25")
+	t.Setenv("INVITER_BONUS_QUOTA", "50")
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo)
+	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	billingClient := &identityHTTPBillingClient{}
+	srv := NewHTTPServer(":0", uc, nil, billingClient)
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	registerRec := httptest.NewRecorder()
+	srv.ServeHTTP(registerRec, registerReq)
+
+	if registerRec.Code != http.StatusOK {
+		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	}
+	if len(billingClient.topUpCalls) != 2 {
+		t.Fatalf("topup calls = %d, want 2: %#v", len(billingClient.topUpCalls), billingClient.topUpCalls)
+	}
+	if billingClient.topUpCalls[0].Amount != 25 || billingClient.topUpCalls[1].Amount != 50 {
+		t.Fatalf("legacy invitation credits = %#v", billingClient.topUpCalls)
+	}
+}
+
 func TestIdentityHTTPRegisterWithAffCodeSkipsCreditWhenBonusesZero(t *testing.T) {
-	t.Setenv("INVITEE_BONUS_QUOTA", "")
-	t.Setenv("INVITER_BONUS_QUOTA", "0")
+	t.Setenv("INVITEE_BONUS_AMOUNT", "")
+	t.Setenv("INVITER_BONUS_AMOUNT", "0")
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
 	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
@@ -207,8 +234,8 @@ func TestIdentityHTTPRegisterWithAffCodeSkipsCreditWhenBonusesZero(t *testing.T)
 }
 
 func TestIdentityHTTPRegisterWithoutAffCodeSkipsBillingCredit(t *testing.T) {
-	t.Setenv("INVITEE_BONUS_QUOTA", "25")
-	t.Setenv("INVITER_BONUS_QUOTA", "50")
+	t.Setenv("INVITEE_BONUS_AMOUNT", "25")
+	t.Setenv("INVITER_BONUS_AMOUNT", "50")
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
 	billingClient := &identityHTTPBillingClient{}
@@ -571,8 +598,8 @@ func TestIdentityHTTPDashboardReturnsAccountSnapshot(t *testing.T) {
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Balance: 1000,
-			UsedAmount: 100,
+			Balance:      1000,
+			UsedAmount:   100,
 			RequestCount: 10,
 			Group:        "default",
 			GroupRatio:   1,
@@ -620,8 +647,8 @@ func TestIdentityHTTPDashboardTodayAmountUsesLedgerAmount(t *testing.T) {
 	todayStr := time.Now().Format("2006-01-02")
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Balance: 100000,
-			UsedAmount: 4350,
+			Balance:      100000,
+			UsedAmount:   4350,
 			RequestCount: 1,
 			Group:        "default",
 			GroupRatio:   1,
@@ -719,8 +746,8 @@ func TestIdentityHTTPUserReadOnlyCompatibilityAliases(t *testing.T) {
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Balance: 1000,
-			UsedAmount: 100,
+			Balance:      1000,
+			UsedAmount:   100,
 			RequestCount: 10,
 			Group:        "default",
 			GroupRatio:   1,
@@ -792,7 +819,7 @@ func TestIdentityHTTPDashboardBillingUsageReturnsOpenAIShape(t *testing.T) {
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Balance: 1000,
+			Balance:    1000,
 			UsedAmount: 123,
 		},
 	})
@@ -824,7 +851,7 @@ func TestIdentityHTTPDashboardBillingSubscriptionReturnsOpenAIShape(t *testing.T
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
-			Balance: 1000,
+			Balance:    1000,
 			UsedAmount: 123,
 		},
 	})

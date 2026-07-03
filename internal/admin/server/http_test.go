@@ -53,7 +53,7 @@ func (c *adminHTTPIdentityClient) GetUser(ctx context.Context, req *identityv1.G
 			Email:       "alice@example.com",
 			Group:       "default",
 			Status:      1,
-			Balance: 500,
+			Balance:     500,
 			Role:        c.userRole,
 		},
 	}, nil
@@ -297,7 +297,7 @@ func (c *adminHTTPBillingClient) TopUpQuota(ctx context.Context, req *billingv1.
 func (c *adminHTTPBillingClient) GetAccountSnapshot(ctx context.Context, req *billingv1.GetAccountSnapshotRequest, opts ...grpc.CallOption) (*billingv1.GetAccountSnapshotResponse, error) {
 	return &billingv1.GetAccountSnapshotResponse{
 		Snapshot: &commonv1.AccountSnapshot{
-			UserId: req.UserId,
+			UserId:  req.UserId,
 			Balance: 500,
 		},
 	}, nil
@@ -307,8 +307,8 @@ func (c *adminHTTPBillingClient) BatchGetAccountSnapshots(ctx context.Context, r
 	snapshots := make(map[string]*commonv1.AccountSnapshot, len(req.GetUserIds()))
 	for _, userID := range req.GetUserIds() {
 		snapshots[userID] = &commonv1.AccountSnapshot{
-			UserId:    userID,
-			Balance: 500,
+			UserId:     userID,
+			Balance:    500,
 			UsedAmount: 100,
 		}
 	}
@@ -886,7 +886,7 @@ func TestReadonlyPricingReturnsModelPriceRows(t *testing.T) {
 		"ModelPrice":      `{"gpt-5.5":{"input_price":0.00000065,"output_price":0.0000039,"cache_read_price":0.000001}}`,
 		"ModelRatio":      `{"legacy-model":0.5}`,
 		"CompletionRatio": `{"legacy-model":2}`,
-		"QuotaPerUnit":    `10000`,
+		"AmountPerUnit":   `10000`,
 	}})
 	req := httptest.NewRequest(http.MethodGet, "/api/pricing", nil)
 	rec := httptest.NewRecorder()
@@ -905,6 +905,32 @@ func TestReadonlyPricingReturnsModelPriceRows(t *testing.T) {
 		`"model":"legacy-model"`,
 		`"input_price":50`,
 		`"output_price":100`,
+		`"amount_per_unit":10000`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("pricing response missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestReadonlyPricingReadsLegacyQuotaPerUnit(t *testing.T) {
+	srv := newAdminHTTPOptionTestServer(&adminHTTPSystemOptionsStore{values: map[string]string{
+		"ModelRatio":   `{"legacy-model":0.5}`,
+		"QuotaPerUnit": `10000`,
+	}})
+	req := httptest.NewRequest(http.MethodGet, "/api/pricing", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`"model":"legacy-model"`,
+		`"input_price":50`,
+		`"amount_per_unit":10000`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("pricing response missing %q: %s", want, body)

@@ -17,9 +17,8 @@ type PricingConfig struct {
 	CompletionRatios map[string]float64
 	ModelPrices      map[string]ModelPrice
 	UpstreamPrices   map[string]ModelPrice
-	// Deprecated: wallet amounts are stored in fixed 4-decimal units now.
-	QuotaPerUnit float64
-	PricingStore PricingConfigStore
+	AmountPerUnit    float64
+	PricingStore     PricingConfigStore
 }
 
 const AmountScale = 10000

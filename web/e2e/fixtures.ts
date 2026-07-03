@@ -153,7 +153,7 @@ export async function mockApi(page: Page) {
             ModelRatio: '{"gpt-4o-mini":0.15}',
             CompletionRatio: '{"gpt-4o-mini":1}',
             GroupRatio: '{"default":1}',
-            QuotaPerUnit: '500000',
+            AmountPerUnit: '500000',
           },
           payment_summary: { recent_order_count: 1, recent_amount: 500000 },
         },
@@ -272,7 +272,7 @@ export async function mockApi(page: Page) {
         success: true,
         data: [
           { key: 'RegisterEnabled', value: 'true' },
-          { key: 'QuotaForNewUser', value: '500000' },
+          { key: 'AmountForNewUser', value: '500000' },
         ],
       },
     });

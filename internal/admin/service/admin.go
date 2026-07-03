@@ -1471,9 +1471,9 @@ var oneAPIOptionDefaults = map[string]string{
 	"WeChatAccountQRCodeImageURL":    "",
 	"MessagePusherAddress":           "",
 	"TurnstileSiteKey":               "",
-	"QuotaForNewUser":                "0",
-	"QuotaForInviter":                "0",
-	"QuotaForInvitee":                "0",
+	"AmountForNewUser":               "0",
+	"AmountForInviter":               "0",
+	"AmountForInvitee":               "0",
 	"QuotaRemindThreshold":           "0",
 	"PreConsumedQuota":               "0",
 	"ModelRatio":                     "{}",
@@ -1482,9 +1482,16 @@ var oneAPIOptionDefaults = map[string]string{
 	"CompletionRatio":                "{}",
 	"TopUpLink":                      "",
 	"ChatLink":                       "",
-	"QuotaPerUnit":                   "10000",
+	"AmountPerUnit":                  "10000",
 	"RetryTimes":                     "0",
 	"Theme":                          "default",
+}
+
+var oneAPIOptionLegacyAliases = map[string]string{
+	"AmountForNewUser": "QuotaForNewUser",
+	"AmountForInviter": "QuotaForInviter",
+	"AmountForInvitee": "QuotaForInvitee",
+	"AmountPerUnit":    "QuotaPerUnit",
 }
 
 func (s *AdminService) ListOneAPIOptions(context.Context) ([]OneAPIOption, error) {
@@ -1496,6 +1503,12 @@ func (s *AdminService) ListOneAPIOptions(context.Context) ([]OneAPIOption, error
 		for key := range values {
 			if v, err := s.systemOptsRepo.Get(key); err == nil && v != "" {
 				values[key] = v
+				continue
+			}
+			if legacyKey := oneAPIOptionLegacyAliases[key]; legacyKey != "" {
+				if v, err := s.systemOptsRepo.Get(legacyKey); err == nil && v != "" {
+					values[key] = v
+				}
 			}
 		}
 		if v, err := s.systemOptsRepo.Get("site_title"); err == nil && v != "" && values["SystemName"] == oneAPIOptionDefaults["SystemName"] {
@@ -1524,6 +1537,11 @@ func (s *AdminService) GetOneAPIOption(_ context.Context, key string) (string, e
 	if s.systemOptsRepo != nil {
 		if v, err := s.systemOptsRepo.Get(key); err == nil && v != "" {
 			return v, nil
+		}
+		if legacyKey := oneAPIOptionLegacyAliases[key]; legacyKey != "" {
+			if v, err := s.systemOptsRepo.Get(legacyKey); err == nil && v != "" {
+				return v, nil
+			}
 		}
 	}
 	return oneAPIOptionDefaults[key], nil
