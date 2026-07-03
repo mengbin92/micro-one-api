@@ -27,6 +27,8 @@ import (
 	applogger "micro-one-api/internal/pkg/logger"
 	appregistry "micro-one-api/internal/pkg/registry"
 	"micro-one-api/internal/pkg/xconfig"
+	subscriptionbiz "micro-one-api/internal/subscription/biz"
+	subscriptiondata "micro-one-api/internal/subscription/data"
 )
 
 func loadConfig(confPath string) (*bcfg.Config, error) {
@@ -89,7 +91,10 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	)
 	paymentProvider := biz.NewConfiguredPaymentProvider(cfg.Payment)
 	paymentAssetIssuer := biz.NewPaymentAssetIssuer(uc)
-	paymentUc := biz.NewPaymentUsecase(d.PaymentRepo(), paymentProvider, paymentAssetIssuer)
+	subscriptionRepo := subscriptiondata.NewRepository(d.DB(), d.Redis())
+	subscriptionUc := subscriptionbiz.NewSubscriptionUsecase(subscriptionRepo, subscriptionRepo)
+	paymentSubscriptionAssigner := biz.NewPaymentSubscriptionAssigner(subscriptionUc, subscriptionRepo)
+	paymentUc := biz.NewPaymentUsecaseWithAssigner(d.PaymentRepo(), paymentProvider, paymentAssetIssuer, paymentSubscriptionAssigner)
 	alipayVerifier := biz.NewAlipayPaymentProvider(cfg.Payment.Alipay)
 	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)
 

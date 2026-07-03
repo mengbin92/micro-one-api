@@ -88,6 +88,7 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *khttp.Server {
 	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	identityProxy := newServiceReverseProxy(optionString(options, 0))
+	billingHTTPProxy := newBillingHTTPProxy()
 	notifyWorkerProxy := newNotifyWorkerProxy()
 	channelHTTPProxy := newChannelHTTPProxy()
 	webAssets := newAdminWebAssets(optionString(options, 1))
@@ -135,6 +136,17 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 	srv.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && billingHTTPProxy != nil {
+			proxyReq := r.Clone(r.Context())
+			proxyReq.URL.Path = "/api/v1/user/payments/alipay/notify"
+			proxyReq.URL.RawPath = ""
+			billingHTTPProxy.ServeHTTP(w, proxyReq)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true,
 			"message": "",
@@ -259,6 +271,10 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 		srv.HandleFunc("/api/user/pay", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/token", identityProxy.ServeHTTP)
 		srv.HandlePrefix("/api/token/", identityProxy)
+	}
+	if billingHTTPProxy != nil {
+		srv.HandleFunc("/api/v1/user/payments/alipay/notify", billingHTTPProxy.ServeHTTP)
+		srv.HandleFunc("/api/user/payments/alipay/notify", billingHTTPProxy.ServeHTTP)
 	}
 	srv.HandlePrefix("/api/group", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleGroupManagement(w, r, svc)
@@ -3117,6 +3133,20 @@ func newChannelHTTPProxy() *httputil.ReverseProxy {
 	if endpoint == "" {
 		// Default to channel-service's HTTP port (see configs/channel-service.yaml).
 		endpoint = "http://channel-service:8002"
+	}
+	target, err := parseReverseProxyTarget(endpoint)
+	if err != nil {
+		return nil
+	}
+	return httputil.NewSingleHostReverseProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
+}
+
+// newBillingHTTPProxy builds a reverse proxy to billing-service's HTTP port.
+// It is used only for unauthenticated provider callbacks such as Alipay notify.
+func newBillingHTTPProxy() *httputil.ReverseProxy {
+	endpoint := os.Getenv("BILLING_HTTP_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "http://billing-service:8004"
 	}
 	target, err := parseReverseProxyTarget(endpoint)
 	if err != nil {

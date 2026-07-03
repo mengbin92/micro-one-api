@@ -46,7 +46,7 @@ interface PurchaseResponse {
 
 interface PurchaseVariables {
   groupId: number;
-  paymentWindow: Window | null;
+  paymentWindow?: Window | null;
 }
 
 function formatUsd(value: number) {

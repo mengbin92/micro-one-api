@@ -20,6 +20,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - 订阅账号上游 `401` / `403` / `429` / `cyber_policy` 错误改为按 §7 ErrorPassthrough 透传状态码、body 与 `Retry-After`,不再统一包装成网关错误。
 - compose E2E mock channel 状态修正为 `ChannelStatusEnabled = 1`,避免模型列表可见但 relay 选号过滤后 chat completion 返回 500。
 - `phase1_indexes.sql` 不再重复创建 `billing_ledgers.idx_created_at`,避免干净 MySQL volume 首次初始化时因重复索引中断。
+- 订阅套餐支付宝支付成功后由 `billing-service` 自动发放 `user_subscriptions`,并阻止订阅订单在未配置发放器或缺少 `group_id` 时被误标为 `issued`。
 
 ## [0.3.1] - 2026-06-29
 

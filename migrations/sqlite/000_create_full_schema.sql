@@ -355,7 +355,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
   paid_at INTEGER DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL DEFAULT 0,
-  asset_issue_status TEXT NOT NULL DEFAULT 'pending'
+  asset_issue_status TEXT NOT NULL DEFAULT 'pending',
+  group_id INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_orders_user_id                ON payment_orders(user_id);
@@ -365,6 +366,7 @@ CREATE INDEX IF NOT EXISTS idx_payment_orders_status                ON payment_o
 CREATE INDEX IF NOT EXISTS idx_payment_orders_provider_trade_no     ON payment_orders(provider_trade_no);
 CREATE INDEX IF NOT EXISTS idx_payment_orders_paid_at               ON payment_orders(paid_at);
 CREATE INDEX IF NOT EXISTS idx_payment_orders_asset_issue_status    ON payment_orders(asset_issue_status);
+CREATE INDEX IF NOT EXISTS idx_payment_orders_group_id              ON payment_orders(group_id);
 
 -- ============================================================
 -- Reconciliation runs

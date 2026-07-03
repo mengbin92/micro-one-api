@@ -186,8 +186,8 @@ func TestHTTPServerUsageReturnsBalanceForAPIKey(t *testing.T) {
 		nil,
 		&rawBillingClient{accountSnapshot: &commonv1.AccountSnapshot{
 			UserId:       "42",
-			Balance: 1000000,
-			UsedAmount: 250000,
+			Balance:      10001000000,
+			UsedAmount:   250000,
 			RequestCount: 9,
 			Group:        "default",
 			GroupRatio:   1,
@@ -226,10 +226,10 @@ func TestHTTPServerUsageReturnsBalanceForAPIKey(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v, body=%s", err, rec.Body.String())
 	}
-	if body.Mode != "unrestricted" || !body.IsValid || body.Remaining != 2 || body.Balance != 2 || body.Unit != "USD" || body.PlanName != "钱包余额" {
+	if body.Mode != "unrestricted" || !body.IsValid || body.Remaining != 1000100 || body.Balance != 1000100 || body.Unit != "USD" || body.PlanName != "钱包余额" {
 		t.Fatalf("usage summary mismatch: %+v", body)
 	}
-	if body.Quota.Remaining != 1000000 || body.Quota.Used != 250000 || body.Quota.Frozen != 50000 || body.Quota.Unit != "quota" || body.Quota.PerUSD != 500000 {
+	if body.Quota.Remaining != 10001000000 || body.Quota.Used != 250000 || body.Quota.Frozen != 50000 || body.Quota.Unit != "quota" || body.Quota.PerUSD != 10000 {
 		t.Fatalf("quota mismatch: %+v", body.Quota)
 	}
 }

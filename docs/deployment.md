@@ -226,6 +226,31 @@ docker-compose up -d admin-api
 - `admin-api` 启动会输出 `log service proxy disabled: missing [...]` 的 WARN 日志；
 - 路由保持注册，但实际调用返回 `501 NotImplemented` 的稳定占位响应（`{"success":false,"message":"log detail is not configured"}` 或 `{"success":false,"message":"log delete is not configured"}`）。
 
+#### 订阅套餐支付与支付宝回调
+
+用户在订阅分组页自助购买套餐时，前端创建 `asset_type=subscription` 的支付订单。生产环境应使用 `channel=alipay`，不能回落到 `mock`；`mock` 只会创建未支付订单，不会跳转到支付宝。
+
+`billing-service` 支付成功后会根据 `payment_orders.group_id` 自动发放订阅，并写入 `user_subscriptions`。如果订阅订单缺少 `group_id`，或 `billing-service` 未接入订阅发放器，订单不会被标记为 `paid/issued`，避免出现“订单已支付但我的订阅为空”的脏状态。
+
+启用支付宝前，部署环境至少需要配置：
+
+| 变量 | 说明 |
+|------|------|
+| `ALIPAY_ENABLED` | 必须为 `true` 才会注册真实支付宝支付渠道 |
+| `ALIPAY_FORM_URL` | 支付宝网关地址；沙箱通常为 `https://openapi-sandbox.dl.alipaydev.com/gateway.do` |
+| `ALIPAY_APP_ID` | 支付宝应用 ID |
+| `ALIPAY_PRIVATE_KEY_PATH` | 应用私钥 PEM 文件路径，容器内路径需可读 |
+| `ALIPAY_PUBLIC_KEY_PATH` | 支付宝公钥 PEM 文件路径，容器内路径需可读 |
+| `ALIPAY_RETURN_URL` | 用户支付完成后的同步返回页面 |
+| `ALIPAY_NOTIFY_URL` | 支付宝异步通知 URL，必须允许公网 `POST` 到达应用 |
+
+回调路由有两种可选接法：
+
+1. 直接把 `ALIPAY_NOTIFY_URL` 指向 `billing-service` 的 `/api/v1/user/payments/alipay/notify`。
+2. 指向 `admin-api`，由 `admin-api` 代理到 `billing-service` 的同名路径。
+
+无论采用哪种方式，公网网关或反向代理都必须放行 `POST`。如果公网 `POST` 返回 `404` 或 `405`，支付宝异步通知不会触发；订单可能只能在用户查看订单时通过支付宝查询刷新状态，订阅发放也会延后到该刷新链路。
+
 ## 5. 健康检查与监控
 
 ### 5.1 健康检查端点

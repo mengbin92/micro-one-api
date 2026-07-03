@@ -35,6 +35,7 @@ import (
 
 const postResponseWriteTimeout = 10 * time.Second
 const defaultQuotaPerUSD = 500000
+const amountUnitsPerUSD = 10000
 
 // HTTPServer handles HTTP requests for relay-gateway.
 type HTTPServer struct {
@@ -1613,8 +1614,7 @@ func (s *HTTPServer) handleUsage(w http.ResponseWriter, r *http.Request) {
 	remaining := account.GetBalance()
 	used := account.GetUsedAmount()
 	frozen := account.GetFrozenAmount()
-	quotaPerUSD := quotaPerUSDFromEnv()
-	remainingUSD := float64(remaining) / float64(quotaPerUSD)
+	remainingUSD := amountUnitsToUSD(remaining)
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"mode":      "unrestricted",
 		"isValid":   true,
@@ -1630,7 +1630,7 @@ func (s *HTTPServer) handleUsage(w http.ResponseWriter, r *http.Request) {
 			"used":      used,
 			"frozen":    frozen,
 			"unit":      "quota",
-			"per_usd":   quotaPerUSD,
+			"per_usd":   amountUnitsPerUSD,
 		},
 		"usage": map[string]interface{}{
 			"total": map[string]interface{}{
@@ -1639,6 +1639,10 @@ func (s *HTTPServer) handleUsage(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	})
+}
+
+func amountUnitsToUSD(amount int64) float64 {
+	return float64(amount) / float64(amountUnitsPerUSD)
 }
 
 func quotaPerUSDFromEnv() int64 {

@@ -136,6 +136,9 @@ func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeN
 		if err != nil {
 			return err
 		}
+		if providerTradeNo != "" {
+			order.ProviderTradeNo = providerTradeNo
+		}
 		if po.Status == biz.PaymentOrderStatusPaid {
 			result = order
 			return nil

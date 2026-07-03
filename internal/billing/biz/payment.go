@@ -201,7 +201,13 @@ func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTr
 				return err
 			}
 		}
-		if order.AssetType == PaymentAssetTypeSubscription && order.GroupID > 0 && uc.assigner != nil {
+		if order.AssetType == PaymentAssetTypeSubscription {
+			if order.GroupID <= 0 {
+				return errors.New("subscription group_id is required")
+			}
+			if uc.assigner == nil {
+				return errors.New("subscription assigner is not configured")
+			}
 			if err := uc.assigner.AssignSubscriptionAfterPayment(ctx, order); err != nil {
 				return fmt.Errorf("assign subscription after payment: %w", err)
 			}

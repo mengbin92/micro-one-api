@@ -52,6 +52,10 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 	return &Repository{db: db, redis: rdb}, nil
 }
 
+func NewRepository(db *gorm.DB, redis *redis.Client) *Repository {
+	return &Repository{db: db, redis: redis}
+}
+
 func newMemoryRepository() *Repository {
 	return &Repository{
 		groups:        make(map[int64]*biz.SubscriptionGroup),

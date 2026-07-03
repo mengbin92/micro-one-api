@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -611,7 +612,7 @@ func TestAdminHTTPSubscriptionManagement(t *testing.T) {
 	}
 }
 
-func TestUserSubscriptionPurchaseCreatesPaymentOrder(t *testing.T) {
+func TestUserSubscriptionPurchaseCreatesPaymentOrderWithDefaultChannel(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	identityClient := &adminHTTPIdentityClient{validateValid: true, validateUserID: 42}
 	billingClient := &adminHTTPBillingClient{}
@@ -626,7 +627,7 @@ func TestUserSubscriptionPurchaseCreatesPaymentOrder(t *testing.T) {
 		t.Fatalf("create group status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/subscriptions/purchase/payment", strings.NewReader(`{"group_id":1,"channel":"mock"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/subscriptions/purchase/payment", strings.NewReader(`{"group_id":1}`))
 	req.Header.Set("Authorization", "Bearer user-token")
 	rec = httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
@@ -638,8 +639,47 @@ func TestUserSubscriptionPurchaseCreatesPaymentOrder(t *testing.T) {
 	if got == nil {
 		t.Fatal("CreatePaymentOrder was not called")
 	}
-	if got.GetUserId() != "42" || got.GetChannel() != "mock" || got.GetAssetType() != "subscription" || got.GetAssetAmount() != 1 || got.GetMoneyCents() != 1000 || got.GetGroupId() != 1 {
+	if got.GetUserId() != "42" || got.GetChannel() != "alipay" || got.GetAssetType() != "subscription" || got.GetAssetAmount() != 1 || got.GetMoneyCents() != 1000 || got.GetGroupId() != 1 {
 		t.Fatalf("CreatePaymentOrder request = %+v", got)
+	}
+}
+
+func TestAdminHTTPProxiesAlipayNotifyToBillingHTTP(t *testing.T) {
+	var seenPaths []string
+	billingHTTP := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read proxied body: %v", err)
+		}
+		seenPaths = append(seenPaths, r.URL.Path+"?"+r.URL.RawQuery+" body="+string(body))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+	defer billingHTTP.Close()
+	t.Setenv("BILLING_HTTP_ENDPOINT", billingHTTP.URL)
+
+	srv := NewHTTPServer(":0", nil)
+	paths := []string{
+		"/api/v1/user/payments/alipay/notify?x=1",
+		"/api/user/payments/alipay/notify?x=1",
+		"/api/status?x=1",
+	}
+	for _, path := range paths {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("trade_status=TRADE_SUCCESS"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || rec.Body.String() != "success" {
+			t.Fatalf("notify proxy %s status=%d body=%s", path, rec.Code, rec.Body.String())
+		}
+	}
+	if len(seenPaths) != 3 {
+		t.Fatalf("proxied requests = %v", seenPaths)
+	}
+	if !strings.Contains(seenPaths[0], "/api/v1/user/payments/alipay/notify?x=1 body=trade_status=TRADE_SUCCESS") ||
+		!strings.Contains(seenPaths[1], "/api/user/payments/alipay/notify?x=1 body=trade_status=TRADE_SUCCESS") ||
+		!strings.Contains(seenPaths[2], "/api/v1/user/payments/alipay/notify?x=1 body=trade_status=TRADE_SUCCESS") {
+		t.Fatalf("unexpected proxied requests: %v", seenPaths)
 	}
 }
 
