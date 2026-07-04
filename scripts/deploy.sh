@@ -69,6 +69,7 @@ SKIP_RESTART="${DEPLOY_SKIP_RESTART:-0}"
 SKIP_FRONTEND="${DEPLOY_SKIP_FRONTEND:-0}"
 SKIP_DB_BACKUP="${DEPLOY_SKIP_DB_BACKUP:-0}"   # 默认 0 = 迁移前先 mysqldump 备份
 UPLOAD_COMPOSE="${DEPLOY_UPLOAD_COMPOSE:-0}"    # 默认 0 = 不上传/不覆盖服务器 compose
+BUILD_PARALLEL="${DEPLOY_BUILD_PARALLEL:-1}"    # 默认 1 = 单进程构建；设为 N 则 N 个并行
 
 DEFAULT_SERVICES=(
     "identity-service"
@@ -138,34 +139,130 @@ else
 fi
 echo
 
-# ---- 步骤 2: 构建镜像 ----
+# ---- 步骤 2: 构建 Go 依赖基础镜像 ----
 log "=========================================="
-log "步骤 2/5: 构建 ${TARGET_PLATFORM} Docker 镜像"
+log "步骤 2/6: 构建 Go 依赖基础镜像"
 log "=========================================="
 
-BUILDX_CACHE_FLAGS=()
-# 如果 registry 缓存可访问（可选），启用 buildx cache-to/from；这里默认只用本地 cache。
-for SERVICE in "${SERVICES[@]}"; do
+# 计算 go.mod + go.sum 的 hash，用于判断依赖是否变化
+DEPS_HASH=$(cat "${REPO_ROOT}/go.mod" "${REPO_ROOT}/go.sum" 2>/dev/null | md5sum | cut -d' ' -f1)
+DEPS_IMAGE_TAG="micro-one-api/go-deps:${DEPS_HASH}"
+DEPS_IMAGE_LATEST="micro-one-api/go-deps:latest"
+NEED_BUILD_DEPS=1
+
+# 检查 deps 镜像是否已存在（通过 hash tag）
+if docker image inspect "${DEPS_IMAGE_TAG}" &>/dev/null; then
+    log "✓ 依赖镜像 ${DEPS_IMAGE_TAG} 已存在，跳过构建"
+    NEED_BUILD_DEPS=0
+else
+    log "依赖镜像 ${DEPS_IMAGE_TAG} 不存在，需要构建"
+fi
+
+# 构建依赖镜像（如果需要）
+if [ "${NEED_BUILD_DEPS}" = "1" ]; then
+    log "正在构建依赖镜像（仅当 go.mod/go.sum 变化时需重新构建）..."
+    attempt=1
+    BUILD_RETRIES="${DEPLOY_BUILD_RETRIES:-3}"
+    while [ "${attempt}" -le "${BUILD_RETRIES}" ]; do
+        if run_cmd docker buildx build \
+            --platform "${TARGET_PLATFORM}" \
+            --file "${REPO_ROOT}/deployments/docker/Dockerfile.deps" \
+            --tag "${DEPS_IMAGE_TAG}" \
+            --tag "${DEPS_IMAGE_LATEST}" \
+            --load \
+            "${REPO_ROOT}"; then
+            log "✓ 依赖镜像构建完成"
+            break
+        fi
+        if [ "${attempt}" -eq "${BUILD_RETRIES}" ]; then
+            err "依赖镜像构建失败，已重试 ${BUILD_RETRIES} 次"
+            exit 1
+        fi
+        warn "依赖镜像构建失败 (${attempt}/${BUILD_RETRIES})，等待 5s 后重试"
+        sleep 5
+        attempt=$((attempt + 1))
+    done
+fi
+echo
+
+# ---- 步骤 3: 构建服务镜像（并行） ----
+log "=========================================="
+log "步骤 3/6: 构建 ${TARGET_PLATFORM} 服务镜像"
+log "=========================================="
+
+# 并行度配置：默认 1（串行），可设为 N 并行构建
+PARALLEL_JOBS="${BUILD_PARALLEL}"
+if [ "${PARALLEL_JOBS}" -le 0 ] || [ "${PARALLEL_JOBS}" -gt 20 ]; then
+    PARALLEL_JOBS=1
+fi
+
+log "并行度: ${PARALLEL_JOBS} 个服务同时构建"
+
+# 最多重试次数（针对临时网络问题）
+BUILD_RETRIES="${DEPLOY_BUILD_RETRIES:-3}"
+# 是否复用已经构建好的 .tar
+REUSE_EXISTING_TAR="${DEPLOY_REUSE_EXISTING_TAR:-1}"
+
+# 构建单个服务的函数（支持重试）
+build_service() {
+    local SERVICE="$1"
+    local OUTPUT_DIR="$2"
+    local RETRIES="$3"
+    local TARGET_PLATFORM="$4"
+    local REPO_ROOT="$5"
+    local attempt=1
+
+    # 检查是否已存在
+    if [ "${REUSE_EXISTING_TAR}" = "1" ] && [ -s "${OUTPUT_DIR}/${SERVICE}.tar" ]; then
+        log "跳过 ${SERVICE} (已存在 ${OUTPUT_DIR}/${SERVICE}.tar)"
+        return 0
+    fi
+
     log "构建 ${SERVICE} ..."
-    run_cmd docker buildx build \
-        --platform "${TARGET_PLATFORM}" \
-        --build-arg "SERVICE_NAME=${SERVICE}" \
-        --file "${REPO_ROOT}/deployments/docker/Dockerfile" \
-        --tag "micro-one-api/${SERVICE}:latest" \
-        --load \
-        "${REPO_ROOT}"
+    while [ "${attempt}" -le "${RETRIES}" ]; do
+        if docker buildx build \
+            --platform "${TARGET_PLATFORM}" \
+            --build-arg "SERVICE_NAME=${SERVICE}" \
+            --file "${REPO_ROOT}/deployments/docker/Dockerfile" \
+            --tag "micro-one-api/${SERVICE}:latest" \
+            --load \
+            "${REPO_ROOT}"; then
+            docker save "micro-one-api/${SERVICE}:latest" -o "${OUTPUT_DIR}/${SERVICE}.tar"
+            log "✓ ${SERVICE} 构建完成"
+            return 0
+        fi
+        if [ "${attempt}" -eq "${RETRIES}" ]; then
+            err "构建 ${SERVICE} 失败，已重试 ${RETRIES} 次"
+            return 1
+        fi
+        warn "构建 ${SERVICE} 失败 (${attempt}/${RETRIES})，等待 5s 后重试"
+        sleep 5
+        attempt=$((attempt + 1))
+    done
+}
 
-    run_cmd docker save "micro-one-api/${SERVICE}:latest" \
-        -o "${OUTPUT_DIR}/${SERVICE}.tar"
-    log "✓ ${SERVICE} 构建完成"
-done
+export -f log warn err build_service
+export DRY_RUN REUSE_EXISTING_TAR BUILD_RETRIES TARGET_PLATFORM REPO_ROOT
+
+# 根据并行度选择构建方式
+if [ "${PARALLEL_JOBS}" -le 1 ]; then
+    # 串行构建（原有行为）
+    for SERVICE in "${SERVICES[@]}"; do
+        build_service "${SERVICE}" "${OUTPUT_DIR}" "${BUILD_RETRIES}" "${TARGET_PLATFORM}" "${REPO_ROOT}" || exit 1
+    done
+else
+    # 并行构建（使用 xargs -P）
+    printf "%s\n" "${SERVICES[@]}" | xargs -P "${PARALLEL_JOBS}" -I {} bash -c "
+        build_service '{}' '${OUTPUT_DIR}' '${BUILD_RETRIES}' '${TARGET_PLATFORM}' '${REPO_ROOT}' || exit 1
+    " || exit 1
+fi
 log "所有镜像构建完成"
 echo
 
-# ---- 步骤 3: 上传镜像（流式 gzip） ----
+# ---- 步骤 4: 上传镜像（流式 gzip） ----
 if [ "${SKIP_UPLOAD}" != "1" ]; then
     log "=========================================="
-    log "步骤 3/5: 上传镜像到 ${DEPLOY_REMOTE_SERVER}"
+    log "步骤 4/6: 上传镜像到 ${DEPLOY_REMOTE_SERVER}"
     log "=========================================="
     for SERVICE in "${SERVICES[@]}"; do
         log "上传 ${SERVICE}.tar (gzip) ..."
@@ -178,10 +275,10 @@ else
 fi
 echo
 
-# ---- 步骤 4: 数据库迁移 ----
+# ---- 步骤 5: 数据库迁移 ----
 if [ "${SKIP_MIGRATIONS}" != "1" ]; then
     log "=========================================="
-    log "步骤 4/5: 执行数据库迁移"
+    log "步骤 5/6: 执行数据库迁移"
     log "=========================================="
     REMOTE_MIG_DIR="${DEPLOY_REMOTE_DIR}/migrations-new"
     run_cmd ssh "${DEPLOY_REMOTE_SERVER}" "rm -rf '${REMOTE_MIG_DIR}' && mkdir -p '${REMOTE_MIG_DIR}'"
@@ -257,10 +354,10 @@ else
 fi
 echo
 
-# ---- 步骤 5: 更新服务 ----
+# ---- 步骤 6: 更新服务 ----
 if [ "${SKIP_RESTART}" != "1" ]; then
     log "=========================================="
-    log "步骤 5/5: 更新服务"
+    log "步骤 6/6: 更新服务"
     log "=========================================="
     # 默认不上传 compose：服务器上使用的是 image: 版 compose，仓库里的是 build: 版，
     # 覆盖会导致服务器尝试从源码编译。仅在 DEPLOY_UPLOAD_COMPOSE=1 时才上传。

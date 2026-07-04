@@ -50,8 +50,9 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
-RUN go mod download && go mod verify
+# Copy Go module cache from deps base image
+# Build deps image first: docker build -f deployments/docker/Dockerfile.deps -t micro-one-api/go-deps:latest ../..
+COPY --from=micro-one-api/go-deps:latest /go/pkg/mod /go/pkg/mod
 
 COPY . .
 

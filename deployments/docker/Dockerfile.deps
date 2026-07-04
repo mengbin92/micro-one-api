@@ -1,0 +1,34 @@
+# Dockerfile.deps
+# Go dependencies base image
+# This image contains all Go module dependencies and is reused across
+# all service builds to avoid repeated go mod downloads.
+#
+# Build this image only when go.mod or go.sum changes:
+#   docker build -f deployments/docker/Dockerfile.deps -t micro-one-api/go-deps:latest ../..
+#
+# The image tag includes a hash of go.mod+go.sum for automatic cache invalidation:
+#   TAG=$(cat go.mod go.sum | md5sum | cut -d' ' -f1)
+#   docker build -f deployments/docker/Dockerfile.deps -t "micro-one-api/go-deps:${TAG}" ../..
+#   docker tag "micro-one-api/go-deps:${TAG}" micro-one-api/go-deps:latest
+
+FROM golang:1.26-alpine
+
+# git and ca-certificates are required for go mod download/verify
+# ca-certificates enables HTTPS downloads and sum db verification
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /deps
+
+# Copy go.mod and go.sum first (not the entire source)
+# This layer will only rebuild when these files change
+COPY go.mod go.sum ./
+
+# Download and verify all dependencies
+# The /go/pkg/mod directory will be copied into the builder stage
+RUN go mod download && go mod verify
+
+# Metadata: store go.mod checksum for cache invalidation
+RUN go version && go env | grep GOMOD
+
+# Verify the cache was populated
+RUN ls -la /go/pkg/mod | head -20 || echo "No cached modules yet (first build)"
