@@ -79,7 +79,7 @@ func TestE2E_FullFlow(t *testing.T) {
 
 	// Phase 3: Billing
 	t.Run("Billing/AccountSnapshot", func(t *testing.T) { stepAccountSnapshot(t, ctx, state) })
-	t.Run("Billing/QuotaDeducted", func(t *testing.T) { stepVerifyQuotaDeducted(t, ctx, state) })
+	t.Run("Billing/BalanceDeducted", func(t *testing.T) { stepVerifyBalanceDeducted(t, ctx, state) })
 	t.Run("Billing/Ledger", func(t *testing.T) { stepVerifyLedger(t, ctx, state) })
 
 	// Phase 4: Admin - User Management
@@ -348,21 +348,24 @@ func stepAccountSnapshot(t *testing.T, ctx context.Context, state *e2eState) {
 	t.Logf("account snapshot: balance=%d", resp.Snapshot.Balance)
 }
 
-func stepVerifyQuotaDeducted(t *testing.T, ctx context.Context, state *e2eState) {
+func stepVerifyBalanceDeducted(t *testing.T, ctx context.Context, state *e2eState) {
 	url := fmt.Sprintf("%s/v1/account?user_id=%d", adminHTTPBase, state.userID)
 	body := httpGetWithAuth(t, url, adminToken)
 
 	var result struct {
 		Account struct {
-			Quota int64 `json:"quota"`
+			Balance int64 `json:"balance"`
 		} `json:"account"`
 	}
 	json.Unmarshal(body, &result)
 
-	if result.Account.Quota <= 0 {
-		t.Fatalf("expected quota > 0, got %d", result.Account.Quota)
+	if result.Account.Balance <= 0 {
+		t.Fatalf("expected balance > 0, got %d", result.Account.Balance)
 	}
-	t.Logf("current quota=%d", result.Account.Quota)
+	if result.Account.Balance >= 500000 {
+		t.Fatalf("expected balance to be deducted below initial topup, got %d", result.Account.Balance)
+	}
+	t.Logf("current balance=%d", result.Account.Balance)
 }
 
 func stepVerifyLedger(t *testing.T, ctx context.Context, state *e2eState) {
@@ -691,8 +694,8 @@ func stepAdminTopUp(t *testing.T, state *e2eState) {
 	body := readBody(t, resp)
 
 	var result struct {
-		Success  bool  `json:"success"`
-		NewQuota int64 `json:"new_quota"`
+		Success    bool  `json:"success"`
+		NewBalance int64 `json:"new_balance"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
@@ -700,7 +703,7 @@ func stepAdminTopUp(t *testing.T, state *e2eState) {
 	if !result.Success {
 		t.Fatalf("topup not successful: %s", body)
 	}
-	t.Logf("topup: new_quota=%d", result.NewQuota)
+	t.Logf("topup: new_balance=%d", result.NewBalance)
 }
 
 // ═══════════════════════════════════════════════════
