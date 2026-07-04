@@ -235,7 +235,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		return result
 	}
 
-	// Enforce the account's in-process concurrency limit before doing any work.
+	// Enforce the account's concurrency limit before doing any work.
 	// A full account fails over to a sibling (concurrencyFull) rather than being
 	// cooled down: it is healthy, just busy. The slot is held for the entire
 	// upstream call — including the full lifetime of a streamed response — and
@@ -245,7 +245,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	if plan.Account != nil {
 		concurrencyLimit = plan.Account.Concurrency
 	}
-	releaseSlot, acquired := s.accountConcurrency.TryAcquire(accountID, concurrencyLimit)
+	releaseSlot, acquired := s.accountConcurrency.TryAcquire(ctx, accountID, concurrencyLimit)
 	if !acquired {
 		result.statusCode = http.StatusServiceUnavailable
 		result.err = fmt.Errorf("subscription account %d at concurrency limit %d", accountID, concurrencyLimit)

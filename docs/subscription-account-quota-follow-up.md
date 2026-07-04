@@ -159,34 +159,36 @@ relay 回写：
 
 - 后台成本分析能按 `subscription_account_id` 追踪用户消费、账号额度事件和 ledger 消费。
 
-### 3. 多副本账号并发与 runtime block
+### 3. 多副本账号并发与 runtime block（已完成）
 
 目标：多 relay 实例部署时，同一个上游账号的并发限制和短 TTL 冷却状态可共享。
 
-现状：
+已实现：
 
-- `AccountConcurrencyLimiter` 是进程内信号量。
-- runtime blocker 是 relay 内存状态。
-
-建议方案：
-
-- Redis key 示例：
-  - 并发：`subscription_account:concurrency:{account_id}`
-  - 冷却：`subscription_account:block:{account_id}`
-- 并发获取需要 TTL，防止进程崩溃后永久占槽。
-- Redis 不可用时应降级到当前内存逻辑或正常选路，不应阻断全部请求。
+- `AccountConcurrencyLimiter` 已抽为接口，默认仍使用进程内 `MemoryAccountConcurrencyLimiter`。
+- 新增 `RedisAccountConcurrencyLimiter`，使用 Redis ZSET 按账号共享并发槽位：
+  - key：`subscription_account:concurrency:{account_id}`
+  - 获取槽位时原子清理过期租约、检查当前并发、写入新租约。
+  - 槽位带 TTL，并在请求执行期间后台续租，防止长流式请求中途过期。
+  - release 幂等，正常结束时删除槽位；进程崩溃时由 Redis TTL 回收。
+- Redis 并发 limiter 在 Redis 命令失败时降级到原内存 limiter，并通过 `micro_one_api_relay_account_concurrency_fallback_total` 标记降级原因。
+- runtime blocker 已使用 RedisRuntimeBlocker，Redis 可用时共享短 TTL 冷却状态，Redis 不可用时保持内存 blocker 行为。
+- relay-gateway wire 层使用现有 Redis client 同时接入 Redis runtime blocker 和 Redis account concurrency limiter。
 
 涉及文件：
 
 - `internal/relay/biz/account_concurrency.go`
-- `internal/relay/biz/relay.go`
+- `internal/relay/biz/runtime_blocker.go`
+- `internal/relay/server/http.go`
 - `internal/relay/server/http_adaptor.go`
-- relay config / wire 配置
+- `cmd/relay-gateway/wire_gen.go`
+- `internal/pkg/metrics/subscription.go`
 
-验证：
+已验证：
 
-- 两个 relay 实例同时请求同一账号，实际并发不超过账号 `concurrency`。
-- Redis 异常时请求仍可继续，但日志/metrics 标记降级。
+- 两个 Redis limiter 实例共享同一个 Redis store，同一账号实际并发不超过账号 `concurrency`。
+- Redis acquire 异常时回落到内存 limiter，请求不会因 Redis 异常被全局阻断。
+- runtime blocker Redis 共享、过期和 fail-open 已有单元测试覆盖。
 
 ### 4. 更细的上游窗口策略
 

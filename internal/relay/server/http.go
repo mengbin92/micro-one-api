@@ -89,9 +89,9 @@ type HTTPServer struct {
 	accountQuotaRecorder subscriptionAccountQuotaRecorder
 	runtimeBlocker       relaybiz.RuntimeBlocker
 
-	// accountConcurrency enforces SubscriptionAccount.Concurrency per account
-	// within this process. Never nil after NewHTTPServer.
-	accountConcurrency *relaybiz.AccountConcurrencyLimiter
+	// accountConcurrency enforces SubscriptionAccount.Concurrency per account.
+	// Never nil after NewHTTPServer.
+	accountConcurrency relaybiz.AccountConcurrencyLimiter
 }
 
 func (s *HTTPServer) Plan(ctx context.Context, req relaybiz.RelayRequest) (*relaybiz.RelayPlan, error) {
@@ -285,6 +285,16 @@ func (s *HTTPServer) SetRuntimeBlocker(blocker relaybiz.RuntimeBlocker) {
 	if s.relayUsecase != nil {
 		s.relayUsecase.SetRuntimeBlocker(blocker)
 	}
+}
+
+func (s *HTTPServer) SetAccountConcurrencyLimiter(limiter relaybiz.AccountConcurrencyLimiter) {
+	if s == nil {
+		return
+	}
+	if limiter == nil {
+		limiter = relaybiz.NewAccountConcurrencyLimiter()
+	}
+	s.accountConcurrency = limiter
 }
 
 // isSubscriptionChannel reports whether the channel type is a subscription

@@ -350,6 +350,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 			parseDurationOrDefault(cfg.HybridAdaptor.RuntimeBlock.GetActiveGaugeInterval(), 30*time.Second),
 			func(v float64) { metrics.RelayRuntimeBlockActive.Set(v) },
 		)
+		if redisLimiter := relaybiz.NewRedisAccountConcurrencyLimiter(redisClient); redisLimiter != nil {
+			httpServer.SetAccountConcurrencyLimiter(redisLimiter)
+		}
 	}
 	var routeMiddleware []func(http.Handler) http.Handler
 	if cfg.Subscription.GetSubscriptionEnabled() {

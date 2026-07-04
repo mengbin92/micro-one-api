@@ -83,6 +83,18 @@ var RelayRuntimeBlockActive = prometheus.NewGauge(
 	},
 )
 
+// RelayAccountConcurrencyFallbackTotal counts Redis-backed account-concurrency
+// operations that fell back or degraded because Redis returned an error.
+var RelayAccountConcurrencyFallbackTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "relay",
+		Name:      "account_concurrency_fallback_total",
+		Help:      "Total number of Redis account-concurrency operations that degraded due to Redis errors",
+	},
+	[]string{"reason"},
+)
+
 // RelayAccountPoolChecksTotal counts local subscription-account schedulability checks.
 var RelayAccountPoolChecksTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{

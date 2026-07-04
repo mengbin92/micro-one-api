@@ -596,7 +596,7 @@ func TestHandleChatCompletionsViaAdaptor_ConcurrencyFailover(t *testing.T) {
 	httpServer.wsPoolCfg.failoverMaxSwitches = 1
 
 	// Saturate account 42 (limit 1) so the next request cannot acquire a slot.
-	release, ok := httpServer.accountConcurrency.TryAcquire(42, 1)
+	release, ok := httpServer.accountConcurrency.TryAcquire(context.Background(), 42, 1)
 	if !ok {
 		t.Fatal("precondition: first acquire must succeed")
 	}
@@ -734,7 +734,7 @@ func TestSubscriptionSticky_StickyConcurrencyFull_FailoverRebinds(t *testing.T) 
 	// Bind the session to account 42, then saturate 42 so the sticky account is
 	// concurrency-full and the request fails over to the sibling.
 	httpServer.wsSticky.BindSessionChannel(context.Background(), "default", "conv-3", 42, time.Hour)
-	release, ok := httpServer.accountConcurrency.TryAcquire(42, 1)
+	release, ok := httpServer.accountConcurrency.TryAcquire(context.Background(), 42, 1)
 	if !ok {
 		t.Fatal("precondition: first acquire must succeed")
 	}
