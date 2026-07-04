@@ -1927,6 +1927,26 @@ func handleSubscriptionAccountByID(w http.ResponseWriter, r *http.Request, svc *
 	path := r.URL.Path
 	rest := strings.TrimPrefix(path, "/v1/subscription-accounts/")
 	rest = strings.TrimPrefix(rest, "/api/subscription-accounts/")
+	if strings.HasSuffix(rest, "/reset-quota") {
+		idPart := strings.TrimSuffix(rest, "/reset-quota")
+		accountID, err := strconv.ParseInt(strings.Trim(idPart, "/"), 10, 64)
+		if err != nil || accountID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription account id"})
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		var req adminv1.AdminResetSubscriptionAccountQuotaRequest
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		req.AccountId = accountID
+		resp, err := svc.ResetSubscriptionAccountQuota(r.Context(), &req)
+		writeServiceResponse(w, resp, err)
+		return
+	}
 	if strings.HasSuffix(rest, "/status") {
 		idPart := strings.TrimSuffix(rest, "/status")
 		accountID, err := strconv.ParseInt(strings.Trim(idPart, "/"), 10, 64)

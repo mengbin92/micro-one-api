@@ -535,9 +535,9 @@ go func(ctx context.Context, userID, groupID int64, costUSD float64) {
 |---|---|---|
 | 作用 | 限制**用户**消费 USD 速度 | 限制**上游订阅账号**消费窗口 |
 | 检查时机 | relay 入口拦截 | 选号 + 响应后回写 |
-| 维度 | 日/周/月 | 5h / 7d |
-| 超限动作 | 429 + Retry-After | 账号软封禁 / AutoPauseAccount |
-| 存储 | `user_subscriptions` | `account_quota_snapshots` |
+| 维度 | 日/周/月 | 本地总额 / 24h / 7d + Codex 5h / 7d 快照 |
+| 超限动作 | 429 + Retry-After | 本地额度耗尽则跳过账号;Codex 快照耗尽可 AutoPauseAccount |
+| 存储 | `user_subscriptions` | `subscription_accounts` 本地额度字段 + `account_quota_snapshots` |
 
 两者**串联**:用户先过业务配额(拦截),再选号(避开上游配额已耗尽的账号)。
 
@@ -559,6 +559,8 @@ go func(ctx context.Context, userID, groupID int64, costUSD float64) {
 | `RecordAccountRuntimeBlock(id, until, reason)` | 运行时熔断 | RuntimeBlocker |
 | `RecordAccountQuotaSnapshot(id, snapshot)` | 5h/7d 快照落库 | AutoPause |
 | `GetAccountQuotaSnapshot(id)` | 读快照 | AutoPause |
+| `RecordSubscriptionAccountQuotaUsage(id, cost_usd, occurred_at)` | 成功计费后累计上游账号本地 USD 用量 | relay-gateway |
+| `ResetSubscriptionAccountQuota(id, scope)` | 管理端重置本地总/日/周/全部用量 | admin-service |
 | `AutoPauseAccount(id, reason)` | 配额耗尽自动暂停 | AutoPause |
 
 ### 5.2 旧版方案 8 阶段摘要

@@ -450,6 +450,14 @@ func (m *testChannelRepo) GetAccountQuotaSnapshot(ctx context.Context, accountID
 	return nil, channelbiz.ErrSubscriptionAccountNotFound
 }
 
+func (m *testChannelRepo) RecordSubscriptionAccountQuotaUsage(ctx context.Context, accountID int64, costUSD float64, occurredAt time.Time) error {
+	return channelbiz.ErrSubscriptionAccountNotFound
+}
+
+func (m *testChannelRepo) ResetSubscriptionAccountQuota(ctx context.Context, accountID int64, scope string) error {
+	return channelbiz.ErrSubscriptionAccountNotFound
+}
+
 func (m *testChannelRepo) AutoPauseAccount(ctx context.Context, accountID int64, reason string) error {
 	return channelbiz.ErrSubscriptionAccountNotFound
 }

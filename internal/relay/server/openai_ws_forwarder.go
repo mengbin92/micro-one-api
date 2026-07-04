@@ -456,18 +456,19 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				turnID = requestID
 			}
 			logInput := usageLogInput{
-				UserID:           plan.Auth.UserID,
-				TokenID:          plan.Auth.TokenID,
-				TokenName:        plan.Auth.TokenName,
-				RequestID:        turnID,
-				Endpoint:         "/v1/responses",
-				ModelName:        resolvedModel,
-				Quota:            actualTotal,
-				PromptTokens:     usage.promptTokens,
-				CompletionTokens: usage.completionTokens,
-				CacheReadTokens:  usage.cacheReadTokens,
-				ChannelID:        currentChannel.ID,
-				IsStream:         true,
+				UserID:                plan.Auth.UserID,
+				TokenID:               plan.Auth.TokenID,
+				TokenName:             plan.Auth.TokenName,
+				RequestID:             turnID,
+				Endpoint:              "/v1/responses",
+				ModelName:             resolvedModel,
+				Quota:                 actualTotal,
+				PromptTokens:          usage.promptTokens,
+				CompletionTokens:      usage.completionTokens,
+				CacheReadTokens:       usage.cacheReadTokens,
+				ChannelID:             currentChannel.ID,
+				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
+				IsStream:              true,
 			}
 			logUpstreamUsage(logInput)
 			// Each turn commits against its own reservation. The connection-level

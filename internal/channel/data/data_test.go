@@ -89,7 +89,16 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			rate_limited_until INTEGER DEFAULT 0,
 			quota_used_percent REAL DEFAULT 0,
 			quota_reset_at INTEGER DEFAULT 0,
-			concurrency INTEGER DEFAULT 1
+			concurrency INTEGER DEFAULT 1,
+			quota_limit_usd REAL DEFAULT 0,
+			quota_used_usd REAL DEFAULT 0,
+			quota_daily_limit_usd REAL DEFAULT 0,
+			quota_daily_used_usd REAL DEFAULT 0,
+			quota_daily_window_start INTEGER DEFAULT 0,
+			quota_weekly_limit_usd REAL DEFAULT 0,
+			quota_weekly_used_usd REAL DEFAULT 0,
+			quota_weekly_window_start INTEGER DEFAULT 0,
+			rate_multiplier REAL DEFAULT 1
 		)
 	`).Error)
 
@@ -336,6 +345,46 @@ func TestSelectSubscriptionAccount_ByPriority(t *testing.T) {
 	got, err := biz.NewChannelUsecase(repo, nil).SelectSubscriptionAccount(ctx, "default", "gpt-5", "codex", false)
 	require.NoError(t, err)
 	assert.Equal(t, acc2.ID, got.ID)
+}
+
+func TestSubscriptionAccountQuotaUsage_RecordAndReset(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	account := &biz.SubscriptionAccount{
+		Name:                   "quota-usage",
+		Platform:               "codex",
+		Status:                 biz.ChannelStatusEnabled,
+		Group:                  "default",
+		Models:                 []string{"gpt-5"},
+		AccountID:              "acc_1",
+		RateMultiplier:         2,
+		QuotaDailyUsedUSD:      0.75,
+		QuotaDailyWindowStart:  time.Unix(1000, 0).Unix(),
+		QuotaWeeklyWindowStart: time.Unix(1000, 0).Unix(),
+	}
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
+
+	require.NoError(t, repo.RecordSubscriptionAccountQuotaUsage(ctx, account.ID, 0.5, time.Unix(1100, 0)))
+	stored, err := repo.FindSubscriptionAccountByID(ctx, account.ID)
+	require.NoError(t, err)
+	assert.InDelta(t, 1.0, stored.QuotaUsedUSD, 0.000001)
+	assert.InDelta(t, 1.75, stored.QuotaDailyUsedUSD, 0.000001)
+	assert.EqualValues(t, 1000, stored.QuotaDailyWindowStart)
+	assert.InDelta(t, 1.0, stored.QuotaWeeklyUsedUSD, 0.000001)
+
+	require.NoError(t, repo.RecordSubscriptionAccountQuotaUsage(ctx, account.ID, 0.25, time.Unix(1000+25*60*60, 0)))
+	stored, err = repo.FindSubscriptionAccountByID(ctx, account.ID)
+	require.NoError(t, err)
+	assert.InDelta(t, 1.5, stored.QuotaUsedUSD, 0.000001)
+	assert.InDelta(t, 0.5, stored.QuotaDailyUsedUSD, 0.000001)
+	assert.EqualValues(t, 1000+25*60*60, stored.QuotaDailyWindowStart)
+
+	require.NoError(t, repo.ResetSubscriptionAccountQuota(ctx, account.ID, "daily"))
+	stored, err = repo.FindSubscriptionAccountByID(ctx, account.ID)
+	require.NoError(t, err)
+	assert.InDelta(t, 1.5, stored.QuotaUsedUSD, 0.000001)
+	assert.Zero(t, stored.QuotaDailyUsedUSD)
+	assert.Zero(t, stored.QuotaDailyWindowStart)
 }
 
 func TestRecordHealth_OpensAndResetsCircuit(t *testing.T) {

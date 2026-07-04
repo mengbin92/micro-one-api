@@ -112,6 +112,15 @@ message SubscriptionAccountInfo {
   int64 created_at = 16;
   int64 updated_at = 17;
   int32 concurrency = 18;             // 最大并发请求数(0 表示不限制)
+  double quota_limit_usd = 19;        // 本地总额度上限 USD(0 表示不限制)
+  double quota_used_usd = 20;         // 本地总额度已用 USD
+  double quota_daily_limit_usd = 21;  // 本地 24h 滚动额度上限 USD(0 表示不限制)
+  double quota_daily_used_usd = 22;   // 本地 24h 滚动已用 USD
+  int64 quota_daily_window_start = 23;
+  double quota_weekly_limit_usd = 24; // 本地 7d 滚动额度上限 USD(0 表示不限制)
+  double quota_weekly_used_usd = 25;  // 本地 7d 滚动已用 USD
+  int64 quota_weekly_window_start = 26;
+  double rate_multiplier = 27;        // 账号用量倍率(0/1 表示原价)
 }
 
 message SubscriptionAccountSummary {
@@ -140,6 +149,15 @@ message SubscriptionAccountSummary {
   optional double primary_over_secondary_percent = 23;   // 主窗口相对次窗口使用百分比
   int64 quota_snapshot_updated_at = 24;                  // 快照采样时间（unix）
   bool quota_snapshot_paused = 25;                       // 快照采样时是否触发暂停
+  double quota_limit_usd = 26;                            // 本地总额度上限 USD(0 表示不限制)
+  double quota_used_usd = 27;                             // 本地总额度已用 USD
+  double quota_daily_limit_usd = 28;                      // 本地 24h 滚动额度上限 USD(0 表示不限制)
+  double quota_daily_used_usd = 29;                       // 本地 24h 滚动已用 USD
+  int64 quota_daily_window_start = 30;
+  double quota_weekly_limit_usd = 31;                     // 本地 7d 滚动额度上限 USD(0 表示不限制)
+  double quota_weekly_used_usd = 32;                      // 本地 7d 滚动已用 USD
+  int64 quota_weekly_window_start = 33;
+  double rate_multiplier = 34;                            // 账号用量倍率(0/1 表示原价)
 }
 
 // ========== 账户快照 ==========

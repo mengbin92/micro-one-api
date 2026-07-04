@@ -17,6 +17,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Repository struct {
@@ -95,6 +96,16 @@ type subscriptionAccountModel struct {
 	QuotaUsedPercent float32 `gorm:"column:quota_used_percent"`
 	QuotaResetAt     int64   `gorm:"column:quota_reset_at"`
 	Concurrency      int32   `gorm:"column:concurrency"`
+
+	QuotaLimitUSD          float64 `gorm:"column:quota_limit_usd"`
+	QuotaUsedUSD           float64 `gorm:"column:quota_used_usd"`
+	QuotaDailyLimitUSD     float64 `gorm:"column:quota_daily_limit_usd"`
+	QuotaDailyUsedUSD      float64 `gorm:"column:quota_daily_used_usd"`
+	QuotaDailyWindowStart  int64   `gorm:"column:quota_daily_window_start"`
+	QuotaWeeklyLimitUSD    float64 `gorm:"column:quota_weekly_limit_usd"`
+	QuotaWeeklyUsedUSD     float64 `gorm:"column:quota_weekly_used_usd"`
+	QuotaWeeklyWindowStart int64   `gorm:"column:quota_weekly_window_start"`
+	RateMultiplier         float64 `gorm:"column:rate_multiplier"`
 }
 
 func (subscriptionAccountModel) TableName() string { return "subscription_accounts" }
@@ -428,6 +439,50 @@ func (r *Repository) GetAccountQuotaSnapshot(ctx context.Context, accountID int6
 	}, nil
 }
 
+func (r *Repository) RecordSubscriptionAccountQuotaUsage(ctx context.Context, accountID int64, costUSD float64, occurredAt time.Time) error {
+	if accountID <= 0 {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	if costUSD <= 0 {
+		return nil
+	}
+	if occurredAt.IsZero() {
+		occurredAt = time.Now()
+	}
+	if r.db != nil {
+		return r.recordSubscriptionAccountQuotaUsageDB(ctx, accountID, costUSD, occurredAt)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	account, ok := r.subAccounts[accountID]
+	if !ok {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	applySubscriptionAccountQuotaUsage(account, costUSD, occurredAt)
+	return nil
+}
+
+func (r *Repository) ResetSubscriptionAccountQuota(ctx context.Context, accountID int64, scope string) error {
+	if accountID <= 0 {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	scope = strings.TrimSpace(strings.ToLower(scope))
+	if scope == "" {
+		scope = "all"
+	}
+	if r.db != nil {
+		return r.resetSubscriptionAccountQuotaDB(ctx, accountID, scope)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	account, ok := r.subAccounts[accountID]
+	if !ok {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	resetSubscriptionAccountQuota(account, scope)
+	return nil
+}
+
 func (r *Repository) AutoPauseAccount(ctx context.Context, accountID int64, reason string) error {
 	if r.db != nil {
 		return r.autoPauseAccountDB(ctx, accountID, reason)
@@ -680,21 +735,30 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		model := r.subscriptionAccountBizToModel(account)
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
-			"name":          model.Name,
-			"platform":      model.Platform,
-			"account_type":  model.AccountType,
-			"status":        model.Status,
-			"group":         model.Group,
-			"models":        model.Models,
-			"priority":      model.Priority,
-			"base_url":      model.BaseURL,
-			"access_token":  model.AccessToken,
-			"refresh_token": model.RefreshToken,
-			"expires_at":    model.ExpiresAt,
-			"account_id":    model.AccountID,
-			"fingerprint":   model.Fingerprint,
-			"metadata":      model.Metadata,
-			"updated_at":    model.UpdatedAt,
+			"name":                      model.Name,
+			"platform":                  model.Platform,
+			"account_type":              model.AccountType,
+			"status":                    model.Status,
+			"group":                     model.Group,
+			"models":                    model.Models,
+			"priority":                  model.Priority,
+			"base_url":                  model.BaseURL,
+			"access_token":              model.AccessToken,
+			"refresh_token":             model.RefreshToken,
+			"expires_at":                model.ExpiresAt,
+			"account_id":                model.AccountID,
+			"fingerprint":               model.Fingerprint,
+			"metadata":                  model.Metadata,
+			"quota_limit_usd":           model.QuotaLimitUSD,
+			"quota_used_usd":            model.QuotaUsedUSD,
+			"quota_daily_limit_usd":     model.QuotaDailyLimitUSD,
+			"quota_daily_used_usd":      model.QuotaDailyUsedUSD,
+			"quota_daily_window_start":  model.QuotaDailyWindowStart,
+			"quota_weekly_limit_usd":    model.QuotaWeeklyLimitUSD,
+			"quota_weekly_used_usd":     model.QuotaWeeklyUsedUSD,
+			"quota_weekly_window_start": model.QuotaWeeklyWindowStart,
+			"rate_multiplier":           model.RateMultiplier,
+			"updated_at":                model.UpdatedAt,
 		}).Error; err != nil {
 			return err
 		}
@@ -794,6 +858,45 @@ func (r *Repository) getAccountQuotaSnapshotDB(ctx context.Context, accountID in
 		return nil, err
 	}
 	return accountQuotaSnapshotModelToBiz(&model), nil
+}
+
+func (r *Repository) recordSubscriptionAccountQuotaUsageDB(ctx context.Context, accountID int64, costUSD float64, occurredAt time.Time) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var model subscriptionAccountModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", accountID).First(&model).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return biz.ErrSubscriptionAccountNotFound
+			}
+			return err
+		}
+		account := r.subscriptionAccountModelToBiz(&model)
+		applySubscriptionAccountQuotaUsage(account, costUSD, occurredAt)
+		return tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
+			"quota_used_usd":            account.QuotaUsedUSD,
+			"quota_daily_used_usd":      account.QuotaDailyUsedUSD,
+			"quota_daily_window_start":  account.QuotaDailyWindowStart,
+			"quota_weekly_used_usd":     account.QuotaWeeklyUsedUSD,
+			"quota_weekly_window_start": account.QuotaWeeklyWindowStart,
+			"last_used_at":              occurredAt.Unix(),
+			"updated_at":                time.Now().Unix(),
+		}).Error
+	})
+}
+
+func (r *Repository) resetSubscriptionAccountQuotaDB(ctx context.Context, accountID int64, scope string) error {
+	updates := subscriptionAccountQuotaResetUpdates(scope)
+	if updates == nil {
+		return nil
+	}
+	updates["updated_at"] = time.Now().Unix()
+	result := r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	return nil
 }
 
 func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, reason string) error {
@@ -1276,56 +1379,138 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 		baseURL = *m.BaseURL
 	}
 	return &biz.SubscriptionAccount{
-		ID:               m.ID,
-		Name:             m.Name,
-		Platform:         m.Platform,
-		AccountType:      m.AccountType,
-		Status:           m.Status,
-		Group:            m.Group,
-		Models:           biz.SplitCSV(m.Models),
-		Priority:         m.Priority,
-		BaseURL:          baseURL,
-		AccessToken:      r.decryptKey(derefString(m.AccessToken)),
-		RefreshToken:     r.decryptKey(derefString(m.RefreshToken)),
-		ExpiresAt:        m.ExpiresAt,
-		AccountID:        m.AccountID,
-		Fingerprint:      derefString(m.Fingerprint),
-		Metadata:         derefString(m.Metadata),
-		CreatedAt:        m.CreatedAt,
-		UpdatedAt:        m.UpdatedAt,
-		LastUsedAt:       m.LastUsedAt,
-		RateLimitedUntil: m.RateLimitedUntil,
-		QuotaUsedPercent: m.QuotaUsedPercent,
-		QuotaResetAt:     m.QuotaResetAt,
-		Concurrency:      m.Concurrency,
-		LastError:        subscriptionAccountMetadataValue(derefString(m.Metadata), "last_error"),
+		ID:                     m.ID,
+		Name:                   m.Name,
+		Platform:               m.Platform,
+		AccountType:            m.AccountType,
+		Status:                 m.Status,
+		Group:                  m.Group,
+		Models:                 biz.SplitCSV(m.Models),
+		Priority:               m.Priority,
+		BaseURL:                baseURL,
+		AccessToken:            r.decryptKey(derefString(m.AccessToken)),
+		RefreshToken:           r.decryptKey(derefString(m.RefreshToken)),
+		ExpiresAt:              m.ExpiresAt,
+		AccountID:              m.AccountID,
+		Fingerprint:            derefString(m.Fingerprint),
+		Metadata:               derefString(m.Metadata),
+		CreatedAt:              m.CreatedAt,
+		UpdatedAt:              m.UpdatedAt,
+		LastUsedAt:             m.LastUsedAt,
+		RateLimitedUntil:       m.RateLimitedUntil,
+		QuotaUsedPercent:       m.QuotaUsedPercent,
+		QuotaResetAt:           m.QuotaResetAt,
+		Concurrency:            m.Concurrency,
+		QuotaLimitUSD:          m.QuotaLimitUSD,
+		QuotaUsedUSD:           m.QuotaUsedUSD,
+		QuotaDailyLimitUSD:     m.QuotaDailyLimitUSD,
+		QuotaDailyUsedUSD:      m.QuotaDailyUsedUSD,
+		QuotaDailyWindowStart:  m.QuotaDailyWindowStart,
+		QuotaWeeklyLimitUSD:    m.QuotaWeeklyLimitUSD,
+		QuotaWeeklyUsedUSD:     m.QuotaWeeklyUsedUSD,
+		QuotaWeeklyWindowStart: m.QuotaWeeklyWindowStart,
+		RateMultiplier:         m.RateMultiplier,
+		LastError:              subscriptionAccountMetadataValue(derefString(m.Metadata), "last_error"),
 	}
 }
 
 func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) *subscriptionAccountModel {
 	return &subscriptionAccountModel{
-		ID:               a.ID,
-		Name:             a.Name,
-		Platform:         a.Platform,
-		AccountType:      a.AccountType,
-		Status:           a.Status,
-		Group:            a.Group,
-		Models:           a.ModelsCSV(),
-		Priority:         a.Priority,
-		BaseURL:          strPtr(a.BaseURL),
-		AccessToken:      stringPtr(r.encryptKey(a.AccessToken)),
-		RefreshToken:     stringPtr(r.encryptKey(a.RefreshToken)),
-		ExpiresAt:        a.ExpiresAt,
-		AccountID:        a.AccountID,
-		Fingerprint:      stringPtr(a.Fingerprint),
-		Metadata:         stringPtr(a.Metadata),
-		CreatedAt:        a.CreatedAt,
-		UpdatedAt:        a.UpdatedAt,
-		LastUsedAt:       a.LastUsedAt,
-		RateLimitedUntil: a.RateLimitedUntil,
-		QuotaUsedPercent: a.QuotaUsedPercent,
-		QuotaResetAt:     a.QuotaResetAt,
-		Concurrency:      a.Concurrency,
+		ID:                     a.ID,
+		Name:                   a.Name,
+		Platform:               a.Platform,
+		AccountType:            a.AccountType,
+		Status:                 a.Status,
+		Group:                  a.Group,
+		Models:                 a.ModelsCSV(),
+		Priority:               a.Priority,
+		BaseURL:                strPtr(a.BaseURL),
+		AccessToken:            stringPtr(r.encryptKey(a.AccessToken)),
+		RefreshToken:           stringPtr(r.encryptKey(a.RefreshToken)),
+		ExpiresAt:              a.ExpiresAt,
+		AccountID:              a.AccountID,
+		Fingerprint:            stringPtr(a.Fingerprint),
+		Metadata:               stringPtr(a.Metadata),
+		CreatedAt:              a.CreatedAt,
+		UpdatedAt:              a.UpdatedAt,
+		LastUsedAt:             a.LastUsedAt,
+		RateLimitedUntil:       a.RateLimitedUntil,
+		QuotaUsedPercent:       a.QuotaUsedPercent,
+		QuotaResetAt:           a.QuotaResetAt,
+		Concurrency:            a.Concurrency,
+		QuotaLimitUSD:          a.QuotaLimitUSD,
+		QuotaUsedUSD:           a.QuotaUsedUSD,
+		QuotaDailyLimitUSD:     a.QuotaDailyLimitUSD,
+		QuotaDailyUsedUSD:      a.QuotaDailyUsedUSD,
+		QuotaDailyWindowStart:  a.QuotaDailyWindowStart,
+		QuotaWeeklyLimitUSD:    a.QuotaWeeklyLimitUSD,
+		QuotaWeeklyUsedUSD:     a.QuotaWeeklyUsedUSD,
+		QuotaWeeklyWindowStart: a.QuotaWeeklyWindowStart,
+		RateMultiplier:         a.RateMultiplier,
+	}
+}
+
+func applySubscriptionAccountQuotaUsage(account *biz.SubscriptionAccount, costUSD float64, occurredAt time.Time) {
+	if account == nil || costUSD <= 0 {
+		return
+	}
+	nowUnix := occurredAt.Unix()
+	chargedUSD := costUSD * account.EffectiveRateMultiplier()
+	account.QuotaUsedUSD += chargedUSD
+	account.QuotaDailyUsedUSD, account.QuotaDailyWindowStart = incrementWindowUsage(account.QuotaDailyUsedUSD, account.QuotaDailyWindowStart, chargedUSD, nowUnix, 24*time.Hour)
+	account.QuotaWeeklyUsedUSD, account.QuotaWeeklyWindowStart = incrementWindowUsage(account.QuotaWeeklyUsedUSD, account.QuotaWeeklyWindowStart, chargedUSD, nowUnix, 7*24*time.Hour)
+	account.LastUsedAt = nowUnix
+	account.UpdatedAt = time.Now().Unix()
+}
+
+func incrementWindowUsage(used float64, windowStart int64, delta float64, nowUnix int64, window time.Duration) (float64, int64) {
+	if windowStart <= 0 || nowUnix-windowStart >= int64(window.Seconds()) {
+		return delta, nowUnix
+	}
+	return used + delta, windowStart
+}
+
+func resetSubscriptionAccountQuota(account *biz.SubscriptionAccount, scope string) {
+	if account == nil {
+		return
+	}
+	switch scope {
+	case "total":
+		account.QuotaUsedUSD = 0
+	case "daily":
+		account.QuotaDailyUsedUSD = 0
+		account.QuotaDailyWindowStart = 0
+	case "weekly":
+		account.QuotaWeeklyUsedUSD = 0
+		account.QuotaWeeklyWindowStart = 0
+	case "all":
+		account.QuotaUsedUSD = 0
+		account.QuotaDailyUsedUSD = 0
+		account.QuotaDailyWindowStart = 0
+		account.QuotaWeeklyUsedUSD = 0
+		account.QuotaWeeklyWindowStart = 0
+	}
+	account.UpdatedAt = time.Now().Unix()
+}
+
+func subscriptionAccountQuotaResetUpdates(scope string) map[string]interface{} {
+	switch scope {
+	case "total":
+		return map[string]interface{}{"quota_used_usd": 0}
+	case "daily":
+		return map[string]interface{}{"quota_daily_used_usd": 0, "quota_daily_window_start": 0}
+	case "weekly":
+		return map[string]interface{}{"quota_weekly_used_usd": 0, "quota_weekly_window_start": 0}
+	case "all":
+		return map[string]interface{}{
+			"quota_used_usd":            0,
+			"quota_daily_used_usd":      0,
+			"quota_daily_window_start":  0,
+			"quota_weekly_used_usd":     0,
+			"quota_weekly_window_start": 0,
+		}
+	default:
+		return nil
 	}
 }
 

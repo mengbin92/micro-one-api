@@ -179,6 +179,33 @@ func (m *mockChannelRepo) GetAccountQuotaSnapshot(ctx context.Context, accountID
 	return &AccountQuotaSnapshot{AccountID: accountID, PrimaryUsedPercent: &used}, nil
 }
 
+func (m *mockChannelRepo) RecordSubscriptionAccountQuotaUsage(ctx context.Context, accountID int64, costUSD float64, occurredAt time.Time) error {
+	if m.accounts == nil {
+		return ErrSubscriptionAccountNotFound
+	}
+	acc, ok := m.accounts[accountID]
+	if !ok {
+		return ErrSubscriptionAccountNotFound
+	}
+	acc.QuotaUsedUSD += costUSD * acc.EffectiveRateMultiplier()
+	acc.LastUsedAt = occurredAt.Unix()
+	return nil
+}
+
+func (m *mockChannelRepo) ResetSubscriptionAccountQuota(ctx context.Context, accountID int64, scope string) error {
+	if m.accounts == nil {
+		return ErrSubscriptionAccountNotFound
+	}
+	acc, ok := m.accounts[accountID]
+	if !ok {
+		return ErrSubscriptionAccountNotFound
+	}
+	acc.QuotaUsedUSD = 0
+	acc.QuotaDailyUsedUSD = 0
+	acc.QuotaWeeklyUsedUSD = 0
+	return nil
+}
+
 func (m *mockChannelRepo) AutoPauseAccount(ctx context.Context, accountID int64, reason string) error {
 	if acc, ok := m.accounts[accountID]; ok {
 		acc.Status = ChannelStatusDisabled
@@ -352,6 +379,60 @@ func TestChannelUsecase_SelectSubscriptionAccount_SkipsTempUnschedulable(t *test
 	}
 	if account.ID != 2 {
 		t.Fatalf("selected account = %d, want 2", account.ID)
+	}
+}
+
+func TestChannelUsecase_SelectSubscriptionAccount_SkipsLocalQuotaExceeded(t *testing.T) {
+	now := time.Unix(1710000000, 0)
+	repo := &mockChannelRepo{
+		accounts: map[int64]*SubscriptionAccount{
+			1: {
+				ID:                    1,
+				Name:                  "spent",
+				Status:                ChannelStatusEnabled,
+				Platform:              "codex",
+				Priority:              10,
+				QuotaDailyLimitUSD:    1,
+				QuotaDailyUsedUSD:     1,
+				QuotaDailyWindowStart: now.Add(-time.Hour).Unix(),
+			},
+			2: {
+				ID:       2,
+				Name:     "ready",
+				Status:   ChannelStatusEnabled,
+				Platform: "codex",
+				Priority: 10,
+			},
+		},
+		accAbilities: map[string][]SubscriptionAccountAbility{
+			"codex:default:gpt-5": {
+				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 1, Enabled: true, Priority: 10},
+				{Group: "default", Model: "gpt-5", Platform: "codex", AccountID: 2, Enabled: true, Priority: 10},
+			},
+		},
+	}
+	uc := NewChannelUsecase(repo, nil)
+	uc.now = func() time.Time { return now }
+
+	account, err := uc.SelectSubscriptionAccount(context.Background(), "default", "gpt-5", "codex", false)
+	if err != nil {
+		t.Fatalf("SelectSubscriptionAccount() error = %v", err)
+	}
+	if account.ID != 2 {
+		t.Fatalf("selected account = %d, want 2", account.ID)
+	}
+}
+
+func TestSubscriptionAccount_LocalQuotaDailyWindowExpires(t *testing.T) {
+	now := time.Unix(1710000000, 0)
+	account := &SubscriptionAccount{
+		Status:                ChannelStatusEnabled,
+		QuotaDailyLimitUSD:    1,
+		QuotaDailyUsedUSD:     1,
+		QuotaDailyWindowStart: now.Add(-25 * time.Hour).Unix(),
+	}
+	if !account.IsSchedulableAt(now) {
+		t.Fatal("account with expired daily window should be schedulable")
 	}
 }
 

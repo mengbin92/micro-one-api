@@ -78,6 +78,12 @@ service AdminService {
       body: "*"
     };
   };
+  rpc ResetSubscriptionAccountQuota(AdminResetSubscriptionAccountQuotaRequest) returns (AdminResetSubscriptionAccountQuotaResponse) {
+    option (google.api.http) = {
+      post: "/v1/subscription-accounts/{account_id}/reset-quota"
+      body: "*"
+    };
+  };
 
   // ========== 系统配置管理 ==========
   rpc GetSystemOptions(GetSystemOptionsRequest) returns (GetSystemOptionsResponse) {
@@ -412,6 +418,15 @@ message AdminCreateSubscriptionAccountRequest {
   string account_id = 11;
   string fingerprint = 12;
   string metadata = 13;
+  double quota_limit_usd = 14;
+  double quota_used_usd = 15;
+  double quota_daily_limit_usd = 16;
+  double quota_daily_used_usd = 17;
+  int64 quota_daily_window_start = 18;
+  double quota_weekly_limit_usd = 19;
+  double quota_weekly_used_usd = 20;
+  int64 quota_weekly_window_start = 21;
+  double rate_multiplier = 22;
 }
 
 message AdminCreateSubscriptionAccountResponse {
@@ -434,9 +449,28 @@ message AdminUpdateSubscriptionAccountRequest {
   string account_id = 11;
   string fingerprint = 12;
   string metadata = 13;
+  optional double quota_limit_usd = 14;
+  optional double quota_used_usd = 15;
+  optional double quota_daily_limit_usd = 16;
+  optional double quota_daily_used_usd = 17;
+  optional int64 quota_daily_window_start = 18;
+  optional double quota_weekly_limit_usd = 19;
+  optional double quota_weekly_used_usd = 20;
+  optional int64 quota_weekly_window_start = 21;
+  optional double rate_multiplier = 22;
 }
 
 message AdminUpdateSubscriptionAccountResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message AdminResetSubscriptionAccountQuotaRequest {
+  int64 account_id = 1;
+  string scope = 2;
+}
+
+message AdminResetSubscriptionAccountQuotaResponse {
   bool success = 1;
   string message = 2;
 }

@@ -79,13 +79,19 @@
 
 ### 🟡 中价值 · 中成本
 
-#### 4. 账号级计费倍率 `RateMultiplier`
+#### 4. 账号级本地额度与倍率 ✅ 已实现
 
-- **问题**:本项目只有订阅**组级**倍率;sub2api 是两层
-  `account.rate_multiplier × group.rate_multiplier`,账号级可为 0(免费账号)。
-- **收益**:不同订阅账号成本不同(Pro / Team / 免费)时精确核算;快照进 ledger 便于对账。
-- **落点**:`subscription_accounts` 加字段 + `internal/billing/data/models.go` ledger 快照
-  `account_rate_multiplier`。
+- **问题**:本项目此前只有上游 5h/7d 快照,缺本地可配置的账号总/日/周 USD 限额与账号级用量倍率。
+- **✅ 已实现**:`subscription_accounts` 增加 `quota_limit_usd` / `quota_used_usd`、
+  `quota_daily_limit_usd` / `quota_daily_used_usd`、`quota_weekly_limit_usd` /
+  `quota_weekly_used_usd`、`rate_multiplier` 等字段;`SelectSubscriptionAccount`
+  会跳过本地额度耗尽的账号;relay 计费成功后用 billing 的 `committed_amount`
+  折算 USD 并通过 `RecordSubscriptionAccountQuotaUsage` 回写账号用量。
+- **管理入口**:admin 订阅账号页面支持查看/编辑额度与倍率,并通过
+  `POST /v1/subscription-accounts/{account_id}/reset-quota` 重置 `total` /
+  `daily` / `weekly` / `all` 本地用量。
+- **后续**:ledger 目前记录 `subscription_account_id` 与消费拆分,尚未把
+  `account_rate_multiplier` 快照进账本;如需精细对账可单独补 ledger 快照字段。
 
 #### 5. 账号级会话窗口(Claude Pro 5h 滚动窗)
 

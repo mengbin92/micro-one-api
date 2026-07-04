@@ -836,19 +836,20 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 					writeRawStreamResponse(w, fallbackResp.Stream, usage)
 					actualUsage := usage.Usage()
 					logInput := usageLogInput{
-						UserID:           authSnapshot.UserId,
-						TokenID:          authSnapshot.TokenId,
-						TokenName:        authSnapshot.TokenName,
-						RequestID:        requestID,
-						Endpoint:         "/chat/completions",
-						ModelName:        route.Model,
-						Quota:            actualUsage.TotalTokens,
-						PromptTokens:     actualUsage.PromptTokens,
-						CompletionTokens: actualUsage.CompletionTokens,
-						CacheReadTokens:  actualUsage.CacheReadTokens,
-						ChannelID:        route.Channel.ID,
-						ElapsedTime:      time.Since(startedAt).Milliseconds(),
-						IsStream:         true,
+						UserID:                authSnapshot.UserId,
+						TokenID:               authSnapshot.TokenId,
+						TokenName:             authSnapshot.TokenName,
+						RequestID:             requestID,
+						Endpoint:              "/chat/completions",
+						ModelName:             route.Model,
+						Quota:                 actualUsage.TotalTokens,
+						PromptTokens:          actualUsage.PromptTokens,
+						CompletionTokens:      actualUsage.CompletionTokens,
+						CacheReadTokens:       actualUsage.CacheReadTokens,
+						ChannelID:             route.Channel.ID,
+						SubscriptionAccountID: route.SubscriptionAccountID,
+						ElapsedTime:           time.Since(startedAt).Milliseconds(),
+						IsStream:              true,
 					}
 					if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 						s.logPostResponseCommitError(err)
@@ -871,19 +872,20 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		writeRawStreamResponse(w, streamResp, usage)
 		actualUsage := usage.Usage()
 		logInput := usageLogInput{
-			UserID:           authSnapshot.UserId,
-			TokenID:          authSnapshot.TokenId,
-			TokenName:        authSnapshot.TokenName,
-			RequestID:        requestID,
-			Endpoint:         upstreamPath,
-			ModelName:        route.Model,
-			Quota:            actualUsage.TotalTokens,
-			PromptTokens:     actualUsage.PromptTokens,
-			CompletionTokens: actualUsage.CompletionTokens,
-			CacheReadTokens:  actualUsage.CacheReadTokens,
-			ChannelID:        route.Channel.ID,
-			ElapsedTime:      time.Since(startedAt).Milliseconds(),
-			IsStream:         true,
+			UserID:                authSnapshot.UserId,
+			TokenID:               authSnapshot.TokenId,
+			TokenName:             authSnapshot.TokenName,
+			RequestID:             requestID,
+			Endpoint:              upstreamPath,
+			ModelName:             route.Model,
+			Quota:                 actualUsage.TotalTokens,
+			PromptTokens:          actualUsage.PromptTokens,
+			CompletionTokens:      actualUsage.CompletionTokens,
+			CacheReadTokens:       actualUsage.CacheReadTokens,
+			ChannelID:             route.Channel.ID,
+			SubscriptionAccountID: route.SubscriptionAccountID,
+			ElapsedTime:           time.Since(startedAt).Milliseconds(),
+			IsStream:              true,
 		}
 		if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
@@ -907,19 +909,20 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 					usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(fallbackBody))
 				}
 				logInput := usageLogInput{
-					UserID:           authSnapshot.UserId,
-					TokenID:          authSnapshot.TokenId,
-					TokenName:        authSnapshot.TokenName,
-					RequestID:        requestID,
-					Endpoint:         "/chat/completions",
-					ModelName:        route.Model,
-					Quota:            usage.TotalTokens,
-					PromptTokens:     usage.PromptTokens,
-					CompletionTokens: usage.CompletionTokens,
-					CacheReadTokens:  usage.CacheReadTokens,
-					ChannelID:        route.Channel.ID,
-					ElapsedTime:      time.Since(startedAt).Milliseconds(),
-					IsStream:         false,
+					UserID:                authSnapshot.UserId,
+					TokenID:               authSnapshot.TokenId,
+					TokenName:             authSnapshot.TokenName,
+					RequestID:             requestID,
+					Endpoint:              "/chat/completions",
+					ModelName:             route.Model,
+					Quota:                 usage.TotalTokens,
+					PromptTokens:          usage.PromptTokens,
+					CompletionTokens:      usage.CompletionTokens,
+					CacheReadTokens:       usage.CacheReadTokens,
+					ChannelID:             route.Channel.ID,
+					SubscriptionAccountID: route.SubscriptionAccountID,
+					ElapsedTime:           time.Since(startedAt).Milliseconds(),
+					IsStream:              false,
 				}
 				if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 					s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
@@ -942,19 +945,20 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 
 	usage := extractRawUsage(resp.Body, estimateRawTokens(body))
 	logInput := usageLogInput{
-		UserID:           authSnapshot.UserId,
-		TokenID:          authSnapshot.TokenId,
-		TokenName:        authSnapshot.TokenName,
-		RequestID:        requestID,
-		Endpoint:         upstreamPath,
-		ModelName:        route.Model,
-		Quota:            usage.TotalTokens,
-		PromptTokens:     usage.PromptTokens,
-		CompletionTokens: usage.CompletionTokens,
-		CacheReadTokens:  usage.CacheReadTokens,
-		ChannelID:        route.Channel.ID,
-		ElapsedTime:      time.Since(startedAt).Milliseconds(),
-		IsStream:         false,
+		UserID:                authSnapshot.UserId,
+		TokenID:               authSnapshot.TokenId,
+		TokenName:             authSnapshot.TokenName,
+		RequestID:             requestID,
+		Endpoint:              upstreamPath,
+		ModelName:             route.Model,
+		Quota:                 usage.TotalTokens,
+		PromptTokens:          usage.PromptTokens,
+		CompletionTokens:      usage.CompletionTokens,
+		CacheReadTokens:       usage.CacheReadTokens,
+		ChannelID:             route.Channel.ID,
+		SubscriptionAccountID: route.SubscriptionAccountID,
+		ElapsedTime:           time.Since(startedAt).Milliseconds(),
+		IsStream:              false,
 	}
 	if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
@@ -1918,6 +1922,11 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 }
 
 func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actualTokens int64, success bool, details ...usageLogInput) error {
+	_, err := s.commitQuotaWithResponse(ctx, reservationID, actualTokens, success, details...)
+	return err
+}
+
+func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID string, actualTokens int64, success bool, details ...usageLogInput) (*billingv1.CommitQuotaResponse, error) {
 	req := &billingv1.CommitQuotaRequest{
 		ReservationId: reservationID,
 		ActualTokens:  actualTokens,
@@ -1938,14 +1947,15 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 	defer cancel()
 	resp, err := s.billingClient.CommitQuota(billingCtx, req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp == nil || !resp.GetSuccess() {
-		return stderrors.New(billingErrorMessage(resp, "commit quota failed"))
+		return resp, stderrors.New(billingErrorMessage(resp, "commit quota failed"))
 	}
 	if len(details) > 0 {
 		detail := details[0]
 		s.recordChannelUsage(ctx, detail.ChannelID, actualTokens)
+		s.recordSubscriptionAccountQuotaUsage(ctx, detail.SubscriptionAccountID, quotaToUSD(resp.GetCommittedAmount()))
 		// recordSubscriptionUsage is a no-op on the dual-track
 		// path: the billing layer's CommitQuotaWithUsage already
 		// wrote the subscription usage via the row-locked
@@ -1954,7 +1964,28 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 		// window. The legacy path is preserved.
 		s.recordSubscriptionUsage(ctx, detail.UserID, actualTokens)
 	}
-	return nil
+	return resp, nil
+}
+
+func (s *HTTPServer) recordSubscriptionAccountQuotaUsage(ctx context.Context, accountID int64, costUSD float64) {
+	if s == nil || s.channelClient == nil || accountID <= 0 || costUSD <= 0 {
+		return
+	}
+	channelCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+	resp, err := s.channelClient.RecordSubscriptionAccountQuotaUsage(channelCtx, &channelv1.RecordSubscriptionAccountQuotaUsageRequest{
+		AccountId: accountID,
+		CostUsd:   costUSD,
+	})
+	if err != nil {
+		if applogger.Log != nil {
+			applogger.Log.Warn("failed to record subscription account quota usage", zap.Int64("account_id", accountID), zap.Error(err))
+		}
+		return
+	}
+	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
+		applogger.Log.Warn("subscription account quota usage rejected", zap.Int64("account_id", accountID), zap.String("message", resp.GetMessage()))
+	}
 }
 
 func (s *HTTPServer) recordSubscriptionUsage(ctx context.Context, userID int64, quota int64) {

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Pencil, Save } from 'lucide-react';
+import { KeyRound, Pencil, RotateCcw, Save } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
@@ -60,6 +60,15 @@ interface SubscriptionAccountSummary {
   primaryOverSecondaryPercent?: number | null;
   quotaSnapshotUpdatedAt?: number;
   quotaSnapshotPaused?: boolean;
+  quotaLimitUsd?: number;
+  quotaUsedUsd?: number;
+  quotaDailyLimitUsd?: number;
+  quotaDailyUsedUsd?: number;
+  quotaDailyWindowStart?: number;
+  quotaWeeklyLimitUsd?: number;
+  quotaWeeklyUsedUsd?: number;
+  quotaWeeklyWindowStart?: number;
+  rateMultiplier?: number;
 }
 
 // Mirrors common.v1.SubscriptionAccountInfo JSON tags returned by
@@ -84,6 +93,15 @@ interface SubscriptionAccountInfo {
   metadata: string | null;
   created_at: number;
   updated_at: number;
+  quota_limit_usd?: number;
+  quota_used_usd?: number;
+  quota_daily_limit_usd?: number;
+  quota_daily_used_usd?: number;
+  quota_daily_window_start?: number;
+  quota_weekly_limit_usd?: number;
+  quota_weekly_used_usd?: number;
+  quota_weekly_window_start?: number;
+  rate_multiplier?: number;
 }
 
 interface SubscriptionAccountEditDraft {
@@ -100,6 +118,13 @@ interface SubscriptionAccountEditDraft {
   accountId: string;
   fingerprint: string;
   metadata: string;
+  quotaLimitUsd: string;
+  quotaUsedUsd: string;
+  quotaDailyLimitUsd: string;
+  quotaDailyUsedUsd: string;
+  quotaWeeklyLimitUsd: string;
+  quotaWeeklyUsedUsd: string;
+  rateMultiplier: string;
 }
 
 interface CreatePayload {
@@ -116,6 +141,13 @@ interface CreatePayload {
   account_id: string;
   fingerprint: string;
   metadata: string;
+  quota_limit_usd: number;
+  quota_used_usd: number;
+  quota_daily_limit_usd: number;
+  quota_daily_used_usd: number;
+  quota_weekly_limit_usd: number;
+  quota_weekly_used_usd: number;
+  rate_multiplier: number;
 }
 
 interface UpdatePayload {
@@ -132,6 +164,13 @@ interface UpdatePayload {
   account_id: string;
   fingerprint: string;
   metadata: string;
+  quota_limit_usd: number;
+  quota_used_usd: number;
+  quota_daily_limit_usd: number;
+  quota_daily_used_usd: number;
+  quota_weekly_limit_usd: number;
+  quota_weekly_used_usd: number;
+  rate_multiplier: number;
 }
 
 // Subscription account platforms supported by the hybrid relay adaptor layer
@@ -192,6 +231,25 @@ function formatResetAfter(seconds?: number | null) {
   return '1分钟内';
 }
 
+function formatUSD(value?: number | null) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return '$0.00';
+  return `$${n.toFixed(2)}`;
+}
+
+function parseNumberInput(value: string) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function localQuotaRows(account: SubscriptionAccountSummary) {
+  return [
+    { label: '总额', used: account.quotaUsedUsd, limit: account.quotaLimitUsd },
+    { label: '24h', used: account.quotaDailyUsedUsd, limit: account.quotaDailyLimitUsd },
+    { label: '7d', used: account.quotaWeeklyUsedUsd, limit: account.quotaWeeklyLimitUsd },
+  ].filter((row) => (row.used ?? 0) > 0 || (row.limit ?? 0) > 0);
+}
+
 function resetAfterFromUnix(resetAt?: number) {
   if (!resetAt) return null;
   return Math.max(0, Math.round(resetAt - Date.now() / 1000));
@@ -229,11 +287,33 @@ function quotaWindows(account: SubscriptionAccountSummary) {
 
 function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
   const windows = quotaWindows(account);
-  if (windows.length === 0) {
+  const localRows = localQuotaRows(account);
+  if (windows.length === 0 && localRows.length === 0) {
     return <span className="text-sm text-muted-foreground">—</span>;
   }
   return (
     <div className="min-w-[170px] space-y-1">
+      {localRows.map((row) => {
+        const used = Number(row.used ?? 0);
+        const limit = Number(row.limit ?? 0);
+        const barWidth = limit > 0 ? Math.max(0, Math.min(100, (used / limit) * 100)) : 0;
+        return (
+          <div key={row.label} className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium">{row.label}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {formatUSD(used)}
+                {limit > 0 ? ` / ${formatUSD(limit)}` : ''}
+              </span>
+            </div>
+            {limit > 0 && (
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-emerald-600" style={{ width: `${barWidth}%` }} />
+              </div>
+            )}
+          </div>
+        );
+      })}
       {windows.map((window) => {
         const usedPercent = window.usedPercent ?? 0;
         const barWidth = Math.max(0, Math.min(100, usedPercent));
@@ -278,6 +358,13 @@ function toDraft(account: SubscriptionAccountInfo): SubscriptionAccountEditDraft
     accountId: account.account_id ?? '',
     fingerprint: account.fingerprint ?? '',
     metadata: account.metadata ?? '',
+    quotaLimitUsd: String(account.quota_limit_usd ?? 0),
+    quotaUsedUsd: String(account.quota_used_usd ?? 0),
+    quotaDailyLimitUsd: String(account.quota_daily_limit_usd ?? 0),
+    quotaDailyUsedUsd: String(account.quota_daily_used_usd ?? 0),
+    quotaWeeklyLimitUsd: String(account.quota_weekly_limit_usd ?? 0),
+    quotaWeeklyUsedUsd: String(account.quota_weekly_used_usd ?? 0),
+    rateMultiplier: String(account.rate_multiplier && account.rate_multiplier > 0 ? account.rate_multiplier : 1),
   };
 }
 
@@ -361,6 +448,13 @@ export function AdminSubscriptionAccountsPage() {
         account_id: draft.accountId.trim(),
         fingerprint: draft.fingerprint,
         metadata: draft.metadata,
+        quota_limit_usd: parseNumberInput(draft.quotaLimitUsd),
+        quota_used_usd: parseNumberInput(draft.quotaUsedUsd),
+        quota_daily_limit_usd: parseNumberInput(draft.quotaDailyLimitUsd),
+        quota_daily_used_usd: parseNumberInput(draft.quotaDailyUsedUsd),
+        quota_weekly_limit_usd: parseNumberInput(draft.quotaWeeklyLimitUsd),
+        quota_weekly_used_usd: parseNumberInput(draft.quotaWeeklyUsedUsd),
+        rate_multiplier: parseNumberInput(draft.rateMultiplier) || 1,
       };
       const res = await adminApiClient.put(`/subscription-accounts/${draft.id}`, payload);
       ensureApiSuccess(res.data, 'Subscription account update failed');
@@ -384,6 +478,17 @@ export function AdminSubscriptionAccountsPage() {
     onSuccess: () => {
       invalidate();
       toast.success('订阅账号状态已更新');
+    },
+  });
+
+  const resetQuotaMutation = useMutation({
+    mutationFn: async ({ id, scope }: { id: number; scope: string }) => {
+      const res = await adminApiClient.post(`/subscription-accounts/${id}/reset-quota`, { account_id: id, scope });
+      ensureApiSuccess(res.data, 'Subscription account quota reset failed');
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success('订阅账号用量已重置');
     },
   });
 
@@ -532,6 +637,19 @@ export function AdminSubscriptionAccountsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
+                          if (confirm(`确认重置订阅账号「${account.name}」的本地用量？`)) {
+                            resetQuotaMutation.mutate({ id: account.id, scope: 'all' });
+                          }
+                        }}
+                        disabled={resetQuotaMutation.isPending}
+                      >
+                        <RotateCcw className="size-3.5" />
+                        重置
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
                           if (confirm(`确认删除订阅账号「${account.name}」？`)) {
                             deleteMutation.mutate(account.id);
                           }
@@ -589,6 +707,13 @@ const emptyCreateState = {
   accountId: '',
   fingerprint: '',
   metadata: '',
+  quotaLimitUsd: '',
+  quotaUsedUsd: '',
+  quotaDailyLimitUsd: '',
+  quotaDailyUsedUsd: '',
+  quotaWeeklyLimitUsd: '',
+  quotaWeeklyUsedUsd: '',
+  rateMultiplier: '1',
 };
 
 function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAccountDialogProps) {
@@ -613,6 +738,13 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
       account_id: form.accountId.trim(),
       fingerprint: form.fingerprint,
       metadata: form.metadata,
+      quota_limit_usd: parseNumberInput(form.quotaLimitUsd),
+      quota_used_usd: parseNumberInput(form.quotaUsedUsd),
+      quota_daily_limit_usd: parseNumberInput(form.quotaDailyLimitUsd),
+      quota_daily_used_usd: parseNumberInput(form.quotaDailyUsedUsd),
+      quota_weekly_limit_usd: parseNumberInput(form.quotaWeeklyLimitUsd),
+      quota_weekly_used_usd: parseNumberInput(form.quotaWeeklyUsedUsd),
+      rate_multiplier: parseNumberInput(form.rateMultiplier) || 1,
     });
     setForm({ ...emptyCreateState });
   };
@@ -703,6 +835,50 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
               type="number"
               value={form.expiresAt}
               onChange={(e) => setForm({ ...form, expiresAt: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="sub-quota-limit">总额度 USD</Label>
+            <Input
+              id="sub-quota-limit"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.quotaLimitUsd}
+              onChange={(e) => setForm({ ...form, quotaLimitUsd: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="sub-daily-limit">24h 额度 USD</Label>
+            <Input
+              id="sub-daily-limit"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.quotaDailyLimitUsd}
+              onChange={(e) => setForm({ ...form, quotaDailyLimitUsd: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="sub-weekly-limit">7d 额度 USD</Label>
+            <Input
+              id="sub-weekly-limit"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.quotaWeeklyLimitUsd}
+              onChange={(e) => setForm({ ...form, quotaWeeklyLimitUsd: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="sub-rate-multiplier">用量倍率</Label>
+            <Input
+              id="sub-rate-multiplier"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.rateMultiplier}
+              onChange={(e) => setForm({ ...form, rateMultiplier: e.target.value })}
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
@@ -871,6 +1047,83 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
                 id="edit-sub-account-id"
                 value={draft.accountId}
                 onChange={(e) => onDraftChange({ ...draft, accountId: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-sub-quota-limit">总额度 USD</Label>
+              <Input
+                id="edit-sub-quota-limit"
+                type="number"
+                min="0"
+                step="0.01"
+                value={draft.quotaLimitUsd}
+                onChange={(e) => onDraftChange({ ...draft, quotaLimitUsd: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-sub-quota-used">总已用 USD</Label>
+              <Input
+                id="edit-sub-quota-used"
+                type="number"
+                min="0"
+                step="0.01"
+                value={draft.quotaUsedUsd}
+                onChange={(e) => onDraftChange({ ...draft, quotaUsedUsd: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-sub-daily-limit">24h 额度 USD</Label>
+              <Input
+                id="edit-sub-daily-limit"
+                type="number"
+                min="0"
+                step="0.01"
+                value={draft.quotaDailyLimitUsd}
+                onChange={(e) => onDraftChange({ ...draft, quotaDailyLimitUsd: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-sub-daily-used">24h 已用 USD</Label>
+              <Input
+                id="edit-sub-daily-used"
+                type="number"
+                min="0"
+                step="0.01"
+                value={draft.quotaDailyUsedUsd}
+                onChange={(e) => onDraftChange({ ...draft, quotaDailyUsedUsd: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-sub-weekly-limit">7d 额度 USD</Label>
+              <Input
+                id="edit-sub-weekly-limit"
+                type="number"
+                min="0"
+                step="0.01"
+                value={draft.quotaWeeklyLimitUsd}
+                onChange={(e) => onDraftChange({ ...draft, quotaWeeklyLimitUsd: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-sub-weekly-used">7d 已用 USD</Label>
+              <Input
+                id="edit-sub-weekly-used"
+                type="number"
+                min="0"
+                step="0.01"
+                value={draft.quotaWeeklyUsedUsd}
+                onChange={(e) => onDraftChange({ ...draft, quotaWeeklyUsedUsd: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="edit-sub-rate-multiplier">用量倍率</Label>
+              <Input
+                id="edit-sub-rate-multiplier"
+                type="number"
+                min="0"
+                step="0.01"
+                value={draft.rateMultiplier}
+                onChange={(e) => onDraftChange({ ...draft, rateMultiplier: e.target.value })}
               />
             </div>
             <div className="space-y-2 sm:col-span-2">

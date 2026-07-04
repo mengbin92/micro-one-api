@@ -814,19 +814,28 @@ func (s *AdminService) GetSubscriptionAccount(ctx context.Context, accountID int
 
 func (s *AdminService) CreateSubscriptionAccount(ctx context.Context, req *adminv1.AdminCreateSubscriptionAccountRequest) (*adminv1.AdminCreateSubscriptionAccountResponse, error) {
 	resp, err := s.channelClient.CreateSubscriptionAccount(ctx, &channelv1.CreateSubscriptionAccountRequest{
-		Name:         req.Name,
-		Platform:     req.Platform,
-		AccountType:  req.AccountType,
-		Group:        req.Group,
-		Models:       req.Models,
-		Priority:     req.Priority,
-		BaseUrl:      req.BaseUrl,
-		AccessToken:  req.AccessToken,
-		RefreshToken: req.RefreshToken,
-		ExpiresAt:    req.ExpiresAt,
-		AccountId:    req.AccountId,
-		Fingerprint:  req.Fingerprint,
-		Metadata:     req.Metadata,
+		Name:                   req.Name,
+		Platform:               req.Platform,
+		AccountType:            req.AccountType,
+		Group:                  req.Group,
+		Models:                 req.Models,
+		Priority:               req.Priority,
+		BaseUrl:                req.BaseUrl,
+		AccessToken:            req.AccessToken,
+		RefreshToken:           req.RefreshToken,
+		ExpiresAt:              req.ExpiresAt,
+		AccountId:              req.AccountId,
+		Fingerprint:            req.Fingerprint,
+		Metadata:               req.Metadata,
+		QuotaLimitUsd:          req.QuotaLimitUsd,
+		QuotaUsedUsd:           req.QuotaUsedUsd,
+		QuotaDailyLimitUsd:     req.QuotaDailyLimitUsd,
+		QuotaDailyUsedUsd:      req.QuotaDailyUsedUsd,
+		QuotaDailyWindowStart:  req.QuotaDailyWindowStart,
+		QuotaWeeklyLimitUsd:    req.QuotaWeeklyLimitUsd,
+		QuotaWeeklyUsedUsd:     req.QuotaWeeklyUsedUsd,
+		QuotaWeeklyWindowStart: req.QuotaWeeklyWindowStart,
+		RateMultiplier:         req.RateMultiplier,
 	})
 	if err != nil {
 		return &adminv1.AdminCreateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
@@ -840,24 +849,47 @@ func (s *AdminService) CreateSubscriptionAccount(ctx context.Context, req *admin
 
 func (s *AdminService) UpdateSubscriptionAccount(ctx context.Context, req *adminv1.AdminUpdateSubscriptionAccountRequest) (*adminv1.AdminUpdateSubscriptionAccountResponse, error) {
 	resp, err := s.channelClient.UpdateSubscriptionAccount(ctx, &channelv1.UpdateSubscriptionAccountRequest{
-		Id:           req.Id,
-		Name:         req.Name,
-		AccountType:  req.AccountType,
-		Group:        req.Group,
-		Models:       req.Models,
-		Priority:     req.Priority,
-		BaseUrl:      req.BaseUrl,
-		AccessToken:  req.AccessToken,
-		RefreshToken: req.RefreshToken,
-		ExpiresAt:    req.ExpiresAt,
-		AccountId:    req.AccountId,
-		Fingerprint:  req.Fingerprint,
-		Metadata:     req.Metadata,
+		Id:                     req.Id,
+		Name:                   req.Name,
+		AccountType:            req.AccountType,
+		Group:                  req.Group,
+		Models:                 req.Models,
+		Priority:               req.Priority,
+		BaseUrl:                req.BaseUrl,
+		AccessToken:            req.AccessToken,
+		RefreshToken:           req.RefreshToken,
+		ExpiresAt:              req.ExpiresAt,
+		AccountId:              req.AccountId,
+		Fingerprint:            req.Fingerprint,
+		Metadata:               req.Metadata,
+		QuotaLimitUsd:          req.QuotaLimitUsd,
+		QuotaUsedUsd:           req.QuotaUsedUsd,
+		QuotaDailyLimitUsd:     req.QuotaDailyLimitUsd,
+		QuotaDailyUsedUsd:      req.QuotaDailyUsedUsd,
+		QuotaDailyWindowStart:  req.QuotaDailyWindowStart,
+		QuotaWeeklyLimitUsd:    req.QuotaWeeklyLimitUsd,
+		QuotaWeeklyUsedUsd:     req.QuotaWeeklyUsedUsd,
+		QuotaWeeklyWindowStart: req.QuotaWeeklyWindowStart,
+		RateMultiplier:         req.RateMultiplier,
 	})
 	if err != nil {
 		return &adminv1.AdminUpdateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &adminv1.AdminUpdateSubscriptionAccountResponse{
+		Success: resp.Success,
+		Message: resp.Message,
+	}, nil
+}
+
+func (s *AdminService) ResetSubscriptionAccountQuota(ctx context.Context, req *adminv1.AdminResetSubscriptionAccountQuotaRequest) (*adminv1.AdminResetSubscriptionAccountQuotaResponse, error) {
+	resp, err := s.channelClient.ResetSubscriptionAccountQuota(ctx, &channelv1.ResetSubscriptionAccountQuotaRequest{
+		AccountId: req.AccountId,
+		Scope:     req.Scope,
+	})
+	if err != nil {
+		return &adminv1.AdminResetSubscriptionAccountQuotaResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &adminv1.AdminResetSubscriptionAccountQuotaResponse{
 		Success: resp.Success,
 		Message: resp.Message,
 	}, nil

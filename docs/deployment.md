@@ -234,6 +234,10 @@ docker-compose up -d admin-api
 
 用户已有 active 订阅时，同一分组的套餐会在原 `expires_at` 后续期；不同分组仍会被拒绝，以保持当前计费链路“一名用户同一时间一个 active subscription”的假设。
 
+#### 上游订阅账号本地额度
+
+`subscription_accounts` 支持账号级本地额度：`quota_limit_usd`（总额）、`quota_daily_limit_usd`（滚动 24h）、`quota_weekly_limit_usd`（滚动 7d）和 `rate_multiplier`。额度单位为 USD，limit 为 0 表示不限制。relay-gateway 成功提交计费后会按实际 `committed_amount` 折算 USD 并回写账号用量；channel-service 选路会跳过本地额度已耗尽的账号。管理端订阅账号页面可查看/编辑这些字段，并可重置 total/daily/weekly/all 用量。
+
 启用支付宝前，部署环境至少需要配置：
 
 | 变量 | 说明 |
@@ -456,7 +460,7 @@ scrape_configs:
 
 ## 8. 数据库迁移
 
-SQL 迁移文件位于仓库根目录的 `migrations/`，Docker Compose 启动 MySQL 时会自动执行。
+SQL 迁移文件位于仓库根目录的 `migrations/`，Docker Compose 启动 MySQL 时会自动执行。订阅套餐购买需要 `050_create_subscription_plans.sql`；上游订阅账号本地额度需要 `051_add_subscription_account_local_quota.sql`。
 
 手动迁移：
 

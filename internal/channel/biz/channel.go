@@ -109,6 +109,16 @@ type SubscriptionAccount struct {
 	Concurrency      int32
 	LastError        string
 
+	QuotaLimitUSD          float64
+	QuotaUsedUSD           float64
+	QuotaDailyLimitUSD     float64
+	QuotaDailyUsedUSD      float64
+	QuotaDailyWindowStart  int64
+	QuotaWeeklyLimitUSD    float64
+	QuotaWeeklyUsedUSD     float64
+	QuotaWeeklyWindowStart int64
+	RateMultiplier         float64
+
 	PrimaryQuotaUsedPercent         *float64
 	PrimaryQuotaResetAfterSeconds   *int32
 	PrimaryQuotaWindowMinutes       *int32
@@ -184,6 +194,8 @@ type ChannelRepo interface {
 	ClearTempUnschedulable(ctx context.Context, accountID int64) error
 	RecordAccountQuotaSnapshot(ctx context.Context, snapshot *AccountQuotaSnapshot) error
 	GetAccountQuotaSnapshot(ctx context.Context, accountID int64) (*AccountQuotaSnapshot, error)
+	RecordSubscriptionAccountQuotaUsage(ctx context.Context, accountID int64, costUSD float64, occurredAt time.Time) error
+	ResetSubscriptionAccountQuota(ctx context.Context, accountID int64, scope string) error
 	AutoPauseAccount(ctx context.Context, accountID int64, reason string) error
 	ListAvailableModels(ctx context.Context, group string) ([]string, error)
 	ListChannels(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*Channel, int64, error)
@@ -371,6 +383,30 @@ func (uc *ChannelUsecase) RecordAccountQuotaSnapshot(ctx context.Context, snapsh
 
 func (uc *ChannelUsecase) GetAccountQuotaSnapshot(ctx context.Context, accountID int64) (*AccountQuotaSnapshot, error) {
 	return uc.repo.GetAccountQuotaSnapshot(ctx, accountID)
+}
+
+func (uc *ChannelUsecase) RecordSubscriptionAccountQuotaUsage(ctx context.Context, accountID int64, costUSD float64, occurredAt time.Time) error {
+	if accountID <= 0 {
+		return ErrSubscriptionAccountNotFound
+	}
+	if costUSD <= 0 {
+		return nil
+	}
+	if occurredAt.IsZero() {
+		occurredAt = uc.now()
+	}
+	return uc.repo.RecordSubscriptionAccountQuotaUsage(ctx, accountID, costUSD, occurredAt)
+}
+
+func (uc *ChannelUsecase) ResetSubscriptionAccountQuota(ctx context.Context, accountID int64, scope string) error {
+	if accountID <= 0 {
+		return ErrSubscriptionAccountNotFound
+	}
+	scope = strings.TrimSpace(strings.ToLower(scope))
+	if scope == "" {
+		scope = "all"
+	}
+	return uc.repo.ResetSubscriptionAccountQuota(ctx, accountID, scope)
 }
 
 func (uc *ChannelUsecase) AutoPauseAccount(ctx context.Context, accountID int64, reason string) error {
@@ -566,7 +602,41 @@ func (a *SubscriptionAccount) IsSchedulableAt(now time.Time) bool {
 	if a == nil || a.Status != ChannelStatusEnabled {
 		return false
 	}
-	return a.RateLimitedUntil <= 0 || now.Unix() >= a.RateLimitedUntil
+	if a.RateLimitedUntil > 0 && now.Unix() < a.RateLimitedUntil {
+		return false
+	}
+	return !a.LocalQuotaExceededAt(now)
+}
+
+func (a *SubscriptionAccount) LocalQuotaExceededAt(now time.Time) bool {
+	if a == nil {
+		return true
+	}
+	nowUnix := now.Unix()
+	if a.QuotaLimitUSD > 0 && a.QuotaUsedUSD >= a.QuotaLimitUSD {
+		return true
+	}
+	if a.QuotaDailyLimitUSD > 0 && effectiveWindowUsedUSD(a.QuotaDailyUsedUSD, a.QuotaDailyWindowStart, nowUnix, 24*time.Hour) >= a.QuotaDailyLimitUSD {
+		return true
+	}
+	if a.QuotaWeeklyLimitUSD > 0 && effectiveWindowUsedUSD(a.QuotaWeeklyUsedUSD, a.QuotaWeeklyWindowStart, nowUnix, 7*24*time.Hour) >= a.QuotaWeeklyLimitUSD {
+		return true
+	}
+	return false
+}
+
+func (a *SubscriptionAccount) EffectiveRateMultiplier() float64 {
+	if a == nil || a.RateMultiplier <= 0 {
+		return 1
+	}
+	return a.RateMultiplier
+}
+
+func effectiveWindowUsedUSD(used float64, windowStart int64, nowUnix int64, window time.Duration) float64 {
+	if windowStart <= 0 || nowUnix-windowStart >= int64(window.Seconds()) {
+		return 0
+	}
+	return used
 }
 
 func (uc *ChannelUsecase) notifyUnavailable(ctx context.Context, previous, current *Channel, event ChannelHealthEvent) {

@@ -107,24 +107,33 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		refreshToken = account.RefreshToken
 	}
 	return &commonv1.SubscriptionAccountInfo{
-		Id:           account.ID,
-		Name:         account.Name,
-		Platform:     account.Platform,
-		AccountType:  account.AccountType,
-		Status:       account.Status,
-		Group:        account.Group,
-		Models:       account.ModelsCSV(),
-		Priority:     account.Priority,
-		BaseUrl:      account.BaseURL,
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    account.ExpiresAt,
-		AccountId:    account.AccountID,
-		Fingerprint:  account.Fingerprint,
-		Metadata:     account.Metadata,
-		CreatedAt:    account.CreatedAt,
-		UpdatedAt:    account.UpdatedAt,
-		Concurrency:  account.Concurrency,
+		Id:                     account.ID,
+		Name:                   account.Name,
+		Platform:               account.Platform,
+		AccountType:            account.AccountType,
+		Status:                 account.Status,
+		Group:                  account.Group,
+		Models:                 account.ModelsCSV(),
+		Priority:               account.Priority,
+		BaseUrl:                account.BaseURL,
+		AccessToken:            accessToken,
+		RefreshToken:           refreshToken,
+		ExpiresAt:              account.ExpiresAt,
+		AccountId:              account.AccountID,
+		Fingerprint:            account.Fingerprint,
+		Metadata:               account.Metadata,
+		CreatedAt:              account.CreatedAt,
+		UpdatedAt:              account.UpdatedAt,
+		Concurrency:            account.Concurrency,
+		QuotaLimitUsd:          account.QuotaLimitUSD,
+		QuotaUsedUsd:           account.QuotaUsedUSD,
+		QuotaDailyLimitUsd:     account.QuotaDailyLimitUSD,
+		QuotaDailyUsedUsd:      account.QuotaDailyUsedUSD,
+		QuotaDailyWindowStart:  account.QuotaDailyWindowStart,
+		QuotaWeeklyLimitUsd:    account.QuotaWeeklyLimitUSD,
+		QuotaWeeklyUsedUsd:     account.QuotaWeeklyUsedUSD,
+		QuotaWeeklyWindowStart: account.QuotaWeeklyWindowStart,
+		RateMultiplier:         account.RateMultiplier,
 	}
 }
 
@@ -158,6 +167,15 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 		PrimaryOverSecondaryPercent:     account.PrimaryOverSecondaryPercent,
 		QuotaSnapshotUpdatedAt:          account.QuotaSnapshotUpdatedAt,
 		QuotaSnapshotPaused:             account.QuotaSnapshotPaused,
+		QuotaLimitUsd:                   account.QuotaLimitUSD,
+		QuotaUsedUsd:                    account.QuotaUsedUSD,
+		QuotaDailyLimitUsd:              account.QuotaDailyLimitUSD,
+		QuotaDailyUsedUsd:               account.QuotaDailyUsedUSD,
+		QuotaDailyWindowStart:           account.QuotaDailyWindowStart,
+		QuotaWeeklyLimitUsd:             account.QuotaWeeklyLimitUSD,
+		QuotaWeeklyUsedUsd:              account.QuotaWeeklyUsedUSD,
+		QuotaWeeklyWindowStart:          account.QuotaWeeklyWindowStart,
+		RateMultiplier:                  account.RateMultiplier,
 	}
 }
 
@@ -322,20 +340,29 @@ func (s *ChannelService) ClearTempUnschedulable(ctx context.Context, req *channe
 
 func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *channelv1.CreateSubscriptionAccountRequest) (*channelv1.CreateSubscriptionAccountResponse, error) {
 	account := &biz.SubscriptionAccount{
-		Name:         req.Name,
-		Platform:     req.Platform,
-		AccountType:  req.AccountType,
-		Group:        req.Group,
-		Models:       biz.SplitCSV(req.Models),
-		Priority:     req.Priority,
-		BaseURL:      req.BaseUrl,
-		AccessToken:  req.AccessToken,
-		RefreshToken: req.RefreshToken,
-		ExpiresAt:    req.ExpiresAt,
-		AccountID:    req.AccountId,
-		Fingerprint:  req.Fingerprint,
-		Metadata:     req.Metadata,
-		Status:       biz.ChannelStatusEnabled,
+		Name:                   req.Name,
+		Platform:               req.Platform,
+		AccountType:            req.AccountType,
+		Group:                  req.Group,
+		Models:                 biz.SplitCSV(req.Models),
+		Priority:               req.Priority,
+		BaseURL:                req.BaseUrl,
+		AccessToken:            req.AccessToken,
+		RefreshToken:           req.RefreshToken,
+		ExpiresAt:              req.ExpiresAt,
+		AccountID:              req.AccountId,
+		Fingerprint:            req.Fingerprint,
+		Metadata:               req.Metadata,
+		Status:                 biz.ChannelStatusEnabled,
+		QuotaLimitUSD:          req.QuotaLimitUsd,
+		QuotaUsedUSD:           req.QuotaUsedUsd,
+		QuotaDailyLimitUSD:     req.QuotaDailyLimitUsd,
+		QuotaDailyUsedUSD:      req.QuotaDailyUsedUsd,
+		QuotaDailyWindowStart:  req.QuotaDailyWindowStart,
+		QuotaWeeklyLimitUSD:    req.QuotaWeeklyLimitUsd,
+		QuotaWeeklyUsedUSD:     req.QuotaWeeklyUsedUsd,
+		QuotaWeeklyWindowStart: req.QuotaWeeklyWindowStart,
+		RateMultiplier:         req.RateMultiplier,
 	}
 	if err := s.uc.CreateSubscriptionAccount(ctx, account); err != nil {
 		return &channelv1.CreateSubscriptionAccountResponse{
@@ -393,6 +420,33 @@ func (s *ChannelService) UpdateSubscriptionAccount(ctx context.Context, req *cha
 	}
 	if req.Metadata != "" {
 		account.Metadata = req.Metadata
+	}
+	if req.QuotaLimitUsd != nil {
+		account.QuotaLimitUSD = req.GetQuotaLimitUsd()
+	}
+	if req.QuotaUsedUsd != nil {
+		account.QuotaUsedUSD = req.GetQuotaUsedUsd()
+	}
+	if req.QuotaDailyLimitUsd != nil {
+		account.QuotaDailyLimitUSD = req.GetQuotaDailyLimitUsd()
+	}
+	if req.QuotaDailyUsedUsd != nil {
+		account.QuotaDailyUsedUSD = req.GetQuotaDailyUsedUsd()
+	}
+	if req.QuotaDailyWindowStart != nil {
+		account.QuotaDailyWindowStart = req.GetQuotaDailyWindowStart()
+	}
+	if req.QuotaWeeklyLimitUsd != nil {
+		account.QuotaWeeklyLimitUSD = req.GetQuotaWeeklyLimitUsd()
+	}
+	if req.QuotaWeeklyUsedUsd != nil {
+		account.QuotaWeeklyUsedUSD = req.GetQuotaWeeklyUsedUsd()
+	}
+	if req.QuotaWeeklyWindowStart != nil {
+		account.QuotaWeeklyWindowStart = req.GetQuotaWeeklyWindowStart()
+	}
+	if req.RateMultiplier != nil {
+		account.RateMultiplier = req.GetRateMultiplier()
 	}
 	if err := s.uc.UpdateSubscriptionAccount(ctx, account); err != nil {
 		return &channelv1.UpdateSubscriptionAccountResponse{
@@ -472,6 +526,24 @@ func (s *ChannelService) RecordAccountQuotaSnapshot(ctx context.Context, req *ch
 		return &channelv1.RecordAccountQuotaSnapshotResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.RecordAccountQuotaSnapshotResponse{Success: true, Message: "ok"}, nil
+}
+
+func (s *ChannelService) RecordSubscriptionAccountQuotaUsage(ctx context.Context, req *channelv1.RecordSubscriptionAccountQuotaUsageRequest) (*channelv1.RecordSubscriptionAccountQuotaUsageResponse, error) {
+	occurredAt := time.Time{}
+	if req.GetOccurredAt() > 0 {
+		occurredAt = time.Unix(req.GetOccurredAt(), 0)
+	}
+	if err := s.uc.RecordSubscriptionAccountQuotaUsage(ctx, req.GetAccountId(), req.GetCostUsd(), occurredAt); err != nil {
+		return &channelv1.RecordSubscriptionAccountQuotaUsageResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.RecordSubscriptionAccountQuotaUsageResponse{Success: true, Message: "ok"}, nil
+}
+
+func (s *ChannelService) ResetSubscriptionAccountQuota(ctx context.Context, req *channelv1.ResetSubscriptionAccountQuotaRequest) (*channelv1.ResetSubscriptionAccountQuotaResponse, error) {
+	if err := s.uc.ResetSubscriptionAccountQuota(ctx, req.GetAccountId(), req.GetScope()); err != nil {
+		return &channelv1.ResetSubscriptionAccountQuotaResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.ResetSubscriptionAccountQuotaResponse{Success: true, Message: "ok"}, nil
 }
 
 func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.CreateChannelRequest) (*channelv1.CreateChannelResponse, error) {

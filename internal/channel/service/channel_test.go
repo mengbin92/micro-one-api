@@ -106,6 +106,23 @@ func (r *channelServiceRepo) GetAccountQuotaSnapshot(ctx context.Context, accoun
 	return &biz.AccountQuotaSnapshot{AccountID: accountID}, nil
 }
 
+func (r *channelServiceRepo) RecordSubscriptionAccountQuotaUsage(ctx context.Context, accountID int64, costUSD float64, occurredAt time.Time) error {
+	if r.account != nil && r.account.ID == accountID {
+		r.account.QuotaUsedUSD += costUSD * r.account.EffectiveRateMultiplier()
+		r.account.LastUsedAt = occurredAt.Unix()
+	}
+	return nil
+}
+
+func (r *channelServiceRepo) ResetSubscriptionAccountQuota(ctx context.Context, accountID int64, scope string) error {
+	if r.account != nil && r.account.ID == accountID {
+		r.account.QuotaUsedUSD = 0
+		r.account.QuotaDailyUsedUSD = 0
+		r.account.QuotaWeeklyUsedUSD = 0
+	}
+	return nil
+}
+
 func (r *channelServiceRepo) AutoPauseAccount(ctx context.Context, accountID int64, reason string) error {
 	if r.account != nil && r.account.ID == accountID {
 		r.account.Status = biz.ChannelStatusDisabled
