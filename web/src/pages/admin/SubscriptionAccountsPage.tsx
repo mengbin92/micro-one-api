@@ -47,6 +47,19 @@ interface SubscriptionAccountSummary {
   accountId: string;
   expiresAt: number;
   updatedAt: number;
+  lastUsedAt?: number;
+  rateLimitedUntil?: number;
+  quotaUsedPercent?: number;
+  quotaResetAt?: number;
+  primaryQuotaUsedPercent?: number | null;
+  primaryQuotaResetAfterSeconds?: number | null;
+  primaryQuotaWindowMinutes?: number | null;
+  secondaryQuotaUsedPercent?: number | null;
+  secondaryQuotaResetAfterSeconds?: number | null;
+  secondaryQuotaWindowMinutes?: number | null;
+  primaryOverSecondaryPercent?: number | null;
+  quotaSnapshotUpdatedAt?: number;
+  quotaSnapshotPaused?: boolean;
 }
 
 // Mirrors common.v1.SubscriptionAccountInfo JSON tags returned by
@@ -150,6 +163,104 @@ function statusLabel(status: number) {
 function formatTimestamp(unix: number) {
   if (!unix) return '—';
   return new Date(unix * 1000).toLocaleString();
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return '—';
+  const rounded = Math.round(value * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
+}
+
+function formatWindowLabel(minutes?: number | null) {
+  if (!minutes) return '配额';
+  if (minutes === 300) return '5小时';
+  if (minutes === 10080) return '7天';
+  if (minutes % 1440 === 0) return `${minutes / 1440}天`;
+  if (minutes % 60 === 0) return `${minutes / 60}小时`;
+  return `${minutes}分钟`;
+}
+
+function formatResetAfter(seconds?: number | null) {
+  if (seconds == null || !Number.isFinite(seconds)) return '';
+  if (seconds <= 0) return '即将重置';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}天${hours > 0 ? `${hours}小时` : ''}后`;
+  if (hours > 0) return `${hours}小时${minutes > 0 ? `${minutes}分钟` : ''}后`;
+  if (minutes > 0) return `${minutes}分钟后`;
+  return '1分钟内';
+}
+
+function resetAfterFromUnix(resetAt?: number) {
+  if (!resetAt) return null;
+  return Math.max(0, Math.round(resetAt - Date.now() / 1000));
+}
+
+function quotaWindows(account: SubscriptionAccountSummary) {
+  const windows = [
+    {
+      key: 'primary',
+      label: formatWindowLabel(account.primaryQuotaWindowMinutes),
+      usedPercent: account.primaryQuotaUsedPercent,
+      resetAfter: account.primaryQuotaResetAfterSeconds,
+    },
+    {
+      key: 'secondary',
+      label: formatWindowLabel(account.secondaryQuotaWindowMinutes),
+      usedPercent: account.secondaryQuotaUsedPercent,
+      resetAfter: account.secondaryQuotaResetAfterSeconds,
+    },
+  ].filter((item) => item.usedPercent != null || item.resetAfter != null);
+
+  if (windows.length > 0) return windows;
+  if (account.quotaUsedPercent != null || account.quotaResetAt) {
+    return [
+      {
+        key: 'quota',
+        label: '配额',
+        usedPercent: account.quotaUsedPercent,
+        resetAfter: resetAfterFromUnix(account.quotaResetAt),
+      },
+    ];
+  }
+  return [];
+}
+
+function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
+  const windows = quotaWindows(account);
+  if (windows.length === 0) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  return (
+    <div className="min-w-[170px] space-y-1">
+      {windows.map((window) => {
+        const usedPercent = window.usedPercent ?? 0;
+        const barWidth = Math.max(0, Math.min(100, usedPercent));
+        const resetAfter = formatResetAfter(window.resetAfter);
+        return (
+          <div key={window.key} className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium">{window.label}</span>
+              <span className="tabular-nums text-muted-foreground">{formatPercent(usedPercent)}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-blue-600"
+                style={{ width: `${barWidth}%` }}
+              />
+            </div>
+            {resetAfter && <div className="text-[11px] text-muted-foreground">重置：{resetAfter}</div>}
+          </div>
+        );
+      })}
+      {account.quotaSnapshotPaused && (
+        <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+          已因限额暂停
+        </span>
+      )}
+    </div>
+  );
 }
 
 function toDraft(account: SubscriptionAccountInfo): SubscriptionAccountEditDraft {
@@ -381,6 +492,7 @@ export function AdminSubscriptionAccountsPage() {
                   <SortableHeader<SubscriptionAccountSummary> columnKey="status" sort={sort} onSortChange={setSort}>
                     状态
                   </SortableHeader>
+                  <TableHead className="hidden md:table-cell">限额状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -399,6 +511,9 @@ export function AdminSubscriptionAccountsPage() {
                       >
                         {statusLabel(account.status)}
                       </span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <QuotaStatusCell account={account} />
                     </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="sm" onClick={() => openEdit(account)}>

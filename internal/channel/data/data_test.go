@@ -413,13 +413,19 @@ func TestRecordAccountQuotaSnapshot_PersistsAndUpdatesAccount(t *testing.T) {
 	used := 96.5
 	reset := int32(120)
 	window := int32(300)
+	secondaryUsed := 48.25
+	secondaryReset := int32(86400)
+	secondaryWindow := int32(10080)
 	updatedAt := time.Unix(1000, 0).UTC()
 	require.NoError(t, repo.RecordAccountQuotaSnapshot(ctx, &biz.AccountQuotaSnapshot{
-		AccountID:                account.ID,
-		PrimaryUsedPercent:       &used,
-		PrimaryResetAfterSeconds: &reset,
-		PrimaryWindowMinutes:     &window,
-		UpdatedAt:                updatedAt,
+		AccountID:                  account.ID,
+		PrimaryUsedPercent:         &used,
+		PrimaryResetAfterSeconds:   &reset,
+		PrimaryWindowMinutes:       &window,
+		SecondaryUsedPercent:       &secondaryUsed,
+		SecondaryResetAfterSeconds: &secondaryReset,
+		SecondaryWindowMinutes:     &secondaryWindow,
+		UpdatedAt:                  updatedAt,
 	}))
 
 	snapshot, err := repo.GetAccountQuotaSnapshot(ctx, account.ID)
@@ -432,7 +438,21 @@ func TestRecordAccountQuotaSnapshot_PersistsAndUpdatesAccount(t *testing.T) {
 	stored, err := repo.FindSubscriptionAccountByID(ctx, account.ID)
 	require.NoError(t, err)
 	assert.EqualValues(t, used, stored.QuotaUsedPercent)
-	assert.Equal(t, updatedAt.Add(120*time.Second).Unix(), stored.QuotaResetAt)
+	assert.Equal(t, updatedAt.Add(time.Duration(secondaryReset)*time.Second).Unix(), stored.QuotaResetAt)
+
+	listed, total, err := repo.ListSubscriptionAccounts(ctx, 1, 20, "", "", 0, "")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, listed, 1)
+	require.NotNil(t, listed[0].PrimaryQuotaUsedPercent)
+	assert.Equal(t, used, *listed[0].PrimaryQuotaUsedPercent)
+	require.NotNil(t, listed[0].PrimaryQuotaWindowMinutes)
+	assert.EqualValues(t, window, *listed[0].PrimaryQuotaWindowMinutes)
+	require.NotNil(t, listed[0].SecondaryQuotaUsedPercent)
+	assert.Equal(t, secondaryUsed, *listed[0].SecondaryQuotaUsedPercent)
+	require.NotNil(t, listed[0].SecondaryQuotaWindowMinutes)
+	assert.EqualValues(t, secondaryWindow, *listed[0].SecondaryQuotaWindowMinutes)
+	assert.Equal(t, updatedAt.Unix(), listed[0].QuotaSnapshotUpdatedAt)
 
 	require.NoError(t, repo.AutoPauseAccount(ctx, account.ID, "quota exhausted"))
 	stored, err = repo.FindSubscriptionAccountByID(ctx, account.ID)

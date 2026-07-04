@@ -22,6 +22,12 @@ const baseAccount = {
   accountId: 'acct-123',
   expiresAt: 1800000000,
   updatedAt: 1700000000,
+  primaryQuotaUsedPercent: 48.5,
+  primaryQuotaResetAfterSeconds: 3600,
+  primaryQuotaWindowMinutes: 300,
+  secondaryQuotaUsedPercent: 12,
+  secondaryQuotaResetAfterSeconds: 172800,
+  secondaryQuotaWindowMinutes: 10080,
 };
 
 // detailAccount mirrors GET /api/subscription-accounts/{id} (snake_case JSON,
@@ -62,6 +68,26 @@ describe('AdminSubscriptionAccountsPage', () => {
 
     const row = await screen.findByText('claude-pro-1');
     expect(row.closest('tr')?.textContent).toContain('Claude (Claude Code OAuth)');
+  });
+
+  it('renders upstream quota window status for subscription accounts', async () => {
+    server.use(
+      http.get('/api/subscription-accounts', () =>
+        HttpResponse.json({ accounts: [baseAccount], total: 1 }),
+      ),
+    );
+
+    renderWithQuery(
+      <MemoryRouter>
+        <AdminSubscriptionAccountsPage />
+      </MemoryRouter>,
+    );
+
+    const row = (await screen.findByText('claude-pro-1')).closest('tr')!;
+    expect(row.textContent).toContain('5小时');
+    expect(row.textContent).toContain('48.5%');
+    expect(row.textContent).toContain('7天');
+    expect(row.textContent).toContain('12%');
   });
 
   it('sends platform + status filters to the list request', async () => {

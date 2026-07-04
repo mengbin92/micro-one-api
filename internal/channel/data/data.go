@@ -120,7 +120,7 @@ type accountQuotaSnapshotModel struct {
 	SecondaryResetAfterSeconds  *int32     `gorm:"column:secondary_reset_after_seconds"`
 	SecondaryWindowMinutes      *int32     `gorm:"column:secondary_window_minutes"`
 	PrimaryOverSecondaryPercent *float64   `gorm:"column:primary_over_secondary_percent"`
-	UpdatedAt                   *time.Time `gorm:"column:updated_at"`
+	UpdatedAt                   *time.Time `gorm:"column:updated_at;autoUpdateTime:false"`
 	SnapshotPaused              bool       `gorm:"column:snapshot_paused"`
 }
 
@@ -384,6 +384,7 @@ func (r *Repository) RecordAccountQuotaSnapshot(ctx context.Context, snapshot *b
 	if resetAt > 0 {
 		account.QuotaResetAt = resetAt
 	}
+	applyAccountQuotaSnapshot(account, snapshot)
 	if snapshot.SnapshotPaused {
 		account.Status = biz.ChannelStatusDisabled
 	}
@@ -401,17 +402,28 @@ func (r *Repository) GetAccountQuotaSnapshot(ctx context.Context, accountID int6
 		return nil, biz.ErrSubscriptionAccountNotFound
 	}
 	used := float64(account.QuotaUsedPercent)
+	if account.PrimaryQuotaUsedPercent != nil {
+		used = *account.PrimaryQuotaUsedPercent
+	}
 	var resetAfter *int32
 	if account.QuotaResetAt > 0 {
 		value := int32(account.QuotaResetAt - time.Now().Unix())
 		resetAfter = &value
 	}
+	if account.PrimaryQuotaResetAfterSeconds != nil {
+		resetAfter = account.PrimaryQuotaResetAfterSeconds
+	}
 	return &biz.AccountQuotaSnapshot{
-		AccountID:                accountID,
-		PrimaryUsedPercent:       &used,
-		PrimaryResetAfterSeconds: resetAfter,
-		UpdatedAt:                time.Now(),
-		SnapshotPaused:           account.Status != biz.ChannelStatusEnabled,
+		AccountID:                   accountID,
+		PrimaryUsedPercent:          &used,
+		PrimaryResetAfterSeconds:    resetAfter,
+		PrimaryWindowMinutes:        account.PrimaryQuotaWindowMinutes,
+		SecondaryUsedPercent:        account.SecondaryQuotaUsedPercent,
+		SecondaryResetAfterSeconds:  account.SecondaryQuotaResetAfterSeconds,
+		SecondaryWindowMinutes:      account.SecondaryQuotaWindowMinutes,
+		PrimaryOverSecondaryPercent: account.PrimaryOverSecondaryPercent,
+		UpdatedAt:                   time.Now(),
+		SnapshotPaused:              account.Status != biz.ChannelStatusEnabled,
 	}, nil
 }
 
@@ -599,7 +611,40 @@ func (r *Repository) listSubscriptionAccountsDB(ctx context.Context, page, pageS
 	for i, m := range models {
 		result[i] = r.subscriptionAccountModelToBiz(&m)
 	}
+	if err := r.attachAccountQuotaSnapshots(ctx, result); err != nil {
+		return nil, 0, err
+	}
 	return result, total, nil
+}
+
+func (r *Repository) attachAccountQuotaSnapshots(ctx context.Context, accounts []*biz.SubscriptionAccount) error {
+	if len(accounts) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(accounts))
+	accountByID := make(map[int64]*biz.SubscriptionAccount, len(accounts))
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		ids = append(ids, account.ID)
+		accountByID[account.ID] = account
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var snapshots []accountQuotaSnapshotModel
+	if err := r.db.WithContext(ctx).Where("account_id IN ?", ids).Find(&snapshots).Error; err != nil {
+		return err
+	}
+	for i := range snapshots {
+		account := accountByID[snapshots[i].AccountID]
+		if account == nil {
+			continue
+		}
+		applyAccountQuotaSnapshot(account, accountQuotaSnapshotModelToBiz(&snapshots[i]))
+	}
+	return nil
 }
 
 func (r *Repository) listOAuthRefreshCandidatesDB(ctx context.Context, within time.Duration) ([]int64, error) {
@@ -661,7 +706,10 @@ func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID 
 		if err := tx.Where("id = ?", accountID).Delete(&subscriptionAccountModel{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("account_id = ?", accountID).Delete(&subscriptionAccountAbilityModel{}).Error
+		if err := tx.Where("account_id = ?", accountID).Delete(&subscriptionAccountAbilityModel{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("account_id = ?", accountID).Delete(&accountQuotaSnapshotModel{}).Error
 	})
 }
 
@@ -1315,6 +1363,23 @@ func accountQuotaSnapshotModelToBiz(m *accountQuotaSnapshotModel) *biz.AccountQu
 		PrimaryOverSecondaryPercent: m.PrimaryOverSecondaryPercent,
 		UpdatedAt:                   updatedAt,
 		SnapshotPaused:              m.SnapshotPaused,
+	}
+}
+
+func applyAccountQuotaSnapshot(account *biz.SubscriptionAccount, snapshot *biz.AccountQuotaSnapshot) {
+	if account == nil || snapshot == nil {
+		return
+	}
+	account.PrimaryQuotaUsedPercent = snapshot.PrimaryUsedPercent
+	account.PrimaryQuotaResetAfterSeconds = snapshot.PrimaryResetAfterSeconds
+	account.PrimaryQuotaWindowMinutes = snapshot.PrimaryWindowMinutes
+	account.SecondaryQuotaUsedPercent = snapshot.SecondaryUsedPercent
+	account.SecondaryQuotaResetAfterSeconds = snapshot.SecondaryResetAfterSeconds
+	account.SecondaryQuotaWindowMinutes = snapshot.SecondaryWindowMinutes
+	account.PrimaryOverSecondaryPercent = snapshot.PrimaryOverSecondaryPercent
+	account.QuotaSnapshotPaused = snapshot.SnapshotPaused
+	if !snapshot.UpdatedAt.IsZero() {
+		account.QuotaSnapshotUpdatedAt = snapshot.UpdatedAt.Unix()
 	}
 }
 

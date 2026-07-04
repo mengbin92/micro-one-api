@@ -108,6 +108,16 @@ type SubscriptionAccount struct {
 	QuotaResetAt     int64
 	Concurrency      int32
 	LastError        string
+
+	PrimaryQuotaUsedPercent         *float64
+	PrimaryQuotaResetAfterSeconds   *int32
+	PrimaryQuotaWindowMinutes       *int32
+	SecondaryQuotaUsedPercent       *float64
+	SecondaryQuotaResetAfterSeconds *int32
+	SecondaryQuotaWindowMinutes     *int32
+	PrimaryOverSecondaryPercent     *float64
+	QuotaSnapshotUpdatedAt          int64
+	QuotaSnapshotPaused             bool
 }
 
 type AccountQuotaSnapshot struct {

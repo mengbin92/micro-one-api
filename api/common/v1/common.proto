@@ -131,6 +131,15 @@ message SubscriptionAccountSummary {
   float quota_used_percent = 14;      // 上游订阅配额使用百分比（0-100）
   int64 quota_reset_at = 15;          // 订阅配额窗口重置的 unix 时间
   int32 concurrency = 16;             // 最大并发请求数
+  optional double primary_quota_used_percent = 17;       // 主配额窗口使用百分比（Codex: 5h）
+  optional int32 primary_quota_reset_after_seconds = 18; // 主配额窗口剩余重置秒数
+  optional int32 primary_quota_window_minutes = 19;      // 主配额窗口分钟数
+  optional double secondary_quota_used_percent = 20;     // 次配额窗口使用百分比（Codex: 7d）
+  optional int32 secondary_quota_reset_after_seconds = 21;
+  optional int32 secondary_quota_window_minutes = 22;
+  optional double primary_over_secondary_percent = 23;   // 主窗口相对次窗口使用百分比
+  int64 quota_snapshot_updated_at = 24;                  // 快照采样时间（unix）
+  bool quota_snapshot_paused = 25;                       // 快照采样时是否触发暂停
 }
 
 // ========== 账户快照 ==========
