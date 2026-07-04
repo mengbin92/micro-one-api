@@ -443,6 +443,7 @@ func (c *adminHTTPBillingClient) CreatePaymentOrder(ctx context.Context, req *bi
 			PayUrl:           "mock://payment/PAY-SUB-1",
 			AssetIssueStatus: "pending",
 			GroupId:          req.GetGroupId(),
+			PlanId:           req.GetPlanId(),
 			CreatedAt:        timestamppb.Now(),
 			UpdatedAt:        timestamppb.Now(),
 		},
@@ -529,6 +530,7 @@ func newAdminHTTPSubscriptionTestServer() http.Handler {
 	adminSvc.SetSubscriptionUsecases(
 		subscriptionbiz.NewSubscriptionUsecase(repo, repo),
 		subscriptionbiz.NewGroupUsecase(repo),
+		subscriptionbiz.NewPlanUsecase(repo, repo),
 	)
 	return NewHTTPServer(":0", adminSvc)
 }
@@ -539,6 +541,7 @@ func newAdminHTTPSubscriptionPaymentTestServer(identity identityv1.IdentityServi
 	adminSvc.SetSubscriptionUsecases(
 		subscriptionbiz.NewSubscriptionUsecase(repo, repo),
 		subscriptionbiz.NewGroupUsecase(repo),
+		subscriptionbiz.NewPlanUsecase(repo, repo),
 	)
 	return NewHTTPServer(":0", adminSvc)
 }
@@ -639,7 +642,47 @@ func TestUserSubscriptionPurchaseCreatesPaymentOrderWithDefaultChannel(t *testin
 	if got == nil {
 		t.Fatal("CreatePaymentOrder was not called")
 	}
-	if got.GetUserId() != "42" || got.GetChannel() != "alipay" || got.GetAssetType() != "subscription" || got.GetAssetAmount() != 1 || got.GetMoneyCents() != 1000 || got.GetGroupId() != 1 {
+	if got.GetUserId() != "42" || got.GetChannel() != "alipay" || got.GetAssetType() != "subscription" || got.GetAssetAmount() != 30 || got.GetMoneyCents() != 1000 || got.GetGroupId() != 1 || got.GetPlanId() != 0 {
+		t.Fatalf("CreatePaymentOrder request = %+v", got)
+	}
+}
+
+func TestUserSubscriptionPurchaseCreatesPaymentOrderWithPlanID(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	identityClient := &adminHTTPIdentityClient{validateValid: true, validateUserID: 42}
+	billingClient := &adminHTTPBillingClient{}
+	srv := newAdminHTTPSubscriptionPaymentTestServer(identityClient, billingClient)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/subscription-groups", strings.NewReader(`{"name":"codex-pro","display_name":"Codex Pro","platform":"openai","status":1}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("create group status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	planBody := `{"group_id":1,"name":"Codex Pro Monthly","price_quota":20,"validity_days":45,"features":"fast","for_sale":true}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/subscription-plans", strings.NewReader(planBody))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("create plan status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/subscriptions/purchase/payment", strings.NewReader(`{"plan_id":1}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("purchase payment status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	got := billingClient.paymentCreateReq
+	if got == nil {
+		t.Fatal("CreatePaymentOrder was not called")
+	}
+	if got.GetUserId() != "42" || got.GetAssetType() != "subscription" || got.GetAssetAmount() != 45 || got.GetMoneyCents() != 2000 || got.GetGroupId() != 1 || got.GetPlanId() != 1 {
 		t.Fatalf("CreatePaymentOrder request = %+v", got)
 	}
 }

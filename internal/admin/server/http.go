@@ -291,6 +291,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/api/v1/subscriptions/groups", func(w http.ResponseWriter, r *http.Request) {
 		handlePurchasableSubscriptionGroups(w, r, svc)
 	})
+	srv.HandleFunc("/api/v1/subscriptions/plans", func(w http.ResponseWriter, r *http.Request) {
+		handlePurchasableSubscriptionPlans(w, r, svc)
+	})
 	srv.HandleFunc("/api/v1/subscriptions/purchase", func(w http.ResponseWriter, r *http.Request) {
 		handlePurchaseSubscription(w, r, svc)
 	})
@@ -314,6 +317,12 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	}))
 	srv.HandlePrefix("/api/v1/admin/subscription-groups/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleSubscriptionGroupByID(w, r, svc)
+	}))
+	srv.HandleFunc("/api/v1/admin/subscription-plans", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionPlans(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/v1/admin/subscription-plans/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionPlanByID(w, r, svc)
 	}))
 	// Subscription-account OAuth authorization-code binding lives only on
 	// channel-service HTTP; proxy the SPA's requests through so the admin UI can

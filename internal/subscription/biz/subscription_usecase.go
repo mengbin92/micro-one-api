@@ -17,7 +17,6 @@ import (
 // reference the dual-track methods.
 type gormDB = gormdb.DB
 
-
 const (
 	quotaDailyWindow   = 24 * time.Hour
 	quotaWeeklyWindow  = 7 * 24 * time.Hour
@@ -83,6 +82,47 @@ func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscripti
 		return nil, err
 	}
 	return subscription, nil
+}
+
+func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
+	if req == nil {
+		return nil, false, fmt.Errorf("nil request")
+	}
+	group, err := uc.groupRepo.GetGroupByID(ctx, req.GroupID)
+	if err != nil {
+		return nil, false, err
+	}
+	if group.Status != SubscriptionGroupStatusEnabled {
+		return nil, false, ErrSubscriptionGroupDisabled
+	}
+	active, err := uc.repo.GetActiveSubscriptionByUser(ctx, req.UserID)
+	if err != nil && !errors.Is(err, ErrSubscriptionNotFound) {
+		return nil, false, err
+	}
+	if active == nil {
+		sub, err := uc.Assign(ctx, req)
+		return sub, false, err
+	}
+	if active.GroupID != req.GroupID {
+		return nil, true, ErrSubscriptionAlreadyAssigned
+	}
+	if req.ExpiresAt <= active.ExpiresAt {
+		duration := req.ExpiresAt - req.StartsAt
+		if duration <= 0 {
+			return active, true, nil
+		}
+		req.ExpiresAt = active.ExpiresAt + duration
+	}
+	active.ExpiresAt = req.ExpiresAt
+	if req.SubscriptionName != "" {
+		active.SubscriptionName = req.SubscriptionName
+	}
+	active.Metadata = mergeSubscriptionMetadata(active.Metadata, req.Metadata)
+	active.UpdatedAt = uc.now().Unix()
+	if err := uc.repo.UpdateSubscription(ctx, active); err != nil {
+		return nil, true, err
+	}
+	return active, true, nil
 }
 
 func (uc *SubscriptionUsecase) Revoke(ctx context.Context, id int64, reason string) error {
@@ -368,4 +408,14 @@ func mergeMetadataReason(metadata, reason string) string {
 		}
 	}
 	return metadata
+}
+
+func mergeSubscriptionMetadata(existing, next string) string {
+	if strings.TrimSpace(next) == "" {
+		return existing
+	}
+	if strings.TrimSpace(existing) == "" {
+		return next
+	}
+	return next
 }

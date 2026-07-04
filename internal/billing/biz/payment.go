@@ -39,6 +39,7 @@ type PaymentOrder struct {
 	PayURL           string
 	AssetIssueStatus string
 	GroupID          int64 // Subscription group ID for auto-assignment after payment
+	PlanID           int64 // Subscription plan ID for plan-based auto-assignment
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	PaidAt           *time.Time
@@ -52,6 +53,7 @@ type CreatePaymentOrderRequest struct {
 	MoneyCents  int64
 	Currency    string
 	GroupID     int64 // Optional: subscription group ID for auto-assignment
+	PlanID      int64 // Optional: subscription plan ID for auto-assignment
 }
 
 type ListPaymentOrdersRequest struct {
@@ -152,6 +154,7 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 		Status:           PaymentOrderStatusPending,
 		AssetIssueStatus: PaymentAssetIssueStatusPending,
 		GroupID:          req.GroupID,
+		PlanID:           req.PlanID,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}

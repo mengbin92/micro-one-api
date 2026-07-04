@@ -58,11 +58,62 @@ func (s *AdminService) ListPurchasableSubscriptionGroups(ctx context.Context) ([
 	return purchasable, nil
 }
 
+func (s *AdminService) ListSubscriptionPlans(ctx context.Context) ([]*subscriptionbiz.SubscriptionPlan, error) {
+	if s == nil || s.planUc == nil {
+		return nil, ErrSubscriptionServiceNotConfigured
+	}
+	return s.planUc.List(ctx)
+}
+
+func (s *AdminService) ListPurchasableSubscriptionPlans(ctx context.Context) ([]*subscriptionbiz.SubscriptionPlan, error) {
+	if s == nil || s.planUc == nil {
+		return nil, ErrSubscriptionServiceNotConfigured
+	}
+	return s.planUc.ListForSale(ctx)
+}
+
+func (s *AdminService) CreateSubscriptionPlan(ctx context.Context, plan *subscriptionbiz.SubscriptionPlan) error {
+	if s == nil || s.planUc == nil {
+		return ErrSubscriptionServiceNotConfigured
+	}
+	return s.planUc.Create(ctx, plan)
+}
+
+func (s *AdminService) GetSubscriptionPlan(ctx context.Context, planID int64) (*subscriptionbiz.SubscriptionPlan, error) {
+	if s == nil || s.planUc == nil {
+		return nil, ErrSubscriptionServiceNotConfigured
+	}
+	return s.planUc.Get(ctx, planID)
+}
+
+func (s *AdminService) UpdateSubscriptionPlan(ctx context.Context, plan *subscriptionbiz.SubscriptionPlan) error {
+	if s == nil || s.planUc == nil {
+		return ErrSubscriptionServiceNotConfigured
+	}
+	return s.planUc.Update(ctx, plan)
+}
+
+func (s *AdminService) DeleteSubscriptionPlan(ctx context.Context, planID int64) error {
+	if s == nil || s.planUc == nil {
+		return ErrSubscriptionServiceNotConfigured
+	}
+	return s.planUc.Delete(ctx, planID)
+}
+
 func isPurchasableGroup(g *subscriptionbiz.SubscriptionGroup) bool {
 	return g != nil &&
 		g.Status == subscriptionbiz.SubscriptionGroupStatusEnabled &&
 		g.PriceQuota > 0 &&
 		g.DurationDays > 0
+}
+
+func isPurchasablePlan(p *subscriptionbiz.SubscriptionPlan) bool {
+	return p != nil &&
+		p.ForSale &&
+		p.PriceQuota > 0 &&
+		p.ValidityDays > 0 &&
+		p.Group != nil &&
+		p.Group.Status == subscriptionbiz.SubscriptionGroupStatusEnabled
 }
 
 // PurchaseSubscription lets an authenticated user buy a subscription group with
@@ -95,10 +146,7 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 		return nil, ErrSubscriptionNotPurchasable
 	}
 
-	// Reject an existing active subscription before touching the wallet.
-	if _, err := s.subscriptionUc.GetProgress(ctx, userID); err == nil {
-		return nil, subscriptionbiz.ErrSubscriptionAlreadyAssigned
-	} else if !errors.Is(err, subscriptionbiz.ErrSubscriptionNotFound) {
+	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, group.ID); err != nil {
 		return nil, err
 	}
 
@@ -117,18 +165,7 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 		return nil, errors.New(deduct.GetErrorMessage())
 	}
 
-	now := time.Now().Unix()
-	name := group.DisplayName
-	if name == "" {
-		name = group.Name
-	}
-	sub, err := s.subscriptionUc.Assign(ctx, &subscriptionbiz.AssignSubscriptionRequest{
-		UserID:           userID,
-		GroupID:          group.ID,
-		SubscriptionName: name,
-		StartsAt:         now,
-		ExpiresAt:        now + int64(group.DurationDays)*secondsPerDay,
-	})
+	sub, err := s.assignOrExtendGroupSubscription(ctx, userID, group, int64(group.DurationDays), "", "")
 	if err != nil {
 		// Compensate: give the quota back so the user is not charged for a
 		// subscription that was never created.
@@ -143,6 +180,126 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 		return nil, err
 	}
 	return sub, nil
+}
+
+func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, planID int64) (*subscriptionbiz.UserSubscription, error) {
+	if s == nil || s.subscriptionUc == nil || s.groupUc == nil || s.planUc == nil {
+		return nil, ErrSubscriptionServiceNotConfigured
+	}
+	if s.billingClient == nil {
+		return nil, ErrSubscriptionServiceNotConfigured
+	}
+	if userID <= 0 {
+		return nil, fmt.Errorf("invalid user id")
+	}
+	plan, err := s.planUc.Get(ctx, planID)
+	if err != nil {
+		return nil, err
+	}
+	if !isPurchasablePlan(plan) {
+		return nil, subscriptionbiz.ErrSubscriptionPlanNotSaleable
+	}
+	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, plan.GroupID); err != nil {
+		return nil, err
+	}
+
+	userIDStr := strconv.FormatInt(userID, 10)
+	remark := fmt.Sprintf("purchase subscription plan=%d (%s)", plan.ID, plan.Name)
+	deduct, err := s.billingClient.PurchaseSubscription(ctx, &billingv1.PurchaseSubscriptionRequest{
+		UserId:      userIDStr,
+		PriceAmount: plan.PriceQuota,
+		GroupId:     plan.GroupID,
+		Remark:      remark,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !deduct.GetSuccess() {
+		return nil, errors.New(deduct.GetErrorMessage())
+	}
+	sub, err := s.assignOrExtendPlanSubscription(ctx, userID, plan, "")
+	if err != nil {
+		if _, refundErr := s.billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
+			UserId:     userIDStr,
+			Amount:     plan.PriceQuota,
+			OperatorId: "system",
+			Remark:     fmt.Sprintf("refund: subscription purchase rollback plan=%d", plan.ID),
+		}); refundErr != nil {
+			return nil, fmt.Errorf("assign subscription failed (%w) and quota refund failed: %v", err, refundErr)
+		}
+		return nil, err
+	}
+	return sub, nil
+}
+
+func (s *AdminService) ensureSubscriptionCanUseGroup(ctx context.Context, userID, groupID int64) error {
+	active, err := s.subscriptionUc.GetActiveSubscriptionForUser(ctx, userID)
+	if err != nil {
+		if errors.Is(err, subscriptionbiz.ErrSubscriptionNotFound) {
+			return nil
+		}
+		return err
+	}
+	if active != nil && active.GroupID != groupID {
+		return subscriptionbiz.ErrSubscriptionAlreadyAssigned
+	}
+	return nil
+}
+
+func (s *AdminService) assignOrExtendGroupSubscription(ctx context.Context, userID int64, group *subscriptionbiz.SubscriptionGroup, durationDays int64, subscriptionName, metadata string) (*subscriptionbiz.UserSubscription, error) {
+	if group == nil {
+		return nil, subscriptionbiz.ErrSubscriptionGroupNotFound
+	}
+	name := subscriptionName
+	if name == "" {
+		name = group.DisplayName
+	}
+	if name == "" {
+		name = group.Name
+	}
+	now := time.Now().Unix()
+	startsAt := now
+	expiresAt := now + durationDays*secondsPerDay
+	if active, err := s.subscriptionUc.GetActiveSubscriptionForUser(ctx, userID); err == nil && active != nil && active.GroupID == group.ID {
+		startsAt = active.StartsAt
+		base := active.ExpiresAt
+		if base < now {
+			base = now
+			startsAt = now
+		}
+		expiresAt = base + durationDays*secondsPerDay
+	}
+	sub, _, err := s.subscriptionUc.AssignOrExtend(ctx, &subscriptionbiz.AssignSubscriptionRequest{
+		UserID:           userID,
+		GroupID:          group.ID,
+		SubscriptionName: name,
+		StartsAt:         startsAt,
+		ExpiresAt:        expiresAt,
+		Metadata:         metadata,
+	})
+	return sub, err
+}
+
+func (s *AdminService) assignOrExtendPlanSubscription(ctx context.Context, userID int64, plan *subscriptionbiz.SubscriptionPlan, metadata string) (*subscriptionbiz.UserSubscription, error) {
+	if plan == nil {
+		return nil, subscriptionbiz.ErrSubscriptionPlanNotFound
+	}
+	group := plan.Group
+	if group == nil {
+		var err error
+		group, err = s.groupUc.Get(ctx, plan.GroupID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	name := plan.Name
+	if name == "" {
+		name = group.DisplayName
+	}
+	if name == "" {
+		name = group.Name
+	}
+	return s.assignOrExtendGroupSubscription(ctx, userID, group, int64(plan.ValidityDays), name, metadata)
 }
 
 func (s *AdminService) AssignSubscription(ctx context.Context, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, error) {
@@ -230,7 +387,7 @@ func (s *AdminService) ListSubscriptionGroups(ctx context.Context) ([]*subscript
 }
 
 // CreateSubscriptionPaymentOrder creates a payment order for subscription purchase.
-func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userID, groupID int64, channel string, moneyCents int64, currency string) (subscription *subscriptionbiz.UserSubscription, paymentOrder *PaymentOrderInfo, err error) {
+func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userID, groupID, planID int64, channel string, moneyCents int64, currency string) (subscription *subscriptionbiz.UserSubscription, paymentOrder *PaymentOrderInfo, err error) {
 	if s == nil || s.subscriptionUc == nil || s.groupUc == nil {
 		return nil, nil, ErrSubscriptionServiceNotConfigured
 	}
@@ -241,25 +398,44 @@ func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userI
 		return nil, nil, fmt.Errorf("invalid user id")
 	}
 
-	group, err := s.groupUc.Get(ctx, groupID)
-	if err != nil {
-		return nil, nil, err
+	var group *subscriptionbiz.SubscriptionGroup
+	var plan *subscriptionbiz.SubscriptionPlan
+	priceQuota := int64(0)
+	durationDays := int64(0)
+	if planID > 0 {
+		if s.planUc == nil {
+			return nil, nil, ErrSubscriptionServiceNotConfigured
+		}
+		plan, err = s.planUc.Get(ctx, planID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !isPurchasablePlan(plan) {
+			return nil, nil, subscriptionbiz.ErrSubscriptionPlanNotSaleable
+		}
+		group = plan.Group
+		groupID = plan.GroupID
+		priceQuota = plan.PriceQuota
+		durationDays = int64(plan.ValidityDays)
+	} else {
+		group, err = s.groupUc.Get(ctx, groupID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !isPurchasableGroup(group) {
+			return nil, nil, ErrSubscriptionNotPurchasable
+		}
+		priceQuota = group.PriceQuota
+		durationDays = int64(group.DurationDays)
 	}
-	if !isPurchasableGroup(group) {
-		return nil, nil, ErrSubscriptionNotPurchasable
-	}
-
-	// Reject an existing active subscription
-	if _, err := s.subscriptionUc.GetProgress(ctx, userID); err == nil {
-		return nil, nil, subscriptionbiz.ErrSubscriptionAlreadyAssigned
-	} else if !errors.Is(err, subscriptionbiz.ErrSubscriptionNotFound) {
+	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, groupID); err != nil {
 		return nil, nil, err
 	}
 
 	userIDStr := strconv.FormatInt(userID, 10)
 
 	if moneyCents <= 0 {
-		moneyCents = group.PriceQuota * 100
+		moneyCents = priceQuota * 100
 	}
 	if currency == "" {
 		currency = "CNY"
@@ -272,10 +448,11 @@ func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userI
 		UserId:      userIDStr,
 		Channel:     channel,
 		AssetType:   "subscription",
-		AssetAmount: 1,
+		AssetAmount: durationDays,
 		MoneyCents:  moneyCents,
 		Currency:    currency,
 		GroupId:     groupID,
+		PlanId:      planID,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create payment order: %w", err)
@@ -296,6 +473,7 @@ func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userI
 		PayURL:      paymentResp.Order.PayUrl,
 		AssetAmount: paymentResp.Order.AssetAmount,
 		GroupId:     paymentResp.Order.GroupId,
+		PlanId:      paymentResp.Order.PlanId,
 		CreatedAt:   paymentResp.Order.CreatedAt.AsTime().Unix(),
 	}
 	return nil, order, nil
@@ -311,6 +489,7 @@ type PaymentOrderInfo struct {
 	PayURL      string `json:"pay_url"`
 	AssetAmount int64  `json:"asset_amount"`
 	GroupId     int64  `json:"group_id"`
+	PlanId      int64  `json:"plan_id"`
 	CreatedAt   int64  `json:"created_at"`
 }
 
@@ -346,11 +525,39 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 	if order.Status != "paid" {
 		return nil, fmt.Errorf("payment not completed (status: %s)", order.Status)
 	}
+	if order.AssetIssueStatus == "issued" {
+		sub, err := s.subscriptionUc.GetActiveSubscriptionForUser(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		return sub, nil
+	}
 
-	// Check if subscription already exists
-	if _, err := s.subscriptionUc.GetProgress(ctx, userID); err == nil {
-		return nil, subscriptionbiz.ErrSubscriptionAlreadyAssigned
-	} else if !errors.Is(err, subscriptionbiz.ErrSubscriptionNotFound) {
+	if order.PlanId > 0 {
+		if s.planUc == nil {
+			return nil, ErrSubscriptionServiceNotConfigured
+		}
+		plan, err := s.planUc.Get(ctx, order.PlanId)
+		if err != nil {
+			return nil, err
+		}
+		if !isPurchasablePlan(plan) {
+			return nil, subscriptionbiz.ErrSubscriptionPlanNotSaleable
+		}
+		if err := s.ensureSubscriptionCanUseGroup(ctx, userID, plan.GroupID); err != nil {
+			return nil, err
+		}
+		durationDays := order.AssetAmount
+		if durationDays <= 0 {
+			durationDays = int64(plan.ValidityDays)
+		}
+		name := plan.Name
+		if name == "" {
+			name = plan.ProductName
+		}
+		return s.assignOrExtendGroupSubscription(ctx, userID, plan.Group, durationDays, name, "")
+	}
+	if err := s.ensureSubscriptionCanUseGroup(ctx, userID, order.GroupId); err != nil {
 		return nil, err
 	}
 
@@ -363,20 +570,7 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 		return nil, ErrSubscriptionNotPurchasable
 	}
 
-	// Assign subscription
-	const secondsPerDay = 24 * 60 * 60
-	now := time.Now().Unix()
-	name := group.DisplayName
-	if name == "" {
-		name = group.Name
-	}
-	sub, err := s.subscriptionUc.Assign(ctx, &subscriptionbiz.AssignSubscriptionRequest{
-		UserID:           userID,
-		GroupID:          order.GroupId,
-		SubscriptionName: name,
-		StartsAt:         now,
-		ExpiresAt:        now + int64(group.DurationDays)*secondsPerDay,
-	})
+	sub, err := s.assignOrExtendGroupSubscription(ctx, userID, group, int64(group.DurationDays), "", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to assign subscription: %w", err)
 	}

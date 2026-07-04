@@ -38,6 +38,25 @@ func setupSubscriptionTestDB(t *testing.T) *Repository {
 	`).Error)
 
 	require.NoError(t, db.Exec(`
+		CREATE TABLE subscription_plans (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			price_quota INTEGER NOT NULL DEFAULT 0,
+			original_price INTEGER DEFAULT NULL,
+			validity_days INTEGER NOT NULL DEFAULT 30,
+			validity_unit TEXT NOT NULL DEFAULT 'day',
+			features TEXT NOT NULL DEFAULT '',
+			product_name TEXT NOT NULL DEFAULT '',
+			for_sale INTEGER NOT NULL DEFAULT 1,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)
+	`).Error)
+
+	require.NoError(t, db.Exec(`
 		CREATE TABLE user_subscriptions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,
@@ -59,6 +78,49 @@ func setupSubscriptionTestDB(t *testing.T) *Repository {
 	`).Error)
 
 	return &Repository{db: db}
+}
+
+func TestSubscriptionRepository_PlanCRUD(t *testing.T) {
+	repo := setupSubscriptionTestDB(t)
+	ctx := context.Background()
+
+	group := &biz.SubscriptionGroup{Name: "pro", Platform: "openai", Status: biz.SubscriptionGroupStatusEnabled}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+
+	plan := &biz.SubscriptionPlan{
+		GroupID:      group.ID,
+		Name:         "Monthly Pro",
+		PriceQuota:   100,
+		ValidityDays: 30,
+		ValidityUnit: "day",
+		ForSale:      true,
+		SortOrder:    10,
+	}
+	require.NoError(t, repo.CreatePlan(ctx, plan))
+	require.NotZero(t, plan.ID)
+
+	got, err := repo.GetPlanByID(ctx, plan.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Monthly Pro", got.Name)
+	require.NotNil(t, got.Group)
+	assert.Equal(t, group.ID, got.Group.ID)
+
+	plan.Name = "Monthly Pro Plus"
+	plan.ForSale = false
+	require.NoError(t, repo.UpdatePlan(ctx, plan))
+
+	all, err := repo.ListPlans(ctx)
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	assert.Equal(t, "Monthly Pro Plus", all[0].Name)
+
+	forSale, err := repo.ListPlansForSale(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, forSale)
+
+	require.NoError(t, repo.DeletePlan(ctx, plan.ID))
+	_, err = repo.GetPlanByID(ctx, plan.ID)
+	assert.ErrorIs(t, err, biz.ErrSubscriptionPlanNotFound)
 }
 
 func TestSubscriptionRepository_GroupCRUD(t *testing.T) {

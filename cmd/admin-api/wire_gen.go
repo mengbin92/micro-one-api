@@ -128,6 +128,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 			adminSvc.SetSubscriptionUsecases(
 				subscriptionbiz.NewSubscriptionUsecase(subscriptionRepo, subscriptionRepo),
 				subscriptionbiz.NewGroupUsecase(subscriptionRepo),
+				subscriptionbiz.NewPlanUsecase(subscriptionRepo, subscriptionRepo),
 			)
 		}
 	}

@@ -294,6 +294,7 @@ message PaymentOrder {
   string pay_url = 12;
   string asset_issue_status = 13;
   int64 group_id = 14;  // Subscription group ID for auto-assignment after payment
+  int64 plan_id = 18;   // Subscription plan ID for plan-based auto-assignment
   google.protobuf.Timestamp paid_at = 15;
   google.protobuf.Timestamp created_at = 16;
   google.protobuf.Timestamp updated_at = 17;
@@ -307,6 +308,7 @@ message CreatePaymentOrderRequest {
   int64 money_cents = 5;
   string currency = 6;
   int64 group_id = 7;  // Optional: subscription group ID for auto-assignment after payment
+  int64 plan_id = 8;   // Optional: subscription plan ID for auto-assignment after payment
 }
 
 message GetPaymentOrderByTradeNoRequest {

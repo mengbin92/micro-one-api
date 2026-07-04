@@ -18,8 +18,10 @@ type Repository struct {
 
 	lock          sync.RWMutex
 	groups        map[int64]*biz.SubscriptionGroup
+	plans         map[int64]*biz.SubscriptionPlan
 	subscriptions map[int64]*biz.UserSubscription
 	nextGroupID   int64
+	nextPlanID    int64
 	nextSubID     int64
 }
 
@@ -62,8 +64,10 @@ func NewRepository(db *gorm.DB, redis *redis.Client) *Repository {
 func newMemoryRepository() *Repository {
 	return &Repository{
 		groups:        make(map[int64]*biz.SubscriptionGroup),
+		plans:         make(map[int64]*biz.SubscriptionPlan),
 		subscriptions: make(map[int64]*biz.UserSubscription),
 		nextGroupID:   1,
+		nextPlanID:    1,
 		nextSubID:     1,
 	}
 }

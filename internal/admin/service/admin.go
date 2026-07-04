@@ -36,6 +36,7 @@ type AdminService struct {
 	providerFactory *relayprovider.ProviderFactory
 	subscriptionUc  *subscriptionbiz.SubscriptionUsecase
 	groupUc         *subscriptionbiz.GroupUsecase
+	planUc          *subscriptionbiz.PlanUsecase
 }
 
 // SystemOptionsStore is the interface for system options persistence.
@@ -72,12 +73,15 @@ func NewAdminService(
 }
 
 // SetSubscriptionUsecases wires optional user-subscription management.
-func (s *AdminService) SetSubscriptionUsecases(subscriptionUc *subscriptionbiz.SubscriptionUsecase, groupUc *subscriptionbiz.GroupUsecase) {
+func (s *AdminService) SetSubscriptionUsecases(subscriptionUc *subscriptionbiz.SubscriptionUsecase, groupUc *subscriptionbiz.GroupUsecase, planUc ...*subscriptionbiz.PlanUsecase) {
 	if s == nil {
 		return
 	}
 	s.subscriptionUc = subscriptionUc
 	s.groupUc = groupUc
+	if len(planUc) > 0 {
+		s.planUc = planUc[0]
+	}
 }
 
 // TopUpQuota 充值

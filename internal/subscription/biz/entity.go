@@ -55,6 +55,24 @@ type SubscriptionGroup struct {
 	UpdatedAt    int64 `json:"updated_at"`
 }
 
+type SubscriptionPlan struct {
+	ID            int64              `json:"id"`
+	GroupID       int64              `json:"group_id"`
+	Name          string             `json:"name"`
+	Description   string             `json:"description"`
+	PriceQuota    int64              `json:"price_quota"`
+	OriginalPrice *int64             `json:"original_price,omitempty"`
+	ValidityDays  int32              `json:"validity_days"`
+	ValidityUnit  string             `json:"validity_unit"`
+	Features      string             `json:"features"`
+	ProductName   string             `json:"product_name"`
+	ForSale       bool               `json:"for_sale"`
+	SortOrder     int32              `json:"sort_order"`
+	CreatedAt     int64              `json:"created_at"`
+	UpdatedAt     int64              `json:"updated_at"`
+	Group         *SubscriptionGroup `json:"group,omitempty"`
+}
+
 type QuotaDimension struct {
 	Used      float64  `json:"used"`
 	Limit     *float64 `json:"limit"`

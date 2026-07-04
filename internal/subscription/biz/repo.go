@@ -45,3 +45,12 @@ type GroupRepository interface {
 	GetGroupByName(ctx context.Context, name string) (*SubscriptionGroup, error)
 	ListGroups(ctx context.Context) ([]*SubscriptionGroup, error)
 }
+
+type PlanRepository interface {
+	CreatePlan(ctx context.Context, plan *SubscriptionPlan) error
+	UpdatePlan(ctx context.Context, plan *SubscriptionPlan) error
+	DeletePlan(ctx context.Context, planID int64) error
+	GetPlanByID(ctx context.Context, planID int64) (*SubscriptionPlan, error)
+	ListPlans(ctx context.Context) ([]*SubscriptionPlan, error)
+	ListPlansForSale(ctx context.Context) ([]*SubscriptionPlan, error)
+}

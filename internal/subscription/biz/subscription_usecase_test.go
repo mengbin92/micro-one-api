@@ -228,6 +228,68 @@ func TestSubscriptionUsecase_AssignAndQuotaFlow(t *testing.T) {
 	}
 }
 
+func TestSubscriptionUsecase_AssignOrExtendSameGroup(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	uc := NewSubscriptionUsecase(repo, repo)
+	uc.now = func() time.Time { return time.Unix(1000, 0) }
+
+	sub, reused, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: group.ID, StartsAt: 1000, ExpiresAt: 2000, SubscriptionName: "pro",
+	})
+	if err != nil {
+		t.Fatalf("AssignOrExtend() create error = %v", err)
+	}
+	if reused {
+		t.Fatalf("first AssignOrExtend reused = true, want false")
+	}
+
+	sub, reused, err = uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: group.ID, StartsAt: 1100, ExpiresAt: 1600, SubscriptionName: "pro-renew",
+	})
+	if err != nil {
+		t.Fatalf("AssignOrExtend() renew error = %v", err)
+	}
+	if !reused {
+		t.Fatalf("renew reused = false, want true")
+	}
+	if sub.ExpiresAt != 2500 {
+		t.Fatalf("expires_at = %d, want 2500", sub.ExpiresAt)
+	}
+	if sub.SubscriptionName != "pro-renew" {
+		t.Fatalf("subscription_name = %q, want pro-renew", sub.SubscriptionName)
+	}
+}
+
+func TestSubscriptionUsecase_AssignOrExtendRejectsDifferentActiveGroup(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	groupA := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	groupB := &SubscriptionGroup{Name: "team", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), groupA); err != nil {
+		t.Fatalf("CreateGroup A error = %v", err)
+	}
+	if err := repo.CreateGroup(context.Background(), groupB); err != nil {
+		t.Fatalf("CreateGroup B error = %v", err)
+	}
+	uc := NewSubscriptionUsecase(repo, repo)
+
+	if _, _, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: groupA.ID, StartsAt: 1000, ExpiresAt: 2000,
+	}); err != nil {
+		t.Fatalf("AssignOrExtend() create error = %v", err)
+	}
+
+	_, _, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: groupB.ID, StartsAt: 1000, ExpiresAt: 2000,
+	})
+	if !errors.Is(err, ErrSubscriptionAlreadyAssigned) {
+		t.Fatalf("AssignOrExtend() error = %v, want ErrSubscriptionAlreadyAssigned", err)
+	}
+}
+
 func TestSubscriptionUsecase_RejectsDuplicateAssignmentAndRevokedExtend(t *testing.T) {
 	repo := newMockSubscriptionRepo()
 	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}

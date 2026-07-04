@@ -95,7 +95,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	)
 	paymentProvider := biz.NewConfiguredPaymentProvider(cfg.Payment)
 	paymentAssetIssuer := biz.NewPaymentAssetIssuer(uc)
-	paymentSubscriptionAssigner := biz.NewPaymentSubscriptionAssigner(subscriptionUc, subscriptionRepo)
+	paymentSubscriptionAssigner := biz.NewPaymentSubscriptionAssigner(subscriptionUc, subscriptionRepo, subscriptionRepo)
 	paymentUc := biz.NewPaymentUsecaseWithAssigner(d.PaymentRepo(), paymentProvider, paymentAssetIssuer, paymentSubscriptionAssigner)
 	alipayVerifier := biz.NewAlipayPaymentProvider(cfg.Payment.Alipay)
 	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)

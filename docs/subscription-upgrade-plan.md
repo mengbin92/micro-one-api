@@ -89,6 +89,7 @@
 | 042 | `subscription_account_groups` 表 | 桌面 §3.1.3 | 账号→分组 N:N;**注意**:与 channelv1 现存 `subscription_account_abilities` 重复,本次**只新增表的预留**,实际路由继续走 abilities 表 |
 | 043 | `oauth_authorization_codes` 表 | 桌面 §3.1.4 | OAuth 临时码;**实际不落表**,本次用进程内 `session_store`(admin 操作,非高频,跨副本靠重定向解决) |
 | 044 | `account_quota_snapshots` 表 | 旧版 §2.7 | Codex 5h/7d 配额窗口快照 |
+| 050 | `subscription_plans` 表 + `payment_orders.plan_id` | sub2api 套餐商品化 | 套餐商品层;分组继续承载权益/限额 |
 
 ### 2.1 user_subscriptions (桌面方案 §3.1.1)
 
@@ -140,6 +141,41 @@ CREATE TABLE `subscription_groups` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
+### 2.2.1 subscription_plans (套餐商品层)
+
+`subscription_groups` 只表示权益/限额分组；`subscription_plans` 表示用户可购买商品。一个 group 可以有多个 plan，例如月付、季付、活动价套餐。
+
+```sql
+CREATE TABLE `subscription_plans` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `group_id` BIGINT NOT NULL,
+  `name` VARCHAR(100) NOT NULL,
+  `description` TEXT NOT NULL,
+  `price_quota` BIGINT NOT NULL DEFAULT 0,
+  `original_price` BIGINT DEFAULT NULL,
+  `validity_days` INT NOT NULL DEFAULT 30,
+  `validity_unit` VARCHAR(10) NOT NULL DEFAULT 'day',
+  `features` TEXT NOT NULL,
+  `product_name` VARCHAR(100) NOT NULL DEFAULT '',
+  `for_sale` TINYINT(1) NOT NULL DEFAULT 1,
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `created_at` BIGINT NOT NULL DEFAULT 0,
+  `updated_at` BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_subscription_plans_group_id` (`group_id`),
+  KEY `idx_subscription_plans_for_sale` (`for_sale`),
+  KEY `idx_subscription_plans_sort` (`sort_order`, `id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+支付订单新增 `plan_id`。下单时 `group_id` 保存 plan 所属分组，`asset_amount` 保存当时的 `validity_days` 快照，避免支付回调时套餐有效期被修改后影响已下单订单。
+
+当前落地约束：
+
+- 用户购买优先走 `plan_id`；旧 `group_id` 购买路径保留兼容。
+- 用户已有 active 订阅时，同一分组续期，不同分组拒绝。
+- 本阶段不引入多 active subscription；请求扣费仍基于用户唯一 active 订阅。
+
 ### 2.3 account_quota_snapshots (旧版 §2.7)
 
 ```sql
@@ -178,11 +214,13 @@ internal/subscription/
 │   ├── errors.go              # ErrSubscriptionNotFound, ErrQuotaExceeded ...
 │   ├── subscription_usecase.go # SubscriptionUsecase (Assign/Revoke/Extend/Reset/RecordUsage/CheckQuota/GetProgress)
 │   ├── group_usecase.go       # GroupUsecase (CRUD)
+│   ├── plan_usecase.go        # PlanUsecase (套餐商品 CRUD / 在售列表)
 │   ├── quota_checker.go       # QuotaChecker (日/周/月 三维)
 │   └── expiry_checker.go      # SubscriptionExpiryChecker (定时)
 ├── data/
 │   ├── subscription_repo.go   # SubscriptionRepository (gorm)
 │   ├── group_repo.go          # GroupRepository (gorm)
+│   ├── plan_repo.go           # PlanRepository (gorm)
 │   └── quota_snapshot_cache.go # 进程内 quota 缓存 (Ristretto LRU + TTL)
 ├── service/
 │   ├── subscription.go        # gRPC 实现

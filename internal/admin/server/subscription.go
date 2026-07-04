@@ -39,6 +39,18 @@ func handlePurchasableSubscriptionGroups(w http.ResponseWriter, r *http.Request,
 	writeSubscriptionResponse(w, groups, err)
 }
 
+func handlePurchasableSubscriptionPlans(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if _, ok := authenticatedUserID(w, r, svc); !ok {
+		return
+	}
+	plans, err := svc.ListPurchasableSubscriptionPlans(r.Context())
+	writeSubscriptionResponse(w, plans, err)
+}
+
 // handlePurchaseSubscription lets the authenticated user buy a subscription with
 // their wallet balance. The buyer is taken from the bearer token, never from the
 // request body, so a user cannot purchase on someone else's balance.
@@ -53,15 +65,22 @@ func handlePurchaseSubscription(w http.ResponseWriter, r *http.Request, svc *ser
 	}
 	var req struct {
 		GroupID int64 `json:"group_id"`
+		PlanID  int64 `json:"plan_id"`
 	}
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if req.GroupID <= 0 {
-		writeJSON(w, http.StatusBadRequest, apiResponse(false, "group_id is required", nil))
+	if req.PlanID <= 0 && req.GroupID <= 0 {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "plan_id or group_id is required", nil))
 		return
 	}
-	sub, err := svc.PurchaseSubscription(r.Context(), userID, req.GroupID)
+	var sub interface{}
+	var err error
+	if req.PlanID > 0 {
+		sub, err = svc.PurchaseSubscriptionPlan(r.Context(), userID, req.PlanID)
+	} else {
+		sub, err = svc.PurchaseSubscription(r.Context(), userID, req.GroupID)
+	}
 	writeSubscriptionResponse(w, sub, err)
 }
 
@@ -201,6 +220,48 @@ func handleSubscriptionGroupByID(w http.ResponseWriter, r *http.Request, svc *se
 	}
 }
 
+func handleSubscriptionPlans(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	switch r.Method {
+	case http.MethodGet:
+		plans, err := svc.ListSubscriptionPlans(r.Context())
+		writeSubscriptionResponse(w, plans, err)
+	case http.MethodPost:
+		var plan subscriptionbiz.SubscriptionPlan
+		if !decodeBody(w, r, &plan) {
+			return
+		}
+		err := svc.CreateSubscriptionPlan(r.Context(), &plan)
+		writeSubscriptionResponse(w, &plan, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
+func handleSubscriptionPlanByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	id, ok := parsePathID(r.URL.Path, "/api/v1/admin/subscription-plans/")
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "invalid plan id", nil))
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		plan, err := svc.GetSubscriptionPlan(r.Context(), id)
+		writeSubscriptionResponse(w, plan, err)
+	case http.MethodPut:
+		var plan subscriptionbiz.SubscriptionPlan
+		if !decodeBody(w, r, &plan) {
+			return
+		}
+		plan.ID = id
+		err := svc.UpdateSubscriptionPlan(r.Context(), &plan)
+		writeSubscriptionResponse(w, &plan, err)
+	case http.MethodDelete:
+		writeSubscriptionResponse(w, nil, svc.DeleteSubscriptionPlan(r.Context(), id))
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
+}
+
 func writeSubscriptionResponse(w http.ResponseWriter, data interface{}, err error) {
 	if err != nil {
 		status := http.StatusOK
@@ -226,6 +287,7 @@ func handlePurchaseSubscriptionWithPayment(w http.ResponseWriter, r *http.Reques
 	}
 	var req struct {
 		GroupID    int64  `json:"group_id"`
+		PlanID     int64  `json:"plan_id"`
 		Channel    string `json:"channel"`     // Optional: payment channel (default: alipay)
 		MoneyCents int64  `json:"money_cents"` // Optional: amount in cents (default: price * 100)
 		Currency   string `json:"currency"`    // Optional: currency code (default: CNY)
@@ -233,12 +295,12 @@ func handlePurchaseSubscriptionWithPayment(w http.ResponseWriter, r *http.Reques
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if req.GroupID <= 0 {
-		writeJSON(w, http.StatusBadRequest, apiResponse(false, "group_id is required", nil))
+	if req.PlanID <= 0 && req.GroupID <= 0 {
+		writeJSON(w, http.StatusBadRequest, apiResponse(false, "plan_id or group_id is required", nil))
 		return
 	}
 
-	sub, paymentOrder, err := svc.CreateSubscriptionPaymentOrder(r.Context(), userID, req.GroupID, req.Channel, req.MoneyCents, req.Currency)
+	sub, paymentOrder, err := svc.CreateSubscriptionPaymentOrder(r.Context(), userID, req.GroupID, req.PlanID, req.Channel, req.MoneyCents, req.Currency)
 	if err != nil {
 		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
 		return
@@ -302,6 +364,14 @@ func normalizeSubscriptionResponse(data interface{}) interface{} {
 		out := make([]subscriptionGroupDTO, 0, len(v))
 		for _, item := range v {
 			out = append(out, groupResponse(item))
+		}
+		return out
+	case *subscriptionbiz.SubscriptionPlan:
+		return planResponse(v)
+	case []*subscriptionbiz.SubscriptionPlan:
+		out := make([]subscriptionPlanDTO, 0, len(v))
+		for _, item := range v {
+			out = append(out, planResponse(item))
 		}
 		return out
 	default:
@@ -388,5 +458,51 @@ func groupResponse(group *subscriptionbiz.SubscriptionGroup) subscriptionGroupDT
 		DurationDays:     group.DurationDays,
 		CreatedAt:        group.CreatedAt,
 		UpdatedAt:        group.UpdatedAt,
+	}
+}
+
+type subscriptionPlanDTO struct {
+	ID            int64                 `json:"id"`
+	GroupID       int64                 `json:"group_id"`
+	Name          string                `json:"name"`
+	Description   string                `json:"description"`
+	PriceQuota    int64                 `json:"price_quota"`
+	OriginalPrice *int64                `json:"original_price,omitempty"`
+	ValidityDays  int32                 `json:"validity_days"`
+	ValidityUnit  string                `json:"validity_unit"`
+	Features      string                `json:"features"`
+	ProductName   string                `json:"product_name"`
+	ForSale       bool                  `json:"for_sale"`
+	SortOrder     int32                 `json:"sort_order"`
+	Group         *subscriptionGroupDTO `json:"group,omitempty"`
+	CreatedAt     int64                 `json:"created_at"`
+	UpdatedAt     int64                 `json:"updated_at"`
+}
+
+func planResponse(plan *subscriptionbiz.SubscriptionPlan) subscriptionPlanDTO {
+	if plan == nil {
+		return subscriptionPlanDTO{}
+	}
+	var group *subscriptionGroupDTO
+	if plan.Group != nil {
+		dto := groupResponse(plan.Group)
+		group = &dto
+	}
+	return subscriptionPlanDTO{
+		ID:            plan.ID,
+		GroupID:       plan.GroupID,
+		Name:          plan.Name,
+		Description:   plan.Description,
+		PriceQuota:    plan.PriceQuota,
+		OriginalPrice: plan.OriginalPrice,
+		ValidityDays:  plan.ValidityDays,
+		ValidityUnit:  plan.ValidityUnit,
+		Features:      plan.Features,
+		ProductName:   plan.ProductName,
+		ForSale:       plan.ForSale,
+		SortOrder:     plan.SortOrder,
+		Group:         group,
+		CreatedAt:     plan.CreatedAt,
+		UpdatedAt:     plan.UpdatedAt,
 	}
 }

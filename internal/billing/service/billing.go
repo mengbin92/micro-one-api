@@ -530,6 +530,7 @@ func (s *BillingService) CreatePaymentOrder(ctx context.Context, req *billingv1.
 		MoneyCents:  req.GetMoneyCents(),
 		Currency:    req.GetCurrency(),
 		GroupID:     req.GetGroupId(),
+		PlanID:      req.GetPlanId(),
 	})
 	if err != nil {
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
@@ -634,6 +635,7 @@ func toProtoPaymentOrder(order *biz.PaymentOrder) *billingv1.PaymentOrder {
 		PayUrl:           order.PayURL,
 		AssetIssueStatus: order.AssetIssueStatus,
 		GroupId:          order.GroupID,
+		PlanId:           order.PlanID,
 		PaidAt:           toProtoTimestampPtr(order.PaidAt),
 		CreatedAt:        toProtoTimestamp(order.CreatedAt),
 		UpdatedAt:        toProtoTimestamp(order.UpdatedAt),

@@ -228,9 +228,11 @@ docker-compose up -d admin-api
 
 #### 订阅套餐支付与支付宝回调
 
-用户在订阅分组页自助购买套餐时，前端创建 `asset_type=subscription` 的支付订单。生产环境应使用 `channel=alipay`，不能回落到 `mock`；`mock` 只会创建未支付订单，不会跳转到支付宝。
+用户在订阅套餐页自助购买时，前端优先提交 `plan_id` 创建 `asset_type=subscription` 的支付订单。生产环境应使用 `channel=alipay`，不能回落到 `mock`；`mock` 只会创建未支付订单，不会跳转到支付宝。
 
-`billing-service` 支付成功后会根据 `payment_orders.group_id` 自动发放订阅，并写入 `user_subscriptions`。如果订阅订单缺少 `group_id`，或 `billing-service` 未接入订阅发放器，订单不会被标记为 `paid/issued`，避免出现“订单已支付但我的订阅为空”的脏状态。
+`subscription_groups` 仍然表示权益和日/周/月 USD 限额；`subscription_plans` 表示可购买商品，一个分组可以挂多个套餐。`payment_orders.plan_id` 记录套餐 ID，`payment_orders.group_id` 记录套餐所属分组，`asset_amount` 记录下单时的有效天数快照。支付成功后 `billing-service` 会按 `plan_id` 自动发放或续期订阅，并写入 `user_subscriptions`。旧的按 `group_id` 购买路径仍兼容；如果订阅订单缺少可用的 `plan_id`/`group_id`，或 `billing-service` 未接入订阅发放器，订单不会被标记为 `paid/issued`，避免出现“订单已支付但我的订阅为空”的脏状态。
+
+用户已有 active 订阅时，同一分组的套餐会在原 `expires_at` 后续期；不同分组仍会被拒绝，以保持当前计费链路“一名用户同一时间一个 active subscription”的假设。
 
 启用支付宝前，部署环境至少需要配置：
 

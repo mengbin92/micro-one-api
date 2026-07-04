@@ -370,7 +370,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
   created_at INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL DEFAULT 0,
   asset_issue_status TEXT NOT NULL DEFAULT 'pending',
-  group_id INTEGER NOT NULL DEFAULT 0
+  group_id INTEGER NOT NULL DEFAULT 0,
+  plan_id INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_orders_user_id                ON payment_orders(user_id);
@@ -381,6 +382,7 @@ CREATE INDEX IF NOT EXISTS idx_payment_orders_provider_trade_no     ON payment_o
 CREATE INDEX IF NOT EXISTS idx_payment_orders_paid_at               ON payment_orders(paid_at);
 CREATE INDEX IF NOT EXISTS idx_payment_orders_asset_issue_status    ON payment_orders(asset_issue_status);
 CREATE INDEX IF NOT EXISTS idx_payment_orders_group_id              ON payment_orders(group_id);
+CREATE INDEX IF NOT EXISTS idx_payment_orders_plan_id               ON payment_orders(plan_id);
 
 -- ============================================================
 -- Reconciliation runs
@@ -488,11 +490,34 @@ CREATE TABLE IF NOT EXISTS subscription_groups (
   monthly_limit_usd REAL DEFAULT NULL,
   rate_multiplier REAL NOT NULL DEFAULT 1.0,
   status INTEGER NOT NULL DEFAULT 1,
+  price_quota INTEGER NOT NULL DEFAULT 0,
+  duration_days INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_sub_groups_platform ON subscription_groups(platform);
+
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  price_quota INTEGER NOT NULL DEFAULT 0,
+  original_price INTEGER DEFAULT NULL,
+  validity_days INTEGER NOT NULL DEFAULT 30,
+  validity_unit TEXT NOT NULL DEFAULT 'day',
+  features TEXT NOT NULL DEFAULT '',
+  product_name TEXT NOT NULL DEFAULT '',
+  for_sale INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_group_id ON subscription_plans(group_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_for_sale ON subscription_plans(for_sale);
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_sort     ON subscription_plans(sort_order, id);
 
 CREATE TABLE IF NOT EXISTS account_quota_snapshots (
   account_id INTEGER PRIMARY KEY,

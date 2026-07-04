@@ -28,6 +28,7 @@ type PaymentOrder struct {
 	PayURL           string     `gorm:"column:pay_url;type:text"`
 	AssetIssueStatus string     `gorm:"column:asset_issue_status;type:varchar(32);index;not null;default:'pending'"`
 	GroupID          int64      `gorm:"column:group_id;type:bigint;default:0"`
+	PlanID           int64      `gorm:"column:plan_id;type:bigint;default:0"`
 	PaidAt           *time.Time `gorm:"column:paid_at;index"`
 	CreatedAt        time.Time  `gorm:"column:created_at"`
 	UpdatedAt        time.Time  `gorm:"column:updated_at"`
@@ -252,6 +253,7 @@ func toPOPaymentOrder(order *biz.PaymentOrder) (*PaymentOrder, error) {
 		PayURL:           order.PayURL,
 		AssetIssueStatus: order.AssetIssueStatus,
 		GroupID:          order.GroupID,
+		PlanID:           order.PlanID,
 		PaidAt:           order.PaidAt,
 		CreatedAt:        order.CreatedAt,
 		UpdatedAt:        order.UpdatedAt,
@@ -278,6 +280,7 @@ func toBizPaymentOrder(po *PaymentOrder) (*biz.PaymentOrder, error) {
 		PayURL:           po.PayURL,
 		AssetIssueStatus: po.AssetIssueStatus,
 		GroupID:          po.GroupID,
+		PlanID:           po.PlanID,
 		PaidAt:           po.PaidAt,
 		CreatedAt:        po.CreatedAt,
 		UpdatedAt:        po.UpdatedAt,

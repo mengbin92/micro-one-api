@@ -386,7 +386,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   asset_issue_status TEXT NOT NULL DEFAULT 'pending',
-  group_id BIGINT NOT NULL DEFAULT 0
+  group_id BIGINT NOT NULL DEFAULT 0,
+  plan_id BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_orders_user_id            ON payment_orders(user_id);
@@ -397,6 +398,7 @@ CREATE INDEX IF NOT EXISTS idx_payment_orders_provider_trade_no ON payment_order
 CREATE INDEX IF NOT EXISTS idx_payment_orders_paid_at           ON payment_orders(paid_at);
 CREATE INDEX IF NOT EXISTS idx_payment_orders_asset_issue_status ON payment_orders(asset_issue_status);
 CREATE INDEX IF NOT EXISTS idx_payment_orders_group_id          ON payment_orders(group_id);
+CREATE INDEX IF NOT EXISTS idx_payment_orders_plan_id           ON payment_orders(plan_id);
 
 -- ============================================================
 -- Reconciliation runs
@@ -511,6 +513,27 @@ CREATE TABLE IF NOT EXISTS subscription_groups (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sub_groups_platform ON subscription_groups(platform);
+
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  id BIGSERIAL PRIMARY KEY,
+  group_id BIGINT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  price_quota BIGINT NOT NULL DEFAULT 0,
+  original_price BIGINT DEFAULT NULL,
+  validity_days INTEGER NOT NULL DEFAULT 30,
+  validity_unit TEXT NOT NULL DEFAULT 'day',
+  features TEXT NOT NULL DEFAULT '',
+  product_name TEXT NOT NULL DEFAULT '',
+  for_sale BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_group_id ON subscription_plans(group_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_for_sale ON subscription_plans(for_sale);
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_sort     ON subscription_plans(sort_order, id);
 
 -- Codex 5h / 7d upstream subscription quota snapshots.
 -- updated_at is TIMESTAMPTZ to match the *time.Time scan target in
