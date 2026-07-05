@@ -94,6 +94,9 @@ type HTTPServer struct {
 	accountConcurrency relaybiz.AccountConcurrencyLimiter
 	// accountRPM enforces SubscriptionAccount.RPMLimit per account.
 	accountRPM relaybiz.AccountRPMLimiter
+	// userRPM enforces a global per-user request-per-minute limit.
+	userRPM      relaybiz.AccountRPMLimiter
+	userRPMLimit int32
 	// sessionWindow tracks per-session cost windows for subscription accounts.
 	sessionWindow *subscriptionSessionWindowStore
 }
@@ -185,6 +188,7 @@ func NewHTTPServer(
 		runtimeBlocker:     runtimeBlocker,
 		accountConcurrency: relaybiz.NewAccountConcurrencyLimiter(),
 		accountRPM:         relaybiz.NewAccountRPMLimiter(),
+		userRPM:            relaybiz.NewAccountRPMLimiter(),
 		sessionWindow:      newSubscriptionSessionWindowStore(nil),
 	}
 }
@@ -313,6 +317,23 @@ func (s *HTTPServer) SetAccountRPMLimiter(limiter relaybiz.AccountRPMLimiter) {
 	s.accountRPM = limiter
 }
 
+func (s *HTTPServer) SetUserRPMLimiter(limiter relaybiz.AccountRPMLimiter) {
+	if s == nil {
+		return
+	}
+	if limiter == nil {
+		limiter = relaybiz.NewAccountRPMLimiter()
+	}
+	s.userRPM = limiter
+}
+
+func (s *HTTPServer) SetUserRPMLimit(limit int32) {
+	if s == nil {
+		return
+	}
+	s.userRPMLimit = limit
+}
+
 // isSubscriptionChannel reports whether the channel type is a subscription
 // account handled by the OAuth adaptor layer. These types are only routed
 // through the adaptor when the hybrid feature flag is enabled.
@@ -433,6 +454,10 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		})
 		if err != nil {
 			s.handleRelayPlanError(w, err)
+			return
+		}
+		if err := s.checkUserRPM(r.Context(), plan.Auth.UserID); err != nil {
+			s.writeUserRPMError(w)
 			return
 		}
 		upstreamBody := rewriteRawModel(body, plan.ResolvedModel)
@@ -590,6 +615,10 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	}
 	if err != nil {
 		s.handleRelayPlanError(w, err)
+		return
+	}
+	if err := s.checkUserRPM(r.Context(), plan.Auth.UserID); err != nil {
+		s.writeUserRPMError(w)
 		return
 	}
 	if s.hybridAdaptorEnabled && plan.Channel != nil && isSubscriptionChannel(plan.Channel.Type) {
@@ -832,6 +861,10 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 				"code":    "response_not_found",
 			},
 		})
+		return
+	}
+	if err := s.checkUserRPM(r.Context(), authSnapshot.UserId); err != nil {
+		s.writeUserRPMError(w)
 		return
 	}
 
@@ -1119,6 +1152,10 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		s.handleIdentityError(w, err)
 		return
 	}
+	if err := s.checkUserRPM(r.Context(), authSnapshot.UserId); err != nil {
+		s.writeUserRPMError(w)
+		return
+	}
 
 	channelReply, err := s.channelClient.GetChannel(r.Context(), &channelv1.GetChannelRequest{ChannelId: channelID})
 	if err != nil {
@@ -1254,6 +1291,10 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	})
 	if err != nil {
 		s.handleRelayPlanError(w, err)
+		return
+	}
+	if err := s.checkUserRPM(r.Context(), plan.Auth.UserID); err != nil {
+		s.writeUserRPMError(w)
 		return
 	}
 

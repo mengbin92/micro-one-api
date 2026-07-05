@@ -253,6 +253,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/api/pricing", func(w http.ResponseWriter, r *http.Request) {
 		handleReadonlyPricing(w, r, svc)
 	})
+	srv.HandleFunc("/api/user/limits", handleUserLimits)
 	srv.HandleFunc("/api/notice", handleContentRoute(adminAuth, svc, "Notice"))
 	srv.HandleFunc("/api/about", handleContentRoute(adminAuth, svc, "About"))
 	srv.HandleFunc("/api/home_page_content", handleContentRoute(adminAuth, svc, "HomePageContent"))

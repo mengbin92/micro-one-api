@@ -9,6 +9,16 @@ import { server } from '@/test/msw/server';
 describe('SubscriptionsPage', () => {
   beforeEach(() => {
     window.localStorage.setItem('userId', '42');
+    server.use(
+      http.get('/api/user/limits', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            user_rpm_limit: 3,
+          },
+        }),
+      ),
+    );
   });
 
   it('renders daily/weekly/monthly quota bars for the active subscription', async () => {
@@ -37,6 +47,8 @@ describe('SubscriptionsPage', () => {
     );
 
     expect(await screen.findByText('当前订阅')).toBeInTheDocument();
+    expect(screen.getByText('请求频率')).toBeInTheDocument();
+    expect(screen.getByText('3 次/分钟')).toBeInTheDocument();
     expect(screen.getByText('$5.00 / $10.00')).toBeInTheDocument();
     expect(screen.getByText('无限制')).toBeInTheDocument(); // weekly limit null
     expect(screen.getByText('剩余 3 天')).toBeInTheDocument();

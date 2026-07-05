@@ -70,6 +70,7 @@ func pruneRPMEvents(events []int64, cutoff int64) []int64 {
 }
 
 const accountRPMKeyPrefix = "subscription_account:rpm:"
+const userRPMKeyPrefix = "user:rpm:"
 
 const (
 	accountRPMRedisTimeout = 3 * time.Second
@@ -105,17 +106,31 @@ func NewRedisAccountRPMLimiter(rdb *redis.Client) *RedisAccountRPMLimiter {
 	if rdb == nil {
 		return nil
 	}
-	return newRedisAccountRPMLimiter(rdb, "")
+	return newRedisRPMLimiter(rdb, accountRPMKeyPrefix, "")
 }
 
 func newRedisAccountRPMLimiter(rdb accountRPMRedis, instance string) *RedisAccountRPMLimiter {
+	return newRedisRPMLimiter(rdb, accountRPMKeyPrefix, instance)
+}
+
+func NewRedisUserRPMLimiter(rdb *redis.Client) *RedisAccountRPMLimiter {
+	if rdb == nil {
+		return nil
+	}
+	return newRedisRPMLimiter(rdb, userRPMKeyPrefix, "")
+}
+
+func newRedisRPMLimiter(rdb accountRPMRedis, keyPrefix, instance string) *RedisAccountRPMLimiter {
 	if instance == "" {
 		instance = strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	if keyPrefix == "" {
+		keyPrefix = accountRPMKeyPrefix
 	}
 	return &RedisAccountRPMLimiter{
 		rdb:       rdb,
 		fallback:  NewAccountRPMLimiter(),
-		keyPrefix: accountRPMKeyPrefix,
+		keyPrefix: keyPrefix,
 		timeout:   accountRPMRedisTimeout,
 		window:    accountRPMWindow,
 		instance:  instance,

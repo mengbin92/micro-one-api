@@ -114,6 +114,19 @@ func TestRedisAccountRPMLimiter_SharedAcrossInstances(t *testing.T) {
 	}
 }
 
+func TestRedisUserRPMLimiter_SeparateKeyspaceFromAccountRPM(t *testing.T) {
+	store := newFakeAccountRPMRedis()
+	accountLimiter := newRedisRPMLimiter(store, accountRPMKeyPrefix, "account")
+	userLimiter := newRedisRPMLimiter(store, userRPMKeyPrefix, "user")
+
+	if !accountLimiter.TryAcquire(context.Background(), 42, 1) {
+		t.Fatal("account rpm acquire should succeed")
+	}
+	if !userLimiter.TryAcquire(context.Background(), 42, 1) {
+		t.Fatal("user rpm with the same numeric id must use a separate keyspace")
+	}
+}
+
 func TestRedisAccountRPMLimiter_FallsBackToMemoryOnAcquireError(t *testing.T) {
 	store := newFakeAccountRPMRedis()
 	store.evalErr = errors.New("redis unavailable")

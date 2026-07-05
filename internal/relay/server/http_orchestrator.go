@@ -145,6 +145,13 @@ func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybi
 	return &Reservation{ID: reservation.ReservationId}, nil
 }
 
+func (h httpRelayLifecycleHooks) CheckUserRateLimit(ctx context.Context, plan *relaybiz.RelayPlan, _ *RelayRequest) error {
+	if h.s == nil || plan == nil || plan.Auth == nil {
+		return nil
+	}
+	return h.s.checkUserRPM(ctx, plan.Auth.UserID)
+}
+
 func (h httpRelayLifecycleHooks) CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage Usage, success bool, latency time.Duration) error {
 	if reservation == nil {
 		return nil

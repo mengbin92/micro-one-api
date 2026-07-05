@@ -116,6 +116,10 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 			s.wsScheduler.BindSession(ctx, plan, sessionHash)
 		}
 	}
+	if err := s.checkUserRPM(ctx, plan.Auth.UserID); err != nil {
+		closeOpenAIWSClientConn(wsConn, coderws.StatusTryAgainLater, "user rpm limit exceeded")
+		return
+	}
 
 	rewrittenFirstMessage := rewriteOpenAIWSModel(firstMessage, clientModel, plan.ResolvedModel)
 

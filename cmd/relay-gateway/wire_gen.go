@@ -332,6 +332,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	httpServer.SetSubscriptionAccountResolver(accountResolver)
 	httpServer.SetOAuthHTTPClient(oauthHTTPClient)
 	httpServer.SetSubscriptionAccountQuotaRecorder(accountLookup)
+	httpServer.SetUserRPMLimit(cfg.Subscription.GetUserRPMLimit())
 	// When Redis is configured, back the runtime blocker with Redis so all relay
 	// replicas share account cool-down state (a 429/5xx seen by one replica cools
 	// the account down for every replica). Without Redis the blocker stays
@@ -355,6 +356,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 		}
 		if redisRPMLimiter := relaybiz.NewRedisAccountRPMLimiter(redisClient); redisRPMLimiter != nil {
 			httpServer.SetAccountRPMLimiter(redisRPMLimiter)
+		}
+		if redisUserRPMLimiter := relaybiz.NewRedisUserRPMLimiter(redisClient); redisUserRPMLimiter != nil {
+			httpServer.SetUserRPMLimiter(redisUserRPMLimiter)
 		}
 	}
 	var routeMiddleware []func(http.Handler) http.Handler

@@ -67,3 +67,4 @@ session_sticky:
 # Requires relay-gateway to reach the subscription DB (SQL_DSN / SUBSCRIPTION_SQL_DSN).
 subscription:
   enabled: true
+  user_rpm_limit: ${SUBSCRIPTION_USER_RPM_LIMIT:-3}

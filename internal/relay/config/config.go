@@ -29,10 +29,18 @@ type Config struct {
 // SubscriptionConfig controls user subscription quota enforcement at the
 // relay-gateway request entry. Disabled by default.
 type SubscriptionConfig struct {
-	Enabled bool `json:"enabled" yaml:"enabled"`
+	Enabled      bool  `json:"enabled" yaml:"enabled"`
+	UserRPMLimit int32 `json:"user_rpm_limit" yaml:"user_rpm_limit"`
 }
 
 func (c SubscriptionConfig) GetSubscriptionEnabled() bool { return c.Enabled }
+
+func (c SubscriptionConfig) GetUserRPMLimit() int32 {
+	if c.UserRPMLimit <= 0 {
+		return 3
+	}
+	return c.UserRPMLimit
+}
 
 // SessionStickyConfig gates cross-session subscription-account stickiness
 // (bug docs/sub2api-borrowable-ideas.md #7): binding a conversation

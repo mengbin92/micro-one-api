@@ -105,6 +105,10 @@ type RelayLifecycleHooks interface {
 	LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool)
 }
 
+type relayUserRateLimitHook interface {
+	CheckUserRateLimit(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest) error
+}
+
 // OrchestratorConfig holds configuration for the orchestrator.
 type OrchestratorConfig struct {
 	// MaxAttempts is the maximum number of retry attempts (including initial).
@@ -214,6 +218,14 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		result.StatusCode = http.StatusServiceUnavailable
 		result.Latency = time.Since(startTime)
 		return result, err
+	}
+	if limiter, ok := o.hooks.(relayUserRateLimitHook); ok {
+		if err := limiter.CheckUserRateLimit(ctx, plan, req); err != nil {
+			result.Error = err
+			result.StatusCode = http.StatusTooManyRequests
+			result.Latency = time.Since(startTime)
+			return result, err
+		}
 	}
 
 	// Store resolved information in result

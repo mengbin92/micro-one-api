@@ -444,6 +444,11 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		s.handleAnthropicPlanError(w, err)
 		return
 	}
+	if err := s.checkUserRPM(r.Context(), plan.Auth.UserID); err != nil {
+		w.Header().Set("Retry-After", "60")
+		s.writeAnthropicError(w, http.StatusTooManyRequests, "user rpm limit exceeded")
+		return
+	}
 
 	if s.hybridAdaptorEnabled && plan.Channel != nil && isSubscriptionChannel(plan.Channel.Type) {
 		rawBody, _ := sonic.Marshal(anthropicReq)
