@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	subscriptionbiz "micro-one-api/internal/subscription/biz"
 )
 
 // TestComputeAbsorbablePure_Unit exercises the pure absorber
@@ -194,6 +196,80 @@ func TestUsecaseUSDToQuotaFloor(t *testing.T) {
 	assert.Equal(t, int64(0), uc.usdToQuotaFloor(0))
 }
 
+func TestCommitSubscriptionAbsorbUSD_UsesRemainingWindowForEstimateDelta(t *testing.T) {
+	limit := 1.0
+	now := time.Unix(1_000, 0)
+	reservation := &Reservation{
+		ReservationID:                  "res1",
+		UserID:                         "42",
+		Status:                         ReservationStatusCommitting,
+		SubscriptionID:                 7,
+		SubscriptionAmountUSD:          0.1230,
+		SubscriptionDailyWindowStart:   now.Unix(),
+		SubscriptionWeeklyWindowStart:  now.Unix(),
+		SubscriptionMonthlyWindowStart: now.Unix(),
+	}
+	uc := NewBillingUsecaseWithOptions(BillingOptions{
+		ReservationRepo: &mockReservationRepo{reservations: map[string]*Reservation{"res1": reservation}},
+		SubscriptionUsecase: &mockSubscriptionPrimitives{
+			subscription: &subscriptionbiz.UserSubscription{
+				ID:                 7,
+				UserID:             42,
+				DailyWindowStart:   now.Unix(),
+				WeeklyWindowStart:  now.Unix(),
+				MonthlyWindowStart: now.Unix(),
+			},
+			group: &subscriptionbiz.SubscriptionGroup{
+				DailyLimitUSD:   &limit,
+				WeeklyLimitUSD:  &limit,
+				MonthlyLimitUSD: &limit,
+				RateMultiplier:  1,
+			},
+		},
+		Now: func() time.Time { return now },
+	})
+
+	got := uc.commitSubscriptionAbsorbUSD(context.Background(), nil, reservation, 0.1233)
+	assert.InDelta(t, 0.1233, got, 1e-9)
+}
+
+func TestCommitSubscriptionAbsorbUSD_FallsBackToReservedWhenWindowFull(t *testing.T) {
+	limit := 0.1230
+	now := time.Unix(1_000, 0)
+	reservation := &Reservation{
+		ReservationID:                  "res1",
+		UserID:                         "42",
+		Status:                         ReservationStatusCommitting,
+		SubscriptionID:                 7,
+		SubscriptionAmountUSD:          0.1230,
+		SubscriptionDailyWindowStart:   now.Unix(),
+		SubscriptionWeeklyWindowStart:  now.Unix(),
+		SubscriptionMonthlyWindowStart: now.Unix(),
+	}
+	uc := NewBillingUsecaseWithOptions(BillingOptions{
+		ReservationRepo: &mockReservationRepo{reservations: map[string]*Reservation{"res1": reservation}},
+		SubscriptionUsecase: &mockSubscriptionPrimitives{
+			subscription: &subscriptionbiz.UserSubscription{
+				ID:                 7,
+				UserID:             42,
+				DailyWindowStart:   now.Unix(),
+				WeeklyWindowStart:  now.Unix(),
+				MonthlyWindowStart: now.Unix(),
+			},
+			group: &subscriptionbiz.SubscriptionGroup{
+				DailyLimitUSD:   &limit,
+				WeeklyLimitUSD:  &limit,
+				MonthlyLimitUSD: &limit,
+				RateMultiplier:  1,
+			},
+		},
+		Now: func() time.Time { return now },
+	})
+
+	got := uc.commitSubscriptionAbsorbUSD(context.Background(), nil, reservation, 0.1233)
+	assert.InDelta(t, 0.1230, got, 1e-9)
+}
+
 // TestReservationLifecycleStates confirms the helper functions
 // correctly classify the new states.
 func TestReservationLifecycleStates(t *testing.T) {
@@ -260,6 +336,28 @@ func TestReceivableRepo_SettleOldestForUserInTx(t *testing.T) {
 // the receivable settlement logic in tests.
 type mockReceivableRepo struct {
 	receivables []*AccountReceivable
+}
+
+type mockSubscriptionPrimitives struct {
+	subscription *subscriptionbiz.UserSubscription
+	group        *subscriptionbiz.SubscriptionGroup
+	usageUSD     float64
+}
+
+func (m *mockSubscriptionPrimitives) GetActiveSubscriptionForUser(ctx context.Context, userID int64) (*subscriptionbiz.UserSubscription, error) {
+	if m.subscription == nil || m.subscription.UserID != userID {
+		return nil, subscriptionbiz.ErrSubscriptionNotFound
+	}
+	return m.subscription, nil
+}
+
+func (m *mockSubscriptionPrimitives) GetGroupForSubscription(ctx context.Context, subscription *subscriptionbiz.UserSubscription) (*subscriptionbiz.SubscriptionGroup, error) {
+	return m.group, nil
+}
+
+func (m *mockSubscriptionPrimitives) RecordUsageForSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error {
+	m.usageUSD += costUSD
+	return nil
 }
 
 func (m *mockReceivableRepo) CreateInTx(ctx context.Context, tx *gorm.DB, recv *AccountReceivable) error {

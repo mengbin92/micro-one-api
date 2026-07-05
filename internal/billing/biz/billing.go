@@ -775,19 +775,18 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 	if actualCost <= 0 {
 		actualCost = 1
 	}
-	// Subscription priority: actual absorption is min(actualCostUSD,
-	// reserved subscription USD). The subscription consumes its
-	// reserved share first; the wallet consumes the rest.
+	// Subscription priority: the reservation's subscription pre-deduction is an
+	// estimate. At commit time the actual usage may be slightly higher, so while
+	// holding the subscription row lock we let remaining subscription capacity
+	// absorb the delta before falling back to wallet balance.
 	costUSD := uc.quotaToUSD(actualCost)
-	reservedSubUSD := reservation.SubscriptionAmountUSD
-	actualAbsorbUSD := costUSD
-	if actualAbsorbUSD > reservedSubUSD {
-		actualAbsorbUSD = reservedSubUSD
+	actualAbsorbUSD := uc.commitSubscriptionAbsorbUSD(ctx, tx, reservation, costUSD)
+	var actualAbsorbQuota int64
+	if actualAbsorbUSD >= costUSD {
+		actualAbsorbQuota = actualCost
+	} else {
+		actualAbsorbQuota = uc.usdToQuotaFloor(actualAbsorbUSD)
 	}
-	if actualAbsorbUSD < 0 {
-		actualAbsorbUSD = 0
-	}
-	actualAbsorbQuota := uc.usdToQuotaFloor(actualAbsorbUSD)
 	if actualAbsorbQuota > actualCost {
 		actualAbsorbQuota = actualCost
 	}
@@ -910,6 +909,72 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 	}
 	committed = true
 	return actualCost, 0, nil
+}
+
+func (uc *BillingUsecase) commitSubscriptionAbsorbUSD(ctx context.Context, tx *gorm.DB, reservation *Reservation, costUSD float64) float64 {
+	if uc == nil || reservation == nil || costUSD <= 0 {
+		return 0
+	}
+	reservedUSD := reservation.SubscriptionAmountUSD
+	if reservedUSD < 0 {
+		reservedUSD = 0
+	}
+	absorbUSD := costUSD
+	if absorbUSD > reservedUSD {
+		absorbUSD = reservedUSD
+	}
+	if costUSD <= absorbUSD || reservation.SubscriptionID <= 0 || uc.subscription == nil || uc.reservationRepo == nil {
+		return absorbUSD
+	}
+	parsedUserID, err := strconv.ParseInt(reservation.UserID, 10, 64)
+	if err != nil {
+		return absorbUSD
+	}
+	if err := uc.reservationRepo.LockSubscriptionRow(ctx, tx, reservation.SubscriptionID); err != nil {
+		return absorbUSD
+	}
+	subscription, err := uc.subscription.GetActiveSubscriptionForUser(ctx, parsedUserID)
+	if err != nil || subscription == nil || subscription.ID != reservation.SubscriptionID {
+		return absorbUSD
+	}
+	group, err := uc.subscription.GetGroupForSubscription(ctx, subscription)
+	if err != nil || group == nil {
+		return absorbUSD
+	}
+	multiplier := group.RateMultiplier
+	if multiplier <= 0 {
+		multiplier = 1.0
+	}
+	rolled := subscriptionbiz.RollUsageWindowsPure(subscription, uc.Now().Unix())
+	frozenDailyUSD, frozenWeeklyUSD, frozenMonthlyUSD, _, err := uc.reservationRepo.SumActiveFrozenInTx(ctx, tx, reservation.UserID, reservation.SubscriptionID, rolled.DailyWindowStart, rolled.WeeklyWindowStart, rolled.MonthlyWindowStart)
+	if err != nil {
+		return absorbUSD
+	}
+	window := subscriptionbiz.AbsorbableWindow{
+		DailyStart:                 rolled.DailyWindowStart,
+		WeeklyStart:                rolled.WeeklyWindowStart,
+		MonthlyStart:               rolled.MonthlyWindowStart,
+		DailyUsageUSD:              rolled.DailyUsageUSD,
+		WeeklyUsageUSD:             rolled.WeeklyUsageUSD,
+		MonthlyUsageUSD:            rolled.MonthlyUsageUSD,
+		DailyLimit:                 group.DailyLimitUSD,
+		WeeklyLimit:                group.WeeklyLimitUSD,
+		MonthlyLimit:               group.MonthlyLimitUSD,
+		FrozenDailyAccountingUSD:   frozenDailyUSD * multiplier,
+		FrozenWeeklyAccountingUSD:  frozenWeeklyUSD * multiplier,
+		FrozenMonthlyAccountingUSD: frozenMonthlyUSD * multiplier,
+	}
+	maxAbsorbUSD := subscriptionbiz.ComputeAbsorbablePure(window, multiplier, 0).AbsorbableUSD
+	if maxAbsorbUSD < reservedUSD {
+		maxAbsorbUSD = reservedUSD
+	}
+	if maxAbsorbUSD > costUSD {
+		maxAbsorbUSD = costUSD
+	}
+	if maxAbsorbUSD < absorbUSD {
+		return absorbUSD
+	}
+	return maxAbsorbUSD
 }
 
 func (uc *BillingUsecase) ReleaseQuota(ctx context.Context, reservationID, reason string) error {
