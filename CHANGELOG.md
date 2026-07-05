@@ -7,6 +7,31 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-05
+
+### Added
+- 新增订阅套餐数据层与购买发放流，支持通过 `subscription_plans` 管理套餐并在支付订单成功后分配订阅权益。
+- 订阅账号新增本地额度、5h 额度、RPM、会话窗口、额度重置配置和批量额度管理能力。
+- 订阅账号额度事件增加幂等记录与聚合分析，管理后台可查看额度事件和账号额度状态。
+- relay-gateway 新增 Redis-backed 订阅账号并发控制，并在多副本部署下共享账号并发槽位。
+- 管理后台新增用户 RPM 限制展示、订阅账号额度/RPM/窗口控制项和成本分析维度补充。
+
+### Changed
+- Docker 构建新增自包含 `go-deps` stage，CI buildx matrix 不再依赖本地 `micro-one-api/go-deps:latest` 镜像。
+- `scripts/deploy.sh` 增加依赖镜像 hash tag、可选并行构建和更稳的服务构建流程。
+- `scripts/test-e2e-flow.sh` 保留 compose 实时输出，并在 compose 健康检查竞态时重试一次。
+
+### Fixed
+- 修复 GitHub Actions Docker matrix 因尝试拉取不存在的 `micro-one-api/go-deps:latest` 而全部失败的问题。
+- 修复 gosec G115/G101/G705 告警，新增安全窄化转换工具并标注确认安全的误报点。
+- 修复 gitleaks 历史占位符命中，当前文档示例改用环境变量并为确认误报 fingerprint 建立 `.gitleaksignore`。
+- 修复订阅账号额度状态展示不完整和用户 RPM 限制展示缺失的问题。
+
+### Security
+- gosec SAST：0 issues。
+- govulncheck SCA：0 vulnerabilities。
+- gitleaks secret scan：0 leaks。
+
 ## [0.4.0] - 2026-07-04
 
 ### Added

@@ -4,7 +4,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**:[v0.4.0 发布公告](./docs/release-v0.4.0.md)(订阅系统增强与 Relay 账号池调度) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.4.0)
+> 📣 **最新发布**:[v0.5.0 发布公告](./docs/release-v0.5.0.md)(订阅套餐与账号额度治理增强) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.5.0)
 
 ## 功能概览
 
