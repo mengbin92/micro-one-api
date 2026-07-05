@@ -183,7 +183,9 @@ git diff --check
 
 ## 后续规划
 
-- 订阅账号治理:继续完善账号 quota reset 自动化、异常账号自动恢复策略和额度事件告警。
+详细路线图见 [订阅系统后续规划路线图](./subscription-follow-up-roadmap.md)。后续按独立分支推进:
+
+- 订阅账号治理:完善账号 quota reset 自动化、异常账号自动恢复策略和额度事件告警。
 - 订阅产品化:补齐套餐上下架、续费、退款/冲正、订阅变更和运营报表。
-- Relay 稳定性:继续压测多副本 Redis 并发控制、session sticky 与上游 failover 组合场景。
+- Relay 稳定性:压测多副本 Redis 并发控制、session sticky 与上游 failover 组合场景。
 - 文档:完善订阅账号 OAuth 绑定、套餐配置、额度治理和生产发布 runbook。
