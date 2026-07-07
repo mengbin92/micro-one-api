@@ -22,15 +22,15 @@ func newSweeperRepo(accounts ...*SubscriptionAccount) *mockChannelRepo {
 
 func fixedAccount(id int64, tz string, dailyStart, weeklyStart int64) *SubscriptionAccount {
 	return &SubscriptionAccount{
-		ID:                    id,
-		Name:                  "fixed-" + strconv.FormatInt(id, 10),
-		Status:                ChannelStatusEnabled,
-		Platform:              "codex",
-		QuotaResetStrategy:    QuotaResetStrategyFixed,
-		QuotaTimezone:         tz,
-		QuotaDailyUsedUSD:     1.5,
-		QuotaDailyWindowStart: dailyStart,
-		QuotaWeeklyUsedUSD:    9.0,
+		ID:                     id,
+		Name:                   "fixed-" + strconv.FormatInt(id, 10),
+		Status:                 ChannelStatusEnabled,
+		Platform:               "codex",
+		QuotaResetStrategy:     QuotaResetStrategyFixed,
+		QuotaTimezone:          tz,
+		QuotaDailyUsedUSD:      1.5,
+		QuotaDailyWindowStart:  dailyStart,
+		QuotaWeeklyUsedUSD:     9.0,
 		QuotaWeeklyWindowStart: weeklyStart,
 	}
 }
@@ -52,6 +52,10 @@ func TestQuotaResetSweeper_FixedDailyBoundaryReset(t *testing.T) {
 	}
 	if acc.QuotaDailyUsedUSD != 0 {
 		t.Fatalf("daily used = %v, want 0 after reset", acc.QuotaDailyUsedUSD)
+	}
+	wantDailyStart := time.Date(2026, 7, 5, 0, 0, 0, 0, loc).Unix()
+	if acc.QuotaDailyWindowStart != wantDailyStart {
+		t.Fatalf("daily window start = %d, want %d", acc.QuotaDailyWindowStart, wantDailyStart)
 	}
 	// weekly window is the same boundary (Sunday -> Monday), so it should also
 	// reset when the previous window start predates this week's Monday.
@@ -129,11 +133,11 @@ func TestQuotaResetSweeper_InvalidTimezoneFallsBackUTC(t *testing.T) {
 
 func autoBlockedAccount(id int64, until int64, metadata string) *SubscriptionAccount {
 	return &SubscriptionAccount{
-		ID:              id,
-		Status:          ChannelStatusEnabled,
-		Platform:        "codex",
+		ID:               id,
+		Status:           ChannelStatusEnabled,
+		Platform:         "codex",
 		RateLimitedUntil: until,
-		Metadata:        metadata,
+		Metadata:         metadata,
 	}
 }
 
@@ -194,13 +198,13 @@ func TestAccountRecoverySweeper_QuotaWaitsForWindowReset(t *testing.T) {
 	// treats windowStart <= 0 as "no window yet").
 	now := time.Unix(1710000000, 0)
 	acc := &SubscriptionAccount{
-		ID:                 1,
-		Status:             ChannelStatusEnabled,
-		Platform:           "codex",
-		QuotaDailyLimitUSD: 1,
-		QuotaDailyUsedUSD:  1,
+		ID:                    1,
+		Status:                ChannelStatusEnabled,
+		Platform:              "codex",
+		QuotaDailyLimitUSD:    1,
+		QuotaDailyUsedUSD:     1,
 		QuotaDailyWindowStart: now.Add(-time.Hour).Unix(),
-		Metadata:           `{"recovery_policy":"quota","unschedulable_reason":"local quota exhausted"}`,
+		Metadata:              `{"recovery_policy":"quota","unschedulable_reason":"local quota exhausted"}`,
 	}
 	repo := newSweeperRepo(acc)
 
@@ -212,6 +216,28 @@ func TestAccountRecoverySweeper_QuotaWaitsForWindowReset(t *testing.T) {
 	// Still over quota -> must not clear markers.
 	if acc.Metadata == "" {
 		t.Fatalf("quota account cleared while still over quota; must wait for window reset")
+	}
+}
+
+func TestAccountRecoverySweeper_CodexWaitsForSnapshotReset(t *testing.T) {
+	now := time.Unix(1710000000, 0)
+	used := float64(100)
+	acc := &SubscriptionAccount{
+		ID:                      1,
+		Status:                  ChannelStatusEnabled,
+		Platform:                "codex",
+		PrimaryQuotaUsedPercent: &used,
+		Metadata:                `{"recovery_policy":"codex","unschedulable_reason":"codex quota exhausted"}`,
+	}
+	repo := newSweeperRepo(acc)
+
+	s := NewAccountRecoverySweeper(repo, AccountRecoverySweeperConfig{Enabled: true, PageSize: 10})
+	s.SetNow(func() time.Time { return now })
+	if err := s.SweepOnce(context.Background()); err != nil {
+		t.Fatalf("SweepOnce() error = %v", err)
+	}
+	if acc.Metadata == "" {
+		t.Fatalf("codex account cleared while snapshot is still exhausted; must wait for snapshot reset")
 	}
 }
 
@@ -259,9 +285,9 @@ func TestSubscriptionAccount_RecoveryInfo(t *testing.T) {
 	}
 	// Auto-blocked account with stamped metadata.
 	a = &SubscriptionAccount{
-		Status:             ChannelStatusEnabled,
-		RateLimitedUntil:   2000,
-		Metadata:           `{"recovery_policy":"auto","unschedulable_reason":"upstream 429","unschedulable_since":500}`,
+		Status:           ChannelStatusEnabled,
+		RateLimitedUntil: 2000,
+		Metadata:         `{"recovery_policy":"auto","unschedulable_reason":"upstream 429","unschedulable_since":500}`,
 	}
 	info := a.RecoveryInfo(now)
 	if info.Policy != RecoveryPolicyAuto {

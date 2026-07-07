@@ -239,7 +239,7 @@ func (r *paymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTrad
 // the wallet credit + ledger reversal + subscription mutation so all three
 // commit atomically. Returns changed=false when the order was already
 // refunded (idempotent re-entry from a replayed refund callback).
-func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*biz.PaymentOrder) error) (*biz.PaymentOrder, bool, error) {
+func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*biz.PaymentOrder, *gorm.DB) error) (*biz.PaymentOrder, bool, error) {
 	var result *biz.PaymentOrder
 	changed := false
 
@@ -273,7 +273,7 @@ func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason str
 		if revert == nil {
 			return errors.New("refund revert callback is required")
 		}
-		if err := revert(order); err != nil {
+		if err := revert(order, tx); err != nil {
 			return err
 		}
 

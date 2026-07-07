@@ -29,14 +29,14 @@ const (
 
 // metadata keys persisted on subscription_accounts.metadata (JSON).
 const (
-	metaKeyLastError            = "last_error"
-	metaKeyRecoveryPolicy       = "recovery_policy"
-	metaKeyUnschedulableReason  = "unschedulable_reason"
-	metaKeyUnschedulableSince   = "unschedulable_since"
-	metaKeyUnschedulableUntil   = "unschedulable_until"
-	metaKeyExpectedRecoveryAt   = "expected_recovery_at"
-	metaKeyLastQuotaAlertAt     = "last_quota_alert_at"
-	metaKeyLastQuotaAlertKind   = "last_quota_alert_kind"
+	metaKeyLastError           = "last_error"
+	metaKeyRecoveryPolicy      = "recovery_policy"
+	metaKeyUnschedulableReason = "unschedulable_reason"
+	metaKeyUnschedulableSince  = "unschedulable_since"
+	metaKeyUnschedulableUntil  = "unschedulable_until"
+	metaKeyExpectedRecoveryAt  = "expected_recovery_at"
+	metaKeyLastQuotaAlertAt    = "last_quota_alert_at"
+	metaKeyLastQuotaAlertKind  = "last_quota_alert_kind"
 )
 
 // recoveryPolicyFromStatus maps an upstream HTTP status code to the recovery
@@ -57,10 +57,10 @@ func recoveryPolicyForStatus(statusCode int) string {
 
 // QuotaResetSweeperConfig configures the fixed-strategy quota reset sweeper.
 type QuotaResetSweeperConfig struct {
-	Enabled   bool
-	Interval  time.Duration
-	PageSize  int32
-	Timeout   time.Duration
+	Enabled  bool
+	Interval time.Duration
+	PageSize int32
+	Timeout  time.Duration
 }
 
 // QuotaResetSweeper periodically scans subscription accounts using the fixed
@@ -88,14 +88,18 @@ type QuotaResetRunRecorder interface {
 	RecordQuotaResetRun(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error
 }
 
+type QuotaResetRunApplier interface {
+	RecordQuotaResetAndReset(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error
+}
+
 // SubscriptionAccountQuotaResetRun is the audit row for an automated reset.
 type SubscriptionAccountQuotaResetRun struct {
-	AccountID  int64
-	Scope      string
+	AccountID   int64
+	Scope       string
 	WindowStart int64
-	Strategy   string
-	Timezone   string
-	ResetAt    time.Time
+	Strategy    string
+	Timezone    string
+	ResetAt     time.Time
 }
 
 // ErrQuotaResetRunDuplicate is returned by RecordQuotaResetRun when the run has
@@ -183,15 +187,27 @@ func (s *QuotaResetSweeper) resetIfCrossedBoundary(ctx context.Context, account 
 	if storedStart <= 0 || storedStart >= fixedStart {
 		return
 	}
-	if s.recorder != nil {
-		run := &SubscriptionAccountQuotaResetRun{
-			AccountID:   account.ID,
-			Scope:       scope,
-			WindowStart: fixedStart,
-			Strategy:    account.EffectiveQuotaResetStrategy(),
-			Timezone:    account.EffectiveQuotaTimezone(),
-			ResetAt:     now,
+	run := &SubscriptionAccountQuotaResetRun{
+		AccountID:   account.ID,
+		Scope:       scope,
+		WindowStart: fixedStart,
+		Strategy:    account.EffectiveQuotaResetStrategy(),
+		Timezone:    account.EffectiveQuotaTimezone(),
+		ResetAt:     now,
+	}
+	if applier, ok := s.recorder.(QuotaResetRunApplier); ok {
+		if err := applier.RecordQuotaResetAndReset(ctx, run); err != nil {
+			if err == ErrQuotaResetRunDuplicate {
+				metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "duplicate").Inc()
+			} else {
+				metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "error").Inc()
+			}
+			return
 		}
+		metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "success").Inc()
+		return
+	}
+	if s.recorder != nil {
 		if err := s.recorder.RecordQuotaResetRun(ctx, run); err != nil {
 			// Already recorded by another replica/tick — skip the write.
 			metrics.SubscriptionAccountQuotaResetsTotal.WithLabelValues(scope, "duplicate").Inc()
@@ -207,10 +223,10 @@ func (s *QuotaResetSweeper) resetIfCrossedBoundary(ctx context.Context, account 
 
 // AccountRecoverySweeperConfig configures the automated account-recovery sweep.
 type AccountRecoverySweeperConfig struct {
-	Enabled   bool
-	Interval  time.Duration
-	PageSize  int32
-	Timeout   time.Duration
+	Enabled  bool
+	Interval time.Duration
+	PageSize int32
+	Timeout  time.Duration
 }
 
 // AccountRecoverySweeper scans unschedulable subscription accounts and, for
@@ -305,6 +321,10 @@ func (s *AccountRecoverySweeper) tryRecover(ctx context.Context, account *Subscr
 		metrics.SubscriptionAccountRecoveriesTotal.WithLabelValues(policy, "skipped").Inc()
 		return
 	}
+	if policy == RecoveryPolicyCodex && account.CodexSnapshotQuotaExceeded() {
+		metrics.SubscriptionAccountRecoveriesTotal.WithLabelValues(policy, "waiting").Inc()
+		return
+	}
 	// Only attempt recovery when the account is currently unschedulable.
 	if account.IsSchedulableAt(now) {
 		// Already schedulable: clear stale markers if any remain.
@@ -325,7 +345,7 @@ func (s *AccountRecoverySweeper) tryRecover(ctx context.Context, account *Subscr
 		// Recover only once the underlying window/snapshot has actually reset
 		// (IsSchedulableAt flips back to true). This avoids re-enabling an
 		// account that is still over quota.
-		if account.LocalQuotaExceededAt(now) {
+		if account.LocalQuotaExceededAt(now) || (policy == RecoveryPolicyCodex && account.CodexSnapshotQuotaExceeded()) {
 			metrics.SubscriptionAccountRecoveriesTotal.WithLabelValues(policy, "waiting").Inc()
 			return
 		}
@@ -390,10 +410,10 @@ var jsonUnmarshal = func(raw string, out *map[string]interface{}) error {
 // SubscriptionAccountRecoveryInfo summarizes why an account is unschedulable
 // and when it is expected to recover, for the admin UI.
 type SubscriptionAccountRecoveryInfo struct {
-	Policy            string
-	Reason            string
-	Since             int64
-	Until             int64
+	Policy             string
+	Reason             string
+	Since              int64
+	Until              int64
 	ExpectedRecoveryAt int64
 }
 
@@ -404,10 +424,10 @@ func (a *SubscriptionAccount) RecoveryInfo(now time.Time) SubscriptionAccountRec
 		return SubscriptionAccountRecoveryInfo{Policy: RecoveryPolicyAuto}
 	}
 	info := SubscriptionAccountRecoveryInfo{
-		Policy: subscriptionAccountMetadataValue(a.Metadata, metaKeyRecoveryPolicy),
-		Reason: subscriptionAccountMetadataValue(a.Metadata, metaKeyUnschedulableReason),
-		Since:  parseMetadataInt(a.Metadata, metaKeyUnschedulableSince),
-		Until:  a.RateLimitedUntil,
+		Policy:             subscriptionAccountMetadataValue(a.Metadata, metaKeyRecoveryPolicy),
+		Reason:             subscriptionAccountMetadataValue(a.Metadata, metaKeyUnschedulableReason),
+		Since:              parseMetadataInt(a.Metadata, metaKeyUnschedulableSince),
+		Until:              a.RateLimitedUntil,
 		ExpectedRecoveryAt: parseMetadataInt(a.Metadata, metaKeyExpectedRecoveryAt),
 	}
 	if info.Policy == "" {

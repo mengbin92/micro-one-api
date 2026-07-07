@@ -1714,6 +1714,24 @@ func resetSubscriptionAccountQuota(account *biz.SubscriptionAccount, scope strin
 	account.UpdatedAt = time.Now().Unix()
 }
 
+func resetSubscriptionAccountQuotaToWindow(account *biz.SubscriptionAccount, scope string, windowStart int64) {
+	if account == nil {
+		return
+	}
+	switch scope {
+	case "daily":
+		account.QuotaDailyUsedUSD = 0
+		account.QuotaDailyWindowStart = windowStart
+	case "weekly":
+		account.QuotaWeeklyUsedUSD = 0
+		account.QuotaWeeklyWindowStart = windowStart
+	default:
+		resetSubscriptionAccountQuota(account, scope)
+		return
+	}
+	account.UpdatedAt = time.Now().Unix()
+}
+
 func subscriptionAccountQuotaEventKey(reservationID string, accountID int64, costSource string) string {
 	return reservationID + "\x00" + strconv.FormatInt(accountID, 10) + "\x00" + costSource
 }
@@ -1741,6 +1759,20 @@ func subscriptionAccountQuotaResetUpdates(scope string) map[string]interface{} {
 	default:
 		return nil
 	}
+}
+
+func subscriptionAccountQuotaResetUpdatesToWindow(scope string, windowStart int64) map[string]interface{} {
+	updates := subscriptionAccountQuotaResetUpdates(scope)
+	if updates == nil {
+		return nil
+	}
+	switch scope {
+	case "daily":
+		updates["quota_daily_window_start"] = windowStart
+	case "weekly":
+		updates["quota_weekly_window_start"] = windowStart
+	}
+	return updates
 }
 
 func accountQuotaSnapshotBizToModel(s *biz.AccountQuotaSnapshot) *accountQuotaSnapshotModel {
@@ -1923,13 +1955,13 @@ func escapeLike(s string) string {
 
 // subscriptionAccountQuotaResetRunModel mirrors subscription_account_quota_reset_runs.
 type subscriptionAccountQuotaResetRunModel struct {
-	ID                 int64  `gorm:"column:id"`
-	SubscriptionAccountID int64 `gorm:"column:subscription_account_id"`
-	Scope              string `gorm:"column:scope"`
-	WindowStart        int64  `gorm:"column:window_start"`
-	Strategy           string `gorm:"column:strategy"`
-	Timezone           string `gorm:"column:timezone"`
-	ResetAt            int64  `gorm:"column:reset_at"`
+	ID                    int64  `gorm:"column:id"`
+	SubscriptionAccountID int64  `gorm:"column:subscription_account_id"`
+	Scope                 string `gorm:"column:scope"`
+	WindowStart           int64  `gorm:"column:window_start"`
+	Strategy              string `gorm:"column:strategy"`
+	Timezone              string `gorm:"column:timezone"`
+	ResetAt               int64  `gorm:"column:reset_at"`
 }
 
 func (subscriptionAccountQuotaResetRunModel) TableName() string {
@@ -1961,14 +1993,39 @@ func (r *Repository) RecordQuotaResetRun(ctx context.Context, run *biz.Subscript
 	return nil
 }
 
+func (r *Repository) RecordQuotaResetAndReset(ctx context.Context, run *biz.SubscriptionAccountQuotaResetRun) error {
+	if run == nil || run.AccountID <= 0 {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	if r.db != nil {
+		return r.recordQuotaResetAndResetDB(ctx, run)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.resetRuns == nil {
+		r.resetRuns = make(map[string]bool)
+	}
+	key := strconv.FormatInt(run.AccountID, 10) + "\x00" + run.Scope + "\x00" + strconv.FormatInt(run.WindowStart, 10)
+	if r.resetRuns[key] {
+		return biz.ErrQuotaResetRunDuplicate
+	}
+	account, ok := r.subAccounts[run.AccountID]
+	if !ok {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	resetSubscriptionAccountQuotaToWindow(account, run.Scope, run.WindowStart)
+	r.resetRuns[key] = true
+	return nil
+}
+
 func (r *Repository) recordQuotaResetRunDB(ctx context.Context, run *biz.SubscriptionAccountQuotaResetRun) error {
 	model := subscriptionAccountQuotaResetRunModel{
 		SubscriptionAccountID: run.AccountID,
-		Scope:              run.Scope,
-		WindowStart:        run.WindowStart,
-		Strategy:           run.Strategy,
-		Timezone:           run.Timezone,
-		ResetAt:            run.ResetAt.Unix(),
+		Scope:                 run.Scope,
+		WindowStart:           run.WindowStart,
+		Strategy:              run.Strategy,
+		Timezone:              run.Timezone,
+		ResetAt:               run.ResetAt.Unix(),
 	}
 	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&model)
 	if result.Error != nil {
@@ -1982,6 +2039,42 @@ func (r *Repository) recordQuotaResetRunDB(ctx context.Context, run *biz.Subscri
 		return biz.ErrQuotaResetRunDuplicate
 	}
 	return nil
+}
+
+func (r *Repository) recordQuotaResetAndResetDB(ctx context.Context, run *biz.SubscriptionAccountQuotaResetRun) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		model := subscriptionAccountQuotaResetRunModel{
+			SubscriptionAccountID: run.AccountID,
+			Scope:                 run.Scope,
+			WindowStart:           run.WindowStart,
+			Strategy:              run.Strategy,
+			Timezone:              run.Timezone,
+			ResetAt:               run.ResetAt.Unix(),
+		}
+		result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model)
+		if result.Error != nil {
+			if isDuplicateKeyErr(result.Error) {
+				return biz.ErrQuotaResetRunDuplicate
+			}
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return biz.ErrQuotaResetRunDuplicate
+		}
+		updates := subscriptionAccountQuotaResetUpdatesToWindow(run.Scope, run.WindowStart)
+		if updates == nil {
+			return nil
+		}
+		updates["updated_at"] = time.Now().Unix()
+		res := tx.Model(&subscriptionAccountModel{}).Where("id = ?", run.AccountID).Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return biz.ErrSubscriptionAccountNotFound
+		}
+		return nil
+	})
 }
 
 // ClearRecoveryMetadata strips the recovery/unschedulable markers from the

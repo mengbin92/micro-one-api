@@ -50,6 +50,13 @@ func (r *Repository) UpdateSubscription(ctx context.Context, subscription *biz.U
 	return r.updateSubscriptionMemory(ctx, subscription)
 }
 
+func (r *Repository) UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
+	if r.db != nil {
+		return updateSubscriptionWithTx(ctx, tx, subscription)
+	}
+	return r.updateSubscriptionMemory(ctx, subscription)
+}
+
 func (r *Repository) DeleteSubscription(ctx context.Context, subscriptionID int64) error {
 	if r.db != nil {
 		return r.deleteSubscriptionDB(ctx, subscriptionID)
@@ -230,8 +237,12 @@ func (r *Repository) createSubscriptionDB(ctx context.Context, subscription *biz
 }
 
 func (r *Repository) updateSubscriptionDB(ctx context.Context, subscription *biz.UserSubscription) error {
+	return updateSubscriptionWithTx(ctx, r.db.WithContext(ctx), subscription)
+}
+
+func updateSubscriptionWithTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
 	model := subscriptionToModel(subscription)
-	return r.db.WithContext(ctx).Model(&subscriptionModel{}).Where("id = ?", subscription.ID).Updates(map[string]any{
+	return tx.WithContext(ctx).Model(&subscriptionModel{}).Where("id = ?", subscription.ID).Updates(map[string]any{
 		"user_id":              model.UserID,
 		"group_id":             model.GroupID,
 		"subscription_name":    model.SubscriptionName,

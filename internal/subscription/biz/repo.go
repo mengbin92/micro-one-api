@@ -9,6 +9,7 @@ import (
 type SubscriptionRepository interface {
 	CreateSubscription(ctx context.Context, subscription *UserSubscription) error
 	UpdateSubscription(ctx context.Context, subscription *UserSubscription) error
+	UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error
 	DeleteSubscription(ctx context.Context, subscriptionID int64) error
 	GetSubscriptionByID(ctx context.Context, subscriptionID int64) (*UserSubscription, error)
 	ListSubscriptionsByUser(ctx context.Context, userID int64) ([]*UserSubscription, error)

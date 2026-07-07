@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	subscriptionbiz "micro-one-api/internal/subscription/biz"
+
+	"gorm.io/gorm"
 )
 
 // Refund / reversal accounting semantics (phase 2.3).
@@ -85,7 +89,7 @@ type RefundRepo interface {
 	// transaction. The revert callback runs inside the tx and must perform
 	// the wallet credit + ledger write + subscription mutation. Returns
 	// changed=false when the order was already refunded (idempotent).
-	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder) error) (*PaymentOrder, bool, error)
+	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error)
 }
 
 // SubscriptionReverter abstracts the subscription-side mutation a refund
@@ -94,6 +98,9 @@ type RefundRepo interface {
 type SubscriptionReverter interface {
 	Revoke(ctx context.Context, subscriptionID int64, reason string) error
 	Shorten(ctx context.Context, subscriptionID int64, subtractSeconds int64) error
+	RevokeInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, reason string) error
+	ShortenInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, subtractSeconds int64) error
+	GetActiveSubscriptionForUser(ctx context.Context, userID int64) (*subscriptionbiz.UserSubscription, error)
 }
 
 // refundUsecase coordinates the order status, wallet credit, ledger reversal,
@@ -131,7 +138,7 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 		policy = RefundPolicyRevoke
 	}
 	var result *RefundResult
-	order, changed, err := uc.orders.MarkOrderRefunded(ctx, req.TradeNo, req.Reason, func(order *PaymentOrder) error {
+	order, changed, err := uc.orders.MarkOrderRefunded(ctx, req.TradeNo, req.Reason, func(order *PaymentOrder, tx *gorm.DB) error {
 		if order.AssetType != PaymentAssetTypeSubscription {
 			return fmt.Errorf("refund only supports subscription asset orders, got %q", order.AssetType)
 		}
@@ -145,8 +152,9 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 		if snap.PriceQuota > 0 {
 			refundQuota = snap.PriceQuota
 		}
-		// Credit the wallet back the purchase price.
-		newBalance, err := uc.accounts.UpdateBalance(ctx, order.UserID, refundQuota, LedgerTypeRefund)
+		// Credit the wallet back the purchase price in the same transaction that
+		// transitions the order and mutates the subscription entitlement.
+		newBalance, err := uc.accounts.UpdateBalanceInTx(ctx, tx, order.UserID, refundQuota, LedgerTypeRefund)
 		if err != nil {
 			return fmt.Errorf("refund wallet credit: %w", err)
 		}
@@ -170,11 +178,11 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 			CostSource:      CostSourceReversal,
 			LedgerDedupeKey: dedupeKey,
 		}
-		if err := uc.ledger.CreateLedger(ctx, ledger); err != nil {
+		if err := uc.ledger.CreateLedgerInTx(ctx, tx, ledger); err != nil {
 			return fmt.Errorf("create reversal ledger: %w", err)
 		}
 		// Mutate the subscription entitlement according to the policy.
-		subID, subAct, subErr := uc.applySubscriptionReversal(ctx, order, snap, policy, req.Reason)
+		subID, subAct, subErr := uc.applySubscriptionReversal(ctx, tx, order, snap, policy, req.Reason)
 		if subErr != nil {
 			return subErr
 		}
@@ -209,23 +217,11 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 // applySubscriptionReversal performs the subscription-side mutation selected by
 // the refund policy. It returns the subscription id and a human-readable action
 // so the result can be audited.
-func (uc *RefundUsecase) applySubscriptionReversal(ctx context.Context, order *PaymentOrder, snap PlanSnapshot, policy RefundPolicy, reason string) (int64, string, error) {
+func (uc *RefundUsecase) applySubscriptionReversal(ctx context.Context, tx *gorm.DB, order *PaymentOrder, snap PlanSnapshot, policy RefundPolicy, reason string) (int64, string, error) {
 	if uc.subscriptions == nil {
 		return 0, "skipped", nil
 	}
-	// Recover the subscription id from the assigner's traceability metadata.
-	// The assigner writes payment_trade_no into the subscription metadata; we
-	// cannot easily query by metadata here, so the caller is expected to pass
-	// the subscription id via the order's Metadata field when known. For the
-	// revoke/shorten paths we require a non-zero subscription id.
-	subIDStr := ""
-	if order.ProviderPayload != "" {
-		var pm map[string]string
-		if json.Unmarshal([]byte(order.ProviderPayload), &pm) == nil {
-			subIDStr = pm["subscription_id"]
-		}
-	}
-	subID, _ := strconv.ParseInt(subIDStr, 10, 64)
+	subID := uc.refundSubscriptionID(ctx, order)
 	switch policy {
 	case RefundPolicyKeep:
 		return subID, "kept", nil
@@ -234,7 +230,7 @@ func (uc *RefundUsecase) applySubscriptionReversal(ctx context.Context, order *P
 			return 0, "", errors.New("shorten refund requires a subscription_id")
 		}
 		subtract := int64(snap.ValidityDays) * subscriptionSecondsPerDay
-		if err := uc.subscriptions.Shorten(ctx, subID, subtract); err != nil {
+		if err := uc.subscriptions.ShortenInTx(ctx, tx, subID, subtract); err != nil {
 			return 0, "", fmt.Errorf("shorten subscription: %w", err)
 		}
 		return subID, "shortened", nil
@@ -248,9 +244,32 @@ func (uc *RefundUsecase) applySubscriptionReversal(ctx context.Context, order *P
 		if revokeReason == "" {
 			revokeReason = fmt.Sprintf("refund of order %s", order.TradeNo)
 		}
-		if err := uc.subscriptions.Revoke(ctx, subID, revokeReason); err != nil {
+		if err := uc.subscriptions.RevokeInTx(ctx, tx, subID, revokeReason); err != nil {
 			return 0, "", fmt.Errorf("revoke subscription: %w", err)
 		}
 		return subID, "revoked", nil
 	}
+}
+
+func (uc *RefundUsecase) refundSubscriptionID(ctx context.Context, order *PaymentOrder) int64 {
+	if order == nil {
+		return 0
+	}
+	if order.ProviderPayload != "" {
+		var pm map[string]string
+		if json.Unmarshal([]byte(order.ProviderPayload), &pm) == nil {
+			if subID, err := strconv.ParseInt(pm["subscription_id"], 10, 64); err == nil && subID > 0 {
+				return subID
+			}
+		}
+	}
+	userID, err := strconv.ParseInt(order.UserID, 10, 64)
+	if err != nil || userID <= 0 || uc.subscriptions == nil {
+		return 0
+	}
+	sub, err := uc.subscriptions.GetActiveSubscriptionForUser(ctx, userID)
+	if err != nil || sub == nil {
+		return 0
+	}
+	return sub.ID
 }

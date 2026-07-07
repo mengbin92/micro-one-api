@@ -137,6 +137,70 @@ func TestChangeSubscription_NextCycleDowngrade(t *testing.T) {
 	}
 }
 
+func TestChangeSubscription_PendingChangeAppliesOnRenewal(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	groupPro := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), groupPro); err != nil {
+		t.Fatal(err)
+	}
+	groupBasic := &SubscriptionGroup{Name: "basic", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), groupBasic); err != nil {
+		t.Fatal(err)
+	}
+	uc := NewSubscriptionUsecase(repo, repo)
+
+	sub, _, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: groupPro.ID, StartsAt: 1000, ExpiresAt: 2000, SubscriptionName: "pro",
+	})
+	if err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	if _, err := uc.ChangeSubscription(context.Background(), ChangeRequest{
+		UserID:             1,
+		FromSubscriptionID: sub.ID,
+		ToPlanID:           2,
+		ToGroupID:          groupBasic.ID,
+		NewPriceQuota:      500,
+		OldPriceQuota:      2000,
+		Operator:           "admin",
+		Now:                1500,
+	}); err != nil {
+		t.Fatalf("change: %v", err)
+	}
+
+	got, reused, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
+		UserID:           1,
+		GroupID:          groupBasic.ID,
+		StartsAt:         2000,
+		ExpiresAt:        3000,
+		SubscriptionName: "basic",
+	})
+	if err != nil {
+		t.Fatalf("renew with pending change: %v", err)
+	}
+	if !reused {
+		t.Fatal("renewal should reuse active subscription")
+	}
+	if got.ID != sub.ID {
+		t.Fatalf("subscription id = %d, want %d", got.ID, sub.ID)
+	}
+	if got.GroupID != groupBasic.ID {
+		t.Fatalf("group_id = %d, want %d", got.GroupID, groupBasic.ID)
+	}
+	if got.SubscriptionName != "basic" {
+		t.Fatalf("subscription_name = %q, want basic", got.SubscriptionName)
+	}
+	var meta map[string]json.RawMessage
+	if got.Metadata != "" {
+		if err := json.Unmarshal([]byte(got.Metadata), &meta); err != nil {
+			t.Fatalf("metadata: %v", err)
+		}
+		if _, ok := meta["pending_change"]; ok {
+			t.Fatal("pending_change should be cleared after renewal")
+		}
+	}
+}
+
 func TestChangeSubscription_RejectsNonActive(t *testing.T) {
 	repo := newMockSubscriptionRepo()
 	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}

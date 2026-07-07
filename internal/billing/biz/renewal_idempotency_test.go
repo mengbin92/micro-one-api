@@ -8,6 +8,8 @@ import (
 	"time"
 
 	subscriptionbiz "micro-one-api/internal/subscription/biz"
+
+	"gorm.io/gorm"
 )
 
 // renewingAssignmentUsecase counts AssignOrExtend calls so the idempotency
@@ -81,7 +83,7 @@ func (r *inMemoryPaymentRepoForRenewal) MarkOrderPaid(ctx context.Context, trade
 func (r *inMemoryPaymentRepoForRenewal) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
-func (r *inMemoryPaymentRepoForRenewal) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder) error) (*PaymentOrder, bool, error) {
+func (r *inMemoryPaymentRepoForRenewal) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
 
@@ -173,6 +175,26 @@ func TestRenewal_TraceabilityMetadataLinksOrderToSubscription(t *testing.T) {
 	}
 	if !strings.Contains(assigner.lastReq.Metadata, "plan_id") {
 		t.Fatalf("metadata does not reference plan_id: %s", assigner.lastReq.Metadata)
+	}
+}
+
+func TestMarkOrderPaid_PlanSnapshotDoesNotRequireOrderGroupID(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	assigner := &renewingAssignmentUsecase{}
+	a := &paymentSubscriptionAssigner{
+		subscriptions: assigner,
+		now:           func() time.Time { return now },
+	}
+	order := newRenewalOrder("PAY-NO-GROUP")
+	order.GroupID = 0
+	repo := &inMemoryPaymentRepoForRenewal{order: order}
+	uc := NewPaymentUsecaseWithAssigner(repo, NewMockPaymentProvider(), &countingPaymentIssuer{}, a)
+
+	if _, err := uc.MarkOrderPaid(context.Background(), "PAY-NO-GROUP", "ALI-NO-GROUP"); err != nil {
+		t.Fatalf("MarkOrderPaid: %v", err)
+	}
+	if assigner.lastReq == nil || assigner.lastReq.GroupID != 3 {
+		t.Fatalf("snapshot group was not used: %+v", assigner.lastReq)
 	}
 }
 

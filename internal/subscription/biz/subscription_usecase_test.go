@@ -39,6 +39,10 @@ func (m *mockSubscriptionRepo) UpdateSubscription(ctx context.Context, subscript
 	return nil
 }
 
+func (m *mockSubscriptionRepo) UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error {
+	return m.UpdateSubscription(ctx, subscription)
+}
+
 func (m *mockSubscriptionRepo) DeleteSubscription(ctx context.Context, subscriptionID int64) error {
 	delete(m.subscriptions, subscriptionID)
 	return nil

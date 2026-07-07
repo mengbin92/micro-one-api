@@ -694,6 +694,22 @@ func (a *SubscriptionAccount) LocalQuotaExceededAt(now time.Time) bool {
 	return false
 }
 
+func (a *SubscriptionAccount) CodexSnapshotQuotaExceeded() bool {
+	if a == nil {
+		return false
+	}
+	if a.PrimaryQuotaUsedPercent != nil && *a.PrimaryQuotaUsedPercent >= 100 {
+		return true
+	}
+	if a.SecondaryQuotaUsedPercent != nil && *a.SecondaryQuotaUsedPercent >= 100 {
+		return true
+	}
+	if a.QuotaUsedPercent >= 100 {
+		return true
+	}
+	return false
+}
+
 func (a *SubscriptionAccount) EffectiveRateMultiplier() float64 {
 	if a == nil || a.RateMultiplier <= 0 {
 		return 1

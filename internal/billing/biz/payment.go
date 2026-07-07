@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 const (
@@ -102,7 +104,7 @@ type PaymentRepo interface {
 	MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error)
 	// MarkOrderRefunded transitions a paid order to refunded, running the
 	// revert callback inside the same transaction. Idempotent.
-	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder) error) (*PaymentOrder, bool, error)
+	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error)
 }
 
 type PaymentProvider interface {
@@ -248,7 +250,7 @@ func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTr
 			}
 		}
 		if order.AssetType == PaymentAssetTypeSubscription {
-			if order.GroupID <= 0 {
+			if order.PlanID <= 0 && order.GroupID <= 0 {
 				return errors.New("subscription group_id is required")
 			}
 			if uc.assigner == nil {

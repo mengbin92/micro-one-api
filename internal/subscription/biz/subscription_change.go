@@ -109,6 +109,7 @@ func (uc *SubscriptionUsecase) ChangeSubscription(ctx context.Context, req Chang
 	case SubscriptionChangePolicyImmediate:
 		// Mutate the active row in place. expires_at is preserved (a change
 		// is not a renewal). The audit metadata records the from→to transition.
+		fromGroupID := sub.GroupID
 		sub.GroupID = req.ToGroupID
 		if req.NewPlanName != "" {
 			sub.SubscriptionName = req.NewPlanName
@@ -116,7 +117,7 @@ func (uc *SubscriptionUsecase) ChangeSubscription(ctx context.Context, req Chang
 		sub.Metadata = mergeChangeMetadata(sub.Metadata, changeAudit{
 			FromPlanID:  req.OldPriceQuota, // reuse as from-plan ref when caller lacks id
 			ToPlanID:    req.ToPlanID,
-			FromGroupID: sub.GroupID,
+			FromGroupID: fromGroupID,
 			ToGroupID:   req.ToGroupID,
 			Policy:      policy,
 			Charged:     req.NewPriceQuota - req.OldPriceQuota,
@@ -208,6 +209,43 @@ func mergePendingChangeMetadata(existing string, audit changeAudit) string {
 	}
 	b, _ := json.Marshal(audit)
 	obj["pending_change"] = b
+	out, _ := json.Marshal(obj)
+	return string(out)
+}
+
+func pendingChangeMetadata(existing string) (changeAudit, bool) {
+	var obj map[string]json.RawMessage
+	trimmed := trimSpace(existing)
+	if trimmed == "" {
+		return changeAudit{}, false
+	}
+	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
+		return changeAudit{}, false
+	}
+	raw, ok := obj["pending_change"]
+	if !ok {
+		return changeAudit{}, false
+	}
+	var audit changeAudit
+	if err := json.Unmarshal(raw, &audit); err != nil {
+		return changeAudit{}, false
+	}
+	return audit, audit.ToGroupID > 0
+}
+
+func clearPendingChangeMetadata(existing string) string {
+	var obj map[string]json.RawMessage
+	trimmed := trimSpace(existing)
+	if trimmed == "" {
+		return existing
+	}
+	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
+		return existing
+	}
+	delete(obj, "pending_change")
+	if len(obj) == 0 {
+		return ""
+	}
 	out, _ := json.Marshal(obj)
 	return string(out)
 }

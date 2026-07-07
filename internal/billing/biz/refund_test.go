@@ -36,7 +36,7 @@ func (r *fakeRefundRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTra
 func (r *fakeRefundRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
-func (r *fakeRefundRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder) error) (*PaymentOrder, bool, error) {
+func (r *fakeRefundRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gormdb.DB) error) (*PaymentOrder, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls++
@@ -51,7 +51,7 @@ func (r *fakeRefundRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason 
 		return nil, false, fmt.Errorf("payment order status %q cannot be refunded", r.order.Status)
 	}
 	if revert != nil {
-		if err := revert(r.order); err != nil {
+		if err := revert(r.order, nil); err != nil {
 			return nil, false, err
 		}
 	}
@@ -80,6 +80,9 @@ func (s *stubAccountRepo) UpdateBalance(ctx context.Context, userID string, delt
 	s.lastDelta = delta
 	s.lastType = operationType
 	return s.newBalance, s.err
+}
+func (s *stubAccountRepo) UpdateBalanceInTx(ctx context.Context, tx *gormdb.DB, userID string, delta int64, operationType string) (int64, error) {
+	return s.UpdateBalance(ctx, userID, delta, operationType)
 }
 func (s *stubAccountRepo) UpdateUsage(ctx context.Context, userID string, usedAmountDelta, requestCountDelta int64) error {
 	return nil
@@ -161,11 +164,20 @@ func (s *stubSubscriptionReverter) Revoke(ctx context.Context, subscriptionID in
 	s.lastReason = reason
 	return s.revokeErr
 }
+func (s *stubSubscriptionReverter) RevokeInTx(ctx context.Context, tx *gormdb.DB, subscriptionID int64, reason string) error {
+	return s.Revoke(ctx, subscriptionID, reason)
+}
 func (s *stubSubscriptionReverter) Shorten(ctx context.Context, subscriptionID int64, subtractSeconds int64) error {
 	s.shortenCalls++
 	s.lastSubID = subscriptionID
 	s.lastSubtract = subtractSeconds
 	return s.shortenErr
+}
+func (s *stubSubscriptionReverter) ShortenInTx(ctx context.Context, tx *gormdb.DB, subscriptionID int64, subtractSeconds int64) error {
+	return s.Shorten(ctx, subscriptionID, subtractSeconds)
+}
+func (s *stubSubscriptionReverter) GetActiveSubscriptionForUser(ctx context.Context, userID int64) (*subscriptionbiz.UserSubscription, error) {
+	return &subscriptionbiz.UserSubscription{ID: 99, UserID: userID}, nil
 }
 
 func newRefundOrder(tradeNo string, paid bool) *PaymentOrder {
@@ -228,6 +240,26 @@ func TestRefund_RevokePolicyRevokesSubscription(t *testing.T) {
 	}
 	if res.SubscriptionAct != "revoked" {
 		t.Fatalf("subscription act = %q", res.SubscriptionAct)
+	}
+}
+
+func TestRefund_RevokePolicyFallsBackToActiveSubscription(t *testing.T) {
+	repo := &fakeRefundRepo{order: newRefundOrder("PAY-RF-ACTIVE", true)}
+	reverter := &stubSubscriptionReverter{}
+	uc := NewRefundUsecase(repo, &stubAccountRepo{newBalance: 5000}, &recordingLedgerRepo{}, reverter)
+
+	res, err := uc.RefundSubscriptionOrder(context.Background(), RefundRequest{
+		TradeNo: "PAY-RF-ACTIVE",
+		Policy:  RefundPolicyRevoke,
+	})
+	if err != nil {
+		t.Fatalf("refund: %v", err)
+	}
+	if reverter.revokeCalls != 1 || reverter.lastSubID != 99 {
+		t.Fatalf("reverter = %+v, want active subscription id 99", reverter)
+	}
+	if res.SubscriptionID != 99 {
+		t.Fatalf("subscription_id = %d, want 99", res.SubscriptionID)
 	}
 }
 

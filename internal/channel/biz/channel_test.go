@@ -261,6 +261,25 @@ func (m *mockChannelRepo) RecordQuotaResetRun(ctx context.Context, run *Subscrip
 	return nil
 }
 
+func (m *mockChannelRepo) RecordQuotaResetAndReset(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error {
+	if err := m.RecordQuotaResetRun(ctx, run); err != nil {
+		return err
+	}
+	acc, ok := m.accounts[run.AccountID]
+	if !ok {
+		return ErrSubscriptionAccountNotFound
+	}
+	switch run.Scope {
+	case "daily":
+		acc.QuotaDailyUsedUSD = 0
+		acc.QuotaDailyWindowStart = run.WindowStart
+	case "weekly":
+		acc.QuotaWeeklyUsedUSD = 0
+		acc.QuotaWeeklyWindowStart = run.WindowStart
+	}
+	return nil
+}
+
 func (m *mockChannelRepo) StampQuotaAlertMetadata(ctx context.Context, accountID int64, kind string, alertAt int64) error {
 	return nil
 }

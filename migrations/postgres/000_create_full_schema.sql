@@ -387,7 +387,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   asset_issue_status TEXT NOT NULL DEFAULT 'pending',
   group_id BIGINT NOT NULL DEFAULT 0,
-  plan_id BIGINT NOT NULL DEFAULT 0
+  plan_id BIGINT NOT NULL DEFAULT 0,
+  plan_snapshot TEXT DEFAULT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_orders_user_id            ON payment_orders(user_id);
@@ -588,6 +589,21 @@ CREATE TABLE IF NOT EXISTS account_quota_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_account_quota_snapshot_updated
   ON account_quota_snapshots(updated_at);
+
+CREATE TABLE IF NOT EXISTS subscription_account_quota_reset_runs (
+  id BIGSERIAL PRIMARY KEY,
+  subscription_account_id BIGINT NOT NULL,
+  scope TEXT NOT NULL,
+  window_start BIGINT NOT NULL,
+  strategy TEXT NOT NULL DEFAULT 'fixed',
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  reset_at BIGINT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_account_quota_reset_runs_dedupe
+  ON subscription_account_quota_reset_runs(subscription_account_id, scope, window_start);
+CREATE INDEX IF NOT EXISTS idx_subscription_account_quota_reset_runs_account_time
+  ON subscription_account_quota_reset_runs(subscription_account_id, reset_at);
 
 -- ============================================================
 -- Schema migrations bookkeeping (matches internal/pkg/migrate)

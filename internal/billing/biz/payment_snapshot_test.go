@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	subscriptionbiz "micro-one-api/internal/subscription/biz"
+
+	"gorm.io/gorm"
 )
 
 // stubPlanGetterForCreate returns a configured plan so CreateOrder can capture
@@ -40,7 +42,7 @@ func (r *capturingPaymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, provi
 func (r *capturingPaymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
-func (r *capturingPaymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder) error) (*PaymentOrder, bool, error) {
+func (r *capturingPaymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
 

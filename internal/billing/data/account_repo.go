@@ -52,10 +52,6 @@ func (r *accountRepo) GetAccountSnapshot(ctx context.Context, userID string) (*b
 }
 
 func (r *accountRepo) UpdateBalance(ctx context.Context, userID string, delta int64, operationType string) (int64, error) {
-	var account struct {
-		Balance int64 `gorm:"column:balance"`
-	}
-
 	tx := r.data.db.WithContext(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
@@ -63,29 +59,30 @@ func (r *accountRepo) UpdateBalance(ctx context.Context, userID string, delta in
 		}
 	}()
 
-	if err := tx.Table("users").Where("id = ?", userID).First(&account).Error; err != nil {
+	newBalance, err := r.UpdateBalanceInTx(ctx, tx, userID, delta, operationType)
+	if err != nil {
 		tx.Rollback()
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, biz.ErrAccountNotFound
-		}
 		return 0, err
 	}
+	if err := tx.Commit().Error; err != nil {
+		return 0, err
+	}
+	return newBalance, nil
+}
 
+func (r *accountRepo) UpdateBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, delta int64, operationType string) (int64, error) {
+	account, err := r.getAccountForUpdate(ctx, tx, userID)
+	if err != nil {
+		return 0, err
+	}
 	newBalance := account.Balance + delta
 	if newBalance < 0 {
-		tx.Rollback()
 		return 0, biz.ErrInsufficientQuota
 	}
 
 	if err := tx.Table("users").Where("id = ?", userID).Update("balance", newBalance).Error; err != nil {
-		tx.Rollback()
 		return 0, err
 	}
-
-	if err := tx.Commit().Error; err != nil {
-		return 0, err
-	}
-
 	return newBalance, nil
 }
 

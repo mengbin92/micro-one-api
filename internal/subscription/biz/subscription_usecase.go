@@ -104,7 +104,12 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 		return sub, false, err
 	}
 	if active.GroupID != req.GroupID {
-		return nil, true, ErrSubscriptionAlreadyAssigned
+		pending, ok := pendingChangeMetadata(active.Metadata)
+		if !ok || pending.ToGroupID != req.GroupID {
+			return nil, true, ErrSubscriptionAlreadyAssigned
+		}
+		active.GroupID = req.GroupID
+		active.Metadata = clearPendingChangeMetadata(active.Metadata)
 	}
 	if req.ExpiresAt <= active.ExpiresAt {
 		duration := req.ExpiresAt - req.StartsAt
@@ -137,6 +142,20 @@ func (uc *SubscriptionUsecase) Revoke(ctx context.Context, id int64, reason stri
 	subscription.UpdatedAt = uc.now().Unix()
 	subscription.Metadata = mergeMetadataReason(subscription.Metadata, reason)
 	return uc.repo.UpdateSubscription(ctx, subscription)
+}
+
+func (uc *SubscriptionUsecase) RevokeInTx(ctx context.Context, tx *gormDB, id int64, reason string) error {
+	subscription, err := uc.repo.GetByIDInTx(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if subscription.Status == SubscriptionStatusRevoked {
+		return nil
+	}
+	subscription.Status = SubscriptionStatusRevoked
+	subscription.UpdatedAt = uc.now().Unix()
+	subscription.Metadata = mergeMetadataReason(subscription.Metadata, reason)
+	return uc.repo.UpdateSubscriptionInTx(ctx, tx, subscription)
 }
 
 func (uc *SubscriptionUsecase) Extend(ctx context.Context, id int64, newExpiresAt int64) error {
@@ -175,6 +194,27 @@ func (uc *SubscriptionUsecase) Shorten(ctx context.Context, id int64, subtractSe
 	subscription.ExpiresAt = newExpiry
 	subscription.UpdatedAt = now
 	return uc.repo.UpdateSubscription(ctx, subscription)
+}
+
+func (uc *SubscriptionUsecase) ShortenInTx(ctx context.Context, tx *gormDB, id int64, subtractSeconds int64) error {
+	if subtractSeconds <= 0 {
+		return errors.New("subtract_seconds must be positive")
+	}
+	subscription, err := uc.repo.GetByIDInTx(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if subscription.Status == SubscriptionStatusRevoked {
+		return ErrSubscriptionRevoked
+	}
+	now := uc.now().Unix()
+	newExpiry := subscription.ExpiresAt - subtractSeconds
+	if newExpiry < now {
+		newExpiry = now
+	}
+	subscription.ExpiresAt = newExpiry
+	subscription.UpdatedAt = now
+	return uc.repo.UpdateSubscriptionInTx(ctx, tx, subscription)
 }
 
 func (uc *SubscriptionUsecase) ResetQuota(ctx context.Context, id int64, scope string) error {

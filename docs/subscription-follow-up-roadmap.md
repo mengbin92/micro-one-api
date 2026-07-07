@@ -23,7 +23,7 @@
 | 顺序 | 分支 | 目标 | 主要风险 | 状态 |
 | --- | --- | --- | --- | --- |
 | 0 | `docs/release-v0.5-followup-plan` | 固化本路线图并更新发布稿引用 | 无代码风险 | ✅ 已完成 |
-| 1 | `feat/subscription-account-ops-automation` | 账号 quota reset 自动化、异常账号恢复、额度事件告警 | 自动恢复误启用异常账号 | 独立分支,未合入当前基线 |
+| 1 | `feat/subscription-account-ops-automation` | 账号 quota reset 自动化、异常账号恢复、额度事件告警 | 自动恢复误启用异常账号 | 独立分支,已合入当前基线， ✅ 已完成 |
 | 2 | `feat/subscription-plan-lifecycle` | 套餐上下架、在售状态审计、用户侧展示收敛 | 已下单套餐快照与当前配置混淆 | ✅ 已完成 |
 | 3 | `feat/subscription-renewal` | 同分组续费闭环、到期时间延长、续费订单展示 | 重复回调导致重复续期 | ✅ 已完成 |
 | 4 | `feat/subscription-refund-reversal` | 退款/冲正账本语义、订单状态机和对账 | 余额/订阅权益双向回滚不一致 | ✅ 已完成 |

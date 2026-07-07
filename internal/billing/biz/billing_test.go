@@ -39,6 +39,10 @@ func (m *mockAccountRepo) UpdateBalance(ctx context.Context, userID string, delt
 	return m.account.Balance, nil
 }
 
+func (m *mockAccountRepo) UpdateBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, delta int64, operationType string) (int64, error) {
+	return m.UpdateBalance(ctx, userID, delta, operationType)
+}
+
 func (m *mockAccountRepo) UpdateUsage(ctx context.Context, userID string, usedAmountDelta, requestCountDelta int64) error {
 	m.account.UsedAmount += usedAmountDelta
 	m.account.RequestCount += requestCountDelta
