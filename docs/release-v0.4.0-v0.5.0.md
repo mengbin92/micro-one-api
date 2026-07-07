@@ -183,9 +183,11 @@ git diff --check
 
 ## 后续规划
 
-详细路线图见 [订阅系统后续规划路线图](./subscription-follow-up-roadmap.md)。后续按独立分支推进:
+详细路线图见 [订阅系统后续规划路线图](./subscription-follow-up-roadmap.md)。
 
-- 订阅账号治理:完善账号 quota reset 自动化、异常账号自动恢复策略和额度事件告警。
-- 订阅产品化:补齐套餐上下架、续费、退款/冲正、订阅变更和运营报表。
-- Relay 稳定性:压测多副本 Redis 并发控制、session sticky 与上游 failover 组合场景。
-- 文档:完善订阅账号 OAuth 绑定、套餐配置、额度治理和生产发布 runbook。
+阶段 4(文档与 Runbook)已交付,长期操作细节见订阅生产 Runbook 索引:
+
+- [订阅生产发布、回滚与排障 Runbook](./subscription-production-runbook.md#七订阅文档索引):含 OAuth 绑定、套餐配置、额度治理、Redis 多副本、压测 runbook 的完整索引。
+- [订阅系统后续规划路线图](./subscription-follow-up-roadmap.md#阶段-4-文档与-runbook):阶段 4 交付物清单与验收状态。
+
+本文只保留发布摘要,不再承载操作步骤。

@@ -20,16 +20,16 @@
 
 ## 推荐分支拆分
 
-| 顺序 | 分支 | 目标 | 主要风险 |
-| --- | --- | --- | --- |
-| 0 | `docs/release-v0.5-followup-plan` | 固化本路线图并更新发布稿引用 | 无代码风险 |
-| 1 | `feat/subscription-account-ops-automation` | 账号 quota reset 自动化、异常账号恢复、额度事件告警 | 自动恢复误启用异常账号 |
-| 2 | `feat/subscription-plan-lifecycle` | 套餐上下架、在售状态审计、用户侧展示收敛 | 已下单套餐快照与当前配置混淆 |
-| 3 | `feat/subscription-renewal` | 同分组续费闭环、到期时间延长、续费订单展示 | 重复回调导致重复续期 |
-| 4 | `feat/subscription-refund-reversal` | 退款/冲正账本语义、订单状态机和对账 | 余额/订阅权益双向回滚不一致 |
-| 5 | `feat/subscription-change` | 订阅升级/降级/变更策略 | 需要依赖续费和冲正语义 |
-| 6 | `test/relay-subscription-stress` | Redis 并发、sticky、failover 组合压测与指标门槛 | 本地和 CI 环境资源差异 |
-| 7 | `docs/subscription-production-runbook` | 生产 runbook、OAuth 绑定、套餐配置、额度治理文档 | 文档与真实配置漂移 |
+| 顺序 | 分支 | 目标 | 主要风险 | 状态 |
+| --- | --- | --- | --- | --- |
+| 0 | `docs/release-v0.5-followup-plan` | 固化本路线图并更新发布稿引用 | 无代码风险 | ✅ 已完成 |
+| 1 | `feat/subscription-account-ops-automation` | 账号 quota reset 自动化、异常账号恢复、额度事件告警 | 自动恢复误启用异常账号 | 独立分支,未合入当前基线 |
+| 2 | `feat/subscription-plan-lifecycle` | 套餐上下架、在售状态审计、用户侧展示收敛 | 已下单套餐快照与当前配置混淆 | ✅ 已完成 |
+| 3 | `feat/subscription-renewal` | 同分组续费闭环、到期时间延长、续费订单展示 | 重复回调导致重复续期 | ✅ 已完成 |
+| 4 | `feat/subscription-refund-reversal` | 退款/冲正账本语义、订单状态机和对账 | 余额/订阅权益双向回滚不一致 | ✅ 已完成 |
+| 5 | `feat/subscription-change` | 订阅升级/降级/变更策略 | 需要依赖续费和冲正语义 | ✅ 已完成 |
+| 6 | `test/relay-subscription-stress` | Redis 并发、sticky、failover 组合压测与指标门槛 | 本地和 CI 环境资源差异 | ✅ 已完成 |
+| 7 | `docs/subscription-production-runbook` | 生产 runbook、OAuth 绑定、套餐配置、额度治理文档 | 文档与真实配置漂移 | ✅ 已完成 |
 
 ## 阶段 1: 订阅账号治理
 
@@ -203,6 +203,8 @@
 
 ## 阶段 4: 文档与 Runbook
 
+> 状态: ✅ 已完成。实现分支 `feat/subscription-productization-phase2`(与阶段 2/3 同分支落地)。
+
 任务:
 
 - 拆分并更新生产文档:
@@ -217,10 +219,20 @@
   - 验证命令或页面。
   - 常见故障和恢复步骤。
 
+交付物:
+
+- [订阅账号 OAuth 绑定 Runbook](./subscription-oauth-binding-runbook.md):授权码 auth-url/exchange 两步流、字段来源、多副本 session 限制、token 刷新健康度、绑定排障。
+- [订阅套餐配置与购买发放 Runbook](./subscription-plan-runbook.md):分组/套餐字段、上下架切换、plan_snapshot 快照发放、测试购买、续费幂等验证、运营报表。
+- [订阅账号额度治理 Runbook](./subscription-account-quota-governance-runbook.md):reset scope、批量重置/模板、runtime block 分层恢复、AutoPause、额度事件幂等、指标。
+- [订阅 Redis 多副本部署 Runbook](./subscription-redis-multi-replica-runbook.md):共享状态清单、并发 cap/跨副本 block/sticky/fail-open 验证、CI smoke 与预发全量。
+- [订阅生产发布、回滚与排障 Runbook](./subscription-production-runbook.md):迁移清单与顺序、滚动发布、回滚策略、回归门槛、生产排障、文档索引。
+- [Relay 稳定性压测与 Runbook](./relay-stress-runbook.md)(阶段 3 已交付,阶段 4 复用)。
+
 验收:
 
-- 新部署人员只按 runbook 能完成 OAuth 绑定、套餐上架、测试购买和 failover 验证。
-- release 文档只保留发布摘要,长期操作细节进入 runbook。
+- 新部署人员只按 runbook 能完成 OAuth 绑定、套餐上架、测试购买和 failover 验证。✅ 各 runbook 均含「验证」小节,可独立完成上述四项。
+- release 文档只保留发布摘要,长期操作细节进入 runbook。✅ `docs/release-v0.4.0-v0.5.0.md` 的「后续规划」指向本路线图与 runbook 索引,不再承载操作步骤。
+- 每份 runbook 含前置条件、必填配置、验证命令/页面、常见故障与恢复步骤。✅
 
 ## 建议优先级
 
