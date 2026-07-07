@@ -172,6 +172,10 @@ message SubscriptionAccountSummary {
   double session_window_limit_usd = 39;                   // 同一 session_hash 在该账号上的成本上限 USD(0 表示不限制)
   string quota_reset_strategy = 40;                       // 本地日/周额度重置策略: rolling 或 fixed
   string quota_timezone = 41;                             // fixed 策略使用的 IANA 时区，默认 UTC
+  string unschedulable_reason = 42;                       // 为什么不可调度（上游 429/401/本地额度耗尽等）
+  string recovery_policy = 43;                            // 恢复策略: auto/manual/quota/codex/rolling
+  int64 expected_recovery_at = 44;                        // 预计恢复时间（unix）；0 表示未知
+  int64 unschedulable_since = 45;                         // 不可调度起始时间（unix）
 }
 
 // ========== 账户快照 ==========

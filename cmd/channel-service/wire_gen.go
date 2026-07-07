@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-kratos/kratos/v2"
 	kconfig "github.com/go-kratos/kratos/v2/config"
@@ -69,6 +71,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	stopOpsAutomation := startAccountOpsAutomation(uc, repo, notifyConn)
 	svc := service.NewChannelService(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, uc)
@@ -88,6 +91,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	app := kratos.New(kratosOpts...)
 
 	return app, func() {
+		if stopOpsAutomation != nil {
+			stopOpsAutomation()
+		}
 		if stopEventBus != nil {
 			stopEventBus()
 		}
@@ -159,4 +165,125 @@ func cleanRecipients(input []string) []string {
 		return []string{""}
 	}
 	return recipients
+}
+
+// startAccountOpsAutomation launches the subscription-account governance
+// background tasks (quota reset sweeper, account recovery sweeper, quota alert
+// evaluator) when enabled via environment variables. These run in-process in
+// channel-service because they need direct ChannelRepo access (the Repository
+// implements both ChannelRepo and QuotaResetRunRecorder). The alert evaluator
+// reuses the notify-worker gRPC connection so no new delivery path is created.
+//
+// Returns a cleanup function that cancels the background context and closes
+// the notify connection if one was opened. Safe to call with a nil uc.
+func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, existingNotifyConn *grpc.ClientConn) func() {
+	var (
+		cancel func()
+		wg     sync.WaitGroup
+		conn   = existingNotifyConn
+	)
+	if uc == nil {
+		return func() {}
+	}
+	ctx, cancelFn := context.WithCancel(context.Background())
+	cancel = cancelFn
+
+	// 1. Quota reset sweeper (fixed-strategy daily/weekly boundary reset).
+	if envBool("SUBSCRIPTION_QUOTA_RESET_ENABLED", false) {
+		interval := parseDurationEnv("SUBSCRIPTION_QUOTA_RESET_INTERVAL", 5*time.Minute)
+		timeout := parseDurationEnv("SUBSCRIPTION_QUOTA_RESET_TIMEOUT", 30*time.Second)
+		sweeper := biz.NewQuotaResetSweeper(repo, repo, biz.QuotaResetSweeperConfig{
+			Enabled:  true,
+			Interval: interval,
+			Timeout:  timeout,
+			PageSize: 200,
+		})
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sweeper.Run(ctx)
+		}()
+		applogger.Log.Info("subscription quota reset sweeper started",
+			zap.Duration("interval", interval))
+	}
+
+	// 2. Account recovery sweeper (auto-recover temp-blocked accounts after TTL).
+	if envBool("SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED", false) {
+		interval := parseDurationEnv("SUBSCRIPTION_ACCOUNT_RECOVERY_INTERVAL", 5*time.Minute)
+		timeout := parseDurationEnv("SUBSCRIPTION_ACCOUNT_RECOVERY_TIMEOUT", 30*time.Second)
+		recovery := biz.NewAccountRecoverySweeper(repo, biz.AccountRecoverySweeperConfig{
+			Enabled:  true,
+			Interval: interval,
+			Timeout:  timeout,
+			PageSize: 200,
+		})
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			recovery.Run(ctx)
+		}()
+		applogger.Log.Info("subscription account recovery sweeper started",
+			zap.Duration("interval", interval))
+	}
+
+	// 3. Quota alert evaluator (reuses notify-worker channel for delivery).
+	if envBool("SUBSCRIPTION_QUOTA_ALERT_ENABLED", false) {
+		endpoint := strings.TrimSpace(os.Getenv("NOTIFY_GRPC_ENDPOINT"))
+		var notifier biz.QuotaAlertNotifier
+		if endpoint != "" {
+			if conn == nil {
+				c, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+				if err != nil {
+					applogger.Log.Warn("failed to dial notify for quota alert", zap.Error(err))
+				} else {
+					conn = c
+				}
+			}
+			if conn != nil {
+				notifyType := strings.TrimSpace(os.Getenv("CHANNEL_HEALTH_ALERT_NOTIFY_TYPE"))
+				notifier = newGRPCNotifier(notifyv1.NewNotifyServiceClient(conn), notifyType)
+			}
+		}
+		if notifier != nil {
+			interval := parseDurationEnv("SUBSCRIPTION_QUOTA_ALERT_INTERVAL", 10*time.Minute)
+			alertCfg := biz.HealthAlertConfig{
+				Enabled:    true,
+				NotifyType: strings.TrimSpace(os.Getenv("CHANNEL_HEALTH_ALERT_NOTIFY_TYPE")),
+				Recipients: recipientsFromEnv("CHANNEL_HEALTH_ALERT_RECIPIENTS"),
+			}
+			evaluator := biz.NewQuotaAlertEvaluator(repo, notifier, alertCfg, biz.QuotaAlertEvaluatorConfig{
+				Enabled:  true,
+				Interval: interval,
+				PageSize: 200,
+			})
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				evaluator.Run(ctx)
+			}()
+			applogger.Log.Info("subscription quota alert evaluator started",
+				zap.Duration("interval", interval))
+		} else {
+			applogger.Log.Warn("subscription quota alert enabled but no notify endpoint configured")
+		}
+	}
+
+	return func() {
+		if cancel != nil {
+			cancel()
+		}
+		wg.Wait()
+	}
+}
+
+// parseDurationEnv reads a duration from an env var, falling back to def.
+func parseDurationEnv(key string, def time.Duration) time.Duration {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	if d, err := time.ParseDuration(v); err == nil && d > 0 {
+		return d
+	}
+	return def
 }

@@ -28,6 +28,7 @@ type Repository struct {
 	channels    map[int64]*biz.Channel
 	subAccounts map[int64]*biz.SubscriptionAccount
 	quotaEvents map[string]biz.SubscriptionAccountQuotaEventAggregate
+	resetRuns   map[string]bool
 	lock        sync.RWMutex
 	encKey      []byte // AES key for encrypting API keys at rest (nil = no encryption)
 }
@@ -201,6 +202,7 @@ func newMemoryRepository() *Repository {
 		channels:    make(map[int64]*biz.Channel),
 		subAccounts: make(map[int64]*biz.SubscriptionAccount),
 		quotaEvents: make(map[string]biz.SubscriptionAccountQuotaEventAggregate),
+		resetRuns:   make(map[string]bool),
 	}
 }
 
@@ -382,7 +384,7 @@ func (r *Repository) SetTempUnschedulable(ctx context.Context, accountID int64, 
 	}
 	account.RateLimitedUntil = until.Unix()
 	account.LastError = reason
-	account.Metadata = setSubscriptionAccountMetadataValue(account.Metadata, "last_error", reason)
+	account.Metadata = stampRecoveryMetadata(account.Metadata, reason, until.Unix(), time.Now().Unix())
 	account.UpdatedAt = time.Now().Unix()
 	return nil
 }
@@ -595,7 +597,11 @@ func (r *Repository) AutoPauseAccount(ctx context.Context, accountID int64, reas
 	}
 	account.Status = biz.ChannelStatusDisabled
 	account.LastError = reason
-	account.Metadata = setSubscriptionAccountMetadataValue(account.Metadata, "last_error", reason)
+	// AutoPause is used for authorization errors and codex snapshot exhaustion;
+	// stamp a manual recovery policy so the recovery sweeper never re-enables
+	// the account without an explicit admin action or OAuth rebind.
+	account.Metadata = stampRecoveryMetadata(account.Metadata, reason, 0, time.Now().Unix())
+	account.Metadata = setSubscriptionAccountMetadataValue(account.Metadata, "recovery_policy", biz.RecoveryPolicyManual)
 	account.UpdatedAt = time.Now().Unix()
 	return nil
 }
@@ -912,7 +918,7 @@ func (r *Repository) setTempUnschedulableDB(ctx context.Context, accountID int64
 	if err != nil {
 		return err
 	}
-	metadata := setSubscriptionAccountMetadataValue(account.Metadata, "last_error", reason)
+	metadata := stampRecoveryMetadata(account.Metadata, reason, until.Unix(), time.Now().Unix())
 	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
 		"rate_limited_until": until.Unix(),
 		"metadata":           stringPtr(metadata),
@@ -1085,7 +1091,8 @@ func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, re
 	if err != nil {
 		return err
 	}
-	metadata := setSubscriptionAccountMetadataValue(account.Metadata, "last_error", reason)
+	metadata := stampRecoveryMetadata(account.Metadata, reason, 0, time.Now().Unix())
+	metadata = setSubscriptionAccountMetadataValue(metadata, "recovery_policy", biz.RecoveryPolicyManual)
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
 			"status":     biz.ChannelStatusDisabled,
@@ -1912,4 +1919,214 @@ func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, "%", "\\%")
 	s = strings.ReplaceAll(s, "_", "\\_")
 	return s
+}
+
+// subscriptionAccountQuotaResetRunModel mirrors subscription_account_quota_reset_runs.
+type subscriptionAccountQuotaResetRunModel struct {
+	ID                 int64  `gorm:"column:id"`
+	SubscriptionAccountID int64 `gorm:"column:subscription_account_id"`
+	Scope              string `gorm:"column:scope"`
+	WindowStart        int64  `gorm:"column:window_start"`
+	Strategy           string `gorm:"column:strategy"`
+	Timezone           string `gorm:"column:timezone"`
+	ResetAt            int64  `gorm:"column:reset_at"`
+}
+
+func (subscriptionAccountQuotaResetRunModel) TableName() string {
+	return "subscription_account_quota_reset_runs"
+}
+
+// RecordQuotaResetRun durably records an automated fixed-strategy quota reset.
+// The unique index on (subscription_account_id, scope, window_start) makes a
+// duplicate insert (repeated worker tick / another replica) fail with a unique
+// constraint violation, which is mapped to biz.ErrQuotaResetRunDuplicate so the
+// sweeper can treat it as a no-op rather than an error.
+func (r *Repository) RecordQuotaResetRun(ctx context.Context, run *biz.SubscriptionAccountQuotaResetRun) error {
+	if run == nil || run.AccountID <= 0 {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	if r.db != nil {
+		return r.recordQuotaResetRunDB(ctx, run)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.resetRuns == nil {
+		r.resetRuns = make(map[string]bool)
+	}
+	key := strconv.FormatInt(run.AccountID, 10) + "\x00" + run.Scope + "\x00" + strconv.FormatInt(run.WindowStart, 10)
+	if r.resetRuns[key] {
+		return biz.ErrQuotaResetRunDuplicate
+	}
+	r.resetRuns[key] = true
+	return nil
+}
+
+func (r *Repository) recordQuotaResetRunDB(ctx context.Context, run *biz.SubscriptionAccountQuotaResetRun) error {
+	model := subscriptionAccountQuotaResetRunModel{
+		SubscriptionAccountID: run.AccountID,
+		Scope:              run.Scope,
+		WindowStart:        run.WindowStart,
+		Strategy:           run.Strategy,
+		Timezone:           run.Timezone,
+		ResetAt:            run.ResetAt.Unix(),
+	}
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&model)
+	if result.Error != nil {
+		// Map duplicate-key errors to the sentinel so the sweeper can no-op.
+		if isDuplicateKeyErr(result.Error) {
+			return biz.ErrQuotaResetRunDuplicate
+		}
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return biz.ErrQuotaResetRunDuplicate
+	}
+	return nil
+}
+
+// ClearRecoveryMetadata strips the recovery/unschedulable markers from the
+// account metadata JSON blob. It is a targeted update so concurrent writers
+// (e.g. a snapshot recording) do not lose unrelated metadata keys.
+func (r *Repository) ClearRecoveryMetadata(ctx context.Context, accountID int64) error {
+	if accountID <= 0 {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	if r.db != nil {
+		return r.clearRecoveryMetadataDB(ctx, accountID)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	account, ok := r.subAccounts[accountID]
+	if !ok {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	account.Metadata = clearSubscriptionAccountRecoveryMetadata(account.Metadata)
+	account.UpdatedAt = time.Now().Unix()
+	return nil
+}
+
+func (r *Repository) clearRecoveryMetadataDB(ctx context.Context, accountID int64) error {
+	account, err := r.findSubscriptionAccountByIDDB(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	metadata := clearSubscriptionAccountRecoveryMetadata(account.Metadata)
+	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
+		"metadata":   stringPtr(metadata),
+		"updated_at": time.Now().Unix(),
+	}).Error
+}
+
+// clearSubscriptionAccountRecoveryMetadata removes the recovery-policy and
+// unschedulable marker keys from the metadata JSON blob. It preserves all
+// other keys (e.g. last_error is cleared separately by ClearSubscriptionAccountError).
+func clearSubscriptionAccountRecoveryMetadata(raw string) string {
+	values := subscriptionAccountMetadata(raw)
+	if values == nil {
+		return raw
+	}
+	delete(values, "recovery_policy")
+	delete(values, "unschedulable_reason")
+	delete(values, "unschedulable_since")
+	delete(values, "unschedulable_until")
+	delete(values, "expected_recovery_at")
+	if len(values) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(values)
+	if err != nil {
+		return raw
+	}
+	return string(b)
+}
+
+// isDuplicateKeyErr reports whether err is a unique-constraint violation,
+// covering MySQL, SQLite and Postgres drivers used by this project.
+func isDuplicateKeyErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Duplicate entry") ||
+		strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "duplicate key value")
+}
+
+// stampRecoveryMetadata writes the recovery-policy and unschedulable marker
+// keys into the account metadata JSON blob so the recovery sweeper and the
+// admin UI can classify why an account is unschedulable. It preserves all
+// other keys (e.g. provider-specific metadata).
+//
+// The recovery policy is derived from the reason text: 401/403 -> manual
+// (never auto-recover), 429/5xx/529 -> auto (TTL-based), otherwise rolling.
+func stampRecoveryMetadata(raw, reason string, untilUnix, nowUnix int64) string {
+	values := subscriptionAccountMetadata(raw)
+	if values == nil {
+		values = make(map[string]interface{})
+	}
+	values["last_error"] = reason
+	values["unschedulable_reason"] = reason
+	values["unschedulable_since"] = nowUnix
+	values["unschedulable_until"] = untilUnix
+	policy := recoveryPolicyForReason(reason)
+	values["recovery_policy"] = policy
+	if policy == biz.RecoveryPolicyAuto && untilUnix > 0 {
+		values["expected_recovery_at"] = untilUnix
+	} else {
+		delete(values, "expected_recovery_at")
+	}
+	b, err := json.Marshal(values)
+	if err != nil {
+		return raw
+	}
+	return string(b)
+}
+
+// recoveryPolicyForReason infers the recovery policy from an unschedulable
+// reason string. The reason typically embeds the upstream status code
+// (e.g. "status=401", "upstream 429"). 401/403 -> manual; 429/5xx/529 -> auto;
+// otherwise rolling.
+func recoveryPolicyForReason(reason string) string {
+	lower := strings.ToLower(reason)
+	switch {
+	case strings.Contains(lower, "401"), strings.Contains(lower, "403"), strings.Contains(lower, "unauthorized"), strings.Contains(lower, "forbidden"):
+		return biz.RecoveryPolicyManual
+	case strings.Contains(lower, "429"), strings.Contains(lower, "rate limit"), strings.Contains(lower, "529"), strings.Contains(lower, "overloaded"), strings.Contains(lower, "5xx"), strings.Contains(lower, "500"), strings.Contains(lower, "502"), strings.Contains(lower, "503"), strings.Contains(lower, "504"):
+		return biz.RecoveryPolicyAuto
+	default:
+		return biz.RecoveryPolicyRolling
+	}
+}
+
+// StampQuotaAlertMetadata records the last-emitted quota alert kind and
+// timestamp on the account metadata blob so the alert evaluator can dedupe
+// within its configured window. Other metadata keys are preserved.
+func (r *Repository) StampQuotaAlertMetadata(ctx context.Context, accountID int64, kind string, alertAt int64) error {
+	if accountID <= 0 {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	if r.db != nil {
+		return r.stampQuotaAlertMetadataDB(ctx, accountID, kind, alertAt)
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	account, ok := r.subAccounts[accountID]
+	if !ok {
+		return biz.ErrSubscriptionAccountNotFound
+	}
+	account.Metadata = setSubscriptionAccountMetadataValue(setSubscriptionAccountMetadataValue(account.Metadata, "last_quota_alert_kind", kind), "last_quota_alert_at", strconv.FormatInt(alertAt, 10))
+	account.UpdatedAt = time.Now().Unix()
+	return nil
+}
+
+func (r *Repository) stampQuotaAlertMetadataDB(ctx context.Context, accountID int64, kind string, alertAt int64) error {
+	account, err := r.findSubscriptionAccountByIDDB(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	metadata := setSubscriptionAccountMetadataValue(setSubscriptionAccountMetadataValue(account.Metadata, "last_quota_alert_kind", kind), "last_quota_alert_at", strconv.FormatInt(alertAt, 10))
+	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
+		"metadata":   stringPtr(metadata),
+		"updated_at": time.Now().Unix(),
+	}).Error
 }

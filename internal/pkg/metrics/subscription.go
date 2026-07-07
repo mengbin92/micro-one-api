@@ -191,3 +191,63 @@ var OverdueReceivablesTotal = prometheus.NewGauge(
 		Help:      "Current total pending receivables quota (negative-balance mirror)",
 	},
 )
+
+// SubscriptionAccountQuotaResetsTotal counts automated fixed-strategy quota
+// resets executed by the account-ops sweeper.
+var SubscriptionAccountQuotaResetsTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "subscription",
+		Name:      "account_quota_resets_total",
+		Help:      "Total automated fixed-strategy subscription-account quota resets",
+	},
+	[]string{"scope", "result"},
+)
+
+// SubscriptionAccountQuotaResetScanDuration records the wall-clock duration of
+// a single quota-reset sweep scan.
+var SubscriptionAccountQuotaResetScanDuration = prometheus.NewHistogram(
+	prometheus.HistogramOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "subscription",
+		Name:      "account_quota_reset_scan_duration_seconds",
+		Help:      "Subscription-account quota reset sweep scan duration in seconds",
+		Buckets:   []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
+	},
+)
+
+// SubscriptionAccountRecoveriesTotal counts automated subscription-account
+// recovery attempts by recovery class and outcome.
+var SubscriptionAccountRecoveriesTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "subscription",
+		Name:      "account_recoveries_total",
+		Help:      "Total automated subscription-account recovery attempts",
+	},
+	[]string{"class", "result"},
+)
+
+// SubscriptionAccountRecoveryScanDuration records the duration of a single
+// account-recovery sweep.
+var SubscriptionAccountRecoveryScanDuration = prometheus.NewHistogram(
+	prometheus.HistogramOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "subscription",
+		Name:      "account_recovery_scan_duration_seconds",
+		Help:      "Subscription-account recovery sweep scan duration in seconds",
+		Buckets:   []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
+	},
+)
+
+// SubscriptionQuotaAlertsTotal counts subscription-account quota alert
+// notifications emitted by the alert evaluator.
+var SubscriptionQuotaAlertsTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "subscription",
+		Name:      "quota_alerts_total",
+		Help:      "Total subscription-account quota alert notifications emitted",
+	},
+	[]string{"kind", "result"},
+)

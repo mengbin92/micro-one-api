@@ -135,6 +135,22 @@ func (r *channelServiceRepo) AutoPauseAccount(ctx context.Context, accountID int
 	return nil
 }
 
+func (r *channelServiceRepo) ClearRecoveryMetadata(ctx context.Context, accountID int64) error {
+	if r.account != nil && r.account.ID == accountID {
+		r.account.Metadata = ""
+		r.account.LastError = ""
+	}
+	return nil
+}
+
+func (r *channelServiceRepo) RecordQuotaResetRun(ctx context.Context, run *biz.SubscriptionAccountQuotaResetRun) error {
+	return biz.ErrQuotaResetRunDuplicate
+}
+
+func (m *channelServiceRepo) StampQuotaAlertMetadata(ctx context.Context, accountID int64, kind string, alertAt int64) error {
+	return nil
+}
+
 func (r *channelServiceRepo) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
 	return []string{"gpt-4o"}, nil
 }

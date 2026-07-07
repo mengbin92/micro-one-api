@@ -209,6 +209,18 @@ type ChannelRepo interface {
 	AggregateSubscriptionAccountQuotaEvents(ctx context.Context, filter SubscriptionAccountQuotaEventFilter) ([]*SubscriptionAccountQuotaEventAggregate, error)
 	ResetSubscriptionAccountQuota(ctx context.Context, accountID int64, scope string) error
 	AutoPauseAccount(ctx context.Context, accountID int64, reason string) error
+	// ClearRecoveryMetadata removes the unschedulable_reason / unschedulable_since /
+	// unschedulable_until / expected_recovery_at / recovery_policy markers from the
+	// account metadata blob. It is called by the recovery sweeper once an account
+	// has been auto-recovered so the admin UI no longer shows a stale reason.
+	ClearRecoveryMetadata(ctx context.Context, accountID int64) error
+	// RecordQuotaResetRun durably records an automated fixed-strategy quota reset
+	// for idempotency and audit. Implementations return biz.ErrQuotaResetRunDuplicate
+	// when the (account, scope, window_start) tuple already exists.
+	RecordQuotaResetRun(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error
+	// StampQuotaAlertMetadata records the last-emitted alert kind and timestamp
+	// on the account metadata blob for alert deduplication.
+	StampQuotaAlertMetadata(ctx context.Context, accountID int64, kind string, alertAt int64) error
 	ListAvailableModels(ctx context.Context, group string) ([]string, error)
 	ListChannels(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*Channel, int64, error)
 	CreateChannel(ctx context.Context, channel *Channel) error

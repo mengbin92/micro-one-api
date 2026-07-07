@@ -259,6 +259,11 @@ func init() {
 		RelayUpstreamPassthroughTotal,
 		RelayCodexQuotaSnapshotsTotal,
 		RelayCodexQuotaUsedPercent,
+		SubscriptionAccountQuotaResetsTotal,
+		SubscriptionAccountQuotaResetScanDuration,
+		SubscriptionAccountRecoveriesTotal,
+		SubscriptionAccountRecoveryScanDuration,
+		SubscriptionQuotaAlertsTotal,
 	)
 }
 

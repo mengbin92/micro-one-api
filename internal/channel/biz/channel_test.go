@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ type mockChannelRepo struct {
 	accounts     map[int64]*SubscriptionAccount
 	abilities    map[string][]Ability
 	accAbilities map[string][]SubscriptionAccountAbility
+	resetRuns    map[string]bool
 }
 
 type recordedNotification struct {
@@ -204,10 +206,27 @@ func (m *mockChannelRepo) ResetSubscriptionAccountQuota(ctx context.Context, acc
 	if !ok {
 		return ErrSubscriptionAccountNotFound
 	}
-	acc.QuotaUsedUSD = 0
-	acc.Quota5hUsedUSD = 0
-	acc.QuotaDailyUsedUSD = 0
-	acc.QuotaWeeklyUsedUSD = 0
+	switch scope {
+	case "total":
+		acc.QuotaUsedUSD = 0
+	case "5h":
+		acc.Quota5hUsedUSD = 0
+		acc.Quota5hWindowStart = 0
+	case "daily":
+		acc.QuotaDailyUsedUSD = 0
+		acc.QuotaDailyWindowStart = 0
+	case "weekly":
+		acc.QuotaWeeklyUsedUSD = 0
+		acc.QuotaWeeklyWindowStart = 0
+	case "all":
+		acc.QuotaUsedUSD = 0
+		acc.Quota5hUsedUSD = 0
+		acc.Quota5hWindowStart = 0
+		acc.QuotaDailyUsedUSD = 0
+		acc.QuotaDailyWindowStart = 0
+		acc.QuotaWeeklyUsedUSD = 0
+		acc.QuotaWeeklyWindowStart = 0
+	}
 	return nil
 }
 
@@ -217,6 +236,37 @@ func (m *mockChannelRepo) AutoPauseAccount(ctx context.Context, accountID int64,
 		acc.LastError = reason
 	}
 	return nil
+}
+
+func (m *mockChannelRepo) ClearRecoveryMetadata(ctx context.Context, accountID int64) error {
+	if acc, ok := m.accounts[accountID]; ok {
+		acc.Metadata = ""
+		acc.LastError = ""
+	}
+	return nil
+}
+
+func (m *mockChannelRepo) RecordQuotaResetRun(ctx context.Context, run *SubscriptionAccountQuotaResetRun) error {
+	if run == nil || run.AccountID <= 0 {
+		return ErrSubscriptionAccountNotFound
+	}
+	if m.resetRuns == nil {
+		m.resetRuns = make(map[string]bool)
+	}
+	key := resetRunKey(run.AccountID, run.Scope, run.WindowStart)
+	if m.resetRuns[key] {
+		return ErrQuotaResetRunDuplicate
+	}
+	m.resetRuns[key] = true
+	return nil
+}
+
+func (m *mockChannelRepo) StampQuotaAlertMetadata(ctx context.Context, accountID int64, kind string, alertAt int64) error {
+	return nil
+}
+
+func resetRunKey(accountID int64, scope string, windowStart int64) string {
+	return strconv.FormatInt(accountID, 10) + "\x00" + scope + "\x00" + strconv.FormatInt(windowStart, 10)
 }
 
 func (m *mockChannelRepo) ListAvailableModels(ctx context.Context, group string) ([]string, error) {

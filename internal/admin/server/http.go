@@ -698,7 +698,7 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		"top_tokens":                            usageAggregateViewsToMaps(topTokens),
 		"top_subscription_accounts":             enrichSubscriptionAccountUsage(topSubscriptionAccounts, topSubscriptionAccountQuotaEvents, subscriptionAccounts.GetAccounts()),
 		"top_subscription_account_quota_events": enrichSubscriptionAccountQuotaEventUsage(topSubscriptionAccountQuotaEvents, topSubscriptionAccounts, subscriptionAccounts.GetAccounts()),
-		"alerts":                                adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation),
+		"alerts":                                adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation, subscriptionAccounts.GetAccounts()),
 		"latest_reconciliation":                 latestReconciliationRun(reconciliation),
 		"model_catalog":                         oneAPIChannelModelCatalog(),
 		"pricing_options":                       optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "AmountPerUnit"),
@@ -867,7 +867,7 @@ func enrichSubscriptionAccountQuotaEventUsage(eventItems []service.SubscriptionA
 	return out
 }
 
-func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []service.UsageAggregateView, reconciliation *service.ListReconciliationRunsResult) []map[string]interface{} {
+func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []service.UsageAggregateView, reconciliation *service.ListReconciliationRunsResult, subscriptionAccounts []*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
 	alerts := []map[string]interface{}{}
 	now := time.Now().Unix()
 	for _, channel := range channels {
@@ -878,6 +878,7 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 			alerts = append(alerts, map[string]interface{}{
 				"type":       "stale_balance",
 				"severity":   "warning",
+				"category":   "channel",
 				"channel_id": channel.GetId(),
 				"message":    "渠道余额超过 24 小时未刷新",
 			})
@@ -886,6 +887,7 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 			alerts = append(alerts, map[string]interface{}{
 				"type":       "low_balance",
 				"severity":   "critical",
+				"category":   "channel",
 				"channel_id": channel.GetId(),
 				"message":    "渠道余额低于 1 USD",
 			})
@@ -896,6 +898,7 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 			alerts = append(alerts, map[string]interface{}{
 				"type":         "negative_profit",
 				"severity":     "critical",
+				"category":     "channel",
 				"channel_id":   item.ChannelID,
 				"gross_profit": item.GrossProfit,
 				"message":      "渠道用量毛利为负",
@@ -905,11 +908,48 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 	if latest := latestReconciliationRun(reconciliation); latest != nil {
 		if count := interfaceToInt64(latest["discrepancy_count"]); count > 0 {
 			alerts = append(alerts, map[string]interface{}{
-				"type":              "reconciliation_discrepancy",
-				"severity":          "critical",
-				"run_id":            latest["run_id"],
+				"type":     "reconciliation_discrepancy",
+				"severity": "critical",
+				"category": "billing",
+				"run_id":   latest["run_id"],
 				"discrepancy_count": count,
-				"message":           "最近一次对账存在差异",
+				"message":  "最近一次对账存在差异",
+			})
+		}
+	}
+	// Subscription-account governance alerts. These are distinct from the
+	// channel-health and billing alerts above so the admin UI can filter by
+	// category. Each alert carries the recovery metadata so the operator sees
+	// both the symptom and the expected recovery time.
+	for _, account := range subscriptionAccounts {
+		if account == nil || account.GetStatus() != 1 {
+			continue
+		}
+		if reason := account.GetUnschedulableReason(); reason != "" {
+			severity := "warning"
+			if account.GetRecoveryPolicy() == "manual" {
+				severity = "critical"
+			}
+			alerts = append(alerts, map[string]interface{}{
+				"type":               "subscription_account_unschedulable",
+				"severity":           severity,
+				"category":           "subscription_account",
+				"account_id":         account.GetId(),
+				"account_name":       account.GetName(),
+				"recovery_policy":    account.GetRecoveryPolicy(),
+				"expected_recovery_at": account.GetExpectedRecoveryAt(),
+				"unschedulable_since":  account.GetUnschedulableSince(),
+				"message":            "订阅账号不可调度: " + reason,
+			})
+		}
+		if account.GetQuotaSnapshotPaused() {
+			alerts = append(alerts, map[string]interface{}{
+				"type":       "subscription_account_writeback_down",
+				"severity":   "critical",
+				"category":   "subscription_account",
+				"account_id": account.GetId(),
+				"account_name": account.GetName(),
+				"message":    "订阅账号额度快照回写已暂停",
 			})
 		}
 	}

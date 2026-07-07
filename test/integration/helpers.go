@@ -466,6 +466,18 @@ func (m *testChannelRepo) AutoPauseAccount(ctx context.Context, accountID int64,
 	return channelbiz.ErrSubscriptionAccountNotFound
 }
 
+func (m *testChannelRepo) ClearRecoveryMetadata(ctx context.Context, accountID int64) error {
+	return channelbiz.ErrSubscriptionAccountNotFound
+}
+
+func (m *testChannelRepo) RecordQuotaResetRun(ctx context.Context, run *channelbiz.SubscriptionAccountQuotaResetRun) error {
+	return channelbiz.ErrQuotaResetRunDuplicate
+}
+
+func (m *testChannelRepo) StampQuotaAlertMetadata(ctx context.Context, accountID int64, kind string, alertAt int64) error {
+	return nil
+}
+
 func (m *testChannelRepo) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
 	uniqueModels := make(map[string]bool)
 	for key, abilities := range m.abilities {

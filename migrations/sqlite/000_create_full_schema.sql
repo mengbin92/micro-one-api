@@ -600,3 +600,18 @@ CREATE TABLE IF NOT EXISTS account_receivables (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_account_receivable_reservation ON account_receivables(reservation_id);
 CREATE INDEX IF NOT EXISTS idx_account_receivable_user ON account_receivables(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_account_receivable_status_created ON account_receivables(status, created_at);
+
+CREATE TABLE IF NOT EXISTS subscription_account_quota_reset_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  subscription_account_id INTEGER NOT NULL,
+  scope TEXT NOT NULL,
+  window_start INTEGER NOT NULL,
+  strategy TEXT NOT NULL DEFAULT 'fixed',
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  reset_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_account_quota_reset_runs_dedupe
+  ON subscription_account_quota_reset_runs(subscription_account_id, scope, window_start);
+CREATE INDEX IF NOT EXISTS idx_subscription_account_quota_reset_runs_account_time
+  ON subscription_account_quota_reset_runs(subscription_account_id, reset_at);

@@ -148,6 +148,7 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 	if account == nil {
 		return nil
 	}
+	info := account.RecoveryInfo(time.Now())
 	return &commonv1.SubscriptionAccountSummary{
 		Id:                              account.ID,
 		Name:                            account.Name,
@@ -190,6 +191,10 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 		SessionWindowLimitUsd:           account.SessionWindowLimitUSD,
 		QuotaResetStrategy:              account.EffectiveQuotaResetStrategy(),
 		QuotaTimezone:                   account.EffectiveQuotaTimezone(),
+		UnschedulableReason:             info.Reason,
+		RecoveryPolicy:                  info.Policy,
+		ExpectedRecoveryAt:              info.ExpectedRecoveryAt,
+		UnschedulableSince:              info.Since,
 	}
 }
 
