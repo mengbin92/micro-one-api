@@ -351,17 +351,27 @@ func (uc *SubscriptionUsecase) GetProgress(ctx context.Context, userID int64) (*
 	// Surface the group's limits so Remaining is meaningful. Without them every
 	// dimension reported Remaining=0, indistinguishable from "quota exhausted".
 	var dailyLimit, weeklyLimit, monthlyLimit *float64
+	groupName := ""
 	if group, gerr := uc.groupRepo.GetGroupByID(ctx, rolled.GroupID); gerr == nil && group != nil {
 		dailyLimit, weeklyLimit, monthlyLimit = group.DailyLimitUSD, group.WeeklyLimitUSD, group.MonthlyLimitUSD
+		groupName = group.DisplayName
+		if groupName == "" {
+			groupName = group.Name
+		}
 	}
 	return &SubscriptionProgress{
 		ID:               rolled.ID,
 		Status:           rolled.Status,
 		StartsAt:         rolled.StartsAt,
 		ExpiresAt:        rolled.ExpiresAt,
-		DailyUsed:        makeDimension(rolled.DailyUsageUSD, dailyLimit),
-		WeeklyUsed:       makeDimension(rolled.WeeklyUsageUSD, weeklyLimit),
-		MonthlyUsed:      makeDimension(rolled.MonthlyUsageUSD, monthlyLimit),
+		GroupID:          rolled.GroupID,
+		SubscriptionName: groupName,
+		// NextRefresh is the moment the current window ends and usage resets. It
+		// is derived from the window's start + period; for a freshly-rolled
+		// window (start == now) that is now + period.
+		DailyUsed:        makeDimension(rolled.DailyUsageUSD, dailyLimit, rolled.DailyWindowStart+int64(quotaDailyWindow.Seconds())),
+		WeeklyUsed:       makeDimension(rolled.WeeklyUsageUSD, weeklyLimit, rolled.WeeklyWindowStart+int64(quotaWeeklyWindow.Seconds())),
+		MonthlyUsed:      makeDimension(rolled.MonthlyUsageUSD, monthlyLimit, rolled.MonthlyWindowStart+int64(quotaMonthlyWindow.Seconds())),
 		RemainingSeconds: maxInt64(0, rolled.ExpiresAt-now),
 	}, nil
 }
@@ -422,9 +432,9 @@ func checkQuotaAgainstGroup(subscription *UserSubscription, group *SubscriptionG
 		estimated *= group.RateMultiplier
 	}
 	result := &QuotaCheckResult{Allowed: true}
-	result.Daily = makeDimension(subscription.DailyUsageUSD+estimated, group.DailyLimitUSD)
-	result.Weekly = makeDimension(subscription.WeeklyUsageUSD+estimated, group.WeeklyLimitUSD)
-	result.Monthly = makeDimension(subscription.MonthlyUsageUSD+estimated, group.MonthlyLimitUSD)
+	result.Daily = makeDimension(subscription.DailyUsageUSD+estimated, group.DailyLimitUSD, 0)
+	result.Weekly = makeDimension(subscription.WeeklyUsageUSD+estimated, group.WeeklyLimitUSD, 0)
+	result.Monthly = makeDimension(subscription.MonthlyUsageUSD+estimated, group.MonthlyLimitUSD, 0)
 	result.Reasons = make([]string, 0, 3)
 	if result.Daily.Limit != nil && result.Daily.Used > *result.Daily.Limit {
 		result.Allowed = false
@@ -441,15 +451,19 @@ func checkQuotaAgainstGroup(subscription *UserSubscription, group *SubscriptionG
 	return result
 }
 
-func makeDimension(used float64, limit *float64) *QuotaDimension {
+// makeDimension builds a QuotaDimension for a usage window. nextRefresh is the
+// unix timestamp at which the window rolls over and usage resets to zero; pass
+// 0 when there is no meaningful window (e.g. the dimension is not applicable).
+func makeDimension(used float64, limit *float64, nextRefresh int64) *QuotaDimension {
 	remaining := 0.0
 	if limit != nil {
 		remaining = *limit - used
 	}
 	return &QuotaDimension{
-		Used:      used,
-		Limit:     limit,
-		Remaining: remaining,
+		Used:        used,
+		Limit:       limit,
+		Remaining:   remaining,
+		NextRefresh: nextRefresh,
 	}
 }
 

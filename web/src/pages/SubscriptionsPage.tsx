@@ -79,7 +79,7 @@ export function SubscriptionsPage() {
           </div>
         </div>
       ) : progress ? (
-        <SubscriptionProgressCard progress={progress} title="当前订阅" />
+        <SubscriptionProgressCard progress={progress} title={progress.subscription_name || "当前订阅"} />
       ) : (
         <EmptyState
           title="暂无活跃订阅"

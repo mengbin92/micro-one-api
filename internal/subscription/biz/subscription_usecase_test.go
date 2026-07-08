@@ -402,3 +402,118 @@ func TestAssignOrExtend_RenewalAfterExpiryStartsFromNow(t *testing.T) {
 		t.Fatalf("renewal expiry = %d, want %d (now+30d, no credit for expired time)", renewed.ExpiresAt, want)
 	}
 }
+
+func TestSubscriptionUsecase_GetProgressNextRefresh(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	group := &SubscriptionGroup{
+		Name:            "pro",
+		DisplayName:     "Pro 套餐",
+		Platform:        "openai",
+		Status:          SubscriptionGroupStatusEnabled,
+		DailyLimitUSD:   ptrFloat64(10),
+		WeeklyLimitUSD:  ptrFloat64(70),
+		MonthlyLimitUSD: ptrFloat64(300),
+	}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	// now is far in the future so the windows rolled at some point; we verify
+	// the next_refresh = window_start + period.
+	const nowSec = 1_000_000
+	uc := NewSubscriptionUsecase(repo, repo)
+	uc.now = func() time.Time { return time.Unix(nowSec, 0) }
+
+	if _, err := uc.Assign(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: group.ID, ExpiresAt: nowSec + 86400, SubscriptionName: "pro",
+	}); err != nil {
+		t.Fatalf("Assign() error = %v", err)
+	}
+
+	// Simulate usage so the windows are non-zero.
+	if err := uc.RecordUsage(context.Background(), 1, 2.5); err != nil {
+		t.Fatalf("RecordUsage() error = %v", err)
+	}
+
+	progress, err := uc.GetProgress(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetProgress() error = %v", err)
+	}
+
+	// Group display name surfaces for tooling / cc-switch "planName".
+	if progress.SubscriptionName != "Pro 套餐" {
+		t.Fatalf("subscription_name = %q, want %q", progress.SubscriptionName, "Pro 套餐")
+	}
+	if progress.GroupID != group.ID {
+		t.Fatalf("group_id = %d, want %d", progress.GroupID, group.ID)
+	}
+
+	// next_refresh = window_start + period. After Assign at nowSec the windows
+	// start at nowSec; RecordUsage rolls if needed but at nowSec the window is
+	// fresh so start stays nowSec.
+	dailySec := int64(quotaDailyWindow.Seconds())
+	weeklySec := int64(quotaWeeklyWindow.Seconds())
+	monthlySec := int64(quotaMonthlyWindow.Seconds())
+
+	if progress.DailyUsed.NextRefresh != nowSec+dailySec {
+		t.Fatalf("daily next_refresh = %d, want %d", progress.DailyUsed.NextRefresh, nowSec+dailySec)
+	}
+	if progress.WeeklyUsed.NextRefresh != nowSec+weeklySec {
+		t.Fatalf("weekly next_refresh = %d, want %d", progress.WeeklyUsed.NextRefresh, nowSec+weeklySec)
+	}
+	if progress.MonthlyUsed.NextRefresh != nowSec+monthlySec {
+		t.Fatalf("monthly next_refresh = %d, want %d", progress.MonthlyUsed.NextRefresh, nowSec+monthlySec)
+	}
+}
+
+func TestSubscriptionUsecase_GetProgressRollsWindowAndResetsNextRefresh(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	group := &SubscriptionGroup{
+		Name:           "pro",
+		Platform:       "openai",
+		Status:         SubscriptionGroupStatusEnabled,
+		DailyLimitUSD:  ptrFloat64(10),
+		WeeklyLimitUSD: ptrFloat64(70),
+	}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	// Assign at t0, then jump time past the daily window so it rolls.
+	const t0 = 1000
+	uc := NewSubscriptionUsecase(repo, repo)
+	uc.now = func() time.Time { return time.Unix(t0, 0) }
+	if _, err := uc.Assign(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: group.ID, ExpiresAt: t0 + 86400*60,
+	}); err != nil {
+		t.Fatalf("Assign() error = %v", err)
+	}
+	if err := uc.RecordUsage(context.Background(), 1, 2.5); err != nil {
+		t.Fatalf("RecordUsage() error = %v", err)
+	}
+
+	// Advance time past the daily window (25h later).
+	const nowSec = t0 + 25*3600
+	uc.now = func() time.Time { return time.Unix(nowSec, 0) }
+
+	progress, err := uc.GetProgress(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetProgress() error = %v", err)
+	}
+	// Daily usage should have rolled to 0.
+	if progress.DailyUsed.Used != 0 {
+		t.Fatalf("daily used = %v, want 0 after roll", progress.DailyUsed.Used)
+	}
+	// After rolling, the new window starts at nowSec, so next_refresh = nowSec + 24h.
+	dailySec := int64(quotaDailyWindow.Seconds())
+	if progress.DailyUsed.NextRefresh != nowSec+dailySec {
+		t.Fatalf("daily next_refresh = %d, want %d (rolled window)", progress.DailyUsed.NextRefresh, nowSec+dailySec)
+	}
+	// Weekly window did NOT roll (25h < 7d); usage persists and next_refresh is
+	// still the original window_start (t0) + 7d.
+	if progress.WeeklyUsed.Used != 2.5 {
+		t.Fatalf("weekly used = %v, want 2.5 (not rolled)", progress.WeeklyUsed.Used)
+	}
+	weeklySec := int64(quotaWeeklyWindow.Seconds())
+	if progress.WeeklyUsed.NextRefresh != t0+weeklySec {
+		t.Fatalf("weekly next_refresh = %d, want %d", progress.WeeklyUsed.NextRefresh, t0+weeklySec)
+	}
+}

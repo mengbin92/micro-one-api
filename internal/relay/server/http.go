@@ -1716,6 +1716,111 @@ func (s *HTTPServer) handleUsage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleSubscriptionUsage returns the authenticated user's active subscription
+// usage (daily/weekly/monthly used/limit/remaining + next refresh timestamps).
+// It is the API-key-authenticated counterpart to the admin
+// /api/v1/subscriptions/progress endpoint, exposed on the relay gateway so
+// external tools (e.g. cc-switch) can query a subscription plan's usage with
+// the same API key they already use for /v1/chat/completions.
+//
+// Response shape (non-subscription / no active subscription returns success:false
+// with an explanatory message so callers can distinguish "no subscription" from
+// a real error):
+//
+//	{
+//	  "success": true,
+//	  "isValid": true,
+//	  "is_active": true,
+//	  "status": "active",
+//	  "mode": "subscription",
+//	  "planName": "<group display name>",
+//	  "unit": "USD",
+//	  "data": {
+//	    "id": 7, "status": "active", "starts_at": ..., "expires_at": ...,
+//	    "group_id": ..., "subscription_name": "...", "remaining_seconds": ...,
+//	    "daily_used":   {"used":..,"limit":..,"remaining":..,"next_refresh":..},
+//	    "weekly_used":  {"used":..,"limit":..,"remaining":..,"next_refresh":..},
+//	    "monthly_used": {"used":..,"limit":..,"remaining":..,"next_refresh":..}
+//	  }
+//	}
+func (s *HTTPServer) handleSubscriptionUsage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing authorization header")
+		return
+	}
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		s.writeError(w, http.StatusUnauthorized, "invalid authorization header format")
+		return
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	if token == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing token")
+		return
+	}
+
+	authSnapshot, err := s.getAuthSnapshot(r.Context(), token)
+	if err != nil {
+		s.handleIdentityError(w, err)
+		return
+	}
+	if !authSnapshot.GetUserEnabled() || !authSnapshot.GetTokenEnabled() {
+		s.writeError(w, http.StatusForbidden, "user or token disabled")
+		return
+	}
+
+	if s.subscriptionUsecase == nil {
+		// Subscriptions are not enabled on this deployment. Report a structured
+		// success:false so tooling can surface "no subscription" rather than a
+		// hard 5xx.
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success":  false,
+			"isValid":  false,
+			"is_active": false,
+			"mode":     "subscription",
+			"message":  "subscription service not configured",
+		})
+		return
+	}
+
+	progress, err := s.subscriptionUsecase.GetProgress(r.Context(), authSnapshot.UserId)
+	if err != nil || progress == nil {
+		// No active subscription is a normal state for a wallet-only user; return
+		// success:false instead of an error status so cc-switch-style tools render
+		// "no subscription" rather than a failure banner.
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success":   false,
+			"isValid":   false,
+			"is_active": false,
+			"mode":      "subscription",
+			"message":   "no active subscription",
+			"user_id":   strconv.FormatInt(authSnapshot.UserId, 10),
+		})
+		return
+	}
+
+	planName := progress.SubscriptionName
+	if planName == "" {
+		planName = fmt.Sprintf("subscription #%d", progress.ID)
+	}
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success":   true,
+		"isValid":   progress.Status == subscriptionbiz.SubscriptionStatusActive,
+		"is_active": progress.Status == subscriptionbiz.SubscriptionStatusActive,
+		"status":    string(progress.Status),
+		"mode":      "subscription",
+		"planName":  planName,
+		"unit":      "USD",
+		"user_id":   strconv.FormatInt(authSnapshot.UserId, 10),
+		"data":      progress,
+	})
+}
+
 func amountUnitsToUSD(amount int64) float64 {
 	return float64(amount) / float64(amountUnitsPerUSD)
 }

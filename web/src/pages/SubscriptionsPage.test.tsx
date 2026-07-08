@@ -31,7 +31,8 @@ describe('SubscriptionsPage', () => {
             status: 'active',
             starts_at: 1700000000,
             expires_at: 1800000000,
-            daily_used: { used: 5, limit: 10, remaining: 5 },
+            daily_used: { used: 5, limit: 10, remaining: 5, next_refresh: 1800000000 },
+            monthly_used: { used: 20, limit: 100, remaining: 80, next_refresh: 1800000000 },
             weekly_used: { used: 2, limit: null, remaining: 0 },
             monthly_used: { used: 20, limit: 100, remaining: 80 },
             remaining_seconds: 86400 * 3,
@@ -52,6 +53,8 @@ describe('SubscriptionsPage', () => {
     expect(screen.getByText('$5.00 / $10.00')).toBeInTheDocument();
     expect(screen.getByText('无限制')).toBeInTheDocument(); // weekly limit null
     expect(screen.getByText('剩余 3 天')).toBeInTheDocument();
+    // next_refresh label should render for daily & monthly dimensions.
+    expect(screen.getAllByText(/后刷新/).length).toBeGreaterThan(0);
   });
 
   it('renders tiny subscription usage without rounding it to zero', async () => {

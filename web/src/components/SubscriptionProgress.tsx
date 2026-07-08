@@ -8,6 +8,10 @@ export interface QuotaDimension {
   used: number;
   limit: number | null;
   remaining: number;
+  // Unix epoch seconds at which this window resets and usage rolls back to
+  // zero. Mirrors QuotaDimension.NextRefresh on the backend. Optional so old
+  // cached responses (pre-field) still type-check.
+  next_refresh?: number;
 }
 
 // Mirrors subscription.biz.SubscriptionProgress JSON tags. The endpoint returns
@@ -17,6 +21,8 @@ export interface SubscriptionProgressData {
   status: string;
   starts_at: number;
   expires_at: number;
+  group_id?: number;
+  subscription_name?: string;
   daily_used: QuotaDimension | null;
   weekly_used: QuotaDimension | null;
   monthly_used: QuotaDimension | null;
@@ -46,10 +52,23 @@ function barColorClass(ratio: number) {
   return 'bg-emerald-500';
 }
 
+function formatNextRefresh(ts?: number): string | null {
+  if (!ts || ts <= 0) return null;
+  const diffMs = ts * 1000 - Date.now();
+  if (diffMs <= 0) return null;
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  if (days >= 1) return `${days}天${hours}h后刷新`;
+  if (hours >= 1) return `${hours}h${minutes}m后刷新`;
+  return `${minutes}m后刷新`;
+}
+
 function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimension | null }) {
   if (!dimension) return null;
   const unlimited = dimension.limit == null;
   const ratio = usageRatio(dimension.used, dimension.limit);
+  const refreshLabel = formatNextRefresh(dimension.next_refresh);
 
   return (
     <div className="flex items-center gap-3">
@@ -71,6 +90,11 @@ function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimensi
             {formatUsd(dimension.used)} / {formatUsd(dimension.limit ?? 0)}
           </span>
         </>
+      )}
+      {refreshLabel && (
+        <span className="w-24 shrink-0 whitespace-nowrap text-right text-[10px] text-muted-foreground/70">
+          {refreshLabel}
+        </span>
       )}
     </div>
   );

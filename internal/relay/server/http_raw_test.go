@@ -2042,3 +2042,173 @@ func TestHTTPServerRouteMiddlewareWrapsRegisteredRoutes(t *testing.T) {
 		t.Fatal("route middleware was not called")
 	}
 }
+
+func ptrFloat64Relay(v float64) *float64 { return &v }
+
+func TestHTTPServerSubscriptionUsageReturnsProgressForAPIKey(t *testing.T) {
+	repo := subscriptiondata.NewMemoryRepositoryForTest()
+	group := &subscriptionbiz.SubscriptionGroup{
+		Name:            "pro",
+		DisplayName:     "Pro 套餐",
+		Platform:        "openai",
+		Status:          subscriptionbiz.SubscriptionGroupStatusEnabled,
+		DailyLimitUSD:   ptrFloat64Relay(10),
+		WeeklyLimitUSD:  ptrFloat64Relay(70),
+		MonthlyLimitUSD: ptrFloat64Relay(300),
+	}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	uc := subscriptionbiz.NewSubscriptionUsecase(repo, repo)
+	expires := time.Now().Add(30 * 24 * time.Hour).Unix()
+	if _, err := uc.Assign(context.Background(), &subscriptionbiz.AssignSubscriptionRequest{
+		UserID: 42, GroupID: group.ID, ExpiresAt: expires, SubscriptionName: "pro",
+	}); err != nil {
+		t.Fatalf("Assign() error = %v", err)
+	}
+	if err := uc.RecordUsage(context.Background(), 42, 1.5); err != nil {
+		t.Fatalf("RecordUsage() error = %v", err)
+	}
+
+	httpServer := NewHTTPServer(
+		rawIdentityClient{userIDByToken: map[string]int64{"sub-token": 42}},
+		nil, nil, nil, nil,
+	)
+	httpServer.SetSubscriptionUsecase(uc)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscription/usage", nil)
+	req.Header.Set("Authorization", "Bearer sub-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Success bool   `json:"success"`
+		Mode    string `json:"mode"`
+		Plan    string `json:"planName"`
+		Unit    string `json:"unit"`
+		Data    struct {
+			Status         string `json:"status"`
+			SubscriptionName string `json:"subscription_name"`
+			DailyUsed      struct {
+				Used        float64 `json:"used"`
+				Limit       *float64 `json:"limit"`
+				Remaining   float64 `json:"remaining"`
+				NextRefresh int64   `json:"next_refresh"`
+			} `json:"daily_used"`
+			WeeklyUsed struct {
+				NextRefresh int64 `json:"next_refresh"`
+			} `json:"weekly_used"`
+			MonthlyUsed struct {
+				NextRefresh int64 `json:"next_refresh"`
+			} `json:"monthly_used"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v, body=%s", err, rec.Body.String())
+	}
+	if !body.Success || body.Mode != "subscription" {
+		t.Fatalf("unexpected envelope: %+v", body)
+	}
+	if body.Plan != "Pro 套餐" {
+		t.Fatalf("planName = %q, want %q", body.Plan, "Pro 套餐")
+	}
+	if body.Data.Status != "active" {
+		t.Fatalf("status = %q, want active", body.Data.Status)
+	}
+	if body.Data.DailyUsed.Used != 1.5 {
+		t.Fatalf("daily used = %v, want 1.5", body.Data.DailyUsed.Used)
+	}
+	if body.Data.DailyUsed.NextRefresh <= 0 {
+		t.Fatalf("daily next_refresh = %d, want > 0", body.Data.DailyUsed.NextRefresh)
+	}
+	if body.Data.WeeklyUsed.NextRefresh <= 0 {
+		t.Fatalf("weekly next_refresh = %d, want > 0", body.Data.WeeklyUsed.NextRefresh)
+	}
+	if body.Data.MonthlyUsed.NextRefresh <= 0 {
+		t.Fatalf("monthly next_refresh = %d, want > 0", body.Data.MonthlyUsed.NextRefresh)
+	}
+}
+
+func TestHTTPServerSubscriptionUsageNoActiveSubscription(t *testing.T) {
+	repo := subscriptiondata.NewMemoryRepositoryForTest()
+	uc := subscriptionbiz.NewSubscriptionUsecase(repo, repo)
+
+	httpServer := NewHTTPServer(
+		rawIdentityClient{userIDByToken: map[string]int64{"wallet-token": 42}},
+		nil, nil, nil, nil,
+	)
+	httpServer.SetSubscriptionUsecase(uc)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscription/usage", nil)
+	req.Header.Set("Authorization", "Bearer wallet-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (no subscription is not an error), body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Success  bool   `json:"success"`
+		IsActive bool   `json:"is_active"`
+		Message  string `json:"message"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v, body=%s", err, rec.Body.String())
+	}
+	if body.Success || body.IsActive {
+		t.Fatalf("expected success:false is_active:false for no subscription, got %+v", body)
+	}
+	if body.Message != "no active subscription" {
+		t.Fatalf("message = %q, want %q", body.Message, "no active subscription")
+	}
+}
+
+func TestHTTPServerSubscriptionUsageWithoutBearerReturns401(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscription/usage", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestHTTPServerSubscriptionUsageNotConfiguredReturnsStructuredFalse(t *testing.T) {
+	// subscriptionUsecase is nil (subscriptions disabled on this deployment).
+	httpServer := NewHTTPServer(
+		rawIdentityClient{userIDByToken: map[string]int64{"any-token": 1}},
+		nil, nil, nil, nil,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscription/usage", nil)
+	req.Header.Set("Authorization", "Bearer any-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (not configured is structured, not 5xx)", rec.Code)
+	}
+	var body struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v, body=%s", err, rec.Body.String())
+	}
+	if body.Success {
+		t.Fatalf("expected success:false when subscriptions not configured, got %+v", body)
+	}
+}

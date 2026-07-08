@@ -28,6 +28,7 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	s.handleFunc(srv, "/v1/responses", s.handleResponsesRelay)
 	srv.HandlePrefix("/v1/responses/", http.HandlerFunc(s.handleResponsesRelay))
 	s.handleFunc(srv, "/v1/usage", s.handleUsage)
+	s.handleFunc(srv, "/v1/subscription/usage", s.handleSubscriptionUsage)
 	srv.HandleFunc("/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
 	srv.HandlePrefix("/v1/engines/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("engines")))
 	srv.HandleFunc("/v1/files", s.handleUnsupportedOpenAIRoute("files"))

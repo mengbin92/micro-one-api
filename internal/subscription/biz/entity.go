@@ -77,6 +77,10 @@ type QuotaDimension struct {
 	Used      float64  `json:"used"`
 	Limit     *float64 `json:"limit"`
 	Remaining float64  `json:"remaining"`
+	// NextRefresh is the unix timestamp at which this window resets and the
+	// usage counter rolls back to zero. Zero when the window has already
+	// rolled (the next reset is "now") or when the dimension is nil/unused.
+	NextRefresh int64 `json:"next_refresh"`
 }
 
 type QuotaCheckResult struct {
@@ -92,6 +96,8 @@ type SubscriptionProgress struct {
 	Status           SubscriptionStatus `json:"status"`
 	StartsAt         int64              `json:"starts_at"`
 	ExpiresAt        int64              `json:"expires_at"`
+	GroupID          int64              `json:"group_id"`
+	SubscriptionName string             `json:"subscription_name"`
 	DailyUsed        *QuotaDimension    `json:"daily_used"`
 	WeeklyUsed       *QuotaDimension    `json:"weekly_used"`
 	MonthlyUsed      *QuotaDimension    `json:"monthly_used"`
