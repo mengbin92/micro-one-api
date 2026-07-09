@@ -237,4 +237,3 @@ SELECT subscription_account_id,reservation_id,cost_source,cost_usd,charged_usd,r
 >
 > 生产环境**必须**显式设置这三个环境变量为 `true` 才能让阶段2治理生效。
 > 不开启时：fixed 策略账号不会自动重置、codex 耗尽账号不会自动恢复、额度告警不投递。
-

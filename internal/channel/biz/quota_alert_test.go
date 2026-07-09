@@ -158,5 +158,3 @@ func TestQuotaAlertEvaluator_WritebackDownAlert(t *testing.T) {
 		t.Fatalf("notifications = %d, want 1", len(notifier.notifications))
 	}
 }
-
-
