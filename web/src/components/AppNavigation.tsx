@@ -282,12 +282,10 @@ export function AppNavigation() {
     <div className="flex h-full flex-col bg-white dark:bg-card">
       <div className="flex h-20 items-center border-b border-slate-200 px-6 dark:border-white/10">
         <div className="flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-xl bg-slate-950 text-lg font-black text-white dark:bg-white dark:text-slate-950">
-            M
-          </div>
+          <img src="/logo-icon.svg" alt="" aria-hidden="true" className="size-10 shrink-0 rounded-xl" />
           <div>
-            <div className="text-xl font-black tracking-normal text-slate-950 dark:text-white">Micro API</div>
-            <div className="text-xs font-semibold text-slate-400">Console</div>
+            <div className="text-lg font-black tracking-normal text-slate-950 dark:text-white">Micro-One API</div>
+            <div className="text-xs font-semibold text-slate-400">Gateway Console</div>
           </div>
         </div>
       </div>

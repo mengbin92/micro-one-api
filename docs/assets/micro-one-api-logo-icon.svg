@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
-  <title id="title">Micro-One-API</title>
-  <desc id="desc">Micro-One-API gateway logo icon.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Micro-One-API logo icon</title>
+  <desc id="desc">A central API gateway mark routing requests between microservice nodes and upstream model providers.</desc>
   <defs>
     <linearGradient id="bg" x1="38" y1="20" x2="218" y2="236" gradientUnits="userSpaceOnUse">
       <stop stop-color="#10364a"/>
@@ -12,12 +12,17 @@
       <stop offset="0.52" stop-color="#95f0d0"/>
       <stop offset="1" stop-color="#f4b34e"/>
     </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#071721" flood-opacity="0.28"/>
+    </filter>
   </defs>
   <rect width="256" height="256" rx="56" fill="url(#bg)"/>
   <path d="M60 94H92C106 94 113 101 122 113L134 128L122 143C113 155 106 162 92 162H60" fill="none" stroke="url(#route)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M196 94H164C150 94 143 101 134 113L122 128L134 143C143 155 150 162 164 162H196" fill="none" stroke="url(#route)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="102" y="78" width="52" height="100" rx="20" fill="#f8fbff"/>
-  <path d="M128 101V155" stroke="#123242" stroke-width="14" stroke-linecap="round"/>
+  <g filter="url(#softShadow)">
+    <rect x="102" y="78" width="52" height="100" rx="20" fill="#f8fbff"/>
+    <path d="M128 101V155" stroke="#123242" stroke-width="14" stroke-linecap="round"/>
+  </g>
   <circle cx="60" cy="94" r="13" fill="#65b7ff"/>
   <circle cx="60" cy="162" r="13" fill="#65b7ff"/>
   <circle cx="196" cy="94" r="13" fill="#95f0d0"/>

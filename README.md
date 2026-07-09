@@ -1,10 +1,12 @@
 # micro-one-api
 
+![Micro-One-API logo](./docs/assets/micro-one-api-logo-wordmark.svg)
+
 `micro-one-api` 是一个基于 Go Kratos 的多服务 AI API 网关与管理系统。项目参考了 [one-api](https://github.com/songquanpeng/one-api) 的多渠道 OpenAI API 分发思路，也参考了 [sub2api](https://github.com/Wei-Shaw/sub2api) 对订阅额度窗口、账号池、限流和用量管理的设计方向，并将核心能力拆分为更清晰的微服务边界。
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**:[v0.4.0 / v0.5.0 联合发布公告](./docs/release-v0.4.0-v0.5.0.md)(订阅账号实现、套餐购买闭环与额度治理) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.5.0)
+> 📣 **最新发布**:[v0.6.0 发布公告](./docs/release-v0.6.0.md)(订阅用量查询、套餐生命周期、账号治理与发布可运维性) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.6.0)
 
 ## 功能概览
 
@@ -13,11 +15,13 @@
 - 多供应商适配：支持 OpenAI-compatible 渠道，并包含 Anthropic、Gemini、Azure、VoyageAI 等 provider 适配器；DeepSeek、Moonshot、Groq、Tongyi、OpenRouter、SiliconFlow、Ollama、Doubao 等按 OpenAI-compatible 方式转发。
 - 用户与令牌管理：支持用户鉴权、令牌状态、过期时间、余额检查、模型权限和用户角色控制。
 - 钱包与账务：提供金额预扣、释放、结算、ledger、兑换码、支付订单和用量记录等能力。
+- 订阅套餐与用量查询：支持订阅套餐购买、续费、退款/冲正、购买时套餐快照，以及 API Key 鉴权的 `/v1/subscription/usage` 查询（额度、已用量、剩余额度和下次刷新时间）。
+- 订阅账号治理：支持订阅账号本地额度、fixed daily/weekly 重置、账号恢复、额度告警、单用户单 active 订阅约束和多副本幂等治理记录。
 - 成本与利润分析：`billing_ledgers` 记录上游成本，账本聚合支持收入/成本/毛利维度，可按模型、渠道、用户、Token、时间下钻。
 - 多维用量聚合：用量统计改为 SQL `GROUP BY` 聚合（按用户/渠道/模型/Token/分组/小时|日），告别 admin 抽样估算。
 - 对账与告警：`RunReconciliation` 覆盖账户余额、渠道用量、ledger/log 双写一致性；差异通过 `notify-worker` 投递通知（可配置收件人）。
 - 成本健康 dashboard：管理后台展示成本/毛利/渠道余额健康指标；用量统计与账本支持缓存 token（`cache_read_tokens`）与命中率展示。
-- 管理后台：提供 React/Vite 前端和 `admin-api` BFF，用于管理用户、令牌、渠道、订单、兑换码、用量和系统配置。
+- 管理后台：提供 React/Vite 前端和 `admin-api` BFF，用于管理用户、令牌、渠道、订阅套餐、订单、兑换码、用量和系统配置。
 - 监控与日志：提供健康检查、Prometheus metrics、业务日志聚合、监控 worker 和通知 worker；对账任务与渠道健康探测暴露运行次数、耗时和失败原因指标。
 - 部署形态：支持本地开发、Docker Compose 和 Kubernetes 部署。
 
@@ -112,6 +116,20 @@ make web-dist
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
 
+### 升级到 v0.6.0
+
+v0.6.0 新增数据库迁移 `057-059`，覆盖支付订单套餐快照、订阅订单关联、fixed 策略额度重置运行记录和单用户单 active 订阅唯一约束。升级前请先备份数据库，并检查是否存在重复 active subscription：
+
+```sql
+SELECT user_id, COUNT(*) AS active_count
+FROM user_subscriptions
+WHERE status = 'active'
+GROUP BY user_id
+HAVING COUNT(*) > 1;
+```
+
+迁移与验证步骤见 [docs/release-v0.6.0.md](./docs/release-v0.6.0.md)。
+
 ## API 示例
 
 ### 健康检查
@@ -126,6 +144,15 @@ curl http://localhost:8080/healthz
 curl -H "Authorization: Bearer ${API_TOKEN}" \
   http://localhost:8080/v1/models
 ```
+
+### 订阅用量查询
+
+```bash
+curl -H "Authorization: Bearer ${API_TOKEN}" \
+  http://localhost:8080/v1/subscription/usage
+```
+
+该接口返回当前用户订阅状态、日/周/月额度、已用量、剩余额度和下次刷新时间。详细字段见 [docs/subscription-usage-api.md](./docs/subscription-usage-api.md)。
 
 ### Chat Completions
 
@@ -180,6 +207,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `CHANNEL_HEALTH_ALERT_ENABLED` | 渠道健康状态首次进入 `unavailable` 时是否投递通知 |
 | `CHANNEL_HEALTH_ALERT_NOTIFY_TYPE` | 渠道不可用告警通知类型，支持 `event` / `webhook` / `email` / `wecom` / `dingtalk` / `feishu` / `slack` |
 | `CHANNEL_HEALTH_ALERT_RECIPIENTS` | 渠道不可用告警目标，JSON 数组；webhook/event 可填 URL 或留空走 `NOTIFY_WEBHOOK_URL`，email 填邮箱，IM 通道留空走对应配置 |
+| `SUBSCRIPTION_USER_RPM_LIMIT` | relay 订阅用户 RPM 限制；默认 `0` 表示关闭，避免无配置时误限流 |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` / `RATE_LIMIT_BURST` | 网关限流参数 |
 | `CORS_ALLOWED_ORIGINS` | CORS 允许来源 |
 | `ADMIN_WEB_ROOT` | admin-api 使用的外部前端构建目录 |
@@ -191,7 +219,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `NOTIFY_WEBHOOK_URL` | notify-worker 默认 webhook 投递地址 |
 | `NOTIFY_SMTP_HOST` / `NOTIFY_SMTP_PORT` / `NOTIFY_SMTP_USER` / `NOTIFY_SMTP_PASS` / `NOTIFY_SMTP_FROM` | notify-worker 邮件投递配置 |
 
-Prometheus 指标通过各服务 `/metrics` 暴露。订阅系统新增 `micro_one_api_subscription_quota_checks_total`、`micro_one_api_subscription_usage_records_total`，relay 订阅账号路径新增 `micro_one_api_relay_subscription_adaptor_requests_total`、`micro_one_api_relay_subscription_failover_total`、`micro_one_api_relay_runtime_blocks_total`、`micro_one_api_relay_upstream_passthrough_total`、`micro_one_api_relay_codex_quota_snapshots_total`、`micro_one_api_relay_codex_quota_used_percent`。
+Prometheus 指标通过各服务 `/metrics` 暴露。订阅系统新增 `micro_one_api_subscription_quota_checks_total`、`micro_one_api_subscription_usage_records_total`，relay 订阅账号路径新增 `micro_one_api_relay_subscription_adaptor_requests_total`、`micro_one_api_relay_subscription_failover_total`、`micro_one_api_relay_runtime_blocks_total`、`micro_one_api_relay_upstream_passthrough_total`、`micro_one_api_relay_codex_quota_snapshots_total`、`micro_one_api_relay_codex_quota_used_percent`。v0.6.0 起，订阅账号治理还暴露额度重置、账号恢复和额度告警相关指标，详见 [docs/subscription-account-ops-runbook.md](./docs/subscription-account-ops-runbook.md)。
 
 更多配置见 [.env.example](./.env.example) 和 [docs/deployment.md](./docs/deployment.md)。
 
