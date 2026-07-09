@@ -138,6 +138,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	// Static assets bundled by Vite
 	srv.HandlePrefix("/assets/", http.HandlerFunc(handlePage))
 	srv.HandleFunc("/favicon.svg", handlePage)
+	srv.HandleFunc("/logo-icon.svg", handlePage)
+	srv.HandleFunc("/logo-wordmark.svg", handlePage)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
 	})

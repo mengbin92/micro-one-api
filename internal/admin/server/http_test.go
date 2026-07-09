@@ -972,6 +972,9 @@ func TestAdminHTTPPageUsesExternalWebRoot(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(webRoot, "assets", "app.js"), []byte(`console.log("external asset")`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(webRoot, "logo-icon.svg"), []byte(`<svg id="logo-icon"></svg>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	srv := NewHTTPServer(":0", nil, "", webRoot)
 
@@ -980,6 +983,9 @@ func TestAdminHTTPPageUsesExternalWebRoot(t *testing.T) {
 	}
 	if body := adminHTTPGetBody(t, srv, "/assets/app.js"); !strings.Contains(body, `external asset`) {
 		t.Fatalf("expected external asset, got: %s", body)
+	}
+	if body := adminHTTPGetBody(t, srv, "/logo-icon.svg"); !strings.Contains(body, `logo-icon`) {
+		t.Fatalf("expected external logo asset, got: %s", body)
 	}
 }
 
