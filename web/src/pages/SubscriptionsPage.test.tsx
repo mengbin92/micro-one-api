@@ -22,6 +22,7 @@ describe('SubscriptionsPage', () => {
   });
 
   it('renders daily/weekly/monthly quota bars for the active subscription', async () => {
+    const futureRefresh = Math.floor(Date.now() / 1000) + 3600;
     server.use(
       http.get('/api/v1/subscriptions/progress', () =>
         HttpResponse.json({
@@ -31,8 +32,8 @@ describe('SubscriptionsPage', () => {
             status: 'active',
             starts_at: 1700000000,
             expires_at: 1800000000,
-            daily_used: { used: 5, limit: 10, remaining: 5, next_refresh: 1800000000 },
-            monthly_used: { used: 20, limit: 100, remaining: 80, next_refresh: 1800000000 },
+            daily_used: { used: 5, limit: 10, remaining: 5, next_refresh: futureRefresh },
+            monthly_used: { used: 20, limit: 100, remaining: 80, next_refresh: futureRefresh },
             weekly_used: { used: 2, limit: null, remaining: 0 },
             remaining_seconds: 86400 * 3,
           },

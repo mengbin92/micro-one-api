@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -2045,6 +2046,15 @@ func TestHTTPServerRouteMiddlewareWrapsRegisteredRoutes(t *testing.T) {
 
 func ptrFloat64Relay(v float64) *float64 { return &v }
 
+type failingSubscriptionRepo struct {
+	subscriptionbiz.SubscriptionRepository
+	err error
+}
+
+func (r failingSubscriptionRepo) GetActiveSubscriptionByUser(context.Context, int64) (*subscriptionbiz.UserSubscription, error) {
+	return nil, r.err
+}
+
 func TestHTTPServerSubscriptionUsageReturnsProgressForAPIKey(t *testing.T) {
 	repo := subscriptiondata.NewMemoryRepositoryForTest()
 	group := &subscriptionbiz.SubscriptionGroup{
@@ -2092,13 +2102,13 @@ func TestHTTPServerSubscriptionUsageReturnsProgressForAPIKey(t *testing.T) {
 		Plan    string `json:"planName"`
 		Unit    string `json:"unit"`
 		Data    struct {
-			Status         string `json:"status"`
+			Status           string `json:"status"`
 			SubscriptionName string `json:"subscription_name"`
-			DailyUsed      struct {
-				Used        float64 `json:"used"`
+			DailyUsed        struct {
+				Used        float64  `json:"used"`
 				Limit       *float64 `json:"limit"`
-				Remaining   float64 `json:"remaining"`
-				NextRefresh int64   `json:"next_refresh"`
+				Remaining   float64  `json:"remaining"`
+				NextRefresh int64    `json:"next_refresh"`
 			} `json:"daily_used"`
 			WeeklyUsed struct {
 				NextRefresh int64 `json:"next_refresh"`
@@ -2167,6 +2177,31 @@ func TestHTTPServerSubscriptionUsageNoActiveSubscription(t *testing.T) {
 	}
 	if body.Message != "no active subscription" {
 		t.Fatalf("message = %q, want %q", body.Message, "no active subscription")
+	}
+}
+
+func TestHTTPServerSubscriptionUsageRepositoryErrorReturnsBadGateway(t *testing.T) {
+	repo := subscriptiondata.NewMemoryRepositoryForTest()
+	uc := subscriptionbiz.NewSubscriptionUsecase(
+		failingSubscriptionRepo{SubscriptionRepository: repo, err: errors.New("database unavailable")},
+		repo,
+	)
+
+	httpServer := NewHTTPServer(
+		rawIdentityClient{userIDByToken: map[string]int64{"sub-token": 42}},
+		nil, nil, nil, nil,
+	)
+	httpServer.SetSubscriptionUsecase(uc)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/subscription/usage", nil)
+	req.Header.Set("Authorization", "Bearer sub-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502, body=%s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -1779,17 +1779,21 @@ func (s *HTTPServer) handleSubscriptionUsage(w http.ResponseWriter, r *http.Requ
 		// success:false so tooling can surface "no subscription" rather than a
 		// hard 5xx.
 		s.writeJSON(w, http.StatusOK, map[string]interface{}{
-			"success":  false,
-			"isValid":  false,
+			"success":   false,
+			"isValid":   false,
 			"is_active": false,
-			"mode":     "subscription",
-			"message":  "subscription service not configured",
+			"mode":      "subscription",
+			"message":   "subscription service not configured",
 		})
 		return
 	}
 
 	progress, err := s.subscriptionUsecase.GetProgress(r.Context(), authSnapshot.UserId)
-	if err != nil || progress == nil {
+	if err != nil && !stderrors.Is(err, subscriptionbiz.ErrSubscriptionNotFound) {
+		s.writeError(w, http.StatusBadGateway, "subscription service error")
+		return
+	}
+	if progress == nil {
 		// No active subscription is a normal state for a wallet-only user; return
 		// success:false instead of an error status so cc-switch-style tools render
 		// "no subscription" rather than a failure banner.

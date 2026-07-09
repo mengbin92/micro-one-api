@@ -71,7 +71,7 @@ function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimensi
   const refreshLabel = formatNextRefresh(dimension.next_refresh);
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
       <span className="w-10 shrink-0 text-xs font-medium text-muted-foreground">{label}</span>
       {unlimited ? (
         <div className="flex flex-1 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
@@ -92,7 +92,7 @@ function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimensi
         </>
       )}
       {refreshLabel && (
-        <span className="w-24 shrink-0 whitespace-nowrap text-right text-[10px] text-muted-foreground/70">
+        <span className="ml-auto w-24 shrink-0 whitespace-nowrap text-right text-[10px] text-muted-foreground/70 sm:ml-0">
           {refreshLabel}
         </span>
       )}
