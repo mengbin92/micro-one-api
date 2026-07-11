@@ -172,7 +172,8 @@ run-channel:
 .PHONY: run-relay
 # run relay-gateway
 run-relay:
-	CONF_PATH=./cmd/relay-gateway/configs/config.yaml \
+	CONF_PATH=./configs/config.yaml \
+	MODELS_PATH=./configs/models.yaml \
 	IDENTITY_GRPC_ENDPOINT=127.0.0.1:9001 \
 	CHANNEL_GRPC_ENDPOINT=127.0.0.1:9002 \
 	RELAY_HTTP_ADDR=:8080 \

@@ -28,7 +28,7 @@ retry:
     - 502
     - 503
 models:
-  path: /configs/models.yaml
+  path: ${MODELS_PATH:-/configs/models.yaml}
 
 # Hybrid adaptor layer: routes subscription-account (Codex/Claude OAuth)
 # channel types through the OAuth adaptor path instead of the default

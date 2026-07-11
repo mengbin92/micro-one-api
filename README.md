@@ -189,7 +189,8 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 | 变量 | 说明 |
 |------|------|
-| `CONF_PATH` | 服务配置文件路径，例如 `configs/relay-gateway.yaml` |
+| `CONF_PATH` | 服务配置文件路径，例如 `configs/config.yaml` |
+| `MODELS_PATH` | relay-gateway 模型映射配置路径；本地可设为 `configs/models.yaml` |
 | `DATABASE_DSN` | MySQL 连接字符串 |
 | `REDIS_ADDR` / `REDIS_PASSWORD` | Redis 地址与密码 |
 | `JWT_SECRET_KEY` | 用户登录和鉴权相关密钥 |

@@ -151,7 +151,7 @@ kubectl logs -f deployment/relay-gateway -n one-api
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `CONF_PATH` | 配置文件路径 | `configs/<service>.yaml` |
+| `CONF_PATH` | 配置文件路径 | 容器内为 `/configs/config.yaml`；本地为 `app/<service>/configs/config.yaml` |
 | `DATABASE_DSN` | MySQL 连接字符串 | - |
 | `REDIS_ADDR` | Redis 地址 | - |
 | `LOG_LEVEL` | 日志级别 | `info` |

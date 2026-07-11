@@ -3466,7 +3466,7 @@ func newNotifyWorkerProxy() *httputil.ReverseProxy {
 func newChannelHTTPProxy() *httputil.ReverseProxy {
 	endpoint := os.Getenv("CHANNEL_HTTP_ENDPOINT")
 	if endpoint == "" {
-		// Default to channel-service's HTTP port (see configs/channel-service.yaml).
+		// Default to channel-service's HTTP port (see app/channel/configs/config.yaml).
 		endpoint = "http://channel-service:8002"
 	}
 	target, err := parseReverseProxyTarget(endpoint)

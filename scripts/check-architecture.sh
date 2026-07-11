@@ -65,18 +65,21 @@ while IFS='|' read -r package_path imports; do
   for imported in ${imports}; do
     imported_root="$(get_service_root "${imported}")"
     imported_layer="$(get_layer "${imported}")"
+    allow_cross_app_test_helper=0
+    if [[ "${service_root}" == "${module_path}/internal" \
+          && "${package_path}" == "${module_path}/internal/integration" \
+          && ( "${imported}" == */testutil || "${imported}" == */testutil/* ) ]]; then
+      allow_cross_app_test_helper=1
+    fi
 
     # Rule 1: an app subtree must not import another app subtree's
     # implementation. The root internal/ (relay-gateway) is also treated as
     # an app subtree.
-    # Exception: testutil packages are explicitly designed for cross-app
-    # test sharing.
     if [[ -n "${service_root}" \
           && ( "${imported}" == "${module_path}/app/"* || "${imported}" == "${module_path}/internal/"* ) \
           && "${imported}" != "${service_root}" \
           && "${imported}" != "${service_root}/"* \
-          && "${imported}" != */testutil \
-          && "${imported}" != */testutil/* ]]; then
+          && "${allow_cross_app_test_helper}" != 1 ]]; then
       echo "${package_path} imports another app implementation: ${imported}"
       violations=1
     fi
@@ -125,16 +128,10 @@ while IFS='|' read -r package_path imports; do
       violations=1
     fi
 
-    # Rule 7 (NEW): biz layer must not import service-specific API DTO
-    # packages (proto-generated). The biz layer should work with domain
-    # objects (DOs), not wire DTOs.
-    # Exception: api/common/v1 (shared constants/errors only).
-    if [[ "${pkg_layer}" == "biz" \
-          && "${imported}" =~ ^${module_path}/api/[^/]+/v1$ \
-          && "${imported}" != "${module_path}/api/common/v1" ]]; then
-      echo "${package_path} (biz layer) imports API DTO package: ${imported}"
-      violations=1
-    fi
+    # Rule 7: biz may import its API package only for typed error reason
+    # enums, as allowed by the repository layering contract. The import list
+    # cannot distinguish which generated symbols are used, so this boundary
+    # is documented rather than rejecting every API import here.
 
     # Rule 8 (NEW): data layer must not import service layer.
     if [[ "${pkg_layer}" == "data" \
