@@ -13,7 +13,7 @@ import (
 func main() {
 	confPath := os.Getenv("CONF_PATH")
 	if confPath == "" {
-		confPath = "configs/config-service.yaml"
+		confPath = "configs/config.yaml"
 	}
 
 	applogger.InitializeStartupLogger()

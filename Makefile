@@ -113,6 +113,32 @@ generate:
 	go generate ./...
 	go mod tidy
 
+.PHONY: wire
+# Regenerate Wire injectors for all services.
+wire:
+	wire ./cmd/relay-gateway/ \
+	     ./app/config/cmd/config/ \
+	     ./app/notify/cmd/notify/ \
+	     ./app/log/cmd/log/ \
+	     ./app/monitor/cmd/monitor/ \
+	     ./app/channel/cmd/channel/ \
+	     ./app/identity/cmd/identity/ \
+	     ./app/billing/cmd/billing/ \
+	     ./app/admin/cmd/admin/
+
+.PHONY: wire-check
+# Verify Wire injectors compile under the wireinject build tag.
+wire-check:
+	go test -tags wireinject ./cmd/relay-gateway \
+	     ./app/config/cmd/config \
+	     ./app/notify/cmd/notify \
+	     ./app/log/cmd/log \
+	     ./app/monitor/cmd/monitor \
+	     ./app/channel/cmd/channel \
+	     ./app/identity/cmd/identity \
+	     ./app/billing/cmd/billing \
+	     ./app/admin/cmd/admin
+
 .PHONY: tidy
 # tidy
 tidy:

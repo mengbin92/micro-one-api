@@ -1,0 +1,23 @@
+server:
+  http:
+    addr: 0.0.0.0:8000
+    web_root: ${ADMIN_WEB_ROOT:-}
+  grpc:
+    addr: 0.0.0.0:9000
+registry:
+  type: ${REGISTRY_TYPE:-}
+  consul:
+    address: ${CONSUL_ADDR:-127.0.0.1:8500}
+    health_check_interval: 10
+clients:
+  identity:
+    endpoint: ${IDENTITY_GRPC_ENDPOINT:-127.0.0.1:9001}
+    http_endpoint: ${IDENTITY_HTTP_ENDPOINT:-http://127.0.0.1:8001}
+  channel:
+    endpoint: ${CHANNEL_GRPC_ENDPOINT:-127.0.0.1:9002}
+  billing:
+    endpoint: ${BILLING_GRPC_ENDPOINT:-127.0.0.1:9004}
+data:
+  database:
+    driver: ${DATABASE_DRIVER:-mysql}
+    source: ${DATABASE_DSN}

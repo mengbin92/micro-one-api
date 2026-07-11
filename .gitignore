@@ -20,6 +20,15 @@
 /monitor-worker
 /notify-worker
 /migrate
+# Short binary names produced by 'go build ./app/<svc>/cmd/<svc>/' without -o
+/admin
+/billing
+/channel
+/config
+/identity
+/log
+/monitor
+/notify
 
 # Test binary, built with `go test -c`
 *.test

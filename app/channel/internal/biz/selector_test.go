@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	commonv1 "micro-one-api/api/common/v1"
 )
 
 func TestSlidingWindow_AddAndP95(t *testing.T) {
@@ -106,21 +105,21 @@ func TestWeightedSelector_Empty(t *testing.T) {
 
 func TestWeightedSelector_SingleCandidate(t *testing.T) {
 	s := NewWeightedSelector()
-	ch := &commonv1.ChannelInfo{Id: 1, Priority: 10}
-	got, err := s.Select(context.Background(), "g", []*commonv1.ChannelInfo{ch})
+	ch := &Channel{ID: 1, Priority: 10}
+	got, err := s.Select(context.Background(), "g", []*Channel{ch})
 	if err != nil {
 		t.Fatalf("Select err = %v", err)
 	}
-	if got.Id != 1 {
-		t.Fatalf("got.Id = %d, want 1", got.Id)
+	if got.ID != 1 {
+		t.Fatalf("got.ID = %d, want 1", got.ID)
 	}
 }
 
 func TestWeightedSelector_DistributionFavorsHigherWeight(t *testing.T) {
 	s := NewWeightedSelector()
-	high := &commonv1.ChannelInfo{Id: 1, Priority: 100}
-	low := &commonv1.ChannelInfo{Id: 2, Priority: 1}
-	candidates := []*commonv1.ChannelInfo{high, low}
+	high := &Channel{ID: 1, Priority: 100}
+	low := &Channel{ID: 2, Priority: 1}
+	candidates := []*Channel{high, low}
 
 	counts := map[int64]int{}
 	const iterations = 1000
@@ -132,7 +131,7 @@ func TestWeightedSelector_DistributionFavorsHigherWeight(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
 		}
-		counts[got.Id]++
+		counts[got.ID]++
 		// Reset selector state to start fresh each iteration.
 		s.mu.Lock()
 		for _, st := range s.channels {
@@ -149,8 +148,8 @@ func TestWeightedSelector_DistributionFavorsHigherWeight(t *testing.T) {
 
 func TestWeightedSelector_RecordHealthUpdatesInflight(t *testing.T) {
 	s := NewWeightedSelector()
-	ch := &commonv1.ChannelInfo{Id: 1, Priority: 10}
-	_, _ = s.Select(context.Background(), "g", []*commonv1.ChannelInfo{ch})
+	ch := &Channel{ID: 1, Priority: 10}
+	_, _ = s.Select(context.Background(), "g", []*Channel{ch})
 
 	st, ok := s.GetState(1)
 	if !ok {
@@ -169,8 +168,8 @@ func TestWeightedSelector_RecordHealthUpdatesInflight(t *testing.T) {
 
 func TestWeightedSelector_ConcurrentSelect(t *testing.T) {
 	s := NewWeightedSelector()
-	ch := &commonv1.ChannelInfo{Id: 1, Priority: 10}
-	candidates := []*commonv1.ChannelInfo{ch}
+	ch := &Channel{ID: 1, Priority: 10}
+	candidates := []*Channel{ch}
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 100)

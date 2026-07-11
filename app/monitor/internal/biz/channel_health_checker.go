@@ -6,25 +6,17 @@ import (
 	"strings"
 	"time"
 
-	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/platform/metrics"
 	relayprovider "micro-one-api/domain/upstream/provider"
 )
 
-type ChannelHealthCheckerConfig struct {
-	Enabled  bool
-	Interval time.Duration
-	Timeout  time.Duration
-	PageSize int32
-}
-
 type ChannelHealthChecker struct {
-	client          channelv1.ChannelServiceClient
+	client          ChannelProbeClient
 	providerFactory *relayprovider.ProviderFactory
 	cfg             ChannelHealthCheckerConfig
 }
 
-func NewChannelHealthChecker(client channelv1.ChannelServiceClient, cfg ChannelHealthCheckerConfig) *ChannelHealthChecker {
+func NewChannelHealthChecker(client ChannelProbeClient, cfg ChannelHealthCheckerConfig) *ChannelHealthChecker {
 	if cfg.Interval <= 0 {
 		cfg.Interval = 5 * time.Minute
 	}
@@ -70,21 +62,16 @@ func (c *ChannelHealthChecker) CheckOnce(ctx context.Context) {
 	}()
 	page := int32(1)
 	for {
-		resp, err := c.client.ListChannels(ctx, &channelv1.ListChannelsRequest{
-			Page:     page,
-			PageSize: c.cfg.PageSize,
-			Status:   1,
-		})
-		if err != nil || resp == nil {
+		channels, err := c.client.ListEnabledChannels(ctx, page, c.cfg.PageSize)
+		if err != nil {
 			status = "error"
 			return
 		}
-		channels := resp.GetChannels()
 		for _, channel := range channels {
-			if channel == nil || !supportsModelsProbe(channel.GetType()) {
+			if !supportsModelsProbe(channel.Type) {
 				continue
 			}
-			c.probeChannel(ctx, channel.GetId())
+			c.probeChannel(ctx, channel.ID)
 		}
 		if len(channels) < int(c.cfg.PageSize) {
 			return
@@ -95,16 +82,15 @@ func (c *ChannelHealthChecker) CheckOnce(ctx context.Context) {
 
 func (c *ChannelHealthChecker) probeChannel(ctx context.Context, channelID int64) {
 	startedAt := time.Now()
-	detail, err := c.client.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: channelID})
-	if err != nil || detail == nil || detail.GetChannel() == nil {
+	detail, err := c.client.GetChannelDetail(ctx, channelID)
+	if err != nil || detail == nil {
 		observeHealthProbe("error", "channel_detail", time.Since(startedAt))
 		return
 	}
-	channel := detail.GetChannel()
 	probeCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
-	provider, err := c.providerFactory.CreateProviderWithConfig(channel.GetType(), channel.GetBaseUrl(), channel.GetKey(), relayprovider.ProviderConfig{
-		APIVersion: channel.GetConfig().GetApiVersion(),
+	provider, err := c.providerFactory.CreateProviderWithConfig(detail.Type, detail.BaseURL, detail.Key, relayprovider.ProviderConfig{
+		APIVersion: detail.APIVersion,
 	})
 	if err != nil {
 		observeHealthProbe("error", healthProbeReason(err), time.Since(startedAt))
@@ -130,12 +116,7 @@ func (c *ChannelHealthChecker) record(ctx context.Context, channelID int64, succ
 	if c == nil || c.client == nil || channelID <= 0 {
 		return
 	}
-	_, _ = c.client.RecordChannelHealth(ctx, &channelv1.RecordChannelHealthRequest{
-		ChannelId:    channelID,
-		Success:      success,
-		Error:        message,
-		ResponseTime: responseTime,
-	})
+	_ = c.client.RecordChannelHealth(ctx, channelID, success, message, responseTime)
 }
 
 func observeHealthProbe(status, reason string, duration time.Duration) {

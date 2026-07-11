@@ -1,0 +1,30 @@
+server:
+  http:
+    addr: 0.0.0.0:8008
+  grpc:
+    addr: 0.0.0.0:9008
+data:
+  database:
+    driver: ${DATABASE_DRIVER:-mysql}
+    source: ${DATABASE_DSN}
+  redis:
+    addr: ${REDIS_ADDR:-127.0.0.1:6379}
+registry:
+  type: ${REGISTRY_TYPE:-}
+  consul:
+    address: ${CONSUL_ADDR:-127.0.0.1:8500}
+    health_check_interval: 10
+notify_svc:
+  webhook_url: ${NOTIFY_WEBHOOK_URL:-}
+  smtp_host: ${NOTIFY_SMTP_HOST:-}
+  smtp_port: ${NOTIFY_SMTP_PORT:-587}
+  smtp_user: ${NOTIFY_SMTP_USER:-}
+  smtp_pass: ${NOTIFY_SMTP_PASS:-}
+  smtp_from: ${NOTIFY_SMTP_FROM:-}
+  wecom_webhook_url: ${NOTIFY_WECOM_WEBHOOK_URL:-}
+  dingtalk_webhook_url: ${NOTIFY_DINGTALK_WEBHOOK_URL:-}
+  feishu_webhook_url: ${NOTIFY_FEISHU_WEBHOOK_URL:-}
+  slack_webhook_url: ${NOTIFY_SLACK_WEBHOOK_URL:-}
+  dispatch_interval: ${NOTIFY_DISPATCH_INTERVAL:-30s}
+  dispatch_batch: ${NOTIFY_DISPATCH_BATCH:-20}
+  max_retry: ${NOTIFY_MAX_RETRY:-3}

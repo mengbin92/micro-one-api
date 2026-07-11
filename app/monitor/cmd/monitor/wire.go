@@ -4,30 +4,44 @@
 package main
 
 import (
-	"context"
-	"time"
-
 	"github.com/go-kratos/kratos/v2"
+	"github.com/go-kratos/kratos/v2/registry"
 	"github.com/google/wire"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	channelv1 "micro-one-api/api/channel/v1"
 
 	"micro-one-api/app/monitor/internal/biz"
 	monitorcfg "micro-one-api/app/monitor/internal/conf"
 	"micro-one-api/app/monitor/internal/data"
 	"micro-one-api/app/monitor/internal/server"
 	"micro-one-api/app/monitor/internal/service"
-	applogger "micro-one-api/platform/logging"
+
+	appregistry "micro-one-api/platform/registry"
 )
 
 var ProviderSet = wire.NewSet(
-	data.NewRepositoryFromEnv,
+	newRepo,
 	biz.NewMonitorUsecase,
 	service.NewMonitorService,
 	server.NewGRPCServer,
+	server.NewHTTPServer,
+	provideRegistrar,
+	wire.Bind(new(biz.MonitorRepo), new(*data.Repository)),
 )
+
+func newRepo(cfg *monitorcfg.Config) (*data.Repository, error) {
+	return data.NewRepositoryFromEnv(cfg.Data.Database.Driver, cfg.Data.Database.Source)
+}
+
+type registrarResult struct {
+	Registrar registry.Registrar
+}
+
+func provideRegistrar(cfg *monitorcfg.Config) registrarResult {
+	registrar, err := appregistry.NewRegistrar(cfg.Registry)
+	if err != nil {
+		return registrarResult{}
+	}
+	return registrarResult{Registrar: registrar}
+}
 
 func InitApp(confPath string) (*kratos.App, func(), error) {
 	panic(wire.Build(
@@ -37,14 +51,18 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	))
 }
 
-func newApp(cfg *monitorcfg.Config, svc *service.MonitorService) (*kratos.App, func()) {
+func newApp(cfg *monitorcfg.Config, svc *service.MonitorService, reg registrarResult) (*kratos.App, func()) {
 	grpcSrv := server.NewGRPCServer(cfg.Server.GRPC.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.HTTP.Addr, svc)
 	_, channelCleanup := newChannelHealthChecker(cfg)
-	app := kratos.New(
+	opts := []kratos.Option{
 		kratos.Name("monitor-worker"),
 		kratos.Server(grpcSrv, httpSrv),
-	)
+	}
+	if reg.Registrar != nil {
+		opts = append(opts, kratos.Registrar(reg.Registrar))
+	}
+	app := kratos.New(opts...)
 	return app, func() {
 		if channelCleanup != nil {
 			channelCleanup()
@@ -53,35 +71,5 @@ func newApp(cfg *monitorcfg.Config, svc *service.MonitorService) (*kratos.App, f
 }
 
 func newChannelHealthChecker(cfg *monitorcfg.Config) (*biz.ChannelHealthChecker, func()) {
-	if cfg == nil || !cfg.Monitor.ChannelHealthCheckEnabled || cfg.Clients.Channel.Endpoint == "" {
-		return nil, nil
-	}
-	interval := 5 * time.Minute
-	if cfg.Monitor.ChannelHealthCheckInterval != "" {
-		if parsed, err := time.ParseDuration(cfg.Monitor.ChannelHealthCheckInterval); err == nil && parsed > 0 {
-			interval = parsed
-		}
-	}
-	timeout := 10 * time.Second
-	if cfg.Monitor.ChannelHealthCheckTimeout != "" {
-		if parsed, err := time.ParseDuration(cfg.Monitor.ChannelHealthCheckTimeout); err == nil && parsed > 0 {
-			timeout = parsed
-		}
-	}
-	conn, err := grpc.NewClient(cfg.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		applogger.Log.Warn("failed to create channel health client", zap.Error(err))
-		return nil, nil
-	}
-	checker := biz.NewChannelHealthChecker(channelv1.NewChannelServiceClient(conn), biz.ChannelHealthCheckerConfig{
-		Enabled:  true,
-		Interval: interval,
-		Timeout:  timeout,
-	})
-	ctx, cancel := context.WithCancel(context.Background())
-	go checker.Run(ctx)
-	return checker, func() {
-		cancel()
-		_ = conn.Close()
-	}
+	return newChannelHealthCheckerImpl(cfg)
 }

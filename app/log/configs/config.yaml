@@ -1,0 +1,23 @@
+server:
+  http:
+    addr: 0.0.0.0:8006
+  grpc:
+    addr: 0.0.0.0:9006
+data:
+  database:
+    driver: ${DATABASE_DRIVER:-mysql}
+    source: ${DATABASE_DSN}
+  redis:
+    addr: ${REDIS_ADDR:-127.0.0.1:6379}
+registry:
+  type: ${REGISTRY_TYPE:-}
+  consul:
+    address: ${CONSUL_ADDR:-127.0.0.1:8500}
+    health_check_interval: 10
+log_svc:
+  retention_days: ${LOG_RETENTION_DAYS:-30}
+  batch_size: ${LOG_BATCH_SIZE:-100}
+
+partition:
+  enabled: ${PARTITION_ENABLED:-false}
+  interval: ${PARTITION_INTERVAL:-24h}

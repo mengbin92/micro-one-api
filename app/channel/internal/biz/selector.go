@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/pkg/safecast"
 )
 
@@ -21,7 +20,7 @@ type WeightedSelector struct {
 
 // channelState holds runtime state for a channel.
 type channelState struct {
-	channel          *commonv1.ChannelInfo
+	channel          *Channel
 	weight           int32           // configured weight
 	currentWeight    int32           // smooth WRR current weight
 	recentLatency    *SlidingWindow  // last 100 request latencies
@@ -172,15 +171,15 @@ func NewWeightedSelector() *WeightedSelector {
 }
 
 // UpdateChannel updates the runtime state for a channel.
-func (s *WeightedSelector) UpdateChannel(channel *commonv1.ChannelInfo) {
+func (s *WeightedSelector) UpdateChannel(channel *Channel) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.updateChannelLocked(channel)
 }
 
 // updateChannelLocked updates channel state. The caller MUST hold s.mu.
-func (s *WeightedSelector) updateChannelLocked(channel *commonv1.ChannelInfo) {
-	if existing, ok := s.channels[channel.Id]; ok {
+func (s *WeightedSelector) updateChannelLocked(channel *Channel) {
+	if existing, ok := s.channels[channel.ID]; ok {
 		existing.channel = channel
 		existing.weight = configuredSelectorWeight(channel)
 		if openUntil := selectorCircuitOpenUntil(channel); openUntil > existing.circuitOpenUntil {
@@ -191,7 +190,7 @@ func (s *WeightedSelector) updateChannelLocked(channel *commonv1.ChannelInfo) {
 	}
 
 	// Initialize new channel state
-	s.channels[channel.Id] = &channelState{
+	s.channels[channel.ID] = &channelState{
 		channel:          channel,
 		weight:           configuredSelectorWeight(channel),
 		currentWeight:    0,
@@ -202,7 +201,7 @@ func (s *WeightedSelector) updateChannelLocked(channel *commonv1.ChannelInfo) {
 	}
 }
 
-func configuredSelectorWeight(channel *commonv1.ChannelInfo) int32 {
+func configuredSelectorWeight(channel *Channel) int32 {
 	if channel.Weight > 0 {
 		return safecast.Uint32ToInt32Saturating(channel.Weight)
 	}
@@ -212,7 +211,7 @@ func configuredSelectorWeight(channel *commonv1.ChannelInfo) int32 {
 	return 1
 }
 
-func selectorCircuitOpenUntil(channel *commonv1.ChannelInfo) int64 {
+func selectorCircuitOpenUntil(channel *Channel) int64 {
 	if channel.CircuitOpenedUntil <= 0 {
 		return 0
 	}
@@ -228,7 +227,7 @@ func (s *WeightedSelector) RemoveChannel(channelID int64) {
 
 // Select implements smooth weighted round-robin with health awareness.
 // Algorithm: nginx-style smooth WRR + dynamic weight adjustment.
-func (s *WeightedSelector) Select(ctx context.Context, group string, candidates []*commonv1.ChannelInfo) (*commonv1.ChannelInfo, error) {
+func (s *WeightedSelector) Select(ctx context.Context, group string, candidates []*Channel) (*Channel, error) {
 	if len(candidates) == 0 {
 		return nil, ErrChannelNotFound
 	}
@@ -238,7 +237,7 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 
 	// Update channel states
 	for _, ch := range candidates {
-		if _, ok := s.channels[ch.Id]; !ok {
+		if _, ok := s.channels[ch.ID]; !ok {
 			s.updateChannelLocked(ch)
 		}
 	}
@@ -249,7 +248,7 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 	now := time.Now().UnixNano()
 
 	for _, ch := range candidates {
-		state, ok := s.channels[ch.Id]
+		state, ok := s.channels[ch.ID]
 		if !ok {
 			continue
 		}
@@ -291,10 +290,10 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 }
 
 // totalWeight calculates the total weight of all candidates.
-func (s *WeightedSelector) totalWeight(candidates []*commonv1.ChannelInfo) int32 {
+func (s *WeightedSelector) totalWeight(candidates []*Channel) int32 {
 	var total int32
 	for _, ch := range candidates {
-		if state, ok := s.channels[ch.Id]; ok {
+		if state, ok := s.channels[ch.ID]; ok {
 			total += state.weight
 		}
 	}

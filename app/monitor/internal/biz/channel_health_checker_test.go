@@ -7,12 +7,9 @@ import (
 	"testing"
 	"time"
 
-	channelv1 "micro-one-api/api/channel/v1"
-	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/platform/metrics"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"google.golang.org/grpc"
 )
 
 const monitorMetricEpsilon = 0.000001
@@ -25,23 +22,37 @@ func assertMonitorMetricDelta(t *testing.T, before, after, want float64) {
 }
 
 type checkerChannelClient struct {
-	channelv1.ChannelServiceClient
-	channels   []*commonv1.ChannelSummary
-	details    map[int64]*commonv1.ChannelInfo
-	healthReqs []*channelv1.RecordChannelHealthRequest
+	channels   []ChannelProbeSummary
+	details    map[int64]*ChannelProbeDetail
+	healthReqs []struct {
+		ChannelID    int64
+		Success      bool
+		ErrMsg       string
+		ResponseTime int64
+	}
 }
 
-func (c *checkerChannelClient) ListChannels(ctx context.Context, req *channelv1.ListChannelsRequest, opts ...grpc.CallOption) (*channelv1.ListChannelsResponse, error) {
-	return &channelv1.ListChannelsResponse{Channels: c.channels, Total: int64(len(c.channels))}, nil
+func (c *checkerChannelClient) ListEnabledChannels(ctx context.Context, page, pageSize int32) ([]ChannelProbeSummary, error) {
+	return c.channels, nil
 }
 
-func (c *checkerChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChannelRequest, opts ...grpc.CallOption) (*channelv1.GetChannelReply, error) {
-	return &channelv1.GetChannelReply{Channel: c.details[req.ChannelId]}, nil
+func (c *checkerChannelClient) GetChannelDetail(ctx context.Context, channelID int64) (*ChannelProbeDetail, error) {
+	return c.details[channelID], nil
 }
 
-func (c *checkerChannelClient) RecordChannelHealth(ctx context.Context, req *channelv1.RecordChannelHealthRequest, opts ...grpc.CallOption) (*channelv1.RecordChannelHealthResponse, error) {
-	c.healthReqs = append(c.healthReqs, req)
-	return &channelv1.RecordChannelHealthResponse{Success: true, Message: "ok"}, nil
+func (c *checkerChannelClient) RecordChannelHealth(ctx context.Context, channelID int64, success bool, errMsg string, responseTimeMs int64) error {
+	c.healthReqs = append(c.healthReqs, struct {
+		ChannelID    int64
+		Success      bool
+		ErrMsg       string
+		ResponseTime int64
+	}{
+		ChannelID:    channelID,
+		Success:      success,
+		ErrMsg:       errMsg,
+		ResponseTime: responseTimeMs,
+	})
+	return nil
 }
 
 func TestChannelHealthChecker_CheckOnceRecordsSuccess(t *testing.T) {
@@ -57,15 +68,15 @@ func TestChannelHealthChecker_CheckOnceRecordsSuccess(t *testing.T) {
 	defer upstream.Close()
 
 	client := &checkerChannelClient{
-		channels: []*commonv1.ChannelSummary{{Id: 1, Type: 1, Status: 1}},
-		details: map[int64]*commonv1.ChannelInfo{
-			1: {Id: 1, Type: 1, Status: 1, BaseUrl: upstream.URL + "/v1", Key: "sk-test"},
+		channels: []ChannelProbeSummary{{ID: 1, Type: 1, Status: 1}},
+		details: map[int64]*ChannelProbeDetail{
+			1: {ID: 1, Type: 1, BaseURL: upstream.URL + "/v1", Key: "sk-test"},
 		},
 	}
 	checker := NewChannelHealthChecker(client, ChannelHealthCheckerConfig{Enabled: true, Timeout: time.Second})
 	checker.CheckOnce(context.Background())
 
-	if len(client.healthReqs) != 1 || !client.healthReqs[0].Success || client.healthReqs[0].ChannelId != 1 {
+	if len(client.healthReqs) != 1 || !client.healthReqs[0].Success || client.healthReqs[0].ChannelID != 1 {
 		t.Fatalf("health requests = %+v", client.healthReqs)
 	}
 	runAfter := testutil.ToFloat64(metrics.ChannelHealthCheckRunsTotal.WithLabelValues("success"))
@@ -83,15 +94,15 @@ func TestChannelHealthChecker_CheckOnceRecordsFailure(t *testing.T) {
 	defer upstream.Close()
 
 	client := &checkerChannelClient{
-		channels: []*commonv1.ChannelSummary{{Id: 1, Type: 1, Status: 1}},
-		details: map[int64]*commonv1.ChannelInfo{
-			1: {Id: 1, Type: 1, Status: 1, BaseUrl: upstream.URL + "/v1", Key: "sk-test"},
+		channels: []ChannelProbeSummary{{ID: 1, Type: 1, Status: 1}},
+		details: map[int64]*ChannelProbeDetail{
+			1: {ID: 1, Type: 1, BaseURL: upstream.URL + "/v1", Key: "sk-test"},
 		},
 	}
 	checker := NewChannelHealthChecker(client, ChannelHealthCheckerConfig{Enabled: true, Timeout: time.Second})
 	checker.CheckOnce(context.Background())
 
-	if len(client.healthReqs) != 1 || client.healthReqs[0].Success || client.healthReqs[0].ChannelId != 1 {
+	if len(client.healthReqs) != 1 || client.healthReqs[0].Success || client.healthReqs[0].ChannelID != 1 {
 		t.Fatalf("health requests = %+v", client.healthReqs)
 	}
 	probeAfter := testutil.ToFloat64(metrics.ChannelHealthProbeTotal.WithLabelValues("error", "upstream_status"))
@@ -100,8 +111,8 @@ func TestChannelHealthChecker_CheckOnceRecordsFailure(t *testing.T) {
 
 func TestChannelHealthChecker_CheckOnceSkipsUnsupportedProvider(t *testing.T) {
 	client := &checkerChannelClient{
-		channels: []*commonv1.ChannelSummary{{Id: 1, Type: 2, Status: 1}},
-		details:  map[int64]*commonv1.ChannelInfo{},
+		channels: []ChannelProbeSummary{{ID: 1, Type: 2, Status: 1}},
+		details:  map[int64]*ChannelProbeDetail{},
 	}
 	checker := NewChannelHealthChecker(client, ChannelHealthCheckerConfig{Enabled: true, Timeout: time.Second})
 	checker.CheckOnce(context.Background())

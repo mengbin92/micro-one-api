@@ -110,7 +110,7 @@ RUN apk add --no-cache ca-certificates sqlite-libs
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /app/bin/service /service
-COPY --from=builder /app/configs /configs
+COPY --from=builder /app/cmd/relay-gateway/configs /configs
 
 USER 65534:65534
 

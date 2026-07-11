@@ -14,7 +14,6 @@ import (
 
 	"micro-one-api/platform/events"
 
-	commonv1 "micro-one-api/api/common/v1"
 
 	"github.com/bytedance/sonic"
 )
@@ -332,12 +331,12 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 		if len(tier) == 0 {
 			continue
 		}
-		selected, err := uc.selector.Select(ctx, group, channelsToSelectorCandidates(tier))
+		selected, err := uc.selector.Select(ctx, group, tier)
 		if err != nil {
 			return nil, err
 		}
 		for _, channel := range tier {
-			if channel.ID == selected.Id {
+			if channel.ID == selected.ID {
 				return channel, nil
 			}
 		}
@@ -574,32 +573,6 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 	return nil
 }
 
-func channelsToSelectorCandidates(channels []*Channel) []*commonv1.ChannelInfo {
-	candidates := make([]*commonv1.ChannelInfo, 0, len(channels))
-	for _, ch := range channels {
-		if ch == nil {
-			continue
-		}
-		candidates = append(candidates, &commonv1.ChannelInfo{
-			Id:                    ch.ID,
-			Type:                  ch.Type,
-			Name:                  ch.Name,
-			Status:                ch.Status,
-			BaseUrl:               ch.BaseURL,
-			Group:                 ch.Group,
-			Models:                strings.Join(ch.Models, ","),
-			Priority:              ch.Priority,
-			Key:                   ch.Key,
-			Weight:                ch.Weight,
-			ResponseTime:          ch.ResponseTime,
-			HealthStatus:          ch.HealthStatus,
-			HealthLastError:       ch.HealthLastError,
-			CircuitOpenedUntil:    ch.CircuitOpenedUntil,
-			HealthLastFailureTime: ch.HealthLastFailureTime,
-		})
-	}
-	return candidates
-}
 
 func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) error {
 	if err := uc.repo.DeleteChannel(ctx, channelID); err != nil {
