@@ -3,3 +3,10 @@
 # The app explicitly configures safe Kratos 404/405 fallback handlers via
 # internal/pkg/xhttp.SafeKratosServerOptions to avoid http.DefaultServeMux.
 CVE-2026-6993
+# GO-2026-5932: golang.org/x/crypto/openpgp is unmaintained/unsafe by design.
+# The advisory has no fixed version (upstream has not removed openpgp from
+# x/crypto). This app does NOT import crypto/openpgp — it only uses
+# golang.org/x/crypto/bcrypt (cmd/admin-reset, app/identity/internal/biz).
+# Trivy flags the entire module because the openpgp subpackage exists within
+# it. Suppressed until upstream removes openpgp or a fixed version is released.
+GO-2026-5932
