@@ -858,7 +858,7 @@ func TestAdminHTTPPageIsServed(t *testing.T) {
 
 func TestAdminHTTPPageSPARouteFallback(t *testing.T) {
 	srv := NewHTTPServer(":0", nil)
-	for _, path := range []string{"/", "/login", "/register", "/dashboard", "/tokens", "/pricing", "/redeem", "/admin/channel-health", "/admin/cost-analysis", "/admin/reconciliation", "/admin/options"} {
+	for _, path := range []string{"/", "/login", "/register", "/dashboard", "/tokens", "/pricing", "/redeem", "/admin/channel-health", "/admin/cost-analysis", "/admin/reconciliation", "/admin/options", "/admin/subscription-plans"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		srv.ServeHTTP(rec, req)

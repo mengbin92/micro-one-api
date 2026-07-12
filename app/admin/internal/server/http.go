@@ -134,6 +134,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/admin/options", handlePage)
 	srv.HandleFunc("/admin/subscription-accounts", handlePage)
 	srv.HandleFunc("/admin/subscription-groups", handlePage)
+	srv.HandleFunc("/admin/subscription-plans", handlePage)
 	srv.HandleFunc("/admin/subscriptions", handlePage)
 	// Static assets bundled by Vite
 	srv.HandlePrefix("/assets/", http.HandlerFunc(handlePage))
@@ -328,6 +329,12 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/api/v1/admin/subscriptions/change", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleChangeSubscription(w, r, svc)
 	}))
+	// Subscription operational report (phase 2.5): plan-dimension aggregation
+	// of new/renewal/refund counts, revenue, active/expired/revoked
+	// subscriptions and subscription vs balance-fallback usage.
+	srv.HandleFunc("/api/v1/admin/subscriptions/operation-report", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleSubscriptionOperationReport(w, r, svc)
+	}))
 	srv.HandlePrefix("/api/v1/admin/subscriptions/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleSubscriptionByID(w, r, svc)
 	}))
@@ -470,12 +477,6 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	// operator id is taken from the admin token, never trusted from the body.
 	srv.HandleFunc("/api/v1/admin/payments/refund", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleRefundPaymentOrder(w, r, svc)
-	}))
-	// Subscription operational report (phase 2.5): plan-dimension aggregation
-	// of new/renewal/refund counts, revenue, active/expired/revoked
-	// subscriptions and subscription vs balance-fallback usage.
-	srv.HandleFunc("/api/v1/admin/subscriptions/operation-report", adminAuth(func(w http.ResponseWriter, r *http.Request) {
-		handleSubscriptionOperationReport(w, r, svc)
 	}))
 	srv.HandleFunc("/api/channel/test", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleTestChannels(w, r, svc)

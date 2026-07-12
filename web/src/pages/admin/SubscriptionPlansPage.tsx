@@ -82,7 +82,7 @@ export function AdminSubscriptionPlansPage() {
     queryFn: async () => {
       const forSale = saleFilterParam(saleFilter);
       const params = forSale ? { for_sale: forSale } : {};
-      const res = await adminApiClient.get('/api/v1/admin/subscription-plans', { params });
+      const res = await adminApiClient.get('/v1/admin/subscription-plans', { params });
       return unwrapApiData<SubscriptionPlan[]>(res.data);
     },
   });
@@ -102,7 +102,7 @@ export function AdminSubscriptionPlansPage() {
   const toggleForSale = useMutation({
     mutationFn: async ({ id, forSale }: { id: number; forSale: boolean }) => {
       const res = await adminApiClient.post(
-        `/api/v1/admin/subscription-plans/${id}/for-sale`,
+        `/v1/admin/subscription-plans/${id}/for-sale`,
         { for_sale: forSale },
       );
       ensureApiSuccess(res.data);
@@ -118,12 +118,12 @@ export function AdminSubscriptionPlansPage() {
     mutationFn: async (payload: PlanPayload) => {
       if (payload.id) {
         const res = await adminApiClient.put(
-          `/api/v1/admin/subscription-plans/${payload.id}`,
+          `/v1/admin/subscription-plans/${payload.id}`,
           payload,
         );
         ensureApiSuccess(res.data);
       } else {
-        const res = await adminApiClient.post('/api/v1/admin/subscription-plans', payload);
+        const res = await adminApiClient.post('/v1/admin/subscription-plans', payload);
         ensureApiSuccess(res.data);
       }
     },
