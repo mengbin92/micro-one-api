@@ -1,6 +1,6 @@
 // k6 pre-prod stress test for relay-gateway subscription-account paths.
 //
-// Covers the docs/subscription-follow-up-roadmap.md §阶段 3 (Relay 稳定性)
+// Covers the docs/design/subscription-follow-up-roadmap.md §阶段 3 (Relay 稳定性)
 // scenarios that need a real multi-replica deployment + real Redis:
 //   - session_hash sticky (prompt-cache reuse) under sustained load
 //   - previous_response_id route sticky under sustained load
@@ -9,7 +9,7 @@
 //
 // This script is the PRE-PROD full load test. CI runs only the Go hermetic
 // smoke (go test -run TestStress ./internal/relay/...); see
-// docs/relay-stress-runbook.md for when to run this.
+// docs/runbooks/relay-stress-runbook.md for when to run this.
 //
 // Usage (against a pre-prod relay-gateway with >=2 replicas + Redis):
 //   k6 run \

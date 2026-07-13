@@ -1,6 +1,6 @@
 # 订阅账号 OAuth 绑定 Runbook
 
-> 对应 `docs/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
+> 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
 > 适用版本：含 migration `034_create_subscription_accounts.sql` 及 hybrid adaptor 路径（v0.4.0+）。
 > 相关文档：[订阅账号配置与导入实操指南](./subscription-account-setup-guide.md)、[生产发布 Runbook](./subscription-production-runbook.md)。
 

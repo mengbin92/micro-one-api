@@ -40,7 +40,7 @@ func (c SubscriptionConfig) GetUserRPMLimit() int32 {
 }
 
 // SessionStickyConfig gates cross-session subscription-account stickiness
-// (bug docs/sub2api-borrowable-ideas.md #7): binding a conversation
+// (bug docs/design/sub2api-borrowable-ideas.md #7): binding a conversation
 // (session_hash) to the subscription account that served it so subsequent
 // turns reuse the same upstream account and hit its prompt cache. Disabled by
 // default. It is a routing-behavior change kept behind its own switch so it can

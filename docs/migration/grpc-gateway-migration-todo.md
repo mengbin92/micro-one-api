@@ -63,4 +63,4 @@
 ## 参考
 
 - 现有 `relay.proto` 中 `option (google.api.http) = { post: "/v1/chat/completions" }` 是注解样例
-- `docs/ARCHITECTURE_REFACTOR.md` 中关于传输层统一的相关章节
+- `docs/design/ARCHITECTURE_REFACTOR.md` 中关于传输层统一的相关章节

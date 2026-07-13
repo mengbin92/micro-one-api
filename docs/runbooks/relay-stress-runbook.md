@@ -1,6 +1,6 @@
 # Relay 稳定性压测与 Runbook
 
-> 对应 `docs/subscription-follow-up-roadmap.md` 阶段 3: Relay 稳定性。
+> 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 3: Relay 稳定性。
 > 范围: Redis 并发控制、session sticky、failover 组合场景的压测脚本、固定指标和回归门槛。
 
 本文档定义 Relay 稳定性的压测分层 (CI smoke vs 预发全量)、固定指标集、每个场景的验收标准,以及如何排障。新部署或改动 `internal/relay/...`、`internal/channel/...` 的分支都必须按本文档执行回归门槛。
@@ -208,4 +208,4 @@ curl -s $PROM_URL/api/v1/query --data-urlencode 'query=micro_one_api_relay_runti
 | `internal/relay/biz/stress_test.go` | biz 层压测: 多副本 Redis 并发 cap、Redis 故障 fail-open、runtime blocker 跨副本+TTL、RPM cap |
 | `internal/relay/server/stress_test.go` | server 层压测: session_hash sticky、previous_response_id sticky、429/5xx/529 failover、concurrency/session-window failover、sticky 账号不可用 rebind |
 | `scripts/benchmark/k6-relay-subscription-stress.js` | 预发全量 k6 脚本 (5 场景) |
-| `docs/relay-stress-runbook.md` | 本文档 |
+| `docs/runbooks/relay-stress-runbook.md` | 本文档 |

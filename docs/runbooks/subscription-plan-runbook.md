@@ -1,6 +1,6 @@
 # 订阅套餐配置与购买发放 Runbook
 
-> 对应 `docs/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
+> 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
 > 适用版本：v0.5.0+（含 `subscription_groups`、`subscription_plans`、`user_subscriptions`、`payment_orders.plan_snapshot`）。
 > 相关语义文档：[续费语义](./subscription-renewal-semantics.md)、[退款/冲正语义](./subscription-refund-reversal-semantics.md)。
 > 相关 runbook：[生产发布 Runbook](./subscription-production-runbook.md)、[订阅账号 OAuth 绑定 Runbook](./subscription-oauth-binding-runbook.md)。

@@ -1,11 +1,11 @@
 # 订阅生产发布、回滚与排障 Runbook
 
-> 对应 `docs/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
+> 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
 > 范围：订阅系统（套餐、用户订阅、订阅账号、额度治理、Relay 订阅路径）的生产发布、回滚与排障。
 > 相关 runbook：[OAuth 绑定](./subscription-oauth-binding-runbook.md)、[套餐配置](./subscription-plan-runbook.md)、[账号额度治理](./subscription-account-quota-governance-runbook.md)、[Redis 多副本](./subscription-redis-multi-replica-runbook.md)、[Relay 压测](./relay-stress-runbook.md)。
 > 通用部署见 [部署运维文档](./deployment.md)。
 
-本 runbook 让新部署人员只按本文档即可完成订阅系统的数据库迁移、滚动发布、回滚与生产排障。release 文档（`docs/release-*.md`）只保留发布摘要，长期操作细节集中在本 runbook 与上述专题 runbook。
+本 runbook 让新部署人员只按本文档即可完成订阅系统的数据库迁移、滚动发布、回滚与生产排障。release 文档（`docs/releases/release-*.md`）只保留发布摘要，长期操作细节集中在本 runbook 与上述专题 runbook。
 
 ## 一、前置条件
 
@@ -306,7 +306,7 @@ SHOW PROCESSLIST;          -- 找 migration 连接
 
 ### 6.9 安全扫描不绿
 
-发布前跑 `make security-scan`（gosec / govulncheck / gitleaks）。常见误报处理见 `docs/release-v0.5.0.md` 的 Fixed 小节：文档示例用 `${API_TOKEN}` / `${ADMIN_TOKEN}`、公开 OAuth client id 标注、历史命中进 `.gitleaksignore`。
+发布前跑 `make security-scan`（gosec / govulncheck / gitleaks）。常见误报处理见 `docs/releases/release-v0.5.0.md` 的 Fixed 小节：文档示例用 `${API_TOKEN}` / `${ADMIN_TOKEN}`、公开 OAuth client id 标注、历史命中进 `.gitleaksignore`。
 
 ## 八、订阅文档索引
 

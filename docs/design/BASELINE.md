@@ -60,7 +60,7 @@
 
 ## Target Metrics (Post-Refactoring)
 
-Based on `docs/ARCHITECTURE_REFACTOR.md` §11:
+Based on `docs/design/ARCHITECTURE_REFACTOR.md` §11:
 
 | Metric | Baseline | Target | Improvement |
 |--------|----------|--------|-------------|

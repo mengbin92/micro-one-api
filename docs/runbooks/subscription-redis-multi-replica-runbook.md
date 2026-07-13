@@ -1,6 +1,6 @@
 # 订阅 Redis 多副本部署 Runbook
 
-> 对应 `docs/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
+> 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
 > 适用版本：v0.5.0+（Redis-backed 订阅账号并发 limiter、runtime blocker、session sticky、session window）。
 > 相关文档：[Relay 稳定性压测与 Runbook](./relay-stress-runbook.md)、[订阅账号额度治理 Runbook](./subscription-account-quota-governance-runbook.md)、[生产发布 Runbook](./subscription-production-runbook.md)。
 

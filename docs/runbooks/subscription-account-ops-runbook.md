@@ -1,6 +1,6 @@
 # 订阅账号治理 Runbook（阶段 1）
 
-> 对应 `docs/subscription-follow-up-roadmap.md` 阶段 1：订阅账号治理。
+> 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 1：订阅账号治理。
 > 实现 PR：`feat/subscription-account-ops-automation`。
 
 本分支在 channel-service 进程内新增了三个订阅账号治理后台任务，全部默认关闭，通过环境变量按需开启。它们复用现有 channel-service 的 `ChannelRepo`（数据库直连）和 notify-worker 的 gRPC 通道（告警投递），不引入新的存储或投递链路。

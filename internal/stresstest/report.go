@@ -1,5 +1,5 @@
 // Package stresstest provides a reusable harness for the relay-gateway stress
-// tests required by docs/subscription-follow-up-roadmap.md §阶段 3 (Relay 稳定性).
+// tests required by docs/design/subscription-follow-up-roadmap.md §阶段 3 (Relay 稳定性).
 //
 // It collects per-attempt outcomes into the fixed metric set the roadmap
 // demands — success rate, p50/p95/p99 latency, failover count and reasons,

@@ -41,7 +41,7 @@ v0.3.1 是 micro-one-api 自 v0.3.0 以来的首个 PATCH 版本,落地 Issue #4
 - internal/pkg/db/partition_test.go:新增 TestPartitionManagerNonMySQLNoop。
 
 #### Documentation
-- docs/issue-4-sqlite-solution.md:Issue #4 落地说明。
+- docs/design/issue-4-sqlite-solution.md:Issue #4 落地说明。
 - docs/deployment.md §5/§6:新增 Lite / Postgres 部署小节。
 
 ### Changed
@@ -123,5 +123,5 @@ v0.3.1 是 micro-one-api 自 v0.3.0 以来的首个 PATCH 版本,落地 Issue #4
 
 ## 后续规划
 
-- v0.3.2:`docs/grpc-gateway-migration-todo.md` P0 服务(config/log/monitor/notify)迁 grpc-gateway runtime mux。
+- v0.3.2:`docs/migration/grpc-gateway-migration-todo.md` P0 服务(config/log/monitor/notify)迁 grpc-gateway runtime mux。
 - v0.4.0:`ARCHITECTURE_REFACTOR.md` §3 目标架构剩余项 —— 事件总线由 MemoryEventBus 升级到 Redis Streams、按 schema 拆库、配置热更新(consul/etcd watch),多架构 Docker 镜像。

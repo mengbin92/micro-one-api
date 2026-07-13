@@ -1,6 +1,6 @@
 # 订阅系统后续规划 Code Review 报告
 
-> 审查依据：`docs/subscription-follow-up-roadmap.md`（7 个分支标 ✅ 已完成）
+> 审查依据：`docs/design/subscription-follow-up-roadmap.md`（7 个分支标 ✅ 已完成）
 > 实际代码分支：`feat/subscription-productization-phase2`（commit `ade3f08`）
 > 审查方式：静态只读分析 + 部分 Go 测试实跑验证（Relay 压测已编译运行通过）；2026-07-08 二次复核并修正 H4/M1/H10 表述
 > 审查日期：2026-07-08

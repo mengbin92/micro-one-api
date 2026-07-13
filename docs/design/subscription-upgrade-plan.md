@@ -565,7 +565,7 @@ go func(ctx context.Context, userID, groupID int64, costUSD float64) {
 
 ### 5.2 旧版方案 8 阶段摘要
 
-完整设计在 `docs/subscription-upgrade-plan.relay-only.md`,这里给一张表:
+完整设计在 `docs/design/subscription-upgrade-plan.relay-only.md`,这里给一张表:
 
 | 阶段 | 子系统 | 改动量 | 与本方案 §3 的关系 |
 |---|---|---|---|
@@ -883,9 +883,9 @@ hybrid_adaptor:
 ## 13. 文档更新
 
 落地过程中同步更新:
-- `docs/ARCHITECTURE_REFACTOR.md`:加 "Subscription Account Lifecycle" + "User Subscription Management" 章节
-- `docs/subscription-account-setup-guide.md`:加 OAuth 授权码绑定流程
-- `docs/hybrid-relay-adaptor-apicompat-plan.md`:加 scheduler / failover / passthrough 章节
+- `docs/design/ARCHITECTURE_REFACTOR.md`:加 "Subscription Account Lifecycle" + "User Subscription Management" 章节
+- `docs/runbooks/subscription-account-setup-guide.md`:加 OAuth 授权码绑定流程
+- `docs/design/hybrid-relay-adaptor-apicompat-plan.md`:加 scheduler / failover / passthrough 章节
 - `CHANGELOG.md`:每阶段一个 entry
 - `README.md` 配置章节:加 §8.3 的 yaml 配置
 
@@ -893,7 +893,7 @@ hybrid_adaptor:
 
 ## 14. 参考
 
-- 旧版方案:`docs/subscription-upgrade-plan.relay-only.md`(已归档,本方案的 §5 摘录其概要)
+- 旧版方案:`docs/design/subscription-upgrade-plan.relay-only.md`(已归档,本方案的 §5 摘录其概要)
 - 桌面方案:`~/Desktop/micro-one-api-subscription-enhancement-plan.md`(已合并,见 §2-3, §6-10 的对应)
 - sub2api 源码:`/Users/mengbin/vscode/neo/sub2api`
   - `backend/internal/service/subscription_service.go` - 用户订阅管理

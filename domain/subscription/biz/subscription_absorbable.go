@@ -52,7 +52,7 @@ type AbsorbableResult struct {
 // SubscriptionAmountUSD times the multiplier) so the calculation can
 // happen inside the locked transaction without I/O.
 //
-// Unit conversion rules (see docs/subscription-priority-deduction-design.md
+// Unit conversion rules (see docs/design/subscription-priority-deduction-design.md
 // 5.1):
 //
 //   - Limit/Usage/Frozen are all converted to the *accounting* USD

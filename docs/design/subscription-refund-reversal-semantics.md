@@ -1,6 +1,6 @@
 # 订阅退款 / 冲正账务语义（阶段 2.3）
 
-> 对应 `docs/subscription-follow-up-roadmap.md` 阶段 2.3：退款/冲正。
+> 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 2.3：退款/冲正。
 > 实现分支：`feat/subscription-productization-phase2`。
 
 本文档固定退款/冲正的账务语义，确保 dashboard、usage、orders、cost analysis 口径一致，并保证重复回调不会重复返钱或重复冲正。

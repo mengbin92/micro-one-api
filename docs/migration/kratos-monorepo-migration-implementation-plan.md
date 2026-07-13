@@ -1,6 +1,6 @@
 # Kratos 大仓模式迁移实施方案
 
-> 依据 `docs/kratos-monorepo-migration-plan-final.md` 与 `docs/log-service-to-platform-logging.md` 制定。
+> 依据 `docs/migration/kratos-monorepo-migration-plan-final.md` 与 `docs/migration/log-service-to-platform-logging.md` 制定。
 > 本文面向当前仓库落地执行，不重复讨论是否迁移，而是明确迁移边界、服务映射、批次、CI 门禁和验收标准。
 
 ## 0. 结论先行

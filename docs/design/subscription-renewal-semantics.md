@@ -1,6 +1,6 @@
 # 订阅续费语义（阶段 2.2）
 
-> 对应 `docs/subscription-follow-up-roadmap.md` 阶段 2.2：续费。
+> 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 2.2：续费。
 > 实现分支：`feat/subscription-productization-phase2`。
 
 ## 1. 续费行为

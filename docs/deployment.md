@@ -533,6 +533,6 @@ MIGRATIONS_DSN='host=127.0.0.1 user=app password=… dbname=micro_one_api port=5
   go run ./cmd/migrate -dir ./migrations/postgres
 ```
 
-`migrations/mysql`、`migrations/sqlite`、`migrations/postgres` 三套迁移是分别维护的快照。SQLite3 / Postgres baseline 是单一手写文件（`000_create_full_schema.sql`），由 `docs/issue-4-sqlite-solution.md` 描述的设计取舍决定：MySQL 迁移依赖 `AUTO_INCREMENT`、`ENGINE=InnoDB`、`COMMENT`、前缀索引、`ON UPDATE CURRENT_TIMESTAMP` 等方言特性，逐文件翻译要么丢能力、要么需要条件 SQL runner；snapshot 形式更易于评审与同步。
+`migrations/mysql`、`migrations/sqlite`、`migrations/postgres` 三套迁移是分别维护的快照。SQLite3 / Postgres baseline 是单一手写文件（`000_create_full_schema.sql`），由 `docs/design/issue-4-sqlite-solution.md` 描述的设计取舍决定：MySQL 迁移依赖 `AUTO_INCREMENT`、`ENGINE=InnoDB`、`COMMENT`、前缀索引、`ON UPDATE CURRENT_TIMESTAMP` 等方言特性，逐文件翻译要么丢能力、要么需要条件 SQL runner；snapshot 形式更易于评审与同步。
 
 新增 schema 变更时请同步更新两套迁移目录（MySQL + 对应方言）；CI 会在 PR 上跑 `cmd/migrate -dir ./migrations/<dialect>` 作为防漂移检查。

@@ -9,7 +9,7 @@
 #     suitable for high-throughput multi-instance production.
 #
 # See docs/deployment.md §4 "Lite deployment" and
-# docs/issue-4-sqlite-solution.md for the full design rationale.
+# docs/design/issue-4-sqlite-solution.md for the full design rationale.
 #
 # Usage:
 #

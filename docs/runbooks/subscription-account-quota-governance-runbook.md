@@ -1,6 +1,6 @@
 # 订阅账号额度治理 Runbook
 
-> 对应 `docs/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
+> 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
 > 适用版本：v0.5.0+（含订阅账号本地额度、5h、RPM、会话窗口、reset 配置、批量管理）。
 > 相关文档：[订阅账号配置与导入实操指南](./subscription-account-setup-guide.md)、[上游账号额度后续工作说明](./subscription-account-quota-follow-up.md)、[Redis 多副本部署 Runbook](./subscription-redis-multi-replica-runbook.md)。
 

@@ -34,10 +34,10 @@ jobs:
           ref: ${{ steps.meta.outputs.tag }}
 
       - name: Verify release notes exist
-        run: test -f "docs/release-${{ steps.meta.outputs.tag }}.md"
+        run: test -f "docs/releases/release-${{ steps.meta.outputs.tag }}.md"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          body_path: docs/release-${{ steps.meta.outputs.tag }}.md
+          body_path: docs/releases/release-${{ steps.meta.outputs.tag }}.md

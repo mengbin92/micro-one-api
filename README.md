@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**:[v0.7.0 发布公告](./docs/release-v0.7.0.md)(Kratos 大仓结构迁移、基础设施分层、架构边界守卫) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.7.0)
+> 📣 **最新发布**:[v0.7.0 发布公告](./docs/releases/release-v0.7.0.md)(Kratos 大仓结构迁移、基础设施分层、架构边界守卫) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.7.0)
 
 ## 功能概览
 
@@ -123,9 +123,9 @@ make web-dist
 
 ### 升级到 v0.7.0
 
-v0.7.0 是 Kratos 大仓结构迁移版本，**不涉及数据库迁移和 API 破坏性变更**。升级步骤为重建镜像并滚动重启，详见 [docs/release-v0.7.0.md](./docs/release-v0.7.0.md)。
+v0.7.0 是 Kratos 大仓结构迁移版本，**不涉及数据库迁移和 API 破坏性变更**。升级步骤为重建镜像并滚动重启，详见 [docs/releases/release-v0.7.0.md](./docs/releases/release-v0.7.0.md)。
 
-> v0.6.0 及更早版本的数据库迁移说明见 [docs/release-v0.6.0.md](./docs/release-v0.6.0.md)。
+> v0.6.0 及更早版本的数据库迁移说明见 [docs/releases/release-v0.6.0.md](./docs/releases/release-v0.6.0.md)。
 
 ## API 示例
 
@@ -149,7 +149,7 @@ curl -H "Authorization: Bearer ${API_TOKEN}" \
   http://localhost:8080/v1/subscription/usage
 ```
 
-该接口返回当前用户订阅状态、日/周/月额度、已用量、剩余额度和下次刷新时间。详细字段见 [docs/subscription-usage-api.md](./docs/subscription-usage-api.md)。
+该接口返回当前用户订阅状态、日/周/月额度、已用量、剩余额度和下次刷新时间。详细字段见 [docs/design/subscription-usage-api.md](./docs/design/subscription-usage-api.md)。
 
 ### Chat Completions
 
@@ -217,7 +217,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `NOTIFY_WEBHOOK_URL` | notify-worker 默认 webhook 投递地址 |
 | `NOTIFY_SMTP_HOST` / `NOTIFY_SMTP_PORT` / `NOTIFY_SMTP_USER` / `NOTIFY_SMTP_PASS` / `NOTIFY_SMTP_FROM` | notify-worker 邮件投递配置 |
 
-Prometheus 指标通过各服务 `/metrics` 暴露。订阅系统新增 `micro_one_api_subscription_quota_checks_total`、`micro_one_api_subscription_usage_records_total`，relay 订阅账号路径新增 `micro_one_api_relay_subscription_adaptor_requests_total`、`micro_one_api_relay_subscription_failover_total`、`micro_one_api_relay_runtime_blocks_total`、`micro_one_api_relay_upstream_passthrough_total`、`micro_one_api_relay_codex_quota_snapshots_total`、`micro_one_api_relay_codex_quota_used_percent`。v0.6.0 起，订阅账号治理还暴露额度重置、账号恢复和额度告警相关指标，详见 [docs/subscription-account-ops-runbook.md](./docs/subscription-account-ops-runbook.md)。
+Prometheus 指标通过各服务 `/metrics` 暴露。订阅系统新增 `micro_one_api_subscription_quota_checks_total`、`micro_one_api_subscription_usage_records_total`，relay 订阅账号路径新增 `micro_one_api_relay_subscription_adaptor_requests_total`、`micro_one_api_relay_subscription_failover_total`、`micro_one_api_relay_runtime_blocks_total`、`micro_one_api_relay_upstream_passthrough_total`、`micro_one_api_relay_codex_quota_snapshots_total`、`micro_one_api_relay_codex_quota_used_percent`。v0.6.0 起，订阅账号治理还暴露额度重置、账号恢复和额度告警相关指标，详见 [docs/runbooks/subscription-account-ops-runbook.md](./docs/runbooks/subscription-account-ops-runbook.md)。
 
 更多配置见 [.env.example](./.env.example) 和 [docs/deployment.md](./docs/deployment.md)。
 

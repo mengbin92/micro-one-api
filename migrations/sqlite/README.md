@@ -2,7 +2,7 @@
 
 This directory holds the SQLite3-flavored migrations used by the Lite
 deployment mode (see `docs/deployment.md` §9.1 and
-`docs/issue-4-sqlite-solution.md`).
+`docs/design/issue-4-sqlite-solution.md`).
 
 A sibling `migrations/postgres/` directory contains the Postgres
 equivalent (see `docs/deployment.md` §9.2). The two snapshots are
