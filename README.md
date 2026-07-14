@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**:[v0.7.0 发布公告](./docs/releases/release-v0.7.0.md)(Kratos 大仓结构迁移、基础设施分层、架构边界守卫) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.7.0)
+> 📣 **最新发布**:[v0.7.1 发布公告](./docs/releases/release-v0.7.1.md)(管理后台日志详情与分页修复、服务间路由与鉴权修复、安全扫描收敛) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.7.1)
 
 ## 功能概览
 
@@ -120,6 +120,12 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.7.1
+
+v0.7.1 是 v0.7.0 之后的 PATCH 版本,**不涉及数据库迁移和 API 破坏性变更**。升级步骤为重建镜像并滚动重启,无需执行 SQL 迁移。详见 [docs/releases/release-v0.7.1.md](./docs/releases/release-v0.7.1.md)。
+
+> docker-compose 部署请注意:log-service 和 billing-service 现在强制要求 `SERVICE_TOKEN` 环境变量,缺失会导致 compose 启动失败。
 
 ### 升级到 v0.7.0
 
