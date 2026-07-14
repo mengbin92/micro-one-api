@@ -150,6 +150,7 @@ metadata:
   namespace: one-api
 data:
   identity-grpc-endpoint: "identity-service:9001"
+  identity-http-endpoint: "http://identity-service:8001"
   channel-grpc-endpoint: "channel-service:9002"
   billing-grpc-endpoint: "billing-service:9004"
   log-http-endpoint: "http://log-service:8006"

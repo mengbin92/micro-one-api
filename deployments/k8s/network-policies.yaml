@@ -157,7 +157,7 @@ spec:
           name: ingress-nginx
     ports:
     - protocol: TCP
-      port: 3000
+      port: 8000
     - protocol: TCP
       port: 9000
   egress:
@@ -177,6 +177,8 @@ spec:
     ports:
     - protocol: TCP
       port: 9001
+    - protocol: TCP
+      port: 8001
   - to:
     - podSelector:
         matchLabels:
@@ -184,6 +186,8 @@ spec:
     ports:
     - protocol: TCP
       port: 9002
+    - protocol: TCP
+      port: 8002
   - to:
     - podSelector:
         matchLabels:
@@ -191,6 +195,22 @@ spec:
     ports:
     - protocol: TCP
       port: 9004
+    - protocol: TCP
+      port: 8004
+  - to:
+    - podSelector:
+        matchLabels:
+          app: log-service
+    ports:
+    - protocol: TCP
+      port: 8006
+  - to:
+    - podSelector:
+        matchLabels:
+          app: notify-worker
+    ports:
+    - protocol: TCP
+      port: 8008
   - to: []
     ports:
     - protocol: TCP

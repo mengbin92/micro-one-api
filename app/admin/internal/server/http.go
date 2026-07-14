@@ -288,6 +288,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 		srv.HandleFunc("/api/user/pay", identityProxy.ServeHTTP)
 		srv.HandleFunc("/api/token", identityProxy.ServeHTTP)
 		srv.HandlePrefix("/api/token/", identityProxy)
+		srv.HandlePrefix("/api/oauth/", identityProxy)
+		srv.HandlePrefix("/v1/oauth/", identityProxy)
 	}
 	if billingHTTPProxy != nil {
 		srv.HandleFunc("/api/v1/user/payments/alipay/notify", billingHTTPProxy.ServeHTTP)

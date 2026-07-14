@@ -823,6 +823,88 @@ func TestAdminHTTPProxiesUserPaymentOrderDetail(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPProxiesOAuthBindEndpointsToIdentity(t *testing.T) {
+	var gotPath string
+	var gotQuery string
+	var gotAuthorization string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		gotAuthorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"auth_url":"https://oauth.example.test/authorize"}}`))
+	}))
+	defer upstream.Close()
+
+	srv := newAdminHTTPTestServerWithIdentityEndpoint(upstream.URL)
+	for _, provider := range []string{"github", "oidc", "lark", "wechat", "telegram"} {
+		t.Run(provider, func(t *testing.T) {
+			path := "/api/oauth/" + provider + "/bind?source=profile"
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer session-token")
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+			}
+			if gotPath != "/api/oauth/"+provider+"/bind" {
+				t.Fatalf("proxied path = %q, want /api/oauth/%s/bind", gotPath, provider)
+			}
+			if gotQuery != "source=profile" {
+				t.Fatalf("proxied query = %q, want source=profile", gotQuery)
+			}
+			if gotAuthorization != "Bearer session-token" {
+				t.Fatalf("proxied authorization = %q", gotAuthorization)
+			}
+			if !strings.Contains(rec.Body.String(), `"auth_url":"https://oauth.example.test/authorize"`) {
+				t.Fatalf("response was not proxied: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestAdminHTTPProxiesOAuthCallbackToIdentity(t *testing.T) {
+	var gotPath string
+	var gotQuery string
+	var gotCookie string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		gotCookie = r.Header.Get("Cookie")
+		http.SetCookie(w, &http.Cookie{Name: "oauth_state", Value: "", MaxAge: -1, Path: "/"})
+		http.Redirect(w, r, "/profile?oauth_bind=success&provider=wechat", http.StatusFound)
+	}))
+	defer upstream.Close()
+
+	srv := newAdminHTTPTestServerWithIdentityEndpoint(upstream.URL)
+	req := httptest.NewRequest(http.MethodGet, "/v1/oauth/wechat/callback?code=oauth-code&state=oauth-state", nil)
+	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "oauth-state"})
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302, body=%s", rec.Code, rec.Body.String())
+	}
+	if gotPath != "/v1/oauth/wechat/callback" {
+		t.Fatalf("proxied path = %q, want /v1/oauth/wechat/callback", gotPath)
+	}
+	if gotQuery != "code=oauth-code&state=oauth-state" {
+		t.Fatalf("proxied query = %q", gotQuery)
+	}
+	if !strings.Contains(gotCookie, "oauth_state=oauth-state") {
+		t.Fatalf("proxied cookie = %q", gotCookie)
+	}
+	if location := rec.Header().Get("Location"); location != "/profile?oauth_bind=success&provider=wechat" {
+		t.Fatalf("proxied location = %q", location)
+	}
+	if setCookie := rec.Header().Get("Set-Cookie"); !strings.Contains(setCookie, "oauth_state=") || !strings.Contains(setCookie, "Max-Age=0") {
+		t.Fatalf("proxied set-cookie = %q", setCookie)
+	}
+}
+
 func TestAdminHTTPProxiesUserTopUp(t *testing.T) {
 	var gotPath string
 	var gotBody string

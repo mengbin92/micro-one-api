@@ -1608,7 +1608,7 @@ func TestIdentityHTTPOAuthBindBrowserRedirectFlow(t *testing.T) {
 	}
 	state := cookies[0].Value
 
-	callbackReq := httptest.NewRequest(http.MethodGet, "/api/oauth/wechat/bind?code=oauth-code&state="+state, nil)
+	callbackReq := httptest.NewRequest(http.MethodGet, "/v1/oauth/wechat/callback?code=oauth-code&state="+state, nil)
 	callbackReq.AddCookie(cookies[0])
 	callbackRec := httptest.NewRecorder()
 	srv.ServeHTTP(callbackRec, callbackReq)

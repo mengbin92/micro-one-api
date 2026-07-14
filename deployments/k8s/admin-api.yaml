@@ -18,7 +18,7 @@ spec:
         version: v1
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "3000"
+        prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
       automountServiceAccountToken: false
@@ -35,7 +35,7 @@ spec:
         image: your-registry/admin-api:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 3000
+        - containerPort: 8000
           protocol: TCP
           name: http
         - containerPort: 9000
@@ -51,11 +51,21 @@ spec:
         env:
         - name: CONF_PATH
           value: "/configs/config.yaml"
+        - name: DATABASE_DSN
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: dsn
         - name: IDENTITY_GRPC_ENDPOINT
           valueFrom:
             configMapKeyRef:
               name: app-config
               key: identity-grpc-endpoint
+        - name: IDENTITY_HTTP_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: identity-http-endpoint
         - name: CHANNEL_GRPC_ENDPOINT
           valueFrom:
             configMapKeyRef:
@@ -92,14 +102,14 @@ spec:
             cpu: "500m"
         livenessProbe:
           tcpSocket:
-            port: 3000
+            port: 8000
           initialDelaySeconds: 15
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
           tcpSocket:
-            port: 3000
+            port: 8000
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
@@ -122,7 +132,7 @@ spec:
   type: ClusterIP
   ports:
   - port: 3000
-    targetPort: 3000
+    targetPort: 8000
     protocol: TCP
     name: http
   - port: 9000

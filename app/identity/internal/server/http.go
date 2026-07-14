@@ -1258,17 +1258,28 @@ func oauthBindSnapshotFromRequest(r *http.Request, uc *biz.IdentityUsecase, prov
 	if cookie == nil || cookie.Value != state {
 		return nil, false, biz.ErrInvalidToken
 	}
+	record, found, err := takeOAuthBindRecord(state, providerName)
+	if !found || err != nil {
+		return nil, false, biz.ErrInvalidToken
+	}
+	snapshot, err := uc.GetSessionSnapshot(r.Context(), record.Token)
+	return snapshot, true, err
+}
+
+func takeOAuthBindRecord(state, providerName string) (oauthBindRecord, bool, error) {
 	oauthBindStore.Lock()
 	record, ok := oauthBindStore.items[state]
 	if ok {
 		delete(oauthBindStore.items, state)
 	}
 	oauthBindStore.Unlock()
-	if !ok || record.Provider != providerName || time.Since(record.At) > 5*time.Minute {
-		return nil, false, biz.ErrInvalidToken
+	if !ok {
+		return oauthBindRecord{}, false, nil
 	}
-	snapshot, err := uc.GetSessionSnapshot(r.Context(), record.Token)
-	return snapshot, true, err
+	if record.Provider != providerName || time.Since(record.At) > 5*time.Minute {
+		return oauthBindRecord{}, true, biz.ErrInvalidToken
+	}
+	return record, true, nil
 }
 
 func handleCreateUserToken(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
@@ -1615,9 +1626,31 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 		SameSite: http.SameSiteStrictMode,
 	})
 
+	var bindSnapshot *biz.AuthSnapshot
+	bindRecord, bindCallback, bindErr := takeOAuthBindRecord(state, provider.Name())
+	if bindCallback {
+		if bindErr != nil {
+			writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "invalid token"})
+			return
+		}
+		bindSnapshot, bindErr = uc.GetSessionSnapshot(r.Context(), bindRecord.Token)
+		if bindErr != nil {
+			writeJSON(w, http.StatusUnauthorized, apiResponse{Success: false, Message: "invalid token"})
+			return
+		}
+	}
+
 	userInfo, err := provider.Exchange(r.Context(), code)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "oauth provider error"})
+		return
+	}
+	if bindSnapshot != nil {
+		if _, err := uc.BindOAuthIdentity(r.Context(), bindSnapshot.UserID, userInfo.Provider, userInfo.ProviderID); err != nil {
+			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
+			return
+		}
+		http.Redirect(w, r, "/profile?oauth_bind=success&provider="+url.QueryEscape(provider.Name()), http.StatusFound)
 		return
 	}
 
