@@ -41,7 +41,7 @@ docs/
 - [v0.3.0](./releases/release-v0.3.0.md) · [v0.3.1](./releases/release-v0.3.1.md)
 - [v0.4.0](./releases/release-v0.4.0.md) · [v0.4.0 / v0.5.0 联合公告](./releases/release-v0.4.0-v0.5.0.md) · [v0.5.0](./releases/release-v0.5.0.md)
 - [v0.6.0](./releases/release-v0.6.0.md) · [v0.6.1](./releases/release-v0.6.1.md)
-- [v0.7.0](./releases/release-v0.7.0.md) · [v0.7.1](./releases/release-v0.7.1.md) · [v0.7.2](./releases/release-v0.7.2.md)（最新）
+- [v0.7.0](./releases/release-v0.7.0.md) · [v0.7.1](./releases/release-v0.7.1.md) · [v0.7.2](./releases/release-v0.7.2.md) · [v0.8.0](./releases/release-v0.8.0.md)（最新）
 
 ### runbooks/ — 运维操作手册
 

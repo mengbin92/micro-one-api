@@ -295,20 +295,20 @@ kubectl port-forward -n one-api service/relay-gateway 8080:80
 | `CHANNEL_GRPC_ENDPOINT` | channel-service gRPC 地址 | - |
 | `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 | - |
 | `LOG_HTTP_ENDPOINT` | log-service HTTP 地址；未配置时 `/api/log/{id}` 详情与 `/api/log/` 清理保持禁用兼容响应 | - |
-| `ADMIN_WEB_ROOT` | 管理前端静态文件目录；目录内必须有 `index.html`，未配置或不可用时使用二进制内嵌资源 | - |
+| `ADMIN_WEB_ROOT` | 管理前端静态文件目录；目录内必须有 `index.html`，未配置或不可用时返回 500 | - |
 
 #### 管理前端静态资源
 
-`admin-api` 默认继续使用编译进二进制的前端资源，适合单二进制或镜像内置前端的部署方式。
+自 v0.8.0 起，`admin-api` 不再使用 `go:embed` 将前端编译进二进制，而是统一从 `ADMIN_WEB_ROOT` 指定的目录提供静态资源。目录内必须包含 `index.html`。
 
-如果需要前端独立更新，可将 `ADMIN_WEB_ROOT` 指向外部构建目录，例如：
+例如，将 `ADMIN_WEB_ROOT` 指向外部构建目录：
 
 ```bash
 make web-dist
 ADMIN_WEB_ROOT=/srv/micro-one-api/web/dist ./admin-api
 ```
 
-运行中的 `admin-api` 会直接从该目录读取 `index.html`、`assets/*`、`favicon.svg` 等文件。替换目录内的前端构建产物后，无需重新编译 Go 后端；浏览器刷新即可加载新的 Vite hash 资源。若目录不存在或缺少 `index.html`，服务会自动回退到内嵌资源。
+运行中的 `admin-api` 会直接从该目录读取 `index.html`、`assets/*`、`favicon.svg` 等文件。替换目录内的前端构建产物后，无需重新编译 Go 后端；浏览器刷新即可加载新的 Vite hash 资源。若目录不存在或缺少 `index.html`，服务会返回 500 `frontend not available`，不再回退到内嵌资源。
 
 Docker Compose 部署已将宿主机 `web/dist` 挂载到容器 `/web`，并设置 `ADMIN_WEB_ROOT=/web`。使用该模式时先执行：
 

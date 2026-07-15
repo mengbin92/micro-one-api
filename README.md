@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.7.2 发布公告](./docs/releases/release-v0.7.2.md)（OAuth 回调修复、Compose 显式迁移、Kubernetes 清单与部署文档收口） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.7.2)
+> 📣 **最新发布**：[v0.8.0 发布公告](./docs/releases/release-v0.8.0.md)（API 指南页、CC Switch 导入、admin 前端改由 ADMIN_WEB_ROOT 提供） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.8.0)
 
 ## 功能概览
 
@@ -178,6 +178,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.8.0
+
+v0.8.0 是 v0.7.2 之后的 MINOR 版本，新增 API 指南页与 CC Switch 导入，并将管理后台前端从 `go:embed` 改为 `ADMIN_WEB_ROOT` 运行时提供。**没有 API 破坏性变更，也没有数据库 schema 变更**；但重新部署 admin 镜像时需确保前端构建产物存在并设置 `ADMIN_WEB_ROOT`（admin Dockerfile 已默认设置为 `/web`）。详见 [docs/releases/release-v0.8.0.md](./docs/releases/release-v0.8.0.md)。
 
 ### 升级到 v0.7.2
 
