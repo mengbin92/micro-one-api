@@ -89,19 +89,26 @@ docs/assets/screenshots/
 
 ## P2 — 路线图清理
 
-### [ ] 重新评估 grpc-gateway 迁移计划
+### [x] 重新评估 grpc-gateway 迁移计划
 
-关联文档：[grpc-gateway 迁移 TODO](./migration/grpc-gateway-migration-todo.md)
+关联决策：[HTTP 转换机制决策](./migration/grpc-gateway-migration-todo.md)
 
-- [ ] 明确标准 CRUD 是否继续使用 Kratos `protoc-gen-go-http` 生成的 HTTP handler。
-- [ ] 评估引入 grpc-gateway runtime mux 是否有明确收益。
-- [ ] 保留流式响应、WebSocket、Webhook 和 One-API 兼容路由的自定义 HTTP 实现。
-- [ ] 根据评审结果更新为正式迁移计划、ADR，或标记为不再推进。
+- [x] 标准 unary CRUD 继续使用 Kratos `protoc-gen-go-http` 生成的 HTTP handler。
+- [x] 评估 grpc-gateway runtime mux：当前部署和调用链没有足以抵消双运行时维护成本的明确收益，决定不引入。
+- [x] 流式响应、WebSocket、Webhook、OAuth 回调和 One-API 兼容路由继续使用自定义 HTTP 实现。
+- [x] 将原迁移 TODO 改为正式技术决策记录，grpc-gateway 迁移标记为不再推进。
+
+评审结论（2026-07-15）：
+
+- 标准 HTTP API 从手写 CRUD handler 逐步收敛到 Kratos 生成 handler，而不是迁移到 grpc-gateway。
+- `config`、`log`、`monitor`、`notify` 在切换前先补 HTTP 契约测试，核对状态码、JSON 编码、错误格式、鉴权和分页行为。
+- `log` 的批量删除、`monitor` 的 latest health check、`notify` 的状态更新存在 proto、生成路由与当前手写路由不一致，按资源单独决策和修复，不作为无行为变化的机械替换。
+- 只有在需要独立统一 REST 网关、多语言 gRPC 后端或集中式 HTTP 转码层时，才重新评估 grpc-gateway。
 
 验收标准：
 
-- 路线图不再保留已经过期但没有明确决策的版本承诺。
-- 项目只维护必要的 HTTP 转换机制，避免同时维护两套重复方案。
+- [x] 路线图不再保留已经过期但没有明确决策的版本承诺。
+- [x] 明确只维护 Kratos 生成 HTTP 与必要的自定义 HTTP 两类机制，不增加重复的 grpc-gateway runtime。
 
 ## 基线检查
 
