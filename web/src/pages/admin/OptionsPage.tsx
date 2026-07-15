@@ -20,6 +20,12 @@ interface OptionItem {
 
 const FEATURED_OPTIONS = [
   {
+    key: 'ServerAddress',
+    label: '服务器地址',
+    description: '对外暴露的 API 地址，用于客户端接入和 CC Switch 导入。留空时前端使用当前访问地址。',
+    type: 'text',
+  },
+  {
     key: 'RegisterEnabled',
     label: '开放注册',
     description: '允许新用户注册账号。',
@@ -165,6 +171,14 @@ export function AdminOptionsPage() {
                             <option value="true">启用</option>
                             <option value="false">禁用</option>
                           </select>
+                        ) : option.type === 'text' ? (
+                          <Input
+                            type="text"
+                            value={option.value}
+                            onChange={(event) => setDraft(option.key, event.target.value)}
+                            placeholder="https://api.example.com"
+                            className="max-w-80 font-mono text-xs"
+                          />
                         ) : (
                           <Input
                             type="number"

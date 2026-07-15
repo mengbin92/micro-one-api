@@ -4,6 +4,7 @@ import {
   Activity,
   BadgeCheck,
   BarChart3,
+  BookOpen,
   ChevronsLeft,
   CreditCard,
   Database,
@@ -67,6 +68,7 @@ const userLinks: NavItem[] = [
   { to: '/dashboard', label: '仪表盘', ariaLabel: 'Dashboard', icon: LayoutDashboard },
   { to: '/tokens', label: 'API 密钥', ariaLabel: 'Tokens', icon: KeyRound },
   { to: '/usage', label: '使用记录', ariaLabel: 'Usage', icon: BarChart3 },
+  { to: '/api-guide', label: 'API 使用指南', ariaLabel: 'API Guide', icon: BookOpen },
 ];
 
 const secondaryUserLinks: SecondaryNavItem[] = [
@@ -100,6 +102,7 @@ const routeTitles: Record<string, string> = {
   '/dashboard': '仪表盘',
   '/tokens': 'API 密钥',
   '/usage': '使用记录',
+  '/api-guide': 'API 使用指南',
   '/pricing': '模型价格',
   '/recharge': '充值 / 订阅',
   '/redeem': '兑换码充值',

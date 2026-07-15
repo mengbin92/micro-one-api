@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -144,18 +145,28 @@ func walk(value any, namespace, source string, refs *[]reference, seen map[strin
 }
 
 func loadManifests(directory string) (map[resourceID]map[string]bool, []reference, error) {
-	paths, err := filepath.Glob(filepath.Join(directory, "*.yaml"))
+	// OpenRoot scopes every subsequent read under `directory`, so even a
+	// caller-supplied path cannot escape to an arbitrary filesystem location
+	// (gosec G304/G703 path traversal).
+	root, err := os.OpenRoot(directory)
 	if err != nil {
 		return nil, nil, err
 	}
-	sort.Strings(paths)
+	defer root.Close()
+
+	names, err := fs.Glob(root.FS(), "*.yaml")
+	if err != nil {
+		return nil, nil, err
+	}
+	sort.Strings(names)
 
 	definitions := make(map[resourceID]map[string]bool)
 	var refs []reference
 	seen := make(map[string]bool)
 
-	for _, path := range paths {
-		content, err := os.ReadFile(path)
+	for _, name := range names {
+		path := filepath.Join(directory, name)
+		content, err := fs.ReadFile(root.FS(), name)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -184,7 +195,15 @@ func loadManifests(directory string) (map[resourceID]map[string]bool, []referenc
 }
 
 func documentedSecrets(path string) (map[resourceID]externalResource, error) {
-	content, err := os.ReadFile(path)
+	// Scope the read under the file's directory so a caller-controlled path
+	// cannot traverse outside it (gosec G304/G703 path traversal).
+	dir, base := filepath.Split(path)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	content, err := fs.ReadFile(root.FS(), base)
 	if err != nil {
 		return nil, err
 	}

@@ -118,6 +118,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/dashboard", handlePage)
 	srv.HandleFunc("/tokens", handlePage)
 	srv.HandleFunc("/usage", handlePage)
+	srv.HandleFunc("/api-guide", handlePage)
 	srv.HandleFunc("/pricing", handlePage)
 	srv.HandleFunc("/recharge", handlePage)
 	srv.HandleFunc("/redeem", handlePage)
@@ -163,12 +164,25 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
+		serverAddress := ""
+		if svc != nil {
+			if v, err := svc.GetOneAPIOption(r.Context(), "ServerAddress"); err == nil {
+				serverAddress = v
+			}
+		}
+		systemName := "micro-one-api"
+		if svc != nil {
+			if v, err := svc.GetOneAPIOption(r.Context(), "SystemName"); err == nil && v != "" {
+				systemName = v
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true,
 			"message": "",
 			"data": map[string]interface{}{
 				"version":              "micro-one-api",
-				"system_name":          "micro-one-api",
+				"system_name":          systemName,
+				"server_address":       serverAddress,
 				"registration_enabled": true,
 				"email_verification":   false,
 				"github_oauth":         false,

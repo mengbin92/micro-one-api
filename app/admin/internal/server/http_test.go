@@ -1084,8 +1084,10 @@ func TestAdminHTTPPageUsesExternalWebRoot(t *testing.T) {
 
 	srv := NewHTTPServer(":0", nil, "", webRoot)
 
-	if body := adminHTTPGetBody(t, srv, "/admin/reconciliation"); !strings.Contains(body, `external`) {
-		t.Fatalf("expected external SPA shell, got: %s", body)
+	for _, path := range []string{"/admin/reconciliation", "/api-guide"} {
+		if body := adminHTTPGetBody(t, srv, path); !strings.Contains(body, `external`) {
+			t.Fatalf("expected external SPA shell for %s, got: %s", path, body)
+		}
 	}
 	if body := adminHTTPGetBody(t, srv, "/assets/app.js"); !strings.Contains(body, `external asset`) {
 		t.Fatalf("expected external asset, got: %s", body)
