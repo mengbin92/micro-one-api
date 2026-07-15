@@ -174,7 +174,7 @@ services:
       - no-new-privileges:true
     read_only: true
     volumes:
-      - ../../cert/alipay:/cert/alipay:ro
+      - ${ALIPAY_CERT_DIR:-../../cert/alipay}:/cert/alipay:ro
     tmpfs:
       - /tmp
     cap_drop:

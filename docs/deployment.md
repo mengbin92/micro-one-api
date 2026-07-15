@@ -352,6 +352,7 @@ docker-compose up -d admin-api
 | `ALIPAY_ENABLED` | 必须为 `true` 才会注册真实支付宝支付渠道 |
 | `ALIPAY_FORM_URL` | 支付宝网关地址；沙箱通常为 `https://openapi-sandbox.dl.alipaydev.com/gateway.do` |
 | `ALIPAY_APP_ID` | 支付宝应用 ID |
+| `ALIPAY_CERT_DIR` | 宿主机支付宝密钥目录；默认相对 compose 文件为 `../../cert/alipay`，目录会只读挂载到容器 `/cert/alipay` |
 | `ALIPAY_PRIVATE_KEY_PATH` | 应用私钥 PEM 文件路径，容器内路径需可读 |
 | `ALIPAY_PUBLIC_KEY_PATH` | 支付宝公钥 PEM 文件路径，容器内路径需可读 |
 | `ALIPAY_RETURN_URL` | 用户支付完成后的同步返回页面 |

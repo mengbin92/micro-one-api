@@ -191,6 +191,7 @@ services:
       - ALL
     volumes:
       - sqlite_data:/data:rw
+      - ${ALIPAY_CERT_DIR:-../../cert/alipay}:/cert/alipay:ro
 
   config-service:
     build:
