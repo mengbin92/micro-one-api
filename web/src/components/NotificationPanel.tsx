@@ -1,6 +1,8 @@
 /**
  * Notification Panel Component
- * Displays notification history with status filtering
+ * Displays notification history with status filtering.
+ * Raw backend English/technical text is parsed into structured Chinese
+ * display metadata via @/lib/notification-display.
  * Note: Mark-as-read functionality is not available as the backend doesn't provide the HTTP endpoint
  */
 
@@ -13,12 +15,25 @@ import {
   X,
   XCircle,
   RefreshCw,
+  ChevronDown,
+  Webhook,
+  Mail,
+  MessageSquare,
+  Activity,
+  ShieldAlert,
+  TriangleAlert,
+  CircleAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { adminApiClient } from '@/lib/api';
+import {
+  parseNotification,
+  translateError,
+  notifyTypeLabel,
+} from '@/lib/notification-display';
 
 // Notification types based on backend API response (snake_case)
 interface Notification {
@@ -61,6 +76,39 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; co
   },
 };
 
+// Channel icon by notify type
+const TYPE_ICON: Record<string, React.ElementType> = {
+  webhook: Webhook,
+  email: Mail,
+  event: Activity,
+  wecom: MessageSquare,
+  dingtalk: MessageSquare,
+  feishu: MessageSquare,
+  slack: MessageSquare,
+};
+
+// Severity icon/color
+const SEVERITY_CONFIG: Record<
+  string,
+  { icon: React.ElementType; color: string; ring: string }
+> = {
+  info: {
+    icon: Activity,
+    color: 'text-blue-600 dark:text-blue-400',
+    ring: 'ring-blue-200/60 dark:ring-blue-500/20',
+  },
+  warning: {
+    icon: TriangleAlert,
+    color: 'text-amber-600 dark:text-amber-400',
+    ring: 'ring-amber-200/60 dark:ring-amber-500/20',
+  },
+  error: {
+    icon: CircleAlert,
+    color: 'text-red-600 dark:text-red-400',
+    ring: 'ring-red-200/60 dark:ring-red-500/20',
+  },
+};
+
 // Format timestamp
 function formatTime(dateString?: string): string {
   if (!dateString) return '-';
@@ -73,11 +121,11 @@ function formatTime(dateString?: string): string {
     const diffDays = Math.floor(diffMs / 86400000);
 
     if (diffMins < 1) return '刚刚';
-    if (diffMins < 60) return `${diffMins}分钟前`;
-    if (diffHours < 24) return `${diffHours}小时前`;
-    if (diffDays < 7) return `${diffDays}天前`;
+    if (diffMins < 60) return `${diffMins} 分钟前`;
+    if (diffHours < 24) return `${diffHours} 小时前`;
+    if (diffDays < 7) return `${diffDays} 天前`;
 
-    return date.toLocaleDateString('zh-CN');
+    return date.toLocaleString('zh-CN', { hour12: false });
   } catch {
     return '-';
   }
@@ -94,6 +142,7 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const canUsePortal = typeof document !== 'undefined';
 
   // Use ref to track component mounted state
@@ -195,10 +244,27 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
     return () => clearInterval(interval);
   }, [open, fetchNotifications]);
 
+  // Reset expansion when filter changes
+  useEffect(() => {
+    setExpandedIds(new Set());
+  }, [statusFilter]);
+
   // Handle refresh
   const handleRefresh = () => {
     fetchNotifications();
     toast.success('通知列表已刷新');
+  };
+
+  const toggleExpand = (id: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   // Filter buttons
@@ -310,63 +376,138 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-2 p-4">
+                  <div className="space-y-2 p-3">
                     {notifications.map((notification) => {
                       const status = notification.status || 'pending';
                       const config = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
                       const StatusIcon = config.icon;
                       const isPending = status === 'pending';
+                      const isFailed = status === 'failed';
+
+                      // Parse the raw English/technical text into structured display data
+                      const parsed = parseNotification({
+                        subject: notification.subject,
+                        content: notification.content,
+                        status: notification.status,
+                        last_error: notification.last_error,
+                      });
+                      const sev = SEVERITY_CONFIG[parsed.severity] ?? SEVERITY_CONFIG.info;
+                      const SevIcon = sev.icon;
+                      const TypeIcon = TYPE_ICON[notification.type ?? ''] ?? Activity;
+                      const id = notification.id ?? 0;
+                      const isExpanded = expandedIds.has(id);
+                      const hasDetails = parsed.details.length > 0 || isFailed;
+                      const translatedErr = translateError(notification.last_error);
 
                       return (
                         <div
-                          key={notification.id}
+                          key={id}
                           className={cn(
-                            'relative rounded-lg border p-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50',
-                            isPending && 'bg-blue-50/50 border-blue-200 dark:bg-blue-500/5 dark:border-blue-500/20'
+                            'relative rounded-lg border p-3 transition-colors',
+                            isFailed
+                              ? 'border-red-200 bg-red-50/40 dark:border-red-500/30 dark:bg-red-500/5'
+                              : isPending
+                                ? 'border-blue-200 bg-blue-50/40 dark:border-blue-500/20 dark:bg-blue-500/5'
+                                : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800/50'
                           )}
                         >
-                          {/* Status Badge */}
-                          <div className="mb-2 flex items-center justify-between">
-                            <span className={cn(
-                              'flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                              config.color
-                            )}>
-                              <StatusIcon className="size-3" />
-                              {config.label}
-                            </span>
+                          {/* Top row: category badge + severity + time */}
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className={cn('flex items-center gap-1', sev.color)}>
+                                <SevIcon className="size-3.5" />
+                              </span>
+                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                {parsed.categoryLabel}
+                              </span>
+                            </div>
                             <span className="text-xs text-slate-400">
                               {formatTime(notification.created_at)}
                             </span>
                           </div>
 
-                          {/* Subject */}
-                          <h4 className="mb-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                            {notification.subject || '无主题'}
-                          </h4>
-
-                          {/* Content */}
-                          <p className="mb-2 text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
-                            {notification.content || '无内容'}
+                          {/* Summary (the headline an operator understands) */}
+                          <p className="mb-1.5 text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {parsed.summary}
                           </p>
 
-                          {/* Footer */}
-                          <div className="flex items-center justify-between text-xs text-slate-400">
-                            <span>收件人: {notification.recipient || '未知'}</span>
+                          {/* Meta chips: status + channel type + recipient */}
+                          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                            <span className={cn(
+                              'flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                              config.color
+                            )}>
+                              <StatusIcon className="size-3" />
+                              {config.label}
+                            </span>
+                            <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                              <TypeIcon className="size-3" />
+                              {notifyTypeLabel(notification.type)}
+                            </span>
                           </div>
 
-                          {/* Retry Count for Failed */}
-                          {status === 'failed' && (notification.retry_count ?? 0) > 0 && (
-                            <div className="mt-2 text-xs text-red-600 dark:text-red-400">
+                          {/* Failed reason: translated, highlighted */}
+                          {isFailed && translatedErr && (
+                            <div className="mb-2 flex items-start gap-1.5 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                              <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+                              <div>
+                                <span className="font-medium">失败原因:</span>{' '}
+                                <span className="break-words">{translatedErr}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Retry count for failed */}
+                          {isFailed && (notification.retry_count ?? 0) > 0 && (
+                            <div className="mb-2 text-xs text-red-600 dark:text-red-400">
                               已重试 {notification.retry_count} 次
                             </div>
                           )}
 
-                          {status === 'failed' && notification.last_error && (
-                            <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-                              <span className="font-medium">失败原因: </span>
-                              <span className="break-words">{notification.last_error}</span>
+                          {/* Expandable structured details */}
+                          {hasDetails && (
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(id)}
+                              className="flex w-full items-center gap-1 rounded-md px-1 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                            >
+                              <ChevronDown className={cn('size-3.5 transition-transform', isExpanded && 'rotate-180')} />
+                              {isExpanded ? '收起详情' : '查看详情'}
+                            </button>
+                          )}
+
+                          {hasDetails && isExpanded && (
+                            <div className="mt-1.5 space-y-1 rounded-md bg-slate-50 p-2 dark:bg-slate-800/50">
+                              {parsed.details.map((detail, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-start justify-between gap-2 text-xs"
+                                >
+                                  {detail.label ? (
+                                    <>
+                                      <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                                        {detail.label}
+                                      </span>
+                                      {detail.value && (
+                                        <span className="break-all text-right font-medium text-slate-700 dark:text-slate-200">
+                                          {detail.value}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span className="break-all text-slate-600 dark:text-slate-300">
+                                      {detail.value}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           )}
+
+                          {/* Footer */}
+                          <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+                            <span className="truncate">收件人: {notification.recipient || '未知'}</span>
+                          </div>
                         </div>
                       );
                     })}
