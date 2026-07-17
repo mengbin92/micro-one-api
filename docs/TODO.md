@@ -1,8 +1,8 @@
 # 项目 TODO
 
-> 最后更新：2026-07-16
+> 最后更新：2026-07-17
 >
-> 当前阶段重点：v0.8.0 已发布（API 指南页、CC Switch 导入、admin 前端改由 ADMIN_WEB_ROOT 提供）。v0.8.0 前的发布、部署、文档和路线图清理任务已全部完成；下一步推进架构重构 Phase 1 的剩余 P0 项与 Phase 0 可观测性基线。
+> 当前阶段重点：v0.8.0 已发布（API 指南页、CC Switch 导入、admin 前端改由 ADMIN_WEB_ROOT 提供）。v0.8.0 前的发布、部署、文档和路线图清理任务已全部完成；Phase 0 可观测性基线已填充，原始结果归档在 `scripts/benchmark/results/phase0-baseline-2026-07-17.json`；下一步推进架构重构 Phase 1 的剩余 P0 项（`internal/server/http.go` 拆分）。
 >
 > 架构重构总方案见 [design/ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md)，性能基线表见 [design/BASELINE.md](./design/BASELINE.md)。
 
@@ -39,7 +39,7 @@
 
 > 依据 `docs/design/BASELINE.md`。当前基线表有 16 处 TBD，需先建立量化基线，为后续优化提供对比依据。
 
-### [ ] 填充性能基线数据
+### [x] 填充性能基线数据
 
 关联基线表：[design/BASELINE.md](./design/BASELINE.md)
 
@@ -50,12 +50,12 @@
 
 任务：
 
-- [ ] 在本地或预发环境按 `BASELINE.md` 的「How to Run」章节运行 `k6-baseline.js`。
-- [ ] 记录 `/healthz`、`/v1/models`、`/v1/chat/completions` 的 P50/P95/P99 与错误率。
-- [ ] 记录 identity / channel / billing / log 四个 gRPC 服务的调用延迟。
-- [ ] 记录 auth / channel 缓存的 L1/L2 命中率与 miss 率。
-- [ ] 记录各下游服务的熔断器状态与 24h trip 次数。
-- [ ] 将结果填入 `BASELINE.md` 的基线表，并写入 History 表首行。
+- [x] 在本地或预发环境按 `BASELINE.md` 的「How to Run」章节运行 `k6-baseline.js`。
+- [x] 记录 `/healthz`、`/v1/models`、`/v1/chat/completions` 的 P50/P95/P99 与错误率。
+- [x] 记录 identity / channel / billing / log 四个 gRPC 服务的调用延迟。
+- [x] 记录 auth / channel 缓存的 L1/L2 命中率与 miss 率。
+- [x] 记录各下游服务的熔断器状态与 24h trip 次数。
+- [x] 将结果填入 `BASELINE.md` 的基线表，并写入 History 表首行。
 
 验收标准：
 

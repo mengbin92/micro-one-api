@@ -98,3 +98,6 @@ subscription-account.*.payload.json
 *.tar
 
 .workbuddy
+# Benchmark result files (k6, vegeta, etc.) - keep fixed-named archived baselines only
+scripts/benchmark/results/*.json
+!scripts/benchmark/results/phase0-baseline-*.json

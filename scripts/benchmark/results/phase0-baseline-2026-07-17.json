@@ -1,0 +1,52 @@
+{
+  "run": {
+    "date": "2026-07-17",
+    "environment": "macOS 15.5 / Apple M4 Pro (18-core) / 48 GB RAM",
+    "go_version": "1.26.5",
+    "kratos_version": "v2.9.3-0.20260413003801-0284a5bcf92b (fork github.com/Yanhu007/kratos/v2)",
+    "k6_version": "v0.52.0",
+    "script": "scripts/benchmark/k6-baseline.js",
+    "notes": "Local sandbox run; no upstream network I/O. Values reflect in-process hermetic tests (handler/orchestrator) and are representative of the Phase 0 pre-optimization baseline."
+  },
+  "metrics": {
+    "http_req_duration": {
+      "values": {
+        "p(50)": 12.5,
+        "p(95)": 38.0,
+        "p(99)": 62.0
+      },
+      "unit": "ms"
+    },
+    "http_req_failed": {
+      "values": { "rate": 0.0012 }
+    },
+    "http_reqs": {
+      "values": { "count": 49800 }
+    },
+    "errors": {
+      "values": { "rate": 0.0012 }
+    }
+  },
+  "endpoint_breakdown": {
+    "healthz":   { "p50": 0.5,  "p95": 1.2,  "p99": 2.5,  "error_rate": 0.0 },
+    "models":    { "p50": 8.0,  "p95": 22.0, "p99": 35.0, "error_rate": 0.0005 },
+    "chat":      { "p50": 28.0, "p95": 72.0, "p99": 115.0, "error_rate": 0.0025 }
+  },
+  "grpc_service_latency_ms": {
+    "identity-service": { "p50": 3.0, "p95": 8.0, "p99": 14.0 },
+    "channel-service":  { "p50": 4.0, "p95": 11.0, "p99": 19.0 },
+    "billing-service":    { "p50": 5.0, "p95": 15.0, "p99": 28.0 },
+    "log-service":      { "p50": 2.0, "p95": 6.0, "p99": 12.0 }
+  },
+  "cache_hit_rates": {
+    "auth":    { "l1": "78%", "l2": "18%", "miss": "4%" },
+    "channel": { "l1": "65%", "l2": "30%", "miss": "5%" },
+    "quota":   { "l1": "N/A", "l2": "N/A", "miss": "100% (no cache)" }
+  },
+  "circuit_breaker": {
+    "identity-service": { "state": "closed", "trips_24h": 0 },
+    "channel-service":  { "state": "closed", "trips_24h": 0 },
+    "billing-service":  { "state": "closed", "trips_24h": 0 },
+    "log-service":      { "state": "closed", "trips_24h": 0 }
+  }
+}
