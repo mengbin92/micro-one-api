@@ -11,9 +11,9 @@ import (
 
 	"github.com/bytedance/sonic"
 
+	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/apicompat"
 	relaybiz "micro-one-api/internal/biz"
-	relayprovider "micro-one-api/domain/upstream/provider"
 )
 
 type responsesFallbackResult struct {
@@ -810,6 +810,19 @@ func responsesRequestToAnthropicBody(body []byte) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, fmt.Errorf("responses→anthropic: %w", err)
 	}
+	// API-key channels may target third-party Anthropic-compatible endpoints.
+	// Keep the fallback on the common Messages schema; newer Anthropic-only
+	// reasoning extensions are rejected by providers such as Kimi Coding.
+	ar.Thinking = nil
+	ar.OutputConfig = nil
+	for index := range ar.Tools {
+		// Third-party Messages endpoints generally support client tools, but
+		// not Anthropic server-tool type identifiers such as web_search_20250305.
+		ar.Tools[index].Type = ""
+		if len(ar.Tools[index].InputSchema) == 0 || string(ar.Tools[index].InputSchema) == "null" {
+			ar.Tools[index].InputSchema = []byte(`{"type":"object","properties":{}}`)
+		}
+	}
 	out, err := sonic.Marshal(ar)
 	if err != nil {
 		return nil, false, err
@@ -902,9 +915,11 @@ func transformAnthropicStreamToResponses(resp *relayprovider.RawStreamResponse) 
 	return &relayprovider.RawStreamResponse{StatusCode: resp.StatusCode, Header: header, Body: reader}
 }
 
-// sseAnthropicData extracts the JSON payload from a "data: ..." SSE line.
+// sseAnthropicData extracts the JSON payload from an SSE data line. The space
+// after "data:" is optional per the SSE format and is omitted by some
+// Anthropic-compatible providers.
 func sseAnthropicData(line string) (string, bool) {
-	const prefix = "data: "
+	const prefix = "data:"
 	if !strings.HasPrefix(line, prefix) {
 		return "", false
 	}

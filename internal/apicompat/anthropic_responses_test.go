@@ -1257,6 +1257,40 @@ func TestResponsesToAnthropicRequest_ToolChoiceLegacyFunctionName(t *testing.T) 
 	assert.Equal(t, "get_weather", tc["name"])
 }
 
+func TestResponsesToAnthropicRequest_ReasoningBudgetLeavesAnswerCapacity(t *testing.T) {
+	req := &ResponsesRequest{
+		Model:        "Kimi-K2.7-Code",
+		Instructions: "Follow the repository instructions.",
+		Input:        json.RawMessage(`"hi"`),
+		Reasoning:    &ResponsesReasoning{Effort: "high"},
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Thinking)
+	assert.Equal(t, 8192, resp.MaxTokens)
+	assert.Equal(t, 4096, resp.Thinking.BudgetTokens)
+	assert.JSONEq(t, `"Follow the repository instructions."`, string(resp.System))
+}
+
+func TestResponsesToAnthropicRequest_MergesDeveloperMessageIntoSystem(t *testing.T) {
+	req := &ResponsesRequest{
+		Model:        "Kimi-K2.7-Code",
+		Instructions: "base instructions",
+		Input: json.RawMessage(`[
+			{"type":"message","role":"developer","content":[{"type":"input_text","text":"developer instructions"}]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}
+		]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	assert.JSONEq(t, `"base instructions\n\ndeveloper instructions"`, string(resp.System))
+	require.Len(t, resp.Messages, 1)
+	assert.Equal(t, "user", resp.Messages[0].Role)
+	assert.NotContains(t, string(resp.Messages[0].Content), "input_text")
+}
+
 // ---------------------------------------------------------------------------
 // Image content block conversion tests
 // ---------------------------------------------------------------------------

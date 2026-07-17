@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
+	relayprovider "micro-one-api/domain/upstream/provider"
 
 	"google.golang.org/grpc"
 )
@@ -103,6 +105,52 @@ func TestAdminService_TestChannelRecordsHealthFailure(t *testing.T) {
 		t.Fatal("expected probe error")
 	}
 	if channelClient.healthReq == nil || channelClient.healthReq.Success || channelClient.healthReq.ChannelId != 9 {
+		t.Fatalf("health request mismatch: %+v", channelClient.healthReq)
+	}
+}
+
+func TestAdminService_TestChannelProbesAnthropicMessages(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" {
+			t.Fatalf("request = %s %s, want POST /v1/messages", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("x-api-key"); got != "sk-test" {
+			t.Fatalf("x-api-key = %q, want sk-test", got)
+		}
+		var body struct {
+			Model     string `json:"model"`
+			MaxTokens int    `json:"max_tokens"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if body.Model != "Kimi-K2.7-Code" || body.MaxTokens != 1 {
+			t.Fatalf("request body = %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"Kimi-K2.7-Code","stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`))
+	}))
+	defer upstream.Close()
+
+	channelClient := &adminServiceChannelClient{channel: &commonv1.ChannelInfo{
+		Id:      9,
+		Type:    relayprovider.ChannelTypeAnthropic,
+		Name:    "kimi",
+		BaseUrl: upstream.URL,
+		Key:     "sk-test",
+		Models:  "Kimi-K2.7-Code,Kimi-K3",
+		Status:  1,
+	}}
+	svc := NewAdminService(nil, nil, channelClient, nil)
+	result, err := svc.TestChannel(context.Background(), 9)
+	if err != nil {
+		t.Fatalf("TestChannel() error = %v", err)
+	}
+	if result["skipped"] == true {
+		t.Fatalf("anthropic probe was skipped: %+v", result)
+	}
+	if channelClient.healthReq == nil || !channelClient.healthReq.Success || channelClient.healthReq.ChannelId != 9 {
 		t.Fatalf("health request mismatch: %+v", channelClient.healthReq)
 	}
 }

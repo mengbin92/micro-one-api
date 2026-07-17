@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	relaybiz "micro-one-api/internal/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	relaybiz "micro-one-api/internal/biz"
 )
 
 // TestResponsesRequestToAnthropicBodyMapsSimple verifies the Responses→Anthropic
@@ -40,6 +40,76 @@ func TestResponsesRequestToAnthropicBodyMapsSimple(t *testing.T) {
 	}
 	if _, ok := payload["max_output_tokens"]; ok {
 		t.Fatalf("anthropic body should not include max_output_tokens: %s", string(body))
+	}
+}
+
+func TestResponsesRequestToAnthropicBodyKeepsInstructionsAndStripsReasoningExtensions(t *testing.T) {
+	body, _, err := responsesRequestToAnthropicBody([]byte(`{
+		"model":"Kimi-K2.7-Code",
+		"instructions":"Follow the repository instructions.",
+		"input":"hi",
+		"reasoning":{"effort":"high"},
+		"stream":true
+	}`))
+	if err != nil {
+		t.Fatalf("responsesRequestToAnthropicBody error: %v", err)
+	}
+	var payload struct {
+		System       string          `json:"system"`
+		Thinking     json.RawMessage `json:"thinking"`
+		OutputConfig json.RawMessage `json:"output_config"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode anthropic body: %v, body=%s", err, string(body))
+	}
+	if payload.System != "Follow the repository instructions." {
+		t.Fatalf("system = %q, want Codex instructions; body=%s", payload.System, string(body))
+	}
+	if len(payload.Thinking) != 0 {
+		t.Fatalf("thinking should be omitted for compatible API-key upstreams; body=%s", string(body))
+	}
+	if len(payload.OutputConfig) != 0 {
+		t.Fatalf("output_config should be omitted for compatible API-key upstreams; body=%s", string(body))
+	}
+}
+
+func TestResponsesRequestToAnthropicBodyNormalizesCodexTools(t *testing.T) {
+	body, _, err := responsesRequestToAnthropicBody([]byte(`{
+		"model":"Kimi-K2.7-Code",
+		"input":"hi",
+		"tools":[
+			{"type":"function","name":"exec_command","parameters":{"type":"object"}},
+			{"type":"web_search","name":"web_search"},
+			{"type":"multi_agent_v1","name":"multi_agent_v1"}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("responsesRequestToAnthropicBody error: %v", err)
+	}
+	var payload struct {
+		Tools []struct {
+			Type        string          `json:"type"`
+			Name        string          `json:"name"`
+			InputSchema json.RawMessage `json:"input_schema"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode anthropic body: %v, body=%s", err, string(body))
+	}
+	if len(payload.Tools) != 3 {
+		t.Fatalf("tools = %d, want 3; body=%s", len(payload.Tools), string(body))
+	}
+	for _, tool := range payload.Tools {
+		if tool.Type != "" {
+			t.Fatalf("tool %q has unsupported type %q; body=%s", tool.Name, tool.Type, string(body))
+		}
+		var schema map[string]interface{}
+		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
+			t.Fatalf("tool %q input_schema is not an object: %s", tool.Name, string(tool.InputSchema))
+		}
+		if schema["type"] != "object" {
+			t.Fatalf("tool %q input_schema.type = %#v; body=%s", tool.Name, schema["type"], string(body))
+		}
 	}
 }
 
@@ -81,6 +151,8 @@ func TestSSEAnthropicDataExtraction(t *testing.T) {
 	}{
 		{"event: message_start", "", false},
 		{"data: {\"type\":\"message_start\"}", `{"type":"message_start"}`, true},
+		{"data:{\"type\":\"message_start\"}", `{"type":"message_start"}`, true},
+		{"data:\t{\"type\":\"message_start\"}", `{"type":"message_start"}`, true},
 		{"data: [DONE]", "", false},
 		{"", "", false},
 	}
@@ -155,6 +227,12 @@ func TestTransformAnthropicStreamToResponsesBridgesSSE(t *testing.T) {
 	}
 	if !strings.Contains(out, `"delta":"hi"`) {
 		t.Fatalf("missing text delta 'hi' in stream: %s", out)
+	}
+	if !strings.Contains(out, "response.content_part.added") || !strings.Contains(out, "response.content_part.done") {
+		t.Fatalf("missing output_text content-part lifecycle: %s", out)
+	}
+	if !strings.Contains(out, `"text":"hi"`) {
+		t.Fatalf("completed text was not accumulated: %s", out)
 	}
 	if !strings.Contains(out, "response.completed") {
 		t.Fatalf("missing response.completed in stream: %s", out)

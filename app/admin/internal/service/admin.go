@@ -702,7 +702,7 @@ func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[st
 		"group":      channel.Group,
 		"models":     channel.Models,
 	}
-	if !supportsModelsHealthProbe(channel.GetType()) {
+	if channel.GetType() != relayprovider.ChannelTypeAnthropic && !supportsModelsHealthProbe(channel.GetType()) {
 		result["skipped"] = true
 		result["message"] = "channel metadata resolved; active probe is not supported for this provider"
 		return result, nil
@@ -714,11 +714,35 @@ func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[st
 		_ = s.recordChannelHealth(ctx, channelID, false, err.Error(), time.Since(startedAt).Milliseconds())
 		return nil, err
 	}
-	probeResp, err := provider.Forward(ctx, &relayprovider.RawRequest{
+	probeRequest := &relayprovider.RawRequest{
 		Method: http.MethodGet,
 		Path:   "/models",
 		Header: http.Header{"Accept": []string{"application/json"}},
-	})
+	}
+	if channel.GetType() == relayprovider.ChannelTypeAnthropic {
+		models := strings.Split(channel.GetModels(), ",")
+		model := strings.TrimSpace(models[0])
+		if model == "" {
+			err = errors.New("anthropic channel requires at least one model for health probe")
+			_ = s.recordChannelHealth(ctx, channelID, false, err.Error(), time.Since(startedAt).Milliseconds())
+			return nil, err
+		}
+		probeRequest.Method = http.MethodPost
+		probeRequest.Path = "/messages"
+		probeRequest.Header = http.Header{"Content-Type": []string{"application/json"}}
+		probeRequest.Body, err = json.Marshal(map[string]interface{}{
+			"model":      model,
+			"max_tokens": 1,
+			"messages": []map[string]string{{
+				"role":    "user",
+				"content": "ping",
+			}},
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	probeResp, err := provider.Forward(ctx, probeRequest)
 	responseTime := time.Since(startedAt).Milliseconds()
 	if err != nil {
 		_ = s.recordChannelHealth(ctx, channelID, false, err.Error(), responseTime)
