@@ -20,12 +20,13 @@ import (
 
 type BillingService struct {
 	billingv1.UnimplementedBillingServiceServer
-	uc             *biz.BillingUsecase
-	paymentUc      *biz.PaymentUsecase
+	uc        *biz.BillingUsecase
+	asyncUc   *biz.AsyncBillingUsecase // optional; nil = synchronous path
+	paymentUc *biz.PaymentUsecase
 	alipayVerifier biz.PaymentNotifyVerifier
-	reconUc        *biz.ReconciliationUsecase
-	refundUc       *biz.RefundUsecase
-	reportUc       *biz.SubscriptionReportUsecase
+	reconUc  *biz.ReconciliationUsecase
+	refundUc *biz.RefundUsecase
+	reportUc *biz.SubscriptionReportUsecase
 }
 
 func NewBillingService(uc *biz.BillingUsecase, reconUc *biz.ReconciliationUsecase, paymentUc *biz.PaymentUsecase, alipayVerifier biz.PaymentNotifyVerifier) *BillingService {
@@ -47,6 +48,18 @@ func (s *BillingService) SetSubscriptionReportUsecase(uc *biz.SubscriptionReport
 		return
 	}
 	s.reportUc = uc
+}
+
+// SetAsyncBillingUsecase wires the async billing coordinator. When set, the
+// CommitQuota RPC enqueues a settlement task and returns a provisional
+// response immediately instead of blocking on the DB; the background worker
+// runs the full CommitQuotaWithUsageAndSplit pipeline. When unset (nil),
+// CommitQuota falls back to the original synchronous path.
+func (s *BillingService) SetAsyncBillingUsecase(uc *biz.AsyncBillingUsecase) {
+	if s == nil {
+		return
+	}
+	s.asyncUc = uc
 }
 
 func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest) (*billingv1.ReserveQuotaResponse, error) {
@@ -77,7 +90,7 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 }
 
 func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest) (*billingv1.CommitQuotaResponse, error) {
-	committedAmount, refundAmount, result, err := s.uc.CommitQuotaWithUsageAndSplit(ctx, req.ReservationId, req.ActualTokens, req.Success, biz.LedgerUsage{
+	usage := biz.LedgerUsage{
 		TokenName:             req.TokenName,
 		Endpoint:              req.Endpoint,
 		PromptTokens:          req.PromptTokens,
@@ -87,7 +100,31 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		ElapsedTime:           req.ElapsedTime,
 		IsStream:              req.IsStream,
 		SubscriptionAccountID: req.SubscriptionAccountId,
-	})
+	}
+
+	// Async path: enqueue the settlement task and return a provisional
+	// success response immediately. The background worker runs the full
+	// CommitQuotaWithUsageAndSplit pipeline (reservation state machine,
+	// wallet settlement, ledger, subscription usage). A nil asyncUc falls
+	// back to the synchronous path below. When the caller reports a failed
+	// request (Success=false) we never enqueue: a release must be
+	// synchronous so the caller observes the released reservation and does
+	// not proceed against a frozen amount.
+	if s.asyncUc != nil && req.Success {
+		s.asyncUc.Settle(ctx, &biz.SettleTask{
+			ReservationID:         req.ReservationId,
+			ActualTokens:          req.ActualTokens,
+			Success:               true,
+			Usage:                 usage,
+			Timestamp:             time.Now(),
+		})
+		return &billingv1.CommitQuotaResponse{
+			Success:         true,
+			CommittedAmount: 0, // provisional; authoritative amount written by the worker
+		}, nil
+	}
+
+	committedAmount, refundAmount, result, err := s.uc.CommitQuotaWithUsageAndSplit(ctx, req.ReservationId, req.ActualTokens, req.Success, usage)
 	if err != nil {
 		return &billingv1.CommitQuotaResponse{
 			Success:      false,

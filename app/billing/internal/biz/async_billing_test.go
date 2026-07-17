@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"micro-one-api/platform/metrics"
 	"gorm.io/gorm"
 )
 
@@ -218,4 +220,87 @@ func TestQuotaCache_GetSetInvalidate(t *testing.T) {
 	if _, ok := c.Get(1); ok {
 		t.Fatalf("expected cache miss after Invalidate")
 	}
+}
+// --- Async commit pipeline contract tests ---
+//
+// These tests verify the Settle enqueue contract introduced when the async
+// path was wired into CommitQuota. They do not construct a real
+// BillingUsecase (it is a concrete struct with several repos); instead they
+// exercise the queue/non-queue branches of Settle and the nil-safety of the
+// worker. The full commit-pipeline integration is covered by the existing
+// BillingUsecase commit tests (commitQuotaLegacy / commitQuotaDualTrack).
+
+// TestAsyncBillingUsecase_SettleEnqueuesTask verifies that when the queue
+// has capacity, Settle enqueues the task and does NOT immediately invoke the
+// sync fallback. We assert this by giving the queue capacity 1 and an empty
+// syncUc (nil): if Settle took the fallback branch it would hit the
+// nil-syncUc path and increment AsyncBillingDroppedFlushes; if it enqueued
+// it would not.
+func TestAsyncBillingUsecase_SettleEnqueuesTask(t *testing.T) {
+	uc := &AsyncBillingUsecase{
+		localCache:  NewQuotaCache(),
+		settleQueue: make(chan *SettleTask, 1),
+	}
+
+	before := readAsyncDroppedFlushes()
+	uc.Settle(context.Background(), &SettleTask{
+		ReservationID: "r1",
+		ActualTokens:  10,
+		Success:       true,
+		Timestamp:     time.Now(),
+	})
+	// Drain the queue to confirm the task was enqueued.
+	select {
+	case got := <-uc.settleQueue:
+		if got.ReservationID != "r1" {
+			t.Fatalf("enqueued task ReservationID = %q, want r1", got.ReservationID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Settle did not enqueue the task")
+	}
+	after := readAsyncDroppedFlushes()
+	if after > before {
+		t.Fatalf("dropped_flushes increased (%g -> %g); Settle should not fall back when capacity is available", before, after)
+	}
+}
+
+// TestAsyncBillingUsecase_SettleFallsBackWhenQueueFull verifies that when the
+// queue is full, Settle takes the synchronous fallback branch. With a nil
+// syncUc the fallback records a drop via metrics, which we assert.
+func TestAsyncBillingUsecase_SettleFallsBackWhenQueueFull(t *testing.T) {
+	uc := &AsyncBillingUsecase{
+		localCache:  NewQuotaCache(),
+		settleQueue: make(chan *SettleTask, 1),
+	}
+	// Fill the queue.
+	uc.settleQueue <- &SettleTask{ReservationID: "blocker"}
+
+	before := readAsyncDroppedFlushes()
+	uc.Settle(context.Background(), &SettleTask{
+		ReservationID: "r2",
+		ActualTokens:  10,
+		Success:       true,
+		Timestamp:     time.Now(),
+	})
+	after := readAsyncDroppedFlushes()
+	if after <= before {
+		t.Fatalf("dropped_flushes did not increase (%g -> %g); Settle should fall back to sync when queue is full and syncUc is nil", before, after)
+	}
+}
+
+// TestAsyncBillingUsecase_SettleNilTaskIsSafe verifies Settle is nil-safe.
+func TestAsyncBillingUsecase_SettleNilTaskIsSafe(t *testing.T) {
+	uc := &AsyncBillingUsecase{
+		localCache:  NewQuotaCache(),
+		settleQueue: make(chan *SettleTask, 1),
+	}
+	// Must not panic.
+	uc.Settle(context.Background(), nil)
+}
+
+// readAsyncDroppedFlushes reads the async_billing_dropped_flushes counter
+// via testutil.ToFloat64, avoiding dependence on the global registry scrape
+// format.
+func readAsyncDroppedFlushes() float64 {
+	return testutil.ToFloat64(metrics.AsyncBillingDroppedFlushes)
 }

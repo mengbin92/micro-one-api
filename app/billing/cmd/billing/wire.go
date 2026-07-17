@@ -111,6 +111,10 @@ func newApp(cfg *bcfg.Config, d *data.Data, reg registrarResult) (*kratos.App, f
 	svc.SetRefundUsecase(refundUc)
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
+	// Phase 2.1: wire the async billing coordinator into the service so
+	// CommitQuota can enqueue settlement and return a provisional response
+	// when cfg.Billing.Async.Enabled. asyncBilling is nil when disabled.
+	svc.SetAsyncBillingUsecase(asyncBilling)
 
 	// Build the optional notify-worker gRPC client. When the endpoint is empty
 	// or alerts are disabled, the job receives a noop notifier so legacy log

@@ -126,6 +126,8 @@ func newApp(cfg *conf.Config, d *data.Data, reg registrarResult) (*kratos.App, f
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
 
+	svc.SetAsyncBillingUsecase(asyncBilling)
+
 	// Build the optional notify-worker gRPC client. When the endpoint is empty
 	// or alerts are disabled, the job receives a noop notifier so legacy log
 	// behaviour is preserved.

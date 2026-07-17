@@ -41,15 +41,25 @@ type UserQuota struct {
 }
 
 // SettleTask represents a settlement task to be processed asynchronously.
+// The task carries the full commit inputs so the background worker can run
+// the complete CommitQuotaWithUsageAndSplit pipeline (reservation lifecycle,
+// wallet settlement, ledger, subscription usage) instead of writing raw
+// ledger entries that would bypass the reservation state machine.
 type SettleTask struct {
-	RequestID             string
-	UserID                string
-	Model                 string
-	ChannelID             string
+	RequestID string
+	// ReservationID is the authoritative key for the commit pipeline.
+	ReservationID string
+	UserID         string
+	Model          string
+	ChannelID      string
 	SubscriptionAccountID int64
 	ActualTokens          int64
-	Cost                  int64
-	Timestamp             time.Time
+	// Success mirrors CommitQuotaRequest.Success: false → release reservation.
+	Success bool
+	// Usage carries the per-request usage detail forwarded from the relay.
+	Usage LedgerUsage
+	Cost      int64
+	Timestamp time.Time
 }
 
 // BatchLedgerWriter batches ledger writes for efficiency. Entries are flushed
@@ -273,11 +283,17 @@ func (uc *AsyncBillingUsecase) getCheckAndDeductScript() *string {
 
 // Settle performs the actual billing asynchronously. The provided ctx is
 // preserved for the fallback (queue-full) synchronous path so tracing and
-// deadlines are not lost (REVIEW_v1 P1-5).
+// deadlines are not lost (REVIEW_v1 P1-5). The background worker runs the
+// full CommitQuotaWithUsageAndSplit pipeline so the reservation lifecycle,
+// wallet settlement, ledger entry and subscription usage write all happen
+// exactly as on the synchronous path; only the gRPC caller is unblocked
+// before the DB work completes.
 func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) {
+	if task == nil {
+		return
+	}
 	select {
 	case uc.settleQueue <- task:
-		// Update queue size metric
 		metrics.AsyncBillingQueueSize.WithLabelValues().Set(float64(len(uc.settleQueue)))
 	default:
 		// Queue full → fallback to synchronous settle, preserving ctx.
@@ -286,9 +302,11 @@ func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) {
 	}
 }
 
-// settleSync performs synchronous settlement as fallback. It is nil-safe:
-// if no sync use case is configured (e.g. in tests / partial wiring), it
-// records the drop via metrics rather than nil-panic'ing.
+// settleSync performs synchronous settlement as fallback. It runs the full
+// commit pipeline so the reservation reaches the same terminal state as the
+// background worker would produce. It is nil-safe: if no sync use case is
+// configured (e.g. in tests / partial wiring), it records the drop via
+// metrics rather than nil-panic'ing.
 func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask) {
 	start := time.Now()
 	defer func() {
@@ -299,14 +317,29 @@ func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask)
 
 	if uc.syncUc == nil {
 		metrics.AsyncBillingDroppedFlushes.Inc()
-		fmt.Printf("async settlement skipped (no sync use case): request_id=%s\n", task.RequestID)
+		fmt.Printf("async settlement skipped (no sync use case): reservation_id=%s\n", task.ReservationID)
 		return
 	}
+	uc.runCommitPipeline(ctx, task)
+}
 
-	// Use sync billing for settlement
-	_, _, err := uc.syncUc.CommitQuota(ctx, task.RequestID, task.ActualTokens, true)
-	if err != nil {
-		fmt.Printf("sync settlement error: %v\n", err)
+// runCommitPipeline runs the authoritative CommitQuotaWithUsageAndSplit
+// pipeline for a settle task. It is shared by the background worker and the
+// queue-full synchronous fallback so both paths produce identical state.
+// Errors are logged and counted via metrics; they cannot be returned to the
+// original gRPC caller, which has already been released with a provisional
+// response. The reservation's idempotent state machine makes a later retry
+// safe.
+func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *SettleTask) {
+	if _, _, _, err := uc.syncUc.CommitQuotaWithUsageAndSplit(
+		ctx,
+		task.ReservationID,
+		task.ActualTokens,
+		task.Success,
+		task.Usage,
+	); err != nil {
+		metrics.AsyncBillingDroppedFlushes.Inc()
+		fmt.Printf("async settlement error: reservation_id=%s err=%v\n", task.ReservationID, err)
 	}
 }
 
@@ -336,7 +369,13 @@ func (uc *AsyncBillingUsecase) settlementWorker() {
 	}
 }
 
-// processSettlement processes a single settlement task.
+// processSettlement processes a single settlement task on the background
+// worker. It runs the full CommitQuotaWithUsageAndSplit pipeline so the
+// reservation, wallet, ledger and subscription usage all advance exactly as
+// on the synchronous path. The earlier implementation wrote raw ledger
+// entries via BatchLedgerWriter, which bypassed the reservation state
+// machine and left reservations stuck in the reserved state; this version
+// delegates to the authoritative pipeline.
 func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 	start := time.Now()
 	defer func() {
@@ -345,26 +384,15 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 		metrics.AsyncBillingSettlementDuration.WithLabelValues("async").Observe(time.Since(start).Seconds())
 	}()
 
-	// Write to batch ledger writer
-	uc.batchWriter.Add(&LedgerEntry{
-		UserID:                task.UserID,
-		Model:                 task.Model,
-		ChannelID:             task.ChannelID,
-		SubscriptionAccountID: task.SubscriptionAccountID,
-		TokenAmount:           task.ActualTokens,
-		Cost:                  task.Cost,
-		CreatedAt:             task.Timestamp,
-	})
-
-	// Update local cache
-	uid := parseUserID(task.UserID)
-	if quota, ok := uc.localCache.Get(uid); ok {
-		// Release frozen amount, deduct actual cost
-		estimatedCost := estimateCost(task.Model, task.ActualTokens) // Approximation
-		quota.Frozen -= estimatedCost
-		quota.Available -= (task.Cost - estimatedCost) // Adjust for difference
-		uc.localCache.Set(uid, quota.Available, quota.Frozen)
+	if uc.syncUc == nil {
+		metrics.AsyncBillingDroppedFlushes.Inc()
+		fmt.Printf("async settlement skipped (no sync use case): reservation_id=%s\n", task.ReservationID)
+		return
 	}
+	// Use the worker's detached context so the settlement survives the
+	// caller's request scope. The commit pipeline is idempotent; a retried
+	// reservation short-circuits inside the state machine.
+	uc.runCommitPipeline(uc.workerCtx, task)
 }
 
 // Close closes the async billing use case and waits for workers to finish.
