@@ -169,6 +169,10 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
     }
   }, []);
 
+  const resetExpansion = useCallback(() => {
+    setExpandedIds(new Set());
+  }, []);
+
   // Fetch notifications - full list
   const fetchNotifications = useCallback(async () => {
     setIsLoading(true);
@@ -244,10 +248,6 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
     return () => clearInterval(interval);
   }, [open, fetchNotifications]);
 
-  // Reset expansion when filter changes
-  useEffect(() => {
-    setExpandedIds(new Set());
-  }, [statusFilter]);
 
   // Handle refresh
   const handleRefresh = () => {
@@ -344,7 +344,10 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                   <button
                     key={filter.key}
                     type="button"
-                    onClick={() => setStatusFilter(filter.key)}
+                    onClick={() => {
+                      resetExpansion();
+                      setStatusFilter(filter.key);
+                    }}
                     className={cn(
                       'rounded-full px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap',
                       statusFilter === filter.key
