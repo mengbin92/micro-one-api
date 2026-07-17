@@ -2,11 +2,133 @@
 
 > 最后更新：2026-07-17
 >
-> 当前阶段重点：架构重构 Phase 1 的核心 P0 项（`internal/server/http.go` 拆分）主体已完成（提交 `9e40559`）。`http.go` 从 2470 行拆分为 13 个聚焦文件，主体降至 472 行；拆分行为零变更，经 `internal/server` 单元测试与生产环境真实流量（Kimi-K3、GLM-5.2 聊天转发）验证通过。Phase 0 可观测性基线已填充，原始结果归档在 `scripts/benchmark/results/phase0-baseline-2026-07-17.json`。
+> 当前阶段重点：Phase 2.3（日志批量写入接入 `LogUsecase`）已完成。`LogUsecase.IngestLog` 在 `cfg.Log.BatchEnabled` 时路由到 `BatchLogWriter` 队列，后台 flusher 调 `Repository.CreateBatch`（gorm `CreateInBatches`）批量落库；默认关闭时仍走同步 `repo.Create`。下一步推进 3.3 WebSocket 优雅排空接入 `openai_ws_*`。
+>
+> 历史进度：Phase 1 的 `http.go` God Object 拆分（`9e40559`，2470→472 行）、gRPC 熔断器、本地缓存层 L1、Redis Streams 事件总线均已落地；Phase 0 可观测性基线已填充，原始结果归档在 `scripts/benchmark/results/phase0-baseline-2026-07-17.json`。
 >
 > 架构重构总方案见 [design/ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md)，性能基线表见 [design/BASELINE.md](./design/BASELINE.md)。
 
-## P0 — 架构重构 Phase 1 剩余项
+## P0 — Phase 2/3 现状核对（已完成）
+
+> git 历史中存在 Phase 2（`d63fb72`）与 Phase 3（`810097f`）的脚手架提交，但此前 TODO 仍将 Phase 2 列为待启动。需先核对这些代码是否真正接入生产路径，避免重复造轮子或漏掉半成品。
+
+### [x] 核对 Phase 2/3 脚手架接入状态
+
+关联提交：
+
+- `920fb3c feat(phase1): implement P0 reliability fixes - circuit breaker, cache, streams, indexes`
+- `d63fb72 feat(phase2): implement P1 performance optimizations - async billing, weighted selector, batch logs, schema migration`
+- `810097f feat(phase3): implement P2 enhancements - partitioning, idempotency, drain, audit, mtls`
+
+核对清单（Phase 2，对应 ARCHITECTURE_REFACTOR.md §10.1 Phase 2）：
+
+- [x] **2.1 异步计费路径** — **半接入（死代码）**：`app/billing/internal/biz/async_billing.go` 存在；`wire_gen.go:100-102` 构建了 `asyncBilling *biz.AsyncBillingUsecase`（受 `cfg.Billing.Async.Enabled` 开关控制），但该变量**仅用于 `asyncBilling.Close()`**（`wire_gen.go:190`），`BillingService.CommitQuota`（`app/billing/internal/service/billing.go:79`）仍走同步路径 `s.uc.CommitQuotaWithUsageAndSplit`，**从未调用 `asyncBilling.Settle`**。relay-gateway 的 `http_billing.go` 也只做同步 gRPC `CommitQuota`。结论：异步计费代码已迁移到新结构但未真正接入结算热路径，属半成品。
+- [x] **2.2 渠道加权选择算法** — **已接入**：`app/channel/internal/biz/selector.go` 实现 `WeightedSelector`，被 `ChannelUsecase` 持有（`channel.go:269,282`）并在 `Select`（`channel.go:333`）与 `RecordHealth`（`channel.go:567-568`）中调用。channel-service 内部已启用。
+- [x] **2.3 日志批量写入** — **仅脚手架（死代码）**：`app/log/internal/biz/batch_writer.go` 存在并实现完整，但 `LogUsecase.IngestLog`（`app/log/internal/biz/log.go:103`）直接走 `uc.repo.Create` 同步写库，wire 未构建 `BatchLogWriter`，service 层未引用。属未接入的死代码。
+- [x] **2.4 数据库 Schema 隔离** — **未实现**：各服务 `config.yaml` 无独立 schema 配置，9 服务仍共享同一 MySQL 库。
+- [x] **2.5 配置热更新机制** — **未实现**：`platform/config/` 无 hotreload / fsnotify / watch 机制。
+
+核对清单（Phase 3，对应 §10.1 Phase 3）：
+
+- [x] **3.1 日志表分区** — **已接入（但 DDL 被排除出自动迁移）**：`migrations/phase3_partitioning.sql` 存在；`app/log/cmd/log/partition.go` 实现 `startPartitionMaintenance`，并在 `wire.go:60-74` 接入运行时维护（受 `cfg.Partition` 开关控制）。CHANGELOG 注明该 SQL 已排除出自动 migrate，需手动应用。
+- [x] **3.2 幂等中间件** — **已接入（条件启用）**：`platform/middleware/idempotency.go` 存在；`cmd/relay-gateway/wire.go:301` / `wire_gen.go:315` 以 `NewIdempotencyMiddleware(redisClient, ...)` 接入路由中间件链。
+- [x] **3.3 WebSocket 优雅排空** — **仅脚手架（死代码）**：`platform/websocket/graceful.go` 实现了 `ConnectionTracker` / `DrainConfig`，但**无任何非 test 文件 import `platform/websocket`**；`internal/server/openai_ws_*` 用自己的 `graceful bool` 字段（`openai_ws_relay.go:58,336,359`），未使用 `ConnectionTracker`。属未接入的死代码。
+- [x] **3.4 审计日志** — **已接入（条件启用）**：`platform/audit/audit.go` 存在；`cmd/relay-gateway/wire.go:307-308` / `wire_gen.go:321-322` 在 `cfg.Audit.Enabled` 时以 `audit.NewMiddleware(audit.NewAuditor(true)).Handler` 接入路由中间件链。
+- [x] **3.5 gRPC mTLS** — **已接入（条件启用）**：`platform/grpc/mtls.go` 存在；`cmd/relay-gateway/wire.go:334-339` / `wire_gen.go:346-351` 在 `cfg.MTLS.Enabled` 时调用 `MTLSServerOptions` 注入 relay gRPC server 选项。
+
+产出：见上方核对清单，每项已标注真实状态。汇总：
+
+| 项 | 状态 | 结论 |
+|----|------|------|
+| 2.1 异步计费 | 半接入 | wire 构建但未接入结算热路径，需把 `CommitQuota` 改走 `asyncBilling.Settle` |
+| 2.2 加权选路 | 已接入 | channel-service 内部已用 |
+| 2.3 批量日志 | 仅脚手架 | `BatchLogWriter` 未接入 `LogUsecase` |
+| 2.4 Schema 隔离 | 未实现 | 需新建 |
+| 2.5 配置热更新 | 未实现 | 需新建 |
+| 3.1 日志分区 | 已接入 | 运行时维护已接，DDL 需手动应用 |
+| 3.2 幂等中间件 | 已接入 | relay-gateway 路由已用 |
+| 3.3 WS 优雅排空 | 仅脚手架 | `ConnectionTracker` 未被 `openai_ws_*` 使用 |
+| 3.4 审计日志 | 已接入 | relay-gateway 路由已用（开关） |
+| 3.5 gRPC mTLS | 已接入 | relay-gateway gRPC server 已用（开关） |
+
+验收标准：
+
+- [x] 每个项明确标注：已接入生产、部分接入、仅脚手架、或不存在。
+- [x] 引用具体文件 / wire_gen.go 行号作为证据。
+- [x] 据核对结果重排 Phase 2 任务优先级（见下方"下一步推进顺序"）。
+
+### Phase 2 推进顺序（据核对结果重排）
+
+基于核对结果，按"激活半接入 → 接入死代码 → 新建缺失项"的顺序推进：
+
+1. ~~**2.1 异步计费接入结算热路径**~~ ✅ 已完成。
+2. ~~**2.3 日志批量写入接入 `LogUsecase`**~~ ✅ 已完成（见上方"已完成 — Phase 2.3"小节）。
+3. **3.3 WebSocket 优雅排空接入 `openai_ws_*`**（当前优先级）：让 `openai_ws_forwarder` / `openai_ws_pool` 使用 `platform/websocket.ConnectionTracker` 做优雅关闭，激活已有脚手架。
+4. **2.2 渠道加权选择**：已接入，补一份运行时验证（确认 relay-gateway 经 channel-service 选路实际走到 `WeightedSelector`）。
+5. **2.4 数据库 Schema 隔离 / 2.5 配置热更新**：结构性新建项，风险较高，放最后。
+
+## 已完成 — Phase 2.3 日志批量写入接入 LogUsecase
+
+### [x] 2.3 日志批量写入接入 LogUsecase
+
+关联设计：[架构重构方案 §10.1 Phase 2 / §10.2](./design/ARCHITECTURE_REFACTOR.md)
+
+本次完成：
+
+- `LogRepo` 接口旁新增可选能力接口 `LogRepoBatch`（`CreateBatch(ctx, []*LogEntry)`），`BatchLogWriter` 探测并 fallback 到逐条 `Create`。
+- `LogUsecase` 新增 `batchWriter *BatchLogWriter` 字段 + `SetBatchWriter` setter；`IngestLog` 在 `batchWriter != nil` 时入队（非阻塞，队列满返回错误），否则走原同步 `repo.Create`。
+- `batch_writer.go` 的 `createBatch` 改为接收 `ctx` 并调用带 ctx 的 `CreateBatch`；删除文件末尾重复的 `LogRepoBatch` 定义和注释掉的实现 stub（接口现归 `log.go` 权威定义）。
+- `data.Repository` 实现 `CreateBatch`：gorm `CreateInBatches` 单次 INSERT 多行，回写生成 ID 到源 entry；内存模式按 `seq` 逐条追加。
+- `conf.LogSVCConfig` 新增 `BatchEnabled`（默认 false）+ `BatchFlushInterval`（默认 1s）配置项。
+- `wire.go` / `wire_gen.go`（经 `wire` 重生成）在 `newApp` 中按 `cfg.Log.BatchEnabled` 构建 `BatchLogWriter`，`Start`/`Stop` 生命周期挂到 app cleanup，并 `uc.SetBatchWriter`。
+- 新增 4 个测试：`IngestLogSyncFallback`、`IngestLogBatchRouting`、`IngestLogNilBatchWriterIsSafe`、`BatchLogWriter_QueueFullReturnsError`。
+
+改动文件：
+
+- `app/log/internal/biz/log.go`（`LogRepoBatch` 接口 + `LogUsecase.batchWriter` 字段 + `IngestLog` 分支）
+- `app/log/internal/biz/batch_writer.go`（`createBatch` 接收 ctx；去重 `LogRepoBatch`）
+- `app/log/internal/biz/log_test.go`（4 个批量路由/队列满测试）
+- `app/log/internal/data/data.go`（`Repository.CreateBatch`）
+- `app/log/internal/conf/config.go`（`BatchEnabled` + `BatchFlushInterval`）
+- `app/log/cmd/log/wire.go` / `wire_gen.go`（构建 + 生命周期 + 注入 + `parseLogFlushInterval`）
+
+验收标准：
+
+- [x] `cfg.Log.BatchEnabled=false`（默认）时 `IngestLog` 行为与改动前一致（同步 `repo.Create`，返回 ID）。
+- [x] `cfg.Log.BatchEnabled=true` 时 `IngestLog` 入队返回，不阻塞；队列满返回错误而非静默丢弃；`Flush` 后 `CreateBatch` 被调用并回写 ID。
+- [x] `go build ./...` 通过；`go vet ./app/log/... ./app/billing/... ./cmd/relay-gateway/...` 通过。
+- [x] `go test ./app/log/...` 全部通过（biz / data / integration / server）。
+
+## 已完成 — Phase 2.1 异步计费接入结算热路径
+
+### [x] 2.1 异步计费接入结算热路径
+
+关联设计：[架构重构方案 §10.1 Phase 2 / §10.2](./design/ARCHITECTURE_REFACTOR.md)
+
+本次完成：
+
+- `SettleTask` 扩展 `ReservationID` / `Success` / `Usage` 字段，使后台 worker 携带完整 commit 输入。
+- `AsyncBillingUsecase.processSettlement` / `settleSync` 改为调用 `runCommitPipeline`，后者运行权威的 `BillingUsecase.CommitQuotaWithUsageAndSplit`（预约状态机 + 钱包结算 + 账本 + 订阅用量），不再走原先绕过预约状态机的 `BatchLedgerWriter.Add` 裸账本写入。
+- `BillingService` 新增 `asyncUc` 字段 + `SetAsyncBillingUsecase` setter；`CommitQuota` 在 `asyncUc != nil && req.Success` 时入队 `Settle` 并立即返回临时成功响应（`CommittedAmount=0`，权威金额由 worker 写入），否则走原同步路径。`Success=false`（release）始终同步，保证调用方观察到已释放的预约。
+- `wire.go` / `wire_gen.go`（经 `wire` 重生成）在 `svc.SetSubscriptionReportUsecase` 之后接入 `svc.SetAsyncBillingUsecase(asyncBilling)`。
+- 新增 3 个契约测试：`SettleEnqueuesTask`、`SettleFallsBackWhenQueueFull`、`SettleNilTaskIsSafe`；`go test ./app/billing/...` 全部通过。
+
+改动文件：
+
+- `app/billing/internal/biz/async_billing.go`（`SettleTask` 扩展 + `Settle`/`settleSync`/`processSettlement`/`runCommitPipeline` 重写）
+- `app/billing/internal/biz/async_billing_test.go`（新增 3 个契约测试 + `metrics`/`testutil` import）
+- `app/billing/internal/service/billing.go`（`asyncUc` 字段 + setter + `CommitQuota` 分支）
+- `app/billing/cmd/billing/wire.go` / `wire_gen.go`（接入 `SetAsyncBillingUsecase`）
+
+验收标准：
+
+- [x] `cfg.Billing.Async.Enabled=true` 时 `CommitQuota` 非阻塞返回，后台 worker 运行完整 commit 管线。
+- [x] `cfg.Billing.Async.Enabled=false`（默认）行为与改动前完全一致（同步 `CommitQuotaWithUsageAndSplit`）。
+- [x] `Success=false` 的 release 始终走同步路径，不会把失败请求的释放异步化。
+- [x] `go build ./app/billing/... ./cmd/relay-gateway/... ./internal/server/...` 通过；`go vet ./app/billing/...` 通过。
+- [x] `go test ./app/billing/... ./internal/server/...` 全部通过。
+
+## 已完成 — 架构重构 Phase 1（原 P0）
 
 > 依据 `docs/design/ARCHITECTURE_REFACTOR.md` §10.2。Phase 1 的其余 P0 项（gRPC 熔断器、本地缓存层 L1、Redis Streams 事件总线）已落地并在 `cmd/relay-gateway/wire.go` 中接入；`http.go` 拆分已于本次（`9e40559`）完成。
 
