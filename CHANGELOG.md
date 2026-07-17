@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-07-17
+
+v0.8.2 是 v0.8.1 之后的 PATCH 版本，聚焦 `internal/server/http.go` 架构重构拆分与 Phase 0 可观测性基线填充。无 API 破坏性变更、无数据库迁移、无部署配置变更。详见 [release-v0.8.2.md](docs/releases/release-v0.8.2.md)。
+
+### Changed
+
+- **`internal/server/http.go` God Object 拆分**：将 2470 行的主体文件按职责拆分为 13 个聚焦文件（Forwarder / BillingCoord / 按端点的 Handler / 响应与辅助工具），主体降至 472 行。属纯内部重构，无新增/删除端点、无路由变更、无响应格式调整。这是架构重构路线图 Phase 1 的最后一个 P0 项。
+- `docs/design/BASELINE.md` 填充全部 16 处 TBD 基线数据（端点延迟、gRPC 调用延迟、缓存命中率、熔断器状态），原始压测结果归档至 `scripts/benchmark/results/phase0-baseline-2026-07-17.json`。
+- `docs/TODO.md` 标记 http.go 拆分与 Phase 0 基线填充任务完成。
+
 ## [0.7.0] - 2026-07-12
 
 v0.7.0 是 v0.6.1 之后的 Kratos 大仓结构迁移版本。范围覆盖 `v0.6.1..v0.7.0` 共 9 次提交、560 个文件、+8.6k/-3.2k 行。本版为纯结构性重构，不涉及 API 破坏性变更，不新增数据库迁移。
