@@ -647,6 +647,48 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		}
 
 		if isRawStreamRequest(body) {
+			// Anthropic API-key channels speak /v1/messages, not Responses.
+			// Convert the inbound Responses request to Anthropic Messages and
+			// bridge the upstream SSE back to Responses SSE.
+			if isAnthropicAPIKeyChannel(ch) {
+				fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(ctx, ch, r.Header.Clone(), upstreamBody)
+				if fallbackErr != nil {
+					_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream stream error")
+					return fallbackErr
+				}
+				if fallbackResp.Stream != nil {
+					usage := newRawStreamUsageTracker(estimateRawUsage(upstreamBody))
+					writeRawStreamResponse(w, fallbackResp.Stream, usage)
+					actualUsage := usage.Usage()
+					logInput := usageLogInput{
+						UserID:           plan.Auth.UserID,
+						TokenID:          plan.Auth.TokenID,
+						TokenName:        plan.Auth.TokenName,
+						RequestID:        requestID,
+						Endpoint:         "/v1/messages",
+						ModelName:        clientModel,
+						Quota:            actualUsage.TotalTokens,
+						PromptTokens:     actualUsage.PromptTokens,
+						CompletionTokens: actualUsage.CompletionTokens,
+						CacheReadTokens:  actualUsage.CacheReadTokens,
+						ChannelID:        ch.ID,
+						ElapsedTime:      time.Since(startedAt).Milliseconds(),
+						IsStream:         true,
+					}
+					if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+						s.logPostResponseCommitError(err)
+					} else {
+						logUpstreamUsage(logInput)
+						s.ingestUsageLogAfterResponse(logInput)
+					}
+					upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
+					responseChannel = ch
+					if responseID := usage.ResponseID(); responseID != "" {
+						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+					}
+					return nil
+				}
+			}
 			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), upstreamBody)
 			if streamErr != nil {
 				if shouldFallbackResponsesToChat(upstreamPath, streamErr) {
@@ -717,6 +759,47 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 			}
 			return nil
+		}
+
+		// Anthropic API-key channels speak /v1/messages, not Responses.
+		if isAnthropicAPIKeyChannel(ch) {
+			fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(ctx, ch, r.Header.Clone(), upstreamBody)
+			if fallbackErr == nil && fallbackResp.Response != nil {
+				usage := fallbackResp.Usage
+				if usage.TotalTokens <= 0 {
+					usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(upstreamBody))
+				}
+				logInput := usageLogInput{
+					UserID:           plan.Auth.UserID,
+					TokenID:          plan.Auth.TokenID,
+					TokenName:        plan.Auth.TokenName,
+					RequestID:        requestID,
+					Endpoint:         "/v1/messages",
+					ModelName:        clientModel,
+					Quota:            usage.TotalTokens,
+					PromptTokens:     usage.PromptTokens,
+					CompletionTokens: usage.CompletionTokens,
+					CacheReadTokens:  usage.CacheReadTokens,
+					ChannelID:        ch.ID,
+					ElapsedTime:      time.Since(startedAt).Milliseconds(),
+					IsStream:         false,
+				}
+				if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
+					return err
+				}
+				logUpstreamUsage(logInput)
+				s.ingestUsageLog(ctx, logInput)
+				upstreamResp = fallbackResp.Response
+				responseChannel = ch
+				if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
+					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+				}
+				return nil
+			}
+			// Conversion/forwarding failed: surface as upstream error so the
+			// retry executor can fail over.
+			_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream anthropic error")
+			return fmt.Errorf("anthropic upstream: %w", fallbackErr)
 		}
 
 		resp, forwardErr := s.forwardResponsesRaw(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), upstreamBody)
@@ -887,6 +970,45 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 
 	startedAt := time.Now()
 	if stream {
+		// Anthropic API-key channels speak /v1/messages, not Responses.
+		if isAnthropicAPIKeyChannel(&route.Channel) {
+			fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody)
+			if fallbackErr == nil && fallbackResp.Stream != nil {
+				usage := newRawStreamUsageTracker(estimateRawUsage(fallbackBody))
+				writeRawStreamResponse(w, fallbackResp.Stream, usage)
+				actualUsage := usage.Usage()
+				logInput := usageLogInput{
+					UserID:                authSnapshot.UserId,
+					TokenID:               authSnapshot.TokenId,
+					TokenName:             authSnapshot.TokenName,
+					RequestID:             requestID,
+					Endpoint:              "/v1/messages",
+					ModelName:             route.Model,
+					Quota:                 actualUsage.TotalTokens,
+					PromptTokens:          actualUsage.PromptTokens,
+					CompletionTokens:      actualUsage.CompletionTokens,
+					CacheReadTokens:       actualUsage.CacheReadTokens,
+					ChannelID:             route.Channel.ID,
+					SubscriptionAccountID: route.SubscriptionAccountID,
+					ElapsedTime:           time.Since(startedAt).Milliseconds(),
+					IsStream:              true,
+				}
+				if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+					s.logPostResponseCommitError(err)
+				} else {
+					s.ingestUsageLogAfterResponse(logInput)
+				}
+				if responseID := usage.ResponseID(); responseID != "" {
+					route.UserID = authSnapshot.UserId
+					route.ResolvedModel = resolvedModel
+					s.storeResponseRoute(responseID, route)
+				}
+				return
+			}
+			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
+			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(fallbackErr)), "upstream service error")
+			return
+		}
 		streamResp, err := s.forwardResponsesRawStream(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 		if err != nil {
 			if shouldFallbackResponsesToChat(upstreamPath, err) {
@@ -956,6 +1078,48 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			route.UserID = authSnapshot.UserId
 			s.storeResponseRoute(responseID, route)
 		}
+		return
+	}
+
+	// Anthropic API-key channels speak /v1/messages, not Responses.
+	if isAnthropicAPIKeyChannel(&route.Channel) {
+		fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody)
+		if fallbackErr == nil && fallbackResp.Response != nil {
+			usage := fallbackResp.Usage
+			if usage.TotalTokens <= 0 {
+				usage = extractRawUsage(fallbackResp.Response.Body, estimateRawTokens(fallbackBody))
+			}
+			logInput := usageLogInput{
+				UserID:                authSnapshot.UserId,
+				TokenID:               authSnapshot.TokenId,
+				TokenName:             authSnapshot.TokenName,
+				RequestID:             requestID,
+				Endpoint:              "/v1/messages",
+				ModelName:             route.Model,
+				Quota:                 usage.TotalTokens,
+				PromptTokens:          usage.PromptTokens,
+				CompletionTokens:      usage.CompletionTokens,
+				CacheReadTokens:       usage.CacheReadTokens,
+				ChannelID:             route.Channel.ID,
+				SubscriptionAccountID: route.SubscriptionAccountID,
+				ElapsedTime:           time.Since(startedAt).Milliseconds(),
+				IsStream:              false,
+			}
+			if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
+				s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
+				return
+			}
+			s.ingestUsageLog(r.Context(), logInput)
+			if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
+				route.UserID = authSnapshot.UserId
+				route.ResolvedModel = resolvedModel
+				s.storeResponseRoute(responseID, route)
+			}
+			writeRawResponse(w, fallbackResp.Response)
+			return
+		}
+		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream error")
+		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(fallbackErr)), "upstream service error")
 		return
 	}
 
@@ -1030,6 +1194,16 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		s.storeResponseRoute(responseID, route)
 	}
 	writeRawResponse(w, resp)
+}
+
+
+// isAnthropicAPIKeyChannel reports whether the channel is an Anthropic
+// API-key channel (type=2) whose upstream speaks the Anthropic Messages API
+// (/v1/messages) rather than OpenAI Responses. Such channels must convert
+// inbound Responses requests to Anthropic Messages before forwarding, and
+// convert the upstream response back to Responses.
+func isAnthropicAPIKeyChannel(ch *relaybiz.Channel) bool {
+	return ch != nil && ch.Type == relayprovider.ChannelTypeAnthropic
 }
 
 func (s *HTTPServer) forwardResponsesRaw(ctx context.Context, ch *relaybiz.Channel, method, path, query string, header http.Header, body []byte) (*relayprovider.RawResponse, error) {

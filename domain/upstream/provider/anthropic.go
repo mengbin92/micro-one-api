@@ -40,14 +40,137 @@ func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) *Anthro
 	}
 }
 
-// Forward is not supported for Anthropic because non-chat OpenAI-compatible
-// endpoints require endpoint-specific request and response conversion.
-func (p *AnthropicProvider) Forward(ctx context.Context, req *RawRequest) (*RawResponse, error) {
-	return nil, fmt.Errorf("raw forwarding is not supported by anthropic provider")
+
+
+// anthropicForwardBaseURL resolves the upstream base URL, trimming any trailing
+// slash. It mirrors the behaviour of NewAnthropicProvider (defaulting to the
+// public Anthropic API) but is shared by Forward / ForwardStream so the raw
+// path honours a channel-provided base URL.
+func (p *AnthropicProvider) anthropicForwardBaseURL() string {
+	base := p.baseURL
+	if base == "" {
+		base = "https://api.anthropic.com"
+	}
+	return strings.TrimRight(base, "/")
 }
 
+// anthropicForwardEndpoint builds the upstream URL for a raw request. The
+// Anthropic Messages API is rooted at /v1; requests that already include the
+// /v1 prefix are passed through, others are joined under /v1.
+func (p *AnthropicProvider) anthropicForwardEndpoint(path string) string {
+	cleaned := strings.TrimLeft(strings.TrimSpace(path), "/")
+	if cleaned == "" {
+		cleaned = "messages"
+	}
+	if strings.HasPrefix(cleaned, "v1/") {
+		return p.anthropicForwardBaseURL() + "/" + cleaned
+	}
+	return p.anthropicForwardBaseURL() + "/v1/" + cleaned
+}
+
+// anthropicSetForwardHeaders stamps the headers required by the Anthropic
+// Messages API (x-api-key + anthropic-version), forwarding non-hop-by-hop
+// client headers while stripping any inbound Authorization so the upstream
+// only sees the channel's API key.
+func (p *AnthropicProvider) anthropicSetForwardHeaders(dst, src http.Header) {
+	if src != nil {
+		for key, values := range src {
+			if isHopByHopHeader(key) || strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "x-api-key") || strings.EqualFold(key, "anthropic-version") {
+				continue
+			}
+			for _, value := range values {
+				dst.Add(key, value)
+			}
+		}
+	}
+	dst.Set("Content-Type", "application/json")
+	if p.apiKey != "" {
+		dst.Set("x-api-key", p.apiKey)
+	}
+	dst.Set("anthropic-version", "2023-06-01")
+}
+
+// Forward sends a raw request to the Anthropic Messages API and returns the
+// buffered response. The path is resolved under /v1 (e.g. "messages" →
+// "/v1/messages"). It is used by the Responses → Anthropic conversion path
+// so that API-key channels of type ChannelTypeAnthropic can serve Responses
+// protocol clients (Codex) without requiring a separate provider.
+func (p *AnthropicProvider) Forward(ctx context.Context, req *RawRequest) (*RawResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("raw request is nil")
+	}
+	method := req.Method
+	if method == "" {
+		method = http.MethodPost
+	}
+	endpoint := p.anthropicForwardEndpoint(req.Path)
+	if req.Query != "" {
+		endpoint += "?" + req.Query
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(req.Body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create raw request: %w", err)
+	}
+	p.anthropicSetForwardHeaders(httpReq.Header, req.Header)
+
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send raw request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read raw response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
+	}
+	return &RawResponse{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header.Clone(),
+		Body:       respBody,
+	}, nil
+}
+
+// ForwardStream sends a raw request to the Anthropic Messages API and returns
+// the streaming response body unbuffered. It is the streaming counterpart of
+// Forward and is used by the Responses → Anthropic stream conversion path.
 func (p *AnthropicProvider) ForwardStream(ctx context.Context, req *RawRequest) (*RawStreamResponse, error) {
-	return nil, fmt.Errorf("raw stream forwarding is not supported by anthropic provider")
+	if req == nil {
+		return nil, fmt.Errorf("raw request is nil")
+	}
+	method := req.Method
+	if method == "" {
+		method = http.MethodPost
+	}
+	endpoint := p.anthropicForwardEndpoint(req.Path)
+	if req.Query != "" {
+		endpoint += "?" + req.Query
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(req.Body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create raw stream request: %w", err)
+	}
+	p.anthropicSetForwardHeaders(httpReq.Header, req.Header)
+
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send raw stream request: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read raw stream response: %w", readErr)
+		}
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
+	}
+	return &RawStreamResponse{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header.Clone(),
+		Body:       resp.Body,
+	}, nil
 }
 
 // Anthropic API request/response structures

@@ -11,6 +11,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
+	"micro-one-api/internal/apicompat"
 	relaybiz "micro-one-api/internal/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"
 )
@@ -742,4 +743,174 @@ func writeResponsesSSE(w io.Writer, event map[string]interface{}) {
 	_, _ = w.Write([]byte("data: "))
 	_, _ = w.Write(encoded)
 	_, _ = w.Write([]byte("\n\n"))
+}
+
+// ---------------------------------------------------------------------------
+// Responses → Anthropic Messages fallback for ChannelTypeAnthropic API-key
+// channels. The Anthropic upstream speaks /v1/messages; this path converts
+// the inbound Responses request to an Anthropic Messages request, forwards it
+// via the AnthropicProvider (now that Forward/ForwardStream are implemented),
+// and converts the Anthropic response/stream back to the Responses format the
+// client (Codex) expects.
+// ---------------------------------------------------------------------------
+
+// forwardResponsesViaAnthropicFallback converts a Responses API request to an
+// Anthropic Messages request, calls the upstream, and converts the response
+// back to Responses format. It mirrors forwardResponsesViaChatFallback but
+// targets Anthropic channels (type=2) whose upstream is /v1/messages.
+func (s *HTTPServer) forwardResponsesViaAnthropicFallback(ctx context.Context, ch *relaybiz.Channel, header http.Header, body []byte) (*responsesFallbackResult, error) {
+	anthropicBody, clientStream, err := responsesRequestToAnthropicBody(body)
+	if err != nil {
+		return nil, err
+	}
+	if clientStream {
+		streamResp, err := s.forwardResponsesRawStream(ctx, ch, http.MethodPost, "/messages", "", header, anthropicBody)
+		if err != nil {
+			return nil, err
+		}
+		fallbackStream := transformAnthropicStreamToResponses(streamResp)
+		return &responsesFallbackResult{
+			Stream: &relayprovider.RawStreamResponse{
+				StatusCode: streamResp.StatusCode,
+				Header:     fallbackStream.Header,
+				Body:       fallbackStream.Body,
+			},
+			Usage: rawUsage{TotalTokens: estimateRawTokens(body)},
+		}, nil
+	}
+
+	resp, err := s.forwardResponsesRaw(ctx, ch, http.MethodPost, "/messages", "", header, anthropicBody)
+	if err != nil {
+		return nil, err
+	}
+	bodyResp, usage, err := anthropicResponseToResponses(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	headerResp := resp.Header.Clone()
+	headerResp.Set("Content-Type", "application/json")
+	return &responsesFallbackResult{
+		Response: &relayprovider.RawResponse{StatusCode: resp.StatusCode, Header: headerResp, Body: bodyResp},
+		Usage:    usage,
+	}, nil
+}
+
+// responsesRequestToAnthropicBody converts a Responses API request body into
+// an Anthropic Messages request body and reports whether the client requested
+// streaming.
+func responsesRequestToAnthropicBody(body []byte) ([]byte, bool, error) {
+	var rr apicompat.ResponsesRequest
+	if err := sonic.Unmarshal(body, &rr); err != nil {
+		return nil, false, fmt.Errorf("failed to parse responses request: %w", err)
+	}
+	if strings.TrimSpace(rr.Model) == "" {
+		return nil, false, fmt.Errorf("model is required")
+	}
+	ar, err := apicompat.ResponsesToAnthropicRequest(&rr)
+	if err != nil {
+		return nil, false, fmt.Errorf("responses→anthropic: %w", err)
+	}
+	out, err := sonic.Marshal(ar)
+	if err != nil {
+		return nil, false, err
+	}
+	return out, rr.Stream, nil
+}
+
+// anthropicResponseToResponses converts a non-streaming Anthropic Messages
+// response body to a Responses API response body and extracts usage.
+func anthropicResponseToResponses(body []byte) ([]byte, rawUsage, error) {
+	var ar apicompat.AnthropicResponse
+	if err := sonic.Unmarshal(body, &ar); err != nil {
+		return nil, rawUsage{}, fmt.Errorf("failed to parse anthropic response: %w", err)
+	}
+	rr := apicompat.AnthropicToResponsesResponse(&ar)
+	out, err := sonic.Marshal(rr)
+	if err != nil {
+		return nil, rawUsage{}, fmt.Errorf("failed to marshal responses response: %w", err)
+	}
+	usage := rawUsage{
+		PromptTokens:     int64(ar.Usage.InputTokens),
+		CompletionTokens: int64(ar.Usage.OutputTokens),
+		CacheReadTokens:  int64(ar.Usage.CacheReadInputTokens),
+	}
+	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	if usage.TotalTokens <= 0 {
+		usage.TotalTokens = estimateRawTokens(body)
+	}
+	return out, usage, nil
+}
+
+// transformAnthropicStreamToResponses wraps an Anthropic SSE stream and
+// converts it to a Responses SSE stream via an io.Pipe, mirroring
+// transformChatCompletionStreamToResponses. The Anthropic→Responses stream
+// conversion uses the apicompat AnthropicEventToResponsesEvents converter.
+func transformAnthropicStreamToResponses(resp *relayprovider.RawStreamResponse) *relayprovider.RawStreamResponse {
+	reader, writer := io.Pipe()
+	header := resp.Header.Clone()
+	header.Set("Content-Type", "text/event-stream")
+	go func() {
+		defer resp.Body.Close()
+		defer writer.Close()
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		state := apicompat.NewAnthropicEventToResponsesState()
+		for scanner.Scan() {
+			line := scanner.Text()
+			data, ok := sseAnthropicData(line)
+			if !ok {
+				continue
+			}
+			var evt apicompat.AnthropicStreamEvent
+			if err := sonic.UnmarshalString(data, &evt); err != nil {
+				continue
+			}
+			for _, rse := range apicompat.AnthropicEventToResponsesEvents(&evt, state) {
+				sse, err := apicompat.ResponsesEventToSSE(rse)
+				if err != nil {
+					continue
+				}
+				if _, err := io.WriteString(writer, sse); err != nil {
+					return
+				}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			evt := apicompat.ResponsesStreamEvent{
+				Type: "response.failed",
+				Response: &apicompat.ResponsesResponse{
+					Status: "failed",
+					Error:  &apicompat.ResponsesError{Code: "stream_interrupted", Message: "upstream stream interrupted"},
+				},
+			}
+			if sse, err := apicompat.ResponsesEventToSSE(evt); err == nil {
+				_, _ = io.WriteString(writer, sse)
+			}
+			return
+		}
+		for _, rse := range apicompat.FinalizeAnthropicResponsesStream(state) {
+			sse, err := apicompat.ResponsesEventToSSE(rse)
+			if err != nil {
+				continue
+			}
+			if _, err := io.WriteString(writer, sse); err != nil {
+				return
+			}
+		}
+		_, _ = io.WriteString(writer, "data: [DONE]\n\n")
+	}()
+	return &relayprovider.RawStreamResponse{StatusCode: resp.StatusCode, Header: header, Body: reader}
+}
+
+// sseAnthropicData extracts the JSON payload from a "data: ..." SSE line.
+func sseAnthropicData(line string) (string, bool) {
+	const prefix = "data: "
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+	}
+	data := strings.TrimSpace(line[len(prefix):])
+	if data == "" || data == "[DONE]" {
+		return "", false
+	}
+	return data, true
 }
