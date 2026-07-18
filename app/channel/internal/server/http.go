@@ -1,9 +1,12 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"strings"
 
 	"micro-one-api/app/channel/internal/biz"
 	channeloauth "micro-one-api/app/channel/internal/biz/oauth"
@@ -30,6 +33,7 @@ func NewHTTPServer(addr string, usecases ...*biz.ChannelUsecase) *khttp.Server {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 	registerOAuthRoutes(srv, oauthSvc)
+	registerSelectorStatsRoute(srv, uc)
 	return srv
 }
 
@@ -134,4 +138,64 @@ func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// registerSelectorStatsRoute exposes the weighted selector's runtime stats as
+// a read-only admin endpoint. It is the runtime-verification surface for
+// Phase 2.2 (channel weighted selection): operators can curl it to confirm
+// that selection actually flows through WeightedSelector (per-channel weight,
+// current weight, inflight, p95 latency and error rate populated) rather than
+// being bypassed.
+//
+// The endpoint is guarded by the shared ADMIN_TOKEN (constant-time compare),
+// matching the admin-api guard. When ADMIN_TOKEN is unset the endpoint
+// returns 503 so it cannot be used unauthenticated in misconfigured
+// deployments.
+func registerSelectorStatsRoute(srv *khttp.Server, uc *biz.ChannelUsecase) {
+	srv.HandleFunc("/api/v1/admin/channels/selector/stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if !authorizeAdmin(r) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid admin credentials"})
+			return
+		}
+		if uc == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "channel usecase not wired"})
+			return
+		}
+		writeJSON(w, http.StatusOK, selectorStatsPayload(uc.SelectorStats()))
+	})
+}
+
+// authorizeAdmin validates the bearer token against the shared ADMIN_TOKEN
+// using a constant-time comparison. Returns false when ADMIN_TOKEN is unset
+// (fail-closed).
+func authorizeAdmin(r *http.Request) bool {
+	expected := strings.TrimSpace(os.Getenv("ADMIN_TOKEN"))
+	if expected == "" {
+		return false
+	}
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	if token == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1
+}
+
+// selectorStatsPayload shapes biz.ChannelStats into a JSON-friendly map keyed
+// by channel id so the endpoint output is stable and self-describing.
+func selectorStatsPayload(stats map[int64]biz.ChannelStats) map[string]interface{} {
+	channels := make(map[int64]biz.ChannelStats, len(stats))
+	for id, s := range stats {
+		channels[id] = s
+	}
+	return map[string]interface{}{
+		"channels": channels,
+	}
 }

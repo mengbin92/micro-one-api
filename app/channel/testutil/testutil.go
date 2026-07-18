@@ -21,6 +21,7 @@ type (
 	ChannelHealthEvent                = channelbiz.ChannelHealthEvent
 	ChannelRepo                       = channelbiz.ChannelRepo
 	ChannelUsecase                    = channelbiz.ChannelUsecase
+	ChannelStats                          = channelbiz.ChannelStats
 	SubscriptionAccountQuotaEventFilter    = channelbiz.SubscriptionAccountQuotaEventFilter
 	SubscriptionAccountQuotaEventAggregate = channelbiz.SubscriptionAccountQuotaEventAggregate
 )
@@ -48,4 +49,12 @@ func NewChannelUsecase(repo ChannelRepo, eventBus any) *ChannelUsecase {
 // NewChannelService re-exports the service constructor.
 func NewChannelService(uc *ChannelUsecase) *channelservice.ChannelService {
 	return channelservice.NewChannelService(uc)
+}
+
+// SelectorStats re-exports the usecase's weighted-selector runtime stats
+// accessor so cross-service integration tests can confirm that channel
+// selection actually flows through WeightedSelector (inflight / error
+// rate / p95 latency / weight populated) instead of bypassing it.
+func SelectorStats(uc *ChannelUsecase) map[int64]ChannelStats {
+	return uc.SelectorStats()
 }

@@ -348,6 +348,20 @@ func (uc *ChannelUsecase) GetChannel(ctx context.Context, channelID int64) (*Cha
 	return uc.repo.FindByID(ctx, channelID)
 }
 
+// SelectorStats returns a snapshot of the weighted selector's runtime state
+// for every channel it has seen. It is the observability seam the admin UI and
+// integration tests use to confirm that channel selection actually flows
+// through WeightedSelector (inflight / error rate / p95 latency / weight
+// populated) instead of bypassing it. Returns an empty map when the selector
+// is nil (defensive; the selector is always wired in production via
+// NewChannelUsecase).
+func (uc *ChannelUsecase) SelectorStats() map[int64]ChannelStats {
+	if uc == nil || uc.selector == nil {
+		return map[int64]ChannelStats{}
+	}
+	return uc.selector.GetStats()
+}
+
 func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*SubscriptionAccount, error) {
 	abilities, err := uc.repo.ListSubscriptionAccountAbilities(ctx, group, model, platform)
 	if err != nil {

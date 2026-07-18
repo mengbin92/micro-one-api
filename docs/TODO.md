@@ -1,10 +1,10 @@
 # 项目 TODO
 
-> 最后更新：2026-07-17
+> 最后更新：2026-07-18
 >
-> 当前阶段重点：Phase 3.3（WebSocket 优雅排空接入 `openai_ws_*`）已完成。relay-gateway 的 `handleResponsesWebSocket` 现使用 `platform/websocket.ConnectionTracker` 跟踪活跃客户端连接；SIGTERM 触发 `kratos.BeforeStop(DrainWSConnections)`，排空期间 `/healthz` 返回 503、新升级被拒绝，连接在 `openai_ws.drain_timeout`（默认 30s）内优雅关闭或强制关闭。下一步推进 2.2 渠道加权选择运行时验证。
+> 当前阶段重点：Phase 2.2（渠道加权选择运行时验证）已完成。relay-gateway → channel-service 的 `SelectChannel` 现在有一份端到端集成测试（`TestRelaySelectChannel_WeightedDistribution`）证明选路实际走到 `WeightedSelector`（同优先级不同 Weight 的两渠道，高权重命中严格更多；`WeightedSelector` 的 Weight / CurrentWeight / Inflight / P95Latency 被真实填充）；channel-service HTTP 新增 `GET /api/v1/admin/channels/selector/stats`（`ADMIN_TOKEN` 守卫）供运行时观察 selector 状态。下一步推进 2.4 数据库 Schema 隔离 / 2.5 配置热更新。
 >
-> 历史进度：Phase 1 的 `http.go` God Object 拆分（`9e40559`，2470→472 行）、gRPC 熔断器、本地缓存层 L1、Redis Streams 事件总线均已落地；Phase 0 可观测性基线已填充，原始结果归档在 `scripts/benchmark/results/phase0-baseline-2026-07-17.json`。
+> 历史进度：Phase 1 的 `http.go` God Object 拆分（`9e40559`，2470→472 行）、gRPC 熔断器、本地缓存层 L1、Redis Streams 事件总线均已落地；Phase 0 可观测性基线已填充，原始结果归档在 `scripts/benchmark/results/phase0-baseline-2026-07-17.json`；Phase 2.1 异步计费、Phase 2.3 批量日志、Phase 3.3 WebSocket 优雅排空、Phase 2.2 渠道加权选择运行时验证均已接入。
 >
 > 架构重构总方案见 [design/ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md)，性能基线表见 [design/BASELINE.md](./design/BASELINE.md)。
 
@@ -64,7 +64,7 @@
 1. ~~**2.1 异步计费接入结算热路径**~~ ✅ 已完成。
 2. ~~**2.3 日志批量写入接入 `LogUsecase`**~~ ✅ 已完成（见上方"已完成 — Phase 2.3"小节）。
 3. ~~**3.3 WebSocket 优雅排空接入 `openai_ws_*`**~~ ✅ 已完成（见下方"已完成 — Phase 3.3"小节）。
-4. **2.2 渠道加权选择**（当前优先级）：已接入，补一份运行时验证（确认 relay-gateway 经 channel-service 选路实际走到 `WeightedSelector`）。
+4. ~~**2.2 渠道加权选择**~~ ✅ 已完成（见下方"已完成 — Phase 2.2"小节）。
 5. **2.4 数据库 Schema 隔离 / 2.5 配置热更新**：结构性新建项，风险较高，放最后。
 
 ## 已完成 — Phase 2.3 日志批量写入接入 LogUsecase
@@ -98,6 +98,42 @@
 - [x] `cfg.Log.BatchEnabled=true` 时 `IngestLog` 入队返回，不阻塞；队列满返回错误而非静默丢弃；`Flush` 后 `CreateBatch` 被调用并回写 ID。
 - [x] `go build ./...` 通过；`go vet ./app/log/... ./app/billing/... ./cmd/relay-gateway/...` 通过。
 - [x] `go test ./app/log/...` 全部通过（biz / data / integration / server）。
+
+## 已完成 — Phase 2.2 渠道加权选择运行时验证
+
+### [x] 2.2 渠道加权选择运行时验证
+
+关联设计：[架构重构方案 §4.4 渠道加权选择算法（P1）](./design/ARCHITECTURE_REFACTOR.md)
+
+核对结论回顾：`WeightedSelector` 本体早已接入（`ChannelUsecase` 持有，`SelectChannel` 调 `selector.Select`、`RecordHealth` 调 `selector.RecordHealth`），但缺少"relay-gateway 经 channel-service 选路实际走到 WeightedSelector"的端到端证据，也没有 selector 状态的运行时观察面。本次补齐这两项。
+
+本次完成：
+
+- `ChannelUsecase` 新增 `SelectorStats() map[int64]ChannelStats` 访问器，nil-safe 转发到 `WeightedSelector.GetStats()`，作为 selector 运行时状态的对外观察接缝。
+- `app/channel/testutil/testutil.go` re-export `ChannelStats` 类型别名 + `SelectorStats(uc)` 自由函数，使跨服务集成测试与 admin 工具可观察 selector 状态。
+- channel-service HTTP 新增 `GET /api/v1/admin/channels/selector/stats` 端点，`ADMIN_TOKEN` 常量时间比较守卫（未设置时 fail-closed 返回 401），返回 `{"channels": {<channelID>: {weight, current_weight, inflight, p95_latency, error_rate, is_circuit_open}}}` JSON。运维和验证脚本可直接 `curl` 观察选路是否实际落到 `WeightedSelector`。
+- 新增 `internal/integration/weighted_distribution_test.go::TestRelaySelectChannel_WeightedDistribution`：两个同 Priority（10）但不同 Weight（100 / 1）的 OpenAI 兼容渠道 + 共享 mock 上游，连续发 40 次 `/v1/chat/completions`，断言四条不变式：
+  1. 上游命中总数 == 请求数（无重复转发）。
+  2. 高权重渠道命中严格 > 低权重（区分加权选路与均匀随机的强证据：均匀随机下 40 次全高的概率仅 `(0.5)^40 ≈ 9e-13`）。
+  3. `SelectorStats` 两条渠道都登记、Weight=100/1、CurrentWeight 被改写（证明 `Select` 被调用而非旁路）、Inflight 归零（证明 `RecordHealth` 回路把 inflight 减回）。
+  4. 被选渠道的 P95Latency > 0（证明 relay-gateway → `RetryExecutor.recordHealth` → gRPC `RecordChannelHealth` → `ChannelUsecase.RecordHealth` → `WeightedSelector.RecordHealth` 的健康反馈链路端到端打通）。
+- 新增 `app/channel/internal/server/http_test.go`：`authorizeAdmin` 五种取值（含 fail-closed）+ `selectorStatsPayload` shape + 端点鉴权/方法/成功路径三组子测试。
+
+改动文件：
+
+- `app/channel/internal/biz/channel.go`（`SelectorStats()` 访问器）
+- `app/channel/testutil/testutil.go`（`ChannelStats` 别名 + `SelectorStats` re-export）
+- `app/channel/internal/server/http.go`（`registerSelectorStatsRoute` + `authorizeAdmin` + `selectorStatsPayload` + `crypto/subtle` / `os` / `strings` import）
+- `app/channel/internal/server/http_test.go`（新增 selector stats 端点 + 鉴权单测）
+- `internal/integration/weighted_distribution_test.go`（新增 Phase 2.2 端到端验证测试）
+
+验收标准：
+
+- [x] `WeightedSelector` 仍是 `ChannelUsecase.SelectChannel` / `RecordHealth` 的实际选路与反馈路径（核对结论不变）。
+- [x] `TestRelaySelectChannel_WeightedDistribution` 通过：高权重 40/40、低权重 0，`SelectorStats` 两渠道 Weight/CurrentWeight/Inflight/P95Latency 全部符合预期。
+- [x] channel-service `GET /api/v1/admin/channels/selector/stats` 在 `ADMIN_TOKEN` 未设置时 401、正确 token 时返回 `{"channels": {...}}` JSON。
+- [x] `go build ./...` 通过；`go vet ./app/channel/... ./internal/integration/...` 通过。
+- [x] `./scripts/check-architecture.sh` 通过；`make test-unit` 全绿（含新增 2 个 selector stats / 鉴权测试 + 1 个加权分布集成测试 + 既有 channel / integration / server 测试）。
 
 ## 已完成 — Phase 3.3 WebSocket 优雅排空接入 openai_ws_*
 
