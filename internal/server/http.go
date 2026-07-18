@@ -437,6 +437,18 @@ func (s *HTTPServer) drainConfig() *appws.DrainConfig {
 	return appws.DefaultDrainConfig()
 }
 
+// drainTimeout returns the effective drain timeout as a duration. It mirrors
+// drainConfig() but avoids allocating a config object on the hot healthz path.
+func (s *HTTPServer) drainTimeout() time.Duration {
+	if s == nil {
+		return appws.DefaultDrainConfig().DrainTimeout
+	}
+	if s.wsDrainCfg.DrainTimeout > 0 {
+		return s.wsDrainCfg.DrainTimeout
+	}
+	return appws.DefaultDrainConfig().DrainTimeout
+}
+
 // IsWSDraining reports whether the gateway is draining WebSocket connections
 // prior to shutdown. Load balancers probe /healthz to pull the instance.
 

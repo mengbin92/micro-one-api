@@ -305,10 +305,13 @@ func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	// is only set after a SIGTERM; in steady state healthz stays 200 ok.
 	if s != nil && s.IsWSDraining() {
 		w.Header().Set("Content-Type", "application/json")
+		// Retry-After gives LBs a hint sized to the configured drain window.
+		drainSec := int64(s.drainTimeout().Seconds())
+		if drainSec <= 0 {
+			drainSec = 30
+		}
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", drainSec))
 		w.WriteHeader(http.StatusServiceUnavailable)
-		// Retry-After gives LBs a hint; the drain window is bounded by
-		// openai_ws.drain_timeout (default 30s).
-		w.Header().Set("Retry-After", "30")
 		encodeJSON(w, map[string]string{"status": "draining", "drain": "true"})
 		return
 	}

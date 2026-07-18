@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -304,6 +305,35 @@ func defaultSQLite3Pragmas() []string {
 	}
 }
 
+// ResolveSchema picks the effective schema for a service connection.
+// Priority:
+//   1. schema argument (passed by wire / explicit callers)
+//   2. svcEnv (per-service schema env var, e.g. BILLING_SCHEMA)
+//   3. fallbackEnv (global schema env var, e.g. DATABASE_SCHEMA)
+// An empty result means "use the DSN as-is" (legacy shared-database
+// behaviour). The returned schema is trimmed of surrounding whitespace,
+// quotes and backticks so values like `oneapi_billing` work correctly.
+func ResolveSchema(schema, svcEnv, fallbackEnv string) string {
+	trim := func(v string) string {
+		v = strings.TrimSpace(v)
+		for _, c := range []string{"\"", "`", "'", " "} {
+			v = strings.Trim(v, c)
+		}
+
+		return v
+	}
+	if schema = trim(schema); schema != "" {
+		return schema
+	}
+	if schema = trim(os.Getenv(svcEnv)); schema != "" {
+		return schema
+	}
+	if schema = trim(os.Getenv(fallbackEnv)); schema != "" {
+		return schema
+	}
+	return ""
+}
+
 // DefaultSQLite3Pragmas exposes the default pragma set so callers can
 // extend it before passing to Open.
 func DefaultSQLite3Pragmas() []string {
@@ -373,8 +403,17 @@ func RewritePostgresSearchPath(dsn, schema string) string {
 
 // withPostgresSearchPath injects (or replaces) options=-c search_path=... into
 // a Postgres DSN. Both URL (postgres://...) and key=value forms are accepted.
-// Existing options are preserved by appending the search_path setting; the
-// last SET wins in Postgres, so a caller-supplied search_path is overridden.
+//
+// Behaviour for existing options:
+//   - URL form (postgres://...?options=...): the entire options value is
+//     replaced with one containing our search_path. Postgres only keeps the
+//     last options= parameter, so a caller-supplied search_path is overridden.
+//   - key=value form (host=... options='...'): the search_path setting is
+//     appended to the existing options string. The last "-c search_path=..."
+//     inside options wins, so our appended value takes precedence.
+//
+// This means callers cannot override the service schema via a raw options=
+// value in the DSN; the per-service schema always takes precedence.
 func withPostgresSearchPath(dsn, schema string) string {
 	schema = strings.Trim(schema, "\"' ")
 	if schema == "" {
@@ -517,6 +556,10 @@ func replacePostgresKV(dsn, key, value string) string {
 // splitPostgresKV tokenises a Postgres key=value DSN. It understands
 // single- and double-quoted values; unquoted values run until the next
 // whitespace. Pairs without an '=' (rare, malformed) are dropped.
+//
+// Note: an unterminated quoted value is consumed until the end of the string
+// rather than returning an error. This keeps the DSN rewrite best-effort;
+// malformed connection strings will surface later when the driver parses them.
 func splitPostgresKV(dsn string) []pgKV {
 	var out []pgKV
 	i := 0

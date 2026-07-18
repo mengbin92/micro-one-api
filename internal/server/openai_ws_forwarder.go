@@ -50,7 +50,11 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	// balancers route to a healthy replica. Existing tracked connections are
 	// allowed to finish their in-flight turns before force-close.
 	if s != nil && s.IsWSDraining() {
-		w.Header().Set("Retry-After", "30")
+		drainSec := int64(s.drainTimeout().Seconds())
+		if drainSec <= 0 {
+			drainSec = 30
+		}
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", drainSec))
 		s.writeError(w, http.StatusServiceUnavailable, "server is draining websocket connections")
 		return
 	}

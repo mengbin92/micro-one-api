@@ -95,6 +95,25 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	if resp == nil || !resp.GetSuccess() {
 		return resp, stderrors.New(billingErrorMessage(resp, "commit quota failed"))
 	}
+	// Phase 2.1 async billing: when the billing service enqueues the
+	// settlement instead of committing synchronously, the returned amounts are
+	// provisional (committed_amount=0). Downstream usage accounting must not
+	// rely on provisional values; the worker will finalize the ledger and
+	// subscription usage on its own.
+	if resp.GetAsyncEnqueued() {
+		if applogger.Log != nil {
+			applogger.Log.Info("commit quota enqueued for async settlement", zap.String("reservation_id", reservationID), zap.Int64("actual_tokens", actualTokens))
+		}
+		// Channel token usage does not depend on the provisional
+		// committed_amount; record it now so the channel stats stay accurate
+		// even when billing is settled asynchronously. Subscription-account
+		// and session-window accounting must still wait for the authoritative
+		// worker result, so they are skipped here.
+		if len(details) > 0 {
+			s.recordChannelUsage(ctx, details[0].ChannelID, actualTokens)
+		}
+		return resp, nil
+	}
 	if len(details) > 0 {
 		detail := details[0]
 		s.recordChannelUsage(ctx, detail.ChannelID, actualTokens)

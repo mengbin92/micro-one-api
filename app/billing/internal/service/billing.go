@@ -111,7 +111,16 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 	// synchronous so the caller observes the released reservation and does
 	// not proceed against a frozen amount.
 	if s.asyncUc != nil && req.Success {
+		// The task carries the original reservation id as a stable
+		// correlation id so async settlement logs and metrics can be tied back to
+		// the relay's request span. When the reservation id is missing we fall
+		// back to a synthetic id so the worker never operates without context.
+		requestID := req.ReservationId
+		if requestID == "" {
+			requestID = fmt.Sprintf("async-%d", time.Now().UnixNano())
+		}
 		s.asyncUc.Settle(ctx, &biz.SettleTask{
+			RequestID:             requestID,
 			ReservationID:         req.ReservationId,
 			ActualTokens:          req.ActualTokens,
 			Success:               true,
@@ -121,6 +130,7 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		return &billingv1.CommitQuotaResponse{
 			Success:         true,
 			CommittedAmount: 0, // provisional; authoritative amount written by the worker
+			AsyncEnqueued:   true,
 		}, nil
 	}
 

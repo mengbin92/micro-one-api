@@ -92,6 +92,11 @@ message CommitQuotaResponse {
   // path so callers can detect the new flow.
   int64 subscription_cost = 5;   // quota-equivalent share absorbed by the subscription
   int64 balance_cost = 6;        // quota-equivalent share paid out of the wallet
+  // async_enqueued is true when the settlement was enqueued for background
+  // processing (Phase 2.1 async billing). committed_amount is provisional
+  // and the authoritative values are written by the worker. Callers should
+  // not use the returned amounts for final accounting when this flag is set.
+  bool async_enqueued = 7;
 }
 
 // LedgerEntry is the wire-side view of a billing_ledgers row. The
