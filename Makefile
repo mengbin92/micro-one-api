@@ -1,10 +1,6 @@
 GOHOSTOS := $(shell go env GOHOSTOS)
 GOPATH := $(shell go env GOPATH)
 VERSION := $(shell git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo dev)
-PROTOC_GEN_GO_VERSION := v1.36.11
-PROTOC_GEN_GO_GRPC_VERSION := v1.6.2
-PROTOC_GEN_GO_HTTP_VERSION := v2.0.0-20260404020628-f149714c1d54
-PROTOC_GEN_OPENAPI_VERSION := v0.7.1
 
 ifeq ($(GOHOSTOS), windows)
 Git_Bash := $(subst \,/,$(subst cmd\,bin\bash.exe,$(dir $(shell where git))))
@@ -16,66 +12,35 @@ INTERNAL_PROTO_FILES := $(shell find app -name "*.proto")
 INTERNAL_CONF_PROTO_FILES := $(shell find internal/conf -name "*.proto" 2>/dev/null)
 API_PROTO_FILES := $(shell find api -name '*.proto')
 endif
-PROTO_SYSTEM_INCLUDE_DIRS := $(strip $(foreach dir,/usr/include /usr/local/include /opt/homebrew/include,$(if $(wildcard $(dir)/google/protobuf/descriptor.proto),--proto_path=$(dir))))
 
 .PHONY: init
 # init env
 init:
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
-	go install github.com/go-kratos/kratos/cmd/kratos/v2@latest
-	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@$(PROTOC_GEN_GO_HTTP_VERSION)
-	go install github.com/google/gnostic/cmd/protoc-gen-openapi@$(PROTOC_GEN_OPENAPI_VERSION)
+	go install github.com/bufbuild/buf/cmd/buf@latest
 	go install github.com/google/wire/cmd/wire@latest
-
-.PHONY: proto-tools
-# install protobuf generators needed by make proto
-proto-tools:
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
-	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@$(PROTOC_GEN_GO_HTTP_VERSION)
-	go install github.com/google/gnostic/cmd/protoc-gen-openapi@$(PROTOC_GEN_OPENAPI_VERSION)
 
 .PHONY: config
 # generate internal proto (app/*/internal/conf/*.proto + internal/conf/*.proto)
 config:
-	@# Generate app/* internal conf proto
-ifneq ($(strip $(INTERNAL_PROTO_FILES)),)
-	protoc --proto_path=./app \
-		--proto_path=./third_party \
-		$(PROTO_SYSTEM_INCLUDE_DIRS) \
-		--go_out=paths=source_relative:./app \
-		$(INTERNAL_PROTO_FILES)
-else
-	@echo "no app internal proto files"
-endif
-	@# Generate relay-gateway internal conf proto
-ifneq ($(strip $(INTERNAL_CONF_PROTO_FILES)),)
-	protoc --proto_path=./internal/conf \
-		--proto_path=./third_party \
-		$(PROTO_SYSTEM_INCLUDE_DIRS) \
-		--go_out=paths=source_relative:./internal/conf \
-		$(INTERNAL_CONF_PROTO_FILES)
-else
-	@echo "no internal/conf proto files"
-endif
+	@# Generate internal/conf
+	@if [ -n "$(INTERNAL_CONF_PROTO_FILES)" ]; then \
+		protoc --proto_path=./internal/conf \
+			--go_out=paths=source_relative:./internal/conf \
+			$(INTERNAL_CONF_PROTO_FILES); \
+	fi
+	@# Generate app/*/internal/conf
+	@if [ -n "$(INTERNAL_PROTO_FILES)" ]; then \
+		protoc --proto_path=./app \
+			--go_out=paths=source_relative:./app \
+			$(INTERNAL_PROTO_FILES); \
+	fi
+
 
 .PHONY: api
 # generate api proto
 api:
-ifneq ($(strip $(API_PROTO_FILES)),)
-	protoc \
-		--proto_path=. \
-		--proto_path=./third_party \
-		$(PROTO_SYSTEM_INCLUDE_DIRS) \
-		--go_out=paths=source_relative:. \
-		--go-http_out=paths=source_relative:. \
-		--go-grpc_out=paths=source_relative,require_unimplemented_servers=false:. \
-		--openapi_out=fq_schema_naming=true,default_response=false,naming=json:. \
-		$(API_PROTO_FILES)
-else
-	@echo "no api proto files"
-endif
+	buf generate --template buf.gen.yaml
+
 
 .PHONY: api-check
 # verify generated OpenAPI output

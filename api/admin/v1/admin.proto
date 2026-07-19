@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package api.admin.v1;
 
-import "api/common/v1/common.proto";
+import "common/v1/common.proto";
 import "google/api/annotations.proto";
 
 option go_package = "micro-one-api/api/admin/v1;adminv1";

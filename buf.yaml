@@ -1,0 +1,13 @@
+version: v2
+modules:
+  - path: api
+deps:
+  - buf.build/googleapis/googleapis
+# 暂不启用 lint DEFAULT：现有 proto 用 created_at 而非 created_time、
+# 缺少 error_reason.proto 等，DEFAULT 会大量报错。启用需单独排期。
+lint:
+  use:
+    - MINIMAL
+breaking:
+  use:
+    - FILE

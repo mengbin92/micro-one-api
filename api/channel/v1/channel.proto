@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package api.channel.v1;
 
-import "api/common/v1/common.proto";
+import "common/v1/common.proto";
 
 option go_package = "micro-one-api/api/channel/v1;channelv1";
 
