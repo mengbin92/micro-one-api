@@ -232,6 +232,7 @@ func init() {
 		AsyncBillingQueueSize,
 		AsyncBillingSettlementDuration,
 		AsyncBillingFallbackToSync,
+		AsyncBillingMissingReservationID,
 		AsyncBillingDroppedFlushes,
 		LedgerWriteDuration,
 		ReservationExpirationCount,

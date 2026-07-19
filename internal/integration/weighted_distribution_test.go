@@ -23,9 +23,9 @@ import (
 
 	channelv1 "micro-one-api/api/channel/v1"
 	channeltestutil "micro-one-api/app/channel/testutil"
+	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	relaydata "micro-one-api/internal/data"
-	relayprovider "micro-one-api/domain/upstream/provider"
 	relayserver "micro-one-api/internal/server"
 )
 

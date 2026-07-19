@@ -38,8 +38,8 @@ var KnownCapabilities = map[string]bool{
 // fresh snapshot. Concurrent Resolve() callers see either the old or the
 // new snapshot, never a partially-mutated map.
 type ModelMapper struct {
-	path   string
-	snap   atomic.Pointer[map[string]*ModelEntry]
+	path string
+	snap atomic.Pointer[map[string]*ModelEntry]
 }
 
 // NewModelMapper creates a ModelMapper from a config file path.
@@ -142,8 +142,6 @@ func (m *ModelMapper) HasCapability(modelName, capability string) bool {
 func (m *ModelMapper) GetEntry(modelName string) *ModelEntry {
 	return m.modelsSnapshot()[modelName]
 }
-
-
 
 // NewModelMapperForTest builds a ModelMapper directly from an in-memory map,
 // bypassing the file loader. Intended only for tests; production code should

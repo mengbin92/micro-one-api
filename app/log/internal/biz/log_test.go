@@ -3,11 +3,13 @@ package biz
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 type mockLogRepo struct {
+	mu        sync.Mutex
 	entries   map[int64]*LogEntry
 	seq       int64
 	getErr    error
@@ -19,17 +21,22 @@ func (m *mockLogRepo) Get(ctx context.Context, id int64) (*LogEntry, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	e, ok := m.entries[id]
 	if !ok {
 		return nil, ErrLogNotFound
 	}
-	return e, nil
+	cp := *e
+	return &cp, nil
 }
 
 func (m *mockLogRepo) List(ctx context.Context, page, pageSize int32, level, source, keyword string) ([]*LogEntry, int64, error) {
 	if m.listErr != nil {
 		return nil, 0, m.listErr
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var result []*LogEntry
 	for _, e := range m.entries {
 		if level != "" && e.Level != level {
@@ -56,6 +63,8 @@ func (m *mockLogRepo) ListByUser(ctx context.Context, userID int64, page, pageSi
 	if m.listErr != nil {
 		return nil, 0, m.listErr
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var result []*LogEntry
 	for _, e := range m.entries {
 		if e.UserID != userID {
@@ -116,6 +125,8 @@ func (m *mockLogRepo) Create(ctx context.Context, entry *LogEntry) error {
 	if m.createErr != nil {
 		return m.createErr
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.seq++
 	entry.ID = m.seq
 	m.entries[entry.ID] = entry
@@ -364,6 +375,7 @@ func TestLogUsecase_ListLogs(t *testing.T) {
 // assert the batch path is taken. It implements biz.LogRepoBatch.
 type batchMockLogRepo struct {
 	*mockLogRepo
+	mu      sync.Mutex
 	batched [][]*LogEntry
 }
 
@@ -372,7 +384,9 @@ func newBatchMockLogRepo(entries ...*LogEntry) *batchMockLogRepo {
 }
 
 func (m *batchMockLogRepo) CreateBatch(ctx context.Context, entries []*LogEntry) error {
+	m.mu.Lock()
 	m.batched = append(m.batched, entries)
+	m.mu.Unlock()
 	for _, e := range entries {
 		if err := m.mockLogRepo.Create(ctx, e); err != nil {
 			return err
@@ -382,6 +396,8 @@ func (m *batchMockLogRepo) CreateBatch(ctx context.Context, entries []*LogEntry)
 }
 
 func (m *batchMockLogRepo) batchCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return len(m.batched)
 }
 

@@ -11,17 +11,17 @@ import (
 
 // Type aliases for entities.
 type (
-	Channel                           = channelbiz.Channel
-	Ability                           = channelbiz.Ability
-	SubscriptionAccount               = channelbiz.SubscriptionAccount
-	SubscriptionAccountAbility        = channelbiz.SubscriptionAccountAbility
-	AccountQuotaSnapshot              = channelbiz.AccountQuotaSnapshot
-	SubscriptionAccountQuotaUsage     = channelbiz.SubscriptionAccountQuotaUsage
-	SubscriptionAccountQuotaResetRun  = channelbiz.SubscriptionAccountQuotaResetRun
-	ChannelHealthEvent                = channelbiz.ChannelHealthEvent
-	ChannelRepo                       = channelbiz.ChannelRepo
-	ChannelUsecase                    = channelbiz.ChannelUsecase
-	ChannelStats                          = channelbiz.ChannelStats
+	Channel                                = channelbiz.Channel
+	Ability                                = channelbiz.Ability
+	SubscriptionAccount                    = channelbiz.SubscriptionAccount
+	SubscriptionAccountAbility             = channelbiz.SubscriptionAccountAbility
+	AccountQuotaSnapshot                   = channelbiz.AccountQuotaSnapshot
+	SubscriptionAccountQuotaUsage          = channelbiz.SubscriptionAccountQuotaUsage
+	SubscriptionAccountQuotaResetRun       = channelbiz.SubscriptionAccountQuotaResetRun
+	ChannelHealthEvent                     = channelbiz.ChannelHealthEvent
+	ChannelRepo                            = channelbiz.ChannelRepo
+	ChannelUsecase                         = channelbiz.ChannelUsecase
+	ChannelStats                           = channelbiz.ChannelStats
 	SubscriptionAccountQuotaEventFilter    = channelbiz.SubscriptionAccountQuotaEventFilter
 	SubscriptionAccountQuotaEventAggregate = channelbiz.SubscriptionAccountQuotaEventAggregate
 )

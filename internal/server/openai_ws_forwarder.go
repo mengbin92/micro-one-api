@@ -15,10 +15,9 @@ import (
 
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
+	relaybiz "micro-one-api/internal/biz"
 	servererrors "micro-one-api/pkg/errors"
 	applogger "micro-one-api/platform/logging"
-	appws "micro-one-api/platform/websocket"
-	relaybiz "micro-one-api/internal/biz"
 )
 
 // OpenAI Responses WebSocket protocol constants. The OpenAI-Beta header value
@@ -161,19 +160,29 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	// automatically when the connection closes; here we also defer an explicit
 	// Unregister so a relay that returns without the close func firing (e.g.
 	// context cancel) is removed from the active set.
-	var tracked *appws.Connection
 	if s.wsConnTracker != nil {
-		tracked = s.wsConnTracker.NewConnection(requestID, func() error {
+		tracked := s.wsConnTracker.NewConnection(requestID, func() error {
 			return wsConn.CloseNow()
 		})
-		if tracked != nil {
+		if tracked == nil {
+			// NewConnection returns nil when the tracker is already draining or
+			// its capacity is exhausted. The connection is then invisible to the
+			// drain logic, so DrainWSConnections will not wait for or force-close
+			// it — the process exit will cut it off. Surface it as a warning so
+			// an operator knows the drain window excluded an active relay.
+			if applogger.Log != nil {
+				applogger.Log.Warn("openai ws connection not tracked; drain will not wait for it",
+					zap.String("request_id", requestID),
+					zap.String("model", clientModel),
+				)
+			}
+		} else {
 			tracked.SetMetadata("endpoint", "/v1/responses")
 			tracked.SetMetadata("model", clientModel)
 			tracked.SetMetadata("user_id", fmt.Sprintf("%d", plan.Auth.UserID))
 			defer tracked.Unregister()
 		}
 	}
-	_ = tracked
 
 	s.runResponsesWSRelayWithFailover(ctx, wsConn, clientFrameConn, r, token, clientModel, sessionHash, plan, rewrittenFirstMessage, reservation, requestID, maxSwitches)
 }

@@ -14,9 +14,9 @@ import (
 	relaycfg "micro-one-api/internal/conf"
 	"micro-one-api/internal/server"
 	applogger "micro-one-api/platform/logging"
-	appws "micro-one-api/platform/websocket"
 	appauth "micro-one-api/platform/security/auth"
 	apptls "micro-one-api/platform/tls"
+	appws "micro-one-api/platform/websocket"
 
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	xhttp "micro-one-api/platform/http"

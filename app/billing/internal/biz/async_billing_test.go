@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"micro-one-api/platform/metrics"
 	"gorm.io/gorm"
+	"micro-one-api/platform/metrics"
 )
 
 // --- Test doubles ---
@@ -221,6 +221,7 @@ func TestQuotaCache_GetSetInvalidate(t *testing.T) {
 		t.Fatalf("expected cache miss after Invalidate")
 	}
 }
+
 // --- Async commit pipeline contract tests ---
 //
 // These tests verify the Settle enqueue contract introduced when the async
@@ -303,4 +304,99 @@ func TestAsyncBillingUsecase_SettleNilTaskIsSafe(t *testing.T) {
 // format.
 func readAsyncDroppedFlushes() float64 {
 	return testutil.ToFloat64(metrics.AsyncBillingDroppedFlushes)
+}
+
+// TestAsyncBillingUsecase_SettleAfterCloseFallsBackToSync verifies the drain
+// contract: once Close() has been called, Settle must NOT enqueue onto the
+// worker queue (the worker has exited and nothing would consume the task).
+// Instead it falls back to the synchronous commit pipeline. We prove this
+// by:
+//  1. Constructing an AsyncBillingUsecase with a nil syncUc. The
+//     synchronous fallback records a "dropped flush" via metrics when
+//     syncUc is nil, which is observable.
+//  2. Calling Close() to flip the closed flag and stop the worker.
+//  3. Calling Settle and asserting that dropped_flushes increments —
+//     i.e. the sync fallback ran. If Settle had enqueued instead, the
+//     counter would not move (and the task would be lost on a real
+//     worker).
+//
+// This guards the Close() drain window described in the review: a Settle
+// racing with shutdown must never silently drop a settlement.
+func TestAsyncBillingUsecase_SettleAfterCloseFallsBackToSync(t *testing.T) {
+	uc := &AsyncBillingUsecase{
+		localCache:  NewQuotaCache(),
+		settleQueue: make(chan *SettleTask, 4),
+		batchWriter: NewBatchLedgerWriter(8, time.Second),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	uc.workerCtx, uc.workerCancel = ctx, cancel
+	uc.startWorkers()
+	defer uc.Close()
+
+	// Close first; the worker exits and closed=true.
+	if err := uc.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	before := readAsyncDroppedFlushes()
+	uc.Settle(context.Background(), &SettleTask{
+		ReservationID: "post-close",
+		ActualTokens:  10,
+		Success:       true,
+		Timestamp:     time.Now(),
+	})
+	after := readAsyncDroppedFlushes()
+	if after <= before {
+		t.Fatalf("dropped_flushes did not increase after Close (%g -> %g); Settle should fall back to sync when closed", before, after)
+	}
+
+	// Nothing should have been enqueued.
+	select {
+	case <-uc.settleQueue:
+		t.Fatal("Settle enqueued a task after Close; this would be silently lost")
+	default:
+	}
+}
+
+// TestAsyncBillingUsecase_CloseDrainsQueuedTasks verifies that tasks already
+// sitting in the queue when Close() is called are still settled (the worker
+// drains on its way out, and Close drains again as a belt-and-braces
+// measure). With a real syncUc we can observe the commit pipeline running
+// by counting ledger writes; with a nil syncUc we assert via the dropped
+// counter instead. This test uses the nil path: a queued task that is
+// drained reaches processSettlement, which (with nil syncUc) records a
+// dropped flush.
+func TestAsyncBillingUsecase_CloseDrainsQueuedTasks(t *testing.T) {
+	uc := &AsyncBillingUsecase{
+		localCache:  NewQuotaCache(),
+		settleQueue: make(chan *SettleTask, 4),
+		batchWriter: NewBatchLedgerWriter(8, time.Second),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	uc.workerCtx, uc.workerCancel = ctx, cancel
+	uc.startWorkers()
+
+	// Enqueue two tasks but do NOT let the worker drain them yet: stop the
+	// worker by cancelling its ctx, then re-enqueue so the tasks are
+	// guaranteed to still be in the channel.
+	uc.workerCancel()
+	uc.workerWg.Wait()
+
+	uc.settleQueue <- &SettleTask{ReservationID: "queued-1", ActualTokens: 1, Success: true, Timestamp: time.Now()}
+	uc.settleQueue <- &SettleTask{ReservationID: "queued-2", ActualTokens: 2, Success: true, Timestamp: time.Now()}
+
+	before := readAsyncDroppedFlushes()
+	// Close must drain the two queued tasks via its inline drain loop,
+	// invoking processSettlement for each (which records a dropped flush
+	// because syncUc is nil).
+	if err := uc.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	after := readAsyncDroppedFlushes()
+	if after-before < 2 {
+		t.Fatalf("Close did not drain queued tasks: dropped_flushes delta=%g, want >= 2", after-before)
+	}
+	if len(uc.settleQueue) != 0 {
+		t.Fatalf("settleQueue not empty after Close: %d", len(uc.settleQueue))
+	}
 }

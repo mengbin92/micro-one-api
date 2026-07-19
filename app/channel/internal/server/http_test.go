@@ -10,6 +10,7 @@ import (
 )
 
 func TestAuthorizeAdmin_FailClosedWhenTokenUnset(t *testing.T) {
+	resetAdminTokenCache()
 	t.Setenv("ADMIN_TOKEN", "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/channels/selector/stats", nil)
 	req.Header.Set("Authorization", "Bearer anything")
@@ -19,6 +20,7 @@ func TestAuthorizeAdmin_FailClosedWhenTokenUnset(t *testing.T) {
 }
 
 func TestAuthorizeAdmin_TokenCompare(t *testing.T) {
+	resetAdminTokenCache()
 	t.Setenv("ADMIN_TOKEN", "secret-admin")
 	for _, tc := range []struct {
 		name string
@@ -62,6 +64,7 @@ func TestSelectorStatsPayloadShape(t *testing.T) {
 // are rejected, wrong methods are rejected, and authenticated GET returns the
 // selector stats snapshot under the documented JSON shape.
 func TestRegisterSelectorStatsRoute_AuthAndPayload(t *testing.T) {
+	resetAdminTokenCache()
 	t.Setenv("ADMIN_TOKEN", "root-token")
 
 	uc := biz.NewChannelUsecase(nil, nil)

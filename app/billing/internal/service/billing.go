@@ -12,6 +12,7 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/pkg/safecast"
+	"micro-one-api/platform/metrics"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -20,13 +21,13 @@ import (
 
 type BillingService struct {
 	billingv1.UnimplementedBillingServiceServer
-	uc        *biz.BillingUsecase
-	asyncUc   *biz.AsyncBillingUsecase // optional; nil = synchronous path
-	paymentUc *biz.PaymentUsecase
+	uc             *biz.BillingUsecase
+	asyncUc        *biz.AsyncBillingUsecase // optional; nil = synchronous path
+	paymentUc      *biz.PaymentUsecase
 	alipayVerifier biz.PaymentNotifyVerifier
-	reconUc  *biz.ReconciliationUsecase
-	refundUc *biz.RefundUsecase
-	reportUc *biz.SubscriptionReportUsecase
+	reconUc        *biz.ReconciliationUsecase
+	refundUc       *biz.RefundUsecase
+	reportUc       *biz.SubscriptionReportUsecase
 }
 
 func NewBillingService(uc *biz.BillingUsecase, reconUc *biz.ReconciliationUsecase, paymentUc *biz.PaymentUsecase, alipayVerifier biz.PaymentNotifyVerifier) *BillingService {
@@ -113,19 +114,23 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 	if s.asyncUc != nil && req.Success {
 		// The task carries the original reservation id as a stable
 		// correlation id so async settlement logs and metrics can be tied back to
-		// the relay's request span. When the reservation id is missing we fall
-		// back to a synthetic id so the worker never operates without context.
+		// the relay's request span. The CommitQuotaRequest proto marks
+		// reservation_id as required for the success path; a missing value is a
+		// client contract violation. We still emit a counter (rather than reject)
+		// so a misbehaving caller is visible in monitoring without breaking the
+		// hot path, and synthesise a correlation id for the log line.
 		requestID := req.ReservationId
 		if requestID == "" {
+			metrics.AsyncBillingMissingReservationID.Inc()
 			requestID = fmt.Sprintf("async-%d", time.Now().UnixNano())
 		}
 		s.asyncUc.Settle(ctx, &biz.SettleTask{
-			RequestID:             requestID,
-			ReservationID:         req.ReservationId,
-			ActualTokens:          req.ActualTokens,
-			Success:               true,
-			Usage:                 usage,
-			Timestamp:             time.Now(),
+			RequestID:     requestID,
+			ReservationID: req.ReservationId,
+			ActualTokens:  req.ActualTokens,
+			Success:       true,
+			Usage:         usage,
+			Timestamp:     time.Now(),
 		})
 		return &billingv1.CommitQuotaResponse{
 			Success:         true,

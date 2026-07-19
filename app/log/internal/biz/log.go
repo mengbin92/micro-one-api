@@ -20,17 +20,17 @@ type LogEntry struct {
 	UserID    int64
 	CreatedAt time.Time
 
-	Username         string
-	TokenName        string
-	ModelName        string
-	Quota            int64
-	PromptTokens     int64
-	CompletionTokens int64
-	CacheReadTokens  int64
-	ChannelID              int64
-	SubscriptionAccountID  int64
-	ElapsedTime            int64
-	IsStream               bool
+	Username              string
+	TokenName             string
+	ModelName             string
+	Quota                 int64
+	PromptTokens          int64
+	CompletionTokens      int64
+	CacheReadTokens       int64
+	ChannelID             int64
+	SubscriptionAccountID int64
+	ElapsedTime           int64
+	IsStream              bool
 }
 
 // UsageStat is a One API-style usage aggregate grouped by day and model.

@@ -35,10 +35,10 @@ const defaultBaseline = "022_create_schema_migrations"
 
 func main() {
 	var (
-		dir      = flag.String("dir", "./migrations", "directory containing .sql migration files")
-		baseline = flag.String("baseline", defaultBaseline, "brownfield baseline cutoff version (file basename without .sql)")
-		status   = flag.Bool("status", false, "print status table and exit without applying")
-		driver   = flag.String("driver", "", "database driver: mysql (default) or sqlite; inferred from DSN when empty")
+		dir       = flag.String("dir", "./migrations", "directory containing .sql migration files")
+		baseline  = flag.String("baseline", defaultBaseline, "brownfield baseline cutoff version (file basename without .sql)")
+		status    = flag.Bool("status", false, "print status table and exit without applying")
+		driver    = flag.String("driver", "", "database driver: mysql (default) or sqlite; inferred from DSN when empty")
 		ownership = flag.String("ownership", "", "restrict to migrations owned by this service key (Phase 2.4 schema isolation; see migrations/ownership.yaml)")
 	)
 	flag.Parse()

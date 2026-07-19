@@ -135,6 +135,21 @@ var AsyncBillingDroppedFlushes = prometheus.NewCounter(
 	},
 )
 
+// AsyncBillingMissingReservationID counts CommitQuota requests that took the
+// async path without a reservation_id. The success path of CommitQuota
+// requires a reservation id (it is the key the worker uses to run the commit
+// pipeline); reaching the async branch without one is a client contract
+// violation. We still enqueue with a synthetic correlation id so the relay is
+// not blocked, but the counter makes the misbehaving caller visible.
+var AsyncBillingMissingReservationID = prometheus.NewCounter(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "billing",
+		Name:      "async_missing_reservation_id_total",
+		Help:      "Number of async CommitQuota calls missing reservation_id",
+	},
+)
+
 // Ledger and Reconciliation Metrics
 
 // LedgerWriteDuration tracks ledger entry write duration.

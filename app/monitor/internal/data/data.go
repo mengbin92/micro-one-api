@@ -33,15 +33,15 @@ type healthCheckModel struct {
 func (healthCheckModel) TableName() string { return "health_checks" }
 
 type alertRuleModel struct {
-	ID          int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	Name        string `gorm:"column:name"`
-	ServiceName string `gorm:"column:service_name"`
-	Metric      string `gorm:"column:metric"`
+	ID          int64   `gorm:"column:id;primaryKey;autoIncrement"`
+	Name        string  `gorm:"column:name"`
+	ServiceName string  `gorm:"column:service_name"`
+	Metric      string  `gorm:"column:metric"`
 	Threshold   float64 `gorm:"column:threshold"`
-	Operator    string `gorm:"column:operator"`
-	Duration    int    `gorm:"column:duration"`
-	Enabled     bool   `gorm:"column:enabled"`
-	CreatedAt   int64  `gorm:"column:created_at"`
+	Operator    string  `gorm:"column:operator"`
+	Duration    int     `gorm:"column:duration"`
+	Enabled     bool    `gorm:"column:enabled"`
+	CreatedAt   int64   `gorm:"column:created_at"`
 }
 
 func (alertRuleModel) TableName() string { return "alert_rules" }

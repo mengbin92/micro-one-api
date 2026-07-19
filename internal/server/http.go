@@ -49,9 +49,9 @@ type HTTPServer struct {
 	// can drain them gracefully on shutdown (Phase 3.3). nil until
 	// SetOpenAIWSConnPool wires it; all accessors are nil-safe so tests and
 	// the default-disabled path behave exactly as before.
-	wsConnTracker      *appws.ConnectionTracker
-	wsDrainCfg         appws.DrainConfig
-	runtimeBlockCfg    runtimeBlockConfig
+	wsConnTracker   *appws.ConnectionTracker
+	wsDrainCfg      appws.DrainConfig
+	runtimeBlockCfg runtimeBlockConfig
 
 	// hybridAdaptorEnabled gates the new adaptor-based request path (plan §十).
 	// When false the gateway uses the legacy provider-factory path unchanged.
@@ -437,16 +437,22 @@ func (s *HTTPServer) drainConfig() *appws.DrainConfig {
 	return appws.DefaultDrainConfig()
 }
 
+// defaultDrainTimeout caches the platform-default drain timeout once so the
+// hot healthz path does not allocate a new DrainConfig on every probe.
+var defaultDrainTimeout = sync.OnceValue(func() time.Duration {
+	return appws.DefaultDrainConfig().DrainTimeout
+})
+
 // drainTimeout returns the effective drain timeout as a duration. It mirrors
 // drainConfig() but avoids allocating a config object on the hot healthz path.
 func (s *HTTPServer) drainTimeout() time.Duration {
 	if s == nil {
-		return appws.DefaultDrainConfig().DrainTimeout
+		return defaultDrainTimeout()
 	}
 	if s.wsDrainCfg.DrainTimeout > 0 {
 		return s.wsDrainCfg.DrainTimeout
 	}
-	return appws.DefaultDrainConfig().DrainTimeout
+	return defaultDrainTimeout()
 }
 
 // IsWSDraining reports whether the gateway is draining WebSocket connections

@@ -9,20 +9,29 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"go.uber.org/zap"
+
+	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
 
 // AsyncBillingUsecase provides a non-blocking billing path.
 // It uses a local quota check + async settlement.
 type AsyncBillingUsecase struct {
-	syncUc         *BillingUsecase    // Fallback to sync billing
-	localCache     *QuotaCache        // L1: in-memory quota snapshot
-	redis          *redis.Client      // L2: distributed quota counter
-	settleQueue    chan *SettleTask   // async settlement queue
-	batchWriter    *BatchLedgerWriter // batch ledger persistence
-	workerWg       sync.WaitGroup
-	workerCtx      context.Context
-	workerCancel   context.CancelFunc
+	syncUc       *BillingUsecase    // Fallback to sync billing
+	localCache   *QuotaCache        // L1: in-memory quota snapshot
+	redis        *redis.Client      // L2: distributed quota counter
+	settleQueue  chan *SettleTask   // async settlement queue
+	batchWriter  *BatchLedgerWriter // batch ledger persistence
+	workerWg     sync.WaitGroup
+	workerCtx    context.Context
+	workerCancel context.CancelFunc
+	// closed is set by Close() before workerCancel fires. Once true, Settle
+	// stops enqueuing onto settleQueue (the worker is draining / has exited)
+	// and falls back to the synchronous commit pipeline so no settlement is
+	// silently lost when the process is shutting down. atomic so Settle (hot
+	// path, many goroutines) reads it lock-free.
+	closed         atomic.Bool
 	quotaLuaScript *string // Cached Lua script
 }
 
@@ -48,16 +57,16 @@ type UserQuota struct {
 type SettleTask struct {
 	RequestID string
 	// ReservationID is the authoritative key for the commit pipeline.
-	ReservationID string
-	UserID         string
-	Model          string
-	ChannelID      string
+	ReservationID         string
+	UserID                string
+	Model                 string
+	ChannelID             string
 	SubscriptionAccountID int64
 	ActualTokens          int64
 	// Success mirrors CommitQuotaRequest.Success: false → release reservation.
 	Success bool
 	// Usage carries the per-request usage detail forwarded from the relay.
-	Usage LedgerUsage
+	Usage     LedgerUsage
 	Cost      int64
 	Timestamp time.Time
 }
@@ -72,6 +81,7 @@ type BatchLedgerWriter struct {
 	size      int
 	interval  time.Duration
 	stopChan  chan struct{}
+	stopOnce  sync.Once
 	wg        sync.WaitGroup
 	ledger    LedgerRepo // destination for flushed entries; may be nil
 
@@ -292,11 +302,22 @@ func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) {
 	if task == nil {
 		return
 	}
+	// After Close() the worker has exited (or is about to). Any further
+	// Settle must not rely on the queue: there is no consumer, so an
+	// enqueued task would be silently dropped. Fall back to the
+	// synchronous commit pipeline instead. The pipeline is idempotent
+	// (see CommitQuotaWithUsageAndSplit -> CASReservationStatus), so
+	// concurrent retries are safe.
+	if uc.closed.Load() {
+		metrics.AsyncBillingFallbackToSync.WithLabelValues().Inc()
+		uc.settleSync(ctx, task)
+		return
+	}
 	select {
 	case uc.settleQueue <- task:
 		metrics.AsyncBillingQueueSize.WithLabelValues().Set(float64(len(uc.settleQueue)))
 	default:
-		// Queue full → fallback to synchronous settle, preserving ctx.
+		// Queue full: fallback to synchronous settle, preserving ctx.
 		metrics.AsyncBillingFallbackToSync.WithLabelValues().Inc()
 		uc.settleSync(ctx, task)
 	}
@@ -317,7 +338,7 @@ func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask)
 
 	if uc.syncUc == nil {
 		metrics.AsyncBillingDroppedFlushes.Inc()
-		fmt.Printf("async settlement skipped (no sync use case): reservation_id=%s\n", task.ReservationID)
+		applogger.Log.Warn("async settlement skipped (no sync use case)", zap.String("reservation_id", task.ReservationID))
 		return
 	}
 	uc.runCommitPipeline(ctx, task)
@@ -328,8 +349,27 @@ func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask)
 // queue-full synchronous fallback so both paths produce identical state.
 // Errors are logged and counted via metrics; they cannot be returned to the
 // original gRPC caller, which has already been released with a provisional
-// response. The reservation's idempotent state machine makes a later retry
-// safe.
+// response.
+//
+// Idempotency / exactly-once settlement:
+//
+//	The relay returns a provisional success to the client BEFORE the worker
+//	runs this pipeline, so a worker crash or a retry (e.g. queue-full sync
+//	fallback racing with the worker draining the same task) could in
+//	principle call CommitQuotaWithUsageAndSplit twice for the same
+//	reservation id. The pipeline is safe under such re-entry because the
+//	reservation state machine transitions through Compare-And-Set calls
+//	(CASReservationStatus):
+//
+//	  reserved -> committing  (CAS: only one caller wins)
+//	  committing -> committed (CAS: only the winner of the first CAS)
+//
+//	The losing CAS path reads the current row status and returns the stored
+//	result without re-applying wallet deduction, ledger write or subscription
+//	usage. As a result the ledger and wallet are mutated at most once even if
+//	runCommitPipeline is invoked multiple times. The relevant code lives in
+//	BillingUsecase.commitQuotaInternal (see the "Concurrent or retry" branch).
+//	If that CAS guard is ever weakened, this async path becomes unsafe.
 func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *SettleTask) {
 	if _, _, _, err := uc.syncUc.CommitQuotaWithUsageAndSplit(
 		ctx,
@@ -339,7 +379,7 @@ func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *Sett
 		task.Usage,
 	); err != nil {
 		metrics.AsyncBillingDroppedFlushes.Inc()
-		fmt.Printf("async settlement error: reservation_id=%s err=%v\n", task.ReservationID, err)
+		applogger.Log.Warn("async settlement error", zap.String("reservation_id", task.ReservationID), zap.Error(err))
 	}
 }
 
@@ -358,6 +398,20 @@ func (uc *AsyncBillingUsecase) startWorkers() {
 
 // settlementWorker processes settlement tasks from the queue.
 func (uc *AsyncBillingUsecase) settlementWorker() {
+	defer func() {
+		// On shutdown, drain anything still in the queue so we do not
+		// leave reservations stuck in reserved. Close() also drains but
+		// doing it here means a process that exits without calling Close
+		// (e.g. a crashed test or an os.Exit path) still flushes.
+		for {
+			select {
+			case task := <-uc.settleQueue:
+				uc.processSettlement(task)
+			default:
+				return
+			}
+		}
+	}()
 	for {
 		select {
 		case <-uc.workerCtx.Done():
@@ -386,7 +440,7 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 
 	if uc.syncUc == nil {
 		metrics.AsyncBillingDroppedFlushes.Inc()
-		fmt.Printf("async settlement skipped (no sync use case): reservation_id=%s\n", task.ReservationID)
+		applogger.Log.Warn("async settlement skipped (no sync use case)", zap.String("reservation_id", task.ReservationID))
 		return
 	}
 	// Use the worker's detached context so the settlement survives the
@@ -397,10 +451,27 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 
 // Close closes the async billing use case and waits for workers to finish.
 func (uc *AsyncBillingUsecase) Close() error {
+	// Flip the drain flag first so concurrent Settle callers stop
+	// enqueuing and fall back to the synchronous path. Without this,
+	// a task enqueued in the window between workerCancel() and
+	// wg.Wait() would sit in settleQueue with no consumer and be lost.
+	uc.closed.Store(true)
 	uc.workerCancel()
 	uc.workerWg.Wait()
-	uc.batchWriter.Stop()
-	return nil
+	// Drain any tasks that raced in after closed was set but before the
+	// worker exited. The worker also drains on its way out, but a task
+	// could have arrived between the worker's final select and
+	// wg.Wait() returning. Process inline so Close never returns with
+	// un-settled work in the queue.
+	for {
+		select {
+		case task := <-uc.settleQueue:
+			uc.processSettlement(task)
+		default:
+			uc.batchWriter.Stop()
+			return nil
+		}
+	}
 }
 
 // NewBatchLedgerWriter creates a new batch ledger writer. The writer is only
@@ -453,9 +524,14 @@ func (w *BatchLedgerWriter) Start() {
 	}()
 }
 
-// Stop stops the batch flusher worker.
+// Stop stops the batch flusher worker. It is idempotent: a second call
+// (e.g. from AsyncBillingUsecase.Close after the writer was already
+// stopped by an explicit Stop) is a no-op rather than panicking on
+// close of an already-closed channel.
 func (w *BatchLedgerWriter) Stop() {
-	close(w.stopChan)
+	w.stopOnce.Do(func() {
+		close(w.stopChan)
+	})
 	w.wg.Wait()
 }
 
@@ -492,7 +568,7 @@ func (w *BatchLedgerWriter) Flush() {
 		// than silently swallowed.
 		w.dropped.Add(int64(len(batch)))
 		metrics.AsyncBillingDroppedFlushes.Add(float64(len(batch)))
-		fmt.Printf("BatchLedgerWriter: dropped %d entries (no ledger repo configured)\n", len(batch))
+		applogger.Log.Warn("BatchLedgerWriter: dropped entries (no ledger repo configured)", zap.Int("dropped", len(batch)))
 		return
 	}
 
@@ -517,7 +593,7 @@ func (w *BatchLedgerWriter) Flush() {
 		if err := ledger.CreateLedger(context.Background(), led); err != nil {
 			w.dropped.Add(1)
 			metrics.AsyncBillingDroppedFlushes.Inc()
-			fmt.Printf("BatchLedgerWriter: failed to persist ledger entry: %v\n", err)
+			applogger.Log.Warn("BatchLedgerWriter: failed to persist ledger entry", zap.Error(err))
 		}
 	}
 }

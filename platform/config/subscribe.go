@@ -45,7 +45,7 @@ func SubscribeFile(path string, cb SubscribeCallback) (func(), error) {
 	}()
 	stop := func() {
 		_ = watcher.Stop()
-		source.cancel()
+		_ = source.Close()
 		<-done
 	}
 	return stop, nil

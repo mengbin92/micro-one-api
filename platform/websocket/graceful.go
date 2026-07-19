@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	applogger "micro-one-api/platform/logging"
 	"micro-one-api/pkg/safecast"
+	applogger "micro-one-api/platform/logging"
 )
 
 // ConnectionState represents the current state of a WebSocket connection.
@@ -375,11 +375,15 @@ func (h *DrainHandler) HandleHealthCheck() func(w http.ResponseWriter, r *http.R
 // SetDrainingForTest flips the draining flag without running the full drain
 // goroutine. It is intended for tests that need to assert the drain-gate
 // behavior of callers (e.g. HTTP 503 on new upgrades) in isolation.
+//
+// This is intentionally an exported method rather than living in
+// export_test.go because cross-package tests (e.g. internal/server's
+// openai_ws_drain_test.go) need to flip the flag without invoking the full
+// drain goroutine. _test.go files are not visible outside their own package,
+// so the symbol must remain in the production file. It must NEVER be called
+// from production code: flipping draining without the drain goroutine would
+// make the tracker reject new connections forever without ever force-closing
+// the existing ones.
 func (ct *ConnectionTracker) SetDrainingForTest(v bool) {
-	if v {
-		ct.draining.Store(true)
-	} else {
-		ct.draining.Store(false)
-	}
+	ct.draining.Store(v)
 }
-

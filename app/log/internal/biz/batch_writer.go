@@ -4,10 +4,14 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"micro-one-api/platform/metrics"
+	"go.uber.org/zap"
+
 	"micro-one-api/pkg/safecast"
+	applogger "micro-one-api/platform/logging"
+	"micro-one-api/platform/metrics"
 )
 
 // BatchLogWriter batches log entries for efficient database writes.
@@ -22,8 +26,14 @@ type BatchLogWriter struct {
 	flushInt  time.Duration
 	stopChan  chan struct{}
 	wg        sync.WaitGroup
-	// Metrics
-	droppedEntries int64
+	// closed prevents a second Stop() from re-closing stopChan and makes
+	// IngestLog route to the synchronous repo path once shutdown begins so
+	// late callers never block or get silently dropped.
+	closed atomic.Bool
+	// dropped counts entries dropped because the queue was full or the
+	// writer was closed. atomic because IngestLog (caller goroutine) writes
+	// and Stats (another goroutine) reads.
+	dropped atomic.Int64
 }
 
 // NewBatchLogWriter creates a new batch log writer.
@@ -57,11 +67,29 @@ func (w *BatchLogWriter) Start() {
 	}()
 }
 
-// Stop stops the batch writer and flushes remaining entries.
+// Stop stops the batch writer, drains any entries still queued behind the
+// processor, and flushes them in the final batch. It is idempotent.
 func (w *BatchLogWriter) Stop() {
+	if !w.closed.CompareAndSwap(false, true) {
+		// Already stopped: avoid double close of stopChan.
+		return
+	}
 	close(w.stopChan)
 	w.wg.Wait()
-	w.flush()
+
+	// Drain anything still in the queue. The queueProcessor exits the moment
+	// it sees stopChan, so entries enqueued after that point (or that were
+	// already buffered but not yet selected) would otherwise be lost. Move
+	// them into the batch so the final flush persists them.
+	for {
+		select {
+		case entry := <-w.queue:
+			w.addToBatch(entry)
+		default:
+			w.flush()
+			return
+		}
+	}
 }
 
 // IngestLog queues a log entry for batch writing.
@@ -71,13 +99,25 @@ func (w *BatchLogWriter) IngestLog(ctx context.Context, entry *LogEntry) error {
 		entry.CreatedAt = time.Now()
 	}
 
+	// After Stop() the background workers have exited and nothing will drain
+	// the queue. Persist synchronously so the caller still observes a durable
+	// write (at the cost of an extra round-trip during shutdown).
+	if w.closed.Load() {
+		return w.repo.Create(ctx, entry)
+	}
+
 	select {
 	case w.queue <- entry:
 		metrics.UsageLogIngestTotal.WithLabelValues("queued").Inc()
 		return nil
 	default:
-		// Queue full, drop the entry
-		w.droppedEntries++
+		// Queue full, drop the entry. We intentionally do not fall back to a
+		// synchronous write here (unlike the closed case) because a full queue
+		// under steady load would turn every IngestLog into a synchronous
+		// INSERT and defeat the batching optimisation. The dropped counter +
+		// metric make the loss observable so an operator can raise
+		// batch_size / queue capacity.
+		w.dropped.Add(1)
 		metrics.UsageLogIngestTotal.WithLabelValues("dropped").Inc()
 		return fmt.Errorf("log queue full, entry dropped")
 	}
@@ -88,7 +128,17 @@ func (w *BatchLogWriter) queueProcessor() {
 	for {
 		select {
 		case <-w.stopChan:
-			return
+			// Drain anything still queued before returning. Stop() also
+			// drains, but doing it here as well means a process that exits
+			// without calling Stop (crashed test, os.Exit) still flushes.
+			for {
+				select {
+				case entry := <-w.queue:
+					w.addToBatch(entry)
+				default:
+					return
+				}
+			}
 		case entry := <-w.queue:
 			w.addToBatch(entry)
 		}
@@ -145,8 +195,20 @@ func (w *BatchLogWriter) flush() {
 	duration := time.Since(start)
 
 	if err != nil {
+		// A failed batch is a data-loss event for the usage log: we do not
+		// retry (would risk out-of-order writes) and the entries are not put
+		// back on the queue. Surface it via metrics + structured log so an
+		// operator sees the dropped count; the batch writer is best-effort by
+		// design and usage logs are not in the billing critical path.
 		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()
-		// TODO: Handle error - retry or put back in queue
+		w.dropped.Add(int64(len(batch)))
+		if applogger.Log != nil {
+			applogger.Log.Warn("batch log writer: flush failed, entries dropped",
+				zap.Int("dropped", len(batch)),
+				zap.Duration("duration", duration),
+				zap.Error(err),
+			)
+		}
 		return
 	}
 
@@ -190,7 +252,7 @@ func (w *BatchLogWriter) Stats() BatchWriterStats {
 	return BatchWriterStats{
 		PendingBatch:   safecast.IntToInt32Saturating(pending),
 		QueuedEntries:  safecast.IntToInt32Saturating(queued),
-		DroppedEntries: w.droppedEntries,
+		DroppedEntries: w.dropped.Load(),
 	}
 }
 

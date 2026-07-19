@@ -92,8 +92,8 @@ func (s *EnvFileSource) Watch() (config.Watcher, error) {
 		return &noopWatcher{ctx: s.ctx, cancel: s.cancel}, nil
 	}
 	w := &fsnotifyWatcher{
-		ch:    make(chan []*config.KeyValue, 4),
-		stop:  make(chan struct{}),
+		ch:   make(chan []*config.KeyValue, 4),
+		stop: make(chan struct{}),
 	}
 	s.mu.Lock()
 	s.watchers[w] = struct{}{}
@@ -131,16 +131,23 @@ func (s *EnvFileSource) startWatcher() error {
 // emit CREATE+WRITE+MODIFY in quick succession) into a single reload.
 func (s *EnvFileSource) broadcastLoop(w *fsnotify.Watcher) {
 	defer w.Close()
-	var (
-		debounce *time.Timer
-		pending  bool
-	)
+	// debounce collapses bursts of editor events (which often emit
+	// CREATE+WRITE+MODIFY in quick succession) into a single reload. The
+	// timer is reset on every qualifying event so only the last event in a
+	// burst triggers reloadAndFanout.
+	var debounce *time.Timer
 	for {
 		select {
 		case <-s.ctx.Done():
+			if debounce != nil {
+				debounce.Stop()
+			}
 			return
 		case event, ok := <-w.Events:
 			if !ok {
+				if debounce != nil {
+					debounce.Stop()
+				}
 				return
 			}
 			// Only react to writes/creates/renames that touch our path.
@@ -156,22 +163,33 @@ func (s *EnvFileSource) broadcastLoop(w *fsnotify.Watcher) {
 				// a restart, which still matches kratos semantics.
 				_ = w.Add(s.path)
 			}
-			// Debounce: collapse bursts into a single reload.
+			// Debounce: reset the pending timer so only the last event in a
+			// burst triggers a reload.
 			if debounce != nil {
 				debounce.Stop()
 			}
-			pending = true
-			debounce = time.AfterFunc(100*time.Millisecond, func() {
-				s.reloadAndFanout()
-			})
-			_ = pending
+			debounce = time.AfterFunc(100*time.Millisecond, s.reloadAndFanout)
 		case err, ok := <-w.Errors:
 			if !ok {
+				if debounce != nil {
+					debounce.Stop()
+				}
 				return
 			}
 			_ = err // fsnotify errors are not actionable for the caller.
 		}
 	}
+}
+
+// Close releases the underlying fsnotify watcher and broadcast goroutine.
+// It is safe to call multiple times. The kratos config.Source interface
+// does not expose Close, so callers that want to stop the background
+// goroutine (e.g. tests, short-lived tools) hold the concrete *EnvFileSource
+// and call Close directly; long-lived services leave it running for the
+// lifetime of the process.
+func (s *EnvFileSource) Close() error {
+	s.cancel()
+	return nil
 }
 
 // reloadAndFanout re-reads the file and pushes the new KeyValue to every

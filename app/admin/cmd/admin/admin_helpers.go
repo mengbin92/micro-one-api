@@ -174,10 +174,7 @@ func (s appSignalStopper) Stop() {
 // read from cfg.Data.Database.Schema (wire) or ADMIN_SCHEMA / DATABASE_SCHEMA
 // env vars for direct callers.
 func resolveAdminSchemaDSN(driver, dsn string) string {
-	schema := os.Getenv("ADMIN_SCHEMA")
-	if schema == "" {
-		schema = os.Getenv("DATABASE_SCHEMA")
-	}
+	schema := xdb.ResolveSchema("", "ADMIN_SCHEMA", "DATABASE_SCHEMA")
 	if schema == "" {
 		return dsn
 	}
@@ -187,7 +184,9 @@ func resolveAdminSchemaDSN(driver, dsn string) string {
 			return rewritten
 		}
 	case xdb.DriverPostgres:
-		return xdb.RewritePostgresSearchPath(dsn, schema)
+		if rewritten, err := xdb.RewritePostgresSearchPath(dsn, schema); err == nil {
+			return rewritten
+		}
 	}
 	return dsn
 }

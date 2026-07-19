@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"micro-one-api/app/channel/internal/biz"
 	channeloauth "micro-one-api/app/channel/internal/biz/oauth"
-	"micro-one-api/platform/metrics"
 	"micro-one-api/platform/http"
+	"micro-one-api/platform/metrics"
 
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 )
@@ -169,11 +170,40 @@ func registerSelectorStatsRoute(srv *khttp.Server, uc *biz.ChannelUsecase) {
 	})
 }
 
+// adminTokenOnce + adminTokenCache memoize the trimmed ADMIN_TOKEN env var.
+// Looking it up on every admin request is a syscall; constant-time comparison
+// happens per-request, but the lookup itself does not need to. The value is
+// captured once on the first authorizeAdmin call. To rotate the token without
+// a restart, process owners can SIGUSR1-reload; that path is responsible for
+// calling resetAdminTokenCache (not wired here to keep this file free of
+// signal handling).
+var (
+	adminTokenOnce  sync.Once
+	adminTokenCache string
+)
+
+func loadAdminToken() string {
+	adminTokenOnce.Do(func() {
+		adminTokenCache = strings.TrimSpace(os.Getenv("ADMIN_TOKEN"))
+	})
+	return adminTokenCache
+}
+
+// resetAdminTokenCache clears the memoized ADMIN_TOKEN so the next
+// loadAdminToken re-reads os.Getenv. Production callers do not need this
+// (the token is set once at startup and never rotated in-process); it exists
+// so unit tests that flip ADMIN_TOKEN via t.Setenv between cases can observe
+// the new value.
+func resetAdminTokenCache() {
+	adminTokenOnce = sync.Once{}
+	adminTokenCache = ""
+}
+
 // authorizeAdmin validates the bearer token against the shared ADMIN_TOKEN
 // using a constant-time comparison. Returns false when ADMIN_TOKEN is unset
 // (fail-closed).
 func authorizeAdmin(r *http.Request) bool {
-	expected := strings.TrimSpace(os.Getenv("ADMIN_TOKEN"))
+	expected := loadAdminToken()
 	if expected == "" {
 		return false
 	}

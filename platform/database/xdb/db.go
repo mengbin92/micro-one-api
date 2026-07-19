@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -253,7 +254,11 @@ func openPostgres(dsn string, schema string, pool *PoolConfig) (*gorm.DB, error)
 	// connection inherits it; ConnMaxLifetime may recycle connections and
 	// a per-connection SET would be lost.
 	if schema != "" {
-		dsn = withPostgresSearchPath(dsn, schema)
+		rewritten, err := withPostgresSearchPath(dsn, schema)
+		if err != nil {
+			return nil, fmt.Errorf("xdb: rewrite Postgres search_path: %w", err)
+		}
+		dsn = rewritten
 	}
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -307,31 +312,64 @@ func defaultSQLite3Pragmas() []string {
 
 // ResolveSchema picks the effective schema for a service connection.
 // Priority:
-//   1. schema argument (passed by wire / explicit callers)
-//   2. svcEnv (per-service schema env var, e.g. BILLING_SCHEMA)
-//   3. fallbackEnv (global schema env var, e.g. DATABASE_SCHEMA)
+//  1. schema argument (passed by wire / explicit callers)
+//  2. svcEnv (per-service schema env var, e.g. BILLING_SCHEMA)
+//  3. fallbackEnv (global schema env var, e.g. DATABASE_SCHEMA)
+//
 // An empty result means "use the DSN as-is" (legacy shared-database
 // behaviour). The returned schema is trimmed of surrounding whitespace,
 // quotes and backticks so values like `oneapi_billing` work correctly.
-func ResolveSchema(schema, svcEnv, fallbackEnv string) string {
-	trim := func(v string) string {
-		v = strings.TrimSpace(v)
-		for _, c := range []string{"\"", "`", "'", " "} {
-			v = strings.Trim(v, c)
-		}
+func trimSchema(v string) string {
+	return strings.Trim(strings.TrimSpace(v), "\"`' ")
+}
 
+// ResolveSchema picks the effective schema for a service connection.
+// Priority:
+//  1. schema argument (passed by wire / explicit callers)
+//  2. svcEnv (per-service schema env var, e.g. BILLING_SCHEMA)
+//  3. fallbackEnv (global schema env var, e.g. DATABASE_SCHEMA)
+//
+// An empty result means "use the DSN as-is" (legacy shared-database
+// behaviour). The returned schema is trimmed of surrounding whitespace,
+// quotes and backticks so values like `oneapi_billing` work correctly.
+// Callers MUST pass the result through validSchemaIdentifier before
+// injecting it into a DSN; an untrusted schema value can otherwise inject
+// Postgres runtime parameters via options=-c search_path=<schema>.
+func ResolveSchema(schema, svcEnv, fallbackEnv string) string {
+	if v := trimSchema(schema); v != "" {
 		return v
 	}
-	if schema = trim(schema); schema != "" {
-		return schema
+	if v := trimSchema(os.Getenv(svcEnv)); v != "" {
+		return v
 	}
-	if schema = trim(os.Getenv(svcEnv)); schema != "" {
-		return schema
-	}
-	if schema = trim(os.Getenv(fallbackEnv)); schema != "" {
-		return schema
+	if v := trimSchema(os.Getenv(fallbackEnv)); v != "" {
+		return v
 	}
 	return ""
+}
+
+// schemaIdentRe matches a strict SQL identifier: an ASCII letter or
+// underscore followed by ASCII letters, digits or underscores, up to 63
+// characters (Postgres NAMEDATALEN-1). MySQL allows a slightly larger
+// charset (e.g. $) and 64 chars, but we reject those here because every
+// value also flows through the Postgres rewriter and the cost of being
+// strict is zero for our generated per-service schema names.
+var schemaIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
+
+// validSchemaIdentifier reports whether schema is safe to splice into a
+// DSN as a database name (MySQL) or search_path value (Postgres). It
+// rejects anything containing whitespace, quotes, "=", "-" or any other
+// character that could break out of the search_path slot and inject
+// arbitrary Postgres runtime parameters via options=-c. The empty string
+// is valid (means "no schema isolation").
+func validSchemaIdentifier(schema string) error {
+	if schema == "" {
+		return nil
+	}
+	if !schemaIdentRe.MatchString(schema) {
+		return fmt.Errorf("xdb: invalid schema identifier %q (must match %s)", schema, schemaIdentRe.String())
+	}
+	return nil
 }
 
 // DefaultSQLite3Pragmas exposes the default pragma set so callers can
@@ -353,7 +391,6 @@ const PostgresDriverName = "pgx"
 // init-time driver registration runs, even when callers reach for the
 // driver name via reflection. Safe to call multiple times.
 func EnsurePostgresDriver() { _ = stdlib.GetDefaultDriver }
-
 
 // ---------------------------------------------------------------------------
 // Phase 2.4: per-service database schema isolation helpers.
@@ -377,9 +414,12 @@ func EnsurePostgresDriver() { _ = stdlib.GetDefaultDriver }
 // fragile string surgery. Backticks/quotes are stripped from schema because
 // the MySQL DSN grammar takes a bare identifier.
 func withMySQLDBName(dsn, schema string) (string, error) {
-	schema = strings.Trim(schema, "`\"' ")
+	schema = trimSchema(schema)
 	if schema == "" {
 		return dsn, nil
+	}
+	if err := validSchemaIdentifier(schema); err != nil {
+		return dsn, err
 	}
 	cfg, err := mysqldriver.ParseDSN(dsn)
 	if err != nil {
@@ -397,7 +437,9 @@ func RewriteMySQLDBName(dsn, schema string) (string, error) {
 }
 
 // RewritePostgresSearchPath is the exported form of withPostgresSearchPath.
-func RewritePostgresSearchPath(dsn, schema string) string {
+// It returns (originalDsn, err) when schema is invalid so callers can decide
+// whether to fall back to the unmodified DSN or fail loudly.
+func RewritePostgresSearchPath(dsn, schema string) (string, error) {
 	return withPostgresSearchPath(dsn, schema)
 }
 
@@ -414,10 +456,13 @@ func RewritePostgresSearchPath(dsn, schema string) string {
 //
 // This means callers cannot override the service schema via a raw options=
 // value in the DSN; the per-service schema always takes precedence.
-func withPostgresSearchPath(dsn, schema string) string {
-	schema = strings.Trim(schema, "\"' ")
+func withPostgresSearchPath(dsn, schema string) (string, error) {
+	schema = trimSchema(schema)
 	if schema == "" {
-		return dsn
+		return dsn, nil
+	}
+	if err := validSchemaIdentifier(schema); err != nil {
+		return dsn, err
 	}
 	value := "-c search_path=" + schema
 	// URL form: postgres://user:pw@host:5432/db?sslmode=disable
@@ -426,23 +471,23 @@ func withPostgresSearchPath(dsn, schema string) string {
 			base, q := dsn[:i+1], dsn[i+1:]
 			vals := parsePostgresQueryString(q)
 			vals = setPostgresOption(vals, "options", value)
-			return base + encodePostgresValues(vals)
+			return base + encodePostgresValues(vals), nil
 		}
-		return dsn + "?options=" + url.QueryEscape(value)
+		return dsn + "?options=" + url.QueryEscape(value), nil
 	}
 	// key=value form: host=... dbname=...
 	if existing := postGresKVValue(dsn, "options"); existing != "" {
 		// Replace just the options token; append our search_path.
 		newOpts := existing + " " + value
-		return replacePostgresKV(dsn, "options", newOpts)
+		return replacePostgresKV(dsn, "options", newOpts), nil
 	}
 	if strings.TrimSpace(dsn) == "" {
-		return ""
+		return "", nil
 	}
 	if strings.HasSuffix(strings.TrimSpace(dsn), "=") {
-		return dsn + value
+		return dsn + value, nil
 	}
-	return dsn + " options='" + value + "'"
+	return dsn + " options='" + value + "'", nil
 }
 
 // parsePostgresQueryString splits a URL query string (after '?') into an

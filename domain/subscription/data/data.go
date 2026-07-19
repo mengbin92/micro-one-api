@@ -5,8 +5,8 @@ import (
 	"os"
 	"sync"
 
-	"micro-one-api/platform/database/xdb"
 	"micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/database/xdb"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"

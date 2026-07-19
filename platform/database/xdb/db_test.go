@@ -274,7 +274,10 @@ func TestWithMySQLDBName_InvalidDSNReturnsError(t *testing.T) {
 
 func TestWithPostgresSearchPath_URLForm(t *testing.T) {
 	dsn := "postgres://user:pw@host:5432/oneapi?sslmode=disable"
-	got := withPostgresSearchPath(dsn, "oneapi_identity")
+	got, err := withPostgresSearchPath(dsn, "oneapi_identity")
+	if err != nil {
+		t.Fatalf("withPostgresSearchPath: %v", err)
+	}
 	// search_path ends up URL-encoded inside the options= query param.
 	decoded, err := url.QueryUnescape(got)
 	if err != nil {
@@ -293,7 +296,10 @@ func TestWithPostgresSearchPath_URLForm(t *testing.T) {
 
 func TestWithPostgresSearchPath_URLFormReplacesExistingOptions(t *testing.T) {
 	dsn := "postgres://user:pw@host:5432/oneapi?sslmode=disable&options=-c%20foo%3Dbar"
-	got := withPostgresSearchPath(dsn, "oneapi_log")
+	got, err := withPostgresSearchPath(dsn, "oneapi_log")
+	if err != nil {
+		t.Fatalf("withPostgresSearchPath: %v", err)
+	}
 	decoded, err := url.QueryUnescape(got)
 	if err != nil {
 		t.Fatalf("url.QueryUnescape: %v", err)
@@ -308,7 +314,10 @@ func TestWithPostgresSearchPath_URLFormReplacesExistingOptions(t *testing.T) {
 
 func TestWithPostgresSearchPath_KeyValueForm(t *testing.T) {
 	dsn := "host=127.0.0.1 user=app dbname=oneapi port=5432 sslmode=disable"
-	got := withPostgresSearchPath(dsn, "oneapi_billing")
+	got, err := withPostgresSearchPath(dsn, "oneapi_billing")
+	if err != nil {
+		t.Fatalf("withPostgresSearchPath: %v", err)
+	}
 	if !strings.Contains(got, "search_path=oneapi_billing") {
 		t.Errorf("KV-form DSN missing search_path: %q", got)
 	}
@@ -319,7 +328,10 @@ func TestWithPostgresSearchPath_KeyValueForm(t *testing.T) {
 
 func TestWithPostgresSearchPath_KeyValueFormAppendsWhenMissing(t *testing.T) {
 	dsn := "host=127.0.0.1 dbname=oneapi"
-	got := withPostgresSearchPath(dsn, "oneapi_admin")
+	got, err := withPostgresSearchPath(dsn, "oneapi_admin")
+	if err != nil {
+		t.Fatalf("withPostgresSearchPath: %v", err)
+	}
 	if !strings.Contains(got, "options=") {
 		t.Errorf("KV-form DSN missing options=: %q", got)
 	}
@@ -341,6 +353,82 @@ func TestSplitPostgresKV_QuotedValue(t *testing.T) {
 	for _, kv := range parts {
 		if want[kv.key] != kv.value {
 			t.Errorf("part %s = %q, want %q", kv.key, kv.value, want[kv.key])
+		}
+	}
+}
+
+func TestWithPostgresSearchPath_RejectsInvalidSchema(t *testing.T) {
+	cases := []string{
+		// Whitespace would let an attacker break out of the search_path slot
+		// and inject a second -c runtime parameter via options.
+		"public -c statement_timeout=1",
+		"public; DROP TABLE x",
+		"pub lic",
+		"public$",
+		"public;",
+		// hyphen is rejected: a schema name with "-" could look like a CLI flag.
+		"pub-lic",
+		strings.Repeat("a", 64), // too long
+		"1starts_with_digit",
+	}
+	for _, schema := range cases {
+		got, err := withPostgresSearchPath("postgres://u:p@h:5432/db", schema)
+		if err == nil {
+			t.Errorf("schema %q should be rejected, got dsn=%q", schema, got)
+		}
+		if got != "postgres://u:p@h:5432/db" {
+			t.Errorf("on error the original DSN must be returned unchanged, got %q", got)
+		}
+	}
+}
+
+func TestWithMySQLDBName_RejectsInvalidSchema(t *testing.T) {
+	cases := []string{
+		"db; DROP TABLE x",
+		"two words",
+		"public$",
+		strings.Repeat("a", 64),
+	}
+	const dsn = "user:pass@tcp(127.0.0.1:3306)/orig?parseTime=true"
+	for _, schema := range cases {
+		got, err := withMySQLDBName(dsn, schema)
+		if err == nil {
+			t.Errorf("schema %q should be rejected, got %q", schema, got)
+		}
+		if got != dsn {
+			t.Errorf("on error the original DSN must be returned unchanged, got %q", got)
+		}
+	}
+}
+
+func TestValidSchemaIdentifier(t *testing.T) {
+	cases := []struct {
+		schema string
+		wantOK bool
+	}{
+		{"", true}, // empty = no isolation
+		{"oneapi_billing", true},
+		{"ONEAPI", true},
+		{"oneapi_v2", true},
+		{"_private", true},
+		{"a", true},
+		// rejects
+		{"1leading_digit", false},
+		{"has space", false},
+		{"has-dash", false},
+		{"has$dollar", false},
+		{"has;semi", false},
+		{`"quoted"`, false},
+		{"has`back", false},
+		{strings.Repeat("a", 64), false}, // too long
+	}
+	for _, tc := range cases {
+		err := validSchemaIdentifier(tc.schema)
+		if tc.wantOK && err != nil {
+			t.Errorf("schema %q: want OK, got err=%v", tc.schema, err)
+		}
+		if !tc.wantOK && err == nil {
+			t.Errorf("schema %q: want rejection, got nil err", tc.schema)
 		}
 	}
 }
