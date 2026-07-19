@@ -26,6 +26,11 @@ billing:
     svip: 1.0
   model_ratios: ${BILLING_MODEL_RATIOS:-{}}
   completion_ratios: ${BILLING_COMPLETION_RATIOS:-{}}
+  async:
+    enabled: ${BILLING_ASYNC_ENABLED:-false}
+    queue_size: ${BILLING_ASYNC_QUEUE_SIZE:-1000}
+    batch_size: ${BILLING_ASYNC_BATCH_SIZE:-100}
+    batch_interval: ${BILLING_ASYNC_BATCH_INTERVAL:-1s}
 clients:
   notify:
     endpoint: ${NOTIFY_GRPC_ENDPOINT:-}
