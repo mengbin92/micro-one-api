@@ -14,13 +14,21 @@ API_PROTO_FILES := $(shell find api -name '*.proto')
 endif
 
 .PHONY: init
-# init env
+# init env: buf + protoc plugins (versions pinned to match go.mod) + wire
 init:
 	go install github.com/bufbuild/buf/cmd/buf@latest
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@v2.0.0-20260404020628-f149714c1d54
+	go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
 	go install github.com/google/wire/cmd/wire@latest
 
 .PHONY: config
 # generate internal proto (app/*/internal/conf/*.proto + internal/conf/*.proto)
+# NOTE: kept on protoc intentionally. The 9 conf.proto files share the same base
+# name, so they cannot coexist in a single buf v2 workspace; they also import no
+# third-party protos, so plain protoc (no third_party/) is sufficient. Only the
+# api/ tree (which needs googleapis from BSR) goes through buf.
 config:
 	@# Generate internal/conf
 	@if [ -n "$(INTERNAL_CONF_PROTO_FILES)" ]; then \

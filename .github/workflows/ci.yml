@@ -20,10 +20,13 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      # protoc is still required for `make config` (the 9 conf.proto files share a
+      # base name and cannot live in one buf workspace); buf + plugins come from
+      # `make init` for the api/ tree.
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      - name: Install protobuf generators
+      - name: Install buf and protobuf generators
         run: |
           make init
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

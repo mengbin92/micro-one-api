@@ -1,6 +1,7 @@
 # buf 迁移 + Kratos v3 升级综合方案
 
-> 状态：评估完成，待执行
+> 状态：**buf 迁移（step 1+2）已落地**（2026-07-19，含 CI/Dockerfile 改造）；
+> Kratos v3 升级（step 3）待执行。落地实现对原方案有少量偏差，见 2.3/2.4 末节。
 > 评估日期：2026-07-19
 > 评估基准：当前 `go.mod` 的 `go-kratos/kratos/v2 v2.9.3-0.20260413003801-0284a5bcf92b`
 > （通过 `replace` 指向 Yanhu007 fork 规避 CVE-2026-6993）
@@ -172,14 +173,35 @@ proto: api config
 - `PROTOC_GEN_GO_VERSION` / `PROTOC_GEN_GO_GRPC_VERSION` /
   `PROTOC_GEN_GO_HTTP_VERSION` / `PROTOC_GEN_OPENAPI_VERSION` 常量
 
-### 2.4 CI / Dockerfile 改造
+> **落地偏差（2026-07-19 实测）**：`make config` 未改用 buf，仍走 `protoc`。
+> 原因：9 个 `app/*/internal/conf/conf.proto` 与 `internal/conf/conf.proto` 同名
+> （`conf.proto`），无法共存于同一个 buf v2 workspace（报 "contained in multiple
+> modules"），多 `inputs` 又会被静默空生成；且 conf.proto 不 import 任何第三方
+> proto，`protoc`（无 `third_party/`）即可满足。因此 `buf.gen.config.yaml` 是死配置，
+> 已删除；`buf.yaml` 的 `modules` 只保留 `api`。`make init` 除 buf 外还安装 4 个
+> protoc 插件（版本 pin 到 go.mod），`buf.gen.yaml` 用本地插件二进制而非 `go run`。
 
-- `.github/workflows/ci.yml`：去掉 `sudo apt-get install protobuf-compiler`，
-  改为 `go install github.com/bufbuild/buf/cmd/buf@latest`（或用
-  `bufbuild/buf-setup-action`）。`make init` 不再装 5 个 protoc-gen-*。
-- **9 个 Dockerfile** 都有 `apk add ... protobuf protobuf-dev` +
-  `make proto-tools && make proto`。需统一改为装 buf（建议抽 builder base 镜像，
-  否则要改 9 份）。
+### 2.4 CI / Dockerfile 改造（已落地，2026-07-19）
+
+实际实现与原方案有偏差，原因如下：
+
+- **CI 保留 `protobuf-compiler`**：`make test-unit`/`make build` 依赖
+  `make proto` → `make config`，而 conf 仍走 protoc（见 2.3 偏差），故 protoc 不能去掉。
+  `make init` 现在安装 buf + 4 个 protoc 插件（版本 pin 到 go.mod）+ wire。
+- **10 个 Dockerfile（9 服务 + 根 relay-gateway + deployments/docker）统一改造**：
+  删除 `make proto-tools`，改为在内联 `go-deps` stage 里 `go install` buf + 4 插件到
+  `/go/bin`，builder stage 只 `COPY --from=go-deps /go/bin/...` 拿预编译二进制。
+  **未抽成共享外部 base 镜像**：CI 用 matrix 跑 18 个相互隔离的 buildx job
+  （`push: false`、无 registry），无法跨 job 引用公共 base；强行引入 Docker Bake
+  需重写 CI 并行/缓存/故障语义，收益不成比例，故保持每镜像内联 go-deps，靠
+  BuildKit layer cache 去重。`deployments/docker/Dockerfile.deps`（外部 base）同步
+  装 buf+插件，与内联 go-deps 一致，供 deploy.sh 离线预构建。
+- **关键架构点**：`go-deps` 不加 `--platform=$BUILDPLATFORM`，与 builder 同 TARGET
+  平台——工具链二进制由 builder COPY 并在其内执行，跨架构（amd64 runner 构建
+  arm64）时若装在 $BUILDPLATFORM 会产生 builder 无法 exec 的二进制。
+- **`protobuf protobuf-dev` 保留**：log/monitor/notify 的 conf.proto import
+  `google/protobuf/duration.proto`，protoc 需 `protobuf-dev` 提供的 well-known type
+  `.proto` 定义，删除会导致容器内 `make proto` 失败。
 
 ### 2.5 `third_party/` 处理
 
@@ -448,16 +470,22 @@ v3 PR 出问题能立刻 `git revert` 回 v2（buf 与 v2 兼容，buf 配置不
 
 ## 9. 验收清单
 
-### buf 迁移验收
+### buf 迁移验收（2026-07-19 实测）
 
-- [ ] `buf.yaml` / `buf.gen.yaml` / `buf.gen.config.yaml` 存在且 `buf lint`（MINIMAL）通过
-- [ ] `make api` 生成的 `*.pb.go` 与迁移前 `git diff` 为空或仅格式差异
-- [ ] `make config` 生成的 `conf.pb.go` 与迁移前 `git diff` 为空
-- [ ] `make api-check` 通过（`openapi.yaml` 含 `/v1/chat/completions`）
-- [ ] `third_party/google/` 已删除
-- [ ] CI 的 "generated files are current" 检查通过
-- [ ] 9 个 Dockerfile 构建成功
-- [ ] Windows 开发者按新 Makefile 能正常 `make proto`
+- [x] `buf.yaml` / `buf.gen.yaml` 存在（`buf.gen.config.yaml` 因 conf 同名冲突不可行，已删，见 2.3 偏差）
+- [ ] `buf lint`（MINIMAL）通过 —— **未通过**：MINIMAL 含 `PACKAGE_DIRECTORY_MATCH`，
+      现有 10 个 proto 的 `package api.<domain>.v1` 与 `api/` 模块根下的相对目录
+      （`<domain>/v1`）不匹配，报 10 条。需加 lint `except`/`ignore` 豁免或后续整改，单独跟进
+- [x] `make api` 生成的 `*.pb.go` 与迁移前 `git diff` 为空（实测零 diff，含 `*_http.pb.go` v2.9.2）
+- [x] `make config` 生成的 `conf.pb.go` 与迁移前 `git diff` 为空（protoc 路径，10 个一致）
+- [x] `make api-check` 通过（`openapi.yaml` 含 `/v1/chat/completions`，逐字节一致）
+- [x] `third_party/` 已删除（含 `google/`、`errors/`、`openapi/`、`validate/`）
+- [ ] CI 的 "generated files are current" 检查通过 —— 待本 commit 推送后验证
+- [x] Dockerfile 构建成功 —— buildx 实测：`go-deps` 工具链安装 + billing 完整镜像
+      `make proto` + CGO 编译 + 启动通过（linux/amd64）
+- [ ] Windows 开发者按新 Makefile 能正常 `make proto` —— 未验证，需在 Windows 环境确认
+- [x] 生成产物（`*.pb.go`、`openapi.yaml`）不入库：`.gitignore` 加 `*.pb.go`，
+      误跟踪的 `internal/conf/conf.pb.go` 已 `git rm --cached`
 
 ### Kratos v3 升级验收
 

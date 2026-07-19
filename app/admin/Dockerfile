@@ -40,7 +40,13 @@ RUN npm run build
 # A separate Dockerfile.deps may still be used by deployment scripts for
 # coarse-grained prebuild caching, but this image must not require a local tag.
 # ---------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS go-deps
+# NOTE: go-deps intentionally runs on the TARGET platform (no
+# --platform=$BUILDPLATFORM). It installs the buf/protoc toolchain that the
+# builder stage copies, and those binaries must match the builder's arch —
+# cross-building them on $BUILDPLATFORM would yield binaries the builder
+# cannot exec. `go mod download` under QEMU only downloads (no compile), so
+# the slowdown is acceptable.
+FROM golang:1.26-alpine AS go-deps
 
 RUN apk add --no-cache git ca-certificates
 ENV GOPROXY=https://proxy.golang.org|https://goproxy.cn|direct
@@ -50,6 +56,19 @@ WORKDIR /deps
 COPY go.mod go.sum ./
 
 RUN go mod download && go mod verify
+
+# Install buf + the protoc plugins used by `make proto` into /go/bin; the
+# builder stage copies these prebuilt binaries. This go-deps stage is the
+# builder base for this image. The same block appears in every service
+# Dockerfile (CI builds each in an isolated buildx job with no shared
+# registry, so a common base image cannot be referenced); BuildKit's layer
+# cache dedupes the actual installs across identical go.mod/go.sum inputs.
+# Keep versions in sync with go.mod / buf.gen.yaml and the other Dockerfiles.
+RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 && \
+    go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 && \
+    go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@v2.0.0-20260404020628-f149714c1d54 && \
+    go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
 
 # ---------------------------------------------------------------------------
 # Stage 3: go-builder
@@ -76,10 +95,14 @@ WORKDIR /app
 # service in a fresh buildx job, so relying on a pre-existing local image would
 # make BuildKit try to pull micro-one-api/go-deps from Docker Hub.
 COPY --from=go-deps /go/pkg/mod /go/pkg/mod
+# Prebuilt buf + protoc plugins from the go-deps stage (same TARGET platform).
+COPY --from=go-deps /go/bin/buf /go/bin/protoc-gen-go \
+     /go/bin/protoc-gen-go-grpc /go/bin/protoc-gen-go-http \
+     /go/bin/protoc-gen-openapi /usr/local/bin/
 
 COPY . .
 
-RUN make proto-tools && make proto
+RUN make proto
 
 # The admin frontend is no longer compiled into the Go binary via
 # //go:embed. It is shipped as a separate runtime directory and served

@@ -1,17 +1,18 @@
 version: v2
 plugins:
-  # buf 迁移阶段保持 kratos v2 插件，避免与 v3 升级耦合
-  - local: ["go", "run", "google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11"]
+  # 插件二进制由 make init / Dockerfile builder 预装到 PATH，与 go.mod 版本对齐。
+  # buf 迁移阶段保持 kratos v2 插件，避免与 v3 升级耦合。
+  - local: protoc-gen-go
     out: api
     opt: paths=source_relative
-  - local: ["go", "run", "google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2"]
+  - local: protoc-gen-go-grpc
     out: api
     opt: paths=source_relative
-  # kratos v2 版本，与当前 Makefile PROTOC_GEN_GO_HTTP_VERSION 一致
-  - local: ["go", "run", "github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@v2.0.0-20260404020628-f149714c1d54"]
+  # kratos v2 版本，与 go.mod 中 kratos/v2 一致
+  - local: protoc-gen-go-http
     out: api
     opt: paths=source_relative
-  - local: ["go", "run", "github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1"]
+  - local: protoc-gen-openapi
     out: .
     strategy: all
     opt:

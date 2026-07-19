@@ -29,6 +29,8 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      # protobuf-compiler provides protoc for `make config`; buf + plugins come
+      # from `make init` for the api/ tree.
       - name: Generate protobuf code
         run: |
           sudo apt-get update
@@ -133,6 +135,8 @@ jobs:
         with:
           languages: ${{ matrix.language }}
 
+      # protobuf-compiler provides protoc for `make config`; buf + plugins come
+      # from `make init` for the api/ tree.
       - name: Generate protobuf code
         run: |
           sudo apt-get update
@@ -163,6 +167,8 @@ jobs:
       - name: Install go-licenses
         run: go install github.com/google/go-licenses@latest
 
+      # protobuf-compiler provides protoc for `make config`; buf + plugins come
+      # from `make init` for the api/ tree.
       - name: Generate protobuf code
         run: |
           sudo apt-get update
