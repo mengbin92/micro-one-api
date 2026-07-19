@@ -35,7 +35,7 @@ jobs:
           sudo apt-get install -y protobuf-compiler
           make init
           export PATH="$(go env GOPATH)/bin:$PATH"
-          make api
+          make proto
 
       - name: Run gosec (SAST)
         run: |
@@ -139,7 +139,7 @@ jobs:
           sudo apt-get install -y protobuf-compiler
           make init
           export PATH="$(go env GOPATH)/bin:$PATH"
-          make api
+          make proto
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
@@ -169,7 +169,7 @@ jobs:
           sudo apt-get install -y protobuf-compiler
           make init
           export PATH="$(go env GOPATH)/bin:$PATH"
-          make api
+          make proto
 
       - name: Check licenses
         run: |
