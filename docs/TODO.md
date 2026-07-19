@@ -528,9 +528,21 @@ make test-e2e-suite
 
 ## 待办 — 架构债务（独立于 Phase 2/3 推进顺序）
 
-### [ ] 配置层对齐 kratos 官方模板：conf.proto + make config
+### [x] 配置层对齐 kratos 官方模板：channel-service 样板
 
 关联参考：`example/internal/conf/conf.proto`（kratos 官方 laytemplates）。
+
+**已完成 — channel-service 样板验证（2026-07-19）**
+
+- **✅ channel-service**：已完成 proto 配置迁移，作为其他服务的样板。
+
+### [ ] 配置层对齐 kratos 官方模板：其余 8 服务批量迁移
+
+关联参考：`example/internal/conf/conf.proto`（kratos 官方 laytemplates）。
+
+**待推进 — 按 complex 度递增顺序**
+
+- **⏳ 其余服务**：notify → config → log → monitor → admin → identity → billing → relay-gateway（按复杂度递增顺序待推进）。
 
 现状：本项目每个服务的 `internal/conf/config.go` 都是 **手写** Go struct，未走 proto 定义 → `make config` → `conf.pb.go` 的标准流程。`make config` 目标存在但因 `app/` 下无 internal proto 而是空操作。
 
@@ -572,3 +584,75 @@ make test-e2e-suite
 **破坏性变更控制**：让 protoc-gen-go 生成的 json tag 与现有 struct 完全一致（`json:"server"` 等），这样 `cfg.Server.HTTP.Addr` 访问路径和 `config.yaml` key 全部不变，`kratos config Scan` 行为不变，消费层（wire.go / 业务代码）零改动。
 
 **落地次序**：先做最简单的 channel-service 样板（只有 Server/Data/Registry，无障碍类型），验证 `make config` + 转换层 + defaults.go 路径可行，再按 notify → config → log → monitor → admin → identity → billing → relay-gateway 的复杂度递增批量铺开。
+
+---
+
+#### channel-service 样板实现参考（✅ 已完成）
+
+**迁移清单（channel-service 作为模板）**：
+
+1. **创建 `conf.proto`**：`app/channel/internal/conf/conf.proto`
+   - 定义 `Bootstrap`（顶层）、`Server`/`Data`/`Registry` 嵌套消息
+   - json tag 注释保持与现有 `config.yaml` key 一致（`json:"server"` 等）
+   - `Registry`/`Consul` 纯 proto 定义，不引用 Go 类型
+
+2. **创建转换层 `registry.go`**：`app/channel/internal/conf/registry.go`
+   - `func (r *Registry) ToRegistryConfig() appregistry.Config`
+   - 填充 `appregistry.Config.Type`、`Consul.*` 字段
+
+3. **更新 `config_loader.go`**：`app/channel/cmd/channel/config_loader.go`
+   - 新增 `Config` 结构体嵌入 `*Bootstrap`
+   - `loadConfig` 扫描到 `Bootstrap`，初始化 nil 嵌套消息（kratos Scan 不会自动分配 proto 嵌套指针）
+   - `cfg.Registry()` 方法返回转换后的 `appregistry.Config`
+
+4. **更新 `wire.go`**：`app/channel/cmd/channel/wire.go`
+   - 移除 `channelcfg` 导入
+   - `newRepo`/`provideRegistrar`/`newApp` 参数改为 `*Config`（本地类型）
+   - 注意：proto 生成 `Grpc`/`Http`（大写首字母），非 `GRPC`/`HTTP`
+
+5. **生成代码 + 验证**：
+   ```bash
+   make config                          # 生成 conf.pb.go（必须在 go generate 之前）
+   cd app/channel/cmd/channel && go generate  # 重生成 wire_gen.go
+   go build ./app/channel/cmd/channel       # 编译验证
+   go test ./app/channel/...                # 测试验证
+   ```
+
+   **重要**：`make config` 必须在 `go generate` 之前执行，因为 wire 生成的代码依赖 proto 生成的类型。
+
+6. **删除手写 `config.go`**：`app/channel/internal/conf/config.go`
+   - 所有字段迁移到 proto，原手写 struct 已无引用
+
+**关键经验（其他服务迁移时参考）**：
+
+- **嵌套消息 nil 安全**：kratos `Scan` 不会分配嵌套 proto 消息的指针，需在 `loadConfig` 中显式初始化（如 `bootstrap.Server = &Server{}`）。
+- **字段名大小写**：proto field `grpc`/`http` 生成 Go 字段 `Grpc`/`Http`，非 `GRPC`/`HTTP`。
+- **保持访问路径**：json tag 与 `config.yaml` key 完全一致后，`cfg.Server.Grpc.Addr` 等访问路径无需修改。
+- **appregistry 转换**：proto 不能引用 `platform/registry` 的 Go 类型，需在 `conf` 包内定义等价 `Registry` 消息，转换层适配。
+- **Wire 依赖注入**：`go generate` 重生成 `wire_gen.go`，确保类型签名与 `loadConfig` 返回值匹配。
+- **metadata map 复制**：`ToRegistryConfig()` 必须复制 metadata map，避免共享状态导致测试失败。
+
+**relay-gateway 特殊处理**：
+
+relay-gateway 的 `internal/conf/` 不在 `app/` 下（根目录），现有 `make config` 的 `find app -name "*.proto"` 搜索不到它。迁移 relay-gateway 时有两个方案：
+
+- **方案 A**：把 relay-gateway 的 `internal/conf/conf.proto` 移到 `app/relay-gateway/internal/conf/`，对齐其他 8 服务。
+- **方案 B**：修改 Makefile 的 `INTERNAL_PROTO_FILES` 搜索路径，同时覆盖 `app/` 和根 `internal/`。
+
+推荐方案 A（结构调整最小），但需同步更新 relay-gateway 的 import 路径。
+
+**CI 集成建议**：
+
+考虑增加 `make wire SERVICE=<svc>` 目标，统一各服务的 `go generate` 步骤：
+
+```makefile
+.PHONY: wire
+wire:
+	@if [ -n "$(SERVICE)" ]; then \
+		cd app/$(SERVICE)/cmd/$(SERVICE) && go generate; \
+	else \
+		find app -name "wire.go" -execdir go generate {} \;; \
+	fi
+```
+
+后续 8 个服务迁移时可复用此目标，降低手动 cd 的摩擦。

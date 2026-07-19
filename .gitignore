@@ -51,6 +51,7 @@ openapi.yaml
 
 # Generated protobuf code
 api/**/*.pb.go
+app/**/*.pb.go
 
 # env file
 .env

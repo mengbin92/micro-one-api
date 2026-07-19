@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package channel.internal.conf;
+
+option go_package = "micro-one-api/app/channel/internal/conf;conf";
+
+// Bootstrap is the top-level configuration message for channel-service.
+message Bootstrap {
+  Server server = 1;
+  Data data = 2;
+  Registry registry = 3;
+}
+
+// Server holds HTTP and gRPC server configuration.
+message Server {
+  HTTP http = 1;
+  GRPC grpc = 2;
+}
+
+// HTTP configuration.
+message HTTP {
+  string addr = 1;  // json:"addr"
+}
+
+// GRPC configuration.
+message GRPC {
+  string addr = 1;  // json:"addr"
+}
+
+// Data holds database and Redis configuration.
+message Data {
+  Database database = 1;
+  Redis redis = 2;
+}
+
+// Database configuration.
+message Database {
+  string driver = 1;   // json:"driver"
+  string source = 2;   // json:"source"
+  string schema = 3;   // json:"schema" (Phase 2.4: schema isolation)
+}
+
+// Redis configuration.
+message Redis {
+  string addr = 1;  // json:"addr"
+}
+
+// Registry holds service registry configuration.
+// This replaces appregistry.Config with a pure proto definition.
+message Registry {
+  string type = 1;  // json:"type" (consul or empty)
+  Consul consul = 2;  // json:"consul"
+}
+
+// Consul registry configuration.
+message Consul {
+  string address = 1;                 // json:"address"
+  int32 health_check_interval = 2;    // json:"health_check_interval"
+  string health_check_path = 3;       // json:"health_check_path"
+  string health_check_timeout = 4;    // json:"health_check_timeout"
+  string deregister_after = 5;        // json:"deregister_after"
+  map<string, string> metadata = 6;    // json:"metadata"
+}
