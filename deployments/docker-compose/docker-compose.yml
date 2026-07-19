@@ -64,6 +64,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - IDENTITY_SCHEMA=${IDENTITY_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
@@ -101,6 +102,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - CHANNEL_SCHEMA=${CHANNEL_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - LOG_LEVEL=info
@@ -138,6 +140,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - BILLING_SCHEMA=${BILLING_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - PAYMENT_QUOTA_PER_UNIT=${PAYMENT_QUOTA_PER_UNIT:-500000}
@@ -197,6 +200,7 @@ services:
       - CHANNEL_HTTP_ENDPOINT=http://channel-service:8002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - ADMIN_SCHEMA=${ADMIN_SCHEMA:-}
       - LOG_HTTP_ENDPOINT=http://log-service:8006
       - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
@@ -237,6 +241,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - CONFIG_SCHEMA=${CONFIG_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - LOG_LEVEL=info
@@ -268,6 +273,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - LOG_SCHEMA=${LOG_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
@@ -300,6 +306,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - MONITOR_SCHEMA=${MONITOR_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - LOG_LEVEL=info
@@ -331,6 +338,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - NOTIFY_SCHEMA=${NOTIFY_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - LOG_LEVEL=info
@@ -377,6 +385,7 @@ services:
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - LOG_GRPC_ENDPOINT=log-service:9006
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SUBSCRIPTION_SCHEMA=${SUBSCRIPTION_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - RELAY_HTTP_ADDR=:8080

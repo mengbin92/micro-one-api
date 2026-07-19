@@ -729,7 +729,7 @@ mysql -h <host> -u root -p < migrations/schema_split.sql
 
 ### 10.4 billing-service 跨 schema 读的过渡处理
 
-`billing-service` 的对账逻辑（`app/billing/internal/data/reconciliation_repo.go`）会读 `channels` / `logs` / `user_subscriptions` 三张表。当 billing 切到 `oneapi_billing` schema 后，这些读会失败。过渡方案：
+`billing-service` 的对账逻辑（`app/billing/internal/data/reconciliation_repo.go`）会读 `channels` / `logs` / `users` 三张表进行跨服务数据对账。当 billing 切到 `oneapi_billing` schema 后，这些读会失败。过渡方案：
 
 - **方案 A（推荐，零代码改动）**：在 `oneapi_billing` 中为这三张表建视图，指向源 schema：
 
@@ -737,10 +737,15 @@ mysql -h <host> -u root -p < migrations/schema_split.sql
   USE oneapi_billing;
   CREATE OR REPLACE VIEW channels          AS SELECT * FROM oneapi_channel.channels;
   CREATE OR REPLACE VIEW logs              AS SELECT * FROM oneapi_log.logs;
-  -- user_subscriptions 已被 schema_split.sql 复制到 oneapi_billing，无需视图。
+  CREATE OR REPLACE VIEW users             AS SELECT * FROM oneapi_identity.users;
   ```
 
-- **方案 B（长期）**：将对账读改为走 channel-service / log-service 的 gRPC 接口。属于后续重构，本次不实现。
+  > **说明**：
+  > - `channels`/`logs` 视图用于 `ListChannelUsage`/`GetLogConsumeSummary` 对账
+  > - `users` 视图用于 `SumOverdraftBalances` 钱包透支对账
+  > - `user_subscriptions` 已被 `schema_split.sql` 复制到 `oneapi_billing`，无需视图
+
+- **方案 B（长期）**：将对账读改为走 channel-service / log-service / identity-service 的 gRPC 接口。属于后续重构，本次不实现。
 
 ### 10.5 ownership manifest
 

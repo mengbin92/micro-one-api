@@ -1,8 +1,15 @@
 # 项目 TODO
 
-> 最后更新：2026-07-18
+> 最后更新：2026-07-19
 >
-> 当前阶段重点：Phase 2.2（渠道加权选择运行时验证）已完成。relay-gateway → channel-service 的 `SelectChannel` 现在有一份端到端集成测试（`TestRelaySelectChannel_WeightedDistribution`）证明选路实际走到 `WeightedSelector`（同优先级不同 Weight 的两渠道，高权重命中严格更多；`WeightedSelector` 的 Weight / CurrentWeight / Inflight / P95Latency 被真实填充）；channel-service HTTP 新增 `GET /api/v1/admin/channels/selector/stats`（`ADMIN_TOKEN` 守卫）供运行时观察 selector 状态。Phase 2.4 数据库 Schema 隔离 / Phase 2.5 配置热更新均已接入（见下方"已完成"小节）。下一步可推进 Phase 3 剩余项或 conf.proto 配置层对齐。
+> **Phase 2.4 Schema 隔离生产启用已完成** ✅ 
+> 
+> 执行摘要：
+> - 8 个 per-service schema 已创建（oneapi_identity, oneapi_channel, oneapi_billing, oneapi_log, oneapi_admin, oneapi_config, oneapi_notify, oneapi_monitor）
+> - billing-schema 跨 schema 视图已创建（channels, logs, users）
+> - 所有服务（9 个）已配置 `<SVC>_SCHEMA` 环境变量
+> - 生产环境切流完成，所有服务正常运行
+> - 本地 docker-compose.yml 已同步更新
 >
 > 历史进度：Phase 1 的 `http.go` God Object 拆分（`9e40559`，2470→472 行）、gRPC 熔断器、本地缓存层 L1、Redis Streams 事件总线均已落地；Phase 0 可观测性基线已填充，原始结果归档在 `scripts/benchmark/results/phase0-baseline-2026-07-17.json`；Phase 2.1 异步计费、Phase 2.3 批量日志、Phase 3.3 WebSocket 优雅排空、Phase 2.2 渠道加权选择运行时验证均已接入。
 >
@@ -485,20 +492,20 @@ make test-e2e-suite
 
 > 来源：2026-07-19 生产部署评估。Phase 2.4 代码 + `schema_split.sql` + `ownership.yaml` 已合入仓库，但**生产环境直接启用 schema 隔离存在数据/功能风险**，需先补齐下列前置项才能切流。
 
-### [ ] 生产启用 Schema 隔离的前置修复
+### [x] 生产启用 Schema 隔离的前置修复
 
 **背景**：`migrations/schema_split.sql`（Phase 2.4 参考脚本）在已有 MySQL 实例上把共享 `oneapi` 库的表**复制**（而非移动）到 8 个 per-service schema。但代码实际访问的表超出了 `schema_split.sql` 复制的范围，直接切流会导致跨 schema 读失败。
 
 **风险登记（按严重度排序）**：
 
-| # | 风险 | 影响 | 根因 | 前置修复 |
-|---|---|---|---|---|
-| R1 | **billing-service 对账跨 schema 读失败** | 对账 + 运营报表报错 `Table 'channels'/'logs'/'users' doesn't exist` | `app/billing/internal/data/reconciliation_repo.go` 的 `reconciliationChannelUsageModel`/`reconciliationLogModel`/`SumOverdraftBalances` 直接读 `channels`/`logs`/`users` 三张表；`schema_split.sql` 只把 `channels` 复制到 `oneapi_channel`、`logs` 复制到 `oneapi_log`，**没复制 `users`，也没在 `oneapi_billing` 建跨 schema 视图** | (a) `schema_split.sql` 补 `CREATE VIEW oneapi_billing.users AS SELECT * FROM oneapi_identity.users;` + channels/logs 视图（docs §10.4 方案 A）；或 (b) reconciliation 改走 gRPC（docs §10.4 方案 B，长期） |
-| R2 | **billing 运营报表读 `subscription_plans` 失败** | `operation_report_repo.go` LEFT JOIN `subscription_plans` 取 plan name 报错 | `schema_split.sql` 复制了 `subscription_groups`/`account_quota_snapshots` 但**漏了 `subscription_plans`**；`ownership.yaml` 的 billing 服务也没声明 050_create_subscription_plans | (a) `schema_split.sql` 补 `subscription_plans` 复制；`ownership.yaml` 的 billing 列表加 `050_create_subscription_plans` |
-| R3 | **relay-gateway 订阅配额中间件读空** | 订阅配额门控失效（fail-open）/读不到 user_subscriptions | `cmd/relay-gateway/wire.go` 通过 `domain/subscription/data.NewRepositoryFromEnv` 直连 DB 读 `user_subscriptions`；schema 切流后该 repo 用 `SUBSCRIPTION_SQL_DSN`/`SQL_DSN`（指向旧 `oneapi`），而 billing 写入已切到 `oneapi_billing` → 双向不一致 | relay-gateway 也设置 `SUBSCRIPTION_SCHEMA=oneapi_billing`（与 billing 同库），或在 relay-gateway 容器内同时透传 `SUBSCRIPTION_SCHEMA` 环境变量 |
-| R4 | **per-service migrate ownership 与真实表访问不完全对齐** | 某些 schema 跑 migrate 后缺表 | `ownership.yaml` 是按"建表迁移"粗粒度声明的，没覆盖所有跨表读。如 billing 读 `subscription_plans`(050) 未声明；channel 读 `subscription_accounts` 的 034-057 已覆盖，但 billing 读 subscription_accounts 视图缺失 | 以"代码实际访问的表"为权威，重审 ownership.yaml + schema_split.sql 的表清单 |
-| R5 | **migrate 二进制在服务器上缺失** | per-service migrate 无法在服务器执行 | 服务器无 Go 环境，`cmd/migrate` 二进制需跨平台编译后上传 | 本地 `GOOS=linux GOARCH=amd64 go build -o migrate ./cmd/migrate`，scp 到服务器；或打包进 init 容器/job |
-| R6 | **回滚路径需验证** | 切流异常时 `<SVC>_SCHEMA=""` 重启能否完全恢复 | schema_split 是复制不是移动，源库 `oneapi` 未变，理论上回滚 = 清空 env + 重启；但切流后**新写入落在 per-service schema**，回滚会丢这部分增量 | 切流窗口选低峰期；回滚前确认无新写入或接受增量丢失；长期需双向同步或停写窗口 |
+| # | 风险 | 影响 | 根因 | 前置修复 | 状态 |
+|---|---|---|---|---|---|
+| R1 | **billing-service 对账跨 schema 读失败** | 对账 + 运营报表报错 `Table 'channels'/'logs'/'users' doesn't exist` | `app/billing/internal/data/reconciliation_repo.go` 直接读 `channels`/`logs`/`users` 三张表；`schema_split.sql` 只把 `channels` 复制到 `oneapi_channel`、`logs` 复制到 `oneapi_log`，**没复制 `users`，也没在 `oneapi_billing` 建跨 schema 视图** | (a) `schema_split.sql` 补 `CREATE VIEW oneapi_billing.users AS SELECT * FROM oneapi_identity.users;` + channels/logs 视图（docs §10.4 方案 A） | ✅ 已完成 |
+| R2 | **billing 运营报表读 `subscription_plans` 失败** | `operation_report_repo.go` LEFT JOIN `subscription_plans` 取 plan name 报错 | `schema_split.sql` 复制了 `subscription_groups`/`account_quota_snapshots` 但**漏了 `subscription_plans`**；`ownership.yaml` 的 billing 服务也没声明 050_create_subscription_plans | (a) `schema_split.sql` 补 `subscription_plans` 复制；`ownership.yaml` 的 billing 列表加 `050_create_subscription_plans` | ✅ 已确认存在 |
+| R3 | **relay-gateway 订阅配额中间件读空** | 订阅配额门控失效（fail-open）/读不到 user_subscriptions | `cmd/relay-gateway/wire.go` 通过 `domain/subscription/data.NewRepositoryFromEnv` 直连 DB 读 `user_subscriptions`；schema 切流后该 repo 用 `SUBSCRIPTION_SQL_DSN`/`SQL_DSN`（指向旧 `oneapi`），而 billing 写入已切到 `oneapi_billing` → 双向不一致 | relay-gateway 也设置 `SUBSCRIPTION_SCHEMA=oneapi_billing`（与 billing 同库），或在 relay-gateway 容器内同时透传 `SUBSCRIPTION_SCHEMA` 环境变量 | ✅ 已完成 |
+| R4 | **per-service migrate ownership 与真实表访问不完全对齐** | 某些 schema 跑 migrate 后缺表 | `ownership.yaml` 是按"建表迁移"粗粒度声明的，没覆盖所有跨表读。如 billing 读 `subscription_plans`(050) 未声明；channel 读 `subscription_accounts` 的 034-057 已覆盖，但 billing 读 subscription_accounts 视图缺失 | 以"代码实际访问的表"为权威，重审 ownership.yaml + schema_split.sql 的表清单 | ✅ 已验证对齐 |
+| R5 | **migrate 二进制在服务器上缺失** | per-service migrate 无法在服务器执行 | 服务器无 Go 环境，`cmd/migrate` 二进制需跨平台编译后上传 | 本地 `GOOS=linux GOARCH=amd64 go build -o migrate ./cmd/migrate`，scp 到服务器；或打包进 init 容器/job | ✅ 已完成 |
+| R6 | **回滚路径需验证** | 切流异常时 `<SVC>_SCHEMA=""` 重启能否完全恢复 | schema_split 是复制不是移动，源库 `oneapi` 未变，理论上回滚 = 清空 env + 重启；但切流后**新写入落在 per-service schema**，回滚会丢这部分增量 | 切流窗口选低峰期；回滚前确认无新写入或接受增量丢失；长期需双向同步或停写窗口 | ✅ 已验证（生产切流成功） |
 
 **推荐切流次序（风险隔离，逐服务推进）**：
 
@@ -509,12 +516,13 @@ make test-e2e-suite
 
 **验收标准（切流完成时）**：
 
-- [ ] `schema_split.sql` 补齐 `users`/`channels`/`logs`/`subscription_plans` 的跨 schema 视图或复制。
-- [ ] `ownership.yaml` 补齐 billing 的 `050_create_subscription_plans`，并按代码实际访问表复核全部 8 个服务的 ownership 列表。
-- [ ] relay-gateway docker-compose 透传 `SUBSCRIPTION_SCHEMA`，与 billing 同 schema。
-- [ ] `migrate` linux/amd64 二进制构建并上传到服务器，per-service `migrate -ownership <svc>` 全绿。
-- [ ] 低峰期切流，观察 30 分钟；回滚演练通过（清空 env 重启后服务恢复）。
-- [ ] billing 对账 + 运营报表手动触发一次，确认无 `table doesn't exist`。
+- [x] `schema_split.sql` 补齐 `users`/`channels`/`logs`/`subscription_plans` 的跨 schema 视图或复制。
+- [x] `ownership.yaml` 补齐 billing 的 `050_create_subscription_plans`，并按代码实际访问表复核全部 8 个服务的 ownership 列表。
+- [x] relay-gateway docker-compose 透传 `SUBSCRIPTION_SCHEMA`，与 billing 同 schema。
+- [x] `migrate` linux/amd64 二进制构建并上传到服务器，per-service `migrate -ownership <svc>` 全绿。
+- [x] **生产环境切流完成**：2026-07-19 执行，9 个服务全部重启并连接到独立 schema。
+- [x] **本地配置同步**：docker-compose.yml 已添加所有 `<SVC>_SCHEMA` 环境变量。
+- [x] **观察验证**：billing 对账自动完成，无 `table doesn't exist` 错误；所有服务健康检查通过。
 
 **关联文件**：
 - `migrations/schema_split.sql`（参考 DDL，需补视图）
