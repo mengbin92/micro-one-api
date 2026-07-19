@@ -13,7 +13,7 @@ docs/
 ├── releases/            ← 版本发布公告
 ├── runbooks/            ← 运维操作手册（SOP）
 ├── design/              ← 架构设计、技术方案、复盘与路线图
-└── migration/           ← Kratos 大仓 / grpc-gateway / log 迁移方案
+└── migration/           ← Kratos 大仓 / grpc-gateway / log / buf / v3 升级方案
 ```
 
 ## 快速入口
@@ -27,7 +27,7 @@ docs/
 | 排查订阅系统生产故障 | [runbooks/subscription-production-runbook.md](./runbooks/subscription-production-runbook.md) |
 | 理解整体架构 | [design/ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) |
 | 了解订阅系统路线图 | [design/subscription-follow-up-roadmap.md](./design/subscription-follow-up-roadmap.md) |
-| 查看 Kratos 大仓迁移方案 | [migration/](./migration/) |
+| 查看 Kratos 大仓 / buf / v3 升级迁移方案 | [migration/](./migration/) |
 
 ---
 
@@ -41,7 +41,8 @@ docs/
 - [v0.3.0](./releases/release-v0.3.0.md) · [v0.3.1](./releases/release-v0.3.1.md)
 - [v0.4.0](./releases/release-v0.4.0.md) · [v0.4.0 / v0.5.0 联合公告](./releases/release-v0.4.0-v0.5.0.md) · [v0.5.0](./releases/release-v0.5.0.md)
 - [v0.6.0](./releases/release-v0.6.0.md) · [v0.6.1](./releases/release-v0.6.1.md)
-- [v0.7.0](./releases/release-v0.7.0.md) · [v0.7.1](./releases/release-v0.7.1.md) · [v0.7.2](./releases/release-v0.7.2.md) · [v0.8.0](./releases/release-v0.8.0.md)（最新）
+- [v0.7.0](./releases/release-v0.7.0.md) · [v0.7.1](./releases/release-v0.7.1.md) · [v0.7.2](./releases/release-v0.7.2.md) · [v0.8.0](./releases/release-v0.8.0.md)
+- [v0.9.0](./releases/release-v0.9.0.md) · [v0.9.1](./releases/release-v0.9.1.md) · [v0.9.2](./releases/release-v0.9.2.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -82,7 +83,7 @@ docs/
 
 ### migration/ — 迁移方案
 
-Kratos 大仓结构、grpc-gateway、log-service 降级等迁移类文档。
+Kratos 大仓结构、grpc-gateway、log-service 降级、buf 工具链迁移、Kratos v3 升级等迁移类文档。
 
 | 文档 | 主题 |
 |------|------|
@@ -91,3 +92,4 @@ Kratos 大仓结构、grpc-gateway、log-service 降级等迁移类文档。
 | [kratos-monorepo-migration-plan-v3-corrected.md](./migration/kratos-monorepo-migration-plan-v3-corrected.md) | Kratos 大仓迁移方案（v3 修正版） |
 | [log-service-to-platform-logging.md](./migration/log-service-to-platform-logging.md) | log-service 降级为 platform/logging 组件 |
 | [grpc-gateway-migration-todo.md](./migration/grpc-gateway-migration-todo.md) | grpc-gateway 迁移 TODO |
+| [buf-migration-and-kratos-v3-upgrade-plan.md](./migration/buf-migration-and-kratos-v3-upgrade-plan.md) | buf 工具链迁移 + Kratos v3 升级综合方案（含两个未知项确认结论） |

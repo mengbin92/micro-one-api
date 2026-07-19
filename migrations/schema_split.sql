@@ -145,6 +145,10 @@ CREATE OR REPLACE VIEW oneapi_billing.logs AS SELECT * FROM oneapi_log.logs;
 -- Used by SumOverdraftBalances for wallet overdraft reconciliation.
 CREATE OR REPLACE VIEW oneapi_billing.users AS SELECT * FROM oneapi_identity.users;
 
+-- System_options view (oneapi_billing.system_options → oneapi_admin.system_options)
+-- Used by billing service to load pricing configuration (ModelPrice, ModelRatio, etc.)
+CREATE OR REPLACE VIEW oneapi_billing.system_options AS SELECT * FROM oneapi_admin.system_options;
+
 -- Populate schema_migrations for each service to mark their owned migrations as applied.
 -- Since tables were copied with LIKE, they include all columns from migrations,
 -- so we record those migrations as already applied to avoid re-running them.
