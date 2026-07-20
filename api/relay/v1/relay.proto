@@ -4,7 +4,7 @@ package api.relay.v1;
 
 import "google/api/annotations.proto";
 
-option go_package = "micro-one-api/api/relay-gateway/v1;relayv1";
+option go_package = "micro-one-api/api/relay/v1;relayv1";
 
 service RelayService {
   rpc ChatCompletion(ChatCompletionRequest) returns (ChatCompletionResponse) {

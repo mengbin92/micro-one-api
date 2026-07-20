@@ -3,7 +3,7 @@ syntax = "proto3";
 package api.billing.v1;
 
 import "google/protobuf/timestamp.proto";
-import "common/v1/common.proto";
+import "api/common/v1/common.proto";
 
 option go_package = "micro-one-api/api/billing/v1;billingv1";
 

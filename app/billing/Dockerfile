@@ -13,7 +13,7 @@ ARG SERVICE_PATH=./app/billing/cmd/billing
 # coarse-grained prebuild caching, but this image must not require a local tag.
 # ---------------------------------------------------------------------------
 # NOTE: go-deps intentionally runs on the TARGET platform (no
-# --platform=$BUILDPLATFORM). It installs the buf/protoc toolchain that the
+# --platform=$BUILDPLATFORM). It installs the buf + protobuf-generator toolchain that the
 # builder stage copies, and those binaries must match the builder's arch —
 # cross-building them on $BUILDPLATFORM would yield binaries the builder
 # cannot exec. `go mod download` under QEMU only downloads (no compile), so
@@ -29,7 +29,7 @@ COPY go.mod go.sum ./
 
 RUN go mod download && go mod verify
 
-# Install buf + the protoc plugins used by `make proto` into /go/bin; the
+# Install buf + the protobuf generators used by `make proto` into /go/bin; the
 # builder stage copies these prebuilt binaries. This go-deps stage is the
 # builder base for this image. The same block appears in every service
 # Dockerfile (CI builds each in an isolated buildx job with no shared
@@ -57,7 +57,7 @@ FROM golang:1.26-alpine AS builder
 # provides the headers/libs libsqlite3 links against, and sqlite-libs is
 # the runtime dep shipped in the final alpine image.
 RUN apk add --no-cache \
-      git ca-certificates make protobuf protobuf-dev \
+      git ca-certificates make \
       build-base sqlite-libs sqlite-dev
 ENV GOPROXY=https://proxy.golang.org|https://goproxy.cn|direct
 
@@ -67,7 +67,7 @@ WORKDIR /app
 # service in a fresh buildx job, so relying on a pre-existing local image would
 # make BuildKit try to pull micro-one-api/go-deps from Docker Hub.
 COPY --from=go-deps /go/pkg/mod /go/pkg/mod
-# Prebuilt buf + protoc plugins from the go-deps stage (same TARGET platform).
+# Prebuilt buf + protobuf generators from the go-deps stage (same TARGET platform).
 COPY --from=go-deps /go/bin/buf /go/bin/protoc-gen-go \
      /go/bin/protoc-gen-go-grpc /go/bin/protoc-gen-go-http \
      /go/bin/protoc-gen-openapi /usr/local/bin/

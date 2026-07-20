@@ -1,20 +1,11 @@
 version: v2
 modules:
-  - path: api
+  - path: .
 deps:
   - buf.build/googleapis/googleapis
-# 暂不启用 lint DEFAULT：现有 proto 用 created_at 而非 created_time、
-# 缺少 error_reason.proto 等，DEFAULT 会大量报错。启用需单独排期。
 lint:
   use:
     - MINIMAL
-  # PACKAGE_DIRECTORY_MATCH 在本仓不可满足：module root 为 `api/`（不是仓库根），
-  # 故 `package api.admin.v1` 期望目录 `admin/v1` 而非 `api/admin/v1`。若改 module
-  # root 为 `.` 会破坏 `buf generate`（`import "common/v1/common.proto"` 相对 `api/`
-  # 解析，根改 `.` 后找不到 common.proto，已实测）。包名-目录对齐需配合 `import`
-  # 路径和 module root 一起调整，单独排期整改，与 §2.2 "暂不启用 DEFAULT" 同一策略。
-  except:
-    - PACKAGE_DIRECTORY_MATCH
 breaking:
   use:
     - FILE

@@ -1,23 +1,8 @@
-GOHOSTOS := $(shell go env GOHOSTOS)
 GOPATH := $(shell go env GOPATH)
 VERSION := $(shell git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo dev)
 
-# `make config` still uses protoc on the 9 app/*/internal/conf/conf.proto
-# + internal/conf/conf.proto files (see `config` target note). `make api`
-# goes through buf, so it needs no proto file list. Windows needs Git
-# Bash for the `find` calls below (bundled with Git for Windows); unix
-# shells use `find` directly.
-ifeq ($(GOHOSTOS), windows)
-Git_Bash := $(subst \,/,$(subst cmd\,bin\bash.exe,$(dir $(shell where git))))
-INTERNAL_PROTO_FILES := $(shell $(Git_Bash) -c "find app -name "*.proto"")
-INTERNAL_CONF_PROTO_FILES := $(shell $(Git_Bash) -c "find internal/conf -name "*.proto" 2>/dev/null")
-else
-INTERNAL_PROTO_FILES := $(shell find app -name "*.proto")
-INTERNAL_CONF_PROTO_FILES := $(shell find internal/conf -name "*.proto" 2>/dev/null)
-endif
-
 .PHONY: init
-# init env: buf + protoc plugins (versions pinned to match go.mod) + wire
+# init env: buf + protobuf generators (versions pinned to match go.mod) + wire
 init:
 	go install github.com/bufbuild/buf/cmd/buf@latest
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
@@ -27,24 +12,22 @@ init:
 	go install github.com/google/wire/cmd/wire@latest
 
 .PHONY: config
-# generate internal proto (app/*/internal/conf/*.proto + internal/conf/*.proto)
-# NOTE: kept on protoc intentionally. The 9 conf.proto files share the same base
-# name, so they cannot coexist in a single buf v2 workspace; they also import no
-# third-party protos, so plain protoc (no third_party/) is sufficient. Only the
-# api/ tree (which needs googleapis from BSR) goes through buf.
+# generate internal config proto (app/*/internal/conf/*_conf.proto +
+# internal/conf/relay_conf.proto). buf.gen.yaml now covers the whole repo
+# (module root = .), so api and config share one buf.gen.yaml; config is
+# kept as a separate target for `make config` semantics. buf --path restricts
+# generation to the conf protos so config.yaml changes don't touch api/*.pb.go.
 config:
-	@# Generate internal/conf
-	@if [ -n "$(INTERNAL_CONF_PROTO_FILES)" ]; then \
-		protoc --proto_path=./internal/conf \
-			--go_out=paths=source_relative:./internal/conf \
-			$(INTERNAL_CONF_PROTO_FILES); \
-	fi
-	@# Generate app/*/internal/conf
-	@if [ -n "$(INTERNAL_PROTO_FILES)" ]; then \
-		protoc --proto_path=./app \
-			--go_out=paths=source_relative:./app \
-			$(INTERNAL_PROTO_FILES); \
-	fi
+	buf generate --template buf.gen.yaml \
+		--path internal/conf \
+		--path app/admin/internal/conf \
+		--path app/billing/internal/conf \
+		--path app/channel/internal/conf \
+		--path app/config/internal/conf \
+		--path app/identity/internal/conf \
+		--path app/log/internal/conf \
+		--path app/monitor/internal/conf \
+		--path app/notify/internal/conf
 
 
 .PHONY: api

@@ -1,6 +1,6 @@
 # Dockerfile.deps
-# Go dependencies + buf/protoc toolchain base image.
-# This image contains all Go module dependencies AND the prebuilt buf/protoc
+# Go dependencies + buf/protobuf-generator toolchain base image.
+# This image contains all Go module dependencies AND the prebuilt buf/protobuf-generator
 # plugin binaries (/go/bin) used by `make proto`. It mirrors the inline
 # `go-deps` stage in each service Dockerfile, so offline/prebuilt deployments
 # get the identical builder base. Reused across all service builds to avoid
@@ -30,7 +30,7 @@ COPY go.mod go.sum ./
 # The /go/pkg/mod directory will be copied into the builder stage
 RUN go mod download && go mod verify
 
-# Install buf + the protoc plugins used by `make proto` into /go/bin, so the
+# Install buf + the protobuf generators used by `make proto` into /go/bin, so the
 # service builder stages (which COPY /go/bin from the go-deps stage) get a
 # consistent toolchain whether they use this external base image or their
 # inline go-deps stage. Versions are pinned to match go.mod / buf.gen.yaml.

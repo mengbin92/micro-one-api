@@ -3,14 +3,14 @@ plugins:
   # 插件二进制由 make init / Dockerfile builder 预装到 PATH，与 go.mod 版本对齐。
   # buf 迁移阶段保持 kratos v2 插件，避免与 v3 升级耦合。
   - local: protoc-gen-go
-    out: api
+    out: .
     opt: paths=source_relative
   - local: protoc-gen-go-grpc
-    out: api
+    out: .
     opt: paths=source_relative
   # kratos v2 版本，与 go.mod 中 kratos/v2 一致
   - local: protoc-gen-go-http
-    out: api
+    out: .
     opt: paths=source_relative
   - local: protoc-gen-openapi
     out: .

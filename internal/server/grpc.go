@@ -1,7 +1,7 @@
 package server
 
 import (
-	relayv1 "micro-one-api/api/relay-gateway/v1"
+	relayv1 "micro-one-api/api/relay/v1"
 	apptimeout "micro-one-api/pkg/timeout"
 	"micro-one-api/internal/service"
 

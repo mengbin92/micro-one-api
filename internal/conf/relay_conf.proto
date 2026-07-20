@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package api.relay.v1;
+package internal.conf;
 
 option go_package = "micro-one-api/internal/conf;conf";
 

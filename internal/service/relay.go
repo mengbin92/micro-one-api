@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	relayv1 "micro-one-api/api/relay-gateway/v1"
+	relayv1 "micro-one-api/api/relay/v1"
 	"micro-one-api/pkg/safecast"
 	relaybiz "micro-one-api/internal/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"

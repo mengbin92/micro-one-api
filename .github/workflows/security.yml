@@ -29,12 +29,11 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      # protobuf-compiler provides protoc for `make config`; buf + plugins come
-      # from `make init` for the api/ tree.
+      # buf + protobuf generators come from `make init` (versions pinned to
+      # go.mod). No system protoc needed: buf.gen.yaml now covers the whole
+      # repo, including the conf protos.
       - name: Generate protobuf code
         run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
           make init
           export PATH="$(go env GOPATH)/bin:$PATH"
           make proto
@@ -135,12 +134,11 @@ jobs:
         with:
           languages: ${{ matrix.language }}
 
-      # protobuf-compiler provides protoc for `make config`; buf + plugins come
-      # from `make init` for the api/ tree.
+      # buf + protobuf generators come from `make init` (versions pinned to
+      # go.mod). No system protoc needed: buf.gen.yaml now covers the whole
+      # repo, including the conf protos.
       - name: Generate protobuf code
         run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
           make init
           export PATH="$(go env GOPATH)/bin:$PATH"
           make proto
@@ -167,12 +165,11 @@ jobs:
       - name: Install go-licenses
         run: go install github.com/google/go-licenses@latest
 
-      # protobuf-compiler provides protoc for `make config`; buf + plugins come
-      # from `make init` for the api/ tree.
+      # buf + protobuf generators come from `make init` (versions pinned to
+      # go.mod). No system protoc needed: buf.gen.yaml now covers the whole
+      # repo, including the conf protos.
       - name: Generate protobuf code
         run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
           make init
           export PATH="$(go env GOPATH)/bin:$PATH"
           make proto

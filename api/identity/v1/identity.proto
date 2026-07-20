@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package api.identity.v1;
 
-import "common/v1/common.proto";
+import "api/common/v1/common.proto";
 
 option go_package = "micro-one-api/api/identity/v1;identityv1";
 
