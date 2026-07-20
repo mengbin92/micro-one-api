@@ -961,7 +961,7 @@ func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
 	if len(logClient.entries) != 1 {
 		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
 	}
-	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].Endpoint != "/chat/completions" {
+	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].Endpoint != "/v1/responses" {
 		t.Fatalf("commit endpoint mismatch: %#v", billingClient.commitRequests)
 	}
 	gotLog := logClient.entries[0]
@@ -1202,7 +1202,7 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 	if billingClient.commits != 1 || billingClient.releases != 0 {
 		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
 	}
-	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].Endpoint != "/chat/completions" {
+	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].Endpoint != "/v1/responses" {
 		t.Fatalf("commit endpoint mismatch: %#v", billingClient.commitRequests)
 	}
 	if len(logClient.entries) != 1 || !logClient.entries[0].IsStream {
