@@ -18,9 +18,11 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	adminbiz "micro-one-api/app/admin/internal/biz"
+	applogger "micro-one-api/platform/logging"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -382,6 +384,12 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 	if entry.GetCreatedAt() != nil {
 		createdAt = entry.GetCreatedAt().AsTime().Unix()
 	}
+
+	// Enrich the single entry with its channel's display metadata. Single-entry
+	// detail uses GetChannel (one RPC) rather than the ListChannels fan-out used
+	// by the list path; failures are logged and degrade to the raw channel ID.
+	channel := s.loadChannelEnrichment(ctx, entry.GetChannelId())
+
 	return map[string]interface{}{
 		"id":                      entry.GetId(),
 		"userId":                  entry.GetUserId(),
@@ -409,6 +417,9 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		"cache_read_tokens":       entry.GetCacheReadTokens(),
 		"channelId":               entry.GetChannelId(),
 		"channel":                 entry.GetChannelId(),
+		"channelName":             channel.Name,
+		"channelType":             channel.Type,
+		"channelTypeStr":          channel.TypeStr,
 		"subscriptionAccountId":   entry.GetSubscriptionAccountId(),
 		"subscription_account_id": entry.GetSubscriptionAccountId(),
 		"elapsedTime":             entry.GetElapsedTime(),
@@ -2071,12 +2082,28 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 		return nil, 0, err
 	}
 
+	// Build a map of channel ID -> display metadata for enrichment. Failures
+	// are logged inside the helper and degrade to the raw channel ID so the
+	// listing stays available even if the channel service is degraded.
+	channelEnrichments := s.loadChannelEnrichments(ctx, billingResp.GetEntries())
+
 	entries := make([]map[string]interface{}, 0, len(billingResp.GetEntries()))
 	for _, entry := range billingResp.GetEntries() {
 		var createdAt int64
 		if entry.GetCreatedAt() != nil {
 			createdAt = entry.GetCreatedAt().AsTime().Unix()
 		}
+
+		channelID := entry.GetChannelId()
+		var channelName string
+		var channelType int32
+		var channelTypeStr string
+		if ch, ok := channelEnrichments[channelID]; ok {
+			channelName = ch.Name
+			channelType = ch.Type
+			channelTypeStr = ch.TypeStr
+		}
+
 		entries = append(entries, map[string]interface{}{
 			"id":                    parseInt64(entry.GetId()),
 			"userId":                entry.GetUserId(),
@@ -2093,6 +2120,9 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"completionTokens":      entry.GetCompletionTokens(),
 			"cacheReadTokens":       entry.GetCacheReadTokens(),
 			"channelId":             entry.GetChannelId(),
+			"channelName":           channelName,
+			"channelType":           channelType,
+			"channelTypeStr":        channelTypeStr,
 			"subscriptionAccountId": entry.GetSubscriptionAccountId(),
 			"elapsedTime":           entry.GetElapsedTime(),
 			"isStream":              entry.GetIsStream(),
@@ -2132,4 +2162,162 @@ func errorResponse(message string) error {
 func parseInt64(s string) int64 {
 	n, _ := strconv.ParseInt(s, 10, 64)
 	return n
+}
+
+// channelEnrichment holds the user-facing display metadata for a channel so
+// ledger entry rendering can show "openai (OpenAI)" instead of a bare ID.
+type channelEnrichment struct {
+	Name    string
+	Type    int32
+	TypeStr string
+}
+
+// loadChannelEnrichments fetches channel summaries for the channel IDs
+// referenced by the given ledger entries and returns a map keyed by channel
+// ID. It performs a single ListChannels RPC with a large page size; if that
+// page is smaller than the total, or the RPC fails, the error is logged and
+// callers degrade to showing the raw channel ID. Never returns nil.
+func (s *AdminService) loadChannelEnrichments(ctx context.Context, entries []*commonv1.LedgerEntry) map[int64]channelEnrichment {
+	result := make(map[int64]channelEnrichment)
+	if s.channelClient == nil {
+		return result
+	}
+	ids := make(map[int64]bool)
+	for _, entry := range entries {
+		if id := entry.GetChannelId(); id > 0 {
+			ids[id] = true
+		}
+	}
+	if len(ids) == 0 {
+		return result
+	}
+	resp, err := s.channelClient.ListChannels(ctx, &channelv1.ListChannelsRequest{
+		Page:     1,
+		PageSize: 1000, // best-effort single-page fetch; truncation logged below
+	})
+	if err != nil {
+		applogger.Log.Warn("failed to load channels for ledger enrichment", zap.Error(err))
+		return result
+	}
+	if resp == nil {
+		return result
+	}
+	fetched := len(resp.GetChannels())
+	for _, ch := range resp.GetChannels() {
+		if ch == nil {
+			continue
+		}
+		result[ch.GetId()] = channelEnrichment{
+			Name:    ch.GetName(),
+			Type:    ch.GetType(),
+			TypeStr: channelTypeToString(ch.GetType()),
+		}
+	}
+	if total := resp.GetTotal(); total > int64(fetched) {
+		applogger.Log.Warn("ledger channel enrichment truncated; falling back to channel IDs for unmatched entries",
+			zap.Int("fetched", fetched),
+			zap.Int64("total", total),
+		)
+	}
+	return result
+}
+
+// loadChannelEnrichment fetches display metadata for a single channel ID via
+// GetChannel (one RPC). Failures are logged and degrade to an empty struct so
+// callers render the raw channel ID. Used by single-entry detail views where
+// a ListChannels fan-out would be wasteful.
+func (s *AdminService) loadChannelEnrichment(ctx context.Context, channelID int64) channelEnrichment {
+	var en channelEnrichment
+	if s.channelClient == nil || channelID <= 0 {
+		return en
+	}
+	ch, err := s.GetChannel(ctx, channelID)
+	if err != nil {
+		applogger.Log.Warn("failed to load channel for ledger entry",
+			zap.Int64("channel_id", channelID),
+			zap.Error(err),
+		)
+		return en
+	}
+	return channelEnrichment{
+		Name:    ch.GetName(),
+		Type:    ch.GetType(),
+		TypeStr: channelTypeToString(ch.GetType()),
+	}
+}
+
+// channelTypeToString converts a channel type integer to a human-readable
+// label. It switches on the relayprovider.ChannelType* constants rather than
+// raw integers so this stays in sync with the provider definitions.
+func channelTypeToString(channelType int32) string {
+	switch channelType {
+	case relayprovider.ChannelTypeOpenAI:
+		return "OpenAI"
+	case relayprovider.ChannelTypeAnthropic:
+		return "Anthropic"
+	case relayprovider.ChannelTypeGemini:
+		return "Gemini"
+	case relayprovider.ChannelTypeClaude:
+		return "Claude"
+	case relayprovider.ChannelTypeAzure:
+		return "Azure"
+	case relayprovider.ChannelTypeDeepSeek:
+		return "DeepSeek"
+	case relayprovider.ChannelTypeMistral:
+		return "Mistral"
+	case relayprovider.ChannelTypeZhipu:
+		return "Zhipu"
+	case relayprovider.ChannelTypeMoonshot:
+		return "Moonshot"
+	case relayprovider.ChannelTypeGroq:
+		return "Groq"
+	case relayprovider.ChannelTypeCohere:
+		return "Cohere"
+	case relayprovider.ChannelTypeBaichuan:
+		return "Baichuan"
+	case relayprovider.ChannelTypeTongyi:
+		return "Tongyi"
+	case relayprovider.ChannelTypeHunyuan:
+		return "Hunyuan"
+	case relayprovider.ChannelTypeMinimax:
+		return "Minimax"
+	case relayprovider.ChannelTypeXingchen:
+		return "Xingchen"
+	case relayprovider.ChannelTypeBedrock:
+		return "Bedrock"
+	case relayprovider.ChannelTypeTogether:
+		return "Together"
+	case relayprovider.ChannelTypeFireworks:
+		return "Fireworks"
+	case relayprovider.ChannelTypePerplexity:
+		return "Perplexity"
+	case relayprovider.ChannelTypeNovita:
+		return "Novita"
+	case relayprovider.ChannelTypeVoyageAI:
+		return "VoyageAI"
+	case relayprovider.ChannelTypeOpenRouter:
+		return "OpenRouter"
+	case relayprovider.ChannelTypeSiliconFlow:
+		return "SiliconFlow"
+	case relayprovider.ChannelTypeOllama:
+		return "Ollama"
+	case relayprovider.ChannelTypeCloudflare:
+		return "Cloudflare"
+	case relayprovider.ChannelTypeVertexAI:
+		return "VertexAI"
+	case relayprovider.ChannelTypeReplicate:
+		return "Replicate"
+	case relayprovider.ChannelTypeBaidu:
+		return "Baidu"
+	case relayprovider.ChannelTypeXunfei:
+		return "Xunfei"
+	case relayprovider.ChannelTypeDoubao:
+		return "Doubao"
+	case relayprovider.ChannelTypeCodexOAuth:
+		return "CodexOAuth"
+	case relayprovider.ChannelTypeClaudeOAuth:
+		return "ClaudeOAuth"
+	default:
+		return "Unknown"
+	}
 }

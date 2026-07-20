@@ -27,7 +27,7 @@ import (
 	"micro-one-api/platform/http"
 	"micro-one-api/platform/metrics"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

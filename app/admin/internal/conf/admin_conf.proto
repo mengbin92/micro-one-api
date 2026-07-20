@@ -1,15 +1,15 @@
 syntax = "proto3";
 
-package api.config.v1;
+package app.admin.internal.conf;
 
-option go_package = "micro-one-api/app/config/internal/conf;conf";
+option go_package = "micro-one-api/app/admin/internal/conf;conf";
 
 // Bootstrap is the top-level configuration loaded from config.yaml.
 message Bootstrap {
   Server server = 1;
-  Data data = 2;
-  Registry registry = 3;
-  ConfigSvc config_svc = 4;
+  Clients clients = 2;
+  Data data = 3;
+  Registry registry = 4;
 }
 
 // Server holds the HTTP and gRPC server configuration.
@@ -20,16 +20,16 @@ message Server {
 
 message HTTP {
   string addr = 1 [json_name = "addr"];
+  string web_root = 2 [json_name = "web_root"];
 }
 
 message GRPC {
   string addr = 1 [json_name = "addr"];
 }
 
-// Data holds the database and Redis configuration.
+// Data holds the database configuration for system options storage.
 message Data {
   Database database = 1;
-  Redis redis = 2;
 }
 
 message Database {
@@ -39,8 +39,24 @@ message Database {
   string schema = 3 [json_name = "schema"];
 }
 
-message Redis {
-  string addr = 1 [json_name = "addr"];
+// Clients holds the client endpoint configuration.
+message Clients {
+  Identity identity = 1 [json_name = "identity"];
+  Channel channel = 2 [json_name = "channel"];
+  Billing billing = 3 [json_name = "billing"];
+}
+
+message Identity {
+  string endpoint = 1 [json_name = "endpoint"];
+  string http_endpoint = 2 [json_name = "http_endpoint"];
+}
+
+message Channel {
+  string endpoint = 1 [json_name = "endpoint"];
+}
+
+message Billing {
+  string endpoint = 1 [json_name = "endpoint"];
 }
 
 // Registry holds the service registry configuration.
@@ -53,12 +69,4 @@ message Registry {
 message Consul {
   string address = 1 [json_name = "address"];
   int64 health_check_interval = 2 [json_name = "health_check_interval"];
-}
-
-// ConfigSvc holds the config-service-specific settings.
-message ConfigSvc {
-  // CacheTTL is the TTL in seconds for cached config entries.
-  int32 cache_ttl = 1 [json_name = "cache_ttl"];
-  // Namespace is the default config namespace.
-  string namespace = 2 [json_name = "namespace"];
 }

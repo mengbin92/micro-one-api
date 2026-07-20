@@ -3,10 +3,10 @@ package xhttp
 import (
 	"net/http"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// SafeKratosServerOptions avoids the Kratos v2.9.2 fallback to
+// SafeKratosServerOptions avoids the Kratos v3.0.0 fallback to
 // http.DefaultServeMux for unmatched routes and unsupported methods.
 func SafeKratosServerOptions(opts ...khttp.ServerOption) []khttp.ServerOption {
 	safeOpts := []khttp.ServerOption{

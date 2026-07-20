@@ -34,6 +34,12 @@ type BatchLogWriter struct {
 	// writer was closed. atomic because IngestLog (caller goroutine) writes
 	// and Stats (another goroutine) reads.
 	dropped atomic.Int64
+	// inflight tracks entries that IngestLog has queued but the queue
+	// processor has not yet moved into the batch. Flush waits on it so an
+	// accepted entry is never "in flight" (taken from the channel but not yet
+	// batched) and missed — the race that made
+	// TestLogUsecase_IngestLogBatchRouting flaky under CPU contention.
+	inflight sync.WaitGroup
 }
 
 // NewBatchLogWriter creates a new batch log writer.
@@ -85,6 +91,7 @@ func (w *BatchLogWriter) Stop() {
 		select {
 		case entry := <-w.queue:
 			w.addToBatch(entry)
+			w.inflight.Done()
 		default:
 			w.flush()
 			return
@@ -106,11 +113,15 @@ func (w *BatchLogWriter) IngestLog(ctx context.Context, entry *LogEntry) error {
 		return w.repo.Create(ctx, entry)
 	}
 
+	w.inflight.Add(1)
 	select {
 	case w.queue <- entry:
 		metrics.UsageLogIngestTotal.WithLabelValues("queued").Inc()
 		return nil
 	default:
+		// Not queued after all — undo the inflight Add so Flush's Wait does
+		// not block forever on an entry that was dropped.
+		w.inflight.Done()
 		// Queue full, drop the entry. We intentionally do not fall back to a
 		// synchronous write here (unlike the closed case) because a full queue
 		// under steady load would turn every IngestLog into a synchronous
@@ -135,12 +146,14 @@ func (w *BatchLogWriter) queueProcessor() {
 				select {
 				case entry := <-w.queue:
 					w.addToBatch(entry)
+					w.inflight.Done()
 				default:
 					return
 				}
 			}
 		case entry := <-w.queue:
 			w.addToBatch(entry)
+			w.inflight.Done()
 		}
 	}
 }
@@ -233,13 +246,43 @@ func (w *BatchLogWriter) createBatch(ctx context.Context, entries []*LogEntry) e
 	return nil
 }
 
-// Flush triggers an immediate flush of pending entries.
+// Flush synchronously persists every entry accepted so far and returns only
+// after the write completes.
+//
+// IngestLog only enqueues asynchronously, so when Flush is called an accepted
+// entry may still be in w.queue, or "in flight" in the queue processor (taken
+// off the channel but not yet batched). Flush first blocks on w.inflight until
+// every queued entry has been moved into w.batch, then swaps and writes the
+// batch inline. This removes the race — the periodic flusher signalling path
+// could observe an empty queue AND empty batch and skip the write — that made
+// TestLogUsecase_IngestLogBatchRouting flaky under CPU contention.
+//
+// Flush takes batchMu after the wait and must not be called while holding it.
 func (w *BatchLogWriter) Flush() {
-	select {
-	case w.flushChan <- struct{}{}:
-	default:
-		// Already scheduled
+	// Wait for every entry IngestLog has already queued to be moved into the
+	// batch by the queue processor. This closes the "in flight" window where an
+	// entry has been taken off the channel but not yet batched — without it a
+	// concurrent Flush could observe an empty queue AND an empty batch and skip
+	// the write entirely.
+	w.inflight.Wait()
+	// All accepted entries are now in w.batch (nothing left in w.queue).
+	w.batchMu.Lock()
+	if len(w.batch) == 0 {
+		w.batchMu.Unlock()
+		return
 	}
+	batch := w.batch
+	w.batch = make([]*LogEntry, 0, w.batchSize)
+	w.batchMu.Unlock()
+
+	// Persist outside the lock; a write error drops the batch (same policy as
+	// the periodic flusher — usage logs are best-effort, off the billing path).
+	if err := w.createBatch(context.Background(), batch); err != nil {
+		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()
+		w.dropped.Add(int64(len(batch)))
+		return
+	}
+	metrics.UsageLogIngestTotal.WithLabelValues("success").Inc()
 }
 
 // Stats returns statistics about the batch writer.

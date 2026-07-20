@@ -1,7 +1,7 @@
 package xconfig
 
 import (
-	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-kratos/kratos/v3/config"
 )
 
 // SubscribeCallback is invoked once per file-change event delivered by the

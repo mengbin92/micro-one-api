@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-kratos/kratos/v2"
-	kregistry "github.com/go-kratos/kratos/v2/registry"
+	"github.com/go-kratos/kratos/v3"
+	kregistry "github.com/go-kratos/kratos/v3/registry"
 	"github.com/google/wire"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -28,8 +28,8 @@ import (
 	applogger "micro-one-api/platform/logging"
 	appregistry "micro-one-api/platform/registry"
 
-	grpcx "github.com/go-kratos/kratos/v2/transport/grpc"
-	httpx "github.com/go-kratos/kratos/v2/transport/http"
+	grpcx "github.com/go-kratos/kratos/v3/transport/grpc"
+	httpx "github.com/go-kratos/kratos/v3/transport/http"
 )
 
 var ProviderSet = wire.NewSet(

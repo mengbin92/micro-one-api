@@ -3,7 +3,7 @@ package server
 import (
 	"net/http"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 
 	"micro-one-api/app/notify/internal/service"
 	"micro-one-api/platform/metrics"

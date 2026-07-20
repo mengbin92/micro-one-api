@@ -27,7 +27,7 @@ import (
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relayserver "micro-one-api/internal/server"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
 // startMockUpstream starts a mock OpenAI-compatible upstream server and returns its base URL.

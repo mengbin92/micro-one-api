@@ -25,8 +25,8 @@ import (
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	subscriptiondata "micro-one-api/domain/subscription/data"
 
-	"github.com/go-kratos/kratos/v2"
-	grpcx "github.com/go-kratos/kratos/v2/transport/grpc"
+	"github.com/go-kratos/kratos/v3"
+	grpcx "github.com/go-kratos/kratos/v3/transport/grpc"
 )
 
 // clientsResult bundles all downstream gRPC clients and their connections.

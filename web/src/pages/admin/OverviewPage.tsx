@@ -76,6 +76,9 @@ interface AdminLog {
   modelName?: string;
   endpoint?: string;
   createdAt?: number;
+  channelName?: string;
+  channelTypeStr?: string;
+  channelId?: number;
 }
 
 interface UsageAggregateItem {
@@ -712,8 +715,9 @@ export function AdminOverviewPage() {
                       <TableHead>用户</TableHead>
                       <TableHead>类型</TableHead>
                       <TableHead>模型</TableHead>
-                      <TableHead>费用</TableHead>
                       <TableHead>端点</TableHead>
+                      <TableHead>上游服务</TableHead>
+                      <TableHead>费用</TableHead>
                       <TableHead>时间</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -723,8 +727,20 @@ export function AdminOverviewPage() {
                         <TableCell className="font-mono text-xs">{log.userId || '-'}</TableCell>
                         <TableCell>{LOG_TYPE_NAMES[log.type || ''] || log.type || '-'}</TableCell>
                         <TableCell>{log.modelName || '-'}</TableCell>
-                        <TableCell className="font-semibold">{formatQuota(log.amount)}</TableCell>
                         <TableCell className="font-mono text-xs">{log.endpoint || '-'}</TableCell>
+                        <TableCell>
+                          {log.channelName ? (
+                            <span className="inline-flex rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                              {log.channelName}
+                              {log.channelTypeStr && log.channelTypeStr !== 'Unknown' && ` (${log.channelTypeStr})`}
+                            </span>
+                          ) : log.channelId ? (
+                            <span className="text-xs text-muted-foreground">#{log.channelId}</span>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                        <TableCell className="font-semibold">{formatQuota(log.amount)}</TableCell>
                         <TableCell>{formatDate(log.createdAt)}</TableCell>
                       </TableRow>
                     ))}

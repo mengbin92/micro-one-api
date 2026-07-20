@@ -5,7 +5,7 @@ import (
 	"micro-one-api/app/config/internal/service"
 	apptimeout "micro-one-api/pkg/timeout"
 
-	kgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
+	kgrpc "github.com/go-kratos/kratos/v3/transport/grpc"
 )
 
 // NewGRPCServer wires gRPC transport for config-service.

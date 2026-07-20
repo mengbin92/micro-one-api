@@ -10,7 +10,7 @@ import (
 	"time"
 
 	coderws "github.com/coder/websocket"
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 
 	relaybiz "micro-one-api/internal/biz"
 	relaydata "micro-one-api/internal/data"

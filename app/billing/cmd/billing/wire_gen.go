@@ -9,10 +9,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/registry"
-	grpc2 "github.com/go-kratos/kratos/v2/transport/grpc"
-	"github.com/go-kratos/kratos/v2/transport/http"
+	"github.com/go-kratos/kratos/v3"
+	"github.com/go-kratos/kratos/v3/registry"
+	grpc2 "github.com/go-kratos/kratos/v3/transport/grpc"
+	"github.com/go-kratos/kratos/v3/transport/http"
 	"github.com/google/wire"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -30,10 +30,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-)
-
-import (
-	_ "github.com/go-kratos/kratos/v2/config/file"
 )
 
 // Injectors from wire.go:

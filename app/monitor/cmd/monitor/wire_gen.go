@@ -7,18 +7,14 @@
 package main
 
 import (
-	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/registry"
+	"github.com/go-kratos/kratos/v3"
+	"github.com/go-kratos/kratos/v3/registry"
 	"github.com/google/wire"
 	"micro-one-api/app/monitor/internal/biz"
 	"micro-one-api/app/monitor/internal/data"
 	"micro-one-api/app/monitor/internal/server"
 	"micro-one-api/app/monitor/internal/service"
 	registry2 "micro-one-api/platform/registry"
-)
-
-import (
-	_ "github.com/go-kratos/kratos/v2/config/file"
 )
 
 // Injectors from wire.go:

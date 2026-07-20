@@ -12,7 +12,7 @@ import (
 	relaydata "micro-one-api/internal/data"
 	relayprovider "micro-one-api/domain/upstream/provider"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
 // --- pure conversion tests (no server needed) ---

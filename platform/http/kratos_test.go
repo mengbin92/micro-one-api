@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
 func TestSafeKratosServerOptionsDoNotUseDefaultServeMux(t *testing.T) {

@@ -1,7 +1,7 @@
 package main
 
 import (
-	kconfig "github.com/go-kratos/kratos/v2/config"
+	kconfig "github.com/go-kratos/kratos/v3/config"
 
 	notifyconf "micro-one-api/app/notify/internal/conf"
 	appregistry "micro-one-api/platform/registry"

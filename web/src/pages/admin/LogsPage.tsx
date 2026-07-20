@@ -56,6 +56,11 @@ interface LogEntry {
   completion_tokens?: string | number;
   cache_read_tokens?: string | number;
   channel?: string | number;
+  channelId?: number;
+  channelName?: string;
+  channelType?: number;
+  channelTypeStr?: string;
+  endpoint?: string;
   subscription_account_id?: number;
   subscriptionAccountId?: number;
   elapsed_time?: string | number;
@@ -188,10 +193,6 @@ export function AdminLogsPage() {
     return formatAmountUnits(q);
   }
 
-  function formatRawQuota(value: string | number | undefined) {
-    return formatQuota(String(value ?? '0'));
-  }
-
   function formatTimestamp(value: string | number | undefined) {
     const seconds = Number(value ?? 0);
     return seconds > 0 ? new Date(seconds * 1000).toLocaleString() : '-';
@@ -212,13 +213,16 @@ export function AdminLogsPage() {
         ['Type', selectedLog.type || selectedLog.level],
         ['User ID', selectedLog.userId || selectedLog.user_id],
         ['Username', selectedLog.username],
-        ['Source', selectedLog.source],
         ['Request ID', selectedLog.request_id],
         ['Model', selectedLog.model_name],
         ['Token', selectedLog.token_name],
-        ['Channel', selectedLog.channel],
+        ['Channel', selectedLog.channelName
+          ? `${selectedLog.channelName}${selectedLog.channelTypeStr && selectedLog.channelTypeStr !== 'Unknown' ? ` (${selectedLog.channelTypeStr})` : ''}`
+          : selectedLog.channel],
         ['Subscription Account', selectedLog.subscription_account_id ?? selectedLog.subscriptionAccountId],
-        ['Quota', formatRawQuota(selectedLog.quota ?? selectedLog.amount)],
+        ['Amount', formatQuota(selectedLog.amount)],
+        ['Balance After', formatQuota(selectedLog.balanceAfter)],
+        ['Quota', selectedLog.quota],
         ['Prompt Tokens', selectedLog.prompt_tokens],
         ['Completion Tokens', selectedLog.completion_tokens],
         ['Cache Read Tokens', selectedLog.cache_read_tokens],
@@ -341,6 +345,7 @@ export function AdminLogsPage() {
                   <SortableHeader<LogEntry> columnKey="amount" sort={sort} onSortChange={setSort}>
                     Amount
                   </SortableHeader>
+                  <TableHead className="hidden lg:table-cell">Channel</TableHead>
                   <TableHead className="hidden md:table-cell">Balance After</TableHead>
                   <TableHead className="hidden lg:table-cell">Subscription Account</TableHead>
                   <TableHead className="hidden lg:table-cell">Reference</TableHead>
@@ -362,6 +367,15 @@ export function AdminLogsPage() {
                       </span>
                     </TableCell>
                     <TableCell>{formatQuota(log.amount)}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {log.channelName
+                        ? `${log.channelName}${log.channelTypeStr && log.channelTypeStr !== 'Unknown' ? ` (${log.channelTypeStr})` : ''}`
+                        : log.channelId
+                          ? <span className="text-xs text-muted-foreground">#{log.channelId}</span>
+                          : log.channel
+                            ? String(log.channel)
+                            : '—'}
+                    </TableCell>
                     <TableCell className="hidden md:table-cell">{formatQuota(log.balanceAfter)}</TableCell>
                     <TableCell className="hidden font-mono text-xs lg:table-cell">{log.referenceId || '—'}</TableCell>
                     <TableCell className="hidden max-w-xs truncate lg:table-cell">{log.remark || '—'}</TableCell>

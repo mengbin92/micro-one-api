@@ -201,6 +201,7 @@ services:
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - ADMIN_SCHEMA=${ADMIN_SCHEMA:-}
+      - SUBSCRIPTION_SCHEMA=${SUBSCRIPTION_SCHEMA:-}
       - LOG_HTTP_ENDPOINT=http://log-service:8006
       - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}

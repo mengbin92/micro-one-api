@@ -1,7 +1,7 @@
 package main
 
 import (
-	kconfig "github.com/go-kratos/kratos/v2/config"
+	kconfig "github.com/go-kratos/kratos/v3/config"
 
 	channelcfg "micro-one-api/app/channel/internal/conf"
 	xconfig "micro-one-api/platform/config"

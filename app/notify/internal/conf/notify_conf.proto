@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package api.notify.v1;
+package app.notify.internal.conf;
 
 option go_package = "micro-one-api/app/notify/internal/conf;conf";
 

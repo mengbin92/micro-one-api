@@ -1,7 +1,10 @@
 # Dockerfile.deps
-# Go dependencies base image
-# This image contains all Go module dependencies and is reused across
-# all service builds to avoid repeated go mod downloads.
+# Go dependencies + buf/protobuf-generator toolchain base image.
+# This image contains all Go module dependencies AND the prebuilt buf/protobuf-generator
+# plugin binaries (/go/bin) used by `make proto`. It mirrors the inline
+# `go-deps` stage in each service Dockerfile, so offline/prebuilt deployments
+# get the identical builder base. Reused across all service builds to avoid
+# repeated go mod downloads and toolchain rebuilds.
 #
 # Build this image only when go.mod or go.sum changes:
 #   docker build -f deployments/docker/Dockerfile.deps -t micro-one-api/go-deps:latest ../..
@@ -26,6 +29,16 @@ COPY go.mod go.sum ./
 # Download and verify all dependencies
 # The /go/pkg/mod directory will be copied into the builder stage
 RUN go mod download && go mod verify
+
+# Install buf + the protobuf generators used by `make proto` into /go/bin, so the
+# service builder stages (which COPY /go/bin from the go-deps stage) get a
+# consistent toolchain whether they use this external base image or their
+# inline go-deps stage. Versions are pinned to match go.mod / buf.gen.yaml.
+RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 && \
+    go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 && \
+    go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v3@v3.0.0-20260626125723-668db92c2c00 && \
+    go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
 
 # Metadata: store go.mod checksum for cache invalidation
 RUN go version && go env | grep GOMOD

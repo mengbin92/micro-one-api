@@ -11,7 +11,7 @@ import (
 	"micro-one-api/platform/metrics"
 	"micro-one-api/platform/http"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
 // ServiceAuth creates a middleware that validates Bearer token against SERVICE_TOKEN env var.

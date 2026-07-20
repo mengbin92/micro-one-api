@@ -9,8 +9,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/config"
+	"github.com/go-kratos/kratos/v3"
+	"github.com/go-kratos/kratos/v3/config"
 	"github.com/google/wire"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -45,10 +45,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-)
-
-import (
-	_ "github.com/go-kratos/kratos/v2/config/file"
 )
 
 // Injectors from wire.go:

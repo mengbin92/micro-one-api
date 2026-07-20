@@ -6,8 +6,6 @@ import (
 	"go.uber.org/zap"
 
 	applogger "micro-one-api/platform/logging"
-
-	_ "github.com/go-kratos/kratos/v2/config/file"
 )
 
 func main() {

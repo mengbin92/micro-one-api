@@ -17,7 +17,7 @@ import (
 	apptls "micro-one-api/platform/tls"
 	appws "micro-one-api/platform/websocket"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	xhttp "micro-one-api/platform/http"
 )
 

@@ -22,7 +22,7 @@ import (
 	"micro-one-api/platform/security"
 	"micro-one-api/platform/http"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

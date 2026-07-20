@@ -8,8 +8,8 @@ package main
 
 import (
 	"context"
-	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/registry"
+	"github.com/go-kratos/kratos/v3"
+	"github.com/go-kratos/kratos/v3/registry"
 	"github.com/google/wire"
 	"go.uber.org/zap"
 	"micro-one-api/app/log/internal/biz"
@@ -19,10 +19,6 @@ import (
 	"micro-one-api/platform/logging"
 	registry2 "micro-one-api/platform/registry"
 	"time"
-)
-
-import (
-	_ "github.com/go-kratos/kratos/v2/config/file"
 )
 
 // Injectors from wire.go:

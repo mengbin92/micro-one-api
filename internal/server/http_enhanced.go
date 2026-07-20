@@ -22,7 +22,7 @@ import (
 	appvalidation "micro-one-api/internal/validation"
 	relayprovider "micro-one-api/domain/upstream/provider"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
 // EnhancedHTTPServer handles HTTP requests with all security features

@@ -10,7 +10,7 @@ import (
 	logv1 "micro-one-api/api/log/v1"
 	"micro-one-api/app/log/internal/service"
 
-	kgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
+	kgrpc "github.com/go-kratos/kratos/v3/transport/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

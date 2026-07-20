@@ -14,7 +14,7 @@ import (
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relayserver "micro-one-api/internal/server"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

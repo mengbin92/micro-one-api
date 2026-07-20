@@ -2555,7 +2555,18 @@ func TestAdminHTTPOneAPILogDetailUsesBillingLedger(t *testing.T) {
 	if billingClient.ledgerGetLastID != 7538 {
 		t.Fatalf("GetLedgerEntry id = %d, want 7538", billingClient.ledgerGetLastID)
 	}
-	for _, want := range []string{`"success":true`, `"id":"7538"`, `"username":"admin"`, `"model_name":"gpt-4o-mini"`, `"elapsed_time":250`} {
+	for _, want := range []string{
+		`"success":true`,
+		`"id":"7538"`,
+		`"username":"admin"`,
+		`"model_name":"gpt-4o-mini"`,
+		`"elapsed_time":250`,
+		// GetLedgerEntry must enrich the single entry with channel display
+		// metadata (the fake channel client returns name="openai", type=1).
+		`"channelName":"openai"`,
+		`"channelTypeStr":"OpenAI"`,
+		`"channelId":7`,
+	} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("detail response missing %s: %s", want, rec.Body.String())
 		}

@@ -5,7 +5,7 @@ import (
 
 	"micro-one-api/platform/metrics"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
 // RegisterRoutes registers HTTP routes to a Kratos *khttp.Server.

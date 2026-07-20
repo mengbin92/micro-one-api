@@ -21,6 +21,24 @@ import (
 	relayquota "micro-one-api/internal/quota"
 )
 
+// formatToEndpoint maps relayadaptor.Format to the actual HTTP endpoint path
+// that the client called. This ensures the usage log shows the user-facing endpoint
+// rather than the internal format identifier. The adaptor path is only reached
+// from the three inbound routes below; any other format falls back to the raw
+// format identifier so a mismatch is visible instead of silently mislabeled.
+func formatToEndpoint(format relayadaptor.Format) string {
+	switch format {
+	case relayadaptor.FormatOpenAIChatCompletions:
+		return "/v1/chat/completions"
+	case relayadaptor.FormatOpenAIResponses:
+		return "/v1/responses"
+	case relayadaptor.FormatAnthropicMessages:
+		return "/v1/messages"
+	default:
+		return string(format)
+	}
+}
+
 // handleChatCompletionsViaAdaptor is the feature-flag-gated request path for
 // subscription-account channels (Codex / Claude OAuth). It resolves the real
 // subscription-account metadata from the selected channel, builds a
@@ -505,7 +523,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 					TokenID:               plan.Auth.TokenID,
 					TokenName:             plan.Auth.TokenName,
 					RequestID:             requestID,
-					Endpoint:              string(inbound),
+					Endpoint:              formatToEndpoint(inbound),
 					ModelName:             plan.ResolvedModel,
 					Quota:                 actualUsage.TotalTokens,
 					PromptTokens:          actualUsage.PromptTokens,
@@ -572,7 +590,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				TokenID:               plan.Auth.TokenID,
 				TokenName:             plan.Auth.TokenName,
 				RequestID:             requestID,
-				Endpoint:              string(inbound),
+				Endpoint:              formatToEndpoint(inbound),
 				ModelName:             plan.ResolvedModel,
 				Quota:                 usage.TotalTokens,
 				PromptTokens:          usage.PromptTokens,

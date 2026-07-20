@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/log/internal/service"

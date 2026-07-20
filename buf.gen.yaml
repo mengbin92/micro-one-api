@@ -1,0 +1,21 @@
+version: v2
+plugins:
+  # 插件二进制由 make init / Dockerfile builder 预装到 PATH，与 go.mod 版本对齐。
+  # kratos v3 版本，与 go.mod 中 kratos/v3 一致（protoc-gen-go-http/v3 生成
+  # http.SupportPackageIsVersion3 的 *_http.pb.go）。
+  - local: protoc-gen-go
+    out: .
+    opt: paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: .
+    opt: paths=source_relative
+  - local: protoc-gen-go-http
+    out: .
+    opt: paths=source_relative
+  - local: protoc-gen-openapi
+    out: .
+    strategy: all
+    opt:
+      - fq_schema_naming=true
+      - default_response=false
+      - naming=json

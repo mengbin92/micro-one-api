@@ -20,10 +20,10 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Install protobuf generators
+      # buf + protobuf generators come from `make init` (versions pinned to
+      # go.mod). No system protoc needed: buf.gen.yaml now covers the whole
+      # repo, including the conf protos.
+      - name: Install buf and protobuf generators
         run: |
           make init
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

@@ -4,8 +4,8 @@
 package main
 
 import (
-	"github.com/go-kratos/kratos/v2"
-	kregistry "github.com/go-kratos/kratos/v2/registry"
+	"github.com/go-kratos/kratos/v3"
+	kregistry "github.com/go-kratos/kratos/v3/registry"
 	"github.com/google/wire"
 
 	billingv1 "micro-one-api/api/billing/v1"
@@ -15,7 +15,7 @@ import (
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
 
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	appregistry "micro-one-api/platform/registry"
 )
 
