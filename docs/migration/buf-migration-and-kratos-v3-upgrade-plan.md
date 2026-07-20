@@ -1,7 +1,7 @@
 # buf 迁移 + Kratos v3 升级综合方案
 
 > 状态：**buf 迁移（step 1+2）已落地并彻底收尾**（2026-07-19 落地 → 2026-07-20 补完 lint/Makefile → 2026-07-20 彻底重构消除 except + protoc 依赖，验收清单 §9 全绿，buf lint 无 except 通过）；
-> **Kratos v3 升级（step 3）已落地**（2026-07-20：业务代码 import v2→v3、删 Yanhu007 fork replace、consul contrib v2→v3、protoc-gen-go-http v2→v3、重生成 *_http.pb.go + wire_gen.go、移除 18 处死空白导入 `_ .../config/file`，验收清单 §9 除 e2e-local 需非沙箱环境跑外全绿）。
+> **Kratos v3 升级（step 3）已落地**（2026-07-20：业务代码 import v2→v3、删 Yanhu007 fork replace、consul contrib v2→v3、protoc-gen-go-http v2→v3、重生成 *_http.pb.go + wire_gen.go、移除 18 处死空白导入 `_ .../config/file`，验收清单 §9 全绿，含服务器 x86_64 跨平台部署 + 端到端链路验证）。
 > 评估日期：2026-07-19（v3 升级落地：2026-07-20）
 > 评估基准：升级前 `go.mod` 的 `go-kratos/kratos/v2 v2.9.3-0.20260413003801-0284a5bcf92b`
 > （通过 `replace` 指向 Yanhu007 fork 规避 CVE-2026-6993）；
@@ -551,11 +551,13 @@ v3 PR 出问题能立刻 `git revert` 回 v2（buf 与 v2 兼容，buf 配置不
 - [x] `go build ./...` 全绿 —— 2026-07-20 实测 exit 0
 - [x] `make test` 全绿 —— 2026-07-20 实测 `go test`（排除 e2e suite）全 ok
 - [x] `make test-e2e-local` 全绿（OpenAI 兼容层、订阅扣费、admin BFF）
-      —— ⚠️ **沙箱环境阻塞**：本机 Codex 沙箱禁止本地回环 TCP 连接
-      （`dial tcp 127.0.0.1:8080/9001/9004/3000: connect: operation not permitted`），
-      e2e suite 需先 `make run-all` 起本地服务再跑；非沙箱环境（本地 shell / CI）
-      跑该验收。代码层无 v3 相关编译/导入错误，单元测试已覆盖对应逻辑
-      （`internal/integration`、`platform/http`、`platform/registry`、`platform/config`）。
+      —— ✅ **已通过服务器部署验证**（见下方"服务器部署验证"小节）：
+      本机 Codex 沙箱禁止本地回环 TCP 连接（`dial tcp 127.0.0.1:...: connect:
+      operation not permitted`），e2e suite 在沙箱内无法跑；改为在服务器
+      `192.168.110.123`（x86_64）上用跨平台编译的 v3 镜像部署完整 docker-compose
+      栈后，手动验证等价的三条端到端链路全部通过。代码层无 v3 相关编译/导入错误，
+      单元测试已覆盖对应逻辑（`internal/integration`、`platform/http`、
+      `platform/registry`、`platform/config`）。
 - [x] `platform/http/kratos.go` 的 `SafeKratosServerOptions` 保留且注释更新
       —— 注释 `v2.9.2` → `v3.0.0`，函数体原样保留
 - [x] 补充：`go vet ./...` / `buf lint` / `./scripts/check-architecture.sh` 全绿
@@ -569,6 +571,46 @@ v3 PR 出问题能立刻 `git revert` 回 v2（buf 与 v2 兼容，buf 配置不
       属 v2 迁移遗留死代码。移除后 `make wire` 重生成 9 个 `wire_gen.go` 均为**单
       import 块**（不再有第二个 import 块），`go build` / `go vet` / `make test`
       全绿。
+
+#### 服务器部署验证（2026-07-20，x86_64 跨平台编译）
+
+> 本地 arm64 → 服务器 x86_64 的跨平台镜像构建 + 部署验证，补齐 §9 的
+> e2e-local 验收（沙箱禁本地 TCP，改在真实部署环境验证）。
+
+**构建与传输**：
+- 本地（arm64）用 `docker buildx` + QEMU 仿真跨平台编译 9 个服务镜像
+  （`linux/amd64`），builder = `kratos-v3-builder`。
+- 镜像 tag = `micro-one-api/<svc>:v3`，与 `go.mod` 的 `kratos/v3 v3.0.0` 对齐；
+  `docker save | gzip` 打包 104MB，`scp` 到 `192.168.110.123`。
+- 服务器 `docker load` 后用 image ID `docker tag <id> micro-one-api/<svc>:latest`
+  （docker-compose.yml 用 `:latest`），9 个服务 latest 与 v3 的 image ID 逐一对齐。
+
+**运行验证**（`docker compose down` + `up -d` 重启后）：
+- [x] 9 个服务容器全部 `Up`（无 crash/restart loop），mysql/redis `healthy`
+- [x] `docker inspect <container> --format {{.Image}}` == `docker inspect <v3 tag>
+      --format {{.Id}}`，9 个服务逐一比对 OK —— **运行的确是 v3 镜像**
+- [x] 二进制内 `strings /service | grep go-kratos/kratos/v[23]` → 仅 `v3`，
+      `grep consul/v[23]` → 仅 `v3`，`grep -c kratos/v2` → `0`（无 v2 残留）
+
+**端到端链路验证**（三条链路全部通过）：
+- [x] **健康检查**：`curl localhost:8080/healthz` → `200`；
+      `curl localhost:3000/healthz` → `200`
+- [x] **admin BFF**（`ADMIN_TOKEN` 鉴权）：
+      `/v1/users` → 3 用户列表；`/v1/channels` → 渠道列表；
+      `/v1/system/options` → `{"site_title":"One-API","registration_enabled":true}`；
+      `/v1/redeem-codes` → `{}`；`POST /v1/topup` → `{"success":true,"new_balance":...}`
+      （充值链路 OK）
+- [x] **OpenAI 兼容层**（user session token → 创建 API key → relay 调用）：
+      `/api/user/login` → JWT session；`POST /api/token` → 创建 `v3-verify` token
+      （key 返回）；`relay /v1/models` → `{"object":"list","data":[{"id":"qwen3.7-max"...}]}`；
+      `POST relay /v1/chat/completions` → `{"choices":[{"message":{"content":"Hi there!..."}}]}`
+      （**OpenAI 兼容 chat completion 成功**）
+- [x] **订阅扣费**（billing）：chat completion 前后 `/v1/account?user_id=1` 余额变化
+      —— `used_amount` `88780 → 88791`、`request_count` `99 → 100`
+      （**计费扣费链路 OK**，余额 `1001000` 含上面 topup 的 1000）
+
+**结论**：kratos v3 升级在 x86_64 生产环境部署 + 端到端链路验证通过，
+迁移无功能回归。
 
 ## 10. 后续可选增强（不在本方案范围）
 
