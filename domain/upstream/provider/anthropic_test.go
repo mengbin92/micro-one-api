@@ -64,9 +64,13 @@ func TestAnthropicChatCompletionsStreamCollectsUsage(t *testing.T) {
 
 	var text string
 	var usage *Usage
+	var finishReasons []string
 	for chunk := range chunks {
 		for _, choice := range chunk.Choices {
 			text += choice.Delta.Content
+			if choice.FinishReason != nil {
+				finishReasons = append(finishReasons, *choice.FinishReason)
+			}
 		}
 		if chunk.Usage.TotalTokens > 0 {
 			u := chunk.Usage
@@ -86,12 +90,21 @@ func TestAnthropicChatCompletionsStreamCollectsUsage(t *testing.T) {
 	if usage.PromptTokensDetails.CacheReadTokens != 60 {
 		t.Fatalf("cache_read_tokens = %d, want 60", usage.PromptTokensDetails.CacheReadTokens)
 	}
+	if len(finishReasons) != 1 || finishReasons[0] != "stop" {
+		t.Fatalf("finish_reasons = %v, want [stop]", finishReasons)
+	}
 }
 
 func TestAnthropicChatCompletionsStreamLargeEvent(t *testing.T) {
 	// Regression: bufio.Scanner's default 64KB line limit used to truncate large
 	// SSE events; the stream must survive events well beyond that.
-	bigText := strings.Repeat("x", 256*1024)
+	// Build a 256KB payload from the base64 alphabet (A-Za-z0-9+/=), which
+	// mirrors real Anthropic image-content events. base64 is JSON-safe so it
+	// needs no escaping; the point is to exceed bufio's 64KB default scanner
+	// limit and confirm the raised 4MB buffer survives the full event.
+	const bigSize = 256 * 1024
+	base64Alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	bigText := strings.Repeat(base64Alphabet, bigSize/len(base64Alphabet)+1)[:bigSize]
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

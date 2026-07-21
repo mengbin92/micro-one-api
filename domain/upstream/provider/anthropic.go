@@ -420,6 +420,15 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 
 			// message_delta carries the final output token count. Emit a single
 			// usage-only chunk so stream consumers can bill real tokens.
+			//
+			// Field-merge strategy: message_delta usually only carries
+			// output_tokens; input_tokens and cache_read_input_tokens are
+			// reported in message_start. When the delta event omits a field
+			// (zero value) we back-fill from startUsage so the emitted chunk
+			// always carries the full picture. When the delta event *does*
+			// include a field (some Anthropic-compatible providers send the
+			// final input_tokens here), the delta value wins — it reflects the
+			// actual billed count after upstream adjustments.
 			if event.Type == "message_delta" && event.Usage != nil {
 				usage := event.Usage
 				if usage.InputTokens == 0 {
@@ -428,9 +437,13 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 				if usage.CacheReadInputTokens == 0 {
 					usage.CacheReadInputTokens = startUsage.CacheReadInputTokens
 				}
+				finishReason := "stop"
 				chunkChan <- StreamChunk{
 					Object: "chat.completion.chunk",
 					Model:  req.Model,
+					Choices: []StreamChoice{
+						{Index: 0, FinishReason: &finishReason},
+					},
 					Usage: Usage{
 						PromptTokens:     usage.InputTokens,
 						CompletionTokens: usage.OutputTokens,
