@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kratos/kratos/v3"
 	"github.com/go-kratos/kratos/v3/registry"
@@ -76,6 +77,15 @@ func newApp(
 		eventBus.Subscribe(events.TopicChannelChanged, probe.HandleSubscriptionAccountEvent)
 		probe.SyncExistingCodexAccounts(context.Background(), repo)
 	}
+	var quotaProbe *service.CodingPlanQuotaProbeService
+	if probe := service.NewCodingPlanQuotaProbeService(repo, service.CodingPlanQuotaProbeConfig{
+		Enabled:  envBool("CODING_PLAN_QUOTA_PROBE_ENABLED", false),
+		Interval: parseDurationEnv("CODING_PLAN_QUOTA_PROBE_INTERVAL", 5*time.Minute),
+		Timeout:  parseDurationEnv("CODING_PLAN_QUOTA_PROBE_TIMEOUT", 30*time.Second),
+		PageSize: 200,
+	}); probe != nil {
+		quotaProbe = probe
+	}
 	if streamBus, ok := eventBus.(interface {
 		StartListening(context.Context) func()
 	}); ok {
@@ -86,7 +96,7 @@ func newApp(
 		// In production this would abort; for wire we just proceed.
 		_ = err
 	}
-	stopOpsAutomation := startAccountOpsAutomation(uc, repo, notifyConn, modelProbe)
+	stopOpsAutomation := startAccountOpsAutomation(uc, repo, notifyConn, modelProbe, quotaProbe)
 
 	opts := []kratos.Option{
 		kratos.Name("channel-service"),

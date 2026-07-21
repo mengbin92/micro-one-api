@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
 import { quotaPerUnitFromOptions, quotaToCurrencyUnits } from '@/lib/amount';
+import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
 
 interface AdminTotals {
   users?: number;
@@ -54,6 +55,28 @@ interface AdminSubscriptionAccount {
   expiresAt?: number;
   updated_at?: number;
   updatedAt?: number;
+  // Quota + recovery metadata (returned by backend; previously undeclared)
+  rate_limited_until?: number;
+  rateLimitedUntil?: number;
+  quota_used_percent?: number;
+  quota_used_usd?: number;
+  quota_limit_usd?: number;
+  quota_5h_used_usd?: number;
+  quota_5h_limit_usd?: number;
+  quota_5h_window_start?: number;
+  quota_daily_used_usd?: number;
+  quota_daily_limit_usd?: number;
+  quota_daily_window_start?: number;
+  quota_weekly_used_usd?: number;
+  quota_weekly_limit_usd?: number;
+  quota_weekly_window_start?: number;
+  primary_quota_used_percent?: number | null;
+  secondary_quota_used_percent?: number | null;
+  quota_snapshot_paused?: boolean;
+  unschedulable_reason?: string;
+  recovery_policy?: string;
+  expected_recovery_at?: number;
+  unschedulable_since?: number;
 }
 
 interface AdminChannel {
@@ -179,8 +202,94 @@ function subscriptionPlatformLabel(platform?: string) {
   return SUBSCRIPTION_PLATFORM_LABELS[platform] ?? platform;
 }
 
-function subscriptionStatusLabel(status?: number) {
-  return status === 1 ? '启用' : '停用';
+// Compact quota summary for the overview card. Mirrors the logic of
+// QuotaStatusCell on the full page but condensed to a single row so it fits
+// in the overview table.
+const HOUR_S_OV = 3600;
+const DAY_S_OV = 86400;
+const WEEK_S_OV = 7 * DAY_S_OV;
+const FIVE_H_S_OV = 5 * HOUR_S_OV;
+
+function effectiveWindowUsedOV(used: number, windowStart: number | undefined, nowUnix: number, windowS: number): number {
+  if (!windowStart || windowStart <= 0 || nowUnix - windowStart >= windowS) return 0;
+  return used;
+}
+
+function SubscriptionQuotaMini({ account }: { account: AdminSubscriptionAccount }) {
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const rows: Array<{ label: string; used: number; limit: number }> = [];
+  const pairs = [
+    { label: '总额', used: account.quota_used_usd ?? 0, limit: account.quota_limit_usd ?? 0 },
+    { label: '5h', used: effectiveWindowUsedOV(account.quota_5h_used_usd ?? 0, account.quota_5h_window_start, nowUnix, FIVE_H_S_OV), limit: account.quota_5h_limit_usd ?? 0 },
+    { label: '24h', used: effectiveWindowUsedOV(account.quota_daily_used_usd ?? 0, account.quota_daily_window_start, nowUnix, DAY_S_OV), limit: account.quota_daily_limit_usd ?? 0 },
+    { label: '7d', used: effectiveWindowUsedOV(account.quota_weekly_used_usd ?? 0, account.quota_weekly_window_start, nowUnix, WEEK_S_OV), limit: account.quota_weekly_limit_usd ?? 0 },
+  ];
+  for (const p of pairs) {
+    if (p.limit > 0 || p.used > 0) rows.push({ label: p.label, used: p.used, limit: p.limit });
+  }
+
+  // Upstream snapshot percent (single number)
+  const upstreamPercent =
+    account.primary_quota_used_percent ?? account.secondary_quota_used_percent ?? account.quota_used_percent ?? null;
+
+  if (rows.length === 0 && upstreamPercent == null) {
+    return <span className="text-xs text-muted-foreground">-</span>;
+  }
+
+  // Determine worst ratio for the summary badge color.
+  let worstRatio = 0;
+  for (const r of rows) {
+    if (r.limit > 0) worstRatio = Math.max(worstRatio, r.used / r.limit);
+  }
+  if (upstreamPercent != null) worstRatio = Math.max(worstRatio, upstreamPercent / 100);
+  const badgeClass =
+    worstRatio >= 1
+      ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+      : worstRatio >= 0.8
+        ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200';
+
+  return (
+    <div className="min-w-[150px] space-y-1">
+      {rows.map((row) => {
+        const ratio = row.limit > 0 ? Math.min(row.used / row.limit, 1) : 0;
+        const barColor = ratio >= 1 ? 'bg-red-500' : ratio >= 0.8 ? 'bg-amber-500' : 'bg-emerald-500';
+        return (
+          <div key={row.label} className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-medium">{row.label}</span>
+              <span className="tabular-nums text-muted-foreground">
+                ${row.used.toFixed(2)}
+                {row.limit > 0 ? ` / $${row.limit.toFixed(2)}` : ''}
+              </span>
+            </div>
+            {row.limit > 0 && (
+              <div className="h-1 overflow-hidden rounded-full bg-muted">
+                <div className={barColor} style={{ width: `${ratio * 100}%`, height: '100%' }} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {upstreamPercent != null && (
+        <div className="space-y-0.5">
+          <div className="flex items-center justify-between gap-2 text-[11px]">
+            <span className="font-medium">上游</span>
+            <span className="tabular-nums text-muted-foreground">{upstreamPercent.toFixed(1)}%</span>
+          </div>
+          <div className="h-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className={upstreamPercent >= 100 ? 'bg-red-500' : upstreamPercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}
+              style={{ width: `${Math.min(upstreamPercent, 100)}%`, height: '100%' }}
+            />
+          </div>
+        </div>
+      )}
+      <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${badgeClass}`}>
+        {worstRatio >= 1 ? '已耗尽' : worstRatio >= 0.8 ? '即将耗尽' : '正常'}
+      </span>
+    </div>
+  );
 }
 
 function numberValue(value: unknown): number {
@@ -681,6 +790,7 @@ export function AdminOverviewPage() {
                       <TableHead>分组</TableHead>
                       <TableHead className="hidden md:table-cell">优先级</TableHead>
                       <TableHead className="hidden lg:table-cell">过期</TableHead>
+                      <TableHead className="hidden xl:table-cell">限额</TableHead>
                       <TableHead>状态</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -692,7 +802,37 @@ export function AdminOverviewPage() {
                         <TableCell>{account.group || '-'}</TableCell>
                         <TableCell className="hidden md:table-cell">{formatInteger(account.priority ?? 0)}</TableCell>
                         <TableCell className="hidden lg:table-cell">{formatDate(account.expires_at ?? account.expiresAt)}</TableCell>
-                        <TableCell>{subscriptionStatusLabel(account.status)}</TableCell>
+                        <TableCell className="hidden xl:table-cell">
+                          <SubscriptionQuotaMini account={account} />
+                        </TableCell>
+                        <TableCell>
+                          <AccountStatusBadge
+                            info={{
+                              status: account.status ?? 0,
+                              expiresAt: account.expires_at ?? account.expiresAt,
+                              rateLimitedUntil: account.rate_limited_until ?? account.rateLimitedUntil,
+                              quotaUsedPercent: account.quota_used_percent,
+                              primaryQuotaUsedPercent: account.primary_quota_used_percent,
+                              secondaryQuotaUsedPercent: account.secondary_quota_used_percent,
+                              quotaSnapshotPaused: account.quota_snapshot_paused,
+                              quotaLimitUsd: account.quota_limit_usd,
+                              quotaUsedUsd: account.quota_used_usd,
+                              quota5hLimitUsd: account.quota_5h_limit_usd,
+                              quota5hUsedUsd: account.quota_5h_used_usd,
+                              quota5hWindowStart: account.quota_5h_window_start,
+                              quotaDailyLimitUsd: account.quota_daily_limit_usd,
+                              quotaDailyUsedUsd: account.quota_daily_used_usd,
+                              quotaDailyWindowStart: account.quota_daily_window_start,
+                              quotaWeeklyLimitUsd: account.quota_weekly_limit_usd,
+                              quotaWeeklyUsedUsd: account.quota_weekly_used_usd,
+                              quotaWeeklyWindowStart: account.quota_weekly_window_start,
+                              unschedulableReason: account.unschedulable_reason,
+                              recoveryPolicy: account.recovery_policy,
+                              expectedRecoveryAt: account.expected_recovery_at,
+                              unschedulableSince: account.unschedulable_since,
+                            }}
+                          />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

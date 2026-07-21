@@ -95,7 +95,7 @@ func cleanRecipients(input []string) []string {
 //
 // Returns a cleanup function that cancels the background context and closes
 // the notify connection if one was opened. Safe to call with a nil uc.
-func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, existingNotifyConn *grpc.ClientConn, modelProbe *service.CodexModelProbeService) func() {
+func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, existingNotifyConn *grpc.ClientConn, modelProbe *service.CodexModelProbeService, quotaProbe *service.CodingPlanQuotaProbeService) func() {
 	var (
 		cancel func()
 		wg     sync.WaitGroup
@@ -148,6 +148,16 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 		}()
 		applogger.Log.Info("subscription account recovery sweeper started",
 			zap.Duration("interval", interval))
+	}
+
+	// 4. Coding-plan quota probe (Zhipu/MiniMax/Kimi upstream quota).
+	if quotaProbe != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			quotaProbe.Run(ctx)
+		}()
+		applogger.Log.Info("coding plan quota probe started")
 	}
 
 	// 3. Quota alert evaluator (reuses notify-worker channel for delivery).

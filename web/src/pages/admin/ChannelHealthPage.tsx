@@ -26,6 +26,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { HealthDistributionChart } from '@/components/admin/HealthCharts';
+import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
 import { cn } from '@/lib/utils';
 
 interface ChannelHealth {
@@ -480,6 +481,148 @@ interface SubscriptionAccountSummary {
   quota_used_percent?: number;
   quota_reset_at?: number;
   concurrency?: number;
+  primary_quota_used_percent?: number | null;
+  primary_quota_reset_after_seconds?: number | null;
+  primary_quota_window_minutes?: number | null;
+  secondary_quota_used_percent?: number | null;
+  secondary_quota_reset_after_seconds?: number | null;
+  secondary_quota_window_minutes?: number | null;
+  quota_snapshot_paused?: boolean;
+  quota_limit_usd?: number;
+  quota_used_usd?: number;
+  quota_5h_limit_usd?: number;
+  quota_5h_used_usd?: number;
+  quota_5h_window_start?: number;
+  quota_daily_limit_usd?: number;
+  quota_daily_used_usd?: number;
+  quota_daily_window_start?: number;
+  quota_weekly_limit_usd?: number;
+  quota_weekly_used_usd?: number;
+  quota_weekly_window_start?: number;
+  unschedulable_reason?: string;
+  recovery_policy?: string;
+  expected_recovery_at?: number;
+  unschedulable_since?: number;
+}
+
+const HOUR_S = 3600;
+const DAY_S = 86400;
+const WEEK_S = 7 * DAY_S;
+const FIVE_H_S = 5 * HOUR_S;
+
+function formatPercentCHP(value: number) {
+  if (!Number.isFinite(value)) return '-';
+  const rounded = Math.round(value * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
+}
+
+function formatResetAfterCHP(seconds?: number | null) {
+  if (seconds == null || !Number.isFinite(seconds)) return '';
+  if (seconds <= 0) return '即将重置';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}天${hours > 0 ? `${hours}小时` : ''}后`;
+  if (hours > 0) return `${hours}小时${minutes > 0 ? `${minutes}分钟` : ''}后`;
+  if (minutes > 0) return `${minutes}分钟后`;
+  return '1分钟内';
+}
+
+function effectiveWindowUsedCHP(used: number, windowStart: number | undefined, nowUnix: number, windowS: number): number {
+  if (!windowStart || windowStart <= 0 || nowUnix - windowStart >= windowS) return 0;
+  return used;
+}
+
+function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccountSummary; now: number }) {
+  const localRows: Array<{ label: string; used?: number; limit?: number; windowStart?: number; windowS: number }> = [
+    { label: '总额', used: account.quota_used_usd, limit: account.quota_limit_usd, windowS: 0 },
+    { label: '5h', used: account.quota_5h_used_usd, limit: account.quota_5h_limit_usd, windowStart: account.quota_5h_window_start, windowS: FIVE_H_S },
+    { label: '24h', used: account.quota_daily_used_usd, limit: account.quota_daily_limit_usd, windowStart: account.quota_daily_window_start, windowS: DAY_S },
+    { label: '7d', used: account.quota_weekly_used_usd, limit: account.quota_weekly_limit_usd, windowStart: account.quota_weekly_window_start, windowS: WEEK_S },
+  ].filter((row) => (row.used ?? 0) > 0 || (row.limit ?? 0) > 0);
+
+  const upstreamWindows: Array<{ key: string; label: string; usedPercent?: number | null; resetAfter?: number | null }> = [
+    {
+      key: 'primary',
+      label: account.primary_quota_window_minutes === 300 ? '5h' : account.primary_quota_window_minutes === 10080 ? '7d' : '主',
+      usedPercent: account.primary_quota_used_percent,
+      resetAfter: account.primary_quota_reset_after_seconds,
+    },
+    {
+      key: 'secondary',
+      label: account.secondary_quota_window_minutes === 300 ? '5h' : account.secondary_quota_window_minutes === 10080 ? '7d' : '次',
+      usedPercent: account.secondary_quota_used_percent,
+      resetAfter: account.secondary_quota_reset_after_seconds,
+    },
+  ].filter((w) => w.usedPercent != null || w.resetAfter != null);
+
+  if (localRows.length === 0 && upstreamWindows.length === 0) {
+    if (account.quota_used_percent != null || account.quota_reset_at) {
+      const usedPercent = account.quota_used_percent ?? 0;
+      const barColor = usedPercent >= 100 ? 'bg-red-500' : usedPercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
+      const resetAfter = account.quota_reset_at ? Math.max(0, account.quota_reset_at - now) : null;
+      return (
+        <div className="min-w-[140px] space-y-0.5">
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="font-medium">配额</span>
+            <span className="tabular-nums text-muted-foreground">{formatPercentCHP(usedPercent)}</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${Math.min(100, usedPercent)}%` }} />
+          </div>
+          {resetAfter != null && resetAfter > 0 && <div className="text-[11px] text-muted-foreground">重置：{formatResetAfterCHP(resetAfter)}</div>}
+        </div>
+      );
+    }
+    return <span className="text-sm text-muted-foreground">-</span>;
+  }
+
+  return (
+    <div className="min-w-[170px] space-y-1">
+      {localRows.map((row) => {
+        const used = effectiveWindowUsedCHP(Number(row.used ?? 0), row.windowStart, now, row.windowS);
+        const limit = Number(row.limit ?? 0);
+        const ratio = limit > 0 ? used / limit : 0;
+        const barWidth = limit > 0 ? Math.min(100, ratio * 100) : 0;
+        const barColor = ratio >= 1 ? 'bg-red-500' : ratio >= 0.8 ? 'bg-amber-500' : 'bg-emerald-500';
+        return (
+          <div key={row.label} className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium">{row.label}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {`$${used.toFixed(2)}`}
+                {limit > 0 ? ` / $${limit.toFixed(2)}` : ''}
+              </span>
+            </div>
+            {limit > 0 && (
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${barWidth}%` }} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {upstreamWindows.map((window) => {
+        const usedPercent = window.usedPercent ?? 0;
+        const barWidth = Math.min(100, usedPercent);
+        const barColor = usedPercent >= 100 ? 'bg-red-500' : usedPercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
+        return (
+          <div key={window.key} className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium">{window.label}</span>
+              <span className="tabular-nums text-muted-foreground">{formatPercentCHP(usedPercent)}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${barWidth}%` }} />
+            </div>
+            {window.resetAfter != null && window.resetAfter > 0 && (
+              <div className="text-[11px] text-muted-foreground">重置：{formatResetAfterCHP(window.resetAfter)}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
@@ -512,32 +655,6 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
     const rateOk = !a.rate_limited_until || a.rate_limited_until <= now;
     return expOk && rateOk;
   });
-
-  function accountTokenStatus(a: SubscriptionAccountSummary): string {
-    if (a.status !== 1) return 'disabled';
-    if (a.expires_at && a.expires_at > 0 && a.expires_at <= now) return 'expired';
-    if (a.expires_at && a.expires_at > now && a.expires_at - now < 3600) return 'expiring';
-    if (a.rate_limited_until && a.rate_limited_until > now) return 'rate-limited';
-    return 'healthy';
-  }
-
-  function statusBadge(status: string) {
-    if (status === 'expired') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-    if (status === 'expiring') return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
-    if (status === 'rate-limited') return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
-    if (status === 'disabled') return 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200';
-    return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-  }
-
-  function statusLabel(status: string) {
-    switch (status) {
-      case 'expired': return 'Token 已过期';
-      case 'expiring': return '即将过期';
-      case 'rate-limited': return '已被限流';
-      case 'disabled': return '已禁用';
-      default: return '正常';
-    }
-  }
 
   function formatTime(ts?: number): string {
     if (!ts || ts === 0) return '-';
@@ -606,13 +723,12 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
                 <TableHead className="hidden md:table-cell">上游账号</TableHead>
                 <TableHead>过期时间</TableHead>
                 <TableHead className="hidden md:table-cell">最近使用</TableHead>
-                <TableHead className="hidden lg:table-cell">配额用量</TableHead>
+                <TableHead className="hidden lg:table-cell">限额状态</TableHead>
                 <TableHead>状态</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {all.map((account) => {
-                const status = accountTokenStatus(account);
                 return (
                   <TableRow key={account.id}>
                     <TableCell className="font-medium">{account.name}</TableCell>
@@ -623,12 +739,36 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
                     <TableCell className="text-xs">{formatTime(account.expires_at)}</TableCell>
                     <TableCell className="hidden md:table-cell text-xs">{formatTime(account.last_used_at)}</TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {account.quota_used_percent ? `${account.quota_used_percent.toFixed(1)}%` : '-'}
+                      <SubscriptionQuotaSummary account={account} now={now} />
                     </TableCell>
                     <TableCell>
-                      <span className={cn('inline-block rounded px-2 py-0.5 text-xs font-medium', statusBadge(status))}>
-                        {statusLabel(status)}
-                      </span>
+                      <AccountStatusBadge
+                        info={{
+                          status: account.status,
+                          expiresAt: account.expires_at,
+                          rateLimitedUntil: account.rate_limited_until,
+                          quotaUsedPercent: account.quota_used_percent,
+                          primaryQuotaUsedPercent: account.primary_quota_used_percent,
+                          secondaryQuotaUsedPercent: account.secondary_quota_used_percent,
+                          quotaSnapshotPaused: account.quota_snapshot_paused,
+                          quotaLimitUsd: account.quota_limit_usd,
+                          quotaUsedUsd: account.quota_used_usd,
+                          quota5hLimitUsd: account.quota_5h_limit_usd,
+                          quota5hUsedUsd: account.quota_5h_used_usd,
+                          quota5hWindowStart: account.quota_5h_window_start,
+                          quotaDailyLimitUsd: account.quota_daily_limit_usd,
+                          quotaDailyUsedUsd: account.quota_daily_used_usd,
+                          quotaDailyWindowStart: account.quota_daily_window_start,
+                          quotaWeeklyLimitUsd: account.quota_weekly_limit_usd,
+                          quotaWeeklyUsedUsd: account.quota_weekly_used_usd,
+                          quotaWeeklyWindowStart: account.quota_weekly_window_start,
+                          unschedulableReason: account.unschedulable_reason,
+                          recoveryPolicy: account.recovery_policy,
+                          expectedRecoveryAt: account.expected_recovery_at,
+                          unschedulableSince: account.unschedulable_since,
+                        }}
+                        now={now}
+                      />
                     </TableCell>
                   </TableRow>
                 );

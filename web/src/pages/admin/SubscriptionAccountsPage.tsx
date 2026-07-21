@@ -16,6 +16,7 @@ import { OAuthBindDialog } from '@/pages/admin/OAuthBindDialog';
 import { buildAdminListParams } from '@/lib/admin-table-query';
 import { ensureApiSuccess } from '@/lib/api-response';
 import { sortRows, type SortState } from '@/lib/table-utils';
+import { cn } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -32,6 +33,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
 
 // Mirrors common.v1.SubscriptionAccountSummary JSON tags returned by
 // GET /api/subscription-accounts (alias of /v1/subscription-accounts).
@@ -62,6 +64,8 @@ interface SubscriptionAccountSummary {
   quotaSnapshotPaused?: boolean;
   quotaLimitUsd?: number;
   quotaUsedUsd?: number;
+  quota_limit_usd?: number;
+  quota_used_usd?: number;
   quota5hLimitUsd?: number;
   quota5hUsedUsd?: number;
   quota5hWindowStart?: number;
@@ -71,9 +75,15 @@ interface SubscriptionAccountSummary {
   quotaDailyLimitUsd?: number;
   quotaDailyUsedUsd?: number;
   quotaDailyWindowStart?: number;
+  quota_daily_limit_usd?: number;
+  quota_daily_used_usd?: number;
+  quota_daily_window_start?: number;
   quotaWeeklyLimitUsd?: number;
   quotaWeeklyUsedUsd?: number;
   quotaWeeklyWindowStart?: number;
+  quota_weekly_limit_usd?: number;
+  quota_weekly_used_usd?: number;
+  quota_weekly_window_start?: number;
   rateMultiplier?: number;
   rpmLimit?: number;
   rpm_limit?: number;
@@ -83,6 +93,31 @@ interface SubscriptionAccountSummary {
   quota_reset_strategy?: string;
   quotaTimezone?: string;
   quota_timezone?: string;
+  // Upstream quota snapshot (snake_case aliases — the API returns these as
+  // snake_case from protobuf JSON, and the component reads both forms).
+  quota_used_percent?: number;
+  quota_reset_at?: number;
+  last_used_at?: number;
+  rate_limited_until?: number;
+  primary_quota_used_percent?: number | null;
+  primary_quota_reset_after_seconds?: number | null;
+  primary_quota_window_minutes?: number | null;
+  secondary_quota_used_percent?: number | null;
+  secondary_quota_reset_after_seconds?: number | null;
+  secondary_quota_window_minutes?: number | null;
+  primary_over_secondary_percent?: number | null;
+  quota_snapshot_updated_at?: number;
+  quota_snapshot_paused?: boolean;
+  // Scheduling / recovery metadata (returned by the backend; previously
+  // undeclared so the UI could not surface them).
+  unschedulableReason?: string;
+  unschedulable_reason?: string;
+  recoveryPolicy?: string;
+  recovery_policy?: string;
+  expectedRecoveryAt?: number;
+  expected_recovery_at?: number;
+  unschedulableSince?: number;
+  unschedulable_since?: number;
 }
 
 // Mirrors common.v1.SubscriptionAccountInfo JSON tags returned by
@@ -234,17 +269,17 @@ const PLATFORM_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'codex', label: 'Codex (ChatGPT OAuth)' },
   { value: 'zhipu', label: 'Zhipu GLM (Coding Plan, 静态 Key)' },
   { value: 'minimax', label: 'MiniMax (Coding Plan, 静态 Key)' },
-  { value: 'kimi', label: 'Kimi (Kimi For Coding OAuth)' },
+  { value: 'kimi', label: 'Kimi (Kimi For Coding, 静态 Key)' },
 ];
 
 // STATIC_KEY_PLATFORMS are platforms whose Coding Plan authenticates with a
 // long-lived API key (no refresh token). Their Create form requires only an
 // access_token; expires_at is left at 0 (semantic "never expires").
-const STATIC_KEY_PLATFORMS = new Set(['zhipu', 'minimax']);
+const STATIC_KEY_PLATFORMS = new Set(['zhipu', 'minimax', 'kimi']);
 
 const ACCOUNT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'oauth', label: 'OAuth 订阅账号' },
-  { value: 'static_key', label: '静态 Key 订阅账号 (GLM/MiniMax Coding Plan)' },
+  { value: 'static_key', label: '静态 Key 订阅账号 (GLM/MiniMax/Kimi Coding Plan)' },
 ];
 
 const QUOTA_RESET_STRATEGY_OPTIONS: Array<{ value: string; label: string }> = [
@@ -254,16 +289,6 @@ const QUOTA_RESET_STRATEGY_OPTIONS: Array<{ value: string; label: string }> = [
 
 function platformLabel(platform: string) {
   return PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform;
-}
-
-function statusBadgeClass(status: number) {
-  return status === 1
-    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-}
-
-function statusLabel(status: number) {
-  return status === 1 ? 'Active' : 'Disabled';
 }
 
 function formatTimestamp(unix: number) {
@@ -329,10 +354,10 @@ function localQuotaRows(account: SubscriptionAccountSummary) {
   const quota5hUsedUsd = account.quota5hUsedUsd ?? account.quota_5h_used_usd;
   const quota5hLimitUsd = account.quota5hLimitUsd ?? account.quota_5h_limit_usd;
   return [
-    { label: '总额', used: account.quotaUsedUsd, limit: account.quotaLimitUsd },
+    { label: '总额', used: account.quotaUsedUsd ?? account.quota_used_usd, limit: account.quotaLimitUsd ?? account.quota_limit_usd },
     { label: '5h', used: quota5hUsedUsd, limit: quota5hLimitUsd },
-    { label: '24h', used: account.quotaDailyUsedUsd, limit: account.quotaDailyLimitUsd },
-    { label: '7d', used: account.quotaWeeklyUsedUsd, limit: account.quotaWeeklyLimitUsd },
+    { label: '24h', used: account.quotaDailyUsedUsd ?? account.quota_daily_used_usd, limit: account.quotaDailyLimitUsd ?? account.quota_daily_limit_usd },
+    { label: '7d', used: account.quotaWeeklyUsedUsd ?? account.quota_weekly_used_usd, limit: account.quotaWeeklyLimitUsd ?? account.quota_weekly_limit_usd },
   ].filter((row) => (row.used ?? 0) > 0 || (row.limit ?? 0) > 0);
 }
 
@@ -344,7 +369,7 @@ function localQuotaState(account: SubscriptionAccountSummary) {
   if (rows.some((row) => Number(row.used ?? 0) / Number(row.limit ?? 1) >= 0.8)) {
     return 'almost';
   }
-  if (!account.lastUsedAt && localQuotaRows(account).every((row) => Number(row.used ?? 0) <= 0)) {
+  if (!(account.lastUsedAt ?? account.last_used_at) && localQuotaRows(account).every((row) => Number(row.used ?? 0) <= 0)) {
     return 'no_usage';
   }
   return 'ok';
@@ -364,26 +389,28 @@ function quotaWindows(account: SubscriptionAccountSummary) {
   const windows = [
     {
       key: 'primary',
-      label: formatWindowLabel(account.primaryQuotaWindowMinutes),
-      usedPercent: account.primaryQuotaUsedPercent,
-      resetAfter: account.primaryQuotaResetAfterSeconds,
+      label: formatWindowLabel(account.primaryQuotaWindowMinutes ?? account.primary_quota_window_minutes),
+      usedPercent: account.primaryQuotaUsedPercent ?? account.primary_quota_used_percent,
+      resetAfter: account.primaryQuotaResetAfterSeconds ?? account.primary_quota_reset_after_seconds,
     },
     {
       key: 'secondary',
-      label: formatWindowLabel(account.secondaryQuotaWindowMinutes),
-      usedPercent: account.secondaryQuotaUsedPercent,
-      resetAfter: account.secondaryQuotaResetAfterSeconds,
+      label: formatWindowLabel(account.secondaryQuotaWindowMinutes ?? account.secondary_quota_window_minutes),
+      usedPercent: account.secondaryQuotaUsedPercent ?? account.secondary_quota_used_percent,
+      resetAfter: account.secondaryQuotaResetAfterSeconds ?? account.secondary_quota_reset_after_seconds,
     },
   ].filter((item) => item.usedPercent != null || item.resetAfter != null);
 
   if (windows.length > 0) return windows;
-  if (account.quotaUsedPercent != null || account.quotaResetAt) {
+  const usedPercent = account.quotaUsedPercent ?? account.quota_used_percent;
+  const resetAt = account.quotaResetAt ?? account.quota_reset_at;
+  if (usedPercent != null || resetAt) {
     return [
       {
         key: 'quota',
         label: '配额',
-        usedPercent: account.quotaUsedPercent,
-        resetAfter: resetAfterFromUnix(account.quotaResetAt),
+        usedPercent,
+        resetAfter: resetAfterFromUnix(resetAt),
       },
     ];
   }
@@ -397,6 +424,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
   const sessionWindowLimitUsd = account.sessionWindowLimitUsd ?? account.session_window_limit_usd ?? 0;
   const resetStrategy = normalizeQuotaResetStrategy(account.quotaResetStrategy ?? account.quota_reset_strategy);
   const quotaTimezone = normalizeQuotaTimezone(account.quotaTimezone ?? account.quota_timezone);
+  const snapshotPaused = account.quotaSnapshotPaused ?? account.quota_snapshot_paused;
   if (windows.length === 0 && localRows.length === 0 && rpmLimit <= 0 && sessionWindowLimitUsd <= 0 && resetStrategy !== 'fixed') {
     return <span className="text-sm text-muted-foreground">—</span>;
   }
@@ -405,7 +433,9 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
       {localRows.map((row) => {
         const used = Number(row.used ?? 0);
         const limit = Number(row.limit ?? 0);
-        const barWidth = limit > 0 ? Math.max(0, Math.min(100, (used / limit) * 100)) : 0;
+        const ratio = limit > 0 ? used / limit : 0;
+        const barWidth = limit > 0 ? Math.max(0, Math.min(100, ratio * 100)) : 0;
+        const barColor = ratio >= 1 ? 'bg-red-500' : ratio >= 0.8 ? 'bg-amber-500' : 'bg-emerald-500';
         return (
           <div key={row.label} className="space-y-0.5">
             <div className="flex items-center justify-between gap-2 text-xs">
@@ -417,7 +447,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
             </div>
             {limit > 0 && (
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-emerald-600" style={{ width: `${barWidth}%` }} />
+                <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${barWidth}%` }} />
               </div>
             )}
           </div>
@@ -426,6 +456,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
       {windows.map((window) => {
         const usedPercent = window.usedPercent ?? 0;
         const barWidth = Math.max(0, Math.min(100, usedPercent));
+        const barColor = usedPercent >= 100 ? 'bg-red-500' : usedPercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
         const resetAfter = formatResetAfter(window.resetAfter);
         return (
           <div key={window.key} className="space-y-0.5">
@@ -435,7 +466,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-blue-600"
+                className={cn('h-full rounded-full transition-all', barColor)}
                 style={{ width: `${barWidth}%` }}
               />
             </div>
@@ -443,7 +474,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
           </div>
         );
       })}
-      {account.quotaSnapshotPaused && (
+      {snapshotPaused && (
         <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
           已因限额暂停
         </span>
@@ -463,6 +494,20 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
           固定周期 {quotaTimezone}
         </span>
       )}
+      {(() => {
+        const reason = account.unschedulableReason ?? account.unschedulable_reason;
+        const since = account.unschedulableSince ?? account.unschedulable_since;
+        if (!reason || !since || since <= 0) return null;
+        const recoveryAt = account.expectedRecoveryAt ?? account.expected_recovery_at ?? 0;
+        const recoveryLabel = recoveryAt > 0 ? formatResetAfter(Math.max(0, recoveryAt - Math.floor(Date.now() / 1000))) : '未知';
+        return (
+          <div className="flex items-center gap-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+            <span className="truncate max-w-[160px]" title={reason}>{reason}</span>
+            <span className="text-amber-600 dark:text-amber-400">·</span>
+            <span>{recoveryLabel}</span>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -931,11 +976,32 @@ export function AdminSubscriptionAccountsPage() {
                     <TableCell className="hidden lg:table-cell">{account.priority ?? 0}</TableCell>
                     <TableCell className="hidden xl:table-cell">{formatTimestamp(account.expiresAt)}</TableCell>
                     <TableCell>
-                      <span
-                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusBadgeClass(account.status)}`}
-                      >
-                        {statusLabel(account.status)}
-                      </span>
+                      <AccountStatusBadge
+                        info={{
+                          status: account.status,
+                          expiresAt: account.expiresAt,
+                          rateLimitedUntil: account.rateLimitedUntil ?? account.rate_limited_until,
+                          quotaUsedPercent: account.quotaUsedPercent ?? account.quota_used_percent,
+                          primaryQuotaUsedPercent: account.primaryQuotaUsedPercent ?? account.primary_quota_used_percent,
+                          secondaryQuotaUsedPercent: account.secondaryQuotaUsedPercent ?? account.secondary_quota_used_percent,
+                          quotaSnapshotPaused: account.quotaSnapshotPaused ?? account.quota_snapshot_paused,
+                          quotaLimitUsd: account.quotaLimitUsd ?? account.quota_limit_usd,
+                          quotaUsedUsd: account.quotaUsedUsd ?? account.quota_used_usd,
+                          quota5hLimitUsd: account.quota5hLimitUsd ?? account.quota_5h_limit_usd,
+                          quota5hUsedUsd: account.quota5hUsedUsd ?? account.quota_5h_used_usd,
+                          quota5hWindowStart: account.quota5hWindowStart ?? account.quota_5h_window_start,
+                          quotaDailyLimitUsd: account.quotaDailyLimitUsd ?? account.quota_daily_limit_usd,
+                          quotaDailyUsedUsd: account.quotaDailyUsedUsd ?? account.quota_daily_used_usd,
+                          quotaDailyWindowStart: account.quotaDailyWindowStart ?? account.quota_daily_window_start,
+                          quotaWeeklyLimitUsd: account.quotaWeeklyLimitUsd ?? account.quota_weekly_limit_usd,
+                          quotaWeeklyUsedUsd: account.quotaWeeklyUsedUsd ?? account.quota_weekly_used_usd,
+                          quotaWeeklyWindowStart: account.quotaWeeklyWindowStart ?? account.quota_weekly_window_start,
+                          unschedulableReason: account.unschedulableReason ?? account.unschedulable_reason,
+                          recoveryPolicy: account.recoveryPolicy ?? account.recovery_policy,
+                          expectedRecoveryAt: account.expectedRecoveryAt ?? account.expected_recovery_at,
+                          unschedulableSince: account.unschedulableSince ?? account.unschedulable_since,
+                        }}
+                      />
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <QuotaStatusCell account={account} />
@@ -1170,7 +1236,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
         <DialogHeader>
           <DialogTitle>新建订阅账号</DialogTitle>
           <DialogDescription>
-            添加订阅账号（Claude / Codex / 智谱 GLM / MiniMax / Kimi），用于混合中继的身份伪装与协议转换。GLM/MiniMax 填静态 Key 即可，Kimi 走 OAuth。
+            添加订阅账号（Claude / Codex / 智谱 GLM / MiniMax / Kimi），用于混合中继的身份伪装与协议转换。GLM/MiniMax/Kimi 填静态 Key 即可，Claude/Codex 走 OAuth。
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 pt-2 sm:grid-cols-2">
@@ -1193,7 +1259,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
                 const patch: { platform: string; accountType?: string } = { platform: next };
                 if (STATIC_KEY_PLATFORMS.has(next)) {
                   patch.accountType = 'static_key';
-                } else if (next === 'claude' || next === 'codex' || next === 'kimi') {
+                } else if (next === 'claude' || next === 'codex') {
                   patch.accountType = 'oauth';
                 }
                 setForm({ ...form, ...patch });
