@@ -197,10 +197,10 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	// vars on the credential package and are overridable from config because
 	// Kimi's CLI token endpoint is not a stable public API. See roadmap P3.
 	kimiTokenProvider := relaycredential.NewKimiTokenProvider(accountLookup)
-	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.Kimi.TokenRefreshUrl); override != "" {
+	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetTokenRefreshUrl()); override != "" {
 		relaycredential.KimiTokenRefreshURL = override
 	}
-	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.Kimi.ClientId); override != "" {
+	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.GetKimi().GetClientId()); override != "" {
 		relaycredential.KimiOAuthClientID = override
 	}
 
