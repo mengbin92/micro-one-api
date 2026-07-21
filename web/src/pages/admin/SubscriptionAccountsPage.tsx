@@ -1114,8 +1114,9 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
   const [form, setForm] = useState({ ...emptyCreateState });
 
   // When a static-key platform is selected, default account_type to
-  // static_key (it controls whether mimicry is applied; GLM/MiniMax do NOT
-  // get OAuth mimicry) and clear the refresh-token requirement.
+  // static_key (it marks the credential shape as a Coding-Plan key rather
+  // than an OAuth refresh pair; GLM/MiniMax still get mimicry like Claude)
+  // and clear the refresh-token requirement.
   const isStaticKey = STATIC_KEY_PLATFORMS.has(form.platform);
 
   const handleSubmit = () => {

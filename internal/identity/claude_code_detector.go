@@ -87,8 +87,11 @@ func IsMimickableAccountType(accountType string) bool {
 }
 
 // ShouldMimic decides whether mimicry should be applied for the given
-// platform. Mimicry is applied when the account is an OAuth subscription and
-// the inbound client is NOT a genuine first-party client.
+// platform/account. Mimicry is applied when the account uses a credential
+// shape that carries an upstream-recognised client identity (OAuth refresh or
+// static Coding-Plan key) AND the inbound client is NOT a genuine first-party
+// client. Plain API-key accounts (account_type empty/"api_key") are never
+// mimicked.
 //
 // Platform dispatch:
 //   - Codex: mimic unless the inbound is a genuine codex_cli_rs client.
@@ -96,15 +99,8 @@ func IsMimickableAccountType(accountType string) bool {
 //     Code, so the Claude Code client-detection + fingerprint path applies
 //     unchanged. Mimic unless the inbound is a genuine Claude Code client.
 //   - Kimi: the upstream limits use to its own CLI, so the Claude Code UA is
-//     NOT a safe passthrough. P3 will mint a Kimi-CLI detector; until then
-//     we always mimic Kimi accounts (no first-party passthrough) so we never
-//     forward a raw third-party UA.
-// ShouldMimic decides whether mimicry should be applied for the given
-// platform/account. Mimicry is applied when the account uses a credential
-// shape that carries an upstream-recognised client identity (OAuth refresh or
-// static Coding-Plan key) AND the inbound client is NOT a genuine first-party
-// client. Plain API-key accounts (account_type empty/"api_key") are never
-// mimicked.
+//     NOT a safe passthrough. Mimic unless the inbound is a genuine Kimi CLI
+//     client.
 func ShouldMimic(platform Platform, accountIsOAuth bool, header http.Header) bool {
 	if !accountIsOAuth {
 		return false

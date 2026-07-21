@@ -137,12 +137,8 @@ func DefaultKimiCLIFingerprint() Fingerprint {
 }
 
 // DefaultFingerprintForPlatform returns a fresh default fingerprint for the
-// given platform.
-// DefaultFingerprintForPlatform returns a fresh default fingerprint for the
 // given platform. Zhipu and MiniMax officially support Claude Code clients, so
-// they reuse the Claude Code fingerprint. Kimi is intended to carry its own
-// Kimi CLI fingerprint in P3; until then it falls back to the Claude Code
-// default so the function stays total.
+// they reuse the Claude Code fingerprint. Kimi uses the Kimi CLI fingerprint.
 func DefaultFingerprintForPlatform(p Platform) Fingerprint {
 	switch p {
 	case PlatformCodex:

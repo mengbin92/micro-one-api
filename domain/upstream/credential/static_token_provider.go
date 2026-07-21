@@ -2,7 +2,6 @@ package credential
 
 import (
 	"context"
-	"errors"
 	"fmt"
 )
 
@@ -79,10 +78,3 @@ var (
 	_ TokenProvider    = (*StaticTokenProvider)(nil)
 	_ TokenInvalidator = (*StaticTokenProvider)(nil)
 )
-
-// ErrStaticKeyInvalidated is a sentinel a future caller can use to mark a
-// static account as broken when the upstream has repeatedly rejected its key.
-// It is not currently returned by this provider (the runtime-blocker path
-// handles 401s), but is declared so the error-reason mapping in
-// internal/adaptor/errors.go has a stable symbol to reference.
-var ErrStaticKeyInvalidated = errors.New("credential: static access key rejected by upstream")
