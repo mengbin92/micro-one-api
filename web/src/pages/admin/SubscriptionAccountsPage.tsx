@@ -225,15 +225,26 @@ interface BatchQuotaTemplateForm {
 }
 
 // Subscription account platforms supported by the hybrid relay adaptor layer
-// (internal/relay/identity + internal/relay/credential). Keep in sync with
-// PlatformCodex / PlatformClaude.
+// (internal/identity + domain/upstream/credential). Keep in sync with the
+// PlatformXxx constants. Claude/Codex are OAuth; Zhipu/MiniMax use a static
+// Coding-Plan key; Kimi uses OAuth refresh. See
+// docs/design/cn-subscription-accounts-roadmap.md.
 const PLATFORM_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'claude', label: 'Claude (Claude Code OAuth)' },
   { value: 'codex', label: 'Codex (ChatGPT OAuth)' },
+  { value: 'zhipu', label: 'Zhipu GLM (Coding Plan, 静态 Key)' },
+  { value: 'minimax', label: 'MiniMax (Coding Plan, 静态 Key)' },
+  { value: 'kimi', label: 'Kimi (Kimi For Coding OAuth)' },
 ];
+
+// STATIC_KEY_PLATFORMS are platforms whose Coding Plan authenticates with a
+// long-lived API key (no refresh token). Their Create form requires only an
+// access_token; expires_at is left at 0 (semantic "never expires").
+const STATIC_KEY_PLATFORMS = new Set(['zhipu', 'minimax']);
 
 const ACCOUNT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'oauth', label: 'OAuth 订阅账号' },
+  { value: 'static_key', label: '静态 Key 订阅账号 (GLM/MiniMax Coding Plan)' },
 ];
 
 const QUOTA_RESET_STRATEGY_OPTIONS: Array<{ value: string; label: string }> = [
@@ -1102,15 +1113,25 @@ const emptyCreateState = {
 function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAccountDialogProps) {
   const [form, setForm] = useState({ ...emptyCreateState });
 
+  // When a static-key platform is selected, default account_type to
+  // static_key (it controls whether mimicry is applied; GLM/MiniMax do NOT
+  // get OAuth mimicry) and clear the refresh-token requirement.
+  const isStaticKey = STATIC_KEY_PLATFORMS.has(form.platform);
+
   const handleSubmit = () => {
-    if (!form.name.trim() || !form.accessToken.trim() || !form.refreshToken.trim()) {
-      toast.error('名称、access_token、refresh_token 为必填项');
+    if (!form.name.trim() || !form.accessToken.trim()) {
+      toast.error('名称、access_token 为必填项');
       return;
     }
+    if (!isStaticKey && !form.refreshToken.trim()) {
+      toast.error('OAuth 平台需要 refresh_token');
+      return;
+    }
+    const accountType = isStaticKey && form.accountType === 'oauth' ? 'static_key' : form.accountType;
     onSubmit({
       name: form.name.trim(),
       platform: form.platform,
-      account_type: form.accountType,
+      account_type: accountType,
       group: form.group.trim(),
       models: form.models.trim(),
       priority: parseInt(form.priority || '0', 10),
@@ -1148,7 +1169,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
         <DialogHeader>
           <DialogTitle>新建订阅账号</DialogTitle>
           <DialogDescription>
-            添加 Claude / Codex OAuth 订阅账号，用于混合中继的身份伪装与协议转换。
+            添加订阅账号（Claude / Codex / 智谱 GLM / MiniMax / Kimi），用于混合中继的身份伪装与协议转换。GLM/MiniMax 填静态 Key 即可，Kimi 走 OAuth。
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 pt-2 sm:grid-cols-2">
@@ -1166,7 +1187,16 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             <select
               id="sub-platform"
               value={form.platform}
-              onChange={(e) => setForm({ ...form, platform: e.target.value })}
+              onChange={(e) => {
+                const next = e.target.value;
+                const patch: { platform: string; accountType?: string } = { platform: next };
+                if (STATIC_KEY_PLATFORMS.has(next)) {
+                  patch.accountType = 'static_key';
+                } else if (next === 'claude' || next === 'codex' || next === 'kimi') {
+                  patch.accountType = 'oauth';
+                }
+                setForm({ ...form, ...patch });
+              }}
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
             >
               {PLATFORM_OPTIONS.map((option) => (
@@ -1337,22 +1367,28 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-access-token">Access Token</Label>
+            <Label htmlFor="sub-access-token">
+              {isStaticKey ? 'Coding Plan Key（即 Access Token）' : 'Access Token'}
+            </Label>
             <Input
               id="sub-access-token"
               type="password"
               value={form.accessToken}
               onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
-              placeholder="sk-ant-..."
+              placeholder={isStaticKey ? 'GLM/MiniMax Coding Plan Key' : 'sk-ant-...'}
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-refresh-token">Refresh Token</Label>
+            <Label htmlFor="sub-refresh-token">
+              Refresh Token{isStaticKey ? '（静态 Key 平台无需填写）' : ''}
+            </Label>
             <Input
               id="sub-refresh-token"
               type="password"
               value={form.refreshToken}
               onChange={(e) => setForm({ ...form, refreshToken: e.target.value })}
+              placeholder={isStaticKey ? 'GLM/MiniMax 留空' : 'sk-ant-oat-...'}
+              disabled={isStaticKey}
             />
           </div>
           <div className="space-y-2 sm:col-span-2">

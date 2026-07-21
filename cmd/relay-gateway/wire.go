@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-kratos/kratos/v3"
@@ -184,13 +185,38 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	accountLookup := relaydata.NewChannelSubscriptionAccountStore(channelClient)
 	claudeTokenProvider := relaycredential.NewClaudeTokenProvider(accountLookup)
 	codexTokenProvider := relaycredential.NewOpenAITokenProvider(accountLookup)
+	// StaticTokenProvider serves the domestic "Coding Plan" vendors that use a
+	// long-lived API key with no refresh flow (Zhipu GLM, MiniMax). One shared
+	// instance serves all static platforms; the platform tag lives on the
+	// account record, not on the provider. It is deliberately NOT enrolled in
+	// the RefreshTask map (no refresh token, no expiry).
+	// See docs/design/cn-subscription-accounts-roadmap.md (P1/P2).
+	staticTokenProvider := relaycredential.NewStaticTokenProvider(accountLookup)
+	// Kimi uses an OAuth refresh flow; its provider is structurally identical
+	// to the Claude/Codex providers. The client ID + refresh URL are exported
+	// vars on the credential package and are overridable from config because
+	// Kimi's CLI token endpoint is not a stable public API. See roadmap P3.
+	kimiTokenProvider := relaycredential.NewKimiTokenProvider(accountLookup)
+	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.Kimi.TokenRefreshUrl); override != "" {
+		relaycredential.KimiTokenRefreshURL = override
+	}
+	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.Kimi.ClientId); override != "" {
+		relaycredential.KimiOAuthClientID = override
+	}
 
+	// tokenFactory is a table-driven platform -> TokenProvider dispatch. Adding
+	// a new platform is one case here + (for refreshable platforms) one entry
+	// in the refreshProviders map below.
 	tokenFactory := func(platform relayidentity.Platform) relaycredential.TokenProvider {
 		switch platform {
 		case relayidentity.PlatformClaude:
 			return claudeTokenProvider
 		case relayidentity.PlatformCodex:
 			return codexTokenProvider
+		case relayidentity.PlatformZhipu, relayidentity.PlatformMinimax:
+			return staticTokenProvider
+		case relayidentity.PlatformKimi:
+			return kimiTokenProvider
 		default:
 			return nil
 		}
@@ -200,12 +226,17 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	accountResolver := accountLookup
 	oauthHTTPClient := &http.Client{Timeout: providerTimeout}
 
+	// refreshProviders maps a platform to the provider that can refresh its
+	// tokens. Static platforms (zhipu/minimax) are intentionally absent: their
+	// keys do not expire, so enrolling them would only generate no-op sweep
+	// work.
 	var refreshTask *relaycredential.RefreshTask
 	if cfg.Bootstrap.HybridAdaptor.GetTokenRefreshEnabled() {
 		refreshTask = relaycredential.NewRefreshTask(
 			map[relaycredential.Platform]relaycredential.TokenProvider{
 				relaycredential.PlatformClaude: claudeTokenProvider,
-				relaycredential.PlatformCodex:  codexTokenProvider,
+				relaycredential.PlatformCodex:   codexTokenProvider,
+				relaycredential.PlatformKimi:    kimiTokenProvider,
 			},
 			accountLookup,
 			func(accountID int64) relaycredential.Platform {

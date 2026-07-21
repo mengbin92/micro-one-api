@@ -2317,6 +2317,12 @@ func channelTypeToString(channelType int32) string {
 		return "CodexOAuth"
 	case relayprovider.ChannelTypeClaudeOAuth:
 		return "ClaudeOAuth"
+	case relayprovider.ChannelTypeZhipuPlan:
+		return "ZhipuPlan"
+	case relayprovider.ChannelTypeMinimaxPlan:
+		return "MinimaxPlan"
+	case relayprovider.ChannelTypeKimiOAuth:
+		return "KimiOAuth"
 	default:
 		return "Unknown"
 	}

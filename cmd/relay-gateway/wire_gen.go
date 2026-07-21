@@ -44,6 +44,7 @@ import (
 	"micro-one-api/platform/tls"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -196,12 +197,26 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	claudeTokenProvider := credential.NewClaudeTokenProvider(accountLookup)
 	codexTokenProvider := credential.NewOpenAITokenProvider(accountLookup)
 
+	staticTokenProvider := credential.NewStaticTokenProvider(accountLookup)
+
+	kimiTokenProvider := credential.NewKimiTokenProvider(accountLookup)
+	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.Kimi.TokenRefreshUrl); override != "" {
+		credential.KimiTokenRefreshURL = override
+	}
+	if override := strings.TrimSpace(cfg.Bootstrap.HybridAdaptor.Kimi.ClientId); override != "" {
+		credential.KimiOAuthClientID = override
+	}
+
 	tokenFactory := func(platform identity.Platform) credential.TokenProvider {
 		switch platform {
 		case identity.PlatformClaude:
 			return claudeTokenProvider
 		case identity.PlatformCodex:
 			return codexTokenProvider
+		case identity.PlatformZhipu, identity.PlatformMinimax:
+			return staticTokenProvider
+		case identity.PlatformKimi:
+			return kimiTokenProvider
 		default:
 			return nil
 		}
@@ -211,10 +226,14 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	accountResolver := accountLookup
 	oauthHTTPClient := &http.Client{Timeout: providerTimeout}
 
+	// refreshProviders maps a platform to the provider that can refresh its
+	// tokens. Static platforms (zhipu/minimax) are intentionally absent: their
+	// keys do not expire, so enrolling them would only generate no-op sweep
+	// work.
 	var refreshTask *credential.RefreshTask
 	if cfg.Bootstrap.HybridAdaptor.GetTokenRefreshEnabled() {
 		refreshTask = credential.NewRefreshTask(
-			map[credential.Platform]credential.TokenProvider{credential.PlatformClaude: claudeTokenProvider, credential.PlatformCodex: codexTokenProvider},
+			map[credential.Platform]credential.TokenProvider{credential.PlatformClaude: claudeTokenProvider, credential.PlatformCodex: codexTokenProvider, credential.PlatformKimi: kimiTokenProvider},
 			accountLookup,
 			func(accountID int64) credential.Platform {
 				return accountLookup.PlatformOf(context.Background(), accountID)

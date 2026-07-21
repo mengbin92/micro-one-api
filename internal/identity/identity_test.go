@@ -65,7 +65,7 @@ func TestIsCodexCLIClient(t *testing.T) {
 }
 
 func TestShouldMimic(t *testing.T) {
-	// Non-OAuth accounts never mimic.
+	// Non-mimickable accounts never mimic.
 	if ShouldMimic(PlatformClaude, false, header("User-Agent", "python")) {
 		t.Fatal("non-OAuth account should not mimic")
 	}
@@ -83,6 +83,47 @@ func TestShouldMimic(t *testing.T) {
 	}
 	if ShouldMimic(PlatformCodex, true, header("originator", "codex_cli_rs")) {
 		t.Fatal("Codex OAuth + genuine codex client should not mimic")
+	}
+	// Zhipu / MiniMax reuse the Claude Code client detection (officially
+	// support Claude Code), so a genuine CC client should not be mimicked.
+	if ShouldMimic(PlatformZhipu, true, header("User-Agent", "claude-cli/1.0")) {
+		t.Fatal("Zhipu OAuth + genuine CC client should not mimic")
+	}
+	if !ShouldMimic(PlatformZhipu, true, header("User-Agent", "python")) {
+		t.Fatal("Zhipu OAuth + third-party client should mimic")
+	}
+	if ShouldMimic(PlatformMinimax, true, header("User-Agent", "claude-cli/1.0")) {
+		t.Fatal("MiniMax OAuth + genuine CC client should not mimic")
+	}
+	// Kimi: only a genuine Kimi CLI client skips mimicry; everything else
+	// (including a Claude Code UA, which is NOT a safe passthrough for Kimi)
+	// is mimicked.
+	if ShouldMimic(PlatformKimi, true, header("User-Agent", "kimi-cli/0.1.0")) {
+		t.Fatal("Kimi OAuth + genuine Kimi CLI client should not mimic")
+	}
+	if !ShouldMimic(PlatformKimi, true, header("User-Agent", "claude-cli/1.0")) {
+		t.Fatal("Kimi OAuth + Claude Code UA should still mimic (not a safe passthrough)")
+	}
+	if !ShouldMimic(PlatformKimi, true, header("User-Agent", "python")) {
+		t.Fatal("Kimi OAuth + third-party client should mimic")
+	}
+}
+
+func TestIsMimickableAccountType(t *testing.T) {
+	for _, tc := range []struct {
+		accountType string
+		want        bool
+	}{
+		{"", false},
+		{"api_key", false},
+		{"oauth", true},
+		{"static_key", true},
+		{"setup_token", true},
+		{"unknown", false},
+	} {
+		if got := IsMimickableAccountType(tc.accountType); got != tc.want {
+			t.Errorf("IsMimickableAccountType(%q) = %v, want %v", tc.accountType, got, tc.want)
+		}
 	}
 }
 

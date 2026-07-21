@@ -151,6 +151,11 @@ const PROVIDER_NAMES: Record<number, string> = {
   4: 'Gemini',
   14: 'DeepSeek',
   23: 'OpenRouter',
+  32: 'CodexOAuth',
+  33: 'ClaudeOAuth',
+  34: 'ZhipuPlan',
+  35: 'MinimaxPlan',
+  36: 'KimiOAuth',
   37: 'SiliconFlow',
 };
 
@@ -164,6 +169,9 @@ const LOG_TYPE_NAMES: Record<string, string> = {
 const SUBSCRIPTION_PLATFORM_LABELS: Record<string, string> = {
   claude: 'Claude',
   codex: 'Codex',
+  zhipu: 'Zhipu GLM',
+  minimax: 'MiniMax',
+  kimi: 'Kimi',
 };
 
 function subscriptionPlatformLabel(platform?: string) {

@@ -49,6 +49,22 @@ func init() {
 	Register(provider.ChannelTypeCodexOAuth, func() Adaptor {
 		return &lazyOAuthAdaptor{platform: identity.PlatformCodex}
 	})
+	// Domestic "Coding Plan" vendors - Anthropic-compatible upstreams.
+	// Zhipu GLM and MiniMax use static API keys (StaticTokenProvider);
+	// Kimi uses OAuth refresh (KimiTokenProvider, wired in P3). All three
+	// reuse the Claude OAuth adaptor's request construction because their
+	// upstreams speak the Anthropic Messages API; only the BaseURL (set on
+	// the channel) and the token provider differ.
+	// See docs/design/cn-subscription-accounts-roadmap.md.
+	Register(provider.ChannelTypeZhipuPlan, func() Adaptor {
+		return &lazyOAuthAdaptor{platform: identity.PlatformZhipu}
+	})
+	Register(provider.ChannelTypeMinimaxPlan, func() Adaptor {
+		return &lazyOAuthAdaptor{platform: identity.PlatformMinimax}
+	})
+	Register(provider.ChannelTypeKimiOAuth, func() Adaptor {
+		return &lazyOAuthAdaptor{platform: identity.PlatformKimi}
+	})
 }
 
 // lazyOAuthAdaptor defers the construction of a concrete OAuth adaptor until
@@ -80,6 +96,14 @@ func (l *lazyOAuthAdaptor) build(rc *RelayContext) (Adaptor, error) {
 		return NewClaudeOAuthAdaptor(tp, globalIdentityService, models), nil
 	case identity.PlatformCodex:
 		return NewCodexOAuthAdaptor(tp, globalIdentityService, models), nil
+	case identity.PlatformZhipu, identity.PlatformMinimax, identity.PlatformKimi:
+		// All three domestic vendors expose an Anthropic-compatible Messages
+		// API, so the Claude OAuth adaptor's request construction, header
+		// mimicry and response/stream conversion apply unchanged. The vendor
+		// endpoint is selected via the channel's BaseURL (set at channel
+		// creation); the token provider is resolved by the platform-tagged
+		// factory wired in cmd/relay-gateway/wire.go.
+		return NewClaudeOAuthAdaptor(tp, globalIdentityService, models), nil
 	default:
 		return nil, errUnknownOAuthPlatform
 	}

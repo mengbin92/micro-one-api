@@ -116,6 +116,16 @@ message HybridAdaptor {
   string refresh_lookahead = 4 [json_name = "refresh_lookahead"];
   TokenRefresh token_refresh = 5 [json_name = "token_refresh"];
   RuntimeBlock runtime_block = 6 [json_name = "runtime_block"];
+  KimiOAuth kimi = 7 [json_name = "kimi"];
+}
+
+// KimiOAuth holds overridable Kimi For Coding OAuth parameters. Kimi's CLI
+// token endpoint and client_id are not a stable public API and may change
+// between CLI releases, so both are config-overridable. See
+// docs/design/cn-subscription-accounts-roadmap.md (P3).
+message KimiOAuth {
+  string token_refresh_url = 1 [json_name = "token_refresh_url"];
+  string client_id = 2 [json_name = "client_id"];
 }
 
 message TokenRefresh {

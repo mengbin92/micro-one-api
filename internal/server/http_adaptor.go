@@ -750,6 +750,12 @@ func subscriptionMetricPlatform(plan *relaybiz.RelayPlan) string {
 			return "codex"
 		case relayprovider.ChannelTypeClaudeOAuth:
 			return "claude"
+		case relayprovider.ChannelTypeZhipuPlan:
+			return "zhipu"
+		case relayprovider.ChannelTypeMinimaxPlan:
+			return "minimax"
+		case relayprovider.ChannelTypeKimiOAuth:
+			return "kimi"
 		}
 	}
 	return "unknown"
@@ -901,6 +907,12 @@ func fallbackSubscriptionAccountMetadata(plan *relaybiz.RelayPlan, ch *relaybiz.
 		meta.Platform = relaycredential.PlatformCodex
 	case relayprovider.ChannelTypeClaudeOAuth:
 		meta.Platform = relaycredential.PlatformClaude
+	case relayprovider.ChannelTypeZhipuPlan:
+		meta.Platform = relaycredential.PlatformZhipu
+	case relayprovider.ChannelTypeMinimaxPlan:
+		meta.Platform = relaycredential.PlatformMinimax
+	case relayprovider.ChannelTypeKimiOAuth:
+		meta.Platform = relaycredential.PlatformKimi
 	}
 	meta.AccessToken = ch.Key
 	return meta

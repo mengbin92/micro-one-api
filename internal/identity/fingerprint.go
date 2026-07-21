@@ -24,6 +24,16 @@ const (
 	PlatformCodex Platform = "codex"
 	// PlatformClaude is the Claude Code (Anthropic Messages API) subscription.
 	PlatformClaude Platform = "claude"
+	// PlatformZhipu is the Zhipu GLM Coding Plan (Anthropic-compatible
+	// Messages API, static API key). See
+	// docs/design/cn-subscription-accounts-roadmap.md.
+	PlatformZhipu Platform = "zhipu"
+	// PlatformMinimax is the MiniMax Coding Plan (Anthropic-compatible
+	// Messages API, static API key).
+	PlatformMinimax Platform = "minimax"
+	// PlatformKimi is the Kimi For Coding subscription (Anthropic-compatible
+	// Messages API, OAuth refresh token).
+	PlatformKimi Platform = "kimi"
 )
 
 // Fingerprint is a cached snapshot of the client identity an account presents
@@ -107,12 +117,41 @@ func DefaultCodexFingerprint() Fingerprint {
 	}
 }
 
+// DefaultKimiCLIFingerprint builds a Fingerprint that resembles the Kimi CLI
+// (kimi-cli) client. Kimi For Coding limits use to its own CLI, so the relay
+// must present a Kimi-CLI identity rather than a Claude Code one. The version
+// strings are placeholders pending capture from real Kimi CLI traffic (roadmap
+// P3 §5); they are overridable via the FingerprintSnapshot stored on the
+// account so operators can update them without a code change.
+func DefaultKimiCLIFingerprint() Fingerprint {
+	return Fingerprint{
+		ClientID:                randomClientID(),
+		UserAgent:               "kimi-cli/0.1.0 (external, cli)",
+		StainlessLang:           "js",
+		StainlessPackageVersion: "0.1.0",
+		StainlessOS:             stainlessOS(),
+		StainlessArch:           stainlessArch(),
+		StainlessRuntime:        "node",
+		StainlessRuntimeVersion: "v22.11.0",
+	}
+}
+
 // DefaultFingerprintForPlatform returns a fresh default fingerprint for the
 // given platform.
+// DefaultFingerprintForPlatform returns a fresh default fingerprint for the
+// given platform. Zhipu and MiniMax officially support Claude Code clients, so
+// they reuse the Claude Code fingerprint. Kimi is intended to carry its own
+// Kimi CLI fingerprint in P3; until then it falls back to the Claude Code
+// default so the function stays total.
 func DefaultFingerprintForPlatform(p Platform) Fingerprint {
 	switch p {
 	case PlatformCodex:
 		return DefaultCodexFingerprint()
+	case PlatformZhipu, PlatformMinimax:
+		// Officially-supported Claude Code clients.
+		return DefaultClaudeCodeFingerprint()
+	case PlatformKimi:
+		return DefaultKimiCLIFingerprint()
 	default:
 		return DefaultClaudeCodeFingerprint()
 	}

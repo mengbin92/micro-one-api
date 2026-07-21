@@ -73,6 +73,11 @@ const PROVIDER_NAMES: Record<number, string> = {
   4: 'Gemini',
   14: 'DeepSeek',
   23: 'OpenRouter',
+  32: 'CodexOAuth',
+  33: 'ClaudeOAuth',
+  34: 'ZhipuPlan',
+  35: 'MinimaxPlan',
+  36: 'KimiOAuth',
   37: 'SiliconFlow',
 };
 

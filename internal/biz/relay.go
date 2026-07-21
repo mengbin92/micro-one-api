@@ -536,6 +536,12 @@ func subscriptionPlatformChannelType(platform string) int32 {
 		return relayprovider.ChannelTypeCodexOAuth
 	case "claude":
 		return relayprovider.ChannelTypeClaudeOAuth
+	case "zhipu":
+		return relayprovider.ChannelTypeZhipuPlan
+	case "minimax":
+		return relayprovider.ChannelTypeMinimaxPlan
+	case "kimi":
+		return relayprovider.ChannelTypeKimiOAuth
 	default:
 		return 0
 	}
