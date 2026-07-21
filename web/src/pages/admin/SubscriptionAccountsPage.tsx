@@ -1166,7 +1166,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
         <KeyRound className="size-4" />
         新建订阅账号
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>新建订阅账号</DialogTitle>
           <DialogDescription>
