@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, AlertTriangle, Boxes, CreditCard, Database, Gauge, KeyRound, LineChart, Scale, TrendingUp, Users } from 'lucide-react';
 
@@ -11,6 +12,11 @@ import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
 import { quotaPerUnitFromOptions, quotaToCurrencyUnits } from '@/lib/amount';
 import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
+import {
+  normalizeSubscriptionAccount,
+  type RawSubscriptionAccount,
+  type SubscriptionAccountSummary as AdminSubscriptionAccount,
+} from '@/lib/subscription-account';
 
 interface AdminTotals {
   users?: number;
@@ -39,45 +45,7 @@ interface AdminUser {
   status?: number;
 }
 
-interface AdminSubscriptionAccount {
-  id?: number;
-  name?: string;
-  platform?: string;
-  account_type?: string;
-  accountType?: string;
-  status?: number;
-  group?: string;
-  models?: string;
-  priority?: number;
-  account_id?: string;
-  accountId?: string;
-  expires_at?: number;
-  expiresAt?: number;
-  updated_at?: number;
-  updatedAt?: number;
-  // Quota + recovery metadata (returned by backend; previously undeclared)
-  rate_limited_until?: number;
-  rateLimitedUntil?: number;
-  quota_used_percent?: number;
-  quota_used_usd?: number;
-  quota_limit_usd?: number;
-  quota_5h_used_usd?: number;
-  quota_5h_limit_usd?: number;
-  quota_5h_window_start?: number;
-  quota_daily_used_usd?: number;
-  quota_daily_limit_usd?: number;
-  quota_daily_window_start?: number;
-  quota_weekly_used_usd?: number;
-  quota_weekly_limit_usd?: number;
-  quota_weekly_window_start?: number;
-  primary_quota_used_percent?: number | null;
-  secondary_quota_used_percent?: number | null;
-  quota_snapshot_paused?: boolean;
-  unschedulable_reason?: string;
-  recovery_policy?: string;
-  expected_recovery_at?: number;
-  unschedulable_since?: number;
-}
+
 
 interface AdminChannel {
   id: string | number;
@@ -148,7 +116,7 @@ interface AdminSummary {
   totals?: AdminTotals;
   recent_users?: AdminUser[];
   channels?: AdminChannel[];
-  subscription_accounts?: AdminSubscriptionAccount[];
+  subscription_accounts?: RawSubscriptionAccount[];
   recent_logs?: AdminLog[];
   cost_analysis?: CostAnalysis;
   top_models?: UsageAggregateItem[];
@@ -215,14 +183,13 @@ function effectiveWindowUsedOV(used: number, windowStart: number | undefined, no
   return used;
 }
 
-function SubscriptionQuotaMini({ account }: { account: AdminSubscriptionAccount }) {
-  const nowUnix = Math.floor(Date.now() / 1000);
+function SubscriptionQuotaMini({ account, nowUnix }: { account: AdminSubscriptionAccount; nowUnix: number }) {
   const rows: Array<{ label: string; used: number; limit: number }> = [];
   const pairs = [
-    { label: '总额', used: account.quota_used_usd ?? 0, limit: account.quota_limit_usd ?? 0 },
-    { label: '5h', used: effectiveWindowUsedOV(account.quota_5h_used_usd ?? 0, account.quota_5h_window_start, nowUnix, FIVE_H_S_OV), limit: account.quota_5h_limit_usd ?? 0 },
-    { label: '24h', used: effectiveWindowUsedOV(account.quota_daily_used_usd ?? 0, account.quota_daily_window_start, nowUnix, DAY_S_OV), limit: account.quota_daily_limit_usd ?? 0 },
-    { label: '7d', used: effectiveWindowUsedOV(account.quota_weekly_used_usd ?? 0, account.quota_weekly_window_start, nowUnix, WEEK_S_OV), limit: account.quota_weekly_limit_usd ?? 0 },
+    { label: '总额', used: account.quotaUsedUsd ?? 0, limit: account.quotaLimitUsd ?? 0 },
+    { label: '5h', used: effectiveWindowUsedOV(account.quota5hUsedUsd ?? 0, account.quota5hWindowStart, nowUnix, FIVE_H_S_OV), limit: account.quota5hLimitUsd ?? 0 },
+    { label: '24h', used: effectiveWindowUsedOV(account.quotaDailyUsedUsd ?? 0, account.quotaDailyWindowStart, nowUnix, DAY_S_OV), limit: account.quotaDailyLimitUsd ?? 0 },
+    { label: '7d', used: effectiveWindowUsedOV(account.quotaWeeklyUsedUsd ?? 0, account.quotaWeeklyWindowStart, nowUnix, WEEK_S_OV), limit: account.quotaWeeklyLimitUsd ?? 0 },
   ];
   for (const p of pairs) {
     if (p.limit > 0 || p.used > 0) rows.push({ label: p.label, used: p.used, limit: p.limit });
@@ -230,7 +197,7 @@ function SubscriptionQuotaMini({ account }: { account: AdminSubscriptionAccount 
 
   // Upstream snapshot percent (single number)
   const upstreamPercent =
-    account.primary_quota_used_percent ?? account.secondary_quota_used_percent ?? account.quota_used_percent ?? null;
+    account.primaryQuotaUsedPercent ?? account.secondaryQuotaUsedPercent ?? account.quotaUsedPercent ?? null;
 
   if (rows.length === 0 && upstreamPercent == null) {
     return <span className="text-xs text-muted-foreground">-</span>;
@@ -506,7 +473,7 @@ function TopUsageChartCard({
 }
 
 export function AdminOverviewPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ['admin-summary'],
     queryFn: async () => {
       const res = await adminApiClient.get('/admin/summary');
@@ -514,9 +481,15 @@ export function AdminOverviewPage() {
     },
   });
 
+  // Render clock derived from the query fetch time (pure render).
+  const nowUnix = dataUpdatedAt ? Math.floor(dataUpdatedAt / 1000) : 0;
+
   const totals = data?.totals ?? {};
   const channels = data?.channels ?? [];
-  const subscriptionAccounts = data?.subscription_accounts ?? [];
+  const subscriptionAccounts = useMemo(
+    () => (data?.subscription_accounts ?? []).map(normalizeSubscriptionAccount),
+    [data],
+  );
   const logs = data?.recent_logs ?? [];
   const users = data?.recent_users ?? [];
   const costAnalysis = data?.cost_analysis ?? {};
@@ -801,36 +774,37 @@ export function AdminOverviewPage() {
                         <TableCell>{subscriptionPlatformLabel(account.platform)}</TableCell>
                         <TableCell>{account.group || '-'}</TableCell>
                         <TableCell className="hidden md:table-cell">{formatInteger(account.priority ?? 0)}</TableCell>
-                        <TableCell className="hidden lg:table-cell">{formatDate(account.expires_at ?? account.expiresAt)}</TableCell>
+                        <TableCell className="hidden lg:table-cell">{formatDate(account.expiresAt)}</TableCell>
                         <TableCell className="hidden xl:table-cell">
-                          <SubscriptionQuotaMini account={account} />
+                          <SubscriptionQuotaMini account={account} nowUnix={nowUnix} />
                         </TableCell>
                         <TableCell>
                           <AccountStatusBadge
                             info={{
                               status: account.status ?? 0,
-                              expiresAt: account.expires_at ?? account.expiresAt,
-                              rateLimitedUntil: account.rate_limited_until ?? account.rateLimitedUntil,
-                              quotaUsedPercent: account.quota_used_percent,
-                              primaryQuotaUsedPercent: account.primary_quota_used_percent,
-                              secondaryQuotaUsedPercent: account.secondary_quota_used_percent,
-                              quotaSnapshotPaused: account.quota_snapshot_paused,
-                              quotaLimitUsd: account.quota_limit_usd,
-                              quotaUsedUsd: account.quota_used_usd,
-                              quota5hLimitUsd: account.quota_5h_limit_usd,
-                              quota5hUsedUsd: account.quota_5h_used_usd,
-                              quota5hWindowStart: account.quota_5h_window_start,
-                              quotaDailyLimitUsd: account.quota_daily_limit_usd,
-                              quotaDailyUsedUsd: account.quota_daily_used_usd,
-                              quotaDailyWindowStart: account.quota_daily_window_start,
-                              quotaWeeklyLimitUsd: account.quota_weekly_limit_usd,
-                              quotaWeeklyUsedUsd: account.quota_weekly_used_usd,
-                              quotaWeeklyWindowStart: account.quota_weekly_window_start,
-                              unschedulableReason: account.unschedulable_reason,
-                              recoveryPolicy: account.recovery_policy,
-                              expectedRecoveryAt: account.expected_recovery_at,
-                              unschedulableSince: account.unschedulable_since,
+                              expiresAt: account.expiresAt,
+                              rateLimitedUntil: account.rateLimitedUntil,
+                              quotaUsedPercent: account.quotaUsedPercent,
+                              primaryQuotaUsedPercent: account.primaryQuotaUsedPercent,
+                              secondaryQuotaUsedPercent: account.secondaryQuotaUsedPercent,
+                              quotaSnapshotPaused: account.quotaSnapshotPaused,
+                              quotaLimitUsd: account.quotaLimitUsd,
+                              quotaUsedUsd: account.quotaUsedUsd,
+                              quota5hLimitUsd: account.quota5hLimitUsd,
+                              quota5hUsedUsd: account.quota5hUsedUsd,
+                              quota5hWindowStart: account.quota5hWindowStart,
+                              quotaDailyLimitUsd: account.quotaDailyLimitUsd,
+                              quotaDailyUsedUsd: account.quotaDailyUsedUsd,
+                              quotaDailyWindowStart: account.quotaDailyWindowStart,
+                              quotaWeeklyLimitUsd: account.quotaWeeklyLimitUsd,
+                              quotaWeeklyUsedUsd: account.quotaWeeklyUsedUsd,
+                              quotaWeeklyWindowStart: account.quotaWeeklyWindowStart,
+                              unschedulableReason: account.unschedulableReason,
+                              recoveryPolicy: account.recoveryPolicy,
+                              expectedRecoveryAt: account.expectedRecoveryAt,
+                              unschedulableSince: account.unschedulableSince,
                             }}
+                            now={nowUnix}
                           />
                         </TableCell>
                       </TableRow>

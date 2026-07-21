@@ -27,6 +27,11 @@ import {
 } from '@/components/ui/table';
 import { HealthDistributionChart } from '@/components/admin/HealthCharts';
 import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
+import {
+  normalizeSubscriptionAccount,
+  type RawSubscriptionAccount,
+  type SubscriptionAccountSummary,
+} from '@/lib/subscription-account';
 import { cn } from '@/lib/utils';
 
 interface ChannelHealth {
@@ -466,44 +471,7 @@ export function ChannelHealthPage() {
   );
 }
 
-interface SubscriptionAccountSummary {
-  id: number;
-  name: string;
-  platform: string;
-  status: number;
-  account_type?: string;
-  group?: string;
-  account_id?: string;
-  expires_at?: number;
-  updated_at?: number;
-  last_used_at?: number;
-  rate_limited_until?: number;
-  quota_used_percent?: number;
-  quota_reset_at?: number;
-  concurrency?: number;
-  primary_quota_used_percent?: number | null;
-  primary_quota_reset_after_seconds?: number | null;
-  primary_quota_window_minutes?: number | null;
-  secondary_quota_used_percent?: number | null;
-  secondary_quota_reset_after_seconds?: number | null;
-  secondary_quota_window_minutes?: number | null;
-  quota_snapshot_paused?: boolean;
-  quota_limit_usd?: number;
-  quota_used_usd?: number;
-  quota_5h_limit_usd?: number;
-  quota_5h_used_usd?: number;
-  quota_5h_window_start?: number;
-  quota_daily_limit_usd?: number;
-  quota_daily_used_usd?: number;
-  quota_daily_window_start?: number;
-  quota_weekly_limit_usd?: number;
-  quota_weekly_used_usd?: number;
-  quota_weekly_window_start?: number;
-  unschedulable_reason?: string;
-  recovery_policy?: string;
-  expected_recovery_at?: number;
-  unschedulable_since?: number;
-}
+
 
 const HOUR_S = 3600;
 const DAY_S = 86400;
@@ -535,32 +503,32 @@ function effectiveWindowUsedCHP(used: number, windowStart: number | undefined, n
 
 function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccountSummary; now: number }) {
   const localRows: Array<{ label: string; used?: number; limit?: number; windowStart?: number; windowS: number }> = [
-    { label: '总额', used: account.quota_used_usd, limit: account.quota_limit_usd, windowS: 0 },
-    { label: '5h', used: account.quota_5h_used_usd, limit: account.quota_5h_limit_usd, windowStart: account.quota_5h_window_start, windowS: FIVE_H_S },
-    { label: '24h', used: account.quota_daily_used_usd, limit: account.quota_daily_limit_usd, windowStart: account.quota_daily_window_start, windowS: DAY_S },
-    { label: '7d', used: account.quota_weekly_used_usd, limit: account.quota_weekly_limit_usd, windowStart: account.quota_weekly_window_start, windowS: WEEK_S },
+    { label: '总额', used: account.quotaUsedUsd, limit: account.quotaLimitUsd, windowS: 0 },
+    { label: '5h', used: account.quota5hUsedUsd, limit: account.quota5hLimitUsd, windowStart: account.quota5hWindowStart, windowS: FIVE_H_S },
+    { label: '24h', used: account.quotaDailyUsedUsd, limit: account.quotaDailyLimitUsd, windowStart: account.quotaDailyWindowStart, windowS: DAY_S },
+    { label: '7d', used: account.quotaWeeklyUsedUsd, limit: account.quotaWeeklyLimitUsd, windowStart: account.quotaWeeklyWindowStart, windowS: WEEK_S },
   ].filter((row) => (row.used ?? 0) > 0 || (row.limit ?? 0) > 0);
 
   const upstreamWindows: Array<{ key: string; label: string; usedPercent?: number | null; resetAfter?: number | null }> = [
     {
       key: 'primary',
-      label: account.primary_quota_window_minutes === 300 ? '5h' : account.primary_quota_window_minutes === 10080 ? '7d' : '主',
-      usedPercent: account.primary_quota_used_percent,
-      resetAfter: account.primary_quota_reset_after_seconds,
+      label: account.primaryQuotaWindowMinutes === 300 ? '5h' : account.primaryQuotaWindowMinutes === 10080 ? '7d' : '主',
+      usedPercent: account.primaryQuotaUsedPercent,
+      resetAfter: account.primaryQuotaResetAfterSeconds,
     },
     {
       key: 'secondary',
-      label: account.secondary_quota_window_minutes === 300 ? '5h' : account.secondary_quota_window_minutes === 10080 ? '7d' : '次',
-      usedPercent: account.secondary_quota_used_percent,
-      resetAfter: account.secondary_quota_reset_after_seconds,
+      label: account.secondaryQuotaWindowMinutes === 300 ? '5h' : account.secondaryQuotaWindowMinutes === 10080 ? '7d' : '次',
+      usedPercent: account.secondaryQuotaUsedPercent,
+      resetAfter: account.secondaryQuotaResetAfterSeconds,
     },
   ].filter((w) => w.usedPercent != null || w.resetAfter != null);
 
   if (localRows.length === 0 && upstreamWindows.length === 0) {
-    if (account.quota_used_percent != null || account.quota_reset_at) {
-      const usedPercent = account.quota_used_percent ?? 0;
+    if (account.quotaUsedPercent != null || account.quotaResetAt) {
+      const usedPercent = account.quotaUsedPercent ?? 0;
       const barColor = usedPercent >= 100 ? 'bg-red-500' : usedPercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
-      const resetAfter = account.quota_reset_at ? Math.max(0, account.quota_reset_at - now) : null;
+      const resetAfter = account.quotaResetAt ? Math.max(0, account.quotaResetAt - now) : null;
       return (
         <div className="min-w-[140px] space-y-0.5">
           <div className="flex items-center justify-between gap-2 text-xs">
@@ -635,8 +603,8 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
       // we read res.data.accounts instead of unwrapApiData(...).
       const params = new URLSearchParams({ page: '1', page_size: '1000' });
       const res = await adminApiClient.get(`/subscription-accounts?${params}`);
-      const payload = res.data as { accounts?: SubscriptionAccountSummary[]; total?: number };
-      return payload.accounts ?? [];
+      const payload = res.data as { accounts?: RawSubscriptionAccount[]; total?: number };
+      return (payload.accounts ?? []).map(normalizeSubscriptionAccount);
     },
     refetchInterval: autoRefresh ? 30000 : false,
   });
@@ -734,10 +702,10 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
                     <TableCell className="font-medium">{account.name}</TableCell>
                     <TableCell>{account.platform}</TableCell>
                     <TableCell className="hidden md:table-cell font-mono text-xs">
-                      {account.account_id || '-'}
+                      {account.accountId || '-'}
                     </TableCell>
-                    <TableCell className="text-xs">{formatTime(account.expires_at)}</TableCell>
-                    <TableCell className="hidden md:table-cell text-xs">{formatTime(account.last_used_at)}</TableCell>
+                    <TableCell className="text-xs">{formatTime(account.expiresAt)}</TableCell>
+                    <TableCell className="hidden md:table-cell text-xs">{formatTime(account.lastUsedAt)}</TableCell>
                     <TableCell className="hidden lg:table-cell">
                       <SubscriptionQuotaSummary account={account} now={now} />
                     </TableCell>
@@ -745,27 +713,27 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
                       <AccountStatusBadge
                         info={{
                           status: account.status,
-                          expiresAt: account.expires_at,
-                          rateLimitedUntil: account.rate_limited_until,
-                          quotaUsedPercent: account.quota_used_percent,
-                          primaryQuotaUsedPercent: account.primary_quota_used_percent,
-                          secondaryQuotaUsedPercent: account.secondary_quota_used_percent,
-                          quotaSnapshotPaused: account.quota_snapshot_paused,
-                          quotaLimitUsd: account.quota_limit_usd,
-                          quotaUsedUsd: account.quota_used_usd,
-                          quota5hLimitUsd: account.quota_5h_limit_usd,
-                          quota5hUsedUsd: account.quota_5h_used_usd,
-                          quota5hWindowStart: account.quota_5h_window_start,
-                          quotaDailyLimitUsd: account.quota_daily_limit_usd,
-                          quotaDailyUsedUsd: account.quota_daily_used_usd,
-                          quotaDailyWindowStart: account.quota_daily_window_start,
-                          quotaWeeklyLimitUsd: account.quota_weekly_limit_usd,
-                          quotaWeeklyUsedUsd: account.quota_weekly_used_usd,
-                          quotaWeeklyWindowStart: account.quota_weekly_window_start,
-                          unschedulableReason: account.unschedulable_reason,
-                          recoveryPolicy: account.recovery_policy,
-                          expectedRecoveryAt: account.expected_recovery_at,
-                          unschedulableSince: account.unschedulable_since,
+                          expiresAt: account.expiresAt,
+                          rateLimitedUntil: account.rateLimitedUntil,
+                          quotaUsedPercent: account.quotaUsedPercent,
+                          primaryQuotaUsedPercent: account.primaryQuotaUsedPercent,
+                          secondaryQuotaUsedPercent: account.secondaryQuotaUsedPercent,
+                          quotaSnapshotPaused: account.quotaSnapshotPaused,
+                          quotaLimitUsd: account.quotaLimitUsd,
+                          quotaUsedUsd: account.quotaUsedUsd,
+                          quota5hLimitUsd: account.quota5hLimitUsd,
+                          quota5hUsedUsd: account.quota5hUsedUsd,
+                          quota5hWindowStart: account.quota5hWindowStart,
+                          quotaDailyLimitUsd: account.quotaDailyLimitUsd,
+                          quotaDailyUsedUsd: account.quotaDailyUsedUsd,
+                          quotaDailyWindowStart: account.quotaDailyWindowStart,
+                          quotaWeeklyLimitUsd: account.quotaWeeklyLimitUsd,
+                          quotaWeeklyUsedUsd: account.quotaWeeklyUsedUsd,
+                          quotaWeeklyWindowStart: account.quotaWeeklyWindowStart,
+                          unschedulableReason: account.unschedulableReason,
+                          recoveryPolicy: account.recoveryPolicy,
+                          expectedRecoveryAt: account.expectedRecoveryAt,
+                          unschedulableSince: account.unschedulableSince,
                         }}
                         now={now}
                       />

@@ -1,3 +1,6 @@
+/* eslint react-refresh/only-export-components: "off" -- this module exports
+ * the pure deriveAccountStatus() helper alongside the badge component; pure
+ * functions are safe for fast refresh. */
 import { cn } from '@/lib/utils';
 
 /**
@@ -167,10 +170,13 @@ export function AccountStatusBadge({
   className,
 }: {
   info: AccountStatusInfo;
-  now?: number; // unix seconds; defaults to Date.now()
+  // Unix seconds. Callers pass the query's fetch time (dataUpdatedAt) so the
+  // render stays pure and countdowns reflect data freshness; defaults to 0
+  // (no expiry/rate-limit state considered active) when unavailable.
+  now?: number;
   className?: string;
 }) {
-  const nowUnix = now ?? Math.floor(Date.now() / 1000);
+  const nowUnix = now ?? 0;
   const kind = deriveAccountStatus(info, nowUnix);
   const meta = STATE_STYLES[kind];
 

@@ -34,91 +34,11 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
-
-// Mirrors common.v1.SubscriptionAccountSummary JSON tags returned by
-// GET /api/subscription-accounts (alias of /v1/subscription-accounts).
-interface SubscriptionAccountSummary {
-  id: number;
-  name: string;
-  platform: string;
-  accountType: string;
-  status: number;
-  group: string;
-  models: string;
-  priority: number;
-  accountId: string;
-  expiresAt: number;
-  updatedAt: number;
-  lastUsedAt?: number;
-  rateLimitedUntil?: number;
-  quotaUsedPercent?: number;
-  quotaResetAt?: number;
-  primaryQuotaUsedPercent?: number | null;
-  primaryQuotaResetAfterSeconds?: number | null;
-  primaryQuotaWindowMinutes?: number | null;
-  secondaryQuotaUsedPercent?: number | null;
-  secondaryQuotaResetAfterSeconds?: number | null;
-  secondaryQuotaWindowMinutes?: number | null;
-  primaryOverSecondaryPercent?: number | null;
-  quotaSnapshotUpdatedAt?: number;
-  quotaSnapshotPaused?: boolean;
-  quotaLimitUsd?: number;
-  quotaUsedUsd?: number;
-  quota_limit_usd?: number;
-  quota_used_usd?: number;
-  quota5hLimitUsd?: number;
-  quota5hUsedUsd?: number;
-  quota5hWindowStart?: number;
-  quota_5h_limit_usd?: number;
-  quota_5h_used_usd?: number;
-  quota_5h_window_start?: number;
-  quotaDailyLimitUsd?: number;
-  quotaDailyUsedUsd?: number;
-  quotaDailyWindowStart?: number;
-  quota_daily_limit_usd?: number;
-  quota_daily_used_usd?: number;
-  quota_daily_window_start?: number;
-  quotaWeeklyLimitUsd?: number;
-  quotaWeeklyUsedUsd?: number;
-  quotaWeeklyWindowStart?: number;
-  quota_weekly_limit_usd?: number;
-  quota_weekly_used_usd?: number;
-  quota_weekly_window_start?: number;
-  rateMultiplier?: number;
-  rpmLimit?: number;
-  rpm_limit?: number;
-  sessionWindowLimitUsd?: number;
-  session_window_limit_usd?: number;
-  quotaResetStrategy?: string;
-  quota_reset_strategy?: string;
-  quotaTimezone?: string;
-  quota_timezone?: string;
-  // Upstream quota snapshot (snake_case aliases — the API returns these as
-  // snake_case from protobuf JSON, and the component reads both forms).
-  quota_used_percent?: number;
-  quota_reset_at?: number;
-  last_used_at?: number;
-  rate_limited_until?: number;
-  primary_quota_used_percent?: number | null;
-  primary_quota_reset_after_seconds?: number | null;
-  primary_quota_window_minutes?: number | null;
-  secondary_quota_used_percent?: number | null;
-  secondary_quota_reset_after_seconds?: number | null;
-  secondary_quota_window_minutes?: number | null;
-  primary_over_secondary_percent?: number | null;
-  quota_snapshot_updated_at?: number;
-  quota_snapshot_paused?: boolean;
-  // Scheduling / recovery metadata (returned by the backend; previously
-  // undeclared so the UI could not surface them).
-  unschedulableReason?: string;
-  unschedulable_reason?: string;
-  recoveryPolicy?: string;
-  recovery_policy?: string;
-  expectedRecoveryAt?: number;
-  expected_recovery_at?: number;
-  unschedulableSince?: number;
-  unschedulable_since?: number;
-}
+import {
+  normalizeSubscriptionAccount,
+  type RawSubscriptionAccount,
+  type SubscriptionAccountSummary,
+} from '@/lib/subscription-account';
 
 // Mirrors common.v1.SubscriptionAccountInfo JSON tags returned by
 // GET /api/subscription-accounts/{id}. The protobuf-generated JSON uses
@@ -351,13 +271,13 @@ function optionalNumberInput(value: string) {
 }
 
 function localQuotaRows(account: SubscriptionAccountSummary) {
-  const quota5hUsedUsd = account.quota5hUsedUsd ?? account.quota_5h_used_usd;
-  const quota5hLimitUsd = account.quota5hLimitUsd ?? account.quota_5h_limit_usd;
+  const quota5hUsedUsd = account.quota5hUsedUsd;
+  const quota5hLimitUsd = account.quota5hLimitUsd;
   return [
-    { label: '总额', used: account.quotaUsedUsd ?? account.quota_used_usd, limit: account.quotaLimitUsd ?? account.quota_limit_usd },
+    { label: '总额', used: account.quotaUsedUsd, limit: account.quotaLimitUsd },
     { label: '5h', used: quota5hUsedUsd, limit: quota5hLimitUsd },
-    { label: '24h', used: account.quotaDailyUsedUsd ?? account.quota_daily_used_usd, limit: account.quotaDailyLimitUsd ?? account.quota_daily_limit_usd },
-    { label: '7d', used: account.quotaWeeklyUsedUsd ?? account.quota_weekly_used_usd, limit: account.quotaWeeklyLimitUsd ?? account.quota_weekly_limit_usd },
+    { label: '24h', used: account.quotaDailyUsedUsd, limit: account.quotaDailyLimitUsd },
+    { label: '7d', used: account.quotaWeeklyUsedUsd, limit: account.quotaWeeklyLimitUsd },
   ].filter((row) => (row.used ?? 0) > 0 || (row.limit ?? 0) > 0);
 }
 
@@ -369,7 +289,7 @@ function localQuotaState(account: SubscriptionAccountSummary) {
   if (rows.some((row) => Number(row.used ?? 0) / Number(row.limit ?? 1) >= 0.8)) {
     return 'almost';
   }
-  if (!(account.lastUsedAt ?? account.last_used_at) && localQuotaRows(account).every((row) => Number(row.used ?? 0) <= 0)) {
+  if (!account.lastUsedAt && localQuotaRows(account).every((row) => Number(row.used ?? 0) <= 0)) {
     return 'no_usage';
   }
   return 'ok';
@@ -389,21 +309,21 @@ function quotaWindows(account: SubscriptionAccountSummary) {
   const windows = [
     {
       key: 'primary',
-      label: formatWindowLabel(account.primaryQuotaWindowMinutes ?? account.primary_quota_window_minutes),
-      usedPercent: account.primaryQuotaUsedPercent ?? account.primary_quota_used_percent,
-      resetAfter: account.primaryQuotaResetAfterSeconds ?? account.primary_quota_reset_after_seconds,
+      label: formatWindowLabel(account.primaryQuotaWindowMinutes),
+      usedPercent: account.primaryQuotaUsedPercent,
+      resetAfter: account.primaryQuotaResetAfterSeconds,
     },
     {
       key: 'secondary',
-      label: formatWindowLabel(account.secondaryQuotaWindowMinutes ?? account.secondary_quota_window_minutes),
-      usedPercent: account.secondaryQuotaUsedPercent ?? account.secondary_quota_used_percent,
-      resetAfter: account.secondaryQuotaResetAfterSeconds ?? account.secondary_quota_reset_after_seconds,
+      label: formatWindowLabel(account.secondaryQuotaWindowMinutes),
+      usedPercent: account.secondaryQuotaUsedPercent,
+      resetAfter: account.secondaryQuotaResetAfterSeconds,
     },
   ].filter((item) => item.usedPercent != null || item.resetAfter != null);
 
   if (windows.length > 0) return windows;
-  const usedPercent = account.quotaUsedPercent ?? account.quota_used_percent;
-  const resetAt = account.quotaResetAt ?? account.quota_reset_at;
+  const usedPercent = account.quotaUsedPercent;
+  const resetAt = account.quotaResetAt;
   if (usedPercent != null || resetAt) {
     return [
       {
@@ -417,14 +337,14 @@ function quotaWindows(account: SubscriptionAccountSummary) {
   return [];
 }
 
-function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
+function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary; now: number }) {
   const windows = quotaWindows(account);
   const localRows = localQuotaRows(account);
-  const rpmLimit = account.rpmLimit ?? account.rpm_limit ?? 0;
-  const sessionWindowLimitUsd = account.sessionWindowLimitUsd ?? account.session_window_limit_usd ?? 0;
-  const resetStrategy = normalizeQuotaResetStrategy(account.quotaResetStrategy ?? account.quota_reset_strategy);
-  const quotaTimezone = normalizeQuotaTimezone(account.quotaTimezone ?? account.quota_timezone);
-  const snapshotPaused = account.quotaSnapshotPaused ?? account.quota_snapshot_paused;
+  const rpmLimit = account.rpmLimit ?? 0;
+  const sessionWindowLimitUsd = account.sessionWindowLimitUsd ?? 0;
+  const resetStrategy = normalizeQuotaResetStrategy(account.quotaResetStrategy);
+  const quotaTimezone = normalizeQuotaTimezone(account.quotaTimezone);
+  const snapshotPaused = account.quotaSnapshotPaused;
   if (windows.length === 0 && localRows.length === 0 && rpmLimit <= 0 && sessionWindowLimitUsd <= 0 && resetStrategy !== 'fixed') {
     return <span className="text-sm text-muted-foreground">—</span>;
   }
@@ -495,11 +415,11 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
         </span>
       )}
       {(() => {
-        const reason = account.unschedulableReason ?? account.unschedulable_reason;
-        const since = account.unschedulableSince ?? account.unschedulable_since;
+        const reason = account.unschedulableReason;
+        const since = account.unschedulableSince;
         if (!reason || !since || since <= 0) return null;
-        const recoveryAt = account.expectedRecoveryAt ?? account.expected_recovery_at ?? 0;
-        const recoveryLabel = recoveryAt > 0 ? formatResetAfter(Math.max(0, recoveryAt - Math.floor(Date.now() / 1000))) : '未知';
+        const recoveryAt = account.expectedRecoveryAt ?? 0;
+        const recoveryLabel = recoveryAt > 0 ? formatResetAfter(Math.max(0, recoveryAt - now)) : '未知';
         return (
           <div className="flex items-center gap-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
             <span className="truncate max-w-[160px]" title={reason}>{reason}</span>
@@ -591,7 +511,7 @@ export function AdminSubscriptionAccountsPage() {
   const platformFilter = filters.platform ?? '';
   const quotaFilter = filters.quota ?? '';
 
-  const { data: accounts, isLoading } = useQuery({
+  const { data: accounts, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ['admin-subscription-accounts', page, pageSize, search, statusFilter, platformFilter, sortKey, sortDirection],
     queryFn: async () => {
       const params = buildAdminListParams({
@@ -603,8 +523,8 @@ export function AdminSubscriptionAccountsPage() {
         filters: { status: statusFilter, platform: platformFilter },
       });
       const res = await adminApiClient.get(`/subscription-accounts?${params}`);
-      const payload = res.data as { accounts?: SubscriptionAccountSummary[]; total?: number };
-      return payload.accounts ?? [];
+      const payload = res.data as { accounts?: RawSubscriptionAccount[]; total?: number };
+      return (payload.accounts ?? []).map(normalizeSubscriptionAccount);
     },
   });
 
@@ -739,6 +659,10 @@ export function AdminSubscriptionAccountsPage() {
       toast.error('加载订阅账号详情失败');
     }
   };
+
+  // Render clock: driven by the query's fetch time so render stays pure
+  // (no Date.now() during render) and countdowns reflect data freshness.
+  const nowUnix = dataUpdatedAt ? Math.floor(dataUpdatedAt / 1000) : 0;
 
   const visibleAccounts = useMemo(() => {
     return sortRows((accounts ?? []).filter((account) => matchesLocalQuotaFilter(account, quotaFilter)), sort);
@@ -980,31 +904,31 @@ export function AdminSubscriptionAccountsPage() {
                         info={{
                           status: account.status,
                           expiresAt: account.expiresAt,
-                          rateLimitedUntil: account.rateLimitedUntil ?? account.rate_limited_until,
-                          quotaUsedPercent: account.quotaUsedPercent ?? account.quota_used_percent,
-                          primaryQuotaUsedPercent: account.primaryQuotaUsedPercent ?? account.primary_quota_used_percent,
-                          secondaryQuotaUsedPercent: account.secondaryQuotaUsedPercent ?? account.secondary_quota_used_percent,
-                          quotaSnapshotPaused: account.quotaSnapshotPaused ?? account.quota_snapshot_paused,
-                          quotaLimitUsd: account.quotaLimitUsd ?? account.quota_limit_usd,
-                          quotaUsedUsd: account.quotaUsedUsd ?? account.quota_used_usd,
-                          quota5hLimitUsd: account.quota5hLimitUsd ?? account.quota_5h_limit_usd,
-                          quota5hUsedUsd: account.quota5hUsedUsd ?? account.quota_5h_used_usd,
-                          quota5hWindowStart: account.quota5hWindowStart ?? account.quota_5h_window_start,
-                          quotaDailyLimitUsd: account.quotaDailyLimitUsd ?? account.quota_daily_limit_usd,
-                          quotaDailyUsedUsd: account.quotaDailyUsedUsd ?? account.quota_daily_used_usd,
-                          quotaDailyWindowStart: account.quotaDailyWindowStart ?? account.quota_daily_window_start,
-                          quotaWeeklyLimitUsd: account.quotaWeeklyLimitUsd ?? account.quota_weekly_limit_usd,
-                          quotaWeeklyUsedUsd: account.quotaWeeklyUsedUsd ?? account.quota_weekly_used_usd,
-                          quotaWeeklyWindowStart: account.quotaWeeklyWindowStart ?? account.quota_weekly_window_start,
-                          unschedulableReason: account.unschedulableReason ?? account.unschedulable_reason,
-                          recoveryPolicy: account.recoveryPolicy ?? account.recovery_policy,
-                          expectedRecoveryAt: account.expectedRecoveryAt ?? account.expected_recovery_at,
-                          unschedulableSince: account.unschedulableSince ?? account.unschedulable_since,
+                          rateLimitedUntil: account.rateLimitedUntil,
+                          quotaUsedPercent: account.quotaUsedPercent,
+                          primaryQuotaUsedPercent: account.primaryQuotaUsedPercent,
+                          secondaryQuotaUsedPercent: account.secondaryQuotaUsedPercent,
+                          quotaSnapshotPaused: account.quotaSnapshotPaused,
+                          quotaLimitUsd: account.quotaLimitUsd,
+                          quotaUsedUsd: account.quotaUsedUsd,
+                          quota5hLimitUsd: account.quota5hLimitUsd,
+                          quota5hUsedUsd: account.quota5hUsedUsd,
+                          quota5hWindowStart: account.quota5hWindowStart,
+                          quotaDailyLimitUsd: account.quotaDailyLimitUsd,
+                          quotaDailyUsedUsd: account.quotaDailyUsedUsd,
+                          quotaDailyWindowStart: account.quotaDailyWindowStart,
+                          quotaWeeklyLimitUsd: account.quotaWeeklyLimitUsd,
+                          quotaWeeklyUsedUsd: account.quotaWeeklyUsedUsd,
+                          quotaWeeklyWindowStart: account.quotaWeeklyWindowStart,
+                          unschedulableReason: account.unschedulableReason,
+                          recoveryPolicy: account.recoveryPolicy,
+                          expectedRecoveryAt: account.expectedRecoveryAt,
+                          unschedulableSince: account.unschedulableSince,
                         }}
                       />
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      <QuotaStatusCell account={account} />
+                      <QuotaStatusCell account={account} now={nowUnix} />
                     </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="sm" onClick={() => openEdit(account)}>
