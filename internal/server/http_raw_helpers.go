@@ -242,9 +242,11 @@ func hasRawUsage(usage rawUsage) bool {
 }
 
 // cacheReadTokensFromUsageMap extracts cache-read tokens from a usage map,
-// checking both flat keys and nested *_details objects.
+// checking both flat keys and nested *_details objects. Flat keys cover
+// Anthropic (cache_read_input_tokens), OpenAI-compatible relays
+// (cache_read_tokens) and OpenAI Responses (cached_tokens).
 func cacheReadTokensFromUsageMap(m map[string]interface{}) int64 {
-	if value := numberField(m, "cache_read_tokens", "cached_tokens"); value != 0 {
+	if value := numberField(m, "cache_read_input_tokens", "cache_read_tokens", "cached_tokens"); value != 0 {
 		return value
 	}
 	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {

@@ -40,8 +40,6 @@ func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) *Anthro
 	}
 }
 
-
-
 // anthropicForwardBaseURL resolves the upstream base URL, trimming any trailing
 // slash. It mirrors the behaviour of NewAnthropicProvider (defaulting to the
 // public Anthropic API) but is shared by Forward / ForwardStream so the raw
@@ -204,8 +202,9 @@ type anthropicContent struct {
 }
 
 type anthropicUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens          int `json:"input_tokens"`
+	OutputTokens         int `json:"output_tokens"`
+	CacheReadInputTokens int `json:"cache_read_input_tokens"`
 }
 
 // Anthropic SSE stream event
@@ -295,6 +294,9 @@ func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCo
 			PromptTokens:     resp.Usage.InputTokens,
 			CompletionTokens: resp.Usage.OutputTokens,
 			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
+			PromptTokensDetails: UsageTokenDetails{
+				CacheReadTokens: resp.Usage.CacheReadInputTokens,
+			},
 		},
 	}
 }
@@ -378,7 +380,12 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 		defer close(chunkChan)
 		defer resp.Body.Close()
 
+		var startUsage anthropicUsage
 		scanner := bufio.NewScanner(resp.Body)
+		// Anthropic SSE events (e.g. large base64 image blocks in
+		// content_block_start) can far exceed bufio's default 64KB line limit;
+		// allow up to 4MB per line, matching oauth_stream.go / responses_fallback.go.
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if line == "" {
@@ -401,6 +408,38 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 					zap.Error(err),
 					zap.String("data_preview", applogger.TruncateString(data, 100)),
 				)
+				continue
+			}
+
+			// message_start carries input-side usage (input_tokens and, for
+			// Anthropic-protocol providers such as GLM, cache_read_input_tokens).
+			if event.Type == "message_start" && event.Message != nil {
+				startUsage = event.Message.Usage
+				continue
+			}
+
+			// message_delta carries the final output token count. Emit a single
+			// usage-only chunk so stream consumers can bill real tokens.
+			if event.Type == "message_delta" && event.Usage != nil {
+				usage := event.Usage
+				if usage.InputTokens == 0 {
+					usage.InputTokens = startUsage.InputTokens
+				}
+				if usage.CacheReadInputTokens == 0 {
+					usage.CacheReadInputTokens = startUsage.CacheReadInputTokens
+				}
+				chunkChan <- StreamChunk{
+					Object: "chat.completion.chunk",
+					Model:  req.Model,
+					Usage: Usage{
+						PromptTokens:     usage.InputTokens,
+						CompletionTokens: usage.OutputTokens,
+						TotalTokens:      usage.InputTokens + usage.OutputTokens,
+						PromptTokensDetails: UsageTokenDetails{
+							CacheReadTokens: usage.CacheReadInputTokens,
+						},
+					},
+				}
 				continue
 			}
 

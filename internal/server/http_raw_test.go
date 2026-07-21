@@ -570,6 +570,36 @@ func TestExtractRawUsageFindsNestedResponsesUsage(t *testing.T) {
 	}
 }
 
+func TestExtractRawUsageParsesAnthropicUsage(t *testing.T) {
+	usage := extractRawUsage([]byte(`{
+		"id":"msg_123",
+		"type":"message",
+		"usage":{"input_tokens":100,"output_tokens":25,"cache_read_input_tokens":60,"cache_creation_input_tokens":40}
+	}`), 100)
+
+	if usage.PromptTokens != 100 || usage.CompletionTokens != 25 || usage.CacheReadTokens != 60 {
+		t.Fatalf("usage = prompt:%d completion:%d cache:%d", usage.PromptTokens, usage.CompletionTokens, usage.CacheReadTokens)
+	}
+}
+
+func TestRawStreamUsageTrackerMergesAnthropicMessageStartAndDelta(t *testing.T) {
+	tracker := newRawStreamUsageTracker(rawUsage{})
+
+	tracker.Observe([]byte(`{
+		"type":"message_start",
+		"message":{"id":"msg_123","usage":{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":60}}
+	}`))
+	tracker.Observe([]byte(`{
+		"type":"message_delta",
+		"usage":{"output_tokens":25}
+	}`))
+
+	usage := tracker.Usage()
+	if usage.PromptTokens != 100 || usage.CompletionTokens != 25 || usage.CacheReadTokens != 60 {
+		t.Fatalf("usage = prompt:%d completion:%d cache:%d", usage.PromptTokens, usage.CompletionTokens, usage.CacheReadTokens)
+	}
+}
+
 func TestHTTPServerResponsesCreateStreamsRawSSE(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
