@@ -150,7 +150,7 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 			zap.Duration("interval", interval))
 	}
 
-	// 4. Coding-plan quota probe (Zhipu/MiniMax/Kimi upstream quota).
+	// 3. Coding-plan quota probe (Zhipu/MiniMax/Kimi upstream quota).
 	if quotaProbe != nil {
 		wg.Add(1)
 		go func() {
@@ -160,7 +160,7 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 		applogger.Log.Info("coding plan quota probe started")
 	}
 
-	// 3. Quota alert evaluator (reuses notify-worker channel for delivery).
+	// 4. Quota alert evaluator (reuses notify-worker channel for delivery).
 	if envBool("SUBSCRIPTION_QUOTA_ALERT_ENABLED", false) {
 		endpoint := strings.TrimSpace(os.Getenv("NOTIFY_GRPC_ENDPOINT"))
 		var notifier biz.QuotaAlertNotifier

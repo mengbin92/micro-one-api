@@ -29,14 +29,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/platform/metrics"
-
-	"github.com/bytedance/sonic"
 )
 
 const (
@@ -70,9 +69,9 @@ type CodingPlanQuotaProbeConfig struct {
 
 // CodingPlanQuotaProbeService periodically queries upstream coding-plan quota
 // APIs and writes the result into account_quota_snapshots. It only handles
-// static_key / apikey style credentials (Zhipu/MiniMax) and the Kimi OAuth
-// access token; it does NOT touch Codex/Claude OAuth accounts (those use the
-// existing passive header-sampling path in the relay-gateway).
+// static_key / apikey style credentials (Zhipu / MiniMax / Kimi coding plans);
+// it does NOT touch Codex/Claude OAuth accounts (those use the existing
+// passive header-sampling path in the relay-gateway).
 type CodingPlanQuotaProbeService struct {
 	repo   codingPlanQuotaRepo
 	client *http.Client
@@ -155,7 +154,7 @@ func (s *CodingPlanQuotaProbeService) probePlatform(ctx context.Context, platfor
 	for {
 		accounts, total, err := s.repo.ListSubscriptionAccounts(ctx, page, s.cfg.PageSize, "", "", biz.ChannelStatusEnabled, platform)
 		if err != nil {
-			metrics.SubscriptionAccountRecoveriesTotal.WithLabelValues("coding_plan_probe_list_error", platform).Inc()
+			metrics.SubscriptionQuotaProbeTotal.WithLabelValues("list_error", platform).Inc()
 			return fmt.Errorf("list %s accounts page %d: %w", platform, page, err)
 		}
 		for _, account := range accounts {
@@ -165,10 +164,10 @@ func (s *CodingPlanQuotaProbeService) probePlatform(ctx context.Context, platfor
 			if err := s.probeOne(ctx, account); err != nil {
 				// per-account failures must not abort the whole scan; metrics
 				// capture the failure for observability.
-				metrics.SubscriptionAccountRecoveriesTotal.WithLabelValues("coding_plan_probe_error", platform).Inc()
+				metrics.SubscriptionQuotaProbeTotal.WithLabelValues("error", platform).Inc()
 				continue
 			}
-			metrics.SubscriptionAccountRecoveriesTotal.WithLabelValues("coding_plan_probe_ok", platform).Inc()
+			metrics.SubscriptionQuotaProbeTotal.WithLabelValues("ok", platform).Inc()
 		}
 		if int64(page)*int64(s.cfg.PageSize) >= total {
 			return nil
@@ -242,12 +241,9 @@ func (s *CodingPlanQuotaProbeService) queryZhipu(ctx context.Context, account *b
 		return nil, fmt.Errorf("zhipu HTTP %d: %s", resp.StatusCode, truncateBody(body))
 	}
 
-	var root map[string]any
-	if err := sonic.Unmarshal(body, &root); err != nil {
-		// fall back to encoding/json (sonic should be a drop-in, but be safe)
-		if err := json.Unmarshal(body, &root); err != nil {
-			return nil, fmt.Errorf("zhipu parse: %w", err)
-		}
+	root, err := decodeJSONObject(body)
+	if err != nil {
+		return nil, fmt.Errorf("zhipu parse: %w", err)
 	}
 	if success, _ := root["success"].(bool); !success {
 		msg, _ := root["msg"].(string)
@@ -358,8 +354,9 @@ func parseZhipuTiers(accountID int64, data map[string]any, now time.Time) *biz.A
 
 // ─── Kimi For Coding ───────────────────────────────────────────────────────
 
-// queryKimi calls GET https://api.kimi.com/coding/v1/usages. The Kimi account
-// stores an OAuth access token in AccessToken; we use it as a Bearer token.
+// queryKimi calls GET https://api.kimi.com/coding/v1/usages. Kimi coding-plan
+// accounts are static_key accounts whose API key lives in AccessToken; we send
+// it as a Bearer token.
 func (s *CodingPlanQuotaProbeService) queryKimi(ctx context.Context, account *biz.SubscriptionAccount, apiKey string) (*biz.AccountQuotaSnapshot, error) {
 	const url = "https://api.kimi.com/coding/v1/usages"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -385,11 +382,9 @@ func (s *CodingPlanQuotaProbeService) queryKimi(ctx context.Context, account *bi
 		return nil, fmt.Errorf("kimi HTTP %d: %s", resp.StatusCode, truncateBody(body))
 	}
 
-	var root map[string]any
-	if err := sonic.Unmarshal(body, &root); err != nil {
-		if err := json.Unmarshal(body, &root); err != nil {
-			return nil, fmt.Errorf("kimi parse: %w", err)
-		}
+	root, err := decodeJSONObject(body)
+	if err != nil {
+		return nil, fmt.Errorf("kimi parse: %w", err)
 	}
 
 	snap := &biz.AccountQuotaSnapshot{AccountID: account.ID, UpdatedAt: s.now()}
@@ -481,11 +476,9 @@ func (s *CodingPlanQuotaProbeService) queryMinimax(ctx context.Context, account 
 		return nil, fmt.Errorf("minimax HTTP %d: %s", resp.StatusCode, truncateBody(body))
 	}
 
-	var root map[string]any
-	if err := sonic.Unmarshal(body, &root); err != nil {
-		if err := json.Unmarshal(body, &root); err != nil {
-			return nil, fmt.Errorf("minimax parse: %w", err)
-		}
+	root, err := decodeJSONObject(body)
+	if err != nil {
+		return nil, fmt.Errorf("minimax parse: %w", err)
 	}
 
 	// Business-level error envelope (base_resp.status_code != 0)
@@ -588,27 +581,18 @@ func resetAfterFromISO(iso *string, now time.Time) *int32 {
 }
 
 func sortByResetAsc(entries []zhipuEntry) {
-	// stable sort: entries without reset first, then ascending by resetMs.
+	// stable sort: entries without reset first (they are more likely to be the
+	// 5h window at 0% state), then ascending by resetMs.
 	// (mirrors cc-switch's sort_by_key logic)
-	for i := 1; i < len(entries); i++ {
-		for j := i; j > 0; j-- {
-			a, b := entries[j-1], entries[j]
-			aHas := a.resetMs != nil
-			bHas := b.resetMs != nil
-			if aHas && !bHas {
-				break // a has reset, b doesn't → a goes after; already in order
-			}
-			if !aHas && bHas {
-				// a has no reset, b does → swap so a goes first
-				entries[j-1], entries[j] = entries[j], entries[j-1]
-				continue
-			}
-			if aHas && bHas && *a.resetMs <= *b.resetMs {
-				break
-			}
-			entries[j-1], entries[j] = entries[j], entries[j-1]
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].resetMs == nil {
+			return entries[j].resetMs != nil
 		}
-	}
+		if entries[j].resetMs == nil {
+			return false
+		}
+		return *entries[i].resetMs < *entries[j].resetMs
+	})
 }
 
 // zhipuEntry is the entry type for the unclassified bucket in
@@ -687,6 +671,17 @@ func toString(v any) (string, bool) {
 		return s, true
 	}
 	return "", false
+}
+
+// decodeJSONObject parses a JSON object body. A single decoder is enough —
+// sonic and encoding/json accept the same grammar, so a "fallback" decoder
+// would never succeed where the first failed.
+func decodeJSONObject(body []byte) (map[string]any, error) {
+	var root map[string]any
+	if err := json.Unmarshal(body, &root); err != nil {
+		return nil, err
+	}
+	return root, nil
 }
 
 func truncateBody(body []byte) string {

@@ -263,6 +263,7 @@ func init() {
 		SubscriptionAccountQuotaResetsTotal,
 		SubscriptionAccountQuotaResetScanDuration,
 		SubscriptionAccountRecoveriesTotal,
+		SubscriptionQuotaProbeTotal,
 		SubscriptionAccountRecoveryScanDuration,
 		SubscriptionQuotaAlertsTotal,
 	)
