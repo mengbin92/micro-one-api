@@ -13,8 +13,13 @@ import (
 	"micro-one-api/platform/events"
 )
 
-func TestAnthropicProbeCandidatesMergesDefaultsAndCurrent(t *testing.T) {
-	got := anthropicProbeCandidates(codingPlanProbePlatformZhipu, []string{"glm-4.6", "glm-custom"})
+func TestBuildCandidatesMergesDefaultsAndCurrent(t *testing.T) {
+	probe := NewAnthropicModelProbeService()
+	account := &biz.SubscriptionAccount{
+		Platform: "zhipu",
+		Models:   []string{"glm-4.6", "glm-custom"},
+	}
+	got := probe.buildCandidates(context.Background(), codingPlanProbePlatformZhipu, account)
 	// defaults first, then account-supplied extras, deduped
 	want := []string{"glm-4.6", "glm-4.5", "glm-4.5-air", "glm-4", "glm-custom"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -40,6 +45,14 @@ func TestProbeAnthropicModelsFiltersUnsupported(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		gotPath = r.URL.Path
+		// Handle GET /v1/models - return the model list
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":[{"id":"glm-4.6"},{"id":"glm-4.5"},{"id":"unknown-model"}]}`))
+			return
+		}
+		// Handle POST /v1/messages - validate models
 		var body anthropicMessagesProbeRequest
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body.MaxTokens != anthropicModelProbeMaxTokens {
@@ -68,10 +81,11 @@ func TestProbeAnthropicModelsFiltersUnsupported(t *testing.T) {
 	if gotAuth != "Bearer plan-key-123" {
 		t.Fatalf("Authorization = %q", gotAuth)
 	}
-	if gotPath != "/v1/messages" {
-		t.Fatalf("path = %q, want /v1/messages", gotPath)
+	// Both /v1/models and /v1/messages will be hit, check for messages path
+	if !strings.Contains(gotPath, "/v1/messages") {
+		t.Fatalf("path should contain /v1/messages, got %q", gotPath)
 	}
-	// sorted by dedupeSortedStrings
+	// sorted by dedupeSortedStrings - only glm-4.5 and glm-4.6 should pass validation
 	want := "glm-4.5,glm-4.6"
 	if strings.Join(models, ",") != want {
 		t.Fatalf("models = %v, want %v", models, want)

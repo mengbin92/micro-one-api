@@ -76,6 +76,16 @@ type anthropicMessagesProbeInput struct {
 	Content string `json:"content"`
 }
 
+// anthropicModelsResponse is the OpenAI-compatible /v1/models response format.
+type anthropicModelsResponse struct {
+	Data []anthropicModelEntry `json:"data"`
+}
+
+type anthropicModelEntry struct {
+	ID      string `json:"id"`
+	OwnedBy string `json:"owned_by,omitempty"`
+}
+
 // AnthropicModelProbeService probes model availability against an
 // Anthropic-compatible upstream for domestic Coding Plan accounts.
 type AnthropicModelProbeService struct {
@@ -95,6 +105,11 @@ func NewAnthropicModelProbeService() *AnthropicModelProbeService {
 // Models plus the platform defaults, deduplicated. If the account has no
 // candidates at all, or none are accepted, an error is returned so callers do
 // not wipe the existing model list with an empty result.
+//
+// For domestic Coding Plan platforms (Zhipu, MiniMax, Kimi), this function first
+// attempts to fetch the model list dynamically from the upstream's /v1/models
+// endpoint. If the fetch fails (404/405/network error), it falls back to the
+// hardcoded platform defaults.
 func (s *AnthropicModelProbeService) ProbeAnthropicModels(ctx context.Context, account *biz.SubscriptionAccount) ([]string, error) {
 	if s == nil {
 		return nil, errors.New("anthropic model prober is not configured")
@@ -113,7 +128,8 @@ func (s *AnthropicModelProbeService) ProbeAnthropicModels(ctx context.Context, a
 		return nil, errors.New("missing access token / plan key")
 	}
 
-	candidates := anthropicProbeCandidates(platform, account.Models)
+	// Build candidates: try dynamic fetch for domestic platforms, fall back to defaults
+	candidates := s.buildCandidates(ctx, platform, account)
 	if len(candidates) == 0 {
 		return nil, errors.New("no probe candidates available")
 	}
@@ -133,6 +149,57 @@ func (s *AnthropicModelProbeService) ProbeAnthropicModels(ctx context.Context, a
 		return nil, errors.New("no models were accepted by the upstream")
 	}
 	return supported, nil
+}
+
+// buildCandidates returns the candidate models for probing. For domestic Coding
+// Plan platforms (Zhipu, MiniMax, Kimi), it attempts to fetch the model list
+// dynamically from /v1/models. Falls back to hardcoded defaults on any error.
+func (s *AnthropicModelProbeService) buildCandidates(ctx context.Context, platform string, account *biz.SubscriptionAccount) []string {
+	var dynamicModels []string
+	var fetchErr error
+
+	// Try dynamic fetch for domestic Coding Plan platforms
+	switch platform {
+	case codingPlanProbePlatformZhipu, codingPlanProbePlatformMinimax, codingPlanProbePlatformKimi:
+		dynamicModels, fetchErr = fetchModels(ctx, s.client, account.BaseURL, account.AccessToken)
+		// Log the error but don't fail - we'll fall back to defaults
+		if fetchErr != nil {
+			// TODO: add logging
+			fmt.Printf("failed to fetch models for platform %s: %v (falling back to defaults)\n", platform, fetchErr)
+		}
+	}
+
+	// Start with dynamic models or fallback to platform defaults
+	baseCandidates := dynamicModels
+	if len(baseCandidates) == 0 {
+		baseCandidates = anthropicPlatformDefaultModels(platform)
+	}
+
+	// Merge with account's existing models (preserves custom models)
+	seen := make(map[string]struct{}, len(baseCandidates)+len(account.Models))
+	out := make([]string, 0, len(baseCandidates)+len(account.Models))
+	add := func(model string) {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			return
+		}
+		if _, ok := seen[model]; ok {
+			return
+		}
+		seen[model] = struct{}{}
+		out = append(out, model)
+	}
+
+	// Add platform models first (dynamic or defaults)
+	for _, model := range baseCandidates {
+		add(model)
+	}
+	// Then add account's existing models (keeps custom models)
+	for _, model := range account.Models {
+		add(model)
+	}
+
+	return out
 }
 
 // probeModel issues the 1-token Messages request and reports whether the
@@ -179,32 +246,50 @@ func (s *AnthropicModelProbeService) probeModel(ctx context.Context, account *bi
 	return false, nil
 }
 
-// anthropicProbeCandidates merges the platform's known Coding Plan models with
-// whatever is already configured on the account, preserving order and
-// deduplicating. The account's existing models are appended last so an
-// operator-supplied custom model is still validated.
-func anthropicProbeCandidates(platform string, current []string) []string {
-	base := anthropicPlatformDefaultModels(platform)
-	seen := make(map[string]struct{}, len(base)+len(current))
-	out := make([]string, 0, len(base)+len(current))
-	add := func(model string) {
-		model = strings.TrimSpace(model)
-		if model == "" {
-			return
+// fetchModels attempts to fetch the model list dynamically from the upstream's
+// /v1/models endpoint. Returns the fetched models or an error.
+func fetchModels(ctx context.Context, client *http.Client, baseURL string, accessToken string) ([]string, error) {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		return nil, errors.New("missing base url")
+	}
+
+	// Try /v1/models endpoint
+	url := base + "/v1/models"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(accessToken))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch models: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// 404/405 means endpoint not supported, return empty to fall back to defaults
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		return nil, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var modelsResp anthropicModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	models := make([]string, 0, len(modelsResp.Data))
+	for _, entry := range modelsResp.Data {
+		if entry.ID != "" {
+			models = append(models, entry.ID)
 		}
-		if _, ok := seen[model]; ok {
-			return
-		}
-		seen[model] = struct{}{}
-		out = append(out, model)
 	}
-	for _, model := range base {
-		add(model)
-	}
-	for _, model := range current {
-		add(model)
-	}
-	return out
+	return models, nil
 }
 
 // anthropicPlatformDefaultModels is the fallback candidate list per platform.
@@ -225,7 +310,15 @@ func anthropicPlatformDefaultModels(platform string) []string {
 	case codingPlanProbePlatformZhipu:
 		return []string{"glm-4.6", "glm-4.5", "glm-4.5-air", "glm-4"}
 	case codingPlanProbePlatformMinimax:
-		return []string{"MiniMax-M2", "MiniMax-M1"}
+		return []string{
+			"MiniMax-M2",
+			"MiniMax-M2.1",
+			"MiniMax-M2.1-highspeed",
+			"MiniMax-M2.5",
+			"MiniMax-M2.5-highspeed",
+			"MiniMax-M2.7",
+			"MiniMax-M2.7-highspeed",
+		}
 	case codingPlanProbePlatformKimi:
 		return []string{"kimi-k2-0905-preview", "kimi-k2-turbo-preview", "kimi-k2"}
 	default:
