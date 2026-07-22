@@ -82,6 +82,12 @@ func newApp(
 	var stopEventBus func()
 	var modelProbe *service.CodexModelProbeService
 	if probe := service.NewCodexModelProbeService(repo); probe != nil {
+		// Route domestic Anthropic-compatible Coding Plan platforms
+		// (zhipu/minimax/kimi) to the Messages-API prober so newly added
+		// accounts get their supported-model list refreshed too. Previously
+		// only codex accounts were probed, leaving the domestic three stuck
+		// with whatever models were typed at creation time.
+		probe.SetAnthropicProber(service.NewAnthropicModelProbeService())
 		modelProbe = probe
 		eventBus.Subscribe(events.TopicChannelChanged, probe.HandleSubscriptionAccountEvent)
 		probe.SyncExistingCodexAccounts(context.Background(), repo)

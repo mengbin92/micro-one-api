@@ -16,7 +16,39 @@ import (
 	"micro-one-api/platform/events"
 )
 
-var codexResponsesUpstreamURL = "https://chatgpt.com/backend-api/codex/responses"
+// codexResponsesUpstreamURL is a var (not const) so tests can point the probe
+// at an httptest server. Reads/writes go through codexUpstreamURLMu because
+// the async event handler reads it from a background goroutine while tests
+// swap it on the main test goroutine.
+var (
+	codexResponsesUpstreamURL = "https://chatgpt.com/backend-api/codex/responses"
+	codexUpstreamURLMu        sync.RWMutex
+	// errProbeNotApplicable signals that the platform is not supported or the
+	// required sub-prober is not wired. Callers such as RecoveryProbeAdapter
+	// treat this as "probe unavailable" and fall back to local-state behavior.
+	errProbeNotApplicable = errors.New("probe not applicable for this account")
+)
+
+// codexUpstreamURL returns the current upstream URL under the read lock.
+func codexUpstreamURL() string {
+	codexUpstreamURLMu.RLock()
+	defer codexUpstreamURLMu.RUnlock()
+	return codexResponsesUpstreamURL
+}
+
+// setCodexUpstreamURLForTest swaps the upstream URL and returns a restore
+// func. Exported-for-test via the same package.
+func setCodexUpstreamURLForTest(url string) func() {
+	codexUpstreamURLMu.Lock()
+	prev := codexResponsesUpstreamURL
+	codexResponsesUpstreamURL = url
+	codexUpstreamURLMu.Unlock()
+	return func() {
+		codexUpstreamURLMu.Lock()
+		codexResponsesUpstreamURL = prev
+		codexUpstreamURLMu.Unlock()
+	}
+}
 
 type subscriptionAccountLookup interface {
 	FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error)
@@ -25,6 +57,9 @@ type subscriptionAccountLookup interface {
 
 type subscriptionAccountModelProber interface {
 	ProbeCodexModels(ctx context.Context, account *biz.SubscriptionAccount) ([]string, error)
+	// ProbeAccountModels dispatches to the platform-appropriate low-level prober
+	// without persisting anything. Used by the recovery probe adapter.
+	ProbeAccountModels(ctx context.Context, account *biz.SubscriptionAccount) ([]string, error)
 }
 
 type subscriptionAccountLister interface {
@@ -54,6 +89,10 @@ type CodexModelProbeService struct {
 	client  *http.Client
 	mu      sync.Mutex
 	pending map[int64]struct{}
+	// anthropic is the optional prober for the domestic Anthropic-compatible
+	// Coding Plan platforms (zhipu/minimax/kimi). When nil, events for those
+	// platforms are skipped (previous behaviour).
+	anthropic *AnthropicModelProbeService
 }
 
 func newCodexModelProbeService(lookup subscriptionAccountLookup) *CodexModelProbeService {
@@ -68,30 +107,58 @@ func NewCodexModelProbeService(lookup subscriptionAccountLookup) *CodexModelProb
 	return newCodexModelProbeService(lookup)
 }
 
+// SetAnthropicProber wires the domestic-platform prober used to route
+// non-codex subscription-account events. Optional; nil disables routing.
+func (s *CodexModelProbeService) SetAnthropicProber(p *AnthropicModelProbeService) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.anthropic = p
+}
+
+func (s *CodexModelProbeService) anthropicProber() *AnthropicModelProbeService {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.anthropic
+}
+
+// SyncExistingCodexAccounts backfills model probes for accounts that already
+// existed before the service started (no create event fires for those). It
+// sweeps every probeable platform — codex, claude, and the domestic three —
+// routing each account through the same per-platform dispatch used by the
+// event handler.
 func (s *CodexModelProbeService) SyncExistingCodexAccounts(ctx context.Context, lister subscriptionAccountLister) {
 	if s == nil || s.lookup == nil || lister == nil {
 		return
 	}
-	accounts, _, err := lister.ListSubscriptionAccounts(ctx, 1, 1000, "", "", 0, "codex")
-	if err != nil {
-		return
+	platforms := []string{
+		"codex",
+		anthropicModelProbePlatformClaude,
+		codingPlanProbePlatformZhipu,
+		codingPlanProbePlatformMinimax,
+		codingPlanProbePlatformKimi,
 	}
-	for _, account := range accounts {
-		if account == nil {
+	for _, platform := range platforms {
+		accounts, _, err := lister.ListSubscriptionAccounts(ctx, 1, 1000, "", "", 0, platform)
+		if err != nil {
 			continue
 		}
-		if strings.ToLower(strings.TrimSpace(account.Platform)) != "codex" {
-			continue
+		for _, account := range accounts {
+			if account == nil {
+				continue
+			}
+			if strings.ToLower(strings.TrimSpace(account.Platform)) != platform {
+				continue
+			}
+			if !s.markPending(account.ID) {
+				continue
+			}
+			go func(accountID int64) {
+				defer s.unmarkPending(accountID)
+				probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				defer cancel()
+				_ = s.syncModelsForAccount(probeCtx, accountID)
+			}(account.ID)
 		}
-		if !s.markPending(account.ID) {
-			continue
-		}
-		go func(accountID int64) {
-			defer s.unmarkPending(accountID)
-			probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-			_ = s.syncCodexModels(probeCtx, accountID)
-		}(account.ID)
 	}
 }
 
@@ -110,9 +177,57 @@ func (s *CodexModelProbeService) HandleSubscriptionAccountEvent(ctx context.Cont
 		defer s.unmarkPending(accountID)
 		probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		_ = s.syncCodexModels(probeCtx, accountID)
+		_ = s.syncModelsForAccount(probeCtx, accountID)
 	}()
 	return nil
+}
+
+// syncModelsForAccount resolves the account, then routes to the platform-
+// appropriate prober. Codex accounts keep the existing Responses-API probe;
+// Claude and the domestic Anthropic-compatible platforms (zhipu/minimax/kimi)
+// use the Messages-API probe. Previously this path was codex-only, so newly
+// added claude/domestic accounts never had their supported-model list
+// refreshed after creation.
+func (s *CodexModelProbeService) syncModelsForAccount(ctx context.Context, accountID int64) error {
+	account, err := s.lookup.FindSubscriptionAccountByID(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	models, err := s.ProbeAccountModels(ctx, account)
+	if err != nil {
+		return err
+	}
+	account.Models = models
+	return s.lookup.UpdateSubscriptionAccount(ctx, account)
+}
+
+// ProbeAccountModels dispatches to the platform-appropriate low-level prober
+// and returns the supported models without persisting them. Codex accounts use
+// the Responses-API probe; claude and the domestic Anthropic-compatible
+// platforms (zhipu/minimax/kimi) use the Messages-API probe. Unsupported
+// platforms and missing anthropic prober wiring return an error so callers can
+// fall back to local-state behavior.
+func (s *CodexModelProbeService) ProbeAccountModels(ctx context.Context, account *biz.SubscriptionAccount) ([]string, error) {
+	if s == nil {
+		return nil, errors.New("codex model prober is not configured")
+	}
+	if account == nil {
+		return nil, errors.New("subscription account is required")
+	}
+	platform := strings.ToLower(strings.TrimSpace(account.Platform))
+	switch platform {
+	case "codex", "":
+		return s.ProbeCodexModels(ctx, account)
+	case anthropicModelProbePlatformClaude,
+		codingPlanProbePlatformZhipu, codingPlanProbePlatformMinimax, codingPlanProbePlatformKimi:
+		prober := s.anthropicProber()
+		if prober == nil {
+			return nil, fmt.Errorf("%w: no anthropic prober configured for platform %q", errProbeNotApplicable, platform)
+		}
+		return prober.ProbeAnthropicModels(ctx, account)
+	default:
+		return nil, fmt.Errorf("%w: platform %q is not probeable", errProbeNotApplicable, platform)
+	}
 }
 
 func (s *CodexModelProbeService) ProbeCodexModels(ctx context.Context, account *biz.SubscriptionAccount) ([]string, error) {
@@ -152,19 +267,7 @@ func (s *CodexModelProbeService) ProbeCodexModels(ctx context.Context, account *
 }
 
 func (s *CodexModelProbeService) syncCodexModels(ctx context.Context, accountID int64) error {
-	account, err := s.lookup.FindSubscriptionAccountByID(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	models, err := s.ProbeCodexModels(ctx, account)
-	if err != nil {
-		return err
-	}
-	account.Models = models
-	if err := s.lookup.UpdateSubscriptionAccount(ctx, account); err != nil {
-		return err
-	}
-	return nil
+	return s.syncModelsForAccount(ctx, accountID)
 }
 
 func (s *CodexModelProbeService) probeModel(ctx context.Context, account *biz.SubscriptionAccount, model string) (bool, error) {
@@ -179,7 +282,7 @@ func (s *CodexModelProbeService) probeModel(ctx context.Context, account *biz.Su
 	if err != nil {
 		return false, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, codexResponsesUpstreamURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, codexUpstreamURL(), bytes.NewReader(body))
 	if err != nil {
 		return false, err
 	}
@@ -314,19 +417,19 @@ func (s *CodexModelProbeService) unmarkPending(accountID int64) {
 	s.mu.Unlock()
 }
 
-// RecoveryProbeAdapter adapts the codex model probe into a biz.RecoveryProber.
+// RecoveryProbeAdapter adapts the model probe into a biz.RecoveryProber.
 // It performs the SAME lightweight 1-token upstream request the model probe
 // uses, but interprets the result for account recovery: if the upstream
 // accepts the request the account is healthy and can be re-enabled; if it
-// rejects it the account is still failing and must not be re-enabled. Only
-// codex accounts are probed; non-codex accounts return an error so the sweeper
-// falls back to its local-state recovery path (roadmap §1.2: "只对可安全探测
-// 的平台执行轻量请求").
+// rejects it the account is still failing and must not be re-enabled. Codex,
+// claude, and the domestic Anthropic-compatible Coding Plan platforms
+// (zhipu/minimax/kimi) are probed; other platforms return an error so the
+// sweeper falls back to its local-state recovery path.
 type RecoveryProbeAdapter struct {
 	probe subscriptionAccountModelProber
 }
 
-// NewRecoveryProbeAdapter wraps a codex model prober as a recovery prober.
+// NewRecoveryProbeAdapter wraps a model prober as a recovery prober.
 func NewRecoveryProbeAdapter(probe subscriptionAccountModelProber) *RecoveryProbeAdapter {
 	return &RecoveryProbeAdapter{probe: probe}
 }
@@ -339,14 +442,12 @@ func (a *RecoveryProbeAdapter) ProbeRecovery(ctx context.Context, account *biz.S
 	if a == nil || a.probe == nil || account == nil {
 		return false, errors.New("recovery probe not configured")
 	}
-	// Only codex accounts are safely probeable today. Other platforms return an
-	// error so the sweeper falls back to local-state recovery.
-	if strings.ToLower(strings.TrimSpace(account.Platform)) != "codex" {
-		return false, fmt.Errorf("platform %q is not probeable for recovery", account.Platform)
-	}
 	// A successful model probe means the access token still works and the
 	// upstream is accepting requests, i.e. the account has recovered.
-	if _, err := a.probe.ProbeCodexModels(ctx, account); err != nil {
+	if _, err := a.probe.ProbeAccountModels(ctx, account); err != nil {
+		if errors.Is(err, errProbeNotApplicable) {
+			return false, err
+		}
 		return false, nil
 	}
 	return true, nil
