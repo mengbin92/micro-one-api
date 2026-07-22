@@ -70,6 +70,9 @@ SKIP_FRONTEND="${DEPLOY_SKIP_FRONTEND:-0}"
 SKIP_DB_BACKUP="${DEPLOY_SKIP_DB_BACKUP:-0}"   # 默认 0 = 迁移前先 mysqldump 备份
 UPLOAD_COMPOSE="${DEPLOY_UPLOAD_COMPOSE:-0}"    # 默认 0 = 不上传/不覆盖服务器 compose
 BUILD_PARALLEL="${DEPLOY_BUILD_PARALLEL:-1}"    # 默认 1 = 单进程构建；设为 N 则 N 个并行
+IMAGE_TAG_PREFIX="${DEPLOY_IMAGE_TAG_PREFIX:-micro-one-api}"  # 镜像名前缀，服务器 compose 用 docker-compose（最终格式：{prefix}-{service}:latest）
+WEB_DIST_PATH="${DEPLOY_WEB_DIST_PATH:-/opt/web/dist}"        # admin-api 挂载的前端资源目标路径
+SYNC_WEB_DIST="${DEPLOY_SYNC_WEB_DIST:-1}"                    # 默认 1 = 同步 web/dist 到服务器
 
 DEFAULT_SERVICES=(
     "identity-service"
@@ -250,16 +253,17 @@ build_service() {
     fi
 
     log "构建 ${SERVICE} ..."
+    local IMAGE_TAG="${IMAGE_TAG_PREFIX}-${SERVICE}:latest"
     while [ "${attempt}" -le "${RETRIES}" ]; do
         if docker buildx build \
             --platform "${TARGET_PLATFORM}" \
             --build-arg "SERVICE_NAME=${SERVICE}" \
             --build-arg "SERVICE_PATH=$(service_path "${SERVICE}")" \
             --file "${REPO_ROOT}/$(service_dockerfile "${SERVICE}")" \
-            --tag "micro-one-api/${SERVICE}:latest" \
+            --tag "${IMAGE_TAG}" \
             --load \
             "${REPO_ROOT}"; then
-            docker save "micro-one-api/${SERVICE}:latest" -o "${OUTPUT_DIR}/${SERVICE}.tar"
+            docker save "${IMAGE_TAG}" -o "${OUTPUT_DIR}/${SERVICE}.tar"
             log "✓ ${SERVICE} 构建完成"
             return 0
         fi
@@ -274,7 +278,7 @@ build_service() {
 }
 
 export -f log warn err build_service
-export DRY_RUN REUSE_EXISTING_TAR BUILD_RETRIES TARGET_PLATFORM REPO_ROOT
+export DRY_RUN REUSE_EXISTING_TAR BUILD_RETRIES TARGET_PLATFORM REPO_ROOT IMAGE_TAG_PREFIX
 
 # 根据并行度选择构建方式
 if [ "${PARALLEL_JOBS}" -le 1 ]; then
@@ -405,6 +409,14 @@ if [ "${SKIP_RESTART}" != "1" ]; then
     fi
 
     if [ "${DRY_RUN}" != "1" ]; then
+        # 同步前端构建产物到服务器（admin-api 挂载该目录到 /web）
+        if [ "${SYNC_WEB_DIST}" = "1" ] && [ -d "${REPO_ROOT}/web/dist" ]; then
+            log "同步 web/dist 到服务器 ${WEB_DIST_PATH} ..."
+            ssh -o BatchMode=yes "${DEPLOY_REMOTE_SERVER}" "mkdir -p '${WEB_DIST_PATH}'"
+            run_cmd rsync -az --delete "${REPO_ROOT}/web/dist/" "${DEPLOY_REMOTE_SERVER}:${WEB_DIST_PATH}/"
+            log "✓ 前端资源同步完成"
+        fi
+
         ssh -o BatchMode=yes "${DEPLOY_REMOTE_SERVER}" bash -s -- "${DEPLOY_REMOTE_DIR}" <<'REMOTE_EOF'
 set -euo pipefail
 cd "$1"

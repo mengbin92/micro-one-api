@@ -53,15 +53,18 @@ INSERT IGNORE INTO oneapi_identity.tokens                    SELECT * FROM oneap
 INSERT IGNORE INTO oneapi_identity.user_oauth_identities     SELECT * FROM oneapi.user_oauth_identities;
 
 -- channel schema: channels, abilities, subscription_accounts,
---                 subscription_account_quota_events, subscription_account_quota_reset_runs
+--                 subscription_account_abilities, subscription_account_quota_events,
+--                 subscription_account_quota_reset_runs
 CREATE TABLE IF NOT EXISTS oneapi_channel.channels                                   LIKE oneapi.channels;
 CREATE TABLE IF NOT EXISTS oneapi_channel.abilities                                  LIKE oneapi.abilities;
 CREATE TABLE IF NOT EXISTS oneapi_channel.subscription_accounts                      LIKE oneapi.subscription_accounts;
+CREATE TABLE IF NOT EXISTS oneapi_channel.subscription_account_abilities             LIKE oneapi.subscription_account_abilities;
 CREATE TABLE IF NOT EXISTS oneapi_channel.subscription_account_quota_events          LIKE oneapi.subscription_account_quota_events;
 CREATE TABLE IF NOT EXISTS oneapi_channel.subscription_account_quota_reset_runs      LIKE oneapi.subscription_account_quota_reset_runs;
 INSERT IGNORE INTO oneapi_channel.channels                                  SELECT * FROM oneapi.channels;
 INSERT IGNORE INTO oneapi_channel.abilities                                 SELECT * FROM oneapi.abilities;
 INSERT IGNORE INTO oneapi_channel.subscription_accounts                     SELECT * FROM oneapi.subscription_accounts;
+INSERT IGNORE INTO oneapi_channel.subscription_account_abilities            SELECT * FROM oneapi.subscription_account_abilities;
 INSERT IGNORE INTO oneapi_channel.subscription_account_quota_events         SELECT * FROM oneapi.subscription_account_quota_events;
 INSERT IGNORE INTO oneapi_channel.subscription_account_quota_reset_runs     SELECT * FROM oneapi.subscription_account_quota_reset_runs;
 
@@ -148,6 +151,10 @@ CREATE OR REPLACE VIEW oneapi_billing.users AS SELECT * FROM oneapi_identity.use
 -- System_options view (oneapi_billing.system_options → oneapi_admin.system_options)
 -- Used by billing service to load pricing configuration (ModelPrice, ModelRatio, etc.)
 CREATE OR REPLACE VIEW oneapi_billing.system_options AS SELECT * FROM oneapi_admin.system_options;
+
+-- Account quota snapshots view (oneapi_channel.account_quota_snapshots → oneapi_billing.account_quota_snapshots)
+-- Used by channel-service when listing subscription accounts with quota state.
+CREATE OR REPLACE VIEW oneapi_channel.account_quota_snapshots AS SELECT * FROM oneapi_billing.account_quota_snapshots;
 
 -- Populate schema_migrations for each service to mark their owned migrations as applied.
 -- Since tables were copied with LIKE, they include all columns from migrations,

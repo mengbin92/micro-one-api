@@ -211,7 +211,7 @@ function platformLabel(platform: string) {
   return PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform;
 }
 
-function formatTimestamp(unix: number) {
+function formatTimestamp(unix?: number) {
   if (!unix) return '—';
   return new Date(unix * 1000).toLocaleString();
 }
@@ -895,7 +895,7 @@ export function AdminSubscriptionAccountsPage() {
                     </TableCell>
                     <TableCell className="font-mono text-sm">{account.id}</TableCell>
                     <TableCell className="font-medium">{account.name}</TableCell>
-                    <TableCell>{platformLabel(account.platform)}</TableCell>
+                    <TableCell>{platformLabel(account.platform ?? '')}</TableCell>
                     <TableCell>{account.group}</TableCell>
                     <TableCell className="hidden lg:table-cell">{account.priority ?? 0}</TableCell>
                     <TableCell className="hidden xl:table-cell">{formatTimestamp(account.expiresAt)}</TableCell>

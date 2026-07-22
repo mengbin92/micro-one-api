@@ -64,6 +64,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${DATABASE_DSN}
       - IDENTITY_SCHEMA=${IDENTITY_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -102,6 +103,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${DATABASE_DSN}
       - CHANNEL_SCHEMA=${CHANNEL_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -140,6 +142,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${DATABASE_DSN}
       - BILLING_SCHEMA=${BILLING_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -200,6 +203,7 @@ services:
       - CHANNEL_HTTP_ENDPOINT=http://channel-service:8002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${DATABASE_DSN}
       - ADMIN_SCHEMA=${ADMIN_SCHEMA:-}
       - SUBSCRIPTION_SCHEMA=${SUBSCRIPTION_SCHEMA:-}
       - LOG_HTTP_ENDPOINT=http://log-service:8006
@@ -242,6 +246,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${DATABASE_DSN}
       - CONFIG_SCHEMA=${CONFIG_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -274,6 +279,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${DATABASE_DSN}
       - LOG_SCHEMA=${LOG_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -307,6 +313,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${DATABASE_DSN}
       - MONITOR_SCHEMA=${MONITOR_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -339,6 +346,7 @@ services:
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${DATABASE_DSN}
       - NOTIFY_SCHEMA=${NOTIFY_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -386,6 +394,7 @@ services:
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - LOG_GRPC_ENDPOINT=log-service:9006
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - SQL_DSN=${DATABASE_DSN}
       - SUBSCRIPTION_SCHEMA=${SUBSCRIPTION_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}

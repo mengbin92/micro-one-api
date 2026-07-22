@@ -615,12 +615,12 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
   const all = accounts ?? [];
   const active = all.filter((a) => a.status === 1);
   // Token health: expired / expiring soon (<1h) / rate-limited / healthy
-  const expired = active.filter((a) => a.expires_at && a.expires_at > 0 && a.expires_at <= now);
-  const expiringSoon = active.filter((a) => a.expires_at && a.expires_at > now && a.expires_at - now < 3600);
-  const rateLimited = active.filter((a) => a.rate_limited_until && a.rate_limited_until > now);
+  const expired = active.filter((a) => a.expiresAt && a.expiresAt > 0 && a.expiresAt <= now);
+  const expiringSoon = active.filter((a) => a.expiresAt && a.expiresAt > now && a.expiresAt - now < 3600);
+  const rateLimited = active.filter((a) => a.rateLimitedUntil && a.rateLimitedUntil > now);
   const healthy = active.filter((a) => {
-    const expOk = !a.expires_at || a.expires_at === 0 || a.expires_at > now + 3600;
-    const rateOk = !a.rate_limited_until || a.rate_limited_until <= now;
+    const expOk = !a.expiresAt || a.expiresAt === 0 || a.expiresAt > now + 3600;
+    const rateOk = !a.rateLimitedUntil || a.rateLimitedUntil <= now;
     return expOk && rateOk;
   });
 
