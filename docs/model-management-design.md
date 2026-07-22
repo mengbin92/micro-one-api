@@ -413,10 +413,65 @@ ON DUPLICATE KEY UPDATE updated_at = UNIX_TIMESTAMP();
 - [x] 实现 Models API 端点 (gRPC: `app/channel/internal/service/model.go` + HTTP: `app/admin/internal/server/models.go`)
 - [x] 编写单元测试 (biz/data/service/admin 共 47 个用例全部通过)
 
-### Sprint 2: 前端基础 (1周)
-- [ ] 创建模型管理页面框架
-- [ ] 实现模型列表视图
-- [ ] 实现模型详情面板
+### Sprint 2: 前端基础 (1周) ✅ 已完成
+- [x] 创建模型管理页面框架
+- [x] 实现模型列表视图
+- [x] 实现模型详情面板
+
+### 5.6 实现记录 (Sprint 2)
+
+> **状态: 已完成 (2026-07-22)**
+
+#### 已交付文件
+
+| 层 | 文件 | 说明 |
+|---|---|---|
+| Lib | `web/src/lib/model-management.ts` | TypeScript 类型定义 + API 请求封装 + 格式化辅助函数 |
+| Page | `web/src/pages/admin/ModelsPage.tsx` | 模型列表页 (搜索/筛选/排序/分页/CRUD/批量操作) |
+| Page | `web/src/pages/admin/ModelDetailPanel.tsx` | 模型详情对话框 (基本信息+别名+渠道映射+订阅映射) |
+| Test | `web/src/pages/admin/ModelsPage.test.tsx` | 3 个单元测试 (列表渲染/空状态/创建) |
+| Router | `web/src/router.tsx` | 新增 `/admin/models` 路由 (lazy load) |
+| Nav | `web/src/components/AppNavigation.tsx` | 侧边栏新增「模型」导航项 (Boxes 图标) |
+
+#### 功能清单
+
+| 功能 | 说明 |
+|---|---|
+| 模型列表 | 表格展示 ID/模型ID/显示名称/提供商/类型/状态/渠道数/订阅数，支持排序 |
+| 搜索 | 关键词搜索 (匹配 model_id 或 display_name) |
+| 筛选 | 按状态、类型、提供商筛选 |
+| 分页 | 复用 AdminPagination 组件，支持 20/50/100 每页 |
+| 创建 | 对话框表单，含模型ID/名称/提供商/类型/上下文窗口/价格/分类/等级/能力标签/自定义标签/元数据 |
+| 编辑 | 对话框表单 (model_id 只读) |
+| 删除 | 单条删除 + 批量删除 (confirm 确认) |
+| 状态切换 | 单条启用/禁用 + 批量启用/禁用 |
+| 批量选择 | 全选/反选 checkbox + 批量操作按钮 |
+| 详情面板 | Dialog 展示完整模型信息 + 别名列表 + 渠道映射表 + 订阅映射表 + 能力/自定义标签 |
+
+#### 测试覆盖
+
+| 包 | 用例数 | 状态 |
+|---|---|---|
+| `web/src/pages/admin` | 3 | ✅ |
+| 全部前端测试 | 84 (26 files) | ✅ 全通过 |
+
+#### 验证结果
+
+- TypeScript 编译: ✅ 零错误
+- ESLint: ✅ 零错误零警告
+- Vitest: ✅ 88/88 通过 (含新增 7 个模型管理用例)
+- Vite build: ✅ 构建成功
+
+#### Code Review 修复 (P0/P1/P2)
+
+| 优先级 | 问题 | 修复 |
+|---|---|---|
+| P0 | 编辑数据丢失 (openEdit 仅从 summary 初始化) | openEdit 改为 async，先调用 getModel() 获取完整 ModelInfo 再填充 draft |
+| P1 | 缺少 category 筛选器 | 新增 CATEGORY_OPTIONS + category 下拉筛选器，传入 listModels API |
+| P2 | DraftFields 内嵌页面文件 | 提取为 `web/src/components/admin/ModelDraftFields.tsx` (组件) + `web/src/lib/model-draft.ts` (类型/常量/工具) |
+| P2 | confirm() 非 React 最佳实践 | 替换为自定义 Dialog 确认组件 (confirmState 状态驱动) |
+| P2 | metadata 无 JSON 验证 | 新增 validateMetadata() 函数，表单内实时校验 + 提交时拦截 |
+| P2 | 测试覆盖不足 | 新增编辑/删除/详情面板/筛选 4 个测试用例 (共 7 个) |
 
 ### Sprint 3: 集成 (1周)
 - [ ] 数据迁移脚本和工具
