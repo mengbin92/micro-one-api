@@ -7,18 +7,29 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/channel/internal/biz"
-	"micro-one-api/pkg/errors"
 	relaycredential "micro-one-api/domain/upstream/credential"
+	"micro-one-api/pkg/errors"
 )
 
 // ChannelService is the transport layer entry for channel-service.
 type ChannelService struct {
 	channelv1.UnimplementedChannelServiceServer
-	uc *biz.ChannelUsecase
+	uc      *biz.ChannelUsecase
+	modelUC *biz.ModelUsecase
 }
 
 func NewChannelService(uc *biz.ChannelUsecase) *ChannelService {
 	return &ChannelService{uc: uc}
+}
+
+// SetModelUsecase wires the optional model-management usecase (方案B).
+// When nil, model RPCs return empty/error responses so channel-service
+// deployments that have not enabled the model registry keep working.
+func (s *ChannelService) SetModelUsecase(uc *biz.ModelUsecase) {
+	if s == nil {
+		return
+	}
+	s.modelUC = uc
 }
 
 func (s *ChannelService) Usecase() *biz.ChannelUsecase {

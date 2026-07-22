@@ -2927,3 +2927,244 @@ func TestAdminHTTPReconciliationRunByIDNotFound(t *testing.T) {
 		t.Fatalf("status = %d, want 404, body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+// ── Model management admin HTTP tests ──────────────────────────────────────
+
+// adminHTTPModelChannelClient embeds adminHTTPChannelClient and adds model RPC stubs.
+type adminHTTPModelChannelClient struct {
+	adminHTTPChannelClient
+	createdModel  *channelv1.CreateModelRequest
+	updatedModel  *channelv1.UpdateModelRequest
+	listReq       *channelv1.ListModelsRequest
+	models        []*channelv1.ModelSummary
+	modelDetail   *channelv1.GetModelResponse
+	batchReq      *channelv1.BatchModelsRequest
+	batchAffected int32
+	createdAlias  *channelv1.CreateModelAliasRequest
+	deletedAlias  int64
+}
+
+func (c *adminHTTPModelChannelClient) ListModels(ctx context.Context, req *channelv1.ListModelsRequest, opts ...grpc.CallOption) (*channelv1.ListModelsResponse, error) {
+	c.listReq = req
+	return &channelv1.ListModelsResponse{Models: c.models, Total: int64(len(c.models))}, nil
+}
+
+func (c *adminHTTPModelChannelClient) GetModel(ctx context.Context, req *channelv1.GetModelRequest, opts ...grpc.CallOption) (*channelv1.GetModelResponse, error) {
+	if c.modelDetail != nil {
+		return c.modelDetail, nil
+	}
+	return &channelv1.GetModelResponse{}, nil
+}
+
+func (c *adminHTTPModelChannelClient) CreateModel(ctx context.Context, req *channelv1.CreateModelRequest, opts ...grpc.CallOption) (*channelv1.CreateModelResponse, error) {
+	c.createdModel = req
+	return &channelv1.CreateModelResponse{Success: true, Message: "ok", ModelPk: 42}, nil
+}
+
+func (c *adminHTTPModelChannelClient) UpdateModel(ctx context.Context, req *channelv1.UpdateModelRequest, opts ...grpc.CallOption) (*channelv1.UpdateModelResponse, error) {
+	c.updatedModel = req
+	return &channelv1.UpdateModelResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) DeleteModel(ctx context.Context, req *channelv1.DeleteModelRequest, opts ...grpc.CallOption) (*channelv1.DeleteModelResponse, error) {
+	return &channelv1.DeleteModelResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) ChangeModelStatus(ctx context.Context, req *channelv1.ChangeModelStatusRequest, opts ...grpc.CallOption) (*channelv1.ChangeModelStatusResponse, error) {
+	return &channelv1.ChangeModelStatusResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) BatchModels(ctx context.Context, req *channelv1.BatchModelsRequest, opts ...grpc.CallOption) (*channelv1.BatchModelsResponse, error) {
+	c.batchReq = req
+	return &channelv1.BatchModelsResponse{Success: true, Message: "ok", Affected: c.batchAffected}, nil
+}
+
+func (c *adminHTTPModelChannelClient) ListModelAliases(ctx context.Context, req *channelv1.ListModelAliasesRequest, opts ...grpc.CallOption) (*channelv1.ListModelAliasesResponse, error) {
+	return &channelv1.ListModelAliasesResponse{Aliases: []*channelv1.ModelAlias{}}, nil
+}
+
+func (c *adminHTTPModelChannelClient) CreateModelAlias(ctx context.Context, req *channelv1.CreateModelAliasRequest, opts ...grpc.CallOption) (*channelv1.CreateModelAliasResponse, error) {
+	c.createdAlias = req
+	return &channelv1.CreateModelAliasResponse{Success: true, Message: "ok", AliasId: 5}, nil
+}
+
+func (c *adminHTTPModelChannelClient) DeleteModelAlias(ctx context.Context, req *channelv1.DeleteModelAliasRequest, opts ...grpc.CallOption) (*channelv1.DeleteModelAliasResponse, error) {
+	c.deletedAlias = req.AliasId
+	return &channelv1.DeleteModelAliasResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) ListChannelModelMappings(ctx context.Context, req *channelv1.ListChannelModelMappingsRequest, opts ...grpc.CallOption) (*channelv1.ListChannelModelMappingsResponse, error) {
+	return &channelv1.ListChannelModelMappingsResponse{Mappings: []*channelv1.ModelChannelMapping{}}, nil
+}
+
+func (c *adminHTTPModelChannelClient) UpsertChannelModelMapping(ctx context.Context, req *channelv1.UpsertChannelModelMappingRequest, opts ...grpc.CallOption) (*channelv1.UpsertChannelModelMappingResponse, error) {
+	return &channelv1.UpsertChannelModelMappingResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) DeleteChannelModelMapping(ctx context.Context, req *channelv1.DeleteChannelModelMappingRequest, opts ...grpc.CallOption) (*channelv1.DeleteChannelModelMappingResponse, error) {
+	return &channelv1.DeleteChannelModelMappingResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) ListSubscriptionModelMappings(ctx context.Context, req *channelv1.ListSubscriptionModelMappingsRequest, opts ...grpc.CallOption) (*channelv1.ListSubscriptionModelMappingsResponse, error) {
+	return &channelv1.ListSubscriptionModelMappingsResponse{Mappings: []*channelv1.ModelSubscriptionMapping{}}, nil
+}
+
+func (c *adminHTTPModelChannelClient) UpsertSubscriptionModelMapping(ctx context.Context, req *channelv1.UpsertSubscriptionModelMappingRequest, opts ...grpc.CallOption) (*channelv1.UpsertSubscriptionModelMappingResponse, error) {
+	return &channelv1.UpsertSubscriptionModelMappingResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) DeleteSubscriptionModelMapping(ctx context.Context, req *channelv1.DeleteSubscriptionModelMappingRequest, opts ...grpc.CallOption) (*channelv1.DeleteSubscriptionModelMappingResponse, error) {
+	return &channelv1.DeleteSubscriptionModelMappingResponse{Success: true, Message: "ok"}, nil
+}
+
+func newAdminHTTPModelTestServer() http.Handler {
+	ch := &adminHTTPModelChannelClient{
+		models: []*channelv1.ModelSummary{
+			{Id: 1, ModelId: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai", Status: 1},
+		},
+		modelDetail: &channelv1.GetModelResponse{
+			Model: &channelv1.ModelInfo{
+				Id: 1, ModelId: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai",
+				Status: 1, Capabilities: []string{"vision"},
+			},
+		},
+		batchAffected: 2,
+	}
+	return newAdminHTTPTestServer(&adminHTTPIdentityClient{}, ch, &adminHTTPBillingClient{})
+}
+
+func TestAdminHTTPListModels(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPModelTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/models?page=1&page_size=10&provider=openai", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "gpt-4o") {
+		t.Fatalf("expected gpt-4o in response: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPCreateModel(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPModelTestServer()
+
+	body := strings.NewReader(`{"model_id":"claude-3-5-sonnet","display_name":"Claude 3.5 Sonnet","provider":"anthropic"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/models", body)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "model_pk") {
+		t.Fatalf("expected model_pk in response: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPGetModelByID(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPModelTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/models/1", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "gpt-4o") {
+		t.Fatalf("expected gpt-4o in detail: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPDeleteModel(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPModelTestServer()
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/models/1", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("expected success=true: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPChangeModelStatus(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPModelTestServer()
+
+	body := strings.NewReader(`{"status":0}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/admin/models/1/status", body)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminHTTPBatchModels(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPModelTestServer()
+
+	body := strings.NewReader(`{"action":"disable","model_pks":[1,2,3]}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/models/batch", body)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"affected":2`) {
+		t.Fatalf("expected affected=2: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPModelAliasCreate(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPModelTestServer()
+
+	body := strings.NewReader(`{"alias":"gpt4o","is_primary":true}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/models/1/aliases", body)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"alias_id":5`) {
+		t.Fatalf("expected alias_id=5: %s", rec.Body.String())
+	}
+}
+
+func TestAdminHTTPModelRequiresAuth(t *testing.T) {
+	srv := newAdminHTTPModelTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/models", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}

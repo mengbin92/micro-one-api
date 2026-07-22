@@ -8,7 +8,6 @@ package main
 
 import (
 	"context"
-	"time"
 	"github.com/go-kratos/kratos/v3"
 	"github.com/go-kratos/kratos/v3/registry"
 	"github.com/google/wire"
@@ -18,6 +17,7 @@ import (
 	"micro-one-api/app/channel/internal/service"
 	"micro-one-api/platform/events"
 	registry2 "micro-one-api/platform/registry"
+	"time"
 )
 
 // Injectors from wire.go:
@@ -33,9 +33,10 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	}
 	eventBus := newEventBus(repository)
 	channelUsecase := biz.NewChannelUsecase(repository, eventBus)
+	modelUsecase := biz.NewModelUsecase(repository)
 	channelService := service.NewChannelService(channelUsecase)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, repository, eventBus, channelUsecase, channelService, mainRegistrarResult)
+	app, cleanup := newApp(config, repository, eventBus, channelUsecase, modelUsecase, channelService, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -45,7 +46,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 var ProviderSet = wire.NewSet(
 	newRepo,
-	newEventBus, biz.NewChannelUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)),
+	newEventBus, biz.NewChannelUsecase, biz.NewModelUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
@@ -73,20 +74,18 @@ func newApp(
 	repo *data.Repository,
 	eventBus events.EventBus,
 	uc *biz.ChannelUsecase,
+	modelUC *biz.ModelUsecase,
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	svc.SetModelUsecase(modelUC)
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 
 	var stopEventBus func()
 	var modelProbe *service.CodexModelProbeService
 	if probe := service.NewCodexModelProbeService(repo); probe != nil {
-		// Route domestic Anthropic-compatible Coding Plan platforms
-		// (zhipu/minimax/kimi) to the Messages-API prober so newly added
-		// accounts get their supported-model list refreshed too. Previously
-		// only codex accounts were probed, leaving the domestic three stuck
-		// with whatever models were typed at creation time.
+
 		probe.SetAnthropicProber(service.NewAnthropicModelProbeService())
 		modelProbe = probe
 		eventBus.Subscribe(events.TopicChannelChanged, probe.HandleSubscriptionAccountEvent)

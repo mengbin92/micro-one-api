@@ -636,3 +636,87 @@ CREATE TABLE IF NOT EXISTS account_receivables (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_account_receivable_reservation ON account_receivables(reservation_id);
 CREATE INDEX IF NOT EXISTS idx_account_receivable_user ON account_receivables(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_account_receivable_status_created ON account_receivables(status, created_at);
+
+-- ============================================================
+-- Model management tables (方案B independent model registry)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS models (
+  id BIGSERIAL PRIMARY KEY,
+  model_id VARCHAR(255) NOT NULL UNIQUE,
+  display_name VARCHAR(255) NOT NULL,
+  description TEXT,
+  provider VARCHAR(100) NOT NULL DEFAULT '',
+  model_type VARCHAR(50) NOT NULL DEFAULT 'chat',
+  context_window INTEGER NOT NULL DEFAULT 0,
+  pricing_input DECIMAL(10,6) NOT NULL DEFAULT 0,
+  pricing_output DECIMAL(10,6) NOT NULL DEFAULT 0,
+  status SMALLINT NOT NULL DEFAULT 1,
+  is_public BOOLEAN NOT NULL DEFAULT TRUE,
+  capabilities TEXT DEFAULT '[]',
+  tags TEXT DEFAULT '[]',
+  category VARCHAR(100) NOT NULL DEFAULT '',
+  tier VARCHAR(50) NOT NULL DEFAULT '',
+  metadata TEXT,
+  created_at BIGINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider);
+CREATE INDEX IF NOT EXISTS idx_models_status ON models(status);
+CREATE INDEX IF NOT EXISTS idx_models_type ON models(model_type);
+CREATE INDEX IF NOT EXISTS idx_models_category ON models(category);
+
+CREATE TABLE IF NOT EXISTS model_aliases (
+  id BIGSERIAL PRIMARY KEY,
+  model_id BIGINT NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+  alias VARCHAR(255) NOT NULL UNIQUE,
+  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_aliases_model_id ON model_aliases(model_id);
+
+CREATE TABLE IF NOT EXISTS model_channel_mapping (
+  id BIGSERIAL PRIMARY KEY,
+  channel_id BIGINT NOT NULL,
+  model_id BIGINT NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  priority INTEGER NOT NULL DEFAULT 0,
+  config TEXT DEFAULT '',
+  created_at BIGINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mcm_channel_model ON model_channel_mapping(channel_id, model_id);
+CREATE INDEX IF NOT EXISTS idx_mcm_channel_id ON model_channel_mapping(channel_id);
+CREATE INDEX IF NOT EXISTS idx_mcm_model_id ON model_channel_mapping(model_id);
+
+CREATE TABLE IF NOT EXISTS model_subscription_mapping (
+  id BIGSERIAL PRIMARY KEY,
+  subscription_account_id BIGINT NOT NULL,
+  model_id BIGINT NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+  group_name VARCHAR(100) NOT NULL DEFAULT 'default',
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  priority INTEGER NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_msm_account_model_group ON model_subscription_mapping(subscription_account_id, model_id, group_name);
+CREATE INDEX IF NOT EXISTS idx_msm_account_id ON model_subscription_mapping(subscription_account_id);
+CREATE INDEX IF NOT EXISTS idx_msm_model_id ON model_subscription_mapping(model_id);
+CREATE INDEX IF NOT EXISTS idx_msm_group ON model_subscription_mapping(group_name);
+
+CREATE TABLE IF NOT EXISTS model_usage_stats (
+  id BIGSERIAL PRIMARY KEY,
+  model_id BIGINT NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  request_count INTEGER NOT NULL DEFAULT 0,
+  token_count BIGINT NOT NULL DEFAULT 0,
+  error_count INTEGER NOT NULL DEFAULT 0,
+  avg_latency INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mus_model_date ON model_usage_stats(model_id, date);
+CREATE INDEX IF NOT EXISTS idx_mus_date ON model_usage_stats(date);

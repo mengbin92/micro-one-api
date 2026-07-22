@@ -616,3 +616,87 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_account_quota_reset_runs_dedu
   ON subscription_account_quota_reset_runs(subscription_account_id, scope, window_start);
 CREATE INDEX IF NOT EXISTS idx_subscription_account_quota_reset_runs_account_time
   ON subscription_account_quota_reset_runs(subscription_account_id, reset_at);
+
+-- ============================================================
+-- Model management tables (方案B independent model registry)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS models (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  model_id TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  description TEXT,
+  provider TEXT NOT NULL DEFAULT '',
+  model_type TEXT NOT NULL DEFAULT 'chat',
+  context_window INTEGER NOT NULL DEFAULT 0,
+  pricing_input REAL NOT NULL DEFAULT 0,
+  pricing_output REAL NOT NULL DEFAULT 0,
+  status INTEGER NOT NULL DEFAULT 1,
+  is_public INTEGER NOT NULL DEFAULT 1,
+  capabilities TEXT DEFAULT '[]',
+  tags TEXT DEFAULT '[]',
+  category TEXT NOT NULL DEFAULT '',
+  tier TEXT NOT NULL DEFAULT '',
+  metadata TEXT,
+  created_at INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider);
+CREATE INDEX IF NOT EXISTS idx_models_status ON models(status);
+CREATE INDEX IF NOT EXISTS idx_models_type ON models(model_type);
+CREATE INDEX IF NOT EXISTS idx_models_category ON models(category);
+
+CREATE TABLE IF NOT EXISTS model_aliases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+  alias TEXT NOT NULL UNIQUE,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_aliases_model_id ON model_aliases(model_id);
+
+CREATE TABLE IF NOT EXISTS model_channel_mapping (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  channel_id INTEGER NOT NULL,
+  model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  priority INTEGER NOT NULL DEFAULT 0,
+  config TEXT DEFAULT '',
+  created_at INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mcm_channel_model ON model_channel_mapping(channel_id, model_id);
+CREATE INDEX IF NOT EXISTS idx_mcm_channel_id ON model_channel_mapping(channel_id);
+CREATE INDEX IF NOT EXISTS idx_mcm_model_id ON model_channel_mapping(model_id);
+
+CREATE TABLE IF NOT EXISTS model_subscription_mapping (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  subscription_account_id INTEGER NOT NULL,
+  model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+  group_name TEXT NOT NULL DEFAULT 'default',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  priority INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_msm_account_model_group ON model_subscription_mapping(subscription_account_id, model_id, group_name);
+CREATE INDEX IF NOT EXISTS idx_msm_account_id ON model_subscription_mapping(subscription_account_id);
+CREATE INDEX IF NOT EXISTS idx_msm_model_id ON model_subscription_mapping(model_id);
+CREATE INDEX IF NOT EXISTS idx_msm_group ON model_subscription_mapping(group_name);
+
+CREATE TABLE IF NOT EXISTS model_usage_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  request_count INTEGER NOT NULL DEFAULT 0,
+  token_count INTEGER NOT NULL DEFAULT 0,
+  error_count INTEGER NOT NULL DEFAULT 0,
+  avg_latency INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mus_model_date ON model_usage_stats(model_id, date);
+CREATE INDEX IF NOT EXISTS idx_mus_date ON model_usage_stats(date);

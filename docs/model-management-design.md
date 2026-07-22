@@ -1,0 +1,448 @@
+# 独立模型管理系统设计文档 (方案B)
+
+## 1. 概述
+
+当前系统的模型配置分散在渠道和订阅账户中，缺乏统一的模型管理。本设计提出独立的模型管理系统，支持：
+- 查看所有可用模型
+- 全局启用/禁用模型
+- 追踪模型在哪些渠道/订阅账户中可用
+- 灵活的模型分组和标签
+
+## 2. 数据模型设计
+
+### 2.1 models 表 (新增)
+
+```sql
+CREATE TABLE models (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    model_id VARCHAR(255) NOT NULL UNIQUE COMMENT '模型唯一标识，如 gpt-4, claude-3-5-sonnet-20250619',
+    display_name VARCHAR(255) NOT NULL COMMENT '显示名称',
+    description TEXT COMMENT '模型描述',
+    provider VARCHAR(100) COMMENT '提供商: openai, anthropic, zhipu, etc.',
+    model_type VARCHAR(50) COMMENT '模型类型: chat, completion, embedding, image',
+    context_window INT COMMENT '上下文窗口大小',
+    pricing_input DECIMAL(10,6) COMMENT '输入价格/1K tokens',
+    pricing_output DECIMAL(10,6) COMMENT '输出价格/1K tokens',
+    
+    -- 状态管理
+    status TINYINT DEFAULT 1 COMMENT '状态: 0=禁用, 1=启用, 2=测试中',
+    is_public BOOLEAN DEFAULT TRUE COMMENT '是否公开显示给用户',
+    
+    -- 能力标签
+    capabilities JSON COMMENT '能力标签: ["vision", "function_calling", "streaming"]',
+    tags JSON COMMENT '自定义标签: ["large-context", "fast"]',
+    
+    -- 分组和层级
+    category VARCHAR(100) COMMENT '分类: large-language, image, audio',
+    tier VARCHAR(50) COMMENT '等级: entry, standard, premium',
+    
+    -- 元数据
+    metadata JSON COMMENT '扩展元数据',
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    
+    INDEX idx_provider (provider),
+    INDEX idx_status (status),
+    INDEX idx_type (model_type),
+    INDEX idx_category (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型主表';
+```
+
+### 2.2 model_aliases 表 (新增)
+
+```sql
+CREATE TABLE model_aliases (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    model_id BIGINT NOT NULL COMMENT '关联的模型ID',
+    alias VARCHAR(255) NOT NULL COMMENT '别名',
+    is_primary BOOLEAN DEFAULT FALSE COMMENT '是否为主别名',
+    created_at BIGINT NOT NULL,
+    
+    UNIQUE KEY uk_alias (alias),
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    INDEX idx_model_id (model_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型别名表';
+```
+
+### 2.3 model_channel_mapping 表 (新增 - 替代当前 channels.models)
+
+```sql
+CREATE TABLE model_channel_mapping (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    channel_id BIGINT NOT NULL COMMENT '渠道ID',
+    model_id BIGINT NOT NULL COMMENT '模型ID',
+    enabled BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+    priority INT DEFAULT 0 COMMENT '优先级',
+    config JSON COMMENT '特定于此渠道-模型组合的配置',
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    
+    UNIQUE KEY uk_channel_model (channel_id, model_id),
+    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    INDEX idx_channel_id (channel_id),
+    INDEX idx_model_id (model_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='渠道-模型映射表';
+```
+
+### 2.4 model_subscription_mapping 表 (新增 - 替代当前 subscription_account_abilities.models)
+
+```sql
+CREATE TABLE model_subscription_mapping (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    subscription_account_id BIGINT NOT NULL COMMENT '订阅账户ID',
+    model_id BIGINT NOT NULL COMMENT '模型ID',
+    group_name VARCHAR(100) NOT NULL COMMENT '用户组',
+    enabled BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+    priority INT DEFAULT 0 COMMENT '优先级',
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    
+    UNIQUE KEY uk_account_model (subscription_account_id, model_id, group_name),
+    FOREIGN KEY (subscription_account_id) REFERENCES subscription_accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    INDEX idx_subscription_account_id (subscription_account_id),
+    INDEX idx_model_id (model_id),
+    INDEX idx_group (group_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订阅账户-模型映射表';
+```
+
+### 2.5 model_usage_stats 表 (新增)
+
+```sql
+CREATE TABLE model_usage_stats (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    model_id BIGINT NOT NULL COMMENT '模型ID',
+    date DATE NOT NULL COMMENT '统计日期',
+    request_count INT DEFAULT 0 COMMENT '请求数',
+    token_count BIGINT DEFAULT 0 COMMENT 'token数',
+    error_count INT DEFAULT 0 COMMENT '错误数',
+    avg_latency INT COMMENT '平均延迟(ms)',
+    
+    UNIQUE KEY uk_model_date (model_id, date),
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    INDEX idx_date (date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型使用统计表';
+```
+
+## 3. API 设计
+
+### 3.1 模型管理 API
+
+#### 3.1.1 列出所有模型
+
+```http
+GET /api/admin/models
+```
+
+查询参数:
+- `page`: 页码
+- `page_size`: 每页数量
+- `provider`: 提供商过滤
+- `status`: 状态过滤
+- `category`: 分类过滤
+- `keyword`: 搜索关键词
+
+响应:
+```json
+{
+    "total": 100,
+    "items": [{
+        "id": 1,
+        "model_id": "gpt-4",
+        "display_name": "GPT-4",
+        "description": "最强大的模型",
+        "provider": "openai",
+        "model_type": "chat",
+        "context_window": 8192,
+        "pricing": {
+            "input": 0.03,
+            "output": 0.06
+        },
+        "status": 1,
+        "capabilities": ["vision", "function_calling"],
+        "category": "large-language",
+        "tier": "premium",
+        "channel_count": 3,
+        "subscription_count": 2
+    }]
+}
+```
+
+#### 3.1.2 获取模型详情
+
+```http
+GET /api/admin/models/{model_id}
+```
+
+响应包含:
+- 基本信息
+- 关联的渠道列表
+- 关联的订阅账户列表
+- 使用统计
+
+#### 3.1.3 创建/更新模型
+
+```http
+POST /api/admin/models
+PUT /api/admin/models/{model_id}
+```
+
+请求体:
+```json
+{
+    "model_id": "claude-3-5-sonnet-20250619",
+    "display_name": "Claude 3.5 Sonnet",
+    "description": "Anthropic 最新模型",
+    "provider": "anthropic",
+    "model_type": "chat",
+    "context_window": 200000,
+    "pricing": {
+        "input": 0.003,
+        "output": 0.015
+    },
+    "status": 1,
+    "capabilities": ["vision", "function_calling", "artifact"],
+    "category": "large-language",
+    "tier": "premium"
+}
+```
+
+#### 3.1.4 启用/禁用模型
+
+```http
+PATCH /api/admin/models/{model_id}/status
+```
+
+请求体:
+```json
+{
+    "status": 1
+}
+```
+
+#### 3.1.5 批量操作
+
+```http
+POST /api/admin/models/batch
+```
+
+请求体:
+```json
+{
+    "action": "enable|disable|delete",
+    "model_ids": [1, 2, 3]
+}
+```
+
+### 3.2 渠道模型映射 API
+
+#### 3.2.1 获取渠道的模型列表
+
+```http
+GET /api/admin/channels/{channel_id}/models
+```
+
+#### 3.2.2 为渠道添加模型
+
+```http
+POST /api/admin/channels/{channel_id}/models
+```
+
+请求体:
+```json
+{
+    "model_id": 1,
+    "enabled": true,
+    "priority": 10,
+    "config": {
+        "temperature": 0.7,
+        "max_tokens": 4096
+    }
+}
+```
+
+#### 3.2.3 更新渠道模型配置
+
+```http
+PUT /api/admin/channels/{channel_id}/models/{model_id}
+```
+
+### 3.3 订阅账户模型映射 API
+
+类似渠道模型映射 API
+
+## 4. 前端设计
+
+### 4.1 模型管理页面 (/admin/models)
+
+#### 功能特性
+1. **模型列表视图**
+   - 表格展示所有模型
+   - 支持多维度筛选（提供商、状态、分类）
+   - 搜索功能
+   - 批量操作
+
+2. **模型详情面板**
+   - 基本信息展示
+   - 价格信息
+   - 能力标签
+   - 关联渠道/订阅账户
+
+3. **快捷操作**
+   - 启用/禁用切换
+   - 编辑模型
+   - 添加别名
+   - 查看使用统计
+
+### 4.2 渠道配置页面增强
+
+在现有渠道管理页面中：
+- 添加"模型配置"标签页
+- 可视化选择可用模型
+- 批量配置模型优先级
+
+### 4.3 订阅账户配置页面增强
+
+类似渠道配置页面的模型管理功能
+
+## 5. 数据迁移策略
+
+### 5.1 阶段1: 创建新表结构 (无停机)
+
+1. 创建新表
+2. 添加索引
+
+### 5.2 阶段2: 数据迁移 (后台运行)
+
+1. 扫描 `channels` 表的 `models` 字段
+2. 为每个模型在 `models` 表创建记录（如不存在）
+3. 在 `model_channel_mapping` 中建立映射
+
+```sql
+-- 迁移脚本示例
+INSERT INTO models (model_id, display_name, provider, model_type, status, created_at, updated_at)
+SELECT DISTINCT 
+    TRIM(model) as model_id,
+    TRIM(model) as display_name,
+    'unknown' as provider,
+    'chat' as model_type,
+    1 as status,
+    UNIX_TIMESTAMP() as created_at,
+    UNIX_TIMESTAMP() as updated_at
+FROM (
+    SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(models, ',', n), ',', -1) as model
+    FROM channels
+    JOIN (
+        SELECT 1 n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL 
+        SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+    ) numbers ON CHAR_LENGTH(models) - CHAR_LENGTH(REPLACE(models, ',', '')) >= n - 1
+    WHERE models IS NOT NULL AND models != ''
+) distinct_models
+ON DUPLICATE KEY UPDATE updated_at = UNIX_TIMESTAMP();
+```
+
+### 5.3 阶段3: 代码切换
+
+1. 更新查询逻辑使用新表
+2. 保留旧字段作为兼容（双写模式）
+
+### 5.4 阶段4: 清理
+
+1. 验证迁移成功
+2. 删除旧字段
+
+
+## 5.5 实现记录 (Sprint 1)
+
+> **状态: 已完成 (2026-07-22)**
+
+### 已交付文件
+
+| 层 | 文件 | 说明 |
+|---|---|---|
+| 迁移 | `migrations/062_create_model_management_tables.sql` | MySQL DDL，5 张表 |
+| 迁移 | `migrations/sqlite/000_create_full_schema.sql` | SQLite 方言同步 |
+| 迁移 | `migrations/postgres/000_create_full_schema.sql` | Postgres 方言同步 |
+| 迁移 | `migrations/ownership.yaml` | 归属 channel-service |
+| Proto | `api/channel/v1/channel.proto` | 16 个新 RPC + message |
+| Biz | `app/channel/internal/biz/model.go` | Model DO、ModelRepo 接口、ModelUsecase、类型化错误 |
+| Data | `app/channel/internal/data/model.go` | PO 结构体、DO↔PO 转换、Repository 实现 (DB + 内存) |
+| Service | `app/channel/internal/service/model.go` | DTO↔DO 转换、gRPC handler (channel-service) |
+| Service | `app/admin/internal/service/model.go` | admin-api gRPC passthrough |
+| Server | `app/admin/internal/server/models.go` | admin-api HTTP 路由 handler |
+| Wire | `app/channel/cmd/channel/wire.go` | ModelUsecase + ModelRepo 绑定 |
+| Errors | `pkg/errors/errors.go` | 6 个模型错误原因 + HTTP 状态码映射 |
+
+### API 端点清单
+
+| 方法 | 路径 | 功能 |
+|---|---|---|
+| GET | `/api/admin/models` | 列表 (分页/筛选/搜索) |
+| POST | `/api/admin/models` | 创建模型 |
+| PUT | `/api/admin/models` | 更新模型 |
+| GET | `/api/admin/models/{pk}` | 模型详情 (含别名+映射) |
+| DELETE | `/api/admin/models/{pk}` | 删除模型 |
+| PATCH | `/api/admin/models/{pk}/status` | 启用/禁用 |
+| POST | `/api/admin/models/batch` | 批量 enable/disable/delete |
+| GET/POST/DELETE | `/api/admin/models/{pk}/aliases` | 别名管理 |
+| GET/POST/DELETE | `/api/admin/channels/{id}/models` | 渠道-模型映射 |
+| GET/POST/DELETE | `/api/admin/subscription-accounts/{id}/models` | 订阅-模型映射 |
+
+### 测试覆盖
+
+| 包 | 用例数 | 状态 |
+|---|---|---|
+| `app/channel/internal/biz` | 13 | ✅ |
+| `app/channel/internal/data` | 16 | ✅ |
+| `app/channel/internal/service` | 10 | ✅ |
+| `app/admin/internal/server` | 8 | ✅ |
+
+### 架构决策
+
+1. **模型表归属 channel-service**：channel-service 已拥有 channels/abilities/subscription_accounts 表，模型注册表是其自然扩展。
+2. **admin-api 透传**：admin-api 通过 gRPC 调用 channel-service，不直接访问数据库，与现有渠道管理 RPC 模式一致。
+3. **内存回退**：当 DB 未配置时，Repository 使用内存 map 回退，与 channels/abilities 的内存模式保持一致。
+4. **nil 安全**：ModelUsecase 为 nil 时所有方法返回空/错误，确保未启用模型管理的部署不受影响。
+
+## 6. 实现计划
+
+### Sprint 1: 基础架构 (2周) ✅ 已完成
+- [x] 创建数据库迁移脚本 (`migrations/062_create_model_management_tables.sql`)
+- [x] 实现 Models repository 和 business logic (`app/channel/internal/biz/model.go`)
+- [x] 实现 Models API 端点 (gRPC: `app/channel/internal/service/model.go` + HTTP: `app/admin/internal/server/models.go`)
+- [x] 编写单元测试 (biz/data/service/admin 共 47 个用例全部通过)
+
+### Sprint 2: 前端基础 (1周)
+- [ ] 创建模型管理页面框架
+- [ ] 实现模型列表视图
+- [ ] 实现模型详情面板
+
+### Sprint 3: 集成 (1周)
+- [ ] 数据迁移脚本和工具
+- [ ] 更新渠道配置页面
+- [ ] 更新订阅账户配置页面
+- [ ] /v1/models 端点适配新表
+
+### Sprint 4: 增强功能 (1周)
+- [ ] 使用统计功能
+- [ ] 模型别名管理
+- [ ] 高级筛选和搜索
+- [ ] 文档和测试
+
+## 7. 风险与缓解
+
+| 风险 | 影响 | 缓解措施 |
+|------|------|----------|
+| 数据迁移失败 | 高 | 充分测试迁移脚本，保留备份，分阶段迁移 |
+| 性能下降 | 中 | 添加适当索引，缓存常用查询 |
+| API 兼容性 | 中 | 保留旧字段，双写模式过渡 |
+| 前端复杂度 | 低 | 分阶段实现，复用现有组件 |
+
+## 8. 后续扩展
+
+1. **模型版本管理** - 支持同一模型的多个版本
+2. **智能推荐** - 基于使用情况推荐最优渠道
+3. **A/B 测试** - 支持模型对比测试
+4. **成本分析** - 详细的成本分析仪表板
+5. **模型评分** - 用户对模型的评分反馈

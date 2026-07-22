@@ -31,6 +31,18 @@ type Repository struct {
 	resetRuns   map[string]bool
 	lock        sync.RWMutex
 	encKey      []byte // AES key for encrypting API keys at rest (nil = no encryption)
+
+	// Model registry memory store (方案B) — used only when db == nil.
+	models                    map[int64]*biz.Model
+	modelAliases              map[int64]*biz.ModelAlias
+	modelChannelMappings      map[int64]*biz.ModelChannelMapping
+	modelSubscriptionMappings map[int64]*biz.ModelSubscriptionMapping
+	// Monotonic counters for memory-mode ID generation (avoids ID reuse
+	// after deletes, which len(map)+1 would cause).
+	modelNextID           int64
+	modelAliasNextID      int64
+	modelMappingNextID    int64
+	modelSubMappingNextID int64
 }
 
 type channelModel struct {
@@ -205,10 +217,14 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 
 func newMemoryRepository() *Repository {
 	return &Repository{
-		channels:    make(map[int64]*biz.Channel),
-		subAccounts: make(map[int64]*biz.SubscriptionAccount),
-		quotaEvents: make(map[string]biz.SubscriptionAccountQuotaEventAggregate),
-		resetRuns:   make(map[string]bool),
+		channels:                  make(map[int64]*biz.Channel),
+		subAccounts:               make(map[int64]*biz.SubscriptionAccount),
+		quotaEvents:               make(map[string]biz.SubscriptionAccountQuotaEventAggregate),
+		resetRuns:                 make(map[string]bool),
+		models:                    make(map[int64]*biz.Model),
+		modelAliases:              make(map[int64]*biz.ModelAlias),
+		modelChannelMappings:      make(map[int64]*biz.ModelChannelMapping),
+		modelSubscriptionMappings: make(map[int64]*biz.ModelSubscriptionMapping),
 	}
 }
 
@@ -1251,13 +1267,37 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 }
 
 func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([]string, error) {
-	var models []string
+	seen := make(map[string]struct{})
+
+	// Query regular channel abilities
+	var channelModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&abilityModel{}).
 		Where("`group` = ? AND enabled = ?", group, true).
 		Distinct("model").
-		Pluck("model", &models).Error; err != nil {
+		Pluck("model", &channelModels).Error; err != nil {
 		return nil, err
+	}
+	for _, model := range channelModels {
+		seen[model] = struct{}{}
+	}
+
+	// Query subscription account abilities
+	var subscriptionModels []string
+	if err := r.db.WithContext(ctx).
+		Model(&subscriptionAccountAbilityModel{}).
+		Where("`group` = ? AND enabled = ?", group, true).
+		Distinct("model").
+		Pluck("model", &subscriptionModels).Error; err != nil {
+		return nil, err
+	}
+	for _, model := range subscriptionModels {
+		seen[model] = struct{}{}
+	}
+
+	models := make([]string, 0, len(seen))
+	for model := range seen {
+		models = append(models, model)
 	}
 	sort.Strings(models)
 	return models, nil
@@ -1308,6 +1348,8 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	seen := make(map[string]struct{})
+
+	// Collect models from regular channels
 	for _, channel := range r.channels {
 		if channel.Status != biz.ChannelStatusEnabled {
 			continue
@@ -1321,6 +1363,22 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 			}
 		}
 	}
+
+	// Collect models from subscription accounts
+	for _, account := range r.subAccounts {
+		if account.Status != biz.ChannelStatusEnabled {
+			continue
+		}
+		for _, accountGroup := range biz.SplitCSV(account.Group) {
+			if accountGroup != group {
+				continue
+			}
+			for _, model := range account.Models {
+				seen[model] = struct{}{}
+			}
+		}
+	}
+
 	models := make([]string, 0, len(seen))
 	for model := range seen {
 		models = append(models, model)

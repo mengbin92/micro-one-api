@@ -24,11 +24,13 @@ var ProviderSet = wire.NewSet(
 	newRepo,
 	newEventBus,
 	biz.NewChannelUsecase,
+	biz.NewModelUsecase,
 	service.NewChannelService,
 	server.NewGRPCServer,
 	server.NewHTTPServer,
 	provideRegistrar,
 	wire.Bind(new(biz.ChannelRepo), new(*data.Repository)),
+	wire.Bind(new(biz.ModelRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
@@ -64,9 +66,11 @@ func newApp(
 	repo *data.Repository,
 	eventBus events.EventBus,
 	uc *biz.ChannelUsecase,
+	modelUC *biz.ModelUsecase,
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	svc.SetModelUsecase(modelUC)
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 

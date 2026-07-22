@@ -33,6 +33,24 @@ service ChannelService {
   rpc RecordChannelHealth(RecordChannelHealthRequest) returns (RecordChannelHealthResponse);
   rpc DeleteChannel(DeleteChannelRequest) returns (DeleteChannelResponse);
   rpc ChangeChannelStatus(ChangeChannelStatusRequest) returns (ChangeChannelStatusResponse);
+  // ========== Model management (方案B) ==========
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+  rpc GetModel(GetModelRequest) returns (GetModelResponse);
+  rpc CreateModel(CreateModelRequest) returns (CreateModelResponse);
+  rpc UpdateModel(UpdateModelRequest) returns (UpdateModelResponse);
+  rpc DeleteModel(DeleteModelRequest) returns (DeleteModelResponse);
+  rpc ChangeModelStatus(ChangeModelStatusRequest) returns (ChangeModelStatusResponse);
+  rpc BatchModels(BatchModelsRequest) returns (BatchModelsResponse);
+  rpc ListModelAliases(ListModelAliasesRequest) returns (ListModelAliasesResponse);
+  rpc CreateModelAlias(CreateModelAliasRequest) returns (CreateModelAliasResponse);
+  rpc DeleteModelAlias(DeleteModelAliasRequest) returns (DeleteModelAliasResponse);
+  rpc ListChannelModelMappings(ListChannelModelMappingsRequest) returns (ListChannelModelMappingsResponse);
+  rpc UpsertChannelModelMapping(UpsertChannelModelMappingRequest) returns (UpsertChannelModelMappingResponse);
+  rpc DeleteChannelModelMapping(DeleteChannelModelMappingRequest) returns (DeleteChannelModelMappingResponse);
+  rpc ListSubscriptionModelMappings(ListSubscriptionModelMappingsRequest) returns (ListSubscriptionModelMappingsResponse);
+  rpc UpsertSubscriptionModelMapping(UpsertSubscriptionModelMappingRequest) returns (UpsertSubscriptionModelMappingResponse);
+  rpc DeleteSubscriptionModelMapping(DeleteSubscriptionModelMappingRequest) returns (DeleteSubscriptionModelMappingResponse);
+
 }
 
 message SelectChannelRequest {
@@ -399,6 +417,294 @@ message ChangeChannelStatusRequest {
 }
 
 message ChangeChannelStatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ========== Model Management (方案B independent model registry) ==========
+
+message ModelInfo {
+  int64 id = 1;
+  string model_id = 2;            // unique identifier, e.g. gpt-4o
+  string display_name = 3;
+  string description = 4;
+  string provider = 5;
+  string model_type = 6;          // chat, completion, embedding, image
+  int32 context_window = 7;
+  double pricing_input = 8;       // per 1K tokens
+  double pricing_output = 9;
+  int32 status = 10;              // 0=disabled, 1=enabled, 2=testing
+  bool is_public = 11;
+  repeated string capabilities = 12;
+  repeated string tags = 13;
+  string category = 14;
+  string tier = 15;               // entry, standard, premium
+  string metadata = 16;           // JSON string
+  int64 created_at = 17;
+  int64 updated_at = 18;
+  // aggregated counts for list views
+  int32 channel_count = 19;
+  int32 subscription_count = 20;
+}
+
+message ModelSummary {
+  int64 id = 1;
+  string model_id = 2;
+  string display_name = 3;
+  string provider = 4;
+  string model_type = 5;
+  int32 status = 6;
+  string category = 7;
+  string tier = 8;
+  bool is_public = 9;
+  int32 channel_count = 10;
+  int32 subscription_count = 11;
+}
+
+message ModelAlias {
+  int64 id = 1;
+  int64 model_pk = 2;   // FK → models.id
+  string alias = 3;
+  bool is_primary = 4;
+  int64 created_at = 5;
+}
+
+message ModelChannelMapping {
+  int64 id = 1;
+  int64 channel_id = 2;
+  int64 model_pk = 3;           // FK → models.id
+  bool enabled = 4;
+  int32 priority = 5;
+  string config = 6;            // JSON
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+message ModelSubscriptionMapping {
+  int64 id = 1;
+  int64 subscription_account_id = 2;
+  int64 model_pk = 3;           // FK → models.id
+  string group_name = 4;
+  bool enabled = 5;
+  int32 priority = 6;
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+message ModelUsageStat {
+  int64 id = 1;
+  int64 model_pk = 2;
+  string date = 3;              // YYYY-MM-DD
+  int32 request_count = 4;
+  int64 token_count = 5;
+  int32 error_count = 6;
+  int32 avg_latency = 7;
+}
+
+// ── ListModels ────────────────────────────────────────────────────────────
+message ListModelsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;           // matches model_id or display_name
+  string provider = 4;
+  string model_type = 5;
+  int32 status = 6;
+  string category = 7;
+  string tier = 8;
+  bool public_only = 9;         // when true, exclude is_public=false
+}
+
+message ListModelsResponse {
+  repeated ModelSummary models = 1;
+  int64 total = 2;
+}
+
+// ── GetModel ──────────────────────────────────────────────────────────────
+message GetModelRequest {
+  // Exactly one of model_pk / model_id should be set.
+  int64 model_pk = 1;
+  string model_id = 2;
+}
+
+message GetModelResponse {
+  ModelInfo model = 1;
+  repeated ModelAlias aliases = 2;
+  repeated ModelChannelMapping channel_mappings = 3;
+  repeated ModelSubscriptionMapping subscription_mappings = 4;
+}
+
+// ── CreateModel ───────────────────────────────────────────────────────────
+message CreateModelRequest {
+  string model_id = 1;
+  string display_name = 2;
+  string description = 3;
+  string provider = 4;
+  string model_type = 5;
+  int32 context_window = 6;
+  double pricing_input = 7;
+  double pricing_output = 8;
+  int32 status = 9;
+  bool is_public = 10;
+  repeated string capabilities = 11;
+  repeated string tags = 12;
+  string category = 13;
+  string tier = 14;
+  string metadata = 15;
+}
+
+message CreateModelResponse {
+  bool success = 1;
+  string message = 2;
+  int64 model_pk = 3;
+}
+
+// ── UpdateModel ───────────────────────────────────────────────────────────
+message UpdateModelRequest {
+  int64 model_pk = 1;
+  string display_name = 2;
+  string description = 3;
+  string provider = 4;
+  string model_type = 5;
+  int32 context_window = 6;
+  double pricing_input = 7;
+  double pricing_output = 8;
+  bool is_public = 9;
+  repeated string capabilities = 10;
+  repeated string tags = 11;
+  string category = 12;
+  string tier = 13;
+  string metadata = 14;
+}
+
+message UpdateModelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── DeleteModel ───────────────────────────────────────────────────────────
+message DeleteModelRequest {
+  int64 model_pk = 1;
+}
+
+message DeleteModelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── ChangeModelStatus ─────────────────────────────────────────────────────
+message ChangeModelStatusRequest {
+  int64 model_pk = 1;
+  int32 status = 2;
+}
+
+message ChangeModelStatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── BatchModels ───────────────────────────────────────────────────────────
+message BatchModelsRequest {
+  string action = 1;            // enable, disable, delete
+  repeated int64 model_pks = 2;
+}
+
+message BatchModelsResponse {
+  bool success = 1;
+  string message = 2;
+  int32 affected = 3;
+}
+
+// ── Model alias management ────────────────────────────────────────────────
+message ListModelAliasesRequest {
+  int64 model_pk = 1;
+}
+
+message ListModelAliasesResponse {
+  repeated ModelAlias aliases = 1;
+}
+
+message CreateModelAliasRequest {
+  int64 model_pk = 1;
+  string alias = 2;
+  bool is_primary = 3;
+}
+
+message CreateModelAliasResponse {
+  bool success = 1;
+  string message = 2;
+  int64 alias_id = 3;
+}
+
+message DeleteModelAliasRequest {
+  int64 alias_id = 1;
+}
+
+message DeleteModelAliasResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── Channel-model mapping ─────────────────────────────────────────────────
+message ListChannelModelMappingsRequest {
+  int64 channel_id = 1;
+}
+
+message ListChannelModelMappingsResponse {
+  repeated ModelChannelMapping mappings = 1;
+}
+
+message UpsertChannelModelMappingRequest {
+  int64 channel_id = 1;
+  int64 model_pk = 2;
+  bool enabled = 3;
+  int32 priority = 4;
+  string config = 5;
+}
+
+message UpsertChannelModelMappingResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DeleteChannelModelMappingRequest {
+  int64 channel_id = 1;
+  int64 model_pk = 2;
+}
+
+message DeleteChannelModelMappingResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── Subscription-account-model mapping ────────────────────────────────────
+message ListSubscriptionModelMappingsRequest {
+  int64 subscription_account_id = 1;
+}
+
+message ListSubscriptionModelMappingsResponse {
+  repeated ModelSubscriptionMapping mappings = 1;
+}
+
+message UpsertSubscriptionModelMappingRequest {
+  int64 subscription_account_id = 1;
+  int64 model_pk = 2;
+  string group_name = 3;
+  bool enabled = 4;
+  int32 priority = 5;
+}
+
+message UpsertSubscriptionModelMappingResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DeleteSubscriptionModelMappingRequest {
+  int64 subscription_account_id = 1;
+  int64 model_pk = 2;
+  string group_name = 3;
+}
+
+message DeleteSubscriptionModelMappingResponse {
   bool success = 1;
   string message = 2;
 }

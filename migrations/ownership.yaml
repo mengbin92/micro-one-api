@@ -34,6 +34,7 @@ services:
 
   channel:
     # channels / abilities / subscription_accounts / subscription_account_quota_*
+    # + model management tables (方案B: models, model_aliases, model_*_mapping)
     - 000_create_core_tables          # channels, abilities (subset)
     - 018_add_channel_oneapi_fields
     - 020_add_channel_balance_refresh_tracking
@@ -47,6 +48,7 @@ services:
     - 055_add_subscription_account_session_window_limit
     - 056_add_subscription_account_quota_reset_config
     - 057_create_subscription_account_quota_reset_runs
+    - 062_create_model_management_tables
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /
