@@ -111,12 +111,14 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		// worker result, so they are skipped here.
 		if len(details) > 0 {
 			s.recordChannelUsage(ctx, details[0].ChannelID, actualTokens)
+			s.recordModelUsage(ctx, details[0].ModelName, actualTokens, details[0].ElapsedTime, false)
 		}
 		return resp, nil
 	}
 	if len(details) > 0 {
 		detail := details[0]
 		s.recordChannelUsage(ctx, detail.ChannelID, actualTokens)
+		s.recordModelUsage(ctx, detail.ModelName, actualTokens, detail.ElapsedTime, false)
 		costUSD := quotaToUSD(resp.GetCommittedAmount())
 		s.recordSubscriptionAccountQuotaUsage(ctx, detail.SubscriptionAccountID, reservationID, costUSD)
 		s.recordSubscriptionSessionWindowUsage(ctx, detail, reservationID, costUSD)
@@ -197,6 +199,38 @@ func (s *HTTPServer) recordChannelUsage(ctx context.Context, channelID int64, qu
 	}
 	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
 		applogger.Log.Warn("failed to record channel usage", zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.String("message", resp.GetMessage()))
+	}
+}
+
+// recordModelUsage records a usage event to the model usage stats table via
+// the channel-service gRPC client. Best-effort: errors are logged but never
+// propagated. Called from commitQuotaWithResponse (the shared post-response
+// billing path) alongside recordChannelUsage so model stats stay in sync
+// with channel stats. All HTTP entry points (chat, anthropic, responses,
+// raw, ws, adaptor) go through commitQuota -> commitQuotaWithResponse, so
+// a single call site here covers every path without double-counting.
+func (s *HTTPServer) recordModelUsage(ctx context.Context, modelID string, tokenCount int64, latencyMs int64, isError bool) {
+	if s.channelClient == nil || modelID == "" {
+		return
+	}
+	channelCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+	req := &channelv1.RecordModelUsageRequest{
+		ModelId:     modelID,
+		TokenCount:  tokenCount,
+		AvgLatency:  int32(latencyMs),
+		RequestCount: 1,
+	}
+	if isError {
+		req.ErrorCount = 1
+	}
+	resp, err := s.channelClient.RecordModelUsage(channelCtx, req)
+	if err != nil && applogger.Log != nil {
+		applogger.Log.Warn("failed to record model usage", zap.String("model", modelID), zap.Error(err))
+		return
+	}
+	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
+		applogger.Log.Warn("failed to record model usage", zap.String("model", modelID), zap.String("message", resp.GetMessage()))
 	}
 }
 

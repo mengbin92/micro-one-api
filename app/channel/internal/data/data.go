@@ -37,6 +37,9 @@ type Repository struct {
 	modelAliases              map[int64]*biz.ModelAlias
 	modelChannelMappings      map[int64]*biz.ModelChannelMapping
 	modelSubscriptionMappings map[int64]*biz.ModelSubscriptionMapping
+	// Sprint 4: usage stats memory store
+	modelUsageStats      map[int64]*biz.ModelUsageStat
+	modelUsageStatNextID int64
 	// Monotonic counters for memory-mode ID generation (avoids ID reuse
 	// after deletes, which len(map)+1 would cause).
 	modelNextID           int64
@@ -225,6 +228,7 @@ func newMemoryRepository() *Repository {
 		modelAliases:              make(map[int64]*biz.ModelAlias),
 		modelChannelMappings:      make(map[int64]*biz.ModelChannelMapping),
 		modelSubscriptionMappings: make(map[int64]*biz.ModelSubscriptionMapping),
+		modelUsageStats:           make(map[int64]*biz.ModelUsageStat),
 	}
 }
 
@@ -283,7 +287,7 @@ func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group
 				continue
 			}
 			for _, accountModel := range account.Models {
-				if accountModel != model {
+				if !strings.EqualFold(accountModel, model) {
 					continue
 				}
 				abilities = append(abilities, biz.SubscriptionAccountAbility{
@@ -748,7 +752,7 @@ func (r *Repository) findSubscriptionAccountByIDDB(ctx context.Context, accountI
 
 func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
 	query := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
-		Where("`group` = ? AND model = ? AND enabled = ?", group, model, true)
+		Where("`group` = ? AND LOWER(model) = ? AND enabled = ?", group, strings.ToLower(model), true)
 	if platform != "" {
 		query = query.Where("platform = ?", platform)
 	}
@@ -1244,8 +1248,10 @@ func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Chan
 
 func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, model string) ([]biz.Ability, error) {
 	var rows []abilityModel
+	// Case-insensitive model matching: "GLM-5.2" and "glm-5.2" should resolve
+	// to the same set of channel abilities.
 	if err := r.db.WithContext(ctx).
-		Where("`group` = ? AND model = ? AND enabled = ?", group, model, true).
+		Where("`group` = ? AND LOWER(model) = ? AND enabled = ?", group, strings.ToLower(model), true).
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -1279,7 +1285,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 		return nil, err
 	}
 	for _, model := range channelModels {
-		seen[model] = struct{}{}
+		seen[strings.ToLower(model)] = struct{}{}
 	}
 
 	// ── Legacy: query subscription account abilities ─────────────────────
@@ -1292,7 +1298,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 		return nil, err
 	}
 	for _, model := range subscriptionModels {
-		seen[model] = struct{}{}
+		seen[strings.ToLower(model)] = struct{}{}
 	}
 
 	// ── Sprint 3: dual-read from model registry tables ───────────────────
@@ -1332,7 +1338,7 @@ func (r *Repository) addRegistryChannelModelsDB(ctx context.Context, group strin
 		return // registry tables may not exist yet; silently skip
 	}
 	for _, model := range registryModels {
-		seen[model] = struct{}{}
+		seen[strings.ToLower(model)] = struct{}{}
 	}
 }
 
@@ -1351,7 +1357,7 @@ func (r *Repository) addRegistrySubscriptionModelsDB(ctx context.Context, group 
 		return // registry tables may not exist yet; silently skip
 	}
 	for _, model := range registryModels {
-		seen[model] = struct{}{}
+		seen[strings.ToLower(model)] = struct{}{}
 	}
 }
 
@@ -1380,7 +1386,7 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 				continue
 			}
 			for _, channelModel := range channel.Models {
-				if channelModel != model {
+				if !strings.EqualFold(channelModel, model) {
 					continue
 				}
 				abilities = append(abilities, biz.Ability{
@@ -1411,7 +1417,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 				continue
 			}
 			for _, model := range channel.Models {
-				seen[model] = struct{}{}
+				seen[strings.ToLower(model)] = struct{}{}
 			}
 		}
 	}
@@ -1426,7 +1432,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 				continue
 			}
 			for _, model := range account.Models {
-				seen[model] = struct{}{}
+				seen[strings.ToLower(model)] = struct{}{}
 			}
 		}
 	}
@@ -1448,7 +1454,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 		}
 		for _, channelGroup := range biz.SplitCSV(channel.Group) {
 			if channelGroup == group {
-				seen[model.ModelID] = struct{}{}
+					seen[strings.ToLower(model.ModelID)] = struct{}{}
 				break
 			}
 		}
@@ -1468,7 +1474,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 			continue
 		}
 		if msm.GroupName == group {
-			seen[model.ModelID] = struct{}{}
+			seen[strings.ToLower(model.ModelID)] = struct{}{}
 		}
 	}
 

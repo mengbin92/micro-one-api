@@ -239,8 +239,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 			return
 		}
 
-		// Collect unique models from channels
-		modelSet := map[string]string{} // model -> provider
+		// Collect unique models from channels (case-insensitive dedup).
+		modelSet := map[string]string{} // lowercased model -> provider
 		for _, ch := range channels.GetChannels() {
 			if ch.GetModels() == "" {
 				continue
@@ -248,8 +248,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 			for _, model := range strings.Split(ch.GetModels(), ",") {
 				model = strings.TrimSpace(model)
 				if model != "" {
-					if _, exists := modelSet[model]; !exists {
-						modelSet[model] = providerNameFromType(ch.GetType())
+					key := strings.ToLower(model)
+					if _, exists := modelSet[key]; !exists {
+						modelSet[key] = providerNameFromType(ch.GetType())
 					}
 				}
 			}

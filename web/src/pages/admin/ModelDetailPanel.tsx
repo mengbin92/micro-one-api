@@ -1,13 +1,24 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   getModel,
+  createModelAlias,
+  deleteModelAlias,
+  listModelUsageStats,
   MODEL_STATUS_LABELS,
   MODEL_TYPE_LABELS,
   MODEL_TIER_LABELS,
   statusBadgeClass,
   formatPricing,
   formatContextWindow,
+  type ModelAlias,
+  type ModelUsageStat,
 } from '@/lib/model-management';
 import {
   Dialog,
@@ -15,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -31,20 +43,67 @@ interface ModelDetailPanelProps {
 }
 
 export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
+  const queryClient = useQueryClient();
+  const [newAlias, setNewAlias] = useState('');
+  const [newAliasPrimary, setNewAliasPrimary] = useState(false);
+  const [confirmDeleteAlias, setConfirmDeleteAlias] = useState<ModelAlias | null>(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ['admin-model-detail', modelPk],
     queryFn: () => getModel(modelPk!),
     enabled: modelPk != null,
   });
 
+  const { data: usageData } = useQuery({
+    queryKey: ['admin-model-usage-stats', modelPk],
+    queryFn: () => listModelUsageStats(modelPk!, { page: 1, page_size: 10 }),
+    enabled: modelPk != null,
+  });
+
+  const invalidateDetail = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-model-detail', modelPk] });
+    queryClient.invalidateQueries({ queryKey: ['admin-model-usage-stats', modelPk] });
+  };
+
+  const createAliasMutation = useMutation({
+    mutationFn: (payload: { alias: string; is_primary: boolean }) =>
+      createModelAlias(modelPk!, payload),
+    onSuccess: (resp) => {
+      if (!resp.success) { toast.error(resp.message || '创建别名失败'); return; }
+      toast.success('别名已创建');
+      setNewAlias('');
+      setNewAliasPrimary(false);
+      invalidateDetail();
+    },
+    onError: (err: unknown) => toast.error((err as Error).message || '创建别名失败'),
+  });
+
+  const deleteAliasMutation = useMutation({
+    mutationFn: (aliasId: number) => deleteModelAlias(modelPk!, aliasId),
+    onSuccess: (resp) => {
+      if (!resp.success) { toast.error(resp.message || '删除别名失败'); return; }
+      toast.success('别名已删除');
+      setConfirmDeleteAlias(null);
+      invalidateDetail();
+    },
+    onError: (err: unknown) => toast.error((err as Error).message || '删除别名失败'),
+  });
+
   const model = data?.model;
   const aliases = data?.aliases ?? [];
   const channelMappings = data?.channel_mappings ?? [];
   const subscriptionMappings = data?.subscription_mappings ?? [];
+  const usageStats = usageData?.stats ?? [];
+
+  const handleCreateAlias = () => {
+    if (!newAlias.trim()) { toast.error('别名不能为空'); return; }
+    createAliasMutation.mutate({ alias: newAlias.trim(), is_primary: newAliasPrimary });
+  };
 
   return (
-    <Dialog open={modelPk != null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-3xl">
+    <>
+      <Dialog open={modelPk != null} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>模型详情</DialogTitle>
           <DialogDescription>
@@ -147,16 +206,46 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
               </section>
             )}
 
-            {/* Aliases */}
-            {aliases.length > 0 && (
-              <section>
-                <h4 className="mb-2 text-sm font-semibold">别名 ({aliases.length})</h4>
+            {/* Aliases with create/delete UI */}
+            <section>
+              <h4 className="mb-2 text-sm font-semibold">别名 ({aliases.length})</h4>
+              <div className="flex items-end gap-2 mb-3">
+                <div className="grid gap-1 flex-1">
+                  <Label htmlFor="new-alias" className="text-xs">新增别名</Label>
+                  <Input
+                    id="new-alias"
+                    value={newAlias}
+                    onChange={(e) => setNewAlias(e.target.value)}
+                    placeholder="如 gpt4o"
+                    className="h-8"
+                  />
+                </div>
+                <label className="flex items-center gap-1 text-sm pb-2">
+                  <input
+                    type="checkbox"
+                    checked={newAliasPrimary}
+                    onChange={(e) => setNewAliasPrimary(e.target.checked)}
+                    className="size-4 rounded border-input"
+                  />
+                  主别名
+                </label>
+                <Button
+                  size="sm"
+                  onClick={handleCreateAlias}
+                  disabled={createAliasMutation.isPending}
+                >
+                  <Plus className="size-3.5" />
+                  添加
+                </Button>
+              </div>
+              {aliases.length > 0 && (
                 <div className="overflow-x-auto rounded-lg border">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>别名</TableHead>
                         <TableHead>主别名</TableHead>
+                        <TableHead className="text-right">操作</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -164,6 +253,47 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                         <TableRow key={a.id}>
                           <TableCell className="font-mono text-sm">{a.alias}</TableCell>
                           <TableCell>{a.is_primary ? '是' : '否'}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setConfirmDeleteAlias(a)}
+                              disabled={deleteAliasMutation.isPending}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </section>
+
+            {/* Usage statistics */}
+            {usageStats.length > 0 && (
+              <section>
+                <h4 className="mb-2 text-sm font-semibold">使用统计 (近 {usageStats.length} 条)</h4>
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>日期</TableHead>
+                        <TableHead>请求数</TableHead>
+                        <TableHead>Token 数</TableHead>
+                        <TableHead>错误数</TableHead>
+                        <TableHead>平均延迟 (ms)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {usageStats.map((s: ModelUsageStat) => (
+                        <TableRow key={s.id}>
+                          <TableCell className="font-mono text-sm">{s.date}</TableCell>
+                          <TableCell>{s.request_count}</TableCell>
+                          <TableCell>{s.token_count}</TableCell>
+                          <TableCell>{s.error_count}</TableCell>
+                          <TableCell>{s.avg_latency}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -229,7 +359,31 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
             )}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete alias confirm dialog */}
+      <Dialog open={!!confirmDeleteAlias} onOpenChange={(open) => { if (!open) setConfirmDeleteAlias(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>删除别名</DialogTitle>
+            <DialogDescription>
+              确认删除别名「{confirmDeleteAlias?.alias}」？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDeleteAlias(null)}>取消</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (confirmDeleteAlias) deleteAliasMutation.mutate(confirmDeleteAlias.id);
+              }}
+            >
+              确认
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

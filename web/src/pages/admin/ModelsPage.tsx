@@ -15,6 +15,7 @@ import {
   TYPE_OPTIONS,
   STATUS_OPTIONS,
   CATEGORY_OPTIONS,
+  TIER_OPTIONS,
   splitCsv,
   validateMetadata,
   type ModelDraft,
@@ -145,7 +146,7 @@ export function AdminModelsPage() {
     setFilter,
   } = useAdminTableState({
     storageKey: 'models',
-    filters: ['status', 'model_type', 'provider', 'category'],
+    filters: ['status', 'model_type', 'provider', 'category', 'tier'],
   });
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -171,6 +172,7 @@ export function AdminModelsPage() {
   const typeFilter = filters.model_type ?? '';
   const providerFilter = filters.provider ?? '';
   const categoryFilter = filters.category ?? '';
+  const tierFilter = filters.tier ?? '';
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-models', page, pageSize, search, sortKey, sortDirection, filters],
@@ -184,6 +186,7 @@ export function AdminModelsPage() {
         model_type: params.get('model_type') || undefined,
         provider: params.get('provider') || undefined,
         category: params.get('category') || undefined,
+        tier: params.get('tier') || undefined,
       });
     },
   });
@@ -380,6 +383,17 @@ export function AdminModelsPage() {
               aria-label="分类筛选"
             >
               {CATEGORY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <select
+              value={tierFilter}
+              onChange={(e) => setFilter('tier', e.target.value)}
+              className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
+              aria-label="等级筛选"
+            >
+              <option value="">全部等级</option>
+              {TIER_OPTIONS.filter((o) => o.value).map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>

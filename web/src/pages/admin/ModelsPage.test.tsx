@@ -210,6 +210,9 @@ describe('AdminModelsPage', () => {
       http.get('/api/admin/models/1', () =>
         HttpResponse.json(fullModel),
       ),
+      http.get('/api/admin/models/1/usage-stats', () =>
+        HttpResponse.json({ stats: [], total: 0 }),
+      ),
     );
 
     const { userEvent } = await import('@testing-library/user-event');
@@ -229,6 +232,82 @@ describe('AdminModelsPage', () => {
       expect(screen.getByText('gpt4o')).toBeInTheDocument();
     });
     expect(screen.getByText('10')).toBeInTheDocument();
+  });
+
+  it('creates an alias via the detail panel', async () => {
+    const captured = { body: null as Record<string, unknown> | null };
+    server.use(
+      http.get('/api/admin/models', () =>
+        HttpResponse.json({ models: [model], total: 1 }),
+      ),
+      http.get('/api/admin/models/1', () =>
+        HttpResponse.json(fullModel),
+      ),
+      http.get('/api/admin/models/1/usage-stats', () =>
+        HttpResponse.json({ stats: [], total: 0 }),
+      ),
+      http.post('/api/admin/models/1/aliases', async ({ request }) => {
+        captured.body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ success: true, message: 'ok', alias_id: 99 });
+      }),
+    );
+
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+
+    renderWithQuery(
+      <MemoryRouter>
+        <AdminModelsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('gpt-4o');
+    await user.click(screen.getByText('详情'));
+
+    // Wait for detail panel to load
+    await waitFor(() => {
+      expect(screen.getByText('gpt4o')).toBeInTheDocument();
+    });
+
+    // Type a new alias and add it
+    await user.type(screen.getByPlaceholderText('如 gpt4o'), 'gpt4');
+    await user.click(screen.getByText('添加'));
+
+    await waitFor(() => {
+      expect(captured.body).not.toBeNull();
+    });
+    expect(captured.body?.alias).toBe('gpt4');
+  });
+
+  it('filters by tier via the tier select', async () => {
+    const fetched = { tier: '' };
+    server.use(
+      http.get('/api/admin/models', ({ request }) => {
+        const url = new URL(request.url);
+        fetched.tier = url.searchParams.get('tier') ?? '';
+        return HttpResponse.json({ models: [], total: 0 });
+      }),
+    );
+
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+
+    renderWithQuery(
+      <MemoryRouter>
+        <AdminModelsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('暂无模型')).toBeInTheDocument();
+    });
+
+    const tierSelect = screen.getByLabelText('等级筛选');
+    await user.selectOptions(tierSelect, 'premium');
+
+    await waitFor(() => {
+      expect(fetched.tier).toBe('premium');
+    });
   });
 
   it('filters by status via the status select', async () => {

@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"time"
 
@@ -72,6 +73,18 @@ type modelSubscriptionMappingModel struct {
 }
 
 func (modelSubscriptionMappingModel) TableName() string { return "model_subscription_mapping" }
+
+type modelUsageStatModel struct {
+	ID           int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	ModelPK      int64  `gorm:"column:model_id"`
+	Date         string `gorm:"column:date"`
+	RequestCount int32  `gorm:"column:request_count"`
+	TokenCount   int64  `gorm:"column:token_count"`
+	ErrorCount   int32  `gorm:"column:error_count"`
+	AvgLatency   int32  `gorm:"column:avg_latency"`
+}
+
+func (modelUsageStatModel) TableName() string { return "model_usage_stats" }
 
 // ── DO ↔ PO conversion helpers (free functions, data-only) ─────────────────
 
@@ -200,6 +213,30 @@ func toSubscriptionMappingDO(po *modelSubscriptionMappingModel) *biz.ModelSubscr
 	}
 }
 
+func newUsageStatPO(do *biz.ModelUsageStat) *modelUsageStatModel {
+	return &modelUsageStatModel{
+		ID:           do.ID,
+		ModelPK:      do.ModelPK,
+		Date:         do.Date,
+		RequestCount: do.RequestCount,
+		TokenCount:   do.TokenCount,
+		ErrorCount:   do.ErrorCount,
+		AvgLatency:   do.AvgLatency,
+	}
+}
+
+func toUsageStatDO(po *modelUsageStatModel) *biz.ModelUsageStat {
+	return &biz.ModelUsageStat{
+		ID:           po.ID,
+		ModelPK:      po.ModelPK,
+		Date:         po.Date,
+		RequestCount: po.RequestCount,
+		TokenCount:   po.TokenCount,
+		ErrorCount:   po.ErrorCount,
+		AvgLatency:   po.AvgLatency,
+	}
+}
+
 // ── JSON helpers for capabilities/tags arrays ──────────────────────────────
 
 func jsonStringArray(in []string) string {
@@ -242,7 +279,7 @@ func (r *Repository) listModelsDB(ctx context.Context, page, pageSize int32, fil
 	query := r.db.WithContext(ctx).Model(&modelModel{})
 	if filter.Keyword != "" {
 		like := "%" + escapeLike(filter.Keyword) + "%"
-		query = query.Where("model_id LIKE ? OR display_name LIKE ?", like, like)
+		query = query.Where("LOWER(model_id) LIKE ? OR LOWER(display_name) LIKE ?", strings.ToLower(like), strings.ToLower(like))
 	}
 	if filter.Provider != "" {
 		query = query.Where("provider = ?", filter.Provider)
@@ -348,7 +385,8 @@ func (r *Repository) GetModelByID(ctx context.Context, modelID string) (*biz.Mod
 		return r.getModelByIDMemory(modelID)
 	}
 	var po modelModel
-	if err := r.db.WithContext(ctx).Where("model_id = ?", modelID).First(&po).Error; err != nil {
+	// Case-insensitive lookup: "GLM-5.2" and "glm-5.2" refer to the same model.
+	if err := r.db.WithContext(ctx).Where("LOWER(model_id) = ?", strings.ToLower(modelID)).First(&po).Error; err != nil {
 		if isGormNotFound(err) {
 			return nil, biz.ErrModelNotFound
 		}
@@ -688,6 +726,63 @@ func (r *Repository) DeleteSubscriptionMapping(ctx context.Context, accountID, m
 	return nil
 }
 
+// ── Sprint 4: Usage statistics ─────────────────────────────────────────────
+
+func (r *Repository) RecordModelUsage(ctx context.Context, modelPK int64, stat *biz.ModelUsageStat) error {
+	if r.db == nil {
+		return r.recordModelUsageMemory(modelPK, stat)
+	}
+	po := newUsageStatPO(stat)
+	po.ModelPK = modelPK
+	// Upsert: if a row for (model_id, date) already exists, accumulate.
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing modelUsageStatModel
+		err := tx.Where("model_id = ? AND date = ?", modelPK, po.Date).First(&existing).Error
+		if err == nil {
+			return tx.Model(&modelUsageStatModel{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
+				"request_count": existing.RequestCount + po.RequestCount,
+				"token_count":   existing.TokenCount + po.TokenCount,
+				"error_count":   existing.ErrorCount + po.ErrorCount,
+				"avg_latency":   po.AvgLatency, // overwrite with latest
+			}).Error
+		}
+		if !isGormNotFound(err) {
+			return err
+		}
+		return tx.Create(po).Error
+	})
+}
+
+func (r *Repository) ListModelUsageStats(ctx context.Context, modelPK int64, startDate, endDate string, page, pageSize int32) ([]*biz.ModelUsageStat, int64, error) {
+	if r.db == nil {
+		return r.listModelUsageStatsMemory(modelPK, startDate, endDate, page, pageSize)
+	}
+	query := r.db.WithContext(ctx).Model(&modelUsageStatModel{})
+	if modelPK > 0 {
+		query = query.Where("model_id = ?", modelPK)
+	}
+	if startDate != "" {
+		query = query.Where("date >= ?", startDate)
+	}
+	if endDate != "" {
+		query = query.Where("date <= ?", endDate)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	offset := (page - 1) * pageSize
+	var pos []modelUsageStatModel
+	if err := query.Order("date DESC, id DESC").Offset(int(offset)).Limit(int(pageSize)).Find(&pos).Error; err != nil {
+		return nil, 0, err
+	}
+	result := make([]*biz.ModelUsageStat, 0, len(pos))
+	for i := range pos {
+		result = append(result, toUsageStatDO(&pos[i]))
+	}
+	return result, total, nil
+}
+
 // ── GORM error helpers ─────────────────────────────────────────────────────
 
 func isGormNotFound(err error) bool {
@@ -744,7 +839,7 @@ func (r *Repository) getModelByIDMemory(modelID string) (*biz.Model, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	for _, m := range r.models {
-		if m.ModelID == modelID {
+		if strings.EqualFold(m.ModelID, modelID) {
 			return cloneModel(m), nil
 		}
 	}
@@ -755,7 +850,7 @@ func (r *Repository) createModelMemory(do *biz.Model) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	for _, m := range r.models {
-		if m.ModelID == do.ModelID {
+		if strings.EqualFold(m.ModelID, do.ModelID) {
 			return biz.ErrModelIDExists
 		}
 	}
@@ -870,7 +965,7 @@ func (r *Repository) createModelAliasMemory(do *biz.ModelAlias) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	for _, a := range r.modelAliases {
-		if a.Alias == do.Alias {
+		if strings.EqualFold(a.Alias, do.Alias) {
 			return biz.ErrAliasExists
 		}
 	}
@@ -1008,6 +1103,80 @@ func (r *Repository) listSubscriptionMappingsByModelMemory(modelPK int64) ([]*bi
 		}
 	}
 	return result, nil
+}
+
+// ── Sprint 4: Usage statistics (memory) ─────────────────────────────────────
+
+func (r *Repository) recordModelUsageMemory(modelPK int64, stat *biz.ModelUsageStat) error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.modelUsageStats == nil {
+		r.modelUsageStats = make(map[int64]*biz.ModelUsageStat)
+	}
+	for _, s := range r.modelUsageStats {
+		if s.ModelPK == modelPK && s.Date == stat.Date {
+			s.RequestCount += stat.RequestCount
+			s.TokenCount += stat.TokenCount
+			s.ErrorCount += stat.ErrorCount
+			s.AvgLatency = stat.AvgLatency
+			return nil
+		}
+	}
+	r.modelUsageStatNextID++
+	stat.ID = r.modelUsageStatNextID
+	stat.ModelPK = modelPK
+	r.modelUsageStats[stat.ID] = &biz.ModelUsageStat{
+		ID:           stat.ID,
+		ModelPK:      modelPK,
+		Date:         stat.Date,
+		RequestCount: stat.RequestCount,
+		TokenCount:   stat.TokenCount,
+		ErrorCount:   stat.ErrorCount,
+		AvgLatency:   stat.AvgLatency,
+	}
+	return nil
+}
+
+func (r *Repository) listModelUsageStatsMemory(modelPK int64, startDate, endDate string, page, pageSize int32) ([]*biz.ModelUsageStat, int64, error) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	var filtered []*biz.ModelUsageStat
+	for _, s := range r.modelUsageStats {
+		if modelPK > 0 && s.ModelPK != modelPK {
+			continue
+		}
+		if startDate != "" && s.Date < startDate {
+			continue
+		}
+		if endDate != "" && s.Date > endDate {
+			continue
+		}
+		filtered = append(filtered, &biz.ModelUsageStat{
+			ID:           s.ID,
+			ModelPK:      s.ModelPK,
+			Date:         s.Date,
+			RequestCount: s.RequestCount,
+			TokenCount:   s.TokenCount,
+			ErrorCount:   s.ErrorCount,
+			AvgLatency:   s.AvgLatency,
+		})
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].Date != filtered[j].Date {
+			return filtered[i].Date > filtered[j].Date
+		}
+		return filtered[i].ID > filtered[j].ID
+	})
+	total := int64(len(filtered))
+	start := int((page - 1) * pageSize)
+	if start >= len(filtered) {
+		return []*biz.ModelUsageStat{}, total, nil
+	}
+	end := start + int(pageSize)
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[start:end], total, nil
 }
 
 // ── Memory helpers ─────────────────────────────────────────────────────────

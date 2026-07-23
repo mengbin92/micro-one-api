@@ -124,6 +124,12 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			ChannelId: ch.ID,
 			Quota:     actualTokens,
 		})
+		// Sprint 4: record model usage stats (best-effort).
+		_, _ = s.channelClient.RecordModelUsage(ctx, &channelv1.RecordModelUsageRequest{
+			ModelId:      req.Model,
+			TokenCount:   actualTokens,
+			RequestCount: 1,
+		})
 		return nil
 	})
 

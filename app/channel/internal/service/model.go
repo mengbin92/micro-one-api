@@ -102,6 +102,21 @@ func toSubscriptionMappingProto(m *biz.ModelSubscriptionMapping) *channelv1.Mode
 	}
 }
 
+func toUsageStatProto(s *biz.ModelUsageStat) *channelv1.ModelUsageStat {
+	if s == nil {
+		return nil
+	}
+	return &channelv1.ModelUsageStat{
+		Id:           s.ID,
+		ModelPk:      s.ModelPK,
+		Date:         s.Date,
+		RequestCount: s.RequestCount,
+		TokenCount:   s.TokenCount,
+		ErrorCount:   s.ErrorCount,
+		AvgLatency:   s.AvgLatency,
+	}
+}
+
 func mapModelError(err error) error {
 	return errors.MapChannelError(err)
 }
@@ -405,4 +420,37 @@ func (s *ChannelService) DeleteSubscriptionModelMapping(ctx context.Context, req
 		return &channelv1.DeleteSubscriptionModelMappingResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.DeleteSubscriptionModelMappingResponse{Success: true, Message: "ok"}, nil
+}
+
+// ── Sprint 4: Usage statistics ─────────────────────────────────────────────
+
+func (s *ChannelService) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest) (*channelv1.RecordModelUsageResponse, error) {
+	uc := s.modelUc()
+	if uc == nil {
+		return &channelv1.RecordModelUsageResponse{Success: false, Message: "model management not configured"}, nil
+	}
+	requestCount := req.RequestCount
+	if requestCount == 0 {
+		requestCount = 1
+	}
+	if err := uc.RecordModelUsage(ctx, req.ModelId, requestCount, req.TokenCount, req.ErrorCount, req.AvgLatency, req.Date); err != nil {
+		return &channelv1.RecordModelUsageResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.RecordModelUsageResponse{Success: true, Message: "ok"}, nil
+}
+
+func (s *ChannelService) ListModelUsageStats(ctx context.Context, req *channelv1.ListModelUsageStatsRequest) (*channelv1.ListModelUsageStatsResponse, error) {
+	uc := s.modelUc()
+	if uc == nil {
+		return &channelv1.ListModelUsageStatsResponse{Stats: []*channelv1.ModelUsageStat{}, Total: 0}, nil
+	}
+	stats, total, err := uc.ListModelUsageStats(ctx, req.ModelPk, req.StartDate, req.EndDate, req.Page, req.PageSize)
+	if err != nil {
+		return nil, mapModelError(err)
+	}
+	result := make([]*channelv1.ModelUsageStat, 0, len(stats))
+	for _, s := range stats {
+		result = append(result, toUsageStatProto(s))
+	}
+	return &channelv1.ListModelUsageStatsResponse{Stats: result, Total: total}, nil
 }

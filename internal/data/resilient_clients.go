@@ -173,6 +173,26 @@ func (c *resilientChannelClient) RecordChannelHealth(ctx context.Context, req *c
 	return resp.(*channelv1.RecordChannelHealthResponse), nil
 }
 
+func (c *resilientChannelClient) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest, opts ...grpc.CallOption) (*channelv1.RecordModelUsageResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		return client.RecordModelUsage(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*channelv1.RecordModelUsageResponse), nil
+}
+
+func (c *resilientChannelClient) ListModelUsageStats(ctx context.Context, req *channelv1.ListModelUsageStatsRequest, opts ...grpc.CallOption) (*channelv1.ListModelUsageStatsResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		return client.ListModelUsageStats(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*channelv1.ListModelUsageStatsResponse), nil
+}
+
 func NewResilientBillingClient(client billingv1.BillingServiceClient, timeout time.Duration) billingv1.BillingServiceClient {
 	if client == nil {
 		return nil

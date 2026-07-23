@@ -50,6 +50,9 @@ service ChannelService {
   rpc ListSubscriptionModelMappings(ListSubscriptionModelMappingsRequest) returns (ListSubscriptionModelMappingsResponse);
   rpc UpsertSubscriptionModelMapping(UpsertSubscriptionModelMappingRequest) returns (UpsertSubscriptionModelMappingResponse);
   rpc DeleteSubscriptionModelMapping(DeleteSubscriptionModelMappingRequest) returns (DeleteSubscriptionModelMappingResponse);
+  // ========== Sprint 4: Usage statistics ==========
+  rpc RecordModelUsage(RecordModelUsageRequest) returns (RecordModelUsageResponse);
+  rpc ListModelUsageStats(ListModelUsageStatsRequest) returns (ListModelUsageStatsResponse);
 
 }
 
@@ -707,4 +710,32 @@ message DeleteSubscriptionModelMappingRequest {
 message DeleteSubscriptionModelMappingResponse {
   bool success = 1;
   string message = 2;
+}
+
+// ── Sprint 4: Model usage statistics ──────────────────────────────────────
+message RecordModelUsageRequest {
+  string model_id = 1;              // model identifier (case-insensitive)
+  int32 request_count = 2;          // number of requests (default 1)
+  int64 token_count = 3;            // total tokens consumed
+  int32 error_count = 4;            // number of errors
+  int32 avg_latency = 5;            // average latency in ms
+  string date = 6;                  // YYYY-MM-DD (empty = today)
+}
+
+message RecordModelUsageResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListModelUsageStatsRequest {
+  int64 model_pk = 1;               // filter by model pk (0 = all)
+  string start_date = 2;            // YYYY-MM-DD (inclusive)
+  string end_date = 3;              // YYYY-MM-DD (inclusive)
+  int32 page = 4;
+  int32 page_size = 5;
+}
+
+message ListModelUsageStatsResponse {
+  repeated ModelUsageStat stats = 1;
+  int64 total = 2;
 }

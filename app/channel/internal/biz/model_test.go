@@ -239,6 +239,14 @@ func (r *fakeModelRepo) UpsertSubscriptionMapping(ctx context.Context, m *ModelS
 	return nil
 }
 
+func (r *fakeModelRepo) RecordModelUsage(ctx context.Context, modelPK int64, stat *ModelUsageStat) error {
+	return nil
+}
+
+func (r *fakeModelRepo) ListModelUsageStats(ctx context.Context, modelPK int64, startDate, endDate string, page, pageSize int32) ([]*ModelUsageStat, int64, error) {
+	return nil, 0, nil
+}
+
 func (r *fakeModelRepo) DeleteSubscriptionMapping(ctx context.Context, accountID, modelPK int64, groupName string) error {
 	for id, m := range r.subMaps {
 		if m.SubscriptionAccountID == accountID && m.ModelPK == modelPK && (groupName == "" || m.GroupName == groupName) {
@@ -455,5 +463,78 @@ func TestModelUsecase_NilSafety(t *testing.T) {
 	}
 	if err := uc.CreateModel(context.Background(), &Model{ModelID: "x"}); !errors.Is(err, ErrModelNotFound) {
 		t.Fatalf("nil uc CreateModel should return ErrModelNotFound, got %v", err)
+	}
+}
+
+// ── Sprint 4: case-insensitive model name tests ────────────────────────────
+
+func TestModelUsecase_CaseInsensitiveModelID(t *testing.T) {
+	repo := newFakeModelRepo()
+	uc := NewModelUsecase(repo)
+
+	// Create with uppercase model_id — should be normalised to lowercase.
+	m := &Model{ModelID: "GLM-5.2", DisplayName: "GLM 5.2"}
+	if err := uc.CreateModel(context.Background(), m); err != nil {
+		t.Fatalf("CreateModel: %v", err)
+	}
+	if m.ModelID != "glm-5.2" {
+		t.Fatalf("expected model_id normalised to glm-5.2, got %s", m.ModelID)
+	}
+
+	// Lookup with different case should find the same model.
+	got, err := uc.GetModelByID(context.Background(), "GLM-5.2")
+	if err != nil {
+		t.Fatalf("GetModelByID with different case: %v", err)
+	}
+	if got.ModelID != "glm-5.2" {
+		t.Fatalf("expected glm-5.2, got %s", got.ModelID)
+	}
+}
+
+func TestModelUsecase_CaseInsensitiveAlias(t *testing.T) {
+	repo := newFakeModelRepo()
+	uc := NewModelUsecase(repo)
+
+	m := &Model{ModelID: "test-model", DisplayName: "TM"}
+	_ = uc.CreateModel(context.Background(), m)
+
+	// Create alias with uppercase — should be normalised.
+	alias := &ModelAlias{ModelPK: m.ID, Alias: "TestAlias"}
+	if err := uc.CreateModelAlias(context.Background(), alias); err != nil {
+		t.Fatalf("CreateModelAlias: %v", err)
+	}
+	if alias.Alias != "testalias" {
+		t.Fatalf("expected alias normalised to testalias, got %s", alias.Alias)
+	}
+}
+
+func TestNormalizeModelID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"GLM-5.2", "glm-5.2"},
+		{"  GPT-4O  ", "gpt-4o"},
+		{"claude-3-5-sonnet", "claude-3-5-sonnet"},
+		{"", ""},
+		{"  ", ""},
+	}
+	for _, tt := range tests {
+		got := NormalizeModelID(tt.input)
+		if got != tt.want {
+			t.Errorf("NormalizeModelID(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestModelIDEqual(t *testing.T) {
+	if !ModelIDEqual("GLM-5.2", "glm-5.2") {
+		t.Error("GLM-5.2 should equal glm-5.2")
+	}
+	if !ModelIDEqual(" GPT-4O ", "gpt-4o") {
+		t.Error(" GPT-4O  should equal gpt-4o")
+	}
+	if ModelIDEqual("gpt-4o", "gpt-4o-mini") {
+		t.Error("gpt-4o should not equal gpt-4o-mini")
 	}
 }

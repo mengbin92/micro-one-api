@@ -90,3 +90,15 @@ func (s *AdminService) UpsertSubscriptionModelMapping(ctx context.Context, req *
 func (s *AdminService) DeleteSubscriptionModelMapping(ctx context.Context, req *channelv1.DeleteSubscriptionModelMappingRequest) (*channelv1.DeleteSubscriptionModelMappingResponse, error) {
 	return s.channelClient.DeleteSubscriptionModelMapping(ctx, req)
 }
+
+// ── Sprint 4: Usage statistics ─────────────────────────────────────────────
+
+// RecordModelUsage records a usage event for a model.
+func (s *AdminService) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest) (*channelv1.RecordModelUsageResponse, error) {
+	return s.channelClient.RecordModelUsage(ctx, req)
+}
+
+// ListModelUsageStats lists usage statistics for models.
+func (s *AdminService) ListModelUsageStats(ctx context.Context, req *channelv1.ListModelUsageStatsRequest) (*channelv1.ListModelUsageStatsResponse, error) {
+	return s.channelClient.ListModelUsageStats(ctx, req)
+}

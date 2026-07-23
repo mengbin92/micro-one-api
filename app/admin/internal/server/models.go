@@ -147,6 +147,9 @@ func handleModelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminS
 			return
 		}
 		writeJSON(w, http.StatusOK, resp)
+	case action == "usage-stats" && r.Method == http.MethodGet:
+		handleModelUsageStats(w, r, svc)
+		return
 	case action == "aliases" && r.Method == http.MethodGet:
 		resp, err := svc.ListModelAliases(r.Context(), &channelv1.ListModelAliasesRequest{ModelPk: modelPK})
 		if err != nil {
@@ -302,6 +305,41 @@ func handleSubscriptionModelMappings(w http.ResponseWriter, r *http.Request, svc
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+// ── Sprint 4: Usage statistics ─────────────────────────────────────────────
+
+// handleModelUsageStats handles /api/admin/models/{model_pk}/usage-stats.
+// GET → list usage stats for a model
+func handleModelUsageStats(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	rest := strings.TrimPrefix(r.URL.Path, "/api/admin/models/")
+	rest = strings.Trim(rest, "/")
+	parts := strings.SplitN(rest, "/", 3)
+	if len(parts) < 2 || parts[1] != "usage-stats" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
+	modelPK, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || modelPK <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid model id"})
+		return
+	}
+	resp, err := svc.ListModelUsageStats(r.Context(), &channelv1.ListModelUsageStatsRequest{
+		ModelPk:   modelPK,
+		StartDate: r.URL.Query().Get("start_date"),
+		EndDate:   r.URL.Query().Get("end_date"),
+		Page:      getQueryInt32(r, "page", 1),
+		PageSize:  getQueryInt32(r, "page_size", 20),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // parseChannelMappingPathID extracts the {id} segment from a path shaped

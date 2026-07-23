@@ -183,6 +183,9 @@ func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.Re
 	logInput := orchestratorUsageLogInput(plan, req, usage, latency, stream)
 	logUpstreamUsage(logInput)
 	h.s.ingestUsageLog(ctx, logInput)
+	// Sprint 4: model usage stats are recorded inside commitQuota (which is
+	// called by commitReservedQuota just before logUsage). Recording here
+	// too would double-count.
 }
 
 func orchestratorUsageLogInput(plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool) usageLogInput {

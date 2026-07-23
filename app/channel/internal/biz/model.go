@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,21 @@ const (
 	BatchActionDisable = "disable"
 	BatchActionDelete  = "delete"
 )
+
+// NormalizeModelID returns the canonical form of a model identifier used for
+// case-insensitive comparison and deduplication. Model names from upstream
+// providers may arrive in different cases (e.g. "GLM-5.2" vs "glm-5.2") but
+// refer to the same model; normalising to lowercase ensures they are treated
+// as identical throughout the system.
+func NormalizeModelID(modelID string) string {
+	return strings.ToLower(strings.TrimSpace(modelID))
+}
+
+// ModelIDEqual reports whether two model identifiers refer to the same model,
+// ignoring case and surrounding whitespace.
+func ModelIDEqual(a, b string) bool {
+	return NormalizeModelID(a) == NormalizeModelID(b)
+}
 
 // Model is the domain object for the independent model registry (方案B).
 // It carries no proto or storage tags — it is the pure biz model owned by biz.
@@ -141,6 +157,10 @@ type ModelRepo interface {
 	ListSubscriptionMappingsByModel(ctx context.Context, modelPK int64) ([]*ModelSubscriptionMapping, error)
 	UpsertSubscriptionMapping(ctx context.Context, m *ModelSubscriptionMapping) error
 	DeleteSubscriptionMapping(ctx context.Context, accountID, modelPK int64, groupName string) error
+
+	// Sprint 4: usage statistics
+	RecordModelUsage(ctx context.Context, modelPK int64, stat *ModelUsageStat) error
+	ListModelUsageStats(ctx context.Context, modelPK int64, startDate, endDate string, page, pageSize int32) ([]*ModelUsageStat, int64, error)
 }
 
 // ModelUsecase wraps ModelRepo with domain-level operations.
@@ -213,7 +233,7 @@ func (uc *ModelUsecase) GetModelByID(ctx context.Context, modelID string) (*Mode
 	if uc == nil || uc.repo == nil {
 		return nil, ErrModelNotFound
 	}
-	return uc.repo.GetModelByID(ctx, modelID)
+	return uc.repo.GetModelByID(ctx, NormalizeModelID(modelID))
 }
 
 // CreateModel creates a new model record.
@@ -224,6 +244,9 @@ func (uc *ModelUsecase) CreateModel(ctx context.Context, model *Model) error {
 	if model.ModelID == "" {
 		return fmt.Errorf("model_id is required")
 	}
+	// Normalise the model_id to lowercase so that "GLM-5.2" and "glm-5.2"
+	// are treated as the same model throughout the system.
+	model.ModelID = NormalizeModelID(model.ModelID)
 	if model.DisplayName == "" {
 		model.DisplayName = model.ModelID
 	}
@@ -305,6 +328,7 @@ func (uc *ModelUsecase) CreateModelAlias(ctx context.Context, alias *ModelAlias)
 	if alias.Alias == "" {
 		return fmt.Errorf("alias is required")
 	}
+	alias.Alias = NormalizeModelID(alias.Alias)
 	if alias.CreatedAt == 0 {
 		alias.CreatedAt = uc.timestamp()
 	}
@@ -386,4 +410,50 @@ func (uc *ModelUsecase) DeleteSubscriptionMapping(ctx context.Context, accountID
 		return ErrModelNotFound
 	}
 	return uc.repo.DeleteSubscriptionMapping(ctx, accountID, modelPK, groupName)
+}
+
+// ── Sprint 4: Usage statistics ─────────────────────────────────────────────
+
+// RecordModelUsage records a usage event for a model identified by its model_id
+// string. The model_id is normalised to lowercase before lookup. If the model
+// is not found, the event is silently dropped (best-effort: usage recording
+// must never fail the request path).
+func (uc *ModelUsecase) RecordModelUsage(ctx context.Context, modelID string, requestCount int32, tokenCount int64, errorCount int32, avgLatency int32, date string) error {
+	if uc == nil || uc.repo == nil {
+		return nil
+	}
+	if modelID == "" {
+		return nil
+	}
+	model, err := uc.repo.GetModelByID(ctx, NormalizeModelID(modelID))
+	if err != nil {
+		return nil // best-effort: model not registered, skip
+	}
+	if date == "" {
+		date = uc.now().Format("2006-01-02")
+	}
+	stat := &ModelUsageStat{
+		ModelPK:      model.ID,
+		Date:         date,
+		RequestCount: requestCount,
+		TokenCount:   tokenCount,
+		ErrorCount:   errorCount,
+		AvgLatency:   avgLatency,
+	}
+	return uc.repo.RecordModelUsage(ctx, model.ID, stat)
+}
+
+// ListModelUsageStats returns paginated usage statistics for a model (or all
+// models when modelPK is 0) within an optional date range.
+func (uc *ModelUsecase) ListModelUsageStats(ctx context.Context, modelPK int64, startDate, endDate string, page, pageSize int32) ([]*ModelUsageStat, int64, error) {
+	if uc == nil || uc.repo == nil {
+		return nil, 0, nil
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	return uc.repo.ListModelUsageStats(ctx, modelPK, startDate, endDate, page, pageSize)
 }

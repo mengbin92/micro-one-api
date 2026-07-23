@@ -193,6 +193,58 @@ export async function batchModels(payload: BatchModelsPayload): Promise<BatchMod
   return data;
 }
 
+// ── Sprint 4: Usage statistics ─────────────────────────────────────────────
+
+export interface ModelUsageStat {
+  id: number;
+  model_pk: number;
+  date: string;
+  request_count: number;
+  token_count: number;
+  error_count: number;
+  avg_latency: number;
+}
+
+export interface ListModelUsageStatsResponse {
+  stats: ModelUsageStat[];
+  total: number;
+}
+
+export interface ListModelUsageStatsParams {
+  start_date?: string;
+  end_date?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export async function listModelUsageStats(modelPk: number, params: ListModelUsageStatsParams = {}): Promise<ListModelUsageStatsResponse> {
+  const { data } = await adminApiClient.get<ListModelUsageStatsResponse>(`/admin/models/${modelPk}/usage-stats`, { params });
+  return data;
+}
+
+// ── Sprint 4: Alias management API ─────────────────────────────────────────
+
+export interface CreateModelAliasPayload {
+  alias: string;
+  is_primary?: boolean;
+}
+
+export interface CreateModelAliasResponse {
+  success: boolean;
+  message: string;
+  alias_id: number;
+}
+
+export async function createModelAlias(modelPk: number, payload: CreateModelAliasPayload): Promise<CreateModelAliasResponse> {
+  const { data } = await adminApiClient.post<CreateModelAliasResponse>(`/admin/models/${modelPk}/aliases`, payload);
+  return data;
+}
+
+export async function deleteModelAlias(modelPk: number, aliasId: number): Promise<UpdateModelResponse> {
+  const { data } = await adminApiClient.delete<UpdateModelResponse>(`/admin/models/${modelPk}/aliases/${aliasId}`);
+  return data;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 export const MODEL_STATUS_LABELS: Record<number, string> = {

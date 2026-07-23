@@ -504,11 +504,67 @@ ON DUPLICATE KEY UPDATE updated_at = UNIX_TIMESTAMP();
 | 禁用模型过滤 | 注册表中 status=0 的模型不会出现在 /v1/models 结果中 |
 | 向后兼容 | legacy abilities 表数据仍然有效，迁移期间双写双读，无需停机 |
 
-### Sprint 4: 增强功能 (1周)
-- [ ] 使用统计功能
-- [ ] 模型别名管理
-- [ ] 高级筛选和搜索
-- [ ] 文档和测试
+### Sprint 4: 增强功能 (1周) ✅ 已完成
+- [x] 使用统计功能
+- [x] 模型别名管理
+- [x] 高级筛选和搜索
+- [x] 文档和测试
+- [x] 模型名称大小写不敏感匹配 (GLM-5.2 vs glm-5.2)
+
+### 5.8 实现记录 (Sprint 4)
+
+> **状态: 已完成 (2026-07-23)**
+
+#### 已交付文件
+
+| 层 | 文件 | 说明 |
+|---|---|---|
+| Proto | `api/channel/v1/channel.proto` | 新增 RecordModelUsage + ListModelUsageStats 2 个 RPC |
+| Biz | `app/channel/internal/biz/model.go` | NormalizeModelID/ModelIDEqual 工具函数；CreateModel/GetModelByID/CreateModelAlias 大小写归一化；RecordModelUsage/ListModelUsageStats usecase 方法 |
+| Data | `app/channel/internal/data/model.go` | modelUsageStatModel PO + DO↔PO 转换；RecordModelUsage (DB upsert 累加 + 内存) + ListModelUsageStats (DB + 内存)；GetModelByID/CreateModel 大小写不敏感查询 |
+| Data | `app/channel/internal/data/data.go` | modelUsageStats 内存存储字段；ListAbilitiesByGroupAndModel/ListSubscriptionAccountAbilities/ListAvailableModels 大小写不敏感匹配 + 去重 |
+| Service | `app/channel/internal/service/model.go` | RecordModelUsage + ListModelUsageStats gRPC handler |
+| Service | `app/admin/internal/service/model.go` | admin-api 透传 |
+| Server | `app/admin/internal/server/models.go` | `/api/admin/models/{pk}/usage-stats` HTTP 路由 |
+| Relay | `internal/biz/relay.go` | AllowedModels 检查改为大小写不敏感 (strings.EqualFold) |
+| Billing | `internal/server/http_billing.go` | recordModelUsage 方法，在 commitQuota 路径中与 recordChannelUsage 并行调用 |
+| Orchestrator | `internal/server/http_orchestrator.go` | LogUsage hook 中调用 recordModelUsage |
+| Resilient | `internal/data/resilient_clients.go` | RecordModelUsage + ListModelUsageStats 熔断包装 |
+| Lib | `web/src/lib/model-management.ts` | ModelUsageStat 类型 + listModelUsageStats/createModelAlias/deleteModelAlias API |
+| Page | `web/src/pages/admin/ModelDetailPanel.tsx` | 别名创建/删除 UI + 使用统计表格展示 |
+| Page | `web/src/pages/admin/ModelsPage.tsx` | 新增 tier (等级) 筛选器 |
+
+#### 功能清单
+
+| 功能 | 说明 |
+|---|---|
+| 使用统计记录 | 每次 relay 请求完成后，通过 gRPC 调用 channel-service 的 RecordModelUsage，按 (model_id, date) 累加请求数/token 数/错误数/平均延迟 |
+| 使用统计查询 | `GET /api/admin/models/{pk}/usage-stats` 支持日期范围筛选和分页 |
+| 使用统计展示 | 模型详情面板中展示最近 10 条使用统计 (日期/请求数/Token 数/错误数/平均延迟) |
+| 别名管理 UI | 模型详情面板中可创建/删除别名，支持标记主别名，创建后实时刷新 |
+| 高级筛选 | 模型列表页新增等级 (tier) 筛选器，与状态/类型/提供商/分类筛选器并列 |
+| 大小写不敏感匹配 | `NormalizeModelID` 将模型 ID 归一化为小写+去空格；CreateModel/GetModelByID/CreateModelAlias 在 biz 层归一化；DB 查询使用 `LOWER()` 函数；内存模式使用 `strings.EqualFold`；ListAvailableModels 去重时使用小写键 |
+| AllowedModels 不敏感 | relay.go 中的 token 级别模型白名单检查改为 `strings.EqualFold`，确保 GLM-5.2 和 glm-5.2 都能通过 |
+| 能力查询不敏感 | ListAbilitiesByGroupAndModel 和 ListSubscriptionAccountAbilities 的 DB 和内存路径均改为大小写不敏感匹配 |
+
+#### 测试覆盖
+
+| 包 | 新增用例 | 状态 |
+|---|---|---|
+| `app/channel/internal/biz` | 4 (大小写不敏感模型 ID/别名/NormalizeModelID/ModelIDEqual) | ✅ |
+| `app/channel/internal/data` | 7 (DB+内存大小写不敏感查询/重复检测/可用模型去重/使用统计 DB+内存) | ✅ |
+| `app/channel/internal/service` | 3 (RecordModelUsage/ListModelUsageStats/NilUC) | ✅ |
+| `app/admin/internal/server` | 1 (ListModelUsageStats HTTP) | ✅ |
+| `web/src/pages/admin` | 2 (别名创建/tier 筛选) | ✅ |
+| 全部前端测试 | 90 (26 files) | ✅ 全通过 |
+
+#### 验证结果
+
+- Go 编译: ✅ 零错误 (go vet 通过)
+- TypeScript 编译: ✅ 零错误
+- ESLint: ✅ 零错误零警告
+- Vitest: ✅ 90/90 通过 (含新增 9 个模型管理用例)
+- Vite build: ✅ 构建成功
 
 ## 7. 风险与缓解
 

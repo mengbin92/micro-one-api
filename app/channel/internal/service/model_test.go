@@ -153,6 +153,14 @@ func (r *modelServiceRepo) DeleteSubscriptionMapping(ctx context.Context, accoun
 	return nil
 }
 
+func (r *modelServiceRepo) RecordModelUsage(ctx context.Context, modelPK int64, stat *biz.ModelUsageStat) error {
+	return nil
+}
+
+func (r *modelServiceRepo) ListModelUsageStats(ctx context.Context, modelPK int64, startDate, endDate string, page, pageSize int32) ([]*biz.ModelUsageStat, int64, error) {
+	return nil, 0, nil
+}
+
 // Compile-time check.
 var _ biz.ModelRepo = (*modelServiceRepo)(nil)
 
@@ -417,5 +425,61 @@ func TestChannelService_NilModelUsecase(t *testing.T) {
 	}
 	if resp == nil || len(resp.Models) != 0 {
 		t.Fatal("expected empty list with nil uc")
+	}
+}
+
+// ── Sprint 4: Usage statistics tests ────────────────────────────────────────
+
+func TestChannelService_RecordModelUsage(t *testing.T) {
+	svc := newModelService()
+	ctx := context.Background()
+
+	// Create a model first.
+	_, _ = svc.CreateModel(ctx, &channelv1.CreateModelRequest{
+		ModelId:     "usage-test",
+		DisplayName: "Usage Test",
+	})
+
+	resp, err := svc.RecordModelUsage(ctx, &channelv1.RecordModelUsageRequest{
+		ModelId:     "usage-test",
+		TokenCount:  100,
+		RequestCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("RecordModelUsage: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("expected success: %+v", resp)
+	}
+}
+
+func TestChannelService_ListModelUsageStats(t *testing.T) {
+	svc := newModelService()
+	ctx := context.Background()
+
+	resp, err := svc.ListModelUsageStats(ctx, &channelv1.ListModelUsageStatsRequest{
+		ModelPk: 1,
+		Page:    1,
+		PageSize: 10,
+	})
+	if err != nil {
+		t.Fatalf("ListModelUsageStats: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+}
+
+func TestChannelService_RecordModelUsageNilUC(t *testing.T) {
+	repo := newModelServiceRepo()
+	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
+	// modelUC is nil
+
+	resp, err := svc.RecordModelUsage(context.Background(), &channelv1.RecordModelUsageRequest{ModelId: "x"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Success {
+		t.Fatal("expected failure with nil uc")
 	}
 }

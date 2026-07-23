@@ -204,7 +204,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	if len(authSnapshot.AllowedModels) > 0 {
 		allowed := false
 		for _, m := range authSnapshot.AllowedModels {
-			if m == req.Model {
+			if strings.EqualFold(m, req.Model) {
 				allowed = true
 				break
 			}

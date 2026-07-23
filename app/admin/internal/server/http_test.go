@@ -3017,6 +3017,14 @@ func (c *adminHTTPModelChannelClient) DeleteSubscriptionModelMapping(ctx context
 	return &channelv1.DeleteSubscriptionModelMappingResponse{Success: true, Message: "ok"}, nil
 }
 
+func (c *adminHTTPModelChannelClient) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest, opts ...grpc.CallOption) (*channelv1.RecordModelUsageResponse, error) {
+	return &channelv1.RecordModelUsageResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) ListModelUsageStats(ctx context.Context, req *channelv1.ListModelUsageStatsRequest, opts ...grpc.CallOption) (*channelv1.ListModelUsageStatsResponse, error) {
+	return &channelv1.ListModelUsageStatsResponse{Stats: []*channelv1.ModelUsageStat{}, Total: 0}, nil
+}
+
 func newAdminHTTPModelTestServer() http.Handler {
 	ch := &adminHTTPModelChannelClient{
 		models: []*channelv1.ModelSummary{
@@ -3166,5 +3174,25 @@ func TestAdminHTTPModelRequiresAuth(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+// ── Sprint 4: Usage statistics admin HTTP tests ────────────────────────────
+
+func TestAdminHTTPListModelUsageStats(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPModelTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/models/1/usage-stats?page=1&page_size=10", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	// Empty stats list is valid (the stub returns no stats).
+	if rec.Body.String() == "" {
+		t.Fatal("expected non-empty response")
 	}
 }

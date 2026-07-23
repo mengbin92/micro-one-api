@@ -81,6 +81,19 @@ func setupModelTestDB(t *testing.T) *Repository {
 		)
 	`).Error)
 
+	require.NoError(t, db.Exec(`
+		CREATE TABLE model_usage_stats (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+			date TEXT NOT NULL,
+			request_count INTEGER NOT NULL DEFAULT 0,
+			token_count INTEGER NOT NULL DEFAULT 0,
+			error_count INTEGER NOT NULL DEFAULT 0,
+			avg_latency INTEGER NOT NULL DEFAULT 0
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mus_model_date ON model_usage_stats(model_id, date)`).Error)
+
 	return &Repository{db: db}
 }
 
@@ -403,4 +416,156 @@ func TestRepository_ListAvailableModelsRegistryDisabledModel(t *testing.T) {
 	for _, m := range models {
 		assert.NotEqual(t, "disabled-model", m, "disabled registry model should not be returned")
 	}
+}
+
+// ── Sprint 4: case-insensitive model name tests ────────────────────────────
+
+func TestRepository_CaseInsensitiveGetModelByID(t *testing.T) {
+	repo := setupModelTestDB(t)
+	ctx := context.Background()
+
+	// Store with lowercase (as the biz usecase would normalise before calling repo).
+	m := &biz.Model{ModelID: "glm-5.2", DisplayName: "GLM 5.2"}
+	require.NoError(t, repo.CreateModel(ctx, m))
+
+	// Lookup with different case should find the model (case-insensitive query).
+	got, err := repo.GetModelByID(ctx, "GLM-5.2")
+	require.NoError(t, err)
+	assert.Equal(t, "glm-5.2", got.ModelID)
+}
+
+func TestRepository_CaseInsensitiveDuplicateModel(t *testing.T) {
+	// DB unique constraint is case-sensitive by default; normalisation happens
+	// at the biz layer. Here we verify that the normalised (lowercase) form
+	// is rejected by the DB unique constraint.
+	repo := setupModelTestDB(t)
+	ctx := context.Background()
+	_ = repo.CreateModel(ctx, &biz.Model{ModelID: "glm-5.2", DisplayName: "D"})
+	err := repo.CreateModel(ctx, &biz.Model{ModelID: "glm-5.2", DisplayName: "D2"})
+	assert.ErrorIs(t, err, biz.ErrModelIDExists)
+}
+
+func TestRepository_CaseInsensitiveMemoryGetModelByID(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+
+	// Store with lowercase (as the biz usecase would normalise).
+	m := &biz.Model{ModelID: "glm-5.2", DisplayName: "GLM 5.2", Status: biz.ModelStatusEnabled}
+	require.NoError(t, repo.CreateModel(ctx, m))
+
+	// Lookup with different case should find the model (case-insensitive memory lookup).
+	got, err := repo.GetModelByID(ctx, "GLM-5.2")
+	require.NoError(t, err)
+	assert.Equal(t, "glm-5.2", got.ModelID)
+}
+
+func TestRepository_CaseInsensitiveMemoryDuplicateModel(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+	_ = repo.CreateModel(ctx, &biz.Model{ModelID: "GLM-5.2", DisplayName: "D", Status: biz.ModelStatusEnabled})
+	// Creating with different case should fail.
+	err := repo.CreateModel(ctx, &biz.Model{ModelID: "glm-5.2", DisplayName: "D2", Status: biz.ModelStatusEnabled})
+	assert.ErrorIs(t, err, biz.ErrModelIDExists)
+}
+
+func TestRepository_CaseInsensitiveListAvailableModels(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+
+	// Channel with uppercase model name.
+	ch := &biz.Channel{
+		ID:     1,
+		Name:   "test-channel",
+		Status: biz.ChannelStatusEnabled,
+		Group:  "default",
+		Models: []string{"GLM-5.2"},
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	// Another channel with lowercase model name.
+	ch2 := &biz.Channel{
+		ID:     2,
+		Name:   "test-channel-2",
+		Status: biz.ChannelStatusEnabled,
+		Group:  "default",
+		Models: []string{"glm-5.2"},
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch2))
+
+	// ListAvailableModels should return only one entry (deduplicated).
+	models, err := repo.ListAvailableModels(ctx, "default")
+	require.NoError(t, err)
+
+	count := 0
+	for _, m := range models {
+		if m == "glm-5.2" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "GLM-5.2 and glm-5.2 should be deduplicated to a single entry")
+}
+
+// ── Sprint 4: Usage statistics tests ───────────────────────────────────────
+
+func TestRepository_RecordAndListModelUsageStats(t *testing.T) {
+	repo := setupModelTestDB(t)
+	ctx := context.Background()
+
+	m := &biz.Model{ModelID: "usage-model", DisplayName: "UM"}
+	require.NoError(t, repo.CreateModel(ctx, m))
+
+	// Record first usage.
+	require.NoError(t, repo.RecordModelUsage(ctx, m.ID, &biz.ModelUsageStat{
+		ModelPK:      m.ID,
+		Date:         "2026-07-23",
+		RequestCount: 1,
+		TokenCount:   100,
+		AvgLatency:   50,
+	}))
+
+	// Record second usage for the same day — should accumulate.
+	require.NoError(t, repo.RecordModelUsage(ctx, m.ID, &biz.ModelUsageStat{
+		ModelPK:      m.ID,
+		Date:         "2026-07-23",
+		RequestCount: 1,
+		TokenCount:   200,
+		AvgLatency:   60,
+	}))
+
+	stats, total, err := repo.ListModelUsageStats(ctx, m.ID, "", "", 1, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	assert.Len(t, stats, 1)
+	assert.Equal(t, int32(2), stats[0].RequestCount)
+	assert.Equal(t, int64(300), stats[0].TokenCount)
+	assert.Equal(t, int32(60), stats[0].AvgLatency)
+}
+
+func TestRepository_ModelUsageStatsMemory(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+
+	m := &biz.Model{ModelID: "mem-usage", DisplayName: "MU", Status: biz.ModelStatusEnabled}
+	require.NoError(t, repo.CreateModel(ctx, m))
+
+	require.NoError(t, repo.RecordModelUsage(ctx, m.ID, &biz.ModelUsageStat{
+		ModelPK:      m.ID,
+		Date:         "2026-07-23",
+		RequestCount: 1,
+		TokenCount:   100,
+	}))
+
+	require.NoError(t, repo.RecordModelUsage(ctx, m.ID, &biz.ModelUsageStat{
+		ModelPK:      m.ID,
+		Date:         "2026-07-23",
+		RequestCount: 1,
+		TokenCount:   200,
+	}))
+
+	stats, total, err := repo.ListModelUsageStats(ctx, m.ID, "", "", 1, 10)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	assert.Len(t, stats, 1)
+	assert.Equal(t, int32(2), stats[0].RequestCount)
+	assert.Equal(t, int64(300), stats[0].TokenCount)
 }
