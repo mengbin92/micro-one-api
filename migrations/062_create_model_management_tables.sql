@@ -7,7 +7,7 @@
 -- ── models: model registry ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `models` (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `model_id` varchar(255) NOT NULL COMMENT 'unique model identifier, e.g. gpt-4o',
+  `model_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT 'unique model identifier, e.g. gpt-4o (case-sensitive)',
   `display_name` varchar(255) NOT NULL COMMENT 'human-readable name',
   `description` text,
   `provider` varchar(100) NOT NULL DEFAULT '' COMMENT 'openai, anthropic, zhipu, …',

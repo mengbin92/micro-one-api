@@ -623,7 +623,7 @@ CREATE INDEX IF NOT EXISTS idx_subscription_account_quota_reset_runs_account_tim
 
 CREATE TABLE IF NOT EXISTS models (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  model_id TEXT NOT NULL UNIQUE,
+  model_id TEXT NOT NULL UNIQUE COLLATE BINARY,
   display_name TEXT NOT NULL,
   description TEXT,
   provider TEXT NOT NULL DEFAULT '',

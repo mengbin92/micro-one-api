@@ -643,7 +643,7 @@ CREATE INDEX IF NOT EXISTS idx_account_receivable_status_created ON account_rece
 
 CREATE TABLE IF NOT EXISTS models (
   id BIGSERIAL PRIMARY KEY,
-  model_id VARCHAR(255) NOT NULL UNIQUE,
+  model_id VARCHAR(255) NOT NULL,
   display_name VARCHAR(255) NOT NULL,
   description TEXT,
   provider VARCHAR(100) NOT NULL DEFAULT '',
@@ -659,7 +659,8 @@ CREATE TABLE IF NOT EXISTS models (
   tier VARCHAR(50) NOT NULL DEFAULT '',
   metadata TEXT,
   created_at BIGINT NOT NULL DEFAULT 0,
-  updated_at BIGINT NOT NULL DEFAULT 0
+  updated_at BIGINT NOT NULL DEFAULT 0,
+  CONSTRAINT uk_model_id UNIQUE (model_id COLLATE "C")
 );
 
 CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider);
