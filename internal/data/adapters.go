@@ -115,6 +115,7 @@ func subscriptionAccountInfoToBiz(account *commonv1.SubscriptionAccountInfo) *re
 		Concurrency:           account.GetConcurrency(),
 		RPMLimit:              account.GetRpmLimit(),
 		SessionWindowLimitUSD: account.GetSessionWindowLimitUsd(),
+		ModelMapping:           account.GetModelMapping(),
 	}
 }
 

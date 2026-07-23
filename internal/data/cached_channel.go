@@ -82,6 +82,7 @@ func channelInfoToBizChannel(ch *commonv1.ChannelInfo) *relaybiz.Channel {
 		Models:   splitModels(ch.Models),
 		Priority: ch.Priority,
 		Key:      ch.Key,
+		ModelMapping: ch.GetModelMapping(),
 	}
 	if ch.Config != nil {
 		c.Config.APIVersion = ch.Config.ApiVersion

@@ -109,7 +109,8 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			rpm_limit INTEGER DEFAULT 0,
 			session_window_limit_usd REAL DEFAULT 0,
 			quota_reset_strategy TEXT DEFAULT 'rolling',
-			quota_timezone TEXT DEFAULT 'UTC'
+			quota_timezone TEXT DEFAULT 'UTC',
+			model_mapping TEXT DEFAULT ''
 		)
 	`).Error)
 

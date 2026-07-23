@@ -208,6 +208,7 @@ message CreateSubscriptionAccountRequest {
   double session_window_limit_usd = 27;
   string quota_reset_strategy = 28;
   string quota_timezone = 29;
+  string model_mapping = 30;        // JSON {"src":"dst"} per-account model remap
 }
 
 message CreateSubscriptionAccountResponse {
@@ -246,6 +247,7 @@ message UpdateSubscriptionAccountRequest {
   optional double session_window_limit_usd = 27;
   optional string quota_reset_strategy = 28;
   optional string quota_timezone = 29;
+  optional string model_mapping = 30; // JSON {"src":"dst"} per-account model remap
 }
 
 message UpdateSubscriptionAccountResponse {

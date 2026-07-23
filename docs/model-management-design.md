@@ -582,3 +582,215 @@ ON DUPLICATE KEY UPDATE updated_at = UNIX_TIMESTAMP();
 3. **A/B 测试** - 支持模型对比测试
 4. **成本分析** - 详细的成本分析仪表板
 5. **模型评分** - 用户对模型的评分反馈
+
+---
+
+## 9. 多上游供应商同模型管理（对照 sub2api 落地分析）
+
+> **状态: 规划中 (2026-07-23)**
+> 本节记录对照同级项目 `sub2api` 后的差距分析与落地清单。
+
+### 9.1 sub2api 机制摘要
+
+sub2api 没有"全局模型→渠道"单一映射表，而是 **分组（Group）→ 账号（Account）→ 渠道（Channel）** 三层动态叠加，模型在每层都能被改写/限制/路由。所谓"多个上游供应商提供同一模型"体现为：同一个分组下挂多个账号（不同上游凭证），都声明支持同一个模型名，调度器在该分组账号集合里做负载均衡/粘性选择。
+
+关键控制点（sub2api）：
+
+| 控制点 | 机制 | 代码位置 |
+|---|---|---|
+| `/v1/models` 列表可见 | `Group.CustomModelsListEnabled` + `ModelsListConfig` 白名单；否则聚合账号 mapping key | `gateway_handler.go:985`、`gateway_service.go:10450` |
+| 账号是否支持该模型 | `Account.IsModelSupported`：无 mapping=全开，有 mapping=必须命中 | `account.go:624` |
+| 渠道是否限制该模型 | `Channel.RestrictModels` + `ModelPricing` 列表 | `channel_service.go:546` |
+| 渠道模型映射 | `Channel.ModelMapping`（平台分组，通配符） | `channel.go SupportedModels` |
+| 账号运行时可用 | `IsSchedulable`：状态=active、未过期、未限速、未过载、配额未超 | `account.go:118` |
+| 路由到指定供应商 | `Group.ModelRouting`（模型名→账号 ID，仅 anthropic） | `group.go:136` |
+| 粘性会话 | `session_hash` / `previous_response_id` 绑账号 + 运行时逃逸 | `openai_account_scheduler.go` |
+| 计费基准选择 | `BillingModelSource`：requested/upstream/channel_mapped | `gateway_service.go:9764` |
+
+### 9.2 micro-one-api 现状对照
+
+micro-one-api 已有比 sub2api 更规范的模型注册表（方案 B），很多能力 sub2api 靠账号级 `model_mapping` 字符串拼出，micro-one-api 用独立表 + ORM 实现。
+
+**已具备（无需新建）**：
+
+| sub2api 机制 | micro-one-api 对应物 | 位置 |
+|---|---|---|
+| `Model.Status` enable/disable | `Model.Status`（0/1/2）+ `Model.IsPublic` | `app/channel/internal/biz/model.go:25-45` |
+| 渠道级模型列表 | `ModelChannelMapping{ChannelID, ModelPK, Enabled, Priority, Config}` | `model.go:71-80` |
+| 账号级模型列表 | `ModelSubscriptionMapping{SubscriptionAccountID, ModelPK, GroupName, Enabled, Priority}` | `model.go:82-92` |
+| `(group, model) → 候选 channel` | `Ability` + `ListAbilitiesByGroupAndModel` | `channel.go:155`、`data.go:249` |
+| `(group, model, platform) → 候选 subscription account` | `SubscriptionAccountAbility` + `ListSubscriptionAccountAbilities` | `channel.go:163`、`data.go:262` |
+| 渠道级模型映射 src→dst | `Channel.ModelMapping string`（JSON） | `channel.go:76` |
+| 全局模型名映射 | `ModelMapper`（文件级 YAML/JSON） | `internal/biz/model_mapping.go` |
+| 优先级分层 + 负载均衡选择 | `WeightedSelector`（smooth WRR + health/latency/circuit-breaker） | `selector.go` |
+| 订阅账号优先级分层选择 | `SelectSubscriptionAccount`（priority tier → 随机） | `channel.go:365` |
+| 粘性会话 | `RelayUsecase.trySubscriptionSticky` + `SessionAccountStore` | `internal/biz/relay.go` |
+| `/v1/models` 聚合 | `ListAvailableModels(group)` 查 abilities 表 | `channel.go:529`、`data.go:641` |
+| 调度编排 | `RelayUsecase.Plan`：model resolve → auth → permission → channel → subscription fallback | `relay.go:200` |
+
+**核心结论**：micro-one-api 的"多上游供应商提供同一模型"已天然成立——只要多个 `Channel` 或多个 `SubscriptionAccount` 在 `abilities` / `subscription_account_abilities` 表里挂同一个 `(group, model)`，`SelectChannel` / `SelectSubscriptionAccount` 就会在它们之间做优先级分层 + 加权/随机选择。
+
+### 9.3 差距清单
+
+#### 1. 订阅账号级模型映射 src→dst（缺失）⭐ P0
+sub2api 每个账号凭证带 `model_mapping`，可把客户端模型名映射成不同供应商上游真实模型名。micro-one-api 的 `Channel` 有 `ModelMapping`，但 `SubscriptionAccount` 没有。
+
+#### 2. 限制模式 `RestrictModels`（缺失）⭐ P1
+sub2api 有 `Channel.RestrictModels bool`。micro-one-api 当前逻辑隐式等价于 `RestrictModels=true`（abilities 表无记录就选不到），缺"放行所有未注册模型"开关。
+
+#### 3. 模型路由 `model→指定账号`（缺失）⭐ P2
+sub2api `Group.ModelRouting map[string][]int64`。micro-one-api 只有 `Priority` 分层，无精确路由。
+
+#### 4. 通配符模型匹配（缺失）⭐ P1
+sub2api 在 `model_mapping`、`ModelRouting`、pricing 支持 `claude-*` / `*`。micro-one-api abilities 查询是精确匹配。
+
+#### 5. `/v1/models` 聚合多源模型 + 缓存（部分缺失）⭐ P0
+sub2api `GetAvailableModels` 聚合所有可调度账号 mapping key 并集 + 15s TTL 缓存。micro-one-api `ListAvailableModels` 已聚合 abilities + registry，但**无缓存**，直连 DB。
+
+#### 6. `BillingModelSource` 三态（可选）⭐ P3
+micro-one-api 若不按渠道差异化计费可跳过。
+
+#### 7. 订阅账号选择器升级为加权选择（可选优化）⭐ P2
+micro-one-api `SelectSubscriptionAccount` 同优先级 tier 内纯随机，sub2api 用 `filterByMinLoadRate → selectByLRU` + EWMA + 粘性逃逸。
+
+### 9.4 落地优先级
+
+| 优先级 | 事项 | 理由 |
+|---|---|---|
+| P0 | #5 `/v1/models` 聚合 + 缓存 | 客户端发现模型入口，当前无缓存直连 DB |
+| P0 | #1 订阅账号级 `ModelMapping` | 没有它，不同供应商同名模型无法映射到各自上游真实模型名 |
+| P1 | #4 通配符匹配 | 让 `claude-*` 类路由不用为每个小版本建一行 |
+| P1 | #2 `RestrictModels` 开关 | 给管理员"放行未注册模型"选项 |
+| P2 | #3 模型路由到指定账号 | 精确控制某模型走指定供应商 |
+| P2 | #7 订阅账号加权选择 | 从随机升级为负载感知 |
+| P3 | #6 `BillingModelSource` | 仅在需按渠道差异化计费时 |
+
+### 9.5 P0 实现记录
+
+> 见下文 §10、§11。proto + DO + migration 代码改动已落地。
+
+## 10. P0 实现方案：订阅账号级模型映射 + `/v1/models` 缓存
+
+> **状态: 实施中 (2026-07-23)**
+
+### 10.1 P0-#1 订阅账号级 `ModelMapping`
+
+#### 背景
+`Channel`（API-key 渠道）已有 `ModelMapping string` 字段（migration 018），但
+`SubscriptionAccount`（OAuth 订阅账号）没有。不同上游供应商对同一客户端模型名
+可能使用不同的上游真实模型名（如 A 供应商 `claude-sonnet-4-5`→`claude-sonnet-4`，
+B 供应商 `claude-sonnet-4-5`→`gpt-4o`），没有 per-account mapping 就无法支持。
+
+#### 变更清单
+
+| 层 | 文件 | 变更 |
+|---|---|---|
+| Migration | `migrations/063_add_subscription_account_model_mapping.sql` | 新建：`ALTER TABLE subscription_accounts ADD COLUMN model_mapping` |
+| Migration | `migrations/sqlite/000_create_full_schema.sql` | 追加 `model_mapping` 列 |
+| Migration | `migrations/ownership.yaml` | channel 服务加 `063` |
+| Proto (common) | `api/common/v1/common.proto` | `SubscriptionAccountInfo` 加 `model_mapping = 35` |
+| Proto (channel) | `api/channel/v1/channel.proto` | `Create/UpdateSubscriptionAccountRequest` 加 `model_mapping = 30` |
+| Proto (admin) | `api/admin/v1/admin.proto` | `AdminCreate/UpdateSubscriptionAccountRequest` 加 `model_mapping = 30` |
+| DO (channel biz) | `app/channel/internal/biz/channel.go` | `SubscriptionAccount` 加 `ModelMapping string` |
+| DO (relay biz) | `internal/biz/relay.go` | `SubscriptionAccount` + `Channel` 加 `ModelMapping string` |
+| PO | `app/channel/internal/data/data.go` | `subscriptionAccountModel` 加 `ModelMapping *string`；双向转换 |
+| Service (channel) | `app/channel/internal/service/channel.go` | Create/Update/Info/Summary 透传 |
+| Service (admin) | `app/admin/internal/service/admin.go` | Create/Update 透传 |
+| Relay adapter | `internal/data/adapters.go` | `subscriptionAccountInfoToBiz` 映射 `ModelMapping` |
+| Relay adapter | `internal/data/data.go` | `subscriptionAccountInfoToBiz` + `SelectChannel` 映射 `ModelMapping` |
+| Relay adapter | `internal/data/cached_channel.go` | `channelInfoToBizChannel` 映射 `ModelMapping` |
+| Relay biz | `internal/biz/relay.go` | `subscriptionAccountToChannel` 透传 `account.ModelMapping` |
+
+#### 模型映射 JSON 格式
+复用 `Channel.ModelMapping` 已有格式（JSON `{"src":"dst"}`），与 sub2api 的
+`model_mapping` 结构一致，例：
+```json
+{"claude-sonnet-4-5":"claude-sonnet-4","gpt-4o":"gpt-4o-2024-08-06"}
+```
+
+#### relay 路径映射应用
+`RelayUsecase.Plan` 在选中 subscription account 后，用 `account.ModelMapping`
+对 `resolvedModel` 做二次映射（全局 `ModelMapper` 先跑，per-account mapping 再跑），
+结果写入 `RelayPlan.ResolvedModel`，server 层用 `plan.ResolvedModel` 替换请求体。
+
+### 10.2 P0-#5 `/v1/models` 聚合 + 缓存
+
+#### 背景
+`ListAvailableModels` 已聚合 abilities + registry 表，但无缓存，每次 `/v1/models`
+请求都打 DB。sub2api 用 15s TTL 进程内缓存 + 失效事件。
+
+#### 变更清单
+
+| 层 | 文件 | 变更 |
+|---|---|---|
+| Biz | `app/channel/internal/biz/channel.go` | `ChannelUsecase` 加 `modelsListCache`（TTL map）|
+| Biz | `app/channel/internal/biz/channel.go` | `ListAvailableModels` 先查缓存；`CreateChannel`/`UpdateChannel`/`DeleteChannel`/`ChangeStatus`/`CreateSubscriptionAccount`/`UpdateSubscriptionAccount` 等变更后失效 |
+
+#### 缓存设计
+- 进程内 `sync.Map` + 单 TTL（默认 15s，可配置）
+- key = group（与 sub2api 一致）
+- 值 = `[]string`（clone 后返回，不暴露内部 slice）
+- 变更路径（channel CRUD、subscription account CRUD）调 `invalidateModelsListCache()`
+- 依赖现有 `eventBus` 的 `TopicChannelChanged` 事件做跨实例失效（L1 短 TTL 容忍最终一致）
+
+### 10.3 P0 实现记录
+
+> **状态: 已完成 (2026-07-23)**
+
+#### 已交付文件
+
+| 层 | 文件 | 变更 |
+|---|---|---|
+| Migration | `migrations/063_add_subscription_account_model_mapping.sql` | 新建：`ALTER TABLE subscription_accounts ADD COLUMN model_mapping` |
+| Migration | `migrations/sqlite/000_create_full_schema.sql` | 追加 `model_mapping TEXT DEFAULT ''` 列 |
+| Migration | `migrations/sqlite/002_add_subscription_account_model_mapping.sql` | 新建：SQLite ALTER TABLE |
+| Migration | `migrations/ownership.yaml` | channel 服务加 `063` |
+| Proto (common) | `api/common/v1/common.proto` | `SubscriptionAccountInfo` + `SubscriptionAccountSummary` 加 `model_mapping` 字段 |
+| Proto (channel) | `api/channel/v1/channel.proto` | `Create/UpdateSubscriptionAccountRequest` 加 `model_mapping = 30` |
+| Proto (admin) | `api/admin/v1/admin.proto` | `AdminCreate/UpdateSubscriptionAccountRequest` 加 `model_mapping = 30` |
+| DO (channel biz) | `app/channel/internal/biz/channel.go` | `SubscriptionAccount` 加 `ModelMapping string`；`ChannelUsecase` 加 `modelsListCache` + TTL 缓存 + 变更失效 |
+| DO (relay biz) | `internal/biz/relay.go` | `SubscriptionAccount` + `Channel` 加 `ModelMapping`；`applyPerAccountModelMapping` helper；`Plan` 三条返回路径应用 per-account/channel mapping |
+| PO | `app/channel/internal/data/data.go` | `subscriptionAccountModel` 加 `ModelMapping`；双向转换补 `ModelMapping` |
+| Service (channel) | `app/channel/internal/service/channel.go` | Create/Update/Info/Summary 透传 `ModelMapping` |
+| Service (admin) | `app/admin/internal/service/admin.go` | Create/Update 透传 `ModelMapping` |
+| Relay adapter | `internal/data/adapters.go` | `subscriptionAccountInfoToBiz` 映射 `ModelMapping` |
+| Relay adapter | `internal/data/data.go` | `subscriptionAccountInfoToBiz` + `SelectChannel` 映射 `ModelMapping` |
+| Relay adapter | `internal/data/cached_channel.go` | `channelInfoToBizChannel` 映射 `ModelMapping` |
+| Test | `app/channel/internal/data/data_test.go` | 测试 schema 加 `model_mapping` 列 |
+
+#### 验证结果
+
+- `go build ./...`: ✅ 零错误
+- `go test ./internal/biz/`: ✅ 通过
+- `go test ./app/channel/internal/biz/`: ✅ 通过
+- `go test ./app/channel/internal/data/`: ✅ 通过
+- `go test ./internal/data/`: ✅ 通过
+- `go test ./app/channel/internal/service/`: ✅ 通过
+- `go test ./app/admin/internal/service/`: ✅ 通过
+
+#### 模型映射链路
+
+```
+客户端请求 model="claude-sonnet-4-5"
+  │
+  ▼ global ModelMapper (文件级 YAML/JSON)
+  │ resolvedModel = "claude-sonnet-4" (全局别名)
+  │
+  ▼ SelectChannel / SelectSubscriptionAccount (按 resolvedModel 查 abilities)
+  │ 选中 account A (platform=codex)
+  │
+  ▼ applyPerAccountModelMapping(account.ModelMapping, resolvedModel)
+  │ account A mapping = {"claude-sonnet-4":"gpt-4o"}
+  │ finalModel = "gpt-4o"
+  │
+  ▼ RelayPlan.ResolvedModel = "gpt-4o"
+  │ server 层用 plan.ResolvedModel 替换请求体 model 字段
+```
+
+#### `/v1/models` 缓存
+
+- 进程内 `sync.Map` + 15s TTL（`modelsListCache`）
+- key = group，值 = `[]string` clone
+- 变更路径（channel CRUD、subscription account CRUD、ChangeStatus、AutoPause）调 `invalidateModelsListCache()`
+- RecordHealth / RecordUsage 不触发失效（不影响模型列表）
+- 依赖现有 `eventBus.TopicChannelChanged` 事件做跨实例 L1 最终一致（L1 短 TTL 容忍）

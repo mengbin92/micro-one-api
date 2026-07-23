@@ -152,6 +152,7 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		SessionWindowLimitUsd:  account.SessionWindowLimitUSD,
 		QuotaResetStrategy:     account.EffectiveQuotaResetStrategy(),
 		QuotaTimezone:          account.EffectiveQuotaTimezone(),
+		ModelMapping:           account.ModelMapping,
 	}
 }
 
@@ -206,6 +207,7 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 		RecoveryPolicy:                  info.Policy,
 		ExpectedRecoveryAt:              info.ExpectedRecoveryAt,
 		UnschedulableSince:              info.Since,
+		ModelMapping:                    account.ModelMapping,
 	}
 }
 
@@ -400,6 +402,7 @@ func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *cha
 		SessionWindowLimitUSD:  req.SessionWindowLimitUsd,
 		QuotaResetStrategy:     req.QuotaResetStrategy,
 		QuotaTimezone:          req.QuotaTimezone,
+		ModelMapping:           req.ModelMapping,
 	}
 	if err := s.uc.CreateSubscriptionAccount(ctx, account); err != nil {
 		return &channelv1.CreateSubscriptionAccountResponse{
@@ -505,6 +508,9 @@ func (s *ChannelService) UpdateSubscriptionAccount(ctx context.Context, req *cha
 	}
 	if req.QuotaTimezone != nil {
 		account.QuotaTimezone = req.GetQuotaTimezone()
+	}
+	if req.ModelMapping != nil {
+		account.ModelMapping = req.GetModelMapping()
 	}
 	if err := s.uc.UpdateSubscriptionAccount(ctx, account); err != nil {
 		return &channelv1.UpdateSubscriptionAccountResponse{

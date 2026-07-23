@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"micro-one-api/platform/events"
@@ -127,6 +128,9 @@ type SubscriptionAccount struct {
 	SessionWindowLimitUSD  float64
 	QuotaResetStrategy     string
 	QuotaTimezone          string
+
+	// ModelMapping is a JSON {"src":"dst"} per-account model name remap applied after the global ModelMapper resolves the request model and before relay forwards upstream. Empty string means no remap. See docs/model-management-design.md §10.1.
+	ModelMapping           string
 
 	PrimaryQuotaUsedPercent         *float64
 	PrimaryQuotaResetAfterSeconds   *int32
@@ -258,6 +262,71 @@ type SubscriptionAccountQuotaEventAggregate struct {
 	LastOccurredAt        int64
 }
 
+
+// modelsListCacheEntry holds a cached model list with an expiry.
+type modelsListCacheEntry struct {
+	models  []string
+	expires time.Time
+}
+
+// modelsListCache is a process-local TTL cache for ListAvailableModels.
+// It uses a sync.Map for lock-free reads and lazy expiry. Writes (mutation
+// paths) call invalidate to drop the entry so the next read refetches.
+type modelsListCache struct {
+	entries sync.Map
+	ttl     time.Duration
+}
+
+func newModelsListCache(ttl time.Duration) *modelsListCache {
+	if ttl <= 0 {
+		ttl = 15 * time.Second
+	}
+	return &modelsListCache{ttl: ttl}
+}
+
+func (c *modelsListCache) get(group string) ([]string, bool) {
+	if c == nil {
+		return nil, false
+	}
+	v, ok := c.entries.Load(group)
+	if !ok {
+		return nil, false
+	}
+	entry := v.(*modelsListCacheEntry)
+	if time.Now().After(entry.expires) {
+		c.entries.Delete(group)
+		return nil, false
+	}
+	return append([]string(nil), entry.models...), true
+}
+
+func (c *modelsListCache) set(group string, models []string) {
+	if c == nil {
+		return
+	}
+	c.entries.Store(group, &modelsListCacheEntry{
+		models:  append([]string(nil), models...),
+		expires: time.Now().Add(c.ttl),
+	})
+}
+
+func (c *modelsListCache) invalidate() {
+	if c == nil {
+		return
+	}
+	c.entries.Range(func(key, _ any) bool {
+		c.entries.Delete(key)
+		return true
+	})
+}
+
+func (c *modelsListCache) invalidateGroup(group string) {
+	if c == nil {
+		return
+	}
+	c.entries.Delete(group)
+}
+
 type ChannelUsecase struct {
 	repo                   ChannelRepo
 	eventBus               events.EventBus
@@ -267,6 +336,11 @@ type ChannelUsecase struct {
 	notifier               Notifier
 	healthAlert            HealthAlertConfig
 	selector               *WeightedSelector
+
+	// modelsListCache is a short-TTL in-process cache for /v1/models
+	// results, keyed by group. Reduces DB load on the hot /v1/models path.
+	// See docs/model-management-design.md §10.2.
+	modelsListCache         *modelsListCache
 }
 
 func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUsecase {
@@ -280,6 +354,7 @@ func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUseca
 		healthFailureThreshold: healthFailureThresholdFromEnv(),
 		healthCooldown:         healthCooldownFromEnv(),
 		selector:               NewWeightedSelector(),
+		modelsListCache:         newModelsListCache(0),
 	}
 }
 
@@ -490,6 +565,7 @@ func (uc *ChannelUsecase) AutoPauseAccount(ctx context.Context, accountID int64,
 	if err := uc.repo.AutoPauseAccount(ctx, accountID, reason); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID, Status: ChannelStatusDisabled})
 	return nil
 }
@@ -498,6 +574,7 @@ func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account
 	if err := uc.repo.CreateSubscriptionAccount(ctx, account); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, account)
 	return nil
 }
@@ -506,6 +583,7 @@ func (uc *ChannelUsecase) UpdateSubscriptionAccount(ctx context.Context, account
 	if err := uc.repo.UpdateSubscriptionAccount(ctx, account); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, account)
 	return nil
 }
@@ -514,6 +592,7 @@ func (uc *ChannelUsecase) DeleteSubscriptionAccount(ctx context.Context, account
 	if err := uc.repo.DeleteSubscriptionAccount(ctx, accountID); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID})
 	return nil
 }
@@ -522,12 +601,36 @@ func (uc *ChannelUsecase) ChangeSubscriptionAccountStatus(ctx context.Context, a
 	if err := uc.repo.ChangeSubscriptionAccountStatus(ctx, accountID, status); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID, Status: status})
 	return nil
 }
 
 func (uc *ChannelUsecase) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
-	return uc.repo.ListAvailableModels(ctx, group)
+	if uc.modelsListCache != nil {
+		if models, ok := uc.modelsListCache.get(group); ok {
+			return models, nil
+		}
+	}
+	models, err := uc.repo.ListAvailableModels(ctx, group)
+	if err != nil {
+		return nil, err
+	}
+	if uc.modelsListCache != nil {
+		uc.modelsListCache.set(group, models)
+	}
+	return models, nil
+}
+
+
+// invalidateModelsListCache clears the /v1/models cache on any channel or
+// subscription account mutation. Group-level granularity is not tracked
+// because mutations are infrequent and a full L1 clear is bounded by the
+// short TTL.
+func (uc *ChannelUsecase) invalidateModelsListCache() {
+	if uc != nil && uc.modelsListCache != nil {
+		uc.modelsListCache.invalidate()
+	}
 }
 
 func (uc *ChannelUsecase) ListChannels(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*Channel, int64, error) {
@@ -538,6 +641,7 @@ func (uc *ChannelUsecase) CreateChannel(ctx context.Context, channel *Channel) e
 	if err := uc.repo.CreateChannel(ctx, channel); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
 	return nil
 }
@@ -546,6 +650,7 @@ func (uc *ChannelUsecase) UpdateChannel(ctx context.Context, channel *Channel) e
 	if err := uc.repo.UpdateChannel(ctx, channel); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
 	return nil
 }
@@ -598,6 +703,7 @@ func (uc *ChannelUsecase) ChangeChannelStatus(ctx context.Context, channelID int
 	if err := uc.repo.ChangeStatus(ctx, channelID, status); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID, Status: status})
 	return nil
 }

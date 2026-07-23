@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"micro-one-api/platform/metrics"
+	"github.com/bytedance/sonic"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	"micro-one-api/platform/metrics"
 )
 
 // subscriptionAccountStatusEnabled mirrors channel biz ChannelStatusEnabled: a
@@ -72,6 +73,9 @@ type Channel struct {
 	Priority int64
 	Key      string
 	Config   ChannelConfig
+
+	// ModelMapping is a JSON {"src":"dst"} channel-level model remap.
+	ModelMapping string
 }
 
 type ChannelConfig struct {
@@ -100,6 +104,9 @@ type SubscriptionAccount struct {
 	// will serve per rolling minute. 0 means unlimited.
 	RPMLimit              int32
 	SessionWindowLimitUSD float64
+
+	// ModelMapping is a JSON {"src":"dst"} per-account remap applied after global ModelMapper.
+	ModelMapping           string
 }
 
 // RelayPlan is the result of relay planning, containing all resolved
@@ -239,7 +246,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 				Auth:          authSnapshot,
 				Channel:       ch,
 				Account:       acct,
-				ResolvedModel: resolvedModel,
+				ResolvedModel: applyPerAccountModelMapping(acct.ModelMapping, resolvedModel),
 			}, nil
 		}
 		subChannel, subAccount, subErr := uc.selectSubscriptionChannel(ctx, authSnapshot.Group, req.Model, resolvedModel)
@@ -254,14 +261,14 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			Auth:          authSnapshot,
 			Channel:       channel,
 			Account:       subAccount,
-			ResolvedModel: resolvedModel,
+			ResolvedModel: applyPerAccountModelMapping(subAccount.ModelMapping, resolvedModel),
 		}, nil
 	}
 
 	return &RelayPlan{
 		Auth:          authSnapshot,
 		Channel:       channel,
-		ResolvedModel: resolvedModel,
+		ResolvedModel: applyPerAccountModelMapping(channel.ModelMapping, resolvedModel),
 	}, nil
 }
 
@@ -522,12 +529,36 @@ func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error
 		Group:    account.Group,
 		Models:   append([]string(nil), account.Models...),
 		Priority: account.Priority,
+		ModelMapping: account.ModelMapping,
 		// Key intentionally left empty: the access token is NOT projected onto
 		// the generic Channel.Key field. The server layer resolves it via the
 		// SubscriptionAccountResolver (plan.Account) / credential store so it
 		// cannot leak through code paths that treat Channel.Key as a plain
 		// API key.
 	}, nil
+}
+
+
+// applyPerAccountModelMapping applies the per-account or per-channel model
+// mapping (JSON {"src":"dst"}) on top of the globally-resolved model name.
+// If no mapping is configured or the model is not in the map, the input is
+// returned unchanged. This is the second remap pass: the global ModelMapper
+// runs first in Plan(), then this applies the account/channel-specific remap
+// so different upstream providers can map the same client model name to
+// different upstream model identifiers. See docs/model-management-design.md §10.1.
+func applyPerAccountModelMapping(mappingJSON, model string) string {
+	mappingJSON = strings.TrimSpace(mappingJSON)
+	if mappingJSON == "" {
+		return model
+	}
+	var mapping map[string]string
+	if err := sonic.UnmarshalString(mappingJSON, &mapping); err != nil {
+		return model // invalid JSON — passthrough
+	}
+	if dst, ok := mapping[model]; ok && dst != "" {
+		return dst
+	}
+	return model
 }
 
 func subscriptionPlatformChannelType(platform string) int32 {

@@ -950,6 +950,7 @@ func (s *AdminService) CreateSubscriptionAccount(ctx context.Context, req *admin
 		SessionWindowLimitUsd:  req.SessionWindowLimitUsd,
 		QuotaResetStrategy:     req.QuotaResetStrategy,
 		QuotaTimezone:          req.QuotaTimezone,
+		ModelMapping:           req.ModelMapping,
 	})
 	if err != nil {
 		return &adminv1.AdminCreateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
@@ -992,6 +993,7 @@ func (s *AdminService) UpdateSubscriptionAccount(ctx context.Context, req *admin
 		SessionWindowLimitUsd:  req.SessionWindowLimitUsd,
 		QuotaResetStrategy:     req.QuotaResetStrategy,
 		QuotaTimezone:          req.QuotaTimezone,
+		ModelMapping:           req.ModelMapping,
 	})
 	if err != nil {
 		return &adminv1.AdminUpdateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil

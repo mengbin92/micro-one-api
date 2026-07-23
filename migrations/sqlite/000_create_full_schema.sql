@@ -446,7 +446,8 @@ CREATE TABLE IF NOT EXISTS subscription_accounts (
   rpm_limit INTEGER NOT NULL DEFAULT 0,
   session_window_limit_usd REAL NOT NULL DEFAULT 0,
   quota_reset_strategy TEXT NOT NULL DEFAULT 'rolling',
-  quota_timezone TEXT NOT NULL DEFAULT 'UTC'
+  quota_timezone TEXT NOT NULL DEFAULT 'UTC',
+  model_mapping TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_subscription_platform_status ON subscription_accounts(platform, status);

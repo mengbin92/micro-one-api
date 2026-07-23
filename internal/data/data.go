@@ -108,6 +108,7 @@ func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, mo
 		Concurrency:           info.GetConcurrency(),
 		RPMLimit:              info.GetRpmLimit(),
 		SessionWindowLimitUSD: info.GetSessionWindowLimitUsd(),
+		ModelMapping:           info.GetModelMapping(),
 	}, nil
 }
 
@@ -139,6 +140,7 @@ func (c *channelClient) SelectChannel(ctx context.Context, group, model string, 
 		Models:   splitCSV(info.Models),
 		Priority: info.Priority,
 		Key:      info.Key,
+		ModelMapping: info.GetModelMapping(),
 	}, nil
 }
 

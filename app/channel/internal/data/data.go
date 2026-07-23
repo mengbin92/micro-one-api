@@ -132,6 +132,7 @@ type subscriptionAccountModel struct {
 	SessionWindowLimitUSD  float64 `gorm:"column:session_window_limit_usd"`
 	QuotaResetStrategy     string  `gorm:"column:quota_reset_strategy"`
 	QuotaTimezone          string  `gorm:"column:quota_timezone"`
+	ModelMapping           string  `gorm:"column:model_mapping"`
 }
 
 func (subscriptionAccountModel) TableName() string { return "subscription_accounts" }
@@ -1786,6 +1787,7 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 		SessionWindowLimitUSD:  m.SessionWindowLimitUSD,
 		QuotaResetStrategy:     m.QuotaResetStrategy,
 		QuotaTimezone:          m.QuotaTimezone,
+		ModelMapping:           m.ModelMapping,
 		LastError:              subscriptionAccountMetadataValue(derefString(m.Metadata), "last_error"),
 	}
 }
@@ -1830,6 +1832,7 @@ func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) *
 		SessionWindowLimitUSD:  a.SessionWindowLimitUSD,
 		QuotaResetStrategy:     a.EffectiveQuotaResetStrategy(),
 		QuotaTimezone:          a.EffectiveQuotaTimezone(),
+		ModelMapping:           a.ModelMapping,
 	}
 }
 
