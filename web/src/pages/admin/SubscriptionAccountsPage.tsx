@@ -33,6 +33,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { ModelMultiSelect } from '@/components/admin/ModelMultiSelect';
 import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
 import {
   normalizeSubscriptionAccount,
@@ -1221,12 +1222,10 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-models">模型（逗号分隔）</Label>
-            <Input
-              id="sub-models"
+            <Label htmlFor="sub-models">模型</Label>
+            <ModelMultiSelect
               value={form.models}
-              onChange={(e) => setForm({ ...form, models: e.target.value })}
-              placeholder="claude-sonnet-4-5,claude-opus-4-1"
+              onChange={(csv) => setForm({ ...form, models: csv })}
             />
           </div>
           <div className="space-y-2">
@@ -1455,11 +1454,10 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-models">模型（逗号分隔）</Label>
-              <Input
-                id="edit-sub-models"
+              <Label htmlFor="edit-sub-models">模型</Label>
+              <ModelMultiSelect
                 value={draft.models}
-                onChange={(e) => onDraftChange({ ...draft, models: e.target.value })}
+                onChange={(csv) => onDraftChange({ ...draft, models: csv })}
               />
             </div>
             <div className="space-y-2">

@@ -1269,7 +1269,7 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([]string, error) {
 	seen := make(map[string]struct{})
 
-	// Query regular channel abilities
+	// ── Legacy: query regular channel abilities ──────────────────────────
 	var channelModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&abilityModel{}).
@@ -1282,7 +1282,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 		seen[model] = struct{}{}
 	}
 
-	// Query subscription account abilities
+	// ── Legacy: query subscription account abilities ─────────────────────
 	var subscriptionModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&subscriptionAccountAbilityModel{}).
@@ -1295,12 +1295,64 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 		seen[model] = struct{}{}
 	}
 
+	// ── Sprint 3: dual-read from model registry tables ───────────────────
+	// Query model_channel_mapping joined with models (enabled models served
+	// by enabled channels in the requested group). This is the new-table
+	// path; the legacy queries above remain as fallback during migration.
+	r.addRegistryChannelModelsDB(ctx, group, seen)
+	r.addRegistrySubscriptionModelsDB(ctx, group, seen)
+
 	models := make([]string, 0, len(seen))
 	for model := range seen {
 		models = append(models, model)
 	}
 	sort.Strings(models)
 	return models, nil
+}
+
+// addRegistryChannelModelsDB queries the model registry for models served by
+// enabled channels in the given group and adds them to the seen set. Errors
+// are silently ignored — if the registry tables do not exist or are empty,
+// the legacy path still provides results.
+func (r *Repository) addRegistryChannelModelsDB(ctx context.Context, group string, seen map[string]struct{}) {
+	var registryModels []string
+	// Join model_channel_mapping → models (enabled) → channels (enabled, group match).
+	// The channels.group column stores a CSV (e.g. "default,vip"). We use
+	// LIKE patterns instead of FIND_IN_SET for cross-driver compatibility
+	// (FIND_IN_SET is MySQL-only; SQLite and Postgres do not support it).
+	query := r.db.WithContext(ctx).Table("model_channel_mapping AS mcm").
+		Select("m.model_id").
+		Joins("JOIN models AS m ON m.id = mcm.model_id").
+		Joins("JOIN channels AS c ON c.id = mcm.channel_id").
+		Where("mcm.enabled = ? AND m.status = ? AND c.status = ?", true, biz.ModelStatusEnabled, biz.ChannelStatusEnabled).
+		Where("c.`group` = ? OR c.`group` LIKE ? OR c.`group` LIKE ? OR c.`group` LIKE ?",
+			group, group+",%", "%,"+group, "%,"+group+",%").
+		Distinct("m.model_id")
+	if err := query.Pluck("m.model_id", &registryModels).Error; err != nil {
+		return // registry tables may not exist yet; silently skip
+	}
+	for _, model := range registryModels {
+		seen[model] = struct{}{}
+	}
+}
+
+// addRegistrySubscriptionModelsDB queries the model registry for models served
+// by enabled subscription accounts in the given group and adds them to seen.
+func (r *Repository) addRegistrySubscriptionModelsDB(ctx context.Context, group string, seen map[string]struct{}) {
+	var registryModels []string
+	query := r.db.WithContext(ctx).Table("model_subscription_mapping AS msm").
+		Select("m.model_id").
+		Joins("JOIN models AS m ON m.id = msm.model_id").
+		Joins("JOIN subscription_accounts AS sa ON sa.id = msm.subscription_account_id").
+		Where("msm.enabled = ? AND m.status = ? AND sa.status = ?", true, biz.ModelStatusEnabled, biz.ChannelStatusEnabled).
+		Where("msm.group_name = ?", group).
+		Distinct("m.model_id")
+	if err := query.Pluck("m.model_id", &registryModels).Error; err != nil {
+		return // registry tables may not exist yet; silently skip
+	}
+	for _, model := range registryModels {
+		seen[model] = struct{}{}
+	}
 }
 
 func (r *Repository) findByIDMemory(_ context.Context, channelID int64) (*biz.Channel, error) {
@@ -1349,7 +1401,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 	defer r.lock.RUnlock()
 	seen := make(map[string]struct{})
 
-	// Collect models from regular channels
+	// ── Legacy: collect models from regular channels ─────────────────────
 	for _, channel := range r.channels {
 		if channel.Status != biz.ChannelStatusEnabled {
 			continue
@@ -1364,7 +1416,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 		}
 	}
 
-	// Collect models from subscription accounts
+	// ── Legacy: collect models from subscription accounts ────────────────
 	for _, account := range r.subAccounts {
 		if account.Status != biz.ChannelStatusEnabled {
 			continue
@@ -1376,6 +1428,47 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 			for _, model := range account.Models {
 				seen[model] = struct{}{}
 			}
+		}
+	}
+
+	// ── Sprint 3: dual-read from model registry (memory mode) ────────────
+	// Collect model_ids from the in-memory model_channel_mappings where the
+	// model is enabled and the channel is enabled and in the requested group.
+	for _, mcm := range r.modelChannelMappings {
+		if !mcm.Enabled {
+			continue
+		}
+		model, ok := r.models[mcm.ModelPK]
+		if !ok || model.Status != biz.ModelStatusEnabled {
+			continue
+		}
+		channel, ok := r.channels[mcm.ChannelID]
+		if !ok || channel.Status != biz.ChannelStatusEnabled {
+			continue
+		}
+		for _, channelGroup := range biz.SplitCSV(channel.Group) {
+			if channelGroup == group {
+				seen[model.ModelID] = struct{}{}
+				break
+			}
+		}
+	}
+
+	// Collect model_ids from model_subscription_mappings.
+	for _, msm := range r.modelSubscriptionMappings {
+		if !msm.Enabled {
+			continue
+		}
+		model, ok := r.models[msm.ModelPK]
+		if !ok || model.Status != biz.ModelStatusEnabled {
+			continue
+		}
+		account, ok := r.subAccounts[msm.SubscriptionAccountID]
+		if !ok || account.Status != biz.ChannelStatusEnabled {
+			continue
+		}
+		if msm.GroupName == group {
+			seen[model.ModelID] = struct{}{}
 		}
 	}
 

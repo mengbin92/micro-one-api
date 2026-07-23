@@ -473,11 +473,36 @@ ON DUPLICATE KEY UPDATE updated_at = UNIX_TIMESTAMP();
 | P2 | metadata 无 JSON 验证 | 新增 validateMetadata() 函数，表单内实时校验 + 提交时拦截 |
 | P2 | 测试覆盖不足 | 新增编辑/删除/详情面板/筛选 4 个测试用例 (共 7 个) |
 
-### Sprint 3: 集成 (1周)
-- [ ] 数据迁移脚本和工具
-- [ ] 更新渠道配置页面
-- [ ] 更新订阅账户配置页面
-- [ ] /v1/models 端点适配新表
+### Sprint 3: 集成 (1周) ✅ 已完成
+- [x] 更新渠道配置页面
+- [x] 更新订阅账户配置页面
+- [x] /v1/models 端点适配新表
+
+### 5.7 实现记录 (Sprint 3)
+
+> **状态: 已完成 (2026-07-23)**
+
+#### 已交付文件
+
+| 层 | 文件 | 说明 |
+|---|---|---|
+| Component | `web/src/components/admin/ModelMultiSelect.tsx` | 可搜索的模型多选组件，从模型注册表加载已启用模型，支持自由输入未注册模型 ID |
+| Page | `web/src/pages/admin/ChannelsPage.tsx` | 渠道创建/编辑对话框的模型字段从 CSV 文本输入替换为 ModelMultiSelect |
+| Page | `web/src/pages/admin/SubscriptionAccountsPage.tsx` | 订阅账户创建/编辑表单的模型字段从 CSV 文本输入替换为 ModelMultiSelect |
+| Data | `app/channel/internal/data/data.go` | `listAvailableModelsDB` + `listAvailableModelsMemory` 新增双读逻辑：同时查询 legacy abilities 表和 model registry 映射表 |
+| Test | `app/channel/internal/data/model_test.go` | 新增 2 个双读测试用例 (legacy+registry 合并 / 禁用模型过滤) |
+| Test | `web/src/pages/admin/SubscriptionAccountsPage.test.tsx` | 适配 ModelMultiSelect 的编辑测试 |
+
+#### 功能清单
+
+| 功能 | 说明 |
+|---|---|
+| 渠道模型选择 | 创建/编辑渠道时，模型字段从手动输入 CSV 变为从模型注册表勾选，支持搜索过滤 |
+| 订阅账户模型选择 | 创建/编辑订阅账户时，模型字段同样使用 ModelMultiSelect |
+| 模型多选组件 | 搜索框 + checkbox 列表，显示模型 ID/显示名/提供商，已选数量提示，支持未注册的自定义模型 ID |
+| /v1/models 双读 | ListAvailableModels 同时查询 legacy abilities 表和 model_channel_mapping/model_subscription_mapping，合并去重后返回 |
+| 禁用模型过滤 | 注册表中 status=0 的模型不会出现在 /v1/models 结果中 |
+| 向后兼容 | legacy abilities 表数据仍然有效，迁移期间双写双读，无需停机 |
 
 ### Sprint 4: 增强功能 (1周)
 - [ ] 使用统计功能

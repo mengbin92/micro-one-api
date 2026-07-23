@@ -33,6 +33,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { ModelMultiSelect } from '@/components/admin/ModelMultiSelect';
 
 interface Channel {
   id: string;
@@ -331,7 +332,7 @@ export function AdminChannelsPage() {
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="channel-models">Models</Label>
-                <Input id="channel-models" value={newChannelModels} onChange={(e) => setNewChannelModels(e.target.value)} placeholder="gpt-4o-mini,gpt-4o" />
+                <ModelMultiSelect value={newChannelModels} onChange={setNewChannelModels} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="channel-group">Group</Label>
@@ -377,11 +378,9 @@ export function AdminChannelsPage() {
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="edit-channel-models">Models</Label>
-                <Input
-                  id="edit-channel-models"
+                <ModelMultiSelect
                   value={editingChannel.models}
-                  onChange={(event) => setEditingChannel({ ...editingChannel, models: event.target.value })}
-                  placeholder="gpt-4o-mini,gpt-4o"
+                  onChange={(csv) => setEditingChannel({ ...editingChannel, models: csv })}
                 />
               </div>
               <div className="space-y-2">

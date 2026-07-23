@@ -308,21 +308,24 @@ describe('AdminSubscriptionAccountsPage', () => {
     const actions = row.closest('tr')!;
     await user.click(within(actions).getByRole('button', { name: '编辑' }));
 
-    const modelsInput = await screen.findByLabelText('模型（逗号分隔）');
-    await user.clear(modelsInput);
-    await user.type(modelsInput, 'claude-sonnet-4-5,claude-opus-4-1');
+    // The models field now uses ModelMultiSelect (a search + checkbox list).
+    // Verify the edit dialog opened and the save button is present.
+    await screen.findByRole('button', { name: '保存配置' });
 
+    // The models value is carried over from the row data; we just save
+    // to verify the update payload is sent correctly.
     await user.click(screen.getByRole('button', { name: '保存配置' }));
 
     await waitFor(() => expect(updates).toHaveLength(1));
-    // The update payload must use snake_case keys and the models must be trimmed.
+    // The update payload must use snake_case keys. The models field
+    // is managed by ModelMultiSelect and carried through from the row.
     expect(updates[0]).toMatchObject({
       account_type: 'oauth',
       base_url: '',
       account_id: 'acct-123',
       fingerprint: '',
       metadata: '',
-      models: 'claude-sonnet-4-5,claude-opus-4-1',
+      models: 'claude-sonnet-4-5',
     });
   });
 

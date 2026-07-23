@@ -330,3 +330,77 @@ func TestRepository_MemoryFallback(t *testing.T) {
 	_, err = repo.GetModel(ctx, m.ID)
 	assert.ErrorIs(t, err, biz.ErrModelNotFound)
 }
+
+// TestRepository_ListAvailableModelsDualRead verifies that ListAvailableModels
+// returns models from both the legacy channel/subscription abilities AND the
+// new model registry tables (Sprint 3 dual-read).
+func TestRepository_ListAvailableModelsDualRead(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+
+	// Create a legacy channel with models.
+	ch := &biz.Channel{
+		ID:      1,
+		Name:    "test-channel",
+		Status:  biz.ChannelStatusEnabled,
+		Group:   "default",
+		Models:  []string{"gpt-4o", "gpt-4o-mini"},
+		Priority: 0,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	// Create a model in the registry and a channel mapping.
+	model := &biz.Model{ModelID: "claude-3-5-sonnet", DisplayName: "Claude 3.5 Sonnet", Status: biz.ModelStatusEnabled}
+	require.NoError(t, repo.CreateModel(ctx, model))
+
+	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
+		ChannelID: ch.ID,
+		ModelPK:   model.ID,
+		Enabled:   true,
+	}))
+
+	// ListAvailableModels should return both legacy and registry models.
+	models, err := repo.ListAvailableModels(ctx, "default")
+	require.NoError(t, err)
+
+	seen := make(map[string]bool)
+	for _, m := range models {
+		seen[m] = true
+	}
+	assert.True(t, seen["gpt-4o"], "legacy model gpt-4o should be present")
+	assert.True(t, seen["gpt-4o-mini"], "legacy model gpt-4o-mini should be present")
+	assert.True(t, seen["claude-3-5-sonnet"], "registry model claude-3-5-sonnet should be present")
+}
+
+// TestRepository_ListAvailableModelsRegistryDisabledModel verifies that a
+// disabled model in the registry is NOT returned by ListAvailableModels.
+func TestRepository_ListAvailableModelsRegistryDisabledModel(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+
+	ch := &biz.Channel{
+		ID:     1,
+		Name:   "test-channel",
+		Status: biz.ChannelStatusEnabled,
+		Group:  "default",
+		Models: []string{},
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	// Create a disabled model in the registry.
+	model := &biz.Model{ModelID: "disabled-model", DisplayName: "Disabled", Status: biz.ModelStatusDisabled}
+	require.NoError(t, repo.CreateModel(ctx, model))
+
+	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
+		ChannelID: ch.ID,
+		ModelPK:   model.ID,
+		Enabled:   true,
+	}))
+
+	models, err := repo.ListAvailableModels(ctx, "default")
+	require.NoError(t, err)
+
+	for _, m := range models {
+		assert.NotEqual(t, "disabled-model", m, "disabled registry model should not be returned")
+	}
+}
