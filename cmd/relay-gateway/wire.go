@@ -235,8 +235,8 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		refreshTask = relaycredential.NewRefreshTask(
 			map[relaycredential.Platform]relaycredential.TokenProvider{
 				relaycredential.PlatformClaude: claudeTokenProvider,
-				relaycredential.PlatformCodex:   codexTokenProvider,
-				relaycredential.PlatformKimi:    kimiTokenProvider,
+				relaycredential.PlatformCodex:  codexTokenProvider,
+				relaycredential.PlatformKimi:   kimiTokenProvider,
 			},
 			accountLookup,
 			func(accountID int64) relaycredential.Platform {
@@ -309,6 +309,10 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	httpServer.SetOAuthHTTPClient(oauthHTTPClient)
 	httpServer.SetSubscriptionAccountQuotaRecorder(accountLookup)
 	httpServer.SetUserRPMLimit(cfg.Bootstrap.Subscription.GetUserRPMLimit())
+	// P3 #6: wire the billing-model-name source (requested/upstream/channel_mapped).
+	if cfg.Bootstrap.BillingModelSource != nil {
+		httpServer.SetBillingModelSource(cfg.Bootstrap.BillingModelSource.GetSource())
+	}
 	httpServer.SetRuntimeBlockDurations(
 		parseDurationOrDefault(cfg.Bootstrap.HybridAdaptor.RuntimeBlock.GetRateLimitedDuration(), 5*time.Second),
 		parseDurationOrDefault(cfg.Bootstrap.HybridAdaptor.RuntimeBlock.GetUnauthorizedDuration(), 2*time.Minute),

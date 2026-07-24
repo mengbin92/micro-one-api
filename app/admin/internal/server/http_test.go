@@ -3025,6 +3025,18 @@ func (c *adminHTTPModelChannelClient) ListModelUsageStats(ctx context.Context, r
 	return &channelv1.ListModelUsageStatsResponse{Stats: []*channelv1.ModelUsageStat{}, Total: 0}, nil
 }
 
+func (c *adminHTTPModelChannelClient) ListModelRoutings(ctx context.Context, req *channelv1.ListModelRoutingsRequest, opts ...grpc.CallOption) (*channelv1.ListModelRoutingsResponse, error) {
+	return &channelv1.ListModelRoutingsResponse{Routings: []*channelv1.ModelRouting{}}, nil
+}
+
+func (c *adminHTTPModelChannelClient) UpsertModelRouting(ctx context.Context, req *channelv1.UpsertModelRoutingRequest, opts ...grpc.CallOption) (*channelv1.UpsertModelRoutingResponse, error) {
+	return &channelv1.UpsertModelRoutingResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) DeleteModelRouting(ctx context.Context, req *channelv1.DeleteModelRoutingRequest, opts ...grpc.CallOption) (*channelv1.DeleteModelRoutingResponse, error) {
+	return &channelv1.DeleteModelRoutingResponse{Success: true, Message: "ok"}, nil
+}
+
 func newAdminHTTPModelTestServer() http.Handler {
 	ch := &adminHTTPModelChannelClient{
 		models: []*channelv1.ModelSummary{

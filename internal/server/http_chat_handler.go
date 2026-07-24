@@ -105,7 +105,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// Reserve quota
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(&req)
-		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, plan.ResolvedModel, fmt.Sprintf("%d", ch.ID), subscriptionAccountIDFromPlan(plan))
+		// P3 #6: derive the billing model name from billing_model_source.
+		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel)
+		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, billingModel, fmt.Sprintf("%d", ch.ID), subscriptionAccountIDFromPlan(plan))
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
 		}
@@ -125,7 +127,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				TokenName:             plan.Auth.TokenName,
 				RequestID:             requestID,
 				Endpoint:              "/v1/chat/completions",
-				ModelName:             clientModel,
+				ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
 				ChannelID:             ch.ID,
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 				IsStream:              true,
@@ -147,7 +149,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			TokenName:        plan.Auth.TokenName,
 			RequestID:        requestID,
 			Endpoint:         "/v1/chat/completions",
-			ModelName:        clientModel,
+			ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
 			Quota:            actualTokens,
 			PromptTokens:     int64(resp.Usage.PromptTokens),
 			CompletionTokens: int64(resp.Usage.CompletionTokens),

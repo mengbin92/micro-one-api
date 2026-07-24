@@ -14,8 +14,9 @@ import (
 // ChannelService is the transport layer entry for channel-service.
 type ChannelService struct {
 	channelv1.UnimplementedChannelServiceServer
-	uc      *biz.ChannelUsecase
-	modelUC *biz.ModelUsecase
+	uc        *biz.ChannelUsecase
+	modelUC   *biz.ModelUsecase
+	routingUC *biz.ModelRoutingUsecase
 }
 
 func NewChannelService(uc *biz.ChannelUsecase) *ChannelService {
@@ -30,6 +31,15 @@ func (s *ChannelService) SetModelUsecase(uc *biz.ModelUsecase) {
 		return
 	}
 	s.modelUC = uc
+}
+
+// SetModelRoutingUsecase wires the optional P2 #3 model→account routing
+// usecase. When nil, routing RPCs return empty/error responses.
+func (s *ChannelService) SetModelRoutingUsecase(uc *biz.ModelRoutingUsecase) {
+	if s == nil {
+		return
+	}
+	s.routingUC = uc
 }
 
 func (s *ChannelService) Usecase() *biz.ChannelUsecase {

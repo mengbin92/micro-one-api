@@ -22,6 +22,7 @@ message Bootstrap {
   Audit audit = 14;
   Resilience resilience = 15;
   Mtls mtls = 16;
+  BillingModelSource billing_model_source = 17 [json_name = "billing_model_source"];
 }
 
 // Server holds the HTTP and gRPC server configuration.
@@ -189,4 +190,16 @@ message Mtls {
   string cert_file = 2 [json_name = "cert_file"];
   string key_file = 3 [json_name = "key_file"];
   string ca_file = 4 [json_name = "ca_file"];
+}
+
+
+// BillingModelSource (P3 #6) controls which model name is used for billing
+// (quota reservation + usage stats) when relay rewrites the client-facing
+// model name. Mirrors sub2api BillingModelSource: requested (client model),
+// upstream (resolved/mapped model after ModelMapper + per-account mapping),
+// channel_mapped (the channel/subscription-account's own mapped name).
+// Default "requested" keeps legacy behaviour. See
+// docs/model-management-design.md §9.3 #6 / §9.4 P3.
+message BillingModelSource {
+  string source = 1 [json_name = "source"]; // requested | upstream | channel_mapped
 }

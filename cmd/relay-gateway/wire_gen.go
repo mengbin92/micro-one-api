@@ -304,6 +304,10 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	httpServer.SetOAuthHTTPClient(oauthHTTPClient)
 	httpServer.SetSubscriptionAccountQuotaRecorder(accountLookup)
 	httpServer.SetUserRPMLimit(cfg.Bootstrap.Subscription.GetUserRPMLimit())
+
+	if cfg.Bootstrap.BillingModelSource != nil {
+		httpServer.SetBillingModelSource(cfg.Bootstrap.BillingModelSource.GetSource())
+	}
 	httpServer.SetRuntimeBlockDurations(
 		parseDurationOrDefault(cfg.Bootstrap.HybridAdaptor.RuntimeBlock.GetRateLimitedDuration(), 5*time.Second),
 		parseDurationOrDefault(cfg.Bootstrap.HybridAdaptor.RuntimeBlock.GetUnauthorizedDuration(), 2*time.Minute),

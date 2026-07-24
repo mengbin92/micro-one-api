@@ -46,6 +46,12 @@ func (s *HTTPServer) logPostResponseCommitError(err error) {
 }
 
 func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64) (*billingv1.ReserveQuotaResponse, error) {
+	// P3 #6: the model name used for billing is derived from the configured
+	// billing_model_source. Callers pass plan.ResolvedModel as `model` here
+	// (the upstream name); BillingModelName applies the source to pick
+	// requested/upstream/channel_mapped. When billing_model_source is unset
+	// it falls back to `model` (legacy). The client-facing name is threaded
+	// via the request context separately where needed.
 	req := &billingv1.ReserveQuotaRequest{
 		UserId:                userID,
 		RequestId:             requestID,
@@ -216,9 +222,9 @@ func (s *HTTPServer) recordModelUsage(ctx context.Context, modelID string, token
 	channelCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
 	req := &channelv1.RecordModelUsageRequest{
-		ModelId:     modelID,
-		TokenCount:  tokenCount,
-		AvgLatency:  int32(latencyMs),
+		ModelId:      modelID,
+		TokenCount:   tokenCount,
+		AvgLatency:   int32(latencyMs),
 		RequestCount: 1,
 	}
 	if isError {

@@ -545,6 +545,14 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 		handleAdminSubscriptionAccountPath(w, r, svc)
 	}))
 
+	// ── Model routing (P2 #3) ─────────────────────────────────────────────
+	srv.HandleFunc("/api/admin/model-routings", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleModelRoutings(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/admin/model-routings/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleModelRoutings(w, r, svc)
+	}))
+
 	// Notification endpoints - proxy to notify-worker
 	if notifyWorkerProxy != nil {
 		srv.HandleFunc("/api/admin/notifications", adminAuth(func(w http.ResponseWriter, r *http.Request) {

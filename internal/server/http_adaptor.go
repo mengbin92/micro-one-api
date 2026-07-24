@@ -12,13 +12,13 @@ import (
 	"github.com/bytedance/sonic"
 
 	billingv1 "micro-one-api/api/billing/v1"
-	"micro-one-api/platform/metrics"
+	relaycredential "micro-one-api/domain/upstream/credential"
+	relayprovider "micro-one-api/domain/upstream/provider"
 	relayadaptor "micro-one-api/internal/adaptor"
 	relaybiz "micro-one-api/internal/biz"
-	relaycredential "micro-one-api/domain/upstream/credential"
 	"micro-one-api/internal/passthrough"
-	relayprovider "micro-one-api/domain/upstream/provider"
 	relayquota "micro-one-api/internal/quota"
+	"micro-one-api/platform/metrics"
 )
 
 // formatToEndpoint maps relayadaptor.Format to the actual HTTP endpoint path
@@ -468,12 +468,14 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	accountUsage := s.billingClient != nil
 	if accountUsage {
 		var reserveErr error
+		// P3 #6: derive the billing model name from billing_model_source.
+		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel)
 		reservation, reserveErr = s.reserveQuota(
 			ctx,
 			fmt.Sprintf("%d", plan.Auth.UserID),
 			requestID,
 			estimateRawTokens(rawBody),
-			plan.ResolvedModel,
+			billingModel,
 			channelID,
 			subscriptionAccountIDFromPlan(plan),
 		)
@@ -524,7 +526,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 					TokenName:             plan.Auth.TokenName,
 					RequestID:             requestID,
 					Endpoint:              formatToEndpoint(inbound),
-					ModelName:             plan.ResolvedModel,
+					ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
 					Quota:                 actualUsage.TotalTokens,
 					PromptTokens:          actualUsage.PromptTokens,
 					CompletionTokens:      actualUsage.CompletionTokens,
@@ -591,7 +593,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				TokenName:             plan.Auth.TokenName,
 				RequestID:             requestID,
 				Endpoint:              formatToEndpoint(inbound),
-				ModelName:             plan.ResolvedModel,
+				ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
 				Quota:                 usage.TotalTokens,
 				PromptTokens:          usage.PromptTokens,
 				CompletionTokens:      usage.CompletionTokens,

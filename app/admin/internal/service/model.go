@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	adminv1 "micro-one-api/api/admin/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 )
 
@@ -101,4 +102,88 @@ func (s *AdminService) RecordModelUsage(ctx context.Context, req *channelv1.Reco
 // ListModelUsageStats lists usage statistics for models.
 func (s *AdminService) ListModelUsageStats(ctx context.Context, req *channelv1.ListModelUsageStatsRequest) (*channelv1.ListModelUsageStatsResponse, error) {
 	return s.channelClient.ListModelUsageStats(ctx, req)
+}
+
+// ── Model routing (P2 #3, passthrough channel-service) ────────────────────
+//
+// admin-api owns its own request/response types (adminv1) but forwards to
+// channel-service (channelv1), converting at the boundary so the admin gRPC
+// surface stays decoupled from the channel proto package.
+
+// ListModelRoutings lists model→account routing overrides.
+func (s *AdminService) ListModelRoutings(ctx context.Context, req *adminv1.ListModelRoutingsRequest) (*adminv1.ListModelRoutingsResponse, error) {
+	resp, err := s.channelClient.ListModelRoutings(ctx, &channelv1.ListModelRoutingsRequest{
+		GroupName: req.GroupName,
+		Model:     req.Model,
+		Platform:  req.Platform,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := &adminv1.ListModelRoutingsResponse{}
+	if resp != nil {
+		out.Routings = make([]*adminv1.ModelRouting, 0, len(resp.GetRoutings()))
+		for _, r := range resp.GetRoutings() {
+			out.Routings = append(out.Routings, channelToAdminModelRouting(r))
+		}
+	}
+	return out, nil
+}
+
+// UpsertModelRouting creates or updates a routing override.
+func (s *AdminService) UpsertModelRouting(ctx context.Context, req *adminv1.UpsertModelRoutingRequest) (*adminv1.UpsertModelRoutingResponse, error) {
+	resp, err := s.channelClient.UpsertModelRouting(ctx, &channelv1.UpsertModelRoutingRequest{
+		GroupName:             req.GroupName,
+		Model:                 req.Model,
+		Platform:              req.Platform,
+		SubscriptionAccountId: req.SubscriptionAccountId,
+		Enabled:               req.Enabled,
+		Priority:              req.Priority,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return &adminv1.UpsertModelRoutingResponse{}, nil
+	}
+	return &adminv1.UpsertModelRoutingResponse{
+		Success: resp.GetSuccess(),
+		Message: resp.GetMessage(),
+		Id:      resp.GetId(),
+	}, nil
+}
+
+// DeleteModelRouting removes a routing override.
+func (s *AdminService) DeleteModelRouting(ctx context.Context, req *adminv1.DeleteModelRoutingRequest) (*adminv1.DeleteModelRoutingResponse, error) {
+	resp, err := s.channelClient.DeleteModelRouting(ctx, &channelv1.DeleteModelRoutingRequest{Id: req.Id})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return &adminv1.DeleteModelRoutingResponse{}, nil
+	}
+	return &adminv1.DeleteModelRoutingResponse{
+		Success: resp.GetSuccess(),
+		Message: resp.GetMessage(),
+	}, nil
+}
+
+// channelToAdminModelRouting maps a channel-service ModelRouting DTO to the
+// admin-service DTO. The two protos share the same shape by design; the
+// boundary conversion keeps the admin API decoupled from the channel proto.
+func channelToAdminModelRouting(r *channelv1.ModelRouting) *adminv1.ModelRouting {
+	if r == nil {
+		return nil
+	}
+	return &adminv1.ModelRouting{
+		Id:                    r.GetId(),
+		GroupName:             r.GetGroupName(),
+		Model:                 r.GetModel(),
+		Platform:              r.GetPlatform(),
+		SubscriptionAccountId: r.GetSubscriptionAccountId(),
+		Enabled:               r.GetEnabled(),
+		Priority:              r.GetPriority(),
+		CreatedAt:             r.GetCreatedAt(),
+		UpdatedAt:             r.GetUpdatedAt(),
+	}
 }

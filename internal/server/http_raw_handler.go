@@ -68,12 +68,14 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		result := retryExecutor.ExecuteWithInitialChannel(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, func(ctx context.Context, ch *relaybiz.Channel) error {
 			startedAt := time.Now()
 			requestID := generateRequestID()
+			// P3 #6: derive the billing model name from billing_model_source.
+			billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel)
 			reservation, reserveErr := s.reserveQuota(
 				ctx,
 				fmt.Sprintf("%d", plan.Auth.UserID),
 				requestID,
 				estimateRawTokens(body),
-				plan.ResolvedModel,
+				billingModel,
 				fmt.Sprintf("%d", ch.ID),
 				subscriptionAccountIDFromPlan(plan),
 			)
@@ -108,7 +110,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				TokenName:        plan.Auth.TokenName,
 				RequestID:        requestID,
 				Endpoint:         upstreamPath,
-				ModelName:        clientModel,
+				ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
 				Quota:            usage.TotalTokens,
 				PromptTokens:     usage.PromptTokens,
 				CompletionTokens: usage.CompletionTokens,

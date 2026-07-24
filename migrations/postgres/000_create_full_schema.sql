@@ -723,3 +723,21 @@ CREATE TABLE IF NOT EXISTS model_usage_stats (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mus_model_date ON model_usage_stats(model_id, date);
 CREATE INDEX IF NOT EXISTS idx_mus_date ON model_usage_stats(date);
+
+-- ── model_routings (P2 #3) ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS model_routings (
+  id BIGSERIAL PRIMARY KEY,
+  group_name VARCHAR(100) NOT NULL DEFAULT 'default',
+  model TEXT NOT NULL,
+  platform VARCHAR(32) NOT NULL DEFAULT '',
+  subscription_account_id BIGINT NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  priority INTEGER NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_model_routings_group_model_account_platform
+  ON model_routings(group_name, model, platform, subscription_account_id);
+CREATE INDEX IF NOT EXISTS idx_model_routings_group_model ON model_routings(group_name, model);
+CREATE INDEX IF NOT EXISTS idx_model_routings_account ON model_routings(subscription_account_id);

@@ -130,6 +130,14 @@ func (s *ChannelService) modelUc() *biz.ModelUsecase {
 	return s.modelUC
 }
 
+// routingUc returns the optional P2 #3 model-routing usecase, or nil.
+func (s *ChannelService) routingUc() *biz.ModelRoutingUsecase {
+	if s == nil || s.routingUC == nil {
+		return nil
+	}
+	return s.routingUC
+}
+
 func (s *ChannelService) ListModels(ctx context.Context, req *channelv1.ListModelsRequest) (*channelv1.ListModelsResponse, error) {
 	uc := s.modelUc()
 	if uc == nil {
@@ -420,6 +428,71 @@ func (s *ChannelService) DeleteSubscriptionModelMapping(ctx context.Context, req
 		return &channelv1.DeleteSubscriptionModelMappingResponse{Success: false, Message: err.Error()}, nil
 	}
 	return &channelv1.DeleteSubscriptionModelMappingResponse{Success: true, Message: "ok"}, nil
+}
+
+// ── Model routing (P2 #3) ───────────────────────────────────────────────────
+
+func toModelRoutingProto(r *biz.ModelRouting) *channelv1.ModelRouting {
+	if r == nil {
+		return nil
+	}
+	return &channelv1.ModelRouting{
+		Id:                    r.ID,
+		GroupName:             r.GroupName,
+		Model:                 r.Model,
+		Platform:              r.Platform,
+		SubscriptionAccountId: r.SubscriptionAccountID,
+		Enabled:               r.Enabled,
+		Priority:              r.Priority,
+		CreatedAt:             r.CreatedAt,
+		UpdatedAt:             r.UpdatedAt,
+	}
+}
+
+func (s *ChannelService) ListModelRoutings(ctx context.Context, req *channelv1.ListModelRoutingsRequest) (*channelv1.ListModelRoutingsResponse, error) {
+	uc := s.routingUc()
+	if uc == nil {
+		return &channelv1.ListModelRoutingsResponse{Routings: []*channelv1.ModelRouting{}}, nil
+	}
+	routings, err := uc.ListModelRoutings(ctx, req.GroupName, req.Model, req.Platform)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*channelv1.ModelRouting, 0, len(routings))
+	for _, r := range routings {
+		result = append(result, toModelRoutingProto(r))
+	}
+	return &channelv1.ListModelRoutingsResponse{Routings: result}, nil
+}
+
+func (s *ChannelService) UpsertModelRouting(ctx context.Context, req *channelv1.UpsertModelRoutingRequest) (*channelv1.UpsertModelRoutingResponse, error) {
+	uc := s.routingUc()
+	if uc == nil {
+		return &channelv1.UpsertModelRoutingResponse{Success: false, Message: "model routing not configured"}, nil
+	}
+	r := &biz.ModelRouting{
+		GroupName:             req.GroupName,
+		Model:                 req.Model,
+		Platform:              req.Platform,
+		SubscriptionAccountID: req.SubscriptionAccountId,
+		Enabled:               req.Enabled,
+		Priority:              req.Priority,
+	}
+	if err := uc.UpsertModelRouting(ctx, r); err != nil {
+		return &channelv1.UpsertModelRoutingResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.UpsertModelRoutingResponse{Success: true, Message: "ok", Id: r.ID}, nil
+}
+
+func (s *ChannelService) DeleteModelRouting(ctx context.Context, req *channelv1.DeleteModelRoutingRequest) (*channelv1.DeleteModelRoutingResponse, error) {
+	uc := s.routingUc()
+	if uc == nil {
+		return &channelv1.DeleteModelRoutingResponse{Success: false, Message: "model routing not configured"}, nil
+	}
+	if err := uc.DeleteModelRouting(ctx, req.Id); err != nil {
+		return &channelv1.DeleteModelRoutingResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.DeleteModelRoutingResponse{Success: true, Message: "ok"}, nil
 }
 
 // ── Sprint 4: Usage statistics ─────────────────────────────────────────────

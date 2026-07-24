@@ -347,6 +347,16 @@ type ChannelUsecase struct {
 	// results, keyed by group. Reduces DB load on the hot /v1/models path.
 	// See docs/model-management-design.md §10.2.
 	modelsListCache *modelsListCache
+
+	// accountSelector is the P2 #7 load-aware subscription-account selector
+	// (smooth WRR × health factor). nil when not configured; SelectSubscriptionAccount
+	// falls back to the legacy random pick. See docs/model-management-design.md §9.3 #7.
+	accountSelector *SubscriptionAccountSelector
+
+	// routingRepo is the optional P2 #3 model→account routing repo. nil when
+	// not configured; SelectSubscriptionAccount then uses the normal
+	// priority-tier selection. See docs/model-management-design.md §9.3 #3.
+	routingRepo ModelRoutingRepo
 }
 
 func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUsecase {
@@ -361,6 +371,7 @@ func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUseca
 		healthCooldown:         healthCooldownFromEnv(),
 		selector:               NewWeightedSelector(),
 		modelsListCache:        newModelsListCache(0),
+		accountSelector:        NewSubscriptionAccountSelector(),
 	}
 }
 
@@ -485,12 +496,61 @@ func (uc *ChannelUsecase) SelectorStats() map[int64]ChannelStats {
 	return uc.selector.GetStats()
 }
 
+// SetModelRoutingRepo wires the optional P2 #3 model→account routing repo.
+// When nil, SelectSubscriptionAccount uses the normal priority-tier
+// selection. Wired by cmd/channel/wire.go.
+func (uc *ChannelUsecase) SetModelRoutingRepo(repo ModelRoutingRepo) {
+	if uc == nil {
+		return
+	}
+	uc.routingRepo = repo
+}
+
+// AccountSelectorStats returns the P2 #7 account selector runtime state. Empty
+// when not configured (defensive; always wired in production via
+// NewChannelUsecase).
+func (uc *ChannelUsecase) AccountSelectorStats() map[int64]AccountSelectorStats {
+	if uc == nil || uc.accountSelector == nil {
+		return map[int64]AccountSelectorStats{}
+	}
+	return uc.accountSelector.GetStats()
+}
+
+// RecordSubscriptionAccountHealth feeds a relay outcome into the P2 #7
+// account selector so its health/circuit-breaker state stays current.
+func (uc *ChannelUsecase) RecordSubscriptionAccountHealth(accountID int64, success bool) {
+	if uc == nil || uc.accountSelector == nil {
+		return
+	}
+	uc.accountSelector.RecordAccountHealth(accountID, success)
+}
+
 func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*SubscriptionAccount, error) {
+	// P2 #3: model→account routing. When a routing row matches the requested
+	// model, restrict the candidate pool to the routed account set (still
+	// honouring status/quota/runtime-blocked). Exact-before-wildcard
+	// precedence is applied by RoutingMatchForSelect. Routed accounts still
+	// go through the same priority-tier + selector flow below so health and
+	// load factor continue to apply. See docs/model-management-design.md §9.3 #3.
+	routed := uc.routedMatches(ctx, group, model, platform)
+
 	abilities, err := uc.repo.ListSubscriptionAccountAbilities(ctx, group, model, platform)
 	if err != nil {
 		return nil, err
 	}
+	routedBefore := 0
+	if len(routed) > 0 {
+		routedBefore = len(abilities)
+		abilities = filterAbilitiesByRouted(abilities, routed)
+	}
 	if len(abilities) == 0 {
+		if routed != nil && routedBefore > 0 {
+			// Routing matched and pinned accounts that exist, but none were
+			// schedulable (disabled / unschedulable / runtime-blocked). Surface a
+			// distinct error so operators can tell routing dead-ends apart from a
+			// genuine "no account serves this model".
+			return nil, fmt.Errorf("model routing matched %d account(s) for %q but none are schedulable", len(routed), model)
+		}
 		return nil, ErrSubscriptionAccountNotFound
 	}
 	sort.Slice(abilities, func(i, j int) bool {
@@ -521,6 +581,13 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 		if len(tier) == 0 {
 			continue
 		}
+		// P2 #7: load-aware weighted selection when configured, else random.
+		if uc.accountSelector != nil {
+			if selected, selErr := uc.accountSelector.Select(ctx, group, tier); selErr == nil && selected != nil {
+				return selected, nil
+			}
+		}
+		// Fallback: uniform random (legacy behaviour).
 		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(tier))))
 		if err != nil {
 			return nil, err
@@ -529,6 +596,67 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 	}
 
 	return nil, ErrSubscriptionAccountNotFound
+}
+
+// routedMatches returns the enabled routing rows that pin a model to a set of
+// subscription accounts for this (group, model, platform) tuple. nil when no
+// routing repo is configured or no rule matches — the caller then uses the
+// normal abilities-based selection. The rows carry a Priority used to order
+// routed candidates within a tier (higher wins). See
+// docs/model-management-design.md §9.3 #3.
+func (uc *ChannelUsecase) routedMatches(ctx context.Context, group, model, platform string) []*ModelRouting {
+	if uc == nil || uc.routingRepo == nil {
+		return nil
+	}
+	rows, err := uc.routingRepo.ListModelRoutingsForSelect(ctx, group, model, platform)
+	if err != nil || len(rows) == 0 {
+		return nil
+	}
+	matches := RoutingMatchForSelect(rows, model)
+	if len(matches) == 0 {
+		return nil
+	}
+	enabled := make([]*ModelRouting, 0, len(matches))
+	for _, r := range matches {
+		if r.Enabled {
+			enabled = append(enabled, r)
+		}
+	}
+	return enabled
+}
+
+// routedPriority returns the routing priority for an account id within the
+// matched routing rows, or -1 when the account is not routed. Higher wins.
+func routedPriority(matches []*ModelRouting, accountID int64) int32 {
+	for _, r := range matches {
+		if r != nil && r.SubscriptionAccountID == accountID {
+			return r.Priority
+		}
+	}
+	return -1
+}
+
+// filterAbilitiesByRouted keeps only abilities whose account id appears in the
+// matched routing rows. When matches is empty the abilities are returned
+// unchanged (no routing configured → normal selection). It stamps the routing
+// priority onto each kept ability (shifted by a large constant so the caller's
+// priority-desc sort orders routed accounts by routing priority first, then by
+// the account's own priority). See docs/model-management-design.md §9.3 #3.
+func filterAbilitiesByRouted(abilities []SubscriptionAccountAbility, matches []*ModelRouting) []SubscriptionAccountAbility {
+	if len(matches) == 0 {
+		return abilities
+	}
+	out := make([]SubscriptionAccountAbility, 0, len(abilities))
+	for _, a := range abilities {
+		p := routedPriority(matches, a.AccountID)
+		if p < 0 {
+			continue // not routed
+		}
+		// Routing priority dominates account priority within the tier.
+		a.Priority = int64(p)*1_000_000 + a.Priority
+		out = append(out, a)
+	}
+	return out
 }
 
 func (uc *ChannelUsecase) GetSubscriptionAccount(ctx context.Context, accountID int64) (*SubscriptionAccount, error) {

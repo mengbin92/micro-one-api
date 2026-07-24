@@ -47,6 +47,9 @@ type Repository struct {
 	modelAliasNextID      int64
 	modelMappingNextID    int64
 	modelSubMappingNextID int64
+	// P2 #3: model→account routing memory store (model_routings table).
+	modelRoutings        map[int64]*biz.ModelRouting
+	modelRoutingNextID   int64
 }
 
 type channelModel struct {
@@ -232,6 +235,7 @@ func newMemoryRepository() *Repository {
 		modelChannelMappings:      make(map[int64]*biz.ModelChannelMapping),
 		modelSubscriptionMappings: make(map[int64]*biz.ModelSubscriptionMapping),
 		modelUsageStats:           make(map[int64]*biz.ModelUsageStat),
+		modelRoutings:             make(map[int64]*biz.ModelRouting),
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	adminv1 "micro-one-api/api/admin/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/admin/internal/service"
 )
@@ -375,4 +376,64 @@ func handleAdminSubscriptionAccountPath(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+}
+
+// ── Model routing (P2 #3) ─────────────────────────────────────────────────
+
+// handleModelRoutings handles /api/admin/model-routings and
+// /api/admin/model-routings/{id}.
+// GET    /api/admin/model-routings?group_name=&model=&platform=  → list
+// POST   /api/admin/model-routings                               → upsert
+// DELETE /api/admin/model-routings/{id}                          → delete
+func handleModelRoutings(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	trimmed := strings.Trim(r.URL.Path, "/")
+	if trimmed == "api/admin/model-routings" {
+		switch r.Method {
+		case http.MethodGet:
+			resp, err := svc.ListModelRoutings(r.Context(), &adminv1.ListModelRoutingsRequest{
+				GroupName: r.URL.Query().Get("group_name"),
+				Model:     r.URL.Query().Get("model"),
+				Platform:  r.URL.Query().Get("platform"),
+			})
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, resp)
+		case http.MethodPost:
+			var req adminv1.UpsertModelRoutingRequest
+			if !decodeBody(w, r, &req) {
+				return
+			}
+			resp, err := svc.UpsertModelRouting(r.Context(), &req)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, resp)
+		default:
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		}
+		return
+	}
+
+	// /api/admin/model-routings/{id}
+	rest := strings.TrimPrefix(r.URL.Path, "/api/admin/model-routings/")
+	rest = strings.Trim(rest, "/")
+	id, err := strconv.ParseInt(rest, 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid routing id"})
+		return
+	}
+	switch r.Method {
+	case http.MethodDelete:
+		resp, err := svc.DeleteModelRouting(r.Context(), &adminv1.DeleteModelRoutingRequest{Id: id})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	}
 }

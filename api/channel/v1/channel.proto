@@ -53,6 +53,10 @@ service ChannelService {
   // ========== Sprint 4: Usage statistics ==========
   rpc RecordModelUsage(RecordModelUsageRequest) returns (RecordModelUsageResponse);
   rpc ListModelUsageStats(ListModelUsageStatsRequest) returns (ListModelUsageStatsResponse);
+  // ========== Model routing (P2 #3) ==========
+  rpc ListModelRoutings(ListModelRoutingsRequest) returns (ListModelRoutingsResponse);
+  rpc UpsertModelRouting(UpsertModelRoutingRequest) returns (UpsertModelRoutingResponse);
+  rpc DeleteModelRouting(DeleteModelRoutingRequest) returns (DeleteModelRoutingResponse);
 
 }
 
@@ -742,4 +746,56 @@ message ListModelUsageStatsRequest {
 message ListModelUsageStatsResponse {
   repeated ModelUsageStat stats = 1;
   int64 total = 2;
+}
+
+
+// ── Model routing (P2 #3): model→specified subscription account routing ───
+// Mirrors sub2api Group.ModelRouting. When a routing row matches the
+// requested model (exact or wildcard), SelectSubscriptionAccount restricts
+// its candidate tier to the routed account set, overriding the default
+// priority-tier + weighted selection. See docs/model-management-design.md §9.3 #3.
+message ModelRouting {
+  int64 id = 1;
+  string group_name = 2;           // tenancy group
+  string model = 3;                // client model name or wildcard pattern (e.g. claude-*, *)
+  string platform = 4;             // optional platform filter; empty = any platform
+  int64 subscription_account_id = 5;
+  bool enabled = 6;
+  int32 priority = 7;              // within a routed tier, higher wins
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}
+
+message ListModelRoutingsRequest {
+  string group_name = 1;           // filter by group (empty = all)
+  string model = 2;                // filter by model (empty = all)
+  string platform = 3;             // filter by platform (empty = all)
+}
+
+message ListModelRoutingsResponse {
+  repeated ModelRouting routings = 1;
+}
+
+message UpsertModelRoutingRequest {
+  string group_name = 1;
+  string model = 2;
+  string platform = 3;
+  int64 subscription_account_id = 4;
+  bool enabled = 5;
+  int32 priority = 6;
+}
+
+message UpsertModelRoutingResponse {
+  bool success = 1;
+  string message = 2;
+  int64 id = 3;
+}
+
+message DeleteModelRoutingRequest {
+  int64 id = 1;
+}
+
+message DeleteModelRoutingResponse {
+  bool success = 1;
+  string message = 2;
 }

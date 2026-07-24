@@ -913,3 +913,125 @@ sub2api 有 `Channel.RestrictModels bool`。micro-one-api 之前隐式等价于
 > 注：少数需要绑定网络端口（`httptest.NewServer` / `miniredis`）的测试在
 > 沙箱环境因 `bind: operation not permitted` 失败，与 P1 变更无关——
 > 这些测试在 CI 主机上有网络权限时通过。
+
+## 12. P2 实现方案：模型路由 + 订阅账号加权选择
+
+> **状态: 已完成 (2026-07-24)**
+
+### 12.1 P2-#3 模型路由到指定账号
+
+#### 背景
+sub2api 有 `Group.ModelRouting map[string][]int64`，可把某个模型精确路由到
+指定账号。micro-one-api 只有 `Priority` 分层 + 加权/随机选择，缺"精确路由"
+能力——例如管理员想把 `claude-sonnet-4-5` 强制走 A 供应商账号，而非按
+priority tier 随机挑。
+
+#### 变更清单
+
+| 层 | 文件 | 变更 |
+|---|---|---|
+| Migration | `migrations/065_add_model_routings.sql` | 新建：`model_routings` 表（group_name/model/platform/subscription_account_id/enabled/priority）+ 唯一索引 |
+| Migration | `migrations/sqlite/004_add_model_routings.sql` | 新建：SQLite 版 |
+| Migration | `migrations/sqlite/000_create_full_schema.sql` | 追加 `model_routings` 表 |
+| Migration | `migrations/postgres/000_create_full_schema.sql` | 追加 `model_routings` 表 |
+| Migration | `migrations/ownership.yaml` | channel 服务加 `065` |
+| Proto (channel) | `api/channel/v1/channel.proto` | `ModelRouting` 消息 + `ListModelRoutings`/`UpsertModelRouting`/`DeleteModelRouting` RPC |
+| Proto (admin) | `api/admin/v1/admin.proto` | admin 版 `ModelRouting` + 三个 RPC（HTTP: GET/POST/DELETE `/v1/model-routings`） |
+| DO (channel biz) | `app/channel/internal/biz/model_routing.go` | `ModelRouting` DO + `ModelRoutingRepo` 接口 + `ModelRoutingUsecase` + `RoutingMatchForSelect`（精确优先于通配符） |
+| Biz (channel) | `app/channel/internal/biz/channel.go` | `ChannelUsecase` 加 `routingRepo` + `routedAccountIDs`；`SelectSubscriptionAccount` 先查路由，命中则把候选 abilities 收窄到路由账号集合 |
+| PO (channel data) | `app/channel/internal/data/model_routing.go` | `modelRoutingModel` PO + 双向转换 + DB/Memory 实现 + 跨驱动 read-then-write upsert |
+| Data (channel) | `app/channel/internal/data/data.go` | `Repository` 加 `modelRoutings`/`modelRoutingNextID` 内存字段 |
+| Service (channel) | `app/channel/internal/service/channel.go` | `routingUC` 字段 + `SetModelRoutingUsecase` |
+| Service (channel) | `app/channel/internal/service/model.go` | `toModelRoutingProto` + `ListModelRoutings`/`UpsertModelRouting`/`DeleteModelRouting` gRPC handler + `routingUc()` accessor |
+| Service (admin) | `app/admin/internal/service/model.go` | admin→channel 透传（DTO 转换 `channelToAdminModelRouting`） |
+| HTTP (admin) | `app/admin/internal/server/http.go` + `models.go` | `/api/admin/model-routings` 路由 + `handleModelRoutings` |
+| Wire | `app/channel/cmd/channel/wire.go` | `NewModelRoutingUsecase` + `wire.Bind(ModelRoutingRepo)` + `newApp` 注入 |
+| Test | `app/channel/internal/biz/model_routing_test.go` | 路由匹配 4 用例 + SelectSubscriptionAccount 路由 2 用例 |
+| Test | `app/channel/internal/data/model_routing_test.go` | DB/Memory 仓储 2 用例 |
+| Test mock | `app/admin/internal/server/http_test.go` | `adminHTTPModelChannelClient` 加三个 routing 客户端 stub |
+
+#### 行为契约
+- 路由是**覆盖**而非"唯一来源"：命中路由时，候选池收窄到路由账号集合，
+  但这些账号仍走 `status/quota/runtime-blocked` + priority-tier 分层 + 加权
+  选择，所以健康/熔断/负载仍生效
+- **精确优先于通配符**：`RoutingMatchForSelect` 先精确（大小写不敏感），
+  再特定通配符（`claude-*`），最后 `*` catch-all，与 abilities/mapping 一致
+- 无路由配置或无命中 → 回退正常 priority-tier 选择（零迁移负担）
+- 路由行可带 `platform` 过滤（空=任意平台），与
+  `subscription_account_abilities` 查询的 platform 维度对齐
+
+### 12.2 P2-#7 订阅账号加权选择
+
+#### 背景
+sub2api 同优先级 tier 内用 `filterByMinLoadRate → selectByLRU` + EWMA + 粘性
+逃逸。micro-one-api `SelectSubscriptionAccount` 同 tier 内纯随机，一个失败或
+饱和的账号和健康空闲账号收到一样多的流量。
+
+#### 变更清单
+
+| 层 | 文件 | 变更 |
+|---|---|---|
+| Biz (channel) | `app/channel/internal/biz/account_selector.go` | 新建 `SubscriptionAccountSelector`：smooth WRR × healthFactor（复用 `SlidingCounter` 60s 错误率）+ 熔断器（>0.5 err/s 开 30s）+ `Acquire`/`Release` in-flight 计数 + `GetStats` |
+| Biz (channel) | `app/channel/internal/biz/channel.go` | `ChannelUsecase` 加 `accountSelector` 字段（`NewChannelUsecase` 初始化）；`SelectSubscriptionAccount` tier 内优先走 `accountSelector.Select`，失败回退随机；加 `AccountSelectorStats`/`RecordSubscriptionAccountHealth` |
+| Test | `app/channel/internal/biz/model_routing_test.go` | 4 个选择器用例（失败账号降权、熔断排除、Acquire/Release、空 tier） |
+
+#### 行为契约
+- `accountSelector != nil` 时优先用 smooth WRR × healthFactor，失败回退随机
+  （legacy）
+- healthFactor 分档与 channel `WeightedSelector` 一致：<1%→100、<5%→80、
+  <10%→50、<30%→20、否则→1，运维体感一致
+- 熔断：>0.5 err/s 开路 30s，开路期账号被跳过；窗口过后自动半开
+- `Acquire`/`Release` 提供进程内 in-flight 计数，供后续接入负载因子（当前
+  healthFactor 已生效，load factor 为预留扩展）
+- 选择器是进程级单例（每 `ChannelUsecase`），运行期状态按 account id 聚合
+
+## 13. P3 实现方案：BillingModelSource 三态
+
+> **状态: 已完成 (2026-07-24)**
+
+#### 背景
+sub2api `BillingModelSource` 三态：`requested`/`upstream`/`channel_mapped`，
+控制计费用哪个模型名。micro-one-api 之前固定用 `plan.ResolvedModel`（上游名）
+做 reserve + usage log，无法按需差异化为"按客户端请求模型计费"或"按渠道映射
+后模型计费"。
+
+#### 变更清单
+
+| 层 | 文件 | 变更 |
+|---|---|---|
+| Config proto | `internal/conf/relay_conf.proto` | `Bootstrap` 加 `billing_model_source` 字段 + `BillingModelSource` 消息 |
+| Biz (relay) | `internal/biz/billing_model.go` | `BillingModelForSource` 纯函数 + `Requested`/`Upstream`/`ChannelMapped` 常量 |
+| Test (relay biz) | `internal/biz/billing_model_test.go` | 4 个用例（requested/upstream/channel_mapped/默认） |
+| Server | `internal/server/http.go` | `HTTPServer` 加 `billingModelSource` + `SetBillingModelSource` + `BillingModelName` helper |
+| Server | `internal/server/http_chat_handler.go` | reserveQuota + usage log 改用 `BillingModelName` |
+| Server | `internal/server/http_raw_handler.go` | 同上 |
+| Server | `internal/server/anthropic_inbound.go` | 同上 |
+| Server | `internal/server/http_adaptor.go` | 订阅账号路径（stream/non-stream）reserveQuota + usage log 改用 `BillingModelName` |
+| Wire | `cmd/relay-gateway/wire.go` | 读 `cfg.Bootstrap.BillingModelSource` 调 `SetBillingModelSource` |
+| Config | `configs/config.yaml` | `billing_model_source.source`（env `BILLING_MODEL_SOURCE`，默认 `requested`） |
+
+#### 行为契约
+- `requested`（默认，legacy）：用客户端请求模型名计费
+- `upstream`：用最终上游模型名（`RelayPlan.ResolvedModel`，经全局 + per-account 映射后）
+- `channel_mapped`：用渠道/账号映射后的模型名（当前等价 upstream，因为
+  `plan.ResolvedModel` 已含 per-account 映射；留作后续"跳过全局 mapper 只按
+  渠道映射"语义的扩展点）
+- 未配置/空值 → 回退 `requested`（零迁移负担）
+- `recordModelUsage` 随 usage log 的 `ModelName` 走，因此计费模型名与 usage
+  stats 自动对齐
+
+## 14. P2/P3 验证结果
+
+- `go build ./...`: ✅ 零错误
+- `go vet ./...`: ✅ 零错误
+- `go test ./app/channel/internal/biz/`: ✅ 通过（含 10 个新 P2 用例）
+- `go test ./app/channel/internal/data/`: ✅ 通过（含 2 个新 routing 仓储用例）
+- `go test ./internal/biz/`: ✅ 通过（含 4 个新 BillingModelForSource 用例）
+- `go test ./app/channel/internal/service/`: ✅ 通过
+- `go test ./app/admin/internal/service/`: ✅ 通过
+- `go test ./app/admin/internal/server/`: ✅ 通过
+- `go test ./internal/server/ -run "TestAdaptorFailover|TestResilientChannelClient|TestRewriteRawModel|TestHTTPServer|TestSubscription|TestBillingModel"`: ✅ 通过
+
+> 注：少数需要绑定网络端口（`httptest.NewServer` / `miniredis`）的测试在
+> 沙箱环境因 `bind: operation not permitted` 失败，与 P2/P3 变更无关——
+> 这些测试在 CI 主机上有网络权限时通过。

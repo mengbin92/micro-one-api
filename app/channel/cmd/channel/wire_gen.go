@@ -34,9 +34,10 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	eventBus := newEventBus(repository)
 	channelUsecase := biz.NewChannelUsecase(repository, eventBus)
 	modelUsecase := biz.NewModelUsecase(repository)
+	modelRoutingUsecase := biz.NewModelRoutingUsecase(repository)
 	channelService := service.NewChannelService(channelUsecase)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, repository, eventBus, channelUsecase, modelUsecase, channelService, mainRegistrarResult)
+	app, cleanup := newApp(config, repository, eventBus, channelUsecase, modelUsecase, modelRoutingUsecase, channelService, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -46,7 +47,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 var ProviderSet = wire.NewSet(
 	newRepo,
-	newEventBus, biz.NewChannelUsecase, biz.NewModelUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRepo), new(*data.Repository)),
+	newEventBus, biz.NewChannelUsecase, biz.NewModelUsecase, biz.NewModelRoutingUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRoutingRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
@@ -75,10 +76,13 @@ func newApp(
 	eventBus events.EventBus,
 	uc *biz.ChannelUsecase,
 	modelUC *biz.ModelUsecase,
+	routingUC *biz.ModelRoutingUsecase,
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetModelUsecase(modelUC)
+	svc.SetModelRoutingUsecase(routingUC)
+	uc.SetModelRoutingRepo(repo)
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 

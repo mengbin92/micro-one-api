@@ -104,6 +104,24 @@ service AdminService {
       get: "/v1/logs"
     };
   }
+
+  // ========== 模型路由 (P2 #3, 透传 channel-service) ==========
+  rpc ListModelRoutings(ListModelRoutingsRequest) returns (ListModelRoutingsResponse) {
+    option (google.api.http) = {
+      get: "/v1/model-routings"
+    };
+  }
+  rpc UpsertModelRouting(UpsertModelRoutingRequest) returns (UpsertModelRoutingResponse) {
+    option (google.api.http) = {
+      post: "/v1/model-routings"
+      body: "*"
+    };
+  }
+  rpc DeleteModelRouting(DeleteModelRoutingRequest) returns (DeleteModelRoutingResponse) {
+    option (google.api.http) = {
+      delete: "/v1/model-routings/{id}"
+    };
+  }
 }
 
 // ========== 账务：充值 ==========
@@ -554,4 +572,52 @@ message LogEntry {
   string reference_id = 6;
   string remark = 7;
   int64 created_at = 8;
+}
+
+
+// ========== 模型路由 (P2 #3) ==========
+message ListModelRoutingsRequest {
+  string group_name = 1;
+  string model = 2;
+  string platform = 3;
+}
+
+message ListModelRoutingsResponse {
+  repeated ModelRouting routings = 1;
+}
+
+message ModelRouting {
+  int64 id = 1;
+  string group_name = 2;
+  string model = 3;
+  string platform = 4;
+  int64 subscription_account_id = 5;
+  bool enabled = 6;
+  int32 priority = 7;
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}
+
+message UpsertModelRoutingRequest {
+  string group_name = 1;
+  string model = 2;
+  string platform = 3;
+  int64 subscription_account_id = 4;
+  bool enabled = 5;
+  int32 priority = 6;
+}
+
+message UpsertModelRoutingResponse {
+  bool success = 1;
+  string message = 2;
+  int64 id = 3;
+}
+
+message DeleteModelRoutingRequest {
+  int64 id = 1;
+}
+
+message DeleteModelRoutingResponse {
+  bool success = 1;
+  string message = 2;
 }
