@@ -61,6 +61,28 @@ func (m *mockChannelRepo) ListAbilitiesByGroupAndModel(ctx context.Context, grou
 	return enabled, nil
 }
 
+// ListUnrestrictedChannelsByGroup satisfies the ChannelRepo interface for the
+// RestrictModels=false catch-all fallback (P1 #2). The mock returns channels
+// seeded on m.channels whose RestrictModels flag is false.
+func (m *mockChannelRepo) ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*Channel, error) {
+	if m.channels == nil {
+		return nil, nil
+	}
+	result := make([]*Channel, 0)
+	for _, ch := range m.channels {
+		if ch.Status != ChannelStatusEnabled || ch.RestrictModels {
+			continue
+		}
+		for _, g := range SplitCSV(ch.Group) {
+			if g == group {
+				result = append(result, ch)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 func (m *mockChannelRepo) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error) {
 	if m.accounts == nil {
 		return nil, ErrSubscriptionAccountNotFound
@@ -1261,4 +1283,80 @@ func (m *mockChannelRepo) ClearRecoveryMarkers(ctx context.Context, accountID in
 		}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// P1 (#2) — RestrictModels catch-all fallback.
+// ---------------------------------------------------------------------------
+
+func TestChannelUsecase_SelectChannel_RestrictModelsCatchAll(t *testing.T) {
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{
+			1: {
+				ID: 1, Type: 1, Name: "catch-all", Status: ChannelStatusEnabled,
+				Group: "default", Priority: 1, RestrictModels: false,
+			},
+		},
+		// No abilities for "unregistered-model" — the catch-all channel must serve it.
+		abilities: map[string][]Ability{},
+	}
+	uc := NewChannelUsecase(repo, nil)
+	channel, err := uc.SelectChannel(context.Background(), "default", "unregistered-model", false)
+	if err != nil {
+		t.Fatalf("catch-all SelectChannel() error = %v", err)
+	}
+	if channel.ID != 1 {
+		t.Fatalf("expected catch-all channel 1, got %d", channel.ID)
+	}
+}
+
+func TestChannelUsecase_SelectChannel_RestrictedByDefault(t *testing.T) {
+	// No abilities, no catch-all channel → ErrChannelNotFound (legacy behaviour).
+	repo := &mockChannelRepo{
+		channels:  map[int64]*Channel{},
+		abilities: map[string][]Ability{},
+	}
+	uc := NewChannelUsecase(repo, nil)
+	_, err := uc.SelectChannel(context.Background(), "default", "any-model", false)
+	if err != ErrChannelNotFound {
+		t.Fatalf("expected ErrChannelNotFound, got: %v", err)
+	}
+}
+
+func TestChannelUsecase_SelectChannel_CatchAllNotUsedOnFailover(t *testing.T) {
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{
+			1: {
+				ID: 1, Type: 1, Name: "catch-all", Status: ChannelStatusEnabled,
+				Group: "default", Priority: 1, RestrictModels: false,
+			},
+		},
+		abilities: map[string][]Ability{},
+	}
+	uc := NewChannelUsecase(repo, nil)
+	// excludeFirstPriority=true is the failover path — must NOT fall back to catch-all.
+	_, err := uc.SelectChannel(context.Background(), "default", "unregistered-model", true)
+	if err != ErrChannelNotFound {
+		t.Fatalf("failover path must not widen to catch-all: got err=%v", err)
+	}
+}
+
+func TestChannelUsecase_SelectChannel_AbilitiesWinOverCatchAll(t *testing.T) {
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{
+			1: {ID: 1, Type: 1, Name: "exact", Status: ChannelStatusEnabled, Group: "default", Priority: 10, RestrictModels: true},
+			2: {ID: 2, Type: 1, Name: "catch-all", Status: ChannelStatusEnabled, Group: "default", Priority: 1, RestrictModels: false},
+		},
+		abilities: map[string][]Ability{
+			"default:gpt-4o": {{Group: "default", Model: "gpt-4o", ChannelID: 1, Enabled: true, Priority: 10}},
+		},
+	}
+	uc := NewChannelUsecase(repo, nil)
+	channel, err := uc.SelectChannel(context.Background(), "default", "gpt-4o", false)
+	if err != nil {
+		t.Fatalf("SelectChannel() error = %v", err)
+	}
+	if channel.ID != 1 {
+		t.Fatalf("exact-match channel must win over catch-all: got %d", channel.ID)
+	}
 }

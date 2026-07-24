@@ -550,3 +550,45 @@ func TestRelayUsecase_NewRetryExecutor(t *testing.T) {
 		t.Fatal("expected non-nil RetryExecutor")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// P1 (#4) — wildcard keys in per-account / per-channel model mapping.
+// ---------------------------------------------------------------------------
+
+func TestApplyPerAccountModelMapping_WildcardPattern(t *testing.T) {
+	mapping := `{"claude-*":"claude-upstream","gpt-4o":"gpt-4o-2024-08-06"}`
+	if got := applyPerAccountModelMapping(mapping, "claude-sonnet-4"); got != "claude-upstream" {
+		t.Errorf("claude-sonnet-4 = %s, want claude-upstream", got)
+	}
+	if got := applyPerAccountModelMapping(mapping, "claude-3-5-sonnet"); got != "claude-upstream" {
+		t.Errorf("claude-3-5-sonnet = %s, want claude-upstream", got)
+	}
+	// Exact match still works.
+	if got := applyPerAccountModelMapping(mapping, "gpt-4o"); got != "gpt-4o-2024-08-06" {
+		t.Errorf("gpt-4o = %s, want gpt-4o-2024-08-06", got)
+	}
+	// Non-matching passthrough.
+	if got := applyPerAccountModelMapping(mapping, "llama-3"); got != "llama-3" {
+		t.Errorf("llama-3 = %s, want passthrough", got)
+	}
+}
+
+func TestApplyPerAccountModelMapping_CatchAll(t *testing.T) {
+	mapping := `{"claude-*":"claude-family","*":"default-upstream"}`
+	if got := applyPerAccountModelMapping(mapping, "claude-sonnet-4"); got != "claude-family" {
+		t.Errorf("claude-sonnet-4 = %s, want claude-family", got)
+	}
+	if got := applyPerAccountModelMapping(mapping, "gpt-4o"); got != "default-upstream" {
+		t.Errorf("gpt-4o = %s, want default-upstream", got)
+	}
+}
+
+func TestApplyPerAccountModelMapping_ExactBeatsWildcard(t *testing.T) {
+	mapping := `{"claude-*":"family","claude-sonnet-4":"exact-sonnet"}`
+	if got := applyPerAccountModelMapping(mapping, "claude-sonnet-4"); got != "exact-sonnet" {
+		t.Errorf("exact must win: claude-sonnet-4 = %s, want exact-sonnet", got)
+	}
+	if got := applyPerAccountModelMapping(mapping, "claude-opus-4"); got != "family" {
+		t.Errorf("claude-opus-4 = %s, want family", got)
+	}
+}

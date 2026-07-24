@@ -117,7 +117,8 @@ CREATE TABLE IF NOT EXISTS channels (
   health_last_success_time INTEGER DEFAULT 0,
   health_last_failure_time INTEGER DEFAULT 0,
   health_consecutive_failures INTEGER DEFAULT 0,
-  circuit_opened_until INTEGER DEFAULT 0
+  circuit_opened_until INTEGER DEFAULT 0,
+  restrict_models INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE INDEX IF NOT EXISTS idx_channels_health_status       ON channels(health_status);

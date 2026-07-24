@@ -242,6 +242,7 @@ func toChannelInfo(channel *biz.Channel) *commonv1.ChannelInfo {
 		UsedQuota:                         channel.UsedQuota,
 		ModelMapping:                      channel.ModelMapping,
 		SystemPrompt:                      channel.SystemPrompt,
+		RestrictModels:                    channel.RestrictModels,
 		Config: &commonv1.ChannelConfig{
 			ApiVersion:        channel.Config.APIVersion,
 			Region:            channel.Config.Region,
@@ -272,6 +273,7 @@ func toChannelSummary(channel *biz.Channel) *commonv1.ChannelSummary {
 		BalanceUpdatedTime: channel.BalanceUpdatedTime,
 		UsedQuota:          channel.UsedQuota,
 		HealthStatus:       channel.HealthStatus,
+		RestrictModels:     channel.RestrictModels,
 	}
 }
 
@@ -657,17 +659,18 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 		vertexProjectID = req.Config.GetVertexAiProjectId()
 	}
 	channel := &biz.Channel{
-		Type:         req.Type,
-		Name:         req.Name,
-		BaseURL:      req.BaseUrl,
-		Key:          req.Key,
-		Models:       biz.SplitCSV(req.Models),
-		Group:        req.Group,
-		Priority:     req.Priority,
-		Status:       biz.ChannelStatusEnabled,
-		Weight:       req.Weight,
-		ModelMapping: req.ModelMapping,
-		SystemPrompt: req.SystemPrompt,
+		Type:           req.Type,
+		Name:           req.Name,
+		BaseURL:        req.BaseUrl,
+		Key:            req.Key,
+		Models:         biz.SplitCSV(req.Models),
+		Group:          req.Group,
+		Priority:       req.Priority,
+		Status:         biz.ChannelStatusEnabled,
+		Weight:         req.Weight,
+		ModelMapping:   req.ModelMapping,
+		SystemPrompt:   req.SystemPrompt,
+		RestrictModels: req.RestrictModels,
 		Config: biz.ChannelConfig{
 			APIVersion:        apiVersion,
 			Region:            region,
@@ -721,6 +724,7 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 	if req.ModelMapping != "" {
 		channel.ModelMapping = req.ModelMapping
 	}
+	channel.RestrictModels = req.RestrictModels
 	if req.SystemPrompt != "" {
 		channel.SystemPrompt = req.SystemPrompt
 	}

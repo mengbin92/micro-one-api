@@ -7,8 +7,8 @@ import (
 
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
-	appcache "micro-one-api/platform/cache"
 	relaybiz "micro-one-api/internal/biz"
+	appcache "micro-one-api/platform/cache"
 )
 
 // CachedChannelClient wraps ChannelServiceClient.SelectChannel with the shared
@@ -73,16 +73,17 @@ func channelInfoToBizChannel(ch *commonv1.ChannelInfo) *relaybiz.Channel {
 		return nil
 	}
 	c := &relaybiz.Channel{
-		ID:       ch.Id,
-		Type:     ch.Type,
-		Name:     ch.Name,
-		Status:   ch.Status,
-		BaseURL:  ch.BaseUrl,
-		Group:    ch.Group,
-		Models:   splitModels(ch.Models),
-		Priority: ch.Priority,
-		Key:      ch.Key,
-		ModelMapping: ch.GetModelMapping(),
+		ID:             ch.Id,
+		Type:           ch.Type,
+		Name:           ch.Name,
+		Status:         ch.Status,
+		BaseURL:        ch.BaseUrl,
+		Group:          ch.Group,
+		Models:         splitModels(ch.Models),
+		Priority:       ch.Priority,
+		Key:            ch.Key,
+		ModelMapping:   ch.GetModelMapping(),
+		RestrictModels: ch.GetRestrictModels(),
 	}
 	if ch.Config != nil {
 		c.Config.APIVersion = ch.Config.ApiVersion

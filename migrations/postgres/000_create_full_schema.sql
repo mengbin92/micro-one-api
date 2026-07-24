@@ -124,7 +124,8 @@ CREATE TABLE IF NOT EXISTS channels (
   health_last_success_time BIGINT DEFAULT 0,
   health_last_failure_time BIGINT DEFAULT 0,
   health_consecutive_failures INTEGER DEFAULT 0,
-  circuit_opened_until BIGINT DEFAULT 0
+  circuit_opened_until BIGINT DEFAULT 0,
+  restrict_models SMALLINT NOT NULL DEFAULT 1
 );
 
 CREATE INDEX IF NOT EXISTS idx_channels_health_status        ON channels(health_status);
@@ -462,7 +463,8 @@ CREATE TABLE IF NOT EXISTS subscription_accounts (
   rpm_limit INTEGER NOT NULL DEFAULT 0,
   session_window_limit_usd NUMERIC(18,6) NOT NULL DEFAULT 0,
   quota_reset_strategy VARCHAR(16) NOT NULL DEFAULT 'rolling',
-  quota_timezone VARCHAR(64) NOT NULL DEFAULT 'UTC'
+  quota_timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+  model_mapping VARCHAR(1024) NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_subscription_platform_status ON subscription_accounts(platform, status);

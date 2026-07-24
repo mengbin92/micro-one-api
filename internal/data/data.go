@@ -8,8 +8,8 @@ import (
 
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
-	"micro-one-api/internal/biz"
 	relaycredential "micro-one-api/domain/upstream/credential"
+	"micro-one-api/internal/biz"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -108,7 +108,7 @@ func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, mo
 		Concurrency:           info.GetConcurrency(),
 		RPMLimit:              info.GetRpmLimit(),
 		SessionWindowLimitUSD: info.GetSessionWindowLimitUsd(),
-		ModelMapping:           info.GetModelMapping(),
+		ModelMapping:          info.GetModelMapping(),
 	}, nil
 }
 
@@ -131,16 +131,17 @@ func (c *channelClient) SelectChannel(ctx context.Context, group, model string, 
 	}
 	info := resp.Channel
 	return &biz.Channel{
-		ID:       info.Id,
-		Type:     info.Type,
-		Name:     info.Name,
-		Status:   info.Status,
-		BaseURL:  info.BaseUrl,
-		Group:    info.Group,
-		Models:   splitCSV(info.Models),
-		Priority: info.Priority,
-		Key:      info.Key,
-		ModelMapping: info.GetModelMapping(),
+		ID:             info.Id,
+		Type:           info.Type,
+		Name:           info.Name,
+		Status:         info.Status,
+		BaseURL:        info.BaseUrl,
+		Group:          info.Group,
+		Models:         splitCSV(info.Models),
+		Priority:       info.Priority,
+		Key:            info.Key,
+		ModelMapping:   info.GetModelMapping(),
+		RestrictModels: info.GetRestrictModels(),
 	}, nil
 }
 

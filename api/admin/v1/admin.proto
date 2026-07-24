@@ -344,6 +344,7 @@ message AdminCreateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
+  bool restrict_models = 12;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
 }
 
 message AdminCreateChannelResponse {
@@ -364,6 +365,7 @@ message AdminUpdateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
+  bool restrict_models = 12;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
 }
 
 message AdminUpdateChannelResponse {

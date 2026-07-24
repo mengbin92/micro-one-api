@@ -76,6 +76,7 @@ type Channel struct {
 	UsedQuota                         int64
 	ModelMapping                      string
 	SystemPrompt                      string
+	RestrictModels                    bool // P1 (#2): false=catch-all (allow unregistered models), true=require abilities row. Default true (legacy). See docs/model-management-design.md §9.3 #2.
 	Config                            ChannelConfig
 }
 
@@ -130,7 +131,7 @@ type SubscriptionAccount struct {
 	QuotaTimezone          string
 
 	// ModelMapping is a JSON {"src":"dst"} per-account model name remap applied after the global ModelMapper resolves the request model and before relay forwards upstream. Empty string means no remap. See docs/model-management-design.md §10.1.
-	ModelMapping           string
+	ModelMapping string
 
 	PrimaryQuotaUsedPercent         *float64
 	PrimaryQuotaResetAfterSeconds   *int32
@@ -194,6 +195,12 @@ type HealthAlertConfig struct {
 type ChannelRepo interface {
 	FindByID(ctx context.Context, channelID int64) (*Channel, error)
 	ListAbilitiesByGroupAndModel(ctx context.Context, group, model string) ([]Ability, error)
+	// ListUnrestrictedChannelsByGroup returns enabled channels in the group
+	// whose restrict_models flag is false (catch-all channels that accept any
+	// model not matched by the abilities table). Used as the fallback path in
+	// SelectChannel when no abilities row matches the requested model. See
+	// docs/model-management-design.md §9.3 #2.
+	ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*Channel, error)
 	FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error)
 	ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]SubscriptionAccountAbility, error)
 	ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*SubscriptionAccount, int64, error)
@@ -261,7 +268,6 @@ type SubscriptionAccountQuotaEventAggregate struct {
 	Count                 int64
 	LastOccurredAt        int64
 }
-
 
 // modelsListCacheEntry holds a cached model list with an expiry.
 type modelsListCacheEntry struct {
@@ -340,7 +346,7 @@ type ChannelUsecase struct {
 	// modelsListCache is a short-TTL in-process cache for /v1/models
 	// results, keyed by group. Reduces DB load on the hot /v1/models path.
 	// See docs/model-management-design.md §10.2.
-	modelsListCache         *modelsListCache
+	modelsListCache *modelsListCache
 }
 
 func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUsecase {
@@ -354,7 +360,7 @@ func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUseca
 		healthFailureThreshold: healthFailureThresholdFromEnv(),
 		healthCooldown:         healthCooldownFromEnv(),
 		selector:               NewWeightedSelector(),
-		modelsListCache:         newModelsListCache(0),
+		modelsListCache:        newModelsListCache(0),
 	}
 }
 
@@ -374,8 +380,18 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 	if err != nil {
 		return nil, err
 	}
+	// P1 (#2): RestrictModels=false catch-all fallback. When no abilities row
+	// matches the requested model, a deployment may still want to route the
+	// request to a channel configured as a catch-all (restrict_models=0). This
+	// is the "pass through unregistered models" switch from sub2api. Only
+	// consulted on the primary selection (excludeFirstPriority=false) — the
+	// failover path excludes the top-priority tier and must not silently
+	// widen to catch-all channels. See docs/model-management-design.md §9.3 #2.
 	if len(abilities) == 0 {
-		return nil, ErrChannelNotFound
+		if excludeFirstPriority {
+			return nil, ErrChannelNotFound
+		}
+		return uc.selectUnrestrictedChannel(ctx, group)
 	}
 	sort.Slice(abilities, func(i, j int) bool {
 		return abilities[i].Priority > abilities[j].Priority
@@ -416,6 +432,38 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 		}
 	}
 
+	return nil, ErrChannelNotFound
+}
+
+// selectUnrestrictedChannel is the RestrictModels=false fallback: when no
+// abilities row matches, route to an enabled catch-all channel in the group.
+// Catch-all channels are selected by the same WeightedSelector as the normal
+// path so health/latency/circuit-breaker state still applies. Returns
+// ErrChannelNotFound when there is no catch-all channel (the legacy default
+// behaviour). See docs/model-management-design.md §9.3 #2.
+func (uc *ChannelUsecase) selectUnrestrictedChannel(ctx context.Context, group string) (*Channel, error) {
+	channels, err := uc.repo.ListUnrestrictedChannelsByGroup(ctx, group)
+	if err != nil || len(channels) == 0 {
+		return nil, ErrChannelNotFound
+	}
+	tier := make([]*Channel, 0, len(channels))
+	for _, ch := range channels {
+		if ch.SelectableAt(uc.now()) {
+			tier = append(tier, ch)
+		}
+	}
+	if len(tier) == 0 {
+		return nil, ErrChannelNotFound
+	}
+	selected, err := uc.selector.Select(ctx, group, tier)
+	if err != nil {
+		return nil, err
+	}
+	for _, ch := range tier {
+		if ch.ID == selected.ID {
+			return ch, nil
+		}
+	}
 	return nil, ErrChannelNotFound
 }
 
@@ -621,7 +669,6 @@ func (uc *ChannelUsecase) ListAvailableModels(ctx context.Context, group string)
 	}
 	return models, nil
 }
-
 
 // invalidateModelsListCache clears the /v1/models cache on any channel or
 // subscription account mutation. Group-level granularity is not tracked

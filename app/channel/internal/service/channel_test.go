@@ -29,6 +29,10 @@ func (r *channelServiceRepo) ListAbilitiesByGroupAndModel(ctx context.Context, g
 	return []biz.Ability{{Group: group, Model: model, ChannelID: r.channel.ID, Enabled: true, Priority: r.channel.Priority}}, nil
 }
 
+func (r *channelServiceRepo) ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*biz.Channel, error) {
+	return nil, nil
+}
+
 func (r *channelServiceRepo) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error) {
 	if r.account != nil && r.account.ID == accountID {
 		return r.account, nil

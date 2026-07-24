@@ -14,6 +14,7 @@ import (
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/pkg/safecast"
+	"micro-one-api/pkg/wildcard"
 	"micro-one-api/platform/database/xdb"
 	appcrypto "micro-one-api/platform/security/crypto"
 
@@ -77,6 +78,7 @@ type channelModel struct {
 	Priority                          *int64  `gorm:"column:priority"`
 	Config                            string  `gorm:"column:config"`
 	SystemPrompt                      *string `gorm:"column:system_prompt"`
+	RestrictModels                    bool    `gorm:"column:restrict_models"`
 }
 
 func (channelModel) TableName() string { return "channels" }
@@ -269,6 +271,57 @@ func (r *Repository) FindSubscriptionAccountByID(ctx context.Context, accountID 
 	return &cloned, nil
 }
 
+func (r *Repository) ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*biz.Channel, error) {
+	if r.db != nil {
+		return r.listUnrestrictedChannelsByGroupDB(ctx, group)
+	}
+	return r.listUnrestrictedChannelsByGroupMemory(ctx, group)
+}
+
+// listUnrestrictedChannelsByGroupDB returns enabled channels in the group
+// whose restrict_models flag is false (catch-all channels). They accept any
+// model not matched by the abilities table. See docs §9.3 #2.
+func (r *Repository) listUnrestrictedChannelsByGroupDB(ctx context.Context, group string) ([]*biz.Channel, error) {
+	var models []channelModel
+	// channels.group is a CSV; match exact, prefix, suffix, or infix to stay
+	// cross-driver compatible (no FIND_IN_SET in SQLite/Postgres).
+	if err := r.db.WithContext(ctx).
+		Where("status = ? AND restrict_models = ?", biz.ChannelStatusEnabled, false).
+		Where("`group` = ? OR `group` LIKE ? OR `group` LIKE ? OR `group` LIKE ?",
+			group, group+",%", "%,"+group, "%,"+group+",%").
+		Find(&models).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*biz.Channel, 0, len(models))
+	for i := range models {
+		result = append(result, r.modelToChannel(&models[i]))
+	}
+	return result, nil
+}
+
+func (r *Repository) listUnrestrictedChannelsByGroupMemory(_ context.Context, group string) ([]*biz.Channel, error) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	result := make([]*biz.Channel, 0)
+	for _, channel := range r.channels {
+		if channel.Status != biz.ChannelStatusEnabled {
+			continue
+		}
+		if channel.RestrictModels {
+			continue
+		}
+		for _, channelGroup := range biz.SplitCSV(channel.Group) {
+			if channelGroup == group {
+				cloned := *channel
+				cloned.Models = append([]string(nil), channel.Models...)
+				result = append(result, &cloned)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
 	if r.db != nil {
 		return r.listSubscriptionAccountAbilitiesDB(ctx, group, model, platform)
@@ -288,7 +341,7 @@ func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group
 				continue
 			}
 			for _, accountModel := range account.Models {
-				if !strings.EqualFold(accountModel, model) {
+				if !strings.EqualFold(accountModel, model) && !wildcard.Match(accountModel, model) {
 					continue
 				}
 				abilities = append(abilities, biz.SubscriptionAccountAbility{
@@ -752,6 +805,10 @@ func (r *Repository) findSubscriptionAccountByIDDB(ctx context.Context, accountI
 }
 
 func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, group, model, platform string) ([]biz.SubscriptionAccountAbility, error) {
+	// P1 (#4): support wildcard abilities for subscription accounts too.
+	// Exact (case-insensitive) match first; if none, scan wildcard-pattern
+	// rows and keep those matching the requested model. See
+	// docs/model-management-design.md §9.3 #4.
 	query := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
 		Where("`group` = ? AND LOWER(model) = ? AND enabled = ?", group, strings.ToLower(model), true)
 	if platform != "" {
@@ -760,6 +817,22 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 	var rows []subscriptionAccountAbilityModel
 	if err := query.Find(&rows).Error; err != nil {
 		return nil, err
+	}
+	if len(rows) == 0 {
+		patternQuery := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
+			Where("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)", group, true, "%*%", "%?%")
+		if platform != "" {
+			patternQuery = patternQuery.Where("platform = ?", platform)
+		}
+		var patternRows []subscriptionAccountAbilityModel
+		if err := patternQuery.Find(&patternRows).Error; err != nil {
+			return nil, err
+		}
+		for _, row := range patternRows {
+			if wildcard.Match(row.Model, model) {
+				rows = append(rows, row)
+			}
+		}
 	}
 	abilities := make([]biz.SubscriptionAccountAbility, 0, len(rows))
 	for _, row := range rows {
@@ -1248,13 +1321,30 @@ func (r *Repository) findByIDDB(ctx context.Context, channelID int64) (*biz.Chan
 }
 
 func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, model string) ([]biz.Ability, error) {
+	// P1 (#4): support wildcard abilities. First try exact (case-insensitive)
+	// model matching. If that yields rows, return them. If not, scan abilities
+	// whose model column contains a wildcard metacharacter and keep those
+	// whose pattern matches the requested model (e.g. "claude-*" matches
+	// "claude-sonnet-4"). This lets a single ability row route a whole
+	// family of model names. See docs/model-management-design.md §9.3 #4.
 	var rows []abilityModel
-	// Case-insensitive model matching: "GLM-5.2" and "glm-5.2" should resolve
-	// to the same set of channel abilities.
 	if err := r.db.WithContext(ctx).
 		Where("`group` = ? AND LOWER(model) = ? AND enabled = ?", group, strings.ToLower(model), true).
 		Find(&rows).Error; err != nil {
 		return nil, err
+	}
+	if len(rows) == 0 {
+		var patternRows []abilityModel
+		if err := r.db.WithContext(ctx).
+			Where("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)", group, true, "%*%", "%?%").
+			Find(&patternRows).Error; err != nil {
+			return nil, err
+		}
+		for _, row := range patternRows {
+			if wildcard.Match(row.Model, model) {
+				rows = append(rows, row)
+			}
+		}
 	}
 	abilities := make([]biz.Ability, 0, len(rows))
 	for _, row := range rows {
@@ -1277,10 +1367,12 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 	seen := make(map[string]struct{})
 
 	// ── Legacy: query regular channel abilities ──────────────────────────
+	// P1 (#4): exclude wildcard patterns from the advertised model list —
+	// "claude-*" / "*" are routing rules, not real models a client can select.
 	var channelModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&abilityModel{}).
-		Where("`group` = ? AND enabled = ?", group, true).
+		Where("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?", group, true, "%*%", "%?%").
 		Distinct("model").
 		Pluck("model", &channelModels).Error; err != nil {
 		return nil, err
@@ -1293,7 +1385,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 	var subscriptionModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&subscriptionAccountAbilityModel{}).
-		Where("`group` = ? AND enabled = ?", group, true).
+		Where("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?", group, true, "%*%", "%?%").
 		Distinct("model").
 		Pluck("model", &subscriptionModels).Error; err != nil {
 		return nil, err
@@ -1387,7 +1479,7 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 				continue
 			}
 			for _, channelModel := range channel.Models {
-				if !strings.EqualFold(channelModel, model) {
+				if !strings.EqualFold(channelModel, model) && !wildcard.Match(channelModel, model) {
 					continue
 				}
 				abilities = append(abilities, biz.Ability{
@@ -1409,6 +1501,10 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 	seen := make(map[string]struct{})
 
 	// ── Legacy: collect models from regular channels ─────────────────────
+	// P1 (#4): wildcard patterns (e.g. "claude-*", "*") are routing rules,
+	// not real advertiseable models — listing them in /v1/models would expose
+	// internal glob keys to clients. Skip any model name that is itself a
+	// wildcard pattern.
 	for _, channel := range r.channels {
 		if channel.Status != biz.ChannelStatusEnabled {
 			continue
@@ -1418,6 +1514,9 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 				continue
 			}
 			for _, model := range channel.Models {
+				if wildcard.IsPattern(model) {
+					continue
+				}
 				seen[strings.ToLower(model)] = struct{}{}
 			}
 		}
@@ -1433,6 +1532,9 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 				continue
 			}
 			for _, model := range account.Models {
+				if wildcard.IsPattern(model) {
+					continue
+				}
 				seen[strings.ToLower(model)] = struct{}{}
 			}
 		}
@@ -1455,7 +1557,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 		}
 		for _, channelGroup := range biz.SplitCSV(channel.Group) {
 			if channelGroup == group {
-					seen[strings.ToLower(model.ModelID)] = struct{}{}
+				seen[strings.ToLower(model.ModelID)] = struct{}{}
 				break
 			}
 		}
@@ -1706,6 +1808,7 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 		UsedQuota:                         m.UsedQuota,
 		ModelMapping:                      derefString(m.ModelMapping),
 		SystemPrompt:                      derefString(m.SystemPrompt),
+		RestrictModels:                    m.RestrictModels,
 		Config:                            biz.DecodeChannelConfig(m.Config),
 	}
 }
@@ -1740,6 +1843,7 @@ func (r *Repository) channelToModel(ch *biz.Channel) *channelModel {
 		Key:                               r.encryptKey(ch.Key),
 		Config:                            "{}",
 		SystemPrompt:                      stringPtr(ch.SystemPrompt),
+		RestrictModels:                    ch.RestrictModels,
 	}
 }
 

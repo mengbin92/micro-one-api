@@ -8,8 +8,8 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
-	relaybiz "micro-one-api/internal/biz"
 	relaycredential "micro-one-api/domain/upstream/credential"
+	relaybiz "micro-one-api/internal/biz"
 )
 
 // IdentityAdapter wraps a gRPC IdentityServiceClient to implement biz.IdentityClient.
@@ -115,7 +115,7 @@ func subscriptionAccountInfoToBiz(account *commonv1.SubscriptionAccountInfo) *re
 		Concurrency:           account.GetConcurrency(),
 		RPMLimit:              account.GetRpmLimit(),
 		SessionWindowLimitUSD: account.GetSessionWindowLimitUsd(),
-		ModelMapping:           account.GetModelMapping(),
+		ModelMapping:          account.GetModelMapping(),
 	}
 }
 
@@ -133,15 +133,17 @@ func (a *ChannelAdapter) SelectChannel(ctx context.Context, group, model string,
 		return nil, nil
 	}
 	relayChannel := &relaybiz.Channel{
-		ID:       ch.Id,
-		Type:     ch.Type,
-		Name:     ch.Name,
-		Status:   ch.Status,
-		BaseURL:  ch.BaseUrl,
-		Group:    ch.Group,
-		Models:   splitModels(ch.Models),
-		Priority: ch.Priority,
-		Key:      ch.Key,
+		ID:             ch.Id,
+		Type:           ch.Type,
+		Name:           ch.Name,
+		Status:         ch.Status,
+		BaseURL:        ch.BaseUrl,
+		Group:          ch.Group,
+		Models:         splitModels(ch.Models),
+		Priority:       ch.Priority,
+		Key:            ch.Key,
+		ModelMapping:   ch.GetModelMapping(),
+		RestrictModels: ch.GetRestrictModels(),
 	}
 	if ch.Config != nil {
 		relayChannel.Config.APIVersion = ch.Config.ApiVersion

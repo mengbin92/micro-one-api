@@ -50,6 +50,7 @@ services:
     - 057_create_subscription_account_quota_reset_runs
     - 062_create_model_management_tables
     - 063_add_subscription_account_model_mapping
+    - 064_add_channel_restrict_models
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /

@@ -350,6 +350,7 @@ message CreateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
+  bool restrict_models = 12;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
 }
 
 message CreateChannelResponse {
@@ -378,6 +379,7 @@ message UpdateChannelRequest {
   // when true, the three balance_refresh_* fields above are written to the channel as-is
   // (so callers can clear last_error by passing "" and reset the counter by passing 0).
   bool set_balance_refresh_fields = 17;
+  bool restrict_models = 18;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
 }
 
 message UpdateChannelResponse {

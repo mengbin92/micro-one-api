@@ -47,6 +47,7 @@ message ChannelSummary {
   int64 health_last_failure_time = 18;
   int32 health_consecutive_failures = 19;
   int64 circuit_opened_until = 20;
+  bool restrict_models = 21;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
 }
 
 // ========== 渠道配置 ==========
@@ -89,6 +90,7 @@ message ChannelInfo {
   int64 health_last_failure_time = 25;
   int32 health_consecutive_failures = 26;
   int64 circuit_opened_until = 27;
+  bool restrict_models = 28;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
 }
 
 // ========== 订阅账号 ==========

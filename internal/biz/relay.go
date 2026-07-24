@@ -8,6 +8,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	"micro-one-api/pkg/wildcard"
 	"micro-one-api/platform/metrics"
 )
 
@@ -76,6 +77,10 @@ type Channel struct {
 
 	// ModelMapping is a JSON {"src":"dst"} channel-level model remap.
 	ModelMapping string
+	// RestrictModels is the P1 (#2) catch-all flag: false=allow unregistered
+	// models to route to this channel, true=require an abilities row. Default
+	// true (legacy). See docs/model-management-design.md §9.3 #2.
+	RestrictModels bool
 }
 
 type ChannelConfig struct {
@@ -106,7 +111,7 @@ type SubscriptionAccount struct {
 	SessionWindowLimitUSD float64
 
 	// ModelMapping is a JSON {"src":"dst"} per-account remap applied after global ModelMapper.
-	ModelMapping           string
+	ModelMapping string
 }
 
 // RelayPlan is the result of relay planning, containing all resolved
@@ -521,15 +526,16 @@ func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error
 		return nil, fmt.Errorf("unsupported subscription platform %q", account.Platform)
 	}
 	return &Channel{
-		ID:       account.ID,
-		Type:     channelType,
-		Name:     account.Name,
-		Status:   account.Status,
-		BaseURL:  account.BaseURL,
-		Group:    account.Group,
-		Models:   append([]string(nil), account.Models...),
-		Priority: account.Priority,
-		ModelMapping: account.ModelMapping,
+		ID:             account.ID,
+		Type:           channelType,
+		Name:           account.Name,
+		Status:         account.Status,
+		BaseURL:        account.BaseURL,
+		Group:          account.Group,
+		Models:         append([]string(nil), account.Models...),
+		Priority:       account.Priority,
+		ModelMapping:   account.ModelMapping,
+		RestrictModels: true, // subscription accounts require explicit abilities; never catch-all
 		// Key intentionally left empty: the access token is NOT projected onto
 		// the generic Channel.Key field. The server layer resolves it via the
 		// SubscriptionAccountResolver (plan.Account) / credential store so it
@@ -538,7 +544,6 @@ func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error
 	}, nil
 }
 
-
 // applyPerAccountModelMapping applies the per-account or per-channel model
 // mapping (JSON {"src":"dst"}) on top of the globally-resolved model name.
 // If no mapping is configured or the model is not in the map, the input is
@@ -546,6 +551,13 @@ func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error
 // runs first in Plan(), then this applies the account/channel-specific remap
 // so different upstream providers can map the same client model name to
 // different upstream model identifiers. See docs/model-management-design.md §10.1.
+//
+// P1 (#4): mapping keys may be shell-style wildcards ("claude-*", "*").
+// Exact (case-insensitive) match is tried first; if it misses, wildcard keys
+// are tried with specific patterns before the "*" catch-all, so a narrow
+// "claude-*" shadows a broad "*". This lets an account remap a whole model
+// family to one upstream name without enumerating every minor version.
+// See docs/model-management-design.md §9.3 #4.
 func applyPerAccountModelMapping(mappingJSON, model string) string {
 	mappingJSON = strings.TrimSpace(mappingJSON)
 	if mappingJSON == "" {
@@ -555,8 +567,29 @@ func applyPerAccountModelMapping(mappingJSON, model string) string {
 	if err := sonic.UnmarshalString(mappingJSON, &mapping); err != nil {
 		return model // invalid JSON — passthrough
 	}
+	// 1) Exact (case-insensitive) match — fast path.
 	if dst, ok := mapping[model]; ok && dst != "" {
 		return dst
+	}
+	if dst, ok := mapping[strings.ToLower(model)]; ok && dst != "" {
+		return dst
+	}
+	// 2) Wildcard keys: specific patterns before the "*" catch-all.
+	var catchAll string
+	for key, dst := range mapping {
+		if !wildcard.IsPattern(key) || dst == "" {
+			continue
+		}
+		if key == "*" {
+			catchAll = dst
+			continue
+		}
+		if wildcard.Match(key, model) {
+			return dst
+		}
+	}
+	if catchAll != "" {
+		return catchAll
 	}
 	return model
 }
