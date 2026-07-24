@@ -303,6 +303,61 @@ func TestUpdateChannel_RewritesAbilities(t *testing.T) {
 	assert.EqualValues(t, 50, *rows[0].Priority)
 }
 
+// P1 (#2) / P0 (#1) review fix: UpdateChannel must persist restrict_models
+// and model_mapping (previously missing from the Updates map, so a DB-backed
+// admin toggle returned success but was silently dropped).
+func TestUpdateChannel_PersistsRestrictModelsAndModelMapping(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	ch := &biz.Channel{
+		Name:           "drift",
+		Group:          "default",
+		Models:         []string{"gpt-4o"},
+		Status:         biz.ChannelStatusEnabled,
+		Priority:       10,
+		RestrictModels: true,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	// Flip to catch-all and set a model mapping.
+	ch.RestrictModels = false
+	ch.ModelMapping = `{"gpt-4o":"gpt-4o-mini"}`
+	require.NoError(t, repo.UpdateChannel(ctx, ch))
+
+	got, err := repo.FindByID(ctx, ch.ID)
+	require.NoError(t, err)
+	assert.False(t, got.RestrictModels, "restrict_models must be persisted on update")
+	assert.Equal(t, `{"gpt-4o":"gpt-4o-mini"}`, got.ModelMapping, "model_mapping must be persisted on update")
+}
+
+// P0 (#1) review fix: UpdateSubscriptionAccount must persist model_mapping
+// (previously missing from the Updates map, so per-account mapping was only
+// writable on Create and silently dropped on Update).
+func TestUpdateSubscriptionAccount_PersistsModelMapping(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	account := &biz.SubscriptionAccount{
+		Name:        "codex",
+		Platform:    "codex",
+		AccountType: "oauth",
+		Status:      biz.ChannelStatusEnabled,
+		Group:       "default",
+		Models:      []string{"gpt-5"},
+		Priority:    30,
+		AccountID:   "acc_1",
+	}
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
+
+	account.ModelMapping = `{"gpt-5":"gpt-5-codex"}`
+	require.NoError(t, repo.UpdateSubscriptionAccount(ctx, account))
+
+	got, err := repo.FindSubscriptionAccountByID(ctx, account.ID)
+	require.NoError(t, err)
+	assert.Equal(t, `{"gpt-5":"gpt-5-codex"}`, got.ModelMapping, "model_mapping must be persisted on subscription account update")
+}
+
 func TestDeleteChannel_RemovesAbilities(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
@@ -986,4 +1041,24 @@ func TestSelectChannel_NoCatchAllReturnsNotFound_DB(t *testing.T) {
 	uc := biz.NewChannelUsecase(repo, nil)
 	_, err := uc.SelectChannel(ctx, "default", "unregistered-model", false)
 	assert.Equal(t, biz.ErrChannelNotFound, err)
+}
+
+// TestListModelRoutings_EmptyPlatformMatchesConcretePlatform proves the 🔴#3
+// fix: a routing row with an empty platform ("any platform") must match when
+// the relay infers a concrete platform (e.g. codex). Pre-fix the equality
+// filter platform = ? never matched an empty row.
+func TestListModelRoutings_EmptyPlatformMatchesConcretePlatform(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	// Empty-platform routing row (the UI-recommended default).
+	require.NoError(t, repo.UpsertModelRouting(ctx, &biz.ModelRouting{
+		GroupName: "default", Model: "gpt-5", Platform: "",
+		SubscriptionAccountID: 7, Enabled: true, Priority: 5,
+	}))
+
+	rows, err := repo.ListModelRoutings(ctx, "default", "gpt-5", "codex")
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "empty-platform routing must match concrete platform codex")
+	assert.Equal(t, int64(7), rows[0].SubscriptionAccountID)
 }

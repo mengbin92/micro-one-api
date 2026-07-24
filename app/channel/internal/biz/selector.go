@@ -264,11 +264,17 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 			continue
 		}
 
-		// Dynamic weight = static weight × health factor × latency factor
-		dynamicWeight := state.weight * state.healthFactor() * state.latencyFactor()
-
-		// Smooth WRR: current += dynamic, track max
-		state.currentWeight += dynamicWeight
+		// P2 #7 review fix (WRR normalization): healthFactor and latencyFactor
+		// are 0-100 band values, so the product weight×health×latency is scaled
+		// by 10000 relative to the configured weight. The smooth-WRR algorithm
+		// requires the decrement (Σ effective weight) to use the SAME scale as
+		// the increment, otherwise the winner's currentWeight grows ~10000× per
+		// round, weighted selection collapses to "always pick the first", and
+		// currentWeight overflows int32 after ~2.1M selects. Normalise by /10000
+		// so effective weight is on the same scale as the configured weight, and
+		// sum the effective weights (not the static weights) for the decrement.
+		effectiveWeight := state.weight * state.healthFactor() * state.latencyFactor() / 10000
+		state.currentWeight += effectiveWeight
 		if state.currentWeight > bestWeight {
 			bestWeight = state.currentWeight
 			best = state
@@ -279,8 +285,8 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 		return nil, ErrChannelNotFound
 	}
 
-	// Decrement selected channel's current weight by total
-	totalWeight := s.totalWeight(candidates)
+	// Decrement selected channel's current weight by total effective weight.
+	totalWeight := s.totalEffectiveWeight(candidates)
 	if totalWeight > 0 {
 		best.currentWeight -= totalWeight
 	}
@@ -289,12 +295,14 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 	return best.channel, nil
 }
 
-// totalWeight calculates the total weight of all candidates.
-func (s *WeightedSelector) totalWeight(candidates []*Channel) int32 {
+// totalEffectiveWeight sums the effective (normalised) weight of all
+// candidates so the smooth-WRR decrement uses the same scale as the
+// increment. See the Select method for the normalisation rationale.
+func (s *WeightedSelector) totalEffectiveWeight(candidates []*Channel) int32 {
 	var total int32
 	for _, ch := range candidates {
 		if state, ok := s.channels[ch.ID]; ok {
-			total += state.weight
+			total += state.weight * state.healthFactor() * state.latencyFactor() / 10000
 		}
 	}
 	return total

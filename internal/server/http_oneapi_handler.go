@@ -74,12 +74,13 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 
 	requestID := generateRequestID()
 	startedAt := time.Now()
+	billingModel := s.BillingModelName(model, model, model)
 	reservation, err := s.reserveQuota(
 		r.Context(),
 		fmt.Sprintf("%d", authSnapshot.UserId),
 		requestID,
 		estimateRawTokens(body),
-		model,
+		billingModel,
 		fmt.Sprintf("%d", channelReply.Channel.Id),
 		0,
 	)
@@ -116,7 +117,7 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		TokenName:             authSnapshot.TokenName,
 		RequestID:             requestID,
 		Endpoint:              "/" + targetPart,
-		ModelName:             model,
+		ModelName:             billingModel,
 		Quota:                 totalTokens,
 		PromptTokens:          usage.PromptTokens,
 		CompletionTokens:      usage.CompletionTokens,

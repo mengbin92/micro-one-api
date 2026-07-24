@@ -269,6 +269,12 @@ func TestChannelServiceOneAPIFields(t *testing.T) {
 	if !createResp.Success || repo.created.Weight != 5 || repo.created.ModelMapping != `{"gpt-4o":"gpt-4o-mini"}` || repo.created.SystemPrompt != "reply briefly" {
 		t.Fatalf("CreateChannel() one-api fields mismatch: resp=%+v created=%+v", createResp, repo.created)
 	}
+	// P1 (#2) review fix: a Create that omits restrict_models (proto3 bare bool
+	// zero value) must default to true (legacy restricted), NOT catch-all. This
+	// matches migration 064's DEFAULT 1 and the "zero-migration burden" contract.
+	if !repo.created.RestrictModels {
+		t.Fatalf("CreateChannel() restrict_models must default to true (legacy restricted), got false: %+v", repo.created)
+	}
 
 	updateResp, err := svc.UpdateChannel(context.Background(), &channelv1.UpdateChannelRequest{
 		ChannelId:          1,

@@ -139,7 +139,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	// Reservations mirror the HTTP path: estimate tokens from the request body
 	// and commit per terminal turn.
 	requestID := generateRequestID()
-	reservation, err := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimateRawTokens(rewrittenFirstMessage), plan.ResolvedModel, fmt.Sprintf("%d", plan.Channel.ID), subscriptionAccountIDFromPlan(plan))
+	reservation, err := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimateRawTokens(rewrittenFirstMessage), s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel), fmt.Sprintf("%d", plan.Channel.ID), subscriptionAccountIDFromPlan(plan))
 	if err != nil {
 		closeOpenAIWSClientConn(wsConn, coderws.StatusTryAgainLater, "quota reservation failed")
 		return
@@ -461,6 +461,10 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 	resolvedModel := plan.ResolvedModel
 
 	for attempt := 0; ; attempt++ {
+		// 🔴#7: re-apply the current channel's per-channel model mapping on
+		// each (re)entry and after a failover switch, so the upstream model
+		// matches the channel actually serving the request.
+		resolvedModel = relaybiz.ApplyChannelModelMapping(currentChannel.ModelMapping, plan.ResolvedModel)
 		// Resolve the upstream target for the current channel.
 		wsURL, headers, err := s.buildOpenAIWSUpstreamTarget(r, currentChannel)
 		if err != nil {
@@ -511,7 +515,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				TokenName:             plan.Auth.TokenName,
 				RequestID:             turnID,
 				Endpoint:              "/v1/responses",
-				ModelName:             resolvedModel,
+				ModelName:             s.BillingModelName(clientModel, resolvedModel, resolvedModel),
 				Quota:                 actualTotal,
 				PromptTokens:          usage.promptTokens,
 				CompletionTokens:      usage.completionTokens,
@@ -529,7 +533,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			if turnCommits > 0 {
 				turnReservationID = ""
 				if s.billingClient != nil {
-					if turnRes, rerr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, resolvedModel, fmt.Sprintf("%d", currentChannel.ID), subscriptionAccountIDFromPlan(plan)); rerr == nil && turnRes != nil {
+					if turnRes, rerr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, s.BillingModelName(clientModel, resolvedModel, resolvedModel), fmt.Sprintf("%d", currentChannel.ID), subscriptionAccountIDFromPlan(plan)); rerr == nil && turnRes != nil {
 						turnReservationID = turnRes.ReservationId
 					} else if applogger.Log != nil {
 						applogger.Log.Warn("failed to reserve openai ws turn quota",

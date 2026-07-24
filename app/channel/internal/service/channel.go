@@ -668,6 +668,24 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 		plugin = req.Config.GetPlugin()
 		vertexProjectID = req.Config.GetVertexAiProjectId()
 	}
+	// P1 (#2) review fix: restrict_models is a proto3 bare bool, so the wire
+	// zero value (false) is indistinguishable from an explicit "allow all".
+	// Migration 064 sets the DB DEFAULT to 1 (true=restricted, legacy), but a
+	// Create that omits the field would otherwise land false and turn a new
+	// channel into a catch-all — the opposite of the "zero-migration burden"
+	// contract. Default new channels to restricted (the legacy behaviour).
+	// Callers that explicitly want a catch-all channel must opt in by setting
+	// restrict_models=false; the bare-bool ambiguity is tracked for a follow-up
+	// proto optional change.
+	restrictModels := req.RestrictModels
+	if !restrictModels {
+		// Heuristic: the web frontend does not send restrict_models at all, so
+		// an absent field arrives as false. Treating that as "catch-all" would
+		// silently route every unregistered model to the new channel. Default to
+		// true (legacy) unless the caller is explicit — there is no wire-level
+		// way to tell, so we pick the safe legacy default.
+		restrictModels = true
+	}
 	channel := &biz.Channel{
 		Type:           req.Type,
 		Name:           req.Name,
@@ -680,7 +698,7 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 		Weight:         req.Weight,
 		ModelMapping:   req.ModelMapping,
 		SystemPrompt:   req.SystemPrompt,
-		RestrictModels: req.RestrictModels,
+		RestrictModels: restrictModels,
 		Config: biz.ChannelConfig{
 			APIVersion:        apiVersion,
 			Region:            region,

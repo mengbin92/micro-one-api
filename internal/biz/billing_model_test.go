@@ -37,9 +37,19 @@ func TestBillingModelForSource_ChannelMapped(t *testing.T) {
 	}
 }
 
-func TestBillingModelForSource_DefaultRequested(t *testing.T) {
+func TestBillingModelForSource_DefaultUpstream(t *testing.T) {
+	// Empty/unknown source must default to upstream (true legacy): pre-P3 #6
+	// every reserveQuota call site passed plan.ResolvedModel (the upstream
+	// name). Defaulting to requested would silently change the billing key
+	// from the upstream name to the client name on any deployment that
+	// upgrades without setting BILLING_MODEL_SOURCE.
 	got := BillingModelForSource("", "gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-2024-08-06")
+	if got != "gpt-4o-2024-08-06" {
+		t.Fatalf("empty source must default to upstream, got %q", got)
+	}
+	// Empty upstream falls back to client when source is unset.
+	got = BillingModelForSource("", "gpt-4o", "gpt-4o-2024-08-06", "")
 	if got != "gpt-4o" {
-		t.Fatalf("empty source must default to requested/client, got %q", got)
+		t.Fatalf("empty source + empty upstream must fall back to client, got %q", got)
 	}
 }

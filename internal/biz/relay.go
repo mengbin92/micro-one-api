@@ -239,7 +239,12 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 				return &RelayPlan{
 					Auth:          authSnapshot,
 					Channel:       channel,
-					ResolvedModel: resolvedModel,
+					// P0 (#1) review fix (🔴#7): apply the selected channel's
+					// per-channel model mapping. This was the one Plan() return
+					// path that dropped channel.ModelMapping, so a request that
+					// fell back to the resolved model name was sent upstream
+					// without the channel's remap.
+					ResolvedModel: applyPerAccountModelMapping(channel.ModelMapping, resolvedModel),
 				}, nil
 			}
 			channelErr = err
@@ -390,10 +395,17 @@ func (uc *RelayUsecase) SelectSubscriptionFailover(ctx context.Context, group, c
 	if err != nil {
 		return nil, err
 	}
+	// P0 (#1) review fix (🔴#7): the failover account may differ from the
+	// originally-selected one, so the per-account model mapping MUST be
+	// recomputed against the NEW account. Pre-fix the plan returned the
+	// caller's resolvedModel verbatim — which had already been rewritten by
+	// account A's mapping — so failover to account B sent A's mapped model
+	// upstream (400 model-not-found + wrong-model billing). Apply B's mapping
+	// on top of the globally-resolved model instead.
 	return &RelayPlan{
 		Channel:       ch,
 		Account:       account,
-		ResolvedModel: resolvedModel,
+		ResolvedModel: applyPerAccountModelMapping(account.ModelMapping, resolvedModel),
 	}, nil
 }
 
@@ -558,6 +570,16 @@ func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error
 // "claude-*" shadows a broad "*". This lets an account remap a whole model
 // family to one upstream name without enumerating every minor version.
 // See docs/model-management-design.md §9.3 #4.
+// ApplyChannelModelMapping is the exported form of applyPerAccountModelMapping
+// for the server layer: it recomputes the upstream model against a channel's
+// (or subscription account's) JSON model mapping. Used by RetryExecutor
+// closures (🔴#7) to re-apply the per-channel mapping after a retry selects a
+// different channel, so the upstream body carries the new channel's mapping
+// instead of the first channel's.
+func ApplyChannelModelMapping(mappingJSON, model string) string {
+	return applyPerAccountModelMapping(mappingJSON, model)
+}
+
 func applyPerAccountModelMapping(mappingJSON, model string) string {
 	mappingJSON = strings.TrimSpace(mappingJSON)
 	if mappingJSON == "" {

@@ -135,7 +135,7 @@ func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybi
 		strconv.FormatInt(plan.Auth.UserID, 10),
 		req.RequestID,
 		estimated.TotalTokens,
-		plan.ResolvedModel,
+		h.s.BillingModelName(req.Model, plan.ResolvedModel, plan.ResolvedModel),
 		strconv.FormatInt(plan.Channel.ID, 10),
 		subscriptionAccountIDFromPlan(plan),
 	)
@@ -162,7 +162,7 @@ func (h httpRelayLifecycleHooks) CommitQuota(ctx context.Context, plan *relaybiz
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
-	logInput := orchestratorUsageLogInput(plan, req, usage, latency, req.IsStream)
+	logInput := orchestratorUsageLogInput(h, plan, req, usage, latency, req.IsStream)
 	return h.s.commitQuota(ctx, reservation.ID, usage.TotalTokens, success, logInput)
 }
 
@@ -180,7 +180,7 @@ func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.Re
 	if h.s == nil {
 		return
 	}
-	logInput := orchestratorUsageLogInput(plan, req, usage, latency, stream)
+	logInput := orchestratorUsageLogInput(h, plan, req, usage, latency, stream)
 	logUpstreamUsage(logInput)
 	h.s.ingestUsageLog(ctx, logInput)
 	// Sprint 4: model usage stats are recorded inside commitQuota (which is
@@ -188,14 +188,14 @@ func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.Re
 	// too would double-count.
 }
 
-func orchestratorUsageLogInput(plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool) usageLogInput {
+func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool) usageLogInput {
 	return usageLogInput{
 		UserID:                plan.Auth.UserID,
 		TokenID:               plan.Auth.TokenID,
 		TokenName:             plan.Auth.TokenName,
 		RequestID:             req.RequestID,
 		Endpoint:              "/v1/chat/completions",
-		ModelName:             req.Model,
+		ModelName:             h.s.BillingModelName(req.Model, plan.ResolvedModel, plan.ResolvedModel),
 		Quota:                 usage.TotalTokens,
 		PromptTokens:          usage.PromptTokens,
 		CompletionTokens:      usage.CompletionTokens,

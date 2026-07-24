@@ -6,12 +6,14 @@ import "strings"
 // (quota reservation + usage stats) when relay rewrites the client-facing
 // model name. Mirrors sub2api BillingModelSource.
 //
-//   - "requested"     (default): bill on the client-requested model name
-//     (RelayRequest.Model), before any mapping. Legacy behaviour.
-//   - "upstream":      bill on the final upstream model name (RelayPlan.
-//     ResolvedModel), after global ModelMapper + per-account/channel
-//     mapping. Use when pricing/quotas are keyed by the upstream provider's
-//     real model id.
+//   - "upstream"     (default, legacy): bill on the final upstream model name
+//     (RelayPlan.ResolvedModel), after global ModelMapper + per-account/channel
+//     mapping. This is the true legacy behaviour: before P3 #6 every
+//     reserveQuota call site passed plan.ResolvedModel directly. Use when
+//     pricing/quotas are keyed by the upstream provider's real model id.
+//   - "requested":     bill on the client-requested model name
+//     (RelayRequest.Model), before any mapping. Use when pricing is keyed by
+//     the client-facing alias.
 //   - "channel_mapped": bill on the channel/account's own mapped name in
 //     isolation (applyPerAccountModelMapping on the original client model,
 //     skipping the global mapper). Use when pricing differs per channel but
@@ -41,6 +43,9 @@ const (
 // resolved name keeps the lookup consistent with the selection path.
 func BillingModelForSource(source, clientModel, resolvedModel, upstreamModel string) string {
 	switch strings.ToLower(strings.TrimSpace(source)) {
+	case BillingModelSourceRequested:
+		// Bill on the client-requested model name, before any mapping.
+		return clientModel
 	case BillingModelSourceUpstream:
 		if upstreamModel != "" {
 			return upstreamModel
@@ -65,7 +70,15 @@ func BillingModelForSource(source, clientModel, resolvedModel, upstreamModel str
 		}
 		return clientModel
 	default:
-		// "requested" (and any unknown/empty value): bill on client model.
+		// Unset/unknown: bill on the upstream model (true legacy). Before P3
+		// #6, every reserveQuota call site passed plan.ResolvedModel (the
+		// upstream name) directly, so the legacy default is upstream — NOT
+		// requested. Defaulting to requested would silently change the billing
+		// key from the upstream name to the client name on any deployment that
+		// upgrades without setting BILLING_MODEL_SOURCE.
+		if upstreamModel != "" {
+			return upstreamModel
+		}
 		return clientModel
 	}
 }

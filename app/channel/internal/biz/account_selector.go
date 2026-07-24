@@ -72,13 +72,18 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 		if state.circuitOpenUntil > 0 && state.circuitOpenUntil > now {
 			continue
 		}
-		// Dynamic weight = configured weight × health factor × load factor.
-		// Health factor is driven by RecordAccountHealth; load factor is driven
-		// by Acquire/Release. Until the feedback loop is wired at the relay
-		// gateway (see TODO below), both default to neutral and the selector
-		// degrades to smooth WRR by configured weight.
-		dynamicWeight := state.weight * state.healthFactor() * state.loadFactor()
-		state.currentWeight += dynamicWeight
+		// P2 #7 review fix (WRR normalization): healthFactor and loadFactor are
+		// 0-100 band values, so the product weight×health×load is scaled by
+		// 10000 relative to the configured weight. The smooth-WRR algorithm
+		// requires the decrement (Σ effective weight) to use the SAME scale as
+		// the increment, otherwise the winner's currentWeight grows ~10000× per
+		// round, weighted selection collapses to "always pick the first", and
+		// currentWeight overflows int32 after ~2.1M selects (~21k rounds with
+		// two weight-1 accounts). Normalise by /10000 so effective weight is on
+		// the same scale as the configured weight, and sum the effective weights
+		// (not the static weights) for the decrement.
+		effectiveWeight := state.weight * state.healthFactor() * state.loadFactor() / 10000
+		state.currentWeight += effectiveWeight
 		if state.currentWeight > bestWeight {
 			bestWeight = state.currentWeight
 			best = state
@@ -87,7 +92,7 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 	if best == nil {
 		return nil, ErrSubscriptionAccountNotFound
 	}
-	totalWeight := s.totalWeight(candidates)
+	totalWeight := s.totalEffectiveWeight(candidates)
 	if totalWeight > 0 {
 		best.currentWeight -= totalWeight
 	}
@@ -240,14 +245,17 @@ func accountSelectorWeight(acct *SubscriptionAccount) int32 {
 	return 1
 }
 
-func (s *SubscriptionAccountSelector) totalWeight(candidates []*SubscriptionAccount) int32 {
+// totalEffectiveWeight sums the effective (normalised) weight of all
+// candidates so the smooth-WRR decrement uses the same scale as the
+// increment. See the Select method for the normalisation rationale.
+func (s *SubscriptionAccountSelector) totalEffectiveWeight(candidates []*SubscriptionAccount) int32 {
 	var total int32
 	for _, acct := range candidates {
 		if acct == nil {
 			continue
 		}
 		if state, ok := s.accounts[acct.ID]; ok {
-			total += state.weight
+			total += state.weight * state.healthFactor() * state.loadFactor() / 10000
 		}
 	}
 	return total

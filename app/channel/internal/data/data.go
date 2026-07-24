@@ -981,6 +981,7 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 			"session_window_limit_usd":  model.SessionWindowLimitUSD,
 			"quota_reset_strategy":      model.QuotaResetStrategy,
 			"quota_timezone":            model.QuotaTimezone,
+			"model_mapping":             model.ModelMapping,
 			"updated_at":                model.UpdatedAt,
 		}).Error; err != nil {
 			return err
@@ -1646,6 +1647,7 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 			"priority":                             model.Priority,
 			"weight":                               model.Weight,
 			"model_mapping":                        model.ModelMapping,
+			"restrict_models":                     model.RestrictModels,
 			"system_prompt":                        model.SystemPrompt,
 			"config":                               model.Config,
 			"balance":                              model.Balance,

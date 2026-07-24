@@ -107,12 +107,17 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	result := retryExecutor.ExecuteWithInitialChannel(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		requestID := generateRequestID()
+		// 🔴#7: re-apply the retried channel's per-channel model mapping so
+		// the upstream body and billing use the new channel's mapping.
+		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.ResolvedModel)
+		retriedBody := rewriteRawModel(upstreamBody, currentResolvedModel)
+		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
 		reservation, reserveErr := s.reserveQuota(
 			ctx,
 			fmt.Sprintf("%d", plan.Auth.UserID),
 			requestID,
-			estimateRawTokens(upstreamBody),
-			plan.ResolvedModel,
+			estimateRawTokens(retriedBody),
+			billingModel,
 			fmt.Sprintf("%d", ch.ID),
 			subscriptionAccountIDFromPlan(plan),
 		)
@@ -125,13 +130,13 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			// Convert the inbound Responses request to Anthropic Messages and
 			// bridge the upstream SSE back to Responses SSE.
 			if isAnthropicAPIKeyChannel(ch) {
-				fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(ctx, ch, r.Header.Clone(), upstreamBody)
+				fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(ctx, ch, r.Header.Clone(), retriedBody)
 				if fallbackErr != nil {
 					_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream stream error")
 					return fallbackErr
 				}
 				if fallbackResp.Stream != nil {
-					usage := newRawStreamUsageTracker(estimateRawUsage(upstreamBody))
+					usage := newRawStreamUsageTracker(estimateRawUsage(retriedBody))
 					writeRawStreamResponse(w, fallbackResp.Stream, usage)
 					actualUsage := usage.Usage()
 					logInput := usageLogInput{
@@ -140,7 +145,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						TokenName:        plan.Auth.TokenName,
 						RequestID:        requestID,
 						Endpoint:         r.URL.Path,
-						ModelName:        clientModel,
+						ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 						Quota:            actualUsage.TotalTokens,
 						PromptTokens:     actualUsage.PromptTokens,
 						CompletionTokens: actualUsage.CompletionTokens,
@@ -158,17 +163,17 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 					responseChannel = ch
 					if responseID := usage.ResponseID(); responseID != "" {
-						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 					}
 					return nil
 				}
 			}
-			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), upstreamBody)
+			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), retriedBody)
 			if streamErr != nil {
 				if shouldFallbackResponsesToChat(upstreamPath, streamErr) {
-					fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), upstreamBody)
+					fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), retriedBody)
 					if fallbackErr == nil && fallbackResp.Stream != nil {
-						usage := newRawStreamUsageTracker(estimateRawUsage(upstreamBody))
+						usage := newRawStreamUsageTracker(estimateRawUsage(retriedBody))
 						writeRawStreamResponse(w, fallbackResp.Stream, usage)
 						actualUsage := usage.Usage()
 						logInput := usageLogInput{
@@ -177,7 +182,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 							TokenName:        plan.Auth.TokenName,
 							RequestID:        requestID,
 							Endpoint:         r.URL.Path,
-							ModelName:        clientModel,
+							ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 							Quota:            actualUsage.TotalTokens,
 							PromptTokens:     actualUsage.PromptTokens,
 							CompletionTokens: actualUsage.CompletionTokens,
@@ -195,7 +200,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 						responseChannel = ch
 						if responseID := usage.ResponseID(); responseID != "" {
-							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 						}
 						return nil
 					}
@@ -212,7 +217,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				TokenName:        plan.Auth.TokenName,
 				RequestID:        requestID,
 				Endpoint:         r.URL.Path,
-				ModelName:        clientModel,
+				ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 				Quota:            actualUsage.TotalTokens,
 				PromptTokens:     actualUsage.PromptTokens,
 				CompletionTokens: actualUsage.CompletionTokens,
@@ -230,14 +235,14 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
 			responseChannel = ch
 			if responseID := usage.ResponseID(); responseID != "" {
-				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 			}
 			return nil
 		}
 
 		// Anthropic API-key channels speak /v1/messages, not Responses.
 		if isAnthropicAPIKeyChannel(ch) {
-			fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(ctx, ch, r.Header.Clone(), upstreamBody)
+			fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(ctx, ch, r.Header.Clone(), retriedBody)
 			if fallbackErr == nil && fallbackResp.Response != nil {
 				usage := fallbackResp.Usage
 				if usage.TotalTokens <= 0 {
@@ -249,7 +254,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					TokenName:        plan.Auth.TokenName,
 					RequestID:        requestID,
 					Endpoint:         r.URL.Path,
-					ModelName:        clientModel,
+					ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 					Quota:            usage.TotalTokens,
 					PromptTokens:     usage.PromptTokens,
 					CompletionTokens: usage.CompletionTokens,
@@ -266,7 +271,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				upstreamResp = fallbackResp.Response
 				responseChannel = ch
 				if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
-					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 				}
 				return nil
 			}
@@ -279,7 +284,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		resp, forwardErr := s.forwardResponsesRaw(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), upstreamBody)
 		if forwardErr != nil {
 			if shouldFallbackResponsesToChat(upstreamPath, forwardErr) {
-				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), upstreamBody)
+				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, r.Header.Clone(), retriedBody)
 				if fallbackErr == nil && fallbackResp.Response != nil {
 					usage := fallbackResp.Usage
 					if usage.TotalTokens <= 0 {
@@ -291,7 +296,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						TokenName:        plan.Auth.TokenName,
 						RequestID:        requestID,
 						Endpoint:         r.URL.Path,
-						ModelName:        clientModel,
+						ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 						Quota:            usage.TotalTokens,
 						PromptTokens:     usage.PromptTokens,
 						CompletionTokens: usage.CompletionTokens,
@@ -314,14 +319,14 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			return forwardErr
 		}
 
-		usage := extractRawUsage(resp.Body, estimateRawTokens(upstreamBody))
+		usage := extractRawUsage(resp.Body, estimateRawTokens(retriedBody))
 		logInput := usageLogInput{
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
 			TokenName:        plan.Auth.TokenName,
 			RequestID:        requestID,
 			Endpoint:         r.URL.Path,
-			ModelName:        clientModel,
+			ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 			Quota:            usage.TotalTokens,
 			PromptTokens:     usage.PromptTokens,
 			CompletionTokens: usage.CompletionTokens,
@@ -428,12 +433,13 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	requestID := generateRequestID()
 	resolvedModel := routeResolvedModel(route)
 	fallbackBody := ensureRawModel(body, resolvedModel)
+	billingModel := s.BillingModelName(route.Model, routeResolvedModel(route), resolvedModel)
 	reservation, err := s.reserveQuota(
 		r.Context(),
 		fmt.Sprintf("%d", authSnapshot.UserId),
 		requestID,
 		estimateRawTokens(body),
-		route.Model,
+		billingModel,
 		fmt.Sprintf("%d", route.Channel.ID),
 		route.SubscriptionAccountID,
 	)
@@ -457,7 +463,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 					TokenName:             authSnapshot.TokenName,
 					RequestID:             requestID,
 					Endpoint:              r.URL.Path,
-					ModelName:             route.Model,
+					ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
 					Quota:                 actualUsage.TotalTokens,
 					PromptTokens:          actualUsage.PromptTokens,
 					CompletionTokens:      actualUsage.CompletionTokens,
@@ -497,7 +503,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 						TokenName:             authSnapshot.TokenName,
 						RequestID:             requestID,
 						Endpoint:              r.URL.Path,
-						ModelName:             route.Model,
+						ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
 						Quota:                 actualUsage.TotalTokens,
 						PromptTokens:          actualUsage.PromptTokens,
 						CompletionTokens:      actualUsage.CompletionTokens,
@@ -533,7 +539,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			TokenName:             authSnapshot.TokenName,
 			RequestID:             requestID,
 			Endpoint:              r.URL.Path,
-			ModelName:             route.Model,
+			ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
 			Quota:                 actualUsage.TotalTokens,
 			PromptTokens:          actualUsage.PromptTokens,
 			CompletionTokens:      actualUsage.CompletionTokens,
@@ -569,7 +575,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 				TokenName:             authSnapshot.TokenName,
 				RequestID:             requestID,
 				Endpoint:              r.URL.Path,
-				ModelName:             route.Model,
+				ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
 				Quota:                 usage.TotalTokens,
 				PromptTokens:          usage.PromptTokens,
 				CompletionTokens:      usage.CompletionTokens,
@@ -612,7 +618,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 					TokenName:             authSnapshot.TokenName,
 					RequestID:             requestID,
 					Endpoint:              r.URL.Path,
-					ModelName:             route.Model,
+					ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
 					Quota:                 usage.TotalTokens,
 					PromptTokens:          usage.PromptTokens,
 					CompletionTokens:      usage.CompletionTokens,
@@ -648,7 +654,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		TokenName:             authSnapshot.TokenName,
 		RequestID:             requestID,
 		Endpoint:              r.URL.Path,
-		ModelName:             route.Model,
+		ModelName:             s.BillingModelName(route.Model, resolvedModel, resolvedModel),
 		Quota:                 usage.TotalTokens,
 		PromptTokens:          usage.PromptTokens,
 		CompletionTokens:      usage.CompletionTokens,

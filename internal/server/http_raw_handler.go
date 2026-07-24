@@ -68,8 +68,12 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		result := retryExecutor.ExecuteWithInitialChannel(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, func(ctx context.Context, ch *relaybiz.Channel) error {
 			startedAt := time.Now()
 			requestID := generateRequestID()
+			// 🔴#7: re-apply the retried channel's per-channel model mapping so
+			// the upstream body and billing use the new channel's mapping.
+			currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.ResolvedModel)
+			retriedBody := rewriteRawModel(upstreamBody, currentResolvedModel)
 			// P3 #6: derive the billing model name from billing_model_source.
-			billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel)
+			billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
 			reservation, reserveErr := s.reserveQuota(
 				ctx,
 				fmt.Sprintf("%d", plan.Auth.UserID),
@@ -96,7 +100,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				Path:   upstreamPath,
 				Query:  r.URL.RawQuery,
 				Header: r.Header.Clone(),
-				Body:   upstreamBody,
+				Body:   retriedBody,
 			})
 			if forwardErr != nil {
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream error")
@@ -110,7 +114,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				TokenName:        plan.Auth.TokenName,
 				RequestID:        requestID,
 				Endpoint:         upstreamPath,
-				ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
+				ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 				Quota:            usage.TotalTokens,
 				PromptTokens:     usage.PromptTokens,
 				CompletionTokens: usage.CompletionTokens,

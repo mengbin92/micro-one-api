@@ -464,8 +464,11 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		startedAt := time.Now()
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(ccReq)
+		// 🔴#7: re-apply the retried channel's per-channel model mapping.
+		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.ResolvedModel)
+		ccReq.Model = currentResolvedModel
 		// P3 #6: derive the billing model name from billing_model_source.
-		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel)
+		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
 		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, billingModel, fmt.Sprintf("%d", ch.ID), subscriptionAccountIDFromPlan(plan))
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
@@ -486,7 +489,10 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 				TokenName: plan.Auth.TokenName,
 				RequestID: requestID,
 				Endpoint:  "/v1/messages",
-				ModelName: clientModel,
+				// P3 #6: the streaming SSE echoes the model name back to the
+				// client; use the billing model name so usage logs stay aligned
+				// with quota reservation.
+				ModelName: s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 				ChannelID: ch.ID,
 				IsStream:  true,
 			})
@@ -506,7 +512,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 			TokenName:             plan.Auth.TokenName,
 			RequestID:             requestID,
 			Endpoint:              "/v1/messages",
-			ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
+			ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 			Quota:                 actualTokens,
 			PromptTokens:          int64(resp.Usage.PromptTokens),
 			CompletionTokens:      int64(resp.Usage.CompletionTokens),

@@ -83,9 +83,11 @@ openai_ws:
 
 # billing_model_source (P3 #6) controls which model name relay uses for quota
 # reservation + usage stats when it rewrites the client-facing model name.
-#   requested     — bill on the client model name (default, legacy behaviour)
-#   upstream      — bill on the final upstream model (after global + per-account mapping)
+#   upstream      — bill on the final upstream model (after global + per-account
+#                   mapping); default, true legacy behaviour (pre-P3 #6 every
+#                   reserveQuota call site passed plan.ResolvedModel directly)
+#   requested     — bill on the client model name (before any mapping)
 #   channel_mapped — bill on the channel/account's mapped name
-# Unset/empty = requested.
+# Unset/empty = upstream (legacy).
 billing_model_source:
-  source: ${BILLING_MODEL_SOURCE:-requested}
+  source: ${BILLING_MODEL_SOURCE:-upstream}

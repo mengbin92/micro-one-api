@@ -114,7 +114,12 @@ func (r *Repository) listModelRoutingsDB(ctx context.Context, group, model, plat
 		query = query.Where("model = ?", model)
 	}
 	if platform != "" {
-		query = query.Where("platform = ?", platform)
+		// P2 #3 review fix: an empty platform on a routing row means "any
+		// platform". The relay always infers a concrete platform (e.g. codex),
+		// so an equality filter platform = ? would never match a row left
+		// empty (the UI-recommended default). Match both the exact platform
+		// and empty-platform rows.
+		query = query.Where("platform = ? OR platform = ?", platform, "")
 	}
 	var rows []modelRoutingModel
 	if err := query.Order("id ASC").Find(&rows).Error; err != nil {
@@ -138,7 +143,8 @@ func (r *Repository) listModelRoutingsMemory(group, model, platform string) ([]*
 		if model != "" && row.Model != model {
 			continue
 		}
-		if platform != "" && row.Platform != platform {
+		if platform != "" && row.Platform != platform && row.Platform != "" {
+			// P2 #3 review fix: empty platform means "any platform" (see DB path).
 			continue
 		}
 		clone := *row

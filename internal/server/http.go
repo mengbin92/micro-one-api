@@ -337,7 +337,8 @@ func (s *HTTPServer) SetUserRPMLimit(limit int32) {
 }
 
 // SetBillingModelSource wires the P3 #6 billing-model-name source.
-// Empty/unset = "requested" (legacy: bill on client model).
+// Empty/unset = "upstream" (true legacy: pre-P3 #6 every reserveQuota call
+// site passed plan.ResolvedModel, the upstream name).
 func (s *HTTPServer) SetBillingModelSource(source string) {
 	if s == nil {
 		return
@@ -347,12 +348,17 @@ func (s *HTTPServer) SetBillingModelSource(source string) {
 
 // BillingModelName (P3 #6) returns the model name to use for billing given
 // the client, resolved and upstream model names, applying the configured
-// billing_model_source. Falls back to the client model when unset.
+// billing_model_source. When unset it falls back to the upstream model (the
+// true legacy default).
 func (s *HTTPServer) BillingModelName(clientModel, resolvedModel, upstreamModel string) string {
-	if s == nil || s.billingModelSource == "" {
-		return clientModel
+	if s == nil {
+		return upstreamModel
 	}
-	return relaybiz.BillingModelForSource(s.billingModelSource, clientModel, resolvedModel, upstreamModel)
+	source := s.billingModelSource
+	if source == "" {
+		return upstreamModel
+	}
+	return relaybiz.BillingModelForSource(source, clientModel, resolvedModel, upstreamModel)
 }
 
 // isSubscriptionChannel reports whether the channel type is a subscription

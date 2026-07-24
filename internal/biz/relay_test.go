@@ -592,3 +592,37 @@ func TestApplyPerAccountModelMapping_ExactBeatsWildcard(t *testing.T) {
 		t.Errorf("claude-opus-4 = %s, want family", got)
 	}
 }
+
+// TestSelectSubscriptionFailover_AppliesFailoverAccountModelMapping proves the
+// 🔴#7 fix: when failover selects a different account (B), the returned
+// ResolvedModel must be recomputed against B's model mapping, NOT carried
+// over from A's mapping. Pre-fix the failover plan returned the caller's
+// resolvedModel verbatim, so B received A's mapped model upstream.
+func TestSelectSubscriptionFailover_AppliesFailoverAccountModelMapping(t *testing.T) {
+	channelClient := &recordingChannelClient{
+		failModels: map[string]error{"gpt-5": errors.New("no channel available")},
+		subscriptions: []*SubscriptionAccount{
+			// Account A (failed, excluded).
+			{ID: 1, Name: "A", Platform: "codex", Status: 1, Group: "default",
+				Models: []string{"gpt-5"}, ModelMapping: `{"gpt-5":"a-mapped"}`},
+			// Account B (failover target).
+			{ID: 2, Name: "B", Platform: "codex", Status: 1, Group: "default",
+				Models: []string{"gpt-5"}, ModelMapping: `{"gpt-5":"b-mapped"}`},
+		},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+
+	plan, err := uc.SelectSubscriptionFailover(
+		context.Background(), "default", "gpt-5", "gpt-5",
+		map[int64]bool{1: true}, // account A failed
+	)
+	if err != nil {
+		t.Fatalf("SelectSubscriptionFailover() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != 2 {
+		t.Fatalf("failover must select account 2 (B), got %+v", plan.Account)
+	}
+	if plan.ResolvedModel != "b-mapped" {
+		t.Fatalf("failover ResolvedModel must use B's mapping (b-mapped), got %q", plan.ResolvedModel)
+	}
+}

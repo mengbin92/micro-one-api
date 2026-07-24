@@ -198,7 +198,8 @@ message Mtls {
 // model name. Mirrors sub2api BillingModelSource: requested (client model),
 // upstream (resolved/mapped model after ModelMapper + per-account mapping),
 // channel_mapped (the channel/subscription-account's own mapped name).
-// Default "requested" keeps legacy behaviour. See
+// Default "upstream" keeps the true legacy behaviour (pre-P3 #6 every
+// reserveQuota call site passed plan.ResolvedModel). See
 // docs/model-management-design.md §9.3 #6 / §9.4 P3.
 message BillingModelSource {
   string source = 1 [json_name = "source"]; // requested | upstream | channel_mapped

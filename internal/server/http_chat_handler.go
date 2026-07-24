@@ -105,8 +105,15 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// Reserve quota
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(&req)
+		// 🔴#7: re-apply the retried channel's per-channel model mapping so
+		// the upstream body and billing use the new channel's mapping. Plan()
+		// applied the initial channel's mapping to plan.ResolvedModel; on a
+		// retry a different channel is selected, so we re-derive the upstream
+		// model against the retried channel's mapping.
+		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.ResolvedModel)
+		req.Model = currentResolvedModel
 		// P3 #6: derive the billing model name from billing_model_source.
-		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel)
+		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
 		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, billingModel, fmt.Sprintf("%d", ch.ID), subscriptionAccountIDFromPlan(plan))
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
@@ -127,7 +134,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				TokenName:             plan.Auth.TokenName,
 				RequestID:             requestID,
 				Endpoint:              "/v1/chat/completions",
-				ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
+				ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 				ChannelID:             ch.ID,
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 				IsStream:              true,
@@ -147,9 +154,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
 			TokenName:        plan.Auth.TokenName,
-			RequestID:        requestID,
+			RequestID:         requestID,
 			Endpoint:         "/v1/chat/completions",
-			ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
+			ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 			Quota:            actualTokens,
 			PromptTokens:     int64(resp.Usage.PromptTokens),
 			CompletionTokens: int64(resp.Usage.CompletionTokens),
