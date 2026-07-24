@@ -63,7 +63,7 @@
   "overrides": {
     "@babel/core": "^7.29.6",
     "form-data": "^4.0.6",
-    "hono": "^4.12.25",
+    "hono": "^4.12.31",
     "js-yaml": "^4.2.0"
   }
 }
