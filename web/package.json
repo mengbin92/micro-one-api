@@ -25,7 +25,7 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-is": "^19.2.6",
-    "react-router-dom": "^7.15.1",
+    "react-router-dom": "^7.18.1",
     "recharts": "^3.8.1",
     "shadcn": "^4.7.0",
     "sonner": "^2.0.7",
@@ -63,7 +63,7 @@
   "overrides": {
     "@babel/core": "^7.29.6",
     "form-data": "^4.0.6",
-    "hono": "^4.12.25",
+    "hono": "^4.12.31",
     "js-yaml": "^4.2.0"
   }
 }
