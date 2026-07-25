@@ -301,6 +301,70 @@ func TestRelayUsecasePlan_SelectsClaudeSubscriptionWithPlatformFilter(t *testing
 	}
 }
 
+func TestRelayUsecasePlan_SelectsDomesticSubscriptionPlatform(t *testing.T) {
+	tests := []struct {
+		name        string
+		model       string
+		platform    string
+		channelType int32
+	}{
+		{name: "zhipu", model: "GLM-5.2", platform: "zhipu", channelType: relayprovider.ChannelTypeZhipuPlan},
+		{name: "minimax", model: "MiniMax-M2.5", platform: "minimax", channelType: relayprovider.ChannelTypeMinimaxPlan},
+		{name: "kimi", model: "kimi-k2", platform: "kimi", channelType: relayprovider.ChannelTypeKimiOAuth},
+		{name: "kimi k3", model: "k3", platform: "kimi", channelType: relayprovider.ChannelTypeKimiOAuth},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			channelClient := &recordingChannelClient{
+				failModels: map[string]error{tt.model: errors.New("no channel available")},
+				subscription: &SubscriptionAccount{
+					ID:       10,
+					Name:     tt.name,
+					Platform: tt.platform,
+					Status:   1,
+					Group:    "default",
+					Models:   []string{tt.model},
+				},
+			}
+			uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+
+			plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: tt.model})
+			if err != nil {
+				t.Fatalf("Plan() error = %v", err)
+			}
+			if plan.Channel == nil || plan.Channel.Type != tt.channelType {
+				t.Fatalf("channel = %+v, want type %d", plan.Channel, tt.channelType)
+			}
+			if len(channelClient.subscriptionPlatforms) != 1 || channelClient.subscriptionPlatforms[0] != tt.platform {
+				t.Fatalf("subscription selected platforms = %v, want [%s]", channelClient.subscriptionPlatforms, tt.platform)
+			}
+		})
+	}
+}
+
+func TestRelayUsecasePlan_CustomAliasUsesAbilityPlatform(t *testing.T) {
+	const model = "company-reasoner"
+	channelClient := &recordingChannelClient{
+		failModels: map[string]error{model: errors.New("no channel available")},
+		subscription: &SubscriptionAccount{
+			ID: 11, Name: "zhipu-alias", Platform: "zhipu", Status: 1,
+			Group: "default", Models: []string{model},
+		},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: model})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.Platform != "zhipu" {
+		t.Fatalf("account = %+v, want zhipu", plan.Account)
+	}
+	if len(channelClient.subscriptionPlatforms) != 1 || channelClient.subscriptionPlatforms[0] != "" {
+		t.Fatalf("subscription selected platforms = %q, want unfiltered lookup", channelClient.subscriptionPlatforms)
+	}
+}
+
 func TestRelayUsecasePlan_SkipsRuntimeBlockedSubscriptionAccount(t *testing.T) {
 	channelClient := &recordingChannelClient{
 		failModels: map[string]error{"gpt-5": errors.New("no channel available")},
@@ -394,6 +458,32 @@ func TestRelayUsecasePlan_StickyHit_SelectsBoundAccount(t *testing.T) {
 	}
 	if store.refreshed != 1 {
 		t.Fatalf("refresh count = %d, want 1", store.refreshed)
+	}
+}
+
+func TestRelayUsecasePlan_StickyHit_CustomDomesticAlias(t *testing.T) {
+	const model = "company-reasoner"
+	acct := &SubscriptionAccount{
+		ID: 12, Name: "zhipu-alias", Platform: "zhipu", Status: 1,
+		Group: "default", Models: []string{model}, AccessToken: "tok",
+	}
+	channelClient := &recordingChannelClient{
+		failModels: map[string]error{model: errors.New("no channel available")},
+		byID:       map[int64]*SubscriptionAccount{acct.ID: acct},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+	store := &fakeSessionStore{bound: map[string]int64{sessKey("default", "domestic-alias"): acct.ID}}
+	uc.SetSessionAccountStore(store, time.Hour, true)
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: model, SessionHash: "domestic-alias"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != acct.ID {
+		t.Fatalf("account = %+v, want sticky id %d", plan.Account, acct.ID)
+	}
+	if len(channelClient.subscriptionModels) != 0 {
+		t.Fatalf("normal selection must not run on sticky hit: %v", channelClient.subscriptionModels)
 	}
 }
 

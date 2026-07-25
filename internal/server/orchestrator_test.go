@@ -13,9 +13,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	apperrors "micro-one-api/pkg/errors"
-	relaybiz "micro-one-api/internal/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	relaybiz "micro-one-api/internal/biz"
+	apperrors "micro-one-api/pkg/errors"
 )
 
 type orchestratorIdentityClient struct{}
@@ -188,6 +188,8 @@ func TestStatusCodeFromError(t *testing.T) {
 		{name: "unauthorized", err: apperrors.New(apperrors.ReasonUnauthorized), want: http.StatusUnauthorized},
 		{name: "forbidden", err: fmt.Errorf("model %q not allowed for this token", "gpt-x"), want: http.StatusForbidden},
 		{name: "unavailable", err: fmt.Errorf("no available channel"), want: http.StatusServiceUnavailable},
+		{name: "subscription unavailable", err: fmt.Errorf("subscription account not found"), want: http.StatusServiceUnavailable},
+		{name: "grpc subscription unavailable", err: status.Error(codes.Unknown, "subscription account not found"), want: http.StatusServiceUnavailable},
 		{name: "grpc exhausted", err: status.Error(codes.ResourceExhausted, "rate limited"), want: http.StatusTooManyRequests},
 	}
 	for _, tt := range tests {

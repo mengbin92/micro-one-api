@@ -397,7 +397,7 @@ func (uc *RelayUsecase) selectStickySubscriptionAccount(ctx context.Context, gro
 }
 
 // stickySubscriptionAccountValid reports whether a bound account may still serve
-// this request: enabled, same tenancy group, platform+model still match, and not
+// this request: enabled, same tenancy group, model still matches, and not
 // runtime-blocked/paused.
 func (uc *RelayUsecase) stickySubscriptionAccountValid(ctx context.Context, account *SubscriptionAccount, group, clientModel, resolvedModel string) bool {
 	if account.Status != subscriptionAccountStatusEnabled {
@@ -408,12 +408,13 @@ func (uc *RelayUsecase) stickySubscriptionAccountValid(ctx context.Context, acco
 	if account.Group != group {
 		return false
 	}
-	// The bound account's platform must still serve the requested model (guards
-	// mid-session model switches, e.g. claude -> gpt).
-	if !platformServesModel(account.Platform, clientModel) && !platformServesModel(account.Platform, resolvedModel) {
-		return false
-	}
-	if !accountServesModel(account, clientModel, resolvedModel) {
+	// Explicit account models are the source of truth and support operator-defined
+	// aliases. Only infer from the platform when the account has no model list.
+	if len(account.Models) > 0 {
+		if !accountServesModel(account, clientModel, resolvedModel) {
+			return false
+		}
+	} else if !platformServesModel(account.Platform, clientModel) && !platformServesModel(account.Platform, resolvedModel) {
 		return false
 	}
 	return uc.isSubscriptionAccountSchedulable(ctx, account)
@@ -452,18 +453,21 @@ func (uc *RelayUsecase) SelectSubscriptionFailover(ctx context.Context, group, c
 }
 
 func (uc *RelayUsecase) selectSubscriptionAccountForModel(ctx context.Context, group, model string, exclude map[int64]bool) (*SubscriptionAccount, error) {
-	var lastErr error
-	for _, platform := range subscriptionPlatformsForModel(model) {
+	platforms := subscriptionPlatformsForModel(model)
+	if len(platforms) == 0 {
+		// The abilities table is authoritative for aliases and future providers.
+		return uc.selectSchedulableSubscriptionAccount(ctx, group, model, "", exclude)
+	}
+
+	for _, platform := range platforms {
 		account, err := uc.selectSchedulableSubscriptionAccount(ctx, group, model, platform, exclude)
 		if err == nil {
 			return account, nil
 		}
-		lastErr = err
 	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, fmt.Errorf("subscription account platform cannot be inferred for model %q", model)
+	// A known model prefix is a routing hint, not a hard boundary. This lets an
+	// explicit cross-platform ability or model mapping override the convention.
+	return uc.selectSchedulableSubscriptionAccount(ctx, group, model, "", exclude)
 }
 
 func (uc *RelayUsecase) selectSchedulableSubscriptionAccount(ctx context.Context, group, model, platform string, exclude map[int64]bool) (*SubscriptionAccount, error) {
@@ -524,8 +528,14 @@ func subscriptionPlatformsForModel(model string) []string {
 		return []string{"claude"}
 	case strings.HasPrefix(lower, "gpt-"), strings.HasPrefix(lower, "codex-"), strings.HasPrefix(lower, "o1"), strings.HasPrefix(lower, "o3"), strings.HasPrefix(lower, "o4"):
 		return []string{"codex"}
+	case strings.HasPrefix(lower, "glm-"):
+		return []string{"zhipu"}
+	case strings.HasPrefix(lower, "minimax-"), strings.HasPrefix(lower, "minimaxm-"):
+		return []string{"minimax"}
+	case strings.HasPrefix(lower, "kimi-"), strings.HasPrefix(lower, "k3"):
+		return []string{"kimi"}
 	default:
-		return []string{"codex", "claude"}
+		return nil
 	}
 }
 

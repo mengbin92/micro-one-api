@@ -210,7 +210,7 @@ func MapChannelError(err error) error {
 
 	errorMsg := err.Error()
 	switch {
-	case errorMsg == "channel not found":
+	case errorMsg == "channel not found" || errorMsg == "subscription account not found":
 		return &Error{Reason: ReasonChannelNotFound, Message: "no available channel"}
 	case strings.Contains(errorMsg, "circuit-opened") || strings.Contains(errorMsg, "saturated"):
 		// routing dead-end — all candidates tripped their circuit

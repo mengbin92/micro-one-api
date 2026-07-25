@@ -832,7 +832,7 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 		case codes.Unavailable:
 			s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: service unavailable")
 		default:
-			if strings.Contains(st.Message(), "no available channel") || strings.Contains(st.Message(), "channel not found") {
+			if isChannelUnavailableMessage(st.Message()) {
 				s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: no available channel")
 				return
 			}
@@ -841,7 +841,7 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 		return
 	}
 
-	if strings.Contains(err.Error(), "no available channel") || strings.Contains(err.Error(), "channel not found") {
+	if isChannelUnavailableMessage(err.Error()) {
 		s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: no available channel")
 		return
 	}

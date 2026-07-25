@@ -12,14 +12,15 @@ import (
 // tell "all upstreams tripped their circuit" from "nobody serves this model".
 func TestMapChannelError_RouteDeadEnd(t *testing.T) {
 	cases := []struct {
-		name    string
-		err     error
+		name       string
+		err        error
 		wantReason string
 		wantCode   int
 	}{
 		{"circuit-opened", errors.New("all subscription accounts serving \"gpt-5\" are circuit-opened or saturated; try again after the circuit window"), ReasonRouteDeadEnd, 503},
 		{"routed-none-schedulable", errors.New("model routing matched 2 account(s) for \"gpt-5\" but none are schedulable"), ReasonRouteDeadEnd, 503},
 		{"plain channel not found", errors.New("channel not found"), ReasonChannelNotFound, 503},
+		{"subscription account not found", errors.New("subscription account not found"), ReasonChannelNotFound, 503},
 		{"plain model not found", errors.New("model not found"), ReasonModelNotFound, 404},
 	}
 	for _, tc := range cases {

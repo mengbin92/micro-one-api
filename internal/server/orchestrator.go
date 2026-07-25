@@ -13,10 +13,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	apperrors "micro-one-api/pkg/errors"
-	relaybiz "micro-one-api/internal/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/internal/server/forwarder"
+	apperrors "micro-one-api/pkg/errors"
 )
 
 // APIEndpoint represents a specific API endpoint type.
@@ -357,7 +357,7 @@ func statusCodeFromError(err error) int {
 	if apperrors.IsForbidden(err) || strings.Contains(err.Error(), "not allowed") {
 		return http.StatusForbidden
 	}
-	if apperrors.IsServiceUnavailable(err) || strings.Contains(err.Error(), "no available channel") || strings.Contains(err.Error(), "channel not found") {
+	if apperrors.IsServiceUnavailable(err) || isChannelUnavailableMessage(err.Error()) {
 		return http.StatusServiceUnavailable
 	}
 	if st, ok := status.FromError(err); ok {
