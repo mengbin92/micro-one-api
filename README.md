@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.9.3 发布公告](./docs/releases/release-v0.9.3.md)（Kratos v3 升级、buf 工具链迁移、用量日志与订阅管理修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.9.3)
+> 📣 **最新发布**：[v0.10.0 发布公告](./docs/releases/release-v0.10.0.md)（模型管理系统 + 国内订阅账户支持） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.10.0)
 
 ## 功能概览
 
@@ -17,6 +17,8 @@
 - 钱包与账务：提供金额预扣、释放、结算、ledger、兑换码、支付订单和用量记录等能力。
 - 订阅套餐与用量查询：支持订阅套餐购买、续费、退款/冲正、购买时套餐快照，以及 API Key 鉴权的 `/v1/subscription/usage` 查询（额度、已用量、剩余额度和下次刷新时间）。
 - 订阅账号治理：支持订阅账号本地额度、fixed daily/weekly 重置、账号恢复、额度告警、单用户单 active 订阅约束和多副本幂等治理记录。
+- 模型管理系统：提供独立的模型管理后台，支持按账户配置模型映射、通配符模型匹配、模型别名管理、使用统计分析、缓存优化等功能，彻底解决多渠道模型管理复杂性。
+- 国内订阅账户支持：新增对智谱 GLM、MiniMax、Kimi 等国内平台订阅账户的支持，包括动态模型发现、配额状态查询、路由恢复探测等能力。
 - 成本与利润分析：`billing_ledgers` 记录上游成本，账本聚合支持收入/成本/毛利维度，可按模型、渠道、用户、Token、时间下钻。
 - 多维用量聚合：用量统计改为 SQL `GROUP BY` 聚合（按用户/渠道/模型/Token/分组/小时|日），告别 admin 抽样估算。
 - 对账与告警：`RunReconciliation` 覆盖账户余额、渠道用量、ledger/log 双写一致性；差异通过 `notify-worker` 投递通知（可配置收件人）。
@@ -178,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.10.0
+
+v0.10.0 是重大功能版本，主要引入独立模型管理系统和国内编程计划订阅账户支持。包含新增业务表迁移、多个新增 API 端点和 Web 前端界面。**包含数据库迁移**，必须执行 `make migrate`；开发者需执行 `make init && make proto` 重新生成代码；升级后建议清除浏览器缓存。详见 [docs/releases/release-v0.10.0.md](./docs/releases/release-v0.10.0.md)。
 
 ### 升级到 v0.9.3
 
