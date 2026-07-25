@@ -9,6 +9,8 @@ import (
 
 	"micro-one-api/app/channel/internal/biz"
 
+	"micro-one-api/pkg/safecast"
+
 	"gorm.io/gorm"
 )
 
@@ -343,7 +345,7 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 		Scan(&chRows).Error
 	chMap := make(map[int64]int32, len(chRows))
 	for _, row := range chRows {
-		chMap[row.ModelID] = int32(row.Count)
+		chMap[row.ModelID] = safecast.Int64ToInt32Saturating(row.Count)
 	}
 
 	// Subscription counts: one query with GROUP BY model_id.
@@ -355,7 +357,7 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 		Scan(&subRows).Error
 	subMap := make(map[int64]int32, len(subRows))
 	for _, row := range subRows {
-		subMap[row.ModelID] = int32(row.Count)
+		subMap[row.ModelID] = safecast.Int64ToInt32Saturating(row.Count)
 	}
 
 	for _, m := range models {
@@ -490,7 +492,7 @@ func (r *Repository) BatchChangeStatus(ctx context.Context, modelPKs []int64, st
 	if res.Error != nil {
 		return 0, res.Error
 	}
-	return int32(res.RowsAffected), nil
+	return safecast.Int64ToInt32Saturating(res.RowsAffected), nil
 }
 
 func (r *Repository) BatchDelete(ctx context.Context, modelPKs []int64) (int32, error) {
@@ -512,7 +514,7 @@ func (r *Repository) BatchDelete(ctx context.Context, modelPKs []int64) (int32, 
 		if res.Error != nil {
 			return res.Error
 		}
-		affected = int32(res.RowsAffected)
+		affected = safecast.Int64ToInt32Saturating(res.RowsAffected)
 		return nil
 	})
 	return affected, err

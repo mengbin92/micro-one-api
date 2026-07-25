@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, AlertTriangle, Boxes, CreditCard, Database, Gauge, KeyRound, LineChart, Scale, TrendingUp, Users } from 'lucide-react';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

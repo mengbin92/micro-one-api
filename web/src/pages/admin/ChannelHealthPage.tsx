@@ -10,7 +10,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
 import { Button } from '@/components/ui/button';

@@ -12,7 +12,7 @@ const vendorChunks = [
   },
   {
     name: 'react',
-    test: /node_modules[\\/](?:react|react-dom|react-is|react-router|react-router-dom|scheduler)[\\/]/,
+    test: /node_modules[\\/](?:react|react-dom|react-is|react-router|scheduler)[\\/]/,
     priority: 30,
   },
   {
