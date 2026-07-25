@@ -140,6 +140,9 @@ func UpstreamStatus(err error) int {
 type ChannelSelector interface {
 	SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error)
 	RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error
+	// RecordSubscriptionAccountHealth feeds a known subscription-account
+	// outcome into the selector. accountID is 0 for ordinary API-key channels.
+	RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error
 }
 
 // RetryExecutor orchestrates retry attempts with channel fallback.
@@ -178,6 +181,32 @@ func (e *RetryExecutor) Execute(
 	return e.ExecuteWithInitialChannel(ctx, group, model, nil, fn)
 }
 
+// ExecuteWithAccountHealth runs the provided function with retry and channel
+// fallback. It records health for the initial subscription account, whose id
+// is known to the caller. Later generic channel fallbacks are not attributed to
+// that account. accountID<=0 degrades to plain ExecuteWithInitialChannel.
+func (e *RetryExecutor) ExecuteWithAccountHealth(
+	ctx context.Context,
+	group, model string,
+	initialChannel *Channel,
+	accountID int64,
+	fn func(ctx context.Context, ch *Channel) error,
+) *ExecuteResult {
+	// The caller only knows the account id for initialChannel. A retry selected
+	// through ChannelSelector may be an ordinary API-key channel, so attributing
+	// that later result to the original subscription account would corrupt its
+	// health score. Account-aware adaptor failover records each selected account
+	// separately; this generic path records only the known initial attempt.
+	wrapped := func(ctx context.Context, ch *Channel) error {
+		err := fn(ctx, ch)
+		if ch == initialChannel {
+			e.RecordAccountHealth(ctx, accountID, err == nil)
+		}
+		return err
+	}
+	return e.ExecuteWithInitialChannel(ctx, group, model, initialChannel, wrapped)
+}
+
 func (e *RetryExecutor) ExecuteWithInitialChannel(
 	ctx context.Context,
 	group, model string,
@@ -202,16 +231,17 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 			case <-time.After(wait):
 			}
 
-			// Re-select channel, excluding first-priority tier
+			// Try a lower-priority channel without widening to the primary
+			// catch-all path. If no alternative exists, retry the already
+			// selected channel: transient upstream failures still need the
+			// configured retry budget, but SelectChannel(false) must not run
+			// because it could silently expand failover to a catch-all channel.
 			ch, selErr := e.selector.SelectChannel(ctx, group, model, true)
-			if selErr != nil {
-				// No alternative channel — retry with the same one
-				ch, selErr = e.selector.SelectChannel(ctx, group, model, false)
-				if selErr != nil {
-					return &ExecuteResult{Channel: lastChannel, Err: lastErr, Attempt: attempt}
-				}
+			if selErr == nil && ch != nil {
+				lastChannel = ch
+			} else if lastChannel == nil {
+				return &ExecuteResult{Err: lastErr, Attempt: attempt}
 			}
-			lastChannel = ch
 		} else if initialChannel != nil {
 			lastChannel = initialChannel
 		} else {
@@ -248,4 +278,13 @@ func (e *RetryExecutor) recordHealth(ctx context.Context, ch *Channel, success b
 		return
 	}
 	_ = e.selector.RecordChannelHealth(ctx, ch.ID, success, message, responseTime)
+}
+
+// RecordAccountHealth feeds a known subscription-account upstream outcome
+// into the selector. accountID<=0 is a no-op for ordinary API-key channels.
+func (e *RetryExecutor) RecordAccountHealth(ctx context.Context, accountID int64, success bool) {
+	if e == nil || e.selector == nil || accountID <= 0 {
+		return
+	}
+	_ = e.selector.RecordSubscriptionAccountHealth(ctx, accountID, success)
 }

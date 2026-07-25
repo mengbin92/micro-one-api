@@ -22,8 +22,11 @@ import (
 type Platform string
 
 const (
-	PlatformCodex  Platform = "codex"
-	PlatformClaude Platform = "claude"
+	PlatformCodex   Platform = "codex"
+	PlatformClaude  Platform = "claude"
+	PlatformZhipu   Platform = "zhipu"   // GLM Coding Plan (static key)
+	PlatformMinimax Platform = "minimax" // MiniMax Coding Plan (static key)
+	PlatformKimi    Platform = "kimi"    // Kimi For Coding (OAuth refresh)
 )
 
 // AccountCredentials holds the OAuth credentials for a subscription account.

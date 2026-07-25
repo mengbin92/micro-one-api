@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	"micro-one-api/pkg/safefile"
+	"micro-one-api/pkg/wildcard"
 
 	"github.com/bytedance/sonic"
 	"gopkg.in/yaml.v3"
@@ -37,6 +38,14 @@ var KnownCapabilities = map[string]bool{
 // pointer indirection keeps the hot path lock-free while a reload builds a
 // fresh snapshot. Concurrent Resolve() callers see either the old or the
 // new snapshot, never a partially-mutated map.
+//
+// P1 (#4): model config keys may be shell-style wildcards ("claude-*", "*").
+// Resolve tries an exact (case-insensitive) match first; if that misses, it
+// tries wildcard keys in two tiers — specific patterns before the catch-all
+// "*" — so "claude-*" wins over "*" for "claude-sonnet-4". This lets admins
+// route whole families of model names (e.g. all claude-* versions) to one
+// upstream without enumerating each minor version. See
+// docs/model-management-design.md §9.3 #4.
 type ModelMapper struct {
 	path string
 	snap atomic.Pointer[map[string]*ModelEntry]
@@ -115,19 +124,166 @@ func (m *ModelMapper) modelsSnapshot() map[string]*ModelEntry {
 
 // Resolve returns the actual upstream model name for the given client model name.
 // If no mapping exists, returns the original name unchanged.
+//
+// P1 (#4): supports wildcard keys. Exact (case-insensitive) match is tried
+// first; if that misses, wildcard keys are tried with specific patterns
+// (longer/more-specific) before the "*" catch-all, so "claude-*" wins over
+// "*" for "claude-sonnet-4". Non-pattern keys are skipped during the
+// wildcard pass to avoid redundant case work (they were already tried in
+// the exact pass).
 func (m *ModelMapper) Resolve(modelName string) string {
 	models := m.modelsSnapshot()
+
+	// 1) Exact (case-insensitive) match — the fast path.
 	if entry, ok := models[modelName]; ok && entry.ActualName != "" {
 		return entry.ActualName
+	}
+	// Also try a lowercase exact lookup so mixed-case client names hit the
+	// common lowercase keys without going through the wildcard pass.
+	lower := strings.ToLower(modelName)
+	if entry, ok := models[lower]; ok && entry.ActualName != "" {
+		return entry.ActualName
+	}
+
+	// 2) Wildcard keys. Specific patterns are tried before the "*" catch-all
+	// so a narrow pattern ("claude-*") shadows the broad one ("*"). Only
+	// keys containing a wildcard metacharacter are considered here; plain
+	// keys were already handled in step 1.
+	//
+	// when several specific (non-"*") patterns match the same name,
+	// pick the MOST SPECIFIC one (by non-wildcard character count, ties
+	// broken by full pattern length) so resolution is deterministic — two
+	// requests for the same model resolve to the same upstream instead of
+	// being randomised by Go map iteration order. E.g. "claude-sonnet-*"
+	// wins over "claude-*" for "claude-sonnet-4".
+	var catchAll string
+	var bestSpecific string
+	var bestSpecificKey string
+	var bestSpecificity int
+	for key, entry := range models {
+		if !wildcard.IsPattern(key) {
+			continue
+		}
+		if entry.ActualName == "" {
+			continue
+		}
+		if key == "*" {
+			catchAll = entry.ActualName
+			continue
+		}
+		if !wildcard.Match(key, modelName) {
+			continue
+		}
+		spec := wildcard.Specificity(key)
+		if spec > bestSpecificity || (spec == bestSpecificity && len(key) > len(bestSpecificKey)) {
+			bestSpecificity = spec
+			bestSpecific = entry.ActualName
+			bestSpecificKey = key
+		}
+	}
+	if bestSpecific != "" {
+		return bestSpecific
+	}
+	if catchAll != "" {
+		return catchAll
 	}
 	return modelName
 }
 
 // HasCapability checks if a model has the specified capability.
+//
+// P1 (#4): wildcard keys are considered. Exact match is tried first; if it
+// misses, wildcard keys are consulted (specific before "*").
 func (m *ModelMapper) HasCapability(modelName, capability string) bool {
 	models := m.modelsSnapshot()
-	entry, ok := models[modelName]
-	if !ok {
+	if entry, ok := models[modelName]; ok {
+		return entryHasCapability(entry, capability)
+	}
+	lower := strings.ToLower(modelName)
+	if entry, ok := models[lower]; ok {
+		return entryHasCapability(entry, capability)
+	}
+	// among matching specific patterns, pick the most specific entry
+	// (deterministic) and check its capability. The OR-walk (any matching
+	// pattern grants the capability) was inconsistent with GetEntry/Resolve
+	// which select a single entry: a capability granted by a broad pattern
+	// but absent on the most-specific match would now correctly be false.
+	var catchAll *ModelEntry
+	var bestSpecific *ModelEntry
+	var bestSpecificKey string
+	var bestSpecificity int
+	for key, entry := range models {
+		if !wildcard.IsPattern(key) || entry == nil {
+			continue
+		}
+		if key == "*" {
+			catchAll = entry
+			continue
+		}
+		if !wildcard.Match(key, modelName) {
+			continue
+		}
+		spec := wildcard.Specificity(key)
+		if spec > bestSpecificity || (spec == bestSpecificity && len(key) > len(bestSpecificKey)) {
+			bestSpecificity = spec
+			bestSpecific = entry
+			bestSpecificKey = key
+		}
+	}
+	if bestSpecific != nil {
+		return entryHasCapability(bestSpecific, capability)
+	}
+	if catchAll != nil {
+		return entryHasCapability(catchAll, capability)
+	}
+	return false
+}
+
+// GetEntry returns the full model entry for the given name, or nil if not found.
+//
+// P1 (#4): wildcard keys are considered. Exact match first, then specific
+// wildcards, then the "*" catch-all.
+func (m *ModelMapper) GetEntry(modelName string) *ModelEntry {
+	models := m.modelsSnapshot()
+	if entry, ok := models[modelName]; ok {
+		return entry
+	}
+	lower := strings.ToLower(modelName)
+	if entry, ok := models[lower]; ok {
+		return entry
+	}
+	// pick the most specific matching pattern so GetEntry is
+	// consistent with Resolve (deterministic, not map-iteration order).
+	var catchAll *ModelEntry
+	var bestSpecific *ModelEntry
+	var bestSpecificKey string
+	var bestSpecificity int
+	for key, entry := range models {
+		if !wildcard.IsPattern(key) || entry == nil {
+			continue
+		}
+		if key == "*" {
+			catchAll = entry
+			continue
+		}
+		if !wildcard.Match(key, modelName) {
+			continue
+		}
+		spec := wildcard.Specificity(key)
+		if spec > bestSpecificity || (spec == bestSpecificity && len(key) > len(bestSpecificKey)) {
+			bestSpecificity = spec
+			bestSpecific = entry
+			bestSpecificKey = key
+		}
+	}
+	if bestSpecific != nil {
+		return bestSpecific
+	}
+	return catchAll
+}
+
+func entryHasCapability(entry *ModelEntry, capability string) bool {
+	if entry == nil {
 		return false
 	}
 	for _, cap := range entry.Capabilities {
@@ -136,11 +292,6 @@ func (m *ModelMapper) HasCapability(modelName, capability string) bool {
 		}
 	}
 	return false
-}
-
-// GetEntry returns the full model entry for the given name, or nil if not found.
-func (m *ModelMapper) GetEntry(modelName string) *ModelEntry {
-	return m.modelsSnapshot()[modelName]
 }
 
 // NewModelMapperForTest builds a ModelMapper directly from an in-memory map,

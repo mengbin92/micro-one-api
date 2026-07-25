@@ -31,8 +31,34 @@ service ChannelService {
   rpc UpdateChannel(UpdateChannelRequest) returns (UpdateChannelResponse);
   rpc RecordChannelUsage(RecordChannelUsageRequest) returns (RecordChannelUsageResponse);
   rpc RecordChannelHealth(RecordChannelHealthRequest) returns (RecordChannelHealthResponse);
+  rpc RecordSubscriptionAccountHealth(RecordSubscriptionAccountHealthRequest) returns (RecordSubscriptionAccountHealthResponse);
   rpc DeleteChannel(DeleteChannelRequest) returns (DeleteChannelResponse);
   rpc ChangeChannelStatus(ChangeChannelStatusRequest) returns (ChangeChannelStatusResponse);
+  // ========== Model management (方案B) ==========
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+  rpc GetModel(GetModelRequest) returns (GetModelResponse);
+  rpc CreateModel(CreateModelRequest) returns (CreateModelResponse);
+  rpc UpdateModel(UpdateModelRequest) returns (UpdateModelResponse);
+  rpc DeleteModel(DeleteModelRequest) returns (DeleteModelResponse);
+  rpc ChangeModelStatus(ChangeModelStatusRequest) returns (ChangeModelStatusResponse);
+  rpc BatchModels(BatchModelsRequest) returns (BatchModelsResponse);
+  rpc ListModelAliases(ListModelAliasesRequest) returns (ListModelAliasesResponse);
+  rpc CreateModelAlias(CreateModelAliasRequest) returns (CreateModelAliasResponse);
+  rpc DeleteModelAlias(DeleteModelAliasRequest) returns (DeleteModelAliasResponse);
+  rpc ListChannelModelMappings(ListChannelModelMappingsRequest) returns (ListChannelModelMappingsResponse);
+  rpc UpsertChannelModelMapping(UpsertChannelModelMappingRequest) returns (UpsertChannelModelMappingResponse);
+  rpc DeleteChannelModelMapping(DeleteChannelModelMappingRequest) returns (DeleteChannelModelMappingResponse);
+  rpc ListSubscriptionModelMappings(ListSubscriptionModelMappingsRequest) returns (ListSubscriptionModelMappingsResponse);
+  rpc UpsertSubscriptionModelMapping(UpsertSubscriptionModelMappingRequest) returns (UpsertSubscriptionModelMappingResponse);
+  rpc DeleteSubscriptionModelMapping(DeleteSubscriptionModelMappingRequest) returns (DeleteSubscriptionModelMappingResponse);
+  // ========== Sprint 4: Usage statistics ==========
+  rpc RecordModelUsage(RecordModelUsageRequest) returns (RecordModelUsageResponse);
+  rpc ListModelUsageStats(ListModelUsageStatsRequest) returns (ListModelUsageStatsResponse);
+  // ========== Model routing (P2 #3) ==========
+  rpc ListModelRoutings(ListModelRoutingsRequest) returns (ListModelRoutingsResponse);
+  rpc UpsertModelRouting(UpsertModelRoutingRequest) returns (UpsertModelRoutingResponse);
+  rpc DeleteModelRouting(DeleteModelRoutingRequest) returns (DeleteModelRoutingResponse);
+
 }
 
 message SelectChannelRequest {
@@ -187,6 +213,7 @@ message CreateSubscriptionAccountRequest {
   double session_window_limit_usd = 27;
   string quota_reset_strategy = 28;
   string quota_timezone = 29;
+  string model_mapping = 30;        // JSON {"src":"dst"} per-account model remap
 }
 
 message CreateSubscriptionAccountResponse {
@@ -225,6 +252,7 @@ message UpdateSubscriptionAccountRequest {
   optional double session_window_limit_usd = 27;
   optional string quota_reset_strategy = 28;
   optional string quota_timezone = 29;
+  optional string model_mapping = 30; // JSON {"src":"dst"} per-account model remap
 }
 
 message UpdateSubscriptionAccountResponse {
@@ -327,6 +355,7 @@ message CreateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
+  optional bool restrict_models = 12;                 // restrict to abilities list: false=allow all models (catch-all), true=require registered model. Optional (proto3 presence) so an omitted field is distinct from an explicit false; service defaults to true (legacy) when unset.
 }
 
 message CreateChannelResponse {
@@ -355,6 +384,7 @@ message UpdateChannelRequest {
   // when true, the three balance_refresh_* fields above are written to the channel as-is
   // (so callers can clear last_error by passing "" and reset the counter by passing 0).
   bool set_balance_refresh_fields = 17;
+  optional bool restrict_models = 18;                 // restrict to abilities list. Optional (proto3 presence): only applied when the caller sets it, so balance-refresh / health updates that omit the field never silently flip a restricted channel into a catch-all.
 }
 
 message UpdateChannelResponse {
@@ -384,6 +414,16 @@ message RecordChannelHealthResponse {
   string message = 2;
 }
 
+message RecordSubscriptionAccountHealthRequest {
+  int64 account_id = 1;
+  bool success = 2;
+}
+
+message RecordSubscriptionAccountHealthResponse {
+  bool success = 1;
+  string message = 2;
+}
+
 message DeleteChannelRequest {
   int64 channel_id = 1;
 }
@@ -399,6 +439,374 @@ message ChangeChannelStatusRequest {
 }
 
 message ChangeChannelStatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ========== Model Management (方案B independent model registry) ==========
+
+message ModelInfo {
+  int64 id = 1;
+  string model_id = 2;            // unique identifier, e.g. gpt-4o
+  string display_name = 3;
+  string description = 4;
+  string provider = 5;
+  string model_type = 6;          // chat, completion, embedding, image
+  int32 context_window = 7;
+  double pricing_input = 8;       // per 1K tokens
+  double pricing_output = 9;
+  int32 status = 10;              // 0=disabled, 1=enabled, 2=testing
+  bool is_public = 11;
+  repeated string capabilities = 12;
+  repeated string tags = 13;
+  string category = 14;
+  string tier = 15;               // entry, standard, premium
+  string metadata = 16;           // JSON string
+  int64 created_at = 17;
+  int64 updated_at = 18;
+  // aggregated counts for list views
+  int32 channel_count = 19;
+  int32 subscription_count = 20;
+}
+
+message ModelSummary {
+  int64 id = 1;
+  string model_id = 2;
+  string display_name = 3;
+  string provider = 4;
+  string model_type = 5;
+  int32 status = 6;
+  string category = 7;
+  string tier = 8;
+  bool is_public = 9;
+  int32 channel_count = 10;
+  int32 subscription_count = 11;
+}
+
+message ModelAlias {
+  int64 id = 1;
+  int64 model_pk = 2;   // FK → models.id
+  string alias = 3;
+  bool is_primary = 4;
+  int64 created_at = 5;
+}
+
+message ModelChannelMapping {
+  int64 id = 1;
+  int64 channel_id = 2;
+  int64 model_pk = 3;           // FK → models.id
+  bool enabled = 4;
+  int32 priority = 5;
+  string config = 6;            // JSON
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+message ModelSubscriptionMapping {
+  int64 id = 1;
+  int64 subscription_account_id = 2;
+  int64 model_pk = 3;           // FK → models.id
+  string group_name = 4;
+  bool enabled = 5;
+  int32 priority = 6;
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+message ModelUsageStat {
+  int64 id = 1;
+  int64 model_pk = 2;
+  string date = 3;              // YYYY-MM-DD
+  int32 request_count = 4;
+  int64 token_count = 5;
+  int32 error_count = 6;
+  int32 avg_latency = 7;
+}
+
+// ── ListModels ────────────────────────────────────────────────────────────
+message ListModelsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;           // matches model_id or display_name
+  string provider = 4;
+  string model_type = 5;
+  int32 status = 6;
+  string category = 7;
+  string tier = 8;
+  bool public_only = 9;         // when true, exclude is_public=false
+}
+
+message ListModelsResponse {
+  repeated ModelSummary models = 1;
+  int64 total = 2;
+}
+
+// ── GetModel ──────────────────────────────────────────────────────────────
+message GetModelRequest {
+  // Exactly one of model_pk / model_id should be set.
+  int64 model_pk = 1;
+  string model_id = 2;
+}
+
+message GetModelResponse {
+  ModelInfo model = 1;
+  repeated ModelAlias aliases = 2;
+  repeated ModelChannelMapping channel_mappings = 3;
+  repeated ModelSubscriptionMapping subscription_mappings = 4;
+}
+
+// ── CreateModel ───────────────────────────────────────────────────────────
+message CreateModelRequest {
+  string model_id = 1;
+  string display_name = 2;
+  string description = 3;
+  string provider = 4;
+  string model_type = 5;
+  int32 context_window = 6;
+  double pricing_input = 7;
+  double pricing_output = 8;
+  optional int32 status = 9;
+  bool is_public = 10;
+  repeated string capabilities = 11;
+  repeated string tags = 12;
+  string category = 13;
+  string tier = 14;
+  string metadata = 15;
+}
+
+message CreateModelResponse {
+  bool success = 1;
+  string message = 2;
+  int64 model_pk = 3;
+}
+
+// ── UpdateModel ───────────────────────────────────────────────────────────
+message UpdateModelRequest {
+  int64 model_pk = 1;
+  string display_name = 2;
+  string description = 3;
+  string provider = 4;
+  string model_type = 5;
+  int32 context_window = 6;
+  double pricing_input = 7;
+  double pricing_output = 8;
+  bool is_public = 9;
+  repeated string capabilities = 10;
+  repeated string tags = 11;
+  string category = 12;
+  string tier = 13;
+  string metadata = 14;
+}
+
+message UpdateModelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── DeleteModel ───────────────────────────────────────────────────────────
+message DeleteModelRequest {
+  int64 model_pk = 1;
+}
+
+message DeleteModelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── ChangeModelStatus ─────────────────────────────────────────────────────
+message ChangeModelStatusRequest {
+  int64 model_pk = 1;
+  int32 status = 2;
+}
+
+message ChangeModelStatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── BatchModels ───────────────────────────────────────────────────────────
+message BatchModelsRequest {
+  string action = 1;            // enable, disable, delete
+  repeated int64 model_pks = 2;
+}
+
+message BatchModelsResponse {
+  bool success = 1;
+  string message = 2;
+  int32 affected = 3;
+}
+
+// ── Model alias management ────────────────────────────────────────────────
+message ListModelAliasesRequest {
+  int64 model_pk = 1;
+}
+
+message ListModelAliasesResponse {
+  repeated ModelAlias aliases = 1;
+}
+
+message CreateModelAliasRequest {
+  int64 model_pk = 1;
+  string alias = 2;
+  bool is_primary = 3;
+}
+
+message CreateModelAliasResponse {
+  bool success = 1;
+  string message = 2;
+  int64 alias_id = 3;
+}
+
+message DeleteModelAliasRequest {
+  int64 alias_id = 1;
+}
+
+message DeleteModelAliasResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── Channel-model mapping ─────────────────────────────────────────────────
+message ListChannelModelMappingsRequest {
+  int64 channel_id = 1;
+}
+
+message ListChannelModelMappingsResponse {
+  repeated ModelChannelMapping mappings = 1;
+}
+
+message UpsertChannelModelMappingRequest {
+  int64 channel_id = 1;
+  int64 model_pk = 2;
+  optional bool enabled = 3;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert (DB DEFAULT 1).
+  int32 priority = 4;
+  string config = 5;
+}
+
+message UpsertChannelModelMappingResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DeleteChannelModelMappingRequest {
+  int64 channel_id = 1;
+  int64 model_pk = 2;
+}
+
+message DeleteChannelModelMappingResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── Subscription-account-model mapping ────────────────────────────────────
+message ListSubscriptionModelMappingsRequest {
+  int64 subscription_account_id = 1;
+}
+
+message ListSubscriptionModelMappingsResponse {
+  repeated ModelSubscriptionMapping mappings = 1;
+}
+
+message UpsertSubscriptionModelMappingRequest {
+  int64 subscription_account_id = 1;
+  int64 model_pk = 2;
+  string group_name = 3;
+  optional bool enabled = 4;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert.
+  int32 priority = 5;
+}
+
+message UpsertSubscriptionModelMappingResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DeleteSubscriptionModelMappingRequest {
+  int64 subscription_account_id = 1;
+  int64 model_pk = 2;
+  string group_name = 3;
+}
+
+message DeleteSubscriptionModelMappingResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── Sprint 4: Model usage statistics ──────────────────────────────────────
+message RecordModelUsageRequest {
+  string model_id = 1;              // model identifier (case-insensitive)
+  int32 request_count = 2;          // number of requests (default 1)
+  int64 token_count = 3;            // total tokens consumed
+  int32 error_count = 4;            // number of errors
+  int32 avg_latency = 5;            // average latency in ms
+  string date = 6;                  // YYYY-MM-DD (empty = today)
+}
+
+message RecordModelUsageResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListModelUsageStatsRequest {
+  int64 model_pk = 1;               // filter by model pk (0 = all)
+  string start_date = 2;            // YYYY-MM-DD (inclusive)
+  string end_date = 3;              // YYYY-MM-DD (inclusive)
+  int32 page = 4;
+  int32 page_size = 5;
+}
+
+message ListModelUsageStatsResponse {
+  repeated ModelUsageStat stats = 1;
+  int64 total = 2;
+}
+
+
+// ── Model routing (P2 #3): model→specified subscription account routing ───
+// Mirrors sub2api Group.ModelRouting. When a routing row matches the
+// requested model (exact or wildcard), SelectSubscriptionAccount restricts
+// its candidate tier to the routed account set, overriding the default
+// priority-tier + weighted selection. See docs/model-management-design.md §9.3 #3.
+message ModelRouting {
+  int64 id = 1;
+  string group_name = 2;           // tenancy group
+  string model = 3;                // client model name or wildcard pattern (e.g. claude-*, *)
+  string platform = 4;             // optional platform filter; empty = any platform
+  int64 subscription_account_id = 5;
+  bool enabled = 6;
+  int32 priority = 7;              // within a routed tier, higher wins
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}
+
+message ListModelRoutingsRequest {
+  string group_name = 1;           // filter by group (empty = all)
+  string model = 2;                // filter by model (empty = all)
+  string platform = 3;             // filter by platform (empty = all)
+}
+
+message ListModelRoutingsResponse {
+  repeated ModelRouting routings = 1;
+}
+
+message UpsertModelRoutingRequest {
+  string group_name = 1;
+  string model = 2;
+  string platform = 3;
+  int64 subscription_account_id = 4;
+  optional bool enabled = 5;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert (DB DEFAULT 1).
+  int32 priority = 6;
+}
+
+message UpsertModelRoutingResponse {
+  bool success = 1;
+  string message = 2;
+  int64 id = 3;
+}
+
+message DeleteModelRoutingRequest {
+  int64 id = 1;
+}
+
+message DeleteModelRoutingResponse {
   bool success = 1;
   string message = 2;
 }

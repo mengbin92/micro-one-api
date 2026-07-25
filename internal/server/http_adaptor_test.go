@@ -12,12 +12,13 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"micro-one-api/platform/metrics"
-	relaybiz "micro-one-api/internal/biz"
 	relaycredential "micro-one-api/domain/upstream/credential"
-	"micro-one-api/internal/passthrough"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	relayadaptor "micro-one-api/internal/adaptor"
+	relaybiz "micro-one-api/internal/biz"
+	"micro-one-api/internal/passthrough"
 	relayquota "micro-one-api/internal/quota"
+	"micro-one-api/platform/metrics"
 )
 
 type testSubscriptionResolver struct {
@@ -55,6 +56,7 @@ func TestHandleChatCompletionsViaAdaptor_UsesFallbackMetadata(t *testing.T) {
 			Group:   "default",
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
 	req.Header.Set("Authorization", "Bearer test-token")
@@ -112,6 +114,7 @@ func TestHandleChatCompletionsViaAdaptor_PlanAccountWinsOverResolver(t *testing.
 			Group:       "default",
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
 	req.Header.Set("Authorization", "Bearer test-token")
@@ -185,6 +188,7 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOnRetryableUpstreamStatus(t *te
 			AccountID:   "first-account",
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
 	req.Header.Set("Authorization", "Bearer test-token")
@@ -248,6 +252,7 @@ func TestHandleChatCompletionsViaAdaptor_Passthrough429(t *testing.T) {
 			AccountID:   "first-account",
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
 	req.Header.Set("Authorization", "Bearer test-token")
@@ -377,6 +382,7 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOn429(t *testing.T) {
 			AccountID:   "first-account",
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
 	req.Header.Set("Authorization", "Bearer test-token")
@@ -434,6 +440,7 @@ func TestHandleChatCompletionsViaAdaptor_RecordsCodexQuotaSnapshot(t *testing.T)
 			AccountID:   "first-account",
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`))
 	req.Header.Set("Authorization", "Bearer test-token")
@@ -499,6 +506,7 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOn529(t *testing.T) {
 			Group: "default", Models: []string{"gpt-5"}, Priority: 20, AccessToken: "first-token", AccountID: "first-account",
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
@@ -551,6 +559,7 @@ func TestHandleChatCompletionsViaAdaptor_SameAccountRetry(t *testing.T) {
 			Group: "default", Models: []string{"gpt-5"}, AccessToken: "only-token", AccountID: "only-account",
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
@@ -619,6 +628,7 @@ func TestHandleChatCompletionsViaAdaptor_ConcurrencyFailover(t *testing.T) {
 			Concurrency: 1,
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
@@ -678,6 +688,7 @@ func TestHandleChatCompletionsViaAdaptor_RPMFailover(t *testing.T) {
 			RPMLimit: 1,
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
@@ -734,6 +745,7 @@ func TestHandleChatCompletionsViaAdaptor_SessionWindowFailover(t *testing.T) {
 			SessionWindowLimitUSD: 1,
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
@@ -768,6 +780,7 @@ func stickyCodexPlan(accountID int64, concurrency int32) *relaybiz.RelayPlan {
 			Group: "default", Models: []string{"gpt-5"}, AccessToken: "tok", AccountID: "acct", Concurrency: concurrency,
 		},
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 }
 
@@ -775,6 +788,47 @@ func stickyOKClient() *http.Client {
 	return &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return newJSONResponse(`{"id":"r","object":"response","model":"gpt-5","status":"completed","output":[{"type":"message","id":"m","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`), nil
 	})}
+}
+
+func TestSubscriptionAdaptorRecordsOnlyRealUpstreamHealth(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`)
+
+	t.Run("success", func(t *testing.T) {
+		client := &adaptorFailoverChannelClient{}
+		server := NewHTTPServer(nil, nil, nil, nil, relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, client, nil, nil))
+		server.SetOAuthHTTPClient(stickyOKClient())
+		result := server.executeAndMeter(context.Background(), stickyCodexPlan(42, 0), "gpt-5", make(http.Header), body, relayadaptor.FormatOpenAIChatCompletions, "")
+		result.write(httptest.NewRecorder())
+		if len(client.health) != 1 || client.health[0] != (accountHealthOutcome{accountID: 42, success: true}) {
+			t.Fatalf("health outcomes = %+v", client.health)
+		}
+	})
+
+	t.Run("upstream failure", func(t *testing.T) {
+		client := &adaptorFailoverChannelClient{}
+		server := NewHTTPServer(nil, nil, nil, nil, relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, client, nil, nil))
+		server.SetOAuthHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return newStatusResponse(http.StatusTooManyRequests, `{"error":{"message":"rate limited"}}`), nil
+		})})
+		server.executeAndMeter(context.Background(), stickyCodexPlan(42, 0), "gpt-5", make(http.Header), body, relayadaptor.FormatOpenAIChatCompletions, "")
+		if len(client.health) != 1 || client.health[0] != (accountHealthOutcome{accountID: 42, success: false}) {
+			t.Fatalf("health outcomes = %+v", client.health)
+		}
+	})
+
+	t.Run("local concurrency rejection", func(t *testing.T) {
+		client := &adaptorFailoverChannelClient{}
+		server := NewHTTPServer(nil, nil, nil, nil, relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, client, nil, nil))
+		release, ok := server.accountConcurrency.TryAcquire(context.Background(), 42, 1)
+		if !ok {
+			t.Fatal("failed to occupy concurrency slot")
+		}
+		defer release()
+		server.executeAndMeter(context.Background(), stickyCodexPlan(42, 1), "gpt-5", make(http.Header), body, relayadaptor.FormatOpenAIChatCompletions, "")
+		if len(client.health) != 0 {
+			t.Fatalf("local rejection must not affect health: %+v", client.health)
+		}
+	})
 }
 
 func TestSubscriptionSticky_BindOnFirstSuccess(t *testing.T) {
@@ -927,13 +981,24 @@ func (adaptorFailoverIdentity) GetAuthSnapshot(context.Context, string) (*relayb
 	return &relaybiz.AuthSnapshot{UserID: 42, Group: "default"}, nil
 }
 
+type accountHealthOutcome struct {
+	accountID int64
+	success   bool
+}
+
 type adaptorFailoverChannelClient struct {
 	accounts []*relaybiz.SubscriptionAccount
 	calls    int
+	health   []accountHealthOutcome
 }
 
 func (c *adaptorFailoverChannelClient) SelectChannel(context.Context, string, string, bool) (*relaybiz.Channel, error) {
 	return nil, errors.New("no api-key channel")
+}
+
+func (c *adaptorFailoverChannelClient) RecordSubscriptionAccountHealth(_ context.Context, accountID int64, success bool) error {
+	c.health = append(c.health, accountHealthOutcome{accountID: accountID, success: success})
+	return nil
 }
 
 func (c *adaptorFailoverChannelClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {

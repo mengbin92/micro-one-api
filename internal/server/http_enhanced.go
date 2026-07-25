@@ -377,12 +377,12 @@ func (s *EnhancedHTTPServer) applyModelWhitelist(availableModels []string, allow
 
 	allowedSet := make(map[string]bool)
 	for _, model := range allowedModels {
-		allowedSet[model] = true
+		allowedSet[strings.ToLower(model)] = true
 	}
 
 	filtered := make([]string, 0, len(availableModels))
 	for _, model := range availableModels {
-		if allowedSet[model] {
+		if allowedSet[strings.ToLower(model)] {
 			filtered = append(filtered, model)
 		}
 	}

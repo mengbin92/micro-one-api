@@ -49,10 +49,63 @@ func accountCtx(t int32, inbound Format, body []byte) *RelayContext {
 // ---------------------------------------------------------------------------
 
 func TestRegistry_HasOAuthTypes(t *testing.T) {
-	for _, ty := range []int32{provider.ChannelTypeCodexOAuth, provider.ChannelTypeClaudeOAuth} {
+	for _, ty := range []int32{
+		provider.ChannelTypeCodexOAuth,
+		provider.ChannelTypeClaudeOAuth,
+		provider.ChannelTypeZhipuPlan,
+		provider.ChannelTypeMinimaxPlan,
+		provider.ChannelTypeKimiOAuth,
+	} {
 		if _, ok := GetAdaptor(ty); !ok {
 			t.Errorf("GetAdaptor(%d): expected registered OAuth adaptor, got none", ty)
 		}
+	}
+}
+
+// TestVendorAdaptorsReuseClaudeConstruction asserts the P0 contract: the
+// domestic Coding-Plan vendors (Zhipu/MiniMax/Kimi) build the same adaptor
+// shape as Claude because their upstreams all speak the Anthropic Messages
+// API. They must not fall through to errUnknownOAuthPlatform.
+func TestVendorAdaptorsReuseClaudeConstruction(t *testing.T) {
+	// Wire a static token factory so build() does not short-circuit on a nil
+	// provider (the static provider returns the inline access token).
+	prev := globalTokenProviderFactory
+	globalTokenProviderFactory = func(platform identity.Platform) credential.TokenProvider {
+		return &staticTokenProvider{token: "vendor-key"}
+	}
+	defer func() { globalTokenProviderFactory = prev }()
+
+	for _, tc := range []struct {
+		name    string
+		ctype   int32
+		wantURL string
+	}{
+		{"zhipu", provider.ChannelTypeZhipuPlan, "https://open.bigmodel.cn/api/anthropic/v1/messages?beta=true"},
+		{"minimax", provider.ChannelTypeMinimaxPlan, "https://api.minimax.io/anthropic/v1/messages?beta=true"},
+		{"kimi", provider.ChannelTypeKimiOAuth, "https://kimi.example/anthropic/v1/messages?beta=true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ad, ok := GetAdaptor(tc.ctype)
+			if !ok {
+				t.Fatalf("GetAdaptor(%d): adaptor not registered", tc.ctype)
+			}
+			rc := accountCtx(tc.ctype, FormatAnthropicMessages, []byte(`{}`))
+			rc.Channel.BaseURL = strings.TrimSuffix(tc.wantURL, "/v1/messages?beta=true")
+			ad.Init(rc)
+			// The lazy adaptor must have built an inner Claude-shaped adaptor,
+			// not an errorAdaptor. ConvertRequest on an Anthropic passthrough
+			// body should succeed.
+			if _, _, err := ad.ConvertRequest(rc, FormatAnthropicMessages, []byte(`{}`)); err != nil {
+				t.Fatalf("ConvertRequest: %v", err)
+			}
+			gotURL, err := ad.GetUpstreamURL(rc)
+			if err != nil {
+				t.Fatalf("GetUpstreamURL: %v", err)
+			}
+			if gotURL != tc.wantURL {
+				t.Fatalf("GetUpstreamURL = %q, want %q", gotURL, tc.wantURL)
+			}
+		})
 	}
 }
 
@@ -368,11 +421,15 @@ func TestClaudeOAuth_EndToEnd_NonStreaming(t *testing.T) {
 
 func TestPlatformTypeCompat(t *testing.T) {
 	// The adaptor translates between identity.Platform and credential.Platform
-	// (both string newtypes). Ensure the values line up.
-	if string(identity.PlatformClaude) != string(credential.PlatformClaude) {
-		t.Fatal("identity/credential PlatformClaude values diverge")
-	}
-	if string(identity.PlatformCodex) != string(credential.PlatformCodex) {
-		t.Fatal("identity/credential PlatformCodex values diverge")
+	// (both string newtypes). Ensure the values line up for every platform,
+	// including the domestic Coding-Plan vendors added in the roadmap.
+	for _, p := range []struct{ name string }{
+		{"claude"}, {"codex"}, {"zhipu"}, {"minimax"}, {"kimi"},
+	} {
+		ip := identity.Platform(p.name)
+		cp := credential.Platform(p.name)
+		if string(ip) != string(cp) {
+			t.Fatalf("identity/credential Platform %q values diverge", p.name)
+		}
 	}
 }

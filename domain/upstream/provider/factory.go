@@ -160,7 +160,13 @@ const (
 
 	// Subscription-account channel types. These are first-class upstream types
 	// handled by the adaptor layer's OAuth adaptors rather than the standard
-	// provider factory. They are registered in relay/adaptor/register.go.
+	// provider factory. They are registered in internal/adaptor/register_oauth.go.
 	ChannelTypeCodexOAuth  int32 = 32 // ChatGPT / Codex subscription (Responses API)
 	ChannelTypeClaudeOAuth int32 = 33 // Claude Code subscription (Anthropic Messages API)
+	// Domestic "Coding Plan" vendors - Anthropic-compatible Messages API.
+	// Zhipu GLM & MiniMax use a static API key (no refresh); Kimi uses OAuth
+	// refresh. See docs/design/cn-subscription-accounts-roadmap.md.
+	ChannelTypeZhipuPlan   int32 = 34 // Zhipu GLM Coding Plan (Anthropic Messages API, static key)
+	ChannelTypeMinimaxPlan int32 = 35 // MiniMax Coding Plan (Anthropic Messages API, static key)
+	ChannelTypeKimiOAuth   int32 = 36 // Kimi For Coding (Anthropic Messages API, OAuth refresh)
 )

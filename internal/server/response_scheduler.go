@@ -45,10 +45,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 			if !authAllowsModel(authSnapshot.AllowedModels, modelForPermission) {
 				return nil, false
 			}
-			resolvedModel := routeResolvedModel(route)
-			if resolvedModel == "" {
-				resolvedModel = strings.TrimSpace(clientModel)
-			}
+			globalModel, resolvedModel := s.routeModels(route, clientModel)
 			return &relaybiz.RelayPlan{
 				Auth: &relaybiz.AuthSnapshot{
 					UserID:        authSnapshot.UserId,
@@ -60,6 +57,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 					TokenEnabled:  authSnapshot.TokenEnabled,
 				},
 				Channel:       &route.Channel,
+				GlobalModel:   globalModel,
 				ResolvedModel: resolvedModel,
 			}, true
 		}
@@ -89,10 +87,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 	if !authAllowsModel(authSnapshot.AllowedModels, clientModel) {
 		return nil, false
 	}
-	resolvedModel := routeResolvedModel(route)
-	if resolvedModel == "" {
-		resolvedModel = strings.TrimSpace(clientModel)
-	}
+	globalModel, resolvedModel := s.routeModels(route, clientModel)
 	return &relaybiz.RelayPlan{
 		Auth: &relaybiz.AuthSnapshot{
 			UserID:        authSnapshot.UserId,
@@ -104,8 +99,28 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 			TokenEnabled:  authSnapshot.TokenEnabled,
 		},
 		Channel:       &route.Channel,
+		GlobalModel:   globalModel,
 		ResolvedModel: resolvedModel,
 	}, true
+}
+
+func (s *OpenAIWSRoutingScheduler) routeModels(route responseRoute, clientModel string) (string, string) {
+	globalModel := strings.TrimSpace(route.GlobalModel)
+	requestedModel := strings.TrimSpace(clientModel)
+	if requestedModel == "" {
+		requestedModel = strings.TrimSpace(route.Model)
+	}
+	if globalModel == "" {
+		globalModel = requestedModel
+		if requestedModel != "" && s != nil && s.server != nil && s.server.relayUsecase != nil {
+			globalModel = strings.TrimSpace(s.server.relayUsecase.ResolveModel(requestedModel))
+		}
+	}
+	resolvedModel := strings.TrimSpace(route.ResolvedModel)
+	if resolvedModel == "" && globalModel != "" {
+		resolvedModel = relaybiz.ApplyChannelModelMapping(route.Channel.ModelMapping, globalModel)
+	}
+	return globalModel, resolvedModel
 }
 
 func (s *OpenAIWSRoutingScheduler) ResolvePlan(ctx context.Context, token, clientModel, previousResponseID, sessionHash string) (*relaybiz.RelayPlan, error) {

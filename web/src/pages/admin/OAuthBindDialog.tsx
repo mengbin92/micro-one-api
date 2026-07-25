@@ -19,6 +19,9 @@ import { parseOAuthCallbackInput } from './oauthCallbackInput';
 const PLATFORM_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'claude', label: 'Claude (Claude Code OAuth)' },
   { value: 'codex', label: 'Codex (ChatGPT OAuth)' },
+  // Kimi is wired here once the Kimi CLI OAuth authorize flow is captured
+  // (roadmap P3 §3). GLM/MiniMax are static-key platforms and do not use
+  // this dialog — they are created via the CreateAccountDialog.
 ];
 
 interface AuthURLResult {

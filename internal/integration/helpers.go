@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,9 +14,8 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	channeltestutil "micro-one-api/app/channel/testutil"
-	
+
 	identitytestutil "micro-one-api/app/identity/testutil"
-	
 )
 
 func init() {
@@ -396,6 +396,25 @@ func (m *testChannelRepo) ListAbilitiesByGroupAndModel(ctx context.Context, grou
 		}
 	}
 	return enabled, nil
+}
+
+func (m *testChannelRepo) ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*channeltestutil.Channel, error) {
+	if m.channels == nil {
+		return nil, nil
+	}
+	result := make([]*channeltestutil.Channel, 0)
+	for _, ch := range m.channels {
+		if ch.Status != channeltestutil.ChannelStatusEnabled || ch.RestrictModels {
+			continue
+		}
+		for _, g := range strings.Split(ch.Group, ",") {
+			if g == group {
+				result = append(result, ch)
+				break
+			}
+		}
+	}
+	return result, nil
 }
 
 func (m *testChannelRepo) FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*channeltestutil.SubscriptionAccount, error) {

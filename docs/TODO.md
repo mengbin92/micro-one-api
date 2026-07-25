@@ -684,3 +684,32 @@ wire:
 ```
 
 后续 8 个服务迁移时可复用此目标，降低手动 cd 的摩擦。
+
+## 待办 — cache_creation 全链路支持（缓存创建 token 统计与计费）
+
+> 登记于 2026-07-21。关联：同日已完成 Anthropic 协议透传路径
+> `cache_read_input_tokens` 解析（`cacheReadTokensFromUsageMap`）与
+> ChatCompletions 转换路径 usage 修复（`domain/upstream/provider/anthropic.go`）。
+
+**背景**：Anthropic 协议的 `cache_creation_input_tokens`（含
+`cache_creation.ephemeral_5m/1h_input_tokens` TTL 细分）在全链路没有承载字段，
+GLM/智谱等 Anthropic 兼容供应商返回的缓存创建量被直接丢弃，无法统计也无法按
+缓存创建价计费。
+
+**现状缺口**：
+
+- [ ] `internal/server/http_raw_helpers.go` `rawUsage` 无 CacheCreation 字段；
+      `extractRawUsageValue` 不解析 `cache_creation_input_tokens` 及嵌套 TTL 细分。
+- [ ] `domain/upstream/provider/provider.go` `Usage` / `UsageTokenDetails` 无
+      CacheCreation 字段（ChatCompletions 转换路径同样丢失）。
+- [ ] `internal/server/http_usage_log.go` `usageLogInput` 无 CacheCreationTokens。
+- [ ] `app/log`（biz/data）日志条目与表结构无 cache_creation 列；聚合统计不含
+      缓存创建量。
+- [ ] `app/billing/internal/biz/billing.go` `Usage` 与 `calculateCost` 只按
+      prompt/completion/cache_read 三桶计价；价格模型需新增 cache_creation
+      价格（若区分 5m/1h TTL 还需两个价格档与 `cache_ttl` 判定，可参考
+      claude-code-hub 的 `cache_creation_5m/1h_input_tokens` + `cache_ttl` 设计）。
+- [ ] `api/` 层日志/计费 proto 增加字段后 `make api` 重新生成。
+
+**注意语义**：Anthropic 语义下 `input_tokens` 与两个 cache 桶互不重叠（不同于
+OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减，各桶乘各自价格即可。

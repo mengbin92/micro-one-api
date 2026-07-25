@@ -32,6 +32,10 @@ func (testChannelClient) SelectChannel(_ context.Context, group, model string, _
 	}, nil
 }
 
+func (testChannelClient) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
+	return nil
+}
+
 func (testChannelClient) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
 	return nil
 }
@@ -64,6 +68,10 @@ func (c *recordingChannelClient) SelectChannel(_ context.Context, group, model s
 		Name:    name,
 		BaseURL: "https://api.openai.com/v1",
 	}, nil
+}
+
+func (c *recordingChannelClient) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
+	return nil
 }
 
 func (c *recordingChannelClient) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
@@ -154,6 +162,10 @@ type testChannelClientError struct {
 
 func (c testChannelClientError) SelectChannel(_ context.Context, _, _ string, _ bool) (*Channel, error) {
 	return nil, c.err
+}
+
+func (c testChannelClientError) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
+	return nil
 }
 
 func (c testChannelClientError) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
@@ -501,6 +513,25 @@ func TestRelayUsecasePlan_StickyDisabled_NoLookup(t *testing.T) {
 	}
 }
 
+func TestRelayPlan_BaseModel(t *testing.T) {
+	tests := []struct {
+		name string
+		plan *RelayPlan
+		want string
+	}{
+		{name: "global model wins", plan: &RelayPlan{GlobalModel: " global ", ResolvedModel: "mapped"}, want: "global"},
+		{name: "legacy plan falls back to resolved", plan: &RelayPlan{ResolvedModel: " mapped "}, want: "mapped"},
+		{name: "nil plan", plan: nil, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.plan.BaseModel(); got != tt.want {
+				t.Fatalf("BaseModel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRelayUsecase_ResolveModel(t *testing.T) {
 	mapper := NewModelMapperForTest(map[string]*ModelEntry{"gpt-4o": {ActualName: "gpt-4o-2024-08-06"}})
 	uc := NewRelayUsecase(testIdentityClient{}, testChannelClient{}, mapper, nil)
@@ -548,5 +579,129 @@ func TestRelayUsecase_NewRetryExecutor(t *testing.T) {
 	exec := uc.NewRetryExecutor()
 	if exec == nil {
 		t.Fatal("expected non-nil RetryExecutor")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P1 (#4) — wildcard keys in per-account / per-channel model mapping.
+// ---------------------------------------------------------------------------
+
+func TestApplyPerAccountModelMapping_WildcardPattern(t *testing.T) {
+	mapping := `{"claude-*":"claude-upstream","gpt-4o":"gpt-4o-2024-08-06"}`
+	if got := applyPerAccountModelMapping(mapping, "claude-sonnet-4"); got != "claude-upstream" {
+		t.Errorf("claude-sonnet-4 = %s, want claude-upstream", got)
+	}
+	if got := applyPerAccountModelMapping(mapping, "claude-3-5-sonnet"); got != "claude-upstream" {
+		t.Errorf("claude-3-5-sonnet = %s, want claude-upstream", got)
+	}
+	// Exact match still works.
+	if got := applyPerAccountModelMapping(mapping, "gpt-4o"); got != "gpt-4o-2024-08-06" {
+		t.Errorf("gpt-4o = %s, want gpt-4o-2024-08-06", got)
+	}
+	// Non-matching passthrough.
+	if got := applyPerAccountModelMapping(mapping, "llama-3"); got != "llama-3" {
+		t.Errorf("llama-3 = %s, want passthrough", got)
+	}
+}
+
+func TestApplyPerAccountModelMapping_CatchAll(t *testing.T) {
+	mapping := `{"claude-*":"claude-family","*":"default-upstream"}`
+	if got := applyPerAccountModelMapping(mapping, "claude-sonnet-4"); got != "claude-family" {
+		t.Errorf("claude-sonnet-4 = %s, want claude-family", got)
+	}
+	if got := applyPerAccountModelMapping(mapping, "gpt-4o"); got != "default-upstream" {
+		t.Errorf("gpt-4o = %s, want default-upstream", got)
+	}
+}
+
+func TestApplyPerAccountModelMapping_ExactBeatsWildcard(t *testing.T) {
+	mapping := `{"claude-*":"family","claude-sonnet-4":"exact-sonnet"}`
+	if got := applyPerAccountModelMapping(mapping, "claude-sonnet-4"); got != "exact-sonnet" {
+		t.Errorf("exact must win: claude-sonnet-4 = %s, want exact-sonnet", got)
+	}
+	if got := applyPerAccountModelMapping(mapping, "claude-opus-4"); got != "family" {
+		t.Errorf("claude-opus-4 = %s, want family", got)
+	}
+}
+
+// TestSelectSubscriptionFailover_AppliesFailoverAccountModelMapping proves the
+// 🔴#7 fix: when failover selects a different account (B), the returned
+// ResolvedModel must be recomputed against B's model mapping, NOT carried
+// over from A's mapping. Pre-fix the failover plan returned the caller's
+// resolvedModel verbatim, so B received A's mapped model upstream.
+func TestSelectSubscriptionFailover_AppliesFailoverAccountModelMapping(t *testing.T) {
+	channelClient := &recordingChannelClient{
+		failModels: map[string]error{"gpt-5": errors.New("no channel available")},
+		subscriptions: []*SubscriptionAccount{
+			// Account A (failed, excluded).
+			{ID: 1, Name: "A", Platform: "codex", Status: 1, Group: "default",
+				Models: []string{"gpt-5"}, ModelMapping: `{"gpt-5":"a-mapped"}`},
+			// Account B (failover target).
+			{ID: 2, Name: "B", Platform: "codex", Status: 1, Group: "default",
+				Models: []string{"gpt-5"}, ModelMapping: `{"gpt-5":"b-mapped"}`},
+		},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+
+	plan, err := uc.SelectSubscriptionFailover(
+		context.Background(), "default", "gpt-5", "gpt-5",
+		map[int64]bool{1: true}, // account A failed
+	)
+	if err != nil {
+		t.Fatalf("SelectSubscriptionFailover() error = %v", err)
+	}
+	if plan.Account == nil || plan.Account.ID != 2 {
+		t.Fatalf("failover must select account 2 (B), got %+v", plan.Account)
+	}
+	if plan.ResolvedModel != "b-mapped" {
+		t.Fatalf("failover ResolvedModel must use B's mapping (b-mapped), got %q", plan.ResolvedModel)
+	}
+	// P1 review #4: GlobalModel must be the pre-channel-mapping name so the
+	// server-layer failover closure can recompute against a different
+	// channel/account without stacking A's mapping onto B's lookup.
+	if plan.GlobalModel != "gpt-5" {
+		t.Fatalf("failover GlobalModel must be the globally-resolved name (gpt-5), got %q", plan.GlobalModel)
+	}
+}
+
+// TestRelayUsecase_Plan_StampsGlobalModel (P1 review #4): Plan() must set
+// GlobalModel to the globally-resolved model on every return path so server-
+// layer retry closures can recompute the upstream model per-channel instead
+// of stacking mappings (feeding plan.ResolvedModel, which already carries the
+// first channel's mapping, into ApplyChannelModelMapping on retry).
+func TestRelayUsecase_Plan_StampsGlobalModel(t *testing.T) {
+	channelClient := &recordingChannelClient{
+		failModels: map[string]error{"gpt-5": errors.New("no channel available")},
+		subscription: &SubscriptionAccount{
+			ID: 1, Name: "ch", Platform: "codex", Status: 1, Group: "default",
+			Models: []string{"gpt-5"}, ModelMapping: `{"gpt-5":"ch-a-mapped"}`,
+		},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "tok", Model: "gpt-5"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.GlobalModel != "gpt-5" {
+		t.Fatalf("Plan() GlobalModel must be the globally-resolved model (gpt-5), got %q", plan.GlobalModel)
+	}
+	if plan.ResolvedModel != "ch-a-mapped" {
+		t.Fatalf("Plan() ResolvedModel must apply the channel's mapping, got %q", plan.ResolvedModel)
+	}
+}
+
+// TestApplyPerAccountModelMapping_MostSpecificWildcard (🟡#3): when both
+// "claude-*" and "claude-sonnet-*" match "claude-sonnet-4", the more
+// specific mapping wins, deterministically across repeated calls.
+func TestApplyPerAccountModelMapping_MostSpecificWildcard(t *testing.T) {
+	mapping := `{"claude-*":"claude-family","claude-sonnet-*":"claude-sonnet-family"}`
+	for i := 0; i < 16; i++ {
+		if got := applyPerAccountModelMapping(mapping, "claude-sonnet-4"); got != "claude-sonnet-family" {
+			t.Fatalf("iter %d: claude-sonnet-4 = %s, want claude-sonnet-family", i, got)
+		}
+		if got := applyPerAccountModelMapping(mapping, "claude-opus-4"); got != "claude-family" {
+			t.Fatalf("iter %d: claude-opus-4 = %s, want claude-family", i, got)
+		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 )
 
 type probeLookupStub struct {
+	mu      sync.Mutex
 	account *biz.SubscriptionAccount
 	updated *biz.SubscriptionAccount
 }
@@ -29,8 +31,18 @@ func (p *probeLookupStub) FindSubscriptionAccountByID(ctx context.Context, accou
 func (p *probeLookupStub) UpdateSubscriptionAccount(ctx context.Context, account *biz.SubscriptionAccount) error {
 	cloned := *account
 	cloned.Models = append([]string(nil), account.Models...)
+	p.mu.Lock()
 	p.updated = &cloned
+	p.mu.Unlock()
 	return nil
+}
+
+// Updated returns the last account written by UpdateSubscriptionAccount,
+// safe to call from the test goroutine while the async event handler runs.
+func (p *probeLookupStub) Updated() *biz.SubscriptionAccount {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.updated
 }
 
 func TestSubscriptionAccountIDFromEventPayload(t *testing.T) {
@@ -74,9 +86,8 @@ func TestCodexModelProbeServiceSyncExistingCodexAccounts(t *testing.T) {
 	}
 	probe := newCodexModelProbeService(lookup)
 	probe.client = srv.Client()
-	originalURL := codexResponsesUpstreamURL
-	defer func() { codexResponsesUpstreamURL = originalURL }()
-	codexResponsesUpstreamURL = srv.URL
+	restore := setCodexUpstreamURLForTest(srv.URL)
+	defer restore()
 
 	if err := probe.syncCodexModels(context.Background(), 2); err != nil {
 		t.Fatalf("syncCodexModels() error = %v", err)
@@ -146,9 +157,8 @@ func TestProbeCodexModelsNoSupportedModels(t *testing.T) {
 			Body:       http.NoBody,
 		}, nil
 	})}
-	originalURL := codexResponsesUpstreamURL
-	defer func() { codexResponsesUpstreamURL = originalURL }()
-	codexResponsesUpstreamURL = "http://example.invalid"
+	restore := setCodexUpstreamURLForTest("http://example.invalid")
+	defer restore()
 	_, err := probe.ProbeCodexModels(context.Background(), lookup.account)
 	if err == nil {
 		t.Fatal("expected probe error")
@@ -159,4 +169,125 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+// recoveryProbeAdapterTestCase groups the RecoveryProbeAdapter regression
+// checks. Each case builds a real CodexModelProbeService + AnthropicModelProbeService
+// so the adapter exercises the full platform dispatch path.
+type recoveryProbeAdapterTestCase struct {
+	name     string
+	account  *biz.SubscriptionAccount
+	setup    func(t *testing.T, account *biz.SubscriptionAccount) (cleanup func())
+	wantOK   bool
+	wantErr  bool
+	noProber bool
+}
+
+func TestRecoveryProbeAdapter(t *testing.T) {
+	cases := []recoveryProbeAdapterTestCase{
+		{
+			name: "codex healthy upstream returns ok",
+			account: &biz.SubscriptionAccount{
+				ID:          1,
+				Platform:    "codex",
+				AccessToken: "token",
+				AccountID:   "acc-1",
+				Models:      []string{"gpt-5"},
+			},
+			setup: func(t *testing.T, account *biz.SubscriptionAccount) func() {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Accept every codex probe request so the probe reports success.
+					w.WriteHeader(http.StatusOK)
+				}))
+				restore := setCodexUpstreamURLForTest(srv.URL)
+				return func() { restore(); srv.Close() }
+			},
+			wantOK: true,
+		},
+		{
+			name: "claude healthy upstream returns ok",
+			account: &biz.SubscriptionAccount{
+				ID:          2,
+				Platform:    "claude",
+				AccessToken: "sk-ant-oat-2",
+				Models:      []string{"claude-sonnet-4-20250514"},
+			},
+			setup: func(t *testing.T, account *biz.SubscriptionAccount) func() {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/v1/messages" {
+						w.WriteHeader(http.StatusOK)
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+				}))
+				restore := setClaudeDefaultBaseURLForTest(srv.URL)
+				return func() { restore(); srv.Close() }
+			},
+			wantOK: true,
+		},
+		{
+			name: "domestic zhipu unhealthy upstream returns not ok",
+			account: &biz.SubscriptionAccount{
+				ID:          3,
+				Platform:    "zhipu",
+				AccessToken: "plan-key-3",
+				Models:      []string{"glm-4.6"},
+			},
+			setup: func(t *testing.T, account *biz.SubscriptionAccount) func() {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusUnauthorized)
+				}))
+				account.BaseURL = srv.URL
+				return func() { srv.Close() }
+			},
+			wantOK: false,
+		},
+		{
+			name: "unsupported platform returns error for sweeper fallback",
+			account: &biz.SubscriptionAccount{
+				ID:       4,
+				Platform: "openai",
+			},
+			setup: func(t *testing.T, account *biz.SubscriptionAccount) func() { return func() {} },
+			wantErr: true,
+		},
+		{
+			name: "claude without anthropic prober wired returns error",
+			account: &biz.SubscriptionAccount{
+				ID:          5,
+				Platform:    "claude",
+				AccessToken: "sk-ant-oat-5",
+			},
+			setup: func(t *testing.T, account *biz.SubscriptionAccount) func() { return func() {} },
+			wantErr:  true,
+			noProber: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cleanup := tc.setup(t, tc.account)
+			defer cleanup()
+
+			probe := NewCodexModelProbeService(nil)
+			if !tc.noProber {
+				probe.SetAnthropicProber(NewAnthropicModelProbeService())
+			}
+
+			adapter := NewRecoveryProbeAdapter(probe)
+			ok, err := adapter.ProbeRecovery(context.Background(), tc.account)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("ProbeRecovery() err = nil, want non-nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ProbeRecovery() unexpected error = %v", err)
+			}
+			if ok != tc.wantOK {
+				t.Fatalf("ProbeRecovery() ok = %v, want %v", ok, tc.wantOK)
+			}
+		})
+	}
 }

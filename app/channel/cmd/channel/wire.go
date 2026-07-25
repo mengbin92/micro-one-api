@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kratos/kratos/v3"
 	"github.com/go-kratos/kratos/v3/registry"
@@ -23,11 +24,15 @@ var ProviderSet = wire.NewSet(
 	newRepo,
 	newEventBus,
 	biz.NewChannelUsecase,
+	biz.NewModelUsecase,
+	biz.NewModelRoutingUsecase,
 	service.NewChannelService,
 	server.NewGRPCServer,
 	server.NewHTTPServer,
 	provideRegistrar,
 	wire.Bind(new(biz.ChannelRepo), new(*data.Repository)),
+	wire.Bind(new(biz.ModelRepo), new(*data.Repository)),
+	wire.Bind(new(biz.ModelRoutingRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
@@ -63,18 +68,42 @@ func newApp(
 	repo *data.Repository,
 	eventBus events.EventBus,
 	uc *biz.ChannelUsecase,
+	modelUC *biz.ModelUsecase,
+	routingUC *biz.ModelRoutingUsecase,
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	svc.SetModelUsecase(modelUC)
+	svc.SetModelRoutingUsecase(routingUC)
+	uc.SetModelRoutingRepo(repo)
+	// model registry/mapping mutations now drop the ChannelUsecase
+	// /v1/models L1 cache immediately so admin edits converge without
+	// waiting for the 15s TTL.
+	modelUC.SetCacheInvalidator(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 
 	var stopEventBus func()
 	var modelProbe *service.CodexModelProbeService
 	if probe := service.NewCodexModelProbeService(repo); probe != nil {
+		// Route domestic Anthropic-compatible Coding Plan platforms
+		// (zhipu/minimax/kimi) to the Messages-API prober so newly added
+		// accounts get their supported-model list refreshed too. Previously
+		// only codex accounts were probed, leaving the domestic three stuck
+		// with whatever models were typed at creation time.
+		probe.SetAnthropicProber(service.NewAnthropicModelProbeService())
 		modelProbe = probe
 		eventBus.Subscribe(events.TopicChannelChanged, probe.HandleSubscriptionAccountEvent)
 		probe.SyncExistingCodexAccounts(context.Background(), repo)
+	}
+	var quotaProbe *service.CodingPlanQuotaProbeService
+	if probe := service.NewCodingPlanQuotaProbeService(repo, service.CodingPlanQuotaProbeConfig{
+		Enabled:  envBool("CODING_PLAN_QUOTA_PROBE_ENABLED", false),
+		Interval: parseDurationEnv("CODING_PLAN_QUOTA_PROBE_INTERVAL", 5*time.Minute),
+		Timeout:  parseDurationEnv("CODING_PLAN_QUOTA_PROBE_TIMEOUT", 30*time.Second),
+		PageSize: 200,
+	}); probe != nil {
+		quotaProbe = probe
 	}
 	if streamBus, ok := eventBus.(interface {
 		StartListening(context.Context) func()
@@ -86,7 +115,7 @@ func newApp(
 		// In production this would abort; for wire we just proceed.
 		_ = err
 	}
-	stopOpsAutomation := startAccountOpsAutomation(uc, repo, notifyConn, modelProbe)
+	stopOpsAutomation := startAccountOpsAutomation(uc, repo, notifyConn, modelProbe, quotaProbe)
 
 	opts := []kratos.Option{
 		kratos.Name("channel-service"),

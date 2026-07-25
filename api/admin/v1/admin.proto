@@ -104,6 +104,24 @@ service AdminService {
       get: "/v1/logs"
     };
   }
+
+  // ========== 模型路由 (P2 #3, 透传 channel-service) ==========
+  rpc ListModelRoutings(ListModelRoutingsRequest) returns (ListModelRoutingsResponse) {
+    option (google.api.http) = {
+      get: "/v1/model-routings"
+    };
+  }
+  rpc UpsertModelRouting(UpsertModelRoutingRequest) returns (UpsertModelRoutingResponse) {
+    option (google.api.http) = {
+      post: "/v1/model-routings"
+      body: "*"
+    };
+  }
+  rpc DeleteModelRouting(DeleteModelRoutingRequest) returns (DeleteModelRoutingResponse) {
+    option (google.api.http) = {
+      delete: "/v1/model-routings/{id}"
+    };
+  }
 }
 
 // ========== 账务：充值 ==========
@@ -344,6 +362,7 @@ message AdminCreateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
+  optional bool restrict_models = 12;                 // restrict to abilities list. Optional: threaded to channel-service CreateChannel; defaults to true (legacy) when unset.
 }
 
 message AdminCreateChannelResponse {
@@ -364,6 +383,7 @@ message AdminUpdateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
+  optional bool restrict_models = 12;                 // restrict to abilities list. Optional (proto3 presence): only applied when the caller sets it, so callers that update only balance/health never silently flip restrict_models.
 }
 
 message AdminUpdateChannelResponse {
@@ -434,6 +454,7 @@ message AdminCreateSubscriptionAccountRequest {
   double session_window_limit_usd = 27;
   string quota_reset_strategy = 28;
   string quota_timezone = 29;
+  string model_mapping = 30;        // JSON {"src":"dst"} per-account model remap
 }
 
 message AdminCreateSubscriptionAccountResponse {
@@ -472,6 +493,7 @@ message AdminUpdateSubscriptionAccountRequest {
   optional double session_window_limit_usd = 27;
   optional string quota_reset_strategy = 28;
   optional string quota_timezone = 29;
+  optional string model_mapping = 30; // JSON {"src":"dst"} per-account model remap
 }
 
 message AdminUpdateSubscriptionAccountResponse {
@@ -550,4 +572,52 @@ message LogEntry {
   string reference_id = 6;
   string remark = 7;
   int64 created_at = 8;
+}
+
+
+// ========== 模型路由 (P2 #3) ==========
+message ListModelRoutingsRequest {
+  string group_name = 1;
+  string model = 2;
+  string platform = 3;
+}
+
+message ListModelRoutingsResponse {
+  repeated ModelRouting routings = 1;
+}
+
+message ModelRouting {
+  int64 id = 1;
+  string group_name = 2;
+  string model = 3;
+  string platform = 4;
+  int64 subscription_account_id = 5;
+  bool enabled = 6;
+  int32 priority = 7;
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}
+
+message UpsertModelRoutingRequest {
+  string group_name = 1;
+  string model = 2;
+  string platform = 3;
+  int64 subscription_account_id = 4;
+  optional bool enabled = 5;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert (DB DEFAULT 1).
+  int32 priority = 6;
+}
+
+message UpsertModelRoutingResponse {
+  bool success = 1;
+  string message = 2;
+  int64 id = 3;
+}
+
+message DeleteModelRoutingRequest {
+  int64 id = 1;
+}
+
+message DeleteModelRoutingResponse {
+  bool success = 1;
+  string message = 2;
 }

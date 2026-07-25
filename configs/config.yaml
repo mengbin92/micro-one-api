@@ -80,3 +80,14 @@ subscription:
 # a healthy replica.
 openai_ws:
   drain_timeout: ${OPENAI_WS_DRAIN_TIMEOUT:-30s}
+
+# billing_model_source (P3 #6) controls which model name relay uses for quota
+# reservation + usage stats when it rewrites the client-facing model name.
+#   upstream      — bill on the final upstream model (after global + per-account
+#                   mapping); default, true legacy behaviour (pre-P3 #6 every
+#                   reserveQuota call site passed plan.ResolvedModel directly)
+#   requested     — bill on the client model name (before any mapping)
+#   channel_mapped — bill on the channel/account's mapped name
+# Unset/empty = upstream (legacy).
+billing_model_source:
+  source: ${BILLING_MODEL_SOURCE:-upstream}

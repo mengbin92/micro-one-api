@@ -17,6 +17,7 @@ import (
 	"micro-one-api/app/channel/internal/service"
 	"micro-one-api/platform/events"
 	registry2 "micro-one-api/platform/registry"
+	"time"
 )
 
 // Injectors from wire.go:
@@ -32,9 +33,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	}
 	eventBus := newEventBus(repository)
 	channelUsecase := biz.NewChannelUsecase(repository, eventBus)
+	modelUsecase := biz.NewModelUsecase(repository)
+	modelRoutingUsecase := biz.NewModelRoutingUsecase(repository)
 	channelService := service.NewChannelService(channelUsecase)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, repository, eventBus, channelUsecase, channelService, mainRegistrarResult)
+	app, cleanup := newApp(config, repository, eventBus, channelUsecase, modelUsecase, modelRoutingUsecase, channelService, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -44,7 +47,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 var ProviderSet = wire.NewSet(
 	newRepo,
-	newEventBus, biz.NewChannelUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)),
+	newEventBus, biz.NewChannelUsecase, biz.NewModelUsecase, biz.NewModelRoutingUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRoutingRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
@@ -72,18 +75,36 @@ func newApp(
 	repo *data.Repository,
 	eventBus events.EventBus,
 	uc *biz.ChannelUsecase,
+	modelUC *biz.ModelUsecase,
+	routingUC *biz.ModelRoutingUsecase,
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	svc.SetModelUsecase(modelUC)
+	svc.SetModelRoutingUsecase(routingUC)
+	uc.SetModelRoutingRepo(repo)
+
+	modelUC.SetCacheInvalidator(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 
 	var stopEventBus func()
 	var modelProbe *service.CodexModelProbeService
 	if probe := service.NewCodexModelProbeService(repo); probe != nil {
+
+		probe.SetAnthropicProber(service.NewAnthropicModelProbeService())
 		modelProbe = probe
 		eventBus.Subscribe(events.TopicChannelChanged, probe.HandleSubscriptionAccountEvent)
 		probe.SyncExistingCodexAccounts(context.Background(), repo)
+	}
+	var quotaProbe *service.CodingPlanQuotaProbeService
+	if probe := service.NewCodingPlanQuotaProbeService(repo, service.CodingPlanQuotaProbeConfig{
+		Enabled:  envBool("CODING_PLAN_QUOTA_PROBE_ENABLED", false),
+		Interval: parseDurationEnv("CODING_PLAN_QUOTA_PROBE_INTERVAL", 5*time.Minute),
+		Timeout:  parseDurationEnv("CODING_PLAN_QUOTA_PROBE_TIMEOUT", 30*time.Second),
+		PageSize: 200,
+	}); probe != nil {
+		quotaProbe = probe
 	}
 	if streamBus, ok := eventBus.(interface {
 		StartListening(context.Context) func()
@@ -95,7 +116,7 @@ func newApp(
 
 		_ = err
 	}
-	stopOpsAutomation := startAccountOpsAutomation(uc, repo, notifyConn, modelProbe)
+	stopOpsAutomation := startAccountOpsAutomation(uc, repo, notifyConn, modelProbe, quotaProbe)
 
 	opts := []kratos.Option{kratos.Name("channel-service"), kratos.Server(grpcSrv, httpSrv)}
 	if reg.Registrar != nil {

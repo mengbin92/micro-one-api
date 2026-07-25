@@ -15,7 +15,8 @@ import (
 
 func isSubscriptionChannel(t int32) bool {
 	switch t {
-	case relayprovider.ChannelTypeCodexOAuth, relayprovider.ChannelTypeClaudeOAuth:
+	case relayprovider.ChannelTypeCodexOAuth, relayprovider.ChannelTypeClaudeOAuth,
+		relayprovider.ChannelTypeZhipuPlan, relayprovider.ChannelTypeMinimaxPlan, relayprovider.ChannelTypeKimiOAuth:
 		return true
 	default:
 		return false

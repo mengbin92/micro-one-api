@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"micro-one-api/platform/events"
@@ -75,6 +76,7 @@ type Channel struct {
 	UsedQuota                         int64
 	ModelMapping                      string
 	SystemPrompt                      string
+	RestrictModels                    bool // P1 (#2): false=catch-all (allow unregistered models), true=require abilities row. Default true (legacy). See docs/model-management-design.md §9.3 #2.
 	Config                            ChannelConfig
 }
 
@@ -127,6 +129,9 @@ type SubscriptionAccount struct {
 	SessionWindowLimitUSD  float64
 	QuotaResetStrategy     string
 	QuotaTimezone          string
+
+	// ModelMapping is a JSON {"src":"dst"} per-account model name remap applied after the global ModelMapper resolves the request model and before relay forwards upstream. Empty string means no remap. See docs/model-management-design.md §10.1.
+	ModelMapping string
 
 	PrimaryQuotaUsedPercent         *float64
 	PrimaryQuotaResetAfterSeconds   *int32
@@ -190,6 +195,12 @@ type HealthAlertConfig struct {
 type ChannelRepo interface {
 	FindByID(ctx context.Context, channelID int64) (*Channel, error)
 	ListAbilitiesByGroupAndModel(ctx context.Context, group, model string) ([]Ability, error)
+	// ListUnrestrictedChannelsByGroup returns enabled channels in the group
+	// whose restrict_models flag is false (catch-all channels that accept any
+	// model not matched by the abilities table). Used as the fallback path in
+	// SelectChannel when no abilities row matches the requested model. See
+	// docs/model-management-design.md §9.3 #2.
+	ListUnrestrictedChannelsByGroup(ctx context.Context, group string) ([]*Channel, error)
 	FindSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error)
 	ListSubscriptionAccountAbilities(ctx context.Context, group, model, platform string) ([]SubscriptionAccountAbility, error)
 	ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*SubscriptionAccount, int64, error)
@@ -258,6 +269,70 @@ type SubscriptionAccountQuotaEventAggregate struct {
 	LastOccurredAt        int64
 }
 
+// modelsListCacheEntry holds a cached model list with an expiry.
+type modelsListCacheEntry struct {
+	models  []string
+	expires time.Time
+}
+
+// modelsListCache is a process-local TTL cache for ListAvailableModels.
+// It uses a sync.Map for lock-free reads and lazy expiry. Writes (mutation
+// paths) call invalidate to drop the entry so the next read refetches.
+type modelsListCache struct {
+	entries sync.Map
+	ttl     time.Duration
+}
+
+func newModelsListCache(ttl time.Duration) *modelsListCache {
+	if ttl <= 0 {
+		ttl = 15 * time.Second
+	}
+	return &modelsListCache{ttl: ttl}
+}
+
+func (c *modelsListCache) get(group string) ([]string, bool) {
+	if c == nil {
+		return nil, false
+	}
+	v, ok := c.entries.Load(group)
+	if !ok {
+		return nil, false
+	}
+	entry := v.(*modelsListCacheEntry)
+	if time.Now().After(entry.expires) {
+		c.entries.Delete(group)
+		return nil, false
+	}
+	return append([]string(nil), entry.models...), true
+}
+
+func (c *modelsListCache) set(group string, models []string) {
+	if c == nil {
+		return
+	}
+	c.entries.Store(group, &modelsListCacheEntry{
+		models:  append([]string(nil), models...),
+		expires: time.Now().Add(c.ttl),
+	})
+}
+
+func (c *modelsListCache) invalidate() {
+	if c == nil {
+		return
+	}
+	c.entries.Range(func(key, _ any) bool {
+		c.entries.Delete(key)
+		return true
+	})
+}
+
+func (c *modelsListCache) invalidateGroup(group string) {
+	if c == nil {
+		return
+	}
+	c.entries.Delete(group)
+}
+
 type ChannelUsecase struct {
 	repo                   ChannelRepo
 	eventBus               events.EventBus
@@ -267,20 +342,55 @@ type ChannelUsecase struct {
 	notifier               Notifier
 	healthAlert            HealthAlertConfig
 	selector               *WeightedSelector
+
+	// modelsListCache is a short-TTL in-process cache for /v1/models
+	// results, keyed by group. Reduces DB load on the hot /v1/models path.
+	// See docs/model-management-design.md §10.2.
+	modelsListCache *modelsListCache
+
+	// accountSelector is the health-aware subscription-account selector
+	// (smooth WRR × health factor). NewChannelUsecase wires it by default; when
+	// nil, SelectSubscriptionAccount retains the legacy random fallback.
+	// See docs/model-management-design.md §12.2.
+	accountSelector *SubscriptionAccountSelector
+
+	// routingRepo is the optional P2 #3 model→account routing repo. nil when
+	// not configured; SelectSubscriptionAccount then uses the normal
+	// priority-tier selection. See docs/model-management-design.md §9.3 #3.
+	routingRepo ModelRoutingRepo
 }
 
 func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUsecase {
 	if eventBus == nil {
 		eventBus = events.NewMemoryEventBus()
 	}
-	return &ChannelUsecase{
+	uc := &ChannelUsecase{
 		repo:                   repo,
 		eventBus:               eventBus,
 		now:                    time.Now,
 		healthFailureThreshold: healthFailureThresholdFromEnv(),
 		healthCooldown:         healthCooldownFromEnv(),
 		selector:               NewWeightedSelector(),
+		modelsListCache:        newModelsListCache(0),
+		accountSelector:        NewSubscriptionAccountSelector(),
 	}
+	// cross-instance cache invalidation. RecordHealth and
+	// RecordUsage no longer publish TopicChannelChanged (§10.2 contract), so
+	// the only publishers are channel/subscription CRUD + status changes
+	// (UpdateChannel/CreateChannel/DeleteChannel/ChangeChannelStatus and the
+	// subscription-account equivalents), all of which DO change which models
+	// a group exposes. The blanket clear here is therefore safe — it fires
+	// only on real model-set mutations. Redis Streams consumer groups are
+	// competing-consumer (not broadcast): only one instance in the group
+	// receives each event, so cross-instance convergence still leans on the
+	// 15s TTL for the instances that miss the event. That is documented as
+	// the fallback path; the local synchronous invalidate on the mutating
+	// instance is the primary.
+	eventBus.Subscribe(events.TopicChannelChanged, func(_ context.Context, _ events.Event) error {
+		uc.invalidateModelsListCache()
+		return nil
+	})
+	return uc
 }
 
 func (uc *ChannelUsecase) ConfigureHealthAlert(notifier Notifier, cfg HealthAlertConfig) {
@@ -299,8 +409,18 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 	if err != nil {
 		return nil, err
 	}
+	// P1 (#2): RestrictModels=false catch-all fallback. When no abilities row
+	// matches the requested model, a deployment may still want to route the
+	// request to a channel configured as a catch-all (restrict_models=0). This
+	// is the "pass through unregistered models" switch from sub2api. Only
+	// consulted on the primary selection (excludeFirstPriority=false) — the
+	// failover path excludes the top-priority tier and must not silently
+	// widen to catch-all channels. See docs/model-management-design.md §9.3 #2.
 	if len(abilities) == 0 {
-		return nil, ErrChannelNotFound
+		if excludeFirstPriority {
+			return nil, ErrChannelNotFound
+		}
+		return uc.selectUnrestrictedChannel(ctx, group)
 	}
 	sort.Slice(abilities, func(i, j int) bool {
 		return abilities[i].Priority > abilities[j].Priority
@@ -344,6 +464,38 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 	return nil, ErrChannelNotFound
 }
 
+// selectUnrestrictedChannel is the RestrictModels=false fallback: when no
+// abilities row matches, route to an enabled catch-all channel in the group.
+// Catch-all channels are selected by the same WeightedSelector as the normal
+// path so health/latency/circuit-breaker state still applies. Returns
+// ErrChannelNotFound when there is no catch-all channel (the legacy default
+// behaviour). See docs/model-management-design.md §9.3 #2.
+func (uc *ChannelUsecase) selectUnrestrictedChannel(ctx context.Context, group string) (*Channel, error) {
+	channels, err := uc.repo.ListUnrestrictedChannelsByGroup(ctx, group)
+	if err != nil || len(channels) == 0 {
+		return nil, ErrChannelNotFound
+	}
+	tier := make([]*Channel, 0, len(channels))
+	for _, ch := range channels {
+		if ch.SelectableAt(uc.now()) {
+			tier = append(tier, ch)
+		}
+	}
+	if len(tier) == 0 {
+		return nil, ErrChannelNotFound
+	}
+	selected, err := uc.selector.Select(ctx, group, tier)
+	if err != nil {
+		return nil, err
+	}
+	for _, ch := range tier {
+		if ch.ID == selected.ID {
+			return ch, nil
+		}
+	}
+	return nil, ErrChannelNotFound
+}
+
 func (uc *ChannelUsecase) GetChannel(ctx context.Context, channelID int64) (*Channel, error) {
 	return uc.repo.FindByID(ctx, channelID)
 }
@@ -362,12 +514,61 @@ func (uc *ChannelUsecase) SelectorStats() map[int64]ChannelStats {
 	return uc.selector.GetStats()
 }
 
+// SetModelRoutingRepo wires the optional P2 #3 model→account routing repo.
+// When nil, SelectSubscriptionAccount uses the normal priority-tier
+// selection. Wired by cmd/channel/wire.go.
+func (uc *ChannelUsecase) SetModelRoutingRepo(repo ModelRoutingRepo) {
+	if uc == nil {
+		return
+	}
+	uc.routingRepo = repo
+}
+
+// AccountSelectorStats returns the P2 #7 account selector runtime state. Empty
+// when not configured (defensive; always wired in production via
+// NewChannelUsecase).
+func (uc *ChannelUsecase) AccountSelectorStats() map[int64]AccountSelectorStats {
+	if uc == nil || uc.accountSelector == nil {
+		return map[int64]AccountSelectorStats{}
+	}
+	return uc.accountSelector.GetStats()
+}
+
+// RecordSubscriptionAccountHealth feeds a relay outcome into the P2 #7
+// account selector so its health/circuit-breaker state stays current.
+func (uc *ChannelUsecase) RecordSubscriptionAccountHealth(accountID int64, success bool) {
+	if uc == nil || uc.accountSelector == nil {
+		return
+	}
+	uc.accountSelector.RecordAccountHealth(accountID, success)
+}
+
 func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*SubscriptionAccount, error) {
+	// P2 #3: model→account routing. When a routing row matches the requested
+	// model, restrict the candidate pool to the routed account set (still
+	// honouring status/quota/runtime-blocked). Exact-before-wildcard
+	// precedence is applied by RoutingMatchForSelect. Routed accounts still
+	// go through the same priority-tier + selector flow below so health and
+	// load factor continue to apply. See docs/model-management-design.md §9.3 #3.
+	routed := uc.routedMatches(ctx, group, model, platform)
+
 	abilities, err := uc.repo.ListSubscriptionAccountAbilities(ctx, group, model, platform)
 	if err != nil {
 		return nil, err
 	}
+	routedBefore := 0
+	if len(routed) > 0 {
+		routedBefore = len(abilities)
+		abilities = filterAbilitiesByRouted(abilities, routed)
+	}
 	if len(abilities) == 0 {
+		if routed != nil && routedBefore > 0 {
+			// Routing matched and pinned accounts that exist, but none were
+			// schedulable (disabled / unschedulable / runtime-blocked). Surface a
+			// distinct error so operators can tell routing dead-ends apart from a
+			// genuine "no account serves this model".
+			return nil, fmt.Errorf("model routing matched %d account(s) for %q but none are schedulable", len(routed), model)
+		}
 		return nil, ErrSubscriptionAccountNotFound
 	}
 	sort.Slice(abilities, func(i, j int) bool {
@@ -398,6 +599,28 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 		if len(tier) == 0 {
 			continue
 		}
+		// Use health-aware weighted selection when configured, else random.
+		// when the accountSelector is configured but returns no
+		// candidate (e.g. all accounts circuit-opened), the previous code
+		// fell through to uniform rand.Int — which fail-opens onto the
+		// same saturated/circuit-opened accounts, contradicting the
+		// "circuit-opened accounts are skipped" contract. Instead, surface
+		// a distinct routed-dead-end error so the caller can fail closed
+		// instead of hammering open circuits.
+		if uc.accountSelector != nil {
+			selected, selErr := uc.accountSelector.Select(ctx, group, tier)
+			if selErr == nil && selected != nil {
+				return selected, nil
+			}
+			// accountSelector exhausted the tier (all circuit-opened / no
+			// effective weight). Fail closed for THIS tier and keep
+			// scanning lower-priority tiers; only if no tier yields an
+			// account do we return the routed-dead-end error below.
+			continue
+		}
+		// Fallback: uniform random (legacy behaviour, no accountSelector
+		// configured — health/load/circuit features are inert and random is
+		// the documented behaviour).
 		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(tier))))
 		if err != nil {
 			return nil, err
@@ -405,7 +628,83 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 		return tier[nBig.Int64()], nil
 	}
 
+	// accountSelector was configured but every tier failed closed (all
+	// accounts circuit-opened / saturated). Surface a distinct error so
+	// operators can tell "no account serves this model" (NotFound) from
+	// "accounts serve it but all are circuit-opened" (routed dead-end).
+	if uc.accountSelector != nil {
+		return nil, fmt.Errorf("all subscription accounts serving %q are circuit-opened or saturated; try again after the circuit window", model)
+	}
 	return nil, ErrSubscriptionAccountNotFound
+}
+
+// routedMatches returns the enabled routing rows that pin a model to a set of
+// subscription accounts for this (group, model, platform) tuple. nil when no
+// routing repo is configured or no rule matches — the caller then uses the
+// normal abilities-based selection. The rows carry a Priority used to order
+// routed candidates within a tier (higher wins). See
+// docs/model-management-design.md §9.3 #3.
+func (uc *ChannelUsecase) routedMatches(ctx context.Context, group, model, platform string) []*ModelRouting {
+	if uc == nil || uc.routingRepo == nil {
+		return nil
+	}
+	rows, err := uc.routingRepo.ListModelRoutingsForSelect(ctx, group, model, platform)
+	if err != nil || len(rows) == 0 {
+		return nil
+	}
+	matches := RoutingMatchForSelect(rows, model)
+	if len(matches) == 0 {
+		return nil
+	}
+	enabled := make([]*ModelRouting, 0, len(matches))
+	for _, r := range matches {
+		if r.Enabled {
+			enabled = append(enabled, r)
+		}
+	}
+	return enabled
+}
+
+// routedPriority returns the routing priority for an account id within the
+// matched routing rows, or -1 when the account is not routed. Higher wins.
+func routedPriority(matches []*ModelRouting, accountID int64) int32 {
+	for _, r := range matches {
+		if r != nil && r.SubscriptionAccountID == accountID {
+			return r.Priority
+		}
+	}
+	return -1
+}
+
+// filterAbilitiesByRouted keeps only abilities whose account id appears in the
+// matched routing rows. When matches is empty the abilities are returned
+// unchanged (no routing configured → normal selection). It stamps the routing
+// priority onto each kept ability (shifted by a large constant so the caller's
+// priority-desc sort orders routed accounts by routing priority first, then by
+// the account's own priority). See docs/model-management-design.md §9.3 #3.
+func filterAbilitiesByRouted(abilities []SubscriptionAccountAbility, matches []*ModelRouting) []SubscriptionAccountAbility {
+	if len(matches) == 0 {
+		return abilities
+	}
+	out := make([]SubscriptionAccountAbility, 0, len(abilities))
+	for _, a := range abilities {
+		p := routedPriority(matches, a.AccountID)
+		if p < 0 {
+			continue // not routed
+		}
+		// 🟢 low-priority: guard against negative routing priorities. A
+		// negative routing priority would shift the composite below the
+		// account's own priority and, combined with int64 overflow on the
+		// 1_000_000 multiplier, silently mis-order routed accounts. Clamp
+		// negatives to 0 so the tier ordering stays well-defined.
+		if p < 0 {
+			p = 0
+		}
+		// Routing priority dominates account priority within the tier.
+		a.Priority = int64(p)*1_000_000 + a.Priority
+		out = append(out, a)
+	}
+	return out
 }
 
 func (uc *ChannelUsecase) GetSubscriptionAccount(ctx context.Context, accountID int64) (*SubscriptionAccount, error) {
@@ -490,6 +789,7 @@ func (uc *ChannelUsecase) AutoPauseAccount(ctx context.Context, accountID int64,
 	if err := uc.repo.AutoPauseAccount(ctx, accountID, reason); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID, Status: ChannelStatusDisabled})
 	return nil
 }
@@ -498,6 +798,7 @@ func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account
 	if err := uc.repo.CreateSubscriptionAccount(ctx, account); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, account)
 	return nil
 }
@@ -506,6 +807,7 @@ func (uc *ChannelUsecase) UpdateSubscriptionAccount(ctx context.Context, account
 	if err := uc.repo.UpdateSubscriptionAccount(ctx, account); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, account)
 	return nil
 }
@@ -514,6 +816,7 @@ func (uc *ChannelUsecase) DeleteSubscriptionAccount(ctx context.Context, account
 	if err := uc.repo.DeleteSubscriptionAccount(ctx, accountID); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID})
 	return nil
 }
@@ -522,12 +825,35 @@ func (uc *ChannelUsecase) ChangeSubscriptionAccountStatus(ctx context.Context, a
 	if err := uc.repo.ChangeSubscriptionAccountStatus(ctx, accountID, status); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID, Status: status})
 	return nil
 }
 
 func (uc *ChannelUsecase) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
-	return uc.repo.ListAvailableModels(ctx, group)
+	if uc.modelsListCache != nil {
+		if models, ok := uc.modelsListCache.get(group); ok {
+			return models, nil
+		}
+	}
+	models, err := uc.repo.ListAvailableModels(ctx, group)
+	if err != nil {
+		return nil, err
+	}
+	if uc.modelsListCache != nil {
+		uc.modelsListCache.set(group, models)
+	}
+	return models, nil
+}
+
+// invalidateModelsListCache clears the /v1/models cache on any channel or
+// subscription account mutation. Group-level granularity is not tracked
+// because mutations are infrequent and a full L1 clear is bounded by the
+// short TTL.
+func (uc *ChannelUsecase) invalidateModelsListCache() {
+	if uc != nil && uc.modelsListCache != nil {
+		uc.modelsListCache.invalidate()
+	}
 }
 
 func (uc *ChannelUsecase) ListChannels(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*Channel, int64, error) {
@@ -538,6 +864,7 @@ func (uc *ChannelUsecase) CreateChannel(ctx context.Context, channel *Channel) e
 	if err := uc.repo.CreateChannel(ctx, channel); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
 	return nil
 }
@@ -546,6 +873,7 @@ func (uc *ChannelUsecase) UpdateChannel(ctx context.Context, channel *Channel) e
 	if err := uc.repo.UpdateChannel(ctx, channel); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
 	return nil
 }
@@ -557,7 +885,12 @@ func (uc *ChannelUsecase) RecordUsage(ctx context.Context, channelID int64, quot
 	if err := uc.repo.RecordUsage(ctx, channelID, quota); err != nil {
 		return err
 	}
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID})
+	// §10.2 contract — RecordUsage must NOT invalidate the
+	// /v1/models L1 cache or publish a TopicChannelChanged event. Usage is
+	// written on every billing commit; under load that would continuously
+	// clear the cache (hit-rate → 0) and republish to the stream, forcing
+	// every other instance to clear too. Used quota does not change which
+	// models a channel exposes.
 	return nil
 }
 
@@ -581,7 +914,13 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 	if uc.selector != nil {
 		uc.selector.RecordHealth(event.ChannelID, event.Success, event.ResponseTime, event.Error)
 	}
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
+	// §10.2 contract — RecordHealth must NOT invalidate the
+	// /v1/models L1 cache or publish a TopicChannelChanged event. Health
+	// is recorded on every relay attempt (retry.go recordHealth); under load
+	// that would continuously clear the cache (hit-rate → 0) and republish to
+	// the stream, forcing every other instance to clear too. Health changes
+	// do not change which models a channel exposes; the selector's own
+	// healthFactor/circuit-breaker state is updated in-process above.
 	uc.notifyUnavailable(ctx, &previousSnapshot, channel, event)
 	return nil
 }
@@ -590,6 +929,7 @@ func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) er
 	if err := uc.repo.DeleteChannel(ctx, channelID); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID})
 	return nil
 }
@@ -598,6 +938,7 @@ func (uc *ChannelUsecase) ChangeChannelStatus(ctx context.Context, channelID int
 	if err := uc.repo.ChangeStatus(ctx, channelID, status); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID, Status: status})
 	return nil
 }

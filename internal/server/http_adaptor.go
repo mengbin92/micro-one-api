@@ -12,13 +12,13 @@ import (
 	"github.com/bytedance/sonic"
 
 	billingv1 "micro-one-api/api/billing/v1"
-	"micro-one-api/platform/metrics"
+	relaycredential "micro-one-api/domain/upstream/credential"
+	relayprovider "micro-one-api/domain/upstream/provider"
 	relayadaptor "micro-one-api/internal/adaptor"
 	relaybiz "micro-one-api/internal/biz"
-	relaycredential "micro-one-api/domain/upstream/credential"
 	"micro-one-api/internal/passthrough"
-	relayprovider "micro-one-api/domain/upstream/provider"
 	relayquota "micro-one-api/internal/quota"
+	"micro-one-api/platform/metrics"
 )
 
 // formatToEndpoint maps relayadaptor.Format to the actual HTTP endpoint path
@@ -186,6 +186,9 @@ func (s *HTTPServer) runSubscriptionAttempt(r *http.Request, current *relaybiz.R
 func (s *HTTPServer) executeAndMeter(ctx context.Context, current *relaybiz.RelayPlan, clientModel string, header http.Header, rawBody []byte, inbound relayadaptor.Format, sessionHash string) subscriptionAdaptorResult {
 	result := s.executeSubscriptionAccountViaAdaptor(ctx, current, clientModel, header, rawBody, inbound, sessionHash)
 	metrics.RelaySubscriptionAdaptorRequestsTotal.WithLabelValues(subscriptionMetricPlatform(current), string(inbound), subscriptionAdaptorMetricResult(result)).Inc()
+	if result.upstreamAttempted && s != nil && s.relayUsecase != nil {
+		_ = s.relayUsecase.RecordSubscriptionAccountHealth(ctx, subscriptionAccountIDFromPlan(current), result.upstreamSucceeded)
+	}
 	return result
 }
 
@@ -226,6 +229,10 @@ type subscriptionAdaptorResult struct {
 	// sessionWindowFull marks that the session already exhausted this account's
 	// configured cost window, so no upstream call was made.
 	sessionWindowFull bool
+	// upstreamAttempted distinguishes real provider outcomes from local
+	// admission/conversion failures. Only real attempts feed account health.
+	upstreamAttempted bool
+	upstreamSucceeded bool
 	body              []byte
 	header            http.Header
 	write             func(http.ResponseWriter)
@@ -423,6 +430,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			Jar:           client.Jar,
 		}
 	}
+	result.upstreamAttempted = true
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
 		result.statusCode = http.StatusBadGateway
@@ -432,7 +440,8 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		return result
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	result.upstreamSucceeded = resp.StatusCode >= 200 && resp.StatusCode < 300
+	if !result.upstreamSucceeded {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		io.Copy(io.Discard, resp.Body) // drain so the connection can be reused
 		resp.Body.Close()
@@ -468,12 +477,14 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	accountUsage := s.billingClient != nil
 	if accountUsage {
 		var reserveErr error
+		// P3 #6: derive the billing model name from billing_model_source.
+		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel)
 		reservation, reserveErr = s.reserveQuota(
 			ctx,
 			fmt.Sprintf("%d", plan.Auth.UserID),
 			requestID,
 			estimateRawTokens(rawBody),
-			plan.ResolvedModel,
+			billingModel,
 			channelID,
 			subscriptionAccountIDFromPlan(plan),
 		)
@@ -524,7 +535,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 					TokenName:             plan.Auth.TokenName,
 					RequestID:             requestID,
 					Endpoint:              formatToEndpoint(inbound),
-					ModelName:             plan.ResolvedModel,
+					ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
 					Quota:                 actualUsage.TotalTokens,
 					PromptTokens:          actualUsage.PromptTokens,
 					CompletionTokens:      actualUsage.CompletionTokens,
@@ -591,7 +602,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				TokenName:             plan.Auth.TokenName,
 				RequestID:             requestID,
 				Endpoint:              formatToEndpoint(inbound),
-				ModelName:             plan.ResolvedModel,
+				ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel),
 				Quota:                 usage.TotalTokens,
 				PromptTokens:          usage.PromptTokens,
 				CompletionTokens:      usage.CompletionTokens,
@@ -674,9 +685,14 @@ func (s *HTTPServer) selectSubscriptionFailoverPlan(ctx context.Context, base, c
 	if s == nil || s.relayUsecase == nil || base == nil || base.Auth == nil {
 		return nil, fmt.Errorf("relay usecase unavailable")
 	}
-	resolvedModel := base.ResolvedModel
+	// pass the GLOBALLY-resolved model (pre-channel-mapping),
+	// not base.ResolvedModel (which already carries account A's mapping).
+	// SelectSubscriptionFailover recomputes the new account's mapping from
+	// this base; feeding A's mapped name would stack mappings and send B
+	// upstream a model name A produced.
+	resolvedModel := base.BaseModel()
 	if resolvedModel == "" && current != nil {
-		resolvedModel = current.ResolvedModel
+		resolvedModel = current.BaseModel()
 	}
 	next, err := s.relayUsecase.SelectSubscriptionFailover(ctx, base.Auth.Group, clientModel, resolvedModel, failed)
 	if err != nil {
@@ -750,6 +766,12 @@ func subscriptionMetricPlatform(plan *relaybiz.RelayPlan) string {
 			return "codex"
 		case relayprovider.ChannelTypeClaudeOAuth:
 			return "claude"
+		case relayprovider.ChannelTypeZhipuPlan:
+			return "zhipu"
+		case relayprovider.ChannelTypeMinimaxPlan:
+			return "minimax"
+		case relayprovider.ChannelTypeKimiOAuth:
+			return "kimi"
 		}
 	}
 	return "unknown"
@@ -901,6 +923,12 @@ func fallbackSubscriptionAccountMetadata(plan *relaybiz.RelayPlan, ch *relaybiz.
 		meta.Platform = relaycredential.PlatformCodex
 	case relayprovider.ChannelTypeClaudeOAuth:
 		meta.Platform = relaycredential.PlatformClaude
+	case relayprovider.ChannelTypeZhipuPlan:
+		meta.Platform = relaycredential.PlatformZhipu
+	case relayprovider.ChannelTypeMinimaxPlan:
+		meta.Platform = relaycredential.PlatformMinimax
+	case relayprovider.ChannelTypeKimiOAuth:
+		meta.Platform = relaycredential.PlatformKimi
 	}
 	meta.AccessToken = ch.Key
 	return meta

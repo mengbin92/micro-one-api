@@ -188,3 +188,129 @@ func TestWeightedSelector_ConcurrentSelect(t *testing.T) {
 		t.Fatalf("concurrent Select err = %v", err)
 	}
 }
+
+// TestWeightedSelector_DefaultWeightOneFailureNotStarved (P1 review #5):
+// a default-weight (Priority=0 → weight=1) channel that takes a single
+// failure must NOT be zeroed out of the selector. Pre-fix,
+// effectiveWeight = 1 * 80 * 100 / 10000 = 0, so the channel never
+// accumulated currentWeight again and was never selected — permanent
+// starvation instead of the §12.2 "drop to 80% traffic" contract.
+func TestWeightedSelector_DefaultWeightOneFailureNotStarved(t *testing.T) {
+	s := NewWeightedSelector()
+	ch := &Channel{ID: 1, Priority: 0} // weight defaults to 1
+	// Prime the selector state.
+	if _, err := s.Select(context.Background(), "g", []*Channel{ch}); err != nil {
+		t.Fatalf("prime Select err = %v", err)
+	}
+	// Record one failure — healthFactor drops to 80 (<5% band). Without the
+	// floor, effectiveWeight becomes 0 and the channel is starved forever.
+	s.RecordHealth(1, false, int64(50*time.Millisecond), "502")
+
+	// Reset currentWeight so the only signal is effectiveWeight.
+	s.mu.Lock()
+	for _, st := range s.channels {
+		st.currentWeight = 0
+	}
+	s.mu.Unlock()
+
+	// The channel must still be selectable (effectiveWeight floored to 1).
+	got, err := s.Select(context.Background(), "g", []*Channel{ch})
+	if err != nil {
+		t.Fatalf("Select after one failure err = %v", err)
+	}
+	if got.ID != 1 {
+		t.Fatalf("default-weight channel starved after one failure: got.ID = %d, want 1", got.ID)
+	}
+}
+
+func TestWeightedSelector_PreservesHealthWeightRatio(t *testing.T) {
+	s := NewWeightedSelector()
+	healthy := &Channel{ID: 1, Priority: 0}
+	degraded := &Channel{ID: 2, Priority: 0}
+	candidates := []*Channel{healthy, degraded}
+
+	selected, err := s.Select(context.Background(), "g", candidates)
+	if err != nil {
+		t.Fatalf("prime Select err = %v", err)
+	}
+	s.RecordHealth(selected.ID, true, int64(50*time.Millisecond), "")
+	for i := 0; i < 6; i++ {
+		s.RecordHealth(degraded.ID, false, int64(50*time.Millisecond), "502")
+	}
+	if got := s.channels[degraded.ID].healthFactor(); got != 20 {
+		t.Fatalf("degraded health factor = %d, want 20", got)
+	}
+
+	counts := map[int64]int{}
+	for i := 0; i < 600; i++ {
+		selected, err = s.Select(context.Background(), "g", candidates)
+		if err != nil {
+			t.Fatalf("Select err = %v", err)
+		}
+		counts[selected.ID]++
+		s.RecordHealth(selected.ID, true, int64(50*time.Millisecond), "")
+	}
+	// The selector preserves existing smooth-WRR credit when health changes, so
+	// the transition window may differ by one selection from the steady-state
+	// 5:1 ratio. A rounded integer floor would instead collapse this to 1:1.
+	if counts[healthy.ID] < 498 || counts[healthy.ID] > 502 ||
+		counts[degraded.ID] < 98 || counts[degraded.ID] > 102 {
+		t.Fatalf("selection distribution = %+v, want approximately 500:100", counts)
+	}
+}
+
+func TestWeightedSelector_RefreshesConfiguredChannel(t *testing.T) {
+	s := NewWeightedSelector()
+	original := &Channel{ID: 7, Name: "old", Priority: 1}
+	selected, err := s.Select(context.Background(), "g", []*Channel{original})
+	if err != nil {
+		t.Fatalf("initial Select err = %v", err)
+	}
+	s.RecordHealth(selected.ID, true, int64(10*time.Millisecond), "")
+
+	updated := &Channel{ID: 7, Name: "new", Priority: 9}
+	selected, err = s.Select(context.Background(), "g", []*Channel{updated})
+	if err != nil {
+		t.Fatalf("updated Select err = %v", err)
+	}
+	if selected != updated || selected.Name != "new" {
+		t.Fatalf("selector returned stale channel snapshot: got %+v, want %+v", selected, updated)
+	}
+	if got := s.GetStats()[7].Weight; got != 9 {
+		t.Fatalf("selector weight after channel update = %d, want 9", got)
+	}
+}
+
+func TestWeightedSelector_ExcludesOpenCircuitFromTotalWeight(t *testing.T) {
+	s := NewWeightedSelector()
+	high := &Channel{ID: 1, Priority: 100}
+	low := &Channel{ID: 2, Priority: 1}
+	candidates := []*Channel{high, low}
+	selected, err := s.Select(context.Background(), "g", candidates)
+	if err != nil {
+		t.Fatalf("prime Select err = %v", err)
+	}
+	s.RecordHealth(selected.ID, true, int64(10*time.Millisecond), "")
+
+	s.mu.Lock()
+	for _, st := range s.channels {
+		st.currentWeight = 0
+		st.inflight.Store(0)
+	}
+	s.channels[high.ID].circuitOpenUntil = time.Now().Add(time.Minute).UnixNano()
+	s.mu.Unlock()
+
+	for i := 0; i < 5; i++ {
+		selected, err = s.Select(context.Background(), "g", candidates)
+		if err != nil {
+			t.Fatalf("Select err = %v", err)
+		}
+		if selected.ID != low.ID {
+			t.Fatalf("selected circuit-open channel %d, want %d", selected.ID, low.ID)
+		}
+		s.RecordHealth(selected.ID, true, int64(10*time.Millisecond), "")
+	}
+	if got := s.GetStats()[low.ID].CurrentWeight; got != 0 {
+		t.Fatalf("eligible channel current weight = %d, want 0; open circuits must not contribute to total weight", got)
+	}
+}

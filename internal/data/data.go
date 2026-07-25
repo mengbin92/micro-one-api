@@ -8,8 +8,8 @@ import (
 
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
-	"micro-one-api/internal/biz"
 	relaycredential "micro-one-api/domain/upstream/credential"
+	"micro-one-api/internal/biz"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -108,6 +108,7 @@ func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, mo
 		Concurrency:           info.GetConcurrency(),
 		RPMLimit:              info.GetRpmLimit(),
 		SessionWindowLimitUSD: info.GetSessionWindowLimitUsd(),
+		ModelMapping:          info.GetModelMapping(),
 	}, nil
 }
 
@@ -130,15 +131,17 @@ func (c *channelClient) SelectChannel(ctx context.Context, group, model string, 
 	}
 	info := resp.Channel
 	return &biz.Channel{
-		ID:       info.Id,
-		Type:     info.Type,
-		Name:     info.Name,
-		Status:   info.Status,
-		BaseURL:  info.BaseUrl,
-		Group:    info.Group,
-		Models:   splitCSV(info.Models),
-		Priority: info.Priority,
-		Key:      info.Key,
+		ID:             info.Id,
+		Type:           info.Type,
+		Name:           info.Name,
+		Status:         info.Status,
+		BaseURL:        info.BaseUrl,
+		Group:          info.Group,
+		Models:         splitCSV(info.Models),
+		Priority:       info.Priority,
+		Key:            info.Key,
+		ModelMapping:   info.GetModelMapping(),
+		RestrictModels: info.GetRestrictModels(),
 	}, nil
 }
 
@@ -154,6 +157,23 @@ func (c *channelClient) RecordChannelHealth(ctx context.Context, channelID int64
 	}
 	if resp != nil && !resp.GetSuccess() {
 		return errors.New(resp.GetMessage())
+	}
+	return nil
+}
+
+func (c *channelClient) RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error {
+	if accountID <= 0 {
+		return nil
+	}
+	reply, err := c.client.RecordSubscriptionAccountHealth(ctx, &channelv1.RecordSubscriptionAccountHealthRequest{
+		AccountId: accountID,
+		Success:   success,
+	})
+	if err != nil {
+		return err
+	}
+	if reply != nil && !reply.GetSuccess() {
+		return errors.New(reply.GetMessage())
 	}
 	return nil
 }

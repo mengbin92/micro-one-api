@@ -126,6 +126,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/subscriptions", handlePage)
 	srv.HandleFunc("/admin/users", handlePage)
 	srv.HandleFunc("/admin/channels", handlePage)
+	srv.HandleFunc("/admin/models", handlePage)
 	srv.HandleFunc("/admin/channel-health", handlePage)
 	srv.HandleFunc("/admin/cost-analysis", handlePage)
 	srv.HandleFunc("/admin/pricing", handlePage)
@@ -238,8 +239,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 			return
 		}
 
-		// Collect unique models from channels
-		modelSet := map[string]string{} // model -> provider
+		// Collect unique models from channels (case-insensitive dedup).
+		modelSet := map[string]string{} // lowercased model -> provider
 		for _, ch := range channels.GetChannels() {
 			if ch.GetModels() == "" {
 				continue
@@ -247,8 +248,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 			for _, model := range strings.Split(ch.GetModels(), ",") {
 				model = strings.TrimSpace(model)
 				if model != "" {
-					if _, exists := modelSet[model]; !exists {
-						modelSet[model] = providerNameFromType(ch.GetType())
+					key := strings.ToLower(model)
+					if _, exists := modelSet[key]; !exists {
+						modelSet[key] = providerNameFromType(ch.GetType())
 					}
 				}
 			}
@@ -527,6 +529,28 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	}))
 	srv.HandlePrefix("/api/channel", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleOneAPIChannels(w, r, svc)
+	}))
+
+	// ── Model management (方案B) ──────────────────────────────────────────
+	srv.HandleFunc("/api/admin/models", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleModels(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/admin/models/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleModels(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/admin/channels/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleAdminChannelPath(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/admin/subscription-accounts/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleAdminSubscriptionAccountPath(w, r, svc)
+	}))
+
+	// ── Model routing (P2 #3) ─────────────────────────────────────────────
+	srv.HandleFunc("/api/admin/model-routings", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleModelRoutings(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/admin/model-routings/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleModelRoutings(w, r, svc)
 	}))
 
 	// Notification endpoints - proxy to notify-worker

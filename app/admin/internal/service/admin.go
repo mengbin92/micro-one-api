@@ -18,9 +18,9 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	adminbiz "micro-one-api/app/admin/internal/biz"
-	applogger "micro-one-api/platform/logging"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	applogger "micro-one-api/platform/logging"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -845,17 +845,18 @@ func (s *AdminService) GetChannel(ctx context.Context, channelID int64) (*common
 
 func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCreateChannelRequest) (*adminv1.AdminCreateChannelResponse, error) {
 	resp, err := s.channelClient.CreateChannel(ctx, &channelv1.CreateChannelRequest{
-		Name:         req.Name,
-		Type:         req.Type,
-		BaseUrl:      req.BaseUrl,
-		Key:          req.Key,
-		Models:       req.Models,
-		Group:        req.Group,
-		Priority:     req.Priority,
-		Config:       req.Config,
-		Weight:       req.Weight,
-		ModelMapping: req.ModelMapping,
-		SystemPrompt: req.SystemPrompt,
+		Name:           req.Name,
+		Type:           req.Type,
+		BaseUrl:        req.BaseUrl,
+		Key:            req.Key,
+		Models:         req.Models,
+		Group:          req.Group,
+		Priority:       req.Priority,
+		Config:         req.Config,
+		Weight:         req.Weight,
+		ModelMapping:   req.ModelMapping,
+		SystemPrompt:   req.SystemPrompt,
+		RestrictModels: req.RestrictModels,
 	})
 	if err != nil {
 		return &adminv1.AdminCreateChannelResponse{Success: false, Message: err.Error()}, nil
@@ -869,17 +870,18 @@ func (s *AdminService) CreateChannel(ctx context.Context, req *adminv1.AdminCrea
 
 func (s *AdminService) UpdateChannel(ctx context.Context, req *adminv1.AdminUpdateChannelRequest) (*adminv1.AdminUpdateChannelResponse, error) {
 	resp, err := s.channelClient.UpdateChannel(ctx, &channelv1.UpdateChannelRequest{
-		ChannelId:    req.ChannelId,
-		Name:         req.Name,
-		BaseUrl:      req.BaseUrl,
-		Key:          req.Key,
-		Models:       req.Models,
-		Group:        req.Group,
-		Priority:     req.Priority,
-		Config:       req.Config,
-		Weight:       req.Weight,
-		ModelMapping: req.ModelMapping,
-		SystemPrompt: req.SystemPrompt,
+		ChannelId:      req.ChannelId,
+		Name:           req.Name,
+		BaseUrl:        req.BaseUrl,
+		Key:            req.Key,
+		Models:         req.Models,
+		Group:          req.Group,
+		Priority:       req.Priority,
+		Config:         req.Config,
+		Weight:         req.Weight,
+		ModelMapping:   req.ModelMapping,
+		SystemPrompt:   req.SystemPrompt,
+		RestrictModels: req.RestrictModels,
 	})
 	if err != nil {
 		return &adminv1.AdminUpdateChannelResponse{Success: false, Message: err.Error()}, nil
@@ -950,6 +952,7 @@ func (s *AdminService) CreateSubscriptionAccount(ctx context.Context, req *admin
 		SessionWindowLimitUsd:  req.SessionWindowLimitUsd,
 		QuotaResetStrategy:     req.QuotaResetStrategy,
 		QuotaTimezone:          req.QuotaTimezone,
+		ModelMapping:           req.ModelMapping,
 	})
 	if err != nil {
 		return &adminv1.AdminCreateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
@@ -992,6 +995,7 @@ func (s *AdminService) UpdateSubscriptionAccount(ctx context.Context, req *admin
 		SessionWindowLimitUsd:  req.SessionWindowLimitUsd,
 		QuotaResetStrategy:     req.QuotaResetStrategy,
 		QuotaTimezone:          req.QuotaTimezone,
+		ModelMapping:           req.ModelMapping,
 	})
 	if err != nil {
 		return &adminv1.AdminUpdateSubscriptionAccountResponse{Success: false, Message: err.Error()}, nil
@@ -2317,6 +2321,12 @@ func channelTypeToString(channelType int32) string {
 		return "CodexOAuth"
 	case relayprovider.ChannelTypeClaudeOAuth:
 		return "ClaudeOAuth"
+	case relayprovider.ChannelTypeZhipuPlan:
+		return "ZhipuPlan"
+	case relayprovider.ChannelTypeMinimaxPlan:
+		return "MinimaxPlan"
+	case relayprovider.ChannelTypeKimiOAuth:
+		return "KimiOAuth"
 	default:
 		return "Unknown"
 	}

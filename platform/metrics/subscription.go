@@ -228,6 +228,18 @@ var SubscriptionAccountRecoveriesTotal = prometheus.NewCounterVec(
 	[]string{"class", "result"},
 )
 
+// SubscriptionQuotaProbeTotal counts coding-plan quota probe results by
+// outcome ("ok" / "error" / "list_error") and platform (zhipu/minimax/kimi).
+var SubscriptionQuotaProbeTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "subscription",
+		Name:      "quota_probe_total",
+		Help:      "Total coding-plan quota probe attempts by outcome and platform",
+	},
+	[]string{"result", "platform"},
+)
+
 // SubscriptionAccountRecoveryScanDuration records the duration of a single
 // account-recovery sweep.
 var SubscriptionAccountRecoveryScanDuration = prometheus.NewHistogram(

@@ -55,11 +55,50 @@ func TestOpenAIWSRoutingSchedulerResolveStoredRoute(t *testing.T) {
 	}
 }
 
+func TestOpenAIWSRoutingSchedulerRouteModels(t *testing.T) {
+	mapper := relaybiz.NewModelMapperForTest(map[string]*relaybiz.ModelEntry{
+		"client-model": {ActualName: "global-model"},
+		"*":            {ActualName: "catch-all"},
+	})
+	sched := &OpenAIWSRoutingScheduler{server: &HTTPServer{
+		relayUsecase: relaybiz.NewRelayUsecase(nil, nil, mapper, nil),
+	}}
+
+	t.Run("stored metadata wins", func(t *testing.T) {
+		global, resolved := sched.routeModels(responseRoute{
+			GlobalModel:   "stored-global",
+			ResolvedModel: "stored-upstream",
+		}, "client-model")
+		if global != "stored-global" || resolved != "stored-upstream" {
+			t.Fatalf("route models = %q/%q, want stored-global/stored-upstream", global, resolved)
+		}
+	})
+
+	t.Run("legacy route rebuilds both mapping stages", func(t *testing.T) {
+		global, resolved := sched.routeModels(responseRoute{
+			Model:   "client-model",
+			Channel: relaybiz.Channel{ModelMapping: `{"global-model":"channel-model"}`},
+		}, "")
+		if global != "global-model" || resolved != "channel-model" {
+			t.Fatalf("route models = %q/%q, want global-model/channel-model", global, resolved)
+		}
+	})
+
+	t.Run("missing model stays empty", func(t *testing.T) {
+		global, resolved := sched.routeModels(responseRoute{
+			Channel: relaybiz.Channel{ModelMapping: `{"*":"channel-catch-all"}`},
+		}, "")
+		if global != "" || resolved != "" {
+			t.Fatalf("route models = %q/%q, want both empty", global, resolved)
+		}
+	})
+}
+
 func TestOpenAIWSRoutingSchedulerRejectsSessionRouteWhenModelNotAllowed(t *testing.T) {
 	ctx := context.Background()
 	store := newOpenAIWSStickyStore(nil)
 	store.BindSessionChannel(ctx, "default", "session-a", 99, openAIWSStickyTTL)
-	planner := &schedulerPlannerStub{plan: &relaybiz.RelayPlan{ResolvedModel: "gpt-4o"}}
+	planner := &schedulerPlannerStub{plan: &relaybiz.RelayPlan{GlobalModel: "gpt-4o", ResolvedModel: "gpt-4o"}}
 	sched := &OpenAIWSRoutingScheduler{
 		server: &HTTPServer{
 			identityClient: rawIdentityClientWithAllowedModels{allowedModels: []string{"gpt-4o"}},
@@ -76,7 +115,7 @@ func TestOpenAIWSRoutingSchedulerRejectsSessionRouteWhenModelNotAllowed(t *testi
 }
 
 func TestOpenAIWSRoutingSchedulerResolvePlanFallsBackToPlanner(t *testing.T) {
-	want := &relaybiz.RelayPlan{ResolvedModel: "gpt-4o"}
+	want := &relaybiz.RelayPlan{GlobalModel: "gpt-4o", ResolvedModel: "gpt-4o"}
 	planner := &schedulerPlannerStub{plan: want}
 	sched := &OpenAIWSRoutingScheduler{
 		server:  &HTTPServer{identityClient: rawIdentityClient{}},
@@ -111,7 +150,7 @@ func TestOpenAIWSRoutingSchedulerResolvePlanUsesSessionRouteBeforePlanner(t *tes
 	ctx := context.Background()
 	store := newOpenAIWSStickyStore(nil)
 	store.BindSessionChannel(ctx, "default", "session-a", 99, openAIWSStickyTTL)
-	planner := &schedulerPlannerStub{plan: &relaybiz.RelayPlan{ResolvedModel: "gpt-4o"}}
+	planner := &schedulerPlannerStub{plan: &relaybiz.RelayPlan{GlobalModel: "gpt-4o", ResolvedModel: "gpt-4o"}}
 	sched := &OpenAIWSRoutingScheduler{
 		server: &HTTPServer{
 			identityClient: rawIdentityClient{},

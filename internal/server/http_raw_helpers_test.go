@@ -95,6 +95,14 @@ func (c rawChannelClient) RecordChannelHealth(ctx context.Context, req *channelv
 	return &channelv1.RecordChannelHealthResponse{Success: true, Message: "ok"}, nil
 }
 
+func (c rawChannelClient) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest, opts ...grpc.CallOption) (*channelv1.RecordModelUsageResponse, error) {
+	return &channelv1.RecordModelUsageResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c rawChannelClient) ListModelUsageStats(ctx context.Context, req *channelv1.ListModelUsageStatsRequest, opts ...grpc.CallOption) (*channelv1.ListModelUsageStatsResponse, error) {
+	return &channelv1.ListModelUsageStatsResponse{Stats: []*channelv1.ModelUsageStat{}, Total: 0}, nil
+}
+
 type rawLogClient struct {
 	logv1.LogServiceClient
 	entries               []*logv1.IngestLogRequest

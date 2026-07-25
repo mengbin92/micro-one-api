@@ -7,18 +7,39 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/channel/internal/biz"
-	"micro-one-api/pkg/errors"
 	relaycredential "micro-one-api/domain/upstream/credential"
+	"micro-one-api/pkg/errors"
 )
 
 // ChannelService is the transport layer entry for channel-service.
 type ChannelService struct {
 	channelv1.UnimplementedChannelServiceServer
-	uc *biz.ChannelUsecase
+	uc        *biz.ChannelUsecase
+	modelUC   *biz.ModelUsecase
+	routingUC *biz.ModelRoutingUsecase
 }
 
 func NewChannelService(uc *biz.ChannelUsecase) *ChannelService {
 	return &ChannelService{uc: uc}
+}
+
+// SetModelUsecase wires the optional model-management usecase (方案B).
+// When nil, model RPCs return empty/error responses so channel-service
+// deployments that have not enabled the model registry keep working.
+func (s *ChannelService) SetModelUsecase(uc *biz.ModelUsecase) {
+	if s == nil {
+		return
+	}
+	s.modelUC = uc
+}
+
+// SetModelRoutingUsecase wires the optional P2 #3 model→account routing
+// usecase. When nil, routing RPCs return empty/error responses.
+func (s *ChannelService) SetModelRoutingUsecase(uc *biz.ModelRoutingUsecase) {
+	if s == nil {
+		return
+	}
+	s.routingUC = uc
 }
 
 func (s *ChannelService) Usecase() *biz.ChannelUsecase {
@@ -141,6 +162,7 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		SessionWindowLimitUsd:  account.SessionWindowLimitUSD,
 		QuotaResetStrategy:     account.EffectiveQuotaResetStrategy(),
 		QuotaTimezone:          account.EffectiveQuotaTimezone(),
+		ModelMapping:           account.ModelMapping,
 	}
 }
 
@@ -195,6 +217,7 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 		RecoveryPolicy:                  info.Policy,
 		ExpectedRecoveryAt:              info.ExpectedRecoveryAt,
 		UnschedulableSince:              info.Since,
+		ModelMapping:                    account.ModelMapping,
 	}
 }
 
@@ -229,6 +252,7 @@ func toChannelInfo(channel *biz.Channel) *commonv1.ChannelInfo {
 		UsedQuota:                         channel.UsedQuota,
 		ModelMapping:                      channel.ModelMapping,
 		SystemPrompt:                      channel.SystemPrompt,
+		RestrictModels:                    channel.RestrictModels,
 		Config: &commonv1.ChannelConfig{
 			ApiVersion:        channel.Config.APIVersion,
 			Region:            channel.Config.Region,
@@ -259,6 +283,7 @@ func toChannelSummary(channel *biz.Channel) *commonv1.ChannelSummary {
 		BalanceUpdatedTime: channel.BalanceUpdatedTime,
 		UsedQuota:          channel.UsedQuota,
 		HealthStatus:       channel.HealthStatus,
+		RestrictModels:     channel.RestrictModels,
 	}
 }
 
@@ -389,6 +414,7 @@ func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *cha
 		SessionWindowLimitUSD:  req.SessionWindowLimitUsd,
 		QuotaResetStrategy:     req.QuotaResetStrategy,
 		QuotaTimezone:          req.QuotaTimezone,
+		ModelMapping:           req.ModelMapping,
 	}
 	if err := s.uc.CreateSubscriptionAccount(ctx, account); err != nil {
 		return &channelv1.CreateSubscriptionAccountResponse{
@@ -494,6 +520,9 @@ func (s *ChannelService) UpdateSubscriptionAccount(ctx context.Context, req *cha
 	}
 	if req.QuotaTimezone != nil {
 		account.QuotaTimezone = req.GetQuotaTimezone()
+	}
+	if req.ModelMapping != nil {
+		account.ModelMapping = req.GetModelMapping()
 	}
 	if err := s.uc.UpdateSubscriptionAccount(ctx, account); err != nil {
 		return &channelv1.UpdateSubscriptionAccountResponse{
@@ -639,18 +668,31 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 		plugin = req.Config.GetPlugin()
 		vertexProjectID = req.Config.GetVertexAiProjectId()
 	}
+	// restrict_models is a proto3 *optional* bool now,
+	// so presence is distinguishable from value. When the caller omits the
+	// field (web frontend, admin create without the toggle), default to true
+	// (legacy restricted behaviour, migration 064 DEFAULT 1, zero-migration
+	// burden). When the caller sets it explicitly — including false to build a
+	// catch-all channel — honour that value verbatim. The earlier heuristic
+	// always forced true even on an explicit false, making catch-all channels
+	// impossible to create (the §11.2 contract).
+	restrictModels := true
+	if req.RestrictModels != nil {
+		restrictModels = *req.RestrictModels
+	}
 	channel := &biz.Channel{
-		Type:         req.Type,
-		Name:         req.Name,
-		BaseURL:      req.BaseUrl,
-		Key:          req.Key,
-		Models:       biz.SplitCSV(req.Models),
-		Group:        req.Group,
-		Priority:     req.Priority,
-		Status:       biz.ChannelStatusEnabled,
-		Weight:       req.Weight,
-		ModelMapping: req.ModelMapping,
-		SystemPrompt: req.SystemPrompt,
+		Type:           req.Type,
+		Name:           req.Name,
+		BaseURL:        req.BaseUrl,
+		Key:            req.Key,
+		Models:         biz.SplitCSV(req.Models),
+		Group:          req.Group,
+		Priority:       req.Priority,
+		Status:         biz.ChannelStatusEnabled,
+		Weight:         req.Weight,
+		ModelMapping:   req.ModelMapping,
+		SystemPrompt:   req.SystemPrompt,
+		RestrictModels: restrictModels,
 		Config: biz.ChannelConfig{
 			APIVersion:        apiVersion,
 			Region:            region,
@@ -703,6 +745,16 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 	}
 	if req.ModelMapping != "" {
 		channel.ModelMapping = req.ModelMapping
+	}
+	// restrict_models is a proto3 *optional* bool. Only apply
+	// it when the caller explicitly set the field — balance-refresh
+	// (admin.go persistBalanceRefreshSuccess/Failure), health updates and
+	// other partial updates omit it; the prior unconditional assignment +
+	// the 064-restrict_models=1 update map silently flipped restricted
+	// channels to catch-all (restrict_models=0). When unset, the existing
+	// channel.RestrictModels value is preserved.
+	if req.RestrictModels != nil {
+		channel.RestrictModels = *req.RestrictModels
 	}
 	if req.SystemPrompt != "" {
 		channel.SystemPrompt = req.SystemPrompt
@@ -767,6 +819,14 @@ func (s *ChannelService) RecordChannelHealth(ctx context.Context, req *channelv1
 		Success: true,
 		Message: "ok",
 	}, nil
+}
+
+func (s *ChannelService) RecordSubscriptionAccountHealth(_ context.Context, req *channelv1.RecordSubscriptionAccountHealthRequest) (*channelv1.RecordSubscriptionAccountHealthResponse, error) {
+	if req.GetAccountId() <= 0 {
+		return &channelv1.RecordSubscriptionAccountHealthResponse{Success: false, Message: "account_id is required"}, nil
+	}
+	s.uc.RecordSubscriptionAccountHealth(req.GetAccountId(), req.GetSuccess())
+	return &channelv1.RecordSubscriptionAccountHealthResponse{Success: true, Message: "ok"}, nil
 }
 
 func (s *ChannelService) DeleteChannel(ctx context.Context, req *channelv1.DeleteChannelRequest) (*channelv1.DeleteChannelResponse, error) {

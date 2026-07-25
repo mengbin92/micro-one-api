@@ -125,7 +125,7 @@ func (a *CodexOAuthAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayC
 			ID:       rc.Account.ID,
 			Platform: identity.PlatformCodex,
 			Snapshot: identity.FingerprintSnapshot(rc.Account.Fingerprint),
-			IsOAuth:  rc.Account.AccountType == "oauth",
+			IsOAuth:  identity.IsMimickableAccountType(rc.Account.AccountType),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("codex_oauth: resolve fingerprint: %w", err)
@@ -153,7 +153,7 @@ func (a *CodexOAuthAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayC
 	// official codex_cli_rs client.
 	req.Header.Set("originator", "codex_cli_rs")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	mimic := identity.ShouldMimic(identity.PlatformCodex, rc.Account.AccountType == "oauth", rc.InboundHeader)
+	mimic := identity.ShouldMimic(identity.PlatformCodex, identity.IsMimickableAccountType(rc.Account.AccountType), rc.InboundHeader)
 	if mimic {
 		applyCodexFingerprintHeaders(req.Header, fp)
 	} else if rc.InboundHeader != nil {

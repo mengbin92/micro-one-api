@@ -8,6 +8,7 @@ import (
 
 type responseRoute struct {
 	Model                 string
+	GlobalModel           string
 	ResolvedModel         string
 	Channel               relaybiz.Channel
 	UserID                int64

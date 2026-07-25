@@ -16,6 +16,7 @@ import { OAuthBindDialog } from '@/pages/admin/OAuthBindDialog';
 import { buildAdminListParams } from '@/lib/admin-table-query';
 import { ensureApiSuccess } from '@/lib/api-response';
 import { sortRows, type SortState } from '@/lib/table-utils';
+import { cn } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -32,58 +33,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-
-// Mirrors common.v1.SubscriptionAccountSummary JSON tags returned by
-// GET /api/subscription-accounts (alias of /v1/subscription-accounts).
-interface SubscriptionAccountSummary {
-  id: number;
-  name: string;
-  platform: string;
-  accountType: string;
-  status: number;
-  group: string;
-  models: string;
-  priority: number;
-  accountId: string;
-  expiresAt: number;
-  updatedAt: number;
-  lastUsedAt?: number;
-  rateLimitedUntil?: number;
-  quotaUsedPercent?: number;
-  quotaResetAt?: number;
-  primaryQuotaUsedPercent?: number | null;
-  primaryQuotaResetAfterSeconds?: number | null;
-  primaryQuotaWindowMinutes?: number | null;
-  secondaryQuotaUsedPercent?: number | null;
-  secondaryQuotaResetAfterSeconds?: number | null;
-  secondaryQuotaWindowMinutes?: number | null;
-  primaryOverSecondaryPercent?: number | null;
-  quotaSnapshotUpdatedAt?: number;
-  quotaSnapshotPaused?: boolean;
-  quotaLimitUsd?: number;
-  quotaUsedUsd?: number;
-  quota5hLimitUsd?: number;
-  quota5hUsedUsd?: number;
-  quota5hWindowStart?: number;
-  quota_5h_limit_usd?: number;
-  quota_5h_used_usd?: number;
-  quota_5h_window_start?: number;
-  quotaDailyLimitUsd?: number;
-  quotaDailyUsedUsd?: number;
-  quotaDailyWindowStart?: number;
-  quotaWeeklyLimitUsd?: number;
-  quotaWeeklyUsedUsd?: number;
-  quotaWeeklyWindowStart?: number;
-  rateMultiplier?: number;
-  rpmLimit?: number;
-  rpm_limit?: number;
-  sessionWindowLimitUsd?: number;
-  session_window_limit_usd?: number;
-  quotaResetStrategy?: string;
-  quota_reset_strategy?: string;
-  quotaTimezone?: string;
-  quota_timezone?: string;
-}
+import { ModelMultiSelect } from '@/components/admin/ModelMultiSelect';
+import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
+import {
+  normalizeSubscriptionAccount,
+  type RawSubscriptionAccount,
+  type SubscriptionAccountSummary,
+} from '@/lib/subscription-account';
 
 // Mirrors common.v1.SubscriptionAccountInfo JSON tags returned by
 // GET /api/subscription-accounts/{id}. The protobuf-generated JSON uses
@@ -225,15 +181,26 @@ interface BatchQuotaTemplateForm {
 }
 
 // Subscription account platforms supported by the hybrid relay adaptor layer
-// (internal/relay/identity + internal/relay/credential). Keep in sync with
-// PlatformCodex / PlatformClaude.
+// (internal/identity + domain/upstream/credential). Keep in sync with the
+// PlatformXxx constants. Claude/Codex are OAuth; Zhipu/MiniMax use a static
+// Coding-Plan key; Kimi uses OAuth refresh. See
+// docs/design/cn-subscription-accounts-roadmap.md.
 const PLATFORM_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'claude', label: 'Claude (Claude Code OAuth)' },
   { value: 'codex', label: 'Codex (ChatGPT OAuth)' },
+  { value: 'zhipu', label: 'Zhipu GLM (Coding Plan, 静态 Key)' },
+  { value: 'minimax', label: 'MiniMax (Coding Plan, 静态 Key)' },
+  { value: 'kimi', label: 'Kimi (Kimi For Coding, 静态 Key)' },
 ];
+
+// STATIC_KEY_PLATFORMS are platforms whose Coding Plan authenticates with a
+// long-lived API key (no refresh token). Their Create form requires only an
+// access_token; expires_at is left at 0 (semantic "never expires").
+const STATIC_KEY_PLATFORMS = new Set(['zhipu', 'minimax', 'kimi']);
 
 const ACCOUNT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'oauth', label: 'OAuth 订阅账号' },
+  { value: 'static_key', label: '静态 Key 订阅账号 (GLM/MiniMax/Kimi Coding Plan)' },
 ];
 
 const QUOTA_RESET_STRATEGY_OPTIONS: Array<{ value: string; label: string }> = [
@@ -245,17 +212,7 @@ function platformLabel(platform: string) {
   return PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform;
 }
 
-function statusBadgeClass(status: number) {
-  return status === 1
-    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-}
-
-function statusLabel(status: number) {
-  return status === 1 ? 'Active' : 'Disabled';
-}
-
-function formatTimestamp(unix: number) {
+function formatTimestamp(unix?: number) {
   if (!unix) return '—';
   return new Date(unix * 1000).toLocaleString();
 }
@@ -315,8 +272,8 @@ function optionalNumberInput(value: string) {
 }
 
 function localQuotaRows(account: SubscriptionAccountSummary) {
-  const quota5hUsedUsd = account.quota5hUsedUsd ?? account.quota_5h_used_usd;
-  const quota5hLimitUsd = account.quota5hLimitUsd ?? account.quota_5h_limit_usd;
+  const quota5hUsedUsd = account.quota5hUsedUsd;
+  const quota5hLimitUsd = account.quota5hLimitUsd;
   return [
     { label: '总额', used: account.quotaUsedUsd, limit: account.quotaLimitUsd },
     { label: '5h', used: quota5hUsedUsd, limit: quota5hLimitUsd },
@@ -366,26 +323,29 @@ function quotaWindows(account: SubscriptionAccountSummary) {
   ].filter((item) => item.usedPercent != null || item.resetAfter != null);
 
   if (windows.length > 0) return windows;
-  if (account.quotaUsedPercent != null || account.quotaResetAt) {
+  const usedPercent = account.quotaUsedPercent;
+  const resetAt = account.quotaResetAt;
+  if (usedPercent != null || resetAt) {
     return [
       {
         key: 'quota',
         label: '配额',
-        usedPercent: account.quotaUsedPercent,
-        resetAfter: resetAfterFromUnix(account.quotaResetAt),
+        usedPercent,
+        resetAfter: resetAfterFromUnix(resetAt),
       },
     ];
   }
   return [];
 }
 
-function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
+function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary; now: number }) {
   const windows = quotaWindows(account);
   const localRows = localQuotaRows(account);
-  const rpmLimit = account.rpmLimit ?? account.rpm_limit ?? 0;
-  const sessionWindowLimitUsd = account.sessionWindowLimitUsd ?? account.session_window_limit_usd ?? 0;
-  const resetStrategy = normalizeQuotaResetStrategy(account.quotaResetStrategy ?? account.quota_reset_strategy);
-  const quotaTimezone = normalizeQuotaTimezone(account.quotaTimezone ?? account.quota_timezone);
+  const rpmLimit = account.rpmLimit ?? 0;
+  const sessionWindowLimitUsd = account.sessionWindowLimitUsd ?? 0;
+  const resetStrategy = normalizeQuotaResetStrategy(account.quotaResetStrategy);
+  const quotaTimezone = normalizeQuotaTimezone(account.quotaTimezone);
+  const snapshotPaused = account.quotaSnapshotPaused;
   if (windows.length === 0 && localRows.length === 0 && rpmLimit <= 0 && sessionWindowLimitUsd <= 0 && resetStrategy !== 'fixed') {
     return <span className="text-sm text-muted-foreground">—</span>;
   }
@@ -394,7 +354,9 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
       {localRows.map((row) => {
         const used = Number(row.used ?? 0);
         const limit = Number(row.limit ?? 0);
-        const barWidth = limit > 0 ? Math.max(0, Math.min(100, (used / limit) * 100)) : 0;
+        const ratio = limit > 0 ? used / limit : 0;
+        const barWidth = limit > 0 ? Math.max(0, Math.min(100, ratio * 100)) : 0;
+        const barColor = ratio >= 1 ? 'bg-red-500' : ratio >= 0.8 ? 'bg-amber-500' : 'bg-emerald-500';
         return (
           <div key={row.label} className="space-y-0.5">
             <div className="flex items-center justify-between gap-2 text-xs">
@@ -406,7 +368,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
             </div>
             {limit > 0 && (
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-emerald-600" style={{ width: `${barWidth}%` }} />
+                <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${barWidth}%` }} />
               </div>
             )}
           </div>
@@ -415,6 +377,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
       {windows.map((window) => {
         const usedPercent = window.usedPercent ?? 0;
         const barWidth = Math.max(0, Math.min(100, usedPercent));
+        const barColor = usedPercent >= 100 ? 'bg-red-500' : usedPercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
         const resetAfter = formatResetAfter(window.resetAfter);
         return (
           <div key={window.key} className="space-y-0.5">
@@ -424,7 +387,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-blue-600"
+                className={cn('h-full rounded-full transition-all', barColor)}
                 style={{ width: `${barWidth}%` }}
               />
             </div>
@@ -432,7 +395,7 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
           </div>
         );
       })}
-      {account.quotaSnapshotPaused && (
+      {snapshotPaused && (
         <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
           已因限额暂停
         </span>
@@ -452,6 +415,20 @@ function QuotaStatusCell({ account }: { account: SubscriptionAccountSummary }) {
           固定周期 {quotaTimezone}
         </span>
       )}
+      {(() => {
+        const reason = account.unschedulableReason;
+        const since = account.unschedulableSince;
+        if (!reason || !since || since <= 0) return null;
+        const recoveryAt = account.expectedRecoveryAt ?? 0;
+        const recoveryLabel = recoveryAt > 0 ? formatResetAfter(Math.max(0, recoveryAt - now)) : '未知';
+        return (
+          <div className="flex items-center gap-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+            <span className="truncate max-w-[160px]" title={reason}>{reason}</span>
+            <span className="text-amber-600 dark:text-amber-400">·</span>
+            <span>{recoveryLabel}</span>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -535,7 +512,7 @@ export function AdminSubscriptionAccountsPage() {
   const platformFilter = filters.platform ?? '';
   const quotaFilter = filters.quota ?? '';
 
-  const { data: accounts, isLoading } = useQuery({
+  const { data: accounts, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ['admin-subscription-accounts', page, pageSize, search, statusFilter, platformFilter, sortKey, sortDirection],
     queryFn: async () => {
       const params = buildAdminListParams({
@@ -547,8 +524,8 @@ export function AdminSubscriptionAccountsPage() {
         filters: { status: statusFilter, platform: platformFilter },
       });
       const res = await adminApiClient.get(`/subscription-accounts?${params}`);
-      const payload = res.data as { accounts?: SubscriptionAccountSummary[]; total?: number };
-      return payload.accounts ?? [];
+      const payload = res.data as { accounts?: RawSubscriptionAccount[]; total?: number };
+      return (payload.accounts ?? []).map(normalizeSubscriptionAccount);
     },
   });
 
@@ -683,6 +660,10 @@ export function AdminSubscriptionAccountsPage() {
       toast.error('加载订阅账号详情失败');
     }
   };
+
+  // Render clock: driven by the query's fetch time so render stays pure
+  // (no Date.now() during render) and countdowns reflect data freshness.
+  const nowUnix = dataUpdatedAt ? Math.floor(dataUpdatedAt / 1000) : 0;
 
   const visibleAccounts = useMemo(() => {
     return sortRows((accounts ?? []).filter((account) => matchesLocalQuotaFilter(account, quotaFilter)), sort);
@@ -915,19 +896,40 @@ export function AdminSubscriptionAccountsPage() {
                     </TableCell>
                     <TableCell className="font-mono text-sm">{account.id}</TableCell>
                     <TableCell className="font-medium">{account.name}</TableCell>
-                    <TableCell>{platformLabel(account.platform)}</TableCell>
+                    <TableCell>{platformLabel(account.platform ?? '')}</TableCell>
                     <TableCell>{account.group}</TableCell>
                     <TableCell className="hidden lg:table-cell">{account.priority ?? 0}</TableCell>
                     <TableCell className="hidden xl:table-cell">{formatTimestamp(account.expiresAt)}</TableCell>
                     <TableCell>
-                      <span
-                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusBadgeClass(account.status)}`}
-                      >
-                        {statusLabel(account.status)}
-                      </span>
+                      <AccountStatusBadge
+                        info={{
+                          status: account.status,
+                          expiresAt: account.expiresAt,
+                          rateLimitedUntil: account.rateLimitedUntil,
+                          quotaUsedPercent: account.quotaUsedPercent,
+                          primaryQuotaUsedPercent: account.primaryQuotaUsedPercent,
+                          secondaryQuotaUsedPercent: account.secondaryQuotaUsedPercent,
+                          quotaSnapshotPaused: account.quotaSnapshotPaused,
+                          quotaLimitUsd: account.quotaLimitUsd,
+                          quotaUsedUsd: account.quotaUsedUsd,
+                          quota5hLimitUsd: account.quota5hLimitUsd,
+                          quota5hUsedUsd: account.quota5hUsedUsd,
+                          quota5hWindowStart: account.quota5hWindowStart,
+                          quotaDailyLimitUsd: account.quotaDailyLimitUsd,
+                          quotaDailyUsedUsd: account.quotaDailyUsedUsd,
+                          quotaDailyWindowStart: account.quotaDailyWindowStart,
+                          quotaWeeklyLimitUsd: account.quotaWeeklyLimitUsd,
+                          quotaWeeklyUsedUsd: account.quotaWeeklyUsedUsd,
+                          quotaWeeklyWindowStart: account.quotaWeeklyWindowStart,
+                          unschedulableReason: account.unschedulableReason,
+                          recoveryPolicy: account.recoveryPolicy,
+                          expectedRecoveryAt: account.expectedRecoveryAt,
+                          unschedulableSince: account.unschedulableSince,
+                        }}
+                      />
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      <QuotaStatusCell account={account} />
+                      <QuotaStatusCell account={account} now={nowUnix} />
                     </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="sm" onClick={() => openEdit(account)}>
@@ -1102,15 +1104,26 @@ const emptyCreateState = {
 function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAccountDialogProps) {
   const [form, setForm] = useState({ ...emptyCreateState });
 
+  // When a static-key platform is selected, default account_type to
+  // static_key (it marks the credential shape as a Coding-Plan key rather
+  // than an OAuth refresh pair; GLM/MiniMax still get mimicry like Claude)
+  // and clear the refresh-token requirement.
+  const isStaticKey = STATIC_KEY_PLATFORMS.has(form.platform);
+
   const handleSubmit = () => {
-    if (!form.name.trim() || !form.accessToken.trim() || !form.refreshToken.trim()) {
-      toast.error('名称、access_token、refresh_token 为必填项');
+    if (!form.name.trim() || !form.accessToken.trim()) {
+      toast.error('名称、access_token 为必填项');
       return;
     }
+    if (!isStaticKey && !form.refreshToken.trim()) {
+      toast.error('OAuth 平台需要 refresh_token');
+      return;
+    }
+    const accountType = isStaticKey && form.accountType === 'oauth' ? 'static_key' : form.accountType;
     onSubmit({
       name: form.name.trim(),
       platform: form.platform,
-      account_type: form.accountType,
+      account_type: accountType,
       group: form.group.trim(),
       models: form.models.trim(),
       priority: parseInt(form.priority || '0', 10),
@@ -1144,11 +1157,11 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
         <KeyRound className="size-4" />
         新建订阅账号
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>新建订阅账号</DialogTitle>
           <DialogDescription>
-            添加 Claude / Codex OAuth 订阅账号，用于混合中继的身份伪装与协议转换。
+            添加订阅账号（Claude / Codex / 智谱 GLM / MiniMax / Kimi），用于混合中继的身份伪装与协议转换。GLM/MiniMax/Kimi 填静态 Key 即可，Claude/Codex 走 OAuth。
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 pt-2 sm:grid-cols-2">
@@ -1166,7 +1179,16 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             <select
               id="sub-platform"
               value={form.platform}
-              onChange={(e) => setForm({ ...form, platform: e.target.value })}
+              onChange={(e) => {
+                const next = e.target.value;
+                const patch: { platform: string; accountType?: string } = { platform: next };
+                if (STATIC_KEY_PLATFORMS.has(next)) {
+                  patch.accountType = 'static_key';
+                } else if (next === 'claude' || next === 'codex') {
+                  patch.accountType = 'oauth';
+                }
+                setForm({ ...form, ...patch });
+              }}
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
             >
               {PLATFORM_OPTIONS.map((option) => (
@@ -1200,12 +1222,10 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-models">模型（逗号分隔）</Label>
-            <Input
-              id="sub-models"
+            <Label htmlFor="sub-models">模型</Label>
+            <ModelMultiSelect
               value={form.models}
-              onChange={(e) => setForm({ ...form, models: e.target.value })}
-              placeholder="claude-sonnet-4-5,claude-opus-4-1"
+              onChange={(csv) => setForm({ ...form, models: csv })}
             />
           </div>
           <div className="space-y-2">
@@ -1337,22 +1357,28 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-access-token">Access Token</Label>
+            <Label htmlFor="sub-access-token">
+              {isStaticKey ? 'Coding Plan Key（即 Access Token）' : 'Access Token'}
+            </Label>
             <Input
               id="sub-access-token"
               type="password"
               value={form.accessToken}
               onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
-              placeholder="sk-ant-..."
+              placeholder={isStaticKey ? 'GLM/MiniMax Coding Plan Key' : 'sk-ant-...'}
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-refresh-token">Refresh Token</Label>
+            <Label htmlFor="sub-refresh-token">
+              Refresh Token{isStaticKey ? '（静态 Key 平台无需填写）' : ''}
+            </Label>
             <Input
               id="sub-refresh-token"
               type="password"
               value={form.refreshToken}
               onChange={(e) => setForm({ ...form, refreshToken: e.target.value })}
+              placeholder={isStaticKey ? 'GLM/MiniMax 留空' : 'sk-ant-oat-...'}
+              disabled={isStaticKey}
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
@@ -1428,11 +1454,10 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-models">模型（逗号分隔）</Label>
-              <Input
-                id="edit-sub-models"
+              <Label htmlFor="edit-sub-models">模型</Label>
+              <ModelMultiSelect
                 value={draft.models}
-                onChange={(e) => onDraftChange({ ...draft, models: e.target.value })}
+                onChange={(csv) => onDraftChange({ ...draft, models: csv })}
               />
             </div>
             <div className="space-y-2">

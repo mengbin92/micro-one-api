@@ -54,6 +54,25 @@ Each consumer independently constructs its own
 own config's `Data.Database` settings. The `Repository` value is then wired
 into `biz.NewSubscriptionUsecase`, `NewGroupUsecase`, `NewPlanUsecase`, etc.
 
+## Subscription-account platforms
+
+The subscription-*account* layer (distinct from user subscriptions) lives in
+`domain/upstream/credential` + `internal/identity` + `internal/adaptor`.
+It supports the following platforms, each with its own credential shape:
+
+| Platform | Credential shape              | Channel type | Upstream API           |
+|----------|-------------------------------|--------------|------------------------|
+| claude   | OAuth (refresh)              | 33           | Anthropic Messages     |
+| codex    | OAuth (refresh)              | 32           | OpenAI Responses       |
+| zhipu    | static Coding Plan key       | 34           | Anthropic-compatible   |
+| minimax  | static Coding Plan key       | 35           | Anthropic-compatible   |
+| kimi     | OAuth (refresh, Kimi CLI)    | 36           | Anthropic-compatible   |
+
+GLM/MiniMax/Kimi upstreams all expose Anthropic-compatible Messages endpoints,
+so they reuse the `ClaudeOAuthAdaptor` request construction; only the
+`BaseURL` (set on the channel) and the token provider differ. See
+`docs/design/cn-subscription-accounts-roadmap.md` for the full plan.
+
 ## Data ownership & migrations
 
 ### Schema owner

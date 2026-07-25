@@ -56,31 +56,46 @@ const (
 	ReasonModelNotMapped    = "MODEL_NOT_MAPPED"
 	ReasonUpstreamTimeout   = "UPSTREAM_TIMEOUT"
 	ReasonUpstreamRateLimit = "UPSTREAM_RATE_LIMIT"
+
+	// Model management domain (方案B independent model registry)
+	ReasonModelNotFound        = "MODEL_NOT_FOUND"
+	ReasonModelIDExists        = "MODEL_ID_ALREADY_EXISTS"
+	ReasonModelAliasExists     = "MODEL_ALIAS_ALREADY_EXISTS"
+	ReasonModelAliasNotFound   = "MODEL_ALIAS_NOT_FOUND"
+	ReasonModelMappingNotFound = "MODEL_MAPPING_NOT_FOUND"
+	ReasonInvalidBatchAction   = "INVALID_BATCH_ACTION"
+
+	// Channel routing dead-ends. Distinct from CHANNEL_NOT_FOUND so
+	// operators can tell "no upstream serves this model at all" (404) from
+	// "upstreams serve it but all are saturated/circuit-opened/quota-blocked"
+	// (503). Previously both surfaced as plain NotFound, which made DB vs
+	// memory behaviour look inconsistent and hid operator-actionable state.
+	ReasonRouteDeadEnd = "ROUTE_DEAD_END"
 )
 
 // HTTPStatusCode defines the mapping from error reasons to HTTP status codes
 var HTTPStatusCode = map[string]int{
-	ReasonUnknown:          500,
-	ReasonUnauthorized:    401,
-	ReasonChannelNotFound:  503,
-	ReasonQuotaNotEnough:   429,
-	ReasonInvalidRequest:  400,
-	ReasonModelForbidden:   403,
-	ReasonUserDisabled:     403,
-	ReasonServiceUnavailable: 503,
-	ReasonBadGateway:       502,
-	ReasonTokenDisabled:    401,
-	ReasonTokenExpired:     401,
-	ReasonTokenExhausted:    401,
-	ReasonTokenNotFound:    401,
-	ReasonUserNotFound:       404,
-	ReasonConfigNotFound:     404,
-	ReasonConfigExists:       409,
-	ReasonInvalidKey:         400,
-	ReasonLogNotFound:        404,
-	ReasonHealthCheckNotFound: 404,
-	ReasonAlertRuleNotFound:  404,
-	ReasonInvalidAlertRule:   400,
+	ReasonUnknown:              500,
+	ReasonUnauthorized:         401,
+	ReasonChannelNotFound:      503,
+	ReasonQuotaNotEnough:       429,
+	ReasonInvalidRequest:       400,
+	ReasonModelForbidden:       403,
+	ReasonUserDisabled:         403,
+	ReasonServiceUnavailable:   503,
+	ReasonBadGateway:           502,
+	ReasonTokenDisabled:        401,
+	ReasonTokenExpired:         401,
+	ReasonTokenExhausted:       401,
+	ReasonTokenNotFound:        401,
+	ReasonUserNotFound:         404,
+	ReasonConfigNotFound:       404,
+	ReasonConfigExists:         409,
+	ReasonInvalidKey:           400,
+	ReasonLogNotFound:          404,
+	ReasonHealthCheckNotFound:  404,
+	ReasonAlertRuleNotFound:    404,
+	ReasonInvalidAlertRule:     400,
 	ReasonNotificationNotFound: 404,
 	ReasonInvalidNotification:  400,
 
@@ -101,6 +116,15 @@ var HTTPStatusCode = map[string]int{
 	ReasonModelNotMapped:    400,
 	ReasonUpstreamTimeout:   504,
 	ReasonUpstreamRateLimit: 429,
+	ReasonRouteDeadEnd:      503,
+
+	// Model management
+	ReasonModelNotFound:        404,
+	ReasonModelIDExists:        409,
+	ReasonModelAliasExists:     409,
+	ReasonModelAliasNotFound:   404,
+	ReasonModelMappingNotFound: 404,
+	ReasonInvalidBatchAction:   400,
 }
 
 // GetHTTPStatusCode returns the HTTP status code for a given error reason
@@ -188,6 +212,28 @@ func MapChannelError(err error) error {
 	switch {
 	case errorMsg == "channel not found":
 		return &Error{Reason: ReasonChannelNotFound, Message: "no available channel"}
+	case strings.Contains(errorMsg, "circuit-opened") || strings.Contains(errorMsg, "saturated"):
+		// routing dead-end — all candidates tripped their circuit
+		// breaker or hit saturation. Surface 503 ROUTE_DEAD_END so callers
+		// can retry after the circuit window instead of treating it as a
+		// permanent 404 not-found.
+		return &Error{Reason: ReasonRouteDeadEnd, Message: errorMsg}
+	case strings.Contains(errorMsg, "none are schedulable"):
+		// routing matched and pinned accounts but none were
+		// schedulable (disabled/unschedulable/runtime-blocked).
+		return &Error{Reason: ReasonRouteDeadEnd, Message: errorMsg}
+	case errorMsg == "model not found":
+		return &Error{Reason: ReasonModelNotFound, Message: "model not found"}
+	case errorMsg == "model_id already exists":
+		return &Error{Reason: ReasonModelIDExists, Message: "model_id already exists"}
+	case errorMsg == "model alias already exists":
+		return &Error{Reason: ReasonModelAliasExists, Message: "model alias already exists"}
+	case errorMsg == "model alias not found":
+		return &Error{Reason: ReasonModelAliasNotFound, Message: "model alias not found"}
+	case errorMsg == "model mapping not found":
+		return &Error{Reason: ReasonModelMappingNotFound, Message: "model mapping not found"}
+	case errorMsg == "invalid batch action":
+		return &Error{Reason: ReasonInvalidBatchAction, Message: "invalid batch action"}
 	default:
 		return &Error{Reason: ReasonUnknown, Message: err.Error()}
 	}
@@ -218,7 +264,7 @@ func IsServiceUnavailable(err error) bool {
 	if !errors.As(err, &e) {
 		return false
 	}
-	return e.Reason == ReasonServiceUnavailable || e.Reason == ReasonChannelNotFound
+	return e.Reason == ReasonServiceUnavailable || e.Reason == ReasonChannelNotFound || e.Reason == ReasonRouteDeadEnd
 }
 
 // MapConfigError maps config biz errors to structured errors

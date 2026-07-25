@@ -253,3 +253,130 @@ func TestModelMapper_Reload_RejectsInvalid(t *testing.T) {
 		t.Fatalf("after failed reload, snapshot should be unchanged: got %q, want upstream", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// P1 (#4) — wildcard model mapping keys.
+// ---------------------------------------------------------------------------
+
+func TestModelMapper_Resolve_WildcardPattern(t *testing.T) {
+	m := NewModelMapperForTest(map[string]*ModelEntry{
+		"claude-*": {ActualName: "claude-upstream", Capabilities: []string{"vision"}},
+		"gpt-4o":   {ActualName: "gpt-4o-2024-08-06"},
+	})
+	if got := m.Resolve("claude-sonnet-4"); got != "claude-upstream" {
+		t.Errorf("Resolve(claude-sonnet-4) = %s, want claude-upstream", got)
+	}
+	if got := m.Resolve("claude-3-5-sonnet-20241022"); got != "claude-upstream" {
+		t.Errorf("Resolve(claude-3-5-sonnet-20241022) = %s, want claude-upstream", got)
+	}
+	// Non-matching wildcard key does not apply.
+	if got := m.Resolve("gpt-5"); got != "gpt-5" {
+		t.Errorf("Resolve(gpt-5) = %s, want passthrough gpt-5", got)
+	}
+	// Exact match still works.
+	if got := m.Resolve("gpt-4o"); got != "gpt-4o-2024-08-06" {
+		t.Errorf("Resolve(gpt-4o) = %s, want gpt-4o-2024-08-06", got)
+	}
+}
+
+func TestModelMapper_Resolve_CatchAll(t *testing.T) {
+	m := NewModelMapperForTest(map[string]*ModelEntry{
+		"claude-*": {ActualName: "claude-family"},
+		"*":        {ActualName: "default-upstream"},
+	})
+	// Specific wildcard wins over catch-all.
+	if got := m.Resolve("claude-sonnet-4"); got != "claude-family" {
+		t.Errorf("Resolve(claude-sonnet-4) = %s, want claude-family", got)
+	}
+	// Catch-all applies to everything else.
+	if got := m.Resolve("gpt-4o"); got != "default-upstream" {
+		t.Errorf("Resolve(gpt-4o) = %s, want default-upstream", got)
+	}
+	if got := m.Resolve("random-model"); got != "default-upstream" {
+		t.Errorf("Resolve(random-model) = %s, want default-upstream", got)
+	}
+}
+
+func TestModelMapper_Resolve_ExactBeatsWildcard(t *testing.T) {
+	m := NewModelMapperForTest(map[string]*ModelEntry{
+		"claude-*":        {ActualName: "claude-family"},
+		"claude-sonnet-4": {ActualName: "claude-sonnet-4-exact"},
+	})
+	if got := m.Resolve("claude-sonnet-4"); got != "claude-sonnet-4-exact" {
+		t.Errorf("exact must win: Resolve(claude-sonnet-4) = %s, want claude-sonnet-4-exact", got)
+	}
+	if got := m.Resolve("claude-opus-4"); got != "claude-family" {
+		t.Errorf("Resolve(claude-opus-4) = %s, want claude-family", got)
+	}
+}
+
+func TestModelMapper_HasCapability_Wildcard(t *testing.T) {
+	m := NewModelMapperForTest(map[string]*ModelEntry{
+		"claude-*": {ActualName: "claude-upstream", Capabilities: []string{"vision", "streaming"}},
+	})
+	if !m.HasCapability("claude-sonnet-4", "vision") {
+		t.Error("expected claude-sonnet-4 to inherit vision from claude-*")
+	}
+	if m.HasCapability("claude-sonnet-4", "embedding") {
+		t.Error("claude-* has no embedding; should be false")
+	}
+	if m.HasCapability("gpt-4o", "vision") {
+		t.Error("gpt-4o should not match claude-* capability")
+	}
+}
+
+func TestModelMapper_GetEntry_Wildcard(t *testing.T) {
+	m := NewModelMapperForTest(map[string]*ModelEntry{
+		"*": {ActualName: "catchall", Capabilities: []string{"streaming"}},
+	})
+	e := m.GetEntry("anything-at-all")
+	if e == nil {
+		t.Fatal("expected catch-all entry")
+	}
+	if e.ActualName != "catchall" {
+		t.Errorf("ActualName = %s, want catchall", e.ActualName)
+	}
+}
+
+// TestModelMapper_Resolve_MostSpecificWildcard (🟡#3): when both "claude-*"
+// and "claude-sonnet-*" match "claude-sonnet-4", the more specific one wins,
+// deterministically — not whichever Go map iteration happens to return first.
+func TestModelMapper_Resolve_MostSpecificWildcard(t *testing.T) {
+	m := NewModelMapperForTest(map[string]*ModelEntry{
+		"claude-*":        {ActualName: "claude-family"},
+		"claude-sonnet-*": {ActualName: "claude-sonnet-family"},
+	})
+	for i := 0; i < 16; i++ { // repeat to catch map-iteration nondeterminism
+		if got := m.Resolve("claude-sonnet-4"); got != "claude-sonnet-family" {
+			t.Fatalf("iter %d: Resolve(claude-sonnet-4) = %s, want claude-sonnet-family", i, got)
+		}
+		if got := m.Resolve("claude-opus-4"); got != "claude-family" {
+			t.Fatalf("iter %d: Resolve(claude-opus-4) = %s, want claude-family", i, got)
+		}
+	}
+}
+
+// TestModelMapper_GetEntry_MostSpecificWildcard: GetEntry follows the same
+// most-specific-wins rule as Resolve.
+func TestModelMapper_GetEntry_MostSpecificWildcard(t *testing.T) {
+	m := NewModelMapperForTest(map[string]*ModelEntry{
+		"claude-*":        {ActualName: "claude-family", Capabilities: []string{"streaming"}},
+		"claude-sonnet-*": {ActualName: "claude-sonnet-family", Capabilities: []string{"vision"}},
+	})
+	for i := 0; i < 16; i++ {
+		e := m.GetEntry("claude-sonnet-4")
+		if e == nil || e.ActualName != "claude-sonnet-family" {
+			t.Fatalf("iter %d: GetEntry should pick claude-sonnet-family, got %v", i, e)
+		}
+		// Most-specific entry has vision but NOT streaming; the broad
+		// claude-* has streaming. HasCapability must reflect the picked
+		// entry (vision=true, streaming=false), proving the OR-walk bug 🟡#3
+		// is fixed.
+		if !m.HasCapability("claude-sonnet-4", "vision") {
+			t.Fatalf("iter %d: vision should be true (from most-specific)", i)
+		}
+		if m.HasCapability("claude-sonnet-4", "streaming") {
+			t.Fatalf("iter %d: streaming should be false (broad pattern, not picked)", i)
+		}
+	}
+}

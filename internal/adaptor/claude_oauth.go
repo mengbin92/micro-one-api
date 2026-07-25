@@ -134,14 +134,24 @@ func (a *ClaudeOAuthAdaptor) BuildUpstreamRequest(ctx context.Context, rc *Relay
 		}
 	}
 
+	// Resolve the platform from the account ref. The Claude OAuth adaptor is
+	// reused by the domestic Coding-Plan vendors (Zhipu/MiniMax/Kimi) whose
+	// upstreams speak the Anthropic Messages API; they carry their own
+	// platform tag so fingerprint/mimicry dispatch to the right defaults.
+	// Accounts without a tag default to Claude for backward compatibility.
+	platform := identity.PlatformClaude
+	if rc.Account.Platform != "" {
+		platform = identity.Platform(rc.Account.Platform)
+	}
+
 	// Resolve fingerprint for the account.
 	var fp identity.Fingerprint
 	if a.identity != nil {
 		fp, err = a.identity.GetOrCreateFingerprint(identity.AccountKey{
 			ID:       rc.Account.ID,
-			Platform: identity.PlatformClaude,
+			Platform: platform,
 			Snapshot: identity.FingerprintSnapshot(rc.Account.Fingerprint),
-			IsOAuth:  rc.Account.AccountType == "oauth",
+			IsOAuth:  identity.IsMimickableAccountType(rc.Account.AccountType),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("claude_oauth: resolve fingerprint: %w", err)
@@ -152,7 +162,7 @@ func (a *ClaudeOAuthAdaptor) BuildUpstreamRequest(ctx context.Context, rc *Relay
 
 	// Apply mimicry to the body when the inbound client is not a genuine
 	// Claude Code client.
-	mimic := identity.ShouldMimic(identity.PlatformClaude, rc.Account.AccountType == "oauth", rc.InboundHeader)
+	mimic := identity.ShouldMimic(platform, identity.IsMimickableAccountType(rc.Account.AccountType), rc.InboundHeader)
 	if mimic {
 		if body, err = identity.InjectClaudeCodeSystemPrompt(body); err != nil {
 			return nil, err

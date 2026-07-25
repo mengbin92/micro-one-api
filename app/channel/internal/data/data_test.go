@@ -55,7 +55,8 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			model_mapping TEXT DEFAULT '',
 			priority INTEGER DEFAULT 0,
 			config TEXT DEFAULT '',
-			system_prompt TEXT
+			system_prompt TEXT,
+			restrict_models INTEGER NOT NULL DEFAULT 1
 		)
 	`).Error)
 
@@ -109,7 +110,8 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			rpm_limit INTEGER DEFAULT 0,
 			session_window_limit_usd REAL DEFAULT 0,
 			quota_reset_strategy TEXT DEFAULT 'rolling',
-			quota_timezone TEXT DEFAULT 'UTC'
+			quota_timezone TEXT DEFAULT 'UTC',
+			model_mapping TEXT DEFAULT ''
 		)
 	`).Error)
 
@@ -156,6 +158,24 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			updated_at DATETIME,
 			snapshot_paused INTEGER DEFAULT 0
 		)
+	`).Error)
+
+	require.NoError(t, db.Exec(`
+		CREATE TABLE IF NOT EXISTS model_routings (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			group_name TEXT NOT NULL DEFAULT 'default',
+			model TEXT NOT NULL,
+			platform TEXT NOT NULL DEFAULT '',
+			subscription_account_id INTEGER NOT NULL,
+			enabled INTEGER DEFAULT 1,
+			priority INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_model_routings_group_model_account
+		ON model_routings(group_name, model, platform, subscription_account_id)
 	`).Error)
 
 	return &Repository{db: db}
@@ -281,6 +301,61 @@ func TestUpdateChannel_RewritesAbilities(t *testing.T) {
 	assert.Equal(t, "gpt-4o", rows[0].Model)
 	require.NotNil(t, rows[0].Priority)
 	assert.EqualValues(t, 50, *rows[0].Priority)
+}
+
+// P1 (#2) / P0 (#1) review fix: UpdateChannel must persist restrict_models
+// and model_mapping (previously missing from the Updates map, so a DB-backed
+// admin toggle returned success but was silently dropped).
+func TestUpdateChannel_PersistsRestrictModelsAndModelMapping(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	ch := &biz.Channel{
+		Name:           "drift",
+		Group:          "default",
+		Models:         []string{"gpt-4o"},
+		Status:         biz.ChannelStatusEnabled,
+		Priority:       10,
+		RestrictModels: true,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	// Flip to catch-all and set a model mapping.
+	ch.RestrictModels = false
+	ch.ModelMapping = `{"gpt-4o":"gpt-4o-mini"}`
+	require.NoError(t, repo.UpdateChannel(ctx, ch))
+
+	got, err := repo.FindByID(ctx, ch.ID)
+	require.NoError(t, err)
+	assert.False(t, got.RestrictModels, "restrict_models must be persisted on update")
+	assert.Equal(t, `{"gpt-4o":"gpt-4o-mini"}`, got.ModelMapping, "model_mapping must be persisted on update")
+}
+
+// P0 (#1) review fix: UpdateSubscriptionAccount must persist model_mapping
+// (previously missing from the Updates map, so per-account mapping was only
+// writable on Create and silently dropped on Update).
+func TestUpdateSubscriptionAccount_PersistsModelMapping(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	account := &biz.SubscriptionAccount{
+		Name:        "codex",
+		Platform:    "codex",
+		AccountType: "oauth",
+		Status:      biz.ChannelStatusEnabled,
+		Group:       "default",
+		Models:      []string{"gpt-5"},
+		Priority:    30,
+		AccountID:   "acc_1",
+	}
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
+
+	account.ModelMapping = `{"gpt-5":"gpt-5-codex"}`
+	require.NoError(t, repo.UpdateSubscriptionAccount(ctx, account))
+
+	got, err := repo.FindSubscriptionAccountByID(ctx, account.ID)
+	require.NoError(t, err)
+	assert.Equal(t, `{"gpt-5":"gpt-5-codex"}`, got.ModelMapping, "model_mapping must be persisted on subscription account update")
 }
 
 func TestDeleteChannel_RemovesAbilities(t *testing.T) {
@@ -825,4 +900,207 @@ func TestAutoPauseAccount_AuthorizationErrorDisablesWithManualPolicy(t *testing.
 	require.NoError(t, err)
 	assert.EqualValues(t, biz.ChannelStatusDisabled, stored.Status)
 	assert.Contains(t, stored.Metadata, `"recovery_policy":"manual"`)
+}
+
+// ---------------------------------------------------------------------------
+// P1 (#4) — wildcard model matching in abilities queries.
+// ---------------------------------------------------------------------------
+
+func TestListAbilitiesByGroupAndModel_WildcardPattern(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	// Channel registered with a wildcard model "claude-*" in the default group.
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "wildcard-chan", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"claude-*"}, Priority: 5,
+	}))
+
+	// A specific model request must match the wildcard ability row.
+	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "claude-sonnet-4")
+	require.NoError(t, err)
+	require.Len(t, abilities, 1)
+	assert.Equal(t, int64(1), abilities[0].ChannelID)
+
+	// Non-matching model does not hit the wildcard.
+	abilities, err = repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-4o")
+	require.NoError(t, err)
+	assert.Empty(t, abilities)
+}
+
+func TestListSubscriptionAccountAbilities_WildcardPattern(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	acc := &biz.SubscriptionAccount{
+		Name: "wildcard-acc", Platform: "codex", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"claude-*"}, Priority: 5, AccountID: "acc_wc",
+	}
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, acc))
+
+	abilities, err := repo.ListSubscriptionAccountAbilities(ctx, "default", "claude-sonnet-4", "codex")
+	require.NoError(t, err)
+	require.Len(t, abilities, 1)
+	assert.Equal(t, acc.ID, abilities[0].AccountID)
+
+	// Non-matching model does not hit the wildcard.
+	abilities, err = repo.ListSubscriptionAccountAbilities(ctx, "default", "gpt-5", "codex")
+	require.NoError(t, err)
+	assert.Empty(t, abilities)
+}
+
+func TestListAvailableModels_ExcludesWildcardPatterns(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	// Channel advertising both a concrete model and a wildcard pattern.
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "mixed", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o", "claude-*"}, Priority: 5,
+	}))
+
+	models, err := repo.ListAvailableModels(ctx, "default")
+	require.NoError(t, err)
+	// "gpt-4o" is advertised; "claude-*" is a routing rule and must NOT appear.
+	assert.Contains(t, models, "gpt-4o")
+	for _, m := range models {
+		if m == "claude-*" {
+			t.Fatalf("wildcard pattern claude-* must not be advertised in /v1/models: %v", models)
+		}
+	}
+}
+
+func TestListAbilitiesByGroupAndModel_CatchAllPattern(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	// Channel with a "*" catch-all ability — any model matches.
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "catchall-chan", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"*"}, Priority: 1,
+	}))
+
+	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "any-random-model")
+	require.NoError(t, err)
+	require.Len(t, abilities, 1)
+	assert.Equal(t, int64(1), abilities[0].ChannelID)
+}
+
+// ---------------------------------------------------------------------------
+// P1 (#2) — RestrictModels catch-all repo + end-to-end SelectChannel.
+// ---------------------------------------------------------------------------
+
+func TestListUnrestrictedChannelsByGroup_DB(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	// restrict_models=true (default): not returned.
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "restricted", Status: biz.ChannelStatusEnabled,
+		Group: "default", Priority: 5, RestrictModels: true,
+	}))
+	// restrict_models=false: returned as a catch-all.
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 2, Type: 1, Name: "catch-all", Status: biz.ChannelStatusEnabled,
+		Group: "default", Priority: 1, RestrictModels: false,
+	}))
+
+	got, err := repo.ListUnrestrictedChannelsByGroup(ctx, "default")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, int64(2), got[0].ID)
+	assert.False(t, got[0].RestrictModels)
+}
+
+func TestSelectChannel_FallsBackToCatchAllChannel_DB(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	// A catch-all channel; no abilities row for "unregistered-model".
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "catch-all", Status: biz.ChannelStatusEnabled,
+		Group: "default", Priority: 1, RestrictModels: false,
+	}))
+
+	uc := biz.NewChannelUsecase(repo, nil)
+	ch, err := uc.SelectChannel(ctx, "default", "unregistered-model", false)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), ch.ID)
+}
+
+func TestSelectChannel_NoCatchAllReturnsNotFound_DB(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	// A restricted channel with an ability for a DIFFERENT model only.
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "restricted", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o"}, Priority: 5, RestrictModels: true,
+	}))
+
+	uc := biz.NewChannelUsecase(repo, nil)
+	_, err := uc.SelectChannel(ctx, "default", "unregistered-model", false)
+	assert.Equal(t, biz.ErrChannelNotFound, err)
+}
+
+// TestListModelRoutings_EmptyPlatformMatchesConcretePlatform proves the 🔴#3
+// fix: a routing row with an empty platform ("any platform") must match when
+// the relay infers a concrete platform (e.g. codex). Pre-fix the equality
+// filter platform = ? never matched an empty row.
+func TestListModelRoutings_EmptyPlatformMatchesConcretePlatform(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	// Empty-platform routing row (the UI-recommended default).
+	require.NoError(t, repo.UpsertModelRouting(ctx, &biz.ModelRouting{
+		GroupName: "default", Model: "gpt-5", Platform: "",
+		SubscriptionAccountID: 7, Enabled: true, Priority: 5,
+	}))
+
+	rows, err := repo.ListModelRoutings(ctx, "default", "gpt-5", "codex")
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "empty-platform routing must match concrete platform codex")
+	assert.Equal(t, int64(7), rows[0].SubscriptionAccountID)
+}
+
+// TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency (🟡#4):
+// when a channel lists BOTH "gpt-4o" (exact) and "gpt-*" (wildcard), the
+// abilities query must return ONLY the exact tier — not both — so DB and
+// memory paths agree and the selector does not double-weight the channel.
+func TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "both", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o", "gpt-*"}, Priority: 5,
+	}))
+	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-4o")
+	require.NoError(t, err)
+	// Exactly one ability row — the exact "gpt-4o", not the wildcard too.
+	require.Len(t, abilities, 1, "exact tier must shadow wildcard tier (no double-count)")
+	assert.Equal(t, int64(1), abilities[0].ChannelID)
+
+	// A model that only the wildcard matches still resolves through it.
+	abilitiesWild, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-5")
+	require.NoError(t, err)
+	require.Len(t, abilitiesWild, 1, "wildcard tier must apply when no exact match")
+}
+
+// TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency_Memory:
+// same contract on the in-memory repo so DB and memory behave identically.
+func TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency_Memory(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "both", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o", "gpt-*"}, Priority: 5,
+	}))
+	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-4o")
+	require.NoError(t, err)
+	require.Len(t, abilities, 1, "memory path: exact tier must shadow wildcard (no double-count)")
+	assert.Equal(t, int64(1), abilities[0].ChannelID)
+
+	abilitiesWild, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-5")
+	require.NoError(t, err)
+	require.Len(t, abilitiesWild, 1, "memory path: wildcard tier applies when no exact match")
 }

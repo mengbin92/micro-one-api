@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, AlertTriangle, Boxes, CreditCard, Database, Gauge, KeyRound, LineChart, Scale, TrendingUp, Users } from 'lucide-react';
 
@@ -10,6 +11,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
 import { quotaPerUnitFromOptions, quotaToCurrencyUnits } from '@/lib/amount';
+import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
+import {
+  normalizeSubscriptionAccount,
+  type RawSubscriptionAccount,
+  type SubscriptionAccountSummary as AdminSubscriptionAccount,
+} from '@/lib/subscription-account';
 
 interface AdminTotals {
   users?: number;
@@ -38,23 +45,7 @@ interface AdminUser {
   status?: number;
 }
 
-interface AdminSubscriptionAccount {
-  id?: number;
-  name?: string;
-  platform?: string;
-  account_type?: string;
-  accountType?: string;
-  status?: number;
-  group?: string;
-  models?: string;
-  priority?: number;
-  account_id?: string;
-  accountId?: string;
-  expires_at?: number;
-  expiresAt?: number;
-  updated_at?: number;
-  updatedAt?: number;
-}
+
 
 interface AdminChannel {
   id: string | number;
@@ -125,7 +116,7 @@ interface AdminSummary {
   totals?: AdminTotals;
   recent_users?: AdminUser[];
   channels?: AdminChannel[];
-  subscription_accounts?: AdminSubscriptionAccount[];
+  subscription_accounts?: RawSubscriptionAccount[];
   recent_logs?: AdminLog[];
   cost_analysis?: CostAnalysis;
   top_models?: UsageAggregateItem[];
@@ -151,6 +142,11 @@ const PROVIDER_NAMES: Record<number, string> = {
   4: 'Gemini',
   14: 'DeepSeek',
   23: 'OpenRouter',
+  32: 'CodexOAuth',
+  33: 'ClaudeOAuth',
+  34: 'ZhipuPlan',
+  35: 'MinimaxPlan',
+  36: 'KimiOAuth',
   37: 'SiliconFlow',
 };
 
@@ -164,6 +160,9 @@ const LOG_TYPE_NAMES: Record<string, string> = {
 const SUBSCRIPTION_PLATFORM_LABELS: Record<string, string> = {
   claude: 'Claude',
   codex: 'Codex',
+  zhipu: 'Zhipu GLM',
+  minimax: 'MiniMax',
+  kimi: 'Kimi',
 };
 
 function subscriptionPlatformLabel(platform?: string) {
@@ -171,8 +170,93 @@ function subscriptionPlatformLabel(platform?: string) {
   return SUBSCRIPTION_PLATFORM_LABELS[platform] ?? platform;
 }
 
-function subscriptionStatusLabel(status?: number) {
-  return status === 1 ? '启用' : '停用';
+// Compact quota summary for the overview card. Mirrors the logic of
+// QuotaStatusCell on the full page but condensed to a single row so it fits
+// in the overview table.
+const HOUR_S_OV = 3600;
+const DAY_S_OV = 86400;
+const WEEK_S_OV = 7 * DAY_S_OV;
+const FIVE_H_S_OV = 5 * HOUR_S_OV;
+
+function effectiveWindowUsedOV(used: number, windowStart: number | undefined, nowUnix: number, windowS: number): number {
+  if (!windowStart || windowStart <= 0 || nowUnix - windowStart >= windowS) return 0;
+  return used;
+}
+
+function SubscriptionQuotaMini({ account, nowUnix }: { account: AdminSubscriptionAccount; nowUnix: number }) {
+  const rows: Array<{ label: string; used: number; limit: number }> = [];
+  const pairs = [
+    { label: '总额', used: account.quotaUsedUsd ?? 0, limit: account.quotaLimitUsd ?? 0 },
+    { label: '5h', used: effectiveWindowUsedOV(account.quota5hUsedUsd ?? 0, account.quota5hWindowStart, nowUnix, FIVE_H_S_OV), limit: account.quota5hLimitUsd ?? 0 },
+    { label: '24h', used: effectiveWindowUsedOV(account.quotaDailyUsedUsd ?? 0, account.quotaDailyWindowStart, nowUnix, DAY_S_OV), limit: account.quotaDailyLimitUsd ?? 0 },
+    { label: '7d', used: effectiveWindowUsedOV(account.quotaWeeklyUsedUsd ?? 0, account.quotaWeeklyWindowStart, nowUnix, WEEK_S_OV), limit: account.quotaWeeklyLimitUsd ?? 0 },
+  ];
+  for (const p of pairs) {
+    if (p.limit > 0 || p.used > 0) rows.push({ label: p.label, used: p.used, limit: p.limit });
+  }
+
+  // Upstream snapshot percent (single number)
+  const upstreamPercent =
+    account.primaryQuotaUsedPercent ?? account.secondaryQuotaUsedPercent ?? account.quotaUsedPercent ?? null;
+
+  if (rows.length === 0 && upstreamPercent == null) {
+    return <span className="text-xs text-muted-foreground">-</span>;
+  }
+
+  // Determine worst ratio for the summary badge color.
+  let worstRatio = 0;
+  for (const r of rows) {
+    if (r.limit > 0) worstRatio = Math.max(worstRatio, r.used / r.limit);
+  }
+  if (upstreamPercent != null) worstRatio = Math.max(worstRatio, upstreamPercent / 100);
+  const badgeClass =
+    worstRatio >= 1
+      ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+      : worstRatio >= 0.8
+        ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200';
+
+  return (
+    <div className="min-w-[150px] space-y-1">
+      {rows.map((row) => {
+        const ratio = row.limit > 0 ? Math.min(row.used / row.limit, 1) : 0;
+        const barColor = ratio >= 1 ? 'bg-red-500' : ratio >= 0.8 ? 'bg-amber-500' : 'bg-emerald-500';
+        return (
+          <div key={row.label} className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-medium">{row.label}</span>
+              <span className="tabular-nums text-muted-foreground">
+                ${row.used.toFixed(2)}
+                {row.limit > 0 ? ` / $${row.limit.toFixed(2)}` : ''}
+              </span>
+            </div>
+            {row.limit > 0 && (
+              <div className="h-1 overflow-hidden rounded-full bg-muted">
+                <div className={barColor} style={{ width: `${ratio * 100}%`, height: '100%' }} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {upstreamPercent != null && (
+        <div className="space-y-0.5">
+          <div className="flex items-center justify-between gap-2 text-[11px]">
+            <span className="font-medium">上游</span>
+            <span className="tabular-nums text-muted-foreground">{upstreamPercent.toFixed(1)}%</span>
+          </div>
+          <div className="h-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className={upstreamPercent >= 100 ? 'bg-red-500' : upstreamPercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}
+              style={{ width: `${Math.min(upstreamPercent, 100)}%`, height: '100%' }}
+            />
+          </div>
+        </div>
+      )}
+      <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${badgeClass}`}>
+        {worstRatio >= 1 ? '已耗尽' : worstRatio >= 0.8 ? '即将耗尽' : '正常'}
+      </span>
+    </div>
+  );
 }
 
 function numberValue(value: unknown): number {
@@ -389,7 +473,7 @@ function TopUsageChartCard({
 }
 
 export function AdminOverviewPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ['admin-summary'],
     queryFn: async () => {
       const res = await adminApiClient.get('/admin/summary');
@@ -397,9 +481,15 @@ export function AdminOverviewPage() {
     },
   });
 
+  // Render clock derived from the query fetch time (pure render).
+  const nowUnix = dataUpdatedAt ? Math.floor(dataUpdatedAt / 1000) : 0;
+
   const totals = data?.totals ?? {};
   const channels = data?.channels ?? [];
-  const subscriptionAccounts = data?.subscription_accounts ?? [];
+  const subscriptionAccounts = useMemo(
+    () => (data?.subscription_accounts ?? []).map(normalizeSubscriptionAccount),
+    [data],
+  );
   const logs = data?.recent_logs ?? [];
   const users = data?.recent_users ?? [];
   const costAnalysis = data?.cost_analysis ?? {};
@@ -673,6 +763,7 @@ export function AdminOverviewPage() {
                       <TableHead>分组</TableHead>
                       <TableHead className="hidden md:table-cell">优先级</TableHead>
                       <TableHead className="hidden lg:table-cell">过期</TableHead>
+                      <TableHead className="hidden xl:table-cell">限额</TableHead>
                       <TableHead>状态</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -683,8 +774,39 @@ export function AdminOverviewPage() {
                         <TableCell>{subscriptionPlatformLabel(account.platform)}</TableCell>
                         <TableCell>{account.group || '-'}</TableCell>
                         <TableCell className="hidden md:table-cell">{formatInteger(account.priority ?? 0)}</TableCell>
-                        <TableCell className="hidden lg:table-cell">{formatDate(account.expires_at ?? account.expiresAt)}</TableCell>
-                        <TableCell>{subscriptionStatusLabel(account.status)}</TableCell>
+                        <TableCell className="hidden lg:table-cell">{formatDate(account.expiresAt)}</TableCell>
+                        <TableCell className="hidden xl:table-cell">
+                          <SubscriptionQuotaMini account={account} nowUnix={nowUnix} />
+                        </TableCell>
+                        <TableCell>
+                          <AccountStatusBadge
+                            info={{
+                              status: account.status ?? 0,
+                              expiresAt: account.expiresAt,
+                              rateLimitedUntil: account.rateLimitedUntil,
+                              quotaUsedPercent: account.quotaUsedPercent,
+                              primaryQuotaUsedPercent: account.primaryQuotaUsedPercent,
+                              secondaryQuotaUsedPercent: account.secondaryQuotaUsedPercent,
+                              quotaSnapshotPaused: account.quotaSnapshotPaused,
+                              quotaLimitUsd: account.quotaLimitUsd,
+                              quotaUsedUsd: account.quotaUsedUsd,
+                              quota5hLimitUsd: account.quota5hLimitUsd,
+                              quota5hUsedUsd: account.quota5hUsedUsd,
+                              quota5hWindowStart: account.quota5hWindowStart,
+                              quotaDailyLimitUsd: account.quotaDailyLimitUsd,
+                              quotaDailyUsedUsd: account.quotaDailyUsedUsd,
+                              quotaDailyWindowStart: account.quotaDailyWindowStart,
+                              quotaWeeklyLimitUsd: account.quotaWeeklyLimitUsd,
+                              quotaWeeklyUsedUsd: account.quotaWeeklyUsedUsd,
+                              quotaWeeklyWindowStart: account.quotaWeeklyWindowStart,
+                              unschedulableReason: account.unschedulableReason,
+                              recoveryPolicy: account.recoveryPolicy,
+                              expectedRecoveryAt: account.expectedRecoveryAt,
+                              unschedulableSince: account.unschedulableSince,
+                            }}
+                            now={nowUnix}
+                          />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

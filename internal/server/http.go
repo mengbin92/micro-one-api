@@ -97,6 +97,10 @@ type HTTPServer struct {
 	userRPMLimit int32
 	// sessionWindow tracks per-session cost windows for subscription accounts.
 	sessionWindow *subscriptionSessionWindowStore
+	// billingModelSource (P3 #6) controls which model name is used for quota
+	// reservation + usage stats. Default "requested" (legacy). Set from
+	// config in cmd/relay-gateway/wire.go.
+	billingModelSource string
 }
 
 func (s *HTTPServer) Plan(ctx context.Context, req relaybiz.RelayRequest) (*relaybiz.RelayPlan, error) {
@@ -330,6 +334,31 @@ func (s *HTTPServer) SetUserRPMLimit(limit int32) {
 		return
 	}
 	s.userRPMLimit = limit
+}
+
+// SetBillingModelSource wires the P3 #6 billing-model-name source.
+// Empty/unset = "upstream" (true legacy: pre-P3 #6 every reserveQuota call
+// site passed plan.ResolvedModel, the upstream name).
+func (s *HTTPServer) SetBillingModelSource(source string) {
+	if s == nil {
+		return
+	}
+	s.billingModelSource = source
+}
+
+// BillingModelName (P3 #6) returns the model name to use for billing given
+// the client, resolved and upstream model names, applying the configured
+// billing_model_source. When unset it falls back to the upstream model (the
+// true legacy default).
+func (s *HTTPServer) BillingModelName(clientModel, resolvedModel, upstreamModel string) string {
+	if s == nil {
+		return upstreamModel
+	}
+	source := s.billingModelSource
+	if source == "" {
+		return upstreamModel
+	}
+	return relaybiz.BillingModelForSource(source, clientModel, resolvedModel, upstreamModel)
 }
 
 // isSubscriptionChannel reports whether the channel type is a subscription
