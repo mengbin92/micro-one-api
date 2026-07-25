@@ -714,6 +714,69 @@ func TestApplyPerAccountModelMapping_ExactBeatsWildcard(t *testing.T) {
 	}
 }
 
+func TestResolveChannelModel_PreservesSelectedUpstreamCase(t *testing.T) {
+	tests := []struct {
+		name    string
+		channel *Channel
+		model   string
+		want    string
+	}{
+		{
+			name:    "configured model spelling",
+			channel: &Channel{Models: []string{"GLM-5.2"}},
+			model:   "glm-5.2",
+			want:    "GLM-5.2",
+		},
+		{
+			name:    "explicit mapping remains authoritative",
+			channel: &Channel{Models: []string{"GLM-5.2"}, ModelMapping: `{"glm-5.2":"vendor/glm-5.2"}`},
+			model:   "glm-5.2",
+			want:    "vendor/glm-5.2",
+		},
+		{
+			name:    "wildcard is not an upstream identifier",
+			channel: &Channel{Models: []string{"glm-*"}},
+			model:   "glm-5.2",
+			want:    "glm-5.2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ResolveChannelModel(tt.channel, tt.model); got != tt.want {
+				t.Fatalf("ResolveChannelModel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRelayUsecasePlan_UsesSelectedChannelModelCase(t *testing.T) {
+	channelClient := &caseSensitiveModelChannelClient{}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "tok", Model: "glm-5.2"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.ResolvedModel != "GLM-5.2" {
+		t.Fatalf("ResolvedModel = %q, want selected upstream spelling %q", plan.ResolvedModel, "GLM-5.2")
+	}
+}
+
+type caseSensitiveModelChannelClient struct{}
+
+func (*caseSensitiveModelChannelClient) SelectChannel(context.Context, string, string, bool) (*Channel, error) {
+	return &Channel{ID: 1, Models: []string{"GLM-5.2"}}, nil
+}
+
+func (*caseSensitiveModelChannelClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
+	return nil
+}
+
+func (*caseSensitiveModelChannelClient) RecordSubscriptionAccountHealth(context.Context, int64, bool) error {
+	return nil
+}
+
 // TestSelectSubscriptionFailover_AppliesFailoverAccountModelMapping proves the
 // 🔴#7 fix: when failover selects a different account (B), the returned
 // ResolvedModel must be recomputed against B's model mapping, NOT carried

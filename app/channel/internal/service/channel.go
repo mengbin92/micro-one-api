@@ -14,13 +14,26 @@ import (
 // ChannelService is the transport layer entry for channel-service.
 type ChannelService struct {
 	channelv1.UnimplementedChannelServiceServer
-	uc        *biz.ChannelUsecase
-	modelUC   *biz.ModelUsecase
-	routingUC *biz.ModelRoutingUsecase
+	uc                *biz.ChannelUsecase
+	modelUC           *biz.ModelUsecase
+	routingUC         *biz.ModelRoutingUsecase
+	channelModelProbe channelModelProbeScheduler
 }
 
 func NewChannelService(uc *biz.ChannelUsecase) *ChannelService {
-	return &ChannelService{uc: uc}
+	return &ChannelService{
+		uc:                uc,
+		channelModelProbe: NewChannelModelProbeService(uc),
+	}
+}
+
+// SetChannelModelProbe replaces the create-time model discovery scheduler.
+// It is primarily a test seam; production uses ChannelModelProbeService.
+func (s *ChannelService) SetChannelModelProbe(probe channelModelProbeScheduler) {
+	if s == nil {
+		return
+	}
+	s.channelModelProbe = probe
 }
 
 // SetModelUsecase wires the optional model-management usecase (方案B).
@@ -706,6 +719,9 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 			Success: false,
 			Message: err.Error(),
 		}, nil
+	}
+	if len(channel.Models) == 0 && s.channelModelProbe != nil {
+		s.channelModelProbe.ProbeChannelAsync(channel.ID)
 	}
 	return &channelv1.CreateChannelResponse{
 		Success:   true,

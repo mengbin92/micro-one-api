@@ -467,7 +467,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// re-apply the current channel's per-channel model mapping on
 		// each (re)entry and after a failover switch, so the upstream model
 		// matches the channel actually serving the request.
-		resolvedModel = relaybiz.ApplyChannelModelMapping(currentChannel.ModelMapping, plan.BaseModel()) // recompute from global model
+		resolvedModel = relaybiz.ResolveChannelModel(currentChannel, plan.BaseModel()) // recompute from global model
 		// Resolve the upstream target for the current channel.
 		wsURL, headers, err := s.buildOpenAIWSUpstreamTarget(r, currentChannel)
 		if err != nil {

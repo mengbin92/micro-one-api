@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { Check, Search } from 'lucide-react';
+import { Check, Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { listModels } from '@/lib/model-management';
 import { splitCsv } from '@/lib/model-draft';
 
@@ -63,6 +64,11 @@ export function ModelMultiSelect({
     return splitCsv(value).filter((m) => !registryIds.has(m));
   }, [value, registryModels]);
 
+  const customCandidate = search.trim();
+  const canAddCustom = customCandidate !== '' &&
+    !selectedSet.has(customCandidate) &&
+    !(registryModels ?? []).some((m) => m.model_id === customCandidate);
+
   const toggle = (modelId: string) => {
     const next = new Set(selectedSet);
     if (next.has(modelId)) {
@@ -73,6 +79,12 @@ export function ModelMultiSelect({
     onChange(Array.from(next).join(','));
   };
 
+  const addCustom = () => {
+    if (!canAddCustom) return;
+    onChange([...selectedSet, customCandidate].join(','));
+    setSearch('');
+  };
+
   return (
     <div className="space-y-2">
       <div className="relative">
@@ -80,10 +92,22 @@ export function ModelMultiSelect({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && canAddCustom) {
+              e.preventDefault();
+              addCustom();
+            }
+          }}
           placeholder={placeholder}
           className="pl-8"
         />
       </div>
+      {canAddCustom && (
+        <Button type="button" variant="outline" size="sm" className="w-full justify-start" onClick={addCustom}>
+          <Plus className="size-4" />
+          Add {customCandidate}
+        </Button>
+      )}
       <div className={`overflow-y-auto rounded-lg border ${maxheight}`}>
         {isLoading ? (
           <div className="px-3 py-4 text-center text-sm text-muted-foreground">

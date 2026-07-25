@@ -70,7 +70,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			requestID := generateRequestID()
 			// re-apply the retried channel's per-channel model mapping so
 			// the upstream body and billing use the new channel's mapping.
-			currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.BaseModel()) // recompute from global model
+			currentResolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel()) // recompute from global model
 			retriedBody := rewriteRawModel(upstreamBody, currentResolvedModel)
 			// P3 #6: derive the billing model name from billing_model_source.
 			billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)

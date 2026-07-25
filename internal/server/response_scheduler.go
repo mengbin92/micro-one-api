@@ -118,7 +118,7 @@ func (s *OpenAIWSRoutingScheduler) routeModels(route responseRoute, clientModel 
 	}
 	resolvedModel := strings.TrimSpace(route.ResolvedModel)
 	if resolvedModel == "" && globalModel != "" {
-		resolvedModel = relaybiz.ApplyChannelModelMapping(route.Channel.ModelMapping, globalModel)
+		resolvedModel = relaybiz.ResolveChannelModel(&route.Channel, globalModel)
 	}
 	return globalModel, resolvedModel
 }
