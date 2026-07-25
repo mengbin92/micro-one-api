@@ -150,7 +150,7 @@ func (m *ModelMapper) Resolve(modelName string) string {
 	// keys containing a wildcard metacharacter are considered here; plain
 	// keys were already handled in step 1.
 	//
-	// 🟡#3: when several specific (non-"*") patterns match the same name,
+	// when several specific (non-"*") patterns match the same name,
 	// pick the MOST SPECIFIC one (by non-wildcard character count, ties
 	// broken by full pattern length) so resolution is deterministic — two
 	// requests for the same model resolve to the same upstream instead of
@@ -203,7 +203,7 @@ func (m *ModelMapper) HasCapability(modelName, capability string) bool {
 	if entry, ok := models[lower]; ok {
 		return entryHasCapability(entry, capability)
 	}
-	// 🟡#3: among matching specific patterns, pick the most specific entry
+	// among matching specific patterns, pick the most specific entry
 	// (deterministic) and check its capability. The OR-walk (any matching
 	// pattern grants the capability) was inconsistent with GetEntry/Resolve
 	// which select a single entry: a capability granted by a broad pattern
@@ -252,7 +252,7 @@ func (m *ModelMapper) GetEntry(modelName string) *ModelEntry {
 	if entry, ok := models[lower]; ok {
 		return entry
 	}
-	// 🟡#3: pick the most specific matching pattern so GetEntry is
+	// pick the most specific matching pattern so GetEntry is
 	// consistent with Resolve (deterministic, not map-iteration order).
 	var catchAll *ModelEntry
 	var bestSpecific *ModelEntry

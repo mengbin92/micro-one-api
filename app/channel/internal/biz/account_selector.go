@@ -10,31 +10,27 @@ import (
 	"micro-one-api/pkg/safecast"
 )
 
-// SubscriptionAccountSelector (P2 #7) selects a subscription account from a
-// priority tier using a load-aware weighted round-robin algorithm, upgrading
-// the previous uniform-random pick. Mirrors the channel WeightedSelector:
-// smooth WRR over configured weight, scaled by a health factor (from recent
-// relay outcomes recorded via RecordAccountHealth) and a load factor (from
-// the in-flight count maintained via Acquire/Release). The previous random
-// selector spread load evenly but ignored live health and saturation, so a
-// failing or saturated account kept receiving as much traffic as a healthy
-// idle one.
+// SubscriptionAccountSelector selects a subscription account from a priority
+// tier using health-aware smooth weighted round-robin. Configured weight is
+// scaled by recent relay health; a circuit breaker temporarily removes accounts
+// with sustained failures. Acquire/Release and loadFactor are retained as a
+// future in-flight signal, but no production cross-service seam calls them yet.
 //
 // Lifetime: one selector per ChannelUsecase (process-wide). It tracks runtime
 // state per account id; account snapshots passed to Select are read-only.
 //
-// See docs/model-management-design.md §9.3 #7 / §9.4 P2.
+// See docs/model-management-design.md §12.2.
 
 type accountState struct {
 	accountID        int64
 	weight           int32           // configured weight (priority-derived)
-	currentWeight    int32           // smooth WRR current weight
+	currentWeight    int64           // smooth WRR current weight (fixed-point scale)
 	recentErrors     *SlidingCounter // last 60s error count
 	inflight         atomic.Int32    // current in-flight requests (set by server)
 	circuitOpenUntil int64           // UnixNano; 0 = closed
 }
 
-// SubscriptionAccountSelector is the load-aware account selector.
+// SubscriptionAccountSelector is the health-aware account selector.
 type SubscriptionAccountSelector struct {
 	mu       sync.Mutex
 	accounts map[int64]*accountState
@@ -58,31 +54,21 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 
 	now := time.Now().UnixNano()
 	var best *accountState
-	var bestWeight int32 = math.MinInt32
+	var bestWeight int64 = math.MinInt64
 
 	for _, acct := range candidates {
 		if acct == nil {
 			continue
 		}
-		state, ok := s.accounts[acct.ID]
-		if !ok {
-			state = s.updateAccountLocked(acct)
-		}
+		// Refresh configured fields on every selection. Runtime state (current
+		// weight, errors, in-flight count) is preserved by updateAccountLocked,
+		// while admin changes such as a new priority take effect immediately.
+		state := s.updateAccountLocked(acct)
 		// Skip circuit-opened accounts.
 		if state.circuitOpenUntil > 0 && state.circuitOpenUntil > now {
 			continue
 		}
-		// P2 #7 review fix (WRR normalization): healthFactor and loadFactor are
-		// 0-100 band values, so the product weight×health×load is scaled by
-		// 10000 relative to the configured weight. The smooth-WRR algorithm
-		// requires the decrement (Σ effective weight) to use the SAME scale as
-		// the increment, otherwise the winner's currentWeight grows ~10000× per
-		// round, weighted selection collapses to "always pick the first", and
-		// currentWeight overflows int32 after ~2.1M selects (~21k rounds with
-		// two weight-1 accounts). Normalise by /10000 so effective weight is on
-		// the same scale as the configured weight, and sum the effective weights
-		// (not the static weights) for the decrement.
-		effectiveWeight := state.weight * state.healthFactor() * state.loadFactor() / 10000
+		effectiveWeight := accountEffectiveWeight(state)
 		state.currentWeight += effectiveWeight
 		if state.currentWeight > bestWeight {
 			bestWeight = state.currentWeight
@@ -92,7 +78,7 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 	if best == nil {
 		return nil, ErrSubscriptionAccountNotFound
 	}
-	totalWeight := s.totalEffectiveWeight(candidates)
+	totalWeight := s.totalEffectiveWeight(candidates, now)
 	if totalWeight > 0 {
 		best.currentWeight -= totalWeight
 	}
@@ -105,8 +91,9 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 }
 
 // Acquire reserves an in-flight slot for an account. Paired with Release.
-// Called by the relay gateway at dispatch time so the selector's load factor
-// reflects live saturation. A non-positive id is a no-op.
+// It is a reserved hook: production relay dispatch does not currently call it,
+// so loadFactor remains neutral until an account in-flight seam is added. A
+// non-positive id is a no-op.
 //
 // If Acquire is called for an account the selector has not yet seen via Select,
 // it creates a state with a neutral weight (1); the weight is corrected on the
@@ -153,20 +140,11 @@ func (s *SubscriptionAccountSelector) Release(accountID int64) {
 	}
 }
 
-// RecordAccountHealth records a relay outcome for an account, feeding the
-// health factor. success=false increments the sliding 60s error counter and
-// may trip the circuit breaker; success=true is a no-op on the counter (the
-// window ages errors out over time).
-//
-// RecordAccountHealth feeds a relay outcome into the selector. Called by the
-// relay-gateway after every subscription-account attempt via the
-// ChannelSelector.RecordSubscriptionAccountHealth seam (🟡#8). The feedback
-// loop is now wired end-to-end: relay-gateway's RetryExecutor.ExecuteWithAccountHealth
-// records each attempt's outcome through the ChannelAdapter → channel-service
-// RecordChannelHealth path, which fans subscription-account events into this
-// selector. healthFactor and the circuit breaker are therefore live.
-// NOTE: Acquire/Release (loadFactor) are still inert pending a separate
-// per-account in-flight seam — health is the primary signal.
+// RecordAccountHealth records a real upstream outcome for an account. A
+// failure increments the sliding 60-second error counter and may open the
+// circuit; successes rely on old errors aging out of the window. Relay-gateway
+// reports outcomes through the dedicated RecordSubscriptionAccountHealth RPC.
+// Local admission failures (concurrency/RPM/session limits) are not recorded.
 func (s *SubscriptionAccountSelector) RecordAccountHealth(accountID int64, success bool) {
 	if accountID <= 0 {
 		return
@@ -218,7 +196,7 @@ func (s *SubscriptionAccountSelector) GetStats() map[int64]AccountSelectorStats 
 type AccountSelectorStats struct {
 	AccountID     int64
 	Weight        int32
-	CurrentWeight int32
+	CurrentWeight int64
 	Inflight      int32
 	ErrorRate     float64
 	IsCircuitOpen bool
@@ -248,17 +226,27 @@ func accountSelectorWeight(acct *SubscriptionAccount) int32 {
 	return 1
 }
 
-// totalEffectiveWeight sums the effective (normalised) weight of all
-// candidates so the smooth-WRR decrement uses the same scale as the
-// increment. See the Select method for the normalisation rationale.
-func (s *SubscriptionAccountSelector) totalEffectiveWeight(candidates []*SubscriptionAccount) int32 {
-	var total int32
+// accountEffectiveWeight keeps health/load factors in fixed-point form rather
+// than rounding them back to the configured integer weight. This preserves
+// ratios such as 100%:20% even when both accounts use the default weight 1.
+func accountEffectiveWeight(state *accountState) int64 {
+	if state == nil {
+		return 0
+	}
+	return int64(state.weight) * int64(state.healthFactor()) * int64(state.loadFactor())
+}
+
+func (s *SubscriptionAccountSelector) totalEffectiveWeight(candidates []*SubscriptionAccount, now int64) int64 {
+	var total int64
 	for _, acct := range candidates {
 		if acct == nil {
 			continue
 		}
 		if state, ok := s.accounts[acct.ID]; ok {
-			total += state.weight * state.healthFactor() * state.loadFactor() / 10000
+			if state.circuitOpenUntil > 0 && state.circuitOpenUntil > now {
+				continue
+			}
+			total += accountEffectiveWeight(state)
 		}
 	}
 	return total

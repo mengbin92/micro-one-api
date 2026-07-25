@@ -104,12 +104,12 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	var upstreamResp *relayprovider.RawResponse
 	var responseChannel *relaybiz.Channel
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		requestID := generateRequestID()
-		// 🔴#7: re-apply the retried channel's per-channel model mapping so
+		// re-apply the retried channel's per-channel model mapping so
 		// the upstream body and billing use the new channel's mapping.
-		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.ResolvedModel)
+		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.BaseModel()) // recompute from global model
 		retriedBody := rewriteRawModel(upstreamBody, currentResolvedModel)
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
 		reservation, reserveErr := s.reserveQuota(
@@ -163,7 +163,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 					responseChannel = ch
 					if responseID := usage.ResponseID(); responseID != "" {
-						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 					}
 					return nil
 				}
@@ -200,7 +200,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 						responseChannel = ch
 						if responseID := usage.ResponseID(); responseID != "" {
-							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 						}
 						return nil
 					}
@@ -235,7 +235,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
 			responseChannel = ch
 			if responseID := usage.ResponseID(); responseID != "" {
-				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 			}
 			return nil
 		}
@@ -271,7 +271,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				upstreamResp = fallbackResp.Response
 				responseChannel = ch
 				if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
-					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 				}
 				return nil
 			}
@@ -358,6 +358,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		s.wsScheduler.BindSession(r.Context(), &relaybiz.RelayPlan{
 			Auth:          plan.Auth,
 			Channel:       responseChannel,
+			GlobalModel:   plan.BaseModel(),
 			ResolvedModel: plan.ResolvedModel,
 			Account:       plan.Account,
 		}, sessionHash)
@@ -366,7 +367,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if responseID := extractResponseID(upstreamResp.Body); responseID != "" {
-		s.storeResponseRoute(responseID, responseRoute{Model: clientModel, ResolvedModel: plan.ResolvedModel, Channel: *responseChannel, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+		s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: plan.ResolvedModel, Channel: *responseChannel, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
 	}
 	writeRawResponse(w, upstreamResp)
 }

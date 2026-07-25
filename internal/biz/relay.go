@@ -23,11 +23,9 @@ type IdentityClient interface {
 type ChannelClient interface {
 	SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error)
 	RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error
-	// RecordSubscriptionAccountHealth feeds a relay outcome into the P2 #7
-	// SubscriptionAccountSelector so its healthFactor/circuit-breaker tracks
-	// live relay results. id<=0 is a no-op (ordinary API-key channels).
-	// Wired as part of 🟡#8 so the health/load/circuit features stop being
-	// inert. See docs/model-management-review-followups.md 🟡#8.
+	// RecordSubscriptionAccountHealth feeds a real upstream outcome into the
+	// subscription-account selector so health and circuit state track live
+	// traffic. accountID<=0 is a no-op for ordinary API-key channels.
 	RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error
 }
 
@@ -131,10 +129,37 @@ type SubscriptionAccount struct {
 // keeps the access token out of Channel.Key, where it could otherwise leak
 // through logging, health reporting or the OneAPI-compatible admin API.
 type RelayPlan struct {
-	Auth          *AuthSnapshot
-	Channel       *Channel
-	Account       *SubscriptionAccount
+	Auth    *AuthSnapshot
+	Channel *Channel
+	Account *SubscriptionAccount
+	// GlobalModel is the model name after the global ModelMapper but BEFORE
+	// per-channel/per-account model mapping. Plan() bakes the first selected
+	// channel's mapping into ResolvedModel, which breaks failover: a retry
+	// that selects a different channel re-applies that channel's mapping on
+	// top of ResolvedModel — i.e. channel A's mapped name — instead of the
+	// globally-resolved name, so the upstream sees a model name A produced,
+	// not what B's mapping expects. Server-layer retry closures now recompute
+	// the upstream model from GlobalModel. GlobalModel is
+	// always set when ResolvedModel is; it equals ResolvedModel when no global
+	// mapping applied.
+	GlobalModel string
+	// ResolvedModel is the model after global + the FIRST channel/account
+	// mapping. Kept for billing/log compatibility; do NOT feed it back into
+	// ApplyChannelModelMapping on retry — use GlobalModel.
 	ResolvedModel string
+}
+
+// BaseModel returns the model before per-channel/per-account mapping. Older
+// plans reconstructed from sticky response state may not carry GlobalModel,
+// so ResolvedModel is retained as a safe compatibility fallback.
+func (p *RelayPlan) BaseModel() string {
+	if p == nil {
+		return ""
+	}
+	if model := strings.TrimSpace(p.GlobalModel); model != "" {
+		return model
+	}
+	return strings.TrimSpace(p.ResolvedModel)
 }
 
 // RelayUsecase orchestrates the relay planning flow:
@@ -161,6 +186,15 @@ type RelayUsecase struct {
 // When enabled with a non-nil store, Plan tries to reuse the account bound to
 // the request's SessionHash before falling back to normal priority selection.
 // ttl refreshes the binding on a sticky hit (see openAIWSConfig.StickyTTL).
+// RecordSubscriptionAccountHealth forwards a real upstream account outcome to
+// channel-service, which owns the account selector and circuit-breaker state.
+func (uc *RelayUsecase) RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error {
+	if uc == nil || uc.channel == nil || accountID <= 0 {
+		return nil
+	}
+	return uc.channel.RecordSubscriptionAccountHealth(ctx, accountID, success)
+}
+
 func (uc *RelayUsecase) SetSessionAccountStore(store SessionAccountStore, ttl time.Duration, enabled bool) {
 	if uc == nil {
 		return
@@ -243,13 +277,12 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			channel, err = uc.channel.SelectChannel(ctx, authSnapshot.Group, resolvedModel, false)
 			if err == nil {
 				return &RelayPlan{
-					Auth:          authSnapshot,
-					Channel:       channel,
-					// P0 (#1) review fix (🔴#7): apply the selected channel's
-					// per-channel model mapping. This was the one Plan() return
-					// path that dropped channel.ModelMapping, so a request that
-					// fell back to the resolved model name was sent upstream
-					// without the channel's remap.
+					Auth:    authSnapshot,
+					Channel: channel,
+					// keep the globally-resolved model (pre-channel
+					// mapping) so failover can recompute against a different
+					// channel's mapping instead of stacking mappings.
+					GlobalModel:   resolvedModel,
 					ResolvedModel: applyPerAccountModelMapping(channel.ModelMapping, resolvedModel),
 				}, nil
 			}
@@ -262,6 +295,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 				Auth:          authSnapshot,
 				Channel:       ch,
 				Account:       acct,
+				GlobalModel:   resolvedModel,
 				ResolvedModel: applyPerAccountModelMapping(acct.ModelMapping, resolvedModel),
 			}, nil
 		}
@@ -277,6 +311,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			Auth:          authSnapshot,
 			Channel:       channel,
 			Account:       subAccount,
+			GlobalModel:   resolvedModel,
 			ResolvedModel: applyPerAccountModelMapping(subAccount.ModelMapping, resolvedModel),
 		}, nil
 	}
@@ -284,6 +319,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	return &RelayPlan{
 		Auth:          authSnapshot,
 		Channel:       channel,
+		GlobalModel:   resolvedModel,
 		ResolvedModel: applyPerAccountModelMapping(channel.ModelMapping, resolvedModel),
 	}, nil
 }
@@ -401,16 +437,16 @@ func (uc *RelayUsecase) SelectSubscriptionFailover(ctx context.Context, group, c
 	if err != nil {
 		return nil, err
 	}
-	// P0 (#1) review fix (🔴#7): the failover account may differ from the
-	// originally-selected one, so the per-account model mapping MUST be
-	// recomputed against the NEW account. Pre-fix the plan returned the
-	// caller's resolvedModel verbatim — which had already been rewritten by
-	// account A's mapping — so failover to account B sent A's mapped model
-	// upstream (400 model-not-found + wrong-model billing). Apply B's mapping
-	// on top of the globally-resolved model instead.
+	// recompute the upstream model against the NEW account's
+	// mapping starting from the globally-resolved model (the caller passes
+	// base.GlobalModel here, NOT base.ResolvedModel which already carries
+	// account A's mapping). Pre-fix this recomputed against resolvedModel
+	// verbatim — but callers were passing base.ResolvedModel (already mapped
+	// by A), so the result was A's mapped name fed into B's mapping lookup.
 	return &RelayPlan{
 		Channel:       ch,
 		Account:       account,
+		GlobalModel:   resolvedModel,
 		ResolvedModel: applyPerAccountModelMapping(account.ModelMapping, resolvedModel),
 	}, nil
 }
@@ -579,7 +615,7 @@ func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error
 // ApplyChannelModelMapping is the exported form of applyPerAccountModelMapping
 // for the server layer: it recomputes the upstream model against a channel's
 // (or subscription account's) JSON model mapping. Used by RetryExecutor
-// closures (🔴#7) to re-apply the per-channel mapping after a retry selects a
+// closures to re-apply the per-channel mapping after a retry selects a
 // different channel, so the upstream body carries the new channel's mapping
 // instead of the first channel's.
 func ApplyChannelModelMapping(mappingJSON, model string) string {
@@ -606,7 +642,7 @@ func applyPerAccountModelMapping(mappingJSON, model string) string {
 	// several specific patterns match, pick the MOST SPECIFIC one (by
 	// non-wildcard char count, ties by full length) so per-account
 	// remapping is deterministic — same as ModelMapper.Resolve. See
-	// docs/model-management-review-followups.md 🟡#3.
+	// docs/model-management-design.md §11.1.
 	var catchAll string
 	var bestSpecific string
 	var bestSpecificKey string

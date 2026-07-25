@@ -460,12 +460,12 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 	ccReq.Model = plan.ResolvedModel
 
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(ccReq)
-		// 🔴#7: re-apply the retried channel's per-channel model mapping.
-		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.ResolvedModel)
+		// re-apply the retried channel's per-channel model mapping.
+		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.BaseModel()) // recompute from global model
 		ccReq.Model = currentResolvedModel
 		// P3 #6: derive the billing model name from billing_model_source.
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)

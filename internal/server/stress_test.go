@@ -15,11 +15,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redis/go-redis/v9"
 
-	"micro-one-api/platform/metrics"
+	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/internal/passthrough"
-	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/stresstest"
+	"micro-one-api/platform/metrics"
 )
 
 // newMiniRedis builds a hermetic Redis double and a *redis.Client for it. The
@@ -92,7 +92,9 @@ func (c *sequencingAccountSelector) SelectChannel(context.Context, string, strin
 func (c *sequencingAccountSelector) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
 	return nil
 }
-func (c *sequencingAccountSelector) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
+func (c *sequencingAccountSelector) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
+	return nil
+}
 func (c *sequencingAccountSelector) SelectSubscriptionAccount(_ context.Context, _, _, _ string, _ bool) (*relaybiz.SubscriptionAccount, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -135,6 +137,7 @@ func stressCodexPlan(accountID int64, concurrency int32) *relaybiz.RelayPlan {
 		Channel:       &relaybiz.Channel{ID: accountID, Type: relayprovider.ChannelTypeCodexOAuth, BaseURL: "https://example.invalid", Group: "default"},
 		Account:       stressAccount(accountID, fmt.Sprintf("tok-%d", accountID), concurrency, 0),
 		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
 	}
 }
 

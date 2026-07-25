@@ -30,6 +30,7 @@ type ModelRouting struct {
 	Platform              string // optional platform filter; empty = any platform
 	SubscriptionAccountID int64
 	Enabled               bool
+	EnabledHasValue       bool  // distinguishes explicit false from "leave unchanged" on update
 	Priority              int32 // within a routed tier, higher wins
 	CreatedAt             int64
 	UpdatedAt             int64
@@ -133,7 +134,7 @@ func RoutingMatchForSelect(rows []*ModelRouting, model string) []*ModelRouting {
 		return exact
 	}
 	// Specific wildcard patterns (non-"*") before the "*" catch-all.
-	// 🟡#3: when several specific patterns match, keep only the MOST
+	// when several specific patterns match, keep only the MOST
 	// SPECIFIC tier (by non-wildcard char count, ties by full pattern
 	// length) so routing is deterministic instead of randomised by slice
 	// order. E.g. "claude-sonnet-*" pins "claude-sonnet-4" over "claude-*".

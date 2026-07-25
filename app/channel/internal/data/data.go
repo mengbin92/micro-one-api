@@ -48,8 +48,8 @@ type Repository struct {
 	modelMappingNextID    int64
 	modelSubMappingNextID int64
 	// P2 #3: model→account routing memory store (model_routings table).
-	modelRoutings        map[int64]*biz.ModelRouting
-	modelRoutingNextID   int64
+	modelRoutings      map[int64]*biz.ModelRouting
+	modelRoutingNextID int64
 }
 
 type channelModel struct {
@@ -332,7 +332,7 @@ func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group
 	}
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	// 🟡#4: exact-first tier互斥, matching the DB path. See
+	// exact-first tier互斥, matching the DB path. See
 	// listAbilitiesByGroupAndModelMemory for the rationale.
 	exact := make([]biz.SubscriptionAccountAbility, 0)
 	wild := make([]biz.SubscriptionAccountAbility, 0)
@@ -1490,7 +1490,7 @@ func (r *Repository) findByIDMemory(_ context.Context, channelID int64) (*biz.Ch
 func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group, model string) ([]biz.Ability, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	// 🟡#4: two-tier, exact-first tier互斥 — mirrors the DB path
+	// two-tier, exact-first tier互斥 — mirrors the DB path
 	// (listAbilitiesByGroupAndModelDB). Previously the memory path merged
 	// exact + wildcard matches in a single pass, so (a) a channel listing
 	// both "gpt-4o" and "gpt-*" was double-counted (double weight in the
@@ -1677,7 +1677,7 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 			"priority":                             model.Priority,
 			"weight":                               model.Weight,
 			"model_mapping":                        model.ModelMapping,
-			"restrict_models":                     model.RestrictModels,
+			"restrict_models":                      model.RestrictModels,
 			"system_prompt":                        model.SystemPrompt,
 			"config":                               model.Config,
 			"balance":                              model.Balance,

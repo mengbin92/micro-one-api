@@ -886,7 +886,8 @@ sub2api 有 `Channel.RestrictModels bool`。micro-one-api 之前隐式等价于
 - `restrict_models=1`（默认，legacy）：channel 只能服务 abilities 表里注册的模型
 - `restrict_models=0`（catch-all）：当 abilities 表无匹配时，请求路由到该 channel
 - **catch-all 只在主选择路径生效**：`excludeFirstPriority=true`（failover）不回退
-  catch-all，避免重试时悄悄扩大到 catch-all channel
+  catch-all，避免重试时悄悄扩大到 catch-all channel；若没有低优先级替代渠道，
+  retry policy 直接重试当前已选渠道，不调用 `SelectChannel(false)` 扩大候选范围
 - **精确优先于 catch-all**：abilities 表有匹配时用精确匹配，catch-all 不参与
 - catch-all channel 走 `WeightedSelector`，健康/延迟/熔断状态照常生效
 
@@ -953,7 +954,8 @@ priority tier 随机挑。
 #### 行为契约
 - 路由是**覆盖**而非"唯一来源"：命中路由时，候选池收窄到路由账号集合，
   但这些账号仍走 `status/quota/runtime-blocked` + priority-tier 分层 + 加权
-  选择，所以健康/熔断/负载仍生效
+  选择，所以健康降权与熔断仍生效；`loadFactor` 仍是预留钩子，尚未接入生产
+  in-flight 反馈链路
 - **精确优先于通配符**：`RoutingMatchForSelect` 先精确（大小写不敏感），
   再特定通配符（`claude-*`），最后 `*` catch-all，与 abilities/mapping 一致
 - 无路由配置或无命中 → 回退正常 priority-tier 选择（零迁移负担）
@@ -964,25 +966,30 @@ priority tier 随机挑。
 
 #### 背景
 sub2api 同优先级 tier 内用 `filterByMinLoadRate → selectByLRU` + EWMA + 粘性
-逃逸。micro-one-api `SelectSubscriptionAccount` 同 tier 内纯随机，一个失败或
-饱和的账号和健康空闲账号收到一样多的流量。
+逃逸。micro-one-api `SelectSubscriptionAccount` 同 tier 内纯随机，一个持续失败的账号
+和健康账号收到一样多的流量。设计保留了 in-flight 负载因子，
+但当前生产链路尚未调用 `Acquire`/`Release`，因此本阶段实际交付是健康感知，
+不是完整的负载感知。
 
 #### 变更清单
 
 | 层 | 文件 | 变更 |
 |---|---|---|
-| Biz (channel) | `app/channel/internal/biz/account_selector.go` | 新建 `SubscriptionAccountSelector`：smooth WRR × healthFactor（复用 `SlidingCounter` 60s 错误率）+ 熔断器（>0.5 err/s 开 30s）+ `Acquire`/`Release` in-flight 计数 + `GetStats` |
-| Biz (channel) | `app/channel/internal/biz/channel.go` | `ChannelUsecase` 加 `accountSelector` 字段（`NewChannelUsecase` 初始化）；`SelectSubscriptionAccount` tier 内优先走 `accountSelector.Select`，失败回退随机；加 `AccountSelectorStats`/`RecordSubscriptionAccountHealth` |
+| Biz (channel) | `app/channel/internal/biz/account_selector.go` | 新建 `SubscriptionAccountSelector`：smooth WRR × healthFactor（复用 `SlidingCounter` 60s 错误率）+ 熔断器（>0.5 err/s 开 30s）+ 预留的 `Acquire`/`Release` in-flight 计数 + `GetStats` |
+| Biz (channel) | `app/channel/internal/biz/channel.go` | `ChannelUsecase` 加 `accountSelector` 字段（`NewChannelUsecase` 初始化）；`SelectSubscriptionAccount` tier 内走 `accountSelector.Select`；当前 tier 无可选账号时扫描低优先级 tier，全部不可用时 fail closed；加 `AccountSelectorStats`/`RecordSubscriptionAccountHealth` |
 | Test | `app/channel/internal/biz/model_routing_test.go` | 4 个选择器用例（失败账号降权、熔断排除、Acquire/Release、空 tier） |
 
 #### 行为契约
-- `accountSelector != nil` 时优先用 smooth WRR × healthFactor，失败回退随机
-  （legacy）
+- `accountSelector != nil` 时使用 smooth WRR × healthFactor；当前 tier 全部
+  熔断时继续扫描更低优先级 tier，所有 tier 都不可用时失败关闭，不再随机回落
+  到已熔断账号
 - healthFactor 分档与 channel `WeightedSelector` 一致：<1%→100、<5%→80、
   <10%→50、<30%→20、否则→1，运维体感一致
 - 熔断：>0.5 err/s 开路 30s，开路期账号被跳过；窗口过后自动半开
-- `Acquire`/`Release` 提供进程内 in-flight 计数，供后续接入负载因子（当前
-  healthFactor 已生效，load factor 为预留扩展）
+- `Acquire`/`Release` 提供进程内 in-flight 计数，但 relay-gateway →
+  channel-service 尚无对应调用链；当前 `loadFactor` 恒为中性值，不能宣称生产
+  选择已经负载感知。healthFactor 与熔断反馈通过专用
+  `RecordSubscriptionAccountHealth` RPC 生效
 - 选择器是进程级单例（每 `ChannelUsecase`），运行期状态按 account id 聚合
 
 ## 13. P3 实现方案：BillingModelSource 三态
@@ -1008,15 +1015,15 @@ sub2api `BillingModelSource` 三态：`requested`/`upstream`/`channel_mapped`，
 | Server | `internal/server/anthropic_inbound.go` | 同上 |
 | Server | `internal/server/http_adaptor.go` | 订阅账号路径（stream/non-stream）reserveQuota + usage log 改用 `BillingModelName` |
 | Wire | `cmd/relay-gateway/wire.go` | 读 `cfg.Bootstrap.BillingModelSource` 调 `SetBillingModelSource` |
-| Config | `configs/config.yaml` | `billing_model_source.source`（env `BILLING_MODEL_SOURCE`，默认 `requested`） |
+| Config | `configs/config.yaml` | `billing_model_source.source`（env `BILLING_MODEL_SOURCE`，默认 `upstream`） |
 
 #### 行为契约
-- `requested`（默认，legacy）：用客户端请求模型名计费
-- `upstream`：用最终上游模型名（`RelayPlan.ResolvedModel`，经全局 + per-account 映射后）
+- `requested`：用客户端请求模型名计费
+- `upstream`（默认，legacy）：用最终上游模型名（`RelayPlan.ResolvedModel`，经全局 + per-account 映射后）。P3 之前各 reserveQuota 调用点实际传入的就是上游模型名，因此该默认值保持真实历史兼容性
 - `channel_mapped`：用渠道/账号映射后的模型名（当前等价 upstream，因为
   `plan.ResolvedModel` 已含 per-account 映射；留作后续"跳过全局 mapper 只按
   渠道映射"语义的扩展点）
-- 未配置/空值 → 回退 `requested`（零迁移负担）
+- 未配置/空值/未知值 → 回退 `upstream`，避免升级时静默改变计费 key
 - `recordModelUsage` 随 usage log 的 `ModelName` 走，因此计费模型名与 usage
   stats 自动对齐
 
@@ -1035,3 +1042,25 @@ sub2api `BillingModelSource` 三态：`requested`/`upstream`/`channel_mapped`，
 > 注：少数需要绑定网络端口（`httptest.NewServer` / `miniredis`）的测试在
 > 沙箱环境因 `bind: operation not permitted` 失败，与 P2/P3 变更无关——
 > 这些测试在 CI 主机上有网络权限时通过。
+
+## 15. 累计代码审查与修复记录
+
+> **审查日期: 2026-07-25**
+
+本设计相关提交按累计范围 `977bea7^..05dbcef` 审查，排除该祖先范围内混入的
+Dependabot 合并提交。审查覆盖 Sprint 1–4、P0–P3 及两轮 follow-up 修复，
+并按严重度分阶段落地修复。完整 finding、提交清单、修复映射、验证结果与剩余
+风险见 `docs/design/model-management-code-review.md`。
+
+本轮对设计契约的关键校正：
+
+- 订阅账号健康反馈改用专用 RPC，只记录真实上游调用结果；本地并发/RPM/会话
+  窗口拒绝不污染健康分。
+- `RelayPlan.GlobalModel` 在 HTTP Responses、WebSocket、sticky route 与 failover
+  重建路径中保持完整，并为旧 route 提供兼容回退。
+- selector 使用固定点有效权重，避免默认权重 1 在健康降权后整数归零或被错误
+  拉平为等权；选择时同步刷新最新配置快照。
+- proto3 标量 presence 用 `optional` 表达，显式 disabled/false 不再与“未传值”
+  混淆。
+- `BillingModelSource` 默认值校正为真实 legacy 行为 `upstream`。
+- 明确 `loadFactor` 尚未接入生产调用链，不把当前实现描述为完整 load-aware。

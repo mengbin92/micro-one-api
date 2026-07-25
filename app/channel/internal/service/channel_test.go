@@ -190,6 +190,26 @@ func (r *channelServiceRepo) ChangeStatus(ctx context.Context, channelID int64, 
 	return nil
 }
 
+func TestChannelService_RecordSubscriptionAccountHealth(t *testing.T) {
+	uc := biz.NewChannelUsecase(&channelServiceRepo{}, nil)
+	svc := NewChannelService(uc)
+
+	resp, err := svc.RecordSubscriptionAccountHealth(context.Background(), &channelv1.RecordSubscriptionAccountHealthRequest{
+		AccountId: 42,
+		Success:   false,
+	})
+	if err != nil {
+		t.Fatalf("RecordSubscriptionAccountHealth() error = %v", err)
+	}
+	if !resp.GetSuccess() {
+		t.Fatalf("RecordSubscriptionAccountHealth() success = false: %s", resp.GetMessage())
+	}
+	stats := uc.AccountSelectorStats()[42]
+	if stats.AccountID != 42 || stats.ErrorRate <= 0 {
+		t.Fatalf("account health was not recorded: %+v", stats)
+	}
+}
+
 func TestChannelService_RecordChannelHealth(t *testing.T) {
 	repo := &channelServiceRepo{channel: &biz.Channel{ID: 7, Status: biz.ChannelStatusEnabled}}
 	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
@@ -269,13 +289,47 @@ func TestChannelServiceOneAPIFields(t *testing.T) {
 	if !createResp.Success || repo.created.Weight != 5 || repo.created.ModelMapping != `{"gpt-4o":"gpt-4o-mini"}` || repo.created.SystemPrompt != "reply briefly" {
 		t.Fatalf("CreateChannel() one-api fields mismatch: resp=%+v created=%+v", createResp, repo.created)
 	}
-	// P1 (#2) review fix: a Create that omits restrict_models (proto3 bare bool
-	// zero value) must default to true (legacy restricted), NOT catch-all. This
-	// matches migration 064's DEFAULT 1 and the "zero-migration burden" contract.
+	// P0 review #1 / P1 #6: a Create that omits restrict_models (proto3
+	// optional unset) must default to true (legacy restricted), NOT
+	// catch-all. This matches migration 064's DEFAULT 1 and the
+	// "zero-migration burden" contract.
 	if !repo.created.RestrictModels {
 		t.Fatalf("CreateChannel() restrict_models must default to true (legacy restricted), got false: %+v", repo.created)
 	}
 
+	// P1 #6: a Create that explicitly sets restrict_models=false must build a
+	// catch-all channel (§11.2 contract). The prior heuristic forced true
+	// even on explicit false.
+	repo.created = nil
+	catchAll := false
+	catchAllResp, err := svc.CreateChannel(context.Background(), &channelv1.CreateChannelRequest{
+		Name:           "catchall",
+		Type:           1,
+		BaseUrl:        "https://api.example.com/v1",
+		Key:            "sk-test",
+		Models:         "gpt-4o",
+		Group:          "default",
+		Priority:       1,
+		Weight:         1,
+		RestrictModels: &catchAll,
+	})
+	if err != nil {
+		t.Fatalf("CreateChannel() catch-all error = %v", err)
+	}
+	if !catchAllResp.Success {
+		t.Fatalf("CreateChannel() catch-all success=false: %s", catchAllResp.GetMessage())
+	}
+	if repo.created.RestrictModels {
+		t.Fatalf("CreateChannel() explicit restrict_models=false must be honoured, got true: %+v", repo.created)
+	}
+
+	// P0 review #1: UpdateChannel must NOT mutate restrict_models when the
+	// caller omits it (balance-refresh path). Seed an already-restricted
+	// channel (RestrictModels=true) and send a balance-only update; the
+	// persisted value must stay true. Previously the bare-bool unconditional
+	// assignment + 064-restrict_models update map silently flipped it to
+	// false (catch-all) on every balance refresh.
+	repo.channel = &biz.Channel{ID: 1, Status: biz.ChannelStatusEnabled, RestrictModels: true}
 	updateResp, err := svc.UpdateChannel(context.Background(), &channelv1.UpdateChannelRequest{
 		ChannelId:          1,
 		Weight:             7,
@@ -289,6 +343,30 @@ func TestChannelServiceOneAPIFields(t *testing.T) {
 	}
 	if !updateResp.Success || repo.updated.Weight != 7 || repo.updated.ModelMapping != `{"gpt-4o":"gpt-4o"}` || repo.updated.SystemPrompt != "updated" || repo.updated.Balance != 42.5 || repo.updated.BalanceUpdatedTime != 1710000300 {
 		t.Fatalf("UpdateChannel() one-api fields mismatch: resp=%+v updated=%+v", updateResp, repo.updated)
+	}
+	// restrict_models must be preserved (true) because the update request
+	// did not set it — exactly the balance-refresh path.
+	if !repo.updated.RestrictModels {
+		t.Fatalf("UpdateChannel() restrict_models must be preserved when omitted (balance-refresh path), got false: %+v", repo.updated)
+	}
+
+	// P0 review #1: when the caller explicitly sets restrict_models=false,
+	// UpdateChannel must honour it (build a catch-all channel). This is the
+	// §11.2 contract that the prior bare-bool heuristic broke.
+	repo.channel = &biz.Channel{ID: 1, Status: biz.ChannelStatusEnabled, RestrictModels: true}
+	catchAllVal := false
+	catchAllUpdateResp, updateErr := svc.UpdateChannel(context.Background(), &channelv1.UpdateChannelRequest{
+		ChannelId:      1,
+		RestrictModels: &catchAllVal,
+	})
+	if updateErr != nil {
+		t.Fatalf("UpdateChannel() catch-all error = %v", updateErr)
+	}
+	if !catchAllUpdateResp.Success {
+		t.Fatalf("UpdateChannel() catch-all success=false: %s", catchAllUpdateResp.GetMessage())
+	}
+	if repo.updated.RestrictModels {
+		t.Fatalf("UpdateChannel() explicit restrict_models=false must be honoured, got true: %+v", repo.updated)
 	}
 }
 

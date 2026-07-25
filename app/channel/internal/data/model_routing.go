@@ -172,14 +172,20 @@ func (r *Repository) upsertModelRoutingDB(ctx context.Context, do *biz.ModelRout
 			po.GroupName, po.Model, po.Platform, po.SubscriptionAccountID).First(&existing).Error
 		if err == nil {
 			do.ID = existing.ID
-			return tx.Model(&modelRoutingModel{}).Where("id = ?", existing.ID).Updates(map[string]any{
-				"enabled":    po.Enabled,
+			updates := map[string]any{
 				"priority":   po.Priority,
 				"updated_at": po.UpdatedAt,
-			}).Error
+			}
+			if do.EnabledHasValue {
+				updates["enabled"] = po.Enabled
+			}
+			return tx.Model(&modelRoutingModel{}).Where("id = ?", existing.ID).Updates(updates).Error
 		}
 		if !isGormNotFound(err) {
 			return err
+		}
+		if !do.EnabledHasValue {
+			po.Enabled = true
 		}
 		if err := tx.Create(po).Error; err != nil {
 			if isDuplicateEntry(err) {
@@ -188,11 +194,14 @@ func (r *Repository) upsertModelRoutingDB(ctx context.Context, do *biz.ModelRout
 				if relErr := tx.Where("group_name = ? AND model = ? AND platform = ? AND subscription_account_id = ?",
 					po.GroupName, po.Model, po.Platform, po.SubscriptionAccountID).First(&retry).Error; relErr == nil {
 					do.ID = retry.ID
-					return tx.Model(&modelRoutingModel{}).Where("id = ?", retry.ID).Updates(map[string]any{
-						"enabled":    po.Enabled,
+					updates := map[string]any{
 						"priority":   po.Priority,
 						"updated_at": po.UpdatedAt,
-					}).Error
+					}
+					if do.EnabledHasValue {
+						updates["enabled"] = po.Enabled
+					}
+					return tx.Model(&modelRoutingModel{}).Where("id = ?", retry.ID).Updates(updates).Error
 				}
 				// Reload also failed: surface the original create error.
 			}
@@ -209,7 +218,9 @@ func (r *Repository) upsertModelRoutingMemory(do *biz.ModelRouting) error {
 	for _, row := range r.modelRoutings {
 		if row.GroupName == do.GroupName && row.Model == do.Model &&
 			row.Platform == do.Platform && row.SubscriptionAccountID == do.SubscriptionAccountID {
-			row.Enabled = do.Enabled
+			if do.EnabledHasValue {
+				row.Enabled = do.Enabled
+			}
 			row.Priority = do.Priority
 			row.UpdatedAt = do.UpdatedAt
 			return nil
@@ -218,6 +229,9 @@ func (r *Repository) upsertModelRoutingMemory(do *biz.ModelRouting) error {
 	if do.ID == 0 {
 		r.modelRoutingNextID++
 		do.ID = r.modelRoutingNextID
+	}
+	if !do.EnabledHasValue {
+		do.Enabled = true
 	}
 	clone := *do
 	r.modelRoutings[do.ID] = &clone

@@ -137,7 +137,7 @@ func (s *AdminService) UpsertModelRouting(ctx context.Context, req *adminv1.Upse
 		Model:                 req.Model,
 		Platform:              req.Platform,
 		SubscriptionAccountId: req.SubscriptionAccountId,
-		Enabled:               req.Enabled,
+		Enabled:               req.Enabled, // admin.proto UpsertModelRoutingRequest.enabled is optional bool; pointer threaded through.
 		Priority:              req.Priority,
 	})
 	if err != nil {

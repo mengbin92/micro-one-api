@@ -22,7 +22,7 @@ type WeightedSelector struct {
 type channelState struct {
 	channel          *Channel
 	weight           int32           // configured weight
-	currentWeight    int32           // smooth WRR current weight
+	currentWeight    int64           // smooth WRR current weight (fixed-point scale)
 	recentLatency    *SlidingWindow  // last 100 request latencies
 	recentErrors     *SlidingCounter // last 60s error count
 	inflight         atomic.Int32    // current in-flight requests
@@ -235,19 +235,24 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Update channel states
+	// Refresh configured channel fields on every selection while preserving
+	// runtime health/latency/current-weight state. This makes admin updates
+	// visible even when the channel id already exists in the selector.
 	for _, ch := range candidates {
-		if _, ok := s.channels[ch.ID]; !ok {
+		if ch != nil {
 			s.updateChannelLocked(ch)
 		}
 	}
 
 	var best *channelState
-	var bestWeight int32 = math.MinInt32
+	var bestWeight int64 = math.MinInt64
 
 	now := time.Now().UnixNano()
 
 	for _, ch := range candidates {
+		if ch == nil {
+			continue
+		}
 		state, ok := s.channels[ch.ID]
 		if !ok {
 			continue
@@ -264,16 +269,7 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 			continue
 		}
 
-		// P2 #7 review fix (WRR normalization): healthFactor and latencyFactor
-		// are 0-100 band values, so the product weight×health×latency is scaled
-		// by 10000 relative to the configured weight. The smooth-WRR algorithm
-		// requires the decrement (Σ effective weight) to use the SAME scale as
-		// the increment, otherwise the winner's currentWeight grows ~10000× per
-		// round, weighted selection collapses to "always pick the first", and
-		// currentWeight overflows int32 after ~2.1M selects. Normalise by /10000
-		// so effective weight is on the same scale as the configured weight, and
-		// sum the effective weights (not the static weights) for the decrement.
-		effectiveWeight := state.weight * state.healthFactor() * state.latencyFactor() / 10000
+		effectiveWeight := channelEffectiveWeight(state)
 		state.currentWeight += effectiveWeight
 		if state.currentWeight > bestWeight {
 			bestWeight = state.currentWeight
@@ -286,7 +282,7 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 	}
 
 	// Decrement selected channel's current weight by total effective weight.
-	totalWeight := s.totalEffectiveWeight(candidates)
+	totalWeight := s.totalEffectiveWeight(candidates, now)
 	if totalWeight > 0 {
 		best.currentWeight -= totalWeight
 	}
@@ -295,14 +291,30 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 	return best.channel, nil
 }
 
-// totalEffectiveWeight sums the effective (normalised) weight of all
-// candidates so the smooth-WRR decrement uses the same scale as the
-// increment. See the Select method for the normalisation rationale.
-func (s *WeightedSelector) totalEffectiveWeight(candidates []*Channel) int32 {
-	var total int32
+// channelEffectiveWeight keeps health/latency factors in fixed-point form so
+// low configured weights retain their dynamic ratios instead of rounding to
+// the same integer bucket.
+func channelEffectiveWeight(state *channelState) int64 {
+	if state == nil {
+		return 0
+	}
+	return int64(state.weight) * int64(state.healthFactor()) * int64(state.latencyFactor())
+}
+
+func (s *WeightedSelector) totalEffectiveWeight(candidates []*Channel, now int64) int64 {
+	var total int64
 	for _, ch := range candidates {
+		if ch == nil {
+			continue
+		}
 		if state, ok := s.channels[ch.ID]; ok {
-			total += state.weight * state.healthFactor() * state.latencyFactor() / 10000
+			if state.circuitOpenUntil > 0 && state.circuitOpenUntil > now {
+				continue
+			}
+			if state.inflight.Load() >= state.maxConcurrent {
+				continue
+			}
+			total += channelEffectiveWeight(state)
 		}
 	}
 	return total
@@ -415,7 +427,7 @@ func (s *WeightedSelector) GetStats() map[int64]ChannelStats {
 type ChannelStats struct {
 	ChannelID     int64
 	Weight        int32
-	CurrentWeight int32
+	CurrentWeight int64
 	Inflight      int32
 	P95Latency    time.Duration
 	ErrorRate     float64

@@ -275,11 +275,11 @@ func TestRepository_ChannelMappingUpsert(t *testing.T) {
 	require.NoError(t, repo.CreateModel(ctx, m))
 
 	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
-		ChannelID: 10, ModelPK: m.ID, Enabled: true, Priority: 5,
+		ChannelID: 10, ModelPK: m.ID, Enabled: true, EnabledHasValue: true, Priority: 5,
 	}))
 	// upsert again — should update
 	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
-		ChannelID: 10, ModelPK: m.ID, Enabled: false, Priority: 9,
+		ChannelID: 10, ModelPK: m.ID, Enabled: false, EnabledHasValue: true, Priority: 9,
 	}))
 	mappings, err := repo.ListChannelMappings(ctx, 10)
 	require.NoError(t, err)
@@ -299,10 +299,10 @@ func TestRepository_SubscriptionMappingUpsert(t *testing.T) {
 	require.NoError(t, repo.CreateModel(ctx, m))
 
 	require.NoError(t, repo.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
-		SubscriptionAccountID: 20, ModelPK: m.ID, GroupName: "default", Enabled: true,
+		SubscriptionAccountID: 20, ModelPK: m.ID, GroupName: "default", Enabled: true, EnabledHasValue: true,
 	}))
 	require.NoError(t, repo.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
-		SubscriptionAccountID: 20, ModelPK: m.ID, GroupName: "default", Enabled: false,
+		SubscriptionAccountID: 20, ModelPK: m.ID, GroupName: "default", Enabled: false, EnabledHasValue: true,
 	}))
 	mappings, err := repo.ListSubscriptionMappings(ctx, 20)
 	require.NoError(t, err)
@@ -353,11 +353,11 @@ func TestRepository_ListAvailableModelsDualRead(t *testing.T) {
 
 	// Create a legacy channel with models.
 	ch := &biz.Channel{
-		ID:      1,
-		Name:    "test-channel",
-		Status:  biz.ChannelStatusEnabled,
-		Group:   "default",
-		Models:  []string{"gpt-4o", "gpt-4o-mini"},
+		ID:       1,
+		Name:     "test-channel",
+		Status:   biz.ChannelStatusEnabled,
+		Group:    "default",
+		Models:   []string{"gpt-4o", "gpt-4o-mini"},
 		Priority: 0,
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))

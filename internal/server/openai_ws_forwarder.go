@@ -458,13 +458,16 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 	maxSwitches int,
 ) {
 	currentChannel := plan.Channel
-	resolvedModel := plan.ResolvedModel
+	// start from the globally-resolved model so failover remaps
+	// from a clean base. plan.ResolvedModel already carries the first channel's
+	// mapping; the loop below recomputes it per-channel from the plan base model.
+	resolvedModel := plan.BaseModel()
 
 	for attempt := 0; ; attempt++ {
-		// 🔴#7: re-apply the current channel's per-channel model mapping on
+		// re-apply the current channel's per-channel model mapping on
 		// each (re)entry and after a failover switch, so the upstream model
 		// matches the channel actually serving the request.
-		resolvedModel = relaybiz.ApplyChannelModelMapping(currentChannel.ModelMapping, plan.ResolvedModel)
+		resolvedModel = relaybiz.ApplyChannelModelMapping(currentChannel.ModelMapping, plan.BaseModel()) // recompute from global model
 		// Resolve the upstream target for the current channel.
 		wsURL, headers, err := s.buildOpenAIWSUpstreamTarget(r, currentChannel)
 		if err != nil {
@@ -561,6 +564,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			if turn.requestID != "" {
 				s.storeResponseRoute(turn.requestID, responseRoute{
 					Model:         clientModel,
+					GlobalModel:   plan.BaseModel(),
 					ResolvedModel: resolvedModel,
 					Channel:       *currentChannel,
 					UserID:        plan.Auth.UserID,
@@ -671,12 +675,13 @@ func (s *HTTPServer) releaseOpenAIWSUpstreamConn(pc *openAIWSPooledConn, broken 
 // must surface the original error to the client.
 func (s *HTTPServer) maybeFailoverChannel(ctx context.Context, wsConn *coderws.Conn, plan *relaybiz.RelayPlan, failed *relaybiz.Channel, clientModel string, next **relaybiz.Channel) bool {
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	retryResult := retryExecutor.ExecuteWithAccountHealth(ctx, plan.Auth.Group, plan.ResolvedModel, failed, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
-		// The executor selects a channel for us; we accept it by returning nil.
-		// It excludes the failed channel's priority automatically.
-		*next = ch
-		return nil
-	})
+	retryResult := retryExecutor.ExecuteWithAccountHealth(ctx, plan.Auth.Group, plan.BaseModel(), failed, // failover re-selects on the globally-resolved model
+		subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+			// The executor selects a channel for us; we accept it by returning nil.
+			// It excludes the failed channel's priority automatically.
+			*next = ch
+			return nil
+		})
 	if retryResult.Err != nil || *next == nil || (*next).ID == failed.ID {
 		return false
 	}
@@ -706,14 +711,16 @@ func (s *HTTPServer) lookupWSStickyRoute(ctx context.Context, token, responseID 
 		return false
 	}
 	ch := relaybiz.Channel{
-		ID:       chInfo.Channel.Id,
-		Type:     chInfo.Channel.Type,
-		Name:     chInfo.Channel.Name,
-		Status:   chInfo.Channel.Status,
-		BaseURL:  chInfo.Channel.BaseUrl,
-		Group:    chInfo.Channel.Group,
-		Priority: chInfo.Channel.Priority,
-		Key:      chInfo.Channel.Key,
+		ID:             chInfo.Channel.Id,
+		Type:           chInfo.Channel.Type,
+		Name:           chInfo.Channel.Name,
+		Status:         chInfo.Channel.Status,
+		BaseURL:        chInfo.Channel.BaseUrl,
+		Group:          chInfo.Channel.Group,
+		Priority:       chInfo.Channel.Priority,
+		Key:            chInfo.Channel.Key,
+		ModelMapping:   chInfo.Channel.ModelMapping,
+		RestrictModels: chInfo.Channel.RestrictModels,
 	}
 	if chInfo.Channel.Config != nil {
 		ch.Config = relaybiz.ChannelConfig{APIVersion: chInfo.Channel.Config.ApiVersion}
@@ -742,14 +749,16 @@ func (s *HTTPServer) lookupWSStickySessionRoute(ctx context.Context, token, sess
 		return false
 	}
 	ch := relaybiz.Channel{
-		ID:       chInfo.Channel.Id,
-		Type:     chInfo.Channel.Type,
-		Name:     chInfo.Channel.Name,
-		Status:   chInfo.Channel.Status,
-		BaseURL:  chInfo.Channel.BaseUrl,
-		Group:    chInfo.Channel.Group,
-		Priority: chInfo.Channel.Priority,
-		Key:      chInfo.Channel.Key,
+		ID:             chInfo.Channel.Id,
+		Type:           chInfo.Channel.Type,
+		Name:           chInfo.Channel.Name,
+		Status:         chInfo.Channel.Status,
+		BaseURL:        chInfo.Channel.BaseUrl,
+		Group:          chInfo.Channel.Group,
+		Priority:       chInfo.Channel.Priority,
+		Key:            chInfo.Channel.Key,
+		ModelMapping:   chInfo.Channel.ModelMapping,
+		RestrictModels: chInfo.Channel.RestrictModels,
 	}
 	if chInfo.Channel.Config != nil {
 		ch.Config = relaybiz.ChannelConfig{APIVersion: chInfo.Channel.Config.ApiVersion}

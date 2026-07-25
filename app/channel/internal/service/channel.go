@@ -668,23 +668,17 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *channelv1.Creat
 		plugin = req.Config.GetPlugin()
 		vertexProjectID = req.Config.GetVertexAiProjectId()
 	}
-	// P1 (#2) review fix: restrict_models is a proto3 bare bool, so the wire
-	// zero value (false) is indistinguishable from an explicit "allow all".
-	// Migration 064 sets the DB DEFAULT to 1 (true=restricted, legacy), but a
-	// Create that omits the field would otherwise land false and turn a new
-	// channel into a catch-all — the opposite of the "zero-migration burden"
-	// contract. Default new channels to restricted (the legacy behaviour).
-	// Callers that explicitly want a catch-all channel must opt in by setting
-	// restrict_models=false; the bare-bool ambiguity is tracked for a follow-up
-	// proto optional change.
-	restrictModels := req.RestrictModels
-	if !restrictModels {
-		// Heuristic: the web frontend does not send restrict_models at all, so
-		// an absent field arrives as false. Treating that as "catch-all" would
-		// silently route every unregistered model to the new channel. Default to
-		// true (legacy) unless the caller is explicit — there is no wire-level
-		// way to tell, so we pick the safe legacy default.
-		restrictModels = true
+	// restrict_models is a proto3 *optional* bool now,
+	// so presence is distinguishable from value. When the caller omits the
+	// field (web frontend, admin create without the toggle), default to true
+	// (legacy restricted behaviour, migration 064 DEFAULT 1, zero-migration
+	// burden). When the caller sets it explicitly — including false to build a
+	// catch-all channel — honour that value verbatim. The earlier heuristic
+	// always forced true even on an explicit false, making catch-all channels
+	// impossible to create (the §11.2 contract).
+	restrictModels := true
+	if req.RestrictModels != nil {
+		restrictModels = *req.RestrictModels
 	}
 	channel := &biz.Channel{
 		Type:           req.Type,
@@ -752,7 +746,16 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 	if req.ModelMapping != "" {
 		channel.ModelMapping = req.ModelMapping
 	}
-	channel.RestrictModels = req.RestrictModels
+	// restrict_models is a proto3 *optional* bool. Only apply
+	// it when the caller explicitly set the field — balance-refresh
+	// (admin.go persistBalanceRefreshSuccess/Failure), health updates and
+	// other partial updates omit it; the prior unconditional assignment +
+	// the 064-restrict_models=1 update map silently flipped restricted
+	// channels to catch-all (restrict_models=0). When unset, the existing
+	// channel.RestrictModels value is preserved.
+	if req.RestrictModels != nil {
+		channel.RestrictModels = *req.RestrictModels
+	}
 	if req.SystemPrompt != "" {
 		channel.SystemPrompt = req.SystemPrompt
 	}
@@ -816,6 +819,14 @@ func (s *ChannelService) RecordChannelHealth(ctx context.Context, req *channelv1
 		Success: true,
 		Message: "ok",
 	}, nil
+}
+
+func (s *ChannelService) RecordSubscriptionAccountHealth(_ context.Context, req *channelv1.RecordSubscriptionAccountHealthRequest) (*channelv1.RecordSubscriptionAccountHealthResponse, error) {
+	if req.GetAccountId() <= 0 {
+		return &channelv1.RecordSubscriptionAccountHealthResponse{Success: false, Message: "account_id is required"}, nil
+	}
+	s.uc.RecordSubscriptionAccountHealth(req.GetAccountId(), req.GetSuccess())
+	return &channelv1.RecordSubscriptionAccountHealthResponse{Success: true, Message: "ok"}, nil
 }
 
 func (s *ChannelService) DeleteChannel(ctx context.Context, req *channelv1.DeleteChannelRequest) (*channelv1.DeleteChannelResponse, error) {

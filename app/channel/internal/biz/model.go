@@ -78,11 +78,18 @@ type ModelChannelMapping struct {
 	ID        int64
 	ChannelID int64
 	ModelPK   int64
-	Enabled   bool
-	Priority  int32
-	Config    string
-	CreatedAt int64
-	UpdatedAt int64
+	// EnabledHasValue distinguishes "caller left enabled unchanged on update"
+	// (false) from "caller explicitly set enabled=false" (true). When false,
+	// UpsertChannelMapping keeps the existing row's enabled value on update
+	// and defaults to true on insert (DB DEFAULT 1). When true, Enabled is
+	// the authoritative value. This fixes the proto3 bare-bool trap where a
+	// priority-only update silently disabled the mapping.
+	Enabled         bool
+	EnabledHasValue bool
+	Priority        int32
+	Config          string
+	CreatedAt       int64
+	UpdatedAt       int64
 }
 
 // ModelSubscriptionMapping links a subscription account to a model.
@@ -92,6 +99,7 @@ type ModelSubscriptionMapping struct {
 	ModelPK               int64
 	GroupName             string
 	Enabled               bool
+	EnabledHasValue       bool
 	Priority              int32
 	CreatedAt             int64
 	UpdatedAt             int64
@@ -170,7 +178,7 @@ type ModelRepo interface {
 // composition time (see app/channel/cmd/channel/wire.go). Without it, admin
 // edits to the model registry or its channel/subscription mappings stay stale
 // for up to the 15s L1 TTL — the "改了不生效" gap. See
-// docs/model-management-review-followups.md 🟡#2.
+// docs/design/model-management-code-review.md.
 type ModelsListCacheInvalidator interface {
 	// invalidateModelsListCache drops the /v1/models L1 cache. Unexported
 	// because both ModelUsecase and ChannelUsecase live in package biz; the
@@ -287,9 +295,6 @@ func (uc *ModelUsecase) CreateModel(ctx context.Context, model *Model) error {
 	}
 	if model.ModelType == "" {
 		model.ModelType = "chat"
-	}
-	if model.Status == 0 {
-		model.Status = ModelStatusEnabled
 	}
 	now := uc.timestamp()
 	if model.CreatedAt == 0 {

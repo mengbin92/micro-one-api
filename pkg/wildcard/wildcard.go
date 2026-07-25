@@ -71,8 +71,7 @@ func match(pattern, name string) bool {
 // therefore non-deterministic when several specific patterns match the same
 // name. Production code should use Specificity + Match to pick the most
 // specific match (see internal/biz/model_mapping.go Resolve). Removed from
-// active call sites as part of docs/model-management-review-followups.md 🟢
-// "死代码: wildcard.FirstMatch".
+// active call sites as part of docs/design/model-management-code-review.md..
 //
 // Deprecated: use a most-specific-wins selection instead.
 func FirstMatch(keys []string, name string) (string, bool) {
@@ -92,7 +91,7 @@ func FirstMatch(keys []string, name string) (string, bool) {
 // matching deterministic: when several specific patterns match the same
 // name, the most specific one wins, so two requests for the same model
 // resolve to the same upstream instead of being randomised by Go map
-// iteration order. See docs/model-management-review-followups.md 🟡#3.
+// iteration order. See docs/model-management-design.md §11.1.
 func Specificity(pattern string) int {
 	nonWildcard := 0
 	for _, c := range pattern {

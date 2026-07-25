@@ -100,17 +100,17 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 	// Use RetryExecutor for upstream calls with channel fallback
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		// Reserve quota
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(&req)
-		// 🔴#7: re-apply the retried channel's per-channel model mapping so
+		// re-apply the retried channel's per-channel model mapping so
 		// the upstream body and billing use the new channel's mapping. Plan()
 		// applied the initial channel's mapping to plan.ResolvedModel; on a
 		// retry a different channel is selected, so we re-derive the upstream
 		// model against the retried channel's mapping.
-		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.ResolvedModel)
+		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.BaseModel()) // recompute from globally-resolved model, not the already-mapped plan.ResolvedModel
 		req.Model = currentResolvedModel
 		// P3 #6: derive the billing model name from billing_model_source.
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
@@ -154,7 +154,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
 			TokenName:        plan.Auth.TokenName,
-			RequestID:         requestID,
+			RequestID:        requestID,
 			Endpoint:         "/v1/chat/completions",
 			ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 			Quota:            actualTokens,

@@ -46,8 +46,10 @@ func TestRepository_ModelRoutings_Database(t *testing.T) {
 		t.Fatalf("expected exact row first, got %q", sel[0].Model)
 	}
 
-	// Update via upsert (same unique key) flips enabled.
+	// Update via upsert (same unique key) flips enabled. The caller signals
+	// that Enabled is authoritative by setting EnabledHasValue.
 	r1.Enabled = false
+	r1.EnabledHasValue = true
 	if err := repo.UpsertModelRouting(ctx, r1); err != nil {
 		t.Fatalf("UpsertModelRouting update: %v", err)
 	}

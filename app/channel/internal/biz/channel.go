@@ -348,9 +348,10 @@ type ChannelUsecase struct {
 	// See docs/model-management-design.md §10.2.
 	modelsListCache *modelsListCache
 
-	// accountSelector is the P2 #7 load-aware subscription-account selector
-	// (smooth WRR × health factor). nil when not configured; SelectSubscriptionAccount
-	// falls back to the legacy random pick. See docs/model-management-design.md §9.3 #7.
+	// accountSelector is the health-aware subscription-account selector
+	// (smooth WRR × health factor). NewChannelUsecase wires it by default; when
+	// nil, SelectSubscriptionAccount retains the legacy random fallback.
+	// See docs/model-management-design.md §12.2.
 	accountSelector *SubscriptionAccountSelector
 
 	// routingRepo is the optional P2 #3 model→account routing repo. nil when
@@ -373,13 +374,18 @@ func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUseca
 		modelsListCache:        newModelsListCache(0),
 		accountSelector:        NewSubscriptionAccountSelector(),
 	}
-	// 🟢 low-priority: wire cross-instance cache invalidation so a channel
-	// mutation on instance A drops the /v1/models L1 cache on instance B via
-	// the TopicChannelChanged stream (Redis Streams when configured, in-proc
-	// otherwise). The local mutation path already invalidates synchronously;
-	// this subscription catches the cross-instance event so the 15s TTL is
-	// not the only convergence path. See docs/model-management-review-followups.md
-	// 🟢 "跨实例缓存失效".
+	// cross-instance cache invalidation. RecordHealth and
+	// RecordUsage no longer publish TopicChannelChanged (§10.2 contract), so
+	// the only publishers are channel/subscription CRUD + status changes
+	// (UpdateChannel/CreateChannel/DeleteChannel/ChangeChannelStatus and the
+	// subscription-account equivalents), all of which DO change which models
+	// a group exposes. The blanket clear here is therefore safe — it fires
+	// only on real model-set mutations. Redis Streams consumer groups are
+	// competing-consumer (not broadcast): only one instance in the group
+	// receives each event, so cross-instance convergence still leans on the
+	// 15s TTL for the instances that miss the event. That is documented as
+	// the fallback path; the local synchronous invalidate on the mutating
+	// instance is the primary.
 	eventBus.Subscribe(events.TopicChannelChanged, func(_ context.Context, _ events.Event) error {
 		uc.invalidateModelsListCache()
 		return nil
@@ -593,8 +599,8 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 		if len(tier) == 0 {
 			continue
 		}
-		// P2 #7: load-aware weighted selection when configured, else random.
-		// 🟡#6: when the accountSelector is configured but returns no
+		// Use health-aware weighted selection when configured, else random.
+		// when the accountSelector is configured but returns no
 		// candidate (e.g. all accounts circuit-opened), the previous code
 		// fell through to uniform rand.Int — which fail-opens onto the
 		// same saturated/circuit-opened accounts, contradicting the
@@ -879,7 +885,12 @@ func (uc *ChannelUsecase) RecordUsage(ctx context.Context, channelID int64, quot
 	if err := uc.repo.RecordUsage(ctx, channelID, quota); err != nil {
 		return err
 	}
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID})
+	// §10.2 contract — RecordUsage must NOT invalidate the
+	// /v1/models L1 cache or publish a TopicChannelChanged event. Usage is
+	// written on every billing commit; under load that would continuously
+	// clear the cache (hit-rate → 0) and republish to the stream, forcing
+	// every other instance to clear too. Used quota does not change which
+	// models a channel exposes.
 	return nil
 }
 
@@ -903,7 +914,13 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 	if uc.selector != nil {
 		uc.selector.RecordHealth(event.ChannelID, event.Success, event.ResponseTime, event.Error)
 	}
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, channel)
+	// §10.2 contract — RecordHealth must NOT invalidate the
+	// /v1/models L1 cache or publish a TopicChannelChanged event. Health
+	// is recorded on every relay attempt (retry.go recordHealth); under load
+	// that would continuously clear the cache (hit-rate → 0) and republish to
+	// the stream, forcing every other instance to clear too. Health changes
+	// do not change which models a channel exposes; the selector's own
+	// healthFactor/circuit-breaker state is updated in-process above.
 	uc.notifyUnavailable(ctx, &previousSnapshot, channel, event)
 	return nil
 }

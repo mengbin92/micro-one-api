@@ -263,7 +263,7 @@ func TestModelUsecase_CreateAndGet(t *testing.T) {
 	repo := newFakeModelRepo()
 	uc := NewModelUsecase(repo)
 
-	m := &Model{ModelID: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai"}
+	m := &Model{ModelID: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai", Status: ModelStatusEnabled}
 	if err := uc.CreateModel(context.Background(), m); err != nil {
 		t.Fatalf("CreateModel: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestModelUsecase_ChannelMappingUpsert(t *testing.T) {
 	}
 
 	// upsert again — should update, not duplicate
-	mapping2 := &ModelChannelMapping{ChannelID: 10, ModelPK: m.ID, Enabled: false, Priority: 9}
+	mapping2 := &ModelChannelMapping{ChannelID: 10, ModelPK: m.ID, Enabled: false, EnabledHasValue: true, Priority: 9}
 	if err := uc.UpsertChannelMapping(context.Background(), mapping2); err != nil {
 		t.Fatalf("UpsertChannelMapping (update): %v", err)
 	}

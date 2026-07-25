@@ -362,7 +362,7 @@ message AdminCreateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
-  bool restrict_models = 12;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
+  optional bool restrict_models = 12;                 // restrict to abilities list. Optional: threaded to channel-service CreateChannel; defaults to true (legacy) when unset.
 }
 
 message AdminCreateChannelResponse {
@@ -383,7 +383,7 @@ message AdminUpdateChannelRequest {
   uint32 weight = 9;
   string model_mapping = 10;
   string system_prompt = 11;
-  bool restrict_models = 12;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
+  optional bool restrict_models = 12;                 // restrict to abilities list. Optional (proto3 presence): only applied when the caller sets it, so callers that update only balance/health never silently flip restrict_models.
 }
 
 message AdminUpdateChannelResponse {
@@ -603,7 +603,7 @@ message UpsertModelRoutingRequest {
   string model = 2;
   string platform = 3;
   int64 subscription_account_id = 4;
-  bool enabled = 5;
+  optional bool enabled = 5;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert (DB DEFAULT 1).
   int32 priority = 6;
 }
 

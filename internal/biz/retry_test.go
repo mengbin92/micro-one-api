@@ -111,7 +111,9 @@ func (m *mockChannelSelector) SelectChannel(_ context.Context, _, _ string, excl
 	return ch, nil
 }
 
-func (m *mockChannelSelector) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
+func (m *mockChannelSelector) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
+	return nil
+}
 
 func (m *mockChannelSelector) RecordChannelHealth(_ context.Context, channelID int64, success bool, err string, responseTime int64) error {
 	m.healthEvents = append(m.healthEvents, healthEvent{
@@ -228,11 +230,9 @@ func TestRetryExecutor_Execute_ExhaustsRetries(t *testing.T) {
 	assert.Equal(t, 3, result.Attempt)
 }
 
-// TestRetryExecutor_FailoverDoesNotWidenToCatchAll (🟡#5): when the
-// failover SelectChannel(excludeFirstPriority=true) returns no channel, the
-// executor must NOT fall back to SelectChannel(false) — that would bypass
-// the "failover does not fall back to catch-all" contract and could re-select
-// the catch-all channel that just failed. It surfaces the last error instead.
+// TestRetryExecutor_FailoverDoesNotWidenToCatchAll verifies that a missing
+// lower-priority alternative retries the current channel without calling
+// SelectChannel(false), which could silently expand failover to catch-all.
 func TestRetryExecutor_FailoverDoesNotWidenToCatchAll(t *testing.T) {
 	sel := newTrackingSelector()
 	sel.failoverErr = errors.New("no channel")
@@ -246,7 +246,9 @@ func TestRetryExecutor_FailoverDoesNotWidenToCatchAll(t *testing.T) {
 	}
 	exec := NewRetryExecutor(policy, sel)
 
+	attempts := 0
 	result := exec.ExecuteWithInitialChannel(context.Background(), "default", "gpt-4", sel.first, func(_ context.Context, ch *Channel) error {
+		attempts++
 		return &RetryableError{Status: 502, Err: errors.New("bad gateway")}
 	})
 	// Must NOT have widened: excludeFirstPriority=false should never be called.
@@ -255,6 +257,9 @@ func TestRetryExecutor_FailoverDoesNotWidenToCatchAll(t *testing.T) {
 	}
 	if result.Err == nil {
 		t.Fatal("expected the upstream error to surface, got nil")
+	}
+	if attempts != policy.MaxAttempts {
+		t.Fatalf("same-channel attempts = %d, want %d", attempts, policy.MaxAttempts)
 	}
 }
 
@@ -279,7 +284,9 @@ func (m *trackingSelector) SelectChannel(_ context.Context, _, _ string, exclude
 	return m.first, nil
 }
 
-func (m *trackingSelector) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
+func (m *trackingSelector) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
+	return nil
+}
 
 func (m *trackingSelector) RecordChannelHealth(_ context.Context, channelID int64, success bool, err string, responseTime int64) error {
 	m.healthEvents = append(m.healthEvents, healthEvent{channelID, success, err, responseTime})
@@ -336,5 +343,33 @@ func TestRetryExecutor_ExecuteWithAccountHealth_FeedsSelector(t *testing.T) {
 	})
 	if len(sel.accountHealthCalls) != 0 {
 		t.Fatalf("accountID<=0 must not record account health, got %d calls", len(sel.accountHealthCalls))
+	}
+}
+
+func TestRetryExecutor_AccountHealthIsNotAttributedToFallbackChannel(t *testing.T) {
+	initial := &Channel{ID: 42, Name: "subscription-account"}
+	fallback := &Channel{ID: 7, Name: "api-key-fallback"}
+	sel := &recordingAccountSelector{
+		mockChannelSelector: mockChannelSelector{channels: []*Channel{fallback}},
+	}
+	exec := NewRetryExecutor(&RetryPolicy{
+		MaxAttempts:     2,
+		InitialInterval: time.Nanosecond,
+		MaxInterval:     time.Nanosecond,
+		Multiplier:      1,
+		RetryableStatus: map[int]bool{502: true},
+	}, sel)
+
+	result := exec.ExecuteWithAccountHealth(context.Background(), "default", "gpt-4", initial, 42, func(_ context.Context, ch *Channel) error {
+		if ch == initial {
+			return &RetryableError{Status: 502, Err: errors.New("initial account failed")}
+		}
+		return nil
+	})
+	if result.Err != nil || result.Channel != fallback {
+		t.Fatalf("retry result = %+v, want successful fallback", result)
+	}
+	if len(sel.accountHealthCalls) != 1 || sel.accountHealthCalls[0].id != 42 || sel.accountHealthCalls[0].success {
+		t.Fatalf("account health calls = %+v, want only (42,false) for the known initial account", sel.accountHealthCalls)
 	}
 }

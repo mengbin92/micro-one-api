@@ -206,6 +206,27 @@ func TestChannelService_ListModels(t *testing.T) {
 	}
 }
 
+func TestChannelService_CreateModelPreservesExplicitDisabledStatus(t *testing.T) {
+	svc := newModelService()
+	ctx := context.Background()
+	disabled := int32(biz.ModelStatusDisabled)
+
+	createResp, err := svc.CreateModel(ctx, &channelv1.CreateModelRequest{
+		ModelId: "disabled-model",
+		Status:  &disabled,
+	})
+	if err != nil || !createResp.GetSuccess() {
+		t.Fatalf("CreateModel() = %+v, %v", createResp, err)
+	}
+	getResp, err := svc.GetModel(ctx, &channelv1.GetModelRequest{ModelPk: createResp.GetModelPk()})
+	if err != nil {
+		t.Fatalf("GetModel() error = %v", err)
+	}
+	if got := getResp.GetModel().GetStatus(); got != biz.ModelStatusDisabled {
+		t.Fatalf("status = %d, want disabled", got)
+	}
+}
+
 func TestChannelService_CreateAndGetModel(t *testing.T) {
 	svc := newModelService()
 	ctx := context.Background()
@@ -313,7 +334,6 @@ func TestChannelService_ChangeModelStatus(t *testing.T) {
 	createResp, _ := svc.CreateModel(ctx, &channelv1.CreateModelRequest{
 		ModelId:     "stat",
 		DisplayName: "Stat",
-		Status:      biz.ModelStatusEnabled,
 	})
 
 	resp, err := svc.ChangeModelStatus(ctx, &channelv1.ChangeModelStatusRequest{
@@ -342,7 +362,6 @@ func TestChannelService_BatchModels(t *testing.T) {
 		resp, _ := svc.CreateModel(ctx, &channelv1.CreateModelRequest{
 			ModelId:     "batch" + string(rune('A'+i)),
 			DisplayName: "B",
-			Status:      biz.ModelStatusEnabled,
 		})
 		pks = append(pks, resp.ModelPk)
 	}
@@ -441,8 +460,8 @@ func TestChannelService_RecordModelUsage(t *testing.T) {
 	})
 
 	resp, err := svc.RecordModelUsage(ctx, &channelv1.RecordModelUsageRequest{
-		ModelId:     "usage-test",
-		TokenCount:  100,
+		ModelId:      "usage-test",
+		TokenCount:   100,
 		RequestCount: 1,
 	})
 	if err != nil {
@@ -458,8 +477,8 @@ func TestChannelService_ListModelUsageStats(t *testing.T) {
 	ctx := context.Background()
 
 	resp, err := svc.ListModelUsageStats(ctx, &channelv1.ListModelUsageStatsRequest{
-		ModelPk: 1,
-		Page:    1,
+		ModelPk:  1,
+		Page:     1,
 		PageSize: 10,
 	})
 	if err != nil {

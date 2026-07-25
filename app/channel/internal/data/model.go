@@ -617,15 +617,25 @@ func (r *Repository) UpsertChannelMapping(ctx context.Context, do *biz.ModelChan
 		var existing modelChannelMappingModel
 		err := tx.Where("channel_id = ? AND model_id = ?", po.ChannelID, po.ModelPK).First(&existing).Error
 		if err == nil {
-			return tx.Model(&modelChannelMappingModel{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
-				"enabled":    po.Enabled,
+			// enabled is proto3 optional; only write it when the
+			// caller set it, so a priority-only update does not disable the row.
+			updates := map[string]interface{}{
 				"priority":   po.Priority,
 				"config":     po.Config,
 				"updated_at": po.UpdatedAt,
-			}).Error
+			}
+			if do.EnabledHasValue {
+				updates["enabled"] = po.Enabled
+			}
+			return tx.Model(&modelChannelMappingModel{}).Where("id = ?", existing.ID).Updates(updates).Error
 		}
 		if !isGormNotFound(err) {
 			return err
+		}
+		// Insert: default enabled=true (DB DEFAULT 1) when the caller did not
+		// set it, mirroring the migration's DEFAULT 1.
+		if !do.EnabledHasValue {
+			po.Enabled = true
 		}
 		return tx.Create(po).Error
 	})
@@ -695,14 +705,20 @@ func (r *Repository) UpsertSubscriptionMapping(ctx context.Context, do *biz.Mode
 		err := tx.Where("subscription_account_id = ? AND model_id = ? AND group_name = ?",
 			po.SubscriptionAccountID, po.ModelPK, po.GroupName).First(&existing).Error
 		if err == nil {
-			return tx.Model(&modelSubscriptionMappingModel{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
-				"enabled":    po.Enabled,
+			updates := map[string]interface{}{
 				"priority":   po.Priority,
 				"updated_at": po.UpdatedAt,
-			}).Error
+			}
+			if do.EnabledHasValue {
+				updates["enabled"] = po.Enabled
+			}
+			return tx.Model(&modelSubscriptionMappingModel{}).Where("id = ?", existing.ID).Updates(updates).Error
 		}
 		if !isGormNotFound(err) {
 			return err
+		}
+		if !do.EnabledHasValue {
+			po.Enabled = true
 		}
 		return tx.Create(po).Error
 	})
@@ -1008,7 +1024,9 @@ func (r *Repository) upsertChannelMappingMemory(do *biz.ModelChannelMapping) err
 	}
 	for _, m := range r.modelChannelMappings {
 		if m.ChannelID == do.ChannelID && m.ModelPK == do.ModelPK {
-			m.Enabled = do.Enabled
+			if do.EnabledHasValue {
+				m.Enabled = do.Enabled
+			}
 			m.Priority = do.Priority
 			m.Config = do.Config
 			m.UpdatedAt = do.UpdatedAt
@@ -1016,6 +1034,10 @@ func (r *Repository) upsertChannelMappingMemory(do *biz.ModelChannelMapping) err
 		}
 	}
 	r.modelMappingNextID++
+	// Insert default: enabled=true when caller did not set it.
+	if !do.EnabledHasValue {
+		do.Enabled = true
+	}
 	do.ID = r.modelMappingNextID
 	r.modelChannelMappings[do.ID] = cloneChannelMapping(do)
 	return nil
@@ -1053,13 +1075,18 @@ func (r *Repository) upsertSubscriptionMappingMemory(do *biz.ModelSubscriptionMa
 	}
 	for _, m := range r.modelSubscriptionMappings {
 		if m.SubscriptionAccountID == do.SubscriptionAccountID && m.ModelPK == do.ModelPK && m.GroupName == do.GroupName {
-			m.Enabled = do.Enabled
+			if do.EnabledHasValue {
+				m.Enabled = do.Enabled
+			}
 			m.Priority = do.Priority
 			m.UpdatedAt = do.UpdatedAt
 			return nil
 		}
 	}
 	r.modelSubMappingNextID++
+	if !do.EnabledHasValue {
+		do.Enabled = true
+	}
 	do.ID = r.modelSubMappingNextID
 	r.modelSubscriptionMappings[do.ID] = cloneSubscriptionMapping(do)
 	return nil

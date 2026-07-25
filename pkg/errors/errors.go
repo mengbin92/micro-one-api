@@ -65,7 +65,7 @@ const (
 	ReasonModelMappingNotFound = "MODEL_MAPPING_NOT_FOUND"
 	ReasonInvalidBatchAction   = "INVALID_BATCH_ACTION"
 
-	// Channel routing dead-ends (🟡#7). Distinct from CHANNEL_NOT_FOUND so
+	// Channel routing dead-ends. Distinct from CHANNEL_NOT_FOUND so
 	// operators can tell "no upstream serves this model at all" (404) from
 	// "upstreams serve it but all are saturated/circuit-opened/quota-blocked"
 	// (503). Previously both surfaced as plain NotFound, which made DB vs
@@ -213,13 +213,13 @@ func MapChannelError(err error) error {
 	case errorMsg == "channel not found":
 		return &Error{Reason: ReasonChannelNotFound, Message: "no available channel"}
 	case strings.Contains(errorMsg, "circuit-opened") || strings.Contains(errorMsg, "saturated"):
-		// 🟡#7: routing dead-end — all candidates tripped their circuit
+		// routing dead-end — all candidates tripped their circuit
 		// breaker or hit saturation. Surface 503 ROUTE_DEAD_END so callers
 		// can retry after the circuit window instead of treating it as a
 		// permanent 404 not-found.
 		return &Error{Reason: ReasonRouteDeadEnd, Message: errorMsg}
 	case strings.Contains(errorMsg, "none are schedulable"):
-		// 🟡#7: routing matched and pinned accounts but none were
+		// routing matched and pinned accounts but none were
 		// schedulable (disabled/unschedulable/runtime-blocked).
 		return &Error{Reason: ReasonRouteDeadEnd, Message: errorMsg}
 	case errorMsg == "model not found":

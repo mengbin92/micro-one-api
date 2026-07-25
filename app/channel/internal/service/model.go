@@ -207,6 +207,10 @@ func (s *ChannelService) CreateModel(ctx context.Context, req *channelv1.CreateM
 	if uc == nil {
 		return &channelv1.CreateModelResponse{Success: false, Message: "model management not configured"}, nil
 	}
+	status := int32(biz.ModelStatusEnabled)
+	if req.Status != nil {
+		status = req.GetStatus()
+	}
 	model := &biz.Model{
 		ModelID:       req.ModelId,
 		DisplayName:   req.DisplayName,
@@ -216,7 +220,7 @@ func (s *ChannelService) CreateModel(ctx context.Context, req *channelv1.CreateM
 		ContextWindow: req.ContextWindow,
 		PricingInput:  req.PricingInput,
 		PricingOutput: req.PricingOutput,
-		Status:        req.Status,
+		Status:        status,
 		IsPublic:      req.IsPublic,
 		Capabilities:  append([]string(nil), req.Capabilities...),
 		Tags:          append([]string(nil), req.Tags...),
@@ -362,9 +366,16 @@ func (s *ChannelService) UpsertChannelModelMapping(ctx context.Context, req *cha
 	m := &biz.ModelChannelMapping{
 		ChannelID: req.ChannelId,
 		ModelPK:   req.ModelPk,
-		Enabled:   req.Enabled,
 		Priority:  req.Priority,
 		Config:    req.Config,
+	}
+	// enabled is a proto3 *optional* bool. Only stamp the
+	// authoritative value when the caller set the field; otherwise leave it
+	// to the data layer to preserve the existing row's enabled (update) or
+	// default to true (insert, DB DEFAULT 1).
+	if req.Enabled != nil {
+		m.Enabled = *req.Enabled
+		m.EnabledHasValue = true
 	}
 	if err := uc.UpsertChannelMapping(ctx, m); err != nil {
 		return &channelv1.UpsertChannelModelMappingResponse{Success: false, Message: err.Error()}, nil
@@ -410,8 +421,12 @@ func (s *ChannelService) UpsertSubscriptionModelMapping(ctx context.Context, req
 		SubscriptionAccountID: req.SubscriptionAccountId,
 		ModelPK:               req.ModelPk,
 		GroupName:             req.GroupName,
-		Enabled:               req.Enabled,
 		Priority:              req.Priority,
+	}
+	// enabled is a proto3 *optional* bool — only apply when set.
+	if req.Enabled != nil {
+		m.Enabled = *req.Enabled
+		m.EnabledHasValue = true
 	}
 	if err := uc.UpsertSubscriptionMapping(ctx, m); err != nil {
 		return &channelv1.UpsertSubscriptionModelMappingResponse{Success: false, Message: err.Error()}, nil
@@ -475,8 +490,12 @@ func (s *ChannelService) UpsertModelRouting(ctx context.Context, req *channelv1.
 		Model:                 req.Model,
 		Platform:              req.Platform,
 		SubscriptionAccountID: req.SubscriptionAccountId,
-		Enabled:               req.Enabled,
 		Priority:              req.Priority,
+	}
+	// enabled is a proto3 *optional* bool — only apply when set.
+	if req.Enabled != nil {
+		r.Enabled = *req.Enabled
+		r.EnabledHasValue = true
 	}
 	if err := uc.UpsertModelRouting(ctx, r); err != nil {
 		return &channelv1.UpsertModelRoutingResponse{Success: false, Message: err.Error()}, nil
