@@ -460,7 +460,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 	ccReq.Model = plan.ResolvedModel
 
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.ExecuteWithInitialChannel(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(ccReq)

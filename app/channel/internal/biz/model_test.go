@@ -538,3 +538,85 @@ func TestModelIDEqual(t *testing.T) {
 		t.Error("gpt-4o should not equal gpt-4o-mini")
 	}
 }
+
+// recordingInvalidator counts how many times the /v1/models cache is dropped.
+type recordingInvalidator struct{ count int }
+
+func (r *recordingInvalidator) invalidateModelsListCache() { r.count++ }
+
+// TestModelUsecase_InvalidatesCacheOnMutations (🟡#2) verifies every
+// registry/mapping mutation drops the ChannelUsecase /v1/models L1 cache so
+// admin edits converge immediately instead of waiting for the 15s TTL.
+func TestModelUsecase_InvalidatesCacheOnMutations(t *testing.T) {
+	repo := newFakeModelRepo()
+	uc := NewModelUsecase(repo)
+	rec := &recordingInvalidator{}
+	uc.SetCacheInvalidator(rec)
+
+	m := &Model{ModelID: "gpt-4o", DisplayName: "GPT-4o"}
+	if err := uc.CreateModel(context.Background(), m); err != nil {
+		t.Fatalf("CreateModel: %v", err)
+	}
+	if err := uc.UpdateModel(context.Background(), &Model{ID: m.ID, ModelID: "gpt-4o", DisplayName: "GPT-4o-2024"}); err != nil {
+		t.Fatalf("UpdateModel: %v", err)
+	}
+	if err := uc.ChangeModelStatus(context.Background(), m.ID, ModelStatusDisabled); err != nil {
+		t.Fatalf("ChangeModelStatus: %v", err)
+	}
+	if _, err := uc.BatchModels(context.Background(), BatchActionEnable, []int64{m.ID}); err != nil {
+		t.Fatalf("BatchModels: %v", err)
+	}
+	if _, err := uc.BatchModels(context.Background(), BatchActionDisable, []int64{m.ID}); err != nil {
+		t.Fatalf("BatchModels disable: %v", err)
+	}
+	if _, err := uc.BatchModels(context.Background(), BatchActionDelete, []int64{m.ID}); err != nil {
+		t.Fatalf("BatchModels delete: %v", err)
+	}
+
+	m2 := &Model{ModelID: "alias-host", DisplayName: "AH"}
+	_ = uc.CreateModel(context.Background(), m2)
+	alias := &ModelAlias{ModelPK: m2.ID, Alias: "ah"}
+	if err := uc.CreateModelAlias(context.Background(), alias); err != nil {
+		t.Fatalf("CreateModelAlias: %v", err)
+	}
+	if err := uc.DeleteModelAlias(context.Background(), alias.ID); err != nil {
+		t.Fatalf("DeleteModelAlias: %v", err)
+	}
+
+	cm := &ModelChannelMapping{ChannelID: 1, ModelPK: m2.ID, Enabled: true}
+	if err := uc.UpsertChannelMapping(context.Background(), cm); err != nil {
+		t.Fatalf("UpsertChannelMapping: %v", err)
+	}
+	if err := uc.DeleteChannelMapping(context.Background(), 1, m2.ID); err != nil {
+		t.Fatalf("DeleteChannelMapping: %v", err)
+	}
+
+	sm := &ModelSubscriptionMapping{SubscriptionAccountID: 1, ModelPK: m2.ID, GroupName: "default", Enabled: true}
+	if err := uc.UpsertSubscriptionMapping(context.Background(), sm); err != nil {
+		t.Fatalf("UpsertSubscriptionMapping: %v", err)
+	}
+	if err := uc.DeleteSubscriptionMapping(context.Background(), 1, m2.ID, "default"); err != nil {
+		t.Fatalf("DeleteSubscriptionMapping: %v", err)
+	}
+
+	if err := uc.DeleteModel(context.Background(), m2.ID); err != nil {
+		t.Fatalf("DeleteModel: %v", err)
+	}
+
+	// 14 mutations above → 14 invalidations. If a new mutation method is
+	// added without wiring invalidateChannelCache, this count catches it. (2x CreateModel)
+	if rec.count != 14 {
+		t.Fatalf("expected 14 cache invalidations, got %d (a mutation method did not drop the /v1/models cache)", rec.count)
+	}
+}
+
+// TestModelUsecase_NilCacheInvalidatorIsNoOp confirms the seam is optional:
+// deployments/tests that don't wire it keep working.
+func TestModelUsecase_NilCacheInvalidatorIsNoOp(t *testing.T) {
+	uc := NewModelUsecase(newFakeModelRepo())
+	// must not panic
+	uc.invalidateChannelCache()
+	if err := uc.CreateModel(context.Background(), &Model{ModelID: "x"}); err != nil {
+		t.Fatalf("CreateModel: %v", err)
+	}
+}

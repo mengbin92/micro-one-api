@@ -332,7 +332,10 @@ func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group
 	}
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	abilities := make([]biz.SubscriptionAccountAbility, 0)
+	// 🟡#4: exact-first tier互斥, matching the DB path. See
+	// listAbilitiesByGroupAndModelMemory for the rationale.
+	exact := make([]biz.SubscriptionAccountAbility, 0)
+	wild := make([]biz.SubscriptionAccountAbility, 0)
 	for _, account := range r.subAccounts {
 		if account.Status != biz.ChannelStatusEnabled {
 			continue
@@ -345,21 +348,34 @@ func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group
 				continue
 			}
 			for _, accountModel := range account.Models {
-				if !strings.EqualFold(accountModel, model) && !wildcard.Match(accountModel, model) {
+				if strings.EqualFold(accountModel, model) {
+					exact = append(exact, biz.SubscriptionAccountAbility{
+						Group:     group,
+						Model:     model,
+						Platform:  account.Platform,
+						AccountID: account.ID,
+						Enabled:   true,
+						Priority:  account.Priority,
+					})
 					continue
 				}
-				abilities = append(abilities, biz.SubscriptionAccountAbility{
-					Group:     group,
-					Model:     model,
-					Platform:  account.Platform,
-					AccountID: account.ID,
-					Enabled:   true,
-					Priority:  account.Priority,
-				})
+				if wildcard.IsPattern(accountModel) && wildcard.Match(accountModel, model) {
+					wild = append(wild, biz.SubscriptionAccountAbility{
+						Group:     group,
+						Model:     model,
+						Platform:  account.Platform,
+						AccountID: account.ID,
+						Enabled:   true,
+						Priority:  account.Priority,
+					})
+				}
 			}
 		}
 	}
-	return abilities, nil
+	if len(exact) > 0 {
+		return exact, nil
+	}
+	return wild, nil
 }
 
 func (r *Repository) ListSubscriptionAccounts(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
@@ -1474,7 +1490,15 @@ func (r *Repository) findByIDMemory(_ context.Context, channelID int64) (*biz.Ch
 func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group, model string) ([]biz.Ability, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	abilities := make([]biz.Ability, 0)
+	// 🟡#4: two-tier, exact-first tier互斥 — mirrors the DB path
+	// (listAbilitiesByGroupAndModelDB). Previously the memory path merged
+	// exact + wildcard matches in a single pass, so (a) a channel listing
+	// both "gpt-4o" and "gpt-*" was double-counted (double weight in the
+	// selector) and (b) DB vs memory diverged for the same data. Now: if any
+	// exact match exists, return ONLY those; otherwise fall back to
+	// wildcard-pattern matches.
+	exact := make([]biz.Ability, 0)
+	wild := make([]biz.Ability, 0)
 	for _, channel := range r.channels {
 		if channel.Status != biz.ChannelStatusEnabled {
 			continue
@@ -1484,20 +1508,26 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 				continue
 			}
 			for _, channelModel := range channel.Models {
-				if !strings.EqualFold(channelModel, model) && !wildcard.Match(channelModel, model) {
+				if strings.EqualFold(channelModel, model) {
+					exact = append(exact, biz.Ability{
+						Group: group, Model: model, ChannelID: channel.ID,
+						Enabled: true, Priority: channel.Priority,
+					})
 					continue
 				}
-				abilities = append(abilities, biz.Ability{
-					Group:     group,
-					Model:     model,
-					ChannelID: channel.ID,
-					Enabled:   true,
-					Priority:  channel.Priority,
-				})
+				if wildcard.IsPattern(channelModel) && wildcard.Match(channelModel, model) {
+					wild = append(wild, biz.Ability{
+						Group: group, Model: model, ChannelID: channel.ID,
+						Enabled: true, Priority: channel.Priority,
+					})
+				}
 			}
 		}
 	}
-	return abilities, nil
+	if len(exact) > 0 {
+		return exact, nil
+	}
+	return wild, nil
 }
 
 func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) ([]string, error) {

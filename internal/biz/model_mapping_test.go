@@ -337,3 +337,46 @@ func TestModelMapper_GetEntry_Wildcard(t *testing.T) {
 		t.Errorf("ActualName = %s, want catchall", e.ActualName)
 	}
 }
+
+// TestModelMapper_Resolve_MostSpecificWildcard (🟡#3): when both "claude-*"
+// and "claude-sonnet-*" match "claude-sonnet-4", the more specific one wins,
+// deterministically — not whichever Go map iteration happens to return first.
+func TestModelMapper_Resolve_MostSpecificWildcard(t *testing.T) {
+	m := NewModelMapperForTest(map[string]*ModelEntry{
+		"claude-*":        {ActualName: "claude-family"},
+		"claude-sonnet-*": {ActualName: "claude-sonnet-family"},
+	})
+	for i := 0; i < 16; i++ { // repeat to catch map-iteration nondeterminism
+		if got := m.Resolve("claude-sonnet-4"); got != "claude-sonnet-family" {
+			t.Fatalf("iter %d: Resolve(claude-sonnet-4) = %s, want claude-sonnet-family", i, got)
+		}
+		if got := m.Resolve("claude-opus-4"); got != "claude-family" {
+			t.Fatalf("iter %d: Resolve(claude-opus-4) = %s, want claude-family", i, got)
+		}
+	}
+}
+
+// TestModelMapper_GetEntry_MostSpecificWildcard: GetEntry follows the same
+// most-specific-wins rule as Resolve.
+func TestModelMapper_GetEntry_MostSpecificWildcard(t *testing.T) {
+	m := NewModelMapperForTest(map[string]*ModelEntry{
+		"claude-*":        {ActualName: "claude-family", Capabilities: []string{"streaming"}},
+		"claude-sonnet-*": {ActualName: "claude-sonnet-family", Capabilities: []string{"vision"}},
+	})
+	for i := 0; i < 16; i++ {
+		e := m.GetEntry("claude-sonnet-4")
+		if e == nil || e.ActualName != "claude-sonnet-family" {
+			t.Fatalf("iter %d: GetEntry should pick claude-sonnet-family, got %v", i, e)
+		}
+		// Most-specific entry has vision but NOT streaming; the broad
+		// claude-* has streaming. HasCapability must reflect the picked
+		// entry (vision=true, streaming=false), proving the OR-walk bug 🟡#3
+		// is fixed.
+		if !m.HasCapability("claude-sonnet-4", "vision") {
+			t.Fatalf("iter %d: vision should be true (from most-specific)", i)
+		}
+		if m.HasCapability("claude-sonnet-4", "streaming") {
+			t.Fatalf("iter %d: streaming should be false (broad pattern, not picked)", i)
+		}
+	}
+}

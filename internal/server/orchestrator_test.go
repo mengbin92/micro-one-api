@@ -49,6 +49,10 @@ func (c orchestratorChannelClient) RecordChannelHealth(_ context.Context, _ int6
 	return nil
 }
 
+func (c orchestratorChannelClient) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
+	return nil
+}
+
 func TestRelayOrchestratorForwardsNonStreamResponse(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 

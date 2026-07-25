@@ -149,7 +149,17 @@ func (m *ModelMapper) Resolve(modelName string) string {
 	// so a narrow pattern ("claude-*") shadows the broad one ("*"). Only
 	// keys containing a wildcard metacharacter are considered here; plain
 	// keys were already handled in step 1.
+	//
+	// 🟡#3: when several specific (non-"*") patterns match the same name,
+	// pick the MOST SPECIFIC one (by non-wildcard character count, ties
+	// broken by full pattern length) so resolution is deterministic — two
+	// requests for the same model resolve to the same upstream instead of
+	// being randomised by Go map iteration order. E.g. "claude-sonnet-*"
+	// wins over "claude-*" for "claude-sonnet-4".
 	var catchAll string
+	var bestSpecific string
+	var bestSpecificKey string
+	var bestSpecificity int
 	for key, entry := range models {
 		if !wildcard.IsPattern(key) {
 			continue
@@ -161,9 +171,18 @@ func (m *ModelMapper) Resolve(modelName string) string {
 			catchAll = entry.ActualName
 			continue
 		}
-		if wildcard.Match(key, modelName) {
-			return entry.ActualName
+		if !wildcard.Match(key, modelName) {
+			continue
 		}
+		spec := wildcard.Specificity(key)
+		if spec > bestSpecificity || (spec == bestSpecificity && len(key) > len(bestSpecificKey)) {
+			bestSpecificity = spec
+			bestSpecific = entry.ActualName
+			bestSpecificKey = key
+		}
+	}
+	if bestSpecific != "" {
+		return bestSpecific
 	}
 	if catchAll != "" {
 		return catchAll
@@ -184,7 +203,15 @@ func (m *ModelMapper) HasCapability(modelName, capability string) bool {
 	if entry, ok := models[lower]; ok {
 		return entryHasCapability(entry, capability)
 	}
+	// 🟡#3: among matching specific patterns, pick the most specific entry
+	// (deterministic) and check its capability. The OR-walk (any matching
+	// pattern grants the capability) was inconsistent with GetEntry/Resolve
+	// which select a single entry: a capability granted by a broad pattern
+	// but absent on the most-specific match would now correctly be false.
 	var catchAll *ModelEntry
+	var bestSpecific *ModelEntry
+	var bestSpecificKey string
+	var bestSpecificity int
 	for key, entry := range models {
 		if !wildcard.IsPattern(key) || entry == nil {
 			continue
@@ -193,12 +220,21 @@ func (m *ModelMapper) HasCapability(modelName, capability string) bool {
 			catchAll = entry
 			continue
 		}
-		if wildcard.Match(key, modelName) && entryHasCapability(entry, capability) {
-			return true
+		if !wildcard.Match(key, modelName) {
+			continue
+		}
+		spec := wildcard.Specificity(key)
+		if spec > bestSpecificity || (spec == bestSpecificity && len(key) > len(bestSpecificKey)) {
+			bestSpecificity = spec
+			bestSpecific = entry
+			bestSpecificKey = key
 		}
 	}
-	if catchAll != nil && entryHasCapability(catchAll, capability) {
-		return true
+	if bestSpecific != nil {
+		return entryHasCapability(bestSpecific, capability)
+	}
+	if catchAll != nil {
+		return entryHasCapability(catchAll, capability)
 	}
 	return false
 }
@@ -216,7 +252,12 @@ func (m *ModelMapper) GetEntry(modelName string) *ModelEntry {
 	if entry, ok := models[lower]; ok {
 		return entry
 	}
+	// 🟡#3: pick the most specific matching pattern so GetEntry is
+	// consistent with Resolve (deterministic, not map-iteration order).
 	var catchAll *ModelEntry
+	var bestSpecific *ModelEntry
+	var bestSpecificKey string
+	var bestSpecificity int
 	for key, entry := range models {
 		if !wildcard.IsPattern(key) || entry == nil {
 			continue
@@ -225,9 +266,18 @@ func (m *ModelMapper) GetEntry(modelName string) *ModelEntry {
 			catchAll = entry
 			continue
 		}
-		if wildcard.Match(key, modelName) {
-			return entry
+		if !wildcard.Match(key, modelName) {
+			continue
 		}
+		spec := wildcard.Specificity(key)
+		if spec > bestSpecificity || (spec == bestSpecificity && len(key) > len(bestSpecificKey)) {
+			bestSpecificity = spec
+			bestSpecific = entry
+			bestSpecificKey = key
+		}
+	}
+	if bestSpecific != nil {
+		return bestSpecific
 	}
 	return catchAll
 }

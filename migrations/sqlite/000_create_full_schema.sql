@@ -710,7 +710,7 @@ CREATE TABLE IF NOT EXISTS model_routings (
   model TEXT NOT NULL,
   platform TEXT NOT NULL DEFAULT '',
   subscription_account_id INTEGER NOT NULL,
-  enabled INTEGER DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 1,
   priority INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL DEFAULT 0

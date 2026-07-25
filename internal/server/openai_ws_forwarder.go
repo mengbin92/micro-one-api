@@ -671,7 +671,7 @@ func (s *HTTPServer) releaseOpenAIWSUpstreamConn(pc *openAIWSPooledConn, broken 
 // must surface the original error to the client.
 func (s *HTTPServer) maybeFailoverChannel(ctx context.Context, wsConn *coderws.Conn, plan *relaybiz.RelayPlan, failed *relaybiz.Channel, clientModel string, next **relaybiz.Channel) bool {
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	retryResult := retryExecutor.ExecuteWithInitialChannel(ctx, plan.Auth.Group, plan.ResolvedModel, failed, func(ctx context.Context, ch *relaybiz.Channel) error {
+	retryResult := retryExecutor.ExecuteWithAccountHealth(ctx, plan.Auth.Group, plan.ResolvedModel, failed, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		// The executor selects a channel for us; we accept it by returning nil.
 		// It excludes the failed channel's priority automatically.
 		*next = ch

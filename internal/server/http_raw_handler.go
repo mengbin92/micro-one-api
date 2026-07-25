@@ -65,7 +65,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 
 		var upstreamResp *relayprovider.RawResponse
 		retryExecutor := s.relayUsecase.NewRetryExecutor()
-		result := retryExecutor.ExecuteWithInitialChannel(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, func(ctx context.Context, ch *relaybiz.Channel) error {
+		result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.ResolvedModel, plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 			startedAt := time.Now()
 			requestID := generateRequestID()
 			// 🔴#7: re-apply the retried channel's per-channel model mapping so

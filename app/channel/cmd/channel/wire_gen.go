@@ -83,6 +83,8 @@ func newApp(
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
 	uc.SetModelRoutingRepo(repo)
+
+	modelUC.SetCacheInvalidator(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 

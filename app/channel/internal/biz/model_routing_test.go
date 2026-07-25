@@ -275,3 +275,25 @@ func TestSubscriptionAccountSelector_WeightDistribution(t *testing.T) {
 		t.Fatalf("higher-weight account should dominate: counts=%v", counts)
 	}
 }
+
+// TestRoutingMatchForSelect_MostSpecificWildcard (🟡#3): when both
+// "claude-*" and "claude-sonnet-*" match "claude-sonnet-4", only the most
+// specific pattern's rows are returned, deterministically.
+func TestRoutingMatchForSelect_MostSpecificWildcard(t *testing.T) {
+	rows := []*ModelRouting{
+		{ID: 1, Model: "claude-*", SubscriptionAccountID: 10, Enabled: true, Priority: 1},
+		{ID: 2, Model: "claude-sonnet-*", SubscriptionAccountID: 20, Enabled: true, Priority: 1},
+		{ID: 3, Model: "claude-*", SubscriptionAccountID: 30, Enabled: true, Priority: 1},
+	}
+	for i := 0; i < 16; i++ {
+		matches := RoutingMatchForSelect(rows, "claude-sonnet-4")
+		if len(matches) != 1 || matches[0].SubscriptionAccountID != 20 {
+			t.Fatalf("iter %d: expected only account 20 (claude-sonnet-*), got %v", i, matches)
+		}
+	}
+	// A model that only claude-* matches falls back to both claude-* rows.
+	matches := RoutingMatchForSelect(rows, "claude-opus-4")
+	if len(matches) != 2 {
+		t.Fatalf("claude-opus-4 should match both claude-* rows, got %d", len(matches))
+	}
+}

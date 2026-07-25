@@ -32,6 +32,8 @@ func (testChannelClient) SelectChannel(_ context.Context, group, model string, _
 	}, nil
 }
 
+func (testChannelClient) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
+
 func (testChannelClient) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
 	return nil
 }
@@ -65,6 +67,8 @@ func (c *recordingChannelClient) SelectChannel(_ context.Context, group, model s
 		BaseURL: "https://api.openai.com/v1",
 	}, nil
 }
+
+func (c *recordingChannelClient) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
 
 func (c *recordingChannelClient) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
 	return nil
@@ -155,6 +159,8 @@ type testChannelClientError struct {
 func (c testChannelClientError) SelectChannel(_ context.Context, _, _ string, _ bool) (*Channel, error) {
 	return nil, c.err
 }
+
+func (c testChannelClientError) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
 
 func (c testChannelClientError) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
 	return nil
@@ -624,5 +630,20 @@ func TestSelectSubscriptionFailover_AppliesFailoverAccountModelMapping(t *testin
 	}
 	if plan.ResolvedModel != "b-mapped" {
 		t.Fatalf("failover ResolvedModel must use B's mapping (b-mapped), got %q", plan.ResolvedModel)
+	}
+}
+
+// TestApplyPerAccountModelMapping_MostSpecificWildcard (🟡#3): when both
+// "claude-*" and "claude-sonnet-*" match "claude-sonnet-4", the more
+// specific mapping wins, deterministically across repeated calls.
+func TestApplyPerAccountModelMapping_MostSpecificWildcard(t *testing.T) {
+	mapping := `{"claude-*":"claude-family","claude-sonnet-*":"claude-sonnet-family"}`
+	for i := 0; i < 16; i++ {
+		if got := applyPerAccountModelMapping(mapping, "claude-sonnet-4"); got != "claude-sonnet-family" {
+			t.Fatalf("iter %d: claude-sonnet-4 = %s, want claude-sonnet-family", i, got)
+		}
+		if got := applyPerAccountModelMapping(mapping, "claude-opus-4"); got != "claude-family" {
+			t.Fatalf("iter %d: claude-opus-4 = %s, want claude-family", i, got)
+		}
 	}
 }

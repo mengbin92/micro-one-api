@@ -363,7 +363,7 @@ func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUseca
 	if eventBus == nil {
 		eventBus = events.NewMemoryEventBus()
 	}
-	return &ChannelUsecase{
+	uc := &ChannelUsecase{
 		repo:                   repo,
 		eventBus:               eventBus,
 		now:                    time.Now,
@@ -373,6 +373,18 @@ func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUseca
 		modelsListCache:        newModelsListCache(0),
 		accountSelector:        NewSubscriptionAccountSelector(),
 	}
+	// 🟢 low-priority: wire cross-instance cache invalidation so a channel
+	// mutation on instance A drops the /v1/models L1 cache on instance B via
+	// the TopicChannelChanged stream (Redis Streams when configured, in-proc
+	// otherwise). The local mutation path already invalidates synchronously;
+	// this subscription catches the cross-instance event so the 15s TTL is
+	// not the only convergence path. See docs/model-management-review-followups.md
+	// 🟢 "跨实例缓存失效".
+	eventBus.Subscribe(events.TopicChannelChanged, func(_ context.Context, _ events.Event) error {
+		uc.invalidateModelsListCache()
+		return nil
+	})
+	return uc
 }
 
 func (uc *ChannelUsecase) ConfigureHealthAlert(notifier Notifier, cfg HealthAlertConfig) {
@@ -582,12 +594,27 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 			continue
 		}
 		// P2 #7: load-aware weighted selection when configured, else random.
+		// 🟡#6: when the accountSelector is configured but returns no
+		// candidate (e.g. all accounts circuit-opened), the previous code
+		// fell through to uniform rand.Int — which fail-opens onto the
+		// same saturated/circuit-opened accounts, contradicting the
+		// "circuit-opened accounts are skipped" contract. Instead, surface
+		// a distinct routed-dead-end error so the caller can fail closed
+		// instead of hammering open circuits.
 		if uc.accountSelector != nil {
-			if selected, selErr := uc.accountSelector.Select(ctx, group, tier); selErr == nil && selected != nil {
+			selected, selErr := uc.accountSelector.Select(ctx, group, tier)
+			if selErr == nil && selected != nil {
 				return selected, nil
 			}
+			// accountSelector exhausted the tier (all circuit-opened / no
+			// effective weight). Fail closed for THIS tier and keep
+			// scanning lower-priority tiers; only if no tier yields an
+			// account do we return the routed-dead-end error below.
+			continue
 		}
-		// Fallback: uniform random (legacy behaviour).
+		// Fallback: uniform random (legacy behaviour, no accountSelector
+		// configured — health/load/circuit features are inert and random is
+		// the documented behaviour).
 		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(tier))))
 		if err != nil {
 			return nil, err
@@ -595,6 +622,13 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 		return tier[nBig.Int64()], nil
 	}
 
+	// accountSelector was configured but every tier failed closed (all
+	// accounts circuit-opened / saturated). Surface a distinct error so
+	// operators can tell "no account serves this model" (NotFound) from
+	// "accounts serve it but all are circuit-opened" (routed dead-end).
+	if uc.accountSelector != nil {
+		return nil, fmt.Errorf("all subscription accounts serving %q are circuit-opened or saturated; try again after the circuit window", model)
+	}
 	return nil, ErrSubscriptionAccountNotFound
 }
 
@@ -651,6 +685,14 @@ func filterAbilitiesByRouted(abilities []SubscriptionAccountAbility, matches []*
 		p := routedPriority(matches, a.AccountID)
 		if p < 0 {
 			continue // not routed
+		}
+		// 🟢 low-priority: guard against negative routing priorities. A
+		// negative routing priority would shift the composite below the
+		// account's own priority and, combined with int64 overflow on the
+		// 1_000_000 multiplier, silently mis-order routed accounts. Clamp
+		// negatives to 0 so the tier ordering stays well-defined.
+		if p < 0 {
+			p = 0
 		}
 		// Routing priority dominates account priority within the tier.
 		a.Priority = int64(p)*1_000_000 + a.Priority
@@ -870,6 +912,7 @@ func (uc *ChannelUsecase) DeleteChannel(ctx context.Context, channelID int64) er
 	if err := uc.repo.DeleteChannel(ctx, channelID); err != nil {
 		return err
 	}
+	uc.invalidateModelsListCache()
 	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &Channel{ID: channelID})
 	return nil
 }

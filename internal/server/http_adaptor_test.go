@@ -936,6 +936,8 @@ func (c *adaptorFailoverChannelClient) SelectChannel(context.Context, string, st
 	return nil, errors.New("no api-key channel")
 }
 
+func (c *adaptorFailoverChannelClient) RecordSubscriptionAccountHealth(context.Context, int64, bool) error { return nil }
+
 func (c *adaptorFailoverChannelClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
 	return nil
 }

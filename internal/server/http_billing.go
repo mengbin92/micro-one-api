@@ -47,11 +47,12 @@ func (s *HTTPServer) logPostResponseCommitError(err error) {
 
 func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64) (*billingv1.ReserveQuotaResponse, error) {
 	// P3 #6: the model name used for billing is derived from the configured
-	// billing_model_source. Callers pass plan.ResolvedModel as `model` here
-	// (the upstream name); BillingModelName applies the source to pick
-	// requested/upstream/channel_mapped. When billing_model_source is unset
-	// it falls back to `model` (legacy). The client-facing name is threaded
-	// via the request context separately where needed.
+	// billing_model_source. Callers ALREADY apply BillingModelName at each
+	// call site (chat/anthropic/responses/ws) before passing the result as
+	// `model` here — this function does NOT re-apply the source. The
+	// "internal" name passed in is therefore the billing model name for the
+	// configured source, not necessarily plan.ResolvedModel. The client-
+	// facing name is threaded via the request context separately where needed.
 	req := &billingv1.ReserveQuotaRequest{
 		UserId:                userID,
 		RequestId:             requestID,

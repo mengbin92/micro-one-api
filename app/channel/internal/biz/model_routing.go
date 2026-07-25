@@ -133,7 +133,13 @@ func RoutingMatchForSelect(rows []*ModelRouting, model string) []*ModelRouting {
 		return exact
 	}
 	// Specific wildcard patterns (non-"*") before the "*" catch-all.
-	var specific, catchAll []*ModelRouting
+	// 🟡#3: when several specific patterns match, keep only the MOST
+	// SPECIFIC tier (by non-wildcard char count, ties by full pattern
+	// length) so routing is deterministic instead of randomised by slice
+	// order. E.g. "claude-sonnet-*" pins "claude-sonnet-4" over "claude-*".
+	var matched []*ModelRouting
+	var catchAll []*ModelRouting
+	var bestSpecificity int = -1
 	for _, r := range rows {
 		if !wildcard.IsPattern(r.Model) {
 			continue
@@ -142,12 +148,19 @@ func RoutingMatchForSelect(rows []*ModelRouting, model string) []*ModelRouting {
 			catchAll = append(catchAll, r)
 			continue
 		}
-		if wildcard.Match(r.Model, model) {
-			specific = append(specific, r)
+		if !wildcard.Match(r.Model, model) {
+			continue
+		}
+		spec := wildcard.Specificity(r.Model)
+		if spec > bestSpecificity {
+			bestSpecificity = spec
+			matched = []*ModelRouting{r}
+		} else if spec == bestSpecificity {
+			matched = append(matched, r)
 		}
 	}
-	if len(specific) > 0 {
-		return specific
+	if len(matched) > 0 {
+		return matched
 	}
 	return catchAll
 }

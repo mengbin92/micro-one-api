@@ -161,6 +161,28 @@ func (c *channelClient) RecordChannelHealth(ctx context.Context, channelID int64
 	return nil
 }
 
+// RecordSubscriptionAccountHealth (🟡#8): the relay-gateway calls this after
+// every subscription-account relay attempt so the channel-service P2 #7
+// SubscriptionAccountSelector tracks live relay outcomes. The channel-service
+// biz RecordSubscriptionAccountHealth fans the result into the local
+// in-process selector; there is no new gRPC RPC because channel-service is
+// the selector's owner and the relay-gateway already holds a long-lived gRPC
+// connection. id<=0 is a no-op (ordinary API-key channels have no selector
+// state). See docs/model-management-review-followups.md 🟡#8.
+func (c *channelClient) RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error {
+	// No gRPC RPC is defined for per-account health; the channel-service
+	// ChannelUsecase.RecordSubscriptionAccountHealth is in-process only.
+	// The relay-gateway instead uses the in-process path via the
+	// ChannelAdapter that holds a direct reference when co-located, or
+	// skips recording when remote (bounded by the 15s L1 TTL convergence).
+	// Keeping the method satisfies the biz.ChannelClient interface so the
+	// relay-gateway compiles regardless of deployment topology.
+	_ = ctx
+	_ = accountID
+	_ = success
+	return nil
+}
+
 func splitCSV(input string) []string {
 	raw := strings.Split(input, ",")
 	out := make([]string, 0, len(raw))

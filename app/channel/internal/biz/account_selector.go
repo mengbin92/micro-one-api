@@ -158,12 +158,15 @@ func (s *SubscriptionAccountSelector) Release(accountID int64) {
 // may trip the circuit breaker; success=true is a no-op on the counter (the
 // window ages errors out over time).
 //
-// TODO(feedback-loop): the relay gateway does not yet call this method (nor
-// Acquire/Release) at dispatch time because the channel-service gRPC surface
-// exposes no RecordSubscriptionAccountHealth RPC. Until that RPC + its client
-// adapter are added, the selector's health/load/circuit features are inert and
-// selection is plain smooth-WRR-by-weight. See docs/model-management-design.md
-// §9.3 #7.
+// RecordAccountHealth feeds a relay outcome into the selector. Called by the
+// relay-gateway after every subscription-account attempt via the
+// ChannelSelector.RecordSubscriptionAccountHealth seam (🟡#8). The feedback
+// loop is now wired end-to-end: relay-gateway's RetryExecutor.ExecuteWithAccountHealth
+// records each attempt's outcome through the ChannelAdapter → channel-service
+// RecordChannelHealth path, which fans subscription-account events into this
+// selector. healthFactor and the circuit breaker are therefore live.
+// NOTE: Acquire/Release (loadFactor) are still inert pending a separate
+// per-account in-flight seam — health is the primary signal.
 func (s *SubscriptionAccountSelector) RecordAccountHealth(accountID int64, success bool) {
 	if accountID <= 0 {
 		return

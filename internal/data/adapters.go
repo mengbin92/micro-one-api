@@ -166,3 +166,33 @@ func (a *ChannelAdapter) RecordChannelHealth(ctx context.Context, channelID int6
 	}
 	return nil
 }
+
+// RecordSubscriptionAccountHealth (🟡#8): there is no dedicated gRPC RPC for
+// per-account health on the channel-service surface today. The P2 #7
+// selector's health/circuit state lives in-process inside channel-service,
+// so when relay-gateway is remote (the normal topology) it cannot update it
+// directly without a new RPC. To keep the health-feedback loop from being a
+// dead interface, we reuse the existing RecordChannelHealth RPC by encoding
+// the subscription-account outcome as a channel-health event keyed by the
+// account's projected channel id — channel-service's RecordHealth already
+// fans subscription-account events into the selector via the event bus. This
+// avoids a proto change while still feeding live relay outcomes into the
+// selector. See docs/model-management-review-followups.md 🟡#8.
+func (a *ChannelAdapter) RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error {
+	if accountID <= 0 {
+		return nil
+	}
+	reply, err := a.client.RecordChannelHealth(ctx, &channelv1.RecordChannelHealthRequest{
+		ChannelId:    accountID, // account id is projected onto the channel id namespace
+		Success:      success,
+		Error:        "",
+		ResponseTime: 0,
+	})
+	if err != nil {
+		return err
+	}
+	if reply != nil && !reply.GetSuccess() {
+		return errors.New(reply.GetMessage())
+	}
+	return nil
+}

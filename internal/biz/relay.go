@@ -23,6 +23,12 @@ type IdentityClient interface {
 type ChannelClient interface {
 	SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error)
 	RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error
+	// RecordSubscriptionAccountHealth feeds a relay outcome into the P2 #7
+	// SubscriptionAccountSelector so its healthFactor/circuit-breaker tracks
+	// live relay results. id<=0 is a no-op (ordinary API-key channels).
+	// Wired as part of 🟡#8 so the health/load/circuit features stop being
+	// inert. See docs/model-management-review-followups.md 🟡#8.
+	RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error
 }
 
 type SubscriptionAccountClient interface {
@@ -596,8 +602,15 @@ func applyPerAccountModelMapping(mappingJSON, model string) string {
 	if dst, ok := mapping[strings.ToLower(model)]; ok && dst != "" {
 		return dst
 	}
-	// 2) Wildcard keys: specific patterns before the "*" catch-all.
+	// 2) Wildcard keys: specific patterns before the "*" catch-all. When
+	// several specific patterns match, pick the MOST SPECIFIC one (by
+	// non-wildcard char count, ties by full length) so per-account
+	// remapping is deterministic — same as ModelMapper.Resolve. See
+	// docs/model-management-review-followups.md 🟡#3.
 	var catchAll string
+	var bestSpecific string
+	var bestSpecificKey string
+	var bestSpecificity int
 	for key, dst := range mapping {
 		if !wildcard.IsPattern(key) || dst == "" {
 			continue
@@ -606,9 +619,18 @@ func applyPerAccountModelMapping(mappingJSON, model string) string {
 			catchAll = dst
 			continue
 		}
-		if wildcard.Match(key, model) {
-			return dst
+		if !wildcard.Match(key, model) {
+			continue
 		}
+		spec := wildcard.Specificity(key)
+		if spec > bestSpecificity || (spec == bestSpecificity && len(key) > len(bestSpecificKey)) {
+			bestSpecificity = spec
+			bestSpecific = dst
+			bestSpecificKey = key
+		}
+	}
+	if bestSpecific != "" {
+		return bestSpecific
 	}
 	if catchAll != "" {
 		return catchAll

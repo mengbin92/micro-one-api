@@ -76,6 +76,10 @@ func newApp(
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
 	uc.SetModelRoutingRepo(repo)
+	// 🟡#2: model registry/mapping mutations now drop the ChannelUsecase
+	// /v1/models L1 cache immediately so admin edits converge without
+	// waiting for the 15s TTL.
+	modelUC.SetCacheInvalidator(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 

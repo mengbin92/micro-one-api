@@ -64,6 +64,13 @@ const (
 	ReasonModelAliasNotFound   = "MODEL_ALIAS_NOT_FOUND"
 	ReasonModelMappingNotFound = "MODEL_MAPPING_NOT_FOUND"
 	ReasonInvalidBatchAction   = "INVALID_BATCH_ACTION"
+
+	// Channel routing dead-ends (🟡#7). Distinct from CHANNEL_NOT_FOUND so
+	// operators can tell "no upstream serves this model at all" (404) from
+	// "upstreams serve it but all are saturated/circuit-opened/quota-blocked"
+	// (503). Previously both surfaced as plain NotFound, which made DB vs
+	// memory behaviour look inconsistent and hid operator-actionable state.
+	ReasonRouteDeadEnd = "ROUTE_DEAD_END"
 )
 
 // HTTPStatusCode defines the mapping from error reasons to HTTP status codes
@@ -109,6 +116,7 @@ var HTTPStatusCode = map[string]int{
 	ReasonModelNotMapped:    400,
 	ReasonUpstreamTimeout:   504,
 	ReasonUpstreamRateLimit: 429,
+	ReasonRouteDeadEnd:      503,
 
 	// Model management
 	ReasonModelNotFound:        404,
@@ -204,6 +212,16 @@ func MapChannelError(err error) error {
 	switch {
 	case errorMsg == "channel not found":
 		return &Error{Reason: ReasonChannelNotFound, Message: "no available channel"}
+	case strings.Contains(errorMsg, "circuit-opened") || strings.Contains(errorMsg, "saturated"):
+		// 🟡#7: routing dead-end — all candidates tripped their circuit
+		// breaker or hit saturation. Surface 503 ROUTE_DEAD_END so callers
+		// can retry after the circuit window instead of treating it as a
+		// permanent 404 not-found.
+		return &Error{Reason: ReasonRouteDeadEnd, Message: errorMsg}
+	case strings.Contains(errorMsg, "none are schedulable"):
+		// 🟡#7: routing matched and pinned accounts but none were
+		// schedulable (disabled/unschedulable/runtime-blocked).
+		return &Error{Reason: ReasonRouteDeadEnd, Message: errorMsg}
 	case errorMsg == "model not found":
 		return &Error{Reason: ReasonModelNotFound, Message: "model not found"}
 	case errorMsg == "model_id already exists":
@@ -246,7 +264,7 @@ func IsServiceUnavailable(err error) bool {
 	if !errors.As(err, &e) {
 		return false
 	}
-	return e.Reason == ReasonServiceUnavailable || e.Reason == ReasonChannelNotFound
+	return e.Reason == ReasonServiceUnavailable || e.Reason == ReasonChannelNotFound || e.Reason == ReasonRouteDeadEnd
 }
 
 // MapConfigError maps config biz errors to structured errors

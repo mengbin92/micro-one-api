@@ -1062,3 +1062,45 @@ func TestListModelRoutings_EmptyPlatformMatchesConcretePlatform(t *testing.T) {
 	require.Len(t, rows, 1, "empty-platform routing must match concrete platform codex")
 	assert.Equal(t, int64(7), rows[0].SubscriptionAccountID)
 }
+
+// TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency (🟡#4):
+// when a channel lists BOTH "gpt-4o" (exact) and "gpt-*" (wildcard), the
+// abilities query must return ONLY the exact tier — not both — so DB and
+// memory paths agree and the selector does not double-weight the channel.
+func TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "both", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o", "gpt-*"}, Priority: 5,
+	}))
+	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-4o")
+	require.NoError(t, err)
+	// Exactly one ability row — the exact "gpt-4o", not the wildcard too.
+	require.Len(t, abilities, 1, "exact tier must shadow wildcard tier (no double-count)")
+	assert.Equal(t, int64(1), abilities[0].ChannelID)
+
+	// A model that only the wildcard matches still resolves through it.
+	abilitiesWild, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-5")
+	require.NoError(t, err)
+	require.Len(t, abilitiesWild, 1, "wildcard tier must apply when no exact match")
+}
+
+// TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency_Memory:
+// same contract on the in-memory repo so DB and memory behave identically.
+func TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency_Memory(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Type: 1, Name: "both", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o", "gpt-*"}, Priority: 5,
+	}))
+	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-4o")
+	require.NoError(t, err)
+	require.Len(t, abilities, 1, "memory path: exact tier must shadow wildcard (no double-count)")
+	assert.Equal(t, int64(1), abilities[0].ChannelID)
+
+	abilitiesWild, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-5")
+	require.NoError(t, err)
+	require.Len(t, abilitiesWild, 1, "memory path: wildcard tier applies when no exact match")
+}

@@ -65,11 +65,16 @@ func match(pattern, name string) bool {
 	return len(name) == 0
 }
 
-// FirstMatch returns the first key in keys (in iteration order) whose glob
-// pattern matches name, plus true; or ""/false if none. Exact-match keys
-// are tried first (before wildcard keys) when keys is the iteration order
-// from a Go map — callers that need exact-first semantics should pass a
-// slice ordered exact-first. See ResolveMapping for that contract.
+// FirstMatch is retained for backwards compatibility but is deprecated. It
+// returns the first key in keys (in iteration order) whose glob pattern
+// matches name. It does NOT apply the most-specific-wins rule and is
+// therefore non-deterministic when several specific patterns match the same
+// name. Production code should use Specificity + Match to pick the most
+// specific match (see internal/biz/model_mapping.go Resolve). Removed from
+// active call sites as part of docs/model-management-review-followups.md 🟢
+// "死代码: wildcard.FirstMatch".
+//
+// Deprecated: use a most-specific-wins selection instead.
 func FirstMatch(keys []string, name string) (string, bool) {
 	for _, k := range keys {
 		if Match(k, name) {
@@ -77,4 +82,23 @@ func FirstMatch(keys []string, name string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// Specificity returns a non-negative score measuring how specific a glob
+// pattern is: the count of non-wildcard characters. "claude-sonnet-*" (15)
+// is more specific than "claude-*" (7), which is more specific than "*" (0).
+// Ties are broken by the full pattern length so "claude-*-x" (9 non-wild,
+// len 10) ranks above "claude-*" (7 non-wild, len 8). Used to make wildcard
+// matching deterministic: when several specific patterns match the same
+// name, the most specific one wins, so two requests for the same model
+// resolve to the same upstream instead of being randomised by Go map
+// iteration order. See docs/model-management-review-followups.md 🟡#3.
+func Specificity(pattern string) int {
+	nonWildcard := 0
+	for _, c := range pattern {
+		if c != '*' && c != '?' {
+			nonWildcard++
+		}
+	}
+	return nonWildcard
 }

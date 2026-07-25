@@ -1360,3 +1360,42 @@ func TestChannelUsecase_SelectChannel_AbilitiesWinOverCatchAll(t *testing.T) {
 		t.Fatalf("exact-match channel must win over catch-all: got %d", channel.ID)
 	}
 }
+
+// TestChannelUsecase_CrossInstanceInvalidation (🟢): a TopicChannelChanged
+// event from another instance must drop the local /v1/models L1 cache so the
+// 15s TTL is not the only convergence path. The mutation path invalidates
+// synchronously; this test covers the cross-instance subscriber wired in
+// NewChannelUsecase.
+func TestChannelUsecase_CrossInstanceInvalidation(t *testing.T) {
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{1: {ID: 1, Status: ChannelStatusEnabled}},
+		abilities: map[string][]Ability{
+			"default:gpt-4o": {{Group: "default", Model: "gpt-4o", ChannelID: 1, Enabled: true, Priority: 1}},
+		},
+	}
+	uc := NewChannelUsecase(repo, nil) // MemoryEventBus → Subscribe works in-proc.
+
+	// First call populates the L1 cache.
+	if _, err := uc.ListAvailableModels(context.Background(), "default"); err != nil {
+		t.Fatalf("first ListAvailableModels: %v", err)
+	}
+	// Mutate the repo behind the cache's back, then publish a cross-instance
+	// event: the subscriber must drop the cache so the next read refetches.
+	repo.channels[2] = &Channel{ID: 2, Status: ChannelStatusEnabled}
+	repo.abilities["default:new-model"] = []Ability{{Group: "default", Model: "new-model", ChannelID: 2, Enabled: true, Priority: 1}}
+	_ = uc.eventBus.Publish(context.Background(), "channel.changed", &Channel{ID: 2})
+
+	models, err := uc.ListAvailableModels(context.Background(), "default")
+	if err != nil {
+		t.Fatalf("second ListAvailableModels: %v", err)
+	}
+	found := false
+	for _, m := range models {
+		if m == "new-model" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("cross-instance invalidation failed: new-model missing after event, got %v", models)
+	}
+}

@@ -111,6 +111,8 @@ func (m *mockChannelSelector) SelectChannel(_ context.Context, _, _ string, excl
 	return ch, nil
 }
 
+func (m *mockChannelSelector) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
+
 func (m *mockChannelSelector) RecordChannelHealth(_ context.Context, channelID int64, success bool, err string, responseTime int64) error {
 	m.healthEvents = append(m.healthEvents, healthEvent{
 		channelID:    channelID,
@@ -224,4 +226,115 @@ func TestRetryExecutor_Execute_ExhaustsRetries(t *testing.T) {
 
 	assert.Error(t, result.Err)
 	assert.Equal(t, 3, result.Attempt)
+}
+
+// TestRetryExecutor_FailoverDoesNotWidenToCatchAll (🟡#5): when the
+// failover SelectChannel(excludeFirstPriority=true) returns no channel, the
+// executor must NOT fall back to SelectChannel(false) — that would bypass
+// the "failover does not fall back to catch-all" contract and could re-select
+// the catch-all channel that just failed. It surfaces the last error instead.
+func TestRetryExecutor_FailoverDoesNotWidenToCatchAll(t *testing.T) {
+	sel := newTrackingSelector()
+	sel.failoverErr = errors.New("no channel")
+	sel.first = &Channel{ID: 1, Name: "catchall"}
+	policy := &RetryPolicy{
+		MaxAttempts:     2,
+		InitialInterval: 1 * time.Millisecond,
+		MaxInterval:     5 * time.Millisecond,
+		Multiplier:      1.0,
+		RetryableStatus: map[int]bool{502: true},
+	}
+	exec := NewRetryExecutor(policy, sel)
+
+	result := exec.ExecuteWithInitialChannel(context.Background(), "default", "gpt-4", sel.first, func(_ context.Context, ch *Channel) error {
+		return &RetryableError{Status: 502, Err: errors.New("bad gateway")}
+	})
+	// Must NOT have widened: excludeFirstPriority=false should never be called.
+	if sel.falseCalls > 0 {
+		t.Fatalf("failover widened to SelectChannel(false) %d times — contract violated", sel.falseCalls)
+	}
+	if result.Err == nil {
+		t.Fatal("expected the upstream error to surface, got nil")
+	}
+}
+
+type trackingSelector struct {
+	first        *Channel
+	failoverErr  error
+	trueCalls    int
+	falseCalls   int
+	healthEvents []healthEvent
+}
+
+func newTrackingSelector() *trackingSelector { return &trackingSelector{} }
+
+func (m *trackingSelector) SelectChannel(_ context.Context, _, _ string, excludeFirst bool) (*Channel, error) {
+	if excludeFirst {
+		m.trueCalls++
+		// No alternative tier available — mirrors SelectChannel returning
+		// ErrChannelNotFound on the failover path.
+		return nil, m.failoverErr
+	}
+	m.falseCalls++
+	return m.first, nil
+}
+
+func (m *trackingSelector) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
+
+func (m *trackingSelector) RecordChannelHealth(_ context.Context, channelID int64, success bool, err string, responseTime int64) error {
+	m.healthEvents = append(m.healthEvents, healthEvent{channelID, success, err, responseTime})
+	return nil
+}
+
+// TestRetryExecutor_ExecuteWithAccountHealth_FeedsSelector (🟡#8): the P2
+// #7 selector's RecordAccountHealth must be called after every attempt so
+// healthFactor/circuit-breaker track live relay results (previously inert).
+type recordingAccountSelector struct {
+	mockChannelSelector
+	accountHealthCalls []accountHealthCall
+}
+
+type accountHealthCall struct {
+	id      int64
+	success bool
+}
+
+func (m *recordingAccountSelector) RecordSubscriptionAccountHealth(_ context.Context, accountID int64, success bool) error {
+	m.accountHealthCalls = append(m.accountHealthCalls, accountHealthCall{accountID, success})
+	return nil
+}
+
+func TestRetryExecutor_ExecuteWithAccountHealth_FeedsSelector(t *testing.T) {
+	sel := &recordingAccountSelector{
+		mockChannelSelector: mockChannelSelector{
+			channels: []*Channel{{ID: 1, Name: "ch1"}},
+		},
+	}
+	policy := &RetryPolicy{
+		MaxAttempts:     1,
+		InitialInterval: 1 * time.Millisecond,
+		MaxInterval:     5 * time.Millisecond,
+		Multiplier:      1.0,
+		RetryableStatus: map[int]bool{502: true},
+	}
+	exec := NewRetryExecutor(policy, sel)
+
+	_ = exec.ExecuteWithAccountHealth(context.Background(), "default", "gpt-4", &Channel{ID: 1}, 42, func(_ context.Context, _ *Channel) error {
+		return nil // success
+	})
+	if len(sel.accountHealthCalls) != 1 {
+		t.Fatalf("expected 1 account-health call, got %d", len(sel.accountHealthCalls))
+	}
+	if sel.accountHealthCalls[0].id != 42 || !sel.accountHealthCalls[0].success {
+		t.Fatalf("expected (42,true), got %+v", sel.accountHealthCalls[0])
+	}
+
+	// accountID<=0 degrades to plain execute — no account-health recording.
+	sel.accountHealthCalls = nil
+	_ = exec.ExecuteWithAccountHealth(context.Background(), "default", "gpt-4", &Channel{ID: 1}, 0, func(_ context.Context, _ *Channel) error {
+		return nil
+	})
+	if len(sel.accountHealthCalls) != 0 {
+		t.Fatalf("accountID<=0 must not record account health, got %d calls", len(sel.accountHealthCalls))
+	}
 }

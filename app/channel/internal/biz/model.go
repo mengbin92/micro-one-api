@@ -163,15 +163,50 @@ type ModelRepo interface {
 	ListModelUsageStats(ctx context.Context, modelPK int64, startDate, endDate string, page, pageSize int32) ([]*ModelUsageStat, int64, error)
 }
 
+// ModelsListCacheInvalidator is the optional seam ModelUsecase uses to drop
+// the ChannelUsecase /v1/models L1 cache after a registry/mapping mutation.
+// The two usecases are siblings in the biz package; ModelUsecase does NOT
+// import ChannelUsecase — it only depends on this narrow interface, wired at
+// composition time (see app/channel/cmd/channel/wire.go). Without it, admin
+// edits to the model registry or its channel/subscription mappings stay stale
+// for up to the 15s L1 TTL — the "改了不生效" gap. See
+// docs/model-management-review-followups.md 🟡#2.
+type ModelsListCacheInvalidator interface {
+	// invalidateModelsListCache drops the /v1/models L1 cache. Unexported
+	// because both ModelUsecase and ChannelUsecase live in package biz; the
+	// seam stays package-private so it cannot leak to other layers.
+	invalidateModelsListCache()
+}
+
 // ModelUsecase wraps ModelRepo with domain-level operations.
 type ModelUsecase struct {
-	repo ModelRepo
-	now  func() time.Time
+	repo             ModelRepo
+	cacheInvalidator ModelsListCacheInvalidator
+	now              func() time.Time
 }
 
 // NewModelUsecase creates a new ModelUsecase.
 func NewModelUsecase(repo ModelRepo) *ModelUsecase {
 	return &ModelUsecase{repo: repo, now: time.Now}
+}
+
+// SetCacheInvalidator wires the optional ChannelUsecase cache invalidator.
+// nil (the default) is a no-op, so deployments/tests that don't wire it keep
+// working — mutations just rely on the L1 TTL to converge.
+func (uc *ModelUsecase) SetCacheInvalidator(inv ModelsListCacheInvalidator) {
+	if uc == nil {
+		return
+	}
+	uc.cacheInvalidator = inv
+}
+
+// invalidateChannelCache drops the /v1/models L1 cache after a successful
+// registry/mapping mutation so ListAvailableModels refetches immediately.
+func (uc *ModelUsecase) invalidateChannelCache() {
+	if uc == nil || uc.cacheInvalidator == nil {
+		return
+	}
+	uc.cacheInvalidator.invalidateModelsListCache()
 }
 
 // Repo exposes the underlying repo (used by service for nil-safety checks).
@@ -261,7 +296,11 @@ func (uc *ModelUsecase) CreateModel(ctx context.Context, model *Model) error {
 		model.CreatedAt = now
 	}
 	model.UpdatedAt = now
-	return uc.repo.CreateModel(ctx, model)
+	if err := uc.repo.CreateModel(ctx, model); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // UpdateModel updates an existing model. model.ID must be set.
@@ -273,7 +312,11 @@ func (uc *ModelUsecase) UpdateModel(ctx context.Context, model *Model) error {
 		return ErrModelNotFound
 	}
 	model.UpdatedAt = uc.timestamp()
-	return uc.repo.UpdateModel(ctx, model)
+	if err := uc.repo.UpdateModel(ctx, model); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // DeleteModel removes a model and its mappings.
@@ -281,7 +324,11 @@ func (uc *ModelUsecase) DeleteModel(ctx context.Context, modelPK int64) error {
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
-	return uc.repo.DeleteModel(ctx, modelPK)
+	if err := uc.repo.DeleteModel(ctx, modelPK); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // ChangeModelStatus sets the status of a single model.
@@ -289,7 +336,11 @@ func (uc *ModelUsecase) ChangeModelStatus(ctx context.Context, modelPK int64, st
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
-	return uc.repo.ChangeModelStatus(ctx, modelPK, status)
+	if err := uc.repo.ChangeModelStatus(ctx, modelPK, status); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // BatchModels performs a batch enable/disable/delete on the given model pks.
@@ -302,11 +353,23 @@ func (uc *ModelUsecase) BatchModels(ctx context.Context, action string, modelPKs
 	}
 	switch action {
 	case BatchActionEnable:
-		return uc.repo.BatchChangeStatus(ctx, modelPKs, ModelStatusEnabled)
+		n, err := uc.repo.BatchChangeStatus(ctx, modelPKs, ModelStatusEnabled)
+		if err == nil {
+			uc.invalidateChannelCache()
+		}
+		return n, err
 	case BatchActionDisable:
-		return uc.repo.BatchChangeStatus(ctx, modelPKs, ModelStatusDisabled)
+		n, err := uc.repo.BatchChangeStatus(ctx, modelPKs, ModelStatusDisabled)
+		if err == nil {
+			uc.invalidateChannelCache()
+		}
+		return n, err
 	case BatchActionDelete:
-		return uc.repo.BatchDelete(ctx, modelPKs)
+		n, err := uc.repo.BatchDelete(ctx, modelPKs)
+		if err == nil {
+			uc.invalidateChannelCache()
+		}
+		return n, err
 	default:
 		return 0, ErrInvalidBatchAction
 	}
@@ -332,7 +395,11 @@ func (uc *ModelUsecase) CreateModelAlias(ctx context.Context, alias *ModelAlias)
 	if alias.CreatedAt == 0 {
 		alias.CreatedAt = uc.timestamp()
 	}
-	return uc.repo.CreateModelAlias(ctx, alias)
+	if err := uc.repo.CreateModelAlias(ctx, alias); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // DeleteModelAlias removes an alias by id.
@@ -340,7 +407,11 @@ func (uc *ModelUsecase) DeleteModelAlias(ctx context.Context, aliasID int64) err
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
-	return uc.repo.DeleteModelAlias(ctx, aliasID)
+	if err := uc.repo.DeleteModelAlias(ctx, aliasID); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // ListChannelMappings returns channel-model mappings for a channel (or all
@@ -365,7 +436,11 @@ func (uc *ModelUsecase) UpsertChannelMapping(ctx context.Context, m *ModelChanne
 		m.CreatedAt = now
 	}
 	m.UpdatedAt = now
-	return uc.repo.UpsertChannelMapping(ctx, m)
+	if err := uc.repo.UpsertChannelMapping(ctx, m); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // DeleteChannelMapping removes a channel-model mapping.
@@ -373,7 +448,11 @@ func (uc *ModelUsecase) DeleteChannelMapping(ctx context.Context, channelID, mod
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
-	return uc.repo.DeleteChannelMapping(ctx, channelID, modelPK)
+	if err := uc.repo.DeleteChannelMapping(ctx, channelID, modelPK); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // ListSubscriptionMappings returns subscription-model mappings for an
@@ -401,7 +480,11 @@ func (uc *ModelUsecase) UpsertSubscriptionMapping(ctx context.Context, m *ModelS
 		m.CreatedAt = now
 	}
 	m.UpdatedAt = now
-	return uc.repo.UpsertSubscriptionMapping(ctx, m)
+	if err := uc.repo.UpsertSubscriptionMapping(ctx, m); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // DeleteSubscriptionMapping removes a subscription-model mapping.
@@ -409,7 +492,11 @@ func (uc *ModelUsecase) DeleteSubscriptionMapping(ctx context.Context, accountID
 	if uc == nil || uc.repo == nil {
 		return ErrModelNotFound
 	}
-	return uc.repo.DeleteSubscriptionMapping(ctx, accountID, modelPK, groupName)
+	if err := uc.repo.DeleteSubscriptionMapping(ctx, accountID, modelPK, groupName); err != nil {
+		return err
+	}
+	uc.invalidateChannelCache()
+	return nil
 }
 
 // ── Sprint 4: Usage statistics ─────────────────────────────────────────────

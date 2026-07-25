@@ -92,6 +92,7 @@ func (c *sequencingAccountSelector) SelectChannel(context.Context, string, strin
 func (c *sequencingAccountSelector) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
 	return nil
 }
+func (c *sequencingAccountSelector) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
 func (c *sequencingAccountSelector) SelectSubscriptionAccount(_ context.Context, _, _, _ string, _ bool) (*relaybiz.SubscriptionAccount, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

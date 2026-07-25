@@ -140,6 +140,13 @@ func UpstreamStatus(err error) int {
 type ChannelSelector interface {
 	SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error)
 	RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error
+	// RecordSubscriptionAccountHealth feeds a relay outcome into the P2 #7
+	// SubscriptionAccountSelector (🟡#8). accountID is the id of the
+	// subscription account that served the request (0 for ordinary API-key
+	// channels, in which case recording is a no-op). Called by RetryExecutor
+	// after every attempt so the selector's healthFactor/circuit-breaker
+	// tracks live relay results instead of staying inert.
+	RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error
 }
 
 // RetryExecutor orchestrates retry attempts with channel fallback.
@@ -178,6 +185,28 @@ func (e *RetryExecutor) Execute(
 	return e.ExecuteWithInitialChannel(ctx, group, model, nil, fn)
 }
 
+// ExecuteWithAccountHealth runs the provided function with retry and channel
+// fallback, AND feeds each attempt's outcome into the P2 #7
+// SubscriptionAccountSelector via RecordAccountHealth (🟡#8). Use this for
+// subscription-account channels so the selector's healthFactor / circuit
+// breaker tracks live relay results. accountID<=0 degrades to plain
+// ExecuteWithInitialChannel (ordinary API-key channels have no selector state).
+func (e *RetryExecutor) ExecuteWithAccountHealth(
+	ctx context.Context,
+	group, model string,
+	initialChannel *Channel,
+	accountID int64,
+	fn func(ctx context.Context, ch *Channel) error,
+) *ExecuteResult {
+	// Wrap fn so each attempt's outcome is recorded for the account.
+	wrapped := func(ctx context.Context, ch *Channel) error {
+		err := fn(ctx, ch)
+		e.RecordAccountHealth(ctx, accountID, err == nil)
+		return err
+	}
+	return e.ExecuteWithInitialChannel(ctx, group, model, initialChannel, wrapped)
+}
+
 func (e *RetryExecutor) ExecuteWithInitialChannel(
 	ctx context.Context,
 	group, model string,
@@ -202,14 +231,18 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 			case <-time.After(wait):
 			}
 
-			// Re-select channel, excluding first-priority tier
+			// Re-select channel, excluding first-priority tier.
+			// 🟡#5: the failover path uses excludeFirstPriority=true to
+			// avoid the just-failed tier. If that returns no channel we
+			// must NOT widen to excludeFirstPriority=false: that would
+			// bypass the "failover does not fall back to catch-all"
+			// contract (docs §11.2) and could re-select the catch-all
+			// channel that just failed. Instead, surface the last error
+			// so the caller sees the real failure rather than silently
+			// retrying the same catch-all channel.
 			ch, selErr := e.selector.SelectChannel(ctx, group, model, true)
 			if selErr != nil {
-				// No alternative channel — retry with the same one
-				ch, selErr = e.selector.SelectChannel(ctx, group, model, false)
-				if selErr != nil {
-					return &ExecuteResult{Channel: lastChannel, Err: lastErr, Attempt: attempt}
-				}
+				return &ExecuteResult{Channel: lastChannel, Err: lastErr, Attempt: attempt}
 			}
 			lastChannel = ch
 		} else if initialChannel != nil {
@@ -248,4 +281,18 @@ func (e *RetryExecutor) recordHealth(ctx context.Context, ch *Channel, success b
 		return
 	}
 	_ = e.selector.RecordChannelHealth(ctx, ch.ID, success, message, responseTime)
+}
+
+// RecordAccountHealth feeds a subscription-account relay outcome into the P2
+// #7 selector (🟡#8). The server layer calls this after each subscription-
+// account attempt (it has plan.Account.ID, which the *Channel type does not
+// carry). accountID<=0 is a no-op (ordinary API-key channels). This is the
+// single wiring point that makes the selector's healthFactor / circuit
+// breaker non-inert: without it, healthFactor is always 100 and circuits
+// never trip, contradicting docs §12.2.
+func (e *RetryExecutor) RecordAccountHealth(ctx context.Context, accountID int64, success bool) {
+	if e == nil || e.selector == nil || accountID <= 0 {
+		return
+	}
+	_ = e.selector.RecordSubscriptionAccountHealth(ctx, accountID, success)
 }
