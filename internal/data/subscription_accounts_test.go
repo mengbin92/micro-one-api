@@ -42,7 +42,7 @@ func (c *subscriptionAccountStoreClient) GetSubscriptionAccount(context.Context,
 	return &channelv1.GetSubscriptionAccountReply{Account: c.account}, nil
 }
 
-func (c *subscriptionAccountStoreClient) GetSubscriptionAccountWithSecrets(context.Context, *channelv1.GetSubscriptionAccountRequest) (*channelv1.GetSubscriptionAccountReply, error) {
+func (c *subscriptionAccountStoreClient) GetSubscriptionAccountWithSecrets(context.Context, *channelv1.GetSubscriptionAccountRequest, ...grpc.CallOption) (*channelv1.GetSubscriptionAccountReply, error) {
 	c.usedSecret = true
 	return &channelv1.GetSubscriptionAccountReply{Account: c.secretAccount}, nil
 }

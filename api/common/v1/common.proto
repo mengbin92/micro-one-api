@@ -91,6 +91,7 @@ message ChannelInfo {
   int32 health_consecutive_failures = 26;
   int64 circuit_opened_until = 27;
   bool restrict_models = 28;                          // restrict to abilities list: false=allow all models (catch-all), true=require registered model
+  string upstream_model_id = 29;                      // selected route's exact provider model identifier
 }
 
 // ========== 订阅账号 ==========
@@ -131,6 +132,7 @@ message SubscriptionAccountInfo {
   string quota_reset_strategy = 33;    // 本地日/周额度重置策略: rolling 或 fixed
   string quota_timezone = 34;          // fixed 策略使用的 IANA 时区，默认 UTC
   string model_mapping = 35;             // JSON {"src":"dst"} per-account model remap
+  string upstream_model_id = 36;         // selected route's exact provider model identifier
 }
 
 message SubscriptionAccountSummary {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	relaycredential "micro-one-api/domain/upstream/credential"
@@ -18,6 +19,7 @@ import (
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/internal/passthrough"
 	relayquota "micro-one-api/internal/quota"
+	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
 
@@ -334,18 +336,29 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		return result
 	}
 
-	// Prefer the first-class subscription account selected during planning
-	// (plan.Account), then the resolver, then the channel-fallback metadata.
-	// The account carries the access token; the channel view intentionally
-	// does not (see biz.RelayPlan.Account).
-	// Prefer the first-class subscription account selected during planning
-	// (plan.Account), then the resolver, then the channel-fallback metadata. For
-	// OAuth subscription channels the channel's Key field holds the access token
-	// and the channel id doubles as the account id, so the fallback is a valid
-	// (intended) credential source — not a bogus one.
+	// Selection RPCs intentionally redact account secrets. Keep the selected
+	// account's public metadata in the plan, but resolve its real credential via
+	// the internal secrets RPC immediately before the upstream call. Legacy
+	// channel-only plans retain the channel metadata fallback.
 	meta := fallbackSubscriptionAccountMetadata(plan, plan.Channel)
 	if plan.Account != nil {
 		meta = subscriptionAccountMetadataFromPlan(plan.Account)
+		if s.accountResolver != nil {
+			resolved, resolveErr := s.accountResolver.Resolve(ctx, plan.Account.ID)
+			if resolveErr != nil {
+				result.statusCode = http.StatusBadGateway
+				result.err = fmt.Errorf("resolve subscription account credential: %w", resolveErr)
+				result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+				return result
+			}
+			if resolved == nil || strings.TrimSpace(resolved.AccessToken) == "" {
+				result.statusCode = http.StatusBadGateway
+				result.err = fmt.Errorf("resolve subscription account credential: empty access token")
+				result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+				return result
+			}
+			meta = resolved
+		}
 	} else if s.accountResolver != nil {
 		if resolved, err := s.accountResolver.Resolve(ctx, plan.Channel.ID); err == nil && resolved != nil {
 			meta = resolved
@@ -447,6 +460,16 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		resp.Body.Close()
 		s.recordCodexQuotaSnapshot(ctx, plan, body)
 		upstreamErr := passthrough.Classify(resp.StatusCode, body)
+		if applogger.Log != nil {
+			applogger.Log.Warn("subscription upstream rejected request",
+				zap.Int("status_code", resp.StatusCode),
+				zap.String("platform", string(meta.Platform)),
+				zap.Int64("channel_id", plan.Channel.ID),
+				zap.Int64("subscription_account_id", meta.ID),
+				zap.String("model", clientModel),
+				zap.String("upstream_error", applogger.SanitizeAndTruncate(string(body), 2048)),
+			)
+		}
 		result.statusCode = resp.StatusCode
 		result.body = body
 		result.header = resp.Header.Clone()
@@ -890,6 +913,12 @@ func subscriptionAccountMetadataFromPlan(a *relaybiz.SubscriptionAccount) *relay
 		platform = relaycredential.PlatformCodex
 	case "claude":
 		platform = relaycredential.PlatformClaude
+	case "zhipu":
+		platform = relaycredential.PlatformZhipu
+	case "minimax":
+		platform = relaycredential.PlatformMinimax
+	case "kimi":
+		platform = relaycredential.PlatformKimi
 	}
 	return &relaycredential.SubscriptionAccountMetadata{
 		ID:          a.ID,

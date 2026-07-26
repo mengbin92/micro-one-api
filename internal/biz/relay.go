@@ -76,6 +76,7 @@ type Channel struct {
 	Group    string
 	Models   []string
 	Priority int64
+	Weight   uint32
 	Key      string
 	Config   ChannelConfig
 
@@ -84,7 +85,8 @@ type Channel struct {
 	// RestrictModels is the P1 (#2) catch-all flag: false=allow unregistered
 	// models to route to this channel, true=require an abilities row. Default
 	// true (legacy). See docs/model-management-design.md §9.3 #2.
-	RestrictModels bool
+	RestrictModels  bool
+	UpstreamModelID string
 }
 
 type ChannelConfig struct {
@@ -115,7 +117,8 @@ type SubscriptionAccount struct {
 	SessionWindowLimitUSD float64
 
 	// ModelMapping is a JSON {"src":"dst"} per-account remap applied after global ModelMapper.
-	ModelMapping string
+	ModelMapping    string
+	UpstreamModelID string
 }
 
 // RelayPlan is the result of relay planning, containing all resolved
@@ -165,14 +168,15 @@ func (p *RelayPlan) BaseModel() string {
 // RelayUsecase orchestrates the relay planning flow:
 // model mapping → auth → model validation → channel selection.
 type RelayUsecase struct {
-	identity     IdentityClient
-	channel      ChannelClient
-	subscription SubscriptionAccountClient
-	modelMapper  *ModelMapper
-	retryPolicy  *RetryPolicy
-	blocker      RuntimeBlocker
-	accountPool  *AccountPool
-	now          func() time.Time
+	identity      IdentityClient
+	channel       ChannelClient
+	subscription  SubscriptionAccountClient
+	modelMapper   *ModelMapper
+	retryPolicy   *RetryPolicy
+	blocker       RuntimeBlocker
+	accountPool   *AccountPool
+	routeSelector *UpstreamRouteSelector
+	now           func() time.Time
 
 	// Session -> subscription-account stickiness (docs #7). All nil/false by
 	// default: unless SetSessionAccountStore enables it, Plan behaves exactly as
@@ -215,14 +219,15 @@ func NewRelayUsecase(identity IdentityClient, channel ChannelClient, modelMapper
 		subscription = selector
 	}
 	return &RelayUsecase{
-		identity:     identity,
-		channel:      channel,
-		subscription: subscription,
-		modelMapper:  modelMapper,
-		retryPolicy:  retryPolicy,
-		blocker:      NoopRuntimeBlocker{},
-		accountPool:  NewAccountPool(NoopRuntimeBlocker{}),
-		now:          time.Now,
+		identity:      identity,
+		channel:       channel,
+		subscription:  subscription,
+		modelMapper:   modelMapper,
+		retryPolicy:   retryPolicy,
+		blocker:       NoopRuntimeBlocker{},
+		accountPool:   NewAccountPool(NoopRuntimeBlocker{}),
+		routeSelector: NewUpstreamRouteSelector(),
+		now:           time.Now,
 	}
 }
 
@@ -266,62 +271,67 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 		}
 	}
 
-	// 4. Select channel using the client-facing model name first. Existing
-	// channel abilities are commonly keyed by the exposed names. If that fails
-	// and the model mapper rewrote the name, fall back to the resolved upstream
-	// model so deployments can expose aliases without duplicating abilities.
-	channel, err := uc.channel.SelectChannel(ctx, authSnapshot.Group, req.Model, false)
-	if err != nil {
-		channelErr := err
-		if resolvedModel != req.Model {
-			channel, err = uc.channel.SelectChannel(ctx, authSnapshot.Group, resolvedModel, false)
-			if err == nil {
-				return &RelayPlan{
-					Auth:    authSnapshot,
-					Channel: channel,
-					// keep the globally-resolved model (pre-channel
-					// mapping) so failover can recompute against a different
-					// channel's mapping instead of stacking mappings.
-					GlobalModel:   resolvedModel,
-					ResolvedModel: ResolveChannelModel(channel, resolvedModel),
-				}, nil
-			}
-			channelErr = err
-		}
-		// Session stickiness: prefer the subscription account this conversation
-		// was previously bound to (prompt-cache reuse) before normal selection.
-		if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, req.SessionHash, req.Model, resolvedModel); ok {
-			return &RelayPlan{
-				Auth:          authSnapshot,
-				Channel:       ch,
-				Account:       acct,
-				GlobalModel:   resolvedModel,
-				ResolvedModel: ResolveChannelModel(ch, resolvedModel),
-			}, nil
-		}
-		subChannel, subAccount, subErr := uc.selectSubscriptionChannel(ctx, authSnapshot.Group, req.Model, resolvedModel)
-		if subErr != nil {
-			if uc.subscription == nil {
-				return nil, channelErr
-			}
-			return nil, subErr
-		}
-		channel = subChannel
-		return &RelayPlan{
-			Auth:          authSnapshot,
-			Channel:       channel,
-			Account:       subAccount,
-			GlobalModel:   resolvedModel,
-			ResolvedModel: ResolveChannelModel(channel, resolvedModel),
-		}, nil
+	// 4. A valid sticky subscription route remains authoritative for the
+	// conversation. For a new conversation, API-key channels and subscription
+	// accounts participate in one priority/weight selection instead of treating
+	// subscription accounts as a fallback that can only run when every channel
+	// fails.
+	if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, req.SessionHash, req.Model, resolvedModel); ok {
+		return newRelayPlan(authSnapshot, ch, acct, resolvedModel), nil
 	}
 
+	channel, channelErr := uc.selectAPIKeyChannel(ctx, authSnapshot.Group, req.Model, resolvedModel)
+	subChannel, subAccount, subErr := uc.selectSubscriptionChannel(ctx, authSnapshot.Group, req.Model, resolvedModel)
+
+	switch {
+	case channel != nil && subChannel != nil:
+		choice := uc.routeSelector.Select(authSnapshot.Group, req.Model, []UpstreamRouteCandidate{
+			{Kind: UpstreamRouteChannel, ID: channel.ID, Priority: channel.Priority, Weight: selectorWeight(channel.Weight)},
+			{Kind: UpstreamRouteSubscription, ID: subAccount.ID, Priority: subAccount.Priority, Weight: 1},
+		})
+		if choice.Kind == UpstreamRouteSubscription {
+			return newRelayPlan(authSnapshot, subChannel, subAccount, resolvedModel), nil
+		}
+		return newRelayPlan(authSnapshot, channel, nil, resolvedModel), nil
+	case channel != nil:
+		return newRelayPlan(authSnapshot, channel, nil, resolvedModel), nil
+	case subChannel != nil:
+		return newRelayPlan(authSnapshot, subChannel, subAccount, resolvedModel), nil
+	case uc.subscription == nil:
+		return nil, channelErr
+	case subErr != nil:
+		return nil, subErr
+	default:
+		return nil, channelErr
+	}
+}
+
+func (uc *RelayUsecase) selectAPIKeyChannel(ctx context.Context, group, clientModel, resolvedModel string) (*Channel, error) {
+	channel, err := uc.channel.SelectChannel(ctx, group, clientModel, false)
+	if err == nil {
+		return channel, nil
+	}
+	if resolvedModel != clientModel {
+		return uc.channel.SelectChannel(ctx, group, resolvedModel, false)
+	}
+	return nil, err
+}
+
+func newRelayPlan(auth *AuthSnapshot, channel *Channel, account *SubscriptionAccount, resolvedModel string) *RelayPlan {
 	return &RelayPlan{
-		Auth:          authSnapshot,
+		Auth:          auth,
 		Channel:       channel,
+		Account:       account,
 		GlobalModel:   resolvedModel,
 		ResolvedModel: ResolveChannelModel(channel, resolvedModel),
-	}, nil
+	}
+}
+
+func selectorWeight(weight uint32) int64 {
+	if weight == 0 {
+		return 1
+	}
+	return int64(weight)
 }
 
 func (uc *RelayUsecase) selectSubscriptionChannel(ctx context.Context, group, clientModel, resolvedModel string) (*Channel, *SubscriptionAccount, error) {
@@ -590,16 +600,17 @@ func subscriptionAccountToChannel(account *SubscriptionAccount) (*Channel, error
 		return nil, fmt.Errorf("unsupported subscription platform %q", account.Platform)
 	}
 	return &Channel{
-		ID:             account.ID,
-		Type:           channelType,
-		Name:           account.Name,
-		Status:         account.Status,
-		BaseURL:        account.BaseURL,
-		Group:          account.Group,
-		Models:         append([]string(nil), account.Models...),
-		Priority:       account.Priority,
-		ModelMapping:   account.ModelMapping,
-		RestrictModels: true, // subscription accounts require explicit abilities; never catch-all
+		ID:              account.ID,
+		Type:            channelType,
+		Name:            account.Name,
+		Status:          account.Status,
+		BaseURL:         account.BaseURL,
+		Group:           account.Group,
+		Models:          append([]string(nil), account.Models...),
+		Priority:        account.Priority,
+		ModelMapping:    account.ModelMapping,
+		UpstreamModelID: account.UpstreamModelID,
+		RestrictModels:  true, // subscription accounts require explicit abilities; never catch-all
 		// Key intentionally left empty: the access token is NOT projected onto
 		// the generic Channel.Key field. The server layer resolves it via the
 		// SubscriptionAccountResolver (plan.Account) / credential store so it
@@ -641,6 +652,9 @@ func ApplyChannelModelMapping(mappingJSON, model string) string {
 func ResolveChannelModel(channel *Channel, model string) string {
 	if channel == nil {
 		return model
+	}
+	if upstream := strings.TrimSpace(channel.UpstreamModelID); upstream != "" {
+		return upstream
 	}
 	if mapped, ok := resolvePerAccountModelMapping(channel.ModelMapping, model); ok {
 		return mapped

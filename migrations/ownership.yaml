@@ -52,6 +52,7 @@ services:
     - 063_add_subscription_account_model_mapping
     - 064_add_channel_restrict_models
     - 065_add_model_routings
+    - 066_add_upstream_model_ids
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /

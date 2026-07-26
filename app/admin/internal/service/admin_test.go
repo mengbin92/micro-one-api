@@ -38,6 +38,22 @@ func TestBalanceAdapterForChannelUsesProviderTypeDefaults(t *testing.T) {
 	}
 }
 
+func TestSubscriptionProtocolToString(t *testing.T) {
+	tests := map[string]string{
+		"codex":   "OpenAI",
+		"claude":  "Anthropic",
+		"zhipu":   "Anthropic",
+		"minimax": "Anthropic",
+		"kimi":    "Anthropic",
+		"unknown": "Unknown",
+	}
+	for platform, want := range tests {
+		if got := subscriptionProtocolToString(platform); got != want {
+			t.Fatalf("subscriptionProtocolToString(%q) = %q, want %q", platform, got, want)
+		}
+	}
+}
+
 type adminServiceChannelClient struct {
 	channelv1.ChannelServiceClient
 	channel   *commonv1.ChannelInfo

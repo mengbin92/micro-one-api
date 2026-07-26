@@ -58,6 +58,7 @@ export interface ModelChannelMapping {
   enabled: boolean;
   priority: number;
   config: string;
+  upstream_model_id: string;
   created_at: number;
   updated_at: number;
 }
@@ -69,6 +70,7 @@ export interface ModelSubscriptionMapping {
   group_name: string;
   enabled: boolean;
   priority: number;
+  upstream_model_id: string;
   created_at: number;
   updated_at: number;
 }

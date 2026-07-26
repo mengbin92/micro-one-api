@@ -60,6 +60,8 @@ interface LogEntry {
   channelName?: string;
   channelType?: number;
   channelTypeStr?: string;
+  upstreamName?: string;
+  upstreamProtocol?: string;
   endpoint?: string;
   subscription_account_id?: number;
   subscriptionAccountId?: number;
@@ -95,6 +97,20 @@ function unixSecondsToDatetimeLocal(value: string | undefined) {
   const date = new Date(seconds * 1000);
   const offsetMillis = date.getTimezoneOffset() * 60 * 1000;
   return new Date(date.getTime() - offsetMillis).toISOString().slice(0, 16);
+}
+
+function formatUpstreamProvider(log: LogEntry) {
+  if (log.upstreamName) {
+    return `${log.upstreamName}${log.upstreamProtocol && log.upstreamProtocol !== 'Unknown' ? ` (${log.upstreamProtocol})` : ''}`;
+  }
+  if (log.channelName) {
+    return `${log.channelName}${log.channelTypeStr && log.channelTypeStr !== 'Unknown' ? ` (${log.channelTypeStr})` : ''}`;
+  }
+  const subscriptionAccountId = log.subscription_account_id ?? log.subscriptionAccountId;
+  if (subscriptionAccountId) return `Subscription #${subscriptionAccountId}`;
+  if (log.channelId) return `#${log.channelId}`;
+  if (log.channel) return String(log.channel);
+  return '—';
 }
 
 export function AdminLogsPage() {
@@ -216,10 +232,7 @@ export function AdminLogsPage() {
         ['Request ID', selectedLog.request_id],
         ['Model', selectedLog.model_name],
         ['Token', selectedLog.token_name],
-        ['Channel', selectedLog.channelName
-          ? `${selectedLog.channelName}${selectedLog.channelTypeStr && selectedLog.channelTypeStr !== 'Unknown' ? ` (${selectedLog.channelTypeStr})` : ''}`
-          : selectedLog.channel],
-        ['Subscription Account', selectedLog.subscription_account_id ?? selectedLog.subscriptionAccountId],
+        ['Upstream Provider', formatUpstreamProvider(selectedLog)],
         ['Amount', formatQuota(selectedLog.amount)],
         ['Balance After', formatQuota(selectedLog.balanceAfter)],
         ['Quota', selectedLog.quota],
@@ -290,7 +303,6 @@ export function AdminLogsPage() {
               { key: 'amount', label: 'Amount' },
               { key: 'balanceAfter', label: 'Balance After' },
               { key: 'referenceId', label: 'Reference' },
-              { key: 'subscriptionAccountId', label: 'Subscription Account' },
               { key: 'remark', label: 'Remark' },
               { key: 'createdAt', label: 'Created At' },
             ]}
@@ -326,7 +338,7 @@ export function AdminLogsPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', 'User ID', 'Type', 'Amount', 'Balance After', 'Subscription Account', 'Reference', 'Remark', 'Created At', 'Actions']} rows={8} />
+        <TableSkeleton columns={['ID', 'User ID', 'Type', 'Amount', 'Upstream Provider', 'Balance After', 'Reference', 'Remark', 'Created At', 'Actions']} rows={8} />
       ) : !logs || logs.length === 0 ? (
         <EmptyState title="No logs found" description="Adjust the filters or check back after billing events are recorded." />
       ) : (
@@ -345,9 +357,8 @@ export function AdminLogsPage() {
                   <SortableHeader<LogEntry> columnKey="amount" sort={sort} onSortChange={setSort}>
                     Amount
                   </SortableHeader>
-                  <TableHead className="hidden lg:table-cell">Channel</TableHead>
+                  <TableHead className="hidden lg:table-cell">Upstream Provider</TableHead>
                   <TableHead className="hidden md:table-cell">Balance After</TableHead>
-                  <TableHead className="hidden lg:table-cell">Subscription Account</TableHead>
                   <TableHead className="hidden lg:table-cell">Reference</TableHead>
                   <TableHead className="hidden lg:table-cell">Remark</TableHead>
                   <SortableHeader<LogEntry> columnKey="createdAt" sort={sort} onSortChange={setSort}>
@@ -368,13 +379,7 @@ export function AdminLogsPage() {
                     </TableCell>
                     <TableCell>{formatQuota(log.amount)}</TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {log.channelName
-                        ? `${log.channelName}${log.channelTypeStr && log.channelTypeStr !== 'Unknown' ? ` (${log.channelTypeStr})` : ''}`
-                        : log.channelId
-                          ? <span className="text-xs text-muted-foreground">#{log.channelId}</span>
-                          : log.channel
-                            ? String(log.channel)
-                            : '—'}
+                      {formatUpstreamProvider(log)}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{formatQuota(log.balanceAfter)}</TableCell>
                     <TableCell className="hidden font-mono text-xs lg:table-cell">{log.referenceId || '—'}</TableCell>

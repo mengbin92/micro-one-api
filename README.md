@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.10.1 发布公告](./docs/releases/release-v0.10.1.md)（国内订阅账户路由修复 + 模型发现 + 安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.10.1)
+> 📣 **最新发布**：[v0.10.2 发布公告](./docs/releases/release-v0.10.2.md)（统一上游模型路由 + GLM 工具 Schema 修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.10.2)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.10.2
+
+v0.10.2 是问题修复版本，聚焦统一 API-key 渠道与订阅账号的模型路由（订阅账号不再硬编码为兜底，改为按 `priority`/`weight` 同层竞争）、新增 `upstream_model_id` 列以精确映射每个上游的真实模型 ID，并修复 GLM 等 Anthropic 兼容上游对 Responses 自定义工具 `input_schema: null` 返回 422 的问题。**包含数据库迁移**（`066_add_upstream_model_ids.sql`，新增列 + 幂等回填，必须执行 `make migrate`）；无 API 破坏性变更，仅新增 proto 字段与一个内部 gRPC 方法；开发者需执行 `make init && make proto` 重新生成代码。升级前请备份 `model_channel_mapping` / `model_subscription_mapping`，详见 [docs/releases/release-v0.10.2.md](./docs/releases/release-v0.10.2.md)。
 
 ### 升级到 v0.10.1
 

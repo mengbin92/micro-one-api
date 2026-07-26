@@ -137,6 +137,91 @@ Regenerate via `make api`, `make config`, or `make all`; never hand-edit
 - Error reasons: declared in `api/<domain>/<version>/error_reason.proto`,
   surfaced as `Err<Resource><Cause>` in `biz`.
 
+## Deployment
+
+Production runs on a remote Linux/x86_64 host, reachable via
+`ssh $DEPLOY_REMOTE_SERVER` (from `$DEPLOY_REMOTE_SERVER` in `.env`), under
+`$DEPLOY_REMOTE_DIR/docker-compose` (from `$DEPLOY_REMOTE_DIR` in `.env`),
+launched with `docker compose`. The host is resource-constrained, so
+**never build images on the server**.
+
+The local dev machine is Apple Silicon (arm64). Because the server is
+x86_64 and local is arm64, every image must be cross-built locally and
+shipped to the host. Use this standard flow; do not ask the user to
+restate the topology each time.
+
+### Build & deploy a single service (cross-platform)
+
+```
+docker buildx build --platform linux/amd64 --load --progress=plain \
+  -f <Dockerfile> --build-arg SERVICE_NAME=<svc> --build-arg SERVICE_PATH=<cmd-path> \
+  -t docker-compose-<svc>:latest .
+docker save docker-compose-<svc>:latest -o /tmp/<svc>-image.tar
+scp /tmp/<svc>-image.tar $DEPLOY_REMOTE_SERVER:/tmp/
+ssh $DEPLOY_REMOTE_SERVER "docker tag docker-compose-<svc>:latest docker-compose-<svc>:rollback-$(date +%Y%m%d-%H%M%S) \
+  && docker load -i /tmp/<svc>-image.tar \
+  && cd $DEPLOY_REMOTE_DIR/docker-compose && docker compose up -d --no-deps <svc> \
+  && rm -f /tmp/<svc>-image.tar"
+rm -f /tmp/<svc>-image.tar
+```
+
+Service → Dockerfile / path mapping (same as `scripts/deploy-update.sh`):
+
+| service            | Dockerfile             | SERVICE_PATH                       |
+|--------------------|------------------------|------------------------------------|
+| relay-gateway      | Dockerfile             | ./cmd/relay-gateway                |
+| admin-api          | app/admin/Dockerfile   | ./app/admin/cmd/admin             |
+| identity-service   | app/identity/Dockerfile| ./app/identity/cmd/identity       |
+| channel-service    | app/channel/Dockerfile | ./app/channel/cmd/channel          |
+| billing-service    | app/billing/Dockerfile | ./app/billing/cmd/billing          |
+| config-service     | app/config/Dockerfile  | ./app/config/cmd/config           |
+| log-service        | app/log/Dockerfile     | ./app/log/cmd/log                 |
+| monitor-worker     | app/monitor/Dockerfile | ./app/monitor/cmd/monitor          |
+| notify-worker      | app/notify/Dockerfile  | ./app/notify/cmd/notify           |
+
+`scripts/deploy-update.sh <services...>` automates the same flow.
+
+### Buildx builder setup (once per machine)
+
+If `docker buildx ls` shows no usable builder, create a cross-platform
+one (this needs escalated docker access):
+
+```
+docker buildx create --name amd64builder --driver docker-container \
+  --platform linux/amd64 --use
+docker buildx inspect --bootstrap
+```
+
+### Frontend (web/dist) is served from the host, not the image
+
+`docker-compose.yml` mounts `volume - /opt/web/dist:/web:ro` onto
+admin-api, so **rebuilding the admin-api image does NOT update the
+frontend**. To ship a frontend change:
+
+```
+cd web && npm run build
+tar -czf /tmp/web-dist.tar.gz -C dist .
+scp /tmp/web-dist.tar.gz $DEPLOY_REMOTE_SERVER:/tmp/
+ssh $DEPLOY_REMOTE_SERVER "cp -r /opt/web/dist /opt/web/dist.bak.$(date +%Y%m%d-%H%M%S) \
+  && rm -rf /opt/web/dist/* && tar -xzf /tmp/web-dist.tar.gz -C /opt/web/dist/ && rm -f /tmp/web-dist.tar.gz"
+rm -f /tmp/web-dist.tar.gz
+```
+
+No container restart needed (the mount is `:ro` live).
+
+### Verify a deploy
+
+```
+ssh $DEPLOY_REMOTE_SERVER "docker ps --filter name=<svc> --format 'table {{.Names}}\t{{.Status}}' && docker logs <svc> --tail 10"
+```
+
+For config-only changes (no binary), e.g. env vars in `.env` or
+`docker-compose.yml`, just recreate the affected container:
+
+```
+ssh $DEPLOY_REMOTE_SERVER "cd $DEPLOY_REMOTE_DIR/docker-compose && docker compose up -d --no-deps --force-recreate <svc>"
+```
+
 ## Commits & security
 
 - Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore(deps):`,

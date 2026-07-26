@@ -22,10 +22,16 @@ import (
 )
 
 type testSubscriptionResolver struct {
-	meta *relaycredential.SubscriptionAccountMetadata
+	meta      *relaycredential.SubscriptionAccountMetadata
+	err       error
+	accountID int64
 }
 
-func (r testSubscriptionResolver) Resolve(context.Context, int64) (*relaycredential.SubscriptionAccountMetadata, error) {
+func (r *testSubscriptionResolver) Resolve(_ context.Context, accountID int64) (*relaycredential.SubscriptionAccountMetadata, error) {
+	r.accountID = accountID
+	if r.err != nil {
+		return nil, r.err
+	}
 	if r.meta == nil {
 		return nil, relaycredential.ErrAccountNotFound
 	}
@@ -44,7 +50,7 @@ func TestHandleChatCompletionsViaAdaptor_UsesFallbackMetadata(t *testing.T) {
 			return newJSONResponse(`{"id":"resp_1","object":"response","model":"gpt-5","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`), nil
 		}),
 	})
-	httpServer.SetSubscriptionAccountResolver(testSubscriptionResolver{meta: nil})
+	httpServer.SetSubscriptionAccountResolver(&testSubscriptionResolver{meta: nil})
 
 	plan := &relaybiz.RelayPlan{
 		Auth: &relaybiz.AuthSnapshot{UserID: 42, Group: "default"},
@@ -78,7 +84,7 @@ func TestHandleChatCompletionsViaAdaptor_UsesFallbackMetadata(t *testing.T) {
 	}
 }
 
-func TestHandleChatCompletionsViaAdaptor_PlanAccountWinsOverResolver(t *testing.T) {
+func TestHandleChatCompletionsViaAdaptor_ResolverCredentialWinsOverRedactedPlanAccount(t *testing.T) {
 	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
 	httpServer.SetHybridAdaptorEnabled(true)
 	var seenAuth, seenAccountID string
@@ -89,13 +95,14 @@ func TestHandleChatCompletionsViaAdaptor_PlanAccountWinsOverResolver(t *testing.
 			return newJSONResponse(`{"id":"resp_1","object":"response","model":"gpt-5","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`), nil
 		}),
 	})
-	httpServer.SetSubscriptionAccountResolver(testSubscriptionResolver{meta: &relaycredential.SubscriptionAccountMetadata{
+	resolver := &testSubscriptionResolver{meta: &relaycredential.SubscriptionAccountMetadata{
 		ID:          99,
 		Platform:    relaycredential.PlatformCodex,
 		AccountType: "oauth",
 		AccessToken: "resolver-token",
 		AccountID:   "resolver-account",
-	}})
+	}}
+	httpServer.SetSubscriptionAccountResolver(resolver)
 
 	plan := &relaybiz.RelayPlan{
 		Auth: &relaybiz.AuthSnapshot{UserID: 42, Group: "default"},
@@ -109,7 +116,7 @@ func TestHandleChatCompletionsViaAdaptor_PlanAccountWinsOverResolver(t *testing.
 			ID:          12,
 			Platform:    "codex",
 			AccountType: "oauth",
-			AccessToken: "plan-token",
+			AccessToken: "plan********************************oken",
 			AccountID:   "plan-account",
 			Group:       "default",
 		},
@@ -125,11 +132,59 @@ func TestHandleChatCompletionsViaAdaptor_PlanAccountWinsOverResolver(t *testing.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
-	if seenAuth != "Bearer plan-token" {
+	if seenAuth != "Bearer resolver-token" {
 		t.Fatalf("Authorization = %q", seenAuth)
 	}
-	if seenAccountID != "plan-account" {
+	if seenAccountID != "resolver-account" {
 		t.Fatalf("chatgpt-account-id = %q", seenAccountID)
+	}
+	if resolver.accountID != 12 {
+		t.Fatalf("resolver account id = %d, want 12", resolver.accountID)
+	}
+}
+
+func TestHandleChatCompletionsViaAdaptor_ResolverFailureDoesNotSendRedactedCredential(t *testing.T) {
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	httpServer.SetHybridAdaptorEnabled(true)
+	upstreamCalls := 0
+	httpServer.SetOAuthHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			upstreamCalls++
+			return newJSONResponse(`{"ok":true}`), nil
+		}),
+	})
+	httpServer.SetSubscriptionAccountResolver(&testSubscriptionResolver{err: errors.New("secret service unavailable")})
+
+	plan := &relaybiz.RelayPlan{
+		Auth: &relaybiz.AuthSnapshot{UserID: 42, Group: "default"},
+		Channel: &relaybiz.Channel{
+			ID:      4,
+			Type:    relayprovider.ChannelTypeZhipuPlan,
+			BaseURL: "https://example.invalid",
+			Group:   "default",
+		},
+		Account: &relaybiz.SubscriptionAccount{
+			ID:          4,
+			Platform:    "zhipu",
+			AccountType: "static_key",
+			AccessToken: "abcd****************************************wxyz",
+			Group:       "default",
+		},
+		ResolvedModel: "glm-5.2",
+		GlobalModel:   "glm-5.2",
+	}
+	body := []byte(`{"model":"glm-5.2","messages":[{"role":"user","content":"hi"}],"stream":false}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(string(body)))
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "glm-5.2", body, "")
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502, body=%s", rec.Code, rec.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
 	}
 }
 

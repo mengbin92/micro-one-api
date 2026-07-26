@@ -385,10 +385,14 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		createdAt = entry.GetCreatedAt().AsTime().Unix()
 	}
 
-	// Enrich the single entry with its channel's display metadata. Single-entry
-	// detail uses GetChannel (one RPC) rather than the ListChannels fan-out used
-	// by the list path; failures are logged and degrade to the raw channel ID.
-	channel := s.loadChannelEnrichment(ctx, entry.GetChannelId())
+	// Enrich the selected upstream. Subscription accounts take precedence over
+	// their synthetic channel view; ordinary API-key traffic uses channel
+	// metadata. This keeps the UI provider column semantically accurate.
+	upstream := s.loadUpstreamEnrichment(ctx, entry.GetChannelId(), entry.GetSubscriptionAccountId())
+	var channel channelEnrichment
+	if entry.GetSubscriptionAccountId() == 0 {
+		channel = upstream
+	}
 
 	return map[string]interface{}{
 		"id":                      entry.GetId(),
@@ -420,6 +424,8 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		"channelName":             channel.Name,
 		"channelType":             channel.Type,
 		"channelTypeStr":          channel.TypeStr,
+		"upstreamName":            upstream.Name,
+		"upstreamProtocol":        upstream.TypeStr,
 		"subscriptionAccountId":   entry.GetSubscriptionAccountId(),
 		"subscription_account_id": entry.GetSubscriptionAccountId(),
 		"elapsedTime":             entry.GetElapsedTime(),
@@ -2090,6 +2096,7 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 	// are logged inside the helper and degrade to the raw channel ID so the
 	// listing stays available even if the channel service is degraded.
 	channelEnrichments := s.loadChannelEnrichments(ctx, billingResp.GetEntries())
+	subscriptionEnrichments := s.loadSubscriptionAccountEnrichments(ctx, billingResp.GetEntries())
 
 	entries := make([]map[string]interface{}, 0, len(billingResp.GetEntries()))
 	for _, entry := range billingResp.GetEntries() {
@@ -2106,6 +2113,10 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			channelName = ch.Name
 			channelType = ch.Type
 			channelTypeStr = ch.TypeStr
+		}
+		upstream := channelEnrichments[channelID]
+		if subscriptionAccountID := entry.GetSubscriptionAccountId(); subscriptionAccountID > 0 {
+			upstream = subscriptionEnrichments[subscriptionAccountID]
 		}
 
 		entries = append(entries, map[string]interface{}{
@@ -2127,6 +2138,8 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"channelName":           channelName,
 			"channelType":           channelType,
 			"channelTypeStr":        channelTypeStr,
+			"upstreamName":          upstream.Name,
+			"upstreamProtocol":      upstream.TypeStr,
 			"subscriptionAccountId": entry.GetSubscriptionAccountId(),
 			"elapsedTime":           entry.GetElapsedTime(),
 			"isStream":              entry.GetIsStream(),
@@ -2247,6 +2260,81 @@ func (s *AdminService) loadChannelEnrichment(ctx context.Context, channelID int6
 		Name:    ch.GetName(),
 		Type:    ch.GetType(),
 		TypeStr: channelTypeToString(ch.GetType()),
+	}
+}
+
+// loadSubscriptionAccountEnrichments fetches subscription account summaries
+// for ledger rows in one RPC. Subscription platforms all use a known relay
+// protocol, which is exposed separately from the provider/account name.
+func (s *AdminService) loadSubscriptionAccountEnrichments(ctx context.Context, entries []*commonv1.LedgerEntry) map[int64]channelEnrichment {
+	result := make(map[int64]channelEnrichment)
+	if s.channelClient == nil {
+		return result
+	}
+	ids := make(map[int64]bool)
+	for _, entry := range entries {
+		if id := entry.GetSubscriptionAccountId(); id > 0 {
+			ids[id] = true
+		}
+	}
+	if len(ids) == 0 {
+		return result
+	}
+	resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
+		Page:     1,
+		PageSize: 1000,
+	})
+	if err != nil {
+		applogger.Log.Warn("failed to load subscription accounts for ledger enrichment", zap.Error(err))
+		return result
+	}
+	if resp == nil {
+		return result
+	}
+	for _, account := range resp.GetAccounts() {
+		if account == nil || !ids[account.GetId()] {
+			continue
+		}
+		result[account.GetId()] = channelEnrichment{
+			Name:    account.GetName(),
+			TypeStr: subscriptionProtocolToString(account.GetPlatform()),
+		}
+	}
+	if total := resp.GetTotal(); total > int64(len(resp.GetAccounts())) {
+		applogger.Log.Warn("ledger subscription account enrichment truncated; falling back to account IDs for unmatched entries",
+			zap.Int("fetched", len(resp.GetAccounts())),
+			zap.Int64("total", total),
+		)
+	}
+	return result
+}
+
+func (s *AdminService) loadUpstreamEnrichment(ctx context.Context, channelID, subscriptionAccountID int64) channelEnrichment {
+	if subscriptionAccountID <= 0 {
+		return s.loadChannelEnrichment(ctx, channelID)
+	}
+	account, err := s.GetSubscriptionAccount(ctx, subscriptionAccountID)
+	if err != nil {
+		applogger.Log.Warn("failed to load subscription account for ledger entry",
+			zap.Int64("subscription_account_id", subscriptionAccountID),
+			zap.Error(err),
+		)
+		return channelEnrichment{}
+	}
+	return channelEnrichment{
+		Name:    account.GetName(),
+		TypeStr: subscriptionProtocolToString(account.GetPlatform()),
+	}
+}
+
+func subscriptionProtocolToString(platform string) string {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "codex":
+		return "OpenAI"
+	case "claude", "zhipu", "minimax", "kimi":
+		return "Anthropic"
+	default:
+		return "Unknown"
 	}
 }
 

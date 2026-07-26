@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { adminApiClient } from '@/lib/api';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { AMOUNT_SCALE } from '@/lib/amount';
+import { listModels, type ModelSummary } from '@/lib/model-management';
 
 interface OptionItem {
   key: string;
@@ -99,6 +100,7 @@ function perTokenToMTok(value: number | undefined) {
 }
 
 function mTokToPerToken(value: string) {
+  if (!value.trim()) return undefined;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return undefined;
   return Number((parsed / MTOK).toPrecision(10));
@@ -114,26 +116,49 @@ function rowsFromPricing(
   modelRatio: Record<string, number>,
   completionRatio: Record<string, number>,
   amountPerUnit: number,
+  publicModels: ModelSummary[] = [],
 ): PricingRow[] {
+  const normalizedModelPrice = Object.fromEntries(
+    Object.entries(modelPrice).map(([model, price]) => [model.trim().toLowerCase(), price]),
+  );
+  const normalizedModelRatio = Object.fromEntries(
+    Object.entries(modelRatio).map(([model, ratio]) => [model.trim().toLowerCase(), ratio]),
+  );
+  const normalizedCompletionRatio = Object.fromEntries(
+    Object.entries(completionRatio).map(([model, ratio]) => [model.trim().toLowerCase(), ratio]),
+  );
+  const publicModelIDs = publicModels
+    .filter((model) => model.status === 1 && model.is_public)
+    .map((model) => model.model_id.trim().toLowerCase())
+    .filter(Boolean);
   const models = Array.from(
-    new Set([...Object.keys(modelPrice), ...Object.keys(modelRatio), ...Object.keys(completionRatio)]),
+    new Set([
+      ...publicModelIDs,
+      ...Object.keys(normalizedModelPrice),
+      ...Object.keys(normalizedModelRatio),
+      ...Object.keys(normalizedCompletionRatio),
+    ]),
   ).sort();
   return models.map((model) => ({
     id: model,
     model,
     inputPrice:
-      modelPrice[model]?.input_price !== undefined
-        ? perTokenToMTok(modelPrice[model].input_price)
-        : ratioToMTokPrice(modelRatio[model], amountPerUnit),
+      normalizedModelPrice[model]?.input_price !== undefined
+        ? perTokenToMTok(normalizedModelPrice[model].input_price)
+        : ratioToMTokPrice(normalizedModelRatio[model], amountPerUnit),
     outputPrice:
-      modelPrice[model]?.output_price !== undefined
-        ? perTokenToMTok(modelPrice[model].output_price)
+      normalizedModelPrice[model]?.output_price !== undefined
+        ? perTokenToMTok(normalizedModelPrice[model].output_price)
         : ratioToMTokPrice(
-            modelRatio[model] === undefined ? undefined : modelRatio[model] * (completionRatio[model] ?? 1),
+            normalizedModelRatio[model] === undefined
+              ? undefined
+              : normalizedModelRatio[model] * (normalizedCompletionRatio[model] ?? 1),
             amountPerUnit,
           ),
     cacheReadPrice:
-      modelPrice[model]?.cache_read_price !== undefined ? perTokenToMTok(modelPrice[model].cache_read_price) : '',
+      normalizedModelPrice[model]?.cache_read_price !== undefined
+        ? perTokenToMTok(normalizedModelPrice[model].cache_read_price)
+        : '',
   }));
 }
 
@@ -203,13 +228,26 @@ export function AdminPricingPage() {
       return unwrapApiData<OptionItem[]>(res.data);
     },
   });
+  const { data: publicModels, isLoading: areModelsLoading } = useQuery({
+    queryKey: ['admin-models', 'pricing'],
+    queryFn: async () => {
+      const response = await listModels({ page: 1, page_size: 500, status: 1, public_only: true });
+      return response.models ?? [];
+    },
+  });
 
   const savedRows = useMemo(() => {
     const modelPrice = parseModelPriceMap(optionValue(options, MODEL_PRICE_KEY, '{}'));
     const modelRatio = parseRatioMap(optionValue(options, MODEL_RATIO_KEY, '{}'));
     const completionRatio = parseRatioMap(optionValue(options, COMPLETION_RATIO_KEY, '{}'));
-    return rowsFromPricing(modelPrice, modelRatio, completionRatio, amountPerUnitFromOptions(options));
-  }, [options]);
+    return rowsFromPricing(
+      modelPrice,
+      modelRatio,
+      completionRatio,
+      amountPerUnitFromOptions(options),
+      publicModels,
+    );
+  }, [options, publicModels]);
 
   const rows = draftRows ?? savedRows;
 
@@ -217,7 +255,7 @@ export function AdminPricingPage() {
     mutationFn: async () => {
       const normalizedRows = rows.map((row) => ({
         ...row,
-        model: row.model.trim(),
+        model: row.model.trim().toLowerCase(),
         inputPrice: row.inputPrice.trim(),
         outputPrice: row.outputPrice.trim(),
         cacheReadPrice: row.cacheReadPrice.trim(),
@@ -284,7 +322,7 @@ export function AdminPricingPage() {
         <div>
           <h2 className="text-2xl font-semibold">模型价格</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            按每 1M tokens 配置模型输入、输出和缓存读取价格。
+            按用户请求的公开模型 ID 配置每 1M tokens 价格；同一模型的渠道、订阅账号和上游模型 ID 共用一份售价。
           </p>
         </div>
         <div className="flex gap-2">
@@ -302,10 +340,10 @@ export function AdminPricingPage() {
       <Card>
         <CardHeader>
           <CardTitle>当前价格</CardTitle>
-          <CardDescription>价格按每 1M tokens 录入，保存后用于按输入和输出 token 独立计费。</CardDescription>
+          <CardDescription>模型来自公开且启用的模型清单。上游供应商模型 ID 和采购成本不在此处配置。</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading || areModelsLoading ? (
             <TableSkeleton columns={['模型名称', '输入价格', '输出价格', '缓存读取', '操作']} rows={8} />
           ) : rows.length === 0 ? (
             <div className="space-y-4">

@@ -44,6 +44,20 @@ func (s *ChannelService) SetModelUsecase(uc *biz.ModelUsecase) {
 		return
 	}
 	s.modelUC = uc
+	if probe, ok := s.channelModelProbe.(interface{ SetModelUsecase(*biz.ModelUsecase) }); ok {
+		probe.SetModelUsecase(uc)
+	}
+}
+
+// SyncExistingChannelModels starts bounded background discovery for enabled
+// channels created before registry synchronization was introduced.
+func (s *ChannelService) SyncExistingChannelModels(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	if probe, ok := s.channelModelProbe.(interface{ SyncExistingChannels(context.Context) }); ok {
+		probe.SyncExistingChannels(ctx)
+	}
 }
 
 // SetModelRoutingUsecase wires the optional P2 #3 model→account routing
@@ -176,6 +190,7 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		QuotaResetStrategy:     account.EffectiveQuotaResetStrategy(),
 		QuotaTimezone:          account.EffectiveQuotaTimezone(),
 		ModelMapping:           account.ModelMapping,
+		UpstreamModelId:        account.UpstreamModelID,
 	}
 }
 
@@ -266,6 +281,7 @@ func toChannelInfo(channel *biz.Channel) *commonv1.ChannelInfo {
 		ModelMapping:                      channel.ModelMapping,
 		SystemPrompt:                      channel.SystemPrompt,
 		RestrictModels:                    channel.RestrictModels,
+		UpstreamModelId:                   channel.UpstreamModelID,
 		Config: &commonv1.ChannelConfig{
 			ApiVersion:        channel.Config.APIVersion,
 			Region:            channel.Config.Region,

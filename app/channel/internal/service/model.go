@@ -75,14 +75,15 @@ func toChannelMappingProto(m *biz.ModelChannelMapping) *channelv1.ModelChannelMa
 		return nil
 	}
 	return &channelv1.ModelChannelMapping{
-		Id:        m.ID,
-		ChannelId: m.ChannelID,
-		ModelPk:   m.ModelPK,
-		Enabled:   m.Enabled,
-		Priority:  m.Priority,
-		Config:    m.Config,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
+		Id:              m.ID,
+		ChannelId:       m.ChannelID,
+		ModelPk:         m.ModelPK,
+		Enabled:         m.Enabled,
+		Priority:        m.Priority,
+		Config:          m.Config,
+		UpstreamModelId: m.UpstreamModelID,
+		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
 	}
 }
 
@@ -99,6 +100,7 @@ func toSubscriptionMappingProto(m *biz.ModelSubscriptionMapping) *channelv1.Mode
 		Priority:              m.Priority,
 		CreatedAt:             m.CreatedAt,
 		UpdatedAt:             m.UpdatedAt,
+		UpstreamModelId:       m.UpstreamModelID,
 	}
 }
 
@@ -364,10 +366,11 @@ func (s *ChannelService) UpsertChannelModelMapping(ctx context.Context, req *cha
 		return &channelv1.UpsertChannelModelMappingResponse{Success: false, Message: "model management not configured"}, nil
 	}
 	m := &biz.ModelChannelMapping{
-		ChannelID: req.ChannelId,
-		ModelPK:   req.ModelPk,
-		Priority:  req.Priority,
-		Config:    req.Config,
+		ChannelID:       req.ChannelId,
+		ModelPK:         req.ModelPk,
+		Priority:        req.Priority,
+		Config:          req.Config,
+		UpstreamModelID: req.UpstreamModelId,
 	}
 	// enabled is a proto3 *optional* bool. Only stamp the
 	// authoritative value when the caller set the field; otherwise leave it
@@ -422,6 +425,7 @@ func (s *ChannelService) UpsertSubscriptionModelMapping(ctx context.Context, req
 		ModelPK:               req.ModelPk,
 		GroupName:             req.GroupName,
 		Priority:              req.Priority,
+		UpstreamModelID:       req.UpstreamModelId,
 	}
 	// enabled is a proto3 *optional* bool — only apply when set.
 	if req.Enabled != nil {

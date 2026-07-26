@@ -537,8 +537,9 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 		switch t.Type {
 		case "web_search", "google_search", "web_search_20250305":
 			out = append(out, AnthropicTool{
-				Type: "web_search_20250305",
-				Name: "web_search",
+				Type:        "web_search_20250305",
+				Name:        "web_search",
+				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
 			})
 		case "function":
 			out = append(out, AnthropicTool{
@@ -547,12 +548,16 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
 			})
 		default:
-			// Pass through unknown tool types
+			// Responses custom tools (for example Codex's apply_patch) do not
+			// carry a parameters schema. Anthropic-compatible providers validate
+			// every client tool as input_schema: object and reject a JSON null with
+			// 422. Preserve the custom type and tool semantics, but always supply a
+			// valid object schema.
 			out = append(out, AnthropicTool{
 				Type:        t.Type,
 				Name:        t.Name,
 				Description: t.Description,
-				InputSchema: t.Parameters,
+				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
 			})
 		}
 	}
