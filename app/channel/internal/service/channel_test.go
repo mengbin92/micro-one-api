@@ -370,6 +370,41 @@ func TestChannelServiceOneAPIFields(t *testing.T) {
 	}
 }
 
+type recordingChannelModelProbe struct {
+	channelID int64
+}
+
+func (p *recordingChannelModelProbe) ProbeChannelAsync(channelID int64) {
+	p.channelID = channelID
+}
+
+func TestChannelServiceCreateChannelWithoutModelsSchedulesDiscovery(t *testing.T) {
+	repo := &channelServiceRepo{}
+	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
+	probe := &recordingChannelModelProbe{}
+	svc.SetChannelModelProbe(probe)
+
+	resp, err := svc.CreateChannel(context.Background(), &channelv1.CreateChannelRequest{
+		Name:    "custom-provider",
+		Type:    1,
+		BaseUrl: "https://api.example.com/v1",
+		Key:     "sk-test",
+		Group:   "default",
+	})
+	if err != nil {
+		t.Fatalf("CreateChannel() error = %v", err)
+	}
+	if !resp.GetSuccess() || resp.GetChannelId() != 101 {
+		t.Fatalf("CreateChannel() response = %+v", resp)
+	}
+	if repo.created == nil || len(repo.created.Models) != 0 {
+		t.Fatalf("created channel models = %v, want empty before discovery", repo.created.Models)
+	}
+	if probe.channelID != 101 {
+		t.Fatalf("scheduled channel ID = %d, want 101", probe.channelID)
+	}
+}
+
 func TestChannelServiceSubscriptionAccountCRUD(t *testing.T) {
 	repo := &channelServiceRepo{
 		account: &biz.SubscriptionAccount{

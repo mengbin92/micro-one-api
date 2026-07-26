@@ -110,7 +110,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// applied the initial channel's mapping to plan.ResolvedModel; on a
 		// retry a different channel is selected, so we re-derive the upstream
 		// model against the retried channel's mapping.
-		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.BaseModel()) // recompute from globally-resolved model, not the already-mapped plan.ResolvedModel
+		currentResolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel()) // recompute from globally-resolved model, not the already-mapped plan.ResolvedModel
 		req.Model = currentResolvedModel
 		// P3 #6: derive the billing model name from billing_model_source.
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)

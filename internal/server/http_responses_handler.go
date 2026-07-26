@@ -109,7 +109,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		requestID := generateRequestID()
 		// re-apply the retried channel's per-channel model mapping so
 		// the upstream body and billing use the new channel's mapping.
-		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.BaseModel()) // recompute from global model
+		currentResolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel()) // recompute from global model
 		retriedBody := rewriteRawModel(upstreamBody, currentResolvedModel)
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
 		reservation, reserveErr := s.reserveQuota(

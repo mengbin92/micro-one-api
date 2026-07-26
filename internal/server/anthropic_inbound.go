@@ -465,7 +465,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(ccReq)
 		// re-apply the retried channel's per-channel model mapping.
-		currentResolvedModel := relaybiz.ApplyChannelModelMapping(ch.ModelMapping, plan.BaseModel()) // recompute from global model
+		currentResolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel()) // recompute from global model
 		ccReq.Model = currentResolvedModel
 		// P3 #6: derive the billing model name from billing_model_source.
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
@@ -832,7 +832,7 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 		case codes.Unavailable:
 			s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: service unavailable")
 		default:
-			if strings.Contains(st.Message(), "no available channel") || strings.Contains(st.Message(), "channel not found") {
+			if isChannelUnavailableMessage(st.Message()) {
 				s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: no available channel")
 				return
 			}
@@ -841,7 +841,7 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 		return
 	}
 
-	if strings.Contains(err.Error(), "no available channel") || strings.Contains(err.Error(), "channel not found") {
+	if isChannelUnavailableMessage(err.Error()) {
 		s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: no available channel")
 		return
 	}

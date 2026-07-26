@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, beforeEach } from 'vitest';
 import { SubscriptionsPage } from './SubscriptionsPage';
 import { renderWithQuery } from '@/test/render';

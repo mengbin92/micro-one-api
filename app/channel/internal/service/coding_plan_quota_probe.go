@@ -11,16 +11,18 @@
 //   - Zhipu:  GET {base}/api/monitor/usage/quota/limit  (Authorization: {key}, no Bearer)
 //   - Kimi:   GET https://api.kimi.com/coding/v1/usages (Authorization: Bearer {key})
 //   - MiniMax: GET https://{api.minimaxi.com|api.minimax.io}/v1/api/openplatform/coding_plan/remains
-//             (Authorization: Bearer {key})
+//     (Authorization: Bearer {key})
 //
 // The snapshot is mapped to AccountQuotaSnapshot with:
-//   Primary   = 5-hour window    (window_minutes=300)
-//   Secondary = weekly window    (window_minutes=10080)
+//
+//	Primary   = 5-hour window    (window_minutes=300)
+//	Secondary = weekly window    (window_minutes=10080)
 //
 // Env toggles (consistent with the other startAccountOpsAutomation workers):
-//   CODING_PLAN_QUOTA_PROBE_ENABLED   (default false)
-//   CODING_PLAN_QUOTA_PROBE_INTERVAL  (default 5m)
-//   CODING_PLAN_QUOTA_PROBE_TIMEOUT    (default 30s)
+//
+//	CODING_PLAN_QUOTA_PROBE_ENABLED   (default false)
+//	CODING_PLAN_QUOTA_PROBE_INTERVAL  (default 5m)
+//	CODING_PLAN_QUOTA_PROBE_TIMEOUT    (default 30s)
 package service
 
 import (
@@ -35,19 +37,20 @@ import (
 	"time"
 
 	"micro-one-api/app/channel/internal/biz"
+	"micro-one-api/pkg/safecast"
 	"micro-one-api/platform/metrics"
 )
 
 const (
-	codingPlanProbeFiveHourMinutes   = 300
-	codingPlanProbeWeeklyMinutes     = 10080
-	codingPlanProbeDefaultInterval   = 5 * time.Minute
-	codingPlanProbeDefaultTimeout    = 30 * time.Second
-	codingPlanProbeHTTPTimeout        = 15 * time.Second // per-upstream-request cap, matches cc-switch
-	codingPlanProbeDefaultPageSize    = 200
-	codingPlanProbePlatformZhipu      = "zhipu"
-	codingPlanProbePlatformMinimax    = "minimax"
-	codingPlanProbePlatformKimi       = "kimi"
+	codingPlanProbeFiveHourMinutes = 300
+	codingPlanProbeWeeklyMinutes   = 10080
+	codingPlanProbeDefaultInterval = 5 * time.Minute
+	codingPlanProbeDefaultTimeout  = 30 * time.Second
+	codingPlanProbeHTTPTimeout     = 15 * time.Second // per-upstream-request cap, matches cc-switch
+	codingPlanProbeDefaultPageSize = 200
+	codingPlanProbePlatformZhipu   = "zhipu"
+	codingPlanProbePlatformMinimax = "minimax"
+	codingPlanProbePlatformKimi    = "kimi"
 )
 
 // codingPlanQuotaRepo is the subset of biz.ChannelRepo needed by the probe.
@@ -573,7 +576,7 @@ func resetAfterFromISO(iso *string, now time.Time) *int32 {
 	if err != nil {
 		return nil
 	}
-	delta := int32(t.Unix() - now.Unix())
+	delta := safecast.Int64ToInt32Saturating(t.Unix() - now.Unix())
 	if delta <= 0 {
 		return nil
 	}

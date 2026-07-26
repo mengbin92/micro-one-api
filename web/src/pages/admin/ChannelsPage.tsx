@@ -262,8 +262,8 @@ export function AdminChannelsPage() {
   const healthSummary = useMemo(() => summarizeChannelHealth(healthChannels ?? []), [healthChannels]);
 
   const handleCreate = () => {
-    if (!newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelModels.trim() || !newChannelGroup.trim()) {
-      toast.error('Name, base URL, API key, models, and group are required');
+    if (!newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelGroup.trim()) {
+      toast.error('Name, base URL, API key, and group are required');
       return;
     }
     createMutation.mutate();
@@ -331,7 +331,7 @@ export function AdminChannelsPage() {
                 <Input id="channel-key" type="password" value={newChannelKey} onChange={(e) => setNewChannelKey(e.target.value)} placeholder="sk-..." />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="channel-models">Models</Label>
+                <Label htmlFor="channel-models">Models (optional)</Label>
                 <ModelMultiSelect value={newChannelModels} onChange={setNewChannelModels} />
               </div>
               <div className="space-y-2">
@@ -350,7 +350,7 @@ export function AdminChannelsPage() {
               </div>
               <Button
                 onClick={handleCreate}
-                disabled={createMutation.isPending || !newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelModels.trim() || !newChannelGroup.trim()}
+                disabled={createMutation.isPending || !newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelGroup.trim()}
                 className="sm:col-span-2"
               >
                 {createMutation.isPending ? 'Creating...' : 'Create'}

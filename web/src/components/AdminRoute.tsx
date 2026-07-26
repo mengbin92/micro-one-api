@@ -1,6 +1,6 @@
 import { ShieldAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageLoading } from '@/components/PageLoading';
 import { apiClient } from '@/lib/api';

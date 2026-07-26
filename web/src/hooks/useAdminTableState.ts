@@ -1,4 +1,4 @@
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { getPreference, setPreference } from '@/lib/preferences';
 import type { SortDirection } from '@/lib/table-utils';
 

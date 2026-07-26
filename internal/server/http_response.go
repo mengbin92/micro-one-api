@@ -38,7 +38,7 @@ func (s *HTTPServer) handleRelayPlanError(w http.ResponseWriter, err error) {
 		case codes.Unavailable:
 			s.writeError(w, http.StatusServiceUnavailable, "service unavailable")
 		default:
-			if strings.Contains(st.Message(), "no available channel") || strings.Contains(st.Message(), "channel not found") {
+			if isChannelUnavailableMessage(st.Message()) {
 				s.writeError(w, http.StatusServiceUnavailable, "no available channel")
 				return
 			}
@@ -47,7 +47,7 @@ func (s *HTTPServer) handleRelayPlanError(w http.ResponseWriter, err error) {
 		return
 	}
 
-	if strings.Contains(err.Error(), "no available channel") || strings.Contains(err.Error(), "channel not found") {
+	if isChannelUnavailableMessage(err.Error()) {
 		s.writeError(w, http.StatusServiceUnavailable, "no available channel")
 		return
 	}
@@ -59,6 +59,12 @@ func (s *HTTPServer) handleRelayPlanError(w http.ResponseWriter, err error) {
 	}
 
 	s.writeError(w, http.StatusInternalServerError, "internal server error")
+}
+
+func isChannelUnavailableMessage(message string) bool {
+	return strings.Contains(message, "no available channel") ||
+		strings.Contains(message, "channel not found") ||
+		strings.Contains(message, "subscription account not found")
 }
 
 func (s *HTTPServer) handleIdentityError(w http.ResponseWriter, err error) {

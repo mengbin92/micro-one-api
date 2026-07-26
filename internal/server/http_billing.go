@@ -12,6 +12,8 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
+
+	"micro-one-api/pkg/safecast"
 )
 
 // 配额管理方法
@@ -225,7 +227,7 @@ func (s *HTTPServer) recordModelUsage(ctx context.Context, modelID string, token
 	req := &channelv1.RecordModelUsageRequest{
 		ModelId:      modelID,
 		TokenCount:   tokenCount,
-		AvgLatency:   int32(latencyMs),
+		AvgLatency:   safecast.Int64ToInt32Saturating(latencyMs),
 		RequestCount: 1,
 	}
 	if isError {
