@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.10.0 发布公告](./docs/releases/release-v0.10.0.md)（模型管理系统 + 国内订阅账户支持） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.10.0)
+> 📣 **最新发布**：[v0.10.1 发布公告](./docs/releases/release-v0.10.1.md)（国内订阅账户路由修复 + 模型发现 + 安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.10.1)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.10.1
+
+v0.10.1 是 v0.10.0 的补丁版本，聚焦修复国内订阅账户（智谱 GLM / MiniMax / Kimi）路由无法命中、上游模型 ID 在大小写不敏感匹配时丢失，以及 gosec / Dependabot 安全告警。**没有 API 破坏性变更，也没有数据库迁移**；开发者拉取后需执行 `make init && make proto` 重新生成代码；已配置国内订阅账户的环境升级后路由将正确命中。详见 [docs/releases/release-v0.10.1.md](./docs/releases/release-v0.10.1.md)。
 
 ### 升级到 v0.10.0
 
