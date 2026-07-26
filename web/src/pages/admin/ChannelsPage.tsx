@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Pencil, RefreshCw, Save } from 'lucide-react';
+import { AlertTriangle, Pencil, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
@@ -253,6 +253,17 @@ export function AdminChannelsPage() {
     onSuccess: () => {
       invalidateChannelQueries();
       toast.success('Channel health probe completed');
+    },
+  });
+
+  const deleteChannelMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await adminApiClient.delete(`/channel/${id}`);
+      ensureApiSuccess(res.data, 'Channel delete failed');
+    },
+    onSuccess: () => {
+      invalidateChannelQueries();
+      toast.success('Channel deleted');
     },
   });
 
@@ -631,6 +642,19 @@ export function AdminChannelsPage() {
                         disabled={toggleStatusMutation.isPending}
                       >
                         {ch.status === 1 ? 'Disable' : 'Enable'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm(`确认删除渠道「${ch.name}」？此操作不可撤销。`)) {
+                            deleteChannelMutation.mutate(ch.id);
+                          }
+                        }}
+                        disabled={deleteChannelMutation.isPending}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Delete
                       </Button>
                     </TableCell>
                   </TableRow>
