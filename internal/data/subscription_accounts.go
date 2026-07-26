@@ -6,9 +6,11 @@ import (
 	"time"
 
 	channelv1 "micro-one-api/api/channel/v1"
-	"micro-one-api/pkg/safecast"
 	relaycredential "micro-one-api/domain/upstream/credential"
 	relayquota "micro-one-api/internal/quota"
+	"micro-one-api/pkg/safecast"
+
+	"google.golang.org/grpc"
 )
 
 // ChannelSubscriptionAccountStore adapts channel-service subscription-account
@@ -18,8 +20,10 @@ type ChannelSubscriptionAccountStore struct {
 }
 
 type subscriptionAccountSecretClient interface {
-	GetSubscriptionAccountWithSecrets(ctx context.Context, req *channelv1.GetSubscriptionAccountRequest) (*channelv1.GetSubscriptionAccountReply, error)
+	GetSubscriptionAccountWithSecrets(ctx context.Context, req *channelv1.GetSubscriptionAccountRequest, opts ...grpc.CallOption) (*channelv1.GetSubscriptionAccountReply, error)
 }
+
+var _ subscriptionAccountSecretClient = channelv1.ChannelServiceClient(nil)
 
 func NewChannelSubscriptionAccountStore(client channelv1.ChannelServiceClient) *ChannelSubscriptionAccountStore {
 	return &ChannelSubscriptionAccountStore{client: client}

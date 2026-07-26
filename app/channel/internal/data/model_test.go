@@ -60,6 +60,7 @@ func setupModelTestDB(t *testing.T) *Repository {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			channel_id INTEGER NOT NULL,
 			model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+			upstream_model_id TEXT NOT NULL DEFAULT '',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			priority INTEGER NOT NULL DEFAULT 0,
 			config TEXT DEFAULT '',
@@ -73,6 +74,7 @@ func setupModelTestDB(t *testing.T) *Repository {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			subscription_account_id INTEGER NOT NULL,
 			model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+			upstream_model_id TEXT NOT NULL DEFAULT '',
 			group_name TEXT NOT NULL DEFAULT 'default',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			priority INTEGER NOT NULL DEFAULT 0,
@@ -276,16 +278,19 @@ func TestRepository_ChannelMappingUpsert(t *testing.T) {
 
 	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
 		ChannelID: 10, ModelPK: m.ID, Enabled: true, EnabledHasValue: true, Priority: 5,
+		UpstreamModelID: "z-ai/glm-5.2",
 	}))
 	// upsert again — should update
 	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
 		ChannelID: 10, ModelPK: m.ID, Enabled: false, EnabledHasValue: true, Priority: 9,
+		UpstreamModelID: "z-ai/glm-5.2-v2",
 	}))
 	mappings, err := repo.ListChannelMappings(ctx, 10)
 	require.NoError(t, err)
 	assert.Len(t, mappings, 1)
 	assert.False(t, mappings[0].Enabled)
 	assert.Equal(t, int32(9), mappings[0].Priority)
+	assert.Equal(t, "z-ai/glm-5.2-v2", mappings[0].UpstreamModelID)
 
 	require.NoError(t, repo.DeleteChannelMapping(ctx, 10, m.ID))
 	mappings, _ = repo.ListChannelMappings(ctx, 10)
@@ -300,14 +305,17 @@ func TestRepository_SubscriptionMappingUpsert(t *testing.T) {
 
 	require.NoError(t, repo.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
 		SubscriptionAccountID: 20, ModelPK: m.ID, GroupName: "default", Enabled: true, EnabledHasValue: true,
+		UpstreamModelID: "GLM-5.2",
 	}))
 	require.NoError(t, repo.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
 		SubscriptionAccountID: 20, ModelPK: m.ID, GroupName: "default", Enabled: false, EnabledHasValue: true,
+		UpstreamModelID: "glm-5.2",
 	}))
 	mappings, err := repo.ListSubscriptionMappings(ctx, 20)
 	require.NoError(t, err)
 	assert.Len(t, mappings, 1)
 	assert.False(t, mappings[0].Enabled)
+	assert.Equal(t, "glm-5.2", mappings[0].UpstreamModelID)
 
 	require.NoError(t, repo.DeleteSubscriptionMapping(ctx, 20, m.ID, "default"))
 }
@@ -344,10 +352,9 @@ func TestRepository_MemoryFallback(t *testing.T) {
 	assert.ErrorIs(t, err, biz.ErrModelNotFound)
 }
 
-// TestRepository_ListAvailableModelsDualRead verifies that ListAvailableModels
-// returns models from both the legacy channel/subscription abilities AND the
-// new model registry tables (Sprint 3 dual-read).
-func TestRepository_ListAvailableModelsDualRead(t *testing.T) {
+// Once populated, the managed registry is authoritative for /v1/models; raw
+// legacy abilities must not bypass model status or visibility controls.
+func TestRepository_ListAvailableModelsRegistryAuthoritative(t *testing.T) {
 	repo := newMemoryRepository()
 	ctx := context.Background()
 
@@ -363,7 +370,7 @@ func TestRepository_ListAvailableModelsDualRead(t *testing.T) {
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 
 	// Create a model in the registry and a channel mapping.
-	model := &biz.Model{ModelID: "claude-3-5-sonnet", DisplayName: "Claude 3.5 Sonnet", Status: biz.ModelStatusEnabled}
+	model := &biz.Model{ModelID: "claude-3-5-sonnet", DisplayName: "Claude 3.5 Sonnet", Status: biz.ModelStatusEnabled, IsPublic: true}
 	require.NoError(t, repo.CreateModel(ctx, model))
 
 	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
@@ -372,7 +379,7 @@ func TestRepository_ListAvailableModelsDualRead(t *testing.T) {
 		Enabled:   true,
 	}))
 
-	// ListAvailableModels should return both legacy and registry models.
+	// Only the canonical registry model is advertised.
 	models, err := repo.ListAvailableModels(ctx, "default")
 	require.NoError(t, err)
 
@@ -380,8 +387,8 @@ func TestRepository_ListAvailableModelsDualRead(t *testing.T) {
 	for _, m := range models {
 		seen[m] = true
 	}
-	assert.True(t, seen["gpt-4o"], "legacy model gpt-4o should be present")
-	assert.True(t, seen["gpt-4o-mini"], "legacy model gpt-4o-mini should be present")
+	assert.False(t, seen["gpt-4o"], "legacy model gpt-4o must not bypass the registry")
+	assert.False(t, seen["gpt-4o-mini"], "legacy model gpt-4o-mini must not bypass the registry")
 	assert.True(t, seen["claude-3-5-sonnet"], "registry model claude-3-5-sonnet should be present")
 }
 
@@ -416,6 +423,76 @@ func TestRepository_ListAvailableModelsRegistryDisabledModel(t *testing.T) {
 	for _, m := range models {
 		assert.NotEqual(t, "disabled-model", m, "disabled registry model should not be returned")
 	}
+}
+
+func TestRepository_ManagedRoutesPreserveExactUpstreamModelIDs(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+
+	channel := &biz.Channel{
+		ID: 6, Name: "NVIDIA", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"z-ai/glm-5.2"}, Priority: 4,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, channel))
+	account := &biz.SubscriptionAccount{
+		ID: 4, Name: "z.ai", Platform: "zhipu", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"GLM-5.2"}, Priority: 4,
+	}
+	require.NoError(t, repo.CreateSubscriptionAccount(ctx, account))
+	model := &biz.Model{
+		ModelID: "glm-5.2", DisplayName: "GLM 5.2",
+		Status: biz.ModelStatusEnabled, IsPublic: true,
+	}
+	require.NoError(t, repo.CreateModel(ctx, model))
+	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
+		ChannelID: channel.ID, ModelPK: model.ID, Enabled: true,
+		UpstreamModelID: "z-ai/glm-5.2",
+	}))
+	require.NoError(t, repo.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
+		SubscriptionAccountID: account.ID, ModelPK: model.ID, GroupName: "default", Enabled: true,
+		UpstreamModelID: "GLM-5.2",
+	}))
+
+	channelAbilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "GLM-5.2")
+	require.NoError(t, err)
+	require.Len(t, channelAbilities, 1)
+	assert.Equal(t, "glm-5.2", channelAbilities[0].Model)
+	assert.Equal(t, "z-ai/glm-5.2", channelAbilities[0].UpstreamModelID)
+
+	subscriptionAbilities, err := repo.ListSubscriptionAccountAbilities(ctx, "default", "glm-5.2", "zhipu")
+	require.NoError(t, err)
+	require.Len(t, subscriptionAbilities, 1)
+	assert.Equal(t, "GLM-5.2", subscriptionAbilities[0].UpstreamModelID)
+
+	models, err := repo.ListAvailableModels(ctx, "default")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"glm-5.2"}, models)
+}
+
+func TestRepository_ManagedDisabledModelBlocksLegacyRoute(t *testing.T) {
+	repo := newMemoryRepository()
+	ctx := context.Background()
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 1, Name: "legacy", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"GLM-5.2"},
+	}))
+	require.NoError(t, repo.CreateChannel(ctx, &biz.Channel{
+		ID: 2, Name: "catch-all", Status: biz.ChannelStatusEnabled,
+		Group: "default", RestrictModels: false,
+	}))
+	require.NoError(t, repo.CreateModel(ctx, &biz.Model{
+		ModelID: "glm-5.2", DisplayName: "GLM 5.2",
+		Status: biz.ModelStatusDisabled, IsPublic: true,
+	}))
+
+	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "GLM-5.2")
+	assert.ErrorIs(t, err, biz.ErrChannelNotFound)
+	assert.Empty(t, abilities, "a managed disabled model must not fall through to legacy abilities")
+	_, err = biz.NewChannelUsecase(repo, nil).SelectChannel(ctx, "default", "GLM-5.2", false)
+	assert.ErrorIs(t, err, biz.ErrChannelNotFound, "a managed disabled model must not route through catch-all channels")
+	models, err := repo.ListAvailableModels(ctx, "default")
+	require.NoError(t, err)
+	assert.Empty(t, models)
 }
 
 // ── Sprint 4: case-insensitive model name tests ────────────────────────────

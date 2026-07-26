@@ -10,6 +10,10 @@ service ChannelService {
   rpc SelectChannel(SelectChannelRequest) returns (SelectChannelReply);
   rpc SelectSubscriptionAccount(SelectSubscriptionAccountRequest) returns (SelectSubscriptionAccountReply);
   rpc GetSubscriptionAccount(GetSubscriptionAccountRequest) returns (GetSubscriptionAccountReply);
+  // Internal relay credential lookup. Unlike the management RPC above, this
+  // response contains decrypted account secrets and must stay on the private
+  // service network.
+  rpc GetSubscriptionAccountWithSecrets(GetSubscriptionAccountRequest) returns (GetSubscriptionAccountReply);
   rpc ListSubscriptionAccounts(ListSubscriptionAccountsRequest) returns (ListSubscriptionAccountsResponse);
   rpc ListOAuthRefreshCandidates(ListOAuthRefreshCandidatesRequest) returns (ListOAuthRefreshCandidatesResponse);
   rpc ClearSubscriptionAccountError(ClearSubscriptionAccountErrorRequest) returns (ClearSubscriptionAccountErrorResponse);
@@ -500,6 +504,7 @@ message ModelChannelMapping {
   string config = 6;            // JSON
   int64 created_at = 7;
   int64 updated_at = 8;
+  string upstream_model_id = 9; // exact model identifier required by this channel
 }
 
 message ModelSubscriptionMapping {
@@ -511,6 +516,7 @@ message ModelSubscriptionMapping {
   int32 priority = 6;
   int64 created_at = 7;
   int64 updated_at = 8;
+  string upstream_model_id = 9; // exact model identifier required by this account
 }
 
 message ModelUsageStat {
@@ -681,6 +687,7 @@ message UpsertChannelModelMappingRequest {
   optional bool enabled = 3;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert (DB DEFAULT 1).
   int32 priority = 4;
   string config = 5;
+  string upstream_model_id = 6;
 }
 
 message UpsertChannelModelMappingResponse {
@@ -713,6 +720,7 @@ message UpsertSubscriptionModelMappingRequest {
   string group_name = 3;
   optional bool enabled = 4;   // Optional (proto3 presence): when unset, enabled is left unchanged on update and defaults to true on insert.
   int32 priority = 5;
+  string upstream_model_id = 6;
 }
 
 message UpsertSubscriptionModelMappingResponse {

@@ -311,6 +311,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                     <TableHeader>
                       <TableRow>
                         <TableHead>渠道 ID</TableHead>
+                        <TableHead>上游模型 ID</TableHead>
                         <TableHead>启用</TableHead>
                         <TableHead>优先级</TableHead>
                       </TableRow>
@@ -319,6 +320,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                       {channelMappings.map((c) => (
                         <TableRow key={c.id}>
                           <TableCell className="font-mono text-sm">{c.channel_id}</TableCell>
+                          <TableCell className="font-mono text-sm">{c.upstream_model_id || model.model_id}</TableCell>
                           <TableCell>{c.enabled ? '是' : '否'}</TableCell>
                           <TableCell>{c.priority}</TableCell>
                         </TableRow>
@@ -339,6 +341,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                       <TableRow>
                         <TableHead>订阅账户 ID</TableHead>
                         <TableHead>用户组</TableHead>
+                        <TableHead>上游模型 ID</TableHead>
                         <TableHead>启用</TableHead>
                         <TableHead>优先级</TableHead>
                       </TableRow>
@@ -348,6 +351,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                         <TableRow key={s.id}>
                           <TableCell className="font-mono text-sm">{s.subscription_account_id}</TableCell>
                           <TableCell>{s.group_name}</TableCell>
+                          <TableCell className="font-mono text-sm">{s.upstream_model_id || model.model_id}</TableCell>
                           <TableCell>{s.enabled ? '是' : '否'}</TableCell>
                           <TableCell>{s.priority}</TableCell>
                         </TableRow>

@@ -389,21 +389,51 @@ func TestRelayUsecasePlan_SkipsRuntimeBlockedSubscriptionAccount(t *testing.T) {
 	}
 }
 
-func TestRelayUsecasePlan_APIKeyChannelWinsOverSubscriptionAccount(t *testing.T) {
+func TestRelayUsecasePlan_BalancesAPIKeyAndSubscriptionAtEqualPriority(t *testing.T) {
 	channelClient := &recordingChannelClient{
-		subscription: &SubscriptionAccount{ID: 8, Platform: "codex"},
+		subscription: &SubscriptionAccount{
+			ID: 8, Name: "codex-sub", Platform: "codex", Status: 1,
+			Group: "default", Models: []string{"gpt-4o"}, Priority: 0,
+		},
 	}
 	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
 
-	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "gpt-4o"})
-	if err != nil {
-		t.Fatalf("Plan() error = %v", err)
+	var channelCount, subscriptionCount int
+	for i := 0; i < 6; i++ {
+		plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "gpt-4o"})
+		if err != nil {
+			t.Fatalf("Plan() error = %v", err)
+		}
+		if plan.Account != nil {
+			subscriptionCount++
+		} else {
+			channelCount++
+		}
 	}
-	if plan.Channel == nil || plan.Channel.Name != "default:gpt-4o" {
-		t.Fatalf("unexpected channel: %+v", plan.Channel)
+	if channelCount != 3 || subscriptionCount != 3 {
+		t.Fatalf("route counts = channel:%d subscription:%d, want 3:3", channelCount, subscriptionCount)
 	}
-	if len(channelClient.subscriptionModels) != 0 {
-		t.Fatalf("subscription selector should not be called, got %v", channelClient.subscriptionModels)
+	if len(channelClient.subscriptionModels) != 6 {
+		t.Fatalf("subscription selector calls = %d, want 6", len(channelClient.subscriptionModels))
+	}
+}
+
+func TestRelayUsecasePlan_HigherPriorityWinsAcrossSourceTypes(t *testing.T) {
+	channelClient := &recordingChannelClient{
+		subscription: &SubscriptionAccount{
+			ID: 8, Platform: "codex", Status: 1, Group: "default",
+			Models: []string{"gpt-4o"}, Priority: 10,
+		},
+	}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
+	for i := 0; i < 4; i++ {
+		plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "gpt-4o"})
+		if err != nil {
+			t.Fatalf("Plan() error = %v", err)
+		}
+		if plan.Account == nil || plan.Account.ID != 8 {
+			t.Fatalf("plan = %+v, want higher-priority subscription", plan)
+		}
 	}
 }
 

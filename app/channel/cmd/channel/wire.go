@@ -80,12 +80,14 @@ func newApp(
 	// /v1/models L1 cache immediately so admin edits converge without
 	// waiting for the 15s TTL.
 	modelUC.SetCacheInvalidator(uc)
+	svc.SyncExistingChannelModels(context.Background())
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 
 	var stopEventBus func()
 	var modelProbe *service.CodexModelProbeService
 	if probe := service.NewCodexModelProbeService(repo); probe != nil {
+		probe.SetModelUsecase(modelUC)
 		// Route domestic Anthropic-compatible Coding Plan platforms
 		// (zhipu/minimax/kimi) to the Messages-API prober so newly added
 		// accounts get their supported-model list refreshed too. Previously

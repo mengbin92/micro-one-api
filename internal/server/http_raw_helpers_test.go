@@ -65,6 +65,10 @@ func (c rawChannelClient) SelectChannel(ctx context.Context, req *channelv1.Sele
 	}, nil
 }
 
+func (c rawChannelClient) SelectSubscriptionAccount(context.Context, *channelv1.SelectSubscriptionAccountRequest, ...grpc.CallOption) (*channelv1.SelectSubscriptionAccountReply, error) {
+	return &channelv1.SelectSubscriptionAccountReply{}, nil
+}
+
 func (c rawChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChannelRequest, opts ...grpc.CallOption) (*channelv1.GetChannelReply, error) {
 	chType := c.chType
 	if chType == 0 {
@@ -176,8 +180,8 @@ func (c *rawBillingClient) GetAccountSnapshot(ctx context.Context, req *billingv
 	}
 	return &billingv1.GetAccountSnapshotResponse{Snapshot: &commonv1.AccountSnapshot{
 		UserId:       req.UserId,
-		Balance: 1234,
-		UsedAmount: 56,
+		Balance:      1234,
+		UsedAmount:   56,
 		RequestCount: 7,
 		Group:        "default",
 		GroupRatio:   1,

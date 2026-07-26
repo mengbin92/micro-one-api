@@ -85,12 +85,14 @@ func newApp(
 	uc.SetModelRoutingRepo(repo)
 
 	modelUC.SetCacheInvalidator(uc)
+	svc.SyncExistingChannelModels(context.Background())
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 
 	var stopEventBus func()
 	var modelProbe *service.CodexModelProbeService
 	if probe := service.NewCodexModelProbeService(repo); probe != nil {
+		probe.SetModelUsecase(modelUC)
 
 		probe.SetAnthropicProber(service.NewAnthropicModelProbeService())
 		modelProbe = probe

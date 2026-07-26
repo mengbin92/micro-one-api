@@ -116,6 +116,7 @@ func subscriptionAccountInfoToBiz(account *commonv1.SubscriptionAccountInfo) *re
 		RPMLimit:              account.GetRpmLimit(),
 		SessionWindowLimitUSD: account.GetSessionWindowLimitUsd(),
 		ModelMapping:          account.GetModelMapping(),
+		UpstreamModelID:       account.GetUpstreamModelId(),
 	}
 }
 
@@ -133,17 +134,19 @@ func (a *ChannelAdapter) SelectChannel(ctx context.Context, group, model string,
 		return nil, nil
 	}
 	relayChannel := &relaybiz.Channel{
-		ID:             ch.Id,
-		Type:           ch.Type,
-		Name:           ch.Name,
-		Status:         ch.Status,
-		BaseURL:        ch.BaseUrl,
-		Group:          ch.Group,
-		Models:         splitModels(ch.Models),
-		Priority:       ch.Priority,
-		Key:            ch.Key,
-		ModelMapping:   ch.GetModelMapping(),
-		RestrictModels: ch.GetRestrictModels(),
+		ID:              ch.Id,
+		Type:            ch.Type,
+		Name:            ch.Name,
+		Status:          ch.Status,
+		BaseURL:         ch.BaseUrl,
+		Group:           ch.Group,
+		Models:          splitModels(ch.Models),
+		Priority:        ch.Priority,
+		Weight:          ch.Weight,
+		Key:             ch.Key,
+		ModelMapping:    ch.GetModelMapping(),
+		UpstreamModelID: ch.GetUpstreamModelId(),
+		RestrictModels:  ch.GetRestrictModels(),
 	}
 	if ch.Config != nil {
 		relayChannel.Config.APIVersion = ch.Config.ApiVersion

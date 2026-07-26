@@ -103,6 +103,58 @@ describe('AdminLogsPage', () => {
     expect(within(dialog).getByText('250 ms')).toBeInTheDocument();
   });
 
+  it('shows the selected upstream provider for channels and subscription accounts', async () => {
+    server.use(
+      http.get('/api/log', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            logs: [
+              {
+                id: '201',
+                userId: '42',
+                type: 'consume',
+                amount: '-24',
+                balanceAfter: '1000',
+                referenceId: 'req-subscription',
+                remark: '',
+                createdAt: '1760000000',
+                subscriptionAccountId: 4,
+                upstreamName: 'z.ai',
+                upstreamProtocol: 'Anthropic',
+              },
+              {
+                id: '202',
+                userId: '42',
+                type: 'consume',
+                amount: '-17',
+                balanceAfter: '983',
+                referenceId: 'req-channel',
+                remark: '',
+                createdAt: '1760000001',
+                channelId: 1,
+                upstreamName: 'test',
+                upstreamProtocol: 'OpenAI',
+              },
+            ],
+            total: 2,
+          },
+        }),
+      ),
+    );
+
+    renderWithQuery(
+      <MemoryRouter>
+        <AdminLogsPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('z.ai (Anthropic)')).toBeInTheDocument();
+    expect(screen.getByText('test (OpenAI)')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Upstream Provider' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Subscription Account' })).not.toBeInTheDocument();
+  });
+
   it('cleans logs with the current filters and cutoff time', async () => {
     const user = userEvent.setup();
     const deletedRequest = { url: null as URL | null };

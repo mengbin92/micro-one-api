@@ -77,6 +77,7 @@ type Channel struct {
 	ModelMapping                      string
 	SystemPrompt                      string
 	RestrictModels                    bool // P1 (#2): false=catch-all (allow unregistered models), true=require abilities row. Default true (legacy). See docs/model-management-design.md §9.3 #2.
+	UpstreamModelID                   string
 	Config                            ChannelConfig
 }
 
@@ -131,7 +132,8 @@ type SubscriptionAccount struct {
 	QuotaTimezone          string
 
 	// ModelMapping is a JSON {"src":"dst"} per-account model name remap applied after the global ModelMapper resolves the request model and before relay forwards upstream. Empty string means no remap. See docs/model-management-design.md §10.1.
-	ModelMapping string
+	ModelMapping    string
+	UpstreamModelID string
 
 	PrimaryQuotaUsedPercent         *float64
 	PrimaryQuotaResetAfterSeconds   *int32
@@ -158,20 +160,22 @@ type AccountQuotaSnapshot struct {
 }
 
 type Ability struct {
-	Group     string
-	Model     string
-	ChannelID int64
-	Enabled   bool
-	Priority  int64
+	Group           string
+	Model           string
+	ChannelID       int64
+	Enabled         bool
+	Priority        int64
+	UpstreamModelID string
 }
 
 type SubscriptionAccountAbility struct {
-	Group     string
-	Model     string
-	Platform  string
-	AccountID int64
-	Enabled   bool
-	Priority  int64
+	Group           string
+	Model           string
+	Platform        string
+	AccountID       int64
+	Enabled         bool
+	Priority        int64
+	UpstreamModelID string
 }
 
 type ChannelHealthEvent struct {
@@ -444,6 +448,7 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 				continue
 			}
 			if channel.SelectableAt(uc.now()) {
+				channel.UpstreamModelID = ability.UpstreamModelID
 				tier = append(tier, channel)
 			}
 		}
@@ -593,6 +598,7 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 				continue
 			}
 			if account.Status == ChannelStatusEnabled && account.IsSchedulableAt(uc.now()) {
+				account.UpstreamModelID = ability.UpstreamModelID
 				tier = append(tier, account)
 			}
 		}

@@ -51,14 +51,15 @@ type modelAliasModel struct {
 func (modelAliasModel) TableName() string { return "model_aliases" }
 
 type modelChannelMappingModel struct {
-	ID        int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	ChannelID int64  `gorm:"column:channel_id"`
-	ModelPK   int64  `gorm:"column:model_id"`
-	Enabled   bool   `gorm:"column:enabled"`
-	Priority  int32  `gorm:"column:priority"`
-	Config    string `gorm:"column:config"`
-	CreatedAt int64  `gorm:"column:created_at"`
-	UpdatedAt int64  `gorm:"column:updated_at"`
+	ID              int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	ChannelID       int64  `gorm:"column:channel_id"`
+	ModelPK         int64  `gorm:"column:model_id"`
+	Enabled         bool   `gorm:"column:enabled"`
+	Priority        int32  `gorm:"column:priority"`
+	Config          string `gorm:"column:config"`
+	UpstreamModelID string `gorm:"column:upstream_model_id"`
+	CreatedAt       int64  `gorm:"column:created_at"`
+	UpdatedAt       int64  `gorm:"column:updated_at"`
 }
 
 func (modelChannelMappingModel) TableName() string { return "model_channel_mapping" }
@@ -70,6 +71,7 @@ type modelSubscriptionMappingModel struct {
 	GroupName             string `gorm:"column:group_name"`
 	Enabled               bool   `gorm:"column:enabled"`
 	Priority              int32  `gorm:"column:priority"`
+	UpstreamModelID       string `gorm:"column:upstream_model_id"`
 	CreatedAt             int64  `gorm:"column:created_at"`
 	UpdatedAt             int64  `gorm:"column:updated_at"`
 }
@@ -165,27 +167,29 @@ func toModelAliasDO(po *modelAliasModel) *biz.ModelAlias {
 
 func newChannelMappingPO(do *biz.ModelChannelMapping) *modelChannelMappingModel {
 	return &modelChannelMappingModel{
-		ID:        do.ID,
-		ChannelID: do.ChannelID,
-		ModelPK:   do.ModelPK,
-		Enabled:   do.Enabled,
-		Priority:  do.Priority,
-		Config:    do.Config,
-		CreatedAt: do.CreatedAt,
-		UpdatedAt: do.UpdatedAt,
+		ID:              do.ID,
+		ChannelID:       do.ChannelID,
+		ModelPK:         do.ModelPK,
+		Enabled:         do.Enabled,
+		Priority:        do.Priority,
+		Config:          do.Config,
+		UpstreamModelID: do.UpstreamModelID,
+		CreatedAt:       do.CreatedAt,
+		UpdatedAt:       do.UpdatedAt,
 	}
 }
 
 func toChannelMappingDO(po *modelChannelMappingModel) *biz.ModelChannelMapping {
 	return &biz.ModelChannelMapping{
-		ID:        po.ID,
-		ChannelID: po.ChannelID,
-		ModelPK:   po.ModelPK,
-		Enabled:   po.Enabled,
-		Priority:  po.Priority,
-		Config:    po.Config,
-		CreatedAt: po.CreatedAt,
-		UpdatedAt: po.UpdatedAt,
+		ID:              po.ID,
+		ChannelID:       po.ChannelID,
+		ModelPK:         po.ModelPK,
+		Enabled:         po.Enabled,
+		Priority:        po.Priority,
+		Config:          po.Config,
+		UpstreamModelID: po.UpstreamModelID,
+		CreatedAt:       po.CreatedAt,
+		UpdatedAt:       po.UpdatedAt,
 	}
 }
 
@@ -197,6 +201,7 @@ func newSubscriptionMappingPO(do *biz.ModelSubscriptionMapping) *modelSubscripti
 		GroupName:             do.GroupName,
 		Enabled:               do.Enabled,
 		Priority:              do.Priority,
+		UpstreamModelID:       do.UpstreamModelID,
 		CreatedAt:             do.CreatedAt,
 		UpdatedAt:             do.UpdatedAt,
 	}
@@ -210,6 +215,7 @@ func toSubscriptionMappingDO(po *modelSubscriptionMappingModel) *biz.ModelSubscr
 		GroupName:             po.GroupName,
 		Enabled:               po.Enabled,
 		Priority:              po.Priority,
+		UpstreamModelID:       po.UpstreamModelID,
 		CreatedAt:             po.CreatedAt,
 		UpdatedAt:             po.UpdatedAt,
 	}
@@ -622,9 +628,10 @@ func (r *Repository) UpsertChannelMapping(ctx context.Context, do *biz.ModelChan
 			// enabled is proto3 optional; only write it when the
 			// caller set it, so a priority-only update does not disable the row.
 			updates := map[string]interface{}{
-				"priority":   po.Priority,
-				"config":     po.Config,
-				"updated_at": po.UpdatedAt,
+				"priority":          po.Priority,
+				"config":            po.Config,
+				"upstream_model_id": po.UpstreamModelID,
+				"updated_at":        po.UpdatedAt,
 			}
 			if do.EnabledHasValue {
 				updates["enabled"] = po.Enabled
@@ -708,8 +715,9 @@ func (r *Repository) UpsertSubscriptionMapping(ctx context.Context, do *biz.Mode
 			po.SubscriptionAccountID, po.ModelPK, po.GroupName).First(&existing).Error
 		if err == nil {
 			updates := map[string]interface{}{
-				"priority":   po.Priority,
-				"updated_at": po.UpdatedAt,
+				"priority":          po.Priority,
+				"upstream_model_id": po.UpstreamModelID,
+				"updated_at":        po.UpdatedAt,
 			}
 			if do.EnabledHasValue {
 				updates["enabled"] = po.Enabled
@@ -1031,6 +1039,7 @@ func (r *Repository) upsertChannelMappingMemory(do *biz.ModelChannelMapping) err
 			}
 			m.Priority = do.Priority
 			m.Config = do.Config
+			m.UpstreamModelID = do.UpstreamModelID
 			m.UpdatedAt = do.UpdatedAt
 			return nil
 		}
@@ -1081,6 +1090,7 @@ func (r *Repository) upsertSubscriptionMappingMemory(do *biz.ModelSubscriptionMa
 				m.Enabled = do.Enabled
 			}
 			m.Priority = do.Priority
+			m.UpstreamModelID = do.UpstreamModelID
 			m.UpdatedAt = do.UpdatedAt
 			return nil
 		}

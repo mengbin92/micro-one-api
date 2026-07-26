@@ -88,6 +88,7 @@ type ModelChannelMapping struct {
 	EnabledHasValue bool
 	Priority        int32
 	Config          string
+	UpstreamModelID string
 	CreatedAt       int64
 	UpdatedAt       int64
 }
@@ -101,6 +102,7 @@ type ModelSubscriptionMapping struct {
 	Enabled               bool
 	EnabledHasValue       bool
 	Priority              int32
+	UpstreamModelID       string
 	CreatedAt             int64
 	UpdatedAt             int64
 }

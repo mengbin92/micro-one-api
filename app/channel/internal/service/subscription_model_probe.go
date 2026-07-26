@@ -86,6 +86,7 @@ type codexModelProbeContentItem struct {
 
 type CodexModelProbeService struct {
 	lookup  subscriptionAccountLookup
+	modelUC *biz.ModelUsecase
 	client  *http.Client
 	mu      sync.Mutex
 	pending map[int64]struct{}
@@ -105,6 +106,12 @@ func newCodexModelProbeService(lookup subscriptionAccountLookup) *CodexModelProb
 
 func NewCodexModelProbeService(lookup subscriptionAccountLookup) *CodexModelProbeService {
 	return newCodexModelProbeService(lookup)
+}
+
+func (s *CodexModelProbeService) SetModelUsecase(uc *biz.ModelUsecase) {
+	if s != nil {
+		s.modelUC = uc
+	}
 }
 
 // SetAnthropicProber wires the domestic-platform prober used to route
@@ -198,7 +205,46 @@ func (s *CodexModelProbeService) syncModelsForAccount(ctx context.Context, accou
 		return err
 	}
 	account.Models = models
-	return s.lookup.UpdateSubscriptionAccount(ctx, account)
+	if err := s.lookup.UpdateSubscriptionAccount(ctx, account); err != nil {
+		return err
+	}
+	return s.syncRegistryModelsForAccount(ctx, account, models)
+}
+
+func (s *CodexModelProbeService) syncRegistryModelsForAccount(ctx context.Context, account *biz.SubscriptionAccount, upstreamModels []string) error {
+	if s == nil || s.modelUC == nil || account == nil {
+		return nil
+	}
+	routes := make(map[int64]discoveredRoute)
+	for _, upstreamModelID := range upstreamModels {
+		model, err := findOrCreateDiscoveredModel(ctx, s.modelUC, upstreamModelID)
+		if err != nil {
+			return fmt.Errorf("register discovered subscription model %q: %w", upstreamModelID, err)
+		}
+		rank := discoveredRouteRank(model.ModelID, upstreamModelID)
+		if existing, ok := routes[model.ID]; !ok || rank > existing.rank {
+			routes[model.ID] = discoveredRoute{model: model, upstreamModelID: upstreamModelID, rank: rank}
+		}
+	}
+	groups := biz.SplitCSV(account.Group)
+	if len(groups) == 0 {
+		groups = []string{"default"}
+	}
+	for _, group := range groups {
+		for _, route := range routes {
+			if err := s.modelUC.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
+				SubscriptionAccountID: account.ID,
+				ModelPK:               route.model.ID,
+				GroupName:             group,
+				Enabled:               true,
+				EnabledHasValue:       true,
+				UpstreamModelID:       route.upstreamModelID,
+			}); err != nil {
+				return fmt.Errorf("map discovered model %q to subscription account %d: %w", route.upstreamModelID, account.ID, err)
+			}
+		}
+	}
+	return nil
 }
 
 // ProbeAccountModels dispatches to the platform-appropriate low-level prober

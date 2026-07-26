@@ -334,18 +334,29 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		return result
 	}
 
-	// Prefer the first-class subscription account selected during planning
-	// (plan.Account), then the resolver, then the channel-fallback metadata.
-	// The account carries the access token; the channel view intentionally
-	// does not (see biz.RelayPlan.Account).
-	// Prefer the first-class subscription account selected during planning
-	// (plan.Account), then the resolver, then the channel-fallback metadata. For
-	// OAuth subscription channels the channel's Key field holds the access token
-	// and the channel id doubles as the account id, so the fallback is a valid
-	// (intended) credential source — not a bogus one.
+	// Selection RPCs intentionally redact account secrets. Keep the selected
+	// account's public metadata in the plan, but resolve its real credential via
+	// the internal secrets RPC immediately before the upstream call. Legacy
+	// channel-only plans retain the channel metadata fallback.
 	meta := fallbackSubscriptionAccountMetadata(plan, plan.Channel)
 	if plan.Account != nil {
 		meta = subscriptionAccountMetadataFromPlan(plan.Account)
+		if s.accountResolver != nil {
+			resolved, resolveErr := s.accountResolver.Resolve(ctx, plan.Account.ID)
+			if resolveErr != nil {
+				result.statusCode = http.StatusBadGateway
+				result.err = fmt.Errorf("resolve subscription account credential: %w", resolveErr)
+				result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+				return result
+			}
+			if resolved == nil || strings.TrimSpace(resolved.AccessToken) == "" {
+				result.statusCode = http.StatusBadGateway
+				result.err = fmt.Errorf("resolve subscription account credential: empty access token")
+				result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+				return result
+			}
+			meta = resolved
+		}
 	} else if s.accountResolver != nil {
 		if resolved, err := s.accountResolver.Resolve(ctx, plan.Channel.ID); err == nil && resolved != nil {
 			meta = resolved
@@ -890,6 +901,12 @@ func subscriptionAccountMetadataFromPlan(a *relaybiz.SubscriptionAccount) *relay
 		platform = relaycredential.PlatformCodex
 	case "claude":
 		platform = relaycredential.PlatformClaude
+	case "zhipu":
+		platform = relaycredential.PlatformZhipu
+	case "minimax":
+		platform = relaycredential.PlatformMinimax
+	case "kimi":
+		platform = relaycredential.PlatformKimi
 	}
 	return &relaycredential.SubscriptionAccountMetadata{
 		ID:          a.ID,

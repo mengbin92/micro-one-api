@@ -140,6 +140,36 @@ func TestCodexProbeCandidates(t *testing.T) {
 	}
 }
 
+func TestSubscriptionModelProbeSyncsExactUpstreamIDsForEveryGroup(t *testing.T) {
+	repo := newModelProbeRepoStub()
+	modelUC := biz.NewModelUsecase(repo)
+	requireNoError(t, modelUC.CreateModel(context.Background(), &biz.Model{
+		ModelID: "glm-5.2", DisplayName: "GLM 5.2",
+		Status: biz.ModelStatusEnabled, IsPublic: true,
+	}))
+	probe := newCodexModelProbeService(nil)
+	probe.SetModelUsecase(modelUC)
+	account := &biz.SubscriptionAccount{ID: 4, Group: "default,vip"}
+
+	requireNoError(t, probe.syncRegistryModelsForAccount(context.Background(), account, []string{"GLM-5.2", "glm-5.2"}))
+	if len(repo.subscriptionMappings) != 2 {
+		t.Fatalf("subscription mappings = %d, want one per account group", len(repo.subscriptionMappings))
+	}
+	groups := make(map[string]bool)
+	for _, mapping := range repo.subscriptionMappings {
+		groups[mapping.GroupName] = true
+		if mapping.UpstreamModelID != "glm-5.2" {
+			t.Fatalf("upstream model id = %q", mapping.UpstreamModelID)
+		}
+		if !mapping.Enabled || !mapping.EnabledHasValue {
+			t.Fatalf("mapping should be explicitly enabled: %+v", mapping)
+		}
+	}
+	if !groups["default"] || !groups["vip"] {
+		t.Fatalf("mapping groups = %v", groups)
+	}
+}
+
 func TestProbeCodexModelsNoSupportedModels(t *testing.T) {
 	lookup := &probeLookupStub{
 		account: &biz.SubscriptionAccount{
@@ -248,7 +278,7 @@ func TestRecoveryProbeAdapter(t *testing.T) {
 				ID:       4,
 				Platform: "openai",
 			},
-			setup: func(t *testing.T, account *biz.SubscriptionAccount) func() { return func() {} },
+			setup:   func(t *testing.T, account *biz.SubscriptionAccount) func() { return func() {} },
 			wantErr: true,
 		},
 		{
@@ -258,7 +288,7 @@ func TestRecoveryProbeAdapter(t *testing.T) {
 				Platform:    "claude",
 				AccessToken: "sk-ant-oat-5",
 			},
-			setup: func(t *testing.T, account *biz.SubscriptionAccount) func() { return func() {} },
+			setup:    func(t *testing.T, account *biz.SubscriptionAccount) func() { return func() {} },
 			wantErr:  true,
 			noProber: true,
 		},

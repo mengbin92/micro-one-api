@@ -2456,6 +2456,41 @@ func TestAdminHTTPOneAPILogRoutes(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPLogListEnrichesSubscriptionUpstreamProvider(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	billingClient := &adminHTTPBillingClient{
+		ledgerEntries: []*commonv1.LedgerEntry{
+			{
+				Id:                    "9001",
+				UserId:                "42",
+				Type:                  "consume",
+				ChannelId:             201,
+				SubscriptionAccountId: 201,
+				CreatedAt:             timestamppb.Now(),
+			},
+		},
+	}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, billingClient)
+	req := httptest.NewRequest(http.MethodGet, "/api/log", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{
+		`"subscriptionAccountId":201`,
+		`"upstreamName":"codex"`,
+		`"upstreamProtocol":"OpenAI"`,
+	} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("log list response missing %s: %s", want, rec.Body.String())
+		}
+	}
+}
+
 func TestAdminHTTPOneAPILogDeleteProxiesToLogService(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	t.Setenv("SERVICE_TOKEN", "service-token")
