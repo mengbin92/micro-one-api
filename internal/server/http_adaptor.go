@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	relaycredential "micro-one-api/domain/upstream/credential"
@@ -18,6 +19,7 @@ import (
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/internal/passthrough"
 	relayquota "micro-one-api/internal/quota"
+	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
 
@@ -458,6 +460,16 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		resp.Body.Close()
 		s.recordCodexQuotaSnapshot(ctx, plan, body)
 		upstreamErr := passthrough.Classify(resp.StatusCode, body)
+		if applogger.Log != nil {
+			applogger.Log.Warn("subscription upstream rejected request",
+				zap.Int("status_code", resp.StatusCode),
+				zap.String("platform", string(meta.Platform)),
+				zap.Int64("channel_id", plan.Channel.ID),
+				zap.Int64("subscription_account_id", meta.ID),
+				zap.String("model", clientModel),
+				zap.String("upstream_error", applogger.SanitizeAndTruncate(string(body), 2048)),
+			)
+		}
 		result.statusCode = resp.StatusCode
 		result.body = body
 		result.header = resp.Header.Clone()

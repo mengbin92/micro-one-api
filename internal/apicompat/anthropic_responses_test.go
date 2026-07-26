@@ -1291,6 +1291,34 @@ func TestResponsesToAnthropicRequest_MergesDeveloperMessageIntoSystem(t *testing
 	assert.NotContains(t, string(resp.Messages[0].Content), "input_text")
 }
 
+func TestResponsesToAnthropicRequest_AllToolsGetObjectInputSchema(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "glm-5.2",
+		Input: json.RawMessage(`[{"role":"user","content":"Hello"}]`),
+		Tools: []ResponsesTool{{
+			Type:        "custom",
+			Name:        "apply_patch",
+			Description: "Apply a patch to files",
+		}, {
+			Type: "web_search",
+		}},
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 2)
+	assert.Equal(t, "custom", resp.Tools[0].Type)
+	assert.Equal(t, "apply_patch", resp.Tools[0].Name)
+	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(resp.Tools[0].InputSchema))
+	assert.Equal(t, "web_search_20250305", resp.Tools[1].Type)
+	assert.Equal(t, "web_search", resp.Tools[1].Name)
+	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(resp.Tools[1].InputSchema))
+
+	body, err := sonic.Marshal(resp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), `"input_schema":null`)
+}
+
 // ---------------------------------------------------------------------------
 // Image content block conversion tests
 // ---------------------------------------------------------------------------
