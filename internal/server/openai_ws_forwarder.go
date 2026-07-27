@@ -523,6 +523,8 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				PromptTokens:          usage.promptTokens,
 				CompletionTokens:      usage.completionTokens,
 				CacheReadTokens:       usage.cacheReadTokens,
+				CacheCreation5mTokens:  usage.cacheCreation5mTokens,
+				CacheCreation1hTokens:  usage.cacheCreation1hTokens,
 				ChannelID:             currentChannel.ID,
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 				IsStream:              true,

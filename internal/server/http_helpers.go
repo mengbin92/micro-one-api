@@ -122,3 +122,28 @@ func cacheReadTokensFromProviderUsage(usage relayprovider.Usage) int64 {
 	}
 	return 0
 }
+
+// cacheCreationTokensFromProviderUsage extracts the 5m / 1h cache-creation
+// buckets from a provider Usage object (docs/design/token-usage-semantics.md
+// §3.3/§4.2). It checks both PromptTokensDetails and InputTokensDetails for
+// the TTL-split fields. When only a cache_creation aggregate would be needed
+// the caller can read the individual buckets directly; this helper keeps the
+// same lookup pattern as cacheReadTokensFromProviderUsage so both details
+// objects are consulted.
+func cacheCreationTokensFromProviderUsage(usage relayprovider.Usage) (fiveM, oneH int64) {
+	for _, details := range []relayprovider.UsageTokenDetails{
+		usage.PromptTokensDetails,
+		usage.InputTokensDetails,
+	} {
+		if details.CacheCreation5mTokens > 0 {
+			fiveM = int64(details.CacheCreation5mTokens)
+		}
+		if details.CacheCreation1hTokens > 0 {
+			oneH = int64(details.CacheCreation1hTokens)
+		}
+		if fiveM > 0 || oneH > 0 {
+			return fiveM, oneH
+		}
+	}
+	return 0, 0
+}

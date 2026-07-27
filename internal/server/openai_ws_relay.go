@@ -24,10 +24,12 @@ type openAIWSRelayOptions struct {
 // openAIWSRelayUsage is the per-turn / per-session usage accumulator. The field
 // names mirror rawUsage so the same billing/log pipeline can consume it.
 type openAIWSRelayUsage struct {
-	promptTokens     int64
-	completionTokens int64
-	cacheReadTokens  int64
-	totalTokens      int64
+	promptTokens       int64
+	completionTokens   int64
+	cacheReadTokens    int64
+	cacheCreation5mTokens int64
+	cacheCreation1hTokens int64
+	totalTokens        int64
 }
 
 // openAIWSTurnResult is reported once per upstream terminal event
@@ -165,6 +167,8 @@ func (st *openAIWSRelayState) observeUpstreamFrame(payload []byte, msgType coder
 			st.usage.promptTokens += usage.promptTokens
 			st.usage.completionTokens += usage.completionTokens
 			st.usage.cacheReadTokens += usage.cacheReadTokens
+			st.usage.cacheCreation5mTokens += usage.cacheCreation5mTokens
+			st.usage.cacheCreation1hTokens += usage.cacheCreation1hTokens
 			if usage.totalTokens > 0 {
 				st.usage.totalTokens += usage.totalTokens
 			} else {
@@ -241,15 +245,24 @@ func parseOpenAIWSFrameUsage(frame map[string]interface{}) (openAIWSRelayUsage, 
 	outputTokens := numberField(usageMap, "output_tokens", "completion_tokens")
 	cachedTokens := cacheReadTokensFromUsageMap(usageMap)
 
+	// cache_creation buckets (v0.11.0 ADR §3.3/§4.2). The OpenAI Responses
+	// WebSocket usage object can carry cache_creation_input_tokens and a nested
+	// cache_creation.ephemeral_5m/1h_input_tokens detail for caching-capable
+	// upstreams; reuse the same helper as the raw relay so the semantics stay
+	// identical across paths.
+	fiveM, oneH, _, _ := cacheCreationDetailTokens(usageMap)
+
 	if inputTokens == 0 && outputTokens == 0 {
 		return openAIWSRelayUsage{}, false
 	}
 	total := inputTokens + outputTokens
 	return openAIWSRelayUsage{
-		promptTokens:     inputTokens,
-		completionTokens: outputTokens,
-		cacheReadTokens:  cachedTokens,
-		totalTokens:      total,
+		promptTokens:         inputTokens,
+		completionTokens:     outputTokens,
+		cacheReadTokens:      cachedTokens,
+		cacheCreation5mTokens: fiveM,
+		cacheCreation1hTokens: oneH,
+		totalTokens:          total,
 	}, true
 }
 

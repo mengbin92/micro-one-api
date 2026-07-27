@@ -506,6 +506,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		}
 
 		actualTokens := s.calculateActualTokens(resp)
+		cacheCreation5mTokens, cacheCreation1hTokens := cacheCreationTokensFromProviderUsage(resp.Usage)
 		logInput := usageLogInput{
 			UserID:                plan.Auth.UserID,
 			TokenID:               plan.Auth.TokenID,
@@ -517,6 +518,8 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 			PromptTokens:          int64(resp.Usage.PromptTokens),
 			CompletionTokens:      int64(resp.Usage.CompletionTokens),
 			CacheReadTokens:       cacheReadTokensFromProviderUsage(resp.Usage),
+			CacheCreation5mTokens:  cacheCreation5mTokens,
+			CacheCreation1hTokens:  cacheCreation1hTokens,
 			ChannelID:             ch.ID,
 			SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 			ElapsedTime:           time.Since(startedAt).Milliseconds(),
@@ -579,6 +582,8 @@ func (s *HTTPServer) handleAnthropicStreamingResponse(
 	promptTokens := int64(0)
 	completionTokens := int64(0)
 	cacheReadTokens := int64(0)
+	cacheCreation5mTokens := int64(0)
+	cacheCreation1hTokens := int64(0)
 	estimatedTokens := int64(0)
 
 	// message_start
@@ -628,6 +633,10 @@ func (s *HTTPServer) handleAnthropicStreamingResponse(
 			promptTokens = int64(chunk.Usage.PromptTokens)
 			completionTokens = int64(chunk.Usage.CompletionTokens)
 			cacheReadTokens = cacheReadTokensFromProviderUsage(chunk.Usage)
+			if fiveM, oneH := cacheCreationTokensFromProviderUsage(chunk.Usage); fiveM > 0 || oneH > 0 {
+				cacheCreation5mTokens = fiveM
+				cacheCreation1hTokens = oneH
+			}
 		}
 
 		for _, choice := range chunk.Choices {
@@ -772,6 +781,8 @@ func (s *HTTPServer) handleAnthropicStreamingResponse(
 	logInput.PromptTokens = promptTokens
 	logInput.CompletionTokens = completionTokens
 	logInput.CacheReadTokens = cacheReadTokens
+	logInput.CacheCreation5mTokens = cacheCreation5mTokens
+	logInput.CacheCreation1hTokens = cacheCreation1hTokens
 	logInput.ElapsedTime = time.Since(startedAt).Milliseconds()
 	if logInput.Endpoint == "" {
 		logInput.Endpoint = "/v1/messages"

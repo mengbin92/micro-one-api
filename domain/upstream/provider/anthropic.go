@@ -201,10 +201,23 @@ type anthropicContent struct {
 	Text string `json:"text"`
 }
 
+// anthropicUsage mirrors the Anthropic usage object, including the v0.11.0
+// cache-creation TTL detail (docs/design/token-usage-semantics.md §3.3).
 type anthropicUsage struct {
 	InputTokens          int `json:"input_tokens"`
 	OutputTokens         int `json:"output_tokens"`
 	CacheReadInputTokens int `json:"cache_read_input_tokens"`
+	// CacheCreationInputTokens is the flat aggregate cache-write token count.
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	// CacheCreation holds the TTL-split detail object.
+	CacheCreation *anthropicCacheCreation `json:"cache_creation,omitempty"`
+}
+
+// anthropicCacheCreation is the nested cache_creation object with the
+// ephemeral_5m / ephemeral_1h TTL split.
+type anthropicCacheCreation struct {
+	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens,omitempty"`
+	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens,omitempty"`
 }
 
 // Anthropic SSE stream event
@@ -295,10 +308,31 @@ func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCo
 			CompletionTokens: resp.Usage.OutputTokens,
 			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
 			PromptTokensDetails: UsageTokenDetails{
-				CacheReadTokens: resp.Usage.CacheReadInputTokens,
+				CacheReadTokens:        resp.Usage.CacheReadInputTokens,
+				CacheCreation5mTokens:  anthropicCacheCreation5m(resp.Usage),
+				CacheCreation1hTokens:  anthropicCacheCreation1h(resp.Usage),
 			},
 		},
 	}
+}
+
+// anthropicCacheCreation5m returns the 5m cache-creation tokens from an
+// Anthropic usage object, applying the ADR §4.2 default: when only the flat
+// total is present with no ephemeral detail, the whole total defaults to 5m.
+func anthropicCacheCreation5m(u anthropicUsage) int {
+	if u.CacheCreation != nil {
+		return u.CacheCreation.Ephemeral5mInputTokens
+	}
+	return u.CacheCreationInputTokens
+}
+
+// anthropicCacheCreation1h returns the 1h cache-creation tokens, or 0 when
+// no ephemeral detail is present.
+func anthropicCacheCreation1h(u anthropicUsage) int {
+	if u.CacheCreation != nil {
+		return u.CacheCreation.Ephemeral1hInputTokens
+	}
+	return 0
 }
 
 // ChatCompletions sends a chat completions request to the Anthropic API.
@@ -437,6 +471,12 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 				if usage.CacheReadInputTokens == 0 {
 					usage.CacheReadInputTokens = startUsage.CacheReadInputTokens
 				}
+				if usage.CacheCreationInputTokens == 0 {
+					usage.CacheCreationInputTokens = startUsage.CacheCreationInputTokens
+				}
+				if usage.CacheCreation == nil {
+					usage.CacheCreation = startUsage.CacheCreation
+				}
 				finishReason := "stop"
 				chunkChan <- StreamChunk{
 					Object: "chat.completion.chunk",
@@ -449,7 +489,9 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 						CompletionTokens: usage.OutputTokens,
 						TotalTokens:      usage.InputTokens + usage.OutputTokens,
 						PromptTokensDetails: UsageTokenDetails{
-							CacheReadTokens: usage.CacheReadInputTokens,
+							CacheReadTokens:       usage.CacheReadInputTokens,
+							CacheCreation5mTokens: anthropicCacheCreation5m(*usage),
+							CacheCreation1hTokens: anthropicCacheCreation1h(*usage),
 						},
 					},
 				}

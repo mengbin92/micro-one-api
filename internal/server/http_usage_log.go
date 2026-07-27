@@ -12,23 +12,25 @@ import (
 )
 
 type usageLogInput struct {
-	UserID                int64
-	TokenID               int64
-	TokenName             string
-	RequestID             string
-	Endpoint              string
-	ModelName             string
-	Quota                 int64
-	PromptTokens          int64
-	CompletionTokens      int64
-	CacheReadTokens       int64
-	ChannelID             int64
-	SubscriptionAccountID int64
-	Group                 string
-	SessionHash           string
-	SessionWindowLimitUSD float64
-	ElapsedTime           int64
-	IsStream              bool
+	UserID                 int64
+	TokenID                int64
+	TokenName              string
+	RequestID              string
+	Endpoint               string
+	ModelName              string
+	Quota                  int64
+	PromptTokens           int64
+	CompletionTokens       int64
+	CacheReadTokens        int64
+	CacheCreation5mTokens  int64
+	CacheCreation1hTokens  int64
+	ChannelID              int64
+	SubscriptionAccountID  int64
+	Group                  string
+	SessionHash            string
+	SessionWindowLimitUSD  float64
+	ElapsedTime            int64
+	IsStream               bool
 }
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
@@ -36,7 +38,14 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		metrics.UsageLogIngestTotal.WithLabelValues("skipped").Inc()
 		return
 	}
-	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
+	// Phase 1 (PR 2) carries cache_creation buckets in the human-readable
+	// Message because api/log/v1 IngestLogRequest does not yet have dedicated
+	// cache_creation fields. PR 3 extends log.proto + billing.proto, runs
+	// `make api`, and wires CacheCreation5mTokens / CacheCreation1hTokens as
+	// top-level proto fields here. Do not duplicate-count: the Message is the
+	// only carrier until PR 3, and structured logging (logUpstreamUsage) is
+	// the operations view.
+	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d cache_creation_5m_tokens=%d cache_creation_1h_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.CacheCreation5mTokens, in.CacheCreation1hTokens, in.ChannelID))
 	_, err := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{
 		Level:                 "consume",
 		Message:               message,
@@ -63,9 +72,16 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 }
 
 func logUpstreamUsage(in usageLogInput) {
+	// cache_read ratio denominator is the cache-normalized input total
+	// (uncached_input + cache_read + cache_creation), per ADR §2 and
+	// cc-switch's cacheHitRate definition. For OpenAI-protocol requests the
+	// caller still passes prompt_tokens inclusive of cached; the ratio is an
+	// operational signal only, billing uses the canonical buckets.
+	cacheCreationTotal := in.CacheCreation5mTokens + in.CacheCreation1hTokens
 	cacheRatio := float64(0)
-	if in.PromptTokens > 0 {
-		cacheRatio = float64(in.CacheReadTokens) / float64(in.PromptTokens)
+	cacheDenominator := in.PromptTokens + cacheCreationTotal
+	if cacheDenominator > 0 {
+		cacheRatio = float64(in.CacheReadTokens) / float64(cacheDenominator)
 	}
 	nonCachedInputTokens := in.PromptTokens
 	if in.CacheReadTokens > 0 {
@@ -86,6 +102,9 @@ func logUpstreamUsage(in usageLogInput) {
 		zap.Int64("input_tokens", nonCachedInputTokens),
 		zap.Int64("output_tokens", in.CompletionTokens),
 		zap.Int64("cache_read_tokens", in.CacheReadTokens),
+		zap.Int64("cache_creation_5m_tokens", in.CacheCreation5mTokens),
+		zap.Int64("cache_creation_1h_tokens", in.CacheCreation1hTokens),
+		zap.Int64("cache_creation_tokens", cacheCreationTotal),
 		zap.Float64("cache_read_input_ratio", cacheRatio),
 	)
 }

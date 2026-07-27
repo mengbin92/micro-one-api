@@ -258,6 +258,7 @@ func init() {
 		RelayAccountRPMFallbackTotal,
 		RelayAccountPoolChecksTotal,
 		RelayUpstreamPassthroughTotal,
+		TokenUsageParseAnomaly,
 		RelayCodexQuotaSnapshotsTotal,
 		RelayCodexQuotaUsedPercent,
 		SubscriptionAccountQuotaResetsTotal,

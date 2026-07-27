@@ -119,6 +119,9 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				PromptTokens:     usage.PromptTokens,
 				CompletionTokens: usage.CompletionTokens,
 				CacheReadTokens:  usage.CacheReadTokens,
+
+				CacheCreation5mTokens: usage.CacheCreation5mTokens,
+				CacheCreation1hTokens: usage.CacheCreation1hTokens,
 				ChannelID:        ch.ID,
 				ElapsedTime:      time.Since(startedAt).Milliseconds(),
 				IsStream:         false,

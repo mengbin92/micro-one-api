@@ -86,9 +86,12 @@ type RelayResult struct {
 
 // Usage represents token usage information from the upstream response.
 type Usage struct {
-	PromptTokens     int64
-	CompletionTokens int64
-	TotalTokens      int64
+	PromptTokens          int64
+	CompletionTokens      int64
+	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
+	TotalTokens           int64
 }
 
 // Reservation captures a quota reservation made before upstream forwarding.
@@ -480,18 +483,24 @@ func (o *relayOrchestrator) logUsage(ctx context.Context, plan *relaybiz.RelayPl
 func estimateUsageFromBody(body []byte) Usage {
 	raw := estimateRawUsage(body)
 	return Usage{
-		PromptTokens:     raw.PromptTokens,
-		CompletionTokens: raw.CompletionTokens,
-		TotalTokens:      raw.TotalTokens,
+		PromptTokens:          raw.PromptTokens,
+		CompletionTokens:      raw.CompletionTokens,
+		CacheReadTokens:       raw.CacheReadTokens,
+		CacheCreation5mTokens: raw.CacheCreation5mTokens,
+		CacheCreation1hTokens: raw.CacheCreation1hTokens,
+		TotalTokens:           raw.TotalTokens,
 	}
 }
 
 func usageFromBody(body []byte) Usage {
 	raw := extractRawUsage(body, 0)
 	return Usage{
-		PromptTokens:     raw.PromptTokens,
-		CompletionTokens: raw.CompletionTokens,
-		TotalTokens:      raw.TotalTokens,
+		PromptTokens:          raw.PromptTokens,
+		CompletionTokens:      raw.CompletionTokens,
+		CacheReadTokens:       raw.CacheReadTokens,
+		CacheCreation5mTokens: raw.CacheCreation5mTokens,
+		CacheCreation1hTokens: raw.CacheCreation1hTokens,
+		TotalTokens:           raw.TotalTokens,
 	}
 }
 
@@ -501,6 +510,15 @@ func mergeUsage(primary, fallback Usage) Usage {
 	}
 	if primary.CompletionTokens == 0 {
 		primary.CompletionTokens = fallback.CompletionTokens
+	}
+	if primary.CacheReadTokens == 0 {
+		primary.CacheReadTokens = fallback.CacheReadTokens
+	}
+	if primary.CacheCreation5mTokens == 0 {
+		primary.CacheCreation5mTokens = fallback.CacheCreation5mTokens
+	}
+	if primary.CacheCreation1hTokens == 0 {
+		primary.CacheCreation1hTokens = fallback.CacheCreation1hTokens
 	}
 	if primary.TotalTokens == 0 {
 		primary.TotalTokens = fallback.TotalTokens
