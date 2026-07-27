@@ -689,6 +689,24 @@ wire:
 
 ## 待办 — cache_creation 全链路支持（缓存创建 token 统计与计费）
 
+> **v0.11.0 Phase 0 设计门已完成（2026-07-27）。** 见 `docs/design/token-usage-semantics.md`
+> 与跨层表驱动 fixture `internal/server/token_usage_fixture_test.go`
+> （F1–F10：OpenAI cached / 流式合并 / Anthropic 5m / 1h / 混合明细 / 总量无明细 /
+> 明细超总量 / 负数 / Anthropic 流式合并 / Responses）。fixture 在 raw relay、
+> provider 转换与 billing 三层断言相同的五桶结果。
+>
+> **Phase 1 §1.1（roadmap PR 2：provider/raw usage 规范化与解析指标）已完成（2026-07-27）。**
+> `rawUsage` / `UsageTokenDetails` / `anthropicUsage` / `usageLogInput` /
+> `openAIWSRelayUsage` / orchestrator `Usage` 全部新增 `CacheCreation5mTokens` /
+> `CacheCreation1hTokens`，按 ADR §3.3/§4.2 解析 `cache_creation_input_tokens`
+> 及嵌套 `ephemeral_5m/1h_input_tokens`（无明细默认 5m，明细超总量以明细为准并记指标，
+> 负数归零）。新增低基数 metric `relay_token_usage_parse_anomaly_total{reason}`
+> （label 仅 reason，不含 channel/account/model）。新桶已贯穿所有 usageLogInput 构造点
+> （raw handler、adaptor 流式/非流式、chat handler、anthropic inbound、openai ws
+> forwarder、orchestrator）。下列 ☐ 条目为 Phase 1 §1.2/§1.3（proto + DO/PO + DB 迁移 +
+> 价格/扣费/observe 开关，roadmap PR 3/PR 4）实施项。
+
+
 > 登记于 2026-07-21。关联：同日已完成 Anthropic 协议透传路径
 > `cache_read_input_tokens` 解析（`cacheReadTokensFromUsageMap`）与
 > ChatCompletions 转换路径 usage 修复（`domain/upstream/provider/anthropic.go`）。
