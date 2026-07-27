@@ -97,6 +97,8 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		PromptTokens:          req.PromptTokens,
 		CompletionTokens:      req.CompletionTokens,
 		CacheReadTokens:       req.CacheReadTokens,
+		CacheCreation5mTokens: req.CacheCreation_5MTokens,
+		CacheCreation1hTokens: req.CacheCreation_1HTokens,
 		UpstreamCost:          firstPositiveInt64(req.UpstreamCost, req.ActualCost),
 		ElapsedTime:           req.ElapsedTime,
 		IsStream:              req.IsStream,

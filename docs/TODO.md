@@ -696,6 +696,17 @@ wire:
 > provider 转换与 billing 三层断言相同的五桶结果。
 >
 > **Phase 1 §1.1（roadmap PR 2：provider/raw usage 规范化与解析指标）已完成（2026-07-27）。**
+> **Phase 1 §1.2（roadmap PR 3：proto + DO/PO + 三数据库迁移，保持 observe）已完成（2026-07-27）。**
+> `api/log/v1`、`api/billing/v1`、`api/common/v1` LedgerEntry 新增 `cache_creation_5m_tokens` /
+> `cache_creation_1h_tokens`（`make api` 重新生成 pb.go，按项目约定 pb.go 不入库）。
+> log/billing 的 DO（LogEntry/Ledger/LedgerUsage/UsageStat/DailyAggregate/ModelAggregate/
+> UsageBucket/UsageTotals）、PO（logModel/ledgerModel）、Create/List/Aggregate SQL 全部扩展；
+> billing service CommitQuotaRequest→LedgerUsage、http_billing CommitQuotaRequest、admin
+> UsageAggregateView/LedgerEntry map 全部接线。新增 MySQL 增量迁移 `067_add_cache_creation
+> _token_usage_fields.sql`（logs + billing_ledgers，DEFAULT 0，additive，回滚不删列），
+> 同步 postgres/sqlite full schema 与 `migrations/ownership.yaml`。PR 2 的 human-readable
+> Message carrier 已回退，改用真实 proto 字段持久化。下列 ☐ 条目为 Phase 1 §1.3（roadmap
+> PR 4：cache_creation 价格、影子成本、observe/charge 开关与管理端展示）。
 > `rawUsage` / `UsageTokenDetails` / `anthropicUsage` / `usageLogInput` /
 > `openAIWSRelayUsage` / orchestrator `Usage` 全部新增 `CacheCreation5mTokens` /
 > `CacheCreation1hTokens`，按 ADR §3.3/§4.2 解析 `cache_creation_input_tokens`

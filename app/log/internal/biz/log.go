@@ -27,6 +27,8 @@ type LogEntry struct {
 	PromptTokens          int64
 	CompletionTokens      int64
 	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
 	ChannelID             int64
 	SubscriptionAccountID int64
 	ElapsedTime           int64
@@ -41,7 +43,9 @@ type UsageStat struct {
 	Quota            int64  `json:"quota"`
 	PromptTokens     int64  `json:"prompt_tokens"`
 	CompletionTokens int64  `json:"completion_tokens"`
-	CacheReadTokens  int64  `json:"cache_read_tokens"`
+	CacheReadTokens       int64 `json:"cache_read_tokens" gorm:"column:cache_read_tokens"`
+	CacheCreation5mTokens int64 `json:"cache_creation_5m_tokens" gorm:"column:cache_creation_5m_tokens"`
+	CacheCreation1hTokens int64 `json:"cache_creation_1h_tokens" gorm:"column:cache_creation_1h_tokens"`
 }
 
 type DeleteLogsFilter struct {

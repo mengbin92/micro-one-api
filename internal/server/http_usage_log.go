@@ -38,14 +38,7 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		metrics.UsageLogIngestTotal.WithLabelValues("skipped").Inc()
 		return
 	}
-	// Phase 1 (PR 2) carries cache_creation buckets in the human-readable
-	// Message because api/log/v1 IngestLogRequest does not yet have dedicated
-	// cache_creation fields. PR 3 extends log.proto + billing.proto, runs
-	// `make api`, and wires CacheCreation5mTokens / CacheCreation1hTokens as
-	// top-level proto fields here. Do not duplicate-count: the Message is the
-	// only carrier until PR 3, and structured logging (logUpstreamUsage) is
-	// the operations view.
-	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d cache_creation_5m_tokens=%d cache_creation_1h_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.CacheCreation5mTokens, in.CacheCreation1hTokens, in.ChannelID))
+	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
 	_, err := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{
 		Level:                 "consume",
 		Message:               message,
@@ -57,8 +50,10 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		Quota:                 in.Quota,
 		PromptTokens:          in.PromptTokens,
 		CompletionTokens:      in.CompletionTokens,
-		CacheReadTokens:       in.CacheReadTokens,
-		ChannelId:             in.ChannelID,
+		CacheReadTokens:         in.CacheReadTokens,
+		CacheCreation_5MTokens:  in.CacheCreation5mTokens,
+		CacheCreation_1HTokens:  in.CacheCreation1hTokens,
+		ChannelId:               in.ChannelID,
 		SubscriptionAccountId: in.SubscriptionAccountID,
 		ElapsedTime:           in.ElapsedTime,
 		IsStream:              in.IsStream,

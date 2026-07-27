@@ -91,6 +91,8 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		req.PromptTokens = detail.PromptTokens
 		req.CompletionTokens = detail.CompletionTokens
 		req.CacheReadTokens = detail.CacheReadTokens
+		req.CacheCreation_5MTokens = detail.CacheCreation5mTokens
+		req.CacheCreation_1HTokens = detail.CacheCreation1hTokens
 		req.ElapsedTime = detail.ElapsedTime
 		req.IsStream = detail.IsStream
 		req.SubscriptionAccountId = detail.SubscriptionAccountID

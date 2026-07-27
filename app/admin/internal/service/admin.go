@@ -419,6 +419,10 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		"completion_tokens":       entry.GetCompletionTokens(),
 		"cacheReadTokens":         entry.GetCacheReadTokens(),
 		"cache_read_tokens":       entry.GetCacheReadTokens(),
+		"cacheCreation5mTokens":   entry.GetCacheCreation_5MTokens(),
+		"cacheCreation1hTokens":   entry.GetCacheCreation_1HTokens(),
+		"cache_creation_5m_tokens": entry.GetCacheCreation_5MTokens(),
+		"cache_creation_1h_tokens": entry.GetCacheCreation_1HTokens(),
 		"channelId":               entry.GetChannelId(),
 		"channel":                 entry.GetChannelId(),
 		"channelName":             channel.Name,
@@ -1115,6 +1119,8 @@ type UsageAggregateView struct {
 	PromptTokens          int64  `json:"prompt_tokens"`
 	CompletionTokens      int64  `json:"completion_tokens"`
 	CacheReadTokens       int64  `json:"cache_read_tokens"`
+	CacheCreation5mTokens int64  `json:"cache_creation_5m_tokens"`
+	CacheCreation1hTokens int64  `json:"cache_creation_1h_tokens"`
 	Count                 int64  `json:"count"`
 	ElapsedTime           int64  `json:"elapsed_time"`
 }
@@ -1204,6 +1210,8 @@ func usageAggregateViewFromBucket(bucket *billingv1.UsageBucket, groupBy string)
 		PromptTokens:          bucket.GetPromptTokens(),
 		CompletionTokens:      bucket.GetCompletionTokens(),
 		CacheReadTokens:       bucket.GetCacheReadTokens(),
+		CacheCreation5mTokens: bucket.GetCacheCreation_5MTokens(),
+		CacheCreation1hTokens: bucket.GetCacheCreation_1HTokens(),
 		Count:                 bucket.GetCount(),
 		ElapsedTime:           bucket.GetElapsedTime(),
 	}
@@ -2134,6 +2142,8 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"promptTokens":          entry.GetPromptTokens(),
 			"completionTokens":      entry.GetCompletionTokens(),
 			"cacheReadTokens":       entry.GetCacheReadTokens(),
+			"cacheCreation5mTokens": entry.GetCacheCreation_5MTokens(),
+			"cacheCreation1hTokens": entry.GetCacheCreation_1HTokens(),
 			"channelId":             entry.GetChannelId(),
 			"channelName":           channelName,
 			"channelType":           channelType,

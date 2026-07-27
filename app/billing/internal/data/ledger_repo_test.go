@@ -33,6 +33,8 @@ func setupLedgerTestDB(t *testing.T) *gorm.DB {
 			prompt_tokens INTEGER DEFAULT 0,
 			completion_tokens INTEGER DEFAULT 0,
 			cache_read_tokens INTEGER DEFAULT 0,
+			cache_creation_5m_tokens INTEGER DEFAULT 0,
+			cache_creation_1h_tokens INTEGER DEFAULT 0,
 			channel_id INTEGER DEFAULT 0,
 			subscription_account_id INTEGER DEFAULT 0,
 			elapsed_time INTEGER DEFAULT 0,
@@ -406,4 +408,81 @@ func TestLedgerRepo_AggregateUsage_ByType_AllTypes(t *testing.T) {
 	assert.Equal(t, int64(140), byType["consume"])
 	assert.Equal(t, int64(1000), byType["recharge"])
 	assert.Equal(t, int64(1140), totals.Quota)
+}
+
+// TestLedgerRepo_CreateLedgerPersistsCacheCreationBuckets verifies the PR 3
+// DO->PO round-trip persists the v0.11.0 cache_creation buckets
+// (docs/design/token-usage-semantics.md §2) and that toBizLedger reads them
+// back. This guards the PO column mapping introduced in PR 3.
+func TestLedgerRepo_CreateLedgerPersistsCacheCreationBuckets(t *testing.T) {
+	db := setupLedgerTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	data := &Data{db: db}
+	repo := NewLedgerRepo(data)
+	ctx := context.Background()
+
+	ledger := &biz.Ledger{
+		UserID:                "cc-user",
+		Amount:                -500,
+		BalanceAfter:          500,
+		Type:                  "consume",
+		ReferenceID:           "res_cc_001",
+		ModelName:             "glm-5.2",
+		Quota:                 100,
+		PromptTokens:          300,
+		CompletionTokens:      25,
+		CacheReadTokens:       60,
+		CacheCreation5mTokens: 40,
+		CacheCreation1hTokens: 70,
+	}
+	require.NoError(t, repo.CreateLedger(ctx, ledger))
+
+	var model ledgerModel
+	require.NoError(t, db.Where("user_id = ?", "cc-user").First(&model).Error)
+	assert.Equal(t, int64(40), model.CacheCreation5mTokens)
+	assert.Equal(t, int64(70), model.CacheCreation1hTokens)
+
+	// toBizLedger (used by ListLedgers / GetLedgerByID) must read them back.
+	bo := ledgerFromModel(&model)
+	assert.Equal(t, int64(40), bo.CacheCreation5mTokens)
+	assert.Equal(t, int64(70), bo.CacheCreation1hTokens)
+}
+
+// TestLedgerRepo_AggregateLedgerByDateSumsCacheCreation verifies the daily
+// aggregate SQL SUMs the new buckets (guards the ledger_repo.go aggregation
+// extension in PR 3). Uses repo.CreateLedger (the production write path) so
+// the rows are materialised with the same gorm column mapping the live code
+// uses, rather than a hand-rolled raw INSERT.
+func TestLedgerRepo_AggregateLedgerByDateSumsCacheCreation(t *testing.T) {
+	db := setupLedgerTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	data := &Data{db: db}
+	repo := NewLedgerRepo(data)
+	ctx := context.Background()
+
+	now := time.Now()
+	require.NoError(t, repo.CreateLedger(ctx, &biz.Ledger{
+		UserID: "agg", Amount: -10, BalanceAfter: 90, Type: "consume",
+		ModelName: "m", Quota: 1, PromptTokens: 100,
+		CacheCreation5mTokens: 40, CacheCreation1hTokens: 70,
+	}))
+	require.NoError(t, repo.CreateLedger(ctx, &biz.Ledger{
+		UserID: "agg", Amount: -20, BalanceAfter: 70, Type: "consume",
+		ModelName: "m", Quota: 2,
+		CacheCreation5mTokens: 5, CacheCreation1hTokens: 7,
+	}))
+
+	daily, _, err := repo.AggregateLedgerByDate(ctx, "agg", "consume", now.Add(-time.Hour), now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, daily, 1)
+	assert.Equal(t, int64(45), daily[0].CacheCreation5mTokens) // 40 + 5
+	assert.Equal(t, int64(77), daily[0].CacheCreation1hTokens) // 70 + 7
 }

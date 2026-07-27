@@ -79,6 +79,9 @@ message CommitQuotaRequest {
   // calculates it from upstream pricing config.
   int64 upstream_cost = 12;
   int64 subscription_account_id = 13;  // 订阅账号 ID（0 = 非订阅账号请求；覆盖预留时记录的账号）
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 14;  // 写入 5 分钟 TTL cache 的 token
+  int64 cache_creation_1h_tokens = 15;  // 写入 1 小时 TTL cache 的 token
 }
 
 message CommitQuotaResponse {
@@ -491,6 +494,9 @@ message DailyUsage {
   int64 count = 5;
   int64 elapsed_time = 6;
   int64 cache_read_tokens = 7;
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 8;   // SUM of 5 分钟 TTL cache 创建 token
+  int64 cache_creation_1h_tokens = 9;   // SUM of 1 小时 TTL cache 创建 token
 }
 
 message ModelUsage {
@@ -537,6 +543,9 @@ message UsageBucket {
   int64 gross_profit = 14;
   int64 cache_read_tokens = 15;
   int64 subscription_account_id = 16;  // 订阅账号 ID（当 group_by 含 subscription_account）
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 17;  // SUM of 5 分钟 TTL cache 创建 token
+  int64 cache_creation_1h_tokens = 18;  // SUM of 1 小时 TTL cache 创建 token
 }
 
 message UsageTotals {
@@ -548,4 +557,7 @@ message UsageTotals {
   int64 upstream_cost = 6;
   int64 gross_profit = 7;
   int64 cache_read_tokens = 8;
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 9;   // SUM of 5 分钟 TTL cache 创建 token
+  int64 cache_creation_1h_tokens = 10;  // SUM of 1 小时 TTL cache 创建 token
 }

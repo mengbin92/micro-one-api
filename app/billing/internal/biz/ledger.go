@@ -39,6 +39,8 @@ type Ledger struct {
 	PromptTokens          int64
 	CompletionTokens      int64
 	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
 	ChannelID             int64
 	SubscriptionAccountID int64
 	ElapsedTime           int64
@@ -69,8 +71,10 @@ type DailyAggregate struct {
 	Quota            int64 // SUM(ABS(amount))
 	PromptTokens     int64
 	CompletionTokens int64
-	CacheReadTokens  int64
-	Count            int64
+	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
+	Count                 int64
 	ElapsedTime      int64
 }
 
@@ -121,6 +125,8 @@ type UsageBucket struct {
 	PromptTokens          int64
 	CompletionTokens      int64
 	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
 	Count                 int64
 	ElapsedTime           int64
 }
@@ -132,9 +138,11 @@ type UsageTotals struct {
 	GrossProfit      int64
 	PromptTokens     int64
 	CompletionTokens int64
-	CacheReadTokens  int64
-	Count            int64
-	ElapsedTime      int64
+	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
+	Count                 int64
+	ElapsedTime           int64
 }
 
 // AccountReceivable is a mirror of a single wallet overdraft event. It is

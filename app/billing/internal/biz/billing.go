@@ -569,6 +569,8 @@ type LedgerUsage struct {
 	PromptTokens          int64
 	CompletionTokens      int64
 	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
 	UpstreamCost          int64
 	ElapsedTime           int64
 	IsStream              bool
@@ -667,6 +669,8 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 			PromptTokens:          usage.PromptTokens,
 			CompletionTokens:      usage.CompletionTokens,
 			CacheReadTokens:       usage.CacheReadTokens,
+			CacheCreation5mTokens: usage.CacheCreation5mTokens,
+			CacheCreation1hTokens: usage.CacheCreation1hTokens,
 			ChannelID:             parseInt64Default(reservation.ChannelID, 0),
 			SubscriptionAccountID: resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID),
 			ElapsedTime:           usage.ElapsedTime,
@@ -850,6 +854,8 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			PromptTokens:          usage.PromptTokens,
 			CompletionTokens:      usage.CompletionTokens,
 			CacheReadTokens:       usage.CacheReadTokens,
+			CacheCreation5mTokens: usage.CacheCreation5mTokens,
+			CacheCreation1hTokens: usage.CacheCreation1hTokens,
 			ChannelID:             parseInt64Default(reservation.ChannelID, 0),
 			SubscriptionAccountID: resolvedSubAccountID,
 			ElapsedTime:           usage.ElapsedTime,
@@ -879,6 +885,8 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			PromptTokens:          usage.PromptTokens,
 			CompletionTokens:      usage.CompletionTokens,
 			CacheReadTokens:       usage.CacheReadTokens,
+			CacheCreation5mTokens: usage.CacheCreation5mTokens,
+			CacheCreation1hTokens: usage.CacheCreation1hTokens,
 			ChannelID:             parseInt64Default(reservation.ChannelID, 0),
 			SubscriptionAccountID: resolvedSubAccountID,
 			ElapsedTime:           usage.ElapsedTime,
