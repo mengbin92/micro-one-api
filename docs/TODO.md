@@ -697,6 +697,17 @@ wire:
 >
 > **Phase 1 §1.1（roadmap PR 2：provider/raw usage 规范化与解析指标）已完成（2026-07-27）。**
 > **Phase 1 §1.2（roadmap PR 3：proto + DO/PO + 三数据库迁移，保持 observe）已完成（2026-07-27）。**
+> **Phase 1 §1.3（roadmap PR 4：cache_creation 价格、影子成本、observe/charge 开关与管理端展示）已完成（2026-07-27）。**
+> `ModelPrice` / `UpstreamModelPrice` 新增可选 `CacheCreation5mPrice` / `CacheCreation1hPrice`
+> （从 system_options 的 ModelPrice JSON blob 反序列化，无需新迁移）。新增纯计算函数
+> `calculateCanonicalCost`，用户费用与上游成本共用同一公式（roadmap §1.3）；未配置创建价格时
+> canonical 收敛到 v0.10.2 成本并标记 unpriced，**不**回退到 input price。新增
+> `BILLING_CACHE_CREATION_MODE=observe|charge` 环境开关，默认 `observe`（观察模式只写 token
+> 与影子成本，不改用户余额；拼写错误也回落到 observe，绝不会静默开启收费）。新增低基数 metric
+> `relay_token_usage_shadow_cost{mode,unpriced}`（model 仅入结构化日志）。`/api/pricing` 响应
+> 新增 `cache_creation_5m_price` / `1h_price` / `cache_creation_unpriced` / `cache_creation_mode`
+> / `unpriced_model_count`。**Phase 1（§1.1+§1.2+§1.3，PR 2/3/4）全部完成**，可进入生产 observe
+> 对账（roadmap §1.4）。
 > `api/log/v1`、`api/billing/v1`、`api/common/v1` LedgerEntry 新增 `cache_creation_5m_tokens` /
 > `cache_creation_1h_tokens`（`make api` 重新生成 pb.go，按项目约定 pb.go 不入库）。
 > log/billing 的 DO（LogEntry/Ledger/LedgerUsage/UsageStat/DailyAggregate/ModelAggregate/

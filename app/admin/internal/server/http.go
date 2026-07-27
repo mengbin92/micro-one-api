@@ -1076,16 +1076,24 @@ func optionsByKey(options []service.OneAPIOption, keys ...string) map[string]str
 }
 
 type readonlyPricingRow struct {
-	Model          string   `json:"model"`
-	InputPrice     *float64 `json:"input_price,omitempty"`
-	OutputPrice    *float64 `json:"output_price,omitempty"`
-	CacheReadPrice *float64 `json:"cache_read_price,omitempty"`
+	Model                string   `json:"model"`
+	InputPrice           *float64 `json:"input_price,omitempty"`
+	OutputPrice          *float64 `json:"output_price,omitempty"`
+	CacheReadPrice       *float64 `json:"cache_read_price,omitempty"`
+	CacheCreation5mPrice *float64 `json:"cache_creation_5m_price,omitempty"`
+	CacheCreation1hPrice *float64 `json:"cache_creation_1h_price,omitempty"`
+	// CacheCreationUnpriced is true when the model row carries no
+	// cache-creation prices; surfaced so ops can see the v0.11.0 pricing gap
+	// (roadmap §1.3).
+	CacheCreationUnpriced bool `json:"cache_creation_unpriced,omitempty"`
 }
 
 type readonlyModelPrice struct {
-	InputPrice     *float64 `json:"input_price"`
-	OutputPrice    *float64 `json:"output_price"`
-	CacheReadPrice *float64 `json:"cache_read_price"`
+	InputPrice           *float64 `json:"input_price"`
+	OutputPrice          *float64 `json:"output_price"`
+	CacheReadPrice       *float64 `json:"cache_read_price"`
+	CacheCreation5mPrice *float64 `json:"cache_creation_5m_price"`
+	CacheCreation1hPrice *float64 `json:"cache_creation_1h_price"`
 }
 
 const (
@@ -1103,9 +1111,11 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 			"success": true,
 			"message": "",
 			"data": map[string]interface{}{
-				"prices":          []readonlyPricingRow{},
-				"amount_per_unit": float64(readonlyPricingUnitScale),
-				"unit":            "1M tokens",
+				"prices":               []readonlyPricingRow{},
+				"amount_per_unit":      float64(readonlyPricingUnitScale),
+				"unit":                 "1M tokens",
+				"cache_creation_mode":  currentCacheCreationMode(),
+				"unpriced_model_count": 0,
 			},
 		})
 		return
@@ -1121,15 +1131,38 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 		amountPerUnit = readonlyPricingUnitScale
 	}
 
+	rows := readonlyPricingRows(optionMap, amountPerUnit)
+	unpricedCount := 0
+	for _, row := range rows {
+		if row.CacheCreationUnpriced {
+			unpricedCount++
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "",
 		"data": map[string]interface{}{
-			"prices":          readonlyPricingRows(optionMap, amountPerUnit),
-			"amount_per_unit": amountPerUnit,
-			"unit":            "1M tokens",
+			"prices":               rows,
+			"amount_per_unit":      amountPerUnit,
+			"unit":                 "1M tokens",
+			"cache_creation_mode":  currentCacheCreationMode(),
+			"unpriced_model_count": unpricedCount,
 		},
 	})
+}
+
+// currentCacheCreationMode reports the active cache-creation billing mode for
+// display. It re-reads BILLING_CACHE_CREATION_MODE with the same default-observe
+// rule as billing biz.resolveCacheCreationMode; admin is a separate process so
+// the value shown here is for operator awareness, not authoritative for
+// charging.
+func currentCacheCreationMode() string {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("BILLING_CACHE_CREATION_MODE"))) {
+	case "charge":
+		return "charge"
+	default:
+		return "observe"
+	}
 }
 
 func readonlyPricingRows(options map[string]string, quotaPerUnit float64) []readonlyPricingRow {
@@ -1168,6 +1201,18 @@ func readonlyPricingRows(options map[string]string, quotaPerUnit float64) []read
 		}
 		if price.CacheReadPrice != nil {
 			row.CacheReadPrice = floatPtr(*price.CacheReadPrice * readonlyPricingMTok)
+		}
+		if price.CacheCreation5mPrice != nil {
+			row.CacheCreation5mPrice = floatPtr(*price.CacheCreation5mPrice * readonlyPricingMTok)
+		}
+		if price.CacheCreation1hPrice != nil {
+			row.CacheCreation1hPrice = floatPtr(*price.CacheCreation1hPrice * readonlyPricingMTok)
+		}
+		// A model is "unpriced" for cache creation when it exposes neither
+		// 5m nor 1h cache-creation prices. Pure ratio-priced models are not
+		// flagged because cache creation was never part of their formula.
+		if price.CacheCreation5mPrice == nil && price.CacheCreation1hPrice == nil {
+			row.CacheCreationUnpriced = true
 		}
 		rows = append(rows, row)
 	}

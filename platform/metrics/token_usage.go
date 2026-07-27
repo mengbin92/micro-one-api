@@ -28,3 +28,22 @@ var TokenUsageParseAnomaly = prometheus.NewCounterVec(
 	},
 	[]string{"reason"},
 )
+
+// TokenUsageShadowCost records the cache-creation shadow cost (the delta
+// charge mode would add on top of the v0.10.2 cost) per request, so ops can
+// compare observe-mode traffic against vendor invoices before flipping
+// BILLING_CACHE_CREATION_MODE to charge (v0.11.0 ADR §5 / roadmap §1.3).
+//
+// Labels are deliberately low-cardinality: the billing mode (observe|charge)
+// and whether the request had unpriced cache-creation tokens. Model id and
+// request id stay in structured logs.
+var TokenUsageShadowCost = prometheus.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "relay",
+		Name:      "token_usage_shadow_cost",
+		Help:      "Cache-creation shadow cost (quota units) that charge mode would add",
+		Buckets:   []float64{0, 1, 10, 100, 1000, 10000, 100000, 1000000},
+	},
+	[]string{"mode", "unpriced"},
+)
