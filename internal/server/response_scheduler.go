@@ -32,7 +32,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 	if previousResponseID == "" {
 		return nil, false
 	}
-	if route, ok := s.server.lookupResponseRouteWithSticky(ctx, token, previousResponseID); ok {
+	if route, ok := s.server.lookupResponseRouteWithSticky(ctx, token, clientModel, previousResponseID); ok {
 		if s.server.identityClient == nil {
 			return nil, false
 		}
@@ -44,6 +44,23 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 			}
 			if !authAllowsModel(authSnapshot.AllowedModels, modelForPermission) {
 				return nil, false
+			}
+			if route.SubscriptionAccountID > 0 && route.Account == nil {
+				if s.server.relayUsecase == nil {
+					return nil, false
+				}
+				globalModel := strings.TrimSpace(route.GlobalModel)
+				if globalModel == "" {
+					globalModel = strings.TrimSpace(clientModel)
+				}
+				channel, account, resolveErr := s.server.relayUsecase.ResolveSubscriptionRoutingSource(
+					ctx, route.SubscriptionAccountID, authSnapshot.Group, clientModel, globalModel,
+				)
+				if resolveErr != nil {
+					return nil, false
+				}
+				route.Channel = *channel
+				route.Account = account
 			}
 			globalModel, resolvedModel := s.routeModels(route, clientModel)
 			return &relaybiz.RelayPlan{
@@ -57,6 +74,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 					TokenEnabled:  authSnapshot.TokenEnabled,
 				},
 				Channel:       &route.Channel,
+				Account:       route.Account,
 				GlobalModel:   globalModel,
 				ResolvedModel: resolvedModel,
 			}, true
@@ -74,7 +92,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 		return nil, false
 	}
 	var route responseRoute
-	if !s.server.lookupWSStickySessionRoute(ctx, token, sessionHash, &route) {
+	if !s.server.lookupWSStickySessionRoute(ctx, token, clientModel, sessionHash, &route) {
 		return nil, false
 	}
 	if s.server.identityClient == nil {
@@ -99,6 +117,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 			TokenEnabled:  authSnapshot.TokenEnabled,
 		},
 		Channel:       &route.Channel,
+		Account:       route.Account,
 		GlobalModel:   globalModel,
 		ResolvedModel: resolvedModel,
 	}, true
@@ -157,7 +176,7 @@ func (s *OpenAIWSRoutingScheduler) BindSession(ctx context.Context, plan *relayb
 	if sessionHash == "" {
 		return
 	}
-	s.server.wsSticky.BindSessionChannel(ctx, plan.Auth.Group, sessionHash, plan.Channel.ID, s.server.openAIWSStickyTTL())
+	s.server.wsSticky.BindSessionRoute(ctx, plan.Auth.Group, sessionHash, plan.Channel, s.server.openAIWSStickyTTL())
 }
 
 func authAllowsModel(allowedModels []string, model string) bool {

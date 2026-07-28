@@ -265,6 +265,7 @@ func TestRetryExecutor_FailoverDoesNotWidenToCatchAll(t *testing.T) {
 
 type trackingSelector struct {
 	first        *Channel
+	failover     *Channel // returned by SelectChannel(true) when non-nil
 	failoverErr  error
 	trueCalls    int
 	falseCalls   int
@@ -276,6 +277,9 @@ func newTrackingSelector() *trackingSelector { return &trackingSelector{} }
 func (m *trackingSelector) SelectChannel(_ context.Context, _, _ string, excludeFirst bool) (*Channel, error) {
 	if excludeFirst {
 		m.trueCalls++
+		if m.failover != nil {
+			return m.failover, nil
+		}
 		// No alternative tier available — mirrors SelectChannel returning
 		// ErrChannelNotFound on the failover path.
 		return nil, m.failoverErr
@@ -371,5 +375,120 @@ func TestRetryExecutor_AccountHealthIsNotAttributedToFallbackChannel(t *testing.
 	}
 	if len(sel.accountHealthCalls) != 1 || sel.accountHealthCalls[0].id != 42 || sel.accountHealthCalls[0].success {
 		t.Fatalf("account health calls = %+v, want only (42,false) for the known initial account", sel.accountHealthCalls)
+	}
+}
+
+// TestRetryExecutor_SameSourceRetryNotFallback verifies that retrying the
+// SAME channel (no alternative available) does NOT set Fallback=true on the
+// ExecuteResult. Only a genuine source switch counts as fallback (code review
+// HIGH-1).
+func TestRetryExecutor_SameSourceRetryNotFallback(t *testing.T) {
+	sel := newTrackingSelector()
+	sel.failoverErr = errors.New("no alternative") // selector returns no alt
+	sel.first = &Channel{ID: 5, Name: "primary"}
+	policy := &RetryPolicy{
+		MaxAttempts:     3,
+		InitialInterval: 1 * time.Millisecond,
+		MaxInterval:     5 * time.Millisecond,
+		Multiplier:      1.0,
+		RetryableStatus: map[int]bool{502: true},
+	}
+	exec := NewRetryExecutor(policy, sel)
+
+	result := exec.ExecuteWithInitialChannel(context.Background(), "default", "gpt-4", sel.first, func(_ context.Context, ch *Channel) error {
+		return &RetryableError{Status: 502, Err: errors.New("bad gateway")}
+	})
+	if result.Fallback {
+		t.Fatalf("same-source retry must NOT set Fallback=true; got Fallback=%v reason=%q", result.Fallback, result.FallbackReason)
+	}
+	if result.FirstErr != nil {
+		t.Fatalf("same-source retry must NOT set FirstErr; got %v", result.FirstErr)
+	}
+}
+
+// TestRetryExecutor_SourceSwitchSetsFallback verifies that switching to a
+// DIFFERENT channel after the first failure sets Fallback=true and captures
+// the FIRST error as FallbackReason source (code review HIGH-1).
+func TestRetryExecutor_SourceSwitchSetsFallback(t *testing.T) {
+	sel := newTrackingSelector()
+	sel.first = &Channel{ID: 5, Name: "primary"}
+	sel.failover = &Channel{ID: 9, Name: "secondary"} // different channel
+	policy := &RetryPolicy{
+		MaxAttempts:     2,
+		InitialInterval: 1 * time.Millisecond,
+		MaxInterval:     5 * time.Millisecond,
+		Multiplier:      1.0,
+		RetryableStatus: map[int]bool{503: true},
+	}
+	exec := NewRetryExecutor(policy, sel)
+
+	callCount := 0
+	result := exec.ExecuteWithInitialChannel(context.Background(), "default", "gpt-4", sel.first, func(_ context.Context, ch *Channel) error {
+		callCount++
+		if ch.ID == 5 {
+			return &RetryableError{Status: 503, Err: errors.New("first failure")}
+		}
+		return nil // second channel succeeds
+	})
+	if !result.Fallback {
+		t.Fatal("source switch must set Fallback=true")
+	}
+	if result.FirstErr == nil {
+		t.Fatal("source switch must capture FirstErr (the error that triggered the switch)")
+	}
+	if result.FallbackReason != "upstream_5xx" {
+		t.Fatalf("FallbackReason = %q, want %q (503 is 5xx)", result.FallbackReason, "upstream_5xx")
+	}
+	if result.Err != nil {
+		t.Fatalf("successful retry after switch should have Err=nil; got %v", result.Err)
+	}
+}
+
+func TestRetryExecutor_DifferentSourceKindsWithSameIDCountAsFallback(t *testing.T) {
+	initial := &Channel{ID: 5, SubscriptionAccountID: 5, Name: "subscription"}
+	fallback := &Channel{ID: 5, Name: "api-key-channel"}
+	sel := newTrackingSelector()
+	sel.first = initial
+	sel.failover = fallback
+	exec := NewRetryExecutor(&RetryPolicy{
+		MaxAttempts:     2,
+		InitialInterval: time.Nanosecond,
+		MaxInterval:     time.Nanosecond,
+		Multiplier:      1,
+		RetryableStatus: map[int]bool{503: true},
+	}, sel)
+
+	result := exec.ExecuteWithInitialChannel(context.Background(), "default", "gpt-4", initial, func(_ context.Context, ch *Channel) error {
+		if ch.SubscriptionAccountID > 0 {
+			return &RetryableError{Status: 503, Err: errors.New("subscription unavailable")}
+		}
+		return nil
+	})
+	if result.Err != nil {
+		t.Fatalf("retry failed: %v", result.Err)
+	}
+	if !result.Fallback {
+		t.Fatal("subscription-to-channel switch with the same numeric ID must count as fallback")
+	}
+	if result.Channel != fallback {
+		t.Fatalf("final channel = %+v, want ordinary channel", result.Channel)
+	}
+	if len(sel.healthEvents) != 1 || sel.healthEvents[0].channelID != fallback.ID || !sel.healthEvents[0].success {
+		t.Fatalf("channel health events = %+v, want only successful ordinary channel", sel.healthEvents)
+	}
+}
+
+func TestClassifyRetryFallbackReason_Timeout(t *testing.T) {
+	tests := []error{
+		context.DeadlineExceeded,
+		errors.New("upstream request timeout"),
+	}
+	for _, err := range tests {
+		if got := ClassifyRetryFallbackReason(err); got != "timeout" {
+			t.Errorf("ClassifyRetryFallbackReason(%v) = %q, want timeout", err, got)
+		}
+	}
+	if got := ClassifyRetryFallbackReason(errors.New("dial tcp: connection refused")); got != "network" {
+		t.Fatalf("network error classified as %q, want network", got)
 	}
 }

@@ -49,9 +49,11 @@ func TestCalculateCanonicalCost_5m1hPricingInChargeMode(t *testing.T) {
 	assert.False(t, bd.CacheCreationUnpriced)
 }
 
-// TestCalculateCanonicalCost_OnlyOneTTLPrice verifies that when only the 5m
-// price is set, the 1h tokens are unpriced and the whole breakdown collapses
-// to v0.10.2 (charge mode never bills unpriced tokens).
+// TestCalculateCanonicalCost_OnlyOneTTLPrice verifies the bucket-isolation
+// rule (v0.11.0 code review #6): when only the 5m price is set, the 1h
+// bucket is marked unpriced (contributes zero) but the 5m charge is STILL
+// included in CanonicalCost and ShadowCost. The old code collapsed the whole
+// breakdown to v0.10.2 on any unpriced bucket, discarding the priced bucket.
 func TestCalculateCanonicalCost_OnlyOneTTLPrice(t *testing.T) {
 	price := ModelPrice{
 		InputPrice:           0.001,
@@ -60,8 +62,26 @@ func TestCalculateCanonicalCost_OnlyOneTTLPrice(t *testing.T) {
 		// CacheCreation1hPrice intentionally nil
 	}
 	bd := calculateCanonicalCost(price, 100, 50, 0, 40, 70, 1.0, false)
-	assert.True(t, bd.CacheCreationUnpriced, "1h tokens unpriced -> whole breakdown unpriced")
-	assert.Equal(t, bd.V0_10_2Cost, bd.CanonicalCost)
+	// v0.10.2 raw = (100-0)*0.001 + 0*0.0001 + 50*0.002 = 0.1+0.1 = 0.2 ; *10000 = 2000
+	assert.Equal(t, int64(2000), bd.V0_10_2Cost)
+	// Canonical includes 5m charge: 0.2 + 40*0.00125 = 0.2+0.05 = 0.25 ; *10000 = 2500
+	// (1h contributes zero because unpriced)
+	assert.Equal(t, int64(2500), bd.CanonicalCost, "priced 5m bucket must be preserved")
+	assert.Equal(t, int64(500), bd.ShadowCost, "shadow = canonical - v0.10.2 = 2500-2000")
+	assert.True(t, bd.CacheCreationUnpriced, "1h tokens present without price -> unpriced flag set")
+}
+
+// TestCalculateCanonicalCost_BothTTLsUnpriced verifies that when both TTL
+// prices are nil, the breakdown equals v0.10.2 and is flagged unpriced.
+func TestCalculateCanonicalCost_BothTTLsUnpriced(t *testing.T) {
+	price := ModelPrice{
+		InputPrice:  0.001,
+		OutputPrice: 0.002,
+	}
+	bd := calculateCanonicalCost(price, 100, 50, 0, 40, 70, 1.0, false)
+	assert.True(t, bd.CacheCreationUnpriced)
+	assert.Equal(t, bd.V0_10_2Cost, bd.CanonicalCost, "no priced creation buckets -> canonical == v0.10.2")
+	assert.Equal(t, int64(0), bd.ShadowCost)
 }
 
 // TestCalculateCanonicalCost_NegativePriceClamped guards normalizeModelPrices

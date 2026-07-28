@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/channel/internal/biz"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // ── Model import/export service layer (v0.11.0 Phase 4) ───────────────────
@@ -60,10 +64,7 @@ func (s *ChannelService) ImportModels(ctx context.Context, req *channelv1.Import
 		return &channelv1.ImportModelsResponse{Success: false, Message: "model registry not enabled"}, nil
 	}
 	if req.GetSchemaVersion() != biz.ModelExchangeSchemaVersion {
-		return &channelv1.ImportModelsResponse{
-			Success: false,
-			Message: "schema version mismatch: expected " + biz.ModelExchangeSchemaVersion,
-		}, nil
+		return nil, status.Error(codes.InvalidArgument, "schema version mismatch: expected "+biz.ModelExchangeSchemaVersion)
 	}
 	models := protoToExportModels(req.GetModels(), req.GetImportPrices())
 	summary, err := uc.ImportModels(ctx, models, biz.ImportOptions{
@@ -71,7 +72,7 @@ func (s *ChannelService) ImportModels(ctx context.Context, req *channelv1.Import
 		ImportPrices:     req.GetImportPrices(),
 	})
 	if err != nil {
-		return nil, mapModelError(err)
+		return nil, mapModelExchangeError(err)
 	}
 	return importSummaryToResponse(summary), nil
 }
@@ -94,7 +95,7 @@ func (s *ChannelService) DryRunImportModels(ctx context.Context, req *channelv1.
 		ImportPrices:     req.GetImportPrices(),
 	})
 	if err != nil {
-		return nil, mapModelError(err)
+		return nil, mapModelExchangeError(err)
 	}
 	return &channelv1.ImportModelsDryRunResponse{
 		WouldSucceed: !summary.HasErrors(),
@@ -106,6 +107,20 @@ func (s *ChannelService) DryRunImportModels(ctx context.Context, req *channelv1.
 		Errors:       summary.Errors,
 		Results:      importResultsToProto(summary.Results),
 	}, nil
+}
+
+func mapModelExchangeError(err error) error {
+	switch {
+	case errors.Is(err, biz.ErrImportConflict):
+		return status.Error(codes.AlreadyExists, err.Error())
+	case errors.Is(err, biz.ErrImportSchemaVersion),
+		errors.Is(err, biz.ErrImportRecordLimit),
+		errors.Is(err, biz.ErrImportInvalidRecord),
+		errors.Is(err, biz.ErrInvalidConflictStrategy):
+		return status.Error(codes.InvalidArgument, err.Error())
+	default:
+		return mapModelError(err)
+	}
 }
 
 // ── DTO ↔ DO conversion ───────────────────────────────────────────────────

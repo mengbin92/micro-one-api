@@ -35,9 +35,9 @@ type PricingConfig struct {
 const AmountScale = 10000
 
 type ModelPrice struct {
-	InputPrice          float64  `json:"input_price"`
-	OutputPrice         float64  `json:"output_price"`
-	CacheReadPrice      *float64 `json:"cache_read_price,omitempty"`
+	InputPrice     float64  `json:"input_price"`
+	OutputPrice    float64  `json:"output_price"`
+	CacheReadPrice *float64 `json:"cache_read_price,omitempty"`
 	// CacheCreation5mPrice / CacheCreation1hPrice are optional per-token
 	// prices for the v0.11.0 cache-creation buckets
 	// (docs/design/token-usage-semantics.md §5). nil = unpriced: billing
@@ -101,20 +101,20 @@ type SubscriptionPrimatives interface {
 }
 
 type BillingUsecase struct {
-	accountRepo      AccountRepo
-	reservationRepo  ReservationRepo
-	ledgerRepo       LedgerRepo
-	redeemRepo       RedeemRepo
-	receivableRepo   ReceivableRepo
-	subscription     SubscriptionPrimatives
-	options          BillingOptions
-	pricingStore     PricingConfigStore
-	groupRatios      map[string]float64
-	modelRatios      map[string]float64
-	completionRatios map[string]float64
-	modelPrices        map[string]ModelPrice
-	upstreamPrices     map[string]ModelPrice
-	cacheCreationMode  CacheCreationMode
+	accountRepo       AccountRepo
+	reservationRepo   ReservationRepo
+	ledgerRepo        LedgerRepo
+	redeemRepo        RedeemRepo
+	receivableRepo    ReceivableRepo
+	subscription      SubscriptionPrimatives
+	options           BillingOptions
+	pricingStore      PricingConfigStore
+	groupRatios       map[string]float64
+	modelRatios       map[string]float64
+	completionRatios  map[string]float64
+	modelPrices       map[string]ModelPrice
+	upstreamPrices    map[string]ModelPrice
+	cacheCreationMode CacheCreationMode
 }
 
 func NewBillingUsecase(
@@ -141,15 +141,15 @@ func NewBillingUsecaseWithPricing(
 		groupRatios = DefaultGroupRatios()
 	}
 	return &BillingUsecase{
-		accountRepo:      accountRepo,
-		reservationRepo:  reservationRepo,
-		ledgerRepo:       ledgerRepo,
-		redeemRepo:       redeemRepo,
-		options:          BillingOptions{AccountRepo: accountRepo, ReservationRepo: reservationRepo, LedgerRepo: ledgerRepo, RedeemRepo: redeemRepo, AllowOverdraft: true},
-		pricingStore:     pricing.PricingStore,
-		groupRatios:      groupRatios,
-		modelRatios:      normalizePositiveRatios(pricing.ModelRatios),
-		completionRatios: normalizePositiveRatios(pricing.CompletionRatios),
+		accountRepo:       accountRepo,
+		reservationRepo:   reservationRepo,
+		ledgerRepo:        ledgerRepo,
+		redeemRepo:        redeemRepo,
+		options:           BillingOptions{AccountRepo: accountRepo, ReservationRepo: reservationRepo, LedgerRepo: ledgerRepo, RedeemRepo: redeemRepo, AllowOverdraft: true},
+		pricingStore:      pricing.PricingStore,
+		groupRatios:       groupRatios,
+		modelRatios:       normalizePositiveRatios(pricing.ModelRatios),
+		completionRatios:  normalizePositiveRatios(pricing.CompletionRatios),
 		modelPrices:       normalizeModelPrices(pricing.ModelPrices),
 		upstreamPrices:    normalizeModelPrices(pricing.UpstreamPrices),
 		cacheCreationMode: resolveCacheCreationMode(),
@@ -1433,6 +1433,11 @@ func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, mod
 		breakdown := calculateCanonicalCost(price, prompt, completion, cacheRead, usage.CacheCreation5mTokens, usage.CacheCreation1hTokens, uc.getGroupRatio(pricing, group), usage.PromptExclusive)
 		uc.recordCacheCreationCostSignal(ctx, model, breakdown)
 		if uc.CacheCreationBillingMode() == CacheCreationModeCharge {
+			// In charge mode the user pays the canonical cost. An unpriced
+			// cache-creation bucket contributes zero (tokens present but no
+			// price configured); priced buckets still charge. This means
+			// partial pricing does not silently zero the whole charge, and
+			// CacheCreationUnpriced signals the config gap to ops.
 			return breakdown.CanonicalCost
 		}
 		return breakdown.V0_10_2Cost
@@ -1604,9 +1609,9 @@ type canonicalCostBreakdown struct {
 	ShadowCost int64
 	// CacheCreationUnpriced is true when any cache-creation tokens were
 	// observed but no corresponding price was configured. The tokens are still
-	// counted (for display) but not charged even in charge mode; instead they
-	// fall back to the v0.10.2 cost so missing config never silently raises a
-	// user's bill.
+	// counted (for display), but each unpriced bucket contributes zero even in
+	// charge mode. Independently priced cache-creation buckets still contribute
+	// to CanonicalCost.
 	CacheCreationUnpriced bool
 }
 
@@ -1668,12 +1673,14 @@ func calculateCanonicalCost(price ModelPrice, promptTokens, completionTokens, ca
 	}
 
 	v0_10_2Cost := ceilPositiveCost(v0_10_2Raw * AmountScale)
+	// Canonical cost accumulates cache-creation charges ONLY for priced
+	// buckets. An unpriced bucket (tokens > 0 but nil price) contributes zero
+	// to creationRaw and is flagged via CacheCreationUnpriced so charge-mode
+	// eligibility can gate the user charge independently. The priced buckets
+	// are never discarded: if 5m is priced but 1h is not, the 5m charge still
+	// flows into Canonical/Shadow/Upstream cost (roadmap: 5m/1h are
+	// independent optional price buckets).
 	canonicalCost := ceilPositiveCost(creationRaw * AmountScale)
-	// When unpriced, canonical collapses to v0.10.2 so charge mode never raises
-	// a bill from missing config.
-	if unpriced {
-		canonicalCost = v0_10_2Cost
-	}
 	return canonicalCostBreakdown{
 		V0_10_2Cost:           v0_10_2Cost,
 		CanonicalCost:         canonicalCost,

@@ -1,13 +1,17 @@
 package server
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/admin/internal/service"
+	"micro-one-api/platform/metrics"
 )
 
 // ── v0.11.0 Phase 3 §3.6: routing operations view ──────────────────────────
@@ -15,9 +19,8 @@ import (
 // GET /api/admin/routing-ops returns a single-call operations snapshot:
 //   - traffic + cost split by source kind (channel vs subscription), from the
 //     billing ledger AggregateUsage RPC
-//   - fallback / error rates (from Prometheus metrics; the frontend reads
-//     /metrics directly for live dashboards, but this endpoint surfaces the
-//     ledger-backed absolute numbers so the view is useful without a scraper)
+//   - fallback / error rates from relay-gateway metrics queried through
+//     Prometheus for the same time window
 //   - cache read/creation tokens
 //   - gross profit (revenue − upstream cost)
 //   - unpriced routed model count (Phase 2 §2.2)
@@ -27,12 +30,29 @@ import (
 
 // routingOpsView is the /api/admin/routing-ops response body.
 type routingOpsView struct {
-	Success bool              `json:"success"`
-	Window  routingOpsWindow  `json:"window"`
-	Sources []routingOpsSource `json:"sources"`
-	Totals  routingOpsTotals  `json:"totals"`
-	Unpriced routingOpsUnpriced `json:"unpriced"`
-	Alerts  []routingOpsAlert `json:"alerts"`
+	Success   bool               `json:"success"`
+	Partial   bool               `json:"partial,omitempty"`
+	Errors    []string           `json:"errors,omitempty"`
+	Window    routingOpsWindow   `json:"window"`
+	Sources   []routingOpsSource `json:"sources"`
+	Truncated bool               `json:"truncated,omitempty"`
+	Totals    routingOpsTotals   `json:"totals"`
+	Rates     routingOpsRates    `json:"rates"`
+	Unpriced  routingOpsUnpriced `json:"unpriced"`
+	Alerts    []routingOpsAlert  `json:"alerts"`
+}
+
+// routingOpsRates carries routing outcomes for the same window as the billing
+// aggregates. Values come from relay-gateway counters queried through
+// Prometheus, not from admin-api's unrelated local registry.
+type routingOpsRates struct {
+	SelectionTotal   float64 `json:"selection_total"`
+	SuccessTotal     float64 `json:"success_total"`
+	ErrorTotal       float64 `json:"error_total"`
+	ClientErrorTotal float64 `json:"client_error_total"`
+	FallbackTotal    float64 `json:"fallback_total"`
+	ErrorRate        float64 `json:"error_rate"`
+	FallbackRate     float64 `json:"fallback_rate"`
 }
 
 type routingOpsWindow struct {
@@ -67,8 +87,13 @@ type routingOpsTotals struct {
 	CacheCreation5mTokens int64 `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int64 `json:"cache_creation_1h_tokens"`
 	Count                 int64 `json:"count"`
-	ChannelCount          int64 `json:"channel_count"`
-	SubscriptionCount     int64 `json:"subscription_count"`
+	// ChannelCount and SubscriptionCount are the GLOBAL request counts split by
+	// source kind (not affected by the Top-N bucket truncation). They are
+	// sourced from a separate billing aggregation grouped by source kind only,
+	// so the channel/subscription traffic ratio is accurate even when there are
+	// more than 200 individual sources (code review MEDIUM-2).
+	ChannelCount      int64 `json:"channel_count"`
+	SubscriptionCount int64 `json:"subscription_count"`
 }
 
 type routingOpsUnpriced struct {
@@ -97,19 +122,46 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 	}
 
 	now := time.Now().Unix()
-	start := parseUnixQS(r, "start", now-24*60*60) // default: last 24h
-	end := parseUnixQS(r, "end", now)
+	start, err := parseUnixQS(r, "start", now-24*60*60) // default: last 24h
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	end, err := parseUnixQS(r, "end", now)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if end <= start {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end must be greater than start"})
+		return
+	}
+	const maxRoutingOpsWindow = 31 * 24 * 60 * 60
+	if end-start > maxRoutingOpsWindow {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "routing operations window cannot exceed 31 days"})
+		return
+	}
 
 	// Aggregate by channel first (regular channels have channel_id > 0 and
 	// subscription_account_id = 0; subscription accounts have
-	// subscription_account_id > 0). We issue two AggregateUsage calls and
-	// split the buckets by which id column is set.
+	// subscription_account_id > 0). The billing RPC returns both the bucket
+	// list (capped at Top-N) AND the global totals (unaffected by the cap).
+	// We use the billing totals directly so the ops view never under-reports
+	// when there are more than N sources (code review #7).
 	view := routingOpsView{
 		Success: true,
 		Window:  routingOpsWindow{Start: start, End: end},
 	}
-	channelBuckets, err := svc.AggregateUsageGroupedByChannel(r.Context(), start, end)
-	if err == nil {
+	channelBuckets, billingTotals, err := svc.AggregateUsageGroupedByChannel(r.Context(), start, end)
+	if err != nil {
+		// Surface the billing dependency failure instead of silently returning
+		// zero-data success (code review #7). The view is still returned so
+		// the frontend can render the error banner, but success=false + the
+		// error message makes the failure observable.
+		view.Success = false
+		view.Partial = true
+		view.Errors = append(view.Errors, "billing aggregation failed: "+err.Error())
+	} else {
 		for _, b := range channelBuckets {
 			kind := "channel"
 			if b.SubscriptionAccountID > 0 {
@@ -129,22 +181,38 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 				Count:                 b.Count,
 			})
 		}
-	}
-	// Totals across all sources.
-	for _, s := range view.Sources {
-		view.Totals.Quota += s.Quota
-		view.Totals.UpstreamCost += s.UpstreamCost
-		view.Totals.GrossProfit += s.GrossProfit
-		view.Totals.PromptTokens += s.PromptTokens
-		view.Totals.CompletionTokens += s.CompletionTokens
-		view.Totals.CacheReadTokens += s.CacheReadTokens
-		view.Totals.CacheCreation5mTokens += s.CacheCreation5mTokens
-		view.Totals.CacheCreation1hTokens += s.CacheCreation1hTokens
-		view.Totals.Count += s.Count
-		if s.SourceKind == "channel" {
-			view.Totals.ChannelCount += s.Count
+		// Mark truncation when the bucket count hits the limit.
+		if len(channelBuckets) >= 200 {
+			view.Truncated = true
+		}
+		// Use the billing-level global totals (not the re-summed bucket list).
+		view.Totals.Quota = billingTotals.Quota
+		view.Totals.UpstreamCost = billingTotals.UpstreamCost
+		view.Totals.GrossProfit = billingTotals.GrossProfit
+		view.Totals.PromptTokens = billingTotals.PromptTokens
+		view.Totals.CompletionTokens = billingTotals.CompletionTokens
+		view.Totals.CacheReadTokens = billingTotals.CacheReadTokens
+		view.Totals.CacheCreation5mTokens = billingTotals.CacheCreation5mTokens
+		view.Totals.CacheCreation1hTokens = billingTotals.CacheCreation1hTokens
+		view.Totals.Count = billingTotals.Count
+		// Channel-vs-subscription split: derive from the bucket list as a
+		// best-effort approximate when not truncated. When truncated, the
+		// frontend displays the ratio with a note that it is approximate.
+		// The global totals (Quota/Count/etc.) are always accurate because
+		// they come from billingTotals.
+		if !view.Truncated {
+			for _, s := range view.Sources {
+				if s.SourceKind == "channel" {
+					view.Totals.ChannelCount += s.Count
+				} else {
+					view.Totals.SubscriptionCount += s.Count
+				}
+			}
 		} else {
-			view.Totals.SubscriptionCount += s.Count
+			// When truncated, mark counts as approximate by using -1 sentinel
+			// so the frontend can display "N/A (truncated)".
+			view.Totals.ChannelCount = -1
+			view.Totals.SubscriptionCount = -1
 		}
 	}
 	// Unpriced routed model count (Phase 2 §2.2) so the ops view surfaces the
@@ -156,12 +224,40 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 	}); err == nil && resp != nil {
 		view.Unpriced.RoutedButUnpriced = resp.GetTotal()
 		unpricedResp = resp
+	} else if err != nil {
+		// Surface the channel-service dependency failure (code review #7).
+		view.Partial = true
+		view.Errors = append(view.Errors, "unpriced model query failed: "+err.Error())
 	}
 
-	// v0.11.0 Phase 3 §3.7: compute routing alert conditions from the data
-	// already loaded for this view. These are threshold-based observation
-	// alerts surfaced in-line (no separate delivery path); the frontend
-	// renders them as a warning banner.
+	prometheusURL := strings.TrimSpace(os.Getenv("PROMETHEUS_URL"))
+	if prometheusURL == "" {
+		view.Partial = true
+		view.Errors = append(view.Errors, "routing metrics unavailable: PROMETHEUS_URL is not configured")
+	} else {
+		metricsCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		rates, metricsErr := metrics.QueryRoutingRates(metricsCtx, &http.Client{Timeout: 3 * time.Second}, prometheusURL, start, end)
+		cancel()
+		if metricsErr != nil {
+			view.Partial = true
+			view.Errors = append(view.Errors, "routing metrics query failed: "+metricsErr.Error())
+		} else {
+			view.Rates = routingOpsRates{
+				SelectionTotal:   rates.SelectionTotal,
+				SuccessTotal:     rates.SuccessTotal,
+				ErrorTotal:       rates.ErrorTotal,
+				ClientErrorTotal: rates.ClientErrorTotal,
+				FallbackTotal:    rates.FallbackTotal,
+			}
+			if rates.SelectionTotal > 0 {
+				view.Rates.ErrorRate = (rates.ErrorTotal + rates.ClientErrorTotal) / rates.SelectionTotal
+				view.Rates.FallbackRate = rates.FallbackTotal / rates.SelectionTotal
+			}
+		}
+	}
+
+	// Compute alerts only after every data source has populated the view. In
+	// particular, error/fallback alerts depend on the Prometheus rates above.
 	view.Alerts = computeRoutingOpsAlerts(view, unpricedResp)
 
 	writeJSON(w, http.StatusOK, view)
@@ -175,22 +271,25 @@ func sourceIDOf(b service.UsageAggregateView) int64 {
 }
 
 // parseUnixQS parses a unix-seconds query parameter with a default.
-func parseUnixQS(r *http.Request, key string, def int64) int64 {
+func parseUnixQS(r *http.Request, key string, def int64) (int64, error) {
 	v := strings.TrimSpace(r.URL.Query().Get(key))
 	if v == "" {
-		return def
+		return def, nil
 	}
 	var n int64
 	for _, c := range v {
 		if c < '0' || c > '9' {
-			return def
+			return 0, fmt.Errorf("%s must be a positive unix timestamp", key)
+		}
+		if n > (1<<63-1-int64(c-'0'))/10 {
+			return 0, fmt.Errorf("%s is out of range", key)
 		}
 		n = n*10 + int64(c-'0')
 	}
 	if n <= 0 {
-		return def
+		return 0, fmt.Errorf("%s must be a positive unix timestamp", key)
 	}
-	return n
+	return n, nil
 }
 
 // computeRoutingOpsAlerts evaluates the Phase 3 §3.7 alert conditions against
@@ -218,27 +317,23 @@ func computeRoutingOpsAlerts(view routingOpsView, unpriced *channelv1.ListUnpric
 		})
 	}
 
-	// 2. Sources with revenue but zero upstream cost (cost key missing).
-	totalSources := len(view.Sources)
-	costMissingSources := 0
-	for _, src := range view.Sources {
-		if src.Quota > 0 && src.UpstreamCost == 0 {
-			costMissingSources++
-		}
-	}
-	if costMissingSources > 0 {
+	// 2. Upstream cost missing: when total revenue > 0 but total upstream
+	// cost == 0, the cost key is missing. This uses the GLOBAL totals (not
+	// the truncated bucket list) so the alert fires even when the missing
+	// sources are beyond the Top-N window (code review MEDIUM-2).
+	if view.Totals.Quota > 0 && view.Totals.UpstreamCost == 0 {
 		alerts = append(alerts, routingOpsAlert{
 			Kind:     "upstream_cost_missing",
 			Severity: "warning",
-			Message:  "有收入的来源缺少上游成本配置",
-			Detail:   strconv.Itoa(costMissingSources) + "/" + strconv.Itoa(totalSources) + " sources",
+			Message:  "有收入但上游成本为零",
+			Detail:   "total quota = " + strconv.FormatInt(view.Totals.Quota, 10) + ", upstream_cost = 0",
 		})
 	}
 
 	// 3. Source skew: a single source handles >80% of traffic when there are
-	//    2+ active sources. This flags a weight/priority misconfiguration
-	//    rather than a hard error.
-	if totalSources >= 2 && view.Totals.Count > 0 {
+	//    2+ active sources. Only checked when NOT truncated so the percentage
+	//    is accurate (code review MEDIUM-2).
+	if !view.Truncated && len(view.Sources) >= 2 && view.Totals.Count > 0 {
 		for _, src := range view.Sources {
 			share := float64(src.Count) / float64(view.Totals.Count)
 			if share > 0.80 {

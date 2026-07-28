@@ -45,7 +45,7 @@ func TestExtractSessionHashFromRequestPrefersHeader(t *testing.T) {
 
 func TestLookupResponseRouteWithStickyRejectsNonResponseIDs(t *testing.T) {
 	srv := &HTTPServer{}
-	if _, ok := srv.lookupResponseRouteWithSticky(nil, "token", "msg_123"); ok {
+	if _, ok := srv.lookupResponseRouteWithSticky(nil, "token", "", "msg_123"); ok {
 		t.Fatal("expected non-response id to be rejected")
 	}
 }
@@ -56,7 +56,7 @@ func TestLookupResponseRouteWithStickyPrefersLocalRoute(t *testing.T) {
 			"resp_123": {route: responseRoute{Model: "gpt-5"}, expiresAt: time.Now().Add(time.Hour)},
 		},
 	}
-	route, ok := srv.lookupResponseRouteWithSticky(nil, "token", "resp_123")
+	route, ok := srv.lookupResponseRouteWithSticky(nil, "token", "", "resp_123")
 	if !ok {
 		t.Fatal("expected local route hit")
 	}

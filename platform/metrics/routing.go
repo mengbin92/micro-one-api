@@ -12,15 +12,34 @@ import "github.com/prometheus/client_golang/prometheus"
 // other}. Channel/account/model identifiers stay in the structured
 // SelectionEvent / log, never in Prometheus labels.
 
-// RoutingSelectionTotal counts source-selection outcomes at the Plan()
-// boundary. Use source_kind + result to compute traffic share by source and
-// the channel-vs-subscription ratio.
+// RoutingSelectionPlanned counts source selections at the Plan() boundary
+// BEFORE execution. It is incremented exactly once per request at plan time
+// so ops can see selection volume independent of execution outcome. Use this
+// (NOT RoutingSelectionTotal) as the denominator for selection-time metrics
+// like sticky-hit rate. RoutingSelectionTotal is the execution-outcome
+// counter and is incremented once AFTER the upstream call returns.
+var RoutingSelectionPlanned = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "routing",
+		Name:      "selection_planned_total",
+		Help:      "Source selections at the Plan boundary (before execution); source_kind × provider_family",
+	},
+	[]string{"source_kind", "provider_family"},
+)
+
+// RoutingSelectionTotal counts source-selection OUTCOMES at the execution
+// boundary (after the upstream call returns). Each request increments this
+// exactly once with result ∈ {success, error, client_error}. Use
+// source_kind + result to compute traffic share by source, success rate and
+// error rate. For selection-only volume (before execution), use
+// RoutingSelectionPlanned.
 var RoutingSelectionTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "micro_one_api",
 		Subsystem: "routing",
 		Name:      "selection_total",
-		Help:      "Source-selection outcomes at the Plan boundary (source_kind × result × provider_family)",
+		Help:      "Source-selection outcomes at the execution boundary (source_kind × result × provider_family)",
 	},
 	[]string{"source_kind", "result", "provider_family"},
 )

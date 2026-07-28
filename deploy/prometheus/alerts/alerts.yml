@@ -233,9 +233,9 @@ groups:
       - alert: UpstreamCostMissing
         expr: |
           (
-            rate(micro_one_api_routing_selection_total{result="success"}[15m])
-            - on(provider_family)
-            rate(micro_one_api_billing_ledger_upstream_cost_recorded{result="priced"}[15m])
+            sum by (provider_family) (rate(micro_one_api_routing_selection_total{result="success"}[15m]))
+            -
+            sum by (provider_family) (rate(micro_one_api_billing_ledger_upstream_cost_recorded{result="priced"}[15m]))
           ) > 0
         for: 15m
         labels:

@@ -459,6 +459,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 	clientModel := anthropicReq.Model
 	ccReq.Model = plan.ResolvedModel
 
+	retryStartedAt := time.Now()
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
 	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
@@ -540,6 +541,9 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		s.writeJSON(w, http.StatusOK, anthropicResp)
 		return nil
 	})
+
+	// Finalize routing selection outcome (code review #1/#2).
+	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
 
 	if result.Err != nil {
 		s.writeAnthropicError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")

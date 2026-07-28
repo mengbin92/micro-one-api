@@ -35,6 +35,19 @@ func NewMetricsSelectionRecorder(log *zap.Logger) *MetricsSelectionRecorder {
 // RecordSelection emits the Prometheus metrics and the structured log entry.
 // It never returns an error and never panics: the hot path must not block on
 // observability.
+//
+// Metric emission is split by the Planned flag (code review #1):
+//   - Planned event (Plan boundary, before execution): increments
+//     RoutingSelectionPlanned and records RoutingSelectionDuration only.
+//     RoutingSelectionTotal / StickyHit / Fallback are NOT incremented here —
+//     they are outcome metrics that fire once at the execution boundary.
+//   - Non-planned event (execution finalized via FinalizeSelectionResult):
+//     increments RoutingSelectionTotal (with the real result), StickyHit and
+//     Fallback exactly once.
+//
+// Both emissions write a structured log so the full selection+execution
+// picture is traceable. The structured log is safe to emit twice because it
+// carries the Planned flag and (at execution time) the result/elapsed.
 func (r *MetricsSelectionRecorder) RecordSelection(ctx context.Context, event SelectionEvent) {
 	if r == nil {
 		return
@@ -45,28 +58,34 @@ func (r *MetricsSelectionRecorder) RecordSelection(ctx context.Context, event Se
 	}
 	result := event.Result
 	if result == "" {
-		// A selection event without an execution result is a successful
-		// selection (the execution boundary may fill Result later).
-		result = "success"
+		result = "pending"
 	}
 
 	// ── Prometheus metrics (low-cardinality labels only) ──
-	if metrics.RoutingSelectionTotal != nil {
-		metrics.RoutingSelectionTotal.WithLabelValues(sourceKind, result, event.ProviderFamily).Inc()
-	}
-	if event.StickyHit && metrics.RoutingStickyHitTotal != nil {
-		metrics.RoutingStickyHitTotal.WithLabelValues(event.ProviderFamily).Inc()
-	}
-	if event.Fallback && metrics.RoutingFallbackTotal != nil {
-		reason := event.FallbackReason
-		if reason == "" {
-			reason = "unknown"
+	if event.Planned {
+		// Plan-boundary: selection happened, execution has not run yet.
+		if metrics.RoutingSelectionPlanned != nil {
+			metrics.RoutingSelectionPlanned.WithLabelValues(sourceKind, event.ProviderFamily).Inc()
 		}
-		metrics.RoutingFallbackTotal.WithLabelValues(reason, event.ProviderFamily).Inc()
-	}
-	if event.ElapsedMS > 0 && metrics.RoutingSelectionDuration != nil {
-		metrics.RoutingSelectionDuration.WithLabelValues(sourceKind).
-			Observe(float64(event.ElapsedMS) / 1000.0)
+		if event.ElapsedMS > 0 && metrics.RoutingSelectionDuration != nil {
+			metrics.RoutingSelectionDuration.WithLabelValues(sourceKind).
+				Observe(float64(event.ElapsedMS) / 1000.0)
+		}
+	} else {
+		// Execution-boundary: the real outcome is known. These fire once.
+		if metrics.RoutingSelectionTotal != nil {
+			metrics.RoutingSelectionTotal.WithLabelValues(sourceKind, result, event.ProviderFamily).Inc()
+		}
+		if event.StickyHit && metrics.RoutingStickyHitTotal != nil {
+			metrics.RoutingStickyHitTotal.WithLabelValues(event.ProviderFamily).Inc()
+		}
+		if event.Fallback && metrics.RoutingFallbackTotal != nil {
+			reason := event.FallbackReason
+			if reason == "" {
+				reason = "unknown"
+			}
+			metrics.RoutingFallbackTotal.WithLabelValues(reason, event.ProviderFamily).Inc()
+		}
 	}
 
 	// ── Structured log (full detail, including high-cardinality ids) ──
@@ -79,6 +98,7 @@ func (r *MetricsSelectionRecorder) RecordSelection(ctx context.Context, event Se
 			zap.Int64("source_id", event.FinalSourceID),
 			zap.String("result", result),
 			zap.String("provider_family", event.ProviderFamily),
+			zap.Bool("planned", event.Planned),
 			zap.Bool("sticky_hit", event.StickyHit),
 			zap.Int64("priority_tier", event.PriorityTier),
 			zap.Strings("candidate_kinds", event.CandidateKinds),
@@ -103,11 +123,12 @@ func (r *MetricsSelectionRecorder) RecordSelection(ctx context.Context, event Se
 var _ SelectionRecorder = (*MetricsSelectionRecorder)(nil)
 
 // FinalizeSelectionResult fills in the execution-boundary fields (Result,
-// Fallback, FallbackReason, ElapsedMS) of a SelectionEvent and re-emits it.
-// The server layer calls this after the upstream call returns so the
-// selection + execution boundaries share one event for correlation. The
-// selection-boundary event is emitted in Plan(); this second emission carries
-// the execution outcome.
+// Fallback, FallbackReason, ElapsedMS) of a SelectionEvent and re-emits it as
+// a non-planned (execution-outcome) event. The server layer calls this after
+// the upstream call returns so the outcome metrics (RoutingSelectionTotal,
+// StickyHit, Fallback) fire exactly once. The Plan-boundary event was already
+// emitted as planned; this second emission carries the execution result and
+// clears the Planned flag so the recorder routes it to the outcome counters.
 func FinalizeSelectionResult(recorder SelectionRecorder, event SelectionEvent, result, fallbackReason string, fallback bool, elapsed time.Duration) {
 	if recorder == nil {
 		return
@@ -116,5 +137,6 @@ func FinalizeSelectionResult(recorder SelectionRecorder, event SelectionEvent, r
 	event.Fallback = fallback
 	event.FallbackReason = fallbackReason
 	event.ElapsedMS = elapsed.Milliseconds()
+	event.Planned = false
 	recorder.RecordSelection(context.Background(), event)
 }

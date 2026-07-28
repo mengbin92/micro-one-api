@@ -54,12 +54,19 @@ type SelectionEvent struct {
 	Fallback       bool
 	FallbackReason string
 	// Result is "success" / "error" / "client_error" (low cardinality).
+	// Empty at Plan time (before execution); FinalizeSelectionResult fills it.
 	Result string
 	// ProviderFamily is the coarse provider family ("openai", "anthropic",
 	// "google", "zhipu", ...) derived from the model; safe for labels.
 	ProviderFamily string
 	// ElapsedMS is the wall-clock selection+execution latency.
 	ElapsedMS int64
+	// Planned marks a Plan-boundary event (emitted before execution). The
+	// recorder uses it to split metrics: planned events increment
+	// RoutingSelectionPlanned only; execution-finalized events increment
+	// RoutingSelectionTotal / StickyHit / Fallback once. Without this split,
+	// every request double-counts routing_selection_total (code review #1).
+	Planned bool
 	// At is when the event was emitted.
 	At time.Time
 }

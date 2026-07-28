@@ -70,7 +70,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	previousResponseID := extractPreviousResponseID(body)
 	sessionHash := extractSessionHashFromRequest(r, body)
 	if clientModel == "" {
-		if previousRoute, ok := s.lookupResponseRouteWithSticky(r.Context(), token, previousResponseID); ok {
+		if previousRoute, ok := s.lookupResponseRouteWithSticky(r.Context(), token, "", previousResponseID); ok {
 			s.forwardResponsesToStoredRoute(w, r, upstreamPath, body, token, previousRoute, isRawStreamRequest(body))
 			return
 		}
@@ -103,6 +103,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 
 	var upstreamResp *relayprovider.RawResponse
 	var responseChannel *relaybiz.Channel
+	retryStartedAt := time.Now()
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
 	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
@@ -229,7 +230,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				IsStream:         true,
 			}
 			logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
-				if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+			if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
 				logUpstreamUsage(logInput)
@@ -350,6 +351,9 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		responseChannel = ch
 		return nil
 	})
+
+	// Finalize routing selection outcome (code review #1/#2).
+	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
 
 	if result.Err != nil {
 		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")

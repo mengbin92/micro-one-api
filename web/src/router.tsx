@@ -62,6 +62,9 @@ const AdminChannelHealthPage = lazy(() =>
 const AdminCostAnalysisPage = lazy(() =>
   import('@/pages/admin/CostAnalysisPage').then((m) => ({ default: m.CostAnalysisPage }))
 );
+const AdminRoutingOpsPage = lazy(() =>
+  import('@/pages/admin/RoutingOpsPage').then((m) => ({ default: m.RoutingOpsPage }))
+);
 
 function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<PageLoading />}>{element}</Suspense>;
@@ -191,6 +194,10 @@ export const router = createBrowserRouter([
           {
             path: 'cost-analysis',
             element: withSuspense(<AdminCostAnalysisPage />),
+          },
+          {
+            path: 'routing-ops',
+            element: withSuspense(<AdminRoutingOpsPage />),
           },
         ],
       },

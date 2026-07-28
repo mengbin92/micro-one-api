@@ -9,6 +9,7 @@ import (
 	"time"
 
 	coderws "github.com/coder/websocket"
+	relaybiz "micro-one-api/internal/biz"
 )
 
 // dialCountingDialer is an openAIWSUpstreamDialer that counts how many times
@@ -192,6 +193,35 @@ func TestStickyStoreInMemoryOnly(t *testing.T) {
 	// Unknown response id.
 	if got := store.LookupResponseChannel(ctx, "default", "resp_unknown"); got != 0 {
 		t.Errorf("expected 0 for unknown, got %d", got)
+	}
+}
+
+func TestStickyStoreKeepsChannelAndSubscriptionNamespacesSeparate(t *testing.T) {
+	store := newOpenAIWSStickyStore(nil)
+	ctx := context.Background()
+
+	store.BindResponseRoute(ctx, "default", "resp-channel", &relaybiz.Channel{ID: 7}, time.Hour)
+	store.BindResponseRoute(ctx, "default", "resp-subscription", &relaybiz.Channel{ID: 7, SubscriptionAccountID: 7}, time.Hour)
+
+	channelSource := store.LookupResponseRoute(ctx, "default", "resp-channel")
+	if channelSource.kind != relaybiz.UpstreamRouteChannel || channelSource.id != 7 {
+		t.Fatalf("channel response source = %s:%d, want channel:7", channelSource.kind.String(), channelSource.id)
+	}
+	subscriptionSource := store.LookupResponseRoute(ctx, "default", "resp-subscription")
+	if subscriptionSource.kind != relaybiz.UpstreamRouteSubscription || subscriptionSource.id != 7 {
+		t.Fatalf("subscription response source = %s:%d, want subscription:7", subscriptionSource.kind.String(), subscriptionSource.id)
+	}
+	if got := store.LookupResponseChannel(ctx, "default", "resp-subscription"); got != 0 {
+		t.Fatalf("legacy channel lookup returned subscription id %d", got)
+	}
+
+	store.BindSessionRoute(ctx, "default", "session-channel", &relaybiz.Channel{ID: 7}, time.Hour)
+	store.BindSessionChannel(ctx, "default", "session-subscription", 7, time.Hour)
+	if got := store.LookupSessionRoute(ctx, "default", "session-channel"); got.kind != relaybiz.UpstreamRouteChannel || got.id != 7 {
+		t.Fatalf("channel session source = %s:%d, want channel:7", got.kind.String(), got.id)
+	}
+	if got := store.LookupSessionRoute(ctx, "default", "session-subscription"); got.kind != relaybiz.UpstreamRouteSubscription || got.id != 7 {
+		t.Fatalf("subscription session source = %s:%d, want subscription:7", got.kind.String(), got.id)
 	}
 }
 

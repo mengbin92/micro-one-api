@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -166,6 +167,20 @@ type ExecuteResult struct {
 	Channel *Channel
 	Err     error
 	Attempt int
+	// Fallback is true when the executor switched to a DIFFERENT source
+	// after the first attempt failed (not merely retried the same source).
+	// This is the authoritative signal for routing_fallback_total; callers
+	// must NOT infer fallback from Attempt > 0 alone.
+	Fallback bool
+	// FallbackReason is the low-cardinality cause of the FIRST failure that
+	// triggered the source switch ("upstream_5xx", "rate_limited", "network",
+	// ...). It is set even when the retried attempt succeeds, so the metric
+	// reflects why the switch happened, not the terminal error.
+	FallbackReason string
+	// FirstErr is the error from the first attempt that triggered the
+	// fallback. Nil when no fallback occurred. Used to classify the reason
+	// even when later attempts succeed.
+	FirstErr error
 }
 
 // Execute runs the provided function with retry and channel fallback.
@@ -220,6 +235,8 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 
 	var lastErr error
 	var lastChannel *Channel
+	var firstErr error // first failure that triggered a source switch
+	switched := false  // true when executor selected a DIFFERENT channel
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		// On retry, wait with backoff
@@ -227,7 +244,7 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 			wait := e.policy.BackoffDuration(attempt - 1)
 			select {
 			case <-ctx.Done():
-				return &ExecuteResult{Channel: lastChannel, Err: ctx.Err(), Attempt: attempt}
+				return &ExecuteResult{Channel: lastChannel, Err: ctx.Err(), Attempt: attempt, Fallback: switched, FirstErr: firstErr, FallbackReason: ClassifyRetryFallbackReason(firstErr)}
 			case <-time.After(wait):
 			}
 
@@ -236,12 +253,22 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 			// selected channel: transient upstream failures still need the
 			// configured retry budget, but SelectChannel(false) must not run
 			// because it could silently expand failover to a catch-all channel.
+			previous := lastChannel
 			ch, selErr := e.selector.SelectChannel(ctx, group, model, true)
 			if selErr == nil && ch != nil {
+				// A genuine source switch: the selector returned a different
+				// channel than the one that just failed. Only this counts as
+				// a fallback for routing_fallback_total.
+				if !SameRoutingSource(ch, previous) && firstErr == nil {
+					firstErr = lastErr
+					switched = true
+				}
 				lastChannel = ch
 			} else if lastChannel == nil {
-				return &ExecuteResult{Err: lastErr, Attempt: attempt}
+				return &ExecuteResult{Err: lastErr, Attempt: attempt, Fallback: switched, FirstErr: firstErr, FallbackReason: ClassifyRetryFallbackReason(firstErr)}
 			}
+			// If no alternative found, lastChannel stays the same — this is a
+			// same-source retry, NOT a fallback.
 		} else if initialChannel != nil {
 			lastChannel = initialChannel
 		} else {
@@ -258,7 +285,13 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 		responseTime := time.Since(startedAt).Milliseconds()
 		if err == nil {
 			e.recordHealth(ctx, lastChannel, true, "", responseTime)
-			return &ExecuteResult{Channel: lastChannel, Attempt: attempt}
+			return &ExecuteResult{
+				Channel:        lastChannel,
+				Attempt:        attempt,
+				Fallback:       switched,
+				FirstErr:       firstErr,
+				FallbackReason: ClassifyRetryFallbackReason(firstErr),
+			}
 		}
 
 		lastErr = err
@@ -266,15 +299,74 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 
 		// If not retryable, fail immediately
 		if !e.policy.IsRetryable(err) {
-			return &ExecuteResult{Channel: lastChannel, Err: err, Attempt: attempt}
+			return &ExecuteResult{
+				Channel:        lastChannel,
+				Err:            err,
+				Attempt:        attempt,
+				Fallback:       switched,
+				FirstErr:       firstErr,
+				FallbackReason: ClassifyRetryFallbackReason(firstErr),
+			}
 		}
 	}
 
-	return &ExecuteResult{Channel: lastChannel, Err: lastErr, Attempt: maxAttempts}
+	return &ExecuteResult{
+		Channel:        lastChannel,
+		Err:            lastErr,
+		Attempt:        maxAttempts,
+		Fallback:       switched,
+		FirstErr:       firstErr,
+		FallbackReason: ClassifyRetryFallbackReason(firstErr),
+	}
+}
+
+// ClassifyRetryFallbackReason maps the first-attempt error to a low-cardinality
+// fallback reason label. This is the authoritative reason for
+// routing_fallback_total — it reflects WHY the source switch happened, not the
+// terminal error. Returns "" when no fallback occurred (firstErr == nil).
+func ClassifyRetryFallbackReason(firstErr error) string {
+	if firstErr == nil {
+		return ""
+	}
+	status := UpstreamStatus(firstErr)
+	switch {
+	case status == 429:
+		return "rate_limited"
+	case status >= 500:
+		return "upstream_5xx"
+	case status == 0 && (errors.Is(firstErr, context.DeadlineExceeded) || isTimeoutError(firstErr)):
+		return "timeout"
+	case status == 0:
+		return "network"
+	default:
+		return "other"
+	}
+}
+
+// SameRoutingSource compares routing identities across the separate channel
+// and subscription-account ID namespaces.
+func SameRoutingSource(left, right *Channel) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	if left.SubscriptionAccountID > 0 || right.SubscriptionAccountID > 0 {
+		return left.SubscriptionAccountID > 0 &&
+			right.SubscriptionAccountID > 0 &&
+			left.SubscriptionAccountID == right.SubscriptionAccountID
+	}
+	return left.ID == right.ID
+}
+
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded")
 }
 
 func (e *RetryExecutor) recordHealth(ctx context.Context, ch *Channel, success bool, message string, responseTime int64) {
-	if e.selector == nil || ch == nil || ch.ID <= 0 {
+	if e.selector == nil || ch == nil || ch.ID <= 0 || ch.SubscriptionAccountID > 0 {
 		return
 	}
 	_ = e.selector.RecordChannelHealth(ctx, ch.ID, success, message, responseTime)

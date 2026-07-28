@@ -26,6 +26,7 @@ import (
 	"micro-one-api/pkg/safecast"
 	"micro-one-api/platform/http"
 	"micro-one-api/platform/metrics"
+	appmiddleware "micro-one-api/platform/middleware"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"google.golang.org/grpc/codes"
@@ -43,6 +44,16 @@ type adminWebAssets struct {
 // request so downstream handlers (e.g. /api/admin/access) can report it.
 type adminRoleContextKey struct{}
 
+// adminOperatorContextKey carries the authenticated operator identity as a
+// string. For a session-token admin it is the numeric user id; for the shared
+// ADMIN_TOKEN it is the sentinel "system/admin-token". Handlers that need a
+// numeric id call adminOperatorUserID, which returns 0 for the sentinel — a
+// contract identity-service treats as "system operator, bypass rank check".
+// Storing the operator in typed context (not a spoofable header) closes the
+// old hole where strconv.ParseInt silently turned the non-numeric sentinel
+// into 0 without distinguishing it from a real user id of 0.
+type adminOperatorContextKey struct{}
+
 // newAdminGuard returns a middleware that authorises admin requests using
 // either the shared ADMIN_TOKEN (system-level, treated as root) or a user
 // session token whose owner has role >= RoleAdmin. When the user-token path
@@ -55,7 +66,7 @@ type adminRoleContextKey struct{}
 func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.HandlerFunc {
 	adminToken := os.Getenv("ADMIN_TOKEN")
 	return func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
+		guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if !strings.HasPrefix(authHeader, "Bearer ") {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing or invalid authorization header"})
@@ -64,39 +75,70 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 
 			if adminToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(adminToken)) == 1 {
-				// Stamp a sentinel operator id so audit records (import/export,
-				// refunds, etc.) never have an empty actor. The sentinel is
-				// stable and distinguishable from a real numeric user id, so
-				// downstream consumers can tell this was a system-level
-				// ADMIN_TOKEN call (roadmap §4: no empty operator audit).
-				r.Header.Set("X-Operator-User-Id", "system/admin-token")
-				next(w, r.WithContext(context.WithValue(r.Context(), adminRoleContextKey{}, service.RoleRoot)))
+				// Stamp a sentinel operator identity in typed context so audit
+				// records (import/export, refunds, etc.) never have an empty
+				// actor. The sentinel is stable and distinguishable from a real
+				// numeric user id (roadmap §4: no empty operator audit).
+				ctx := context.WithValue(r.Context(), adminRoleContextKey{}, service.RoleRoot)
+				ctx = context.WithValue(ctx, adminOperatorContextKey{}, adminSystemOperator)
+				next(w, r.WithContext(ctx))
 				return
 			}
 
 			if svc != nil {
 				userID, role, err := svc.AuthorizeAdminToken(r.Context(), token)
 				if err == nil && role >= service.RoleAdmin {
-					r.Header.Set("X-Operator-User-Id", strconv.FormatInt(userID, 10))
-					next(w, r.WithContext(context.WithValue(r.Context(), adminRoleContextKey{}, role)))
+					ctx := context.WithValue(r.Context(), adminRoleContextKey{}, role)
+					ctx = context.WithValue(ctx, adminOperatorContextKey{}, strconv.FormatInt(userID, 10))
+					next(w, r.WithContext(ctx))
 					return
 				}
 			}
 
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid admin credentials"})
-		}
+		})
+		// Audit-sensitive admin handlers consume the sanitized request ID from
+		// context rather than trusting a raw client header.
+		withRequestID := appmiddleware.RequestID(guarded)
+		return withRequestID.ServeHTTP
 	}
 }
 
-// adminOperatorIDFromRequest returns the authenticated admin's user id, which
-// newAdminGuard stamps onto the X-Operator-User-Id header after validating the
-// bearer token. Admin-only handlers use it so audit fields (e.g. the refund
-// operator id) reflect the real caller instead of a client-supplied value.
+// adminSystemOperator is the sentinel operator identity stamped for requests
+// authenticated with the shared ADMIN_TOKEN. It is non-numeric so it can never
+// collide with a real user id and so callers that need an int64 (e.g.
+// identity-service OperatorUserId) can treat it as a "system" call.
+const adminSystemOperator = "system/admin-token"
+
+// adminOperatorIDFromRequest returns the authenticated operator identity from
+// typed request context. For a session-token admin it is the numeric user id;
+// for the shared ADMIN_TOKEN it is the sentinel "system/admin-token". It is
+// never empty after the guard runs (roadmap §4). Admin-only handlers use it so
+// audit fields reflect the real caller instead of a client-supplied value.
 func adminOperatorIDFromRequest(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
-	return strings.TrimSpace(r.Header.Get("X-Operator-User-Id"))
+	v, _ := r.Context().Value(adminOperatorContextKey{}).(string)
+	return v
+}
+
+// adminOperatorUserID returns the authenticated operator's numeric user id, or
+// 0 when the request was authenticated with the shared ADMIN_TOKEN (the system
+// sentinel). Callers that pass the id to downstream services (e.g.
+// identity-service OperatorUserId) use this; 0 means "system operator". This
+// replaces the old strconv.ParseInt(header) path that silently turned the
+// non-numeric sentinel into 0 without an explicit contract.
+func adminOperatorUserID(r *http.Request) int64 {
+	id := adminOperatorIDFromRequest(r)
+	if id == "" || id == adminSystemOperator {
+		return 0
+	}
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // NewHTTPServer wires HTTP transport for admin-api.
@@ -1889,7 +1931,7 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 		if req.Action == "demote" {
 			newRole = 1 // common user
 		}
-		operatorID, _ := strconv.ParseInt(strings.TrimSpace(r.Header.Get("X-Operator-User-Id")), 10, 64)
+		operatorID := adminOperatorUserID(r)
 		resp, err := svc.SetUserRole(r.Context(), &adminv1.AdminSetUserRoleRequest{
 			UserId:         userID,
 			Role:           newRole,

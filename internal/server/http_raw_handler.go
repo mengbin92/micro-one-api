@@ -64,6 +64,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		upstreamBody := rewriteRawModel(body, plan.ResolvedModel)
 
 		var upstreamResp *relayprovider.RawResponse
+		retryStartedAt := time.Now()
 		retryExecutor := s.relayUsecase.NewRetryExecutor()
 		result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 			startedAt := time.Now()
@@ -136,6 +137,9 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			upstreamResp = resp
 			return nil
 		})
+
+		// Finalize routing selection outcome (code review #1/#2).
+		s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
 
 		if result.Err != nil {
 			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")

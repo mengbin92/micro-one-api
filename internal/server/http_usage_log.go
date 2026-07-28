@@ -25,6 +25,24 @@ func (in *usageLogInput) applyPlanInputs(plan *relaybiz.RelayPlan) {
 	in.PromptExclusive = isPromptExclusiveChannel(plan)
 }
 
+// applyChannelInputs records the source that actually executed a request.
+// Retry/failover paths cannot use the original plan because the final channel
+// may belong to a different source namespace.
+func (in *usageLogInput) applyChannelInputs(channel *relaybiz.Channel) {
+	if channel == nil {
+		return
+	}
+	in.UpstreamModelID = channel.UpstreamModelID
+	in.PromptExclusive = isPromptExclusiveChannelType(channel.Type)
+	if channel.SubscriptionAccountID > 0 {
+		in.SourceKind = relaybiz.UpstreamSourceSubscription
+		in.SubscriptionAccountID = channel.SubscriptionAccountID
+		return
+	}
+	in.SourceKind = relaybiz.UpstreamSourceChannel
+	in.SubscriptionAccountID = 0
+}
+
 type usageLogInput struct {
 	UserID                int64
 	TokenID               int64

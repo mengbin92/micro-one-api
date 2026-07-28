@@ -146,12 +146,31 @@ func (r *Repository) ImportModels(ctx context.Context, models []*biz.ModelExport
 		return r.importModelsMemory(models, options)
 	}
 	summary := &biz.ImportSummary{}
+	// Unified preflight: validate aliases, mappings, zero IDs and dangling
+	// foreign keys BEFORE dry-run or write. Both paths share this validator
+	// so dry-run and real import see identical validation (code review #4).
+	existingAliases, aliasErr := r.loadExistingAliasOwners(ctx)
+	if aliasErr != nil {
+		return nil, aliasErr
+	}
+	// Build canonical model_id -> PK map so preflight can distinguish
+	// same-owner aliases (legitimate update) from cross-model conflicts
+	// (code review HIGH-3).
+	existingModelPKs, pkErr := r.loadExistingModelPKs(ctx, models)
+	if pkErr != nil {
+		return nil, pkErr
+	}
+	if preflightErr := r.preflightImport(ctx, models, existingAliases, existingModelPKs); preflightErr != nil {
+		return nil, preflightErr
+	}
 	if options.DryRun {
 		return r.dryRunImportDB(ctx, models, options, summary)
 	}
-	// Build an index of existing models by canonical model_id so we can decide
-	// create-vs-update and detect conflicts before the transaction.
-	existing, err := r.loadExistingModelsByModelID(ctx, models)
+	// Build an index of existing models (full export view: record + aliases +
+	// mappings) by canonical model_id so we can decide create-vs-update and
+	// detect conflicts — including alias/mapping-only changes — before the
+	// transaction (code review #3).
+	existing, err := r.loadExistingExportViewByModelID(ctx, models)
 	if err != nil {
 		return nil, err
 	}
@@ -191,9 +210,10 @@ func (r *Repository) ImportModels(ctx context.Context, models []*biz.ModelExport
 
 // dryRunImportDB previews the import without writing. It reads the existing
 // models, computes create/update/skip/conflict per record, and returns the
-// summary. No transaction is opened.
+// summary. No transaction is opened. Preflight validation (aliases, mappings,
+// FK targets) is already done by the caller (code review #4).
 func (r *Repository) dryRunImportDB(ctx context.Context, models []*biz.ModelExportModel, options biz.ImportOptions, summary *biz.ImportSummary) (*biz.ImportSummary, error) {
-	existing, err := r.loadExistingModelsByModelID(ctx, models)
+	existing, err := r.loadExistingExportViewByModelID(ctx, models)
 	if err != nil {
 		return nil, err
 	}
@@ -244,11 +264,74 @@ func (r *Repository) loadExistingModelsByModelID(ctx context.Context, models []*
 	return out, nil
 }
 
+// existingModelView holds the full export view of an existing model (record +
+// aliases + channel/subscription mappings) so import classification can
+// detect alias/mapping-only changes (code review #3). Without this, an import
+// whose model record is identical but whose mappings differ is incorrectly
+// classified as "skip".
+type existingModelView struct {
+	Model                *biz.Model
+	Aliases              []*biz.ModelAlias
+	ChannelMappings      []*biz.ModelChannelMapping
+	SubscriptionMappings []*biz.ModelSubscriptionMapping
+}
+
+// loadExistingExportViewByModelID loads the full export view (model record +
+// aliases + mappings) for all models whose canonical id matches one in the
+// import document. This is the comparison counterpart of ExportAllModels.
+func (r *Repository) loadExistingExportViewByModelID(ctx context.Context, models []*biz.ModelExportModel) (map[string]*existingModelView, error) {
+	if len(models) == 0 {
+		return nil, nil
+	}
+	// Load model records.
+	modelMap, err := r.loadExistingModelsByModelID(ctx, models)
+	if err != nil {
+		return nil, err
+	}
+	if len(modelMap) == 0 {
+		return nil, nil
+	}
+	// Collect PKs for batch-loading aliases/mappings.
+	pks := make([]int64, 0, len(modelMap))
+	for _, m := range modelMap {
+		if m != nil {
+			pks = append(pks, m.ID)
+		}
+	}
+	aliasByModel, err := r.batchLoadAliasesByModel(ctx, pks)
+	if err != nil {
+		return nil, err
+	}
+	channelByModel, err := r.batchLoadChannelMappingsByModel(ctx, pks)
+	if err != nil {
+		return nil, err
+	}
+	subByModel, err := r.batchLoadSubscriptionMappingsByModel(ctx, pks)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]*existingModelView, len(modelMap))
+	for canonicalID, m := range modelMap {
+		if m == nil {
+			continue
+		}
+		out[canonicalID] = &existingModelView{
+			Model:                m,
+			Aliases:              aliasByModel[m.ID],
+			ChannelMappings:      channelByModel[m.ID],
+			SubscriptionMappings: subByModel[m.ID],
+		}
+	}
+	return out, nil
+}
+
 // computeImportOutcome decides the action for one record without writing. It
 // is shared by dry-run and the per-record step of the real import so both see
-// identical classification.
-func computeImportOutcome(em *biz.ModelExportModel, existing *biz.Model, options biz.ImportOptions) biz.ImportRecordOutcome {
-	if existing == nil {
+// identical classification. The comparison includes aliases and mappings so
+// alias/mapping-only changes are detected as updates, not skipped (code
+// review #3).
+func computeImportOutcome(em *biz.ModelExportModel, existing *existingModelView, options biz.ImportOptions) biz.ImportRecordOutcome {
+	if existing == nil || existing.Model == nil {
 		return biz.ImportRecordOutcome{ModelID: em.ModelID, Action: "create"}
 	}
 	if modelsContentEqual(em, existing, options) {
@@ -265,56 +348,172 @@ func computeImportOutcome(em *biz.ModelExportModel, existing *biz.Model, options
 }
 
 // modelsContentEqual reports whether the import record would leave the model
-// unchanged. Prices are ignored when options.ImportPrices is false.
-func modelsContentEqual(em *biz.ModelExportModel, existing *biz.Model, options biz.ImportOptions) bool {
-	if em.DisplayName != existing.DisplayName {
+// unchanged, INCLUDING aliases and channel/subscription mappings (code review
+// #3). Prices are ignored when options.ImportPrices is false. Aliases are
+// compared by their normalized value + is_primary flag; mappings by their
+// foreign-key id + config fields.
+func modelsContentEqual(em *biz.ModelExportModel, existing *existingModelView, options biz.ImportOptions) bool {
+	if existing == nil || existing.Model == nil {
 		return false
 	}
-	if em.Description != existing.Description {
+	m := existing.Model
+	if em.DisplayName != m.DisplayName {
 		return false
 	}
-	if em.Provider != existing.Provider {
+	if em.Description != m.Description {
 		return false
 	}
-	if em.ModelType != existing.ModelType {
+	if em.Provider != m.Provider {
 		return false
 	}
-	if em.ContextWindow != existing.ContextWindow {
+	if em.ModelType != m.ModelType {
+		return false
+	}
+	if em.ContextWindow != m.ContextWindow {
 		return false
 	}
 	if options.ImportPrices {
-		if em.PricingInput != existing.PricingInput || em.PricingOutput != existing.PricingOutput {
+		if em.PricingInput != m.PricingInput || em.PricingOutput != m.PricingOutput {
 			return false
 		}
 	}
-	if em.Status != existing.Status {
+	if em.Status != m.Status {
 		return false
 	}
-	if em.IsPublic != existing.IsPublic {
+	if em.IsPublic != m.IsPublic {
 		return false
 	}
-	if em.Category != existing.Category {
+	if em.Category != m.Category {
 		return false
 	}
-	if em.Tier != existing.Tier {
+	if em.Tier != m.Tier {
 		return false
 	}
-	if em.Metadata != existing.Metadata {
+	if em.Metadata != m.Metadata {
 		return false
 	}
-	if !stringSliceEqualSorted(em.Capabilities, existing.Capabilities) {
+	if !stringSliceEqualSorted(em.Capabilities, m.Capabilities) {
 		return false
 	}
-	if !stringSliceEqualSorted(em.Tags, existing.Tags) {
+	if !stringSliceEqualSorted(em.Tags, m.Tags) {
+		return false
+	}
+	// Compare aliases (normalized value + is_primary).
+	if !aliasesEqual(em.Aliases, existing.Aliases) {
+		return false
+	}
+	// Compare channel mappings.
+	if !channelMappingsEqual(em.ChannelMappings, existing.ChannelMappings) {
+		return false
+	}
+	// Compare subscription mappings.
+	if !subscriptionMappingsEqual(em.SubscriptionMappings, existing.SubscriptionMappings) {
 		return false
 	}
 	return true
 }
 
+// aliasesEqual compares two alias sets by their normalized value and is_primary
+// flag, ignoring id/pk/created_at (which are storage-layer artifacts).
+func aliasesEqual(a, b []*biz.ModelAlias) bool {
+	na := normalizeAliasSet(a)
+	nb := normalizeAliasSet(b)
+	if len(na) != len(nb) {
+		return false
+	}
+	for i := range na {
+		if na[i] != nb[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeAliasSet returns a sorted slice of "alias:isPrimary" strings for
+// deterministic comparison.
+func normalizeAliasSet(in []*biz.ModelAlias) []string {
+	out := make([]string, 0, len(in))
+	for _, a := range in {
+		if a == nil || strings.TrimSpace(a.Alias) == "" {
+			continue
+		}
+		out = append(out, biz.NormalizeModelID(a.Alias)+":"+boolStr(a.IsPrimary))
+	}
+	sort.Strings(out)
+	return out
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
+}
+
+// channelMappingsEqual compares two channel-mapping sets by their
+// channel_id + upstream_model_id + enabled + priority + config, ignoring pk.
+func channelMappingsEqual(a, b []*biz.ModelChannelMapping) bool {
+	na := normalizeChannelMappingSet(a)
+	nb := normalizeChannelMappingSet(b)
+	if len(na) != len(nb) {
+		return false
+	}
+	for i := range na {
+		if na[i] != nb[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeChannelMappingSet(in []*biz.ModelChannelMapping) []string {
+	out := make([]string, 0, len(in))
+	for _, m := range in {
+		if m == nil {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%d|%s|%v|%d|%s", m.ChannelID, m.UpstreamModelID, m.Enabled, m.Priority, m.Config))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// subscriptionMappingsEqual compares two subscription-mapping sets by their
+// account_id + group + upstream_model_id + enabled + priority, ignoring pk.
+func subscriptionMappingsEqual(a, b []*biz.ModelSubscriptionMapping) bool {
+	na := normalizeSubscriptionMappingSet(a)
+	nb := normalizeSubscriptionMappingSet(b)
+	if len(na) != len(nb) {
+		return false
+	}
+	for i := range na {
+		if na[i] != nb[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeSubscriptionMappingSet(in []*biz.ModelSubscriptionMapping) []string {
+	out := make([]string, 0, len(in))
+	for _, m := range in {
+		if m == nil {
+			continue
+		}
+		group := m.GroupName
+		if group == "" {
+			group = "default"
+		}
+		out = append(out, fmt.Sprintf("%d|%s|%s|%v|%d", m.SubscriptionAccountID, group, m.UpstreamModelID, m.Enabled, m.Priority))
+	}
+	sort.Strings(out)
+	return out
+}
+
 // applyImportModel writes one model (and its aliases/mappings) inside the
 // caller's transaction. Returns the per-record outcome. On the reject
 // strategy, a conflict aborts the transaction (so prior models roll back).
-func (r *Repository) applyImportModel(tx *gorm.DB, em *biz.ModelExportModel, existing *biz.Model, options biz.ImportOptions, now int64) (biz.ImportRecordOutcome, error) {
+func (r *Repository) applyImportModel(tx *gorm.DB, em *biz.ModelExportModel, existing *existingModelView, options biz.ImportOptions, now int64) (biz.ImportRecordOutcome, error) {
 	outcome := computeImportOutcome(em, existing, options)
 	switch outcome.Action {
 	case "skip":
@@ -341,7 +540,7 @@ func (r *Repository) applyImportModel(tx *gorm.DB, em *biz.ModelExportModel, exi
 		return outcome, nil
 	case "update":
 		po := importModelToPO(em, options, now)
-		po.ID = existing.ID
+		po.ID = existing.Model.ID
 		updates := map[string]interface{}{
 			"display_name":   po.DisplayName,
 			"description":    po.Description,
@@ -361,28 +560,28 @@ func (r *Repository) applyImportModel(tx *gorm.DB, em *biz.ModelExportModel, exi
 			updates["pricing_input"] = po.PricingInput
 			updates["pricing_output"] = po.PricingOutput
 		}
-		if err := tx.Model(&modelModel{}).Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
+		if err := tx.Model(&modelModel{}).Where("id = ?", existing.Model.ID).Updates(updates).Error; err != nil {
 			return outcome, fmt.Errorf("%w: update %s: %v", biz.ErrImportInvalidRecord, em.ModelID, err)
 		}
 		// Replace aliases/mappings wholesale: delete then re-insert so the
 		// imported set is authoritative. This mirrors how the operator would
 		// expect a config-migration import to behave.
-		if err := tx.Where("model_id = ?", existing.ID).Delete(&modelAliasModel{}).Error; err != nil {
+		if err := tx.Where("model_id = ?", existing.Model.ID).Delete(&modelAliasModel{}).Error; err != nil {
 			return outcome, fmt.Errorf("%w: clear aliases %s: %v", biz.ErrImportInvalidRecord, em.ModelID, err)
 		}
-		if err := r.applyImportAliases(tx, existing.ID, em.Aliases, now); err != nil {
+		if err := r.applyImportAliases(tx, existing.Model.ID, em.Aliases, now); err != nil {
 			return outcome, fmt.Errorf("%w: aliases %s: %v", biz.ErrImportInvalidRecord, em.ModelID, err)
 		}
-		if err := tx.Where("model_id = ?", existing.ID).Delete(&modelChannelMappingModel{}).Error; err != nil {
+		if err := tx.Where("model_id = ?", existing.Model.ID).Delete(&modelChannelMappingModel{}).Error; err != nil {
 			return outcome, fmt.Errorf("%w: clear channel mappings %s: %v", biz.ErrImportInvalidRecord, em.ModelID, err)
 		}
-		if err := r.applyImportChannelMappings(tx, existing.ID, em.ChannelMappings, now); err != nil {
+		if err := r.applyImportChannelMappings(tx, existing.Model.ID, em.ChannelMappings, now); err != nil {
 			return outcome, fmt.Errorf("%w: channel mappings %s: %v", biz.ErrImportInvalidRecord, em.ModelID, err)
 		}
-		if err := tx.Where("model_id = ?", existing.ID).Delete(&modelSubscriptionMappingModel{}).Error; err != nil {
+		if err := tx.Where("model_id = ?", existing.Model.ID).Delete(&modelSubscriptionMappingModel{}).Error; err != nil {
 			return outcome, fmt.Errorf("%w: clear subscription mappings %s: %v", biz.ErrImportInvalidRecord, em.ModelID, err)
 		}
-		if err := r.applyImportSubscriptionMappings(tx, existing.ID, em.SubscriptionMappings, now); err != nil {
+		if err := r.applyImportSubscriptionMappings(tx, existing.Model.ID, em.SubscriptionMappings, now); err != nil {
 			return outcome, fmt.Errorf("%w: subscription mappings %s: %v", biz.ErrImportInvalidRecord, em.ModelID, err)
 		}
 		return outcome, nil
@@ -543,19 +742,25 @@ func sortedNonEmpty(in []string) []string {
 func (r *Repository) exportAllModelsMemory(filter biz.ListModelsFilter) ([]*biz.ModelExportModel, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	// Reuse the existing memory list path which already applies the filter.
-	models, _, err := r.listModelsMemory(1, int32(biz.MaxImportRecords), filter)
-	if err != nil {
-		return nil, err
+	models := make([]*biz.Model, 0, len(r.models))
+	for _, m := range r.models {
+		if m != nil && matchesModelFilter(m, filter) {
+			models = append(models, cloneModel(m))
+		}
 	}
+	sort.Slice(models, func(i, j int) bool {
+		left := biz.NormalizeModelID(models[i].ModelID)
+		right := biz.NormalizeModelID(models[j].ModelID)
+		if left != right {
+			return left < right
+		}
+		return models[i].ID < models[j].ID
+	})
 	out := make([]*biz.ModelExportModel, 0, len(models))
 	for _, m := range models {
-		if m == nil {
-			continue
-		}
-		aliases, _ := r.listModelAliasesMemory(m.ID)
-		channelMappings, _ := r.listChannelMappingsByModelMemory(m.ID)
-		subMappings, _ := r.listSubscriptionMappingsByModelMemory(m.ID)
+		aliases := cloneAndSortModelAliases(r.memoryAliasesForModel(m.ID))
+		channelMappings := cloneAndSortChannelMappings(r.memoryChannelMappingsForModel(m.ID))
+		subMappings := cloneAndSortSubscriptionMappings(r.memorySubscriptionMappingsForModel(m.ID))
 		out = append(out, &biz.ModelExportModel{
 			ModelID:              m.ModelID,
 			DisplayName:          m.DisplayName,
@@ -580,31 +785,158 @@ func (r *Repository) exportAllModelsMemory(filter biz.ListModelsFilter) ([]*biz.
 	return out, nil
 }
 
+func cloneAndSortModelAliases(in []*biz.ModelAlias) []*biz.ModelAlias {
+	out := make([]*biz.ModelAlias, 0, len(in))
+	for _, alias := range in {
+		if alias != nil {
+			out = append(out, cloneModelAlias(alias))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+func cloneAndSortChannelMappings(in []*biz.ModelChannelMapping) []*biz.ModelChannelMapping {
+	out := make([]*biz.ModelChannelMapping, 0, len(in))
+	for _, mapping := range in {
+		if mapping != nil {
+			out = append(out, cloneChannelMapping(mapping))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Priority != out[j].Priority {
+			return out[i].Priority > out[j].Priority
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
+}
+
+func cloneAndSortSubscriptionMappings(in []*biz.ModelSubscriptionMapping) []*biz.ModelSubscriptionMapping {
+	out := make([]*biz.ModelSubscriptionMapping, 0, len(in))
+	for _, mapping := range in {
+		if mapping != nil {
+			out = append(out, cloneSubscriptionMapping(mapping))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Priority != out[j].Priority {
+			return out[i].Priority > out[j].Priority
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
+}
+
+// memoryAliasesForModel returns all aliases for a model PK from the in-memory
+// store (used by importModelsMemory to build the existing export view).
+func (r *Repository) memoryAliasesForModel(modelPK int64) []*biz.ModelAlias {
+	var out []*biz.ModelAlias
+	for _, a := range r.modelAliases {
+		if a != nil && a.ModelPK == modelPK {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// memoryChannelMappingsForModel returns all channel mappings for a model PK.
+func (r *Repository) memoryChannelMappingsForModel(modelPK int64) []*biz.ModelChannelMapping {
+	var out []*biz.ModelChannelMapping
+	for _, m := range r.modelChannelMappings {
+		if m != nil && m.ModelPK == modelPK {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// memorySubscriptionMappingsForModel returns all subscription mappings for a
+// model PK.
+func (r *Repository) memorySubscriptionMappingsForModel(modelPK int64) []*biz.ModelSubscriptionMapping {
+	var out []*biz.ModelSubscriptionMapping
+	for _, m := range r.modelSubscriptionMappings {
+		if m != nil && m.ModelPK == modelPK {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 func (r *Repository) importModelsMemory(models []*biz.ModelExportModel, options biz.ImportOptions) (*biz.ImportSummary, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	summary := &biz.ImportSummary{}
-	now := time.Now().Unix()
-	// Build existing index.
-	existing := make(map[string]*biz.Model)
-	for _, m := range r.models {
-		existing[biz.NormalizeModelID(m.ModelID)] = m
+	// Unified preflight for memory path too (code review #4).
+	existingAliases, aliasErr := r.loadExistingAliasOwners(context.Background())
+	if aliasErr != nil {
+		return nil, aliasErr
 	}
+	// Build canonical model_id -> PK map for same-owner alias check.
+	existingModelPKs := make(map[string]int64)
+	for _, m := range r.models {
+		if m != nil {
+			existingModelPKs[biz.NormalizeModelID(m.ModelID)] = m.ID
+		}
+	}
+	if preflightErr := r.preflightImport(context.Background(), models, existingAliases, existingModelPKs); preflightErr != nil {
+		return nil, preflightErr
+	}
+	// Build existing index with full export view (model + aliases + mappings)
+	// so alias/mapping-only changes are detected (code review #3).
+	existing := make(map[string]*existingModelView)
+	for _, m := range r.models {
+		if m == nil {
+			continue
+		}
+		cid := biz.NormalizeModelID(m.ModelID)
+		existing[cid] = &existingModelView{
+			Model:                m,
+			Aliases:              r.memoryAliasesForModel(m.ID),
+			ChannelMappings:      r.memoryChannelMappingsForModel(m.ID),
+			SubscriptionMappings: r.memorySubscriptionMappingsForModel(m.ID),
+		}
+	}
+	type classifiedImport struct {
+		model    *biz.ModelExportModel
+		existing *existingModelView
+		outcome  biz.ImportRecordOutcome
+	}
+	classified := make([]classifiedImport, 0, len(models))
 	for _, em := range models {
 		if em == nil {
 			continue
 		}
 		exist := existing[biz.NormalizeModelID(em.ModelID)]
 		outcome := computeImportOutcome(em, exist, options)
+		classified = append(classified, classifiedImport{model: em, existing: exist, outcome: outcome})
+		summary.Results = append(summary.Results, outcome)
 		switch outcome.Action {
+		case "create":
+			summary.Created++
+		case "update":
+			summary.Updated++
 		case "skip":
-			// no-op
+			summary.Skipped++
 		case "conflict":
-			summary.Results = append(summary.Results, outcome)
 			summary.Conflicts++
-			if options.ConflictStrategy == biz.ConflictStrategyReject {
-				return nil, fmt.Errorf("%w: %s", biz.ErrImportConflict, outcome.Message)
-			}
+		case "error":
+			summary.Errors++
+		}
+	}
+	if options.DryRun {
+		return summary, nil
+	}
+	if summary.Conflicts > 0 && options.ConflictStrategy == biz.ConflictStrategyReject {
+		return nil, fmt.Errorf("%w: %d record(s) conflict", biz.ErrImportConflict, summary.Conflicts)
+	}
+
+	now := time.Now().Unix()
+	for _, item := range classified {
+		em := item.model
+		exist := item.existing
+		switch item.outcome.Action {
+		case "skip", "conflict":
 			continue
 		case "create":
 			r.modelNextID++
@@ -620,20 +952,18 @@ func (r *Repository) importModelsMemory(models []*biz.ModelExportModel, options 
 			r.applyImportSubscriptionMappingsMemory(do.ID, em.SubscriptionMappings, now)
 		case "update":
 			do := importModelToDO(em, options, now)
-			do.ID = exist.ID
+			do.ID = exist.Model.ID
 			do.ModelID = biz.NormalizeModelID(em.ModelID)
+			do.CreatedAt = exist.Model.CreatedAt
+			if !options.ImportPrices {
+				do.PricingInput = exist.Model.PricingInput
+				do.PricingOutput = exist.Model.PricingOutput
+			}
 			r.models[do.ID] = do
 			// Clear and re-insert aliases/mappings.
 			r.rebuildAliasesMemory(do.ID, em.Aliases, now)
 			r.rebuildChannelMappingsMemory(do.ID, em.ChannelMappings, now)
 			r.rebuildSubscriptionMappingsMemory(do.ID, em.SubscriptionMappings, now)
-		}
-		summary.Results = append(summary.Results, outcome)
-		switch outcome.Action {
-		case "create":
-			summary.Created++
-		case "update":
-			summary.Updated++
 		}
 	}
 	return summary, nil

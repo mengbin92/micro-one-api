@@ -96,11 +96,14 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	inbound relayadaptor.Format,
 	sessionHash string,
 ) {
+	adaptorStartedAt := time.Now()
 	if plan == nil || plan.Channel == nil {
+		s.finalizeSelectionDirect(plan, "error", "", false, 0, time.Since(adaptorStartedAt))
 		s.writeError(w, http.StatusInternalServerError, "no channel selected")
 		return
 	}
 	if plan.Auth == nil {
+		s.finalizeSelectionDirect(plan, "error", "", false, 0, time.Since(adaptorStartedAt))
 		s.writeError(w, http.StatusInternalServerError, "no auth selected")
 		return
 	}
@@ -109,6 +112,12 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	failedAccounts := make(map[int64]bool, maxAttempts)
 	current := plan
 	var lastErr error
+	// Track fallback info for the selection recorder (code review HIGH-2).
+	switched := false
+	var firstFailErr error
+	var finalAccountID int64
+	var finalSuccess bool
+
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if current == nil || current.Channel == nil {
 			break
@@ -124,9 +133,13 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 					s.blockRuntimeAccount(r.Context(), accountID, result.statusCode, result.err)
 				}
 			}
+			if firstFailErr == nil {
+				firstFailErr = result.err
+			}
 			lastErr = result.err
 			next, err := s.selectSubscriptionFailoverPlan(r.Context(), plan, current, clientModel, failedAccounts)
 			if err == nil && next != nil && next.Channel != nil && subscriptionAccountIDFromPlan(next) != accountID {
+				switched = true
 				metrics.RelaySubscriptionFailoverTotal.WithLabelValues(subscriptionRetryReason(result), "switched").Inc()
 				current = next
 				continue
@@ -137,11 +150,32 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 		// only), so the next turn reuses it for prompt-cache hits. A failover
 		// switch naturally rebinds to the sibling that succeeded.
 		if subscriptionAttemptSucceeded(result) {
+			finalSuccess = true
+			finalAccountID = subscriptionAccountIDFromPlan(current)
 			s.bindSubscriptionSession(r.Context(), plan.Auth.Group, sessionHash, current)
+		} else {
+			finalAccountID = subscriptionAccountIDFromPlan(current)
 		}
 		result.write(w)
+		// Finalize the selection observation with the execution outcome.
+		resultLabel := "success"
+		fallbackReason := ""
+		if !finalSuccess {
+			resultLabel = "error"
+		}
+		if switched && firstFailErr != nil {
+			fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailErr)
+		}
+		s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, finalAccountID, time.Since(adaptorStartedAt))
 		return
 	}
+	// All attempts exhausted without success.
+	resultLabel := "error"
+	fallbackReason := ""
+	if switched && firstFailErr != nil {
+		fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailErr)
+	}
+	s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, finalAccountID, time.Since(adaptorStartedAt))
 	if lastErr != nil {
 		s.writeError(w, http.StatusBadGateway, fmt.Sprintf("upstream call: %v", lastErr))
 		return
