@@ -163,3 +163,166 @@ func TestSubscriptionAccountSelector_ExcludesOpenCircuitFromTotalWeight(t *testi
 		t.Fatalf("eligible account current weight = %d, want 0; open circuits must not contribute to total weight", got)
 	}
 }
+
+// ── v0.11.0 Phase 3 §3.1: weight field takes precedence over priority ──────
+
+func TestAccountSelectorWeight_PrefersExplicitWeightOverPriority(t *testing.T) {
+	// When Weight is set, it wins over Priority. This is the fix for the
+	// "weight collapses to 1" bug: an operator setting priority=10 used to get
+	// weight=10, but an operator setting priority=10 AND weight=100 now gets
+	// weight=100 (not priority=10).
+	cases := []struct {
+		name string
+		acct *SubscriptionAccount
+		want int32
+	}{
+		{"weight wins over priority", &SubscriptionAccount{ID: 1, Priority: 10, Weight: 100}, 100},
+		{"priority fallback when weight unset", &SubscriptionAccount{ID: 2, Priority: 7, Weight: 0}, 7},
+		{"default 1 when both unset", &SubscriptionAccount{ID: 3, Priority: 0, Weight: 0}, 1},
+		{"weight only", &SubscriptionAccount{ID: 4, Priority: 0, Weight: 50}, 50},
+		{"nil account", nil, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := accountSelectorWeight(tc.acct); got != tc.want {
+				t.Fatalf("accountSelectorWeight(%+v) = %d, want %d", tc.acct, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSubscriptionAccountSelector_WeightDrivesDistribution(t *testing.T) {
+	// Two accounts, both priority=1 (same tier), but weights 100:20.
+	// Over many selections the distribution should approximate 100:20 ≈ 83%:17%,
+	// NOT the previous 1:1 collapse. This is the core Phase 3 §3.1 acceptance
+	// criterion: "跨来源选择不得继续把订阅账号权重硬编码为 1".
+	s := NewSubscriptionAccountSelector()
+	high := &SubscriptionAccount{ID: 1, Priority: 1, Weight: 100}
+	low := &SubscriptionAccount{ID: 2, Priority: 1, Weight: 20}
+	candidates := []*SubscriptionAccount{high, low}
+
+	counts := map[int64]int{}
+	const iterations = 600
+	for i := 0; i < iterations; i++ {
+		selected, err := s.Select(context.Background(), "g", candidates)
+		if err != nil {
+			t.Fatalf("Select err = %v", err)
+		}
+		counts[selected.ID]++
+	}
+	// Expected ratio 100:20 = 5:1 → high ≈ 500, low ≈ 100. Allow a tolerance
+	// band for smooth-WRR startup variance.
+	highPct := float64(counts[1]) / float64(iterations)
+	if highPct < 0.78 || highPct > 0.88 {
+		t.Fatalf("weight 100:20 distribution = %d:%d (high %.2f%%), want ~83%% for high", counts[1], counts[2], highPct)
+	}
+}
+
+func TestSubscriptionAccountSelector_WeightSamePriorityNotEqualDistribution(t *testing.T) {
+	// Regression guard: two accounts with the SAME priority but DIFFERENT
+	// weights must NOT split 50:50 (the old hard-coded-1 behaviour).
+	s := NewSubscriptionAccountSelector()
+	a := &SubscriptionAccount{ID: 1, Priority: 5, Weight: 1}
+	b := &SubscriptionAccount{ID: 2, Priority: 5, Weight: 9}
+	candidates := []*SubscriptionAccount{a, b}
+
+	counts := map[int64]int{}
+	const iterations = 1000
+	for i := 0; i < iterations; i++ {
+		selected, err := s.Select(context.Background(), "g", candidates)
+		if err != nil {
+			t.Fatalf("Select err = %v", err)
+		}
+		counts[selected.ID]++
+	}
+	// weight 1:9 → b should get ~90%. If they were equal (old bug), it'd be 50%.
+	bPct := float64(counts[2]) / float64(iterations)
+	if bPct < 0.85 || bPct > 0.95 {
+		t.Fatalf("weight 1:9 distribution = %d:%d (b %.2f%%), want ~90%% for b", counts[1], counts[2], bPct)
+	}
+}
+
+// ── v0.11.0 Phase 3 §3.2: load-aware inertness contract ────────────────────
+
+// TestSubscriptionAccountSelector_LoadFactorInertInProduction proves the
+// degradation contract: because Acquire/Release are never called in
+// production, loadFactor is always neutral (100) and inflight stays 0. The
+// selector still distributes correctly via health + configured weight, so the
+// inert load-aware seam does NOT cause incorrect routing — it only means
+// in-flight saturation is not caught (a saturated account is caught by its
+// circuit breaker instead). This test pins that contract so a future seam
+// that wires Acquire/Release must explicitly update it.
+func TestSubscriptionAccountSelector_LoadFactorInertInProduction(t *testing.T) {
+	s := NewSubscriptionAccountSelector()
+	a := &SubscriptionAccount{ID: 1, Priority: 1, Weight: 100}
+	b := &SubscriptionAccount{ID: 2, Priority: 1, Weight: 100}
+	candidates := []*SubscriptionAccount{a, b}
+
+	// Prime the selector.
+	for i := 0; i < 10; i++ {
+		if _, err := s.Select(context.Background(), "g", candidates); err != nil {
+			t.Fatalf("Select err = %v", err)
+		}
+	}
+
+	// Inert contract: no Acquire was called, so inflight == 0 and loadFactor
+	// == 100 (neutral) for both accounts.
+	for _, id := range []int64{1, 2} {
+		st := s.accounts[id]
+		if got := st.inflight.Load(); got != 0 {
+			t.Fatalf("account %d inflight = %d, want 0 (Acquire never called in production)", id, got)
+		}
+		if got := st.loadFactor(); got != 100 {
+			t.Fatalf("account %d loadFactor = %d, want 100 (neutral when inert)", id, got)
+		}
+	}
+
+	// Distribution still works via configured weight (100:100 → ~50:50).
+	counts := map[int64]int{}
+	for i := 0; i < 1000; i++ {
+		selected, err := s.Select(context.Background(), "g", candidates)
+		if err != nil {
+			t.Fatalf("Select err = %v", err)
+		}
+		counts[selected.ID]++
+	}
+	// Equal weights → roughly 50:50. The point is that inert loadFactor does
+	// not break distribution.
+	if counts[1] < 400 || counts[1] > 600 {
+		t.Fatalf("inert loadFactor distribution = %d:%d, want ~500:500", counts[1], counts[2])
+	}
+}
+
+// TestSubscriptionAccountSelector_LoadFactorDegradesWhenAcquireCalled proves
+// that IF a future seam wires Acquire/Release, the loadFactor bands engage
+// correctly. This is the "fault test that proves safe degradation" the roadmap
+// requires for the day the seam is wired; today it documents the intended
+// behaviour so the seam implementer has a target.
+func TestSubscriptionAccountSelector_LoadFactorDegradesWhenAcquireCalled(t *testing.T) {
+	s := NewSubscriptionAccountSelector()
+	a := &SubscriptionAccount{ID: 1, Priority: 1, Weight: 100}
+	if _, err := s.Select(context.Background(), "g", []*SubscriptionAccount{a}); err != nil {
+		t.Fatalf("Select err = %v", err)
+	}
+
+	// Simulate a future seam that reports in-flight load.
+	for i := 0; i < 25; i++ {
+		s.Acquire(1)
+	}
+	st := s.accounts[1]
+	if got := st.inflight.Load(); got != 25 {
+		t.Fatalf("inflight after 25 Acquire = %d, want 25", got)
+	}
+	// 25 in-flight falls in the [20,50) band → loadFactor 20.
+	if got := st.loadFactor(); got != 20 {
+		t.Fatalf("loadFactor at inflight=25 = %d, want 20", got)
+	}
+
+	// Release back to neutral.
+	for i := 0; i < 25; i++ {
+		s.Release(1)
+	}
+	if got := st.loadFactor(); got != 100 {
+		t.Fatalf("loadFactor after full Release = %d, want 100", got)
+	}
+}

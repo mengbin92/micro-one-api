@@ -105,6 +105,7 @@ type subscriptionAccountModel struct {
 	Group        string  `gorm:"column:group"`
 	Models       string  `gorm:"column:models"`
 	Priority     int64   `gorm:"column:priority"`
+	Weight       int32   `gorm:"column:weight"`
 	BaseURL      *string `gorm:"column:base_url"`
 	AccessToken  *string `gorm:"column:access_token"`
 	RefreshToken *string `gorm:"column:refresh_token"`
@@ -2101,6 +2102,7 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 		Group:                  m.Group,
 		Models:                 biz.SplitCSV(m.Models),
 		Priority:               m.Priority,
+		Weight:                 m.Weight,
 		BaseURL:                baseURL,
 		AccessToken:            r.decryptKey(derefString(m.AccessToken)),
 		RefreshToken:           r.decryptKey(derefString(m.RefreshToken)),
@@ -2146,6 +2148,7 @@ func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) *
 		Group:                  a.Group,
 		Models:                 a.ModelsCSV(),
 		Priority:               a.Priority,
+		Weight:                 a.Weight,
 		BaseURL:                strPtr(a.BaseURL),
 		AccessToken:            stringPtr(r.encryptKey(a.AccessToken)),
 		RefreshToken:           stringPtr(r.encryptKey(a.RefreshToken)),

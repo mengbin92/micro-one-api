@@ -54,6 +54,7 @@ services:
     - 065_add_model_routings
     - 066_add_upstream_model_ids
     - 068_add_canonical_model_id_constraint   # v0.11.0 Phase 2 §2.1
+    - 069_add_subscription_account_weight     # v0.11.0 Phase 3 §3.1
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /

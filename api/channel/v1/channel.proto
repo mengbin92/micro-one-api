@@ -233,6 +233,7 @@ message CreateSubscriptionAccountRequest {
   string quota_reset_strategy = 28;
   string quota_timezone = 29;
   string model_mapping = 30;        // JSON {"src":"dst"} per-account model remap
+  int32 weight = 31;               // v0.11.0 Phase 3 §3.1: explicit within-tier WRR weight
 }
 
 message CreateSubscriptionAccountResponse {
@@ -272,6 +273,7 @@ message UpdateSubscriptionAccountRequest {
   optional string quota_reset_strategy = 28;
   optional string quota_timezone = 29;
   optional string model_mapping = 30; // JSON {"src":"dst"} per-account model remap
+  optional int32 weight = 31;        // v0.11.0 Phase 3 §3.1: explicit within-tier WRR weight
 }
 
 message UpdateSubscriptionAccountResponse {

@@ -422,6 +422,7 @@ CREATE TABLE IF NOT EXISTS subscription_accounts (
   "group" TEXT DEFAULT 'default',
   models TEXT DEFAULT NULL,
   priority INTEGER DEFAULT 0,
+  weight INTEGER NOT NULL DEFAULT 0,
   base_url TEXT DEFAULT NULL,
   access_token TEXT DEFAULT NULL,
   refresh_token TEXT DEFAULT NULL,
