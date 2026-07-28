@@ -109,6 +109,7 @@ func subscriptionAccountInfoToBiz(account *commonv1.SubscriptionAccountInfo) *re
 		Group:                 account.GetGroup(),
 		Models:                splitModels(account.GetModels()),
 		Priority:              account.GetPriority(),
+		Weight:                account.GetWeight(),
 		AccessToken:           account.GetAccessToken(),
 		AccountID:             account.GetAccountId(),
 		Fingerprint:           account.GetFingerprint(),
