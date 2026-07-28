@@ -161,6 +161,15 @@ func (r *modelServiceRepo) ListModelUsageStats(ctx context.Context, modelPK int6
 	return nil, 0, nil
 }
 
+// v0.11.0 Phase 2 §2.1: canonical model ID governance — stubs.
+func (r *modelServiceRepo) CanonicalModelPreflight(ctx context.Context) (*biz.PreflightReport, error) {
+	return &biz.PreflightReport{}, nil
+}
+
+func (r *modelServiceRepo) MergeCanonicalModels(ctx context.Context, group biz.DuplicateModelGroup) (*biz.MergeResult, error) {
+	return &biz.MergeResult{CanonicalID: group.CanonicalID, SurvivingPK: group.SurvivingPK}, nil
+}
+
 // Compile-time check.
 var _ biz.ModelRepo = (*modelServiceRepo)(nil)
 

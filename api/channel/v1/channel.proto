@@ -3,6 +3,7 @@ syntax = "proto3";
 package api.channel.v1;
 
 import "api/common/v1/common.proto";
+import "google/protobuf/empty.proto";
 
 option go_package = "micro-one-api/api/channel/v1;channelv1";
 
@@ -62,6 +63,20 @@ service ChannelService {
   rpc ListModelRoutings(ListModelRoutingsRequest) returns (ListModelRoutingsResponse);
   rpc UpsertModelRouting(UpsertModelRoutingRequest) returns (UpsertModelRoutingResponse);
   rpc DeleteModelRouting(DeleteModelRoutingRequest) returns (DeleteModelRoutingResponse);
+
+  // ========== Canonical model ID governance (v0.11.0 Phase 2 §2.1) ==========
+  // Preflight is read-only and lists every case-only model_id collision plus
+  // the dependent-row counts operators need to plan a merge. Merge collapses
+  // one duplicate group onto a survivor in a single transaction; it returns
+  // MODEL_CANONICAL_CONFLICT when re-pointing would collide on the survivor.
+  rpc CanonicalModelPreflight(google.protobuf.Empty) returns (CanonicalModelPreflightResponse);
+  rpc MergeCanonicalModels(MergeCanonicalModelsRequest) returns (MergeCanonicalModelsResponse);
+  // ========== Unpriced-model audit (v0.11.0 Phase 2 §2.2) ==========
+  // Returns the public, enabled, routed models that are NOT present in the
+  // caller-supplied priced set. The caller (admin-api) loads the ModelPrice
+  // config from system_options, canonicalises its keys, and passes them here
+  // so the audit stays a pure cross-source diff with no storage coupling.
+  rpc ListUnpricedRoutedModels(ListUnpricedRoutedModelsRequest) returns (ListUnpricedRoutedModelsResponse);
 
 }
 
@@ -817,4 +832,70 @@ message DeleteModelRoutingRequest {
 message DeleteModelRoutingResponse {
   bool success = 1;
   string message = 2;
+}
+
+// ── Canonical model ID governance (v0.11.0 Phase 2 §2.1) ──────────────────
+message DuplicateModelRef {
+  int64 model_pk = 1;
+  string model_id = 2;              // original (pre-normalisation) spelling
+  bool is_primary = 3;              // stored model_id already matches canonical
+  int32 aliases = 4;
+  int32 channel_mappings = 5;
+  int32 subscription_mappings = 6;
+  int32 usage_stat_days = 7;
+  int64 usage_request_total = 8;
+  int64 usage_token_total = 9;
+  // v0.11.0 Phase 2 §2.1: pricing-config keys (ModelPrice / UpstreamModelPrice)
+  // that reference this member's stored spelling. Populated by admin-api after
+  // the channel-service preflight returns, so channel biz stays decoupled from
+  // pricing storage.
+  repeated string price_references = 10;
+}
+
+message DuplicateModelGroup {
+  string canonical_id = 1;          // biz.NormalizeModelID of every member
+  repeated DuplicateModelRef members = 2;
+  int64 surviving_pk = 3;           // 0 => biz picks the primary-spelling member
+}
+
+message CanonicalModelPreflightResponse {
+  repeated DuplicateModelGroup groups = 1;
+  repeated string conflicts = 2;    // blockers; merge is rejected when non-empty
+}
+
+message MergeCanonicalModelsRequest {
+  DuplicateModelGroup group = 1;
+}
+
+message MergeCanonicalModelsResponse {
+  bool success = 1;
+  string message = 2;
+  string canonical_id = 3;
+  int64 surviving_pk = 4;
+  repeated int64 merged_model_pks = 5;
+  int32 aliases_repointed = 6;
+  int32 channel_mappings_repointed = 7;
+  int32 subscription_mappings_repointed = 8;
+  int32 usage_stats_repointed = 9;
+}
+
+// ── Unpriced-model audit (v0.11.0 Phase 2 §2.2) ────────────────────────────
+message ListUnpricedRoutedModelsRequest {
+  // Canonicalised (lowercase, trimmed) model ids that already carry a
+  // user-facing ModelPrice entry. The audit returns the routed models NOT in
+  // this set.
+  repeated string priced_model_ids = 1;
+}
+
+message UnpricedRoutedModel {
+  string model_id = 1;
+  string display_name = 2;
+  string provider = 3;
+  int32 channel_count = 4;
+  int32 subscription_count = 5;
+}
+
+message ListUnpricedRoutedModelsResponse {
+  repeated UnpricedRoutedModel models = 1;
+  int32 total = 2;
 }

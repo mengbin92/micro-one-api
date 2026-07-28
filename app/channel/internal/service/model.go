@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/pkg/errors"
@@ -549,4 +551,125 @@ func (s *ChannelService) ListModelUsageStats(ctx context.Context, req *channelv1
 		result = append(result, toUsageStatProto(s))
 	}
 	return &channelv1.ListModelUsageStatsResponse{Stats: result, Total: total}, nil
+}
+
+// ── Canonical model ID governance (v0.11.0 Phase 2 §2.1) ──────────────────
+
+func toDuplicateModelRefProto(r *biz.DuplicateModelRef) *channelv1.DuplicateModelRef {
+	if r == nil {
+		return nil
+	}
+	return &channelv1.DuplicateModelRef{
+		ModelPk:              r.ModelPK,
+		ModelId:              r.ModelID,
+		IsPrimary:            r.IsPrimary,
+		Aliases:              r.Aliases,
+		ChannelMappings:      r.ChannelMappings,
+		SubscriptionMappings: r.SubscriptionMappings,
+		UsageStatDays:        r.UsageStatDays,
+		UsageRequestTotal:    r.UsageRequestTotal,
+		UsageTokenTotal:      r.UsageTokenTotal,
+		PriceReferences:      append([]string(nil), r.PriceReferences...),
+	}
+}
+
+func toDuplicateModelGroupProto(g *biz.DuplicateModelGroup) *channelv1.DuplicateModelGroup {
+	if g == nil {
+		return nil
+	}
+	members := make([]*channelv1.DuplicateModelRef, 0, len(g.Members))
+	for i := range g.Members {
+		members = append(members, toDuplicateModelRefProto(&g.Members[i]))
+	}
+	return &channelv1.DuplicateModelGroup{
+		CanonicalId:  g.CanonicalID,
+		Members:      members,
+		SurvivingPk:  g.SurvivingPK,
+	}
+}
+
+func (s *ChannelService) CanonicalModelPreflight(ctx context.Context, req *emptypb.Empty) (*channelv1.CanonicalModelPreflightResponse, error) {
+	uc := s.modelUc()
+	if uc == nil {
+		return &channelv1.CanonicalModelPreflightResponse{}, nil
+	}
+	report, err := uc.CanonicalModelPreflight(ctx)
+	if err != nil {
+		return nil, mapModelError(err)
+	}
+	groups := make([]*channelv1.DuplicateModelGroup, 0, len(report.Groups))
+	for i := range report.Groups {
+		groups = append(groups, toDuplicateModelGroupProto(&report.Groups[i]))
+	}
+	return &channelv1.CanonicalModelPreflightResponse{
+		Groups:    groups,
+		Conflicts: append([]string(nil), report.Conflicts...),
+	}, nil
+}
+
+func (s *ChannelService) MergeCanonicalModels(ctx context.Context, req *channelv1.MergeCanonicalModelsRequest) (*channelv1.MergeCanonicalModelsResponse, error) {
+	uc := s.modelUc()
+	if uc == nil {
+		return &channelv1.MergeCanonicalModelsResponse{Success: false, Message: "model management not configured"}, nil
+	}
+	if req == nil || req.Group == nil {
+		return &channelv1.MergeCanonicalModelsResponse{Success: false, Message: "group is required"}, nil
+	}
+	group := biz.DuplicateModelGroup{
+		CanonicalID: req.Group.CanonicalId,
+		SurvivingPK: req.Group.SurvivingPk,
+	}
+	for _, m := range req.Group.Members {
+		group.Members = append(group.Members, biz.DuplicateModelRef{
+			ModelPK: m.ModelPk,
+			ModelID: m.ModelId,
+		})
+	}
+	res, err := uc.MergeCanonicalModels(ctx, group)
+	if err != nil {
+		// A canonical conflict is a structured error the operator must act
+		// on; surface it via the error mapper so the HTTP/gRPC client gets
+		// MODEL_CANONICAL_CONFLICT rather than a generic failure.
+		return nil, mapModelError(err)
+	}
+	return &channelv1.MergeCanonicalModelsResponse{
+		Success:                      true,
+		Message:                      "merged",
+		CanonicalId:                  res.CanonicalID,
+		SurvivingPk:                  res.SurvivingPK,
+		MergedModelPks:               append([]int64{}, res.MergedModelPKs...),
+		AliasesRepointed:             res.AliasesRepointed,
+		ChannelMappingsRepointed:     res.ChannelMappingsRepointed,
+		SubscriptionMappingsRepointed: res.SubscriptionMappingsRepointed,
+		UsageStatsRepointed:          res.UsageStatsRepointed,
+	}, nil
+}
+
+func (s *ChannelService) ListUnpricedRoutedModels(ctx context.Context, req *channelv1.ListUnpricedRoutedModelsRequest) (*channelv1.ListUnpricedRoutedModelsResponse, error) {
+	uc := s.modelUc()
+	if uc == nil {
+		return &channelv1.ListUnpricedRoutedModelsResponse{}, nil
+	}
+	priced := make(map[string]struct{}, len(req.GetPricedModelIds()))
+	for _, id := range req.GetPricedModelIds() {
+		priced[biz.NormalizeModelID(id)] = struct{}{}
+	}
+	summaries, err := uc.ListUnpricedRoutedModels(ctx, priced)
+	if err != nil {
+		return nil, mapModelError(err)
+	}
+	out := make([]*channelv1.UnpricedRoutedModel, 0, len(summaries))
+	for _, sm := range summaries {
+		out = append(out, &channelv1.UnpricedRoutedModel{
+			ModelId:           sm.ModelID,
+			DisplayName:       sm.DisplayName,
+			Provider:          sm.Provider,
+			ChannelCount:      sm.ChannelCount,
+			SubscriptionCount: sm.SubscriptionCount,
+		})
+	}
+	return &channelv1.ListUnpricedRoutedModelsResponse{
+		Models: out,
+		Total:  int32(len(out)),
+	}, nil
 }
