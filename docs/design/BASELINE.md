@@ -138,3 +138,66 @@ While running the baseline test, monitor:
 | 2026-07-17 | Phase 0 | 38.0 ms | ~680 req/s | Local sandbox baseline; see scripts/benchmark/results/phase0-baseline-2026-07-17.json |
 | | Phase 1 | TBD | TBD | After P0 fixes |
 | | Phase 2 | TBD | TBD | After P1 optimizations |
+| 2026-07-28 | v0.11.0 Ph1-3 | TBD | TBD | Selection-event recording + routing metrics added; see v0.11 section below |
+
+## v0.11.0 Phase 3 §3.8: Observability Hot-Path Regression Baseline
+
+> Goal: confirm the Phase 3 selection/execution boundary records
+> (SelectionEvent at every Plan() path) and the routing Prometheus metrics
+> (§3.5) do NOT regress the relay hot path. Re-run the k6 baseline after
+> merging Phase 3 and compare to the Phase 0 row above.
+
+### What changed on the hot path
+
+1. **Plan() boundary**: one SelectionEvent is constructed and emitted on every
+   selection path (sticky hit, cross-source, channel-only, subscription-only).
+   The event is a stack struct (~15 fields); the recorder is a no-op by default
+   and a struct-field write + one function call when wired. No allocation on
+   the happy path when the recorder is no-op.
+2. **SelectionRecorder**: when wired (production), each event triggers 1-4
+   Prometheus `WithLabelValues().Inc()` calls (counter increment, ~50ns each)
+   and one structured `zap.Info` call. The structured log is the dominant
+   cost; it runs on the relay goroutine and is NOT on the billing async path.
+3. **Cross-source weight fix (§3.1)**: replaced `Weight: 1` with
+   `subscriptionRouteWeight(account)` — one branch + int64 arithmetic, no
+   allocation. Negligible vs. the gRPC selection calls that follow.
+
+### How to measure
+
+```bash
+# 1. Before merging Phase 3 (baseline):
+k6 run scripts/benchmark/k6-baseline.js --summary-export=phase3-before.json
+
+# 2. After merging Phase 3:
+k6 run scripts/benchmark/k6-baseline.js --summary-export=phase3-after.json
+
+# 3. Compare P95/P99 of /v1/chat/completions and billing commit duration.
+```
+
+### Metrics to watch (no regression target)
+
+| Metric | Phase 0 baseline | Regression threshold | Phase 3 result |
+|--------|------------------|----------------------|-----------------|
+| `/v1/chat/completions` P95 | 72.0 ms | ≤ 78 ms (+8%) | TBD |
+| `/v1/chat/completions` P99 | 115.0 ms | ≤ 125 ms (+8%) | TBD |
+| billing commit P95 | 15.0 ms (gRPC) | ≤ 17 ms (+13%) | TBD |
+| billing commit P99 | 28.0 ms (gRPC) | ≤ 31 ms (+11%) | TBD |
+| `routing_selection_duration_seconds{source_kind}` P95 | N/A (new) | < 5 ms | TBD |
+| Error rate | 0.25% | ≤ 0.30% | TBD |
+
+### If a regression is detected
+
+The SelectionRecorder seam is designed for cheap removal: setting it back to
+the no-op recorder (via `RelayUsecase.SetSelectionRecorder(nil)` or simply not
+calling it) drops the Plan() overhead to one stack-struct construction + one
+method call on a nil-safe interface. The Prometheus metrics stay defined (zero
+values), so dashboards don't break. The structured log is the only
+non-trivial cost and it can be gated behind a level check (`zap.Info` with a
+sampled logger) without code changes.
+
+### Async/best-effort option
+
+If the synchronous log write proves too expensive under high load, the
+SelectionRecorder can be wrapped in a buffered async writer (channel + flush
+goroutine) without changing the interface — the event struct is already
+self-contained and safe to copy.

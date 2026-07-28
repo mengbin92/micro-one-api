@@ -317,6 +317,10 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/api/admin/summary", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleAdminSummary(w, r, svc)
 	}))
+	// v0.11.0 Phase 3 §3.6 routing operations view.
+	srv.HandleFunc("/api/admin/routing-ops", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleRoutingOps(w, r, svc)
+	}))
 	srv.HandleFunc("/api/v1/subscriptions/progress", func(w http.ResponseWriter, r *http.Request) {
 		handleCurrentSubscriptionProgress(w, r, svc)
 	})

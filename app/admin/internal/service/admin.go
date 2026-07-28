@@ -2429,3 +2429,34 @@ func channelTypeToString(channelType int32) string {
 		return "Unknown"
 	}
 }
+
+// AggregateUsageGroupedByChannel returns the per-channel (and per-subscription-
+// account) usage aggregate within the [start, end] unix-second window. Used by
+// the v0.11.0 Phase 3 §3.6 routing operations view to split traffic/cost by
+// source kind. A bucket with SubscriptionAccountID > 0 is a subscription
+// account; otherwise it is a regular channel.
+func (s *AdminService) AggregateUsageGroupedByChannel(ctx context.Context, start, end int64) ([]UsageAggregateView, error) {
+	if s.billingClient == nil {
+		return []UsageAggregateView{}, nil
+	}
+	req := &billingv1.AggregateUsageRequest{
+		GroupBy: []string{"channel", "subscription_account"},
+		Type:    "consume",
+		Limit:   200,
+	}
+	if start > 0 {
+		req.StartTime = timestamppb.New(time.Unix(start, 0))
+	}
+	if end > 0 {
+		req.EndTime = timestamppb.New(time.Unix(end, 0))
+	}
+	resp, err := s.billingClient.AggregateUsage(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]UsageAggregateView, 0, len(resp.GetBuckets()))
+	for _, bucket := range resp.GetBuckets() {
+		items = append(items, usageAggregateViewFromBucket(bucket, "channel"))
+	}
+	return items, nil
+}
