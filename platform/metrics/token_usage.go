@@ -47,3 +47,23 @@ var TokenUsageShadowCost = prometheus.NewHistogramVec(
 	},
 	[]string{"mode", "unpriced"},
 )
+
+// UnpricedRoutedModels is the v0.11.0 Phase 2 §2.2 gauge for "routed but
+// unpriced" models: public, enabled models that have at least one active
+// channel or subscription mapping but carry no entry in the user-facing
+// ModelPrice config. Unpriced does NOT block routing, but the roadmap
+// requires a visible status + metric so operators do not silently serve a
+// model at zero cost.
+//
+// The single label "source" distinguishes the two route kinds (channel vs
+// subscription) so ops can tell where the gap is. Model ids stay in the audit
+// event / structured log, not in Prometheus labels (cardinality).
+var UnpricedRoutedModels = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "model",
+		Name:      "unpriced_routed",
+		Help:      "Public enabled routed models with no ModelPrice entry, by route source kind",
+	},
+	[]string{"source"},
+)

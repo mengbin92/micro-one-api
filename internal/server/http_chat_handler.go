@@ -128,7 +128,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		}
 
 		if req.Stream {
-			return s.handleStreamingResponse(w, r, provider, &req, reservation, usageLogInput{
+			streamLogInput := usageLogInput{
 				UserID:                plan.Auth.UserID,
 				TokenID:               plan.Auth.TokenID,
 				TokenName:             plan.Auth.TokenName,
@@ -138,7 +138,10 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				ChannelID:             ch.ID,
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 				IsStream:              true,
-			})
+			}
+			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+			streamLogInput.UpstreamModelID, streamLogInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+			return s.handleStreamingResponse(w, r, provider, &req, reservation, streamLogInput)
 		}
 
 		// Non-streaming call
@@ -168,6 +171,8 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			ElapsedTime:      time.Since(startedAt).Milliseconds(),
 			IsStream:         false,
 		}
+		// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+		logInput.UpstreamModelID, logInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err
 		}

@@ -1,10 +1,18 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+
+	"go.uber.org/zap"
+
+	applogger "micro-one-api/platform/logging"
+	"micro-one-api/platform/metrics"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	adminv1 "micro-one-api/api/admin/v1"
 	channelv1 "micro-one-api/api/channel/v1"
@@ -436,4 +444,238 @@ func handleModelRoutings(w http.ResponseWriter, r *http.Request, svc *service.Ad
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
+}
+
+// ── Canonical model ID governance (v0.11.0 Phase 2 §2.1) ──────────────────
+//
+// GET  /api/admin/models/canonical/preflight  → read-only duplicate report
+// POST /api/admin/models/canonical/merge      → merge one duplicate group
+//
+// Mounted under /api/admin/models/canonical/* (see http.go). Kept separate
+// from the CRUD path so the operator-facing preflight/merge surface does not
+// collide with model-id path params.
+
+func handleCanonicalPreflight(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	resp, err := svc.CanonicalModelPreflight(r.Context(), &emptypb.Empty{})
+	if err != nil {
+		// A canonical conflict surfaces as MODEL_CANONICAL_CONFLICT inside the
+		// structured error; map it to 409 so the client can render it.
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "canonical") || strings.Contains(err.Error(), "conflict") {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func handleCanonicalMerge(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var req channelv1.MergeCanonicalModelsRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	resp, err := svc.MergeCanonicalModels(r.Context(), &req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "canonical") || strings.Contains(err.Error(), "conflict") {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleUnpricedRoutedModels serves GET /api/admin/models/unpriced — the
+// v0.11.0 Phase 2 §2.2 "routed but unpriced" audit. The priced set is sourced
+// from the ModelPrice system option here (admin-api owns system_options) so
+// the operator gets a single-call status without manually threading config.
+func handleUnpricedRoutedModels(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	priced := loadPricedModelSet(r.Context(), svc)
+	resp, err := svc.ListUnpricedRoutedModels(r.Context(), &channelv1.ListUnpricedRoutedModelsRequest{
+		PricedModelIds: priced,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	// v0.11.0 Phase 2 §2.2: update the Prometheus gauge so the unpriced count
+	// is observable without polling the API. The gauge is split by source kind
+	// (channel vs subscription) so ops can tell where the gap is; model ids
+	// stay out of labels (cardinality).
+	recordUnpricedRoutedMetric(resp)
+	// Write a structured audit event. The roadmap requires an audit trail for
+	// the unpriced state; when the admin auditor is not wired we fall back to
+	// the application logger so the event is never lost.
+	logUnpricedRoutedAudit(r, resp)
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// recordUnpricedRoutedMetric updates micro_one_api_model_unpriced_routed from
+// a ListUnpricedRoutedModels response. A model routed through both a channel
+// and a subscription counts in both gauges.
+func recordUnpricedRoutedMetric(resp *channelv1.ListUnpricedRoutedModelsResponse) {
+	if metrics.UnpricedRoutedModels == nil || resp == nil {
+		return
+	}
+	var channelCount, subscriptionCount float64
+	for _, m := range resp.GetModels() {
+		if m.GetChannelCount() > 0 {
+			channelCount++
+		}
+		if m.GetSubscriptionCount() > 0 {
+			subscriptionCount++
+		}
+	}
+	metrics.UnpricedRoutedModels.WithLabelValues("channel").Set(channelCount)
+	metrics.UnpricedRoutedModels.WithLabelValues("subscription").Set(subscriptionCount)
+}
+
+// logUnpricedRoutedAudit emits a structured audit log entry for the unpriced
+// audit. The actor is the authenticated admin (from the X-Operator-User-Id
+// header stamped by newAdminGuard); the model ids are included in the audit
+// detail so ops can act on them without a second API call.
+func logUnpricedRoutedAudit(r *http.Request, resp *channelv1.ListUnpricedRoutedModelsResponse) {
+	if resp == nil {
+		return
+	}
+	operator := adminOperatorIDFromRequest(r)
+	modelIDs := make([]string, 0, len(resp.GetModels()))
+	for _, m := range resp.GetModels() {
+		modelIDs = append(modelIDs, m.GetModelId())
+	}
+	if applogger.Log != nil {
+		applogger.Log.Info("unpriced routed models audit",
+			zap.String("actor", operator),
+			zap.Int("count", int(resp.GetTotal())),
+			zap.Strings("models", modelIDs),
+			zap.String("request_id", r.Header.Get("X-Request-Id")),
+		)
+	}
+}
+
+// loadPricedModelSet reads the ModelPrice system option (a JSON map keyed by
+// canonical model id) and returns its keys as a canonicalised set. Returns an
+// empty set when the option is absent or unparseable — every routed model
+// then shows up as unpriced, which is the correct conservative signal.
+func loadPricedModelSet(ctx context.Context, svc *service.AdminService) []string {
+	raw, err := svc.GetSystemOption(ctx, "ModelPrice")
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(parsed))
+	for k := range parsed {
+		if k = strings.TrimSpace(k); k != "" {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// ── v0.11.0 Phase 2 §2.2: independent upstream-cost management ─────────────
+//
+// GET    /api/admin/upstream-costs                → list the structured per-source view
+// POST   /api/admin/upstream-costs                → upsert one entry (canonical key)
+// DELETE /api/admin/upstream-costs?key=...        → delete one entry
+// POST   /api/admin/upstream-costs/migrate        → migrate legacy keys (body: {dry_run:bool})
+
+func handleListUpstreamCosts(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	view, err := svc.ListUpstreamCosts(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+func handleSetUpstreamCost(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var entry service.UpstreamCostEntry
+	if !decodeBody(w, r, &entry) {
+		return
+	}
+	if err := svc.SetUpstreamCost(r.Context(), entry); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func handleDeleteUpstreamCost(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodDelete {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	key := r.URL.Query().Get("key")
+	if err := svc.DeleteUpstreamCost(r.Context(), key); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func handleMigrateUpstreamCostKeys(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	// Default to dry_run=true so a careless POST does not rewrite config. The
+	// operator must explicitly send {"dry_run": false} to apply.
+	dryRun := true
+	var body struct {
+		DryRun *bool `json:"dry_run"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.DryRun != nil {
+		dryRun = *body.DryRun
+	}
+	plan, err := svc.MigrateUpstreamCostKeys(r.Context(), dryRun)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+// unpricedRoutedCount returns the number of public, enabled, routed models
+// that have no ModelPrice entry, computed against the freshly-saved pricing
+// config. Used by the price-save flow (v0.11.0 Phase 2 §2.2) to surface the
+// gap in the save response. Returns -1 when channel-service is unavailable
+// so the caller can omit the field instead of reporting a misleading 0.
+func unpricedRoutedCount(ctx context.Context, svc *service.AdminService) int {
+	if svc == nil {
+		return -1
+	}
+	priced := loadPricedModelSet(ctx, svc)
+	resp, err := svc.ListUnpricedRoutedModels(ctx, &channelv1.ListUnpricedRoutedModelsRequest{
+		PricedModelIds: priced,
+	})
+	if err != nil || resp == nil {
+		return -1
+	}
+	return int(resp.GetTotal())
 }

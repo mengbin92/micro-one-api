@@ -189,7 +189,7 @@ func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.Re
 }
 
 func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool) usageLogInput {
-	return usageLogInput{
+	input := usageLogInput{
 		UserID:                plan.Auth.UserID,
 		TokenID:               plan.Auth.TokenID,
 		TokenName:             plan.Auth.TokenName,
@@ -207,4 +207,7 @@ func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPl
 		ElapsedTime:           latency.Milliseconds(),
 		IsStream:              stream,
 	}
+	// v0.11.0 Phase 2 §2.2: thread the stable upstream cost-key inputs.
+	input.UpstreamModelID, input.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+	return input
 }

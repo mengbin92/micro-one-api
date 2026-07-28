@@ -82,6 +82,14 @@ message CommitQuotaRequest {
   // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
   int64 cache_creation_5m_tokens = 14;  // 写入 5 分钟 TTL cache 的 token
   int64 cache_creation_1h_tokens = 15;  // 写入 1 小时 TTL cache 的 token
+  // v0.11.0 Phase 2 §2.2: stable upstream cost key inputs. upstream_model_id
+  // is the exact identifier the selected upstream requires (e.g.
+  // "z-ai/glm-5.2"); source_kind is "channel" or "subscription" so billing can
+  // pick the right cost-key prefix without guessing from the channel/account
+  // id space. When either is empty, billing falls back to the legacy
+  // <channel_id>:<public_model_id> key for backwards compatibility.
+  string upstream_model_id = 16;
+  string source_kind = 17;
 }
 
 message CommitQuotaResponse {

@@ -31,6 +31,13 @@ type usageLogInput struct {
 	SessionWindowLimitUSD  float64
 	ElapsedTime            int64
 	IsStream               bool
+
+	// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs. Populated from
+	// the relay plan so billing can build channel:<id>:<upstream_model_id> /
+	// subscription:<id>:<upstream_model_id> instead of the legacy
+	// <channel_id>:<public_model_id>.
+	UpstreamModelID string
+	SourceKind      string
 }
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {

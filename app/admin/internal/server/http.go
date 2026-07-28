@@ -535,6 +535,35 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/api/admin/models", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleModels(w, r, svc)
 	}))
+	// Canonical model ID governance (v0.11.0 Phase 2 §2.1): registered with a
+	// longer prefix than /api/admin/models/ so net/http's longest-match wins
+	// and these operator endpoints don't fall through to the {model_pk} path.
+	srv.HandlePrefix("/api/admin/models/canonical/preflight", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleCanonicalPreflight(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/admin/models/canonical/merge", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleCanonicalMerge(w, r, svc)
+	}))
+	// v0.11.0 Phase 2 §2.2 unpriced-model audit.
+	srv.HandlePrefix("/api/admin/models/unpriced", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleUnpricedRoutedModels(w, r, svc)
+	}))
+	// v0.11.0 Phase 2 §2.2 independent upstream-cost management.
+	srv.HandleFunc("/api/admin/upstream-costs/migrate", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleMigrateUpstreamCostKeys(w, r, svc)
+	}))
+	srv.HandleFunc("/api/admin/upstream-costs", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handleListUpstreamCosts(w, r, svc)
+		case http.MethodPost:
+			handleSetUpstreamCost(w, r, svc)
+		case http.MethodDelete:
+			handleDeleteUpstreamCost(w, r, svc)
+		default:
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		}
+	}))
 	srv.HandlePrefix("/api/admin/models/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleModels(w, r, svc)
 	}))
@@ -2888,10 +2917,19 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]interface{}{
+			out := map[string]interface{}{
 				"success": resp.GetSuccess(),
 				"message": resp.GetMessage(),
-			})
+			}
+			// v0.11.0 Phase 2 §2.2: after a ModelPrice save, surface the count
+			// of routed-but-unpriced models so the operator sees the gap
+			// without a second call. Unpriced does NOT block the save.
+			if raw.Key == "ModelPrice" && resp.GetSuccess() {
+				if count := unpricedRoutedCount(r.Context(), svc); count >= 0 {
+					out["unpriced_routed_count"] = count
+				}
+			}
+			writeJSON(w, http.StatusOK, out)
 			return
 		}
 		updates := map[string]string{}

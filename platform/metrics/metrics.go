@@ -260,6 +260,7 @@ func init() {
 		RelayUpstreamPassthroughTotal,
 		TokenUsageParseAnomaly,
 		TokenUsageShadowCost,
+		UnpricedRoutedModels,
 		RelayCodexQuotaSnapshotsTotal,
 		RelayCodexQuotaUsedPercent,
 		SubscriptionAccountQuotaResetsTotal,

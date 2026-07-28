@@ -16,6 +16,19 @@ import (
 // subscription account is only reusable via session stickiness when enabled.
 const subscriptionAccountStatusEnabled int32 = 1
 
+// Upstream cost-source kinds (v0.11.0 Phase 2 §2.2). These mirror the
+// billing-side CostSource* constants and are the prefix of the stable
+// upstream cost key (channel:<id>:<upstream_model_id> /
+// subscription:<id>:<upstream_model_id>). They are declared here, in the
+// relay biz package, so the server layer can populate them without importing
+// the billing service (layering: server → relay biz, never server → billing
+// biz). The string values must stay in lockstep with
+// app/billing/internal/biz.CostSourceChannel / CostSourceSubscription.
+const (
+	UpstreamSourceChannel      = "channel"
+	UpstreamSourceSubscription = "subscription"
+)
+
 type IdentityClient interface {
 	GetAuthSnapshot(ctx context.Context, token string) (*AuthSnapshot, error)
 }

@@ -483,7 +483,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		}
 
 		if ccReq.Stream {
-			return s.handleAnthropicStreamingResponse(w, r, provider, ccReq, reservation, usageLogInput{
+			streamLogInput := usageLogInput{
 				UserID:    plan.Auth.UserID,
 				TokenID:   plan.Auth.TokenID,
 				TokenName: plan.Auth.TokenName,
@@ -495,7 +495,10 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 				ModelName: s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
 				ChannelID: ch.ID,
 				IsStream:  true,
-			})
+			}
+			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+			streamLogInput.UpstreamModelID, streamLogInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+			return s.handleAnthropicStreamingResponse(w, r, provider, ccReq, reservation, streamLogInput)
 		}
 
 		// Non-streaming.
@@ -525,6 +528,8 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 			ElapsedTime:           time.Since(startedAt).Milliseconds(),
 			IsStream:              false,
 		}
+		// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+		logInput.UpstreamModelID, logInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err
 		}

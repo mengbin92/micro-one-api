@@ -529,6 +529,8 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 				IsStream:              true,
 			}
+			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+			logInput.UpstreamModelID, logInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
 			logUpstreamUsage(logInput)
 			// Each turn commits against its own reservation. The connection-level
 			// reservation only covers the first turn; a Responses WebSocket is

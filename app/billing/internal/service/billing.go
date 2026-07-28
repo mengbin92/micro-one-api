@@ -103,6 +103,11 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		ElapsedTime:           req.ElapsedTime,
 		IsStream:              req.IsStream,
 		SubscriptionAccountID: req.SubscriptionAccountId,
+		// v0.11.0 Phase 2 §2.2: thread the stable upstream cost-key inputs
+		// through to the cost calculator. Empty values keep the legacy
+		// <channel_id>:<public_model_id> key resolution.
+		UpstreamModelID: req.UpstreamModelId,
+		SourceKind:      req.SourceKind,
 	}
 
 	// Async path: enqueue the settlement task and return a provisional

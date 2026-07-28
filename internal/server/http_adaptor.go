@@ -572,6 +572,8 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 					SessionWindowLimitUSD: sessionWindowLimitUSD,
 					IsStream:              true,
 				}
+				// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+				logInput.UpstreamModelID, logInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
 				if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
 				} else {
@@ -640,6 +642,8 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				SessionHash:           sessionHash,
 				SessionWindowLimitUSD: sessionWindowLimitUSD,
 			}
+			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+			logInput.UpstreamModelID, logInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
 			if err := s.commitQuotaAfterResponse(reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
@@ -942,6 +946,25 @@ func subscriptionAccountIDFromPlan(plan *relaybiz.RelayPlan) int64 {
 		return 0
 	}
 	return plan.Account.ID
+}
+
+// upstreamCostKeyInputsFromPlan extracts the v0.11.0 Phase 2 §2.2 stable
+// upstream cost-key inputs from a relay plan. A subscription account plan
+// yields ("subscription", account.UpstreamModelID); a regular channel plan
+// yields ("channel", channel.UpstreamModelID). Empty upstream_model_id is
+// common when the channel has no per-mapping override — billing then falls
+// back to the legacy <channel_id>:<public_model_id> key.
+func upstreamCostKeyInputsFromPlan(plan *relaybiz.RelayPlan) (sourceKind, upstreamModelID string) {
+	if plan == nil {
+		return "", ""
+	}
+	if plan.Account != nil {
+		return relaybiz.UpstreamSourceSubscription, strings.TrimSpace(plan.Account.UpstreamModelID)
+	}
+	if plan.Channel != nil {
+		return relaybiz.UpstreamSourceChannel, strings.TrimSpace(plan.Channel.UpstreamModelID)
+	}
+	return "", ""
 }
 
 func fallbackSubscriptionAccountMetadata(plan *relaybiz.RelayPlan, ch *relaybiz.Channel) *relaycredential.SubscriptionAccountMetadata {

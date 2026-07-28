@@ -593,6 +593,14 @@ type LedgerUsage struct {
 	ElapsedTime           int64
 	IsStream              bool
 	SubscriptionAccountID int64 // optional override; 0 = use the reservation's account
+
+	// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs. UpstreamModelID
+	// is the exact identifier the selected upstream requires (e.g.
+	// "z-ai/glm-5.2"); SourceKind is CostSourceChannel or CostSourceSubscription
+	// so the cost-key prefix is unambiguous. When either is empty, billing
+	// falls back to the legacy <channel_id>:<public_model_id> key.
+	UpstreamModelID string
+	SourceKind      string
 }
 
 func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationID string, actualTokens int64, success bool, usage LedgerUsage) (int64, int64, error) {
@@ -1483,7 +1491,20 @@ func (uc *BillingUsecase) calculateUpstreamCostWithUsage(ctx context.Context, ch
 		return usage.UpstreamCost
 	}
 	pricing := uc.pricingConfig(ctx)
-	price, ok := pricing.UpstreamPrices[upstreamPriceKey(channelID, model)]
+	// v0.11.0 Phase 2 §2.2: prefer the stable canonical cost key
+	// (channel:<id>:<upstream_model_id> / subscription:<id>:<upstream_model_id>),
+	// then fall back to the legacy <channel_id>:<public_model_id> key so
+	// existing configs keep resolving until they are migrated, then the bare
+	// model id. The model passed in here is the canonical public id; the
+	// upstream_model_id (exact upstream spelling) comes from LedgerUsage.
+	sourceID := channelID
+	if usage.SubscriptionAccountID > 0 && strings.TrimSpace(usage.SourceKind) == CostSourceSubscription {
+		sourceID = usage.SubscriptionAccountID
+	}
+	price, ok := pricing.UpstreamPrices[canonicalUpstreamPriceKey(usage.SourceKind, sourceID, usage.UpstreamModelID)]
+	if !ok {
+		price, ok = pricing.UpstreamPrices[upstreamPriceKey(channelID, model)]
+	}
 	if !ok {
 		price, ok = pricing.UpstreamPrices[model]
 	}
@@ -1651,11 +1672,50 @@ func calculateModelPriceCost(price ModelPrice, promptTokens, completionTokens, c
 	return int64(math.Ceil(cost))
 }
 
-func upstreamPriceKey(channelID int64, model string) string {
-	if channelID <= 0 {
+// CostSourceChannel is the v0.11.0 Phase 2 §2.2 source-kind value for a
+// regular channel. CostSourceSubscription and CostSourceBalance are declared
+// in ledger.go.
+const (
+	CostSourceChannel = "channel"
+)
+
+// upstreamPriceKey builds the key used to look up UpstreamModelPrice.
+//
+// v0.11.0 Phase 2 §2.2 introduces a stable, unambiguous cost-key scheme:
+//
+//	channel:<id>:<upstream_model_id>      // regular channel
+//	subscription:<id>:<upstream_model_id>  // subscription account
+//
+// The legacy form was <channel_id>:<public_model_id>, which conflated regular
+// channels and subscription accounts (they share the id space only by
+// accident) and used the public model id rather than the exact upstream id.
+// When the caller supplies the new inputs (sourceKind + upstreamModelID), the
+// canonical key is built and looked up first; the legacy key is still probed
+// as a fallback so existing configs keep working until they are migrated.
+//
+// legacyUpstreamPriceKey preserves the pre-v0.11.0 key for the fallback read.
+func upstreamPriceKey(sourceID int64, model string) string {
+	if sourceID <= 0 {
 		return model
 	}
-	return fmt.Sprintf("%d:%s", channelID, model)
+	return fmt.Sprintf("%d:%s", sourceID, model)
+}
+
+// canonicalUpstreamPriceKey builds the v0.11.0 Phase 2 §2.2 cost key from the
+// stable inputs. Returns "" when the inputs are incomplete, signalling the
+// caller to fall back to the legacy key.
+func canonicalUpstreamPriceKey(sourceKind string, sourceID int64, upstreamModelID string) string {
+	sourceKind = strings.TrimSpace(sourceKind)
+	upstreamModelID = strings.TrimSpace(upstreamModelID)
+	if sourceKind == "" || sourceID <= 0 || upstreamModelID == "" {
+		return ""
+	}
+	switch sourceKind {
+	case CostSourceChannel, CostSourceSubscription:
+		return fmt.Sprintf("%s:%d:%s", sourceKind, sourceID, upstreamModelID)
+	default:
+		return ""
+	}
 }
 
 func normalizePositiveRatios(input map[string]float64) map[string]float64 {
