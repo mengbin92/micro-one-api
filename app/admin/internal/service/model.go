@@ -298,3 +298,25 @@ func (s *AdminService) GetSystemOption(ctx context.Context, key string) (string,
 	}
 	return s.systemOptsUc.Get(ctx, key)
 }
+
+// ── Model import/export passthrough (v0.11.0 Phase 4) ──────────────────────
+// Admin-api proxies the exchange RPCs to channel-service, mirroring the
+// existing model-management passthrough. The admin HTTP layer enforces the
+// admin/root role check for export_prices/import_prices; channel-service
+// performs the actual read/write. Prices are only forwarded when the caller
+// has the required role, so a misconfigured client cannot leak pricing.
+
+// ExportModels exports the model registry as a versioned document.
+func (s *AdminService) ExportModels(ctx context.Context, req *channelv1.ExportModelsRequest) (*channelv1.ExportModelsResponse, error) {
+	return s.channelClient.ExportModels(ctx, req)
+}
+
+// ImportModels applies an import document in one transaction.
+func (s *AdminService) ImportModels(ctx context.Context, req *channelv1.ImportModelsRequest) (*channelv1.ImportModelsResponse, error) {
+	return s.channelClient.ImportModels(ctx, req)
+}
+
+// DryRunImportModels previews an import without writing.
+func (s *AdminService) DryRunImportModels(ctx context.Context, req *channelv1.ImportModelsRequest) (*channelv1.ImportModelsDryRunResponse, error) {
+	return s.channelClient.DryRunImportModels(ctx, req)
+}

@@ -77,6 +77,16 @@ service ChannelService {
   // config from system_options, canonicalises its keys, and passes them here
   // so the audit stays a pure cross-source diff with no storage coupling.
   rpc ListUnpricedRoutedModels(ListUnpricedRoutedModelsRequest) returns (ListUnpricedRoutedModelsResponse);
+  // ========== Model import/export (v0.11.0 Phase 4) ==========
+  // Versioned JSON schema export/import for the model registry, its aliases,
+  // channel mappings and subscription mappings. Prices are excluded by default
+  // and require an explicit opt-in (export_prices=true) plus the caller having
+  // admin/root role (enforced at admin-api). Import supports dry_run to preview
+  // a diff without writing; a real import runs in one transaction and rolls
+  // back on the first invalid record. Conflict strategy defaults to reject.
+  rpc ExportModels(ExportModelsRequest) returns (ExportModelsResponse);
+  rpc ImportModels(ImportModelsRequest) returns (ImportModelsResponse);
+  rpc DryRunImportModels(ImportModelsRequest) returns (ImportModelsDryRunResponse);
 
 }
 
@@ -900,4 +910,126 @@ message UnpricedRoutedModel {
 message ListUnpricedRoutedModelsResponse {
   repeated UnpricedRoutedModel models = 1;
   int32 total = 2;
+}
+
+// ── Model import/export (v0.11.0 Phase 4) ─────────────────────────────────
+// The export/import payload is a versioned JSON document. The wire form below
+// carries the same structure as a JSON file so admin-api can stream a file
+// upload/download straight through without a second encoding pass. Export
+// NEVER includes channel API keys, OAuth tokens or any other credential —
+// only model registry metadata, aliases and routing mappings.
+
+message ModelExportModel {
+  string model_id = 1;
+  string display_name = 2;
+  string description = 3;
+  string provider = 4;
+  string model_type = 5;
+  int32 context_window = 6;
+  double pricing_input = 7;        // only populated when export_prices=true
+  double pricing_output = 8;       // only populated when export_prices=true
+  int32 status = 9;
+  bool is_public = 10;
+  repeated string capabilities = 11;
+  repeated string tags = 12;
+  string category = 13;
+  string tier = 14;
+  string metadata = 15;            // JSON string
+  repeated ModelAlias aliases = 16;
+  repeated ModelExportChannelMapping channel_mappings = 17;
+  repeated ModelExportSubscriptionMapping subscription_mappings = 18;
+}
+
+// Channel mapping in export/import context references the channel by its
+// stable id (not name) so re-import into the same environment is exact.
+message ModelExportChannelMapping {
+  int64 channel_id = 1;
+  bool enabled = 2;
+  int32 priority = 3;
+  string config = 4;               // JSON
+  string upstream_model_id = 5;
+}
+
+message ModelExportSubscriptionMapping {
+  int64 subscription_account_id = 1;
+  string group_name = 2;
+  bool enabled = 3;
+  int32 priority = 4;
+  string upstream_model_id = 5;
+}
+
+message ExportModelsRequest {
+  // When true, user-facing pricing (pricing_input/output) is included in the
+  // export. Requires admin/root role; enforced at admin-api. Upstream costs
+  // (UpstreamModelPrice) are NEVER exported.
+  bool export_prices = 1;
+  // Optional filter to narrow the export (same semantics as ListModels).
+  string keyword = 2;
+  string provider = 3;
+  string model_type = 4;
+  int32 status = 5;
+  string category = 6;
+  string tier = 7;
+}
+
+message ExportModelsResponse {
+  // Schema version of the export document. Import rejects a mismatched
+  // version instead of guessing the shape.
+  string schema_version = 1;
+  // ISO-8601 timestamp of when the export was produced.
+  string exported_at = 2;
+  repeated ModelExportModel models = 3;
+  // SHA-256 of the canonical JSON of the models array, for integrity checks
+  // and audit. Computed over a stable key-sorted encoding so re-export of the
+  // same data yields the same hash.
+  string content_hash = 4;
+}
+
+// ImportModelsRequest carries a full export document. The same message is
+// accepted by DryRunImportModels (which performs validation + diff only and
+// performs no writes).
+message ImportModelsRequest {
+  string schema_version = 1;
+  repeated ModelExportModel models = 2;
+  // Conflict strategy when a model_id (or alias) already exists with different
+  // content: "reject" (default) aborts the whole import; "update" overwrites
+  // the conflicting model and its mappings. A model that exists with identical
+  // content is always treated as "skip" regardless of this setting.
+  string conflict_strategy = 3;
+  // When true, pricing fields in the import document are applied. Requires the
+  // same admin/root role check as export_prices. When false, pricing fields in
+  // the document are ignored (status/metadata/etc still apply).
+  bool import_prices = 4;
+}
+
+message ImportRecordResult {
+  string model_id = 1;
+  // One of: "create", "update", "skip", "conflict", "error".
+  string action = 2;
+  // Human-readable detail (e.g. the conflict reason or validation error).
+  string message = 3;
+}
+
+message ImportModelsResponse {
+  bool success = 1;
+  string message = 2;
+  int32 created = 3;
+  int32 updated = 4;
+  int32 skipped = 5;
+  int32 conflicts = 6;
+  int32 errors = 7;
+  repeated ImportRecordResult results = 8;
+}
+
+message ImportModelsDryRunResponse {
+  // Dry-run never writes; this mirrors ImportModelsResponse so the UI can
+  // render the preview and the real result with the same component.
+  bool would_succeed = 1;
+  string message = 2;
+  int32 would_create = 3;
+  int32 would_update = 4;
+  int32 would_skip = 5;
+  int32 conflicts = 6;
+  int32 errors = 7;
+  repeated ImportRecordResult results = 8;
 }

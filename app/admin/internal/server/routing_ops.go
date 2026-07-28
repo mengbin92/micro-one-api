@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ type routingOpsView struct {
 	Sources []routingOpsSource `json:"sources"`
 	Totals  routingOpsTotals  `json:"totals"`
 	Unpriced routingOpsUnpriced `json:"unpriced"`
+	Alerts  []routingOpsAlert `json:"alerts"`
 }
 
 type routingOpsWindow struct {
@@ -71,6 +73,16 @@ type routingOpsTotals struct {
 
 type routingOpsUnpriced struct {
 	RoutedButUnpriced int32 `json:"routed_but_unpriced"`
+}
+
+// routingOpsAlert is one Phase 3 §3.7 alert condition detected in the current
+// window. Severity is "warning" or "critical"; Detail carries model/source
+// ids so ops can act without a second query.
+type routingOpsAlert struct {
+	Kind     string `json:"kind"`
+	Severity string `json:"severity"`
+	Message  string `json:"message"`
+	Detail   string `json:"detail"`
 }
 
 // handleRoutingOps serves GET /api/admin/routing-ops.
@@ -138,11 +150,20 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 	// Unpriced routed model count (Phase 2 §2.2) so the ops view surfaces the
 	// pricing gap alongside traffic.
 	priced := loadPricedModelSet(r.Context(), svc)
+	var unpricedResp *channelv1.ListUnpricedRoutedModelsResponse
 	if resp, err := svc.ListUnpricedRoutedModels(r.Context(), &channelv1.ListUnpricedRoutedModelsRequest{
 		PricedModelIds: priced,
 	}); err == nil && resp != nil {
 		view.Unpriced.RoutedButUnpriced = resp.GetTotal()
+		unpricedResp = resp
 	}
+
+	// v0.11.0 Phase 3 §3.7: compute routing alert conditions from the data
+	// already loaded for this view. These are threshold-based observation
+	// alerts surfaced in-line (no separate delivery path); the frontend
+	// renders them as a warning banner.
+	view.Alerts = computeRoutingOpsAlerts(view, unpricedResp)
+
 	writeJSON(w, http.StatusOK, view)
 }
 
@@ -170,4 +191,77 @@ func parseUnixQS(r *http.Request, key string, def int64) int64 {
 		return def
 	}
 	return n
+}
+
+// computeRoutingOpsAlerts evaluates the Phase 3 §3.7 alert conditions against
+// the routing-ops snapshot. It is pure: it reads the already-loaded view and
+// the unpriced-model response, and returns the list of active alerts. Each
+// condition maps to one roadmap requirement:
+//   - unpriced_traffic: routed models with traffic but no user-facing price
+//   - upstream_cost_missing: sources with revenue but no upstream cost
+//   - source_skew: a single source dominates traffic far beyond its weight
+//   - negative_margin: gross profit is negative (cost > revenue)
+func computeRoutingOpsAlerts(view routingOpsView, unpriced *channelv1.ListUnpricedRoutedModelsResponse) []routingOpsAlert {
+	var alerts []routingOpsAlert
+
+	// 1. Unpriced models with active traffic.
+	if unpriced != nil && unpriced.GetTotal() > 0 && view.Totals.Count > 0 {
+		ids := make([]string, 0, len(unpriced.GetModels()))
+		for _, m := range unpriced.GetModels() {
+			ids = append(ids, m.GetModelId())
+		}
+		alerts = append(alerts, routingOpsAlert{
+			Kind:     "unpriced_traffic",
+			Severity: "warning",
+			Message:  "有流量的模型缺少用户售价配置",
+			Detail:   strings.Join(ids, ", "),
+		})
+	}
+
+	// 2. Sources with revenue but zero upstream cost (cost key missing).
+	totalSources := len(view.Sources)
+	costMissingSources := 0
+	for _, src := range view.Sources {
+		if src.Quota > 0 && src.UpstreamCost == 0 {
+			costMissingSources++
+		}
+	}
+	if costMissingSources > 0 {
+		alerts = append(alerts, routingOpsAlert{
+			Kind:     "upstream_cost_missing",
+			Severity: "warning",
+			Message:  "有收入的来源缺少上游成本配置",
+			Detail:   strconv.Itoa(costMissingSources) + "/" + strconv.Itoa(totalSources) + " sources",
+		})
+	}
+
+	// 3. Source skew: a single source handles >80% of traffic when there are
+	//    2+ active sources. This flags a weight/priority misconfiguration
+	//    rather than a hard error.
+	if totalSources >= 2 && view.Totals.Count > 0 {
+		for _, src := range view.Sources {
+			share := float64(src.Count) / float64(view.Totals.Count)
+			if share > 0.80 {
+				alerts = append(alerts, routingOpsAlert{
+					Kind:     "source_skew",
+					Severity: "warning",
+					Message:  "单一来源流量占比过高，可能偏离配置权重",
+					Detail:   src.SourceKind + " #" + strconv.FormatInt(src.SourceID, 10) + " = " + strconv.FormatFloat(share*100, 'f', 1, 64) + "%",
+				})
+				break
+			}
+		}
+	}
+
+	// 4. Negative margin: gross profit is negative (cost exceeds revenue).
+	if view.Totals.GrossProfit < 0 {
+		alerts = append(alerts, routingOpsAlert{
+			Kind:     "negative_margin",
+			Severity: "critical",
+			Message:  "毛利为负：上游成本超过用户收入",
+			Detail:   "gross_profit = " + strconv.FormatInt(view.Totals.GrossProfit, 10),
+		})
+	}
+
+	return alerts
 }

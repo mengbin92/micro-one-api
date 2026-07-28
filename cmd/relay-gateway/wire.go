@@ -300,6 +300,10 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	channelAdapter := relaydata.NewChannelAdapter(channelClient)
 	relayUsecase := relaybiz.NewRelayUsecase(identityAdapter, channelAdapter, modelMapper, retryPolicy)
 	relayUsecase.SetRuntimeBlocker(relaybiz.NewMemoryRuntimeBlocker())
+	// v0.11.0 Phase 3 §3.4/§3.5: wire the metrics+logging selection recorder
+	// so routing selection/fallback/sticky metrics are actually emitted. Without
+	// this the recorder stays noop and the Prometheus counters never increment.
+	relayUsecase.SetSelectionRecorder(relaybiz.NewMetricsSelectionRecorder(applogger.Log))
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
 	httpServer.SetHybridAdaptorEnabled(cfg.Bootstrap.HybridAdaptor.GetHybridAdaptorEnabled())

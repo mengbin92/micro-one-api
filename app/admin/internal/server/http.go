@@ -552,6 +552,16 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandlePrefix("/api/admin/models/unpriced", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleUnpricedRoutedModels(w, r, svc)
 	}))
+	// v0.11.0 Phase 4 model import/export. Registered before the
+	// /api/admin/models/ wildcard so net/http longest-prefix matching routes
+	// these operator endpoints to the exchange handlers, not the {model_pk}
+	// path. Prices require root role (enforced in the handler).
+	srv.HandleFunc("/api/admin/models/export", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleExportModels(w, r, svc)
+	}))
+	srv.HandleFunc("/api/admin/models/import", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleImportModels(w, r, svc)
+	}))
 	// v0.11.0 Phase 2 §2.2 independent upstream-cost management.
 	srv.HandleFunc("/api/admin/upstream-costs/migrate", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleMigrateUpstreamCostKeys(w, r, svc)
