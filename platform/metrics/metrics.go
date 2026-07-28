@@ -262,6 +262,11 @@ func init() {
 		TokenUsageShadowCost,
 		UnpricedRoutedModels,
 		RelayCodexQuotaSnapshotsTotal,
+		// v0.11.0 Phase 3 §3.5 routing observability.
+		RoutingSelectionTotal,
+		RoutingFallbackTotal,
+		RoutingSelectionDuration,
+		RoutingStickyHitTotal,
 		RelayCodexQuotaUsedPercent,
 		SubscriptionAccountQuotaResetsTotal,
 		SubscriptionAccountQuotaResetScanDuration,
