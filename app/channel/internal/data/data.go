@@ -1866,7 +1866,10 @@ func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) 
 			return err
 		}
 		channel.ID = model.ID
-		return r.syncAbilitiesTx(tx, channel)
+		if err := r.syncAbilitiesTx(tx, channel); err != nil {
+			return err
+		}
+		return r.syncChannelModelMappingsTx(tx, channel)
 	})
 }
 
@@ -1899,7 +1902,10 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 		}).Error; err != nil {
 			return err
 		}
-		return r.syncAbilitiesTx(tx, channel)
+		if err := r.syncAbilitiesTx(tx, channel); err != nil {
+			return err
+		}
+		return r.syncChannelModelMappingsTx(tx, channel)
 	})
 }
 
@@ -1953,6 +1959,148 @@ func (r *Repository) syncAbilitiesTx(tx *gorm.DB, channel *biz.Channel) error {
 		return nil
 	}
 	return tx.Create(&rows).Error
+}
+
+// syncChannelModelMappingsTx mirrors syncAbilitiesTx but for the model
+// registry path: it ensures every model on the channel has an enabled
+// model_channel_mapping row (and a minimal models row when the registry is
+// missing the model), and removes mappings for models the channel no longer
+// serves. This keeps the channel-edit flow and the model-management flow
+// converging on the same data so that /v1/models sees newly added models.
+//
+// Only enabled channels produce mappings; a disabled channel's mappings are
+// disabled (not deleted) so they resurface when the channel is re-enabled.
+// Wildcard patterns ("claude-*", "*") are skipped — they are routing rules,
+// not advertised models.
+func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channel) error {
+	enabled := channel.Status == biz.ChannelStatusEnabled
+
+	// Collect the channel's real model names (skip wildcards).
+	wanted := make(map[string]struct{}, len(channel.Models))
+	for _, m := range channel.Models {
+		m = strings.TrimSpace(m)
+		if m == "" || strings.ContainsAny(m, "*?") {
+			continue
+		}
+		wanted[biz.NormalizeModelID(m)] = struct{}{}
+	}
+
+	// Disable+delete mappings for models no longer on the channel.
+	var existing []modelChannelMappingModel
+	if err := tx.Where("channel_id = ?", channel.ID).Find(&existing).Error; err != nil {
+		return err
+	}
+	for _, row := range existing {
+		var po modelModel
+		if err := tx.Where("id = ?", row.ModelPK).First(&po).Error; err != nil {
+			if !isGormNotFound(err) {
+				return err
+			}
+			continue
+		}
+		if _, ok := wanted[biz.NormalizeModelID(po.ModelID)]; !ok {
+			if err := tx.Where("id = ?", row.ID).Delete(&modelChannelMappingModel{}).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	// Ensure a registry row + mapping for each wanted model.
+	for canonical := range wanted {
+		pk, err := ensureModelRegistryRowTx(tx, canonical)
+		if err != nil {
+			return err
+		}
+		var row modelChannelMappingModel
+		err = tx.Where("channel_id = ? AND model_id = ?", channel.ID, pk).First(&row).Error
+		if err == nil {
+			// Existing mapping: align enabled/priority.
+			updates := map[string]interface{}{
+				"priority":   safecast.Int64ToInt32Saturating(channel.Priority),
+				"updated_at": time.Now().Unix(),
+			}
+			if enabled != row.Enabled {
+				updates["enabled"] = enabled
+			}
+			if err := tx.Model(&modelChannelMappingModel{}).Where("id = ?", row.ID).Updates(updates).Error; err != nil {
+				return err
+			}
+			continue
+		}
+		if !isGormNotFound(err) {
+			return err
+		}
+		// Insert new mapping (enabled mirrors channel status).
+		mapping := modelChannelMappingModel{
+			ChannelID: channel.ID,
+			ModelPK:   pk,
+			Enabled:   enabled,
+			Priority:  safecast.Int64ToInt32Saturating(channel.Priority),
+			CreatedAt: time.Now().Unix(),
+			UpdatedAt: time.Now().Unix(),
+		}
+		if err := tx.Create(&mapping).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureModelRegistryRowTx ... (unchanged)
+// model_id matches, creating a minimal public chat model when it is missing.
+func ensureModelRegistryRowTx(tx *gorm.DB, canonicalID string) (int64, error) {
+	var po modelModel
+	err := tx.Where("LOWER(model_id) = ?", canonicalID).First(&po).Error
+	if err == nil {
+		return po.ID, nil
+	}
+	if !isGormNotFound(err) {
+		return 0, err
+	}
+	now := time.Now().Unix()
+	po = modelModel{
+		ModelID:     canonicalID,
+		DisplayName: canonicalID,
+		Provider:    providerForModelID(canonicalID),
+		ModelType:   "chat",
+		Status:      biz.ModelStatusEnabled,
+		IsPublic:    true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := tx.Create(&po).Error; err != nil {
+		// Concurrent insert by another request: re-read.
+		if isDuplicateEntry(err) {
+			if err := tx.Where("LOWER(model_id) = ?", canonicalID).First(&po).Error; err != nil {
+				return 0, err
+			}
+			return po.ID, nil
+		}
+		return 0, err
+	}
+	return po.ID, nil
+}
+
+// providerForModelID infers a provider key from common model-name prefixes so
+// that auto-created registry rows carry a useful provider for filtering.
+func providerForModelID(modelID string) string {
+	id := strings.ToLower(modelID)
+	switch {
+	case strings.HasPrefix(id, "gpt"), strings.HasPrefix(id, "o1"), strings.HasPrefix(id, "o3"), strings.HasPrefix(id, "o4"):
+		return "openai"
+	case strings.HasPrefix(id, "claude"):
+		return "anthropic"
+	case strings.HasPrefix(id, "gemini"):
+		return "google"
+	case strings.HasPrefix(id, "glm"), strings.HasPrefix(id, "kimi"), strings.HasPrefix(id, "k3"):
+		return "zhipu"
+	case strings.HasPrefix(id, "deepseek"):
+		return "deepseek"
+	case strings.HasPrefix(id, "qwen"), strings.HasPrefix(id, "tongyi"):
+		return "alibaba"
+	default:
+		return "unknown"
+	}
 }
 
 func (r *Repository) syncSubscriptionAccountAbilitiesTx(tx *gorm.DB, account *biz.SubscriptionAccount) error {

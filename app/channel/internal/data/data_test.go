@@ -179,6 +179,51 @@ func setupChannelTestDB(t *testing.T) *Repository {
 		ON model_routings(group_name, model, platform, subscription_account_id)
 	`).Error)
 
+	// Model registry + channel mappings (used by the registry list path).
+	require.NoError(t, db.Exec(`
+		CREATE TABLE models (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			model_id TEXT NOT NULL,
+			display_name TEXT NOT NULL DEFAULT '',
+			description TEXT,
+			provider TEXT NOT NULL DEFAULT '',
+			model_type TEXT NOT NULL DEFAULT 'chat',
+			context_window INTEGER NOT NULL DEFAULT 0,
+			pricing_input REAL NOT NULL DEFAULT 0,
+			pricing_output REAL NOT NULL DEFAULT 0,
+			status INTEGER NOT NULL DEFAULT 1,
+			is_public INTEGER NOT NULL DEFAULT 1,
+			capabilities TEXT DEFAULT '',
+			tags TEXT DEFAULT '',
+			category TEXT NOT NULL DEFAULT '',
+			tier TEXT NOT NULL DEFAULT '',
+			metadata TEXT,
+			created_at INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_models_model_id_ci
+		ON models(LOWER(model_id))
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE model_channel_mapping (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			channel_id INTEGER NOT NULL,
+			model_id INTEGER NOT NULL,
+			enabled INTEGER DEFAULT 1,
+			priority INTEGER DEFAULT 0,
+			config TEXT DEFAULT '',
+			upstream_model_id TEXT DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_mcm_channel_model
+		ON model_channel_mapping(channel_id, model_id)
+	`).Error)
+
 	return &Repository{db: db}
 }
 
@@ -1104,4 +1149,109 @@ func TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency_Memory(t *te
 	abilitiesWild, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "gpt-5")
 	require.NoError(t, err)
 	require.Len(t, abilitiesWild, 1, "memory path: wildcard tier applies when no exact match")
+}
+
+// TestSyncChannelModelMappings_CreateAutoRegistersModels verifies that creating
+// a channel with models that are absent from the registry auto-creates minimal
+// public model rows + enabled model_channel_mapping rows, so the new models
+// immediately appear in /v1/models (registry list path).
+func TestSyncChannelModelMappings_CreateAutoRegistersModels(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	ch := &biz.Channel{
+		Name:     "kimi-test",
+		Type:     1,
+		Status:   biz.ChannelStatusEnabled,
+		Group:    "default",
+		Models:   []string{"Kimi-K3", "claude-sonnet-4-6"},
+		Priority: 50,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	// Both models should now exist in the registry, canonicalised.
+	var modelRows []modelModel
+	require.NoError(t, repo.db.Order("model_id ASC").Find(&modelRows).Error)
+	require.Len(t, modelRows, 2, "two distinct models should be registered")
+	assert.Equal(t, "claude-sonnet-4-6", modelRows[0].ModelID)
+	assert.Equal(t, "kimi-k3", modelRows[1].ModelID, "model_id should be canonicalised")
+	assert.Equal(t, biz.ModelStatusEnabled, int(modelRows[1].Status))
+	assert.True(t, modelRows[1].IsPublic, "auto-created models must be public")
+
+	// Mappings for the channel must be enabled and reference the registry PKs.
+	var mappings []modelChannelMappingModel
+	require.NoError(t, repo.db.Where("channel_id = ?", ch.ID).Order("model_id ASC").Find(&mappings).Error)
+	require.Len(t, mappings, 2, "two mappings expected")
+	for _, m := range mappings {
+		assert.True(t, m.Enabled, "mapping for enabled channel must be enabled")
+		assert.EqualValues(t, 50, m.Priority)
+	}
+
+	// The registry list path must surface both models.
+	got, err := repo.ListAvailableModels(ctx, "default")
+	require.NoError(t, err)
+	assert.Contains(t, got, "kimi-k3")
+	assert.Contains(t, got, "claude-sonnet-4-6")
+}
+
+// TestSyncChannelModelMappings_UpdateRemovesDroppedModels verifies that editing
+// a channel's model list removes mappings for dropped models (mirror of
+// syncAbilitiesTx rewrite semantics) while keeping newly added ones.
+func TestSyncChannelModelMappings_UpdateRemovesDroppedModels(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	ch := &biz.Channel{
+		Name:     "edit-channel",
+		Type:     1,
+		Status:   biz.ChannelStatusEnabled,
+		Group:    "default",
+		Models:   []string{"gpt-4o", "glm-4.6"},
+		Priority: 10,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	// Edit: drop glm-4.6, add claude-opus-4-7.
+	ch.Models = []string{"gpt-4o", "claude-opus-4-7"}
+	require.NoError(t, repo.UpdateChannel(ctx, ch))
+
+	var mappings []modelChannelMappingModel
+	require.NoError(t, repo.db.Where("channel_id = ?", ch.ID).Find(&mappings).Error)
+	require.Len(t, mappings, 2, "dropped model mapping should be removed")
+
+	// Resolve which model_ids the surviving mappings point at.
+	pks := make([]int64, 0, len(mappings))
+	for _, m := range mappings {
+		pks = append(pks, m.ModelPK)
+	}
+	var surviving []modelModel
+	require.NoError(t, repo.db.Where("id IN ?", pks).Find(&surviving).Error)
+	gotIDs := make(map[string]bool, len(surviving))
+	for _, s := range surviving {
+		gotIDs[s.ModelID] = true
+	}
+	assert.True(t, gotIDs["gpt-4o"], "kept model should remain mapped")
+	assert.True(t, gotIDs["claude-opus-4-7"], "added model should be mapped")
+	assert.False(t, gotIDs["glm-4.6"], "dropped model mapping should be gone")
+}
+
+// TestSyncChannelModelMappings_SkipsWildcards verifies wildcard patterns are
+// treated as routing rules, never auto-registered as advertised models.
+func TestSyncChannelModelMappings_SkipsWildcards(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+
+	ch := &biz.Channel{
+		Name:   "wildcard-channel",
+		Type:   1,
+		Status: biz.ChannelStatusEnabled,
+		Group:  "default",
+		Models: []string{"claude-*", "gpt-4o"},
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	var modelRows []modelModel
+	require.NoError(t, repo.db.Find(&modelRows).Error)
+	require.Len(t, modelRows, 1, "only the concrete model should be registered")
+	assert.Equal(t, "gpt-4o", modelRows[0].ModelID)
 }
