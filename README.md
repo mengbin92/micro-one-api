@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.10.2 发布公告](./docs/releases/release-v0.10.2.md)（统一上游模型路由 + GLM 工具 Schema 修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.10.2)
+> 📣 **最新发布**：[v0.11.0 发布公告](./docs/releases/release-v0.11.0.md)（cache_creation 全链路计费 + 模型数据治理 + 路由运营闭环） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.11.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.11.0
+
+v0.11.0 是功能版本，聚焦 cache_creation 全链路计费（解析 → 日志 → 账本 → 计费，默认 observe 观察）、模型规范 ID 治理（canonical 唯一约束 + 合并/未定价审计）、用户售价与上游成本分离、统一路由可观测性（订阅账号 weight 语义、选择/回退记录、运营视图与告警）和模型配置导入导出。**包含数据库迁移**（`067`–`069`，均 additive）；**068 可能因数据冲突失败，必须先运行 canonical preflight 并合并重复模型后再应用**；cache_creation 默认 observe 不改变扣费，核对账单后切 charge。开发者需执行 `make init && make proto` 重新生成代码。详见 [docs/releases/release-v0.11.0.md](./docs/releases/release-v0.11.0.md)。
 
 ### 升级到 v0.10.2
 

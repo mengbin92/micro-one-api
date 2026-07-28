@@ -1961,9 +1961,12 @@ func TestAdminHTTPOneAPIUserManageRoute(t *testing.T) {
 		t.Fatalf("delete response mismatch: status=%d deleted=%d body=%s", rec.Code, identityClient.deletedUserID, rec.Body.String())
 	}
 
+	// Promote via ADMIN_TOKEN: the client-supplied X-Operator-User-Id MUST be
+	// ignored for security (the guard stamps the system sentinel). The numeric
+	// operator id sent downstream is 0 (system operator).
 	req = httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(`{"username":"alice","action":"promote"}`))
 	req.Header.Set("Authorization", "Bearer admin-token")
-	req.Header.Set("X-Operator-User-Id", "1")
+	req.Header.Set("X-Operator-User-Id", "1") // must be ignored
 	rec = httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 
@@ -1973,13 +1976,14 @@ func TestAdminHTTPOneAPIUserManageRoute(t *testing.T) {
 	if identityClient.setRoleReq == nil || identityClient.setRoleReq.GetRole() != 10 {
 		t.Fatalf("promote did not call SetUserRole(role=10): got %+v", identityClient.setRoleReq)
 	}
-	if identityClient.setRoleReq.GetOperatorUserId() != 1 {
-		t.Fatalf("operator_user_id not plumbed through: got %d, want 1", identityClient.setRoleReq.GetOperatorUserId())
+	if identityClient.setRoleReq.GetOperatorUserId() != 0 {
+		t.Fatalf("ADMIN_TOKEN promote must send operator_user_id=0 (system sentinel), got %d", identityClient.setRoleReq.GetOperatorUserId())
 	}
 	if !strings.Contains(rec.Body.String(), `"role":10`) {
 		t.Fatalf("promote response missing role=10: %s", rec.Body.String())
 	}
 
+	// Demote via ADMIN_TOKEN without any client header: same sentinel → 0.
 	req = httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(`{"username":"alice","action":"demote"}`))
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rec = httptest.NewRecorder()
@@ -1992,7 +1996,29 @@ func TestAdminHTTPOneAPIUserManageRoute(t *testing.T) {
 		t.Fatalf("demote did not call SetUserRole(role=1): got %+v", identityClient.setRoleReq)
 	}
 	if identityClient.setRoleReq.GetOperatorUserId() != 0 {
-		t.Fatalf("demote without X-Operator-User-Id should send operator_user_id=0, got %d", identityClient.setRoleReq.GetOperatorUserId())
+		t.Fatalf("ADMIN_TOKEN demote must send operator_user_id=0 (system sentinel), got %d", identityClient.setRoleReq.GetOperatorUserId())
+	}
+}
+
+func TestAdminHTTPOneAPIUserManageRouteSessionOperator(t *testing.T) {
+	// Session-token auth: the operator id MUST be the authenticated user id,
+	// not a client-supplied header (anti-spoofing). ADMIN_TOKEN is unset so
+	// the per-user path runs.
+	t.Setenv("ADMIN_TOKEN", "")
+	identityClient := &adminHTTPIdentityClient{validateValid: true, validateUserID: 42, userRole: 10}
+	srv := newAdminHTTPTestServer(identityClient, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(`{"username":"alice","action":"promote"}`))
+	req.Header.Set("Authorization", "Bearer user-session-token")
+	req.Header.Set("X-Operator-User-Id", "999") // must be ignored — real id is 42
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("promote response mismatch: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if identityClient.setRoleReq == nil || identityClient.setRoleReq.GetOperatorUserId() != 42 {
+		t.Fatalf("session-token promote must use authenticated user id 42, got %+v", identityClient.setRoleReq)
 	}
 }
 
@@ -2968,15 +2994,19 @@ func TestAdminHTTPReconciliationRunByIDNotFound(t *testing.T) {
 // adminHTTPModelChannelClient embeds adminHTTPChannelClient and adds model RPC stubs.
 type adminHTTPModelChannelClient struct {
 	adminHTTPChannelClient
-	createdModel  *channelv1.CreateModelRequest
-	updatedModel  *channelv1.UpdateModelRequest
-	listReq       *channelv1.ListModelsRequest
-	models        []*channelv1.ModelSummary
-	modelDetail   *channelv1.GetModelResponse
-	batchReq      *channelv1.BatchModelsRequest
-	batchAffected int32
-	createdAlias  *channelv1.CreateModelAliasRequest
-	deletedAlias  int64
+	createdModel    *channelv1.CreateModelRequest
+	updatedModel    *channelv1.UpdateModelRequest
+	listReq         *channelv1.ListModelsRequest
+	models          []*channelv1.ModelSummary
+	modelDetail     *channelv1.GetModelResponse
+	batchReq        *channelv1.BatchModelsRequest
+	batchAffected   int32
+	createdAlias    *channelv1.CreateModelAliasRequest
+	deletedAlias    int64
+	exportReq       *channelv1.ExportModelsRequest
+	importReq       *channelv1.ImportModelsRequest
+	dryRunImportReq *channelv1.ImportModelsRequest
+	exchangeErr     error
 }
 
 func (c *adminHTTPModelChannelClient) ListModels(ctx context.Context, req *channelv1.ListModelsRequest, opts ...grpc.CallOption) (*channelv1.ListModelsResponse, error) {
@@ -3070,6 +3100,30 @@ func (c *adminHTTPModelChannelClient) UpsertModelRouting(ctx context.Context, re
 
 func (c *adminHTTPModelChannelClient) DeleteModelRouting(ctx context.Context, req *channelv1.DeleteModelRoutingRequest, opts ...grpc.CallOption) (*channelv1.DeleteModelRoutingResponse, error) {
 	return &channelv1.DeleteModelRoutingResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) ExportModels(ctx context.Context, req *channelv1.ExportModelsRequest, opts ...grpc.CallOption) (*channelv1.ExportModelsResponse, error) {
+	c.exportReq = req
+	if c.exchangeErr != nil {
+		return nil, c.exchangeErr
+	}
+	return &channelv1.ExportModelsResponse{SchemaVersion: "1.0.0", ExportedAt: "2026-07-28T00:00:00Z"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) ImportModels(ctx context.Context, req *channelv1.ImportModelsRequest, opts ...grpc.CallOption) (*channelv1.ImportModelsResponse, error) {
+	c.importReq = req
+	if c.exchangeErr != nil {
+		return nil, c.exchangeErr
+	}
+	return &channelv1.ImportModelsResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c *adminHTTPModelChannelClient) DryRunImportModels(ctx context.Context, req *channelv1.ImportModelsRequest, opts ...grpc.CallOption) (*channelv1.ImportModelsDryRunResponse, error) {
+	c.dryRunImportReq = req
+	if c.exchangeErr != nil {
+		return nil, c.exchangeErr
+	}
+	return &channelv1.ImportModelsDryRunResponse{WouldSucceed: true, Message: "ok"}, nil
 }
 
 func newAdminHTTPModelTestServer() http.Handler {
@@ -3221,6 +3275,120 @@ func TestAdminHTTPModelRequiresAuth(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestAdminHTTPModelExchangePricePermission(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "")
+
+	tests := []struct {
+		name   string
+		method string
+		target string
+		body   string
+	}{
+		{name: "export", method: http.MethodGet, target: "/api/admin/models/export?export_prices=true"},
+		{name: "import", method: http.MethodPost, target: "/api/admin/models/import", body: `{"schema_version":"1.0.0","import_prices":true,"models":[]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			identity := &adminHTTPIdentityClient{validateValid: true, validateUserID: 42, userRole: service.RoleAdmin}
+			channel := &adminHTTPModelChannelClient{}
+			srv := newAdminHTTPTestServer(identity, channel, &adminHTTPBillingClient{})
+			req := httptest.NewRequest(tt.method, tt.target, strings.NewReader(tt.body))
+			req.Header.Set("Authorization", "Bearer admin-session")
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403, body=%s", rec.Code, rec.Body.String())
+			}
+			if channel.exportReq != nil || channel.importReq != nil || channel.dryRunImportReq != nil {
+				t.Fatal("price exchange RPC must not run for a non-root operator")
+			}
+		})
+	}
+}
+
+func TestAdminHTTPModelImportMapsTypedErrors(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{name: "invalid document", err: status.Error(codes.InvalidArgument, "invalid schema"), want: http.StatusBadRequest},
+		{name: "conflict", err: status.Error(codes.AlreadyExists, "model conflict"), want: http.StatusConflict},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			channel := &adminHTTPModelChannelClient{exchangeErr: tt.err}
+			srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, channel, &adminHTTPBillingClient{})
+			req := httptest.NewRequest(http.MethodPost, "/api/admin/models/import", strings.NewReader(`{"schema_version":"1.0.0","models":[]}`))
+			req.Header.Set("Authorization", "Bearer admin-token")
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != tt.want {
+				t.Fatalf("status = %d, want %d, body=%s", rec.Code, tt.want, rec.Body.String())
+			}
+			if channel.importReq == nil {
+				t.Fatal("expected ImportModels RPC")
+			}
+		})
+	}
+}
+
+func TestAdminHTTPModelImportSanitizesRequestID(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	channel := &adminHTTPModelChannelClient{}
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, channel, &adminHTTPBillingClient{})
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/models/import", strings.NewReader(`{"schema_version":"1.0.0","models":[]}`))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	req.Header["X-Request-ID"] = []string{"forged\nrequest-id"}
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	requestID := rec.Header().Get("X-Request-ID")
+	if requestID == "" || requestID == "forged\nrequest-id" || strings.ContainsAny(requestID, "\r\n\t") {
+		t.Fatalf("response request id was not sanitized: %q", requestID)
+	}
+	if channel.importReq == nil {
+		t.Fatal("expected ImportModels RPC")
+	}
+}
+
+func TestAdminHTTPRoutingOpsRejectsInvalidWindow(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPTestServer(&adminHTTPIdentityClient{}, &adminHTTPChannelClient{}, &adminHTTPBillingClient{})
+
+	tests := []struct {
+		name   string
+		target string
+	}{
+		{name: "invalid timestamp", target: "/api/admin/routing-ops?start=abc&end=200"},
+		{name: "reversed", target: "/api/admin/routing-ops?start=200&end=200"},
+		{name: "too large", target: "/api/admin/routing-ops?start=1&end=2678402"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			req.Header.Set("Authorization", "Bearer admin-token")
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 

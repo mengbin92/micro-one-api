@@ -4,12 +4,44 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/zap"
-
 	logv1 "micro-one-api/api/log/v1"
+	relaybiz "micro-one-api/internal/biz"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
+
+	"go.uber.org/zap"
 )
+
+// applyPlanInputs sets the fields derived from the relay plan that are common
+// to every usage/commit path: the v0.11.0 Phase 2 §2.2 stable upstream
+// cost-key inputs and the Phase 0/1 ADR §3.3 prompt-exclusivity flag. Callers
+// that already construct a usageLogInput should call this right after building
+// the struct literal so no code path forgets the plan-derived metadata.
+func (in *usageLogInput) applyPlanInputs(plan *relaybiz.RelayPlan) {
+	if plan == nil {
+		return
+	}
+	in.UpstreamModelID, in.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+	in.PromptExclusive = isPromptExclusiveChannel(plan)
+}
+
+// applyChannelInputs records the source that actually executed a request.
+// Retry/failover paths cannot use the original plan because the final channel
+// may belong to a different source namespace.
+func (in *usageLogInput) applyChannelInputs(channel *relaybiz.Channel) {
+	if channel == nil {
+		return
+	}
+	in.UpstreamModelID = channel.UpstreamModelID
+	in.PromptExclusive = isPromptExclusiveChannelType(channel.Type)
+	if channel.SubscriptionAccountID > 0 {
+		in.SourceKind = relaybiz.UpstreamSourceSubscription
+		in.SubscriptionAccountID = channel.SubscriptionAccountID
+		return
+	}
+	in.SourceKind = relaybiz.UpstreamSourceChannel
+	in.SubscriptionAccountID = 0
+}
 
 type usageLogInput struct {
 	UserID                int64
@@ -22,6 +54,8 @@ type usageLogInput struct {
 	PromptTokens          int64
 	CompletionTokens      int64
 	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
 	ChannelID             int64
 	SubscriptionAccountID int64
 	Group                 string
@@ -29,6 +63,18 @@ type usageLogInput struct {
 	SessionWindowLimitUSD float64
 	ElapsedTime           int64
 	IsStream              bool
+
+	// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs. Populated from
+	// the relay plan so billing can build channel:<id>:<upstream_model_id> /
+	// subscription:<id>:<upstream_model_id> instead of the legacy
+	// <channel_id>:<public_model_id>.
+	UpstreamModelID string
+	SourceKind      string
+
+	// PromptExclusive (v0.11.0 Phase 0/1, ADR §3.3): true when prompt and
+	// cache_read are mutually exclusive buckets (Anthropic / GLM). Set from
+	// the channel type at the relay boundary.
+	PromptExclusive bool
 }
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
@@ -38,21 +84,23 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 	}
 	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
 	_, err := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{
-		Level:                 "consume",
-		Message:               message,
-		Source:                "relay-gateway",
-		RequestId:             in.RequestID,
-		UserId:                in.UserID,
-		TokenName:             usageTokenName(in),
-		ModelName:             in.ModelName,
-		Quota:                 in.Quota,
-		PromptTokens:          in.PromptTokens,
-		CompletionTokens:      in.CompletionTokens,
-		CacheReadTokens:       in.CacheReadTokens,
-		ChannelId:             in.ChannelID,
-		SubscriptionAccountId: in.SubscriptionAccountID,
-		ElapsedTime:           in.ElapsedTime,
-		IsStream:              in.IsStream,
+		Level:                  "consume",
+		Message:                message,
+		Source:                 "relay-gateway",
+		RequestId:              in.RequestID,
+		UserId:                 in.UserID,
+		TokenName:              usageTokenName(in),
+		ModelName:              in.ModelName,
+		Quota:                  in.Quota,
+		PromptTokens:           in.PromptTokens,
+		CompletionTokens:       in.CompletionTokens,
+		CacheReadTokens:        in.CacheReadTokens,
+		CacheCreation_5MTokens: in.CacheCreation5mTokens,
+		CacheCreation_1HTokens: in.CacheCreation1hTokens,
+		ChannelId:              in.ChannelID,
+		SubscriptionAccountId:  in.SubscriptionAccountID,
+		ElapsedTime:            in.ElapsedTime,
+		IsStream:               in.IsStream,
 	})
 	if err != nil && applogger.Log != nil {
 		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()
@@ -63,9 +111,16 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 }
 
 func logUpstreamUsage(in usageLogInput) {
+	// cache_read ratio denominator is the cache-normalized input total
+	// (uncached_input + cache_read + cache_creation), per ADR §2 and
+	// cc-switch's cacheHitRate definition. For OpenAI-protocol requests the
+	// caller still passes prompt_tokens inclusive of cached; the ratio is an
+	// operational signal only, billing uses the canonical buckets.
+	cacheCreationTotal := in.CacheCreation5mTokens + in.CacheCreation1hTokens
 	cacheRatio := float64(0)
-	if in.PromptTokens > 0 {
-		cacheRatio = float64(in.CacheReadTokens) / float64(in.PromptTokens)
+	cacheDenominator := in.PromptTokens + cacheCreationTotal
+	if cacheDenominator > 0 {
+		cacheRatio = float64(in.CacheReadTokens) / float64(cacheDenominator)
 	}
 	nonCachedInputTokens := in.PromptTokens
 	if in.CacheReadTokens > 0 {
@@ -86,6 +141,9 @@ func logUpstreamUsage(in usageLogInput) {
 		zap.Int64("input_tokens", nonCachedInputTokens),
 		zap.Int64("output_tokens", in.CompletionTokens),
 		zap.Int64("cache_read_tokens", in.CacheReadTokens),
+		zap.Int64("cache_creation_5m_tokens", in.CacheCreation5mTokens),
+		zap.Int64("cache_creation_1h_tokens", in.CacheCreation1hTokens),
+		zap.Int64("cache_creation_tokens", cacheCreationTotal),
 		zap.Float64("cache_read_input_ratio", cacheRatio),
 	)
 }

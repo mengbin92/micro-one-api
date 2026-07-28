@@ -213,3 +213,79 @@ groups:
         annotations:
           summary: "Channel health check not running"
           description: "Channel health check hasn't run in the last 5 minutes"
+
+  # === v0.11.0 Phase 3 §3.7: Routing & Cost Governance Alerts ===
+  - name: routing-cost-governance
+    interval: 30s
+    rules:
+      # 有流量但用户售价缺失 — 活跃路由的模型没有 ModelPrice 条目
+      - alert: RoutedModelsUnpriced
+        expr: micro_one_api_model_unpriced_routed > 0
+        for: 10m
+        labels:
+          severity: warning
+          service: admin-api
+        annotations:
+          summary: "Routed models have no ModelPrice entry"
+          description: "{{ $value }} public, enabled, routed model(s) carry no user-facing ModelPrice — they are served at zero/guesswork cost. Source: {{ $labels.source }}"
+
+      # 上游成本缺失 — 有流量但 UpstreamModelPrice 未配置（毛利无法核算）
+      - alert: UpstreamCostMissing
+        expr: |
+          (
+            sum by (provider_family) (rate(micro_one_api_routing_selection_total{result="success"}[15m]))
+            -
+            sum by (provider_family) (rate(micro_one_api_billing_ledger_upstream_cost_recorded{result="priced"}[15m]))
+          ) > 0
+        for: 15m
+        labels:
+          severity: warning
+          service: billing-service
+        annotations:
+          summary: "Requests flowing but upstream cost not recorded"
+          description: "Some successful requests are not recording upstream cost for provider_family={{ $labels.provider_family }} — UpstreamModelPrice may be missing"
+
+      # 观察成本持续偏离供应商账单 — cache-creation shadow cost 显著但未收费
+      - alert: CacheCreationShadowCostDrift
+        expr: |
+          (
+            sum(rate(micro_one_api_relay_token_usage_shadow_cost_sum{mode="observe"}[30m]))
+            -
+            sum(rate(micro_one_api_relay_token_usage_shadow_cost_sum{mode="charge"}[30m]))
+          ) > 0
+          and
+          sum(rate(micro_one_api_relay_token_usage_shadow_cost_count{mode="observe",unpriced="false"}[30m])) > 100
+        for: 30m
+        labels:
+          severity: info
+          service: billing-service
+        annotations:
+          summary: "Cache-creation observe/charge cost drift detected"
+          description: "Shadow cost is accumulating in observe mode — verify against the vendor invoice before switching BILLING_CACHE_CREATION_MODE to charge"
+
+      # 单一来源流量长期偏离配置权重 — 订阅账号 vs 渠道流量比严重倾斜
+      - alert: RoutingSourceImbalance
+        expr: |
+          (
+            sum(rate(micro_one_api_routing_selection_total{source_kind="channel",result="success"}[30m]))
+            /
+            clamp_min(sum(rate(micro_one_api_routing_selection_total{result="success"}[30m])), 1)
+          ) > 0.95
+        for: 30m
+        labels:
+          severity: info
+          service: relay-gateway
+        annotations:
+          summary: "Traffic heavily skewed to channels (>95%)"
+          description: "Subscription accounts are receiving <5% of traffic over 30m — check weight/priority configuration if subscription accounts are expected to carry load"
+
+      # cache usage 解析异常 — provider 返回的 usage 无法解析
+      - alert: CacheUsageParseAnomaly
+        expr: rate(micro_one_api_relay_token_usage_parse_anomaly_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: "Token usage parsing anomalies"
+          description: "Token usage parser is reporting anomalies at {{ $value }}/s — reason: {{ $labels.reason }}"

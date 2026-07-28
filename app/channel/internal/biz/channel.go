@@ -92,7 +92,13 @@ type SubscriptionAccount struct {
 	Status       int32
 	Group        string
 	Models       []string
-	Priority     int64
+	Priority     int64 // layering only (higher = preferred tier); NOT a within-tier weight
+	// Weight is the explicit within-tier selection weight for smooth WRR. 0
+	// means "unset"; the selector falls back to Priority-derived or 1 to keep
+	// legacy deployments working. v0.11.0 Phase 3 §3.1: Priority is for
+	// layering, Weight is for intra-tier distribution, so configured ratios
+	// no longer collapse to the hard-coded 1.
+	Weight       int32
 	BaseURL      string
 	AccessToken  string
 	RefreshToken string

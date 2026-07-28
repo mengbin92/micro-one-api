@@ -3,11 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	relaybiz "micro-one-api/internal/biz"
 )
 
 // openAIWSStickyKeyPrefix is the Redis key prefix for cross-process response->channel
@@ -31,8 +33,13 @@ type openAIWSStickyStore struct {
 }
 
 type openAIWSStickyBinding struct {
-	channelID int64
+	source    openAIWSStickySource
 	expiresAt time.Time
+}
+
+type openAIWSStickySource struct {
+	kind relaybiz.UpstreamRouteKind
+	id   int64
 }
 
 func newOpenAIWSStickyStore(rdb *redis.Client) *openAIWSStickyStore {
@@ -45,8 +52,16 @@ func newOpenAIWSStickyStore(rdb *redis.Client) *openAIWSStickyStore {
 
 // BindResponseChannel stores responseID -> channelID both locally and in Redis.
 func (s *openAIWSStickyStore) BindResponseChannel(ctx context.Context, group, responseID string, channelID int64, ttl time.Duration) {
+	s.bindResponseSource(ctx, group, responseID, openAIWSStickySource{kind: relaybiz.UpstreamRouteChannel, id: channelID}, ttl)
+}
+
+func (s *openAIWSStickyStore) BindResponseRoute(ctx context.Context, group, responseID string, channel *relaybiz.Channel, ttl time.Duration) {
+	s.bindResponseSource(ctx, group, responseID, stickySourceForChannel(channel), ttl)
+}
+
+func (s *openAIWSStickyStore) bindResponseSource(ctx context.Context, group, responseID string, source openAIWSStickySource, ttl time.Duration) {
 	id := normalizeStickyResponseID(responseID)
-	if id == "" || channelID <= 0 {
+	if id == "" || source.id <= 0 || source.kind == 0 {
 		return
 	}
 	if ttl <= 0 {
@@ -55,7 +70,7 @@ func (s *openAIWSStickyStore) BindResponseChannel(ctx context.Context, group, re
 	expiresAt := time.Now().Add(ttl)
 	key := stickyHotKey(openAIWSStickyKeyPrefix, group, id)
 	s.hotMu.Lock()
-	s.hot[key] = openAIWSStickyBinding{channelID: channelID, expiresAt: expiresAt}
+	s.hot[key] = openAIWSStickyBinding{source: source, expiresAt: expiresAt}
 	s.maybeSweepLocked()
 	s.hotMu.Unlock()
 
@@ -64,47 +79,66 @@ func (s *openAIWSStickyStore) BindResponseChannel(ctx context.Context, group, re
 	}
 	rCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	_ = s.rdb.Set(rCtx, stickyRedisKey(group, id), channelID, ttl).Err()
+	_ = s.rdb.Set(rCtx, stickyRedisKey(group, id), encodeStickySource(source), ttl).Err()
 }
 
 // LookupResponseChannel returns the channel bound to responseID. Hot cache is
 // checked first; on miss it falls back to Redis and populates the hot cache.
 // Returns 0 if not found.
 func (s *openAIWSStickyStore) LookupResponseChannel(ctx context.Context, group, responseID string) int64 {
+	source := s.LookupResponseRoute(ctx, group, responseID)
+	if source.kind != relaybiz.UpstreamRouteChannel {
+		return 0
+	}
+	return source.id
+}
+
+func (s *openAIWSStickyStore) LookupResponseRoute(ctx context.Context, group, responseID string) openAIWSStickySource {
 	id := normalizeStickyResponseID(responseID)
 	if id == "" {
-		return 0
+		return openAIWSStickySource{}
 	}
 	key := stickyHotKey(openAIWSStickyKeyPrefix, group, id)
 	now := time.Now()
 	s.hotMu.RLock()
 	if b, ok := s.hot[key]; ok && now.Before(b.expiresAt) {
-		ch := b.channelID
+		source := b.source
 		s.hotMu.RUnlock()
-		return ch
+		return source
 	}
 	s.hotMu.RUnlock()
 
 	if s.rdb == nil {
-		return 0
+		return openAIWSStickySource{}
 	}
 	rCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	val, err := s.rdb.Get(rCtx, stickyRedisKey(group, id)).Int64()
-	if err != nil || val <= 0 {
-		return 0
+	val, err := s.rdb.Get(rCtx, stickyRedisKey(group, id)).Result()
+	source, ok := decodeStickySource(val, relaybiz.UpstreamRouteChannel)
+	if err != nil || !ok {
+		return openAIWSStickySource{}
 	}
 	// Populate hot cache with a shorter local TTL so repeated lookups are fast.
 	s.hotMu.Lock()
-	s.hot[key] = openAIWSStickyBinding{channelID: val, expiresAt: now.Add(5 * time.Minute)}
+	s.hot[key] = openAIWSStickyBinding{source: source, expiresAt: now.Add(5 * time.Minute)}
 	s.maybeSweepLocked()
 	s.hotMu.Unlock()
-	return val
+	return source
 }
 
 func (s *openAIWSStickyStore) BindSessionChannel(ctx context.Context, group, sessionHash string, channelID int64, ttl time.Duration) {
+	// SessionAccountStore uses this method exclusively for subscription-account
+	// stickiness, so its ID belongs to the subscription namespace.
+	s.bindSessionSource(ctx, group, sessionHash, openAIWSStickySource{kind: relaybiz.UpstreamRouteSubscription, id: channelID}, ttl)
+}
+
+func (s *openAIWSStickyStore) BindSessionRoute(ctx context.Context, group, sessionHash string, channel *relaybiz.Channel, ttl time.Duration) {
+	s.bindSessionSource(ctx, group, sessionHash, stickySourceForChannel(channel), ttl)
+}
+
+func (s *openAIWSStickyStore) bindSessionSource(ctx context.Context, group, sessionHash string, source openAIWSStickySource, ttl time.Duration) {
 	id := normalizeStickyResponseID(sessionHash)
-	if id == "" || channelID <= 0 {
+	if id == "" || source.id <= 0 || source.kind == 0 {
 		return
 	}
 	if ttl <= 0 {
@@ -113,7 +147,7 @@ func (s *openAIWSStickyStore) BindSessionChannel(ctx context.Context, group, ses
 	expiresAt := time.Now().Add(ttl)
 	key := stickyHotKey(openAIWSSessionStickyKeyPrefix, group, id)
 	s.hotMu.Lock()
-	s.hot[key] = openAIWSStickyBinding{channelID: channelID, expiresAt: expiresAt}
+	s.hot[key] = openAIWSStickyBinding{source: source, expiresAt: expiresAt}
 	s.maybeSweepLocked()
 	s.hotMu.Unlock()
 
@@ -122,38 +156,47 @@ func (s *openAIWSStickyStore) BindSessionChannel(ctx context.Context, group, ses
 	}
 	rCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	_ = s.rdb.Set(rCtx, stickySessionRedisKey(group, id), channelID, ttl).Err()
+	_ = s.rdb.Set(rCtx, stickySessionRedisKey(group, id), encodeStickySource(source), ttl).Err()
 }
 
 func (s *openAIWSStickyStore) LookupSessionChannel(ctx context.Context, group, sessionHash string) int64 {
+	source := s.LookupSessionRoute(ctx, group, sessionHash)
+	if source.kind != relaybiz.UpstreamRouteSubscription {
+		return 0
+	}
+	return source.id
+}
+
+func (s *openAIWSStickyStore) LookupSessionRoute(ctx context.Context, group, sessionHash string) openAIWSStickySource {
 	id := normalizeStickyResponseID(sessionHash)
 	if id == "" {
-		return 0
+		return openAIWSStickySource{}
 	}
 	key := stickyHotKey(openAIWSSessionStickyKeyPrefix, group, id)
 	now := time.Now()
 	s.hotMu.RLock()
 	if b, ok := s.hot[key]; ok && now.Before(b.expiresAt) {
-		ch := b.channelID
+		source := b.source
 		s.hotMu.RUnlock()
-		return ch
+		return source
 	}
 	s.hotMu.RUnlock()
 
 	if s.rdb == nil {
-		return 0
+		return openAIWSStickySource{}
 	}
 	rCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	val, err := s.rdb.Get(rCtx, stickySessionRedisKey(group, id)).Int64()
-	if err != nil || val <= 0 {
-		return 0
+	val, err := s.rdb.Get(rCtx, stickySessionRedisKey(group, id)).Result()
+	source, ok := decodeStickySource(val, relaybiz.UpstreamRouteSubscription)
+	if err != nil || !ok {
+		return openAIWSStickySource{}
 	}
 	s.hotMu.Lock()
-	s.hot[key] = openAIWSStickyBinding{channelID: val, expiresAt: now.Add(5 * time.Minute)}
+	s.hot[key] = openAIWSStickyBinding{source: source, expiresAt: now.Add(5 * time.Minute)}
 	s.maybeSweepLocked()
 	s.hotMu.Unlock()
-	return val
+	return source
 }
 
 func (s *openAIWSStickyStore) RefreshSessionTTL(ctx context.Context, group, sessionHash string, ttl time.Duration) bool {
@@ -236,4 +279,38 @@ func stickyRedisKey(group, responseID string) string {
 
 func stickySessionRedisKey(group, sessionHash string) string {
 	return openAIWSSessionStickyKeyPrefix + group + ":" + sessionHash
+}
+
+func stickySourceForChannel(channel *relaybiz.Channel) openAIWSStickySource {
+	identity := relaybiz.RoutingSourceIdentityForChannel(channel)
+	return openAIWSStickySource{kind: identity.Kind, id: identity.ID}
+}
+
+func encodeStickySource(source openAIWSStickySource) string {
+	return source.kind.String() + ":" + strconv.FormatInt(source.id, 10)
+}
+
+func decodeStickySource(value string, legacyKind relaybiz.UpstreamRouteKind) (openAIWSStickySource, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return openAIWSStickySource{}, false
+	}
+	kind := legacyKind
+	idText := value
+	if prefix, rest, found := strings.Cut(value, ":"); found {
+		idText = rest
+		switch prefix {
+		case relaybiz.UpstreamRouteChannel.String():
+			kind = relaybiz.UpstreamRouteChannel
+		case relaybiz.UpstreamRouteSubscription.String():
+			kind = relaybiz.UpstreamRouteSubscription
+		default:
+			return openAIWSStickySource{}, false
+		}
+	}
+	id, err := strconv.ParseInt(idText, 10, 64)
+	if err != nil || id <= 0 || kind == 0 {
+		return openAIWSStickySource{}, false
+	}
+	return openAIWSStickySource{kind: kind, id: id}, true
 }

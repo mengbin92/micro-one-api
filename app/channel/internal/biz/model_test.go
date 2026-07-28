@@ -247,6 +247,17 @@ func (r *fakeModelRepo) ListModelUsageStats(ctx context.Context, modelPK int64, 
 	return nil, 0, nil
 }
 
+// v0.11.0 Phase 2 §2.1: canonical model ID governance — stubs for the fake
+// repo. The biz-layer merge logic is covered by data-layer tests; the fakes
+// only need to satisfy the interface.
+func (r *fakeModelRepo) CanonicalModelPreflight(ctx context.Context) (*PreflightReport, error) {
+	return &PreflightReport{}, nil
+}
+
+func (r *fakeModelRepo) MergeCanonicalModels(ctx context.Context, group DuplicateModelGroup) (*MergeResult, error) {
+	return &MergeResult{CanonicalID: group.CanonicalID, SurvivingPK: group.SurvivingPK}, nil
+}
+
 func (r *fakeModelRepo) DeleteSubscriptionMapping(ctx context.Context, accountID, modelPK int64, groupName string) error {
 	for id, m := range r.subMaps {
 		if m.SubscriptionAccountID == accountID && m.ModelPK == modelPK && (groupName == "" || m.GroupName == groupName) {
@@ -618,5 +629,83 @@ func TestModelUsecase_NilCacheInvalidatorIsNoOp(t *testing.T) {
 	uc.invalidateChannelCache()
 	if err := uc.CreateModel(context.Background(), &Model{ModelID: "x"}); err != nil {
 		t.Fatalf("CreateModel: %v", err)
+	}
+}
+
+// ── v0.11.0 Phase 2 §2.1: canonical model ID governance ────────────────────
+
+func TestModelUsecase_MergeCanonicalModels_RejectsUnnormalisedCanonicalID(t *testing.T) {
+	uc := NewModelUsecase(newFakeModelRepo())
+	_, err := uc.MergeCanonicalModels(context.Background(), DuplicateModelGroup{
+		CanonicalID: "GLM-5.2", // not normalised — caller must not rename mid-merge
+		Members:     []DuplicateModelRef{{ModelPK: 1}, {ModelPK: 2}},
+	})
+	if err == nil {
+		t.Fatal("expected error for un-normalised canonical_id")
+	}
+}
+
+func TestModelUsecase_MergeCanonicalModels_RequiresTwoMembers(t *testing.T) {
+	uc := NewModelUsecase(newFakeModelRepo())
+	_, err := uc.MergeCanonicalModels(context.Background(), DuplicateModelGroup{
+		CanonicalID: "glm-5.2",
+		Members:     []DuplicateModelRef{{ModelPK: 1, ModelID: "glm-5.2"}},
+	})
+	if err == nil {
+		t.Fatal("expected error for single-member group")
+	}
+}
+
+func TestModelUsecase_MergeCanonicalModels_PicksPrimarySurvivorByDefault(t *testing.T) {
+	// The biz layer defaults SurvivingPK to the member whose stored model_id
+	// already matches the canonical spelling. The fake repo records the call.
+	repo := newFakeModelRepo()
+	uc := NewModelUsecase(repo)
+	res, err := uc.MergeCanonicalModels(context.Background(), DuplicateModelGroup{
+		CanonicalID: "glm-5.2",
+		Members: []DuplicateModelRef{
+			{ModelPK: 1, ModelID: "GLM-5.2", IsPrimary: false},
+			{ModelPK: 2, ModelID: "glm-5.2", IsPrimary: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("MergeCanonicalModels: %v", err)
+	}
+	if res.SurvivingPK != 2 {
+		t.Fatalf("expected survivor=2 (primary-spelling member), got %d", res.SurvivingPK)
+	}
+}
+
+func TestModelUsecase_MergeCanonicalModels_PicksLowestPKWhenNoPrimary(t *testing.T) {
+	repo := newFakeModelRepo()
+	uc := NewModelUsecase(repo)
+	// Neither member carries the canonical spelling (e.g. both have different
+	// uppercase variants). The biz layer falls back to the lowest PK.
+	res, err := uc.MergeCanonicalModels(context.Background(), DuplicateModelGroup{
+		CanonicalID: "glm-5.2",
+		Members: []DuplicateModelRef{
+			{ModelPK: 5, ModelID: "GLM-5.2"},
+			{ModelPK: 3, ModelID: "Glm-5.2"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("MergeCanonicalModels: %v", err)
+	}
+	if res.SurvivingPK != 3 {
+		t.Fatalf("expected survivor=3 (lowest PK), got %d", res.SurvivingPK)
+	}
+}
+
+func TestNormalizeModelID_TrimsAndLowercases(t *testing.T) {
+	cases := map[string]string{
+		"  GLM-5.2  ": "glm-5.2",
+		"GPT-4o":      "gpt-4o",
+		"  ":          "",
+		"":            "",
+	}
+	for in, want := range cases {
+		if got := NormalizeModelID(in); got != want {
+			t.Errorf("NormalizeModelID(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

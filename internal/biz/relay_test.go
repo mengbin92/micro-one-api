@@ -874,6 +874,141 @@ func TestRelayUsecase_Plan_StampsGlobalModel(t *testing.T) {
 	}
 }
 
+type fallbackRoutingClient struct {
+	channel             *Channel
+	channelErr          error
+	subscription        *SubscriptionAccount
+	subscriptionErr     error
+	channelModels       []string
+	channelExcludeFirst []bool
+}
+
+func (c *fallbackRoutingClient) SelectChannel(_ context.Context, _ string, model string, excludeFirstPriority bool) (*Channel, error) {
+	c.channelModels = append(c.channelModels, model)
+	c.channelExcludeFirst = append(c.channelExcludeFirst, excludeFirstPriority)
+	return c.channel, c.channelErr
+}
+
+func (*fallbackRoutingClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
+	return nil
+}
+
+func (*fallbackRoutingClient) RecordSubscriptionAccountHealth(context.Context, int64, bool) error {
+	return nil
+}
+
+func (c *fallbackRoutingClient) SelectSubscriptionAccount(context.Context, string, string, string, bool) (*SubscriptionAccount, error) {
+	return c.subscription, c.subscriptionErr
+}
+
+func (c *fallbackRoutingClient) GetSubscriptionAccountByID(_ context.Context, accountID int64) (*SubscriptionAccount, error) {
+	if c.subscription != nil && c.subscription.ID == accountID {
+		return c.subscription, nil
+	}
+	return nil, nil
+}
+
+func TestSelectFallbackRoutingSourceCrossesSourceNamespaces(t *testing.T) {
+	t.Run("failed channel can fall back to subscription with same id", func(t *testing.T) {
+		client := &fallbackRoutingClient{
+			channel: &Channel{ID: 7, Priority: 10},
+			subscription: &SubscriptionAccount{
+				ID: 7, Name: "subscription", Platform: "codex", Status: 1, Group: "default",
+				Models: []string{"gpt-4o"}, Priority: 10,
+			},
+		}
+		uc := NewRelayUsecase(nil, client, nil, nil)
+		got, err := uc.SelectFallbackRoutingSource(context.Background(), "default", "gpt-4o", "gpt-4o", map[RoutingSourceIdentity]bool{
+			{Kind: UpstreamRouteChannel, ID: 7}: true,
+		})
+		if err != nil {
+			t.Fatalf("SelectFallbackRoutingSource() error = %v", err)
+		}
+		if identity := RoutingSourceIdentityForChannel(got); identity.Kind != UpstreamRouteSubscription || identity.ID != 7 {
+			t.Fatalf("selected source = %s:%d, want subscription:7", identity.Kind.String(), identity.ID)
+		}
+	})
+
+	t.Run("failed subscription does not exclude ordinary channel with same id", func(t *testing.T) {
+		client := &fallbackRoutingClient{
+			channel: &Channel{ID: 7, Priority: 10},
+			subscription: &SubscriptionAccount{
+				ID: 7, Name: "subscription", Platform: "codex", Status: 1, Group: "default",
+				Models: []string{"gpt-4o"}, Priority: 10,
+			},
+		}
+		uc := NewRelayUsecase(nil, client, nil, nil)
+		got, err := uc.SelectFallbackRoutingSource(context.Background(), "default", "gpt-4o", "gpt-4o", map[RoutingSourceIdentity]bool{
+			{Kind: UpstreamRouteSubscription, ID: 7}: true,
+		})
+		if err != nil {
+			t.Fatalf("SelectFallbackRoutingSource() error = %v", err)
+		}
+		if identity := RoutingSourceIdentityForChannel(got); identity.Kind != UpstreamRouteChannel || identity.ID != 7 {
+			t.Fatalf("selected source = %s:%d, want channel:7", identity.Kind.String(), identity.ID)
+		}
+	})
+
+	t.Run("excluded subscription is not selected again", func(t *testing.T) {
+		client := &fallbackRoutingClient{
+			channelErr: errors.New("no ordinary channel"),
+			subscription: &SubscriptionAccount{
+				ID: 7, Name: "subscription", Platform: "codex", Status: 1, Group: "default",
+				Models: []string{"gpt-4o"}, Priority: 10,
+			},
+		}
+		uc := NewRelayUsecase(nil, client, nil, nil)
+		got, err := uc.SelectFallbackRoutingSource(context.Background(), "default", "gpt-4o", "gpt-4o", map[RoutingSourceIdentity]bool{
+			{Kind: UpstreamRouteSubscription, ID: 7}: true,
+		})
+		if err == nil || got != nil {
+			t.Fatalf("SelectFallbackRoutingSource() = %+v, %v; want no excluded source", got, err)
+		}
+	})
+}
+
+func TestSelectFallbackRoutingSourceAppliesCrossSourcePriorityAndWeight(t *testing.T) {
+	t.Run("higher priority wins", func(t *testing.T) {
+		client := &fallbackRoutingClient{
+			channel: &Channel{ID: 1, Priority: 10, Weight: 100},
+			subscription: &SubscriptionAccount{
+				ID: 2, Name: "subscription", Platform: "codex", Status: 1, Group: "default",
+				Models: []string{"gpt-4o"}, Priority: 20, Weight: 1,
+			},
+		}
+		uc := NewRelayUsecase(nil, client, nil, nil)
+		got, err := uc.SelectFallbackRoutingSource(context.Background(), "default", "gpt-4o", "gpt-4o", nil)
+		if err != nil {
+			t.Fatalf("SelectFallbackRoutingSource() error = %v", err)
+		}
+		if identity := RoutingSourceIdentityForChannel(got); identity.Kind != UpstreamRouteSubscription || identity.ID != 2 {
+			t.Fatalf("selected source = %s:%d, want subscription:2", identity.Kind.String(), identity.ID)
+		}
+	})
+
+	t.Run("same tier uses configured weights", func(t *testing.T) {
+		client := &fallbackRoutingClient{
+			channel: &Channel{ID: 1, Priority: 10, Weight: 3},
+			subscription: &SubscriptionAccount{
+				ID: 2, Name: "subscription", Platform: "codex", Status: 1, Group: "default",
+				Models: []string{"gpt-4o"}, Priority: 10, Weight: 1,
+			},
+		}
+		uc := NewRelayUsecase(nil, client, nil, nil)
+		counts := map[UpstreamRouteKind]int{}
+		for i := 0; i < 40; i++ {
+			got, err := uc.SelectFallbackRoutingSource(context.Background(), "default", "gpt-4o", "gpt-4o", nil)
+			if err != nil {
+				t.Fatalf("iteration %d: SelectFallbackRoutingSource() error = %v", i, err)
+			}
+			counts[RoutingSourceIdentityForChannel(got).Kind]++
+		}
+		if counts[UpstreamRouteChannel] != 30 || counts[UpstreamRouteSubscription] != 10 {
+			t.Fatalf("weighted counts = %#v, want channel:30 subscription:10", counts)
+		}
+	})
+}
+
 // TestApplyPerAccountModelMapping_MostSpecificWildcard (🟡#3): when both
 // "claude-*" and "claude-sonnet-*" match "claude-sonnet-4", the more
 // specific mapping wins, deterministically across repeated calls.

@@ -11,6 +11,7 @@ type responseRoute struct {
 	GlobalModel           string
 	ResolvedModel         string
 	Channel               relaybiz.Channel
+	Account               *relaybiz.SubscriptionAccount
 	UserID                int64
 	SubscriptionAccountID int64
 }

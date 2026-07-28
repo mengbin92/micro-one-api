@@ -13,7 +13,7 @@ func isOpenAIResponseID(responseID string) bool {
 	return !strings.HasPrefix(responseID, "msg_")
 }
 
-func (s *HTTPServer) lookupResponseRouteWithSticky(ctx context.Context, token, responseID string) (responseRoute, bool) {
+func (s *HTTPServer) lookupResponseRouteWithSticky(ctx context.Context, token, clientModel, responseID string) (responseRoute, bool) {
 	responseID = strings.TrimSpace(responseID)
 	if !isOpenAIResponseID(responseID) {
 		return responseRoute{}, false
@@ -26,7 +26,7 @@ func (s *HTTPServer) lookupResponseRouteWithSticky(ctx context.Context, token, r
 	}
 	if s.wsSticky != nil {
 		var route responseRoute
-		if s.lookupWSStickyRoute(ctx, token, responseID, &route) {
+		if s.lookupWSStickyRoute(ctx, token, clientModel, responseID, &route) {
 			return route, true
 		}
 	}

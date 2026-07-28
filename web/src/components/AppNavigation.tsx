@@ -27,6 +27,7 @@ import {
   UserCircle,
   Users,
   WalletCards,
+  Route,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -92,6 +93,7 @@ const adminLinks: NavItem[] = [
   { to: '/admin/subscriptions', label: '用户订阅', ariaLabel: 'User Subscriptions', icon: BadgeCheck },
   { to: '/admin/channel-health', label: '健康监控', ariaLabel: 'Channel Health', icon: Activity },
   { to: '/admin/cost-analysis', label: '成本分析', ariaLabel: 'Cost Analysis', icon: TrendingUp },
+  { to: '/admin/routing-ops', label: '路由运营', ariaLabel: 'Routing Ops', icon: Route },
   { to: '/admin/pricing', label: '模型价格', ariaLabel: 'Model Pricing', icon: ReceiptText },
   { to: '/admin/logs', label: '日志', ariaLabel: 'Logs', icon: ScrollText },
   { to: '/admin/payment-orders', label: '订单', ariaLabel: 'Payment Orders', icon: CreditCard },
@@ -120,6 +122,7 @@ const routeTitles: Record<string, string> = {
   '/admin/subscriptions': '用户订阅',
   '/admin/channel-health': '健康监控',
   '/admin/cost-analysis': '成本分析',
+  '/admin/routing-ops': '路由运营',
   '/admin/pricing': '模型价格',
   '/admin/logs': '系统日志',
   '/admin/payment-orders': '支付订单',

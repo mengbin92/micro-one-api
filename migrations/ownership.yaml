@@ -53,6 +53,8 @@ services:
     - 064_add_channel_restrict_models
     - 065_add_model_routings
     - 066_add_upstream_model_ids
+    - 068_add_canonical_model_id_constraint   # v0.11.0 Phase 2 §2.1
+    - 069_add_subscription_account_weight     # v0.11.0 Phase 3 §3.1
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /
@@ -71,6 +73,7 @@ services:
     - 030_add_reconciliation_run_phase3_fields
     - 036_add_subscription_account_id_to_billing_ledgers
     - 037_add_subscription_account_id_to_logs       # shared index; harmless on billing schema
+    - 067_add_cache_creation_token_usage_fields
     - 038_add_subscription_account_id_to_billing_reservations
     - 039_create_user_subscriptions
     - 040_create_subscription_groups
@@ -93,6 +96,7 @@ services:
     # but in a per-service schema the table must be materialised).
     - 000_create_core_tables
     - 031_add_cache_read_token_usage_fields
+    - 067_add_cache_creation_token_usage_fields
     - 037_add_subscription_account_id_to_logs
 
   admin:

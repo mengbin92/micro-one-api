@@ -1,6 +1,8 @@
 # 项目 TODO
 
-> 最后更新：2026-07-19
+> 最后更新：2026-07-27
+>
+> **当前执行入口**：[v0.11.0 下一阶段工作路线图](./design/v0.11.0-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
 >
 > **Phase 2.4 Schema 隔离生产启用已完成** ✅ 
 > 
@@ -686,6 +688,46 @@ wire:
 后续 8 个服务迁移时可复用此目标，降低手动 cd 的摩擦。
 
 ## 待办 — cache_creation 全链路支持（缓存创建 token 统计与计费）
+
+> **v0.11.0 Phase 0 设计门已完成（2026-07-27）。** 见 `docs/design/token-usage-semantics.md`
+> 与跨层表驱动 fixture `internal/server/token_usage_fixture_test.go`
+> （F1–F10：OpenAI cached / 流式合并 / Anthropic 5m / 1h / 混合明细 / 总量无明细 /
+> 明细超总量 / 负数 / Anthropic 流式合并 / Responses）。fixture 在 raw relay、
+> provider 转换与 billing 三层断言相同的五桶结果。
+>
+> **Phase 1 §1.1（roadmap PR 2：provider/raw usage 规范化与解析指标）已完成（2026-07-27）。**
+> **Phase 1 §1.2（roadmap PR 3：proto + DO/PO + 三数据库迁移，保持 observe）已完成（2026-07-27）。**
+> **Phase 1 §1.3（roadmap PR 4：cache_creation 价格、影子成本、observe/charge 开关与管理端展示）已完成（2026-07-27）。**
+> `ModelPrice` / `UpstreamModelPrice` 新增可选 `CacheCreation5mPrice` / `CacheCreation1hPrice`
+> （从 system_options 的 ModelPrice JSON blob 反序列化，无需新迁移）。新增纯计算函数
+> `calculateCanonicalCost`，用户费用与上游成本共用同一公式（roadmap §1.3）；未配置创建价格时
+> canonical 收敛到 v0.10.2 成本并标记 unpriced，**不**回退到 input price。新增
+> `BILLING_CACHE_CREATION_MODE=observe|charge` 环境开关，默认 `observe`（观察模式只写 token
+> 与影子成本，不改用户余额；拼写错误也回落到 observe，绝不会静默开启收费）。新增低基数 metric
+> `relay_token_usage_shadow_cost{mode,unpriced}`（model 仅入结构化日志）。`/api/pricing` 响应
+> 新增 `cache_creation_5m_price` / `1h_price` / `cache_creation_unpriced` / `cache_creation_mode`
+> / `unpriced_model_count`。**Phase 1（§1.1+§1.2+§1.3，PR 2/3/4）全部完成**，可进入生产 observe
+> 对账（roadmap §1.4）。
+> `api/log/v1`、`api/billing/v1`、`api/common/v1` LedgerEntry 新增 `cache_creation_5m_tokens` /
+> `cache_creation_1h_tokens`（`make api` 重新生成 pb.go，按项目约定 pb.go 不入库）。
+> log/billing 的 DO（LogEntry/Ledger/LedgerUsage/UsageStat/DailyAggregate/ModelAggregate/
+> UsageBucket/UsageTotals）、PO（logModel/ledgerModel）、Create/List/Aggregate SQL 全部扩展；
+> billing service CommitQuotaRequest→LedgerUsage、http_billing CommitQuotaRequest、admin
+> UsageAggregateView/LedgerEntry map 全部接线。新增 MySQL 增量迁移 `067_add_cache_creation
+> _token_usage_fields.sql`（logs + billing_ledgers，DEFAULT 0，additive，回滚不删列），
+> 同步 postgres/sqlite full schema 与 `migrations/ownership.yaml`。PR 2 的 human-readable
+> Message carrier 已回退，改用真实 proto 字段持久化。下列 ☐ 条目为 Phase 1 §1.3（roadmap
+> PR 4：cache_creation 价格、影子成本、observe/charge 开关与管理端展示）。
+> `rawUsage` / `UsageTokenDetails` / `anthropicUsage` / `usageLogInput` /
+> `openAIWSRelayUsage` / orchestrator `Usage` 全部新增 `CacheCreation5mTokens` /
+> `CacheCreation1hTokens`，按 ADR §3.3/§4.2 解析 `cache_creation_input_tokens`
+> 及嵌套 `ephemeral_5m/1h_input_tokens`（无明细默认 5m，明细超总量以明细为准并记指标，
+> 负数归零）。新增低基数 metric `relay_token_usage_parse_anomaly_total{reason}`
+> （label 仅 reason，不含 channel/account/model）。新桶已贯穿所有 usageLogInput 构造点
+> （raw handler、adaptor 流式/非流式、chat handler、anthropic inbound、openai ws
+> forwarder、orchestrator）。下列 ☐ 条目为 Phase 1 §1.2/§1.3（proto + DO/PO + DB 迁移 +
+> 价格/扣费/observe 开关，roadmap PR 3/PR 4）实施项。
+
 
 > 登记于 2026-07-21。关联：同日已完成 Anthropic 协议透传路径
 > `cache_read_input_tokens` 解析（`cacheReadTokensFromUsageMap`）与

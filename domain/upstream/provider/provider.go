@@ -131,8 +131,10 @@ type Usage struct {
 }
 
 type UsageTokenDetails struct {
-	CachedTokens    int `json:"cached_tokens,omitempty"`
-	CacheReadTokens int `json:"cache_read_tokens,omitempty"`
+	CachedTokens        int `json:"cached_tokens,omitempty"`
+	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
+	CacheCreation5mTokens int `json:"cache_creation_5m_tokens,omitempty"`
+	CacheCreation1hTokens int `json:"cache_creation_1h_tokens,omitempty"`
 }
 
 // StreamChunk represents a single SSE chunk from streaming response

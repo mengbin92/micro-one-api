@@ -81,6 +81,7 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			`+"`group`"+` TEXT DEFAULT 'default',
 			models TEXT,
 			priority INTEGER DEFAULT 0,
+			weight INTEGER NOT NULL DEFAULT 0,
 			base_url TEXT,
 			access_token TEXT,
 			refresh_token TEXT,

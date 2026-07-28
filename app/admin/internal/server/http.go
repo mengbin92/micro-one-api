@@ -26,6 +26,7 @@ import (
 	"micro-one-api/pkg/safecast"
 	"micro-one-api/platform/http"
 	"micro-one-api/platform/metrics"
+	appmiddleware "micro-one-api/platform/middleware"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"google.golang.org/grpc/codes"
@@ -43,6 +44,16 @@ type adminWebAssets struct {
 // request so downstream handlers (e.g. /api/admin/access) can report it.
 type adminRoleContextKey struct{}
 
+// adminOperatorContextKey carries the authenticated operator identity as a
+// string. For a session-token admin it is the numeric user id; for the shared
+// ADMIN_TOKEN it is the sentinel "system/admin-token". Handlers that need a
+// numeric id call adminOperatorUserID, which returns 0 for the sentinel — a
+// contract identity-service treats as "system operator, bypass rank check".
+// Storing the operator in typed context (not a spoofable header) closes the
+// old hole where strconv.ParseInt silently turned the non-numeric sentinel
+// into 0 without distinguishing it from a real user id of 0.
+type adminOperatorContextKey struct{}
+
 // newAdminGuard returns a middleware that authorises admin requests using
 // either the shared ADMIN_TOKEN (system-level, treated as root) or a user
 // session token whose owner has role >= RoleAdmin. When the user-token path
@@ -55,7 +66,7 @@ type adminRoleContextKey struct{}
 func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.HandlerFunc {
 	adminToken := os.Getenv("ADMIN_TOKEN")
 	return func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
+		guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if !strings.HasPrefix(authHeader, "Bearer ") {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing or invalid authorization header"})
@@ -64,33 +75,70 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 
 			if adminToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(adminToken)) == 1 {
-				next(w, r.WithContext(context.WithValue(r.Context(), adminRoleContextKey{}, service.RoleRoot)))
+				// Stamp a sentinel operator identity in typed context so audit
+				// records (import/export, refunds, etc.) never have an empty
+				// actor. The sentinel is stable and distinguishable from a real
+				// numeric user id (roadmap §4: no empty operator audit).
+				ctx := context.WithValue(r.Context(), adminRoleContextKey{}, service.RoleRoot)
+				ctx = context.WithValue(ctx, adminOperatorContextKey{}, adminSystemOperator)
+				next(w, r.WithContext(ctx))
 				return
 			}
 
 			if svc != nil {
 				userID, role, err := svc.AuthorizeAdminToken(r.Context(), token)
 				if err == nil && role >= service.RoleAdmin {
-					r.Header.Set("X-Operator-User-Id", strconv.FormatInt(userID, 10))
-					next(w, r.WithContext(context.WithValue(r.Context(), adminRoleContextKey{}, role)))
+					ctx := context.WithValue(r.Context(), adminRoleContextKey{}, role)
+					ctx = context.WithValue(ctx, adminOperatorContextKey{}, strconv.FormatInt(userID, 10))
+					next(w, r.WithContext(ctx))
 					return
 				}
 			}
 
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid admin credentials"})
-		}
+		})
+		// Audit-sensitive admin handlers consume the sanitized request ID from
+		// context rather than trusting a raw client header.
+		withRequestID := appmiddleware.RequestID(guarded)
+		return withRequestID.ServeHTTP
 	}
 }
 
-// adminOperatorIDFromRequest returns the authenticated admin's user id, which
-// newAdminGuard stamps onto the X-Operator-User-Id header after validating the
-// bearer token. Admin-only handlers use it so audit fields (e.g. the refund
-// operator id) reflect the real caller instead of a client-supplied value.
+// adminSystemOperator is the sentinel operator identity stamped for requests
+// authenticated with the shared ADMIN_TOKEN. It is non-numeric so it can never
+// collide with a real user id and so callers that need an int64 (e.g.
+// identity-service OperatorUserId) can treat it as a "system" call.
+const adminSystemOperator = "system/admin-token"
+
+// adminOperatorIDFromRequest returns the authenticated operator identity from
+// typed request context. For a session-token admin it is the numeric user id;
+// for the shared ADMIN_TOKEN it is the sentinel "system/admin-token". It is
+// never empty after the guard runs (roadmap §4). Admin-only handlers use it so
+// audit fields reflect the real caller instead of a client-supplied value.
 func adminOperatorIDFromRequest(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
-	return strings.TrimSpace(r.Header.Get("X-Operator-User-Id"))
+	v, _ := r.Context().Value(adminOperatorContextKey{}).(string)
+	return v
+}
+
+// adminOperatorUserID returns the authenticated operator's numeric user id, or
+// 0 when the request was authenticated with the shared ADMIN_TOKEN (the system
+// sentinel). Callers that pass the id to downstream services (e.g.
+// identity-service OperatorUserId) use this; 0 means "system operator". This
+// replaces the old strconv.ParseInt(header) path that silently turned the
+// non-numeric sentinel into 0 without an explicit contract.
+func adminOperatorUserID(r *http.Request) int64 {
+	id := adminOperatorIDFromRequest(r)
+	if id == "" || id == adminSystemOperator {
+		return 0
+	}
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // NewHTTPServer wires HTTP transport for admin-api.
@@ -317,6 +365,10 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/api/admin/summary", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleAdminSummary(w, r, svc)
 	}))
+	// v0.11.0 Phase 3 §3.6 routing operations view.
+	srv.HandleFunc("/api/admin/routing-ops", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleRoutingOps(w, r, svc)
+	}))
 	srv.HandleFunc("/api/v1/subscriptions/progress", func(w http.ResponseWriter, r *http.Request) {
 		handleCurrentSubscriptionProgress(w, r, svc)
 	})
@@ -534,6 +586,45 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	// ── Model management (方案B) ──────────────────────────────────────────
 	srv.HandleFunc("/api/admin/models", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleModels(w, r, svc)
+	}))
+	// Canonical model ID governance (v0.11.0 Phase 2 §2.1): registered with a
+	// longer prefix than /api/admin/models/ so net/http's longest-match wins
+	// and these operator endpoints don't fall through to the {model_pk} path.
+	srv.HandlePrefix("/api/admin/models/canonical/preflight", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleCanonicalPreflight(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/admin/models/canonical/merge", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleCanonicalMerge(w, r, svc)
+	}))
+	// v0.11.0 Phase 2 §2.2 unpriced-model audit.
+	srv.HandlePrefix("/api/admin/models/unpriced", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleUnpricedRoutedModels(w, r, svc)
+	}))
+	// v0.11.0 Phase 4 model import/export. Registered before the
+	// /api/admin/models/ wildcard so net/http longest-prefix matching routes
+	// these operator endpoints to the exchange handlers, not the {model_pk}
+	// path. Prices require root role (enforced in the handler).
+	srv.HandleFunc("/api/admin/models/export", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleExportModels(w, r, svc)
+	}))
+	srv.HandleFunc("/api/admin/models/import", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleImportModels(w, r, svc)
+	}))
+	// v0.11.0 Phase 2 §2.2 independent upstream-cost management.
+	srv.HandleFunc("/api/admin/upstream-costs/migrate", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleMigrateUpstreamCostKeys(w, r, svc)
+	}))
+	srv.HandleFunc("/api/admin/upstream-costs", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handleListUpstreamCosts(w, r, svc)
+		case http.MethodPost:
+			handleSetUpstreamCost(w, r, svc)
+		case http.MethodDelete:
+			handleDeleteUpstreamCost(w, r, svc)
+		default:
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		}
 	}))
 	srv.HandlePrefix("/api/admin/models/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleModels(w, r, svc)
@@ -1076,16 +1167,24 @@ func optionsByKey(options []service.OneAPIOption, keys ...string) map[string]str
 }
 
 type readonlyPricingRow struct {
-	Model          string   `json:"model"`
-	InputPrice     *float64 `json:"input_price,omitempty"`
-	OutputPrice    *float64 `json:"output_price,omitempty"`
-	CacheReadPrice *float64 `json:"cache_read_price,omitempty"`
+	Model                string   `json:"model"`
+	InputPrice           *float64 `json:"input_price,omitempty"`
+	OutputPrice          *float64 `json:"output_price,omitempty"`
+	CacheReadPrice       *float64 `json:"cache_read_price,omitempty"`
+	CacheCreation5mPrice *float64 `json:"cache_creation_5m_price,omitempty"`
+	CacheCreation1hPrice *float64 `json:"cache_creation_1h_price,omitempty"`
+	// CacheCreationUnpriced is true when the model row carries no
+	// cache-creation prices; surfaced so ops can see the v0.11.0 pricing gap
+	// (roadmap §1.3).
+	CacheCreationUnpriced bool `json:"cache_creation_unpriced,omitempty"`
 }
 
 type readonlyModelPrice struct {
-	InputPrice     *float64 `json:"input_price"`
-	OutputPrice    *float64 `json:"output_price"`
-	CacheReadPrice *float64 `json:"cache_read_price"`
+	InputPrice           *float64 `json:"input_price"`
+	OutputPrice          *float64 `json:"output_price"`
+	CacheReadPrice       *float64 `json:"cache_read_price"`
+	CacheCreation5mPrice *float64 `json:"cache_creation_5m_price"`
+	CacheCreation1hPrice *float64 `json:"cache_creation_1h_price"`
 }
 
 const (
@@ -1103,9 +1202,11 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 			"success": true,
 			"message": "",
 			"data": map[string]interface{}{
-				"prices":          []readonlyPricingRow{},
-				"amount_per_unit": float64(readonlyPricingUnitScale),
-				"unit":            "1M tokens",
+				"prices":               []readonlyPricingRow{},
+				"amount_per_unit":      float64(readonlyPricingUnitScale),
+				"unit":                 "1M tokens",
+				"cache_creation_mode":  currentCacheCreationMode(),
+				"unpriced_model_count": 0,
 			},
 		})
 		return
@@ -1121,15 +1222,38 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 		amountPerUnit = readonlyPricingUnitScale
 	}
 
+	rows := readonlyPricingRows(optionMap, amountPerUnit)
+	unpricedCount := 0
+	for _, row := range rows {
+		if row.CacheCreationUnpriced {
+			unpricedCount++
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "",
 		"data": map[string]interface{}{
-			"prices":          readonlyPricingRows(optionMap, amountPerUnit),
-			"amount_per_unit": amountPerUnit,
-			"unit":            "1M tokens",
+			"prices":               rows,
+			"amount_per_unit":      amountPerUnit,
+			"unit":                 "1M tokens",
+			"cache_creation_mode":  currentCacheCreationMode(),
+			"unpriced_model_count": unpricedCount,
 		},
 	})
+}
+
+// currentCacheCreationMode reports the active cache-creation billing mode for
+// display. It re-reads BILLING_CACHE_CREATION_MODE with the same default-observe
+// rule as billing biz.resolveCacheCreationMode; admin is a separate process so
+// the value shown here is for operator awareness, not authoritative for
+// charging.
+func currentCacheCreationMode() string {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("BILLING_CACHE_CREATION_MODE"))) {
+	case "charge":
+		return "charge"
+	default:
+		return "observe"
+	}
 }
 
 func readonlyPricingRows(options map[string]string, quotaPerUnit float64) []readonlyPricingRow {
@@ -1168,6 +1292,18 @@ func readonlyPricingRows(options map[string]string, quotaPerUnit float64) []read
 		}
 		if price.CacheReadPrice != nil {
 			row.CacheReadPrice = floatPtr(*price.CacheReadPrice * readonlyPricingMTok)
+		}
+		if price.CacheCreation5mPrice != nil {
+			row.CacheCreation5mPrice = floatPtr(*price.CacheCreation5mPrice * readonlyPricingMTok)
+		}
+		if price.CacheCreation1hPrice != nil {
+			row.CacheCreation1hPrice = floatPtr(*price.CacheCreation1hPrice * readonlyPricingMTok)
+		}
+		// A model is "unpriced" for cache creation when it exposes neither
+		// 5m nor 1h cache-creation prices. Pure ratio-priced models are not
+		// flagged because cache creation was never part of their formula.
+		if price.CacheCreation5mPrice == nil && price.CacheCreation1hPrice == nil {
+			row.CacheCreationUnpriced = true
 		}
 		rows = append(rows, row)
 	}
@@ -1787,16 +1923,15 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 		// identity-service so we just surface its error.
 		//
 		// X-Operator-User-Id identifies the calling admin so identity-service
-		// can enforce operator-vs-target rank rules. When the header is
-		// missing the call is treated as a system invocation that skips
-		// those checks — fine for now because admin-api is gated by the
-		// shared ADMIN_TOKEN; flip to required once admin auth moves to
-		// per-user sessions.
+		// can enforce operator-vs-target rank rules. The admin guard always
+		// sets this header now (real user id for session auth, or the
+		// "system/admin-token" sentinel for the shared ADMIN_TOKEN), so the
+		// operator id is never empty (roadmap §4).
 		newRole := int32(10) // admin
 		if req.Action == "demote" {
 			newRole = 1 // common user
 		}
-		operatorID, _ := strconv.ParseInt(strings.TrimSpace(r.Header.Get("X-Operator-User-Id")), 10, 64)
+		operatorID := adminOperatorUserID(r)
 		resp, err := svc.SetUserRole(r.Context(), &adminv1.AdminSetUserRoleRequest{
 			UserId:         userID,
 			Role:           newRole,
@@ -2843,10 +2978,19 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]interface{}{
+			out := map[string]interface{}{
 				"success": resp.GetSuccess(),
 				"message": resp.GetMessage(),
-			})
+			}
+			// v0.11.0 Phase 2 §2.2: after a ModelPrice save, surface the count
+			// of routed-but-unpriced models so the operator sees the gap
+			// without a second call. Unpriced does NOT block the save.
+			if raw.Key == "ModelPrice" && resp.GetSuccess() {
+				if count := unpricedRoutedCount(r.Context(), svc); count >= 0 {
+					out["unpriced_routed_count"] = count
+				}
+			}
+			writeJSON(w, http.StatusOK, out)
 			return
 		}
 		updates := map[string]string{}

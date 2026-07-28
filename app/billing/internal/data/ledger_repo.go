@@ -60,6 +60,8 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx *gorm.DB, ledger *
 		PromptTokens:          ledger.PromptTokens,
 		CompletionTokens:      ledger.CompletionTokens,
 		CacheReadTokens:       ledger.CacheReadTokens,
+		CacheCreation5mTokens: ledger.CacheCreation5mTokens,
+		CacheCreation1hTokens: ledger.CacheCreation1hTokens,
 		ChannelID:             ledger.ChannelID,
 		SubscriptionAccountID: ledger.SubscriptionAccountID,
 		ElapsedTime:           ledger.ElapsedTime,
@@ -264,6 +266,8 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 			COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
 			COALESCE(SUM(completion_tokens), 0) as completion_tokens,
 			COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+			COALESCE(SUM(cache_creation_5m_tokens), 0) as cache_creation_5m_tokens,
+			COALESCE(SUM(cache_creation_1h_tokens), 0) as cache_creation_1h_tokens,
 			COUNT(*) as count,
 			COALESCE(SUM(elapsed_time), 0) as elapsed_time`).
 		Where("type = ?", ledgerType)
@@ -283,9 +287,11 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 		Quota            int64
 		PromptTokens     int64
 		CompletionTokens int64
-		CacheReadTokens  int64
-		Count            int64
-		ElapsedTime      int64
+		CacheReadTokens       int64 `gorm:"column:cache_read_tokens"`
+		CacheCreation5mTokens int64 `gorm:"column:cache_creation_5m_tokens"`
+		CacheCreation1hTokens int64 `gorm:"column:cache_creation_1h_tokens"`
+		Count                 int64 `gorm:"column:count"`
+		ElapsedTime           int64 `gorm:"column:elapsed_time"`
 	}
 	var dailyRows []dailyRow
 	if err := dailyQuery.Scan(&dailyRows).Error; err != nil {
@@ -298,8 +304,10 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 			Quota:            row.Quota,
 			PromptTokens:     row.PromptTokens,
 			CompletionTokens: row.CompletionTokens,
-			CacheReadTokens:  row.CacheReadTokens,
-			Count:            row.Count,
+			CacheReadTokens:       row.CacheReadTokens,
+			CacheCreation5mTokens: row.CacheCreation5mTokens,
+			CacheCreation1hTokens: row.CacheCreation1hTokens,
+			Count:                 row.Count,
 			ElapsedTime:      row.ElapsedTime,
 		}
 	}
@@ -383,9 +391,11 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 		GrossProfit           int64
 		PromptTokens          int64
 		CompletionTokens      int64
-		CacheReadTokens       int64
-		Count                 int64
-		ElapsedTime           int64
+		CacheReadTokens       int64 `gorm:"column:cache_read_tokens"`
+		CacheCreation5mTokens int64 `gorm:"column:cache_creation_5m_tokens"`
+		CacheCreation1hTokens int64 `gorm:"column:cache_creation_1h_tokens"`
+		Count                 int64 `gorm:"column:count"`
+		ElapsedTime           int64 `gorm:"column:elapsed_time"`
 	}
 	var rows []bucketRow
 	if err := q.Scan(&rows).Error; err != nil {
@@ -409,6 +419,8 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 			PromptTokens:          row.PromptTokens,
 			CompletionTokens:      row.CompletionTokens,
 			CacheReadTokens:       row.CacheReadTokens,
+			CacheCreation5mTokens: row.CacheCreation5mTokens,
+			CacheCreation1hTokens: row.CacheCreation1hTokens,
 			Count:                 row.Count,
 			ElapsedTime:           row.ElapsedTime,
 		}
@@ -418,6 +430,8 @@ func (r *ledgerRepo) AggregateUsage(ctx context.Context, filter biz.UsageFilter)
 		totals.PromptTokens += row.PromptTokens
 		totals.CompletionTokens += row.CompletionTokens
 		totals.CacheReadTokens += row.CacheReadTokens
+		totals.CacheCreation5mTokens += row.CacheCreation5mTokens
+		totals.CacheCreation1hTokens += row.CacheCreation1hTokens
 		totals.Count += row.Count
 		totals.ElapsedTime += row.ElapsedTime
 	}
@@ -440,6 +454,8 @@ func usageQueryParts(groupBy []string) (groupCols, selectCols, joinSQL string) {
 		"COALESCE(SUM(prompt_tokens), 0) as prompt_tokens",
 		"COALESCE(SUM(completion_tokens), 0) as completion_tokens",
 		"COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens",
+		"COALESCE(SUM(cache_creation_5m_tokens), 0) as cache_creation_5m_tokens",
+		"COALESCE(SUM(cache_creation_1h_tokens), 0) as cache_creation_1h_tokens",
 		"COUNT(*) as count",
 		"COALESCE(SUM(elapsed_time), 0) as elapsed_time",
 	}
@@ -560,6 +576,8 @@ func ledgerFromModel(model *ledgerModel) *biz.Ledger {
 		PromptTokens:          model.PromptTokens,
 		CompletionTokens:      model.CompletionTokens,
 		CacheReadTokens:       model.CacheReadTokens,
+		CacheCreation5mTokens: model.CacheCreation5mTokens,
+		CacheCreation1hTokens: model.CacheCreation1hTokens,
 		ChannelID:             model.ChannelID,
 		SubscriptionAccountID: model.SubscriptionAccountID,
 		ElapsedTime:           model.ElapsedTime,

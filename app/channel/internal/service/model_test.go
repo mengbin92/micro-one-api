@@ -161,6 +161,15 @@ func (r *modelServiceRepo) ListModelUsageStats(ctx context.Context, modelPK int6
 	return nil, 0, nil
 }
 
+// v0.11.0 Phase 2 §2.1: canonical model ID governance — stubs.
+func (r *modelServiceRepo) CanonicalModelPreflight(ctx context.Context) (*biz.PreflightReport, error) {
+	return &biz.PreflightReport{}, nil
+}
+
+func (r *modelServiceRepo) MergeCanonicalModels(ctx context.Context, group biz.DuplicateModelGroup) (*biz.MergeResult, error) {
+	return &biz.MergeResult{CanonicalID: group.CanonicalID, SurvivingPK: group.SurvivingPK}, nil
+}
+
 // Compile-time check.
 var _ biz.ModelRepo = (*modelServiceRepo)(nil)
 
@@ -500,5 +509,132 @@ func TestChannelService_RecordModelUsageNilUC(t *testing.T) {
 	}
 	if resp.Success {
 		t.Fatal("expected failure with nil uc")
+	}
+}
+
+// ── v0.11.0 Phase 4: model import/export service tests ─────────────────────
+
+// ExportAllModels and ImportModels satisfy biz.ModelExchangeRepo so the
+// service handler tests can exercise the DTO↔DO round-trip.
+func (r *modelServiceRepo) ExportAllModels(ctx context.Context, filter biz.ListModelsFilter) ([]*biz.ModelExportModel, error) {
+	out := make([]*biz.ModelExportModel, 0, len(r.models))
+	for _, m := range r.models {
+		out = append(out, &biz.ModelExportModel{
+			ModelID:       m.ModelID,
+			DisplayName:   m.DisplayName,
+			Provider:      m.Provider,
+			ModelType:     m.ModelType,
+			Status:        m.Status,
+			PricingInput:  m.PricingInput,
+			PricingOutput: m.PricingOutput,
+		})
+	}
+	return out, nil
+}
+
+func (r *modelServiceRepo) ImportModels(ctx context.Context, models []*biz.ModelExportModel, options biz.ImportOptions) (*biz.ImportSummary, error) {
+	summary := &biz.ImportSummary{}
+	if options.DryRun {
+		for _, em := range models {
+			if em == nil {
+				continue
+			}
+			summary.Results = append(summary.Results, biz.ImportRecordOutcome{ModelID: em.ModelID, Action: "create"})
+			summary.Created++
+		}
+		return summary, nil
+	}
+	for _, em := range models {
+		if em == nil {
+			continue
+		}
+		r.nextID++
+		r.models[r.nextID] = &biz.Model{
+			ID:          r.nextID,
+			ModelID:     em.ModelID,
+			DisplayName: em.DisplayName,
+			Provider:    em.Provider,
+			Status:      em.Status,
+		}
+		summary.Results = append(summary.Results, biz.ImportRecordOutcome{ModelID: em.ModelID, Action: "create"})
+		summary.Created++
+	}
+	return summary, nil
+}
+
+func TestChannelService_ExportImportRoundTrip(t *testing.T) {
+	svc := newModelService()
+	ctx := context.Background()
+
+	// Seed a model.
+	_, err := svc.CreateModel(ctx, &channelv1.CreateModelRequest{
+		ModelId:     "export-test",
+		DisplayName: "Export Test",
+		Provider:    "openai",
+	})
+	if err != nil {
+		t.Fatalf("CreateModel: %v", err)
+	}
+
+	// Export without prices.
+	exportResp, err := svc.ExportModels(ctx, &channelv1.ExportModelsRequest{})
+	if err != nil {
+		t.Fatalf("ExportModels: %v", err)
+	}
+	if exportResp.SchemaVersion != biz.ModelExchangeSchemaVersion {
+		t.Fatalf("schema version = %q, want %q", exportResp.SchemaVersion, biz.ModelExchangeSchemaVersion)
+	}
+	if len(exportResp.Models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(exportResp.Models))
+	}
+	if exportResp.ContentHash == "" {
+		t.Fatal("expected non-empty content hash")
+	}
+
+	// Export should NOT leak pricing when export_prices is false.
+	if exportResp.Models[0].PricingInput != 0 {
+		t.Fatalf("expected pricing stripped, got %v", exportResp.Models[0].PricingInput)
+	}
+}
+
+func TestChannelService_DryRunImportSchemaMismatch(t *testing.T) {
+	svc := newModelService()
+	ctx := context.Background()
+
+	resp, err := svc.DryRunImportModels(ctx, &channelv1.ImportModelsRequest{
+		SchemaVersion: "99.0.0", // wrong version
+		Models: []*channelv1.ModelExportModel{
+			{ModelId: "x"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("DryRunImportModels should not error on schema mismatch: %v", err)
+	}
+	if resp.WouldSucceed {
+		t.Fatal("expected would_succeed=false on schema mismatch")
+	}
+}
+
+func TestChannelService_NilModelUsecase_ExportImport(t *testing.T) {
+	repo := newModelServiceRepo()
+	svc := NewChannelService(biz.NewChannelUsecase(repo, nil))
+	// modelUC is nil — handlers must return safe empty/error responses.
+
+	exportResp, err := svc.ExportModels(context.Background(), &channelv1.ExportModelsRequest{})
+	if err != nil {
+		t.Fatalf("ExportModels nil uc should not error: %v", err)
+	}
+	if exportResp.SchemaVersion != biz.ModelExchangeSchemaVersion {
+		t.Fatalf("expected schema version even with nil uc")
+	}
+
+	importResp, err := svc.ImportModels(context.Background(), &channelv1.ImportModelsRequest{
+		SchemaVersion: biz.ModelExchangeSchemaVersion,
+	})
+	if err != nil {
+		t.Fatalf("ImportModels nil uc should not error: %v", err)
+	}
+	if importResp.Success {
+		t.Fatal("expected success=false with nil uc")
 	}
 }

@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -1281,4 +1282,523 @@ func cloneSubscriptionMapping(m *biz.ModelSubscriptionMapping) *biz.ModelSubscri
 	}
 	c := *m
 	return &c
+}
+
+// ── v0.11.0 Phase 2 §2.1: canonical model ID preflight & merge ─────────────
+
+// CanonicalModelPreflight scans the models table and reports every set of
+// rows whose model_id collides after biz.NormalizeModelID, together with
+// the dependent-row counts (aliases, channel/subscription mappings, usage
+// stats) the operator needs to plan the merge. Read-only.
+func (r *Repository) CanonicalModelPreflight(ctx context.Context) (*biz.PreflightReport, error) {
+	if r.db == nil {
+		return r.canonicalPreflightMemory(ctx)
+	}
+	return r.canonicalPreflightDB(ctx)
+}
+
+func (r *Repository) canonicalPreflightDB(ctx context.Context) (*biz.PreflightReport, error) {
+	// 1. Find every (LOWER(TRIM(model_id)), id) pair, then keep only the
+	//    canonical ids that have > 1 row. Sorting by id makes the survivor
+	//    selection deterministic.
+	type idRow struct {
+		ID      int64
+		ModelID string
+	}
+	var rows []idRow
+	if err := r.db.WithContext(ctx).
+		Model(&modelModel{}).
+		Select("id, model_id").
+		Order("id ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	byCanonical := make(map[string][]idRow)
+	for _, row := range rows {
+		c := biz.NormalizeModelID(row.ModelID)
+		byCanonical[c] = append(byCanonical[c], row)
+	}
+
+	// 2. Collect dependent counts per model PK in bulk queries.
+	type depCount struct {
+		ModelPK   int64
+		Count     int64
+	}
+	aliasCounts := map[int64]int64{}
+	chCounts := map[int64]int64{}
+	subCounts := map[int64]int64{}
+	statCounts := map[int64]int64{}
+	statReqTotals := map[int64]int64{}
+	statTokTotals := map[int64]int64{}
+	{
+		var xs []depCount
+		_ = r.db.WithContext(ctx).Model(&modelAliasModel{}).
+			Select("model_id as model_pk, count(*) as count").
+			Group("model_id").Scan(&xs).Error
+		for _, x := range xs {
+			aliasCounts[x.ModelPK] = x.Count
+		}
+	}
+	{
+		var xs []depCount
+		_ = r.db.WithContext(ctx).Model(&modelChannelMappingModel{}).
+			Select("model_id as model_pk, count(*) as count").
+			Group("model_id").Scan(&xs).Error
+		for _, x := range xs {
+			chCounts[x.ModelPK] = x.Count
+		}
+	}
+	{
+		var xs []depCount
+		_ = r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{}).
+			Select("model_id as model_pk, count(*) as count").
+			Group("model_id").Scan(&xs).Error
+		for _, x := range xs {
+			subCounts[x.ModelPK] = x.Count
+		}
+	}
+	{
+		type statAgg struct {
+			ModelPK       int64
+			Days          int64
+			RequestTotal  int64
+			TokenTotal    int64
+		}
+		var xs []statAgg
+		_ = r.db.WithContext(ctx).Model(&modelUsageStatModel{}).
+			Select("model_id as model_pk, count(*) as days, coalesce(sum(request_count),0) as request_total, coalesce(sum(token_count),0) as token_total").
+			Group("model_id").Scan(&xs).Error
+		for _, x := range xs {
+			statCounts[x.ModelPK] = x.Days
+			statReqTotals[x.ModelPK] = x.RequestTotal
+			statTokTotals[x.ModelPK] = x.TokenTotal
+		}
+	}
+
+	report := &biz.PreflightReport{}
+	for canonical, members := range byCanonical {
+		if len(members) < 2 {
+			continue
+		}
+		g := biz.DuplicateModelGroup{CanonicalID: canonical}
+		for _, mrow := range members {
+			g.Members = append(g.Members, biz.DuplicateModelRef{
+				ModelPK:              mrow.ID,
+				ModelID:              mrow.ModelID,
+				IsPrimary:            mrow.ModelID == canonical,
+				Aliases:              safecast.Int64ToInt32Saturating(aliasCounts[mrow.ID]),
+				ChannelMappings:      safecast.Int64ToInt32Saturating(chCounts[mrow.ID]),
+				SubscriptionMappings: safecast.Int64ToInt32Saturating(subCounts[mrow.ID]),
+				UsageStatDays:        safecast.Int64ToInt32Saturating(statCounts[mrow.ID]),
+				UsageRequestTotal:    statReqTotals[mrow.ID],
+				UsageTokenTotal:      statTokTotals[mrow.ID],
+			})
+		}
+		// Deterministic member order by PK.
+		sort.Slice(g.Members, func(i, j int) bool { return g.Members[i].ModelPK < g.Members[j].ModelPK })
+		report.Groups = append(report.Groups, g)
+	}
+	sort.Slice(report.Groups, func(i, j int) bool { return report.Groups[i].CanonicalID < report.Groups[j].CanonicalID })
+	return report, nil
+}
+
+// MergeCanonicalModels collapses one duplicate group onto SurvivingPK in a
+// single transaction:
+//  1. Re-point every dependent row on a loser onto the survivor. On a unique
+//     key that already exists on the survivor, this would collide — we detect
+//     that BEFORE the UPDATE by counting survivor/loser key overlap and abort
+//     with biz.ErrCanonicalConflict (no partial writes).
+//  2. Fold usage stats: sum request/token/error counts into the survivor's
+//     existing (model_id, date) row, or move the loser's row if no survivor
+//     row exists for that date.
+//  3. Delete the loser model rows.
+//  4. Rewrite the survivor's model_id to the canonical spelling.
+//
+// The whole thing runs under a single tx so a failure at any step leaves the
+// registry unchanged. No INSERT IGNORE / ON CONFLICT DO NOTHING: a real key
+// collision is a conflict the operator must resolve explicitly.
+func (r *Repository) MergeCanonicalModels(ctx context.Context, group biz.DuplicateModelGroup) (*biz.MergeResult, error) {
+	if r.db == nil {
+		return r.mergeCanonicalModelsMemory(ctx, group)
+	}
+	survivor := group.SurvivingPK
+	losers := make([]int64, 0, len(group.Members))
+	survivorInMembers := false
+	for _, m := range group.Members {
+		if m.ModelPK == survivor {
+			survivorInMembers = true
+			continue
+		}
+		losers = append(losers, m.ModelPK)
+	}
+	if !survivorInMembers {
+		return nil, fmt.Errorf("survivor pk %d is not a member of the group", survivor)
+	}
+	if len(losers) == 0 {
+		return &biz.MergeResult{CanonicalID: group.CanonicalID, SurvivingPK: survivor}, nil
+	}
+
+	res := &biz.MergeResult{CanonicalID: group.CanonicalID, SurvivingPK: survivor, MergedModelPKs: append([]int64{}, losers...)}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Pre-check alias collisions: an alias string present on two or more
+		// group members cannot be merged without dropping data — abort instead
+		// of silently overwriting. (uk_alias is on alias alone.)
+		if err := detectAliasKeyCollision(tx, append(losers, survivor)); err != nil {
+			return err
+		}
+		// Pre-check channel-mapping collisions on (channel_id) within the group.
+		if err := detectMappingKeyCollision(tx, "model_channel_mapping", "channel_id", losers, survivor); err != nil {
+			return err
+		}
+		// Pre-check subscription-mapping collisions on (subscription_account_id, group_name).
+		if err := detectMappingKeyCollision(tx, "model_subscription_mapping", "subscription_account_id", losers, survivor); err != nil {
+			return err
+		}
+
+		// Re-point aliases onto the survivor. Capture the chained result so we
+		// read the correct RowsAffected (the root tx's value is stale).
+		aRes := tx.Model(&modelAliasModel{}).Where("model_id IN ?", losers).Update("model_id", survivor)
+		if aRes.Error != nil {
+			return aRes.Error
+		}
+		res.AliasesRepointed = safecast.Int64ToInt32Saturating(aRes.RowsAffected)
+
+		cRes := tx.Model(&modelChannelMappingModel{}).Where("model_id IN ?", losers).Update("model_id", survivor)
+		if cRes.Error != nil {
+			return cRes.Error
+		}
+		res.ChannelMappingsRepointed = safecast.Int64ToInt32Saturating(cRes.RowsAffected)
+
+		sRes := tx.Model(&modelSubscriptionMappingModel{}).Where("model_id IN ?", losers).Update("model_id", survivor)
+		if sRes.Error != nil {
+			return sRes.Error
+		}
+		res.SubscriptionMappingsRepointed = safecast.Int64ToInt32Saturating(sRes.RowsAffected)
+
+		// Fold usage stats row-by-row so we never violate uk_model_date
+		// (model_id, date). For each loser, for each date: if the survivor
+		// already has a row, accumulate; otherwise move the loser's row.
+		for _, loser := range losers {
+			var loserStats []modelUsageStatModel
+			if err := tx.Where("model_id = ?", loser).Find(&loserStats).Error; err != nil {
+				return err
+			}
+			for _, ls := range loserStats {
+				var surv modelUsageStatModel
+				err := tx.Where("model_id = ? AND date = ?", survivor, ls.Date).First(&surv).Error
+				if err == nil {
+					if err := tx.Model(&modelUsageStatModel{}).Where("id = ?", surv.ID).Updates(map[string]interface{}{
+						"request_count": surv.RequestCount + ls.RequestCount,
+						"token_count":   surv.TokenCount + ls.TokenCount,
+						"error_count":   surv.ErrorCount + ls.ErrorCount,
+						// avg_latency: keep survivor's; loser's is already
+						// overwrite-on-write, a weighted average is not meaningful
+						// for a one-shot merge.
+					}).Error; err != nil {
+						return err
+					}
+					if err := tx.Where("id = ?", ls.ID).Delete(&modelUsageStatModel{}).Error; err != nil {
+						return err
+					}
+					res.UsageStatsRepointed++
+				} else if isGormNotFound(err) {
+					if err := tx.Model(&modelUsageStatModel{}).Where("id = ?", ls.ID).
+						Update("model_id", survivor).Error; err != nil {
+						return err
+					}
+					res.UsageStatsRepointed++
+				} else {
+					return err
+				}
+			}
+		}
+
+		// Delete the now-orphaned loser model rows. Their FK ON DELETE CASCADE
+		// has nothing left to cascade (we already re-pointed every dependent).
+		if err := tx.Where("id IN ?", losers).Delete(&modelModel{}).Error; err != nil {
+			return err
+		}
+
+		// Finally, normalise the survivor's stored model_id to the canonical
+		// spelling. This is what lets the post-merge unique constraint apply.
+		if err := tx.Model(&modelModel{}).Where("id = ?", survivor).
+			Update("model_id", group.CanonicalID).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// detectAliasKeyCollision returns biz.ErrCanonicalConflict if any alias string
+// is shared by two or more of the given model PKs. The alias unique key is on
+// the alias column alone, so a shared alias cannot be merged without dropping
+// a row.
+func detectAliasKeyCollision(tx *gorm.DB, pks []int64) error {
+	type dup struct {
+		Alias string
+		N     int64
+	}
+	var dups []dup
+	if err := tx.Model(&modelAliasModel{}).
+		Select("alias, count(*) as n").
+		Where("model_id IN ?", pks).
+		Group("alias").
+		Having("count(*) > 1").
+		Scan(&dups).Error; err != nil {
+		return err
+	}
+	if len(dups) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(dups))
+	for _, d := range dups {
+		names = append(names, d.Alias)
+	}
+	return fmt.Errorf("%w: alias(es) %s shared by multiple group members", biz.ErrCanonicalConflict, strings.Join(names, ", "))
+}
+
+// detectMappingKeyCollision returns biz.ErrCanonicalConflict if re-pointing
+// losers onto the survivor would collide on the mapping table's natural key.
+// For channel mappings the key is channel_id; for subscription mappings it is
+// (subscription_account_id, group_name). A collision means the same partner
+// already serves this canonical model through two members — a real conflict.
+// Uses Rows()+Scan instead of an ad-hoc struct so the partner/group columns
+// are read by explicit name regardless of driver quoting or collation.
+func detectMappingKeyCollision(tx *gorm.DB, table, partnerCol string, losers []int64, survivor int64) error {
+	hasGroup := table == "model_subscription_mapping"
+	collect := func(modelID int64) (map[string]struct{}, error) {
+		q := tx.Table(table).
+			Select(partnerCol).
+			Where("model_id = ?", modelID)
+		if hasGroup {
+			q = tx.Table(table).
+				Select(partnerCol + ", group_name").
+				Where("model_id = ?", modelID)
+		}
+		rows, err := q.Rows()
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		out := make(map[string]struct{})
+		for rows.Next() {
+			if hasGroup {
+				var partner int64
+				var group string
+				if err := rows.Scan(&partner, &group); err != nil {
+					return nil, err
+				}
+				out[mappingKey(partner, group)] = struct{}{}
+			} else {
+				var partner int64
+				if err := rows.Scan(&partner); err != nil {
+					return nil, err
+				}
+				out[mappingKey(partner, "")] = struct{}{}
+			}
+		}
+		return out, rows.Err()
+	}
+
+	survSet, err := collect(survivor)
+	if err != nil {
+		return err
+	}
+	loserSet := make(map[string]struct{})
+	for _, loser := range losers {
+		keys, err := collect(loser)
+		if err != nil {
+			return err
+		}
+		for kk := range keys {
+			if _, dup := loserSet[kk]; dup {
+				return fmt.Errorf("%w: partner key %s appears on multiple members of table %s", biz.ErrCanonicalConflict, kk, table)
+			}
+			loserSet[kk] = struct{}{}
+			if _, hit := survSet[kk]; hit {
+				return fmt.Errorf("%w: partner key %s already served by survivor in table %s", biz.ErrCanonicalConflict, kk, table)
+			}
+		}
+	}
+	return nil
+}
+
+func mappingKey(partner int64, group string) string {
+	return fmt.Sprintf("%d|%s", partner, group)
+}
+
+// ── canonical preflight & merge — memory fallback ──────────────────────────
+// Used when the repository has no DB (lite/single-binary deployment). Mirrors
+// the DB path so the same behaviour is exercised by SQLite and unit tests.
+
+func (r *Repository) canonicalPreflightMemory(ctx context.Context) (*biz.PreflightReport, error) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	byCanonical := make(map[string][]*biz.Model)
+	for _, m := range r.models {
+		c := biz.NormalizeModelID(m.ModelID)
+		byCanonical[c] = append(byCanonical[c], m)
+	}
+	report := &biz.PreflightReport{}
+	for canonical, members := range byCanonical {
+		if len(members) < 2 {
+			continue
+		}
+		g := biz.DuplicateModelGroup{CanonicalID: canonical}
+		for _, mrow := range members {
+			ref := biz.DuplicateModelRef{
+				ModelPK:   mrow.ID,
+				ModelID:   mrow.ModelID,
+				IsPrimary: mrow.ModelID == canonical,
+			}
+			for _, a := range r.modelAliases {
+				if a.ModelPK == mrow.ID {
+					ref.Aliases++
+				}
+			}
+			for _, c := range r.modelChannelMappings {
+				if c.ModelPK == mrow.ID {
+					ref.ChannelMappings++
+				}
+			}
+			for _, s := range r.modelSubscriptionMappings {
+				if s.ModelPK == mrow.ID {
+					ref.SubscriptionMappings++
+				}
+			}
+			for _, u := range r.modelUsageStats {
+				if u.ModelPK == mrow.ID {
+					ref.UsageStatDays++
+					ref.UsageRequestTotal += int64(u.RequestCount)
+					ref.UsageTokenTotal += u.TokenCount
+				}
+			}
+			g.Members = append(g.Members, ref)
+		}
+		sort.Slice(g.Members, func(i, j int) bool { return g.Members[i].ModelPK < g.Members[j].ModelPK })
+		report.Groups = append(report.Groups, g)
+	}
+	sort.Slice(report.Groups, func(i, j int) bool { return report.Groups[i].CanonicalID < report.Groups[j].CanonicalID })
+	return report, nil
+}
+
+func (r *Repository) mergeCanonicalModelsMemory(ctx context.Context, group biz.DuplicateModelGroup) (*biz.MergeResult, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	survivor := group.SurvivingPK
+	if _, ok := r.models[survivor]; !ok {
+		return nil, biz.ErrModelNotFound
+	}
+	var losers []int64
+	for _, m := range group.Members {
+		if m.ModelPK != survivor {
+			losers = append(losers, m.ModelPK)
+		}
+	}
+	if len(losers) == 0 {
+		return &biz.MergeResult{CanonicalID: group.CanonicalID, SurvivingPK: survivor}, nil
+	}
+	loserSet := make(map[int64]struct{}, len(losers))
+	for _, l := range losers {
+		loserSet[l] = struct{}{}
+	}
+	allPKs := append([]int64{survivor}, losers...)
+	aliasOwnerSet := make(map[int64]struct{}, len(allPKs))
+	for _, pk := range allPKs {
+		aliasOwnerSet[pk] = struct{}{}
+	}
+
+	// Pre-check alias collisions.
+	aliasOwners := make(map[string]int64)
+	for _, a := range r.modelAliases {
+		if _, ok := aliasOwnerSet[a.ModelPK]; !ok {
+			continue
+		}
+		if prev, dup := aliasOwners[a.Alias]; dup {
+			return nil, fmt.Errorf("%w: alias %q shared by models %d and %d", biz.ErrCanonicalConflict, a.Alias, prev, a.ModelPK)
+		}
+		aliasOwners[a.Alias] = a.ModelPK
+	}
+	// Pre-check channel-mapping collisions on (channel_id).
+	chOwners := make(map[int64]int64)
+	for _, c := range r.modelChannelMappings {
+		if _, ok := aliasOwnerSet[c.ModelPK]; !ok {
+			continue
+		}
+		if prev, dup := chOwners[c.ChannelID]; dup {
+			return nil, fmt.Errorf("%w: channel %d served by models %d and %d", biz.ErrCanonicalConflict, c.ChannelID, prev, c.ModelPK)
+		}
+		chOwners[c.ChannelID] = c.ModelPK
+	}
+	// Pre-check subscription-mapping collisions on (account, group).
+	subOwners := make(map[string]int64)
+	for _, s := range r.modelSubscriptionMappings {
+		if _, ok := aliasOwnerSet[s.ModelPK]; !ok {
+			continue
+		}
+		kk := mappingKey(s.SubscriptionAccountID, s.GroupName)
+		if prev, dup := subOwners[kk]; dup {
+			return nil, fmt.Errorf("%w: subscription %s served by models %d and %d", biz.ErrCanonicalConflict, kk, prev, s.ModelPK)
+		}
+		subOwners[kk] = s.ModelPK
+	}
+
+	res := &biz.MergeResult{CanonicalID: group.CanonicalID, SurvivingPK: survivor, MergedModelPKs: append([]int64{}, losers...)}
+
+	// Re-point aliases.
+	for _, a := range r.modelAliases {
+		if _, ok := loserSet[a.ModelPK]; ok {
+			a.ModelPK = survivor
+			res.AliasesRepointed++
+		}
+	}
+	// Re-point channel mappings.
+	for _, c := range r.modelChannelMappings {
+		if _, ok := loserSet[c.ModelPK]; ok {
+			c.ModelPK = survivor
+			res.ChannelMappingsRepointed++
+		}
+	}
+	// Re-point subscription mappings.
+	for _, s := range r.modelSubscriptionMappings {
+		if _, ok := loserSet[s.ModelPK]; ok {
+			s.ModelPK = survivor
+			res.SubscriptionMappingsRepointed++
+		}
+	}
+	// Fold usage stats by date.
+	survStatsByDate := make(map[string]*biz.ModelUsageStat)
+	for _, u := range r.modelUsageStats {
+		if u.ModelPK == survivor {
+			survStatsByDate[u.Date] = u
+		}
+	}
+	for _, u := range r.modelUsageStats {
+		if _, ok := loserSet[u.ModelPK]; !ok {
+			continue
+		}
+		if surv, ok := survStatsByDate[u.Date]; ok {
+			surv.RequestCount += u.RequestCount
+			surv.TokenCount += u.TokenCount
+			surv.ErrorCount += u.ErrorCount
+			delete(r.modelUsageStats, u.ID)
+		} else {
+			u.ModelPK = survivor
+			survStatsByDate[u.Date] = u
+		}
+		res.UsageStatsRepointed++
+	}
+	// Delete loser model rows.
+	for _, l := range losers {
+		delete(r.models, l)
+	}
+	// Normalise survivor model_id.
+	if surv, ok := r.models[survivor]; ok {
+		surv.ModelID = group.CanonicalID
+	}
+	return res, nil
 }

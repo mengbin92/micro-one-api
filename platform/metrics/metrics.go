@@ -240,6 +240,7 @@ func init() {
 		QuotaUsageCurrent,
 		QuotaBalanceRemaining,
 		QuotaFrozenAmount,
+		BillingLedgerUpstreamCostRecorded,
 	)
 
 	// Register subscription system metrics
@@ -258,7 +259,16 @@ func init() {
 		RelayAccountRPMFallbackTotal,
 		RelayAccountPoolChecksTotal,
 		RelayUpstreamPassthroughTotal,
+		TokenUsageParseAnomaly,
+		TokenUsageShadowCost,
+		UnpricedRoutedModels,
 		RelayCodexQuotaSnapshotsTotal,
+		// v0.11.0 Phase 3 §3.5 routing observability.
+		RoutingSelectionPlanned,
+		RoutingSelectionTotal,
+		RoutingFallbackTotal,
+		RoutingSelectionDuration,
+		RoutingStickyHitTotal,
 		RelayCodexQuotaUsedPercent,
 		SubscriptionAccountQuotaResetsTotal,
 		SubscriptionAccountQuotaResetScanDuration,

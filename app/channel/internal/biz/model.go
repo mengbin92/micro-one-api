@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -171,6 +172,14 @@ type ModelRepo interface {
 	// Sprint 4: usage statistics
 	RecordModelUsage(ctx context.Context, modelPK int64, stat *ModelUsageStat) error
 	ListModelUsageStats(ctx context.Context, modelPK int64, startDate, endDate string, page, pageSize int32) ([]*ModelUsageStat, int64, error)
+
+	// v0.11.0 Phase 2 §2.1: canonical model ID governance.
+	// CanonicalModelPreflight is read-only and safe to run any time.
+	// MergeCanonicalModels runs in one transaction and returns
+	// ErrCanonicalConflict without partial writes when re-pointing would
+	// collide on the survivor's unique keys.
+	CanonicalModelPreflight(ctx context.Context) (*PreflightReport, error)
+	MergeCanonicalModels(ctx context.Context, group DuplicateModelGroup) (*MergeResult, error)
 }
 
 // ModelsListCacheInvalidator is the optional seam ModelUsecase uses to drop
@@ -550,4 +559,282 @@ func (uc *ModelUsecase) ListModelUsageStats(ctx context.Context, modelPK int64, 
 		pageSize = 20
 	}
 	return uc.repo.ListModelUsageStats(ctx, modelPK, startDate, endDate, page, pageSize)
+}
+
+// ── v0.11.0 Phase 2 §2.1: canonical model ID governance ────────────────────
+//
+// The public model_id MUST be unique after NormalizeModelID (trim+lowercase).
+// Legacy data may contain case-only duplicates (e.g. "GLM-5.2" and "glm-5.2")
+// that the original case-sensitive unique key allowed through. Phase 2
+// introduces a read-only preflight report, a transactional merge that
+// re-points every foreign key and statistic before deleting the loser row,
+// and a database-level canonical unique constraint applied only after the
+// merge succeeds. See docs/design/v0.11.0-roadmap.md §2.1.
+
+// DuplicateModelRef counts how many dependent rows point at each duplicate
+// model row, so the operator can pick a safe merge target and review the
+// blast radius before any write.
+type DuplicateModelRef struct {
+	ModelPK   int64
+	ModelID   string // original (pre-normalisation) spelling as stored
+	IsPrimary bool   // true = this row already carries the canonical spelling
+	Aliases             int32
+	ChannelMappings     int32
+	SubscriptionMappings int32
+	UsageStatDays       int32
+	UsageRequestTotal   int64
+	UsageTokenTotal     int64
+	// PriceReferences lists the pricing-config keys (ModelPrice /
+	// UpstreamModelPrice) that reference this member's stored spelling. Populated
+	// by AttachPriceReferences from a caller-supplied key set so channel biz does
+	// not import billing/admin pricing storage. Empty when the caller did not
+	// supply pricing keys.
+	PriceReferences []string
+}
+
+// DuplicateModelGroup is one canonical-id collision: every member normalises
+// to the same CanonicalID but occupies a distinct models.id. The operator
+// designates one SurvivingPK (defaults to the member whose stored model_id
+// already matches the canonical spelling) and the merge re-points all other
+// members' dependents onto it.
+type DuplicateModelGroup struct {
+	CanonicalID  string
+	Members      []DuplicateModelRef
+	SurvivingPK  int64 // 0 => biz picks the primary-spelling member (or lowest id)
+}
+
+// PreflightReport is the read-only output of CanonicalModelPreflight. It
+// lists every canonical collision plus the number of dependent rows hanging
+// off each duplicate. Conflicts blocks the merge; Merge runs only when
+// Conflicts is empty. PriceKeyCount is populated by AttachPriceReferences from
+// a caller-supplied pricing-config key set so the operator can see which
+// ModelPrice/UpstreamModelPrice entries reference the duplicate ids.
+type PreflightReport struct {
+	Groups    []DuplicateModelGroup
+	Conflicts []string // human-readable blockers (e.g. price-key already canonical)
+}
+
+// AttachPriceReferences annotates each duplicate member with the pricing-config
+// keys (ModelPrice / UpstreamModelPrice) that reference its stored spelling.
+// priceKeys is the full set of keys from both config maps (already loaded by
+// the caller, e.g. admin-api which owns system_options). The function is pure:
+// channel biz stays decoupled from billing/admin pricing storage. After this
+// call, each member whose stored ModelID appears as a pricing key (after
+// canonicalisation) carries it in PriceReferences.
+func (r *PreflightReport) AttachPriceReferences(priceKeys map[string]struct{}) {
+	if r == nil || len(priceKeys) == 0 {
+		return
+	}
+	// Index pricing keys by their canonical form so a stored "GLM-5.2" matches
+	// a pricing key "glm-5.2".
+	canonicalToOriginal := make(map[string][]string, len(priceKeys))
+	for k := range priceKeys {
+		ck := NormalizeModelID(k)
+		canonicalToOriginal[ck] = append(canonicalToOriginal[ck], k)
+	}
+	for i := range r.Groups {
+		for j := range r.Groups[i].Members {
+			m := &r.Groups[i].Members[j]
+			// The member's stored spelling may be non-canonical; index both
+			// the stored spelling and its canonical form so a stored "GLM-5.2"
+			// matches a pricing key "GLM-5.2" (exact) and "glm-5.2" (canonical).
+			refs := append([]string{}, canonicalToOriginal[m.ModelID]...)
+			refs = append(refs, canonicalToOriginal[NormalizeModelID(m.ModelID)]...)
+			// Also index the canonical id of the whole group, in case the
+			// member's stored spelling is an unrelated variant that still
+			// normalises to the group's canonical id.
+			refs = append(refs, canonicalToOriginal[r.Groups[i].CanonicalID]...)
+			if len(refs) > 0 {
+				// Deduplicate into a FRESH slice (refs[:0] aliases refs and
+				// corrupts the range above when duplicates are dropped).
+				seen := map[string]struct{}{}
+				out := make([]string, 0, len(refs))
+				for _, ref := range refs {
+					if _, ok := seen[ref]; ok {
+						continue
+					}
+					seen[ref] = struct{}{}
+					out = append(out, ref)
+				}
+				m.PriceReferences = out
+			}
+		}
+	}
+}
+
+// MergeResult summarises a completed (or attempted) merge transaction.
+type MergeResult struct {
+	CanonicalID    string
+	SurvivingPK    int64
+	MergedModelPKs []int64
+	// Counts of rows re-pointed onto the survivor, for the audit log.
+	AliasesRepointed              int32
+	ChannelMappingsRepointed      int32
+	SubscriptionMappingsRepointed int32
+	UsageStatsRepointed           int32
+}
+
+// ErrCanonicalConflict signals that a merge cannot proceed without operator
+// intervention (e.g. two members carry conflicting channel mappings). The
+// merge transaction is rolled back; no partial writes remain.
+var ErrCanonicalConflict = errors.New("canonical model id conflict")
+
+// CanonicalModelPreflight scans the model registry and reports every set of
+// rows whose model_id collides after NormalizeModelID, together with the
+// dependent-row counts the operator needs to assess the merge. It performs
+// NO writes and is safe to run at any time. Returns an empty report when the
+// registry is already canonical-clean.
+func (uc *ModelUsecase) CanonicalModelPreflight(ctx context.Context) (*PreflightReport, error) {
+	if uc == nil || uc.repo == nil {
+		return &PreflightReport{}, nil
+	}
+	return uc.repo.CanonicalModelPreflight(ctx)
+}
+
+// MergeCanonicalModels merges a single duplicate group onto SurvivingPK (or
+// the primary-spelling member when SurvivingPK is 0). The whole operation
+// runs in one transaction: every alias / channel mapping / subscription
+// mapping / usage-stat row pointing at a loser is re-pointed to the survivor,
+// then the loser rows are deleted. If re-pointing would create a duplicate
+// unique key on the survivor (a real conflict, not just a case duplicate),
+// the transaction is rolled back and ErrCanonicalConflict is returned — no
+// INSERT-IGNORE style silent overwrite.
+func (uc *ModelUsecase) MergeCanonicalModels(ctx context.Context, group DuplicateModelGroup) (*MergeResult, error) {
+	if uc == nil || uc.repo == nil {
+		return nil, ErrModelNotFound
+	}
+	if len(group.Members) < 2 {
+		return nil, fmt.Errorf("merge requires at least two members")
+	}
+	if group.CanonicalID == "" {
+		return nil, fmt.Errorf("canonical_id is required")
+	}
+	// Reject a caller-supplied canonical_id that does not match the
+	// normalisation of its own members — the operator must not be able to
+	// rename a model mid-merge.
+	want := NormalizeModelID(group.CanonicalID)
+	if want != group.CanonicalID {
+		return nil, fmt.Errorf("canonical_id must be pre-normalised (got %q, want %q)", group.CanonicalID, want)
+	}
+	// Default survivor: the member already carrying the canonical spelling;
+	// fall back to the lowest PK for determinism.
+	if group.SurvivingPK == 0 {
+		for _, m := range group.Members {
+			if m.IsPrimary {
+				group.SurvivingPK = m.ModelPK
+				break
+			}
+		}
+	}
+	if group.SurvivingPK == 0 {
+		min := group.Members[0].ModelPK
+		for _, m := range group.Members {
+			if m.ModelPK < min {
+				min = m.ModelPK
+			}
+		}
+		group.SurvivingPK = min
+	}
+	res, err := uc.repo.MergeCanonicalModels(ctx, group)
+	if err != nil {
+		return nil, err
+	}
+	uc.invalidateChannelCache()
+	return res, nil
+}
+
+// ── v0.11.0 Phase 2 §2.2: unpriced-model audit ─────────────────────────────
+//
+// A model is "routed but unpriced" when it is public, enabled, has at least
+// one enabled channel or subscription mapping, but carries no entry in the
+// user-facing ModelPrice config. Unpriced does NOT block routing — the
+// request still succeeds and is billed via the legacy ratio path — but it
+// must surface as a visible status so operators do not silently serve a
+// model at zero cost. See docs/design/v0.11.0-roadmap.md §2.2.
+
+// RoutedModelSummary is the per-model slice returned by UnpricedRoutedModels.
+type RoutedModelSummary struct {
+	ModelID           string
+	DisplayName       string
+	Provider          string
+	ChannelCount      int32
+	SubscriptionCount int32
+}
+
+// UnpricedRoutedModels returns the subset of `models` that are public and
+// enabled, have at least one enabled channel OR subscription mapping, and are
+// NOT present in `pricedModelIDs` (the keys of the user-facing ModelPrice
+// config, already canonicalised). The result is sorted by model_id for stable
+// output. This is a pure function: callers fetch the model list and the
+// priced set from their respective stores and pass them in, so the audit
+// logic stays out of the storage layer.
+//
+// pricedModelIDs must already be canonicalised (NormalizeModelID); this
+// function does not re-normalise so it can be used with config loaded from a
+// store that is already lowercase.
+func UnpricedRoutedModels(models []*Model, pricedModelIDs map[string]struct{}) []RoutedModelSummary {
+	if len(models) == 0 {
+		return nil
+	}
+	out := make([]RoutedModelSummary, 0)
+	for _, m := range models {
+		if m == nil {
+			continue
+		}
+		// Only public + enabled models are billable routes. Private/testing
+		// discoveries are intentionally excluded — they are not user-facing.
+		if !m.IsPublic || m.Status != ModelStatusEnabled {
+			continue
+		}
+		// Must have at least one active upstream to be "routed".
+		if m.ChannelCount == 0 && m.SubscriptionCount == 0 {
+			continue
+		}
+		// Canonical lookup against the priced set.
+		if _, priced := pricedModelIDs[NormalizeModelID(m.ModelID)]; priced {
+			continue
+		}
+		out = append(out, RoutedModelSummary{
+			ModelID:           m.ModelID,
+			DisplayName:       m.DisplayName,
+			Provider:          m.Provider,
+			ChannelCount:      m.ChannelCount,
+			SubscriptionCount: m.SubscriptionCount,
+		})
+	}
+	// Deterministic order for stable UI/audit output.
+	sort.Slice(out, func(i, j int) bool { return out[i].ModelID < out[j].ModelID })
+	return out
+}
+
+// ListUnpricedRoutedModels computes the v0.11.0 Phase 2 §2.2 unpriced audit:
+// public, enabled models that have at least one active channel or subscription
+// mapping but are NOT in pricedModelIDs. pricedModelIDs must already be
+// canonicalised. This is a read-only query; it never blocks a price save.
+func (uc *ModelUsecase) ListUnpricedRoutedModels(ctx context.Context, pricedModelIDs map[string]struct{}) ([]RoutedModelSummary, error) {
+	if uc == nil || uc.repo == nil {
+		return nil, nil
+	}
+	// Page through the whole registry. The model count is bounded (hundreds,
+	// not millions), so a single large page is simpler than cursoring and
+	// keeps the audit atomic with respect to concurrent edits.
+	page := int32(1)
+	pageSize := int32(500)
+	priced := pricedModelIDs
+	if priced == nil {
+		priced = map[string]struct{}{}
+	}
+	var collected []*Model
+	for {
+		models, total, err := uc.repo.ListModels(ctx, page, pageSize, ListModelsFilter{})
+		if err != nil {
+			return nil, err
+		}
+		collected = append(collected, models...)
+		if int64(len(collected)) >= total || len(models) == 0 {
+			break
+		}
+		page++
+	}
+	return UnpricedRoutedModels(collected, priced), nil
 }

@@ -133,6 +133,7 @@ message SubscriptionAccountInfo {
   string quota_timezone = 34;          // fixed 策略使用的 IANA 时区，默认 UTC
   string model_mapping = 35;             // JSON {"src":"dst"} per-account model remap
   string upstream_model_id = 36;         // selected route's exact provider model identifier
+  int32 weight = 37;                     // v0.11.0 Phase 3 §3.1: explicit within-tier WRR weight (0=unset, falls back to priority)
 }
 
 message SubscriptionAccountSummary {
@@ -182,6 +183,7 @@ message SubscriptionAccountSummary {
   int64 expected_recovery_at = 44;                        // 预计恢复时间（unix）；0 表示未知
   int64 unschedulable_since = 45;                         // 不可调度起始时间（unix）
   string model_mapping = 46;                           // JSON {"src":"dst"} per-account model remap
+  int32 weight = 47;                                    // v0.11.0 Phase 3 §3.1: within-tier WRR weight
 }
 
 // ========== 账户快照 ==========
@@ -262,6 +264,9 @@ message LedgerEntry {
   int64 balance_cost = 22;              // 余额承担的 quota
   string ledger_dedupe_key = 23;        // 幂等写入键
   string username = 24;                 // 用户名（从 users 表关联查询）
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 25;  // 写入 5 分钟 TTL cache 的 token
+  int64 cache_creation_1h_tokens = 26;  // 写入 1 小时 TTL cache 的 token
 }
 
 // ========== 流水信息（管理端视图）==========

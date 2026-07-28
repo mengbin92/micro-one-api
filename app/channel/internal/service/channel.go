@@ -163,6 +163,7 @@ func toSubscriptionAccountInfoWithSecrets(account *biz.SubscriptionAccount, incl
 		Group:                  account.Group,
 		Models:                 account.ModelsCSV(),
 		Priority:               account.Priority,
+		Weight:                 account.Weight,
 		BaseUrl:                account.BaseURL,
 		AccessToken:            accessToken,
 		RefreshToken:           refreshToken,
@@ -208,6 +209,7 @@ func toSubscriptionAccountSummary(account *biz.SubscriptionAccount) *commonv1.Su
 		Group:                           account.Group,
 		Models:                          account.ModelsCSV(),
 		Priority:                        account.Priority,
+		Weight:                          account.Weight,
 		AccountId:                       account.AccountID,
 		ExpiresAt:                       account.ExpiresAt,
 		UpdatedAt:                       account.UpdatedAt,
@@ -419,6 +421,7 @@ func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *cha
 		Group:                  req.Group,
 		Models:                 biz.SplitCSV(req.Models),
 		Priority:               req.Priority,
+		Weight:                 req.Weight,
 		BaseURL:                req.BaseUrl,
 		AccessToken:            req.AccessToken,
 		RefreshToken:           req.RefreshToken,
@@ -480,6 +483,9 @@ func (s *ChannelService) UpdateSubscriptionAccount(ctx context.Context, req *cha
 	}
 	if req.Priority != 0 {
 		account.Priority = req.Priority
+	}
+	if req.Weight != nil {
+		account.Weight = req.GetWeight()
 	}
 	if req.BaseUrl != "" {
 		account.BaseURL = req.BaseUrl

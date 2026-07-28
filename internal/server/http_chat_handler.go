@@ -99,6 +99,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	req.Model = plan.ResolvedModel
 
 	// Use RetryExecutor for upstream calls with channel fallback
+	retryStartedAt := time.Now()
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
 	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
@@ -128,7 +129,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		}
 
 		if req.Stream {
-			return s.handleStreamingResponse(w, r, provider, &req, reservation, usageLogInput{
+			streamLogInput := usageLogInput{
 				UserID:                plan.Auth.UserID,
 				TokenID:               plan.Auth.TokenID,
 				TokenName:             plan.Auth.TokenName,
@@ -138,7 +139,10 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				ChannelID:             ch.ID,
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 				IsStream:              true,
-			})
+			}
+			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+			streamLogInput.applyPlanInputs(plan)
+			return s.handleStreamingResponse(w, r, provider, &req, reservation, streamLogInput)
 		}
 
 		// Non-streaming call
@@ -150,6 +154,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 
 		// Success — commit quota and return
 		actualTokens := s.calculateActualTokens(resp)
+		cacheCreation5mTokens, cacheCreation1hTokens := cacheCreationTokensFromProviderUsage(resp.Usage)
 		logInput := usageLogInput{
 			UserID:           plan.Auth.UserID,
 			TokenID:          plan.Auth.TokenID,
@@ -161,10 +166,14 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			PromptTokens:     int64(resp.Usage.PromptTokens),
 			CompletionTokens: int64(resp.Usage.CompletionTokens),
 			CacheReadTokens:  cacheReadTokensFromProviderUsage(resp.Usage),
+			CacheCreation5mTokens: cacheCreation5mTokens,
+			CacheCreation1hTokens: cacheCreation1hTokens,
 			ChannelID:        ch.ID,
 			ElapsedTime:      time.Since(startedAt).Milliseconds(),
 			IsStream:         false,
 		}
+		// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+		logInput.applyPlanInputs(plan)
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err
 		}
@@ -173,6 +182,11 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		s.writeJSON(w, http.StatusOK, resp)
 		return nil
 	})
+
+	// Finalize the routing selection observation with the execution outcome
+	// (success/error + fallback info) so routing_selection_total and
+	// routing_fallback_total fire once (code review #1/#2).
+	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
 
 	if result.Err != nil {
 		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
@@ -204,6 +218,8 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 	promptTokens := int64(0)
 	completionTokens := int64(0)
 	cacheReadTokens := int64(0)
+	cacheCreation5mTokens := int64(0)
+	cacheCreation1hTokens := int64(0)
 	estimatedTokens := int64(0)
 	streamError := false
 
@@ -213,6 +229,10 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			promptTokens = int64(chunk.Usage.PromptTokens)
 			completionTokens = int64(chunk.Usage.CompletionTokens)
 			cacheReadTokens = cacheReadTokensFromProviderUsage(chunk.Usage)
+			if fiveM, oneH := cacheCreationTokensFromProviderUsage(chunk.Usage); fiveM > 0 || oneH > 0 {
+				cacheCreation5mTokens = fiveM
+				cacheCreation1hTokens = oneH
+			}
 		}
 		for _, choice := range chunk.Choices {
 			estimatedTokens += int64(len(choice.Delta.Content) / 4)
@@ -243,6 +263,8 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		logInput.PromptTokens = promptTokens
 		logInput.CompletionTokens = completionTokens
 		logInput.CacheReadTokens = cacheReadTokens
+		logInput.CacheCreation5mTokens = cacheCreation5mTokens
+		logInput.CacheCreation1hTokens = cacheCreation1hTokens
 		logInput.ElapsedTime = time.Since(startedAt).Milliseconds()
 		if logInput.Endpoint == "" {
 			logInput.Endpoint = "/v1/chat/completions"

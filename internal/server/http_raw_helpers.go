@@ -14,6 +14,7 @@ import (
 	"github.com/bytedance/sonic"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
+	"micro-one-api/platform/metrics"
 )
 
 // extractRawModel pulls the "model" field out of a JSON request body.
@@ -144,11 +145,20 @@ func extractResponseID(body []byte) string {
 }
 
 // rawUsage holds token usage extracted from a raw upstream response body.
+//
+// The cache-creation buckets follow docs/design/token-usage-semantics.md
+// (v0.11.0 ADR). CacheCreation5mTokens / CacheCreation1hTokens are the
+// canonical TTL-split buckets; providers that only return a total
+// cache_creation_input_tokens with no ephemeral detail default the whole
+// total into the 5m bucket (ADR §4.2). Negative values are clamped to 0 by
+// the callers (nonNeg) and recorded via metrics.TokenUsageParseAnomaly.
 type rawUsage struct {
-	PromptTokens     int64
-	CompletionTokens int64
-	CacheReadTokens  int64
-	TotalTokens      int64
+	PromptTokens         int64
+	CompletionTokens     int64
+	CacheReadTokens      int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
+	TotalTokens          int64
 }
 
 // extractRawUsage finds the usage block anywhere in a JSON document and
@@ -170,11 +180,24 @@ func extractRawUsageValue(value interface{}) rawUsage {
 		if nested, ok := typed["usage"]; ok {
 			usage = extractRawUsageValue(nested)
 		}
+		fiveM, oneH, _, _ := cacheCreationDetailTokens(typed)
+		prompt := numberField(typed, "prompt_tokens", "input_tokens")
+		if prompt < 0 {
+			recordTokenUsageAnomaly("negative")
+			prompt = 0
+		}
+		completion := numberField(typed, "completion_tokens", "output_tokens")
+		if completion < 0 {
+			recordTokenUsageAnomaly("negative")
+			completion = 0
+		}
 		usage = mergeRawUsage(usage, rawUsage{
-			PromptTokens:     numberField(typed, "prompt_tokens", "input_tokens"),
-			CompletionTokens: numberField(typed, "completion_tokens", "output_tokens"),
-			CacheReadTokens:  cacheReadTokensFromUsageMap(typed),
-			TotalTokens:      numberField(typed, "total_tokens"),
+			PromptTokens:          prompt,
+			CompletionTokens:      completion,
+			CacheReadTokens:       cacheReadTokensFromUsageMap(typed),
+			CacheCreation5mTokens: fiveM,
+			CacheCreation1hTokens: oneH,
+			TotalTokens:           numberField(typed, "total_tokens"),
 		})
 		if hasRawUsage(usage) {
 			return usage
@@ -207,6 +230,12 @@ func mergeRawUsage(primary, fallback rawUsage) rawUsage {
 	if primary.CacheReadTokens == 0 {
 		primary.CacheReadTokens = fallback.CacheReadTokens
 	}
+	if primary.CacheCreation5mTokens == 0 {
+		primary.CacheCreation5mTokens = fallback.CacheCreation5mTokens
+	}
+	if primary.CacheCreation1hTokens == 0 {
+		primary.CacheCreation1hTokens = fallback.CacheCreation1hTokens
+	}
 	if primary.TotalTokens == 0 {
 		primary.TotalTokens = fallback.TotalTokens
 	}
@@ -220,9 +249,19 @@ func normalizeRawUsage(usage rawUsage, fallback int64) rawUsage {
 }
 
 // normalizeRawUsageWithFallback fills missing fields from a fallback rawUsage.
+//
+// When the upstream omits total_tokens, the derived total follows ADR §2: the
+// real billing total is the sum of all five canonical buckets. This only
+// affects the token-fallback billing path (calculateCostWithUsage with no
+// bucket usage); whenever any bucket is populated, calculateCostWithUsage
+// uses the buckets directly and TotalTokens is not consulted.
 func normalizeRawUsageWithFallback(usage rawUsage, fallback rawUsage) rawUsage {
-	if usage.TotalTokens == 0 && usage.PromptTokens+usage.CompletionTokens > 0 {
-		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	if usage.TotalTokens == 0 {
+		derived := usage.PromptTokens + usage.CompletionTokens +
+			usage.CacheReadTokens + usage.CacheCreation5mTokens + usage.CacheCreation1hTokens
+		if derived > 0 {
+			usage.TotalTokens = derived
+		}
 	}
 	if usage.TotalTokens <= 0 {
 		usage.TotalTokens = fallback.TotalTokens
@@ -238,7 +277,7 @@ func normalizeRawUsageWithFallback(usage rawUsage, fallback rawUsage) rawUsage {
 
 // hasRawUsage reports whether any usage field is set.
 func hasRawUsage(usage rawUsage) bool {
-	return usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.CacheReadTokens > 0
+	return usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.CacheReadTokens > 0 || usage.CacheCreation5mTokens > 0 || usage.CacheCreation1hTokens > 0
 }
 
 // cacheReadTokensFromUsageMap extracts cache-read tokens from a usage map,
@@ -247,6 +286,10 @@ func hasRawUsage(usage rawUsage) bool {
 // (cache_read_tokens) and OpenAI Responses (cached_tokens).
 func cacheReadTokensFromUsageMap(m map[string]interface{}) int64 {
 	if value := numberField(m, "cache_read_input_tokens", "cache_read_tokens", "cached_tokens"); value != 0 {
+		if value < 0 {
+			recordTokenUsageAnomaly("negative")
+			return 0
+		}
 		return value
 	}
 	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
@@ -255,10 +298,90 @@ func cacheReadTokensFromUsageMap(m map[string]interface{}) int64 {
 			continue
 		}
 		if value := numberField(details, "cache_read_tokens", "cached_tokens"); value != 0 {
+			if value < 0 {
+				recordTokenUsageAnomaly("negative")
+				return 0
+			}
 			return value
 		}
 	}
 	return 0
+}
+
+// cacheCreationDetailTokens reads the cache-creation buckets from a usage map
+// per docs/design/token-usage-semantics.md §3.3 and §4.2. It returns the
+// 5m and 1h TTL-split token counts, the flat cache_creation_input_tokens
+// total (0 when absent), and whether ephemeral detail was present.
+//
+// Rules:
+//   - cache_creation.ephemeral_5m_input_tokens / ephemeral_1h_input_tokens
+//     are the canonical detail buckets.
+//   - When only the flat cache_creation_input_tokens total is present (no
+//     ephemeral detail), the whole total defaults into the 5m bucket
+//     (ADR §4.2; Anthropic default cache TTL is 5m). No guessing by model
+//     name.
+//   - When both total and detail are present, detail wins; a detail sum that
+//     exceeds the total is recorded as a ttl_detail_exceeds_total anomaly
+//     (ADR §4.2). The caller does not need to recompute the excess; this
+//     helper records it once.
+//   - Negative values are clamped to 0 and recorded as a negative anomaly
+//     (ADR §4.1).
+func cacheCreationDetailTokens(m map[string]interface{}) (fiveM, oneH, flatTotal int64, hadDetail bool) {
+	if raw := numberField(m, "cache_creation_input_tokens"); raw != 0 {
+		if raw < 0 {
+			recordTokenUsageAnomaly("negative")
+		} else {
+			flatTotal = raw
+		}
+	}
+	nested, _ := m["cache_creation"].(map[string]interface{})
+	if nested != nil {
+		if raw := numberField(nested, "ephemeral_5m_input_tokens"); raw != 0 {
+			hadDetail = true
+			if raw < 0 {
+				recordTokenUsageAnomaly("negative")
+			} else {
+				fiveM = raw
+			}
+		}
+		if raw := numberField(nested, "ephemeral_1h_input_tokens"); raw != 0 {
+			hadDetail = true
+			if raw < 0 {
+				recordTokenUsageAnomaly("negative")
+			} else {
+				oneH = raw
+			}
+		}
+	}
+	if !hadDetail && flatTotal > 0 {
+		// No TTL detail: default the flat total into the 5m bucket (ADR §4.2).
+		fiveM = flatTotal
+	}
+	if hadDetail && flatTotal > 0 && fiveM+oneH > flatTotal {
+		// Detail sum exceeds the flat total: detail wins (already set),
+		// record the inconsistency. Billing is unchanged because detail is
+		// the more precise signal.
+		recordTokenUsageAnomaly("ttl_detail_exceeds_total")
+	}
+	return fiveM, oneH, flatTotal, hadDetail
+}
+
+// recordTokenUsageAnomaly is the single entry point for low-cardinality
+// token-usage parse anomalies (ADR §4). It guards against nil metrics in
+// tests that link http_raw_helpers.go without registering the collector.
+func recordTokenUsageAnomaly(reason string) {
+	if metrics.TokenUsageParseAnomaly != nil {
+		metrics.TokenUsageParseAnomaly.WithLabelValues(reason).Inc()
+	}
+}
+
+// clampNonNegInt64 returns 0 for negative inputs (ADR §4.1); otherwise the
+// value unchanged.
+func clampNonNegInt64(v int64) int64 {
+	if v < 0 {
+		return 0
+	}
+	return v
 }
 
 // numberField returns the first non-zero numeric value found under any of the
@@ -349,9 +472,11 @@ func estimateRawUsage(body []byte) rawUsage {
 	promptTokens := estimateRawPromptTokens(body)
 	completionTokens := int64(100)
 	return rawUsage{
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TotalTokens:      promptTokens + completionTokens,
+		PromptTokens:          promptTokens,
+		CompletionTokens:      completionTokens,
+		CacheCreation5mTokens: 0,
+		CacheCreation1hTokens: 0,
+		TotalTokens:           promptTokens + completionTokens,
 	}
 }
 
@@ -429,6 +554,12 @@ func (t *rawStreamUsageTracker) Observe(chunk []byte) {
 	}
 	usage := extractRawUsage(chunk, 0)
 	if hasRawUsage(usage) {
+		// Per-chunk total_tokens is unreliable for the Anthropic
+		// message_start/message_delta split (start reports input-side total,
+		// delta reports output-side total; neither is the full five-bucket
+		// sum per ADR §2). Drop it here and let normalizeRawUsageWithFallback
+		// derive the real total from the accumulated buckets at Usage() time.
+		usage.TotalTokens = 0
 		t.usage = mergeRawUsage(usage, t.usage)
 	}
 }

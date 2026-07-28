@@ -419,6 +419,10 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		"completion_tokens":       entry.GetCompletionTokens(),
 		"cacheReadTokens":         entry.GetCacheReadTokens(),
 		"cache_read_tokens":       entry.GetCacheReadTokens(),
+		"cacheCreation5mTokens":   entry.GetCacheCreation_5MTokens(),
+		"cacheCreation1hTokens":   entry.GetCacheCreation_1HTokens(),
+		"cache_creation_5m_tokens": entry.GetCacheCreation_5MTokens(),
+		"cache_creation_1h_tokens": entry.GetCacheCreation_1HTokens(),
 		"channelId":               entry.GetChannelId(),
 		"channel":                 entry.GetChannelId(),
 		"channelName":             channel.Name,
@@ -1115,6 +1119,8 @@ type UsageAggregateView struct {
 	PromptTokens          int64  `json:"prompt_tokens"`
 	CompletionTokens      int64  `json:"completion_tokens"`
 	CacheReadTokens       int64  `json:"cache_read_tokens"`
+	CacheCreation5mTokens int64  `json:"cache_creation_5m_tokens"`
+	CacheCreation1hTokens int64  `json:"cache_creation_1h_tokens"`
 	Count                 int64  `json:"count"`
 	ElapsedTime           int64  `json:"elapsed_time"`
 }
@@ -1204,6 +1210,8 @@ func usageAggregateViewFromBucket(bucket *billingv1.UsageBucket, groupBy string)
 		PromptTokens:          bucket.GetPromptTokens(),
 		CompletionTokens:      bucket.GetCompletionTokens(),
 		CacheReadTokens:       bucket.GetCacheReadTokens(),
+		CacheCreation5mTokens: bucket.GetCacheCreation_5MTokens(),
+		CacheCreation1hTokens: bucket.GetCacheCreation_1HTokens(),
 		Count:                 bucket.GetCount(),
 		ElapsedTime:           bucket.GetElapsedTime(),
 	}
@@ -2134,6 +2142,8 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"promptTokens":          entry.GetPromptTokens(),
 			"completionTokens":      entry.GetCompletionTokens(),
 			"cacheReadTokens":       entry.GetCacheReadTokens(),
+			"cacheCreation5mTokens": entry.GetCacheCreation_5MTokens(),
+			"cacheCreation1hTokens": entry.GetCacheCreation_1HTokens(),
 			"channelId":             entry.GetChannelId(),
 			"channelName":           channelName,
 			"channelType":           channelType,
@@ -2418,4 +2428,67 @@ func channelTypeToString(channelType int32) string {
 	default:
 		return "Unknown"
 	}
+}
+
+// UsageAggregateTotals carries the billing-level global totals (not affected
+// by the bucket limit) so the routing ops view can show true totals even when
+// the per-source bucket list is truncated to Top-N (code review #7).
+type UsageAggregateTotals struct {
+	Quota                 int64 `json:"quota"`
+	UpstreamCost          int64 `json:"upstream_cost"`
+	GrossProfit           int64 `json:"gross_profit"`
+	PromptTokens          int64 `json:"prompt_tokens"`
+	CompletionTokens      int64 `json:"completion_tokens"`
+	CacheReadTokens       int64 `json:"cache_read_tokens"`
+	CacheCreation5mTokens int64 `json:"cache_creation_5m_tokens"`
+	CacheCreation1hTokens int64 `json:"cache_creation_1h_tokens"`
+	Count                 int64 `json:"count"`
+}
+
+// AggregateUsageGroupedByChannel returns the per-channel (and per-subscription-
+// account) usage aggregate within the [start, end] unix-second window, plus the
+// billing-level global totals (unaffected by the bucket limit). Used by the
+// v0.11.0 Phase 3 §3.6 routing operations view to split traffic/cost by source
+// kind. A bucket with SubscriptionAccountID > 0 is a subscription account;
+// otherwise it is a regular channel. The buckets list is capped at 200
+// (Top-N); the returned totals reflect the FULL aggregate so the ops view does
+// not under-report when there are more than 200 sources (code review #7).
+func (s *AdminService) AggregateUsageGroupedByChannel(ctx context.Context, start, end int64) ([]UsageAggregateView, UsageAggregateTotals, error) {
+	empty := UsageAggregateTotals{}
+	if s.billingClient == nil {
+		return []UsageAggregateView{}, empty, nil
+	}
+	req := &billingv1.AggregateUsageRequest{
+		GroupBy: []string{"channel", "subscription_account"},
+		Type:    "consume",
+		Limit:   200,
+	}
+	if start > 0 {
+		req.StartTime = timestamppb.New(time.Unix(start, 0))
+	}
+	if end > 0 {
+		req.EndTime = timestamppb.New(time.Unix(end, 0))
+	}
+	resp, err := s.billingClient.AggregateUsage(ctx, req)
+	if err != nil {
+		return nil, empty, err
+	}
+	items := make([]UsageAggregateView, 0, len(resp.GetBuckets()))
+	for _, bucket := range resp.GetBuckets() {
+		items = append(items, usageAggregateViewFromBucket(bucket, "channel"))
+	}
+	// Extract billing-level totals (not affected by bucket limit).
+	totals := UsageAggregateTotals{}
+	if t := resp.GetTotals(); t != nil {
+		totals.Quota = t.GetQuota()
+		totals.UpstreamCost = t.GetUpstreamCost()
+		totals.GrossProfit = t.GetGrossProfit()
+		totals.PromptTokens = t.GetPromptTokens()
+		totals.CompletionTokens = t.GetCompletionTokens()
+		totals.CacheReadTokens = t.GetCacheReadTokens()
+		totals.CacheCreation5mTokens = t.GetCacheCreation_5MTokens()
+		totals.CacheCreation1hTokens = t.GetCacheCreation_1HTokens()
+		totals.Count = t.GetCount()
+	}
+	return items, totals, nil
 }

@@ -2,6 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
+
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	adminv1 "micro-one-api/api/admin/v1"
 	channelv1 "micro-one-api/api/channel/v1"
@@ -186,4 +190,133 @@ func channelToAdminModelRouting(r *channelv1.ModelRouting) *adminv1.ModelRouting
 		CreatedAt:             r.GetCreatedAt(),
 		UpdatedAt:             r.GetUpdatedAt(),
 	}
+}
+
+// ── Canonical model ID governance (v0.11.0 Phase 2 §2.1) ──────────────────
+
+// CanonicalModelPreflight returns the read-only duplicate report, enriched
+// with the pricing-config keys (ModelPrice / UpstreamModelPrice) that reference
+// each duplicate member. channel-service owns the model registry and computes
+// the duplicate groups; admin-api owns system_options and attaches the price
+// references afterwards so channel biz stays decoupled from pricing storage
+// (v0.11.0 Phase 2 §2.1).
+func (s *AdminService) CanonicalModelPreflight(ctx context.Context, in *emptypb.Empty) (*channelv1.CanonicalModelPreflightResponse, error) {
+	resp, err := s.channelClient.CanonicalModelPreflight(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return resp, nil
+	}
+	priceKeys := s.loadPricingConfigKeys(ctx)
+	if len(priceKeys) == 0 {
+		return resp, nil
+	}
+	for _, g := range resp.GetGroups() {
+		if g == nil {
+			continue
+		}
+		for _, m := range g.GetMembers() {
+			if m == nil {
+				continue
+			}
+			m.PriceReferences = matchingPriceKeys(m.GetModelId(), priceKeys)
+		}
+	}
+	return resp, nil
+}
+
+// loadPricingConfigKeys loads the union of ModelPrice and UpstreamModelPrice
+// keys from system_options. Returns nil when storage is not configured or the
+// options are absent/unparseable.
+func (s *AdminService) loadPricingConfigKeys(ctx context.Context) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, key := range []string{"ModelPrice", "UpstreamModelPrice"} {
+		raw, err := s.GetSystemOption(ctx, key)
+		if err != nil || strings.TrimSpace(raw) == "" {
+			continue
+		}
+		var parsed map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+			continue
+		}
+		for k := range parsed {
+			if k = strings.TrimSpace(k); k != "" {
+				out[k] = struct{}{}
+			}
+		}
+	}
+	return out
+}
+
+// matchingPriceKeys returns the pricing-config keys that reference the given
+// model id (matching both the stored spelling and its canonical lowercase form).
+func matchingPriceKeys(modelID string, priceKeys map[string]struct{}) []string {
+	if len(priceKeys) == 0 {
+		return nil
+	}
+	out := []string{}
+	seen := map[string]struct{}{}
+	add := func(k string) {
+		if k == "" {
+			return
+		}
+		if _, ok := seen[k]; ok {
+			return
+		}
+		if _, ok := priceKeys[k]; ok {
+			seen[k] = struct{}{}
+			out = append(out, k)
+		}
+	}
+	add(modelID)
+	add(strings.ToLower(strings.TrimSpace(modelID)))
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// MergeCanonicalModels merges a duplicate group onto a survivor.
+func (s *AdminService) MergeCanonicalModels(ctx context.Context, req *channelv1.MergeCanonicalModelsRequest) (*channelv1.MergeCanonicalModelsResponse, error) {
+	return s.channelClient.MergeCanonicalModels(ctx, req)
+}
+
+// ListUnpricedRoutedModels returns the routed-but-unpriced audit. The admin
+// caller is responsible for loading the ModelPrice config, canonicalising its
+// keys, and passing them as priced_model_ids; channel-service owns the model
+// registry and computes the diff.
+func (s *AdminService) ListUnpricedRoutedModels(ctx context.Context, req *channelv1.ListUnpricedRoutedModelsRequest) (*channelv1.ListUnpricedRoutedModelsResponse, error) {
+	return s.channelClient.ListUnpricedRoutedModels(ctx, req)
+}
+
+// GetSystemOption reads a single system_options value by key. Returns "" when
+// the option is absent or system-options storage is not configured.
+func (s *AdminService) GetSystemOption(ctx context.Context, key string) (string, error) {
+	if s == nil || s.systemOptsUc == nil {
+		return "", nil
+	}
+	return s.systemOptsUc.Get(ctx, key)
+}
+
+// ── Model import/export passthrough (v0.11.0 Phase 4) ──────────────────────
+// Admin-api proxies the exchange RPCs to channel-service, mirroring the
+// existing model-management passthrough. The admin HTTP layer enforces the
+// admin/root role check for export_prices/import_prices; channel-service
+// performs the actual read/write. Prices are only forwarded when the caller
+// has the required role, so a misconfigured client cannot leak pricing.
+
+// ExportModels exports the model registry as a versioned document.
+func (s *AdminService) ExportModels(ctx context.Context, req *channelv1.ExportModelsRequest) (*channelv1.ExportModelsResponse, error) {
+	return s.channelClient.ExportModels(ctx, req)
+}
+
+// ImportModels applies an import document in one transaction.
+func (s *AdminService) ImportModels(ctx context.Context, req *channelv1.ImportModelsRequest) (*channelv1.ImportModelsResponse, error) {
+	return s.channelClient.ImportModels(ctx, req)
+}
+
+// DryRunImportModels previews an import without writing.
+func (s *AdminService) DryRunImportModels(ctx context.Context, req *channelv1.ImportModelsRequest) (*channelv1.ImportModelsDryRunResponse, error) {
+	return s.channelClient.DryRunImportModels(ctx, req)
 }

@@ -86,3 +86,16 @@ func (s *UpstreamRouteSelector) Select(group, model string, candidates []Upstrea
 func routeCandidateKey(candidate UpstreamRouteCandidate) string {
 	return fmt.Sprintf("%d:%d", candidate.Kind, candidate.ID)
 }
+
+// String returns the stable lowercase name for a route kind, used as the
+// Prometheus source_kind label value (v0.11.0 Phase 3 §3.4/§3.5).
+func (k UpstreamRouteKind) String() string {
+	switch k {
+	case UpstreamRouteChannel:
+		return "channel"
+	case UpstreamRouteSubscription:
+		return "subscription"
+	default:
+		return "unknown"
+	}
+}

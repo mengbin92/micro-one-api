@@ -86,9 +86,18 @@ type RelayResult struct {
 
 // Usage represents token usage information from the upstream response.
 type Usage struct {
-	PromptTokens     int64
-	CompletionTokens int64
-	TotalTokens      int64
+	PromptTokens          int64
+	CompletionTokens      int64
+	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
+	TotalTokens           int64
+	// PromptExclusive (v0.11.0 Phase 0/1, ADR §3.3): when true, prompt_tokens
+	// and cache_read_tokens are mutually exclusive buckets (Anthropic / GLM
+	// Messages API). Set by the relay boundary when the upstream uses
+	// Anthropic-compatible token semantics so the billing layer does NOT
+	// subtract cacheRead from prompt.
+	PromptExclusive bool
 }
 
 // Reservation captures a quota reservation made before upstream forwarding.
@@ -286,6 +295,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		resp, chunks, err := streamForwarder.ForwardRequest(ctx, plan, endpoint, body, req.Headers)
 		if err != nil {
 			o.releaseReservedQuota(ctx, reservation, "upstream stream error")
+			o.finalizeSelectionResult(plan, "error", time.Since(startTime))
 			result.Error = err
 			result.StatusCode = mapUpstreamOrInternalStatus(err)
 			result.Latency = time.Since(startTime)
@@ -298,6 +308,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				streamUsage = estimatedUsage
 			}
 			latency := time.Since(startTime)
+			o.finalizeSelectionResult(plan, "success", latency)
 			if err := o.commitReservedQuota(context.Background(), plan, req, reservation, streamUsage, true, latency); err != nil {
 				return err
 			}
@@ -312,6 +323,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 	resp, bodyReader, usage, err := nonStreamForwarder.ForwardRequest(ctx, plan, endpoint, body, req.Headers)
 	if err != nil {
 		o.releaseReservedQuota(ctx, reservation, "upstream error")
+		o.finalizeSelectionResult(plan, "error", time.Since(startTime))
 		result.Error = err
 		result.StatusCode = mapUpstreamOrInternalStatus(err)
 		result.Latency = time.Since(startTime)
@@ -332,6 +344,11 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 	}
 	if o.hooks != nil {
 		latency := time.Since(startTime)
+		resultLabel := "success"
+		if resp.StatusCode >= http.StatusBadRequest {
+			resultLabel = "client_error"
+		}
+		o.finalizeSelectionResult(plan, resultLabel, latency)
 		if err := o.commitReservedQuota(ctx, plan, req, reservation, *result.Usage, resp.StatusCode < http.StatusBadRequest, latency); err != nil {
 			_ = bodyReader.Close()
 			result.Error = err
@@ -477,21 +494,42 @@ func (o *relayOrchestrator) logUsage(ctx context.Context, plan *relaybiz.RelayPl
 	o.hooks.LogUsage(ctx, plan, req, usage, latency, stream)
 }
 
+// finalizeSelectionResult emits the execution-boundary half of the routing
+// selection observation (Phase 3 §3.4). It fills in Result / Fallback /
+// FallbackReason / ElapsedMS on the plan's SelectionEvent and re-emits it so
+// the metrics + structured log carry the full selection+execution picture.
+// Without this call, RoutingSelectionTotal{result=error} and
+// RoutingFallbackTotal would never fire, hiding error rates and fallback
+// rates from ops. The function is nil-safe and never blocks the hot path.
+func (o *relayOrchestrator) finalizeSelectionResult(plan *relaybiz.RelayPlan, result string, latency time.Duration) {
+	if o.relayUsecase == nil || plan == nil || plan.SelectionEvent == nil {
+		return
+	}
+	recorder := o.relayUsecase.GetSelectionRecorder()
+	relaybiz.FinalizeSelectionResult(recorder, *plan.SelectionEvent, result, "", false, latency)
+}
+
 func estimateUsageFromBody(body []byte) Usage {
 	raw := estimateRawUsage(body)
 	return Usage{
-		PromptTokens:     raw.PromptTokens,
-		CompletionTokens: raw.CompletionTokens,
-		TotalTokens:      raw.TotalTokens,
+		PromptTokens:          raw.PromptTokens,
+		CompletionTokens:      raw.CompletionTokens,
+		CacheReadTokens:       raw.CacheReadTokens,
+		CacheCreation5mTokens: raw.CacheCreation5mTokens,
+		CacheCreation1hTokens: raw.CacheCreation1hTokens,
+		TotalTokens:           raw.TotalTokens,
 	}
 }
 
 func usageFromBody(body []byte) Usage {
 	raw := extractRawUsage(body, 0)
 	return Usage{
-		PromptTokens:     raw.PromptTokens,
-		CompletionTokens: raw.CompletionTokens,
-		TotalTokens:      raw.TotalTokens,
+		PromptTokens:          raw.PromptTokens,
+		CompletionTokens:      raw.CompletionTokens,
+		CacheReadTokens:       raw.CacheReadTokens,
+		CacheCreation5mTokens: raw.CacheCreation5mTokens,
+		CacheCreation1hTokens: raw.CacheCreation1hTokens,
+		TotalTokens:           raw.TotalTokens,
 	}
 }
 
@@ -501,6 +539,15 @@ func mergeUsage(primary, fallback Usage) Usage {
 	}
 	if primary.CompletionTokens == 0 {
 		primary.CompletionTokens = fallback.CompletionTokens
+	}
+	if primary.CacheReadTokens == 0 {
+		primary.CacheReadTokens = fallback.CacheReadTokens
+	}
+	if primary.CacheCreation5mTokens == 0 {
+		primary.CacheCreation5mTokens = fallback.CacheCreation5mTokens
+	}
+	if primary.CacheCreation1hTokens == 0 {
+		primary.CacheCreation1hTokens = fallback.CacheCreation1hTokens
 	}
 	if primary.TotalTokens == 0 {
 		primary.TotalTokens = fallback.TotalTokens

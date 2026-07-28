@@ -220,3 +220,19 @@ var QuotaFrozenAmount = prometheus.NewGaugeVec(
 	},
 	[]string{},
 )
+
+// BillingLedgerUpstreamCostRecorded tracks whether a committed ledger entry
+// had a non-zero upstream cost recorded. The {result="priced"} label is used
+// by the UpstreamCostMissing Prometheus alert to compare against
+// routing_selection_total{result="success"} — when priced < success, some
+// requests are flowing without upstream cost config. Labels are low-cardinality
+// (provider_family only) per the roadmap §3.7 observability contract.
+var BillingLedgerUpstreamCostRecorded = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "billing_ledger",
+		Name:      "upstream_cost_recorded",
+		Help:      "Ledger entries committed with a non-zero upstream cost",
+	},
+	[]string{"result", "provider_family"}, // result: priced, unpriced
+)

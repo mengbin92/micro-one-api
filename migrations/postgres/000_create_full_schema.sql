@@ -178,6 +178,8 @@ CREATE TABLE IF NOT EXISTS logs (
   prompt_tokens BIGINT DEFAULT 0,
   completion_tokens BIGINT DEFAULT 0,
   cache_read_tokens BIGINT DEFAULT 0,
+  cache_creation_5m_tokens BIGINT DEFAULT 0,
+  cache_creation_1h_tokens BIGINT DEFAULT 0,
   channel_id BIGINT DEFAULT 0,
   subscription_account_id BIGINT NOT NULL DEFAULT 0,
   elapsed_time BIGINT DEFAULT 0,
@@ -304,6 +306,8 @@ CREATE TABLE IF NOT EXISTS billing_ledgers (
   prompt_tokens BIGINT DEFAULT 0,
   completion_tokens BIGINT DEFAULT 0,
   cache_read_tokens BIGINT DEFAULT 0,
+  cache_creation_5m_tokens BIGINT DEFAULT 0,
+  cache_creation_1h_tokens BIGINT DEFAULT 0,
   channel_id BIGINT DEFAULT 0,
   subscription_account_id BIGINT NOT NULL DEFAULT 0,
   elapsed_time BIGINT DEFAULT 0,
@@ -434,6 +438,7 @@ CREATE TABLE IF NOT EXISTS subscription_accounts (
   "group" TEXT DEFAULT 'default',
   models TEXT DEFAULT NULL,
   priority BIGINT DEFAULT 0,
+  weight INTEGER NOT NULL DEFAULT 0,
   base_url TEXT DEFAULT NULL,
   access_token TEXT DEFAULT NULL,
   refresh_token TEXT DEFAULT NULL,
@@ -669,6 +674,9 @@ CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider);
 CREATE INDEX IF NOT EXISTS idx_models_status ON models(status);
 CREATE INDEX IF NOT EXISTS idx_models_type ON models(model_type);
 CREATE INDEX IF NOT EXISTS idx_models_category ON models(category);
+-- v0.11.0 Phase 2 §2.1: case-insensitive canonical model_id unique index.
+-- See migrations/postgres/005_add_canonical_model_id_constraint.sql.
+CREATE UNIQUE INDEX IF NOT EXISTS uk_models_canonical_id ON models (LOWER(BTRIM(model_id)));
 
 CREATE TABLE IF NOT EXISTS model_aliases (
   id BIGSERIAL PRIMARY KEY,

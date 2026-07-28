@@ -96,11 +96,14 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	inbound relayadaptor.Format,
 	sessionHash string,
 ) {
+	adaptorStartedAt := time.Now()
 	if plan == nil || plan.Channel == nil {
+		s.finalizeSelectionDirect(plan, "error", "", false, 0, time.Since(adaptorStartedAt))
 		s.writeError(w, http.StatusInternalServerError, "no channel selected")
 		return
 	}
 	if plan.Auth == nil {
+		s.finalizeSelectionDirect(plan, "error", "", false, 0, time.Since(adaptorStartedAt))
 		s.writeError(w, http.StatusInternalServerError, "no auth selected")
 		return
 	}
@@ -109,6 +112,12 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	failedAccounts := make(map[int64]bool, maxAttempts)
 	current := plan
 	var lastErr error
+	// Track fallback info for the selection recorder (code review HIGH-2).
+	switched := false
+	var firstFailErr error
+	var finalAccountID int64
+	var finalSuccess bool
+
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if current == nil || current.Channel == nil {
 			break
@@ -124,9 +133,13 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 					s.blockRuntimeAccount(r.Context(), accountID, result.statusCode, result.err)
 				}
 			}
+			if firstFailErr == nil {
+				firstFailErr = result.err
+			}
 			lastErr = result.err
 			next, err := s.selectSubscriptionFailoverPlan(r.Context(), plan, current, clientModel, failedAccounts)
 			if err == nil && next != nil && next.Channel != nil && subscriptionAccountIDFromPlan(next) != accountID {
+				switched = true
 				metrics.RelaySubscriptionFailoverTotal.WithLabelValues(subscriptionRetryReason(result), "switched").Inc()
 				current = next
 				continue
@@ -137,11 +150,32 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 		// only), so the next turn reuses it for prompt-cache hits. A failover
 		// switch naturally rebinds to the sibling that succeeded.
 		if subscriptionAttemptSucceeded(result) {
+			finalSuccess = true
+			finalAccountID = subscriptionAccountIDFromPlan(current)
 			s.bindSubscriptionSession(r.Context(), plan.Auth.Group, sessionHash, current)
+		} else {
+			finalAccountID = subscriptionAccountIDFromPlan(current)
 		}
 		result.write(w)
+		// Finalize the selection observation with the execution outcome.
+		resultLabel := "success"
+		fallbackReason := ""
+		if !finalSuccess {
+			resultLabel = "error"
+		}
+		if switched && firstFailErr != nil {
+			fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailErr)
+		}
+		s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, finalAccountID, time.Since(adaptorStartedAt))
 		return
 	}
+	// All attempts exhausted without success.
+	resultLabel := "error"
+	fallbackReason := ""
+	if switched && firstFailErr != nil {
+		fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailErr)
+	}
+	s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, finalAccountID, time.Since(adaptorStartedAt))
 	if lastErr != nil {
 		s.writeError(w, http.StatusBadGateway, fmt.Sprintf("upstream call: %v", lastErr))
 		return
@@ -562,7 +596,9 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 					Quota:                 actualUsage.TotalTokens,
 					PromptTokens:          actualUsage.PromptTokens,
 					CompletionTokens:      actualUsage.CompletionTokens,
-					CacheReadTokens:       actualUsage.CacheReadTokens,
+						CacheReadTokens:       actualUsage.CacheReadTokens,
+					CacheCreation5mTokens:  actualUsage.CacheCreation5mTokens,
+					CacheCreation1hTokens:  actualUsage.CacheCreation1hTokens,
 					ChannelID:             plan.Channel.ID,
 					SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 					Group:                 plan.Auth.Group,
@@ -570,6 +606,8 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 					SessionWindowLimitUSD: sessionWindowLimitUSD,
 					IsStream:              true,
 				}
+				// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+				logInput.applyPlanInputs(plan)
 				if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
 				} else {
@@ -630,12 +668,16 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				PromptTokens:          usage.PromptTokens,
 				CompletionTokens:      usage.CompletionTokens,
 				CacheReadTokens:       usage.CacheReadTokens,
+				CacheCreation5mTokens:  usage.CacheCreation5mTokens,
+				CacheCreation1hTokens:  usage.CacheCreation1hTokens,
 				ChannelID:             plan.Channel.ID,
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 				Group:                 plan.Auth.Group,
 				SessionHash:           sessionHash,
 				SessionWindowLimitUSD: sessionWindowLimitUSD,
 			}
+			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
+			logInput.applyPlanInputs(plan)
 			if err := s.commitQuotaAfterResponse(reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
@@ -938,6 +980,84 @@ func subscriptionAccountIDFromPlan(plan *relaybiz.RelayPlan) int64 {
 		return 0
 	}
 	return plan.Account.ID
+}
+
+// upstreamCostKeyInputsFromPlan extracts the v0.11.0 Phase 2 §2.2 stable
+// upstream cost-key inputs from a relay plan. A subscription account plan
+// yields ("subscription", account.UpstreamModelID); a regular channel plan
+// yields ("channel", channel.UpstreamModelID). Empty upstream_model_id is
+// common when the channel has no per-mapping override — billing then falls
+// back to the legacy <channel_id>:<public_model_id> key.
+func upstreamCostKeyInputsFromPlan(plan *relaybiz.RelayPlan) (sourceKind, upstreamModelID string) {
+	if plan == nil {
+		return "", ""
+	}
+	if plan.Account != nil {
+		return relaybiz.UpstreamSourceSubscription, strings.TrimSpace(plan.Account.UpstreamModelID)
+	}
+	if plan.Channel != nil {
+		return relaybiz.UpstreamSourceChannel, strings.TrimSpace(plan.Channel.UpstreamModelID)
+	}
+	return "", ""
+}
+
+// isPromptExclusiveChannel reports whether the selected upstream uses
+// mutually-exclusive prompt / cache_read / cache_creation token buckets
+// (ADR §3.3 — Anthropic Messages API and all Anthropic-compatible providers:
+// native Anthropic, Claude, Bedrock-Claude, VertexAI-Claude, and the domestic
+// "coding plan" channels Zhipu GLM / MiniMax / Kimi that mirror the Anthropic
+// Messages API). When true, the billing layer must NOT subtract cache_read
+// from prompt_tokens because the upstream already returns them as separate,
+// non-overlapping buckets. OpenAI-compatible upstreams use subset semantics
+// (ADR §3.1) where cached_tokens is part of prompt_tokens, so the subtraction
+// is correct and this function returns false.
+func isPromptExclusiveChannel(plan *relaybiz.RelayPlan) bool {
+	if plan == nil {
+		return false
+	}
+	// Subscription accounts: the platform string identifies the Messages-API
+	// family (claude / zhipu / minimax / kimi all use Anthropic-compatible
+	// usage semantics). Codex uses the OpenAI Responses API (subset semantics).
+	if plan.Account != nil {
+		switch plan.Account.Platform {
+		case "claude", "zhipu", "minimax", "kimi":
+			return true
+		}
+		return false
+	}
+	// Regular channels: check the channel type directly.
+	if plan.Channel != nil {
+		switch plan.Channel.Type {
+		case relayprovider.ChannelTypeAnthropic,
+			relayprovider.ChannelTypeClaude,
+			relayprovider.ChannelTypeBedrock,
+			relayprovider.ChannelTypeVertexAI,
+			relayprovider.ChannelTypeClaudeOAuth,
+			relayprovider.ChannelTypeZhipuPlan,
+			relayprovider.ChannelTypeMinimaxPlan,
+			relayprovider.ChannelTypeKimiOAuth:
+			return true
+		}
+	}
+	return false
+}
+
+// isPromptExclusiveChannelType is the channel-type-only variant of
+// isPromptExclusiveChannel, used by code paths that have a channel type int32
+// but not a full RelayPlan (e.g. the legacy one-api handler).
+func isPromptExclusiveChannelType(chType int32) bool {
+	switch chType {
+	case relayprovider.ChannelTypeAnthropic,
+		relayprovider.ChannelTypeClaude,
+		relayprovider.ChannelTypeBedrock,
+		relayprovider.ChannelTypeVertexAI,
+		relayprovider.ChannelTypeClaudeOAuth,
+		relayprovider.ChannelTypeZhipuPlan,
+		relayprovider.ChannelTypeMinimaxPlan,
+		relayprovider.ChannelTypeKimiOAuth:
+		return true
+	}
+	return false
 }
 
 func fallbackSubscriptionAccountMetadata(plan *relaybiz.RelayPlan, ch *relaybiz.Channel) *relaycredential.SubscriptionAccountMetadata {

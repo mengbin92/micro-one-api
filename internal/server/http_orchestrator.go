@@ -189,7 +189,7 @@ func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.Re
 }
 
 func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool) usageLogInput {
-	return usageLogInput{
+	input := usageLogInput{
 		UserID:                plan.Auth.UserID,
 		TokenID:               plan.Auth.TokenID,
 		TokenName:             plan.Auth.TokenName,
@@ -199,9 +199,16 @@ func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPl
 		Quota:                 usage.TotalTokens,
 		PromptTokens:          usage.PromptTokens,
 		CompletionTokens:      usage.CompletionTokens,
+		CacheReadTokens:       usage.CacheReadTokens,
+		CacheCreation5mTokens:  usage.CacheCreation5mTokens,
+		CacheCreation1hTokens:  usage.CacheCreation1hTokens,
 		ChannelID:             plan.Channel.ID,
 		SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 		ElapsedTime:           latency.Milliseconds(),
 		IsStream:              stream,
 	}
+	// v0.11.0 Phase 2 §2.2 + Phase 0/1 ADR §3.3: thread plan-derived inputs
+	// (upstream cost-key + prompt-exclusivity flag).
+	input.applyPlanInputs(plan)
+	return input
 }

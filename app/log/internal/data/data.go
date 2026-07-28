@@ -38,6 +38,8 @@ type logModel struct {
 	PromptTokens          int64  `gorm:"column:prompt_tokens"`
 	CompletionTokens      int64  `gorm:"column:completion_tokens"`
 	CacheReadTokens       int64  `gorm:"column:cache_read_tokens"`
+	CacheCreation5mTokens int64  `gorm:"column:cache_creation_5m_tokens"`
+	CacheCreation1hTokens int64  `gorm:"column:cache_creation_1h_tokens"`
 	ChannelID             int64  `gorm:"column:channel_id"`
 	SubscriptionAccountID int64  `gorm:"column:subscription_account_id"`
 	ElapsedTime           int64  `gorm:"column:elapsed_time"`
@@ -189,6 +191,8 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.LogEntry, error)
 		PromptTokens:          m.PromptTokens,
 		CompletionTokens:      m.CompletionTokens,
 		CacheReadTokens:       m.CacheReadTokens,
+		CacheCreation5mTokens: m.CacheCreation5mTokens,
+		CacheCreation1hTokens: m.CacheCreation1hTokens,
 		ChannelID:             m.ChannelID,
 		SubscriptionAccountID: m.SubscriptionAccountID,
 		ElapsedTime:           m.ElapsedTime,
@@ -262,6 +266,8 @@ func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
 		PromptTokens:          entry.PromptTokens,
 		CompletionTokens:      entry.CompletionTokens,
 		CacheReadTokens:       entry.CacheReadTokens,
+		CacheCreation5mTokens: entry.CacheCreation5mTokens,
+		CacheCreation1hTokens: entry.CacheCreation1hTokens,
 		ChannelID:             entry.ChannelID,
 		SubscriptionAccountID: entry.SubscriptionAccountID,
 		ElapsedTime:           entry.ElapsedTime,
@@ -305,6 +311,8 @@ func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) e
 				PromptTokens:          e.PromptTokens,
 				CompletionTokens:      e.CompletionTokens,
 				CacheReadTokens:       e.CacheReadTokens,
+				CacheCreation5mTokens: e.CacheCreation5mTokens,
+				CacheCreation1hTokens: e.CacheCreation1hTokens,
 				ChannelID:             e.ChannelID,
 				SubscriptionAccountID: e.SubscriptionAccountID,
 				ElapsedTime:           e.ElapsedTime,
@@ -368,7 +376,7 @@ func (r *Repository) usageByUserDB(ctx context.Context, userID int64, startTime,
 		}
 	}
 	query := r.db.WithContext(ctx).Table("logs").
-		Select(dayExpr+" AS day, model_name, COUNT(1) AS request_count, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens").
+		Select(dayExpr+" AS day, model_name, COUNT(1) AS request_count, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens, COALESCE(SUM(cache_creation_5m_tokens), 0) AS cache_creation_5m_tokens, COALESCE(SUM(cache_creation_1h_tokens), 0) AS cache_creation_1h_tokens").
 		Where("user_id = ? AND model_name <> ''", userID)
 	if !startTime.IsZero() {
 		query = query.Where("created_at >= ?", startTime.Unix())
@@ -399,6 +407,8 @@ func logModelToEntry(m logModel) *biz.LogEntry {
 		PromptTokens:          m.PromptTokens,
 		CompletionTokens:      m.CompletionTokens,
 		CacheReadTokens:       m.CacheReadTokens,
+		CacheCreation5mTokens: m.CacheCreation5mTokens,
+		CacheCreation1hTokens: m.CacheCreation1hTokens,
 		ChannelID:             m.ChannelID,
 		SubscriptionAccountID: m.SubscriptionAccountID,
 		ElapsedTime:           m.ElapsedTime,
@@ -551,6 +561,8 @@ func (r *Repository) usageByUserMemory(userID int64, startTime, endTime time.Tim
 		stat.PromptTokens += entry.PromptTokens
 		stat.CompletionTokens += entry.CompletionTokens
 		stat.CacheReadTokens += entry.CacheReadTokens
+		stat.CacheCreation5mTokens += entry.CacheCreation5mTokens
+		stat.CacheCreation1hTokens += entry.CacheCreation1hTokens
 	}
 	stats := make([]*biz.UsageStat, 0, len(statsByKey))
 	for _, stat := range statsByKey {

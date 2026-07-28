@@ -79,6 +79,22 @@ message CommitQuotaRequest {
   // calculates it from upstream pricing config.
   int64 upstream_cost = 12;
   int64 subscription_account_id = 13;  // 订阅账号 ID（0 = 非订阅账号请求；覆盖预留时记录的账号）
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 14;  // 写入 5 分钟 TTL cache 的 token
+  int64 cache_creation_1h_tokens = 15;  // 写入 1 小时 TTL cache 的 token
+  // v0.11.0 Phase 2 §2.2: stable upstream cost key inputs. upstream_model_id
+  // is the exact identifier the selected upstream requires (e.g.
+  // "z-ai/glm-5.2"); source_kind is "channel" or "subscription" so billing can
+  // pick the right cost-key prefix without guessing from the channel/account
+  // id space. When either is empty, billing falls back to the legacy
+  // <channel_id>:<public_model_id> key for backwards compatibility.
+  string upstream_model_id = 16;
+  string source_kind = 17;
+  // v0.11.0 Phase 0/1 ADR §3.3: when true, prompt_tokens and
+  // cache_read_tokens are mutually exclusive buckets (Anthropic / GLM Messages
+  // API). The billing function must NOT subtract cache_read from prompt. When
+  // false (default, OpenAI subset), cache_read is a subset of prompt.
+  bool prompt_exclusive = 18;
 }
 
 message CommitQuotaResponse {
@@ -491,6 +507,9 @@ message DailyUsage {
   int64 count = 5;
   int64 elapsed_time = 6;
   int64 cache_read_tokens = 7;
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 8;   // SUM of 5 分钟 TTL cache 创建 token
+  int64 cache_creation_1h_tokens = 9;   // SUM of 1 小时 TTL cache 创建 token
 }
 
 message ModelUsage {
@@ -537,6 +556,9 @@ message UsageBucket {
   int64 gross_profit = 14;
   int64 cache_read_tokens = 15;
   int64 subscription_account_id = 16;  // 订阅账号 ID（当 group_by 含 subscription_account）
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 17;  // SUM of 5 分钟 TTL cache 创建 token
+  int64 cache_creation_1h_tokens = 18;  // SUM of 1 小时 TTL cache 创建 token
 }
 
 message UsageTotals {
@@ -548,4 +570,7 @@ message UsageTotals {
   int64 upstream_cost = 6;
   int64 gross_profit = 7;
   int64 cache_read_tokens = 8;
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 9;   // SUM of 5 分钟 TTL cache 创建 token
+  int64 cache_creation_1h_tokens = 10;  // SUM of 1 小时 TTL cache 创建 token
 }

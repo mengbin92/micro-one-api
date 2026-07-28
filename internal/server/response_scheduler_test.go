@@ -18,6 +18,33 @@ type schedulerPlannerStub struct {
 	calls int
 }
 
+type wsStickySubscriptionClient struct {
+	account *relaybiz.SubscriptionAccount
+}
+
+func (*wsStickySubscriptionClient) SelectChannel(context.Context, string, string, bool) (*relaybiz.Channel, error) {
+	return nil, errors.New("no ordinary channel")
+}
+
+func (*wsStickySubscriptionClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
+	return nil
+}
+
+func (*wsStickySubscriptionClient) RecordSubscriptionAccountHealth(context.Context, int64, bool) error {
+	return nil
+}
+
+func (c *wsStickySubscriptionClient) SelectSubscriptionAccount(context.Context, string, string, string, bool) (*relaybiz.SubscriptionAccount, error) {
+	return c.account, nil
+}
+
+func (c *wsStickySubscriptionClient) GetSubscriptionAccountByID(_ context.Context, accountID int64) (*relaybiz.SubscriptionAccount, error) {
+	if c.account != nil && c.account.ID == accountID {
+		return c.account, nil
+	}
+	return nil, nil
+}
+
 func (s *schedulerPlannerStub) Plan(ctx context.Context, req relaybiz.RelayRequest) (*relaybiz.RelayPlan, error) {
 	s.calls++
 	return s.plan, s.err
@@ -97,7 +124,7 @@ func TestOpenAIWSRoutingSchedulerRouteModels(t *testing.T) {
 func TestOpenAIWSRoutingSchedulerRejectsSessionRouteWhenModelNotAllowed(t *testing.T) {
 	ctx := context.Background()
 	store := newOpenAIWSStickyStore(nil)
-	store.BindSessionChannel(ctx, "default", "session-a", 99, openAIWSStickyTTL)
+	store.BindSessionRoute(ctx, "default", "session-a", &relaybiz.Channel{ID: 99}, openAIWSStickyTTL)
 	planner := &schedulerPlannerStub{plan: &relaybiz.RelayPlan{GlobalModel: "gpt-4o", ResolvedModel: "gpt-4o"}}
 	sched := &OpenAIWSRoutingScheduler{
 		server: &HTTPServer{
@@ -149,7 +176,7 @@ func TestOpenAIWSRoutingSchedulerResolvePlanPropagatesPlannerError(t *testing.T)
 func TestOpenAIWSRoutingSchedulerResolvePlanUsesSessionRouteBeforePlanner(t *testing.T) {
 	ctx := context.Background()
 	store := newOpenAIWSStickyStore(nil)
-	store.BindSessionChannel(ctx, "default", "session-a", 99, openAIWSStickyTTL)
+	store.BindSessionRoute(ctx, "default", "session-a", &relaybiz.Channel{ID: 99}, openAIWSStickyTTL)
 	planner := &schedulerPlannerStub{plan: &relaybiz.RelayPlan{GlobalModel: "gpt-4o", ResolvedModel: "gpt-4o"}}
 	sched := &OpenAIWSRoutingScheduler{
 		server: &HTTPServer{
@@ -172,6 +199,37 @@ func TestOpenAIWSRoutingSchedulerResolvePlanUsesSessionRouteBeforePlanner(t *tes
 	}
 }
 
+func TestOpenAIWSRoutingSchedulerMaterializesSubscriptionStickyNamespace(t *testing.T) {
+	ctx := context.Background()
+	store := newOpenAIWSStickyStore(nil)
+	store.BindSessionRoute(ctx, "default", "session-sub", &relaybiz.Channel{ID: 7, SubscriptionAccountID: 7}, openAIWSStickyTTL)
+	sourceClient := &wsStickySubscriptionClient{account: &relaybiz.SubscriptionAccount{
+		ID:          7,
+		Name:        "subscription-7",
+		Platform:    "codex",
+		Status:      1,
+		Group:       "default",
+		Models:      []string{"gpt-4o"},
+		AccessToken: "secret",
+	}}
+	sched := &OpenAIWSRoutingScheduler{server: &HTTPServer{
+		identityClient: rawIdentityClient{},
+		relayUsecase:   relaybiz.NewRelayUsecase(nil, sourceClient, nil, nil),
+		wsSticky:       store,
+	}}
+
+	plan, ok := sched.ResolveSessionRoute(ctx, "token", "gpt-4o", "session-sub")
+	if !ok {
+		t.Fatal("expected subscription sticky route to resolve")
+	}
+	if plan.Account == nil || plan.Account.ID != 7 {
+		t.Fatalf("resolved account = %+v, want subscription account 7", plan.Account)
+	}
+	if plan.Channel == nil || plan.Channel.SubscriptionAccountID != 7 {
+		t.Fatalf("resolved channel = %+v, want subscription projection 7", plan.Channel)
+	}
+}
+
 func TestOpenAIWSRoutingSchedulerBindSession(t *testing.T) {
 	ctx := context.Background()
 	store := newOpenAIWSStickyStore(nil)
@@ -183,7 +241,8 @@ func TestOpenAIWSRoutingSchedulerBindSession(t *testing.T) {
 		Channel: &relaybiz.Channel{ID: 77},
 	}, "session-a")
 
-	if got := store.LookupSessionChannel(ctx, "default", "session-a"); got != 77 {
-		t.Fatalf("session channel = %d, want 77", got)
+	got := store.LookupSessionRoute(ctx, "default", "session-a")
+	if got.kind != relaybiz.UpstreamRouteChannel || got.id != 77 {
+		t.Fatalf("session source = %s:%d, want channel:77", got.kind.String(), got.id)
 	}
 }

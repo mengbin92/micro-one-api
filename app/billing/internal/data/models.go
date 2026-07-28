@@ -67,6 +67,8 @@ type ledgerModel struct {
 	PromptTokens          int64   `gorm:"column:prompt_tokens"`
 	CompletionTokens      int64   `gorm:"column:completion_tokens"`
 	CacheReadTokens       int64   `gorm:"column:cache_read_tokens"`
+	CacheCreation5mTokens int64   `gorm:"column:cache_creation_5m_tokens"`
+	CacheCreation1hTokens int64   `gorm:"column:cache_creation_1h_tokens"`
 	ChannelID             int64   `gorm:"column:channel_id"`
 	SubscriptionAccountID int64   `gorm:"column:subscription_account_id"`
 	ElapsedTime           int64   `gorm:"column:elapsed_time"`

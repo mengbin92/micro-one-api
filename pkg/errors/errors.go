@@ -64,6 +64,10 @@ const (
 	ReasonModelAliasNotFound   = "MODEL_ALIAS_NOT_FOUND"
 	ReasonModelMappingNotFound = "MODEL_MAPPING_NOT_FOUND"
 	ReasonInvalidBatchAction   = "INVALID_BATCH_ACTION"
+	// v0.11.0 Phase 2 §2.1: merging a canonical-id duplicate group would
+	// collide on the survivor's unique key (e.g. same channel already serves
+	// two members). The merge is rolled back; the operator must resolve.
+	ReasonModelCanonicalConflict = "MODEL_CANONICAL_CONFLICT"
 
 	// Channel routing dead-ends. Distinct from CHANNEL_NOT_FOUND so
 	// operators can tell "no upstream serves this model at all" (404) from
@@ -234,6 +238,8 @@ func MapChannelError(err error) error {
 		return &Error{Reason: ReasonModelMappingNotFound, Message: "model mapping not found"}
 	case errorMsg == "invalid batch action":
 		return &Error{Reason: ReasonInvalidBatchAction, Message: "invalid batch action"}
+	case strings.HasPrefix(errorMsg, "canonical model id conflict"):
+		return &Error{Reason: ReasonModelCanonicalConflict, Message: errorMsg}
 	default:
 		return &Error{Reason: ReasonUnknown, Message: err.Error()}
 	}

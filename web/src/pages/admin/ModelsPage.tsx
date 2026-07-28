@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Eye, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Download, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -54,6 +54,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ModelDetailPanel } from './ModelDetailPanel';
+import { ModelExchangeDialog } from '@/components/admin/ModelExchangeDialog';
 
 function draftToCreatePayload(draft: ModelDraft): CreateModelPayload {
   return {
@@ -154,6 +155,7 @@ export function AdminModelsPage() {
   const [editingModel, setEditingModel] = useState<{ pk: number; draft: ModelDraft } | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [detailModelPk, setDetailModelPk] = useState<number | null>(null);
+  const [exchangeOpen, setExchangeOpen] = useState(false);
   const [selectedPks, setSelectedPks] = useState<Set<number>>(new Set());
   const [confirmState, setConfirmState] = useState<{
     title: string;
@@ -332,10 +334,16 @@ export function AdminModelsPage() {
             统一管理所有可用模型，支持启用/禁用、分组和映射
           </p>
         </div>
-        <Button onClick={() => { setCreateDraft(emptyDraft); setIsCreateOpen(true); }}>
-          <Plus className="size-4" />
-          新建模型
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setExchangeOpen(true)}>
+            <Download className="size-4" />
+            导入/导出
+          </Button>
+          <Button onClick={() => { setCreateDraft(emptyDraft); setIsCreateOpen(true); }}>
+            <Plus className="size-4" />
+            新建模型
+          </Button>
+        </div>
       </div>
 
       <AdminTableToolbar
@@ -572,6 +580,9 @@ export function AdminModelsPage() {
 
       {/* Detail panel */}
       <ModelDetailPanel modelPk={detailModelPk} onClose={() => setDetailModelPk(null)} />
+
+      {/* Import/export dialog */}
+      <ModelExchangeDialog open={exchangeOpen} onOpenChange={setExchangeOpen} onImported={invalidateModels} />
     </div>
   );
 }

@@ -48,6 +48,9 @@ message GetLogResponse {
   bool is_stream = 16;
   int64 cache_read_tokens = 17;
   int64 subscription_account_id = 18;  // 订阅账号 ID（0 = 非订阅账号请求）
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 19;  // 写入 5 分钟 TTL cache 的 token
+  int64 cache_creation_1h_tokens = 20;  // 写入 1 小时 TTL cache 的 token
 }
 
 message ListLogsRequest {
@@ -78,6 +81,9 @@ message IngestLogRequest {
   bool is_stream = 14;
   int64 cache_read_tokens = 15;
   int64 subscription_account_id = 16;  // 订阅账号 ID（0 = 非订阅账号请求）
+  // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
+  int64 cache_creation_5m_tokens = 17;  // 写入 5 分钟 TTL cache 的 token
+  int64 cache_creation_1h_tokens = 18;  // 写入 1 小时 TTL cache 的 token
 }
 
 message IngestLogResponse {
