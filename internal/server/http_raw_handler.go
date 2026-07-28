@@ -127,7 +127,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				IsStream:         false,
 			}
 			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-			logInput.UpstreamModelID, logInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+			logInput.applyPlanInputs(plan)
 			logUpstreamUsage(logInput)
 			if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				return err

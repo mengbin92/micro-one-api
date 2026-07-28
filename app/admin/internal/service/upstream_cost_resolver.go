@@ -50,17 +50,50 @@ type upstreamResolver map[int64]map[string]string
 // so the legacy-key migration can find the exact upstream_model_id for a
 // legacy "<channel_id>:<public_model>" key.
 //
-// The implementation pages through ListChannels then calls
-// ListChannelModelMappings per channel. N is bounded by the channel count
-// (dozens), so the per-channel RPC is acceptable and avoids adding a new
-// batch RPC just for the migration tool. When channel-service is unreachable
-// the resolver is empty and the migration tool falls back to the public model
-// id as the upstream id.
+// The implementation pages through ListModels (to build a model_pk→model_id
+// lookup), then ListChannels + ListChannelModelMappings per channel. N is
+// bounded by the channel count (dozens), so the per-channel RPC is acceptable
+// and avoids adding a new batch RPC just for the migration tool. When
+// channel-service is unreachable the resolver is empty and the migration tool
+// falls back to the public model id as the upstream id.
 func (s *AdminService) buildUpstreamResolver(ctx context.Context) (upstreamResolver, error) {
 	resolver := upstreamResolver{}
 	if s == nil || s.channelClient == nil {
 		return resolver, nil
 	}
+
+	// Build a model_pk → model_id lookup so we can resolve the public model
+	// id from the mapping's model_pk. This is essential because the legacy
+	// cost key uses the public model_id string (e.g. "gpt-4o"), but the
+	// ModelChannelMapping only carries the numeric model_pk. Without this
+	// lookup, the migration would silently fall back to the public model id
+	// as the upstream id whenever they differ, producing a canonical key that
+	// the billing code cannot match (Phase 2 §2.2 bug: zeroed upstream cost).
+	modelPKToID := map[int64]string{}
+	mPage := int32(1)
+	mPageSize := int32(500)
+	for {
+		mResp, err := s.channelClient.ListModels(ctx, &channelv1.ListModelsRequest{
+			Page: mPage, PageSize: mPageSize,
+		})
+		if err != nil {
+			return resolver, fmt.Errorf("list models: %w", err)
+		}
+		if mResp == nil {
+			break
+		}
+		for _, m := range mResp.GetModels() {
+			if m == nil {
+				continue
+			}
+			modelPKToID[m.GetId()] = m.GetModelId()
+		}
+		if len(mResp.GetModels()) < int(mPageSize) {
+			break
+		}
+		mPage++
+	}
+
 	page := int32(1)
 	pageSize := int32(200)
 	for {
@@ -90,16 +123,16 @@ func (s *AdminService) buildUpstreamResolver(ctx context.Context) (upstreamResol
 				if m == nil {
 					continue
 				}
-				// ModelChannelMapping carries the public model PK, not the
-				// public model_id string. The migration key uses the public
-				// model_id string, so we cannot perfectly index here without a
-				// model-pk→model_id lookup. As a pragmatic fallback, index by
-				// the upstream_model_id itself (the most common case where the
-				// legacy key already used the upstream spelling). This keeps
-				// the migration idempotent for the dominant case.
 				upstream := m.GetUpstreamModelId()
 				if upstream == "" {
 					continue
+				}
+				// Index by the public model_id (resolved from model_pk) so
+				// the migration can match legacy keys that used the public
+				// spelling. Also index by the upstream spelling itself for
+				// idempotency when the legacy key already used upstream form.
+				if pubID, ok := modelPKToID[m.GetModelPk()]; ok && pubID != "" {
+					byModel[canonicalModelID(pubID)] = upstream
 				}
 				byModel[canonicalModelID(upstream)] = upstream
 			}

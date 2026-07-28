@@ -64,6 +64,12 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 
 			if adminToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(adminToken)) == 1 {
+				// Stamp a sentinel operator id so audit records (import/export,
+				// refunds, etc.) never have an empty actor. The sentinel is
+				// stable and distinguishable from a real numeric user id, so
+				// downstream consumers can tell this was a system-level
+				// ADMIN_TOKEN call (roadmap §4: no empty operator audit).
+				r.Header.Set("X-Operator-User-Id", "system/admin-token")
 				next(w, r.WithContext(context.WithValue(r.Context(), adminRoleContextKey{}, service.RoleRoot)))
 				return
 			}
@@ -1875,11 +1881,10 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 		// identity-service so we just surface its error.
 		//
 		// X-Operator-User-Id identifies the calling admin so identity-service
-		// can enforce operator-vs-target rank rules. When the header is
-		// missing the call is treated as a system invocation that skips
-		// those checks — fine for now because admin-api is gated by the
-		// shared ADMIN_TOKEN; flip to required once admin auth moves to
-		// per-user sessions.
+		// can enforce operator-vs-target rank rules. The admin guard always
+		// sets this header now (real user id for session auth, or the
+		// "system/admin-token" sentinel for the shared ADMIN_TOKEN), so the
+		// operator id is never empty (roadmap §4).
 		newRole := int32(10) // admin
 		if req.Action == "demote" {
 			newRole = 1 // common user

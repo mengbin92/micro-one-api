@@ -140,7 +140,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				IsStream:              true,
 			}
 			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-			streamLogInput.UpstreamModelID, streamLogInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+			streamLogInput.applyPlanInputs(plan)
 			return s.handleStreamingResponse(w, r, provider, &req, reservation, streamLogInput)
 		}
 
@@ -172,7 +172,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			IsStream:         false,
 		}
 		// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-		logInput.UpstreamModelID, logInput.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+		logInput.applyPlanInputs(plan)
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err
 		}

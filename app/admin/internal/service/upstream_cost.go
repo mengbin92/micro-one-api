@@ -149,9 +149,18 @@ func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool)
 		}
 		upstreamID, ok := resolver[channelID][canonicalModelID(publicModel)]
 		if !ok {
-			// No exact upstream id known; fall back to the public model id so
-			// the canonical key still resolves to the right cost.
-			upstreamID = publicModel
+			// No exact upstream id known for this channel+model. Skip the
+			// rewrite entirely: the billing code's legacy-key fallback
+			// (upstreamPriceKey) still reads <channel_id>:<public_model_id>,
+			// so leaving the key untouched preserves the existing cost. A
+			// forced rewrite to channel:<id>:<publicModel> would produce a
+			// canonical key that billing never queries (it queries the
+			// upstream spelling), silently zeroing the upstream cost.
+			plan.Skipped = append(plan.Skipped, UpstreamCostMigrationChange{
+				OldKey: old, NewKey: "", SourceID: channelID, PublicModelID: publicModel, UpstreamModelID: "",
+				Reason: "upstream_model_id not resolved (channel has no mapping or model_pk lookup failed); legacy key preserved",
+			})
+			continue
 		}
 		newKey := fmt.Sprintf("channel:%d:%s", channelID, upstreamID)
 		if newKey == old {

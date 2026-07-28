@@ -111,7 +111,7 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 
 	totalTokens := extractTotalTokens(resp.Body, estimateRawTokens(body))
 	usage := extractRawUsage(resp.Body, totalTokens)
-	if err := s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true, usageLogInput{
+	logInput := usageLogInput{
 		UserID:                authSnapshot.UserId,
 		TokenID:               authSnapshot.TokenId,
 		TokenName:             authSnapshot.TokenName,
@@ -126,7 +126,11 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		SubscriptionAccountID: 0,
 		ElapsedTime:           time.Since(startedAt).Milliseconds(),
 		IsStream:              false,
-	}); err != nil {
+		// v0.11.0 Phase 0/1 ADR §3.3: Anthropic-compatible channels use
+		// mutually-exclusive token buckets.
+		PromptExclusive: isPromptExclusiveChannelType(channelReply.Channel.Type),
+	}
+	if err := s.commitQuota(r.Context(), reservation.ReservationId, totalTokens, true, logInput); err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
 		return
 	}

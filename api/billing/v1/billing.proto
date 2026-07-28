@@ -90,6 +90,11 @@ message CommitQuotaRequest {
   // <channel_id>:<public_model_id> key for backwards compatibility.
   string upstream_model_id = 16;
   string source_kind = 17;
+  // v0.11.0 Phase 0/1 ADR §3.3: when true, prompt_tokens and
+  // cache_read_tokens are mutually exclusive buckets (Anthropic / GLM Messages
+  // API). The billing function must NOT subtract cache_read from prompt. When
+  // false (default, OpenAI subset), cache_read is a subset of prompt.
+  bool prompt_exclusive = 18;
 }
 
 message CommitQuotaResponse {

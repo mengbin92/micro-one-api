@@ -155,6 +155,13 @@ type RelayPlan struct {
 	Auth    *AuthSnapshot
 	Channel *Channel
 	Account *SubscriptionAccount
+	// SelectionEvent carries the routing selection metadata (source kind,
+	// provider family, priority tier, etc.) from Plan() to the execution
+	// boundary so the orchestrator can finalize it with the execution result
+	// (success/error/fallback + elapsed time) and emit the second half of the
+	// selection observation (Phase 3 §3.4). Nil when no selection was recorded
+	// (e.g. sticky hit or error path before selection).
+	SelectionEvent *SelectionEvent
 	// GlobalModel is the model name after the global ModelMapper but BEFORE
 	// per-channel/per-account model mapping. Plan() bakes the first selected
 	// channel's mapping into ResolvedModel, which breaks failover: a retry
@@ -264,14 +271,34 @@ func (uc *RelayUsecase) SetSelectionRecorder(r SelectionRecorder) {
 	uc.selectionRec.set(r)
 }
 
-func (uc *RelayUsecase) recordSelection(ctx context.Context, event SelectionEvent) {
+// GetSelectionRecorder returns the currently wired SelectionRecorder (or the
+// noop recorder when none is set). Used by the orchestrator to finalize
+// selection events at the execution boundary (Phase 3 §3.4).
+func (uc *RelayUsecase) GetSelectionRecorder() SelectionRecorder {
 	if uc == nil {
-		return
+		return noopSelectionRecorder{}
+	}
+	return uc.selectionRec.get()
+}
+
+func (uc *RelayUsecase) recordSelection(ctx context.Context, event SelectionEvent) SelectionEvent {
+	if uc == nil {
+		return event
 	}
 	if event.At.IsZero() {
 		event.At = uc.now()
 	}
 	uc.selectionRec.get().RecordSelection(ctx, event)
+	return event
+}
+
+// recordSelectionForPlan records a selection event and returns a pointer to
+// the timestamped copy so the caller can attach it to the RelayPlan. The plan
+// then carries the event to the execution boundary, where the orchestrator
+// finalizes it with the execution result (success/error/fallback + elapsed).
+func (uc *RelayUsecase) recordSelectionForPlan(ctx context.Context, event SelectionEvent) *SelectionEvent {
+	e := uc.recordSelection(ctx, event)
+	return &e
 }
 
 func (uc *RelayUsecase) SetRuntimeBlocker(blocker RuntimeBlocker) {
@@ -328,7 +355,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	// subscription accounts as a fallback that can only run when every channel
 	// fails.
 	if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, req.SessionHash, req.Model, resolvedModel); ok {
-		uc.recordSelection(ctx, SelectionEvent{
+		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:    req.RequestID,
 			Group:        authSnapshot.Group,
 			Model:        req.Model,
@@ -337,7 +364,9 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			FinalSourceID: acct.ID,
 			ProviderFamily: ProviderFamilyForModel(req.Model),
 		})
-		return newRelayPlan(authSnapshot, ch, acct, resolvedModel), nil
+		_plan := newRelayPlan(authSnapshot, ch, acct, resolvedModel)
+		_plan.SelectionEvent = _sel
+		return _plan, nil
 	}
 
 	channel, channelErr := uc.selectAPIKeyChannel(ctx, authSnapshot.Group, req.Model, resolvedModel)
@@ -350,7 +379,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			{Kind: UpstreamRouteSubscription, ID: subAccount.ID, Priority: subAccount.Priority, Weight: subscriptionRouteWeight(subAccount)},
 		})
 		if choice.Kind == UpstreamRouteSubscription {
-			uc.recordSelection(ctx, SelectionEvent{
+			_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 				RequestID:       req.RequestID,
 				Group:           authSnapshot.Group,
 				Model:           req.Model,
@@ -360,9 +389,11 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 				PriorityTier:    subAccount.Priority,
 				ProviderFamily:  ProviderFamilyForModel(req.Model),
 			})
-			return newRelayPlan(authSnapshot, subChannel, subAccount, resolvedModel), nil
+			_plan := newRelayPlan(authSnapshot, subChannel, subAccount, resolvedModel)
+			_plan.SelectionEvent = _sel
+			return _plan, nil
 		}
-		uc.recordSelection(ctx, SelectionEvent{
+		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:      req.RequestID,
 			Group:          authSnapshot.Group,
 			Model:          req.Model,
@@ -372,9 +403,11 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			PriorityTier:   channel.Priority,
 			ProviderFamily: ProviderFamilyForModel(req.Model),
 		})
-		return newRelayPlan(authSnapshot, channel, nil, resolvedModel), nil
+		_plan := newRelayPlan(authSnapshot, channel, nil, resolvedModel)
+		_plan.SelectionEvent = _sel
+		return _plan, nil
 	case channel != nil:
-		uc.recordSelection(ctx, SelectionEvent{
+		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:      req.RequestID,
 			Group:          authSnapshot.Group,
 			Model:          req.Model,
@@ -384,9 +417,11 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			PriorityTier:   channel.Priority,
 			ProviderFamily: ProviderFamilyForModel(req.Model),
 		})
-		return newRelayPlan(authSnapshot, channel, nil, resolvedModel), nil
+		_plan := newRelayPlan(authSnapshot, channel, nil, resolvedModel)
+		_plan.SelectionEvent = _sel
+		return _plan, nil
 	case subChannel != nil:
-		uc.recordSelection(ctx, SelectionEvent{
+		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:      req.RequestID,
 			Group:          authSnapshot.Group,
 			Model:          req.Model,
@@ -396,7 +431,9 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			PriorityTier:   subAccount.Priority,
 			ProviderFamily: ProviderFamilyForModel(req.Model),
 		})
-		return newRelayPlan(authSnapshot, subChannel, subAccount, resolvedModel), nil
+		_plan := newRelayPlan(authSnapshot, subChannel, subAccount, resolvedModel)
+		_plan.SelectionEvent = _sel
+		return _plan, nil
 	case uc.subscription == nil:
 		return nil, channelErr
 	case subErr != nil:

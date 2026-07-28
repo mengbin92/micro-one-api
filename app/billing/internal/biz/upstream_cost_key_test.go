@@ -119,5 +119,5 @@ func TestCalculateUpstreamCostWithUsage_SubscriptionVsChannel(t *testing.T) {
 // canonicalCost applies the canonical formula to a price tier so the test
 // asserts on the resolved price rather than duplicating the arithmetic.
 func canonicalCost(p ModelPrice, prompt, completion int64) int64 {
-	return calculateCanonicalCost(p, prompt, completion, 0, 0, 0, 1).CanonicalCost
+	return calculateCanonicalCost(p, prompt, completion, 0, 0, 0, 1, false).CanonicalCost
 }

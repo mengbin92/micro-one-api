@@ -108,6 +108,7 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		// <channel_id>:<public_model_id> key resolution.
 		UpstreamModelID: req.UpstreamModelId,
 		SourceKind:      req.SourceKind,
+		PromptExclusive:      req.PromptExclusive,
 	}
 
 	// Async path: enqueue the settlement task and return a provisional
@@ -453,6 +454,8 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 			PromptTokens:          ledger.PromptTokens,
 			CompletionTokens:      ledger.CompletionTokens,
 			CacheReadTokens:       ledger.CacheReadTokens,
+			CacheCreation_5MTokens: ledger.CacheCreation5mTokens,
+			CacheCreation_1HTokens: ledger.CacheCreation1hTokens,
 			ChannelId:             ledger.ChannelID,
 			SubscriptionAccountId: ledger.SubscriptionAccountID,
 			ElapsedTime:           ledger.ElapsedTime,
@@ -497,6 +500,8 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 			PromptTokens:          ledger.PromptTokens,
 			CompletionTokens:      ledger.CompletionTokens,
 			CacheReadTokens:       ledger.CacheReadTokens,
+			CacheCreation_5MTokens: ledger.CacheCreation5mTokens,
+			CacheCreation_1HTokens: ledger.CacheCreation1hTokens,
 			ChannelId:             ledger.ChannelID,
 			SubscriptionAccountId: ledger.SubscriptionAccountID,
 			ElapsedTime:           ledger.ElapsedTime,
@@ -534,13 +539,15 @@ func (s *BillingService) AggregateLedgerByDate(ctx context.Context, req *billing
 	var totalQuota, totalPrompt, totalCompletion, totalCacheRead, totalCount int64
 	for i, d := range daily {
 		dailyProto[i] = &billingv1.DailyUsage{
-			Date:             d.Date,
-			Quota:            d.Quota,
-			PromptTokens:     d.PromptTokens,
-			CompletionTokens: d.CompletionTokens,
-			CacheReadTokens:  d.CacheReadTokens,
-			Count:            d.Count,
-			ElapsedTime:      d.ElapsedTime,
+			Date:              d.Date,
+			Quota:             d.Quota,
+			PromptTokens:      d.PromptTokens,
+			CompletionTokens:  d.CompletionTokens,
+			CacheReadTokens:   d.CacheReadTokens,
+			CacheCreation_5MTokens: d.CacheCreation5mTokens,
+			CacheCreation_1HTokens: d.CacheCreation1hTokens,
+			Count:             d.Count,
+			ElapsedTime:       d.ElapsedTime,
 		}
 		totalQuota += d.Quota
 		totalPrompt += d.PromptTokens
@@ -607,6 +614,8 @@ func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.Aggr
 			PromptTokens:          b.PromptTokens,
 			CompletionTokens:      b.CompletionTokens,
 			CacheReadTokens:       b.CacheReadTokens,
+			CacheCreation_5MTokens: b.CacheCreation5mTokens,
+			CacheCreation_1HTokens: b.CacheCreation1hTokens,
 			Count:                 b.Count,
 			ElapsedTime:           b.ElapsedTime,
 		}
@@ -623,8 +632,10 @@ func (s *BillingService) AggregateUsage(ctx context.Context, req *billingv1.Aggr
 			GrossProfit:      totals.GrossProfit,
 			PromptTokens:     totals.PromptTokens,
 			CompletionTokens: totals.CompletionTokens,
-			CacheReadTokens:  totals.CacheReadTokens,
-			Count:            totals.Count,
+			CacheReadTokens:      totals.CacheReadTokens,
+			CacheCreation_5MTokens: totals.CacheCreation5mTokens,
+			CacheCreation_1HTokens: totals.CacheCreation1hTokens,
+			Count:               totals.Count,
 			ElapsedTime:      totals.ElapsedTime,
 		},
 	}, nil

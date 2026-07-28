@@ -99,6 +99,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 		req.UpstreamModelId = detail.UpstreamModelID
 		req.SourceKind = detail.SourceKind
+		req.PromptExclusive = detail.PromptExclusive
 	}
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()

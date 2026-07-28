@@ -4,33 +4,47 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/zap"
-
 	logv1 "micro-one-api/api/log/v1"
+	relaybiz "micro-one-api/internal/biz"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
+
+	"go.uber.org/zap"
 )
 
+// applyPlanInputs sets the fields derived from the relay plan that are common
+// to every usage/commit path: the v0.11.0 Phase 2 §2.2 stable upstream
+// cost-key inputs and the Phase 0/1 ADR §3.3 prompt-exclusivity flag. Callers
+// that already construct a usageLogInput should call this right after building
+// the struct literal so no code path forgets the plan-derived metadata.
+func (in *usageLogInput) applyPlanInputs(plan *relaybiz.RelayPlan) {
+	if plan == nil {
+		return
+	}
+	in.UpstreamModelID, in.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+	in.PromptExclusive = isPromptExclusiveChannel(plan)
+}
+
 type usageLogInput struct {
-	UserID                 int64
-	TokenID                int64
-	TokenName              string
-	RequestID              string
-	Endpoint               string
-	ModelName              string
-	Quota                  int64
-	PromptTokens           int64
-	CompletionTokens       int64
-	CacheReadTokens        int64
-	CacheCreation5mTokens  int64
-	CacheCreation1hTokens  int64
-	ChannelID              int64
-	SubscriptionAccountID  int64
-	Group                  string
-	SessionHash            string
-	SessionWindowLimitUSD  float64
-	ElapsedTime            int64
-	IsStream               bool
+	UserID                int64
+	TokenID               int64
+	TokenName             string
+	RequestID             string
+	Endpoint              string
+	ModelName             string
+	Quota                 int64
+	PromptTokens          int64
+	CompletionTokens      int64
+	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
+	ChannelID             int64
+	SubscriptionAccountID int64
+	Group                 string
+	SessionHash           string
+	SessionWindowLimitUSD float64
+	ElapsedTime           int64
+	IsStream              bool
 
 	// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs. Populated from
 	// the relay plan so billing can build channel:<id>:<upstream_model_id> /
@@ -38,6 +52,11 @@ type usageLogInput struct {
 	// <channel_id>:<public_model_id>.
 	UpstreamModelID string
 	SourceKind      string
+
+	// PromptExclusive (v0.11.0 Phase 0/1, ADR §3.3): true when prompt and
+	// cache_read are mutually exclusive buckets (Anthropic / GLM). Set from
+	// the channel type at the relay boundary.
+	PromptExclusive bool
 }
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
@@ -47,23 +66,23 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 	}
 	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
 	_, err := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{
-		Level:                 "consume",
-		Message:               message,
-		Source:                "relay-gateway",
-		RequestId:             in.RequestID,
-		UserId:                in.UserID,
-		TokenName:             usageTokenName(in),
-		ModelName:             in.ModelName,
-		Quota:                 in.Quota,
-		PromptTokens:          in.PromptTokens,
-		CompletionTokens:      in.CompletionTokens,
-		CacheReadTokens:         in.CacheReadTokens,
-		CacheCreation_5MTokens:  in.CacheCreation5mTokens,
-		CacheCreation_1HTokens:  in.CacheCreation1hTokens,
-		ChannelId:               in.ChannelID,
-		SubscriptionAccountId: in.SubscriptionAccountID,
-		ElapsedTime:           in.ElapsedTime,
-		IsStream:              in.IsStream,
+		Level:                  "consume",
+		Message:                message,
+		Source:                 "relay-gateway",
+		RequestId:              in.RequestID,
+		UserId:                 in.UserID,
+		TokenName:              usageTokenName(in),
+		ModelName:              in.ModelName,
+		Quota:                  in.Quota,
+		PromptTokens:           in.PromptTokens,
+		CompletionTokens:       in.CompletionTokens,
+		CacheReadTokens:        in.CacheReadTokens,
+		CacheCreation_5MTokens: in.CacheCreation5mTokens,
+		CacheCreation_1HTokens: in.CacheCreation1hTokens,
+		ChannelId:              in.ChannelID,
+		SubscriptionAccountId:  in.SubscriptionAccountID,
+		ElapsedTime:            in.ElapsedTime,
+		IsStream:               in.IsStream,
 	})
 	if err != nil && applogger.Log != nil {
 		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()

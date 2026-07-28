@@ -207,7 +207,8 @@ func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPl
 		ElapsedTime:           latency.Milliseconds(),
 		IsStream:              stream,
 	}
-	// v0.11.0 Phase 2 §2.2: thread the stable upstream cost-key inputs.
-	input.UpstreamModelID, input.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+	// v0.11.0 Phase 2 §2.2 + Phase 0/1 ADR §3.3: thread plan-derived inputs
+	// (upstream cost-key + prompt-exclusivity flag).
+	input.applyPlanInputs(plan)
 	return input
 }

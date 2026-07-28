@@ -154,6 +154,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						ElapsedTime:      time.Since(startedAt).Milliseconds(),
 						IsStream:         true,
 					}
+					logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
 					if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 						s.logPostResponseCommitError(err)
 					} else {
@@ -191,6 +192,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 							ElapsedTime:      time.Since(startedAt).Milliseconds(),
 							IsStream:         true,
 						}
+						logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
 						if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 							s.logPostResponseCommitError(err)
 						} else {
@@ -226,7 +228,8 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				ElapsedTime:      time.Since(startedAt).Milliseconds(),
 				IsStream:         true,
 			}
-			if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+			logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
+				if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
 				logUpstreamUsage(logInput)
@@ -263,6 +266,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					ElapsedTime:      time.Since(startedAt).Milliseconds(),
 					IsStream:         false,
 				}
+				logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
 				if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 					return err
 				}
@@ -305,6 +309,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						ElapsedTime:      time.Since(startedAt).Milliseconds(),
 						IsStream:         false,
 					}
+					logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
 					if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 						return err
 					}
@@ -335,6 +340,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			ElapsedTime:      time.Since(startedAt).Milliseconds(),
 			IsStream:         false,
 		}
+		logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
 		if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 			return err
 		}
@@ -474,6 +480,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 					ElapsedTime:           time.Since(startedAt).Milliseconds(),
 					IsStream:              true,
 				}
+				logInput.PromptExclusive = isPromptExclusiveChannelType(route.Channel.Type)
 				if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
 				} else {
@@ -514,6 +521,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 						ElapsedTime:           time.Since(startedAt).Milliseconds(),
 						IsStream:              true,
 					}
+					logInput.PromptExclusive = isPromptExclusiveChannelType(route.Channel.Type)
 					if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 						s.logPostResponseCommitError(err)
 					} else {
@@ -550,6 +558,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			ElapsedTime:           time.Since(startedAt).Milliseconds(),
 			IsStream:              true,
 		}
+		logInput.PromptExclusive = isPromptExclusiveChannelType(route.Channel.Type)
 		if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
 		} else {
@@ -586,6 +595,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 				ElapsedTime:           time.Since(startedAt).Milliseconds(),
 				IsStream:              false,
 			}
+			logInput.PromptExclusive = isPromptExclusiveChannelType(route.Channel.Type)
 			if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
 				return
@@ -629,6 +639,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 					ElapsedTime:           time.Since(startedAt).Milliseconds(),
 					IsStream:              false,
 				}
+				logInput.PromptExclusive = isPromptExclusiveChannelType(route.Channel.Type)
 				if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 					s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
 					return
@@ -665,6 +676,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		ElapsedTime:           time.Since(startedAt).Milliseconds(),
 		IsStream:              false,
 	}
+	logInput.PromptExclusive = isPromptExclusiveChannelType(route.Channel.Type)
 	if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
 		return

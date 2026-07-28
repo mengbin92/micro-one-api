@@ -21,7 +21,7 @@ func TestCalculateCanonicalCost_NoCreationPriceKeepsV0_10_2(t *testing.T) {
 		OutputPrice:    0.002,
 		CacheReadPrice: floatPtr(0.0001),
 	}
-	bd := calculateCanonicalCost(price, 100, 50, 10, 40, 70, 1.0)
+	bd := calculateCanonicalCost(price, 100, 50, 10, 40, 70, 1.0, false)
 	assert.Equal(t, bd.V0_10_2Cost, bd.CanonicalCost, "unpriced canonical must equal v0.10.2")
 	assert.Equal(t, int64(0), bd.ShadowCost, "unpriced shadow cost must be 0")
 	assert.True(t, bd.CacheCreationUnpriced, "must be flagged unpriced")
@@ -38,7 +38,7 @@ func TestCalculateCanonicalCost_5m1hPricingInChargeMode(t *testing.T) {
 		CacheCreation5mPrice: floatPtr(0.00125),
 		CacheCreation1hPrice: floatPtr(0.0015),
 	}
-	bd := calculateCanonicalCost(price, 100, 50, 10, 40, 70, 1.0)
+	bd := calculateCanonicalCost(price, 100, 50, 10, 40, 70, 1.0, false)
 	// input = (100-10)*0.001 = 0.09 ; cacheRead = 10*0.0001 = 0.001
 	// output = 50*0.002 = 0.1 ; creation5m = 40*0.00125 = 0.05 ; creation1h = 70*0.0015 = 0.105
 	// canonical raw = 0.09+0.001+0.1+0.05+0.105 = 0.346 ; *AmountScale(10000) = 3460
@@ -59,7 +59,7 @@ func TestCalculateCanonicalCost_OnlyOneTTLPrice(t *testing.T) {
 		CacheCreation5mPrice: floatPtr(0.00125),
 		// CacheCreation1hPrice intentionally nil
 	}
-	bd := calculateCanonicalCost(price, 100, 50, 0, 40, 70, 1.0)
+	bd := calculateCanonicalCost(price, 100, 50, 0, 40, 70, 1.0, false)
 	assert.True(t, bd.CacheCreationUnpriced, "1h tokens unpriced -> whole breakdown unpriced")
 	assert.Equal(t, bd.V0_10_2Cost, bd.CanonicalCost)
 }
@@ -182,4 +182,103 @@ func TestResolveCacheCreationMode_DefaultsObserve(t *testing.T) {
 		t.Setenv("BILLING_CACHE_CREATION_MODE", env)
 		assert.Equal(t, want, resolveCacheCreationMode(), "env=%q", env)
 	}
+}
+
+// TestCalculateCanonicalCost_AnthropicExclusiveSemantics is the P0 guard for
+// ADR §3.3: Anthropic / GLM return mutually-exclusive buckets where
+// input_tokens already EXCLUDES cache_read tokens. The pricing function must
+// NOT subtract cacheRead from prompt. This test directly contrasts the two
+// semantics and asserts the cost difference, which is exactly the
+// "最容易出错的地方" the ADR calls out.
+//
+// Scenario: Anthropic usage input_tokens=300, cache_read_input_tokens=60.
+// Correct: 300·Input + 60·CacheRead + completion·Output
+// Wrong (old bug): (300−60)·Input + 60·CacheRead -> undercharges by 60·Input
+func TestCalculateCanonicalCost_AnthropicExclusiveSemantics(t *testing.T) {
+	price := ModelPrice{
+		InputPrice:     0.001, // 1m/1tok
+		OutputPrice:    0.002,
+		CacheReadPrice: floatPtr(0.0001),
+	}
+	const prompt = int64(300)
+	const cacheRead = int64(60)
+	const completion = int64(50)
+
+	// Exclusive (Anthropic): input = 300, cacheRead priced separately.
+	exclusive := calculateCanonicalCost(price, prompt, completion, cacheRead, 0, 0, 1.0, true)
+	// input=300*0.001=0.3 ; cacheRead=60*0.0001=0.006 ; completion=50*0.002=0.1
+	// raw = 0.406 ; *AmountScale = 4060
+	assert.Equal(t, int64(4060), exclusive.V0_10_2Cost,
+		"exclusive: input=300 (no subtraction)")
+
+	// Subset (OpenAI): input = 300-60 = 240.
+	subset := calculateCanonicalCost(price, prompt, completion, cacheRead, 0, 0, 1.0, false)
+	// input=240*0.001=0.24 ; cacheRead=60*0.0001=0.006 ; completion=50*0.002=0.1
+	// raw = 0.346 ; *AmountScale = 3460
+	assert.Equal(t, int64(3460), subset.V0_10_2Cost,
+		"subset: input=240 (prompt minus cacheRead)")
+
+	// The exclusive path must charge MORE than the subset path because it
+	// prices the full 300 input tokens instead of 240.
+	assert.Greater(t, exclusive.V0_10_2Cost, subset.V0_10_2Cost,
+		"exclusive must cost more than subset when cacheRead > 0")
+
+	// The undercharge delta is exactly cacheRead*InputPrice*AmountScale.
+	delta := exclusive.V0_10_2Cost - subset.V0_10_2Cost
+	assert.Equal(t, int64(600), delta,
+		"undercharge delta = 60 tokens * 0.001 * 10000 = 600")
+}
+
+// TestCalculateCanonicalCost_AnthropicZeroCacheReadExclusive verifies that when
+// cacheRead is 0, both semantics produce the same cost (no behavioral
+// difference when there is nothing to subtract).
+func TestCalculateCanonicalCost_AnthropicZeroCacheReadExclusive(t *testing.T) {
+	price := ModelPrice{
+		InputPrice:     0.001,
+		OutputPrice:    0.002,
+		CacheReadPrice: floatPtr(0.0001),
+	}
+	exclusive := calculateCanonicalCost(price, 300, 50, 0, 0, 0, 1.0, true)
+	subset := calculateCanonicalCost(price, 300, 50, 0, 0, 0, 1.0, false)
+	assert.Equal(t, exclusive.V0_10_2Cost, subset.V0_10_2Cost,
+		"with cacheRead=0, both semantics must be identical")
+}
+
+// TestBillingUsecase_PromptExclusiveEndToEnd verifies the full pipeline
+// (service → usecase → calculateCanonicalCost) threads the PromptExclusive flag
+// from LedgerUsage through to the pricing function, so an Anthropic-style
+// request is charged correctly.
+func TestBillingUsecase_PromptExclusiveEndToEnd(t *testing.T) {
+	t.Setenv("BILLING_CACHE_CREATION_MODE", "charge")
+	account := &Account{UserID: "u1", Balance: 1_000_000, Group: "default"}
+	accountRepo := &mockAccountRepo{account: account}
+	reservationRepo := &mockReservationRepo{reservations: make(map[string]*Reservation)}
+	ledgerRepo := &mockLedgerRepo{}
+	redeemRepo := &mockRedeemRepo{}
+	uc := NewBillingUsecaseWithPricing(accountRepo, reservationRepo, ledgerRepo, redeemRepo, PricingConfig{
+		ModelPrices: map[string]ModelPrice{
+			"claude-test": {
+				InputPrice:     0.001,
+				OutputPrice:    0.002,
+				CacheReadPrice: floatPtr(0.0001),
+			},
+		},
+	})
+
+	reservation, err := uc.ReserveQuota(context.Background(), "u1", "req-exc", 1000, "claude-test", "ch1", 0)
+	require.NoError(t, err)
+	_, _, err = uc.CommitQuotaWithUsage(context.Background(), reservation.ReservationID, 1000, true, LedgerUsage{
+		PromptTokens:     300,
+		CompletionTokens: 50,
+		CacheReadTokens:  60,
+		PromptExclusive:  true, // Anthropic-style
+	})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, ledgerRepo.ledgers)
+	committed := -ledgerRepo.ledgers[len(ledgerRepo.ledgers)-1].Amount
+	// Exclusive: 300*0.001 + 60*0.0001 + 50*0.002 = 0.3+0.006+0.1 = 0.406
+	// *AmountScale = 4060
+	assert.Equal(t, int64(4060), committed,
+		"Anthropic exclusive billing must not subtract cacheRead from prompt")
 }
