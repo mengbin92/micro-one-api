@@ -447,8 +447,9 @@ services:
       - /opt/micro-one-api/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - /opt/micro-one-api/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
-    ports:
-      - "9090:9090"
+    # No host port mapping: Prometheus stays reachable only inside the
+    # backend network (grafana + admin-api reach it via http://prometheus:9090).
+    # Grafana (:3001) is the single public observability entry point.
     networks:
       - backend
     restart: unless-stopped
