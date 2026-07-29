@@ -1632,55 +1632,63 @@ type canonicalCostBreakdown struct {
 //     buckets are mutually exclusive so input = prompt and cacheRead is priced
 //     on its own — the subtraction must NOT happen (ADR §3.3 "不得相减").
 func calculateCanonicalCost(price ModelPrice, promptTokens, completionTokens, cacheReadTokens, cacheCreation5mTokens, cacheCreation1hTokens int64, multiplier float64, promptExclusive bool) canonicalCostBreakdown {
-	prompt := float64(maxInt64(promptTokens, 0))
-	cacheRead := float64(maxInt64(cacheReadTokens, 0))
-	var input float64
+	prompt := int64(maxInt64(promptTokens, 0))
+	var input int64
 	if promptExclusive {
 		// ADR §3.3: Anthropic / GLM buckets are mutually exclusive.
 		// input_tokens already excludes cached tokens; do NOT subtract.
 		input = prompt
 	} else {
 		// ADR §3.1: OpenAI subset semantics — cacheRead is part of prompt.
-		input = prompt - float64(minInt64(maxInt64(cacheReadTokens, 0), maxInt64(promptTokens, 0)))
+		input = prompt - minInt64(maxInt64(cacheReadTokens, 0), maxInt64(promptTokens, 0))
 	}
-	completion := float64(maxInt64(completionTokens, 0))
+	completion := int64(maxInt64(completionTokens, 0))
+	cacheRead := int64(maxInt64(cacheReadTokens, 0))
 	cacheReadPrice := price.InputPrice
 	if price.CacheReadPrice != nil {
 		cacheReadPrice = *price.CacheReadPrice
 	}
 
-	// v0.10.2 cost: input + cache_read + completion. No cache-creation charge.
-	v0_10_2Raw := (input*price.InputPrice + cacheRead*cacheReadPrice + completion*price.OutputPrice) * multiplier
+	// Each priced bucket is converted to quota units with math.Round, then the
+	// results are summed as integers. This keeps FMA (fused multiply-add,
+	// emitted on amd64) from accumulating sub-cent floating-point error across
+	// buckets before the final ceil. Rounding each term independently and
+	// summing in int64 makes the cost bit-for-bit deterministic across
+	// GOARCH, matching the per-token math a human would do by hand.
+	v0_10_2Cost := roundScaled(input, price.InputPrice, multiplier) +
+		roundScaled(cacheRead, cacheReadPrice, multiplier) +
+		roundScaled(completion, price.OutputPrice, multiplier)
 
 	// Canonical cost adds cache-creation charges only when priced.
-	creation5m := float64(maxInt64(cacheCreation5mTokens, 0))
-	creation1h := float64(maxInt64(cacheCreation1hTokens, 0))
-	creationRaw := v0_10_2Raw
+	creation5m := int64(maxInt64(cacheCreation5mTokens, 0))
+	creation1h := int64(maxInt64(cacheCreation1hTokens, 0))
+	canonicalCost := v0_10_2Cost
 	unpriced := false
 	if creation5m > 0 {
 		if price.CacheCreation5mPrice != nil {
-			creationRaw += creation5m * (*price.CacheCreation5mPrice) * multiplier
+			canonicalCost += roundScaled(creation5m, *price.CacheCreation5mPrice, multiplier)
 		} else {
 			unpriced = true
 		}
 	}
 	if creation1h > 0 {
 		if price.CacheCreation1hPrice != nil {
-			creationRaw += creation1h * (*price.CacheCreation1hPrice) * multiplier
+			canonicalCost += roundScaled(creation1h, *price.CacheCreation1hPrice, multiplier)
 		} else {
 			unpriced = true
 		}
 	}
 
-	v0_10_2Cost := ceilPositiveCost(v0_10_2Raw * AmountScale)
 	// Canonical cost accumulates cache-creation charges ONLY for priced
 	// buckets. An unpriced bucket (tokens > 0 but nil price) contributes zero
-	// to creationRaw and is flagged via CacheCreationUnpriced so charge-mode
-	// eligibility can gate the user charge independently. The priced buckets
-	// are never discarded: if 5m is priced but 1h is not, the 5m charge still
-	// flows into Canonical/Shadow/Upstream cost (roadmap: 5m/1h are
-	// independent optional price buckets).
-	canonicalCost := ceilPositiveCost(creationRaw * AmountScale)
+	// and is flagged via CacheCreationUnpriced so charge-mode eligibility can
+	// gate the user charge independently. The priced buckets are never
+	// discarded: if 5m is priced but 1h is not, the 5m charge still flows into
+	// Canonical/Shadow/Upstream cost (roadmap: 5m/1h are independent optional
+	// price buckets).
+	if canonicalCost < 0 {
+		canonicalCost = 0
+	}
 	return canonicalCostBreakdown{
 		V0_10_2Cost:           v0_10_2Cost,
 		CanonicalCost:         canonicalCost,
@@ -1710,29 +1718,37 @@ func (uc *BillingUsecase) CacheCreationBillingMode() CacheCreationMode {
 	return uc.cacheCreationMode
 }
 
-// ceilPositiveCost rounds a raw cost up to the nearest integer quota unit and
-// returns 0 for non-positive inputs (matches the legacy calculateModelPriceCost
-// tail).
-func ceilPositiveCost(raw float64) int64 {
+// roundScaled converts a single priced bucket (tokens*price) into integer
+// quota units (multiplied by AmountScale and the group/long-context ratio)
+// using math.Round rather than Ceil. Rounding each term independently before
+// summing keeps FMA-induced sub-ULP error from drifting across buckets, so
+// the total is bit-for-bit deterministic across GOARCH.
+func roundScaled(tokens int64, perTokenPrice, multiplier float64) int64 {
+	if tokens <= 0 || perTokenPrice <= 0 {
+		return 0
+	}
+	raw := float64(tokens) * perTokenPrice * multiplier * AmountScale
 	if raw <= 0 {
 		return 0
 	}
-	return int64(math.Ceil(raw))
+	return int64(math.Round(raw))
 }
 
 func calculateModelPriceCost(price ModelPrice, promptTokens, completionTokens, cacheReadTokens int64, multiplier float64) int64 {
-	cacheRead := float64(minInt64(maxInt64(cacheReadTokens, 0), maxInt64(promptTokens, 0)))
-	input := float64(maxInt64(promptTokens, 0)) - cacheRead
-	completion := float64(maxInt64(completionTokens, 0))
+	cacheRead := int64(minInt64(maxInt64(cacheReadTokens, 0), maxInt64(promptTokens, 0)))
+	input := int64(maxInt64(promptTokens, 0)) - cacheRead
+	completion := int64(maxInt64(completionTokens, 0))
 	cacheReadPrice := price.InputPrice
 	if price.CacheReadPrice != nil {
 		cacheReadPrice = *price.CacheReadPrice
 	}
-	cost := (input*price.InputPrice + cacheRead*cacheReadPrice + completion*price.OutputPrice) * AmountScale * multiplier
+	cost := roundScaled(input, price.InputPrice, multiplier) +
+		roundScaled(cacheRead, cacheReadPrice, multiplier) +
+		roundScaled(completion, price.OutputPrice, multiplier)
 	if cost <= 0 {
 		return 0
 	}
-	return int64(math.Ceil(cost))
+	return cost
 }
 
 // CostSourceChannel is the v0.11.0 Phase 2 §2.2 source-kind value for a
