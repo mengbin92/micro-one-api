@@ -1152,106 +1152,170 @@ func TestListAbilitiesByGroupAndModel_ExactBeatsWildcardConsistency_Memory(t *te
 }
 
 // TestSyncChannelModelMappings_CreateAutoRegistersModels verifies that creating
-// a channel with models that are absent from the registry auto-creates minimal
-// public model rows + enabled model_channel_mapping rows, so the new models
-// immediately appear in /v1/models (registry list path).
+// a channel auto-creates canonical public models and owned mappings, so the
+// registry-backed /v1/models path sees the edit immediately.
 func TestSyncChannelModelMappings_CreateAutoRegistersModels(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
 
 	ch := &biz.Channel{
-		Name:     "kimi-test",
-		Type:     1,
-		Status:   biz.ChannelStatusEnabled,
-		Group:    "default",
-		Models:   []string{"Kimi-K3", "claude-sonnet-4-6"},
-		Priority: 50,
+		Name: "kimi-test", Type: 1, Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"Kimi-K3", "claude-sonnet-4-6"}, Priority: 50,
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 
-	// Both models should now exist in the registry, canonicalised.
 	var modelRows []modelModel
 	require.NoError(t, repo.db.Order("model_id ASC").Find(&modelRows).Error)
-	require.Len(t, modelRows, 2, "two distinct models should be registered")
+	require.Len(t, modelRows, 2)
 	assert.Equal(t, "claude-sonnet-4-6", modelRows[0].ModelID)
-	assert.Equal(t, "kimi-k3", modelRows[1].ModelID, "model_id should be canonicalised")
+	assert.Equal(t, "kimi-k3", modelRows[1].ModelID)
 	assert.Equal(t, biz.ModelStatusEnabled, int(modelRows[1].Status))
-	assert.True(t, modelRows[1].IsPublic, "auto-created models must be public")
+	assert.True(t, modelRows[1].IsPublic)
 
-	// Mappings for the channel must be enabled and reference the registry PKs.
 	var mappings []modelChannelMappingModel
 	require.NoError(t, repo.db.Where("channel_id = ?", ch.ID).Order("model_id ASC").Find(&mappings).Error)
-	require.Len(t, mappings, 2, "two mappings expected")
-	for _, m := range mappings {
-		assert.True(t, m.Enabled, "mapping for enabled channel must be enabled")
-		assert.EqualValues(t, 50, m.Priority)
+	require.Len(t, mappings, 2)
+	for _, mapping := range mappings {
+		assert.True(t, mapping.Enabled)
+		assert.EqualValues(t, 50, mapping.Priority)
+		assert.Equal(t, autoChannelModelMappingConfig, mapping.Config)
+		assert.Empty(t, mapping.UpstreamModelID)
 	}
 
-	// The registry list path must surface both models.
 	got, err := repo.ListAvailableModels(ctx, "default")
 	require.NoError(t, err)
 	assert.Contains(t, got, "kimi-k3")
 	assert.Contains(t, got, "claude-sonnet-4-6")
 }
 
-// TestSyncChannelModelMappings_UpdateRemovesDroppedModels verifies that editing
-// a channel's model list removes mappings for dropped models (mirror of
-// syncAbilitiesTx rewrite semantics) while keeping newly added ones.
-func TestSyncChannelModelMappings_UpdateRemovesDroppedModels(t *testing.T) {
+func TestSyncChannelModelMappings_UnrelatedUpdatePreservesManualMappings(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
 	ch := &biz.Channel{
-		Name:     "edit-channel",
-		Type:     1,
-		Status:   biz.ChannelStatusEnabled,
-		Group:    "default",
-		Models:   []string{"gpt-4o", "glm-4.6"},
-		Priority: 10,
+		Name: "managed", Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o"}, Priority: 10,
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 
-	// Edit: drop glm-4.6, add claude-opus-4-7.
+	var primary modelModel
+	require.NoError(t, repo.db.Where("model_id = ?", "gpt-4o").First(&primary).Error)
+	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
+		ChannelID: ch.ID, ModelPK: primary.ID,
+		Enabled: false, EnabledHasValue: true, Priority: 99,
+		UpstreamModelID: "gpt-4o-upstream",
+	}))
+	extra := &biz.Model{
+		ModelID: "claude-opus-4-7", DisplayName: "Claude", Provider: "anthropic",
+		ModelType: "chat", Status: biz.ModelStatusEnabled, IsPublic: true,
+	}
+	require.NoError(t, repo.CreateModel(ctx, extra))
+	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
+		ChannelID: ch.ID, ModelPK: extra.ID,
+		Enabled: true, EnabledHasValue: true, Priority: 77,
+		Config: `{"source":"admin"}`, UpstreamModelID: "claude-upstream",
+	}))
+
+	ch.Balance = 1 // representative non-model UpdateChannel mutation
+	require.NoError(t, repo.UpdateChannel(ctx, ch))
+
+	mappings, err := repo.ListChannelMappings(ctx, ch.ID)
+	require.NoError(t, err)
+	require.Len(t, mappings, 2)
+	byModel := make(map[int64]*biz.ModelChannelMapping, len(mappings))
+	for _, mapping := range mappings {
+		byModel[mapping.ModelPK] = mapping
+	}
+	assert.False(t, byModel[primary.ID].Enabled)
+	assert.EqualValues(t, 99, byModel[primary.ID].Priority)
+	assert.Empty(t, byModel[primary.ID].Config, "empty config is still an explicitly managed mapping")
+	assert.Equal(t, "gpt-4o-upstream", byModel[primary.ID].UpstreamModelID)
+	assert.EqualValues(t, 77, byModel[extra.ID].Priority)
+	assert.Equal(t, `{"source":"admin"}`, byModel[extra.ID].Config)
+	assert.Equal(t, "claude-upstream", byModel[extra.ID].UpstreamModelID)
+}
+
+func TestSyncChannelModelMappings_ReenableRestoresVisibility(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	ch := &biz.Channel{
+		Name: "disabled", Status: biz.ChannelStatusDisabled,
+		Group: "default", Models: []string{"gpt-4o"},
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	var mapping modelChannelMappingModel
+	require.NoError(t, repo.db.Where("channel_id = ?", ch.ID).First(&mapping).Error)
+	assert.True(t, mapping.Enabled, "mapping availability must not duplicate channel status")
+	got, err := repo.ListAvailableModels(ctx, "default")
+	require.NoError(t, err)
+	assert.NotContains(t, got, "gpt-4o")
+
+	require.NoError(t, repo.ChangeStatus(ctx, ch.ID, biz.ChannelStatusEnabled))
+	got, err = repo.ListAvailableModels(ctx, "default")
+	require.NoError(t, err)
+	assert.Contains(t, got, "gpt-4o")
+}
+
+func TestSyncChannelModelMappings_EmptyUpstreamPreservesChannelResolution(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	ch := &biz.Channel{
+		Name: "mapped", Status: biz.ChannelStatusEnabled, Group: "default",
+		Models: []string{"Kimi-K3"}, ModelMapping: `{"kimi-k3":"Kimi-For-Coding"}`,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	abilities, err := repo.ListAbilitiesByGroupAndModel(ctx, "default", "kimi-k3")
+	require.NoError(t, err)
+	require.Len(t, abilities, 1)
+	assert.Equal(t, "kimi-k3", abilities[0].Model)
+	assert.Empty(t, abilities[0].UpstreamModelID,
+		"empty lets ResolveChannelModel apply channel.model_mapping and original channel.Models casing")
+}
+
+func TestSyncChannelModelMappings_UpdateRemovesOnlyOwnedMappings(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	ch := &biz.Channel{
+		Name: "edit-channel", Type: 1, Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o", "glm-4.6"}, Priority: 10,
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
 	ch.Models = []string{"gpt-4o", "claude-opus-4-7"}
 	require.NoError(t, repo.UpdateChannel(ctx, ch))
 
 	var mappings []modelChannelMappingModel
 	require.NoError(t, repo.db.Where("channel_id = ?", ch.ID).Find(&mappings).Error)
-	require.Len(t, mappings, 2, "dropped model mapping should be removed")
-
-	// Resolve which model_ids the surviving mappings point at.
+	require.Len(t, mappings, 2)
 	pks := make([]int64, 0, len(mappings))
-	for _, m := range mappings {
-		pks = append(pks, m.ModelPK)
+	for _, mapping := range mappings {
+		pks = append(pks, mapping.ModelPK)
+		assert.Equal(t, autoChannelModelMappingConfig, mapping.Config)
 	}
 	var surviving []modelModel
 	require.NoError(t, repo.db.Where("id IN ?", pks).Find(&surviving).Error)
 	gotIDs := make(map[string]bool, len(surviving))
-	for _, s := range surviving {
-		gotIDs[s.ModelID] = true
+	for _, model := range surviving {
+		gotIDs[model.ModelID] = true
 	}
-	assert.True(t, gotIDs["gpt-4o"], "kept model should remain mapped")
-	assert.True(t, gotIDs["claude-opus-4-7"], "added model should be mapped")
-	assert.False(t, gotIDs["glm-4.6"], "dropped model mapping should be gone")
+	assert.True(t, gotIDs["gpt-4o"])
+	assert.True(t, gotIDs["claude-opus-4-7"])
+	assert.False(t, gotIDs["glm-4.6"])
 }
 
-// TestSyncChannelModelMappings_SkipsWildcards verifies wildcard patterns are
-// treated as routing rules, never auto-registered as advertised models.
+// Wildcards are routing rules, not public registry model IDs.
 func TestSyncChannelModelMappings_SkipsWildcards(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	ctx := context.Background()
-
 	ch := &biz.Channel{
-		Name:   "wildcard-channel",
-		Type:   1,
-		Status: biz.ChannelStatusEnabled,
-		Group:  "default",
-		Models: []string{"claude-*", "gpt-4o"},
+		Name: "wildcard-channel", Type: 1, Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"claude-*", "gpt-4o"},
 	}
 	require.NoError(t, repo.CreateChannel(ctx, ch))
 
 	var modelRows []modelModel
 	require.NoError(t, repo.db.Find(&modelRows).Error)
-	require.Len(t, modelRows, 1, "only the concrete model should be registered")
+	require.Len(t, modelRows, 1)
 	assert.Equal(t, "gpt-4o", modelRows[0].ModelID)
 }

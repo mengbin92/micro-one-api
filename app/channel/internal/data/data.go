@@ -1488,11 +1488,12 @@ func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, 
 		if priority == 0 {
 			priority = row.SourcePriority
 		}
-		upstream := strings.TrimSpace(row.UpstreamModelID)
-		if upstream == "" {
-			upstream = row.Model
-		}
-		out = append(out, biz.Ability{Group: group, Model: row.Model, ChannelID: row.ChannelID, Enabled: true, Priority: priority, UpstreamModelID: upstream})
+		out = append(out, biz.Ability{
+			Group: group, Model: row.Model, ChannelID: row.ChannelID, Enabled: true, Priority: priority,
+			// Empty is meaningful: ResolveChannelModel must still be able to apply
+			// channel.model_mapping or preserve the exact spelling in channel.Models.
+			UpstreamModelID: strings.TrimSpace(row.UpstreamModelID),
+		})
 	}
 	return out, nil
 }
@@ -1672,13 +1673,9 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 			if priority == 0 {
 				priority = channel.Priority
 			}
-			upstream := strings.TrimSpace(mapping.UpstreamModelID)
-			if upstream == "" {
-				upstream = managed.ModelID
-			}
 			abilities = append(abilities, biz.Ability{
 				Group: group, Model: managed.ModelID, ChannelID: channel.ID,
-				Enabled: true, Priority: priority, UpstreamModelID: upstream,
+				Enabled: true, Priority: priority, UpstreamModelID: strings.TrimSpace(mapping.UpstreamModelID),
 			})
 		}
 		if len(abilities) == 0 {
@@ -1961,83 +1958,70 @@ func (r *Repository) syncAbilitiesTx(tx *gorm.DB, channel *biz.Channel) error {
 	return tx.Create(&rows).Error
 }
 
-// syncChannelModelMappingsTx mirrors syncAbilitiesTx but for the model
-// registry path: it ensures every model on the channel has an enabled
-// model_channel_mapping row (and a minimal models row when the registry is
-// missing the model), and removes mappings for models the channel no longer
-// serves. This keeps the channel-edit flow and the model-management flow
-// converging on the same data so that /v1/models sees newly added models.
-//
-// Only enabled channels produce mappings; a disabled channel's mappings are
-// disabled (not deleted) so they resurface when the channel is re-enabled.
-// Wildcard patterns ("claude-*", "*") are skipped — they are routing rules,
-// not advertised models.
-func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channel) error {
-	enabled := channel.Status == biz.ChannelStatusEnabled
+const autoChannelModelMappingConfig = `{"_managed_by":"channel_models"}`
 
-	// Collect the channel's real model names (skip wildcards).
-	wanted := make(map[string]struct{}, len(channel.Models))
-	for _, m := range channel.Models {
-		m = strings.TrimSpace(m)
-		if m == "" || strings.ContainsAny(m, "*?") {
-			continue
-		}
-		wanted[biz.NormalizeModelID(m)] = struct{}{}
+// syncChannelModelMappingsTx keeps the legacy channel.Models editor visible to
+// the managed registry without taking ownership of mappings created through
+// model management. Auto-created rows carry a private marker in config; only
+// those rows may be reprioritised or removed by later channel edits.
+//
+// Mapping enabled is always true. Channel availability is governed by
+// channels.status, so a disabled channel can be re-enabled without leaving its
+// auto-created mappings permanently disabled. Empty upstream_model_id is also
+// intentional: relay resolution then applies channel.model_mapping and finally
+// preserves the exact spelling from channel.Models.
+func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channel) error {
+	// Keep older installations usable until the registry migrations are applied.
+	if !tx.Migrator().HasTable(&modelModel{}) || !tx.Migrator().HasTable(&modelChannelMappingModel{}) {
+		return nil
 	}
 
-	// Disable+delete mappings for models no longer on the channel.
+	wanted := make(map[int64]struct{}, len(channel.Models))
+	for _, raw := range channel.Models {
+		raw = strings.TrimSpace(raw)
+		if raw == "" || strings.ContainsAny(raw, "*?") {
+			continue
+		}
+		pk, err := ensureModelRegistryRowTx(tx, biz.NormalizeModelID(raw))
+		if err != nil {
+			return err
+		}
+		wanted[pk] = struct{}{}
+	}
+
 	var existing []modelChannelMappingModel
 	if err := tx.Where("channel_id = ?", channel.ID).Find(&existing).Error; err != nil {
 		return err
 	}
+	existingByModel := make(map[int64]struct{}, len(existing))
+	now := time.Now().Unix()
+	priority := safecast.Int64ToInt32Saturating(channel.Priority)
 	for _, row := range existing {
-		var po modelModel
-		if err := tx.Where("id = ?", row.ModelPK).First(&po).Error; err != nil {
-			if !isGormNotFound(err) {
-				return err
-			}
+		existingByModel[row.ModelPK] = struct{}{}
+		if row.Config != autoChannelModelMappingConfig {
 			continue
 		}
-		if _, ok := wanted[biz.NormalizeModelID(po.ModelID)]; !ok {
+		if _, ok := wanted[row.ModelPK]; !ok {
 			if err := tx.Where("id = ?", row.ID).Delete(&modelChannelMappingModel{}).Error; err != nil {
 				return err
 			}
+			continue
+		}
+		if err := tx.Model(&modelChannelMappingModel{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
+			"enabled": true, "priority": priority, "updated_at": now,
+		}).Error; err != nil {
+			return err
 		}
 	}
 
-	// Ensure a registry row + mapping for each wanted model.
-	for canonical := range wanted {
-		pk, err := ensureModelRegistryRowTx(tx, canonical)
-		if err != nil {
-			return err
-		}
-		var row modelChannelMappingModel
-		err = tx.Where("channel_id = ? AND model_id = ?", channel.ID, pk).First(&row).Error
-		if err == nil {
-			// Existing mapping: align enabled/priority.
-			updates := map[string]interface{}{
-				"priority":   safecast.Int64ToInt32Saturating(channel.Priority),
-				"updated_at": time.Now().Unix(),
-			}
-			if enabled != row.Enabled {
-				updates["enabled"] = enabled
-			}
-			if err := tx.Model(&modelChannelMappingModel{}).Where("id = ?", row.ID).Updates(updates).Error; err != nil {
-				return err
-			}
+	for modelPK := range wanted {
+		if _, ok := existingByModel[modelPK]; ok {
 			continue
 		}
-		if !isGormNotFound(err) {
-			return err
-		}
-		// Insert new mapping (enabled mirrors channel status).
 		mapping := modelChannelMappingModel{
-			ChannelID: channel.ID,
-			ModelPK:   pk,
-			Enabled:   enabled,
-			Priority:  safecast.Int64ToInt32Saturating(channel.Priority),
-			CreatedAt: time.Now().Unix(),
-			UpdatedAt: time.Now().Unix(),
+			ChannelID: channel.ID, ModelPK: modelPK, Enabled: true,
+			Priority: priority, Config: autoChannelModelMappingConfig,
+			CreatedAt: now, UpdatedAt: now,
 		}
 		if err := tx.Create(&mapping).Error; err != nil {
 			return err
