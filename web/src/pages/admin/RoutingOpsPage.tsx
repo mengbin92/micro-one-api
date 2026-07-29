@@ -74,7 +74,7 @@ interface RoutingOpsView {
   partial?: boolean;
   errors?: string[];
   window: { start: number; end: number };
-  sources: RoutingOpsSource[];
+  sources: RoutingOpsSource[] | null; // Go nil slice marshals as null
   truncated?: boolean;
   totals: RoutingOpsTotals;
   unpriced: { routed_but_unpriced: number };
@@ -132,6 +132,9 @@ export function RoutingOpsPage() {
   }
 
   const totals = data.totals;
+  // The Go backend marshals a nil slice as `"sources":null` (zero buckets,
+  // partial failure, or svc==nil early return) — normalize before rendering.
+  const sources = data.sources ?? [];
   const channelShare =
     totals.count > 0 && totals.channel_count >= 0
       ? ((totals.channel_count / totals.count) * 100).toFixed(1)
@@ -339,7 +342,7 @@ export function RoutingOpsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {data.sources.length === 0 ? (
+          {sources.length === 0 ? (
             <EmptyState
               title="无流量数据"
               description="当前时间窗口内没有路由记录"
@@ -359,7 +362,7 @@ export function RoutingOpsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.sources.map((src, i) => (
+                {sources.map((src, i) => (
                   <TableRow key={`${src.source_kind}-${src.source_id}-${i}`}>
                     <TableCell className="font-medium">
                       <span
