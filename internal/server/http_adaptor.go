@@ -288,6 +288,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	inbound relayadaptor.Format,
 	sessionHash string,
 ) subscriptionAdaptorResult {
+	startedAt := time.Now()
 	result := subscriptionAdaptorResult{
 		statusCode: http.StatusInternalServerError,
 		write: func(w http.ResponseWriter) {
@@ -605,6 +606,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 					SessionHash:           sessionHash,
 					SessionWindowLimitUSD: sessionWindowLimitUSD,
 					IsStream:              true,
+					ElapsedTime:           time.Since(startedAt).Milliseconds(),
 				}
 				// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 				logInput.applyPlanInputs(plan)
@@ -675,6 +677,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				Group:                 plan.Auth.Group,
 				SessionHash:           sessionHash,
 				SessionWindowLimitUSD: sessionWindowLimitUSD,
+				ElapsedTime:           time.Since(startedAt).Milliseconds(),
 			}
 			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 			logInput.applyPlanInputs(plan)

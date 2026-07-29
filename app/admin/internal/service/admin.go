@@ -920,6 +920,82 @@ func (s *AdminService) ListSubscriptionAccounts(ctx context.Context, req *adminv
 	}, nil
 }
 
+// FetchSubscriptionAccountSummariesByID fetches subscription account summaries
+// for the given set of account IDs. It issues a single list RPC with a page
+// size large enough to cover all requested IDs and returns a map keyed by
+// account ID. This is used by the admin overview/cost-analysis handlers to
+// enrich top-N usage aggregates with human-readable account names, so rows
+// never fall back to bare numeric IDs or "Unknown".
+func (s *AdminService) FetchSubscriptionAccountSummariesByID(ctx context.Context, ids []int64) map[int64]*commonv1.SubscriptionAccountSummary {
+	result := make(map[int64]*commonv1.SubscriptionAccountSummary)
+	if s.channelClient == nil || len(ids) == 0 {
+		return result
+	}
+	wanted := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if id > 0 {
+			wanted[id] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return result
+	}
+	resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
+		Page:     1,
+		PageSize: int32(len(wanted)),
+	})
+	if err != nil || resp == nil {
+		return result
+	}
+	for _, account := range resp.GetAccounts() {
+		if account == nil {
+			continue
+		}
+		if wanted[account.GetId()] {
+			result[account.GetId()] = account
+		}
+	}
+	return result
+}
+
+// FetchChannelSummariesByID fetches channel summaries for the given set of
+// channel IDs. It issues a single list RPC with a page size large enough to
+// cover all requested IDs and returns a map keyed by channel ID. This is used
+// by the admin overview/cost-analysis handlers to enrich top-N usage
+// aggregates with human-readable channel names, so rows never fall back to
+// "Unknown".
+func (s *AdminService) FetchChannelSummariesByID(ctx context.Context, ids []int64) map[int64]*commonv1.ChannelSummary {
+	result := make(map[int64]*commonv1.ChannelSummary)
+	if s.channelClient == nil || len(ids) == 0 {
+		return result
+	}
+	wanted := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if id > 0 {
+			wanted[id] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return result
+	}
+	resp, err := s.channelClient.ListChannels(ctx, &channelv1.ListChannelsRequest{
+		Page:     1,
+		PageSize: int32(len(wanted)),
+	})
+	if err != nil || resp == nil {
+		return result
+	}
+	for _, ch := range resp.GetChannels() {
+		if ch == nil {
+			continue
+		}
+		if wanted[ch.GetId()] {
+			result[ch.GetId()] = ch
+		}
+	}
+	return result
+}
+
 func (s *AdminService) GetSubscriptionAccount(ctx context.Context, accountID int64) (*commonv1.SubscriptionAccountInfo, error) {
 	resp, err := s.channelClient.GetSubscriptionAccount(ctx, &channelv1.GetSubscriptionAccountRequest{AccountId: accountID})
 	if err != nil {
