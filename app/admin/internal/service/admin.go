@@ -834,7 +834,10 @@ func (s *AdminService) ListChannels(ctx context.Context, req *adminv1.AdminListC
 		Type:     req.Type,
 	})
 	if err != nil {
-		return &adminv1.AdminListChannelsResponse{Channels: []*commonv1.ChannelSummary{}, Total: 0}, nil
+		// Surface the channel-service error instead of silently returning an
+		// empty list. See ListSubscriptionAccounts for rationale.
+		applogger.Log.Error("channel-service ListChannels failed", zap.Error(err))
+		return nil, status.Error(codes.Internal, "failed to list channels")
 	}
 	return &adminv1.AdminListChannelsResponse{
 		Channels: resp.Channels,
@@ -912,7 +915,13 @@ func (s *AdminService) ListSubscriptionAccounts(ctx context.Context, req *adminv
 		Platform: req.Platform,
 	})
 	if err != nil {
-		return &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}, nil
+		// Surface the channel-service error instead of silently returning an
+		// empty list. The previous behaviour made every downstream failure
+		// (network, DB schema mismatch, panic) indistinguishable from "no
+		// accounts exist", so the admin UI showed an empty table and hid the
+		// real cause. Log and propagate so the HTTP layer maps it to 500.
+		applogger.Log.Error("channel-service ListSubscriptionAccounts failed", zap.Error(err))
+		return nil, status.Error(codes.Internal, "failed to list subscription accounts")
 	}
 	return &adminv1.AdminListSubscriptionAccountsResponse{
 		Accounts: resp.Accounts,

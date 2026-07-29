@@ -3661,9 +3661,35 @@ func handlePaymentOrderByTradeNo(w http.ResponseWriter, r *http.Request, svc *se
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"order": resp.GetOrder()}))
 }
 
+// successMessage is the union of the two proto-generated getter shapes used
+// by admin operation responses: most return GetMessage(), the legacy redeem-code
+// responses return GetErrorMessage(). writeServiceResponse needs both.
+type successMessage interface {
+	GetSuccess() bool
+	GetMessage() string
+}
+
+type successErrorMessage interface {
+	GetSuccess() bool
+	GetErrorMessage() string
+}
+
 func writeServiceResponse(w http.ResponseWriter, resp interface{}, err error) {
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	// protobuf bool fields carry json:"success,omitempty", so encoding/json
+	// omits success:false entirely. Wrap failure responses in apiResponse so
+	// the client always sees an explicit success:false. Without this, a
+	// failed create/update/delete looks like a success with no payload and the
+	// UI happily toasts "created" even though the backend rejected it.
+	if r, ok := resp.(successMessage); ok && !r.GetSuccess() {
+		writeJSON(w, http.StatusOK, apiResponse(false, r.GetMessage(), resp))
+		return
+	}
+	if r, ok := resp.(successErrorMessage); ok && !r.GetSuccess() {
+		writeJSON(w, http.StatusOK, apiResponse(false, r.GetErrorMessage(), resp))
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
