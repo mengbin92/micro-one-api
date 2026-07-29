@@ -45,6 +45,13 @@ func (c orchestratorChannelClient) SelectChannel(_ context.Context, _, _ string,
 	}, nil
 }
 
+func (c orchestratorChannelClient) SelectChannelExcluding(_ context.Context, _, _ string, excluded map[int64]bool) (*relaybiz.Channel, error) {
+	if excluded[11] {
+		return nil, fmt.Errorf("no channel")
+	}
+	return c.SelectChannel(context.Background(), "", "", false)
+}
+
 func (c orchestratorChannelClient) RecordChannelHealth(_ context.Context, _ int64, _ bool, _ string, _ int64) error {
 	return nil
 }

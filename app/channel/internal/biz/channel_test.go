@@ -787,6 +787,70 @@ func TestChannelUsecase_SelectChannel_ExcludeFirstPriority(t *testing.T) {
 	}
 }
 
+// TestChannelUsecase_SelectChannelExcluding_WalksLowerTiers is the regression
+// test for the v0.11.0 failover bug: when the just-failed channel is excluded,
+// selection must continue into healthy lower tiers instead of giving up.
+func TestChannelUsecase_SelectChannelExcluding_WalksLowerTiers(t *testing.T) {
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{
+			1: {ID: 1, Name: "channel-1", Status: ChannelStatusEnabled, Priority: 10},
+			2: {ID: 2, Name: "channel-2", Status: ChannelStatusEnabled, Priority: 5},
+			3: {ID: 3, Name: "channel-3", Status: ChannelStatusEnabled, Priority: 1},
+		},
+		abilities: map[string][]Ability{
+			"default:gpt-4o-mini": {
+				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
+				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 5},
+				{Group: "default", Model: "gpt-4o-mini", ChannelID: 3, Enabled: true, Priority: 1},
+			},
+		},
+	}
+	uc := NewChannelUsecase(repo, nil)
+
+	// Tiers 10 and 5 both failed in this request: tier 1 must still serve.
+	channel, err := uc.SelectChannelExcluding(context.Background(), "default", "gpt-4o-mini", map[int64]bool{1: true, 2: true})
+	if err != nil {
+		t.Fatalf("SelectChannelExcluding() error = %v", err)
+	}
+	if channel.ID != 3 {
+		t.Fatalf("expected channel-3 (ID=3), got ID=%d", channel.ID)
+	}
+
+	// All channels excluded: must report not-found, not hang or misroute.
+	if _, err := uc.SelectChannelExcluding(context.Background(), "default", "gpt-4o-mini", map[int64]bool{1: true, 2: true, 3: true}); err == nil {
+		t.Fatal("expected error when every channel is excluded")
+	}
+}
+
+// TestChannelUsecase_SelectChannelExcluding_KeepsTierSiblings verifies that
+// excluding one channel does not skip its whole tier (unlike
+// excludeFirstPriority): a healthy sibling at the same priority still serves.
+func TestChannelUsecase_SelectChannelExcluding_KeepsTierSiblings(t *testing.T) {
+	repo := &mockChannelRepo{
+		channels: map[int64]*Channel{
+			1: {ID: 1, Name: "channel-1", Status: ChannelStatusEnabled, Priority: 10},
+			2: {ID: 2, Name: "channel-2", Status: ChannelStatusEnabled, Priority: 10},
+		},
+		abilities: map[string][]Ability{
+			"default:gpt-4o-mini": {
+				{Group: "default", Model: "gpt-4o-mini", ChannelID: 1, Enabled: true, Priority: 10},
+				{Group: "default", Model: "gpt-4o-mini", ChannelID: 2, Enabled: true, Priority: 10},
+			},
+		},
+	}
+	uc := NewChannelUsecase(repo, nil)
+
+	for i := 0; i < 8; i++ {
+		channel, err := uc.SelectChannelExcluding(context.Background(), "default", "gpt-4o-mini", map[int64]bool{1: true})
+		if err != nil {
+			t.Fatalf("iter %d: SelectChannelExcluding() error = %v", i, err)
+		}
+		if channel.ID != 2 {
+			t.Fatalf("iter %d: expected channel-2 (ID=2), got ID=%d", i, channel.ID)
+		}
+	}
+}
+
 func TestChannelUsecase_SelectChannel_FilterDisabled(t *testing.T) {
 	repo := &mockChannelRepo{
 		channels: map[int64]*Channel{

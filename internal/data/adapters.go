@@ -130,9 +130,33 @@ func (a *ChannelAdapter) SelectChannel(ctx context.Context, group, model string,
 	if err != nil {
 		return nil, err
 	}
-	ch := reply.Channel
+	return channelInfoToRelayChannel(reply.Channel), nil
+}
+
+// SelectChannelExcluding passes the request-scoped failed-channel set through
+// to the channel service, which filters candidates individually so failover
+// can reach healthy channels in any tier.
+func (a *ChannelAdapter) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*relaybiz.Channel, error) {
+	ids := make([]int64, 0, len(excluded))
+	for id, blocked := range excluded {
+		if blocked {
+			ids = append(ids, id)
+		}
+	}
+	reply, err := a.client.SelectChannel(ctx, &channelv1.SelectChannelRequest{
+		Group:              group,
+		Model:              model,
+		ExcludedChannelIds: ids,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return channelInfoToRelayChannel(reply.Channel), nil
+}
+
+func channelInfoToRelayChannel(ch *commonv1.ChannelInfo) *relaybiz.Channel {
 	if ch == nil {
-		return nil, nil
+		return nil
 	}
 	relayChannel := &relaybiz.Channel{
 		ID:              ch.Id,
@@ -152,7 +176,7 @@ func (a *ChannelAdapter) SelectChannel(ctx context.Context, group, model string,
 	if ch.Config != nil {
 		relayChannel.Config.APIVersion = ch.Config.ApiVersion
 	}
-	return relayChannel, nil
+	return relayChannel
 }
 
 func (a *ChannelAdapter) RecordChannelHealth(ctx context.Context, channelID int64, success bool, message string, responseTime int64) error {

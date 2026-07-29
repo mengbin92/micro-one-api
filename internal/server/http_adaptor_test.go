@@ -1051,6 +1051,10 @@ func (c *adaptorFailoverChannelClient) SelectChannel(context.Context, string, st
 	return nil, errors.New("no api-key channel")
 }
 
+func (c *adaptorFailoverChannelClient) SelectChannelExcluding(context.Context, string, string, map[int64]bool) (*relaybiz.Channel, error) {
+	return nil, errors.New("no api-key channel")
+}
+
 func (c *adaptorFailoverChannelClient) RecordSubscriptionAccountHealth(_ context.Context, accountID int64, success bool) error {
 	c.health = append(c.health, accountHealthOutcome{accountID: accountID, success: success})
 	return nil

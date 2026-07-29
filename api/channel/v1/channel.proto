@@ -94,6 +94,11 @@ message SelectChannelRequest {
   string group = 1;
   string model = 2;
   bool exclude_first_priority = 3;
+  // Channels that already failed in the current request; the selector filters
+  // them out individually (per candidate, not per tier) so failover can still
+  // walk healthy channels in any tier. Supersedes exclude_first_priority for
+  // callers that track per-request failures.
+  repeated int64 excluded_channel_ids = 4;
 }
 
 message SelectChannelReply {

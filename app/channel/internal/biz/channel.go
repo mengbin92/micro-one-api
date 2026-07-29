@@ -475,6 +475,60 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 	return nil, ErrChannelNotFound
 }
 
+// SelectChannelExcluding selects a channel for group+model while filtering out
+// the given channel IDs individually (per candidate, not per tier), so
+// request-scoped failover can walk past failed channels into any remaining
+// tier — SelectChannel(excludeFirstPriority=true) skips the entire top tier
+// and a post-hoc exclusion check would strand healthy lower tiers. Mirrors
+// sub2api's SelectAccountForModelWithExclusions. Unlike SelectChannel it never
+// widens to catch-all channels: failover must not silently route unregistered
+// models.
+func (uc *ChannelUsecase) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error) {
+	abilities, err := uc.repo.ListAbilitiesByGroupAndModel(ctx, group, model)
+	if err != nil {
+		return nil, err
+	}
+	if len(abilities) == 0 {
+		return nil, ErrChannelNotFound
+	}
+	sort.Slice(abilities, func(i, j int) bool {
+		return abilities[i].Priority > abilities[j].Priority
+	})
+	for i := 0; i < len(abilities); {
+		priority := abilities[i].Priority
+		tier := make([]*Channel, 0)
+		for i < len(abilities) && abilities[i].Priority == priority {
+			ability := abilities[i]
+			i++
+			if excluded[ability.ChannelID] {
+				continue
+			}
+			channel, err := uc.repo.FindByID(ctx, ability.ChannelID)
+			if err != nil {
+				continue
+			}
+			if channel.SelectableAt(uc.now()) {
+				channel.UpstreamModelID = ability.UpstreamModelID
+				tier = append(tier, channel)
+			}
+		}
+		if len(tier) == 0 {
+			continue
+		}
+		selected, err := uc.selector.Select(ctx, group, tier)
+		if err != nil {
+			return nil, err
+		}
+		for _, channel := range tier {
+			if channel.ID == selected.ID {
+				return channel, nil
+			}
+		}
+	}
+
+	return nil, ErrChannelNotFound
+}
+
 // selectUnrestrictedChannel is the RestrictModels=false fallback: when no
 // abilities row matches, route to an enabled catch-all channel in the group.
 // Catch-all channels are selected by the same WeightedSelector as the normal

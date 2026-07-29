@@ -26,6 +26,10 @@ func (*wsStickySubscriptionClient) SelectChannel(context.Context, string, string
 	return nil, errors.New("no ordinary channel")
 }
 
+func (*wsStickySubscriptionClient) SelectChannelExcluding(context.Context, string, string, map[int64]bool) (*relaybiz.Channel, error) {
+	return nil, errors.New("no ordinary channel")
+}
+
 func (*wsStickySubscriptionClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
 	return nil
 }

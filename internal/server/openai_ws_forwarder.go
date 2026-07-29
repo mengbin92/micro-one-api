@@ -571,7 +571,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 
 		// Acquire a (possibly pooled) upstream connection.
-		pooledConn, err := s.acquireOpenAIWSUpstreamConn(ctx, currentChannel.ID, wsURL, headers)
+		pooledConn, err := s.acquireOpenAIWSUpstreamConn(ctx, currentChannel, wsURL, headers)
 		if err != nil {
 			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, err.Error(), time.Since(attemptStartedAt).Milliseconds())
 			// Dial failed. Try failover if we haven't exhausted switches.
@@ -768,12 +768,22 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 	}
 }
 
+// openAIWSPoolKey returns the namespace-safe pool key for a routing source.
+// Channel IDs and subscription account IDs are independent namespaces, so the
+// key must carry the kind — otherwise channel #5 and subscription account #5
+// would share pooled connections across credentials/upstreams.
+func openAIWSPoolKey(ch *relaybiz.Channel) string {
+	id := relaybiz.RoutingSourceIdentityForChannel(ch)
+	return fmt.Sprintf("%s:%d", id.Kind.String(), id.ID)
+}
+
 // acquireOpenAIWSUpstreamConn returns a usable upstream connection. It prefers
-// the connection pool (reusing idle conns for the channel) and falls back to a
+// the connection pool (reusing idle conns for the source) and falls back to a
 // direct dial when the pool is disabled (e.g. in tests).
-func (s *HTTPServer) acquireOpenAIWSUpstreamConn(ctx context.Context, channelID int64, wsURL string, headers http.Header) (*openAIWSPooledConn, error) {
+func (s *HTTPServer) acquireOpenAIWSUpstreamConn(ctx context.Context, ch *relaybiz.Channel, wsURL string, headers http.Header) (*openAIWSPooledConn, error) {
+	poolKey := openAIWSPoolKey(ch)
 	if s.wsPool != nil {
-		return s.wsPool.AcquireOrDial(ctx, channelID, wsURL, headers)
+		return s.wsPool.AcquireOrDial(ctx, poolKey, wsURL, headers)
 	}
 	// Pool disabled: dial directly.
 	dialer := newCoderWSUpstreamDialer()
@@ -784,7 +794,7 @@ func (s *HTTPServer) acquireOpenAIWSUpstreamConn(ctx context.Context, channelID 
 		_ = statusCode
 		return nil, err
 	}
-	pc := &openAIWSPooledConn{conn: conn, channelID: channelID, lastUsedAt: time.Now()}
+	pc := &openAIWSPooledConn{conn: conn, poolKey: poolKey, fingerprint: openAIWSConnFingerprint(wsURL, headers), lastUsedAt: time.Now()}
 	pc.inUse.Store(true)
 	return pc, nil
 }

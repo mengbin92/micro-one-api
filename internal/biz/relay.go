@@ -35,6 +35,11 @@ type IdentityClient interface {
 
 type ChannelClient interface {
 	SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error)
+	// SelectChannelExcluding filters the given channel IDs out of selection
+	// individually (per candidate, not per tier) so request-scoped failover can
+	// reach healthy channels in any tier. Mirrors sub2api's
+	// SelectAccountForModelWithExclusions.
+	SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error)
 	RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error
 	// RecordSubscriptionAccountHealth feeds a real upstream outcome into the
 	// subscription-account selector so health and circuit state track live
@@ -1011,19 +1016,20 @@ func (uc *RelayUsecase) SelectFallbackRoutingSource(
 	var channel *Channel
 	var channelErr error
 	if uc.channel != nil {
-		excludeFirstPriority := false
+		// Pass the request-scoped failures into selection as a filter so a
+		// just-failed channel is never re-returned and healthy channels in any
+		// tier stay reachable. (Post-hoc exclusion after SelectChannel would
+		// strand lower tiers: the selector can keep returning the same failed
+		// channel while it remains selectable below the circuit threshold.)
+		excludedChannels := make(map[int64]bool)
 		for source, blocked := range excluded {
-			if blocked && source.Kind == UpstreamRouteChannel {
-				excludeFirstPriority = true
-				break
+			if blocked && source.Kind == UpstreamRouteChannel && source.ID > 0 {
+				excludedChannels[source.ID] = true
 			}
 		}
-		channel, channelErr = uc.channel.SelectChannel(ctx, group, clientModel, excludeFirstPriority)
+		channel, channelErr = uc.channel.SelectChannelExcluding(ctx, group, clientModel, excludedChannels)
 		if channelErr != nil && resolvedModel != clientModel {
-			channel, channelErr = uc.channel.SelectChannel(ctx, group, resolvedModel, excludeFirstPriority)
-		}
-		if channel != nil && excluded[RoutingSourceIdentityForChannel(channel)] {
-			channel = nil
+			channel, channelErr = uc.channel.SelectChannelExcluding(ctx, group, resolvedModel, excludedChannels)
 		}
 	}
 

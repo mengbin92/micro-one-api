@@ -108,7 +108,19 @@ func (s *ChannelService) GetSubscriptionAccountWithSecrets(ctx context.Context, 
 }
 
 func (s *ChannelService) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest) (*channelv1.SelectChannelReply, error) {
-	channel, err := s.uc.SelectChannel(ctx, req.Group, req.Model, req.ExcludeFirstPriority)
+	var channel *biz.Channel
+	var err error
+	if len(req.ExcludedChannelIds) > 0 {
+		// Per-request failover: filter failed channels individually so healthy
+		// channels in any tier remain reachable (supersedes ExcludeFirstPriority).
+		excluded := make(map[int64]bool, len(req.ExcludedChannelIds))
+		for _, id := range req.ExcludedChannelIds {
+			excluded[id] = true
+		}
+		channel, err = s.uc.SelectChannelExcluding(ctx, req.Group, req.Model, excluded)
+	} else {
+		channel, err = s.uc.SelectChannel(ctx, req.Group, req.Model, req.ExcludeFirstPriority)
+	}
 	if err != nil {
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr
