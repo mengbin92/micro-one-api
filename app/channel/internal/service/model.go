@@ -8,6 +8,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/pkg/errors"
+	"micro-one-api/pkg/safecast"
 )
 
 // ── DTO ↔ DO conversion helpers ────────────────────────────────────────────
@@ -670,6 +671,6 @@ func (s *ChannelService) ListUnpricedRoutedModels(ctx context.Context, req *chan
 	}
 	return &channelv1.ListUnpricedRoutedModelsResponse{
 		Models: out,
-		Total:  int32(len(out)),
+		Total:  safecast.IntToInt32Saturating(len(out)),
 	}, nil
 }
