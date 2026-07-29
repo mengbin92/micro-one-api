@@ -432,9 +432,60 @@ services:
     cap_add:
       - NET_BIND_SERVICE
 
+  # ────────────── Monitoring (Prometheus + Grafana) ──────────────
+
+  prometheus:
+    image: prom/prometheus:v3.6.0
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+      - "--web.listen-address=:9090"
+    volumes:
+      - /opt/micro-one-api/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/micro-one-api/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  grafana:
+    image: grafana/grafana-oss:12.4.3
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_HTTP_PORT=3000
+    volumes:
+      - /opt/micro-one-api/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /opt/micro-one-api/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+
 volumes:
   mysql_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   backend:

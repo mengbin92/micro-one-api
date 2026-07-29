@@ -1,0 +1,41 @@
+# Prometheus configuration for micro-one-api
+# Scrapes all backend services' /metrics endpoints over the backend network.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: "micro-one-api"
+
+# Alert rules shipped alongside this config (deploy/prometheus/alerts/alerts.yml).
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    # No Alertmanager deployed yet; alert rules still compute and are visible
+    # in the Prometheus UI ("Alerts" tab) for ops visibility.
+    []
+
+scrape_configs:
+  # ── micro-one-api services (all expose /metrics on their HTTP port) ──
+  - job_name: "micro-one-api"
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - "relay-gateway:8080"
+          - "admin-api:8000"
+          - "identity-service:8001"
+          - "channel-service:8002"
+          - "billing-service:8004"
+          - "config-service:8005"
+          - "log-service:8006"
+          - "monitor-worker:8007"
+          - "notify-worker:8008"
+        labels:
+          stack: "micro-one-api"
+
+  # ── Prometheus self-monitoring ──
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
