@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.11.0 发布公告](./docs/releases/release-v0.11.0.md)（cache_creation 全链路计费 + 模型数据治理 + 路由运营闭环） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.11.0)
+> 📣 **最新发布**：[v0.12.0 发布公告](./docs/releases/release-v0.12.0.md)（v0.11.0 生产加固 + 路由可靠性 + 可观测性监控栈） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.12.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.12.0
+
+v0.12.0 是 v0.11.0 发版后的生产加固与功能补全版本：落地代码评审报告的全部 CRITICAL/HIGH/MEDIUM/LOW 缺陷，采纳 sub2api 对比的四项更优实现（边缘桶归一、分桶成本持久化、请求级排除集+预计算候选顺序、负载感知选择接线），新增 Prometheus + Grafana 可观测性监控栈，并修复订阅账号创建三层 bug、amd64 FMA 计费漂移、渠道模型注册表自动同步等问题。**包含数据库迁移**（`070`–`071`，均 additive、幂等可重入；迁移归属已在 `ownership.yaml` 中补全）；新增监控容器（prometheus + grafana），如不需要可注释；新增可选 `PROMETHEUS_URL` 配置。无 API 破坏性变更，proto 字段全为 additive；开发者需执行 `make init && make proto` 重新生成代码。详见 [docs/releases/release-v0.12.0.md](./docs/releases/release-v0.12.0.md)。
 
 ### 升级到 v0.11.0
 
