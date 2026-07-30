@@ -302,3 +302,52 @@ func TestBillingUsecase_PromptExclusiveEndToEnd(t *testing.T) {
 	assert.Equal(t, int64(4060), committed,
 		"Anthropic exclusive billing must not subtract cacheRead from prompt")
 }
+
+// TestBillingUsecase_PerBucketCostsPersisted verifies that the per-bucket
+// cost breakdown is written to the ledger row(s) so observe-mode shadow cost
+// can be reconciled against vendor invoices later.
+func TestBillingUsecase_PerBucketCostsPersisted(t *testing.T) {
+	t.Setenv("BILLING_CACHE_CREATION_MODE", "observe")
+	account := &Account{UserID: "u1", Balance: 1_000_000, Group: "default"}
+	accountRepo := &mockAccountRepo{account: account}
+	reservationRepo := &mockReservationRepo{reservations: make(map[string]*Reservation)}
+	ledgerRepo := &mockLedgerRepo{}
+	redeemRepo := &mockRedeemRepo{}
+	uc := NewBillingUsecaseWithPricing(accountRepo, reservationRepo, ledgerRepo, redeemRepo, PricingConfig{
+		ModelPrices: map[string]ModelPrice{
+			"glm-5.2": {
+				InputPrice:           0.001,
+				OutputPrice:          0.002,
+				CacheReadPrice:       floatPtr(0.0001),
+				CacheCreation5mPrice: floatPtr(0.00125),
+				CacheCreation1hPrice: floatPtr(0.0015),
+			},
+		},
+	})
+
+	reservation, err := uc.ReserveQuota(context.Background(), "u1", "req-cost", 1000, "glm-5.2", "ch1", 0)
+	require.NoError(t, err)
+	_, _, err = uc.CommitQuotaWithUsage(context.Background(), reservation.ReservationID, 1000, true, LedgerUsage{
+		PromptTokens:          100,
+		CompletionTokens:      50,
+		CacheReadTokens:       10,
+		CacheCreation5mTokens: 40,
+		CacheCreation1hTokens: 70,
+	})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, ledgerRepo.ledgers)
+	l := ledgerRepo.ledgers[len(ledgerRepo.ledgers)-1]
+	// input = (100-10)*0.001 = 0.09 -> 900
+	assert.Equal(t, int64(900), l.PromptCost)
+	// cacheRead = 10*0.0001 = 0.001 -> 10
+	assert.Equal(t, int64(10), l.CacheReadCost)
+	// completion = 50*0.002 = 0.1 -> 1000
+	assert.Equal(t, int64(1000), l.CompletionCost)
+	// creation5m = 40*0.00125 = 0.05 -> 500
+	assert.Equal(t, int64(500), l.CacheCreation5mCost)
+	// creation1h = 70*0.0015 = 0.105 -> 1050
+	assert.Equal(t, int64(1050), l.CacheCreation1hCost)
+	// shadow = canonical - v0_10_2 = (900+10+1000+500+1050) - (900+10+1000) = 1550
+	assert.Equal(t, int64(1550), l.ShadowCost)
+}

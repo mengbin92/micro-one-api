@@ -267,6 +267,13 @@ message LedgerEntry {
   // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
   int64 cache_creation_5m_tokens = 25;  // 写入 5 分钟 TTL cache 的 token
   int64 cache_creation_1h_tokens = 26;  // 写入 1 小时 TTL cache 的 token
+  // v0.11.0 Phase 2 sub2api #9: per-bucket costs for audit / reconciliation.
+  int64 prompt_cost = 27;
+  int64 completion_cost = 28;
+  int64 cache_read_cost = 29;
+  int64 cache_creation_5m_cost = 30;
+  int64 cache_creation_1h_cost = 31;
+  int64 shadow_cost = 32;
 }
 
 // ========== 流水信息（管理端视图）==========

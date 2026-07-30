@@ -9,8 +9,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"micro-one-api/platform/metrics"
 	"micro-one-api/pkg/safecast"
+	"micro-one-api/platform/metrics"
 )
 
 // AccountConcurrencyLimiter caps the number of in-flight relay requests per
@@ -109,6 +109,7 @@ type accountConcurrencyRedis interface {
 	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
 	ZRem(ctx context.Context, key string, members ...any) *redis.IntCmd
 	ZCard(ctx context.Context, key string) *redis.IntCmd
+	ZCount(ctx context.Context, key, min, max string) *redis.IntCmd
 }
 
 // RedisAccountConcurrencyLimiter shares subscription-account concurrency across
@@ -201,7 +202,13 @@ func (l *RedisAccountConcurrencyLimiter) Inflight(ctx context.Context, accountID
 	}
 	rCtx, cancel := context.WithTimeout(ctx, l.timeout)
 	defer cancel()
-	n, err := l.rdb.ZCard(rCtx, l.key(accountID)).Result()
+	// L1 fix: count only members whose lease score is still in the future.
+	// The acquire Lua only reaps expired members on the write path, so ZCARD
+	// would include dead leases from crashed replicas for up to one leaseTTL.
+	// ZCOUNT key now +inf excludes expired-but-unreaped members, matching the
+	// channel-side LoadOracle semantics.
+	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	n, err := l.rdb.ZCount(rCtx, l.key(accountID), now, "+inf").Result()
 	if err != nil {
 		metrics.RelayAccountConcurrencyFallbackTotal.WithLabelValues("count_error").Inc()
 		return 0

@@ -105,7 +105,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	var responseChannel *relaybiz.Channel
 	retryStartedAt := time.Now()
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithCandidates(r.Context(), plan, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		requestID := generateRequestID()
 		// re-apply the retried channel's per-channel model mapping so

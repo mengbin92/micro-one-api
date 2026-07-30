@@ -347,7 +347,19 @@ func (s *ChannelService) ListChannels(ctx context.Context, req *channelv1.ListCh
 }
 
 func (s *ChannelService) SelectSubscriptionAccount(ctx context.Context, req *channelv1.SelectSubscriptionAccountRequest) (*channelv1.SelectSubscriptionAccountReply, error) {
-	account, err := s.uc.SelectSubscriptionAccount(ctx, req.Group, req.Model, req.Platform, req.ExcludeFirstPriority)
+	var account *biz.SubscriptionAccount
+	var err error
+	if len(req.ExcludedAccountIds) > 0 {
+		excluded := make(map[int64]bool, len(req.ExcludedAccountIds))
+		for _, id := range req.ExcludedAccountIds {
+			if id > 0 {
+				excluded[id] = true
+			}
+		}
+		account, err = s.uc.SelectSubscriptionAccountExcluding(ctx, req.Group, req.Model, req.Platform, excluded)
+	} else {
+		account, err = s.uc.SelectSubscriptionAccount(ctx, req.Group, req.Model, req.Platform, req.ExcludeFirstPriority)
+	}
 	if err != nil {
 		mappedErr := errors.MapChannelError(err)
 		return nil, mappedErr

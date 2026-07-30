@@ -95,6 +95,14 @@ message CommitQuotaRequest {
   // API). The billing function must NOT subtract cache_read from prompt. When
   // false (default, OpenAI subset), cache_read is a subset of prompt.
   bool prompt_exclusive = 18;
+  // v0.11.0 Phase 2 sub2api #9: optional per-bucket cost overrides. When
+  // omitted, billing-service computes them from configured prices.
+  int64 prompt_cost = 19;
+  int64 completion_cost = 20;
+  int64 cache_read_cost = 21;
+  int64 cache_creation_5m_cost = 22;
+  int64 cache_creation_1h_cost = 23;
+  int64 shadow_cost = 24;
 }
 
 message CommitQuotaResponse {

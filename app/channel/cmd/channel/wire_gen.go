@@ -84,6 +84,8 @@ func newApp(
 	svc.SetModelRoutingUsecase(routingUC)
 	uc.SetModelRoutingRepo(repo)
 
+	uc.SetLoadOracle(data.NewRedisLoadOracle(repo.Redis()))
+
 	modelUC.SetCacheInvalidator(uc)
 	svc.SyncExistingChannelModels(context.Background())
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)

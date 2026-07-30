@@ -124,17 +124,17 @@ func TestRelayOrchestratorForwardsNonStreamResponse(t *testing.T) {
 }
 
 type recordingLifecycleHooks struct {
-	reserved  Usage
-	committed Usage
-	logged    Usage
+	reserved  relaybiz.CanonicalUsage
+	committed relaybiz.CanonicalUsage
+	logged    relaybiz.CanonicalUsage
 }
 
-func (h *recordingLifecycleHooks) ReserveQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, estimated Usage) (*Reservation, error) {
+func (h *recordingLifecycleHooks) ReserveQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, estimated relaybiz.CanonicalUsage) (*Reservation, error) {
 	h.reserved = estimated
 	return &Reservation{ID: "reservation-1"}, nil
 }
 
-func (h *recordingLifecycleHooks) CommitQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, _ *Reservation, usage Usage, _ bool, _ time.Duration) error {
+func (h *recordingLifecycleHooks) CommitQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, _ *Reservation, usage relaybiz.CanonicalUsage, _ bool, _ time.Duration) error {
 	h.committed = usage
 	return nil
 }
@@ -143,7 +143,7 @@ func (h *recordingLifecycleHooks) ReleaseQuota(_ context.Context, _ *Reservation
 	return nil
 }
 
-func (h *recordingLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, usage Usage, _ time.Duration, _ bool) {
+func (h *recordingLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, usage relaybiz.CanonicalUsage, _ time.Duration, _ bool) {
 	h.logged = usage
 }
 

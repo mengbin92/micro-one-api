@@ -73,7 +73,7 @@
 9. **分桶成本持久化**:sub2api 每个 usage 行存 `cache_creation_cost`/`cache_read_cost`,供应商账单对账是一条 SQL;我们只落 token 数和总额,shadow cost 只在日志+histogram — observe 模式的"与供应商账单比对再切 charge"闭环无法从持久数据重建。
 10. **未定价 cache creation 不 fail-open 到 $0**:sub2api 有硬编码兜底价+派生规则(input×1.25);我们 charge 模式下未定价桶按 0 提交,ratio 定价模型甚至完全不收 creation 费。
 11. **粘性路由再验证**:sub2api 每次查找 sticky/stored route 都重校验(状态/熔断/模型能力/配额)并删除过期绑定(`openai_ws_forwarder_support.go:450-546`);我们 channel 类绑定只 `GetChannel` 不查状态,已禁用/熔断渠道仍服务续传流量。
-12. **负载感知是真接线的**:sub2api 调度热路径用 Redis 并发槽批量取实时负载(`openai_account_scheduler.go:1378-1392`);我们的 Acquire/Release/loadFactor(`app/channel/internal/biz/account_selector.go:105-114`)目前是死代码,没有任何 relay 分发路径调用 — v0.11.0 的"负载感知选择"实际零保护。
+12. **负载感知是真接线的**:sub2api 调度热路径用 Redis 并发槽批量取实时负载(`openai_account_scheduler.go:1378-1392`);~~我们的 Acquire/Release/loadFactor(`app/channel/internal/biz/account_selector.go:105-114`)目前是死代码,没有任何 relay 分发路径调用 — v0.11.0 的"负载感知选择"实际零保护。~~ 已修复(Phase D #12):`SubscriptionAccountSelector` 通过 `LoadOracle`(Redis ZSet `subscription_account:concurrency:<id>` 的 ZCARD)在每次 `Select` 时刷新跨副本 in-flight 快照,`loadFactor` 按相对 `inflight/maxConcurrent` 比例分档降权(100/80/50/20/1);channel 侧 `WeightedSelector` 新增同构 `loadFactor`,利用其在进程内自有的 in-flight 生命周期(Select 增/RecordHealth 减)。见 [review-v0.11.0-fixes.md](review-v0.11.0-fixes.md) §第二阶段 Phase D。
 13. **写入期拒绝重叠模型模式**:sub2api 在渠道创建/更新时拒绝 `claude-*` 与 `claude-opus-4` 这类重叠(`channel_service.go:973-1028`);我们静默接受,registry auto-sync 再静默跳过通配符条目(`app/channel/internal/data/data.go:1982`),纯通配符渠道会产生零 registry 行且无任何告警。
 
 ---
@@ -83,5 +83,7 @@
 | 优先级 | 项 | 状态 |
 |---|---|---|
 | 立即 | C1(前端白屏)、H1(WS 池串号)、H2(故障转移失效)、H3/H4(告警永不触发) | ✅ 已修复,见 [review-v0.11.0-fixes.md](review-v0.11.0-fixes.md) |
-| 本迭代 | M1-M6、L1-L7 | ⏳ 待排期 |
-| 规划采纳 | sub2api 对比 #2(请求级排除集+预计算顺序)、#6(边缘桶归一)、#9(分桶成本持久化 — charge 切换前必须)、#12(负载感知接线) | 📋  roadmap |
+| 本迭代 | M1-M6、L1-L7 | ✅ 已修复,见提交 `6203936` |
+| 规划采纳 | sub2api #6(边缘桶归一) | ✅ 已完成,见 [review-v0.11.0-fixes.md](review-v0.11.0-fixes.md) §第二阶段 |
+| 规划采纳 | sub2api #9(分桶成本持久化 — charge 切换前必须) | ✅ 已完成,见 [review-v0.11.0-fixes.md](review-v0.11.0-fixes.md) §第二阶段 |
+| 规划采纳 | sub2api #2(请求级排除集+预计算顺序)、#12(负载感知接线) | ✅ 已完成,见 [review-v0.11.0-fixes.md](review-v0.11.0-fixes.md) §第二阶段 |

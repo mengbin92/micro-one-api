@@ -314,3 +314,92 @@ func TestWeightedSelector_ExcludesOpenCircuitFromTotalWeight(t *testing.T) {
 		t.Fatalf("eligible channel current weight = %d, want 0; open circuits must not contribute to total weight", got)
 	}
 }
+
+// TestWeightedSelector_LoadFactorDeratesHighInflight proves the Phase D #12
+// channel-side load-aware path: a channel with high in-flight load receives a
+// lower effective weight than an idle sibling, while the hard cap still skips
+// it only at maxConcurrent. Because the channel selector owns the full
+// in-flight lifecycle in-process (Select increments, RecordHealth decrements),
+// no cross-replica oracle is needed here.
+func TestWeightedSelector_LoadFactorDeratesHighInflight(t *testing.T) {
+	s := NewWeightedSelector()
+	// Two equal-weight channels; pump channel 1 to 75% of its 100 cap by
+	// selecting it without recording health (which would reset inflight).
+	busy := &Channel{ID: 1, Priority: 10}
+	idle := &Channel{ID: 2, Priority: 10}
+	candidates := []*Channel{busy, idle}
+
+	// Prime both states.
+	_, _ = s.Select(context.Background(), "g", candidates)
+	// Reset WRR state so the comparison is about effective weight only.
+	s.mu.Lock()
+	for _, st := range s.channels {
+		st.currentWeight = 0
+	}
+	s.mu.Unlock()
+
+	// Simulate 75 concurrent in-flight on channel 1.
+	st1, _ := s.GetState(1)
+	for i := 0; i < 75; i++ {
+		st1.inflight.Add(1)
+	}
+	// 75/100 = 75% → [0.75,0.9) band → loadFactor 20.
+	if got := st1.loadFactor(); got != 20 {
+		t.Fatalf("busy loadFactor = %d, want 20", got)
+	}
+	st2, _ := s.GetState(2)
+	if got := st2.loadFactor(); got != 100 {
+		t.Fatalf("idle loadFactor = %d, want 100", got)
+	}
+
+	counts := map[int64]int{}
+	for i := 0; i < 1000; i++ {
+		got, err := s.Select(context.Background(), "g", candidates)
+		if err != nil {
+			t.Fatalf("Select err = %v", err)
+		}
+		counts[got.ID]++
+		// Reset WRR state each iteration to isolate effective-weight comparison.
+		s.mu.Lock()
+		for _, st := range s.channels {
+			st.currentWeight = 0
+		}
+		// keep the busy channel loaded; Select incremented its inflight, undo that.
+		s.channels[1].inflight.Store(75)
+		s.channels[2].inflight.Store(0)
+		s.mu.Unlock()
+	}
+	// Idle channel (loadFactor 100) should win far more than busy (20).
+	if counts[2] <= counts[1] {
+		t.Fatalf("busy channel not derated: idle=%d busy=%d", counts[2], counts[1])
+	}
+}
+
+// TestWeightedSelector_LoadFactorBands pins the channel-side relative bands.
+func TestWeightedSelector_LoadFactorBands(t *testing.T) {
+	s := NewWeightedSelector()
+	ch := &Channel{ID: 1, Priority: 1}
+	_, _ = s.Select(context.Background(), "g", []*Channel{ch})
+	st, _ := s.GetState(1)
+
+	for _, tc := range []struct {
+		inflight int32
+		want     int32
+	}{
+		{0, 100},  // idle
+		{39, 100}, // <40%
+		{40, 80},  // [40,60)%
+		{59, 80},  // [40,60)%
+		{60, 50},  // [60,75)%
+		{74, 50},  // [60,75)%
+		{75, 20},  // [75,90)%
+		{89, 20},  // [75,90)%
+		{90, 1},   // >=90%
+		{100, 1},  // at cap
+	} {
+		st.inflight.Store(tc.inflight)
+		if got := st.loadFactor(); got != tc.want {
+			t.Fatalf("inflight=%d loadFactor=%d, want %d", tc.inflight, got, tc.want)
+		}
+	}
+}

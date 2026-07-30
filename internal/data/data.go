@@ -89,9 +89,28 @@ func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, mo
 	if err != nil {
 		return nil, err
 	}
-	info := resp.GetAccount()
+	return subscriptionAccountInfoToClientBiz(resp.GetAccount()), nil
+}
+
+// SelectSubscriptionAccountExcluding passes the request-scoped failed-account
+// set down to channel-service so per-candidate filtering happens server-side
+// (sub2api #2).
+func (c *channelClient) SelectSubscriptionAccountExcluding(ctx context.Context, group, model, platform string, excluded map[int64]bool) (*biz.SubscriptionAccount, error) {
+	resp, err := c.client.SelectSubscriptionAccount(ctx, &channelv1.SelectSubscriptionAccountRequest{
+		Group:              group,
+		Model:              model,
+		Platform:           platform,
+		ExcludedAccountIds: sortedExcludedIDs(excluded),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return subscriptionAccountInfoToClientBiz(resp.GetAccount()), nil
+}
+
+func subscriptionAccountInfoToClientBiz(info *commonv1.SubscriptionAccountInfo) *biz.SubscriptionAccount {
 	if info == nil {
-		return nil, nil
+		return nil
 	}
 	return &biz.SubscriptionAccount{
 		ID:                    info.GetId(),
@@ -110,7 +129,7 @@ func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, mo
 		RPMLimit:              info.GetRpmLimit(),
 		SessionWindowLimitUSD: info.GetSessionWindowLimitUsd(),
 		ModelMapping:          info.GetModelMapping(),
-	}, nil
+	}
 }
 
 func (c *channelClient) GetSubscriptionAccountByID(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error) {

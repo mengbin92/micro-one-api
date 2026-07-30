@@ -146,12 +146,24 @@ type ChannelSelector interface {
 	RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error
 }
 
+// RoutingFallbackSelector resolves a fallback source across both source
+// namespaces (API-key channels + subscription accounts), excluding every
+// source that already failed in the current request. RelayUsecase implements
+// it via SelectFallbackRoutingSource.
+type RoutingFallbackSelector interface {
+	SelectFallbackRoutingSource(ctx context.Context, group, clientModel, resolvedModel string, excluded map[RoutingSourceIdentity]bool) (*Channel, error)
+}
+
 // RetryExecutor orchestrates retry attempts with channel fallback.
 // It is a biz-layer concern: each retry re-selects a channel (excluding the
 // first-priority tier) before calling the upstream provider.
 type RetryExecutor struct {
 	policy   *RetryPolicy
 	selector ChannelSelector
+	// fallback, when wired, is the unified cross-namespace fallback used after
+	// the request-scoped candidate list is exhausted (sub2api #2). It replaces
+	// the coarse excludeFirstPriority tier-skip with per-candidate exclusion.
+	fallback RoutingFallbackSelector
 }
 
 // NewRetryExecutor creates a RetryExecutor with the given policy and channel selector.
@@ -160,6 +172,15 @@ func NewRetryExecutor(policy *RetryPolicy, selector ChannelSelector) *RetryExecu
 		policy:   policy,
 		selector: selector,
 	}
+}
+
+// WithFallbackSelector wires the unified cross-namespace fallback selector.
+// Returns the executor for chaining.
+func (e *RetryExecutor) WithFallbackSelector(f RoutingFallbackSelector) *RetryExecutor {
+	if e != nil {
+		e.fallback = f
+	}
+	return e
 }
 
 // ExecuteResult holds the outcome of a retried operation.
@@ -222,10 +243,50 @@ func (e *RetryExecutor) ExecuteWithAccountHealth(
 	return e.ExecuteWithInitialChannel(ctx, group, model, initialChannel, wrapped)
 }
 
+// ExecuteWithCandidates runs the retry loop against a RelayPlan, consuming the
+// request-scoped candidate list built at Plan time (sub2api #2). Each retry
+// first walks the precomputed ordered list with the accumulated exclusion set;
+// only when the list is exhausted does it fall back to the unified
+// cross-namespace selection (or the legacy tier-skip when no fallback selector
+// is wired). accountID health recording matches ExecuteWithAccountHealth.
+func (e *RetryExecutor) ExecuteWithCandidates(
+	ctx context.Context,
+	plan *RelayPlan,
+	accountID int64,
+	fn func(ctx context.Context, ch *Channel) error,
+) *ExecuteResult {
+	if plan == nil {
+		return &ExecuteResult{Err: fmt.Errorf("relay plan is nil")}
+	}
+	group, model := "", plan.BaseModel()
+	if plan.Auth != nil {
+		group = plan.Auth.Group
+	}
+	initialChannel := plan.Channel
+	wrapped := func(ctx context.Context, ch *Channel) error {
+		err := fn(ctx, ch)
+		if ch == initialChannel {
+			e.RecordAccountHealth(ctx, accountID, err == nil)
+		}
+		return err
+	}
+	return e.execute(ctx, group, model, initialChannel, plan.Candidates, wrapped)
+}
+
 func (e *RetryExecutor) ExecuteWithInitialChannel(
 	ctx context.Context,
 	group, model string,
 	initialChannel *Channel,
+	fn func(ctx context.Context, ch *Channel) error,
+) *ExecuteResult {
+	return e.execute(ctx, group, model, initialChannel, nil, fn)
+}
+
+func (e *RetryExecutor) execute(
+	ctx context.Context,
+	group, model string,
+	initialChannel *Channel,
+	candidates *RoutingCandidateList,
 	fn func(ctx context.Context, ch *Channel) error,
 ) *ExecuteResult {
 	maxAttempts := e.policy.MaxAttempts
@@ -237,6 +298,9 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 	var lastChannel *Channel
 	var firstErr error // first failure that triggered a source switch
 	switched := false  // true when executor selected a DIFFERENT channel
+	// excluded accumulates every source that failed in this request so retries
+	// never re-select it (sub2api #2 request-level exclusion set).
+	excluded := make(map[RoutingSourceIdentity]bool)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		// On retry, wait with backoff
@@ -248,14 +312,12 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 			case <-time.After(wait):
 			}
 
-			// Try a lower-priority channel without widening to the primary
-			// catch-all path. If no alternative exists, retry the already
-			// selected channel: transient upstream failures still need the
-			// configured retry budget, but SelectChannel(false) must not run
-			// because it could silently expand failover to a catch-all channel.
+			if lastChannel != nil {
+				excluded[RoutingSourceIdentityForChannel(lastChannel)] = true
+			}
 			previous := lastChannel
-			ch, selErr := e.selector.SelectChannel(ctx, group, model, true)
-			if selErr == nil && ch != nil {
+			ch := e.selectNextForRetry(ctx, group, model, candidates, excluded, initialChannel)
+			if ch != nil {
 				// A genuine source switch: the selector returned a different
 				// channel than the one that just failed. Only this counts as
 				// a fallback for routing_fallback_total.
@@ -318,6 +380,119 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 		FirstErr:       firstErr,
 		FallbackReason: ClassifyRetryFallbackReason(firstErr),
 	}
+}
+
+// selectNextForRetry picks the next source for a retry attempt, in order:
+//  1. walk the request-scoped precomputed candidate list with the accumulated
+//     exclusion set (no selection RPC);
+//  2. the unified cross-namespace fallback with per-candidate exclusion;
+//  3. the legacy excludeFirstPriority tier-skip when no fallback selector is
+//     wired.
+//
+// Returns nil when no alternative exists — the caller then performs a
+// same-source retry, which is NOT a fallback.
+func (e *RetryExecutor) selectNextForRetry(
+	ctx context.Context,
+	group, model string,
+	candidates *RoutingCandidateList,
+	excluded map[RoutingSourceIdentity]bool,
+	initialChannel *Channel,
+) *Channel {
+	// HIGH-1 fix: HTTP transport retry closures build the upstream provider
+	// directly from ch.Key (providerFactory.CreateProviderWithConfig). A
+	// subscription-account projection carries an empty Key by design
+	// (credentials are resolved via the adaptor/credential store, which the
+	// HTTP closures do not invoke), so a cross-namespace retry onto a
+	// subscription projection would forward an empty key upstream → 401 that
+	// is NOT retryable, leaking straight to the client. Lock retry to the
+	// INITIAL source namespace: an API-key plan only ever fails over to other
+	// API-key channels, and a subscription plan only to other subscription
+	// accounts. This lock applies only to the candidate-list path
+	// (ExecuteWithCandidates, used by the 4 HTTP handlers); the legacy
+	// ExecuteWithInitialChannel path (candidates == nil) keeps cross-namespace
+	// behaviour for its existing callers and tests. WS/Responses transport is
+	// unaffected — it routes through SelectFallbackRoutingSource directly
+	// (credential-resolving path).
+	var initialKind UpstreamRouteKind
+	if candidates != nil {
+		initialKind = UpstreamRouteChannel
+		if initialChannel != nil && initialChannel.SubscriptionAccountID > 0 {
+			initialKind = UpstreamRouteSubscription
+		}
+	}
+
+	// 1. Precomputed candidate list (sub2api #2): stable per-request ordering,
+	// no re-selection RPC per retry. Skip cross-namespace candidates so the
+	// namespace lock holds (see HIGH-1 note above).
+	if candidates != nil {
+		for _, c := range candidates.Candidates {
+			if c.Channel == nil {
+				continue
+			}
+			if excluded[c.Identity] {
+				continue
+			}
+			kind := UpstreamRouteChannel
+			if c.Channel.SubscriptionAccountID > 0 {
+				kind = UpstreamRouteSubscription
+			}
+			if kind != initialKind {
+				continue
+			}
+			return c.Channel
+		}
+	}
+	// 2. Fallback selection.
+	//    - Candidate-list path (ExecuteWithCandidates): namespace-scoped.
+	//      API-key initial → channel-only via SelectChannelExcluding (same
+	//      namespace, no subscription projection); subscription initial →
+	//      SelectFallbackRoutingSource (the transports using this path that
+	//      start on a subscription source resolve credentials via the adaptor).
+	//    - Legacy path (ExecuteWithInitialChannel, candidates == nil): keep
+	//      the original cross-namespace tier-skip behaviour so existing
+	//      callers and tests are unaffected.
+	if candidates == nil {
+		if e.fallback != nil {
+			if ch, err := e.fallback.SelectFallbackRoutingSource(ctx, group, model, model, excluded); err == nil && ch != nil {
+				return ch
+			}
+			return nil
+		}
+		ch, selErr := e.selector.SelectChannel(ctx, group, model, true)
+		if selErr == nil && ch != nil {
+			return ch
+		}
+		return nil
+	}
+	if initialKind == UpstreamRouteChannel {
+		if excl, ok := e.selector.(interface {
+			SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error)
+		}); ok {
+			excludedChannels := make(map[int64]bool)
+			for source, blocked := range excluded {
+				if blocked && source.Kind == UpstreamRouteChannel && source.ID > 0 {
+					excludedChannels[source.ID] = true
+				}
+			}
+			if ch, err := excl.SelectChannelExcluding(ctx, group, model, excludedChannels); err == nil && ch != nil {
+				return ch
+			}
+			return nil
+		}
+		// No excluding API on the selector: legacy tier-skip, channel-only.
+		ch, selErr := e.selector.SelectChannel(ctx, group, model, true)
+		if selErr == nil && ch != nil {
+			return ch
+		}
+		return nil
+	}
+	// Subscription initial: unified fallback (credential-resolving transports).
+	if e.fallback != nil {
+		if ch, err := e.fallback.SelectFallbackRoutingSource(ctx, group, model, model, excluded); err == nil && ch != nil {
+			return ch
+		}
+	}
+	return nil
 }
 
 // ClassifyRetryFallbackReason maps the first-attempt error to a low-cardinality

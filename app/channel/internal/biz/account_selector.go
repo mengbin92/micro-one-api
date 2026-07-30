@@ -15,18 +15,14 @@ import (
 // scaled by recent relay health; a circuit breaker temporarily removes accounts
 // with sustained failures.
 //
-// v0.11.0 Phase 3 §3.2 — load-aware selection status (explicit decision):
-// Acquire/Release and the in-flight-derived loadFactor are RETAINED but are
-// INERT in production: no relay-gateway dispatch seam calls them, so
-// loadFactor always returns 100 (neutral) and inflight stays 0. They are NOT
-// advertised as a working load-aware feature. Wiring real in-flight feedback
-// would require a cross-service RPC on the relay hot path; the roadmap defers
-// that until a Redis-backed concurrent-state or async best-effort seam is
-// added. The selector degrades safely when loadFactor is inert: health + the
-// configured weight still drive distribution, and a saturated account is only
-// caught by its circuit breaker (not by in-flight saturation). See
-// TestSubscriptionAccountSelector_LoadFactorInertInProduction for the
-// degradation contract.
+// v0.11.0 Phase D §12 — load-aware selection is now live. The selector queries
+// a LoadOracle (Redis-backed, injected by channel-service wiring) on every
+// Select to refresh a cross-replica in-flight snapshot per account, so
+// loadFactor de-rates a saturated account across ALL replicas, not just the
+// local one. The local Acquire/Release hooks remain for in-process callers;
+// when neither the oracle nor Acquire is wired, loadFactor is neutral (100)
+// and the selector degrades safely to health + configured-weight weighting.
+// A saturated account is still ultimately caught by its circuit breaker.
 //
 // Lifetime: one selector per ChannelUsecase (process-wide). It tracks runtime
 // state per account id; account snapshots passed to Select are read-only.
@@ -34,23 +30,93 @@ import (
 // See docs/model-management-design.md §12.2.
 
 type accountState struct {
-	accountID        int64
-	weight           int32           // configured weight (priority-derived)
-	currentWeight    int64           // smooth WRR current weight (fixed-point scale)
-	recentErrors     *SlidingCounter // last 60s error count
-	inflight         atomic.Int32    // current in-flight requests (set by server)
-	circuitOpenUntil int64           // UnixNano; 0 = closed
+	accountID            int64
+	weight               int32           // configured weight (priority-derived)
+	maxConcurrent        int32           // configured concurrency cap (from SubscriptionAccount.Concurrency)
+	currentWeight        int64           // smooth WRR current weight (fixed-point scale)
+	recentErrors         *SlidingCounter // last 60s error count
+	inflight             atomic.Int32    // local in-flight requests (set by server)
+	crossReplicaInflight atomic.Int32    // cross-replica inflight snapshot (Phase D #12)
+	circuitOpenUntil     int64           // UnixNano; 0 = closed
 }
 
 // SubscriptionAccountSelector is the health-aware account selector.
+// LoadOracle reports the cross-replica in-flight count for a subscription
+// account. The relay-gateway tracks in-flight requests in Redis (ZSet under
+// subscription_account:concurrency:<id>); the channel-service selector, running
+// in a different process, queries it here so loadFactor de-rates a saturated
+// account across all replicas, not just the local one. A nil oracle or a
+// zero/error result falls back to the local atomic inflight (which stays 0 in
+// production when no one calls Acquire), so the selector degrades safely to the
+// health-only weighting that shipped before Phase D.
+type LoadOracle interface {
+	Inflight(ctx context.Context, accountID int64) int32
+	// InflightBatch returns the cross-replica in-flight count for every
+	// requested account in a single round-trip (pipelined where the backend
+	// supports it). Implementations that only support per-account lookup can
+	// fall back to looping Inflight. Absent/zero entries mean "no live load".
+	InflightBatch(ctx context.Context, accountIDs []int64) map[int64]int32
+}
+
+type noopLoadOracle struct{}
+
+func (noopLoadOracle) Inflight(context.Context, int64) int32                  { return 0 }
+func (noopLoadOracle) InflightBatch(context.Context, []int64) map[int64]int32 { return nil }
+
 type SubscriptionAccountSelector struct {
-	mu       sync.Mutex
-	accounts map[int64]*accountState
+	mu         sync.Mutex
+	accounts   map[int64]*accountState
+	loadOracle LoadOracle // cross-replica in-flight source; nil = noop (inert)
 }
 
 // NewSubscriptionAccountSelector creates a new selector.
 func NewSubscriptionAccountSelector() *SubscriptionAccountSelector {
 	return &SubscriptionAccountSelector{accounts: make(map[int64]*accountState)}
+}
+
+// SetLoadOracle wires the cross-replica in-flight source. Safe to call before
+// first selection; nil installs the noop oracle so loadFactor falls back to the
+// local atomic counter. Used by channel-service wiring to inject the
+// Redis-backed account-concurrency reader (Phase D #12).
+func (s *SubscriptionAccountSelector) SetLoadOracle(oracle LoadOracle) {
+	if s == nil {
+		return
+	}
+	if oracle == nil {
+		s.loadOracle = noopLoadOracle{}
+		return
+	}
+	s.loadOracle = oracle
+}
+
+// prefetchInflight queries the cross-replica in-flight count for each
+// candidate OUTSIDE the selector lock (MEDIUM-2). Returning a map keyed by
+// account id lets Select write all snapshots in one locked pass. An absent key
+// (or zero value) means "no live load reported" so the account is not derated
+// by the cross-replica factor. A nil/noop oracle returns an empty map.
+func (s *SubscriptionAccountSelector) prefetchInflight(ctx context.Context, candidates []*SubscriptionAccount) map[int64]int32 {
+	out := make(map[int64]int32, len(candidates))
+	if s == nil || s.loadOracle == nil {
+		return out
+	}
+	ids := make([]int64, 0, len(candidates))
+	for _, acct := range candidates {
+		if acct != nil && acct.ID > 0 {
+			ids = append(ids, acct.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return out
+	}
+	// Prefer the batch API: the Redis oracle pipelines all ZCOUNTs into one
+	// round-trip (MEDIUM-2), avoiding N serial RTTs per selection.
+	if batched := s.loadOracle.InflightBatch(ctx, ids); batched != nil {
+		return batched
+	}
+	for _, id := range ids {
+		out[id] = s.loadOracle.Inflight(ctx, id)
+	}
+	return out
 }
 
 // Select picks one account from the tier using smooth WRR × health factor.
@@ -61,6 +127,17 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 	if len(candidates) == 0 {
 		return nil, ErrSubscriptionAccountNotFound
 	}
+	// Phase D #12: refresh the cross-replica in-flight snapshot for each
+	// candidate BEFORE taking the lock. The relay-gateway maintains a Redis
+	// ZSet per account (subscription_account:concurrency:<id>); the LoadOracle
+	// counts its members so loadFactor de-rates a saturated account across ALL
+	// replicas, not just this process. Querying outside the selector lock
+	// keeps per-candidate Redis RTTs off the hot-path critical section
+	// (MEDIUM-2): N candidates cost N lookups, but they no longer block every
+	// other concurrent Select in this process. A nil/noop oracle yields an
+	// empty map, so loadFactor falls back to the local atomic inflight.
+	crossReplica := s.prefetchInflight(ctx, candidates)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -76,6 +153,11 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 		// weight, errors, in-flight count) is preserved by updateAccountLocked,
 		// while admin changes such as a new priority take effect immediately.
 		state := s.updateAccountLocked(acct)
+		// Store the cross-replica snapshot unconditionally (MEDIUM-1): an idle
+		// account reads 0, which must overwrite a previously-high value so the
+		// account is no longer derated once it drains. Only writing on n>0
+		// would pin the snapshot at its peak forever.
+		state.crossReplicaInflight.Store(crossReplica[acct.ID])
 		// Skip circuit-opened accounts.
 		if state.circuitOpenUntil > 0 && state.circuitOpenUntil > now {
 			continue
@@ -219,12 +301,17 @@ type AccountSelectorStats struct {
 func (s *SubscriptionAccountSelector) updateAccountLocked(acct *SubscriptionAccount) *accountState {
 	if existing, ok := s.accounts[acct.ID]; ok {
 		existing.weight = accountSelectorWeight(acct)
+		// Always sync maxConcurrent so an admin edit (including lowering the
+		// cap back to 0 = unlimited) takes effect. Gating on >0 would leave a
+		// stale cap sticky after a config change (L2).
+		existing.maxConcurrent = acct.Concurrency
 		return existing
 	}
 	state := &accountState{
-		accountID:    acct.ID,
-		weight:       accountSelectorWeight(acct),
-		recentErrors: NewSlidingCounter(60 * time.Second),
+		accountID:     acct.ID,
+		weight:        accountSelectorWeight(acct),
+		maxConcurrent: acct.Concurrency,
+		recentErrors:  NewSlidingCounter(60 * time.Second),
 	}
 	s.accounts[acct.ID] = state
 	return state
@@ -274,25 +361,59 @@ func (s *SubscriptionAccountSelector) totalEffectiveWeight(candidates []*Subscri
 	return total
 }
 
-// loadFactor de-rates an account as its in-flight count climbs, so a saturated
-// account receives less traffic than an idle one. Returns 100 when no load is
-// tracked.
+// loadFactor de-rates an account as its in-flight count climbs toward
+// maxConcurrent, so a saturated account receives less traffic than an idle one.
+// Returns 100 (neutral) when no load is tracked.
 //
-// v0.11.0 Phase 3 §3.2: INERT in production — Acquire/Release are not called
-// by relay dispatch, so inflight is always 0 and loadFactor always returns
-// 100 (neutral). The band thresholds are retained for the future Redis-backed
-// seam. Do NOT advertise this as a working load-aware feature until that seam
-// is wired and a fault test proves degradation is safe.
+// v0.11.0 Phase D #12: no longer inert. The cross-replica in-flight snapshot
+// (refreshed in Select via LoadOracle, querying the relay-gateway's Redis
+// ZSet) is used when available; otherwise the local atomic inflight applies.
+// We take max(local, crossReplica) so a busy local replica is never hidden by
+// a stale or zeroed cross-replica reading. Bands are relative to
+// maxConcurrent (from SubscriptionAccount.Concurrency) so the same thresholds
+// apply regardless of the configured ceiling; when maxConcurrent is unset (0)
+// loadFactor is neutral. Mirrors the channel-side bands (100/80/50/20/1).
+// See docs/model-management-design.md §12.2 and docs/releases/review-v0.11.0.md.
 func (st *accountState) loadFactor() int32 {
-	inflight := st.inflight.Load()
-	switch {
-	case inflight <= 0:
+	if st == nil {
 		return 100
-	case inflight < 10:
+	}
+	if st.maxConcurrent <= 0 {
+		// No concurrency cap configured: fall back to the legacy absolute bands
+		// on the local counter so a non-zero Acquire still de-rates. When no
+		// load is tracked (the pre-Phase-D default) this returns 100.
+		inflight := st.inflight.Load()
+		switch {
+		case inflight <= 0:
+			return 100
+		case inflight < 10:
+			return 80
+		case inflight < 20:
+			return 50
+		case inflight < 50:
+			return 20
+		default:
+			return 1
+		}
+	}
+	local := st.inflight.Load()
+	cross := st.crossReplicaInflight.Load()
+	inflight := local
+	if cross > inflight {
+		inflight = cross
+	}
+	if inflight <= 0 {
+		return 100
+	}
+	util := float64(inflight) / float64(st.maxConcurrent)
+	switch {
+	case util < 0.4:
+		return 100
+	case util < 0.6:
 		return 80
-	case inflight < 20:
+	case util < 0.75:
 		return 50
-	case inflight < 50:
+	case util < 0.9:
 		return 20
 	default:
 		return 1

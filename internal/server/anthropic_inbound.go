@@ -461,7 +461,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 
 	retryStartedAt := time.Now()
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithCandidates(r.Context(), plan, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(ccReq)
@@ -523,8 +523,8 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 			PromptTokens:          int64(resp.Usage.PromptTokens),
 			CompletionTokens:      int64(resp.Usage.CompletionTokens),
 			CacheReadTokens:       cacheReadTokensFromProviderUsage(resp.Usage),
-			CacheCreation5mTokens:  cacheCreation5mTokens,
-			CacheCreation1hTokens:  cacheCreation1hTokens,
+			CacheCreation5mTokens: cacheCreation5mTokens,
+			CacheCreation1hTokens: cacheCreation1hTokens,
 			ChannelID:             ch.ID,
 			SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 			ElapsedTime:           time.Since(startedAt).Milliseconds(),

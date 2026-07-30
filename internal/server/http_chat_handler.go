@@ -101,7 +101,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	// Use RetryExecutor for upstream calls with channel fallback
 	retryStartedAt := time.Now()
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithCandidates(r.Context(), plan, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		// Reserve quota
 		requestID := generateRequestID()
@@ -157,21 +157,21 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		actualTokens := s.calculateActualTokens(resp)
 		cacheCreation5mTokens, cacheCreation1hTokens := cacheCreationTokensFromProviderUsage(resp.Usage)
 		logInput := usageLogInput{
-			UserID:           plan.Auth.UserID,
-			TokenID:          plan.Auth.TokenID,
-			TokenName:        plan.Auth.TokenName,
-			RequestID:        requestID,
-			Endpoint:         "/v1/chat/completions",
-			ModelName:        s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
-			Quota:            actualTokens,
-			PromptTokens:     int64(resp.Usage.PromptTokens),
-			CompletionTokens: int64(resp.Usage.CompletionTokens),
-			CacheReadTokens:  cacheReadTokensFromProviderUsage(resp.Usage),
+			UserID:                plan.Auth.UserID,
+			TokenID:               plan.Auth.TokenID,
+			TokenName:             plan.Auth.TokenName,
+			RequestID:             requestID,
+			Endpoint:              "/v1/chat/completions",
+			ModelName:             s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel),
+			Quota:                 actualTokens,
+			PromptTokens:          int64(resp.Usage.PromptTokens),
+			CompletionTokens:      int64(resp.Usage.CompletionTokens),
+			CacheReadTokens:       cacheReadTokensFromProviderUsage(resp.Usage),
 			CacheCreation5mTokens: cacheCreation5mTokens,
 			CacheCreation1hTokens: cacheCreation1hTokens,
-			ChannelID:        ch.ID,
-			ElapsedTime:      time.Since(startedAt).Milliseconds(),
-			IsStream:         false,
+			ChannelID:             ch.ID,
+			ElapsedTime:           time.Since(startedAt).Milliseconds(),
+			IsStream:              false,
 		}
 		// v0.11.0 review M1: record the source that actually executed the
 		// request, not the original plan, so failover attribution is correct.

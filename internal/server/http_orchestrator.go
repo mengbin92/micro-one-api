@@ -127,7 +127,7 @@ type httpRelayLifecycleHooks struct {
 	s *HTTPServer
 }
 
-func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated Usage) (*Reservation, error) {
+func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated relaybiz.CanonicalUsage) (*Reservation, error) {
 	if h.s == nil || h.s.billingClient == nil {
 		return nil, errors.New("billing service unavailable")
 	}
@@ -152,7 +152,7 @@ func (h httpRelayLifecycleHooks) CheckUserRateLimit(ctx context.Context, plan *r
 	return h.s.checkUserRPM(ctx, plan.Auth.UserID)
 }
 
-func (h httpRelayLifecycleHooks) CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage Usage, success bool, latency time.Duration) error {
+func (h httpRelayLifecycleHooks) CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage relaybiz.CanonicalUsage, success bool, latency time.Duration) error {
 	if reservation == nil {
 		return nil
 	}
@@ -176,7 +176,7 @@ func (h httpRelayLifecycleHooks) ReleaseQuota(ctx context.Context, reservation *
 	return h.s.releaseQuota(ctx, reservation.ID, reason)
 }
 
-func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool) {
+func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) {
 	if h.s == nil {
 		return
 	}
@@ -188,7 +188,7 @@ func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.Re
 	// too would double-count.
 }
 
-func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool) usageLogInput {
+func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) usageLogInput {
 	input := usageLogInput{
 		UserID:                plan.Auth.UserID,
 		TokenID:               plan.Auth.TokenID,
@@ -200,8 +200,8 @@ func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPl
 		PromptTokens:          usage.PromptTokens,
 		CompletionTokens:      usage.CompletionTokens,
 		CacheReadTokens:       usage.CacheReadTokens,
-		CacheCreation5mTokens:  usage.CacheCreation5mTokens,
-		CacheCreation1hTokens:  usage.CacheCreation1hTokens,
+		CacheCreation5mTokens: usage.CacheCreation5mTokens,
+		CacheCreation1hTokens: usage.CacheCreation1hTokens,
 		ChannelID:             plan.Channel.ID,
 		SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 		ElapsedTime:           latency.Milliseconds(),

@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -182,6 +183,33 @@ func (f *fakeAccountConcurrencyRedis) ZCard(_ context.Context, key string) *redi
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return redis.NewIntResult(int64(len(f.slots[key])), nil)
+}
+
+func (f *fakeAccountConcurrencyRedis) ZCount(_ context.Context, key, min, max string) *redis.IntCmd {
+	if f.zErr != nil {
+		return redis.NewIntResult(0, f.zErr)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// Members are stored as deadline-score (UnixMilli). Count those whose
+	// score is in [min, +inf] — matching the real ZCOUNT semantics used to
+	// exclude expired-but-unreaped leases.
+	minScore := toInt64FromString(min)
+	var n int64
+	for _, score := range f.slots[key] {
+		if score >= minScore {
+			n++
+		}
+	}
+	return redis.NewIntResult(n, nil)
+}
+
+func toInt64FromString(s string) int64 {
+	if s == "+inf" || s == "-inf" || s == "" {
+		return 0
+	}
+	n, _ := strconv.ParseInt(s, 10, 64)
+	return n
 }
 
 func toInt64(v any) int64 {

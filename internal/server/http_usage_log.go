@@ -22,7 +22,7 @@ func (in *usageLogInput) applyPlanInputs(plan *relaybiz.RelayPlan) {
 		return
 	}
 	in.UpstreamModelID, in.SourceKind = upstreamCostKeyInputsFromPlan(plan)
-	in.PromptExclusive = isPromptExclusiveChannel(plan)
+	in.PromptExclusive = relaybiz.IsPromptExclusiveChannel(plan)
 }
 
 // applyChannelInputs records the source that actually executed a request.
@@ -33,7 +33,7 @@ func (in *usageLogInput) applyChannelInputs(channel *relaybiz.Channel) {
 		return
 	}
 	in.UpstreamModelID = channel.UpstreamModelID
-	in.PromptExclusive = isPromptExclusiveChannelType(channel.Type)
+	in.PromptExclusive = relaybiz.IsPromptExclusiveChannelType(channel.Type)
 	if channel.SubscriptionAccountID > 0 {
 		in.SourceKind = relaybiz.UpstreamSourceSubscription
 		in.SubscriptionAccountID = channel.SubscriptionAccountID

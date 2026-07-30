@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
@@ -79,6 +80,37 @@ func (a *ChannelAdapter) SelectSubscriptionAccount(ctx context.Context, group, m
 		return nil, err
 	}
 	return subscriptionAccountInfoToBiz(reply.GetAccount()), nil
+}
+
+// SelectSubscriptionAccountExcluding passes the request-scoped failed-account
+// set down to channel-service so per-candidate filtering happens server-side
+// (sub2api #2), instead of the relay looping over excludeFirstPriority tiers.
+func (a *ChannelAdapter) SelectSubscriptionAccountExcluding(ctx context.Context, group, model, platform string, excluded map[int64]bool) (*relaybiz.SubscriptionAccount, error) {
+	reply, err := a.client.SelectSubscriptionAccount(ctx, &channelv1.SelectSubscriptionAccountRequest{
+		Group:              group,
+		Model:              model,
+		Platform:           platform,
+		ExcludedAccountIds: sortedExcludedIDs(excluded),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return subscriptionAccountInfoToBiz(reply.GetAccount()), nil
+}
+
+// sortedExcludedIDs flattens an exclusion set into a deterministic slice.
+func sortedExcludedIDs(excluded map[int64]bool) []int64 {
+	if len(excluded) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(excluded))
+	for id, blocked := range excluded {
+		if blocked && id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
 }
 
 // GetSubscriptionAccountByID materializes a single subscription account (with

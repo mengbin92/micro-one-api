@@ -41,6 +41,14 @@ type Ledger struct {
 	CacheReadTokens       int64
 	CacheCreation5mTokens int64
 	CacheCreation1hTokens int64
+	// Per-bucket costs persisted for audit and vendor-invoice reconciliation
+	// (v0.11.0 Phase 2 sub2api #9).
+	PromptCost            int64
+	CompletionCost        int64
+	CacheReadCost         int64
+	CacheCreation5mCost   int64
+	CacheCreation1hCost   int64
+	ShadowCost            int64
 	ChannelID             int64
 	SubscriptionAccountID int64
 	ElapsedTime           int64
@@ -67,15 +75,15 @@ type Ledger struct {
 
 // DailyAggregate holds per-day aggregated ledger stats (consume only).
 type DailyAggregate struct {
-	Date             string
-	Quota            int64 // SUM(ABS(amount))
-	PromptTokens     int64
-	CompletionTokens int64
+	Date                  string
+	Quota                 int64 // SUM(ABS(amount))
+	PromptTokens          int64
+	CompletionTokens      int64
 	CacheReadTokens       int64
 	CacheCreation5mTokens int64
 	CacheCreation1hTokens int64
 	Count                 int64
-	ElapsedTime      int64
+	ElapsedTime           int64
 }
 
 // ModelAggregate holds per-model aggregated token stats (consume only).
@@ -133,11 +141,11 @@ type UsageBucket struct {
 
 // UsageTotals holds grand totals across all buckets.
 type UsageTotals struct {
-	Quota            int64
-	UpstreamCost     int64
-	GrossProfit      int64
-	PromptTokens     int64
-	CompletionTokens int64
+	Quota                 int64
+	UpstreamCost          int64
+	GrossProfit           int64
+	PromptTokens          int64
+	CompletionTokens      int64
 	CacheReadTokens       int64
 	CacheCreation5mTokens int64
 	CacheCreation1hTokens int64

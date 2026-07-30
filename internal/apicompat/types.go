@@ -365,8 +365,10 @@ func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 
 // ResponsesInputTokensDetails breaks down input token usage.
 type ResponsesInputTokensDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
-	AudioTokens  int `json:"audio_tokens,omitempty"`
+	CachedTokens          int `json:"cached_tokens,omitempty"`
+	AudioTokens           int `json:"audio_tokens,omitempty"`
+	CacheCreation5mTokens int `json:"cache_creation_5m_tokens,omitempty"`
+	CacheCreation1hTokens int `json:"cache_creation_1h_tokens,omitempty"`
 }
 
 // ResponsesOutputTokensDetails breaks down output token usage.
@@ -540,16 +542,16 @@ type ChatUsage struct {
 // reused for both prompt_tokens_details and completion_tokens_details;
 // unset fields are omitted so each side only emits the fields that apply.
 //
-// Field set mirrors OpenAI's official CompletionUsage schema:
-//   - prompt_tokens_details: cached_tokens, audio_tokens
-//   - completion_tokens_details: reasoning_tokens, audio_tokens,
-//     accepted_prediction_tokens, rejected_prediction_tokens
+// Field set mirrors OpenAI's official CompletionUsage schema plus the
+// cache-creation buckets used by Anthropic-compatible upstreams.
 type ChatTokenDetails struct {
 	CachedTokens             int `json:"cached_tokens,omitempty"`
 	AudioTokens              int `json:"audio_tokens,omitempty"`
 	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
 	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
 	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
+	CacheCreation5mTokens    int `json:"cache_creation_5m_tokens,omitempty"`
+	CacheCreation1hTokens    int `json:"cache_creation_1h_tokens,omitempty"`
 }
 
 // ChatCompletionsChunk is a single streaming chunk from POST /v1/chat/completions.
