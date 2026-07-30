@@ -55,6 +55,7 @@ services:
     - 066_add_upstream_model_ids
     - 068_add_canonical_model_id_constraint   # v0.11.0 Phase 2 §2.1
     - 069_add_subscription_account_weight     # v0.11.0 Phase 3 §3.1
+    - 070_clean_orphan_model_mappings         # v0.11.0 review L4: orphan cleanup + cascade FKs
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /
@@ -90,6 +91,7 @@ services:
     - 057_add_plan_snapshot_to_payment_orders
     - 058_add_subscription_id_to_payment_orders
     - 059_enforce_single_active_subscription
+    - 071_add_per_bucket_cost                 # v0.11.0 Phase 2 sub2api #9: per-bucket costs
 
   log:
     # logs table (a subset of 000_create_core_tables on the shared schema,
