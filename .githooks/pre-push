@@ -1,0 +1,16 @@
+#!/bin/sh
+# Pre-push gate: run gosec SAST and block the push on findings.
+# Exclusions mirror .github/workflows/security.yml so a local pass means CI's
+# code-scanning upload stays clean.
+
+if ! command -v gosec >/dev/null 2>&1; then
+	echo "pre-push: gosec not found on PATH." >&2
+	echo "Install: go install github.com/securego/gosec/v2/cmd/gosec@latest" >&2
+	exit 1
+fi
+
+echo "pre-push: running gosec..."
+if ! gosec -quiet -exclude-generated -exclude=G104 ./...; then
+	echo "pre-push: gosec reported issues; fix them (or annotate with a justified #nosec) before pushing." >&2
+	exit 1
+fi
