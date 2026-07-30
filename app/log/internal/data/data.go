@@ -209,7 +209,7 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, so
 		query = query.Where("source = ?", source)
 	}
 	if keyword != "" {
-		query = query.Where("message LIKE ?", "%"+escapeLike(keyword)+"%")
+		query = query.Where("message LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -233,7 +233,7 @@ func (r *Repository) listByUserDB(ctx context.Context, userID int64, page, pageS
 		query = query.Where("level = ?", level)
 	}
 	if keyword != "" {
-		query = query.Where("message LIKE ?", "%"+escapeLike(keyword)+"%")
+		query = query.Where("message LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -585,8 +585,8 @@ func searchString(s, substr string) bool {
 }
 
 func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "%", "\\%")
-	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "!", "!!")
+	s = strings.ReplaceAll(s, "%", "!%")
+	s = strings.ReplaceAll(s, "_", "!_")
 	return s
 }

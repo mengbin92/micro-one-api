@@ -117,17 +117,21 @@ func logUpstreamUsage(in usageLogInput) {
 	// caller still passes prompt_tokens inclusive of cached; the ratio is an
 	// operational signal only, billing uses the canonical buckets.
 	cacheCreationTotal := in.CacheCreation5mTokens + in.CacheCreation1hTokens
-	cacheRatio := float64(0)
-	cacheDenominator := in.PromptTokens + cacheCreationTotal
-	if cacheDenominator > 0 {
-		cacheRatio = float64(in.CacheReadTokens) / float64(cacheDenominator)
-	}
+	// v0.11.0 review L1: for non-exclusive buckets (OpenAI subset protocol)
+	// prompt_tokens already includes cache_read_tokens, so subtract them to get
+	// the uncached portion before adding cache_read back into the denominator.
+	// For exclusive buckets (Anthropic/GLM) prompt_tokens is already uncached.
 	nonCachedInputTokens := in.PromptTokens
-	if in.CacheReadTokens > 0 {
+	if in.CacheReadTokens > 0 && !in.PromptExclusive {
 		nonCachedInputTokens = in.PromptTokens - in.CacheReadTokens
 		if nonCachedInputTokens < 0 {
 			nonCachedInputTokens = 0
 		}
+	}
+	cacheDenominator := nonCachedInputTokens + in.CacheReadTokens + cacheCreationTotal
+	cacheRatio := float64(0)
+	if cacheDenominator > 0 {
+		cacheRatio = float64(in.CacheReadTokens) / float64(cacheDenominator)
 	}
 	applogger.Log.Info("upstream usage reported",
 		zap.String("request_id", in.RequestID),

@@ -690,7 +690,7 @@ CREATE INDEX IF NOT EXISTS idx_model_aliases_model_id ON model_aliases(model_id)
 
 CREATE TABLE IF NOT EXISTS model_channel_mapping (
   id BIGSERIAL PRIMARY KEY,
-  channel_id BIGINT NOT NULL,
+  channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
   model_id BIGINT NOT NULL REFERENCES models(id) ON DELETE CASCADE,
   upstream_model_id VARCHAR(255) NOT NULL DEFAULT '',
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -706,7 +706,7 @@ CREATE INDEX IF NOT EXISTS idx_mcm_model_id ON model_channel_mapping(model_id);
 
 CREATE TABLE IF NOT EXISTS model_subscription_mapping (
   id BIGSERIAL PRIMARY KEY,
-  subscription_account_id BIGINT NOT NULL,
+  subscription_account_id BIGINT NOT NULL REFERENCES subscription_accounts(id) ON DELETE CASCADE,
   model_id BIGINT NOT NULL REFERENCES models(id) ON DELETE CASCADE,
   upstream_model_id VARCHAR(255) NOT NULL DEFAULT '',
   group_name VARCHAR(100) NOT NULL DEFAULT 'default',

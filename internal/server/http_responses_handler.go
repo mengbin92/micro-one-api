@@ -165,7 +165,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 					responseChannel = ch
 					if responseID := usage.ResponseID(); responseID != "" {
-						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
 					}
 					return nil
 				}
@@ -203,7 +203,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 						responseChannel = ch
 						if responseID := usage.ResponseID(); responseID != "" {
-							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
 						}
 						return nil
 					}
@@ -239,7 +239,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
 			responseChannel = ch
 			if responseID := usage.ResponseID(); responseID != "" {
-				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
 			}
 			return nil
 		}
@@ -276,7 +276,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				upstreamResp = fallbackResp.Response
 				responseChannel = ch
 				if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
-					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
 				}
 				return nil
 			}
@@ -377,7 +377,18 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if responseID := extractResponseID(upstreamResp.Body); responseID != "" {
-		s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: plan.ResolvedModel, Channel: *responseChannel, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromPlan(plan)})
+		route := responseRoute{
+			Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: plan.ResolvedModel,
+			Channel: *responseChannel, UserID: plan.Auth.UserID,
+			SubscriptionAccountID: subscriptionAccountIDFromChannel(responseChannel),
+		}
+		// v0.11.0 review M2: when the executed channel belongs to the planned
+		// subscription account, store the account object so the next turn does
+		// not need to re-resolve it via RPC.
+		if route.SubscriptionAccountID > 0 && plan.Account != nil && plan.Account.ID == route.SubscriptionAccountID {
+			route.Account = plan.Account
+		}
+		s.storeResponseRoute(responseID, route)
 	}
 	writeRawResponse(w, upstreamResp)
 }

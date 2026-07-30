@@ -127,8 +127,9 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				ElapsedTime:      time.Since(startedAt).Milliseconds(),
 				IsStream:         false,
 			}
-			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-			logInput.applyPlanInputs(plan)
+			// v0.11.0 review M1: record the source that actually executed the
+			// request, not the original plan, so failover attribution is correct.
+			logInput.applyChannelInputs(ch)
 			logUpstreamUsage(logInput)
 			if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				return err

@@ -497,8 +497,9 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 				ChannelID: ch.ID,
 				IsStream:  true,
 			}
-			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-			streamLogInput.applyPlanInputs(plan)
+			// v0.11.0 review M1: record the source that actually executed the
+			// request, not the original plan, so failover attribution is correct.
+			streamLogInput.applyChannelInputs(ch)
 			return s.handleAnthropicStreamingResponse(w, r, provider, ccReq, reservation, streamLogInput)
 		}
 
@@ -529,8 +530,9 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 			ElapsedTime:           time.Since(startedAt).Milliseconds(),
 			IsStream:              false,
 		}
-		// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-		logInput.applyPlanInputs(plan)
+		// v0.11.0 review M1: record the source that actually executed the
+		// request, not the original plan, so failover attribution is correct.
+		logInput.applyChannelInputs(ch)
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err
 		}

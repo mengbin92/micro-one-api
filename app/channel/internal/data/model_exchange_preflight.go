@@ -36,8 +36,6 @@ import (
 func (r *Repository) preflightImport(ctx context.Context, models []*biz.ModelExportModel, existingAliases map[string]int64, existingModelPKs map[string]int64) error {
 	var errs []string
 
-	// Track aliases within this document to catch intra-document duplicates.
-	docAliasOwner := make(map[string]string) // normalized alias -> model_id
 	// Track model_ids within this document to catch duplicate model_id.
 	docModelIDs := make(map[string]bool)
 
@@ -46,6 +44,10 @@ func (r *Repository) preflightImport(ctx context.Context, models []*biz.ModelExp
 	channelIDs := make(map[int64]bool)
 	accountIDs := make(map[int64]bool)
 
+	// Phase 1: structural validation and collect document-level alias ownership.
+	// last-writer-wins; claimants records every model that lists the alias.
+	docAliasOwner := make(map[string]string)       // normalized alias -> canonical model_id
+	docAliasClaimants := make(map[string][]string) // normalized alias -> canonical model_ids
 	for _, em := range models {
 		if em == nil {
 			continue
@@ -60,35 +62,19 @@ func (r *Repository) preflightImport(ctx context.Context, models []*biz.ModelExp
 		}
 		docModelIDs[canonicalID] = true
 
-		// Validate aliases.
 		seenAliasInModel := make(map[string]bool)
 		for _, a := range em.Aliases {
 			if a == nil || strings.TrimSpace(a.Alias) == "" {
 				continue
 			}
 			normalized := biz.NormalizeModelID(a.Alias)
-			// Duplicate alias within the same model.
 			if seenAliasInModel[normalized] {
 				errs = append(errs, fmt.Sprintf("model %s: duplicate alias %s", em.ModelID, normalized))
 				continue
 			}
 			seenAliasInModel[normalized] = true
-			// Alias already exists in the target env. Only a conflict if it
-			// belongs to a DIFFERENT model than the one being imported/updated.
-			// Same-owner aliases (update/skip case) are legitimate and must
-			// NOT be rejected (code review HIGH-3: round-trip export→import
-			// and unchanged-alias updates must pass preflight).
-			if ownerPK, ok := existingAliases[normalized]; ok && ownerPK > 0 {
-				currentModelPK := existingModelPKs[canonicalID]
-				if currentModelPK == 0 || ownerPK != currentModelPK {
-					errs = append(errs, fmt.Sprintf("model %s: alias %s already belongs to model PK %d", em.ModelID, normalized, ownerPK))
-				}
-			}
-			// Alias already claimed by another model in THIS document.
-			if owner, ok := docAliasOwner[normalized]; ok && owner != canonicalID {
-				errs = append(errs, fmt.Sprintf("alias %s claimed by both model %s and %s in document", normalized, owner, em.ModelID))
-			}
 			docAliasOwner[normalized] = canonicalID
+			docAliasClaimants[normalized] = append(docAliasClaimants[normalized], canonicalID)
 		}
 
 		// Validate channel mappings.
@@ -128,6 +114,54 @@ func (r *Repository) preflightImport(ctx context.Context, models []*biz.ModelExp
 			}
 			seenSubMapping[key] = true
 			accountIDs[m.SubscriptionAccountID] = true
+		}
+	}
+
+	// Phase 2: alias conflict detection against the target environment.
+	// A conflict only occurs when:
+	//   - the same alias is claimed by more than one model in this document; or
+	//   - the DB owner of the alias is a different model AND that DB owner still
+	//     lists the alias in this document (i.e. the alias is not being moved).
+	for normalized, claimants := range docAliasClaimants {
+		if len(claimants) > 1 {
+			errs = append(errs, fmt.Sprintf("alias %s claimed by multiple models in document: %s", normalized, strings.Join(claimants, ", ")))
+			continue
+		}
+		finalOwner := docAliasOwner[normalized]
+		dbOwnerPK, hasDBOwner := existingAliases[normalized]
+		if !hasDBOwner || dbOwnerPK <= 0 {
+			continue
+		}
+		finalOwnerPK := existingModelPKs[finalOwner]
+		if dbOwnerPK == finalOwnerPK {
+			continue
+		}
+		// The DB owner differs. Is the DB owner dropping the alias in this doc?
+		// If the DB owner is not present in the document at all we cannot know
+		// whether it keeps the alias elsewhere, so treat it as a conflict.
+		dbOwnerStillClaims := true
+		dbOwnerPresentInDoc := false
+		for _, em := range models {
+			if em == nil {
+				continue
+			}
+			if existingModelPKs[biz.NormalizeModelID(em.ModelID)] != dbOwnerPK {
+				continue
+			}
+			dbOwnerPresentInDoc = true
+			for _, a := range em.Aliases {
+				if a != nil && biz.NormalizeModelID(a.Alias) == normalized {
+					dbOwnerStillClaims = true
+					break
+				}
+			}
+			// If the DB owner is present but does not list the alias, it is
+			// explicitly dropping it -> allow the move.
+			dbOwnerStillClaims = false
+			break
+		}
+		if !dbOwnerPresentInDoc || dbOwnerStillClaims {
+			errs = append(errs, fmt.Sprintf("model %s: alias %s already belongs to model PK %d", finalOwner, normalized, dbOwnerPK))
 		}
 	}
 

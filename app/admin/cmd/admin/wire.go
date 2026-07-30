@@ -4,6 +4,9 @@
 package main
 
 import (
+	"context"
+	"time"
+
 	"github.com/go-kratos/kratos/v3"
 	kregistry "github.com/go-kratos/kratos/v3/registry"
 	"github.com/google/wire"
@@ -76,6 +79,12 @@ func newApp(
 		svc.SetSubscriptionUsecases(sub.SubUc, sub.GroupUc, planUc)
 	}
 
+	// v0.11.0 review M5: background worker keeps the unpriced-routed-model
+	// gauge up to date without requiring a human to open the page.
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	worker := service.NewUnpricedRoutedMetricWorker(svc, 60*time.Second)
+	go worker.Run(workerCtx)
+
 	grpcSrv := newGRPCServer(cfg, svc)
 
 	// Build HTTP server with nil-safety checks.
@@ -99,6 +108,7 @@ func newApp(
 	startSignalHandler(appSignalStopper{app})
 
 	return app, func() {
+		cancelWorker()
 		if clients != nil {
 			clients.identityConn.Close()
 			clients.channelConn.Close()

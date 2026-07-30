@@ -188,7 +188,10 @@ func (s *openAIWSStickyStore) LookupSessionRoute(ctx context.Context, group, ses
 	rCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	val, err := s.rdb.Get(rCtx, stickySessionRedisKey(group, id)).Result()
-	source, ok := decodeStickySource(val, relaybiz.UpstreamRouteSubscription)
+	// v0.11.0 review L7: pre-v0.11.0 session bindings stored bare channel IDs.
+	// Default to channel when decoding legacy bare-integer values so rolling
+	// upgrades do not misroute to subscription accounts.
+	source, ok := decodeStickySource(val, relaybiz.UpstreamRouteChannel)
 	if err != nil || !ok {
 		return openAIWSStickySource{}
 	}

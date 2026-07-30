@@ -985,6 +985,16 @@ func subscriptionAccountIDFromPlan(plan *relaybiz.RelayPlan) int64 {
 	return plan.Account.ID
 }
 
+// subscriptionAccountIDFromChannel returns the subscription account id of the
+// channel that actually executed the request. Use this in retry/failover paths
+// where the original plan may have selected a different source.
+func subscriptionAccountIDFromChannel(ch *relaybiz.Channel) int64 {
+	if ch == nil {
+		return 0
+	}
+	return ch.SubscriptionAccountID
+}
+
 // upstreamCostKeyInputsFromPlan extracts the v0.11.0 Phase 2 §2.2 stable
 // upstream cost-key inputs from a relay plan. A subscription account plan
 // yields ("subscription", account.UpstreamModelID); a regular channel plan

@@ -689,10 +689,24 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 			return 0, 0, fmt.Errorf("update reservation status: %w", err)
 		}
 
+		// v0.11.0 review L2: emit the upstream-cost metric on the legacy commit
+		// path as well, so UpstreamCostMissing alert sees all traffic.
+		upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
+		resultLabel := "unpriced"
+		if upstreamCost > 0 {
+			resultLabel = "priced"
+		}
+		if metrics.BillingLedgerUpstreamCostRecorded != nil {
+			metrics.BillingLedgerUpstreamCostRecorded.WithLabelValues(
+				resultLabel,
+				providerFamilyForModel(reservation.Model),
+			).Inc()
+		}
+
 		ledger := &Ledger{
 			UserID:                reservation.UserID,
 			Amount:                -actualCost,
-			UpstreamCost:          uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage),
+			UpstreamCost:          upstreamCost,
 			BalanceAfter:          balanceAfter,
 			Type:                  LedgerTypeConsume,
 			ReferenceID:           reservationID,

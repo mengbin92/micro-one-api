@@ -140,8 +140,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 				IsStream:              true,
 			}
-			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-			streamLogInput.applyPlanInputs(plan)
+			// v0.11.0 review M1: record the source that actually executed the
+			// request, not the original plan, so failover attribution is correct.
+			streamLogInput.applyChannelInputs(ch)
 			return s.handleStreamingResponse(w, r, provider, &req, reservation, streamLogInput)
 		}
 
@@ -172,8 +173,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			ElapsedTime:      time.Since(startedAt).Milliseconds(),
 			IsStream:         false,
 		}
-		// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-		logInput.applyPlanInputs(plan)
+		// v0.11.0 review M1: record the source that actually executed the
+		// request, not the original plan, so failover attribution is correct.
+		logInput.applyChannelInputs(ch)
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err
 		}

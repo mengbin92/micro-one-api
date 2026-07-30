@@ -475,6 +475,11 @@ func (r *Repository) DeleteSubscriptionAccount(ctx context.Context, accountID in
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.subAccounts, accountID)
+	for id, m := range r.modelSubscriptionMappings {
+		if m != nil && m.SubscriptionAccountID == accountID {
+			delete(r.modelSubscriptionMappings, id)
+		}
+	}
 	return nil
 }
 
@@ -832,6 +837,11 @@ func (r *Repository) DeleteChannel(ctx context.Context, channelID int64) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.channels, channelID)
+	for id, m := range r.modelChannelMappings {
+		if m != nil && m.ChannelID == channelID {
+			delete(r.modelChannelMappings, id)
+		}
+	}
 	return nil
 }
 
@@ -925,7 +935,7 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 func (r *Repository) listSubscriptionAccountsDB(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
 	query := r.db.WithContext(ctx).Model(&subscriptionAccountModel{})
 	if keyword != "" {
-		query = query.Where("name LIKE ? OR account_id LIKE ?", "%"+escapeLike(keyword)+"%", "%"+escapeLike(keyword)+"%")
+		query = query.Where("name LIKE ? ESCAPE '!' OR account_id LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%", "%"+escapeLike(keyword)+"%")
 	}
 	if group != "" {
 		query = query.Where("`group` = ?", group)
@@ -1062,6 +1072,9 @@ func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID 
 			return err
 		}
 		if err := tx.Where("account_id = ?", accountID).Delete(&subscriptionAccountAbilityModel{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("subscription_account_id = ?", accountID).Delete(&modelSubscriptionMappingModel{}).Error; err != nil {
 			return err
 		}
 		return tx.Where("account_id = ?", accountID).Delete(&accountQuotaSnapshotModel{}).Error
@@ -1829,7 +1842,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*biz.Channel, int64, error) {
 	query := r.db.WithContext(ctx).Model(&channelModel{})
 	if keyword != "" {
-		query = query.Where("name LIKE ?", "%"+escapeLike(keyword)+"%")
+		query = query.Where("name LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	if group != "" {
 		query = query.Where("`group` = ?", group)
@@ -1911,7 +1924,10 @@ func (r *Repository) deleteChannelDB(ctx context.Context, channelID int64) error
 		if err := tx.Where("id = ?", channelID).Delete(&channelModel{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("channel_id = ?", channelID).Delete(&abilityModel{}).Error
+		if err := tx.Where("channel_id = ?", channelID).Delete(&abilityModel{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("channel_id = ?", channelID).Delete(&modelChannelMappingModel{}).Error
 	})
 }
 
@@ -2610,9 +2626,9 @@ func applyHealthEvent(channel *biz.Channel, event biz.ChannelHealthEvent, thresh
 }
 
 func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "%", "\\%")
-	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "!", "!!")
+	s = strings.ReplaceAll(s, "%", "!%")
+	s = strings.ReplaceAll(s, "_", "!_")
 	return s
 }
 

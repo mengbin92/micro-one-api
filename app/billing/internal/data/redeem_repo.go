@@ -95,7 +95,7 @@ func (r *redeemRepo) SearchRedeemCodes(ctx context.Context, keyword string) ([]*
 	var models []redeemCodeModel
 
 	err := r.data.db.WithContext(ctx).
-		Where("code = ? OR name LIKE ?", keyword, escapeLike(keyword)+"%").
+		Where("code = ? OR name LIKE ? ESCAPE '!'", keyword, escapeLike(keyword)+"%").
 		Order("created_at DESC").
 		Find(&models).Error
 
@@ -208,8 +208,8 @@ func redeemCodeToBiz(model *redeemCodeModel) (*biz.RedeemCode, error) {
 }
 
 func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "%", "\\%")
-	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "!", "!!")
+	s = strings.ReplaceAll(s, "%", "!%")
+	s = strings.ReplaceAll(s, "_", "!_")
 	return s
 }
