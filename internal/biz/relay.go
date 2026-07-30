@@ -35,6 +35,11 @@ type IdentityClient interface {
 
 type ChannelClient interface {
 	SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error)
+	// SelectChannelExcluding filters the given channel IDs out of selection
+	// individually (per candidate, not per tier) so request-scoped failover can
+	// reach healthy channels in any tier. Mirrors sub2api's
+	// SelectAccountForModelWithExclusions.
+	SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error)
 	RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error
 	// RecordSubscriptionAccountHealth feeds a real upstream outcome into the
 	// subscription-account selector so health and circuit state track live
@@ -48,6 +53,15 @@ type SubscriptionAccountClient interface {
 	// its id (with secrets) for session-stickiness reuse. Returns a nil account
 	// (no error) when the id is unknown.
 	GetSubscriptionAccountByID(ctx context.Context, accountID int64) (*SubscriptionAccount, error)
+}
+
+// SubscriptionAccountExcludingClient is the narrow extension of
+// SubscriptionAccountClient that passes the request-scoped failed-account set
+// to channel-service for server-side per-candidate filtering (sub2api #2).
+// It is optional: relay falls back to the local exclusion loop when the client
+// does not implement it, so existing fakes keep working.
+type SubscriptionAccountExcludingClient interface {
+	SelectSubscriptionAccountExcluding(ctx context.Context, group, model, platform string, excluded map[int64]bool) (*SubscriptionAccount, error)
 }
 
 // SessionAccountStore resolves and refreshes the session -> subscription-account
@@ -131,6 +145,77 @@ func RoutingSourceIdentityForChannel(ch *Channel) RoutingSourceIdentity {
 	return RoutingSourceIdentity{Kind: UpstreamRouteChannel, ID: ch.ID}
 }
 
+// RoutingCandidate is one selectable source for a request, precomputed once by
+// Plan() and consumed by RetryExecutor / SelectFallbackRoutingSource. It
+// unifies API-key channels and subscription accounts so failover walks a single
+// ordered list instead of recomputing per retry.
+type RoutingCandidate struct {
+	Identity RoutingSourceIdentity
+	Priority int64
+	Weight   int64
+	Channel  *Channel             // nil when Kind == subscription
+	Account  *SubscriptionAccount // nil when Kind == channel
+}
+
+// RoutingCandidateList holds the request-scoped ordered source list. The list
+// is sorted by priority descending, then weight descending. Failover advances
+// the cursor past excluded/invalid candidates without rebuilding the list per
+// retry.
+type RoutingCandidateList struct {
+	Group       string
+	Model       string
+	GlobalModel string
+	Candidates  []RoutingCandidate
+	Excluded    map[RoutingSourceIdentity]bool
+	pos         int
+}
+
+// Exclude marks a source as failed for this request.
+func (l *RoutingCandidateList) Exclude(id RoutingSourceIdentity) {
+	if l == nil {
+		return
+	}
+	if l.Excluded == nil {
+		l.Excluded = make(map[RoutingSourceIdentity]bool)
+	}
+	l.Excluded[id] = true
+}
+
+// Next returns the next selectable candidate and advances the cursor. It skips
+// excluded candidates and nil channel/account entries. Returns nil when the
+// list is exhausted.
+func (l *RoutingCandidateList) Next() *RoutingCandidate {
+	if l == nil {
+		return nil
+	}
+	for l.pos < len(l.Candidates) {
+		c := l.Candidates[l.pos]
+		l.pos++
+		if l.Excluded != nil && l.Excluded[c.Identity] {
+			continue
+		}
+		if c.Channel == nil && c.Account == nil {
+			continue
+		}
+		return &c
+	}
+	return nil
+}
+
+// Peek returns the candidate at the current cursor without advancing.
+func (l *RoutingCandidateList) Peek() *RoutingCandidate {
+	if l == nil || l.pos >= len(l.Candidates) {
+		return nil
+	}
+	c := l.Candidates[l.pos]
+	return &c
+}
+
+// IsEmpty reports whether there are no candidates at all.
+func (l *RoutingCandidateList) IsEmpty() bool {
+	return l == nil || len(l.Candidates) == 0
+}
+
 type ChannelConfig struct {
 	APIVersion string
 }
@@ -202,6 +287,10 @@ type RelayPlan struct {
 	// mapping. Kept for billing/log compatibility; do NOT feed it back into
 	// ApplyChannelModelMapping on retry — use GlobalModel.
 	ResolvedModel string
+	// Candidates is the request-scoped ordered routing source list populated by
+	// Plan() and consumed by RetryExecutor / SelectFallbackRoutingSource for
+	// deterministic failover progression (sub2api #2).
+	Candidates *RoutingCandidateList
 }
 
 // BaseModel returns the model before per-channel/per-account mapping. Older
@@ -417,6 +506,19 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			{Kind: UpstreamRouteChannel, ID: channel.ID, Priority: channel.Priority, Weight: selectorWeight(channel.Weight)},
 			{Kind: UpstreamRouteSubscription, ID: subAccount.ID, Priority: subAccount.Priority, Weight: subscriptionRouteWeight(subAccount)},
 		})
+		channelCand := RoutingCandidate{
+			Identity: RoutingSourceIdentity{Kind: UpstreamRouteChannel, ID: channel.ID},
+			Priority: channel.Priority,
+			Weight:   selectorWeight(channel.Weight),
+			Channel:  channel,
+		}
+		subCand := RoutingCandidate{
+			Identity: RoutingSourceIdentity{Kind: UpstreamRouteSubscription, ID: subAccount.ID},
+			Priority: subAccount.Priority,
+			Weight:   subscriptionRouteWeight(subAccount),
+			Channel:  subChannel,
+			Account:  subAccount,
+		}
 		if choice.Kind == UpstreamRouteSubscription {
 			_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 				RequestID:      req.RequestID,
@@ -430,6 +532,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			}, planStartedAt)
 			_plan := newRelayPlan(authSnapshot, subChannel, subAccount, resolvedModel)
 			_plan.SelectionEvent = _sel
+			_plan.Candidates = newRoutingCandidateList(authSnapshot.Group, req.Model, resolvedModel, subCand, channelCand)
 			return _plan, nil
 		}
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
@@ -444,6 +547,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 		}, planStartedAt)
 		_plan := newRelayPlan(authSnapshot, channel, nil, resolvedModel)
 		_plan.SelectionEvent = _sel
+		_plan.Candidates = newRoutingCandidateList(authSnapshot.Group, req.Model, resolvedModel, channelCand, subCand)
 		return _plan, nil
 	case channel != nil:
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
@@ -501,6 +605,21 @@ func newRelayPlan(auth *AuthSnapshot, channel *Channel, account *SubscriptionAcc
 		GlobalModel:   resolvedModel,
 		ResolvedModel: ResolveChannelModel(channel, resolvedModel),
 	}
+}
+
+// newRoutingCandidateList builds the request-scoped ordered failover list
+// (sub2api #2). The winner is pre-excluded because attempt 0 already runs
+// against it; the first retry then advances to the first alternate without a
+// fresh selection RPC.
+func newRoutingCandidateList(group, model, globalModel string, winner RoutingCandidate, alternates ...RoutingCandidate) *RoutingCandidateList {
+	l := &RoutingCandidateList{
+		Group:       group,
+		Model:       model,
+		GlobalModel: globalModel,
+		Candidates:  append([]RoutingCandidate{winner}, alternates...),
+	}
+	l.Exclude(winner.Identity)
+	return l
 }
 
 // subscriptionRouteWeight returns the cross-source selection weight for a
@@ -716,6 +835,38 @@ func (uc *RelayUsecase) selectSubscriptionAccountForModel(ctx context.Context, g
 func (uc *RelayUsecase) selectSchedulableSubscriptionAccount(ctx context.Context, group, model, platform string, exclude map[int64]bool) (*SubscriptionAccount, error) {
 	if uc.subscription == nil {
 		return nil, fmt.Errorf("subscription account selector is not configured")
+	}
+	// sub2api #2: when the client supports server-side exclusion, pass the
+	// request-scoped failed set down instead of looping over priority tiers.
+	// The local schedulability re-check still runs so runtime-blocked accounts
+	// (relay-local state channel-service cannot see) are skipped and excluded.
+	if exClient, ok := uc.subscription.(SubscriptionAccountExcludingClient); ok {
+		localExclude := make(map[int64]bool, len(exclude)+8)
+		for id, blocked := range exclude {
+			if blocked {
+				localExclude[id] = true
+			}
+		}
+		var lastErr error
+		for attempt := 0; attempt < 8; attempt++ {
+			account, err := exClient.SelectSubscriptionAccountExcluding(ctx, group, model, platform, localExclude)
+			if err != nil {
+				return nil, err
+			}
+			if account == nil || account.ID <= 0 {
+				return nil, fmt.Errorf("subscription account not found")
+			}
+			if !uc.isSubscriptionAccountSchedulable(ctx, account) {
+				localExclude[account.ID] = true
+				lastErr = fmt.Errorf("subscription account %d runtime blocked", account.ID)
+				continue
+			}
+			return account, nil
+		}
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, fmt.Errorf("subscription account not found")
 	}
 	const maxAttempts = 8
 	excludedPriority := false
@@ -979,10 +1130,12 @@ func subscriptionPlatformChannelType(platform string) int32 {
 }
 
 // NewRetryExecutor creates a RetryExecutor using this use case's retry policy
-// and channel selector. Callers use this to execute upstream calls with
-// automatic retry and channel fallback.
+// and channel selector. The usecase itself is wired as the unified
+// cross-namespace fallback selector (sub2api #2), so retries walk the
+// request-scoped candidate list first and only re-select with per-candidate
+// exclusion when it is exhausted.
 func (uc *RelayUsecase) NewRetryExecutor() *RetryExecutor {
-	return NewRetryExecutor(uc.retryPolicy, uc.channel)
+	return NewRetryExecutor(uc.retryPolicy, uc.channel).WithFallbackSelector(uc)
 }
 
 // SelectFallbackChannel selects from a lower-priority channel tier. It is a
@@ -1011,19 +1164,20 @@ func (uc *RelayUsecase) SelectFallbackRoutingSource(
 	var channel *Channel
 	var channelErr error
 	if uc.channel != nil {
-		excludeFirstPriority := false
+		// Pass the request-scoped failures into selection as a filter so a
+		// just-failed channel is never re-returned and healthy channels in any
+		// tier stay reachable. (Post-hoc exclusion after SelectChannel would
+		// strand lower tiers: the selector can keep returning the same failed
+		// channel while it remains selectable below the circuit threshold.)
+		excludedChannels := make(map[int64]bool)
 		for source, blocked := range excluded {
-			if blocked && source.Kind == UpstreamRouteChannel {
-				excludeFirstPriority = true
-				break
+			if blocked && source.Kind == UpstreamRouteChannel && source.ID > 0 {
+				excludedChannels[source.ID] = true
 			}
 		}
-		channel, channelErr = uc.channel.SelectChannel(ctx, group, clientModel, excludeFirstPriority)
+		channel, channelErr = uc.channel.SelectChannelExcluding(ctx, group, clientModel, excludedChannels)
 		if channelErr != nil && resolvedModel != clientModel {
-			channel, channelErr = uc.channel.SelectChannel(ctx, group, resolvedModel, excludeFirstPriority)
-		}
-		if channel != nil && excluded[RoutingSourceIdentityForChannel(channel)] {
-			channel = nil
+			channel, channelErr = uc.channel.SelectChannelExcluding(ctx, group, resolvedModel, excludedChannels)
 		}
 	}
 

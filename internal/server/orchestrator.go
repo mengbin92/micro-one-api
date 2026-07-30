@@ -73,7 +73,7 @@ type RelayResult struct {
 	// StatusCode is the HTTP status code.
 	StatusCode int
 	// Usage contains token usage information for billing.
-	Usage *Usage
+	Usage *relaybiz.CanonicalUsage
 	// ChannelID is the selected channel ID.
 	ChannelID int64
 	// SubscriptionAccountID is the selected subscription account ID (if applicable).
@@ -84,22 +84,6 @@ type RelayResult struct {
 	Error error
 }
 
-// Usage represents token usage information from the upstream response.
-type Usage struct {
-	PromptTokens          int64
-	CompletionTokens      int64
-	CacheReadTokens       int64
-	CacheCreation5mTokens int64
-	CacheCreation1hTokens int64
-	TotalTokens           int64
-	// PromptExclusive (v0.11.0 Phase 0/1, ADR §3.3): when true, prompt_tokens
-	// and cache_read_tokens are mutually exclusive buckets (Anthropic / GLM
-	// Messages API). Set by the relay boundary when the upstream uses
-	// Anthropic-compatible token semantics so the billing layer does NOT
-	// subtract cacheRead from prompt.
-	PromptExclusive bool
-}
-
 // Reservation captures a quota reservation made before upstream forwarding.
 type Reservation struct {
 	ID string
@@ -108,10 +92,10 @@ type Reservation struct {
 // RelayLifecycleHooks integrates side effects that are owned by the outer
 // server layer, such as billing and usage logging.
 type RelayLifecycleHooks interface {
-	ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated Usage) (*Reservation, error)
-	CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage Usage, success bool, latency time.Duration) error
+	ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated relaybiz.CanonicalUsage) (*Reservation, error)
+	CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage relaybiz.CanonicalUsage, success bool, latency time.Duration) error
 	ReleaseQuota(ctx context.Context, reservation *Reservation, reason string) error
-	LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool)
+	LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool)
 }
 
 type relayUserRateLimitHook interface {
@@ -303,10 +287,11 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		}
 		result.StatusCode = resp.StatusCode
 		result.Headers = resp.Header.Clone()
-		result.Response = newChunkReadCloser(chunks, func(streamUsage Usage) error {
+		result.Response = newChunkReadCloser(chunks, func(streamUsage relaybiz.CanonicalUsage) error {
 			if streamUsage.TotalTokens == 0 {
 				streamUsage = estimatedUsage
 			}
+			streamUsage.PromptExclusive = relaybiz.IsPromptExclusiveChannel(plan)
 			latency := time.Since(startTime)
 			o.finalizeSelectionResult(plan, "success", latency)
 			if err := o.commitReservedQuota(context.Background(), plan, req, reservation, streamUsage, true, latency); err != nil {
@@ -333,11 +318,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 	result.Headers = resp.Header.Clone()
 	result.Response = bodyReader
 	if usage != nil {
-		result.Usage = &Usage{
-			PromptTokens:     usage.PromptTokens,
-			CompletionTokens: usage.CompletionTokens,
-			TotalTokens:      usage.TotalTokens,
-		}
+		result.Usage = usage
 	}
 	if result.Usage == nil || result.Usage.TotalTokens == 0 {
 		result.Usage = &estimatedUsage
@@ -431,14 +412,14 @@ func mapUpstreamOrInternalStatus(err error) int {
 type chunkReadCloser struct {
 	chunks   <-chan []byte
 	buf      *bytes.Reader
-	onClose  func(Usage) error
-	usage    Usage
+	onClose  func(relaybiz.CanonicalUsage) error
+	usage    relaybiz.CanonicalUsage
 	closeErr error
 	closed   bool
 }
 
-func newChunkReadCloser(chunks <-chan []byte, onClose ...func(Usage) error) io.ReadCloser {
-	var closeFn func(Usage) error
+func newChunkReadCloser(chunks <-chan []byte, onClose ...func(relaybiz.CanonicalUsage) error) io.ReadCloser {
+	var closeFn func(relaybiz.CanonicalUsage) error
 	if len(onClose) > 0 {
 		closeFn = onClose[0]
 	}
@@ -480,14 +461,14 @@ func (o *relayOrchestrator) releaseReservedQuota(ctx context.Context, reservatio
 	_ = o.hooks.ReleaseQuota(ctx, reservation, reason)
 }
 
-func (o *relayOrchestrator) commitReservedQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage Usage, success bool, latency time.Duration) error {
+func (o *relayOrchestrator) commitReservedQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage relaybiz.CanonicalUsage, success bool, latency time.Duration) error {
 	if o.hooks == nil || reservation == nil {
 		return nil
 	}
 	return o.hooks.CommitQuota(ctx, plan, req, reservation, usage, success, latency)
 }
 
-func (o *relayOrchestrator) logUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage Usage, latency time.Duration, stream bool) {
+func (o *relayOrchestrator) logUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) {
 	if o.hooks == nil {
 		return
 	}
@@ -509,9 +490,9 @@ func (o *relayOrchestrator) finalizeSelectionResult(plan *relaybiz.RelayPlan, re
 	relaybiz.FinalizeSelectionResult(recorder, *plan.SelectionEvent, result, "", false, latency)
 }
 
-func estimateUsageFromBody(body []byte) Usage {
+func estimateUsageFromBody(body []byte) relaybiz.CanonicalUsage {
 	raw := estimateRawUsage(body)
-	return Usage{
+	return relaybiz.CanonicalUsage{
 		PromptTokens:          raw.PromptTokens,
 		CompletionTokens:      raw.CompletionTokens,
 		CacheReadTokens:       raw.CacheReadTokens,
@@ -521,9 +502,9 @@ func estimateUsageFromBody(body []byte) Usage {
 	}
 }
 
-func usageFromBody(body []byte) Usage {
+func usageFromBody(body []byte) relaybiz.CanonicalUsage {
 	raw := extractRawUsage(body, 0)
-	return Usage{
+	return relaybiz.CanonicalUsage{
 		PromptTokens:          raw.PromptTokens,
 		CompletionTokens:      raw.CompletionTokens,
 		CacheReadTokens:       raw.CacheReadTokens,
@@ -533,7 +514,7 @@ func usageFromBody(body []byte) Usage {
 	}
 }
 
-func mergeUsage(primary, fallback Usage) Usage {
+func mergeUsage(primary, fallback relaybiz.CanonicalUsage) relaybiz.CanonicalUsage {
 	if primary.PromptTokens == 0 {
 		primary.PromptTokens = fallback.PromptTokens
 	}

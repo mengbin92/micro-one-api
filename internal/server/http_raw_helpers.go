@@ -153,12 +153,12 @@ func extractResponseID(body []byte) string {
 // total into the 5m bucket (ADR §4.2). Negative values are clamped to 0 by
 // the callers (nonNeg) and recorded via metrics.TokenUsageParseAnomaly.
 type rawUsage struct {
-	PromptTokens         int64
-	CompletionTokens     int64
-	CacheReadTokens      int64
+	PromptTokens          int64
+	CompletionTokens      int64
+	CacheReadTokens       int64
 	CacheCreation5mTokens int64
 	CacheCreation1hTokens int64
-	TotalTokens          int64
+	TotalTokens           int64
 }
 
 // extractRawUsage finds the usage block anywhere in a JSON document and
@@ -332,6 +332,47 @@ func cacheCreationDetailTokens(m map[string]interface{}) (fiveM, oneH, flatTotal
 			recordTokenUsageAnomaly("negative")
 		} else {
 			flatTotal = raw
+		}
+	}
+	// Provider-level flattened buckets (relayprovider.UsageTokenDetails JSON tags).
+	if raw := numberField(m, "cache_creation_5m_tokens"); raw > 0 {
+		hadDetail = true
+		if raw < 0 {
+			recordTokenUsageAnomaly("negative")
+		} else {
+			fiveM = raw
+		}
+	}
+	if raw := numberField(m, "cache_creation_1h_tokens"); raw > 0 {
+		hadDetail = true
+		if raw < 0 {
+			recordTokenUsageAnomaly("negative")
+		} else {
+			oneH = raw
+		}
+	}
+	// Provider-level flattened buckets may also live inside prompt_tokens_details /
+	// input_tokens_details (e.g. after apicompat Responses->Chat conversion).
+	for _, detailsKey := range []string{"prompt_tokens_details", "input_tokens_details"} {
+		details, ok := m[detailsKey].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if raw := numberField(details, "cache_creation_5m_tokens"); raw > 0 {
+			hadDetail = true
+			if raw < 0 {
+				recordTokenUsageAnomaly("negative")
+			} else {
+				fiveM = raw
+			}
+		}
+		if raw := numberField(details, "cache_creation_1h_tokens"); raw > 0 {
+			hadDetail = true
+			if raw < 0 {
+				recordTokenUsageAnomaly("negative")
+			} else {
+				oneH = raw
+			}
 		}
 	}
 	nested, _ := m["cache_creation"].(map[string]interface{})

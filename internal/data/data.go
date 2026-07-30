@@ -7,6 +7,7 @@ import (
 	"time"
 
 	channelv1 "micro-one-api/api/channel/v1"
+	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	relaycredential "micro-one-api/domain/upstream/credential"
 	"micro-one-api/internal/biz"
@@ -88,9 +89,28 @@ func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, mo
 	if err != nil {
 		return nil, err
 	}
-	info := resp.GetAccount()
+	return subscriptionAccountInfoToClientBiz(resp.GetAccount()), nil
+}
+
+// SelectSubscriptionAccountExcluding passes the request-scoped failed-account
+// set down to channel-service so per-candidate filtering happens server-side
+// (sub2api #2).
+func (c *channelClient) SelectSubscriptionAccountExcluding(ctx context.Context, group, model, platform string, excluded map[int64]bool) (*biz.SubscriptionAccount, error) {
+	resp, err := c.client.SelectSubscriptionAccount(ctx, &channelv1.SelectSubscriptionAccountRequest{
+		Group:              group,
+		Model:              model,
+		Platform:           platform,
+		ExcludedAccountIds: sortedExcludedIDs(excluded),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return subscriptionAccountInfoToClientBiz(resp.GetAccount()), nil
+}
+
+func subscriptionAccountInfoToClientBiz(info *commonv1.SubscriptionAccountInfo) *biz.SubscriptionAccount {
 	if info == nil {
-		return nil, nil
+		return nil
 	}
 	return &biz.SubscriptionAccount{
 		ID:                    info.GetId(),
@@ -109,7 +129,7 @@ func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, mo
 		RPMLimit:              info.GetRpmLimit(),
 		SessionWindowLimitUSD: info.GetSessionWindowLimitUsd(),
 		ModelMapping:          info.GetModelMapping(),
-	}, nil
+	}
 }
 
 func (c *channelClient) GetSubscriptionAccountByID(ctx context.Context, accountID int64) (*biz.SubscriptionAccount, error) {
@@ -129,7 +149,31 @@ func (c *channelClient) SelectChannel(ctx context.Context, group, model string, 
 	if err != nil {
 		return nil, err
 	}
-	info := resp.Channel
+	return channelInfoToBiz(resp.Channel), nil
+}
+
+func (c *channelClient) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*biz.Channel, error) {
+	ids := make([]int64, 0, len(excluded))
+	for id, blocked := range excluded {
+		if blocked {
+			ids = append(ids, id)
+		}
+	}
+	resp, err := c.client.SelectChannel(ctx, &channelv1.SelectChannelRequest{
+		Group:              group,
+		Model:              model,
+		ExcludedChannelIds: ids,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return channelInfoToBiz(resp.Channel), nil
+}
+
+func channelInfoToBiz(info *commonv1.ChannelInfo) *biz.Channel {
+	if info == nil {
+		return nil
+	}
 	return &biz.Channel{
 		ID:             info.Id,
 		Type:           info.Type,
@@ -142,7 +186,7 @@ func (c *channelClient) SelectChannel(ctx context.Context, group, model string, 
 		Key:            info.Key,
 		ModelMapping:   info.GetModelMapping(),
 		RestrictModels: info.GetRestrictModels(),
-	}, nil
+	}
 }
 
 func (c *channelClient) RecordChannelHealth(ctx context.Context, channelID int64, success bool, message string, responseTime int64) error {

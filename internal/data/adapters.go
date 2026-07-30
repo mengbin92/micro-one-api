@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
@@ -81,6 +82,37 @@ func (a *ChannelAdapter) SelectSubscriptionAccount(ctx context.Context, group, m
 	return subscriptionAccountInfoToBiz(reply.GetAccount()), nil
 }
 
+// SelectSubscriptionAccountExcluding passes the request-scoped failed-account
+// set down to channel-service so per-candidate filtering happens server-side
+// (sub2api #2), instead of the relay looping over excludeFirstPriority tiers.
+func (a *ChannelAdapter) SelectSubscriptionAccountExcluding(ctx context.Context, group, model, platform string, excluded map[int64]bool) (*relaybiz.SubscriptionAccount, error) {
+	reply, err := a.client.SelectSubscriptionAccount(ctx, &channelv1.SelectSubscriptionAccountRequest{
+		Group:              group,
+		Model:              model,
+		Platform:           platform,
+		ExcludedAccountIds: sortedExcludedIDs(excluded),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return subscriptionAccountInfoToBiz(reply.GetAccount()), nil
+}
+
+// sortedExcludedIDs flattens an exclusion set into a deterministic slice.
+func sortedExcludedIDs(excluded map[int64]bool) []int64 {
+	if len(excluded) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(excluded))
+	for id, blocked := range excluded {
+		if blocked && id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
 // GetSubscriptionAccountByID materializes a single subscription account (with
 // secrets) by id for session-stickiness reuse. Returns (nil, nil) when the id
 // is unknown. It reuses the WithSecrets-preferred by-id RPC shared with the
@@ -130,9 +162,33 @@ func (a *ChannelAdapter) SelectChannel(ctx context.Context, group, model string,
 	if err != nil {
 		return nil, err
 	}
-	ch := reply.Channel
+	return channelInfoToRelayChannel(reply.Channel), nil
+}
+
+// SelectChannelExcluding passes the request-scoped failed-channel set through
+// to the channel service, which filters candidates individually so failover
+// can reach healthy channels in any tier.
+func (a *ChannelAdapter) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*relaybiz.Channel, error) {
+	ids := make([]int64, 0, len(excluded))
+	for id, blocked := range excluded {
+		if blocked {
+			ids = append(ids, id)
+		}
+	}
+	reply, err := a.client.SelectChannel(ctx, &channelv1.SelectChannelRequest{
+		Group:              group,
+		Model:              model,
+		ExcludedChannelIds: ids,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return channelInfoToRelayChannel(reply.Channel), nil
+}
+
+func channelInfoToRelayChannel(ch *commonv1.ChannelInfo) *relaybiz.Channel {
 	if ch == nil {
-		return nil, nil
+		return nil
 	}
 	relayChannel := &relaybiz.Channel{
 		ID:              ch.Id,
@@ -152,7 +208,7 @@ func (a *ChannelAdapter) SelectChannel(ctx context.Context, group, model string,
 	if ch.Config != nil {
 		relayChannel.Config.APIVersion = ch.Config.ApiVersion
 	}
-	return relayChannel, nil
+	return relayChannel
 }
 
 func (a *ChannelAdapter) RecordChannelHealth(ctx context.Context, channelID int64, success bool, message string, responseTime int64) error {

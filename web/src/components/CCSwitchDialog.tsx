@@ -37,9 +37,6 @@ const APP_CONFIGS: Record<AppType, AppConfig> = {
     icon: Bot,
     modelFields: [
       { key: 'model', label: '主模型', required: true },
-      { key: 'haikuModel', label: 'Haiku 模型', required: false },
-      { key: 'sonnetModel', label: 'Sonnet 模型', required: false },
-      { key: 'opusModel', label: 'Opus 模型', required: false },
     ],
   },
   codex: {
@@ -153,7 +150,8 @@ export function CCSwitchDialog({
   };
 
   const handleSubmit = () => {
-    if (!models.model || !apiKey) {
+    const requiredKey = currentConfig.modelFields.find((f) => f.required)?.key;
+    if ((requiredKey && !models[requiredKey]) || !apiKey) {
       return;
     }
     const url = buildCCSwitchURL(app, name, models, apiKey, baseUrl);
@@ -264,7 +262,7 @@ export function CCSwitchDialog({
         </div>
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>取消</DialogClose>
-          <Button onClick={handleSubmit} disabled={!models.model || !apiKey}>
+          <Button onClick={handleSubmit} disabled={!models[currentConfig.modelFields.find((f) => f.required)?.key ?? "model"] || !apiKey}>
             打开 CC Switch
           </Button>
         </DialogFooter>

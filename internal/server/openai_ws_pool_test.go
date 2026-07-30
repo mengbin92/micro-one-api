@@ -97,7 +97,7 @@ func TestConnPoolReusesIdleConnection(t *testing.T) {
 	ctx := context.Background()
 	hdr := http.Header{"Authorization": []string{"Bearer x"}}
 
-	pc1, err := pool.AcquireOrDial(ctx, 1, "wss://upstream/v1/responses", hdr)
+	pc1, err := pool.AcquireOrDial(ctx, "channel:1", "wss://upstream/v1/responses", hdr)
 	if err != nil {
 		t.Fatalf("first acquire: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestConnPoolReusesIdleConnection(t *testing.T) {
 
 	// Release and immediately re-acquire: should reuse the same conn.
 	pool.Release(pc1, false)
-	pc2, err := pool.AcquireOrDial(ctx, 1, "wss://upstream/v1/responses", hdr)
+	pc2, err := pool.AcquireOrDial(ctx, "channel:1", "wss://upstream/v1/responses", hdr)
 	if err != nil {
 		t.Fatalf("second acquire: %v", err)
 	}
@@ -125,9 +125,9 @@ func TestConnPoolDialsNewWhenAllLeased(t *testing.T) {
 	ctx := context.Background()
 	hdr := http.Header{}
 
-	pc1, _ := pool.AcquireOrDial(ctx, 1, "wss://u", hdr)
+	pc1, _ := pool.AcquireOrDial(ctx, "channel:1", "wss://u", hdr)
 	// pc1 still leased -> second acquire must dial a new conn.
-	pc2, err := pool.AcquireOrDial(ctx, 1, "wss://u", hdr)
+	pc2, err := pool.AcquireOrDial(ctx, "channel:1", "wss://u", hdr)
 	if err != nil {
 		t.Fatalf("second acquire: %v", err)
 	}
@@ -144,12 +144,12 @@ func TestConnPoolBrokenConnNotReused(t *testing.T) {
 	defer pool.Close()
 
 	ctx := context.Background()
-	pc, _ := pool.AcquireOrDial(ctx, 1, "wss://u", http.Header{})
+	pc, _ := pool.AcquireOrDial(ctx, "channel:1", "wss://u", http.Header{})
 	// Release as broken: should be closed, not pooled.
 	pool.Release(pc, true)
 
 	// Next acquire must dial fresh (no reuse).
-	_, err := pool.AcquireOrDial(ctx, 1, "wss://u", http.Header{})
+	_, err := pool.AcquireOrDial(ctx, "channel:1", "wss://u", http.Header{})
 	if err != nil {
 		t.Fatalf("acquire after broken: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestConnPoolFailoverOnDialError(t *testing.T) {
 	pool.dialer = &dialCountingDialer{failNth: 1}
 	defer pool.Close()
 
-	_, err := pool.AcquireOrDial(context.Background(), 1, "wss://u", http.Header{})
+	_, err := pool.AcquireOrDial(context.Background(), "channel:1", "wss://u", http.Header{})
 	if err == nil {
 		t.Fatal("expected dial error")
 	}
@@ -176,6 +176,73 @@ func TestConnPoolFailoverOnDialError(t *testing.T) {
 	if pool.acquireFail.Load() != 1 {
 		t.Errorf("expected 1 acquireFail, got %d", pool.acquireFail.Load())
 	}
+}
+
+// TestConnPoolIsolatesNamespaces is the regression test for the cross-source
+// reuse bug: channel #5 and subscription account #5 (independent ID
+// namespaces) must never share a pooled connection.
+func TestConnPoolIsolatesNamespaces(t *testing.T) {
+	pool := newOpenAIWSConnPool(2 * time.Second)
+	pool.dialer = &dialCountingDialer{}
+	defer pool.Close()
+
+	ctx := context.Background()
+	channelHdr := http.Header{"Authorization": []string{"Bearer channel-key"}}
+	subHdr := http.Header{"Authorization": []string{"Bearer oauth-token"}}
+
+	pc, err := pool.AcquireOrDial(ctx, "channel:5", "wss://api.openai.com/v1/responses", channelHdr)
+	if err != nil {
+		t.Fatalf("channel acquire: %v", err)
+	}
+	pool.Release(pc, false)
+
+	// Same numeric ID, different namespace: must NOT reuse the channel conn.
+	pc2, err := pool.AcquireOrDial(ctx, "subscription:5", "wss://other.example.com/v1/responses", subHdr)
+	if err != nil {
+		t.Fatalf("subscription acquire: %v", err)
+	}
+	if pool.acquireReuse.Load() != 0 {
+		t.Errorf("subscription acquire reused channel conn (reuse=%d)", pool.acquireReuse.Load())
+	}
+	if pool.acquireCreate.Load() != 2 {
+		t.Errorf("expected 2 creates, got %d", pool.acquireCreate.Load())
+	}
+	pool.Release(pc2, false)
+}
+
+// TestConnPoolRejectsRotatedCredential verifies a conn dialed with an old
+// credential is never reused after the source's key/URL changes.
+func TestConnPoolRejectsRotatedCredential(t *testing.T) {
+	pool := newOpenAIWSConnPool(2 * time.Second)
+	pool.dialer = &dialCountingDialer{}
+	defer pool.Close()
+
+	ctx := context.Background()
+	oldHdr := http.Header{"Authorization": []string{"Bearer old"}}
+	newHdr := http.Header{"Authorization": []string{"Bearer new"}}
+
+	pc, _ := pool.AcquireOrDial(ctx, "channel:5", "wss://u", oldHdr)
+	pool.Release(pc, false)
+
+	// Credential rotated: stale conn must be evicted, fresh dial required.
+	pc2, err := pool.AcquireOrDial(ctx, "channel:5", "wss://u", newHdr)
+	if err != nil {
+		t.Fatalf("acquire after rotation: %v", err)
+	}
+	if pool.acquireReuse.Load() != 0 {
+		t.Errorf("reused stale-credential conn (reuse=%d)", pool.acquireReuse.Load())
+	}
+	pool.Release(pc2, false)
+
+	// Same fingerprint reuses again.
+	pc3, err := pool.AcquireOrDial(ctx, "channel:5", "wss://u", newHdr)
+	if err != nil {
+		t.Fatalf("re-acquire: %v", err)
+	}
+	if pool.acquireReuse.Load() != 1 {
+		t.Errorf("expected reuse with matching fingerprint, got %d", pool.acquireReuse.Load())
+	}
+	pool.Release(pc3, false)
 }
 
 // TestStickyStoreInMemoryOnly verifies the hot-cache path works without Redis.

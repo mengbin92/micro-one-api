@@ -187,6 +187,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/admin/subscription-groups", handlePage)
 	srv.HandleFunc("/admin/subscription-plans", handlePage)
 	srv.HandleFunc("/admin/subscriptions", handlePage)
+	srv.HandleFunc("/admin/routing-ops", handlePage)
 	// Static assets bundled by Vite
 	srv.HandlePrefix("/assets/", http.HandlerFunc(handlePage))
 	srv.HandleFunc("/favicon.svg", handlePage)
@@ -768,6 +769,19 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if err != nil {
 		topChannels = []service.UsageAggregateView{}
 	}
+	// Collect channel IDs from top-N usage so we can fetch their summaries
+	// in one RPC, covering channels beyond the page-1 listing.
+	channelIDsForEnrichment := make(map[int64]bool)
+	for _, item := range topChannels {
+		if item.ChannelID > 0 {
+			channelIDsForEnrichment[item.ChannelID] = true
+		}
+	}
+	enrichmentChannelIDs := make([]int64, 0, len(channelIDsForEnrichment))
+	for id := range channelIDsForEnrichment {
+		enrichmentChannelIDs = append(enrichmentChannelIDs, id)
+	}
+	enrichmentChannels := svc.FetchChannelSummariesByID(r.Context(), enrichmentChannelIDs)
 	topUsers, err := svc.AggregateUsageTopN(r.Context(), "user", 5)
 	if err != nil {
 		topUsers = []service.UsageAggregateView{}
@@ -784,6 +798,26 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	if err != nil {
 		topSubscriptionAccountQuotaEvents = []service.SubscriptionAccountQuotaEventAggregateView{}
 	}
+	// Collect all subscription account IDs referenced by the top-N usage and
+	// quota-event aggregates so we can fetch their summaries in one RPC.
+	// Without this, accounts beyond the page-1 listing fall back to bare
+	// numeric IDs or "Unknown" in the cost-analysis dashboard.
+	subscriptionAccountIDsForEnrichment := make(map[int64]bool)
+	for _, item := range topSubscriptionAccounts {
+		if item.SubscriptionAccountID > 0 {
+			subscriptionAccountIDsForEnrichment[item.SubscriptionAccountID] = true
+		}
+	}
+	for _, item := range topSubscriptionAccountQuotaEvents {
+		if item.SubscriptionAccountID > 0 {
+			subscriptionAccountIDsForEnrichment[item.SubscriptionAccountID] = true
+		}
+	}
+	enrichmentIDs := make([]int64, 0, len(subscriptionAccountIDsForEnrichment))
+	for id := range subscriptionAccountIDsForEnrichment {
+		enrichmentIDs = append(enrichmentIDs, id)
+	}
+	enrichmentAccounts := svc.FetchSubscriptionAccountSummariesByID(r.Context(), enrichmentIDs)
 	reconciliation, err := svc.ListReconciliationRuns(r.Context(), 1, 1)
 	if err != nil {
 		reconciliation = &service.ListReconciliationRunsResult{}
@@ -856,11 +890,11 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		"usage_stats":                           stats,
 		"cost_analysis":                         costAnalysisSummary(quotaUsed, upstreamCost, grossProfit),
 		"top_models":                            usageAggregateViewsToMaps(topModels),
-		"top_channels":                          enrichChannelUsage(topChannels, channels.GetChannels()),
+		"top_channels":                          enrichChannelUsage(topChannels, channels.GetChannels(), enrichmentChannels),
 		"top_users":                             usageAggregateViewsToMaps(topUsers),
 		"top_tokens":                            usageAggregateViewsToMaps(topTokens),
-		"top_subscription_accounts":             enrichSubscriptionAccountUsage(topSubscriptionAccounts, topSubscriptionAccountQuotaEvents, subscriptionAccounts.GetAccounts()),
-		"top_subscription_account_quota_events": enrichSubscriptionAccountQuotaEventUsage(topSubscriptionAccountQuotaEvents, topSubscriptionAccounts, subscriptionAccounts.GetAccounts()),
+		"top_subscription_accounts":             enrichSubscriptionAccountUsage(topSubscriptionAccounts, topSubscriptionAccountQuotaEvents, subscriptionAccounts.GetAccounts(), enrichmentAccounts),
+		"top_subscription_account_quota_events": enrichSubscriptionAccountQuotaEventUsage(topSubscriptionAccountQuotaEvents, topSubscriptionAccounts, subscriptionAccounts.GetAccounts(), enrichmentAccounts),
 		"alerts":                                adminSummaryAlerts(channels.GetChannels(), topChannels, reconciliation, subscriptionAccounts.GetAccounts()),
 		"latest_reconciliation":                 latestReconciliationRun(reconciliation),
 		"model_catalog":                         oneAPIChannelModelCatalog(),
@@ -911,10 +945,17 @@ func usageAggregateViewToMap(item service.UsageAggregateView) map[string]interfa
 	}
 }
 
-func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1.ChannelSummary) []map[string]interface{} {
+func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1.ChannelSummary, enrichmentChannels map[int64]*commonv1.ChannelSummary) []map[string]interface{} {
 	channelByID := map[int64]*commonv1.ChannelSummary{}
 	for _, channel := range channels {
 		channelByID[channel.GetId()] = channel
+	}
+	// Merge in channels fetched by ID (covers top-N rows whose channel falls
+	// outside the page-1 listing).
+	for id, channel := range enrichmentChannels {
+		if _, ok := channelByID[id]; !ok {
+			channelByID[id] = channel
+		}
 	}
 	out := make([]map[string]interface{}, 0, len(items))
 	for _, item := range items {
@@ -925,6 +966,9 @@ func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1
 			row["balance"] = channel.GetBalance()
 			row["balance_updated_time"] = channel.GetBalanceUpdatedTime()
 			row["used_quota"] = channel.GetUsedQuota()
+		} else if item.ChannelID > 0 {
+			// Channel was deleted but usage records remain.
+			row["name"] = fmt.Sprintf("已删除渠道 #%d", item.ChannelID)
 		}
 		out = append(out, row)
 	}
@@ -941,10 +985,17 @@ func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1
 // here: otherwise the entire non-subscription usage collapses into a single
 // "subscription_account_id = 0" bucket whose cost equals the total channel
 // cost, which would make the "订阅账号成本" card wrongly display channel cost.
-func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, eventItems []service.SubscriptionAccountQuotaEventAggregateView, accounts []*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
+func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, eventItems []service.SubscriptionAccountQuotaEventAggregateView, accounts []*commonv1.SubscriptionAccountSummary, enrichmentAccounts map[int64]*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
 	accountByID := map[int64]*commonv1.SubscriptionAccountSummary{}
 	for _, account := range accounts {
 		accountByID[account.GetId()] = account
+	}
+	// Merge in accounts fetched by ID (covers top-N rows whose account falls
+	// outside the page-1 listing).
+	for id, account := range enrichmentAccounts {
+		if _, ok := accountByID[id]; !ok {
+			accountByID[id] = account
+		}
 	}
 	eventByAccountID := map[int64]service.SubscriptionAccountQuotaEventAggregateView{}
 	for _, event := range eventItems {
@@ -968,7 +1019,7 @@ func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, eventIte
 			row["account_id"] = account.GetAccountId()
 			row["expires_at"] = account.GetExpiresAt()
 		} else {
-			row["name"] = fmt.Sprintf("订阅账号 #%d", item.SubscriptionAccountID)
+			row["name"] = fmt.Sprintf("已删除订阅账号 #%d", item.SubscriptionAccountID)
 		}
 		if event, ok := eventByAccountID[item.SubscriptionAccountID]; ok {
 			row["account_event_cost_usd"] = event.CostUSD
@@ -982,10 +1033,17 @@ func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, eventIte
 	return out
 }
 
-func enrichSubscriptionAccountQuotaEventUsage(eventItems []service.SubscriptionAccountQuotaEventAggregateView, ledgerItems []service.UsageAggregateView, accounts []*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
+func enrichSubscriptionAccountQuotaEventUsage(eventItems []service.SubscriptionAccountQuotaEventAggregateView, ledgerItems []service.UsageAggregateView, accounts []*commonv1.SubscriptionAccountSummary, enrichmentAccounts map[int64]*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
 	accountByID := map[int64]*commonv1.SubscriptionAccountSummary{}
 	for _, account := range accounts {
 		accountByID[account.GetId()] = account
+	}
+	// Merge in accounts fetched by ID (covers top-N rows whose account falls
+	// outside the page-1 listing).
+	for id, account := range enrichmentAccounts {
+		if _, ok := accountByID[id]; !ok {
+			accountByID[id] = account
+		}
 	}
 	ledgerByAccountID := map[int64]service.UsageAggregateView{}
 	for _, item := range ledgerItems {
@@ -1017,7 +1075,7 @@ func enrichSubscriptionAccountQuotaEventUsage(eventItems []service.SubscriptionA
 			row["account_id"] = account.GetAccountId()
 			row["expires_at"] = account.GetExpiresAt()
 		} else {
-			row["name"] = fmt.Sprintf("订阅账号 #%d", item.SubscriptionAccountID)
+			row["name"] = fmt.Sprintf("已删除订阅账号 #%d", item.SubscriptionAccountID)
 		}
 		if ledger, ok := ledgerByAccountID[item.SubscriptionAccountID]; ok {
 			row["ledger_quota"] = ledger.Quota
@@ -3604,9 +3662,35 @@ func handlePaymentOrderByTradeNo(w http.ResponseWriter, r *http.Request, svc *se
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"order": resp.GetOrder()}))
 }
 
+// successMessage is the union of the two proto-generated getter shapes used
+// by admin operation responses: most return GetMessage(), the legacy redeem-code
+// responses return GetErrorMessage(). writeServiceResponse needs both.
+type successMessage interface {
+	GetSuccess() bool
+	GetMessage() string
+}
+
+type successErrorMessage interface {
+	GetSuccess() bool
+	GetErrorMessage() string
+}
+
 func writeServiceResponse(w http.ResponseWriter, resp interface{}, err error) {
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return
+	}
+	// protobuf bool fields carry json:"success,omitempty", so encoding/json
+	// omits success:false entirely. Wrap failure responses in apiResponse so
+	// the client always sees an explicit success:false. Without this, a
+	// failed create/update/delete looks like a success with no payload and the
+	// UI happily toasts "created" even though the backend rejected it.
+	if r, ok := resp.(successMessage); ok && !r.GetSuccess() {
+		writeJSON(w, http.StatusOK, apiResponse(false, r.GetMessage(), resp))
+		return
+	}
+	if r, ok := resp.(successErrorMessage); ok && !r.GetSuccess() {
+		writeJSON(w, http.StatusOK, apiResponse(false, r.GetErrorMessage(), resp))
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

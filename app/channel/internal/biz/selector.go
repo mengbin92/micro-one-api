@@ -298,7 +298,7 @@ func channelEffectiveWeight(state *channelState) int64 {
 	if state == nil {
 		return 0
 	}
-	return int64(state.weight) * int64(state.healthFactor()) * int64(state.latencyFactor())
+	return int64(state.weight) * int64(state.healthFactor()) * int64(state.latencyFactor()) * int64(state.loadFactor())
 }
 
 func (s *WeightedSelector) totalEffectiveWeight(candidates []*Channel, now int64) int64 {
@@ -360,6 +360,42 @@ func (cs *channelState) healthFactor() int32 {
 		return 20 // <30% error → 20% weight
 	default:
 		return 1 // >30% error → minimal weight
+	}
+}
+
+// loadFactor proportionally de-rates a channel as its in-flight count climbs
+// toward maxConcurrent, so a saturated channel receives less traffic than an
+// idle one. Unlike the subscription-account selector (which tracks load in the
+// relay gateway, a different process), the channel WeightedSelector owns the
+// full in-flight lifecycle in-process: Select increments inflight and
+// RecordHealth decrements it, so this factor is live, not inert.
+//
+// Bands are relative to maxConcurrent (default 100) so the same thresholds apply
+// regardless of the configured ceiling: <40% load keeps full weight, ≥90%
+// drops to near-zero (1) while the hard inflight>=maxConcurrent skip in Select
+// remains the last line of defense. Mirrors the account-side bands (100/80/50/20/1)
+// so operators see consistent de-rating. See docs/model-management-design.md §12.2
+// and docs/releases/review-v0.11.0.md (Phase D #12).
+func (cs *channelState) loadFactor() int32 {
+	if cs == nil || cs.maxConcurrent <= 0 {
+		return 100
+	}
+	inflight := cs.inflight.Load()
+	if inflight <= 0 {
+		return 100
+	}
+	util := float64(inflight) / float64(cs.maxConcurrent)
+	switch {
+	case util < 0.4:
+		return 100
+	case util < 0.6:
+		return 80
+	case util < 0.75:
+		return 50
+	case util < 0.9:
+		return 20
+	default:
+		return 1
 	}
 }
 

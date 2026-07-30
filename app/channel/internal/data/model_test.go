@@ -70,6 +70,16 @@ func setupModelTestDB(t *testing.T) *Repository {
 	`).Error)
 
 	require.NoError(t, db.Exec(`
+		CREATE TABLE channels (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL DEFAULT '',
+			status INTEGER NOT NULL DEFAULT 1,
+			created_at INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)
+	`).Error)
+
+	require.NoError(t, db.Exec(`
 		CREATE TABLE model_subscription_mapping (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			subscription_account_id INTEGER NOT NULL,
@@ -78,6 +88,16 @@ func setupModelTestDB(t *testing.T) *Repository {
 			group_name TEXT NOT NULL DEFAULT 'default',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			priority INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)
+	`).Error)
+
+	require.NoError(t, db.Exec(`
+		CREATE TABLE subscription_accounts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL DEFAULT '',
+			status INTEGER NOT NULL DEFAULT 1,
 			created_at INTEGER NOT NULL DEFAULT 0,
 			updated_at INTEGER NOT NULL DEFAULT 0
 		)

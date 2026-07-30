@@ -85,7 +85,7 @@ func (s *AdminService) SetUpstreamCost(ctx context.Context, entry UpstreamCostEn
 		return err
 	}
 	return s.mutateUpstreamCosts(ctx, func(prices map[string]map[string]interface{}) {
-		prices[key] = upstreamCostValue(entry)
+		prices[key] = upstreamCostValue(entry, prices[key])
 	})
 }
 
@@ -138,31 +138,39 @@ func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool)
 	}
 
 	plan := &UpstreamCostMigrationPlan{}
-	rewrites := map[string]string{} // old -> new
+	type rewriteInfo struct {
+		oldKey string
+		change UpstreamCostMigrationChange
+	}
+	rewrites := map[string]rewriteInfo{} // newKey -> info
 	for key := range prices {
 		old := key
-		// Only legacy "<channel_id>:<model>" keys are candidates. Canonical
-		// keys (channel:/subscription:/bare model) are left alone.
+		// Only legacy "<id>:<model>" keys are candidates. Canonical keys
+		// (channel:/subscription:/bare model) are left alone.
 		channelID, publicModel, ok := parseLegacyUpstreamKey(old)
 		if !ok {
 			continue
 		}
-		upstreamID, ok := resolver[channelID][canonicalModelID(publicModel)]
+		resolved, ok := resolver[channelID][canonicalModelID(publicModel)]
 		if !ok {
-			// No exact upstream id known for this channel+model. Skip the
+			// No exact upstream id known for this numeric id+model. Skip the
 			// rewrite entirely: the billing code's legacy-key fallback
-			// (upstreamPriceKey) still reads <channel_id>:<public_model_id>,
-			// so leaving the key untouched preserves the existing cost. A
-			// forced rewrite to channel:<id>:<publicModel> would produce a
-			// canonical key that billing never queries (it queries the
-			// upstream spelling), silently zeroing the upstream cost.
+			// (upstreamPriceKey) still reads <id>:<public_model_id>, so leaving
+			// the key untouched preserves the existing cost.
 			plan.Skipped = append(plan.Skipped, UpstreamCostMigrationChange{
 				OldKey: old, NewKey: "", SourceID: channelID, PublicModelID: publicModel, UpstreamModelID: "",
-				Reason: "upstream_model_id not resolved (channel has no mapping or model_pk lookup failed); legacy key preserved",
+				Reason: "upstream_model_id not resolved (source has no mapping or model_pk lookup failed); legacy key preserved",
 			})
 			continue
 		}
-		newKey := fmt.Sprintf("channel:%d:%s", channelID, upstreamID)
+		if resolved.kind == "ambiguous" {
+			plan.Skipped = append(plan.Skipped, UpstreamCostMigrationChange{
+				OldKey: old, NewKey: "", SourceID: channelID, PublicModelID: publicModel, UpstreamModelID: resolved.upstreamID,
+				Reason: "numeric id exists as both channel and subscription account; manual resolution required",
+			})
+			continue
+		}
+		newKey := fmt.Sprintf("%s:%d:%s", resolved.kind, channelID, resolved.upstreamID)
 		if newKey == old {
 			continue
 		}
@@ -170,15 +178,18 @@ func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool)
 			// Two legacy keys collapsing onto the same canonical key — a real
 			// conflict the operator must resolve. Skip and report.
 			plan.Skipped = append(plan.Skipped, UpstreamCostMigrationChange{
-				OldKey: old, NewKey: newKey, SourceID: channelID, PublicModelID: publicModel, UpstreamModelID: upstreamID,
+				OldKey: old, NewKey: newKey, SourceID: channelID, PublicModelID: publicModel, UpstreamModelID: resolved.upstreamID,
 				Reason: "collides with another legacy key after rewrite",
 			})
 			continue
 		}
-		rewrites[newKey] = old
-		plan.ToRewrite = append(plan.ToRewrite, UpstreamCostMigrationChange{
-			OldKey: old, NewKey: newKey, SourceID: channelID, PublicModelID: publicModel, UpstreamModelID: upstreamID,
-		})
+		rewrites[newKey] = rewriteInfo{
+			oldKey: old,
+			change: UpstreamCostMigrationChange{
+				OldKey: old, NewKey: newKey, SourceID: channelID, PublicModelID: publicModel, UpstreamModelID: resolved.upstreamID,
+			},
+		}
+		plan.ToRewrite = append(plan.ToRewrite, rewrites[newKey].change)
 	}
 	sortMigrationPlan(plan)
 
@@ -188,16 +199,25 @@ func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool)
 	// Apply: move each value from old key to new key. Done in one
 	// read-modify-write so a partial failure leaves the option unchanged.
 	err = s.mutateUpstreamCostsRaw(ctx, func(prices map[string]map[string]interface{}) {
-		for newKey, oldKey := range rewrites {
-			if v, ok := prices[oldKey]; ok {
+		for newKey, info := range rewrites {
+			if _, exists := prices[newKey]; exists {
+				plan.Skipped = append(plan.Skipped, UpstreamCostMigrationChange{
+					OldKey: info.oldKey, NewKey: newKey, SourceID: info.change.SourceID,
+					PublicModelID: info.change.PublicModelID, UpstreamModelID: info.change.UpstreamModelID,
+					Reason: "target canonical key already exists; legacy key preserved",
+				})
+				continue
+			}
+			if v, ok := prices[info.oldKey]; ok {
 				prices[newKey] = v
-				delete(prices, oldKey)
+				delete(prices, info.oldKey)
 			}
 		}
 	})
 	if err != nil {
 		return nil, err
 	}
+	sortMigrationPlan(plan)
 	return plan, nil
 }
 
@@ -233,11 +253,17 @@ func upstreamCostKey(e UpstreamCostEntry) (string, error) {
 	}
 }
 
-func upstreamCostValue(e UpstreamCostEntry) map[string]interface{} {
-	return map[string]interface{}{
-		"input_price":  e.InputPrice,
-		"output_price": e.OutputPrice,
+func upstreamCostValue(e UpstreamCostEntry, existing map[string]interface{}) map[string]interface{} {
+	if existing == nil {
+		existing = map[string]interface{}{
+			"input_price":  e.InputPrice,
+			"output_price": e.OutputPrice,
+		}
+		return existing
 	}
+	existing["input_price"] = e.InputPrice
+	existing["output_price"] = e.OutputPrice
+	return existing
 }
 
 // parseLegacyUpstreamKey recognises the pre-v0.11.0 "<channel_id>:<model>"

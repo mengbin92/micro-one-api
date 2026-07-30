@@ -69,11 +69,19 @@ type ledgerModel struct {
 	CacheReadTokens       int64   `gorm:"column:cache_read_tokens"`
 	CacheCreation5mTokens int64   `gorm:"column:cache_creation_5m_tokens"`
 	CacheCreation1hTokens int64   `gorm:"column:cache_creation_1h_tokens"`
-	ChannelID             int64   `gorm:"column:channel_id"`
-	SubscriptionAccountID int64   `gorm:"column:subscription_account_id"`
-	ElapsedTime           int64   `gorm:"column:elapsed_time"`
-	IsStream              bool    `gorm:"column:is_stream"`
-	Endpoint              string  `gorm:"column:endpoint"`
+	// Per-bucket costs persisted for audit and vendor-invoice reconciliation
+	// (v0.11.0 Phase 2 sub2api #9).
+	PromptCost            int64  `gorm:"column:prompt_cost"`
+	CompletionCost        int64  `gorm:"column:completion_cost"`
+	CacheReadCost         int64  `gorm:"column:cache_read_cost"`
+	CacheCreation5mCost   int64  `gorm:"column:cache_creation_5m_cost"`
+	CacheCreation1hCost   int64  `gorm:"column:cache_creation_1h_cost"`
+	ShadowCost            int64  `gorm:"column:shadow_cost"`
+	ChannelID             int64  `gorm:"column:channel_id"`
+	SubscriptionAccountID int64  `gorm:"column:subscription_account_id"`
+	ElapsedTime           int64  `gorm:"column:elapsed_time"`
+	IsStream              bool   `gorm:"column:is_stream"`
+	Endpoint              string `gorm:"column:endpoint"`
 	// Cost dimension tracking for the dual-track reservation flow. The dedupe
 	// key is the unique idempotency anchor for the commit pipeline and is
 	// independent of the legacy reference_id lookup.

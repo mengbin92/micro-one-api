@@ -85,14 +85,14 @@ type Channel struct {
 // It is selected separately from API-key channels but uses the same group,
 // model and priority semantics for routing.
 type SubscriptionAccount struct {
-	ID           int64
-	Name         string
-	Platform     string
-	AccountType  string
-	Status       int32
-	Group        string
-	Models       []string
-	Priority     int64 // layering only (higher = preferred tier); NOT a within-tier weight
+	ID          int64
+	Name        string
+	Platform    string
+	AccountType string
+	Status      int32
+	Group       string
+	Models      []string
+	Priority    int64 // layering only (higher = preferred tier); NOT a within-tier weight
 	// Weight is the explicit within-tier selection weight for smooth WRR. 0
 	// means "unset"; the selector falls back to Priority-derived or 1 to keep
 	// legacy deployments working. v0.11.0 Phase 3 §3.1: Priority is for
@@ -475,6 +475,60 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 	return nil, ErrChannelNotFound
 }
 
+// SelectChannelExcluding selects a channel for group+model while filtering out
+// the given channel IDs individually (per candidate, not per tier), so
+// request-scoped failover can walk past failed channels into any remaining
+// tier — SelectChannel(excludeFirstPriority=true) skips the entire top tier
+// and a post-hoc exclusion check would strand healthy lower tiers. Mirrors
+// sub2api's SelectAccountForModelWithExclusions. Unlike SelectChannel it never
+// widens to catch-all channels: failover must not silently route unregistered
+// models.
+func (uc *ChannelUsecase) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error) {
+	abilities, err := uc.repo.ListAbilitiesByGroupAndModel(ctx, group, model)
+	if err != nil {
+		return nil, err
+	}
+	if len(abilities) == 0 {
+		return nil, ErrChannelNotFound
+	}
+	sort.Slice(abilities, func(i, j int) bool {
+		return abilities[i].Priority > abilities[j].Priority
+	})
+	for i := 0; i < len(abilities); {
+		priority := abilities[i].Priority
+		tier := make([]*Channel, 0)
+		for i < len(abilities) && abilities[i].Priority == priority {
+			ability := abilities[i]
+			i++
+			if excluded[ability.ChannelID] {
+				continue
+			}
+			channel, err := uc.repo.FindByID(ctx, ability.ChannelID)
+			if err != nil {
+				continue
+			}
+			if channel.SelectableAt(uc.now()) {
+				channel.UpstreamModelID = ability.UpstreamModelID
+				tier = append(tier, channel)
+			}
+		}
+		if len(tier) == 0 {
+			continue
+		}
+		selected, err := uc.selector.Select(ctx, group, tier)
+		if err != nil {
+			return nil, err
+		}
+		for _, channel := range tier {
+			if channel.ID == selected.ID {
+				return channel, nil
+			}
+		}
+	}
+
+	return nil, ErrChannelNotFound
+}
+
 // selectUnrestrictedChannel is the RestrictModels=false fallback: when no
 // abilities row matches, route to an enabled catch-all channel in the group.
 // Catch-all channels are selected by the same WeightedSelector as the normal
@@ -535,6 +589,17 @@ func (uc *ChannelUsecase) SetModelRoutingRepo(repo ModelRoutingRepo) {
 	uc.routingRepo = repo
 }
 
+// SetLoadOracle wires the cross-replica in-flight source into the subscription
+// account selector (Phase D #12). nil is safe: the selector installs its noop
+// oracle and loadFactor stays neutral. Intended to be called once from channel
+// service wiring (newApp) after the Redis client is available.
+func (uc *ChannelUsecase) SetLoadOracle(oracle LoadOracle) {
+	if uc == nil || uc.accountSelector == nil {
+		return
+	}
+	uc.accountSelector.SetLoadOracle(oracle)
+}
+
 // AccountSelectorStats returns the P2 #7 account selector runtime state. Empty
 // when not configured (defensive; always wired in production via
 // NewChannelUsecase).
@@ -555,6 +620,19 @@ func (uc *ChannelUsecase) RecordSubscriptionAccountHealth(accountID int64, succe
 }
 
 func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*SubscriptionAccount, error) {
+	return uc.selectSubscriptionAccount(ctx, group, model, platform, excludeFirstPriority, nil)
+}
+
+// SelectSubscriptionAccountExcluding filters the given account IDs out of
+// selection individually (per candidate, not per tier) so request-scoped
+// failover can reach healthy accounts in any tier. It supersedes
+// excludeFirstPriority for callers that track per-request failures, mirroring
+// SelectChannelExcluding and sub2api's SelectAccountForModelWithExclusions.
+func (uc *ChannelUsecase) SelectSubscriptionAccountExcluding(ctx context.Context, group, model, platform string, excluded map[int64]bool) (*SubscriptionAccount, error) {
+	return uc.selectSubscriptionAccount(ctx, group, model, platform, false, excluded)
+}
+
+func (uc *ChannelUsecase) selectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool, excluded map[int64]bool) (*SubscriptionAccount, error) {
 	// P2 #3: model→account routing. When a routing row matches the requested
 	// model, restrict the candidate pool to the routed account set (still
 	// honouring status/quota/runtime-blocked). Exact-before-wildcard
@@ -597,6 +675,9 @@ func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, 
 			ability := abilities[i]
 			i++
 			if excludeFirstPriority && priority == skipPriority {
+				continue
+			}
+			if excluded[ability.AccountID] {
 				continue
 			}
 			account, err := uc.repo.FindSubscriptionAccountByID(ctx, ability.AccountID)

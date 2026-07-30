@@ -40,19 +40,28 @@ func (s *AdminService) resolveSourceName(ctx context.Context, sourceKind string,
 	return ""
 }
 
-// upstreamResolver maps channelID -> (canonical public model id -> exact
-// upstream model id). It is built once per migration run by paging through
-// every channel's model mappings.
-type upstreamResolver map[int64]map[string]string
+// resolvedUpstream is one entry in the legacy-key resolver. kind is
+// "channel", "subscription", or "ambiguous" when the same numeric id exists in
+// both namespaces for the same model.
+type resolvedUpstream struct {
+	upstreamID string
+	kind       string
+}
 
-// buildUpstreamResolver loads every channel→model mapping from
-// channel-service and indexes them by (channelID, canonical public model id)
-// so the legacy-key migration can find the exact upstream_model_id for a
-// legacy "<channel_id>:<public_model>" key.
+// upstreamResolver maps sourceID -> (canonical public model id -> exact
+// upstream model id + source kind). It is built once per migration run by
+// paging through every channel's and subscription account's model mappings.
+type upstreamResolver map[int64]map[string]resolvedUpstream
+
+// buildUpstreamResolver loads every channel→model and subscription-account→
+// model mapping from channel-service and indexes them by (sourceID, canonical
+// public model id) so the legacy-key migration can find the exact upstream_model_id
+// and correct source kind for a legacy "<id>:<public_model>" key.
 //
 // The implementation pages through ListModels (to build a model_pk→model_id
-// lookup), then ListChannels + ListChannelModelMappings per channel. N is
-// bounded by the channel count (dozens), so the per-channel RPC is acceptable
+// lookup), then ListChannels + ListChannelModelMappings per channel and
+// ListSubscriptionAccounts + ListSubscriptionModelMappings per account. N is
+// bounded by the source count (dozens), so the per-source RPC is acceptable
 // and avoids adding a new batch RPC just for the migration tool. When
 // channel-service is unreachable the resolver is empty and the migration tool
 // falls back to the public model id as the upstream id.
@@ -65,10 +74,10 @@ func (s *AdminService) buildUpstreamResolver(ctx context.Context) (upstreamResol
 	// Build a model_pk → model_id lookup so we can resolve the public model
 	// id from the mapping's model_pk. This is essential because the legacy
 	// cost key uses the public model_id string (e.g. "gpt-4o"), but the
-	// ModelChannelMapping only carries the numeric model_pk. Without this
-	// lookup, the migration would silently fall back to the public model id
-	// as the upstream id whenever they differ, producing a canonical key that
-	// the billing code cannot match (Phase 2 §2.2 bug: zeroed upstream cost).
+	// mapping only carries the numeric model_pk. Without this lookup, the
+	// migration would silently fall back to the public model id as the
+	// upstream id whenever they differ, producing a canonical key that the
+	// billing code cannot match (Phase 2 §2.2 bug: zeroed upstream cost).
 	modelPKToID := map[int64]string{}
 	mPage := int32(1)
 	mPageSize := int32(500)
@@ -94,6 +103,28 @@ func (s *AdminService) buildUpstreamResolver(ctx context.Context) (upstreamResol
 		mPage++
 	}
 
+	// Helper that adds a resolved entry, marking ambiguous when the same
+	// numeric id+model already resolved to a different source kind.
+	addResolved := func(sourceID int64, kind, pubModel, upstream string) {
+		if upstream == "" {
+			return
+		}
+		byModel, ok := resolver[sourceID]
+		if !ok {
+			byModel = map[string]resolvedUpstream{}
+			resolver[sourceID] = byModel
+		}
+		pubModel = canonicalModelID(pubModel)
+		if existing, ok := byModel[pubModel]; ok {
+			if existing.kind != kind {
+				byModel[pubModel] = resolvedUpstream{upstreamID: upstream, kind: "ambiguous"}
+				return
+			}
+		}
+		byModel[pubModel] = resolvedUpstream{upstreamID: upstream, kind: kind}
+	}
+
+	// Channel mappings.
 	page := int32(1)
 	pageSize := int32(200)
 	for {
@@ -118,7 +149,6 @@ func (s *AdminService) buildUpstreamResolver(ctx context.Context) (upstreamResol
 			if err != nil || mappings == nil {
 				continue
 			}
-			byModel := map[string]string{}
 			for _, m := range mappings.GetMappings() {
 				if m == nil {
 					continue
@@ -132,12 +162,9 @@ func (s *AdminService) buildUpstreamResolver(ctx context.Context) (upstreamResol
 				// spelling. Also index by the upstream spelling itself for
 				// idempotency when the legacy key already used upstream form.
 				if pubID, ok := modelPKToID[m.GetModelPk()]; ok && pubID != "" {
-					byModel[canonicalModelID(pubID)] = upstream
+					addResolved(channelID, "channel", pubID, upstream)
 				}
-				byModel[canonicalModelID(upstream)] = upstream
-			}
-			if len(byModel) > 0 {
-				resolver[channelID] = byModel
+				addResolved(channelID, "channel", upstream, upstream)
 			}
 		}
 		if len(resp.GetChannels()) < int(pageSize) {
@@ -145,5 +172,51 @@ func (s *AdminService) buildUpstreamResolver(ctx context.Context) (upstreamResol
 		}
 		page++
 	}
+
+	// Subscription-account mappings.
+	subPage := int32(1)
+	subPageSize := int32(200)
+	for {
+		resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
+			Page: subPage, PageSize: subPageSize,
+		})
+		if err != nil {
+			return resolver, fmt.Errorf("list subscription accounts: %w", err)
+		}
+		if resp == nil {
+			break
+		}
+		for _, acc := range resp.GetAccounts() {
+			if acc == nil {
+				continue
+			}
+			accountID := acc.GetId()
+			if accountID <= 0 {
+				continue
+			}
+			mappings, err := s.channelClient.ListSubscriptionModelMappings(ctx, &channelv1.ListSubscriptionModelMappingsRequest{SubscriptionAccountId: accountID})
+			if err != nil || mappings == nil {
+				continue
+			}
+			for _, m := range mappings.GetMappings() {
+				if m == nil {
+					continue
+				}
+				upstream := m.GetUpstreamModelId()
+				if upstream == "" {
+					continue
+				}
+				if pubID, ok := modelPKToID[m.GetModelPk()]; ok && pubID != "" {
+					addResolved(accountID, "subscription", pubID, upstream)
+				}
+				addResolved(accountID, "subscription", upstream, upstream)
+			}
+		}
+		if len(resp.GetAccounts()) < int(subPageSize) {
+			break
+		}
+		subPage++
+	}
+
 	return resolver, nil
 }

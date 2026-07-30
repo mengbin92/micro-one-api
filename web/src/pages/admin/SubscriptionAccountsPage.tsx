@@ -436,10 +436,15 @@ function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary
 function toDraft(account: SubscriptionAccountInfo): SubscriptionAccountEditDraft {
   return {
     id: account.id,
-    name: account.name,
-    accountType: account.account_type,
-    group: account.group,
-    models: account.models,
+    // name/group/models/accountType are non-optional on the wire, but the
+    // protobuf JSON encoder omits empty-string fields (omitempty), so a
+    // minimal account (e.g. a freshly-created one with no models set) comes
+    // back with these keys absent. Coerce to '' so downstream .trim() / form
+    // rendering never crashes on undefined.
+    name: account.name ?? '',
+    accountType: account.account_type ?? '',
+    group: account.group ?? '',
+    models: account.models ?? '',
     priority: String(account.priority ?? 0),
     baseUrl: account.base_url ?? '',
     accessToken: '',
@@ -1072,6 +1077,26 @@ interface CreateAccountDialogProps {
   pending: boolean;
 }
 
+// PLATFORM_DEFAULTS provides sensible defaults for the domestic Coding-Plan
+// platforms so the admin does not have to look up the upstream base URL and
+// model IDs each time. Only the static-key platforms (zhipu/minimax/kimi)
+// carry defaults; OAuth platforms (claude/codex) leave them empty since their
+// endpoints are well-known to the adaptor. Mirrors the backend defaults in
+// app/channel/internal/service/anthropic_model_probe.go.
+const PLATFORM_DEFAULTS: Record<string, { models?: string; baseUrl?: string }> = {
+  kimi: {
+    models: 'kimi-k2-0905-preview,kimi-k2-turbo-preview,kimi-k2',
+    baseUrl: 'https://api.kimi.com/coding',
+  },
+  zhipu: {
+    models: 'glm-4.6,glm-4.5,glm-4.5-air,glm-4',
+    baseUrl: 'https://open.bigmodel.cn/api/anthropic',
+  },
+  minimax: {
+    models: 'MiniMax-M2,MiniMax-M2.1,MiniMax-M2.1-highspeed,MiniMax-M2.5,MiniMax-M2.5-highspeed,MiniMax-M2.7,MiniMax-M2.7-highspeed',
+  },
+};
+
 const emptyCreateState = {
   name: '',
   platform: 'claude',
@@ -1181,11 +1206,23 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
               value={form.platform}
               onChange={(e) => {
                 const next = e.target.value;
-                const patch: { platform: string; accountType?: string } = { platform: next };
+                const patch: { platform: string; accountType?: string; models?: string; baseUrl?: string } = { platform: next };
                 if (STATIC_KEY_PLATFORMS.has(next)) {
                   patch.accountType = 'static_key';
                 } else if (next === 'claude' || next === 'codex') {
                   patch.accountType = 'oauth';
+                }
+                // Prefill default models/baseUrl for static-key platforms,
+                // but only when the admin hasn't already typed something —
+                // never clobber existing values.
+                const defaults = PLATFORM_DEFAULTS[next];
+                if (defaults) {
+                  if (!form.models && defaults.models) {
+                    patch.models = defaults.models;
+                  }
+                  if (!form.baseUrl && defaults.baseUrl) {
+                    patch.baseUrl = defaults.baseUrl;
+                  }
                 }
                 setForm({ ...form, ...patch });
               }}

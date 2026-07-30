@@ -51,6 +51,12 @@ func setupOperationReportDB(t *testing.T) *gorm.DB {
 			cost_source TEXT,
 			subscription_cost INTEGER,
 			balance_cost INTEGER,
+			prompt_cost INTEGER DEFAULT 0,
+			completion_cost INTEGER DEFAULT 0,
+			cache_read_cost INTEGER DEFAULT 0,
+			cache_creation_5m_cost INTEGER DEFAULT 0,
+			cache_creation_1h_cost INTEGER DEFAULT 0,
+			shadow_cost INTEGER DEFAULT 0,
 			created_at DATETIME
 		)
 	`).Error)

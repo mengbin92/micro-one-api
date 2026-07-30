@@ -669,7 +669,7 @@ CREATE INDEX IF NOT EXISTS idx_model_aliases_model_id ON model_aliases(model_id)
 
 CREATE TABLE IF NOT EXISTS model_channel_mapping (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  channel_id INTEGER NOT NULL,
+  channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
   model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
   upstream_model_id TEXT NOT NULL DEFAULT '',
   enabled INTEGER NOT NULL DEFAULT 1,
@@ -685,7 +685,7 @@ CREATE INDEX IF NOT EXISTS idx_mcm_model_id ON model_channel_mapping(model_id);
 
 CREATE TABLE IF NOT EXISTS model_subscription_mapping (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  subscription_account_id INTEGER NOT NULL,
+  subscription_account_id INTEGER NOT NULL REFERENCES subscription_accounts(id) ON DELETE CASCADE,
   model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
   upstream_model_id TEXT NOT NULL DEFAULT '',
   group_name TEXT NOT NULL DEFAULT 'default',

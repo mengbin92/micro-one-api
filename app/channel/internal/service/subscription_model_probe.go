@@ -182,7 +182,13 @@ func (s *CodexModelProbeService) HandleSubscriptionAccountEvent(ctx context.Cont
 	}
 	go func() {
 		defer s.unmarkPending(accountID)
-		probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		// The probe runs after the originating request has already returned,
+		// so it must NOT inherit the request-scoped ctx — that ctx is cancelled
+		// the moment CreateSubscriptionAccount's HTTP handler returns, which
+		// would cancel the probe before it even starts (observed as
+		// "context canceled" on every subscription-account model probe).
+		// Derive a fresh background context with its own timeout instead.
+		probeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		_ = s.syncModelsForAccount(probeCtx, accountID)
 	}()

@@ -79,8 +79,14 @@ groups:
     rules:
       - alert: CacheHitRateLow
         expr: |
-          rate(micro_one_api_cache_hits_total{level="l1"}[5m])
-          / (rate(micro_one_api_cache_hits_total{level="l1"}[5m]) + rate(micro_one_api_cache_misses_total{5m])) < 0.8
+          (
+            sum by (cache) (rate(micro_one_api_cache_hits_total{level="l1"}[5m]))
+          )
+          /
+          (
+            sum by (cache) (rate(micro_one_api_cache_hits_total{level="l1"}[5m]))
+            + sum by (cache) (rate(micro_one_api_cache_misses_total[5m]))
+          ) < 0.8
         for: 10m
         labels:
           severity: warning
@@ -231,11 +237,18 @@ groups:
 
       # 上游成本缺失 — 有流量但 UpstreamModelPrice 未配置（毛利无法核算）
       - alert: UpstreamCostMissing
+        # (A - B) or A: when a provider_family has no priced series at all
+        # (exactly the fault this alert exists to catch), vector matching
+        # would drop the family from A - B and the alert could never fire.
+        # The `or` fallback substitutes the full success rate for such
+        # families — i.e. 100% of traffic is unpriced.
         expr: |
           (
             sum by (provider_family) (rate(micro_one_api_routing_selection_total{result="success"}[15m]))
             -
             sum by (provider_family) (rate(micro_one_api_billing_ledger_upstream_cost_recorded{result="priced"}[15m]))
+            or
+            sum by (provider_family) (rate(micro_one_api_routing_selection_total{result="success"}[15m]))
           ) > 0
         for: 15m
         labels:
@@ -247,11 +260,19 @@ groups:
 
       # 观察成本持续偏离供应商账单 — cache-creation shadow cost 显著但未收费
       - alert: CacheCreationShadowCostDrift
+        # (observe - charge) or observe: the histogram is only observed with
+        # the currently active mode label, so in steady observe mode the
+        # charge operand is an empty vector and the subtraction would yield
+        # nothing — the alert could never fire in the exact state it monitors.
+        # The `or` fallback treats "no charge-mode observations" as zero
+        # charged, so drift = the full observe-mode shadow cost.
         expr: |
           (
             sum(rate(micro_one_api_relay_token_usage_shadow_cost_sum{mode="observe"}[30m]))
             -
             sum(rate(micro_one_api_relay_token_usage_shadow_cost_sum{mode="charge"}[30m]))
+            or
+            sum(rate(micro_one_api_relay_token_usage_shadow_cost_sum{mode="observe"}[30m]))
           ) > 0
           and
           sum(rate(micro_one_api_relay_token_usage_shadow_cost_count{mode="observe",unpriced="false"}[30m])) > 100

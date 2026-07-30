@@ -7,7 +7,6 @@ import (
 	"go.uber.org/zap"
 
 	applogger "micro-one-api/platform/logging"
-	"micro-one-api/platform/metrics"
 	"net/http"
 	"strconv"
 	"strings"
@@ -504,44 +503,19 @@ func handleUnpricedRoutedModels(w http.ResponseWriter, r *http.Request, svc *ser
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	priced := loadPricedModelSet(r.Context(), svc)
-	resp, err := svc.ListUnpricedRoutedModels(r.Context(), &channelv1.ListUnpricedRoutedModelsRequest{
-		PricedModelIds: priced,
-	})
+	resp, err := svc.ListUnpricedRoutedModelsWithPricing(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	// v0.11.0 Phase 2 §2.2: update the Prometheus gauge so the unpriced count
-	// is observable without polling the API. The gauge is split by source kind
-	// (channel vs subscription) so ops can tell where the gap is; model ids
-	// stay out of labels (cardinality).
-	recordUnpricedRoutedMetric(resp)
+	// v0.11.0 review M5: update the Prometheus gauge via the shared helper so
+	// the metric is also refreshed by the background worker.
+	service.RecordUnpricedRoutedMetric(resp)
 	// Write a structured audit event. The roadmap requires an audit trail for
 	// the unpriced state; when the admin auditor is not wired we fall back to
 	// the application logger so the event is never lost.
 	logUnpricedRoutedAudit(r, resp)
 	writeJSON(w, http.StatusOK, resp)
-}
-
-// recordUnpricedRoutedMetric updates micro_one_api_model_unpriced_routed from
-// a ListUnpricedRoutedModels response. A model routed through both a channel
-// and a subscription counts in both gauges.
-func recordUnpricedRoutedMetric(resp *channelv1.ListUnpricedRoutedModelsResponse) {
-	if metrics.UnpricedRoutedModels == nil || resp == nil {
-		return
-	}
-	var channelCount, subscriptionCount float64
-	for _, m := range resp.GetModels() {
-		if m.GetChannelCount() > 0 {
-			channelCount++
-		}
-		if m.GetSubscriptionCount() > 0 {
-			subscriptionCount++
-		}
-	}
-	metrics.UnpricedRoutedModels.WithLabelValues("channel").Set(channelCount)
-	metrics.UnpricedRoutedModels.WithLabelValues("subscription").Set(subscriptionCount)
 }
 
 // logUnpricedRoutedAudit emits a structured audit log entry for the unpriced
@@ -565,28 +539,6 @@ func logUnpricedRoutedAudit(r *http.Request, resp *channelv1.ListUnpricedRoutedM
 			zap.String("request_id", r.Header.Get("X-Request-Id")),
 		)
 	}
-}
-
-// loadPricedModelSet reads the ModelPrice system option (a JSON map keyed by
-// canonical model id) and returns its keys as a canonicalised set. Returns an
-// empty set when the option is absent or unparseable — every routed model
-// then shows up as unpriced, which is the correct conservative signal.
-func loadPricedModelSet(ctx context.Context, svc *service.AdminService) []string {
-	raw, err := svc.GetSystemOption(ctx, "ModelPrice")
-	if err != nil || strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	var parsed map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		return nil
-	}
-	out := make([]string, 0, len(parsed))
-	for k := range parsed {
-		if k = strings.TrimSpace(k); k != "" {
-			out = append(out, k)
-		}
-	}
-	return out
 }
 
 // ── v0.11.0 Phase 2 §2.2: independent upstream-cost management ─────────────
@@ -670,10 +622,7 @@ func unpricedRoutedCount(ctx context.Context, svc *service.AdminService) int {
 	if svc == nil {
 		return -1
 	}
-	priced := loadPricedModelSet(ctx, svc)
-	resp, err := svc.ListUnpricedRoutedModels(ctx, &channelv1.ListUnpricedRoutedModelsRequest{
-		PricedModelIds: priced,
-	})
+	resp, err := svc.ListUnpricedRoutedModelsWithPricing(ctx)
 	if err != nil || resp == nil {
 		return -1
 	}

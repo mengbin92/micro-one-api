@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -30,6 +31,13 @@ func (testChannelClient) SelectChannel(_ context.Context, group, model string, _
 		Name:    group + ":" + model,
 		BaseURL: "https://api.openai.com/v1",
 	}, nil
+}
+
+func (c testChannelClient) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error) {
+	if excluded[1] {
+		return nil, fmt.Errorf("no channel")
+	}
+	return c.SelectChannel(ctx, group, model, false)
 }
 
 func (testChannelClient) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
@@ -68,6 +76,13 @@ func (c *recordingChannelClient) SelectChannel(_ context.Context, group, model s
 		Name:    name,
 		BaseURL: "https://api.openai.com/v1",
 	}, nil
+}
+
+func (c *recordingChannelClient) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error) {
+	if excluded[1] {
+		return nil, fmt.Errorf("no channel")
+	}
+	return c.SelectChannel(ctx, group, model, false)
 }
 
 func (c *recordingChannelClient) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
@@ -161,6 +176,10 @@ type testChannelClientError struct {
 }
 
 func (c testChannelClientError) SelectChannel(_ context.Context, _, _ string, _ bool) (*Channel, error) {
+	return nil, c.err
+}
+
+func (c testChannelClientError) SelectChannelExcluding(_ context.Context, _, _ string, _ map[int64]bool) (*Channel, error) {
 	return nil, c.err
 }
 
@@ -799,6 +818,13 @@ func (*caseSensitiveModelChannelClient) SelectChannel(context.Context, string, s
 	return &Channel{ID: 1, Models: []string{"GLM-5.2"}}, nil
 }
 
+func (*caseSensitiveModelChannelClient) SelectChannelExcluding(_ context.Context, _, _ string, excluded map[int64]bool) (*Channel, error) {
+	if excluded[1] {
+		return nil, fmt.Errorf("no channel")
+	}
+	return &Channel{ID: 1, Models: []string{"GLM-5.2"}}, nil
+}
+
 func (*caseSensitiveModelChannelClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
 	return nil
 }
@@ -881,11 +907,21 @@ type fallbackRoutingClient struct {
 	subscriptionErr     error
 	channelModels       []string
 	channelExcludeFirst []bool
+	channelExcludedSeen []map[int64]bool
 }
 
 func (c *fallbackRoutingClient) SelectChannel(_ context.Context, _ string, model string, excludeFirstPriority bool) (*Channel, error) {
 	c.channelModels = append(c.channelModels, model)
 	c.channelExcludeFirst = append(c.channelExcludeFirst, excludeFirstPriority)
+	return c.channel, c.channelErr
+}
+
+func (c *fallbackRoutingClient) SelectChannelExcluding(_ context.Context, _ string, model string, excluded map[int64]bool) (*Channel, error) {
+	c.channelModels = append(c.channelModels, model)
+	c.channelExcludedSeen = append(c.channelExcludedSeen, excluded)
+	if c.channel != nil && excluded[c.channel.ID] {
+		return nil, errors.New("channel excluded")
+	}
 	return c.channel, c.channelErr
 }
 
@@ -967,8 +1003,31 @@ func TestSelectFallbackRoutingSourceCrossesSourceNamespaces(t *testing.T) {
 	})
 }
 
-func TestSelectFallbackRoutingSourceAppliesCrossSourcePriorityAndWeight(t *testing.T) {
-	t.Run("higher priority wins", func(t *testing.T) {
+// TestSelectFallbackRoutingSource_PassesExcludedChannelsToSelection is the
+// regression test for the v0.11.0 failover bug: the request-scoped failed
+// channel set must reach selection as a filter (not a post-hoc nil-out), so a
+// re-returned failed channel is rejected inside selection and lower tiers stay
+// reachable.
+func TestSelectFallbackRoutingSource_PassesExcludedChannelsToSelection(t *testing.T) {
+	client := &fallbackRoutingClient{
+		channel: &Channel{ID: 5, Priority: 10},
+	}
+	uc := NewRelayUsecase(nil, client, nil, nil)
+	_, err := uc.SelectFallbackRoutingSource(context.Background(), "default", "gpt-4o", "gpt-4o", map[RoutingSourceIdentity]bool{
+		{Kind: UpstreamRouteChannel, ID: 5}: true,
+	})
+	if err == nil {
+		t.Fatal("expected error when the only channel is excluded")
+	}
+	if len(client.channelExcludedSeen) == 0 {
+		t.Fatal("expected selection to go through SelectChannelExcluding")
+	}
+	if !client.channelExcludedSeen[0][5] {
+		t.Fatalf("excluded set passed to selection = %#v, want channel 5 excluded", client.channelExcludedSeen[0])
+	}
+}
+
+func TestSelectFallbackRoutingSourceAppliesCrossSourcePriorityAndWeight(t *testing.T) {	t.Run("higher priority wins", func(t *testing.T) {
 		client := &fallbackRoutingClient{
 			channel: &Channel{ID: 1, Priority: 10, Weight: 100},
 			subscription: &SubscriptionAccount{

@@ -244,15 +244,13 @@ func TestSubscriptionAccountSelector_WeightSamePriorityNotEqualDistribution(t *t
 
 // ── v0.11.0 Phase 3 §3.2: load-aware inertness contract ────────────────────
 
-// TestSubscriptionAccountSelector_LoadFactorInertInProduction proves the
-// degradation contract: because Acquire/Release are never called in
-// production, loadFactor is always neutral (100) and inflight stays 0. The
-// selector still distributes correctly via health + configured weight, so the
-// inert load-aware seam does NOT cause incorrect routing — it only means
-// in-flight saturation is not caught (a saturated account is caught by its
-// circuit breaker instead). This test pins that contract so a future seam
-// that wires Acquire/Release must explicitly update it.
-func TestSubscriptionAccountSelector_LoadFactorInertInProduction(t *testing.T) {
+// TestSubscriptionAccountSelector_LoadFactorNeutralWithoutOracle proves the
+// Phase D degradation contract: when no LoadOracle is wired (the pre-Phase-D
+// default), loadFactor is neutral (100) and the selector still distributes
+// correctly via health + configured weight. Wiring a real oracle is now done in
+// channel-service; this test pins the safe default so an unwired deployment
+// behaves exactly as before.
+func TestSubscriptionAccountSelector_LoadFactorNeutralWithoutOracle(t *testing.T) {
 	s := NewSubscriptionAccountSelector()
 	a := &SubscriptionAccount{ID: 1, Priority: 1, Weight: 100}
 	b := &SubscriptionAccount{ID: 2, Priority: 1, Weight: 100}
@@ -294,10 +292,10 @@ func TestSubscriptionAccountSelector_LoadFactorInertInProduction(t *testing.T) {
 }
 
 // TestSubscriptionAccountSelector_LoadFactorDegradesWhenAcquireCalled proves
-// that IF a future seam wires Acquire/Release, the loadFactor bands engage
-// correctly. This is the "fault test that proves safe degradation" the roadmap
-// requires for the day the seam is wired; today it documents the intended
-// behaviour so the seam implementer has a target.
+// that the local Acquire/Release seam engages the legacy absolute loadFactor
+// bands when no maxConcurrent cap is configured. It pins the in-process
+// de-rating behaviour for callers that report load directly (the cross-replica
+// path is covered by the oracle test below).
 func TestSubscriptionAccountSelector_LoadFactorDegradesWhenAcquireCalled(t *testing.T) {
 	s := NewSubscriptionAccountSelector()
 	a := &SubscriptionAccount{ID: 1, Priority: 1, Weight: 100}
@@ -324,5 +322,130 @@ func TestSubscriptionAccountSelector_LoadFactorDegradesWhenAcquireCalled(t *test
 	}
 	if got := st.loadFactor(); got != 100 {
 		t.Fatalf("loadFactor after full Release = %d, want 100", got)
+	}
+}
+
+// fakeLoadOracle is a test LoadOracle returning a preset in-flight count per
+// account. It stands in for the Redis-backed cross-replica reader so the
+// selector's Phase D load-aware path can be exercised without Redis.
+type fakeLoadOracle struct {
+	counts map[int64]int32
+}
+
+func (f fakeLoadOracle) Inflight(_ context.Context, accountID int64) int32 {
+	return f.counts[accountID]
+}
+
+func (f fakeLoadOracle) InflightBatch(_ context.Context, accountIDs []int64) map[int64]int32 {
+	out := make(map[int64]int32, len(accountIDs))
+	for _, id := range accountIDs {
+		out[id] = f.counts[id]
+	}
+	return out
+}
+
+// TestSubscriptionAccountSelector_LoadOracleDeratesAcrossReplicas proves the
+// Phase D #12 cross-replica path: when a LoadOracle reports high in-flight load
+// for one account, the selector de-rates it proportionally to maxConcurrent and
+// the idle sibling wins the bulk of traffic.
+func TestSubscriptionAccountSelector_LoadOracleDeratesAcrossReplicas(t *testing.T) {
+	s := NewSubscriptionAccountSelector()
+	s.SetLoadOracle(fakeLoadOracle{counts: map[int64]int32{
+		1: 85, // 85% of the 100-slot cap → loadFactor 20
+		2: 0,  // idle → loadFactor 100
+	}})
+	// Both accounts same weight and priority; account 1 capped at 100.
+	a := &SubscriptionAccount{ID: 1, Priority: 1, Weight: 100, Concurrency: 100}
+	b := &SubscriptionAccount{ID: 2, Priority: 1, Weight: 100, Concurrency: 100}
+	candidates := []*SubscriptionAccount{a, b}
+
+	counts := map[int64]int{}
+	for i := 0; i < 1000; i++ {
+		// Reset WRR state each iteration to isolate the load-factor comparison.
+		selected, err := s.Select(context.Background(), "g", candidates)
+		if err != nil {
+			t.Fatalf("Select err = %v", err)
+		}
+		counts[selected.ID]++
+		s.mu.Lock()
+		for _, st := range s.accounts {
+			st.currentWeight = 0
+		}
+		s.mu.Unlock()
+	}
+	// Account 2 (idle, loadFactor 100) should win far more than account 1
+	// (85% loaded, loadFactor 20). Loaded account is not fully starved (weight
+	// 100×20 = 2000 fixed-point > 0), but it is a clear minority.
+	if counts[2] <= counts[1] {
+		t.Fatalf("loaded account not derated: idle=%d loaded=%d", counts[2], counts[1])
+	}
+}
+
+// TestSubscriptionAccountSelector_LoadFactorRelativeBands pins the relative
+// (inflight/maxConcurrent) bands for a configured concurrency cap across the
+// full range, mirroring the channel-side selector_test.go table.
+func TestSubscriptionAccountSelector_LoadFactorRelativeBands(t *testing.T) {
+	s := NewSubscriptionAccountSelector()
+	a := &SubscriptionAccount{ID: 1, Priority: 1, Concurrency: 100}
+	if _, err := s.Select(context.Background(), "g", []*SubscriptionAccount{a}); err != nil {
+		t.Fatalf("Select err = %v", err)
+	}
+	st := s.accounts[1]
+
+	cases := []struct {
+		inflight int32
+		want     int32
+		desc     string
+	}{
+		{0, 100, "idle"},
+		{39, 100, "<40%"},
+		{40, 80, "[40,60)%"},
+		{59, 80, "[40,60)%"},
+		{60, 50, "[60,75)%"},
+		{74, 50, "[60,75)%"},
+		{75, 20, "[75,90)%"},
+		{89, 20, "[75,90)%"},
+		{90, 1, ">=90%"},
+		{100, 1, "at cap"},
+	}
+	for _, tc := range cases {
+		s.SetLoadOracle(fakeLoadOracle{counts: map[int64]int32{1: tc.inflight}})
+		// Refresh the snapshot via a Select so prefetchInflight writes it.
+		if _, err := s.Select(context.Background(), "g", []*SubscriptionAccount{a}); err != nil {
+			t.Fatalf("Select err = %v", err)
+		}
+		// crossReplicaInflight is now tc.inflight (Store is unconditional).
+		if got := st.loadFactor(); got != tc.want {
+			t.Fatalf("%s: inflight=%d loadFactor=%d, want %d", tc.desc, tc.inflight, got, tc.want)
+		}
+	}
+}
+
+// TestSubscriptionAccountSelector_LoadFactorFallsBackToNeutralWhenIdle pins
+// MEDIUM-1: once a saturated account drains (the oracle reports 0 again),
+// loadFactor must recover to 100, not stay pinned at the peak. The
+// unconditional Store(crossReplica[acct.ID]) in Select is what guarantees this.
+func TestSubscriptionAccountSelector_LoadFactorFallsBackToNeutralWhenIdle(t *testing.T) {
+	s := NewSubscriptionAccountSelector()
+	a := &SubscriptionAccount{ID: 1, Priority: 1, Concurrency: 100}
+	candidates := []*SubscriptionAccount{a}
+
+	// Saturate: 90% load → loadFactor 1.
+	s.SetLoadOracle(fakeLoadOracle{counts: map[int64]int32{1: 90}})
+	if _, err := s.Select(context.Background(), "g", candidates); err != nil {
+		t.Fatalf("Select err = %v", err)
+	}
+	st := s.accounts[1]
+	if got := st.loadFactor(); got != 1 {
+		t.Fatalf("saturated loadFactor = %d, want 1", got)
+	}
+
+	// Drain: oracle now reports 0 → loadFactor must recover to 100.
+	s.SetLoadOracle(fakeLoadOracle{counts: map[int64]int32{1: 0}})
+	if _, err := s.Select(context.Background(), "g", candidates); err != nil {
+		t.Fatalf("Select err = %v", err)
+	}
+	if got := st.loadFactor(); got != 100 {
+		t.Fatalf("drained loadFactor = %d, want 100 (MEDIUM-1: must not pin at peak)", got)
 	}
 }

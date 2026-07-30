@@ -62,6 +62,12 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx *gorm.DB, ledger *
 		CacheReadTokens:       ledger.CacheReadTokens,
 		CacheCreation5mTokens: ledger.CacheCreation5mTokens,
 		CacheCreation1hTokens: ledger.CacheCreation1hTokens,
+		PromptCost:            ledger.PromptCost,
+		CompletionCost:        ledger.CompletionCost,
+		CacheReadCost:         ledger.CacheReadCost,
+		CacheCreation5mCost:   ledger.CacheCreation5mCost,
+		CacheCreation1hCost:   ledger.CacheCreation1hCost,
+		ShadowCost:            ledger.ShadowCost,
 		ChannelID:             ledger.ChannelID,
 		SubscriptionAccountID: ledger.SubscriptionAccountID,
 		ElapsedTime:           ledger.ElapsedTime,
@@ -283,10 +289,10 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 	dailyQuery = dailyQuery.Group("date").Order("date ASC")
 
 	type dailyRow struct {
-		Date             string
-		Quota            int64
-		PromptTokens     int64
-		CompletionTokens int64
+		Date                  string
+		Quota                 int64
+		PromptTokens          int64
+		CompletionTokens      int64
 		CacheReadTokens       int64 `gorm:"column:cache_read_tokens"`
 		CacheCreation5mTokens int64 `gorm:"column:cache_creation_5m_tokens"`
 		CacheCreation1hTokens int64 `gorm:"column:cache_creation_1h_tokens"`
@@ -300,15 +306,15 @@ func (r *ledgerRepo) AggregateLedgerByDate(ctx context.Context, userID string, l
 	daily := make([]*biz.DailyAggregate, len(dailyRows))
 	for i, row := range dailyRows {
 		daily[i] = &biz.DailyAggregate{
-			Date:             row.Date,
-			Quota:            row.Quota,
-			PromptTokens:     row.PromptTokens,
-			CompletionTokens: row.CompletionTokens,
+			Date:                  row.Date,
+			Quota:                 row.Quota,
+			PromptTokens:          row.PromptTokens,
+			CompletionTokens:      row.CompletionTokens,
 			CacheReadTokens:       row.CacheReadTokens,
 			CacheCreation5mTokens: row.CacheCreation5mTokens,
 			CacheCreation1hTokens: row.CacheCreation1hTokens,
 			Count:                 row.Count,
-			ElapsedTime:      row.ElapsedTime,
+			ElapsedTime:           row.ElapsedTime,
 		}
 	}
 
@@ -578,6 +584,12 @@ func ledgerFromModel(model *ledgerModel) *biz.Ledger {
 		CacheReadTokens:       model.CacheReadTokens,
 		CacheCreation5mTokens: model.CacheCreation5mTokens,
 		CacheCreation1hTokens: model.CacheCreation1hTokens,
+		PromptCost:            model.PromptCost,
+		CompletionCost:        model.CompletionCost,
+		CacheReadCost:         model.CacheReadCost,
+		CacheCreation5mCost:   model.CacheCreation5mCost,
+		CacheCreation1hCost:   model.CacheCreation1hCost,
+		ShadowCost:            model.ShadowCost,
 		ChannelID:             model.ChannelID,
 		SubscriptionAccountID: model.SubscriptionAccountID,
 		ElapsedTime:           model.ElapsedTime,

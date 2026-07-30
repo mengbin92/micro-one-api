@@ -217,11 +217,8 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 	}
 	// Unpriced routed model count (Phase 2 §2.2) so the ops view surfaces the
 	// pricing gap alongside traffic.
-	priced := loadPricedModelSet(r.Context(), svc)
 	var unpricedResp *channelv1.ListUnpricedRoutedModelsResponse
-	if resp, err := svc.ListUnpricedRoutedModels(r.Context(), &channelv1.ListUnpricedRoutedModelsRequest{
-		PricedModelIds: priced,
-	}); err == nil && resp != nil {
+	if resp, err := svc.ListUnpricedRoutedModelsWithPricing(r.Context()); err == nil && resp != nil {
 		view.Unpriced.RoutedButUnpriced = resp.GetTotal()
 		unpricedResp = resp
 	} else if err != nil {
@@ -229,6 +226,8 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 		view.Partial = true
 		view.Errors = append(view.Errors, "unpriced model query failed: "+err.Error())
 	}
+	// v0.11.0 review M5: keep the gauge fresh when the ops page is loaded.
+	service.RecordUnpricedRoutedMetric(unpricedResp)
 
 	prometheusURL := strings.TrimSpace(os.Getenv("PROMETHEUS_URL"))
 	if prometheusURL == "" {

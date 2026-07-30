@@ -76,6 +76,11 @@ func newApp(
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
 	uc.SetModelRoutingRepo(repo)
+	// Phase D #12: wire the cross-replica in-flight oracle so the
+	// subscription-account selector de-rates saturated accounts across all
+	// relay-gateway replicas, not just this process. Built from the same
+	// Redis the relay-gateway writes its per-account ZSet into.
+	uc.SetLoadOracle(data.NewRedisLoadOracle(repo.Redis()))
 	// model registry/mapping mutations now drop the ChannelUsecase
 	// /v1/models L1 cache immediately so admin edits converge without
 	// waiting for the 15s TTL.

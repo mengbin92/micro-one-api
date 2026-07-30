@@ -461,7 +461,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 
 	retryStartedAt := time.Now()
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
-	result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithCandidates(r.Context(), plan, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 		startedAt := time.Now()
 		requestID := generateRequestID()
 		estimatedTokens := s.estimateTokens(ccReq)
@@ -497,8 +497,9 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 				ChannelID: ch.ID,
 				IsStream:  true,
 			}
-			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-			streamLogInput.applyPlanInputs(plan)
+			// v0.11.0 review M1: record the source that actually executed the
+			// request, not the original plan, so failover attribution is correct.
+			streamLogInput.applyChannelInputs(ch)
 			return s.handleAnthropicStreamingResponse(w, r, provider, ccReq, reservation, streamLogInput)
 		}
 
@@ -522,15 +523,16 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 			PromptTokens:          int64(resp.Usage.PromptTokens),
 			CompletionTokens:      int64(resp.Usage.CompletionTokens),
 			CacheReadTokens:       cacheReadTokensFromProviderUsage(resp.Usage),
-			CacheCreation5mTokens:  cacheCreation5mTokens,
-			CacheCreation1hTokens:  cacheCreation1hTokens,
+			CacheCreation5mTokens: cacheCreation5mTokens,
+			CacheCreation1hTokens: cacheCreation1hTokens,
 			ChannelID:             ch.ID,
 			SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 			ElapsedTime:           time.Since(startedAt).Milliseconds(),
 			IsStream:              false,
 		}
-		// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-		logInput.applyPlanInputs(plan)
+		// v0.11.0 review M1: record the source that actually executed the
+		// request, not the original plan, so failover attribution is correct.
+		logInput.applyChannelInputs(ch)
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err
 		}

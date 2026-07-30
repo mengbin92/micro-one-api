@@ -288,7 +288,9 @@ func (r *Repository) listModelsDB(ctx context.Context, page, pageSize int32, fil
 	query := r.db.WithContext(ctx).Model(&modelModel{})
 	if filter.Keyword != "" {
 		like := "%" + escapeLike(filter.Keyword) + "%"
-		query = query.Where("LOWER(model_id) LIKE ? OR LOWER(display_name) LIKE ?", strings.ToLower(like), strings.ToLower(like))
+		// v0.11.0 review L6: ESCAPE clause is required for SQLite to honour
+		// backslash-escaped wildcards; MySQL/Postgres also accept it.
+		query = query.Where("LOWER(model_id) LIKE ? ESCAPE '!' OR LOWER(display_name) LIKE ? ESCAPE '!'", strings.ToLower(like), strings.ToLower(like))
 	}
 	if filter.Provider != "" {
 		query = query.Where("provider = ?", filter.Provider)
@@ -339,28 +341,33 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 		ids[i] = m.ID
 	}
 
-	// Channel counts: one query with GROUP BY model_id.
 	type countRow struct {
 		ModelID int64
 		Count   int64
 	}
+
+	// Channel counts: join channels so orphaned mappings (parent deleted
+	// without cascade) do not inflate the count.
 	var chRows []countRow
 	_ = r.db.WithContext(ctx).Model(&modelChannelMappingModel{}).
-		Select("model_id as model_id, count(*) as count").
-		Where("model_id IN ? AND enabled = ?", ids, true).
-		Group("model_id").
+		Select("model_channel_mapping.model_id as model_id, count(*) as count").
+		Joins("JOIN channels ON channels.id = model_channel_mapping.channel_id").
+		Where("model_channel_mapping.model_id IN ? AND model_channel_mapping.enabled = ?", ids, true).
+		Group("model_channel_mapping.model_id").
 		Scan(&chRows).Error
 	chMap := make(map[int64]int32, len(chRows))
 	for _, row := range chRows {
 		chMap[row.ModelID] = safecast.Int64ToInt32Saturating(row.Count)
 	}
 
-	// Subscription counts: one query with GROUP BY model_id.
+	// Subscription counts: join subscription_accounts so orphaned mappings
+	// do not inflate the count.
 	var subRows []countRow
 	_ = r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{}).
-		Select("model_id as model_id, count(*) as count").
-		Where("model_id IN ? AND enabled = ?", ids, true).
-		Group("model_id").
+		Select("model_subscription_mapping.model_id as model_id, count(*) as count").
+		Joins("JOIN subscription_accounts ON subscription_accounts.id = model_subscription_mapping.subscription_account_id").
+		Where("model_subscription_mapping.model_id IN ? AND model_subscription_mapping.enabled = ?", ids, true).
+		Group("model_subscription_mapping.model_id").
 		Scan(&subRows).Error
 	subMap := make(map[int64]int32, len(subRows))
 	for _, row := range subRows {

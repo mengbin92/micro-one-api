@@ -38,10 +38,14 @@ func NewCachedChannelClient(client channelv1.ChannelServiceClient, cache *appcac
 }
 
 // SelectChannel consults the channel cache before calling the upstream
-// channel service. Failover requests (ExcludeFirstPriority=true) bypass the
-// cache so retries do not replay the failed top-priority channel.
+// channel service. Failover requests bypass the cache so retries do not replay
+// a failed channel:
+//   - ExcludeFirstPriority=true skips the whole top tier (legacy tier-skip);
+//   - ExcludedChannelIds is non-empty (Phase C #2 request-level exclusion) and
+//     the cached first candidate is very likely one of those just-failed IDs,
+//     so serving from cache would silently defeat the exclusion set.
 func (c *CachedChannelClient) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest, opts ...grpc.CallOption) (*channelv1.SelectChannelReply, error) {
-	if c.cache == nil || req.GetExcludeFirstPriority() {
+	if c.cache == nil || req.GetExcludeFirstPriority() || len(req.GetExcludedChannelIds()) > 0 {
 		return c.ChannelServiceClient.SelectChannel(ctx, req, opts...)
 	}
 

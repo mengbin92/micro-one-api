@@ -631,7 +631,7 @@ func (r *Repository) listTokensDB(ctx context.Context, userID int64, page, pageS
 	query := r.db.WithContext(ctx).Model(&tokenModel{}).Where("user_id = ? AND TRIM(COALESCE(name, '')) <> ''", userID)
 	if keyword != "" {
 		like := "%" + escapeLike(keyword) + "%"
-		query = query.Where("name LIKE ? OR `key` LIKE ?", like, like)
+		query = query.Where("name LIKE ? ESCAPE '!' OR `key` LIKE ? ESCAPE '!'", like, like)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -746,7 +746,7 @@ func (r *Repository) listUsersDB(ctx context.Context, page, pageSize int32, keyw
 	var models []userModel
 	query := r.db.WithContext(ctx).Model(&userModel{})
 	if keyword != "" {
-		query = query.Where("username LIKE ?", "%"+escapeLike(keyword)+"%")
+		query = query.Where("username LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	if group != "" {
 		query = query.Where("`group` = ?", group)
@@ -796,9 +796,9 @@ func (r *Repository) CountUsers(ctx context.Context) (int64, error) {
 func strPtr(s string) *string { return &s }
 
 func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "%", "\\%")
-	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "!", "!!")
+	s = strings.ReplaceAll(s, "%", "!%")
+	s = strings.ReplaceAll(s, "_", "!_")
 	return s
 }
 

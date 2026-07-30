@@ -24,6 +24,14 @@ func (c *selectionTestChannelClient) SelectChannel(_ context.Context, _, model s
 	return c.fallback, nil
 }
 
+func (c *selectionTestChannelClient) SelectChannelExcluding(_ context.Context, _, model string, excluded map[int64]bool) (*relaybiz.Channel, error) {
+	c.models = append(c.models, model)
+	if c.fallback == nil || excluded[c.fallback.ID] {
+		return nil, errors.New("no channel")
+	}
+	return c.fallback, nil
+}
+
 func (*selectionTestChannelClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
 	return nil
 }

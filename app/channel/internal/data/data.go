@@ -475,6 +475,11 @@ func (r *Repository) DeleteSubscriptionAccount(ctx context.Context, accountID in
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.subAccounts, accountID)
+	for id, m := range r.modelSubscriptionMappings {
+		if m != nil && m.SubscriptionAccountID == accountID {
+			delete(r.modelSubscriptionMappings, id)
+		}
+	}
 	return nil
 }
 
@@ -832,6 +837,11 @@ func (r *Repository) DeleteChannel(ctx context.Context, channelID int64) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	delete(r.channels, channelID)
+	for id, m := range r.modelChannelMappings {
+		if m != nil && m.ChannelID == channelID {
+			delete(r.modelChannelMappings, id)
+		}
+	}
 	return nil
 }
 
@@ -925,7 +935,7 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 func (r *Repository) listSubscriptionAccountsDB(ctx context.Context, page, pageSize int32, keyword, group string, status int32, platform string) ([]*biz.SubscriptionAccount, int64, error) {
 	query := r.db.WithContext(ctx).Model(&subscriptionAccountModel{})
 	if keyword != "" {
-		query = query.Where("name LIKE ? OR account_id LIKE ?", "%"+escapeLike(keyword)+"%", "%"+escapeLike(keyword)+"%")
+		query = query.Where("name LIKE ? ESCAPE '!' OR account_id LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%", "%"+escapeLike(keyword)+"%")
 	}
 	if group != "" {
 		query = query.Where("`group` = ?", group)
@@ -1062,6 +1072,9 @@ func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID 
 			return err
 		}
 		if err := tx.Where("account_id = ?", accountID).Delete(&subscriptionAccountAbilityModel{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("subscription_account_id = ?", accountID).Delete(&modelSubscriptionMappingModel{}).Error; err != nil {
 			return err
 		}
 		return tx.Where("account_id = ?", accountID).Delete(&accountQuotaSnapshotModel{}).Error
@@ -1488,11 +1501,12 @@ func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, 
 		if priority == 0 {
 			priority = row.SourcePriority
 		}
-		upstream := strings.TrimSpace(row.UpstreamModelID)
-		if upstream == "" {
-			upstream = row.Model
-		}
-		out = append(out, biz.Ability{Group: group, Model: row.Model, ChannelID: row.ChannelID, Enabled: true, Priority: priority, UpstreamModelID: upstream})
+		out = append(out, biz.Ability{
+			Group: group, Model: row.Model, ChannelID: row.ChannelID, Enabled: true, Priority: priority,
+			// Empty is meaningful: ResolveChannelModel must still be able to apply
+			// channel.model_mapping or preserve the exact spelling in channel.Models.
+			UpstreamModelID: strings.TrimSpace(row.UpstreamModelID),
+		})
 	}
 	return out, nil
 }
@@ -1672,13 +1686,9 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 			if priority == 0 {
 				priority = channel.Priority
 			}
-			upstream := strings.TrimSpace(mapping.UpstreamModelID)
-			if upstream == "" {
-				upstream = managed.ModelID
-			}
 			abilities = append(abilities, biz.Ability{
 				Group: group, Model: managed.ModelID, ChannelID: channel.ID,
-				Enabled: true, Priority: priority, UpstreamModelID: upstream,
+				Enabled: true, Priority: priority, UpstreamModelID: strings.TrimSpace(mapping.UpstreamModelID),
 			})
 		}
 		if len(abilities) == 0 {
@@ -1832,7 +1842,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, keyword, group string, status, chType int32) ([]*biz.Channel, int64, error) {
 	query := r.db.WithContext(ctx).Model(&channelModel{})
 	if keyword != "" {
-		query = query.Where("name LIKE ?", "%"+escapeLike(keyword)+"%")
+		query = query.Where("name LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	if group != "" {
 		query = query.Where("`group` = ?", group)
@@ -1866,7 +1876,10 @@ func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) 
 			return err
 		}
 		channel.ID = model.ID
-		return r.syncAbilitiesTx(tx, channel)
+		if err := r.syncAbilitiesTx(tx, channel); err != nil {
+			return err
+		}
+		return r.syncChannelModelMappingsTx(tx, channel)
 	})
 }
 
@@ -1899,7 +1912,10 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 		}).Error; err != nil {
 			return err
 		}
-		return r.syncAbilitiesTx(tx, channel)
+		if err := r.syncAbilitiesTx(tx, channel); err != nil {
+			return err
+		}
+		return r.syncChannelModelMappingsTx(tx, channel)
 	})
 }
 
@@ -1908,7 +1924,10 @@ func (r *Repository) deleteChannelDB(ctx context.Context, channelID int64) error
 		if err := tx.Where("id = ?", channelID).Delete(&channelModel{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("channel_id = ?", channelID).Delete(&abilityModel{}).Error
+		if err := tx.Where("channel_id = ?", channelID).Delete(&abilityModel{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("channel_id = ?", channelID).Delete(&modelChannelMappingModel{}).Error
 	})
 }
 
@@ -1953,6 +1972,135 @@ func (r *Repository) syncAbilitiesTx(tx *gorm.DB, channel *biz.Channel) error {
 		return nil
 	}
 	return tx.Create(&rows).Error
+}
+
+const autoChannelModelMappingConfig = `{"_managed_by":"channel_models"}`
+
+// syncChannelModelMappingsTx keeps the legacy channel.Models editor visible to
+// the managed registry without taking ownership of mappings created through
+// model management. Auto-created rows carry a private marker in config; only
+// those rows may be reprioritised or removed by later channel edits.
+//
+// Mapping enabled is always true. Channel availability is governed by
+// channels.status, so a disabled channel can be re-enabled without leaving its
+// auto-created mappings permanently disabled. Empty upstream_model_id is also
+// intentional: relay resolution then applies channel.model_mapping and finally
+// preserves the exact spelling from channel.Models.
+func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channel) error {
+	// Keep older installations usable until the registry migrations are applied.
+	if !tx.Migrator().HasTable(&modelModel{}) || !tx.Migrator().HasTable(&modelChannelMappingModel{}) {
+		return nil
+	}
+
+	wanted := make(map[int64]struct{}, len(channel.Models))
+	for _, raw := range channel.Models {
+		raw = strings.TrimSpace(raw)
+		if raw == "" || strings.ContainsAny(raw, "*?") {
+			continue
+		}
+		pk, err := ensureModelRegistryRowTx(tx, biz.NormalizeModelID(raw))
+		if err != nil {
+			return err
+		}
+		wanted[pk] = struct{}{}
+	}
+
+	var existing []modelChannelMappingModel
+	if err := tx.Where("channel_id = ?", channel.ID).Find(&existing).Error; err != nil {
+		return err
+	}
+	existingByModel := make(map[int64]struct{}, len(existing))
+	now := time.Now().Unix()
+	priority := safecast.Int64ToInt32Saturating(channel.Priority)
+	for _, row := range existing {
+		existingByModel[row.ModelPK] = struct{}{}
+		if row.Config != autoChannelModelMappingConfig {
+			continue
+		}
+		if _, ok := wanted[row.ModelPK]; !ok {
+			if err := tx.Where("id = ?", row.ID).Delete(&modelChannelMappingModel{}).Error; err != nil {
+				return err
+			}
+			continue
+		}
+		if err := tx.Model(&modelChannelMappingModel{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
+			"enabled": true, "priority": priority, "updated_at": now,
+		}).Error; err != nil {
+			return err
+		}
+	}
+
+	for modelPK := range wanted {
+		if _, ok := existingByModel[modelPK]; ok {
+			continue
+		}
+		mapping := modelChannelMappingModel{
+			ChannelID: channel.ID, ModelPK: modelPK, Enabled: true,
+			Priority: priority, Config: autoChannelModelMappingConfig,
+			CreatedAt: now, UpdatedAt: now,
+		}
+		if err := tx.Create(&mapping).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureModelRegistryRowTx ... (unchanged)
+// model_id matches, creating a minimal public chat model when it is missing.
+func ensureModelRegistryRowTx(tx *gorm.DB, canonicalID string) (int64, error) {
+	var po modelModel
+	err := tx.Where("LOWER(model_id) = ?", canonicalID).First(&po).Error
+	if err == nil {
+		return po.ID, nil
+	}
+	if !isGormNotFound(err) {
+		return 0, err
+	}
+	now := time.Now().Unix()
+	po = modelModel{
+		ModelID:     canonicalID,
+		DisplayName: canonicalID,
+		Provider:    providerForModelID(canonicalID),
+		ModelType:   "chat",
+		Status:      biz.ModelStatusEnabled,
+		IsPublic:    true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := tx.Create(&po).Error; err != nil {
+		// Concurrent insert by another request: re-read.
+		if isDuplicateEntry(err) {
+			if err := tx.Where("LOWER(model_id) = ?", canonicalID).First(&po).Error; err != nil {
+				return 0, err
+			}
+			return po.ID, nil
+		}
+		return 0, err
+	}
+	return po.ID, nil
+}
+
+// providerForModelID infers a provider key from common model-name prefixes so
+// that auto-created registry rows carry a useful provider for filtering.
+func providerForModelID(modelID string) string {
+	id := strings.ToLower(modelID)
+	switch {
+	case strings.HasPrefix(id, "gpt"), strings.HasPrefix(id, "o1"), strings.HasPrefix(id, "o3"), strings.HasPrefix(id, "o4"):
+		return "openai"
+	case strings.HasPrefix(id, "claude"):
+		return "anthropic"
+	case strings.HasPrefix(id, "gemini"):
+		return "google"
+	case strings.HasPrefix(id, "glm"), strings.HasPrefix(id, "kimi"), strings.HasPrefix(id, "k3"):
+		return "zhipu"
+	case strings.HasPrefix(id, "deepseek"):
+		return "deepseek"
+	case strings.HasPrefix(id, "qwen"), strings.HasPrefix(id, "tongyi"):
+		return "alibaba"
+	default:
+		return "unknown"
+	}
 }
 
 func (r *Repository) syncSubscriptionAccountAbilitiesTx(tx *gorm.DB, account *biz.SubscriptionAccount) error {
@@ -2478,9 +2626,9 @@ func applyHealthEvent(channel *biz.Channel, event biz.ChannelHealthEvent, thresh
 }
 
 func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "%", "\\%")
-	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "!", "!!")
+	s = strings.ReplaceAll(s, "%", "!%")
+	s = strings.ReplaceAll(s, "_", "!_")
 	return s
 }
 

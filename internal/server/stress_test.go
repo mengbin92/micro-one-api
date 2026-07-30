@@ -89,6 +89,9 @@ type sequencingAccountSelector struct {
 func (c *sequencingAccountSelector) SelectChannel(context.Context, string, string, bool) (*relaybiz.Channel, error) {
 	return nil, fmt.Errorf("no api-key channel")
 }
+func (c *sequencingAccountSelector) SelectChannelExcluding(context.Context, string, string, map[int64]bool) (*relaybiz.Channel, error) {
+	return nil, fmt.Errorf("no api-key channel")
+}
 func (c *sequencingAccountSelector) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
 	return nil
 }

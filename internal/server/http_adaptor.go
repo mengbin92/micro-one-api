@@ -288,6 +288,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	inbound relayadaptor.Format,
 	sessionHash string,
 ) subscriptionAdaptorResult {
+	startedAt := time.Now()
 	result := subscriptionAdaptorResult{
 		statusCode: http.StatusInternalServerError,
 		write: func(w http.ResponseWriter) {
@@ -596,15 +597,16 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 					Quota:                 actualUsage.TotalTokens,
 					PromptTokens:          actualUsage.PromptTokens,
 					CompletionTokens:      actualUsage.CompletionTokens,
-						CacheReadTokens:       actualUsage.CacheReadTokens,
-					CacheCreation5mTokens:  actualUsage.CacheCreation5mTokens,
-					CacheCreation1hTokens:  actualUsage.CacheCreation1hTokens,
+					CacheReadTokens:       actualUsage.CacheReadTokens,
+					CacheCreation5mTokens: actualUsage.CacheCreation5mTokens,
+					CacheCreation1hTokens: actualUsage.CacheCreation1hTokens,
 					ChannelID:             plan.Channel.ID,
 					SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 					Group:                 plan.Auth.Group,
 					SessionHash:           sessionHash,
 					SessionWindowLimitUSD: sessionWindowLimitUSD,
 					IsStream:              true,
+					ElapsedTime:           time.Since(startedAt).Milliseconds(),
 				}
 				// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 				logInput.applyPlanInputs(plan)
@@ -668,13 +670,14 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				PromptTokens:          usage.PromptTokens,
 				CompletionTokens:      usage.CompletionTokens,
 				CacheReadTokens:       usage.CacheReadTokens,
-				CacheCreation5mTokens:  usage.CacheCreation5mTokens,
-				CacheCreation1hTokens:  usage.CacheCreation1hTokens,
+				CacheCreation5mTokens: usage.CacheCreation5mTokens,
+				CacheCreation1hTokens: usage.CacheCreation1hTokens,
 				ChannelID:             plan.Channel.ID,
 				SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 				Group:                 plan.Auth.Group,
 				SessionHash:           sessionHash,
 				SessionWindowLimitUSD: sessionWindowLimitUSD,
+				ElapsedTime:           time.Since(startedAt).Milliseconds(),
 			}
 			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 			logInput.applyPlanInputs(plan)
@@ -982,6 +985,16 @@ func subscriptionAccountIDFromPlan(plan *relaybiz.RelayPlan) int64 {
 	return plan.Account.ID
 }
 
+// subscriptionAccountIDFromChannel returns the subscription account id of the
+// channel that actually executed the request. Use this in retry/failover paths
+// where the original plan may have selected a different source.
+func subscriptionAccountIDFromChannel(ch *relaybiz.Channel) int64 {
+	if ch == nil {
+		return 0
+	}
+	return ch.SubscriptionAccountID
+}
+
 // upstreamCostKeyInputsFromPlan extracts the v0.11.0 Phase 2 §2.2 stable
 // upstream cost-key inputs from a relay plan. A subscription account plan
 // yields ("subscription", account.UpstreamModelID); a regular channel plan
@@ -1004,60 +1017,12 @@ func upstreamCostKeyInputsFromPlan(plan *relaybiz.RelayPlan) (sourceKind, upstre
 // isPromptExclusiveChannel reports whether the selected upstream uses
 // mutually-exclusive prompt / cache_read / cache_creation token buckets
 // (ADR §3.3 — Anthropic Messages API and all Anthropic-compatible providers:
-// native Anthropic, Claude, Bedrock-Claude, VertexAI-Claude, and the domestic
-// "coding plan" channels Zhipu GLM / MiniMax / Kimi that mirror the Anthropic
-// Messages API). When true, the billing layer must NOT subtract cache_read
-// from prompt_tokens because the upstream already returns them as separate,
-// non-overlapping buckets. OpenAI-compatible upstreams use subset semantics
-// (ADR §3.1) where cached_tokens is part of prompt_tokens, so the subtraction
-// is correct and this function returns false.
 func isPromptExclusiveChannel(plan *relaybiz.RelayPlan) bool {
-	if plan == nil {
-		return false
-	}
-	// Subscription accounts: the platform string identifies the Messages-API
-	// family (claude / zhipu / minimax / kimi all use Anthropic-compatible
-	// usage semantics). Codex uses the OpenAI Responses API (subset semantics).
-	if plan.Account != nil {
-		switch plan.Account.Platform {
-		case "claude", "zhipu", "minimax", "kimi":
-			return true
-		}
-		return false
-	}
-	// Regular channels: check the channel type directly.
-	if plan.Channel != nil {
-		switch plan.Channel.Type {
-		case relayprovider.ChannelTypeAnthropic,
-			relayprovider.ChannelTypeClaude,
-			relayprovider.ChannelTypeBedrock,
-			relayprovider.ChannelTypeVertexAI,
-			relayprovider.ChannelTypeClaudeOAuth,
-			relayprovider.ChannelTypeZhipuPlan,
-			relayprovider.ChannelTypeMinimaxPlan,
-			relayprovider.ChannelTypeKimiOAuth:
-			return true
-		}
-	}
-	return false
+	return relaybiz.IsPromptExclusiveChannel(plan)
 }
 
-// isPromptExclusiveChannelType is the channel-type-only variant of
-// isPromptExclusiveChannel, used by code paths that have a channel type int32
-// but not a full RelayPlan (e.g. the legacy one-api handler).
 func isPromptExclusiveChannelType(chType int32) bool {
-	switch chType {
-	case relayprovider.ChannelTypeAnthropic,
-		relayprovider.ChannelTypeClaude,
-		relayprovider.ChannelTypeBedrock,
-		relayprovider.ChannelTypeVertexAI,
-		relayprovider.ChannelTypeClaudeOAuth,
-		relayprovider.ChannelTypeZhipuPlan,
-		relayprovider.ChannelTypeMinimaxPlan,
-		relayprovider.ChannelTypeKimiOAuth:
-		return true
-	}
-	return false
+	return relaybiz.IsPromptExclusiveChannelType(chType)
 }
 
 func fallbackSubscriptionAccountMetadata(plan *relaybiz.RelayPlan, ch *relaybiz.Channel) *relaycredential.SubscriptionAccountMetadata {

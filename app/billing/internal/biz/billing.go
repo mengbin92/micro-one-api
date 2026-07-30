@@ -658,7 +658,7 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 		return 0, 0, fmt.Errorf("get account snapshot: %w", err)
 	}
 
-	actualCost := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
+	actualCost, costBreakdown := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
 	if actualCost <= 0 {
 		actualCost = 1
 	}
@@ -689,10 +689,24 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 			return 0, 0, fmt.Errorf("update reservation status: %w", err)
 		}
 
+		// v0.11.0 review L2: emit the upstream-cost metric on the legacy commit
+		// path as well, so UpstreamCostMissing alert sees all traffic.
+		upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
+		resultLabel := "unpriced"
+		if upstreamCost > 0 {
+			resultLabel = "priced"
+		}
+		if metrics.BillingLedgerUpstreamCostRecorded != nil {
+			metrics.BillingLedgerUpstreamCostRecorded.WithLabelValues(
+				resultLabel,
+				providerFamilyForModel(reservation.Model),
+			).Inc()
+		}
+
 		ledger := &Ledger{
 			UserID:                reservation.UserID,
 			Amount:                -actualCost,
-			UpstreamCost:          uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage),
+			UpstreamCost:          upstreamCost,
 			BalanceAfter:          balanceAfter,
 			Type:                  LedgerTypeConsume,
 			ReferenceID:           reservationID,
@@ -705,6 +719,12 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 			CacheReadTokens:       usage.CacheReadTokens,
 			CacheCreation5mTokens: usage.CacheCreation5mTokens,
 			CacheCreation1hTokens: usage.CacheCreation1hTokens,
+			PromptCost:            costBreakdown.PromptCost,
+			CompletionCost:        costBreakdown.CompletionCost,
+			CacheReadCost:         costBreakdown.CacheReadCost,
+			CacheCreation5mCost:   costBreakdown.CacheCreation5mCost,
+			CacheCreation1hCost:   costBreakdown.CacheCreation1hCost,
+			ShadowCost:            costBreakdown.ShadowCost,
 			ChannelID:             parseInt64Default(reservation.ChannelID, 0),
 			SubscriptionAccountID: resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID),
 			ElapsedTime:           usage.ElapsedTime,
@@ -809,7 +829,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 	if err != nil {
 		return 0, 0, fmt.Errorf("get account in tx: %w", err)
 	}
-	actualCost := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
+	actualCost, costBreakdown := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
 	if actualCost <= 0 {
 		actualCost = 1
 	}
@@ -912,6 +932,16 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			BalanceCost:           0,
 			LedgerDedupeKey:       fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceSubscription),
 		}
+		// Per-bucket costs live on the balance ledger when one exists; otherwise
+		// attach them to the subscription ledger so the request remains auditable.
+		if actualBalanceQuota <= 0 {
+			subLedger.PromptCost = costBreakdown.PromptCost
+			subLedger.CompletionCost = costBreakdown.CompletionCost
+			subLedger.CacheReadCost = costBreakdown.CacheReadCost
+			subLedger.CacheCreation5mCost = costBreakdown.CacheCreation5mCost
+			subLedger.CacheCreation1hCost = costBreakdown.CacheCreation1hCost
+			subLedger.ShadowCost = costBreakdown.ShadowCost
+		}
 		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, subLedger); err != nil {
 			return 0, 0, fmt.Errorf("create subscription ledger: %w", err)
 		}
@@ -933,6 +963,12 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			CacheReadTokens:       usage.CacheReadTokens,
 			CacheCreation5mTokens: usage.CacheCreation5mTokens,
 			CacheCreation1hTokens: usage.CacheCreation1hTokens,
+			PromptCost:            costBreakdown.PromptCost,
+			CompletionCost:        costBreakdown.CompletionCost,
+			CacheReadCost:         costBreakdown.CacheReadCost,
+			CacheCreation5mCost:   costBreakdown.CacheCreation5mCost,
+			CacheCreation1hCost:   costBreakdown.CacheCreation1hCost,
+			ShadowCost:            costBreakdown.ShadowCost,
 			ChannelID:             parseInt64Default(reservation.ChannelID, 0),
 			SubscriptionAccountID: resolvedSubAccountID,
 			ElapsedTime:           usage.ElapsedTime,
@@ -1414,7 +1450,7 @@ func (uc *BillingUsecase) RedeemCode(ctx context.Context, userID, code string) (
 	return redeemCode.Amount, newBalance, nil
 }
 
-func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, model string, actualTokens int64, usage LedgerUsage) int64 {
+func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown) {
 	// v0.11.0: when a per-token ModelPrice is configured, compute the full
 	// five-bucket canonical cost and select observe vs charge per
 	// BILLING_CACHE_CREATION_MODE (docs/design/token-usage-semantics.md §5).
@@ -1438,14 +1474,14 @@ func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, mod
 			// price configured); priced buckets still charge. This means
 			// partial pricing does not silently zero the whole charge, and
 			// CacheCreationUnpriced signals the config gap to ops.
-			return breakdown.CanonicalCost
+			return breakdown.CanonicalCost, breakdown
 		}
-		return breakdown.V0_10_2Cost
+		return breakdown.V0_10_2Cost, breakdown
 	}
 	if usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.CacheReadTokens > 0 {
-		return uc.calculateCost(ctx, group, model, usage.PromptTokens, usage.CompletionTokens, usage.CacheReadTokens, usage.PromptExclusive)
+		return uc.calculateCost(ctx, group, model, usage.PromptTokens, usage.CompletionTokens, usage.CacheReadTokens, usage.PromptExclusive), canonicalCostBreakdown{}
 	}
-	return uc.calculateCost(ctx, group, model, actualTokens, 0, 0, usage.PromptExclusive)
+	return uc.calculateCost(ctx, group, model, actualTokens, 0, 0, usage.PromptExclusive), canonicalCostBreakdown{}
 }
 
 // recordCacheCreationCostSignal emits the shadow cost + unpriced signal for a
@@ -1607,6 +1643,12 @@ type canonicalCostBreakdown struct {
 	// ShadowCost is the cache-creation portion only (CanonicalCost - V0_10_2Cost).
 	// Recorded for ops in observe mode and compared against vendor invoices.
 	ShadowCost int64
+	// Per-bucket costs persisted for audit and vendor-invoice reconciliation.
+	PromptCost          int64
+	CompletionCost      int64
+	CacheReadCost       int64
+	CacheCreation5mCost int64
+	CacheCreation1hCost int64
 	// CacheCreationUnpriced is true when any cache-creation tokens were
 	// observed but no corresponding price was configured. The tokens are still
 	// counted (for display), but each unpriced bucket contributes zero even in
@@ -1632,59 +1674,77 @@ type canonicalCostBreakdown struct {
 //     buckets are mutually exclusive so input = prompt and cacheRead is priced
 //     on its own — the subtraction must NOT happen (ADR §3.3 "不得相减").
 func calculateCanonicalCost(price ModelPrice, promptTokens, completionTokens, cacheReadTokens, cacheCreation5mTokens, cacheCreation1hTokens int64, multiplier float64, promptExclusive bool) canonicalCostBreakdown {
-	prompt := float64(maxInt64(promptTokens, 0))
-	cacheRead := float64(maxInt64(cacheReadTokens, 0))
-	var input float64
+	prompt := int64(maxInt64(promptTokens, 0))
+	var input int64
 	if promptExclusive {
 		// ADR §3.3: Anthropic / GLM buckets are mutually exclusive.
 		// input_tokens already excludes cached tokens; do NOT subtract.
 		input = prompt
 	} else {
 		// ADR §3.1: OpenAI subset semantics — cacheRead is part of prompt.
-		input = prompt - float64(minInt64(maxInt64(cacheReadTokens, 0), maxInt64(promptTokens, 0)))
+		input = prompt - minInt64(maxInt64(cacheReadTokens, 0), maxInt64(promptTokens, 0))
 	}
-	completion := float64(maxInt64(completionTokens, 0))
+	completion := int64(maxInt64(completionTokens, 0))
+	cacheRead := int64(maxInt64(cacheReadTokens, 0))
 	cacheReadPrice := price.InputPrice
 	if price.CacheReadPrice != nil {
 		cacheReadPrice = *price.CacheReadPrice
 	}
 
-	// v0.10.2 cost: input + cache_read + completion. No cache-creation charge.
-	v0_10_2Raw := (input*price.InputPrice + cacheRead*cacheReadPrice + completion*price.OutputPrice) * multiplier
+	// Each priced bucket is converted to quota units with math.Round, then the
+	// results are summed as integers. This keeps FMA (fused multiply-add,
+	// emitted on amd64) from accumulating sub-cent floating-point error across
+	// buckets before the final ceil. Rounding each term independently and
+	// summing in int64 makes the cost bit-for-bit deterministic across
+	// GOARCH, matching the per-token math a human would do by hand.
+	inputCost := roundScaled(input, price.InputPrice, multiplier)
+	cacheReadCost := roundScaled(cacheRead, cacheReadPrice, multiplier)
+	completionCost := roundScaled(completion, price.OutputPrice, multiplier)
+	v0_10_2Cost := inputCost + cacheReadCost + completionCost
 
 	// Canonical cost adds cache-creation charges only when priced.
-	creation5m := float64(maxInt64(cacheCreation5mTokens, 0))
-	creation1h := float64(maxInt64(cacheCreation1hTokens, 0))
-	creationRaw := v0_10_2Raw
+	creation5m := int64(maxInt64(cacheCreation5mTokens, 0))
+	creation1h := int64(maxInt64(cacheCreation1hTokens, 0))
+	creation5mCost := int64(0)
+	creation1hCost := int64(0)
+	canonicalCost := v0_10_2Cost
 	unpriced := false
 	if creation5m > 0 {
 		if price.CacheCreation5mPrice != nil {
-			creationRaw += creation5m * (*price.CacheCreation5mPrice) * multiplier
+			creation5mCost = roundScaled(creation5m, *price.CacheCreation5mPrice, multiplier)
+			canonicalCost += creation5mCost
 		} else {
 			unpriced = true
 		}
 	}
 	if creation1h > 0 {
 		if price.CacheCreation1hPrice != nil {
-			creationRaw += creation1h * (*price.CacheCreation1hPrice) * multiplier
+			creation1hCost = roundScaled(creation1h, *price.CacheCreation1hPrice, multiplier)
+			canonicalCost += creation1hCost
 		} else {
 			unpriced = true
 		}
 	}
 
-	v0_10_2Cost := ceilPositiveCost(v0_10_2Raw * AmountScale)
 	// Canonical cost accumulates cache-creation charges ONLY for priced
 	// buckets. An unpriced bucket (tokens > 0 but nil price) contributes zero
-	// to creationRaw and is flagged via CacheCreationUnpriced so charge-mode
-	// eligibility can gate the user charge independently. The priced buckets
-	// are never discarded: if 5m is priced but 1h is not, the 5m charge still
-	// flows into Canonical/Shadow/Upstream cost (roadmap: 5m/1h are
-	// independent optional price buckets).
-	canonicalCost := ceilPositiveCost(creationRaw * AmountScale)
+	// and is flagged via CacheCreationUnpriced so charge-mode eligibility can
+	// gate the user charge independently. The priced buckets are never
+	// discarded: if 5m is priced but 1h is not, the 5m charge still flows into
+	// Canonical/Shadow/Upstream cost (roadmap: 5m/1h are independent optional
+	// price buckets).
+	if canonicalCost < 0 {
+		canonicalCost = 0
+	}
 	return canonicalCostBreakdown{
 		V0_10_2Cost:           v0_10_2Cost,
 		CanonicalCost:         canonicalCost,
 		ShadowCost:            maxInt64(canonicalCost-v0_10_2Cost, 0),
+		PromptCost:            inputCost,
+		CompletionCost:        completionCost,
+		CacheReadCost:         cacheReadCost,
+		CacheCreation5mCost:   creation5mCost,
+		CacheCreation1hCost:   creation1hCost,
 		CacheCreationUnpriced: unpriced,
 	}
 }
@@ -1710,29 +1770,37 @@ func (uc *BillingUsecase) CacheCreationBillingMode() CacheCreationMode {
 	return uc.cacheCreationMode
 }
 
-// ceilPositiveCost rounds a raw cost up to the nearest integer quota unit and
-// returns 0 for non-positive inputs (matches the legacy calculateModelPriceCost
-// tail).
-func ceilPositiveCost(raw float64) int64 {
+// roundScaled converts a single priced bucket (tokens*price) into integer
+// quota units (multiplied by AmountScale and the group/long-context ratio)
+// using math.Round rather than Ceil. Rounding each term independently before
+// summing keeps FMA-induced sub-ULP error from drifting across buckets, so
+// the total is bit-for-bit deterministic across GOARCH.
+func roundScaled(tokens int64, perTokenPrice, multiplier float64) int64 {
+	if tokens <= 0 || perTokenPrice <= 0 {
+		return 0
+	}
+	raw := float64(tokens) * perTokenPrice * multiplier * AmountScale
 	if raw <= 0 {
 		return 0
 	}
-	return int64(math.Ceil(raw))
+	return int64(math.Round(raw))
 }
 
 func calculateModelPriceCost(price ModelPrice, promptTokens, completionTokens, cacheReadTokens int64, multiplier float64) int64 {
-	cacheRead := float64(minInt64(maxInt64(cacheReadTokens, 0), maxInt64(promptTokens, 0)))
-	input := float64(maxInt64(promptTokens, 0)) - cacheRead
-	completion := float64(maxInt64(completionTokens, 0))
+	cacheRead := int64(minInt64(maxInt64(cacheReadTokens, 0), maxInt64(promptTokens, 0)))
+	input := int64(maxInt64(promptTokens, 0)) - cacheRead
+	completion := int64(maxInt64(completionTokens, 0))
 	cacheReadPrice := price.InputPrice
 	if price.CacheReadPrice != nil {
 		cacheReadPrice = *price.CacheReadPrice
 	}
-	cost := (input*price.InputPrice + cacheRead*cacheReadPrice + completion*price.OutputPrice) * AmountScale * multiplier
+	cost := roundScaled(input, price.InputPrice, multiplier) +
+		roundScaled(cacheRead, cacheReadPrice, multiplier) +
+		roundScaled(completion, price.OutputPrice, multiplier)
 	if cost <= 0 {
 		return 0
 	}
-	return int64(math.Ceil(cost))
+	return cost
 }
 
 // CostSourceChannel is the v0.11.0 Phase 2 §2.2 source-kind value for a

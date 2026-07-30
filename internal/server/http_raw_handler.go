@@ -66,7 +66,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 		var upstreamResp *relayprovider.RawResponse
 		retryStartedAt := time.Now()
 		retryExecutor := s.relayUsecase.NewRetryExecutor()
-		result := retryExecutor.ExecuteWithAccountHealth(r.Context(), plan.Auth.Group, plan.BaseModel(), plan.Channel, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
+		result := retryExecutor.ExecuteWithCandidates(r.Context(), plan, subscriptionAccountIDFromPlan(plan), func(ctx context.Context, ch *relaybiz.Channel) error {
 			startedAt := time.Now()
 			requestID := generateRequestID()
 			// re-apply the retried channel's per-channel model mapping so
@@ -123,12 +123,13 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 
 				CacheCreation5mTokens: usage.CacheCreation5mTokens,
 				CacheCreation1hTokens: usage.CacheCreation1hTokens,
-				ChannelID:        ch.ID,
-				ElapsedTime:      time.Since(startedAt).Milliseconds(),
-				IsStream:         false,
+				ChannelID:             ch.ID,
+				ElapsedTime:           time.Since(startedAt).Milliseconds(),
+				IsStream:              false,
 			}
-			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
-			logInput.applyPlanInputs(plan)
+			// v0.11.0 review M1: record the source that actually executed the
+			// request, not the original plan, so failover attribution is correct.
+			logInput.applyChannelInputs(ch)
 			logUpstreamUsage(logInput)
 			if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				return err
