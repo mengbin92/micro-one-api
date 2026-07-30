@@ -180,19 +180,24 @@ func (s *CodexModelProbeService) HandleSubscriptionAccountEvent(ctx context.Cont
 	if !s.markPending(accountID) {
 		return nil
 	}
-	go func() {
-		defer s.unmarkPending(accountID)
-		// The probe runs after the originating request has already returned,
-		// so it must NOT inherit the request-scoped ctx — that ctx is cancelled
-		// the moment CreateSubscriptionAccount's HTTP handler returns, which
-		// would cancel the probe before it even starts (observed as
-		// "context canceled" on every subscription-account model probe).
-		// Derive a fresh background context with its own timeout instead.
-		probeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		_ = s.syncModelsForAccount(probeCtx, accountID)
-	}()
+	go s.probeAccountModelsDetached(accountID) // #nosec G118 -- probe must outlive the request: the request-scoped ctx is cancelled when the HTTP handler returns, which would kill the probe before it starts; probeAccountModelsDetached derives a fresh background context with its own 30s timeout.
 	return nil
+}
+
+// probeAccountModelsDetached runs the model probe outside the originating
+// request's lifetime. The probe starts after the request that fired the event
+// has already returned, so it must NOT inherit the request-scoped ctx — that
+// ctx is cancelled the moment CreateSubscriptionAccount's HTTP handler
+// returns, which would cancel the probe before it even starts (observed as
+// "context canceled" on every subscription-account model probe). It therefore
+// derives a fresh background context with its own timeout. Keeping this in a
+// method that takes no ctx makes the detachment explicit and structurally
+// impossible to regress (gosec G118).
+func (s *CodexModelProbeService) probeAccountModelsDetached(accountID int64) {
+	defer s.unmarkPending(accountID)
+	probeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = s.syncModelsForAccount(probeCtx, accountID)
 }
 
 // syncModelsForAccount resolves the account, then routes to the platform-
