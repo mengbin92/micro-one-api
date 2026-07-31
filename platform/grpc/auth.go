@@ -12,10 +12,10 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
+	"go.uber.org/zap"
+	applogger "micro-one-api/platform/logging"
 	appauth "micro-one-api/platform/security/auth"
 	apptls "micro-one-api/platform/tls"
-	applogger "micro-one-api/platform/logging"
-	"go.uber.org/zap"
 )
 
 // AuthServer wraps a gRPC server with authentication

@@ -70,7 +70,7 @@ func (p *AzureProvider) ChatCompletions(ctx context.Context, req *ChatCompletion
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -107,7 +107,7 @@ func (p *AzureProvider) ChatCompletionsStream(ctx context.Context, req *ChatComp
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
 		resp.Body.Close()
 		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
@@ -140,7 +140,7 @@ func (p *AzureProvider) Forward(ctx context.Context, req *RawRequest) (*RawRespo
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}

@@ -56,7 +56,9 @@ func (m *mockChannelClient) SelectChannel(ctx context.Context, group, model stri
 	return m.channel, nil
 }
 
-func (m *mockChannelClient) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error { return nil }
+func (m *mockChannelClient) RecordSubscriptionAccountHealth(_ context.Context, _ int64, _ bool) error {
+	return nil
+}
 
 func (m *mockChannelClient) RecordChannelHealth(ctx context.Context, channelID int64, success bool, err string, responseTime int64) error {
 	return nil

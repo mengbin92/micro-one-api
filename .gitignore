@@ -11,6 +11,7 @@
 # match the cmd/<service>/ source directories, which previously caused
 # cmd/log-service/partition.go to be ignored and break CI builds)
 /relay-gateway
+cmd/relay-gateway/relay-gateway
 /admin-api
 /identity-service
 /channel-service

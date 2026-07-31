@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/domain/upstream/provider"
+	relaybiz "micro-one-api/internal/biz"
 )
 
 // channelRef builds a RelayContext for an OpenAI-compatible channel with the

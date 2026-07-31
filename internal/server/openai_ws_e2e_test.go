@@ -12,9 +12,9 @@ import (
 	coderws "github.com/coder/websocket"
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 
+	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	relaydata "micro-one-api/internal/data"
-	relayprovider "micro-one-api/domain/upstream/provider"
 )
 
 // mockUpstreamWSServer is a Responses WebSocket upstream that reads the first

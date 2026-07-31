@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redis/go-redis/v9"
 
-	"micro-one-api/platform/metrics"
 	"micro-one-api/internal/stresstest"
+	"micro-one-api/platform/metrics"
 )
 
 // newMiniRedis builds a hermetic Redis double backed by miniredis, plus a

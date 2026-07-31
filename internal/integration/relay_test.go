@@ -9,9 +9,9 @@ import (
 	"time"
 
 	billingv1 "micro-one-api/api/billing/v1"
+	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	relaydata "micro-one-api/internal/data"
-	relayprovider "micro-one-api/domain/upstream/provider"
 	relayserver "micro-one-api/internal/server"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
@@ -27,16 +27,16 @@ type mockBillingService struct {
 func (m *mockBillingService) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest) (*billingv1.ReserveQuotaResponse, error) {
 	return &billingv1.ReserveQuotaResponse{
 		Success:        true,
-		ReservationId:   "test-reservation-123",
+		ReservationId:  "test-reservation-123",
 		ReservedAmount: 100,
 	}, nil
 }
 
 func (m *mockBillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest) (*billingv1.CommitQuotaResponse, error) {
 	return &billingv1.CommitQuotaResponse{
-		Success:        true,
+		Success:         true,
 		CommittedAmount: req.ActualTokens,
-		RefundAmount:   0,
+		RefundAmount:    0,
 	}, nil
 }
 

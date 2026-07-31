@@ -194,7 +194,7 @@ func (p *GeminiProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -234,7 +234,7 @@ func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
 		resp.Body.Close()
 		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}

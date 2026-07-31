@@ -100,7 +100,7 @@ func (a *AzureAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayContex
 // ConvertResponse returns the upstream body unchanged for chat_completions.
 func (a *AzureAdaptor) ConvertResponse(_ *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, provider.MaxUpstreamResponseBody))
 	if err != nil {
 		return "", nil, fmt.Errorf("read upstream response: %w", err)
 	}

@@ -89,12 +89,12 @@ func TestBackoffDuration(t *testing.T) {
 		attempt  int
 		expected time.Duration
 	}{
-		{0, 500 * time.Millisecond},       // 500ms * 2^0 = 500ms
-		{1, 1 * time.Second},               // 500ms * 2^1 = 1s
-		{2, 2 * time.Second},               // 500ms * 2^2 = 2s
-		{3, 4 * time.Second},               // 500ms * 2^3 = 4s
-		{4, 5 * time.Second},               // 500ms * 2^4 = 8s, capped at 5s
-		{5, 5 * time.Second},               // capped
+		{0, 500 * time.Millisecond}, // 500ms * 2^0 = 500ms
+		{1, 1 * time.Second},        // 500ms * 2^1 = 1s
+		{2, 2 * time.Second},        // 500ms * 2^2 = 2s
+		{3, 4 * time.Second},        // 500ms * 2^3 = 4s
+		{4, 5 * time.Second},        // 500ms * 2^4 = 8s, capped at 5s
+		{5, 5 * time.Second},        // capped
 	}
 
 	for _, tt := range tests {

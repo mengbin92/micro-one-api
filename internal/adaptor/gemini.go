@@ -88,7 +88,7 @@ func (a *GeminiAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayConte
 // ConvertResponse returns the upstream body unchanged for gemini.
 func (a *GeminiAdaptor) ConvertResponse(_ *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, provider.MaxUpstreamResponseBody))
 	if err != nil {
 		return "", nil, fmt.Errorf("read upstream response: %w", err)
 	}

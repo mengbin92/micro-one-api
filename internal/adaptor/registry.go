@@ -1,7 +1,6 @@
 package adaptor
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -33,16 +32,6 @@ func GetAdaptor(channelType int32) (Adaptor, bool) {
 		return nil, false
 	}
 	return factory(), true
-}
-
-// MustGetAdaptor returns the adaptor for the channel type or panics. Useful
-// only for tests with a known registration.
-func MustGetAdaptor(channelType int32) Adaptor {
-	a, ok := GetAdaptor(channelType)
-	if !ok {
-		panic(fmt.Sprintf("adaptor: no adaptor registered for channel type %d", channelType))
-	}
-	return a
 }
 
 // RegisteredTypes returns the channel types that currently have a registered

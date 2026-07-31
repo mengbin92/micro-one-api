@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"micro-one-api/domain/upstream/credential"
-	"micro-one-api/internal/identity"
 	"micro-one-api/domain/upstream/provider"
+	"micro-one-api/internal/identity"
 )
 
 // This file registers the subscription-account OAuth adaptors. Unlike the

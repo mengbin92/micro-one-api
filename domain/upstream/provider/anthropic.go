@@ -128,7 +128,7 @@ func (p *AnthropicProvider) Forward(ctx context.Context, req *RawRequest) (*RawR
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
@@ -169,7 +169,7 @@ func (p *AnthropicProvider) ForwardStream(ctx context.Context, req *RawRequest) 
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
-		respBody, readErr := io.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read raw stream response: %w", readErr)
 		}
@@ -378,7 +378,7 @@ func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatComple
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -421,7 +421,7 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
 		resp.Body.Close()
 		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}

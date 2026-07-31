@@ -1027,7 +1027,8 @@ func TestSelectFallbackRoutingSource_PassesExcludedChannelsToSelection(t *testin
 	}
 }
 
-func TestSelectFallbackRoutingSourceAppliesCrossSourcePriorityAndWeight(t *testing.T) {	t.Run("higher priority wins", func(t *testing.T) {
+func TestSelectFallbackRoutingSourceAppliesCrossSourcePriorityAndWeight(t *testing.T) {
+	t.Run("higher priority wins", func(t *testing.T) {
 		client := &fallbackRoutingClient{
 			channel: &Channel{ID: 1, Priority: 10, Weight: 100},
 			subscription: &SubscriptionAccount{

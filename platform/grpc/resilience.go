@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -36,20 +37,20 @@ type StateChangeCallback func(name string, from gobreaker.State, to gobreaker.St
 type FallbackStrategy string
 
 const (
-	FallbackCache   FallbackStrategy = "cache"   // Use cached data
-	FallbackAsync   FallbackStrategy = "async"   // Use async mode
-	FallbackNoOp    FallbackStrategy = "noop"    // Do nothing
-	FallbackReject  FallbackStrategy = "reject"  // Reject immediately
+	FallbackCache  FallbackStrategy = "cache"  // Use cached data
+	FallbackAsync  FallbackStrategy = "async"  // Use async mode
+	FallbackNoOp   FallbackStrategy = "noop"   // Do nothing
+	FallbackReject FallbackStrategy = "reject" // Reject immediately
 )
 
 // DefaultBreakerConfig returns the default circuit breaker configuration.
 func DefaultBreakerConfig(name string) *BreakerConfig {
 	return &BreakerConfig{
-		Name:         name,
-		MaxRequests:  3,
-		Interval:     60 * time.Second,
-		Timeout:      30 * time.Second,
-		ReadyToTrip:  DefaultReadyToTrip,
+		Name:             name,
+		MaxRequests:      3,
+		Interval:         60 * time.Second,
+		Timeout:          30 * time.Second,
+		ReadyToTrip:      DefaultReadyToTrip,
 		FallbackStrategy: FallbackCache,
 	}
 }
@@ -62,6 +63,25 @@ func DefaultReadyToTrip(counts gobreaker.Counts) bool {
 
 // FallbackFunc is called when the circuit breaker is open.
 type FallbackFunc[T any] func(ctx context.Context, err error) (T, error)
+
+// ErrCircuitBreakerOpen is the sentinel returned by RejectFallback when the
+// circuit breaker for a downstream service is open. Callers can branch on it
+// with errors.Is to degrade gracefully instead of receiving a wrapped,
+// message-bearing "circuit breaker open for <svc>" error (relay-H1: the four
+// production ResilientClients previously passed nil as the fallback, so the
+// only signal was an opaque formatted string).
+var ErrCircuitBreakerOpen = errors.New("circuit breaker open")
+
+// TypedRejectFallback returns a FallbackFunc that rejects the call with the typed
+// ErrCircuitBreakerOpen sentinel, preserving the original breaker error via
+// errors.Join so it is still available for logging while callers match on the
+// sentinel (relay-H1).
+func TypedRejectFallback[T any]() FallbackFunc[T] {
+	return func(ctx context.Context, err error) (T, error) {
+		var zero T
+		return zero, errors.Join(ErrCircuitBreakerOpen, err)
+	}
+}
 
 // ResilientClient wraps a gRPC client with circuit breaker, timeout, and fallback.
 type ResilientClient[T any] struct {

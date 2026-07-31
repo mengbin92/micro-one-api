@@ -112,7 +112,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if result != nil && result.StatusCode != 0 {
 			status = result.StatusCode
 		}
-		h.writeError(w, status, err.Error())
+		h.writeError(w, status, sanitizeUpstreamError(status, err))
 		return
 	}
 
@@ -133,6 +133,25 @@ func extractBearerToken(r *http.Request) (string, error) {
 		return "", http.ErrNotSupported
 	}
 	return token, nil
+}
+
+// sanitizeUpstreamError maps an upstream/internal error to a client-safe
+// message for the given status code (relay-H2). Hides raw upstream error
+// bodies (provider names, rate-limit detail, internal paths) from clients.
+func sanitizeUpstreamError(statusCode int, err error) string {
+	if statusCode >= 500 {
+		return "upstream service unavailable"
+	}
+	switch statusCode {
+	case http.StatusTooManyRequests:
+		return "upstream rate limited"
+	case http.StatusUnauthorized:
+		return "upstream authentication failed"
+	case http.StatusForbidden:
+		return "upstream denied request"
+	default:
+		return "upstream request error"
+	}
 }
 
 // writeError writes an error response in OpenAI format.

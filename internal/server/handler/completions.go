@@ -67,7 +67,7 @@ func (h *CompletionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if result != nil && result.StatusCode != 0 {
 			status = result.StatusCode
 		}
-		h.writeError(w, status, err.Error())
+		h.writeError(w, status, sanitizeUpstreamError(status, err))
 		return
 	}
 

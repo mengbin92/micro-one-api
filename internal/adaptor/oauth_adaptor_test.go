@@ -10,10 +10,10 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"micro-one-api/internal/apicompat"
 	"micro-one-api/domain/upstream/credential"
-	"micro-one-api/internal/identity"
 	"micro-one-api/domain/upstream/provider"
+	"micro-one-api/internal/apicompat"
+	"micro-one-api/internal/identity"
 )
 
 // staticTokenProvider is a TokenProvider that always returns a fixed token,

@@ -84,7 +84,7 @@ func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawRe
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read voyageai response: %w", err)
 	}
