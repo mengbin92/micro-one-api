@@ -32,9 +32,9 @@ func (f *ProviderFactory) CreateProvider(channelType int32, baseURL, apiKey stri
 func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, apiKey string, config ProviderConfig) (Provider, error) {
 	switch channelType {
 	case ChannelTypeAnthropic: // Anthropic Claude
-		return NewAnthropicProvider(baseURL, apiKey, f.defaultTimeout), nil
+		return NewAnthropicProvider(baseURL, apiKey, f.defaultTimeout)
 	case ChannelTypeGemini: // Google Gemini
-		return NewGeminiProvider(baseURL, apiKey, f.defaultTimeout), nil
+		return NewGeminiProvider(baseURL, apiKey, f.defaultTimeout)
 	case ChannelTypeAzure:
 		if baseURL == "" {
 			return nil, fmt.Errorf("azure channel requires base_url")
@@ -51,6 +51,14 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		ChannelTypeBaidu,
 		ChannelTypeXunfei:
 		return nil, fmt.Errorf("channel type %d requires a native provider adapter", channelType)
+	case ChannelTypeOllama:
+		// domain-M2: Ollama is a self-hosted provider whose default endpoint is
+		// loopback (http://localhost:11434/v1) and realistic deployments are on a
+		// private network. The strict SSRF check would reject these, making the
+		// advertised Ollama channel type impossible to use without the global
+		// PROVIDER_DISABLE_SSRF_CHECK escape hatch (which disables protection for
+		// ALL channels). Use the allow-local constructor instead.
+		return NewOpenAIProviderAllowLocal(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	case ChannelTypeOpenAI,
 		ChannelTypeDeepSeek,
 		ChannelTypeMistral,
@@ -67,7 +75,6 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		ChannelTypeNovita,
 		ChannelTypeOpenRouter,
 		ChannelTypeSiliconFlow,
-		ChannelTypeOllama,
 		ChannelTypeDoubao:
 		return NewOpenAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	default:

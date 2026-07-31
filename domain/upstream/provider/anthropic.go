@@ -26,12 +26,19 @@ type AnthropicProvider struct {
 }
 
 // NewAnthropicProvider creates a new Anthropic Claude provider.
-func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) *AnthropicProvider {
+// domain-M3: like the OpenAI/Azure/VoyageAI constructors it now validates the
+// base URL against SSRF (private/loopback/metadata endpoints); previously a
+// malicious or compromised Anthropic channel record could point relay traffic
+// at an internal endpoint.
+func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) (*AnthropicProvider, error) {
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com"
+	}
+	if err := validateBaseURL(baseURL); err != nil {
+		return nil, fmt.Errorf("invalid anthropic base URL: %w", err)
 	}
 	return &AnthropicProvider{
 		httpClient: &http.Client{Timeout: timeout},
@@ -41,7 +48,7 @@ func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) *Anthro
 		baseURL:      baseURL,
 		apiKey:       apiKey,
 		timeout:      timeout,
-	}
+	}, nil
 }
 
 // anthropicForwardBaseURL resolves the upstream base URL, trimming any trailing
@@ -229,8 +236,9 @@ type anthropicStreamEvent struct {
 	Type  string `json:"type"`
 	Index int    `json:"index,omitempty"`
 	Delta *struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type       string `json:"type"`
+		Text       string `json:"text"`
+		StopReason string `json:"stop_reason"`
 	} `json:"delta,omitempty"`
 	Message *anthropicResponse `json:"message,omitempty"`
 	Usage   *anthropicUsage    `json:"usage,omitempty"`
@@ -275,6 +283,20 @@ func convertToAnthropicRequest(req *ChatCompletionsRequest) *anthropicRequest {
 	return anthropicReq
 }
 
+// anthropicFinishReason maps an Anthropic stop_reason to the OpenAI
+// finish_reason vocabulary. Used by both the non-stream response and
+// the message_delta terminal event so they stay consistent.
+func anthropicFinishReason(stopReason string) string {
+	switch stopReason {
+	case "max_tokens":
+		return "length"
+	case "tool_use":
+		return "tool_calls"
+	default: // end_turn, stop_sequence, ""
+		return "stop"
+	}
+}
+
 // convertFromAnthropicResponse converts an Anthropic response to OpenAI format.
 func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCompletionsResponse {
 	content := ""
@@ -282,15 +304,7 @@ func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCo
 		content = resp.Content[0].Text
 	}
 
-	finishReason := "stop"
-	switch resp.StopReason {
-	case "end_turn":
-		finishReason = "stop"
-	case "max_tokens":
-		finishReason = "length"
-	case "stop_sequence":
-		finishReason = "stop"
-	}
+	finishReason := anthropicFinishReason(resp.StopReason)
 
 	return &ChatCompletionsResponse{
 		ID:      resp.ID,
@@ -370,7 +384,7 @@ func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatComple
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("anthropic error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 
 	var anthropicResp anthropicResponse
@@ -409,7 +423,7 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("anthropic error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 
 	chunkChan := make(chan StreamChunk, 10)
@@ -481,7 +495,10 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 				if usage.CacheCreation == nil {
 					usage.CacheCreation = startUsage.CacheCreation
 				}
-				finishReason := "stop"
+				finishReason := anthropicFinishReason("")
+				if event.Delta != nil {
+					finishReason = anthropicFinishReason(event.Delta.StopReason)
+				}
 				chunkChan <- StreamChunk{
 					Object: "chat.completion.chunk",
 					Model:  req.Model,

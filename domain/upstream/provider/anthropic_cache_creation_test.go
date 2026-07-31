@@ -68,7 +68,8 @@ func TestConvertFromAnthropicResponsePopulatesCacheCreationBuckets(t *testing.T)
 // the provider uses; this guards the field plumbing without the sandbox
 // network-bind failure of httptest.NewServer.
 func TestAnthropicProviderCacheCreationFieldsNoNetwork(t *testing.T) {
-	_ = NewAnthropicProvider("http://127.0.0.1:0", "sk-test", time.Second)
+	_, err := NewAnthropicProvider("http://127.0.0.1:0", "sk-test", time.Second)
+	_ = err // construction-only guard; upstream not contacted
 	ctx := context.Background()
 	// Ensure the provider type still satisfies the Provider interface after
 	// the Usage struct extension (compile-time guard).

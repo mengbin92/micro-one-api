@@ -75,7 +75,7 @@ func (p *AzureProvider) ChatCompletions(ctx context.Context, req *ChatCompletion
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 	var response ChatCompletionsResponse
 	if err := sonic.Unmarshal(respBody, &response); err != nil {
@@ -109,7 +109,7 @@ func (p *AzureProvider) ChatCompletionsStream(ctx context.Context, req *ChatComp
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 	return readOpenAIStream(resp), nil
 }
@@ -145,7 +145,7 @@ func (p *AzureProvider) Forward(ctx context.Context, req *RawRequest) (*RawRespo
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 	return &RawResponse{StatusCode: resp.StatusCode, Header: resp.Header.Clone(), Body: respBody}, nil
 }

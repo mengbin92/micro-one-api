@@ -205,7 +205,14 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx *gormDB, r
 	// here makes the payment-callback path and the admin issuance path use the
 	// same renewal semantics.
 	now := uc.now().Unix()
-	duration := req.ExpiresAt - req.StartsAt
+	// domain-M4: normalize StartsAt==0 to now, matching Assign's documented
+	// "0 means now" contract. Without this, a caller that reuses that convention
+	// here would compute duration = expires_at - 0 (~55 years of entitlement).
+	startsAt := req.StartsAt
+	if startsAt == 0 {
+		startsAt = now
+	}
+	duration := req.ExpiresAt - startsAt
 	base := active.ExpiresAt
 	if base < now {
 		base = now
@@ -366,10 +373,18 @@ func (uc *SubscriptionUsecase) RecordUsage(ctx context.Context, userID int64, co
 	if err != nil {
 		return err
 	}
-	// Apply the group's billing multiplier so recorded spend matches what the
-	// quota check charges. A zero/unset multiplier means "no scaling" (1.0).
+	// domain-M5: apply the group's billing multiplier so recorded spend matches
+	// what the quota check charges. The group lookup MUST NOT silently fall back
+	// to 1.0x on a transient DB error: that would permanently under-record usage
+	// (quota is charged at the multiplier via CheckQuota), letting users exceed
+	// their paid window. Propagate the error so the usage write fails and can be
+	// retried. A zero/unset multiplier legitimately means "no scaling" (1.0).
+	group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID)
+	if gerr != nil {
+		return fmt.Errorf("lookup billing group %d for usage recording: %w", subscription.GroupID, gerr)
+	}
 	effectiveCost := costUSD
-	if group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID); gerr == nil && group != nil && group.RateMultiplier > 0 {
+	if group != nil && group.RateMultiplier > 0 {
 		effectiveCost = costUSD * group.RateMultiplier
 	}
 	// Delegate the read-roll-increment to the repository so it happens atomically
@@ -397,8 +412,16 @@ func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Contex
 	if subscription == nil {
 		return ErrSubscriptionNotFound
 	}
+	// domain-M5: propagate the group lookup error instead of silently falling
+	// back to 1.0x (see RecordUsage). This runs inside the dual-track commit tx,
+	// so failing here rolls the whole settlement back for retry rather than
+	// persisting under-recorded usage.
+	group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID)
+	if gerr != nil {
+		return fmt.Errorf("lookup billing group %d for usage recording: %w", subscription.GroupID, gerr)
+	}
 	effectiveCost := costUSD
-	if group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID); gerr == nil && group != nil && group.RateMultiplier > 0 {
+	if group != nil && group.RateMultiplier > 0 {
 		effectiveCost = costUSD * group.RateMultiplier
 	}
 	return uc.repo.AddUsageByIDInTx(ctx, tx, subscriptionID, effectiveCost, now)

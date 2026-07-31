@@ -201,8 +201,11 @@ func (t *RefreshTask) refreshAccount(ctx context.Context, provider TokenProvider
 			return err
 		}
 		if attempt < t.maxRetries {
-			if !t.sleepBackoff(ctx, attempt) {
-				return ctx.Err()
+			if aborted, abortErr := t.sleepBackoff(ctx, attempt); aborted {
+				// domain-L2: propagate the abort/context error; on shutdown this is
+				// errRefreshAborted so a result-checking caller sees the refresh did
+				// not complete, never nil (which would misreport success).
+				return abortErr
 			}
 		}
 	}
@@ -236,17 +239,25 @@ func (t *RefreshTask) handleRefreshFailure(ctx context.Context, accountID int64,
 	}
 }
 
-func (t *RefreshTask) sleepBackoff(ctx context.Context, attempt int) bool {
+// errRefreshAborted is returned when a refresh backoff is interrupted by the
+// refresh task shutting down (stopCh) rather than by context cancellation.
+// domain-L2: previously this path returned ctx.Err(), which is nil on stopCh,
+// so an aborted refresh was misreported as success.
+var errRefreshAborted = errors.New("credential: refresh aborted by shutdown")
+
+func (t *RefreshTask) sleepBackoff(ctx context.Context, attempt int) (aborted bool, abortErr error) {
 	d := t.backoff * time.Duration(1<<(attempt-1))
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		return false
+		return true, ctx.Err()
 	case <-t.stopCh:
-		return false
+		// domain-L2: shutdown, not success. Return the abort sentinel so the
+		// caller does not misreport an incomplete refresh as a success.
+		return true, errRefreshAborted
 	case <-timer.C:
-		return true
+		return false, nil
 	}
 }
 

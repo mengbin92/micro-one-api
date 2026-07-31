@@ -2,7 +2,7 @@ package credential
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"net/http"
 	"sync"
 )
@@ -60,6 +60,15 @@ func (b *baseTokenProvider) Invalidate(accountID int64) {
 // resolve either seeds the cache from a still-valid stored token or performs a
 // refresh. force=true always refreshes.
 func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force bool) (string, error) {
+	// domain-M1: prefer the in-process full credential cache when the access
+	// token is still valid. A previous refresh may have rotated the refresh
+	// token and failed to persist it (Store error); the persistent Lookup would
+	// then return the stale (now-invalid) refresh token and the account would
+	// brick on the next refresh. The cached creds carry the rotated token.
+	if cached, ok := b.cache.getCreds(accountID); ok && cached.AccessToken != "" && !staleExpiry(cached.ExpiresAt) && !force {
+		b.cache.set(accountID, cached.AccessToken, cached.ExpiresAt)
+		return cached.AccessToken, nil
+	}
 	creds, err := b.lookup.Lookup(ctx, accountID)
 	if err != nil {
 		return "", err
@@ -96,19 +105,34 @@ func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force 
 		newCreds.RefreshURL = creds.RefreshURL
 	}
 	if storeErr := b.lookup.Store(ctx, accountID, newCreds); storeErr != nil {
-		// We have a valid token even if persistence failed; cache it locally
-		// so the current request can still proceed, but surface the store
-		// error so it can be retried / logged.
-		b.cache.set(accountID, newCreds.AccessToken, newCreds.ExpiresAt)
-		return newCreds.AccessToken, fmt.Errorf("credential: token refreshed but persist failed: %w", storeErr)
+		// domain-M1: persistence failed but we hold a fully-valid refreshed
+		// credential set, including the ROTATED refresh token. Cache the whole
+		// set in-process so (a) the current request succeeds with the new access
+		// token and (b) the next resolve reuses the rotated refresh token instead
+		// of the stale one the persistent lookup would return (which would brick
+		// the account once the access token expires). Do NOT return the store
+		// error: a typical caller does `if err != nil { return err }`, which would
+		// fail a request that has a perfectly good token. Report the persist
+		// failure via log/meter only.
+		b.cache.setCreds(accountID, newCreds)
+		logPersistFailure(accountID, storeErr)
+		return newCreds.AccessToken, nil
 	}
-	b.cache.set(accountID, newCreds.AccessToken, newCreds.ExpiresAt)
+	b.cache.setCreds(accountID, newCreds)
 	return newCreds.AccessToken, nil
 }
 
 func (b *baseTokenProvider) lockFor(accountID int64) *sync.Mutex {
 	v, _ := b.refreshMu.LoadOrStore(accountID, &sync.Mutex{})
 	return v.(*sync.Mutex)
+}
+
+// logPersistFailure reports a credential persistence failure without failing
+// the request. A refreshed access token is still valid; only its durable store
+// failed. We log so operators can investigate storage health without breaking
+// authentication (domain-M1).
+func logPersistFailure(accountID int64, err error) {
+	log.Printf("credential: account %d token refreshed but persist failed (will retry on next resolve): %v", accountID, err)
 }
 
 // newBaseTokenProvider builds the shared state for a platform provider.

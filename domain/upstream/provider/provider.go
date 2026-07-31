@@ -213,6 +213,48 @@ func validateBaseURL(rawURL string) error {
 	return nil
 }
 
+// validateBaseURLAllowLocal is the local/self-hosted variant of validateBaseURL.
+// It keeps the scheme check (http/https only) and hostname requirement but
+// permits loopback and private IP ranges, because self-hosted providers such as
+// Ollama legitimately run on localhost or an internal network. It is used only
+// for channel types whose default URL is inherently local (domain-M2).
+func validateBaseURLAllowLocal(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("URL scheme must be http or https, got: %s", scheme)
+	}
+	if u.Hostname() == "" {
+		return fmt.Errorf("URL has no hostname")
+	}
+	return nil
+}
+
+// NewOpenAIProviderAllowLocal creates an OpenAI-compatible provider whose base
+// URL is validated with validateBaseURLAllowLocal instead of the strict SSRF
+// check. It is intended for self-hosted/local channel types (e.g. Ollama) whose
+// default endpoint is loopback or a private address (domain-M2).
+func NewOpenAIProviderAllowLocal(baseURL, apiKey string, timeout time.Duration) (*OpenAIProvider, error) {
+	if err := validateBaseURLAllowLocal(baseURL); err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	return &OpenAIProvider{
+		httpClient: &http.Client{
+			Timeout: timeout,
+		},
+		streamClient: &http.Client{},
+		baseURL:      baseURL,
+		apiKey:       apiKey,
+		timeout:      timeout,
+	}, nil
+}
+
 // isPrivateOrReservedIP checks if an IP address is in a private, loopback,
 // link-local, or other reserved range.
 func isPrivateOrReservedIP(ip net.IP) bool {
@@ -437,6 +479,9 @@ func readOpenAIStream(resp *http.Response) <-chan StreamChunk {
 		defer resp.Body.Close()
 
 		scanner := bufio.NewScanner(resp.Body)
+		// OpenAI SSE lines can carry large tool-call payloads; raise
+		// bufio's 64KB default to 4MB, matching the Anthropic reader.
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if line == "" {

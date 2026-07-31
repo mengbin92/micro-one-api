@@ -26,12 +26,18 @@ type GeminiProvider struct {
 }
 
 // NewGeminiProvider creates a new Google Gemini provider.
-func NewGeminiProvider(baseURL, apiKey string, timeout time.Duration) *GeminiProvider {
+// domain-M3: like the OpenAI/Azure/VoyageAI constructors it now validates the
+// base URL against SSRF; previously a malicious Gemini channel record could
+// point relay traffic at an internal/metadata endpoint.
+func NewGeminiProvider(baseURL, apiKey string, timeout time.Duration) (*GeminiProvider, error) {
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
 	if baseURL == "" {
 		baseURL = "https://generativelanguage.googleapis.com"
+	}
+	if err := validateBaseURL(baseURL); err != nil {
+		return nil, fmt.Errorf("invalid gemini base URL: %w", err)
 	}
 	return &GeminiProvider{
 		httpClient: &http.Client{Timeout: timeout},
@@ -41,7 +47,7 @@ func NewGeminiProvider(baseURL, apiKey string, timeout time.Duration) *GeminiPro
 		baseURL:      baseURL,
 		apiKey:       apiKey,
 		timeout:      timeout,
-	}
+	}, nil
 }
 
 // Forward is not supported for Gemini because non-chat OpenAI-compatible
@@ -194,7 +200,7 @@ func (p *GeminiProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("gemini error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 
 	var geminiResp geminiResponse
@@ -230,7 +236,7 @@ func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("gemini error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 
 	chunkChan := make(chan StreamChunk, 10)
@@ -240,6 +246,9 @@ func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 		defer resp.Body.Close()
 
 		scanner := bufio.NewScanner(resp.Body)
+		// Gemini SSE lines can carry large inline_data base64; raise
+		// bufio's 64KB default to 4MB, matching the Anthropic reader.
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if line == "" {

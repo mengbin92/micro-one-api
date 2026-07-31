@@ -25,7 +25,10 @@ func TestAnthropicChatCompletionsParsesUsage(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	p := NewAnthropicProvider(upstream.URL, "sk-test", 5*time.Second)
+	p, err := NewAnthropicProvider(upstream.URL, "sk-test", 5*time.Second)
+	if err != nil {
+		t.Fatalf("NewAnthropicProvider: %v", err)
+	}
 	resp, err := p.ChatCompletions(context.Background(), &ChatCompletionsRequest{Model: "glm-5.2"})
 	if err != nil {
 		t.Fatalf("ChatCompletions: %v", err)
@@ -56,7 +59,10 @@ func TestAnthropicChatCompletionsStreamCollectsUsage(t *testing.T) {
 	defer upstream.Close()
 
 	stream := true
-	p := NewAnthropicProvider(upstream.URL, "sk-test", 5*time.Second)
+	p, err := NewAnthropicProvider(upstream.URL, "sk-test", 5*time.Second)
+	if err != nil {
+		t.Fatalf("NewAnthropicProvider: %v", err)
+	}
 	chunks, err := p.ChatCompletionsStream(context.Background(), &ChatCompletionsRequest{Model: "glm-5.2", Stream: stream})
 	if err != nil {
 		t.Fatalf("ChatCompletionsStream: %v", err)
@@ -121,7 +127,10 @@ func TestAnthropicChatCompletionsStreamLargeEvent(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	p := NewAnthropicProvider(upstream.URL, "sk-test", 5*time.Second)
+	p, err := NewAnthropicProvider(upstream.URL, "sk-test", 5*time.Second)
+	if err != nil {
+		t.Fatalf("NewAnthropicProvider: %v", err)
+	}
 	chunks, err := p.ChatCompletionsStream(context.Background(), &ChatCompletionsRequest{Model: "glm-5.2", Stream: true})
 	if err != nil {
 		t.Fatalf("ChatCompletionsStream: %v", err)

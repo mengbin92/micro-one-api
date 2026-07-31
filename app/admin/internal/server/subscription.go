@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"micro-one-api/app/admin/internal/service"
 	billingv1 "micro-one-api/api/billing/v1"
+	"micro-one-api/app/admin/internal/service"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
 
@@ -188,6 +188,15 @@ func handleSubscriptionGroups(w http.ResponseWriter, r *http.Request, svc *servi
 		var group subscriptionbiz.SubscriptionGroup
 		if !decodeBody(w, r, &group) {
 			return
+		}
+		// domain-L3: default status to Enabled at the DTO/service boundary
+		// (the common create case). The biz layer no longer silently coerces
+		// Status==0 (which is the Disabled constant) to Enabled, so a caller that
+		// genuinely wants to create a pre-disabled group can pass an explicit
+		// status; the admin update path (PATCH) is the canonical way to toggle a
+		// group to Disabled after creation.
+		if group.Status == 0 {
+			group.Status = subscriptionbiz.SubscriptionGroupStatusEnabled
 		}
 		err := svc.CreateSubscriptionGroup(r.Context(), &group)
 		writeSubscriptionResponse(w, &group, err)
@@ -543,7 +552,6 @@ func planResponse(plan *subscriptionbiz.SubscriptionPlan) subscriptionPlanDTO {
 	}
 }
 
-
 // handleRefundPaymentOrder lets an admin reverse a paid subscription order. The
 // operator id is taken from the admin identity (not the body); trade_no,
 // reason and policy come from the request body. Maps to billing-service
@@ -611,9 +619,9 @@ func handleSubscriptionOperationReport(w http.ResponseWriter, r *http.Request, s
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
-		"rows":                  resp.GetRows(),
-		"total_revenue_quota":   resp.GetTotalRevenueQuota(),
-		"total_refunded_quota":  resp.GetTotalRefundedQuota(),
+		"rows":                 resp.GetRows(),
+		"total_revenue_quota":  resp.GetTotalRevenueQuota(),
+		"total_refunded_quota": resp.GetTotalRefundedQuota(),
 	}))
 }
 
