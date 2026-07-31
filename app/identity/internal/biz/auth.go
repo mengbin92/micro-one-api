@@ -507,12 +507,13 @@ func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, 
 	options := CreateAccessTokenOptions{RemainQuota: uc.defaultQuota, UnlimitedQuota: true}
 	if len(opts) > 0 {
 		options = opts[0]
-		if options.RemainQuota == 0 {
+		if options.RemainQuota == 0 && options.UnlimitedQuota {
+			// Caller did not pin a finite quota; keep the default allowance.
 			options.RemainQuota = uc.defaultQuota
 		}
-		if !options.UnlimitedQuota {
-			options.UnlimitedQuota = true
-		}
+		// H2: respect the caller's UnlimitedQuota/RemainQuota rather than
+		// silently forcing unlimited. Previously both create and update
+		// overwrote unlimited_quota=true, defeating the per-key quota UI.
 	}
 	now := uc.now().Unix()
 	token := &Token{
@@ -538,18 +539,15 @@ func (uc *IdentityUsecase) ListAccessTokens(ctx context.Context, userID int64, p
 	if _, err := uc.repo.FindUserByID(ctx, userID); err != nil {
 		return nil, 0, err
 	}
-	tokens, _, err := uc.repo.ListTokens(ctx, userID, page, pageSize, keyword)
+	// L8: return the repo's authoritative total instead of the filtered page
+	// length. Both the DB and memory repos already exclude empty-name tokens
+	// from their count, so the page length was always <= pageSize and broke
+	// pagination past the first page.
+	tokens, total, err := uc.repo.ListTokens(ctx, userID, page, pageSize, keyword)
 	if err != nil {
 		return nil, 0, err
 	}
-	filtered := make([]*Token, 0, len(tokens))
-	for _, token := range tokens {
-		if token == nil || strings.TrimSpace(token.Name) == "" {
-			continue
-		}
-		filtered = append(filtered, token)
-	}
-	return filtered, int64(len(filtered)), nil
+	return tokens, total, nil
 }
 
 func (uc *IdentityUsecase) GetAccessToken(ctx context.Context, userID, tokenID int64) (*Token, error) {
@@ -597,7 +595,9 @@ func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, use
 	if opts.RemainQuota >= 0 {
 		token.RemainQuota = opts.RemainQuota
 	}
-	token.UnlimitedQuota = true
+	// H2: respect the caller's unlimited_quota flag. Previously this was
+	// unconditionally set to true, discarding a configured finite quota.
+	token.UnlimitedQuota = opts.UnlimitedQuota
 	token.Subnet = opts.Subnet
 	if err := uc.repo.UpdateToken(ctx, token); err != nil {
 		return nil, err
@@ -737,10 +737,32 @@ func (uc *IdentityUsecase) SetRole(ctx context.Context, operator *User, userID i
 	return user, nil
 }
 
-func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, username, displayName, password string, updateDisplayName bool) error {
+// ErrCurrentPasswordRequired is returned when UpdateSelf attempts a
+// sensitive change (username or password) without confirming the current
+// password. This stops a stolen session token from locking out the real
+// user by changing the password.
+var ErrCurrentPasswordRequired = errors.New("current password is required to change username or password")
+
+func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, username, displayName, password, currentPassword string, updateDisplayName bool) error {
 	user, err := uc.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return err
+	}
+	// M7: changing username or password is a sensitive mutation. Require
+	// the current password (verified against the stored bcrypt hash) so a
+	// stolen/unattended session cannot lock out the real owner. Display
+	// name edits are cosmetic and stay session-gated only.
+	sensitiveChange := (username != "" && username != user.Username) || password != ""
+	if sensitiveChange {
+		if currentPassword == "" {
+			return ErrCurrentPasswordRequired
+		}
+		if user.PasswordHash == "" {
+			return ErrInvalidPassword
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+			return ErrInvalidPassword
+		}
 	}
 	if username != "" && username != user.Username {
 		existing, err := uc.repo.FindUserByUsername(ctx, username)

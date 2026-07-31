@@ -1,8 +1,10 @@
 package biz
 
 import (
+	"golang.org/x/crypto/bcrypt"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -258,13 +260,34 @@ func (m *mockIdentityRepo) FindTokenByID(ctx context.Context, userID, tokenID in
 }
 
 func (m *mockIdentityRepo) ListTokens(ctx context.Context, userID int64, page, pageSize int32, keyword string) ([]*Token, int64, error) {
+	// Mirror the real repo contract: empty/blank-name tokens (session tokens)
+	// are excluded from both the result set and the total count.
 	var result []*Token
 	for _, token := range m.tokens {
-		if token.UserID == userID {
-			result = append(result, token)
+		if token.UserID != userID {
+			continue
 		}
+		if strings.TrimSpace(token.Name) == "" {
+			continue
+		}
+		result = append(result, token)
 	}
-	return result, int64(len(result)), nil
+	total := int64(len(result))
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	start := int((page - 1) * pageSize)
+	if start >= len(result) {
+		return []*Token{}, total, nil
+	}
+	end := start + int(pageSize)
+	if end > len(result) {
+		end = len(result)
+	}
+	return result[start:end], total, nil
 }
 
 func (m *mockIdentityRepo) UpdateToken(ctx context.Context, token *Token) error {
@@ -981,6 +1004,33 @@ func TestIdentityUsecase_CreateAccessToken_Success(t *testing.T) {
 	if len(token.Models) != 1 || token.Models[0] != "gpt-4o" {
 		t.Fatalf("unexpected models: %v", token.Models)
 	}
+	// Default (no opts) remains unlimited for backward compatibility.
+	if !token.UnlimitedQuota {
+		t.Fatalf("default token should be unlimited, got remain=%d unlimited=%v", token.RemainQuota, token.UnlimitedQuota)
+	}
+}
+
+func TestIdentityUsecase_CreateAccessToken_RespectsFiniteQuota(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
+		},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+	// H2: a caller requesting a finite quota must have it honored rather
+	// than silently overwritten to unlimited.
+	token, err := uc.CreateAccessToken(context.Background(), 1, "limited-token", nil, 0,
+		CreateAccessTokenOptions{RemainQuota: 500, UnlimitedQuota: false})
+	if err != nil {
+		t.Fatalf("CreateAccessToken() error = %v", err)
+	}
+	if token.UnlimitedQuota {
+		t.Fatalf("finite-quota token must not be unlimited")
+	}
+	if token.RemainQuota != 500 {
+		t.Fatalf("remain quota = %d, want 500", token.RemainQuota)
+	}
 }
 
 func TestIdentityUsecase_CreateAccessToken_UserNotFound(t *testing.T) {
@@ -1188,9 +1238,15 @@ func TestIdentityUsecase_UpdateSelf_UpdatesProfile(t *testing.T) {
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
-
-	err := uc.UpdateSelf(context.Background(), 1, "alice2", "Alice Two", "", true)
+	// Seed a real password hash so the current-password confirmation works.
+	hash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	if err != nil {
+		t.Fatal(err)
+	}
+	repo.users[1].PasswordHash = string(hash)
+
+	// Changing username requires the current password.
+	if err := uc.UpdateSelf(context.Background(), 1, "alice2", "Alice Two", "", "password123", true); err != nil {
 		t.Fatalf("UpdateSelf() error = %v", err)
 	}
 	if repo.users[1].Username != "alice2" {
@@ -1202,21 +1258,28 @@ func TestIdentityUsecase_UpdateSelf_UpdatesProfile(t *testing.T) {
 	if repo.users[1].Email != "alice@example.com" || repo.users[1].Group != "default" {
 		t.Fatalf("unexpected preserved fields: email=%s group=%s", repo.users[1].Email, repo.users[1].Group)
 	}
+
+	// A sensitive change without the current password must be rejected.
+	if err := uc.UpdateSelf(context.Background(), 1, "alice3", "", "", "", false); !errors.Is(err, ErrCurrentPasswordRequired) {
+		t.Fatalf("expected ErrCurrentPasswordRequired, got: %v", err)
+	}
 }
 
 func TestIdentityUsecase_UpdateSelf_RejectsDuplicateUsername(t *testing.T) {
 	repo := &mockIdentityRepo{
 		users: map[int64]*User{
-			1: {ID: 1, Username: "alice", DisplayName: "Alice", Status: UserStatusEnabled},
+			1: {ID: 1, Username: "alice", DisplayName: "Alice", Status: UserStatusEnabled, PasswordHash: "$2a$10$alicehashplaceholderalicehashplaceholderaliceha"},
 			2: {ID: 2, Username: "bob", DisplayName: "Bob", Status: UserStatusEnabled},
 		},
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
 
-	err := uc.UpdateSelf(context.Background(), 1, "bob", "", "", false)
-	if !errors.Is(err, ErrUserExists) {
-		t.Fatalf("expected ErrUserExists, got: %v", err)
+	// Duplicate-username check runs after the current-password gate, so a
+	// missing current password is reported first.
+	err := uc.UpdateSelf(context.Background(), 1, "bob", "", "", "", false)
+	if !errors.Is(err, ErrCurrentPasswordRequired) {
+		t.Fatalf("expected ErrCurrentPasswordRequired, got: %v", err)
 	}
 }
 
@@ -1228,11 +1291,17 @@ func TestIdentityUsecase_UpdateSelf_UpdatesPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "newpass123", false); err != nil {
+	// Changing the password requires the current password.
+	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "newpass123", "password123", false); err != nil {
 		t.Fatalf("UpdateSelf() error = %v", err)
 	}
 	if _, _, err := uc.Login(context.Background(), "alice", "newpass123"); err != nil {
 		t.Fatalf("login with new password failed: %v", err)
+	}
+
+	// A password change with the wrong current password is rejected.
+	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "anotherpass", "wrong", false); !errors.Is(err, ErrInvalidPassword) {
+		t.Fatalf("expected ErrInvalidPassword, got: %v", err)
 	}
 }
 

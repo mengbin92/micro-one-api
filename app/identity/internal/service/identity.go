@@ -205,10 +205,46 @@ func (s *IdentityService) DeleteUser(ctx context.Context, req *identityv1.Delete
 	}, nil
 }
 
+// serviceOperator is the identity of the currently-authenticated caller
+// extracted from the gRPC auth context. It is populated by the service-token
+// interceptor and never trusted from the request body.
+type serviceOperator struct {
+	userID int64
+	role   int32
+}
+
+// operatorFromContext resolves the authenticated operator from the gRPC
+// context. When the caller provided a service token (via the auth
+// interceptor) the operator identity is taken from the validated claims,
+// not from the request field. When no operator is present (e.g. a
+// bootstrap/system call that bypassed the interceptor) the function
+// returns nil so SetRole applies its system-level checks. The request's
+// OperatorUserId is ignored as an operator source; it is only retained on
+// the wire for backwards compatibility.
+func operatorFromContext(ctx context.Context) *serviceOperator {
+	if v, ok := ctx.Value(serviceOperatorKey{}).(*serviceOperator); ok && v != nil && v.userID > 0 {
+		return v
+	}
+	return nil
+}
+
+type serviceOperatorKey struct{}
+
+// ContextWithServiceOperator stamps an authenticated operator into the
+// context. It is intended to be called by the gRPC auth interceptor so
+// downstream service handlers never trust request fields for identity.
+func ContextWithServiceOperator(ctx context.Context, userID int64, role int32) context.Context {
+	return context.WithValue(ctx, serviceOperatorKey{}, &serviceOperator{userID: userID, role: role})
+}
+
 func (s *IdentityService) SetUserRole(ctx context.Context, req *identityv1.SetUserRoleRequest) (*identityv1.SetUserRoleResponse, error) {
+	// Operator identity comes from the authenticated gRPC context, never
+	// from the request field. A nil operator means a system-level call
+	// (bootstrap/admin-reset) that bypassed the interceptor.
+	operatorAuth := operatorFromContext(ctx)
 	var operator *biz.User
-	if req.OperatorUserId > 0 {
-		op, err := s.uc.GetUser(ctx, req.OperatorUserId)
+	if operatorAuth != nil {
+		op, err := s.uc.GetUser(ctx, operatorAuth.userID)
 		if err != nil {
 			if applogger.Log != nil {
 				applogger.Log.Warn("SetUserRole operator lookup failed", zap.Error(err))

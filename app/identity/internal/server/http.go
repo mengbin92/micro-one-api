@@ -21,6 +21,8 @@ import (
 	"micro-one-api/platform/metrics"
 	"micro-one-api/platform/security"
 	"micro-one-api/platform/http"
+	applogger "micro-one-api/platform/logging"
+	"go.uber.org/zap"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -43,6 +45,38 @@ type RegistrationPolicy struct {
 	TurnstileCheckEnabled         bool
 	TurnstileSecret               string
 	TurnstileVerifyHandler        TurnstileVerifier
+	// CodeDeliverer delivers verification and password-reset codes to the
+	// user out-of-band (e.g. via email). It must never expose the code to
+	// the HTTP caller. When nil a no-op deliverer is used that logs a
+	// warning and swallows the code, so the endpoints stay reachable for
+	// future SMTP wiring without leaking secrets.
+	CodeDeliverer CodeDeliverer
+}
+
+// CodeDeliverer delivers verification/reset codes out-of-band. The code is
+// treated as a secret and must never be returned in an HTTP response body.
+type CodeDeliverer interface {
+	DeliverVerificationCode(ctx context.Context, email, code string) error
+	DeliverResetToken(ctx context.Context, email, token string) error
+}
+
+// noopCodeDeliverer is the default deliverer: it logs a warning and discards
+// the code. It exists so the verification/reset endpoints remain wired while
+// no real mail transport is configured, without leaking the secret in the
+// response.
+type noopCodeDeliverer struct{}
+
+func (noopCodeDeliverer) DeliverVerificationCode(ctx context.Context, email, code string) error {
+	if applogger.Log != nil {
+		applogger.Log.Warn("verification code generated but no mail deliverer configured; code not delivered", zap.String("email", email))
+	}
+	return nil
+}
+func (noopCodeDeliverer) DeliverResetToken(ctx context.Context, email, token string) error {
+	if applogger.Log != nil {
+		applogger.Log.Warn("reset token generated but no mail deliverer configured; token not delivered", zap.String("email", email))
+	}
+	return nil
 }
 
 type defaultTurnstileVerifier struct {
@@ -57,6 +91,9 @@ func NewHTTPServer(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.Pr
 func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, oauthRegistry *oauth.ProviderRegistry, registrationPolicy RegistrationPolicy, billingClients ...billingv1.BillingServiceClient) *khttp.Server {
 	if registrationPolicy.TurnstileCheckEnabled && registrationPolicy.TurnstileVerifyHandler == nil {
 		registrationPolicy.TurnstileVerifyHandler = &defaultTurnstileVerifier{client: &http.Client{Timeout: 10 * time.Second}}
+	}
+	if registrationPolicy.CodeDeliverer == nil {
+		registrationPolicy.CodeDeliverer = noopCodeDeliverer{}
 	}
 	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	var billingClient billingv1.BillingServiceClient
@@ -183,13 +220,13 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 		handleCreatePaymentOrder(w, r, uc, billingClient)
 	})
 	srv.HandleFunc("/api/verification", func(w http.ResponseWriter, r *http.Request) {
-		handleEmailVerification(w, r)
+		handleEmailVerification(w, r, registrationPolicy.CodeDeliverer)
 	})
 	srv.HandleFunc("/api/reset_password", func(w http.ResponseWriter, r *http.Request) {
-		handleResetPasswordRequest(w, r)
+		handleResetPasswordRequest(w, r, registrationPolicy.CodeDeliverer)
 	})
 	srv.HandleFunc("/api/user/reset", func(w http.ResponseWriter, r *http.Request) {
-		handleResetPassword(w, r, uc)
+		handleResetPassword(w, r, uc, registrationPolicy.CodeDeliverer)
 	})
 	srv.HandleFunc("/api/user/token", func(w http.ResponseWriter, r *http.Request) {
 		handleCreateUserToken(w, r, uc)
@@ -209,9 +246,18 @@ type apiResponse struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
+const (
+	// verificationTTL bounds how long a verification/reset code stays valid.
+	verificationTTL = 10 * time.Minute
+	// maxVerificationAttempts caps wrong-code attempts before the record is
+	// deleted, preventing brute force.
+	maxVerificationAttempts = 5
+)
+
 type verificationRecord struct {
-	Code string
-	At   time.Time
+	Code     string
+	At       time.Time
+	Attempts int
 }
 
 var verificationStore = struct {
@@ -219,6 +265,65 @@ var verificationStore = struct {
 	items map[string]verificationRecord
 }{
 	items: make(map[string]verificationRecord),
+}
+
+// takeVerificationRecord atomically retrieves a verification record and
+// enforces TTL + attempt limits. On a matching code the record is deleted
+// (one-time use). On a mismatch the attempt counter is incremented and the
+// record is deleted once the limit is reached. Returns the record and true
+// only when the code is valid.
+func takeVerificationRecord(prefix, email, code string) (verificationRecord, bool) {
+	key := prefix + email
+	verificationStore.Lock()
+	defer verificationStore.Unlock()
+	record, ok := verificationStore.items[key]
+	if !ok {
+		return verificationRecord{}, false
+	}
+	if time.Since(record.At) > verificationTTL {
+		delete(verificationStore.items, key)
+		return verificationRecord{}, false
+	}
+	if record.Code != code {
+		record.Attempts++
+		if record.Attempts >= maxVerificationAttempts {
+			delete(verificationStore.items, key)
+			return verificationRecord{}, false
+		}
+		verificationStore.items[key] = record
+		return verificationRecord{}, false
+	}
+	delete(verificationStore.items, key)
+	return record, true
+}
+
+// generateVerificationCode returns a 48-bit (12 hex char) random code.
+func generateVerificationCode() (string, error) {
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// gcVerificationStores sweeps expired verification/bind records. Called on
+// each access path to bound unbounded growth (review L10).
+func gcVerificationStores() {
+	now := time.Now()
+	verificationStore.Lock()
+	for k, v := range verificationStore.items {
+		if now.Sub(v.At) > verificationTTL {
+			delete(verificationStore.items, k)
+		}
+	}
+	verificationStore.Unlock()
+	oauthBindStore.Lock()
+	for k, v := range oauthBindStore.items {
+		if now.Sub(v.At) > 5*time.Minute {
+			delete(oauthBindStore.items, k)
+		}
+	}
+	oauthBindStore.Unlock()
 }
 
 type oauthBindRecord struct {
@@ -273,10 +378,11 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 			return
 		}
 	}
-	if req.Group == "" {
-		req.Group = "default"
-	}
-	user, err := uc.RegisterWithAffCode(r.Context(), req.Username, req.Password, req.Email, req.Group, req.AffCode)
+	// M5: ignore any client-supplied group on public registration. The
+	// group drives channel access and billing ratios, so self-selection
+	// would let a registrant join a privileged or discounted group. Force
+	// the default group; admins assign other groups explicitly.
+	user, err := uc.RegisterWithAffCode(r.Context(), req.Username, req.Password, req.Email, "default", req.AffCode)
 	if err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
@@ -433,10 +539,8 @@ func handleEmailBind(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUse
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid parameter"})
 		return
 	}
-	verificationStore.Lock()
-	record, ok := verificationStore.items["v:"+email]
-	verificationStore.Unlock()
-	if !ok || record.Code != code {
+	gcVerificationStores()
+	if _, ok := takeVerificationRecord("v:", email, code); !ok {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "验证码错误或已过期"})
 		return
 	}
@@ -992,9 +1096,10 @@ func handleSelf(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase)
 		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: userToMap(user)})
 	case http.MethodPut:
 		var req struct {
-			Username    string  `json:"username"`
-			DisplayName *string `json:"display_name"`
-			Password    string  `json:"password"`
+			Username        string  `json:"username"`
+			DisplayName     *string `json:"display_name"`
+			Password        string  `json:"password"`
+			CurrentPassword string  `json:"current_password"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -1003,7 +1108,7 @@ func handleSelf(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase)
 		if req.DisplayName != nil {
 			displayName = *req.DisplayName
 		}
-		if err := uc.UpdateSelf(r.Context(), snapshot.UserID, req.Username, displayName, req.Password, req.DisplayName != nil); err != nil {
+		if err := uc.UpdateSelf(r.Context(), snapshot.UserID, req.Username, displayName, req.Password, req.CurrentPassword, req.DisplayName != nil); err != nil {
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
 		}
@@ -1062,7 +1167,7 @@ func defaultAvailableModels() []string {
 	}
 }
 
-func handleEmailVerification(w http.ResponseWriter, r *http.Request) {
+func handleEmailVerification(w http.ResponseWriter, r *http.Request, deliverer CodeDeliverer) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 		return
@@ -1072,19 +1177,30 @@ func handleEmailVerification(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "email is required"})
 		return
 	}
-	state, err := generateState()
+	code, err := generateVerificationCode()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate verification code"})
 		return
 	}
-	code := state[:6]
+	gcVerificationStores()
 	verificationStore.Lock()
 	verificationStore.items["v:"+email] = verificationRecord{Code: code, At: time.Now()}
 	verificationStore.Unlock()
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"email": email, "verification_code": code}})
+	if deliverer == nil {
+		deliverer = noopCodeDeliverer{}
+	}
+	if err := deliverer.DeliverVerificationCode(r.Context(), email, code); err != nil {
+		if applogger.Log != nil {
+			applogger.Log.Warn("verification code delivery failed", zap.String("email", email), zap.Error(err))
+		}
+		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "failed to deliver verification code"})
+		return
+	}
+	// Never return the code in the response; it is delivered out-of-band.
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "verification code sent", Data: map[string]interface{}{"email": email}})
 }
 
-func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request) {
+func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, deliverer CodeDeliverer) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 		return
@@ -1094,19 +1210,30 @@ func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "email is required"})
 		return
 	}
-	state, err := generateState()
+	token, err := generateVerificationCode()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate reset token"})
 		return
 	}
-	code := state[:6]
+	gcVerificationStores()
 	verificationStore.Lock()
-	verificationStore.items["r:"+email] = verificationRecord{Code: code, At: time.Now()}
+	verificationStore.items["r:"+email] = verificationRecord{Code: token, At: time.Now()}
 	verificationStore.Unlock()
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"email": email, "token": code}})
+	if deliverer == nil {
+		deliverer = noopCodeDeliverer{}
+	}
+	if err := deliverer.DeliverResetToken(r.Context(), email, token); err != nil {
+		if applogger.Log != nil {
+			applogger.Log.Warn("reset token delivery failed", zap.String("email", email), zap.Error(err))
+		}
+		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "failed to deliver reset token"})
+		return
+	}
+	// Never return the token in the response; it is delivered out-of-band.
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "reset token sent", Data: map[string]interface{}{"email": email}})
 }
 
-func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
+func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, deliverer CodeDeliverer) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 		return
@@ -1119,31 +1246,21 @@ func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if req.Email == "" || req.Token == "" {
+	if req.Email == "" || req.Token == "" || req.Password == "" {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid parameter"})
 		return
 	}
-	verificationStore.Lock()
-	record, ok := verificationStore.items["r:"+req.Email]
-	verificationStore.Unlock()
-	if !ok || record.Code != req.Token {
+	gcVerificationStores()
+	if _, ok := takeVerificationRecord("r:", req.Email, req.Token); !ok {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "重置链接非法或已过期"})
 		return
 	}
-	password := req.Password
-	if password == "" {
-		state, err := generateState()
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, apiResponse{Success: false, Message: "failed to generate password"})
-			return
-		}
-		password = state[:12]
-	}
-	if err := uc.ResetPasswordByEmail(r.Context(), req.Email, password); err != nil {
+	if err := uc.ResetPasswordByEmail(r.Context(), req.Email, req.Password); err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"password": password}})
+	// Never echo the new password in the response.
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "password reset"})
 }
 
 func handleLegacyOAuth(w http.ResponseWriter, r *http.Request, registry *oauth.ProviderRegistry, providerName string) {

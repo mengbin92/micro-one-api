@@ -8,9 +8,11 @@ import (
 	"sync"
 
 	"micro-one-api/app/identity/internal/biz"
+	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/database/xdb"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -83,6 +85,16 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 		}
 	}
 	if dbDSN == "" {
+		// L9: a missing DSN is almost always a deployment mistake. Falling
+		// back to the in-memory store silently means every user, token and
+		// OAuth binding is lost on restart and a fresh root is recreated each
+		// boot. Warn loudly so operators notice instead of discovering it
+		// after data loss.
+		if applogger.Log != nil {
+			applogger.Log.Warn("IDENTITY_SQL_DSN/SQL_DSN not set; identity-service is starting with the volatile in-memory user store — all data is lost on restart",
+				zap.String("component", "identity.data"),
+			)
+		}
 		return newMemoryRepository(), nil
 	}
 	// Schema isolation (Phase 2.4): effective schema comes from the wire
