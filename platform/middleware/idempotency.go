@@ -2,12 +2,14 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -174,8 +176,12 @@ func (im *IdempotencyMiddleware) Handler(next http.Handler) http.Handler {
 			return
 		}
 
-		// Normalize the key (trim and hash for consistency)
-		normalizedKey := normalizeIdempotencyKey(key)
+		// M2: scope the idempotency key by caller identity + method + path so a
+		// client that guesses/reuses another client's Idempotency-Key cannot
+		// replay that client's cached response. Identity is the bearer token
+		// hash (or "" when unauthenticated); both are folded into the hash, so
+		// an attacker cannot enumerate other users' responses.
+		normalizedKey := normalizeIdempotencyKey(key, r)
 
 		// Check if we have a cached response
 		if cachedResp := im.getCachedResponse(r.Context(), normalizedKey); cachedResp != nil {
@@ -197,6 +203,8 @@ func (im *IdempotencyMiddleware) Handler(next http.Handler) http.Handler {
 
 		// Process the request
 		next.ServeHTTP(wrapped, r)
+		// Cache the buffered response (2xx only) now that the handler is done.
+		wrapped.finalize()
 	})
 }
 
@@ -223,7 +231,7 @@ func (im *IdempotencyMiddleware) getCachedResponse(ctx context.Context, key stri
 				resp.Replay = true
 				return &resp
 			}
-						applogger.Log.Debug("failed to unmarshal idempotency response from Redis",
+			applogger.Log.Debug("failed to unmarshal idempotency response from Redis",
 				zap.Error(err))
 		}
 	}
@@ -285,6 +293,9 @@ type idempotentResponseWriter struct {
 	statusCode int
 	written    bool
 	headers    map[string]string
+	// body buffers the full response so multi-chunk / streaming responses are
+	// cached in their entirety rather than only the first Write() (review M2).
+	body bytes.Buffer
 }
 
 // WriteHeader captures the status code and writes it.
@@ -296,32 +307,41 @@ func (iw *idempotentResponseWriter) WriteHeader(statusCode int) {
 	iw.ResponseWriter.WriteHeader(statusCode)
 }
 
-// Write captures the body and writes it. The response is cached on the first
-// write (after finalizing status code and headers) so subsequent replays
-// return the identical response.
+// Write captures the body and writes it. The full response is buffered and
+// cached only on the final write (after the handler returns) so that:
+//   - multi-chunk / streaming responses are not truncated to the first chunk
+//     (review M2);
+//   - only 2xx responses are cached — 4xx/5xx errors are no longer replayed
+//     for the full TTL (review M2).
 func (iw *idempotentResponseWriter) Write(data []byte) (int, error) {
 	if !iw.written {
 		iw.statusCode = http.StatusOK
 		iw.written = true
 	}
-
-	// Cache the response on first write
-	if iw.key != "" {
-		// Snapshot headers now (Header() may have been mutated between
-		// WriteHeader and Write).
-		iw.captureHeaders()
-		resp := &IdempotencyResponse{
-			StatusCode: iw.statusCode,
-			Headers:    iw.headers,
-			Body:       data,
-			Replay:     false,
-		}
-		iw.middleware.cacheResponse(iw.request.Context(), iw.key, resp)
-		// Clear key so we don't cache again
-		iw.key = ""
-	}
-
+	// Buffer the body for later caching; stream it through to the client.
+	iw.body.Write(data)
 	return iw.ResponseWriter.Write(data)
+}
+
+// finalize caches the buffered response once the handler completes, but only
+// for successful (2xx) responses. Called by the middleware after
+// next.ServeHTTP returns. Errors are deliberately not cached: replaying a 500
+// or 429 for the full TTL would amplify transient failures (review M2).
+func (iw *idempotentResponseWriter) finalize() {
+	if iw.key == "" {
+		return
+	}
+	if iw.statusCode < 200 || iw.statusCode >= 300 {
+		return
+	}
+	iw.captureHeaders()
+	resp := &IdempotencyResponse{
+		StatusCode: iw.statusCode,
+		Headers:    iw.headers,
+		Body:       append([]byte(nil), iw.body.Bytes()...),
+		Replay:     false,
+	}
+	iw.middleware.cacheResponse(iw.request.Context(), iw.key, resp)
 }
 
 // Header returns the header map.
@@ -342,18 +362,45 @@ func (iw *idempotentResponseWriter) captureHeaders() {
 }
 
 // normalizeIdempotencyKey normalizes an idempotency key for consistent hashing.
-func normalizeIdempotencyKey(key string) string {
+// The key is scoped by the caller identity (bearer token hash), HTTP method and
+// request path (review M2): an idempotency key is only meaningful within a
+// single caller's single operation, so "order-123" issued by user A on
+// POST /v1/chat/completions must not collide with user B using the same key.
+func normalizeIdempotencyKey(key string, r *http.Request) string {
 	// Trim whitespace
 	key = trimSpace(key)
 
-	// If key is already a hash format, return as-is
-	if looksLikeHash(key) {
-		return key
+	// Fold in caller identity + method + path. Even when the raw key already
+	// looks like a hash, we re-hash the composite so the scope is enforced.
+	identity := ""
+	method := ""
+	path := ""
+	if r != nil {
+		identity = extractIdempotencyIdentity(r)
+		method = r.Method
+		path = r.URL.Path
 	}
-
-	// Hash the key for consistency and security
-	hash := sha256.Sum256([]byte(key))
+	composite := identity + "" + method + "" + path + "" + key
+	hash := sha256.Sum256([]byte(composite))
 	return hex.EncodeToString(hash[:])
+}
+
+// extractIdempotencyIdentity returns a privacy-preserving caller identity for
+// idempotency key scoping: the SHA-256 of the bearer token, or "" when no
+// Authorization header is present. It never returns the raw token.
+func extractIdempotencyIdentity(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+	const prefix = "Bearer "
+	if len(authHeader) > len(prefix) && strings.EqualFold(authHeader[:len(prefix)], prefix) {
+		sum := sha256.Sum256([]byte(authHeader[len(prefix):]))
+		return hex.EncodeToString(sum[:])
+	}
+	// Non-bearer auth (e.g. an API key scheme): hash the whole header value.
+	sum := sha256.Sum256([]byte(authHeader))
+	return hex.EncodeToString(sum[:])
 }
 
 // trimSpace removes leading and trailing whitespace.

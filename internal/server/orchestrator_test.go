@@ -20,7 +20,7 @@ import (
 
 type orchestratorIdentityClient struct{}
 
-func (orchestratorIdentityClient) GetAuthSnapshot(_ context.Context, token string) (*relaybiz.AuthSnapshot, error) {
+func (orchestratorIdentityClient) GetAuthSnapshot(_ context.Context, token, _ string) (*relaybiz.AuthSnapshot, error) {
 	return &relaybiz.AuthSnapshot{
 		UserID:        1,
 		TokenID:       2,

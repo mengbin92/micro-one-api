@@ -24,12 +24,12 @@ func NewIdentityService(uc *biz.IdentityUsecase) *IdentityService {
 	return &IdentityService{uc: uc}
 }
 
-func (s *IdentityService) ValidateTokenModel(ctx context.Context, token string) (*biz.Token, error) {
-	return s.uc.ValidateToken(ctx, token)
+func (s *IdentityService) ValidateTokenModel(ctx context.Context, token, clientIP string) (*biz.Token, error) {
+	return s.uc.ValidateToken(ctx, token, clientIP)
 }
 
-func (s *IdentityService) GetAuthSnapshotModel(ctx context.Context, token string) (*biz.AuthSnapshot, error) {
-	return s.uc.GetAuthSnapshot(ctx, token)
+func (s *IdentityService) GetAuthSnapshotModel(ctx context.Context, token, clientIP string) (*biz.AuthSnapshot, error) {
+	return s.uc.GetAuthSnapshot(ctx, token, clientIP)
 }
 
 func (s *IdentityService) GetUserModel(ctx context.Context, userID int64) (*biz.User, error) {
@@ -50,7 +50,7 @@ func (s *IdentityService) ValidateToken(ctx context.Context, req *identityv1.Val
 }
 
 func (s *IdentityService) GetAuthSnapshot(ctx context.Context, req *identityv1.GetAuthSnapshotRequest) (*identityv1.GetAuthSnapshotReply, error) {
-	snapshot, err := s.uc.GetAuthSnapshot(ctx, req.Token)
+	snapshot, err := s.uc.GetAuthSnapshot(ctx, req.Token, req.ClientIp)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
 	}
@@ -84,7 +84,7 @@ func (s *IdentityService) GetUser(ctx context.Context, req *identityv1.GetUserRe
 }
 
 func (s *IdentityService) Login(ctx context.Context, req *identityv1.LoginRequest) (*identityv1.LoginResponse, error) {
-	user, token, err := s.uc.Login(ctx, req.Username, req.Password)
+	user, token, err := s.uc.Login(ctx, req.Username, req.Password, "")
 	if err != nil {
 		return &identityv1.LoginResponse{
 			Success: false,

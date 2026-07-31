@@ -30,7 +30,10 @@ const (
 )
 
 type IdentityClient interface {
-	GetAuthSnapshot(ctx context.Context, token string) (*AuthSnapshot, error)
+	// GetAuthSnapshot resolves the authorization view for an API access token.
+	// clientIP is the caller's remote IP (best-effort, may be empty); identity
+	// uses it to enforce optional token Subnet CIDR restrictions (review M1).
+	GetAuthSnapshot(ctx context.Context, token, clientIP string) (*AuthSnapshot, error)
 }
 
 type ChannelClient interface {
@@ -78,6 +81,10 @@ type SessionAccountStore interface {
 type RelayRequest struct {
 	Token string
 	Model string
+	// ClientIP is the caller's remote IP forwarded to identity for optional
+	// token Subnet CIDR enforcement (review M1). Best-effort; empty when
+	// unavailable.
+	ClientIP string
 	// RequestID is the correlation id for the relay request (v0.11.0 Phase 3
 	// §3.4 selection/execution boundary records). Optional: empty when the
 	// caller does not supply one.
@@ -458,7 +465,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	}
 
 	// 2. Authenticate
-	authSnapshot, err := uc.identity.GetAuthSnapshot(ctx, req.Token)
+	authSnapshot, err := uc.identity.GetAuthSnapshot(ctx, req.Token, req.ClientIP)
 	if err != nil {
 		return nil, err
 	}

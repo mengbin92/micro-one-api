@@ -22,6 +22,9 @@ service IdentityService {
 
 message ValidateTokenRequest {
   string token = 1;
+  // client_ip is the caller's remote IP used for optional token Subnet CIDR
+  // enforcement (review M1). Best-effort; empty when unavailable.
+  string client_ip = 2;
 }
 
 message ValidateTokenReply {
@@ -33,6 +36,9 @@ message ValidateTokenReply {
 
 message GetAuthSnapshotRequest {
   string token = 1;
+  // client_ip is the caller's remote IP used for optional token Subnet CIDR
+  // enforcement (review M1). Best-effort; empty when unavailable.
+  string client_ip = 2;
 }
 
 message GetAuthSnapshotReply {

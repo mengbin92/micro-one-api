@@ -23,8 +23,8 @@ func NewIdentityAdapter(client identityv1.IdentityServiceClient) *IdentityAdapte
 	return &IdentityAdapter{client: client}
 }
 
-func (a *IdentityAdapter) GetAuthSnapshot(ctx context.Context, token string) (*relaybiz.AuthSnapshot, error) {
-	reply, err := a.client.GetAuthSnapshot(ctx, &identityv1.GetAuthSnapshotRequest{Token: token})
+func (a *IdentityAdapter) GetAuthSnapshot(ctx context.Context, token, clientIP string) (*relaybiz.AuthSnapshot, error) {
+	reply, err := a.client.GetAuthSnapshot(ctx, &identityv1.GetAuthSnapshotRequest{Token: token, ClientIp: clientIP})
 	if err != nil {
 		return nil, err
 	}

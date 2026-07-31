@@ -21,6 +21,10 @@ type RateLimiter struct {
 	rate       int
 	burst      int
 	maxClients int
+	// window is the sliding-window duration. Requests older than `window`
+	// are evicted before counting, so `rate` is enforced per-window (review
+	// M4 — previously hardcoded to time.Minute regardless of config.Window).
+	window time.Duration
 }
 
 // ClientLimiter tracks rate limiting for a single client
@@ -75,16 +79,26 @@ func NewRateLimiter(config *RateLimitConfig) *RateLimiter {
 		config = DefaultRateLimitConfig()
 	}
 
+	window := config.Window
+	if window <= 0 {
+		window = time.Minute
+	}
 	return &RateLimiter{
 		clients:    make(map[string]*ClientLimiter),
 		rate:       config.RequestsPerSecond,
 		burst:      config.Burst,
 		maxClients: config.MaxClients,
+		window:     window,
 	}
 }
 
-// Allow checks if a request from the given key should be allowed
-func (rl *RateLimiter) Allow(key string) bool {
+// Allow checks if a request from the given key should be allowed and returns
+// the number of remaining requests in the current window. Both values are
+// computed under the limiter lock so callers never need to re-read the clients
+// map (review M3 — the previous header computation read limiter.clients[key]
+// outside the lock, a concurrent map read that could crash the process, and a
+// nil-deref if Cleanup deleted the entry between Allow and the read).
+func (rl *RateLimiter) Allow(key string) (bool, int) {
 	rl.mutex.Lock()
 	defer rl.mutex.Unlock()
 
@@ -97,7 +111,7 @@ func (rl *RateLimiter) Allow(key string) bool {
 			applogger.Log.Warn("Rate limiter max clients reached",
 				zap.Int("max_clients", rl.maxClients),
 			)
-			return false
+			return false, 0
 		}
 		client = &ClientLimiter{
 			tokens:   rl.burst - 1,
@@ -105,11 +119,11 @@ func (rl *RateLimiter) Allow(key string) bool {
 			requests: []time.Time{now},
 		}
 		rl.clients[key] = client
-		return true
+		return true, rl.rate - 1
 	}
 
-	// Clean up old requests
-	cutoff := now.Add(-time.Minute)
+	// Clean up old requests using the configured window (review M4).
+	cutoff := now.Add(-rl.window)
 	validRequests := make([]time.Time, 0, len(client.requests))
 	for _, reqTime := range client.requests {
 		if reqTime.After(cutoff) {
@@ -125,14 +139,18 @@ func (rl *RateLimiter) Allow(key string) bool {
 			zap.Int("requests", len(client.requests)),
 			zap.Int("limit", rl.rate),
 		)
-		return false
+		return false, 0
 	}
 
 	// Add current request
 	client.requests = append(client.requests, now)
 	client.lastSeen = now
 
-	return true
+	remaining := rl.rate - len(client.requests)
+	if remaining < 0 {
+		remaining = 0
+	}
+	return true, remaining
 }
 
 // Cleanup removes stale entries from the rate limiter
@@ -166,8 +184,11 @@ func RateLimit(config *RateLimitConfig) func(http.Handler) http.Handler {
 			// Extract rate limit key (IP or token)
 			key := extractRateLimitKey(r)
 
-			// Check rate limit
-			if !limiter.Allow(key) {
+			// Check rate limit (Allow returns the remaining quota computed
+			// under the lock, so we no longer re-read the clients map here —
+			// review M3 data race).
+			allowed, remaining := limiter.Allow(key)
+			if !allowed {
 				applogger.Log.Warn("Request rate limited",
 					zap.String("key", key),
 					zap.String("path", r.URL.Path),
@@ -185,10 +206,6 @@ func RateLimit(config *RateLimitConfig) func(http.Handler) http.Handler {
 			}
 
 			// Add rate limit headers
-			remaining := limiter.rate - len(limiter.clients[key].requests)
-			if remaining < 0 {
-				remaining = 0
-			}
 			w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.rate))
 			w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
 

@@ -3,8 +3,10 @@ package middleware
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -82,11 +84,32 @@ func (crw *cacheResponseWriter) Header() http.Header {
 	return crw.header
 }
 
-// cacheKey generates a cache key from the request
+// cacheKey generates a cache key from the request. The caller's auth identity
+// (bearer token hash, or "" when unauthenticated) is folded in so that
+// per-token payloads (e.g. /v1/models, whose AllowedModels come from
+// GetAuthSnapshot) are not shared across users (review L7).
 func cacheKey(r *http.Request) string {
-	key := fmt.Sprintf("%s:%s", r.Method, r.URL.String())
+	identity := cacheAuthIdentity(r)
+	key := fmt.Sprintf("%s:%s:%s", identity, r.Method, r.URL.String())
 	hash := sha256.Sum256([]byte(key))
 	return fmt.Sprintf("%x", hash[:8])
+}
+
+// cacheAuthIdentity returns a privacy-preserving caller identity for cache key
+// scoping: the SHA-256 of the bearer token, or "" when no Authorization header
+// is present. It never returns the raw token.
+func cacheAuthIdentity(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+	const prefix = "Bearer "
+	if len(authHeader) > len(prefix) && strings.EqualFold(authHeader[:len(prefix)], prefix) {
+		sum := sha256.Sum256([]byte(authHeader[len(prefix):]))
+		return hex.EncodeToString(sum[:])
+	}
+	sum := sha256.Sum256([]byte(authHeader))
+	return hex.EncodeToString(sum[:])
 }
 
 // ResponseCacheMiddleware creates a middleware that caches HTTP responses

@@ -31,6 +31,7 @@ services:
     - 025_add_user_role
     - 026_fix_users_status_comment
     - 027_remove_placeholder_seed_data
+    - 075_add_password_changed_at_to_users  # identity-M6 password-change epoch for session revocation
 
   channel:
     # channels / abilities / subscription_accounts / subscription_account_quota_*

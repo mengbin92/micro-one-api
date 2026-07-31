@@ -156,7 +156,7 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 		handleLogin(w, r, uc)
 	})
 	srv.HandleFunc("/api/user/logout", func(w http.ResponseWriter, r *http.Request) {
-		handleLogout(w, r)
+		handleLogout(w, r, uc)
 	})
 	srv.HandleFunc("/api/user/self", func(w http.ResponseWriter, r *http.Request) {
 		handleSelf(w, r, uc)
@@ -1052,7 +1052,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	user, token, err := uc.Login(r.Context(), req.Username, req.Password)
+	user, token, err := uc.Login(r.Context(), req.Username, req.Password, requestRemoteIP(r))
 	if err != nil {
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: "invalid credentials"})
 		return
@@ -1068,10 +1068,17 @@ func handleLogin(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase
 	})
 }
 
-func handleLogout(w http.ResponseWriter, r *http.Request) {
+func handleLogout(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{Success: false, Message: "method not allowed"})
 		return
+	}
+	// M6: logout is no longer a no-op. Advance the user's password epoch so
+	// the currently-presented session JWT (and any others sharing it) are
+	// rejected on subsequent validation. This relies on the request carrying
+	// a valid session; logout without one is still a 200 (no-op reveal).
+	if snapshot, err := authSnapshotFromRequest(r, uc); err == nil && snapshot != nil && snapshot.UserID > 0 {
+		_ = uc.InvalidateAllSessions(r.Context(), snapshot.UserID)
 	}
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: ""})
 }

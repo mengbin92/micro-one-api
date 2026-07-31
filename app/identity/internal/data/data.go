@@ -37,9 +37,10 @@ type userModel struct {
 	PasswordHash  string `gorm:"column:password_hash"`
 	OAuthProvider string `gorm:"column:oauth_provider;index"`
 	OAuthID       string `gorm:"column:oauth_id;index"`
-	Balance       int64  `gorm:"column:balance"`
-	AffCode       string `gorm:"column:aff_code;uniqueIndex"`
-	InviterID     int64  `gorm:"column:inviter_id;index"`
+	Balance           int64  `gorm:"column:balance"`
+	AffCode           string `gorm:"column:aff_code;uniqueIndex"`
+	InviterID         int64  `gorm:"column:inviter_id;index"`
+	PasswordChangedAt int64  `gorm:"column:password_changed_at"`
 }
 
 func (userModel) TableName() string { return "users" }
@@ -554,18 +555,19 @@ func (r *Repository) createOAuthIdentityDB(ctx context.Context, identity *biz.OA
 
 func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 	model := userModel{
-		Username:      user.Username,
-		DisplayName:   user.DisplayName,
-		Email:         user.Email,
-		Group:         user.Group,
-		Status:        user.Status,
-		Role:          user.Role,
-		PasswordHash:  user.PasswordHash,
-		OAuthProvider: user.OAuthProvider,
-		OAuthID:       user.OAuthID,
-		Balance:       user.Balance,
-		AffCode:       user.AffCode,
-		InviterID:     user.InviterID,
+		Username:          user.Username,
+		DisplayName:       user.DisplayName,
+		Email:             user.Email,
+		Group:             user.Group,
+		Status:            user.Status,
+		Role:              user.Role,
+		PasswordHash:      user.PasswordHash,
+		OAuthProvider:     user.OAuthProvider,
+		OAuthID:           user.OAuthID,
+		Balance:           user.Balance,
+		AffCode:           user.AffCode,
+		InviterID:         user.InviterID,
+		PasswordChangedAt: user.PasswordChangedAt,
 	}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		return err
@@ -585,8 +587,9 @@ func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
 		"password_hash":  user.PasswordHash,
 		"oauth_provider": user.OAuthProvider,
 		"oauth_id":       user.OAuthID,
-		"aff_code":       user.AffCode,
-		"inviter_id":     user.InviterID,
+		"aff_code":           user.AffCode,
+		"inviter_id":         user.InviterID,
+		"password_changed_at": user.PasswordChangedAt,
 	}).Error
 }
 
@@ -721,19 +724,20 @@ func stringPtrValue(value *string) string {
 
 func userModelToBiz(model userModel) *biz.User {
 	return &biz.User{
-		ID:            model.ID,
-		Username:      model.Username,
-		DisplayName:   model.DisplayName,
-		Email:         model.Email,
-		Group:         model.Group,
-		Status:        model.Status,
-		Role:          model.Role,
-		PasswordHash:  model.PasswordHash,
-		OAuthProvider: model.OAuthProvider,
-		OAuthID:       model.OAuthID,
-		Balance:       model.Balance,
-		AffCode:       model.AffCode,
-		InviterID:     model.InviterID,
+		ID:                model.ID,
+		Username:          model.Username,
+		DisplayName:       model.DisplayName,
+		Email:             model.Email,
+		Group:             model.Group,
+		Status:            model.Status,
+		Role:              model.Role,
+		PasswordHash:      model.PasswordHash,
+		OAuthProvider:     model.OAuthProvider,
+		OAuthID:           model.OAuthID,
+		Balance:           model.Balance,
+		AffCode:           model.AffCode,
+		InviterID:         model.InviterID,
+		PasswordChangedAt: model.PasswordChangedAt,
 	}
 }
 

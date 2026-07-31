@@ -85,7 +85,7 @@ func TestIdentityHTTPAffCodeReturnsUserCode(t *testing.T) {
 	if _, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default"); err != nil {
 		t.Fatal(err)
 	}
-	_, authToken, err := uc.Login(context.Background(), "alice", "password123")
+	_, authToken, err := uc.Login(context.Background(), "alice", "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestIdentityHTTPSelfUpdateChangesCurrentUser(t *testing.T) {
 		t.Fatalf("update without current_password should fail: %s", noCurRec.Body.String())
 	}
 
-	_, newToken, err := uc.Login(context.Background(), "alice2", "newpass123")
+	_, newToken, err := uc.Login(context.Background(), "alice2", "newpass123", "")
 	if err != nil {
 		t.Fatalf("login with updated credentials failed: %v", err)
 	}
@@ -1120,7 +1120,7 @@ func TestIdentityHTTPAdminUserPaymentOrdersCanListAllUsers(t *testing.T) {
 	if err := repo.UpdateUser(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
-	_, authToken, err := uc.Login(context.Background(), user.Username, "password123")
+	_, authToken, err := uc.Login(context.Background(), user.Username, "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1213,7 +1213,7 @@ func TestIdentityHTTPTokenCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loginUser, authToken, err := uc.Login(httptest.NewRequest(http.MethodGet, "/", nil).Context(), user.Username, "password123")
+	loginUser, authToken, err := uc.Login(httptest.NewRequest(http.MethodGet, "/", nil).Context(), user.Username, "password123", "")
 	if err != nil || loginUser.ID != user.ID {
 		t.Fatalf("login error = %v", err)
 	}
@@ -1262,7 +1262,7 @@ func TestIdentityHTTPSessionTokenIsNotAPIToken(t *testing.T) {
 		t.Fatalf("list should not include the session token as an API key: %s", listRec.Body.String())
 	}
 
-	if _, err := uc.GetAuthSnapshot(context.Background(), authToken); err == nil {
+	if _, err := uc.GetAuthSnapshot(context.Background(), authToken, ""); err == nil {
 		t.Fatal("session token should not be accepted as an API auth snapshot")
 	}
 
@@ -1467,7 +1467,7 @@ func TestIdentityHTTPPasswordReset(t *testing.T) {
 		t.Fatalf("password reset failed: %s", confirmRec.Body.String())
 	}
 
-	if _, _, err := uc.Login(context.Background(), "alice", "newpass123"); err != nil {
+	if _, _, err := uc.Login(context.Background(), "alice", "newpass123", ""); err != nil {
 		t.Fatalf("login with reset password failed: %v", err)
 	}
 
@@ -1931,7 +1931,7 @@ func registerAndLoginForHTTPTest(t *testing.T, uc *biz.IdentityUsecase) (*biz.Us
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, authToken, err := uc.Login(context.Background(), user.Username, "password123")
+	_, authToken, err := uc.Login(context.Background(), user.Username, "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}

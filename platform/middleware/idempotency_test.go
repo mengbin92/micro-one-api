@@ -22,7 +22,9 @@ func TestNormalizeIdempotencyKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := normalizeIdempotencyKey(tt.input)
+			// Pass a nil request so the key degrades to the key-only composite
+			// (identity/method/path all empty). The result is always hashed.
+			result := normalizeIdempotencyKey(tt.input, nil)
 			if tt.wantHash && !looksLikeHash(result) {
 				t.Errorf("normalizeIdempotencyKey() = %v, want hash-like result", result)
 			}

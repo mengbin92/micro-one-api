@@ -19,7 +19,7 @@ func TestIdentityServiceValidateTokenAcceptsSessionJWT(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, sessionToken, err := uc.Login(context.Background(), "alice", "password123")
+	_, sessionToken, err := uc.Login(context.Background(), "alice", "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}

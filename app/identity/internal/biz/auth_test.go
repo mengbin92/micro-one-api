@@ -349,7 +349,7 @@ func TestIdentityUsecase_ValidateToken_ValidToken(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	token, err := uc.ValidateToken(context.Background(), "valid-token")
+	token, err := uc.ValidateToken(context.Background(), "valid-token", "")
 	if err != nil {
 		t.Fatalf("ValidateToken() error = %v", err)
 	}
@@ -365,12 +365,12 @@ func TestIdentityUsecase_ValidateToken_EmptyToken(t *testing.T) {
 	repo := &mockIdentityRepo{tokens: make(map[string]*Token), users: make(map[int64]*User)}
 	uc := NewIdentityUsecase(repo)
 
-	_, err := uc.ValidateToken(context.Background(), "")
+	_, err := uc.ValidateToken(context.Background(), "", "")
 	if !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken, got: %v", err)
 	}
 
-	_, err = uc.ValidateToken(context.Background(), "   ")
+	_, err = uc.ValidateToken(context.Background(), "   ", "")
 	if !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken for whitespace token, got: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestIdentityUsecase_ValidateToken_TokenNotFound(t *testing.T) {
 	}
 	uc := NewIdentityUsecase(repo)
 
-	_, err := uc.ValidateToken(context.Background(), "nonexistent-token")
+	_, err := uc.ValidateToken(context.Background(), "nonexistent-token", "")
 	if !errors.Is(err, ErrTokenNotFound) {
 		t.Fatalf("expected ErrTokenNotFound, got: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestIdentityUsecase_ValidateToken_TokenExpired(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.ValidateToken(context.Background(), "expired-token")
+	_, err := uc.ValidateToken(context.Background(), "expired-token", "")
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Fatalf("expected ErrTokenExpired, got: %v", err)
 	}
@@ -434,7 +434,7 @@ func TestIdentityUsecase_ValidateToken_TokenStatusExpired(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.ValidateToken(context.Background(), "expired-status-token")
+	_, err := uc.ValidateToken(context.Background(), "expired-status-token", "")
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Fatalf("expected ErrTokenExpired, got: %v", err)
 	}
@@ -459,7 +459,7 @@ func TestIdentityUsecase_ValidateToken_ZeroRemainQuotaAllowed(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	token, err := uc.ValidateToken(context.Background(), "zero-remain-token")
+	token, err := uc.ValidateToken(context.Background(), "zero-remain-token", "")
 	if err != nil {
 		t.Fatalf("ValidateToken() unexpected error: %v", err)
 	}
@@ -487,7 +487,7 @@ func TestIdentityUsecase_ValidateToken_TokenStatusExhausted(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.ValidateToken(context.Background(), "exhausted-status-token")
+	_, err := uc.ValidateToken(context.Background(), "exhausted-status-token", "")
 	if !errors.Is(err, ErrTokenExhausted) {
 		t.Fatalf("expected ErrTokenExhausted, got: %v", err)
 	}
@@ -512,7 +512,7 @@ func TestIdentityUsecase_ValidateToken_TokenDisabled(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.ValidateToken(context.Background(), "disabled-token")
+	_, err := uc.ValidateToken(context.Background(), "disabled-token", "")
 	if !errors.Is(err, ErrTokenDisabled) {
 		t.Fatalf("expected ErrTokenDisabled, got: %v", err)
 	}
@@ -537,7 +537,7 @@ func TestIdentityUsecase_ValidateToken_UnlimitedQuota(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	token, err := uc.ValidateToken(context.Background(), "unlimited-token")
+	token, err := uc.ValidateToken(context.Background(), "unlimited-token", "")
 	if err != nil {
 		t.Fatalf("ValidateToken() unexpected error: %v", err)
 	}
@@ -573,7 +573,7 @@ func TestIdentityUsecase_GetAuthSnapshot_Valid(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	snapshot, err := uc.GetAuthSnapshot(context.Background(), "valid-token")
+	snapshot, err := uc.GetAuthSnapshot(context.Background(), "valid-token", "")
 	if err != nil {
 		t.Fatalf("GetAuthSnapshot() error = %v", err)
 	}
@@ -624,7 +624,7 @@ func TestIdentityUsecase_GetAuthSnapshot_UserDisabled(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.GetAuthSnapshot(context.Background(), "valid-token")
+	_, err := uc.GetAuthSnapshot(context.Background(), "valid-token", "")
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got: %v", err)
 	}
@@ -655,7 +655,7 @@ func TestIdentityUsecase_GetAuthSnapshot_ModelWhitelist(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	snapshot, err := uc.GetAuthSnapshot(context.Background(), "restricted-token")
+	snapshot, err := uc.GetAuthSnapshot(context.Background(), "restricted-token", "")
 	if err != nil {
 		t.Fatalf("GetAuthSnapshot() error = %v", err)
 	}
@@ -692,7 +692,7 @@ func TestIdentityUsecase_GetAuthSnapshot_EmptyModelWhitelist(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	snapshot, err := uc.GetAuthSnapshot(context.Background(), "all-models-token")
+	snapshot, err := uc.GetAuthSnapshot(context.Background(), "all-models-token", "")
 	if err != nil {
 		t.Fatalf("GetAuthSnapshot() error = %v", err)
 	}
@@ -774,7 +774,7 @@ func TestIdentityUsecase_Login_Success(t *testing.T) {
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
-	user, token, err := uc.Login(context.Background(), "alice", "secret123")
+	user, token, err := uc.Login(context.Background(), "alice", "secret123", "")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
@@ -790,23 +790,27 @@ func TestIdentityUsecase_Login_EmptyCredentials(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
 	uc := NewIdentityUsecase(repo)
 
-	_, _, err := uc.Login(context.Background(), "", "secret")
+	_, _, err := uc.Login(context.Background(), "", "secret", "")
 	if !errors.Is(err, ErrInvalidPassword) {
 		t.Fatalf("expected ErrInvalidPassword, got: %v", err)
 	}
 
-	_, _, err = uc.Login(context.Background(), "alice", "")
+	_, _, err = uc.Login(context.Background(), "alice", "", "")
 	if !errors.Is(err, ErrInvalidPassword) {
 		t.Fatalf("expected ErrInvalidPassword, got: %v", err)
 	}
 }
 
-func TestIdentityUsecase_Login_UserNotFound(t *testing.T) {
+// TestIdentityUsecase_Login_UnknownUserReturnsInvalidPassword verifies the L2
+// timing-oracle mitigation: an unknown username MUST surface the same
+// ErrInvalidPassword as a bad password so the response time does not leak
+// whether the account exists.
+func TestIdentityUsecase_Login_UnknownUserReturnsInvalidPassword(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
 	uc := NewIdentityUsecase(repo)
-	_, _, err := uc.Login(context.Background(), "nobody", "secret")
-	if !errors.Is(err, ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound, got: %v", err)
+	_, _, err := uc.Login(context.Background(), "nobody", "secret", "")
+	if !errors.Is(err, ErrInvalidPassword) {
+		t.Fatalf("expected ErrInvalidPassword for unknown user (L2 timing-oracle mitigation), got: %v", err)
 	}
 }
 
@@ -818,7 +822,7 @@ func TestIdentityUsecase_Login_UserDisabled(t *testing.T) {
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
-	_, _, err := uc.Login(context.Background(), "alice", "secret")
+	_, _, err := uc.Login(context.Background(), "alice", "secret", "")
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got: %v", err)
 	}
@@ -832,7 +836,7 @@ func TestIdentityUsecase_Login_IssuesSessionJWTWithoutCreatingAPIToken(t *testin
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
-	_, token, err := uc.Login(context.Background(), "alice", "secret123")
+	_, token, err := uc.Login(context.Background(), "alice", "secret123", "")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
@@ -1295,7 +1299,7 @@ func TestIdentityUsecase_UpdateSelf_UpdatesPassword(t *testing.T) {
 	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "newpass123", "password123", false); err != nil {
 		t.Fatalf("UpdateSelf() error = %v", err)
 	}
-	if _, _, err := uc.Login(context.Background(), "alice", "newpass123"); err != nil {
+	if _, _, err := uc.Login(context.Background(), "alice", "newpass123", ""); err != nil {
 		t.Fatalf("login with new password failed: %v", err)
 	}
 

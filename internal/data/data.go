@@ -57,9 +57,10 @@ type identityClient struct {
 	client identityv1.IdentityServiceClient
 }
 
-func (c *identityClient) GetAuthSnapshot(ctx context.Context, token string) (*biz.AuthSnapshot, error) {
+func (c *identityClient) GetAuthSnapshot(ctx context.Context, token, clientIP string) (*biz.AuthSnapshot, error) {
 	resp, err := c.client.GetAuthSnapshot(ctx, &identityv1.GetAuthSnapshotRequest{
-		Token: token,
+		Token:    token,
+		ClientIp: clientIP,
 	})
 	if err != nil {
 		return nil, err
