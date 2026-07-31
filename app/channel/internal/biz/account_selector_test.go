@@ -94,11 +94,15 @@ func TestSubscriptionAccountSelector_PreservesHealthWeightRatio(t *testing.T) {
 	if _, err := s.Select(context.Background(), "g", candidates); err != nil {
 		t.Fatalf("prime Select err = %v", err)
 	}
-	for i := 0; i < 6; i++ {
-		s.RecordAccountHealth(degraded.ID, false)
+	// channel-H1: healthFactor now uses a true error RATIO (errors/total), so
+	// record a mixed stream that lands the degraded account in the <0.30 band
+	// (factor 20): 2 failures + 8 successes = 0.2 ratio.
+	ds := s.accounts[degraded.ID]
+	for i := 0; i < 10; i++ {
+		ds.recentErrors.RecordOutcome(i >= 2) // i=0,1 are failures
 	}
-	if got := s.accounts[degraded.ID].healthFactor(); got != 20 {
-		t.Fatalf("degraded health factor = %d, want 20", got)
+	if got := ds.healthFactor(); got != 20 {
+		t.Fatalf("degraded health factor = %d, want 20 (20%% error ratio band)", got)
 	}
 
 	counts := map[int64]int{}

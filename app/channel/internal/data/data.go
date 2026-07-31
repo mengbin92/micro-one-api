@@ -23,6 +23,14 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// now returns the current time as a UTC Unix timestamp. It is the single time
+// seam for the channel data layer (review channel-L1): centralizing it makes
+// the UTC basis explicit for cross-service log/debug alignment and gives tests
+// one function to stub instead of 29 scattered now() call sites.
+func now() int64 {
+	return time.Now().UTC().Unix()
+}
+
 type Repository struct {
 	db          *gorm.DB
 	redis       *redis.Client
@@ -509,7 +517,7 @@ func (r *Repository) SetSubscriptionAccountError(ctx context.Context, accountID 
 	}
 	account.LastError = message
 	account.Metadata = setSubscriptionAccountMetadataValue(account.Metadata, "last_error", message)
-	account.UpdatedAt = time.Now().Unix()
+	account.UpdatedAt = now()
 	return nil
 }
 
@@ -525,8 +533,8 @@ func (r *Repository) SetTempUnschedulable(ctx context.Context, accountID int64, 
 	}
 	account.RateLimitedUntil = until.Unix()
 	account.LastError = reason
-	account.Metadata = stampRecoveryMetadata(account.Metadata, reason, until.Unix(), time.Now().Unix())
-	account.UpdatedAt = time.Now().Unix()
+	account.Metadata = stampRecoveryMetadata(account.Metadata, reason, until.Unix(), now())
+	account.UpdatedAt = now()
 	return nil
 }
 
@@ -541,7 +549,7 @@ func (r *Repository) ClearTempUnschedulable(ctx context.Context, accountID int64
 		return biz.ErrSubscriptionAccountNotFound
 	}
 	account.RateLimitedUntil = 0
-	account.UpdatedAt = time.Now().Unix()
+	account.UpdatedAt = now()
 	return nil
 }
 
@@ -592,7 +600,7 @@ func (r *Repository) GetAccountQuotaSnapshot(ctx context.Context, accountID int6
 	}
 	var resetAfter *int32
 	if account.QuotaResetAt > 0 {
-		if value, err := safecast.Int64ToInt32(account.QuotaResetAt - time.Now().Unix()); err == nil {
+		if value, err := safecast.Int64ToInt32(account.QuotaResetAt - now()); err == nil {
 			resetAfter = &value
 		}
 	}
@@ -744,12 +752,12 @@ func (r *Repository) AutoPauseAccount(ctx context.Context, accountID int64, reas
 	// resets. Only authorization errors (401/403, policy=manual) disable the
 	// account, because those never auto-recover and require an OAuth rebind.
 	policy := recoveryPolicyForReason(reason)
-	account.Metadata = stampRecoveryMetadata(account.Metadata, reason, 0, time.Now().Unix())
+	account.Metadata = stampRecoveryMetadata(account.Metadata, reason, 0, now())
 	account.Metadata = setSubscriptionAccountMetadataValue(account.Metadata, "recovery_policy", policy)
 	if policy == biz.RecoveryPolicyManual {
 		account.Status = biz.ChannelStatusDisabled
 	}
-	account.UpdatedAt = time.Now().Unix()
+	account.UpdatedAt = now()
 	return nil
 }
 
@@ -1099,7 +1107,7 @@ func (r *Repository) setSubscriptionAccountErrorDB(ctx context.Context, accountI
 	metadata := setSubscriptionAccountMetadataValue(account.Metadata, "last_error", message)
 	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
 		"metadata":   stringPtr(metadata),
-		"updated_at": time.Now().Unix(),
+		"updated_at": now(),
 	}).Error
 }
 
@@ -1108,18 +1116,18 @@ func (r *Repository) setTempUnschedulableDB(ctx context.Context, accountID int64
 	if err != nil {
 		return err
 	}
-	metadata := stampRecoveryMetadata(account.Metadata, reason, until.Unix(), time.Now().Unix())
+	metadata := stampRecoveryMetadata(account.Metadata, reason, until.Unix(), now())
 	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
 		"rate_limited_until": until.Unix(),
 		"metadata":           stringPtr(metadata),
-		"updated_at":         time.Now().Unix(),
+		"updated_at":         now(),
 	}).Error
 }
 
 func (r *Repository) clearTempUnschedulableDB(ctx context.Context, accountID int64) error {
 	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
 		"rate_limited_until": 0,
-		"updated_at":         time.Now().Unix(),
+		"updated_at":         now(),
 	}).Error
 }
 
@@ -1130,7 +1138,7 @@ func (r *Repository) recordAccountQuotaSnapshotDB(ctx context.Context, snapshot 
 			return err
 		}
 		updates := map[string]interface{}{
-			"updated_at": time.Now().Unix(),
+			"updated_at": now(),
 		}
 		if snapshot.PrimaryUsedPercent != nil {
 			updates["quota_used_percent"] = *snapshot.PrimaryUsedPercent
@@ -1183,7 +1191,7 @@ func (r *Repository) recordSubscriptionAccountQuotaUsageDB(ctx context.Context, 
 				ChargedUSD:            chargedUSD,
 				RateMultiplier:        account.EffectiveRateMultiplier(),
 				OccurredAt:            usage.OccurredAt.Unix(),
-				CreatedAt:             time.Now().Unix(),
+				CreatedAt:             now(),
 			}
 			result := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "reservation_id"}, {Name: "subscription_account_id"}, {Name: "cost_source"}},
@@ -1206,7 +1214,7 @@ func (r *Repository) recordSubscriptionAccountQuotaUsageDB(ctx context.Context, 
 			"quota_weekly_used_usd":     account.QuotaWeeklyUsedUSD,
 			"quota_weekly_window_start": account.QuotaWeeklyWindowStart,
 			"last_used_at":              usage.OccurredAt.Unix(),
-			"updated_at":                time.Now().Unix(),
+			"updated_at":                now(),
 		}).Error
 	})
 }
@@ -1265,7 +1273,7 @@ func (r *Repository) resetSubscriptionAccountQuotaDB(ctx context.Context, accoun
 	if updates == nil {
 		return nil
 	}
-	updates["updated_at"] = time.Now().Unix()
+	updates["updated_at"] = now()
 	result := r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(updates)
 	if result.Error != nil {
 		return result.Error
@@ -1287,7 +1295,7 @@ func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, re
 	// markers once the upstream snapshot / local window resets. Only
 	// authorization errors (manual policy) disable the account.
 	policy := recoveryPolicyForReason(reason)
-	metadata := stampRecoveryMetadata(account.Metadata, reason, 0, time.Now().Unix())
+	metadata := stampRecoveryMetadata(account.Metadata, reason, 0, now())
 	metadata = setSubscriptionAccountMetadataValue(metadata, "recovery_policy", policy)
 	status := biz.ChannelStatusEnabled
 	abilityEnabled := true
@@ -1299,7 +1307,7 @@ func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, re
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
 			"status":     status,
 			"metadata":   stringPtr(metadata),
-			"updated_at": time.Now().Unix(),
+			"updated_at": now(),
 		}).Error; err != nil {
 			return err
 		}
@@ -2010,7 +2018,7 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 		return err
 	}
 	existingByModel := make(map[int64]struct{}, len(existing))
-	now := time.Now().Unix()
+	now := now()
 	priority := safecast.Int64ToInt32Saturating(channel.Priority)
 	for _, row := range existing {
 		existingByModel[row.ModelPK] = struct{}{}
@@ -2057,7 +2065,7 @@ func ensureModelRegistryRowTx(tx *gorm.DB, canonicalID string) (int64, error) {
 	if !isGormNotFound(err) {
 		return 0, err
 	}
-	now := time.Now().Unix()
+	now := now()
 	po = modelModel{
 		ModelID:     canonicalID,
 		DisplayName: canonicalID,
@@ -2347,7 +2355,7 @@ func applySubscriptionAccountQuotaUsage(account *biz.SubscriptionAccount, costUS
 		account.QuotaWeeklyUsedUSD, account.QuotaWeeklyWindowStart = incrementWindowUsage(account.QuotaWeeklyUsedUSD, account.QuotaWeeklyWindowStart, chargedUSD, nowUnix, 7*24*time.Hour)
 	}
 	account.LastUsedAt = nowUnix
-	account.UpdatedAt = time.Now().Unix()
+	account.UpdatedAt = now()
 }
 
 func incrementWindowUsage(used float64, windowStart int64, delta float64, nowUnix int64, window time.Duration) (float64, int64) {
@@ -2390,7 +2398,7 @@ func resetSubscriptionAccountQuota(account *biz.SubscriptionAccount, scope strin
 		account.QuotaWeeklyUsedUSD = 0
 		account.QuotaWeeklyWindowStart = 0
 	}
-	account.UpdatedAt = time.Now().Unix()
+	account.UpdatedAt = now()
 }
 
 func resetSubscriptionAccountQuotaToWindow(account *biz.SubscriptionAccount, scope string, windowStart int64) {
@@ -2408,7 +2416,7 @@ func resetSubscriptionAccountQuotaToWindow(account *biz.SubscriptionAccount, sco
 		resetSubscriptionAccountQuota(account, scope)
 		return
 	}
-	account.UpdatedAt = time.Now().Unix()
+	account.UpdatedAt = now()
 }
 
 func subscriptionAccountQuotaEventKey(reservationID string, accountID int64, costSource string) string {
@@ -2744,7 +2752,7 @@ func (r *Repository) recordQuotaResetAndResetDB(ctx context.Context, run *biz.Su
 		if updates == nil {
 			return nil
 		}
-		updates["updated_at"] = time.Now().Unix()
+		updates["updated_at"] = now()
 		res := tx.Model(&subscriptionAccountModel{}).Where("id = ?", run.AccountID).Updates(updates)
 		if res.Error != nil {
 			return res.Error
@@ -2773,7 +2781,7 @@ func (r *Repository) ClearRecoveryMetadata(ctx context.Context, accountID int64)
 		return biz.ErrSubscriptionAccountNotFound
 	}
 	account.Metadata = clearSubscriptionAccountRecoveryMetadata(account.Metadata)
-	account.UpdatedAt = time.Now().Unix()
+	account.UpdatedAt = now()
 	return nil
 }
 
@@ -2800,7 +2808,7 @@ func (r *Repository) ClearRecoveryMarkers(ctx context.Context, accountID int64, 
 	if clearMeta {
 		account.Metadata = clearSubscriptionAccountRecoveryMetadata(account.Metadata)
 	}
-	account.UpdatedAt = time.Now().Unix()
+	account.UpdatedAt = now()
 	return nil
 }
 
@@ -2811,7 +2819,7 @@ func (r *Repository) clearRecoveryMarkersDB(ctx context.Context, accountID int64
 	}
 	metadata := account.Metadata
 	updates := map[string]interface{}{
-		"updated_at": time.Now().Unix(),
+		"updated_at": now(),
 	}
 	if clearTemp {
 		updates["rate_limited_until"] = 0
@@ -2844,7 +2852,7 @@ func (r *Repository) clearRecoveryMetadataDB(ctx context.Context, accountID int6
 	metadata := clearSubscriptionAccountRecoveryMetadata(account.Metadata)
 	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
 		"metadata":   stringPtr(metadata),
-		"updated_at": time.Now().Unix(),
+		"updated_at": now(),
 	}).Error
 }
 
@@ -2956,7 +2964,7 @@ func (r *Repository) StampQuotaAlertMetadata(ctx context.Context, accountID int6
 		return biz.ErrSubscriptionAccountNotFound
 	}
 	account.Metadata = setSubscriptionAccountMetadataValue(setSubscriptionAccountMetadataValue(account.Metadata, "last_quota_alert_kind", kind), "last_quota_alert_at", strconv.FormatInt(alertAt, 10))
-	account.UpdatedAt = time.Now().Unix()
+	account.UpdatedAt = now()
 	return nil
 }
 
@@ -2968,6 +2976,6 @@ func (r *Repository) stampQuotaAlertMetadataDB(ctx context.Context, accountID in
 	metadata := setSubscriptionAccountMetadataValue(setSubscriptionAccountMetadataValue(account.Metadata, "last_quota_alert_kind", kind), "last_quota_alert_at", strconv.FormatInt(alertAt, 10))
 	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
 		"metadata":   stringPtr(metadata),
-		"updated_at": time.Now().Unix(),
+		"updated_at": now(),
 	}).Error
 }

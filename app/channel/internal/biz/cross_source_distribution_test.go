@@ -199,13 +199,16 @@ func TestPhase3_AccountSelector_HealthDerating(t *testing.T) {
 	degraded := &SubscriptionAccount{ID: 2, Priority: 1, Weight: 10}
 	candidates := []*SubscriptionAccount{healthy, degraded}
 
-	// Prime + degrade account 2.
-	for i := 0; i < 6; i++ {
-		s.Select(context.Background(), "g", candidates)
-		s.RecordAccountHealth(2, false)
+	// channel-H1: healthFactor now uses a true error RATIO (errors/total), so
+	// degrade account 2 to a ~20%% ratio (2 failures + 8 successes) so it lands
+	// in the <0.30 band (factor 20). Prime the state first so the account exists.
+	s.Select(context.Background(), "g", candidates)
+	ds := s.accounts[2]
+	for i := 0; i < 10; i++ {
+		ds.recentErrors.RecordOutcome(i >= 2) // i=0,1 are failures
 	}
-	if got := s.accounts[2].healthFactor(); got != 20 {
-		t.Fatalf("degraded healthFactor = %d, want 20", got)
+	if got := ds.healthFactor(); got != 20 {
+		t.Fatalf("degraded healthFactor = %d, want 20 (20%% error ratio band)", got)
 	}
 
 	counts := map[int64]int{}

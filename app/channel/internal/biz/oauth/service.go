@@ -30,7 +30,14 @@ const (
 	claudeScope        = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
 
 	codexAuthorizeURL = "https://auth.openai.com/oauth/authorize"
-	codexRedirectURI  = "http://localhost:1455/auth/callback"
+	// codexRedirectURI is FIXED by the upstream Codex CLI (codex_cli_rs) to a
+	// loopback HTTP callback. This is an upstream constraint we cannot change.
+	// Risk (review channel-M1): (1) a malicious local process could bind port
+	// 1455 and intercept the authorization code; (2) browser→localhost traffic
+	// is unencrypted. Mitigation: the flow enforces PKCE (S256 code_challenge /
+	// code_verifier, see buildAuthorizeURL), so an intercepted code alone cannot
+	// be exchanged without the per-session verifier. Do not weaken PKCE.
+	codexRedirectURI = "http://localhost:1455/auth/callback"
 	codexScope        = "openid profile email offline_access"
 )
 
