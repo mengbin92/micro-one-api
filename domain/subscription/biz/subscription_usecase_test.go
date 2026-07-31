@@ -33,6 +33,10 @@ func (m *mockSubscriptionRepo) CreateSubscription(ctx context.Context, subscript
 	return nil
 }
 
+func (m *mockSubscriptionRepo) CreateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error {
+	return m.CreateSubscription(ctx, subscription)
+}
+
 func (m *mockSubscriptionRepo) UpdateSubscription(ctx context.Context, subscription *UserSubscription) error {
 	cloned := *subscription
 	m.subscriptions[subscription.ID] = &cloned
@@ -98,6 +102,10 @@ func (m *mockSubscriptionRepo) GetActiveSubscriptionByUser(ctx context.Context, 
 		}
 	}
 	return nil, ErrSubscriptionNotFound
+}
+
+func (m *mockSubscriptionRepo) GetActiveSubscriptionByUserInTx(ctx context.Context, tx *gorm.DB, userID int64) (*UserSubscription, error) {
+	return m.GetActiveSubscriptionByUser(ctx, userID)
 }
 
 func (m *mockSubscriptionRepo) AddUsage(ctx context.Context, userID int64, costUSD float64, now int64) error {

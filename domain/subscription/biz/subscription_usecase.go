@@ -84,7 +84,73 @@ func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscripti
 	return subscription, nil
 }
 
+// AssignInTx is the in-transaction variant of Assign used by the payment
+// assigner so the subscription grant commits or rolls back with the payment
+// order status transition (code-review 2026-07-30 billing-H2). The active-
+// subscription check and the create both run inside the caller's tx, with a
+// row lock on the existing active row (when present) so two concurrent grants
+// cannot both pass the "no active subscription" guard.
+func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx *gormDB, req *AssignSubscriptionRequest) (*UserSubscription, error) {
+	if req == nil {
+		return nil, fmt.Errorf("nil request")
+	}
+	group, err := uc.groupRepo.GetGroupByID(ctx, req.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	if group.Status != SubscriptionGroupStatusEnabled {
+		return nil, ErrSubscriptionGroupDisabled
+	}
+	active, err := uc.repo.GetActiveSubscriptionByUserInTx(ctx, tx, req.UserID)
+	if err != nil && !errors.Is(err, ErrSubscriptionNotFound) {
+		return nil, err
+	}
+	if active != nil {
+		return nil, ErrSubscriptionAlreadyAssigned
+	}
+	now := uc.now().Unix()
+	startsAt := req.StartsAt
+	if startsAt == 0 {
+		startsAt = now
+	}
+	subscription := &UserSubscription{
+		UserID:             req.UserID,
+		GroupID:            req.GroupID,
+		SubscriptionName:   req.SubscriptionName,
+		Status:             SubscriptionStatusActive,
+		StartsAt:           startsAt,
+		ExpiresAt:          req.ExpiresAt,
+		Metadata:           req.Metadata,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		DailyWindowStart:   startsAt,
+		WeeklyWindowStart:  startsAt,
+		MonthlyWindowStart: startsAt,
+	}
+	if err := uc.repo.CreateSubscriptionInTx(ctx, tx, subscription); err != nil {
+		return nil, err
+	}
+	return subscription, nil
+}
+
 func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
+	return uc.assignOrExtend(ctx, nil, req)
+}
+
+// AssignOrExtendInTx is the in-transaction variant of AssignOrExtend used
+// by the payment assigner so the subscription grant/extension and the
+// payment order status transition commit atomically (code-review
+// 2026-07-30 billing-H2). When tx is non-nil the active-subscription
+// read takes a row lock so two concurrent renewals cannot both observe
+// "no active subscription" and both insert.
+func (uc *SubscriptionUsecase) AssignOrExtendInTx(ctx context.Context, tx *gormDB, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
+	return uc.assignOrExtend(ctx, tx, req)
+}
+
+// assignOrExtend is the shared implementation. When tx is nil it behaves
+// exactly as the historical AssignOrExtend (each write in its own tx);
+// when tx is non-nil every read/write runs inside the caller's tx.
+func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx *gormDB, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
 	if req == nil {
 		return nil, false, fmt.Errorf("nil request")
 	}
@@ -95,13 +161,24 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 	if group.Status != SubscriptionGroupStatusEnabled {
 		return nil, false, ErrSubscriptionGroupDisabled
 	}
-	active, err := uc.repo.GetActiveSubscriptionByUser(ctx, req.UserID)
+	var active *UserSubscription
+	if tx != nil {
+		active, err = uc.repo.GetActiveSubscriptionByUserInTx(ctx, tx, req.UserID)
+	} else {
+		active, err = uc.repo.GetActiveSubscriptionByUser(ctx, req.UserID)
+	}
 	if err != nil && !errors.Is(err, ErrSubscriptionNotFound) {
 		return nil, false, err
 	}
 	if active == nil {
-		sub, err := uc.Assign(ctx, req)
-		return sub, false, err
+		var sub *UserSubscription
+		var sErr error
+		if tx != nil {
+			sub, sErr = uc.AssignInTx(ctx, tx, req)
+		} else {
+			sub, sErr = uc.Assign(ctx, req)
+		}
+		return sub, false, sErr
 	}
 	// Apply a scheduled next-cycle change (downgrade) when the renewal targets
 	// the pending group. The renewal-initiation layer (admin/service) is
@@ -137,8 +214,14 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 	}
 	active.Metadata = mergeSubscriptionMetadata(active.Metadata, req.Metadata)
 	active.UpdatedAt = now
-	if err := uc.repo.UpdateSubscription(ctx, active); err != nil {
-		return nil, true, err
+	if tx != nil {
+		if err := uc.repo.UpdateSubscriptionInTx(ctx, tx, active); err != nil {
+			return nil, true, err
+		}
+	} else {
+		if err := uc.repo.UpdateSubscription(ctx, active); err != nil {
+			return nil, true, err
+		}
 	}
 	return active, true, nil
 }
@@ -313,6 +396,15 @@ func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Contex
 // actual cost to).
 func (uc *SubscriptionUsecase) GetActiveSubscriptionForUser(ctx context.Context, userID int64) (*UserSubscription, error) {
 	return uc.repo.GetActiveSubscriptionByUser(ctx, userID)
+}
+
+// GetActiveSubscriptionForUserInTx is the row-locked variant of
+// GetActiveSubscriptionForUser. Billing calls it AFTER taking
+// LockSubscriptionRow inside the dual-track transaction so the
+// usage/window snapshot fed to the absorber is the locked read,
+// not a stale pre-lock snapshot (code-review 2026-07-30 billing-H3).
+func (uc *SubscriptionUsecase) GetActiveSubscriptionForUserInTx(ctx context.Context, tx *gormDB, userID int64) (*UserSubscription, error) {
+	return uc.repo.GetActiveSubscriptionByUserInTx(ctx, tx, userID)
 }
 
 // GetGroupForSubscription is a convenience wrapper used by the billing

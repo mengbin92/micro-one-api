@@ -25,6 +25,7 @@ type PaymentOrder struct {
 	Status           string     `gorm:"column:status;type:varchar(32);index;not null"`
 	ProviderTradeNo  string     `gorm:"column:provider_trade_no;type:varchar(128);index"`
 	ProviderPayload  string     `gorm:"column:provider_payload;type:text"`
+	RefundReason     string     `gorm:"column:refund_reason;type:text"`
 	PayURL           string     `gorm:"column:pay_url;type:text"`
 	AssetIssueStatus string     `gorm:"column:asset_issue_status;type:varchar(32);index;not null;default:'pending'"`
 	GroupID          int64      `gorm:"column:group_id;type:bigint;default:0"`
@@ -120,7 +121,7 @@ func (r *paymentRepo) ListOrders(ctx context.Context, req biz.ListPaymentOrdersR
 	return orders, total, nil
 }
 
-func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*biz.PaymentOrder) error) (*biz.PaymentOrder, bool, error) {
+func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*biz.PaymentOrder, *gorm.DB) error) (*biz.PaymentOrder, bool, error) {
 	var result *biz.PaymentOrder
 	changed := false
 
@@ -152,7 +153,10 @@ func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeN
 		if issue == nil {
 			return errors.New("payment asset issue callback is required")
 		}
-		if err := issue(order); err != nil {
+		// Code-review 2026-07-30 billing-H2: pass the outer tx so the issue
+		// callback (wallet credit + subscription grant) runs in this
+		// transaction and commits/rolls back with the order status flip.
+		if err := issue(order, tx); err != nil {
 			return err
 		}
 
@@ -290,7 +294,7 @@ func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason str
 		now := time.Now()
 		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]interface{}{
 			"status":             biz.PaymentOrderStatusRefunded,
-			"provider_payload":   reason,
+			"refund_reason":      reason,
 			"asset_issue_status": "refunded",
 			"updated_at":         now,
 		}).Error; err != nil {
@@ -328,6 +332,7 @@ func toPOPaymentOrder(order *biz.PaymentOrder) (*PaymentOrder, error) {
 		Status:           order.Status,
 		ProviderTradeNo:  order.ProviderTradeNo,
 		ProviderPayload:  order.ProviderPayload,
+		RefundReason:     order.RefundReason,
 		PayURL:           order.PayURL,
 		AssetIssueStatus: order.AssetIssueStatus,
 		GroupID:          order.GroupID,
@@ -357,6 +362,7 @@ func toBizPaymentOrder(po *PaymentOrder) (*biz.PaymentOrder, error) {
 		Status:           po.Status,
 		ProviderTradeNo:  po.ProviderTradeNo,
 		ProviderPayload:  po.ProviderPayload,
+		RefundReason:     po.RefundReason,
 		PayURL:           po.PayURL,
 		AssetIssueStatus: po.AssetIssueStatus,
 		GroupID:          po.GroupID,

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+
+	"gorm.io/gorm"
 )
 
 const subscriptionSecondsPerDay = 24 * 60 * 60
@@ -16,6 +18,11 @@ const subscriptionSecondsPerDay = 24 * 60 * 60
 type SubscriptionAssignmentUsecase interface {
 	Assign(ctx context.Context, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, error)
 	AssignOrExtend(ctx context.Context, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, bool, error)
+	// AssignOrExtendInTx is the in-transaction variant used by the
+	// payment assigner's in-tx path so the grant/extension commits or
+	// rolls back with the payment order status transition (code-review
+	// 2026-07-30 billing-H2).
+	AssignOrExtendInTx(ctx context.Context, tx *gorm.DB, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, bool, error)
 }
 
 type SubscriptionGroupGetter interface {
@@ -46,7 +53,28 @@ func NewPaymentSubscriptionAssigner(subscriptions SubscriptionAssignmentUsecase,
 	}
 }
 
+// AssignSubscriptionAfterPayment is the legacy entry point that fulfils the
+// subscription grant outside the caller's transaction. It is retained for
+// test paths that exercise the assigner with an in-memory fake. Production
+// callers should use AssignSubscriptionAfterPaymentInTx so the grant and the
+// payment order status transition commit atomically (code-review
+// 2026-07-30 billing-H2).
 func (a *paymentSubscriptionAssigner) AssignSubscriptionAfterPayment(ctx context.Context, order *PaymentOrder) error {
+	return a.assignSubscriptionAfterPayment(ctx, nil, order)
+}
+
+// AssignSubscriptionAfterPaymentInTx fulfils the subscription grant inside
+// the caller's transaction. The subscription assign/extend and the payment
+// order status transition therefore commit or roll back atomically, so a
+// failure after the grant (e.g. the payment_orders Updates) cannot leave the
+// wallet/subscription credited while the order stays pending (which a
+// replayed payment callback would re-credit). When tx is nil the function
+// falls back to the legacy non-tx path (used by in-memory tests).
+func (a *paymentSubscriptionAssigner) AssignSubscriptionAfterPaymentInTx(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error {
+	return a.assignSubscriptionAfterPayment(ctx, tx, order)
+}
+
+func (a *paymentSubscriptionAssigner) assignSubscriptionAfterPayment(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error {
 	if a == nil || a.subscriptions == nil {
 		return errors.New("subscription assigner is not configured")
 	}
@@ -61,7 +89,7 @@ func (a *paymentSubscriptionAssigner) AssignSubscriptionAfterPayment(ctx context
 	// the group-only path requires a populated order.GroupID and a configured
 	// group getter.
 	if order.PlanID > 0 {
-		return a.assignPlan(ctx, order)
+		return a.assignPlan(ctx, tx, order)
 	}
 	if a.groups == nil {
 		return errors.New("subscription assigner is not configured")
@@ -69,10 +97,10 @@ func (a *paymentSubscriptionAssigner) AssignSubscriptionAfterPayment(ctx context
 	if order.GroupID <= 0 {
 		return errors.New("subscription group_id is required")
 	}
-	return a.assignGroup(ctx, order)
+	return a.assignGroup(ctx, tx, order)
 }
 
-func (a *paymentSubscriptionAssigner) assignGroup(ctx context.Context, order *PaymentOrder) error {
+func (a *paymentSubscriptionAssigner) assignGroup(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error {
 	userID, err := strconv.ParseInt(order.UserID, 10, 64)
 	if err != nil || userID <= 0 {
 		return fmt.Errorf("invalid payment order user_id %q", order.UserID)
@@ -93,25 +121,32 @@ func (a *paymentSubscriptionAssigner) assignGroup(ctx context.Context, order *Pa
 		"payment_trade_no":  order.TradeNo,
 		"provider_trade_no": order.ProviderTradeNo,
 	})
-	sub, _, err := a.subscriptions.AssignOrExtend(ctx, &subscriptionbiz.AssignSubscriptionRequest{
+	req := &subscriptionbiz.AssignSubscriptionRequest{
 		UserID:           userID,
 		GroupID:          order.GroupID,
 		SubscriptionName: name,
 		StartsAt:         now,
 		ExpiresAt:        now + int64(group.DurationDays)*subscriptionSecondsPerDay,
 		Metadata:         string(metadata),
-	})
-	if err == nil && sub != nil {
+	}
+	var sub *subscriptionbiz.UserSubscription
+	var err2 error
+	if tx != nil {
+		sub, _, err2 = a.subscriptions.AssignOrExtendInTx(ctx, tx, req)
+	} else {
+		sub, _, err2 = a.subscriptions.AssignOrExtend(ctx, req)
+	}
+	if err2 == nil && sub != nil {
 		// Stamp the granted subscription id onto the order so refunds can
 		// resolve the exact subscription deterministically (phase 2.3
 		// traceability) instead of falling back to the user's current
 		// active subscription.
 		order.SubscriptionID = sub.ID
 	}
-	return err
+	return err2
 }
 
-func (a *paymentSubscriptionAssigner) assignPlan(ctx context.Context, order *PaymentOrder) error {
+func (a *paymentSubscriptionAssigner) assignPlan(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error {
 	if order == nil {
 		return errors.New("payment order is required")
 	}
@@ -122,7 +157,7 @@ func (a *paymentSubscriptionAssigner) assignPlan(ctx context.Context, order *Pay
 	if snap, snapErr := DecodePlanSnapshot(order.PlanSnapshot); snapErr != nil {
 		return fmt.Errorf("decode plan snapshot: %w", snapErr)
 	} else if snap.PlanID > 0 {
-		return a.assignFromSnapshot(ctx, order, snap)
+		return a.assignFromSnapshot(ctx, tx, order, snap)
 	}
 
 	if a.plans == nil {
@@ -161,25 +196,32 @@ func (a *paymentSubscriptionAssigner) assignPlan(ctx context.Context, order *Pay
 		"plan_id":           strconv.FormatInt(plan.ID, 10),
 		"plan_name":         plan.Name,
 	})
-	sub, _, err := a.subscriptions.AssignOrExtend(ctx, &subscriptionbiz.AssignSubscriptionRequest{
+	req := &subscriptionbiz.AssignSubscriptionRequest{
 		UserID:           userID,
 		GroupID:          plan.GroupID,
 		SubscriptionName: name,
 		StartsAt:         now,
 		ExpiresAt:        expiresAt,
 		Metadata:         string(metadata),
-	})
-	if err == nil && sub != nil {
+	}
+	var sub *subscriptionbiz.UserSubscription
+	var assignErr error
+	if tx != nil {
+		sub, _, assignErr = a.subscriptions.AssignOrExtendInTx(ctx, tx, req)
+	} else {
+		sub, _, assignErr = a.subscriptions.AssignOrExtend(ctx, req)
+	}
+	if assignErr == nil && sub != nil {
 		// Stamp the granted subscription id onto the order (phase 2.3).
 		order.SubscriptionID = sub.ID
 	}
-	return err
+	return assignErr
 }
 
 // assignFromSnapshot issues the subscription using only the frozen plan view
 // stored on the payment order. The live plan row is not consulted, so taking
 // the plan off-shelf after order creation cannot strand an already-paid order.
-func (a *paymentSubscriptionAssigner) assignFromSnapshot(ctx context.Context, order *PaymentOrder, snap PlanSnapshot) error {
+func (a *paymentSubscriptionAssigner) assignFromSnapshot(ctx context.Context, tx *gorm.DB, order *PaymentOrder, snap PlanSnapshot) error {
 	userID, err := strconv.ParseInt(order.UserID, 10, 64)
 	if err != nil || userID <= 0 {
 		return fmt.Errorf("invalid payment order user_id %q", order.UserID)
@@ -210,17 +252,24 @@ func (a *paymentSubscriptionAssigner) assignFromSnapshot(ctx context.Context, or
 		"plan_name":         snap.Name,
 		"plan_snapshot":     "true",
 	})
-	sub, _, err := a.subscriptions.AssignOrExtend(ctx, &subscriptionbiz.AssignSubscriptionRequest{
+	req := &subscriptionbiz.AssignSubscriptionRequest{
 		UserID:           userID,
 		GroupID:          snap.GroupID,
 		SubscriptionName: name,
 		StartsAt:         now,
 		ExpiresAt:        expiresAt,
 		Metadata:         string(metadata),
-	})
-	if err == nil && sub != nil {
+	}
+	var sub *subscriptionbiz.UserSubscription
+	var assignErr error
+	if tx != nil {
+		sub, _, assignErr = a.subscriptions.AssignOrExtendInTx(ctx, tx, req)
+	} else {
+		sub, _, assignErr = a.subscriptions.AssignOrExtend(ctx, req)
+	}
+	if assignErr == nil && sub != nil {
 		// Stamp the granted subscription id onto the order (phase 2.3).
 		order.SubscriptionID = sub.ID
 	}
-	return err
+	return assignErr
 }

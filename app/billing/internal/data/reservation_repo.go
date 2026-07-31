@@ -8,7 +8,6 @@ import (
 	"micro-one-api/app/billing/internal/biz"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type reservationRepo struct {
@@ -70,8 +69,8 @@ func (r *reservationRepo) GetReservationInTx(ctx context.Context, tx *gorm.DB, r
 	}
 	var model reservationModel
 	q := tx.WithContext(ctx).Where("reservation_id = ?", reservationID)
-	if dialectorName(tx) != "sqlite3" {
-		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
+	if !isSQLite(dialectorName(tx)) {
+		q = q.Clauses(forUpdateClause(dialectorName(tx)))
 	}
 	if err := q.First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -92,6 +91,30 @@ func (r *reservationRepo) FindByRequestID(ctx context.Context, requestID string)
 		return nil, err
 	}
 
+	return reservationFromModel(&model), nil
+}
+
+// FindByRequestIDInTx is the row-locked variant of FindByRequestID. It
+// scopes the lookup by (user_id, request_id) so a request_id owned by
+// user A cannot be replayed as user B's cached reservation. The read
+// happens inside the caller's transaction so the subsequent insert and
+// this read are atomic against another concurrent ReserveQuota for the
+// same (user_id, request_id) pair (code-review 2026-07-30 billing-M5).
+func (r *reservationRepo) FindByRequestIDInTx(ctx context.Context, tx *gorm.DB, userID, requestID string) (*biz.Reservation, error) {
+	if tx == nil {
+		tx = r.data.db.WithContext(ctx)
+	}
+	var model reservationModel
+	q := tx.WithContext(ctx).Where("user_id = ? AND request_id = ?", userID, requestID)
+	if !isSQLite(dialectorName(tx)) {
+		q = q.Clauses(forUpdateClause(dialectorName(tx)))
+	}
+	if err := q.First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
 	return reservationFromModel(&model), nil
 }
 
@@ -121,6 +144,19 @@ func (r *reservationRepo) CASReservationStatus(ctx context.Context, tx *gorm.DB,
 	return res.RowsAffected > 0, nil
 }
 
+// SetActualCostInTx persists the real settlement cost on a reservation inside
+// the caller's transaction (code-review 2026-07-30 billing-L1). It only writes
+// a non-zero actual_cost so a legacy row that was never settled keeps Amount
+// as the fallback on read paths.
+func (r *reservationRepo) SetActualCostInTx(ctx context.Context, tx *gorm.DB, reservationID string, actualCost int64) error {
+	if tx == nil {
+		tx = r.data.db.WithContext(ctx)
+	}
+	return tx.WithContext(ctx).Model(&reservationModel{}).
+		Where("reservation_id = ?", reservationID).
+		Update("actual_cost", actualCost).Error
+}
+
 // LockSubscriptionRow takes a row lock on the user_subscriptions row with
 // the given id. The lock is only used by the dual-track pre-deduction
 // flow to serialise concurrent reservations against the same
@@ -136,7 +172,7 @@ func (r *reservationRepo) LockSubscriptionRow(ctx context.Context, tx *gorm.DB, 
 	var row struct {
 		ID int64 `gorm:"column:id"`
 	}
-	if dialectorName(tx) == "sqlite3" {
+	if isSQLite(dialectorName(tx)) {
 		// SQLite uses BEGIN..COMMIT which already serialises writers.
 		// We still issue the SELECT so the function is observably a
 		// "lock" call and the test infrastructure has a hook to assert
@@ -147,7 +183,7 @@ func (r *reservationRepo) LockSubscriptionRow(ctx context.Context, tx *gorm.DB, 
 			Take(&row).Error
 	}
 	return tx.WithContext(ctx).
-		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Clauses(forUpdateClause(dialectorName(tx))).
 		Table("user_subscriptions").
 		Where("id = ?", subscriptionID).
 		Take(&row).Error
@@ -232,6 +268,7 @@ func reservationFromModel(model *reservationModel) *biz.Reservation {
 		SubscriptionWeeklyWindowStart:  model.SubscriptionWeeklyWindowStart,
 		SubscriptionMonthlyWindowStart: model.SubscriptionMonthlyWindowStart,
 		BalanceAmountQuota:             model.BalanceAmountQuota,
+		ActualCost:                     model.ActualCost,
 		CreatedAt:                      model.CreatedAt,
 		UpdatedAt:                      model.UpdatedAt,
 		ExpiredAt:                      timeFromPtr(model.ExpiredAt),

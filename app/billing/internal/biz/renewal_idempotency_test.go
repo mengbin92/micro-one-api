@@ -38,6 +38,13 @@ func (f *renewingAssignmentUsecase) AssignOrExtend(ctx context.Context, req *sub
 	return &subscriptionbiz.UserSubscription{ID: 1, ExpiresAt: req.ExpiresAt}, f.extending, nil
 }
 
+// AssignOrExtendInTx mirrors the production in-tx path for the in-memory
+// test double: tx is nil in the renewal idempotency tests, so the non-tx
+// AssignOrExtend path is exercised.
+func (f *renewingAssignmentUsecase) AssignOrExtendInTx(ctx context.Context, tx *gorm.DB, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, bool, error) {
+	return f.AssignOrExtend(ctx, req)
+}
+
 // inMemoryPaymentRepoForRenewal models the MarkOrderPaid idempotency guard:
 // the first paid transition runs the issue callback; a second call on an
 // already-paid order short-circuits and returns changed=false without
@@ -61,7 +68,7 @@ func (r *inMemoryPaymentRepoForRenewal) GetOrderByTradeNo(ctx context.Context, t
 func (r *inMemoryPaymentRepoForRenewal) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
 	return nil, 0, nil
 }
-func (r *inMemoryPaymentRepoForRenewal) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder) error) (*PaymentOrder, bool, error) {
+func (r *inMemoryPaymentRepoForRenewal) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.order == nil || r.order.TradeNo != tradeNo {
@@ -71,7 +78,7 @@ func (r *inMemoryPaymentRepoForRenewal) MarkOrderPaid(ctx context.Context, trade
 		c := *r.order
 		return &c, false, nil
 	}
-	if err := issue(r.order); err != nil {
+	if err := issue(r.order, nil); err != nil {
 		return nil, false, err
 	}
 	r.order.Status = PaymentOrderStatusPaid

@@ -136,22 +136,56 @@ func (r *redeemRepo) UpdateRedeemCode(ctx context.Context, code *biz.RedeemCode)
 		Updates(updates).Error
 }
 
+// UpdateRedeemCodeCount atomically decrements a redeem code's remaining
+// count using a single conditional UPDATE. The WHERE clauses guard both
+// status (only enabled codes can be redeemed) and inventory (count >= delta),
+// so two concurrent RedeemCode calls on a count=1 code cannot both succeed —
+// exactly one UPDATE affects a row. Callers must check RowsAffected to detect
+// the disabled / exhausted case. This replaces the historical
+// SELECT-then-UPDATE read-modify-write which lost updates under concurrency
+// (two callers both read count=1, both wrote count=0, both credited the user).
 func (r *redeemRepo) UpdateRedeemCodeCount(ctx context.Context, code string, delta int) error {
-	// 先查询当前值
-	var model redeemCodeModel
-	if err := r.data.db.WithContext(ctx).Where("code = ?", code).First(&model).Error; err != nil {
-		return err
+	if delta <= 0 {
+		return errors.New("invalid redeem code count delta")
 	}
-
-	// 检查是否有足够的数量
-	if model.Count < delta {
-		return errors.New("insufficient redeem code count")
-	}
-
-	// 更新数量
-	return r.data.db.WithContext(ctx).Model(&redeemCodeModel{}).
+	res := r.data.db.WithContext(ctx).
+		Model(&redeemCodeModel{}).
 		Where("code = ?", code).
-		Update("count", model.Count-delta).Error
+		Where("status = ?", biz.RedeemCodeStatusEnabled).
+		Where("count >= ?", delta).
+		Update("count", gorm.Expr("count - ?", delta))
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		// Either the code does not exist, is disabled, or has been
+		// exhausted. The caller has already fetched the RedeemCode and
+		// classified the failure; this sentinel lets the usecase
+		// distinguish "lost the race" from a genuine DB error.
+		return biz.ErrRedeemCodeUsedUp
+	}
+	return nil
+}
+
+// UpdateRedeemCodeCountInTx performs the same atomic conditional decrement
+// as UpdateRedeemCodeCount but inside the caller's transaction.
+func (r *redeemRepo) UpdateRedeemCodeCountInTx(ctx context.Context, tx *gorm.DB, code string, delta int) error {
+	if delta <= 0 {
+		return errors.New("invalid redeem code count delta")
+	}
+	res := tx.WithContext(ctx).
+		Model(&redeemCodeModel{}).
+		Where("code = ?", code).
+		Where("status = ?", biz.RedeemCodeStatusEnabled).
+		Where("count >= ?", delta).
+		Update("count", gorm.Expr("count - ?", delta))
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return biz.ErrRedeemCodeUsedUp
+	}
+	return nil
 }
 
 func (r *redeemRepo) DeleteRedeemCode(ctx context.Context, code string) error {
@@ -161,6 +195,14 @@ func (r *redeemRepo) DeleteRedeemCode(ctx context.Context, code string) error {
 }
 
 func (r *redeemRepo) CreateRedeemRecord(ctx context.Context, record *biz.RedeemRecord) error {
+	return r.createRedeemRecord(ctx, r.data.db, record)
+}
+
+func (r *redeemRepo) CreateRedeemRecordInTx(ctx context.Context, tx *gorm.DB, record *biz.RedeemRecord) error {
+	return r.createRedeemRecord(ctx, tx, record)
+}
+
+func (r *redeemRepo) createRedeemRecord(ctx context.Context, db *gorm.DB, record *biz.RedeemRecord) error {
 	model := &redeemRecordModel{
 		UserID:        record.UserID,
 		Code:          record.Code,
@@ -170,7 +212,7 @@ func (r *redeemRepo) CreateRedeemRecord(ctx context.Context, record *biz.RedeemR
 		CreatedAt:     time.Now(),
 	}
 
-	return r.data.db.WithContext(ctx).Create(model).Error
+	return db.WithContext(ctx).Create(model).Error
 }
 
 func redeemCodeModelFromBiz(code *biz.RedeemCode, now time.Time) (*redeemCodeModel, error) {

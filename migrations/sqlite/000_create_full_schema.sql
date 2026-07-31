@@ -270,7 +270,8 @@ CREATE TABLE IF NOT EXISTS billing_reservations (
   subscription_daily_window_start INTEGER NOT NULL DEFAULT 0,
   subscription_weekly_window_start INTEGER NOT NULL DEFAULT 0,
   subscription_monthly_window_start INTEGER NOT NULL DEFAULT 0,
-  balance_amount_quota INTEGER NOT NULL DEFAULT 0
+  balance_amount_quota INTEGER NOT NULL DEFAULT 0,
+  actual_cost INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_billing_reservations_user_id       ON billing_reservations(user_id);
@@ -278,6 +279,14 @@ CREATE INDEX IF NOT EXISTS idx_billing_reservations_request_id     ON billing_re
 CREATE INDEX IF NOT EXISTS idx_billing_reservations_status_expired ON billing_reservations(status, expired_at);
 CREATE INDEX IF NOT EXISTS idx_billing_reservations_user_status   ON billing_reservations(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_billing_reservations_subscription  ON billing_reservations(subscription_id, status);
+-- v0.11.x billing-M5: per-user request_id uniqueness for idempotency.
+-- Legacy rows may share an empty request_id across users; the pair
+-- (user_id, request_id) is therefore unique, not request_id alone.
+-- On Postgres this is a partial index (request_id <> ''); on SQLite
+-- the unique index spans every row, so callers MUST NOT persist
+-- duplicate empty request_id pairs for the same user.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_reservations_user_request
+  ON billing_reservations(user_id, request_id);
 
 CREATE TABLE IF NOT EXISTS billing_ledgers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -378,7 +387,8 @@ CREATE TABLE IF NOT EXISTS payment_orders (
   group_id INTEGER NOT NULL DEFAULT 0,
   plan_id INTEGER NOT NULL DEFAULT 0,
   plan_snapshot TEXT DEFAULT NULL,
-  subscription_id INTEGER NOT NULL DEFAULT 0
+  subscription_id INTEGER NOT NULL DEFAULT 0,
+  refund_reason TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_orders_user_id                ON payment_orders(user_id);

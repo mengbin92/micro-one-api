@@ -36,7 +36,7 @@ func (r *capturingPaymentRepo) GetOrderByTradeNo(ctx context.Context, tradeNo st
 func (r *capturingPaymentRepo) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
 	return nil, 0, nil
 }
-func (r *capturingPaymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder) error) (*PaymentOrder, bool, error) {
+func (r *capturingPaymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
 func (r *capturingPaymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error) {

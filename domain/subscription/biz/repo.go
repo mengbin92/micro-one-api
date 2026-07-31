@@ -8,6 +8,11 @@ import (
 
 type SubscriptionRepository interface {
 	CreateSubscription(ctx context.Context, subscription *UserSubscription) error
+	// CreateSubscriptionInTx inserts a subscription inside the caller's
+	// transaction. Used by the payment assigner path so the grant and the
+	// payment order status transition commit atomically (code-review
+	// 2026-07-30 billing-H2).
+	CreateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error
 	UpdateSubscription(ctx context.Context, subscription *UserSubscription) error
 	UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error
 	DeleteSubscription(ctx context.Context, subscriptionID int64) error
@@ -18,6 +23,12 @@ type SubscriptionRepository interface {
 	// status, newest first, so admins can browse without knowing a user id.
 	ListAllSubscriptions(ctx context.Context) ([]*UserSubscription, error)
 	GetActiveSubscriptionByUser(ctx context.Context, userID int64) (*UserSubscription, error)
+	// GetActiveSubscriptionByUserInTx is the row-locked variant of
+	// GetActiveSubscriptionByUser. It is used by the payment assigner's
+	// in-tx path so the "is there already an active subscription" check
+	// and the subsequent create/extend happen against the same locked
+	// snapshot (code-review 2026-07-30 billing-H2 / domain-H1).
+	GetActiveSubscriptionByUserInTx(ctx context.Context, tx *gorm.DB, userID int64) (*UserSubscription, error)
 	// AddUsage atomically rolls the active subscription's usage windows relative
 	// to now (unix seconds) and adds costUSD to every window. Implementations
 	// must perform the read-roll-increment as a single atomic unit so concurrent

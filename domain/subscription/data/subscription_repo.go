@@ -44,6 +44,19 @@ func (r *Repository) CreateSubscription(ctx context.Context, subscription *biz.U
 	return r.createSubscriptionMemory(ctx, subscription)
 }
 
+// CreateSubscriptionInTx inserts a subscription inside the caller's
+// transaction (code-review 2026-07-30 billing-H2). The in-memory path has
+// no transaction concept so it falls back to the memory create.
+func (r *Repository) CreateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
+	if tx == nil {
+		return errors.New("nil transaction")
+	}
+	if r.db != nil {
+		return r.createSubscriptionInTxDB(ctx, tx, subscription)
+	}
+	return r.createSubscriptionMemory(ctx, subscription)
+}
+
 func (r *Repository) UpdateSubscription(ctx context.Context, subscription *biz.UserSubscription) error {
 	if r.db != nil {
 		return r.updateSubscriptionDB(ctx, subscription)
@@ -100,6 +113,21 @@ func (r *Repository) GetActiveSubscriptionByUser(ctx context.Context, userID int
 	return r.getActiveSubscriptionByUserMemory(ctx, userID)
 }
 
+// GetActiveSubscriptionByUserInTx is the row-locked variant used by the
+// payment assigner's in-tx path. The lock serialises concurrent
+// grant/extend calls so two renewals for the same user cannot both
+// observe "no active subscription" and both insert (code-review
+// 2026-07-30 billing-H2 / domain-H1).
+func (r *Repository) GetActiveSubscriptionByUserInTx(ctx context.Context, tx *gorm.DB, userID int64) (*biz.UserSubscription, error) {
+	if tx == nil {
+		return nil, errors.New("nil transaction")
+	}
+	if r.db != nil {
+		return r.getActiveSubscriptionByUserInTxDB(ctx, tx, userID)
+	}
+	return r.getActiveSubscriptionByUserMemory(ctx, userID)
+}
+
 func (r *Repository) AddUsage(ctx context.Context, userID int64, costUSD float64, now int64) error {
 	if r.db != nil {
 		return r.addUsageDB(ctx, userID, costUSD, now)
@@ -129,8 +157,8 @@ func (r *Repository) GetByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionI
 func (r *Repository) addUsageByIDInTxDB(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error {
 	var model subscriptionModel
 	q := tx.WithContext(ctx).Where("id = ?", subscriptionID)
-	if dialectorName(tx) != "sqlite3" {
-		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
+	if !isSQLite(dialectorName(tx)) {
+		q = q.Clauses(forUpdateClause(dialectorName(tx)))
 	}
 	if err := q.First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -157,8 +185,8 @@ func (r *Repository) addUsageByIDInTxDB(ctx context.Context, tx *gorm.DB, subscr
 func (r *Repository) getByIDInTxDB(ctx context.Context, tx *gorm.DB, subscriptionID int64) (*biz.UserSubscription, error) {
 	var model subscriptionModel
 	q := tx.WithContext(ctx).Where("id = ?", subscriptionID)
-	if dialectorName(tx) != "sqlite3" {
-		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
+	if !isSQLite(dialectorName(tx)) {
+		q = q.Clauses(forUpdateClause(dialectorName(tx)))
 	}
 	if err := q.First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -244,6 +272,22 @@ func (r *Repository) createSubscriptionDB(ctx context.Context, subscription *biz
 	return nil
 }
 
+// createSubscriptionInTxDB is the in-transaction variant of
+// createSubscriptionDB. It shares the duplicate-key -> already-assigned
+// mapping so a concurrent grant inside the same tx shape surfaces the
+// sentinel error to the caller.
+func (r *Repository) createSubscriptionInTxDB(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
+	model := subscriptionToModel(subscription)
+	if err := tx.WithContext(ctx).Create(&model).Error; err != nil {
+		if isDuplicateKeyErr(err) {
+			return biz.ErrSubscriptionAlreadyAssigned
+		}
+		return err
+	}
+	subscription.ID = model.ID
+	return nil
+}
+
 func (r *Repository) updateSubscriptionDB(ctx context.Context, subscription *biz.UserSubscription) error {
 	return updateSubscriptionWithTx(ctx, r.db.WithContext(ctx), subscription)
 }
@@ -303,6 +347,28 @@ func (r *Repository) getActiveSubscriptionByUserDB(ctx context.Context, userID i
 		Where("user_id = ? AND status = ?", userID, string(biz.SubscriptionStatusActive)).
 		Order("updated_at DESC, id DESC").
 		First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, biz.ErrSubscriptionNotFound
+		}
+		return nil, err
+	}
+	subscription := subscriptionFromModel(&model)
+	return &subscription, nil
+}
+
+// getActiveSubscriptionByUserInTxDB is the row-locked variant of
+// getActiveSubscriptionByUserDB. It takes a SELECT ... FOR UPDATE lock
+// on the active row so the subsequent extend happens against a stable
+// snapshot (code-review 2026-07-30 billing-H2 / domain-H1).
+func (r *Repository) getActiveSubscriptionByUserInTxDB(ctx context.Context, tx *gorm.DB, userID int64) (*biz.UserSubscription, error) {
+	var model subscriptionModel
+	q := tx.WithContext(ctx).
+		Where("user_id = ? AND status = ?", userID, string(biz.SubscriptionStatusActive)).
+		Order("updated_at DESC, id DESC")
+	if !isSQLite(dialectorName(tx)) {
+		q = q.Clauses(forUpdateClause(dialectorName(tx)))
+	}
+	if err := q.First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrSubscriptionNotFound
 		}

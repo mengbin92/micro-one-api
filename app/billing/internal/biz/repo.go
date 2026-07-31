@@ -44,6 +44,14 @@ type ReservationRepo interface {
 	CreateReservation(ctx context.Context, reservation *Reservation) error
 	GetReservation(ctx context.Context, reservationID string) (*Reservation, error)
 	FindByRequestID(ctx context.Context, requestID string) (*Reservation, error)
+	// FindByRequestIDInTx is the row-locked variant of FindByRequestID.
+	// Used by ReserveQuota's idempotency check so the read of an existing
+	// reservation for the same request_id happens inside the same
+	// transaction as the subsequent insert, closing the non-tx read-then-
+	// write race that let two concurrent ReserveQuota calls for the same
+	// (user_id, request_id) both insert and double-charge the wallet
+	// (code-review 2026-07-30 billing-M5).
+	FindByRequestIDInTx(ctx context.Context, tx *gorm.DB, userID, requestID string) (*Reservation, error)
 	UpdateReservationStatus(ctx context.Context, reservationID string, status string) error
 	GetExpiredReservations(ctx context.Context) ([]*Reservation, error)
 	// CreateReservationInTx inserts a reservation in the caller's transaction.
@@ -61,6 +69,14 @@ type ReservationRepo interface {
 	// current status inside the caller's transaction so it pairs with the
 	// locking SELECT FOR UPDATE the caller must have already taken.
 	CASReservationStatus(ctx context.Context, tx *gorm.DB, reservationID, from, to string) (bool, error)
+	// SetActualCostInTx persists the real settlement cost on a reservation
+	// inside the caller's transaction (code-review 2026-07-30 billing-L1).
+	// It is called by the commit pipeline immediately before the final
+	// CAS to "committed" so an idempotent retry that re-reads the row
+	// returns the authoritative actual cost rather than the pre-deduction
+	// estimate stored in Amount. It only writes a non-zero actual_cost so a
+	// legacy row that was never settled keeps Amount as the fallback.
+	SetActualCostInTx(ctx context.Context, tx *gorm.DB, reservationID string, actualCost int64) error
 	// LockSubscriptionRow takes a row lock on the user_subscriptions row
 	// identified by id. Used by the dual-track pre-deduction flow to
 	// serialise concurrent reservations against the same subscription so
@@ -130,8 +146,15 @@ type RedeemRepo interface {
 	SearchRedeemCodes(ctx context.Context, keyword string) ([]*RedeemCode, error)
 	UpdateRedeemCode(ctx context.Context, code *RedeemCode) error
 	UpdateRedeemCodeCount(ctx context.Context, code string, delta int) error
+	// UpdateRedeemCodeCountInTx is the transactional variant of
+	// UpdateRedeemCodeCount. It performs the same atomic conditional
+	// decrement but inside the caller's transaction so the count
+	// decrement, wallet credit, ledger and record commit or roll back
+	// together (billing code-review 2026-07-30 H1).
+	UpdateRedeemCodeCountInTx(ctx context.Context, tx *gorm.DB, code string, delta int) error
 	DeleteRedeemCode(ctx context.Context, code string) error
 	CreateRedeemRecord(ctx context.Context, record *RedeemRecord) error
+	CreateRedeemRecordInTx(ctx context.Context, tx *gorm.DB, record *RedeemRecord) error
 }
 
 type PricingConfigStore interface {

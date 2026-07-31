@@ -118,6 +118,16 @@ func (m *mockReservationRepo) FindByRequestID(ctx context.Context, requestID str
 	return nil, nil
 }
 
+func (m *mockReservationRepo) FindByRequestIDInTx(ctx context.Context, tx *gorm.DB, userID, requestID string) (*Reservation, error) {
+	// Mock ignores tx; mirror FindByRequestID but scope by (userID, requestID).
+	for _, res := range m.reservations {
+		if res.RequestID == requestID && res.UserID == userID {
+			return res, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *mockReservationRepo) GetExpiredReservations(ctx context.Context) ([]*Reservation, error) {
 	var expired []*Reservation
 	for _, res := range m.reservations {
@@ -146,6 +156,13 @@ func (m *mockReservationRepo) CASReservationStatus(ctx context.Context, tx *gorm
 	}
 	res.Status = to
 	return true, nil
+}
+
+func (m *mockReservationRepo) SetActualCostInTx(ctx context.Context, tx *gorm.DB, reservationID string, actualCost int64) error {
+	if res, ok := m.reservations[reservationID]; ok {
+		res.ActualCost = actualCost
+	}
+	return nil
 }
 
 func (m *mockReservationRepo) LockSubscriptionRow(ctx context.Context, tx *gorm.DB, subscriptionID int64) error {
@@ -315,15 +332,31 @@ func (m *mockRedeemRepo) GetRedeemCode(ctx context.Context, code string) (*Redee
 }
 
 func (m *mockRedeemRepo) UpdateRedeemCodeCount(ctx context.Context, code string, delta int) error {
-	if c, ok := m.codes[code]; ok {
-		c.Count -= int32(delta)
+	c, ok := m.codes[code]
+	if !ok {
+		return ErrRedeemCodeNotFound
 	}
+	if c.Status != RedeemCodeStatusEnabled {
+		return ErrRedeemCodeDisabled
+	}
+	if c.Count < int32(delta) {
+		return ErrRedeemCodeUsedUp
+	}
+	c.Count -= int32(delta)
 	return nil
+}
+
+func (m *mockRedeemRepo) UpdateRedeemCodeCountInTx(ctx context.Context, tx *gorm.DB, code string, delta int) error {
+	return m.UpdateRedeemCodeCount(ctx, code, delta)
 }
 
 func (m *mockRedeemRepo) CreateRedeemRecord(ctx context.Context, record *RedeemRecord) error {
 	m.records = append(m.records, record)
 	return nil
+}
+
+func (m *mockRedeemRepo) CreateRedeemRecordInTx(ctx context.Context, tx *gorm.DB, record *RedeemRecord) error {
+	return m.CreateRedeemRecord(ctx, record)
 }
 
 // 正确的预扣测试 - 从 1000 开始，预扣 100，最终应该是 900
@@ -477,6 +510,37 @@ func TestCommitQuota_AlreadyCommitted(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, int64(100), amount)
+	assert.Equal(t, int64(0), refund)
+}
+
+// TestCommitQuota_AlreadyCommitted_ReturnsActualCost verifies the code-review
+// 2026-07-30 billing-L1 fix: an idempotent re-entry of CommitQuota on an
+// already-committed reservation returns the persisted ActualCost (the real
+// settlement cost) rather than the pre-deduction Amount estimate. Legacy rows
+// committed before the actual_cost column existed keep Amount as the fallback
+// (covered by TestCommitQuota_AlreadyCommitted above, where ActualCost==0).
+func TestCommitQuota_AlreadyCommitted_ReturnsActualCost(t *testing.T) {
+	account := &Account{
+		UserID: "user1",
+		Group:  "default",
+	}
+	// Amount=100 is the estimate; ActualCost=80 is what really settled.
+	reservation := &Reservation{
+		ReservationID: "res-actual",
+		UserID:        "user1",
+		Amount:        100,
+		ActualCost:    80,
+		Status:        ReservationStatusCommitted,
+		CreatedAt:     time.Now(),
+	}
+	accountRepo := &mockAccountRepo{account: account}
+	reservationRepo := &mockReservationRepo{reservations: map[string]*Reservation{"res-actual": reservation}}
+	uc := NewBillingUsecase(accountRepo, reservationRepo, &mockLedgerRepo{}, &mockRedeemRepo{}, nil)
+
+	amount, refund, err := uc.CommitQuota(context.Background(), "res-actual", 80, true)
+	assert.NoError(t, err)
+	// Real settlement cost, not the estimate.
+	assert.Equal(t, int64(80), amount)
 	assert.Equal(t, int64(0), refund)
 }
 

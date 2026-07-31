@@ -133,17 +133,24 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	paymentUc := biz.NewPaymentUsecaseWithAssignerAndSnapshotter(d.PaymentRepo(), paymentProvider, paymentAssetIssuer, paymentSubscriptionAssigner, planSnapshotter)
 
 	var alipayVerifier biz.PaymentNotifyVerifier
+	var configuredAlipayAppID string
 	if cfg.Bootstrap.Payment != nil && cfg.Bootstrap.Payment.Alipay != nil {
-		alipayVerifier = biz.NewAlipayPaymentProvider(cfg.Bootstrap.Payment.ToPaymentConfig().Alipay)
+		alipayCfg := cfg.Bootstrap.Payment.ToPaymentConfig().Alipay
+		configuredAlipayAppID = alipayCfg.AppID
+		alipayVerifier = biz.NewAlipayPaymentProvider(alipayCfg)
 	} else {
 		alipayVerifier = biz.NewAlipayPaymentProvider(biz.AlipayConfig{})
 	}
 	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)
 
+	svc.SetExpectedAlipayAppID(configuredAlipayAppID)
+
 	refundUc := biz.NewRefundUsecase(d.PaymentRepo(), d.AccountRepo(), d.LedgerRepo(), subscriptionUc)
 	svc.SetRefundUsecase(refundUc)
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
+
+	reconUc.SetReservationReleaser(uc)
 
 	svc.SetAsyncBillingUsecase(asyncBilling)
 

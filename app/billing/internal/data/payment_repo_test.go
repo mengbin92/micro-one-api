@@ -34,7 +34,7 @@ func TestPaymentRepo_CreateAndMarkPaid(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, created)
 
-	paid, changed, err := repo.MarkOrderPaid(context.Background(), "PAY-1", "provider-1", func(order *biz.PaymentOrder) error {
+	paid, changed, err := repo.MarkOrderPaid(context.Background(), "PAY-1", "provider-1", func(order *biz.PaymentOrder, tx *gorm.DB) error {
 		require.Equal(t, "PAY-1", order.TradeNo)
 		return nil
 	})

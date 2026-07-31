@@ -22,7 +22,9 @@ import (
 	"strings"
 	"time"
 
+	"math"
 	"micro-one-api/pkg/safefile"
+	"strconv"
 )
 
 type PaymentConfig struct {
@@ -127,13 +129,39 @@ func (p *alipayPaymentProvider) VerifyNotify(ctx context.Context, params map[str
 	if tradeNo == "" {
 		return nil, errors.New("alipay out_trade_no is required")
 	}
+	// Code-review 2026-07-30 billing-L5: surface total_amount / app_id /
+	// seller_id so the caller can cross-check them against the local order
+	// before marking the order paid. The values come from the already
+	// signature-verified params, so tampering would invalidate the signature;
+	// the cross-check catches order-substitution and misconfigured-app
+	// scenarios the signature alone does not cover.
 	return &PaymentNotify{
 		TradeNo:         tradeNo,
 		ProviderTradeNo: firstNonEmptyString(params["trade_no"]),
 		Success:         strings.EqualFold(params["trade_status"], "TRADE_SUCCESS") || strings.EqualFold(params["trade_status"], "TRADE_FINISHED"),
 		Channel:         PaymentChannelAlipay,
 		Raw:             copyStringMap(params),
+		TotalAmount:     parseAlipayTotalAmount(params["total_amount"]),
+		AppID:           firstNonEmptyString(params["app_id"]),
+		SellerID:        firstNonEmptyString(params["seller_id"]),
 	}, nil
+}
+
+// parseAlipayTotalAmount parses the Alipay "total_amount" notify field (a
+// decimal string in yuan, e.g. "0.01") into minor units (cents). It is
+// best-effort: an unparseable value yields 0, which the caller treats as
+// "provider reported no amount" and skips the amount cross-check.
+func parseAlipayTotalAmount(raw string) int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	// Alipay amounts are decimal yuan with up to two fractional digits.
+	f, err := strconv.ParseFloat(raw, 64)
+	if err != nil || f < 0 {
+		return 0
+	}
+	return int64(math.Round(f * 100))
 }
 
 func (p *alipayPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOrder) (*PaymentProviderStatus, error) {

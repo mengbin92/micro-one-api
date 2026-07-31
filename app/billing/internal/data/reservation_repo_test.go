@@ -34,6 +34,7 @@ func setupReservationTestDB(t *testing.T) *gorm.DB {
 			subscription_weekly_window_start INTEGER NOT NULL DEFAULT 0,
 			subscription_monthly_window_start INTEGER NOT NULL DEFAULT 0,
 			balance_amount_quota INTEGER NOT NULL DEFAULT 0,
+			actual_cost INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME,
 			updated_at DATETIME,
 			expired_at DATETIME

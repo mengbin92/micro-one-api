@@ -112,15 +112,17 @@ func usedQuotaExpr(delta int64) interface{} {
 }
 
 func (r *accountRepo) UpdateFrozenAmount(ctx context.Context, userID string, delta int64) error {
-	var account struct {
-		FrozenAmount int64 `gorm:"column:frozen_amount"`
-	}
-	if err := r.data.db.WithContext(ctx).Table("users").Where("id = ?", userID).First(&account).Error; err != nil {
-		return err
-	}
-
-	newFrozenAmount := account.FrozenAmount + delta
-	return r.data.db.WithContext(ctx).Table("users").Where("id = ?", userID).Update("frozen_amount", newFrozenAmount).Error
+	// Atomic increment: a single UPDATE frozen_amount = frozen_amount + ?
+	// avoids the read-modify-write race where two concurrent reservations
+	// both read the same base value and both overwrite with base+delta,
+	// losing one increment (and, on decrements, going negative). Mirror the
+	// pattern already used by ReserveBalanceInTx (code-review 2026-07-30
+	// billing-M2).
+	return r.data.db.WithContext(ctx).
+		Table("users").
+		Where("id = ?", userID).
+		Update("frozen_amount", gorm.Expr("frozen_amount + ?", delta)).
+		Error
 }
 
 func (r *accountRepo) BatchGetAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*biz.Account, error) {
@@ -354,7 +356,7 @@ func (r *accountRepo) getAccountForUpdate(ctx context.Context, tx *gorm.DB, user
 		Status       int32  `gorm:"column:status"`
 	}
 	q := tx.WithContext(ctx).Table("users").Where("id = ?", userID)
-	if dialectorName(tx) != "sqlite3" {
+	if !isSQLite(dialectorName(tx)) {
 		// SQLite's BEGIN does not support SELECT ... FOR UPDATE; rely on
 		// the writer transaction's serialised semantics instead.
 		q = q.Clauses(forUpdateClause(dialectorName(tx)))

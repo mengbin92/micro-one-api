@@ -30,7 +30,7 @@ func (r *fakeRefundRepo) GetOrderByTradeNo(ctx context.Context, tradeNo string) 
 func (r *fakeRefundRepo) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
 	return nil, 0, nil
 }
-func (r *fakeRefundRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder) error) (*PaymentOrder, bool, error) {
+func (r *fakeRefundRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, *gormdb.DB) error) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
 func (r *fakeRefundRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error) {
@@ -181,6 +181,10 @@ func (s *stubSubscriptionReverter) ShortenInTx(ctx context.Context, tx *gormdb.D
 }
 func (s *stubSubscriptionReverter) GetActiveSubscriptionForUser(ctx context.Context, userID int64) (*subscriptionbiz.UserSubscription, error) {
 	return &subscriptionbiz.UserSubscription{ID: 99, UserID: userID}, nil
+}
+
+func (s *stubSubscriptionReverter) GetActiveSubscriptionForUserInTx(ctx context.Context, tx *gormdb.DB, userID int64) (*subscriptionbiz.UserSubscription, error) {
+	return s.GetActiveSubscriptionForUser(ctx, userID)
 }
 
 func newRefundOrder(tradeNo string, paid bool) *PaymentOrder {

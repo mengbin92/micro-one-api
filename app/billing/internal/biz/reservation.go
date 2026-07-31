@@ -27,9 +27,9 @@ type Reservation struct {
 	// flow it equals BalanceAmountQuota and is kept populated so legacy readers
 	// continue to work; the field is not authoritative for the subscription
 	// side of the pre-deduction.
-	Amount  int64
-	Status  string
-	Model   string
+	Amount                int64
+	Status                string
+	Model                 string
 	ChannelID             string
 	SubscriptionAccountID string
 
@@ -52,6 +52,14 @@ type Reservation struct {
 	// authoritative "frozen" amount that will be released / settled at commit
 	// or release time. For the legacy balance-only path it equals Amount.
 	BalanceAmountQuota int64
+
+	// ActualCost is the real settlement cost persisted at commit time
+	// (code-review 2026-07-30 billing-L1). The reservation's Amount is only
+	// a pre-deduction estimate; relaying it back on an idempotent retry of
+	// CommitQuota misreports the committed amount whenever actual != estimate.
+	// ActualCost is zero until the reservation reaches the committed state,
+	// so a not-yet-committed reservation still reports via Amount.
+	ActualCost int64
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

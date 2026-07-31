@@ -52,6 +52,11 @@ type PaymentOrder struct {
 	// resolve the exact subscription to revoke/shorten deterministically (phase
 	// 2.3 traceability). Zero for balance orders or orders not yet fulfilled.
 	SubscriptionID int64
+	// RefundReason holds the free-text reason a refund was applied. It is
+	// persisted on a dedicated column so the original ProviderPayload (which
+	// may encode the subscription_id used for refund traceability) is
+	// preserved (code-review 2026-07-30 billing-L4).
+	RefundReason string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	PaidAt       *time.Time
@@ -99,13 +104,28 @@ type PaymentNotify struct {
 	Success         bool
 	Channel         string
 	Raw             map[string]string
+	// TotalAmount is the provider-reported payment amount (in minor units,
+	// e.g. cents) carried from the verified notify params so the caller can
+	// cross-check it against the local order's MoneyCents before marking
+	// the order paid (code-review 2026-07-30 billing-L5). Zero when the
+	// provider does not report an amount.
+	TotalAmount int64
+	// AppID is the provider-reported merchant app id from the verified notify
+	// params. The caller cross-checks it against the locally configured app
+	// id to catch order-substitution / misconfigured-app attacks. Empty when
+	// the provider does not send an app id.
+	AppID string
+	// SellerID is the provider-reported seller / payee id from the verified
+	// notify params. The caller may cross-check it against the configured
+	// seller id. Empty when the provider does not report a seller id.
+	SellerID string
 }
 
 type PaymentRepo interface {
 	CreateOrder(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error)
 	GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error)
 	ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error)
-	MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder) error) (*PaymentOrder, bool, error)
+	MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error)
 	MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error)
 	// MarkOrderRefunded transitions a paid order to refunded, running the
 	// revert callback inside the same transaction. Idempotent.
@@ -134,12 +154,27 @@ type PaymentUsecase struct {
 
 type PaymentAssetIssuer interface {
 	IssueBalance(ctx context.Context, order *PaymentOrder) error
+	// IssueBalanceInTx issues the balance top-up inside the caller's
+	// transaction so the wallet credit commits or rolls back with the
+	// payment order status transition (code-review 2026-07-30 H2).
+	// Implementations that cannot run in-tx may fall back to the
+	// standalone IssueBalance path, in which case the caller must not
+	// claim atomicity.
+	IssueBalanceInTx(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error
 }
 
 // SubscriptionAssigner is an optional interface that payment issuers can
 // implement to automatically assign subscriptions after payment.
 type SubscriptionAssigner interface {
+	// AssignSubscriptionAfterPayment is the legacy non-tx entry point used
+	// by in-memory test fakes.
 	AssignSubscriptionAfterPayment(ctx context.Context, order *PaymentOrder) error
+	// AssignSubscriptionAfterPaymentInTx fulfils the subscription grant
+	// inside the caller's transaction so the grant and the payment order
+	// status transition commit atomically (code-review 2026-07-30
+	// billing-H2). Implementations may fall back to the non-tx path when
+	// tx is nil.
+	AssignSubscriptionAfterPaymentInTx(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error
 }
 
 func NewPaymentUsecase(repo PaymentRepo, provider PaymentProvider, issuer PaymentAssetIssuer) *PaymentUsecase {
@@ -248,10 +283,23 @@ func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTr
 	if tradeNo == "" {
 		return nil, errors.New("trade_no is required")
 	}
-	order, _, err := uc.repo.MarkOrderPaid(ctx, tradeNo, providerTradeNo, func(order *PaymentOrder) error {
+	// Code-review 2026-07-30 billing-H2: the issue callback now receives the
+	// outer *gorm.DB so the wallet credit (IssueBalanceInTx) and the
+	// subscription grant (AssignSubscriptionAfterPaymentInTx) commit or roll
+	// back with the payment order status transition. A failure after the grant
+	// (e.g. the payment_orders Updates or the commit) now rolls back the
+	// wallet/subscription credit, so a replayed payment callback cannot
+	// double-credit.
+	order, _, err := uc.repo.MarkOrderPaid(ctx, tradeNo, providerTradeNo, func(order *PaymentOrder, tx *gorm.DB) error {
 		if order.AssetType == PaymentAssetTypeBalance {
-			if err := uc.issuer.IssueBalance(ctx, order); err != nil {
-				return err
+			if tx != nil {
+				if err := uc.issuer.IssueBalanceInTx(ctx, tx, order); err != nil {
+					return err
+				}
+			} else {
+				if err := uc.issuer.IssueBalance(ctx, order); err != nil {
+					return err
+				}
 			}
 		}
 		if order.AssetType == PaymentAssetTypeSubscription {
@@ -261,7 +309,7 @@ func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTr
 			if uc.assigner == nil {
 				return errors.New("subscription assigner is not configured")
 			}
-			if err := uc.assigner.AssignSubscriptionAfterPayment(ctx, order); err != nil {
+			if err := uc.assigner.AssignSubscriptionAfterPaymentInTx(ctx, tx, order); err != nil {
 				return fmt.Errorf("assign subscription after payment: %w", err)
 			}
 		}
@@ -350,6 +398,14 @@ func (i *balancePaymentAssetIssuer) IssueBalance(ctx context.Context, order *Pay
 		return errors.New("payment asset issuer is not configured")
 	}
 	_, err := i.billing.TopUpQuota(ctx, order.UserID, "payment", order.AssetAmount, "payment:"+order.TradeNo)
+	return err
+}
+
+func (i *balancePaymentAssetIssuer) IssueBalanceInTx(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error {
+	if i == nil || i.billing == nil {
+		return errors.New("payment asset issuer is not configured")
+	}
+	_, err := i.billing.TopUpQuotaInTx(ctx, tx, order.UserID, "payment", order.AssetAmount, "payment:"+order.TradeNo)
 	return err
 }
 

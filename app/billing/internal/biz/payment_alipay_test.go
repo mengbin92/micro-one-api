@@ -157,3 +157,31 @@ func testAlipayKeyPairPEM(t *testing.T) (string, string) {
 	publicKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicKeyDER})
 	return string(privateKeyPEM), string(publicKeyPEM)
 }
+
+// TestParseAlipayTotalAmount covers the code-review 2026-07-30 billing-L5
+// helper that converts Alipay's decimal-yuan "total_amount" notify field into
+// minor units (cents). The result drives the amount cross-check in
+// HandleAlipayNotify.
+func TestParseAlipayTotalAmount(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want int64
+	}{
+		{"exact yuan", "1.00", 100},
+		{"fractional cents round", "0.015", 2}, // math.Round(1.5) = 2
+		{"sub-cent truncates via round", "0.004", 0},
+		{"large amount", "99.99", 9999},
+		{"empty", "", 0},
+		{"garbage", "not-a-number", 0},
+		{"negative rejected", "-1.00", 0},
+		{"whitespace trimmed", "  0.50  ", 50},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseAlipayTotalAmount(tc.raw); got != tc.want {
+				t.Fatalf("parseAlipayTotalAmount(%q) = %d, want %d", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
