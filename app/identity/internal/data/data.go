@@ -20,7 +20,7 @@ type Repository struct {
 	db                  *gorm.DB
 	redis               *redis.Client
 	usersByID           map[int64]*biz.User
-	tokensByKey         map[string]*biz.Token
+	tokensByHash         map[string]*biz.Token
 	oauthIdentities     map[string]*biz.OAuthIdentity
 	nextOAuthIdentityID int64
 	identityLock        sync.RWMutex
@@ -50,6 +50,7 @@ type tokenModel struct {
 	UserID         int64   `gorm:"column:user_id"`
 	Name           string  `gorm:"column:name"`
 	Key            string  `gorm:"column:key"`
+	KeyHash        string  `gorm:"column:key_hash"`
 	Status         int32   `gorm:"column:status"`
 	CreatedTime    int64   `gorm:"column:created_time"`
 	AccessedTime   int64   `gorm:"column:accessed_time"`
@@ -115,13 +116,18 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 			rdb = nil
 		}
 	}
-	return &Repository{db: db, redis: rdb}, nil
+	rep := &Repository{db: db, redis: rdb}
+	// L6: hash any pre-migration plaintext keys into key_hash and truncate the
+	// stored key to a display prefix, erasing plaintext from disk. Runs once;
+	// subsequent boots find zero pending rows.
+	rep.BackfillTokenHashes(context.Background())
+	return rep, nil
 }
 
 func newMemoryRepository() *Repository {
 	return &Repository{
 		usersByID:           make(map[int64]*biz.User),
-		tokensByKey:         make(map[string]*biz.Token),
+		tokensByHash:         make(map[string]*biz.Token),
 		oauthIdentities:     make(map[string]*biz.OAuthIdentity),
 		nextOAuthIdentityID: 1,
 	}
@@ -320,8 +326,13 @@ func (r *Repository) CreateToken(ctx context.Context, token *biz.Token) error {
 	}
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
-	token.ID = int64(len(r.tokensByKey) + 1)
-	r.tokensByKey[token.Key] = token
+	token.ID = int64(len(r.tokensByHash) + 1)
+	// L6: memory store keys by hash to mirror the DB. The DO keeps the
+	// plaintext Key so CreateAccessToken can return it once to the caller.
+	if token.KeyHash == "" {
+		token.KeyHash = biz.HashTokenKey(token.Key)
+	}
+	r.tokensByHash[token.KeyHash] = token
 	return nil
 }
 
@@ -331,7 +342,7 @@ func (r *Repository) FindTokenByID(ctx context.Context, userID, tokenID int64) (
 	}
 	r.identityLock.RLock()
 	defer r.identityLock.RUnlock()
-	for _, token := range r.tokensByKey {
+	for _, token := range r.tokensByHash {
 		if token.ID == tokenID && token.UserID == userID {
 			cloned := *token
 			cloned.Models = append([]string(nil), token.Models...)
@@ -354,14 +365,14 @@ func (r *Repository) ListTokens(ctx context.Context, userID int64, page, pageSiz
 		pageSize = 20
 	}
 	var tokens []*biz.Token
-	for _, token := range r.tokensByKey {
+	for _, token := range r.tokensByHash {
 		if token.UserID != userID {
 			continue
 		}
 		if strings.TrimSpace(token.Name) == "" {
 			continue
 		}
-		if keyword != "" && !strings.Contains(token.Name, keyword) && !strings.Contains(token.Key, keyword) {
+		if keyword != "" && !strings.Contains(token.Name, keyword) {
 			continue
 		}
 		cloned := *token
@@ -386,12 +397,16 @@ func (r *Repository) UpdateToken(ctx context.Context, token *biz.Token) error {
 	}
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
-	for key, existing := range r.tokensByKey {
+	hash := token.KeyHash
+	if hash == "" {
+		hash = biz.HashTokenKey(token.Key)
+	}
+	for key, existing := range r.tokensByHash {
 		if existing.ID == token.ID && existing.UserID == token.UserID {
-			if key != token.Key {
-				delete(r.tokensByKey, key)
+			if key != hash {
+				delete(r.tokensByHash, key)
 			}
-			r.tokensByKey[token.Key] = token
+			r.tokensByHash[hash] = token
 			return nil
 		}
 	}
@@ -404,9 +419,9 @@ func (r *Repository) DeleteToken(ctx context.Context, userID, tokenID int64) err
 	}
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
-	for key, token := range r.tokensByKey {
+	for key, token := range r.tokensByHash {
 		if token.ID == tokenID && token.UserID == userID {
-			delete(r.tokensByKey, key)
+			delete(r.tokensByHash, key)
 			return nil
 		}
 	}
@@ -437,8 +452,9 @@ func (r *Repository) ListUsers(ctx context.Context, page, pageSize int32, keywor
 }
 
 func (r *Repository) findTokenByKeyDB(ctx context.Context, key string) (*biz.Token, error) {
+	hash := biz.HashTokenKey(key)
 	var model tokenModel
-	if err := r.db.WithContext(ctx).Where("`key` = ?", key).First(&model).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("key_hash = ?", hash).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrTokenNotFound
 		}
@@ -611,10 +627,14 @@ func (r *Repository) deleteUserDB(ctx context.Context, userID int64) error {
 }
 
 func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error {
+	// L6: store only a non-secret display prefix in the `key` column and the
+	// HMAC hash in `key_hash` (indexed). The plaintext key never reaches disk;
+	// the prefix preserves the masked-key UI ("abcd****wxyz").
 	model := tokenModel{
 		UserID:         token.UserID,
 		Name:           token.Name,
-		Key:            token.Key,
+		Key:            biz.TokenDisplayPrefix(token.Key),
+		KeyHash:        token.KeyHash,
 		Status:         token.Status,
 		ExpiredTime:    token.ExpiredAt,
 		RemainQuota:    token.RemainQuota,
@@ -644,7 +664,8 @@ func (r *Repository) listTokensDB(ctx context.Context, userID int64, page, pageS
 	query := r.db.WithContext(ctx).Model(&tokenModel{}).Where("user_id = ? AND TRIM(COALESCE(name, '')) <> ''", userID)
 	if keyword != "" {
 		like := "%" + escapeLike(keyword) + "%"
-		query = query.Where("name LIKE ? ESCAPE '!' OR `key` LIKE ? ESCAPE '!'", like, like)
+		// L6: key is now a hashed column, so keyword search is name-only.
+		query = query.Where("name LIKE ? ESCAPE '!'", like)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -694,6 +715,7 @@ func tokenModelToBiz(model tokenModel) *biz.Token {
 		UserID:         model.UserID,
 		Name:           model.Name,
 		Key:            model.Key,
+		KeyHash:        model.KeyHash,
 		Status:         model.Status,
 		ExpiredAt:      model.ExpiredTime,
 		RemainQuota:    model.RemainQuota,
@@ -819,7 +841,7 @@ func escapeLike(s string) string {
 func (r *Repository) findTokenByKeyMemory(_ context.Context, key string) (*biz.Token, error) {
 	r.identityLock.RLock()
 	defer r.identityLock.RUnlock()
-	token, ok := r.tokensByKey[key]
+	token, ok := r.tokensByHash[biz.HashTokenKey(key)]
 	if !ok {
 		return nil, biz.ErrTokenNotFound
 	}
@@ -837,4 +859,44 @@ func (r *Repository) findUserByIDMemory(_ context.Context, userID int64) (*biz.U
 	}
 	cloned := *user
 	return &cloned, nil
+}
+
+// BackfillTokenHashes migrates pre-L6 token rows: rows whose key_hash is empty
+// still hold the full plaintext key (from before the hashing change). It hashes
+// each such row's key into key_hash and truncates the key column to a short
+// display prefix, so the plaintext is erased from disk. Idempotent — rows with
+// a non-empty key_hash are left alone. Runs once at DB-backed Repository init.
+// Errors are logged but non-fatal: the app still starts; un-hashed rows simply
+// cannot authenticate (their key_hash is empty, so FindTokenByKey misses) until
+// the next successful boot.
+func (r *Repository) BackfillTokenHashes(ctx context.Context) {
+	if r.db == nil {
+		return
+	}
+	var pending []tokenModel
+	if err := r.db.WithContext(ctx).Where("key_hash = ''").Find(&pending).Error; err != nil {
+		applogger.Log.Warn("identity-L6 backfill: failed to scan rows with empty key_hash",
+			zap.String("component", "identity.data"), zap.Error(err))
+		return
+	}
+	if len(pending) == 0 {
+		return
+	}
+	migrated := 0
+	for _, m := range pending {
+		hash := biz.HashTokenKey(m.Key)
+		if err := r.db.WithContext(ctx).Model(&tokenModel{}).Where("id = ?", m.ID).
+			Updates(map[string]interface{}{
+				"key_hash": hash,
+				"key":      biz.TokenDisplayPrefix(m.Key),
+			}).Error; err != nil {
+			applogger.Log.Warn("identity-L6 backfill: failed to hash a row",
+				zap.Int64("token_id", m.ID), zap.Error(err))
+			continue
+		}
+		migrated++
+	}
+	applogger.Log.Info("identity-L6 backfill: hashed access-token keys",
+		zap.String("component", "identity.data"),
+		zap.Int("migrated", migrated), zap.Int("total", len(pending)))
 }

@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   "key" TEXT NOT NULL,
+  key_hash TEXT NOT NULL DEFAULT '',
   status INTEGER DEFAULT 0,
   expired_time INTEGER DEFAULT 0,
   remain_quota INTEGER DEFAULT 0,
@@ -65,6 +66,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 
 CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_tokens_key     ON tokens("key");
+CREATE INDEX IF NOT EXISTS idx_tokens_key_hash ON tokens(key_hash);
 
 CREATE TABLE IF NOT EXISTS user_oauth_identities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

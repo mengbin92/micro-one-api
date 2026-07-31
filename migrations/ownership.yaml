@@ -32,6 +32,7 @@ services:
     - 026_fix_users_status_comment
     - 027_remove_placeholder_seed_data
     - 075_add_password_changed_at_to_users  # identity-M6 password-change epoch for session revocation
+    - 076_add_key_hash_to_tokens             # identity-L6 HMAC hash of access-token key
 
   channel:
     # channels / abilities / subscription_accounts / subscription_account_quota_*

@@ -2,7 +2,10 @@ package biz
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -104,7 +107,14 @@ type Token struct {
 	ID             int64
 	UserID         int64
 	Name           string
+	// Key holds the plaintext key at creation time (returned to the caller
+	// exactly once). When loaded from storage it holds only a short display
+	// prefix (first 8 + last 4 chars) — never the full secret — so a DB
+	// leak cannot authenticate as the user.
 	Key            string
+	// KeyHash is the HMAC-SHA256 of the full plaintext key, stored in the
+	// key_hash column and used for O(1) lookups on the ValidateToken hot path.
+	KeyHash        string
 	Status         int32
 	ExpiredAt      int64
 	RemainQuota    int64
@@ -585,10 +595,12 @@ func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, 
 		// overwrote unlimited_quota=true, defeating the per-key quota UI.
 	}
 	now := uc.now().Unix()
+	plaintextKey := uc.generateToken()
 	token := &Token{
 		UserID:         userID,
 		Name:           name,
-		Key:            uc.generateToken(),
+		Key:            plaintextKey,
+		KeyHash:        HashTokenKey(plaintextKey),
 		Status:         TokenStatusEnabled,
 		ExpiredAt:      expireAt,
 		RemainQuota:    options.RemainQuota,
@@ -926,6 +938,41 @@ func (uc *IdentityUsecase) generateToken() string {
 		b[i] = letters[n.Int64()]
 	}
 	return string(b)
+}
+
+// tokenHashSecret returns the HMAC key used to hash access-token keys. It
+// prefers the dedicated TOKEN_HASH_KEY, falls back to JWT_SECRET_KEY (so
+// deployments that already rotate a JWT secret get token-key rotation for
+// free), and finally a fixed dev default so unit tests work without env.
+// Rotating the secret invalidates every existing token (keys can no longer
+// be looked up), which is the desired break-glass behaviour.
+func tokenHashSecret() []byte {
+	if v := os.Getenv("TOKEN_HASH_KEY"); v != "" {
+		return []byte(v)
+	}
+	if v := os.Getenv("JWT_SECRET_KEY"); v != "" {
+		return []byte(v)
+	}
+	return []byte("micro-one-api-token-hash-default")
+}
+
+// HashTokenKey returns the lowercase hex HMAC-SHA256 of a plaintext token
+// key. HMAC is deterministic for a given key+secret, so ValidateToken can
+// hash the incoming bearer token and look it up by key_hash in O(1).
+func HashTokenKey(key string) string {
+	mac := hmac.New(sha256.New, tokenHashSecret())
+	mac.Write([]byte(key))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// TokenDisplayPrefix returns a short, non-secret slice of a plaintext key
+// (first 8 + last 4 chars) that preserves the existing masked-key display
+// ("abcd****wxyz") without storing enough to authenticate.
+func TokenDisplayPrefix(key string) string {
+	if len(key) <= 12 {
+		return key
+	}
+	return key[:8] + key[len(key)-4:]
 }
 
 func (uc *IdentityUsecase) generateSessionToken(user *User) (string, error) {

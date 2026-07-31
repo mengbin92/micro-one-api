@@ -11,7 +11,7 @@ import (
 func newTestRepo() *Repository {
 	return &Repository{
 		usersByID:           make(map[int64]*biz.User),
-		tokensByKey:         make(map[string]*biz.Token),
+		tokensByHash:        make(map[string]*biz.Token),
 		oauthIdentities:     make(map[string]*biz.OAuthIdentity),
 		nextOAuthIdentityID: 1,
 	}
@@ -266,7 +266,7 @@ func TestIncreaseUserBalance_NotFound(t *testing.T) {
 
 func TestFindTokenByKey_Success(t *testing.T) {
 	repo := newTestRepo()
-	repo.tokensByKey["test-key"] = &biz.Token{
+	repo.tokensByHash[biz.HashTokenKey("test-key")] = &biz.Token{
 		ID:             1,
 		Key:            "test-key",
 		UserID:         1,
@@ -294,7 +294,7 @@ func TestFindTokenByKey_NotFound(t *testing.T) {
 
 func TestFindTokenByKey_ReturnsClonedToken(t *testing.T) {
 	repo := newTestRepo()
-	repo.tokensByKey["key"] = &biz.Token{ID: 1, Key: "key", RemainQuota: 100}
+	repo.tokensByHash[biz.HashTokenKey("key")] = &biz.Token{ID: 1, Key: "key", RemainQuota: 100}
 
 	t1, _ := repo.FindTokenByKey(context.Background(), "key")
 	t1.RemainQuota = 0
@@ -316,14 +316,14 @@ func TestCreateToken_Success(t *testing.T) {
 	if token.ID == 0 {
 		t.Fatal("expected token ID to be assigned")
 	}
-	if len(repo.tokensByKey) != 1 {
-		t.Fatalf("expected 1 token, got: %d", len(repo.tokensByKey))
+	if len(repo.tokensByHash) != 1 {
+		t.Fatalf("expected 1 token, got: %d", len(repo.tokensByHash))
 	}
 }
 
 func TestCreateToken_IDAssigned(t *testing.T) {
 	repo := newTestRepo()
-	repo.tokensByKey["k1"] = &biz.Token{ID: 1, Key: "k1"}
+	repo.tokensByHash[biz.HashTokenKey("k1")] = &biz.Token{ID: 1, Key: "k1"}
 
 	token := &biz.Token{Key: "k2", UserID: 1, Status: biz.TokenStatusEnabled}
 	repo.CreateToken(context.Background(), token)
