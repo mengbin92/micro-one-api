@@ -372,7 +372,7 @@ func TestAccountRepo_CommitBalanceInTx_NetReservedMinusActual(t *testing.T) {
 	data := &Data{db: db}
 	repo := NewAccountRepo(data)
 	tx := db.Begin()
-	oldBalance, newBalance, err := repo.CommitBalanceInTx(context.Background(), tx, "1", 200, 150, true)
+	oldBalance, newBalance, err := repo.CommitBalanceInTx(context.Background(), &gormTx{db: tx}, "1", 200, 150, true)
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit().Error)
 
@@ -405,7 +405,7 @@ func TestReceivableRepo_SettleOldestForUserInTx_PartialKeepsPending(t *testing.T
 	data := &Data{db: db}
 	repo := NewReceivableRepo(data)
 	tx := db.Begin()
-	settled, err := repo.SettleOldestForUserInTx(context.Background(), tx, "1", 80)
+	settled, err := repo.SettleOldestForUserInTx(context.Background(), &gormTx{db: tx}, "1", 80)
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit().Error)
 	assert.Equal(t, int64(80), settled)

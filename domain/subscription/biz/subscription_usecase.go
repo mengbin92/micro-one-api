@@ -7,15 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	gormdb "gorm.io/gorm"
 )
-
-// gormDB is a thin alias that keeps the package import line short while
-// the type still resolves unambiguously. The alias is local to this
-// file so other files in the package do not need to import gorm to
-// reference the dual-track methods.
-type gormDB = gormdb.DB
 
 const (
 	quotaDailyWindow   = 24 * time.Hour
@@ -90,7 +82,7 @@ func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscripti
 // subscription check and the create both run inside the caller's tx, with a
 // row lock on the existing active row (when present) so two concurrent grants
 // cannot both pass the "no active subscription" guard.
-func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx *gormDB, req *AssignSubscriptionRequest) (*UserSubscription, error) {
+func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *AssignSubscriptionRequest) (*UserSubscription, error) {
 	if req == nil {
 		return nil, fmt.Errorf("nil request")
 	}
@@ -143,14 +135,14 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 // 2026-07-30 billing-H2). When tx is non-nil the active-subscription
 // read takes a row lock so two concurrent renewals cannot both observe
 // "no active subscription" and both insert.
-func (uc *SubscriptionUsecase) AssignOrExtendInTx(ctx context.Context, tx *gormDB, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
+func (uc *SubscriptionUsecase) AssignOrExtendInTx(ctx context.Context, tx Tx, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
 	return uc.assignOrExtend(ctx, tx, req)
 }
 
 // assignOrExtend is the shared implementation. When tx is nil it behaves
 // exactly as the historical AssignOrExtend (each write in its own tx);
 // when tx is non-nil every read/write runs inside the caller's tx.
-func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx *gormDB, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
+func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
 	if req == nil {
 		return nil, false, fmt.Errorf("nil request")
 	}
@@ -259,7 +251,7 @@ func (uc *SubscriptionUsecase) Revoke(ctx context.Context, id int64, reason stri
 	return uc.repo.UpdateSubscriptionFields(ctx, subscription, []SubscriptionField{SubscriptionFieldStatus, SubscriptionFieldMetadata})
 }
 
-func (uc *SubscriptionUsecase) RevokeInTx(ctx context.Context, tx *gormDB, id int64, reason string) error {
+func (uc *SubscriptionUsecase) RevokeInTx(ctx context.Context, tx Tx, id int64, reason string) error {
 	subscription, err := uc.repo.GetByIDInTx(ctx, tx, id)
 	if err != nil {
 		return err
@@ -311,7 +303,7 @@ func (uc *SubscriptionUsecase) Shorten(ctx context.Context, id int64, subtractSe
 	return uc.repo.UpdateSubscription(ctx, subscription)
 }
 
-func (uc *SubscriptionUsecase) ShortenInTx(ctx context.Context, tx *gormDB, id int64, subtractSeconds int64) error {
+func (uc *SubscriptionUsecase) ShortenInTx(ctx context.Context, tx Tx, id int64, subtractSeconds int64) error {
 	if subtractSeconds <= 0 {
 		return errors.New("subtract_seconds must be positive")
 	}
@@ -396,12 +388,12 @@ func (uc *SubscriptionUsecase) RecordUsage(ctx context.Context, userID int64, co
 
 // RecordUsageForSubscriptionInTx is the row-locked variant of RecordUsage.
 // It is the canonical write path for the dual-track commit pipeline: it
-// takes a *gorm.DB owned by the caller so the subscription write commits
+// takes a Tx owned by the caller so the subscription write commits
 // in the same transaction as the wallet side-effects. costUSD is the
 // *original* (un-multiplied) USD cost; this function multiplies by the
 // group's RateMultiplier before storing so the running usage matches
 // the limit/usage accounting space.
-func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Context, tx *gormDB, subscriptionID int64, costUSD float64, now int64) error {
+func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Context, tx Tx, subscriptionID int64, costUSD float64, now int64) error {
 	if costUSD < 0 {
 		return fmt.Errorf("negative usage")
 	}
@@ -441,7 +433,7 @@ func (uc *SubscriptionUsecase) GetActiveSubscriptionForUser(ctx context.Context,
 // LockSubscriptionRow inside the dual-track transaction so the
 // usage/window snapshot fed to the absorber is the locked read,
 // not a stale pre-lock snapshot (code-review 2026-07-30 billing-H3).
-func (uc *SubscriptionUsecase) GetActiveSubscriptionForUserInTx(ctx context.Context, tx *gormDB, userID int64) (*UserSubscription, error) {
+func (uc *SubscriptionUsecase) GetActiveSubscriptionForUserInTx(ctx context.Context, tx Tx, userID int64) (*UserSubscription, error) {
 	return uc.repo.GetActiveSubscriptionByUserInTx(ctx, tx, userID)
 }
 

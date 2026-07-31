@@ -48,12 +48,12 @@ func (r *Repository) CreateSubscription(ctx context.Context, subscription *biz.U
 // CreateSubscriptionInTx inserts a subscription inside the caller's
 // transaction (code-review 2026-07-30 billing-H2). The in-memory path has
 // no transaction concept so it falls back to the memory create.
-func (r *Repository) CreateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
+func (r *Repository) CreateSubscriptionInTx(ctx context.Context, tx biz.Tx, subscription *biz.UserSubscription) error {
 	if tx == nil {
 		return errors.New("nil transaction")
 	}
 	if r.db != nil {
-		return r.createSubscriptionInTxDB(ctx, tx, subscription)
+		return r.createSubscriptionInTxDB(ctx, txDB(tx), subscription)
 	}
 	return r.createSubscriptionMemory(ctx, subscription)
 }
@@ -65,9 +65,9 @@ func (r *Repository) UpdateSubscription(ctx context.Context, subscription *biz.U
 	return r.updateSubscriptionMemory(ctx, subscription)
 }
 
-func (r *Repository) UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
+func (r *Repository) UpdateSubscriptionInTx(ctx context.Context, tx biz.Tx, subscription *biz.UserSubscription) error {
 	if r.db != nil {
-		return updateSubscriptionWithTx(ctx, tx, subscription)
+		return updateSubscriptionWithTx(ctx, txDB(tx), subscription)
 	}
 	return r.updateSubscriptionMemory(ctx, subscription)
 }
@@ -119,12 +119,12 @@ func (r *Repository) GetActiveSubscriptionByUser(ctx context.Context, userID int
 // grant/extend calls so two renewals for the same user cannot both
 // observe "no active subscription" and both insert (code-review
 // 2026-07-30 billing-H2 / domain-H1).
-func (r *Repository) GetActiveSubscriptionByUserInTx(ctx context.Context, tx *gorm.DB, userID int64) (*biz.UserSubscription, error) {
+func (r *Repository) GetActiveSubscriptionByUserInTx(ctx context.Context, tx biz.Tx, userID int64) (*biz.UserSubscription, error) {
 	if tx == nil {
 		return nil, errors.New("nil transaction")
 	}
 	if r.db != nil {
-		return r.getActiveSubscriptionByUserInTxDB(ctx, tx, userID)
+		return r.getActiveSubscriptionByUserInTxDB(ctx, txDB(tx), userID)
 	}
 	return r.getActiveSubscriptionByUserMemory(ctx, userID)
 }
@@ -136,18 +136,18 @@ func (r *Repository) AddUsage(ctx context.Context, userID int64, costUSD float64
 	return r.addUsageMemory(ctx, userID, costUSD, now)
 }
 
-func (r *Repository) AddUsageByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error {
+func (r *Repository) AddUsageByIDInTx(ctx context.Context, tx biz.Tx, subscriptionID int64, costUSD float64, now int64) error {
 	if tx == nil {
 		return errors.New("nil transaction")
 	}
-	return r.addUsageByIDInTxDB(ctx, tx, subscriptionID, costUSD, now)
+	return r.addUsageByIDInTxDB(ctx, txDB(tx), subscriptionID, costUSD, now)
 }
 
-func (r *Repository) GetByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64) (*biz.UserSubscription, error) {
+func (r *Repository) GetByIDInTx(ctx context.Context, tx biz.Tx, subscriptionID int64) (*biz.UserSubscription, error) {
 	if tx == nil {
 		return nil, errors.New("nil transaction")
 	}
-	return r.getByIDInTxDB(ctx, tx, subscriptionID)
+	return r.getByIDInTxDB(ctx, txDB(tx), subscriptionID)
 }
 
 // addUsageByIDInTxDB performs the same read-roll-increment as
@@ -422,12 +422,12 @@ func (r *Repository) UpdateSubscriptionFields(ctx context.Context, subscription 
 }
 
 // UpdateSubscriptionFieldsInTx is the in-transaction selective-write variant.
-func (r *Repository) UpdateSubscriptionFieldsInTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+func (r *Repository) UpdateSubscriptionFieldsInTx(ctx context.Context, tx biz.Tx, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
 	if tx == nil {
 		return errors.New("nil transaction")
 	}
 	if r.db != nil {
-		return updateSubscriptionFieldsWithTx(ctx, tx, subscription, fields)
+		return updateSubscriptionFieldsWithTx(ctx, txDB(tx), subscription, fields)
 	}
 	return r.updateSubscriptionFieldsMemory(ctx, subscription, fields)
 }

@@ -9,7 +9,6 @@ import (
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 
-	"gorm.io/gorm"
 )
 
 // renewingAssignmentUsecase counts AssignOrExtend calls so the idempotency
@@ -41,7 +40,7 @@ func (f *renewingAssignmentUsecase) AssignOrExtend(ctx context.Context, req *sub
 // AssignOrExtendInTx mirrors the production in-tx path for the in-memory
 // test double: tx is nil in the renewal idempotency tests, so the non-tx
 // AssignOrExtend path is exercised.
-func (f *renewingAssignmentUsecase) AssignOrExtendInTx(ctx context.Context, tx *gorm.DB, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, bool, error) {
+func (f *renewingAssignmentUsecase) AssignOrExtendInTx(ctx context.Context, tx subscriptionbiz.Tx, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, bool, error) {
 	return f.AssignOrExtend(ctx, req)
 }
 
@@ -68,7 +67,7 @@ func (r *inMemoryPaymentRepoForRenewal) GetOrderByTradeNo(ctx context.Context, t
 func (r *inMemoryPaymentRepoForRenewal) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
 	return nil, 0, nil
 }
-func (r *inMemoryPaymentRepoForRenewal) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error) {
+func (r *inMemoryPaymentRepoForRenewal) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.order == nil || r.order.TradeNo != tradeNo {
@@ -90,7 +89,7 @@ func (r *inMemoryPaymentRepoForRenewal) MarkOrderPaid(ctx context.Context, trade
 func (r *inMemoryPaymentRepoForRenewal) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
-func (r *inMemoryPaymentRepoForRenewal) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error) {
+func (r *inMemoryPaymentRepoForRenewal) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
 

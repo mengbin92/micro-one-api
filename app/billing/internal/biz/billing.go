@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
-
 	"go.uber.org/zap"
 
 	applogger "micro-one-api/platform/logging"
@@ -67,6 +65,10 @@ type BillingOptions struct {
 	LedgerRepo      LedgerRepo
 	RedeemRepo      RedeemRepo
 	ReceivableRepo  ReceivableRepo
+	// TxRunner, when set, provides the transaction boundary for the
+	// dual-track flow. When nil the usecase falls back to the in-memory
+	// test path (no real transaction).
+	TxRunner subscriptionbiz.TxRunner
 	// AllowOverdraft controls whether CommitBalanceInTx is allowed to
 	// drive the wallet negative.
 	AllowOverdraft bool
@@ -96,14 +98,14 @@ type SubscriptionPrimatives interface {
 	// LockSubscriptionRow inside the dual-track transaction so the
 	// usage/window snapshot fed to the absorber is the locked read,
 	// not a stale pre-lock snapshot (code-review 2026-07-30 billing-H3).
-	GetActiveSubscriptionForUserInTx(ctx context.Context, tx *gorm.DB, userID int64) (*subscriptionbiz.UserSubscription, error)
+	GetActiveSubscriptionForUserInTx(ctx context.Context, tx subscriptionbiz.Tx, userID int64) (*subscriptionbiz.UserSubscription, error)
 	// GetGroupForSubscription loads the subscription group (limits
 	// and multiplier) for the given subscription.
 	GetGroupForSubscription(ctx context.Context, subscription *subscriptionbiz.UserSubscription) (*subscriptionbiz.SubscriptionGroup, error)
 	// RecordUsageForSubscriptionInTx adds the given USD cost to every
 	// window of the subscription's usage counters, performing the
 	// read-roll-increment in the caller's transaction.
-	RecordUsageForSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error
+	RecordUsageForSubscriptionInTx(ctx context.Context, tx subscriptionbiz.Tx, subscriptionID int64, costUSD float64, now int64) error
 }
 
 type BillingUsecase struct {
@@ -112,6 +114,7 @@ type BillingUsecase struct {
 	ledgerRepo        LedgerRepo
 	redeemRepo        RedeemRepo
 	receivableRepo    ReceivableRepo
+	txRunner          subscriptionbiz.TxRunner
 	subscription      SubscriptionPrimatives
 	options           BillingOptions
 	pricingStore      PricingConfigStore
@@ -171,6 +174,7 @@ func NewBillingUsecaseWithOptions(opts BillingOptions) *BillingUsecase {
 		ledgerRepo:      opts.LedgerRepo,
 		redeemRepo:      opts.RedeemRepo,
 		receivableRepo:  opts.ReceivableRepo,
+		txRunner:        opts.TxRunner,
 		subscription:    opts.SubscriptionUsecase,
 		options:         opts,
 	}
@@ -216,6 +220,15 @@ func (uc *BillingUsecase) SetLedgerRepo(r LedgerRepo) {
 func (uc *BillingUsecase) SetRedeemRepo(r RedeemRepo) {
 	uc.redeemRepo = r
 	uc.options.RedeemRepo = r
+}
+
+// SetTxRunner wires the data-owned transaction runner so the dual-track
+// reservation / commit / release pipeline opens real cross-table
+// transactions instead of the no-DB fallback. When unset the usecase keeps
+// the in-memory test path (code-review 2026-07-30 billing-M6).
+func (uc *BillingUsecase) SetTxRunner(r subscriptionbiz.TxRunner) {
+	uc.txRunner = r
+	uc.options.TxRunner = r
 }
 
 func (uc *BillingUsecase) Now() time.Time {
@@ -324,7 +337,7 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 	// release/commit — the wallet-side check must use the bare Balance
 	// (not AvailableBalance) to avoid the double-count that spuriously
 	// rejected valid reservations when frozen > 0 (billing-M3).
-	runLegacy := func(tx *gorm.DB) (*Reservation, error) {
+	runLegacy := func(tx subscriptionbiz.Tx) (*Reservation, error) {
 		// In-tx idempotency: a row-locked read of an existing reservation
 		// for the SAME (user_id, request_id). If one exists in a terminal
 		// state we return it instead of creating a second reservation /
@@ -371,28 +384,21 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 	// doubles have no *gorm.DB (reservationDB() == nil); their mock InTx
 	// methods ignore the tx argument, so fall back to a nil-tx call which
 	// still exercises the same reserve-then-create sequence.
-	rawDB := uc.reservationDB()
-	if rawDB == nil {
+	runner := uc.resolveRunner()
+	if runner == nil {
 		return runLegacy(nil)
 	}
-	tx := rawDB.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return nil, tx.Error
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
+	var reservation *Reservation
+	if err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
+		r, err := runLegacy(tx)
+		if err != nil {
+			return err
 		}
-	}()
-	reservation, err := runLegacy(tx)
-	if err != nil {
+		reservation = r
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-	if err := tx.Commit().Error; err != nil {
-		return nil, err
-	}
-	committed = true
 	return reservation, nil
 }
 
@@ -439,146 +445,139 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 	// therefore requires the caller's billing repo to expose its
 	// underlying *gorm.DB through a `DB()` accessor (every concrete
 	// repo in this package already does).
-	rawDB := uc.reservationDB()
-	if rawDB == nil {
+	runner := uc.resolveRunner()
+	if runner == nil {
 		return nil, ErrCrossDBReservation
 	}
-	tx := rawDB.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return nil, tx.Error
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
+	var reservation *Reservation
+	if err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
+		if err := uc.reservationRepo.LockSubscriptionRow(ctx, tx, subscription.ID); err != nil {
+			return fmt.Errorf("lock subscription row: %w", err)
 		}
-	}()
-	if err := uc.reservationRepo.LockSubscriptionRow(ctx, tx, subscription.ID); err != nil {
-		return nil, fmt.Errorf("lock subscription row: %w", err)
-	}
-	// In-tx idempotency: a row-locked read of an existing reservation for
-	// the SAME (user_id, request_id). If one exists in a terminal state we
-	// return it instead of creating a second reservation / double-charging
-	// the wallet. The unique index uq_billing_reservations_user_request is
-	// the last line of defence (code-review 2026-07-30 billing-M5).
-	if requestID != "" {
-		existing, err := uc.reservationRepo.FindByRequestIDInTx(ctx, tx, userID, requestID)
-		if err != nil {
-			return nil, fmt.Errorf("find by request id in tx: %w", err)
+		// In-tx idempotency: a row-locked read of an existing reservation for
+		// the SAME (user_id, request_id). If one exists in a terminal state we
+		// return it instead of creating a second reservation / double-charging
+		// the wallet. The unique index uq_billing_reservations_user_request is
+		// the last line of defence (code-review 2026-07-30 billing-M5).
+		if requestID != "" {
+			existing, err := uc.reservationRepo.FindByRequestIDInTx(ctx, tx, userID, requestID)
+			if err != nil {
+				return fmt.Errorf("find by request id in tx: %w", err)
+			}
+			if existing != nil && (existing.IsReserved() || existing.Status == ReservationStatusCommitted) {
+				reservation = existing
+				return nil
+			}
 		}
-		if existing != nil && (existing.IsReserved() || existing.Status == ReservationStatusCommitted) {
-			committed = true
-			return existing, nil
+		// Re-read the active subscription inside the transaction AFTER the
+		// row lock so the usage/window snapshot fed to the absorber reflects
+		// concurrent commits that landed between the pre-lock read above and
+		// the lock acquisition (code-review 2026-07-30 billing-H3). Reading
+		// before the lock would let two concurrent reservations each absorb
+		// against the stale window headroom and oversell the daily/weekly/
+		// monthly limit.
+		lockedSub, lerr := uc.subscription.GetActiveSubscriptionForUserInTx(ctx, tx, parsedUserID)
+		if lerr != nil {
+			return lerr
 		}
-	}
-	// Re-read the active subscription inside the transaction AFTER the
-	// row lock so the usage/window snapshot fed to the absorber reflects
-	// concurrent commits that landed between the pre-lock read above and
-	// the lock acquisition (code-review 2026-07-30 billing-H3). Reading
-	// before the lock would let two concurrent reservations each absorb
-	// against the stale window headroom and oversell the daily/weekly/
-	// monthly limit.
-	lockedSub, lerr := uc.subscription.GetActiveSubscriptionForUserInTx(ctx, tx, parsedUserID)
-	if lerr != nil {
-		return nil, lerr
-	}
-	// The active subscription could have changed between the pre-lock
-	// read and the lock (revoke/renew). Fall back to the pre-lock row's
-	// id so the reservation still binds to a concrete subscription; the
-	// absorber will simply absorb 0 when the window no longer matches.
-	lockedID := lockedSub.ID
-	if lockedID != subscription.ID {
-		lockedID = subscription.ID
-	}
-	group, gerr := uc.subscription.GetGroupForSubscription(ctx, lockedSub)
-	if gerr != nil {
-		return nil, gerr
-	}
-	multiplier := group.RateMultiplier
-	if multiplier <= 0 {
-		multiplier = 1.0
-	}
-	// Cost is in quota; convert to USD for the absorber check.
-	costUSD := uc.quotaToUSD(cost)
+		// The active subscription could have changed between the pre-lock
+		// read and the lock (revoke/renew). Fall back to the pre-lock row's
+		// id so the reservation still binds to a concrete subscription; the
+		// absorber will simply absorb 0 when the window no longer matches.
+		lockedID := lockedSub.ID
+		if lockedID != subscription.ID {
+			lockedID = subscription.ID
+		}
+		group, gerr := uc.subscription.GetGroupForSubscription(ctx, lockedSub)
+		if gerr != nil {
+			return gerr
+		}
+		multiplier := group.RateMultiplier
+		if multiplier <= 0 {
+			multiplier = 1.0
+		}
+		// Cost is in quota; convert to USD for the absorber check.
+		costUSD := uc.quotaToUSD(cost)
 
-	now := uc.Now()
-	rolled := subscriptionbiz.RollUsageWindowsPure(lockedSub, now.Unix())
-	frozenDailyUSD, frozenWeeklyUSD, frozenMonthlyUSD, _, err := uc.reservationRepo.SumActiveFrozenInTx(ctx, tx, userID, lockedID, rolled.DailyWindowStart, rolled.WeeklyWindowStart, rolled.MonthlyWindowStart)
-	if err != nil {
-		return nil, fmt.Errorf("sum active frozen: %w", err)
-	}
-	window := subscriptionbiz.AbsorbableWindow{
-		DailyStart:                 rolled.DailyWindowStart,
-		WeeklyStart:                rolled.WeeklyWindowStart,
-		MonthlyStart:               rolled.MonthlyWindowStart,
-		DailyUsageUSD:              rolled.DailyUsageUSD,
-		WeeklyUsageUSD:             rolled.WeeklyUsageUSD,
-		MonthlyUsageUSD:            rolled.MonthlyUsageUSD,
-		DailyLimit:                 group.DailyLimitUSD,
-		WeeklyLimit:                group.WeeklyLimitUSD,
-		MonthlyLimit:               group.MonthlyLimitUSD,
-		FrozenDailyAccountingUSD:   frozenDailyUSD * multiplier,
-		FrozenWeeklyAccountingUSD:  frozenWeeklyUSD * multiplier,
-		FrozenMonthlyAccountingUSD: frozenMonthlyUSD * multiplier,
-	}
-	absorbResult := subscriptionbiz.ComputeAbsorbablePure(window, multiplier, 0)
-	absorbUSD := costUSD
-	if absorbUSD > absorbResult.AbsorbableUSD {
-		absorbUSD = absorbResult.AbsorbableUSD
-	}
-	if absorbUSD < 0 {
-		absorbUSD = 0
-	}
-	subscriptionQuota := uc.usdToQuotaFloor(absorbUSD)
-	// If absorbUSD is 0.0001 USD we still round it to 0 quota, in
-	// which case the subscription has not absorbed anything and the
-	// entire cost falls on the wallet. Conversely, when
-	// subscriptionQuota >= cost we keep cost on the wallet at 0.
-	if subscriptionQuota > cost {
-		subscriptionQuota = cost
-	}
-	balanceQuota := cost - subscriptionQuota
-	// Wallet pre-deduction.
-	if balanceQuota > 0 {
-		_, _, _, err = uc.accountRepo.ReserveBalanceInTx(ctx, tx, userID, balanceQuota, false)
+		now := uc.Now()
+		rolled := subscriptionbiz.RollUsageWindowsPure(lockedSub, now.Unix())
+		frozenDailyUSD, frozenWeeklyUSD, frozenMonthlyUSD, _, err := uc.reservationRepo.SumActiveFrozenInTx(ctx, tx, userID, lockedID, rolled.DailyWindowStart, rolled.WeeklyWindowStart, rolled.MonthlyWindowStart)
 		if err != nil {
-			// The whole transaction (including the subscription
-			// pre-deduction) must roll back. We must NOT call
-			// releaseReservation here because we have not inserted
-			// the reservation row yet — the rollback is the only
-			// compensation.
-			return nil, fmt.Errorf("reserve wallet: %w", err)
+			return fmt.Errorf("sum active frozen: %w", err)
 		}
-	}
-	reservationID := generateReservationID()
-	nowTime := uc.Now()
-	expiredAt := nowTime.Add(5 * time.Minute)
-	reservation := &Reservation{
-		ReservationID:                  reservationID,
-		UserID:                         userID,
-		RequestID:                      requestID,
-		Amount:                         cost,
-		BalanceAmountQuota:             balanceQuota,
-		SubscriptionID:                 subscription.ID,
-		SubscriptionAmountUSD:          absorbUSD,
-		SubscriptionDailyWindowStart:   rolled.DailyWindowStart,
-		SubscriptionWeeklyWindowStart:  rolled.WeeklyWindowStart,
-		SubscriptionMonthlyWindowStart: rolled.MonthlyWindowStart,
-		Status:                         ReservationStatusReserved,
-		Model:                          model,
-		ChannelID:                      channelID,
-		SubscriptionAccountID:          strconv.FormatInt(subscriptionAccountID, 10),
-		CreatedAt:                      nowTime,
-		UpdatedAt:                      nowTime,
-		ExpiredAt:                      expiredAt,
-	}
-	if err := uc.reservationRepo.CreateReservationInTx(ctx, tx, reservation); err != nil {
-		return nil, fmt.Errorf("create reservation in tx: %w", err)
-	}
-	if err := tx.Commit().Error; err != nil {
+		window := subscriptionbiz.AbsorbableWindow{
+			DailyStart:                 rolled.DailyWindowStart,
+			WeeklyStart:                rolled.WeeklyWindowStart,
+			MonthlyStart:               rolled.MonthlyWindowStart,
+			DailyUsageUSD:              rolled.DailyUsageUSD,
+			WeeklyUsageUSD:             rolled.WeeklyUsageUSD,
+			MonthlyUsageUSD:            rolled.MonthlyUsageUSD,
+			DailyLimit:                 group.DailyLimitUSD,
+			WeeklyLimit:                group.WeeklyLimitUSD,
+			MonthlyLimit:               group.MonthlyLimitUSD,
+			FrozenDailyAccountingUSD:   frozenDailyUSD * multiplier,
+			FrozenWeeklyAccountingUSD:  frozenWeeklyUSD * multiplier,
+			FrozenMonthlyAccountingUSD: frozenMonthlyUSD * multiplier,
+		}
+		absorbResult := subscriptionbiz.ComputeAbsorbablePure(window, multiplier, 0)
+		absorbUSD := costUSD
+		if absorbUSD > absorbResult.AbsorbableUSD {
+			absorbUSD = absorbResult.AbsorbableUSD
+		}
+		if absorbUSD < 0 {
+			absorbUSD = 0
+		}
+		subscriptionQuota := uc.usdToQuotaFloor(absorbUSD)
+		// If absorbUSD is 0.0001 USD we still round it to 0 quota, in
+		// which case the subscription has not absorbed anything and the
+		// entire cost falls on the wallet. Conversely, when
+		// subscriptionQuota >= cost we keep cost on the wallet at 0.
+		if subscriptionQuota > cost {
+			subscriptionQuota = cost
+		}
+		balanceQuota := cost - subscriptionQuota
+		// Wallet pre-deduction.
+		if balanceQuota > 0 {
+			_, _, _, err = uc.accountRepo.ReserveBalanceInTx(ctx, tx, userID, balanceQuota, false)
+			if err != nil {
+				// The whole transaction (including the subscription
+				// pre-deduction) must roll back. We must NOT call
+				// releaseReservation here because we have not inserted
+				// the reservation row yet — the rollback is the only
+				// compensation.
+				return fmt.Errorf("reserve wallet: %w", err)
+			}
+		}
+		reservationID := generateReservationID()
+		nowTime := uc.Now()
+		expiredAt := nowTime.Add(5 * time.Minute)
+		r := &Reservation{
+			ReservationID:                  reservationID,
+			UserID:                         userID,
+			RequestID:                      requestID,
+			Amount:                         cost,
+			BalanceAmountQuota:             balanceQuota,
+			SubscriptionID:                 subscription.ID,
+			SubscriptionAmountUSD:          absorbUSD,
+			SubscriptionDailyWindowStart:   rolled.DailyWindowStart,
+			SubscriptionWeeklyWindowStart:  rolled.WeeklyWindowStart,
+			SubscriptionMonthlyWindowStart: rolled.MonthlyWindowStart,
+			Status:                         ReservationStatusReserved,
+			Model:                          model,
+			ChannelID:                      channelID,
+			SubscriptionAccountID:          strconv.FormatInt(subscriptionAccountID, 10),
+			CreatedAt:                      nowTime,
+			UpdatedAt:                      nowTime,
+			ExpiredAt:                      expiredAt,
+		}
+		if err := uc.reservationRepo.CreateReservationInTx(ctx, tx, r); err != nil {
+			return fmt.Errorf("create reservation in tx: %w", err)
+		}
+		reservation = r
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-	committed = true
 	return reservation, nil
 }
 
@@ -595,22 +594,16 @@ func (uc *BillingUsecase) canOverdraft(userID string) bool {
 	return true
 }
 
-// reservationDB exposes the underlying *gorm.DB of the reservation
-// repo so the dual-track pre-deduction can open a transaction that
-// spans both the reservation table and the subscription table. The
-// cast is safe because every concrete reservationRepo is bound to a
-// *Data that owns the *gorm.DB.
-func (uc *BillingUsecase) reservationDB() *gorm.DB {
-	if uc == nil || uc.reservationRepo == nil {
+// txRunner returns the transaction runner if one is wired. It replaces the
+// former reservationDB() accessor that leaked *gorm.DB into biz: the dual-
+// track pre-deduction now opens its cross-table transaction through the
+// data-owned TxRunner abstraction (code-review 2026-07-30 billing-M6 /
+// domain-L1), so biz orchestrates transactions without importing gorm.
+func (uc *BillingUsecase) resolveRunner() subscriptionbiz.TxRunner {
+	if uc == nil {
 		return nil
 	}
-	type dbAccess interface {
-		DB() *gorm.DB
-	}
-	if dba, ok := uc.reservationRepo.(dbAccess); ok {
-		return dba.DB()
-	}
-	return nil
+	return uc.txRunner
 }
 
 // committedAmountFromReservation returns the authoritative settled cost for an
@@ -740,8 +733,8 @@ func (uc *BillingUsecase) CommitQuotaWithUsage(ctx context.Context, reservationI
 	// balance ledger with the same dedupe key that makes retries idempotent. The
 	// commitQuotaLegacy path is retained only as the no-DB fallback used by
 	// in-memory tests where reservationDB() == nil.
-	rawDB := uc.reservationDB()
-	if rawDB == nil {
+	runner := uc.resolveRunner()
+	if runner == nil {
 		return uc.commitQuotaLegacy(ctx, reservationID, actualTokens, success, usage)
 	}
 	if !success {
@@ -900,54 +893,47 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 // single transaction; retries see the row state and short-circuit on
 // the same reservation. See design doc §5.3.
 func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationID string, actualTokens int64, usage LedgerUsage) (int64, int64, error) {
-	rawDB := uc.reservationDB()
-	if rawDB == nil {
+	runner := uc.resolveRunner()
+	if runner == nil {
 		return 0, 0, ErrCrossDBReservation
 	}
 	now := uc.Now().Unix()
-	tx := rawDB.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return 0, 0, tx.Error
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
-		}
-	}()
+	var resultActualCost int64
+	var resultRefundAmount int64
+	if err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
 	won, err := uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReserved, ReservationStatusCommitting)
 	if err != nil {
-		return 0, 0, fmt.Errorf("cas reservation: %w", err)
+		return fmt.Errorf("cas reservation: %w", err)
 	}
 	if !won {
 		// Concurrent or retry: read the row's current state and
 		// return a best-effort idempotent result.
 		reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
 		if err != nil {
-			return 0, 0, err
+			return err
 		}
 		switch reservation.Status {
 		case ReservationStatusCommitted:
-			committed = true
-			_ = tx.Commit()
 			// Code-review 2026-07-30 billing-L1: return the persisted actual
 			// cost (fallback to Amount for legacy rows committed before the
 			// actual_cost column existed).
-			return committedAmountFromReservation(reservation), 0, nil
+			resultActualCost = committedAmountFromReservation(reservation)
+			resultRefundAmount = 0
+			return nil
 		case ReservationStatusReleased, ReservationStatusExpired:
-			committed = true
-			_ = tx.Commit()
-			return 0, reservation.Amount, nil
+			resultActualCost = 0
+			resultRefundAmount = reservation.Amount
+			return nil
 		}
-		return 0, 0, errors.Join(ErrReservationCommitted, ErrReservationReleased)
+		return errors.Join(ErrReservationCommitted, ErrReservationReleased)
 	}
 	reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
 	if err != nil {
-		return 0, 0, fmt.Errorf("get reservation in tx: %w", err)
+		return fmt.Errorf("get reservation in tx: %w", err)
 	}
 	account, err := uc.accountSnapshotInTx(ctx, tx, reservation.UserID)
 	if err != nil {
-		return 0, 0, fmt.Errorf("get account in tx: %w", err)
+		return fmt.Errorf("get account in tx: %w", err)
 	}
 	actualCost, costBreakdown := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
 	if actualCost <= 0 {
@@ -977,13 +963,13 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 	// row-locked update.
 	if reservation.SubscriptionID > 0 {
 		if err := uc.subscription.RecordUsageForSubscriptionInTx(ctx, tx, reservation.SubscriptionID, actualAbsorbUSD, now); err != nil {
-			return 0, 0, fmt.Errorf("record subscription usage: %w", err)
+			return fmt.Errorf("record subscription usage: %w", err)
 		}
 	}
 	// Wallet side: settle the reservation's balance pre-deduction.
 	oldBalance, newBalance, err := uc.accountRepo.CommitBalanceInTx(ctx, tx, reservation.UserID, reservation.BalanceAmountQuota, actualBalanceQuota, uc.canOverdraft(reservation.UserID))
 	if err != nil {
-		return 0, 0, fmt.Errorf("commit balance: %w", err)
+		return fmt.Errorf("commit balance: %w", err)
 	}
 	// Receivable mirror: only record the *increment* so we don't
 	// double-count historical overdraft.
@@ -1002,7 +988,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				UpdatedAt:     uc.Now(),
 			}
 			if err := uc.receivableRepo.CreateInTx(ctx, tx, recv); err != nil && !errors.Is(err, ErrReceivableDuplicate) {
-				return 0, 0, fmt.Errorf("create receivable: %w", err)
+				return fmt.Errorf("create receivable: %w", err)
 			}
 		}
 	}
@@ -1063,7 +1049,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			subLedger.ShadowCost = costBreakdown.ShadowCost
 		}
 		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, subLedger); err != nil {
-			return 0, 0, fmt.Errorf("create subscription ledger: %w", err)
+			return fmt.Errorf("create subscription ledger: %w", err)
 		}
 	}
 	if actualBalanceQuota > 0 {
@@ -1100,34 +1086,36 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			LedgerDedupeKey:       fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceBalance),
 		}
 		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, balLedger); err != nil {
-			return 0, 0, fmt.Errorf("create balance ledger: %w", err)
+			return fmt.Errorf("create balance ledger: %w", err)
 		}
 	}
 	// Persist the authoritative settlement cost on the reservation row so an
 	// idempotent retry that re-reads the row returns the actual cost rather
 	// than the pre-deduction estimate (code-review 2026-07-30 billing-L1).
 	if err := uc.reservationRepo.SetActualCostInTx(ctx, tx, reservationID, actualCost); err != nil {
-		return 0, 0, fmt.Errorf("persist actual cost: %w", err)
+		return fmt.Errorf("persist actual cost: %w", err)
 	}
 	// Final CAS to committed.
 	won, err = uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusCommitting, ReservationStatusCommitted)
 	if err != nil {
-		return 0, 0, fmt.Errorf("cas to committed: %w", err)
+		return fmt.Errorf("cas to committed: %w", err)
 	}
 	if !won {
-		return 0, 0, errors.Join(ErrReservationCommitted, ErrReservationReleased)
+		return errors.Join(ErrReservationCommitted, ErrReservationReleased)
 	}
 	if err := uc.accountRepo.UpdateUsageInTx(ctx, tx, reservation.UserID, actualCost, 1); err != nil {
-		return 0, 0, fmt.Errorf("update usage: %w", err)
+		return fmt.Errorf("update usage: %w", err)
 	}
-	if err := tx.Commit().Error; err != nil {
+	resultActualCost = actualCost
+	resultRefundAmount = 0
+	return nil
+	}); err != nil {
 		return 0, 0, err
 	}
-	committed = true
-	return actualCost, 0, nil
+	return resultActualCost, resultRefundAmount, nil
 }
 
-func (uc *BillingUsecase) commitSubscriptionAbsorbUSD(ctx context.Context, tx *gorm.DB, reservation *Reservation, costUSD float64) float64 {
+func (uc *BillingUsecase) commitSubscriptionAbsorbUSD(ctx context.Context, tx subscriptionbiz.Tx, reservation *Reservation, costUSD float64) float64 {
 	if uc == nil || reservation == nil || costUSD <= 0 {
 		return 0
 	}
@@ -1214,83 +1202,69 @@ func (uc *BillingUsecase) ReleaseReservation(ctx context.Context, reservationID,
 // so the wallet refund, the ledger entry, and the reservation status
 // change commit atomically.
 func (uc *BillingUsecase) releaseReservation(ctx context.Context, reservationID, reason, finalStatus string) error {
-	rawDB := uc.reservationDB()
-	if rawDB == nil {
+	runner := uc.resolveRunner()
+	if runner == nil {
 		return uc.releaseReservationLegacy(ctx, reservationID, reason, finalStatus)
 	}
-	tx := rawDB.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
+	return runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
+		won, err := uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReserved, ReservationStatusReleasing)
+		if err != nil {
+			return fmt.Errorf("cas to releasing: %w", err)
 		}
-	}()
-	won, err := uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReserved, ReservationStatusReleasing)
-	if err != nil {
-		return fmt.Errorf("cas to releasing: %w", err)
-	}
-	if !won {
-		// Either already terminal (idempotent) or a concurrent
-		// release is in flight. Read the current state and exit
-		// cleanly.
+		if !won {
+			// Either already terminal (idempotent) or a concurrent
+			// release is in flight. Read the current state and exit
+			// cleanly.
+			reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
+			if err != nil {
+				return err
+			}
+			if reservation.IsTerminal() {
+				return nil
+			}
+			// Still in committing — the other side is finalising. We
+			// cannot release a reservation whose commit is in flight;
+			// the caller should retry shortly.
+			return errors.Join(ErrReservationCommitted, ErrReservationReleased)
+		}
 		reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
 		if err != nil {
-			return err
+			return fmt.Errorf("get reservation in tx: %w", err)
 		}
-		if reservation.IsTerminal() {
-			committed = true
-			_ = tx.Commit()
-			return nil
+		// Wallet side: refund the reserved quota.
+		if reservation.BalanceAmountQuota > 0 {
+			_, err := uc.accountRepo.ReleaseBalanceInTx(ctx, tx, reservation.UserID, reservation.BalanceAmountQuota)
+			if err != nil {
+				return fmt.Errorf("release balance: %w", err)
+			}
+			// Refund ledger. The dedupe key prevents duplicate rows
+			// when a retry enters this branch after a partial commit.
+			refund := &Ledger{
+				UserID:          reservation.UserID,
+				Amount:          reservation.BalanceAmountQuota,
+				Type:            LedgerTypeRefund,
+				ReferenceID:     reservationID,
+				Remark:          reason,
+				LedgerDedupeKey: fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeRefund, CostSourceBalance),
+			}
+			if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, refund); err != nil {
+				return fmt.Errorf("create refund ledger: %w", err)
+			}
 		}
-		// Still in committing — the other side is finalising. We
-		// cannot release a reservation whose commit is in flight;
-		// the caller should retry shortly.
-		return errors.Join(ErrReservationCommitted, ErrReservationReleased)
-	}
-	reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
-	if err != nil {
-		return fmt.Errorf("get reservation in tx: %w", err)
-	}
-	// Wallet side: refund the reserved quota.
-	if reservation.BalanceAmountQuota > 0 {
-		_, err := uc.accountRepo.ReleaseBalanceInTx(ctx, tx, reservation.UserID, reservation.BalanceAmountQuota)
+		// Subscription side: nothing to do here. The reservation's
+		// status flip from reserved -> released causes the
+		// SumActiveFrozenInTx query to drop the row from the next
+		// absorber check, so the pre-deduction naturally "releases".
+		won, err = uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReleasing, finalStatus)
 		if err != nil {
-			return fmt.Errorf("release balance: %w", err)
+			return fmt.Errorf("cas to final: %w", err)
 		}
-		// Refund ledger. The dedupe key prevents duplicate rows
-		// when a retry enters this branch after a partial commit.
-		refund := &Ledger{
-			UserID:          reservation.UserID,
-			Amount:          reservation.BalanceAmountQuota,
-			Type:            LedgerTypeRefund,
-			ReferenceID:     reservationID,
-			Remark:          reason,
-			LedgerDedupeKey: fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeRefund, CostSourceBalance),
+		if !won {
+			// Should not happen unless the row was forcibly deleted.
+			return errors.Join(ErrReservationCommitted, ErrReservationReleased)
 		}
-		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, refund); err != nil {
-			return fmt.Errorf("create refund ledger: %w", err)
-		}
-	}
-	// Subscription side: nothing to do here. The reservation's
-	// status flip from reserved -> released causes the
-	// SumActiveFrozenInTx query to drop the row from the next
-	// absorber check, so the pre-deduction naturally "releases".
-	won, err = uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReleasing, finalStatus)
-	if err != nil {
-		return fmt.Errorf("cas to final: %w", err)
-	}
-	if !won {
-		// Should not happen unless the row was forcibly deleted.
-		return errors.Join(ErrReservationCommitted, ErrReservationReleased)
-	}
-	if err := tx.Commit().Error; err != nil {
-		return err
-	}
-	committed = true
-	return nil
+		return nil
+	})
 }
 
 func (uc *BillingUsecase) releaseReservationLegacy(ctx context.Context, reservationID, reason, finalStatus string) error {
@@ -1333,11 +1307,11 @@ func (uc *BillingUsecase) releaseReservationLegacy(ctx context.Context, reservat
 	return nil
 }
 
-func (uc *BillingUsecase) accountSnapshotInTx(ctx context.Context, tx *gorm.DB, userID string) (*Account, error) {
+func (uc *BillingUsecase) accountSnapshotInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string) (*Account, error) {
 	// Concrete account repos expose a per-transaction read. We fall
 	// back to a non-transactional snapshot when the repo does not.
 	type inTxAccount interface {
-		GetAccountSnapshotInTx(ctx context.Context, tx *gorm.DB, userID string) (*Account, error)
+		GetAccountSnapshotInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string) (*Account, error)
 	}
 	if r, ok := uc.accountRepo.(inTxAccount); ok {
 		return r.GetAccountSnapshotInTx(ctx, tx, userID)
@@ -1357,25 +1331,18 @@ func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID str
 	if amount <= 0 {
 		return 0, fmt.Errorf("amount must be positive")
 	}
-	if rawDB := uc.reservationDB(); rawDB != nil {
-		tx := rawDB.WithContext(ctx).Begin()
-		if tx.Error != nil {
-			return 0, tx.Error
-		}
-		committed := false
-		defer func() {
-			if !committed {
-				tx.Rollback()
+	if runner := uc.resolveRunner(); runner != nil {
+		var balance int64
+		if err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
+			b, err := uc.topUpQuotaInTx(ctx, tx, userID, operatorID, amount, remark)
+			if err != nil {
+				return err
 			}
-		}()
-		balance, err := uc.topUpQuotaInTx(ctx, tx, userID, operatorID, amount, remark)
-		if err != nil {
+			balance = b
+			return nil
+		}); err != nil {
 			return 0, err
 		}
-		if err := tx.Commit().Error; err != nil {
-			return 0, err
-		}
-		committed = true
 		return balance, nil
 	}
 	if _, err := uc.accountRepo.GetAccountSnapshot(ctx, userID); err != nil {
@@ -1405,26 +1372,17 @@ func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID str
 // order status transition, preventing the double-credit that occurred when
 // TopUpQuota opened and committed its own transaction while the outer
 // MarkOrderPaid transaction could still fail.
-func (uc *BillingUsecase) TopUpQuotaInTx(ctx context.Context, tx *gorm.DB, userID, operatorID string, amount int64, remark string) (int64, error) {
+func (uc *BillingUsecase) TopUpQuotaInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, operatorID string, amount int64, remark string) (int64, error) {
 	if amount <= 0 {
 		return 0, fmt.Errorf("amount must be positive")
 	}
 	return uc.topUpQuotaInTx(ctx, tx, userID, operatorID, amount, remark)
 }
 
-func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx *gorm.DB, userID, operatorID string, amount int64, remark string) (int64, error) {
-	res := tx.WithContext(ctx).Exec(`UPDATE users SET balance = balance + ? WHERE id = ?`, amount, userID)
-	if res.Error != nil {
-		return 0, fmt.Errorf("update balance: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return 0, ErrAccountNotFound
-	}
-	var row struct {
-		Balance int64 `gorm:"column:balance"`
-	}
-	if err := tx.WithContext(ctx).Table("users").Select("balance").Where("id = ?", userID).Scan(&row).Error; err != nil {
-		return 0, fmt.Errorf("get updated balance: %w", err)
+func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, operatorID string, amount int64, remark string) (int64, error) {
+	balance, err := uc.accountRepo.IncrementBalanceInTx(ctx, tx, userID, amount)
+	if err != nil {
+		return 0, fmt.Errorf("increment balance: %w", err)
 	}
 	if uc.receivableRepo != nil {
 		settled, err := uc.receivableRepo.SettleOldestForUserInTx(ctx, tx, userID, amount)
@@ -1446,14 +1404,14 @@ func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx *gorm.DB, userI
 	ledger := &Ledger{
 		UserID:       userID,
 		Amount:       amount,
-		BalanceAfter: row.Balance,
+		BalanceAfter: balance,
 		Type:         LedgerTypeRecharge,
 		Remark:       fmt.Sprintf("operator=%s, remark=%s", operatorID, remark),
 	}
 	if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, ledger); err != nil {
 		return 0, fmt.Errorf("create ledger: %w", err)
 	}
-	return row.Balance, nil
+	return balance, nil
 }
 
 // PurchaseSubscription atomically deducts priceQuota from the user's wallet
@@ -1478,8 +1436,8 @@ func (uc *BillingUsecase) PurchaseSubscription(ctx context.Context, userID strin
 	if _, err := uc.accountRepo.GetAccountSnapshot(ctx, userID); err != nil {
 		return 0, fmt.Errorf("get account snapshot: %w", err)
 	}
-	rawDB := uc.reservationDB()
-	if rawDB == nil {
+	runner := uc.resolveRunner()
+	if runner == nil {
 		// In-memory / test path with no shared DB: keep the legacy
 		// best-effort sequence so mock-backed unit tests still exercise the
 		// usecase logic.
@@ -1500,37 +1458,30 @@ func (uc *BillingUsecase) PurchaseSubscription(ctx context.Context, userID strin
 		}
 		return newBalance, nil
 	}
-	tx := rawDB.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return 0, tx.Error
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
+	var newBalance int64
+	if err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
+		// Deduct inside the outer tx so the balance change commits/rolls back
+		// with the ledger write below.
+		b, err := uc.accountRepo.UpdateBalanceInTx(ctx, tx, userID, -priceQuota, LedgerTypeSubscription)
+		if err != nil {
+			return err
 		}
-	}()
-	// Deduct inside the outer tx so the balance change commits/rolls back
-	// with the ledger write below.
-	newBalance, err := uc.accountRepo.UpdateBalanceInTx(ctx, tx, userID, -priceQuota, LedgerTypeSubscription)
-	if err != nil {
+		newBalance = b
+		ledger := &Ledger{
+			UserID:       userID,
+			Amount:       -priceQuota,
+			BalanceAfter: newBalance,
+			Type:         LedgerTypeSubscription,
+			ReferenceID:  strconv.FormatInt(groupID, 10),
+			Remark:       remark,
+		}
+		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, ledger); err != nil {
+			return fmt.Errorf("create ledger: %w", err)
+		}
+		return nil
+	}); err != nil {
 		return 0, err
 	}
-	ledger := &Ledger{
-		UserID:       userID,
-		Amount:       -priceQuota,
-		BalanceAfter: newBalance,
-		Type:         LedgerTypeSubscription,
-		ReferenceID:  strconv.FormatInt(groupID, 10),
-		Remark:       remark,
-	}
-	if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, ledger); err != nil {
-		return 0, fmt.Errorf("create ledger: %w", err)
-	}
-	if err := tx.Commit().Error; err != nil {
-		return 0, err
-	}
-	committed = true
 	return newBalance, nil
 }
 
@@ -1636,8 +1587,8 @@ func (uc *BillingUsecase) RedeemCode(ctx context.Context, userID, code string) (
 	// a single transaction: the count decrement is a conditional atomic UPDATE
 	// (status=enabled AND count>=1), so exactly one concurrent caller wins;
 	// the wallet credit, ledger and record commit or roll back together.
-	rawDB := uc.reservationDB()
-	if rawDB == nil {
+	runner := uc.resolveRunner()
+	if runner == nil {
 		// In-memory / test path with no shared DB: keep the legacy
 		// best-effort sequence so the mock-backed unit tests still
 		// exercise the usecase logic.
@@ -1673,59 +1624,51 @@ func (uc *BillingUsecase) RedeemCode(ctx context.Context, userID, code string) (
 		return redeemCode.Amount, newBalance, nil
 	}
 
-	tx := rawDB.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return 0, 0, tx.Error
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
+	var newBalance int64
+	if err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
+		// Atomic conditional decrement: wins only when the code is still
+		// enabled and has inventory. Under concurrency exactly one caller's
+		// UPDATE affects a row, so a count=1 code can only be redeemed once.
+		if err := uc.redeemRepo.UpdateRedeemCodeCountInTx(ctx, tx, code, 1); err != nil {
+			// Map the race-lost / exhausted case to the typed sentinel so
+			// callers see the same error they got from the pre-check.
+			if errors.Is(err, ErrRedeemCodeUsedUp) {
+				return ErrRedeemCodeUsedUp
+			}
+			return fmt.Errorf("update redeem code count: %w", err)
 		}
-	}()
-
-	// Atomic conditional decrement: wins only when the code is still
-	// enabled and has inventory. Under concurrency exactly one caller's
-	// UPDATE affects a row, so a count=1 code can only be redeemed once.
-	if err := uc.redeemRepo.UpdateRedeemCodeCountInTx(ctx, tx, code, 1); err != nil {
-		// Map the race-lost / exhausted case to the typed sentinel so
-		// callers see the same error they got from the pre-check.
-		if errors.Is(err, ErrRedeemCodeUsedUp) {
-			return 0, 0, ErrRedeemCodeUsedUp
+		b, err := uc.accountRepo.UpdateBalanceInTx(ctx, tx, userID, redeemCode.Amount, LedgerTypeRedeem)
+		if err != nil {
+			return fmt.Errorf("update balance: %w", err)
 		}
-		return 0, 0, fmt.Errorf("update redeem code count: %w", err)
-	}
-	newBalance, err := uc.accountRepo.UpdateBalanceInTx(ctx, tx, userID, redeemCode.Amount, LedgerTypeRedeem)
-	if err != nil {
-		return 0, 0, fmt.Errorf("update balance: %w", err)
-	}
-	balanceAfter := newBalance
-	ledger := &Ledger{
-		UserID:          userID,
-		Amount:          redeemCode.Amount,
-		BalanceAfter:    balanceAfter,
-		Type:            LedgerTypeRedeem,
-		ReferenceID:     code,
-		Remark:          fmt.Sprintf("redeem code=%s", code),
-		LedgerDedupeKey: fmt.Sprintf("%s:%s", code, LedgerTypeRedeem),
-	}
-	if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, ledger); err != nil {
-		return 0, 0, fmt.Errorf("create ledger: %w", err)
-	}
-	record := &RedeemRecord{
-		UserID:        userID,
-		Code:          code,
-		Amount:        redeemCode.Amount,
-		BalanceBefore: balanceBefore,
-		BalanceAfter:  balanceAfter,
-	}
-	if err := uc.redeemRepo.CreateRedeemRecordInTx(ctx, tx, record); err != nil {
-		return 0, 0, fmt.Errorf("create redeem record: %w", err)
-	}
-	if err := tx.Commit().Error; err != nil {
+		newBalance = b
+		balanceAfter := newBalance
+		ledger := &Ledger{
+			UserID:          userID,
+			Amount:          redeemCode.Amount,
+			BalanceAfter:    balanceAfter,
+			Type:            LedgerTypeRedeem,
+			ReferenceID:     code,
+			Remark:          fmt.Sprintf("redeem code=%s", code),
+			LedgerDedupeKey: fmt.Sprintf("%s:%s", code, LedgerTypeRedeem),
+		}
+		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, ledger); err != nil {
+			return fmt.Errorf("create ledger: %w", err)
+		}
+		record := &RedeemRecord{
+			UserID:        userID,
+			Code:          code,
+			Amount:        redeemCode.Amount,
+			BalanceBefore: balanceBefore,
+			BalanceAfter:  balanceAfter,
+		}
+		if err := uc.redeemRepo.CreateRedeemRecordInTx(ctx, tx, record); err != nil {
+			return fmt.Errorf("create redeem record: %w", err)
+		}
+		return nil
+	}); err != nil {
 		return 0, 0, err
 	}
-	committed = true
 	return redeemCode.Amount, newBalance, nil
 }
 

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"micro-one-api/app/billing/internal/biz"
+
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/safecast"
 
 	"gorm.io/gorm"
@@ -121,7 +123,7 @@ func (r *paymentRepo) ListOrders(ctx context.Context, req biz.ListPaymentOrdersR
 	return orders, total, nil
 }
 
-func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*biz.PaymentOrder, *gorm.DB) error) (*biz.PaymentOrder, bool, error) {
+func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*biz.PaymentOrder, subscriptionbiz.Tx) error) (*biz.PaymentOrder, bool, error) {
 	var result *biz.PaymentOrder
 	changed := false
 
@@ -156,7 +158,7 @@ func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeN
 		// Code-review 2026-07-30 billing-H2: pass the outer tx so the issue
 		// callback (wallet credit + subscription grant) runs in this
 		// transaction and commits/rolls back with the order status flip.
-		if err := issue(order, tx); err != nil {
+		if err := issue(order, &gormTx{db: tx}); err != nil {
 			return err
 		}
 
@@ -253,7 +255,7 @@ func (r *paymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTrad
 // the wallet credit + ledger reversal + subscription mutation so all three
 // commit atomically. Returns changed=false when the order was already
 // refunded (idempotent re-entry from a replayed refund callback).
-func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*biz.PaymentOrder, *gorm.DB) error) (*biz.PaymentOrder, bool, error) {
+func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*biz.PaymentOrder, subscriptionbiz.Tx) error) (*biz.PaymentOrder, bool, error) {
 	var result *biz.PaymentOrder
 	changed := false
 
@@ -287,7 +289,7 @@ func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason str
 		if revert == nil {
 			return errors.New("refund revert callback is required")
 		}
-		if err := revert(order, tx); err != nil {
+		if err := revert(order, &gormTx{db: tx}); err != nil {
 			return err
 		}
 

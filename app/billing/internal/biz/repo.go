@@ -4,16 +4,22 @@ import (
 	"context"
 	"time"
 
-	"gorm.io/gorm"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
 
 type AccountRepo interface {
 	GetAccountSnapshot(ctx context.Context, userID string) (*Account, error)
 	BatchGetAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*Account, error)
 	UpdateBalance(ctx context.Context, userID string, delta int64, operationType string) (int64, error)
-	UpdateBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, delta int64, operationType string) (int64, error)
+	UpdateBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, delta int64, operationType string) (int64, error)
+	// IncrementBalanceInTx atomically increments the user's balance by amount
+	// (a raw SQL "balance = balance + ?") and returns the new balance. Used by
+	// the top-up path so the increment and the post-increment read are atomic
+	// inside the caller's transaction. This moves the raw SQL out of biz and
+	// into data (code-review 2026-07-30 billing-M6).
+	IncrementBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64) (int64, error)
 	UpdateUsage(ctx context.Context, userID string, usedAmountDelta, requestCountDelta int64) error
-	UpdateUsageInTx(ctx context.Context, tx *gorm.DB, userID string, usedAmountDelta, requestCountDelta int64) error
+	UpdateUsageInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, usedAmountDelta, requestCountDelta int64) error
 	UpdateFrozenAmount(ctx context.Context, userID string, delta int64) error
 	// ReserveBalanceInTx atomically pre-deducts amount from the user's wallet
 	// inside the caller's transaction. It performs the read-check-update of
@@ -22,7 +28,7 @@ type AccountRepo interface {
 	// (the historical read-modify-write path was racy). The function returns
 	// the resulting (balance, frozen) snapshot; it refuses to proceed when the
 	// wallet would go negative unless allowOverdraft is true.
-	ReserveBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, amount int64, allowOverdraft bool) (oldBalance, newBalance, newFrozen int64, err error)
+	ReserveBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64, allowOverdraft bool) (oldBalance, newBalance, newFrozen int64, err error)
 	// CommitBalanceInTx atomically releases the reservation's frozen amount
 	// (reserved) and applies the actual settlement (actual). It is the dual
 	// of ReserveBalanceInTx: the difference reserved - actual is refunded to
@@ -33,11 +39,11 @@ type AccountRepo interface {
 	// the matching receivable. Callers must call this exactly once per
 	// reservation; it is the only path that combines the balance and frozen
 	// mutations in a single statement.
-	CommitBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, reserved, actual int64, allowOverdraft bool) (oldBalance, newBalance int64, err error)
+	CommitBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, reserved, actual int64, allowOverdraft bool) (oldBalance, newBalance int64, err error)
 	// ReleaseBalanceInTx is the release counterpart of ReserveBalanceInTx.
 	// It refunds `reserved` to the wallet and decrements the frozen counter
 	// in a single UPDATE. The result is the post-refund wallet balance.
-	ReleaseBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, reserved int64) (newBalance int64, err error)
+	ReleaseBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, reserved int64) (newBalance int64, err error)
 }
 
 type ReservationRepo interface {
@@ -51,24 +57,24 @@ type ReservationRepo interface {
 	// write race that let two concurrent ReserveQuota calls for the same
 	// (user_id, request_id) both insert and double-charge the wallet
 	// (code-review 2026-07-30 billing-M5).
-	FindByRequestIDInTx(ctx context.Context, tx *gorm.DB, userID, requestID string) (*Reservation, error)
+	FindByRequestIDInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, requestID string) (*Reservation, error)
 	UpdateReservationStatus(ctx context.Context, reservationID string, status string) error
 	GetExpiredReservations(ctx context.Context) ([]*Reservation, error)
 	// CreateReservationInTx inserts a reservation in the caller's transaction.
 	// Used by the dual-track pre-deduction flow so the reservation row and
 	// the wallet pre-deduction commit or roll back together.
-	CreateReservationInTx(ctx context.Context, tx *gorm.DB, reservation *Reservation) error
+	CreateReservationInTx(ctx context.Context, tx subscriptionbiz.Tx, reservation *Reservation) error
 	// GetReservationInTx reads a reservation inside the caller's transaction.
 	// Used by the CAS commit/release pipeline so the read sees the row with
 	// the row lock acquired.
-	GetReservationInTx(ctx context.Context, tx *gorm.DB, reservationID string) (*Reservation, error)
+	GetReservationInTx(ctx context.Context, tx subscriptionbiz.Tx, reservationID string) (*Reservation, error)
 	// CASReservationStatus atomically transitions a reservation's status from
 	// `from` to `to`. Returns true when the update affected a row (the caller
 	// won the race), false when another transaction has already moved the
 	// row to a non-`from` state. The function performs the read of the
 	// current status inside the caller's transaction so it pairs with the
 	// locking SELECT FOR UPDATE the caller must have already taken.
-	CASReservationStatus(ctx context.Context, tx *gorm.DB, reservationID, from, to string) (bool, error)
+	CASReservationStatus(ctx context.Context, tx subscriptionbiz.Tx, reservationID, from, to string) (bool, error)
 	// SetActualCostInTx persists the real settlement cost on a reservation
 	// inside the caller's transaction (code-review 2026-07-30 billing-L1).
 	// It is called by the commit pipeline immediately before the final
@@ -76,7 +82,7 @@ type ReservationRepo interface {
 	// returns the authoritative actual cost rather than the pre-deduction
 	// estimate stored in Amount. It only writes a non-zero actual_cost so a
 	// legacy row that was never settled keeps Amount as the fallback.
-	SetActualCostInTx(ctx context.Context, tx *gorm.DB, reservationID string, actualCost int64) error
+	SetActualCostInTx(ctx context.Context, tx subscriptionbiz.Tx, reservationID string, actualCost int64) error
 	// LockSubscriptionRow takes a row lock on the user_subscriptions row
 	// identified by id. Used by the dual-track pre-deduction flow to
 	// serialise concurrent reservations against the same subscription so
@@ -85,7 +91,7 @@ type ReservationRepo interface {
 	// different database from the caller's transaction (caller is
 	// responsible for verifying same-DB deployment before opening the
 	// dual-track flow).
-	LockSubscriptionRow(ctx context.Context, tx *gorm.DB, subscriptionID int64) error
+	LockSubscriptionRow(ctx context.Context, tx subscriptionbiz.Tx, subscriptionID int64) error
 	// SumActiveFrozenInTx aggregates the subscription-side pre-deduction
 	// USD of every active reservation belonging to a user whose
 	// subscription matches the given id and whose window-start snapshot
@@ -96,12 +102,12 @@ type ReservationRepo interface {
 	// already been exceeded without paying the SUM cost. The query is
 	// designed to be cheap enough to run inside the locking transaction
 	// of the dual-track pre-deduction flow.
-	SumActiveFrozenInTx(ctx context.Context, tx *gorm.DB, userID string, subscriptionID, dailyStart, weeklyStart, monthlyStart int64) (dailyUSD, weeklyUSD, monthlyUSD float64, count int64, err error)
+	SumActiveFrozenInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, subscriptionID, dailyStart, weeklyStart, monthlyStart int64) (dailyUSD, weeklyUSD, monthlyUSD float64, count int64, err error)
 }
 
 type LedgerRepo interface {
 	CreateLedger(ctx context.Context, ledger *Ledger) error
-	CreateLedgerInTx(ctx context.Context, tx *gorm.DB, ledger *Ledger) error
+	CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx, ledger *Ledger) error
 	GetLedgerByID(ctx context.Context, id int64) (*Ledger, error)
 	ListLedgers(ctx context.Context, userID string, page, pageSize int32) ([]*Ledger, int64, error)
 	ListLedgersWithTimeRange(ctx context.Context, userID string, page, pageSize int32, startTime, endTime time.Time) ([]*Ledger, int64, error)
@@ -112,7 +118,7 @@ type LedgerRepo interface {
 	// FindByDedupeKey returns the ledger entry with the given dedupe key or
 	// nil if none exists. Used by the CAS commit pipeline to detect
 	// pre-existing entries left by an earlier failed attempt.
-	FindByDedupeKey(ctx context.Context, tx *gorm.DB, key string) (*Ledger, error)
+	FindByDedupeKey(ctx context.Context, tx subscriptionbiz.Tx, key string) (*Ledger, error)
 	// SumSubscriptionCostByReservation returns the total subscription_cost
 	// recorded against the given reservation IDs. Used by reconciliation to
 	// verify the subscription-side ledger matches the per-reservation actual
@@ -125,14 +131,14 @@ type ReceivableRepo interface {
 	// Caller is responsible for honouring the reservation_id unique
 	// constraint: the function returns ErrReceivableDuplicate when the row
 	// already exists so the CAS pipeline can short-circuit.
-	CreateInTx(ctx context.Context, tx *gorm.DB, recv *AccountReceivable) error
+	CreateInTx(ctx context.Context, tx subscriptionbiz.Tx, recv *AccountReceivable) error
 	// ListPendingByUser returns the user's pending receivables, oldest first.
 	ListPendingByUser(ctx context.Context, userID string) ([]*AccountReceivable, error)
 	// SettleOldestForUserInTx settles up to `amount` quota of the user's
 	// pending receivables inside the caller's transaction. Returns the
 	// actually-settled quota (sum of overdue_quota of all rows transitioned
 	// to settled) so the caller can detect shortfalls.
-	SettleOldestForUserInTx(ctx context.Context, tx *gorm.DB, userID string, amount int64) (settled int64, err error)
+	SettleOldestForUserInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64) (settled int64, err error)
 	// SumOverduePendingByUser returns the total pending overdue_quota for
 	// the user. Used by the wallet-overdraft check in TopUpQuota.
 	SumOverduePendingByUser(ctx context.Context, userID string) (int64, error)
@@ -151,10 +157,10 @@ type RedeemRepo interface {
 	// decrement but inside the caller's transaction so the count
 	// decrement, wallet credit, ledger and record commit or roll back
 	// together (billing code-review 2026-07-30 H1).
-	UpdateRedeemCodeCountInTx(ctx context.Context, tx *gorm.DB, code string, delta int) error
+	UpdateRedeemCodeCountInTx(ctx context.Context, tx subscriptionbiz.Tx, code string, delta int) error
 	DeleteRedeemCode(ctx context.Context, code string) error
 	CreateRedeemRecord(ctx context.Context, record *RedeemRecord) error
-	CreateRedeemRecordInTx(ctx context.Context, tx *gorm.DB, record *RedeemRecord) error
+	CreateRedeemRecordInTx(ctx context.Context, tx subscriptionbiz.Tx, record *RedeemRecord) error
 }
 
 type PricingConfigStore interface {

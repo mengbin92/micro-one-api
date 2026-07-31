@@ -7,6 +7,8 @@ import (
 
 	"micro-one-api/app/billing/internal/biz"
 
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+
 	"gorm.io/gorm"
 )
 
@@ -59,7 +61,7 @@ func (r *accountRepo) UpdateBalance(ctx context.Context, userID string, delta in
 		}
 	}()
 
-	newBalance, err := r.UpdateBalanceInTx(ctx, tx, userID, delta, operationType)
+	newBalance, err := r.UpdateBalanceInTx(ctx, &gormTx{db: tx}, userID, delta, operationType)
 	if err != nil {
 		tx.Rollback()
 		return 0, err
@@ -70,8 +72,9 @@ func (r *accountRepo) UpdateBalance(ctx context.Context, userID string, delta in
 	return newBalance, nil
 }
 
-func (r *accountRepo) UpdateBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, delta int64, operationType string) (int64, error) {
-	account, err := r.getAccountForUpdate(ctx, tx, userID)
+func (r *accountRepo) UpdateBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, delta int64, operationType string) (int64, error) {
+	db := txDB(tx)
+	account, err := r.getAccountForUpdate(ctx, db, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -80,21 +83,41 @@ func (r *accountRepo) UpdateBalanceInTx(ctx context.Context, tx *gorm.DB, userID
 		return 0, biz.ErrInsufficientQuota
 	}
 
-	if err := tx.Table("users").Where("id = ?", userID).Update("balance", newBalance).Error; err != nil {
+	if err := db.Table("users").Where("id = ?", userID).Update("balance", newBalance).Error; err != nil {
 		return 0, err
 	}
 	return newBalance, nil
 }
 
-func (r *accountRepo) UpdateUsage(ctx context.Context, userID string, usedAmountDelta, requestCountDelta int64) error {
-	return r.UpdateUsageInTx(ctx, r.data.db.WithContext(ctx), userID, usedAmountDelta, requestCountDelta)
+// IncrementBalanceInTx atomically increments the user's balance by amount
+// using a raw SQL "balance = balance + ?" and returns the new balance. This
+// moves the raw SQL that previously lived in biz.topUpQuotaInTx into the data
+// layer (code-review 2026-07-30 billing-M6).
+func (r *accountRepo) IncrementBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64) (int64, error) {
+	db := txDB(tx)
+	res := db.WithContext(ctx).Exec(`UPDATE users SET balance = balance + ? WHERE id = ?`, amount, userID)
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return 0, biz.ErrAccountNotFound
+	}
+	var row struct {
+		Balance int64 `gorm:"column:balance"`
+	}
+	if err := db.WithContext(ctx).Table("users").Select("balance").Where("id = ?", userID).Scan(&row).Error; err != nil {
+		return 0, err
+	}
+	return row.Balance, nil
 }
 
-func (r *accountRepo) UpdateUsageInTx(ctx context.Context, tx *gorm.DB, userID string, usedAmountDelta, requestCountDelta int64) error {
-	if tx == nil {
-		tx = r.data.db.WithContext(ctx)
-	}
-	return tx.WithContext(ctx).Table("users").
+func (r *accountRepo) UpdateUsage(ctx context.Context, userID string, usedAmountDelta, requestCountDelta int64) error {
+	return r.UpdateUsageInTx(ctx, &gormTx{db: r.data.db.WithContext(ctx)}, userID, usedAmountDelta, requestCountDelta)
+}
+
+func (r *accountRepo) UpdateUsageInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, usedAmountDelta, requestCountDelta int64) error {
+	db := txDB(tx)
+	return db.WithContext(ctx).Table("users").
 		Where("id = ?", userID).
 		Updates(map[string]interface{}{
 			"used_amount":   gorm.Expr("used_amount + ?", usedQuotaExpr(usedAmountDelta)),
@@ -171,14 +194,15 @@ func (r *accountRepo) BatchGetAccountSnapshots(ctx context.Context, userIDs []st
 // other's pre-deduction. When allowOverdraft is false, the function refuses
 // to push the wallet negative; the caller is then expected to roll back
 // its transaction so the wallet state stays consistent.
-func (r *accountRepo) ReserveBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, amount int64, allowOverdraft bool) (int64, int64, int64, error) {
+func (r *accountRepo) ReserveBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64, allowOverdraft bool) (int64, int64, int64, error) {
+	db := txDB(tx)
 	if amount < 0 {
 		return 0, 0, 0, errors.New("reserve balance: negative amount")
 	}
 	if amount == 0 {
 		// Nothing to do but still surface the current balance so the caller
 		// has a coherent snapshot for downstream writes.
-		account, err := r.getAccountForUpdate(ctx, tx, userID)
+		account, err := r.getAccountForUpdate(ctx, db, userID)
 		if err != nil {
 			return 0, 0, 0, err
 		}
@@ -198,14 +222,14 @@ func (r *accountRepo) ReserveBalanceInTx(ctx context.Context, tx *gorm.DB, userI
 		stmt += ` AND balance >= ?`
 		args = append(args, amount)
 	}
-	res := tx.WithContext(ctx).Exec(stmt, args...)
+	res := db.WithContext(ctx).Exec(stmt, args...)
 	if res.Error != nil {
 		return 0, 0, 0, res.Error
 	}
 	if res.RowsAffected == 0 {
 		// Either the user does not exist or the balance would have gone
 		// negative. Distinguish by re-reading the row.
-		account, err := r.getAccountForUpdate(ctx, tx, userID)
+		account, err := r.getAccountForUpdate(ctx, db, userID)
 		if err != nil {
 			if errors.Is(err, biz.ErrAccountNotFound) {
 				return 0, 0, 0, biz.ErrAccountNotFound
@@ -220,7 +244,7 @@ func (r *accountRepo) ReserveBalanceInTx(ctx context.Context, tx *gorm.DB, userI
 	// Re-read the row to return the exact (old, new) balance. This is a
 	// single point-in-time read inside the transaction so it sees the row
 	// state we just wrote.
-	account, err := r.getAccountForUpdate(ctx, tx, userID)
+	account, err := r.getAccountForUpdate(ctx, db, userID)
 	if err != nil {
 		return 0, 0, 0, err
 	}
@@ -234,7 +258,8 @@ func (r *accountRepo) ReserveBalanceInTx(ctx context.Context, tx *gorm.DB, userI
 // `reserved - actual` is refunded to the wallet, the actual amount is
 // deducted, and the frozen counter is decremented by `reserved`. When
 // allowOverdraft is true the wallet can go negative.
-func (r *accountRepo) CommitBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, reserved, actual int64, allowOverdraft bool) (int64, int64, error) {
+func (r *accountRepo) CommitBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, reserved, actual int64, allowOverdraft bool) (int64, int64, error) {
+	db := txDB(tx)
 	if reserved < 0 {
 		return 0, 0, errors.New("commit balance: negative reserved")
 	}
@@ -244,7 +269,7 @@ func (r *accountRepo) CommitBalanceInTx(ctx context.Context, tx *gorm.DB, userID
 	if reserved == 0 {
 		// Nothing to release but the actual amount still has to be
 		// deducted so the wallet reflects the cost.
-		account, err := r.getAccountForUpdate(ctx, tx, userID)
+		account, err := r.getAccountForUpdate(ctx, db, userID)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -260,14 +285,14 @@ func (r *accountRepo) CommitBalanceInTx(ctx context.Context, tx *gorm.DB, userID
 			stmt += ` AND balance + ? >= 0`
 			args = append(args, delta)
 		}
-		res := tx.WithContext(ctx).Exec(stmt, args...)
+		res := db.WithContext(ctx).Exec(stmt, args...)
 		if res.Error != nil {
 			return 0, 0, res.Error
 		}
 		if res.RowsAffected == 0 {
 			return account.Balance, account.Balance, biz.ErrInsufficientQuota
 		}
-		updated, err := r.getAccountForUpdate(ctx, tx, userID)
+		updated, err := r.getAccountForUpdate(ctx, db, userID)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -287,12 +312,12 @@ func (r *accountRepo) CommitBalanceInTx(ctx context.Context, tx *gorm.DB, userID
 		stmt += ` AND balance + ? >= 0`
 		args = append(args, delta)
 	}
-	res := tx.WithContext(ctx).Exec(stmt, args...)
+	res := db.WithContext(ctx).Exec(stmt, args...)
 	if res.Error != nil {
 		return 0, 0, res.Error
 	}
 	if res.RowsAffected == 0 {
-		account, err := r.getAccountForUpdate(ctx, tx, userID)
+		account, err := r.getAccountForUpdate(ctx, db, userID)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -301,7 +326,7 @@ func (r *accountRepo) CommitBalanceInTx(ctx context.Context, tx *gorm.DB, userID
 		}
 		return account.Balance, account.Balance, biz.ErrInsufficientQuota
 	}
-	account, err := r.getAccountForUpdate(ctx, tx, userID)
+	account, err := r.getAccountForUpdate(ctx, db, userID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -313,18 +338,19 @@ func (r *accountRepo) CommitBalanceInTx(ctx context.Context, tx *gorm.DB, userID
 // decrements the frozen counter in a single UPDATE. The function is the
 // release counterpart of ReserveBalanceInTx; it never pushes the wallet
 // below its pre-reservation value.
-func (r *accountRepo) ReleaseBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, reserved int64) (int64, error) {
+func (r *accountRepo) ReleaseBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, reserved int64) (int64, error) {
+	db := txDB(tx)
 	if reserved < 0 {
 		return 0, errors.New("release balance: negative reserved")
 	}
 	if reserved == 0 {
-		account, err := r.getAccountForUpdate(ctx, tx, userID)
+		account, err := r.getAccountForUpdate(ctx, db, userID)
 		if err != nil {
 			return 0, err
 		}
 		return account.Balance, nil
 	}
-	res := tx.WithContext(ctx).Exec(`
+	res := db.WithContext(ctx).Exec(`
 		UPDATE users
 		SET balance = balance + ?,
 		    frozen_amount = frozen_amount - ?
@@ -336,14 +362,14 @@ func (r *accountRepo) ReleaseBalanceInTx(ctx context.Context, tx *gorm.DB, userI
 	if res.RowsAffected == 0 {
 		return 0, biz.ErrAccountNotFound
 	}
-	account, err := r.getAccountForUpdate(ctx, tx, userID)
+	account, err := r.getAccountForUpdate(ctx, db, userID)
 	if err != nil {
 		return 0, err
 	}
 	return account.Balance, nil
 }
 
-func (r *accountRepo) getAccountForUpdate(ctx context.Context, tx *gorm.DB, userID string) (*biz.Account, error) {
+func (r *accountRepo) getAccountForUpdate(ctx context.Context, db *gorm.DB, userID string) (*biz.Account, error) {
 	var user struct {
 		ID           int64  `gorm:"column:id"`
 		Username     string `gorm:"column:username"`
@@ -355,11 +381,11 @@ func (r *accountRepo) getAccountForUpdate(ctx context.Context, tx *gorm.DB, user
 		FrozenAmount int64  `gorm:"column:frozen_amount"`
 		Status       int32  `gorm:"column:status"`
 	}
-	q := tx.WithContext(ctx).Table("users").Where("id = ?", userID)
-	if !isSQLite(dialectorName(tx)) {
+	q := db.WithContext(ctx).Table("users").Where("id = ?", userID)
+	if !isSQLite(dialectorName(db)) {
 		// SQLite's BEGIN does not support SELECT ... FOR UPDATE; rely on
 		// the writer transaction's serialised semantics instead.
-		q = q.Clauses(forUpdateClause(dialectorName(tx)))
+		q = q.Clauses(forUpdateClause(dialectorName(db)))
 	}
 	if err := q.First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

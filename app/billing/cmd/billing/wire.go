@@ -89,6 +89,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		pricing,
 	)
 	uc.SetSubscriptionPrimatives(subscriptionUc)
+	uc.SetTxRunner(data.NewTxRunner(d))
 	uc.SetReceivableRepo(d.ReceivableRepo())
 
 	var asyncBilling *biz.AsyncBillingUsecase

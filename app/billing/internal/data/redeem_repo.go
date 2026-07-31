@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"micro-one-api/app/billing/internal/biz"
+
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/safecast"
 
 	"gorm.io/gorm"
@@ -169,11 +171,12 @@ func (r *redeemRepo) UpdateRedeemCodeCount(ctx context.Context, code string, del
 
 // UpdateRedeemCodeCountInTx performs the same atomic conditional decrement
 // as UpdateRedeemCodeCount but inside the caller's transaction.
-func (r *redeemRepo) UpdateRedeemCodeCountInTx(ctx context.Context, tx *gorm.DB, code string, delta int) error {
+func (r *redeemRepo) UpdateRedeemCodeCountInTx(ctx context.Context, tx subscriptionbiz.Tx, code string, delta int) error {
+	db := txDB(tx)
 	if delta <= 0 {
 		return errors.New("invalid redeem code count delta")
 	}
-	res := tx.WithContext(ctx).
+	res := db.WithContext(ctx).
 		Model(&redeemCodeModel{}).
 		Where("code = ?", code).
 		Where("status = ?", biz.RedeemCodeStatusEnabled).
@@ -198,8 +201,9 @@ func (r *redeemRepo) CreateRedeemRecord(ctx context.Context, record *biz.RedeemR
 	return r.createRedeemRecord(ctx, r.data.db, record)
 }
 
-func (r *redeemRepo) CreateRedeemRecordInTx(ctx context.Context, tx *gorm.DB, record *biz.RedeemRecord) error {
-	return r.createRedeemRecord(ctx, tx, record)
+func (r *redeemRepo) CreateRedeemRecordInTx(ctx context.Context, tx subscriptionbiz.Tx, record *biz.RedeemRecord) error {
+	db := txDB(tx)
+	return r.createRedeemRecord(ctx, db, record)
 }
 
 func (r *redeemRepo) createRedeemRecord(ctx context.Context, db *gorm.DB, record *biz.RedeemRecord) error {

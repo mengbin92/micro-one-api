@@ -10,6 +10,8 @@ import (
 
 	"micro-one-api/app/billing/internal/biz"
 
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+
 	"gorm.io/gorm"
 )
 
@@ -22,7 +24,7 @@ func NewLedgerRepo(data *Data) biz.LedgerRepo {
 }
 
 func (r *ledgerRepo) CreateLedger(ctx context.Context, ledger *biz.Ledger) error {
-	return r.CreateLedgerInTx(ctx, r.data.db.WithContext(ctx), ledger)
+	return r.CreateLedgerInTx(ctx, &gormTx{db: r.data.db.WithContext(ctx)}, ledger)
 }
 
 // CreateLedgerInTx inserts a ledger entry inside the caller's transaction.
@@ -30,10 +32,8 @@ func (r *ledgerRepo) CreateLedger(ctx context.Context, ledger *biz.Ledger) error
 // LedgerDedupeKey uniqueness is enforced by the database, so the CAS
 // commit pipeline can safely retry on conflict and end up with exactly
 // one row per (reservation_id, type, cost_source) triple.
-func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx *gorm.DB, ledger *biz.Ledger) error {
-	if tx == nil {
-		tx = r.data.db.WithContext(ctx)
-	}
+func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx, ledger *biz.Ledger) error {
+	db := txDB(tx)
 	costSource := ledger.CostSource
 	if costSource == "" {
 		costSource = biz.CostSourceBalance
@@ -78,7 +78,7 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx *gorm.DB, ledger *
 		BalanceCost:           balanceCost,
 		LedgerDedupeKey:       dedupeKey,
 	}
-	return tx.Create(model).Error
+	return db.Create(model).Error
 }
 
 func legacyLedgerDedupeKey(ledger *biz.Ledger) string {
@@ -526,15 +526,13 @@ func usageQueryParts(groupBy []string) (groupCols, selectCols, joinSQL string) {
 // FindByDedupeKey returns the ledger entry with the given dedupe key or
 // nil if none exists. Used by the CAS commit pipeline to detect
 // pre-existing entries left by an earlier failed attempt.
-func (r *ledgerRepo) FindByDedupeKey(ctx context.Context, tx *gorm.DB, key string) (*biz.Ledger, error) {
-	if tx == nil {
-		tx = r.data.db.WithContext(ctx)
-	}
+func (r *ledgerRepo) FindByDedupeKey(ctx context.Context, tx subscriptionbiz.Tx, key string) (*biz.Ledger, error) {
+	db := txDB(tx)
 	if key == "" {
 		return nil, nil
 	}
 	var model ledgerModel
-	if err := tx.WithContext(ctx).Where("ledger_dedupe_key = ?", key).First(&model).Error; err != nil {
+	if err := db.WithContext(ctx).Where("ledger_dedupe_key = ?", key).First(&model).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}

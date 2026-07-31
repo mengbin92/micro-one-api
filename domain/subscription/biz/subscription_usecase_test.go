@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"gorm.io/gorm"
 )
 
 type mockSubscriptionRepo struct {
@@ -33,7 +32,7 @@ func (m *mockSubscriptionRepo) CreateSubscription(ctx context.Context, subscript
 	return nil
 }
 
-func (m *mockSubscriptionRepo) CreateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error {
+func (m *mockSubscriptionRepo) CreateSubscriptionInTx(ctx context.Context, tx Tx, subscription *UserSubscription) error {
 	return m.CreateSubscription(ctx, subscription)
 }
 
@@ -43,7 +42,7 @@ func (m *mockSubscriptionRepo) UpdateSubscription(ctx context.Context, subscript
 	return nil
 }
 
-func (m *mockSubscriptionRepo) UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error {
+func (m *mockSubscriptionRepo) UpdateSubscriptionInTx(ctx context.Context, tx Tx, subscription *UserSubscription) error {
 	return m.UpdateSubscription(ctx, subscription)
 }
 
@@ -87,7 +86,7 @@ func (m *mockSubscriptionRepo) UpdateSubscriptionFields(ctx context.Context, sub
 	return nil
 }
 
-func (m *mockSubscriptionRepo) UpdateSubscriptionFieldsInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription, fields []SubscriptionField) error {
+func (m *mockSubscriptionRepo) UpdateSubscriptionFieldsInTx(ctx context.Context, tx Tx, subscription *UserSubscription, fields []SubscriptionField) error {
 	return m.UpdateSubscriptionFields(ctx, subscription, fields)
 }
 
@@ -148,7 +147,7 @@ func (m *mockSubscriptionRepo) GetActiveSubscriptionByUser(ctx context.Context, 
 	return nil, ErrSubscriptionNotFound
 }
 
-func (m *mockSubscriptionRepo) GetActiveSubscriptionByUserInTx(ctx context.Context, tx *gorm.DB, userID int64) (*UserSubscription, error) {
+func (m *mockSubscriptionRepo) GetActiveSubscriptionByUserInTx(ctx context.Context, tx Tx, userID int64) (*UserSubscription, error) {
 	return m.GetActiveSubscriptionByUser(ctx, userID)
 }
 
@@ -168,7 +167,7 @@ func (m *mockSubscriptionRepo) AddUsage(ctx context.Context, userID int64, costU
 	return ErrSubscriptionNotFound
 }
 
-func (m *mockSubscriptionRepo) AddUsageByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error {
+func (m *mockSubscriptionRepo) AddUsageByIDInTx(ctx context.Context, tx Tx, subscriptionID int64, costUSD float64, now int64) error {
 	subscription, ok := m.subscriptions[subscriptionID]
 	if !ok {
 		return ErrSubscriptionNotFound
@@ -182,7 +181,7 @@ func (m *mockSubscriptionRepo) AddUsageByIDInTx(ctx context.Context, tx *gorm.DB
 	return nil
 }
 
-func (m *mockSubscriptionRepo) GetByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64) (*UserSubscription, error) {
+func (m *mockSubscriptionRepo) GetByIDInTx(ctx context.Context, tx Tx, subscriptionID int64) (*UserSubscription, error) {
 	subscription, ok := m.subscriptions[subscriptionID]
 	if !ok {
 		return nil, ErrSubscriptionNotFound

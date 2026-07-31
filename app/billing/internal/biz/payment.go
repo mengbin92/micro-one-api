@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"gorm.io/gorm"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
 
 const (
@@ -125,11 +125,11 @@ type PaymentRepo interface {
 	CreateOrder(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error)
 	GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error)
 	ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error)
-	MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error)
+	MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
 	MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error)
 	// MarkOrderRefunded transitions a paid order to refunded, running the
 	// revert callback inside the same transaction. Idempotent.
-	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error)
+	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
 }
 
 type PaymentProvider interface {
@@ -160,7 +160,7 @@ type PaymentAssetIssuer interface {
 	// Implementations that cannot run in-tx may fall back to the
 	// standalone IssueBalance path, in which case the caller must not
 	// claim atomicity.
-	IssueBalanceInTx(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error
+	IssueBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, order *PaymentOrder) error
 }
 
 // SubscriptionAssigner is an optional interface that payment issuers can
@@ -174,7 +174,7 @@ type SubscriptionAssigner interface {
 	// status transition commit atomically (code-review 2026-07-30
 	// billing-H2). Implementations may fall back to the non-tx path when
 	// tx is nil.
-	AssignSubscriptionAfterPaymentInTx(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error
+	AssignSubscriptionAfterPaymentInTx(ctx context.Context, tx subscriptionbiz.Tx, order *PaymentOrder) error
 }
 
 func NewPaymentUsecase(repo PaymentRepo, provider PaymentProvider, issuer PaymentAssetIssuer) *PaymentUsecase {
@@ -290,7 +290,7 @@ func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTr
 	// (e.g. the payment_orders Updates or the commit) now rolls back the
 	// wallet/subscription credit, so a replayed payment callback cannot
 	// double-credit.
-	order, _, err := uc.repo.MarkOrderPaid(ctx, tradeNo, providerTradeNo, func(order *PaymentOrder, tx *gorm.DB) error {
+	order, _, err := uc.repo.MarkOrderPaid(ctx, tradeNo, providerTradeNo, func(order *PaymentOrder, tx subscriptionbiz.Tx) error {
 		if order.AssetType == PaymentAssetTypeBalance {
 			if tx != nil {
 				if err := uc.issuer.IssueBalanceInTx(ctx, tx, order); err != nil {
@@ -401,7 +401,7 @@ func (i *balancePaymentAssetIssuer) IssueBalance(ctx context.Context, order *Pay
 	return err
 }
 
-func (i *balancePaymentAssetIssuer) IssueBalanceInTx(ctx context.Context, tx *gorm.DB, order *PaymentOrder) error {
+func (i *balancePaymentAssetIssuer) IssueBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, order *PaymentOrder) error {
 	if i == nil || i.billing == nil {
 		return errors.New("payment asset issuer is not configured")
 	}

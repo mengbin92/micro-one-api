@@ -234,7 +234,7 @@ func TestSubscriptionRepository_ExpiredActiveFiltered(t *testing.T) {
 
 	// The in-tx locked read must apply the same guard so the payment assigner
 	// cannot grant onto a stale row either.
-	_, err = repo.GetActiveSubscriptionByUserInTx(ctx, repo.db, 7777)
+	_, err = repo.GetActiveSubscriptionByUserInTx(ctx, &gormTx{db: repo.db}, 7777)
 	assert.ErrorIs(t, err, biz.ErrSubscriptionNotFound)
 }
 

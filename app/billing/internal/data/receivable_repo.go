@@ -8,7 +8,8 @@ import (
 
 	"micro-one-api/app/billing/internal/biz"
 
-	"gorm.io/gorm"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+
 )
 
 type receivableRepo struct {
@@ -19,10 +20,8 @@ func NewReceivableRepo(data *Data) biz.ReceivableRepo {
 	return &receivableRepo{data: data}
 }
 
-func (r *receivableRepo) CreateInTx(ctx context.Context, tx *gorm.DB, recv *biz.AccountReceivable) error {
-	if tx == nil {
-		tx = r.data.db.WithContext(ctx)
-	}
+func (r *receivableRepo) CreateInTx(ctx context.Context, tx subscriptionbiz.Tx, recv *biz.AccountReceivable) error {
+	db := txDB(tx)
 	if recv == nil {
 		return errors.New("nil receivable")
 	}
@@ -45,7 +44,7 @@ func (r *receivableRepo) CreateInTx(ctx context.Context, tx *gorm.DB, recv *biz.
 		SettledQuota:  recv.SettledQuota,
 		Remark:        stringPtr(recv.Remark),
 	}
-	if err := tx.Create(model).Error; err != nil {
+	if err := db.Create(model).Error; err != nil {
 		if isUniqueViolation(err) {
 			return biz.ErrReceivableDuplicate
 		}
@@ -70,10 +69,8 @@ func (r *receivableRepo) ListPendingByUser(ctx context.Context, userID string) (
 	return out, nil
 }
 
-func (r *receivableRepo) SettleOldestForUserInTx(ctx context.Context, tx *gorm.DB, userID string, amount int64) (int64, error) {
-	if tx == nil {
-		tx = r.data.db.WithContext(ctx)
-	}
+func (r *receivableRepo) SettleOldestForUserInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64) (int64, error) {
+	db := txDB(tx)
 	if amount <= 0 {
 		return 0, nil
 	}
@@ -81,7 +78,7 @@ func (r *receivableRepo) SettleOldestForUserInTx(ctx context.Context, tx *gorm.D
 	// until the recharge amount is exhausted. We deliberately avoid a
 	// single UPDATE with LIMIT because not all dialects support it.
 	var models []accountReceivableModel
-	if err := tx.WithContext(ctx).
+	if err := db.WithContext(ctx).
 		Where("user_id = ? AND status = ?", userID, biz.ReceivableStatusPending).
 		Order("created_at ASC, id ASC").
 		Find(&models).Error; err != nil {
@@ -110,7 +107,7 @@ func (r *receivableRepo) SettleOldestForUserInTx(ctx context.Context, tx *gorm.D
 			status = biz.ReceivableStatusSettled
 			settledAt = &now
 		}
-		res := tx.WithContext(ctx).Model(&accountReceivableModel{}).
+		res := db.WithContext(ctx).Model(&accountReceivableModel{}).
 			Where("id = ? AND status = ?", row.ID, biz.ReceivableStatusPending).
 			Where("settled_quota = ?", row.SettledQuota).
 			Updates(map[string]interface{}{

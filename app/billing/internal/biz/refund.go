@@ -9,8 +9,6 @@ import (
 	"time"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
-
-	"gorm.io/gorm"
 )
 
 // Refund / reversal accounting semantics (phase 2.3).
@@ -89,7 +87,7 @@ type RefundRepo interface {
 	// transaction. The revert callback runs inside the tx and must perform
 	// the wallet credit + ledger write + subscription mutation. Returns
 	// changed=false when the order was already refunded (idempotent).
-	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error)
+	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
 }
 
 // SubscriptionReverter abstracts the subscription-side mutation a refund
@@ -98,8 +96,8 @@ type RefundRepo interface {
 type SubscriptionReverter interface {
 	Revoke(ctx context.Context, subscriptionID int64, reason string) error
 	Shorten(ctx context.Context, subscriptionID int64, subtractSeconds int64) error
-	RevokeInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, reason string) error
-	ShortenInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, subtractSeconds int64) error
+	RevokeInTx(ctx context.Context, tx subscriptionbiz.Tx, subscriptionID int64, reason string) error
+	ShortenInTx(ctx context.Context, tx subscriptionbiz.Tx, subscriptionID int64, subtractSeconds int64) error
 	GetActiveSubscriptionForUser(ctx context.Context, userID int64) (*subscriptionbiz.UserSubscription, error)
 }
 
@@ -138,7 +136,7 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 		policy = RefundPolicyRevoke
 	}
 	var result *RefundResult
-	order, changed, err := uc.orders.MarkOrderRefunded(ctx, req.TradeNo, req.Reason, func(order *PaymentOrder, tx *gorm.DB) error {
+	order, changed, err := uc.orders.MarkOrderRefunded(ctx, req.TradeNo, req.Reason, func(order *PaymentOrder, tx subscriptionbiz.Tx) error {
 		if order.AssetType != PaymentAssetTypeSubscription {
 			return fmt.Errorf("refund only supports subscription asset orders, got %q", order.AssetType)
 		}
@@ -223,7 +221,7 @@ func (uc *RefundUsecase) RefundSubscriptionOrder(ctx context.Context, req Refund
 // applySubscriptionReversal performs the subscription-side mutation selected by
 // the refund policy. It returns the subscription id and a human-readable action
 // so the result can be audited.
-func (uc *RefundUsecase) applySubscriptionReversal(ctx context.Context, tx *gorm.DB, order *PaymentOrder, snap PlanSnapshot, policy RefundPolicy, reason string) (int64, string, error) {
+func (uc *RefundUsecase) applySubscriptionReversal(ctx context.Context, tx subscriptionbiz.Tx, order *PaymentOrder, snap PlanSnapshot, policy RefundPolicy, reason string) (int64, string, error) {
 	if uc.subscriptions == nil {
 		return 0, "skipped", nil
 	}

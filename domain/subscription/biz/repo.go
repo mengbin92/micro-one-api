@@ -2,8 +2,6 @@ package biz
 
 import (
 	"context"
-
-	"gorm.io/gorm"
 )
 
 type SubscriptionRepository interface {
@@ -12,9 +10,9 @@ type SubscriptionRepository interface {
 	// transaction. Used by the payment assigner path so the grant and the
 	// payment order status transition commit atomically (code-review
 	// 2026-07-30 billing-H2).
-	CreateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error
+	CreateSubscriptionInTx(ctx context.Context, tx Tx, subscription *UserSubscription) error
 	UpdateSubscription(ctx context.Context, subscription *UserSubscription) error
-	UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error
+	UpdateSubscriptionInTx(ctx context.Context, tx Tx, subscription *UserSubscription) error
 	// UpdateSubscriptionFields performs a selective update: it writes ONLY the
 	// columns identified by fields (plus updated_at), leaving every other
 	// column at its current value. This is the narrow-write seam that lets
@@ -24,7 +22,7 @@ type SubscriptionRepository interface {
 	// SubscriptionFieldUsageAll; all other callers must NOT touch the usage
 	// columns.
 	UpdateSubscriptionFields(ctx context.Context, subscription *UserSubscription, fields []SubscriptionField) error
-	UpdateSubscriptionFieldsInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription, fields []SubscriptionField) error
+	UpdateSubscriptionFieldsInTx(ctx context.Context, tx Tx, subscription *UserSubscription, fields []SubscriptionField) error
 	DeleteSubscription(ctx context.Context, subscriptionID int64) error
 	GetSubscriptionByID(ctx context.Context, subscriptionID int64) (*UserSubscription, error)
 	ListSubscriptionsByUser(ctx context.Context, userID int64) ([]*UserSubscription, error)
@@ -38,7 +36,7 @@ type SubscriptionRepository interface {
 	// in-tx path so the "is there already an active subscription" check
 	// and the subsequent create/extend happen against the same locked
 	// snapshot (code-review 2026-07-30 billing-H2 / domain-H1).
-	GetActiveSubscriptionByUserInTx(ctx context.Context, tx *gorm.DB, userID int64) (*UserSubscription, error)
+	GetActiveSubscriptionByUserInTx(ctx context.Context, tx Tx, userID int64) (*UserSubscription, error)
 	// AddUsage atomically rolls the active subscription's usage windows relative
 	// to now (unix seconds) and adds costUSD to every window. Implementations
 	// must perform the read-roll-increment as a single atomic unit so concurrent
@@ -51,12 +49,12 @@ type SubscriptionRepository interface {
 	// Implementations must take a row lock on the subscription so the cost
 	// is appended to the same window the dual-track pre-deduction reserved
 	// against.
-	AddUsageByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error
+	AddUsageByIDInTx(ctx context.Context, tx Tx, subscriptionID int64, costUSD float64, now int64) error
 	// GetByIDInTx is a row-locked read of the subscription inside the
 	// caller's transaction. Used by the dual-track commit pipeline so the
 	// committed cost is applied to the same subscription snapshot the
 	// pre-deduction locked.
-	GetByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64) (*UserSubscription, error)
+	GetByIDInTx(ctx context.Context, tx Tx, subscriptionID int64) (*UserSubscription, error)
 }
 
 type GroupRepository interface {
