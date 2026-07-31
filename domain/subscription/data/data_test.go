@@ -169,7 +169,7 @@ func TestSubscriptionRepository_SubscriptionCRUD(t *testing.T) {
 		SubscriptionName:   "alice-pro",
 		Status:             biz.SubscriptionStatusActive,
 		StartsAt:           10,
-		ExpiresAt:          20,
+		ExpiresAt:          1 << 62, // far future so the domain-C1 expires_at>now guard does not filter it out
 		DailyWindowStart:   10,
 		WeeklyWindowStart:  10,
 		MonthlyWindowStart: 10,
@@ -202,6 +202,39 @@ func TestSubscriptionRepository_SubscriptionCRUD(t *testing.T) {
 
 	require.NoError(t, repo.DeleteSubscription(ctx, sub.ID))
 	_, err = repo.GetSubscriptionByID(ctx, sub.ID)
+	assert.ErrorIs(t, err, biz.ErrSubscriptionNotFound)
+}
+
+// TestSubscriptionRepository_ExpiredActiveFiltered (domain-C1) verifies that a
+// subscription whose status is still 'active' but whose expires_at has already
+// passed is NOT returned by the active-subscription read paths. This is the
+// defence-in-depth guard that keeps quota correct even before the hourly
+// SubscriptionExpiryChecker has flipped the status to expired.
+func TestSubscriptionRepository_ExpiredActiveFiltered(t *testing.T) {
+	repo := setupSubscriptionTestDB(t)
+	ctx := context.Background()
+
+	group := &biz.SubscriptionGroup{Name: "pro-expired", Platform: "openai", Status: biz.SubscriptionGroupStatusEnabled}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+
+	// status=active but already expired in the past.
+	expired := &biz.UserSubscription{
+		UserID:           7777,
+		GroupID:          group.ID,
+		SubscriptionName: "stale",
+		Status:           biz.SubscriptionStatusActive,
+		StartsAt:         10,
+		ExpiresAt:        1, // already expired
+	}
+	require.NoError(t, repo.CreateSubscription(ctx, expired))
+
+	// The row exists (by ID) but must not be considered active.
+	_, err := repo.GetActiveSubscriptionByUser(ctx, 7777)
+	assert.ErrorIs(t, err, biz.ErrSubscriptionNotFound)
+
+	// The in-tx locked read must apply the same guard so the payment assigner
+	// cannot grant onto a stale row either.
+	_, err = repo.GetActiveSubscriptionByUserInTx(ctx, repo.db, 7777)
 	assert.ErrorIs(t, err, biz.ErrSubscriptionNotFound)
 }
 

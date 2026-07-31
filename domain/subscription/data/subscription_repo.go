@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"micro-one-api/domain/subscription/biz"
 
@@ -343,8 +344,17 @@ func (r *Repository) listSubscriptionsByUserDB(ctx context.Context, userID int64
 
 func (r *Repository) getActiveSubscriptionByUserDB(ctx context.Context, userID int64) (*biz.UserSubscription, error) {
 	var model subscriptionModel
+	// Code-review 2026-07-30 domain-C1: defence-in-depth. The
+	// SubscriptionExpiryChecker is the primary mechanism that flips an active
+	// subscription to expired, but it is best-effort and hourly. A read path
+	// that only filters on status = 'active' would keep serving a subscription
+	// whose expires_at has already passed (free quota) for up to an hour after
+	// expiry, and forever if the checker is ever mis-wired or delayed. We
+	// therefore also require expires_at > now here so the active set is correct
+	// regardless of the checker. The dedicated expiry filter still runs in the
+	// checker to actually persist the status transition for reporting.
 	if err := r.db.WithContext(ctx).
-		Where("user_id = ? AND status = ?", userID, string(biz.SubscriptionStatusActive)).
+		Where("user_id = ? AND status = ? AND expires_at > ?", userID, string(biz.SubscriptionStatusActive), time.Now().Unix()).
 		Order("updated_at DESC, id DESC").
 		First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -362,8 +372,10 @@ func (r *Repository) getActiveSubscriptionByUserDB(ctx context.Context, userID i
 // snapshot (code-review 2026-07-30 billing-H2 / domain-H1).
 func (r *Repository) getActiveSubscriptionByUserInTxDB(ctx context.Context, tx *gorm.DB, userID int64) (*biz.UserSubscription, error) {
 	var model subscriptionModel
+	// domain-C1: same expires_at > now defence-in-depth as
+	// getActiveSubscriptionByUserDB (see comment there).
 	q := tx.WithContext(ctx).
-		Where("user_id = ? AND status = ?", userID, string(biz.SubscriptionStatusActive)).
+		Where("user_id = ? AND status = ? AND expires_at > ?", userID, string(biz.SubscriptionStatusActive), time.Now().Unix()).
 		Order("updated_at DESC, id DESC")
 	if !isSQLite(dialectorName(tx)) {
 		q = q.Clauses(forUpdateClause(dialectorName(tx)))
@@ -550,9 +562,11 @@ func (r *Repository) listAllSubscriptionsMemory(ctx context.Context) ([]*biz.Use
 func (r *Repository) getActiveSubscriptionByUserMemory(ctx context.Context, userID int64) (*biz.UserSubscription, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
+	now := time.Now().Unix()
 	var chosen *biz.UserSubscription
 	for _, subscription := range r.subscriptions {
-		if subscription.UserID != userID || subscription.Status != biz.SubscriptionStatusActive {
+		// domain-C1: same expires_at > now defence-in-depth as the DB path.
+		if subscription.UserID != userID || subscription.Status != biz.SubscriptionStatusActive || subscription.ExpiresAt <= now {
 			continue
 		}
 		if chosen == nil || subscription.UpdatedAt > chosen.UpdatedAt || (subscription.UpdatedAt == chosen.UpdatedAt && subscription.ID > chosen.ID) {
