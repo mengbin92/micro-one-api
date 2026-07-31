@@ -313,6 +313,170 @@ func updateSubscriptionWithTx(ctx context.Context, tx *gorm.DB, subscription *bi
 	}).Error
 }
 
+// subscriptionFieldColumns maps the semantic biz.SubscriptionField tags to the
+// concrete storage columns a selective update should write. It is the data-side
+// counterpart of biz.SubscriptionField and keeps the biz package free of column
+// names (code-review 2026-07-30 domain-H1).
+func subscriptionFieldColumns(fields []biz.SubscriptionField) map[string]any {
+	seen := make(map[biz.SubscriptionField]struct{}, len(fields))
+	for _, f := range fields {
+		seen[f] = struct{}{}
+	}
+	now := true
+	cols := make(map[string]any)
+	for f := range seen {
+		switch f {
+		case biz.SubscriptionFieldStatus:
+			cols["status"] = nil
+		case biz.SubscriptionFieldExpiresAt:
+			cols["expires_at"] = nil
+		case biz.SubscriptionFieldSubscriptionName:
+			cols["subscription_name"] = nil
+		case biz.SubscriptionFieldGroupID:
+			cols["group_id"] = nil
+		case biz.SubscriptionFieldMetadata:
+			cols["metadata"] = nil
+		case biz.SubscriptionFieldUsageAll:
+			cols["daily_usage_usd"] = nil
+			cols["weekly_usage_usd"] = nil
+			cols["monthly_usage_usd"] = nil
+			cols["daily_window_start"] = nil
+			cols["weekly_window_start"] = nil
+			cols["monthly_window_start"] = nil
+		default:
+			// Unknown tag: ignore rather than panic so a stale caller never
+			// breaks the write.
+			now = false
+		}
+	}
+	if now {
+		cols["updated_at"] = nil
+	}
+	return cols
+}
+
+// updateSubscriptionFieldsWithTx writes ONLY the columns named by fields (plus
+// updated_at) for the given subscription id, using the DO's current values. It
+// never touches columns that are not listed, so a concurrent AddUsage
+// increment committed between the caller's read and this write is preserved
+// (code-review 2026-07-30 domain-H1).
+func updateSubscriptionFieldsWithTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	if subscription == nil {
+		return errors.New("nil subscription")
+	}
+	cols := subscriptionFieldColumns(fields)
+	// "updated_at" is always injected by subscriptionFieldColumns, so subtract
+	// it when deciding whether any concrete column was selected.
+	_, hasUpdatedAt := cols["updated_at"]
+	if len(cols) == 0 || (len(cols) == 1 && hasUpdatedAt) {
+		// No concrete columns selected: nothing to do.
+		return nil
+	}
+	model := subscriptionToModel(subscription)
+	values := make(map[string]any, len(cols))
+	for col := range cols {
+		switch col {
+		case "status":
+			values[col] = model.Status
+		case "expires_at":
+			values[col] = model.ExpiresAt
+		case "subscription_name":
+			values[col] = model.SubscriptionName
+		case "group_id":
+			values[col] = model.GroupID
+		case "metadata":
+			values[col] = model.Metadata
+		case "daily_usage_usd":
+			values[col] = model.DailyUsageUSD
+		case "weekly_usage_usd":
+			values[col] = model.WeeklyUsageUSD
+		case "monthly_usage_usd":
+			values[col] = model.MonthlyUsageUSD
+		case "daily_window_start":
+			values[col] = model.DailyWindowStart
+		case "weekly_window_start":
+			values[col] = model.WeeklyWindowStart
+		case "monthly_window_start":
+			values[col] = model.MonthlyWindowStart
+		case "updated_at":
+			values[col] = model.UpdatedAt
+		}
+	}
+	res := tx.WithContext(ctx).Model(&subscriptionModel{}).Where("id = ?", subscription.ID).Updates(values)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return biz.ErrSubscriptionNotFound
+	}
+	return nil
+}
+
+// UpdateSubscriptionFields is the selective-write variant of UpdateSubscription.
+// See updateSubscriptionFieldsWithTx for the column-narrowing rationale.
+func (r *Repository) UpdateSubscriptionFields(ctx context.Context, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	if r.db != nil {
+		return updateSubscriptionFieldsWithTx(ctx, r.db.WithContext(ctx), subscription, fields)
+	}
+	return r.updateSubscriptionFieldsMemory(ctx, subscription, fields)
+}
+
+// UpdateSubscriptionFieldsInTx is the in-transaction selective-write variant.
+func (r *Repository) UpdateSubscriptionFieldsInTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	if tx == nil {
+		return errors.New("nil transaction")
+	}
+	if r.db != nil {
+		return updateSubscriptionFieldsWithTx(ctx, tx, subscription, fields)
+	}
+	return r.updateSubscriptionFieldsMemory(ctx, subscription, fields)
+}
+
+func (r *Repository) updateSubscriptionFieldsMemory(ctx context.Context, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	existing, ok := r.subscriptions[subscription.ID]
+	if !ok {
+		return biz.ErrSubscriptionNotFound
+	}
+	// Start from the stored row so unlisted columns keep their live values.
+	merged := *existing
+	now := true
+	seen := make(map[biz.SubscriptionField]struct{}, len(fields))
+	for _, f := range fields {
+		seen[f] = struct{}{}
+	}
+	for f := range seen {
+		switch f {
+		case biz.SubscriptionFieldStatus:
+			merged.Status = subscription.Status
+		case biz.SubscriptionFieldExpiresAt:
+			merged.ExpiresAt = subscription.ExpiresAt
+		case biz.SubscriptionFieldSubscriptionName:
+			merged.SubscriptionName = subscription.SubscriptionName
+		case biz.SubscriptionFieldGroupID:
+			merged.GroupID = subscription.GroupID
+		case biz.SubscriptionFieldMetadata:
+			merged.Metadata = subscription.Metadata
+		case biz.SubscriptionFieldUsageAll:
+			merged.DailyUsageUSD = subscription.DailyUsageUSD
+			merged.WeeklyUsageUSD = subscription.WeeklyUsageUSD
+			merged.MonthlyUsageUSD = subscription.MonthlyUsageUSD
+			merged.DailyWindowStart = subscription.DailyWindowStart
+			merged.WeeklyWindowStart = subscription.WeeklyWindowStart
+			merged.MonthlyWindowStart = subscription.MonthlyWindowStart
+		default:
+			now = false
+		}
+	}
+	if now {
+		merged.UpdatedAt = subscription.UpdatedAt
+	}
+	cloned := merged
+	r.subscriptions[subscription.ID] = &cloned
+	return nil
+}
+
 func (r *Repository) deleteSubscriptionDB(ctx context.Context, subscriptionID int64) error {
 	return r.db.WithContext(ctx).Delete(&subscriptionModel{}, subscriptionID).Error
 }

@@ -15,6 +15,16 @@ type SubscriptionRepository interface {
 	CreateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error
 	UpdateSubscription(ctx context.Context, subscription *UserSubscription) error
 	UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error
+	// UpdateSubscriptionFields performs a selective update: it writes ONLY the
+	// columns identified by fields (plus updated_at), leaving every other
+	// column at its current value. This is the narrow-write seam that lets
+	// status/expiry/name/metadata mutations run concurrently with AddUsage
+	// without overwriting each other's usage increments (code-review
+	// 2026-07-30 domain-H1). Callers that need to reset usage should pass
+	// SubscriptionFieldUsageAll; all other callers must NOT touch the usage
+	// columns.
+	UpdateSubscriptionFields(ctx context.Context, subscription *UserSubscription, fields []SubscriptionField) error
+	UpdateSubscriptionFieldsInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription, fields []SubscriptionField) error
 	DeleteSubscription(ctx context.Context, subscriptionID int64) error
 	GetSubscriptionByID(ctx context.Context, subscriptionID int64) (*UserSubscription, error)
 	ListSubscriptionsByUser(ctx context.Context, userID int64) ([]*UserSubscription, error)

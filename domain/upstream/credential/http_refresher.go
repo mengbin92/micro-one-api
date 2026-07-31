@@ -1,6 +1,7 @@
 package credential
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -54,7 +55,16 @@ func (r *refresher) refresh(ctx context.Context, refreshURL, refreshToken string
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MiB safety cap
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%w: status=%d", ErrRefreshFailed, resp.StatusCode)
+		// domain-H2: the previous error dropped the response body, so the
+		// caller's "invalid_grant" / "invalid refresh" string check in
+		// isNonRetryableRefreshError could never match — a permanently revoked
+		// refresh token was retried forever. Parse the OAuth error object and
+		// surface invalid_grant as the typed ErrInvalidGrant so the refresh task
+		// stops retrying the account.
+		if isInvalidGrantError(body) {
+			return nil, fmt.Errorf("%w: status=%d body=%s", ErrInvalidGrant, resp.StatusCode, truncateBody(body))
+		}
+		return nil, fmt.Errorf("%w: status=%d body=%s", ErrRefreshFailed, resp.StatusCode, truncateBody(body))
 	}
 	var tr tokenRefreshResponse
 	if err := json.Unmarshal(body, &tr); err != nil {
@@ -78,6 +88,29 @@ func (r *refresher) refresh(ctx context.Context, refreshURL, refreshToken string
 		RefreshToken: newRefresh,
 		ExpiresAt:    expiresAt,
 	}, nil
+}
+
+// isInvalidGrantError inspects an OAuth token-endpoint error response body
+// for the invalid_grant error code. RFC 6749 defines the error object as
+// {"error": "invalid_grant", ...}; some providers nest it or return it as a
+// top-level array. We do a tolerant substring check because the body is small
+// (capped at 1MiB) and "invalid_grant" is an unambiguous OAuth error code.
+func isInvalidGrantError(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	return bytes.Contains(bytes.ToLower(body), []byte("invalid_grant"))
+}
+
+// truncateBody keeps the error message short so a large/HTML error page does
+// not bloat logs while still exposing enough of the body to diagnose the
+// failure.
+func truncateBody(body []byte) string {
+	const max = 256
+	if len(body) <= max {
+		return string(body)
+	}
+	return string(body[:max]) + "...(truncated)"
 }
 
 // defaultRefreshHTTPClient builds an *http.Client with a sane timeout for token

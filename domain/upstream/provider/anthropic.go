@@ -18,10 +18,11 @@ import (
 // AnthropicProvider implements the Provider interface for Anthropic Claude API.
 // It translates between OpenAI-compatible requests/responses and the Anthropic API format.
 type AnthropicProvider struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	timeout    time.Duration
+	httpClient   *http.Client
+	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	baseURL      string
+	apiKey       string
+	timeout      time.Duration
 }
 
 // NewAnthropicProvider creates a new Anthropic Claude provider.
@@ -34,9 +35,12 @@ func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) *Anthro
 	}
 	return &AnthropicProvider{
 		httpClient: &http.Client{Timeout: timeout},
-		baseURL:    baseURL,
-		apiKey:     apiKey,
-		timeout:    timeout,
+		// domain-H3: streaming client has no Client.Timeout so SSE body reads
+		// are not killed mid-stream; cancellation is driven by the request ctx.
+		streamClient: &http.Client{},
+		baseURL:      baseURL,
+		apiKey:       apiKey,
+		timeout:      timeout,
 	}
 }
 
@@ -152,7 +156,7 @@ func (p *AnthropicProvider) ForwardStream(ctx context.Context, req *RawRequest) 
 	}
 	p.anthropicSetForwardHeaders(httpReq.Header, req.Header)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send raw stream request: %w", err)
 	}
@@ -308,9 +312,9 @@ func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCo
 			CompletionTokens: resp.Usage.OutputTokens,
 			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
 			PromptTokensDetails: UsageTokenDetails{
-				CacheReadTokens:        resp.Usage.CacheReadInputTokens,
-				CacheCreation5mTokens:  anthropicCacheCreation5m(resp.Usage),
-				CacheCreation1hTokens:  anthropicCacheCreation1h(resp.Usage),
+				CacheReadTokens:       resp.Usage.CacheReadInputTokens,
+				CacheCreation5mTokens: anthropicCacheCreation5m(resp.Usage),
+				CacheCreation1hTokens: anthropicCacheCreation1h(resp.Usage),
 			},
 		},
 	}
@@ -397,7 +401,7 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}

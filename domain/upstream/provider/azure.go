@@ -16,11 +16,12 @@ import (
 const defaultAzureAPIVersion = "2024-02-15-preview"
 
 type AzureProvider struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	apiVersion string
-	timeout    time.Duration
+	httpClient   *http.Client
+	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	baseURL      string
+	apiKey       string
+	apiVersion   string
+	timeout      time.Duration
 }
 
 func NewAzureProvider(baseURL, apiKey, apiVersion string, timeout time.Duration) (*AzureProvider, error) {
@@ -35,10 +36,13 @@ func NewAzureProvider(baseURL, apiKey, apiVersion string, timeout time.Duration)
 	}
 	return &AzureProvider{
 		httpClient: &http.Client{Timeout: timeout},
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKey:     apiKey,
-		apiVersion: apiVersion,
-		timeout:    timeout,
+		// domain-H3: streaming client has no Client.Timeout so SSE body reads
+		// are not killed mid-stream; cancellation is driven by the request ctx.
+		streamClient: &http.Client{},
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		apiKey:       apiKey,
+		apiVersion:   apiVersion,
+		timeout:      timeout,
 	}, nil
 }
 
@@ -98,7 +102,7 @@ func (p *AzureProvider) ChatCompletionsStream(ctx context.Context, req *ChatComp
 	}
 	p.setHeaders(httpReq.Header, nil)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}

@@ -62,7 +62,9 @@ func (c *SubscriptionExpiryChecker) Tick(ctx context.Context) ([]ExpiryNotificat
 		if sub.ExpiresAt <= now {
 			sub.Status = SubscriptionStatusExpired
 			sub.UpdatedAt = now
-			if err := c.repo.UpdateSubscription(ctx, sub); err != nil {
+			// domain-H1: write only status (+ updated_at). The expiry transition
+			// must not clobber a concurrent AddUsage's usage/window increments.
+			if err := c.repo.UpdateSubscriptionFields(ctx, sub, []SubscriptionField{SubscriptionFieldStatus}); err != nil {
 				return nil, err
 			}
 			continue

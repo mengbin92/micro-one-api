@@ -187,6 +187,7 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx *gormDB, r
 	// same-group renewal (user renews the current plan) intentionally leaves a
 	// pending_change in place so the downgrade still takes effect at the next
 	// renewal that targets the pending group.
+	groupChanged := false
 	if active.GroupID != req.GroupID {
 		pending, ok := pendingChangeMetadata(active.Metadata)
 		if !ok || pending.ToGroupID != req.GroupID {
@@ -194,6 +195,7 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx *gormDB, r
 		}
 		active.GroupID = req.GroupID
 		active.Metadata = clearPendingChangeMetadata(active.Metadata)
+		groupChanged = true
 	}
 	// Extension always accumulates remaining time (review H3 fix): the new
 	// expires_at is max(active.ExpiresAt, now) + requestedDuration. The
@@ -214,12 +216,22 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx *gormDB, r
 	}
 	active.Metadata = mergeSubscriptionMetadata(active.Metadata, req.Metadata)
 	active.UpdatedAt = now
+	// domain-H1: write ONLY the columns this renewal changes. The usage/window
+	// columns are owned by AddUsage; writing them here from a read snapshot
+	// taken before a concurrent AddUsage commits would clobber that increment.
+	fields := []SubscriptionField{SubscriptionFieldExpiresAt, SubscriptionFieldMetadata}
+	if req.SubscriptionName != "" {
+		fields = append(fields, SubscriptionFieldSubscriptionName)
+	}
+	if groupChanged {
+		fields = append(fields, SubscriptionFieldGroupID)
+	}
 	if tx != nil {
-		if err := uc.repo.UpdateSubscriptionInTx(ctx, tx, active); err != nil {
+		if err := uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, active, fields); err != nil {
 			return nil, true, err
 		}
 	} else {
-		if err := uc.repo.UpdateSubscription(ctx, active); err != nil {
+		if err := uc.repo.UpdateSubscriptionFields(ctx, active, fields); err != nil {
 			return nil, true, err
 		}
 	}
@@ -237,7 +249,7 @@ func (uc *SubscriptionUsecase) Revoke(ctx context.Context, id int64, reason stri
 	subscription.Status = SubscriptionStatusRevoked
 	subscription.UpdatedAt = uc.now().Unix()
 	subscription.Metadata = mergeMetadataReason(subscription.Metadata, reason)
-	return uc.repo.UpdateSubscription(ctx, subscription)
+	return uc.repo.UpdateSubscriptionFields(ctx, subscription, []SubscriptionField{SubscriptionFieldStatus, SubscriptionFieldMetadata})
 }
 
 func (uc *SubscriptionUsecase) RevokeInTx(ctx context.Context, tx *gormDB, id int64, reason string) error {
@@ -251,7 +263,7 @@ func (uc *SubscriptionUsecase) RevokeInTx(ctx context.Context, tx *gormDB, id in
 	subscription.Status = SubscriptionStatusRevoked
 	subscription.UpdatedAt = uc.now().Unix()
 	subscription.Metadata = mergeMetadataReason(subscription.Metadata, reason)
-	return uc.repo.UpdateSubscriptionInTx(ctx, tx, subscription)
+	return uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, subscription, []SubscriptionField{SubscriptionFieldStatus, SubscriptionFieldMetadata})
 }
 
 func (uc *SubscriptionUsecase) Extend(ctx context.Context, id int64, newExpiresAt int64) error {
@@ -310,7 +322,7 @@ func (uc *SubscriptionUsecase) ShortenInTx(ctx context.Context, tx *gormDB, id i
 	}
 	subscription.ExpiresAt = newExpiry
 	subscription.UpdatedAt = now
-	return uc.repo.UpdateSubscriptionInTx(ctx, tx, subscription)
+	return uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, subscription, []SubscriptionField{SubscriptionFieldExpiresAt})
 }
 
 func (uc *SubscriptionUsecase) ResetQuota(ctx context.Context, id int64, scope string) error {
@@ -340,7 +352,10 @@ func (uc *SubscriptionUsecase) ResetQuota(ctx context.Context, id int64, scope s
 		return ErrInvalidQuotaScope
 	}
 	subscription.UpdatedAt = now
-	return uc.repo.UpdateSubscription(ctx, subscription)
+	// domain-H1: write only the usage/window columns. ResetQuota is a legitimate
+	// usage-column writer (it zeroes usage), so it selects the usage field set;
+	// the unselected status/expires_at/name/metadata columns are preserved.
+	return uc.repo.UpdateSubscriptionFields(ctx, subscription, []SubscriptionField{SubscriptionFieldUsageAll})
 }
 
 func (uc *SubscriptionUsecase) RecordUsage(ctx context.Context, userID int64, costUSD float64) error {

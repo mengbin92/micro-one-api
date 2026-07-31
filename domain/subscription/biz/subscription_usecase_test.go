@@ -47,6 +47,50 @@ func (m *mockSubscriptionRepo) UpdateSubscriptionInTx(ctx context.Context, tx *g
 	return m.UpdateSubscription(ctx, subscription)
 }
 
+// UpdateSubscriptionFields mirrors the selective write of the real repo for
+// the in-memory mock: it applies only the named fields onto the stored row so
+// tests observe the same narrow-write semantics as production
+// (code-review 2026-07-30 domain-H1).
+func (m *mockSubscriptionRepo) UpdateSubscriptionFields(ctx context.Context, subscription *UserSubscription, fields []SubscriptionField) error {
+	if subscription == nil {
+		return errors.New("nil subscription")
+	}
+	existing, ok := m.subscriptions[subscription.ID]
+	if !ok {
+		return ErrSubscriptionNotFound
+	}
+	merged := *existing
+	for _, f := range fields {
+		switch f {
+		case SubscriptionFieldStatus:
+			merged.Status = subscription.Status
+		case SubscriptionFieldExpiresAt:
+			merged.ExpiresAt = subscription.ExpiresAt
+		case SubscriptionFieldSubscriptionName:
+			merged.SubscriptionName = subscription.SubscriptionName
+		case SubscriptionFieldGroupID:
+			merged.GroupID = subscription.GroupID
+		case SubscriptionFieldMetadata:
+			merged.Metadata = subscription.Metadata
+		case SubscriptionFieldUsageAll:
+			merged.DailyUsageUSD = subscription.DailyUsageUSD
+			merged.WeeklyUsageUSD = subscription.WeeklyUsageUSD
+			merged.MonthlyUsageUSD = subscription.MonthlyUsageUSD
+			merged.DailyWindowStart = subscription.DailyWindowStart
+			merged.WeeklyWindowStart = subscription.WeeklyWindowStart
+			merged.MonthlyWindowStart = subscription.MonthlyWindowStart
+		}
+	}
+	merged.UpdatedAt = subscription.UpdatedAt
+	cloned := merged
+	m.subscriptions[subscription.ID] = &cloned
+	return nil
+}
+
+func (m *mockSubscriptionRepo) UpdateSubscriptionFieldsInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription, fields []SubscriptionField) error {
+	return m.UpdateSubscriptionFields(ctx, subscription, fields)
+}
+
 func (m *mockSubscriptionRepo) DeleteSubscription(ctx context.Context, subscriptionID int64) error {
 	delete(m.subscriptions, subscriptionID)
 	return nil

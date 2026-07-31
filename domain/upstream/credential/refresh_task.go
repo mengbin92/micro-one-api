@@ -257,6 +257,13 @@ func isNonRetryableRefreshError(err error) bool {
 	if errors.Is(err, ErrNoRefreshToken) || errors.Is(err, ErrAccountNotFound) {
 		return true
 	}
+	// domain-H2: the refresher now surfaces invalid_grant as the typed
+	// ErrInvalidGrant (wrapping ErrRefreshFailed), so errors.Is is the
+	// reliable check. The string fallbacks are retained for any caller that
+	// still constructs a plain error.
+	if errors.Is(err, ErrInvalidGrant) {
+		return true
+	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "invalid_grant") || strings.Contains(msg, "invalid refresh")
 }

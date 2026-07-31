@@ -12,10 +12,10 @@ import (
 // upstream is required; this is a pure conversion test.
 func TestConvertFromAnthropicResponsePopulatesCacheCreationBuckets(t *testing.T) {
 	cases := []struct {
-		name     string
-		usage    anthropicUsage
-		want5m   int
-		want1h   int
+		name   string
+		usage  anthropicUsage
+		want5m int
+		want1h int
 	}{
 		{
 			name:   "mixed 5m+1h detail",

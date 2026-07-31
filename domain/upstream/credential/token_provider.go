@@ -13,6 +13,7 @@ package credential
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -81,6 +82,13 @@ var (
 	// ErrRefreshFailed is returned when the upstream token endpoint rejected
 	// the refresh attempt.
 	ErrRefreshFailed = errors.New("credential: token refresh failed")
+	// ErrInvalidGrant is returned when the upstream token endpoint reports an
+	// invalid_grant error, meaning the refresh token is permanently revoked or
+	// expired and no amount of retrying will recover it. It wraps ErrRefreshFailed
+	// so callers checking for a generic refresh failure still match. Callers
+	// should use errors.Is(err, ErrInvalidGrant) to stop retrying the account
+	// (code-review 2026-07-30 domain-H2).
+	ErrInvalidGrant = fmt.Errorf("credential: %w: invalid grant", ErrRefreshFailed)
 	// ErrNotConfigured is returned when no AccountLookup is wired.
 	ErrNotConfigured = errors.New("credential: account lookup is not configured")
 )

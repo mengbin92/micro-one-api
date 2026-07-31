@@ -18,10 +18,11 @@ import (
 // GeminiProvider implements the Provider interface for Google Gemini API.
 // It translates between OpenAI-compatible requests/responses and the Gemini API format.
 type GeminiProvider struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	timeout    time.Duration
+	httpClient   *http.Client
+	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	baseURL      string
+	apiKey       string
+	timeout      time.Duration
 }
 
 // NewGeminiProvider creates a new Google Gemini provider.
@@ -34,9 +35,12 @@ func NewGeminiProvider(baseURL, apiKey string, timeout time.Duration) *GeminiPro
 	}
 	return &GeminiProvider{
 		httpClient: &http.Client{Timeout: timeout},
-		baseURL:    baseURL,
-		apiKey:     apiKey,
-		timeout:    timeout,
+		// domain-H3: streaming client has no Client.Timeout so SSE body reads
+		// are not killed mid-stream; cancellation is driven by the request ctx.
+		streamClient: &http.Client{},
+		baseURL:      baseURL,
+		apiKey:       apiKey,
+		timeout:      timeout,
 	}
 }
 
@@ -218,7 +222,7 @@ func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", p.apiKey)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}

@@ -133,7 +133,15 @@ func (uc *SubscriptionUsecase) ChangeSubscription(ctx context.Context, req Chang
 		sub.DailyWindowStart = now
 		sub.WeeklyWindowStart = now
 		sub.MonthlyWindowStart = now
-		if err := uc.repo.UpdateSubscription(ctx, sub); err != nil {
+		// domain-H1: selective write. The change legitimately resets usage, so it
+		// selects UsageAll plus the group/name/metadata columns it mutates. It
+		// never overwrites status/expires_at from this read snapshot.
+		if err := uc.repo.UpdateSubscriptionFields(ctx, sub, []SubscriptionField{
+			SubscriptionFieldGroupID,
+			SubscriptionFieldSubscriptionName,
+			SubscriptionFieldMetadata,
+			SubscriptionFieldUsageAll,
+		}); err != nil {
 			return nil, err
 		}
 		return &ChangeResult{
@@ -157,7 +165,8 @@ func (uc *SubscriptionUsecase) ChangeSubscription(ctx context.Context, req Chang
 			At:        now,
 		})
 		sub.UpdatedAt = now
-		if err := uc.repo.UpdateSubscription(ctx, sub); err != nil {
+		// domain-H1: write only the metadata column; never touch usage.
+		if err := uc.repo.UpdateSubscriptionFields(ctx, sub, []SubscriptionField{SubscriptionFieldMetadata}); err != nil {
 			return nil, err
 		}
 		return &ChangeResult{
@@ -262,7 +271,6 @@ func trimSpace(s string) string {
 	}
 	return s
 }
-
 
 // PendingChange describes a scheduled next-cycle subscription change
 // (downgrade) recorded on the active subscription's metadata. It is the

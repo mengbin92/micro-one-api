@@ -131,8 +131,8 @@ type Usage struct {
 }
 
 type UsageTokenDetails struct {
-	CachedTokens        int `json:"cached_tokens,omitempty"`
-	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
+	CachedTokens          int `json:"cached_tokens,omitempty"`
+	CacheReadTokens       int `json:"cache_read_tokens,omitempty"`
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens,omitempty"`
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens,omitempty"`
 }
@@ -162,10 +162,11 @@ type StreamDelta struct {
 
 // OpenAIProvider implements the Provider interface for OpenAI-compatible APIs
 type OpenAIProvider struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	timeout    time.Duration
+	httpClient   *http.Client
+	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	baseURL      string
+	apiKey       string
+	timeout      time.Duration
 }
 
 // validateBaseURL checks that a base URL is safe from SSRF attacks.
@@ -237,9 +238,16 @@ func NewOpenAIProvider(baseURL, apiKey string, timeout time.Duration) (*OpenAIPr
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		timeout: timeout,
+		// domain-H3: the streaming client has NO Client.Timeout. http.Client.Timeout
+		// is a hard deadline covering the entire round trip including response-body
+		// reads, so it would kill an SSE stream mid-flight once the configured
+		// timeout elapsed regardless of whether bytes were still flowing. Stream
+		// cancellation is driven by the per-request context (the caller sets a
+		// deadline appropriate for a long-lived stream).
+		streamClient: &http.Client{},
+		baseURL:      baseURL,
+		apiKey:       apiKey,
+		timeout:      timeout,
 	}, nil
 }
 
@@ -320,7 +328,7 @@ func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*R
 	copyForwardHeaders(httpReq.Header, req.Header)
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send raw request: %w", err)
 	}
@@ -407,7 +415,7 @@ func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
