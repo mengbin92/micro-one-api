@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"log"
+
 	adminv1 "micro-one-api/api/admin/v1"
 	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -146,48 +148,36 @@ func adminOperatorUserID(r *http.Request) int64 {
 // Optional arguments are kept for backwards-compatible tests and older wire
 // call sites: first is identity HTTP endpoint, second is external web root.
 func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *khttp.Server {
-	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
 	identityProxy := newServiceReverseProxy(optionString(options, 0))
 	billingHTTPProxy := newBillingHTTPProxy()
 	notifyWorkerProxy := newNotifyWorkerProxy()
 	channelHTTPProxy := newChannelHTTPProxy()
 	webAssets := newAdminWebAssets(optionString(options, 1))
 	handlePage := webAssets.handlePage
+	// SPA fallback (review admin-H1): Kratos uses gorilla/mux, whose "/" matches
+	// only the root path — unlike net/http's DefaultServeMux subtree match. The
+	// previous code mirrored all 30+ frontend routes here by hand. Instead, we
+	// point the router's NotFoundHandler at handlePage so ANY unmatched path
+	// serves the SPA shell (handlePage serves index.html for extension-less
+	// paths and the real asset otherwise). This option is appended AFTER
+	// SafeKratosServerOptions (which sets NotFoundHandler to a 404 responder) so
+	// our SPA fallback wins. API routes (/api/..., /v1/...) and /metrics,
+	// /healthz register longer patterns and are never "not found".
+	spaOpts := xhttp.SafeKratosServerOptions(khttp.Address(addr))
+	spaOpts = append(spaOpts, khttp.NotFoundHandler(http.HandlerFunc(handlePage)))
+	srv := khttp.NewServer(spaOpts...)
 	adminAuth := newAdminGuard(svc)
 
 	// Health and metrics (unauthenticated)
+	// SPA fallback (review admin-H1): the root "/" catch-all plus
+	// handlePage's extension-less → index.html logic serves ALL client-side
+	// routes. The previous 34-entry manual mirror of web/src/router.tsx was a
+	// maintenance trap: adding a frontend route without mirroring it here
+	// caused a 404 on direct-visit/refresh. Now every unregistered path falls
+	// through to handlePage (which serves index.html for extension-less paths
+	// and the real asset otherwise). API routes (/api/..., /v1/...) and
+	// /metrics, /healthz are registered with longer patterns so they win.
 	srv.HandleFunc("/", handlePage)
-	srv.HandleFunc("/admin", handlePage)
-	srv.HandleFunc("/admin/", handlePage)
-	// SPA client-side routes — must mirror entries in web/src/router.tsx
-	srv.HandleFunc("/login", handlePage)
-	srv.HandleFunc("/register", handlePage)
-	srv.HandleFunc("/dashboard", handlePage)
-	srv.HandleFunc("/tokens", handlePage)
-	srv.HandleFunc("/usage", handlePage)
-	srv.HandleFunc("/api-guide", handlePage)
-	srv.HandleFunc("/pricing", handlePage)
-	srv.HandleFunc("/recharge", handlePage)
-	srv.HandleFunc("/redeem", handlePage)
-	srv.HandleFunc("/orders", handlePage)
-	srv.HandleFunc("/profile", handlePage)
-	srv.HandleFunc("/subscriptions", handlePage)
-	srv.HandleFunc("/admin/users", handlePage)
-	srv.HandleFunc("/admin/channels", handlePage)
-	srv.HandleFunc("/admin/models", handlePage)
-	srv.HandleFunc("/admin/channel-health", handlePage)
-	srv.HandleFunc("/admin/cost-analysis", handlePage)
-	srv.HandleFunc("/admin/pricing", handlePage)
-	srv.HandleFunc("/admin/logs", handlePage)
-	srv.HandleFunc("/admin/payment-orders", handlePage)
-	srv.HandleFunc("/admin/reconciliation", handlePage)
-	srv.HandleFunc("/admin/redemptions", handlePage)
-	srv.HandleFunc("/admin/options", handlePage)
-	srv.HandleFunc("/admin/subscription-accounts", handlePage)
-	srv.HandleFunc("/admin/subscription-groups", handlePage)
-	srv.HandleFunc("/admin/subscription-plans", handlePage)
-	srv.HandleFunc("/admin/subscriptions", handlePage)
-	srv.HandleFunc("/admin/routing-ops", handlePage)
 	// Static assets bundled by Vite
 	srv.HandlePrefix("/assets/", http.HandlerFunc(handlePage))
 	srv.HandleFunc("/favicon.svg", handlePage)
@@ -1662,6 +1652,38 @@ func apiResponse(success bool, message string, data interface{}) map[string]inte
 	return resp
 }
 
+// sanitizeAdminError returns a user-safe message for an error while logging the
+// raw detail server-side (review admin-M1). Previously ~19 sites streamed
+// err.Error() straight to the frontend, leaking database internals (table
+// names, column names, constraints), gRPC transport details, and file paths.
+//
+// Policy: gRPC errors carrying a client-facing status code (InvalidArgument,
+// NotFound, AlreadyExists, PermissionDenied, Unauthenticated, FailedPrecondition,
+// ResourceExhausted) keep their message — these are intentional operational
+// messages from the downstream service. Everything else (Unknown, Internal,
+// DeadlineExceeded, raw database errors, etc.) is replaced with a generic
+// message so internal architecture is not exposed to end users (including
+// non-admin users reaching the public handlers).
+func sanitizeAdminError(err error) string {
+	if err == nil {
+		return ""
+	}
+	// gRPC status errors: keep the message for client-facing codes.
+	if st, ok := status.FromError(err); ok && st != nil {
+		switch st.Code() {
+		case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists,
+			codes.PermissionDenied, codes.Unauthenticated,
+			codes.FailedPrecondition, codes.ResourceExhausted:
+			return st.Message()
+		}
+		log.Printf("admin handler internal error: %v", err)
+		return "internal server error, please try again later"
+	}
+	// Non-gRPC error (database, filesystem, etc.): never leak the raw message.
+	log.Printf("admin handler internal error: %v", err)
+	return "internal server error, please try again later"
+}
+
 // logEntryToJSON converts a proto LogEntry to a camelCase JSON map for frontend compatibility.
 func logEntryToJSON(entry *adminv1.LogEntry) map[string]interface{} {
 	return map[string]interface{}{
@@ -1718,7 +1740,7 @@ func handleContentRoute(adminAuth func(http.HandlerFunc) http.HandlerFunc, svc *
 		if r.Method == http.MethodGet {
 			value, err := svc.GetOneAPIOption(r.Context(), key)
 			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, apiResponse(false, err.Error(), nil))
+				writeJSON(w, http.StatusInternalServerError, apiResponse(false, sanitizeAdminError(err), nil))
 				return
 			}
 			writeJSON(w, http.StatusOK, apiResponse(true, "", value))
@@ -1760,7 +1782,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 	case http.MethodGet:
 		groups, err := svc.ListGroups(r.Context())
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 			return
 		}
 		if r.URL.Query().Get("with_ratio") == "true" {
@@ -1787,7 +1809,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 		}
 		result, err := svc.UpsertGroup(r.Context(), req.Group, req.Ratio)
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 			return
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
@@ -1798,7 +1820,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 		}
 		result, err := svc.DeleteGroup(r.Context(), group)
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 			return
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
@@ -1925,7 +1947,7 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 		Keyword:  req.Username,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
 	var user *commonv1.UserInfo
@@ -1954,7 +1976,7 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 				message = resp.GetMessage()
 			}
 			if err != nil {
-				message = err.Error()
+				message = sanitizeAdminError(err)
 			}
 			writeJSON(w, http.StatusOK, apiResponse(false, message, nil))
 			return
@@ -1968,7 +1990,7 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 				message = resp.GetMessage()
 			}
 			if err != nil {
-				message = err.Error()
+				message = sanitizeAdminError(err)
 			}
 			writeJSON(w, http.StatusOK, apiResponse(false, message, nil))
 			return
@@ -2001,7 +2023,7 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 				message = resp.GetMessage()
 			}
 			if err != nil {
-				message = err.Error()
+				message = sanitizeAdminError(err)
 			}
 			writeJSON(w, http.StatusOK, apiResponse(false, message, nil))
 			return
@@ -2027,7 +2049,7 @@ func handleOneAPIUserByID(w http.ResponseWriter, r *http.Request, svc *service.A
 	case http.MethodGet:
 		user, err := svc.GetUser(r.Context(), userID)
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 			return
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", user))
@@ -2345,7 +2367,7 @@ func handleSubscriptionAccountByID(w http.ResponseWriter, r *http.Request, svc *
 	case http.MethodGet:
 		account, err := svc.GetSubscriptionAccount(r.Context(), accountID)
 		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": sanitizeAdminError(err)})
 			return
 		}
 		writeJSON(w, http.StatusOK, account)
@@ -2542,7 +2564,7 @@ func handleOneAPIChannelByID(w http.ResponseWriter, r *http.Request, svc *servic
 	case http.MethodGet:
 		channel, err := svc.GetChannel(r.Context(), channelID)
 		if err != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 			return
 		}
 		writeJSON(w, http.StatusOK, apiResponse(true, "", channel))
@@ -2565,7 +2587,7 @@ func handleOneAPIDeleteDisabledChannels(w http.ResponseWriter, r *http.Request, 
 		Status:   2,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
 	deleted := 0
@@ -2849,7 +2871,7 @@ func handleTestChannel(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	}
 	result, err := svc.TestChannel(r.Context(), channelID)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"success": false, "message": err.Error()})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"success": false, "message": sanitizeAdminError(err)})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "", "data": result})
@@ -2862,7 +2884,7 @@ func handleUpdateChannelBalances(w http.ResponseWriter, r *http.Request, svc *se
 	}
 	results, err := svc.RefreshAllChannelBalances(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", results))
@@ -2880,7 +2902,7 @@ func handleUpdateChannelBalance(w http.ResponseWriter, r *http.Request, svc *ser
 	}
 	result, err := svc.RefreshChannelBalance(r.Context(), channelID)
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(result.Success, result.Message, result))
@@ -2895,7 +2917,7 @@ func handleReconciliationRuns(w http.ResponseWriter, r *http.Request, svc *servi
 	pageSize := getQueryInt32(r, "page_size", 50)
 	result, err := svc.ListReconciliationRuns(r.Context(), page, pageSize)
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", result))
@@ -2913,7 +2935,7 @@ func handleReconciliationRunByID(w http.ResponseWriter, r *http.Request, svc *se
 	}
 	run, err := svc.GetReconciliationRun(r.Context(), runID)
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
 	if run == nil {
@@ -3627,7 +3649,7 @@ func handlePaymentOrders(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		EndTime:   getQueryInt64(r, "end_time", 0),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse(false, err.Error(), nil))
+		writeJSON(w, http.StatusInternalServerError, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
@@ -3648,7 +3670,7 @@ func handlePaymentOrderByTradeNo(w http.ResponseWriter, r *http.Request, svc *se
 	}
 	resp, err := svc.GetPaymentOrderByTradeNo(r.Context(), &billingv1.GetPaymentOrderByTradeNoRequest{TradeNo: tradeNo})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse(false, err.Error(), nil))
+		writeJSON(w, http.StatusInternalServerError, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
 	if !resp.GetSuccess() {
