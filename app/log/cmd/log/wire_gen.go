@@ -100,10 +100,8 @@ func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service
 		batchWriter.Start()
 		uc.SetBatchWriter(batchWriter)
 		batchStop = batchWriter.Stop
-		if logger.Log != nil {
-			logger.Log.
-				Info("log batch writer enabled", zap.Int("batch_size", batchSize), zap.Duration("flush_interval", flushInterval))
-		}
+		logger.Log.
+			Info("log batch writer enabled", zap.Int("batch_size", batchSize), zap.Duration("flush_interval", flushInterval))
 	}
 
 	opts := []kratos.Option{kratos.Name("log-service"), kratos.Server(grpcSrv, httpSrv)}

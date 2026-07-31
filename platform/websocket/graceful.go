@@ -27,13 +27,14 @@ const (
 
 // ConnectionTracker tracks active WebSocket connections for graceful shutdown.
 type ConnectionTracker struct {
-	mu          sync.RWMutex
-	connections map[*Connection]bool
-	draining    atomic.Bool
-	stopCh      chan struct{}
-	wg          sync.WaitGroup
-	config      *DrainConfig
-	metrics     *drainMetrics
+	mu            sync.RWMutex
+	connections   map[*Connection]bool
+	draining      atomic.Bool
+	stopCh        chan struct{}
+	stopCloseOnce sync.Once
+	wg            sync.WaitGroup
+	config        *DrainConfig
+	metrics       *drainMetrics
 }
 
 // DrainConfig holds configuration for connection draining.
@@ -88,19 +89,18 @@ type Connection struct {
 	closeFunc  func() error
 	closeOnce  sync.Once
 	createdAt  time.Time
-	lastActive time.Time
+	metadataMu sync.RWMutex
 	metadata   map[string]string
 }
 
 // NewConnection creates a new tracked connection.
 func (ct *ConnectionTracker) NewConnection(id string, closeFunc func() error) *Connection {
 	c := &Connection{
-		id:         id,
-		tracker:    ct,
-		closeFunc:  closeFunc,
-		createdAt:  time.Now(),
-		lastActive: time.Now(),
-		metadata:   make(map[string]string),
+		id:        id,
+		tracker:   ct,
+		closeFunc: closeFunc,
+		createdAt: time.Now(),
+		metadata:  make(map[string]string),
 	}
 	c.state.Store(int32(StateActive))
 
@@ -159,13 +159,23 @@ func (c *Connection) ID() string {
 	return c.id
 }
 
-// Metadata returns the connection metadata.
+// Metadata returns a snapshot copy of the connection metadata. Concurrent
+// handlers previously read/wrote the map without a lock (platform-L8).
 func (c *Connection) Metadata() map[string]string {
-	return c.metadata
+	c.metadataMu.RLock()
+	defer c.metadataMu.RUnlock()
+	out := make(map[string]string, len(c.metadata))
+	for k, v := range c.metadata {
+		out[k] = v
+	}
+	return out
 }
 
-// SetMetadata sets a metadata key-value pair.
+// SetMetadata sets a metadata key-value pair under the connection's lock
+// (platform-L8).
 func (c *Connection) SetMetadata(key, value string) {
+	c.metadataMu.Lock()
+	defer c.metadataMu.Unlock()
 	c.metadata[key] = value
 }
 
@@ -304,6 +314,15 @@ func (ct *ConnectionTracker) forceCloseRemaining() error {
 	case <-closeCtx.Done():
 		return context.DeadlineExceeded
 	}
+}
+
+// Close releases the tracker's stop signal channel. It is idempotent and
+// safe to call multiple times. Closing stopCh lets waitForClose exit promptly
+// instead of relying solely on the connection map draining (platform-L8:
+// previously stopCh had no closer and waitForClose only exited once the map was
+// empty, which was incidental).
+func (ct *ConnectionTracker) Close() {
+	ct.stopCloseOnce.Do(func() { close(ct.stopCh) })
 }
 
 // ActiveCount returns the number of active connections.

@@ -102,7 +102,7 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		ElapsedTime:            in.ElapsedTime,
 		IsStream:               in.IsStream,
 	})
-	if err != nil && applogger.Log != nil {
+	if err != nil {
 		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()
 		applogger.Log.Warn("failed to ingest usage log", zap.Error(err))
 		return

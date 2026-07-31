@@ -3,16 +3,17 @@ package cache
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/dgraph-io/ristretto"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
 
+	"micro-one-api/pkg/jsonx"
+	"micro-one-api/pkg/safecast"
 	"micro-one-api/platform/events"
 	"micro-one-api/platform/metrics"
-	"micro-one-api/pkg/safecast"
-	"micro-one-api/pkg/jsonx"
 )
 
 // CacheLoader defines the function to load data on cache miss.
@@ -21,15 +22,14 @@ type CacheLoader[T any] func(ctx context.Context, key string) (*T, error)
 // MultiLevelCache provides L1 (local) + L2 (Redis) caching
 // with event-driven invalidation.
 type MultiLevelCache[T any] struct {
-	l1       *ristretto.Cache
-	l2       *redis.Client
-	prefix   string
-	ttl      time.Duration
-	l2TTL    time.Duration
-	eventBus *events.EventBus
-	loader   CacheLoader[T]
-	sf       singleflight.Group
-	metrics  *cacheMetrics
+	l1      *ristretto.Cache
+	l2      *redis.Client
+	prefix  string
+	ttl     time.Duration
+	l2TTL   time.Duration
+	loader  CacheLoader[T]
+	sf      singleflight.Group
+	metrics *cacheMetrics
 }
 
 // entry represents a cached item with expiration.
@@ -66,9 +66,20 @@ func DefaultConfig() *Config {
 }
 
 // NewMultiLevelCache creates a new multi-level cache.
+//
+// The eventBus parameter is retained for API compatibility but is intentionally
+// unused: event-driven invalidation was never wired (relay-gateway passes nil
+// and no code path calls AuthCache.Invalidate / ChannelCache.Invalidate*).
+// Cache freshness is therefore bounded EXCLUSIVELY by TTL expiry — the
+// contract callers must respect is: a revoked/invalidated entry remains
+// potentially stale for up to max(L1TTL, L2TTL) after the underlying source of
+// truth changes. For auth snapshots that is ~5min, for channel selection
+// ~10min (see DefaultConfig). If immediate invalidation is later required,
+// wire the eventBus here and have Invalidate subscribe to a cross-service
+// invalidation topic (platform-M2).
 func NewMultiLevelCache[T any](
 	l2Client *redis.Client,
-	eventBus *events.EventBus,
+	_ *events.EventBus,
 	loader CacheLoader[T],
 	cacheName string,
 	cfg *Config,
@@ -88,14 +99,13 @@ func NewMultiLevelCache[T any](
 	}
 
 	return &MultiLevelCache[T]{
-		l1:       l1,
-		l2:       l2Client,
-		prefix:   fmt.Sprintf("%s:%s:", cfg.Prefix, cacheName),
-		ttl:      cfg.L1TTL,
-		l2TTL:    cfg.L2TTL,
-		eventBus: eventBus,
-		loader:   loader,
-		metrics:  &cacheMetrics{cacheName: cacheName},
+		l1:      l1,
+		l2:      l2Client,
+		prefix:  fmt.Sprintf("%s:%s:", cfg.Prefix, cacheName),
+		ttl:     cfg.L1TTL,
+		l2TTL:   cfg.L2TTL,
+		loader:  loader,
+		metrics: &cacheMetrics{cacheName: cacheName},
 	}, nil
 }
 
@@ -166,8 +176,10 @@ func (c *MultiLevelCache[T]) Set(ctx context.Context, key string, value *T) erro
 	return c.populate(ctx, cacheKey, value)
 }
 
-// Invalidate removes a key from both L1 and L2.
-// Triggered by event-driven invalidation or explicit API.
+// Invalidate removes a key from both L1 and L2. NOTE: this is NOT wired to a
+// cross-service event bus (platform-M2); callers must invoke it directly. The
+// only freshness guarantee for entries that are never explicitly invalidated
+// is TTL expiry (see NewMultiLevelCache contract).
 func (c *MultiLevelCache[T]) Invalidate(ctx context.Context, key string) error {
 	cacheKey := c.prefix + key
 
@@ -240,39 +252,41 @@ func (c *MultiLevelCache[T]) unmarshal(data []byte, value *T) error {
 // cacheMetrics holds metrics for a cache instance.
 type cacheMetrics struct {
 	cacheName string
-	l1Hits    int64
-	l2Hits    int64
-	misses    int64
+	l1Hits    atomic.Int64
+	l2Hits    atomic.Int64
+	misses    atomic.Int64
 }
 
 func (m *cacheMetrics) recordL1Hit() {
-	m.l1Hits++
+	m.l1Hits.Add(1)
 }
 
 func (m *cacheMetrics) recordL2Hit() {
-	m.l2Hits++
+	m.l2Hits.Add(1)
 }
 
 func (m *cacheMetrics) recordMiss() {
-	m.misses++
+	m.misses.Add(1)
 }
 
 // HitRate returns the overall cache hit rate.
 func (m *cacheMetrics) HitRate() float64 {
-	total := m.l1Hits + m.l2Hits + m.misses
+	l1, l2, miss := m.l1Hits.Load(), m.l2Hits.Load(), m.misses.Load()
+	total := l1 + l2 + miss
 	if total == 0 {
 		return 0
 	}
-	return float64(m.l1Hits+m.l2Hits) / float64(total)
+	return float64(l1+l2) / float64(total)
 }
 
 // L1HitRate returns the L1 cache hit rate.
 func (m *cacheMetrics) L1HitRate() float64 {
-	total := m.l1Hits + m.l2Hits + m.misses
+	l1, l2, miss := m.l1Hits.Load(), m.l2Hits.Load(), m.misses.Load()
+	total := l1 + l2 + miss
 	if total == 0 {
 		return 0
 	}
-	return float64(m.l1Hits) / float64(total)
+	return float64(l1) / float64(total)
 }
 
 // InvalidateByPattern invalidates all L2 keys whose Redis key matches the

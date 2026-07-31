@@ -156,9 +156,7 @@ func (s *IdentityService) ListUsers(ctx context.Context, req *identityv1.ListUse
 func (s *IdentityService) CreateUser(ctx context.Context, req *identityv1.CreateUserRequest) (*identityv1.CreateUserResponse, error) {
 	user, err := s.uc.CreateUser(ctx, req.Username, req.DisplayName, req.Email, req.Password, req.Group, 0)
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("CreateUser failed", zap.Error(err))
-		}
+				applogger.Log.Warn("CreateUser failed", zap.Error(err))
 		return &identityv1.CreateUserResponse{
 			Success: false,
 			Message: "user creation failed",
@@ -174,9 +172,7 @@ func (s *IdentityService) CreateUser(ctx context.Context, req *identityv1.Create
 func (s *IdentityService) UpdateUser(ctx context.Context, req *identityv1.UpdateUserRequest) (*identityv1.UpdateUserResponse, error) {
 	err := s.uc.UpdateUser(ctx, req.UserId, req.DisplayName, req.Email, req.Group, req.Status)
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("UpdateUser failed", zap.Error(err))
-		}
+				applogger.Log.Warn("UpdateUser failed", zap.Error(err))
 		return &identityv1.UpdateUserResponse{
 			Success: false,
 			Message: "user update failed",
@@ -191,9 +187,7 @@ func (s *IdentityService) UpdateUser(ctx context.Context, req *identityv1.Update
 func (s *IdentityService) DeleteUser(ctx context.Context, req *identityv1.DeleteUserRequest) (*identityv1.DeleteUserResponse, error) {
 	err := s.uc.DeleteUser(ctx, req.UserId)
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("DeleteUser failed", zap.Error(err))
-		}
+				applogger.Log.Warn("DeleteUser failed", zap.Error(err))
 		return &identityv1.DeleteUserResponse{
 			Success: false,
 			Message: "user deletion failed",
@@ -246,9 +240,7 @@ func (s *IdentityService) SetUserRole(ctx context.Context, req *identityv1.SetUs
 	if operatorAuth != nil {
 		op, err := s.uc.GetUser(ctx, operatorAuth.userID)
 		if err != nil {
-			if applogger.Log != nil {
-				applogger.Log.Warn("SetUserRole operator lookup failed", zap.Error(err))
-			}
+						applogger.Log.Warn("SetUserRole operator lookup failed", zap.Error(err))
 			return &identityv1.SetUserRoleResponse{
 				Success: false,
 				Message: "operator not found",
@@ -258,9 +250,7 @@ func (s *IdentityService) SetUserRole(ctx context.Context, req *identityv1.SetUs
 	}
 	user, err := s.uc.SetRole(ctx, operator, req.UserId, req.Role)
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("SetUserRole failed", zap.Error(err))
-		}
+				applogger.Log.Warn("SetUserRole failed", zap.Error(err))
 		return &identityv1.SetUserRoleResponse{
 			Success: false,
 			Message: err.Error(),
@@ -302,14 +292,10 @@ func mapIdentityErrorToGRPC(err error) error {
 			code = codes.Internal
 			message = "internal error"
 		}
-		if applogger.Log != nil {
-			applogger.Log.Warn("identity error", zap.String("reason", string(structuredErr.Reason)), zap.Error(err))
-		}
+				applogger.Log.Warn("identity error", zap.String("reason", string(structuredErr.Reason)), zap.Error(err))
 		return status.Error(code, message)
 	}
 
-	if applogger.Log != nil {
 		applogger.Log.Warn("unexpected identity error", zap.Error(err))
-	}
 	return status.Error(codes.Internal, "internal error")
 }

@@ -46,10 +46,8 @@ func TestRegistrationPolicyFromConfigSupportsRestrictionsAndExplicitDisable(t *t
 }
 
 func TestLogGeneratedAdminPasswordWritesPrivateFileWithoutLoggingSecret(t *testing.T) {
-	previous := applogger.Log
-	t.Cleanup(func() {
-		applogger.Log = previous
-	})
+	previous := applogger.SwapLogger(nil) // swap to nop
+	t.Cleanup(func() { applogger.SwapLogger(previous) })
 	var logs bytes.Buffer
 	if err := applogger.SetOutput(&logs); err != nil {
 		t.Fatal(err)

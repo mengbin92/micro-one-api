@@ -14,10 +14,10 @@ import (
 
 // RedisRateLimiter implements a distributed rate limiter using Redis sorted sets (sliding window).
 type RedisRateLimiter struct {
-	rdb     *redis.Client
-	rate    int
-	burst   int
-	window  time.Duration
+	rdb       *redis.Client
+	rate      int
+	burst     int
+	window    time.Duration
 	keyPrefix string
 }
 

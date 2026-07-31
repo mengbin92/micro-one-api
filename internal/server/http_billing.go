@@ -42,7 +42,7 @@ func (s *HTTPServer) ingestUsageLogAfterResponse(in usageLogInput) {
 }
 
 func (s *HTTPServer) logPostResponseCommitError(err error) {
-	if err != nil && applogger.Log != nil {
+	if err != nil {
 		applogger.Log.Warn("failed to commit quota after response was written", zap.Error(err))
 	}
 }
@@ -116,9 +116,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	// rely on provisional values; the worker will finalize the ledger and
 	// subscription usage on its own.
 	if resp.GetAsyncEnqueued() {
-		if applogger.Log != nil {
-			applogger.Log.Info("commit quota enqueued for async settlement", zap.String("reservation_id", reservationID), zap.Int64("actual_tokens", actualTokens))
-		}
+				applogger.Log.Info("commit quota enqueued for async settlement", zap.String("reservation_id", reservationID), zap.Int64("actual_tokens", actualTokens))
 		// Channel token usage does not depend on the provisional
 		// committed_amount; record it now so the channel stats stay accurate
 		// even when billing is settled asynchronously. Subscription-account
@@ -161,12 +159,10 @@ func (s *HTTPServer) recordSubscriptionAccountQuotaUsage(ctx context.Context, ac
 		CostSource:    "billing_commit",
 	})
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("failed to record subscription account quota usage", zap.Int64("account_id", accountID), zap.Error(err))
-		}
+				applogger.Log.Warn("failed to record subscription account quota usage", zap.Int64("account_id", accountID), zap.Error(err))
 		return
 	}
-	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
+	if resp != nil && !resp.GetSuccess() {
 		applogger.Log.Warn("subscription account quota usage rejected", zap.Int64("account_id", accountID), zap.String("message", resp.GetMessage()))
 	}
 }
@@ -208,11 +204,11 @@ func (s *HTTPServer) recordChannelUsage(ctx context.Context, channelID int64, qu
 		ChannelId: channelID,
 		Quota:     quota,
 	})
-	if err != nil && applogger.Log != nil {
+	if err != nil {
 		applogger.Log.Warn("failed to record channel usage", zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.Error(err))
 		return
 	}
-	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
+	if resp != nil && !resp.GetSuccess() {
 		applogger.Log.Warn("failed to record channel usage", zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.String("message", resp.GetMessage()))
 	}
 }
@@ -240,11 +236,11 @@ func (s *HTTPServer) recordModelUsage(ctx context.Context, modelID string, token
 		req.ErrorCount = 1
 	}
 	resp, err := s.channelClient.RecordModelUsage(channelCtx, req)
-	if err != nil && applogger.Log != nil {
+	if err != nil {
 		applogger.Log.Warn("failed to record model usage", zap.String("model", modelID), zap.Error(err))
 		return
 	}
-	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
+	if resp != nil && !resp.GetSuccess() {
 		applogger.Log.Warn("failed to record model usage", zap.String("model", modelID), zap.String("message", resp.GetMessage()))
 	}
 }

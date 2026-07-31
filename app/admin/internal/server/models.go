@@ -531,14 +531,12 @@ func logUnpricedRoutedAudit(r *http.Request, resp *channelv1.ListUnpricedRoutedM
 	for _, m := range resp.GetModels() {
 		modelIDs = append(modelIDs, m.GetModelId())
 	}
-	if applogger.Log != nil {
 		applogger.Log.Info("unpriced routed models audit",
-			zap.String("actor", operator),
-			zap.Int("count", int(resp.GetTotal())),
-			zap.Strings("models", modelIDs),
-			zap.String("request_id", r.Header.Get("X-Request-Id")),
-		)
-	}
+		zap.String("actor", operator),
+		zap.Int("count", int(resp.GetTotal())),
+		zap.Strings("models", modelIDs),
+		zap.String("request_id", r.Header.Get("X-Request-Id")),
+	)
 }
 
 // ── v0.11.0 Phase 2 §2.2: independent upstream-cost management ─────────────

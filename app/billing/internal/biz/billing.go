@@ -1773,14 +1773,12 @@ func (uc *BillingUsecase) recordCacheCreationCostSignal(ctx context.Context, mod
 	if breakdown.ShadowCost <= 0 && !breakdown.CacheCreationUnpriced {
 		return
 	}
-	if applogger.Log != nil {
 		applogger.Log.Info("cache_creation cost signal",
-			zap.String("model", model),
-			zap.String("mode", string(uc.CacheCreationBillingMode())),
-			zap.Int64("shadow_cost", breakdown.ShadowCost),
-			zap.Bool("unpriced", breakdown.CacheCreationUnpriced),
-		)
-	}
+		zap.String("model", model),
+		zap.String("mode", string(uc.CacheCreationBillingMode())),
+		zap.Int64("shadow_cost", breakdown.ShadowCost),
+		zap.Bool("unpriced", breakdown.CacheCreationUnpriced),
+	)
 	if metrics.TokenUsageShadowCost != nil {
 		metrics.TokenUsageShadowCost.WithLabelValues(string(uc.CacheCreationBillingMode()), boolStr(breakdown.CacheCreationUnpriced)).Observe(float64(breakdown.ShadowCost))
 	}

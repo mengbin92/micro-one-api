@@ -507,16 +507,14 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		resp.Body.Close()
 		s.recordCodexQuotaSnapshot(ctx, plan, body)
 		upstreamErr := passthrough.Classify(resp.StatusCode, body)
-		if applogger.Log != nil {
-			applogger.Log.Warn("subscription upstream rejected request",
-				zap.Int("status_code", resp.StatusCode),
-				zap.String("platform", string(meta.Platform)),
-				zap.Int64("channel_id", plan.Channel.ID),
-				zap.Int64("subscription_account_id", meta.ID),
-				zap.String("model", clientModel),
-				zap.String("upstream_error", applogger.SanitizeAndTruncate(string(body), 2048)),
-			)
-		}
+				applogger.Log.Warn("subscription upstream rejected request",
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("platform", string(meta.Platform)),
+			zap.Int64("channel_id", plan.Channel.ID),
+			zap.Int64("subscription_account_id", meta.ID),
+			zap.String("model", clientModel),
+			zap.String("upstream_error", applogger.SanitizeAndTruncate(string(body), 2048)),
+		)
 		result.statusCode = resp.StatusCode
 		result.body = body
 		result.header = resp.Header.Clone()

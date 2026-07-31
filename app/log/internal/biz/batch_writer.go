@@ -215,13 +215,11 @@ func (w *BatchLogWriter) flush() {
 		// design and usage logs are not in the billing critical path.
 		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()
 		w.dropped.Add(int64(len(batch)))
-		if applogger.Log != nil {
-			applogger.Log.Warn("batch log writer: flush failed, entries dropped",
-				zap.Int("dropped", len(batch)),
-				zap.Duration("duration", duration),
-				zap.Error(err),
-			)
-		}
+				applogger.Log.Warn("batch log writer: flush failed, entries dropped",
+			zap.Int("dropped", len(batch)),
+			zap.Duration("duration", duration),
+			zap.Error(err),
+		)
 		return
 	}
 

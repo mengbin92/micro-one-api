@@ -22,8 +22,8 @@ func TestAuditor_Log(t *testing.T) {
 			ID:   "456",
 			Name: "test-channel",
 		},
-		Action:  "channel.created",
-		Result:  "success",
+		Action: "channel.created",
+		Result: "success",
 		Details: map[string]any{
 			"test_key": "test_value",
 		},

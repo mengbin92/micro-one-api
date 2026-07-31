@@ -527,13 +527,9 @@ func readOpenAIStream(resp *http.Response) <-chan StreamChunk {
 }
 
 func logProviderWarn(msg string, fields ...zap.Field) {
-	if applogger.Log != nil {
-		applogger.Log.Warn(msg, fields...)
-	}
+	applogger.Log.Warn(msg, fields...)
 }
 
 func logProviderError(msg string, fields ...zap.Field) {
-	if applogger.Log != nil {
-		applogger.Log.Error(msg, fields...)
-	}
+	applogger.Log.Error(msg, fields...)
 }

@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,7 +14,11 @@ import (
 const (
 	// DefaultStreamMaxLen is the default maximum length for streams.
 	DefaultStreamMaxLen = 10000
-	// DefaultConsumerGroup is the default consumer group name.
+	// DefaultConsumerGroup is the prefix used to derive a per-service consumer
+	// group name. Each service joins its OWN group (micro-one-api:<serviceName>) so
+	// every service receives an independent copy of every event (broadcast
+	// semantics) instead of load-balancing one copy across all services
+	// (platform-M1: the shared group silently dropped cross-service events).
 	DefaultConsumerGroup = "micro-one-api"
 )
 
@@ -41,13 +46,25 @@ func NewStreamEventBus(redisClient *redis.Client, consumerID string) *StreamEven
 	return &StreamEventBus{
 		redis:         redisClient,
 		consumerID:    consumerID,
-		consumerGroup: DefaultConsumerGroup,
+		consumerGroup: deriveConsumerGroup(consumerID),
 		handlers:      make(map[string][]Handler),
 		maxlen:        DefaultStreamMaxLen,
 		readTimeout:   5 * time.Second,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
+}
+
+// deriveConsumerGroup returns the per-service consumer group name. The consumerID
+// is already service-specific (passed by NewConfiguredEventBus from each service),
+// so embedding it in the group name gives each service its own copy of every
+// event (platform-M1). We keep the "micro-one-api:" namespace prefix for
+// discoverability in XINFO GROUPS output.
+func deriveConsumerGroup(consumerID string) string {
+	if consumerID == "" {
+		consumerID = "default"
+	}
+	return DefaultConsumerGroup + ":" + consumerID
 }
 
 // Publish sends an event to a Redis Stream with guaranteed persistence.
@@ -175,38 +192,64 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 		return
 	}
 
-	// Call handlers
+	// Call handlers. If ANY handler returns an error, skip XACK so the message
+	// stays pending and can be redelivered by ClaimPending on a later tick
+	// (platform-M3: previously the unconditional XACK permanently dropped events
+	// on transient handler failures, violating the documented at-least-once
+	// guarantee).
+	handlerFailed := false
 	for _, handler := range handlers {
 		if err := handler(ctx, payload); err != nil {
-			fmt.Printf("handler error for topic %s: %v\n", topic, err)
-			// Continue processing other handlers
+			fmt.Printf("handler error for topic %s: %v (message %s left pending for retry)\n", topic, err, msg.ID)
+			handlerFailed = true
+			// Continue processing other handlers so a single slow/buggy handler
+			// does not starve the rest; the message will be retried as a unit.
 		}
 	}
 
-	// ACK the message
+	if handlerFailed {
+		return
+	}
+
+	// All handlers succeeded — safe to ACK.
 	if err := b.redis.XAck(ctx, topic, b.consumerGroup, msg.ID).Err(); err != nil {
 		fmt.Printf("failed to ACK message %s from %s: %v\n", msg.ID, topic, err)
 	}
 }
 
-// ensureGroup ensures the consumer group exists for a stream.
+// ensureGroup ensures the consumer group exists for a stream. It is idempotent:
+// BUSYGROUP (group already exists) is treated as success, any other error is
+// returned.
 func (b *StreamEventBus) ensureGroup(ctx context.Context, stream string) error {
-	// Try to create consumer group with MKSTREAM option
-	err := b.redis.Do(ctx, "XGROUP", "CREATE", stream, b.consumerGroup, "0", "MKSTREAM").Err()
-	if err != nil {
-		// Group might already exist or other error
-		// Check if group exists
-		info, err := b.redis.XInfoGroups(ctx, stream).Result()
-		if err == nil {
-			for _, group := range info {
-				if group.Name == b.consumerGroup {
-					return nil
-				}
-			}
-		}
-		return err
+	// Try to create the consumer group with MKSTREAM so the stream is created on
+	// first use. Redis replies with BUSYGROUP when the group already exists.
+	createErr := b.redis.Do(ctx, "XGROUP", "CREATE", stream, b.consumerGroup, "0", "MKSTREAM").Err()
+	if createErr == nil {
+		return nil
 	}
-	return nil
+
+	// BUSYGROUP → group already exists, nothing to do.
+	if strings.Contains(strings.ToLower(createErr.Error()), "busygroup") {
+		return nil
+	}
+
+	// Any other error during CREATE: confirm whether the group truly exists by
+	// listing groups (the XGROUP CREATE can fail for unrelated reasons, e.g. the
+	// stream was just trimmed). We must NOT shadow createErr — if the group is
+	// genuinely missing we return the original CREATE error so the caller sees
+	// the real cause (platform-M6).
+	groups, infoErr := b.redis.XInfoGroups(ctx, stream).Result()
+	if infoErr != nil {
+		return fmt.Errorf("ensureGroup %s: create failed (%w) and XInfoGroups lookup failed: %v",
+			stream, createErr, infoErr)
+	}
+	for _, group := range groups {
+		if group.Name == b.consumerGroup {
+			return nil
+		}
+	}
+	return fmt.Errorf("ensureGroup %s: group %s not found after create failed: %w",
+		stream, b.consumerGroup, createErr)
 }
 
 // Close closes the event bus and waits for all consumers to finish.

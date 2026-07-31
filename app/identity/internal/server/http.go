@@ -67,15 +67,11 @@ type CodeDeliverer interface {
 type noopCodeDeliverer struct{}
 
 func (noopCodeDeliverer) DeliverVerificationCode(ctx context.Context, email, code string) error {
-	if applogger.Log != nil {
 		applogger.Log.Warn("verification code generated but no mail deliverer configured; code not delivered", zap.String("email", email))
-	}
 	return nil
 }
 func (noopCodeDeliverer) DeliverResetToken(ctx context.Context, email, token string) error {
-	if applogger.Log != nil {
 		applogger.Log.Warn("reset token generated but no mail deliverer configured; token not delivered", zap.String("email", email))
-	}
 	return nil
 }
 
@@ -1190,9 +1186,7 @@ func handleEmailVerification(w http.ResponseWriter, r *http.Request, deliverer C
 		deliverer = noopCodeDeliverer{}
 	}
 	if err := deliverer.DeliverVerificationCode(r.Context(), email, code); err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("verification code delivery failed", zap.String("email", email), zap.Error(err))
-		}
+				applogger.Log.Warn("verification code delivery failed", zap.String("email", email), zap.Error(err))
 		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "failed to deliver verification code"})
 		return
 	}
@@ -1223,9 +1217,7 @@ func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, delivere
 		deliverer = noopCodeDeliverer{}
 	}
 	if err := deliverer.DeliverResetToken(r.Context(), email, token); err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("reset token delivery failed", zap.String("email", email), zap.Error(err))
-		}
+				applogger.Log.Warn("reset token delivery failed", zap.String("email", email), zap.Error(err))
 		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "failed to deliver reset token"})
 		return
 	}

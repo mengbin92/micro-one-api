@@ -25,9 +25,9 @@ type RateLimiter struct {
 
 // ClientLimiter tracks rate limiting for a single client
 type ClientLimiter struct {
-	tokens    int
-	lastSeen  time.Time
-	requests  []time.Time
+	tokens   int
+	lastSeen time.Time
+	requests []time.Time
 }
 
 // RateLimitConfig holds rate limiting configuration
@@ -247,4 +247,3 @@ func simpleHash(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return fmt.Sprintf("%x", h[:8]) // first 8 bytes = 16 hex chars
 }
-

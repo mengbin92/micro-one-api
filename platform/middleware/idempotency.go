@@ -223,10 +223,8 @@ func (im *IdempotencyMiddleware) getCachedResponse(ctx context.Context, key stri
 				resp.Replay = true
 				return &resp
 			}
-			if applogger.Log != nil {
-				applogger.Log.Debug("failed to unmarshal idempotency response from Redis",
-					zap.Error(err))
-			}
+						applogger.Log.Debug("failed to unmarshal idempotency response from Redis",
+				zap.Error(err))
 		}
 	}
 
@@ -248,7 +246,7 @@ func (im *IdempotencyMiddleware) cacheResponse(ctx context.Context, key string, 
 			if ttl <= 0 {
 				ttl = 24 * time.Hour
 			}
-			if err := im.redis.Set(ctx, redisKey, data, ttl).Err(); err != nil && applogger.Log != nil {
+			if err := im.redis.Set(ctx, redisKey, data, ttl).Err(); err != nil {
 				applogger.Log.Debug("failed to store idempotency response in Redis",
 					zap.Error(err))
 			}

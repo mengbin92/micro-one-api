@@ -27,7 +27,7 @@ type MetricsSelectionRecorder struct {
 // it falls back to the app logger.
 func NewMetricsSelectionRecorder(log *zap.Logger) *MetricsSelectionRecorder {
 	if log == nil {
-		log = applogger.Log
+		log = applogger.Current()
 	}
 	return &MetricsSelectionRecorder{log: log}
 }

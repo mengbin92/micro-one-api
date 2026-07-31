@@ -108,7 +108,7 @@ func NewRefreshTask(
 		hook:       cfg.Hook,
 		stopCh:     make(chan struct{}),
 		platformOf: platformOf,
-		logger:     applogger.Log,
+		logger:     applogger.Current(),
 	}
 }
 

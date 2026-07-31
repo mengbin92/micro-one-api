@@ -12,12 +12,12 @@ import "github.com/prometheus/client_golang/prometheus"
 //
 // Reasons used by the Phase 1 parsing layer:
 //   - "negative"            : a token bucket was negative and clamped to 0
-//                              (ADR §4.1).
+//     (ADR §4.1).
 //   - "ttl_detail_exceeds_total": cache_creation TTL detail sum exceeded the
-//                              flat cache_creation_input_tokens total; detail
-//                              wins and billing is unchanged (ADR §4.2).
+//     flat cache_creation_input_tokens total; detail
+//     wins and billing is unchanged (ADR §4.2).
 //   - "stream_usage_missing": a streaming response carried no usage object the
-//                              parser could recognize (ADR §4.3).
+//     parser could recognize (ADR §4.3).
 //   - "overflow"            : a bucket exceeded int64 range (ADR §4.1).
 var TokenUsageParseAnomaly = prometheus.NewCounterVec(
 	prometheus.CounterOpts{

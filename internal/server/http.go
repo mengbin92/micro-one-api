@@ -505,18 +505,16 @@ func (s *HTTPServer) DrainWSConnections(ctx context.Context) error {
 	if s == nil || s.wsConnTracker == nil {
 		return nil
 	}
-	if applogger.Log != nil {
 		applogger.Log.Info("draining openai responses websocket connections",
-			zap.Int("active", s.wsConnTracker.ActiveCount()),
-		)
-	}
+		zap.Int("active", s.wsConnTracker.ActiveCount()),
+	)
 	err := s.wsConnTracker.Drain(ctx)
-	if err != nil && applogger.Log != nil {
+	if err != nil {
 		applogger.Log.Warn("openai ws drain finished with error",
 			zap.Int("active_remaining", s.wsConnTracker.ActiveCount()),
 			zap.Error(err),
 		)
-	} else if applogger.Log != nil {
+	} else {
 		m := s.wsConnTracker.Metrics()
 		applogger.Log.Info("openai ws drain complete",
 			zap.Int64("total", m.TotalConnections),

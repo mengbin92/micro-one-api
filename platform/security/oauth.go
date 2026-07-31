@@ -115,14 +115,22 @@ func (p *githubProvider) AuthURL(state string) string {
 }
 
 func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, error) {
-	// Exchange code for access token
-	tokenReq, _ := http.NewRequestWithContext(ctx, "POST", "https://github.com/login/oauth/access_token", nil)
-	q := tokenReq.URL.Query()
-	q.Set("client_id", p.clientID)
-	q.Set("client_secret", p.clientSecret)
-	q.Set("code", code)
-	tokenReq.URL.RawQuery = q.Encode()
+	// Exchange code for access token. Secrets go in the form body, NOT the URL
+	// query: query strings are logged by proxies, WAFs, and access logs
+	// (platform-L2).
+	form := url.Values{
+		"client_id":     {p.clientID},
+		"client_secret": {p.clientSecret},
+		"code":          {code},
+	}
+	tokenReq, err := http.NewRequestWithContext(ctx, "POST",
+		"https://github.com/login/oauth/access_token",
+		strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("github token request: %w", err)
+	}
 	tokenReq.Header.Set("Accept", "application/json")
+	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := p.httpClient.Do(tokenReq)
 	if err != nil {
@@ -254,7 +262,18 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		"grant_type":    {"authorization_code"},
 	}
 
-	resp, err := p.httpClient.PostForm("https://oauth2.googleapis.com/token", data)
+	// Build the request with NewRequestWithContext so the caller's deadline/
+	// cancellation propagates (PostForm does not honor ctx). Secrets are already
+	// in the form body, not the URL query (platform-L2).
+	tokenReq, err := http.NewRequestWithContext(ctx, "POST",
+		"https://oauth2.googleapis.com/token",
+		strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("google token request: %w", err)
+	}
+	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := p.httpClient.Do(tokenReq)
 	if err != nil {
 		return nil, fmt.Errorf("google token exchange: %w", err)
 	}

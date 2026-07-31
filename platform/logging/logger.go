@@ -6,17 +6,76 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"sync"
+	"sync/atomic"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var (
-	// Default logger instance
-	Log = zap.NewNop()
-	mu  sync.RWMutex
-)
+// logHolder atomically stores the active *zap.Logger so that concurrent
+// Initialize / SetOutput writes and in-flight reads (applogger.Log.Info(...)
+// from any package) are race-free (platform-L9). The previous design used a
+// plain package var written under an RWMutex but read without any lock at all.
+var logPtr atomic.Pointer[zap.Logger]
+
+func init() {
+	nop := zap.NewNop()
+	logPtr.Store(nop)
+}
+
+// Logger is the accessor exposed as the package-level `Log` value. Its methods
+// always delegate to the atomically-current logger, so callers that write
+// `applogger.Log.Info(...)` keep working AND see an Initialize() that happens
+// after they were compiled in. Callers that need to pass the logger to a
+// function expecting a *zap.Logger should call applogger.Current() instead of
+// capturing applogger.Log at construction time (see NewAuditor).
+type Logger struct{}
+
+// Current returns the atomically-current *zap.Logger. Use this when a
+// *zap.Logger value must be captured (e.g. Named/With); prefer the Logger
+// methods on Log for direct logging.
+func Current() *zap.Logger {
+	return logPtr.Load()
+}
+
+func storeLogger(l *zap.Logger) {
+	if l == nil {
+		nop := zap.NewNop()
+		l = nop
+	}
+	logPtr.Store(l)
+}
+
+// Log is the process-wide logger accessor. It is safe for concurrent use and
+// always reflects the most recent Initialize/SetOutput.
+var Log = Logger{}
+
+// Named returns a child logger; because it resolves the current logger at call
+// time, callers that hold the returned *zap.Logger still pin a snapshot —
+// prefer re-resolving per request for long-lived holders.
+func (Logger) Named(s string) *zap.Logger {
+	return Current().Named(s)
+}
+
+func (Logger) With(fields ...zap.Field) *zap.Logger {
+	return Current().With(fields...)
+}
+
+func (Logger) Debug(msg string, fields ...zap.Field)  { Current().Debug(msg, fields...) }
+func (Logger) Info(msg string, fields ...zap.Field)   { Current().Info(msg, fields...) }
+func (Logger) Warn(msg string, fields ...zap.Field)   { Current().Warn(msg, fields...) }
+func (Logger) Error(msg string, fields ...zap.Field)  { Current().Error(msg, fields...) }
+func (Logger) DPanic(msg string, fields ...zap.Field) { Current().DPanic(msg, fields...) }
+func (Logger) Panic(msg string, fields ...zap.Field)  { Current().Panic(msg, fields...) }
+func (Logger) Fatal(msg string, fields ...zap.Field)  { Current().Fatal(msg, fields...) }
+
+func (Logger) Sync() error { return Current().Sync() }
+
+func (Logger) Core() zapcore.Core { return Current().Core() }
+
+func (Logger) Check(lvl zapcore.Level, msg string) *zapcore.CheckedEntry {
+	return Current().Check(lvl, msg)
+}
 
 // Sensitive data patterns for redaction
 var (
@@ -28,6 +87,29 @@ var (
 	passwordRegex   = regexp.MustCompile(`password["\']?\s*[:=]\s*["\']?([^\s"\']+)`)
 	dsnRegex        = regexp.MustCompile(`:[^:@]+@`)
 )
+
+// SwapLogger atomically replaces the global logger and returns the previous
+// one. It is intended for tests that need to temporarily swap the logger
+// (platform-L9: Log is no longer an assignable *zap.Logger value). Production
+// code should use Initialize / SetOutput.
+func SwapLogger(l *zap.Logger) *zap.Logger {
+	prev := logPtr.Load()
+	if l == nil {
+		nop := zap.NewNop()
+		l = nop
+	}
+	logPtr.Store(l)
+	return prev
+}
+
+// SetLoggerForTest is a convenience wrapper around SwapLogger that restores the
+// previous logger on test cleanup.
+func SetLoggerForTest(t interface {
+	Cleanup(func())
+}, l *zap.Logger) {
+	prev := SwapLogger(l)
+	t.Cleanup(func() { logPtr.Store(prev) })
+}
 
 // Initialize initializes the global logger
 func Initialize(level string, format string) error {
@@ -69,9 +151,7 @@ func Initialize(level string, format string) error {
 		logger = logger.With(zap.String("service", service))
 	}
 
-	mu.Lock()
-	Log = logger
-	mu.Unlock()
+	storeLogger(logger)
 
 	return nil
 }
@@ -172,13 +252,7 @@ func (sl *SafeLogger) With(fields ...zap.Field) *SafeLogger {
 
 // Sync flushes any buffered log entries
 func Sync() error {
-	mu.RLock()
-	logger := Log
-	mu.RUnlock()
-	if logger != nil {
-		return logger.Sync()
-	}
-	return nil
+	return Current().Sync()
 }
 
 // InitializeFromEnv initializes the logger from environment variables
@@ -201,9 +275,8 @@ func InitializeFromEnv() error {
 // that want to report startup diagnostics without risking nil logger panics.
 func MustInitializeFromEnv() error {
 	if err := InitializeFromEnv(); err != nil {
-		mu.Lock()
-		Log = zap.NewNop()
-		mu.Unlock()
+		nop := zap.NewNop()
+		storeLogger(nop)
 		return err
 	}
 	return nil
@@ -211,10 +284,7 @@ func MustInitializeFromEnv() error {
 
 // SetOutput sets the output destination for the logger
 func SetOutput(w io.Writer) error {
-	mu.RLock()
-	initialized := Log != nil
-	mu.RUnlock()
-	if !initialized {
+	if Current() == nil {
 		return fmt.Errorf("logger not initialized")
 	}
 
@@ -246,9 +316,7 @@ func SetOutput(w io.Writer) error {
 	if service := os.Getenv("SERVICE_NAME"); service != "" {
 		logger = logger.With(zap.String("service", service))
 	}
-	mu.Lock()
-	Log = logger
-	mu.Unlock()
+	storeLogger(logger)
 
 	return nil
 }
