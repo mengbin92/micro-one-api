@@ -192,12 +192,26 @@ type LogInconsistency struct {
 	QuotaDiff   int64 `json:"quota_diff"`
 }
 
+// ReservationReleaser releases a reservation through the unified CAS
+// pipeline. Reconciliation delegates to it so the wallet refund, ledger
+// entry and status transition land in one transaction instead of the
+// legacy non-atomic UpdateFrozenAmount + UpdateBalance + status flip
+// sequence that minted money on dual-track reservations.
+type ReservationReleaser interface {
+	ReleaseReservation(ctx context.Context, reservationID, reason, finalStatus string) error
+}
+
 // ReconciliationUsecase runs billing reconciliation tasks.
 type ReconciliationUsecase struct {
 	accountRepo     AccountRepo
 	reservationRepo ReservationRepo
 	reconRepo       ReconciliationRepo
 	runStore        ReconciliationRunStore
+	// releaser handles the atomic expiry-release of reservations. When
+	// nil (tests / deployments without the billing usecase wired) the
+	// loop falls back to the legacy non-atomic sequence so the recon job
+	// still makes progress.
+	releaser ReservationReleaser
 }
 
 func NewReconciliationUsecase(
@@ -212,6 +226,14 @@ func NewReconciliationUsecase(
 		reconRepo:       reconRepo,
 		runStore:        runStore,
 	}
+}
+
+// SetReservationReleaser wires the atomic reservation releaser (the billing
+// usecase's CAS release path). Production wire.go calls this so expired
+// reservations are released through the same single-transaction pipeline as
+// explicit ReleaseQuota / CommitQuota success=false.
+func (uc *ReconciliationUsecase) SetReservationReleaser(r ReservationReleaser) {
+	uc.releaser = r
 }
 
 // RunReconciliation performs a full reconciliation: cleans expired reservations and checks quota consistency.
@@ -249,12 +271,34 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 	}
 
 	for _, res := range expired {
-		if res.IsReserved() {
-			_ = uc.accountRepo.UpdateFrozenAmount(ctx, res.UserID, -res.Amount)
-			_, _ = uc.accountRepo.UpdateBalance(ctx, res.UserID, res.Amount, LedgerTypeRefund)
-			_ = uc.reservationRepo.UpdateReservationStatus(ctx, res.ReservationID, ReservationStatusExpired)
-			result.ExpiredCleaned++
+		if !res.IsReserved() {
+			continue
 		}
+		if uc.releaser != nil {
+			// Atomic path: CAS reserved -> releasing -> expired in one
+			// transaction, refunding the wallet-side BalanceAmountQuota
+			// (not the full Amount) and writing the dedupe-keyed refund
+			// ledger. This is the same pipeline used by explicit
+			// ReleaseQuota and CommitQuota success=false, so a dual-track
+			// reservation whose cost was fully absorbed by the
+			// subscription (BalanceAmountQuota == 0) refunds zero to the
+			// wallet instead of minting the full Amount.
+			if err := uc.releaser.ReleaseReservation(ctx, res.ReservationID, "reconciliation: reservation expired", ReservationStatusExpired); err != nil {
+				apploggerError(err, "release expired reservation during reconciliation")
+				continue
+			}
+		} else {
+			// Legacy fallback when no billing usecase is wired (tests).
+			// Refund the wallet-side BalanceAmountQuota so a fully
+			// subscription-absorbed reservation does not mint money.
+			refundAmount := res.BalanceAmountQuota
+			if refundAmount > 0 {
+				_ = uc.accountRepo.UpdateFrozenAmount(ctx, res.UserID, -refundAmount)
+				_, _ = uc.accountRepo.UpdateBalance(ctx, res.UserID, refundAmount, LedgerTypeRefund)
+			}
+			_ = uc.reservationRepo.UpdateReservationStatus(ctx, res.ReservationID, ReservationStatusExpired)
+		}
+		result.ExpiredCleaned++
 	}
 
 	// Step 2: Account-level consistency. The dual-track flow allows

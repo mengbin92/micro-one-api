@@ -3,6 +3,7 @@ package credential
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -356,8 +357,64 @@ func TestRefreshTask_NonRetryableDoesNotRetry(t *testing.T) {
 	}
 }
 
+// TestRefresher_InvalidGrantSurfacedAsTypedError (domain-H2) verifies that the
+// refresher now parses the OAuth error body and surfaces invalid_grant as the
+// typed ErrInvalidGrant, so isNonRetryableRefreshError reliably detects it via
+// errors.Is. Previously the error body was discarded and the string check in
+// isNonRetryableRefreshError could never match, so a revoked refresh token was
+// retried forever.
+func TestRefresher_InvalidGrantSurfacedAsTypedError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"refresh token revoked"}`))
+	}))
+	defer srv.Close()
+
+	r := &refresher{httpClient: defaultRefreshHTTPClient()}
+	creds, err := r.refresh(context.Background(), srv.URL, "stale-refresh-token")
+	if creds != nil {
+		t.Fatalf("expected nil credentials, got %+v", creds)
+	}
+	if err == nil {
+		t.Fatal("expected error for invalid_grant response")
+	}
+	if !errors.Is(err, ErrInvalidGrant) {
+		t.Fatalf("expected ErrInvalidGrant, got %v", err)
+	}
+	if !errors.Is(err, ErrRefreshFailed) {
+		t.Fatalf("ErrInvalidGrant must wrap ErrRefreshFailed, got %v", err)
+	}
+	if !isNonRetryableRefreshError(err) {
+		t.Fatalf("invalid_grant must be classified non-retryable, got %v", err)
+	}
+}
+
+// TestRefresher_GenericFailureNotInvalidGrant (domain-H2) verifies that a
+// non-invalid_grant upstream error (e.g. 500) is NOT classified as
+// non-retryable, so the refresh task keeps retrying transient failures.
+func TestRefresher_GenericFailureNotInvalidGrant(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal"}`))
+	}))
+	defer srv.Close()
+
+	r := &refresher{httpClient: defaultRefreshHTTPClient()}
+	_, err := r.refresh(context.Background(), srv.URL, "some-refresh-token")
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if errors.Is(err, ErrInvalidGrant) {
+		t.Fatalf("transient 500 must NOT be ErrInvalidGrant, got %v", err)
+	}
+	if isNonRetryableRefreshError(err) {
+		t.Fatalf("transient 500 must be retryable, got %v", err)
+	}
+}
+
 func TestSentinelErrors(t *testing.T) {
-	if ErrAccountNotFound == nil || ErrNoRefreshToken == nil || ErrRefreshFailed == nil || ErrNotConfigured == nil {
+	if ErrAccountNotFound == nil || ErrNoRefreshToken == nil || ErrRefreshFailed == nil || ErrNotConfigured == nil || ErrInvalidGrant == nil {
 		t.Fatal("sentinel errors must be non-nil")
 	}
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/google/wire"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/api/channel/v1"
@@ -144,19 +143,27 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 			return nil, nil, fmt.Errorf("create log gRPC client: %w", err)
 		}
 	} else {
-		identityConn, err = grpc.NewClient(identityEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		// Non-TLS path: still attach the service token as PerRPCCredentials
+		// so identity/billing gRPC interceptors (which fail closed without a
+		// valid token) accept the call. The token is sent in plaintext over
+		// the trusted in-cluster backend network (review Critical #2).
+		var tokenCreds grpc.DialOption
+		if serviceAuth != nil && serviceAuth.Token != "" {
+			tokenCreds = grpc.WithPerRPCCredentials(&tokenAuth{token: serviceAuth.Token})
+		}
+		identityConn, err = createInsecureClient(identityEndpoint, tokenCreds)
 		if err != nil {
 			return nil, nil, fmt.Errorf("create identity gRPC client: %w", err)
 		}
-		channelConn, err = grpc.NewClient(channelEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		channelConn, err = createInsecureClient(channelEndpoint, tokenCreds)
 		if err != nil {
 			return nil, nil, fmt.Errorf("create channel gRPC client: %w", err)
 		}
-		billingConn, err = grpc.NewClient(billingEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		billingConn, err = createInsecureClient(billingEndpoint, tokenCreds)
 		if err != nil {
 			return nil, nil, fmt.Errorf("create billing gRPC client: %w", err)
 		}
-		logConn, err = grpc.NewClient(logEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		logConn, err = createInsecureClient(logEndpoint, tokenCreds)
 		if err != nil {
 			return nil, nil, fmt.Errorf("create log gRPC client: %w", err)
 		}
@@ -303,9 +310,10 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	// v0.11.0 Phase 3 §3.4/§3.5: wire the metrics+logging selection recorder
 	// so routing selection/fallback/sticky metrics are actually emitted. Without
 	// this the recorder stays noop and the Prometheus counters never increment.
-	relayUsecase.SetSelectionRecorder(relaybiz.NewMetricsSelectionRecorder(applogger.Log))
+	relayUsecase.SetSelectionRecorder(relaybiz.NewMetricsSelectionRecorder(applogger.Current()))
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
+	httpServer.SetTokenQuotaBlocker(identityAdapter)
 	httpServer.SetHybridAdaptorEnabled(cfg.Bootstrap.HybridAdaptor.GetHybridAdaptorEnabled())
 	httpServer.SetSubscriptionSessionStickyEnabled(cfg.Bootstrap.SessionSticky.GetSessionStickyEnabled())
 	httpServer.SetRelayOrchestratorEnabled(cfg.Bootstrap.RelayOrchestrator.GetRelayOrchestratorEnabled())

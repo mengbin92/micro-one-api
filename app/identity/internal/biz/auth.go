@@ -2,10 +2,14 @@ package biz
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -35,19 +39,24 @@ const (
 )
 
 var (
-	ErrInvalidToken      = errors.New("invalid token")
-	ErrTokenExpired      = errors.New("token expired")
-	ErrTokenExhausted    = errors.New("token exhausted")
-	ErrTokenDisabled     = errors.New("token disabled")
-	ErrTokenInUse        = errors.New("cannot delete current session token")
-	ErrUserDisabled      = errors.New("user disabled")
-	ErrUserNotFound      = errors.New("user not found")
-	ErrTokenNotFound     = errors.New("token not found")
-	ErrTokenNameRequired = errors.New("token name is required")
-	ErrUserExists        = errors.New("user already exists")
-	ErrInvalidPassword   = errors.New("invalid password")
-	ErrOAuthUserNotFound = errors.New("oauth user not found")
-	ErrOAuthAlreadyBound = errors.New("oauth identity already bound")
+	ErrInvalidToken         = errors.New("invalid token")
+	ErrTokenExpired         = errors.New("token expired")
+	ErrTokenExhausted       = errors.New("token exhausted")
+	ErrTokenDisabled        = errors.New("token disabled")
+	ErrTokenInUse           = errors.New("cannot delete current session token")
+	ErrUserDisabled         = errors.New("user disabled")
+	ErrTokenSubnetViolation = errors.New("token subnet restriction violated")
+	ErrUserNotFound         = errors.New("user not found")
+	ErrTokenNotFound        = errors.New("token not found")
+	ErrTokenNameRequired    = errors.New("token name is required")
+	ErrUserExists           = errors.New("user already exists")
+	ErrInvalidPassword      = errors.New("invalid password")
+	ErrOAuthUserNotFound    = errors.New("oauth user not found")
+	ErrOAuthAlreadyBound    = errors.New("oauth identity already bound")
+	// ErrSessionRevoked is returned when a session JWT predates the user's
+	// current password epoch (review M6): the token was issued before the
+	// password changed / a forced logout, so it must no longer be honored.
+	ErrSessionRevoked = errors.New("session revoked")
 )
 
 type User struct {
@@ -64,6 +73,13 @@ type User struct {
 	Balance       int64
 	AffCode       string
 	InviterID     int64
+	// PasswordChangedAt is the unix epoch (milliseconds) of the most recent
+	// password change. It is embedded in session JWTs as `pwd_epoch`; any
+	// session token whose epoch predates this value is rejected on
+	// validation (review M6). This lets a password change / reset / logout
+	// invalidate previously-issued sessions without a server-side revocation
+	// list. Zero means "never set / migration", treated as no constraint.
+	PasswordChangedAt int64
 }
 
 // IsAdmin reports whether the user has admin-or-higher privileges. Use this
@@ -88,10 +104,17 @@ type OAuthIdentity struct {
 }
 
 type Token struct {
-	ID             int64
-	UserID         int64
-	Name           string
-	Key            string
+	ID     int64
+	UserID int64
+	Name   string
+	// Key holds the plaintext key at creation time (returned to the caller
+	// exactly once). When loaded from storage it holds only a short display
+	// prefix (first 8 + last 4 chars) — never the full secret — so a DB
+	// leak cannot authenticate as the user.
+	Key string
+	// KeyHash is the HMAC-SHA256 of the full plaintext key, stored in the
+	// key_hash column and used for O(1) lookups on the ValidateToken hot path.
+	KeyHash        string
 	Status         int32
 	ExpiredAt      int64
 	RemainQuota    int64
@@ -119,6 +142,10 @@ type UserSessionClaims struct {
 	Username  string `json:"username"`
 	Role      int32  `json:"role"`
 	TokenType string `json:"token_type"`
+	// PwdEpoch carries the user's PasswordChangedAt (Unix ms) at signing time. The
+	// validator rejects tokens whose PwdEpoch is older than the stored
+	// PasswordChangedAt, so a password change revokes outstanding sessions.
+	PwdEpoch int64 `json:"pwd_epoch,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -140,6 +167,11 @@ type IdentityRepo interface {
 	FindTokenByID(ctx context.Context, userID, tokenID int64) (*Token, error)
 	ListTokens(ctx context.Context, userID int64, page, pageSize int32, keyword string) ([]*Token, int64, error)
 	UpdateToken(ctx context.Context, token *Token) error
+	// ConsumeTokenQuota atomically decrements RemainQuota and increments
+	// UsedQuota for the given token, returning the updated RemainQuota.
+	// When RemainQuota reaches 0 the caller should mark the token
+	// exhausted. The decrement is clamped at 0 (never goes negative).
+	ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (remaining int64, err error)
 	DeleteToken(ctx context.Context, userID, tokenID int64) error
 	ListUsers(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*User, int64, error)
 	CountUsers(ctx context.Context) (int64, error)
@@ -163,8 +195,10 @@ type IdentityUsecase struct {
 }
 
 const (
-	maxLoginAttempts = 5
-	loginLockoutTime = 5 * time.Minute
+	maxLoginAttempts   = 5
+	loginLockoutTime   = 5 * time.Minute
+	loginLimiterCap    = 100_000 // hard ceiling on the in-memory login limiter (review L2)
+	loginSweepInterval = 10 * time.Minute
 )
 
 func NewIdentityUsecase(repo IdentityRepo) *IdentityUsecase {
@@ -206,7 +240,12 @@ func NewIdentityUsecase(repo IdentityRepo) *IdentityUsecase {
 	}
 }
 
-func (uc *IdentityUsecase) ValidateToken(ctx context.Context, key string) (*Token, error) {
+// ValidateToken validates an API access token. clientIP is the caller's
+// remote IP (best-effort, may be empty when unavailable); when non-empty and
+// the token carries a Subnet CIDR restriction, the IP must fall within the
+// CIDR or the token is rejected (review M1 — previously the field was
+// accepted/persisted but never enforced).
+func (uc *IdentityUsecase) ValidateToken(ctx context.Context, key, clientIP string) (*Token, error) {
 	if strings.TrimSpace(key) == "" {
 		return nil, ErrInvalidToken
 	}
@@ -226,11 +265,24 @@ func (uc *IdentityUsecase) ValidateToken(ctx context.Context, key string) (*Toke
 	if token.ExpiredAt > 0 && token.ExpiredAt < uc.now().Unix() {
 		return nil, ErrTokenExpired
 	}
+	if !tokenSubnetAllows(token.Subnet, clientIP) {
+		return nil, ErrTokenSubnetViolation
+	}
+	// High #5: enforce per-key quota. A limited key (UnlimitedQuota=false)
+	// whose RemainQuota has been exhausted is rejected so a leaked key
+	// cannot draw indefinitely. Previously these fields were persisted but
+	// never checked, making the "limited quota" UI promise a no-op.
+	if !token.UnlimitedQuota && token.RemainQuota <= 0 {
+		return nil, ErrTokenExhausted
+	}
 	return token, nil
 }
 
-func (uc *IdentityUsecase) GetAuthSnapshot(ctx context.Context, key string) (*AuthSnapshot, error) {
-	token, err := uc.ValidateToken(ctx, key)
+// GetAuthSnapshot validates the token and returns the authorization view
+// relay-gateway consumes. clientIP is forwarded to ValidateToken for the
+// optional Subnet CIDR check (review M1).
+func (uc *IdentityUsecase) GetAuthSnapshot(ctx context.Context, key, clientIP string) (*AuthSnapshot, error) {
+	token, err := uc.ValidateToken(ctx, key, clientIP)
 	if err != nil {
 		return nil, err
 	}
@@ -279,6 +331,14 @@ func (uc *IdentityUsecase) ValidateSessionToken(ctx context.Context, tokenString
 	if user.Status != UserStatusEnabled {
 		return nil, ErrUserDisabled
 	}
+	// M6: reject sessions issued before the most recent password change /
+	// forced logout. A non-zero PasswordChangedAt acts as a token epoch:
+	// any session token whose embedded PwdEpoch is strictly older is
+	// considered revoked. A zero PasswordChangedAt (migration / never set)
+	// imposes no constraint so existing sessions keep working.
+	if user.PasswordChangedAt > 0 && claims.PwdEpoch < user.PasswordChangedAt {
+		return nil, ErrSessionRevoked
+	}
 	return user, nil
 }
 
@@ -301,19 +361,21 @@ func (uc *IdentityUsecase) GetUser(ctx context.Context, userID int64) (*User, er
 	return uc.repo.FindUserByID(ctx, userID)
 }
 
-// checkLoginRateLimit checks if a username is rate-limited due to too many failed attempts.
-func (uc *IdentityUsecase) checkLoginRateLimit(username string) error {
+// checkLoginRateLimit checks if the given key is rate-limited due to too
+// many failed attempts. The key is composed by loginRateKey (username+IP),
+// so both per-username and per-IP spraying are bounded (review L2).
+func (uc *IdentityUsecase) checkLoginRateLimit(key string) error {
 	uc.loginMutex.Lock()
 	defer uc.loginMutex.Unlock()
 
-	attempt, exists := uc.loginLimiter[username]
+	attempt, exists := uc.loginLimiter[key]
 	if !exists {
 		return nil
 	}
 
 	// Clean up expired entries
 	if uc.now().Sub(attempt.lastSeen) > loginLockoutTime {
-		delete(uc.loginLimiter, username)
+		delete(uc.loginLimiter, key)
 		return nil
 	}
 
@@ -324,20 +386,29 @@ func (uc *IdentityUsecase) checkLoginRateLimit(username string) error {
 	return nil
 }
 
-// recordLoginFailure increments the failed login attempt counter.
-func (uc *IdentityUsecase) recordLoginFailure(username string) {
+// recordLoginFailure increments the failed login attempt counter for the key.
+// To keep loginLimiter bounded (review L2), a single sweep of expired entries
+// runs every loginSweepInterval; this prevents an attacker spamming unique
+// usernames from growing the map without bound.
+func (uc *IdentityUsecase) recordLoginFailure(key string) {
 	uc.loginMutex.Lock()
 	defer uc.loginMutex.Unlock()
 
-	attempt, exists := uc.loginLimiter[username]
+	// Opportunistic sweep: bounded growth so unique-username spraying cannot
+	// exhaust memory (the dedicated Cleanup loop also runs periodically).
+	if len(uc.loginLimiter) > loginLimiterCap {
+		uc.sweepLoginLimiterLocked()
+	}
+
+	attempt, exists := uc.loginLimiter[key]
 	if !exists {
-		uc.loginLimiter[username] = &loginAttempt{count: 1, lastSeen: uc.now()}
+		uc.loginLimiter[key] = &loginAttempt{count: 1, lastSeen: uc.now()}
 		return
 	}
 
 	// Reset if lockout period has passed
 	if uc.now().Sub(attempt.lastSeen) > loginLockoutTime {
-		uc.loginLimiter[username] = &loginAttempt{count: 1, lastSeen: uc.now()}
+		uc.loginLimiter[key] = &loginAttempt{count: 1, lastSeen: uc.now()}
 		return
 	}
 
@@ -346,39 +417,77 @@ func (uc *IdentityUsecase) recordLoginFailure(username string) {
 }
 
 // clearLoginAttempts removes rate limit state for a successful login.
-func (uc *IdentityUsecase) clearLoginAttempts(username string) {
+func (uc *IdentityUsecase) clearLoginAttempts(key string) {
 	uc.loginMutex.Lock()
 	defer uc.loginMutex.Unlock()
-	delete(uc.loginLimiter, username)
+	delete(uc.loginLimiter, key)
 }
 
-func (uc *IdentityUsecase) Login(ctx context.Context, username, password string) (*User, string, error) {
+// sweepLoginLimiterLocked drops all entries whose lockout window has elapsed.
+// Caller must hold loginMutex.
+func (uc *IdentityUsecase) sweepLoginLimiterLocked() {
+	now := uc.now()
+	for k, a := range uc.loginLimiter {
+		if now.Sub(a.lastSeen) > loginLockoutTime {
+			delete(uc.loginLimiter, k)
+		}
+	}
+}
+
+// Login authenticates a user and returns a session token. clientIP is the
+// caller's best-effort remote IP; it is folded into the rate-limit key so a
+// single attacker cannot password-spray across many usernames from one IP
+// (review L2) and per-username spraying from many IPs is still capped.
+func (uc *IdentityUsecase) Login(ctx context.Context, username, password, clientIP string) (*User, string, error) {
 	if username == "" || password == "" {
 		return nil, "", ErrInvalidPassword
 	}
 
-	if err := uc.checkLoginRateLimit(username); err != nil {
+	// Medium #9: check BOTH the per-IP and per-username rate-limit buckets.
+	// A single IP spraying many usernames and a single username being stuffed
+	// from many IPs are each independently capped at maxLoginAttempts.
+	ipKey, userKey := loginRateKeys(username, clientIP)
+	if err := uc.checkLoginRateLimit(ipKey); err != nil {
 		return nil, "", err
+	}
+	if err := uc.checkLoginRateLimit(userKey); err != nil {
+		return nil, "", err
+	}
+
+	// recordBothFailures records the failure in both buckets.
+	recordBothFailures := func() {
+		if ipKey != "" {
+			uc.recordLoginFailure(ipKey)
+		}
+		uc.recordLoginFailure(userKey)
 	}
 
 	user, err := uc.repo.FindUserByUsername(ctx, username)
-	if err != nil {
-		uc.recordLoginFailure(username)
-		return nil, "", err
+	if err != nil || user == nil {
+		// L2: unknown users run a dummy bcrypt compare so the response time
+		// does not reveal whether the username exists (timing oracle).
+		uc.dummyBcryptCompare()
+		recordBothFailures()
+		return nil, "", ErrInvalidPassword
 	}
 	if user.Status != UserStatusEnabled {
+		recordBothFailures()
 		return nil, "", ErrUserDisabled
 	}
 	if user.PasswordHash == "" {
-		uc.recordLoginFailure(username)
+		recordBothFailures()
 		return nil, "", ErrInvalidPassword
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		uc.recordLoginFailure(username)
+		recordBothFailures()
 		return nil, "", ErrInvalidPassword
 	}
 
-	uc.clearLoginAttempts(username)
+	// Clear both buckets on success.
+	if ipKey != "" {
+		uc.clearLoginAttempts(ipKey)
+	}
+	uc.clearLoginAttempts(userKey)
 
 	token, err := uc.generateSessionToken(user)
 	if err != nil {
@@ -507,18 +616,21 @@ func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, 
 	options := CreateAccessTokenOptions{RemainQuota: uc.defaultQuota, UnlimitedQuota: true}
 	if len(opts) > 0 {
 		options = opts[0]
-		if options.RemainQuota == 0 {
+		if options.RemainQuota == 0 && options.UnlimitedQuota {
+			// Caller did not pin a finite quota; keep the default allowance.
 			options.RemainQuota = uc.defaultQuota
 		}
-		if !options.UnlimitedQuota {
-			options.UnlimitedQuota = true
-		}
+		// H2: respect the caller's UnlimitedQuota/RemainQuota rather than
+		// silently forcing unlimited. Previously both create and update
+		// overwrote unlimited_quota=true, defeating the per-key quota UI.
 	}
 	now := uc.now().Unix()
+	plaintextKey := uc.generateToken()
 	token := &Token{
 		UserID:         userID,
 		Name:           name,
-		Key:            uc.generateToken(),
+		Key:            plaintextKey,
+		KeyHash:        HashTokenKey(plaintextKey),
 		Status:         TokenStatusEnabled,
 		ExpiredAt:      expireAt,
 		RemainQuota:    options.RemainQuota,
@@ -538,18 +650,15 @@ func (uc *IdentityUsecase) ListAccessTokens(ctx context.Context, userID int64, p
 	if _, err := uc.repo.FindUserByID(ctx, userID); err != nil {
 		return nil, 0, err
 	}
-	tokens, _, err := uc.repo.ListTokens(ctx, userID, page, pageSize, keyword)
+	// L8: return the repo's authoritative total instead of the filtered page
+	// length. Both the DB and memory repos already exclude empty-name tokens
+	// from their count, so the page length was always <= pageSize and broke
+	// pagination past the first page.
+	tokens, total, err := uc.repo.ListTokens(ctx, userID, page, pageSize, keyword)
 	if err != nil {
 		return nil, 0, err
 	}
-	filtered := make([]*Token, 0, len(tokens))
-	for _, token := range tokens {
-		if token == nil || strings.TrimSpace(token.Name) == "" {
-			continue
-		}
-		filtered = append(filtered, token)
-	}
-	return filtered, int64(len(filtered)), nil
+	return tokens, total, nil
 }
 
 func (uc *IdentityUsecase) GetAccessToken(ctx context.Context, userID, tokenID int64) (*Token, error) {
@@ -597,12 +706,39 @@ func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, use
 	if opts.RemainQuota >= 0 {
 		token.RemainQuota = opts.RemainQuota
 	}
-	token.UnlimitedQuota = true
+	// H2: respect the caller's unlimited_quota flag. Previously this was
+	// unconditionally set to true, discarding a configured finite quota.
+	token.UnlimitedQuota = opts.UnlimitedQuota
 	token.Subnet = opts.Subnet
 	if err := uc.repo.UpdateToken(ctx, token); err != nil {
 		return nil, err
 	}
 	return token, nil
+}
+
+// ConsumeTokenQuota deducts `amount` from the token's RemainQuota and adds it
+// to UsedQuota. Unlimited keys are a no-op. When the remaining quota reaches
+// zero the token is marked TokenStatusExhausted so subsequent ValidateToken
+// calls reject it. This is the per-key enforcement path that was previously
+// missing (review High #5): the relay gateway calls this after billing settles
+// so a limited key cannot exceed its configured quota even if the user wallet
+// still has balance.
+func (uc *IdentityUsecase) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
+	if amount <= 0 {
+		return 0, nil
+	}
+	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
+	if err != nil {
+		return 0, err
+	}
+	if token.UnlimitedQuota {
+		return -1, nil
+	}
+	remaining, err := uc.repo.ConsumeTokenQuota(ctx, userID, tokenID, amount)
+	if err != nil {
+		return 0, err
+	}
+	return remaining, nil
 }
 
 func (uc *IdentityUsecase) DeleteAccessToken(ctx context.Context, userID, tokenID int64) error {
@@ -737,10 +873,32 @@ func (uc *IdentityUsecase) SetRole(ctx context.Context, operator *User, userID i
 	return user, nil
 }
 
-func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, username, displayName, password string, updateDisplayName bool) error {
+// ErrCurrentPasswordRequired is returned when UpdateSelf attempts a
+// sensitive change (username or password) without confirming the current
+// password. This stops a stolen session token from locking out the real
+// user by changing the password.
+var ErrCurrentPasswordRequired = errors.New("current password is required to change username or password")
+
+func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, username, displayName, password, currentPassword string, updateDisplayName bool) error {
 	user, err := uc.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return err
+	}
+	// M7: changing username or password is a sensitive mutation. Require
+	// the current password (verified against the stored bcrypt hash) so a
+	// stolen/unattended session cannot lock out the real owner. Display
+	// name edits are cosmetic and stay session-gated only.
+	sensitiveChange := (username != "" && username != user.Username) || password != ""
+	if sensitiveChange {
+		if currentPassword == "" {
+			return ErrCurrentPasswordRequired
+		}
+		if user.PasswordHash == "" {
+			return ErrInvalidPassword
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+			return ErrInvalidPassword
+		}
 	}
 	if username != "" && username != user.Username {
 		existing, err := uc.repo.FindUserByUsername(ctx, username)
@@ -764,6 +922,10 @@ func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, usernam
 			return err
 		}
 		user.PasswordHash = string(hash)
+		// M6: a password change revokes all previously-issued sessions by
+		// advancing the stored epoch past the PwdEpoch stamped in any
+		// outstanding JWT.
+		user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
 	}
 	return uc.repo.UpdateUser(ctx, user)
 }
@@ -800,6 +962,23 @@ func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, pass
 		return err
 	}
 	user.PasswordHash = string(hash)
+	// M6: revoke all prior sessions for this user (a reset should not leave
+	// pre-reset tokens valid).
+	user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
+	return uc.repo.UpdateUser(ctx, user)
+}
+
+// InvalidateAllSessions revokes every outstanding session token for the user
+// by advancing the password epoch past the PwdEpoch of any currently-issued
+// JWT (review M6). It is the server-side primitive behind logout-all /
+// forced-sign-out: unlike per-token JTI blacklists it needs no distributed
+// revocation store.
+func (uc *IdentityUsecase) InvalidateAllSessions(ctx context.Context, userID int64) error {
+	user, err := uc.repo.FindUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
 	return uc.repo.UpdateUser(ctx, user)
 }
 
@@ -816,6 +995,41 @@ func (uc *IdentityUsecase) generateToken() string {
 	return string(b)
 }
 
+// tokenHashSecret returns the HMAC key used to hash access-token keys. It
+// prefers the dedicated TOKEN_HASH_KEY, falls back to JWT_SECRET_KEY (so
+// deployments that already rotate a JWT secret get token-key rotation for
+// free), and finally a fixed dev default so unit tests work without env.
+// Rotating the secret invalidates every existing token (keys can no longer
+// be looked up), which is the desired break-glass behaviour.
+func tokenHashSecret() []byte {
+	if v := os.Getenv("TOKEN_HASH_KEY"); v != "" {
+		return []byte(v)
+	}
+	if v := os.Getenv("JWT_SECRET_KEY"); v != "" {
+		return []byte(v)
+	}
+	return []byte("micro-one-api-token-hash-default")
+}
+
+// HashTokenKey returns the lowercase hex HMAC-SHA256 of a plaintext token
+// key. HMAC is deterministic for a given key+secret, so ValidateToken can
+// hash the incoming bearer token and look it up by key_hash in O(1).
+func HashTokenKey(key string) string {
+	mac := hmac.New(sha256.New, tokenHashSecret())
+	mac.Write([]byte(key))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// TokenDisplayPrefix returns a short, non-secret slice of a plaintext key
+// (first 8 + last 4 chars) that preserves the existing masked-key display
+// ("abcd****wxyz") without storing enough to authenticate.
+func TokenDisplayPrefix(key string) string {
+	if len(key) <= 12 {
+		return key
+	}
+	return key[:8] + key[len(key)-4:]
+}
+
 func (uc *IdentityUsecase) generateSessionToken(user *User) (string, error) {
 	if user == nil || user.ID <= 0 {
 		return "", ErrUserNotFound
@@ -826,6 +1040,10 @@ func (uc *IdentityUsecase) generateSessionToken(user *User) (string, error) {
 		Username:  user.Username,
 		Role:      user.Role,
 		TokenType: "user_session",
+		// Stamp the current password epoch so the validator can reject this
+		// session once the password changes / a forced logout bumps the
+		// epoch (review M6).
+		PwdEpoch: user.PasswordChangedAt,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uc.generateToken(),
 			Issuer:    uc.sessionIssuer,
@@ -972,4 +1190,77 @@ func splitCSV(input string) []string {
 		}
 	}
 	return out
+}
+
+func nextPasswordEpoch(current int64, now time.Time) int64 {
+	next := now.UnixMilli()
+	if next <= current {
+		return current + 1
+	}
+	return next
+}
+
+// loginRateKeys returns the per-IP and per-username rate-limit keys for a
+// login attempt. Tracking both independently (review Medium #9) means:
+//   - a single attacker IP is capped at maxLoginAttempts across ALL usernames
+//     (password spraying from one IP);
+//   - a single username is capped at maxLoginAttempts across ALL IPs
+//     (credential stuffing from a botnet).
+//
+// When no IP is available only the username key is used (preserving the
+// previous behavior so login still works behind proxies that strip it).
+func loginRateKeys(username, clientIP string) (ipKey, userKey string) {
+	if clientIP != "" {
+		ipKey = "ip:" + clientIP
+	}
+	userKey = "user:" + username
+	return ipKey, userKey
+}
+
+// dummyBcryptCompare performs a throwaway bcrypt comparison with a fixed hash.
+// Unknown usernames hit this path so their response time matches a real
+// failed login, closing the username-enumeration timing oracle (review L2).
+var dummyLoginHash = func() string {
+	h, _ := bcrypt.GenerateFromPassword([]byte("timing-equalization-fixed-secret"), bcrypt.DefaultCost)
+	return string(h)
+}()
+
+func (uc *IdentityUsecase) dummyBcryptCompare() {
+	_ = bcrypt.CompareHashAndPassword([]byte(dummyLoginHash), []byte(""))
+}
+
+// tokenSubnetAllows reports whether clientIP is permitted by the token's
+// optional Subnet CIDR restriction (review M1). An empty subnet disables the
+// restriction (backwards compatible). An empty clientIP is allowed only when
+// no restriction is set; when a restriction exists but the caller cannot
+// supply an IP, the token is rejected (fail-closed) so the field is never a
+// silent no-op.
+func tokenSubnetAllows(subnet, clientIP string) bool {
+	subnet = strings.TrimSpace(subnet)
+	if subnet == "" {
+		return true
+	}
+	clientIP = strings.TrimSpace(clientIP)
+	if clientIP == "" {
+		return false
+	}
+	// Accept host-qualified CIDRs (e.g. "10.0.0.5/24") by extracting the network.
+	_, ipNet, err := net.ParseCIDR(strings.TrimSpace(subnet))
+	if err != nil {
+		// Not a valid CIDR — do not silently bypass the configured restriction.
+		return false
+	}
+	ip := net.ParseIP(clientIP)
+	if ip == nil {
+		return false
+	}
+	return ipNet.Contains(ip)
+}
+
+// SweepLoginLimiter is the periodic cleanup entry point that bounds the
+// in-memory login limiter. It is safe to call from a background ticker.
+func (uc *IdentityUsecase) SweepLoginLimiter() {
+	uc.loginMutex.Lock()
+	defer uc.loginMutex.Unlock()
+	uc.sweepLoginLimiterLocked()
 }

@@ -7,6 +7,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	relayprovider "micro-one-api/domain/upstream/provider"
 )
 
 // RetryPolicy defines the retry behavior for upstream provider calls.
@@ -125,6 +127,13 @@ func extractStatus(msg string) int {
 }
 
 // UpstreamStatus extracts the HTTP status code from an error.
+//
+// Order of precedence (relay-M1): a typed *RetryableError wins, then a typed
+// *relayprovider.UpstreamHTTPError (returned by every provider's non-2xx path
+// and by the internal adaptors). Only when neither typed check matches do we
+// fall back to parsing the "status=N" substring out of the error message — a
+// deliberately last-resort path, since any wording change in an error string
+// would silently break status-based channel failover.
 func UpstreamStatus(err error) int {
 	if err == nil {
 		return 0
@@ -132,6 +141,10 @@ func UpstreamStatus(err error) int {
 	var re *RetryableError
 	if AsRetryableError(err, &re) {
 		return re.Status
+	}
+	var upstreamErr *relayprovider.UpstreamHTTPError
+	if errors.As(err, &upstreamErr) {
+		return upstreamErr.StatusCode
 	}
 	return extractStatus(err.Error())
 }

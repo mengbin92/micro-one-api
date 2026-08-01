@@ -62,6 +62,18 @@ func (e *UpstreamHTTPError) Error() string {
 	return fmt.Sprintf("upstream error: status=%d, body=%s", e.StatusCode, string(e.Body))
 }
 
+// MaxUpstreamResponseBody caps how many bytes of an upstream *success*
+// response body the relay will buffer into memory. 128MB mirrors the
+// inbound request cap (64MB) with headroom for large model outputs; an
+// upstream exceeding this is treated as malformed (relay-C1: unbounded
+// io.ReadAll previously allowed a hostile/buggy upstream to OOM the gateway).
+const MaxUpstreamResponseBody = 128 * 1024 * 1024
+
+// MaxUpstreamErrorBody caps an upstream *error* response body. Error bodies
+// are only used for diagnostics/status mapping and must never be large, so
+// this is far tighter than the success cap (relay-C1).
+const MaxUpstreamErrorBody = 1 << 20
+
 // ChatCompletionsRequest represents a standardized chat completions request
 type ChatCompletionsRequest struct {
 	Model       string    `json:"model"`
@@ -131,8 +143,8 @@ type Usage struct {
 }
 
 type UsageTokenDetails struct {
-	CachedTokens        int `json:"cached_tokens,omitempty"`
-	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
+	CachedTokens          int `json:"cached_tokens,omitempty"`
+	CacheReadTokens       int `json:"cache_read_tokens,omitempty"`
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens,omitempty"`
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens,omitempty"`
 }
@@ -162,10 +174,11 @@ type StreamDelta struct {
 
 // OpenAIProvider implements the Provider interface for OpenAI-compatible APIs
 type OpenAIProvider struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	timeout    time.Duration
+	httpClient   *http.Client
+	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	baseURL      string
+	apiKey       string
+	timeout      time.Duration
 }
 
 // validateBaseURL checks that a base URL is safe from SSRF attacks.
@@ -212,6 +225,48 @@ func validateBaseURL(rawURL string) error {
 	return nil
 }
 
+// validateBaseURLAllowLocal is the local/self-hosted variant of validateBaseURL.
+// It keeps the scheme check (http/https only) and hostname requirement but
+// permits loopback and private IP ranges, because self-hosted providers such as
+// Ollama legitimately run on localhost or an internal network. It is used only
+// for channel types whose default URL is inherently local (domain-M2).
+func validateBaseURLAllowLocal(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("URL scheme must be http or https, got: %s", scheme)
+	}
+	if u.Hostname() == "" {
+		return fmt.Errorf("URL has no hostname")
+	}
+	return nil
+}
+
+// NewOpenAIProviderAllowLocal creates an OpenAI-compatible provider whose base
+// URL is validated with validateBaseURLAllowLocal instead of the strict SSRF
+// check. It is intended for self-hosted/local channel types (e.g. Ollama) whose
+// default endpoint is loopback or a private address (domain-M2).
+func NewOpenAIProviderAllowLocal(baseURL, apiKey string, timeout time.Duration) (*OpenAIProvider, error) {
+	if err := validateBaseURLAllowLocal(baseURL); err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	return &OpenAIProvider{
+		httpClient: &http.Client{
+			Timeout: timeout,
+		},
+		streamClient: &http.Client{},
+		baseURL:      baseURL,
+		apiKey:       apiKey,
+		timeout:      timeout,
+	}, nil
+}
+
 // isPrivateOrReservedIP checks if an IP address is in a private, loopback,
 // link-local, or other reserved range.
 func isPrivateOrReservedIP(ip net.IP) bool {
@@ -237,9 +292,16 @@ func NewOpenAIProvider(baseURL, apiKey string, timeout time.Duration) (*OpenAIPr
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		timeout: timeout,
+		// domain-H3: the streaming client has NO Client.Timeout. http.Client.Timeout
+		// is a hard deadline covering the entire round trip including response-body
+		// reads, so it would kill an SSE stream mid-flight once the configured
+		// timeout elapsed regardless of whether bytes were still flowing. Stream
+		// cancellation is driven by the per-request context (the caller sets a
+		// deadline appropriate for a long-lived stream).
+		streamClient: &http.Client{},
+		baseURL:      baseURL,
+		apiKey:       apiKey,
+		timeout:      timeout,
 	}, nil
 }
 
@@ -271,7 +333,7 @@ func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
@@ -320,13 +382,13 @@ func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*R
 	copyForwardHeaders(httpReq.Header, req.Header)
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send raw request: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
-		respBody, readErr := io.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read raw response: %w", readErr)
 		}
@@ -373,7 +435,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -407,14 +469,14 @@ func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
+		_ = resp.Body.Close()
 		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody}
 	}
 
@@ -429,6 +491,9 @@ func readOpenAIStream(resp *http.Response) <-chan StreamChunk {
 		defer resp.Body.Close()
 
 		scanner := bufio.NewScanner(resp.Body)
+		// OpenAI SSE lines can carry large tool-call payloads; raise
+		// bufio's 64KB default to 4MB, matching the Anthropic reader.
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if line == "" {
@@ -462,13 +527,9 @@ func readOpenAIStream(resp *http.Response) <-chan StreamChunk {
 }
 
 func logProviderWarn(msg string, fields ...zap.Field) {
-	if applogger.Log != nil {
-		applogger.Log.Warn(msg, fields...)
-	}
+	applogger.Log.Warn(msg, fields...)
 }
 
 func logProviderError(msg string, fields ...zap.Field) {
-	if applogger.Log != nil {
-		applogger.Log.Error(msg, fields...)
-	}
+	applogger.Log.Error(msg, fields...)
 }

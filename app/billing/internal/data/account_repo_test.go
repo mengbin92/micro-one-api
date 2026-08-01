@@ -49,6 +49,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 			subscription_weekly_window_start INTEGER NOT NULL DEFAULT 0,
 			subscription_monthly_window_start INTEGER NOT NULL DEFAULT 0,
 			balance_amount_quota INTEGER NOT NULL DEFAULT 0,
+			actual_cost INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME,
 			updated_at DATETIME,
 			expired_at DATETIME
@@ -371,7 +372,7 @@ func TestAccountRepo_CommitBalanceInTx_NetReservedMinusActual(t *testing.T) {
 	data := &Data{db: db}
 	repo := NewAccountRepo(data)
 	tx := db.Begin()
-	oldBalance, newBalance, err := repo.CommitBalanceInTx(context.Background(), tx, "1", 200, 150, true)
+	oldBalance, newBalance, err := repo.CommitBalanceInTx(context.Background(), &gormTx{db: tx}, "1", 200, 150, true)
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit().Error)
 
@@ -404,7 +405,7 @@ func TestReceivableRepo_SettleOldestForUserInTx_PartialKeepsPending(t *testing.T
 	data := &Data{db: db}
 	repo := NewReceivableRepo(data)
 	tx := db.Begin()
-	settled, err := repo.SettleOldestForUserInTx(context.Background(), tx, "1", 80)
+	settled, err := repo.SettleOldestForUserInTx(context.Background(), &gormTx{db: tx}, "1", 80)
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit().Error)
 	assert.Equal(t, int64(80), settled)

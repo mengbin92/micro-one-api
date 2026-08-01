@@ -242,9 +242,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 
 		jsonData, err := sonic.Marshal(chunk)
 		if err != nil {
-			if applogger.Log != nil {
-				applogger.Log.Warn("failed to marshal chunk", zap.Error(err))
-			}
+						applogger.Log.Warn("failed to marshal chunk", zap.Error(err))
 			continue
 		}
 

@@ -64,9 +64,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 		CompressionMode: coderws.CompressionContextTakeover,
 	})
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("failed to accept openai responses websocket upgrade", zap.Error(err))
-		}
+				applogger.Log.Warn("failed to accept openai responses websocket upgrade", zap.Error(err))
 		return
 	}
 	defer func() {
@@ -194,12 +192,10 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 			// drain logic, so DrainWSConnections will not wait for or force-close
 			// it — the process exit will cut it off. Surface it as a warning so
 			// an operator knows the drain window excluded an active relay.
-			if applogger.Log != nil {
-				applogger.Log.Warn("openai ws connection not tracked; drain will not wait for it",
-					zap.String("request_id", requestID),
-					zap.String("model", clientModel),
-				)
-			}
+						applogger.Log.Warn("openai ws connection not tracked; drain will not wait for it",
+				zap.String("request_id", requestID),
+				zap.String("model", clientModel),
+			)
 		} else {
 			tracked.SetMetadata("endpoint", "/v1/responses")
 			tracked.SetMetadata("model", clientModel)
@@ -586,14 +582,12 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				outcome.fallback = true
 				outcome.fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailure)
 				outcome.finalChannel = currentChannel
-				if applogger.Log != nil {
-					applogger.Log.Info("openai ws failover after dial error",
-						zap.String("request_id", requestID),
-						zap.Int("attempt", attempt+1),
-						zap.Int64("failed_channel", failedChannelID),
-						zap.Error(err),
-					)
-				}
+								applogger.Log.Info("openai ws failover after dial error",
+					zap.String("request_id", requestID),
+					zap.Int("attempt", attempt+1),
+					zap.Int64("failed_channel", failedChannelID),
+					zap.Error(err),
+				)
 				var reserveErr error
 				reservation, reserveErr = s.replaceResponsesWSReservation(ctx, plan, clientModel, firstMessage, requestID, reservation, currentChannel)
 				if reserveErr != nil {
@@ -648,7 +642,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				if s.billingClient != nil {
 					if turnRes, rerr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, s.BillingModelName(clientModel, resolvedModel, resolvedModel), fmt.Sprintf("%d", currentChannel.ID), routingSubscriptionAccountID(currentChannel)); rerr == nil && turnRes != nil {
 						turnReservationID = turnRes.ReservationId
-					} else if applogger.Log != nil {
+					} else {
 						applogger.Log.Warn("failed to reserve openai ws turn quota",
 							zap.String("request_id", turnID),
 							zap.Error(rerr),
@@ -658,12 +652,10 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			}
 			if turnReservationID != "" {
 				if commitErr := s.commitQuotaAfterResponse(turnReservationID, actualTotal, true, logInput); commitErr != nil {
-					if applogger.Log != nil {
-						applogger.Log.Warn("failed to commit openai ws turn quota",
-							zap.String("request_id", turnID),
-							zap.Error(commitErr),
-						)
-					}
+										applogger.Log.Warn("failed to commit openai ws turn quota",
+						zap.String("request_id", turnID),
+						zap.Error(commitErr),
+					)
 				} else {
 					s.ingestUsageLogAfterResponse(logInput)
 				}
@@ -716,15 +708,13 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			attempt < maxSwitches
 
 		if canFailover {
-			if applogger.Log != nil {
-				applogger.Log.Info("openai ws failover after relay error",
-					zap.String("request_id", requestID),
-					zap.Int("attempt", attempt+1),
-					zap.String("stage", relayExit.stage),
-					zap.Int64("failed_channel", currentChannel.ID),
-					zap.Error(relayExit.err),
-				)
-			}
+						applogger.Log.Info("openai ws failover after relay error",
+				zap.String("request_id", requestID),
+				zap.Int("attempt", attempt+1),
+				zap.String("stage", relayExit.stage),
+				zap.Int64("failed_channel", currentChannel.ID),
+				zap.Error(relayExit.err),
+			)
 			failedSources[relaybiz.RoutingSourceIdentityForChannel(currentChannel)] = true
 			if s.maybeFailoverChannel(ctx, plan, clientModel, currentChannel, relayExit.err, failedSources, &currentChannel) {
 				if firstFailure == nil {
@@ -745,11 +735,11 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 
 		// Terminal path: either success or unrecoverable failure.
 		if turnCommits == 0 {
-			if releaseErr := s.releaseQuota(ctx, reservation.ReservationId, "no completed ws turn"); releaseErr != nil && applogger.Log != nil {
+			if releaseErr := s.releaseQuota(ctx, reservation.ReservationId, "no completed ws turn"); releaseErr != nil {
 				applogger.Log.Warn("failed to release openai ws reservation", zap.String("request_id", requestID), zap.Error(releaseErr))
 			}
 		}
-		if relayExit != nil && relayExit.err != nil && applogger.Log != nil {
+		if relayExit != nil && relayExit.err != nil {
 			applogger.Log.Info("openai responses websocket relay ended",
 				zap.String("request_id", requestID),
 				zap.String("stage", relayExit.stage),

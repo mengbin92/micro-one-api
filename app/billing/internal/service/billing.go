@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"strings"
 )
 
 type BillingService struct {
@@ -25,13 +26,32 @@ type BillingService struct {
 	asyncUc        *biz.AsyncBillingUsecase // optional; nil = synchronous path
 	paymentUc      *biz.PaymentUsecase
 	alipayVerifier biz.PaymentNotifyVerifier
-	reconUc        *biz.ReconciliationUsecase
-	refundUc       *biz.RefundUsecase
-	reportUc       *biz.SubscriptionReportUsecase
+	// expectedAlipayAppID is the locally-configured Alipay merchant app id.
+	// HandleAlipayNotify cross-checks it against the app_id carried in the
+	// signature-verified notify params to catch order-substitution /
+	// misconfigured-app scenarios the signature alone does not cover
+	// (code-review 2026-07-30 billing-L5). Empty = app id not configured,
+	// in which case the cross-check is skipped (legacy behaviour).
+	expectedAlipayAppID string
+	reconUc             *biz.ReconciliationUsecase
+	refundUc            *biz.RefundUsecase
+	reportUc            *biz.SubscriptionReportUsecase
 }
 
 func NewBillingService(uc *biz.BillingUsecase, reconUc *biz.ReconciliationUsecase, paymentUc *biz.PaymentUsecase, alipayVerifier biz.PaymentNotifyVerifier) *BillingService {
 	return &BillingService{uc: uc, reconUc: reconUc, paymentUc: paymentUc, alipayVerifier: alipayVerifier}
+}
+
+// SetExpectedAlipayAppID wires the locally-configured Alipay merchant app id
+// used by HandleAlipayNotify to cross-check the app_id in the verified notify
+// params (code-review 2026-07-30 billing-L5). Optional; when unset the app_id
+// cross-check is skipped (legacy behaviour) but the amount cross-check still
+// runs when the notify carries a total_amount.
+func (s *BillingService) SetExpectedAlipayAppID(appID string) {
+	if s == nil {
+		return
+	}
+	s.expectedAlipayAppID = appID
 }
 
 // SetRefundUsecase wires the refund coordinator. Optional; when unset the
@@ -120,20 +140,22 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 	// synchronous so the caller observes the released reservation and does
 	// not proceed against a frozen amount.
 	if s.asyncUc != nil && req.Success {
-		// The task carries the original reservation id as a stable
-		// correlation id so async settlement logs and metrics can be tied back to
-		// the relay's request span. The CommitQuotaRequest proto marks
-		// reservation_id as required for the success path; a missing value is a
-		// client contract violation. We still emit a counter (rather than reject)
-		// so a misbehaving caller is visible in monitoring without breaking the
-		// hot path, and synthesise a correlation id for the log line.
-		requestID := req.ReservationId
-		if requestID == "" {
+		// Code-review 2026-07-30 billing-L2: a missing reservation_id on the
+		// success path is a client contract violation that previously let the
+		// request through with a provisional success while the worker's
+		// CommitQuotaWithUsageAndSplit silently failed to find a reservation
+		// (the usage was free). We now reject synchronously so the caller is
+		// forced to retry with the reservation id it obtained at reserve time;
+		// the missing-id counter still fires for monitoring.
+		if req.ReservationId == "" {
 			metrics.AsyncBillingMissingReservationID.Inc()
-			requestID = fmt.Sprintf("async-%d", time.Now().UnixNano())
+			return &billingv1.CommitQuotaResponse{
+				Success:      false,
+				ErrorMessage: "reservation_id is required for async commit on the success path",
+			}, nil
 		}
 		s.asyncUc.Settle(ctx, &biz.SettleTask{
-			RequestID:     requestID,
+			RequestID:     req.ReservationId,
 			ReservationID: req.ReservationId,
 			ActualTokens:  req.ActualTokens,
 			Success:       true,
@@ -753,11 +775,59 @@ func (s *BillingService) HandleAlipayNotify(w http.ResponseWriter, r *http.Reque
 		writeNotifyResponse(w, false)
 		return
 	}
+	// Code-review 2026-07-30 billing-L5: cross-check the signature-verified
+	// notify against the local order before marking the order paid. The
+	// Alipay signature guarantees the params were not tampered with in
+	// transit, but it does NOT guarantee the (signed) out_trade_no /
+	// total_amount / app_id belong to *this* deployment's order book.
+	// A replayed, misrouted, or misconfigured-app callback would otherwise
+	// flip any matching local order to paid. We reject (and let Alipay
+	// retry) when:
+	//   - the notify carries an app_id that does not match the configured
+	//     merchant app id (catches misconfigured-app / substitution);
+	//   - the notify carries a total_amount that does not match the local
+	//     order's MoneyCents (catches amount substitution).
+	if mismatch := s.crossCheckAlipayNotify(r.Context(), notify); mismatch != "" {
+		writeNotifyResponse(w, false)
+		return
+	}
 	if _, err := s.paymentUc.MarkOrderPaid(r.Context(), notify.TradeNo, notify.ProviderTradeNo); err != nil {
 		writeNotifyResponse(w, false)
 		return
 	}
 	writeNotifyResponse(w, true)
+}
+
+// crossCheckAlipayNotify validates the signature-verified Alipay notify
+// against the local order book and the locally-configured merchant app id.
+// It returns a non-empty human-readable reason string when the notify must be
+// rejected (and an empty string when it is safe to proceed). The reason is
+// used only for logging at the call site; it is never returned to Alipay.
+func (s *BillingService) crossCheckAlipayNotify(ctx context.Context, notify *biz.PaymentNotify) string {
+	if notify == nil {
+		return "nil notify"
+	}
+	// app_id cross-check: skip when the deployment has not configured a
+	// merchant app id (preserves legacy behaviour for unconfigured installs).
+	if s.expectedAlipayAppID != "" && notify.AppID != "" &&
+		!strings.EqualFold(s.expectedAlipayAppID, notify.AppID) {
+		return fmt.Sprintf("alipay app_id mismatch: notify=%q configured=%q", notify.AppID, s.expectedAlipayAppID)
+	}
+	// amount cross-check: skip when the notify did not carry a total_amount
+	// (some notify flavours omit it); otherwise it must match the local
+	// order's MoneyCents exactly.
+	if notify.TotalAmount > 0 {
+		order, err := s.paymentUc.GetOrderByTradeNo(ctx, notify.TradeNo)
+		if err != nil || order == nil {
+			// Defer to MarkOrderPaid's own not-found handling: we only
+			// reject when we have a local order to compare against.
+			return ""
+		}
+		if order.MoneyCents != notify.TotalAmount {
+			return fmt.Sprintf("alipay total_amount mismatch: notify=%d order=%d", notify.TotalAmount, order.MoneyCents)
+		}
+	}
+	return ""
 }
 
 func (s *BillingService) RefundPaymentOrder(ctx context.Context, req *billingv1.RefundPaymentOrderRequest) (*billingv1.RefundPaymentOrderResponse, error) {
@@ -915,13 +985,13 @@ func (s *BillingService) HandleReconciliation(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func (s *BillingService) ListReconciliationRuns(ctx context.Context, req *billingv1.ListReconciliationRunsRequest) (*billingv1.ListReconciliationRunsResponse, error) {

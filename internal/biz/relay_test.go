@@ -12,7 +12,7 @@ import (
 
 type testIdentityClient struct{}
 
-func (testIdentityClient) GetAuthSnapshot(_ context.Context, _ string) (*AuthSnapshot, error) {
+func (testIdentityClient) GetAuthSnapshot(_ context.Context, _, _ string) (*AuthSnapshot, error) {
 	return &AuthSnapshot{
 		UserID:        1,
 		TokenID:       1,
@@ -155,7 +155,7 @@ type testIdentityClientError struct {
 	err error
 }
 
-func (c testIdentityClientError) GetAuthSnapshot(_ context.Context, _ string) (*AuthSnapshot, error) {
+func (c testIdentityClientError) GetAuthSnapshot(_ context.Context, _, _ string) (*AuthSnapshot, error) {
 	return nil, c.err
 }
 
@@ -702,7 +702,7 @@ func TestRelayUsecase_HasCapability(t *testing.T) {
 
 type testIdentityClientAllowAll struct{}
 
-func (testIdentityClientAllowAll) GetAuthSnapshot(_ context.Context, _ string) (*AuthSnapshot, error) {
+func (testIdentityClientAllowAll) GetAuthSnapshot(_ context.Context, _, _ string) (*AuthSnapshot, error) {
 	return &AuthSnapshot{
 		UserID:        1,
 		TokenID:       1,
@@ -1027,7 +1027,8 @@ func TestSelectFallbackRoutingSource_PassesExcludedChannelsToSelection(t *testin
 	}
 }
 
-func TestSelectFallbackRoutingSourceAppliesCrossSourcePriorityAndWeight(t *testing.T) {	t.Run("higher priority wins", func(t *testing.T) {
+func TestSelectFallbackRoutingSourceAppliesCrossSourcePriorityAndWeight(t *testing.T) {
+	t.Run("higher priority wins", func(t *testing.T) {
 		client := &fallbackRoutingClient{
 			channel: &Channel{ID: 1, Priority: 10, Weight: 100},
 			subscription: &SubscriptionAccount{

@@ -1,6 +1,8 @@
 package biz
 
 import (
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+
 	"context"
 	"errors"
 	"testing"
@@ -8,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 // 保留原有的 mock 实现
@@ -39,8 +40,13 @@ func (m *mockAccountRepo) UpdateBalance(ctx context.Context, userID string, delt
 	return m.account.Balance, nil
 }
 
-func (m *mockAccountRepo) UpdateBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, delta int64, operationType string) (int64, error) {
+func (m *mockAccountRepo) UpdateBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, delta int64, operationType string) (int64, error) {
 	return m.UpdateBalance(ctx, userID, delta, operationType)
+}
+
+func (m *mockAccountRepo) IncrementBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64) (int64, error) {
+	m.account.Balance += amount
+	return m.account.Balance, nil
 }
 
 func (m *mockAccountRepo) UpdateUsage(ctx context.Context, userID string, usedAmountDelta, requestCountDelta int64) error {
@@ -50,7 +56,7 @@ func (m *mockAccountRepo) UpdateUsage(ctx context.Context, userID string, usedAm
 	return nil
 }
 
-func (m *mockAccountRepo) UpdateUsageInTx(ctx context.Context, tx *gorm.DB, userID string, usedAmountDelta, requestCountDelta int64) error {
+func (m *mockAccountRepo) UpdateUsageInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, usedAmountDelta, requestCountDelta int64) error {
 	return m.UpdateUsage(ctx, userID, usedAmountDelta, requestCountDelta)
 }
 
@@ -59,7 +65,7 @@ func (m *mockAccountRepo) UpdateFrozenAmount(ctx context.Context, userID string,
 	return nil
 }
 
-func (m *mockAccountRepo) ReserveBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, amount int64, allowOverdraft bool) (int64, int64, int64, error) {
+func (m *mockAccountRepo) ReserveBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64, allowOverdraft bool) (int64, int64, int64, error) {
 	if amount < 0 {
 		return 0, 0, 0, errors.New("negative amount")
 	}
@@ -72,14 +78,14 @@ func (m *mockAccountRepo) ReserveBalanceInTx(ctx context.Context, tx *gorm.DB, u
 	return oldBalance, m.account.Balance, m.account.FrozenAmount, nil
 }
 
-func (m *mockAccountRepo) CommitBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, reserved, actual int64, allowOverdraft bool) (int64, int64, error) {
+func (m *mockAccountRepo) CommitBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, reserved, actual int64, allowOverdraft bool) (int64, int64, error) {
 	oldBalance := m.account.Balance
 	m.account.FrozenAmount -= reserved
 	m.account.Balance += reserved - actual
 	return oldBalance, m.account.Balance, nil
 }
 
-func (m *mockAccountRepo) ReleaseBalanceInTx(ctx context.Context, tx *gorm.DB, userID string, reserved int64) (int64, error) {
+func (m *mockAccountRepo) ReleaseBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, reserved int64) (int64, error) {
 	m.account.FrozenAmount -= reserved
 	m.account.Balance += reserved
 	return m.account.Balance, nil
@@ -118,6 +124,16 @@ func (m *mockReservationRepo) FindByRequestID(ctx context.Context, requestID str
 	return nil, nil
 }
 
+func (m *mockReservationRepo) FindByRequestIDInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, requestID string) (*Reservation, error) {
+	// Mock ignores tx; mirror FindByRequestID but scope by (userID, requestID).
+	for _, res := range m.reservations {
+		if res.RequestID == requestID && res.UserID == userID {
+			return res, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *mockReservationRepo) GetExpiredReservations(ctx context.Context) ([]*Reservation, error) {
 	var expired []*Reservation
 	for _, res := range m.reservations {
@@ -128,15 +144,15 @@ func (m *mockReservationRepo) GetExpiredReservations(ctx context.Context) ([]*Re
 	return expired, nil
 }
 
-func (m *mockReservationRepo) CreateReservationInTx(ctx context.Context, tx *gorm.DB, reservation *Reservation) error {
+func (m *mockReservationRepo) CreateReservationInTx(ctx context.Context, tx subscriptionbiz.Tx, reservation *Reservation) error {
 	return m.CreateReservation(ctx, reservation)
 }
 
-func (m *mockReservationRepo) GetReservationInTx(ctx context.Context, tx *gorm.DB, reservationID string) (*Reservation, error) {
+func (m *mockReservationRepo) GetReservationInTx(ctx context.Context, tx subscriptionbiz.Tx, reservationID string) (*Reservation, error) {
 	return m.GetReservation(ctx, reservationID)
 }
 
-func (m *mockReservationRepo) CASReservationStatus(ctx context.Context, tx *gorm.DB, reservationID, from, to string) (bool, error) {
+func (m *mockReservationRepo) CASReservationStatus(ctx context.Context, tx subscriptionbiz.Tx, reservationID, from, to string) (bool, error) {
 	res, ok := m.reservations[reservationID]
 	if !ok {
 		return false, ErrReservationNotFound
@@ -148,11 +164,18 @@ func (m *mockReservationRepo) CASReservationStatus(ctx context.Context, tx *gorm
 	return true, nil
 }
 
-func (m *mockReservationRepo) LockSubscriptionRow(ctx context.Context, tx *gorm.DB, subscriptionID int64) error {
+func (m *mockReservationRepo) SetActualCostInTx(ctx context.Context, tx subscriptionbiz.Tx, reservationID string, actualCost int64) error {
+	if res, ok := m.reservations[reservationID]; ok {
+		res.ActualCost = actualCost
+	}
 	return nil
 }
 
-func (m *mockReservationRepo) SumActiveFrozenInTx(ctx context.Context, tx *gorm.DB, userID string, subscriptionID, dailyStart, weeklyStart, monthlyStart int64) (float64, float64, float64, int64, error) {
+func (m *mockReservationRepo) LockSubscriptionRow(ctx context.Context, tx subscriptionbiz.Tx, subscriptionID int64) error {
+	return nil
+}
+
+func (m *mockReservationRepo) SumActiveFrozenInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, subscriptionID, dailyStart, weeklyStart, monthlyStart int64) (float64, float64, float64, int64, error) {
 	var daily, weekly, monthly float64
 	var count int64
 	for _, res := range m.reservations {
@@ -221,11 +244,11 @@ func (m *mockLedgerRepo) AggregateUsage(ctx context.Context, filter UsageFilter)
 	return nil, &UsageTotals{}, nil
 }
 
-func (m *mockLedgerRepo) CreateLedgerInTx(ctx context.Context, tx *gorm.DB, ledger *Ledger) error {
+func (m *mockLedgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx, ledger *Ledger) error {
 	return m.CreateLedger(ctx, ledger)
 }
 
-func (m *mockLedgerRepo) FindByDedupeKey(ctx context.Context, tx *gorm.DB, key string) (*Ledger, error) {
+func (m *mockLedgerRepo) FindByDedupeKey(ctx context.Context, tx subscriptionbiz.Tx, key string) (*Ledger, error) {
 	for _, ledger := range m.ledgers {
 		if ledger.LedgerDedupeKey == key {
 			return ledger, nil
@@ -315,15 +338,31 @@ func (m *mockRedeemRepo) GetRedeemCode(ctx context.Context, code string) (*Redee
 }
 
 func (m *mockRedeemRepo) UpdateRedeemCodeCount(ctx context.Context, code string, delta int) error {
-	if c, ok := m.codes[code]; ok {
-		c.Count -= int32(delta)
+	c, ok := m.codes[code]
+	if !ok {
+		return ErrRedeemCodeNotFound
 	}
+	if c.Status != RedeemCodeStatusEnabled {
+		return ErrRedeemCodeDisabled
+	}
+	if c.Count < int32(delta) {
+		return ErrRedeemCodeUsedUp
+	}
+	c.Count -= int32(delta)
 	return nil
+}
+
+func (m *mockRedeemRepo) UpdateRedeemCodeCountInTx(ctx context.Context, tx subscriptionbiz.Tx, code string, delta int) error {
+	return m.UpdateRedeemCodeCount(ctx, code, delta)
 }
 
 func (m *mockRedeemRepo) CreateRedeemRecord(ctx context.Context, record *RedeemRecord) error {
 	m.records = append(m.records, record)
 	return nil
+}
+
+func (m *mockRedeemRepo) CreateRedeemRecordInTx(ctx context.Context, tx subscriptionbiz.Tx, record *RedeemRecord) error {
+	return m.CreateRedeemRecord(ctx, record)
 }
 
 // 正确的预扣测试 - 从 1000 开始，预扣 100，最终应该是 900
@@ -477,6 +516,37 @@ func TestCommitQuota_AlreadyCommitted(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, int64(100), amount)
+	assert.Equal(t, int64(0), refund)
+}
+
+// TestCommitQuota_AlreadyCommitted_ReturnsActualCost verifies the code-review
+// 2026-07-30 billing-L1 fix: an idempotent re-entry of CommitQuota on an
+// already-committed reservation returns the persisted ActualCost (the real
+// settlement cost) rather than the pre-deduction Amount estimate. Legacy rows
+// committed before the actual_cost column existed keep Amount as the fallback
+// (covered by TestCommitQuota_AlreadyCommitted above, where ActualCost==0).
+func TestCommitQuota_AlreadyCommitted_ReturnsActualCost(t *testing.T) {
+	account := &Account{
+		UserID: "user1",
+		Group:  "default",
+	}
+	// Amount=100 is the estimate; ActualCost=80 is what really settled.
+	reservation := &Reservation{
+		ReservationID: "res-actual",
+		UserID:        "user1",
+		Amount:        100,
+		ActualCost:    80,
+		Status:        ReservationStatusCommitted,
+		CreatedAt:     time.Now(),
+	}
+	accountRepo := &mockAccountRepo{account: account}
+	reservationRepo := &mockReservationRepo{reservations: map[string]*Reservation{"res-actual": reservation}}
+	uc := NewBillingUsecase(accountRepo, reservationRepo, &mockLedgerRepo{}, &mockRedeemRepo{}, nil)
+
+	amount, refund, err := uc.CommitQuota(context.Background(), "res-actual", 80, true)
+	assert.NoError(t, err)
+	// Real settlement cost, not the estimate.
+	assert.Equal(t, int64(80), amount)
 	assert.Equal(t, int64(0), refund)
 }
 

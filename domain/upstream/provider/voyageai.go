@@ -13,10 +13,11 @@ import (
 )
 
 type VoyageAIProvider struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	timeout    time.Duration
+	httpClient   *http.Client
+	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	baseURL      string
+	apiKey       string
+	timeout      time.Duration
 }
 
 func NewVoyageAIProvider(baseURL, apiKey string, timeout time.Duration) (*VoyageAIProvider, error) {
@@ -28,9 +29,12 @@ func NewVoyageAIProvider(baseURL, apiKey string, timeout time.Duration) (*Voyage
 	}
 	return &VoyageAIProvider{
 		httpClient: &http.Client{Timeout: timeout},
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKey:     apiKey,
-		timeout:    timeout,
+		// domain-H3: streaming client has no Client.Timeout so SSE body reads
+		// are not killed mid-stream; cancellation is driven by the request ctx.
+		streamClient: &http.Client{},
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		apiKey:       apiKey,
+		timeout:      timeout,
 	}, nil
 }
 
@@ -80,7 +84,7 @@ func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawRe
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read voyageai response: %w", err)
 	}

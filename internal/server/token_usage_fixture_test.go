@@ -125,7 +125,7 @@ var tokenUsageCases = []tokenUsageCase{
 		Scenario: "negative tokens clamped to zero",
 		rawInput: `{"id":"chatcmpl-2","object":"chat.completion","usage":{"prompt_tokens":-10,"completion_tokens":50,"total_tokens":40,"prompt_tokens_details":{"cached_tokens":-5}}}`,
 		// ADR §4.1: negatives -> 0; prompt(0) - cached(0) = 0 uncached.
-		expected:             canonicalBuckets{UncachedInputTokens: 0, CacheReadTokens: 0, OutputTokens: 50},
+		expected: canonicalBuckets{UncachedInputTokens: 0, CacheReadTokens: 0, OutputTokens: 50},
 		// prompt and cached are both negative; each clamped value records a
 		// "negative" anomaly, so two reasons are expected (one per clamped field).
 		expectAnomalyReasons: []string{"negative", "negative"},

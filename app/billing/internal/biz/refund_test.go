@@ -10,7 +10,6 @@ import (
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 
-	gormdb "gorm.io/gorm"
 )
 
 // fakeRefundRepo models MarkOrderRefunded: first call runs the revert and
@@ -30,13 +29,13 @@ func (r *fakeRefundRepo) GetOrderByTradeNo(ctx context.Context, tradeNo string) 
 func (r *fakeRefundRepo) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
 	return nil, 0, nil
 }
-func (r *fakeRefundRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder) error) (*PaymentOrder, bool, error) {
+func (r *fakeRefundRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
 func (r *fakeRefundRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
-func (r *fakeRefundRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gormdb.DB) error) (*PaymentOrder, bool, error) {
+func (r *fakeRefundRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls++
@@ -81,29 +80,33 @@ func (s *stubAccountRepo) UpdateBalance(ctx context.Context, userID string, delt
 	s.lastType = operationType
 	return s.newBalance, s.err
 }
-func (s *stubAccountRepo) UpdateBalanceInTx(ctx context.Context, tx *gormdb.DB, userID string, delta int64, operationType string) (int64, error) {
+func (s *stubAccountRepo) UpdateBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, delta int64, operationType string) (int64, error) {
 	return s.UpdateBalance(ctx, userID, delta, operationType)
 }
 func (s *stubAccountRepo) UpdateUsage(ctx context.Context, userID string, usedAmountDelta, requestCountDelta int64) error {
 	return nil
 }
-func (s *stubAccountRepo) UpdateUsageInTx(ctx context.Context, tx *gormdb.DB, userID string, usedAmountDelta, requestCountDelta int64) error {
+func (s *stubAccountRepo) UpdateUsageInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, usedAmountDelta, requestCountDelta int64) error {
 	return nil
 }
 func (s *stubAccountRepo) UpdateFrozenAmount(ctx context.Context, userID string, delta int64) error {
 	return nil
 }
-func (s *stubAccountRepo) ReserveBalanceInTx(ctx context.Context, tx *gormdb.DB, userID string, amount int64, allowOverdraft bool) (int64, int64, int64, error) {
+func (s *stubAccountRepo) ReserveBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64, allowOverdraft bool) (int64, int64, int64, error) {
 	return 0, 0, 0, nil
 }
-func (s *stubAccountRepo) CommitBalanceInTx(ctx context.Context, tx *gormdb.DB, userID string, reserved, actual int64, allowOverdraft bool) (int64, int64, error) {
+func (s *stubAccountRepo) CommitBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, reserved, actual int64, allowOverdraft bool) (int64, int64, error) {
 	return 0, 0, nil
 }
-func (s *stubAccountRepo) ReleaseBalanceInTx(ctx context.Context, tx *gormdb.DB, userID string, reserved int64) (int64, error) {
+func (s *stubAccountRepo) ReleaseBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, reserved int64) (int64, error) {
 	return 0, nil
 }
 
 // recordingLedgerRepo records created ledger entries.
+func (s *stubAccountRepo) IncrementBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64) (int64, error) {
+	return 0, nil
+}
+
 type recordingLedgerRepo struct {
 	mu        sync.Mutex
 	created   []*Ledger
@@ -119,7 +122,7 @@ func (r *recordingLedgerRepo) CreateLedger(ctx context.Context, ledger *Ledger) 
 	r.created = append(r.created, ledger)
 	return nil
 }
-func (r *recordingLedgerRepo) CreateLedgerInTx(ctx context.Context, tx *gormdb.DB, ledger *Ledger) error {
+func (r *recordingLedgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx, ledger *Ledger) error {
 	return r.CreateLedger(ctx, ledger)
 }
 func (r *recordingLedgerRepo) GetLedgerByID(ctx context.Context, id int64) (*Ledger, error) {
@@ -143,7 +146,7 @@ func (r *recordingLedgerRepo) AggregateLedgerByDate(ctx context.Context, userID 
 func (r *recordingLedgerRepo) AggregateUsage(ctx context.Context, filter UsageFilter) ([]*UsageBucket, *UsageTotals, error) {
 	return nil, nil, nil
 }
-func (r *recordingLedgerRepo) FindByDedupeKey(ctx context.Context, tx *gormdb.DB, key string) (*Ledger, error) {
+func (r *recordingLedgerRepo) FindByDedupeKey(ctx context.Context, tx subscriptionbiz.Tx, key string) (*Ledger, error) {
 	return nil, nil
 }
 func (r *recordingLedgerRepo) SumSubscriptionCostByReservation(ctx context.Context, reservationIDs []string) (int64, error) {
@@ -167,7 +170,7 @@ func (s *stubSubscriptionReverter) Revoke(ctx context.Context, subscriptionID in
 	s.lastReason = reason
 	return s.revokeErr
 }
-func (s *stubSubscriptionReverter) RevokeInTx(ctx context.Context, tx *gormdb.DB, subscriptionID int64, reason string) error {
+func (s *stubSubscriptionReverter) RevokeInTx(ctx context.Context, tx subscriptionbiz.Tx, subscriptionID int64, reason string) error {
 	return s.Revoke(ctx, subscriptionID, reason)
 }
 func (s *stubSubscriptionReverter) Shorten(ctx context.Context, subscriptionID int64, subtractSeconds int64) error {
@@ -176,11 +179,15 @@ func (s *stubSubscriptionReverter) Shorten(ctx context.Context, subscriptionID i
 	s.lastSubtract = subtractSeconds
 	return s.shortenErr
 }
-func (s *stubSubscriptionReverter) ShortenInTx(ctx context.Context, tx *gormdb.DB, subscriptionID int64, subtractSeconds int64) error {
+func (s *stubSubscriptionReverter) ShortenInTx(ctx context.Context, tx subscriptionbiz.Tx, subscriptionID int64, subtractSeconds int64) error {
 	return s.Shorten(ctx, subscriptionID, subtractSeconds)
 }
 func (s *stubSubscriptionReverter) GetActiveSubscriptionForUser(ctx context.Context, userID int64) (*subscriptionbiz.UserSubscription, error) {
 	return &subscriptionbiz.UserSubscription{ID: 99, UserID: userID}, nil
+}
+
+func (s *stubSubscriptionReverter) GetActiveSubscriptionForUserInTx(ctx context.Context, tx subscriptionbiz.Tx, userID int64) (*subscriptionbiz.UserSubscription, error) {
+	return s.GetActiveSubscriptionForUser(ctx, userID)
 }
 
 func newRefundOrder(tradeNo string, paid bool) *PaymentOrder {

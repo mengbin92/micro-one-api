@@ -7,6 +7,8 @@ import (
 
 	"micro-one-api/app/billing/internal/biz"
 
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -34,7 +36,7 @@ func TestPaymentRepo_CreateAndMarkPaid(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, created)
 
-	paid, changed, err := repo.MarkOrderPaid(context.Background(), "PAY-1", "provider-1", func(order *biz.PaymentOrder) error {
+	paid, changed, err := repo.MarkOrderPaid(context.Background(), "PAY-1", "provider-1", func(order *biz.PaymentOrder, tx subscriptionbiz.Tx) error {
 		require.Equal(t, "PAY-1", order.TradeNo)
 		return nil
 	})

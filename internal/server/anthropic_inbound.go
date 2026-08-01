@@ -659,12 +659,12 @@ func (s *HTTPServer) handleAnthropicStreamingResponse(
 				if thinkingIndex == -1 {
 					// close the text block placeholder, open a thinking block
 					if blockOpen {
-						writeSSEEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": 0})
+						_ = writeSSEEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": 0})
 						flusher.Flush()
 						blockOpen = false
 					}
 					thinkingIndex = 1
-					writeSSEEvent(w, "content_block_start", map[string]interface{}{
+					_ = writeSSEEvent(w, "content_block_start", map[string]interface{}{
 						"type":  "content_block_start",
 						"index": thinkingIndex,
 						"content_block": map[string]interface{}{
@@ -692,10 +692,10 @@ func (s *HTTPServer) handleAnthropicStreamingResponse(
 				estimatedTokens += int64(len(choice.Delta.Content) / 4)
 				// If we were emitting thinking, close that block and reopen text.
 				if thinkingIndex != -1 {
-					writeSSEEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": thinkingIndex})
+					_ = writeSSEEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": thinkingIndex})
 					flusher.Flush()
 					thinkingIndex = -1
-					writeSSEEvent(w, "content_block_start", map[string]interface{}{
+					_ = writeSSEEvent(w, "content_block_start", map[string]interface{}{
 						"type":  "content_block_start",
 						"index": 0,
 						"content_block": map[string]interface{}{
@@ -707,7 +707,7 @@ func (s *HTTPServer) handleAnthropicStreamingResponse(
 					blockOpen = true
 				}
 				if !blockOpen {
-					writeSSEEvent(w, "content_block_start", map[string]interface{}{
+					_ = writeSSEEvent(w, "content_block_start", map[string]interface{}{
 						"type":  "content_block_start",
 						"index": 0,
 						"content_block": map[string]interface{}{
@@ -738,7 +738,7 @@ func (s *HTTPServer) handleAnthropicStreamingResponse(
 
 	// If the stream ended while a thinking block was still open, close it.
 	if thinkingIndex != -1 {
-		writeSSEEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": thinkingIndex})
+		_ = writeSSEEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": thinkingIndex})
 		flusher.Flush()
 		thinkingIndex = -1
 	}
@@ -880,7 +880,7 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 func (s *HTTPServer) writeAnthropicError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	encodeJSON(w, map[string]interface{}{
+	_ = encodeJSON(w, map[string]interface{}{
 		"type":  "error",
 		"error": map[string]interface{}{"type": anthropicErrorType(statusCode), "message": message},
 	})
@@ -946,8 +946,12 @@ func writeSSEEvent(w http.ResponseWriter, eventType string, data interface{}) er
 		return err
 	}
 	if eventType != "" {
-		fmt.Fprintf(w, "event: %s\n", eventType)
+		if _, err := fmt.Fprintf(w, "event: %s\n", eventType); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(w, "data: %s\n\n", string(jsonData))
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", string(jsonData)); err != nil {
+		return err
+	}
 	return nil
 }

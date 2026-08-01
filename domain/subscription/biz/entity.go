@@ -35,6 +35,32 @@ type UserSubscription struct {
 	UpdatedAt int64  `json:"updated_at"`
 }
 
+// SubscriptionField is a semantic tag naming a UserSubscription column that a
+// selective update should write. It exists so callers (Revoke/Extend/Shorten/
+// AssignOrExtend/ExpiryChecker) can update only the columns they actually
+// change without clobbering concurrent AddUsage increments on the usage/window
+// columns (code-review 2026-07-30 domain-H1). The data layer maps each tag to
+// the concrete storage column, keeping the biz package free of storage
+// primitives.
+type SubscriptionField string
+
+const (
+	// SubscriptionFieldStatus maps to the subscription status column.
+	SubscriptionFieldStatus SubscriptionField = "status"
+	// SubscriptionFieldExpiresAt maps to the absolute expiry timestamp column.
+	SubscriptionFieldExpiresAt SubscriptionField = "expires_at"
+	// SubscriptionFieldSubscriptionName maps to the display name column.
+	SubscriptionFieldSubscriptionName SubscriptionField = "subscription_name"
+	// SubscriptionFieldGroupID maps to the subscription group id column.
+	SubscriptionFieldGroupID SubscriptionField = "group_id"
+	// SubscriptionFieldMetadata maps to the opaque metadata/audit column.
+	SubscriptionFieldMetadata SubscriptionField = "metadata"
+	// SubscriptionFieldUsageAll selects the three usage columns plus their
+	// window-start columns, used by ResetQuota and the change-group path that
+	// intentionally reset usage.
+	SubscriptionFieldUsageAll SubscriptionField = "usage_all"
+)
+
 type SubscriptionGroup struct {
 	ID               int64  `json:"id"`
 	Name             string `json:"name"`

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"micro-one-api/domain/subscription/biz"
 
@@ -44,6 +45,19 @@ func (r *Repository) CreateSubscription(ctx context.Context, subscription *biz.U
 	return r.createSubscriptionMemory(ctx, subscription)
 }
 
+// CreateSubscriptionInTx inserts a subscription inside the caller's
+// transaction (code-review 2026-07-30 billing-H2). The in-memory path has
+// no transaction concept so it falls back to the memory create.
+func (r *Repository) CreateSubscriptionInTx(ctx context.Context, tx biz.Tx, subscription *biz.UserSubscription) error {
+	if tx == nil {
+		return errors.New("nil transaction")
+	}
+	if r.db != nil {
+		return r.createSubscriptionInTxDB(ctx, txDB(tx), subscription)
+	}
+	return r.createSubscriptionMemory(ctx, subscription)
+}
+
 func (r *Repository) UpdateSubscription(ctx context.Context, subscription *biz.UserSubscription) error {
 	if r.db != nil {
 		return r.updateSubscriptionDB(ctx, subscription)
@@ -51,9 +65,9 @@ func (r *Repository) UpdateSubscription(ctx context.Context, subscription *biz.U
 	return r.updateSubscriptionMemory(ctx, subscription)
 }
 
-func (r *Repository) UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
+func (r *Repository) UpdateSubscriptionInTx(ctx context.Context, tx biz.Tx, subscription *biz.UserSubscription) error {
 	if r.db != nil {
-		return updateSubscriptionWithTx(ctx, tx, subscription)
+		return updateSubscriptionWithTx(ctx, txDB(tx), subscription)
 	}
 	return r.updateSubscriptionMemory(ctx, subscription)
 }
@@ -100,6 +114,21 @@ func (r *Repository) GetActiveSubscriptionByUser(ctx context.Context, userID int
 	return r.getActiveSubscriptionByUserMemory(ctx, userID)
 }
 
+// GetActiveSubscriptionByUserInTx is the row-locked variant used by the
+// payment assigner's in-tx path. The lock serialises concurrent
+// grant/extend calls so two renewals for the same user cannot both
+// observe "no active subscription" and both insert (code-review
+// 2026-07-30 billing-H2 / domain-H1).
+func (r *Repository) GetActiveSubscriptionByUserInTx(ctx context.Context, tx biz.Tx, userID int64) (*biz.UserSubscription, error) {
+	if tx == nil {
+		return nil, errors.New("nil transaction")
+	}
+	if r.db != nil {
+		return r.getActiveSubscriptionByUserInTxDB(ctx, txDB(tx), userID)
+	}
+	return r.getActiveSubscriptionByUserMemory(ctx, userID)
+}
+
 func (r *Repository) AddUsage(ctx context.Context, userID int64, costUSD float64, now int64) error {
 	if r.db != nil {
 		return r.addUsageDB(ctx, userID, costUSD, now)
@@ -107,18 +136,18 @@ func (r *Repository) AddUsage(ctx context.Context, userID int64, costUSD float64
 	return r.addUsageMemory(ctx, userID, costUSD, now)
 }
 
-func (r *Repository) AddUsageByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error {
+func (r *Repository) AddUsageByIDInTx(ctx context.Context, tx biz.Tx, subscriptionID int64, costUSD float64, now int64) error {
 	if tx == nil {
 		return errors.New("nil transaction")
 	}
-	return r.addUsageByIDInTxDB(ctx, tx, subscriptionID, costUSD, now)
+	return r.addUsageByIDInTxDB(ctx, txDB(tx), subscriptionID, costUSD, now)
 }
 
-func (r *Repository) GetByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64) (*biz.UserSubscription, error) {
+func (r *Repository) GetByIDInTx(ctx context.Context, tx biz.Tx, subscriptionID int64) (*biz.UserSubscription, error) {
 	if tx == nil {
 		return nil, errors.New("nil transaction")
 	}
-	return r.getByIDInTxDB(ctx, tx, subscriptionID)
+	return r.getByIDInTxDB(ctx, txDB(tx), subscriptionID)
 }
 
 // addUsageByIDInTxDB performs the same read-roll-increment as
@@ -129,8 +158,8 @@ func (r *Repository) GetByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionI
 func (r *Repository) addUsageByIDInTxDB(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error {
 	var model subscriptionModel
 	q := tx.WithContext(ctx).Where("id = ?", subscriptionID)
-	if dialectorName(tx) != "sqlite3" {
-		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
+	if !isSQLite(dialectorName(tx)) {
+		q = q.Clauses(forUpdateClause(dialectorName(tx)))
 	}
 	if err := q.First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -157,8 +186,8 @@ func (r *Repository) addUsageByIDInTxDB(ctx context.Context, tx *gorm.DB, subscr
 func (r *Repository) getByIDInTxDB(ctx context.Context, tx *gorm.DB, subscriptionID int64) (*biz.UserSubscription, error) {
 	var model subscriptionModel
 	q := tx.WithContext(ctx).Where("id = ?", subscriptionID)
-	if dialectorName(tx) != "sqlite3" {
-		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
+	if !isSQLite(dialectorName(tx)) {
+		q = q.Clauses(forUpdateClause(dialectorName(tx)))
 	}
 	if err := q.First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -244,6 +273,22 @@ func (r *Repository) createSubscriptionDB(ctx context.Context, subscription *biz
 	return nil
 }
 
+// createSubscriptionInTxDB is the in-transaction variant of
+// createSubscriptionDB. It shares the duplicate-key -> already-assigned
+// mapping so a concurrent grant inside the same tx shape surfaces the
+// sentinel error to the caller.
+func (r *Repository) createSubscriptionInTxDB(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
+	model := subscriptionToModel(subscription)
+	if err := tx.WithContext(ctx).Create(&model).Error; err != nil {
+		if isDuplicateKeyErr(err) {
+			return biz.ErrSubscriptionAlreadyAssigned
+		}
+		return err
+	}
+	subscription.ID = model.ID
+	return nil
+}
+
 func (r *Repository) updateSubscriptionDB(ctx context.Context, subscription *biz.UserSubscription) error {
 	return updateSubscriptionWithTx(ctx, r.db.WithContext(ctx), subscription)
 }
@@ -266,6 +311,170 @@ func updateSubscriptionWithTx(ctx context.Context, tx *gorm.DB, subscription *bi
 		"metadata":             model.Metadata,
 		"updated_at":           model.UpdatedAt,
 	}).Error
+}
+
+// subscriptionFieldColumns maps the semantic biz.SubscriptionField tags to the
+// concrete storage columns a selective update should write. It is the data-side
+// counterpart of biz.SubscriptionField and keeps the biz package free of column
+// names (code-review 2026-07-30 domain-H1).
+func subscriptionFieldColumns(fields []biz.SubscriptionField) map[string]any {
+	seen := make(map[biz.SubscriptionField]struct{}, len(fields))
+	for _, f := range fields {
+		seen[f] = struct{}{}
+	}
+	now := true
+	cols := make(map[string]any)
+	for f := range seen {
+		switch f {
+		case biz.SubscriptionFieldStatus:
+			cols["status"] = nil
+		case biz.SubscriptionFieldExpiresAt:
+			cols["expires_at"] = nil
+		case biz.SubscriptionFieldSubscriptionName:
+			cols["subscription_name"] = nil
+		case biz.SubscriptionFieldGroupID:
+			cols["group_id"] = nil
+		case biz.SubscriptionFieldMetadata:
+			cols["metadata"] = nil
+		case biz.SubscriptionFieldUsageAll:
+			cols["daily_usage_usd"] = nil
+			cols["weekly_usage_usd"] = nil
+			cols["monthly_usage_usd"] = nil
+			cols["daily_window_start"] = nil
+			cols["weekly_window_start"] = nil
+			cols["monthly_window_start"] = nil
+		default:
+			// Unknown tag: ignore rather than panic so a stale caller never
+			// breaks the write.
+			now = false
+		}
+	}
+	if now {
+		cols["updated_at"] = nil
+	}
+	return cols
+}
+
+// updateSubscriptionFieldsWithTx writes ONLY the columns named by fields (plus
+// updated_at) for the given subscription id, using the DO's current values. It
+// never touches columns that are not listed, so a concurrent AddUsage
+// increment committed between the caller's read and this write is preserved
+// (code-review 2026-07-30 domain-H1).
+func updateSubscriptionFieldsWithTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	if subscription == nil {
+		return errors.New("nil subscription")
+	}
+	cols := subscriptionFieldColumns(fields)
+	// "updated_at" is always injected by subscriptionFieldColumns, so subtract
+	// it when deciding whether any concrete column was selected.
+	_, hasUpdatedAt := cols["updated_at"]
+	if len(cols) == 0 || (len(cols) == 1 && hasUpdatedAt) {
+		// No concrete columns selected: nothing to do.
+		return nil
+	}
+	model := subscriptionToModel(subscription)
+	values := make(map[string]any, len(cols))
+	for col := range cols {
+		switch col {
+		case "status":
+			values[col] = model.Status
+		case "expires_at":
+			values[col] = model.ExpiresAt
+		case "subscription_name":
+			values[col] = model.SubscriptionName
+		case "group_id":
+			values[col] = model.GroupID
+		case "metadata":
+			values[col] = model.Metadata
+		case "daily_usage_usd":
+			values[col] = model.DailyUsageUSD
+		case "weekly_usage_usd":
+			values[col] = model.WeeklyUsageUSD
+		case "monthly_usage_usd":
+			values[col] = model.MonthlyUsageUSD
+		case "daily_window_start":
+			values[col] = model.DailyWindowStart
+		case "weekly_window_start":
+			values[col] = model.WeeklyWindowStart
+		case "monthly_window_start":
+			values[col] = model.MonthlyWindowStart
+		case "updated_at":
+			values[col] = model.UpdatedAt
+		}
+	}
+	res := tx.WithContext(ctx).Model(&subscriptionModel{}).Where("id = ?", subscription.ID).Updates(values)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return biz.ErrSubscriptionNotFound
+	}
+	return nil
+}
+
+// UpdateSubscriptionFields is the selective-write variant of UpdateSubscription.
+// See updateSubscriptionFieldsWithTx for the column-narrowing rationale.
+func (r *Repository) UpdateSubscriptionFields(ctx context.Context, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	if r.db != nil {
+		return updateSubscriptionFieldsWithTx(ctx, r.db.WithContext(ctx), subscription, fields)
+	}
+	return r.updateSubscriptionFieldsMemory(ctx, subscription, fields)
+}
+
+// UpdateSubscriptionFieldsInTx is the in-transaction selective-write variant.
+func (r *Repository) UpdateSubscriptionFieldsInTx(ctx context.Context, tx biz.Tx, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	if tx == nil {
+		return errors.New("nil transaction")
+	}
+	if r.db != nil {
+		return updateSubscriptionFieldsWithTx(ctx, txDB(tx), subscription, fields)
+	}
+	return r.updateSubscriptionFieldsMemory(ctx, subscription, fields)
+}
+
+func (r *Repository) updateSubscriptionFieldsMemory(ctx context.Context, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	existing, ok := r.subscriptions[subscription.ID]
+	if !ok {
+		return biz.ErrSubscriptionNotFound
+	}
+	// Start from the stored row so unlisted columns keep their live values.
+	merged := *existing
+	now := true
+	seen := make(map[biz.SubscriptionField]struct{}, len(fields))
+	for _, f := range fields {
+		seen[f] = struct{}{}
+	}
+	for f := range seen {
+		switch f {
+		case biz.SubscriptionFieldStatus:
+			merged.Status = subscription.Status
+		case biz.SubscriptionFieldExpiresAt:
+			merged.ExpiresAt = subscription.ExpiresAt
+		case biz.SubscriptionFieldSubscriptionName:
+			merged.SubscriptionName = subscription.SubscriptionName
+		case biz.SubscriptionFieldGroupID:
+			merged.GroupID = subscription.GroupID
+		case biz.SubscriptionFieldMetadata:
+			merged.Metadata = subscription.Metadata
+		case biz.SubscriptionFieldUsageAll:
+			merged.DailyUsageUSD = subscription.DailyUsageUSD
+			merged.WeeklyUsageUSD = subscription.WeeklyUsageUSD
+			merged.MonthlyUsageUSD = subscription.MonthlyUsageUSD
+			merged.DailyWindowStart = subscription.DailyWindowStart
+			merged.WeeklyWindowStart = subscription.WeeklyWindowStart
+			merged.MonthlyWindowStart = subscription.MonthlyWindowStart
+		default:
+			now = false
+		}
+	}
+	if now {
+		merged.UpdatedAt = subscription.UpdatedAt
+	}
+	cloned := merged
+	r.subscriptions[subscription.ID] = &cloned
+	return nil
 }
 
 func (r *Repository) deleteSubscriptionDB(ctx context.Context, subscriptionID int64) error {
@@ -299,10 +508,43 @@ func (r *Repository) listSubscriptionsByUserDB(ctx context.Context, userID int64
 
 func (r *Repository) getActiveSubscriptionByUserDB(ctx context.Context, userID int64) (*biz.UserSubscription, error) {
 	var model subscriptionModel
+	// Code-review 2026-07-30 domain-C1: defence-in-depth. The
+	// SubscriptionExpiryChecker is the primary mechanism that flips an active
+	// subscription to expired, but it is best-effort and hourly. A read path
+	// that only filters on status = 'active' would keep serving a subscription
+	// whose expires_at has already passed (free quota) for up to an hour after
+	// expiry, and forever if the checker is ever mis-wired or delayed. We
+	// therefore also require expires_at > now here so the active set is correct
+	// regardless of the checker. The dedicated expiry filter still runs in the
+	// checker to actually persist the status transition for reporting.
 	if err := r.db.WithContext(ctx).
-		Where("user_id = ? AND status = ?", userID, string(biz.SubscriptionStatusActive)).
+		Where("user_id = ? AND status = ? AND expires_at > ?", userID, string(biz.SubscriptionStatusActive), time.Now().Unix()).
 		Order("updated_at DESC, id DESC").
 		First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, biz.ErrSubscriptionNotFound
+		}
+		return nil, err
+	}
+	subscription := subscriptionFromModel(&model)
+	return &subscription, nil
+}
+
+// getActiveSubscriptionByUserInTxDB is the row-locked variant of
+// getActiveSubscriptionByUserDB. It takes a SELECT ... FOR UPDATE lock
+// on the active row so the subsequent extend happens against a stable
+// snapshot (code-review 2026-07-30 billing-H2 / domain-H1).
+func (r *Repository) getActiveSubscriptionByUserInTxDB(ctx context.Context, tx *gorm.DB, userID int64) (*biz.UserSubscription, error) {
+	var model subscriptionModel
+	// domain-C1: same expires_at > now defence-in-depth as
+	// getActiveSubscriptionByUserDB (see comment there).
+	q := tx.WithContext(ctx).
+		Where("user_id = ? AND status = ? AND expires_at > ?", userID, string(biz.SubscriptionStatusActive), time.Now().Unix()).
+		Order("updated_at DESC, id DESC")
+	if !isSQLite(dialectorName(tx)) {
+		q = q.Clauses(forUpdateClause(dialectorName(tx)))
+	}
+	if err := q.First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrSubscriptionNotFound
 		}
@@ -484,9 +726,11 @@ func (r *Repository) listAllSubscriptionsMemory(ctx context.Context) ([]*biz.Use
 func (r *Repository) getActiveSubscriptionByUserMemory(ctx context.Context, userID int64) (*biz.UserSubscription, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
+	now := time.Now().Unix()
 	var chosen *biz.UserSubscription
 	for _, subscription := range r.subscriptions {
-		if subscription.UserID != userID || subscription.Status != biz.SubscriptionStatusActive {
+		// domain-C1: same expires_at > now defence-in-depth as the DB path.
+		if subscription.UserID != userID || subscription.Status != biz.SubscriptionStatusActive || subscription.ExpiresAt <= now {
 			continue
 		}
 		if chosen == nil || subscription.UpdatedAt > chosen.UpdatedAt || (subscription.UpdatedAt == chosen.UpdatedAt && subscription.ID > chosen.ID) {

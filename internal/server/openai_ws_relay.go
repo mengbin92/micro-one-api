@@ -24,12 +24,12 @@ type openAIWSRelayOptions struct {
 // openAIWSRelayUsage is the per-turn / per-session usage accumulator. The field
 // names mirror rawUsage so the same billing/log pipeline can consume it.
 type openAIWSRelayUsage struct {
-	promptTokens       int64
-	completionTokens   int64
-	cacheReadTokens    int64
+	promptTokens          int64
+	completionTokens      int64
+	cacheReadTokens       int64
 	cacheCreation5mTokens int64
 	cacheCreation1hTokens int64
-	totalTokens        int64
+	totalTokens           int64
 }
 
 // openAIWSTurnResult is reported once per upstream terminal event
@@ -257,12 +257,12 @@ func parseOpenAIWSFrameUsage(frame map[string]interface{}) (openAIWSRelayUsage, 
 	}
 	total := inputTokens + outputTokens
 	return openAIWSRelayUsage{
-		promptTokens:         inputTokens,
-		completionTokens:     outputTokens,
-		cacheReadTokens:      cachedTokens,
+		promptTokens:          inputTokens,
+		completionTokens:      outputTokens,
+		cacheReadTokens:       cachedTokens,
 		cacheCreation5mTokens: fiveM,
 		cacheCreation1hTokens: oneH,
-		totalTokens:          total,
+		totalTokens:           total,
 	}, true
 }
 

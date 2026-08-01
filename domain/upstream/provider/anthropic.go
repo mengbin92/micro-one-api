@@ -18,26 +18,37 @@ import (
 // AnthropicProvider implements the Provider interface for Anthropic Claude API.
 // It translates between OpenAI-compatible requests/responses and the Anthropic API format.
 type AnthropicProvider struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	timeout    time.Duration
+	httpClient   *http.Client
+	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	baseURL      string
+	apiKey       string
+	timeout      time.Duration
 }
 
 // NewAnthropicProvider creates a new Anthropic Claude provider.
-func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) *AnthropicProvider {
+// domain-M3: like the OpenAI/Azure/VoyageAI constructors it now validates the
+// base URL against SSRF (private/loopback/metadata endpoints); previously a
+// malicious or compromised Anthropic channel record could point relay traffic
+// at an internal endpoint.
+func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) (*AnthropicProvider, error) {
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com"
 	}
+	if err := validateBaseURL(baseURL); err != nil {
+		return nil, fmt.Errorf("invalid anthropic base URL: %w", err)
+	}
 	return &AnthropicProvider{
 		httpClient: &http.Client{Timeout: timeout},
-		baseURL:    baseURL,
-		apiKey:     apiKey,
-		timeout:    timeout,
-	}
+		// domain-H3: streaming client has no Client.Timeout so SSE body reads
+		// are not killed mid-stream; cancellation is driven by the request ctx.
+		streamClient: &http.Client{},
+		baseURL:      baseURL,
+		apiKey:       apiKey,
+		timeout:      timeout,
+	}, nil
 }
 
 // anthropicForwardBaseURL resolves the upstream base URL, trimming any trailing
@@ -117,7 +128,7 @@ func (p *AnthropicProvider) Forward(ctx context.Context, req *RawRequest) (*RawR
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
@@ -152,13 +163,13 @@ func (p *AnthropicProvider) ForwardStream(ctx context.Context, req *RawRequest) 
 	}
 	p.anthropicSetForwardHeaders(httpReq.Header, req.Header)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send raw stream request: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
-		respBody, readErr := io.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
 		if readErr != nil {
 			return nil, fmt.Errorf("failed to read raw stream response: %w", readErr)
 		}
@@ -225,8 +236,9 @@ type anthropicStreamEvent struct {
 	Type  string `json:"type"`
 	Index int    `json:"index,omitempty"`
 	Delta *struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type       string `json:"type"`
+		Text       string `json:"text"`
+		StopReason string `json:"stop_reason"`
 	} `json:"delta,omitempty"`
 	Message *anthropicResponse `json:"message,omitempty"`
 	Usage   *anthropicUsage    `json:"usage,omitempty"`
@@ -271,6 +283,20 @@ func convertToAnthropicRequest(req *ChatCompletionsRequest) *anthropicRequest {
 	return anthropicReq
 }
 
+// anthropicFinishReason maps an Anthropic stop_reason to the OpenAI
+// finish_reason vocabulary. Used by both the non-stream response and
+// the message_delta terminal event so they stay consistent.
+func anthropicFinishReason(stopReason string) string {
+	switch stopReason {
+	case "max_tokens":
+		return "length"
+	case "tool_use":
+		return "tool_calls"
+	default: // end_turn, stop_sequence, ""
+		return "stop"
+	}
+}
+
 // convertFromAnthropicResponse converts an Anthropic response to OpenAI format.
 func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCompletionsResponse {
 	content := ""
@@ -278,15 +304,7 @@ func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCo
 		content = resp.Content[0].Text
 	}
 
-	finishReason := "stop"
-	switch resp.StopReason {
-	case "end_turn":
-		finishReason = "stop"
-	case "max_tokens":
-		finishReason = "length"
-	case "stop_sequence":
-		finishReason = "stop"
-	}
+	finishReason := anthropicFinishReason(resp.StopReason)
 
 	return &ChatCompletionsResponse{
 		ID:      resp.ID,
@@ -308,9 +326,9 @@ func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCo
 			CompletionTokens: resp.Usage.OutputTokens,
 			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
 			PromptTokensDetails: UsageTokenDetails{
-				CacheReadTokens:        resp.Usage.CacheReadInputTokens,
-				CacheCreation5mTokens:  anthropicCacheCreation5m(resp.Usage),
-				CacheCreation1hTokens:  anthropicCacheCreation1h(resp.Usage),
+				CacheReadTokens:       resp.Usage.CacheReadInputTokens,
+				CacheCreation5mTokens: anthropicCacheCreation5m(resp.Usage),
+				CacheCreation1hTokens: anthropicCacheCreation1h(resp.Usage),
 			},
 		},
 	}
@@ -360,13 +378,13 @@ func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatComple
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("anthropic error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 
 	var anthropicResp anthropicResponse
@@ -397,15 +415,15 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return nil, fmt.Errorf("anthropic error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
+		_ = resp.Body.Close()
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 
 	chunkChan := make(chan StreamChunk, 10)
@@ -477,7 +495,10 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 				if usage.CacheCreation == nil {
 					usage.CacheCreation = startUsage.CacheCreation
 				}
-				finishReason := "stop"
+				finishReason := anthropicFinishReason("")
+				if event.Delta != nil {
+					finishReason = anthropicFinishReason(event.Delta.StopReason)
+				}
 				chunkChan <- StreamChunk{
 					Object: "chat.completion.chunk",
 					Model:  req.Model,

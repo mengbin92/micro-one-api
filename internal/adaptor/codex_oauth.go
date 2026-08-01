@@ -9,8 +9,9 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"micro-one-api/internal/apicompat"
 	"micro-one-api/domain/upstream/credential"
+	"micro-one-api/domain/upstream/provider"
+	"micro-one-api/internal/apicompat"
 	"micro-one-api/internal/identity"
 )
 
@@ -173,7 +174,7 @@ func (a *CodexOAuthAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayC
 // resp.Body ownership belongs to the caller (the server handler), which closes
 // it once.
 func (a *CodexOAuthAdaptor) ConvertResponse(rc *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, provider.MaxUpstreamResponseBody))
 	if err != nil {
 		return "", nil, fmt.Errorf("codex_oauth: read upstream response: %w", err)
 	}

@@ -203,5 +203,5 @@ func disableOpenAITraining(ctx context.Context, client *http.Client, accessToken
 		return
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }

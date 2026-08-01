@@ -15,12 +15,12 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/api/identity/v1"
+	relayprovider "micro-one-api/domain/upstream/provider"
+	appvalidation "micro-one-api/internal/validation"
 	"micro-one-api/pkg/errors"
+	apptimeout "micro-one-api/pkg/timeout"
 	applogger "micro-one-api/platform/logging"
 	appmiddleware "micro-one-api/platform/middleware"
-	apptimeout "micro-one-api/pkg/timeout"
-	appvalidation "micro-one-api/internal/validation"
-	relayprovider "micro-one-api/domain/upstream/provider"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
@@ -308,7 +308,7 @@ func (s *EnhancedHTTPServer) validateAuthorization(r *http.Request) (string, err
 func (s *EnhancedHTTPServer) writeValidationError(w http.ResponseWriter, err error) {
 	if appvalidation.IsValidationError(err) {
 		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{
+		_ = encodeJSON(w, map[string]interface{}{
 			"error": map[string]interface{}{
 				"message": err.Error(),
 				"code":    400,
@@ -420,7 +420,7 @@ func (s *EnhancedHTTPServer) handleIdentityError(w http.ResponseWriter, err erro
 
 func (s *EnhancedHTTPServer) handleChannelError(w http.ResponseWriter, err error) {
 	if errors.IsServiceUnavailable(err) {
-		s.writeError(w, http.StatusServiceUnavailable, err.Error())
+		s.writeError(w, http.StatusServiceUnavailable, "upstream service unavailable")
 		return
 	}
 	s.writeError(w, http.StatusInternalServerError, "internal server error")
@@ -433,7 +433,7 @@ func (s *EnhancedHTTPServer) handleAuthError(w http.ResponseWriter, err error) {
 func (s *EnhancedHTTPServer) writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	encodeJSON(w, map[string]interface{}{
+	_ = encodeJSON(w, map[string]interface{}{
 		"error": map[string]interface{}{
 			"message": applogger.Sanitize(message),
 			"code":    statusCode,
@@ -444,5 +444,5 @@ func (s *EnhancedHTTPServer) writeError(w http.ResponseWriter, statusCode int, m
 func (s *EnhancedHTTPServer) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	encodeJSON(w, data)
+	_ = encodeJSON(w, data)
 }

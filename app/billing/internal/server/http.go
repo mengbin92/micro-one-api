@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"micro-one-api/app/billing/internal/service"
-	"micro-one-api/platform/metrics"
 	"micro-one-api/platform/http"
+	"micro-one-api/platform/metrics"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
@@ -22,21 +22,21 @@ func ServiceAuth(next http.HandlerFunc) http.HandlerFunc {
 		if serviceToken == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]string{"error": "service token not configured"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "service token not configured"})
 			return
 		}
 		authHeader := r.Header.Get("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"error": "missing or invalid authorization header"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing or invalid authorization header"})
 			return
 		}
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		if subtle.ConstantTimeCompare([]byte(token), []byte(serviceToken)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"error": "invalid service token"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid service token"})
 			return
 		}
 		next(w, r)
@@ -54,7 +54,7 @@ func NewHTTPServer(addr string, svc *service.BillingService) *khttp.Server {
 	srv.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	// Protected reconciliation endpoint

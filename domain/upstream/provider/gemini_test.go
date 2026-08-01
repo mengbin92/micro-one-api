@@ -42,7 +42,10 @@ func TestGeminiProvider_ChatCompletions(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := NewGeminiProvider(server.URL, "test-api-key", 30*time.Second)
+	p, err := NewGeminiProvider(server.URL, "test-api-key", 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewGeminiProvider: %v", err)
+	}
 	resp, err := p.ChatCompletions(context.Background(), &ChatCompletionsRequest{
 		Model:    "gemini-pro",
 		Messages: []Message{{Role: "user", Content: "Hello"}},
@@ -68,8 +71,11 @@ func TestGeminiProvider_ChatCompletions_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := NewGeminiProvider(server.URL, "test-api-key", 30*time.Second)
-	_, err := p.ChatCompletions(context.Background(), &ChatCompletionsRequest{
+	p, err := NewGeminiProvider(server.URL, "test-api-key", 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewGeminiProvider: %v", err)
+	}
+	_, err = p.ChatCompletions(context.Background(), &ChatCompletionsRequest{
 		Model:    "invalid-model",
 		Messages: []Message{{Role: "user", Content: "Hello"}},
 	})
@@ -100,7 +106,10 @@ func TestGeminiProvider_ChatCompletionsStream(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := NewGeminiProvider(server.URL, "test-api-key", 30*time.Second)
+	p, err := NewGeminiProvider(server.URL, "test-api-key", 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewGeminiProvider: %v", err)
+	}
 	chunkChan, err := p.ChatCompletionsStream(context.Background(), &ChatCompletionsRequest{
 		Model:    "gemini-pro",
 		Messages: []Message{{Role: "user", Content: "Hello"}},
@@ -134,8 +143,11 @@ func TestGeminiProvider_ChatCompletionsStream_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := NewGeminiProvider(server.URL, "test-api-key", 30*time.Second)
-	_, err := p.ChatCompletionsStream(context.Background(), &ChatCompletionsRequest{
+	p, err := NewGeminiProvider(server.URL, "test-api-key", 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewGeminiProvider: %v", err)
+	}
+	_, err = p.ChatCompletionsStream(context.Background(), &ChatCompletionsRequest{
 		Model:    "gemini-pro",
 		Messages: []Message{{Role: "user", Content: "Hello"}},
 		Stream:   true,
@@ -146,14 +158,20 @@ func TestGeminiProvider_ChatCompletionsStream_Error(t *testing.T) {
 }
 
 func TestNewGeminiProvider_DefaultTimeout(t *testing.T) {
-	p := NewGeminiProvider("https://generativelanguage.googleapis.com", "key", 0)
+	p, err := NewGeminiProvider("https://generativelanguage.googleapis.com", "key", 0)
+	if err != nil {
+		t.Fatalf("NewGeminiProvider: %v", err)
+	}
 	if p.timeout != 30*time.Second {
 		t.Fatalf("expected 30s default timeout, got %v", p.timeout)
 	}
 }
 
 func TestNewGeminiProvider_DefaultBaseURL(t *testing.T) {
-	p := NewGeminiProvider("", "key", 30*time.Second)
+	p, err := NewGeminiProvider("", "key", 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewGeminiProvider: %v", err)
+	}
 	if p.baseURL != "https://generativelanguage.googleapis.com" {
 		t.Fatalf("expected default base URL, got %s", p.baseURL)
 	}

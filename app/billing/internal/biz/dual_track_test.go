@@ -351,16 +351,20 @@ func (m *mockSubscriptionPrimitives) GetActiveSubscriptionForUser(ctx context.Co
 	return m.subscription, nil
 }
 
+func (m *mockSubscriptionPrimitives) GetActiveSubscriptionForUserInTx(ctx context.Context, tx subscriptionbiz.Tx, userID int64) (*subscriptionbiz.UserSubscription, error) {
+	return m.GetActiveSubscriptionForUser(ctx, userID)
+}
+
 func (m *mockSubscriptionPrimitives) GetGroupForSubscription(ctx context.Context, subscription *subscriptionbiz.UserSubscription) (*subscriptionbiz.SubscriptionGroup, error) {
 	return m.group, nil
 }
 
-func (m *mockSubscriptionPrimitives) RecordUsageForSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error {
+func (m *mockSubscriptionPrimitives) RecordUsageForSubscriptionInTx(ctx context.Context, tx subscriptionbiz.Tx, subscriptionID int64, costUSD float64, now int64) error {
 	m.usageUSD += costUSD
 	return nil
 }
 
-func (m *mockReceivableRepo) CreateInTx(ctx context.Context, tx *gorm.DB, recv *AccountReceivable) error {
+func (m *mockReceivableRepo) CreateInTx(ctx context.Context, tx subscriptionbiz.Tx, recv *AccountReceivable) error {
 	if recv == nil {
 		return errors.New("nil recv")
 	}
@@ -379,7 +383,7 @@ func (m *mockReceivableRepo) ListPendingByUser(ctx context.Context, userID strin
 	return out, nil
 }
 
-func (m *mockReceivableRepo) SettleOldestForUserInTx(ctx context.Context, tx *gorm.DB, userID string, amount int64) (int64, error) {
+func (m *mockReceivableRepo) SettleOldestForUserInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, amount int64) (int64, error) {
 	remaining := amount
 	settled := int64(0)
 	for _, r := range m.receivables {

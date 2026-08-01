@@ -84,7 +84,7 @@ func (a *AnthropicAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayCo
 // ConvertResponse returns the upstream body unchanged for anthropic_messages.
 func (a *AnthropicAdaptor) ConvertResponse(_ *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, provider.MaxUpstreamResponseBody))
 	if err != nil {
 		return "", nil, fmt.Errorf("read upstream response: %w", err)
 	}

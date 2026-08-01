@@ -20,10 +20,12 @@ import (
 	adminbiz "micro-one-api/app/admin/internal/biz"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	"micro-one-api/pkg/safecast"
 	applogger "micro-one-api/platform/logging"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -40,6 +42,17 @@ type AdminService struct {
 	subscriptionUc  *subscriptionbiz.SubscriptionUsecase
 	groupUc         *subscriptionbiz.GroupUsecase
 	planUc          *subscriptionbiz.PlanUsecase
+}
+
+type operatorCredentialKey struct{}
+
+func WithOperatorCredential(ctx context.Context, credential string) context.Context {
+	return context.WithValue(ctx, operatorCredentialKey{}, credential)
+}
+
+func operatorCredential(ctx context.Context) string {
+	credential, _ := ctx.Value(operatorCredentialKey{}).(string)
+	return credential
 }
 
 type OneAPIOption struct {
@@ -395,52 +408,52 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 	}
 
 	return map[string]interface{}{
-		"id":                      entry.GetId(),
-		"userId":                  entry.GetUserId(),
-		"user_id":                 entry.GetUserId(),
-		"username":                entry.GetUsername(),
-		"type":                    entry.GetType(),
-		"amount":                  entry.GetAmount(),
-		"balanceAfter":            entry.GetBalanceAfter(),
-		"referenceId":             entry.GetReferenceId(),
-		"request_id":              entry.GetReferenceId(),
-		"remark":                  entry.GetRemark(),
-		"message":                 entry.GetRemark(),
-		"createdAt":               createdAt,
-		"created_at":              createdAt,
-		"tokenName":               entry.GetTokenName(),
-		"token_name":              entry.GetTokenName(),
-		"modelName":               entry.GetModelName(),
-		"model_name":              entry.GetModelName(),
-		"quota":                   entry.GetQuota(),
-		"promptTokens":            entry.GetPromptTokens(),
-		"prompt_tokens":           entry.GetPromptTokens(),
-		"completionTokens":        entry.GetCompletionTokens(),
-		"completion_tokens":       entry.GetCompletionTokens(),
-		"cacheReadTokens":         entry.GetCacheReadTokens(),
-		"cache_read_tokens":       entry.GetCacheReadTokens(),
-		"cacheCreation5mTokens":   entry.GetCacheCreation_5MTokens(),
-		"cacheCreation1hTokens":   entry.GetCacheCreation_1HTokens(),
+		"id":                       entry.GetId(),
+		"userId":                   entry.GetUserId(),
+		"user_id":                  entry.GetUserId(),
+		"username":                 entry.GetUsername(),
+		"type":                     entry.GetType(),
+		"amount":                   entry.GetAmount(),
+		"balanceAfter":             entry.GetBalanceAfter(),
+		"referenceId":              entry.GetReferenceId(),
+		"request_id":               entry.GetReferenceId(),
+		"remark":                   entry.GetRemark(),
+		"message":                  entry.GetRemark(),
+		"createdAt":                createdAt,
+		"created_at":               createdAt,
+		"tokenName":                entry.GetTokenName(),
+		"token_name":               entry.GetTokenName(),
+		"modelName":                entry.GetModelName(),
+		"model_name":               entry.GetModelName(),
+		"quota":                    entry.GetQuota(),
+		"promptTokens":             entry.GetPromptTokens(),
+		"prompt_tokens":            entry.GetPromptTokens(),
+		"completionTokens":         entry.GetCompletionTokens(),
+		"completion_tokens":        entry.GetCompletionTokens(),
+		"cacheReadTokens":          entry.GetCacheReadTokens(),
+		"cache_read_tokens":        entry.GetCacheReadTokens(),
+		"cacheCreation5mTokens":    entry.GetCacheCreation_5MTokens(),
+		"cacheCreation1hTokens":    entry.GetCacheCreation_1HTokens(),
 		"cache_creation_5m_tokens": entry.GetCacheCreation_5MTokens(),
 		"cache_creation_1h_tokens": entry.GetCacheCreation_1HTokens(),
-		"channelId":               entry.GetChannelId(),
-		"channel":                 entry.GetChannelId(),
-		"channelName":             channel.Name,
-		"channelType":             channel.Type,
-		"channelTypeStr":          channel.TypeStr,
-		"upstreamName":            upstream.Name,
-		"upstreamProtocol":        upstream.TypeStr,
-		"subscriptionAccountId":   entry.GetSubscriptionAccountId(),
-		"subscription_account_id": entry.GetSubscriptionAccountId(),
-		"elapsedTime":             entry.GetElapsedTime(),
-		"elapsed_time":            entry.GetElapsedTime(),
-		"isStream":                entry.GetIsStream(),
-		"is_stream":               entry.GetIsStream(),
-		"endpoint":                entry.GetEndpoint(),
-		"costSource":              entry.GetCostSource(),
-		"subscriptionCost":        entry.GetSubscriptionCost(),
-		"balanceCost":             entry.GetBalanceCost(),
-		"ledgerDedupeKey":         entry.GetLedgerDedupeKey(),
+		"channelId":                entry.GetChannelId(),
+		"channel":                  entry.GetChannelId(),
+		"channelName":              channel.Name,
+		"channelType":              channel.Type,
+		"channelTypeStr":           channel.TypeStr,
+		"upstreamName":             upstream.Name,
+		"upstreamProtocol":         upstream.TypeStr,
+		"subscriptionAccountId":    entry.GetSubscriptionAccountId(),
+		"subscription_account_id":  entry.GetSubscriptionAccountId(),
+		"elapsedTime":              entry.GetElapsedTime(),
+		"elapsed_time":             entry.GetElapsedTime(),
+		"isStream":                 entry.GetIsStream(),
+		"is_stream":                entry.GetIsStream(),
+		"endpoint":                 entry.GetEndpoint(),
+		"costSource":               entry.GetCostSource(),
+		"subscriptionCost":         entry.GetSubscriptionCost(),
+		"balanceCost":              entry.GetBalanceCost(),
+		"ledgerDedupeKey":          entry.GetLedgerDedupeKey(),
 	}, nil
 }
 
@@ -615,7 +628,12 @@ func (s *AdminService) DeleteUser(ctx context.Context, req *adminv1.AdminDeleteU
 }
 
 func (s *AdminService) SetUserRole(ctx context.Context, req *adminv1.AdminSetUserRoleRequest) (*adminv1.AdminSetUserRoleResponse, error) {
-	resp, err := s.identityClient.SetUserRole(ctx, &identityv1.SetUserRoleRequest{
+	credential := operatorCredential(ctx)
+	if credential == "" {
+		return &adminv1.AdminSetUserRoleResponse{Success: false, Message: "operator credential required"}, nil
+	}
+	callCtx := metadata.AppendToOutgoingContext(ctx, "x-operator-authorization", "Bearer "+credential)
+	resp, err := s.identityClient.SetUserRole(callCtx, &identityv1.SetUserRoleRequest{
 		UserId:         req.UserId,
 		Role:           req.Role,
 		OperatorUserId: req.OperatorUserId,
@@ -951,7 +969,7 @@ func (s *AdminService) FetchSubscriptionAccountSummariesByID(ctx context.Context
 	}
 	resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
 		Page:     1,
-		PageSize: int32(len(wanted)),
+		PageSize: safecast.IntToInt32Saturating(len(wanted)),
 	})
 	if err != nil || resp == nil {
 		return result
@@ -989,7 +1007,7 @@ func (s *AdminService) FetchChannelSummariesByID(ctx context.Context, ids []int6
 	}
 	resp, err := s.channelClient.ListChannels(ctx, &channelv1.ListChannelsRequest{
 		Page:     1,
-		PageSize: int32(len(wanted)),
+		PageSize: safecast.IntToInt32Saturating(len(wanted)),
 	})
 	if err != nil || resp == nil {
 		return result

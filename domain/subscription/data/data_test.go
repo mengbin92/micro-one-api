@@ -169,7 +169,7 @@ func TestSubscriptionRepository_SubscriptionCRUD(t *testing.T) {
 		SubscriptionName:   "alice-pro",
 		Status:             biz.SubscriptionStatusActive,
 		StartsAt:           10,
-		ExpiresAt:          20,
+		ExpiresAt:          1 << 62, // far future so the domain-C1 expires_at>now guard does not filter it out
 		DailyWindowStart:   10,
 		WeeklyWindowStart:  10,
 		MonthlyWindowStart: 10,
@@ -203,6 +203,90 @@ func TestSubscriptionRepository_SubscriptionCRUD(t *testing.T) {
 	require.NoError(t, repo.DeleteSubscription(ctx, sub.ID))
 	_, err = repo.GetSubscriptionByID(ctx, sub.ID)
 	assert.ErrorIs(t, err, biz.ErrSubscriptionNotFound)
+}
+
+// TestSubscriptionRepository_ExpiredActiveFiltered (domain-C1) verifies that a
+// subscription whose status is still 'active' but whose expires_at has already
+// passed is NOT returned by the active-subscription read paths. This is the
+// defence-in-depth guard that keeps quota correct even before the hourly
+// SubscriptionExpiryChecker has flipped the status to expired.
+func TestSubscriptionRepository_ExpiredActiveFiltered(t *testing.T) {
+	repo := setupSubscriptionTestDB(t)
+	ctx := context.Background()
+
+	group := &biz.SubscriptionGroup{Name: "pro-expired", Platform: "openai", Status: biz.SubscriptionGroupStatusEnabled}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+
+	// status=active but already expired in the past.
+	expired := &biz.UserSubscription{
+		UserID:           7777,
+		GroupID:          group.ID,
+		SubscriptionName: "stale",
+		Status:           biz.SubscriptionStatusActive,
+		StartsAt:         10,
+		ExpiresAt:        1, // already expired
+	}
+	require.NoError(t, repo.CreateSubscription(ctx, expired))
+
+	// The row exists (by ID) but must not be considered active.
+	_, err := repo.GetActiveSubscriptionByUser(ctx, 7777)
+	assert.ErrorIs(t, err, biz.ErrSubscriptionNotFound)
+
+	// The in-tx locked read must apply the same guard so the payment assigner
+	// cannot grant onto a stale row either.
+	_, err = repo.GetActiveSubscriptionByUserInTx(ctx, &gormTx{db: repo.db}, 7777)
+	assert.ErrorIs(t, err, biz.ErrSubscriptionNotFound)
+}
+
+// TestSubscriptionRepository_UpdateFieldsDoesNotClobberUsage (domain-H1)
+// verifies that a selective update (e.g. the expiry checker flipping status,
+// or an Extend changing expires_at) does NOT overwrite concurrent AddUsage
+// increments on the usage/window columns. The previous full-row
+// updateSubscriptionWithTx wrote daily/weekly/monthly_usage_usd from a
+// potentially stale read snapshot, silently rolling back billed usage.
+func TestSubscriptionRepository_UpdateFieldsDoesNotClobberUsage(t *testing.T) {
+	repo := setupSubscriptionTestDB(t)
+	ctx := context.Background()
+
+	group := &biz.SubscriptionGroup{Name: "pro-h1", Platform: "openai", Status: biz.SubscriptionGroupStatusEnabled}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+
+	sub := &biz.UserSubscription{
+		UserID:           8888,
+		GroupID:          group.ID,
+		SubscriptionName: "h1-pro",
+		Status:           biz.SubscriptionStatusActive,
+		StartsAt:         10,
+		ExpiresAt:        1 << 62,
+	}
+	require.NoError(t, repo.CreateSubscription(ctx, sub))
+
+	// Simulate relay usage being billed.
+	require.NoError(t, repo.AddUsage(ctx, 8888, 2.5, 100))
+
+	// Capture the live usage that a concurrent AddUsage would produce.
+	before, err := repo.GetSubscriptionByID(ctx, sub.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2.5, before.DailyUsageUSD)
+
+	// Now a stale snapshot (e.g. read before AddUsage committed) tries to flip
+	// the status to expired via the SELECTIVE write path. Its usage fields are
+	// still zero (stale read) — the narrow write must NOT propagate them.
+	stale := *before
+	stale.DailyUsageUSD = 0
+	stale.WeeklyUsageUSD = 0
+	stale.MonthlyUsageUSD = 0
+	stale.Status = biz.SubscriptionStatusExpired
+	require.NoError(t, repo.UpdateSubscriptionFields(ctx, &stale, []biz.SubscriptionField{biz.SubscriptionFieldStatus}))
+
+	got, err := repo.GetSubscriptionByID(ctx, sub.ID)
+	require.NoError(t, err)
+	// Status was written...
+	assert.Equal(t, biz.SubscriptionStatusExpired, got.Status)
+	// ...but the usage increments are preserved (the bug would zero them).
+	assert.Equal(t, 2.5, got.DailyUsageUSD, "narrow status update must not clobber daily usage")
+	assert.Equal(t, 2.5, got.WeeklyUsageUSD, "narrow status update must not clobber weekly usage")
+	assert.Equal(t, 2.5, got.MonthlyUsageUSD, "narrow status update must not clobber monthly usage")
 }
 
 // TestSubscriptionRepository_AddUsageConcurrent verifies AddUsage does not lose

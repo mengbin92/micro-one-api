@@ -16,11 +16,12 @@ import (
 const defaultAzureAPIVersion = "2024-02-15-preview"
 
 type AzureProvider struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	apiVersion string
-	timeout    time.Duration
+	httpClient   *http.Client
+	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	baseURL      string
+	apiKey       string
+	apiVersion   string
+	timeout      time.Duration
 }
 
 func NewAzureProvider(baseURL, apiKey, apiVersion string, timeout time.Duration) (*AzureProvider, error) {
@@ -35,10 +36,13 @@ func NewAzureProvider(baseURL, apiKey, apiVersion string, timeout time.Duration)
 	}
 	return &AzureProvider{
 		httpClient: &http.Client{Timeout: timeout},
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKey:     apiKey,
-		apiVersion: apiVersion,
-		timeout:    timeout,
+		// domain-H3: streaming client has no Client.Timeout so SSE body reads
+		// are not killed mid-stream; cancellation is driven by the request ctx.
+		streamClient: &http.Client{},
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		apiKey:       apiKey,
+		apiVersion:   apiVersion,
+		timeout:      timeout,
 	}, nil
 }
 
@@ -66,12 +70,12 @@ func (p *AzureProvider) ChatCompletions(ctx context.Context, req *ChatCompletion
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 	var response ChatCompletionsResponse
 	if err := sonic.Unmarshal(respBody, &response); err != nil {
@@ -98,14 +102,14 @@ func (p *AzureProvider) ChatCompletionsStream(ctx context.Context, req *ChatComp
 	}
 	p.setHeaders(httpReq.Header, nil)
 
-	resp, err := p.httpClient.Do(httpReq)
+	resp, err := p.streamClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
+		_ = resp.Body.Close()
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 	return readOpenAIStream(resp), nil
 }
@@ -136,12 +140,12 @@ func (p *AzureProvider) Forward(ctx context.Context, req *RawRequest) (*RawRespo
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read raw response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("upstream error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 	return &RawResponse{StatusCode: resp.StatusCode, Header: resp.Header.Clone(), Body: respBody}, nil
 }

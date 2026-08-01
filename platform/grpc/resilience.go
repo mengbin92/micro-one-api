@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -36,20 +37,20 @@ type StateChangeCallback func(name string, from gobreaker.State, to gobreaker.St
 type FallbackStrategy string
 
 const (
-	FallbackCache   FallbackStrategy = "cache"   // Use cached data
-	FallbackAsync   FallbackStrategy = "async"   // Use async mode
-	FallbackNoOp    FallbackStrategy = "noop"    // Do nothing
-	FallbackReject  FallbackStrategy = "reject"  // Reject immediately
+	FallbackCache  FallbackStrategy = "cache"  // Use cached data
+	FallbackAsync  FallbackStrategy = "async"  // Use async mode
+	FallbackNoOp   FallbackStrategy = "noop"   // Do nothing
+	FallbackReject FallbackStrategy = "reject" // Reject immediately
 )
 
 // DefaultBreakerConfig returns the default circuit breaker configuration.
 func DefaultBreakerConfig(name string) *BreakerConfig {
 	return &BreakerConfig{
-		Name:         name,
-		MaxRequests:  3,
-		Interval:     60 * time.Second,
-		Timeout:      30 * time.Second,
-		ReadyToTrip:  DefaultReadyToTrip,
+		Name:             name,
+		MaxRequests:      3,
+		Interval:         60 * time.Second,
+		Timeout:          30 * time.Second,
+		ReadyToTrip:      DefaultReadyToTrip,
 		FallbackStrategy: FallbackCache,
 	}
 }
@@ -63,14 +64,34 @@ func DefaultReadyToTrip(counts gobreaker.Counts) bool {
 // FallbackFunc is called when the circuit breaker is open.
 type FallbackFunc[T any] func(ctx context.Context, err error) (T, error)
 
+// ErrCircuitBreakerOpen is the sentinel returned by RejectFallback when the
+// circuit breaker for a downstream service is open. Callers can branch on it
+// with errors.Is to degrade gracefully instead of receiving a wrapped,
+// message-bearing "circuit breaker open for <svc>" error (relay-H1: the four
+// production ResilientClients previously passed nil as the fallback, so the
+// only signal was an opaque formatted string).
+var ErrCircuitBreakerOpen = errors.New("circuit breaker open")
+
+// TypedRejectFallback returns a FallbackFunc that rejects the call with the typed
+// ErrCircuitBreakerOpen sentinel, preserving the original breaker error via
+// errors.Join so it is still available for logging while callers match on the
+// sentinel (relay-H1).
+func TypedRejectFallback[T any]() FallbackFunc[T] {
+	return func(ctx context.Context, err error) (T, error) {
+		var zero T
+		return zero, errors.Join(ErrCircuitBreakerOpen, err)
+	}
+}
+
 // ResilientClient wraps a gRPC client with circuit breaker, timeout, and fallback.
 type ResilientClient[T any] struct {
-	client      T
-	breaker     *gobreaker.CircuitBreaker
-	timeout     time.Duration
-	fallback    FallbackFunc[T]
-	serviceName string
-	mu          sync.RWMutex
+	client           T
+	breaker          *gobreaker.CircuitBreaker
+	timeout          time.Duration
+	fallback         FallbackFunc[T]
+	serviceName      string
+	fallbackStrategy FallbackStrategy
+	mu               sync.RWMutex
 }
 
 // NewResilientClient creates a new resilient gRPC client wrapper.
@@ -90,10 +111,25 @@ func NewResilientClient[T any](
 		Interval:    cfg.Interval,
 		Timeout:     cfg.Timeout,
 		ReadyToTrip: cfg.ReadyToTrip,
+		// platform-H1: a non-retryable error (invalid token, not found, bad
+		// request) is a client problem, not an upstream-health signal. Counting
+		// it as a breaker failure lets a wave of bad API keys trip the identity
+		// breaker and reject ALL traffic. gobreaker's IsSuccessful gates its own
+		// afterRequest(onFailure) — returning true for non-retryable errors means
+		// only retryable failures (network, deadline, unavailable) move the
+		// breaker toward open.
+		IsSuccessful: func(err error) bool {
+			return err == nil || !isRetryableError(err)
+		},
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 			// Update metrics
 			state := stateToGauge(to)
 			metrics.CircuitBreakerState.WithLabelValues(name).Set(state)
+			// platform-L5: a trip is a transition INTO open, not every request
+			// rejected while open (which inflated the metric hugely).
+			if to == gobreaker.StateOpen {
+				metrics.CircuitBreakerTrips.WithLabelValues(name).Inc()
+			}
 
 			if cfg.OnStateChange != nil {
 				cfg.OnStateChange(name, from, to)
@@ -104,11 +140,12 @@ func NewResilientClient[T any](
 	breaker := gobreaker.NewCircuitBreaker(settings)
 
 	return &ResilientClient[T]{
-		client:      client,
-		breaker:     breaker,
-		timeout:     timeout,
-		fallback:    fallback,
-		serviceName: cfg.Name,
+		client:           client,
+		breaker:          breaker,
+		timeout:          timeout,
+		fallback:         fallback,
+		serviceName:      cfg.Name,
+		fallbackStrategy: cfg.FallbackStrategy,
 	}
 }
 
@@ -129,32 +166,30 @@ func (rc *ResilientClient[T]) Execute(
 			defer cancel()
 		}
 
-		// Execute the function
+		// Execute the function. gobreaker decides success/failure for breaker
+		// accounting via the IsSuccessful setting (platform-H1): non-retryable
+		// errors are treated as successes so client-error storms cannot trip the
+		// breaker. The outcome metrics are recorded below from the breaker result.
 		resp, err := fn(ctx, rc.client)
-		if err != nil {
-			// Check if error is retryable
-			if !isRetryableError(err) {
-				// Non-retryable errors don't count toward breaker
-				return resp, err
-			}
-			metrics.CircuitBreakerFailures.WithLabelValues(rc.serviceName).Inc()
-			return resp, err
-		}
-
-		metrics.CircuitBreakerRequests.WithLabelValues(rc.serviceName, "success").Inc()
-		return resp, nil
+		return resp, err
 	})
 
 	if err != nil {
-		metrics.CircuitBreakerRequests.WithLabelValues(rc.serviceName, "failure").Inc()
+		// platform-L5: distinguish client (non-retryable) errors from real
+		// upstream failures so the "failure" outcome only reflects breaker-
+		// relevant failures.
+		if !isRetryableError(err) {
+			metrics.CircuitBreakerRequests.WithLabelValues(rc.serviceName, "client_error").Inc()
+		} else {
+			metrics.CircuitBreakerRequests.WithLabelValues(rc.serviceName, "failure").Inc()
+			metrics.CircuitBreakerFailures.WithLabelValues(rc.serviceName).Inc()
+		}
 
 		// Check if breaker is open
 		if rc.breaker.State() == gobreaker.StateOpen {
-			metrics.CircuitBreakerTrips.WithLabelValues(rc.serviceName).Inc()
-
 			// Try fallback
 			if rc.fallback != nil {
-				metrics.FallbackActivation.WithLabelValues(rc.serviceName, string(getFallbackStrategy(rc.fallback))).Inc()
+				metrics.FallbackActivation.WithLabelValues(rc.serviceName, string(rc.fallbackStrategyLabel())).Inc()
 				return rc.fallback(ctx, err)
 			}
 
@@ -181,11 +216,13 @@ func stateToGauge(state gobreaker.State) float64 {
 	}
 }
 
-// getFallbackStrategy extracts the fallback strategy from the function.
-func getFallbackStrategy[T any](fn FallbackFunc[T]) FallbackStrategy {
-	// This is a placeholder - actual implementation would use type assertion
-	// or a different approach to determine the strategy
-	return FallbackCache
+// fallbackStrategyLabel returns the configured fallback strategy for this
+// client (platform-L5: previously hardcoded to FallbackCache for every service).
+func (rc *ResilientClient[T]) fallbackStrategyLabel() FallbackStrategy {
+	if rc.fallbackStrategy != "" {
+		return rc.fallbackStrategy
+	}
+	return FallbackReject
 }
 
 // State returns the current state of the circuit breaker.
@@ -262,21 +299,25 @@ func UnaryClientInterceptor(serviceName string, breaker *gobreaker.CircuitBreake
 		state := breaker.State()
 		metrics.CircuitBreakerState.WithLabelValues(serviceName).Set(stateToGauge(state))
 
-		// Execute with breaker protection
+		// Execute with breaker protection. The breaker must be constructed with an
+		// IsSuccessful that treats non-retryable errors as successes (platform-H1);
+		// here we only record outcome metrics consistently (platform-L5).
 		_, err := breaker.Execute(func() (any, error) {
 			err := invoker(ctx, method, req, reply, cc, opts...)
-			if err != nil && isRetryableError(err) {
-				metrics.CircuitBreakerFailures.WithLabelValues(serviceName).Inc()
-				metrics.CircuitBreakerRequests.WithLabelValues(serviceName, "failure").Inc()
-				return nil, err
-			}
-			metrics.CircuitBreakerRequests.WithLabelValues(serviceName, "success").Inc()
 			return nil, err
 		})
 
-		if err != nil && breaker.State() == gobreaker.StateOpen {
-			metrics.CircuitBreakerTrips.WithLabelValues(serviceName).Inc()
+		if err != nil {
+			if isRetryableError(err) {
+				metrics.CircuitBreakerFailures.WithLabelValues(serviceName).Inc()
+				metrics.CircuitBreakerRequests.WithLabelValues(serviceName, "failure").Inc()
+			} else {
+				metrics.CircuitBreakerRequests.WithLabelValues(serviceName, "client_error").Inc()
+			}
+		} else {
+			metrics.CircuitBreakerRequests.WithLabelValues(serviceName, "success").Inc()
 		}
+		// platform-L5: trips are counted in the breaker's OnStateChange, not here.
 
 		return err
 	}

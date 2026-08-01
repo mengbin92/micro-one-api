@@ -31,7 +31,7 @@ func TestValidateMTLSCertificate(t *testing.T) {
 				KeyUsage:    x509.KeyUsageDigitalSignature,
 				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 				Subject:     pkix.Name{CommonName: "test"},
-				DNSNames:    []string{"test-service.example.com"},
+				DNSNames:    []string{"test-service"},
 			},
 			wantErr: false,
 		},
@@ -162,10 +162,13 @@ func TestMTLSServerOptions(t *testing.T) {
 }
 
 // TestCertificateValidationWithAllowedSubjects tests subject filtering.
+// Review L4: subjects are compared with EXACT equality against the allow-list.
+// Previously strings.Contains let "CN=not-admin" satisfy an allow-listed
+// "admin"; the substring_rejected case guards against that regression.
 func TestCertificateValidationWithAllowedSubjects(t *testing.T) {
 	cfg := &mTLSAuthConfig{
 		Enabled:         true,
-		AllowedSubjects: []string{"CN=allowed", "O=MyOrg"},
+		AllowedSubjects: []string{"CN=allowed"},
 		AllowedServices: []string{},
 	}
 
@@ -184,13 +187,13 @@ func TestCertificateValidationWithAllowedSubjects(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "allowed subject O",
+			name: "substring_rejected (L4 regression guard)",
 			cert: &x509.Certificate{
 				KeyUsage:    x509.KeyUsageDigitalSignature,
 				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-				Subject:     pkix.Name{Organization: []string{"MyOrg"}, OrganizationalUnit: []string{"Engineering"}},
+				Subject:     pkix.Name{CommonName: "not-allowed"},
 			},
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name: "not allowed subject",
@@ -214,6 +217,9 @@ func TestCertificateValidationWithAllowedSubjects(t *testing.T) {
 }
 
 // TestCertificateValidationWithAllowedServices tests SAN filtering.
+// Review L4: SANs are compared with EXACT equality against the allow-list.
+// Previously strings.Contains let "billing.evil.example" satisfy an
+// allow-listed "billing"; the substring_rejected case guards that regression.
 func TestCertificateValidationWithAllowedServices(t *testing.T) {
 	cfg := &mTLSAuthConfig{
 		Enabled:         true,
@@ -231,9 +237,18 @@ func TestCertificateValidationWithAllowedServices(t *testing.T) {
 			cert: &x509.Certificate{
 				KeyUsage:    x509.KeyUsageDigitalSignature,
 				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-				DNSNames:    []string{"allowed-service.example.com"},
+				DNSNames:    []string{"allowed-service"},
 			},
 			wantErr: false,
+		},
+		{
+			name: "substring_rejected (L4 regression guard)",
+			cert: &x509.Certificate{
+				KeyUsage:    x509.KeyUsageDigitalSignature,
+				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+				DNSNames:    []string{"allowed-service.evil.example"},
+			},
+			wantErr: true,
 		},
 		{
 			name: "no matching service in SAN",

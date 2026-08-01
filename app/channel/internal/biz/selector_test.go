@@ -57,15 +57,27 @@ func TestSlidingWindow_DefaultSize(t *testing.T) {
 	}
 }
 
-func TestSlidingCounter_RateAndIncrement(t *testing.T) {
+func TestSlidingCounter_RateIsTrueRatio(t *testing.T) {
+	// channel-H1: Rate() returns a true error RATIO (errors/total), not
+	// errors-per-second. 10 failures with no successes → ratio 1.0.
 	c := NewSlidingCounter(60 * time.Second)
 	for i := 0; i < 10; i++ {
 		c.Increment()
 	}
-	// 10 errors in the same second bucket over a 60s window.
-	rate := c.Rate()
-	if rate < 0.16 || rate > 0.17 {
-		t.Fatalf("Rate = %v, want ~0.167", rate)
+	if rate := c.Rate(); rate != 1.0 {
+		t.Fatalf("Rate after 10 failures = %v, want 1.0 (true ratio)", rate)
+	}
+
+	// Mixed outcomes: 3 failures of 10 total → ratio 0.3.
+	c2 := NewSlidingCounter(60 * time.Second)
+	for i := 0; i < 10; i++ {
+		c2.RecordOutcome(i >= 3) // i=0,1,2 are failures (success=false)
+	}
+	if rate := c2.Rate(); rate < 0.29 || rate > 0.31 {
+		t.Fatalf("Rate for 3/10 failures = %v, want ~0.3", rate)
+	}
+	if total := c2.Total(); total != 10 {
+		t.Fatalf("Total = %d, want 10", total)
 	}
 }
 
@@ -78,19 +90,24 @@ func TestSlidingCounter_Empty(t *testing.T) {
 
 func TestSlidingCounter_Cleanup(t *testing.T) {
 	c := NewSlidingCounter(2 * time.Second)
-	// Manually inject old buckets.
+	// Manually inject old buckets into both the error and total maps.
 	c.mu.Lock()
-	c.counts[time.Now().Unix()-100] = 5
-	c.counts[time.Now().Unix()-200] = 5
+	old1 := time.Now().Unix() - 100
+	old2 := time.Now().Unix() - 200
+	c.errors[old1] = 5
+	c.errors[old2] = 5
+	c.totals[old1] = 5
+	c.totals[old2] = 5
 	c.mu.Unlock()
 	if got := c.Rate(); got != 0 {
 		t.Fatalf("Rate after cleanup of old buckets = %v, want 0", got)
 	}
 	c.mu.Lock()
-	remaining := len(c.counts)
+	remainingErrors := len(c.errors)
+	remainingTotals := len(c.totals)
 	c.mu.Unlock()
-	if remaining != 0 {
-		t.Fatalf("cleanup left %d stale buckets", remaining)
+	if remainingErrors != 0 || remainingTotals != 0 {
+		t.Fatalf("cleanup left %d error / %d total stale buckets", remainingErrors, remainingTotals)
 	}
 }
 
@@ -234,13 +251,25 @@ func TestWeightedSelector_PreservesHealthWeightRatio(t *testing.T) {
 		t.Fatalf("prime Select err = %v", err)
 	}
 	s.RecordHealth(selected.ID, true, int64(50*time.Millisecond), "")
-	for i := 0; i < 6; i++ {
-		s.RecordHealth(degraded.ID, false, int64(50*time.Millisecond), "502")
+	// channel-H1: healthFactor now uses a true error RATIO (errors/total), so
+	// record a mixed stream that lands the degraded channel in the <0.30 band
+	// (factor 20): 2 failures + 8 successes = 0.2 ratio. RecordOutcome writes
+	// directly to the counter; inflight is managed by Select/RecordHealth below.
+	ds := s.channels[degraded.ID]
+	for i := 0; i < 10; i++ {
+		ds.recentErrors.RecordOutcome(i >= 2) // i=0,1 are failures
 	}
-	if got := s.channels[degraded.ID].healthFactor(); got != 20 {
-		t.Fatalf("degraded health factor = %d, want 20", got)
+	if got := ds.healthFactor(); got != 20 {
+		t.Fatalf("degraded health factor = %d, want 20 (20%% error ratio band)", got)
 	}
 
+	// Sample the steady-state distribution WITHOUT recording fresh health
+	// outcomes each iteration: under the true-ratio semantics (channel-H1),
+	// recording a success on every Select would dilute the degraded channel's
+	// error ratio back toward zero and cure it mid-loop, conflating the health
+	// signal under test. Smooth-WRR accumulates currentWeight across iterations
+	// so the 5:1 effectiveWeight ratio surfaces over the run. Reset inflight
+	// only (Select increments it, and without RecordHealth it never decrements).
 	counts := map[int64]int{}
 	for i := 0; i < 600; i++ {
 		selected, err = s.Select(context.Background(), "g", candidates)
@@ -248,13 +277,17 @@ func TestWeightedSelector_PreservesHealthWeightRatio(t *testing.T) {
 			t.Fatalf("Select err = %v", err)
 		}
 		counts[selected.ID]++
-		s.RecordHealth(selected.ID, true, int64(50*time.Millisecond), "")
+		// Reset inflight only; do NOT reset currentWeight (smooth-WRR needs the
+		// accumulation) and do NOT call RecordHealth (it would cure the ratio).
+		s.mu.Lock()
+		for _, st := range s.channels {
+			st.inflight.Store(0)
+		}
+		s.mu.Unlock()
 	}
-	// The selector preserves existing smooth-WRR credit when health changes, so
-	// the transition window may differ by one selection from the steady-state
-	// 5:1 ratio. A rounded integer floor would instead collapse this to 1:1.
-	if counts[healthy.ID] < 498 || counts[healthy.ID] > 502 ||
-		counts[degraded.ID] < 98 || counts[degraded.ID] > 102 {
+	// Degraded healthFactor 20 vs healthy 100 → ~5:1 split (500:100).
+	if counts[healthy.ID] < 490 || counts[healthy.ID] > 510 ||
+		counts[degraded.ID] < 90 || counts[degraded.ID] > 110 {
 		t.Fatalf("selection distribution = %+v, want approximately 500:100", counts)
 	}
 }

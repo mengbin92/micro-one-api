@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	applogger "micro-one-api/platform/logging"
 	"go.uber.org/zap"
+	applogger "micro-one-api/platform/logging"
 )
 
 // JWTClaims represents JWT claims
@@ -26,18 +26,29 @@ type revokedEntry struct {
 	expiresAt time.Time
 }
 
-// revocationBlocklist is a global in-memory JWT revocation list
+// revocationBlocklist is a global in-memory JWT revocation list.
+//
+// KNOWN LIMITATION (platform-L10): this map is process-local, so a service
+// token revoked on one replica remains valid on every OTHER replica until its
+// natural expiration (default tokenDuration, typically 24h). In a single-
+// replica deployment this is fine. In a multi-replica deployment, EITHER:
+//  1. back this list with a shared store (Redis) keyed by jti with a TTL
+//     equal to tokenDuration, and have IsRevoked fall back to that store; or
+//  2. keep tokenDuration short enough that the stale window is acceptable.
+//
+// The in-process map is kept as a fast-path L1 so the common case (token not
+// revoked) never hits the network.
 var (
-	revocationList   = make(map[string]*revokedEntry)
-	revocationMutex  sync.RWMutex
+	revocationList    = make(map[string]*revokedEntry)
+	revocationMutex   sync.RWMutex
 	revocationCleaned time.Time
 )
 
 // JWTManager manages JWT token creation and validation
 type JWTManager struct {
-	secretKey      []byte
-	issuer         string
-	tokenDuration  time.Duration
+	secretKey       []byte
+	issuer          string
+	tokenDuration   time.Duration
 	refreshDuration time.Duration
 }
 
@@ -61,9 +72,9 @@ func NewJWTManager() (*JWTManager, error) {
 	}
 
 	return &JWTManager{
-		secretKey:      []byte(secretKey),
-		issuer:         issuer,
-		tokenDuration:  tokenDuration,
+		secretKey:       []byte(secretKey),
+		issuer:          issuer,
+		tokenDuration:   tokenDuration,
 		refreshDuration: 7 * 24 * time.Hour, // 7 days
 	}, nil
 }
@@ -135,7 +146,11 @@ func (jm *JWTManager) ValidateServiceToken(tokenString string) (*JWTClaims, erro
 			return nil, fmt.Errorf("invalid audience")
 		}
 
-		// Check expiration
+		// Check expiration (platform-M4: a token without an exp claim has a nil
+		// ExpiresAt; dereferencing .Time panicked on the request path. Reject it.)
+		if claims.ExpiresAt == nil {
+			return nil, fmt.Errorf("token missing expiration claim")
+		}
 		if time.Now().After(claims.ExpiresAt.Time) {
 			return nil, fmt.Errorf("token expired")
 		}
@@ -192,8 +207,14 @@ func (jm *JWTManager) RevokeToken(tokenString string) error {
 	revocationMutex.Lock()
 	defer revocationMutex.Unlock()
 
+	// platform-M4: a token without exp has nil ExpiresAt; use time.Time{}
+	// (zero) so the revocation entry is treated as already-expired by cleanup.
+	var exp time.Time
+	if claims.ExpiresAt != nil {
+		exp = claims.ExpiresAt.Time
+	}
 	revocationList[claims.ID] = &revokedEntry{
-		expiresAt: claims.ExpiresAt.Time,
+		expiresAt: exp,
 	}
 
 	// Periodically clean up expired entries

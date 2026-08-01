@@ -268,7 +268,7 @@ func indexOf(s, sub string) int {
 // wired we fall back to structured logging so the operator, request id,
 // schema version and record count are still captured.
 func logModelExportAudit(r *http.Request, resp *channelv1.ExportModelsResponse) {
-	if resp == nil || applogger.Log == nil {
+	if resp == nil {
 		return
 	}
 	applogger.Log.Info("model export audit",
@@ -286,9 +286,6 @@ func logModelExportAudit(r *http.Request, resp *channelv1.ExportModelsResponse) 
 // imports are always traceable. The error category is included when the import
 // failed before producing a summary.
 func logModelImportAuditDeferred(info importAuditInfo) {
-	if applogger.Log == nil {
-		return
-	}
 	fields := []zap.Field{
 		zap.String("actor", info.actor),
 		zap.String("request_id", info.requestID),

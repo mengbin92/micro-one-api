@@ -54,7 +54,7 @@ func NewData(driver string, dsn ...string) (*Data, error) {
 	rdb := xdb.NewRedisClient(redisAddr, redisPassword)
 	if rdb != nil {
 		if pingErr := xdb.PingRedis(context.Background(), rdb); pingErr != nil {
-			rdb.Close()
+			_ = rdb.Close()
 			rdb = nil
 		}
 	}
@@ -129,7 +129,9 @@ func (d *Data) Redis() *redis.Client {
 
 func (d *Data) Close() error {
 	if d.redis != nil {
-		d.redis.Close()
+		if err := d.redis.Close(); err != nil {
+			return err
+		}
 	}
 	if d.db != nil {
 		sqlDB, err := d.db.DB()

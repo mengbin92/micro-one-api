@@ -300,7 +300,9 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	if !ok {
 		result.statusCode = http.StatusBadGateway
 		result.err = fmt.Errorf("no adaptor registered for subscription channel type")
-		result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+		result.write = func(w http.ResponseWriter) {
+			s.writeError(w, http.StatusBadGateway, gatewayErrorMessage(http.StatusBadGateway))
+		}
 		return result
 	}
 
@@ -383,13 +385,17 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			if resolveErr != nil {
 				result.statusCode = http.StatusBadGateway
 				result.err = fmt.Errorf("resolve subscription account credential: %w", resolveErr)
-				result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+				result.write = func(w http.ResponseWriter) {
+					s.writeError(w, http.StatusBadGateway, gatewayErrorMessage(http.StatusBadGateway))
+				}
 				return result
 			}
 			if resolved == nil || strings.TrimSpace(resolved.AccessToken) == "" {
 				result.statusCode = http.StatusBadGateway
 				result.err = fmt.Errorf("resolve subscription account credential: empty access token")
-				result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+				result.write = func(w http.ResponseWriter) {
+					s.writeError(w, http.StatusBadGateway, gatewayErrorMessage(http.StatusBadGateway))
+				}
 				return result
 			}
 			meta = resolved
@@ -434,7 +440,9 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	if err != nil {
 		result.statusCode = http.StatusBadGateway
 		result.err = fmt.Errorf("adaptor convert request: %w", err)
-		result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+		result.write = func(w http.ResponseWriter) {
+			s.writeError(w, http.StatusBadGateway, gatewayErrorMessage(http.StatusBadGateway))
+		}
 		return result
 	}
 	// (reservation happens after BuildUpstreamRequest so a build error does not
@@ -445,7 +453,9 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	if err != nil {
 		result.statusCode = http.StatusBadGateway
 		result.err = fmt.Errorf("adaptor build request: %w", err)
-		result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+		result.write = func(w http.ResponseWriter) {
+			s.writeError(w, http.StatusBadGateway, gatewayErrorMessage(http.StatusBadGateway))
+		}
 		return result
 	}
 
@@ -484,27 +494,27 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		result.statusCode = http.StatusBadGateway
 		result.err = fmt.Errorf("upstream call: %w", err)
 		result.retryable = true
-		result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+		result.write = func(w http.ResponseWriter) {
+			s.writeError(w, http.StatusBadGateway, gatewayErrorMessage(http.StatusBadGateway))
+		}
 		return result
 	}
 
 	result.upstreamSucceeded = resp.StatusCode >= 200 && resp.StatusCode < 300
 	if !result.upstreamSucceeded {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		io.Copy(io.Discard, resp.Body) // drain so the connection can be reused
-		resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body) // drain so the connection can be reused
+		_ = resp.Body.Close()
 		s.recordCodexQuotaSnapshot(ctx, plan, body)
 		upstreamErr := passthrough.Classify(resp.StatusCode, body)
-		if applogger.Log != nil {
-			applogger.Log.Warn("subscription upstream rejected request",
-				zap.Int("status_code", resp.StatusCode),
-				zap.String("platform", string(meta.Platform)),
-				zap.Int64("channel_id", plan.Channel.ID),
-				zap.Int64("subscription_account_id", meta.ID),
-				zap.String("model", clientModel),
-				zap.String("upstream_error", applogger.SanitizeAndTruncate(string(body), 2048)),
-			)
-		}
+		applogger.Log.Warn("subscription upstream rejected request",
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("platform", string(meta.Platform)),
+			zap.Int64("channel_id", plan.Channel.ID),
+			zap.Int64("subscription_account_id", meta.ID),
+			zap.String("model", clientModel),
+			zap.String("upstream_error", applogger.SanitizeAndTruncate(string(body), 2048)),
+		)
 		result.statusCode = resp.StatusCode
 		result.body = body
 		result.header = resp.Header.Clone()
@@ -517,7 +527,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				writeUpstreamPassthrough(w, resp.StatusCode, resp.Header, body)
 				return
 			}
-			s.writeError(w, resp.StatusCode, result.err.Error())
+			s.writeError(w, resp.StatusCode, sanitizeUpstreamError(resp.StatusCode, result.err))
 		}
 		return result
 	}
@@ -549,7 +559,9 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		if reserveErr != nil {
 			result.statusCode = http.StatusPaymentRequired
 			result.err = fmt.Errorf("reserve quota: %w", reserveErr)
-			result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusPaymentRequired, result.err.Error()) }
+			result.write = func(w http.ResponseWriter) {
+				s.writeError(w, http.StatusPaymentRequired, gatewayErrorMessage(http.StatusPaymentRequired))
+			}
 			return result
 		}
 	}
@@ -557,13 +569,15 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	if isStream {
 		_, reader, err := ad.ConvertStreamResponse(rc, upstreamFmt, resp)
 		if err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if accountUsage {
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "adaptor convert stream error")
 			}
 			result.statusCode = http.StatusInternalServerError
 			result.err = fmt.Errorf("adaptor convert stream: %w", err)
-			result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusInternalServerError, result.err.Error()) }
+			result.write = func(w http.ResponseWriter) {
+				s.writeError(w, http.StatusInternalServerError, gatewayErrorMessage(http.StatusInternalServerError))
+			}
 			return result
 		}
 		// Tee the converted SSE through a usage tracker so we can commit real
@@ -625,15 +639,17 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	// (used_percent / window_minutes / primary_over_secondary_percent), which the
 	// client-facing conversion strips. Restore resp.Body so ConvertResponse still
 	// sees the full payload.
-	rawUpstream, readErr := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	rawUpstream, readErr := io.ReadAll(io.LimitReader(resp.Body, relayprovider.MaxUpstreamResponseBody))
+	_ = resp.Body.Close()
 	if readErr != nil {
 		if accountUsage {
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "read upstream body error")
 		}
 		result.statusCode = http.StatusBadGateway
 		result.err = fmt.Errorf("read upstream body: %w", readErr)
-		result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusBadGateway, result.err.Error()) }
+		result.write = func(w http.ResponseWriter) {
+			s.writeError(w, http.StatusBadGateway, gatewayErrorMessage(http.StatusBadGateway))
+		}
 		return result
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(rawUpstream))
@@ -644,7 +660,9 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		}
 		result.statusCode = http.StatusInternalServerError
 		result.err = fmt.Errorf("adaptor convert response: %w", err)
-		result.write = func(w http.ResponseWriter) { s.writeError(w, http.StatusInternalServerError, result.err.Error()) }
+		result.write = func(w http.ResponseWriter) {
+			s.writeError(w, http.StatusInternalServerError, gatewayErrorMessage(http.StatusInternalServerError))
+		}
 		return result
 	}
 	s.recordCodexQuotaSnapshot(ctx, plan, rawUpstream)

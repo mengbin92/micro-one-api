@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,6 +37,16 @@ type AsyncBillingUsecase struct {
 }
 
 // QuotaCache provides fast local quota checking.
+//
+// Deprecated (code-review 2026-07-30 billing-L2): the L1 in-memory cache, the
+// L2 Redis fast path (preCheckRedis) and the PreCheck entry point are DEAD
+// CODE: nothing in the request path calls PreCheck (the only producer is
+// ReserveQuota, which runs synchronously). Worse, the cache path mutates a
+// shared UserQuota struct outside any per-user lock (data race that can drop
+// concurrent deductions) and estimateCost is a hardcoded "tokens/1000" stub
+// unrelated to real pricing. It is retained only so NewAsyncBillingUsecase
+// keeps its current field set; do NOT wire PreCheck into a hot path until the
+// races are fixed and estimateCost is replaced with the real pricer.
 type QuotaCache struct {
 	mu    sync.RWMutex
 	quota map[int64]*UserQuota // userID → quota
@@ -188,6 +199,10 @@ func (c *QuotaCache) Invalidate(userID int64) {
 
 // PreCheck performs a fast local quota check without DB round-trip.
 // This is the "fast path" — actual deduction happens asynchronously.
+//
+// Deprecated (code-review 2026-07-30 billing-L2): see QuotaCache. This method
+// has no callers in the request path; invoking it as-is would introduce the
+// data race / stub-pricing problems documented on QuotaCache. Do not call.
 func (uc *AsyncBillingUsecase) PreCheck(
 	ctx context.Context,
 	userID string,
@@ -203,7 +218,10 @@ func (uc *AsyncBillingUsecase) PreCheck(
 	}()
 
 	// Convert userID to int64
-	uid := parseUserID(userID)
+	uid, err := parseUserID(userID)
+	if err != nil {
+		return err
+	}
 
 	// L1 check: local cache
 	if quota, ok := uc.localCache.Get(uid); ok {
@@ -229,7 +247,7 @@ func (uc *AsyncBillingUsecase) PreCheck(
 
 	// Fallback to sync path
 	metrics.QuotaCheckFallback.WithLabelValues("cache_miss").Inc()
-	_, err := uc.syncUc.ReserveQuota(ctx, userID, requestID, estimatedTokens, model, channelID, subscriptionAccountID)
+	_, err = uc.syncUc.ReserveQuota(ctx, userID, requestID, estimatedTokens, model, channelID, subscriptionAccountID)
 	return err
 }
 
@@ -599,18 +617,24 @@ func (w *BatchLedgerWriter) Flush() {
 }
 
 // estimateCost estimates the cost in cents for a given model and token count.
-// This is a simplified version - real implementation would use model pricing.
+//
+// Deprecated (code-review 2026-07-30 billing-L2): this is a hardcoded
+// "tokens/1000" STUB unrelated to the real model pricing tables. It exists
+// only to satisfy the (uncalled) PreCheck fast path. Replacing it with the
+// real pricer is a prerequisite for ever wiring PreCheck into production.
 func estimateCost(model string, tokens int64) int64 {
+	_ = model // pricing is intentionally stubbed; see deprecation note.
 	// Simplified pricing: $0.001 per 1K tokens
 	return (tokens * 1) / 1000
 }
 
 // parseUserID converts string userID to int64.
-func parseUserID(userID string) int64 {
-	// Simple parsing - real implementation would handle different formats
-	var uid int64
-	fmt.Sscanf(userID, "%d", &uid)
-	return uid
+func parseUserID(userID string) (int64, error) {
+	uid, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid user id %q: %w", userID, err)
+	}
+	return uid, nil
 }
 
 // DroppedCount returns the number of ledger entries dropped by the batch

@@ -1,10 +1,16 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestNormalizeIdempotencyKey(t *testing.T) {
@@ -22,11 +28,144 @@ func TestNormalizeIdempotencyKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := normalizeIdempotencyKey(tt.input)
+			// Pass a nil request so the key degrades to the key-only composite
+			// (identity/method/path all empty). The result is always hashed.
+			result := normalizeIdempotencyKey(tt.input, nil)
 			if tt.wantHash && !looksLikeHash(result) {
 				t.Errorf("normalizeIdempotencyKey() = %v, want hash-like result", result)
 			}
 		})
+	}
+}
+
+func TestIdempotencyMiddleware_ConcurrentRequestExecutesOnce(t *testing.T) {
+	var calls atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+		_, _ = w.Write([]byte("ok"))
+	})
+	mw := NewIdempotencyMiddleware(nil, DefaultIdempotencyConfig())
+	wrapped := mw.Handler(handler)
+	var wg sync.WaitGroup
+	recorders := make([]*httptest.ResponseRecorder, 2)
+	for i := range recorders {
+		recorders[i] = httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/charge", nil)
+		req.Header.Set("Idempotency-Key", "concurrent-key")
+		wg.Add(1)
+		go func(rec *httptest.ResponseRecorder) { defer wg.Done(); wrapped.ServeHTTP(rec, req) }(recorders[i])
+		if i == 0 {
+			<-started
+		}
+	}
+	close(release)
+	wg.Wait()
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("handler calls = %d, want 1", got)
+	}
+}
+
+func TestIdempotencyMiddleware_CancelledWaiterDoesNotReleasePrimary(t *testing.T) {
+	var calls atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+		_, _ = w.Write([]byte("ok"))
+	})
+	mw := NewIdempotencyMiddleware(nil, DefaultIdempotencyConfig())
+	wrapped := mw.Handler(handler)
+	primaryDone := make(chan struct{})
+	primary := httptest.NewRequest(http.MethodPost, "/charge", nil)
+	primary.Header.Set("Idempotency-Key", "cancel-key")
+	go func() { wrapped.ServeHTTP(httptest.NewRecorder(), primary); close(primaryDone) }()
+	<-started
+
+	ctx, cancel := context.WithCancel(context.Background())
+	waiter := httptest.NewRequest(http.MethodPost, "/charge", nil).WithContext(ctx)
+	waiter.Header.Set("Idempotency-Key", "cancel-key")
+	cancel()
+	wrapped.ServeHTTP(httptest.NewRecorder(), waiter)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("cancelled waiter executed handler: calls=%d", got)
+	}
+	close(release)
+	<-primaryDone
+}
+
+func TestIdempotencyMiddleware_NonCacheableRetriesAreSerialized(t *testing.T) {
+	var calls atomic.Int32
+	var active atomic.Int32
+	var maxActive atomic.Int32
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		current := active.Add(1)
+		for current > maxActive.Load() && !maxActive.CompareAndSwap(maxActive.Load(), current) {
+		}
+		time.Sleep(20 * time.Millisecond)
+		active.Add(-1)
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	wrapped := NewIdempotencyMiddleware(nil, DefaultIdempotencyConfig()).Handler(handler)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/charge", nil)
+		req.Header.Set("Idempotency-Key", "error-key")
+		wg.Add(1)
+		go func() { defer wg.Done(); wrapped.ServeHTTP(httptest.NewRecorder(), req) }()
+	}
+	wg.Wait()
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("handler calls = %d, want 2", got)
+	}
+	if got := maxActive.Load(); got != 1 {
+		t.Fatalf("max concurrent handlers = %d, want 1", got)
+	}
+}
+
+func TestIdempotencyMiddleware_DistributedRequestExecutesOnce(t *testing.T) {
+	server, err := miniredis.Run()
+	if err != nil {
+		t.Skipf("miniredis unavailable: %v", err)
+	}
+	rdb1 := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	rdb2 := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer rdb1.Close()
+	defer rdb2.Close()
+	var calls atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+		_, _ = w.Write([]byte("ok"))
+	})
+	wrapped1 := NewIdempotencyMiddleware(rdb1, DefaultIdempotencyConfig()).Handler(handler)
+	wrapped2 := NewIdempotencyMiddleware(rdb2, DefaultIdempotencyConfig()).Handler(handler)
+	var wg sync.WaitGroup
+	for i, wrapped := range []http.Handler{wrapped1, wrapped2} {
+		req := httptest.NewRequest(http.MethodPost, "/charge", nil)
+		req.Header.Set("Idempotency-Key", "distributed-key")
+		wg.Add(1)
+		go func(h http.Handler) { defer wg.Done(); h.ServeHTTP(httptest.NewRecorder(), req) }(wrapped)
+		if i == 0 {
+			<-started
+		}
+	}
+	close(release)
+	wg.Wait()
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("handler calls = %d, want 1", got)
 	}
 }
 

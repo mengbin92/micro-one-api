@@ -383,7 +383,7 @@ func transformChatCompletionStreamToResponses(resp *relayprovider.RawStreamRespo
 		defer resp.Body.Close()
 		defer writer.Close()
 		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		responseID := "resp_" + generateRequestID()
 		outputItemID := "msg_" + responseID
 		writeResponsesSSE(writer, map[string]interface{}{

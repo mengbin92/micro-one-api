@@ -28,18 +28,18 @@ func TestMetricsSelectionRecorder_FallbackAndSticky(t *testing.T) {
 	r := NewMetricsSelectionRecorder(nil)
 	// Fallback event.
 	r.RecordSelection(context.Background(), SelectionEvent{
-		FinalKind:       "subscription",
-		Result:          "success",
-		ProviderFamily:  "anthropic",
-		Fallback:        true,
-		FallbackReason:  "upstream_5xx",
+		FinalKind:      "subscription",
+		Result:         "success",
+		ProviderFamily: "anthropic",
+		Fallback:       true,
+		FallbackReason: "upstream_5xx",
 	})
 	// Sticky hit.
 	r.RecordSelection(context.Background(), SelectionEvent{
-		FinalKind:       "subscription",
-		Result:          "success",
-		ProviderFamily:  "anthropic",
-		StickyHit:       true,
+		FinalKind:      "subscription",
+		Result:         "success",
+		ProviderFamily: "anthropic",
+		StickyHit:      true,
 	})
 	// No panic + no error is the contract; Prometheus collects internally.
 }
@@ -82,12 +82,12 @@ func TestMetricsSelectionRecorder_PlannedDoesNotIncrementOutcomeCounters(t *test
 	r := NewMetricsSelectionRecorder(nil)
 	// Planned event with sticky + fallback set — must NOT touch outcome counters.
 	r.RecordSelection(context.Background(), SelectionEvent{
-		FinalKind:       "subscription",
-		ProviderFamily:  "anthropic",
-		StickyHit:       true,
-		Fallback:        true,
-		FallbackReason:  "upstream_5xx",
-		Planned:         true,
+		FinalKind:      "subscription",
+		ProviderFamily: "anthropic",
+		StickyHit:      true,
+		Fallback:       true,
+		FallbackReason: "upstream_5xx",
+		Planned:        true,
 	})
 	// No panic is the contract; the metric split is verified by inspection
 	// (planned path only touches RoutingSelectionPlanned + duration).

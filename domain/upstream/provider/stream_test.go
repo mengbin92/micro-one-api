@@ -139,11 +139,8 @@ func TestOpenAIProvider_ChatCompletionsStreamParsesUsage(t *testing.T) {
 }
 
 func TestReadOpenAIStreamScannerErrorWithNilLoggerDoesNotPanic(t *testing.T) {
-	previous := applogger.Log
-	applogger.Log = nil
-	t.Cleanup(func() {
-		applogger.Log = previous
-	})
+	previous := applogger.SwapLogger(nil)
+	t.Cleanup(func() { applogger.SwapLogger(previous) })
 
 	for range readOpenAIStream(&http.Response{Body: errorReadCloser{err: errors.New("read failed")}}) {
 		t.Fatal("expected no chunks")

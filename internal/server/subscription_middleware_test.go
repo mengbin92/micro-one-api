@@ -10,9 +10,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"micro-one-api/platform/metrics"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	subscriptiondata "micro-one-api/domain/subscription/data"
+	"micro-one-api/platform/metrics"
 )
 
 func TestSubscriptionQuotaMiddlewareAllowsExceededQuota(t *testing.T) {

@@ -20,16 +20,34 @@ type IdentityService struct {
 	uc *biz.IdentityUsecase
 }
 
+type operatorCredentialKey struct{}
+
+// WithOperatorCredential carries the caller's end-user session credential
+// across the identity transport boundary. It is populated only by the
+// authenticated admin-api path and is never accepted from a public request
+// field.
+func WithOperatorCredential(ctx context.Context, credential string, system bool) context.Context {
+	return context.WithValue(context.WithValue(ctx, operatorCredentialKey{}, credential), operatorSystemKey{}, system)
+}
+
+type operatorSystemKey struct{}
+
+func operatorCredential(ctx context.Context) (string, bool) {
+	credential, _ := ctx.Value(operatorCredentialKey{}).(string)
+	system, _ := ctx.Value(operatorSystemKey{}).(bool)
+	return credential, system
+}
+
 func NewIdentityService(uc *biz.IdentityUsecase) *IdentityService {
 	return &IdentityService{uc: uc}
 }
 
-func (s *IdentityService) ValidateTokenModel(ctx context.Context, token string) (*biz.Token, error) {
-	return s.uc.ValidateToken(ctx, token)
+func (s *IdentityService) ValidateTokenModel(ctx context.Context, token, clientIP string) (*biz.Token, error) {
+	return s.uc.ValidateToken(ctx, token, clientIP)
 }
 
-func (s *IdentityService) GetAuthSnapshotModel(ctx context.Context, token string) (*biz.AuthSnapshot, error) {
-	return s.uc.GetAuthSnapshot(ctx, token)
+func (s *IdentityService) GetAuthSnapshotModel(ctx context.Context, token, clientIP string) (*biz.AuthSnapshot, error) {
+	return s.uc.GetAuthSnapshot(ctx, token, clientIP)
 }
 
 func (s *IdentityService) GetUserModel(ctx context.Context, userID int64) (*biz.User, error) {
@@ -50,7 +68,7 @@ func (s *IdentityService) ValidateToken(ctx context.Context, req *identityv1.Val
 }
 
 func (s *IdentityService) GetAuthSnapshot(ctx context.Context, req *identityv1.GetAuthSnapshotRequest) (*identityv1.GetAuthSnapshotReply, error) {
-	snapshot, err := s.uc.GetAuthSnapshot(ctx, req.Token)
+	snapshot, err := s.uc.GetAuthSnapshot(ctx, req.Token, req.ClientIp)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
 	}
@@ -84,7 +102,7 @@ func (s *IdentityService) GetUser(ctx context.Context, req *identityv1.GetUserRe
 }
 
 func (s *IdentityService) Login(ctx context.Context, req *identityv1.LoginRequest) (*identityv1.LoginResponse, error) {
-	user, token, err := s.uc.Login(ctx, req.Username, req.Password)
+	user, token, err := s.uc.Login(ctx, req.Username, req.Password, "")
 	if err != nil {
 		return &identityv1.LoginResponse{
 			Success: false,
@@ -156,9 +174,7 @@ func (s *IdentityService) ListUsers(ctx context.Context, req *identityv1.ListUse
 func (s *IdentityService) CreateUser(ctx context.Context, req *identityv1.CreateUserRequest) (*identityv1.CreateUserResponse, error) {
 	user, err := s.uc.CreateUser(ctx, req.Username, req.DisplayName, req.Email, req.Password, req.Group, 0)
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("CreateUser failed", zap.Error(err))
-		}
+		applogger.Log.Warn("CreateUser failed", zap.Error(err))
 		return &identityv1.CreateUserResponse{
 			Success: false,
 			Message: "user creation failed",
@@ -174,9 +190,7 @@ func (s *IdentityService) CreateUser(ctx context.Context, req *identityv1.Create
 func (s *IdentityService) UpdateUser(ctx context.Context, req *identityv1.UpdateUserRequest) (*identityv1.UpdateUserResponse, error) {
 	err := s.uc.UpdateUser(ctx, req.UserId, req.DisplayName, req.Email, req.Group, req.Status)
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("UpdateUser failed", zap.Error(err))
-		}
+		applogger.Log.Warn("UpdateUser failed", zap.Error(err))
 		return &identityv1.UpdateUserResponse{
 			Success: false,
 			Message: "user update failed",
@@ -191,9 +205,7 @@ func (s *IdentityService) UpdateUser(ctx context.Context, req *identityv1.Update
 func (s *IdentityService) DeleteUser(ctx context.Context, req *identityv1.DeleteUserRequest) (*identityv1.DeleteUserResponse, error) {
 	err := s.uc.DeleteUser(ctx, req.UserId)
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("DeleteUser failed", zap.Error(err))
-		}
+		applogger.Log.Warn("DeleteUser failed", zap.Error(err))
 		return &identityv1.DeleteUserResponse{
 			Success: false,
 			Message: "user deletion failed",
@@ -205,26 +217,75 @@ func (s *IdentityService) DeleteUser(ctx context.Context, req *identityv1.Delete
 	}, nil
 }
 
+// serviceCallerKey marks a context as originating from a caller that
+// presented a valid SERVICE_TOKEN (validated by the gRPC interceptor in
+// internal/server/grpc.go). Its presence means the request is a trusted
+// in-cluster service call, not an unauthenticated network request. Sensitive
+// handlers additionally validate their end-user/operator credential.
+type serviceCallerKey struct{}
+
+// ServiceAuthenticatedContext stamps the service-caller marker into the
+// context. It is called by the gRPC service-token interceptor after
+// successful token validation so downstream handlers know the caller is a
+// trusted service.
+func ServiceAuthenticatedContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, serviceCallerKey{}, true)
+}
+
+// isServiceAuthenticated reports whether the context carries the
+// service-caller marker (i.e. the request passed the service-token
+// interceptor). When false the caller did not present a valid SERVICE_TOKEN.
+func isServiceAuthenticated(ctx context.Context) bool {
+	v, _ := ctx.Value(serviceCallerKey{}).(bool)
+	return v
+}
+
+// ErrUnauthenticatedService is returned by handlers that require a valid
+// service token or operator credential is absent or invalid.
+var ErrUnauthenticatedService = status.Error(codes.Unauthenticated, "service token required")
+
 func (s *IdentityService) SetUserRole(ctx context.Context, req *identityv1.SetUserRoleRequest) (*identityv1.SetUserRoleResponse, error) {
+	// Require both service authentication and an independently validated
+	// operator credential. The request field is only an identifier and never
+	// establishes the caller's identity.
+	if !isServiceAuthenticated(ctx) {
+		return nil, ErrUnauthenticatedService
+	}
+
+	credential, system := operatorCredential(ctx)
+	if credential == "" {
+		return nil, ErrUnauthenticatedService
+	}
 	var operator *biz.User
-	if req.OperatorUserId > 0 {
+	if system {
+		if req.OperatorUserId != 0 {
+			return nil, ErrUnauthenticatedService
+		}
+	} else if req.OperatorUserId > 0 {
+		claimsUser, err := s.uc.ValidateSessionToken(ctx, credential)
+		if err != nil || claimsUser.ID != req.OperatorUserId {
+			return nil, ErrUnauthenticatedService
+		}
 		op, err := s.uc.GetUser(ctx, req.OperatorUserId)
 		if err != nil {
-			if applogger.Log != nil {
-				applogger.Log.Warn("SetUserRole operator lookup failed", zap.Error(err))
-			}
+			applogger.Log.Warn("SetUserRole operator lookup failed", zap.Error(err))
 			return &identityv1.SetUserRoleResponse{
 				Success: false,
 				Message: "operator not found",
 			}, nil
 		}
 		operator = op
+	} else {
+		return nil, ErrUnauthenticatedService
 	}
+	// operator == nil is only reachable here when the caller is
+	// service-authenticated, the ADMIN_TOKEN was independently validated, and
+	// OperatorUserId == 0. This represents a legitimate system-level
+	// call; SetRole applies its root-protection checks but skips the
+	// operator-vs-target rank comparison.
 	user, err := s.uc.SetRole(ctx, operator, req.UserId, req.Role)
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("SetUserRole failed", zap.Error(err))
-		}
+		applogger.Log.Warn("SetUserRole failed", zap.Error(err))
 		return &identityv1.SetUserRoleResponse{
 			Success: false,
 			Message: err.Error(),
@@ -234,6 +295,34 @@ func (s *IdentityService) SetUserRole(ctx context.Context, req *identityv1.SetUs
 		Success: true,
 		Message: "ok",
 		Role:    user.Role,
+	}, nil
+}
+
+// ConsumeTokenQuota deducts the given amount from a token's remaining quota
+// and marks it exhausted when it reaches zero. Called by relay-gateway after
+// billing settles so per-key quota limits are enforced (review High #5).
+func (s *IdentityService) ConsumeTokenQuota(ctx context.Context, req *identityv1.ConsumeTokenQuotaRequest) (*identityv1.ConsumeTokenQuotaReply, error) {
+	if !isServiceAuthenticated(ctx) {
+		return nil, ErrUnauthenticatedService
+	}
+	if req.TokenId <= 0 || req.Amount <= 0 {
+		return &identityv1.ConsumeTokenQuotaReply{
+			Success: false,
+			Message: "invalid token_id or amount",
+		}, nil
+	}
+	remaining, err := s.uc.ConsumeTokenQuota(ctx, req.UserId, req.TokenId, req.Amount)
+	if err != nil {
+		applogger.Log.Warn("ConsumeTokenQuota failed", zap.Error(err))
+		return &identityv1.ConsumeTokenQuotaReply{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+	return &identityv1.ConsumeTokenQuotaReply{
+		Success:   true,
+		Remaining: remaining,
+		Message:   "ok",
 	}, nil
 }
 
@@ -266,14 +355,10 @@ func mapIdentityErrorToGRPC(err error) error {
 			code = codes.Internal
 			message = "internal error"
 		}
-		if applogger.Log != nil {
-			applogger.Log.Warn("identity error", zap.String("reason", string(structuredErr.Reason)), zap.Error(err))
-		}
+		applogger.Log.Warn("identity error", zap.String("reason", string(structuredErr.Reason)), zap.Error(err))
 		return status.Error(code, message)
 	}
 
-	if applogger.Log != nil {
-		applogger.Log.Warn("unexpected identity error", zap.Error(err))
-	}
+	applogger.Log.Warn("unexpected identity error", zap.Error(err))
 	return status.Error(codes.Internal, "internal error")
 }

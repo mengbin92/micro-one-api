@@ -92,11 +92,12 @@ func (m *mockReconRepo) CountRefundedOrders(ctx context.Context) (int64, int64, 
 func TestRunReconciliation_ExpiredReservations(t *testing.T) {
 	account := &Account{UserID: "user1", Balance: 900, FrozenAmount: 100, Group: "default"}
 	expiredRes := &Reservation{
-		ReservationID: "res1",
-		UserID:        "user1",
-		Amount:        100,
-		Status:        ReservationStatusReserved,
-		ExpiredAt:     time.Now().Add(-10 * time.Minute),
+		ReservationID:      "res1",
+		UserID:              "user1",
+		Amount:              100,
+		BalanceAmountQuota:  100, // legacy balance-only: wallet-side == Amount
+		Status:              ReservationStatusReserved,
+		ExpiredAt:           time.Now().Add(-10 * time.Minute),
 	}
 
 	accountRepo := &mockAccountRepo{account: account}

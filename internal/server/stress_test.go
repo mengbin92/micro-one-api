@@ -69,7 +69,7 @@ func stressSubscriptionServer(t *testing.T, mr *miniredis.Miniredis, rdb *redis.
 
 type stressIdentity struct{}
 
-func (stressIdentity) GetAuthSnapshot(context.Context, string) (*relaybiz.AuthSnapshot, error) {
+func (stressIdentity) GetAuthSnapshot(context.Context, string, string) (*relaybiz.AuthSnapshot, error) {
 	return &relaybiz.AuthSnapshot{UserID: 42, Group: "default"}, nil
 }
 

@@ -19,12 +19,12 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	channeltestutil "micro-one-api/app/channel/testutil"
-	
+
 	identitytestutil "micro-one-api/app/identity/testutil"
-	
+
+	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	relaydata "micro-one-api/internal/data"
-	relayprovider "micro-one-api/domain/upstream/provider"
 	relayserver "micro-one-api/internal/server"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"

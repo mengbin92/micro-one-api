@@ -6,8 +6,8 @@ import (
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 
 	"micro-one-api/app/monitor/internal/service"
-	"micro-one-api/platform/metrics"
 	"micro-one-api/platform/http"
+	"micro-one-api/platform/metrics"
 )
 
 // NewHTTPServer wires HTTP transport for monitor-worker.
@@ -51,7 +51,7 @@ func NewHTTPServer(addr string, svc *service.MonitorService) *khttp.Server {
 	srv.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	return srv
 }

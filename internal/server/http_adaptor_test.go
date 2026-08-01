@@ -1032,7 +1032,7 @@ func TestSubscriptionSticky_Disabled_NoBind(t *testing.T) {
 
 type adaptorFailoverIdentity struct{}
 
-func (adaptorFailoverIdentity) GetAuthSnapshot(context.Context, string) (*relaybiz.AuthSnapshot, error) {
+func (adaptorFailoverIdentity) GetAuthSnapshot(context.Context, string, string) (*relaybiz.AuthSnapshot, error) {
 	return &relaybiz.AuthSnapshot{UserID: 42, Group: "default"}, nil
 }
 

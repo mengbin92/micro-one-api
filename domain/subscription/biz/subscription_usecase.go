@@ -7,15 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	gormdb "gorm.io/gorm"
 )
-
-// gormDB is a thin alias that keeps the package import line short while
-// the type still resolves unambiguously. The alias is local to this
-// file so other files in the package do not need to import gorm to
-// reference the dual-track methods.
-type gormDB = gormdb.DB
 
 const (
 	quotaDailyWindow   = 24 * time.Hour
@@ -84,7 +76,73 @@ func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscripti
 	return subscription, nil
 }
 
+// AssignInTx is the in-transaction variant of Assign used by the payment
+// assigner so the subscription grant commits or rolls back with the payment
+// order status transition (code-review 2026-07-30 billing-H2). The active-
+// subscription check and the create both run inside the caller's tx, with a
+// row lock on the existing active row (when present) so two concurrent grants
+// cannot both pass the "no active subscription" guard.
+func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *AssignSubscriptionRequest) (*UserSubscription, error) {
+	if req == nil {
+		return nil, fmt.Errorf("nil request")
+	}
+	group, err := uc.groupRepo.GetGroupByID(ctx, req.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	if group.Status != SubscriptionGroupStatusEnabled {
+		return nil, ErrSubscriptionGroupDisabled
+	}
+	active, err := uc.repo.GetActiveSubscriptionByUserInTx(ctx, tx, req.UserID)
+	if err != nil && !errors.Is(err, ErrSubscriptionNotFound) {
+		return nil, err
+	}
+	if active != nil {
+		return nil, ErrSubscriptionAlreadyAssigned
+	}
+	now := uc.now().Unix()
+	startsAt := req.StartsAt
+	if startsAt == 0 {
+		startsAt = now
+	}
+	subscription := &UserSubscription{
+		UserID:             req.UserID,
+		GroupID:            req.GroupID,
+		SubscriptionName:   req.SubscriptionName,
+		Status:             SubscriptionStatusActive,
+		StartsAt:           startsAt,
+		ExpiresAt:          req.ExpiresAt,
+		Metadata:           req.Metadata,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		DailyWindowStart:   startsAt,
+		WeeklyWindowStart:  startsAt,
+		MonthlyWindowStart: startsAt,
+	}
+	if err := uc.repo.CreateSubscriptionInTx(ctx, tx, subscription); err != nil {
+		return nil, err
+	}
+	return subscription, nil
+}
+
 func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
+	return uc.assignOrExtend(ctx, nil, req)
+}
+
+// AssignOrExtendInTx is the in-transaction variant of AssignOrExtend used
+// by the payment assigner so the subscription grant/extension and the
+// payment order status transition commit atomically (code-review
+// 2026-07-30 billing-H2). When tx is non-nil the active-subscription
+// read takes a row lock so two concurrent renewals cannot both observe
+// "no active subscription" and both insert.
+func (uc *SubscriptionUsecase) AssignOrExtendInTx(ctx context.Context, tx Tx, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
+	return uc.assignOrExtend(ctx, tx, req)
+}
+
+// assignOrExtend is the shared implementation. When tx is nil it behaves
+// exactly as the historical AssignOrExtend (each write in its own tx);
+// when tx is non-nil every read/write runs inside the caller's tx.
+func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
 	if req == nil {
 		return nil, false, fmt.Errorf("nil request")
 	}
@@ -95,13 +153,24 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 	if group.Status != SubscriptionGroupStatusEnabled {
 		return nil, false, ErrSubscriptionGroupDisabled
 	}
-	active, err := uc.repo.GetActiveSubscriptionByUser(ctx, req.UserID)
+	var active *UserSubscription
+	if tx != nil {
+		active, err = uc.repo.GetActiveSubscriptionByUserInTx(ctx, tx, req.UserID)
+	} else {
+		active, err = uc.repo.GetActiveSubscriptionByUser(ctx, req.UserID)
+	}
 	if err != nil && !errors.Is(err, ErrSubscriptionNotFound) {
 		return nil, false, err
 	}
 	if active == nil {
-		sub, err := uc.Assign(ctx, req)
-		return sub, false, err
+		var sub *UserSubscription
+		var sErr error
+		if tx != nil {
+			sub, sErr = uc.AssignInTx(ctx, tx, req)
+		} else {
+			sub, sErr = uc.Assign(ctx, req)
+		}
+		return sub, false, sErr
 	}
 	// Apply a scheduled next-cycle change (downgrade) when the renewal targets
 	// the pending group. The renewal-initiation layer (admin/service) is
@@ -110,6 +179,7 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 	// same-group renewal (user renews the current plan) intentionally leaves a
 	// pending_change in place so the downgrade still takes effect at the next
 	// renewal that targets the pending group.
+	groupChanged := false
 	if active.GroupID != req.GroupID {
 		pending, ok := pendingChangeMetadata(active.Metadata)
 		if !ok || pending.ToGroupID != req.GroupID {
@@ -117,6 +187,7 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 		}
 		active.GroupID = req.GroupID
 		active.Metadata = clearPendingChangeMetadata(active.Metadata)
+		groupChanged = true
 	}
 	// Extension always accumulates remaining time (review H3 fix): the new
 	// expires_at is max(active.ExpiresAt, now) + requestedDuration. The
@@ -126,7 +197,14 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 	// here makes the payment-callback path and the admin issuance path use the
 	// same renewal semantics.
 	now := uc.now().Unix()
-	duration := req.ExpiresAt - req.StartsAt
+	// domain-M4: normalize StartsAt==0 to now, matching Assign's documented
+	// "0 means now" contract. Without this, a caller that reuses that convention
+	// here would compute duration = expires_at - 0 (~55 years of entitlement).
+	startsAt := req.StartsAt
+	if startsAt == 0 {
+		startsAt = now
+	}
+	duration := req.ExpiresAt - startsAt
 	base := active.ExpiresAt
 	if base < now {
 		base = now
@@ -137,8 +215,24 @@ func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSu
 	}
 	active.Metadata = mergeSubscriptionMetadata(active.Metadata, req.Metadata)
 	active.UpdatedAt = now
-	if err := uc.repo.UpdateSubscription(ctx, active); err != nil {
-		return nil, true, err
+	// domain-H1: write ONLY the columns this renewal changes. The usage/window
+	// columns are owned by AddUsage; writing them here from a read snapshot
+	// taken before a concurrent AddUsage commits would clobber that increment.
+	fields := []SubscriptionField{SubscriptionFieldExpiresAt, SubscriptionFieldMetadata}
+	if req.SubscriptionName != "" {
+		fields = append(fields, SubscriptionFieldSubscriptionName)
+	}
+	if groupChanged {
+		fields = append(fields, SubscriptionFieldGroupID)
+	}
+	if tx != nil {
+		if err := uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, active, fields); err != nil {
+			return nil, true, err
+		}
+	} else {
+		if err := uc.repo.UpdateSubscriptionFields(ctx, active, fields); err != nil {
+			return nil, true, err
+		}
 	}
 	return active, true, nil
 }
@@ -154,10 +248,10 @@ func (uc *SubscriptionUsecase) Revoke(ctx context.Context, id int64, reason stri
 	subscription.Status = SubscriptionStatusRevoked
 	subscription.UpdatedAt = uc.now().Unix()
 	subscription.Metadata = mergeMetadataReason(subscription.Metadata, reason)
-	return uc.repo.UpdateSubscription(ctx, subscription)
+	return uc.repo.UpdateSubscriptionFields(ctx, subscription, []SubscriptionField{SubscriptionFieldStatus, SubscriptionFieldMetadata})
 }
 
-func (uc *SubscriptionUsecase) RevokeInTx(ctx context.Context, tx *gormDB, id int64, reason string) error {
+func (uc *SubscriptionUsecase) RevokeInTx(ctx context.Context, tx Tx, id int64, reason string) error {
 	subscription, err := uc.repo.GetByIDInTx(ctx, tx, id)
 	if err != nil {
 		return err
@@ -168,7 +262,7 @@ func (uc *SubscriptionUsecase) RevokeInTx(ctx context.Context, tx *gormDB, id in
 	subscription.Status = SubscriptionStatusRevoked
 	subscription.UpdatedAt = uc.now().Unix()
 	subscription.Metadata = mergeMetadataReason(subscription.Metadata, reason)
-	return uc.repo.UpdateSubscriptionInTx(ctx, tx, subscription)
+	return uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, subscription, []SubscriptionField{SubscriptionFieldStatus, SubscriptionFieldMetadata})
 }
 
 func (uc *SubscriptionUsecase) Extend(ctx context.Context, id int64, newExpiresAt int64) error {
@@ -209,7 +303,7 @@ func (uc *SubscriptionUsecase) Shorten(ctx context.Context, id int64, subtractSe
 	return uc.repo.UpdateSubscription(ctx, subscription)
 }
 
-func (uc *SubscriptionUsecase) ShortenInTx(ctx context.Context, tx *gormDB, id int64, subtractSeconds int64) error {
+func (uc *SubscriptionUsecase) ShortenInTx(ctx context.Context, tx Tx, id int64, subtractSeconds int64) error {
 	if subtractSeconds <= 0 {
 		return errors.New("subtract_seconds must be positive")
 	}
@@ -227,7 +321,7 @@ func (uc *SubscriptionUsecase) ShortenInTx(ctx context.Context, tx *gormDB, id i
 	}
 	subscription.ExpiresAt = newExpiry
 	subscription.UpdatedAt = now
-	return uc.repo.UpdateSubscriptionInTx(ctx, tx, subscription)
+	return uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, subscription, []SubscriptionField{SubscriptionFieldExpiresAt})
 }
 
 func (uc *SubscriptionUsecase) ResetQuota(ctx context.Context, id int64, scope string) error {
@@ -257,7 +351,10 @@ func (uc *SubscriptionUsecase) ResetQuota(ctx context.Context, id int64, scope s
 		return ErrInvalidQuotaScope
 	}
 	subscription.UpdatedAt = now
-	return uc.repo.UpdateSubscription(ctx, subscription)
+	// domain-H1: write only the usage/window columns. ResetQuota is a legitimate
+	// usage-column writer (it zeroes usage), so it selects the usage field set;
+	// the unselected status/expires_at/name/metadata columns are preserved.
+	return uc.repo.UpdateSubscriptionFields(ctx, subscription, []SubscriptionField{SubscriptionFieldUsageAll})
 }
 
 func (uc *SubscriptionUsecase) RecordUsage(ctx context.Context, userID int64, costUSD float64) error {
@@ -268,10 +365,18 @@ func (uc *SubscriptionUsecase) RecordUsage(ctx context.Context, userID int64, co
 	if err != nil {
 		return err
 	}
-	// Apply the group's billing multiplier so recorded spend matches what the
-	// quota check charges. A zero/unset multiplier means "no scaling" (1.0).
+	// domain-M5: apply the group's billing multiplier so recorded spend matches
+	// what the quota check charges. The group lookup MUST NOT silently fall back
+	// to 1.0x on a transient DB error: that would permanently under-record usage
+	// (quota is charged at the multiplier via CheckQuota), letting users exceed
+	// their paid window. Propagate the error so the usage write fails and can be
+	// retried. A zero/unset multiplier legitimately means "no scaling" (1.0).
+	group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID)
+	if gerr != nil {
+		return fmt.Errorf("lookup billing group %d for usage recording: %w", subscription.GroupID, gerr)
+	}
 	effectiveCost := costUSD
-	if group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID); gerr == nil && group != nil && group.RateMultiplier > 0 {
+	if group != nil && group.RateMultiplier > 0 {
 		effectiveCost = costUSD * group.RateMultiplier
 	}
 	// Delegate the read-roll-increment to the repository so it happens atomically
@@ -283,12 +388,12 @@ func (uc *SubscriptionUsecase) RecordUsage(ctx context.Context, userID int64, co
 
 // RecordUsageForSubscriptionInTx is the row-locked variant of RecordUsage.
 // It is the canonical write path for the dual-track commit pipeline: it
-// takes a *gorm.DB owned by the caller so the subscription write commits
+// takes a Tx owned by the caller so the subscription write commits
 // in the same transaction as the wallet side-effects. costUSD is the
 // *original* (un-multiplied) USD cost; this function multiplies by the
 // group's RateMultiplier before storing so the running usage matches
 // the limit/usage accounting space.
-func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Context, tx *gormDB, subscriptionID int64, costUSD float64, now int64) error {
+func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Context, tx Tx, subscriptionID int64, costUSD float64, now int64) error {
 	if costUSD < 0 {
 		return fmt.Errorf("negative usage")
 	}
@@ -299,8 +404,16 @@ func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Contex
 	if subscription == nil {
 		return ErrSubscriptionNotFound
 	}
+	// domain-M5: propagate the group lookup error instead of silently falling
+	// back to 1.0x (see RecordUsage). This runs inside the dual-track commit tx,
+	// so failing here rolls the whole settlement back for retry rather than
+	// persisting under-recorded usage.
+	group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID)
+	if gerr != nil {
+		return fmt.Errorf("lookup billing group %d for usage recording: %w", subscription.GroupID, gerr)
+	}
 	effectiveCost := costUSD
-	if group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID); gerr == nil && group != nil && group.RateMultiplier > 0 {
+	if group != nil && group.RateMultiplier > 0 {
 		effectiveCost = costUSD * group.RateMultiplier
 	}
 	return uc.repo.AddUsageByIDInTx(ctx, tx, subscriptionID, effectiveCost, now)
@@ -313,6 +426,15 @@ func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Contex
 // actual cost to).
 func (uc *SubscriptionUsecase) GetActiveSubscriptionForUser(ctx context.Context, userID int64) (*UserSubscription, error) {
 	return uc.repo.GetActiveSubscriptionByUser(ctx, userID)
+}
+
+// GetActiveSubscriptionForUserInTx is the row-locked variant of
+// GetActiveSubscriptionForUser. Billing calls it AFTER taking
+// LockSubscriptionRow inside the dual-track transaction so the
+// usage/window snapshot fed to the absorber is the locked read,
+// not a stale pre-lock snapshot (code-review 2026-07-30 billing-H3).
+func (uc *SubscriptionUsecase) GetActiveSubscriptionForUserInTx(ctx context.Context, tx Tx, userID int64) (*UserSubscription, error) {
+	return uc.repo.GetActiveSubscriptionByUserInTx(ctx, tx, userID)
 }
 
 // GetGroupForSubscription is a convenience wrapper used by the billing

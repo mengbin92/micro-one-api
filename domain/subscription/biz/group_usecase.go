@@ -29,9 +29,12 @@ func (uc *GroupUsecase) Create(ctx context.Context, group *SubscriptionGroup) er
 	now := uc.now().Unix()
 	group.CreatedAt = now
 	group.UpdatedAt = now
-	if group.Status == 0 {
-		group.Status = SubscriptionGroupStatusEnabled
-	}
+	// domain-L3: do NOT coerce Status==0 to Enabled here. 0 is the defined
+	// SubscriptionGroupStatusDisabled constant, so this coercion made it
+	// impossible to create a pre-disabled group and silently flipped any caller
+	// that intentionally passed Disabled. The service/DTO boundary is now
+	// responsible for defaulting an unset status to Enabled (the HTTP handler
+	// treats an omitted status as Enabled because that is the common create case).
 	// A zero multiplier would silently zero out all recorded usage; default to
 	// 1.0 (no scaling) when the caller doesn't specify one.
 	if group.RateMultiplier <= 0 {

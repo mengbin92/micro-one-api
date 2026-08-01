@@ -89,6 +89,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		pricing,
 	)
 	uc.SetSubscriptionPrimatives(subscriptionUc)
+	uc.SetTxRunner(data.NewTxRunner(d))
 	uc.SetReceivableRepo(d.ReceivableRepo())
 
 	var asyncBilling *biz.AsyncBillingUsecase
@@ -122,12 +123,19 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	paymentUc := biz.NewPaymentUsecaseWithAssignerAndSnapshotter(d.PaymentRepo(), paymentProvider, paymentAssetIssuer, paymentSubscriptionAssigner, planSnapshotter)
 
 	var alipayVerifier biz.PaymentNotifyVerifier
+	var configuredAlipayAppID string
 	if cfg.Bootstrap.Payment != nil && cfg.Bootstrap.Payment.Alipay != nil {
-		alipayVerifier = biz.NewAlipayPaymentProvider(cfg.Bootstrap.Payment.ToPaymentConfig().Alipay)
+		alipayCfg := cfg.Bootstrap.Payment.ToPaymentConfig().Alipay
+		configuredAlipayAppID = alipayCfg.AppID
+		alipayVerifier = biz.NewAlipayPaymentProvider(alipayCfg)
 	} else {
 		alipayVerifier = biz.NewAlipayPaymentProvider(biz.AlipayConfig{})
 	}
 	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)
+	// Code-review 2026-07-30 billing-L5: wire the configured merchant app id
+	// so HandleAlipayNotify can cross-check the app_id in the verified notify
+	// params before marking a local order paid.
+	svc.SetExpectedAlipayAppID(configuredAlipayAppID)
 
 	// Phase 2: refund/reversal coordinator. The subscription reverter delegates
 	// to the subscription usecase so revoke/shorten mutations land on the same
@@ -137,6 +145,15 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	svc.SetRefundUsecase(refundUc)
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
+
+	// Code-review 2026-07-30 billing-C1: route expired-reservation cleanup
+	// through the billing usecase's atomic CAS release pipeline so the wallet
+	// refund + ledger entry + status transition commit atomically and refund
+	// the wallet-side BalanceAmountQuota instead of the full Amount (which
+	// minted money on dual-track reservations whose cost was fully absorbed by
+	// the subscription). uc (BillingUsecase) satisfies the ReservationReleaser
+	// seam declared by ReconciliationUsecase.
+	reconUc.SetReservationReleaser(uc)
 
 	// Phase 2.1: wire the async billing coordinator into the service so
 	// CommitQuota can enqueue settlement and return a provisional response
@@ -214,6 +231,14 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		reconJobOpts = append(reconJobOpts, biz.WithNotifyType(cfg.Bootstrap.Clients.Notify.NotifyType))
 	}
 	reconJob := biz.NewReconciliationJob(reconUc, interval, reconJobOpts...)
+	// Code-review 2026-07-30 domain-C1: the SubscriptionExpiryChecker is the
+	// ONLY component that flips an active subscription's status to expired.
+	// Without it, subscriptions continue to absorb quota and serve relay
+	// traffic indefinitely after expires_at. Wire it as a long-running
+	// background goroutine bound to the same ctx/cancel as the other jobs so
+	// it starts with the app, ticks hourly, and stops cleanly on shutdown.
+	expiryChecker := subscriptionbiz.NewSubscriptionExpiryChecker(subscriptionRepo)
+	go expiryChecker.Run(ctx)
 	go cleanupJob.Start(ctx)
 	go reconJob.Start(ctx)
 	partitionStop := startPartitionMaintenance(ctx, d.DB(), cfg.Bootstrap.Partition)

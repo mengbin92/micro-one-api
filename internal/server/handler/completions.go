@@ -67,7 +67,7 @@ func (h *CompletionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if result != nil && result.StatusCode != 0 {
 			status = result.StatusCode
 		}
-		h.writeError(w, status, err.Error())
+		h.writeError(w, status, sanitizeUpstreamError(status, err))
 		return
 	}
 
@@ -85,5 +85,5 @@ func (h *CompletionsHandler) writeError(w http.ResponseWriter, status int, messa
 		},
 	}
 	data, _ := sonic.Marshal(resp)
-	w.Write(data)
+	_, _ = w.Write(data)
 }

@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/internal/server"
@@ -105,8 +106,24 @@ func (t *tokenAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[
 	}, nil
 }
 
+// RequireTransportSecurity returns false so the service token is sent over
+// plaintext connections inside the trusted in-cluster backend network.
+// The token is a shared service secret, not a user credential, and the
+// non-TLS path is the default for docker-compose deployments.
 func (t *tokenAuth) RequireTransportSecurity() bool {
-	return true
+	return false
+}
+
+// createInsecureClient creates a plaintext gRPC connection with optional
+// service-token credentials. Used on the non-TLS path (review Critical #2)
+// so identity/billing gRPC interceptors receive the SERVICE_TOKEN even
+// without TLS.
+func createInsecureClient(endpoint string, tokenCreds grpc.DialOption) (*grpc.ClientConn, error) {
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	if tokenCreds != nil {
+		opts = append(opts, tokenCreds)
+	}
+	return grpc.NewClient(endpoint, opts...)
 }
 
 // parseDurationOrDefault parses a duration string, returning the default on error.

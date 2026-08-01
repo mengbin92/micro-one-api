@@ -9,8 +9,10 @@ import (
 
 	"micro-one-api/app/identity/internal/biz"
 	"micro-one-api/platform/database/xdb"
+	applogger "micro-one-api/platform/logging"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -18,26 +20,27 @@ type Repository struct {
 	db                  *gorm.DB
 	redis               *redis.Client
 	usersByID           map[int64]*biz.User
-	tokensByKey         map[string]*biz.Token
+	tokensByHash        map[string]*biz.Token
 	oauthIdentities     map[string]*biz.OAuthIdentity
 	nextOAuthIdentityID int64
 	identityLock        sync.RWMutex
 }
 
 type userModel struct {
-	ID            int64  `gorm:"column:id"`
-	Username      string `gorm:"column:username;uniqueIndex"`
-	DisplayName   string `gorm:"column:display_name"`
-	Email         string `gorm:"column:email"`
-	Group         string `gorm:"column:group"`
-	Status        int32  `gorm:"column:status"`
-	Role          int32  `gorm:"column:role"`
-	PasswordHash  string `gorm:"column:password_hash"`
-	OAuthProvider string `gorm:"column:oauth_provider;index"`
-	OAuthID       string `gorm:"column:oauth_id;index"`
-	Balance       int64  `gorm:"column:balance"`
-	AffCode       string `gorm:"column:aff_code;uniqueIndex"`
-	InviterID     int64  `gorm:"column:inviter_id;index"`
+	ID                int64  `gorm:"column:id"`
+	Username          string `gorm:"column:username;uniqueIndex"`
+	DisplayName       string `gorm:"column:display_name"`
+	Email             string `gorm:"column:email"`
+	Group             string `gorm:"column:group"`
+	Status            int32  `gorm:"column:status"`
+	Role              int32  `gorm:"column:role"`
+	PasswordHash      string `gorm:"column:password_hash"`
+	OAuthProvider     string `gorm:"column:oauth_provider;index"`
+	OAuthID           string `gorm:"column:oauth_id;index"`
+	Balance           int64  `gorm:"column:balance"`
+	AffCode           string `gorm:"column:aff_code;uniqueIndex"`
+	InviterID         int64  `gorm:"column:inviter_id;index"`
+	PasswordChangedAt int64  `gorm:"column:password_changed_at"`
 }
 
 func (userModel) TableName() string { return "users" }
@@ -47,6 +50,7 @@ type tokenModel struct {
 	UserID         int64   `gorm:"column:user_id"`
 	Name           string  `gorm:"column:name"`
 	Key            string  `gorm:"column:key"`
+	KeyHash        string  `gorm:"column:key_hash"`
 	Status         int32   `gorm:"column:status"`
 	CreatedTime    int64   `gorm:"column:created_time"`
 	AccessedTime   int64   `gorm:"column:accessed_time"`
@@ -83,6 +87,14 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 		}
 	}
 	if dbDSN == "" {
+		// L9: a missing DSN is almost always a deployment mistake. Falling
+		// back to the in-memory store silently means every user, token and
+		// OAuth binding is lost on restart and a fresh root is recreated each
+		// boot. Warn loudly so operators notice instead of discovering it
+		// after data loss.
+		applogger.Log.Warn("IDENTITY_SQL_DSN/SQL_DSN not set; identity-service is starting with the volatile in-memory user store — all data is lost on restart",
+			zap.String("component", "identity.data"),
+		)
 		return newMemoryRepository(), nil
 	}
 	// Schema isolation (Phase 2.4): effective schema comes from the wire
@@ -100,17 +112,22 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 	rdb := xdb.NewRedisClient(redisAddr, redisPassword)
 	if rdb != nil {
 		if pingErr := rdb.Ping(context.Background()).Err(); pingErr != nil {
-			rdb.Close()
+			_ = rdb.Close()
 			rdb = nil
 		}
 	}
-	return &Repository{db: db, redis: rdb}, nil
+	rep := &Repository{db: db, redis: rdb}
+	// L6: hash any pre-migration plaintext keys into key_hash and truncate the
+	// stored key to a display prefix, erasing plaintext from disk. Runs once;
+	// subsequent boots find zero pending rows.
+	rep.BackfillTokenHashes(context.Background())
+	return rep, nil
 }
 
 func newMemoryRepository() *Repository {
 	return &Repository{
 		usersByID:           make(map[int64]*biz.User),
-		tokensByKey:         make(map[string]*biz.Token),
+		tokensByHash:        make(map[string]*biz.Token),
 		oauthIdentities:     make(map[string]*biz.OAuthIdentity),
 		nextOAuthIdentityID: 1,
 	}
@@ -309,8 +326,13 @@ func (r *Repository) CreateToken(ctx context.Context, token *biz.Token) error {
 	}
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
-	token.ID = int64(len(r.tokensByKey) + 1)
-	r.tokensByKey[token.Key] = token
+	token.ID = int64(len(r.tokensByHash) + 1)
+	// L6: memory store keys by hash to mirror the DB. The DO keeps the
+	// plaintext Key so CreateAccessToken can return it once to the caller.
+	if token.KeyHash == "" {
+		token.KeyHash = biz.HashTokenKey(token.Key)
+	}
+	r.tokensByHash[token.KeyHash] = token
 	return nil
 }
 
@@ -320,7 +342,7 @@ func (r *Repository) FindTokenByID(ctx context.Context, userID, tokenID int64) (
 	}
 	r.identityLock.RLock()
 	defer r.identityLock.RUnlock()
-	for _, token := range r.tokensByKey {
+	for _, token := range r.tokensByHash {
 		if token.ID == tokenID && token.UserID == userID {
 			cloned := *token
 			cloned.Models = append([]string(nil), token.Models...)
@@ -343,14 +365,14 @@ func (r *Repository) ListTokens(ctx context.Context, userID int64, page, pageSiz
 		pageSize = 20
 	}
 	var tokens []*biz.Token
-	for _, token := range r.tokensByKey {
+	for _, token := range r.tokensByHash {
 		if token.UserID != userID {
 			continue
 		}
 		if strings.TrimSpace(token.Name) == "" {
 			continue
 		}
-		if keyword != "" && !strings.Contains(token.Name, keyword) && !strings.Contains(token.Key, keyword) {
+		if keyword != "" && !strings.Contains(token.Name, keyword) {
 			continue
 		}
 		cloned := *token
@@ -375,16 +397,49 @@ func (r *Repository) UpdateToken(ctx context.Context, token *biz.Token) error {
 	}
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
-	for key, existing := range r.tokensByKey {
+	hash := token.KeyHash
+	if hash == "" {
+		hash = biz.HashTokenKey(token.Key)
+	}
+	for key, existing := range r.tokensByHash {
 		if existing.ID == token.ID && existing.UserID == token.UserID {
-			if key != token.Key {
-				delete(r.tokensByKey, key)
+			if key != hash {
+				delete(r.tokensByHash, key)
 			}
-			r.tokensByKey[token.Key] = token
+			r.tokensByHash[hash] = token
 			return nil
 		}
 	}
 	return biz.ErrTokenNotFound
+}
+
+// ConsumeTokenQuota atomically decrements RemainQuota and increments
+// UsedQuota for the given token. On the DB path this is a single UPDATE
+// ... SET remain_quota = GREATEST(remain_quota - ?, 0), used_quota =
+// used_quota + ? that returns the new remain_quota. On the in-memory path
+// it runs under the write lock. The amount is clamped so remain_quota never
+// goes negative.
+func (r *Repository) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
+	if r.db != nil {
+		return r.consumeTokenQuotaDB(ctx, userID, tokenID, amount)
+	}
+	r.identityLock.Lock()
+	defer r.identityLock.Unlock()
+	for _, token := range r.tokensByHash {
+		if token.ID == tokenID && token.UserID == userID {
+			consumed := amount
+			if consumed > token.RemainQuota {
+				consumed = token.RemainQuota
+			}
+			token.RemainQuota -= consumed
+			token.UsedQuota += consumed
+			if token.RemainQuota == 0 {
+				token.Status = biz.TokenStatusExhausted
+			}
+			return token.RemainQuota, nil
+		}
+	}
+	return 0, biz.ErrTokenNotFound
 }
 
 func (r *Repository) DeleteToken(ctx context.Context, userID, tokenID int64) error {
@@ -393,9 +448,9 @@ func (r *Repository) DeleteToken(ctx context.Context, userID, tokenID int64) err
 	}
 	r.identityLock.Lock()
 	defer r.identityLock.Unlock()
-	for key, token := range r.tokensByKey {
+	for key, token := range r.tokensByHash {
 		if token.ID == tokenID && token.UserID == userID {
-			delete(r.tokensByKey, key)
+			delete(r.tokensByHash, key)
 			return nil
 		}
 	}
@@ -426,8 +481,9 @@ func (r *Repository) ListUsers(ctx context.Context, page, pageSize int32, keywor
 }
 
 func (r *Repository) findTokenByKeyDB(ctx context.Context, key string) (*biz.Token, error) {
+	hash := biz.HashTokenKey(key)
 	var model tokenModel
-	if err := r.db.WithContext(ctx).Where("`key` = ?", key).First(&model).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("key_hash = ?", hash).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrTokenNotFound
 		}
@@ -544,18 +600,19 @@ func (r *Repository) createOAuthIdentityDB(ctx context.Context, identity *biz.OA
 
 func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 	model := userModel{
-		Username:      user.Username,
-		DisplayName:   user.DisplayName,
-		Email:         user.Email,
-		Group:         user.Group,
-		Status:        user.Status,
-		Role:          user.Role,
-		PasswordHash:  user.PasswordHash,
-		OAuthProvider: user.OAuthProvider,
-		OAuthID:       user.OAuthID,
-		Balance:       user.Balance,
-		AffCode:       user.AffCode,
-		InviterID:     user.InviterID,
+		Username:          user.Username,
+		DisplayName:       user.DisplayName,
+		Email:             user.Email,
+		Group:             user.Group,
+		Status:            user.Status,
+		Role:              user.Role,
+		PasswordHash:      user.PasswordHash,
+		OAuthProvider:     user.OAuthProvider,
+		OAuthID:           user.OAuthID,
+		Balance:           user.Balance,
+		AffCode:           user.AffCode,
+		InviterID:         user.InviterID,
+		PasswordChangedAt: user.PasswordChangedAt,
 	}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		return err
@@ -566,17 +623,18 @@ func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 
 func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
 	return r.db.WithContext(ctx).Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
-		"username":       user.Username,
-		"display_name":   user.DisplayName,
-		"email":          user.Email,
-		"group":          user.Group,
-		"status":         user.Status,
-		"role":           user.Role,
-		"password_hash":  user.PasswordHash,
-		"oauth_provider": user.OAuthProvider,
-		"oauth_id":       user.OAuthID,
-		"aff_code":       user.AffCode,
-		"inviter_id":     user.InviterID,
+		"username":            user.Username,
+		"display_name":        user.DisplayName,
+		"email":               user.Email,
+		"group":               user.Group,
+		"status":              user.Status,
+		"role":                user.Role,
+		"password_hash":       user.PasswordHash,
+		"oauth_provider":      user.OAuthProvider,
+		"oauth_id":            user.OAuthID,
+		"aff_code":            user.AffCode,
+		"inviter_id":          user.InviterID,
+		"password_changed_at": user.PasswordChangedAt,
 	}).Error
 }
 
@@ -598,10 +656,14 @@ func (r *Repository) deleteUserDB(ctx context.Context, userID int64) error {
 }
 
 func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error {
+	// L6: store only a non-secret display prefix in the `key` column and the
+	// HMAC hash in `key_hash` (indexed). The plaintext key never reaches disk;
+	// the prefix preserves the masked-key UI ("abcd****wxyz").
 	model := tokenModel{
 		UserID:         token.UserID,
 		Name:           token.Name,
-		Key:            token.Key,
+		Key:            biz.TokenDisplayPrefix(token.Key),
+		KeyHash:        token.KeyHash,
 		Status:         token.Status,
 		ExpiredTime:    token.ExpiredAt,
 		RemainQuota:    token.RemainQuota,
@@ -631,7 +693,8 @@ func (r *Repository) listTokensDB(ctx context.Context, userID int64, page, pageS
 	query := r.db.WithContext(ctx).Model(&tokenModel{}).Where("user_id = ? AND TRIM(COALESCE(name, '')) <> ''", userID)
 	if keyword != "" {
 		like := "%" + escapeLike(keyword) + "%"
-		query = query.Where("name LIKE ? ESCAPE '!' OR `key` LIKE ? ESCAPE '!'", like, like)
+		// L6: key is now a hashed column, so keyword search is name-only.
+		query = query.Where("name LIKE ? ESCAPE '!'", like)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -675,12 +738,48 @@ func (r *Repository) deleteTokenDB(ctx context.Context, userID, tokenID int64) e
 	return nil
 }
 
+// consumeTokenQuotaDB atomically decrements remain_quota and increments
+// used_quota inside a transaction, clamping remain_quota at 0. It reads
+// the current value under the transaction, computes the new values in Go
+// (driver-agnostic — no GREATEST() needed), and writes them back. This
+// works across MySQL, Postgres, and SQLite.
+func (r *Repository) consumeTokenQuotaDB(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
+	// Keep used_quota first and remain_quota last. MySQL evaluates UPDATE
+	// assignments left-to-right, while PostgreSQL and SQLite use the original
+	// row for every expression; this order is correct on all three dialects.
+	result := r.db.WithContext(ctx).Exec(
+		"UPDATE tokens SET "+
+			"used_quota = used_quota + CASE WHEN remain_quota < ? THEN remain_quota ELSE ? END, "+
+			"status = CASE WHEN remain_quota <= ? THEN ? ELSE status END, "+
+			"remain_quota = CASE WHEN remain_quota <= ? THEN 0 ELSE remain_quota - ? END "+
+			"WHERE id = ? AND user_id = ? AND unlimited_quota = ? AND remain_quota > 0",
+		amount, amount, amount, biz.TokenStatusExhausted, amount, amount,
+		tokenID, userID, false,
+	)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	var model tokenModel
+	if err := r.db.WithContext(ctx).
+		Select("remain_quota").
+		Where("id = ? AND user_id = ?", tokenID, userID).
+		First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, biz.ErrTokenNotFound
+		}
+		return 0, err
+	}
+	return model.RemainQuota, nil
+}
+
 func tokenModelToBiz(model tokenModel) *biz.Token {
 	return &biz.Token{
 		ID:             model.ID,
 		UserID:         model.UserID,
 		Name:           model.Name,
 		Key:            model.Key,
+		KeyHash:        model.KeyHash,
 		Status:         model.Status,
 		ExpiredAt:      model.ExpiredTime,
 		RemainQuota:    model.RemainQuota,
@@ -711,19 +810,20 @@ func stringPtrValue(value *string) string {
 
 func userModelToBiz(model userModel) *biz.User {
 	return &biz.User{
-		ID:            model.ID,
-		Username:      model.Username,
-		DisplayName:   model.DisplayName,
-		Email:         model.Email,
-		Group:         model.Group,
-		Status:        model.Status,
-		Role:          model.Role,
-		PasswordHash:  model.PasswordHash,
-		OAuthProvider: model.OAuthProvider,
-		OAuthID:       model.OAuthID,
-		Balance:       model.Balance,
-		AffCode:       model.AffCode,
-		InviterID:     model.InviterID,
+		ID:                model.ID,
+		Username:          model.Username,
+		DisplayName:       model.DisplayName,
+		Email:             model.Email,
+		Group:             model.Group,
+		Status:            model.Status,
+		Role:              model.Role,
+		PasswordHash:      model.PasswordHash,
+		OAuthProvider:     model.OAuthProvider,
+		OAuthID:           model.OAuthID,
+		Balance:           model.Balance,
+		AffCode:           model.AffCode,
+		InviterID:         model.InviterID,
+		PasswordChangedAt: model.PasswordChangedAt,
 	}
 }
 
@@ -805,7 +905,7 @@ func escapeLike(s string) string {
 func (r *Repository) findTokenByKeyMemory(_ context.Context, key string) (*biz.Token, error) {
 	r.identityLock.RLock()
 	defer r.identityLock.RUnlock()
-	token, ok := r.tokensByKey[key]
+	token, ok := r.tokensByHash[biz.HashTokenKey(key)]
 	if !ok {
 		return nil, biz.ErrTokenNotFound
 	}
@@ -823,4 +923,44 @@ func (r *Repository) findUserByIDMemory(_ context.Context, userID int64) (*biz.U
 	}
 	cloned := *user
 	return &cloned, nil
+}
+
+// BackfillTokenHashes migrates pre-L6 token rows: rows whose key_hash is empty
+// still hold the full plaintext key (from before the hashing change). It hashes
+// each such row's key into key_hash and truncates the key column to a short
+// display prefix, so the plaintext is erased from disk. Idempotent — rows with
+// a non-empty key_hash are left alone. Runs once at DB-backed Repository init.
+// Errors are logged but non-fatal: the app still starts; un-hashed rows simply
+// cannot authenticate (their key_hash is empty, so FindTokenByKey misses) until
+// the next successful boot.
+func (r *Repository) BackfillTokenHashes(ctx context.Context) {
+	if r.db == nil {
+		return
+	}
+	var pending []tokenModel
+	if err := r.db.WithContext(ctx).Where("key_hash = ''").Find(&pending).Error; err != nil {
+		applogger.Log.Warn("identity-L6 backfill: failed to scan rows with empty key_hash",
+			zap.String("component", "identity.data"), zap.Error(err))
+		return
+	}
+	if len(pending) == 0 {
+		return
+	}
+	migrated := 0
+	for _, m := range pending {
+		hash := biz.HashTokenKey(m.Key)
+		if err := r.db.WithContext(ctx).Model(&tokenModel{}).Where("id = ?", m.ID).
+			Updates(map[string]interface{}{
+				"key_hash": hash,
+				"key":      biz.TokenDisplayPrefix(m.Key),
+			}).Error; err != nil {
+			applogger.Log.Warn("identity-L6 backfill: failed to hash a row",
+				zap.Int64("token_id", m.ID), zap.Error(err))
+			continue
+		}
+		migrated++
+	}
+	applogger.Log.Info("identity-L6 backfill: hashed access-token keys",
+		zap.String("component", "identity.data"),
+		zap.Int("migrated", migrated), zap.Int("total", len(pending)))
 }

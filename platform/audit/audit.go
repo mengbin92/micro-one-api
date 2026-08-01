@@ -86,18 +86,24 @@ type ResourceInfo struct {
 }
 
 // Auditor records audit events.
+//
+// The logger is resolved on EACH event rather than captured at construction
+// time (platform-L9): NewAuditor is typically called during wire/DI setup,
+// BEFORE applogger.Initialize has swapped the nop logger for the real one.
+// Capturing applogger.Log.Named("audit") then pinned the nop logger forever
+// and silently dropped every audit event.
 type Auditor struct {
 	enabled bool
-	log     *zap.Logger
 }
 
 // NewAuditor creates a new auditor.
 func NewAuditor(enabled bool) *Auditor {
-	log := applogger.Log.Named("audit")
-	return &Auditor{
-		enabled: enabled,
-		log:     log,
-	}
+	return &Auditor{enabled: enabled}
+}
+
+// logger resolves the current audit sub-logger at call time (platform-L9).
+func (a *Auditor) logger() *zap.Logger {
+	return applogger.Current().Named("audit")
 }
 
 // Log records an audit event.
@@ -165,7 +171,7 @@ func (a *Auditor) Log(ctx context.Context, event AuditEvent) {
 		fields = append(fields, zap.Any(k, v))
 	}
 
-	a.log.Info("audit event", fields...)
+	a.logger().Info("audit event", fields...)
 }
 
 // LogSuccess logs a successful audit event.
@@ -193,7 +199,7 @@ func (a *Auditor) LogFailure(ctx context.Context, eventType EventType, actor Act
 
 // Middleware provides HTTP middleware for audit logging.
 type Middleware struct {
-	auditor   *Auditor
+	auditor      *Auditor
 	excludePaths map[string]bool
 }
 
@@ -202,8 +208,8 @@ func NewMiddleware(auditor *Auditor) *Middleware {
 	return &Middleware{
 		auditor: auditor,
 		excludePaths: map[string]bool{
-			"/health":     true,
-			"/metrics":    true,
+			"/health":      true,
+			"/metrics":     true,
 			"/favicon.ico": true,
 		},
 	}
@@ -238,18 +244,18 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		}
 
 		m.auditor.Log(r.Context(), AuditEvent{
-			EventType:   mapMethodToEventType(r.Method),
-			Actor:       actor,
-			Resource:    ResourceInfo{Type: "http"},
-			Action:      fmt.Sprintf("%s %s", r.Method, r.URL.Path),
-			Result:      result,
-			RequestID:   requestID,
-			IPAddress:   extractIP(r),
-			UserAgent:   r.UserAgent(),
+			EventType: mapMethodToEventType(r.Method),
+			Actor:     actor,
+			Resource:  ResourceInfo{Type: "http"},
+			Action:    fmt.Sprintf("%s %s", r.Method, r.URL.Path),
+			Result:    result,
+			RequestID: requestID,
+			IPAddress: extractIP(r),
+			UserAgent: r.UserAgent(),
 			Details: map[string]any{
-				"path":       r.URL.Path,
-				"query":      r.URL.RawQuery,
-				"status":     wrapped.statusCode,
+				"path":   r.URL.Path,
+				"query":  r.URL.RawQuery,
+				"status": wrapped.statusCode,
 			},
 		})
 	})
@@ -265,6 +271,22 @@ type auditResponseWriter struct {
 func (w *auditResponseWriter) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
 	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+// Flush implements http.Flusher so SSE/streaming handlers proxied through the
+// audit middleware can flush incremental data to the client (platform-H2:
+// without this, the handler's w.(http.Flusher) assertion fails and every
+// streaming chat request breaks when audit is enabled).
+func (w *auditResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap returns the underlying ResponseWriter so that http.Hijacker and other
+// optional interfaces remain accessible through the wrapper (platform-H2).
+func (w *auditResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 // Helper functions
@@ -323,7 +345,7 @@ func (a *Auditor) LogUserLogin(ctx context.Context, userID int64, username, ipAd
 			UserID:   userID,
 			Username: username,
 		},
-		Resource: ResourceInfo{Type: "auth"},
+		Resource:  ResourceInfo{Type: "auth"},
 		Action:    "login",
 		Result:    result,
 		IPAddress: ipAddress,
@@ -339,8 +361,8 @@ func (a *Auditor) LogUserLogout(ctx context.Context, userID int64, username stri
 			Username: username,
 		},
 		Resource: ResourceInfo{Type: "auth"},
-		Action:    "logout",
-		Result:    "success",
+		Action:   "logout",
+		Result:   "success",
 	})
 }
 
@@ -454,8 +476,8 @@ func (a *Auditor) LogPermissionChanged(ctx context.Context, actorUserID, targetU
 		Result: "success",
 		Details: map[string]any{
 			"target_user_id": targetUserID,
-			"permission":    permission,
-			"action":        action,
+			"permission":     permission,
+			"action":         action,
 		},
 	})
 }

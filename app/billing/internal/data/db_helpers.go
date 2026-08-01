@@ -18,12 +18,21 @@ func dialectorName(db *gorm.DB) string {
 	return db.Dialector.Name()
 }
 
+// isSQLite reports whether the driver is any SQLite variant. The gorm
+// sqlite driver (gorm.io/driver/sqlite) reports its name as "sqlite"
+// while the older mattn/go-sqlite3-backed drivers reported "sqlite3";
+// both must be treated as SQLite so the FOR UPDATE guards skip the
+// unsupported clause on every SQLite deployment and test.
+func isSQLite(driver string) bool {
+	return driver == "sqlite" || driver == "sqlite3"
+}
+
 // forUpdateClause returns the dialect-appropriate SELECT ... FOR UPDATE
 // clause. SQLite serialises writes through the writer transaction, so
 // the explicit row lock is unnecessary and (in older versions)
 // unsupported. Postgres + MySQL use the explicit "FOR UPDATE" string.
 func forUpdateClause(driver string) clause.Locking {
-	if driver == "sqlite3" {
+	if isSQLite(driver) {
 		return clause.Locking{}
 	}
 	return clause.Locking{Strength: "UPDATE"}

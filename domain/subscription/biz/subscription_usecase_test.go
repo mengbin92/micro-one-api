@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"gorm.io/gorm"
 )
 
 type mockSubscriptionRepo struct {
@@ -33,14 +32,62 @@ func (m *mockSubscriptionRepo) CreateSubscription(ctx context.Context, subscript
 	return nil
 }
 
+func (m *mockSubscriptionRepo) CreateSubscriptionInTx(ctx context.Context, tx Tx, subscription *UserSubscription) error {
+	return m.CreateSubscription(ctx, subscription)
+}
+
 func (m *mockSubscriptionRepo) UpdateSubscription(ctx context.Context, subscription *UserSubscription) error {
 	cloned := *subscription
 	m.subscriptions[subscription.ID] = &cloned
 	return nil
 }
 
-func (m *mockSubscriptionRepo) UpdateSubscriptionInTx(ctx context.Context, tx *gorm.DB, subscription *UserSubscription) error {
+func (m *mockSubscriptionRepo) UpdateSubscriptionInTx(ctx context.Context, tx Tx, subscription *UserSubscription) error {
 	return m.UpdateSubscription(ctx, subscription)
+}
+
+// UpdateSubscriptionFields mirrors the selective write of the real repo for
+// the in-memory mock: it applies only the named fields onto the stored row so
+// tests observe the same narrow-write semantics as production
+// (code-review 2026-07-30 domain-H1).
+func (m *mockSubscriptionRepo) UpdateSubscriptionFields(ctx context.Context, subscription *UserSubscription, fields []SubscriptionField) error {
+	if subscription == nil {
+		return errors.New("nil subscription")
+	}
+	existing, ok := m.subscriptions[subscription.ID]
+	if !ok {
+		return ErrSubscriptionNotFound
+	}
+	merged := *existing
+	for _, f := range fields {
+		switch f {
+		case SubscriptionFieldStatus:
+			merged.Status = subscription.Status
+		case SubscriptionFieldExpiresAt:
+			merged.ExpiresAt = subscription.ExpiresAt
+		case SubscriptionFieldSubscriptionName:
+			merged.SubscriptionName = subscription.SubscriptionName
+		case SubscriptionFieldGroupID:
+			merged.GroupID = subscription.GroupID
+		case SubscriptionFieldMetadata:
+			merged.Metadata = subscription.Metadata
+		case SubscriptionFieldUsageAll:
+			merged.DailyUsageUSD = subscription.DailyUsageUSD
+			merged.WeeklyUsageUSD = subscription.WeeklyUsageUSD
+			merged.MonthlyUsageUSD = subscription.MonthlyUsageUSD
+			merged.DailyWindowStart = subscription.DailyWindowStart
+			merged.WeeklyWindowStart = subscription.WeeklyWindowStart
+			merged.MonthlyWindowStart = subscription.MonthlyWindowStart
+		}
+	}
+	merged.UpdatedAt = subscription.UpdatedAt
+	cloned := merged
+	m.subscriptions[subscription.ID] = &cloned
+	return nil
+}
+
+func (m *mockSubscriptionRepo) UpdateSubscriptionFieldsInTx(ctx context.Context, tx Tx, subscription *UserSubscription, fields []SubscriptionField) error {
+	return m.UpdateSubscriptionFields(ctx, subscription, fields)
 }
 
 func (m *mockSubscriptionRepo) DeleteSubscription(ctx context.Context, subscriptionID int64) error {
@@ -100,6 +147,10 @@ func (m *mockSubscriptionRepo) GetActiveSubscriptionByUser(ctx context.Context, 
 	return nil, ErrSubscriptionNotFound
 }
 
+func (m *mockSubscriptionRepo) GetActiveSubscriptionByUserInTx(ctx context.Context, tx Tx, userID int64) (*UserSubscription, error) {
+	return m.GetActiveSubscriptionByUser(ctx, userID)
+}
+
 func (m *mockSubscriptionRepo) AddUsage(ctx context.Context, userID int64, costUSD float64, now int64) error {
 	for id, subscription := range m.subscriptions {
 		if subscription.UserID != userID || subscription.Status != SubscriptionStatusActive {
@@ -116,7 +167,7 @@ func (m *mockSubscriptionRepo) AddUsage(ctx context.Context, userID int64, costU
 	return ErrSubscriptionNotFound
 }
 
-func (m *mockSubscriptionRepo) AddUsageByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64, costUSD float64, now int64) error {
+func (m *mockSubscriptionRepo) AddUsageByIDInTx(ctx context.Context, tx Tx, subscriptionID int64, costUSD float64, now int64) error {
 	subscription, ok := m.subscriptions[subscriptionID]
 	if !ok {
 		return ErrSubscriptionNotFound
@@ -130,7 +181,7 @@ func (m *mockSubscriptionRepo) AddUsageByIDInTx(ctx context.Context, tx *gorm.DB
 	return nil
 }
 
-func (m *mockSubscriptionRepo) GetByIDInTx(ctx context.Context, tx *gorm.DB, subscriptionID int64) (*UserSubscription, error) {
+func (m *mockSubscriptionRepo) GetByIDInTx(ctx context.Context, tx Tx, subscriptionID int64) (*UserSubscription, error) {
 	subscription, ok := m.subscriptions[subscriptionID]
 	if !ok {
 		return nil, ErrSubscriptionNotFound

@@ -115,7 +115,7 @@ func (s *CodingPlanQuotaProbeService) Run(ctx context.Context) {
 		return
 	}
 	// Run once immediately so the admin UI has data before the first tick.
-	s.sweep(ctx)
+	_ = s.sweep(ctx)
 	ticker := time.NewTicker(s.cfg.Interval)
 	defer ticker.Stop()
 	for {
@@ -123,7 +123,7 @@ func (s *CodingPlanQuotaProbeService) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.sweep(ctx)
+			_ = s.sweep(ctx)
 		}
 	}
 }

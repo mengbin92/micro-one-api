@@ -19,7 +19,7 @@ func NewResilientIdentityClient(client identityv1.IdentityServiceClient, timeout
 	}
 	return &resilientIdentityClient{
 		IdentityServiceClient: client,
-		breaker:               appgrpc.NewResilientClient[identityv1.IdentityServiceClient](client, appgrpc.DefaultBreakerConfig("identity"), timeout, nil),
+		breaker:               appgrpc.NewResilientClient[identityv1.IdentityServiceClient](client, appgrpc.DefaultBreakerConfig("identity"), timeout, appgrpc.TypedRejectFallback[identityv1.IdentityServiceClient]()),
 	}
 }
 
@@ -44,7 +44,7 @@ func NewResilientChannelClient(client channelv1.ChannelServiceClient, timeout ti
 	}
 	return &resilientChannelClient{
 		ChannelServiceClient: client,
-		breaker:              appgrpc.NewResilientClient[channelv1.ChannelServiceClient](client, appgrpc.DefaultBreakerConfig("channel"), timeout, nil),
+		breaker:              appgrpc.NewResilientClient[channelv1.ChannelServiceClient](client, appgrpc.DefaultBreakerConfig("channel"), timeout, appgrpc.TypedRejectFallback[channelv1.ChannelServiceClient]()),
 	}
 }
 
@@ -199,7 +199,7 @@ func NewResilientBillingClient(client billingv1.BillingServiceClient, timeout ti
 	}
 	return &resilientBillingClient{
 		BillingServiceClient: client,
-		breaker:              appgrpc.NewResilientClient[billingv1.BillingServiceClient](client, appgrpc.DefaultBreakerConfig("billing"), timeout, nil),
+		breaker:              appgrpc.NewResilientClient[billingv1.BillingServiceClient](client, appgrpc.DefaultBreakerConfig("billing"), timeout, appgrpc.TypedRejectFallback[billingv1.BillingServiceClient]()),
 	}
 }
 
@@ -254,7 +254,7 @@ func NewResilientLogClient(client logv1.LogServiceClient, timeout time.Duration)
 	}
 	return &resilientLogClient{
 		LogServiceClient: client,
-		breaker:          appgrpc.NewResilientClient[logv1.LogServiceClient](client, appgrpc.DefaultBreakerConfig("log"), timeout, nil),
+		breaker:          appgrpc.NewResilientClient[logv1.LogServiceClient](client, appgrpc.DefaultBreakerConfig("log"), timeout, appgrpc.TypedRejectFallback[logv1.LogServiceClient]()),
 	}
 }
 

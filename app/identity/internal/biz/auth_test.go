@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"errors"
+	"golang.org/x/crypto/bcrypt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -258,13 +260,34 @@ func (m *mockIdentityRepo) FindTokenByID(ctx context.Context, userID, tokenID in
 }
 
 func (m *mockIdentityRepo) ListTokens(ctx context.Context, userID int64, page, pageSize int32, keyword string) ([]*Token, int64, error) {
+	// Mirror the real repo contract: empty/blank-name tokens (session tokens)
+	// are excluded from both the result set and the total count.
 	var result []*Token
 	for _, token := range m.tokens {
-		if token.UserID == userID {
-			result = append(result, token)
+		if token.UserID != userID {
+			continue
 		}
+		if strings.TrimSpace(token.Name) == "" {
+			continue
+		}
+		result = append(result, token)
 	}
-	return result, int64(len(result)), nil
+	total := int64(len(result))
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	start := int((page - 1) * pageSize)
+	if start >= len(result) {
+		return []*Token{}, total, nil
+	}
+	end := start + int(pageSize)
+	if end > len(result) {
+		end = len(result)
+	}
+	return result[start:end], total, nil
 }
 
 func (m *mockIdentityRepo) UpdateToken(ctx context.Context, token *Token) error {
@@ -288,6 +311,27 @@ func (m *mockIdentityRepo) DeleteToken(ctx context.Context, userID, tokenID int6
 		}
 	}
 	return ErrTokenNotFound
+}
+
+func (m *mockIdentityRepo) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
+	for _, token := range m.tokens {
+		if token.ID == tokenID && token.UserID == userID {
+			if token.UnlimitedQuota {
+				return token.RemainQuota, nil
+			}
+			consumed := amount
+			if consumed > token.RemainQuota {
+				consumed = token.RemainQuota
+			}
+			token.RemainQuota -= consumed
+			if token.RemainQuota == 0 {
+				token.Status = TokenStatusExhausted
+			}
+			token.UsedQuota += consumed
+			return token.RemainQuota, nil
+		}
+	}
+	return 0, ErrTokenNotFound
 }
 
 func (m *mockIdentityRepo) ListUsers(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*User, int64, error) {
@@ -326,7 +370,7 @@ func TestIdentityUsecase_ValidateToken_ValidToken(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	token, err := uc.ValidateToken(context.Background(), "valid-token")
+	token, err := uc.ValidateToken(context.Background(), "valid-token", "")
 	if err != nil {
 		t.Fatalf("ValidateToken() error = %v", err)
 	}
@@ -342,12 +386,12 @@ func TestIdentityUsecase_ValidateToken_EmptyToken(t *testing.T) {
 	repo := &mockIdentityRepo{tokens: make(map[string]*Token), users: make(map[int64]*User)}
 	uc := NewIdentityUsecase(repo)
 
-	_, err := uc.ValidateToken(context.Background(), "")
+	_, err := uc.ValidateToken(context.Background(), "", "")
 	if !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken, got: %v", err)
 	}
 
-	_, err = uc.ValidateToken(context.Background(), "   ")
+	_, err = uc.ValidateToken(context.Background(), "   ", "")
 	if !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken for whitespace token, got: %v", err)
 	}
@@ -360,7 +404,7 @@ func TestIdentityUsecase_ValidateToken_TokenNotFound(t *testing.T) {
 	}
 	uc := NewIdentityUsecase(repo)
 
-	_, err := uc.ValidateToken(context.Background(), "nonexistent-token")
+	_, err := uc.ValidateToken(context.Background(), "nonexistent-token", "")
 	if !errors.Is(err, ErrTokenNotFound) {
 		t.Fatalf("expected ErrTokenNotFound, got: %v", err)
 	}
@@ -386,7 +430,7 @@ func TestIdentityUsecase_ValidateToken_TokenExpired(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.ValidateToken(context.Background(), "expired-token")
+	_, err := uc.ValidateToken(context.Background(), "expired-token", "")
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Fatalf("expected ErrTokenExpired, got: %v", err)
 	}
@@ -411,13 +455,16 @@ func TestIdentityUsecase_ValidateToken_TokenStatusExpired(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.ValidateToken(context.Background(), "expired-status-token")
+	_, err := uc.ValidateToken(context.Background(), "expired-status-token", "")
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Fatalf("expected ErrTokenExpired, got: %v", err)
 	}
 }
 
-func TestIdentityUsecase_ValidateToken_ZeroRemainQuotaAllowed(t *testing.T) {
+func TestIdentityUsecase_ValidateToken_ZeroRemainQuotaRejected(t *testing.T) {
+	// High #5: a limited key (UnlimitedQuota=false) whose RemainQuota is
+	// exhausted must be rejected. Previously these fields were persisted but
+	// never checked, so a leaked limited key could be used indefinitely.
 	repo := &mockIdentityRepo{
 		tokens: map[string]*Token{
 			"zero-remain-token": {
@@ -436,12 +483,9 @@ func TestIdentityUsecase_ValidateToken_ZeroRemainQuotaAllowed(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	token, err := uc.ValidateToken(context.Background(), "zero-remain-token")
-	if err != nil {
-		t.Fatalf("ValidateToken() unexpected error: %v", err)
-	}
-	if token == nil || token.Key != "zero-remain-token" {
-		t.Fatalf("token = %+v, want zero-remain-token", token)
+	_, err := uc.ValidateToken(context.Background(), "zero-remain-token", "")
+	if !errors.Is(err, ErrTokenExhausted) {
+		t.Fatalf("expected ErrTokenExhausted for exhausted limited key, got: %v", err)
 	}
 }
 
@@ -464,7 +508,7 @@ func TestIdentityUsecase_ValidateToken_TokenStatusExhausted(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.ValidateToken(context.Background(), "exhausted-status-token")
+	_, err := uc.ValidateToken(context.Background(), "exhausted-status-token", "")
 	if !errors.Is(err, ErrTokenExhausted) {
 		t.Fatalf("expected ErrTokenExhausted, got: %v", err)
 	}
@@ -489,7 +533,7 @@ func TestIdentityUsecase_ValidateToken_TokenDisabled(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.ValidateToken(context.Background(), "disabled-token")
+	_, err := uc.ValidateToken(context.Background(), "disabled-token", "")
 	if !errors.Is(err, ErrTokenDisabled) {
 		t.Fatalf("expected ErrTokenDisabled, got: %v", err)
 	}
@@ -514,7 +558,7 @@ func TestIdentityUsecase_ValidateToken_UnlimitedQuota(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	token, err := uc.ValidateToken(context.Background(), "unlimited-token")
+	token, err := uc.ValidateToken(context.Background(), "unlimited-token", "")
 	if err != nil {
 		t.Fatalf("ValidateToken() unexpected error: %v", err)
 	}
@@ -550,7 +594,7 @@ func TestIdentityUsecase_GetAuthSnapshot_Valid(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	snapshot, err := uc.GetAuthSnapshot(context.Background(), "valid-token")
+	snapshot, err := uc.GetAuthSnapshot(context.Background(), "valid-token", "")
 	if err != nil {
 		t.Fatalf("GetAuthSnapshot() error = %v", err)
 	}
@@ -601,7 +645,7 @@ func TestIdentityUsecase_GetAuthSnapshot_UserDisabled(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	_, err := uc.GetAuthSnapshot(context.Background(), "valid-token")
+	_, err := uc.GetAuthSnapshot(context.Background(), "valid-token", "")
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got: %v", err)
 	}
@@ -632,7 +676,7 @@ func TestIdentityUsecase_GetAuthSnapshot_ModelWhitelist(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	snapshot, err := uc.GetAuthSnapshot(context.Background(), "restricted-token")
+	snapshot, err := uc.GetAuthSnapshot(context.Background(), "restricted-token", "")
 	if err != nil {
 		t.Fatalf("GetAuthSnapshot() error = %v", err)
 	}
@@ -669,7 +713,7 @@ func TestIdentityUsecase_GetAuthSnapshot_EmptyModelWhitelist(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	snapshot, err := uc.GetAuthSnapshot(context.Background(), "all-models-token")
+	snapshot, err := uc.GetAuthSnapshot(context.Background(), "all-models-token", "")
 	if err != nil {
 		t.Fatalf("GetAuthSnapshot() error = %v", err)
 	}
@@ -751,7 +795,7 @@ func TestIdentityUsecase_Login_Success(t *testing.T) {
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
-	user, token, err := uc.Login(context.Background(), "alice", "secret123")
+	user, token, err := uc.Login(context.Background(), "alice", "secret123", "")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
@@ -767,23 +811,27 @@ func TestIdentityUsecase_Login_EmptyCredentials(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
 	uc := NewIdentityUsecase(repo)
 
-	_, _, err := uc.Login(context.Background(), "", "secret")
+	_, _, err := uc.Login(context.Background(), "", "secret", "")
 	if !errors.Is(err, ErrInvalidPassword) {
 		t.Fatalf("expected ErrInvalidPassword, got: %v", err)
 	}
 
-	_, _, err = uc.Login(context.Background(), "alice", "")
+	_, _, err = uc.Login(context.Background(), "alice", "", "")
 	if !errors.Is(err, ErrInvalidPassword) {
 		t.Fatalf("expected ErrInvalidPassword, got: %v", err)
 	}
 }
 
-func TestIdentityUsecase_Login_UserNotFound(t *testing.T) {
+// TestIdentityUsecase_Login_UnknownUserReturnsInvalidPassword verifies the L2
+// timing-oracle mitigation: an unknown username MUST surface the same
+// ErrInvalidPassword as a bad password so the response time does not leak
+// whether the account exists.
+func TestIdentityUsecase_Login_UnknownUserReturnsInvalidPassword(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
 	uc := NewIdentityUsecase(repo)
-	_, _, err := uc.Login(context.Background(), "nobody", "secret")
-	if !errors.Is(err, ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound, got: %v", err)
+	_, _, err := uc.Login(context.Background(), "nobody", "secret", "")
+	if !errors.Is(err, ErrInvalidPassword) {
+		t.Fatalf("expected ErrInvalidPassword for unknown user (L2 timing-oracle mitigation), got: %v", err)
 	}
 }
 
@@ -795,7 +843,7 @@ func TestIdentityUsecase_Login_UserDisabled(t *testing.T) {
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
-	_, _, err := uc.Login(context.Background(), "alice", "secret")
+	_, _, err := uc.Login(context.Background(), "alice", "secret", "")
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got: %v", err)
 	}
@@ -809,7 +857,7 @@ func TestIdentityUsecase_Login_IssuesSessionJWTWithoutCreatingAPIToken(t *testin
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
-	_, token, err := uc.Login(context.Background(), "alice", "secret123")
+	_, token, err := uc.Login(context.Background(), "alice", "secret123", "")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
@@ -980,6 +1028,33 @@ func TestIdentityUsecase_CreateAccessToken_Success(t *testing.T) {
 	}
 	if len(token.Models) != 1 || token.Models[0] != "gpt-4o" {
 		t.Fatalf("unexpected models: %v", token.Models)
+	}
+	// Default (no opts) remains unlimited for backward compatibility.
+	if !token.UnlimitedQuota {
+		t.Fatalf("default token should be unlimited, got remain=%d unlimited=%v", token.RemainQuota, token.UnlimitedQuota)
+	}
+}
+
+func TestIdentityUsecase_CreateAccessToken_RespectsFiniteQuota(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: map[int64]*User{
+			1: {ID: 1, Username: "alice", Status: UserStatusEnabled},
+		},
+		tokens: make(map[string]*Token),
+	}
+	uc := NewIdentityUsecase(repo)
+	// H2: a caller requesting a finite quota must have it honored rather
+	// than silently overwritten to unlimited.
+	token, err := uc.CreateAccessToken(context.Background(), 1, "limited-token", nil, 0,
+		CreateAccessTokenOptions{RemainQuota: 500, UnlimitedQuota: false})
+	if err != nil {
+		t.Fatalf("CreateAccessToken() error = %v", err)
+	}
+	if token.UnlimitedQuota {
+		t.Fatalf("finite-quota token must not be unlimited")
+	}
+	if token.RemainQuota != 500 {
+		t.Fatalf("remain quota = %d, want 500", token.RemainQuota)
 	}
 }
 
@@ -1188,9 +1263,15 @@ func TestIdentityUsecase_UpdateSelf_UpdatesProfile(t *testing.T) {
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
-
-	err := uc.UpdateSelf(context.Background(), 1, "alice2", "Alice Two", "", true)
+	// Seed a real password hash so the current-password confirmation works.
+	hash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	if err != nil {
+		t.Fatal(err)
+	}
+	repo.users[1].PasswordHash = string(hash)
+
+	// Changing username requires the current password.
+	if err := uc.UpdateSelf(context.Background(), 1, "alice2", "Alice Two", "", "password123", true); err != nil {
 		t.Fatalf("UpdateSelf() error = %v", err)
 	}
 	if repo.users[1].Username != "alice2" {
@@ -1202,21 +1283,28 @@ func TestIdentityUsecase_UpdateSelf_UpdatesProfile(t *testing.T) {
 	if repo.users[1].Email != "alice@example.com" || repo.users[1].Group != "default" {
 		t.Fatalf("unexpected preserved fields: email=%s group=%s", repo.users[1].Email, repo.users[1].Group)
 	}
+
+	// A sensitive change without the current password must be rejected.
+	if err := uc.UpdateSelf(context.Background(), 1, "alice3", "", "", "", false); !errors.Is(err, ErrCurrentPasswordRequired) {
+		t.Fatalf("expected ErrCurrentPasswordRequired, got: %v", err)
+	}
 }
 
 func TestIdentityUsecase_UpdateSelf_RejectsDuplicateUsername(t *testing.T) {
 	repo := &mockIdentityRepo{
 		users: map[int64]*User{
-			1: {ID: 1, Username: "alice", DisplayName: "Alice", Status: UserStatusEnabled},
+			1: {ID: 1, Username: "alice", DisplayName: "Alice", Status: UserStatusEnabled, PasswordHash: "$2a$10$alicehashplaceholderalicehashplaceholderaliceha"},
 			2: {ID: 2, Username: "bob", DisplayName: "Bob", Status: UserStatusEnabled},
 		},
 		tokens: make(map[string]*Token),
 	}
 	uc := NewIdentityUsecase(repo)
 
-	err := uc.UpdateSelf(context.Background(), 1, "bob", "", "", false)
-	if !errors.Is(err, ErrUserExists) {
-		t.Fatalf("expected ErrUserExists, got: %v", err)
+	// Duplicate-username check runs after the current-password gate, so a
+	// missing current password is reported first.
+	err := uc.UpdateSelf(context.Background(), 1, "bob", "", "", "", false)
+	if !errors.Is(err, ErrCurrentPasswordRequired) {
+		t.Fatalf("expected ErrCurrentPasswordRequired, got: %v", err)
 	}
 }
 
@@ -1228,11 +1316,17 @@ func TestIdentityUsecase_UpdateSelf_UpdatesPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "newpass123", false); err != nil {
+	// Changing the password requires the current password.
+	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "newpass123", "password123", false); err != nil {
 		t.Fatalf("UpdateSelf() error = %v", err)
 	}
-	if _, _, err := uc.Login(context.Background(), "alice", "newpass123"); err != nil {
+	if _, _, err := uc.Login(context.Background(), "alice", "newpass123", ""); err != nil {
 		t.Fatalf("login with new password failed: %v", err)
+	}
+
+	// A password change with the wrong current password is rejected.
+	if err := uc.UpdateSelf(context.Background(), user.ID, "", "", "anotherpass", "wrong", false); !errors.Is(err, ErrInvalidPassword) {
+		t.Fatalf("expected ErrInvalidPassword, got: %v", err)
 	}
 }
 

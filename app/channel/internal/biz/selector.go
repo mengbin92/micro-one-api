@@ -102,10 +102,16 @@ func (w *SlidingWindow) P95() time.Duration {
 	return time.Duration(sorted[idx])
 }
 
-// SlidingCounter tracks recent error counts in per-second buckets.
+// SlidingCounter tracks recent error and total request counts in per-second
+// buckets over a fixed window. Review channel-H1: the previous version recorded
+// only errors and exposed them as errors-per-second, which made Rate()'s name a
+// lie — callers compared it to a 0..1 threshold as if it were an error *ratio*,
+// so low-traffic channels tripped on a handful of failures. It now tracks both
+// errors and totals so Rate() returns a true error ratio (errors/total).
 type SlidingCounter struct {
 	mu          sync.Mutex
-	counts      map[int64]int // timestamp (unix seconds) → count
+	errors      map[int64]int // timestamp (unix seconds) → error count
+	totals      map[int64]int // timestamp (unix seconds) → total request count
 	window      time.Duration
 	lastCleanup int64 // unix seconds of last cleanup; initialized on first use
 }
@@ -113,21 +119,41 @@ type SlidingCounter struct {
 // NewSlidingCounter creates a new sliding counter.
 func NewSlidingCounter(window time.Duration) *SlidingCounter {
 	return &SlidingCounter{
-		counts: make(map[int64]int),
+		errors: make(map[int64]int),
+		totals: make(map[int64]int),
 		window: window,
 	}
 }
 
-// Increment increments the counter for the current timestamp.
+// RecordOutcome records a request outcome for the current timestamp: every
+// call bumps the total counter, failures additionally bump the error counter.
+// This is the primary recording API (replaces the old error-only Increment).
+func (c *SlidingCounter) RecordOutcome(success bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now().Unix()
+	c.totals[now]++
+	if !success {
+		c.errors[now]++
+	}
+	c.cleanup(now)
+}
+
+// Increment records a single failure for the current timestamp. Preserved for
+// backward compatibility; new callers should prefer RecordOutcome so totals are
+// tracked and Rate() returns a meaningful ratio.
 func (c *SlidingCounter) Increment() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := time.Now().Unix()
-	c.counts[now]++
+	c.totals[now]++
+	c.errors[now]++
 	c.cleanup(now)
 }
 
-// Rate returns the error rate over the window as errors-per-second.
+// Rate returns the error *ratio* (errors/total) over the window, in [0,1].
+// Returns 0 when no requests have been recorded so callers can apply a
+// minimum-sample threshold (see circuitBreakerMinRequests) before tripping.
 func (c *SlidingCounter) Rate() float64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -135,16 +161,32 @@ func (c *SlidingCounter) Rate() float64 {
 	now := time.Now().Unix()
 	c.cleanup(now)
 
-	if len(c.counts) == 0 {
+	total := 0
+	errs := 0
+	for _, n := range c.totals {
+		total += n
+	}
+	for _, n := range c.errors {
+		errs += n
+	}
+	if total == 0 {
 		return 0
 	}
+	return float64(errs) / float64(total)
+}
 
+// Total returns the total number of recorded requests in the window. Used by
+// circuit-breaker logic to enforce a minimum-sample threshold.
+func (c *SlidingCounter) Total() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now().Unix()
+	c.cleanup(now)
 	total := 0
-	for _, count := range c.counts {
-		total += count
+	for _, n := range c.totals {
+		total += n
 	}
-
-	return float64(total) / c.window.Seconds()
+	return total
 }
 
 // cleanup removes buckets older than the window. It runs at most once per
@@ -155,9 +197,14 @@ func (c *SlidingCounter) cleanup(now int64) {
 		return
 	}
 	cutoff := now - int64(c.window.Seconds())
-	for ts := range c.counts {
+	for ts := range c.errors {
 		if ts < cutoff {
-			delete(c.counts, ts)
+			delete(c.errors, ts)
+		}
+	}
+	for ts := range c.totals {
+		if ts < cutoff {
+			delete(c.totals, ts)
 		}
 	}
 	c.lastCleanup = now
@@ -258,8 +305,9 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 			continue
 		}
 
-		// Skip circuit-opened channels
-		if state.circuitOpenUntil > 0 && state.circuitOpenUntil > now {
+		// channel-H1: skip open channels; half-open channels (sentinel) are
+		// eligible but we arm exactly one probe below.
+		if st := state.breakerState(now); st == circuitOpen {
 			continue
 		}
 
@@ -285,6 +333,13 @@ func (s *WeightedSelector) Select(ctx context.Context, group string, candidates 
 	totalWeight := s.totalEffectiveWeight(candidates, now)
 	if totalWeight > 0 {
 		best.currentWeight -= totalWeight
+	}
+
+	// channel-H1: if the chosen channel's open window has elapsed, arm the
+	// half-open sentinel so the breaker resolves on the first probe outcome
+	// (recordBreakerOutcome in RecordHealth).
+	if best.breakerState(now) == circuitHalfOpen {
+		best.circuitOpenUntil = circuitHalfOpenSentinel
 	}
 
 	best.inflight.Add(1)
@@ -333,16 +388,21 @@ func (s *WeightedSelector) RecordHealth(channelID int64, success bool, latency i
 	// Update latency
 	state.recentLatency.Add(latency)
 
-	// Update error rate
+	// Update error rate (channel-H1: record both totals and errors so the
+	// circuit breaker sees a true error ratio, not errors-per-second).
+	state.recentErrors.RecordOutcome(success)
 	if !success {
-		state.recentErrors.Increment()
 		state.lastFailure = time.Now()
 	}
 
 	// Decrement in-flight
 	state.inflight.Add(-1)
 
-	// Update circuit breaker state
+	// channel-H1: if this channel is half-open, the just-recorded outcome is
+	// the probe result — close on success, re-open on failure.
+	state.recordBreakerOutcome(success)
+
+	// Update circuit breaker state (trip check for closed channels).
 	state.updateCircuitBreaker()
 }
 
@@ -414,20 +474,92 @@ func (cs *channelState) latencyFactor() int32 {
 	}
 }
 
+// Circuit-breaker thresholds (channel-H1). The previous logic tripped on a
+// raw errors-per-second value compared against a 0..1 ratio threshold, had no
+// minimum-sample guard, and recovered by fully opening the floodgates after a
+// fixed timer — so low-traffic channels blew on a couple of errors and a sick
+// channel was re-drowned the instant the timer expired.
+const (
+	circuitBreakerErrorThreshold = 0.5  // trip when >50% of requests fail
+	circuitBreakerMinRequests    = 10   // but only after this many samples
+	circuitBreakerOpenDuration   = 30 * time.Second
+	circuitBreakerHalfOpenProbes = 1    // requests let through while half-open
+)
+
+// circuitState is the breaker state of a channel/account: closed (healthy),
+// open (failing fast), or halfOpen (probing after the open window elapsed).
+type circuitState int
+
+const (
+	circuitClosed circuitState = iota
+	circuitOpen
+	circuitHalfOpen
+)
+
+// halfOpenUntil is encoded inside circuitOpenUntil: when the open window
+// elapses the channel flips to half-open by setting circuitOpenUntil to a
+// sentinel far in the future and arming halfOpenProbes; a probe success closes
+// the circuit, a probe failure re-opens it. This keeps the existing
+// "circuitOpenUntil > now means skip" invariant in Select intact while adding
+// a graduated recovery path.
+
 // updateCircuitBreaker updates the circuit breaker state based on recent errors.
+// channel-H1: enforces a minimum-sample threshold and implements a half-open
+// probing state instead of unconditionally re-admitting full traffic.
 func (cs *channelState) updateCircuitBreaker() {
-	errorRate := cs.recentErrors.Rate()
-
-	// Trip circuit breaker if error rate is very high
-	if errorRate > 0.5 {
-		// Open circuit for 30 seconds
-		cs.circuitOpenUntil = time.Now().UnixNano() + (30 * time.Second).Nanoseconds()
-	}
-
-	// Reset if time has passed
 	now := time.Now().UnixNano()
-	if cs.circuitOpenUntil > 0 && cs.circuitOpenUntil < now {
-		cs.circuitOpenUntil = 0
+	switch cs.breakerState(now) {
+	case circuitOpen:
+		// Still within the open window; nothing to do (Select skips us).
+		return
+	case circuitHalfOpen:
+		// Probe outcome has already been applied by RecordHealth via
+		// recordBreakerOutcome. Stay half-open until a probe resolves.
+		return
+	case circuitClosed:
+		// Closed: trip only once we have enough samples AND a high ratio.
+		if cs.recentErrors.Total() < circuitBreakerMinRequests {
+			return
+		}
+		if cs.recentErrors.Rate() > circuitBreakerErrorThreshold {
+			cs.circuitOpenUntil = now + circuitBreakerOpenDuration.Nanoseconds()
+		}
+	}
+}
+
+// breakerState derives the current breaker state from circuitOpenUntil.
+func (cs *channelState) breakerState(now int64) circuitState {
+	if cs.circuitOpenUntil <= 0 {
+		return circuitClosed
+	}
+	if cs.circuitOpenUntil == circuitHalfOpenSentinel {
+		return circuitHalfOpen
+	}
+	if cs.circuitOpenUntil > now {
+		return circuitOpen
+	}
+	// Open window elapsed → transition to half-open (armed by Select/Record).
+	return circuitHalfOpen
+}
+
+// circuitHalfOpenSentinel marks a channel as half-open. It is an arbitrarily
+// large timestamp so the "circuitOpenUntil > now" skip in Select keeps working
+// until a probe resolves the state.
+const circuitHalfOpenSentinel = math.MaxInt64
+
+// recordBreakerOutcome advances the half-open state machine from RecordHealth.
+// A probe success closes the circuit; a probe failure re-opens it for another
+// full open window. Called under the selector lock.
+func (cs *channelState) recordBreakerOutcome(success bool) {
+	now := time.Now().UnixNano()
+	if cs.breakerState(now) != circuitHalfOpen {
+		return
+	}
+	if success {
+		cs.circuitOpenUntil = 0 // half-open → closed
+	} else {
+		// half-open → reopened
+		cs.circuitOpenUntil = now + circuitBreakerOpenDuration.Nanoseconds()
 	}
 }
 

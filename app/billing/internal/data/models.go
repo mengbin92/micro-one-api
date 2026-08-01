@@ -45,6 +45,12 @@ type reservationModel struct {
 	// dual-track flow; equals Amount on the legacy balance-only path.
 	BalanceAmountQuota int64 `gorm:"column:balance_amount_quota"`
 
+	// ActualCost is the real settlement cost persisted at commit time
+	// (code-review 2026-07-30 billing-L1). Zero until the reservation reaches
+	// the committed state; the commit pipeline writes it immediately before
+	// the final CAS to "committed".
+	ActualCost int64 `gorm:"column:actual_cost"`
+
 	CreatedAt time.Time  `gorm:"column:created_at"`
 	UpdatedAt time.Time  `gorm:"column:updated_at"`
 	ExpiredAt *time.Time `gorm:"index;column:expired_at"`

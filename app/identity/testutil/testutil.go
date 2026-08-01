@@ -28,10 +28,11 @@ var (
 
 // Constants.
 const (
-	UserStatusEnabled   = identitybiz.UserStatusEnabled
-	UserStatusDisabled  = identitybiz.UserStatusDisabled
-	TokenStatusEnabled  = identitybiz.TokenStatusEnabled
-	TokenStatusDisabled = identitybiz.TokenStatusDisabled
+	UserStatusEnabled    = identitybiz.UserStatusEnabled
+	UserStatusDisabled   = identitybiz.UserStatusDisabled
+	TokenStatusEnabled   = identitybiz.TokenStatusEnabled
+	TokenStatusDisabled  = identitybiz.TokenStatusDisabled
+	TokenStatusExhausted = identitybiz.TokenStatusExhausted
 )
 
 // NewIdentityUsecase re-exports the constructor.

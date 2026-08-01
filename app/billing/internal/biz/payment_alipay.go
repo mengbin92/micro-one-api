@@ -18,11 +18,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"math"
 	"micro-one-api/pkg/safefile"
+	"strconv"
 )
 
 type PaymentConfig struct {
@@ -127,13 +130,39 @@ func (p *alipayPaymentProvider) VerifyNotify(ctx context.Context, params map[str
 	if tradeNo == "" {
 		return nil, errors.New("alipay out_trade_no is required")
 	}
+	// Code-review 2026-07-30 billing-L5: surface total_amount / app_id /
+	// seller_id so the caller can cross-check them against the local order
+	// before marking the order paid. The values come from the already
+	// signature-verified params, so tampering would invalidate the signature;
+	// the cross-check catches order-substitution and misconfigured-app
+	// scenarios the signature alone does not cover.
 	return &PaymentNotify{
 		TradeNo:         tradeNo,
 		ProviderTradeNo: firstNonEmptyString(params["trade_no"]),
 		Success:         strings.EqualFold(params["trade_status"], "TRADE_SUCCESS") || strings.EqualFold(params["trade_status"], "TRADE_FINISHED"),
 		Channel:         PaymentChannelAlipay,
 		Raw:             copyStringMap(params),
+		TotalAmount:     parseAlipayTotalAmount(params["total_amount"]),
+		AppID:           firstNonEmptyString(params["app_id"]),
+		SellerID:        firstNonEmptyString(params["seller_id"]),
 	}, nil
+}
+
+// parseAlipayTotalAmount parses the Alipay "total_amount" notify field (a
+// decimal string in yuan, e.g. "0.01") into minor units (cents). It is
+// best-effort: an unparseable value yields 0, which the caller treats as
+// "provider reported no amount" and skips the amount cross-check.
+func parseAlipayTotalAmount(raw string) int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	// Alipay amounts are decimal yuan with up to two fractional digits.
+	f, err := strconv.ParseFloat(raw, 64)
+	if err != nil || f < 0 {
+		return 0
+	}
+	return int64(math.Round(f * 100))
 }
 
 func (p *alipayPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOrder) (*PaymentProviderStatus, error) {
@@ -542,16 +571,58 @@ func copyStringMap(in map[string]string) map[string]string {
 	return out
 }
 
+// ReadPaymentSecretFile reads a payment secret from a file when value is
+// prefixed with "@". Security (review pkg-L1): the path is rejected if it
+// contains a ".." component, blocking the classic "@../../etc/passwd"
+// traversal. Callers that can supply an explicit allowed root should prefer
+// ReadPaymentSecretFileRooted for full sandbox enforcement.
 func ReadPaymentSecretFile(value, label string) (string, error) {
 	if !strings.HasPrefix(strings.TrimSpace(value), "@") {
 		return value, nil
 	}
 	path := strings.TrimSpace(strings.TrimPrefix(value, "@"))
+	if hasTraversal(path) {
+		return "", fmt.Errorf("%s path contains forbidden traversal (..): %s", label, path)
+	}
 	data, err := safefile.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read %s: %w", label, err)
 	}
 	return string(data), nil
+}
+
+// ReadPaymentSecretFileRooted is the sandboxed variant of ReadPaymentSecretFile:
+// the resolved path must stay within allowedRoot (review pkg-L1/M1). Use this
+// when the secret path may originate from a less-trusted source than static
+// config (e.g. an API field).
+func ReadPaymentSecretFileRooted(value, label, allowedRoot string) (string, error) {
+	if !strings.HasPrefix(strings.TrimSpace(value), "@") {
+		return value, nil
+	}
+	path := strings.TrimSpace(strings.TrimPrefix(value, "@"))
+	data, err := safefile.ReadFile(path, allowedRoot)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", label, err)
+	}
+	return string(data), nil
+}
+
+// hasTraversal reports whether path contains a ".." path component, which would
+// allow escaping the intended directory.
+func hasTraversal(path string) bool {
+	for _, part := range filepath.SplitList(path) {
+		if part == ".." {
+			return true
+		}
+	}
+	// filepath.SplitList splits on the OS list separator (":" on Unix). Also
+	// check path-separated components.
+	for _, seg := range strings.Split(path, string(filepath.Separator)) {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func ReadAll(r io.Reader) ([]byte, error) {

@@ -100,6 +100,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		pricing,
 	)
 	uc.SetSubscriptionPrimatives(subscriptionUc)
+	uc.SetTxRunner(data.NewTxRunner(d))
 	uc.SetReceivableRepo(d.ReceivableRepo())
 
 	var asyncBilling *biz.AsyncBillingUsecase
@@ -133,17 +134,24 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	paymentUc := biz.NewPaymentUsecaseWithAssignerAndSnapshotter(d.PaymentRepo(), paymentProvider, paymentAssetIssuer, paymentSubscriptionAssigner, planSnapshotter)
 
 	var alipayVerifier biz.PaymentNotifyVerifier
+	var configuredAlipayAppID string
 	if cfg.Bootstrap.Payment != nil && cfg.Bootstrap.Payment.Alipay != nil {
-		alipayVerifier = biz.NewAlipayPaymentProvider(cfg.Bootstrap.Payment.ToPaymentConfig().Alipay)
+		alipayCfg := cfg.Bootstrap.Payment.ToPaymentConfig().Alipay
+		configuredAlipayAppID = alipayCfg.AppID
+		alipayVerifier = biz.NewAlipayPaymentProvider(alipayCfg)
 	} else {
 		alipayVerifier = biz.NewAlipayPaymentProvider(biz.AlipayConfig{})
 	}
 	svc := service.NewBillingService(uc, reconUc, paymentUc, alipayVerifier)
 
+	svc.SetExpectedAlipayAppID(configuredAlipayAppID)
+
 	refundUc := biz.NewRefundUsecase(d.PaymentRepo(), d.AccountRepo(), d.LedgerRepo(), subscriptionUc)
 	svc.SetRefundUsecase(refundUc)
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
+
+	reconUc.SetReservationReleaser(uc)
 
 	svc.SetAsyncBillingUsecase(asyncBilling)
 
@@ -214,6 +222,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		reconJobOpts = append(reconJobOpts, biz.WithNotifyType(cfg.Bootstrap.Clients.Notify.NotifyType))
 	}
 	reconJob := biz.NewReconciliationJob(reconUc, interval, reconJobOpts...)
+
+	expiryChecker := biz2.NewSubscriptionExpiryChecker(subscriptionRepo)
+	go expiryChecker.Run(ctx)
 	go cleanupJob.Start(ctx)
 	go reconJob.Start(ctx)
 	partitionStop := startPartitionMaintenance(ctx, d.DB(), cfg.Bootstrap.Partition)

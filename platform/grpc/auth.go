@@ -12,10 +12,10 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
+	"go.uber.org/zap"
+	applogger "micro-one-api/platform/logging"
 	appauth "micro-one-api/platform/security/auth"
 	apptls "micro-one-api/platform/tls"
-	applogger "micro-one-api/platform/logging"
-	"go.uber.org/zap"
 )
 
 // AuthServer wraps a gRPC server with authentication
@@ -144,16 +144,29 @@ func (a *AuthInterceptor) Stream(
 
 // validateRequest validates the authentication request
 func (a *AuthInterceptor) validateRequest(ctx context.Context, method string) error {
-	// Extract token from metadata
-	token, err := extractTokenFromContext(ctx)
+	// Extract token (and mTLS flag) from metadata / peer certificates.
+	token, mtlsAuthenticated, err := extractTokenFromContext(ctx)
 	if err != nil {
 		return status.Errorf(codes.Unauthenticated, "missing authentication token: %v", err)
 	}
 
-	// Validate token
-	claims, err := a.jwtManager.ValidateServiceToken(token)
-	if err != nil {
-		return status.Errorf(codes.Unauthenticated, "invalid authentication token: %v", err)
+	var claims *appauth.JWTClaims
+	if mtlsAuthenticated {
+		// L3: a verified mTLS peer certificate already authenticated the
+		// caller at the transport layer. Skip JWT validation so the mTLS
+		// path is not a dead branch that always fails (the previous code
+		// logged "mTLS authentication successful" but then ran
+		// ValidateServiceToken("") which always rejected the caller).
+		claims = &appauth.JWTClaims{
+			ServiceName: "mtls-peer",
+			ServiceType: "mtls",
+		}
+	} else {
+		c, err := a.jwtManager.ValidateServiceToken(token)
+		if err != nil {
+			return status.Errorf(codes.Unauthenticated, "invalid authentication token: %v", err)
+		}
+		claims = c
 	}
 
 	// Check required roles
@@ -182,17 +195,19 @@ func (a *AuthInterceptor) validateRequest(ctx context.Context, method string) er
 	return nil
 }
 
-// extractTokenFromContext extracts JWT token from gRPC metadata.
-// It first checks for mTLS client certificates, then falls back to
-// reading the "authorization" key from gRPC incoming metadata.
-func extractTokenFromContext(ctx context.Context) (string, error) {
+// extractTokenFromContext extracts the JWT token from gRPC metadata and
+// reports whether the caller authenticated via a verified mTLS peer
+// certificate. When mtlsAuthenticated is true the returned token is empty and
+// the caller should skip JWT validation (the transport already authenticated
+// the peer) — review L3.
+func extractTokenFromContext(ctx context.Context) (string, bool, error) {
 	// Check for mTLS client certificates
 	p, ok := peer.FromContext(ctx)
 	if ok && p.AuthInfo != nil {
 		if tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo); ok {
 			if len(tlsInfo.State.PeerCertificates) > 0 {
 				applogger.Log.Debug("mTLS authentication successful")
-				return "", nil // No JWT needed for mTLS
+				return "", true, nil // No JWT needed for mTLS
 			}
 		}
 	}
@@ -200,25 +215,25 @@ func extractTokenFromContext(ctx context.Context) (string, error) {
 	// Read JWT from gRPC incoming metadata "authorization" key
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", fmt.Errorf("no gRPC metadata in context")
+		return "", false, fmt.Errorf("no gRPC metadata in context")
 	}
 
 	values := md.Get("authorization")
 	if len(values) == 0 {
-		return "", fmt.Errorf("authorization metadata not found")
+		return "", false, fmt.Errorf("authorization metadata not found")
 	}
 
 	authHeader := values[0]
 	if !strings.HasPrefix(authHeader, "Bearer ") {
-		return "", fmt.Errorf("invalid authorization format, expected Bearer token")
+		return "", false, fmt.Errorf("invalid authorization format, expected Bearer token")
 	}
 
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 	if token == "" {
-		return "", fmt.Errorf("empty Bearer token")
+		return "", false, fmt.Errorf("empty Bearer token")
 	}
 
-	return token, nil
+	return token, false, nil
 }
 
 // getRequestIDFromContext extracts request ID from context
@@ -280,4 +295,35 @@ func (t *TokenAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[
 // RequireTransportSecurity indicates whether the credentials require transport security
 func (t *TokenAuth) RequireTransportSecurity() bool {
 	return true // Always require TLS for JWT tokens
+}
+
+// insecureTokenAuth is a PerRPCCredentials implementation that sends the
+// service token in the authorization header WITHOUT requiring TLS. It is
+// intended for trusted in-cluster communication where the network itself
+// is the trust boundary (e.g. the docker-compose backend network). Using
+// the service token over a plaintext connection inside a trusted network
+// is acceptable because the token is a shared secret among cooperating
+// services, not a user credential. When TLS is available the standard
+// NewTokenAuth (which requires TLS) should be preferred.
+type insecureTokenAuth struct {
+	token string
+}
+
+// NewInsecureTokenAuth creates PerRPCCredentials that attach the service
+// token to every RPC without requiring TLS. Use this for trusted
+// in-cluster connections where TLS termination is not configured.
+func NewInsecureTokenAuth(token string) credentials.PerRPCCredentials {
+	return &insecureTokenAuth{token: token}
+}
+
+func (t *insecureTokenAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{
+		"authorization": "Bearer " + t.token,
+	}, nil
+}
+
+// RequireTransportSecurity returns false so the token is sent over
+// plaintext connections. This is safe only on a trusted network.
+func (t *insecureTokenAuth) RequireTransportSecurity() bool {
+	return false
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -25,7 +26,8 @@ func TestIdentityHTTPRegisterLoginAndSelf(t *testing.T) {
 	uc := biz.NewIdentityUsecase(repo)
 	srv := NewHTTPServer(":0", uc, nil)
 
-	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"alice","password":"password123","email":"alice@example.com"}`))
+	// M5: a client-supplied group must be ignored on public registration.
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"alice","password":"password123","email":"alice@example.com","group":"vip"}`))
 	registerRec := httptest.NewRecorder()
 	srv.ServeHTTP(registerRec, registerReq)
 	if registerRec.Code != http.StatusOK {
@@ -57,6 +59,10 @@ func TestIdentityHTTPRegisterLoginAndSelf(t *testing.T) {
 	if !strings.Contains(selfRec.Body.String(), `"username":"alice"`) {
 		t.Fatalf("self response mismatch: %s", selfRec.Body.String())
 	}
+	// The attacker-supplied "vip" group must have been replaced with "default".
+	if !strings.Contains(selfRec.Body.String(), `"group":"default"`) {
+		t.Fatalf("self response must show default group, not client-supplied: %s", selfRec.Body.String())
+	}
 }
 
 func TestIdentityHTTPAffCodeRequiresAuth(t *testing.T) {
@@ -79,7 +85,7 @@ func TestIdentityHTTPAffCodeReturnsUserCode(t *testing.T) {
 	if _, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default"); err != nil {
 		t.Fatal(err)
 	}
-	_, authToken, err := uc.Login(context.Background(), "alice", "password123")
+	_, authToken, err := uc.Login(context.Background(), "alice", "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +400,8 @@ func TestIdentityHTTPEmailBindUpdatesEmail(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
-	srv := NewHTTPServer(":0", uc, nil)
+	deliverer := newCapturingCodeDeliverer()
+	srv := newHTTPServerWithDeliverer(":0", uc, deliverer)
 
 	verifyReq := httptest.NewRequest(http.MethodGet, "/api/verification?email=new@example.com", nil)
 	verifyRec := httptest.NewRecorder()
@@ -402,9 +409,13 @@ func TestIdentityHTTPEmailBindUpdatesEmail(t *testing.T) {
 	if verifyRec.Code != http.StatusOK {
 		t.Fatalf("verification status = %d, body=%s", verifyRec.Code, verifyRec.Body.String())
 	}
-	code := extractJSONField(verifyRec.Body.String(), "verification_code")
+	// C2 fix: the code must NOT be in the response; it is delivered out-of-band.
+	if extractJSONField(verifyRec.Body.String(), "verification_code") != "" {
+		t.Fatalf("verification code must not be echoed in response: %s", verifyRec.Body.String())
+	}
+	code := deliverer.verificationCodes["new@example.com"]
 	if code == "" {
-		t.Fatalf("verification code missing: %s", verifyRec.Body.String())
+		t.Fatalf("verification code not delivered: %s", verifyRec.Body.String())
 	}
 
 	bindReq := httptest.NewRequest(http.MethodGet, "/api/oauth/email/bind?email=new@example.com&code="+code, nil)
@@ -450,7 +461,8 @@ func TestIdentityHTTPSelfUpdateChangesCurrentUser(t *testing.T) {
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
-	updateReq := httptest.NewRequest(http.MethodPut, "/api/user/self", strings.NewReader(`{"username":"alice2","display_name":"Alice Two","password":"newpass123"}`))
+	// M7: changing username+password now requires current_password.
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/user/self", strings.NewReader(`{"username":"alice2","display_name":"Alice Two","password":"newpass123","current_password":"password123"}`))
 	updateReq.Header.Set("Authorization", "Bearer "+authToken)
 	updateRec := httptest.NewRecorder()
 	srv.ServeHTTP(updateRec, updateReq)
@@ -462,7 +474,16 @@ func TestIdentityHTTPSelfUpdateChangesCurrentUser(t *testing.T) {
 		t.Fatalf("update response mismatch: %s", updateRec.Body.String())
 	}
 
-	_, newToken, err := uc.Login(context.Background(), "alice2", "newpass123")
+	// Without current_password the sensitive change must be rejected.
+	noCurReq := httptest.NewRequest(http.MethodPut, "/api/user/self", strings.NewReader(`{"username":"alice3","current_password":""}`))
+	noCurReq.Header.Set("Authorization", "Bearer "+authToken)
+	noCurRec := httptest.NewRecorder()
+	srv.ServeHTTP(noCurRec, noCurReq)
+	if !strings.Contains(noCurRec.Body.String(), `"success":false`) {
+		t.Fatalf("update without current_password should fail: %s", noCurRec.Body.String())
+	}
+
+	_, newToken, err := uc.Login(context.Background(), "alice2", "newpass123", "")
 	if err != nil {
 		t.Fatalf("login with updated credentials failed: %v", err)
 	}
@@ -1099,7 +1120,7 @@ func TestIdentityHTTPAdminUserPaymentOrdersCanListAllUsers(t *testing.T) {
 	if err := repo.UpdateUser(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
-	_, authToken, err := uc.Login(context.Background(), user.Username, "password123")
+	_, authToken, err := uc.Login(context.Background(), user.Username, "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1192,7 +1213,7 @@ func TestIdentityHTTPTokenCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loginUser, authToken, err := uc.Login(httptest.NewRequest(http.MethodGet, "/", nil).Context(), user.Username, "password123")
+	loginUser, authToken, err := uc.Login(httptest.NewRequest(http.MethodGet, "/", nil).Context(), user.Username, "password123", "")
 	if err != nil || loginUser.ID != user.ID {
 		t.Fatalf("login error = %v", err)
 	}
@@ -1241,7 +1262,7 @@ func TestIdentityHTTPSessionTokenIsNotAPIToken(t *testing.T) {
 		t.Fatalf("list should not include the session token as an API key: %s", listRec.Body.String())
 	}
 
-	if _, err := uc.GetAuthSnapshot(context.Background(), authToken); err == nil {
+	if _, err := uc.GetAuthSnapshot(context.Background(), authToken, ""); err == nil {
 		t.Fatal("session token should not be accepted as an API auth snapshot")
 	}
 
@@ -1399,9 +1420,11 @@ func TestIdentityHTTPTokenOneAPIFields(t *testing.T) {
 		t.Fatalf("update status = %d, body=%s", updateRec.Code, updateRec.Body.String())
 	}
 	updateBody := updateRec.Body.String()
+	// H2: unlimited_quota:false is now respected on update instead of being
+	// silently forced to true.
 	for _, want := range []string{
 		`"remain_quota":250`,
-		`"unlimited_quota":true`,
+		`"unlimited_quota":false`,
 		`"subnet":"10.0.0.0/8"`,
 	} {
 		if !strings.Contains(updateBody, want) {
@@ -1416,7 +1439,8 @@ func TestIdentityHTTPPasswordReset(t *testing.T) {
 	if _, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default"); err != nil {
 		t.Fatal(err)
 	}
-	srv := NewHTTPServer(":0", uc, nil)
+	deliverer := newCapturingCodeDeliverer()
+	srv := newHTTPServerWithDeliverer(":0", uc, deliverer)
 
 	resetReq := httptest.NewRequest(http.MethodGet, "/api/reset_password?email=alice@example.com", nil)
 	resetRec := httptest.NewRecorder()
@@ -1424,9 +1448,13 @@ func TestIdentityHTTPPasswordReset(t *testing.T) {
 	if resetRec.Code != http.StatusOK {
 		t.Fatalf("reset request status = %d, body=%s", resetRec.Code, resetRec.Body.String())
 	}
-	resetToken := extractJSONField(resetRec.Body.String(), "token")
+	// C1 fix: the reset token must NOT be in the response.
+	if extractJSONField(resetRec.Body.String(), "token") != "" {
+		t.Fatalf("reset token must not be echoed in response: %s", resetRec.Body.String())
+	}
+	resetToken := deliverer.resetTokens["alice@example.com"]
 	if resetToken == "" {
-		t.Fatalf("reset token missing: %s", resetRec.Body.String())
+		t.Fatalf("reset token not delivered: %s", resetRec.Body.String())
 	}
 
 	confirmReq := httptest.NewRequest(http.MethodPost, "/api/user/reset", strings.NewReader(`{"email":"alice@example.com","token":"`+resetToken+`","password":"newpass123"}`))
@@ -1439,8 +1467,15 @@ func TestIdentityHTTPPasswordReset(t *testing.T) {
 		t.Fatalf("password reset failed: %s", confirmRec.Body.String())
 	}
 
-	if _, _, err := uc.Login(context.Background(), "alice", "newpass123"); err != nil {
+	if _, _, err := uc.Login(context.Background(), "alice", "newpass123", ""); err != nil {
 		t.Fatalf("login with reset password failed: %v", err)
+	}
+
+	// Reuse of a one-time token must fail.
+	reuseRec := httptest.NewRecorder()
+	srv.ServeHTTP(reuseRec, httptest.NewRequest(http.MethodPost, "/api/user/reset", strings.NewReader(`{"email":"alice@example.com","token":"`+resetToken+`","password":"anotherpass123"}`)))
+	if !strings.Contains(reuseRec.Body.String(), `"success":false`) {
+		t.Fatalf("one-time reset token must not be reusable: %s", reuseRec.Body.String())
 	}
 }
 
@@ -1896,12 +1931,44 @@ func registerAndLoginForHTTPTest(t *testing.T, uc *biz.IdentityUsecase) (*biz.Us
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, authToken, err := uc.Login(context.Background(), user.Username, "password123")
+	_, authToken, err := uc.Login(context.Background(), user.Username, "password123", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	return user, authToken
 }
+
+// capturingCodeDeliverer records the code/token delivered out-of-band so
+// tests can complete a verification/reset flow without the code being
+// present in the HTTP response (C1/C2 fix).
+type capturingCodeDeliverer struct {
+	verificationCodes map[string]string
+	resetTokens      map[string]string
+}
+
+func newCapturingCodeDeliverer() *capturingCodeDeliverer {
+	return &capturingCodeDeliverer{
+		verificationCodes: make(map[string]string),
+		resetTokens:      make(map[string]string),
+	}
+}
+
+func (c *capturingCodeDeliverer) DeliverVerificationCode(_ context.Context, email, code string) error {
+	c.verificationCodes[email] = code
+	return nil
+}
+
+func (c *capturingCodeDeliverer) DeliverResetToken(_ context.Context, email, token string) error {
+	c.resetTokens[email] = token
+	return nil
+}
+
+// newHTTPServerWithDeliverer builds a server whose registration policy wires
+// the capturing deliverer, so tests can read codes out-of-band.
+func newHTTPServerWithDeliverer(addr string, uc *biz.IdentityUsecase, d CodeDeliverer) *khttp.Server {
+	return NewHTTPServerWithRegistrationPolicy(addr, uc, nil, RegistrationPolicy{Enabled: true, CodeDeliverer: d})
+}
+
 
 func extractJSONField(body, key string) string {
 	prefix := `"` + key + `":"`

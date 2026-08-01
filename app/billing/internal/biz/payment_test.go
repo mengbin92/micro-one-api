@@ -1,12 +1,13 @@
 package biz
 
 import (
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+
 	"context"
 	"fmt"
 	"strings"
 	"testing"
 
-	"gorm.io/gorm"
 )
 
 type memoryPaymentRepo struct {
@@ -34,14 +35,14 @@ func (r *memoryPaymentRepo) ListOrders(ctx context.Context, req ListPaymentOrder
 	return []*PaymentOrder{&copy}, 1, nil
 }
 
-func (r *memoryPaymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder) error) (*PaymentOrder, bool, error) {
+func (r *memoryPaymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	if r.order == nil || r.order.TradeNo != tradeNo {
 		return nil, false, nil
 	}
 	if r.order.Status == PaymentOrderStatusPaid {
 		return r.order, false, nil
 	}
-	if err := issue(r.order); err != nil {
+	if err := issue(r.order, nil); err != nil {
 		return nil, false, err
 	}
 	r.order.Status = PaymentOrderStatusPaid
@@ -62,7 +63,7 @@ func (r *memoryPaymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, provid
 	return r.order, true, nil
 }
 
-func (r *memoryPaymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, *gorm.DB) error) (*PaymentOrder, bool, error) {
+func (r *memoryPaymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	if r.order == nil || r.order.TradeNo != tradeNo {
 		return nil, false, nil
 	}
@@ -104,6 +105,13 @@ func (i *countingPaymentIssuer) IssueBalance(ctx context.Context, order *Payment
 	return nil
 }
 
+// IssueBalanceInTx mirrors the production fallback: tests use in-memory
+// mocks with no shared DB, so the tx argument is unused and the standalone
+// IssueBalance path is exercised instead.
+func (i *countingPaymentIssuer) IssueBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, order *PaymentOrder) error {
+	return i.IssueBalance(ctx, order)
+}
+
 type countingSubscriptionAssigner struct {
 	assigned int
 	order    *PaymentOrder
@@ -114,6 +122,13 @@ func (a *countingSubscriptionAssigner) AssignSubscriptionAfterPayment(ctx contex
 	a.assigned++
 	a.order = order
 	return a.err
+}
+
+// AssignSubscriptionAfterPaymentInTx mirrors the production in-tx path for
+// the in-memory test double: tx is nil so the non-tx AssignSubscriptionAfterPayment
+// path is exercised.
+func (a *countingSubscriptionAssigner) AssignSubscriptionAfterPaymentInTx(ctx context.Context, tx subscriptionbiz.Tx, order *PaymentOrder) error {
+	return a.AssignSubscriptionAfterPayment(ctx, order)
 }
 
 func TestPaymentUsecaseGetOrderRefreshesPaidAlipayOrder(t *testing.T) {

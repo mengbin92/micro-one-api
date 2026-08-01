@@ -10,8 +10,8 @@ import (
 
 // capturingRecorder collects SelectionEvents for test assertions.
 type capturingRecorder struct {
-	mu      sync.Mutex
-	events  []SelectionEvent
+	mu     sync.Mutex
+	events []SelectionEvent
 }
 
 func (r *capturingRecorder) RecordSelection(_ context.Context, e SelectionEvent) {
@@ -30,19 +30,19 @@ func (r *capturingRecorder) snapshot() []SelectionEvent {
 
 func TestProviderFamilyForModel(t *testing.T) {
 	cases := map[string]string{
-		"gpt-4o":          "openai",
-		"gpt-4o-mini":     "openai",
-		"o1-preview":      "openai",
-		"o3-mini":         "openai",
+		"gpt-4o":            "openai",
+		"gpt-4o-mini":       "openai",
+		"o1-preview":        "openai",
+		"o3-mini":           "openai",
 		"chatgpt-4o-latest": "openai",
 		"claude-sonnet-4-5": "anthropic",
-		"claude-3-opus":   "anthropic",
-		"gemini-2.0-flash": "google",
-		"glm-5.2":         "zhipu",
-		"deepseek-chat":   "deepseek",
-		"qwen-max":        "alibaba",
-		"unknown-model":   "other",
-		"":                "other",
+		"claude-3-opus":     "anthropic",
+		"gemini-2.0-flash":  "google",
+		"glm-5.2":           "zhipu",
+		"deepseek-chat":     "deepseek",
+		"qwen-max":          "alibaba",
+		"unknown-model":     "other",
+		"":                  "other",
 	}
 	for model, want := range cases {
 		assert.Equal(t, want, ProviderFamilyForModel(model), "model=%q", model)

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -15,18 +17,23 @@ import (
 
 // IdentityAdapter wraps a gRPC IdentityServiceClient to implement biz.IdentityClient.
 type IdentityAdapter struct {
-	client identityv1.IdentityServiceClient
+	client       identityv1.IdentityServiceClient
+	quotaMu      sync.RWMutex
+	quotaBlocked map[int64]time.Time
 }
 
 // NewIdentityAdapter creates a new IdentityAdapter.
 func NewIdentityAdapter(client identityv1.IdentityServiceClient) *IdentityAdapter {
-	return &IdentityAdapter{client: client}
+	return &IdentityAdapter{client: client, quotaBlocked: make(map[int64]time.Time)}
 }
 
-func (a *IdentityAdapter) GetAuthSnapshot(ctx context.Context, token string) (*relaybiz.AuthSnapshot, error) {
-	reply, err := a.client.GetAuthSnapshot(ctx, &identityv1.GetAuthSnapshotRequest{Token: token})
+func (a *IdentityAdapter) GetAuthSnapshot(ctx context.Context, token, clientIP string) (*relaybiz.AuthSnapshot, error) {
+	reply, err := a.client.GetAuthSnapshot(ctx, &identityv1.GetAuthSnapshotRequest{Token: token, ClientIp: clientIP})
 	if err != nil {
 		return nil, err
+	}
+	if a.IsTokenQuotaBlocked(reply.GetTokenId()) {
+		return nil, errors.New("token quota temporarily unavailable")
 	}
 	return &relaybiz.AuthSnapshot{
 		UserID:        reply.UserId,
@@ -37,6 +44,42 @@ func (a *IdentityAdapter) GetAuthSnapshot(ctx context.Context, token string) (*r
 		UserEnabled:   reply.UserEnabled,
 		TokenEnabled:  reply.TokenEnabled,
 	}, nil
+}
+
+func (a *IdentityAdapter) BlockTokenQuota(tokenID int64, duration time.Duration) {
+	if a == nil || tokenID <= 0 {
+		return
+	}
+	a.quotaMu.Lock()
+	if a.quotaBlocked == nil {
+		a.quotaBlocked = make(map[int64]time.Time)
+	}
+	a.quotaBlocked[tokenID] = time.Now().Add(duration)
+	a.quotaMu.Unlock()
+}
+
+func (a *IdentityAdapter) ClearTokenQuotaBlock(tokenID int64) {
+	if a == nil || tokenID <= 0 {
+		return
+	}
+	a.quotaMu.Lock()
+	delete(a.quotaBlocked, tokenID)
+	a.quotaMu.Unlock()
+}
+
+func (a *IdentityAdapter) IsTokenQuotaBlocked(tokenID int64) bool {
+	if a == nil || tokenID <= 0 {
+		return false
+	}
+	now := time.Now()
+	a.quotaMu.Lock()
+	until, ok := a.quotaBlocked[tokenID]
+	if ok && !until.After(now) {
+		delete(a.quotaBlocked, tokenID)
+		ok = false
+	}
+	a.quotaMu.Unlock()
+	return ok
 }
 
 // splitModels splits a comma-separated model string into a slice.

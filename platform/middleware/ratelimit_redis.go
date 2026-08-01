@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -12,21 +11,50 @@ import (
 	applogger "micro-one-api/platform/logging"
 )
 
-// RedisRateLimiter implements a distributed rate limiter using Redis sorted sets (sliding window).
+// redisTokenBucketScript atomically refills and consumes a token. Redis
+// executes the Lua script as one operation, so concurrent instances cannot
+// each observe the same token.
+// #nosec G101 -- Lua token-bucket script, not a credential.
+const redisTokenBucketScript = `
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local rate = tonumber(ARGV[2])
+local burst = tonumber(ARGV[3])
+local ttl_ms = tonumber(ARGV[4])
+local tokens = tonumber(redis.call('HGET', key, 'tokens'))
+local last = tonumber(redis.call('HGET', key, 'last_ms'))
+if tokens == nil then tokens = burst; last = now end
+local elapsed = math.max(0, now - last)
+tokens = math.min(burst, tokens + elapsed * rate / 1000.0)
+if tokens < 1 then
+  redis.call('HSET', key, 'tokens', tokens, 'last_ms', now)
+  redis.call('PEXPIRE', key, ttl_ms)
+  return 0
+end
+tokens = tokens - 1
+redis.call('HSET', key, 'tokens', tokens, 'last_ms', now)
+redis.call('PEXPIRE', key, ttl_ms)
+return 1
+`
+
+// RedisRateLimiter implements a distributed token-bucket limiter using Redis.
 type RedisRateLimiter struct {
-	rdb     *redis.Client
-	rate    int
-	burst   int
-	window  time.Duration
+	rdb       *redis.Client
+	rate      int
+	burst     int
 	keyPrefix string
+	// script is the pre-loaded atomic token-bucket update.
+	script *redis.Script
 }
 
 // RedisRateLimitConfig holds configuration for the Redis-based rate limiter.
 type RedisRateLimitConfig struct {
 	RequestsPerSecond int
 	Burst             int
-	Window            time.Duration
-	KeyPrefix         string
+	// Window is retained for configuration compatibility. Token-bucket
+	// limiting always interprets RequestsPerSecond as a per-second refill.
+	Window    time.Duration
+	KeyPrefix string
 }
 
 // DefaultRedisRateLimitConfig returns default configuration.
@@ -34,7 +62,7 @@ func DefaultRedisRateLimitConfig() *RedisRateLimitConfig {
 	return &RedisRateLimitConfig{
 		RequestsPerSecond: 100,
 		Burst:             200,
-		Window:            time.Minute,
+		Window:            time.Second,
 		KeyPrefix:         "ratelimit:",
 	}
 }
@@ -44,17 +72,29 @@ func NewRedisRateLimiter(rdb *redis.Client, config *RedisRateLimitConfig) *Redis
 	if config == nil {
 		config = DefaultRedisRateLimitConfig()
 	}
+	rate := config.RequestsPerSecond
+	if rate <= 0 {
+		rate = 1
+	}
+	burst := config.Burst
+	if burst <= 0 {
+		burst = rate
+	}
 	return &RedisRateLimiter{
 		rdb:       rdb,
-		rate:      config.RequestsPerSecond,
-		burst:     config.Burst,
-		window:    config.Window,
+		rate:      rate,
+		burst:     burst,
 		keyPrefix: config.KeyPrefix,
+		script:    redis.NewScript(redisTokenBucketScript),
 	}
 }
 
 // Allow checks if a request from the given key should be allowed.
-// Uses Redis ZRANGEBYSCORE to implement a sliding window counter.
+// Uses an atomic Lua token-bucket update so concurrent requests cannot each
+// observe the same token and all be admitted. The key TTL is set inside the
+// script so a Redis error no longer leaves an un-expiring key behind. Redis errors still
+// fail-open by design (a Redis outage must not take the whole platform down);
+// callers that need fail-closed semantics should wrap this limiter.
 func (rl *RedisRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
 	if rl.rdb == nil {
 		return true, nil
@@ -62,18 +102,13 @@ func (rl *RedisRateLimiter) Allow(ctx context.Context, key string) (bool, error)
 
 	redisKey := rl.keyPrefix + key
 	now := time.Now()
-	windowStart := now.Add(-rl.window)
+	ttlMs := int64(float64(rl.burst)/float64(rl.rate)*1000) + 1000
 
-	pipe := rl.rdb.Pipeline()
-
-	// Remove expired entries
-	pipe.ZRemRangeByScore(ctx, redisKey, "0", strconv.FormatInt(windowStart.UnixNano(), 10))
-
-	// Count current window requests
-	countCmd := pipe.ZCard(ctx, redisKey)
-
-	// Execute pipeline
-	if _, err := pipe.Exec(ctx); err != nil {
+	result, err := rl.script.Run(ctx, rl.rdb,
+		[]string{redisKey},
+		now.UnixMilli(), rl.rate, rl.burst, ttlMs,
+	).Int64()
+	if err != nil {
 		applogger.Log.Warn("Redis rate limit check failed, allowing request",
 			zap.String("key", key),
 			zap.Error(err),
@@ -81,26 +116,14 @@ func (rl *RedisRateLimiter) Allow(ctx context.Context, key string) (bool, error)
 		return true, nil
 	}
 
-	currentCount := countCmd.Val()
-	if currentCount >= int64(rl.rate) {
+	if result == 0 {
 		applogger.Log.Warn("Rate limit exceeded",
 			zap.String("key", key),
-			zap.Int64("requests", currentCount),
+			zap.Bool("token_available", false),
 			zap.Int("limit", rl.rate),
 		)
 		return false, nil
 	}
-
-	// Add current request with a unique member to avoid dedup
-	member := fmt.Sprintf("%d:%d", now.UnixNano(), now.UnixMicro())
-	rl.rdb.ZAdd(ctx, redisKey, redis.Z{
-		Score:  float64(now.UnixNano()),
-		Member: member,
-	})
-
-	// Set TTL on the key to auto-cleanup
-	rl.rdb.Expire(ctx, redisKey, rl.window+time.Second)
-
 	return true, nil
 }
 
@@ -128,10 +151,10 @@ func RedisRateLimitMiddleware(rdb *redis.Client, config *RedisRateLimitConfig) f
 
 				w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.rate))
 				w.Header().Set("X-RateLimit-Remaining", "0")
-				w.Header().Set("Retry-After", "60")
+				w.Header().Set("Retry-After", "1")
 
 				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"error":{"message":"rate limit exceeded","code":429}}`))
+				_, _ = w.Write([]byte(`{"error":{"message":"rate limit exceeded","code":429}}`))
 				return
 			}
 

@@ -180,7 +180,7 @@ func TestRedeemRepo_UpdateRedeemCodeCount_Insufficient(t *testing.T) {
 	ctx := context.Background()
 	err = repo.UpdateRedeemCodeCount(ctx, "CODE123", 5) // 尝试减少 5 个
 	assert.Error(t, err)                                // 应该失败，因为只有 2 个可用
-	assert.Contains(t, err.Error(), "insufficient")
+	assert.ErrorIs(t, err, biz.ErrRedeemCodeUsedUp)
 
 	// 验证计数没有被修改
 	var model redeemCodeModel

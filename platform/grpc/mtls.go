@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"slices"
-	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -118,12 +117,13 @@ func validateMTLSCertificate(cert *x509.Certificate, cfg *mTLSAuthConfig) error 
 		return fmt.Errorf("certificate missing client auth extended key usage")
 	}
 
-	// Check allowed subjects
+	// Check allowed subjects (exact match — review L4: a substring match let
+	// an allow-listed subject like "admin" match "CN=not-admin").
 	if len(cfg.AllowedSubjects) > 0 {
 		subject := cert.Subject.String()
 		allowed := false
 		for _, allowedSubject := range cfg.AllowedSubjects {
-			if strings.Contains(subject, allowedSubject) {
+			if subject == allowedSubject {
 				allowed = true
 				break
 			}
@@ -133,12 +133,14 @@ func validateMTLSCertificate(cert *x509.Certificate, cfg *mTLSAuthConfig) error 
 		}
 	}
 
-	// Check allowed services from SANs
+	// Check allowed services from SANs (exact match — review L4: a substring
+	// match let allow-listed service "billing" match the SAN
+	// "billing.evil.example").
 	if len(cfg.AllowedServices) > 0 {
 		allowed := false
 		for _, san := range cert.DNSNames {
 			for _, allowedService := range cfg.AllowedServices {
-				if strings.Contains(san, allowedService) {
+				if san == allowedService {
 					allowed = true
 					break
 				}

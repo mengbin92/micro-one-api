@@ -5,11 +5,13 @@ import (
 	stderrors "errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
+	identityv1 "micro-one-api/api/identity/v1"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 
@@ -42,7 +44,7 @@ func (s *HTTPServer) ingestUsageLogAfterResponse(in usageLogInput) {
 }
 
 func (s *HTTPServer) logPostResponseCommitError(err error) {
-	if err != nil && applogger.Log != nil {
+	if err != nil {
 		applogger.Log.Warn("failed to commit quota after response was written", zap.Error(err))
 	}
 }
@@ -116,9 +118,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	// rely on provisional values; the worker will finalize the ledger and
 	// subscription usage on its own.
 	if resp.GetAsyncEnqueued() {
-		if applogger.Log != nil {
-			applogger.Log.Info("commit quota enqueued for async settlement", zap.String("reservation_id", reservationID), zap.Int64("actual_tokens", actualTokens))
-		}
+		applogger.Log.Info("commit quota enqueued for async settlement", zap.String("reservation_id", reservationID), zap.Int64("actual_tokens", actualTokens))
 		// Channel token usage does not depend on the provisional
 		// committed_amount; record it now so the channel stats stay accurate
 		// even when billing is settled asynchronously. Subscription-account
@@ -127,6 +127,8 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		if len(details) > 0 {
 			s.recordChannelUsage(ctx, details[0].ChannelID, actualTokens)
 			s.recordModelUsage(ctx, details[0].ModelName, actualTokens, details[0].ElapsedTime, false)
+			// High #5: consume per-key token quota even on the async path.
+			s.consumeTokenQuota(ctx, details[0].UserID, details[0].TokenID, actualTokens)
 		}
 		return resp, nil
 	}
@@ -144,6 +146,9 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		// transaction. Recording again would double-count the
 		// window. The legacy path is preserved.
 		s.recordSubscriptionUsage(ctx, detail.UserID, actualTokens)
+		// Enforce per-key quota after billing settles. Persistent identity
+		// failures fail-close this token in the relay until validation recovers.
+		s.consumeTokenQuota(ctx, detail.UserID, detail.TokenID, actualTokens)
 	}
 	return resp, nil
 }
@@ -161,12 +166,10 @@ func (s *HTTPServer) recordSubscriptionAccountQuotaUsage(ctx context.Context, ac
 		CostSource:    "billing_commit",
 	})
 	if err != nil {
-		if applogger.Log != nil {
-			applogger.Log.Warn("failed to record subscription account quota usage", zap.Int64("account_id", accountID), zap.Error(err))
-		}
+		applogger.Log.Warn("failed to record subscription account quota usage", zap.Int64("account_id", accountID), zap.Error(err))
 		return
 	}
-	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
+	if resp != nil && !resp.GetSuccess() {
 		applogger.Log.Warn("subscription account quota usage rejected", zap.Int64("account_id", accountID), zap.String("message", resp.GetMessage()))
 	}
 }
@@ -179,6 +182,60 @@ func (s *HTTPServer) recordSubscriptionSessionWindowUsage(ctx context.Context, d
 		s.sessionWindow = newSubscriptionSessionWindowStore(nil)
 	}
 	s.sessionWindow.RecordUsage(ctx, detail.Group, detail.SessionHash, detail.SubscriptionAccountID, reservationID, costUSD, s.openAIWSStickyTTL())
+}
+
+// consumeTokenQuota is the per-key quota enforcement path (review High #5).
+// It calls identity-service to decrement the token's RemainQuota by `amount`.
+// Billing has already committed when this runs, so transient failures are
+// retried. Persistent failure fail-closes the token locally until identity can
+// be checked again instead of allowing unmetered follow-up requests.
+func (s *HTTPServer) consumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) {
+	if s == nil || s.identityClient == nil || tokenID <= 0 || amount <= 0 {
+		return
+	}
+	tokenCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+	var resp *identityv1.ConsumeTokenQuotaReply
+	var err error
+	consumed := false
+	for attempt := 0; attempt < 3; attempt++ {
+		resp, err = s.identityClient.ConsumeTokenQuota(tokenCtx, &identityv1.ConsumeTokenQuotaRequest{
+			UserId: userID, TokenId: tokenID, Amount: amount,
+		})
+		if err == nil && resp != nil && resp.GetSuccess() {
+			consumed = true
+			break
+		}
+		if attempt < 2 {
+			timer := time.NewTimer(time.Duration(attempt+1) * 50 * time.Millisecond)
+			select {
+			case <-tokenCtx.Done():
+				timer.Stop()
+				attempt = 2
+			case <-timer.C:
+			}
+		}
+	}
+	if !consumed {
+		if s.tokenQuotaBlocker != nil {
+			s.tokenQuotaBlocker.BlockTokenQuota(tokenID, time.Minute)
+		}
+		fields := []zap.Field{zap.Int64("token_id", tokenID)}
+		if err != nil {
+			fields = append(fields, zap.Error(err))
+		} else if resp != nil {
+			fields = append(fields, zap.String("message", resp.GetMessage()))
+		}
+		applogger.Log.Warn("consume token quota failed; token temporarily blocked", fields...)
+		return
+	}
+	if s.tokenQuotaBlocker != nil {
+		if resp.GetRemaining() == 0 {
+			s.tokenQuotaBlocker.BlockTokenQuota(tokenID, time.Hour)
+		} else {
+			s.tokenQuotaBlocker.ClearTokenQuotaBlock(tokenID)
+		}
+	}
 }
 
 func (s *HTTPServer) recordSubscriptionUsage(ctx context.Context, userID int64, quota int64) {
@@ -208,11 +265,11 @@ func (s *HTTPServer) recordChannelUsage(ctx context.Context, channelID int64, qu
 		ChannelId: channelID,
 		Quota:     quota,
 	})
-	if err != nil && applogger.Log != nil {
+	if err != nil {
 		applogger.Log.Warn("failed to record channel usage", zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.Error(err))
 		return
 	}
-	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
+	if resp != nil && !resp.GetSuccess() {
 		applogger.Log.Warn("failed to record channel usage", zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.String("message", resp.GetMessage()))
 	}
 }
@@ -240,11 +297,11 @@ func (s *HTTPServer) recordModelUsage(ctx context.Context, modelID string, token
 		req.ErrorCount = 1
 	}
 	resp, err := s.channelClient.RecordModelUsage(channelCtx, req)
-	if err != nil && applogger.Log != nil {
+	if err != nil {
 		applogger.Log.Warn("failed to record model usage", zap.String("model", modelID), zap.Error(err))
 		return
 	}
-	if resp != nil && !resp.GetSuccess() && applogger.Log != nil {
+	if resp != nil && !resp.GetSuccess() {
 		applogger.Log.Warn("failed to record model usage", zap.String("model", modelID), zap.String("message", resp.GetMessage()))
 	}
 }

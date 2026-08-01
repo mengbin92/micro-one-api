@@ -1,13 +1,14 @@
 package biz
 
 import (
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+
 	"context"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"gorm.io/gorm"
 	"micro-one-api/platform/metrics"
 )
 
@@ -67,10 +68,10 @@ func (r *stubLedgerRepo) AggregateLedgerByDate(ctx context.Context, userID strin
 func (r *stubLedgerRepo) AggregateUsage(ctx context.Context, filter UsageFilter) ([]*UsageBucket, *UsageTotals, error) {
 	return nil, nil, nil
 }
-func (r *stubLedgerRepo) CreateLedgerInTx(ctx context.Context, tx *gorm.DB, ledger *Ledger) error {
+func (r *stubLedgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx, ledger *Ledger) error {
 	return r.CreateLedger(ctx, ledger)
 }
-func (r *stubLedgerRepo) FindByDedupeKey(ctx context.Context, tx *gorm.DB, key string) (*Ledger, error) {
+func (r *stubLedgerRepo) FindByDedupeKey(ctx context.Context, tx subscriptionbiz.Tx, key string) (*Ledger, error) {
 	return nil, nil
 }
 func (r *stubLedgerRepo) SumSubscriptionCostByReservation(ctx context.Context, reservationIDs []string) (int64, error) {

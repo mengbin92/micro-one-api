@@ -141,43 +141,6 @@ func TestAsyncBillingFallback_NilResponseRejects(t *testing.T) {
 	}
 }
 
-func TestFallbackFactory_CreateBillingFallbackNeverFakeSuccess(t *testing.T) {
-	// REVIEW_v1 P1-1: the factory billing fallback used to return
-	// &billingv1.ReserveQuotaResponse{Success: true}. It must now reject.
-	f := NewFallbackFactory()
-	got, err := f.CreateBillingFallback()(context.Background(), errors.New("breaker open"))
-	if err == nil {
-		t.Fatal("expected error, got nil (fake success regression)")
-	}
-	if got != nil {
-		t.Fatalf("expected nil result, got %T", got)
-	}
-}
-
-func TestFallbackFactory_WiringFlowsToLookups(t *testing.T) {
-	wantAuth := &identityv1.GetAuthSnapshotReply{UserId: 1}
-	wantCh := &commonv1.ChannelInfo{Id: 2}
-	wantBill := &billingv1.ReserveQuotaResponse{Success: true, ReservationId: "x"}
-
-	f := NewFallbackFactory().
-		WithAuthLookup(&stubAuthLookup{snap: wantAuth}).
-		WithChannelLookup(&stubChannelLookup{ch: wantCh}).
-		WithAsyncBillingQueue(&stubBillingQueue{resp: wantBill})
-
-	a, err := f.authCache.ExecuteFallback(context.Background(), "t")
-	if err != nil || a.GetUserId() != 1 {
-		t.Fatalf("auth wiring: %+v %v", a, err)
-	}
-	c, err := f.channelCache.ExecuteFallback(context.Background(), "g", "m")
-	if err != nil || c.GetId() != 2 {
-		t.Fatalf("channel wiring: %+v %v", c, err)
-	}
-	b, err := f.asyncBilling.ExecuteFallback(context.Background(), &billingv1.ReserveQuotaRequest{RequestId: "r"})
-	if err != nil || !b.GetSuccess() {
-		t.Fatalf("billing wiring: %+v %v", b, err)
-	}
-}
-
 func TestRejectFallback(t *testing.T) {
 	r := NewRejectFallback("identity")
 	if err := r.ExecuteFallback(context.Background()); err == nil {

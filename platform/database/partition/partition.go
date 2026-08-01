@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	applogger "micro-one-api/platform/logging"
 	"gorm.io/gorm"
+	applogger "micro-one-api/platform/logging"
 )
 
 // PartitionManager handles table partition operations.
@@ -41,15 +41,15 @@ func NewPartitionManager(db *gorm.DB) *PartitionManager {
 
 // PartitionInfo contains information about a table partition.
 type PartitionInfo struct {
-	PartitionName          string `gorm:"column:PARTITION_NAME"`
-	PartitionOrdinalPos     int    `gorm:"column:PARTITION_ORDINAL_POSITION"`
-	PartitionMethod         string `gorm:"column:PARTITION_METHOD"`
-	PartitionExpression     string `gorm:"column:PARTITION_EXPRESSION"`
-	PartitionDescription    string `gorm:"column:PARTITION_DESCRIPTION"`
-	TableRows              int64  `gorm:"column:TABLE_ROWS"`
-	AvgRowLength           int64  `gorm:"column:AVG_ROW_LENGTH"`
-	DataLength             int64  `gorm:"column:DATA_LENGTH"`
-	IndexLength            int64  `gorm:"column:INDEX_LENGTH"`
+	PartitionName        string `gorm:"column:PARTITION_NAME"`
+	PartitionOrdinalPos  int    `gorm:"column:PARTITION_ORDINAL_POSITION"`
+	PartitionMethod      string `gorm:"column:PARTITION_METHOD"`
+	PartitionExpression  string `gorm:"column:PARTITION_EXPRESSION"`
+	PartitionDescription string `gorm:"column:PARTITION_DESCRIPTION"`
+	TableRows            int64  `gorm:"column:TABLE_ROWS"`
+	AvgRowLength         int64  `gorm:"column:AVG_ROW_LENGTH"`
+	DataLength           int64  `gorm:"column:DATA_LENGTH"`
+	IndexLength          int64  `gorm:"column:INDEX_LENGTH"`
 }
 
 // GetPartitionStatus retrieves partition information for a table.
@@ -250,11 +250,11 @@ func (pm *PartitionManager) PartitionMaintenance(ctx context.Context) error {
 
 // TablePartitionInfo provides a summary of partition status for a table.
 type TablePartitionInfo struct {
-	TableName      string
-	PartitionCount int
-	TotalRows      int64
-	TotalDataSize  int64
-	TotalIndexSize int64
+	TableName       string
+	PartitionCount  int
+	TotalRows       int64
+	TotalDataSize   int64
+	TotalIndexSize  int64
 	OldestPartition string
 	NewestPartition string
 }
@@ -274,17 +274,29 @@ func (pm *PartitionManager) GetTablePartitionSummary(ctx context.Context, tableN
 		return info, nil
 	}
 
-	info.PartitionCount = len(partitions)
-	info.OldestPartition = partitions[0].PartitionName
-	info.NewestPartition = partitions[len(partitions)-2].PartitionName // exclude pmax
-
+	// Exclude the MAXVALUE catch-all partition ("pmax") and any NULL partitions
+	// BEFORE indexing. A freshly-partitioned table that has not yet received its
+	// first monthly partition returns a single "pmax" row; the previous code
+	// indexed partitions[len-2] and panicked (platform-L7). Unpartitioned tables
+	// return a NULL PartitionName which string-scan errors on; treat those as
+	// having no real partitions.
+	real := partitions[:0:0]
 	for _, p := range partitions {
-		if p.PartitionName == "pmax" {
+		if p.PartitionName == "" || p.PartitionName == "pmax" {
 			continue
 		}
-		info.TotalRows += p.TableRows
-		info.TotalDataSize += p.DataLength
-		info.TotalIndexSize += p.IndexLength
+		real = append(real, p)
+	}
+	info.PartitionCount = len(real)
+
+	if len(real) > 0 {
+		info.OldestPartition = real[0].PartitionName
+		info.NewestPartition = real[len(real)-1].PartitionName
+		for _, p := range real {
+			info.TotalRows += p.TableRows
+			info.TotalDataSize += p.DataLength
+			info.TotalIndexSize += p.IndexLength
+		}
 	}
 
 	return info, nil

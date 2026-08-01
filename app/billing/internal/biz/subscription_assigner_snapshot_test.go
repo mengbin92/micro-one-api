@@ -9,6 +9,7 @@ import (
 	"time"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+
 )
 
 // fakeAssignmentUsecase records the last AssignOrExtend request so the test can
@@ -27,6 +28,10 @@ func (f *fakeAssignmentUsecase) Assign(ctx context.Context, req *subscriptionbiz
 func (f *fakeAssignmentUsecase) AssignOrExtend(ctx context.Context, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, bool, error) {
 	f.lastReq = req
 	return &subscriptionbiz.UserSubscription{ID: 1, ExpiresAt: req.ExpiresAt}, f.lastExt, f.err
+}
+
+func (f *fakeAssignmentUsecase) AssignOrExtendInTx(ctx context.Context, tx subscriptionbiz.Tx, req *subscriptionbiz.AssignSubscriptionRequest) (*subscriptionbiz.UserSubscription, bool, error) {
+	return f.AssignOrExtend(ctx, req)
 }
 
 // stubPlanGetter returns the given plan (or error) on GetPlanByID. Used to

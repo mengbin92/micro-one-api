@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -38,7 +39,14 @@ func (s *HTTPServer) getAuthSnapshot(ctx context.Context, token string) (*identi
 	req := &identityv1.GetAuthSnapshotRequest{
 		Token: token,
 	}
-	return s.identityClient.GetAuthSnapshot(ctx, req)
+	reply, err := s.identityClient.GetAuthSnapshot(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if s.tokenQuotaBlocker != nil && s.tokenQuotaBlocker.IsTokenQuotaBlocked(reply.GetTokenId()) {
+		return nil, fmt.Errorf("token quota temporarily unavailable")
+	}
+	return reply, nil
 }
 
 func (s *HTTPServer) listAvailableModels(ctx context.Context, group string) (*channelv1.ListAvailableModelsReply, error) {

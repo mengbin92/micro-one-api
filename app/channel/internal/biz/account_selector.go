@@ -158,8 +158,9 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 		// account is no longer derated once it drains. Only writing on n>0
 		// would pin the snapshot at its peak forever.
 		state.crossReplicaInflight.Store(crossReplica[acct.ID])
-		// Skip circuit-opened accounts.
-		if state.circuitOpenUntil > 0 && state.circuitOpenUntil > now {
+		// channel-H1: skip open accounts; half-open accounts (sentinel) are
+		// eligible and resolved by the first probe outcome.
+		if st := state.breakerState(now); st == circuitOpen {
 			continue
 		}
 		effectiveWeight := accountEffectiveWeight(state)
@@ -175,6 +176,11 @@ func (s *SubscriptionAccountSelector) Select(ctx context.Context, group string, 
 	totalWeight := s.totalEffectiveWeight(candidates, now)
 	if totalWeight > 0 {
 		best.currentWeight -= totalWeight
+	}
+	// channel-H1: if the chosen account's open window has elapsed, arm the
+	// half-open sentinel so the breaker resolves on the first probe outcome.
+	if best.breakerState(now) == circuitHalfOpen {
+		best.circuitOpenUntil = circuitHalfOpenSentinel
 	}
 	for _, acct := range candidates {
 		if acct != nil && acct.ID == best.accountID {
@@ -256,9 +262,10 @@ func (s *SubscriptionAccountSelector) RecordAccountHealth(accountID int64, succe
 		}
 		s.accounts[accountID] = state
 	}
-	if !success {
-		state.recentErrors.Increment()
-	}
+	// channel-H1: record both totals and errors so Rate() is a true error
+	// ratio; the breaker enforces a min-sample threshold before tripping.
+	state.recentErrors.RecordOutcome(success)
+	state.recordAccountBreakerOutcome(success)
 	state.updateCircuitBreaker()
 }
 
@@ -438,22 +445,53 @@ func (st *accountState) healthFactor() int32 {
 	}
 }
 
-// updateCircuitBreaker trips the circuit for 30s when the error rate is very
-// high (>0.5 errors/sec) and clears it once the open window has elapsed.
-// Because SlidingCounter errors decay naturally over the 60s window, a drop in
-// failures lets the circuit close after the open window; there is no explicit
-// success-driven decrement (the counter has none), so recovery is time-based.
+// updateCircuitBreaker trips the circuit when the true error ratio
+// (errors/total) exceeds the threshold AND enough samples have been collected
+// (channel-H1). It implements a half-open recovery: after the open window
+// elapses the account flips to half-open, the first probe outcome resolves it
+// (recordAccountBreakerOutcome), preventing the old behavior of unconditionally
+// re-admitting full traffic to a still-sick account.
 func (st *accountState) updateCircuitBreaker() {
 	now := time.Now().UnixNano()
-	// If already open, only clear once the window has elapsed.
-	if st.circuitOpenUntil > 0 {
-		if st.circuitOpenUntil < now {
-			st.circuitOpenUntil = 0
+	switch st.breakerState(now) {
+	case circuitOpen:
+		return
+	case circuitHalfOpen:
+		return // resolved by recordAccountBreakerOutcome
+	case circuitClosed:
+		if st.recentErrors.Total() < circuitBreakerMinRequests {
+			return
 		}
+		if st.recentErrors.Rate() > circuitBreakerErrorThreshold {
+			st.circuitOpenUntil = now + int64(circuitBreakerOpenDuration)
+		}
+	}
+}
+
+// breakerState derives the account breaker state from circuitOpenUntil.
+func (st *accountState) breakerState(now int64) circuitState {
+	if st.circuitOpenUntil <= 0 {
+		return circuitClosed
+	}
+	if st.circuitOpenUntil == circuitHalfOpenSentinel {
+		return circuitHalfOpen
+	}
+	if st.circuitOpenUntil > now {
+		return circuitOpen
+	}
+	return circuitHalfOpen
+}
+
+// recordAccountBreakerOutcome resolves the half-open state: a probe success
+// closes the circuit, a failure re-opens it for another open window.
+func (st *accountState) recordAccountBreakerOutcome(success bool) {
+	now := time.Now().UnixNano()
+	if st.breakerState(now) != circuitHalfOpen {
 		return
 	}
-	// Closed: trip only when the error rate is critically high.
-	if st.recentErrors.Rate() > 0.5 {
-		st.circuitOpenUntil = now + int64(30*time.Second)
+	if success {
+		st.circuitOpenUntil = 0
+	} else {
+		st.circuitOpenUntil = now + int64(circuitBreakerOpenDuration)
 	}
 }

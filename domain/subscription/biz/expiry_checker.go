@@ -34,13 +34,13 @@ func (c *SubscriptionExpiryChecker) Run(ctx context.Context) {
 	}
 	ticker := time.NewTicker(ExpiryCheckInterval)
 	defer ticker.Stop()
-	c.Tick(ctx)
+	_, _ = c.Tick(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			c.Tick(ctx)
+			_, _ = c.Tick(ctx)
 		}
 	}
 }
@@ -62,7 +62,9 @@ func (c *SubscriptionExpiryChecker) Tick(ctx context.Context) ([]ExpiryNotificat
 		if sub.ExpiresAt <= now {
 			sub.Status = SubscriptionStatusExpired
 			sub.UpdatedAt = now
-			if err := c.repo.UpdateSubscription(ctx, sub); err != nil {
+			// domain-H1: write only status (+ updated_at). The expiry transition
+			// must not clobber a concurrent AddUsage's usage/window increments.
+			if err := c.repo.UpdateSubscriptionFields(ctx, sub, []SubscriptionField{SubscriptionFieldStatus}); err != nil {
 				return nil, err
 			}
 			continue
