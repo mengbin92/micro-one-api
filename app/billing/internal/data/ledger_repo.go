@@ -527,9 +527,20 @@ func usageQueryParts(groupBy []string) (groupCols, selectCols, joinSQL string) {
 // nil if none exists. Used by the CAS commit pipeline to detect
 // pre-existing entries left by an earlier failed attempt.
 func (r *ledgerRepo) FindByDedupeKey(ctx context.Context, tx subscriptionbiz.Tx, key string) (*biz.Ledger, error) {
-	db := txDB(tx)
 	if key == "" {
 		return nil, nil
+	}
+	// When no transaction is supplied (e.g. the best-effort split recovery in
+	// CommitQuotaWithUsageAndSplit, which runs outside a tx), fall back to the
+	// repo's own DB handle. txDB(nil) returns nil and the subsequent
+	// db.WithContext call would panic — this was the root cause of the
+	// billing-service crash loop that produced intermittent 402s on the relay.
+	db := txDB(tx)
+	if db == nil {
+		if r.data == nil || r.data.db == nil {
+			return nil, fmt.Errorf("ledger repo: no database available")
+		}
+		db = r.data.db
 	}
 	var model ledgerModel
 	if err := db.WithContext(ctx).Where("ledger_dedupe_key = ?", key).First(&model).Error; err != nil {

@@ -14,16 +14,39 @@ import (
 // hiding internal/upstream error detail (relay-H2). The full error is still
 // logged/metered by callers; only the HTTP response body is sanitized.
 //
-//   - 5xx and 502/503/504: a neutral "upstream service unavailable" so provider
-//     names, file paths, and upstream response-body fragments are not echoed.
-//   - 4xx: returned as-is (these are genuinely user-facing — auth, validation,
-//     malformed request). Callers that pass a 4xx derived from an *upstream*
-//     body should sanitize the message themselves before calling writeError.
+// Every branch returns a non-empty message: the previous "4xx returns empty"
+// behavior leaked an empty {"error":{"message":""}} body to clients on
+// billing/quota failures (HTTP 402), which surfaced as an opaque
+// "unexpected status 402 Payment Required" in SDK clients.
+//
+//   - 5xx: a neutral "upstream service unavailable" so provider names, file
+//     paths, and upstream response-body fragments are not echoed.
+//   - 4xx: a short, client-safe reason for the status category (never empty).
 func gatewayErrorMessage(statusCode int) string {
 	if statusCode >= 500 {
 		return "upstream service unavailable"
 	}
-	return ""
+	switch statusCode {
+	case http.StatusPaymentRequired:
+		return "insufficient quota"
+	case http.StatusTooManyRequests:
+		return "rate limited"
+	case http.StatusUnauthorized:
+		return "unauthorized"
+	case http.StatusForbidden:
+		return "forbidden"
+	case http.StatusNotFound:
+		return "not found"
+	case http.StatusBadRequest:
+		return "bad request"
+	case http.StatusServiceUnavailable:
+		return "service unavailable"
+	default:
+		if statusCode >= 400 {
+			return "request error"
+		}
+		return "ok"
+	}
 }
 
 // sanitizeUpstreamError maps an upstream/internal error to a client-safe
