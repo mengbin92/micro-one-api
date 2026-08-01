@@ -83,6 +83,7 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 				// numeric user id (roadmap §4: no empty operator audit).
 				ctx := context.WithValue(r.Context(), adminRoleContextKey{}, service.RoleRoot)
 				ctx = context.WithValue(ctx, adminOperatorContextKey{}, adminSystemOperator)
+				ctx = service.WithOperatorCredential(ctx, token)
 				next(w, r.WithContext(ctx))
 				return
 			}
@@ -92,6 +93,7 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 				if err == nil && role >= service.RoleAdmin {
 					ctx := context.WithValue(r.Context(), adminRoleContextKey{}, role)
 					ctx = context.WithValue(ctx, adminOperatorContextKey{}, strconv.FormatInt(userID, 10))
+					ctx = service.WithOperatorCredential(ctx, token)
 					next(w, r.WithContext(ctx))
 					return
 				}

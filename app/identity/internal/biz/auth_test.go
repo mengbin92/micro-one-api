@@ -1,9 +1,9 @@
 package biz
 
 import (
-	"golang.org/x/crypto/bcrypt"
 	"context"
 	"errors"
+	"golang.org/x/crypto/bcrypt"
 	"strings"
 	"testing"
 	"time"
@@ -313,6 +313,27 @@ func (m *mockIdentityRepo) DeleteToken(ctx context.Context, userID, tokenID int6
 	return ErrTokenNotFound
 }
 
+func (m *mockIdentityRepo) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
+	for _, token := range m.tokens {
+		if token.ID == tokenID && token.UserID == userID {
+			if token.UnlimitedQuota {
+				return token.RemainQuota, nil
+			}
+			consumed := amount
+			if consumed > token.RemainQuota {
+				consumed = token.RemainQuota
+			}
+			token.RemainQuota -= consumed
+			if token.RemainQuota == 0 {
+				token.Status = TokenStatusExhausted
+			}
+			token.UsedQuota += consumed
+			return token.RemainQuota, nil
+		}
+	}
+	return 0, ErrTokenNotFound
+}
+
 func (m *mockIdentityRepo) ListUsers(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*User, int64, error) {
 	var result []*User
 	for _, u := range m.users {
@@ -440,7 +461,10 @@ func TestIdentityUsecase_ValidateToken_TokenStatusExpired(t *testing.T) {
 	}
 }
 
-func TestIdentityUsecase_ValidateToken_ZeroRemainQuotaAllowed(t *testing.T) {
+func TestIdentityUsecase_ValidateToken_ZeroRemainQuotaRejected(t *testing.T) {
+	// High #5: a limited key (UnlimitedQuota=false) whose RemainQuota is
+	// exhausted must be rejected. Previously these fields were persisted but
+	// never checked, so a leaked limited key could be used indefinitely.
 	repo := &mockIdentityRepo{
 		tokens: map[string]*Token{
 			"zero-remain-token": {
@@ -459,12 +483,9 @@ func TestIdentityUsecase_ValidateToken_ZeroRemainQuotaAllowed(t *testing.T) {
 	}
 
 	uc := NewIdentityUsecase(repo)
-	token, err := uc.ValidateToken(context.Background(), "zero-remain-token", "")
-	if err != nil {
-		t.Fatalf("ValidateToken() unexpected error: %v", err)
-	}
-	if token == nil || token.Key != "zero-remain-token" {
-		t.Fatalf("token = %+v, want zero-remain-token", token)
+	_, err := uc.ValidateToken(context.Background(), "zero-remain-token", "")
+	if !errors.Is(err, ErrTokenExhausted) {
+		t.Fatalf("expected ErrTokenExhausted for exhausted limited key, got: %v", err)
 	}
 }
 

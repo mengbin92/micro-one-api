@@ -28,6 +28,12 @@ const defaultQuotaPerUSD = 500000
 
 const amountUnitsPerUSD = 10000
 
+type tokenQuotaBlocker interface {
+	BlockTokenQuota(int64, time.Duration)
+	ClearTokenQuotaBlock(int64)
+	IsTokenQuotaBlocked(int64) bool
+}
+
 // HTTPServer handles HTTP requests for relay-gateway.
 
 type HTTPServer struct {
@@ -93,14 +99,19 @@ type HTTPServer struct {
 	// accountRPM enforces SubscriptionAccount.RPMLimit per account.
 	accountRPM relaybiz.AccountRPMLimiter
 	// userRPM enforces a global per-user request-per-minute limit.
-	userRPM      relaybiz.AccountRPMLimiter
-	userRPMLimit int32
+	userRPM           relaybiz.AccountRPMLimiter
+	userRPMLimit      int32
+	tokenQuotaBlocker tokenQuotaBlocker
 	// sessionWindow tracks per-session cost windows for subscription accounts.
 	sessionWindow *subscriptionSessionWindowStore
 	// billingModelSource (P3 #6) controls which model name is used for quota
 	// reservation + usage stats. Default "requested" (legacy). Set from
 	// config in cmd/relay-gateway/wire.go.
 	billingModelSource string
+}
+
+func (s *HTTPServer) SetTokenQuotaBlocker(blocker tokenQuotaBlocker) {
+	s.tokenQuotaBlocker = blocker
 }
 
 func (s *HTTPServer) Plan(ctx context.Context, req relaybiz.RelayRequest) (*relaybiz.RelayPlan, error) {
@@ -505,7 +516,7 @@ func (s *HTTPServer) DrainWSConnections(ctx context.Context) error {
 	if s == nil || s.wsConnTracker == nil {
 		return nil
 	}
-		applogger.Log.Info("draining openai responses websocket connections",
+	applogger.Log.Info("draining openai responses websocket connections",
 		zap.Int("active", s.wsConnTracker.ActiveCount()),
 	)
 	err := s.wsConnTracker.Drain(ctx)

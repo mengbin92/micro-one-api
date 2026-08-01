@@ -29,11 +29,10 @@ import (
 // open — this is deliberate to force operators to configure the shared
 // secret before exposing the gRPC port.
 //
-// Note: this is a transport-level gate, not per-RPC authorization. It
-// authenticates the *caller as a trusted in-cluster service*; it does not
-// convey a human operator identity. Service handlers that need an operator
-// (e.g. SetUserRole) still resolve it from the authenticated context via
-// ContextWithServiceOperator, never from a request field.
+// On successful service-token validation the interceptor stamps the context
+// and forwards the separate operator credential. SetUserRole validates that
+// credential as either the identified user's session or ADMIN_TOKEN; the
+// request's operator_user_id never authenticates the caller by itself.
 func NewGRPCServer(addr string, svc *service.IdentityService) *kgrpc.Server {
 	serviceToken := os.Getenv("SERVICE_TOKEN")
 	srv := kgrpc.NewServer(
@@ -51,7 +50,7 @@ func serviceTokenUnaryInterceptor(serviceToken string) grpc.UnaryServerIntercept
 		if err := validateServiceToken(ctx, serviceToken); err != nil {
 			return nil, err
 		}
-		return handler(ctx, req)
+		return handler(operatorCredentialContext(service.ServiceAuthenticatedContext(ctx)), req)
 	}
 }
 
@@ -60,8 +59,19 @@ func serviceTokenStreamInterceptor(serviceToken string) grpc.StreamServerInterce
 		if err := validateServiceToken(ss.Context(), serviceToken); err != nil {
 			return err
 		}
-		return handler(srv, ss)
+		return handler(srv, &serviceAuthenticatedStream{ServerStream: ss})
 	}
+}
+
+// serviceAuthenticatedStream wraps a gRPC ServerStream so the context
+// carries the service-authenticated marker (serviceCallerKey) for stream
+// RPCs, mirroring the unary interceptor.
+type serviceAuthenticatedStream struct {
+	grpc.ServerStream
+}
+
+func (s *serviceAuthenticatedStream) Context() context.Context {
+	return operatorCredentialContext(service.ServiceAuthenticatedContext(s.ServerStream.Context()))
 }
 
 func validateServiceToken(ctx context.Context, serviceToken string) error {
@@ -83,4 +93,20 @@ func validateServiceToken(ctx context.Context, serviceToken string) error {
 		return status.Error(codes.Unauthenticated, "invalid service token")
 	}
 	return nil
+}
+
+func operatorCredentialContext(ctx context.Context) context.Context {
+	md, _ := metadata.FromIncomingContext(ctx)
+	values := md.Get("x-operator-authorization")
+	if len(values) == 0 {
+		return ctx
+	}
+	credential := strings.TrimSpace(values[0])
+	credential = strings.TrimPrefix(credential, "Bearer ")
+	if credential == "" {
+		return ctx
+	}
+	system := os.Getenv("ADMIN_TOKEN") != "" &&
+		subtle.ConstantTimeCompare([]byte(credential), []byte(os.Getenv("ADMIN_TOKEN"))) == 1
+	return service.WithOperatorCredential(ctx, credential, system)
 }

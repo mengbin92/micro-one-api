@@ -188,3 +188,7 @@ func (c *rawBillingClient) GetAccountSnapshot(ctx context.Context, req *billingv
 		FrozenAmount: 8,
 	}}, nil
 }
+
+func (c rawIdentityClient) ConsumeTokenQuota(ctx context.Context, req *identityv1.ConsumeTokenQuotaRequest, opts ...grpc.CallOption) (*identityv1.ConsumeTokenQuotaReply, error) {
+	return &identityv1.ConsumeTokenQuotaReply{Success: true}, nil
+}

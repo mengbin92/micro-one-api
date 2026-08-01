@@ -25,6 +25,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -41,6 +42,17 @@ type AdminService struct {
 	subscriptionUc  *subscriptionbiz.SubscriptionUsecase
 	groupUc         *subscriptionbiz.GroupUsecase
 	planUc          *subscriptionbiz.PlanUsecase
+}
+
+type operatorCredentialKey struct{}
+
+func WithOperatorCredential(ctx context.Context, credential string) context.Context {
+	return context.WithValue(ctx, operatorCredentialKey{}, credential)
+}
+
+func operatorCredential(ctx context.Context) string {
+	credential, _ := ctx.Value(operatorCredentialKey{}).(string)
+	return credential
 }
 
 type OneAPIOption struct {
@@ -616,7 +628,12 @@ func (s *AdminService) DeleteUser(ctx context.Context, req *adminv1.AdminDeleteU
 }
 
 func (s *AdminService) SetUserRole(ctx context.Context, req *adminv1.AdminSetUserRoleRequest) (*adminv1.AdminSetUserRoleResponse, error) {
-	resp, err := s.identityClient.SetUserRole(ctx, &identityv1.SetUserRoleRequest{
+	credential := operatorCredential(ctx)
+	if credential == "" {
+		return &adminv1.AdminSetUserRoleResponse{Success: false, Message: "operator credential required"}, nil
+	}
+	callCtx := metadata.AppendToOutgoingContext(ctx, "x-operator-authorization", "Bearer "+credential)
+	resp, err := s.identityClient.SetUserRole(callCtx, &identityv1.SetUserRoleRequest{
 		UserId:         req.UserId,
 		Role:           req.Role,
 		OperatorUserId: req.OperatorUserId,

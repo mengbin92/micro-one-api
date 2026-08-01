@@ -296,3 +296,34 @@ func (t *TokenAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[
 func (t *TokenAuth) RequireTransportSecurity() bool {
 	return true // Always require TLS for JWT tokens
 }
+
+// insecureTokenAuth is a PerRPCCredentials implementation that sends the
+// service token in the authorization header WITHOUT requiring TLS. It is
+// intended for trusted in-cluster communication where the network itself
+// is the trust boundary (e.g. the docker-compose backend network). Using
+// the service token over a plaintext connection inside a trusted network
+// is acceptable because the token is a shared secret among cooperating
+// services, not a user credential. When TLS is available the standard
+// NewTokenAuth (which requires TLS) should be preferred.
+type insecureTokenAuth struct {
+	token string
+}
+
+// NewInsecureTokenAuth creates PerRPCCredentials that attach the service
+// token to every RPC without requiring TLS. Use this for trusted
+// in-cluster connections where TLS termination is not configured.
+func NewInsecureTokenAuth(token string) credentials.PerRPCCredentials {
+	return &insecureTokenAuth{token: token}
+}
+
+func (t *insecureTokenAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{
+		"authorization": "Bearer " + t.token,
+	}, nil
+}
+
+// RequireTransportSecurity returns false so the token is sent over
+// plaintext connections. This is safe only on a trusted network.
+func (t *insecureTokenAuth) RequireTransportSecurity() bool {
+	return false
+}

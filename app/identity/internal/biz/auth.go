@@ -73,7 +73,7 @@ type User struct {
 	Balance       int64
 	AffCode       string
 	InviterID     int64
-	// PasswordChangedAt is the unix epoch (seconds) of the most recent
+	// PasswordChangedAt is the unix epoch (milliseconds) of the most recent
 	// password change. It is embedded in session JWTs as `pwd_epoch`; any
 	// session token whose epoch predates this value is rejected on
 	// validation (review M6). This lets a password change / reset / logout
@@ -104,14 +104,14 @@ type OAuthIdentity struct {
 }
 
 type Token struct {
-	ID             int64
-	UserID         int64
-	Name           string
+	ID     int64
+	UserID int64
+	Name   string
 	// Key holds the plaintext key at creation time (returned to the caller
 	// exactly once). When loaded from storage it holds only a short display
 	// prefix (first 8 + last 4 chars) — never the full secret — so a DB
 	// leak cannot authenticate as the user.
-	Key            string
+	Key string
 	// KeyHash is the HMAC-SHA256 of the full plaintext key, stored in the
 	// key_hash column and used for O(1) lookups on the ValidateToken hot path.
 	KeyHash        string
@@ -142,7 +142,7 @@ type UserSessionClaims struct {
 	Username  string `json:"username"`
 	Role      int32  `json:"role"`
 	TokenType string `json:"token_type"`
-	// PwdEpoch carries the user's PasswordChangedAt at signing time. The
+	// PwdEpoch carries the user's PasswordChangedAt (Unix ms) at signing time. The
 	// validator rejects tokens whose PwdEpoch is older than the stored
 	// PasswordChangedAt, so a password change revokes outstanding sessions.
 	PwdEpoch int64 `json:"pwd_epoch,omitempty"`
@@ -167,6 +167,11 @@ type IdentityRepo interface {
 	FindTokenByID(ctx context.Context, userID, tokenID int64) (*Token, error)
 	ListTokens(ctx context.Context, userID int64, page, pageSize int32, keyword string) ([]*Token, int64, error)
 	UpdateToken(ctx context.Context, token *Token) error
+	// ConsumeTokenQuota atomically decrements RemainQuota and increments
+	// UsedQuota for the given token, returning the updated RemainQuota.
+	// When RemainQuota reaches 0 the caller should mark the token
+	// exhausted. The decrement is clamped at 0 (never goes negative).
+	ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (remaining int64, err error)
 	DeleteToken(ctx context.Context, userID, tokenID int64) error
 	ListUsers(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*User, int64, error)
 	CountUsers(ctx context.Context) (int64, error)
@@ -262,6 +267,13 @@ func (uc *IdentityUsecase) ValidateToken(ctx context.Context, key, clientIP stri
 	}
 	if !tokenSubnetAllows(token.Subnet, clientIP) {
 		return nil, ErrTokenSubnetViolation
+	}
+	// High #5: enforce per-key quota. A limited key (UnlimitedQuota=false)
+	// whose RemainQuota has been exhausted is rejected so a leaked key
+	// cannot draw indefinitely. Previously these fields were persisted but
+	// never checked, making the "limited quota" UI promise a no-op.
+	if !token.UnlimitedQuota && token.RemainQuota <= 0 {
+		return nil, ErrTokenExhausted
 	}
 	return token, nil
 }
@@ -431,9 +443,23 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 		return nil, "", ErrInvalidPassword
 	}
 
-	rateKey := loginRateKey(username, clientIP)
-	if err := uc.checkLoginRateLimit(rateKey); err != nil {
+	// Medium #9: check BOTH the per-IP and per-username rate-limit buckets.
+	// A single IP spraying many usernames and a single username being stuffed
+	// from many IPs are each independently capped at maxLoginAttempts.
+	ipKey, userKey := loginRateKeys(username, clientIP)
+	if err := uc.checkLoginRateLimit(ipKey); err != nil {
 		return nil, "", err
+	}
+	if err := uc.checkLoginRateLimit(userKey); err != nil {
+		return nil, "", err
+	}
+
+	// recordBothFailures records the failure in both buckets.
+	recordBothFailures := func() {
+		if ipKey != "" {
+			uc.recordLoginFailure(ipKey)
+		}
+		uc.recordLoginFailure(userKey)
 	}
 
 	user, err := uc.repo.FindUserByUsername(ctx, username)
@@ -441,23 +467,27 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 		// L2: unknown users run a dummy bcrypt compare so the response time
 		// does not reveal whether the username exists (timing oracle).
 		uc.dummyBcryptCompare()
-		uc.recordLoginFailure(rateKey)
+		recordBothFailures()
 		return nil, "", ErrInvalidPassword
 	}
 	if user.Status != UserStatusEnabled {
-		uc.recordLoginFailure(rateKey)
+		recordBothFailures()
 		return nil, "", ErrUserDisabled
 	}
 	if user.PasswordHash == "" {
-		uc.recordLoginFailure(rateKey)
+		recordBothFailures()
 		return nil, "", ErrInvalidPassword
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		uc.recordLoginFailure(rateKey)
+		recordBothFailures()
 		return nil, "", ErrInvalidPassword
 	}
 
-	uc.clearLoginAttempts(rateKey)
+	// Clear both buckets on success.
+	if ipKey != "" {
+		uc.clearLoginAttempts(ipKey)
+	}
+	uc.clearLoginAttempts(userKey)
 
 	token, err := uc.generateSessionToken(user)
 	if err != nil {
@@ -686,6 +716,31 @@ func (uc *IdentityUsecase) UpdateAccessTokenWithOptions(ctx context.Context, use
 	return token, nil
 }
 
+// ConsumeTokenQuota deducts `amount` from the token's RemainQuota and adds it
+// to UsedQuota. Unlimited keys are a no-op. When the remaining quota reaches
+// zero the token is marked TokenStatusExhausted so subsequent ValidateToken
+// calls reject it. This is the per-key enforcement path that was previously
+// missing (review High #5): the relay gateway calls this after billing settles
+// so a limited key cannot exceed its configured quota even if the user wallet
+// still has balance.
+func (uc *IdentityUsecase) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
+	if amount <= 0 {
+		return 0, nil
+	}
+	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
+	if err != nil {
+		return 0, err
+	}
+	if token.UnlimitedQuota {
+		return -1, nil
+	}
+	remaining, err := uc.repo.ConsumeTokenQuota(ctx, userID, tokenID, amount)
+	if err != nil {
+		return 0, err
+	}
+	return remaining, nil
+}
+
 func (uc *IdentityUsecase) DeleteAccessToken(ctx context.Context, userID, tokenID int64) error {
 	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
 	if err != nil {
@@ -870,7 +925,7 @@ func (uc *IdentityUsecase) UpdateSelf(ctx context.Context, userID int64, usernam
 		// M6: a password change revokes all previously-issued sessions by
 		// advancing the stored epoch past the PwdEpoch stamped in any
 		// outstanding JWT.
-		user.PasswordChangedAt = uc.now().Unix()
+		user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
 	}
 	return uc.repo.UpdateUser(ctx, user)
 }
@@ -909,7 +964,7 @@ func (uc *IdentityUsecase) ResetPasswordByEmail(ctx context.Context, email, pass
 	user.PasswordHash = string(hash)
 	// M6: revoke all prior sessions for this user (a reset should not leave
 	// pre-reset tokens valid).
-	user.PasswordChangedAt = uc.now().Unix()
+	user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
 	return uc.repo.UpdateUser(ctx, user)
 }
 
@@ -923,7 +978,7 @@ func (uc *IdentityUsecase) InvalidateAllSessions(ctx context.Context, userID int
 	if err != nil {
 		return err
 	}
-	user.PasswordChangedAt = uc.now().Unix()
+	user.PasswordChangedAt = nextPasswordEpoch(user.PasswordChangedAt, uc.now())
 	return uc.repo.UpdateUser(ctx, user)
 }
 
@@ -1137,18 +1192,29 @@ func splitCSV(input string) []string {
 	return out
 }
 
-// loginRateKey composes the login rate-limit key. Combining username and the
-// caller's IP (review L2) means:
-//   - a single attacker cannot password-spray across many usernames from one IP;
-//   - a single username cannot be credential-stuffed from many IPs.
-//
-// When no IP is available the key degrades to the username alone (preserving
-// the previous behavior) so login still works behind proxies that strip it.
-func loginRateKey(username, clientIP string) string {
-	if clientIP == "" {
-		return username
+func nextPasswordEpoch(current int64, now time.Time) int64 {
+	next := now.UnixMilli()
+	if next <= current {
+		return current + 1
 	}
-	return username + "@" + clientIP
+	return next
+}
+
+// loginRateKeys returns the per-IP and per-username rate-limit keys for a
+// login attempt. Tracking both independently (review Medium #9) means:
+//   - a single attacker IP is capped at maxLoginAttempts across ALL usernames
+//     (password spraying from one IP);
+//   - a single username is capped at maxLoginAttempts across ALL IPs
+//     (credential stuffing from a botnet).
+//
+// When no IP is available only the username key is used (preserving the
+// previous behavior so login still works behind proxies that strip it).
+func loginRateKeys(username, clientIP string) (ipKey, userKey string) {
+	if clientIP != "" {
+		ipKey = "ip:" + clientIP
+	}
+	userKey = "user:" + username
+	return ipKey, userKey
 }
 
 // dummyBcryptCompare performs a throwaway bcrypt comparison with a fixed hash.

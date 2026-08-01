@@ -19,12 +19,25 @@
 
 -- De-duplicate any existing rows that share (user_id, '') so the unique index
 -- can be created. Keep the newest row per (user_id, '') and delete the rest.
+--
+-- CRITICAL: the outer DELETE is scoped to request_id = '' so that only legacy
+-- empty-key duplicates are removed. Without this filter the NOT IN subquery
+-- (which returns only empty-key ids) would match every non-empty request_id
+-- row, deleting the entire table. The double-nested subquery (SELECT keep_id
+-- FROM (SELECT ...)) materialises the id set before the delete, avoiding
+-- MySQL error 1093 ("can't specify target table for update in FROM clause")
+-- which some MySQL versions raise when the same table is read and modified in
+-- a single statement.
 DELETE FROM billing_reservations
- WHERE id NOT IN (
-   SELECT MAX(id) FROM billing_reservations
-    WHERE request_id = ''
-    GROUP BY user_id
- );
+ WHERE request_id = ''
+   AND id NOT IN (
+     SELECT keep_id FROM (
+       SELECT MAX(id) AS keep_id
+         FROM billing_reservations
+        WHERE request_id = ''
+        GROUP BY user_id
+     ) AS keep_ids
+   );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_reservations_user_request
   ON billing_reservations(user_id, request_id);

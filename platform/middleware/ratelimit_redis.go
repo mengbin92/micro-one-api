@@ -11,40 +11,38 @@ import (
 	applogger "micro-one-api/platform/logging"
 )
 
-// redisSlidingWindowScript atomically removes expired members, counts the
-// remaining window, and — only if under the limit — adds the current request,
-// sets a TTL, and returns the new count. Running count+add in a single Lua
-// EVAL eliminates the check-then-act race where N concurrent requests each saw
-// a sub-limit count and were all admitted (review L5). It also returns the
-// count on Redis errors is impossible (errors propagate), so callers decide
-// fail-open vs fail-closed.
-const redisSlidingWindowScript = `
+// redisTokenBucketScript atomically refills and consumes a token. Redis
+// executes the Lua script as one operation, so concurrent instances cannot
+// each observe the same token.
+const redisTokenBucketScript = `
 local key = KEYS[1]
 local now = tonumber(ARGV[1])
-local window_start = tonumber(ARGV[2])
-local limit = tonumber(ARGV[3])
+local rate = tonumber(ARGV[2])
+local burst = tonumber(ARGV[3])
 local ttl_ms = tonumber(ARGV[4])
-local member = ARGV[5]
-
-redis.call('ZREMRANGEBYSCORE', key, '0', window_start)
-local count = redis.call('ZCARD', key)
-if count >= limit then
-  return count
+local tokens = tonumber(redis.call('HGET', key, 'tokens'))
+local last = tonumber(redis.call('HGET', key, 'last_ms'))
+if tokens == nil then tokens = burst; last = now end
+local elapsed = math.max(0, now - last)
+tokens = math.min(burst, tokens + elapsed * rate / 1000.0)
+if tokens < 1 then
+  redis.call('HSET', key, 'tokens', tokens, 'last_ms', now)
+  redis.call('PEXPIRE', key, ttl_ms)
+  return 0
 end
-redis.call('ZADD', key, now, member)
+tokens = tokens - 1
+redis.call('HSET', key, 'tokens', tokens, 'last_ms', now)
 redis.call('PEXPIRE', key, ttl_ms)
-return count + 1
+return 1
 `
 
-// RedisRateLimiter implements a distributed rate limiter using Redis sorted sets (sliding window).
+// RedisRateLimiter implements a distributed token-bucket limiter using Redis.
 type RedisRateLimiter struct {
 	rdb       *redis.Client
 	rate      int
 	burst     int
-	window    time.Duration
 	keyPrefix string
-	// script is the pre-loaded Lua script enabling an atomic sliding-window
-	// count+add (review L5).
+	// script is the pre-loaded atomic token-bucket update.
 	script *redis.Script
 }
 
@@ -52,8 +50,10 @@ type RedisRateLimiter struct {
 type RedisRateLimitConfig struct {
 	RequestsPerSecond int
 	Burst             int
-	Window            time.Duration
-	KeyPrefix         string
+	// Window is retained for configuration compatibility. Token-bucket
+	// limiting always interprets RequestsPerSecond as a per-second refill.
+	Window    time.Duration
+	KeyPrefix string
 }
 
 // DefaultRedisRateLimitConfig returns default configuration.
@@ -61,7 +61,7 @@ func DefaultRedisRateLimitConfig() *RedisRateLimitConfig {
 	return &RedisRateLimitConfig{
 		RequestsPerSecond: 100,
 		Burst:             200,
-		Window:            time.Minute,
+		Window:            time.Second,
 		KeyPrefix:         "ratelimit:",
 	}
 }
@@ -71,21 +71,27 @@ func NewRedisRateLimiter(rdb *redis.Client, config *RedisRateLimitConfig) *Redis
 	if config == nil {
 		config = DefaultRedisRateLimitConfig()
 	}
+	rate := config.RequestsPerSecond
+	if rate <= 0 {
+		rate = 1
+	}
+	burst := config.Burst
+	if burst <= 0 {
+		burst = rate
+	}
 	return &RedisRateLimiter{
 		rdb:       rdb,
-		rate:      config.RequestsPerSecond,
-		burst:     config.Burst,
-		window:    config.Window,
+		rate:      rate,
+		burst:     burst,
 		keyPrefix: config.KeyPrefix,
-		script:    redis.NewScript(redisSlidingWindowScript),
+		script:    redis.NewScript(redisTokenBucketScript),
 	}
 }
 
 // Allow checks if a request from the given key should be allowed.
-// Uses an atomic Lua sliding-window script (count + conditional add in a
-// single EVAL) so concurrent requests cannot each observe a sub-limit count
-// and all be admitted (review L5). The key TTL is set inside the script so a
-// Redis error no longer leaves an un-expiring key behind. Redis errors still
+// Uses an atomic Lua token-bucket update so concurrent requests cannot each
+// observe the same token and all be admitted. The key TTL is set inside the
+// script so a Redis error no longer leaves an un-expiring key behind. Redis errors still
 // fail-open by design (a Redis outage must not take the whole platform down);
 // callers that need fail-closed semantics should wrap this limiter.
 func (rl *RedisRateLimiter) Allow(ctx context.Context, key string) (bool, error) {
@@ -95,17 +101,11 @@ func (rl *RedisRateLimiter) Allow(ctx context.Context, key string) (bool, error)
 
 	redisKey := rl.keyPrefix + key
 	now := time.Now()
-	windowStart := now.Add(-rl.window).UnixNano()
-
-	// Unique member so concurrent requests within the same nanosecond are not
-	// deduplicated by the sorted set.
-	member := fmt.Sprintf("%d:%d", now.UnixNano(), now.UnixMicro())
-
-	ttlMs := int64(rl.window/time.Millisecond) + 1000
+	ttlMs := int64(float64(rl.burst)/float64(rl.rate)*1000) + 1000
 
 	result, err := rl.script.Run(ctx, rl.rdb,
 		[]string{redisKey},
-		now.UnixNano(), windowStart, rl.rate, ttlMs, member,
+		now.UnixMilli(), rl.rate, rl.burst, ttlMs,
 	).Int64()
 	if err != nil {
 		applogger.Log.Warn("Redis rate limit check failed, allowing request",
@@ -115,10 +115,10 @@ func (rl *RedisRateLimiter) Allow(ctx context.Context, key string) (bool, error)
 		return true, nil
 	}
 
-	if result > int64(rl.rate) {
+	if result == 0 {
 		applogger.Log.Warn("Rate limit exceeded",
 			zap.String("key", key),
-			zap.Int64("requests", result),
+			zap.Bool("token_available", false),
 			zap.Int("limit", rl.rate),
 		)
 		return false, nil
@@ -150,7 +150,7 @@ func RedisRateLimitMiddleware(rdb *redis.Client, config *RedisRateLimitConfig) f
 
 				w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.rate))
 				w.Header().Set("X-RateLimit-Remaining", "0")
-				w.Header().Set("Retry-After", "60")
+				w.Header().Set("Retry-After", "1")
 
 				w.WriteHeader(http.StatusTooManyRequests)
 				w.Write([]byte(`{"error":{"message":"rate limit exceeded","code":429}}`))

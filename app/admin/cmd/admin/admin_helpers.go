@@ -18,6 +18,7 @@ import (
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/data"
 	"micro-one-api/app/admin/internal/service"
+	grpcauth "micro-one-api/platform/grpc"
 	"micro-one-api/platform/database/xdb"
 	applogger "micro-one-api/platform/logging"
 	appregistry "micro-one-api/platform/registry"
@@ -72,21 +73,25 @@ func newClients(cfg *Config) (*clientsResult, error) {
 	channelEndpoint, _ := resolver.ResolveGRPC(context.Background(), "channel-service")
 	billingEndpoint, _ := resolver.ResolveGRPC(context.Background(), "billing-service")
 
+	serviceToken := os.Getenv("SERVICE_TOKEN")
 	identityConn, err := grpc.NewClient(identityEndpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to identity service: %w", err)
 	}
 
 	channelConn, err := grpc.NewClient(channelEndpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)))
 	if err != nil {
 		identityConn.Close()
 		return nil, fmt.Errorf("failed to connect to channel service: %w", err)
 	}
 
 	billingConn, err := grpc.NewClient(billingEndpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)))
 	if err != nil {
 		identityConn.Close()
 		channelConn.Close()

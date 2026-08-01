@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -117,4 +118,27 @@ func TestCachedIdentityClientUsesAuthCache(t *testing.T) {
 	if base.calls != 1 {
 		t.Fatalf("base calls = %d, want 1", base.calls)
 	}
+}
+
+func TestIdentityAdapterTokenQuotaBlock(t *testing.T) {
+	// Use a client that returns the blocked token id.
+	client := &fixedTokenIdentityClient{tokenID: 9}
+	adapter := NewIdentityAdapter(client)
+	adapter.BlockTokenQuota(9, time.Minute)
+	if _, err := adapter.GetAuthSnapshot(context.Background(), "token", ""); err == nil {
+		t.Fatal("blocked token was accepted")
+	}
+	adapter.ClearTokenQuotaBlock(9)
+	if _, err := adapter.GetAuthSnapshot(context.Background(), "token", ""); err != nil {
+		t.Fatalf("cleared token remained blocked: %v", err)
+	}
+}
+
+type fixedTokenIdentityClient struct {
+	identityv1.IdentityServiceClient
+	tokenID int64
+}
+
+func (c *fixedTokenIdentityClient) GetAuthSnapshot(context.Context, *identityv1.GetAuthSnapshotRequest, ...grpc.CallOption) (*identityv1.GetAuthSnapshotReply, error) {
+	return &identityv1.GetAuthSnapshotReply{TokenId: c.tokenID, UserId: 42}, nil
 }

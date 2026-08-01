@@ -358,6 +358,27 @@ func (m *testIdentityRepo) DeleteToken(ctx context.Context, userID, tokenID int6
 	return identitytestutil.ErrTokenNotFound
 }
 
+func (m *testIdentityRepo) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
+	for _, token := range m.tokens {
+		if token.ID == tokenID && token.UserID == userID {
+			if token.UnlimitedQuota {
+				return token.RemainQuota, nil
+			}
+			consumed := amount
+			if consumed > token.RemainQuota {
+				consumed = token.RemainQuota
+			}
+			token.RemainQuota -= consumed
+			if token.RemainQuota == 0 {
+				token.Status = identitytestutil.TokenStatusExhausted
+			}
+			token.UsedQuota += consumed
+			return token.RemainQuota, nil
+		}
+	}
+	return 0, identitytestutil.ErrTokenNotFound
+}
+
 func (m *testIdentityRepo) ListUsers(ctx context.Context, page, pageSize int32, keyword, group string, status int32) ([]*identitytestutil.User, int64, error) {
 	var result []*identitytestutil.User
 	for _, u := range m.users {

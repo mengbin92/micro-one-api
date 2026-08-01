@@ -18,6 +18,7 @@ service IdentityService {
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
   rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
   rpc SetUserRole(SetUserRoleRequest) returns (SetUserRoleResponse);
+  rpc ConsumeTokenQuota(ConsumeTokenQuotaRequest) returns (ConsumeTokenQuotaReply);
 }
 
 message ValidateTokenRequest {
@@ -158,10 +159,10 @@ message DeleteUserResponse {
 // must match a biz.Role* constant (0/1/10). Role 100 (root) cannot be
 // granted or revoked via this RPC.
 //
-// operator_user_id identifies the admin issuing the change. When set
-// (> 0) identity-service enforces operator-vs-target rank checks; when
-// 0 the call is treated as a system-level invocation that bypasses those
-// checks (used by bootstrap and the admin-reset CLI).
+// operator_user_id identifies the admin issuing the change. The identity
+// service also requires an authenticated session credential in internal
+// gRPC metadata and verifies that it belongs to this user. Zero is reserved
+// for the separately authenticated ADMIN_TOKEN system operator.
 message SetUserRoleRequest {
   int64 user_id = 1;
   int32 role = 2;
@@ -172,4 +173,16 @@ message SetUserRoleResponse {
   bool success = 1;
   string message = 2;
   int32 role = 3;
+}
+
+message ConsumeTokenQuotaRequest {
+  int64 user_id = 1;
+  int64 token_id = 2;
+  int64 amount = 3;
+}
+
+message ConsumeTokenQuotaReply {
+  bool success = 1;
+  int64 remaining = 2;
+  string message = 3;
 }

@@ -21,25 +21,22 @@ type RateLimiter struct {
 	rate       int
 	burst      int
 	maxClients int
-	// window is the sliding-window duration. Requests older than `window`
-	// are evicted before counting, so `rate` is enforced per-window (review
-	// M4 — previously hardcoded to time.Minute regardless of config.Window).
-	window time.Duration
 }
 
 // ClientLimiter tracks rate limiting for a single client
 type ClientLimiter struct {
-	tokens   int
+	tokens   float64
 	lastSeen time.Time
-	requests []time.Time
 }
 
 // RateLimitConfig holds rate limiting configuration
 type RateLimitConfig struct {
 	RequestsPerSecond int
 	Burst             int
-	Window            time.Duration
-	MaxClients        int
+	// Window is retained for configuration compatibility. Token-bucket
+	// limiting always interprets RequestsPerSecond as a per-second refill.
+	Window     time.Duration
+	MaxClients int
 }
 
 // DefaultRateLimitConfig returns default rate limiting configuration
@@ -68,8 +65,11 @@ func DefaultRateLimitConfig() *RateLimitConfig {
 	return &RateLimitConfig{
 		RequestsPerSecond: rps,
 		Burst:             burst,
-		Window:            time.Minute,
-		MaxClients:        maxClients,
+		// Window is 1 second so RequestsPerSecond is enforced as a genuine
+		// per-second sliding window (review Medium #7 — previously defaulted
+		// to time.Minute, making "100 req/s" actually "100 req/min").
+		Window:     time.Second,
+		MaxClients: maxClients,
 	}
 }
 
@@ -79,21 +79,29 @@ func NewRateLimiter(config *RateLimitConfig) *RateLimiter {
 		config = DefaultRateLimitConfig()
 	}
 
-	window := config.Window
-	if window <= 0 {
-		window = time.Minute
+	rate := config.RequestsPerSecond
+	if rate <= 0 {
+		rate = 1
+	}
+	burst := config.Burst
+	if burst <= 0 {
+		burst = rate
+	}
+	maxClients := config.MaxClients
+	if maxClients <= 0 {
+		maxClients = 100000
 	}
 	return &RateLimiter{
 		clients:    make(map[string]*ClientLimiter),
-		rate:       config.RequestsPerSecond,
-		burst:      config.Burst,
-		maxClients: config.MaxClients,
-		window:     window,
+		rate:       rate,
+		burst:      burst,
+		maxClients: maxClients,
 	}
 }
 
 // Allow checks if a request from the given key should be allowed and returns
-// the number of remaining requests in the current window. Both values are
+// the current token count. Burst is the bucket capacity; rate is the
+// sustained refill rate. Both values are
 // computed under the limiter lock so callers never need to re-read the clients
 // map (review M3 — the previous header computation read limiter.clients[key]
 // outside the lock, a concurrent map read that could crash the process, and a
@@ -113,44 +121,49 @@ func (rl *RateLimiter) Allow(key string) (bool, int) {
 			)
 			return false, 0
 		}
+		burst := rl.burst
+		if burst <= 0 {
+			burst = rl.rate
+		}
+		if burst <= 0 {
+			burst = 1
+		}
 		client = &ClientLimiter{
-			tokens:   rl.burst - 1,
+			tokens:   float64(burst - 1),
 			lastSeen: now,
-			requests: []time.Time{now},
 		}
 		rl.clients[key] = client
-		return true, rl.rate - 1
+		return true, burst - 1
 	}
 
-	// Clean up old requests using the configured window (review M4).
-	cutoff := now.Add(-rl.window)
-	validRequests := make([]time.Time, 0, len(client.requests))
-	for _, reqTime := range client.requests {
-		if reqTime.After(cutoff) {
-			validRequests = append(validRequests, reqTime)
-		}
+	burst := rl.burst
+	if burst <= 0 {
+		burst = rl.rate
 	}
-	client.requests = validRequests
-
-	// Check if rate limit exceeded
-	if len(client.requests) >= rl.rate {
+	if burst <= 0 {
+		burst = 1
+	}
+	elapsed := now.Sub(client.lastSeen).Seconds()
+	if rl.rate > 0 {
+		client.tokens += elapsed * float64(rl.rate)
+	}
+	if client.tokens > float64(burst) {
+		client.tokens = float64(burst)
+	}
+	if client.tokens < 1 {
 		applogger.Log.Warn("Rate limit exceeded",
 			zap.String("key", key),
-			zap.Int("requests", len(client.requests)),
+			zap.Float64("tokens", client.tokens),
 			zap.Int("limit", rl.rate),
 		)
 		return false, 0
 	}
 
 	// Add current request
-	client.requests = append(client.requests, now)
+	client.tokens--
 	client.lastSeen = now
 
-	remaining := rl.rate - len(client.requests)
-	if remaining < 0 {
-		remaining = 0
-	}
-	return true, remaining
+	return true, int(client.tokens)
 }
 
 // Cleanup removes stale entries from the rate limiter
@@ -198,7 +211,7 @@ func RateLimit(config *RateLimitConfig) func(http.Handler) http.Handler {
 
 				w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.rate))
 				w.Header().Set("X-RateLimit-Remaining", "0")
-				w.Header().Set("Retry-After", "60")
+				w.Header().Set("Retry-After", "1")
 
 				w.WriteHeader(http.StatusTooManyRequests)
 				w.Write([]byte(`{"error":{"message":"rate limit exceeded","code":429}}`))

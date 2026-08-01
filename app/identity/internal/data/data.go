@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"micro-one-api/app/identity/internal/biz"
-	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/database/xdb"
+	applogger "micro-one-api/platform/logging"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -20,23 +20,23 @@ type Repository struct {
 	db                  *gorm.DB
 	redis               *redis.Client
 	usersByID           map[int64]*biz.User
-	tokensByHash         map[string]*biz.Token
+	tokensByHash        map[string]*biz.Token
 	oauthIdentities     map[string]*biz.OAuthIdentity
 	nextOAuthIdentityID int64
 	identityLock        sync.RWMutex
 }
 
 type userModel struct {
-	ID            int64  `gorm:"column:id"`
-	Username      string `gorm:"column:username;uniqueIndex"`
-	DisplayName   string `gorm:"column:display_name"`
-	Email         string `gorm:"column:email"`
-	Group         string `gorm:"column:group"`
-	Status        int32  `gorm:"column:status"`
-	Role          int32  `gorm:"column:role"`
-	PasswordHash  string `gorm:"column:password_hash"`
-	OAuthProvider string `gorm:"column:oauth_provider;index"`
-	OAuthID       string `gorm:"column:oauth_id;index"`
+	ID                int64  `gorm:"column:id"`
+	Username          string `gorm:"column:username;uniqueIndex"`
+	DisplayName       string `gorm:"column:display_name"`
+	Email             string `gorm:"column:email"`
+	Group             string `gorm:"column:group"`
+	Status            int32  `gorm:"column:status"`
+	Role              int32  `gorm:"column:role"`
+	PasswordHash      string `gorm:"column:password_hash"`
+	OAuthProvider     string `gorm:"column:oauth_provider;index"`
+	OAuthID           string `gorm:"column:oauth_id;index"`
 	Balance           int64  `gorm:"column:balance"`
 	AffCode           string `gorm:"column:aff_code;uniqueIndex"`
 	InviterID         int64  `gorm:"column:inviter_id;index"`
@@ -92,7 +92,7 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 		// OAuth binding is lost on restart and a fresh root is recreated each
 		// boot. Warn loudly so operators notice instead of discovering it
 		// after data loss.
-				applogger.Log.Warn("IDENTITY_SQL_DSN/SQL_DSN not set; identity-service is starting with the volatile in-memory user store — all data is lost on restart",
+		applogger.Log.Warn("IDENTITY_SQL_DSN/SQL_DSN not set; identity-service is starting with the volatile in-memory user store — all data is lost on restart",
 			zap.String("component", "identity.data"),
 		)
 		return newMemoryRepository(), nil
@@ -127,7 +127,7 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 func newMemoryRepository() *Repository {
 	return &Repository{
 		usersByID:           make(map[int64]*biz.User),
-		tokensByHash:         make(map[string]*biz.Token),
+		tokensByHash:        make(map[string]*biz.Token),
 		oauthIdentities:     make(map[string]*biz.OAuthIdentity),
 		nextOAuthIdentityID: 1,
 	}
@@ -413,6 +413,35 @@ func (r *Repository) UpdateToken(ctx context.Context, token *biz.Token) error {
 	return biz.ErrTokenNotFound
 }
 
+// ConsumeTokenQuota atomically decrements RemainQuota and increments
+// UsedQuota for the given token. On the DB path this is a single UPDATE
+// ... SET remain_quota = GREATEST(remain_quota - ?, 0), used_quota =
+// used_quota + ? that returns the new remain_quota. On the in-memory path
+// it runs under the write lock. The amount is clamped so remain_quota never
+// goes negative.
+func (r *Repository) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
+	if r.db != nil {
+		return r.consumeTokenQuotaDB(ctx, userID, tokenID, amount)
+	}
+	r.identityLock.Lock()
+	defer r.identityLock.Unlock()
+	for _, token := range r.tokensByHash {
+		if token.ID == tokenID && token.UserID == userID {
+			consumed := amount
+			if consumed > token.RemainQuota {
+				consumed = token.RemainQuota
+			}
+			token.RemainQuota -= consumed
+			token.UsedQuota += consumed
+			if token.RemainQuota == 0 {
+				token.Status = biz.TokenStatusExhausted
+			}
+			return token.RemainQuota, nil
+		}
+	}
+	return 0, biz.ErrTokenNotFound
+}
+
 func (r *Repository) DeleteToken(ctx context.Context, userID, tokenID int64) error {
 	if r.db != nil {
 		return r.deleteTokenDB(ctx, userID, tokenID)
@@ -594,17 +623,17 @@ func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 
 func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
 	return r.db.WithContext(ctx).Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
-		"username":       user.Username,
-		"display_name":   user.DisplayName,
-		"email":          user.Email,
-		"group":          user.Group,
-		"status":         user.Status,
-		"role":           user.Role,
-		"password_hash":  user.PasswordHash,
-		"oauth_provider": user.OAuthProvider,
-		"oauth_id":       user.OAuthID,
-		"aff_code":           user.AffCode,
-		"inviter_id":         user.InviterID,
+		"username":            user.Username,
+		"display_name":        user.DisplayName,
+		"email":               user.Email,
+		"group":               user.Group,
+		"status":              user.Status,
+		"role":                user.Role,
+		"password_hash":       user.PasswordHash,
+		"oauth_provider":      user.OAuthProvider,
+		"oauth_id":            user.OAuthID,
+		"aff_code":            user.AffCode,
+		"inviter_id":          user.InviterID,
 		"password_changed_at": user.PasswordChangedAt,
 	}).Error
 }
@@ -707,6 +736,41 @@ func (r *Repository) deleteTokenDB(ctx context.Context, userID, tokenID int64) e
 		return biz.ErrTokenNotFound
 	}
 	return nil
+}
+
+// consumeTokenQuotaDB atomically decrements remain_quota and increments
+// used_quota inside a transaction, clamping remain_quota at 0. It reads
+// the current value under the transaction, computes the new values in Go
+// (driver-agnostic — no GREATEST() needed), and writes them back. This
+// works across MySQL, Postgres, and SQLite.
+func (r *Repository) consumeTokenQuotaDB(ctx context.Context, userID, tokenID, amount int64) (int64, error) {
+	// Keep used_quota first and remain_quota last. MySQL evaluates UPDATE
+	// assignments left-to-right, while PostgreSQL and SQLite use the original
+	// row for every expression; this order is correct on all three dialects.
+	result := r.db.WithContext(ctx).Exec(
+		"UPDATE tokens SET "+
+			"used_quota = used_quota + CASE WHEN remain_quota < ? THEN remain_quota ELSE ? END, "+
+			"status = CASE WHEN remain_quota <= ? THEN ? ELSE status END, "+
+			"remain_quota = CASE WHEN remain_quota <= ? THEN 0 ELSE remain_quota - ? END "+
+			"WHERE id = ? AND user_id = ? AND unlimited_quota = ? AND remain_quota > 0",
+		amount, amount, amount, biz.TokenStatusExhausted, amount, amount,
+		tokenID, userID, false,
+	)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	var model tokenModel
+	if err := r.db.WithContext(ctx).
+		Select("remain_quota").
+		Where("id = ? AND user_id = ?", tokenID, userID).
+		First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, biz.ErrTokenNotFound
+		}
+		return 0, err
+	}
+	return model.RemainQuota, nil
 }
 
 func tokenModelToBiz(model tokenModel) *biz.Token {
