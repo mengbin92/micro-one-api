@@ -120,6 +120,28 @@ func TestRunner_SkipsOptionalPartitioningScript(t *testing.T) {
 	assert.Equal(t, []string{"001_create_widgets"}, applied)
 }
 
+func TestRunner_SkipsSchemaSplitReferenceDDL(t *testing.T) {
+	db := openSqlite(t)
+	dir := t.TempDir()
+	writeMigration(t, dir, "001_create_widgets.sql", `CREATE TABLE widgets (id INTEGER);`)
+	writeMigration(t, dir, "schema_split.sql", `CREATE DATABASE oneapi_identity;`)
+
+	applied, err := New(db, dir).Apply(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"001_create_widgets"}, applied)
+}
+
+func TestRunner_SqliteDuplicateColumnIsIdempotentNoOp(t *testing.T) {
+	db := openSqlite(t)
+	dir := t.TempDir()
+	writeMigration(t, dir, "000_full_schema.sql", `CREATE TABLE widgets (id INTEGER, name TEXT NOT NULL DEFAULT '');`)
+	writeMigration(t, dir, "002_add_name.sql", `ALTER TABLE widgets ADD COLUMN name TEXT NOT NULL DEFAULT '';`)
+
+	applied, err := NewWithDriver(db, dir, "sqlite3").Apply(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"000_full_schema", "002_add_name"}, applied)
+}
+
 func TestRunner_Idempotent_SkipsAppliedMigrations(t *testing.T) {
 	db := openSqlite(t)
 	dir := t.TempDir()
