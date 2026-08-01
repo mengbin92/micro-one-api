@@ -7,6 +7,87 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **迁移干净建库路径修复**：`061`/`031`/`067` 改为按列/表/schema 存在性守卫（prepared
+  statement，可重入），修复全新 MySQL 单库与 per-service schema 建库失败；`schema_split.sql`
+  从自动应用迁移中排除（仅作参考 DDL）；`ownership.yaml` 为 log 补 `016`、为 billing
+  补 `031`、移除 `037`；Postgres 基线 `000` 修复表约束内非法 `COLLATE`；SQLite
+  runner 落实"duplicate column name 幂等 no-op"契约并拆分多列 ALTER（`009`）。
+  详见本次发布门禁记录。
+
+## [0.13.1] - 2026-08-01
+
+v0.13.0 的 PATCH 修复：identity-service 调用 billing-service 的 gRPC 客户端补齐
+`SERVICE_TOKEN` 携带，与 billing fail-closed 鉴权对齐；`SERVICE_TOKEN` 为空时服务
+启动失败而非带病运行。详见 [release-v0.13.1.md](docs/releases/release-v0.13.1.md)。
+
+### Fixed
+
+- **fix(identity): attach SERVICE_TOKEN to billing gRPC client**
+
+## [0.13.0] - 2026-08-01
+
+生产加固版本（18 个提交）：身份/Token 安全（key 明文改 HMAC-SHA256 哈希、会话撤销、
+子网限制、SERVICE_TOKEN gRPC 鉴权）、计费原子性与幂等（dual-track CAS、request_id
+唯一索引、actual_cost、refund_reason、兑换码条件更新）、relay/流式稳定性（上游体
+上限、SSE 无超时、真实错误比例熔断、类型化 fallback）、错误信息收敛。新增
+`identity.v1.ConsumeTokenQuota` RPC 与 additive proto 字段；迁移 `072`–`076`
+（additive），修复 `070` MySQL 幂等性。详见 [release-v0.13.0.md](docs/releases/release-v0.13.0.md)。
+
+## [0.12.0] - 2026-07-30
+
+v0.11.0 生产加固与功能补全：落地 v0.11.0 代码评审全部 CRITICAL/HIGH/MEDIUM/LOW
+修复（WS 连接池跨命名空间串号、故障转移提前终止、告警永不触发、fallback 成本键错配
+等），采纳 sub2api 四项更优实现，新增 Prometheus + Grafana 可观测性监控栈。迁移
+`070`–`071`（additive）。详见 [release-v0.12.0.md](docs/releases/release-v0.12.0.md)。
+
+## [0.11.0] - 2026-07-28
+
+核心能力版本：`cache_creation` 全链路计费（五桶 token 语义、observe/charge 开关、
+影子成本）、模型规范 ID 治理（canonical ID + 大小写不敏感唯一约束 + 未定价审计）、
+统一路由可观测性（订阅账号 weight、selection metrics、routing-ops 运营视图与告警）、
+模型版本化导入导出。迁移 `068`–`069`（additive）。详见 [release-v0.11.0.md](docs/releases/release-v0.11.0.md)。
+
+## [0.10.2] - 2026-07-27
+
+问题修复版本：修复 v0.10.0/0.10.1 暴露的模型路由问题（API-key 渠道与订阅账号优先级
+硬编码、上游模型 ID 精确映射、GLM Responses 自定义工具 `input_schema` 422）。
+详见 [release-v0.10.2.md](docs/releases/release-v0.10.2.md)。
+
+## [0.10.1] - 2026-07-26
+
+PATCH：修复国内订阅账户路由无法命中、上游模型 ID 大小写不敏感匹配丢失，以及 gosec /
+Dependabot 安全告警。详见 [release-v0.10.1.md](docs/releases/release-v0.10.1.md)。
+
+## [0.10.0] - 2026-07-25
+
+重大功能版本：独立模型管理系统（账户模型映射、通配符匹配、模型别名、使用统计）与
+国内订阅账户支持（智谱 GLM / MiniMax / Kimi：动态模型发现、配额查询、路由恢复探测）。
+详见 [release-v0.10.0.md](docs/releases/release-v0.10.0.md)。
+
+## [0.9.3] - 2026-07-20
+
+基础设施升级：Kratos v2 → v3 全量升级（9 服务 + platform 共享库），proto 工具链从
+protoc 迁移到 buf（生成与 lint，CI 与 Docker 构建同步接入）。
+详见 [release-v0.9.3.md](docs/releases/release-v0.9.3.md)。
+
+## [0.9.2] - 2026-07-19
+
+PATCH：修复启用异步 Billing 与 Schema 隔离后出现的 token 扣费异常。
+详见 [release-v0.9.2.md](docs/releases/release-v0.9.2.md)。
+
+## [0.9.1] - 2026-07-19
+
+PATCH：完成 Phase 2.4 Schema 隔离生产启用，修复配置问题并同步本地部署配置。
+详见 [release-v0.9.1.md](docs/releases/release-v0.9.1.md)。
+
+## [0.9.0] - 2026-07-18
+
+落地架构重构 Phase 2.1/2.2/2.3/2.4/2.5 与 Phase 3.3：异步计费、渠道加权选路、日志
+批量写入、per-service schema 隔离、配置热更新、WebSocket 优雅排空。
+详见 [release-v0.9.0.md](docs/releases/release-v0.9.0.md)。
+
 ## [0.8.2] - 2026-07-17
 
 v0.8.2 是 v0.8.1 之后的 PATCH 版本，聚焦 `internal/server/http.go` 架构重构拆分与 Phase 0 可观测性基线填充。无 API 破坏性变更、无数据库迁移、无部署配置变更。详见 [release-v0.8.2.md](docs/releases/release-v0.8.2.md)。
