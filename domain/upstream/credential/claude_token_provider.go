@@ -19,7 +19,7 @@ type ClaudeTokenProvider struct {
 // evade naive grep and added maintenance risk (re-joining errors, stale slices
 // after upstream rotates the id). Keep it as a single literal so updates are a
 // one-line change; source the new value from the CLI's bundled config.
-const ClaudeOAuthClientID = "9d1c250a-e61b-44d4-8bcb-9604d4e4c824"
+const ClaudeOAuthClientID = "9d1c250a-e61b-44d4-8bcb-9604d4e4c824" // #gitleaks:allow -- published OAuth client_id for Claude Code CLI, not a secret.
 
 // ClaudeTokenRefreshURL is the Anthropic OAuth token endpoint used by the
 // Claude Code CLI.
