@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.12.0 发布公告](./docs/releases/release-v0.12.0.md)（v0.11.0 生产加固 + 路由可靠性 + 可观测性监控栈） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.12.0)
+> 📣 **最新发布**：[v0.13.0 发布公告](./docs/releases/release-v0.13.0.md)（v0.12.0 生产加固 + 身份/计费安全 + API 增量） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.13.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.13.0
+
+v0.13.0 是 v0.12.0 发版后的生产加固版本：完成身份 Token 哈希存储（`key_hash`）、会话撤销、Token 子网限制、gRPC SERVICE_TOKEN 认证、计费幂等与资金原子性、订阅有效期兜底、SSE/流式稳定性、SSRF 与上游错误收敛、admin 错误信息脱敏等修复；新增 `identity.v1.ConsumeTokenQuota` RPC 与 `client_ip` additive proto 字段。**包含数据库迁移**（`072`–`076`，均 additive，按 per-service schema 执行；`070` 同步改为 MySQL 幂等写法）；无 API 破坏性变更。开发者需执行 `make init && make proto` 重新生成代码。详见 [docs/releases/release-v0.13.0.md](./docs/releases/release-v0.13.0.md)。
 
 ### 升级到 v0.12.0
 
