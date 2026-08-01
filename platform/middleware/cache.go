@@ -154,7 +154,7 @@ func ResponseCacheMiddleware(config *CacheConfig) func(http.Handler) http.Handle
 					}
 					w.Header().Set("X-Cache", "HIT")
 					w.WriteHeader(ce.statusCode)
-					w.Write(ce.body)
+					_, _ = w.Write(ce.body)
 					return
 				}
 				// Expired, delete
@@ -173,7 +173,7 @@ func ResponseCacheMiddleware(config *CacheConfig) func(http.Handler) http.Handle
 			}
 			w.Header().Set("X-Cache", "MISS")
 			w.WriteHeader(crw.statusCode)
-			w.Write(crw.body.Bytes())
+			_, _ = w.Write(crw.body.Bytes())
 
 			// Store in cache if successful
 			if crw.statusCode >= 200 && crw.statusCode < 300 {

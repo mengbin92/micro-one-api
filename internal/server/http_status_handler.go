@@ -312,7 +312,7 @@ func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", drainSec))
 		w.WriteHeader(http.StatusServiceUnavailable)
-		encodeJSON(w, map[string]string{"status": "draining", "drain": "true"})
+		_ = encodeJSON(w, map[string]string{"status": "draining", "drain": "true"})
 		return
 	}
 	s.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

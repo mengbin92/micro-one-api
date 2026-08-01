@@ -34,13 +34,13 @@ func (c *SubscriptionExpiryChecker) Run(ctx context.Context) {
 	}
 	ticker := time.NewTicker(ExpiryCheckInterval)
 	defer ticker.Stop()
-	c.Tick(ctx)
+	_, _ = c.Tick(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			c.Tick(ctx)
+			_, _ = c.Tick(ctx)
 		}
 	}
 }

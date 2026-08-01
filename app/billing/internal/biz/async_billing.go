@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -217,7 +218,10 @@ func (uc *AsyncBillingUsecase) PreCheck(
 	}()
 
 	// Convert userID to int64
-	uid := parseUserID(userID)
+	uid, err := parseUserID(userID)
+	if err != nil {
+		return err
+	}
 
 	// L1 check: local cache
 	if quota, ok := uc.localCache.Get(uid); ok {
@@ -243,7 +247,7 @@ func (uc *AsyncBillingUsecase) PreCheck(
 
 	// Fallback to sync path
 	metrics.QuotaCheckFallback.WithLabelValues("cache_miss").Inc()
-	_, err := uc.syncUc.ReserveQuota(ctx, userID, requestID, estimatedTokens, model, channelID, subscriptionAccountID)
+	_, err = uc.syncUc.ReserveQuota(ctx, userID, requestID, estimatedTokens, model, channelID, subscriptionAccountID)
 	return err
 }
 
@@ -625,11 +629,12 @@ func estimateCost(model string, tokens int64) int64 {
 }
 
 // parseUserID converts string userID to int64.
-func parseUserID(userID string) int64 {
-	// Simple parsing - real implementation would handle different formats
-	var uid int64
-	fmt.Sscanf(userID, "%d", &uid)
-	return uid
+func parseUserID(userID string) (int64, error) {
+	uid, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid user id %q: %w", userID, err)
+	}
+	return uid, nil
 }
 
 // DroppedCount returns the number of ledger entries dropped by the batch

@@ -503,11 +503,11 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	result.upstreamSucceeded = resp.StatusCode >= 200 && resp.StatusCode < 300
 	if !result.upstreamSucceeded {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		io.Copy(io.Discard, resp.Body) // drain so the connection can be reused
-		resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body) // drain so the connection can be reused
+		_ = resp.Body.Close()
 		s.recordCodexQuotaSnapshot(ctx, plan, body)
 		upstreamErr := passthrough.Classify(resp.StatusCode, body)
-				applogger.Log.Warn("subscription upstream rejected request",
+		applogger.Log.Warn("subscription upstream rejected request",
 			zap.Int("status_code", resp.StatusCode),
 			zap.String("platform", string(meta.Platform)),
 			zap.Int64("channel_id", plan.Channel.ID),
@@ -569,7 +569,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	if isStream {
 		_, reader, err := ad.ConvertStreamResponse(rc, upstreamFmt, resp)
 		if err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if accountUsage {
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "adaptor convert stream error")
 			}
@@ -640,7 +640,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	// client-facing conversion strips. Restore resp.Body so ConvertResponse still
 	// sees the full payload.
 	rawUpstream, readErr := io.ReadAll(io.LimitReader(resp.Body, relayprovider.MaxUpstreamResponseBody))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if readErr != nil {
 		if accountUsage {
 			_ = s.releaseQuota(ctx, reservation.ReservationId, "read upstream body error")

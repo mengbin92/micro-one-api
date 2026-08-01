@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"strings"
@@ -20,7 +21,9 @@ import (
 
 func init() {
 	// Allow connections to localhost for testing (mock upstream servers)
-	os.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	if err := os.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true"); err != nil {
+		panic(fmt.Sprintf("failed to set PROVIDER_DISABLE_SSRF_CHECK: %v", err))
+	}
 }
 
 // setupInMemoryIdentityService starts an in-memory identity service for testing
@@ -121,7 +124,7 @@ func setupInMemoryIdentityService(t *testing.T, addr string) (func(), identityv1
 
 	cleanup := func() {
 		server.Stop()
-		lis.Close()
+		_ = lis.Close()
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -179,7 +182,7 @@ func setupInMemoryChannelService(t *testing.T, addr string) (func(), channelv1.C
 
 	cleanup := func() {
 		server.Stop()
-		lis.Close()
+		_ = lis.Close()
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))

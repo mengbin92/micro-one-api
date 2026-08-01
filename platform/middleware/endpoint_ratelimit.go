@@ -68,7 +68,7 @@ func EndpointRateLimitMiddleware(endpointConfigs map[string]*RateLimitConfig) fu
 				w.Header().Set("X-RateLimit-Remaining", "0")
 				w.Header().Set("Retry-After", "60")
 				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"error":{"message":"rate limit exceeded for this endpoint","code":429}}`))
+				_, _ = w.Write([]byte(`{"error":{"message":"rate limit exceeded for this endpoint","code":429}}`))
 				return
 			} else {
 				w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))

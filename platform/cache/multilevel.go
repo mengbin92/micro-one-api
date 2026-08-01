@@ -156,8 +156,8 @@ func (c *MultiLevelCache[T]) Get(ctx context.Context, key string) (*T, error) {
 			return nil, err
 		}
 
-		// Populate L1 and L2
-		c.populate(ctx, cacheKey, val)
+		// Populate L1 and L2; a cache-write failure must not fail the source load.
+		_ = c.populate(ctx, cacheKey, val)
 
 		metrics.CacheLatency.WithLabelValues(c.metrics.cacheName, "get", "source").Observe(time.Since(start).Seconds())
 		return val, nil

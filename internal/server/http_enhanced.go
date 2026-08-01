@@ -308,7 +308,7 @@ func (s *EnhancedHTTPServer) validateAuthorization(r *http.Request) (string, err
 func (s *EnhancedHTTPServer) writeValidationError(w http.ResponseWriter, err error) {
 	if appvalidation.IsValidationError(err) {
 		w.WriteHeader(http.StatusBadRequest)
-		encodeJSON(w, map[string]interface{}{
+		_ = encodeJSON(w, map[string]interface{}{
 			"error": map[string]interface{}{
 				"message": err.Error(),
 				"code":    400,
@@ -433,7 +433,7 @@ func (s *EnhancedHTTPServer) handleAuthError(w http.ResponseWriter, err error) {
 func (s *EnhancedHTTPServer) writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	encodeJSON(w, map[string]interface{}{
+	_ = encodeJSON(w, map[string]interface{}{
 		"error": map[string]interface{}{
 			"message": applogger.Sanitize(message),
 			"code":    statusCode,
@@ -444,5 +444,5 @@ func (s *EnhancedHTTPServer) writeError(w http.ResponseWriter, statusCode int, m
 func (s *EnhancedHTTPServer) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	encodeJSON(w, data)
+	_ = encodeJSON(w, data)
 }

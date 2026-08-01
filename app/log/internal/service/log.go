@@ -404,11 +404,11 @@ func writeOneAPI(w http.ResponseWriter, status int, success bool, message string
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	sonic.ConfigStd.NewEncoder(w).Encode(data)
+	_ = sonic.ConfigStd.NewEncoder(w).Encode(data)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	sonic.ConfigStd.NewEncoder(w).Encode(map[string]interface{}{"error": message})
+	_ = sonic.ConfigStd.NewEncoder(w).Encode(map[string]interface{}{"error": message})
 }

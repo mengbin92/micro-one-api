@@ -456,7 +456,7 @@ func (im *IdempotencyMiddleware) acquireDistributedInflight(ctx context.Context,
 		stop:       make(chan struct{}),
 		done:       make(chan struct{}),
 	}
-	go lease.renew()
+	go lease.renew(ctx)
 	return lease, true, nil
 }
 
@@ -482,7 +482,7 @@ func (im *IdempotencyMiddleware) waitDistributedInflight(ctx context.Context, ke
 	}
 }
 
-func (lease *idempotencyLease) renew() {
+func (lease *idempotencyLease) renew(ctx context.Context) {
 	defer close(lease.done)
 	ticker := time.NewTicker(idempotencyLeaseTTL / 3)
 	defer ticker.Stop()
@@ -490,8 +490,10 @@ func (lease *idempotencyLease) renew() {
 		select {
 		case <-lease.stop:
 			return
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
-			rpcCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			rpcCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			_, err := renewIdempotencyLeaseScript.Run(
 				rpcCtx,
 				lease.middleware.redis,

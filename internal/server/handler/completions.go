@@ -85,5 +85,5 @@ func (h *CompletionsHandler) writeError(w http.ResponseWriter, status int, messa
 		},
 	}
 	data, _ := sonic.Marshal(resp)
-	w.Write(data)
+	_, _ = w.Write(data)
 }

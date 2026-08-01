@@ -14,6 +14,7 @@ import (
 // redisTokenBucketScript atomically refills and consumes a token. Redis
 // executes the Lua script as one operation, so concurrent instances cannot
 // each observe the same token.
+// #nosec G101 -- Lua token-bucket script, not a credential.
 const redisTokenBucketScript = `
 local key = KEYS[1]
 local now = tonumber(ARGV[1])
@@ -153,7 +154,7 @@ func RedisRateLimitMiddleware(rdb *redis.Client, config *RedisRateLimitConfig) f
 				w.Header().Set("Retry-After", "1")
 
 				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"error":{"message":"rate limit exceeded","code":429}}`))
+				_, _ = w.Write([]byte(`{"error":{"message":"rate limit exceeded","code":429}}`))
 				return
 			}
 

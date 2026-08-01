@@ -235,7 +235,7 @@ func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 

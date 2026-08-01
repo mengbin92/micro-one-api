@@ -18,8 +18,8 @@ import (
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/data"
 	"micro-one-api/app/admin/internal/service"
-	grpcauth "micro-one-api/platform/grpc"
 	"micro-one-api/platform/database/xdb"
+	grpcauth "micro-one-api/platform/grpc"
 	applogger "micro-one-api/platform/logging"
 	appregistry "micro-one-api/platform/registry"
 
@@ -85,7 +85,7 @@ func newClients(cfg *Config) (*clientsResult, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)))
 	if err != nil {
-		identityConn.Close()
+		_ = identityConn.Close()
 		return nil, fmt.Errorf("failed to connect to channel service: %w", err)
 	}
 
@@ -93,8 +93,8 @@ func newClients(cfg *Config) (*clientsResult, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)))
 	if err != nil {
-		identityConn.Close()
-		channelConn.Close()
+		_ = identityConn.Close()
+		_ = channelConn.Close()
 		return nil, fmt.Errorf("failed to connect to billing service: %w", err)
 	}
 

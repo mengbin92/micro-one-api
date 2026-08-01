@@ -39,5 +39,19 @@ DELETE FROM billing_reservations
      ) AS keep_ids
    );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_reservations_user_request
-  ON billing_reservations(user_id, request_id);
+-- MySQL does not support CREATE UNIQUE INDEX IF NOT EXISTS, so the index is
+-- created only when it is not already present.
+SET @uq_billing_reservations_user_request_exists := (
+  SELECT COUNT(*) FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'billing_reservations'
+    AND INDEX_NAME = 'uq_billing_reservations_user_request'
+);
+SET @ddl_add_uq_billing_reservations_user_request := IF(
+  @uq_billing_reservations_user_request_exists = 0,
+  'CREATE UNIQUE INDEX uq_billing_reservations_user_request ON billing_reservations(user_id, request_id)',
+  'SELECT 1'
+);
+PREPARE uq_billing_reservations_user_request_stmt FROM @ddl_add_uq_billing_reservations_user_request;
+EXECUTE uq_billing_reservations_user_request_stmt;
+DEALLOCATE PREPARE uq_billing_reservations_user_request_stmt;

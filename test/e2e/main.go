@@ -203,7 +203,10 @@ func stepVerifyAccount(_ context.Context, userID int64) int64 {
 			Group  string `json:"group"`
 		} `json:"account"`
 	}
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		fail("verify-account", fmt.Sprintf("decode response: %v", err))
+		return 0
+	}
 
 	if result.Account.Quota <= 0 {
 		fail("verify-account", fmt.Sprintf("expected quota > 0, got %d", result.Account.Quota))
@@ -322,7 +325,10 @@ func stepVerifyBilling(ctx context.Context, userID int64, initialQuota int64) {
 			Quota int64 `json:"quota"`
 		} `json:"account"`
 	}
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		fail("billing-quota-deducted", fmt.Sprintf("decode response: %v", err))
+		return
+	}
 
 	if result.Account.Quota >= initialQuota {
 		fail("billing-quota-deducted", fmt.Sprintf("quota not decreased: initial=%d, now=%d", initialQuota, result.Account.Quota))
@@ -366,7 +372,10 @@ func stepVerifyLogs(userID int64) {
 	body := httpGetWithAuth(url, adminToken())
 
 	var result map[string]interface{}
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		fail("admin-logs", fmt.Sprintf("decode response: %v", err))
+		return
+	}
 
 	// Logs may be empty if log-service hasn't indexed yet, so just check the endpoint works
 	pass(fmt.Sprintf("admin-logs (response OK, keys=%d)", len(result)))

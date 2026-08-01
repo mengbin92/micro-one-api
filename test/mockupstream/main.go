@@ -8,8 +8,8 @@ import (
 
 	"go.uber.org/zap"
 
-	applogger "micro-one-api/platform/logging"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	applogger "micro-one-api/platform/logging"
 )
 
 func init() {
@@ -88,10 +88,10 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

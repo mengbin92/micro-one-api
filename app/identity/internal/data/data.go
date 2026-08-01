@@ -112,7 +112,7 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 	rdb := xdb.NewRedisClient(redisAddr, redisPassword)
 	if rdb != nil {
 		if pingErr := rdb.Ping(context.Background()).Err(); pingErr != nil {
-			rdb.Close()
+			_ = rdb.Close()
 			rdb = nil
 		}
 	}

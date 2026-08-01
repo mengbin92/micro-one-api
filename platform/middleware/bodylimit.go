@@ -101,7 +101,7 @@ func ValidateJSONBody(v interface{}, maxSize int64) func(http.Handler) http.Hand
 					)
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusRequestEntityTooLarge)
-					w.Write([]byte(`{"error":{"message":"request body too large","code":413}}`))
+					_, _ = w.Write([]byte(`{"error":{"message":"request body too large","code":413}}`))
 
 				default:
 					applogger.Log.Error("Error decoding JSON",
@@ -122,7 +122,7 @@ func ValidateJSONBody(v interface{}, maxSize int64) func(http.Handler) http.Hand
 				)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusRequestEntityTooLarge)
-				w.Write([]byte(`{"error":{"message":"request body too large","code":413}}`))
+				_, _ = w.Write([]byte(`{"error":{"message":"request body too large","code":413}}`))
 				return
 			}
 

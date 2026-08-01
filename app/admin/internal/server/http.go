@@ -191,7 +191,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *k
 	srv.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	srv.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && billingHTTPProxy != nil {
@@ -1591,7 +1591,7 @@ func (a adminWebAssets) handlePage(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func getQueryInt32(r *http.Request, key string, defaultVal int32) int32 {

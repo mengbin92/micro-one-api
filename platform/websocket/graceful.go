@@ -382,12 +382,12 @@ func (h *DrainHandler) HandleHealthCheck() func(w http.ResponseWriter, r *http.R
 	return func(w http.ResponseWriter, r *http.Request) {
 		if h.tracker.IsDraining() {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"status":"draining","drain":true}`))
+			_, _ = w.Write([]byte(`{"status":"draining","drain":true}`))
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"healthy","drain":false}`))
+		_, _ = w.Write([]byte(`{"status":"healthy","drain":false}`))
 	}
 }
 

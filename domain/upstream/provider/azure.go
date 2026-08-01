@@ -108,7 +108,7 @@ func (p *AzureProvider) ChatCompletionsStream(ctx context.Context, req *ChatComp
 	}
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamErrorBody))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 	return readOpenAIStream(resp), nil
