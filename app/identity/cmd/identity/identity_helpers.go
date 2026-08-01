@@ -14,6 +14,7 @@ import (
 	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/app/identity/internal/biz"
 	"micro-one-api/app/identity/internal/server"
+	grpcauth "micro-one-api/platform/grpc"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/security" // package name is `oauth`
 )
@@ -182,7 +183,15 @@ func newBillingClient(cfg *Config) (billingv1.BillingServiceClient, *grpc.Client
 	if cfg.Bootstrap.Clients.Billing.Endpoint == "" {
 		return nil, nil, nil
 	}
-	conn, err := grpc.NewClient(cfg.Bootstrap.Clients.Billing.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	serviceToken := os.Getenv("SERVICE_TOKEN")
+	if serviceToken == "" {
+		return nil, nil, fmt.Errorf("SERVICE_TOKEN environment variable is required")
+	}
+	conn, err := grpc.NewClient(
+		cfg.Bootstrap.Clients.Billing.Endpoint,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(serviceToken)),
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to billing service: %w", err)
 	}
