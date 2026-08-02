@@ -679,7 +679,10 @@ CREATE TABLE IF NOT EXISTS models (
   metadata TEXT,
   created_at BIGINT NOT NULL DEFAULT 0,
   updated_at BIGINT NOT NULL DEFAULT 0,
-  CONSTRAINT uk_model_id UNIQUE (model_id COLLATE "C")
+  -- Postgres does not accept COLLATE inside a table UNIQUE constraint
+  -- (only in index expressions). The case-insensitive canonical uniqueness
+  -- is enforced below by uk_models_canonical_id, mirroring MySQL 068.
+  CONSTRAINT uk_model_id UNIQUE (model_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider);

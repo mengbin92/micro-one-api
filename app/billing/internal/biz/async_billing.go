@@ -464,6 +464,23 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 	// Use the worker's detached context so the settlement survives the
 	// caller's request scope. The commit pipeline is idempotent; a retried
 	// reservation short-circuits inside the state machine.
+	//
+	// A panic inside runCommitPipeline (e.g. a nil-pointer in a repo method)
+	// must NOT crash the whole settlement worker goroutine, which would take
+	// down the entire billing-service and cause intermittent relay 402s.
+	// Recover, log, and continue processing the next task; the reservation
+	// remains in the "committed/committing" state and is reconciled by the
+	// periodic reconciliation job.
+	defer func() {
+		if r := recover(); r != nil {
+			metrics.AsyncBillingDroppedFlushes.Inc()
+			applogger.Log.Error("async settlement panic recovered",
+				zap.String("reservation_id", task.ReservationID),
+				zap.Any("panic", r),
+				zap.Stack("stack"),
+			)
+		}
+	}()
 	uc.runCommitPipeline(uc.workerCtx, task)
 }
 

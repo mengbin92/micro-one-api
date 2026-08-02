@@ -211,6 +211,12 @@ MIGRATIONS_DSN='root:password@tcp(mysql:3306)/oneapi?parseTime=true' \
   go run ./cmd/migrate -dir ./migrations
 ```
 
+`schema_split.sql` 与 `phase3_partitioning.sql` 一样属于参考 DDL，不会在自动迁移中
+执行：它硬编码旧版 `oneapi` 源库，只应在 Phase 2.4 切流时手动执行（见 §10.4）。
+全新 MySQL 单库与 per-service schema（8 个 `<svc>` 库 + `-ownership`）的干净建库
+路径均已通过验证；跨 schema 视图类迁移（`031`/`061`/`067`）按表/schema 存在性
+守卫，避免在缺少对应表的 schema 上失败。
+
 数据库只能从集群内访问时，使用 `deployments/docker/Dockerfile.migrate` 构建一次性迁移镜像，并通过只引用 `db-credentials` 的 Kubernetes Job 运行同一命令。
 
 ### 3.6 部署服务

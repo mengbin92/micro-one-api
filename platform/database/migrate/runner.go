@@ -286,6 +286,12 @@ func (r *Runner) listMigrationFiles() ([]string, error) {
 		if name == "phase3_partitioning.sql" {
 			continue
 		}
+		// schema_split.sql is a reference DDL for the Phase 2.4 cutover: it
+		// hardcodes the legacy `oneapi` source schema and is executed manually
+		// during the split (docs/deployment.md §10.4), never as a migration.
+		if name == "schema_split.sql" {
+			continue
+		}
 		if !strings.HasSuffix(strings.ToLower(name), ".sql") {
 			continue
 		}
@@ -410,6 +416,18 @@ func (r *Runner) applyOne(ctx context.Context, path, version string) error {
 		// "$N" instead. rebind is a no-op for non-Postgres drivers.
 		bound := rebind(stmt, r.usePgPlaceholder())
 		if _, err := tx.ExecContext(ctx, bound); err != nil {
+			// SQLite has no ALTER TABLE ... ADD COLUMN IF NOT EXISTS. The
+			// consolidated baseline (000_create_full_schema.sql) and the
+			// numbered mirror files may both carry the same column, and the
+			// sqlite migrations are written on the documented contract that
+			// the runner treats "duplicate column name" as an idempotent
+			// no-op (the column is already present). Scope the tolerance
+			// strictly to SQLite so a genuine MySQL/Postgres error is never
+			// swallowed.
+			if (r.driver == "sqlite" || r.driver == "sqlite3") &&
+				strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+				continue
+			}
 			return fmt.Errorf("exec stmt: %w\nstatement: %s", err, stmt)
 		}
 	}

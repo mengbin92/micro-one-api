@@ -75,7 +75,7 @@ services:
     - 029_add_billing_ledger_upstream_cost
     - 030_add_reconciliation_run_phase3_fields
     - 036_add_subscription_account_id_to_billing_ledgers
-    - 037_add_subscription_account_id_to_logs       # shared index; harmless on billing schema
+    - 031_add_cache_read_token_usage_fields     # cache_read_tokens on billing_ledgers (067 dependency)
     - 067_add_cache_creation_token_usage_fields
     - 038_add_subscription_account_id_to_billing_reservations
     - 039_create_user_subscriptions
@@ -102,6 +102,7 @@ services:
     # logs table (a subset of 000_create_core_tables on the shared schema,
     # but in a per-service schema the table must be materialised).
     - 000_create_core_tables
+    - 016_add_usage_log_fields           # usage/token columns the log ALTERs depend on
     - 031_add_cache_read_token_usage_fields
     - 067_add_cache_creation_token_usage_fields
     - 037_add_subscription_account_id_to_logs
