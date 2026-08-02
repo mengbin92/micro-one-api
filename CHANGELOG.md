@@ -7,14 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-08-02
+
+v0.13.1 的 PATCH 修复：billing-service 异步结算分账恢复路径的空指针 panic 导致
+crash loop（线上观测到约 1274 次重启），表现为 relay-gateway 的 `ReserveQuota`
+gRPC 间歇失败、客户端收到空消息体的 402；以及迁移文件默认旧版共享 DB 历史导致
+全新 MySQL / PostgreSQL / SQLite 无法干净建库。详见
+[release-v0.13.2.md](docs/releases/release-v0.13.2.md)。
+
 ### Fixed
 
-- **迁移干净建库路径修复**：`061`/`031`/`067` 改为按列/表/schema 存在性守卫（prepared
-  statement，可重入），修复全新 MySQL 单库与 per-service schema 建库失败；`schema_split.sql`
-  从自动应用迁移中排除（仅作参考 DDL）；`ownership.yaml` 为 log 补 `016`、为 billing
-  补 `031`、移除 `037`；Postgres 基线 `000` 修复表约束内非法 `COLLATE`；SQLite
-  runner 落实"duplicate column name 幂等 no-op"契约并拆分多列 ALTER（`009`）。
-  详见本次发布门禁记录。
+- **fix: resolve intermittent 402 caused by billing-service crash loop**：`ledger_repo.FindByDedupeKey` 在 tx 为 nil 时回退到 `r.data.DB` 不再 panic；`async_billing.processSettlement` 增加 `defer/recover` 防止单任务 panic 击穿 worker；`gatewayErrorMessage` 对每个状态码返回非空客户端安全文案（如 402 → insufficient quota）。影响 `billing-service` 与 `relay-gateway`。
+- **fix(migrations): make clean-room DB provisioning work for all drivers**：`061`/`031`/`067` 改为按列/表/schema 存在性守卫（prepared statement，可重入），修复全新 MySQL 单库与 per-service schema 建库失败；`schema_split.sql` 从自动应用迁移中排除（仅作参考 DDL）；`ownership.yaml` 为 log 补 `016`、为 billing 补 `031`、移除 `037`；Postgres 基线 `000` 修复表约束内非法 `COLLATE`；SQLite runner 落实「duplicate column name 幂等 no-op」契约并拆分多列 ALTER（`009`）。
 
 ## [0.13.1] - 2026-08-01
 
