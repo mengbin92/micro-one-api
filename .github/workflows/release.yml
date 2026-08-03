@@ -15,7 +15,88 @@ permissions:
   contents: write
 
 jobs:
+  services:
+    name: Load service matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set service matrix
+        id: set-matrix
+        # Single source of truth for the service -> path/dockerfile mapping,
+        # shared by ci.yml, release.yml and dockerhub-verify.yml (code-review M2).
+        run: cat .github/workflows/matrix/services.json | jq -c . >> "$GITHUB_OUTPUT"
+
+  docker:
+    name: Build and Push ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.services.outputs.matrix) }}
+    needs: services
+    steps:
+      - name: Resolve release tag
+        id: meta-tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${{ github.ref_name }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta-tag.outputs.tag }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: mengbin92/micro-one-api-${{ matrix.service }}
+          # Gate the mutable 'latest' tag on non-prerelease semver so a
+          # v0.14.0-rc1 tag cannot clobber the stable 'latest' (code-review L4).
+          tags: |
+            type=raw,value=${{ steps.meta-tag.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(steps.meta-tag.outputs.tag, '-') }}
+            type=raw,value=latest,enable=${{ !contains(steps.meta-tag.outputs.tag, '-') }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SERVICE_NAME=${{ matrix.service }}
+            SERVICE_PATH=${{ matrix.path }}
+          # Reuse the GitHub Actions cache so repeated releases / minor
+          # revisions don't rebuild layers from scratch (code-review L5).
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   publish:
+    name: Publish GitHub Release
+    needs: docker
     runs-on: ubuntu-latest
     steps:
       - name: Resolve release tag

@@ -130,6 +130,18 @@ type PaymentRepo interface {
 	// MarkOrderRefunded transitions a paid order to refunded, running the
 	// revert callback inside the same transaction. Idempotent.
 	MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
+	// MarkOrderAssetIssued atomically claims a paid order's asset issuance
+	// (asset_issue_status pending -> issued) under a row lock, so concurrent
+	// callers cannot both claim the same order (code-review M10). ok is true
+	// only when THIS call performed the transition. ok=false means the order is
+	// not claimable — callers inspect the returned order's AssetIssueStatus to
+	// distinguish "already issued" from "refunded / not paid / wrong user".
+	MarkOrderAssetIssued(ctx context.Context, tradeNo, userID string) (*PaymentOrder, bool, error)
+	// UnmarkOrderAssetIssued compensates a failed issuance (issued -> pending)
+	// under a row lock so the order can be claimed and retried. ok is true only
+	// when THIS call performed the transition; no-op (ok=false) when the order
+	// is absent or already pending.
+	UnmarkOrderAssetIssued(ctx context.Context, tradeNo string) (*PaymentOrder, bool, error)
 }
 
 type PaymentProvider interface {
@@ -322,6 +334,31 @@ func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTr
 		return nil, errors.New("payment order not found")
 	}
 	return order, nil
+}
+
+// MarkOrderAssetIssued claims the asset issuance of a paid order
+// (pending -> issued, atomic under row lock). The caller must fulfil the asset
+// (grant the subscription / credit the balance) only when ok is true, and MUST
+// call UnmarkOrderAssetIssued to release the claim if fulfilment fails. This is
+// the idempotency seam for the admin completion endpoint (code-review M10): a
+// concurrent or replayed completion can only ever win the claim once, so the
+// asset cannot be double-issued.
+func (uc *PaymentUsecase) MarkOrderAssetIssued(ctx context.Context, tradeNo, userID string) (*PaymentOrder, bool, error) {
+	if tradeNo == "" {
+		return nil, false, errors.New("trade_no is required")
+	}
+	return uc.repo.MarkOrderAssetIssued(ctx, tradeNo, userID)
+}
+
+// UnmarkOrderAssetIssued releases a previously claimed order back to pending
+// (issued -> pending, atomic under row lock). It is a no-op when the order is
+// already pending, so the compensation path is safe to call unconditionally
+// after a failed fulfilment.
+func (uc *PaymentUsecase) UnmarkOrderAssetIssued(ctx context.Context, tradeNo string) (*PaymentOrder, bool, error) {
+	if tradeNo == "" {
+		return nil, false, errors.New("trade_no is required")
+	}
+	return uc.repo.UnmarkOrderAssetIssued(ctx, tradeNo)
 }
 
 func (uc *PaymentUsecase) refreshProviderStatus(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error) {

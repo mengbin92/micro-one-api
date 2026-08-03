@@ -28,6 +28,17 @@ service BillingService {
   rpc CreatePaymentOrder(CreatePaymentOrderRequest) returns (PaymentOrderResponse);
   rpc GetPaymentOrderByTradeNo(GetPaymentOrderByTradeNoRequest) returns (PaymentOrderResponse);
   rpc MarkPaymentOrderPaid(MarkPaymentOrderPaidRequest) returns (PaymentOrderResponse);
+  // MarkPaymentOrderAssetIssued atomically claims issuance of a paid order's
+  // asset (pending -> issued) so the admin completion endpoint cannot double
+  // fulfil the same order under concurrency (code-review M10). Callers issue
+  // the asset only when the response order reports asset_issue_status=issued;
+  // on issuance failure they MUST call UnmarkPaymentOrderAssetIssued to return
+  // the order to pending so it can be retried.
+  rpc MarkPaymentOrderAssetIssued(MarkPaymentOrderAssetIssuedRequest) returns (PaymentOrderResponse);
+  // UnmarkPaymentOrderAssetIssued is the compensation for a failed issuance:
+  // it returns an issued order to pending (issued -> pending) so a retry can
+  // re-claim and re-issue. No-op when the order is already pending.
+  rpc UnmarkPaymentOrderAssetIssued(UnmarkPaymentOrderAssetIssuedRequest) returns (PaymentOrderResponse);
   rpc ListPaymentOrders(ListPaymentOrdersRequest) returns (ListPaymentOrdersResponse);
   rpc RefundPaymentOrder(RefundPaymentOrderRequest) returns (RefundPaymentOrderResponse);
   rpc SubscriptionOperationReport(SubscriptionOperationReportRequest) returns (SubscriptionOperationReportResponse);
@@ -361,10 +372,30 @@ message MarkPaymentOrderPaidRequest {
   string provider_trade_no = 2;
 }
 
+// MarkPaymentOrderAssetIssuedRequest claims the asset of a paid order. When
+// user_id is non-empty the claim is rejected unless the order belongs to that
+// user (cross-user protection for the admin completion endpoint).
+message MarkPaymentOrderAssetIssuedRequest {
+  string trade_no = 1;
+  string user_id = 2;
+}
+
+// UnmarkPaymentOrderAssetIssuedRequest releases a failed issuance claim.
+message UnmarkPaymentOrderAssetIssuedRequest {
+  string trade_no = 1;
+}
+
 message PaymentOrderResponse {
   bool success = 1;
   string error_message = 2;
   PaymentOrder order = 3;
+  // claimed reports whether THIS call performed the pending -> issued
+  // transition (i.e. the caller won the issuance claim). false means the
+  // transition was not performed — the caller must inspect order.
+  // asset_issue_status to decide between "already fulfilled" (issued) and
+  // "not issuable" (refunded / not paid / wrong user). Only set by
+  // MarkPaymentOrderAssetIssued.
+  bool claimed = 4;
 }
 
 message ListPaymentOrdersRequest {

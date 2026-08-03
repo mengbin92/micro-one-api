@@ -129,7 +129,14 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 				failedAccounts[accountID] = true
 				// Local relay limits mean the account is healthy, just currently
 				// unavailable: fail over to a sibling but never cool it down.
-				if !result.concurrencyFull && !result.rpmFull && !result.sessionWindowFull {
+				// Rate-limit outcomes (429/423/529) are likewise transient "account
+				// busy" states, NOT faults: the same-account retry in
+				// runSubscriptionAttempt already backed off before we got here, and
+				// cooling the account down would make a single-account pool surface
+				// 503 "no available channel" for the whole cool-down window. So
+				// rate-limited accounts are excluded for THIS request (failover)
+				// but never cooled.
+				if !result.concurrencyFull && !result.rpmFull && !result.sessionWindowFull && !isSubscriptionRateLimitStatus(result.statusCode) {
 					s.blockRuntimeAccount(r.Context(), accountID, result.statusCode, result.err)
 				}
 			}
@@ -222,10 +229,29 @@ func (s *HTTPServer) runSubscriptionAttempt(r *http.Request, current *relaybiz.R
 func (s *HTTPServer) executeAndMeter(ctx context.Context, current *relaybiz.RelayPlan, clientModel string, header http.Header, rawBody []byte, inbound relayadaptor.Format, sessionHash string) subscriptionAdaptorResult {
 	result := s.executeSubscriptionAccountViaAdaptor(ctx, current, clientModel, header, rawBody, inbound, sessionHash)
 	metrics.RelaySubscriptionAdaptorRequestsTotal.WithLabelValues(subscriptionMetricPlatform(current), string(inbound), subscriptionAdaptorMetricResult(result)).Inc()
-	if result.upstreamAttempted && s != nil && s.relayUsecase != nil {
+	// Feed a real upstream outcome into the account circuit breaker — but never
+	// a rate-limit (429/423/529) outcome. Rate limits mean "the account is busy",
+	// not "the account is broken": under concurrency (which the config model
+	// intentionally does not gate locally) a burst of requests naturally trips
+	// upstream rate limits, and counting those as breaker errors would open the
+	// circuit on a healthy account, surfacing as "no available channel" for
+	// every concurrent request until the open window expires. Rate-limited
+	// accounts still get a short runtime cool-down (blockRuntimeAccount) and
+	// fail over to a sibling.
+	if result.upstreamAttempted && s != nil && s.relayUsecase != nil && !isSubscriptionRateLimitStatus(result.statusCode) {
 		_ = s.relayUsecase.RecordSubscriptionAccountHealth(ctx, subscriptionAccountIDFromPlan(current), result.upstreamSucceeded)
 	}
 	return result
+}
+
+// isSubscriptionRateLimitStatus reports whether an upstream status means "the
+// account is busy / being rate limited" rather than "the account is broken".
+// Such outcomes must not feed the account circuit breaker; they are managed by
+// the short runtime cool-down plus cross-account failover.
+func isSubscriptionRateLimitStatus(statusCode int) bool {
+	return statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusLocked ||
+		statusCode == passthrough.StatusOverloaded
 }
 
 // sleepCtx waits for d or until ctx is cancelled. It returns true if the full

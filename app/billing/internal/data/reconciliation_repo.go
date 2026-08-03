@@ -252,3 +252,32 @@ func (r *reconciliationRepo) CountRefundedOrders(ctx context.Context) (int64, in
 		Scan(&row).Error
 	return row.Count, row.Total, err
 }
+
+// ListStuckIssuedOrders returns paid payment orders whose asset issuance was
+// claimed (asset_issue_status=issued) but never fulfilled (subscription_id=0).
+// These are stuck orders produced when the admin CompleteSubscriptionPurchase
+// compensation (Unmark) fails after a fulfilment failure, leaving the order
+// issued-but-unfulfilled (code-review M1). The reconciler reports them so an
+// operator can re-trigger completion; it does not auto-repair.
+func (r *reconciliationRepo) ListStuckIssuedOrders(ctx context.Context) ([]*biz.PaymentOrder, error) {
+	if r.data == nil || r.data.db == nil {
+		return nil, nil
+	}
+	var rows []PaymentOrder
+	if err := r.data.db.WithContext(ctx).
+		Where("status = ? AND asset_issue_status = ? AND subscription_id = 0",
+			biz.PaymentOrderStatusPaid, biz.PaymentAssetIssueStatusIssued).
+		Order("updated_at ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	orders := make([]*biz.PaymentOrder, len(rows))
+	for i := range rows {
+		order, err := toBizPaymentOrder(&rows[i])
+		if err != nil {
+			return nil, err
+		}
+		orders[i] = order
+	}
+	return orders, nil
+}

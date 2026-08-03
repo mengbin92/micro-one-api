@@ -83,6 +83,33 @@ func (r *memoryPaymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reas
 	return r.order, true, nil
 }
 
+func (r *memoryPaymentRepo) MarkOrderAssetIssued(ctx context.Context, tradeNo, userID string) (*PaymentOrder, bool, error) {
+	if r.order == nil || r.order.TradeNo != tradeNo {
+		return nil, false, nil
+	}
+	copy := *r.order
+	if userID != "" && r.order.UserID != userID {
+		return &copy, false, nil
+	}
+	if r.order.Status != PaymentOrderStatusPaid || r.order.AssetIssueStatus != PaymentAssetIssueStatusPending {
+		return &copy, false, nil
+	}
+	r.order.AssetIssueStatus = PaymentAssetIssueStatusIssued
+	return r.order, true, nil
+}
+
+func (r *memoryPaymentRepo) UnmarkOrderAssetIssued(ctx context.Context, tradeNo string) (*PaymentOrder, bool, error) {
+	if r.order == nil || r.order.TradeNo != tradeNo {
+		return nil, false, nil
+	}
+	copy := *r.order
+	if r.order.AssetIssueStatus != PaymentAssetIssueStatusIssued {
+		return &copy, false, nil
+	}
+	r.order.AssetIssueStatus = PaymentAssetIssueStatusPending
+	return r.order, true, nil
+}
+
 type statusPaymentProvider struct {
 	status *PaymentProviderStatus
 	err    error
@@ -260,5 +287,85 @@ func TestPaymentUsecasePaidSubscriptionOrderAssignsSubscription(t *testing.T) {
 	}
 	if assigner.order == nil || assigner.order.GroupID != 9 {
 		t.Fatalf("assigner order = %#v", assigner.order)
+	}
+}
+
+func TestPaymentUsecaseMarkOrderAssetIssuedClaimsOnce(t *testing.T) {
+	repo := &memoryPaymentRepo{order: &PaymentOrder{
+		TradeNo:          "PAY-CLAIM-1",
+		UserID:           "42",
+		Channel:          PaymentChannelAlipay,
+		AssetType:        PaymentAssetTypeSubscription,
+		Status:           PaymentOrderStatusPaid,
+		AssetIssueStatus: PaymentAssetIssueStatusPending,
+	}}
+	uc := NewPaymentUsecase(repo, &statusPaymentProvider{}, &countingPaymentIssuer{})
+
+	// First completion wins the claim.
+	order, claimed, err := uc.MarkOrderAssetIssued(context.Background(), "PAY-CLAIM-1", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !claimed {
+		t.Fatal("first claim should win")
+	}
+	if order == nil || order.AssetIssueStatus != PaymentAssetIssueStatusIssued {
+		t.Fatalf("order after claim = %#v", order)
+	}
+
+	// A replayed completion observes issued and cannot claim again.
+	_, claimed, err = uc.MarkOrderAssetIssued(context.Background(), "PAY-CLAIM-1", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed {
+		t.Fatal("second claim must lose (already issued)")
+	}
+
+	// Fulfilment-failure compensation releases the claim so it can be retried.
+	order, unmarked, err := uc.UnmarkOrderAssetIssued(context.Background(), "PAY-CLAIM-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unmarked || order == nil || order.AssetIssueStatus != PaymentAssetIssueStatusPending {
+		t.Fatalf("unmark order = %#v unmarked=%v", order, unmarked)
+	}
+	_, claimed, err = uc.MarkOrderAssetIssued(context.Background(), "PAY-CLAIM-1", "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !claimed {
+		t.Fatal("claim after unmark should win again")
+	}
+}
+
+func TestPaymentUsecaseMarkOrderAssetIssuedRejectsWrongUser(t *testing.T) {
+	repo := &memoryPaymentRepo{order: &PaymentOrder{
+		TradeNo:          "PAY-CLAIM-2",
+		UserID:           "42",
+		Status:           PaymentOrderStatusPaid,
+		AssetIssueStatus: PaymentAssetIssueStatusPending,
+	}}
+	uc := NewPaymentUsecase(repo, &statusPaymentProvider{}, &countingPaymentIssuer{})
+
+	order, claimed, err := uc.MarkOrderAssetIssued(context.Background(), "PAY-CLAIM-2", "999")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed {
+		t.Fatal("claim by a different user must be refused")
+	}
+	if order == nil || order.AssetIssueStatus != PaymentAssetIssueStatusPending {
+		t.Fatalf("order must stay pending, got %#v", order)
+	}
+}
+
+func TestPaymentUsecaseMarkOrderAssetIssuedRequiresTradeNo(t *testing.T) {
+	uc := NewPaymentUsecase(&memoryPaymentRepo{}, &statusPaymentProvider{}, &countingPaymentIssuer{})
+	if _, _, err := uc.MarkOrderAssetIssued(context.Background(), "", "42"); err == nil {
+		t.Fatal("empty trade_no must error")
+	}
+	if _, _, err := uc.UnmarkOrderAssetIssued(context.Background(), ""); err == nil {
+		t.Fatal("empty trade_no must error")
 	}
 }

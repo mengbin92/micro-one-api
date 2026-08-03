@@ -44,6 +44,12 @@ func (r *capturingPaymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, pro
 func (r *capturingPaymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason string, revert func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error) {
 	return nil, false, nil
 }
+func (r *capturingPaymentRepo) MarkOrderAssetIssued(ctx context.Context, tradeNo, userID string) (*PaymentOrder, bool, error) {
+	return nil, false, nil
+}
+func (r *capturingPaymentRepo) UnmarkOrderAssetIssued(ctx context.Context, tradeNo string) (*PaymentOrder, bool, error) {
+	return nil, false, nil
+}
 
 func TestCreateOrder_CapturesPlanSnapshotForSubscriptionPlanOrder(t *testing.T) {
 	plan := &subscriptionbiz.SubscriptionPlan{
