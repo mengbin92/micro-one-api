@@ -19,7 +19,7 @@ jobs:
         id: set-matrix
         # Single source of truth for the service -> path/dockerfile mapping,
         # shared by ci.yml, release.yml and dockerhub-verify.yml (code-review M2).
-        run: cat .github/workflows/matrix/services.json | jq -c . >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(jq -c . < .github/workflows/matrix/services.json)" >> "$GITHUB_OUTPUT"
 
   verify:
     name: Verify Docker Hub Login (${{ matrix.service }})

@@ -148,4 +148,4 @@ jobs:
         # (.github/workflows/matrix/services.json) instead of touching every
         # workflow, so the build/test/release matrices can never drift
         # silently (code-review M2).
-        run: cat .github/workflows/matrix/services.json | jq -c . >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(jq -c . < .github/workflows/matrix/services.json)" >> "$GITHUB_OUTPUT"
