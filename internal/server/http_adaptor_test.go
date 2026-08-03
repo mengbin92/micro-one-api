@@ -459,8 +459,8 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOn429(t *testing.T) {
 	if delta := testutil.ToFloat64(metrics.RelaySubscriptionFailoverTotal.WithLabelValues("429", "switched")) - failoverBefore; delta != 1 {
 		t.Fatalf("subscription failover metric delta = %v, want 1", delta)
 	}
-	if delta := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("429")) - blockBefore; delta != 1 {
-		t.Fatalf("runtime block metric delta = %v, want 1", delta)
+	if delta := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("429")) - blockBefore; delta != 0 {
+		t.Fatalf("a rate-limited account must NOT be cooled down, block delta = %v", delta)
 	}
 }
 
@@ -580,8 +580,8 @@ func TestHandleChatCompletionsViaAdaptor_FailoverOn529(t *testing.T) {
 	if delta := testutil.ToFloat64(metrics.RelaySubscriptionFailoverTotal.WithLabelValues("529", "switched")) - failoverBefore; delta != 1 {
 		t.Fatalf("529 failover metric delta = %v, want 1", delta)
 	}
-	if delta := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("529")) - blockBefore; delta != 1 {
-		t.Fatalf("529 runtime block metric delta = %v, want 1", delta)
+	if delta := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("529")) - blockBefore; delta != 0 {
+		t.Fatalf("an overloaded (529) account must NOT be cooled down, block delta = %v", delta)
 	}
 }
 
@@ -859,15 +859,27 @@ func TestSubscriptionAdaptorRecordsOnlyRealUpstreamHealth(t *testing.T) {
 		}
 	})
 
-	t.Run("upstream failure", func(t *testing.T) {
+	t.Run("upstream 5xx failure", func(t *testing.T) {
+		client := &adaptorFailoverChannelClient{}
+		server := NewHTTPServer(nil, nil, nil, nil, relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, client, nil, nil))
+		server.SetOAuthHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return newStatusResponse(http.StatusBadGateway, `{"error":{"message":"upstream exploded"}}`), nil
+		})})
+		server.executeAndMeter(context.Background(), stickyCodexPlan(42, 0), "gpt-5", make(http.Header), body, relayadaptor.FormatOpenAIChatCompletions, "")
+		if len(client.health) != 1 || client.health[0] != (accountHealthOutcome{accountID: 42, success: false}) {
+			t.Fatalf("health outcomes = %+v", client.health)
+		}
+	})
+
+	t.Run("upstream rate limit is not a breaker error", func(t *testing.T) {
 		client := &adaptorFailoverChannelClient{}
 		server := NewHTTPServer(nil, nil, nil, nil, relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, client, nil, nil))
 		server.SetOAuthHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return newStatusResponse(http.StatusTooManyRequests, `{"error":{"message":"rate limited"}}`), nil
 		})})
 		server.executeAndMeter(context.Background(), stickyCodexPlan(42, 0), "gpt-5", make(http.Header), body, relayadaptor.FormatOpenAIChatCompletions, "")
-		if len(client.health) != 1 || client.health[0] != (accountHealthOutcome{accountID: 42, success: false}) {
-			t.Fatalf("health outcomes = %+v", client.health)
+		if len(client.health) != 0 {
+			t.Fatalf("a rate-limited account must NOT feed the circuit breaker: %+v", client.health)
 		}
 	})
 
