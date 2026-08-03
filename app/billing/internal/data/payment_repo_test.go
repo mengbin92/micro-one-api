@@ -134,3 +134,73 @@ func TestPaymentRepo_ListOrdersFiltersAndPaginates(t *testing.T) {
 	require.Equal(t, "PAY-1", list[0].TradeNo)
 	require.Equal(t, "ALI-1", list[0].ProviderTradeNo)
 }
+
+func TestPaymentRepo_MarkOrderAssetIssuedCAS(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&PaymentOrder{}))
+
+	repo := NewPaymentRepo(&Data{db: db})
+	_, err = repo.CreateOrder(context.Background(), &biz.PaymentOrder{
+		UserID:           "42",
+		TradeNo:          "PAY-CAS-1",
+		Channel:          biz.PaymentChannelAlipay,
+		AssetType:        biz.PaymentAssetTypeSubscription,
+		AssetAmount:      30,
+		Status:           biz.PaymentOrderStatusPaid,
+		AssetIssueStatus: biz.PaymentAssetIssueStatusPending,
+	})
+	require.NoError(t, err)
+
+	// First completion wins the claim (pending -> issued).
+	order, claimed, err := repo.MarkOrderAssetIssued(context.Background(), "PAY-CAS-1", "42")
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NotNil(t, order)
+	require.Equal(t, biz.PaymentAssetIssueStatusIssued, order.AssetIssueStatus)
+
+	// Replay loses the claim and observes issued.
+	order, claimed, err = repo.MarkOrderAssetIssued(context.Background(), "PAY-CAS-1", "42")
+	require.NoError(t, err)
+	require.False(t, claimed)
+	require.NotNil(t, order)
+	require.Equal(t, biz.PaymentAssetIssueStatusIssued, order.AssetIssueStatus)
+
+	// Compensation releases the claim (issued -> pending).
+	order, unmarked, err := repo.UnmarkOrderAssetIssued(context.Background(), "PAY-CAS-1")
+	require.NoError(t, err)
+	require.True(t, unmarked)
+	require.NotNil(t, order)
+	require.Equal(t, biz.PaymentAssetIssueStatusPending, order.AssetIssueStatus)
+
+	// Unmark on an already-pending order is a no-op.
+	_, unmarked, err = repo.UnmarkOrderAssetIssued(context.Background(), "PAY-CAS-1")
+	require.NoError(t, err)
+	require.False(t, unmarked)
+
+	// A different user cannot claim the order.
+	_, claimed, err = repo.MarkOrderAssetIssued(context.Background(), "PAY-CAS-1", "999")
+	require.NoError(t, err)
+	require.False(t, claimed)
+}
+
+func TestPaymentRepo_MarkOrderAssetIssuedRefusesRefunded(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&PaymentOrder{}))
+
+	repo := NewPaymentRepo(&Data{db: db})
+	_, err = repo.CreateOrder(context.Background(), &biz.PaymentOrder{
+		UserID:           "42",
+		TradeNo:          "PAY-CAS-2",
+		Status:           biz.PaymentOrderStatusPaid,
+		AssetIssueStatus: "refunded",
+	})
+	require.NoError(t, err)
+
+	order, claimed, err := repo.MarkOrderAssetIssued(context.Background(), "PAY-CAS-2", "42")
+	require.NoError(t, err)
+	require.False(t, claimed)
+	require.NotNil(t, order)
+	require.Equal(t, "refunded", order.AssetIssueStatus)
+}

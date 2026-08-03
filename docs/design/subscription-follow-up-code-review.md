@@ -40,7 +40,7 @@
 | M7 差价服务端校验 | ✅ 已修复 | `NewPriceQuota != plan.PriceQuota` 直接报错（见 H7） |
 | M8 session/RPM fail-open | ⚠️ 未核验 | 与 H11 同源；relay 侧 session_window 未发现文档化注释 |
 | M9 压测不可证伪 | ❌ 未修复 | 无多副本 Redis 故障注入集成断言 |
-| M10 完成接口重复发放 | ❌ 未修复 | `CompleteSubscriptionPurchase` 有 `asset_issue_status=="issued"` 短路（subscription.go:670），但**发放后不回写 issued**，历史/异常 `paid+pending` 订单仍可重复完成 → 重复累加时长 |
+| M10 完成接口重复发放 | ✅ 已修复（2026-08-03，v0.13.3 候选） | `CompleteSubscriptionPurchase` 发放前先经新 RPC `MarkPaymentOrderAssetIssued`（billing CAS：`payment_orders.asset_issue_status` pending→issued 行锁条件更新）抢占，仅 `claimed=true` 才发放；发放失败调 `UnmarkPaymentOrderAssetIssued` 补偿回滚；重复/并发完成只能抢到一次。新增 biz/data/admin 三层幂等测试（`subscription_m10_test.go`） |
 
 ### Low 项状态
 
@@ -60,7 +60,7 @@
 
 | 建议断言 | 状态 |
 |---|---|
-| ① 续费剩余时长累加 + 异常完成接口幂等 | ✅ 续费累加已覆盖（`subscription_usecase_test.go`）；❌ 完成接口幂等（M10）仍缺 |
+| ① 续费剩余时长累加 + 异常完成接口幂等 | ✅ 续费累加已覆盖（`subscription_usecase_test.go`）；✅ 完成接口幂等已补（2026-08-03：billing CAS + admin 编排测试） |
 | ② 升级后钱包扣款断言 | ✅ `subscription_change_test.go` / `refund_test.go` 已补 |
 | ③ 并发新购/续费唯一 active 断言 | ✅ 迁移 `059` + 相关测试 |
 | ④ 多副本 Redis 故障注入全局 cap 断言 | ❌ 缺失（M9 未修） |
@@ -206,7 +206,7 @@
 
 ## 5. 修复优先级建议
 
-> **实施状态**：P0（H3/H5/H6/H7/H8/H9/H10）与 P1（H1/H2）已于 `5cc07fb` 全部实施，P2 中 M1/M3/M4/M5/M7/L1/L3 已实施；**仍待处理**：M2、M9、M10（未修复），H11/M8（部分，需副本感知 cap 或故障注入断言），M6/L 系列未核验项。详见 §0.1。
+> **实施状态**：P0（H3/H5/H6/H7/H8/H9/H10）与 P1（H1/H2）已于 `5cc07fb` 全部实施，P2 中 M1/M3/M4/M5/M7/L1/L3 已实施；**M10 已于 2026-08-03 修复**（billing CAS + admin 完成接口幂等，v0.13.3 候选）；**仍待处理**：M2、M9（未修复），H11/M8（部分，需副本感知 cap 或故障注入断言），M6/L 系列未核验项。详见 §0.1。
 
 **P0（资金/权益直接损失，立即修）**
 1. **H7 + H8**：升级补钱包扣差价 + 写 change ledger；`ChargedQuota` 仅在真实扣款后写入，杜绝审计造假。

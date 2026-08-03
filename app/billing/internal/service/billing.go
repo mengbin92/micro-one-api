@@ -729,6 +729,44 @@ func (s *BillingService) MarkPaymentOrderPaid(ctx context.Context, req *billingv
 	return &billingv1.PaymentOrderResponse{Success: true, Order: toProtoPaymentOrder(order)}, nil
 }
 
+// MarkPaymentOrderAssetIssued claims a paid order's asset issuance
+// (pending -> issued, atomic under row lock). claimed=true in the response
+// means THIS call won the claim and the caller may fulfil the asset; on
+// fulfilment failure the caller MUST call UnmarkPaymentOrderAssetIssued to
+// release the claim. claimed=false means the caller lost (already issued) or
+// the order is not issuable — the caller decides from order.asset_issue_status
+// (code-review M10).
+func (s *BillingService) MarkPaymentOrderAssetIssued(ctx context.Context, req *billingv1.MarkPaymentOrderAssetIssuedRequest) (*billingv1.PaymentOrderResponse, error) {
+	if s.paymentUc == nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
+	}
+	order, claimed, err := s.paymentUc.MarkOrderAssetIssued(ctx, req.GetTradeNo(), req.GetUserId())
+	if err != nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+	if order == nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment order not found"}, nil
+	}
+	return &billingv1.PaymentOrderResponse{Success: true, Order: toProtoPaymentOrder(order), Claimed: claimed}, nil
+}
+
+// UnmarkPaymentOrderAssetIssued releases a previously claimed order back to
+// pending (compensation for a failed fulfilment). No-op when already pending,
+// so it is safe to call unconditionally on the failure path.
+func (s *BillingService) UnmarkPaymentOrderAssetIssued(ctx context.Context, req *billingv1.UnmarkPaymentOrderAssetIssuedRequest) (*billingv1.PaymentOrderResponse, error) {
+	if s.paymentUc == nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
+	}
+	order, _, err := s.paymentUc.UnmarkOrderAssetIssued(ctx, req.GetTradeNo())
+	if err != nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
+	if order == nil {
+		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment order not found"}, nil
+	}
+	return &billingv1.PaymentOrderResponse{Success: true, Order: toProtoPaymentOrder(order)}, nil
+}
+
 func (s *BillingService) ListPaymentOrders(ctx context.Context, req *billingv1.ListPaymentOrdersRequest) (*billingv1.ListPaymentOrdersResponse, error) {
 	if s.paymentUc == nil {
 		return &billingv1.ListPaymentOrdersResponse{}, nil

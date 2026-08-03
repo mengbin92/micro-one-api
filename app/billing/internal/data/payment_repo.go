@@ -317,6 +317,117 @@ func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason str
 	return result, changed, nil
 }
 
+// MarkOrderAssetIssued claims a paid order's asset issuance under a row lock
+// (code-review M10). changed is true only when THIS call flipped
+// asset_issue_status pending -> issued. A concurrent claimant blocks on the
+// row lock until this transaction commits, then observes issued and gets
+// changed=false, so the asset can never be double-issued. The claim is refused
+// (changed=false) for orders that are not paid, already issued, refunded,
+// closed, or that belong to a different user.
+func (r *paymentRepo) MarkOrderAssetIssued(ctx context.Context, tradeNo, userID string) (*biz.PaymentOrder, bool, error) {
+	var result *biz.PaymentOrder
+	changed := false
+
+	err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var po PaymentOrder
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("trade_no = ?", tradeNo).
+			First(&po).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+
+		order, err := toBizPaymentOrder(&po)
+		if err != nil {
+			return err
+		}
+		// Ownership check: refuse to claim an order that belongs to another
+		// user (cross-user protection for the admin completion endpoint).
+		if userID != "" && po.UserID != userID {
+			result = order
+			return nil
+		}
+		// Only a paid + pending order is claimable. Already issued (someone
+		// else won), refunded and closed orders short-circuit without
+		// changing anything.
+		if po.Status != biz.PaymentOrderStatusPaid || po.AssetIssueStatus != biz.PaymentAssetIssueStatusPending {
+			result = order
+			return nil
+		}
+		now := time.Now()
+		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]interface{}{
+			"asset_issue_status": biz.PaymentAssetIssueStatusIssued,
+			"updated_at":         now,
+		}).Error; err != nil {
+			return err
+		}
+		po.AssetIssueStatus = biz.PaymentAssetIssueStatusIssued
+		po.UpdatedAt = now
+		result, err = toBizPaymentOrder(&po)
+		if err != nil {
+			return err
+		}
+		changed = true
+		return nil
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to claim payment order asset issuance: %w", err)
+	}
+	return result, changed, nil
+}
+
+// UnmarkOrderAssetIssued releases a claimed order back to pending under a row
+// lock (compensation for a failed fulfilment, code-review M10). changed is
+// true only when THIS call flipped issued -> pending; it is a no-op
+// (changed=false) when the order is absent or already pending, so callers may
+// invoke it unconditionally on the failure path.
+func (r *paymentRepo) UnmarkOrderAssetIssued(ctx context.Context, tradeNo string) (*biz.PaymentOrder, bool, error) {
+	var result *biz.PaymentOrder
+	changed := false
+
+	err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var po PaymentOrder
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("trade_no = ?", tradeNo).
+			First(&po).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+
+		order, err := toBizPaymentOrder(&po)
+		if err != nil {
+			return err
+		}
+		result = order
+		if po.AssetIssueStatus != biz.PaymentAssetIssueStatusIssued {
+			return nil
+		}
+		now := time.Now()
+		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]interface{}{
+			"asset_issue_status": biz.PaymentAssetIssueStatusPending,
+			"updated_at":         now,
+		}).Error; err != nil {
+			return err
+		}
+		po.AssetIssueStatus = biz.PaymentAssetIssueStatusPending
+		po.UpdatedAt = now
+		result, err = toBizPaymentOrder(&po)
+		if err != nil {
+			return err
+		}
+		changed = true
+		return nil
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to unmark payment order asset issuance: %w", err)
+	}
+	return result, changed, nil
+}
+
 func toPOPaymentOrder(order *biz.PaymentOrder) (*PaymentOrder, error) {
 	id, err := safecast.Int64ToUint(order.ID)
 	if err != nil {

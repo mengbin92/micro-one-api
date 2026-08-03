@@ -667,25 +667,63 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 	if order.Status != "paid" {
 		return nil, fmt.Errorf("payment not completed (status: %s)", order.Status)
 	}
-	if order.AssetIssueStatus == "issued" {
-		sub, err := s.subscriptionUc.GetActiveSubscriptionForUser(ctx, userID)
-		if err != nil {
-			return nil, err
+	// M10 fix: atomically claim the asset issuance (pending -> issued) BEFORE
+	// fulfilling. A concurrent or replayed completion can only ever win this
+	// claim once; the loser observes claimed=false with an already-issued
+	// order and returns the current subscription instead of double-fulfilling
+	// (which would extend the user's entitlement repeatedly). On fulfilment
+	// failure the claim is released via UnmarkPaymentOrderAssetIssued so the
+	// order can be retried.
+	claimResp, err := s.billingClient.MarkPaymentOrderAssetIssued(ctx, &billingv1.MarkPaymentOrderAssetIssuedRequest{
+		TradeNo: tradeNo,
+		UserId:  strconv.FormatInt(userID, 10),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("claim asset issuance: %w", err)
+	}
+	if !claimResp.Success {
+		return nil, errors.New(claimResp.GetErrorMessage())
+	}
+	if claimResp.Order == nil {
+		return nil, errors.New("payment order not found")
+	}
+	if !claimResp.GetClaimed() {
+		// Did not win the claim. If the order is already issued, someone else
+		// fulfilled it — return the current subscription idempotently.
+		if claimResp.Order.GetAssetIssueStatus() == "issued" {
+			sub, err := s.subscriptionUc.GetActiveSubscriptionForUser(ctx, userID)
+			if err != nil {
+				return nil, err
+			}
+			return sub, nil
 		}
-		return sub, nil
+		return nil, fmt.Errorf("payment order is not issuable (asset_issue_status: %s)", claimResp.Order.GetAssetIssueStatus())
 	}
 
+	// Won the claim; fulfil the order.
+	sub, fulfilErr := s.fulfilPaidOrder(ctx, userID, order)
+	if fulfilErr != nil {
+		// Release the claim so the order can be retried (compensation).
+		if _, unmarkErr := s.billingClient.UnmarkPaymentOrderAssetIssued(ctx, &billingv1.UnmarkPaymentOrderAssetIssuedRequest{TradeNo: tradeNo}); unmarkErr != nil {
+			return nil, fmt.Errorf("fulfil failed (%v) and releasing claim failed: %w", fulfilErr, unmarkErr)
+		}
+		return nil, fulfilErr
+	}
+	return sub, nil
+}
+
+// fulfilPaidOrder grants the subscription for an already-paid order using the
+// plan snapshot / live plan / group paths. It is called only after winning the
+// issuance claim (see CompleteSubscriptionPurchase), so it never runs twice for
+// the same order.
+func (s *AdminService) fulfilPaidOrder(ctx context.Context, userID int64, order *billingv1.PaymentOrder) (*subscriptionbiz.UserSubscription, error) {
 	if order.PlanId > 0 {
 		// Phase 2: fulfil from the immutable plan snapshot captured at order
 		// creation. This keeps already-created orders completable even if the
 		// plan was later taken off-shelf or edited; only NEW orders are gated
 		// by the for_sale check (in CreateSubscriptionPaymentOrder).
 		if order.GetPlanSnapshot() != "" {
-			sub, err := s.completeFromPlanSnapshot(ctx, userID, order)
-			if err != nil {
-				return nil, err
-			}
-			return sub, nil
+			return s.completeFromPlanSnapshot(ctx, userID, order)
 		}
 		if s.planUc == nil {
 			return nil, ErrSubscriptionServiceNotConfigured
