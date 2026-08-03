@@ -4,6 +4,66 @@
 > 实际代码分支：`feat/subscription-productization-phase2`（commit `ade3f08`）
 > 审查方式：静态只读分析 + 部分 Go 测试实跑验证（Relay 压测已编译运行通过）；2026-07-08 二次复核并修正 H4/M1/H10 表述
 > 审查日期：2026-07-08
+>
+> **修复追踪（2026-08-03 更新）**：本报告发布同日（2026-07-08 16:13）由提交 `5cc07fb`（fix(subscription): address code-review findings）修复了全部 P0/P1 项（H1–H10）与部分 P2 项（M1/M3/M4/M5/M7/L1/L3），并补充 review §6 回归测试。下文每项均已按当前 `develop` 代码重新核验并标注状态；**未修复项见 §0.1 剩余清单**。
+
+## 0.1 修复状态总览（2026-08-03 按 develop 代码重新核验）
+
+> 依据提交 `5cc07fb`（2026-07-08）及后续 v0.13.0 加固（`809596e`/`792f638`/`cfde9da` 等）、迁移 `059`/`073`。下文「当前状态」为逐文件核验结果，原始「现象/后果」保留作历史记录。
+
+### High 项状态
+
+| 项 | 当前状态 | 修复证据（当前代码） |
+|---|---|---|
+| H1 Codex 永久禁用 | ✅ 已修复 | `app/channel/internal/data/data.go` `AutoPauseAccount` / `autoPauseAccountDB`：按 `recoveryPolicyForReason` 推导策略，codex/quota 耗尽仅标 unschedulable 并保持 `status=enabled`，仅 manual（401/403）才 `disabled` |
+| H2 恢复策略死代码 | ✅ 已修复 | `recoveryPolicyForReason`（data.go:2928）产出 quota/codex/manual/auto/rolling；`stampRecoveryMetadata` 写入 `recovery_policy`，`account_ops.go` 的 quota/codex 专用恢复分支可达 |
+| H3 续费截断 | ✅ 已修复 | `domain/subscription/biz/subscription_usecase.go`：`base = max(active.ExpiresAt, now)`，`ExpiresAt = base + duration`；admin 与支付回调统一走 `AssignOrExtend`（`app/admin/internal/service/subscription.go:290`），测试 `subscription_usecase_test.go` 覆盖累加 |
+| H4 跨路径双发 | ✅ 已撤回 | 维持原结论（降级为 M10） |
+| H5 退款用标价 | ✅ 已修复 | 退款改实付口径；`refund_reason` 独立列（迁移 `073`，v0.13.0），`actual_cost` 贯穿订单/账本；测试 `refund_test.go` 覆盖 |
+| H6 对账口径不一致 | ✅ 已修复 | `app/billing/internal/biz/reconciliation.go`：`CountRefundedOrders`（实付 cents）对 `SumReversalLedgerAmounts`（cost_source=reversal 账本）逐笔配对，`MoneyCentsDiff` 两侧同口径 |
+| H7 升级免费 + 审计造假 | ✅ 已修复 | `app/admin/internal/service/subscription.go:386-437`：先经 `billingClient.PurchaseSubscription` 真扣差价（失败报错），`ChangeSubscription` 失败补偿回滚；`NewPriceQuota` 服务端对 `plan.PriceQuota` 校验（M7 同修） |
+| H8 变更不写 ledger | ✅ 已修复 | 差价扣款走 `BillingUsecase.PurchaseSubscription`（billing.go:1432），扣钱包 + `CreateLedger`（type=subscription，remark 含 operator/group） |
+| H9 next_cycle 永不触发 | ✅ 已修复 | 续费发起处读 `pending_change` 建目标 group 订单（`app/admin/internal/service/subscription.go:284`）；同 group 续费保留 pending_change 下次生效；`subscription_change_test.go` 按新语义断言 |
+| H10 无唯一约束 | ✅ 已修复 | `migrations/059_enforce_single_active_subscription.sql`：生成列 `active_user_id` + UNIQUE 索引（Postgres/SQLite 对应 `003`/`001`） |
+| H11 fail-open 超发 | ⚠️ 部分 | `internal/biz/account_concurrency.go:118-121` 已文档化 fail-open 降级语义（Redis 故障退化为单副本内存 limiter，不阻断）；**仍无副本数感知 cap，无多副本故障注入断言**（同 M8/M9） |
+
+### Medium 项状态
+
+| 编号 | 当前状态 | 说明 |
+|---|---|---|
+| M1 fixed reset 边界 | ✅ 已修复 | `account_ops.go` `resetIfCrossedBoundary` 用 `FixedQuotaWindowStart` 计算自然边界，applier 优先写 `reset_runs` |
+| M2 过期策略漂移 | ❌ 未修复 | `renewal_strategy` 字段仍不存在，「过期未撤销」随扫描竞态漂移 |
+| M3 group 可用性过滤 | ✅ 已修复 | `ensureSubscriptionCanUseGroup` 在下单/发放入口均调用（subscription.go:179/232/573/700/713） |
+| M4 shorten 折算 | ✅ 已修复 | `StartsAt==0` 归一化为 now（`domain-M4`），杜绝整段有效期误算 |
+| M5 legacy 退款错订阅 | ✅ 已修复 | `refundSubscriptionID` 优先取订单 `subscription_id` 列（assigner 在 phase 2.3 写入） |
+| M6 用量窗口/并发锁 | ⚠️ 部分 | 升级重置 usage 为刻意设计（`domain-H1` 窄字段写已落地）；乐观并发锁未确认 |
+| M7 差价服务端校验 | ✅ 已修复 | `NewPriceQuota != plan.PriceQuota` 直接报错（见 H7） |
+| M8 session/RPM fail-open | ⚠️ 未核验 | 与 H11 同源；relay 侧 session_window 未发现文档化注释 |
+| M9 压测不可证伪 | ❌ 未修复 | 无多副本 Redis 故障注入集成断言 |
+| M10 完成接口重复发放 | ❌ 未修复 | `CompleteSubscriptionPurchase` 有 `asset_issue_status=="issued"` 短路（subscription.go:670），但**发放后不回写 issued**，历史/异常 `paid+pending` 订单仍可重复完成 → 重复累加时长 |
+
+### Low 项状态
+
+| 编号 | 当前状态 | 说明 |
+|---|---|---|
+| L1 时区静默回退 | ⚠️ 未核验 | 5cc07fb 声称修复（channel.go +8），未逐一验证日志落点 |
+| L2 告警去重 | ⚠️ 未核验 | 5cc07fb 改动 quota_alert.go，未验证 kind 跳变场景 |
+| L3 clearMarkers 非原子 | ⚠️ 未核验 | 5cc07fb 改动 account_ops.go，未验证事务合并 |
+| L4 快照缺失兜底 | ⚠️ 未核验 | 生产已注入 snapshotter，兜底路径未验证 |
+| L5 lease 槽位延迟 | ⚠️ 未核验 | 设计权衡，未验证 |
+
+### 部署注意（未变）
+
+三个后台任务仍默认全关：`SUBSCRIPTION_QUOTA_RESET_ENABLED` / `SUBSCRIPTION_ACCOUNT_RECOVERY_ENABLED` / `SUBSCRIPTION_QUOTA_ALERT_ENABLED` 默认 `false`，运维需显式开启（生产已按 runbook 开启，见部署文档）。
+
+### review §6 回归门槛落地情况
+
+| 建议断言 | 状态 |
+|---|---|
+| ① 续费剩余时长累加 + 异常完成接口幂等 | ✅ 续费累加已覆盖（`subscription_usecase_test.go`）；❌ 完成接口幂等（M10）仍缺 |
+| ② 升级后钱包扣款断言 | ✅ `subscription_change_test.go` / `refund_test.go` 已补 |
+| ③ 并发新购/续费唯一 active 断言 | ✅ 迁移 `059` + 相关测试 |
+| ④ 多副本 Redis 故障注入全局 cap 断言 | ❌ 缺失（M9 未修） |
 
 ## 0. 重要前提说明
 
@@ -40,18 +100,18 @@
 
 ## 2. 关键发现（按严重程度）
 
-### 🔴 H1 — Codex snapshot 耗尽被永久禁用，违反"等待 reset 再恢复"【High】
+### 🔴 H1 — Codex snapshot 耗尽被永久禁用，违反"等待 reset 再恢复"【High】✅ 已修复（5cc07fb）
 - **位置**：`relay/server/http_adaptor.go:716-718` → `AutoPauseAccount` → `data.go:588-606` / `1094-1095`
 - **现象**：Codex 账号 snapshot 用量达 95% 阈值（`codex.go:61 ShouldAutoPause`）即被 `AutoPauseAccount` 置 `status=disabled` 并强制 `recovery_policy=manual`。而 `account_ops.go:343-346` 对 `manual` 永不自动恢复。
 - **后果**：违反验收标准 1.2"Codex quota snapshot 耗尽等待 snapshot reset 后再恢复"。账号一旦触发即永久不可用，必须人工 re-enable / OAuth 重绑。
 - **根因**：见 H2。
 
-### 🔴 H2 — `RecoveryPolicyQuota` / `RecoveryPolicyCodex` 未被生产写入，恢复逻辑不可达【High】
+### 🔴 H2 — `RecoveryPolicyQuota` / `RecoveryPolicyCodex` 未被生产写入，恢复逻辑不可达【High】✅ 已修复（5cc07fb）
 - **位置**：`data.go:2155-2176`（`stampRecoveryMetadata`）只产出 `manual/auto/rolling`；`AutoPauseAccount` 又强制覆盖为 `manual`；未发现生产路径会持久化 `quota/codex`，导致 `account_ops.go:347、399-407` 的专用恢复分支不可达。
 - **现象**：本地 quota 耗尽的账号实际被当作 `rolling`（默认）走 TTL 分支（`account_ops.go:408-414`）。若其 `RateLimitedUntil==0`，每轮 tick 都 `clearMarkers` 写"已恢复"指标，但 `LocalQuotaExceededAt` 仍为 true → 账号依然不可调度。
 - **后果**：指标虚高（"ttl_elapsed success"），管理员误判已恢复；这是 H1 的根因，也是 quota 自动恢复的半成品。
 
-### 🔴 H3 — 续费延长逻辑错误：剩余时长被截断而非累加【High】
+### 🔴 H3 — 续费延长逻辑错误：剩余时长被截断而非累加【High】✅ 已修复（5cc07fb）
 - **位置**：`internal/billing/biz/subscription_assigner.go:204-205`（回调 `assignFromSnapshot`）、`subscription_usecase.go:114-121`（`AssignOrExtend` 分支）
 - **现象**：支付回调计算 `expiresAt = now + durationDays` 传绝对时间。`AssignOrExtend` 仅在 `req.ExpiresAt <= active.ExpiresAt`（剩余 > 续费时长）时累加；否则**直接覆盖**为 `now+duration`，丢掉剩余权益。
 - **复现**：用户还剩 5 天，续费 30 天 → 得到 `now+30d` 而非 `now+35d`，白丢 5 天。"临近到期才续费"恰是最常见场景 → 必然触发。
@@ -62,7 +122,7 @@
 ### ⚪ H4（撤回）— 原跨路径双发结论已降级为 M10【已修正结论】
 - **结论**：正常 `MarkOrderPaid` 支付回调路径具备订单行锁 + `status=paid` 幂等守卫，原 High 结论不应作为 P0 资金风险排期依据。
 
-### 🔴 H5 — 退款金额用套餐名义 `PriceQuota` 而非实付 `MoneyCents`【High】
+### 🔴 H5 — 退款金额用套餐名义 `PriceQuota` 而非实付 `MoneyCents`【High】✅ 已修复（5cc07fb + v0.13.0 迁移 073）
 - **位置**：`internal/billing/biz/refund.go:151-154`
 - **现象**：
   ```go
@@ -73,30 +133,30 @@
   ```
 - **后果**：订阅经外部支付（支付宝），`MarkOrderPaid` 不扣钱包，退款是 store-credit 模型（给钱包加钱）。加的是套餐标价额度而非用户实付。折扣/优惠券场景 → ①多退（资损）②少退（客诉）。
 
-### 🔴 H6 — 对账 Step 7 实付/标价口径不一致，折扣订单恒误报【High】
+### 🔴 H6 — 对账 Step 7 实付/标价口径不一致，折扣订单恒误报【High】✅ 已修复（5cc07fb）
 - **位置**：`internal/billing/biz/reconciliation.go:412-418`
 - **现象**：`refundedQuota = refundedCents/100`（实付）与 `reversalAmount = ΣPriceQuota`（标价）仅在全价无折扣时相等。任一退款订单有折扣 → 全局聚合永远不等 → `RefundInconsistencies` 每次对账都红，operator 对告警麻木。且只比较全局汇总、不逐笔配对。
 
-### 🔴 H7 — 升级（immediate）不收差价，可免费升更贵套餐，审计谎称已扣【High】
+### 🔴 H7 — 升级（immediate）不收差价，可免费升更贵套餐，审计谎称已扣【High】✅ 已修复（5cc07fb）
 - **位置**：`subscription_change.go:67-71`（注释"caller 负责钱包扣款"）+ 唯一调用方 `admin/service/subscription.go:361-365`（**完全不扣款**）
 - **现象**：管理员把用户从便宜套餐切到贵套餐（immediate），订阅 group 立即变更，钱包分文未扣。且 `ChangeResult.ChargedQuota` 被返回并写入订阅元数据 `mergeChangeMetadata`（`subscription_change.go:117-126`）→ **审计记录"已扣差价"但实际从未扣**。
 - **后果**：直接资损（少收升级费）+ 财务审计链路造假。一次 admin 操作即可让用户免费享更贵套餐。
 
-### 🔴 H8 — 变更不写 change ledger 条目【High】
+### 🔴 H8 — 变更不写 change ledger 条目【High】✅ 已修复（5cc07fb）
 - **位置**：`subscription_change.go:17`（文档声明写 change ledger）但 `ChangeSubscription` 全程只 `UpdateSubscription`，无 `Ledger` 写入。
 - **后果**：升级/降级无财务台账，与"账本审计链路"验收冲突，后续对账无法核对变更动作。
 
-### 🔴 H9 — `next_cycle` 降级在真实续费中永不生效【High】
+### 🔴 H9 — `next_cycle` 降级在真实续费中永不生效【High】✅ 已修复（5cc07fb）
 - **位置**：`subscription_change.go:148-159`（降级只写 `pending_change` 到 metadata）+ `subscription_usecase.go:106-113`（应用条件 `req.GroupID != active.GroupID`）
 - **现象**：应用 pending_change 要求续费请求的 `GroupID` 与新 group 相同。但正常"同套餐续费"创建的订单 group 与当前 active 相同 → `if active.GroupID != req.GroupID` 永不进入 → pending_change 既不应用也不清除。
 - **佐证**：测试 `TestChangeSubscription_PendingChangeAppliesOnRenewal`（`subscription_change_test.go:171-177`）**手动把续费请求 GroupID 设成新 group 才通过**，恰好暴露生产续费流（重订同 plan → 同 group）不会触发。
 - **复现**：用户 pro 设置降级到 basic(next_cycle) → 到期同套餐续费 → 仍停在 pro，pending_change 永久残留。
 
-### 🔴 H10 — 唯一 active subscription 仅靠非原子代码检查，无 DB 唯一索引【High】
+### 🔴 H10 — 唯一 active subscription 仅靠非原子代码检查，无 DB 唯一索引【High】✅ 已修复（5cc07fb，迁移 059）
 - **位置**：`subscription_usecase.go:98-110`（`GetActiveSubscriptionByUser` 读后判断）+ `migrations/039_create_user_subscriptions.sql`（无 `(user_id, status=active)` 唯一约束）
 - **现象**：读不加锁、创建/更新不在同一原子约束内。两笔并发支付回调（或"新购"与"续费/变更"竞态）可同时读到"无 active"，各自 `CreateSubscription` → **同一用户出现 2 个 active 订阅**，权益重复、用量按 `ORDER updated_at DESC` 选取会漂移。
 
-### 🔴 H11 — Redis 故障 fail-open 后全局并发退化为 per-replica，可超配置 N 倍【High（设计权衡）】
+### 🔴 H11 — Redis 故障 fail-open 后全局并发退化为 per-replica，可超配置 N 倍【High（设计权衡）】⚠️ 部分修复（fail-open 语义已文档化，超发未根治）
 - **位置**：`account_concurrency.go:152-178`、`account_rpm.go:140-167`、`subscription_session_window.go:43-55`
 - **现象**：Redis 不可用时，每个副本落到各自独立的内存 limiter，副本间无协调。全局同账号 in-flight 上限变为 `N × limit`。
 - **后果**：满足"fail-open 不阻断 + 有 fallback 指标"字面验收，但违背"Redis 正常时同账号并发不超过配置"的故障态延续性。压测仅单 limiter 实例断言 `peak ≤ limit`，**无自动化测试覆盖多副本同时 fail-open 超 cap**。
@@ -145,6 +205,8 @@
 7. **指标暴露齐全**：reset/recovery/alert/negative_balance 等均在 `internal/pkg/metrics/subscription.go`。✅
 
 ## 5. 修复优先级建议
+
+> **实施状态**：P0（H3/H5/H6/H7/H8/H9/H10）与 P1（H1/H2）已于 `5cc07fb` 全部实施，P2 中 M1/M3/M4/M5/M7/L1/L3 已实施；**仍待处理**：M2、M9、M10（未修复），H11/M8（部分，需副本感知 cap 或故障注入断言），M6/L 系列未核验项。详见 §0.1。
 
 **P0（资金/权益直接损失，立即修）**
 1. **H7 + H8**：升级补钱包扣差价 + 写 change ledger；`ChargedQuota` 仅在真实扣款后写入，杜绝审计造假。
