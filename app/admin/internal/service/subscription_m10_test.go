@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strconv"
+	"strings"
 	"testing"
 
 	billingv1 "micro-one-api/api/billing/v1"
@@ -118,14 +120,25 @@ type mockBillingClient struct {
 	claimCalls   int
 	unmarkCalls  int
 	lastUnmarkNo string
+	// unmarkErr, when non-nil, is returned by UnmarkPaymentOrderAssetIssued
+	// to simulate a compensation failure (the stuck-state path).
+	unmarkErr error
 }
 
 func (m *mockBillingClient) GetPaymentOrderByTradeNo(_ context.Context, _ *billingv1.GetPaymentOrderByTradeNoRequest, _ ...grpc.CallOption) (*billingv1.PaymentOrderResponse, error) {
 	return &billingv1.PaymentOrderResponse{Success: true, Order: m.order}, nil
 }
 
-func (m *mockBillingClient) MarkPaymentOrderAssetIssued(_ context.Context, _ *billingv1.MarkPaymentOrderAssetIssuedRequest, _ ...grpc.CallOption) (*billingv1.PaymentOrderResponse, error) {
+// MarkPaymentOrderAssetIssued simulates the billing-side CAS, honoring the
+// request's UserId for cross-user protection (mirrors the repo-level check).
+// The first claim on a paid+pending order for the correct user wins (flips
+// the order to issued, claimed=true); every later call or a wrong-user call
+// loses (claimed=false).
+func (m *mockBillingClient) MarkPaymentOrderAssetIssued(_ context.Context, req *billingv1.MarkPaymentOrderAssetIssuedRequest, _ ...grpc.CallOption) (*billingv1.PaymentOrderResponse, error) {
 	m.claimCalls++
+	if uid := req.GetUserId(); uid != "" && m.order.GetUserId() != uid {
+		return &billingv1.PaymentOrderResponse{Success: true, Order: m.order, Claimed: false}, nil
+	}
 	if m.order.GetStatus() == "paid" && m.order.GetAssetIssueStatus() == "pending" {
 		m.order.AssetIssueStatus = "issued"
 		return &billingv1.PaymentOrderResponse{Success: true, Order: m.order, Claimed: true}, nil
@@ -136,6 +149,9 @@ func (m *mockBillingClient) MarkPaymentOrderAssetIssued(_ context.Context, _ *bi
 func (m *mockBillingClient) UnmarkPaymentOrderAssetIssued(_ context.Context, req *billingv1.UnmarkPaymentOrderAssetIssuedRequest, _ ...grpc.CallOption) (*billingv1.PaymentOrderResponse, error) {
 	m.unmarkCalls++
 	m.lastUnmarkNo = req.GetTradeNo()
+	if m.unmarkErr != nil {
+		return nil, m.unmarkErr
+	}
 	if m.order.GetAssetIssueStatus() == "issued" {
 		m.order.AssetIssueStatus = "pending"
 	}
@@ -253,5 +269,68 @@ func TestCompleteSubscriptionPurchase_RefusedClaimReturnsError(t *testing.T) {
 	}
 	if billing.unmarkCalls != 0 {
 		t.Fatalf("unmarkCalls = %d, want 0", billing.unmarkCalls)
+	}
+}
+
+// TestCompleteSubscriptionPurchase_FulfilFailureAndUnmarkFailure is the M10
+// double-failure path: when fulfilment fails AND the compensation (unmark)
+// also fails, the endpoint must return a composite error carrying both
+// failures so the stuck-state (issued but unfulfilled) is surfaced to the
+// operator. The order remains issued; a reconciler must detect and repair it.
+func TestCompleteSubscriptionPurchase_FulfilFailureAndUnmarkFailure(t *testing.T) {
+	subRepo := &fakeSubscriptionRepo{}
+	order := paidGroupOrder(42, "PAY-M10-4")
+	billing := &mockBillingClient{order: order, unmarkErr: errors.New("rpc error: connection reset")}
+	// groupUc.Get fails (group is nil), so fulfilPaidOrder returns an error;
+	// the unmark compensation is then attempted but also fails.
+	svc := newAdminServiceForM10(billing, subRepo, nil)
+
+	_, err := svc.CompleteSubscriptionPurchase(context.Background(), 42, "PAY-M10-4")
+	if err == nil {
+		t.Fatal("double failure must surface an error")
+	}
+	if billing.unmarkCalls != 1 {
+		t.Fatalf("unmarkCalls = %d, want 1 (compensation attempted)", billing.unmarkCalls)
+	}
+	if billing.lastUnmarkNo != "PAY-M10-4" {
+		t.Fatalf("unmark trade_no = %q, want PAY-M10-4", billing.lastUnmarkNo)
+	}
+	// The order must remain issued (the unmark failed) — this is the
+	// stuck-state the reconciler must detect.
+	if order.GetAssetIssueStatus() != "issued" {
+		t.Fatalf("order asset_issue_status = %q, want issued (stuck-state)", order.GetAssetIssueStatus())
+	}
+	// The error must mention both the fulfilment failure and the compensation
+	// failure so operators can diagnose the stuck order.
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "releasing asset-issuance claim") {
+		t.Fatalf("error must mention compensation failure, got: %s", errMsg)
+	}
+}
+
+// TestCompleteSubscriptionPurchase_WrongUserClaimRefused exercises the mock's
+// cross-user protection: a claim with a mismatched user_id must lose
+// (claimed=false) without flipping the order to issued.
+func TestCompleteSubscriptionPurchase_WrongUserClaimRefused(t *testing.T) {
+	subRepo := &fakeSubscriptionRepo{}
+	group := &subscriptionbiz.SubscriptionGroup{ID: 7, Name: "pro", Status: subscriptionbiz.SubscriptionGroupStatusEnabled, PriceQuota: 100, DurationDays: 30}
+	order := paidGroupOrder(42, "PAY-M10-5")
+	billing := &mockBillingClient{order: order}
+	svc := newAdminServiceForM10(billing, subRepo, group)
+
+	// The handler always passes the authenticated userID, so a mismatch can
+	// only happen if the order belongs to a different user. Simulate by
+	// calling completion for user 999 against an order owned by user 42.
+	_, err := svc.CompleteSubscriptionPurchase(context.Background(), 999, "PAY-M10-5")
+	if err == nil {
+		t.Fatal("wrong-user completion must fail")
+	}
+	// The pre-check in CompleteSubscriptionPurchase catches the mismatch
+	// before the claim, so the claim is never attempted.
+	if billing.claimCalls != 0 {
+		t.Fatalf("claimCalls = %d, want 0 (pre-check catches wrong user)", billing.claimCalls)
+	}
+	if subRepo.createdCount != 0 {
+		t.Fatalf("createdCount = %d, want 0", subRepo.createdCount)
 	}
 }

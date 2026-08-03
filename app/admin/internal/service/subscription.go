@@ -689,7 +689,12 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 	}
 	if !claimResp.GetClaimed() {
 		// Did not win the claim. If the order is already issued, someone else
-		// fulfilled it — return the current subscription idempotently.
+		// fulfilled it — return the user's current active subscription so a
+		// replay is idempotent. The returned subscription is the user's
+		// best-current active subscription, which may differ from the one
+		// granted by THIS order (e.g. a later purchase superseded it, or it
+		// has since expired); callers needing the exact order->subscription
+		// link must read order.subscription_id instead.
 		if claimResp.Order.GetAssetIssueStatus() == "issued" {
 			sub, err := s.subscriptionUc.GetActiveSubscriptionForUser(ctx, userID)
 			if err != nil {
@@ -703,9 +708,14 @@ func (s *AdminService) CompleteSubscriptionPurchase(ctx context.Context, userID 
 	// Won the claim; fulfil the order.
 	sub, fulfilErr := s.fulfilPaidOrder(ctx, userID, order)
 	if fulfilErr != nil {
-		// Release the claim so the order can be retried (compensation).
+		// Release the claim so the order can be retried (compensation). If
+		// the release itself fails the order is left in the issued-but-
+		// unfulfilled stuck state; a reconciler must detect and repair it
+		// (status=paid && asset_issue_status=issued && subscription_id=0).
+		// errors.Join preserves both the fulfilment and the release failures
+		// so callers can match on either.
 		if _, unmarkErr := s.billingClient.UnmarkPaymentOrderAssetIssued(ctx, &billingv1.UnmarkPaymentOrderAssetIssuedRequest{TradeNo: tradeNo}); unmarkErr != nil {
-			return nil, fmt.Errorf("fulfil failed (%v) and releasing claim failed: %w", fulfilErr, unmarkErr)
+			return nil, errors.Join(fulfilErr, fmt.Errorf("releasing asset-issuance claim after fulfilment failure: %w", unmarkErr))
 		}
 		return nil, fulfilErr
 	}
