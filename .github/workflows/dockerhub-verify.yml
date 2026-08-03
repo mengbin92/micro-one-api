@@ -7,19 +7,28 @@ permissions:
   contents: read
 
 jobs:
+  services:
+    name: Load service matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set service matrix
+        id: set-matrix
+        # Single source of truth for the service -> path/dockerfile mapping,
+        # shared by ci.yml, release.yml and dockerhub-verify.yml (code-review M2).
+        run: cat .github/workflows/matrix/services.json | jq -c . >> "$GITHUB_OUTPUT"
+
   verify:
     name: Verify Docker Hub Login (${{ matrix.service }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - service: relay-gateway
-            path: ./cmd/relay-gateway
-            dockerfile: Dockerfile
-          - service: admin-api
-            path: ./app/admin/cmd/admin
-            dockerfile: app/admin/Dockerfile
+        include: ${{ fromJSON(needs.services.outputs.matrix) }}
+    needs: services
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -45,3 +54,6 @@ jobs:
           build-args: |
             SERVICE_NAME=${{ matrix.service }}
             SERVICE_PATH=${{ matrix.path }}
+          # Reuse the GitHub Actions cache (code-review L5).
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

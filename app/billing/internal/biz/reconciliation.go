@@ -47,6 +47,13 @@ type ReconciliationRepo interface {
 	// CountRefundedOrders returns the count and total money_cents of orders
 	// in the refunded terminal state (phase 2.3 reconciliation coverage).
 	CountRefundedOrders(ctx context.Context) (count int64, totalMoneyCents int64, err error)
+	// ListStuckIssuedOrders returns paid payment orders whose asset issuance
+	// was claimed (asset_issue_status=issued) but never fulfilled
+	// (subscription_id=0). These are stuck orders — typically produced by a
+	// fulfilment failure whose compensation (Unmark) also failed — that a
+	// human operator must re-trigger. The reconciler reports them but does
+	// not auto-repair (code-review M1).
+	ListStuckIssuedOrders(ctx context.Context) ([]*PaymentOrder, error)
 }
 
 // ReconciliationRunStore persists historical reconciliation runs so admins can review them.
@@ -67,6 +74,7 @@ type ReconciliationResult struct {
 	SubscriptionInconsistencies []SubscriptionInconsistency `json:"subscription_inconsistencies,omitempty"`
 	ReceivableInconsistencies    []ReceivableInconsistency    `json:"receivable_inconsistencies,omitempty"`
 	RefundInconsistencies        []RefundInconsistency        `json:"refund_inconsistencies,omitempty"`
+	StuckIssuanceInconsistencies []StuckIssuanceInconsistency `json:"stuck_issuance_inconsistencies,omitempty"`
 	TotalAccounts          int                         `json:"total_accounts"`
 	TotalChannels          int                         `json:"total_channels"`
 	TotalReservations      int                         `json:"total_reservations"`
@@ -80,6 +88,7 @@ const (
 	ReconciliationDiscrepancyTypeSubscription  = "subscription_absorption"
 	ReconciliationDiscrepancyTypeReceivable    = "receivable_mirror"
 	ReconciliationDiscrepancyTypeRefund       = "refund_reversal"
+	ReconciliationDiscrepancyTypeStuckIssuance = "stuck_issuance"
 )
 
 func (r *ReconciliationResult) DiscrepancyCount() int {
@@ -91,7 +100,8 @@ func (r *ReconciliationResult) DiscrepancyCount() int {
 		len(r.LogInconsistencies) +
 		len(r.SubscriptionInconsistencies) +
 		len(r.ReceivableInconsistencies) +
-		len(r.RefundInconsistencies)
+		len(r.RefundInconsistencies) +
+		len(r.StuckIssuanceInconsistencies)
 }
 
 // AccountInconsistency describes a quota mismatch for a single account.
@@ -157,6 +167,25 @@ type RefundInconsistency struct {
 	// (in cents). Positive: refunded orders without a matching ledger; negative:
 	// reversal ledgers without a matching order.
 	MoneyCentsDiff int64 `json:"money_cents_diff"`
+}
+
+// StuckIssuanceInconsistency captures a paid order whose asset issuance was
+// claimed (asset_issue_status=issued) but never fulfilled
+// (subscription_id=0). This is the stuck-state produced when the admin
+// CompleteSubscriptionPurchase compensation (Unmark) fails after a fulfilment
+// failure, leaving the order issued-but-unfulfilled. The reconciler reports
+// it so an operator can re-trigger completion; it does not auto-repair
+// (code-review M1).
+type StuckIssuanceInconsistency struct {
+	TradeNo    string `json:"trade_no"`
+	UserID     string `json:"user_id"`
+	GroupID    int64  `json:"group_id"`
+	PlanID     int64  `json:"plan_id"`
+	MoneyCents int64  `json:"money_cents"`
+	// StuckSince is the order's updated_at, approximating when the claim was
+	// set (the claim writes updated_at). Used to gauge how long the order has
+	// been stuck.
+	StuckSince time.Time `json:"stuck_since"`
 }
 
 // ChannelLedgerUsage is the local ledger usage/cost summary for a channel.
@@ -258,6 +287,7 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 			metrics.ReconciliationDiscrepanciesTotal.WithLabelValues(ReconciliationDiscrepancyTypeSubscription).Add(float64(len(result.SubscriptionInconsistencies)))
 			metrics.ReconciliationDiscrepanciesTotal.WithLabelValues(ReconciliationDiscrepancyTypeReceivable).Add(float64(len(result.ReceivableInconsistencies)))
 			metrics.ReconciliationDiscrepanciesTotal.WithLabelValues(ReconciliationDiscrepancyTypeRefund).Add(float64(len(result.RefundInconsistencies)))
+			metrics.ReconciliationDiscrepanciesTotal.WithLabelValues(ReconciliationDiscrepancyTypeStuckIssuance).Add(float64(len(result.StuckIssuanceInconsistencies)))
 		}
 	}()
 
@@ -467,6 +497,29 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 		}
 	} else {
 		apploggerError(rerr, "count refunded orders for reconciliation")
+	}
+
+	// Step 8 (new): stuck asset-issuance detection (code-review M1). A paid
+	// order with asset_issue_status=issued and subscription_id=0 is stuck —
+	// the admin CompleteSubscriptionPurchase endpoint claimed the issuance
+	// but the fulfilment failed AND the compensation (Unmark) also failed,
+	// leaving the order issued-but-unfulfilled. The reconciler reports
+	// these so an operator can re-trigger completion; it does not auto-repair
+	// because the safe repair (reset to pending) requires the same claim
+	// machinery and must be triggered explicitly.
+	if stuck, serr := uc.reconRepo.ListStuckIssuedOrders(ctx); serr == nil {
+		for _, order := range stuck {
+			result.StuckIssuanceInconsistencies = append(result.StuckIssuanceInconsistencies, StuckIssuanceInconsistency{
+				TradeNo:    order.TradeNo,
+				UserID:     order.UserID,
+				GroupID:    order.GroupID,
+				PlanID:     order.PlanID,
+				MoneyCents: order.MoneyCents,
+				StuckSince: order.UpdatedAt,
+			})
+		}
+	} else {
+		apploggerError(serr, "list stuck issued orders for reconciliation")
 	}
 
 	return result, nil

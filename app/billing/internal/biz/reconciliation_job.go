@@ -133,6 +133,16 @@ func (j *ReconciliationJob) runReconciliation(ctx context.Context) {
 			zap.Int64("quota_diff", inc.QuotaDiff),
 		)
 	}
+	for _, inc := range result.StuckIssuanceInconsistencies {
+		applogger.Log.Warn("stuck asset issuance (paid+issued+unfulfilled)",
+			zap.String("trade_no", inc.TradeNo),
+			zap.String("user_id", inc.UserID),
+			zap.Int64("group_id", inc.GroupID),
+			zap.Int64("plan_id", inc.PlanID),
+			zap.Int64("money_cents", inc.MoneyCents),
+			zap.Time("stuck_since", inc.StuckSince),
+		)
+	}
 
 	if j.notifier == nil || result.DiscrepancyCount() == 0 {
 		return
@@ -203,6 +213,18 @@ func buildAlertContent(r *ReconciliationResult) string {
 			fmt.Fprintf(&b, "  - ledger_count=%d log_count=%d count_diff=%d quota_diff=%d\n",
 				inc.LedgerCount, inc.LogCount, inc.CountDiff, inc.QuotaDiff)
 		}
+	}
+	if len(r.StuckIssuanceInconsistencies) > 0 {
+		b.WriteString("\nStuck asset-issuance orders (paid+issued+unfulfilled, showing up to 5):\n")
+		for i, inc := range r.StuckIssuanceInconsistencies {
+			if i >= 5 {
+				break
+			}
+			fmt.Fprintf(&b, "  - trade_no=%s user=%s group=%d plan=%d money_cents=%d stuck_since=%s\n",
+				inc.TradeNo, inc.UserID, inc.GroupID, inc.PlanID, inc.MoneyCents,
+				inc.StuckSince.UTC().Format(time.RFC3339))
+		}
+		b.WriteString("  Re-trigger CompleteSubscriptionPurchase for each trade_no to repair.\n")
 	}
 	return b.String()
 }

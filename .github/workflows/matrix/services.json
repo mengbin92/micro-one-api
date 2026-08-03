@@ -1,0 +1,11 @@
+[
+  { "service": "relay-gateway", "path": "./cmd/relay-gateway", "dockerfile": "Dockerfile" },
+  { "service": "admin-api", "path": "./app/admin/cmd/admin", "dockerfile": "app/admin/Dockerfile" },
+  { "service": "identity-service", "path": "./app/identity/cmd/identity", "dockerfile": "app/identity/Dockerfile" },
+  { "service": "channel-service", "path": "./app/channel/cmd/channel", "dockerfile": "app/channel/Dockerfile" },
+  { "service": "billing-service", "path": "./app/billing/cmd/billing", "dockerfile": "app/billing/Dockerfile" },
+  { "service": "config-service", "path": "./app/config/cmd/config", "dockerfile": "app/config/Dockerfile" },
+  { "service": "log-service", "path": "./app/log/cmd/log", "dockerfile": "app/log/Dockerfile" },
+  { "service": "monitor-worker", "path": "./app/monitor/cmd/monitor", "dockerfile": "app/monitor/Dockerfile" },
+  { "service": "notify-worker", "path": "./app/notify/cmd/notify", "dockerfile": "app/notify/Dockerfile" }
+]

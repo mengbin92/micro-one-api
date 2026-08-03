@@ -24,6 +24,7 @@ type mockReconRepo struct {
 	refundedOrderCount    int64
 	refundedOrderCents    int64
 	reversalLedgerAmount  int64
+	stuckIssuedOrders     []*PaymentOrder
 }
 
 func (m *mockReconRepo) ListAllAccounts(ctx context.Context) ([]*Account, error) {
@@ -87,6 +88,10 @@ func (m *mockReconRepo) SumReversalLedgerAmounts(ctx context.Context) (int64, er
 
 func (m *mockReconRepo) CountRefundedOrders(ctx context.Context) (int64, int64, error) {
 	return m.refundedOrderCount, m.refundedOrderCents, nil
+}
+
+func (m *mockReconRepo) ListStuckIssuedOrders(ctx context.Context) ([]*PaymentOrder, error) {
+	return m.stuckIssuedOrders, nil
 }
 
 func TestRunReconciliation_ExpiredReservations(t *testing.T) {
@@ -286,4 +291,44 @@ func TestRunReconciliation_RefundedOrdersWithoutAnyReversal(t *testing.T) {
 	res, err := uc.RunReconciliation(context.Background())
 	require.NoError(t, err)
 	require.Len(t, res.RefundInconsistencies, 1, "missing reversal must be reported")
+}
+
+// TestRunReconciliation_StuckIssuance verifies that paid+issued+subscription_id=0
+// orders are reported as stuck-issuance discrepancies so operators can
+// re-trigger completion (code-review M1).
+func TestRunReconciliation_StuckIssuance(t *testing.T) {
+	stuck := &PaymentOrder{
+		TradeNo:          "PAY-STUCK-1",
+		UserID:           "42",
+		Status:           PaymentOrderStatusPaid,
+		AssetIssueStatus: PaymentAssetIssueStatusIssued,
+		SubscriptionID:   0,
+		GroupID:          7,
+		MoneyCents:       3000,
+	}
+	repo := &mockReconRepo{stuckIssuedOrders: []*PaymentOrder{stuck}}
+	accountRepo := &mockAccountRepo{}
+	reservationRepo := &mockReservationRepo{reservations: make(map[string]*Reservation)}
+	uc := NewReconciliationUsecase(accountRepo, reservationRepo, repo, nil)
+	res, err := uc.RunReconciliation(context.Background())
+	require.NoError(t, err)
+	require.Len(t, res.StuckIssuanceInconsistencies, 1, "stuck order must be reported")
+	inc := res.StuckIssuanceInconsistencies[0]
+	assert.Equal(t, "PAY-STUCK-1", inc.TradeNo)
+	assert.Equal(t, "42", inc.UserID)
+	assert.Equal(t, int64(7), inc.GroupID)
+	assert.Equal(t, int64(3000), inc.MoneyCents)
+	assert.Equal(t, 1, res.DiscrepancyCount())
+}
+
+// TestRunReconciliation_NoStuckIssuance verifies that an empty stuck set
+// produces no stuck-issuance discrepancies.
+func TestRunReconciliation_NoStuckIssuance(t *testing.T) {
+	repo := &mockReconRepo{}
+	accountRepo := &mockAccountRepo{}
+	reservationRepo := &mockReservationRepo{reservations: make(map[string]*Reservation)}
+	uc := NewReconciliationUsecase(accountRepo, reservationRepo, repo, nil)
+	res, err := uc.RunReconciliation(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, res.StuckIssuanceInconsistencies)
 }
