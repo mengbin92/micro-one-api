@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -858,10 +859,12 @@ func TestSubscriptionAdaptorRecordsOnlyRealUpstreamHealth(t *testing.T) {
 			t.Fatalf("health outcomes = %+v", client.health)
 		}
 		// Weight-loop closure: one slot acquire + one release for the account.
-		if len(client.slots) != 2 ||
-			client.slots[0] != (accountSlotReport{accountID: 42, acquired: true}) ||
-			client.slots[1] != (accountSlotReport{accountID: 42, acquired: false}) {
-			t.Fatalf("slot reports = %+v, want [acquire, release] for account 42", client.slots)
+		// Slot feedback is fire-and-forget, so poll until both land.
+		got := client.waitForSlotReports(t, 2)
+		if len(got) != 2 ||
+			got[0] != (accountSlotReport{accountID: 42, acquired: true}) ||
+			got[1] != (accountSlotReport{accountID: 42, acquired: false}) {
+			t.Fatalf("slot reports = %+v, want [acquire, release] for account 42", got)
 		}
 	})
 
@@ -1067,6 +1070,7 @@ type accountSlotReport struct {
 }
 
 type adaptorFailoverChannelClient struct {
+	mu       sync.Mutex
 	accounts []*relaybiz.SubscriptionAccount
 	calls    int
 	health   []accountHealthOutcome
@@ -1088,10 +1092,38 @@ func (c *adaptorFailoverChannelClient) RecordSubscriptionAccountHealth(_ context
 
 // RecordSubscriptionAccountSlot implements the optional weight-loop reporter
 // (SubscriptionAccountSlotReporter) so the adaptor tests can assert that a
-// relay-local slot acquire/release is forwarded to channel-service.
+// relay-local slot acquire/release is forwarded to channel-service. It is
+// called from a background goroutine, so append is mutex-guarded.
 func (c *adaptorFailoverChannelClient) RecordSubscriptionAccountSlot(_ context.Context, accountID int64, acquired bool) error {
+	c.mu.Lock()
 	c.slots = append(c.slots, accountSlotReport{accountID: accountID, acquired: acquired})
+	c.mu.Unlock()
 	return nil
+}
+
+// slotReports returns a snapshot of the recorded slot feedback. The reports are
+// produced asynchronously, so callers must poll until the expected count lands.
+func (c *adaptorFailoverChannelClient) slotReports() []accountSlotReport {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cp := make([]accountSlotReport, len(c.slots))
+	copy(cp, c.slots)
+	return cp
+}
+
+// waitForSlotReports polls until at least n slot reports have landed or the
+// deadline elapses. Slot feedback is fire-and-forget, so tests must wait for
+// the background reports to flush rather than assert synchronously.
+func (c *adaptorFailoverChannelClient) waitForSlotReports(t *testing.T, n int) []accountSlotReport {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := c.slotReports(); len(got) >= n {
+			return got
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return c.slotReports()
 }
 
 func (c *adaptorFailoverChannelClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {

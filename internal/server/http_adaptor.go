@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -255,15 +256,35 @@ func isSubscriptionRateLimitStatus(statusCode int) bool {
 }
 
 // reportSubscriptionAccountSlot feeds a relay-local slot acquire/release to
-// the channel selector (weight loop closure). Fire-and-forget: the reporter
-// is optional (interface assertion in RelayUsecase) and errors are silently
-// ignored, so the relay hot path never blocks on this telemetry.
-func (s *HTTPServer) reportSubscriptionAccountSlot(ctx context.Context, accountID int64, acquired bool) {
+// the channel selector (weight loop closure). It is genuinely fire-and-forget:
+// the call is dispatched on a background goroutine with a short dedicated
+// timeout, so the relay hot path never blocks on this telemetry and a
+// cancelled request context cannot drop an acquire. The reporter is optional
+// (interface assertion in RelayUsecase); errors are silently ignored.
+//
+// Known boundary (accepted): the acquire and release reports run on separate
+// goroutines, so in theory a release could arrive at channel-service before
+// its matching acquire (Release on an unknown account state is a no-op there,
+// leaving the later acquire to pin inflight at 1 indefinitely). In practice
+// this cannot happen: the acquire is dispatched at request start while the
+// release is only dispatched after the upstream call finishes (≥ tens of ms
+// later, far beyond the 200ms report timeout), so ordering is effectively
+// guaranteed. If channel-service ever grows a TTL-based inflight lease, this
+// boundary disappears.
+func (s *HTTPServer) reportSubscriptionAccountSlot(accountID int64, acquired bool) {
 	if s == nil || s.relayUsecase == nil || accountID <= 0 {
 		return
 	}
-	_ = s.relayUsecase.RecordSubscriptionAccountSlot(ctx, accountID, acquired)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), slotReportTimeout)
+		defer cancel()
+		_ = s.relayUsecase.RecordSubscriptionAccountSlot(ctx, accountID, acquired)
+	}()
 }
+
+// slotReportTimeout caps a fire-and-forget slot feedback RPC so a stuck
+// channel-service can never pile up background goroutines.
+const slotReportTimeout = 200 * time.Millisecond
 
 // sleepCtx waits for d or until ctx is cancelled. It returns true if the full
 // delay elapsed, false if the context was cancelled first.
@@ -367,14 +388,20 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	// Weight loop closure: notify channel-service that this replica now holds
 	// a slot, so its selector de-rates the account on the per-process view
 	// (memory limiter / Redis-fallback scenarios where the cross-replica
-	// LoadOracle reads zero). Fire-and-forget — the relay hot path never waits
-	// on this RPC and failures are silent.
-	s.reportSubscriptionAccountSlot(ctx, accountID, true)
+	// LoadOracle reads zero). Fire-and-forget — dispatched asynchronously and
+	// detached from the request context, so the hot path never waits on this
+	// RPC and a cancelled request cannot drop the acquire.
+	s.reportSubscriptionAccountSlot(accountID, true)
 	// releaseSlotWithReport pairs the local limiter release with the matching
-	// channel-side slot feedback. Idempotent via the limiter's sync.Once.
+	// channel-side slot feedback. Both the limiter release and the report are
+	// guarded by a single sync.Once, so the pair is fully idempotent even if
+	// the control flow (defer vs. transferred result.write) calls it twice.
+	var reportOnce sync.Once
 	releaseSlotWithReport := func() {
-		releaseSlot()
-		s.reportSubscriptionAccountSlot(context.Background(), accountID, false)
+		reportOnce.Do(func() {
+			releaseSlot()
+			s.reportSubscriptionAccountSlot(accountID, false)
+		})
 	}
 	// Released on every early return via defer; for the two terminal success
 	// paths (stream + non-stream) ownership is transferred into result.write and
