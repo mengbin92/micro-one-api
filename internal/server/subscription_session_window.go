@@ -13,6 +13,12 @@ import (
 const subscriptionSessionWindowKeyPrefix = "subscription_account:session_window:"
 const subscriptionSessionWindowDedupePrefix = "subscription_account:session_window_dedupe:"
 
+// subscriptionSessionWindowStore enforces a per-session spend ceiling against
+// a shared Redis key. The in-memory maps are the fail-open fallback (code-
+// review M8): when Redis is unreachable the window is enforced per-replica, so
+// a multi-replica deployment can temporarily overspend the session window
+// (N × the single-replica view) until Redis recovers. Availability over strict
+// enforcement; the same trade-off as the account concurrency limiter (H11).
 type subscriptionSessionWindowStore struct {
 	rdb       *redis.Client
 	mu        sync.Mutex

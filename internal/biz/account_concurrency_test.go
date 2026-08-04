@@ -272,3 +272,61 @@ func TestNewRedisAccountConcurrencyLimiter_NilClient(t *testing.T) {
 		t.Fatalf("NewRedisAccountConcurrencyLimiter(nil) = %v, want nil", l)
 	}
 }
+
+// TestRedisAccountConcurrencyLimiter_MultiReplicaFailOpenExceedsCap is the
+// review M9 regression: it makes the fail-open behaviour FALSIFIABLE. When
+// Redis is unavailable, every replica falls back to its OWN in-memory limiter,
+// so the cross-replica cap degrades to N × limit (one per replica). This test
+// pins that exact trade-off — two replicas at limit=1 both admit a slot while
+// Redis is down — so a future change to a replica-count-aware weighted cap (or
+// a fail-closed policy) must update this assertion deliberately. The shared
+// (healthy-Redis) path is covered by TestRedisAccountConcurrencyLimiter_
+// SharedAcrossInstances.
+func TestRedisAccountConcurrencyLimiter_MultiReplicaFailOpenExceedsCap(t *testing.T) {
+	store := newFakeAccountConcurrencyRedis()
+	store.evalErr = errors.New("redis unavailable")
+
+	replicaA := newRedisAccountConcurrencyLimiter(store, "a")
+	replicaB := newRedisAccountConcurrencyLimiter(store, "b")
+
+	// Documented fail-open semantics (H11): with Redis down, both replicas
+	// admit a slot for the same account at limit=1 — global concurrency is
+	// N×limit during the outage, NOT the configured cap.
+	releaseA, okA := replicaA.TryAcquire(context.Background(), 42, 1)
+	if !okA {
+		t.Fatal("replica A fallback acquire should succeed")
+	}
+	defer releaseA()
+	releaseB, okB := replicaB.TryAcquire(context.Background(), 42, 1)
+	if !okB {
+		t.Fatal("replica B fallback acquire must also succeed (per-replica fail-open)")
+	}
+	defer releaseB()
+
+	if gotA := replicaA.fallback.Inflight(42); gotA != 1 {
+		t.Fatalf("replica A fallback inflight = %d, want 1", gotA)
+	}
+	if gotB := replicaB.fallback.Inflight(42); gotB != 1 {
+		t.Fatalf("replica B fallback inflight = %d, want 1", gotB)
+	}
+	// Each replica still enforces the limit LOCALLY.
+	if _, ok := replicaA.TryAcquire(context.Background(), 42, 1); ok {
+		t.Fatal("replica A local fallback must still enforce limit=1")
+	}
+	if _, ok := replicaB.TryAcquire(context.Background(), 42, 1); ok {
+		t.Fatal("replica B local fallback must still enforce limit=1")
+	}
+
+	// Recovery: once Redis is back, the shared cap is authoritative again.
+	store.evalErr = nil
+	releaseA()
+	releaseB()
+	releaseC, okC := replicaA.TryAcquire(context.Background(), 42, 1)
+	if !okC {
+		t.Fatal("replica A should re-acquire via Redis after recovery")
+	}
+	defer releaseC()
+	if _, ok := replicaB.TryAcquire(context.Background(), 42, 1); ok {
+		t.Fatal("replica B must observe the shared Redis cap after recovery")
+	}
+}

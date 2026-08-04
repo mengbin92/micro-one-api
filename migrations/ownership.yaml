@@ -97,6 +97,7 @@ services:
     - 072_add_unique_request_id_billing_reservations # billing-M5 per-user request_id uniqueness
     - 073_add_refund_reason_to_payment_orders    # billing-L4 dedicated refund_reason column
     - 074_add_actual_cost_to_billing_reservations # billing-L1 persist real settlement cost
+    - 077_add_subscription_renewal_strategy   # M2 renewal_strategy on user_subscriptions
 
   log:
     # logs table (a subset of 000_create_core_tables on the shared schema,

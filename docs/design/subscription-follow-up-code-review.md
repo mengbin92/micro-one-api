@@ -25,32 +25,32 @@
 | H8 变更不写 ledger | ✅ 已修复 | 差价扣款走 `BillingUsecase.PurchaseSubscription`（billing.go:1432），扣钱包 + `CreateLedger`（type=subscription，remark 含 operator/group） |
 | H9 next_cycle 永不触发 | ✅ 已修复 | 续费发起处读 `pending_change` 建目标 group 订单（`app/admin/internal/service/subscription.go:284`）；同 group 续费保留 pending_change 下次生效；`subscription_change_test.go` 按新语义断言 |
 | H10 无唯一约束 | ✅ 已修复 | `migrations/059_enforce_single_active_subscription.sql`：生成列 `active_user_id` + UNIQUE 索引（Postgres/SQLite 对应 `003`/`001`） |
-| H11 fail-open 超发 | ⚠️ 部分 | `internal/biz/account_concurrency.go:118-121` 已文档化 fail-open 降级语义（Redis 故障退化为单副本内存 limiter，不阻断）；**仍无副本数感知 cap，无多副本故障注入断言**（同 M8/M9） |
+| H11 fail-open 超发 | ⚠️ 已文档化+断言（设计权衡接受，2026-08-04） | `internal/biz/account_concurrency.go` 注释明确 per-replica fail-open 语义（故障时全局 cap = N×limit，可用性优先）；`TestRedisAccountConcurrencyLimiter_MultiReplicaFailOpenExceedsCap` 固化该行为（含恢复路径）。仍无副本数感知加权 cap——如要严格化需引入实例注册表，另行立项 |
 
 ### Medium 项状态
 
 | 编号 | 当前状态 | 说明 |
 |---|---|---|
 | M1 fixed reset 边界 | ✅ 已修复 | `account_ops.go` `resetIfCrossedBoundary` 用 `FixedQuotaWindowStart` 计算自然边界，applier 优先写 `reset_runs` |
-| M2 过期策略漂移 | ❌ 未修复 | `renewal_strategy` 字段仍不存在，「过期未撤销」随扫描竞态漂移 |
+| M2 过期策略漂移 | ✅ 已修复（2026-08-04，v0.14.0 候选） | 行为已由 domain-C1（`expires_at > now` 守卫）固定：未过期→原地延长、过期→新建；新增 `renewal_strategy` 列（迁移 `077`）+ DO/PO/窄字段写（`SubscriptionFieldRenewalStrategy`）：`AssignOrExtend` 未过期写 `extend`、无 active（含过期）新建写 `new`，策略可观测可审计。biz + data 测试覆盖 |
 | M3 group 可用性过滤 | ✅ 已修复 | `ensureSubscriptionCanUseGroup` 在下单/发放入口均调用（subscription.go:179/232/573/700/713） |
 | M4 shorten 折算 | ✅ 已修复 | `StartsAt==0` 归一化为 now（`domain-M4`），杜绝整段有效期误算 |
 | M5 legacy 退款错订阅 | ✅ 已修复 | `refundSubscriptionID` 优先取订单 `subscription_id` 列（assigner 在 phase 2.3 写入） |
 | M6 用量窗口/并发锁 | ⚠️ 部分 | 升级重置 usage 为刻意设计（`domain-H1` 窄字段写已落地）；乐观并发锁未确认 |
 | M7 差价服务端校验 | ✅ 已修复 | `NewPriceQuota != plan.PriceQuota` 直接报错（见 H7） |
-| M8 session/RPM fail-open | ⚠️ 未核验 | 与 H11 同源；relay 侧 session_window 未发现文档化注释 |
-| M9 压测不可证伪 | ❌ 未修复 | 无多副本 Redis 故障注入集成断言 |
+| M8 session/RPM fail-open | ⚠️ 已文档化+断言（2026-08-04） | 与 H11 同源：RPM 多副本 fail-open 断言 `TestRedisAccountRPMLimiter_MultiReplicaFailOpenExceedsCap`；`subscription_session_window.go` 注释明确 per-replica 降级语义 |
+| M9 压测不可证伪 | ✅ 已修复（2026-08-04） | 新增多副本 Redis 故障注入断言：concurrency（`TestRedisAccountConcurrencyLimiter_MultiReplicaFailOpenExceedsCap`，含故障→超发→恢复全路径）+ RPM（`TestRedisAccountRPMLimiter_MultiReplicaFailOpenExceedsCap`）；故障态全局超发现在可在 CI 中证伪 |
 | M10 完成接口重复发放 | ✅ 已修复（2026-08-03，v0.13.3 候选） | `CompleteSubscriptionPurchase` 发放前先经新 RPC `MarkPaymentOrderAssetIssued`（billing CAS：`payment_orders.asset_issue_status` pending→issued 行锁条件更新）抢占，仅 `claimed=true` 才发放；发放失败调 `UnmarkPaymentOrderAssetIssued` 补偿回滚；重复/并发完成只能抢到一次。新增 biz/data/admin 三层幂等测试（`subscription_m10_test.go`） |
 
 ### Low 项状态
 
 | 编号 | 当前状态 | 说明 |
 |---|---|---|
-| L1 时区静默回退 | ⚠️ 未核验 | 5cc07fb 声称修复（channel.go +8），未逐一验证日志落点 |
-| L2 告警去重 | ⚠️ 未核验 | 5cc07fb 改动 quota_alert.go，未验证 kind 跳变场景 |
-| L3 clearMarkers 非原子 | ⚠️ 未核验 | 5cc07fb 改动 account_ops.go，未验证事务合并 |
-| L4 快照缺失兜底 | ⚠️ 未核验 | 生产已注入 snapshotter，兜底路径未验证 |
-| L5 lease 槽位延迟 | ⚠️ 未核验 | 设计权衡，未验证 |
+| L1 时区静默回退 | ✅ 已修复 | `EffectiveQuotaTimezone` 无效时区写 stderr 定位日志（`channel.go`，Review L1 fix） |
+| L2 告警去重 | ✅ 已修复 | `quota_alert.go` 按 `(kind, window)` 复合去重：同 kind 窗口内抑制，kind 跳变（exhausted↔near_exhausted）重新告警 |
+| L3 clearMarkers 非原子 | ✅ 已修复 | `clearMarkers` 合并为单次 `ClearRecoveryMarkers`（布尔标志）原子调用，不再三次独立写 |
+| L4 快照缺失兜底 | ✅ 已修复 | `assignPlan` 快照优先 + 解码失败 fail-closed（报错不再回退实时 plan）；仅无快照的 legacy 订单走实时 plan 兼容路径 |
+| L5 lease 槽位延迟 | ✅ 已缓解 | `Inflight` 用 `ZCount(now, +inf)` 排除过期 lease，计数不虚高；崩溃槽位保留至 leaseTTL(2min) 属 lease 设计（acquire Lua 写入路径收割），风险低接受 |
 
 ### 部署注意（未变）
 
@@ -63,7 +63,7 @@
 | ① 续费剩余时长累加 + 异常完成接口幂等 | ✅ 续费累加已覆盖（`subscription_usecase_test.go`）；✅ 完成接口幂等已补（2026-08-03：billing CAS + admin 编排测试） |
 | ② 升级后钱包扣款断言 | ✅ `subscription_change_test.go` / `refund_test.go` 已补 |
 | ③ 并发新购/续费唯一 active 断言 | ✅ 迁移 `059` + 相关测试 |
-| ④ 多副本 Redis 故障注入全局 cap 断言 | ❌ 缺失（M9 未修） |
+| ④ 多副本 Redis 故障注入全局 cap 断言 | ✅ 已补（2026-08-04：concurrency + RPM 双 limiter 故障注入断言） |
 
 ## 0. 重要前提说明
 
@@ -206,7 +206,7 @@
 
 ## 5. 修复优先级建议
 
-> **实施状态**：P0（H3/H5/H6/H7/H8/H9/H10）与 P1（H1/H2）已于 `5cc07fb` 全部实施，P2 中 M1/M3/M4/M5/M7/L1/L3 已实施；**M10 已于 2026-08-03 修复**（billing CAS + admin 完成接口幂等，v0.13.3 候选）；**仍待处理**：M2、M9（未修复），H11/M8（部分，需副本感知 cap 或故障注入断言），M6/L 系列未核验项。详见 §0.1。
+> **实施状态**：P0（H3/H5/H6/H7/H8/H9/H10）与 P1（H1/H2）已于 `5cc07fb` 全部实施，P2 中 M1/M3/M4/M5/M7 已实施；**M10 已于 2026-08-03 修复**（billing CAS + admin 完成接口幂等，v0.13.3 已发布）；**M2 已于 2026-08-04 修复**（renewal_strategy 列 + 策略固定）；**M9 已于 2026-08-04 修复**（多副本故障注入断言）；H11/M8 已文档化 + 断言固化（设计权衡接受，仍无副本感知 cap）；**L1-L5 已于 2026-08-04 核验完毕**（L1-L4 已修复、L5 已缓解）；**仅剩 M6**（升级重置 usage 为刻意设计、乐观并发锁未确认）。详见 §0.1。
 
 **P0（资金/权益直接损失，立即修）**
 1. **H7 + H8**：升级补钱包扣差价 + 写 change ledger；`ChargedQuota` 仅在真实扣款后写入，杜绝审计造假。

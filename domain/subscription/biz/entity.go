@@ -13,6 +13,18 @@ const (
 	SubscriptionGroupStatusDisabled int32 = 0
 )
 
+// RenewalStrategy records how a user's subscription came to be active, so the
+// "expired but not revoked" renewal policy is explicit and observable rather
+// than drifting with the hourly expiry scan (code-review M2). The behaviour is
+// fixed: an unexpired subscription is extended in place (extend); a user with
+// no active subscription — including one whose expires_at has passed and is
+// therefore no longer "active" — gets a brand-new subscription (new). The
+// column lets operators and reconciliation tell the two apart.
+const (
+	RenewalStrategyExtend = "extend" // renewed while active: remaining time + duration
+	RenewalStrategyNew    = "new"    // granted when no active subscription existed
+)
+
 type UserSubscription struct {
 	ID               int64              `json:"id"`
 	UserID           int64              `json:"user_id"`
@@ -21,6 +33,11 @@ type UserSubscription struct {
 	Status           SubscriptionStatus `json:"status"`
 	StartsAt         int64              `json:"starts_at"`
 	ExpiresAt        int64              `json:"expires_at"`
+
+	// RenewalStrategy records whether the current active row was created fresh
+	// ("new") or extended from a previous active row ("extend"). Empty for
+	// rows created before the field existed (treated as "new").
+	RenewalStrategy string `json:"renewal_strategy"`
 
 	DailyUsageUSD   float64 `json:"daily_usage_usd"`
 	WeeklyUsageUSD  float64 `json:"weekly_usage_usd"`
@@ -55,6 +72,8 @@ const (
 	SubscriptionFieldGroupID SubscriptionField = "group_id"
 	// SubscriptionFieldMetadata maps to the opaque metadata/audit column.
 	SubscriptionFieldMetadata SubscriptionField = "metadata"
+	// SubscriptionFieldRenewalStrategy maps to the renewal_strategy column.
+	SubscriptionFieldRenewalStrategy SubscriptionField = "renewal_strategy"
 	// SubscriptionFieldUsageAll selects the three usage columns plus their
 	// window-start columns, used by ResetQuota and the change-group path that
 	// intentionally reset usage.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"micro-one-api/domain/subscription/biz"
 
@@ -72,6 +73,7 @@ func setupSubscriptionTestDB(t *testing.T) *Repository {
 			weekly_window_start INTEGER NOT NULL DEFAULT 0,
 			monthly_window_start INTEGER NOT NULL DEFAULT 0,
 			metadata TEXT,
+			renewal_strategy TEXT NOT NULL DEFAULT '',
 			created_at INTEGER NOT NULL DEFAULT 0,
 			updated_at INTEGER NOT NULL DEFAULT 0
 		)
@@ -330,4 +332,46 @@ func TestSubscriptionRepository_AddUsageConcurrent(t *testing.T) {
 	assert.InDelta(t, want, got.DailyUsageUSD, 1e-9)
 	assert.InDelta(t, want, got.WeeklyUsageUSD, 1e-9)
 	assert.InDelta(t, want, got.MonthlyUsageUSD, 1e-9)
+}
+
+// TestSubscriptionRepository_RenewalStrategyRoundTrip (M2) verifies the
+// renewal_strategy column persists through create and selective update, and
+// that the expiry guard still filters an expired row regardless of strategy.
+func TestSubscriptionRepository_RenewalStrategyRoundTrip(t *testing.T) {
+	repo := setupSubscriptionTestDB(t)
+	ctx := context.Background()
+
+	group := &biz.SubscriptionGroup{Name: "pro", Platform: "openai", Status: biz.SubscriptionGroupStatusEnabled}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+
+	sub := &biz.UserSubscription{
+		UserID:          1002,
+		GroupID:         group.ID,
+		SubscriptionName: "alice-pro",
+		Status:          biz.SubscriptionStatusActive,
+		StartsAt:        10,
+		ExpiresAt:       1 << 62, // far future so the domain-C1 guard keeps it active
+		RenewalStrategy: biz.RenewalStrategyNew,
+	}
+	require.NoError(t, repo.CreateSubscription(ctx, sub))
+	require.NotZero(t, sub.ID)
+
+	got, err := repo.GetSubscriptionByID(ctx, sub.ID)
+	require.NoError(t, err)
+	assert.Equal(t, biz.RenewalStrategyNew, got.RenewalStrategy, "create must persist renewal_strategy")
+
+	// Selective update flips it to extend without touching other columns.
+	got.RenewalStrategy = biz.RenewalStrategyExtend
+	require.NoError(t, repo.UpdateSubscriptionFields(ctx, got, []biz.SubscriptionField{biz.SubscriptionFieldRenewalStrategy}))
+	active, err := repo.GetActiveSubscriptionByUser(ctx, 1002)
+	require.NoError(t, err)
+	assert.Equal(t, biz.RenewalStrategyExtend, active.RenewalStrategy, "selective update must persist renewal_strategy")
+	assert.Equal(t, int64(10), active.StartsAt, "other columns must be untouched by the selective update")
+
+	// An expired active row is filtered out by the domain-C1 guard regardless
+	// of its renewal strategy.
+	got.ExpiresAt = time.Now().Unix() - 100
+	require.NoError(t, repo.UpdateSubscriptionFields(ctx, got, []biz.SubscriptionField{biz.SubscriptionFieldExpiresAt}))
+	_, err = repo.GetActiveSubscriptionByUser(ctx, 1002)
+	assert.ErrorIs(t, err, biz.ErrSubscriptionNotFound, "expired row must not be active")
 }
