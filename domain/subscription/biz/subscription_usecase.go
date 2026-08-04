@@ -63,11 +63,15 @@ func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscripti
 		Status:             SubscriptionStatusActive,
 		StartsAt:           startsAt,
 		ExpiresAt:          req.ExpiresAt,
-		Metadata:           req.Metadata,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-		DailyWindowStart:   startsAt,
-		WeeklyWindowStart:  startsAt,
+		// M2: a fresh grant (no active subscription existed — including an
+		// expired one, which GetActiveSubscriptionByUser filters out via
+		// expires_at > now) is recorded as a "new" renewal strategy.
+		RenewalStrategy:   RenewalStrategyNew,
+		Metadata:          req.Metadata,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+		DailyWindowStart:  startsAt,
+		WeeklyWindowStart: startsAt,
 		MonthlyWindowStart: startsAt,
 	}
 	if err := uc.repo.CreateSubscription(ctx, subscription); err != nil {
@@ -112,11 +116,15 @@ func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *Assig
 		Status:             SubscriptionStatusActive,
 		StartsAt:           startsAt,
 		ExpiresAt:          req.ExpiresAt,
-		Metadata:           req.Metadata,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-		DailyWindowStart:   startsAt,
-		WeeklyWindowStart:  startsAt,
+		// M2: a fresh grant (no active subscription existed — including an
+		// expired one, which GetActiveSubscriptionByUser filters out via
+		// expires_at > now) is recorded as a "new" renewal strategy.
+		RenewalStrategy:   RenewalStrategyNew,
+		Metadata:          req.Metadata,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+		DailyWindowStart:  startsAt,
+		WeeklyWindowStart: startsAt,
 		MonthlyWindowStart: startsAt,
 	}
 	if err := uc.repo.CreateSubscriptionInTx(ctx, tx, subscription); err != nil {
@@ -213,12 +221,15 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *A
 	if req.SubscriptionName != "" {
 		active.SubscriptionName = req.SubscriptionName
 	}
+	// M2: an active subscription is renewed in place — record the strategy so
+	// the "expired but not revoked" policy is explicit and observable.
+	active.RenewalStrategy = RenewalStrategyExtend
 	active.Metadata = mergeSubscriptionMetadata(active.Metadata, req.Metadata)
 	active.UpdatedAt = now
 	// domain-H1: write ONLY the columns this renewal changes. The usage/window
 	// columns are owned by AddUsage; writing them here from a read snapshot
 	// taken before a concurrent AddUsage commits would clobber that increment.
-	fields := []SubscriptionField{SubscriptionFieldExpiresAt, SubscriptionFieldMetadata}
+	fields := []SubscriptionField{SubscriptionFieldExpiresAt, SubscriptionFieldMetadata, SubscriptionFieldRenewalStrategy}
 	if req.SubscriptionName != "" {
 		fields = append(fields, SubscriptionFieldSubscriptionName)
 	}

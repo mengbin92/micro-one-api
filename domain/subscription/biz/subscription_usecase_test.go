@@ -71,6 +71,8 @@ func (m *mockSubscriptionRepo) UpdateSubscriptionFields(ctx context.Context, sub
 			merged.GroupID = subscription.GroupID
 		case SubscriptionFieldMetadata:
 			merged.Metadata = subscription.Metadata
+		case SubscriptionFieldRenewalStrategy:
+			merged.RenewalStrategy = subscription.RenewalStrategy
 		case SubscriptionFieldUsageAll:
 			merged.DailyUsageUSD = subscription.DailyUsageUSD
 			merged.WeeklyUsageUSD = subscription.WeeklyUsageUSD
@@ -567,5 +569,69 @@ func TestSubscriptionUsecase_GetProgressRollsWindowAndResetsNextRefresh(t *testi
 	weeklySec := int64(quotaWeeklyWindow.Seconds())
 	if progress.WeeklyUsed.NextRefresh != t0+weeklySec {
 		t.Fatalf("weekly next_refresh = %d, want %d", progress.WeeklyUsed.NextRefresh, t0+weeklySec)
+	}
+}
+
+// M2: an active subscription renewed in place is recorded as renewal_strategy
+// "extend"; a grant with no active subscription is recorded as "new". The
+// column makes the "expired but not revoked" policy explicit and observable.
+func TestAssignOrExtend_RecordsRenewalStrategyExtend(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatal(err)
+	}
+	uc := NewSubscriptionUsecase(repo, repo)
+	uc.now = func() time.Time { return time.Unix(5000, 0) }
+
+	first, _, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: group.ID, StartsAt: 1000, ExpiresAt: 9000, SubscriptionName: "pro",
+	})
+	if err != nil {
+		t.Fatalf("initial assign: %v", err)
+	}
+	if first.RenewalStrategy != RenewalStrategyNew {
+		t.Fatalf("initial grant renewal_strategy = %q, want %q", first.RenewalStrategy, RenewalStrategyNew)
+	}
+
+	renewed, reused, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: group.ID, StartsAt: 5000, ExpiresAt: 5000 + 30*86400, SubscriptionName: "pro",
+	})
+	if err != nil {
+		t.Fatalf("renew: %v", err)
+	}
+	if !reused {
+		t.Fatal("renewal should reuse the active subscription")
+	}
+	if renewed.RenewalStrategy != RenewalStrategyExtend {
+		t.Fatalf("renewal renewal_strategy = %q, want %q", renewed.RenewalStrategy, RenewalStrategyExtend)
+	}
+	// The strategy must have been persisted via the narrow-field update.
+	stored, err := uc.GetActiveSubscriptionForUser(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if stored.RenewalStrategy != RenewalStrategyExtend {
+		t.Fatalf("persisted renewal_strategy = %q, want %q", stored.RenewalStrategy, RenewalStrategyExtend)
+	}
+}
+
+func TestAssign_RecordsRenewalStrategyNew(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatal(err)
+	}
+	uc := NewSubscriptionUsecase(repo, repo)
+	uc.now = func() time.Time { return time.Unix(5000, 0) }
+
+	sub, err := uc.Assign(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: group.ID, StartsAt: 5000, ExpiresAt: 5000 + 30*86400, SubscriptionName: "pro",
+	})
+	if err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	if sub.RenewalStrategy != RenewalStrategyNew {
+		t.Fatalf("assign renewal_strategy = %q, want %q", sub.RenewalStrategy, RenewalStrategyNew)
 	}
 }

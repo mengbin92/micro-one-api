@@ -21,6 +21,7 @@ type subscriptionModel struct {
 	Status             string  `gorm:"column:status"`
 	StartsAt           int64   `gorm:"column:starts_at"`
 	ExpiresAt          int64   `gorm:"column:expires_at"`
+	RenewalStrategy    string  `gorm:"column:renewal_strategy"`
 	DailyUsageUSD      float64 `gorm:"column:daily_usage_usd"`
 	WeeklyUsageUSD     float64 `gorm:"column:weekly_usage_usd"`
 	MonthlyUsageUSD    float64 `gorm:"column:monthly_usage_usd"`
@@ -336,6 +337,8 @@ func subscriptionFieldColumns(fields []biz.SubscriptionField) map[string]any {
 			cols["group_id"] = nil
 		case biz.SubscriptionFieldMetadata:
 			cols["metadata"] = nil
+		case biz.SubscriptionFieldRenewalStrategy:
+			cols["renewal_strategy"] = nil
 		case biz.SubscriptionFieldUsageAll:
 			cols["daily_usage_usd"] = nil
 			cols["weekly_usage_usd"] = nil
@@ -386,6 +389,8 @@ func updateSubscriptionFieldsWithTx(ctx context.Context, tx *gorm.DB, subscripti
 			values[col] = model.GroupID
 		case "metadata":
 			values[col] = model.Metadata
+		case "renewal_strategy":
+			values[col] = model.RenewalStrategy
 		case "daily_usage_usd":
 			values[col] = model.DailyUsageUSD
 		case "weekly_usage_usd":
@@ -458,6 +463,8 @@ func (r *Repository) updateSubscriptionFieldsMemory(ctx context.Context, subscri
 			merged.GroupID = subscription.GroupID
 		case biz.SubscriptionFieldMetadata:
 			merged.Metadata = subscription.Metadata
+		case biz.SubscriptionFieldRenewalStrategy:
+			merged.RenewalStrategy = subscription.RenewalStrategy
 		case biz.SubscriptionFieldUsageAll:
 			merged.DailyUsageUSD = subscription.DailyUsageUSD
 			merged.WeeklyUsageUSD = subscription.WeeklyUsageUSD
@@ -597,6 +604,7 @@ func subscriptionToModel(subscription *biz.UserSubscription) subscriptionModel {
 		Status:             string(subscription.Status),
 		StartsAt:           subscription.StartsAt,
 		ExpiresAt:          subscription.ExpiresAt,
+		RenewalStrategy:    subscription.RenewalStrategy,
 		DailyUsageUSD:      subscription.DailyUsageUSD,
 		WeeklyUsageUSD:     subscription.WeeklyUsageUSD,
 		MonthlyUsageUSD:    subscription.MonthlyUsageUSD,
@@ -621,6 +629,7 @@ func subscriptionFromModel(model *subscriptionModel) biz.UserSubscription {
 		Status:             biz.SubscriptionStatus(model.Status),
 		StartsAt:           model.StartsAt,
 		ExpiresAt:          model.ExpiresAt,
+		RenewalStrategy:    model.RenewalStrategy,
 		DailyUsageUSD:      model.DailyUsageUSD,
 		WeeklyUsageUSD:     model.WeeklyUsageUSD,
 		MonthlyUsageUSD:    model.MonthlyUsageUSD,

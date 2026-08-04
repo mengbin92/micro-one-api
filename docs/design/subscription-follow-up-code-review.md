@@ -32,7 +32,7 @@
 | 编号 | 当前状态 | 说明 |
 |---|---|---|
 | M1 fixed reset 边界 | ✅ 已修复 | `account_ops.go` `resetIfCrossedBoundary` 用 `FixedQuotaWindowStart` 计算自然边界，applier 优先写 `reset_runs` |
-| M2 过期策略漂移 | ❌ 未修复 | `renewal_strategy` 字段仍不存在，「过期未撤销」随扫描竞态漂移 |
+| M2 过期策略漂移 | ✅ 已修复（2026-08-04，v0.14.0 候选） | 行为已由 domain-C1（`expires_at > now` 守卫）固定：未过期→原地延长、过期→新建；新增 `renewal_strategy` 列（迁移 `077`）+ DO/PO/窄字段写（`SubscriptionFieldRenewalStrategy`）：`AssignOrExtend` 未过期写 `extend`、无 active（含过期）新建写 `new`，策略可观测可审计。biz + data 测试覆盖 |
 | M3 group 可用性过滤 | ✅ 已修复 | `ensureSubscriptionCanUseGroup` 在下单/发放入口均调用（subscription.go:179/232/573/700/713） |
 | M4 shorten 折算 | ✅ 已修复 | `StartsAt==0` 归一化为 now（`domain-M4`），杜绝整段有效期误算 |
 | M5 legacy 退款错订阅 | ✅ 已修复 | `refundSubscriptionID` 优先取订单 `subscription_id` 列（assigner 在 phase 2.3 写入） |
@@ -206,7 +206,7 @@
 
 ## 5. 修复优先级建议
 
-> **实施状态**：P0（H3/H5/H6/H7/H8/H9/H10）与 P1（H1/H2）已于 `5cc07fb` 全部实施，P2 中 M1/M3/M4/M5/M7/L1/L3 已实施；**M10 已于 2026-08-03 修复**（billing CAS + admin 完成接口幂等，v0.13.3 候选）；**仍待处理**：M2、M9（未修复），H11/M8（部分，需副本感知 cap 或故障注入断言），M6/L 系列未核验项。详见 §0.1。
+> **实施状态**：P0（H3/H5/H6/H7/H8/H9/H10）与 P1（H1/H2）已于 `5cc07fb` 全部实施，P2 中 M1/M3/M4/M5/M7/L1/L3 已实施；**M10 已于 2026-08-03 修复**（billing CAS + admin 完成接口幂等，v0.13.3 已发布）；**M2 已于 2026-08-04 修复**（renewal_strategy 列 + 策略固定，v0.14.0 候选）；**仍待处理**：M9（未修复），H11/M8（部分，需副本感知 cap 或故障注入断言），M6/L 系列未核验项。详见 §0.1。
 
 **P0（资金/权益直接损失，立即修）**
 1. **H7 + H8**：升级补钱包扣差价 + 写 change ledger；`ChargedQuota` 仅在真实扣款后写入，杜绝审计造假。
