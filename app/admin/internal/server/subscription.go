@@ -10,6 +10,7 @@ import (
 	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/app/admin/internal/service"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/audit"
 )
 
 func handleCurrentSubscriptionProgress(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -580,13 +581,20 @@ func handleRefundPaymentOrder(w http.ResponseWriter, r *http.Request, svc *servi
 		OperatorId: adminOperatorIDFromRequest(r),
 	})
 	if err != nil {
+		adminAuditor().LogFailure(r.Context(), audit.EventTypePayment, adminActorFromRequest(r),
+			audit.ResourceInfo{Type: "payment_order", ID: req.TradeNo}, "refund", err)
 		writeJSON(w, http.StatusInternalServerError, apiResponse(false, err.Error(), nil))
 		return
 	}
 	if !resp.GetSuccess() {
+		adminAuditor().LogFailure(r.Context(), audit.EventTypePayment, adminActorFromRequest(r),
+			audit.ResourceInfo{Type: "payment_order", ID: req.TradeNo}, "refund",
+			errors.New(resp.GetErrorMessage()))
 		writeJSON(w, http.StatusOK, apiResponse(false, resp.GetErrorMessage(), nil))
 		return
 	}
+	adminAuditor().LogSuccess(r.Context(), audit.EventTypePayment, adminActorFromRequest(r),
+		audit.ResourceInfo{Type: "payment_order", ID: req.TradeNo}, "refund")
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
 		"refunded_quota":      resp.GetRefundedQuota(),
 		"balance_after":       resp.GetBalanceAfter(),

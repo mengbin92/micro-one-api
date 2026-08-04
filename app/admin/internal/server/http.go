@@ -26,6 +26,7 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/pkg/safecast"
+	"micro-one-api/platform/audit"
 	"micro-one-api/platform/http"
 	"micro-one-api/platform/metrics"
 	appmiddleware "micro-one-api/platform/middleware"
@@ -83,6 +84,9 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 				// numeric user id (roadmap §4: no empty operator audit).
 				ctx := context.WithValue(r.Context(), adminRoleContextKey{}, service.RoleRoot)
 				ctx = context.WithValue(ctx, adminOperatorContextKey{}, adminSystemOperator)
+				// Audit actor (platform/audit standard key): the shared-token
+				// path is a system operator, not a user.
+				ctx = audit.WithActor(ctx, audit.ActorInfo{ServiceName: "admin", Username: "admin-token"})
 				ctx = service.WithOperatorCredential(ctx, token)
 				next(w, r.WithContext(ctx))
 				return
@@ -93,6 +97,8 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 				if err == nil && role >= service.RoleAdmin {
 					ctx := context.WithValue(r.Context(), adminRoleContextKey{}, role)
 					ctx = context.WithValue(ctx, adminOperatorContextKey{}, strconv.FormatInt(userID, 10))
+					// Audit actor: the session-token path is the real admin user.
+					ctx = audit.WithActor(ctx, audit.ActorInfo{UserID: userID, Role: adminRoleName(role)})
 					ctx = service.WithOperatorCredential(ctx, token)
 					next(w, r.WithContext(ctx))
 					return
@@ -113,6 +119,18 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 // collide with a real user id and so callers that need an int64 (e.g.
 // identity-service OperatorUserId) can treat it as a "system" call.
 const adminSystemOperator = "system/admin-token"
+
+// adminRoleName maps an admin role constant to its audit-facing name.
+func adminRoleName(role int32) string {
+	switch role {
+	case service.RoleRoot:
+		return "root"
+	case service.RoleAdmin:
+		return "admin"
+	default:
+		return "operator"
+	}
+}
 
 // adminOperatorIDFromRequest returns the authenticated operator identity from
 // typed request context. For a session-token admin it is the numeric user id;

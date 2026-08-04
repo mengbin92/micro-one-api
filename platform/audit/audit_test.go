@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	appmiddleware "micro-one-api/platform/middleware"
 )
 
 func TestAuditor_Log(t *testing.T) {
@@ -232,4 +234,43 @@ type testError struct {
 
 func (e *testError) Error() string {
 	return e.msg
+}
+
+// TestAudit_ActorAndRequestIDExtraction pins the audit enhancement: the
+// middleware must now resolve the authenticated actor (via WithActor/ActorFrom)
+// and the request ID (via the platform request-ID middleware context) instead
+// of returning the previous TODO empty values.
+func TestAudit_ActorAndRequestIDExtraction(t *testing.T) {
+	ctx := context.Background()
+
+	// Without a stamped actor / request ID: anonymous, empty.
+	if got := extractActorFromContext(ctx); got != (ActorInfo{}) {
+		t.Fatalf("extractActorFromContext(empty ctx) = %+v, want zero ActorInfo", got)
+	}
+	if got := extractRequestID(ctx); got != "" {
+		t.Fatalf("extractRequestID(empty ctx) = %q, want empty", got)
+	}
+
+	// With a stamped actor.
+	actor := ActorInfo{UserID: 42, Role: "admin"}
+	ctx = WithActor(ctx, actor)
+	if got := extractActorFromContext(ctx); got != actor {
+		t.Fatalf("extractActorFromContext = %+v, want %+v", got, actor)
+	}
+	if got := ActorFrom(ctx); got != actor {
+		t.Fatalf("ActorFrom = %+v, want %+v", got, actor)
+	}
+
+	// With a request ID stamped by the real platform request-ID middleware
+	// (the same context key extractRequestID reads).
+	ridServed := make(chan string, 1)
+	h := appmiddleware.RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ridServed <- extractRequestID(r.Context())
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set("X-Request-ID", "req-abc")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if got := <-ridServed; got != "req-abc" {
+		t.Fatalf("extractRequestID via middleware = %q, want req-abc", got)
+	}
 }

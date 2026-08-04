@@ -18,7 +18,24 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+
+	"micro-one-api/platform/audit"
 )
+
+// loginAuditor lazily builds the identity-service audit sink for
+// authentication events (logins/logouts). Unconditionally enabled; events go
+// to the structured application log.
+var (
+	loginAuditorOnce sync.Once
+	loginAuditorInst *audit.Auditor
+)
+
+func loginAuditor() *audit.Auditor {
+	loginAuditorOnce.Do(func() {
+		loginAuditorInst = audit.NewAuditor(true)
+	})
+	return loginAuditorInst
+}
 
 const (
 	UserStatusEnabled  int32 = 1
@@ -448,9 +465,11 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 	// from many IPs are each independently capped at maxLoginAttempts.
 	ipKey, userKey := loginRateKeys(username, clientIP)
 	if err := uc.checkLoginRateLimit(ipKey); err != nil {
+		loginAuditor().LogUserLogin(ctx, 0, username, clientIP, false)
 		return nil, "", err
 	}
 	if err := uc.checkLoginRateLimit(userKey); err != nil {
+		loginAuditor().LogUserLogin(ctx, 0, username, clientIP, false)
 		return nil, "", err
 	}
 
@@ -468,18 +487,22 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 		// does not reveal whether the username exists (timing oracle).
 		uc.dummyBcryptCompare()
 		recordBothFailures()
+		loginAuditor().LogUserLogin(ctx, 0, username, clientIP, false)
 		return nil, "", ErrInvalidPassword
 	}
 	if user.Status != UserStatusEnabled {
 		recordBothFailures()
+		loginAuditor().LogUserLogin(ctx, user.ID, username, clientIP, false)
 		return nil, "", ErrUserDisabled
 	}
 	if user.PasswordHash == "" {
 		recordBothFailures()
+		loginAuditor().LogUserLogin(ctx, user.ID, username, clientIP, false)
 		return nil, "", ErrInvalidPassword
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		recordBothFailures()
+		loginAuditor().LogUserLogin(ctx, user.ID, username, clientIP, false)
 		return nil, "", ErrInvalidPassword
 	}
 
@@ -493,6 +516,7 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 	if err != nil {
 		return nil, "", err
 	}
+	loginAuditor().LogUserLogin(ctx, user.ID, username, clientIP, true)
 	return user, token, nil
 }
 

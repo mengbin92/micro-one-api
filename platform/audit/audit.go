@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 	applogger "micro-one-api/platform/logging"
+	appmiddleware "micro-one-api/platform/middleware"
 )
 
 // EventType represents the type of audit event.
@@ -306,16 +307,35 @@ func mapMethodToEventType(method string) EventType {
 	}
 }
 
-func extractActorFromContext(_ context.Context) ActorInfo {
-	// TODO: Extract actor from context
-	// This would typically come from authentication middleware
-	return ActorInfo{}
+// actorContextKey carries the authenticated actor through request context.
+// Authentication middleware (admin guard, identity sessions, etc.) calls
+// WithActor after verification; the audit middleware reads it via ActorFrom so
+// audit records reflect the real caller instead of an empty actor (roadmap §4:
+// no empty operator audit).
+type actorContextKey struct{}
+
+// WithActor stamps the verified actor into context for audit consumption. It
+// is the single place authentication layers write the audit identity.
+func WithActor(ctx context.Context, actor ActorInfo) context.Context {
+	return context.WithValue(ctx, actorContextKey{}, actor)
 }
 
-func extractRequestID(_ context.Context) string {
-	// TODO: Extract request ID from context
-	// This would typically be set by request ID middleware
-	return ""
+// ActorFrom reads the actor stamped by WithActor. Returns the zero ActorInfo
+// when no authentication layer stamped one (anonymous request).
+func ActorFrom(ctx context.Context) ActorInfo {
+	if ctx == nil {
+		return ActorInfo{}
+	}
+	actor, _ := ctx.Value(actorContextKey{}).(ActorInfo)
+	return actor
+}
+
+func extractActorFromContext(ctx context.Context) ActorInfo {
+	return ActorFrom(ctx)
+}
+
+func extractRequestID(ctx context.Context) string {
+	return appmiddleware.GetRequestID(ctx)
 }
 
 func extractIP(r *http.Request) string {
