@@ -859,12 +859,23 @@ func TestSubscriptionAdaptorRecordsOnlyRealUpstreamHealth(t *testing.T) {
 			t.Fatalf("health outcomes = %+v", client.health)
 		}
 		// Weight-loop closure: one slot acquire + one release for the account.
-		// Slot feedback is fire-and-forget, so poll until both land.
+		// Slot feedback is fire-and-forget and runs on separate goroutines, so
+		// assert the SET of reports rather than their arrival order — a slow
+		// CI runner can legitimately deliver the release before the acquire.
 		got := client.waitForSlotReports(t, 2)
-		if len(got) != 2 ||
-			got[0] != (accountSlotReport{accountID: 42, acquired: true}) ||
-			got[1] != (accountSlotReport{accountID: 42, acquired: false}) {
-			t.Fatalf("slot reports = %+v, want [acquire, release] for account 42", got)
+		acquires, releases := 0, 0
+		for _, rep := range got {
+			if rep.accountID != 42 {
+				t.Fatalf("slot report for account %d, want 42", rep.accountID)
+			}
+			if rep.acquired {
+				acquires++
+			} else {
+				releases++
+			}
+		}
+		if len(got) != 2 || acquires != 1 || releases != 1 {
+			t.Fatalf("slot reports = %+v, want exactly [acquire, release] for account 42 (any order)", got)
 		}
 	})
 
@@ -1113,10 +1124,12 @@ func (c *adaptorFailoverChannelClient) slotReports() []accountSlotReport {
 
 // waitForSlotReports polls until at least n slot reports have landed or the
 // deadline elapses. Slot feedback is fire-and-forget, so tests must wait for
-// the background reports to flush rather than assert synchronously.
+// the background reports to flush rather than assert synchronously. The
+// deadline is generous (5s) because CI runners schedule the background
+// goroutines slowly under load.
 func (c *adaptorFailoverChannelClient) waitForSlotReports(t *testing.T, n int) []accountSlotReport {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if got := c.slotReports(); len(got) >= n {
 			return got
