@@ -117,6 +117,15 @@ type accountConcurrencyRedis interface {
 // request is in flight; if a process dies, the lease expires and frees the slot.
 // Redis command failures fail open to the memory limiter so a Redis outage
 // degrades to the pre-Redis behaviour instead of blocking all requests.
+//
+// Fail-open trade-off (code-review H11/M9): the fallback is PER-REPLICA, so
+// during a Redis outage each replica enforces the configured limit locally and
+// the global cap degrades to N × limit (N = replica count). This is a
+// deliberate availability-over-strictness choice — an outage must not block
+// traffic — and the exact behaviour is pinned by
+// TestRedisAccountConcurrencyLimiter_MultiReplicaFailOpenExceedsCap, so a
+// future replica-count-aware weighted cap (limit / N via a registry) or a
+// fail-closed policy must update that assertion intentionally.
 type RedisAccountConcurrencyLimiter struct {
 	rdb       accountConcurrencyRedis
 	fallback  *MemoryAccountConcurrencyLimiter

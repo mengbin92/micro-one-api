@@ -145,3 +145,39 @@ func TestNewRedisAccountRPMLimiter_NilClient(t *testing.T) {
 		t.Fatalf("NewRedisAccountRPMLimiter(nil) = %v, want nil", l)
 	}
 }
+
+// TestRedisAccountRPMLimiter_MultiReplicaFailOpenExceedsCap is the M8 (RPM
+// half) regression, mirroring the concurrency-limiter fail-open test: with
+// Redis down each replica's RPM budget is enforced locally (per-replica), so
+// the global budget is N × limit. The assertion pins the documented trade-off
+// so a future replica-count-aware cap must update it deliberately.
+func TestRedisAccountRPMLimiter_MultiReplicaFailOpenExceedsCap(t *testing.T) {
+	store := newFakeAccountRPMRedis()
+	store.evalErr = errors.New("redis unavailable")
+
+	replicaA := newRedisAccountRPMLimiter(store, "a")
+	replicaB := newRedisAccountRPMLimiter(store, "b")
+
+	if !replicaA.TryAcquire(context.Background(), 7, 1) {
+		t.Fatal("replica A fallback acquire should succeed")
+	}
+	if !replicaB.TryAcquire(context.Background(), 7, 1) {
+		t.Fatal("replica B fallback acquire must also succeed (per-replica fail-open)")
+	}
+	// Each replica still enforces its own budget locally.
+	if replicaA.TryAcquire(context.Background(), 7, 1) {
+		t.Fatal("replica A local fallback must still enforce rpm limit=1")
+	}
+	if replicaB.TryAcquire(context.Background(), 7, 1) {
+		t.Fatal("replica B local fallback must still enforce rpm limit=1")
+	}
+
+	// Recovery: the shared Redis budget is authoritative again.
+	store.evalErr = nil
+	if !replicaA.TryAcquire(context.Background(), 8, 1) {
+		t.Fatal("replica A should acquire via Redis after recovery")
+	}
+	if replicaB.TryAcquire(context.Background(), 8, 1) {
+		t.Fatal("replica B must observe the shared Redis budget after recovery")
+	}
+}

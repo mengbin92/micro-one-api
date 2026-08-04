@@ -102,6 +102,11 @@ type RedisAccountRPMLimiter struct {
 	nextID    atomic.Uint64
 }
 
+// Fail-open trade-off (code-review H11/M8): like the concurrency limiter, a
+// Redis failure degrades to the per-replica memory budget, so the global RPM
+// cap becomes N × limit during an outage. Pinned by
+// TestRedisAccountRPMLimiter_MultiReplicaFailOpenExceedsCap.
+
 func NewRedisAccountRPMLimiter(rdb *redis.Client) *RedisAccountRPMLimiter {
 	if rdb == nil {
 		return nil
