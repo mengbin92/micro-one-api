@@ -254,6 +254,17 @@ func isSubscriptionRateLimitStatus(statusCode int) bool {
 		statusCode == passthrough.StatusOverloaded
 }
 
+// reportSubscriptionAccountSlot feeds a relay-local slot acquire/release to
+// the channel selector (weight loop closure). Fire-and-forget: the reporter
+// is optional (interface assertion in RelayUsecase) and errors are silently
+// ignored, so the relay hot path never blocks on this telemetry.
+func (s *HTTPServer) reportSubscriptionAccountSlot(ctx context.Context, accountID int64, acquired bool) {
+	if s == nil || s.relayUsecase == nil || accountID <= 0 {
+		return
+	}
+	_ = s.relayUsecase.RecordSubscriptionAccountSlot(ctx, accountID, acquired)
+}
+
 // sleepCtx waits for d or until ctx is cancelled. It returns true if the full
 // delay elapsed, false if the context was cancelled first.
 func sleepCtx(ctx context.Context, d time.Duration) bool {
@@ -353,13 +364,25 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		}
 		return result
 	}
+	// Weight loop closure: notify channel-service that this replica now holds
+	// a slot, so its selector de-rates the account on the per-process view
+	// (memory limiter / Redis-fallback scenarios where the cross-replica
+	// LoadOracle reads zero). Fire-and-forget — the relay hot path never waits
+	// on this RPC and failures are silent.
+	s.reportSubscriptionAccountSlot(ctx, accountID, true)
+	// releaseSlotWithReport pairs the local limiter release with the matching
+	// channel-side slot feedback. Idempotent via the limiter's sync.Once.
+	releaseSlotWithReport := func() {
+		releaseSlot()
+		s.reportSubscriptionAccountSlot(context.Background(), accountID, false)
+	}
 	// Released on every early return via defer; for the two terminal success
 	// paths (stream + non-stream) ownership is transferred into result.write and
 	// slotTransferred is set so the defer does not release the slot early.
 	slotTransferred := false
 	defer func() {
 		if !slotTransferred {
-			releaseSlot()
+			releaseSlotWithReport()
 		}
 	}()
 
@@ -614,7 +637,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		result.statusCode = http.StatusOK
 		slotTransferred = true // slot released when the stream finishes, below
 		result.write = func(w http.ResponseWriter) {
-			defer releaseSlot()
+			defer releaseSlotWithReport()
 			defer resp.Body.Close()
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Set("Cache-Control", "no-cache")
@@ -695,7 +718,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	result.statusCode = http.StatusOK
 	slotTransferred = true // slot released when the response has been written, below
 	result.write = func(w http.ResponseWriter) {
-		defer releaseSlot()
+		defer releaseSlotWithReport()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(outBody)

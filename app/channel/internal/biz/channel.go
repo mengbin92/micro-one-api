@@ -619,6 +619,23 @@ func (uc *ChannelUsecase) RecordSubscriptionAccountHealth(accountID int64, succe
 	uc.accountSelector.RecordAccountHealth(accountID, success)
 }
 
+// RecordSubscriptionAccountSlot feeds the relay-gateway's local in-flight slot
+// changes into the selector's per-process inflight counter (weight loop
+// closure): the cross-replica LoadOracle covers Redis-backed limiters, while
+// Acquire/Release here cover the memory limiter and Redis-fallback windows
+// where the oracle reads zero. loadFactor takes max(local, crossReplica), so
+// the two never double-count.
+func (uc *ChannelUsecase) RecordSubscriptionAccountSlot(accountID int64, acquired bool) {
+	if uc == nil || uc.accountSelector == nil || accountID <= 0 {
+		return
+	}
+	if acquired {
+		uc.accountSelector.Acquire(accountID)
+		return
+	}
+	uc.accountSelector.Release(accountID)
+}
+
 func (uc *ChannelUsecase) SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*SubscriptionAccount, error) {
 	return uc.selectSubscriptionAccount(ctx, group, model, platform, excludeFirstPriority, nil)
 }

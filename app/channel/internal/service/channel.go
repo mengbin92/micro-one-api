@@ -891,6 +891,18 @@ func (s *ChannelService) RecordSubscriptionAccountHealth(_ context.Context, req 
 	return &channelv1.RecordSubscriptionAccountHealthResponse{Success: true, Message: "ok"}, nil
 }
 
+// RecordSubscriptionAccountSlot feeds relay-gateway local slot changes into the
+// selector's per-process inflight counter (weight loop closure). Best-effort:
+// a stale/missing account id is ignored rather than erroring, since relay
+// treats this as fire-and-forget telemetry.
+func (s *ChannelService) RecordSubscriptionAccountSlot(_ context.Context, req *channelv1.RecordSubscriptionAccountSlotRequest) (*channelv1.RecordSubscriptionAccountSlotResponse, error) {
+	if req.GetAccountId() <= 0 {
+		return &channelv1.RecordSubscriptionAccountSlotResponse{Success: false, Message: "account_id is required"}, nil
+	}
+	s.uc.RecordSubscriptionAccountSlot(req.GetAccountId(), req.GetAcquired())
+	return &channelv1.RecordSubscriptionAccountSlotResponse{Success: true, Message: "ok"}, nil
+}
+
 func (s *ChannelService) DeleteChannel(ctx context.Context, req *channelv1.DeleteChannelRequest) (*channelv1.DeleteChannelResponse, error) {
 	if err := s.uc.DeleteChannel(ctx, req.ChannelId); err != nil {
 		return &channelv1.DeleteChannelResponse{

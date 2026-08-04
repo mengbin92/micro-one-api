@@ -857,6 +857,12 @@ func TestSubscriptionAdaptorRecordsOnlyRealUpstreamHealth(t *testing.T) {
 		if len(client.health) != 1 || client.health[0] != (accountHealthOutcome{accountID: 42, success: true}) {
 			t.Fatalf("health outcomes = %+v", client.health)
 		}
+		// Weight-loop closure: one slot acquire + one release for the account.
+		if len(client.slots) != 2 ||
+			client.slots[0] != (accountSlotReport{accountID: 42, acquired: true}) ||
+			client.slots[1] != (accountSlotReport{accountID: 42, acquired: false}) {
+			t.Fatalf("slot reports = %+v, want [acquire, release] for account 42", client.slots)
+		}
 	})
 
 	t.Run("upstream 5xx failure", func(t *testing.T) {
@@ -1053,10 +1059,18 @@ type accountHealthOutcome struct {
 	success   bool
 }
 
+// accountSlotReport records a weight-loop slot feedback forwarded to
+// channel-service (RecordSubscriptionAccountSlot).
+type accountSlotReport struct {
+	accountID int64
+	acquired  bool
+}
+
 type adaptorFailoverChannelClient struct {
 	accounts []*relaybiz.SubscriptionAccount
 	calls    int
 	health   []accountHealthOutcome
+	slots    []accountSlotReport
 }
 
 func (c *adaptorFailoverChannelClient) SelectChannel(context.Context, string, string, bool) (*relaybiz.Channel, error) {
@@ -1069,6 +1083,14 @@ func (c *adaptorFailoverChannelClient) SelectChannelExcluding(context.Context, s
 
 func (c *adaptorFailoverChannelClient) RecordSubscriptionAccountHealth(_ context.Context, accountID int64, success bool) error {
 	c.health = append(c.health, accountHealthOutcome{accountID: accountID, success: success})
+	return nil
+}
+
+// RecordSubscriptionAccountSlot implements the optional weight-loop reporter
+// (SubscriptionAccountSlotReporter) so the adaptor tests can assert that a
+// relay-local slot acquire/release is forwarded to channel-service.
+func (c *adaptorFailoverChannelClient) RecordSubscriptionAccountSlot(_ context.Context, accountID int64, acquired bool) error {
+	c.slots = append(c.slots, accountSlotReport{accountID: accountID, acquired: acquired})
 	return nil
 }
 

@@ -50,6 +50,17 @@ type ChannelClient interface {
 	RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error
 }
 
+// SubscriptionAccountSlotReporter is the optional extension of ChannelClient
+// that feeds relay-local in-flight slot changes back to channel-service so the
+// subscription-account selector de-rates on the per-process view (memory
+// limiter / Redis-fallback scenarios where the cross-replica LoadOracle reads
+// zero). It is OPTIONAL: relay asserts the interface before calling, so
+// existing fakes and clients that do not implement it keep working. Calls are
+// fire-and-forget best-effort.
+type SubscriptionAccountSlotReporter interface {
+	RecordSubscriptionAccountSlot(ctx context.Context, accountID int64, acquired bool) error
+}
+
 type SubscriptionAccountClient interface {
 	SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*SubscriptionAccount, error)
 	// GetSubscriptionAccountByID materializes a single subscription account by
@@ -348,6 +359,21 @@ func (uc *RelayUsecase) RecordSubscriptionAccountHealth(ctx context.Context, acc
 		return nil
 	}
 	return uc.channel.RecordSubscriptionAccountHealth(ctx, accountID, success)
+}
+
+// RecordSubscriptionAccountSlot forwards a relay-local slot acquire/release to
+// the channel selector's per-process inflight counter (weight loop closure).
+// The client is optional (interface assertion): channel clients that do not
+// implement the reporter simply skip the feedback, so single-replica or
+// legacy setups are unaffected.
+func (uc *RelayUsecase) RecordSubscriptionAccountSlot(ctx context.Context, accountID int64, acquired bool) error {
+	if uc == nil || uc.channel == nil || accountID <= 0 {
+		return nil
+	}
+	if reporter, ok := uc.channel.(SubscriptionAccountSlotReporter); ok {
+		return reporter.RecordSubscriptionAccountSlot(ctx, accountID, acquired)
+	}
+	return nil
 }
 
 func (uc *RelayUsecase) SetSessionAccountStore(store SessionAccountStore, ttl time.Duration, enabled bool) {

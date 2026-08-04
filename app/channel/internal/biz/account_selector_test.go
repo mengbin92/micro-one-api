@@ -267,15 +267,16 @@ func TestSubscriptionAccountSelector_LoadFactorNeutralWithoutOracle(t *testing.T
 		}
 	}
 
-	// Inert contract: no Acquire was called, so inflight == 0 and loadFactor
-	// == 100 (neutral) for both accounts.
+	// No Acquire feedback has arrived for these accounts (the weight-loop
+	// closure is per-slot; this test simply never reports one), so inflight
+	// stays 0 and loadFactor stays neutral (100).
 	for _, id := range []int64{1, 2} {
 		st := s.accounts[id]
 		if got := st.inflight.Load(); got != 0 {
-			t.Fatalf("account %d inflight = %d, want 0 (Acquire never called in production)", id, got)
+			t.Fatalf("account %d inflight = %d, want 0 (no slot reported)", id, got)
 		}
 		if got := st.loadFactor(); got != 100 {
-			t.Fatalf("account %d loadFactor = %d, want 100 (neutral when inert)", id, got)
+			t.Fatalf("account %d loadFactor = %d, want 100 (neutral without load)", id, got)
 		}
 	}
 
@@ -452,4 +453,51 @@ func TestSubscriptionAccountSelector_LoadFactorFallsBackToNeutralWhenIdle(t *tes
 	if got := st.loadFactor(); got != 100 {
 		t.Fatalf("drained loadFactor = %d, want 100 (MEDIUM-1: must not pin at peak)", got)
 	}
+}
+
+// TestChannelUsecase_RecordSubscriptionAccountSlot is the weight-loop closure
+// test: ChannelUsecase.RecordSubscriptionAccountSlot must drive the selector's
+// per-process inflight counter (Acquire/Release) so loadFactor de-rates in the
+// memory-limit / Redis-fallback scenarios the cross-replica LoadOracle cannot
+// see. Acquire lowers loadFactor; Release restores it.
+func TestChannelUsecase_RecordSubscriptionAccountSlot(t *testing.T) {
+	uc := &ChannelUsecase{accountSelector: NewSubscriptionAccountSelector()}
+	acct := &SubscriptionAccount{ID: 9, Priority: 1, Weight: 100}
+	candidates := []*SubscriptionAccount{acct}
+
+	// Prime the selector so account 9's state exists.
+	if _, err := uc.accountSelector.Select(context.Background(), "g", candidates); err != nil {
+		t.Fatalf("Select err = %v", err)
+	}
+	st := uc.accountSelector.accounts[9]
+	if st == nil {
+		t.Fatal("account 9 state missing after prime")
+	}
+	if got := st.loadFactor(); got != 100 {
+		t.Fatalf("loadFactor before any slot = %d, want 100", got)
+	}
+
+	// Acquire slots up to 50% of maxConcurrent... maxConcurrent is 0 here
+	// (unset), so the legacy absolute bands apply: inflight 1..9 → 80.
+	uc.RecordSubscriptionAccountSlot(9, true)
+	if got := st.inflight.Load(); got != 1 {
+		t.Fatalf("inflight after acquire = %d, want 1", got)
+	}
+	if got := st.loadFactor(); got != 80 {
+		t.Fatalf("loadFactor after 1 slot = %d, want 80 (legacy band)", got)
+	}
+
+	// Release restores neutrality.
+	uc.RecordSubscriptionAccountSlot(9, false)
+	if got := st.inflight.Load(); got != 0 {
+		t.Fatalf("inflight after release = %d, want 0", got)
+	}
+	if got := st.loadFactor(); got != 100 {
+		t.Fatalf("loadFactor after release = %d, want 100", got)
+	}
+
+	// Non-positive ids and nil selector are safe no-ops.
+	uc.RecordSubscriptionAccountSlot(0, true)
+	uc.RecordSubscriptionAccountSlot(9, true)
+	(&ChannelUsecase{}).RecordSubscriptionAccountSlot(9, true)
 }

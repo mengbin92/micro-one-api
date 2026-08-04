@@ -37,6 +37,12 @@ service ChannelService {
   rpc RecordChannelUsage(RecordChannelUsageRequest) returns (RecordChannelUsageResponse);
   rpc RecordChannelHealth(RecordChannelHealthRequest) returns (RecordChannelHealthResponse);
   rpc RecordSubscriptionAccountHealth(RecordSubscriptionAccountHealthRequest) returns (RecordSubscriptionAccountHealthResponse);
+  // RecordSubscriptionAccountSlot feeds the relay-gateway's local in-flight
+  // slot changes into the subscription-account selector so loadFactor de-rates
+  // on the in-process view (memory limiter / Redis-fallback scenarios where the
+  // cross-replica LoadOracle reads zero). acquired=true reserves a slot,
+  // false releases it. Relay calls are best-effort and asynchronous.
+  rpc RecordSubscriptionAccountSlot(RecordSubscriptionAccountSlotRequest) returns (RecordSubscriptionAccountSlotResponse);
   rpc DeleteChannel(DeleteChannelRequest) returns (DeleteChannelResponse);
   rpc ChangeChannelStatus(ChangeChannelStatusRequest) returns (ChangeChannelStatusResponse);
   // ========== Model management (方案B) ==========
@@ -461,6 +467,17 @@ message RecordSubscriptionAccountHealthRequest {
 }
 
 message RecordSubscriptionAccountHealthResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RecordSubscriptionAccountSlotRequest {
+  int64 account_id = 1;
+  // acquired=true reserves an in-flight slot; false releases it.
+  bool acquired = 2;
+}
+
+message RecordSubscriptionAccountSlotResponse {
   bool success = 1;
   string message = 2;
 }
