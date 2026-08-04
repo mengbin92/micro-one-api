@@ -127,7 +127,7 @@ func setupIdentityAllowAll(t *testing.T, addr string) (func(), identityv1.Identi
 			1: {ID: 1, Username: "test-user", Group: "default", Status: identitytestutil.UserStatusEnabled},
 		},
 	}
-	uc := identitytestutil.NewIdentityUsecase(repo)
+	uc := identitytestutil.NewIdentityUsecase(repo, nil)
 	svc := identitytestutil.NewIdentityService(uc)
 	grpcSrv := grpc.NewServer()
 	identityv1.RegisterIdentityServiceServer(grpcSrv, svc)
@@ -320,7 +320,7 @@ func TestChatCompletions_ModelNotAllowed(t *testing.T) {
 			2: {ID: 2, Username: "restricted", Group: "default", Status: identitytestutil.UserStatusEnabled},
 		},
 	}
-	uc := identitytestutil.NewIdentityUsecase(repo)
+	uc := identitytestutil.NewIdentityUsecase(repo, nil)
 	svc := identitytestutil.NewIdentityService(uc)
 	identityGrpc := grpc.NewServer()
 	identityv1.RegisterIdentityServiceServer(identityGrpc, svc)

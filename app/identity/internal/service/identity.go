@@ -2,9 +2,13 @@ package service
 
 import (
 	"context"
+	"net"
+	"strings"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	commonv1 "micro-one-api/api/common/v1"
@@ -102,7 +106,7 @@ func (s *IdentityService) GetUser(ctx context.Context, req *identityv1.GetUserRe
 }
 
 func (s *IdentityService) Login(ctx context.Context, req *identityv1.LoginRequest) (*identityv1.LoginResponse, error) {
-	user, token, err := s.uc.Login(ctx, req.Username, req.Password, "")
+	user, token, err := s.uc.Login(ctx, req.Username, req.Password, clientIPFromGRPC(ctx))
 	if err != nil {
 		return &identityv1.LoginResponse{
 			Success: false,
@@ -115,6 +119,30 @@ func (s *IdentityService) Login(ctx context.Context, req *identityv1.LoginReques
 		Token:   token,
 		UserId:  user.ID,
 	}, nil
+}
+
+// clientIPFromGRPC extracts the client IP from gRPC metadata or the peer
+// address. It checks the x-forwarded-for metadata header first (set by
+// reverse proxies / admin-api proxies), then falls back to the gRPC peer
+// address. Returns "" when no IP can be determined.
+func clientIPFromGRPC(ctx context.Context) string {
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if vals := md.Get("x-forwarded-for"); len(vals) > 0 {
+			if first, _, _ := strings.Cut(vals[0], ","); strings.TrimSpace(first) != "" {
+				return strings.TrimSpace(first)
+			}
+		}
+		if vals := md.Get("x-real-ip"); len(vals) > 0 && strings.TrimSpace(vals[0]) != "" {
+			return strings.TrimSpace(vals[0])
+		}
+	}
+	if pr, ok := peer.FromContext(ctx); ok && pr.Addr != nil {
+		if host, _, err := net.SplitHostPort(pr.Addr.String()); err == nil && host != "" {
+			return host
+		}
+		return pr.Addr.String()
+	}
+	return ""
 }
 
 func (s *IdentityService) Register(ctx context.Context, req *identityv1.RegisterRequest) (*identityv1.RegisterResponse, error) {

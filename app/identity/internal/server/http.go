@@ -18,6 +18,7 @@ import (
 	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/identity/internal/biz"
+	appmiddleware "micro-one-api/platform/middleware"
 	"micro-one-api/platform/metrics"
 	"micro-one-api/platform/security"
 	"micro-one-api/platform/http"
@@ -91,7 +92,15 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	if registrationPolicy.CodeDeliverer == nil {
 		registrationPolicy.CodeDeliverer = noopCodeDeliverer{}
 	}
-	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
+	// khttp.Filter applies an http.Handler middleware to every route on the
+	// server's mux. The RequestID filter stamps a sanitized request ID into
+	// context (X-Request-ID header or a generated UUID) so audit records and
+	// structured logs carry a traceable identifier — the same pattern
+	// admin-api uses in newAdminGuard.
+	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(
+		khttp.Address(addr),
+		khttp.Filter(appmiddleware.RequestID),
+	)...)
 	var billingClient billingv1.BillingServiceClient
 	if len(billingClients) > 0 {
 		billingClient = billingClients[0]

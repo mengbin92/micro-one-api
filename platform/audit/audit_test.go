@@ -274,3 +274,72 @@ func TestAudit_ActorAndRequestIDExtraction(t *testing.T) {
 		t.Fatalf("extractRequestID via middleware = %q, want req-abc", got)
 	}
 }
+
+// TestMiddleware_ReadsActorStampedByHandler is the regression test for the
+// critical timing bug: the audit middleware previously read the actor BEFORE
+// calling next.ServeHTTP, so even when a downstream handler called WithActor
+// the middleware had already captured an empty value. The mutable
+// *actorHolder mechanism fixes this — the middleware injects a holder, the
+// handler writes into it via WithActor, and the middleware reads the final
+// value AFTER next returns.
+func TestMiddleware_ReadsActorStampedByHandler(t *testing.T) {
+	auditor := NewAuditor(true)
+	mw := NewMiddleware(auditor)
+
+	stampedActor := ActorInfo{UserID: 99, Username: "handler-user", Role: "user"}
+
+	// The inner handler stamps the actor mid-request, simulating an auth layer.
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate authentication: stamp the actor into context.
+		WithActor(r.Context(), stampedActor)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Capture the actor the middleware actually logs. We intercept via a
+	// custom auditor logger by checking the observable side effect: the
+	// handler stamps the actor, and we assert the middleware's ActorFrom
+	// (called after next) would see it. Since the middleware logs internally,
+	// we verify the holder mechanism works by checking that ActorFrom reads
+	// the value written by WithActor inside the handler chain.
+	var capturedActor ActorInfo
+	wrapAndCapture := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The middleware calls withActorHolder before dispatching. The handler
+		// calls WithActor which writes into the holder. After the handler
+		// returns, ActorFrom should return the stamped value.
+		inner.ServeHTTP(w, r)
+		capturedActor = ActorFrom(r.Context())
+	})
+
+	mwHandler := mw.Handler(wrapAndCapture)
+	req := httptest.NewRequest(http.MethodPost, "/api/test", nil)
+	mwHandler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if capturedActor != stampedActor {
+		t.Fatalf("middleware actor after handler = %+v, want %+v (timing bug: "+
+			"actor must be readable AFTER next.ServeHTTP)", capturedActor, stampedActor)
+	}
+}
+
+// TestSanitizeAuditString verifies control characters are stripped to prevent
+// log injection (e.g. newlines in usernames forging additional log lines).
+func TestSanitizeAuditString(t *testing.T) {
+	tests := []struct {
+		name, input, want string
+	}{
+		{"empty", "", ""},
+		{"clean", "alice", "alice"},
+		{"newline", "alice\nadmin", "alice\uFFFdadmin"},
+		{"carriage_return", "alice\radmin", "alice\uFFFdadmin"},
+		{"tab", "a\tb", "a\uFFFdb"},
+		{"null_byte", "alice\x00admin", "alice\uFFFdadmin"},
+		{"del", "alice\x7fadmin", "alice\uFFFdadmin"},
+		{"unicode_preserved", "爱丽丝", "爱丽丝"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeAuditString(tt.input); got != tt.want {
+				t.Errorf("sanitizeAuditString(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

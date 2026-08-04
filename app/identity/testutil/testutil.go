@@ -7,6 +7,8 @@ package testutil
 import (
 	identitybiz "micro-one-api/app/identity/internal/biz"
 	identityservice "micro-one-api/app/identity/internal/service"
+
+	"micro-one-api/platform/audit"
 )
 
 // Type aliases for entities.
@@ -36,8 +38,8 @@ const (
 )
 
 // NewIdentityUsecase re-exports the constructor.
-func NewIdentityUsecase(repo IdentityRepo) *IdentityUsecase {
-	return identitybiz.NewIdentityUsecase(repo)
+func NewIdentityUsecase(repo IdentityRepo, auditor *audit.Auditor) *IdentityUsecase {
+	return identitybiz.NewIdentityUsecase(repo, auditor)
 }
 
 // NewIdentityService re-exports the service constructor.

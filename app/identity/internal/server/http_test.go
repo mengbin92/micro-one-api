@@ -23,7 +23,7 @@ import (
 
 func TestIdentityHTTPRegisterLoginAndSelf(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil)
 
 	// M5: a client-supplied group must be ignored on public registration.
@@ -67,7 +67,7 @@ func TestIdentityHTTPRegisterLoginAndSelf(t *testing.T) {
 
 func TestIdentityHTTPAffCodeRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/aff", nil)
@@ -81,7 +81,7 @@ func TestIdentityHTTPAffCodeRequiresAuth(t *testing.T) {
 
 func TestIdentityHTTPAffCodeReturnsUserCode(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	if _, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default"); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestIdentityHTTPAffCodeReturnsUserCode(t *testing.T) {
 
 func TestIdentityHTTPAffTransferReturnsDisabledCompatibilityResponse(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -125,7 +125,7 @@ func TestIdentityHTTPAffTransferReturnsDisabledCompatibilityResponse(t *testing.
 
 func TestIdentityHTTPRegisterAcceptsAffCode(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +155,7 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsInvitationBonusViaBilling(t *test
 	t.Setenv("INVITEE_BONUS_AMOUNT", "25")
 	t.Setenv("INVITER_BONUS_AMOUNT", "50")
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +192,7 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsLegacyInvitationBonusEnv(t *testi
 	t.Setenv("INVITEE_BONUS_QUOTA", "25")
 	t.Setenv("INVITER_BONUS_QUOTA", "50")
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -219,7 +219,7 @@ func TestIdentityHTTPRegisterWithAffCodeSkipsCreditWhenBonusesZero(t *testing.T)
 	t.Setenv("INVITEE_BONUS_AMOUNT", "")
 	t.Setenv("INVITER_BONUS_AMOUNT", "0")
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestIdentityHTTPRegisterWithoutAffCodeSkipsBillingCredit(t *testing.T) {
 	t.Setenv("INVITEE_BONUS_AMOUNT", "25")
 	t.Setenv("INVITER_BONUS_AMOUNT", "50")
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	billingClient := &identityHTTPBillingClient{}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
 
@@ -261,7 +261,7 @@ func TestIdentityHTTPRegisterWithoutAffCodeSkipsBillingCredit(t *testing.T) {
 
 func TestIdentityHTTPRegisterRejectsInvalidAffCode(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil)
 
 	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"NONE"}`))
@@ -278,7 +278,7 @@ func TestIdentityHTTPRegisterRejectsInvalidAffCode(t *testing.T) {
 
 func TestIdentityHTTPRegisterCanBeDisabled(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServerWithRegistrationPolicy(":0", uc, nil, RegistrationPolicy{Enabled: false})
 
 	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"alice","password":"password123","email":"alice@example.com"}`))
@@ -295,7 +295,7 @@ func TestIdentityHTTPRegisterCanBeDisabled(t *testing.T) {
 
 func TestIdentityHTTPRegisterEnforcesEmailDomainWhitelist(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServerWithRegistrationPolicy(":0", uc, nil, RegistrationPolicy{
 		Enabled:                       true,
 		EmailDomainRestrictionEnabled: true,
@@ -327,7 +327,7 @@ func TestIdentityHTTPRegisterEnforcesEmailDomainWhitelist(t *testing.T) {
 
 func TestIdentityHTTPRegisterEnforcesTurnstileWhenEnabled(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	verifier := &fakeTurnstileVerifier{acceptedToken: "pass"}
 	srv := NewHTTPServerWithRegistrationPolicy(":0", uc, nil, RegistrationPolicy{
 		Enabled:                true,
@@ -365,7 +365,7 @@ func TestIdentityHTTPRegisterEnforcesTurnstileWhenEnabled(t *testing.T) {
 
 func TestIdentityHTTPEmailBindRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/oauth/email/bind?email=new@example.com&code=123456", nil)
@@ -379,7 +379,7 @@ func TestIdentityHTTPEmailBindRequiresAuth(t *testing.T) {
 
 func TestIdentityHTTPEmailBindRejectsInvalidCode(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -398,7 +398,7 @@ func TestIdentityHTTPEmailBindRejectsInvalidCode(t *testing.T) {
 
 func TestIdentityHTTPEmailBindUpdatesEmail(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	deliverer := newCapturingCodeDeliverer()
 	srv := newHTTPServerWithDeliverer(":0", uc, deliverer)
@@ -443,7 +443,7 @@ func TestIdentityHTTPEmailBindUpdatesEmail(t *testing.T) {
 
 func TestIdentityHTTPSelfUpdateRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil)
 
 	req := httptest.NewRequest(http.MethodPut, "/api/user/self", strings.NewReader(`{"username":"alice2"}`))
@@ -457,7 +457,7 @@ func TestIdentityHTTPSelfUpdateRequiresAuth(t *testing.T) {
 
 func TestIdentityHTTPSelfUpdateChangesCurrentUser(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -502,7 +502,7 @@ func TestIdentityHTTPSelfUpdateChangesCurrentUser(t *testing.T) {
 
 func TestIdentityHTTPSelfDeleteRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/user/self", nil)
@@ -516,7 +516,7 @@ func TestIdentityHTTPSelfDeleteRequiresAuth(t *testing.T) {
 
 func TestIdentityHTTPSelfDeleteRemovesCurrentUser(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -544,7 +544,7 @@ func TestIdentityHTTPSelfDeleteRemovesCurrentUser(t *testing.T) {
 
 func TestIdentityHTTPDashboardRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/dashboard", nil)
@@ -558,7 +558,7 @@ func TestIdentityHTTPDashboardRequiresAuth(t *testing.T) {
 
 func TestIdentityHTTPDashboardRequiresBillingClient(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -577,7 +577,7 @@ func TestIdentityHTTPDashboardRequiresBillingClient(t *testing.T) {
 
 func TestIdentityHTTPUserLogsUsesAuthenticatedUser(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	user, authToken := registerAndLoginForHTTPTest(t, uc)
 	billingClient := &identityHTTPBillingClient{}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
@@ -615,7 +615,7 @@ func TestIdentityHTTPUserLogsUsesAuthenticatedUser(t *testing.T) {
 
 func TestIdentityHTTPDashboardReturnsAccountSnapshot(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
@@ -659,7 +659,7 @@ func TestIdentityHTTPDashboardReturnsAccountSnapshot(t *testing.T) {
 // because raw token counts were displayed as dollar amounts.
 func TestIdentityHTTPDashboardTodayAmountUsesLedgerAmount(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 
 	// Simulate mimo-v2.5-pro pricing: 1M input-only tokens at $0.435/1M tokens.
@@ -763,7 +763,7 @@ func TestIdentityHTTPDashboardTodayAmountUsesLedgerAmount(t *testing.T) {
 
 func TestIdentityHTTPUserReadOnlyCompatibilityAliases(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
@@ -801,7 +801,7 @@ func TestIdentityHTTPUserReadOnlyCompatibilityAliases(t *testing.T) {
 
 func TestIdentityHTTPAvailableModelsReturnsDefaultsWhenTokenIsUnrestricted(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -836,7 +836,7 @@ func containsString(values []string, want string) bool {
 
 func TestIdentityHTTPDashboardBillingUsageReturnsOpenAIShape(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
@@ -868,7 +868,7 @@ func TestIdentityHTTPDashboardBillingUsageReturnsOpenAIShape(t *testing.T) {
 
 func TestIdentityHTTPDashboardBillingSubscriptionReturnsOpenAIShape(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		snapshot: &commonv1.AccountSnapshot{
@@ -903,7 +903,7 @@ func TestIdentityHTTPDashboardBillingSubscriptionReturnsOpenAIShape(t *testing.T
 
 func TestIdentityHTTPDashboardBillingSubscriptionRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{})
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard/billing/subscription", nil)
@@ -920,7 +920,7 @@ func TestIdentityHTTPDashboardBillingSubscriptionRequiresAuth(t *testing.T) {
 
 func TestIdentityHTTPTopUpRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/user/topup", strings.NewReader(`{"key":"CODE-1000"}`))
@@ -934,7 +934,7 @@ func TestIdentityHTTPTopUpRequiresAuth(t *testing.T) {
 
 func TestIdentityHTTPTopUpRejectsEmptyKey(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{})
 
@@ -953,7 +953,7 @@ func TestIdentityHTTPTopUpRejectsEmptyKey(t *testing.T) {
 
 func TestIdentityHTTPTopUpReturnsRedeemedAmount(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	billingClient := &identityHTTPBillingClient{
 		redeemResponse: &billingv1.RedeemCodeResponse{Success: true, Amount: 1000, NewBalance: 2000},
@@ -978,7 +978,7 @@ func TestIdentityHTTPTopUpReturnsRedeemedAmount(t *testing.T) {
 
 func TestIdentityHTTPTopUpReturnsBillingFailure(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil, &identityHTTPBillingClient{
 		redeemResponse: &billingv1.RedeemCodeResponse{Success: false, ErrorMessage: "invalid code"},
@@ -999,7 +999,7 @@ func TestIdentityHTTPTopUpReturnsBillingFailure(t *testing.T) {
 
 func TestIdentityHTTPOnlinePaymentCompatibilityRoutesAreDisabled(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	billingClient := &identityHTTPBillingClient{
 		createOrderResponse: &billingv1.PaymentOrderResponse{
@@ -1051,7 +1051,7 @@ func TestIdentityHTTPOnlinePaymentCompatibilityRoutesAreDisabled(t *testing.T) {
 func TestIdentityHTTPCreatePaymentOrderUsesRechargeMultiplier(t *testing.T) {
 	t.Setenv("RECHARGE_AMOUNT_MULTIPLIER", "3")
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	billingClient := &identityHTTPBillingClient{}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
@@ -1081,7 +1081,7 @@ func TestIdentityHTTPCreatePaymentOrderUsesRechargeMultiplier(t *testing.T) {
 
 func TestIdentityHTTPUserPaymentOrdersFiltersToAuthenticatedUser(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	user, authToken := registerAndLoginForHTTPTest(t, uc)
 	billingClient := &identityHTTPBillingClient{}
 	srv := NewHTTPServer(":0", uc, nil, billingClient)
@@ -1111,7 +1111,7 @@ func TestIdentityHTTPUserPaymentOrdersFiltersToAuthenticatedUser(t *testing.T) {
 
 func TestIdentityHTTPAdminUserPaymentOrdersCanListAllUsers(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	user, err := uc.Register(context.Background(), "admin", "password123", "admin@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -1146,7 +1146,7 @@ func TestIdentityHTTPAdminUserPaymentOrdersCanListAllUsers(t *testing.T) {
 
 func TestIdentityHTTPUserPaymentOrderDetailRefreshesAndScopesOrder(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	user, authToken := registerAndLoginForHTTPTest(t, uc)
 	billingClient := &identityHTTPBillingClient{
 		paymentGetResponse: &billingv1.PaymentOrderResponse{
@@ -1183,7 +1183,7 @@ func TestIdentityHTTPUserPaymentOrderDetailRefreshesAndScopesOrder(t *testing.T)
 
 func TestIdentityHTTPUserPaymentOrderDetailRejectsOtherUser(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	billingClient := &identityHTTPBillingClient{
 		paymentGetResponse: &billingv1.PaymentOrderResponse{
@@ -1208,7 +1208,7 @@ func TestIdentityHTTPUserPaymentOrderDetailRejectsOtherUser(t *testing.T) {
 
 func TestIdentityHTTPTokenCRUD(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	user, err := uc.Register(httptest.NewRequest(http.MethodGet, "/", nil).Context(), "alice", "password123", "alice@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -1247,7 +1247,7 @@ func TestIdentityHTTPTokenCRUD(t *testing.T) {
 
 func TestIdentityHTTPSessionTokenIsNotAPIToken(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -1277,7 +1277,7 @@ func TestIdentityHTTPSessionTokenIsNotAPIToken(t *testing.T) {
 
 func TestIdentityHTTPTokenPathGetAndDelete(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -1318,7 +1318,7 @@ func TestIdentityHTTPTokenPathGetAndDelete(t *testing.T) {
 
 func TestIdentityHTTPTokenSearchRoute(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -1347,7 +1347,7 @@ func TestIdentityHTTPTokenSearchRoute(t *testing.T) {
 
 func TestIdentityHTTPTokenUpdateAcceptsBodyID(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -1374,7 +1374,7 @@ func TestIdentityHTTPTokenUpdateAcceptsBodyID(t *testing.T) {
 
 func TestIdentityHTTPTokenOneAPIFields(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, nil)
 
@@ -1435,7 +1435,7 @@ func TestIdentityHTTPTokenOneAPIFields(t *testing.T) {
 
 func TestIdentityHTTPPasswordReset(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	if _, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default"); err != nil {
 		t.Fatal(err)
 	}
@@ -1486,7 +1486,7 @@ func TestIdentityHTTPOAuthLegacyAliasRedirects(t *testing.T) {
 		RedirectURL: "http://localhost/callback",
 	}))
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, registry)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/oauth/github", nil)
@@ -1505,7 +1505,7 @@ func TestIdentityHTTPOAuthAuthorizeRejectsUnsafeRedirectURL(t *testing.T) {
 	registry := oauth.NewProviderRegistry()
 	registry.Register(&fakeOAuthProvider{name: "unsafe", authURL: "javascript:alert(1)"})
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/oauth/unsafe/authorize", nil)
 	rec := httptest.NewRecorder()
@@ -1537,7 +1537,7 @@ func TestSafeOAuthAuthorizeURL(t *testing.T) {
 
 func TestIdentityHTTPOAuthStateReturnsStateAndCookie(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/oauth/state", nil)
@@ -1557,7 +1557,7 @@ func TestIdentityHTTPOAuthStateReturnsStateAndCookie(t *testing.T) {
 
 func TestIdentityHTTPOneAPIOAuthAliasesAreStableWhenProviderDisabled(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, nil)
 
 	for _, path := range []string{"/api/oauth/oidc", "/api/oauth/lark", "/api/oauth/lark/bind", "/api/oauth/wechat", "/api/oauth/wechat/bind", "/api/oauth/telegram/login", "/api/oauth/telegram/bind"} {
@@ -1586,7 +1586,7 @@ func TestIdentityHTTPOneAPIOIDCAliasRedirectsWhenProviderEnabled(t *testing.T) {
 		UserInfoURL:  "https://idp.example.com/oauth2/userinfo",
 	}))
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, registry)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/oauth/oidc", nil)
@@ -1605,7 +1605,7 @@ func TestIdentityHTTPOAuthBindRequiresAuthenticatedUser(t *testing.T) {
 	registry := oauth.NewProviderRegistry()
 	registry.Register(&fakeOAuthProvider{name: "wechat", providerID: "openid-1"})
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	srv := NewHTTPServer(":0", uc, registry)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/oauth/wechat/bind?code=oauth-code", nil)
@@ -1621,7 +1621,7 @@ func TestIdentityHTTPOAuthBindBrowserRedirectFlow(t *testing.T) {
 	registry := oauth.NewProviderRegistry()
 	registry.Register(&fakeOAuthProvider{name: "wechat", providerID: "openid-1"})
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	_, authToken := registerAndLoginForHTTPTest(t, uc)
 	srv := NewHTTPServer(":0", uc, registry)
 
@@ -1674,7 +1674,7 @@ func TestIdentityHTTPOAuthBindUpdatesCurrentUser(t *testing.T) {
 			registry := oauth.NewProviderRegistry()
 			registry.Register(&fakeOAuthProvider{name: tt.provider, providerID: tt.providerID})
 			repo := identitydata.NewMemoryRepositoryForTest()
-			uc := biz.NewIdentityUsecase(repo)
+			uc := biz.NewIdentityUsecase(repo, nil)
 			_, authToken := registerAndLoginForHTTPTest(t, uc)
 			srv := NewHTTPServer(":0", uc, registry)
 
@@ -1700,7 +1700,7 @@ func TestIdentityHTTPOAuthBindRejectsDuplicateProviderIdentity(t *testing.T) {
 	registry := oauth.NewProviderRegistry()
 	registry.Register(&fakeOAuthProvider{name: "lark", providerID: "union-1"})
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	if _, _, err := uc.OAuthLogin(context.Background(), "lark", "union-1", "bob", "bob@example.com", "Bob"); err != nil {
 		t.Fatal(err)
 	}

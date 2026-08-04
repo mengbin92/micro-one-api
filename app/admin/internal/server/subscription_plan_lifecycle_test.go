@@ -24,7 +24,7 @@ func newPlanLifecycleTestServer() http.Handler {
 		subscriptionbiz.NewGroupUsecase(repo),
 		subscriptionbiz.NewPlanUsecase(repo, repo),
 	)
-	return NewHTTPServer(":0", adminSvc)
+	return NewHTTPServer(":0", adminSvc, nil)
 }
 
 func TestPlanLifecycle_ForSaleFilterAndToggle(t *testing.T) {

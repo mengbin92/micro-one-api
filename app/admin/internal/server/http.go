@@ -120,7 +120,10 @@ func newAdminGuard(svc *service.AdminService) func(http.HandlerFunc) http.Handle
 // identity-service OperatorUserId) can treat it as a "system" call.
 const adminSystemOperator = "system/admin-token"
 
-// adminRoleName maps an admin role constant to its audit-facing name.
+// adminRoleName maps an admin role constant to its audit-facing name. An
+// unexpected role returns "unknown" rather than a plausible-but-fake name so
+// the anomaly is visible in audit records rather than silently masquerading
+// as a legitimate operator.
 func adminRoleName(role int32) string {
 	switch role {
 	case service.RoleRoot:
@@ -128,7 +131,7 @@ func adminRoleName(role int32) string {
 	case service.RoleAdmin:
 		return "admin"
 	default:
-		return "operator"
+		return "unknown"
 	}
 }
 
@@ -167,7 +170,8 @@ func adminOperatorUserID(r *http.Request) int64 {
 //
 // Optional arguments are kept for backwards-compatible tests and older wire
 // call sites: first is identity HTTP endpoint, second is external web root.
-func NewHTTPServer(addr string, svc *service.AdminService, options ...string) *khttp.Server {
+func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Auditor, options ...string) *khttp.Server {
+	SetAdminAuditor(auditor)
 	identityProxy := newServiceReverseProxy(optionString(options, 0))
 	billingHTTPProxy := newBillingHTTPProxy()
 	notifyWorkerProxy := newNotifyWorkerProxy()

@@ -17,6 +17,7 @@ import (
 	"micro-one-api/api/identity/v1"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	appvalidation "micro-one-api/internal/validation"
+	"micro-one-api/platform/audit"
 	"micro-one-api/pkg/errors"
 	apptimeout "micro-one-api/pkg/timeout"
 	applogger "micro-one-api/platform/logging"
@@ -335,7 +336,15 @@ func (s *EnhancedHTTPServer) getAuthSnapshot(ctx context.Context, token string) 
 	req := &identityv1.GetAuthSnapshotRequest{
 		Token: token,
 	}
-	return s.identityClient.GetAuthSnapshot(ctx, req)
+	reply, err := s.identityClient.GetAuthSnapshot(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	// Stamp the audit actor so the audit middleware records the real caller.
+	// The session id is a display prefix, never the full token credential
+	// (see auditSessionIDPrefix in http_helpers.go).
+	ctx = audit.WithActor(ctx, audit.ActorInfo{UserID: reply.GetUserId(), SessionID: auditSessionIDPrefix(token)})
+	return reply, nil
 }
 
 func (s *EnhancedHTTPServer) selectChannel(ctx context.Context, group, model string) (*commonv1.ChannelInfo, error) {

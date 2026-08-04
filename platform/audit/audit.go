@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -225,8 +226,15 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			return
 		}
 
-		// Extract context values
-		actor := extractActorFromContext(r.Context())
+		// Inject a mutable *actorHolder into the request context. Authentication
+		// layers downstream call WithActor, which writes into this holder. We
+		// read it AFTER next.ServeHTTP returns so the final authenticated actor
+		// is captured even though Go's *http.Request is immutable (the handler
+		// cannot mutate the original r that the middleware holds).
+		ctx, holder := withActorHolder(r.Context())
+		r = r.WithContext(ctx)
+
+		// Request ID is immutable and already in context; read it now.
 		requestID := extractRequestID(r.Context())
 
 		// Create a response writer wrapper to capture status
@@ -238,13 +246,17 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		// Call next handler
 		next.ServeHTTP(wrapped, r)
 
+		// Read the actor AFTER the handler chain has run, so it reflects
+		// whoever the handler authenticated.
+		actor := holder.actor
+
 		// Log the request
 		result := "success"
 		if wrapped.statusCode >= 400 {
 			result = "failure"
 		}
 
-		m.auditor.Log(r.Context(), AuditEvent{
+		m.auditor.Log(ctx, AuditEvent{
 			EventType: mapMethodToEventType(r.Method),
 			Actor:     actor,
 			Resource:  ResourceInfo{Type: "http"},
@@ -307,27 +319,65 @@ func mapMethodToEventType(method string) EventType {
 	}
 }
 
-// actorContextKey carries the authenticated actor through request context.
-// Authentication middleware (admin guard, identity sessions, etc.) calls
-// WithActor after verification; the audit middleware reads it via ActorFrom so
-// audit records reflect the real caller instead of an empty actor (roadmap §4:
-// no empty operator audit).
+// actorHolder is a mutable container that lets authentication layers stamp
+// the verified actor DURING request processing (inside the handler chain),
+// while the audit middleware reads it AFTER next.ServeHTTP returns. A plain
+// context value cannot serve this purpose because Go's *http.Request is
+// immutable: a handler calls r.WithContext(...) which creates a new request
+// the middleware never sees. By storing a *actorHolder pointer in context,
+// WithActor mutates the shared holder in place and the middleware observes
+// the final value after the handler chain completes.
+type actorHolder struct {
+	actor ActorInfo
+}
+
+// actorHolderKey carries the *actorHolder created by the audit middleware.
+// WithActor writes into it; ActorFrom reads from it. When no audit middleware
+// is present (e.g. in tests), WithActor falls back to a plain context value
+// so ActorFrom still works.
+type actorHolderKey struct{}
+
+// actorContextKey is the fallback immutable key used when no *actorHolder is
+// present in context (tests, non-HTTP code paths).
 type actorContextKey struct{}
 
 // WithActor stamps the verified actor into context for audit consumption. It
-// is the single place authentication layers write the audit identity.
+// is the single place authentication layers write the audit identity. If the
+// context carries an audit-middleware-provided *actorHolder (the normal HTTP
+// path), the actor is written into the mutable holder so the middleware sees
+// it after the handler returns. Otherwise a plain immutable context value is
+// set as a fallback.
 func WithActor(ctx context.Context, actor ActorInfo) context.Context {
+	if ctx == nil {
+		return ctx
+	}
+	if h, ok := ctx.Value(actorHolderKey{}).(*actorHolder); ok && h != nil {
+		h.actor = actor
+		return ctx
+	}
 	return context.WithValue(ctx, actorContextKey{}, actor)
 }
 
 // ActorFrom reads the actor stamped by WithActor. Returns the zero ActorInfo
-// when no authentication layer stamped one (anonymous request).
+// when no authentication layer stamped one (anonymous request). It checks the
+// mutable *actorHolder first (HTTP path), then falls back to the immutable
+// context value.
 func ActorFrom(ctx context.Context) ActorInfo {
 	if ctx == nil {
 		return ActorInfo{}
 	}
+	if h, ok := ctx.Value(actorHolderKey{}).(*actorHolder); ok && h != nil {
+		return h.actor
+	}
 	actor, _ := ctx.Value(actorContextKey{}).(ActorInfo)
 	return actor
+}
+
+// withActorHolder injects a fresh *actorHolder into ctx. Called by the audit
+// middleware before dispatching to the handler chain.
+func withActorHolder(ctx context.Context) (context.Context, *actorHolder) {
+	h := &actorHolder{}
+	return context.WithValue(ctx, actorHolderKey{}, h), h
 }
 
 func extractActorFromContext(ctx context.Context) ActorInfo {
@@ -336,6 +386,28 @@ func extractActorFromContext(ctx context.Context) ActorInfo {
 
 func extractRequestID(ctx context.Context) string {
 	return appmiddleware.GetRequestID(ctx)
+}
+
+// sanitizeAuditString removes control characters (newlines, carriage returns,
+// tabs, null bytes) from a caller-supplied string before it is written to the
+// audit log. This prevents log-injection / log-forgery attacks where an
+// attacker embeds newlines in a username to forge additional log lines or
+// break log parsers. Non-printable runes are replaced with the Unicode
+// replacement character.
+func sanitizeAuditString(s string) string {
+	if s == "" {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			b.WriteRune('\uFFFD')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func extractIP(r *http.Request) string {
@@ -363,7 +435,7 @@ func (a *Auditor) LogUserLogin(ctx context.Context, userID int64, username, ipAd
 		EventType: EventTypeLogin,
 		Actor: ActorInfo{
 			UserID:   userID,
-			Username: username,
+			Username: sanitizeAuditString(username),
 		},
 		Resource:  ResourceInfo{Type: "auth"},
 		Action:    "login",

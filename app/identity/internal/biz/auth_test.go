@@ -132,7 +132,7 @@ func TestIdentityUsecase_BindOAuthIdentityUpdatesCurrentUser(t *testing.T) {
 		users:           map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled}},
 		oauthIdentities: map[string]*OAuthIdentity{},
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	user, err := uc.BindOAuthIdentity(context.Background(), 1, "wechat", "openid-1")
 	if err != nil {
@@ -152,7 +152,7 @@ func TestIdentityUsecase_BindOAuthIdentityAllowsMultipleProvidersForSameUser(t *
 		users:           map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled}},
 		oauthIdentities: map[string]*OAuthIdentity{},
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "github", "gh-1"); err != nil {
 		t.Fatalf("BindOAuthIdentity(github) error = %v", err)
@@ -181,7 +181,7 @@ func TestIdentityUsecase_BindOAuthIdentityRejectsDuplicateProviderIdentity(t *te
 			"lark:union-1": {ID: 1, UserID: 2, Provider: "lark", ProviderID: "union-1"},
 		},
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "lark", "union-1"); !errors.Is(err, ErrOAuthAlreadyBound) {
 		t.Fatal("BindOAuthIdentity() expected duplicate identity error")
@@ -197,7 +197,7 @@ func TestIdentityUsecase_BindOAuthIdentityRejectsDuplicateProviderForSameUser(t 
 			"github:gh-1": {ID: 1, UserID: 1, Provider: "github", ProviderID: "gh-1"},
 		},
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if _, err := uc.BindOAuthIdentity(context.Background(), 1, "github", "gh-2"); !errors.Is(err, ErrOAuthAlreadyBound) {
 		t.Fatal("BindOAuthIdentity() expected duplicate provider error")
@@ -214,7 +214,7 @@ func TestIdentityUsecase_OAuthLoginFindsUserByOAuthIdentity(t *testing.T) {
 			"oidc:sub-1": {ID: 1, UserID: 1, Provider: "oidc", ProviderID: "sub-1"},
 		},
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	user, _, err := uc.OAuthLogin(context.Background(), "oidc", "sub-1", "ignored", "ignored@example.com", "Ignored")
 	if err != nil {
@@ -233,7 +233,7 @@ func TestIdentityUsecase_OAuthLoginFallsBackToLegacyOAuthFields(t *testing.T) {
 		},
 		oauthIdentities: map[string]*OAuthIdentity{},
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	user, _, err := uc.OAuthLogin(context.Background(), "github", "gh-1", "ignored", "ignored@example.com", "Ignored")
 	if err != nil {
@@ -369,7 +369,7 @@ func TestIdentityUsecase_ValidateToken_ValidToken(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	token, err := uc.ValidateToken(context.Background(), "valid-token", "")
 	if err != nil {
 		t.Fatalf("ValidateToken() error = %v", err)
@@ -384,7 +384,7 @@ func TestIdentityUsecase_ValidateToken_ValidToken(t *testing.T) {
 
 func TestIdentityUsecase_ValidateToken_EmptyToken(t *testing.T) {
 	repo := &mockIdentityRepo{tokens: make(map[string]*Token), users: make(map[int64]*User)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	_, err := uc.ValidateToken(context.Background(), "", "")
 	if !errors.Is(err, ErrInvalidToken) {
@@ -402,7 +402,7 @@ func TestIdentityUsecase_ValidateToken_TokenNotFound(t *testing.T) {
 		tokens: make(map[string]*Token),
 		users:  make(map[int64]*User),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	_, err := uc.ValidateToken(context.Background(), "nonexistent-token", "")
 	if !errors.Is(err, ErrTokenNotFound) {
@@ -429,7 +429,7 @@ func TestIdentityUsecase_ValidateToken_TokenExpired(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.ValidateToken(context.Background(), "expired-token", "")
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Fatalf("expected ErrTokenExpired, got: %v", err)
@@ -454,7 +454,7 @@ func TestIdentityUsecase_ValidateToken_TokenStatusExpired(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.ValidateToken(context.Background(), "expired-status-token", "")
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Fatalf("expected ErrTokenExpired, got: %v", err)
@@ -482,7 +482,7 @@ func TestIdentityUsecase_ValidateToken_ZeroRemainQuotaRejected(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.ValidateToken(context.Background(), "zero-remain-token", "")
 	if !errors.Is(err, ErrTokenExhausted) {
 		t.Fatalf("expected ErrTokenExhausted for exhausted limited key, got: %v", err)
@@ -507,7 +507,7 @@ func TestIdentityUsecase_ValidateToken_TokenStatusExhausted(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.ValidateToken(context.Background(), "exhausted-status-token", "")
 	if !errors.Is(err, ErrTokenExhausted) {
 		t.Fatalf("expected ErrTokenExhausted, got: %v", err)
@@ -532,7 +532,7 @@ func TestIdentityUsecase_ValidateToken_TokenDisabled(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.ValidateToken(context.Background(), "disabled-token", "")
 	if !errors.Is(err, ErrTokenDisabled) {
 		t.Fatalf("expected ErrTokenDisabled, got: %v", err)
@@ -557,7 +557,7 @@ func TestIdentityUsecase_ValidateToken_UnlimitedQuota(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	token, err := uc.ValidateToken(context.Background(), "unlimited-token", "")
 	if err != nil {
 		t.Fatalf("ValidateToken() unexpected error: %v", err)
@@ -593,7 +593,7 @@ func TestIdentityUsecase_GetAuthSnapshot_Valid(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	snapshot, err := uc.GetAuthSnapshot(context.Background(), "valid-token", "")
 	if err != nil {
 		t.Fatalf("GetAuthSnapshot() error = %v", err)
@@ -644,7 +644,7 @@ func TestIdentityUsecase_GetAuthSnapshot_UserDisabled(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.GetAuthSnapshot(context.Background(), "valid-token", "")
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got: %v", err)
@@ -675,7 +675,7 @@ func TestIdentityUsecase_GetAuthSnapshot_ModelWhitelist(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	snapshot, err := uc.GetAuthSnapshot(context.Background(), "restricted-token", "")
 	if err != nil {
 		t.Fatalf("GetAuthSnapshot() error = %v", err)
@@ -712,7 +712,7 @@ func TestIdentityUsecase_GetAuthSnapshot_EmptyModelWhitelist(t *testing.T) {
 		},
 	}
 
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	snapshot, err := uc.GetAuthSnapshot(context.Background(), "all-models-token", "")
 	if err != nil {
 		t.Fatalf("GetAuthSnapshot() error = %v", err)
@@ -794,7 +794,7 @@ func TestIdentityUsecase_Login_Success(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	user, token, err := uc.Login(context.Background(), "alice", "secret123", "")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -809,7 +809,7 @@ func TestIdentityUsecase_Login_Success(t *testing.T) {
 
 func TestIdentityUsecase_Login_EmptyCredentials(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	_, _, err := uc.Login(context.Background(), "", "secret", "")
 	if !errors.Is(err, ErrInvalidPassword) {
@@ -828,7 +828,7 @@ func TestIdentityUsecase_Login_EmptyCredentials(t *testing.T) {
 // whether the account exists.
 func TestIdentityUsecase_Login_UnknownUserReturnsInvalidPassword(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, _, err := uc.Login(context.Background(), "nobody", "secret", "")
 	if !errors.Is(err, ErrInvalidPassword) {
 		t.Fatalf("expected ErrInvalidPassword for unknown user (L2 timing-oracle mitigation), got: %v", err)
@@ -842,7 +842,7 @@ func TestIdentityUsecase_Login_UserDisabled(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, _, err := uc.Login(context.Background(), "alice", "secret", "")
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got: %v", err)
@@ -856,7 +856,7 @@ func TestIdentityUsecase_Login_IssuesSessionJWTWithoutCreatingAPIToken(t *testin
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, token, err := uc.Login(context.Background(), "alice", "secret123", "")
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
@@ -877,7 +877,7 @@ func TestIdentityUsecase_Login_IssuesSessionJWTWithoutCreatingAPIToken(t *testin
 
 func TestIdentityUsecase_Register_Success(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	user, err := uc.Register(context.Background(), "bob", "password123", "bob@example.com", "vip")
 	if err != nil {
 		t.Fatalf("Register() error = %v", err)
@@ -906,7 +906,7 @@ func TestIdentityUsecase_RegisterWithAffCode_SetsInviterID(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	user, err := uc.RegisterWithAffCode(context.Background(), "bob", "password123", "bob@example.com", "default", "INVITE01")
 	if err != nil {
@@ -922,7 +922,7 @@ func TestIdentityUsecase_RegisterWithAffCode_SetsInviterID(t *testing.T) {
 
 func TestIdentityUsecase_RegisterWithAffCode_InvalidCode(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	_, err := uc.RegisterWithAffCode(context.Background(), "bob", "password123", "bob@example.com", "default", "NONE")
 	if err == nil || err.Error() != "invalid aff code" {
@@ -935,7 +935,7 @@ func TestIdentityUsecase_GetOrCreateAffCode_ReturnsExisting(t *testing.T) {
 		users:  map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled, AffCode: "EXISTING"}},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	code, err := uc.GetOrCreateAffCode(context.Background(), 1)
 	if err != nil {
@@ -951,7 +951,7 @@ func TestIdentityUsecase_GetOrCreateAffCode_GeneratesWhenMissing(t *testing.T) {
 		users:  map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled}},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	code, err := uc.GetOrCreateAffCode(context.Background(), 1)
 	if err != nil {
@@ -974,7 +974,7 @@ func TestIdentityUsecase_RegisterWithAffCode_DoesNotApplyBonusesAtBizLayer(t *te
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	user, err := uc.RegisterWithAffCode(context.Background(), "bob", "password123", "bob@example.com", "default", "INVITE01")
 	if err != nil {
@@ -998,7 +998,7 @@ func TestIdentityUsecase_Register_UserExists(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
 	if !errors.Is(err, ErrUserExists) {
 		t.Fatalf("expected ErrUserExists, got: %v", err)
@@ -1014,7 +1014,7 @@ func TestIdentityUsecase_CreateAccessToken_Success(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	expireAt := time.Now().Add(time.Hour).Unix()
 	token, err := uc.CreateAccessToken(context.Background(), 1, "work-token", []string{"gpt-4o"}, expireAt)
 	if err != nil {
@@ -1042,7 +1042,7 @@ func TestIdentityUsecase_CreateAccessToken_RespectsFiniteQuota(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	// H2: a caller requesting a finite quota must have it honored rather
 	// than silently overwritten to unlimited.
 	token, err := uc.CreateAccessToken(context.Background(), 1, "limited-token", nil, 0,
@@ -1060,7 +1060,7 @@ func TestIdentityUsecase_CreateAccessToken_RespectsFiniteQuota(t *testing.T) {
 
 func TestIdentityUsecase_CreateAccessToken_UserNotFound(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.CreateAccessToken(context.Background(), 999, "token", nil, 0)
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got: %v", err)
@@ -1074,7 +1074,7 @@ func TestIdentityUsecase_CreateAccessToken_UserDisabled(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.CreateAccessToken(context.Background(), 1, "token", nil, 0)
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got: %v", err)
@@ -1088,7 +1088,7 @@ func TestIdentityUsecase_CreateAccessToken_RequiresName(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.CreateAccessToken(context.Background(), 1, "  ", nil, 0)
 	if !errors.Is(err, ErrTokenNameRequired) {
 		t.Fatalf("expected ErrTokenNameRequired, got: %v", err)
@@ -1109,7 +1109,7 @@ func TestIdentityUsecase_ListAccessTokens_HidesSessionTokens(t *testing.T) {
 			"blank-token":   {ID: 3, UserID: 1, Key: "blank-token", Name: "   ", Status: TokenStatusEnabled},
 		},
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	tokens, total, err := uc.ListAccessTokens(context.Background(), 1, 1, 20, "")
 	if err != nil {
 		t.Fatalf("ListAccessTokens() error = %v", err)
@@ -1132,7 +1132,7 @@ func TestIdentityUsecase_ListUsers_Success(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	users, total, err := uc.ListUsers(context.Background(), 1, 10, "", "", 0)
 	if err != nil {
 		t.Fatalf("ListUsers() error = %v", err)
@@ -1147,7 +1147,7 @@ func TestIdentityUsecase_ListUsers_Success(t *testing.T) {
 
 func TestIdentityUsecase_ListUsers_Empty(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	users, total, err := uc.ListUsers(context.Background(), 1, 10, "", "", 0)
 	if err != nil {
 		t.Fatalf("ListUsers() error = %v", err)
@@ -1164,7 +1164,7 @@ func TestIdentityUsecase_ListUsers_Empty(t *testing.T) {
 
 func TestIdentityUsecase_CreateUser_Success(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	user, err := uc.CreateUser(context.Background(), "alice", "Alice User", "alice@example.com", "secret", "vip", 1000)
 	if err != nil {
 		t.Fatalf("CreateUser() error = %v", err)
@@ -1190,7 +1190,7 @@ func TestIdentityUsecase_CreateUser_AlreadyExists(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.CreateUser(context.Background(), "alice", "", "", "", "", 0)
 	if !errors.Is(err, ErrUserExists) {
 		t.Fatalf("expected ErrUserExists, got: %v", err)
@@ -1206,7 +1206,7 @@ func TestIdentityUsecase_UpdateUser_Success(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	err := uc.UpdateUser(context.Background(), 1, "New Name", "alice@example.com", "vip", UserStatusDisabled)
 	if err != nil {
 		t.Fatalf("UpdateUser() error = %v", err)
@@ -1227,7 +1227,7 @@ func TestIdentityUsecase_UpdateUser_Success(t *testing.T) {
 
 func TestIdentityUsecase_UpdateUser_NotFound(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	err := uc.UpdateUser(context.Background(), 999, "name", "", "", 0)
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got: %v", err)
@@ -1241,7 +1241,7 @@ func TestIdentityUsecase_UpdateUser_PartialUpdate(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	// Only update display name, leave others unchanged
 	err := uc.UpdateUser(context.Background(), 1, "New Name", "", "", UserStatusEnabled)
 	if err != nil {
@@ -1262,7 +1262,7 @@ func TestIdentityUsecase_UpdateSelf_UpdatesProfile(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	// Seed a real password hash so the current-password confirmation works.
 	hash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	if err != nil {
@@ -1298,7 +1298,7 @@ func TestIdentityUsecase_UpdateSelf_RejectsDuplicateUsername(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	// Duplicate-username check runs after the current-password gate, so a
 	// missing current password is reported first.
@@ -1310,7 +1310,7 @@ func TestIdentityUsecase_UpdateSelf_RejectsDuplicateUsername(t *testing.T) {
 
 func TestIdentityUsecase_UpdateSelf_UpdatesPassword(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	user, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -1337,7 +1337,7 @@ func TestIdentityUsecase_UpdateSelfEmail_UpdatesEmail(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if err := uc.UpdateSelfEmail(context.Background(), 1, "new@example.com"); err != nil {
 		t.Fatalf("UpdateSelfEmail() error = %v", err)
@@ -1354,7 +1354,7 @@ func TestIdentityUsecase_UpdateSelfEmail_PreservesOtherFields(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if err := uc.UpdateSelfEmail(context.Background(), 1, "new@example.com"); err != nil {
 		t.Fatalf("UpdateSelfEmail() error = %v", err)
@@ -1373,7 +1373,7 @@ func TestIdentityUsecase_DeleteUser_Success(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	err := uc.DeleteUser(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("DeleteUser() error = %v", err)
@@ -1385,7 +1385,7 @@ func TestIdentityUsecase_DeleteUser_Success(t *testing.T) {
 
 func TestIdentityUsecase_DeleteUser_NotFound(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	// DeleteUser mock doesn't return error for not found
 	err := uc.DeleteUser(context.Background(), 999)
 	if err != nil {
@@ -1402,7 +1402,7 @@ func TestIdentityUsecase_GetUser_Success(t *testing.T) {
 		},
 		tokens: make(map[string]*Token),
 	}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	user, err := uc.GetUser(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("GetUser() error = %v", err)
@@ -1414,7 +1414,7 @@ func TestIdentityUsecase_GetUser_Success(t *testing.T) {
 
 func TestIdentityUsecase_GetUser_NotFound(t *testing.T) {
 	repo := &mockIdentityRepo{users: make(map[int64]*User), tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 	_, err := uc.GetUser(context.Background(), 999)
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got: %v", err)
@@ -1425,7 +1425,7 @@ func TestIdentityUsecase_SetRole_PromoteCommonToAdmin(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	got, err := uc.SetRole(context.Background(), nil, 7, RoleAdminUser)
 	if err != nil {
@@ -1446,7 +1446,7 @@ func TestIdentityUsecase_SetRole_DemoteAdminToCommon(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		7: {ID: 7, Username: "alice", Role: RoleAdminUser, Status: UserStatusEnabled},
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	got, err := uc.SetRole(context.Background(), nil, 7, RoleCommonUser)
 	if err != nil {
@@ -1461,7 +1461,7 @@ func TestIdentityUsecase_SetRole_RootCannotBeChanged(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		1: {ID: 1, Username: "admin", Role: RoleRootUser, Status: UserStatusEnabled},
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if _, err := uc.SetRole(context.Background(), nil, 1, RoleCommonUser); !errors.Is(err, ErrCannotChangeRootRole) {
 		t.Fatalf("expected ErrCannotChangeRootRole, got %v", err)
@@ -1475,7 +1475,7 @@ func TestIdentityUsecase_SetRole_RejectsRootValueAndInvalid(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	// Granting root via SetRole is not allowed — root is only set by bootstrap.
 	if _, err := uc.SetRole(context.Background(), nil, 7, RoleRootUser); !errors.Is(err, ErrInvalidRole) {
@@ -1491,7 +1491,7 @@ func TestIdentityUsecase_SetRole_OperatorMustBeAdmin(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if _, err := uc.SetRole(context.Background(), common, 7, RoleAdminUser); !errors.Is(err, ErrOperatorNotAdmin) {
 		t.Fatalf("expected ErrOperatorNotAdmin, got %v", err)
@@ -1503,7 +1503,7 @@ func TestIdentityUsecase_SetRole_OperatorCannotChangeSelf(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		9: op,
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if _, err := uc.SetRole(context.Background(), op, 9, RoleCommonUser); !errors.Is(err, ErrCannotChangeSelf) {
 		t.Fatalf("expected ErrCannotChangeSelf, got %v", err)
@@ -1517,7 +1517,7 @@ func TestIdentityUsecase_SetRole_OperatorCannotOutrankTarget(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		8: {ID: 8, Username: "peer", Role: RoleAdminUser, Status: UserStatusEnabled},
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if _, err := uc.SetRole(context.Background(), op, 8, RoleCommonUser); !errors.Is(err, ErrCannotOutrankOperator) {
 		t.Fatalf("expected ErrCannotOutrankOperator, got %v", err)
@@ -1531,7 +1531,7 @@ func TestIdentityUsecase_SetRole_OperatorCannotPromoteToOwnRole(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	if _, err := uc.SetRole(context.Background(), op, 7, RoleAdminUser); !errors.Is(err, ErrCannotOutrankOperator) {
 		t.Fatalf("expected ErrCannotOutrankOperator, got %v", err)
@@ -1543,7 +1543,7 @@ func TestIdentityUsecase_SetRole_RootCanPromoteAdmin(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	got, err := uc.SetRole(context.Background(), root, 7, RoleAdminUser)
 	if err != nil {
@@ -1561,7 +1561,7 @@ func TestIdentityUsecase_SetRole_AdminCanDemoteCommonUserNoOp(t *testing.T) {
 	repo := &mockIdentityRepo{users: map[int64]*User{
 		7: {ID: 7, Username: "alice", Role: RoleCommonUser, Status: UserStatusEnabled},
 	}, tokens: make(map[string]*Token)}
-	uc := NewIdentityUsecase(repo)
+	uc := NewIdentityUsecase(repo, nil)
 
 	got, err := uc.SetRole(context.Background(), op, 7, RoleCommonUser)
 	if err != nil {

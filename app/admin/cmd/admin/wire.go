@@ -19,6 +19,7 @@ import (
 	"micro-one-api/app/admin/internal/service"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
+	"micro-one-api/platform/audit"
 	appregistry "micro-one-api/platform/registry"
 )
 
@@ -30,9 +31,16 @@ var ProviderSet = wire.NewSet(
 	provideIdentityClient,
 	provideChannelClient,
 	provideBillingClient,
+	newAuditAuditor,
 	service.NewAdminService,
 	provideRegistrar,
 )
+
+// newAuditAuditor provides the audit sink for admin-api sensitive operations
+// (refunds, balance changes). Unconditionally enabled.
+func newAuditAuditor() *audit.Auditor {
+	return audit.NewAuditor(true)
+}
 
 func provideIdentityClient(c *clientsResult) identityv1.IdentityServiceClient {
 	return c.identityClient
@@ -71,6 +79,7 @@ func newApp(
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService,
+	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	// Wire optional subscription usecases onto the admin service.
@@ -91,9 +100,9 @@ func newApp(
 	var httpSrv *khttp.Server
 	if cfg.Bootstrap != nil && cfg.Bootstrap.Server != nil && cfg.Bootstrap.Server.Http != nil &&
 		cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Identity != nil {
-		httpSrv = server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc, cfg.Bootstrap.Clients.Identity.HttpEndpoint, cfg.Bootstrap.Server.Http.WebRoot)
+		httpSrv = server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc, auditor, cfg.Bootstrap.Clients.Identity.HttpEndpoint, cfg.Bootstrap.Server.Http.WebRoot)
 	} else {
-		httpSrv = server.NewHTTPServer("", svc, "", "")
+		httpSrv = server.NewHTTPServer("", svc, auditor, "", "")
 	}
 
 	opts := []kratos.Option{

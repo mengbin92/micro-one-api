@@ -105,7 +105,7 @@ func setupInMemoryIdentityService(t *testing.T, addr string) (func(), identityv1
 		},
 	}
 
-	uc := identitytestutil.NewIdentityUsecase(repo)
+	uc := identitytestutil.NewIdentityUsecase(repo, nil)
 	svc := identitytestutil.NewIdentityService(uc)
 
 	server := grpc.NewServer()

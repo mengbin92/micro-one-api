@@ -14,7 +14,7 @@ import (
 
 func TestIdentityServiceValidateTokenAcceptsSessionJWT(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	user, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +36,7 @@ func TestIdentityServiceValidateTokenAcceptsSessionJWT(t *testing.T) {
 
 func TestIdentityServiceValidateTokenRejectsAPIKey(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	user, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestIdentityServiceValidateTokenRejectsAPIKey(t *testing.T) {
 
 func TestIdentityServiceSetUserRoleBindsOperatorToSession(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	uc := biz.NewIdentityUsecase(repo)
+	uc := biz.NewIdentityUsecase(repo, nil)
 	admin, err := uc.Register(context.Background(), "admin", "password123", "admin@example.com", "default")
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestIdentityServiceSetUserRoleBindsOperatorToSession(t *testing.T) {
 
 func TestIdentityServiceSetUserRoleRequiresOperatorCredential(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
-	svc := NewIdentityService(biz.NewIdentityUsecase(repo))
+	svc := NewIdentityService(biz.NewIdentityUsecase(repo, nil))
 	ctx := ServiceAuthenticatedContext(context.Background())
 	_, err := svc.SetUserRole(ctx, &identityv1.SetUserRoleRequest{UserId: 1, Role: biz.RoleAdminUser})
 	if status.Code(err) != codes.Unauthenticated {

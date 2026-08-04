@@ -13,18 +13,26 @@ import (
 	"micro-one-api/app/identity/internal/server"
 	"micro-one-api/app/identity/internal/service"
 
+	"micro-one-api/platform/audit"
 	appregistry "micro-one-api/platform/registry"
 	"micro-one-api/platform/security"
 )
 
 var ProviderSet = wire.NewSet(
 	newRepo,
+	newAuditAuditor,
 	biz.NewIdentityUsecase,
 	service.NewIdentityService,
 	server.NewGRPCServer,
 	provideRegistrar,
 	wire.Bind(new(biz.IdentityRepo), new(*data.Repository)),
 )
+
+// newAuditAuditor provides the audit sink for identity-service login/logout
+// events. Unconditionally enabled; events go to the structured application log.
+func newAuditAuditor() *audit.Auditor {
+	return audit.NewAuditor(true)
+}
 
 func newRepo(cfg *Config) (*data.Repository, error) {
 	return data.NewRepositoryFromEnv(cfg.Bootstrap.Data.Database.Driver, cfg.Bootstrap.Data.Database.Source, cfg.Bootstrap.Data.Database.Schema)

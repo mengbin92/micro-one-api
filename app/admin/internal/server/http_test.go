@@ -561,22 +561,22 @@ func (s *adminHTTPSystemOptionsStore) Set(ctx context.Context, key, value string
 
 func newAdminHTTPTestServer(identity identityv1.IdentityServiceClient, channel channelv1.ChannelServiceClient, billing billingv1.BillingServiceClient) http.Handler {
 	adminSvc := service.NewAdminService(billing, identity, channel, nil)
-	return NewHTTPServer(":0", adminSvc)
+	return NewHTTPServer(":0", adminSvc, nil)
 }
 
 func newAdminHTTPTestServerWithOptions(identity identityv1.IdentityServiceClient, channel channelv1.ChannelServiceClient, billing billingv1.BillingServiceClient, store *adminHTTPSystemOptionsStore) http.Handler {
 	adminSvc := service.NewAdminService(billing, identity, channel, adminbiz.NewSystemOptionsUsecase(store))
-	return NewHTTPServer(":0", adminSvc)
+	return NewHTTPServer(":0", adminSvc, nil)
 }
 
 func newAdminHTTPTestServerWithIdentityEndpoint(identityEndpoint string) http.Handler {
 	adminSvc := service.NewAdminService(nil, nil, nil, nil)
-	return NewHTTPServer(":0", adminSvc, identityEndpoint)
+	return NewHTTPServer(":0", adminSvc, nil, identityEndpoint)
 }
 
 func newAdminHTTPOptionTestServer(store *adminHTTPSystemOptionsStore) http.Handler {
 	adminSvc := service.NewAdminService(nil, nil, nil, adminbiz.NewSystemOptionsUsecase(store))
-	return NewHTTPServer(":0", adminSvc)
+	return NewHTTPServer(":0", adminSvc, nil)
 }
 
 func newAdminHTTPSubscriptionTestServer() http.Handler {
@@ -587,7 +587,7 @@ func newAdminHTTPSubscriptionTestServer() http.Handler {
 		subscriptionbiz.NewGroupUsecase(repo),
 		subscriptionbiz.NewPlanUsecase(repo, repo),
 	)
-	return NewHTTPServer(":0", adminSvc)
+	return NewHTTPServer(":0", adminSvc, nil)
 }
 
 func newAdminHTTPSubscriptionPaymentTestServer(identity identityv1.IdentityServiceClient, billing billingv1.BillingServiceClient) http.Handler {
@@ -598,7 +598,7 @@ func newAdminHTTPSubscriptionPaymentTestServer(identity identityv1.IdentityServi
 		subscriptionbiz.NewGroupUsecase(repo),
 		subscriptionbiz.NewPlanUsecase(repo, repo),
 	)
-	return NewHTTPServer(":0", adminSvc)
+	return NewHTTPServer(":0", adminSvc, nil)
 }
 
 func TestAdminHTTPSubscriptionManagement(t *testing.T) {
@@ -756,7 +756,7 @@ func TestAdminHTTPProxiesAlipayNotifyToBillingHTTP(t *testing.T) {
 	defer billingHTTP.Close()
 	t.Setenv("BILLING_HTTP_ENDPOINT", billingHTTP.URL)
 
-	srv := NewHTTPServer(":0", nil)
+	srv := NewHTTPServer(":0", nil, nil)
 	paths := []string{
 		"/api/v1/user/payments/alipay/notify?x=1",
 		"/api/user/payments/alipay/notify?x=1",
@@ -782,7 +782,7 @@ func TestAdminHTTPProxiesAlipayNotifyToBillingHTTP(t *testing.T) {
 }
 
 func TestAdminHTTPStatusIsUnauthenticated(t *testing.T) {
-	srv := NewHTTPServer(":0", nil)
+	srv := NewHTTPServer(":0", nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	rec := httptest.NewRecorder()
 
@@ -958,7 +958,7 @@ func adminWebRootFixture(t *testing.T) string {
 }
 
 func TestAdminHTTPPageIsServed(t *testing.T) {
-	srv := NewHTTPServer(":0", nil, "", adminWebRootFixture(t))
+	srv := NewHTTPServer(":0", nil, nil, "", adminWebRootFixture(t))
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	rec := httptest.NewRecorder()
 
@@ -980,7 +980,7 @@ func TestAdminHTTPPageIsServed(t *testing.T) {
 }
 
 func TestAdminHTTPPageSPARouteFallback(t *testing.T) {
-	srv := NewHTTPServer(":0", nil, "", adminWebRootFixture(t))
+	srv := NewHTTPServer(":0", nil, nil, "", adminWebRootFixture(t))
 	for _, path := range []string{"/", "/login", "/register", "/dashboard", "/tokens", "/pricing", "/redeem", "/admin/channel-health", "/admin/cost-analysis", "/admin/reconciliation", "/admin/options", "/admin/subscription-plans"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
@@ -1007,7 +1007,7 @@ func TestAdminHTTPNotificationProxyRewritesListPath(t *testing.T) {
 	defer upstream.Close()
 	t.Setenv("NOTIFY_HTTP_ENDPOINT", upstream.URL)
 
-	srv := NewHTTPServer(":0", nil)
+	srv := NewHTTPServer(":0", nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/notifications?page=1&page_size=1&status=pending", nil)
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rec := httptest.NewRecorder()
@@ -1039,7 +1039,7 @@ func TestAdminHTTPProxiesSubscriptionOAuthToChannelService(t *testing.T) {
 	defer upstream.Close()
 	t.Setenv("CHANNEL_HTTP_ENDPOINT", upstream.URL)
 
-	srv := NewHTTPServer(":0", nil)
+	srv := NewHTTPServer(":0", nil, nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/subscription/oauth/claude/auth-url", strings.NewReader(`{}`))
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rec := httptest.NewRecorder()
@@ -1061,7 +1061,7 @@ func TestAdminHTTPSubscriptionOAuthRequiresAdminAuth(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	t.Setenv("CHANNEL_HTTP_ENDPOINT", "http://channel-service:8002")
 
-	srv := NewHTTPServer(":0", nil)
+	srv := NewHTTPServer(":0", nil, nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/subscription/oauth/claude/auth-url", strings.NewReader(`{}`))
 	rec := httptest.NewRecorder()
 
@@ -1100,7 +1100,7 @@ func TestAdminHTTPPageUsesExternalWebRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv := NewHTTPServer(":0", nil, "", webRoot)
+	srv := NewHTTPServer(":0", nil, nil, "", webRoot)
 
 	for _, path := range []string{"/admin/reconciliation", "/api-guide"} {
 		if body := adminHTTPGetBody(t, srv, path); !strings.Contains(body, `external`) {
@@ -1127,7 +1127,7 @@ func TestAdminHTTPPageDisablesShellCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv := NewHTTPServer(":0", nil, "", webRoot)
+	srv := NewHTTPServer(":0", nil, nil, "", webRoot)
 
 	for _, path := range []string{"/", "/subscriptions"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -1155,7 +1155,7 @@ func TestAdminHTTPPageReturnsUnavailableWhenNoWebRoot(t *testing.T) {
 	// must respond 500 "frontend not available" rather than serving a
 	// stale or empty shell.
 	t.Setenv("ADMIN_WEB_ROOT", "")
-	srv := NewHTTPServer(":0", nil, "")
+	srv := NewHTTPServer(":0", nil, nil)
 	for _, path := range []string{"/", "/admin", "/login", "/assets/app.js"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()

@@ -14,6 +14,7 @@ import (
 	"micro-one-api/app/identity/internal/data"
 	"micro-one-api/app/identity/internal/server"
 	"micro-one-api/app/identity/internal/service"
+	"micro-one-api/platform/audit"
 	registry2 "micro-one-api/platform/registry"
 	"micro-one-api/platform/security"
 )
@@ -29,7 +30,8 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	identityUsecase := biz.NewIdentityUsecase(repository)
+	auditor := newAuditAuditor()
+	identityUsecase := biz.NewIdentityUsecase(repository, auditor)
 	identityService := service.NewIdentityService(identityUsecase)
 	providerRegistry := setupOAuth(config)
 	mainRegistrarResult := provideRegistrar(config)
@@ -42,8 +44,15 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 // wire.go:
 
 var ProviderSet = wire.NewSet(
-	newRepo, biz.NewIdentityUsecase, service.NewIdentityService, server.NewGRPCServer, provideRegistrar, wire.Bind(new(biz.IdentityRepo), new(*data.Repository)),
+	newRepo,
+	newAuditAuditor, biz.NewIdentityUsecase, service.NewIdentityService, server.NewGRPCServer, provideRegistrar, wire.Bind(new(biz.IdentityRepo), new(*data.Repository)),
 )
+
+// newAuditAuditor provides the audit sink for identity-service login/logout
+// events. Unconditionally enabled; events go to the structured application log.
+func newAuditAuditor() *audit.Auditor {
+	return audit.NewAuditor(true)
+}
 
 func newRepo(cfg *Config) (*data.Repository, error) {
 	return data.NewRepositoryFromEnv(cfg.Bootstrap.Data.Database.Driver, cfg.Bootstrap.Data.Database.Source, cfg.Bootstrap.Data.Database.Schema)

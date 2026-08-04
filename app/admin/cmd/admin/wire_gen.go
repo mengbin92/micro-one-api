@@ -8,8 +8,6 @@ package main
 
 import (
 	"context"
-	"time"
-
 	"github.com/go-kratos/kratos/v3"
 	"github.com/go-kratos/kratos/v3/registry"
 	"github.com/go-kratos/kratos/v3/transport/http"
@@ -20,7 +18,9 @@ import (
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
+	"micro-one-api/platform/audit"
 	registry2 "micro-one-api/platform/registry"
+	"time"
 )
 
 // Injectors from wire.go:
@@ -41,8 +41,9 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	mainSystemOptionsResult := newSystemOptionsRepo(config)
 	systemOptionsUsecase := newSystemOptionsUsecase(mainSystemOptionsResult)
 	adminService := service.NewAdminService(billingServiceClient, identityServiceClient, channelServiceClient, systemOptionsUsecase)
+	auditor := newAuditAuditor()
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, mainClientsResult, mainSubscriptionResult, adminService, mainRegistrarResult)
+	app, cleanup := newApp(config, mainClientsResult, mainSubscriptionResult, adminService, auditor, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -57,8 +58,15 @@ var ProviderSet = wire.NewSet(
 	newSubscriptionUsecases,
 	provideIdentityClient,
 	provideChannelClient,
-	provideBillingClient, service.NewAdminService, provideRegistrar,
+	provideBillingClient,
+	newAuditAuditor, service.NewAdminService, provideRegistrar,
 )
+
+// newAuditAuditor provides the audit sink for admin-api sensitive operations
+// (refunds, balance changes). Unconditionally enabled.
+func newAuditAuditor() *audit.Auditor {
+	return audit.NewAuditor(true)
+}
 
 func provideIdentityClient(c *clientsResult) identityv1.IdentityServiceClient {
 	return c.identityClient
@@ -92,6 +100,7 @@ func newApp(
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService,
+	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
 
@@ -100,8 +109,6 @@ func newApp(
 		svc.SetSubscriptionUsecases(sub.SubUc, sub.GroupUc, planUc)
 	}
 
-	// v0.11.0 review M5: background worker keeps the unpriced-routed-model
-	// gauge up to date without requiring a human to open the page.
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
 	worker := service.NewUnpricedRoutedMetricWorker(svc, 60*time.Second)
 	go worker.Run(workerCtx)
@@ -112,9 +119,9 @@ func newApp(
 	var httpSrv *http.Server
 	if cfg.Bootstrap != nil && cfg.Bootstrap.Server != nil && cfg.Bootstrap.Server.Http != nil &&
 		cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Identity != nil {
-		httpSrv = server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc, cfg.Bootstrap.Clients.Identity.HttpEndpoint, cfg.Bootstrap.Server.Http.WebRoot)
+		httpSrv = server.NewHTTPServer(cfg.Bootstrap.Server.Http.Addr, svc, auditor, cfg.Bootstrap.Clients.Identity.HttpEndpoint, cfg.Bootstrap.Server.Http.WebRoot)
 	} else {
-		httpSrv = server.NewHTTPServer("", svc, "", "")
+		httpSrv = server.NewHTTPServer("", svc, auditor, "", "")
 	}
 
 	opts := []kratos.Option{kratos.Name("admin-api"), kratos.Server(grpcSrv, httpSrv)}

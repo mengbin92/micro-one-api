@@ -12,6 +12,8 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
+
+	"micro-one-api/platform/audit"
 )
 
 func isSubscriptionChannel(t int32) bool {
@@ -43,10 +45,31 @@ func (s *HTTPServer) getAuthSnapshot(ctx context.Context, token string) (*identi
 	if err != nil {
 		return nil, err
 	}
+	// Stamp the audit actor so the audit middleware records the real caller
+	// instead of an empty actor. WithActor writes into the mutable
+	// *actorHolder injected by the audit middleware (when present), or falls
+	// back to an immutable context value — either way the returned context is
+	// used so the fallback value is never dropped. The session id is a short
+	// display prefix of the token, NOT the credential itself: a full session
+	// token in audit logs would leak a usable credential to anyone who can
+	// read the logs (audit records are long-lived).
+	ctx = audit.WithActor(ctx, audit.ActorInfo{UserID: reply.GetUserId(), SessionID: auditSessionIDPrefix(token)})
 	if s.tokenQuotaBlocker != nil && s.tokenQuotaBlocker.IsTokenQuotaBlocked(reply.GetTokenId()) {
 		return nil, fmt.Errorf("token quota temporarily unavailable")
 	}
 	return reply, nil
+}
+
+// auditSessionIDPrefix returns a short display prefix of a session token for
+// audit session correlation. The full token is a credential and must never be
+// written to audit logs; the prefix is enough to correlate repeated calls from
+// the same session while remaining unusable for authentication.
+func auditSessionIDPrefix(token string) string {
+	const maxLen = 8
+	if len(token) <= maxLen {
+		return token
+	}
+	return token[:maxLen]
 }
 
 func (s *HTTPServer) listAvailableModels(ctx context.Context, group string) (*channelv1.ListAvailableModelsReply, error) {
