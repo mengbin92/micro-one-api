@@ -7,6 +7,46 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-04
+
+MINOR 功能版本（6 个提交）：闭合订阅账号 weight 反馈回路（channel selector 的
+per-process inflight 计数首次接入 relay 实际占用，`loadFactor` 取
+`max(local, crossReplica)`），打通审计平台 actor / request-id 提取（relay-gateway
+与 admin 退款 / identity 登录的敏感操作审计记录从此可归因，mutable `*actorHolder`
+解决 Go 不可变 request 导致 actor 为空的问题），修复前端 4 个 npm 依赖漏洞
+（hono / undici / fast-uri / brace-expansion）。无数据库迁移、无 API 破坏性变更。
+详见 [release-v0.15.0.md](docs/releases/release-v0.15.0.md)。
+
+### Added
+
+- **feat(relay,channel): close the subscription-account weight loop (slot feedback)**：channel proto 新增 `RecordSubscriptionAccountSlot`；relay 通过可选 `SubscriptionAccountSlotReporter` 接口在 slot 授予/释放时 fire-and-forget 上报，选择器 `loadFactor` 取 `max(local, crossReplica)`。影响 `relay-gateway`、`channel-service`。
+- **feat(audit): resolve actor + request-id extraction, wire admin & login audit**：`extractRequestID` 改读平台中间件；新增 `WithActor`/`ActorFrom` 标准上下文键；admin guard 两条鉴权路径盖戳 actor，退款 handler 显式审计；identity Login 成功/失败分支记录 `LogUserLogin` 并传真实 client IP。
+- **feat(audit): mutable actor holder, injected auditors, relay actor, session prefix**：审计中间件注入可变 `*actorHolder` 解决 Go 不可变 request 问题；relay `getAuthSnapshot` 盖戳真实用户；identity auditor 注入 usecase；SessionID 取 8 字符前缀避免泄露会话 token。
+
+### Fixed
+
+- **fix(relay): make slot feedback truly fire-and-forget + idempotent pair**：`reportSubscriptionAccountSlot` 改后台 goroutine + 200ms 超时 + `context.Background()`；`releaseSlotWithReport` 用 `sync.Once` 守卫释放+上报幂等对。影响 `relay-gateway`。
+- **fix(web): patch npm vulns (hono, undici, fast-uri, brace-expansion) + remove deprecated tsconfig baseUrl**：hono CVE-2026-69207 ReDoS、undici 6 条注入/desync、fast-uri CVE-2026-18446 host 混淆、brace-expansion CVE-2026-69152 DoS；移除弃用的 TS `baseUrl`。影响 `admin-api` 前端产物。
+
+### Changed
+
+- **test(relay): de-flake slot-feedback assertions for slow CI runners**：slot 上报断言改为集合校验（acquire + release 任意顺序）+ 5s poll 超时。
+
+## [0.14.0] - 2026-08-04
+
+MINOR 版本（4 个提交）：为订阅续费链路补齐 `renewal_strategy` 可观测字段（迁移
+`077`，additive）、修复 admin 延长订阅的并发写 clobber 与过期激活缺陷、为 Redis
+故障态并发语义补充多副本断言并文档化 fail-open 权衡，完成 code-review L 系列核验。
+1 个 additive 数据库迁移。详见 [release-v0.14.0.md](docs/releases/release-v0.14.0.md)。
+
+## [0.13.3] - 2026-08-03
+
+v0.13.2 的 PATCH 修复版本（7 个提交）：订阅购买完成幂等性（claim-before-fulfil，
+M10 资金相关）、relay 上游限流（429/423/529）不再误触发断路器、admin 补偿失败错误
+透出与卡单检测、CI 矩阵/缓存/多架构推送加固。无 API 破坏性变更、无数据库迁移。
+详见 [release-v0.13.3.md](docs/releases/release-v0.13.3.md)。
+
+
 ## [0.13.2] - 2026-08-02
 
 v0.13.1 的 PATCH 修复：billing-service 异步结算分账恢复路径的空指针 panic 导致

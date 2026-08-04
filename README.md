@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.13.1 发布公告](./docs/releases/release-v0.13.1.md)（v0.13.0 生产修复：identity→billing SERVICE_TOKEN） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.13.1)
+> 📣 **最新发布**：[v0.15.0 发布公告](./docs/releases/release-v0.15.0.md)（订阅账号负载反馈闭环 + 审计归因链路 + 前端安全补丁） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.15.0)
 
 ## 功能概览
 
@@ -180,6 +180,18 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.15.0
+
+v0.15.0 是 v0.14.0 之后的 **MINOR 功能版本**：闭合订阅账号 weight 反馈回路（channel selector 的 per-process inflight 计数首次接入 relay 实际占用，`loadFactor` 取 `max(local, crossReplica)`，选择不再堆叠在忙账号）；打通审计平台 actor / request-id 提取（relay-gateway 与 admin 退款 / identity 登录的敏感操作审计记录从此可归因，mutable `*actorHolder` 解决 Go 不可变 request 导致 actor 为空的问题）；修复前端 4 个 npm 依赖漏洞（hono ReDoS、undici 注入/desync、fast-uri host 混淆、brace-expansion DoS）并移除弃用的 TS `baseUrl`。**无 API 破坏性变更、无数据库迁移**；新增 1 个 additive proto 字段与内部 gRPC 方法 `RecordSubscriptionAccountSlot`。受影响服务为 relay-gateway、channel-service、admin-api、identity-service。详见 [docs/releases/release-v0.15.0.md](./docs/releases/release-v0.15.0.md)。
+
+### 升级到 v0.14.0
+
+v0.14.0 是 v0.13.3 之后的 **MINOR 版本**：为订阅续费链路补齐 `renewal_strategy` 可观测字段（迁移 `077`，additive，MySQL/sqlite/postgres 三驱动），修复 admin 延长订阅的并发写 clobber（窄字段写 `expires_at`+`renewal_strategy`）与过期订阅延长后未恢复 active 的缺陷，为 Redis 故障态并发语义补充多副本 fail-open 断言（M9/H11/M8），并完成 code-review L 系列核验（审查清单基本收官）。**包含数据库迁移**（`077`，additive 加列默认空串，滚动升级安全）；无 API 破坏性变更。受影响服务为 admin-api、billing-service。详见 [docs/releases/release-v0.14.0.md](./docs/releases/release-v0.14.0.md)。
+
+### 升级到 v0.13.3
+
+v0.13.3 是 v0.13.2 的 **PATCH 修复版本**：修复订阅购买完成的幂等性漏洞（claim-before-fulfil，admin 完成流程先 claim 再 fulfil，M10 资金相关）、relay-gateway 将上游限流（429/423/529）误计为故障导致断路器误开 503 的问题、admin 补偿失败时的错误信息透出与卡单检测，以及 CI 矩阵输出格式 / 构建缓存 / 多架构 Docker Hub 推送的全面加固。**无 API 破坏性变更、无数据库迁移**。受影响服务为 admin-api、billing-service、relay-gateway。详见 [docs/releases/release-v0.13.3.md](./docs/releases/release-v0.13.3.md)。
 
 ### 升级到 v0.13.1
 
