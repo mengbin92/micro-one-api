@@ -228,3 +228,48 @@ ssh $DEPLOY_REMOTE_SERVER "cd $DEPLOY_REMOTE_DIR/docker-compose && docker compos
   `docs:`, `test:`. Regenerated files belong in the same commit as
   their source.
 - Never commit real credentials in `configs/config.yaml`.
+
+## Releasing
+
+Every release must go through the full release-artifact workflow before
+tagging. Skipping any step leaves README / CHANGELOG / release notes out
+of sync and breaks the `release.yml` CI pipeline (it reads the tag).
+
+### Pre-release artifacts (do these first)
+
+1. **Release note** — Create `docs/releases/release-v<MAJOR>.<MINOR>.<PATCH>.md`
+   following the existing format (see `release-v0.13.3.md` as the canonical
+   template). It must include: version summary header with the
+   `<日期> · 上一版：[vX.Y.Z] · [GitHub Release]` line, a version blurb
+   (PATCH / MINOR / 重大功能), numbered fix/feature sections (根因 → 修复 →
+   影响服务), 兼容性说明, 升级步骤, 验证, and 完整变更日志 (Conventional
+   Commit subjects).
+2. **CHANGELOG.md** — Add a new `## [<VERSION>] - <YYYY-MM-DD>` section
+   directly under `## [Unreleased]`. Follow the Keep a Changelog style
+   already used (`### Fixed` / `### Added` / `### Changed`), with a one-
+   paragraph blurb linking to the new release note.
+3. **README.md** — Update two places:
+   - the top `> 📣 **最新发布**：` line (link to the new release note and
+     GitHub Release tag, with a short parenthetical summary);
+   - the release-notes list section (insert the new version above the
+     previous one with the same one-line summary format).
+
+### Git workflow
+
+4. **Commit** — `git add` the three files above (plus any regenerated
+   files in the same release) and commit with a `docs(release): vX.Y.Z`
+   message on the working branch.
+5. **Merge to main** — Merge the branch into `main` (fast-forward or
+   squash per the repo's normal flow).
+6. **Tag** — `git tag vX.Y.Z` on the `main` commit, then
+   `git push origin main && git push origin vX.Y.Z` so `release.yml`
+   picks up the tag, builds the multi-arch Docker images, and creates
+   the GitHub Release.
+
+### Checklist summary
+
+- [ ] `docs/releases/release-vX.Y.Z.md` written (canonical format)
+- [ ] `CHANGELOG.md` new section under `[Unreleased]`
+- [ ] `README.md` 最新发布 line + release-notes list updated
+- [ ] commit `docs(release): vX.Y.Z` → merge to `main`
+- [ ] tag `vX.Y.Z` → push `main` + tag
