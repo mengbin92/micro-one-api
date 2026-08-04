@@ -46,11 +46,11 @@
 
 | 编号 | 当前状态 | 说明 |
 |---|---|---|
-| L1 时区静默回退 | ⚠️ 未核验 | 5cc07fb 声称修复（channel.go +8），未逐一验证日志落点 |
-| L2 告警去重 | ⚠️ 未核验 | 5cc07fb 改动 quota_alert.go，未验证 kind 跳变场景 |
-| L3 clearMarkers 非原子 | ⚠️ 未核验 | 5cc07fb 改动 account_ops.go，未验证事务合并 |
-| L4 快照缺失兜底 | ⚠️ 未核验 | 生产已注入 snapshotter，兜底路径未验证 |
-| L5 lease 槽位延迟 | ⚠️ 未核验 | 设计权衡，未验证 |
+| L1 时区静默回退 | ✅ 已修复 | `EffectiveQuotaTimezone` 无效时区写 stderr 定位日志（`channel.go`，Review L1 fix） |
+| L2 告警去重 | ✅ 已修复 | `quota_alert.go` 按 `(kind, window)` 复合去重：同 kind 窗口内抑制，kind 跳变（exhausted↔near_exhausted）重新告警 |
+| L3 clearMarkers 非原子 | ✅ 已修复 | `clearMarkers` 合并为单次 `ClearRecoveryMarkers`（布尔标志）原子调用，不再三次独立写 |
+| L4 快照缺失兜底 | ✅ 已修复 | `assignPlan` 快照优先 + 解码失败 fail-closed（报错不再回退实时 plan）；仅无快照的 legacy 订单走实时 plan 兼容路径 |
+| L5 lease 槽位延迟 | ✅ 已缓解 | `Inflight` 用 `ZCount(now, +inf)` 排除过期 lease，计数不虚高；崩溃槽位保留至 leaseTTL(2min) 属 lease 设计（acquire Lua 写入路径收割），风险低接受 |
 
 ### 部署注意（未变）
 
@@ -206,7 +206,7 @@
 
 ## 5. 修复优先级建议
 
-> **实施状态**：P0（H3/H5/H6/H7/H8/H9/H10）与 P1（H1/H2）已于 `5cc07fb` 全部实施，P2 中 M1/M3/M4/M5/M7/L1/L3 已实施；**M10 已于 2026-08-03 修复**（billing CAS + admin 完成接口幂等，v0.13.3 已发布）；**M2 已于 2026-08-04 修复**（renewal_strategy 列 + 策略固定）；**M9 已于 2026-08-04 修复**（多副本故障注入断言）；H11/M8 已文档化 + 断言固化（设计权衡接受，仍无副本感知 cap）；**仍待处理**：M6/L 系列未核验项。详见 §0.1。
+> **实施状态**：P0（H3/H5/H6/H7/H8/H9/H10）与 P1（H1/H2）已于 `5cc07fb` 全部实施，P2 中 M1/M3/M4/M5/M7 已实施；**M10 已于 2026-08-03 修复**（billing CAS + admin 完成接口幂等，v0.13.3 已发布）；**M2 已于 2026-08-04 修复**（renewal_strategy 列 + 策略固定）；**M9 已于 2026-08-04 修复**（多副本故障注入断言）；H11/M8 已文档化 + 断言固化（设计权衡接受，仍无副本感知 cap）；**L1-L5 已于 2026-08-04 核验完毕**（L1-L4 已修复、L5 已缓解）；**仅剩 M6**（升级重置 usage 为刻意设计、乐观并发锁未确认）。详见 §0.1。
 
 **P0（资金/权益直接损失，立即修）**
 1. **H7 + H8**：升级补钱包扣差价 + 写 change ledger；`ChargedQuota` 仅在真实扣款后写入，杜绝审计造假。
