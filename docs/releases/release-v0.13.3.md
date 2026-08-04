@@ -2,7 +2,7 @@
 
 > 2026-08-03 · 上一版：[v0.13.2](./release-v0.13.2.md)（2026-08-02）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.13.3)
 
-v0.13.3 是 v0.13.2 的 **PATCH 修复版本**，包含 6 个提交（4 fix + 1 ci + 1 docs），修复订阅购买完成的幂等性漏洞（资金相关 M10）、relay-gateway 将上游限流（429/423/529）误计为故障导致断路器误开的 503 问题、admin 补偿失败时的错误信息透出与卡单检测，以及 CI 矩阵/缓存/多架构推送的全面加固。
+v0.13.3 是 v0.13.2 的 **PATCH 修复版本**，包含 7 个提交（4 fix + 2 ci + 1 docs），修复订阅购买完成的幂等性漏洞（资金相关 M10）、relay-gateway 将上游限流（429/423/529）误计为故障导致断路器误开的 503 问题、admin 补偿失败时的错误信息透出与卡单检测，以及 CI 矩阵/缓存/多架构推送的全面加固。
 
 **无 API 破坏性变更、无新增数据库迁移文件**。受影响的运行时服务为 `admin-api`、`billing-service`、`relay-gateway`。
 
@@ -89,6 +89,11 @@ subscription_id=0），reconciler 也无法检测。
   （不含 `-`），防止 v0.14.0-rc1 覆盖 stable latest。
 - release.yml 和 dockerhub-verify.yml 新增 GitHub Actions 构建缓存
   （`cache-from/cache-to gha, mode=max`），避免重复发布时从零构建。
+- **修复 matrix 输出格式**：`set-matrix` 步骤原先将裸 JSON 数组直接写入
+  `$GITHUB_OUTPUT`，缺少 `matrix=` 前缀，导致 GitHub Actions 拒绝解析
+  （`Invalid format`），所有依赖 `needs.services.outputs.matrix` 的下游
+  job 被**跳过**，v0.13.3 首次发布时 Docker 镜像构建与推送全部失败。
+  修复为 `echo "matrix=$(jq -c . < ...services.json)" >> "$GITHUB_OUTPUT"`。
 
 ## 其他变更
 
@@ -143,3 +148,4 @@ git checkout v0.13.3
 - fix(relay): treat upstream rate limits as busy, not faults
 - fix(admin): surface composite unmark failure + stuck-state tests
 - fix(billing,ci): stuck-issuance reconciliation + CI matrix/cache hardening
+- fix(ci): set matrix output as key=value for $GITHUB_OUTPUT
