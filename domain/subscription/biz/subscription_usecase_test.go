@@ -635,3 +635,110 @@ func TestAssign_RecordsRenewalStrategyNew(t *testing.T) {
 		t.Fatalf("assign renewal_strategy = %q, want %q", sub.RenewalStrategy, RenewalStrategyNew)
 	}
 }
+
+// TestExtend_RecordsRenewalStrategyExtend (M2) closes the gap that the Extend
+// usecase — reachable via admin ExtendSubscription — previously did not write
+// renewal_strategy, leaving an admin-extended row stuck on its initial
+// 'new'/'' value and breaking the "expired but not revoked" observability. It
+// also pins the domain-H1 narrow write: Extend must not clobber usage columns
+// from the read snapshot.
+func TestExtend_RecordsRenewalStrategyExtend(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatal(err)
+	}
+	uc := NewSubscriptionUsecase(repo, repo)
+	uc.now = func() time.Time { return time.Unix(5000, 0) }
+
+	// A fresh grant starts as 'new' with no usage.
+	sub, err := uc.Assign(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: group.ID, StartsAt: 5000, ExpiresAt: 5000 + 30*86400, SubscriptionName: "pro",
+	})
+	if err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	if sub.RenewalStrategy != RenewalStrategyNew {
+		t.Fatalf("initial grant renewal_strategy = %q, want %q", sub.RenewalStrategy, RenewalStrategyNew)
+	}
+
+	// Simulate a concurrent AddUsage increment landing before the Extend.
+	sub.DailyUsageUSD = 1.25
+	sub.WeeklyUsageUSD = 1.25
+	sub.MonthlyUsageUSD = 1.25
+	if err := repo.UpdateSubscriptionFields(context.Background(), sub, []SubscriptionField{SubscriptionFieldUsageAll}); err != nil {
+		t.Fatalf("seed usage: %v", err)
+	}
+
+	// Extend the expiry; it must flip the strategy to 'extend' and persist via
+	// the narrow write (expires_at + renewal_strategy only).
+	if err := uc.Extend(context.Background(), sub.ID, 5000+60*86400); err != nil {
+		t.Fatalf("extend: %v", err)
+	}
+	stored, err := uc.GetActiveSubscriptionForUser(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if stored.RenewalStrategy != RenewalStrategyExtend {
+		t.Fatalf("extend renewal_strategy = %q, want %q", stored.RenewalStrategy, RenewalStrategyExtend)
+	}
+	if stored.ExpiresAt != 5000+60*86400 {
+		t.Fatalf("extend expires_at = %d, want %d", stored.ExpiresAt, 5000+60*86400)
+	}
+	// domain-H1: the narrow write must NOT have clobbered the seeded usage.
+	if stored.DailyUsageUSD != 1.25 || stored.WeeklyUsageUSD != 1.25 || stored.MonthlyUsageUSD != 1.25 {
+		t.Fatalf("extend clobbered usage: daily=%v weekly=%v monthly=%v, want 1.25 each",
+			stored.DailyUsageUSD, stored.WeeklyUsageUSD, stored.MonthlyUsageUSD)
+	}
+}
+
+// TestExtend_ReactivatesExpiredSubscription pins the Extend reactivation
+// semantic: when the hourly checker has already flipped a subscription to
+// expired, an admin extension must flip it back to active (and record
+// 'extend') — otherwise the active read path (status='active' AND
+// expires_at > now) keeps the user without usable entitlement despite the
+// fresh expiry.
+func TestExtend_ReactivatesExpiredSubscription(t *testing.T) {
+	repo := newMockSubscriptionRepo()
+	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatal(err)
+	}
+	uc := NewSubscriptionUsecase(repo, repo)
+	uc.now = func() time.Time { return time.Unix(5000, 0) }
+
+	sub, err := uc.Assign(context.Background(), &AssignSubscriptionRequest{
+		UserID: 1, GroupID: group.ID, StartsAt: 1000, ExpiresAt: 4000, SubscriptionName: "pro",
+	})
+	if err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+
+	// The hourly checker marks the now-expired subscription as expired.
+	sub.Status = SubscriptionStatusExpired
+	if err := repo.UpdateSubscriptionFields(context.Background(), sub, []SubscriptionField{SubscriptionFieldStatus}); err != nil {
+		t.Fatalf("mark expired: %v", err)
+	}
+	if _, err := uc.GetActiveSubscriptionForUser(context.Background(), 1); err == nil {
+		t.Fatal("expired subscription must not be active")
+	}
+
+	// Admin extends it well into the future.
+	if err := uc.Extend(context.Background(), sub.ID, 5000+60*86400); err != nil {
+		t.Fatalf("extend: %v", err)
+	}
+
+	active, err := uc.GetActiveSubscriptionForUser(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("extended subscription must be active again: %v", err)
+	}
+	if active.Status != SubscriptionStatusActive {
+		t.Fatalf("status = %q, want active", active.Status)
+	}
+	if active.RenewalStrategy != RenewalStrategyExtend {
+		t.Fatalf("renewal_strategy = %q, want %q", active.RenewalStrategy, RenewalStrategyExtend)
+	}
+	if active.ExpiresAt != 5000+60*86400 {
+		t.Fatalf("expires_at = %d, want %d", active.ExpiresAt, 5000+60*86400)
+	}
+}
