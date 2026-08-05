@@ -12,6 +12,7 @@ import (
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	relaybiz "micro-one-api/internal/biz"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 
@@ -125,7 +126,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		// and session-window accounting must still wait for the authoritative
 		// worker result, so they are skipped here.
 		if len(details) > 0 {
-			s.recordChannelUsage(ctx, details[0].ChannelID, actualTokens)
+			s.recordChannelUsageFromDetail(ctx, details[0], actualTokens)
 			s.recordModelUsage(ctx, details[0].ModelName, actualTokens, details[0].ElapsedTime, false)
 			// High #5: consume per-key token quota even on the async path.
 			s.consumeTokenQuota(ctx, details[0].UserID, details[0].TokenID, actualTokens)
@@ -134,7 +135,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	}
 	if len(details) > 0 {
 		detail := details[0]
-		s.recordChannelUsage(ctx, detail.ChannelID, actualTokens)
+		s.recordChannelUsageFromDetail(ctx, detail, actualTokens)
 		s.recordModelUsage(ctx, detail.ModelName, actualTokens, detail.ElapsedTime, false)
 		costUSD := quotaToUSD(resp.GetCommittedAmount())
 		s.recordSubscriptionAccountQuotaUsage(ctx, detail.SubscriptionAccountID, reservationID, costUSD)
@@ -253,6 +254,21 @@ func quotaToUSD(quota int64) float64 {
 		perUSD = defaultQuotaPerUSD
 	}
 	return float64(quota) / float64(perUSD)
+}
+
+// recordChannelUsageFromDetail records channel token usage only for
+// traffic that actually executed on a real channel. Subscription-sourced
+// traffic (SourceKind == "subscription") is billed through the dedicated
+// subscription-account / session-window paths; its ChannelID is a synthetic
+// value derived from the subscription account id, so recording it as a
+// channel would always fail with "channel not found" on the channel-service
+// side. Model-usage stats apply to both sources and are handled separately.
+func (s *HTTPServer) recordChannelUsageFromDetail(ctx context.Context, detail usageLogInput, quota int64) {
+	if detail.SourceKind == relaybiz.UpstreamSourceSubscription {
+		metrics.SubscriptionUsageRecordsTotal.WithLabelValues("skipped_channel_stats").Inc()
+		return
+	}
+	s.recordChannelUsage(ctx, detail.ChannelID, quota)
 }
 
 func (s *HTTPServer) recordChannelUsage(ctx context.Context, channelID int64, quota int64) {
