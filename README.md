@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.15.0 发布公告](./docs/releases/release-v0.15.0.md)（订阅账号负载反馈闭环 + 审计归因链路 + 前端安全补丁） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.15.0)
+> 📣 **最新发布**：[v0.15.1 发布公告](./docs/releases/release-v0.15.1.md)（订阅换组用量保留 + 行锁并发保护、订阅流量渠道统计去噪） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.15.1)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.15.1
+
+v0.15.1 是 v0.15.0 之后的 **PATCH 修复版本**（2 个提交）：收尾订阅变更链路的 M6 缺陷——换组用量窗口仅在真正跨组时重置（同组改套餐保留已跑用量，避免丢数据与免费刷新配额），并为 `ChangeSubscription` 增加行锁串行化（`SELECT ... FOR UPDATE`）防止并发变更互相覆盖写回；同时让 relay-gateway 跳过订阅来源流量的 channel 维度用量统计（合成 ChannelID 导致 channel-service 刷 "channel not found" 告警噪声）。**无 API 破坏性变更、无数据库迁移、无新增配置项**。受影响服务为 relay-gateway、admin-api、billing-service。详见 [docs/releases/release-v0.15.1.md](./docs/releases/release-v0.15.1.md)。
 
 ### 升级到 v0.15.0
 

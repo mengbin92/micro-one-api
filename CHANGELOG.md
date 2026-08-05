@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-08-05
+
+v0.15.0 的 PATCH 修复版本（2 个提交）：收尾订阅变更链路的 M6 缺陷——换组用量窗口
+仅在真正跨组时重置（同组改套餐保留已跑用量，避免丢数据与免费刷新配额），并为
+`ChangeSubscription` 增加行锁串行化（`SELECT ... FOR UPDATE`）防止并发变更互相覆盖
+写回；同时让 relay-gateway 跳过订阅来源流量的 channel 维度用量统计（合成 ChannelID
+导致 channel-service 刷 "channel not found" 告警噪声）。无 API 破坏性变更、无数据库
+迁移。详见 [release-v0.15.1.md](docs/releases/release-v0.15.1.md)。
+
+### Fixed
+
+- **fix(subscription): M6 - reset usage only on group change + row-locked ChangeSubscription**：用量窗口重置改为条件触发（仅 `ToGroupID != fromGroupID` 才清零）；`SubscriptionUsecase` 新增可选 `TxRunner`，`ChangeSubscription` 在 `RunInTx` 内用 `GetByIDInTx`（`SELECT ... FOR UPDATE`）+ `UpdateSubscriptionFieldsInTx` 串行化并发变更；admin-api 接线 `NewTxRunner(repo)`；`subscription_name` 仅在请求实际改变时窄写。影响 `admin-api`、`billing-service`。
+- **fix(relay-gateway): 跳过订阅流量的渠道用量统计**：新增 `recordChannelUsageFromDetail` helper，对 `SourceKind == "subscription"` 直接跳过并记 `skipped_channel_stats` 指标，channel 来源保持原逻辑。影响 `relay-gateway`。
+
 ## [0.15.0] - 2026-08-04
 
 MINOR 功能版本（6 个提交）：闭合订阅账号 weight 反馈回路（channel selector 的
