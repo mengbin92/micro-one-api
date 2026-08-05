@@ -889,19 +889,47 @@ func transformAnthropicStreamToResponses(resp *relayprovider.RawStreamResponse) 
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			evt := apicompat.ResponsesStreamEvent{
+			// CR 2026-08-05: only emit a synthetic response.failed when the
+			// stream did NOT already reach a normal terminal state. If the
+			// upstream sent message_stop (response.completed already emitted)
+			// and only then the connection errored, a second terminal event
+			// would be contradictory — the client would see completed
+			// immediately followed by failed.
+			if !state.CompletedSent {
+				evt := apicompat.ResponsesStreamEvent{
+					Type: "response.failed",
+					Response: &apicompat.ResponsesResponse{
+						Status: "failed",
+						Error:  &apicompat.ResponsesError{Code: "stream_interrupted", Message: "upstream stream interrupted"},
+					},
+				}
+				if sse, err := apicompat.ResponsesEventToSSE(evt); err == nil {
+					_, _ = io.WriteString(writer, sse)
+				}
+			}
+			// CR 2026-08-05: the [DONE] sentinel MUST follow the terminal
+			// event so the client knows the SSE stream has ended cleanly.
+			// Without it the client keeps waiting for more data and reports
+			// "stream disconnected before completion".
+			_, _ = io.WriteString(writer, "data: [DONE]\n\n")
+			return
+		}
+		// CR 2026-08-05: if the upstream closed before message_start arrived,
+		// FinalizeAnthropicResponsesStream returns nil (CreatedSent=false).
+		// Without a terminal event the client sees a bare pipe close and
+		// reports "stream closed before response.completed". Synthesise a
+		// response.failed so the stream always ends with a terminal event.
+		terminalEvents := apicompat.FinalizeAnthropicResponsesStream(state)
+		if len(terminalEvents) == 0 && !state.CreatedSent {
+			terminalEvents = []apicompat.ResponsesStreamEvent{{
 				Type: "response.failed",
 				Response: &apicompat.ResponsesResponse{
 					Status: "failed",
-					Error:  &apicompat.ResponsesError{Code: "stream_interrupted", Message: "upstream stream interrupted"},
+					Error:  &apicompat.ResponsesError{Code: "stream_interrupted", Message: "upstream stream closed before any event"},
 				},
-			}
-			if sse, err := apicompat.ResponsesEventToSSE(evt); err == nil {
-				_, _ = io.WriteString(writer, sse)
-			}
-			return
+			}}
 		}
-		for _, rse := range apicompat.FinalizeAnthropicResponsesStream(state) {
+		for _, rse := range terminalEvents {
 			sse, err := apicompat.ResponsesEventToSSE(rse)
 			if err != nil {
 				continue

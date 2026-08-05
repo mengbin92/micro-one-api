@@ -241,3 +241,111 @@ func TestTransformAnthropicStreamToResponsesBridgesSSE(t *testing.T) {
 		t.Fatalf("missing [DONE] sentinel in stream: %s", out)
 	}
 }
+
+// TestTransformAnthropicStreamPrematureCloseBeforeMessageStart (CR 2026-08-05)
+// reproduces "stream closed before response.completed": when the upstream
+// Anthropic stream ends before the first message_start event arrives,
+// FinalizeAnthropicResponsesStream returns nil (CreatedSent=false), so the
+// goroutine closes the pipe WITHOUT emitting any terminal event. The codex
+// client then reports "stream disconnected before completion". The fix must
+// guarantee a terminal event (response.failed) + [DONE] even in this case.
+func TestTransformAnthropicStreamPrematureCloseBeforeMessageStart(t *testing.T) {
+	// Upstream sends nothing then closes — simulates kimi engine overload
+	// dropping the SSE connection before any event frame.
+	src := &relayprovider.RawStreamResponse{
+		StatusCode: 200,
+		Header:     map[string][]string{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader("")),
+	}
+	transformed := transformAnthropicStreamToResponses(src)
+	out := drainStreamResponse(transformed)
+	if !strings.Contains(out, "response.failed") && !strings.Contains(out, "response.completed") {
+		t.Fatalf("upstream closed before message_start: expected a terminal event (response.failed or response.completed), got stream:\n%s", out)
+	}
+	if !strings.Contains(out, "data: [DONE]") {
+		t.Fatalf("upstream closed before message_start: expected [DONE] sentinel, got stream:\n%s", out)
+	}
+}
+
+// TestTransformAnthropicStreamScannerErrorEmitsTerminalAndDone (CR 2026-08-05)
+// reproduces the missing-[DONE] bug in the scanner.Err() branch: when the
+// upstream returns a read error mid-stream, the goroutine sent response.failed
+// but returned without the [DONE] sentinel, leaving the client waiting.
+func TestTransformAnthropicStreamScannerErrorEmitsTerminalAndDone(t *testing.T) {
+	// A reader that returns a read error after partial data simulates a
+	// mid-stream TCP reset (kimi overload dropping the connection).
+	src := &relayprovider.RawStreamResponse{
+		StatusCode: 200,
+		Header:     map[string][]string{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(&errorAfterReader{data: []byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"k3\",\"usage\":{\"input_tokens\":10}}}\n\n"), err: io.ErrUnexpectedEOF}),
+	}
+	transformed := transformAnthropicStreamToResponses(src)
+	out := drainStreamResponse(transformed)
+	if !strings.Contains(out, "response.failed") {
+		t.Fatalf("scanner error: expected response.failed, got stream:\n%s", out)
+	}
+	if !strings.Contains(out, "data: [DONE]") {
+		t.Fatalf("scanner error: expected [DONE] sentinel after response.failed, got stream:\n%s", out)
+	}
+}
+
+// TestTransformAnthropicStreamCompletedThenScannerError (CR 2026-08-05) guards
+// the boundary where the upstream reaches a normal terminal state
+// (message_start + message_stop => response.completed) and only THEN the
+// connection errors. The scanner.Err() branch must NOT emit a second terminal
+// event (response.failed after response.completed) — a completed-then-failed
+// pair is contradictory for the client.
+func TestTransformAnthropicStreamCompletedThenScannerError(t *testing.T) {
+	body := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"k3\",\"usage\":{\"input_tokens\":10}}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+	src := &relayprovider.RawStreamResponse{
+		StatusCode: 200,
+		Header:     map[string][]string{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(&errorAfterReader{data: []byte(body), err: io.ErrUnexpectedEOF}),
+	}
+	transformed := transformAnthropicStreamToResponses(src)
+	out := drainStreamResponse(transformed)
+	if !strings.Contains(out, "response.completed") {
+		t.Fatalf("expected response.completed from message_stop, got stream:\n%s", out)
+	}
+	if strings.Contains(out, "response.failed") {
+		t.Fatalf("DOUBLE TERMINAL: response.failed after response.completed, got stream:\n%s", out)
+	}
+	if !strings.Contains(out, "data: [DONE]") {
+		t.Fatalf("expected [DONE] sentinel, got stream:\n%s", out)
+	}
+}
+
+// errorAfterReader returns its data then err on the next Read, simulating a
+// truncated/mid-stream connection drop.
+type errorAfterReader struct {
+	data []byte
+	err  error
+	pos  int
+}
+
+func (r *errorAfterReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
+// drainStreamResponse reads a RawStreamResponse body to completion and returns
+// the accumulated string.
+func drainStreamResponse(resp *relayprovider.RawStreamResponse) string {
+	buf := make([]byte, 0, 4096)
+	tmp := make([]byte, 4096)
+	for {
+		n, err := resp.Body.Read(tmp)
+		if n > 0 {
+			buf = append(buf, tmp[:n]...)
+		}
+		if err != nil {
+			break
+		}
+	}
+	return string(buf)
+}

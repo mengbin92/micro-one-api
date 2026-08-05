@@ -105,15 +105,36 @@ func pumpAnthropicToResponses(src io.Reader, w *io.PipeWriter) {
 		// then stop — do NOT emit synthetic finalize events that would imply a
 		// clean stream end.
 		writeResponsesStreamError(w)
+		// CR 2026-08-05: the [DONE] sentinel MUST follow the terminal event so
+		// the client knows the SSE stream has ended cleanly. Without it the
+		// client keeps waiting for more data and reports "stream disconnected
+		// before completion".
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 		return
 	}
-	for _, rse := range apicompat.FinalizeAnthropicResponsesStream(state) {
+	// CR 2026-08-05: if the upstream closed before message_start arrived,
+	// FinalizeAnthropicResponsesStream returns nil (CreatedSent=false) and no
+	// terminal event is emitted — the pipe closes silently and the client
+	// reports "stream closed before response.completed". Synthesise a
+	// response.failed so the stream always ends with a terminal event.
+	terminalEvents := apicompat.FinalizeAnthropicResponsesStream(state)
+	if len(terminalEvents) == 0 && !state.CreatedSent {
+		terminalEvents = []apicompat.ResponsesStreamEvent{{
+			Type: "response.failed",
+			Response: &apicompat.ResponsesResponse{
+				Status: "failed",
+				Error:  &apicompat.ResponsesError{Code: "stream_interrupted", Message: "upstream stream closed before any event"},
+			},
+		}}
+	}
+	for _, rse := range terminalEvents {
 		sse, err := apicompat.ResponsesEventToSSE(rse)
 		if err != nil {
 			continue
 		}
 		_, _ = io.WriteString(w, sse)
 	}
+	_, _ = io.WriteString(w, "data: [DONE]\n\n")
 }
 
 // pumpAnthropicToChat reads an Anthropic Messages SSE stream from src and
@@ -260,7 +281,13 @@ func pumpResponsesToChat(src io.Reader, w *io.PipeWriter, model string) {
 // sseData extracts the JSON payload from a "data: ..." SSE line. Returns
 // ok=false for non-data lines, empty data and the [DONE] sentinel.
 func sseData(line string) (string, bool) {
-	const prefix = "data: "
+	// CR 2026-08-05: the SSE spec allows an optional space after the colon
+	// ("data: value" or "data:value"). Standard Anthropic uses "data: ";
+	// some Anthropic-compatible vendors (e.g. kimi) emit "data:" without the
+	// space. The stricter prefix check silently dropped every data line
+	// from those vendors, so the converter saw an empty stream and never
+	// emitted response.completed.
+	const prefix = "data:"
 	if !strings.HasPrefix(line, prefix) {
 		return "", false
 	}

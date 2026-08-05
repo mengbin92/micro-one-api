@@ -433,3 +433,102 @@ func TestPlatformTypeCompat(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Regression (CR 2026-08-05): pumpAnthropicToResponses must always emit a
+// terminal event + [DONE], even when the upstream stream breaks.
+// ---------------------------------------------------------------------------
+
+// errorAfterReader returns its data then err on the next Read, simulating a
+// truncated/mid-stream connection drop.
+type errorAfterReader struct {
+	data []byte
+	err  error
+	pos  int
+}
+
+func (r *errorAfterReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
+// TestPumpAnthropicToResponsesPrematureCloseBeforeMessageStart reproduces
+// "stream closed before response.completed": when the upstream Anthropic
+// stream ends before the first message_start event arrives, the original
+// pumpAnthropicToResponses closed the pipe WITHOUT emitting any terminal
+// event or [DONE]. The client then reported "stream disconnected before
+// completion".
+func TestPumpAnthropicToResponsesPrematureCloseBeforeMessageStart(t *testing.T) {
+	// Upstream sends nothing then closes — simulates kimi engine overload
+	// dropping the SSE connection before any event frame.
+	pr, pw := io.Pipe()
+	go pumpAnthropicToResponses(strings.NewReader(""), pw)
+	out, _ := io.ReadAll(pr)
+	s := string(out)
+	if !strings.Contains(s, "response.failed") && !strings.Contains(s, "response.completed") {
+		t.Fatalf("upstream closed before message_start: expected a terminal event, got:\n%s", s)
+	}
+	if !strings.Contains(s, "[DONE]") {
+		t.Fatalf("upstream closed before message_start: expected [DONE] sentinel, got:\n%s", s)
+	}
+}
+
+// TestPumpAnthropicToResponsesScannerErrorEmitsTerminalAndDone reproduces the
+// missing-[DONE] bug in the scanner.Err() branch: when the upstream returns a
+// read error mid-stream, the goroutine sent response.failed but returned
+// without the [DONE] sentinel, leaving the client waiting.
+func TestPumpAnthropicToResponsesScannerErrorEmitsTerminalAndDone(t *testing.T) {
+	src := &errorAfterReader{
+		data: []byte(
+			"event: message_start\n" +
+				`data: {"type":"message_start","message":{"id":"msg_1","model":"k3","usage":{"input_tokens":10}}}` + "\n\n",
+		),
+		err: io.ErrUnexpectedEOF,
+	}
+	pr, pw := io.Pipe()
+	go pumpAnthropicToResponses(src, pw)
+	out, _ := io.ReadAll(pr)
+	s := string(out)
+	if !strings.Contains(s, "response.failed") {
+		t.Fatalf("scanner error: expected response.failed, got:\n%s", s)
+	}
+	if !strings.Contains(s, "[DONE]") {
+		t.Fatalf("scanner error: expected [DONE] sentinel after response.failed, got:\n%s", s)
+	}
+}
+
+// TestPumpAnthropicToResponsesKimiNoSpaceSSE (CR 2026-08-05) reproduces the
+// real root cause of "stream closed before response.completed" for kimi: the
+// kimi upstream emits SSE lines as "data:{...}" (no space after colon),
+// which the old sseData rejected because it required "data: " (with space).
+// Every data line was silently dropped, so the converter saw an empty stream,
+// never emitted response.created/response.completed, and the client reported
+// the stream as disconnected.
+func TestPumpAnthropicToResponsesKimiNoSpaceSSE(t *testing.T) {
+	// Exact format observed from api.kimi.com/coding: "data:" without space.
+	src := strings.NewReader(
+		"event:message_start\n" +
+			`data:{"type":"message_start","message":{"id":"msg_1","model":"k3","usage":{"input_tokens":5,"output_tokens":0}}}` + "\n\n" +
+			"event:content_block_delta\n" +
+			`data:{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}` + "\n\n" +
+			"event:message_stop\n" +
+			`data:{"type":"message_stop"}` + "\n\n",
+	)
+	pr, pw := io.Pipe()
+	go pumpAnthropicToResponses(src, pw)
+	out, _ := io.ReadAll(pr)
+	s := string(out)
+	if !strings.Contains(s, "response.created") {
+		t.Fatalf("kimi no-space SSE: expected response.created, got:\n%s", s)
+	}
+	if !strings.Contains(s, "response.completed") {
+		t.Fatalf("kimi no-space SSE: expected response.completed, got:\n%s", s)
+	}
+	if !strings.Contains(s, `"delta":"hi"`) {
+		t.Fatalf("kimi no-space SSE: expected text delta 'hi', got:\n%s", s)
+	}
+}
