@@ -21,7 +21,13 @@ func (in *usageLogInput) applyPlanInputs(plan *relaybiz.RelayPlan) {
 	if plan == nil {
 		return
 	}
-	in.UpstreamModelID, in.SourceKind = upstreamCostKeyInputsFromPlan(plan)
+	// CR 2026-08-05: upstreamCostKeyInputsFromPlan returns (sourceKind,
+	// upstreamModelID). The assignment was previously reversed, so
+	// in.SourceKind always ended up empty and subscription-sourced traffic
+	// was never skipped by recordChannelUsageFromDetail — every request
+	// against a synthetic subscription channel id re-triggered the
+	// "channel not found" warning.
+	in.SourceKind, in.UpstreamModelID = upstreamCostKeyInputsFromPlan(plan)
 	in.PromptExclusive = relaybiz.IsPromptExclusiveChannel(plan)
 }
 

@@ -32,6 +32,45 @@ func (c *recordingChannelClient) RecordSubscriptionAccountQuotaUsage(context.Con
 	return &channelv1.RecordSubscriptionAccountQuotaUsageResponse{Success: true, Message: "ok"}, nil
 }
 
+// TestApplyPlanInputsSourceKindAndUpstreamModelID (CR 2026-08-05) is a
+// regression test for a field-assignment reversal in applyPlanInputs: the
+// helper wrote upstreamCostKeyInputsFromPlan's two return values into
+// (UpstreamModelID, SourceKind) in the wrong order, so SourceKind was always
+// empty and subscription-sourced traffic was never skipped by
+// recordChannelUsageFromDetail. The reversed values also corrupted the
+// canonical billing cost key (UpstreamModelID was "subscription").
+func TestApplyPlanInputsSourceKindAndUpstreamModelID(t *testing.T) {
+	plan := &relaybiz.RelayPlan{
+		Account: &relaybiz.SubscriptionAccount{ID: 4},
+		Channel: &relaybiz.Channel{ID: 4},
+	}
+	in := usageLogInput{ChannelID: 4}
+	in.applyPlanInputs(plan)
+	if in.SourceKind != relaybiz.UpstreamSourceSubscription {
+		t.Fatalf("SourceKind = %q, want %q (subscription-sourced traffic must be marked)", in.SourceKind, relaybiz.UpstreamSourceSubscription)
+	}
+	if in.UpstreamModelID != "" {
+		t.Fatalf("UpstreamModelID = %q, want empty (source kind leaked into it)", in.UpstreamModelID)
+	}
+}
+
+// TestApplyPlanInputsChannelSource (CR 2026-08-05) guards the channel branch
+// of applyPlanInputs: channel-sourced plans must mark SourceKind=channel and
+// keep the real upstream model id.
+func TestApplyPlanInputsChannelSource(t *testing.T) {
+	plan := &relaybiz.RelayPlan{
+		Channel: &relaybiz.Channel{ID: 7, UpstreamModelID: "glm-5.2"},
+	}
+	in := usageLogInput{ChannelID: 7}
+	in.applyPlanInputs(plan)
+	if in.SourceKind != relaybiz.UpstreamSourceChannel {
+		t.Fatalf("SourceKind = %q, want %q", in.SourceKind, relaybiz.UpstreamSourceChannel)
+	}
+	if in.UpstreamModelID != "glm-5.2" {
+		t.Fatalf("UpstreamModelID = %q, want glm-5.2", in.UpstreamModelID)
+	}
+}
+
 // TestCommitQuotaSkipsChannelUsageForSubscription verifies the fix for the
 // recurring "failed to record channel usage ... channel not found" warning.
 // Subscription-sourced traffic executes on a synthetic channel id derived from
@@ -55,6 +94,21 @@ func TestCommitQuotaSkipsChannelUsageForSubscription(t *testing.T) {
 
 	if ch.channelUsageCalls != 0 {
 		t.Fatalf("RecordChannelUsage calls = %d, want 0 for subscription-sourced traffic", ch.channelUsageCalls)
+	}
+
+	// Explicitly assert the SourceKind-driven skip seam: driving
+	// recordChannelUsageFromDetail directly with SourceKind="subscription"
+	// must also short-circuit (channelID/quota/channelClient are all valid
+	// here, so the only way channelUsageCalls stays 0 is the subscription
+	// skip). Guards against a future re-reversal of applyPlanInputs silently
+	// passing an empty SourceKind through commitQuota.
+	before := ch.channelUsageCalls
+	srv.recordChannelUsageFromDetail(context.Background(), usageLogInput{
+		ChannelID:  4,
+		SourceKind: relaybiz.UpstreamSourceSubscription,
+	}, 50)
+	if ch.channelUsageCalls != before {
+		t.Fatalf("recordChannelUsageFromDetail did not skip: channelUsageCalls went %d -> %d, want unchanged for SourceKind=subscription", before, ch.channelUsageCalls)
 	}
 }
 
