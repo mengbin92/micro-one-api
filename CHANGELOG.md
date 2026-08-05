@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-08-05
+
+v0.15.1 的 PATCH 修复版本（3 个提交），全部位于 relay-gateway：修复 v0.15.1
+渠道统计去噪因 `applyPlanInputs` 赋值顺序反转而完全失效的回归（`SourceKind`
+恒空、`UpstreamModelID` 被写成字面量 "subscription"）；修复订阅来源 Anthropic
+协议上游（如 kimi）流式响应的三个缺陷——`data:` 无空格行被静默丢弃、上游中途
+断连缺 `[DONE]` 哨兵、`message_start` 前关闭无终止事件——导致 codex 报
+"stream disconnected before completion"；并将 `response.completed` 之后的
+`response.failed` 守卫补齐到 adaptor 路径，消除矛盾双终止。无 API 破坏性变更、
+无数据库迁移。详见 [release-v0.15.2.md](docs/releases/release-v0.15.2.md)。
+
+### Fixed
+
+- **fix(relay): applyPlanInputs reversed source-kind/upstream-model assignment**：按正确顺序接收 `upstreamCostKeyInputsFromPlan` 的 `(sourceKind, upstreamModelID)` 返回值；订阅流量恢复跳过 channel 维度统计，规范化计费 cost key 恢复正常。影响 `relay-gateway`。
+- **fix(relay): ensure terminal SSE event on upstream stream interruption**：`sseData` 同时接受 `data:` / `data: ` 两种形式；`scanner.Err()` 分支在终止事件后追加 `[DONE]`；上游在 `message_start` 前关闭时合成 `response.failed`。修复同时应用于 adaptor 路径与 fallback 路径，含回归测试。影响 `relay-gateway`。
+- **fix(relay): guard adaptor-path scanner error against completed+failed**：`pumpAnthropicToResponses` 镜像 `CompletedSent` 守卫，已完成的流只追加 `[DONE]`，不再叠加 `response.failed`。影响 `relay-gateway`。
+
 ## [0.15.1] - 2026-08-05
 
 v0.15.0 的 PATCH 修复版本（2 个提交）：收尾订阅变更链路的 M6 缺陷——换组用量窗口
