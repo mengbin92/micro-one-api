@@ -153,8 +153,12 @@ func newSubscriptionUsecases(cfg *Config) subscriptionResult {
 		applogger.Log.Warn("failed to connect to subscription DB", zap.Error(subErr))
 		return subscriptionResult{}
 	}
+	// M6 (2026-08-05): wire the row-locked change path so ChangeSubscription
+	// serializes concurrent changes to the same subscription.
+	subUc := subscriptionbiz.NewSubscriptionUsecase(repo, repo)
+	subUc.SetTxRunner(subscriptiondata.NewTxRunner(repo))
 	return subscriptionResult{
-		SubUc:   subscriptionbiz.NewSubscriptionUsecase(repo, repo),
+		SubUc:   subUc,
 		GroupUc: subscriptionbiz.NewGroupUsecase(repo),
 		PlanUc:  subscriptionbiz.NewPlanUsecase(repo, repo),
 	}

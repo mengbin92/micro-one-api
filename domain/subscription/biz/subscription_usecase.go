@@ -19,6 +19,11 @@ type SubscriptionUsecase struct {
 	repo      SubscriptionRepository
 	groupRepo GroupRepository
 	now       func() time.Time
+	// txRunner, when wired, lets ChangeSubscription run its read-validate-
+	// mutate-write inside a single row-locked transaction (code-review M6,
+	// 2026-08-05). Left nil in memory/test mode, where the unlocked path is
+	// used and the in-memory repo's own lock protects the map.
+	txRunner TxRunner
 }
 
 func NewSubscriptionUsecase(repo SubscriptionRepository, groupRepo GroupRepository) *SubscriptionUsecase {
@@ -28,6 +33,11 @@ func NewSubscriptionUsecase(repo SubscriptionRepository, groupRepo GroupReposito
 		now:       time.Now,
 	}
 }
+
+// SetTxRunner wires an optional transaction runner so ChangeSubscription
+// takes a row lock on the subscription while mutating it. It is safe to call
+// once at wiring time; calling it with nil clears the runner.
+func (uc *SubscriptionUsecase) SetTxRunner(r TxRunner) { uc.txRunner = r }
 
 func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscriptionRequest) (*UserSubscription, error) {
 	if req == nil {

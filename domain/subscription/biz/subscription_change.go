@@ -69,14 +69,47 @@ type ChangeResult struct {
 // wallet charge (for upgrades) has been reserved. The caller is responsible
 // for the wallet movement; this function only mutates the subscription row
 // and records the audit metadata.
+//
+// Concurrency: when a TxRunner has been wired (SetTxRunner), the read-validate-
+// mutate-write runs inside a single transaction with a row lock on the
+// subscription (SELECT ... FOR UPDATE via GetByIDInTx), so two concurrent
+// changes to the same subscription serialize instead of overwriting each other
+// (code-review M6, 2026-08-05). When no runner is wired (memory mode / tests),
+// it falls back to the historical unlocked read-modify-write.
 func (uc *SubscriptionUsecase) ChangeSubscription(ctx context.Context, req ChangeRequest) (*ChangeResult, error) {
 	if uc == nil || uc.repo == nil {
 		return nil, ErrSubscriptionChangeNotConfigured
 	}
+	if uc.txRunner != nil {
+		var res *ChangeResult
+		err := uc.txRunner.RunInTx(ctx, func(txCtx context.Context, tx Tx) error {
+			var txErr error
+			// Use txCtx (the tx-scoped context) rather than the outer ctx so a
+			// runner that scopes timeouts/cancellation to the transaction is
+			// honored (CR 2026-08-05).
+			res, txErr = uc.changeSubscription(txCtx, tx, req)
+			return txErr
+		})
+		return res, err
+	}
+	return uc.changeSubscription(ctx, nil, req)
+}
+
+// changeSubscription is the shared implementation. When tx is nil it behaves
+// exactly as the historical ChangeSubscription (unlocked read-modify-write);
+// when tx is non-nil every read/write runs inside the caller's transaction
+// with a row lock on the subscription row.
+func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, req ChangeRequest) (*ChangeResult, error) {
 	if req.UserID <= 0 || req.ToGroupID <= 0 {
 		return nil, fmt.Errorf("user_id and to_group_id are required")
 	}
-	sub, err := uc.repo.GetSubscriptionByID(ctx, req.FromSubscriptionID)
+	var sub *UserSubscription
+	var err error
+	if tx != nil {
+		sub, err = uc.repo.GetByIDInTx(ctx, tx, req.FromSubscriptionID)
+	} else {
+		sub, err = uc.repo.GetSubscriptionByID(ctx, req.FromSubscriptionID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -125,24 +158,42 @@ func (uc *SubscriptionUsecase) ChangeSubscription(ctx context.Context, req Chang
 			At:          now,
 		})
 		sub.UpdatedAt = now
-		// Reset usage windows on a group change so the new group's limits
-		// start fresh; the old group's usage no longer applies.
-		sub.DailyUsageUSD = 0
-		sub.WeeklyUsageUSD = 0
-		sub.MonthlyUsageUSD = 0
-		sub.DailyWindowStart = now
-		sub.WeeklyWindowStart = now
-		sub.MonthlyWindowStart = now
-		// domain-H1: selective write. The change legitimately resets usage, so it
-		// selects UsageAll plus the group/name/metadata columns it mutates. It
-		// never overwrites status/expires_at from this read snapshot.
-		if err := uc.repo.UpdateSubscriptionFields(ctx, sub, []SubscriptionField{
+		// M6 (2026-08-05): reset usage windows ONLY when the group actually
+		// changes, so the new group's limits start fresh and the old group's
+		// usage no longer applies. A same-group plan change keeps the running
+		// usage — the old group's usage is still applicable, and resetting it
+		// would both lose data and allow a same-price plan switch to refresh
+		// quota without paying. Usage is never reset on a same-group change.
+		groupChanged := req.ToGroupID != fromGroupID
+		fields := []SubscriptionField{
 			SubscriptionFieldGroupID,
-			SubscriptionFieldSubscriptionName,
 			SubscriptionFieldMetadata,
-			SubscriptionFieldUsageAll,
-		}); err != nil {
-			return nil, err
+		}
+		// Only write subscription_name when the request actually changes it;
+		// writing the read-snapshot value back would violate the narrow-write
+		// rule (domain-H1) and could clobber a concurrent name change.
+		if req.NewPlanName != "" {
+			fields = append(fields, SubscriptionFieldSubscriptionName)
+		}
+		if groupChanged {
+			sub.DailyUsageUSD = 0
+			sub.WeeklyUsageUSD = 0
+			sub.MonthlyUsageUSD = 0
+			sub.DailyWindowStart = now
+			sub.WeeklyWindowStart = now
+			sub.MonthlyWindowStart = now
+			fields = append(fields, SubscriptionFieldUsageAll)
+		}
+		// domain-H1: selective write. The change never overwrites
+		// status/expires_at from this read snapshot.
+		if tx != nil {
+			if err := uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, sub, fields); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := uc.repo.UpdateSubscriptionFields(ctx, sub, fields); err != nil {
+				return nil, err
+			}
 		}
 		return &ChangeResult{
 			SubscriptionID:      sub.ID,
@@ -166,8 +217,14 @@ func (uc *SubscriptionUsecase) ChangeSubscription(ctx context.Context, req Chang
 		})
 		sub.UpdatedAt = now
 		// domain-H1: write only the metadata column; never touch usage.
-		if err := uc.repo.UpdateSubscriptionFields(ctx, sub, []SubscriptionField{SubscriptionFieldMetadata}); err != nil {
-			return nil, err
+		if tx != nil {
+			if err := uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, sub, []SubscriptionField{SubscriptionFieldMetadata}); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := uc.repo.UpdateSubscriptionFields(ctx, sub, []SubscriptionField{SubscriptionFieldMetadata}); err != nil {
+				return nil, err
+			}
 		}
 		return &ChangeResult{
 			SubscriptionID: sub.ID,
