@@ -501,6 +501,32 @@ func TestPumpAnthropicToResponsesScannerErrorEmitsTerminalAndDone(t *testing.T) 
 	}
 }
 
+// TestPumpAnthropicToResponsesCompletedThenScannerError (CR 2026-08-05) guards
+// the boundary where the upstream reaches a normal terminal state
+// (message_start + message_stop => response.completed) and only THEN the
+// connection errors. The scanner.Err() branch must NOT emit a second terminal
+// event (response.failed after response.completed).
+func TestPumpAnthropicToResponsesCompletedThenScannerError(t *testing.T) {
+	body := "event: message_start\n" +
+		`data: {"type":"message_start","message":{"id":"msg_1","model":"k3","usage":{"input_tokens":10}}}` + "\n\n" +
+		"event: message_stop\n" +
+		`data: {"type":"message_stop"}` + "\n\n"
+	src := &errorAfterReader{data: []byte(body), err: io.ErrUnexpectedEOF}
+	pr, pw := io.Pipe()
+	go pumpAnthropicToResponses(src, pw)
+	out, _ := io.ReadAll(pr)
+	s := string(out)
+	if !strings.Contains(s, "response.completed") {
+		t.Fatalf("expected response.completed from message_stop, got:\n%s", s)
+	}
+	if strings.Contains(s, "response.failed") {
+		t.Fatalf("DOUBLE TERMINAL: response.failed after response.completed, got:\n%s", s)
+	}
+	if !strings.Contains(s, "[DONE]") {
+		t.Fatalf("expected [DONE] sentinel, got:\n%s", s)
+	}
+}
+
 // TestPumpAnthropicToResponsesKimiNoSpaceSSE (CR 2026-08-05) reproduces the
 // real root cause of "stream closed before response.completed" for kimi: the
 // kimi upstream emits SSE lines as "data:{...}" (no space after colon),

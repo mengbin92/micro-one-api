@@ -104,7 +104,13 @@ func pumpAnthropicToResponses(src io.Reader, w *io.PipeWriter) {
 		// terminal error event so the client knows the response was truncated,
 		// then stop — do NOT emit synthetic finalize events that would imply a
 		// clean stream end.
-		writeResponsesStreamError(w)
+		// CR 2026-08-05: only emit response.failed when the stream did NOT
+		// already reach a normal terminal state. If message_stop was processed
+		// (response.completed already emitted) and only then the connection
+		// errored, a second terminal event would be contradictory.
+		if !state.CompletedSent {
+			writeResponsesStreamError(w)
+		}
 		// CR 2026-08-05: the [DONE] sentinel MUST follow the terminal event so
 		// the client knows the SSE stream has ended cleanly. Without it the
 		// client keeps waiting for more data and reports "stream disconnected
