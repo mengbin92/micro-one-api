@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
-
-	"github.com/bytedance/sonic"
 )
 
 func codexAccountInfo(ctx context.Context, client *http.Client, accessToken, idToken string, metadata map[string]any) (string, map[string]any) {
@@ -54,7 +52,7 @@ func accountInfoFromIDToken(idToken string) (string, string) {
 		return "", ""
 	}
 	var claims map[string]any
-	if err := sonic.Unmarshal(payload, &claims); err != nil {
+	if err := jsonx.Unmarshal(payload, &claims); err != nil {
 		return "", ""
 	}
 	auth, _ := claims["https://api.openai.com/auth"].(map[string]any)
@@ -94,7 +92,7 @@ func fetchChatGPTAccountInfo(ctx context.Context, client *http.Client, accessTok
 		return nil
 	}
 	var result map[string]any
-	if err := sonic.Unmarshal(body, &result); err != nil {
+	if err := jsonx.Unmarshal(body, &result); err != nil {
 		return nil
 	}
 	accounts, _ := result["accounts"].(map[string]any)

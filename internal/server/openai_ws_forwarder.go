@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	coderws "github.com/coder/websocket"
 	"go.uber.org/zap"
+	"micro-one-api/pkg/jsonx"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
@@ -362,7 +362,7 @@ func closeOpenAIWSClientConn(conn *coderws.Conn, status coderws.StatusCode, reas
 // extractOpenAIWSClientModel returns the model field from the first
 // response.create frame.
 func extractOpenAIWSClientModel(message []byte) string {
-	node, _ := sonic.Get(message, "model")
+	node, _ := jsonx.Get(message, "model")
 	model, _ := node.String()
 	return strings.TrimSpace(model)
 }
@@ -376,11 +376,11 @@ func rewriteOpenAIWSModel(message []byte, clientModel, resolvedModel string) []b
 		return message
 	}
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(message, &payload); err != nil {
+	if err := jsonx.Unmarshal(message, &payload); err != nil {
 		return message
 	}
 	payload["model"] = resolvedModel
-	rewritten, err := sonic.Marshal(payload)
+	rewritten, err := jsonx.Marshal(payload)
 	if err != nil {
 		return message
 	}
@@ -454,12 +454,12 @@ func extractOpenAIWSResponseIDFromEvent(payload []byte) string {
 	if len(payload) == 0 {
 		return ""
 	}
-	if node, _ := sonic.Get(payload, "response", "id"); node.Exists() {
+	if node, _ := jsonx.Get(payload, "response", "id"); node.Exists() {
 		if rid, _ := node.String(); strings.TrimSpace(rid) != "" {
 			return strings.TrimSpace(rid)
 		}
 	}
-	if node, _ := sonic.Get(payload, "response_id"); node.Exists() {
+	if node, _ := jsonx.Get(payload, "response_id"); node.Exists() {
 		if rid, _ := node.String(); strings.TrimSpace(rid) != "" {
 			return strings.TrimSpace(rid)
 		}
@@ -473,7 +473,7 @@ func extractOpenAIWSPreviousResponseIDFromRequest(payload []byte) string {
 	if len(payload) == 0 {
 		return ""
 	}
-	node, _ := sonic.Get(payload, "previous_response_id")
+	node, _ := jsonx.Get(payload, "previous_response_id")
 	rid, _ := node.String()
 	rid = strings.TrimSpace(rid)
 	if !isOpenAIResponseID(rid) {
@@ -494,7 +494,7 @@ func extractOpenAIWSSessionHashFromRequest(r *http.Request, payload []byte) stri
 		return ""
 	}
 	for _, key := range []string{"session_hash", "sessionHash"} {
-		node, _ := sonic.Get(payload, key)
+		node, _ := jsonx.Get(payload, key)
 		if value, _ := node.String(); strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
 		}

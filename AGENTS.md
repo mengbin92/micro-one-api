@@ -137,6 +137,41 @@ Regenerate via `make api`, `make config`, or `make all`; never hand-edit
 - Error reasons: declared in `api/<domain>/<version>/error_reason.proto`,
   surfaced as `Err<Resource><Cause>` in `biz`.
 
+## JSON serialization
+
+All JSON serialization in business code goes through `pkg/jsonx`, a
+drop-in wrapper around `sonic.ConfigStd` that keeps `encoding/json`
+semantics (HTML escaping, sorted map keys, copied strings). This is a
+single, consistent JSON layer across all services.
+
+**Do**:
+
+- Import `micro-one-api/pkg/jsonx` for `Marshal` / `Unmarshal` /
+  `MarshalIndent` / `Valid` / `NewEncoder` / `NewDecoder` / `Get`.
+- Use `jsonx.RawMessage` and `jsonx.Number` (type aliases of the stdlib
+  types, so `json.Number` type switches keep working).
+- In tests, prefer `jsonx` too so tests exercise the same semantics as
+  production.
+
+**Never**:
+
+- Import `encoding/json` in non-test code. The only exceptions are
+  `pkg/jsonx` itself and `platform/middleware/bodylimit.go`, which needs
+  `*json.SyntaxError` / `*json.UnmarshalTypeError` type assertions that
+  sonic does not expose. If you must add another stdlib usage, comment
+  why.
+- Call `sonic.Marshal` / `sonic.Unmarshal` package-level functions
+  directly. They use `sonic.ConfigDefault`, which diverges from
+  `encoding/json`: no HTML escaping, no map-key sorting, no string
+  copy (`CopyString=false` — decoded strings can alias the input
+  buffer). Always go through `jsonx`.
+
+**Version boundary**: sonic's `compat.go` build tags fall back to
+`encoding/json` under `go1.27+`, on non-amd64/arm64 architectures, or on
+arm64 with go < 1.20. Behavior stays identical but the performance
+benefit disappears. Keep `go.mod` at go 1.26 (or re-benchmark
+`pkg/jsonx` before bumping past that boundary).
+
 ## Deployment
 
 Production runs on a remote Linux/x86_64 host, reachable via

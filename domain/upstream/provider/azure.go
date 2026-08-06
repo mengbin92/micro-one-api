@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 )
 
 const defaultAzureAPIVersion = "2024-02-15-preview"
@@ -78,7 +78,7 @@ func (p *AzureProvider) ChatCompletions(ctx context.Context, req *ChatCompletion
 		return nil, &UpstreamHTTPError{StatusCode: resp.StatusCode, Body: respBody} // domain-L4
 	}
 	var response ChatCompletionsResponse
-	if err := sonic.Unmarshal(respBody, &response); err != nil {
+	if err := jsonx.Unmarshal(respBody, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	return &response, nil
@@ -210,7 +210,7 @@ func (p *AzureProvider) setHeaders(dst http.Header, src http.Header) {
 
 func extractDeploymentFromRawBody(body []byte) string {
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
 	if value, ok := payload["model"].(string); ok {
@@ -221,11 +221,11 @@ func extractDeploymentFromRawBody(body []byte) string {
 
 func removeModelFromRawBody(body []byte) []byte {
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}
 	delete(payload, "model")
-	encoded, err := sonic.Marshal(payload)
+	encoded, err := jsonx.Marshal(payload)
 	if err != nil {
 		return body
 	}
@@ -233,7 +233,7 @@ func removeModelFromRawBody(body []byte) []byte {
 }
 
 func azureChatBody(req *ChatCompletionsRequest) ([]byte, error) {
-	body, err := sonic.Marshal(req)
+	body, err := jsonx.Marshal(req)
 	if err != nil {
 		return nil, err
 	}

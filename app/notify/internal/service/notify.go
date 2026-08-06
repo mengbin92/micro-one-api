@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	notifyv1 "micro-one-api/api/notify/v1"
 	"micro-one-api/app/notify/internal/biz"
@@ -113,7 +113,7 @@ func (s *NotifyService) HandleCreateNotification(w http.ResponseWriter, r *http.
 		Subject   string `json:"subject"`
 		Content   string `json:"content"`
 	}
-	if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := jsonx.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -186,11 +186,11 @@ func notificationToMap(n *biz.Notification) map[string]interface{} {
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = sonic.ConfigStd.NewEncoder(w).Encode(data)
+	_ = jsonx.NewEncoder(w).Encode(data)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = sonic.ConfigStd.NewEncoder(w).Encode(map[string]interface{}{"error": message})
+	_ = jsonx.NewEncoder(w).Encode(map[string]interface{}{"error": message})
 }

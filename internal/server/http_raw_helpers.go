@@ -12,8 +12,6 @@ import (
 
 	"micro-one-api/pkg/jsonx"
 
-	"github.com/bytedance/sonic"
-
 	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/platform/metrics"
 )
@@ -21,7 +19,7 @@ import (
 // extractRawModel pulls the "model" field out of a JSON request body.
 func extractRawModel(body []byte) string {
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
 	model, _ := payload["model"].(string)
@@ -37,7 +35,7 @@ func rewriteRawModel(body []byte, model string) []byte {
 		return body
 	}
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}
 	if _, ok := payload["model"]; !ok {
@@ -48,7 +46,7 @@ func rewriteRawModel(body []byte, model string) []byte {
 		return body
 	}
 	payload["model"] = model
-	rewritten, err := sonic.Marshal(payload)
+	rewritten, err := jsonx.Marshal(payload)
 	if err != nil {
 		return body
 	}
@@ -62,7 +60,7 @@ func ensureRawModel(body []byte, model string) []byte {
 		return body
 	}
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}
 	current, _ := payload["model"].(string)
@@ -70,7 +68,7 @@ func ensureRawModel(body []byte, model string) []byte {
 		return body
 	}
 	payload["model"] = model
-	rewritten, err := sonic.Marshal(payload)
+	rewritten, err := jsonx.Marshal(payload)
 	if err != nil {
 		return body
 	}
@@ -89,7 +87,7 @@ func routeResolvedModel(route responseRoute) string {
 // isRawStreamRequest reports whether the request body requests streaming.
 func isRawStreamRequest(body []byte) bool {
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return false
 	}
 	stream, _ := payload["stream"].(bool)
@@ -99,7 +97,7 @@ func isRawStreamRequest(body []byte) bool {
 // extractPreviousResponseID pulls the previous_response_id from a body.
 func extractPreviousResponseID(body []byte) string {
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
 	responseID, _ := payload["previous_response_id"].(string)
@@ -113,7 +111,7 @@ func extractPreviousResponseID(body []byte) string {
 // extractSessionHash pulls the sticky session hash from a JSON request body.
 func extractSessionHash(body []byte) string {
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
 	for _, key := range []string{"session_hash", "sessionHash"} {
@@ -139,7 +137,7 @@ func extractResponseID(body []byte) string {
 	var payload struct {
 		ID string `json:"id"`
 	}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
 	return strings.TrimSpace(payload.ID)
@@ -166,7 +164,7 @@ type rawUsage struct {
 // normalizes it with the supplied fallback when fields are missing.
 func extractRawUsage(body []byte, fallback int64) rawUsage {
 	var payload interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return rawUsage{TotalTokens: fallback}
 	}
 	return normalizeRawUsage(extractRawUsageValue(payload), fallback)
@@ -644,7 +642,7 @@ func (t *rawStreamUsageTracker) ResponseID() string {
 // extractRawStreamResponseID pulls a response id from a raw stream chunk.
 func extractRawStreamResponseID(chunk []byte) string {
 	var payload interface{}
-	if err := sonic.Unmarshal(chunk, &payload); err != nil {
+	if err := jsonx.Unmarshal(chunk, &payload); err != nil {
 		return ""
 	}
 	return extractRawStreamResponseIDValue(payload)

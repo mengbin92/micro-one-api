@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 )
 
 // canonicalBuckets is the five non-overlapping billing buckets defined in ADR
@@ -174,7 +174,7 @@ func (a *anomalyCounter) record(reason string) {
 // objects observed across SSE chunks.
 func parseCanonicalUsage(body []byte, protocol string, anomalies *anomalyCounter) canonicalBuckets {
 	var payload interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return canonicalBuckets{}
 	}
 	usageMap := findUsageMap(payload)
@@ -342,7 +342,7 @@ func parseCanonicalStream(chunks []string, protocol string, anomalies *anomalyCo
 			continue
 		}
 		var payload interface{}
-		if err := sonic.Unmarshal([]byte(data), &payload); err != nil {
+		if err := jsonx.Unmarshal([]byte(data), &payload); err != nil {
 			continue
 		}
 		// Anthropic wraps usage under message.usage in message_start and top-level

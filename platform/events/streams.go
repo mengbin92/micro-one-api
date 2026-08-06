@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/redis/go-redis/v9"
+	"micro-one-api/pkg/jsonx"
 )
 
 const (
@@ -70,7 +70,7 @@ func deriveConsumerGroup(consumerID string) string {
 // Publish sends an event to a Redis Stream with guaranteed persistence.
 // Events survive process restarts.
 func (b *StreamEventBus) Publish(ctx context.Context, topic string, payload interface{}) error {
-	data, err := sonic.Marshal(Event{
+	data, err := jsonx.Marshal(Event{
 		Topic:     topic,
 		Payload:   payload,
 		Timestamp: time.Now(),
@@ -178,7 +178,7 @@ func (b *StreamEventBus) processMessage(topic string, msg *redis.XMessage) {
 
 	// Unmarshal payload
 	var payload Event
-	if err := sonic.Unmarshal([]byte(payloadData), &payload); err != nil {
+	if err := jsonx.Unmarshal([]byte(payloadData), &payload); err != nil {
 		fmt.Printf("failed to unmarshal payload from %s: %v\n", topic, err)
 		return
 	}

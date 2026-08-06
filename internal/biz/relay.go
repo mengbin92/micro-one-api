@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	"micro-one-api/pkg/jsonx"
 	"micro-one-api/pkg/wildcard"
 	"micro-one-api/platform/metrics"
 )
@@ -1099,7 +1099,7 @@ func resolvePerAccountModelMapping(mappingJSON, model string) (string, bool) {
 		return "", false
 	}
 	var mapping map[string]string
-	if err := sonic.UnmarshalString(mappingJSON, &mapping); err != nil {
+	if err := jsonx.UnmarshalFromString(mappingJSON, &mapping); err != nil {
 		return "", false
 	}
 	// 1) Exact (case-insensitive) match — fast path.

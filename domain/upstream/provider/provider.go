@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
+	"micro-one-api/pkg/jsonx"
 	applogger "micro-one-api/platform/logging"
 )
 
@@ -416,7 +416,7 @@ func isHopByHopHeader(key string) bool {
 func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletionsRequest) (*ChatCompletionsResponse, error) {
 	url := fmt.Sprintf("%s/chat/completions", p.baseURL)
 
-	body, err := sonic.Marshal(req)
+	body, err := jsonx.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -445,7 +445,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 
 	var response ChatCompletionsResponse
-	if err := sonic.Unmarshal(respBody, &response); err != nil {
+	if err := jsonx.Unmarshal(respBody, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
@@ -456,7 +456,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCompletionsRequest) (<-chan StreamChunk, error) {
 	url := fmt.Sprintf("%s/chat/completions", p.baseURL)
 
-	body, err := sonic.Marshal(req)
+	body, err := jsonx.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -506,7 +506,7 @@ func readOpenAIStream(resp *http.Response) <-chan StreamChunk {
 				}
 
 				var chunk StreamChunk
-				if err := sonic.Unmarshal([]byte(data), &chunk); err != nil {
+				if err := jsonx.Unmarshal([]byte(data), &chunk); err != nil {
 					logProviderWarn("failed to parse SSE chunk",
 						zap.Error(err),
 						zap.Int("data_length", len(data)),

@@ -1,6 +1,14 @@
 // Package jsonx provides JSON utilities using sonic for high performance.
 // It is a drop-in replacement for the standard library encoding/json,
 // backed by sonic.ConfigStd for full compatibility with encoding/json semantics.
+//
+// NOTE (version boundary): sonic's compat.go build tags make it fall back to the
+// standard library encoding/json when built with go1.27+, on non-amd64/arm64
+// architectures, or on arm64 with go < 1.20. Under that fallback every function
+// here behaves identically (ConfigStd is encoding/json-compatible) but the
+// performance benefit disappears — EXCEPT Get, which is sonic-specific (see its
+// doc comment). Keep go.mod <= go1.26, or re-benchmark before upgrading past
+// that boundary.
 package jsonx
 
 import (
@@ -9,6 +17,7 @@ import (
 	stdjson "encoding/json"
 
 	"github.com/bytedance/sonic"
+	sonicast "github.com/bytedance/sonic/ast"
 )
 
 var api = sonic.ConfigStd
@@ -64,4 +73,21 @@ func NewEncoder(w io.Writer) sonic.Encoder {
 // NewDecoder creates a Decoder reading from r.
 func NewDecoder(r io.Reader) sonic.Decoder {
 	return api.NewDecoder(r)
+}
+
+// Get searches the given JSON data for the specified path and returns the
+// resulting node.
+//
+// Unlike the rest of this package, Get is NOT encoding/json-compatible: the
+// sonic.API interface (ConfigStd) does not expose a path-lookup method, so Get
+// calls the package-level sonic.Get, which uses sonic.ConfigDefault and returns
+// a sonic/ast.Node. Under the go1.27+/non-amd64-arm64 compat fallback, ast.Node
+// still exists but is a pure-Go implementation that does NOT guarantee the same
+// accept/reject behavior as ConfigStd decoding. Callers therefore MUST NOT treat
+// Get as part of the encoding/json-parity contract — use it only for hot-path
+// field extraction (model, response.id, etc.) where the input is already known
+// to be well-formed, and fall back gracefully when the node is absent or the
+// conversion errors.
+func Get(data []byte, path ...interface{}) (sonicast.Node, error) {
+	return sonic.Get(data, path...)
 }

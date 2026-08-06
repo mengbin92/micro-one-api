@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/domain/upstream/credential"
 	"micro-one-api/domain/upstream/provider"
@@ -61,28 +61,28 @@ func (a *CodexOAuthAdaptor) ConvertRequest(_ *RelayContext, inbound Format, body
 		return FormatOpenAIResponses, body, nil
 	case FormatOpenAIChatCompletions:
 		var cr apicompat.ChatCompletionsRequest
-		if err := sonic.Unmarshal(body, &cr); err != nil {
+		if err := jsonx.Unmarshal(body, &cr); err != nil {
 			return "", nil, fmt.Errorf("codex_oauth: parse chat request: %w", err)
 		}
 		rr, err := apicompat.ChatCompletionsToResponses(&cr)
 		if err != nil {
 			return "", nil, fmt.Errorf("codex_oauth: chat→responses: %w", err)
 		}
-		out, err := sonic.Marshal(rr)
+		out, err := jsonx.Marshal(rr)
 		if err != nil {
 			return "", nil, err
 		}
 		return FormatOpenAIResponses, out, nil
 	case FormatAnthropicMessages:
 		var ar apicompat.AnthropicRequest
-		if err := sonic.Unmarshal(body, &ar); err != nil {
+		if err := jsonx.Unmarshal(body, &ar); err != nil {
 			return "", nil, fmt.Errorf("codex_oauth: parse anthropic request: %w", err)
 		}
 		rr, err := apicompat.AnthropicToResponses(&ar)
 		if err != nil {
 			return "", nil, fmt.Errorf("codex_oauth: anthropic→responses: %w", err)
 		}
-		out, err := sonic.Marshal(rr)
+		out, err := jsonx.Marshal(rr)
 		if err != nil {
 			return "", nil, err
 		}
@@ -187,22 +187,22 @@ func (a *CodexOAuthAdaptor) ConvertResponse(rc *RelayContext, upstream Format, r
 	switch rc.InboundFormat {
 	case FormatOpenAIChatCompletions:
 		var rr apicompat.ResponsesResponse
-		if err := sonic.Unmarshal(body, &rr); err != nil {
+		if err := jsonx.Unmarshal(body, &rr); err != nil {
 			return "", nil, fmt.Errorf("codex_oauth: parse responses response: %w", err)
 		}
 		cr := apicompat.ResponsesToChatCompletions(&rr, rc.ClientModel)
-		out, err := sonic.Marshal(cr)
+		out, err := jsonx.Marshal(cr)
 		if err != nil {
 			return "", nil, fmt.Errorf("codex_oauth: marshal chat response: %w", err)
 		}
 		return FormatOpenAIChatCompletions, out, nil
 	case FormatAnthropicMessages:
 		var rr apicompat.ResponsesResponse
-		if err := sonic.Unmarshal(body, &rr); err != nil {
+		if err := jsonx.Unmarshal(body, &rr); err != nil {
 			return "", nil, fmt.Errorf("codex_oauth: parse responses response: %w", err)
 		}
 		ar := apicompat.ResponsesToAnthropic(&rr, rc.ClientModel)
-		out, err := sonic.Marshal(ar)
+		out, err := jsonx.Marshal(ar)
 		if err != nil {
 			return "", nil, fmt.Errorf("codex_oauth: marshal anthropic response: %w", err)
 		}

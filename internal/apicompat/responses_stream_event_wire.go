@@ -1,6 +1,6 @@
 package apicompat
 
-import "github.com/bytedance/sonic"
+import "micro-one-api/pkg/jsonx"
 
 // MarshalJSON renders a ResponsesStreamEvent into its wire form.
 //
@@ -33,7 +33,7 @@ func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 		} else {
 			m["delta"] = e.Delta
 		}
-		return sonic.Marshal(m)
+		return jsonx.Marshal(m)
 
 	case "response.content_part.added", "response.content_part.done":
 		m := e.wireBase()
@@ -41,7 +41,7 @@ func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 		m["output_index"] = e.OutputIndex
 		m["content_index"] = e.ContentIndex
 		m["part"] = outputTextPartWire(e.Part)
-		return sonic.Marshal(m)
+		return jsonx.Marshal(m)
 
 	case "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done":
 		m := e.wireBase()
@@ -53,7 +53,7 @@ func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 		} else {
 			m["delta"] = e.Delta
 		}
-		return sonic.Marshal(m)
+		return jsonx.Marshal(m)
 
 	case "response.reasoning_summary_part.added", "response.reasoning_summary_part.done":
 		m := e.wireBase()
@@ -61,13 +61,13 @@ func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 		m["output_index"] = e.OutputIndex
 		m["summary_index"] = e.SummaryIndex
 		m["part"] = summaryTextPartWire(e.Part)
-		return sonic.Marshal(m)
+		return jsonx.Marshal(m)
 
 	case "response.output_item.added", "response.output_item.done":
 		m := e.wireBase()
 		m["output_index"] = e.OutputIndex
 		m["item"] = responsesItemWire(e.Item)
-		return sonic.Marshal(m)
+		return jsonx.Marshal(m)
 
 	case "response.function_call_arguments.delta", "response.function_call_arguments.done":
 		m := e.wireBase()
@@ -84,13 +84,13 @@ func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 		} else {
 			m["delta"] = e.Delta
 		}
-		return sonic.Marshal(m)
+		return jsonx.Marshal(m)
 
 	default:
 		// response.created / completed / done / failed / incomplete and any
 		// event type not shaped above keep the default struct marshalling.
 		type alias ResponsesStreamEvent
-		return sonic.Marshal(alias(e))
+		return jsonx.Marshal(alias(e))
 	}
 }
 

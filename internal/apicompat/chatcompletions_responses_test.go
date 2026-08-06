@@ -2,7 +2,7 @@ package apicompat
 
 import (
 	"encoding/json"
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,7 +28,7 @@ func TestChatCompletionsToResponses_BasicText(t *testing.T) {
 	assert.False(t, *resp.Store)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 1)
 	assert.Equal(t, "user", items[0].Role)
 }
@@ -46,7 +46,7 @@ func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 2)
 	assert.Equal(t, "system", items[0].Role)
 	assert.Equal(t, "user", items[1].Role)
@@ -92,7 +92,7 @@ func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	// user + function_call + function_call_output = 3
 	// (assistant message with empty content + tool_calls → only function_call items emitted)
 	require.Len(t, items, 3)
@@ -147,13 +147,13 @@ func TestChatCompletionsToResponses_ToolStrict(t *testing.T) {
 			require.NotNil(t, resp.Tools[0].Strict)
 			assert.Equal(t, tt.want, *resp.Tools[0].Strict)
 
-			payload, err := sonic.Marshal(resp)
+			payload, err := jsonx.Marshal(resp)
 			require.NoError(t, err)
 
 			var serialized struct {
 				Tools []map[string]json.RawMessage `json:"tools"`
 			}
-			require.NoError(t, sonic.Unmarshal(payload, &serialized))
+			require.NoError(t, jsonx.Unmarshal(payload, &serialized))
 			require.Len(t, serialized.Tools, 1)
 			strictJSON, ok := serialized.Tools[0]["strict"]
 			require.True(t, ok, "strict must be present in the Responses payload")
@@ -177,14 +177,14 @@ func TestChatCompletionsToResponses_LegacyFunctionDefaultsStrictFalse(t *testing
 	require.NotNil(t, resp.Tools[0].Strict)
 	assert.False(t, *resp.Tools[0].Strict)
 
-	payload, err := sonic.Marshal(resp)
+	payload, err := jsonx.Marshal(resp)
 	require.NoError(t, err)
 	assert.Contains(t, string(payload), `"strict":false`)
 }
 
 func TestResponsesTool_StrictFalseIsSerialized(t *testing.T) {
 	strict := false
-	payload, err := sonic.Marshal(ResponsesTool{
+	payload, err := jsonx.Marshal(ResponsesTool{
 		Type:   "function",
 		Strict: &strict,
 	})
@@ -194,7 +194,7 @@ func TestResponsesTool_StrictFalseIsSerialized(t *testing.T) {
 
 func mustMarshalJSON(t *testing.T, value any) []byte {
 	t.Helper()
-	data, err := sonic.Marshal(value)
+	data, err := jsonx.Marshal(value)
 	require.NoError(t, err)
 	return data
 }
@@ -255,11 +255,11 @@ func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 1)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 	require.Len(t, parts, 2)
 	assert.Equal(t, "input_text", parts[0].Type)
 	assert.Equal(t, "Describe this", parts[0].Text)
@@ -279,11 +279,11 @@ func TestChatCompletionsToResponses_EmptyBase64ImageURLSkipped(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 1)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "input_text", parts[0].Type)
 	assert.Equal(t, "Describe this", parts[0].Text)
@@ -301,11 +301,11 @@ func TestChatCompletionsToResponses_WhitespaceOnlyBase64ImageURLSkipped(t *testi
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 1)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "input_text", parts[0].Type)
 	assert.Equal(t, "Describe this", parts[0].Text)
@@ -338,7 +338,7 @@ func TestChatCompletionsToResponses_EmptyContentNeverNull(t *testing.T) {
 				"converted input must not contain a null content field")
 
 			var items []ResponsesInputItem
-			require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+			require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 			require.Len(t, items, 1)
 			assert.Equal(t, `""`, string(items[0].Content),
 				"content must be an empty string, not null")
@@ -418,17 +418,17 @@ func TestChatCompletionsToResponses_SystemArrayContent(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 2)
 
 	var systemParts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[0].Content, &systemParts))
+	require.NoError(t, jsonx.Unmarshal(items[0].Content, &systemParts))
 	require.Len(t, systemParts, 1)
 	assert.Equal(t, "input_text", systemParts[0].Type)
 	assert.Equal(t, "You are a careful visual assistant.", systemParts[0].Text)
 
 	var userParts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[1].Content, &userParts))
+	require.NoError(t, jsonx.Unmarshal(items[1].Content, &userParts))
 	require.Len(t, userParts, 2)
 	assert.Equal(t, "input_image", userParts[1].Type)
 	assert.Equal(t, "data:image/png;base64,abc123", userParts[1].ImageURL)
@@ -459,7 +459,7 @@ func TestChatCompletionsToResponses_LegacyFunctions(t *testing.T) {
 	// tool_choice should be converted
 	require.NotNil(t, resp.ToolChoice)
 	var tc map[string]any
-	require.NoError(t, sonic.Unmarshal(resp.ToolChoice, &tc))
+	require.NoError(t, jsonx.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "function", tc["type"])
 	assert.Equal(t, "get_weather", tc["name"])
 	assert.NotContains(t, tc, "function")
@@ -495,7 +495,7 @@ func TestChatCompletionsToResponses_TemperatureStrippedForReasoningModel(t *test
 	assert.Nil(t, resp.TopP, "reasoning model: top_p must be stripped")
 
 	// Must not appear in the serialised request body sent to the upstream.
-	b, err := sonic.Marshal(resp)
+	b, err := jsonx.Marshal(resp)
 	require.NoError(t, err)
 	assert.NotContains(t, string(b), `"temperature"`)
 	assert.NotContains(t, string(b), `"top_p"`)
@@ -544,7 +544,7 @@ func TestChatCompletionsToResponses_AssistantWithTextAndToolCalls(t *testing.T) 
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	// user + assistant message (with text) + function_call
 	require.Len(t, items, 3)
 	assert.Equal(t, "user", items[0].Role)
@@ -566,12 +566,12 @@ func TestChatCompletionsToResponses_AssistantArrayContentPreserved(t *testing.T)
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 2)
 	assert.Equal(t, "assistant", items[1].Role)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[1].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[1].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Equal(t, "AB", parts[0].Text)
@@ -590,11 +590,11 @@ func TestChatCompletionsToResponses_AssistantThinkingTagPreserved(t *testing.T) 
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 2)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[1].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[1].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Contains(t, parts[0].Text, "<thinking>internal plan</thinking>")
@@ -618,11 +618,11 @@ func TestChatCompletionsToResponses_AssistantReasoningContentPreserved(t *testin
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 2)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[1].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[1].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Contains(t, parts[0].Text, "<thinking>internal plan</thinking>")
@@ -659,7 +659,7 @@ func TestResponsesToChatCompletions_BasicText(t *testing.T) {
 	assert.Equal(t, "stop", chat.Choices[0].FinishReason)
 
 	var content string
-	require.NoError(t, sonic.Unmarshal(chat.Choices[0].Message.Content, &content))
+	require.NoError(t, jsonx.Unmarshal(chat.Choices[0].Message.Content, &content))
 	assert.Equal(t, "Hello, world!", content)
 
 	require.NotNil(t, chat.Usage)
@@ -718,7 +718,7 @@ func TestResponsesToChatCompletions_Reasoning(t *testing.T) {
 	require.Len(t, chat.Choices, 1)
 
 	var content string
-	require.NoError(t, sonic.Unmarshal(chat.Choices[0].Message.Content, &content))
+	require.NoError(t, jsonx.Unmarshal(chat.Choices[0].Message.Content, &content))
 	assert.Equal(t, "The answer is 42.", content)
 	assert.Equal(t, "I thought about it.", chat.Choices[0].Message.ReasoningContent)
 }
@@ -755,7 +755,7 @@ func TestChatCompletionsToResponses_ToolArrayContent(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 3)
 	assert.Equal(t, "function_call_output", items[2].Type)
 	assert.Equal(t, "call_1", items[2].CallID)
@@ -876,7 +876,7 @@ func TestResponsesToChatCompletions_AllTokenDetailsPassThrough(t *testing.T) {
 	assert.Equal(t, 10, chat.Usage.CompletionTokensDetails.AcceptedPredictionTokens)
 	assert.Equal(t, 3, chat.Usage.CompletionTokensDetails.RejectedPredictionTokens)
 
-	raw, err := sonic.Marshal(chat.Usage)
+	raw, err := jsonx.Marshal(chat.Usage)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `"prompt_tokens_details"`)
 	assert.Contains(t, string(raw), `"completion_tokens_details"`)
@@ -911,7 +911,7 @@ func TestResponsesToChatCompletions_NoReasoningTokensWhenZero(t *testing.T) {
 	require.NotNil(t, chat.Usage)
 	assert.Nil(t, chat.Usage.CompletionTokensDetails)
 
-	raw, err := sonic.Marshal(chat.Usage)
+	raw, err := jsonx.Marshal(chat.Usage)
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "completion_tokens_details")
 	assert.NotContains(t, string(raw), "reasoning_tokens")
@@ -938,7 +938,7 @@ func TestResponsesToChatCompletions_WebSearch(t *testing.T) {
 	assert.Equal(t, "stop", chat.Choices[0].FinishReason)
 
 	var content string
-	require.NoError(t, sonic.Unmarshal(chat.Choices[0].Message.Content, &content))
+	require.NoError(t, jsonx.Unmarshal(chat.Choices[0].Message.Content, &content))
 	assert.Equal(t, "search results", content)
 }
 

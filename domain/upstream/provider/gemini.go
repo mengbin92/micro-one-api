@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
+	"micro-one-api/pkg/jsonx"
 	applogger "micro-one-api/platform/logging"
 )
 
@@ -175,7 +175,7 @@ func convertFromGeminiResponse(resp *geminiResponse, model string) *ChatCompleti
 func (p *GeminiProvider) ChatCompletions(ctx context.Context, req *ChatCompletionsRequest) (*ChatCompletionsResponse, error) {
 	geminiReq := convertToGeminiRequest(req)
 
-	body, err := sonic.Marshal(geminiReq)
+	body, err := jsonx.Marshal(geminiReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -204,7 +204,7 @@ func (p *GeminiProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 	}
 
 	var geminiResp geminiResponse
-	if err := sonic.Unmarshal(respBody, &geminiResp); err != nil {
+	if err := jsonx.Unmarshal(respBody, &geminiResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
@@ -215,7 +215,7 @@ func (p *GeminiProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCompletionsRequest) (<-chan StreamChunk, error) {
 	geminiReq := convertToGeminiRequest(req)
 
-	body, err := sonic.Marshal(geminiReq)
+	body, err := jsonx.Marshal(geminiReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -261,7 +261,7 @@ func (p *GeminiProvider) ChatCompletionsStream(ctx context.Context, req *ChatCom
 			}
 
 			var wrapper geminiStreamWrapper
-			if err := sonic.Unmarshal([]byte(data), &wrapper); err != nil {
+			if err := jsonx.Unmarshal([]byte(data), &wrapper); err != nil {
 				logProviderWarn("failed to parse Gemini SSE chunk",
 					zap.Error(err),
 					zap.String("data_preview", applogger.TruncateString(data, 100)),

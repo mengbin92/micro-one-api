@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
+	"micro-one-api/pkg/jsonx"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	relaycredential "micro-one-api/domain/upstream/credential"
@@ -538,7 +538,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	// Determine whether the client requested streaming.
 	isStream := false
 	var probe map[string]any
-	if err := sonic.Unmarshal(rawBody, &probe); err == nil {
+	if err := jsonx.Unmarshal(rawBody, &probe); err == nil {
 		if v, ok := probe["stream"].(bool); ok {
 			isStream = v
 		}

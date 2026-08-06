@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"micro-one-api/pkg/jsonx"
 	applogger "micro-one-api/platform/logging"
 )
 
@@ -339,7 +339,7 @@ func (im *IdempotencyMiddleware) getCachedResponse(ctx context.Context, key stri
 		data, err := im.redis.Get(ctx, redisKey).Bytes()
 		if err == nil && len(data) > 0 {
 			var resp IdempotencyResponse
-			if err := sonic.Unmarshal(data, &resp); err == nil {
+			if err := jsonx.Unmarshal(data, &resp); err == nil {
 				// Populate local cache for future replays.
 				if im.localCache != nil {
 					im.localCache.set(key, &resp)
@@ -365,7 +365,7 @@ func (im *IdempotencyMiddleware) cacheResponse(ctx context.Context, key string, 
 	// Store in Redis
 	if im.redis != nil {
 		redisKey := im.redisKey(key)
-		if data, err := sonic.Marshal(resp); err == nil {
+		if data, err := jsonx.Marshal(resp); err == nil {
 			ttl := im.config.TTL
 			if ttl <= 0 {
 				ttl = 24 * time.Hour

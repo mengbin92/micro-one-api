@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	monitorv1 "micro-one-api/api/monitor/v1"
 	"micro-one-api/app/monitor/internal/biz"
@@ -168,7 +168,7 @@ func (s *MonitorService) HandleRecordHealthCheck(w http.ResponseWriter, r *http.
 		Status       string `json:"status"`
 		ResponseTime int64  `json:"response_time"`
 	}
-	if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := jsonx.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -241,7 +241,7 @@ func (s *MonitorService) HandleCreateAlertRule(w http.ResponseWriter, r *http.Re
 		Duration    int     `json:"duration"`
 		Enabled     bool    `json:"enabled"`
 	}
-	if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := jsonx.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -297,7 +297,7 @@ func (s *MonitorService) HandleUpdateAlertRule(w http.ResponseWriter, r *http.Re
 		Duration    int     `json:"duration"`
 		Enabled     *bool   `json:"enabled"`
 	}
-	if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := jsonx.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -350,11 +350,11 @@ func alertRuleToMap(rule *biz.AlertRule) map[string]interface{} {
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = sonic.ConfigStd.NewEncoder(w).Encode(data)
+	_ = jsonx.NewEncoder(w).Encode(data)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = sonic.ConfigStd.NewEncoder(w).Encode(map[string]interface{}{"error": message})
+	_ = jsonx.NewEncoder(w).Encode(map[string]interface{}{"error": message})
 }

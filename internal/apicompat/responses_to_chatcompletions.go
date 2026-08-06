@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 	"strings"
 	"time"
 )
@@ -66,7 +66,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 		msg.ToolCalls = toolCalls
 	}
 	if contentText != "" {
-		raw, _ := sonic.Marshal(contentText)
+		raw, _ := jsonx.Marshal(contentText)
 		msg.Content = raw
 	}
 	if reasoningText != "" {
@@ -196,7 +196,7 @@ func FinalizeResponsesChatStream(state *ResponsesEventToChatState) []ChatComplet
 
 // ChatChunkToSSE formats a ChatCompletionsChunk as an SSE data line.
 func ChatChunkToSSE(chunk ChatCompletionsChunk) (string, error) {
-	data, err := sonic.Marshal(chunk)
+	data, err := jsonx.Marshal(chunk)
 	if err != nil {
 		return "", err
 	}

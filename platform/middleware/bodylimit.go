@@ -3,6 +3,15 @@ package middleware
 // Keep encoding/json for ValidateJSONBody: it needs Decoder.DisallowUnknownFields()
 // and custom error type checking (json.SyntaxError, json.UnmarshalTypeError) that sonic
 // doesn't expose the same way. Body parsing is not the hot path for serialization.
+//
+// NOTE (dual-parser boundary): this middleware validates the body with stdlib
+// encoding/json, while downstream handlers parse the same body via pkg/jsonx
+// (sonic.ConfigStd). Both parsers are encoding/json-compatible, but accept/reject
+// behavior may differ on edge inputs (unknown fields, number precision, escapes).
+// That is intentional: this layer fails closed (rejects) before the handler sees
+// the body, so a divergence would surface as a rejected request, never as a
+// silently different parse downstream. If strict parity ever becomes required,
+// migrate this file to jsonx and drop the stdlib type assertions.
 
 import (
 	"encoding/json"

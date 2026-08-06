@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
+	"micro-one-api/pkg/jsonx"
 	applogger "micro-one-api/platform/logging"
 )
 
@@ -357,7 +357,7 @@ func anthropicCacheCreation1h(u anthropicUsage) int {
 func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatCompletionsRequest) (*ChatCompletionsResponse, error) {
 	anthropicReq := convertToAnthropicRequest(req)
 
-	body, err := sonic.Marshal(anthropicReq)
+	body, err := jsonx.Marshal(anthropicReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -388,7 +388,7 @@ func (p *AnthropicProvider) ChatCompletions(ctx context.Context, req *ChatComple
 	}
 
 	var anthropicResp anthropicResponse
-	if err := sonic.Unmarshal(respBody, &anthropicResp); err != nil {
+	if err := jsonx.Unmarshal(respBody, &anthropicResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
@@ -400,7 +400,7 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 	anthropicReq := convertToAnthropicRequest(req)
 	anthropicReq.Stream = true
 
-	body, err := sonic.Marshal(anthropicReq)
+	body, err := jsonx.Marshal(anthropicReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -455,7 +455,7 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 			}
 
 			var event anthropicStreamEvent
-			if err := sonic.Unmarshal([]byte(data), &event); err != nil {
+			if err := jsonx.Unmarshal([]byte(data), &event); err != nil {
 				logProviderWarn("failed to parse Anthropic SSE event",
 					zap.Error(err),
 					zap.String("data_preview", applogger.TruncateString(data, 100)),

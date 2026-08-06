@@ -8,8 +8,8 @@ import (
 	"micro-one-api/pkg/safefile"
 	"micro-one-api/pkg/wildcard"
 
-	"github.com/bytedance/sonic"
 	"gopkg.in/yaml.v3"
+	"micro-one-api/pkg/jsonx"
 )
 
 // ModelEntry represents a single model mapping entry.
@@ -87,7 +87,7 @@ func (m *ModelMapper) Reload() error {
 			return fmt.Errorf("failed to parse models config %s: %w", m.path, err)
 		}
 	} else {
-		if err := sonic.Unmarshal(data, &file); err != nil {
+		if err := jsonx.Unmarshal(data, &file); err != nil {
 			return fmt.Errorf("failed to parse models config %s: %w", m.path, err)
 		}
 	}

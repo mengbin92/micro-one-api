@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 )
 
 type VoyageAIProvider struct {
@@ -97,7 +97,7 @@ func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawRe
 
 func normalizeVoyageAIEmbeddingResponse(body []byte) []byte {
 	var payload map[string]interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}
 	usage, ok := payload["usage"].(map[string]interface{})
@@ -111,7 +111,7 @@ func normalizeVoyageAIEmbeddingResponse(body []byte) []byte {
 	if _, exists := usage["prompt_tokens"]; !exists {
 		usage["prompt_tokens"] = total
 	}
-	encoded, err := sonic.Marshal(payload)
+	encoded, err := jsonx.Marshal(payload)
 	if err != nil {
 		return body
 	}

@@ -7,8 +7,6 @@ package usage
 import (
 	"micro-one-api/pkg/jsonx"
 
-	"github.com/bytedance/sonic"
-
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/platform/metrics"
 )
@@ -19,7 +17,7 @@ import (
 // the orchestrator and forwarder.
 func ExtractFromJSON(body []byte, fallback int64, promptExclusive bool) relaybiz.CanonicalUsage {
 	var payload interface{}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return relaybiz.CanonicalUsage{TotalTokens: fallback, PromptExclusive: promptExclusive}
 	}
 	u := extractFromValue(payload, fallback)

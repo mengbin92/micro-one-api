@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/internal/apicompat"
 )
@@ -86,7 +86,7 @@ func pumpAnthropicToResponses(src io.Reader, w *io.PipeWriter) {
 			continue
 		}
 		var evt apicompat.AnthropicStreamEvent
-		if err := sonic.UnmarshalString(data, &evt); err != nil {
+		if err := jsonx.UnmarshalFromString(data, &evt); err != nil {
 			continue
 		}
 		for _, rse := range apicompat.AnthropicEventToResponsesEvents(&evt, state) {
@@ -161,7 +161,7 @@ func pumpAnthropicToChat(src io.Reader, w *io.PipeWriter, model string) {
 			continue
 		}
 		var evt apicompat.AnthropicStreamEvent
-		if err := sonic.UnmarshalString(data, &evt); err != nil {
+		if err := jsonx.UnmarshalFromString(data, &evt); err != nil {
 			continue
 		}
 		for _, rse := range apicompat.AnthropicEventToResponsesEvents(&evt, anthState) {
@@ -215,7 +215,7 @@ func pumpResponsesToAnthropic(src io.Reader, w *io.PipeWriter) {
 			continue
 		}
 		var evt apicompat.ResponsesStreamEvent
-		if err := sonic.UnmarshalString(data, &evt); err != nil {
+		if err := jsonx.UnmarshalFromString(data, &evt); err != nil {
 			continue
 		}
 		for _, ase := range apicompat.ResponsesEventToAnthropicEvents(&evt, state) {
@@ -257,7 +257,7 @@ func pumpResponsesToChat(src io.Reader, w *io.PipeWriter, model string) {
 			continue
 		}
 		var evt apicompat.ResponsesStreamEvent
-		if err := sonic.UnmarshalString(data, &evt); err != nil {
+		if err := jsonx.UnmarshalFromString(data, &evt); err != nil {
 			continue
 		}
 		for _, chunk := range apicompat.ResponsesEventToChatChunks(&evt, state) {

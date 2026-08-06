@@ -15,7 +15,7 @@ import (
 
 	"micro-one-api/platform/events"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 )
 
 const (
@@ -1070,7 +1070,7 @@ func DecodeChannelConfig(input string) ChannelConfig {
 		return ChannelConfig{}
 	}
 	var cfg ChannelConfig
-	_ = sonic.Unmarshal([]byte(input), &cfg)
+	_ = jsonx.Unmarshal([]byte(input), &cfg)
 	return cfg
 }
 

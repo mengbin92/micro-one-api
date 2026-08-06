@@ -3,7 +3,7 @@ package server
 import (
 	"io"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 )
 
 func decodeJSON(r io.Reader, v interface{}) error {
@@ -12,11 +12,11 @@ func decodeJSON(r io.Reader, v interface{}) error {
 	if err != nil {
 		return err
 	}
-	return sonic.Unmarshal(data, v)
+	return jsonx.Unmarshal(data, v)
 }
 
 func encodeJSON(w io.Writer, v interface{}) error {
-	data, err := sonic.Marshal(v)
+	data, err := jsonx.Marshal(v)
 	if err != nil {
 		return err
 	}

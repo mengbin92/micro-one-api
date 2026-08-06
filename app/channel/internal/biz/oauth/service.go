@@ -16,8 +16,6 @@ import (
 
 	"micro-one-api/pkg/jsonx"
 
-	"github.com/bytedance/sonic"
-
 	"micro-one-api/app/channel/internal/biz"
 	relaycredential "micro-one-api/domain/upstream/credential"
 )
@@ -340,7 +338,7 @@ func (s *Service) subscriptionAccountFromToken(ctx context.Context, platform str
 	if len(models) == 0 {
 		models = defaultModels(platform)
 	}
-	metadataJSON, _ := sonic.Marshal(metadata)
+	metadataJSON, _ := jsonx.Marshal(metadata)
 	return &biz.SubscriptionAccount{
 		Name:         name,
 		Platform:     platform,
@@ -466,7 +464,7 @@ func metadataMap(raw string) map[string]any {
 		return map[string]any{}
 	}
 	var m map[string]any
-	if err := sonic.UnmarshalString(raw, &m); err != nil {
+	if err := jsonx.UnmarshalFromString(raw, &m); err != nil {
 		return map[string]any{"raw_metadata": raw}
 	}
 	return m

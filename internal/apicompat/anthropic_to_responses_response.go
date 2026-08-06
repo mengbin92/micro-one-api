@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 	"strings"
 	"time"
 )
@@ -220,7 +220,7 @@ func FinalizeAnthropicResponsesStream(state *AnthropicEventToResponsesState) []R
 
 // ResponsesEventToSSE formats a ResponsesStreamEvent as an SSE data line.
 func ResponsesEventToSSE(evt ResponsesStreamEvent) (string, error) {
-	data, err := sonic.Marshal(evt)
+	data, err := jsonx.Marshal(evt)
 	if err != nil {
 		return "", err
 	}

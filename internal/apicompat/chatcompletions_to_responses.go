@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bytedance/sonic"
-
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -25,7 +23,7 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 		return nil, err
 	}
 
-	inputJSON, err := sonic.Marshal(input)
+	inputJSON, err := jsonx.Marshal(input)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +179,7 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 
 	if content != "" {
 		parts := []ResponsesContentPart{{Type: "output_text", Text: content}}
-		partsJSON, err := sonic.Marshal(parts)
+		partsJSON, err := jsonx.Marshal(parts)
 		if err != nil {
 			return nil, err
 		}
@@ -219,12 +217,12 @@ func parseAssistantContent(raw jsonx.RawMessage) (string, error) {
 	}
 
 	var s string
-	if err := sonic.Unmarshal(raw, &s); err == nil {
+	if err := jsonx.Unmarshal(raw, &s); err == nil {
 		return s, nil
 	}
 
 	var parts []map[string]any
-	if err := sonic.Unmarshal(raw, &parts); err != nil {
+	if err := jsonx.Unmarshal(raw, &parts); err != nil {
 		// Keep compatibility with prior behavior: unsupported assistant content
 		// formats are ignored instead of failing the whole request conversion.
 		return "", nil
@@ -330,12 +328,12 @@ func parseChatMessageContent(raw jsonx.RawMessage) (chatMessageContent, error) {
 	}
 
 	var s string
-	if err := sonic.Unmarshal(raw, &s); err == nil {
+	if err := jsonx.Unmarshal(raw, &s); err == nil {
 		return chatMessageContent{Text: &s}, nil
 	}
 
 	var parts []ChatContentPart
-	if err := sonic.Unmarshal(raw, &parts); err == nil {
+	if err := jsonx.Unmarshal(raw, &parts); err == nil {
 		return chatMessageContent{Parts: parts}, nil
 	}
 
@@ -344,16 +342,16 @@ func parseChatMessageContent(raw jsonx.RawMessage) (chatMessageContent, error) {
 
 func marshalChatInputContent(content chatMessageContent) (jsonx.RawMessage, error) {
 	if content.Text != nil {
-		return sonic.Marshal(*content.Text)
+		return jsonx.Marshal(*content.Text)
 	}
 	parts := convertChatContentPartsToResponses(content.Parts)
 	if len(parts) == 0 {
 		// A nil slice marshals to JSON null, which the upstream Responses API
 		// rejects ("expected an array of objects or string, but got null").
 		// Fall back to an empty string when no usable parts remain.
-		return sonic.Marshal("")
+		return jsonx.Marshal("")
 	}
-	return sonic.Marshal(parts)
+	return jsonx.Marshal(parts)
 }
 
 func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesContentPart {
@@ -460,18 +458,18 @@ func defaultStrictFalse(src *bool) *bool {
 func convertChatFunctionCallToToolChoice(raw jsonx.RawMessage) (jsonx.RawMessage, error) {
 	// Try string first ("auto", "none", etc.) — pass through as-is.
 	var s string
-	if err := sonic.Unmarshal(raw, &s); err == nil {
-		return sonic.Marshal(s)
+	if err := jsonx.Unmarshal(raw, &s); err == nil {
+		return jsonx.Marshal(s)
 	}
 
 	// Object form: {"name":"X"}
 	var obj struct {
 		Name string `json:"name"`
 	}
-	if err := sonic.Unmarshal(raw, &obj); err != nil {
+	if err := jsonx.Unmarshal(raw, &obj); err != nil {
 		return nil, err
 	}
-	return sonic.Marshal(map[string]any{
+	return jsonx.Marshal(map[string]any{
 		"type": "function",
 		"name": obj.Name,
 	})

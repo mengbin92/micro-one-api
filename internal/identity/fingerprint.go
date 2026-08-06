@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 )
 
 // Platform identifies a subscription-account platform.
@@ -77,7 +77,7 @@ type FingerprintSnapshot string
 // The token is versioned ("v2:") and contains a compact JSON blob. It is
 // opaque to callers; only RestoreFromSnapshot interprets it.
 func (f Fingerprint) Snapshot() FingerprintSnapshot {
-	b, err := sonic.Marshal(f)
+	b, err := jsonx.Marshal(f)
 	if err != nil {
 		// Marshalling a plain struct should never fail; fall back to the
 		// legacy v1 token (ClientID only) so we never return an empty snapshot.
@@ -164,7 +164,7 @@ func RestoreFromSnapshot(snap FingerprintSnapshot, p Platform) Fingerprint {
 	const v2prefix = "v2:"
 	if len(snap) > len(v2prefix) && string(snap[:len(v2prefix)]) == v2prefix {
 		var fp Fingerprint
-		if err := sonic.UnmarshalString(string(snap[len(v2prefix):]), &fp); err == nil && fp.ClientID != "" {
+		if err := jsonx.UnmarshalFromString(string(snap[len(v2prefix):]), &fp); err == nil && fp.ClientID != "" {
 			return fp
 		}
 	}

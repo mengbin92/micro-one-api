@@ -10,7 +10,6 @@ import (
 
 	"micro-one-api/pkg/jsonx"
 
-	"github.com/bytedance/sonic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -143,12 +142,12 @@ func extractSystemText(raw jsonx.RawMessage) string {
 	}
 	// Try string first.
 	var s string
-	if err := sonic.Unmarshal(raw, &s); err == nil {
+	if err := jsonx.Unmarshal(raw, &s); err == nil {
 		return s
 	}
 	// Try array of content blocks.
 	var blocks []map[string]interface{}
-	if err := sonic.Unmarshal(raw, &blocks); err == nil {
+	if err := jsonx.Unmarshal(raw, &blocks); err == nil {
 		var b strings.Builder
 		for _, blk := range blocks {
 			if t, ok := blk["type"].(string); ok && t == "text" {
@@ -168,13 +167,13 @@ func extractSystemText(raw jsonx.RawMessage) string {
 func convertAnthropicMessage(msg anthropicInboundMessage) ([]relayprovider.Message, error) {
 	// Plain string content — direct mapping.
 	var plain string
-	if err := sonic.Unmarshal(msg.Content, &plain); err == nil {
+	if err := jsonx.Unmarshal(msg.Content, &plain); err == nil {
 		return []relayprovider.Message{{Role: msg.Role, Content: plain}}, nil
 	}
 
 	// Array of content blocks.
 	var blocks []map[string]interface{}
-	if err := sonic.Unmarshal(msg.Content, &blocks); err != nil {
+	if err := jsonx.Unmarshal(msg.Content, &blocks); err != nil {
 		// Fall back to raw string representation.
 		return []relayprovider.Message{{Role: msg.Role, Content: string(msg.Content)}}, nil
 	}
@@ -293,7 +292,7 @@ func convertAnthropicToolChoiceToOpenAI(raw jsonx.RawMessage) any {
 		return nil
 	}
 	var choice map[string]interface{}
-	if err := sonic.Unmarshal(raw, &choice); err != nil {
+	if err := jsonx.Unmarshal(raw, &choice); err != nil {
 		return nil
 	}
 	choiceType, _ := choice["type"].(string)
@@ -412,7 +411,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var anthropicReq anthropicInboundRequest
-	if err := sonic.Unmarshal(originalBody, &anthropicReq); err != nil {
+	if err := jsonx.Unmarshal(originalBody, &anthropicReq); err != nil {
 		s.writeAnthropicError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -452,7 +451,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 	}
 
 	if s.hybridAdaptorEnabled && plan.Channel != nil && isSubscriptionChannel(plan.Channel.Type) {
-		rawBody, _ := sonic.Marshal(anthropicReq)
+		rawBody, _ := jsonx.Marshal(anthropicReq)
 		s.handleAnthropicMessagesViaAdaptor(w, r, plan, anthropicReq.Model, rawBody, sessionHash)
 		return
 	}
@@ -910,7 +909,7 @@ func anthropicErrorType(statusCode int) string {
 // ----------------------------------------------------------------------------
 
 func marshalJSONString(v interface{}) string {
-	data, err := sonic.Marshal(v)
+	data, err := jsonx.Marshal(v)
 	if err != nil {
 		return "{}"
 	}
@@ -919,7 +918,7 @@ func marshalJSONString(v interface{}) string {
 
 func parseJSONToAny(s string) interface{} {
 	var v interface{}
-	if err := sonic.Unmarshal([]byte(s), &v); err != nil {
+	if err := jsonx.Unmarshal([]byte(s), &v); err != nil {
 		return map[string]interface{}{}
 	}
 	return v
@@ -942,7 +941,7 @@ func reasoningContentString(v interface{}) string {
 
 // writeSSEEvent writes a single Anthropic SSE event with an optional type.
 func writeSSEEvent(w http.ResponseWriter, eventType string, data interface{}) error {
-	jsonData, err := sonic.Marshal(data)
+	jsonData, err := jsonx.Marshal(data)
 	if err != nil {
 		return err
 	}

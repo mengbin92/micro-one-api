@@ -6,8 +6,6 @@ package apicompat
 
 import (
 	"micro-one-api/pkg/jsonx"
-
-	"github.com/bytedance/sonic"
 )
 
 // ---------------------------------------------------------------------------
@@ -87,17 +85,17 @@ func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
 
 	switch b.Type {
 	case "text":
-		return sonic.Marshal(struct {
+		return jsonx.Marshal(struct {
 			Text string `json:"text"`
 			anthropicContentBlock
 		}{Text: b.Text, anthropicContentBlock: anthropicContentBlock(b)})
 	case "thinking":
-		return sonic.Marshal(struct {
+		return jsonx.Marshal(struct {
 			Thinking string `json:"thinking"`
 			anthropicContentBlock
 		}{Thinking: b.Thinking, anthropicContentBlock: anthropicContentBlock(b)})
 	default:
-		return sonic.Marshal(base)
+		return jsonx.Marshal(base)
 	}
 }
 
@@ -341,7 +339,7 @@ func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 		PromptTokensDetails     *ResponsesInputTokensDetails  `json:"prompt_tokens_details,omitempty"`
 		CompletionTokensDetails *ResponsesOutputTokensDetails `json:"completion_tokens_details,omitempty"`
 	}
-	if err := sonic.Unmarshal(data, &aux); err != nil {
+	if err := jsonx.Unmarshal(data, &aux); err != nil {
 		return err
 	}
 	*u = ResponsesUsage(aux.responsesUsageAlias)

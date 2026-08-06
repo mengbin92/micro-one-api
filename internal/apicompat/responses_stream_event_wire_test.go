@@ -1,7 +1,7 @@
 package apicompat
 
 import (
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,10 +11,10 @@ import (
 // object plus the set of top-level keys.
 func marshalEvent(t *testing.T, e ResponsesStreamEvent) map[string]any {
 	t.Helper()
-	b, err := sonic.Marshal(e)
+	b, err := jsonx.Marshal(e)
 	require.NoError(t, err)
 	var m map[string]any
-	require.NoError(t, sonic.Unmarshal(b, &m))
+	require.NoError(t, jsonx.Unmarshal(b, &m))
 	return m
 }
 

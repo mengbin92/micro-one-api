@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"google.golang.org/grpc"
+	"micro-one-api/pkg/jsonx"
 
 	identityv1 "micro-one-api/api/identity/v1"
 	logv1 "micro-one-api/api/log/v1"
@@ -180,7 +180,7 @@ func (s *LogService) HandleIngestLog(w http.ResponseWriter, r *http.Request) {
 		RequestID string `json:"request_id"`
 		UserID    int64  `json:"user_id"`
 	}
-	if err := sonic.ConfigStd.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := jsonx.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -404,11 +404,11 @@ func writeOneAPI(w http.ResponseWriter, status int, success bool, message string
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = sonic.ConfigStd.NewEncoder(w).Encode(data)
+	_ = jsonx.NewEncoder(w).Encode(data)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = sonic.ConfigStd.NewEncoder(w).Encode(map[string]interface{}{"error": message})
+	_ = jsonx.NewEncoder(w).Encode(map[string]interface{}{"error": message})
 }

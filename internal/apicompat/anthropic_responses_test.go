@@ -2,7 +2,7 @@ package apicompat
 
 import (
 	"encoding/json"
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,12 +31,12 @@ func TestAnthropicToResponses_BasicText(t *testing.T) {
 	assert.False(t, *resp.Store)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 1)
 	assert.Equal(t, "message", items[0].Type)
 	assert.Equal(t, "user", items[0].Role)
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "input_text", parts[0].Type)
 	assert.Equal(t, "Hello", parts[0].Text)
@@ -54,11 +54,11 @@ func TestAnthropicToResponses_SystemPrompt(t *testing.T) {
 		require.NoError(t, err)
 
 		var items []ResponsesInputItem
-		require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+		require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 		require.Len(t, items, 2)
 		assert.Equal(t, "developer", items[0].Role)
 		var parts []ResponsesContentPart
-		require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+		require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 		require.Len(t, parts, 1)
 		assert.Equal(t, "input_text", parts[0].Type)
 		assert.Equal(t, "You are helpful.", parts[0].Text)
@@ -75,11 +75,11 @@ func TestAnthropicToResponses_SystemPrompt(t *testing.T) {
 		require.NoError(t, err)
 
 		var items []ResponsesInputItem
-		require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+		require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 		require.Len(t, items, 2)
 		assert.Equal(t, "developer", items[0].Role)
 		var parts []ResponsesContentPart
-		require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+		require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 		require.Len(t, parts, 2)
 		assert.Equal(t, "input_text", parts[0].Type)
 		assert.Equal(t, "Part 1", parts[0].Text)
@@ -98,10 +98,10 @@ func TestAnthropicToResponses_SystemPrompt(t *testing.T) {
 		require.NoError(t, err)
 
 		var items []ResponsesInputItem
-		require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+		require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 		require.Len(t, items, 2)
 		var parts []ResponsesContentPart
-		require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+		require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 		require.Len(t, parts, 1)
 		assert.Equal(t, "Project prompt", parts[0].Text)
 	})
@@ -133,7 +133,7 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 
 	// Check input items
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	// user + assistant + function_call + function_call_output = 4
 	require.Len(t, items, 4)
 
@@ -162,13 +162,13 @@ func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	// user + assistant(text only, thinking ignored) + user = 3
 	require.Len(t, items, 3)
 	assert.Equal(t, "assistant", items[1].Role)
 	// Assistant content should only have text, not thinking.
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[1].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[1].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Equal(t, "Hi!", parts[0].Text)
@@ -1187,7 +1187,7 @@ func TestAnthropicToResponses_ToolChoiceAuto(t *testing.T) {
 	require.NoError(t, err)
 
 	var tc string
-	require.NoError(t, sonic.Unmarshal(resp.ToolChoice, &tc))
+	require.NoError(t, jsonx.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "auto", tc)
 }
 
@@ -1203,7 +1203,7 @@ func TestAnthropicToResponses_ToolChoiceAny(t *testing.T) {
 	require.NoError(t, err)
 
 	var tc string
-	require.NoError(t, sonic.Unmarshal(resp.ToolChoice, &tc))
+	require.NoError(t, jsonx.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "required", tc)
 }
 
@@ -1219,7 +1219,7 @@ func TestAnthropicToResponses_ToolChoiceSpecific(t *testing.T) {
 	require.NoError(t, err)
 
 	var tc map[string]any
-	require.NoError(t, sonic.Unmarshal(resp.ToolChoice, &tc))
+	require.NoError(t, jsonx.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "function", tc["type"])
 	assert.Equal(t, "get_weather", tc["name"])
 	assert.NotContains(t, tc, "function")
@@ -1236,7 +1236,7 @@ func TestResponsesToAnthropicRequest_ToolChoiceFunctionName(t *testing.T) {
 	require.NoError(t, err)
 
 	var tc map[string]string
-	require.NoError(t, sonic.Unmarshal(resp.ToolChoice, &tc))
+	require.NoError(t, jsonx.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "tool", tc["type"])
 	assert.Equal(t, "get_weather", tc["name"])
 }
@@ -1252,7 +1252,7 @@ func TestResponsesToAnthropicRequest_ToolChoiceLegacyFunctionName(t *testing.T) 
 	require.NoError(t, err)
 
 	var tc map[string]string
-	require.NoError(t, sonic.Unmarshal(resp.ToolChoice, &tc))
+	require.NoError(t, jsonx.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "tool", tc["type"])
 	assert.Equal(t, "get_weather", tc["name"])
 }
@@ -1314,7 +1314,7 @@ func TestResponsesToAnthropicRequest_AllToolsGetObjectInputSchema(t *testing.T) 
 	assert.Equal(t, "web_search", resp.Tools[1].Name)
 	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(resp.Tools[1].InputSchema))
 
-	body, err := sonic.Marshal(resp)
+	body, err := jsonx.Marshal(resp)
 	require.NoError(t, err)
 	assert.NotContains(t, string(body), `"input_schema":null`)
 }
@@ -1339,12 +1339,12 @@ func TestAnthropicToResponses_UserImageBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 1)
 	assert.Equal(t, "user", items[0].Role)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 	require.Len(t, parts, 2)
 	assert.Equal(t, "input_text", parts[0].Type)
 	assert.Equal(t, "What is in this image?", parts[0].Text)
@@ -1367,11 +1367,11 @@ func TestAnthropicToResponses_ImageOnlyUserMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 1)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "input_image", parts[0].Type)
 	assert.Equal(t, "data:image/jpeg;base64,/9j/4AAQ", parts[0].ImageURL)
@@ -1396,7 +1396,7 @@ func TestAnthropicToResponses_ToolResultWithImage(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	// user + function_call + function_call_output + user(image) = 4
 	require.Len(t, items, 4)
 
@@ -1408,7 +1408,7 @@ func TestAnthropicToResponses_ToolResultWithImage(t *testing.T) {
 	// Image should be in a separate user message.
 	assert.Equal(t, "user", items[3].Role)
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[3].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[3].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "input_image", parts[0].Type)
 	assert.Equal(t, "data:image/png;base64,iVBOR", parts[0].ImageURL)
@@ -1434,7 +1434,7 @@ func TestAnthropicToResponses_ToolResultMixed(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	// user + function_call + function_call_output + user(image) = 4
 	require.Len(t, items, 4)
 
@@ -1445,7 +1445,7 @@ func TestAnthropicToResponses_ToolResultMixed(t *testing.T) {
 	// Image should be in a separate user message.
 	assert.Equal(t, "user", items[3].Role)
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[3].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[3].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "input_image", parts[0].Type)
 	assert.Equal(t, "data:image/png;base64,AAAA", parts[0].ImageURL)
@@ -1470,7 +1470,7 @@ func TestAnthropicToResponses_TextOnlyToolResultBackwardCompat(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	// user + function_call + function_call_output = 3
 	require.Len(t, items, 3)
 
@@ -1493,11 +1493,11 @@ func TestAnthropicToResponses_ImageEmptyMediaType(t *testing.T) {
 	require.NoError(t, err)
 
 	var items []ResponsesInputItem
-	require.NoError(t, sonic.Unmarshal(resp.Input, &items))
+	require.NoError(t, jsonx.Unmarshal(resp.Input, &items))
 	require.Len(t, items, 1)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, sonic.Unmarshal(items[0].Content, &parts))
+	require.NoError(t, jsonx.Unmarshal(items[0].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "input_image", parts[0].Type)
 	// Should default to image/png when media_type is empty.
@@ -1589,7 +1589,7 @@ func TestAnthropicToResponses_ToolWithoutProperties(t *testing.T) {
 
 	// Parameters must have "properties" field after normalization.
 	var params map[string]json.RawMessage
-	require.NoError(t, sonic.Unmarshal(resp.Tools[0].Parameters, &params))
+	require.NoError(t, jsonx.Unmarshal(resp.Tools[0].Parameters, &params))
 	assert.Contains(t, params, "properties")
 }
 
@@ -1610,7 +1610,7 @@ func TestAnthropicToResponses_ToolWithNilSchema(t *testing.T) {
 
 	require.Len(t, resp.Tools, 1)
 	var params map[string]json.RawMessage
-	require.NoError(t, sonic.Unmarshal(resp.Tools[0].Parameters, &params))
+	require.NoError(t, jsonx.Unmarshal(resp.Tools[0].Parameters, &params))
 	assert.JSONEq(t, `"object"`, string(params["type"]))
 	assert.JSONEq(t, `{}`, string(params["properties"]))
 }
@@ -1635,7 +1635,7 @@ func TestAnthropicToResponses_TemperatureStrippedForReasoningModel(t *testing.T)
 	assert.Nil(t, resp.TopP, "reasoning model: top_p must be stripped")
 
 	// Verify the fields are absent from the serialised JSON.
-	b, err := sonic.Marshal(resp)
+	b, err := jsonx.Marshal(resp)
 	require.NoError(t, err)
 	assert.NotContains(t, string(b), `"temperature"`)
 	assert.NotContains(t, string(b), `"top_p"`)

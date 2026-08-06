@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bytedance/sonic"
 	coderws "github.com/coder/websocket"
+	"micro-one-api/pkg/jsonx"
 )
 
 // openAIWSRelayOptions configures the bidirectional Responses WebSocket relay.
@@ -128,7 +128,7 @@ func (st *openAIWSRelayState) observeUpstreamFrame(payload []byte, msgType coder
 	}
 
 	var frame map[string]interface{}
-	if err := sonic.Unmarshal(payload, &frame); err != nil {
+	if err := jsonx.Unmarshal(payload, &frame); err != nil {
 		return "", "", false
 	}
 

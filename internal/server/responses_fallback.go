@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/apicompat"
@@ -77,7 +77,7 @@ func (s *HTTPServer) forwardResponsesViaChatFallback(ctx context.Context, ch *re
 
 func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
 	var raw map[string]interface{}
-	if err := sonic.Unmarshal(body, &raw); err != nil {
+	if err := jsonx.Unmarshal(body, &raw); err != nil {
 		return nil, false, fmt.Errorf("failed to parse responses request: %w", err)
 	}
 	model, _ := raw["model"].(string)
@@ -111,7 +111,7 @@ func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
 		chat["stream"] = true
 		chat["stream_options"] = map[string]interface{}{"include_usage": true}
 	}
-	chatBody, err := sonic.Marshal(chat)
+	chatBody, err := jsonx.Marshal(chat)
 	if err != nil {
 		return nil, false, err
 	}
@@ -312,7 +312,7 @@ func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 			TotalTokens      int64 `json:"total_tokens"`
 		} `json:"usage"`
 	}
-	if err := sonic.Unmarshal(body, &chat); err != nil {
+	if err := jsonx.Unmarshal(body, &chat); err != nil {
 		return nil, rawUsage{}, fmt.Errorf("failed to parse chat completion response: %w", err)
 	}
 	responseID := strings.TrimSpace(chat.ID)
@@ -368,7 +368,7 @@ func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 			"finish_reason": finishReason,
 		},
 	}
-	respBody, err := sonic.Marshal(resp)
+	respBody, err := jsonx.Marshal(resp)
 	if err != nil {
 		return nil, rawUsage{}, fmt.Errorf("failed to marshal fallback response: %w", err)
 	}
@@ -453,7 +453,7 @@ func newResponsesStreamFallbackState(responseID, textItemID string) *responsesSt
 
 func (s *responsesStreamFallbackState) writeChunk(w io.Writer, data []byte) bool {
 	var chunk chatCompletionStreamChunk
-	if err := sonic.Unmarshal(data, &chunk); err != nil {
+	if err := jsonx.Unmarshal(data, &chunk); err != nil {
 		return false
 	}
 	if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.InputTokens > 0 || chunk.Usage.OutputTokens > 0 {
@@ -731,7 +731,7 @@ type chatCompletionStreamToolCallDelta struct {
 }
 
 func writeResponsesSSE(w io.Writer, event map[string]interface{}) {
-	encoded, err := sonic.Marshal(event)
+	encoded, err := jsonx.Marshal(event)
 	if err != nil {
 		return
 	}
@@ -800,7 +800,7 @@ func (s *HTTPServer) forwardResponsesViaAnthropicFallback(ctx context.Context, c
 // streaming.
 func responsesRequestToAnthropicBody(body []byte) ([]byte, bool, error) {
 	var rr apicompat.ResponsesRequest
-	if err := sonic.Unmarshal(body, &rr); err != nil {
+	if err := jsonx.Unmarshal(body, &rr); err != nil {
 		return nil, false, fmt.Errorf("failed to parse responses request: %w", err)
 	}
 	if strings.TrimSpace(rr.Model) == "" {
@@ -823,7 +823,7 @@ func responsesRequestToAnthropicBody(body []byte) ([]byte, bool, error) {
 			ar.Tools[index].InputSchema = []byte(`{"type":"object","properties":{}}`)
 		}
 	}
-	out, err := sonic.Marshal(ar)
+	out, err := jsonx.Marshal(ar)
 	if err != nil {
 		return nil, false, err
 	}
@@ -834,11 +834,11 @@ func responsesRequestToAnthropicBody(body []byte) ([]byte, bool, error) {
 // response body to a Responses API response body and extracts usage.
 func anthropicResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 	var ar apicompat.AnthropicResponse
-	if err := sonic.Unmarshal(body, &ar); err != nil {
+	if err := jsonx.Unmarshal(body, &ar); err != nil {
 		return nil, rawUsage{}, fmt.Errorf("failed to parse anthropic response: %w", err)
 	}
 	rr := apicompat.AnthropicToResponsesResponse(&ar)
-	out, err := sonic.Marshal(rr)
+	out, err := jsonx.Marshal(rr)
 	if err != nil {
 		return nil, rawUsage{}, fmt.Errorf("failed to marshal responses response: %w", err)
 	}
@@ -875,7 +875,7 @@ func transformAnthropicStreamToResponses(resp *relayprovider.RawStreamResponse) 
 				continue
 			}
 			var evt apicompat.AnthropicStreamEvent
-			if err := sonic.UnmarshalString(data, &evt); err != nil {
+			if err := jsonx.UnmarshalFromString(data, &evt); err != nil {
 				continue
 			}
 			for _, rse := range apicompat.AnthropicEventToResponsesEvents(&evt, state) {

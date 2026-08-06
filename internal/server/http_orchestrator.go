@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	relaybiz "micro-one-api/internal/biz"
 )
@@ -44,7 +44,7 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 	}
 
 	var req chatOrchestratorRequest
-	if err := sonic.Unmarshal(body, &req); err != nil {
+	if err := jsonx.Unmarshal(body, &req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}

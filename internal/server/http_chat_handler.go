@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
+	"micro-one-api/pkg/jsonx"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	relayprovider "micro-one-api/domain/upstream/provider"
@@ -49,7 +49,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var req relayprovider.ChatCompletionsRequest
-	if err := sonic.Unmarshal(originalBody, &req); err != nil {
+	if err := jsonx.Unmarshal(originalBody, &req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -88,7 +88,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// req.Model still holds the client-facing model name at this point (it is
 		// reassigned to the resolved model only further below). Reconstruct the raw
 		// body from the decoded request since the original body was consumed.
-		rawBody, _ := sonic.Marshal(req)
+		rawBody, _ := jsonx.Marshal(req)
 		s.handleChatCompletionsViaAdaptor(w, r, plan, req.Model, rawBody, sessionHash)
 		return
 	}
@@ -240,7 +240,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 			estimatedTokens += int64(len(choice.Delta.Content) / 4)
 		}
 
-		jsonData, err := sonic.Marshal(chunk)
+		jsonData, err := jsonx.Marshal(chunk)
 		if err != nil {
 						applogger.Log.Warn("failed to marshal chunk", zap.Error(err))
 			continue

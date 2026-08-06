@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bytedance/sonic"
-
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -63,14 +61,14 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 			if item.Action != nil {
 				query = item.Action.Query
 			}
-			inputJSON, _ := sonic.Marshal(map[string]string{"query": query})
+			inputJSON, _ := jsonx.Marshal(map[string]string{"query": query})
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:  "server_tool_use",
 				ID:    toolUseID,
 				Name:  "web_search",
 				Input: inputJSON,
 			})
-			emptyResults, _ := sonic.Marshal([]struct{}{})
+			emptyResults, _ := jsonx.Marshal([]struct{}{})
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:      "web_search_tool_result",
 				ToolUseID: toolUseID,
@@ -147,7 +145,7 @@ func sanitizeAnthropicToolUseInput(name string, raw string) jsonx.RawMessage {
 	}
 
 	var input map[string]jsonx.RawMessage
-	if err := sonic.Unmarshal([]byte(raw), &input); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &input); err != nil {
 		return jsonx.RawMessage(raw)
 	}
 
@@ -156,7 +154,7 @@ func sanitizeAnthropicToolUseInput(name string, raw string) jsonx.RawMessage {
 	}
 
 	delete(input, "pages")
-	sanitized, err := sonic.Marshal(input)
+	sanitized, err := jsonx.Marshal(input)
 	if err != nil {
 		return jsonx.RawMessage(raw)
 	}
@@ -274,7 +272,7 @@ func FinalizeResponsesAnthropicStream(state *ResponsesEventToAnthropicState) []A
 
 // ResponsesAnthropicEventToSSE formats an AnthropicStreamEvent as an SSE line pair.
 func ResponsesAnthropicEventToSSE(evt AnthropicStreamEvent) (string, error) {
-	data, err := sonic.Marshal(evt)
+	data, err := jsonx.Marshal(evt)
 	if err != nil {
 		return "", err
 	}
@@ -524,7 +522,7 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	if evt.Item.Action != nil {
 		query = evt.Item.Action.Query
 	}
-	inputJSON, _ := sonic.Marshal(map[string]string{"query": query})
+	inputJSON, _ := jsonx.Marshal(map[string]string{"query": query})
 
 	// Emit server_tool_use block (start + stop).
 	idx1 := state.ContentBlockIndex
@@ -547,7 +545,7 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	// Emit web_search_tool_result block (start + stop).
 	// Content is empty because OpenAI does not expose individual search results;
 	// the model consumes them internally and produces text output.
-	emptyResults, _ := sonic.Marshal([]struct{}{})
+	emptyResults, _ := jsonx.Marshal([]struct{}{})
 	idx2 := state.ContentBlockIndex
 	events = append(events, AnthropicStreamEvent{
 		Type:  "content_block_start",

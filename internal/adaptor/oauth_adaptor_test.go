@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/domain/upstream/credential"
 	"micro-one-api/domain/upstream/provider"
@@ -378,7 +378,7 @@ func TestClaudeOAuth_EndToEnd_NonStreaming(t *testing.T) {
 			Usage: apicompat.AnthropicUsage{InputTokens: 3, OutputTokens: 2},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		out, _ := sonic.Marshal(resp)
+		out, _ := jsonx.Marshal(resp)
 		w.Write(out)
 	}))
 	defer upstream.Close()

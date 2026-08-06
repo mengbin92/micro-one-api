@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"micro-one-api/pkg/jsonx"
-
-	"github.com/bytedance/sonic"
 )
 
 // claudeCodeSystemPrompt is the canonical system-prompt block prepended to
@@ -30,7 +28,7 @@ func RewriteMetadataUserID(body []byte, accountUUID, clientID string) ([]byte, e
 		return body, nil
 	}
 	var raw map[string]jsonx.RawMessage
-	if err := sonic.Unmarshal(body, &raw); err != nil {
+	if err := jsonx.Unmarshal(body, &raw); err != nil {
 		// Not JSON: return unchanged (the caller may be forwarding a raw body).
 		return body, nil
 	}
@@ -39,7 +37,7 @@ func RewriteMetadataUserID(body []byte, accountUUID, clientID string) ([]byte, e
 	// Preserve any existing metadata keys other than user_id.
 	if existing, ok := raw["metadata"]; ok {
 		var existingMap map[string]any
-		if err := sonic.Unmarshal(existing, &existingMap); err == nil {
+		if err := jsonx.Unmarshal(existing, &existingMap); err == nil {
 			for k, v := range existingMap {
 				if k == "user_id" {
 					continue
@@ -48,12 +46,12 @@ func RewriteMetadataUserID(body []byte, accountUUID, clientID string) ([]byte, e
 			}
 		}
 	}
-	metaJSON, err := sonic.Marshal(meta)
+	metaJSON, err := jsonx.Marshal(meta)
 	if err != nil {
 		return body, err
 	}
 	raw["metadata"] = metaJSON
-	return sonic.Marshal(raw)
+	return jsonx.Marshal(raw)
 }
 
 // buildMaskedUserID produces the masked user_id value the upstream expects.
@@ -81,7 +79,7 @@ func InjectClaudeCodeSystemPrompt(body []byte) ([]byte, error) {
 		return body, nil
 	}
 	var raw map[string]jsonx.RawMessage
-	if err := sonic.Unmarshal(body, &raw); err != nil {
+	if err := jsonx.Unmarshal(body, &raw); err != nil {
 		return body, nil
 	}
 	// system may be a string or an array of content blocks. We normalize to a
@@ -89,14 +87,14 @@ func InjectClaudeCodeSystemPrompt(body []byte) ([]byte, error) {
 	systemPrompt := claudeCodeSystemPrompt
 	if existing, ok := raw["system"]; ok {
 		var s string
-		if err := sonic.Unmarshal(existing, &s); err == nil && s != "" {
+		if err := jsonx.Unmarshal(existing, &s); err == nil && s != "" {
 			systemPrompt = claudeCodeSystemPrompt + "\n\n" + s
 		}
 		// Array form: fall back to string concatenation which is accepted by
 		// the upstream. (A richer merge would prepend a text block.)
 	}
 	raw["system"] = jsonString(systemPrompt)
-	return sonic.Marshal(raw)
+	return jsonx.Marshal(raw)
 }
 
 // NormalizeClaudeOAuthRequestBody applies the field-completion portion of the
@@ -108,7 +106,7 @@ func NormalizeClaudeOAuthRequestBody(body []byte) ([]byte, error) {
 		return body, nil
 	}
 	var raw map[string]jsonx.RawMessage
-	if err := sonic.Unmarshal(body, &raw); err != nil {
+	if err := jsonx.Unmarshal(body, &raw); err != nil {
 		return body, nil
 	}
 	changed := false
@@ -127,7 +125,7 @@ func NormalizeClaudeOAuthRequestBody(body []byte) ([]byte, error) {
 	if !changed {
 		return body, nil
 	}
-	return sonic.Marshal(raw)
+	return jsonx.Marshal(raw)
 }
 
 // ComputeAnthropicBeta merges the inbound anthropic-beta header value with the
@@ -163,12 +161,12 @@ func ComputeAnthropicBeta(inbound string) string {
 // --- small JSON helpers (avoid importing encoding/json's MarshalNumber) ---
 
 func jsonString(s string) jsonx.RawMessage {
-	b, _ := sonic.Marshal(s)
+	b, _ := jsonx.Marshal(s)
 	return b
 }
 
 func jsonNumber(n float64) jsonx.RawMessage {
-	b, _ := sonic.Marshal(n)
+	b, _ := jsonx.Marshal(n)
 	return b
 }
 

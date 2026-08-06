@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
+	"micro-one-api/pkg/jsonx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -198,7 +198,7 @@ func (s *EnhancedHTTPServer) handleStreamingResponse(w http.ResponseWriter, r *h
 	w.Header().Set("Transfer-Encoding", "chunked")
 
 	for chunk := range chunkChan {
-		jsonData, err := sonic.Marshal(chunk)
+		jsonData, err := jsonx.Marshal(chunk)
 		if err != nil {
 			applogger.Log.Warn("failed to marshal chunk", zap.Error(err))
 			continue

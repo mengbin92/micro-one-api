@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/domain/upstream/credential"
 	"micro-one-api/domain/upstream/provider"
@@ -71,14 +71,14 @@ func (a *ClaudeOAuthAdaptor) ConvertRequest(_ *RelayContext, inbound Format, bod
 	case FormatOpenAIResponses:
 		// Responses → Anthropic Messages.
 		var rr apicompat.ResponsesRequest
-		if err := sonic.Unmarshal(body, &rr); err != nil {
+		if err := jsonx.Unmarshal(body, &rr); err != nil {
 			return "", nil, fmt.Errorf("claude_oauth: parse responses request: %w", err)
 		}
 		ar, err := apicompat.ResponsesToAnthropicRequest(&rr)
 		if err != nil {
 			return "", nil, fmt.Errorf("claude_oauth: responses→anthropic: %w", err)
 		}
-		out, err := sonic.Marshal(ar)
+		out, err := jsonx.Marshal(ar)
 		if err != nil {
 			return "", nil, err
 		}
@@ -86,7 +86,7 @@ func (a *ClaudeOAuthAdaptor) ConvertRequest(_ *RelayContext, inbound Format, bod
 	case FormatOpenAIChatCompletions:
 		// ChatCompletions → Responses → Anthropic Messages.
 		var cr apicompat.ChatCompletionsRequest
-		if err := sonic.Unmarshal(body, &cr); err != nil {
+		if err := jsonx.Unmarshal(body, &cr); err != nil {
 			return "", nil, fmt.Errorf("claude_oauth: parse chat request: %w", err)
 		}
 		rr, err := apicompat.ChatCompletionsToResponses(&cr)
@@ -97,7 +97,7 @@ func (a *ClaudeOAuthAdaptor) ConvertRequest(_ *RelayContext, inbound Format, bod
 		if err != nil {
 			return "", nil, fmt.Errorf("claude_oauth: responses→anthropic: %w", err)
 		}
-		out, err := sonic.Marshal(ar)
+		out, err := jsonx.Marshal(ar)
 		if err != nil {
 			return "", nil, err
 		}
@@ -216,23 +216,23 @@ func (a *ClaudeOAuthAdaptor) ConvertResponse(rc *RelayContext, upstream Format, 
 	switch rc.InboundFormat {
 	case FormatOpenAIResponses:
 		var ar apicompat.AnthropicResponse
-		if err := sonic.Unmarshal(body, &ar); err != nil {
+		if err := jsonx.Unmarshal(body, &ar); err != nil {
 			return FormatAnthropicMessages, body, nil
 		}
 		rr := apicompat.AnthropicToResponsesResponse(&ar)
-		out, err := sonic.Marshal(rr)
+		out, err := jsonx.Marshal(rr)
 		if err != nil {
 			return FormatAnthropicMessages, body, nil
 		}
 		return FormatOpenAIResponses, out, nil
 	case FormatOpenAIChatCompletions:
 		var ar apicompat.AnthropicResponse
-		if err := sonic.Unmarshal(body, &ar); err != nil {
+		if err := jsonx.Unmarshal(body, &ar); err != nil {
 			return FormatAnthropicMessages, body, nil
 		}
 		rr := apicompat.AnthropicToResponsesResponse(&ar)
 		cr := apicompat.ResponsesToChatCompletions(rr, rc.ClientModel)
-		out, err := sonic.Marshal(cr)
+		out, err := jsonx.Marshal(cr)
 		if err != nil {
 			return FormatAnthropicMessages, body, nil
 		}

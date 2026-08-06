@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
 	relayprovider "micro-one-api/domain/upstream/provider"
@@ -265,7 +265,7 @@ func decodeUpstreamModels(body []byte) ([]string, error) {
 			Name string `json:"name"`
 		} `json:"models"`
 	}
-	if err := sonic.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("decode upstream models: %w", err)
 	}
 	entries := append(payload.Data, payload.Models...)

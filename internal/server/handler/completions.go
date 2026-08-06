@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/internal/server"
 )
@@ -47,7 +47,7 @@ func (h *CompletionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		MaxTokens *int   `json:"max_tokens,omitempty"`
 		Stream    bool   `json:"stream,omitempty"`
 	}
-	if err := sonic.Unmarshal(body, &req); err != nil {
+	if err := jsonx.Unmarshal(body, &req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
@@ -84,6 +84,6 @@ func (h *CompletionsHandler) writeError(w http.ResponseWriter, status int, messa
 			"code":    status,
 		},
 	}
-	data, _ := sonic.Marshal(resp)
+	data, _ := jsonx.Marshal(resp)
 	_, _ = w.Write(data)
 }

@@ -1,7 +1,7 @@
 package apicompat
 
 import (
-	"github.com/bytedance/sonic"
+	"micro-one-api/pkg/jsonx"
 	"strings"
 	"testing"
 
@@ -14,7 +14,7 @@ func collectStreamEvents(t *testing.T, chunks []string) []ResponsesStreamEvent {
 	var events []ResponsesStreamEvent
 	for _, payload := range chunks {
 		var chunk ChatCompletionsChunk
-		require.NoError(t, sonic.Unmarshal([]byte(payload), &chunk))
+		require.NoError(t, jsonx.Unmarshal([]byte(payload), &chunk))
 		events = append(events, ChatCompletionsChunkToResponsesEvents(&chunk, state)...)
 	}
 	events = append(events, FinalizeChatCompletionsResponsesStream(state)...)

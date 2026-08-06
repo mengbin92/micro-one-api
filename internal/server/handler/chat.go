@@ -8,8 +8,6 @@ import (
 
 	"micro-one-api/pkg/jsonx"
 
-	"github.com/bytedance/sonic"
-
 	"micro-one-api/internal/server"
 )
 
@@ -81,7 +79,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Parse request
 	var req ChatCompletionsRequest
-	if err := sonic.Unmarshal(body, &req); err != nil {
+	if err := jsonx.Unmarshal(body, &req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
