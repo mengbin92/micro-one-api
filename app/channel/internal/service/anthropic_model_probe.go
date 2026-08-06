@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -162,11 +163,15 @@ func (s *AnthropicModelProbeService) buildCandidates(ctx context.Context, platfo
 	// Try dynamic fetch for domestic Coding Plan platforms
 	switch platform {
 	case codingPlanProbePlatformZhipu, codingPlanProbePlatformMinimax, codingPlanProbePlatformKimi:
+		fetchStarted := time.Now()
 		dynamicModels, fetchErr = fetchModels(ctx, s.client, account.BaseURL, account.AccessToken)
 		// Log the error but don't fail - we'll fall back to defaults
 		if fetchErr != nil {
-			// TODO: add logging
-			fmt.Printf("failed to fetch models for platform %s: %v (falling back to defaults)\n", platform, fetchErr)
+			slog.Error("failed to fetch models; falling back to platform defaults",
+				"platform", platform,
+				"error", fetchErr,
+				"duration", time.Since(fetchStarted),
+			)
 		}
 	}
 

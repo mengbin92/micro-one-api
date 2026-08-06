@@ -128,6 +128,12 @@ test: test-unit
 test-unit: proto
 	go test $$(go list ./... | grep -v '/test/e2e/suite$$' | grep -v '/web/node_modules/')
 
+.PHONY: test-race
+# run concurrency-sensitive packages under the race detector. This is the CI
+# gate for data races: any race in these packages turns the build red.
+test-race:
+	go test -race ./domain/subscription/... ./internal/biz/... ./internal/server/...
+
 .PHONY: run-identity
 # run identity-service
 run-identity:

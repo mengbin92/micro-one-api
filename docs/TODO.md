@@ -2,7 +2,7 @@
 
 > 最后更新：2026-08-06
 >
-> **当前执行入口**：[v0.11.0 下一阶段工作路线图](./design/v0.11.0-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
+> **当前执行入口**：[v0.17 阶段路线图](./design/v0.17-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
 >
 > 📣 **v0.15.2 → v0.16 阶段（2026-08-06）**：P0–P3 已全部完成，详见
 > [v0.16 路线图](./design/v0.16-roadmap.md)。
@@ -811,3 +811,19 @@ OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减�
       从 `TODO` 转为永久 `NOTE` 设计说明（结构性变更超出当前计费模型范围，属已定档设计决策，
       非 待办；见 `docs/model-management-design.md` §13）。
 - [x] **P3.3 更新本文件状态回写**：即本节。
+
+## P0 完成（v0.17）
+
+> **完成日期：2026-08-06**。P0 三项工程收尾已落地，验收标准全绿：
+
+- [x] **CI 接入 `-race` 守护**：新增 `make test-race` 目标并接入 CI
+      （`.github/workflows/ci.yml`），覆盖 `domain/subscription/...`、
+      `internal/biz/...`、`internal/server/...`；本地 `make test-race` 全绿，
+      未来并发测试若自身有 race，CI 红。
+- [x] **补齐 TODO 日志**：`app/channel/internal/service/anthropic_model_probe.go`
+      `// TODO: add logging` 已补结构化 `slog.Error`（失败原因、耗时），
+      对齐相邻 probe 日志风格；仓库非测试代码 TODO 清零
+      （仅 `platform/cache/channel_cache.go` 一处历史 TODO 的设计 NOTE 保留）。
+- [x] **docs 索引对齐**：`docs/README.md` 快速入口指向 v0.17 路线图、
+      release 列表补齐至 v0.16.0（最新）、设计索引标注 v0.11/v0.16 已收尾、
+      v0.17 为当前；`docs/TODO.md` 收尾节与 v0.16.0 发布状态一致。

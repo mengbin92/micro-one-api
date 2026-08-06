@@ -31,6 +31,9 @@ jobs:
       - name: Run tests
         run: make test
 
+      - name: Run race detector on concurrency-sensitive packages
+        run: make test-race
+
       - name: Check architecture boundaries
         run: ./scripts/check-architecture.sh
 

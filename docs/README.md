@@ -21,7 +21,7 @@ docs/
 | 我想... | 看这里 |
 |---------|--------|
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段执行路线 | [design/v0.11.0-roadmap.md](./design/v0.11.0-roadmap.md) |
+| 查看下一阶段执行路线 | [design/v0.17-roadmap.md](./design/v0.17-roadmap.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看产品界面预览 | [根 README 界面预览](../README.md#界面预览) |
 | 查看某版本发布内容 | [releases/](./releases/) |
@@ -45,7 +45,8 @@ docs/
 - [v0.7.0](./releases/release-v0.7.0.md) · [v0.7.1](./releases/release-v0.7.1.md) · [v0.7.2](./releases/release-v0.7.2.md) · [v0.8.0](./releases/release-v0.8.0.md)
 - [v0.9.0](./releases/release-v0.9.0.md) · [v0.9.1](./releases/release-v0.9.1.md) · [v0.9.2](./releases/release-v0.9.2.md) · [v0.9.3](./releases/release-v0.9.3.md)
 - [v0.10.0](./releases/release-v0.10.0.md) · [v0.10.1](./releases/release-v0.10.1.md) · [v0.10.2](./releases/release-v0.10.2.md)
-- [v0.11.0](./releases/release-v0.11.0.md) · [v0.12.0](./releases/release-v0.12.0.md) · [v0.13.0](./releases/release-v0.13.0.md) · [v0.13.1](./releases/release-v0.13.1.md)（最新）
+- [v0.11.0](./releases/release-v0.11.0.md) · [v0.12.0](./releases/release-v0.12.0.md) · [v0.13.0](./releases/release-v0.13.0.md) · [v0.13.1](./releases/release-v0.13.1.md) · [v0.13.2](./releases/release-v0.13.2.md) · [v0.13.3](./releases/release-v0.13.3.md)
+- [v0.14.0](./releases/release-v0.14.0.md) · [v0.15.0](./releases/release-v0.15.0.md) · [v0.15.1](./releases/release-v0.15.1.md) · [v0.15.2](./releases/release-v0.15.2.md) · [v0.15.3](./releases/release-v0.15.3.md) · [v0.16.0](./releases/release-v0.16.0.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -68,8 +69,9 @@ docs/
 
 | 文档 | 主题 |
 |------|------|
-| [v0.11.0-roadmap.md](./design/v0.11.0-roadmap.md) | 下一阶段路线图：计费准确性、模型治理与路由运营闭环 |
-| [v0.16-roadmap.md](./design/v0.16-roadmap.md) | v0.16 路线图：上线收尾、契约加固、运营增强与工程卫生 |
+| [v0.11.0-roadmap.md](./design/v0.11.0-roadmap.md) | v0.11 路线图：计费准确性、模型治理与路由运营闭环（已收尾） |
+| [v0.16-roadmap.md](./design/v0.16-roadmap.md) | v0.16 路线图：上线收尾、契约加固、运营增强与工程卫生（已收尾） |
+| [v0.17-roadmap.md](./design/v0.17-roadmap.md) | v0.17 路线图：工程收尾、运营闭环与按需增强（当前） |
 | [ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) | 整体架构重构方案 |
 | [BASELINE.md](./design/BASELINE.md) | 性能基线 |
 | [hybrid-relay-adaptor-apicompat-plan.md](./design/hybrid-relay-adaptor-apicompat-plan.md) | 混合中转网关技术方案 |
