@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
 )
 
 type mockSubscriptionRepo struct {
@@ -639,7 +638,7 @@ func TestAssign_RecordsRenewalStrategyNew(t *testing.T) {
 // TestExtend_RecordsRenewalStrategyExtend (M2) closes the gap that the Extend
 // usecase — reachable via admin ExtendSubscription — previously did not write
 // renewal_strategy, leaving an admin-extended row stuck on its initial
-// 'new'/'' value and breaking the "expired but not revoked" observability. It
+// 'new'/” value and breaking the "expired but not revoked" observability. It
 // also pins the domain-H1 narrow write: Extend must not clobber usage columns
 // from the read snapshot.
 func TestExtend_RecordsRenewalStrategyExtend(t *testing.T) {

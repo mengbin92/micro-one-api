@@ -24,12 +24,12 @@ func (n *recordingAlertNotifier) CreateNotification(ctx context.Context, notifyT
 func TestQuotaAlertEvaluator_ExhaustedAlert(t *testing.T) {
 	now := time.Unix(1710000000, 0)
 	acc := &SubscriptionAccount{
-		ID:                 1,
-		Name:               "spent",
-		Status:             ChannelStatusEnabled,
-		Platform:           "codex",
-		QuotaDailyLimitUSD: 1,
-		QuotaDailyUsedUSD:  1,
+		ID:                    1,
+		Name:                  "spent",
+		Status:                ChannelStatusEnabled,
+		Platform:              "codex",
+		QuotaDailyLimitUSD:    1,
+		QuotaDailyUsedUSD:     1,
 		QuotaDailyWindowStart: now.Add(-time.Hour).Unix(),
 	}
 	repo := newSweeperRepo(acc)
@@ -94,14 +94,14 @@ func TestQuotaAlertEvaluator_IdleAlert(t *testing.T) {
 func TestQuotaAlertEvaluator_DedupeWithinWindow(t *testing.T) {
 	now := time.Unix(1710000000, 0)
 	acc := &SubscriptionAccount{
-		ID:                 1,
-		Name:               "spent",
-		Status:             ChannelStatusEnabled,
-		Platform:           "codex",
-		QuotaDailyLimitUSD: 1,
-		QuotaDailyUsedUSD:  1,
+		ID:                    1,
+		Name:                  "spent",
+		Status:                ChannelStatusEnabled,
+		Platform:              "codex",
+		QuotaDailyLimitUSD:    1,
+		QuotaDailyUsedUSD:     1,
 		QuotaDailyWindowStart: now.Add(-time.Hour).Unix(),
-		Metadata:           `{"last_quota_alert_kind":"exhausted","last_quota_alert_at":` + strconv.FormatInt(now.Unix()-60, 10) + `}`,
+		Metadata:              `{"last_quota_alert_kind":"exhausted","last_quota_alert_at":` + strconv.FormatInt(now.Unix()-60, 10) + `}`,
 	}
 	repo := newSweeperRepo(acc)
 	notifier := &recordingAlertNotifier{}
@@ -118,11 +118,11 @@ func TestQuotaAlertEvaluator_DedupeWithinWindow(t *testing.T) {
 func TestQuotaAlertEvaluator_DisabledDoesNothing(t *testing.T) {
 	now := time.Unix(1710000000, 0)
 	acc := &SubscriptionAccount{
-		ID:                 1,
-		Name:               "spent",
-		Status:             ChannelStatusEnabled,
-		QuotaDailyLimitUSD: 1,
-		QuotaDailyUsedUSD:  1,
+		ID:                    1,
+		Name:                  "spent",
+		Status:                ChannelStatusEnabled,
+		QuotaDailyLimitUSD:    1,
+		QuotaDailyUsedUSD:     1,
 		QuotaDailyWindowStart: now.Add(-time.Hour).Unix(),
 	}
 	repo := newSweeperRepo(acc)
@@ -141,11 +141,11 @@ func TestQuotaAlertEvaluator_DisabledDoesNothing(t *testing.T) {
 func TestQuotaAlertEvaluator_WritebackDownAlert(t *testing.T) {
 	now := time.Unix(1710000000, 0)
 	acc := &SubscriptionAccount{
-		ID:                   1,
-		Name:                 "paused",
-		Status:               ChannelStatusEnabled,
-		Platform:             "codex",
-		QuotaSnapshotPaused:  true,
+		ID:                  1,
+		Name:                "paused",
+		Status:              ChannelStatusEnabled,
+		Platform:            "codex",
+		QuotaSnapshotPaused: true,
 	}
 	repo := newSweeperRepo(acc)
 	notifier := &recordingAlertNotifier{}

@@ -21,10 +21,10 @@ type mockReconRepo struct {
 	ledgerConsumeSummary *ConsumeSummary
 	logConsumeSummary    *ConsumeSummary
 	// Phase 2.3 reconciliation coverage fields.
-	refundedOrderCount    int64
-	refundedOrderCents    int64
-	reversalLedgerAmount  int64
-	stuckIssuedOrders     []*PaymentOrder
+	refundedOrderCount   int64
+	refundedOrderCents   int64
+	reversalLedgerAmount int64
+	stuckIssuedOrders    []*PaymentOrder
 }
 
 func (m *mockReconRepo) ListAllAccounts(ctx context.Context) ([]*Account, error) {
@@ -98,11 +98,11 @@ func TestRunReconciliation_ExpiredReservations(t *testing.T) {
 	account := &Account{UserID: "user1", Balance: 900, FrozenAmount: 100, Group: "default"}
 	expiredRes := &Reservation{
 		ReservationID:      "res1",
-		UserID:              "user1",
-		Amount:              100,
-		BalanceAmountQuota:  100, // legacy balance-only: wallet-side == Amount
-		Status:              ReservationStatusReserved,
-		ExpiredAt:           time.Now().Add(-10 * time.Minute),
+		UserID:             "user1",
+		Amount:             100,
+		BalanceAmountQuota: 100, // legacy balance-only: wallet-side == Amount
+		Status:             ReservationStatusReserved,
+		ExpiredAt:          time.Now().Add(-10 * time.Minute),
 	}
 
 	accountRepo := &mockAccountRepo{account: account}

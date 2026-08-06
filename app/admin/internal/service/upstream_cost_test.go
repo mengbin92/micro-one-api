@@ -46,11 +46,11 @@ func TestParseLegacyUpstreamKey(t *testing.T) {
 	}{
 		{"5:glm-5.2", 5, "glm-5.2", true},
 		{"12:gpt-4o", 12, "gpt-4o", true},
-		{"channel:5:glm-5.2", 0, "", false},   // canonical, not legacy
-		{"subscription:7:x", 0, "", false},    // canonical
-		{"glm-5.2", 0, "", false},             // bare model
-		{"abc:def", 0, "", false},             // non-numeric channel
-		{"0:model", 0, "", false},             // zero id
+		{"channel:5:glm-5.2", 0, "", false}, // canonical, not legacy
+		{"subscription:7:x", 0, "", false},  // canonical
+		{"glm-5.2", 0, "", false},           // bare model
+		{"abc:def", 0, "", false},           // non-numeric channel
+		{"0:model", 0, "", false},           // zero id
 	}
 	for _, tc := range cases {
 		chID, model, ok := parseLegacyUpstreamKey(tc.key)
@@ -64,17 +64,17 @@ func TestParseLegacyUpstreamKey(t *testing.T) {
 
 func TestParseCanonicalUpstreamKey(t *testing.T) {
 	cases := []struct {
-		key         string
-		kind        string
-		sourceID    int64
-		upstreamID  string
+		key        string
+		kind       string
+		sourceID   int64
+		upstreamID string
 	}{
 		{"channel:5:z-ai/glm-5.2", "channel", 5, "z-ai/glm-5.2"},
 		{"subscription:7:claude-sonnet-4-5", "subscription", 7, "claude-sonnet-4-5"},
-		{"channel:abc:x", "", 0, ""},    // non-numeric id
-		{"cdn:5:x", "", 0, ""},          // unknown kind
-		{"5:glm-5.2", "", 0, ""},        // legacy, not canonical
-		{"glm-5.2", "", 0, ""},          // bare
+		{"channel:abc:x", "", 0, ""}, // non-numeric id
+		{"cdn:5:x", "", 0, ""},       // unknown kind
+		{"5:glm-5.2", "", 0, ""},     // legacy, not canonical
+		{"glm-5.2", "", 0, ""},       // bare
 	}
 	for _, tc := range cases {
 		kind, sourceID, upstreamID := parseCanonicalUpstreamKey(tc.key)
@@ -86,10 +86,10 @@ func TestParseCanonicalUpstreamKey(t *testing.T) {
 
 func TestParseUpstreamCostEntries_SplitsCanonicalAndLegacy(t *testing.T) {
 	raw, err := json.Marshal(map[string]map[string]interface{}{
-		"channel:5:z-ai/glm-5.2":    {"input_price": 1.0, "output_price": 2.0},
-		"subscription:7:claude-3":   {"input_price": 0.5, "output_price": 1.0},
-		"5:gpt-4o":                  {"input_price": 3.0, "output_price": 6.0}, // legacy
-		"gpt-3.5":                   {"input_price": 0.1, "output_price": 0.2}, // bare default
+		"channel:5:z-ai/glm-5.2":  {"input_price": 1.0, "output_price": 2.0},
+		"subscription:7:claude-3": {"input_price": 0.5, "output_price": 1.0},
+		"5:gpt-4o":                {"input_price": 3.0, "output_price": 6.0}, // legacy
+		"gpt-3.5":                 {"input_price": 0.1, "output_price": 0.2}, // bare default
 	})
 	require.NoError(t, err)
 

@@ -64,7 +64,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 		CompressionMode: coderws.CompressionContextTakeover,
 	})
 	if err != nil {
-				applogger.Log.Warn("failed to accept openai responses websocket upgrade", zap.Error(err))
+		applogger.Log.Warn("failed to accept openai responses websocket upgrade", zap.Error(err))
 		return
 	}
 	defer func() {
@@ -192,7 +192,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 			// drain logic, so DrainWSConnections will not wait for or force-close
 			// it — the process exit will cut it off. Surface it as a warning so
 			// an operator knows the drain window excluded an active relay.
-						applogger.Log.Warn("openai ws connection not tracked; drain will not wait for it",
+			applogger.Log.Warn("openai ws connection not tracked; drain will not wait for it",
 				zap.String("request_id", requestID),
 				zap.String("model", clientModel),
 			)
@@ -582,7 +582,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				outcome.fallback = true
 				outcome.fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailure)
 				outcome.finalChannel = currentChannel
-								applogger.Log.Info("openai ws failover after dial error",
+				applogger.Log.Info("openai ws failover after dial error",
 					zap.String("request_id", requestID),
 					zap.Int("attempt", attempt+1),
 					zap.Int64("failed_channel", failedChannelID),
@@ -652,7 +652,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			}
 			if turnReservationID != "" {
 				if commitErr := s.commitQuotaAfterResponse(turnReservationID, actualTotal, true, logInput); commitErr != nil {
-										applogger.Log.Warn("failed to commit openai ws turn quota",
+					applogger.Log.Warn("failed to commit openai ws turn quota",
 						zap.String("request_id", turnID),
 						zap.Error(commitErr),
 					)
@@ -708,7 +708,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			attempt < maxSwitches
 
 		if canFailover {
-						applogger.Log.Info("openai ws failover after relay error",
+			applogger.Log.Info("openai ws failover after relay error",
 				zap.String("request_id", requestID),
 				zap.Int("attempt", attempt+1),
 				zap.String("stage", relayExit.stage),

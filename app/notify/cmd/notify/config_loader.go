@@ -4,8 +4,8 @@ import (
 	kconfig "github.com/go-kratos/kratos/v3/config"
 
 	notifyconf "micro-one-api/app/notify/internal/conf"
-	appregistry "micro-one-api/platform/registry"
 	xconfig "micro-one-api/platform/config"
+	appregistry "micro-one-api/platform/registry"
 )
 
 // Config wraps the proto-generated Bootstrap and provides convenience accessors.

@@ -480,10 +480,10 @@ func (cs *channelState) latencyFactor() int32 {
 // fixed timer — so low-traffic channels blew on a couple of errors and a sick
 // channel was re-drowned the instant the timer expired.
 const (
-	circuitBreakerErrorThreshold = 0.5  // trip when >50% of requests fail
-	circuitBreakerMinRequests    = 10   // but only after this many samples
+	circuitBreakerErrorThreshold = 0.5 // trip when >50% of requests fail
+	circuitBreakerMinRequests    = 10  // but only after this many samples
 	circuitBreakerOpenDuration   = 30 * time.Second
-	circuitBreakerHalfOpenProbes = 1    // requests let through while half-open
+	circuitBreakerHalfOpenProbes = 1 // requests let through while half-open
 )
 
 // circuitState is the breaker state of a channel/account: closed (healthy),

@@ -243,7 +243,6 @@ func TestSubscriptionAccountSelector_EmptyTier(t *testing.T) {
 	}
 }
 
-
 // TestSubscriptionAccountSelector_WeightDistribution proves the WRR
 // normalization fix (🔴#4): with two accounts of weights 10 and 1, the
 // higher-weight account must be picked roughly 10:1 — not 100% as the

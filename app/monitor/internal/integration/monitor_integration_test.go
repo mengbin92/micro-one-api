@@ -174,4 +174,3 @@ func TestMonitorIntegration(t *testing.T) {
 		}
 	})
 }
-

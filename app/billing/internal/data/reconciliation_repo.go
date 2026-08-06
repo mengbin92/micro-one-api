@@ -164,13 +164,13 @@ func (r *reconciliationRepo) ListReservationsByStatus(ctx context.Context, statu
 // intentionally mirrors the columns we care about, not the entire
 // subscription model (which lives in the subscription domain).
 type subscriptionRow struct {
-	ID               int64   `gorm:"column:id"`
-	UserID           int64   `gorm:"column:user_id"`
-	GroupID          int64   `gorm:"column:group_id"`
-	Status           string  `gorm:"column:status"`
-	DailyUsageUSD    float64 `gorm:"column:daily_usage_usd"`
-	WeeklyUsageUSD   float64 `gorm:"column:weekly_usage_usd"`
-	MonthlyUsageUSD  float64 `gorm:"column:monthly_usage_usd"`
+	ID              int64   `gorm:"column:id"`
+	UserID          int64   `gorm:"column:user_id"`
+	GroupID         int64   `gorm:"column:group_id"`
+	Status          string  `gorm:"column:status"`
+	DailyUsageUSD   float64 `gorm:"column:daily_usage_usd"`
+	WeeklyUsageUSD  float64 `gorm:"column:weekly_usage_usd"`
+	MonthlyUsageUSD float64 `gorm:"column:monthly_usage_usd"`
 }
 
 func (subscriptionRow) TableName() string { return "user_subscriptions" }

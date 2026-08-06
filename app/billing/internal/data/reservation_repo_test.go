@@ -59,15 +59,15 @@ func TestReservationRepo_CreateReservation(t *testing.T) {
 	now := time.Now()
 	reservation := &biz.Reservation{
 		ReservationID: "res_test_001",
-		UserID:       "user1",
-		RequestID:    "req_test_001",
-		Amount:       100,
-		Status:       "reserved",
-		Model:        "gpt-4o-mini",
-		ChannelID:    "channel1",
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		ExpiredAt:    now.Add(5 * time.Minute),
+		UserID:        "user1",
+		RequestID:     "req_test_001",
+		Amount:        100,
+		Status:        "reserved",
+		Model:         "gpt-4o-mini",
+		ChannelID:     "channel1",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		ExpiredAt:     now.Add(5 * time.Minute),
 	}
 
 	err := repo.CreateReservation(ctx, reservation)

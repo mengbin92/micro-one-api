@@ -11,7 +11,7 @@ import (
 // biz.Notifier interface. It lives next to wire so the internal billing
 // package stays free of transport concerns.
 type grpcNotifier struct {
-	client    notifyv1.NotifyServiceClient
+	client     notifyv1.NotifyServiceClient
 	notifyType string
 }
 

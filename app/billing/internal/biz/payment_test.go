@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
 )
 
 type memoryPaymentRepo struct {

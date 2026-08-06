@@ -583,9 +583,9 @@ func toDuplicateModelGroupProto(g *biz.DuplicateModelGroup) *channelv1.Duplicate
 		members = append(members, toDuplicateModelRefProto(&g.Members[i]))
 	}
 	return &channelv1.DuplicateModelGroup{
-		CanonicalId:  g.CanonicalID,
-		Members:      members,
-		SurvivingPk:  g.SurvivingPK,
+		CanonicalId: g.CanonicalID,
+		Members:     members,
+		SurvivingPk: g.SurvivingPK,
 	}
 }
 
@@ -634,15 +634,15 @@ func (s *ChannelService) MergeCanonicalModels(ctx context.Context, req *channelv
 		return nil, mapModelError(err)
 	}
 	return &channelv1.MergeCanonicalModelsResponse{
-		Success:                      true,
-		Message:                      "merged",
-		CanonicalId:                  res.CanonicalID,
-		SurvivingPk:                  res.SurvivingPK,
-		MergedModelPks:               append([]int64{}, res.MergedModelPKs...),
-		AliasesRepointed:             res.AliasesRepointed,
-		ChannelMappingsRepointed:     res.ChannelMappingsRepointed,
+		Success:                       true,
+		Message:                       "merged",
+		CanonicalId:                   res.CanonicalID,
+		SurvivingPk:                   res.SurvivingPK,
+		MergedModelPks:                append([]int64{}, res.MergedModelPKs...),
+		AliasesRepointed:              res.AliasesRepointed,
+		ChannelMappingsRepointed:      res.ChannelMappingsRepointed,
 		SubscriptionMappingsRepointed: res.SubscriptionMappingsRepointed,
-		UsageStatsRepointed:          res.UsageStatsRepointed,
+		UsageStatsRepointed:           res.UsageStatsRepointed,
 	}, nil
 }
 

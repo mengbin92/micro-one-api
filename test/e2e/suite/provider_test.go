@@ -201,7 +201,7 @@ func TestProvider_RelayWithBilling(t *testing.T) {
 	chatResp := relayChatCompletion(t, token, providerModel, "你好，请用一句话介绍你自己")
 	t.Logf("chat response: %s", truncate(chatResp.Content, 80))
 	t.Logf("usage: prompt=%d, completion=%d, total=%d",
-	 chatResp.PromptTokens, chatResp.CompletionTokens, chatResp.TotalTokens)
+		chatResp.PromptTokens, chatResp.CompletionTokens, chatResp.TotalTokens)
 
 	// Step 5: Verify billing - quota should be deducted
 	currentQuota := relayGetQuota(t, userID)
@@ -315,8 +315,8 @@ func relayCreateChannel(t *testing.T, baseURL, apiKey, models string) int64 {
 	body, _ := io.ReadAll(resp.Body)
 
 	var result struct {
-		Success   bool  `json:"success"`
-		ChannelID int64 `json:"channel_id"`
+		Success   bool   `json:"success"`
+		ChannelID int64  `json:"channel_id"`
 		Message   string `json:"message"`
 	}
 	json.Unmarshal(body, &result)

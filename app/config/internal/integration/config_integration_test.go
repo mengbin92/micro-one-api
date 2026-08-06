@@ -152,4 +152,3 @@ func TestConfigIntegration(t *testing.T) {
 		}
 	})
 }
-

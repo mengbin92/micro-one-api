@@ -65,20 +65,20 @@ type ReconciliationRunStore interface {
 
 // ReconciliationResult holds the outcome of a reconciliation run.
 type ReconciliationResult struct {
-	RunID                  int64                       `json:"run_id,omitempty"`
-	RunAt                  time.Time                   `json:"run_at"`
-	ExpiredCleaned         int                         `json:"expired_cleaned"`
-	AccountInconsistencies []AccountInconsistency      `json:"account_inconsistencies,omitempty"`
-	ChannelInconsistencies []ChannelInconsistency      `json:"channel_inconsistencies,omitempty"`
-	LogInconsistencies     []LogInconsistency          `json:"log_inconsistencies,omitempty"`
-	SubscriptionInconsistencies []SubscriptionInconsistency `json:"subscription_inconsistencies,omitempty"`
+	RunID                        int64                        `json:"run_id,omitempty"`
+	RunAt                        time.Time                    `json:"run_at"`
+	ExpiredCleaned               int                          `json:"expired_cleaned"`
+	AccountInconsistencies       []AccountInconsistency       `json:"account_inconsistencies,omitempty"`
+	ChannelInconsistencies       []ChannelInconsistency       `json:"channel_inconsistencies,omitempty"`
+	LogInconsistencies           []LogInconsistency           `json:"log_inconsistencies,omitempty"`
+	SubscriptionInconsistencies  []SubscriptionInconsistency  `json:"subscription_inconsistencies,omitempty"`
 	ReceivableInconsistencies    []ReceivableInconsistency    `json:"receivable_inconsistencies,omitempty"`
 	RefundInconsistencies        []RefundInconsistency        `json:"refund_inconsistencies,omitempty"`
 	StuckIssuanceInconsistencies []StuckIssuanceInconsistency `json:"stuck_issuance_inconsistencies,omitempty"`
-	TotalAccounts          int                         `json:"total_accounts"`
-	TotalChannels          int                         `json:"total_channels"`
-	TotalReservations      int                         `json:"total_reservations"`
-	TotalSubscriptions     int                         `json:"total_subscriptions"`
+	TotalAccounts                int                          `json:"total_accounts"`
+	TotalChannels                int                          `json:"total_channels"`
+	TotalReservations            int                          `json:"total_reservations"`
+	TotalSubscriptions           int                          `json:"total_subscriptions"`
 }
 
 const (
@@ -87,7 +87,7 @@ const (
 	ReconciliationDiscrepancyTypeLog           = "ledger_log_consume"
 	ReconciliationDiscrepancyTypeSubscription  = "subscription_absorption"
 	ReconciliationDiscrepancyTypeReceivable    = "receivable_mirror"
-	ReconciliationDiscrepancyTypeRefund       = "refund_reversal"
+	ReconciliationDiscrepancyTypeRefund        = "refund_reversal"
 	ReconciliationDiscrepancyTypeStuckIssuance = "stuck_issuance"
 )
 
@@ -135,10 +135,10 @@ type SubscriptionUsageSnapshot struct {
 // subscription's running counters and the dual-track ledger view.
 // The reconciliation job reports it but does not auto-repair.
 type SubscriptionInconsistency struct {
-	UserID           int64   `json:"user_id"`
-	SubscriptionUsedUSD float64 `json:"subscription_used_usd"`
-	LedgerSubscriptionCost  int64   `json:"ledger_subscription_cost_quota"`
-	Difference       float64 `json:"difference_usd"`
+	UserID                 int64   `json:"user_id"`
+	SubscriptionUsedUSD    float64 `json:"subscription_used_usd"`
+	LedgerSubscriptionCost int64   `json:"ledger_subscription_cost_quota"`
+	Difference             float64 `json:"difference_usd"`
 }
 
 // ReceivableInconsistency captures a mismatch between the
@@ -147,10 +147,10 @@ type SubscriptionInconsistency struct {
 // for "who owes how much", so a mismatch usually means a missed
 // commit / release transition.
 type ReceivableInconsistency struct {
-	UserID                string `json:"user_id"`
+	UserID                 string `json:"user_id"`
 	PendingReceivableQuota int64  `json:"pending_receivable_quota"`
-	OverdraftQuota        int64  `json:"overdraft_quota"`
-	Difference            int64  `json:"difference_quota"`
+	OverdraftQuota         int64  `json:"overdraft_quota"`
+	Difference             int64  `json:"difference_quota"`
 }
 
 // RefundInconsistency captures a mismatch between refunded payment orders and
@@ -159,10 +159,10 @@ type ReceivableInconsistency struct {
 // entry whose amount equals the order's purchase price; a count or amount
 // mismatch signals a missed or duplicate refund.
 type RefundInconsistency struct {
-	RefundedOrderCount    int64 `json:"refunded_order_count"`
+	RefundedOrderCount      int64 `json:"refunded_order_count"`
 	RefundedOrderMoneyCents int64 `json:"refunded_order_money_cents"`
-	ReversalLedgerCount   int64 `json:"reversal_ledger_count"`
-	ReversalLedgerAmount  int64 `json:"reversal_ledger_amount"`
+	ReversalLedgerCount     int64 `json:"reversal_ledger_count"`
+	ReversalLedgerAmount    int64 `json:"reversal_ledger_amount"`
 	// MoneyCentsDiff is refunded_order_money_cents - reversal_ledger_amount
 	// (in cents). Positive: refunded orders without a matching ledger; negative:
 	// reversal ledgers without a matching order.

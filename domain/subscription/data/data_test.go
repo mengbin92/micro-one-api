@@ -345,13 +345,13 @@ func TestSubscriptionRepository_RenewalStrategyRoundTrip(t *testing.T) {
 	require.NoError(t, repo.CreateGroup(ctx, group))
 
 	sub := &biz.UserSubscription{
-		UserID:          1002,
-		GroupID:         group.ID,
+		UserID:           1002,
+		GroupID:          group.ID,
 		SubscriptionName: "alice-pro",
-		Status:          biz.SubscriptionStatusActive,
-		StartsAt:        10,
-		ExpiresAt:       1 << 62, // far future so the domain-C1 guard keeps it active
-		RenewalStrategy: biz.RenewalStrategyNew,
+		Status:           biz.SubscriptionStatusActive,
+		StartsAt:         10,
+		ExpiresAt:        1 << 62, // far future so the domain-C1 guard keeps it active
+		RenewalStrategy:  biz.RenewalStrategyNew,
 	}
 	require.NoError(t, repo.CreateSubscription(ctx, sub))
 	require.NotZero(t, sub.ID)

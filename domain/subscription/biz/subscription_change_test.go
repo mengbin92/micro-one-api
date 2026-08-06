@@ -456,9 +456,9 @@ func (sentinelTx) DB() any { return nil }
 // (not just that RunInTx was entered).
 type trackingMockSubscriptionRepo struct {
 	mockSubscriptionRepo
-	mu                     sync.Mutex
-	getByIDInTxCalls       int
-	updateFieldsInTxCalls  int
+	mu                    sync.Mutex
+	getByIDInTxCalls      int
+	updateFieldsInTxCalls int
 }
 
 func newTrackingMockSubscriptionRepo() *trackingMockSubscriptionRepo {

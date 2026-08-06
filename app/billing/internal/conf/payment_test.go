@@ -70,7 +70,7 @@ func TestPaymentToPaymentConfig(t *testing.T) {
 	t.Run("nil Alipay", func(t *testing.T) {
 		p := &Payment{
 			AmountPerUnit: 100,
-			Alipay:         nil,
+			Alipay:        nil,
 		}
 		cfg := p.ToPaymentConfig()
 
@@ -87,8 +87,8 @@ func TestPaymentToPaymentConfig(t *testing.T) {
 		p := &Payment{
 			AmountPerUnit: 100,
 			Alipay: &Alipay{
-				AppId:   "test-id",    // proto: app_id → Go: AppID
-				FormUrl: "test-url",   // proto: form_url → Go: FormURL
+				AppId:     "test-id",  // proto: app_id → Go: AppID
+				FormUrl:   "test-url", // proto: form_url → Go: FormURL
 				NotifyUrl: "notify",   // proto: notify_url → Go: NotifyURL
 				ReturnUrl: "return",   // proto: return_url → Go: ReturnURL
 			},

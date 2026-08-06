@@ -76,4 +76,3 @@ func (a *ChannelProbeAdapter) RecordChannelHealth(ctx context.Context, channelID
 
 // Ensure the adapter satisfies the biz interface.
 var _ biz.ChannelProbeClient = (*ChannelProbeAdapter)(nil)
-

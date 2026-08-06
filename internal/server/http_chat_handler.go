@@ -242,7 +242,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 
 		jsonData, err := jsonx.Marshal(chunk)
 		if err != nil {
-						applogger.Log.Warn("failed to marshal chunk", zap.Error(err))
+			applogger.Log.Warn("failed to marshal chunk", zap.Error(err))
 			continue
 		}
 

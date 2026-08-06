@@ -67,8 +67,8 @@ func TestCalculateUpstreamCostWithUsage_KeyResolution(t *testing.T) {
 	bare := ModelPrice{InputPrice: 100.0, OutputPrice: 200.0}
 	uc := newUpstreamCostTestUsecase(map[string]ModelPrice{
 		"channel:5:z-ai/glm-5.2": canonical,
-		"5:glm-5.2":               legacy,
-		"glm-5.2":                 bare,
+		"5:glm-5.2":              legacy,
+		"glm-5.2":                bare,
 	})
 
 	usage := LedgerUsage{

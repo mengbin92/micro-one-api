@@ -575,15 +575,15 @@ func (uc *ModelUsecase) ListModelUsageStats(ctx context.Context, modelPK int64, 
 // model row, so the operator can pick a safe merge target and review the
 // blast radius before any write.
 type DuplicateModelRef struct {
-	ModelPK   int64
-	ModelID   string // original (pre-normalisation) spelling as stored
-	IsPrimary bool   // true = this row already carries the canonical spelling
-	Aliases             int32
-	ChannelMappings     int32
+	ModelPK              int64
+	ModelID              string // original (pre-normalisation) spelling as stored
+	IsPrimary            bool   // true = this row already carries the canonical spelling
+	Aliases              int32
+	ChannelMappings      int32
 	SubscriptionMappings int32
-	UsageStatDays       int32
-	UsageRequestTotal   int64
-	UsageTokenTotal     int64
+	UsageStatDays        int32
+	UsageRequestTotal    int64
+	UsageTokenTotal      int64
 	// PriceReferences lists the pricing-config keys (ModelPrice /
 	// UpstreamModelPrice) that reference this member's stored spelling. Populated
 	// by AttachPriceReferences from a caller-supplied key set so channel biz does
@@ -598,9 +598,9 @@ type DuplicateModelRef struct {
 // already matches the canonical spelling) and the merge re-points all other
 // members' dependents onto it.
 type DuplicateModelGroup struct {
-	CanonicalID  string
-	Members      []DuplicateModelRef
-	SurvivingPK  int64 // 0 => biz picks the primary-spelling member (or lowest id)
+	CanonicalID string
+	Members     []DuplicateModelRef
+	SurvivingPK int64 // 0 => biz picks the primary-spelling member (or lowest id)
 }
 
 // PreflightReport is the read-only output of CanonicalModelPreflight. It

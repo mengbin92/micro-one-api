@@ -19,13 +19,13 @@ const (
 
 // QuotaAlertEvaluatorConfig configures the quota alert evaluator.
 type QuotaAlertEvaluatorConfig struct {
-	Enabled            bool
-	Interval           time.Duration
-	PageSize           int32
-	Timeout            time.Duration
-	NearExhaustedPct   float64 // default 80
-	IdleDuration       time.Duration // default 24h
-	DedupeWindow       time.Duration // default 1h
+	Enabled          bool
+	Interval         time.Duration
+	PageSize         int32
+	Timeout          time.Duration
+	NearExhaustedPct float64       // default 80
+	IdleDuration     time.Duration // default 24h
+	DedupeWindow     time.Duration // default 1h
 }
 
 // QuotaAlertNotifier is the subset of the notify-worker client needed to emit

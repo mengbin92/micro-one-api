@@ -37,7 +37,7 @@ func (s *HTTPServer) withSubscriptionQuotaCheck(next http.Handler) http.Handler 
 		result, err := s.subscriptionUsecase.CheckQuota(r.Context(), auth.GetUserId(), estimatedCost)
 		if err != nil {
 			metrics.SubscriptionQuotaChecksTotal.WithLabelValues("error").Inc()
-						applogger.Log.Warn("subscription quota check failed", zap.Int64("user_id", auth.GetUserId()), zap.Error(err))
+			applogger.Log.Warn("subscription quota check failed", zap.Int64("user_id", auth.GetUserId()), zap.Error(err))
 			next.ServeHTTP(w, r)
 			return
 		}

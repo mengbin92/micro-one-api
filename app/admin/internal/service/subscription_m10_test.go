@@ -35,7 +35,9 @@ func (r *fakeSubscriptionRepo) CreateSubscription(_ context.Context, sub *subscr
 func (r *fakeSubscriptionRepo) CreateSubscriptionInTx(_ context.Context, _ subscriptionbiz.Tx, sub *subscriptionbiz.UserSubscription) error {
 	return r.CreateSubscription(context.Background(), sub)
 }
-func (r *fakeSubscriptionRepo) UpdateSubscription(_ context.Context, _ *subscriptionbiz.UserSubscription) error { return nil }
+func (r *fakeSubscriptionRepo) UpdateSubscription(_ context.Context, _ *subscriptionbiz.UserSubscription) error {
+	return nil
+}
 func (r *fakeSubscriptionRepo) UpdateSubscriptionInTx(_ context.Context, _ subscriptionbiz.Tx, _ *subscriptionbiz.UserSubscription) error {
 	return nil
 }
@@ -80,7 +82,9 @@ func (r *fakeSubscriptionRepo) GetActiveSubscriptionByUser(_ context.Context, us
 func (r *fakeSubscriptionRepo) GetActiveSubscriptionByUserInTx(_ context.Context, _ subscriptionbiz.Tx, userID int64) (*subscriptionbiz.UserSubscription, error) {
 	return r.GetActiveSubscriptionByUser(context.Background(), userID)
 }
-func (r *fakeSubscriptionRepo) AddUsage(_ context.Context, _ int64, _ float64, _ int64) error { return nil }
+func (r *fakeSubscriptionRepo) AddUsage(_ context.Context, _ int64, _ float64, _ int64) error {
+	return nil
+}
 func (r *fakeSubscriptionRepo) AddUsageByIDInTx(_ context.Context, _ subscriptionbiz.Tx, _ int64, _ float64, _ int64) error {
 	return nil
 }
@@ -92,9 +96,13 @@ type fakeGroupRepo struct {
 	group *subscriptionbiz.SubscriptionGroup
 }
 
-func (r *fakeGroupRepo) CreateGroup(_ context.Context, _ *subscriptionbiz.SubscriptionGroup) error { return nil }
-func (r *fakeGroupRepo) UpdateGroup(_ context.Context, _ *subscriptionbiz.SubscriptionGroup) error { return nil }
-func (r *fakeGroupRepo) DeleteGroup(_ context.Context, _ int64) error                             { return nil }
+func (r *fakeGroupRepo) CreateGroup(_ context.Context, _ *subscriptionbiz.SubscriptionGroup) error {
+	return nil
+}
+func (r *fakeGroupRepo) UpdateGroup(_ context.Context, _ *subscriptionbiz.SubscriptionGroup) error {
+	return nil
+}
+func (r *fakeGroupRepo) DeleteGroup(_ context.Context, _ int64) error { return nil }
 func (r *fakeGroupRepo) GetGroupByID(_ context.Context, _ int64) (*subscriptionbiz.SubscriptionGroup, error) {
 	return r.group, nil
 }

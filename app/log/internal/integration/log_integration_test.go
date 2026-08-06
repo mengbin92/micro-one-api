@@ -145,4 +145,3 @@ func TestLogIntegration(t *testing.T) {
 		}
 	})
 }
-

@@ -95,11 +95,11 @@ func TestPreflightReport_AttachPriceReferences(t *testing.T) {
 	}
 	// Pricing keys reference both spellings and an unrelated model.
 	priceKeys := map[string]struct{}{
-		"glm-5.2":                 {}, // matches member 2 (and member 1 via canonical)
-		"GLM-5.2":                 {}, // matches member 1 stored spelling
-		"channel:5:z-ai/glm-5.2":  {}, // upstream key — should NOT match a bare model member
-		"gpt-4o":                  {}, // matches member 4 (and member 3 via canonical)
-		"claude-3":                {}, // unrelated
+		"glm-5.2":                {}, // matches member 2 (and member 1 via canonical)
+		"GLM-5.2":                {}, // matches member 1 stored spelling
+		"channel:5:z-ai/glm-5.2": {}, // upstream key — should NOT match a bare model member
+		"gpt-4o":                 {}, // matches member 4 (and member 3 via canonical)
+		"claude-3":               {}, // unrelated
 	}
 
 	report.AttachPriceReferences(priceKeys)

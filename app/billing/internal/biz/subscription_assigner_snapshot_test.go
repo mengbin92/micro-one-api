@@ -9,7 +9,6 @@ import (
 	"time"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
-
 )
 
 // fakeAssignmentUsecase records the last AssignOrExtend request so the test can

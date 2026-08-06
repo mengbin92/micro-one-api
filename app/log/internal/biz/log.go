@@ -37,15 +37,15 @@ type LogEntry struct {
 
 // UsageStat is a One API-style usage aggregate grouped by day and model.
 type UsageStat struct {
-	Day              string `json:"day"`
-	ModelName        string `json:"model_name"`
-	RequestCount     int64  `json:"request_count"`
-	Quota            int64  `json:"quota"`
-	PromptTokens     int64  `json:"prompt_tokens"`
-	CompletionTokens int64  `json:"completion_tokens"`
-	CacheReadTokens       int64 `json:"cache_read_tokens" gorm:"column:cache_read_tokens"`
-	CacheCreation5mTokens int64 `json:"cache_creation_5m_tokens" gorm:"column:cache_creation_5m_tokens"`
-	CacheCreation1hTokens int64 `json:"cache_creation_1h_tokens" gorm:"column:cache_creation_1h_tokens"`
+	Day                   string `json:"day"`
+	ModelName             string `json:"model_name"`
+	RequestCount          int64  `json:"request_count"`
+	Quota                 int64  `json:"quota"`
+	PromptTokens          int64  `json:"prompt_tokens"`
+	CompletionTokens      int64  `json:"completion_tokens"`
+	CacheReadTokens       int64  `json:"cache_read_tokens" gorm:"column:cache_read_tokens"`
+	CacheCreation5mTokens int64  `json:"cache_creation_5m_tokens" gorm:"column:cache_creation_5m_tokens"`
+	CacheCreation1hTokens int64  `json:"cache_creation_1h_tokens" gorm:"column:cache_creation_1h_tokens"`
 }
 
 type DeleteLogsFilter struct {

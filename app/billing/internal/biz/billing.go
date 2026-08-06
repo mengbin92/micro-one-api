@@ -901,214 +901,214 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 	var resultActualCost int64
 	var resultRefundAmount int64
 	if err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
-	won, err := uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReserved, ReservationStatusCommitting)
-	if err != nil {
-		return fmt.Errorf("cas reservation: %w", err)
-	}
-	if !won {
-		// Concurrent or retry: read the row's current state and
-		// return a best-effort idempotent result.
+		won, err := uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusReserved, ReservationStatusCommitting)
+		if err != nil {
+			return fmt.Errorf("cas reservation: %w", err)
+		}
+		if !won {
+			// Concurrent or retry: read the row's current state and
+			// return a best-effort idempotent result.
+			reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
+			if err != nil {
+				return err
+			}
+			switch reservation.Status {
+			case ReservationStatusCommitted:
+				// Code-review 2026-07-30 billing-L1: return the persisted actual
+				// cost (fallback to Amount for legacy rows committed before the
+				// actual_cost column existed).
+				resultActualCost = committedAmountFromReservation(reservation)
+				resultRefundAmount = 0
+				return nil
+			case ReservationStatusReleased, ReservationStatusExpired:
+				resultActualCost = 0
+				resultRefundAmount = reservation.Amount
+				return nil
+			}
+			return errors.Join(ErrReservationCommitted, ErrReservationReleased)
+		}
 		reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
 		if err != nil {
-			return err
+			return fmt.Errorf("get reservation in tx: %w", err)
 		}
-		switch reservation.Status {
-		case ReservationStatusCommitted:
-			// Code-review 2026-07-30 billing-L1: return the persisted actual
-			// cost (fallback to Amount for legacy rows committed before the
-			// actual_cost column existed).
-			resultActualCost = committedAmountFromReservation(reservation)
-			resultRefundAmount = 0
-			return nil
-		case ReservationStatusReleased, ReservationStatusExpired:
-			resultActualCost = 0
-			resultRefundAmount = reservation.Amount
-			return nil
+		account, err := uc.accountSnapshotInTx(ctx, tx, reservation.UserID)
+		if err != nil {
+			return fmt.Errorf("get account in tx: %w", err)
 		}
-		return errors.Join(ErrReservationCommitted, ErrReservationReleased)
-	}
-	reservation, err := uc.reservationRepo.GetReservationInTx(ctx, tx, reservationID)
-	if err != nil {
-		return fmt.Errorf("get reservation in tx: %w", err)
-	}
-	account, err := uc.accountSnapshotInTx(ctx, tx, reservation.UserID)
-	if err != nil {
-		return fmt.Errorf("get account in tx: %w", err)
-	}
-	actualCost, costBreakdown := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
-	if actualCost <= 0 {
-		actualCost = 1
-	}
-	// Subscription priority: the reservation's subscription pre-deduction is an
-	// estimate. At commit time the actual usage may be slightly higher, so while
-	// holding the subscription row lock we let remaining subscription capacity
-	// absorb the delta before falling back to wallet balance.
-	costUSD := uc.quotaToUSD(actualCost)
-	actualAbsorbUSD := uc.commitSubscriptionAbsorbUSD(ctx, tx, reservation, costUSD)
-	var actualAbsorbQuota int64
-	if actualAbsorbUSD >= costUSD {
-		actualAbsorbQuota = actualCost
-	} else {
-		actualAbsorbQuota = uc.usdToQuotaFloor(actualAbsorbUSD)
-	}
-	if actualAbsorbQuota > actualCost {
-		actualAbsorbQuota = actualCost
-	}
-	actualBalanceQuota := actualCost - actualAbsorbQuota
-	if actualBalanceQuota < 0 {
-		actualBalanceQuota = 0
-	}
-	// Subscription side: record the (un-multiplied) actual cost. The
-	// subscription Usecase multiplies by RateMultiplier inside the
-	// row-locked update.
-	if reservation.SubscriptionID > 0 {
-		if err := uc.subscription.RecordUsageForSubscriptionInTx(ctx, tx, reservation.SubscriptionID, actualAbsorbUSD, now); err != nil {
-			return fmt.Errorf("record subscription usage: %w", err)
+		actualCost, costBreakdown := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
+		if actualCost <= 0 {
+			actualCost = 1
 		}
-	}
-	// Wallet side: settle the reservation's balance pre-deduction.
-	oldBalance, newBalance, err := uc.accountRepo.CommitBalanceInTx(ctx, tx, reservation.UserID, reservation.BalanceAmountQuota, actualBalanceQuota, uc.canOverdraft(reservation.UserID))
-	if err != nil {
-		return fmt.Errorf("commit balance: %w", err)
-	}
-	// Receivable mirror: only record the *increment* so we don't
-	// double-count historical overdraft.
-	if uc.receivableRepo != nil {
-		oldNeg := positiveOrZero(-oldBalance)
-		newNeg := positiveOrZero(-newBalance)
-		delta := newNeg - oldNeg
-		if delta > 0 {
-			recv := &AccountReceivable{
-				UserID:        reservation.UserID,
-				ReservationID: reservationID,
-				OverdueQuota:  delta,
-				OverdueUSD:    uc.quotaToUSD(delta),
-				Status:        ReceivableStatusPending,
-				CreatedAt:     uc.Now(),
-				UpdatedAt:     uc.Now(),
-			}
-			if err := uc.receivableRepo.CreateInTx(ctx, tx, recv); err != nil && !errors.Is(err, ErrReceivableDuplicate) {
-				return fmt.Errorf("create receivable: %w", err)
+		// Subscription priority: the reservation's subscription pre-deduction is an
+		// estimate. At commit time the actual usage may be slightly higher, so while
+		// holding the subscription row lock we let remaining subscription capacity
+		// absorb the delta before falling back to wallet balance.
+		costUSD := uc.quotaToUSD(actualCost)
+		actualAbsorbUSD := uc.commitSubscriptionAbsorbUSD(ctx, tx, reservation, costUSD)
+		var actualAbsorbQuota int64
+		if actualAbsorbUSD >= costUSD {
+			actualAbsorbQuota = actualCost
+		} else {
+			actualAbsorbQuota = uc.usdToQuotaFloor(actualAbsorbUSD)
+		}
+		if actualAbsorbQuota > actualCost {
+			actualAbsorbQuota = actualCost
+		}
+		actualBalanceQuota := actualCost - actualAbsorbQuota
+		if actualBalanceQuota < 0 {
+			actualBalanceQuota = 0
+		}
+		// Subscription side: record the (un-multiplied) actual cost. The
+		// subscription Usecase multiplies by RateMultiplier inside the
+		// row-locked update.
+		if reservation.SubscriptionID > 0 {
+			if err := uc.subscription.RecordUsageForSubscriptionInTx(ctx, tx, reservation.SubscriptionID, actualAbsorbUSD, now); err != nil {
+				return fmt.Errorf("record subscription usage: %w", err)
 			}
 		}
-	}
-	// Ledger entries. We split into two rows when both dimensions
-	// participate so each carries its own dedupe key. A pure-
-	// subscription commit (actualBalanceQuota == 0) writes only the
-	// subscription row, and vice versa.
-	upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
-	// Emit the upstream-cost-recorded metric so the UpstreamCostMissing alert
-	// (deploy/prometheus/alerts/alerts.yml) can compare priced vs total traffic.
-	resultLabel := "unpriced"
-	if upstreamCost > 0 {
-		resultLabel = "priced"
-	}
-	if metrics.BillingLedgerUpstreamCostRecorded != nil {
-		metrics.BillingLedgerUpstreamCostRecorded.WithLabelValues(
-			resultLabel,
-			providerFamilyForModel(reservation.Model),
-		).Inc()
-	}
-	resolvedSubAccountID := resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
-	commonRemark := fmt.Sprintf("model=%s, tokens=%d", reservation.Model, actualTokens)
-	if actualAbsorbQuota > 0 {
-		subLedger := &Ledger{
-			UserID:                reservation.UserID,
-			Amount:                -actualAbsorbQuota,
-			UpstreamCost:          0,
-			BalanceAfter:          newBalance,
-			Type:                  LedgerTypeConsume,
-			ReferenceID:           reservationID,
-			Remark:                commonRemark,
-			TokenName:             usage.TokenName,
-			ModelName:             reservation.Model,
-			Quota:                 actualTokens,
-			PromptTokens:          usage.PromptTokens,
-			CompletionTokens:      usage.CompletionTokens,
-			CacheReadTokens:       usage.CacheReadTokens,
-			CacheCreation5mTokens: usage.CacheCreation5mTokens,
-			CacheCreation1hTokens: usage.CacheCreation1hTokens,
-			ChannelID:             parseInt64Default(reservation.ChannelID, 0),
-			SubscriptionAccountID: resolvedSubAccountID,
-			ElapsedTime:           usage.ElapsedTime,
-			IsStream:              usage.IsStream,
-			Endpoint:              usage.Endpoint,
-			CostSource:            CostSourceSubscription,
-			SubscriptionCost:      actualAbsorbQuota,
-			BalanceCost:           0,
-			LedgerDedupeKey:       fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceSubscription),
+		// Wallet side: settle the reservation's balance pre-deduction.
+		oldBalance, newBalance, err := uc.accountRepo.CommitBalanceInTx(ctx, tx, reservation.UserID, reservation.BalanceAmountQuota, actualBalanceQuota, uc.canOverdraft(reservation.UserID))
+		if err != nil {
+			return fmt.Errorf("commit balance: %w", err)
 		}
-		// Per-bucket costs live on the balance ledger when one exists; otherwise
-		// attach them to the subscription ledger so the request remains auditable.
-		if actualBalanceQuota <= 0 {
-			subLedger.PromptCost = costBreakdown.PromptCost
-			subLedger.CompletionCost = costBreakdown.CompletionCost
-			subLedger.CacheReadCost = costBreakdown.CacheReadCost
-			subLedger.CacheCreation5mCost = costBreakdown.CacheCreation5mCost
-			subLedger.CacheCreation1hCost = costBreakdown.CacheCreation1hCost
-			subLedger.ShadowCost = costBreakdown.ShadowCost
+		// Receivable mirror: only record the *increment* so we don't
+		// double-count historical overdraft.
+		if uc.receivableRepo != nil {
+			oldNeg := positiveOrZero(-oldBalance)
+			newNeg := positiveOrZero(-newBalance)
+			delta := newNeg - oldNeg
+			if delta > 0 {
+				recv := &AccountReceivable{
+					UserID:        reservation.UserID,
+					ReservationID: reservationID,
+					OverdueQuota:  delta,
+					OverdueUSD:    uc.quotaToUSD(delta),
+					Status:        ReceivableStatusPending,
+					CreatedAt:     uc.Now(),
+					UpdatedAt:     uc.Now(),
+				}
+				if err := uc.receivableRepo.CreateInTx(ctx, tx, recv); err != nil && !errors.Is(err, ErrReceivableDuplicate) {
+					return fmt.Errorf("create receivable: %w", err)
+				}
+			}
 		}
-		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, subLedger); err != nil {
-			return fmt.Errorf("create subscription ledger: %w", err)
+		// Ledger entries. We split into two rows when both dimensions
+		// participate so each carries its own dedupe key. A pure-
+		// subscription commit (actualBalanceQuota == 0) writes only the
+		// subscription row, and vice versa.
+		upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
+		// Emit the upstream-cost-recorded metric so the UpstreamCostMissing alert
+		// (deploy/prometheus/alerts/alerts.yml) can compare priced vs total traffic.
+		resultLabel := "unpriced"
+		if upstreamCost > 0 {
+			resultLabel = "priced"
 		}
-	}
-	if actualBalanceQuota > 0 {
-		balLedger := &Ledger{
-			UserID:                reservation.UserID,
-			Amount:                -actualBalanceQuota,
-			UpstreamCost:          upstreamCost,
-			BalanceAfter:          newBalance,
-			Type:                  LedgerTypeConsume,
-			ReferenceID:           reservationID,
-			Remark:                commonRemark,
-			TokenName:             usage.TokenName,
-			ModelName:             reservation.Model,
-			Quota:                 actualTokens,
-			PromptTokens:          usage.PromptTokens,
-			CompletionTokens:      usage.CompletionTokens,
-			CacheReadTokens:       usage.CacheReadTokens,
-			CacheCreation5mTokens: usage.CacheCreation5mTokens,
-			CacheCreation1hTokens: usage.CacheCreation1hTokens,
-			PromptCost:            costBreakdown.PromptCost,
-			CompletionCost:        costBreakdown.CompletionCost,
-			CacheReadCost:         costBreakdown.CacheReadCost,
-			CacheCreation5mCost:   costBreakdown.CacheCreation5mCost,
-			CacheCreation1hCost:   costBreakdown.CacheCreation1hCost,
-			ShadowCost:            costBreakdown.ShadowCost,
-			ChannelID:             parseInt64Default(reservation.ChannelID, 0),
-			SubscriptionAccountID: resolvedSubAccountID,
-			ElapsedTime:           usage.ElapsedTime,
-			IsStream:              usage.IsStream,
-			Endpoint:              usage.Endpoint,
-			CostSource:            CostSourceBalance,
-			SubscriptionCost:      0,
-			BalanceCost:           actualBalanceQuota,
-			LedgerDedupeKey:       fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceBalance),
+		if metrics.BillingLedgerUpstreamCostRecorded != nil {
+			metrics.BillingLedgerUpstreamCostRecorded.WithLabelValues(
+				resultLabel,
+				providerFamilyForModel(reservation.Model),
+			).Inc()
 		}
-		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, balLedger); err != nil {
-			return fmt.Errorf("create balance ledger: %w", err)
+		resolvedSubAccountID := resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
+		commonRemark := fmt.Sprintf("model=%s, tokens=%d", reservation.Model, actualTokens)
+		if actualAbsorbQuota > 0 {
+			subLedger := &Ledger{
+				UserID:                reservation.UserID,
+				Amount:                -actualAbsorbQuota,
+				UpstreamCost:          0,
+				BalanceAfter:          newBalance,
+				Type:                  LedgerTypeConsume,
+				ReferenceID:           reservationID,
+				Remark:                commonRemark,
+				TokenName:             usage.TokenName,
+				ModelName:             reservation.Model,
+				Quota:                 actualTokens,
+				PromptTokens:          usage.PromptTokens,
+				CompletionTokens:      usage.CompletionTokens,
+				CacheReadTokens:       usage.CacheReadTokens,
+				CacheCreation5mTokens: usage.CacheCreation5mTokens,
+				CacheCreation1hTokens: usage.CacheCreation1hTokens,
+				ChannelID:             parseInt64Default(reservation.ChannelID, 0),
+				SubscriptionAccountID: resolvedSubAccountID,
+				ElapsedTime:           usage.ElapsedTime,
+				IsStream:              usage.IsStream,
+				Endpoint:              usage.Endpoint,
+				CostSource:            CostSourceSubscription,
+				SubscriptionCost:      actualAbsorbQuota,
+				BalanceCost:           0,
+				LedgerDedupeKey:       fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceSubscription),
+			}
+			// Per-bucket costs live on the balance ledger when one exists; otherwise
+			// attach them to the subscription ledger so the request remains auditable.
+			if actualBalanceQuota <= 0 {
+				subLedger.PromptCost = costBreakdown.PromptCost
+				subLedger.CompletionCost = costBreakdown.CompletionCost
+				subLedger.CacheReadCost = costBreakdown.CacheReadCost
+				subLedger.CacheCreation5mCost = costBreakdown.CacheCreation5mCost
+				subLedger.CacheCreation1hCost = costBreakdown.CacheCreation1hCost
+				subLedger.ShadowCost = costBreakdown.ShadowCost
+			}
+			if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, subLedger); err != nil {
+				return fmt.Errorf("create subscription ledger: %w", err)
+			}
 		}
-	}
-	// Persist the authoritative settlement cost on the reservation row so an
-	// idempotent retry that re-reads the row returns the actual cost rather
-	// than the pre-deduction estimate (code-review 2026-07-30 billing-L1).
-	if err := uc.reservationRepo.SetActualCostInTx(ctx, tx, reservationID, actualCost); err != nil {
-		return fmt.Errorf("persist actual cost: %w", err)
-	}
-	// Final CAS to committed.
-	won, err = uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusCommitting, ReservationStatusCommitted)
-	if err != nil {
-		return fmt.Errorf("cas to committed: %w", err)
-	}
-	if !won {
-		return errors.Join(ErrReservationCommitted, ErrReservationReleased)
-	}
-	if err := uc.accountRepo.UpdateUsageInTx(ctx, tx, reservation.UserID, actualCost, 1); err != nil {
-		return fmt.Errorf("update usage: %w", err)
-	}
-	resultActualCost = actualCost
-	resultRefundAmount = 0
-	return nil
+		if actualBalanceQuota > 0 {
+			balLedger := &Ledger{
+				UserID:                reservation.UserID,
+				Amount:                -actualBalanceQuota,
+				UpstreamCost:          upstreamCost,
+				BalanceAfter:          newBalance,
+				Type:                  LedgerTypeConsume,
+				ReferenceID:           reservationID,
+				Remark:                commonRemark,
+				TokenName:             usage.TokenName,
+				ModelName:             reservation.Model,
+				Quota:                 actualTokens,
+				PromptTokens:          usage.PromptTokens,
+				CompletionTokens:      usage.CompletionTokens,
+				CacheReadTokens:       usage.CacheReadTokens,
+				CacheCreation5mTokens: usage.CacheCreation5mTokens,
+				CacheCreation1hTokens: usage.CacheCreation1hTokens,
+				PromptCost:            costBreakdown.PromptCost,
+				CompletionCost:        costBreakdown.CompletionCost,
+				CacheReadCost:         costBreakdown.CacheReadCost,
+				CacheCreation5mCost:   costBreakdown.CacheCreation5mCost,
+				CacheCreation1hCost:   costBreakdown.CacheCreation1hCost,
+				ShadowCost:            costBreakdown.ShadowCost,
+				ChannelID:             parseInt64Default(reservation.ChannelID, 0),
+				SubscriptionAccountID: resolvedSubAccountID,
+				ElapsedTime:           usage.ElapsedTime,
+				IsStream:              usage.IsStream,
+				Endpoint:              usage.Endpoint,
+				CostSource:            CostSourceBalance,
+				SubscriptionCost:      0,
+				BalanceCost:           actualBalanceQuota,
+				LedgerDedupeKey:       fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceBalance),
+			}
+			if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, balLedger); err != nil {
+				return fmt.Errorf("create balance ledger: %w", err)
+			}
+		}
+		// Persist the authoritative settlement cost on the reservation row so an
+		// idempotent retry that re-reads the row returns the actual cost rather
+		// than the pre-deduction estimate (code-review 2026-07-30 billing-L1).
+		if err := uc.reservationRepo.SetActualCostInTx(ctx, tx, reservationID, actualCost); err != nil {
+			return fmt.Errorf("persist actual cost: %w", err)
+		}
+		// Final CAS to committed.
+		won, err = uc.reservationRepo.CASReservationStatus(ctx, tx, reservationID, ReservationStatusCommitting, ReservationStatusCommitted)
+		if err != nil {
+			return fmt.Errorf("cas to committed: %w", err)
+		}
+		if !won {
+			return errors.Join(ErrReservationCommitted, ErrReservationReleased)
+		}
+		if err := uc.accountRepo.UpdateUsageInTx(ctx, tx, reservation.UserID, actualCost, 1); err != nil {
+			return fmt.Errorf("update usage: %w", err)
+		}
+		resultActualCost = actualCost
+		resultRefundAmount = 0
+		return nil
 	}); err != nil {
 		return 0, 0, err
 	}
@@ -1716,7 +1716,7 @@ func (uc *BillingUsecase) recordCacheCreationCostSignal(ctx context.Context, mod
 	if breakdown.ShadowCost <= 0 && !breakdown.CacheCreationUnpriced {
 		return
 	}
-		applogger.Log.Info("cache_creation cost signal",
+	applogger.Log.Info("cache_creation cost signal",
 		zap.String("model", model),
 		zap.String("mode", string(uc.CacheCreationBillingMode())),
 		zap.Int64("shadow_cost", breakdown.ShadowCost),

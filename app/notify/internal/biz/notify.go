@@ -12,10 +12,10 @@ var (
 )
 
 const (
-	NotifyTypeWebhook = "webhook"
-	NotifyTypeEmail   = "email"
-	NotifyTypeEvent   = "event"
-	NotifyTypeWeCom   = "wecom"
+	NotifyTypeWebhook  = "webhook"
+	NotifyTypeEmail    = "email"
+	NotifyTypeEvent    = "event"
+	NotifyTypeWeCom    = "wecom"
 	NotifyTypeDingTalk = "dingtalk"
 	NotifyTypeFeishu   = "feishu"
 	NotifyTypeSlack    = "slack"

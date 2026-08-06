@@ -1,9 +1,9 @@
 package server
 
 import (
-	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"context"
 	"encoding/json"
+	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -1943,13 +1943,13 @@ func registerAndLoginForHTTPTest(t *testing.T, uc *biz.IdentityUsecase) (*biz.Us
 // present in the HTTP response (C1/C2 fix).
 type capturingCodeDeliverer struct {
 	verificationCodes map[string]string
-	resetTokens      map[string]string
+	resetTokens       map[string]string
 }
 
 func newCapturingCodeDeliverer() *capturingCodeDeliverer {
 	return &capturingCodeDeliverer{
 		verificationCodes: make(map[string]string),
-		resetTokens:      make(map[string]string),
+		resetTokens:       make(map[string]string),
 	}
 }
 
@@ -1968,7 +1968,6 @@ func (c *capturingCodeDeliverer) DeliverResetToken(_ context.Context, email, tok
 func newHTTPServerWithDeliverer(addr string, uc *biz.IdentityUsecase, d CodeDeliverer) *khttp.Server {
 	return NewHTTPServerWithRegistrationPolicy(addr, uc, nil, RegistrationPolicy{Enabled: true, CodeDeliverer: d})
 }
-
 
 func extractJSONField(body, key string) string {
 	prefix := `"` + key + `":"`

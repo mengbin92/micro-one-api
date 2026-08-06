@@ -8,7 +8,6 @@ import (
 	"time"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
-
 )
 
 // renewingAssignmentUsecase counts AssignOrExtend calls so the idempotency

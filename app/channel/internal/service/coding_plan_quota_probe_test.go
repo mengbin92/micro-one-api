@@ -88,12 +88,12 @@ func TestParseMinimaxTiers_GeneralModelOnly(t *testing.T) {
 		"model_remains": []any{
 			map[string]any{"model_name": "video", "current_interval_remaining_percent": 99.0},
 			map[string]any{
-				"model_name":                          "general",
-				"current_interval_remaining_percent":  60.0,
-				"end_time":                            float64(end5h),
-				"current_weekly_status":               1.0,
-				"current_weekly_remaining_percent":    20.0,
-				"weekly_end_time":                     float64(endWeekly),
+				"model_name":                         "general",
+				"current_interval_remaining_percent": 60.0,
+				"end_time":                           float64(end5h),
+				"current_weekly_status":              1.0,
+				"current_weekly_remaining_percent":   20.0,
+				"weekly_end_time":                    float64(endWeekly),
 			},
 		},
 	}
