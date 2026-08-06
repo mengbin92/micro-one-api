@@ -1,12 +1,11 @@
 {
-  "dashboard": {
-    "title": "Billing Performance",
-    "tags": ["billing", "quota", "micro-one-api"],
-    "timezone": "browser",
-    "schemaVersion": 16,
-    "version": 0,
-    "refresh": "5s",
-    "panels": [
+  "title": "Billing Performance",
+  "tags": ["billing", "quota", "micro-one-api"],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 0,
+  "refresh": "5s",
+  "panels": [
       {
         "id": 1,
         "title": "Quota Operations Rate",
@@ -160,5 +159,4 @@
         ]
       }
     ]
-  }
 }

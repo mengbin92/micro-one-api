@@ -1,11 +1,10 @@
 {
-  "dashboard": {
-    "title": "Service Dependencies Health",
-    "tags": ["services", "dependencies", "micro-one-api"],
-    "timezone": "browser",
-    "schemaVersion": 16,
-    "version": 0,
-    "refresh": "5s",
+  "title": "Service Dependencies Health",
+  "tags": ["services", "dependencies", "micro-one-api"],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 0,
+  "refresh": "5s",
     "panels": [
       {
         "id": 1,
@@ -116,5 +115,4 @@
         ]
       }
     ]
-  }
 }

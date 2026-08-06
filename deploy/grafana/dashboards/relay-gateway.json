@@ -1,11 +1,10 @@
 {
-  "dashboard": {
-    "title": "Relay Gateway Overview",
-    "tags": ["relay", "gateway", "micro-one-api"],
-    "timezone": "browser",
-    "schemaVersion": 16,
-    "version": 0,
-    "refresh": "5s",
+  "title": "Relay Gateway Overview",
+  "tags": ["relay", "gateway", "micro-one-api"],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 0,
+  "refresh": "5s",
     "panels": [
       {
         "id": 1,
@@ -112,5 +111,4 @@
         ]
       }
     ]
-  }
 }
