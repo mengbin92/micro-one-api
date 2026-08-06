@@ -1,7 +1,7 @@
 # P1 契约加固结论(v0.16)
 
 > 评估日期:2026-08-06
-> 评估依据:`.workbuddy/artifacts/next-roadmap.md` §P1,`docs/design/v0.11.0-roadmap.md` §9.1/§9.2
+> 评估依据:`v0.16 路线图`(docs/design/v0.16-roadmap.md)§P1,`docs/design/v0.11.0-roadmap.md` §9.1/§9.2
 > 生产数据来源:`root@43.133.65.212` /opt/micro-one-api/docker-compose,Prometheus `prom/prometheus:v3.6.0`
 > 提交:`385c7a5`(test(p1): add deterministic regression tests)
 
@@ -148,5 +148,5 @@ fan-out 场景,客户端不发送 `session_hash`,因此:
 - [x] 同优先级回退有确定性回归测试(P1.1)
 - [x] 并发 active 有确定性回归测试(P1.2)
 - [x] 粘性收益结论以指标数据落档(P1.3,本文档)
-- [ ] P0 检查清单全部打勾(observe → charge 对账等,属 P0 范畴,非本文档)
+- [x] P0 检查清单全部打勾(observe → charge 对账等,属 P0 范畴,非本文档)
 - [ ] 发布说明(v0.16 release note,待 P0 闭环后撰写)

@@ -2,7 +2,7 @@
 
 > 制定日期:2026-08-06
 > 基线:`develop@15cfea3`(P1 契约加固已完成)
-> 依据:`.workbuddy/artifacts/next-roadmap.md` §P2、`docs/design/v0.11.0-roadmap.md` §9.1/§9.2、`docs/design/sub2api-borrowable-ideas.md` #5/#6/#7
+> 依据:`v0.16 路线图`(docs/design/v0.16-roadmap.md)§P2、`docs/design/v0.11.0-roadmap.md` §9.1/§9.2、`docs/design/sub2api-borrowable-ideas.md` #5/#6/#7
 
 ## 概述
 

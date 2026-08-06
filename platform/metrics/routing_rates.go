@@ -13,7 +13,6 @@ import (
 )
 
 // RoutingRates holds routing selection outcomes for a requested time window.
-// RoutingRates holds routing selection outcomes for a requested time window.
 //
 // Source distinguishes the data provenance so callers can tell whether the
 // numbers are a precise window increase (from Prometheus) or cumulative

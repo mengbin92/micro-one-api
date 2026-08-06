@@ -783,6 +783,17 @@ func (m *mockConcurrentCreateRepo) CreateSubscription(ctx context.Context, sub *
 	return nil
 }
 
+// GetActiveSubscriptionByUser routes the read path through the same mu that
+// guards CreateSubscription. Without this, the concurrent Assign test would
+// race the map read (here) against the map write (CreateSubscription) — a
+// genuine data race that -race would flag even though the test's purpose is
+// to exercise the DB-level duplicate-key collision.
+func (m *mockConcurrentCreateRepo) GetActiveSubscriptionByUser(ctx context.Context, userID int64) (*UserSubscription, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.mockSubscriptionRepo.GetActiveSubscriptionByUser(ctx, userID)
+}
+
 func (m *mockConcurrentCreateRepo) CreateSubscriptionInTx(ctx context.Context, tx Tx, sub *UserSubscription) error {
 	return m.CreateSubscription(ctx, sub)
 }

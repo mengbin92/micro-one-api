@@ -5,7 +5,7 @@
 > **当前执行入口**：[v0.11.0 下一阶段工作路线图](./design/v0.11.0-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
 >
 > 📣 **v0.15.2 → v0.16 阶段（2026-08-06）**：P0–P3 已全部完成，详见
-> [.workbuddy/artifacts/next-roadmap.md](../.workbuddy/artifacts/next-roadmap.md)。
+> [v0.16 路线图](./design/v0.16-roadmap.md)。
 > 收尾摘要见文末「[P0–P3 收尾（v0.16）](#p0p3-收尾v016)」一节。
 >
 > **Phase 2.4 Schema 隔离生产启用已完成** ✅ 
@@ -766,14 +766,15 @@ OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减�
 
 > **完成日期：2026-08-06**
 >
-> 本节汇总 v0.15.2 → v0.16 阶段（[.workbuddy/artifacts/next-roadmap.md](../.workbuddy/artifacts/next-roadmap.md)）
+> 本节汇总 v0.15.2 → v0.16 阶段（[v0.16 路线图](./design/v0.16-roadmap.md)）
 > P0–P3 全部工作项的落地状态。上方 v0.11.0 时期的逐项登记保留作历史背景。
 
 ### P0 — 上线收尾 ✅
 
 - [x] **cache_creation observe → charge 对账**：`BILLING_CACHE_CREATION_MODE=observe`
       机制（token 桶、影子成本、observe/charge 开关）已随 v0.11.0 Phase 1 全链路落地，
-      具备生产 observe 对账条件。
+      observe 模式首发并完成结算周期对账；**生产已切换 `charge`（2026-08-06）**，
+      cache-creation 价格正式计入用户余额，回滚路径为切回 observe。
 - [x] **多库迁移验证**：MySQL 增量迁移（`067_add_cache_creation_token_usage_fields.sql`，
       additive，DEFAULT 0）+ postgres/sqlite full schema + `migrations/ownership.yaml` 同步。
 - [x] **e2e + 跨架构镜像**：`make test-e2e` 与 Linux/amd64 cross-build 流程就绪（部署规范

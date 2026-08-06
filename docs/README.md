@@ -69,6 +69,7 @@ docs/
 | 文档 | 主题 |
 |------|------|
 | [v0.11.0-roadmap.md](./design/v0.11.0-roadmap.md) | 下一阶段路线图：计费准确性、模型治理与路由运营闭环 |
+| [v0.16-roadmap.md](./design/v0.16-roadmap.md) | v0.16 路线图：上线收尾、契约加固、运营增强与工程卫生 |
 | [ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) | 整体架构重构方案 |
 | [BASELINE.md](./design/BASELINE.md) | 性能基线 |
 | [hybrid-relay-adaptor-apicompat-plan.md](./design/hybrid-relay-adaptor-apicompat-plan.md) | 混合中转网关技术方案 |
