@@ -3,8 +3,8 @@ package biz
 import (
 	"context"
 	"errors"
-	"testing"
 	"sync"
+	"testing"
 	"time"
 )
 
