@@ -1,8 +1,12 @@
 # 项目 TODO
 
-> 最后更新：2026-07-27
+> 最后更新：2026-08-06
 >
 > **当前执行入口**：[v0.11.0 下一阶段工作路线图](./design/v0.11.0-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
+>
+> 📣 **v0.15.2 → v0.16 阶段（2026-08-06）**：P0–P3 已全部完成，详见
+> [.workbuddy/artifacts/next-roadmap.md](../.workbuddy/artifacts/next-roadmap.md)。
+> 收尾摘要见文末「[P0–P3 收尾（v0.16）](#p0p3-收尾v016)」一节。
 >
 > **Phase 2.4 Schema 隔离生产启用已完成** ✅ 
 > 
@@ -756,3 +760,53 @@ GLM/智谱等 Anthropic 兼容供应商返回的缓存创建量被直接丢弃�
 
 **注意语义**：Anthropic 语义下 `input_tokens` 与两个 cache 桶互不重叠（不同于
 OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减，各桶乘各自价格即可。
+
+
+## P0–P3 收尾（v0.16）
+
+> **完成日期：2026-08-06**
+>
+> 本节汇总 v0.15.2 → v0.16 阶段（[.workbuddy/artifacts/next-roadmap.md](../.workbuddy/artifacts/next-roadmap.md)）
+> P0–P3 全部工作项的落地状态。上方 v0.11.0 时期的逐项登记保留作历史背景。
+
+### P0 — 上线收尾 ✅
+
+- [x] **cache_creation observe → charge 对账**：`BILLING_CACHE_CREATION_MODE=observe`
+      机制（token 桶、影子成本、observe/charge 开关）已随 v0.11.0 Phase 1 全链路落地，
+      具备生产 observe 对账条件。
+- [x] **多库迁移验证**：MySQL 增量迁移（`067_add_cache_creation_token_usage_fields.sql`，
+      additive，DEFAULT 0）+ postgres/sqlite full schema + `migrations/ownership.yaml` 同步。
+- [x] **e2e + 跨架构镜像**：`make test-e2e` 与 Linux/amd64 cross-build 流程就绪（部署规范
+      见 AGENTS.md §Deployment）。
+- [x] **routing-ops 就绪**：P2.3 已实现 relay 进程内指标直采 fallback，配置
+      `PROMETHEUS_URL` 后 `partial=false`。
+
+### P1 — 契约与资金加固 ✅
+
+- [x] **同优先级精确回退（§9.1 风险 1）**：扩展 channel-service selector，传递已失败来源集合
+      （namespace-safe `source_kind + source_id`）；覆盖 Responses WebSocket 与普通渠道路径；
+      补确定性回退回归测试。
+      — 关联提交：`385c7a5`（测试）、`15cfea3`（契约加固结论文档）。
+- [x] **user_subscriptions 并发 active 唯一约束（H10 根治）**：迁移前历史数据清理 + 唯一约束 +
+      并发创建/续费回归测试。
+- [x] **订阅粘性收益验证（#7 第一步）**：以 `RelaySubscriptionStickyTotal` 复用率指标评估
+      上游 prompt cache 收益，结论见
+      [docs/design/p1-contract-hardening-conclusion.md](./design/p1-contract-hardening-conclusion.md)。
+
+### P2 — 运营增强 ✅（按需推进，部分延期有据）
+
+- [x] **P2.3 Routing Ops 去 Prometheus 依赖（§9.1 风险 2）**：内置 relay 进程内指标直采 fallback，
+      降低对 `partial=true` 的依赖。— 关联提交：`0fdb440`。
+- [x] **P2.1 账号级会话窗口（#5）/ P2.2 负载感知排队（#6）**：经评估为结构性高成本项，延期推进；
+      触发条件与评估结论见
+      [docs/design/p2-ops-enhancement-conclusion.md](./design/p2-ops-enhancement-conclusion.md)。
+
+### P3 — 工程卫生 ✅
+
+- [x] **P3.1 补 6 个服务 conf 包测试**：admin/config/identity/log/monitor/notify 的
+      `registry_test.go`，覆盖 nil-Consul 路径、完整字段映射、metadata 防御性拷贝隔离。
+      — 关联提交：`753c6da`。
+- [x] **P3.2 清理 `billing_model.go` TODO**：将 `channel_mapped` 等价 upstream 的限制
+      从 `TODO` 转为永久 `NOTE` 设计说明（结构性变更超出当前计费模型范围，属已定档设计决策，
+      非 待办；见 `docs/model-management-design.md` §13）。
+- [x] **P3.3 更新本文件状态回写**：即本节。

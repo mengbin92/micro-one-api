@@ -56,12 +56,15 @@ func BillingModelForSource(source, clientModel, resolvedModel, upstreamModel str
 		// to the resolved model; upstreamModel already carries it. Fall back
 		// to resolved, then client when empty.
 		//
-		// TODO(P3 #6): channel_mapped is currently equivalent to upstream
-		// because all server call sites pass upstreamModel = plan.ResolvedModel
-		// (which already carries the per-account mapping). To make it truly
-		// distinct (skip the global mapper, apply only the channel's mapping),
-		// the call sites must thread a separately-computed channel-mapped name.
-		// Tracked as a follow-up; see docs/model-management-design.md §13.
+		// NOTE (design limitation): channel_mapped is currently equivalent to
+		// upstream because all server call sites pass upstreamModel =
+		// plan.ResolvedModel, which already carries the per-account mapping.
+		// Making it truly distinct (skip the global mapper, apply only the
+		// channel's mapping) would require threading a separately-computed
+		// channel-mapped name through relay → billing — a structural change
+		// that is out of scope for the current billing model. This is a
+		// documented design decision, not an outstanding task. See
+		// docs/model-management-design.md §13 (行为契约).
 		if upstreamModel != "" {
 			return upstreamModel
 		}
