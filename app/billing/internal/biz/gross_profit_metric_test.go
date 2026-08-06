@@ -15,6 +15,11 @@ import (
 // profit (charged quota minus upstream cost) on the
 // micro_one_api_billing_ledger_gross_profit_quota histogram so the
 // NegativeGrossMargin Prometheus alert can fire.
+//
+// The usecase is wired with a registry-local histogram (SetGrossProfitMetric)
+// so the assertion never reads the shared prometheus.DefaultGatherer — that
+// global is registered by platform/metrics init() and could be polluted by
+// other tests running in the same package.
 func TestCommitQuota_EmitsGrossProfitMetric(t *testing.T) {
 	t.Setenv("BILLING_CACHE_CREATION_MODE", "charge")
 	account := &Account{UserID: "u-gross", Balance: 1_000_000, Group: "default"}
@@ -30,6 +35,22 @@ func TestCommitQuota_EmitsGrossProfitMetric(t *testing.T) {
 			"glm-5.2": {InputPrice: 0.0005, OutputPrice: 0.001},
 		},
 	})
+
+	// Isolated registry + histogram: same name/labels as the production
+	// global, but scoped to this test.
+	reg := prometheus.NewRegistry()
+	grossProfit := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "micro_one_api",
+			Subsystem: "billing_ledger",
+			Name:      "gross_profit_quota",
+			Help:      "Per-commit gross profit in quota units (charged quota - upstream cost)",
+			Buckets:   []float64{-1000000, -100000, -10000, -1000, -100, 0, 100, 1000, 10000, 100000, 1000000},
+		},
+		[]string{"provider_family"},
+	)
+	reg.MustRegister(grossProfit)
+	uc.SetGrossProfitMetric(grossProfit)
 
 	reservation, err := uc.ReserveQuota(context.Background(), "u-gross", "req-gross", 1000, "glm-5.2", "ch1", 0)
 	require.NoError(t, err)
@@ -48,7 +69,7 @@ func TestCommitQuota_EmitsGrossProfitMetric(t *testing.T) {
 		found  bool
 		series = 0
 	)
-	mfs, err := prometheus.DefaultGatherer.Gather()
+	mfs, err := reg.Gather()
 	require.NoError(t, err)
 	for _, mf := range mfs {
 		if mf.GetName() != "micro_one_api_billing_ledger_gross_profit_quota" {

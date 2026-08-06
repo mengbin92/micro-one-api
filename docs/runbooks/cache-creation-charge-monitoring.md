@@ -25,6 +25,13 @@ charge 稳态下该规则不会触发，无需处理。
 - 既有 `micro_one_api_relay_token_usage_shadow_cost{mode,unpriced}` 直接承载 unpriced 信号，
   无需新埋点。
 
+> **口径说明（重要）**：`gross_profit_quota` 只在**计费成功并写 ledger 的 commit 路径**
+> （`commitQuotaLegacy` / `commitQuotaDualTrack` 成功分支）埋点。结算失败、预约释放
+> （release）、或上游成本缺失导致提前返回的请求**不会**进入该直方图——`NegativeGrossMargin`
+> 告警只能反映"被成功结算的请求"的毛利，看不到结算失败造成的毛利缺口。排查负毛利时，
+> 请同时关联 `micro_one_api_billing_ledger_upstream_cost_recorded{result="unpriced"}` 与
+> `RunReconciliation` 输出，区分"定价低于上游"与"未定价/结算失败"两类根因。
+
 ## 二、文档化 SQL 查询（Prometheus 无法直查 DB 的场景）
 
 以下查询针对 `billing_ledgers`（MySQL 语法，`type='consume'` 为实扣账本行）。

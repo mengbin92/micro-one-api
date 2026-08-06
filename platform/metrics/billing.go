@@ -246,6 +246,13 @@ var BillingLedgerUpstreamCostRecorded = prometheus.NewCounterVec(
 // histogram buckets span negative values and the alert uses both the aggregate
 // rate and the median per-request margin. Labels are low-cardinality
 // (provider_family only) per the observability contract.
+//
+// Scope: this metric is recorded ONLY on the successful commit paths
+// (commitQuotaLegacy / commitQuotaDualTrack write-ledger branches). Releases,
+// failed commits, and requests that return before writing a ledger are NOT
+// observed, so the NegativeGrossMargin alert reflects only settled requests.
+// Cross-check billing_ledgers (RunReconciliation) for margin gaps caused by
+// settlement failures or missing upstream prices.
 var BillingLedgerGrossProfit = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Namespace: "micro_one_api",

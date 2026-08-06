@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 
 	applogger "micro-one-api/platform/logging"
@@ -124,6 +125,11 @@ type BillingUsecase struct {
 	modelPrices       map[string]ModelPrice
 	upstreamPrices    map[string]ModelPrice
 	cacheCreationMode CacheCreationMode
+	// grossProfitMetric is the per-commit gross-profit histogram. It defaults
+	// to the package-global metrics.BillingLedgerGrossProfit; tests inject a
+	// registry-local instance via SetGrossProfitMetric so assertions never
+	// read the shared DefaultGatherer (which other tests could pollute).
+	grossProfitMetric *prometheus.HistogramVec
 }
 
 func NewBillingUsecase(
@@ -229,6 +235,24 @@ func (uc *BillingUsecase) SetRedeemRepo(r RedeemRepo) {
 func (uc *BillingUsecase) SetTxRunner(r subscriptionbiz.TxRunner) {
 	uc.txRunner = r
 	uc.options.TxRunner = r
+}
+
+// SetGrossProfitMetric injects a registry-local gross-profit histogram for
+// tests. When unset (production) the usecase records onto the package-global
+// metrics.BillingLedgerGrossProfit. Tests use this to assert on an isolated
+// registry instead of the shared DefaultGatherer.
+func (uc *BillingUsecase) SetGrossProfitMetric(m *prometheus.HistogramVec) {
+	uc.grossProfitMetric = m
+}
+
+// grossProfit returns the effective gross-profit histogram: the injected
+// test instance if present, otherwise the production global (nil-safe, so
+// metrics can be disabled at build time).
+func (uc *BillingUsecase) grossProfit() *prometheus.HistogramVec {
+	if uc.grossProfitMetric != nil {
+		return uc.grossProfitMetric
+	}
+	return metrics.BillingLedgerGrossProfit
 }
 
 func (uc *BillingUsecase) Now() time.Time {
@@ -816,8 +840,8 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 		// quota charged minus upstream cost for the same request; a sustained
 		// negative aggregate (or negative median) triggers the
 		// NegativeGrossMargin Prometheus alert.
-		if metrics.BillingLedgerGrossProfit != nil {
-			metrics.BillingLedgerGrossProfit.WithLabelValues(providerFamilyForModel(reservation.Model)).
+		if gp := uc.grossProfit(); gp != nil {
+			gp.WithLabelValues(providerFamilyForModel(reservation.Model)).
 				Observe(float64(actualCost - upstreamCost))
 		}
 
@@ -1020,8 +1044,8 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		// v0.17 roadmap P1.1: charge-mode margin alerting (split commit path).
 		// The charged amount is actualCost (subscription absorption + wallet
 		// balance); upstream cost applies once per request.
-		if metrics.BillingLedgerGrossProfit != nil {
-			metrics.BillingLedgerGrossProfit.WithLabelValues(providerFamilyForModel(reservation.Model)).
+		if gp := uc.grossProfit(); gp != nil {
+			gp.WithLabelValues(providerFamilyForModel(reservation.Model)).
 				Observe(float64(actualCost - upstreamCost))
 		}
 		resolvedSubAccountID := resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
