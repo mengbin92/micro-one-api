@@ -294,9 +294,13 @@ of sync and breaks the `release.yml` CI pipeline (it reads the tag).
 4. **Commit** — `git add` the three files above (plus any regenerated
    files in the same release) and commit with a `docs(release): vX.Y.Z`
    message on the working branch.
-5. **Merge to main** — Merge the branch into `main` (fast-forward or
+5. **Push develop** — Push the release branch into `develop` and push
+   `develop` to the remote so the staging/integration branch carries
+   the release before it lands on `main`:
+   `git checkout develop && git merge --no-ff <release-branch> && git push origin develop`.
+6. **Merge to main** — Merge `develop` into `main` (fast-forward or
    squash per the repo's normal flow).
-6. **Tag** — `git tag vX.Y.Z` on the `main` commit, then
+7. **Tag** — `git tag vX.Y.Z` on the `main` commit, then
    `git push origin main && git push origin vX.Y.Z` so `release.yml`
    picks up the tag, builds the multi-arch Docker images, and creates
    the GitHub Release.
@@ -306,5 +310,6 @@ of sync and breaks the `release.yml` CI pipeline (it reads the tag).
 - [ ] `docs/releases/release-vX.Y.Z.md` written (canonical format)
 - [ ] `CHANGELOG.md` new section under `[Unreleased]`
 - [ ] `README.md` 最新发布 line + release-notes list updated
-- [ ] commit `docs(release): vX.Y.Z` → merge to `main`
+- [ ] commit `docs(release): vX.Y.Z` → push `develop`
+- [ ] merge `develop` into `main`
 - [ ] tag `vX.Y.Z` → push `main` + tag
