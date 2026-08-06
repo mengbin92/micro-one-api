@@ -236,3 +236,23 @@ var BillingLedgerUpstreamCostRecorded = prometheus.NewCounterVec(
 	},
 	[]string{"result", "provider_family"}, // result: priced, unpriced
 )
+
+// BillingLedgerGrossProfit records per-commit gross profit — the quota charged
+// to the user minus the upstream cost, both in internal quota units
+// (1 USD = 10000 quota by convention, see routing-ops). Charge-mode ops use
+// this to alert on negative margin or a systematic drift from vendor-bill
+// thresholds (v0.17 roadmap P1.1). Negative observations are expected when a
+// cache-creation price is missing or set below the upstream price, so the
+// histogram buckets span negative values and the alert uses both the aggregate
+// rate and the median per-request margin. Labels are low-cardinality
+// (provider_family only) per the observability contract.
+var BillingLedgerGrossProfit = prometheus.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "billing_ledger",
+		Name:      "gross_profit_quota",
+		Help:      "Per-commit gross profit in quota units (charged quota - upstream cost)",
+		Buckets:   []float64{-1000000, -100000, -10000, -1000, -100, 0, 100, 1000, 10000, 100000, 1000000},
+	},
+	[]string{"provider_family"},
+)

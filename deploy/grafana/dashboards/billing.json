@@ -118,6 +118,46 @@
             "legendFormat": "Frozen"
           }
         ]
+      },
+      {
+        "id": 10,
+        "title": "Cache-Creation Shadow Cost (rate by mode)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+        "targets": [
+          {
+            "expr": "sum(rate(micro_one_api_relay_token_usage_shadow_cost_sum[5m])) by (mode)",
+            "legendFormat": "{{mode}}"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Unpriced cache-creation traffic (charge)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+        "targets": [
+          {
+            "expr": "sum(rate(micro_one_api_relay_token_usage_shadow_cost_sum{mode=\"charge\",unpriced=\"true\"}[5m]))",
+            "legendFormat": "unpriced shadow cost rate"
+          },
+          {
+            "expr": "sum(rate(micro_one_api_relay_token_usage_shadow_cost_count{mode=\"charge\",unpriced=\"true\"}[5m]))",
+            "legendFormat": "unpriced request rate"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Gross Profit per request (P50)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 48},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.5, sum(rate(micro_one_api_billing_ledger_gross_profit_quota_bucket[5m])) by (le))",
+            "legendFormat": "P50 gross profit (quota)"
+          }
+        ]
       }
     ]
   }

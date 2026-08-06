@@ -241,6 +241,7 @@ func init() {
 		QuotaBalanceRemaining,
 		QuotaFrozenAmount,
 		BillingLedgerUpstreamCostRecorded,
+		BillingLedgerGrossProfit,
 	)
 
 	// Register subscription system metrics

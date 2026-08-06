@@ -258,7 +258,9 @@ groups:
           summary: "Requests flowing but upstream cost not recorded"
           description: "Some successful requests are not recording upstream cost for provider_family={{ $labels.provider_family }} — UpstreamModelPrice may be missing"
 
-      # 观察成本持续偏离供应商账单 — cache-creation shadow cost 显著但未收费
+      # 观察成本持续偏离供应商账单 — cache-creation shadow cost 显著但未收费。
+      # 本规则服务于 observe 模式结算周期对账（或 charge 回滚后的观察期）；
+      # charge 模式下的等价检查由下方三条 v0.17 P1.1 规则承担。
       - alert: CacheCreationShadowCostDrift
         # (observe - charge) or observe: the histogram is only observed with
         # the currently active mode label, so in steady observe mode the
@@ -283,6 +285,54 @@ groups:
         annotations:
           summary: "Cache-creation observe/charge cost drift detected"
           description: "Shadow cost is accumulating in observe mode — verify against the vendor invoice before switching BILLING_CACHE_CREATION_MODE to charge"
+
+      # ── v0.17 roadmap P1.1: charge 后监控告警 ─────────────────────────
+      # 1. cache_creation 桶未配价却持续产生流量 — 影子成本在累积但未实扣。
+      #    与 v0.11.0 §9.2「未定价桶必须保留告警，不得静默丢弃」一致。
+      - alert: CacheCreationChargeUnpricedTraffic
+        expr: |
+          sum(rate(micro_one_api_relay_token_usage_shadow_cost_sum{mode="charge",unpriced="true"}[30m])) > 0
+          and
+          sum(rate(micro_one_api_relay_token_usage_shadow_cost_count{mode="charge",unpriced="true"}[30m])) > 100
+        for: 30m
+        labels:
+          severity: warning
+          service: billing-service
+        annotations:
+          summary: "Unpriced cache-creation traffic still flowing in charge mode"
+          description: "cache-creation tokens are counted but NOT charged (mode=charge, unpriced=true) — check the 5m/1h price buckets in system_options; shadow-cost rate is {{ $value }}"
+
+      # 2. charge 模式影子成本信号消失 — 路由仍在成功，但 30m 内没有任何
+      #    charge-mode 观测。cache-creation 计费可能静默停止或模式被切回 observe。
+      - alert: CacheCreationChargeSignalLost
+        expr: |
+          sum(rate(micro_one_api_relay_token_usage_shadow_cost_count{mode="charge"}[30m])) == 0
+          and
+          sum(rate(micro_one_api_routing_selection_total{result="success"}[30m])) > 100
+        for: 30m
+        labels:
+          severity: warning
+          service: billing-service
+        annotations:
+          summary: "Cache-creation shadow cost signal lost in charge mode"
+          description: "Routing is succeeding but there are no charge-mode shadow cost observations in the last 30m — cache-creation billing may have stopped or BILLING_CACHE_CREATION_MODE fell back to observe"
+
+      # 3. 毛利异常 — 每请求毛利 = 实扣 quota - 上游成本(quota)，由
+      #    micro_one_api_billing_ledger_gross_profit_quota 直方图承载。
+      #    总毛利持续为负或中位每请求毛利为负都说明用户售价低于上游成本。
+      - alert: NegativeGrossMargin
+        expr: |
+          sum(rate(micro_one_api_billing_ledger_gross_profit_quota_sum[15m])) < 0
+          or
+          histogram_quantile(0.5,
+            sum(rate(micro_one_api_billing_ledger_gross_profit_quota_bucket[15m])) by (le)) < 0
+        for: 15m
+        labels:
+          severity: critical
+          service: billing-service
+        annotations:
+          summary: "Negative gross margin on billing ledgers"
+          description: "Aggregate gross-profit rate is negative or the median per-request margin is below zero — user-facing price is below upstream cost (check ModelPrice vs UpstreamModelPrice, including cache-creation buckets)"
 
       # 单一来源流量长期偏离配置权重 — 订阅账号 vs 渠道流量比严重倾斜
       - alert: RoutingSourceImbalance

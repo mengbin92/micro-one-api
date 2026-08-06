@@ -26,6 +26,8 @@ docs/
 | 查看产品界面预览 | [根 README 界面预览](../README.md#界面预览) |
 | 查看某版本发布内容 | [releases/](./releases/) |
 | 排查订阅系统生产故障 | [runbooks/subscription-production-runbook.md](./runbooks/subscription-production-runbook.md) |
+| charge 后监控告警与 SQL 口径 | [runbooks/cache-creation-charge-monitoring.md](./runbooks/cache-creation-charge-monitoring.md) |
+| 发布后强制失败验证（§9.2） | [runbooks/post-release-forced-failure-verification.md](./runbooks/post-release-forced-failure-verification.md) |
 | 理解整体架构 | [design/ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) |
 | 了解订阅系统路线图 | [design/subscription-follow-up-roadmap.md](./design/subscription-follow-up-roadmap.md) |
 | 查看 Kratos 大仓 / buf / v3 升级迁移方案 | [migration/](./migration/) |
@@ -62,6 +64,8 @@ docs/
 | [subscription-plan-runbook.md](./runbooks/subscription-plan-runbook.md) | 订阅套餐配置与购买发放 |
 | [subscription-redis-multi-replica-runbook.md](./runbooks/subscription-redis-multi-replica-runbook.md) | 订阅 Redis 多副本部署 |
 | [relay-stress-runbook.md](./runbooks/relay-stress-runbook.md) | Relay 稳定性压测 |
+| [cache-creation-charge-monitoring.md](./runbooks/cache-creation-charge-monitoring.md) | cache-creation charge 后监控告警与文档化 SQL 查询 |
+| [post-release-forced-failure-verification.md](./runbooks/post-release-forced-failure-verification.md) | 发布后强制失败验证（v0.11.0 §9.2 补完） |
 
 ### design/ — 架构设计与技术方案
 

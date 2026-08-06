@@ -827,3 +827,35 @@ OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减�
 - [x] **docs 索引对齐**：`docs/README.md` 快速入口指向 v0.17 路线图、
       release 列表补齐至 v0.16.0（最新）、设计索引标注 v0.11/v0.16 已收尾、
       v0.17 为当前；`docs/TODO.md` 收尾节与 v0.16.0 发布状态一致。
+
+## P1 完成（v0.17）
+
+> **完成日期：2026-08-06**。P1 运营闭环三项全部落地（路线图 §3 P1），
+> 告警/对账/强制失败验证均已就绪；P2/P3 仍按路线图状态推进。
+
+- [x] **charge 后监控告警**：
+  - 新增 `micro_one_api_billing_ledger_gross_profit_quota{provider_family}` 直方图
+    （`platform/metrics/billing.go`，两条 commit 路径均记录 `实扣 quota - 上游成本`），
+    承载毛利异常告警；新增单测 `TestCommitQuota_EmitsGrossProfitMetric`。
+  - `deploy/prometheus/alerts/alerts.yml` 新增三条 charge 规则：
+    `CacheCreationChargeUnpricedTraffic`（未定价桶持续产生流量）、
+    `CacheCreationChargeSignalLost`（charge 信号消失）、
+    `NegativeGrossMargin`（总毛利/中位毛利为负）。
+  - Grafana billing dashboard 新增「Cache-Creation Shadow Cost (rate by mode)」
+    「Unpriced cache-creation traffic (charge)」「Gross Profit per request (P50)」面板。
+  - 文档化 SQL 查询与 routing-ops / 成本视图验证步骤：
+    [docs/runbooks/cache-creation-charge-monitoring.md](./runbooks/cache-creation-charge-monitoring.md)。
+- [x] **对账周期自动化**：
+  - `scripts/reconcile/reconcile.sh` 一条命令完成周期对账：触发 billing 全量对账
+    （`POST /v1/reconciliation`）+ DB 侧检查；无差异 exit 0，有差异 exit 1。
+  - `scripts/reconcile/checks.go` 覆盖 ledger dedupe key、cache-creation
+    counted-but-unbilled、毛利、缓存命中率口径、供应商账单 CSV 对比（阈值可配）。
+  - 用法与阈值说明见 [scripts/reconcile/README.md](../scripts/reconcile/README.md)。
+- [x] **发布后强制失败验证（§9.2 补完）**：
+  - runbook 手工清单 + 等价 SQL：
+    [docs/runbooks/post-release-forced-failure-verification.md](./runbooks/post-release-forced-failure-verification.md)。
+  - `scripts/verify-forced-failure.sh` 自动执行两个场景（禁渠道→订阅服务、
+    禁订阅账号→渠道服务），断言 metrics 回退增长、routing-ops 回退率、
+    账本来源归属与单次计费（`scripts/verify/forced_failure_checks.go`）。
+- [x] **docs 索引与路线图状态**：`docs/README.md` runbook 表新增两篇文档；
+      `docs/design/v0.17-roadmap.md` 状态头与 §0 总览标注 P0/P1 完成。

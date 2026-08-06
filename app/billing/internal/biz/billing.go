@@ -812,6 +812,14 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 				providerFamilyForModel(reservation.Model),
 			).Inc()
 		}
+		// v0.17 roadmap P1.1: charge-mode margin alerting. Gross profit is the
+		// quota charged minus upstream cost for the same request; a sustained
+		// negative aggregate (or negative median) triggers the
+		// NegativeGrossMargin Prometheus alert.
+		if metrics.BillingLedgerGrossProfit != nil {
+			metrics.BillingLedgerGrossProfit.WithLabelValues(providerFamilyForModel(reservation.Model)).
+				Observe(float64(actualCost - upstreamCost))
+		}
 
 		ledger := &Ledger{
 			UserID:                reservation.UserID,
@@ -1008,6 +1016,13 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				resultLabel,
 				providerFamilyForModel(reservation.Model),
 			).Inc()
+		}
+		// v0.17 roadmap P1.1: charge-mode margin alerting (split commit path).
+		// The charged amount is actualCost (subscription absorption + wallet
+		// balance); upstream cost applies once per request.
+		if metrics.BillingLedgerGrossProfit != nil {
+			metrics.BillingLedgerGrossProfit.WithLabelValues(providerFamilyForModel(reservation.Model)).
+				Observe(float64(actualCost - upstreamCost))
 		}
 		resolvedSubAccountID := resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
 		commonRemark := fmt.Sprintf("model=%s, tokens=%d", reservation.Model, actualTokens)
