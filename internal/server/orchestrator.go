@@ -3,12 +3,13 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -391,11 +392,11 @@ func rewriteRequestModel(body []byte, model string) []byte {
 		return body
 	}
 	var payload map[string]any
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}
 	payload["model"] = model
-	rewritten, err := json.Marshal(payload)
+	rewritten, err := jsonx.Marshal(payload)
 	if err != nil {
 		return body
 	}

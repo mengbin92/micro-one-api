@@ -2,12 +2,13 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"github.com/bytedance/sonic"
 	"google.golang.org/grpc/codes"
@@ -27,22 +28,22 @@ import (
 type anthropicInboundRequest struct {
 	Model         string                    `json:"model"`
 	Messages      []anthropicInboundMessage `json:"messages"`
-	System        json.RawMessage           `json:"system,omitempty"`
+	System        jsonx.RawMessage          `json:"system,omitempty"`
 	MaxTokens     int                       `json:"max_tokens"`
 	Stream        bool                      `json:"stream,omitempty"`
 	Temperature   *float64                  `json:"temperature,omitempty"`
 	TopP          *float64                  `json:"top_p,omitempty"`
 	TopK          *int                      `json:"top_k,omitempty"`
 	Tools         []map[string]interface{}  `json:"tools,omitempty"`
-	ToolChoice    json.RawMessage           `json:"tool_choice,omitempty"`
+	ToolChoice    jsonx.RawMessage          `json:"tool_choice,omitempty"`
 	StopSequences []string                  `json:"stop_sequences,omitempty"`
 }
 
 // anthropicInboundMessage is a single message; content may be a string or an
 // array of content blocks (text / tool_use / tool_result / image).
 type anthropicInboundMessage struct {
-	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content"`
+	Role    string           `json:"role"`
+	Content jsonx.RawMessage `json:"content"`
 }
 
 // anthropicMessagesResponse is the non-streaming Anthropic Messages response.
@@ -136,7 +137,7 @@ func convertAnthropicToChatCompletions(req *anthropicInboundRequest) (*relayprov
 
 // extractSystemText handles both string and array-of-blocks forms of the
 // Anthropic top-level "system" parameter.
-func extractSystemText(raw json.RawMessage) string {
+func extractSystemText(raw jsonx.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
 	}
@@ -287,7 +288,7 @@ func convertAnthropicToolsToOpenAI(tools []map[string]interface{}) []map[string]
 	return result
 }
 
-func convertAnthropicToolChoiceToOpenAI(raw json.RawMessage) any {
+func convertAnthropicToolChoiceToOpenAI(raw jsonx.RawMessage) any {
 	if len(raw) == 0 {
 		return nil
 	}

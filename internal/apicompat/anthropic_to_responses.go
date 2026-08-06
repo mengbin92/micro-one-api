@@ -1,10 +1,12 @@
 package apicompat
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/bytedance/sonic"
 	"strings"
+
+	"github.com/bytedance/sonic"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // AnthropicToResponses converts an Anthropic Messages request directly into
@@ -87,7 +89,7 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 //	{"type":"any"}             → "required"
 //	{"type":"none"}            → "none"
 //	{"type":"tool","name":"X"} → {"type":"function","name":"X"}
-func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage, error) {
+func convertAnthropicToolChoiceToResponses(raw jsonx.RawMessage) (jsonx.RawMessage, error) {
 	var tc struct {
 		Type string `json:"type"`
 		Name string `json:"name"`
@@ -116,7 +118,7 @@ func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage
 
 // convertAnthropicToResponsesInput builds the Responses API input items array
 // from the Anthropic system field and message list.
-func convertAnthropicToResponsesInput(system json.RawMessage, msgs []AnthropicMessage) ([]ResponsesInputItem, error) {
+func convertAnthropicToResponsesInput(system jsonx.RawMessage, msgs []AnthropicMessage) ([]ResponsesInputItem, error) {
 	var out []ResponsesInputItem
 
 	// System prompt → developer role input item. ChatGPT Codex SSE behaves like
@@ -150,7 +152,7 @@ func convertAnthropicToResponsesInput(system json.RawMessage, msgs []AnthropicMe
 // parseAnthropicSystemContentParts handles the Anthropic system field which can
 // be a plain string or an array of text blocks. Claude Code may include an
 // x-anthropic-billing-header block; airgate drops it before sending to Codex.
-func parseAnthropicSystemContentParts(raw json.RawMessage) ([]ResponsesContentPart, error) {
+func parseAnthropicSystemContentParts(raw jsonx.RawMessage) ([]ResponsesContentPart, error) {
 	var s string
 	if err := sonic.Unmarshal(raw, &s); err == nil {
 		if isAnthropicBillingHeaderText(s) || s == "" {
@@ -191,7 +193,7 @@ func anthropicMsgToResponsesItems(m AnthropicMessage) ([]ResponsesInputItem, err
 // anthropicUserToResponses handles an Anthropic user message. Content can be a
 // plain string or an array of blocks. tool_result blocks are extracted into
 // function_call_output items. Image blocks are converted to input_image parts.
-func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error) {
+func anthropicUserToResponses(raw jsonx.RawMessage) ([]ResponsesInputItem, error) {
 	// Try plain string.
 	var s string
 	if err := sonic.Unmarshal(raw, &s); err == nil {
@@ -259,7 +261,7 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 // Text content → assistant message with output_text parts.
 // tool_use blocks → function_call items.
 // thinking blocks → ignored (OpenAI doesn't accept them as input).
-func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, error) {
+func anthropicAssistantToResponses(raw jsonx.RawMessage) ([]ResponsesInputItem, error) {
 	// Try plain string.
 	var s string
 	if err := sonic.Unmarshal(raw, &s); err == nil {
@@ -459,12 +461,12 @@ func isReasoningModel(model string) bool {
 //   - nil/empty → {"type":"object","properties":{}}
 //   - type=object without properties → adds "properties": {}
 //   - otherwise → returned unchanged
-func normalizeToolParameters(schema json.RawMessage) json.RawMessage {
+func normalizeToolParameters(schema jsonx.RawMessage) jsonx.RawMessage {
 	if len(schema) == 0 || string(schema) == "null" {
-		return json.RawMessage(`{"type":"object","properties":{}}`)
+		return jsonx.RawMessage(`{"type":"object","properties":{}}`)
 	}
 
-	var m map[string]json.RawMessage
+	var m map[string]jsonx.RawMessage
 	if err := sonic.Unmarshal(schema, &m); err != nil {
 		return schema
 	}
@@ -478,7 +480,7 @@ func normalizeToolParameters(schema json.RawMessage) json.RawMessage {
 		return schema
 	}
 
-	m["properties"] = json.RawMessage(`{}`)
+	m["properties"] = jsonx.RawMessage(`{}`)
 	out, err := sonic.Marshal(m)
 	if err != nil {
 		return schema

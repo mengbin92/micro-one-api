@@ -1,9 +1,10 @@
 package identity
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
+
+	"micro-one-api/pkg/jsonx"
 
 	"github.com/bytedance/sonic"
 )
@@ -28,7 +29,7 @@ func RewriteMetadataUserID(body []byte, accountUUID, clientID string) ([]byte, e
 	if len(body) == 0 {
 		return body, nil
 	}
-	var raw map[string]json.RawMessage
+	var raw map[string]jsonx.RawMessage
 	if err := sonic.Unmarshal(body, &raw); err != nil {
 		// Not JSON: return unchanged (the caller may be forwarding a raw body).
 		return body, nil
@@ -79,7 +80,7 @@ func InjectClaudeCodeSystemPrompt(body []byte) ([]byte, error) {
 	if len(body) == 0 {
 		return body, nil
 	}
-	var raw map[string]json.RawMessage
+	var raw map[string]jsonx.RawMessage
 	if err := sonic.Unmarshal(body, &raw); err != nil {
 		return body, nil
 	}
@@ -106,7 +107,7 @@ func NormalizeClaudeOAuthRequestBody(body []byte) ([]byte, error) {
 	if len(body) == 0 {
 		return body, nil
 	}
-	var raw map[string]json.RawMessage
+	var raw map[string]jsonx.RawMessage
 	if err := sonic.Unmarshal(body, &raw); err != nil {
 		return body, nil
 	}
@@ -120,7 +121,7 @@ func NormalizeClaudeOAuthRequestBody(body []byte) ([]byte, error) {
 		changed = true
 	}
 	if _, ok := raw["tools"]; !ok {
-		raw["tools"] = json.RawMessage("[]")
+		raw["tools"] = jsonx.RawMessage("[]")
 		changed = true
 	}
 	if !changed {
@@ -161,12 +162,12 @@ func ComputeAnthropicBeta(inbound string) string {
 
 // --- small JSON helpers (avoid importing encoding/json's MarshalNumber) ---
 
-func jsonString(s string) json.RawMessage {
+func jsonString(s string) jsonx.RawMessage {
 	b, _ := sonic.Marshal(s)
 	return b
 }
 
-func jsonNumber(n float64) json.RawMessage {
+func jsonNumber(n float64) jsonx.RawMessage {
 	b, _ := sonic.Marshal(n)
 	return b
 }

@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"github.com/bytedance/sonic"
 )
@@ -187,7 +188,7 @@ func disableOpenAITraining(ctx context.Context, client *http.Client, accessToken
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	body, _ := json.Marshal(map[string]any{
+	body, _ := jsonx.Marshal(map[string]any{
 		"training_allowed": false,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, chatGPTPrivacyURL, bytes.NewReader(body))

@@ -1,11 +1,13 @@
 package apicompat
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/bytedance/sonic"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // ResponsesToChatCompletionsRequest converts a Responses API request into a
@@ -56,7 +58,7 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 // The build + normalize split keeps every protocol rule in one place rather than
 // scattered across per-item cases, and makes unknown future codex item types
 // fail safe instead of leaking into the upstream request.
-func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage) ([]ChatMessage, error) {
+func responsesInputToChatMessages(instructions string, inputRaw jsonx.RawMessage) ([]ChatMessage, error) {
 	var messages []ChatMessage
 	if strings.TrimSpace(instructions) != "" {
 		content, _ := sonic.Marshal(instructions)
@@ -76,7 +78,7 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 		return messages, nil
 	}
 
-	var rawItems []json.RawMessage
+	var rawItems []jsonx.RawMessage
 	if err := sonic.Unmarshal(inputRaw, &rawItems); err != nil {
 		return nil, fmt.Errorf("parse responses input: %w", err)
 	}
@@ -90,7 +92,7 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 
 // buildChatMessagesFromItems walks the Responses input items and appends the
 // corresponding Chat messages.
-func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessage) ([]ChatMessage, error) {
+func buildChatMessagesFromItems(messages []ChatMessage, rawItems []jsonx.RawMessage) ([]ChatMessage, error) {
 	// pendingReasoning holds the reasoning text from a reasoning item until the
 	// assistant message it belongs to is emitted. DeepSeek's thinking mode
 	// requires the reasoning_content that produced a tool call to be passed back
@@ -105,7 +107,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			continue
 		}
 
-		var item map[string]json.RawMessage
+		var item map[string]jsonx.RawMessage
 		if err := sonic.Unmarshal(raw, &item); err != nil {
 			var text string
 			if textErr := sonic.Unmarshal(raw, &text); textErr == nil {
@@ -283,7 +285,7 @@ func normalizeChatMessages(messages []ChatMessage) []ChatMessage {
 }
 
 // isBlankChatContent reports whether a chat message content holds no usable text.
-func isBlankChatContent(raw json.RawMessage) bool {
+func isBlankChatContent(raw jsonx.RawMessage) bool {
 	raw = bytesTrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" || string(raw) == `""` {
 		return true
@@ -295,14 +297,14 @@ func isBlankChatContent(raw json.RawMessage) bool {
 // reasoning item. The Chat→Responses bridge writes the upstream reasoning_content
 // verbatim into the summary_text parts (see closeChatReasoningItem), so codex
 // round-trips it there; prefer summary[].text and fall back to content.
-func extractResponsesReasoningText(item map[string]json.RawMessage) string {
+func extractResponsesReasoningText(item map[string]jsonx.RawMessage) string {
 	var parts []string
-	collect := func(raw json.RawMessage) {
+	collect := func(raw jsonx.RawMessage) {
 		raw = bytesTrimSpace(raw)
 		if len(raw) == 0 || string(raw) == "null" {
 			return
 		}
-		var arr []map[string]json.RawMessage
+		var arr []map[string]jsonx.RawMessage
 		if err := sonic.Unmarshal(raw, &arr); err == nil {
 			for _, p := range arr {
 				if t := rawString(p["text"]); t != "" {
@@ -333,7 +335,7 @@ func chatCompletionsBridgeRole(role string) string {
 	return role
 }
 
-func responsesContentToChatContent(raw json.RawMessage, role string) (json.RawMessage, error) {
+func responsesContentToChatContent(raw jsonx.RawMessage, role string) (jsonx.RawMessage, error) {
 	raw = bytesTrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
 		empty, _ := sonic.Marshal("")
@@ -345,12 +347,12 @@ func responsesContentToChatContent(raw json.RawMessage, role string) (json.RawMe
 		return raw, nil
 	}
 
-	var rawParts []json.RawMessage
+	var rawParts []jsonx.RawMessage
 	if err := sonic.Unmarshal(raw, &rawParts); err == nil {
 		return responsesContentPartsToChatContent(rawParts, role)
 	}
 
-	var obj map[string]json.RawMessage
+	var obj map[string]jsonx.RawMessage
 	if err := sonic.Unmarshal(raw, &obj); err == nil {
 		return chatContentFromSingleResponsesPart(rawString(obj["type"]), obj)
 	}
@@ -358,13 +360,13 @@ func responsesContentToChatContent(raw json.RawMessage, role string) (json.RawMe
 	return raw, nil
 }
 
-func responsesContentPartsToChatContent(rawParts []json.RawMessage, role string) (json.RawMessage, error) {
+func responsesContentPartsToChatContent(rawParts []jsonx.RawMessage, role string) (jsonx.RawMessage, error) {
 	var textParts []string
 	var chatParts []ChatContentPart
 	hasNonText := false
 
 	for _, rawPart := range rawParts {
-		var part map[string]json.RawMessage
+		var part map[string]jsonx.RawMessage
 		if err := sonic.Unmarshal(rawPart, &part); err != nil {
 			continue
 		}
@@ -408,7 +410,7 @@ func responsesContentPartsToChatContent(rawParts []json.RawMessage, role string)
 	return sonic.Marshal(chatParts)
 }
 
-func chatContentFromSingleResponsesPart(partType string, part map[string]json.RawMessage) (json.RawMessage, error) {
+func chatContentFromSingleResponsesPart(partType string, part map[string]jsonx.RawMessage) (jsonx.RawMessage, error) {
 	switch partType {
 	case "input_image", "image_url":
 		imageURL := rawString(part["image_url"])
@@ -443,8 +445,8 @@ func responsesToolsToChatTools(tools []ResponsesTool) []ChatTool {
 	return out
 }
 
-func responsesToolChoiceToChatToolChoice(raw json.RawMessage) json.RawMessage {
-	var choice map[string]json.RawMessage
+func responsesToolChoiceToChatToolChoice(raw jsonx.RawMessage) jsonx.RawMessage {
+	var choice map[string]jsonx.RawMessage
 	if err := sonic.Unmarshal(raw, &choice); err != nil {
 		return raw
 	}
@@ -570,7 +572,7 @@ func emptyResponsesMessageOutput() ResponsesOutput {
 	}
 }
 
-func chatMessageContentText(raw json.RawMessage) string {
+func chatMessageContentText(raw jsonx.RawMessage) string {
 	raw = bytesTrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
@@ -1085,7 +1087,7 @@ func chatToResponsesEvent(
 	return evt
 }
 
-func rawString(raw json.RawMessage) string {
+func rawString(raw jsonx.RawMessage) string {
 	raw = bytesTrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
@@ -1097,16 +1099,16 @@ func rawString(raw json.RawMessage) string {
 	return ""
 }
 
-func rawNestedString(raw json.RawMessage, key string) string {
-	var obj map[string]json.RawMessage
+func rawNestedString(raw jsonx.RawMessage, key string) string {
+	var obj map[string]jsonx.RawMessage
 	if err := sonic.Unmarshal(raw, &obj); err != nil {
 		return ""
 	}
 	return rawString(obj[key])
 }
 
-func bytesTrimSpace(raw json.RawMessage) json.RawMessage {
-	return json.RawMessage(strings.TrimSpace(string(raw)))
+func bytesTrimSpace(raw jsonx.RawMessage) jsonx.RawMessage {
+	return jsonx.RawMessage(strings.TrimSpace(string(raw)))
 }
 
 func nonEmpty(value, fallback string) string {

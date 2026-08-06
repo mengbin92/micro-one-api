@@ -2,8 +2,9 @@ package data
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/billing/internal/biz"
 )
@@ -63,7 +64,7 @@ func parseRatioOption(raw string) map[string]float64 {
 		return nil
 	}
 	values := map[string]float64{}
-	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &values); err != nil {
 		return nil
 	}
 	return values
@@ -74,7 +75,7 @@ func parseModelPriceOption(raw string) map[string]biz.ModelPrice {
 		return nil
 	}
 	values := map[string]biz.ModelPrice{}
-	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &values); err != nil {
 		return nil
 	}
 	return values
@@ -85,7 +86,7 @@ func parseFloatOption(raw string) float64 {
 		return 0
 	}
 	var value float64
-	if err := json.Unmarshal([]byte(raw), &value); err == nil {
+	if err := jsonx.Unmarshal([]byte(raw), &value); err == nil {
 		return value
 	}
 	return 0

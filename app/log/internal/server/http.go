@@ -2,16 +2,17 @@ package server
 
 import (
 	"crypto/subtle"
-	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
+
+	"micro-one-api/pkg/jsonx"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/log/internal/service"
-	"micro-one-api/platform/http"
+	xhttp "micro-one-api/platform/http"
 	"micro-one-api/platform/metrics"
 )
 
@@ -23,21 +24,21 @@ func ServiceAuth(next http.HandlerFunc) http.HandlerFunc {
 		if serviceToken == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "service token not configured"})
+			_ = jsonx.NewEncoder(w).Encode(map[string]string{"error": "service token not configured"})
 			return
 		}
 		authHeader := r.Header.Get("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing or invalid authorization header"})
+			_ = jsonx.NewEncoder(w).Encode(map[string]string{"error": "missing or invalid authorization header"})
 			return
 		}
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		if subtle.ConstantTimeCompare([]byte(token), []byte(serviceToken)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid service token"})
+			_ = jsonx.NewEncoder(w).Encode(map[string]string{"error": "invalid service token"})
 			return
 		}
 		next(w, r)

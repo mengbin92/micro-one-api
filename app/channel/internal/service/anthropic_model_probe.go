@@ -15,13 +15,14 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
 )
@@ -222,7 +223,7 @@ func (s *AnthropicModelProbeService) probeModel(ctx context.Context, account *bi
 		MaxTokens: anthropicModelProbeMaxTokens,
 		Messages:  []anthropicMessagesProbeInput{{Role: "user", Content: "hi"}},
 	}
-	body, err := json.Marshal(payload)
+	body, err := jsonx.Marshal(payload)
 	if err != nil {
 		return false, err
 	}
@@ -279,7 +280,7 @@ func fetchModels(ctx context.Context, client *http.Client, baseURL string, acces
 	}
 
 	var modelsResp anthropicModelsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err != nil {
+	if err := jsonx.NewDecoder(resp.Body).Decode(&modelsResp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 

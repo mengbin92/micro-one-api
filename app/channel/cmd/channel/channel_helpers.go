@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -66,7 +67,7 @@ func recipientsFromEnv(key string) []string {
 		return []string{""}
 	}
 	var recipients []string
-	if err := json.Unmarshal([]byte(value), &recipients); err == nil {
+	if err := jsonx.Unmarshal([]byte(value), &recipients); err == nil {
 		return cleanRecipients(recipients)
 	}
 	return cleanRecipients(strings.Split(value, ","))

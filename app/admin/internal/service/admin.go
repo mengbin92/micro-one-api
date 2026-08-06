@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	adminv1 "micro-one-api/api/admin/v1"
 	billingv1 "micro-one-api/api/billing/v1"
@@ -769,7 +770,7 @@ func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[st
 		probeRequest.Method = http.MethodPost
 		probeRequest.Path = "/messages"
 		probeRequest.Header = http.Header{"Content-Type": []string{"application/json"}}
-		probeRequest.Body, err = json.Marshal(map[string]interface{}{
+		probeRequest.Body, err = jsonx.Marshal(map[string]interface{}{
 			"model":      model,
 			"max_tokens": 1,
 			"messages": []map[string]string{{
@@ -1683,7 +1684,7 @@ func fetchBalancePayload(ctx context.Context, client *http.Client, endpoint, key
 		return nil, fmt.Errorf("balance upstream returned status %d", resp.StatusCode)
 	}
 	var payload map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := jsonx.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -1928,7 +1929,7 @@ func (s *AdminService) groupRatios(ctx context.Context) (map[string]float64, err
 	}
 	ratios := map[string]float64{}
 	if strings.TrimSpace(raw) != "" {
-		if err := json.Unmarshal([]byte(raw), &ratios); err != nil {
+		if err := jsonx.Unmarshal([]byte(raw), &ratios); err != nil {
 			return nil, fmt.Errorf("invalid GroupRatio option: %w", err)
 		}
 	}
@@ -1948,7 +1949,7 @@ func (s *AdminService) saveGroupRatios(ctx context.Context, ratios map[string]fl
 	for _, group := range keys {
 		ordered[group] = ratios[group]
 	}
-	payload, err := json.Marshal(ordered)
+	payload, err := jsonx.Marshal(ordered)
 	if err != nil {
 		return err
 	}

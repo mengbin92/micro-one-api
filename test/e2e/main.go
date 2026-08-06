@@ -3,12 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -203,7 +204,7 @@ func stepVerifyAccount(_ context.Context, userID int64) int64 {
 			Group  string `json:"group"`
 		} `json:"account"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := jsonx.Unmarshal(body, &result); err != nil {
 		fail("verify-account", fmt.Sprintf("decode response: %v", err))
 		return 0
 	}
@@ -251,7 +252,7 @@ func stepListModels(token string) {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := jsonx.Unmarshal(body, &result); err != nil {
 		fail("list-models", fmt.Sprintf("invalid JSON: %v", err))
 		return
 	}
@@ -272,7 +273,7 @@ func stepListModels(token string) {
 
 func stepChatCompletion(token string) {
 	url := fmt.Sprintf("%s/v1/chat/completions", relayHTTPBase)
-	reqBody, _ := json.Marshal(map[string]interface{}{
+	reqBody, _ := jsonx.Marshal(map[string]interface{}{
 		"model":    testModel,
 		"messages": []map[string]string{{"role": "user", "content": "Hello, how are you?"}},
 	})
@@ -304,7 +305,7 @@ func stepChatCompletion(token string) {
 			TotalTokens int `json:"total_tokens"`
 		} `json:"usage"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := jsonx.Unmarshal(body, &result); err != nil {
 		fail("chat-completion", fmt.Sprintf("invalid JSON: %v", err))
 		return
 	}
@@ -325,7 +326,7 @@ func stepVerifyBilling(ctx context.Context, userID int64, initialQuota int64) {
 			Quota int64 `json:"quota"`
 		} `json:"account"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := jsonx.Unmarshal(body, &result); err != nil {
 		fail("billing-quota-deducted", fmt.Sprintf("decode response: %v", err))
 		return
 	}
@@ -372,7 +373,7 @@ func stepVerifyLogs(userID int64) {
 	body := httpGetWithAuth(url, adminToken())
 
 	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := jsonx.Unmarshal(body, &result); err != nil {
 		fail("admin-logs", fmt.Sprintf("decode response: %v", err))
 		return
 	}

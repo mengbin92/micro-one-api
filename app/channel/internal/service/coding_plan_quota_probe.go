@@ -27,7 +27,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,6 +34,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/pkg/safecast"
@@ -617,7 +618,7 @@ func toFloat64(v any) (float64, bool) {
 		return float64(t), true
 	case int64:
 		return float64(t), true
-	case json.Number:
+	case jsonx.Number:
 		f, err := t.Float64()
 		return f, err == nil
 	case string:
@@ -639,7 +640,7 @@ func toInt64(v any) (*int64, bool) {
 		return &i, true
 	case int64:
 		return &t, true
-	case json.Number:
+	case jsonx.Number:
 		i, err := t.Int64()
 		if err != nil {
 			f, err := t.Float64()
@@ -681,7 +682,7 @@ func toString(v any) (string, bool) {
 // would never succeed where the first failed.
 func decodeJSONObject(body []byte) (map[string]any, error) {
 	var root map[string]any
-	if err := json.Unmarshal(body, &root); err != nil {
+	if err := jsonx.Unmarshal(body, &root); err != nil {
 		return nil, err
 	}
 	return root, nil

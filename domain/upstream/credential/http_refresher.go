@@ -3,13 +3,14 @@ package credential
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // tokenRefreshResponse is the JSON body returned by an OAuth token endpoint
@@ -67,7 +68,7 @@ func (r *refresher) refresh(ctx context.Context, refreshURL, refreshToken string
 		return nil, fmt.Errorf("%w: status=%d body=%s", ErrRefreshFailed, resp.StatusCode, truncateBody(body))
 	}
 	var tr tokenRefreshResponse
-	if err := json.Unmarshal(body, &tr); err != nil {
+	if err := jsonx.Unmarshal(body, &tr); err != nil {
 		return nil, fmt.Errorf("%w: decode: %v", ErrRefreshFailed, err)
 	}
 	if tr.AccessToken == "" {

@@ -1,10 +1,11 @@
 package biz
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // PlanSnapshot captures the immutable purchase-time attributes of a
@@ -38,7 +39,7 @@ func EncodePlanSnapshot(s PlanSnapshot) string {
 	if s.CapturedAt == 0 {
 		s.CapturedAt = time.Now().Unix()
 	}
-	b, err := json.Marshal(s)
+	b, err := jsonx.Marshal(s)
 	if err != nil {
 		return ""
 	}
@@ -53,7 +54,7 @@ func DecodePlanSnapshot(raw string) (PlanSnapshot, error) {
 		return PlanSnapshot{}, nil
 	}
 	var s PlanSnapshot
-	if err := json.Unmarshal([]byte(raw), &s); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &s); err != nil {
 		return PlanSnapshot{}, fmt.Errorf("decode plan_snapshot: %w", err)
 	}
 	return s, nil

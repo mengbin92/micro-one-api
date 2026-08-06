@@ -2,11 +2,12 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
@@ -115,7 +116,7 @@ func (a *paymentSubscriptionAssigner) assignGroup(ctx context.Context, tx subscr
 		name = group.Name
 	}
 	now := a.now().Unix()
-	metadata, _ := json.Marshal(map[string]string{
+	metadata, _ := jsonx.Marshal(map[string]string{
 		"payment_trade_no":  order.TradeNo,
 		"provider_trade_no": order.ProviderTradeNo,
 	})
@@ -188,7 +189,7 @@ func (a *paymentSubscriptionAssigner) assignPlan(ctx context.Context, tx subscri
 	}
 	now := a.now().Unix()
 	expiresAt := now + durationDays*subscriptionSecondsPerDay
-	metadata, _ := json.Marshal(map[string]string{
+	metadata, _ := jsonx.Marshal(map[string]string{
 		"payment_trade_no":  order.TradeNo,
 		"provider_trade_no": order.ProviderTradeNo,
 		"plan_id":           strconv.FormatInt(plan.ID, 10),
@@ -243,7 +244,7 @@ func (a *paymentSubscriptionAssigner) assignFromSnapshot(ctx context.Context, tx
 	}
 	now := a.now().Unix()
 	expiresAt := now + durationDays*subscriptionSecondsPerDay
-	metadata, _ := json.Marshal(map[string]string{
+	metadata, _ := jsonx.Marshal(map[string]string{
 		"payment_trade_no":  order.TradeNo,
 		"provider_trade_no": order.ProviderTradeNo,
 		"plan_id":           strconv.FormatInt(snap.PlanID, 10),

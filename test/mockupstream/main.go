@@ -1,10 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"go.uber.org/zap"
 
@@ -42,7 +43,7 @@ func main() {
 
 func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	var req relayprovider.ChatCompletionsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := jsonx.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("invalid request: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -88,10 +89,10 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	_ = jsonx.NewEncoder(w).Encode(resp)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = jsonx.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

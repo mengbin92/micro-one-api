@@ -2,16 +2,18 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"strings"
 	"time"
 
+	"micro-one-api/pkg/jsonx"
+
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/platform/metrics"
 
-	applogger "micro-one-api/platform/logging"
 	"go.uber.org/zap"
+
+	applogger "micro-one-api/platform/logging"
 )
 
 // RecordUnpricedRoutedMetric updates micro_one_api_model_unpriced_routed from a
@@ -41,8 +43,8 @@ func (s *AdminService) loadPricedModelSet(ctx context.Context) []string {
 	if err != nil || strings.TrimSpace(raw) == "" {
 		return nil
 	}
-	var parsed map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+	var parsed map[string]jsonx.RawMessage
+	if err := jsonx.Unmarshal([]byte(raw), &parsed); err != nil {
 		return nil
 	}
 	out := make([]string, 0, len(parsed))

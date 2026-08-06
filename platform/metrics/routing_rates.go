@@ -2,13 +2,14 @@ package metrics
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // RoutingRates holds routing selection outcomes for a requested time window.
@@ -31,8 +32,8 @@ type prometheusQueryResponse struct {
 }
 
 type prometheusQueryResultRow struct {
-	Metric map[string]string `json:"metric"`
-	Value  []json.RawMessage `json:"value"`
+	Metric map[string]string  `json:"metric"`
+	Value  []jsonx.RawMessage `json:"value"`
 }
 
 // QueryRoutingRates reads relay-gateway counters from Prometheus for exactly
@@ -111,7 +112,7 @@ func queryPrometheusVector(ctx context.Context, client *http.Client, baseURL, qu
 		return nil, fmt.Errorf("prometheus returned HTTP %d", resp.StatusCode)
 	}
 	var payload prometheusQueryResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+	if err := jsonx.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
 		return nil, fmt.Errorf("decode prometheus response: %w", err)
 	}
 	if payload.Status != "success" {
@@ -128,7 +129,7 @@ func prometheusSampleValue(row prometheusQueryResultRow) (float64, error) {
 		return 0, fmt.Errorf("invalid prometheus sample")
 	}
 	var raw string
-	if err := json.Unmarshal(row.Value[1], &raw); err != nil {
+	if err := jsonx.Unmarshal(row.Value[1], &raw); err != nil {
 		return 0, fmt.Errorf("decode prometheus sample value: %w", err)
 	}
 	value, err := strconv.ParseFloat(raw, 64)

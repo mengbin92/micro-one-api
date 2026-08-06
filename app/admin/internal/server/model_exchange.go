@@ -3,10 +3,11 @@ package server
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
+
+	"micro-one-api/pkg/jsonx"
 
 	"go.uber.org/zap"
 
@@ -62,7 +63,7 @@ func handleExportModels(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "model export failed"})
 		return
 	}
-	body, err := json.MarshalIndent(struct {
+	body, err := jsonx.MarshalIndent(struct {
 		SchemaVersion string                        `json:"schema_version"`
 		ExportedAt    string                        `json:"exported_at"`
 		ContentHash   string                        `json:"content_hash"`
@@ -133,7 +134,7 @@ func handleImportModels(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		ConflictStrategy string                        `json:"conflict_strategy"`
 		ImportPrices     bool                          `json:"import_prices"`
 	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	if err := jsonx.Unmarshal(body, &doc); err != nil {
 		audit.errorCat = "invalid_json"
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
 		return

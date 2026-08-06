@@ -2,9 +2,10 @@ package data
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/billing/internal/biz"
 
@@ -65,7 +66,7 @@ func (r *reconciliationRunRepo) SaveRun(ctx context.Context, result *biz.Reconci
 	discrepancyJSON := "[]"
 	records := reconciliationRecordsFromResult(result)
 	if len(records) > 0 {
-		buf, err := json.Marshal(records)
+		buf, err := jsonx.Marshal(records)
 		if err != nil {
 			return 0, err
 		}
@@ -136,7 +137,7 @@ func modelToReconciliationResult(m *reconciliationRunModel) *biz.ReconciliationR
 	}
 	if m.Discrepancies != "" && m.Discrepancies != "[]" {
 		var records []reconciliationDiscrepancyRecord
-		if err := json.Unmarshal([]byte(m.Discrepancies), &records); err == nil {
+		if err := jsonx.Unmarshal([]byte(m.Discrepancies), &records); err == nil {
 			applyReconciliationRecords(result, records)
 		}
 	}

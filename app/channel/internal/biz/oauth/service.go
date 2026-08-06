@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"github.com/bytedance/sonic"
 
@@ -38,7 +39,7 @@ const (
 	// code_verifier, see buildAuthorizeURL), so an intercepted code alone cannot
 	// be exchanged without the per-session verifier. Do not weaken PKCE.
 	codexRedirectURI = "http://localhost:1455/auth/callback"
-	codexScope        = "openid profile email offline_access"
+	codexScope       = "openid profile email offline_access"
 )
 
 var (
@@ -303,7 +304,7 @@ func (s *Service) exchangeCode(ctx context.Context, session *Session, code strin
 		return nil, fmt.Errorf("oauth token exchange failed: status=%d body=%s", resp.StatusCode, truncate(body))
 	}
 	var token tokenResponse
-	if err := json.Unmarshal(body, &token); err != nil {
+	if err := jsonx.Unmarshal(body, &token); err != nil {
 		return nil, fmt.Errorf("decode oauth token response: %w", err)
 	}
 	if token.AccessToken == "" {

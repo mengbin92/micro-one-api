@@ -2,8 +2,9 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
+
+	"micro-one-api/pkg/jsonx"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -236,8 +237,8 @@ func (s *AdminService) loadPricingConfigKeys(ctx context.Context) map[string]str
 		if err != nil || strings.TrimSpace(raw) == "" {
 			continue
 		}
-		var parsed map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		var parsed map[string]jsonx.RawMessage
+		if err := jsonx.Unmarshal([]byte(raw), &parsed); err != nil {
 			continue
 		}
 		for k := range parsed {

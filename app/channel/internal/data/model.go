@@ -2,11 +2,12 @@ package data
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
 
@@ -252,7 +253,7 @@ func jsonStringArray(in []string) string {
 	if len(in) == 0 {
 		return "[]"
 	}
-	b, err := json.Marshal(in)
+	b, err := jsonx.Marshal(in)
 	if err != nil {
 		return "[]"
 	}
@@ -265,7 +266,7 @@ func parseStringArray(raw string) []string {
 		return nil
 	}
 	var out []string
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &out); err != nil {
 		return nil
 	}
 	return out
@@ -1328,8 +1329,8 @@ func (r *Repository) canonicalPreflightDB(ctx context.Context) (*biz.PreflightRe
 
 	// 2. Collect dependent counts per model PK in bulk queries.
 	type depCount struct {
-		ModelPK   int64
-		Count     int64
+		ModelPK int64
+		Count   int64
 	}
 	aliasCounts := map[int64]int64{}
 	chCounts := map[int64]int64{}
@@ -1366,10 +1367,10 @@ func (r *Repository) canonicalPreflightDB(ctx context.Context) (*biz.PreflightRe
 	}
 	{
 		type statAgg struct {
-			ModelPK       int64
-			Days          int64
-			RequestTotal  int64
-			TokenTotal    int64
+			ModelPK      int64
+			Days         int64
+			RequestTotal int64
+			TokenTotal   int64
 		}
 		var xs []statAgg
 		_ = r.db.WithContext(ctx).Model(&modelUsageStatModel{}).
@@ -1583,7 +1584,7 @@ func detectMappingKeyCollision(tx *gorm.DB, table, partnerCol string, losers []i
 			Where("model_id = ?", modelID)
 		if hasGroup {
 			q = tx.Table(table).
-				Select(partnerCol + ", group_name").
+				Select(partnerCol+", group_name").
 				Where("model_id = ?", modelID)
 		}
 		rows, err := q.Rows()

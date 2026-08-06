@@ -2,10 +2,11 @@ package handler
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
+
+	"micro-one-api/pkg/jsonx"
 
 	"github.com/bytedance/sonic"
 
@@ -165,7 +166,7 @@ func (h *ChatHandler) writeError(w http.ResponseWriter, status int, message stri
 			"code":    status,
 		},
 	}
-	_ = json.NewEncoder(w).Encode(resp)
+	_ = jsonx.NewEncoder(w).Encode(resp)
 }
 
 func writeRelayResult(w http.ResponseWriter, result *server.RelayResult) {

@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -23,9 +22,12 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/pkg/jsonx"
+
 	"math"
-	"micro-one-api/pkg/safefile"
 	"strconv"
+
+	"micro-one-api/pkg/safefile"
 )
 
 type PaymentConfig struct {
@@ -39,7 +41,7 @@ func (c *PaymentConfig) UnmarshalJSON(data []byte) error {
 		paymentConfigAlias
 		LegacyQuotaPerUnit int64 `json:"quota_per_unit"`
 	}{}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	if err := jsonx.Unmarshal(data, &aux); err != nil {
 		return err
 	}
 	*c = PaymentConfig(aux.paymentConfigAlias)
@@ -107,7 +109,7 @@ func (p *alipayPaymentProvider) CreateOrder(ctx context.Context, order *PaymentO
 	if err != nil {
 		return nil, err
 	}
-	payload, _ := json.Marshal(map[string]string{"provider": PaymentChannelAlipay})
+	payload, _ := jsonx.Marshal(map[string]string{"provider": PaymentChannelAlipay})
 	return &PaymentProviderOrder{PayURL: payURL, Payload: string(payload)}, nil
 }
 
@@ -243,8 +245,8 @@ func firstNonEmptyStringOrFile(value, path string) (string, error) {
 }
 
 func (p *alipayPaymentProvider) parseTradeQueryResponse(body []byte) (*PaymentProviderStatus, error) {
-	var envelope map[string]json.RawMessage
-	if err := json.Unmarshal(body, &envelope); err != nil {
+	var envelope map[string]jsonx.RawMessage
+	if err := jsonx.Unmarshal(body, &envelope); err != nil {
 		return nil, err
 	}
 	raw, ok := envelope["alipay_trade_query_response"]
@@ -258,7 +260,7 @@ func (p *alipayPaymentProvider) parseTradeQueryResponse(body []byte) (*PaymentPr
 	if publicKey != "" {
 		var signature string
 		if signRaw, ok := envelope["sign"]; ok {
-			_ = json.Unmarshal(signRaw, &signature)
+			_ = jsonx.Unmarshal(signRaw, &signature)
 		}
 		if signature != "" {
 			if err := verifyRSA2(string(raw), signature, publicKey); err != nil {
@@ -275,7 +277,7 @@ func (p *alipayPaymentProvider) parseTradeQueryResponse(body []byte) (*PaymentPr
 		TradeNo     string `json:"trade_no"`
 		TradeStatus string `json:"trade_status"`
 	}
-	if err := json.Unmarshal(raw, &response); err != nil {
+	if err := jsonx.Unmarshal(raw, &response); err != nil {
 		return nil, err
 	}
 	if response.Code != "10000" {

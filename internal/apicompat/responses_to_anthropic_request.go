@@ -1,10 +1,12 @@
 package apicompat
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/bytedance/sonic"
 	"strings"
+
+	"github.com/bytedance/sonic"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // ResponsesToAnthropicRequest converts a Responses API request into an
@@ -110,7 +112,7 @@ func mapResponsesEffortToAnthropic(effort string) string {
 // convertResponsesInputToAnthropic extracts system prompt and messages from
 // a Responses API instructions + input array. Returns the system as raw JSON
 // (for Anthropic's polymorphic system field) and a list of Anthropic messages.
-func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMessage) (json.RawMessage, []AnthropicMessage, error) {
+func convertResponsesInputToAnthropic(instructions string, inputRaw jsonx.RawMessage) (jsonx.RawMessage, []AnthropicMessage, error) {
 	var systemParts []string
 	if strings.TrimSpace(instructions) != "" {
 		systemParts = append(systemParts, strings.TrimSpace(instructions))
@@ -120,7 +122,7 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 	var inputStr string
 	if err := sonic.Unmarshal(inputRaw, &inputStr); err == nil {
 		content, _ := sonic.Marshal(inputStr)
-		var system json.RawMessage
+		var system jsonx.RawMessage
 		if len(systemParts) > 0 {
 			system, _ = sonic.Marshal(strings.Join(systemParts, "\n\n"))
 		}
@@ -144,9 +146,9 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 
 		case item.Type == "function_call":
 			// function_call → assistant message with tool_use block
-			input := json.RawMessage("{}")
+			input := jsonx.RawMessage("{}")
 			if item.Arguments != "" {
-				input = json.RawMessage(item.Arguments)
+				input = jsonx.RawMessage(item.Arguments)
 			}
 			block := AnthropicContentBlock{
 				Type:  "tool_use",
@@ -218,7 +220,7 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 	messages = normalizeAnthropicToolPairing(messages)
 	messages = mergeConsecutiveMessages(messages)
 
-	var system json.RawMessage
+	var system jsonx.RawMessage
 	if len(systemParts) > 0 {
 		system, _ = sonic.Marshal(strings.Join(systemParts, "\n\n"))
 	}
@@ -345,7 +347,7 @@ func anthropicMessageFromBlocks(role string, blocks []AnthropicContentBlock) Ant
 
 // extractTextFromContent extracts text from a content field that may be a
 // plain string or an array of content parts.
-func extractTextFromContent(raw json.RawMessage) string {
+func extractTextFromContent(raw jsonx.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
 	}
@@ -368,7 +370,7 @@ func extractTextFromContent(raw json.RawMessage) string {
 
 // convertResponsesUserToAnthropicContent converts a Responses user message
 // content field into Anthropic content blocks JSON.
-func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessage, error) {
+func convertResponsesUserToAnthropicContent(raw jsonx.RawMessage) (jsonx.RawMessage, error) {
 	if len(raw) == 0 {
 		return sonic.Marshal("") // empty string content
 	}
@@ -415,7 +417,7 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 
 // convertResponsesAssistantToAnthropicContent converts a Responses assistant
 // message content field into Anthropic content blocks JSON.
-func convertResponsesAssistantToAnthropicContent(raw json.RawMessage) (json.RawMessage, error) {
+func convertResponsesAssistantToAnthropicContent(raw jsonx.RawMessage) (jsonx.RawMessage, error) {
 	if len(raw) == 0 {
 		return sonic.Marshal([]AnthropicContentBlock{{Type: "text", Text: ""}})
 	}
@@ -517,7 +519,7 @@ func mergeConsecutiveMessages(messages []AnthropicMessage) []AnthropicMessage {
 
 // parseContentBlocks attempts to parse content as []AnthropicContentBlock.
 // If it's a string, wraps it in a text block.
-func parseContentBlocks(raw json.RawMessage) []AnthropicContentBlock {
+func parseContentBlocks(raw jsonx.RawMessage) []AnthropicContentBlock {
 	var blocks []AnthropicContentBlock
 	if err := sonic.Unmarshal(raw, &blocks); err == nil {
 		return blocks
@@ -565,9 +567,9 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 }
 
 // normalizeAnthropicInputSchema ensures the input_schema has a "type" field.
-func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
+func normalizeAnthropicInputSchema(schema jsonx.RawMessage) jsonx.RawMessage {
 	if len(schema) == 0 || string(schema) == "null" {
-		return json.RawMessage(`{"type":"object","properties":{}}`)
+		return jsonx.RawMessage(`{"type":"object","properties":{}}`)
 	}
 	return schema
 }
@@ -580,7 +582,7 @@ func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
 //	"none"                                     → {"type":"none"}
 //	{"type":"function","name":"X"}                 → {"type":"tool","name":"X"}
 //	{"type":"function","function":{"name":"X"}}     → {"type":"tool","name":"X"} // legacy
-func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage, error) {
+func convertResponsesToAnthropicToolChoice(raw jsonx.RawMessage) (jsonx.RawMessage, error) {
 	// Try as string first
 	var s string
 	if err := sonic.Unmarshal(raw, &s); err == nil {

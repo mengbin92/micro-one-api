@@ -2,16 +2,17 @@ package server
 
 import (
 	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 
+	"micro-one-api/pkg/jsonx"
+
 	"micro-one-api/app/channel/internal/biz"
 	channeloauth "micro-one-api/app/channel/internal/biz/oauth"
-	"micro-one-api/platform/http"
+	xhttp "micro-one-api/platform/http"
 	"micro-one-api/platform/metrics"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
@@ -132,13 +133,13 @@ func decodeJSON(r *http.Request, dst interface{}) error {
 		return nil
 	}
 	defer r.Body.Close()
-	return json.NewDecoder(r.Body).Decode(dst)
+	return jsonx.NewDecoder(r.Body).Decode(dst)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	_ = jsonx.NewEncoder(w).Encode(payload)
 }
 
 // registerSelectorStatsRoute exposes the weighted selector's runtime stats as

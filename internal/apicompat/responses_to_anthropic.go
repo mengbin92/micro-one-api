@@ -1,10 +1,12 @@
 package apicompat
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/bytedance/sonic"
 	"time"
+
+	"github.com/bytedance/sonic"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // ---------------------------------------------------------------------------
@@ -139,24 +141,24 @@ func containsAnthropicToolUseBlock(blocks []AnthropicContentBlock) bool {
 	return false
 }
 
-func sanitizeAnthropicToolUseInput(name string, raw string) json.RawMessage {
+func sanitizeAnthropicToolUseInput(name string, raw string) jsonx.RawMessage {
 	if name != "Read" || raw == "" {
-		return json.RawMessage(raw)
+		return jsonx.RawMessage(raw)
 	}
 
-	var input map[string]json.RawMessage
+	var input map[string]jsonx.RawMessage
 	if err := sonic.Unmarshal([]byte(raw), &input); err != nil {
-		return json.RawMessage(raw)
+		return jsonx.RawMessage(raw)
 	}
 
 	if pages, ok := input["pages"]; !ok || string(pages) != `""` {
-		return json.RawMessage(raw)
+		return jsonx.RawMessage(raw)
 	}
 
 	delete(input, "pages")
 	sanitized, err := sonic.Marshal(input)
 	if err != nil {
-		return json.RawMessage(raw)
+		return jsonx.RawMessage(raw)
 	}
 	return sanitized
 }
@@ -339,7 +341,7 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 				Type:  "tool_use",
 				ID:    fromResponsesCallID(evt.Item.CallID),
 				Name:  evt.Item.Name,
-				Input: json.RawMessage("{}"),
+				Input: jsonx.RawMessage("{}"),
 			},
 		})
 		return events

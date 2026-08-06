@@ -2,10 +2,11 @@ package data
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/billing/internal/biz"
 )
@@ -265,7 +266,7 @@ func paymentTradeNoFromMetadata(raw string) string {
 		return ""
 	}
 	var values map[string]string
-	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &values); err != nil {
 		return ""
 	}
 	return values["payment_trade_no"]
@@ -308,7 +309,6 @@ func uniqueStrings(in []string) []string {
 	}
 	return out
 }
-
 
 // planNameOrFallback returns the real plan name when present, or a stable
 // "plan-%d" fallback for deleted/unknown plans so the report row is never blank.

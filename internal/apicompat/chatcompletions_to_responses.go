@@ -1,10 +1,12 @@
 package apicompat
 
 import (
-	"encoding/json"
 	"fmt"
-	"github.com/bytedance/sonic"
 	"strings"
+
+	"github.com/bytedance/sonic"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 type chatMessageContent struct {
@@ -211,7 +213,7 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 //
 // For structured thinking/reasoning parts, it preserves semantics by wrapping
 // the text in explicit tags so downstream can still distinguish it from normal text.
-func parseAssistantContent(raw json.RawMessage) (string, error) {
+func parseAssistantContent(raw jsonx.RawMessage) (string, error) {
 	if len(raw) == 0 {
 		return "", nil
 	}
@@ -311,7 +313,7 @@ func chatFunctionToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 // parseChatContent returns the string value of a ChatMessage Content field.
 // Content can be a JSON string or an array of typed parts. Array content is
 // flattened to text by concatenating text parts and ignoring non-text parts.
-func parseChatContent(raw json.RawMessage) (string, error) {
+func parseChatContent(raw jsonx.RawMessage) (string, error) {
 	parsed, err := parseChatMessageContent(raw)
 	if err != nil {
 		return "", err
@@ -322,7 +324,7 @@ func parseChatContent(raw json.RawMessage) (string, error) {
 	return flattenChatContentParts(parsed.Parts), nil
 }
 
-func parseChatMessageContent(raw json.RawMessage) (chatMessageContent, error) {
+func parseChatMessageContent(raw jsonx.RawMessage) (chatMessageContent, error) {
 	if len(raw) == 0 {
 		return chatMessageContent{Text: stringPtr("")}, nil
 	}
@@ -340,7 +342,7 @@ func parseChatMessageContent(raw json.RawMessage) (chatMessageContent, error) {
 	return chatMessageContent{}, fmt.Errorf("parse content as string or parts array")
 }
 
-func marshalChatInputContent(content chatMessageContent) (json.RawMessage, error) {
+func marshalChatInputContent(content chatMessageContent) (jsonx.RawMessage, error) {
 	if content.Text != nil {
 		return sonic.Marshal(*content.Text)
 	}
@@ -455,7 +457,7 @@ func defaultStrictFalse(src *bool) *bool {
 //	"auto" → "auto"
 //	"none" → "none"
 //	{"name":"X"} → {"type":"function","name":"X"}
-func convertChatFunctionCallToToolChoice(raw json.RawMessage) (json.RawMessage, error) {
+func convertChatFunctionCallToToolChoice(raw jsonx.RawMessage) (jsonx.RawMessage, error) {
 	// Try string first ("auto", "none", etc.) — pass through as-is.
 	var s string
 	if err := sonic.Unmarshal(raw, &s); err == nil {

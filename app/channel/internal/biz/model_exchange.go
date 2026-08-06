@@ -4,12 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // ── Model import/export (v0.11.0 Phase 4) ─────────────────────────────────
@@ -102,11 +103,11 @@ func (s *ImportSummary) HasErrors() bool {
 
 // Typed errors for import/export. data maps driver errors onto these.
 var (
-	ErrImportSchemaVersion   = errors.New("import schema version mismatch")
-	ErrImportRecordLimit     = errors.New("import exceeds record limit")
-	ErrImportInvalidRecord   = errors.New("import contains an invalid record")
-	ErrImportConflict        = errors.New("import conflict")
-	ErrExportFailed          = errors.New("model export failed")
+	ErrImportSchemaVersion     = errors.New("import schema version mismatch")
+	ErrImportRecordLimit       = errors.New("import exceeds record limit")
+	ErrImportInvalidRecord     = errors.New("import contains an invalid record")
+	ErrImportConflict          = errors.New("import conflict")
+	ErrExportFailed            = errors.New("model export failed")
 	ErrInvalidConflictStrategy = errors.New("invalid conflict strategy")
 )
 
@@ -281,7 +282,7 @@ func ModelExchangeContentHash(models []*ModelExportModel) (string, error) {
 	})
 	// Build a canonical JSON encoding with sorted keys so the hash is stable
 	// regardless of map iteration order or field insertion order.
-	raw, err := json.Marshal(canonicalExportView(sorted))
+	raw, err := jsonx.Marshal(canonicalExportView(sorted))
 	if err != nil {
 		return "", err
 	}

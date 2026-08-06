@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
+	"micro-one-api/pkg/jsonx"
 )
 
 // ── v0.11.0 Phase 2 §2.2: independent upstream-cost management ─────────────
@@ -33,14 +33,14 @@ func canonicalModelID(id string) string {
 // is grouped by source (channel/subscription) so operators can tell regular
 // channels and subscription accounts apart even when they share a numeric id.
 type UpstreamCostEntry struct {
-	Key            string  `json:"key"`              // canonical cost key
-	SourceKind     string  `json:"source_kind"`      // channel | subscription | model (legacy default)
-	SourceID       int64   `json:"source_id"`        // 0 for bare-model defaults
-	SourceName     string  `json:"source_name"`      // resolved channel/account name (best-effort, empty when unresolvable)
+	Key             string  `json:"key"`               // canonical cost key
+	SourceKind      string  `json:"source_kind"`       // channel | subscription | model (legacy default)
+	SourceID        int64   `json:"source_id"`         // 0 for bare-model defaults
+	SourceName      string  `json:"source_name"`       // resolved channel/account name (best-effort, empty when unresolvable)
 	UpstreamModelID string  `json:"upstream_model_id"` // exact upstream id; empty for bare-model defaults
-	PublicModelID  string  `json:"public_model_id"`  // canonical public id, when the entry maps to a known model
-	InputPrice     float64 `json:"input_price"`
-	OutputPrice    float64 `json:"output_price"`
+	PublicModelID   string  `json:"public_model_id"`   // canonical public id, when the entry maps to a known model
+	InputPrice      float64 `json:"input_price"`
+	OutputPrice     float64 `json:"output_price"`
 }
 
 // upstreamCostView is the list response. LegacyKeys lists the entries still
@@ -289,10 +289,10 @@ func decodeUpstreamCostMap(raw string) (map[string]map[string]interface{}, error
 	if strings.TrimSpace(raw) == "" {
 		return out, nil
 	}
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &out); err != nil {
 		// The value may be map[string]ModelPrice (typed); retry as generic.
 		typed := map[string]map[string]interface{}{}
-		if err2 := json.Unmarshal([]byte(raw), &typed); err2 != nil {
+		if err2 := jsonx.Unmarshal([]byte(raw), &typed); err2 != nil {
 			return nil, fmt.Errorf("decode UpstreamModelPrice: %w", err)
 		}
 		return typed, nil
@@ -381,7 +381,7 @@ func (s *AdminService) mutateUpstreamCostsRaw(ctx context.Context, fn func(price
 		return err
 	}
 	fn(prices)
-	payload, err := json.Marshal(prices)
+	payload, err := jsonx.Marshal(prices)
 	if err != nil {
 		return fmt.Errorf("encode UpstreamModelPrice: %w", err)
 	}

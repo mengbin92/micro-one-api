@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/pkg/safecast"
@@ -2583,7 +2584,7 @@ func setSubscriptionAccountMetadataValue(raw, key, value string) string {
 	if len(values) == 0 {
 		return ""
 	}
-	b, err := json.Marshal(values)
+	b, err := jsonx.Marshal(values)
 	if err != nil {
 		return raw
 	}
@@ -2595,7 +2596,7 @@ func subscriptionAccountMetadata(raw string) map[string]interface{} {
 		return map[string]interface{}{}
 	}
 	values := make(map[string]interface{})
-	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &values); err != nil {
 		return nil
 	}
 	return values
@@ -2872,7 +2873,7 @@ func clearSubscriptionAccountRecoveryMetadata(raw string) string {
 	if len(values) == 0 {
 		return ""
 	}
-	b, err := json.Marshal(values)
+	b, err := jsonx.Marshal(values)
 	if err != nil {
 		return raw
 	}
@@ -2914,7 +2915,7 @@ func stampRecoveryMetadata(raw, reason string, untilUnix, nowUnix int64) string 
 	} else {
 		delete(values, "expected_recovery_at")
 	}
-	b, err := json.Marshal(values)
+	b, err := jsonx.Marshal(values)
 	if err != nil {
 		return raw
 	}

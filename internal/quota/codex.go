@@ -1,9 +1,10 @@
 package quota
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 type CodexSnapshot struct {
@@ -19,7 +20,7 @@ type CodexSnapshot struct {
 
 func ParseCodexSnapshot(body []byte, now time.Time) (*CodexSnapshot, bool) {
 	var root any
-	if err := json.Unmarshal(body, &root); err != nil {
+	if err := jsonx.Unmarshal(body, &root); err != nil {
 		return nil, false
 	}
 	candidates := make([]windowCandidate, 0, 2)

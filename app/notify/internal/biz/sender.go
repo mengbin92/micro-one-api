@@ -3,7 +3,6 @@ package biz
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 var (
@@ -82,7 +83,7 @@ func (s *MultiSender) sendWebhook(ctx context.Context, n *Notification) error {
 		"content":    n.Content,
 		"created_at": n.CreatedAt.Unix(),
 	}
-	body, err := json.Marshal(payload)
+	body, err := jsonx.Marshal(payload)
 	if err != nil {
 		return err
 	}
@@ -329,7 +330,7 @@ func (s *MultiSender) sendSlack(ctx context.Context, n *Notification) error {
 
 // sendJSONWebhook is a helper for sending JSON payloads to webhook endpoints.
 func (s *MultiSender) sendJSONWebhook(ctx context.Context, endpoint string, payload map[string]interface{}) error {
-	body, err := json.Marshal(payload)
+	body, err := jsonx.Marshal(payload)
 	if err != nil {
 		return err
 	}

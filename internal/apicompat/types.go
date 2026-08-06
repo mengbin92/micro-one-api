@@ -5,7 +5,7 @@
 package apicompat
 
 import (
-	"encoding/json"
+	"micro-one-api/pkg/jsonx"
 
 	"github.com/bytedance/sonic"
 )
@@ -18,7 +18,7 @@ import (
 type AnthropicRequest struct {
 	Model       string             `json:"model"`
 	MaxTokens   int                `json:"max_tokens"`
-	System      json.RawMessage    `json:"system,omitempty"` // string or []AnthropicContentBlock
+	System      jsonx.RawMessage   `json:"system,omitempty"` // string or []AnthropicContentBlock
 	Messages    []AnthropicMessage `json:"messages"`
 	Tools       []AnthropicTool    `json:"tools,omitempty"`
 	Stream      bool               `json:"stream,omitempty"`
@@ -26,13 +26,13 @@ type AnthropicRequest struct {
 	TopP        *float64           `json:"top_p,omitempty"`
 	StopSeqs    []string           `json:"stop_sequences,omitempty"`
 	Thinking    *AnthropicThinking `json:"thinking,omitempty"`
-	ToolChoice  json.RawMessage    `json:"tool_choice,omitempty"`
+	ToolChoice  jsonx.RawMessage   `json:"tool_choice,omitempty"`
 	// Metadata 会被原样透传给上游。OAuth/Claude-Code 路径依赖 metadata.user_id
 	// 参与上游的"是否为官方 Claude Code 请求"判定；如果经由本结构体重新序列化
 	// 时丢弃该字段，网关侧后续的 metadata 重写(ensureClaudeOAuthMetadataUserID/
 	// RewriteUserIDWithMasking) 在 body 里拿不到起点，就无法重建一个合法的
 	// user_id，进而导致请求被归类为第三方 app。
-	Metadata     json.RawMessage        `json:"metadata,omitempty"`
+	Metadata     jsonx.RawMessage       `json:"metadata,omitempty"`
 	OutputConfig *AnthropicOutputConfig `json:"output_config,omitempty"`
 }
 
@@ -49,8 +49,8 @@ type AnthropicThinking struct {
 
 // AnthropicMessage is a single message in the Anthropic conversation.
 type AnthropicMessage struct {
-	Role    string          `json:"role"` // "user" | "assistant"
-	Content json.RawMessage `json:"content"`
+	Role    string           `json:"role"` // "user" | "assistant"
+	Content jsonx.RawMessage `json:"content"`
 }
 
 // AnthropicContentBlock is one block inside a message's content array.
@@ -69,14 +69,14 @@ type AnthropicContentBlock struct {
 	Source *AnthropicImageSource `json:"source,omitempty"`
 
 	// type=tool_use
-	ID    string          `json:"id,omitempty"`
-	Name  string          `json:"name,omitempty"`
-	Input json.RawMessage `json:"input,omitempty"`
+	ID    string           `json:"id,omitempty"`
+	Name  string           `json:"name,omitempty"`
+	Input jsonx.RawMessage `json:"input,omitempty"`
 
 	// type=tool_result
-	ToolUseID string          `json:"tool_use_id,omitempty"`
-	Content   json.RawMessage `json:"content,omitempty"` // string or []AnthropicContentBlock
-	IsError   bool            `json:"is_error,omitempty"`
+	ToolUseID string           `json:"tool_use_id,omitempty"`
+	Content   jsonx.RawMessage `json:"content,omitempty"` // string or []AnthropicContentBlock
+	IsError   bool             `json:"is_error,omitempty"`
 }
 
 func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
@@ -113,7 +113,7 @@ type AnthropicTool struct {
 	Type         string                 `json:"type,omitempty"` // e.g. "web_search_20250305" for server tools
 	Name         string                 `json:"name"`
 	Description  string                 `json:"description,omitempty"`
-	InputSchema  json.RawMessage        `json:"input_schema"` // JSON Schema object
+	InputSchema  jsonx.RawMessage       `json:"input_schema"` // JSON Schema object
 	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
 }
 
@@ -195,7 +195,7 @@ type AnthropicDelta struct {
 type ResponsesRequest struct {
 	Model              string              `json:"model"`
 	Instructions       string              `json:"instructions,omitempty"`
-	Input              json.RawMessage     `json:"input"` // string or []ResponsesInputItem
+	Input              jsonx.RawMessage    `json:"input"` // string or []ResponsesInputItem
 	MaxOutputTokens    *int                `json:"max_output_tokens,omitempty"`
 	Temperature        *float64            `json:"temperature,omitempty"`
 	TopP               *float64            `json:"top_p,omitempty"`
@@ -206,7 +206,7 @@ type ResponsesRequest struct {
 	ParallelToolCalls  *bool               `json:"parallel_tool_calls,omitempty"`
 	Reasoning          *ResponsesReasoning `json:"reasoning,omitempty"`
 	Text               *ResponsesText      `json:"text,omitempty"`
-	ToolChoice         json.RawMessage     `json:"tool_choice,omitempty"`
+	ToolChoice         jsonx.RawMessage    `json:"tool_choice,omitempty"`
 	ServiceTier        string              `json:"service_tier,omitempty"`
 	PromptCacheKey     string              `json:"prompt_cache_key,omitempty"`
 	PreviousResponseID string              `json:"previous_response_id,omitempty"`
@@ -230,8 +230,8 @@ type ResponsesInputItem struct {
 	Type string `json:"type,omitempty"` // "" for role-based messages
 
 	// Role-based messages (developer/system/user/assistant)
-	Role    string          `json:"role,omitempty"`
-	Content json.RawMessage `json:"content,omitempty"` // string or []ResponsesContentPart
+	Role    string           `json:"role,omitempty"`
+	Content jsonx.RawMessage `json:"content,omitempty"` // string or []ResponsesContentPart
 
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`
@@ -252,11 +252,11 @@ type ResponsesContentPart struct {
 
 // ResponsesTool describes a tool in the Responses API.
 type ResponsesTool struct {
-	Type        string          `json:"type"` // "function" | "web_search" | "local_shell" etc.
-	Name        string          `json:"name,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Parameters  json.RawMessage `json:"parameters,omitempty"`
-	Strict      *bool           `json:"strict,omitempty"`
+	Type        string           `json:"type"` // "function" | "web_search" | "local_shell" etc.
+	Name        string           `json:"name,omitempty"`
+	Description string           `json:"description,omitempty"`
+	Parameters  jsonx.RawMessage `json:"parameters,omitempty"`
+	Strict      *bool            `json:"strict,omitempty"`
 }
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.
@@ -440,14 +440,14 @@ type ChatCompletionsRequest struct {
 	Stream              bool               `json:"stream,omitempty"`
 	StreamOptions       *ChatStreamOptions `json:"stream_options,omitempty"`
 	Tools               []ChatTool         `json:"tools,omitempty"`
-	ToolChoice          json.RawMessage    `json:"tool_choice,omitempty"`
+	ToolChoice          jsonx.RawMessage   `json:"tool_choice,omitempty"`
 	ReasoningEffort     string             `json:"reasoning_effort,omitempty"` // "low" | "medium" | "high" | "xhigh"
 	ServiceTier         string             `json:"service_tier,omitempty"`
-	Stop                json.RawMessage    `json:"stop,omitempty"` // string or []string
+	Stop                jsonx.RawMessage   `json:"stop,omitempty"` // string or []string
 
 	// Legacy function calling (deprecated but still supported)
-	Functions    []ChatFunction  `json:"functions,omitempty"`
-	FunctionCall json.RawMessage `json:"function_call,omitempty"`
+	Functions    []ChatFunction   `json:"functions,omitempty"`
+	FunctionCall jsonx.RawMessage `json:"function_call,omitempty"`
 }
 
 // ChatStreamOptions configures streaming behavior.
@@ -457,12 +457,12 @@ type ChatStreamOptions struct {
 
 // ChatMessage is a single message in the Chat Completions conversation.
 type ChatMessage struct {
-	Role             string          `json:"role"` // "system" | "user" | "assistant" | "tool" | "function"
-	Content          json.RawMessage `json:"content,omitempty"`
-	ReasoningContent string          `json:"reasoning_content,omitempty"`
-	Name             string          `json:"name,omitempty"`
-	ToolCalls        []ChatToolCall  `json:"tool_calls,omitempty"`
-	ToolCallID       string          `json:"tool_call_id,omitempty"`
+	Role             string           `json:"role"` // "system" | "user" | "assistant" | "tool" | "function"
+	Content          jsonx.RawMessage `json:"content,omitempty"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	Name             string           `json:"name,omitempty"`
+	ToolCalls        []ChatToolCall   `json:"tool_calls,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
 
 	// Legacy function calling
 	FunctionCall *ChatFunctionCall `json:"function_call,omitempty"`
@@ -489,10 +489,10 @@ type ChatTool struct {
 
 // ChatFunction describes a function tool definition.
 type ChatFunction struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Parameters  json.RawMessage `json:"parameters,omitempty"`
-	Strict      *bool           `json:"strict,omitempty"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Parameters  jsonx.RawMessage `json:"parameters,omitempty"`
+	Strict      *bool            `json:"strict,omitempty"`
 }
 
 // ChatToolCall represents a tool call made by the assistant.

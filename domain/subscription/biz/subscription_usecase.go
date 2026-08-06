@@ -2,11 +2,12 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 const (
@@ -67,21 +68,21 @@ func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscripti
 		startsAt = now
 	}
 	subscription := &UserSubscription{
-		UserID:             req.UserID,
-		GroupID:            req.GroupID,
-		SubscriptionName:   req.SubscriptionName,
-		Status:             SubscriptionStatusActive,
-		StartsAt:           startsAt,
-		ExpiresAt:          req.ExpiresAt,
+		UserID:           req.UserID,
+		GroupID:          req.GroupID,
+		SubscriptionName: req.SubscriptionName,
+		Status:           SubscriptionStatusActive,
+		StartsAt:         startsAt,
+		ExpiresAt:        req.ExpiresAt,
 		// M2: a fresh grant (no active subscription existed — including an
 		// expired one, which GetActiveSubscriptionByUser filters out via
 		// expires_at > now) is recorded as a "new" renewal strategy.
-		RenewalStrategy:   RenewalStrategyNew,
-		Metadata:          req.Metadata,
-		CreatedAt:         now,
-		UpdatedAt:         now,
-		DailyWindowStart:  startsAt,
-		WeeklyWindowStart: startsAt,
+		RenewalStrategy:    RenewalStrategyNew,
+		Metadata:           req.Metadata,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		DailyWindowStart:   startsAt,
+		WeeklyWindowStart:  startsAt,
 		MonthlyWindowStart: startsAt,
 	}
 	if err := uc.repo.CreateSubscription(ctx, subscription); err != nil {
@@ -120,21 +121,21 @@ func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *Assig
 		startsAt = now
 	}
 	subscription := &UserSubscription{
-		UserID:             req.UserID,
-		GroupID:            req.GroupID,
-		SubscriptionName:   req.SubscriptionName,
-		Status:             SubscriptionStatusActive,
-		StartsAt:           startsAt,
-		ExpiresAt:          req.ExpiresAt,
+		UserID:           req.UserID,
+		GroupID:          req.GroupID,
+		SubscriptionName: req.SubscriptionName,
+		Status:           SubscriptionStatusActive,
+		StartsAt:         startsAt,
+		ExpiresAt:        req.ExpiresAt,
 		// M2: a fresh grant (no active subscription existed — including an
 		// expired one, which GetActiveSubscriptionByUser filters out via
 		// expires_at > now) is recorded as a "new" renewal strategy.
-		RenewalStrategy:   RenewalStrategyNew,
-		Metadata:          req.Metadata,
-		CreatedAt:         now,
-		UpdatedAt:         now,
-		DailyWindowStart:  startsAt,
-		WeeklyWindowStart: startsAt,
+		RenewalStrategy:    RenewalStrategyNew,
+		Metadata:           req.Metadata,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		DailyWindowStart:   startsAt,
+		WeeklyWindowStart:  startsAt,
 		MonthlyWindowStart: startsAt,
 	}
 	if err := uc.repo.CreateSubscriptionInTx(ctx, tx, subscription); err != nil {
@@ -657,19 +658,19 @@ func mergeMetadataReason(metadata, reason string) string {
 	}
 	trimmed := strings.TrimSpace(metadata)
 	if trimmed == "" {
-		if b, err := json.Marshal(map[string]string{"revoke_reason": reason}); err == nil {
+		if b, err := jsonx.Marshal(map[string]string{"revoke_reason": reason}); err == nil {
 			return string(b)
 		}
 		return metadata
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil || obj == nil {
+	var obj map[string]jsonx.RawMessage
+	if err := jsonx.Unmarshal([]byte(trimmed), &obj); err != nil || obj == nil {
 		// Not a JSON object we can safely extend; leave it untouched.
 		return metadata
 	}
-	if b, err := json.Marshal(reason); err == nil {
+	if b, err := jsonx.Marshal(reason); err == nil {
 		obj["revoke_reason"] = b
-		if merged, err := json.Marshal(obj); err == nil {
+		if merged, err := jsonx.Marshal(obj); err == nil {
 			return string(merged)
 		}
 	}

@@ -2,14 +2,16 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+
+	"micro-one-api/pkg/jsonx"
 
 	"go.uber.org/zap"
 
-	applogger "micro-one-api/platform/logging"
 	"net/http"
 	"strconv"
 	"strings"
+
+	applogger "micro-one-api/platform/logging"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -364,7 +366,7 @@ func parseChannelMappingPathID(path, prefix, suffix string) (int64, bool) {
 }
 
 // ensure unused import stays valid if json is referenced indirectly.
-var _ = json.Marshal
+var _ = jsonx.Marshal
 
 // handleAdminChannelPath dispatches /api/admin/channels/{id}/... sub-paths.
 // Currently only the /models suffix is handled; other paths fall through to 404.
@@ -531,7 +533,7 @@ func logUnpricedRoutedAudit(r *http.Request, resp *channelv1.ListUnpricedRoutedM
 	for _, m := range resp.GetModels() {
 		modelIDs = append(modelIDs, m.GetModelId())
 	}
-		applogger.Log.Info("unpriced routed models audit",
+	applogger.Log.Info("unpriced routed models audit",
 		zap.String("actor", operator),
 		zap.Int("count", int(resp.GetTotal())),
 		zap.Strings("models", modelIDs),
@@ -599,7 +601,7 @@ func handleMigrateUpstreamCostKeys(w http.ResponseWriter, r *http.Request, svc *
 	var body struct {
 		DryRun *bool `json:"dry_run"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	_ = jsonx.NewDecoder(r.Body).Decode(&body)
 	if body.DryRun != nil {
 		dryRun = *body.DryRun
 	}

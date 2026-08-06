@@ -1,8 +1,9 @@
 package xhttp
 
 import (
-	"encoding/json"
 	"net/http"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // Response is the standard API response envelope.
@@ -22,7 +23,7 @@ type ErrorDetail struct {
 func JSON(w http.ResponseWriter, code int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(Response{
+	_ = jsonx.NewEncoder(w).Encode(Response{
 		Code: http.StatusOK,
 		Data: data,
 	})
@@ -32,7 +33,7 @@ func JSON(w http.ResponseWriter, code int, data interface{}) {
 func Error(w http.ResponseWriter, code int, reason, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(Response{
+	_ = jsonx.NewEncoder(w).Encode(Response{
 		Code: code,
 		Data: ErrorDetail{
 			Reason:  reason,

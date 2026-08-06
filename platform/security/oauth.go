@@ -2,13 +2,14 @@ package oauth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // UserInfo holds the OAuth user profile returned by providers.
@@ -142,7 +143,7 @@ func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		AccessToken string `json:"access_token"`
 		Error       string `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("github token decode: %w", err)
 	}
 	if tokenResp.Error != "" {
@@ -167,7 +168,7 @@ func (p *githubProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		Email     string `json:"email"`
 		AvatarURL string `json:"avatar_url"`
 	}
-	if err := json.NewDecoder(userResp.Body).Decode(&ghUser); err != nil {
+	if err := jsonx.NewDecoder(userResp.Body).Decode(&ghUser); err != nil {
 		return nil, fmt.Errorf("github user decode: %w", err)
 	}
 
@@ -208,7 +209,7 @@ func (p *githubProvider) fetchGitHubEmail(ctx context.Context, token string) str
 		Primary  bool   `json:"primary"`
 		Verified bool   `json:"verified"`
 	}
-	if err := json.Unmarshal(body, &emails); err != nil {
+	if err := jsonx.Unmarshal(body, &emails); err != nil {
 		return ""
 	}
 	for _, e := range emails {
@@ -283,7 +284,7 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		AccessToken string `json:"access_token"`
 		Error       string `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("google token decode: %w", err)
 	}
 	if tokenResp.Error != "" {
@@ -306,7 +307,7 @@ func (p *googleProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		Name    string `json:"name"`
 		Picture string `json:"picture"`
 	}
-	if err := json.NewDecoder(userResp.Body).Decode(&gUser); err != nil {
+	if err := jsonx.NewDecoder(userResp.Body).Decode(&gUser); err != nil {
 		return nil, fmt.Errorf("google user decode: %w", err)
 	}
 
@@ -378,7 +379,7 @@ func (p *larkProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		"grant_type":    "authorization_code",
 		"redirect_uri":  p.cfg.RedirectURL,
 	}
-	payload, err := json.Marshal(body)
+	payload, err := jsonx.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +398,7 @@ func (p *larkProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		Error            string `json:"error"`
 		ErrorDescription string `json:"error_description"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("lark token decode: %w", err)
 	}
 	if tokenResp.Error != "" {
@@ -421,7 +422,7 @@ func (p *larkProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		Avatar  string `json:"avatar_url"`
 		Error   string `json:"error"`
 	}
-	if err := json.NewDecoder(userResp.Body).Decode(&user); err != nil {
+	if err := jsonx.NewDecoder(userResp.Body).Decode(&user); err != nil {
 		return nil, fmt.Errorf("lark user decode: %w", err)
 	}
 	if user.Error != "" {
@@ -497,7 +498,7 @@ func (p *wechatProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		ErrorCode   int    `json:"errcode"`
 		ErrorMsg    string `json:"errmsg"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("wechat token decode: %w", err)
 	}
 	if tokenResp.ErrorCode != 0 {
@@ -528,7 +529,7 @@ func (p *wechatProvider) Exchange(ctx context.Context, code string) (*UserInfo, 
 		ErrorCode  int    `json:"errcode"`
 		ErrorMsg   string `json:"errmsg"`
 	}
-	if err := json.NewDecoder(userResp.Body).Decode(&user); err != nil {
+	if err := jsonx.NewDecoder(userResp.Body).Decode(&user); err != nil {
 		return nil, fmt.Errorf("wechat user decode: %w", err)
 	}
 	if user.ErrorCode != 0 {
@@ -599,7 +600,7 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		IDToken     string `json:"id_token"`
 		Error       string `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := jsonx.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("oidc token decode: %w", err)
 	}
 	if tokenResp.Error != "" {
@@ -621,7 +622,7 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string) (*UserInfo, er
 		Name    string `json:"name"`
 		Picture string `json:"picture"`
 	}
-	if err := json.NewDecoder(userResp.Body).Decode(&user); err != nil {
+	if err := jsonx.NewDecoder(userResp.Body).Decode(&user); err != nil {
 		return nil, fmt.Errorf("oidc user decode: %w", err)
 	}
 	username := user.Email

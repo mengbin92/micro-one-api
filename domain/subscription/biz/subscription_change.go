@@ -2,9 +2,10 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+
+	"micro-one-api/pkg/jsonx"
 )
 
 // Subscription change (upgrade/downgrade) semantics (phase 2.4).
@@ -250,42 +251,42 @@ type changeAudit struct {
 }
 
 func mergeChangeMetadata(existing string, audit changeAudit) string {
-	var obj map[string]json.RawMessage
+	var obj map[string]jsonx.RawMessage
 	trimmed := trimSpace(existing)
 	if trimmed != "" {
-		_ = json.Unmarshal([]byte(trimmed), &obj)
+		_ = jsonx.Unmarshal([]byte(trimmed), &obj)
 	}
 	if obj == nil {
-		obj = map[string]json.RawMessage{}
+		obj = map[string]jsonx.RawMessage{}
 	}
-	b, _ := json.Marshal(audit)
+	b, _ := jsonx.Marshal(audit)
 	obj["last_change"] = b
-	out, _ := json.Marshal(obj)
+	out, _ := jsonx.Marshal(obj)
 	return string(out)
 }
 
 func mergePendingChangeMetadata(existing string, audit changeAudit) string {
-	var obj map[string]json.RawMessage
+	var obj map[string]jsonx.RawMessage
 	trimmed := trimSpace(existing)
 	if trimmed != "" {
-		_ = json.Unmarshal([]byte(trimmed), &obj)
+		_ = jsonx.Unmarshal([]byte(trimmed), &obj)
 	}
 	if obj == nil {
-		obj = map[string]json.RawMessage{}
+		obj = map[string]jsonx.RawMessage{}
 	}
-	b, _ := json.Marshal(audit)
+	b, _ := jsonx.Marshal(audit)
 	obj["pending_change"] = b
-	out, _ := json.Marshal(obj)
+	out, _ := jsonx.Marshal(obj)
 	return string(out)
 }
 
 func pendingChangeMetadata(existing string) (changeAudit, bool) {
-	var obj map[string]json.RawMessage
+	var obj map[string]jsonx.RawMessage
 	trimmed := trimSpace(existing)
 	if trimmed == "" {
 		return changeAudit{}, false
 	}
-	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
+	if err := jsonx.Unmarshal([]byte(trimmed), &obj); err != nil {
 		return changeAudit{}, false
 	}
 	raw, ok := obj["pending_change"]
@@ -293,26 +294,26 @@ func pendingChangeMetadata(existing string) (changeAudit, bool) {
 		return changeAudit{}, false
 	}
 	var audit changeAudit
-	if err := json.Unmarshal(raw, &audit); err != nil {
+	if err := jsonx.Unmarshal(raw, &audit); err != nil {
 		return changeAudit{}, false
 	}
 	return audit, audit.ToGroupID > 0
 }
 
 func clearPendingChangeMetadata(existing string) string {
-	var obj map[string]json.RawMessage
+	var obj map[string]jsonx.RawMessage
 	trimmed := trimSpace(existing)
 	if trimmed == "" {
 		return existing
 	}
-	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
+	if err := jsonx.Unmarshal([]byte(trimmed), &obj); err != nil {
 		return existing
 	}
 	delete(obj, "pending_change")
 	if len(obj) == 0 {
 		return ""
 	}
-	out, _ := json.Marshal(obj)
+	out, _ := jsonx.Marshal(obj)
 	return string(out)
 }
 

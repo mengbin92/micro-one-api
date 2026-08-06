@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/platform/events"
@@ -335,7 +336,7 @@ func (s *CodexModelProbeService) probeModel(ctx context.Context, account *biz.Su
 		Stream:          false,
 		Store:           false,
 	}
-	body, err := json.Marshal(payload)
+	body, err := jsonx.Marshal(payload)
 	if err != nil {
 		return false, err
 	}
@@ -440,17 +441,17 @@ func subscriptionAccountIDFromEventPayload(payload any) int64 {
 	if payload != nil {
 		if raw, ok := payload.(string); ok && strings.TrimSpace(raw) != "" {
 			var account biz.SubscriptionAccount
-			if err := json.Unmarshal([]byte(raw), &account); err == nil {
+			if err := jsonx.Unmarshal([]byte(raw), &account); err == nil {
 				return account.ID
 			}
 			var event events.Event
-			if err := json.Unmarshal([]byte(raw), &event); err == nil {
+			if err := jsonx.Unmarshal([]byte(raw), &event); err == nil {
 				return subscriptionAccountIDFromEventPayload(event.Payload)
 			}
 		}
 		if raw, ok := payload.([]byte); ok && len(raw) > 0 {
 			var account biz.SubscriptionAccount
-			if err := json.Unmarshal(raw, &account); err == nil {
+			if err := jsonx.Unmarshal(raw, &account); err == nil {
 				return account.ID
 			}
 		}

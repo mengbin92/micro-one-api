@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
-	github.com/bytedance/sonic v1.15.1
+	github.com/bytedance/sonic v1.15.2
 	github.com/coder/websocket v1.8.14
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.10.1

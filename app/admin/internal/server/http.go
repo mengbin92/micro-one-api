@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/csv"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/pkg/jsonx"
+
 	"log"
 
 	adminv1 "micro-one-api/api/admin/v1"
@@ -27,7 +28,7 @@ import (
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/pkg/safecast"
 	"micro-one-api/platform/audit"
-	"micro-one-api/platform/http"
+	xhttp "micro-one-api/platform/http"
 	"micro-one-api/platform/metrics"
 	appmiddleware "micro-one-api/platform/middleware"
 
@@ -1216,7 +1217,7 @@ func interfaceToInt64(value interface{}) int64 {
 		return v
 	case float64:
 		return int64(v)
-	case json.Number:
+	case jsonx.Number:
 		n, _ := v.Int64()
 		return n
 	default:
@@ -1387,7 +1388,7 @@ func parseReadonlyModelPrices(raw string) map[string]readonlyModelPrice {
 		return map[string]readonlyModelPrice{}
 	}
 	values := map[string]readonlyModelPrice{}
-	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &values); err != nil {
 		return map[string]readonlyModelPrice{}
 	}
 	out := make(map[string]readonlyModelPrice, len(values))
@@ -1406,7 +1407,7 @@ func parseReadonlyRatioMap(raw string) map[string]float64 {
 		return map[string]float64{}
 	}
 	values := map[string]float64{}
-	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+	if err := jsonx.Unmarshal([]byte(raw), &values); err != nil {
 		return map[string]float64{}
 	}
 	out := make(map[string]float64, len(values))
@@ -1425,7 +1426,7 @@ func parseReadonlyFloatOption(raw string) float64 {
 		return 0
 	}
 	var value float64
-	if err := json.Unmarshal([]byte(raw), &value); err == nil {
+	if err := jsonx.Unmarshal([]byte(raw), &value); err == nil {
 		return value
 	}
 	value, _ = strconv.ParseFloat(raw, 64)
@@ -1613,7 +1614,7 @@ func (a adminWebAssets) handlePage(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
+	_ = jsonx.NewEncoder(w).Encode(v)
 }
 
 func getQueryInt32(r *http.Request, key string, defaultVal int32) int32 {
@@ -1785,7 +1786,7 @@ func handleContentWrite(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		Content string `json:"content"`
 		Value   string `json:"value"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := jsonx.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
@@ -1824,7 +1825,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 			Name  string  `json:"name"`
 			Ratio float64 `json:"ratio"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := jsonx.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
@@ -1854,7 +1855,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+	if err := jsonx.NewDecoder(r.Body).Decode(dst); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return false
 	}
@@ -3020,7 +3021,7 @@ func handleGetSystemOptions(w http.ResponseWriter, r *http.Request, svc *service
 		writeJSON(w, http.StatusOK, resp)
 	case http.MethodPut:
 		var req adminv1.UpdateSystemOptionsRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := jsonx.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
@@ -3072,7 +3073,7 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 				RegistrationEnabled *bool  `json:"registration_enabled"`
 			} `json:"options"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		if err := jsonx.NewDecoder(r.Body).Decode(&raw); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
@@ -3268,7 +3269,7 @@ func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload map[string]interface{}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"raw": string(body)}))
 		return
 	}
@@ -3829,7 +3830,7 @@ func handleNotifyProxyByID(w http.ResponseWriter, r *http.Request, proxy *httput
 		var req struct {
 			Status string `json:"status"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := jsonx.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}

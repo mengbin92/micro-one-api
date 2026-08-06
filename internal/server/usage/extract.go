@@ -5,7 +5,7 @@
 package usage
 
 import (
-	"encoding/json"
+	"micro-one-api/pkg/jsonx"
 
 	"github.com/bytedance/sonic"
 
@@ -237,7 +237,7 @@ func int64Value(value interface{}) int64 {
 		return v
 	case int32:
 		return int64(v)
-	case json.Number:
+	case jsonx.Number:
 		n, _ := v.Int64()
 		return n
 	default:

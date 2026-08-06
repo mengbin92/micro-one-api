@@ -2,11 +2,12 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/platform/metrics"
 )
@@ -252,10 +253,10 @@ type AccountRecoverySweeperConfig struct {
 // codex-snapshot exhaustion are only recovered after the underlying window or
 // snapshot has reset (detected by re-checking IsSchedulableAt).
 type AccountRecoverySweeper struct {
-	repo    ChannelRepo
-	now     func() time.Time
-	cfg     AccountRecoverySweeperConfig
-	prober  RecoveryProber // optional upstream probe (roadmap §1.2)
+	repo   ChannelRepo
+	now    func() time.Time
+	cfg    AccountRecoverySweeperConfig
+	prober RecoveryProber // optional upstream probe (roadmap §1.2)
 }
 
 // NewAccountRecoverySweeper builds an automated account-recovery sweeper.
@@ -274,6 +275,7 @@ func NewAccountRecoverySweeper(repo ChannelRepo, cfg AccountRecoverySweeperConfi
 
 // SetNow overrides the clock (tests).
 func (s *AccountRecoverySweeper) SetNow(f func() time.Time) { s.now = f }
+
 // SetProber wires an optional upstream recovery probe (roadmap §1.2). When set,
 // the sweeper asks the prober to confirm the account is healthy before clearing
 // unschedulable markers for auto-policy accounts; this prevents re-enabling an
@@ -462,7 +464,7 @@ func subscriptionAccountMetadataValue(raw, key string) string {
 // jsonUnmarshal parses a metadata JSON blob into a map. Wraps encoding/json
 // so callers in this package share one implementation.
 var jsonUnmarshal = func(raw string, out *map[string]interface{}) error {
-	return json.Unmarshal([]byte(raw), out)
+	return jsonx.Unmarshal([]byte(raw), out)
 }
 
 // SubscriptionAccountRecoveryInfo summarizes why an account is unschedulable

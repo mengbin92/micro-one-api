@@ -1,11 +1,12 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"micro-one-api/pkg/jsonx"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/app/admin/internal/service"
@@ -154,7 +155,7 @@ func handleSubscriptionByID(w http.ResponseWriter, r *http.Request, svc *service
 		var req struct {
 			Reason string `json:"reason"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		_ = jsonx.NewDecoder(r.Body).Decode(&req)
 		writeSubscriptionResponse(w, nil, svc.RevokeSubscription(r.Context(), id, req.Reason))
 	case "extend":
 		var req struct {

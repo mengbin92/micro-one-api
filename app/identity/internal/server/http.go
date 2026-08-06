@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -15,15 +14,18 @@ import (
 	"sync"
 	"time"
 
+	"micro-one-api/pkg/jsonx"
+
+	"go.uber.org/zap"
+
 	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/identity/internal/biz"
-	appmiddleware "micro-one-api/platform/middleware"
-	"micro-one-api/platform/metrics"
-	"micro-one-api/platform/security"
-	"micro-one-api/platform/http"
+	xhttp "micro-one-api/platform/http"
 	applogger "micro-one-api/platform/logging"
-	"go.uber.org/zap"
+	"micro-one-api/platform/metrics"
+	appmiddleware "micro-one-api/platform/middleware"
+	oauth "micro-one-api/platform/security"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -68,11 +70,11 @@ type CodeDeliverer interface {
 type noopCodeDeliverer struct{}
 
 func (noopCodeDeliverer) DeliverVerificationCode(ctx context.Context, email, code string) error {
-		applogger.Log.Warn("verification code generated but no mail deliverer configured; code not delivered", zap.String("email", email))
+	applogger.Log.Warn("verification code generated but no mail deliverer configured; code not delivered", zap.String("email", email))
 	return nil
 }
 func (noopCodeDeliverer) DeliverResetToken(ctx context.Context, email, token string) error {
-		applogger.Log.Warn("reset token generated but no mail deliverer configured; token not delivered", zap.String("email", email))
+	applogger.Log.Warn("reset token generated but no mail deliverer configured; token not delivered", zap.String("email", email))
 	return nil
 }
 
@@ -489,7 +491,7 @@ func (v *defaultTurnstileVerifier) VerifyTurnstile(ctx context.Context, secret, 
 	var payload struct {
 		Success bool `json:"success"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := jsonx.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return err
 	}
 	if !payload.Success {
@@ -1202,7 +1204,7 @@ func handleEmailVerification(w http.ResponseWriter, r *http.Request, deliverer C
 		deliverer = noopCodeDeliverer{}
 	}
 	if err := deliverer.DeliverVerificationCode(r.Context(), email, code); err != nil {
-				applogger.Log.Warn("verification code delivery failed", zap.String("email", email), zap.Error(err))
+		applogger.Log.Warn("verification code delivery failed", zap.String("email", email), zap.Error(err))
 		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "failed to deliver verification code"})
 		return
 	}
@@ -1233,7 +1235,7 @@ func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, delivere
 		deliverer = noopCodeDeliverer{}
 	}
 	if err := deliverer.DeliverResetToken(r.Context(), email, token); err != nil {
-				applogger.Log.Warn("reset token delivery failed", zap.String("email", email), zap.Error(err))
+		applogger.Log.Warn("reset token delivery failed", zap.String("email", email), zap.Error(err))
 		writeJSON(w, http.StatusServiceUnavailable, apiResponse{Success: false, Message: "failed to deliver reset token"})
 		return
 	}
@@ -1536,7 +1538,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+	if err := jsonx.NewDecoder(r.Body).Decode(dst); err != nil {
 		writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "invalid request body"})
 		return false
 	}
@@ -1804,5 +1806,5 @@ func generateState() (string, error) {
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
+	_ = jsonx.NewEncoder(w).Encode(v)
 }

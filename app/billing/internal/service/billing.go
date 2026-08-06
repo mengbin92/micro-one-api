@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -14,10 +15,11 @@ import (
 	"micro-one-api/pkg/safecast"
 	"micro-one-api/platform/metrics"
 
+	"strings"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"strings"
 )
 
 type BillingService struct {
@@ -1023,13 +1025,13 @@ func (s *BillingService) HandleReconciliation(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = jsonx.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(result)
+	_ = jsonx.NewEncoder(w).Encode(result)
 }
 
 func (s *BillingService) ListReconciliationRuns(ctx context.Context, req *billingv1.ListReconciliationRunsRequest) (*billingv1.ListReconciliationRunsResponse, error) {

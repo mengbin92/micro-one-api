@@ -2,11 +2,12 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
@@ -297,7 +298,7 @@ func (uc *RefundUsecase) refundSubscriptionID(ctx context.Context, order *Paymen
 	// fulfilled before this column existed). Kept for backward compatibility.
 	if order.ProviderPayload != "" {
 		var pm map[string]string
-		if json.Unmarshal([]byte(order.ProviderPayload), &pm) == nil {
+		if jsonx.Unmarshal([]byte(order.ProviderPayload), &pm) == nil {
 			if subID, err := strconv.ParseInt(pm["subscription_id"], 10, 64); err == nil && subID > 0 {
 				return subID
 			}
