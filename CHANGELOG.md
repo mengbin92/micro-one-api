@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-06
+
+v0.15.3 之后的 MINOR 功能版本（7 个提交），标志着 v0.11.0 路线图收尾阶段（P0–P3）全部完成：
+routing-ops 双源指标降级（Prometheus → relay-gateway 直采）作为唯一面向用户的新功能，
+P1 契约加固（同优先级精确回退 + 并发 active 唯一约束）补齐确定性回归测试，cache-creation
+计费从 observe 切换为 charge 的生产闭环，以及 6 个服务 conf 包测试等工程卫生工作。
+无 API 破坏性变更、无数据库迁移、无 proto 变更。详见 [release-v0.16.0.md](docs/releases/release-v0.16.0.md)。
+
+### Added
+
+- **feat(admin): P2.3 routing-ops dual-source metrics — relay-gateway scrape fallback**：当 Prometheus 不可用时，admin-api 自动降级为直接 scrape relay-gateway 的 `/metrics` 端点（`expfmt` 解析 exposition format，聚合 cumulative counter），保持 routing-ops 视图 `partial=false`。`RoutingRates` 新增 `Source` 字段，JSON 新增 `source`/`cumulative`；docker-compose 内置 `RELAY_METRICS_ENDPOINT` 默认值；`prometheus/common` 从 indirect 提升为 direct。10 条回归测试覆盖双源优先级、降级、全故障路径。影响 admin-api。
+
+### Changed
+
+- **chore(p3): clean up billing_model TODO + update TODO.md status**：`internal/biz/billing_model.go` 的 `channel_mapped ≡ upstream` 限制从 TODO 转为永久 NOTE（结构性变更超出当前计费模型）；`docs/TODO.md` 回写 P0–P3 全部完成状态。
+
+### Fixed
+
+- **docs(v0.16): consolidate v0.16 roadmap + fix mock race + dedup comment**：新增 `docs/design/v0.16-roadmap.md` 作为 P0–P3 收尾文档，替换各文档中的 `.workbuddy` 临时链接；修复 `mockConcurrentCreateRepo` 竞态（补 `GetActiveSubscriptionByUser` 加锁）；删除 `routing_rates.go` 重复注释行。
+
 ## [0.15.3] - 2026-08-06
 
 v0.15.2 之后的 PATCH 版本（3 个提交），内容为内部重构与代码规范，无对外行为变更：将全仓库

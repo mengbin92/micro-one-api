@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.15.3 发布公告](./docs/releases/release-v0.15.3.md)（统一 JSON 序列化层 pkg/jsonx、收尾 gofmt 规范） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.15.3)
+> 📣 **最新发布**：[v0.16.0 发布公告](./docs/releases/release-v0.16.0.md)（routing-ops 双源指标降级、P1 契约加固回归测试、cache-creation charge 切换、v0.16 收尾） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.16.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.16.0
+
+v0.16.0 是 v0.15.3 之后的 **MINOR 功能版本**（7 个提交），标志着 v0.11.0 路线图收尾阶段（P0–P3）全部完成：routing-ops 双源指标降级（Prometheus → relay-gateway `/metrics` 直采）作为唯一面向用户的新功能（Prometheus 故障时 admin-api 自动降级，`partial=false`），P1 契约加固补齐同优先级精确回退 + 并发 active 唯一约束的确定性回归测试（7 条），cache-creation 计费从 observe 切换为 charge 的生产闭环（2026-08-06），以及 6 个服务 conf 包测试、billing_model TODO 清理、v0.16 路线图文档整合等工程卫生。**无 API 破坏性变更、无数据库迁移、无 proto 变更**；新增 1 个可选配置项 `RELAY_METRICS_ENDPOINT`，`prometheus/common` 从 indirect 提升为 direct。受影响服务为 admin-api。详见 [docs/releases/release-v0.16.0.md](./docs/releases/release-v0.16.0.md)。
 
 ### 升级到 v0.15.3
 
