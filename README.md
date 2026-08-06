@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.15.2 发布公告](./docs/releases/release-v0.15.2.md)（订阅流式中断补齐终止事件、渠道统计去噪修复回归） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.15.2)
+> 📣 **最新发布**：[v0.15.3 发布公告](./docs/releases/release-v0.15.3.md)（统一 JSON 序列化层 pkg/jsonx、收尾 gofmt 规范） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.15.3)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.15.3
+
+v0.15.3 是 v0.15.2 之后的 **PATCH 版本**（3 个提交），内容为内部重构与代码规范，**无对外行为变更**：将全仓库 JSON 序列化统一收敛到 `pkg/jsonx` 单一封装层（底层 sonic `ConfigStd`，保持 `encoding/json` 语义——HTML 转义、map key 排序、字符串拷贝），第一步迁移 52 个非测试文件的 `encoding/json`→`jsonx`（含升级 sonic 至 v1.15.2，唯一保留 `bodylimit.go` 因依赖 sonic 未暴露的类型断言），第二步替换 53 个热点文件的直接 `sonic.*`/`sonic.ConfigStd.*` 调用、补齐 `jsonx.Get` 与 `AGENTS.md` JSON 策略章节，第三步一次纯机械 `gofmt -w` 收尾 50 个不规范文件。**无 proto 变更、无数据库迁移、无新增配置项**。受影响服务为全部后端服务（触达面广但均为等价替换）。详见 [docs/releases/release-v0.15.3.md](./docs/releases/release-v0.15.3.md)。
 
 ### 升级到 v0.15.2
 

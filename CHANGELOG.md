@@ -7,6 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.3] - 2026-08-06
+
+v0.15.2 之后的 PATCH 版本（3 个提交），内容为内部重构与代码规范，无对外行为变更：将全仓库
+JSON 序列化统一收敛到 `pkg/jsonx` 单一封装层（底层 sonic `ConfigStd`，保持 `encoding/json`
+语义——HTML 转义、map key 排序、字符串拷贝），第一步迁移 52 个非测试文件的
+`encoding/json`→`jsonx`（含升级 sonic 至 v1.15.2，唯一保留 `bodylimit.go` 因依赖 sonic 未暴露
+的类型断言），第二步替换 53 个热点文件的直接 `sonic.*`/`sonic.ConfigStd.*` 调用、补齐
+`jsonx.Get` 与 `AGENTS.md` JSON 策略章节，第三步一次纯机械 `gofmt -w` 收尾 50 个不规范文件。
+无 proto 变更、无数据库迁移、无新增配置项。详见 [release-v0.15.3.md](docs/releases/release-v0.15.3.md)。
+
+### Changed
+
+- **refactor(json): replace encoding/json with sonic via pkg/jsonx wrapper**：扩展 `pkg/jsonx` 为 `encoding/json` 的 drop-in 替代（`sonic.ConfigStd`），迁移 `app/*`、`internal/*`、`domain/*`、`platform/*` 共 52 个非测试文件；升级 `github.com/bytedance/sonic` 至 v1.15.2；`platform/middleware/bodylimit.go` 保留 `encoding/json`（依赖 sonic 未暴露的类型断言）。影响全部后端服务。
+- **refactor(jsonx): route all sonic calls through pkg/jsonx wrapper**：将 `internal/server`、`internal/apicompat`、`internal/adaptor`、`internal/biz`、`internal/identity`、`domain/upstream/provider/*`、`app/{channel,config,log,monitor,notify}`、`platform/{events,middleware/idempotency}` 共 53 个文件的直接 `sonic.*`/`sonic.ConfigStd.*` 替换为 `jsonx.*`；新增 `jsonx.Get`（封装 `sonic.Get`）与 `pkg/jsonx/json_test.go`（与 `encoding/json` 一致性 + 基准）；`AGENTS.md` 新增 JSON 序列化策略章节。影响全部后端服务。
+- **style(gofmt): format 50 noncompliant Go files across the repo**：纯机械 `gofmt -w` 扫描——import 分组排序、结构体字面量字段对齐、闭包体重新缩进、单行函数展开、多余空行清理。无语义改动。`gofmt -l` 全仓库 clean。
+
 ## [0.15.2] - 2026-08-05
 
 v0.15.1 的 PATCH 修复版本（3 个提交），全部位于 relay-gateway：修复 v0.15.1
