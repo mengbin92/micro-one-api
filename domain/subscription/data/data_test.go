@@ -375,3 +375,105 @@ func TestSubscriptionRepository_RenewalStrategyRoundTrip(t *testing.T) {
 	_, err = repo.GetActiveSubscriptionByUser(ctx, 1002)
 	assert.ErrorIs(t, err, biz.ErrSubscriptionNotFound, "expired row must not be active")
 }
+
+// setupSubscriptionTestDBWithUniqueIndex is like setupSubscriptionTestDB but
+// also creates the H10 partial unique index
+// (uniq_user_subs_active_user_id) that enforces "at most one active
+// subscription per user". Use this variant when a test needs to verify the
+// database-level constraint itself, not just the application-layer mapping.
+func setupSubscriptionTestDBWithUniqueIndex(t *testing.T) *Repository {
+	t.Helper()
+	repo := setupSubscriptionTestDB(t)
+	// Mirror migrations/sqlite/001_enforce_single_active_subscription.sql.
+	require.NoError(t, repo.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_user_subs_active_user_id ON user_subscriptions (user_id) WHERE status = 'active'`).Error)
+	return repo
+}
+
+// TestSubscriptionRepository_H10UniqueIndexRejectsSecondActive verifies the
+// H10 partial unique index prevents two concurrent active subscriptions for
+// the same user at the DB level, and that the violation is mapped to the
+// sentinel ErrSubscriptionAlreadyAssigned (review H10 regression).
+func TestSubscriptionRepository_H10UniqueIndexRejectsSecondActive(t *testing.T) {
+	repo := setupSubscriptionTestDBWithUniqueIndex(t)
+	ctx := context.Background()
+
+	group := &biz.SubscriptionGroup{Name: "pro", Platform: "openai", Status: biz.SubscriptionGroupStatusEnabled}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+
+	first := &biz.UserSubscription{
+		UserID:    5001,
+		GroupID:   group.ID,
+		Status:    biz.SubscriptionStatusActive,
+		StartsAt:  10,
+		ExpiresAt: 1 << 62,
+	}
+	require.NoError(t, repo.CreateSubscription(ctx, first))
+	require.NotZero(t, first.ID)
+
+	// A second active subscription for the same user must be rejected by the
+	// DB unique index and mapped to the sentinel error.
+	second := &biz.UserSubscription{
+		UserID:    5001,
+		GroupID:   group.ID,
+		Status:    biz.SubscriptionStatusActive,
+		StartsAt:  20,
+		ExpiresAt: 1 << 62,
+	}
+	err := repo.CreateSubscription(ctx, second)
+	assert.ErrorIs(t, err, biz.ErrSubscriptionAlreadyAssigned,
+		"concurrent active create must hit the unique index and map to ErrSubscriptionAlreadyAssigned")
+}
+
+// TestSubscriptionRepository_H10UniqueIndexAllowsMultipleNonActive verifies
+// the partial index (WHERE status='active') does not block multiple
+// expired/revoked rows for the same user — only concurrent actives are
+// forbidden.
+func TestSubscriptionRepository_H10UniqueIndexAllowsMultipleNonActive(t *testing.T) {
+	repo := setupSubscriptionTestDBWithUniqueIndex(t)
+	ctx := context.Background()
+
+	group := &biz.SubscriptionGroup{Name: "pro2", Platform: "openai", Status: biz.SubscriptionGroupStatusEnabled}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+
+	for _, status := range []biz.SubscriptionStatus{biz.SubscriptionStatusExpired, biz.SubscriptionStatusRevoked} {
+		s := &biz.UserSubscription{
+			UserID:    6001,
+			GroupID:   group.ID,
+			Status:    status,
+			StartsAt:  10,
+			ExpiresAt: 100,
+		}
+		require.NoError(t, repo.CreateSubscription(ctx, s), "non-active status=%s must not violate the partial index", status)
+	}
+
+	// An active subscription is still allowed when only non-active rows exist.
+	active := &biz.UserSubscription{
+		UserID:    6001,
+		GroupID:   group.ID,
+		Status:    biz.SubscriptionStatusActive,
+		StartsAt:  200,
+		ExpiresAt: 1 << 62,
+	}
+	require.NoError(t, repo.CreateSubscription(ctx, active), "active create after only non-active rows must succeed")
+}
+
+// TestSubscriptionRepository_H10UniqueIndexDifferentUsers verifies the index
+// scopes by user: two different users can each have one active subscription.
+func TestSubscriptionRepository_H10UniqueIndexDifferentUsers(t *testing.T) {
+	repo := setupSubscriptionTestDBWithUniqueIndex(t)
+	ctx := context.Background()
+
+	group := &biz.SubscriptionGroup{Name: "pro3", Platform: "openai", Status: biz.SubscriptionGroupStatusEnabled}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+
+	for _, uid := range []int64{7001, 7002, 7003} {
+		s := &biz.UserSubscription{
+			UserID:    uid,
+			GroupID:   group.ID,
+			Status:    biz.SubscriptionStatusActive,
+			StartsAt:  10,
+			ExpiresAt: 1 << 62,
+		}
+		require.NoError(t, repo.CreateSubscription(ctx, s), "user %d should get an active subscription without conflict", uid)
+	}
+}

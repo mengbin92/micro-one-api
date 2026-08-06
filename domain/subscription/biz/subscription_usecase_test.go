@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"sync"
 	"time"
 )
 
@@ -739,5 +740,145 @@ func TestExtend_ReactivatesExpiredSubscription(t *testing.T) {
 	}
 	if active.ExpiresAt != 5000+60*86400 {
 		t.Fatalf("expires_at = %d, want %d", active.ExpiresAt, 5000+60*86400)
+	}
+}
+
+// --- P1.2: concurrent active subscription race regression tests ---
+
+// mockConcurrentCreateRepo wraps mockSubscriptionRepo to simulate the DB-level
+// unique-index collision that happens when two concurrent Assign/AssignOrExtend
+// calls both pass the "no active subscription" pre-check and race into
+// CreateSubscription. The first Create for a given user succeeds; a concurrent
+// second Create returns ErrSubscriptionAlreadyAssigned, exactly as the real
+// repo does when the H10 unique index rejects the duplicate insert.
+type mockConcurrentCreateRepo struct {
+	*mockSubscriptionRepo
+	// mu serialises CreateSubscription so the simulated collision is
+	// deterministic rather than racy.
+	mu             sync.Mutex
+	createdActive  map[int64]bool
+	createErrOnDup bool
+}
+
+func newMockConcurrentCreateRepo() *mockConcurrentCreateRepo {
+	return &mockConcurrentCreateRepo{
+		mockSubscriptionRepo: newMockSubscriptionRepo(),
+		createdActive:        map[int64]bool{},
+		createErrOnDup:       true,
+	}
+}
+
+func (m *mockConcurrentCreateRepo) CreateSubscription(ctx context.Context, sub *UserSubscription) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if sub.Status == SubscriptionStatusActive && m.createdActive[sub.UserID] && m.createErrOnDup {
+		return ErrSubscriptionAlreadyAssigned
+	}
+	if err := m.mockSubscriptionRepo.CreateSubscription(ctx, sub); err != nil {
+		return err
+	}
+	if sub.Status == SubscriptionStatusActive {
+		m.createdActive[sub.UserID] = true
+	}
+	return nil
+}
+
+func (m *mockConcurrentCreateRepo) CreateSubscriptionInTx(ctx context.Context, tx Tx, sub *UserSubscription) error {
+	return m.CreateSubscription(ctx, sub)
+}
+
+// TestAssign_PropagatesDuplicateKeyFromDB simulates the concurrent race: both
+// goroutines pass the GetActiveSubscriptionByUser pre-check (returns nil), then
+// the DB unique index rejects the second insert. The usecase must propagate
+// ErrSubscriptionAlreadyAssigned to at least one caller rather than creating
+// two active subscriptions.
+func TestAssign_PropagatesDuplicateKeyFromDB(t *testing.T) {
+	repo := newMockConcurrentCreateRepo()
+	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	uc := NewSubscriptionUsecase(repo, repo)
+	uc.now = func() time.Time { return time.Unix(1000, 0) }
+
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := uc.Assign(context.Background(), &AssignSubscriptionRequest{
+				UserID: 9001, GroupID: group.ID, ExpiresAt: 2000,
+			})
+			results <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	var successes, alreadyAssigned, otherErrs int
+	for err := range results {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrSubscriptionAlreadyAssigned):
+			alreadyAssigned++
+		default:
+			otherErrs++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successes = %d, want 1", successes)
+	}
+	if alreadyAssigned != 1 {
+		t.Fatalf("alreadyAssigned = %d, want 1 (the racing Assign must get ErrSubscriptionAlreadyAssigned from the DB index)", alreadyAssigned)
+	}
+	if otherErrs != 0 {
+		t.Fatalf("otherErrs = %d, want 0", otherErrs)
+	}
+}
+
+// mockRaceWindowRepo simulates the exact concurrent race window: both goroutines
+// pass GetActiveSubscriptionByUser (returns nil) before either calls
+// CreateSubscription. The first Create succeeds; the second returns
+// ErrSubscriptionAlreadyAssigned exactly as the H10 DB unique index would.
+type mockRaceWindowRepo struct {
+	*mockSubscriptionRepo
+	createErr error // if non-nil, CreateSubscription returns this
+}
+
+func (m *mockRaceWindowRepo) CreateSubscription(ctx context.Context, sub *UserSubscription) error {
+	if m.createErr != nil {
+		return m.createErr
+	}
+	return m.mockSubscriptionRepo.CreateSubscription(ctx, sub)
+}
+
+func (m *mockRaceWindowRepo) CreateSubscriptionInTx(ctx context.Context, tx Tx, sub *UserSubscription) error {
+	return m.CreateSubscription(ctx, sub)
+}
+
+// TestAssignOrExtend_PropagatesDuplicateKeyFromDB simulates the DB-level
+// collision inside the concurrent race window: GetActiveSubscriptionByUser
+// returns nil (both callers raced past the pre-check), then CreateSubscription
+// returns ErrSubscriptionAlreadyAssigned (the H10 unique index rejected the
+// duplicate insert). AssignOrExtend must propagate this error, not swallow it.
+func TestAssignOrExtend_PropagatesDuplicateKeyFromDB(t *testing.T) {
+	repo := &mockRaceWindowRepo{
+		mockSubscriptionRepo: newMockSubscriptionRepo(),
+		createErr:            ErrSubscriptionAlreadyAssigned,
+	}
+	group := &SubscriptionGroup{Name: "team", Platform: "openai", Status: SubscriptionGroupStatusEnabled}
+	if err := repo.CreateGroup(context.Background(), group); err != nil {
+		t.Fatalf("CreateGroup() error = %v", err)
+	}
+	uc := NewSubscriptionUsecase(repo, repo)
+	uc.now = func() time.Time { return time.Unix(1000, 0) }
+
+	_, _, err := uc.AssignOrExtend(context.Background(), &AssignSubscriptionRequest{
+		UserID: 9002, GroupID: group.ID, StartsAt: 1000, ExpiresAt: 2000,
+	})
+	if !errors.Is(err, ErrSubscriptionAlreadyAssigned) {
+		t.Fatalf("AssignOrExtend() error = %v, want ErrSubscriptionAlreadyAssigned (DB unique index collision must propagate)", err)
 	}
 }

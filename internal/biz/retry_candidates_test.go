@@ -227,3 +227,97 @@ func TestRetryExecutor_ExecuteWithCandidates_NamespaceLockProhibitsCrossSource(t
 	// (same-source) because no same-namespace alternate exists.
 	assert.False(t, result.Fallback, "no same-namespace alternate → same-source retry, not a fallback")
 }
+
+// TestRetryExecutor_ExecuteWithCandidates_APIKeyChannelSameTierFallback is
+// the P1.1 regression test for roadmap §9.1 risk 1: when two ordinary
+// API-key channels share the same priority tier and the first one fails,
+// retry must reach its sibling in the same tier — not skip the whole tier
+// (the original excludeFirstPriority bug) and not jump to a lower tier.
+// The candidate list is precomputed, so the walk is deterministic.
+func TestRetryExecutor_ExecuteWithCandidates_APIKeyChannelSameTierFallback(t *testing.T) {
+	selector := &mockChannelSelector{}
+	exec := NewRetryExecutor(fastRetryPolicy(3), selector).WithFallbackSelector(&recordingFallbackSelector{})
+
+	// Two ordinary API-key channels at the same priority (no SubscriptionAccountID).
+	primary := RoutingCandidate{
+		Identity: RoutingSourceIdentity{Kind: UpstreamRouteChannel, ID: 10},
+		Priority: 10,
+		Channel:  &Channel{ID: 10, Key: "sk-primary", Priority: 10},
+	}
+	sibling := RoutingCandidate{
+		Identity: RoutingSourceIdentity{Kind: UpstreamRouteChannel, ID: 11},
+		Priority: 10,
+		Channel:  &Channel{ID: 11, Key: "sk-sibling", Priority: 10},
+	}
+	lower := RoutingCandidate{
+		Identity: RoutingSourceIdentity{Kind: UpstreamRouteChannel, ID: 12},
+		Priority: 1,
+		Channel:  &Channel{ID: 12, Key: "sk-lower", Priority: 1},
+	}
+	plan := &RelayPlan{
+		Auth:       &AuthSnapshot{Group: "default"},
+		Channel:    primary.Channel,
+		Candidates: newRoutingCandidateList("default", "gpt-4o", "gpt-4o", primary, sibling, lower),
+	}
+
+	var seenIDs []int64
+	result := exec.ExecuteWithCandidates(context.Background(), plan, 0, func(_ context.Context, ch *Channel) error {
+		seenIDs = append(seenIDs, ch.ID)
+		if ch.ID == 10 {
+			return &RetryableError{Status: 502, Err: errors.New("primary failed")}
+		}
+		return nil // sibling succeeds
+	})
+
+	require.NoError(t, result.Err)
+	// The sibling (ID=11) at the same priority tier was reached, not skipped.
+	assert.Equal(t, []int64{10, 11}, seenIDs,
+		"failed channel must fall back to its same-tier sibling, not skip the tier")
+	assert.True(t, result.Fallback, "switching from channel 10 to 11 is a source switch")
+}
+
+// TestRetryExecutor_ExecuteWithCandidates_APIKeyChannelExhaustsTierThenLower
+// extends the same-tier scenario: when ALL same-priority siblings fail, retry
+// must continue into the next lower tier rather than giving up — the core
+// improvement over the old excludeFirstPriority approach.
+func TestRetryExecutor_ExecuteWithCandidates_APIKeyChannelExhaustsTierThenLower(t *testing.T) {
+	selector := &mockChannelSelector{}
+	exec := NewRetryExecutor(fastRetryPolicy(5), selector).WithFallbackSelector(&recordingFallbackSelector{})
+
+	primary := RoutingCandidate{
+		Identity: RoutingSourceIdentity{Kind: UpstreamRouteChannel, ID: 20},
+		Priority: 10,
+		Channel:  &Channel{ID: 20, Key: "sk-p", Priority: 10},
+	}
+	sibling := RoutingCandidate{
+		Identity: RoutingSourceIdentity{Kind: UpstreamRouteChannel, ID: 21},
+		Priority: 10,
+		Channel:  &Channel{ID: 21, Key: "sk-s", Priority: 10},
+	}
+	lower := RoutingCandidate{
+		Identity: RoutingSourceIdentity{Kind: UpstreamRouteChannel, ID: 22},
+		Priority: 1,
+		Channel:  &Channel{ID: 22, Key: "sk-l", Priority: 1},
+	}
+	plan := &RelayPlan{
+		Auth:       &AuthSnapshot{Group: "default"},
+		Channel:    primary.Channel,
+		Candidates: newRoutingCandidateList("default", "gpt-4o", "gpt-4o", primary, sibling, lower),
+	}
+
+	var seenIDs []int64
+	result := exec.ExecuteWithCandidates(context.Background(), plan, 0, func(_ context.Context, ch *Channel) error {
+		seenIDs = append(seenIDs, ch.ID)
+		if ch.ID == 20 || ch.ID == 21 {
+			return &RetryableError{Status: 502, Err: errors.New("tier-10 failed")}
+		}
+		return nil // lower tier succeeds
+	})
+
+	require.NoError(t, result.Err)
+	// Walked: primary(20) → sibling(21) → lower(22). The entire tier-10 was
+	// exhausted before dropping to tier-1, proving per-candidate exclusion.
+	assert.Equal(t, []int64{20, 21, 22}, seenIDs,
+		"must exhaust same-tier siblings before dropping to lower tier")
+	assert.True(t, result.Fallback)
+}
