@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,7 +10,6 @@ import (
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/admin/internal/service"
-	"micro-one-api/platform/metrics"
 )
 
 // ── v0.11.0 Phase 3 §3.6: routing operations view ──────────────────────────
@@ -53,6 +51,13 @@ type routingOpsRates struct {
 	FallbackTotal    float64 `json:"fallback_total"`
 	ErrorRate        float64 `json:"error_rate"`
 	FallbackRate     float64 `json:"fallback_rate"`
+	// Source identifies where the rates came from: "prometheus" (precise
+	// window increment), "relay_scrape" (cumulative counters from
+	// relay-gateway /metrics, degraded fallback), or "" when unavailable.
+	Source string `json:"source,omitempty"`
+	// Cumulative is true when the values are process-lifetime totals rather
+	// than window-scoped increments (i.e. source="relay_scrape").
+	Cumulative bool `json:"cumulative,omitempty"`
 }
 
 type routingOpsWindow struct {
@@ -230,29 +235,18 @@ func handleRoutingOps(w http.ResponseWriter, r *http.Request, svc *service.Admin
 	service.RecordUnpricedRoutedMetric(unpricedResp)
 
 	prometheusURL := strings.TrimSpace(os.Getenv("PROMETHEUS_URL"))
-	if prometheusURL == "" {
+	relayMetricsURL := strings.TrimSpace(os.Getenv("RELAY_METRICS_ENDPOINT"))
+
+	rates, rateErrors := loadRoutingRates(r.Context(), prometheusURL, relayMetricsURL, start, end)
+	view.Rates = rates
+	if rates.Source == "" {
+		// Both data sources failed (or were unconfigured).
 		view.Partial = true
-		view.Errors = append(view.Errors, "routing metrics unavailable: PROMETHEUS_URL is not configured")
-	} else {
-		metricsCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-		rates, metricsErr := metrics.QueryRoutingRates(metricsCtx, &http.Client{Timeout: 3 * time.Second}, prometheusURL, start, end)
-		cancel()
-		if metricsErr != nil {
-			view.Partial = true
-			view.Errors = append(view.Errors, "routing metrics query failed: "+metricsErr.Error())
-		} else {
-			view.Rates = routingOpsRates{
-				SelectionTotal:   rates.SelectionTotal,
-				SuccessTotal:     rates.SuccessTotal,
-				ErrorTotal:       rates.ErrorTotal,
-				ClientErrorTotal: rates.ClientErrorTotal,
-				FallbackTotal:    rates.FallbackTotal,
-			}
-			if rates.SelectionTotal > 0 {
-				view.Rates.ErrorRate = (rates.ErrorTotal + rates.ClientErrorTotal) / rates.SelectionTotal
-				view.Rates.FallbackRate = rates.FallbackTotal / rates.SelectionTotal
-			}
-		}
+		view.Errors = append(view.Errors, rateErrors...)
+	} else if len(rateErrors) > 0 {
+		// The preferred source failed but the fallback succeeded. Keep the
+		// non-fatal failure message so ops knows Prometheus is down.
+		view.Errors = append(view.Errors, rateErrors...)
 	}
 
 	// Compute alerts only after every data source has populated the view. In

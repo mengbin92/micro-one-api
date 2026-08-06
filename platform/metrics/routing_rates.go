@@ -13,12 +13,21 @@ import (
 )
 
 // RoutingRates holds routing selection outcomes for a requested time window.
+// RoutingRates holds routing selection outcomes for a requested time window.
+//
+// Source distinguishes the data provenance so callers can tell whether the
+// numbers are a precise window increase (from Prometheus) or cumulative
+// process counters scraped directly from relay-gateway (a degraded fallback).
 type RoutingRates struct {
 	SelectionTotal   float64
 	ErrorTotal       float64
 	ClientErrorTotal float64
 	SuccessTotal     float64
 	FallbackTotal    float64
+	// Source identifies where the rates came from: "prometheus" for a PromQL
+	// increase() window query, "relay_scrape" for cumulative counters scraped
+	// directly from relay-gateway's /metrics endpoint, or "" when unset.
+	Source string
 }
 
 type prometheusQueryResponse struct {
@@ -82,6 +91,7 @@ func QueryRoutingRates(ctx context.Context, client *http.Client, baseURL string,
 		}
 		rates.FallbackTotal += value
 	}
+	rates.Source = "prometheus"
 	return rates, nil
 }
 

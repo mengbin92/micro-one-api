@@ -215,6 +215,9 @@ services:
       - ADMIN_WEB_ROOT=/web
       - SUBSCRIPTION_USER_RPM_LIMIT=${SUBSCRIPTION_USER_RPM_LIMIT:-0}
       - PROMETHEUS_URL=${PROMETHEUS_URL:-http://prometheus:9090}
+      # P2.3: relay-gateway /metrics direct scrape (degraded fallback when
+      # Prometheus is unavailable). Keeps routing-ops functional (partial=false).
+      - RELAY_METRICS_ENDPOINT=${RELAY_METRICS_ENDPOINT:-http://relay-gateway:8080}
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     ports:
