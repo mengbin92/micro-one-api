@@ -860,3 +860,31 @@ OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减�
     账本来源归属与单次计费（`scripts/verify/forced_failure_checks.go`）。
 - [x] **docs 索引与路线图状态**：`docs/README.md` runbook 表新增两篇文档；
       `docs/design/v0.17-roadmap.md` 状态头与 §0 总览标注 P0/P1 完成。
+
+## P3 推进（v0.17）
+
+> **更新日期：2026-08-07**。P3.1 工具链修复 + arm64 smoke、P3.2 代表性负载
+> benchmark + 初步分析完成;Linux/amd64 最终执行待办。
+
+- [ ] **P3.1 可复现性能基线（Linux/amd64 执行待办）**：
+  - [x] 修复 k6 脚本五处测量缺陷 + 确定性 mock upstream（`fac2d81`，此前完成）。
+  - [x] `k6-baseline.js` 新增 `SMOKE=1` 模式（6m+ → ~35s，默认行为不变），arm64
+        smoke 通过（42 req/s、0% 失败、0 dropped，归档于
+        `scripts/benchmark/results/summary-9abff45-smoke-20260807-154820.json`）。
+  - [x] 修复 `make benchmark-baseline` summary 未落盘 bug：`RESULTS_FILE=` 环境变量
+        k6 不读取，改 k6 原生 `--summary-export`（Makefile）。
+  - [ ] **Linux/amd64 三版本对比 ×3 次**（Phase 0 `397e36c` / v0.16.0 `a8e14db` /
+        develop），执行手册见
+        [docs/runbooks/performance-baseline-p31.md](./runbooks/performance-baseline-p31.md)；
+        完成后回填 `docs/design/BASELINE.md`。
+- [ ] **P3.2 jsonx Marshal/Encoder 性能决策（Linux/amd64 复核待办）**：
+  - [x] 新增代表性负载 benchmark（`pkg/jsonx/bench_representative_test.go` 外部测试包：
+        大 Responses 响应、Anthropic 流式 delta、admin/billing map+slice、NewEncoder；
+        `internal/apicompat/bench_test.go`：四个热路径转换整体吞吐）。
+  - [x] arm64 微基准 + CPU profile 完成，初步结论：**保留 jsonx 单一封装层，不将
+        Marshal 单独回退 std**（Unmarshal 快 2.1–3.8x；Marshal 差距随负载收敛到
+        ~5%；小结构绝对差 <175ns，请求级影响 <0.01%；sonic neon 汇编路径确认生效）。
+        分析见 [docs/design/p32-jsonx-performance-decision.md](./design/p32-jsonx-performance-decision.md)。
+  - [ ] **Linux/amd64 复测**（代表性负载 count=5 + CPU profile + NewEncoder 使用点
+        盘点），固化最终决策并回写决策文档。
+

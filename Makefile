@@ -344,7 +344,7 @@ benchmark-baseline:
 	RAW_FILE=scripts/benchmark/results/raw-$${SHA}-$${TS}.json; \
 	SUMMARY_FILE=scripts/benchmark/results/summary-$${SHA}-$${TS}.json; \
 	echo "Running k6 baseline against $$BASE_URL (git SHA: $$SHA)"; \
-	RESULTS_FILE=$$SUMMARY_FILE k6 run scripts/benchmark/k6-baseline.js \
+	k6 run --summary-export=$$SUMMARY_FILE scripts/benchmark/k6-baseline.js \
 	  --out json=$$RAW_FILE; \
 	echo "Raw samples: $$RAW_FILE"; \
 	echo "Summary: $$SUMMARY_FILE"

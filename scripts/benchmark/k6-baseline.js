@@ -70,6 +70,13 @@ const RAMP_HOLD = __ENV.RAMP_HOLD || '2m';
 const PREALLOCATED_VUS = parseInt(__ENV.PREALLOCATED_VUS || '100', 10);
 const MAX_VUS = parseInt(__ENV.MAX_VUS || '1000', 10);
 
+// SMOKE=1 collapses the six hard-coded stages (6m+) into a ~35s run. It is
+// meant for verifying the script end-to-end (syntax, summary export, raw
+// output) on any machine before committing to a full-length run on
+// Linux/amd64. The SMOKE profile is NOT comparable to the full stages.
+const SMOKE = __ENV.SMOKE === '1' || __ENV.SMOKE === 'true';
+const STAGE = SMOKE ? '5s' : '1m';
+
 export const options = {
   // summaryTrendStats: explicitly request these percentiles so the JSON/CSV
   // output and stdout summary always carry p(50)/p(90)/p(95)/p(99). Without
@@ -83,14 +90,23 @@ export const options = {
       preAllocatedVUs: PREALLOCATED_VUS,
       maxVUs: MAX_VUS,
       exec: 'allEndpoints',
-      stages: [
-        { duration: '1m', target: Math.round(ITERATION_TARGET_RATE * 0.05) },
-        { duration: '1m', target: Math.round(ITERATION_TARGET_RATE * 0.25) },
-        { duration: '1m', target: Math.round(ITERATION_TARGET_RATE * 0.50) },
-        { duration: '2m', target: ITERATION_TARGET_RATE },
-        { duration: RAMP_HOLD, target: ITERATION_TARGET_RATE },
-        { duration: '1m', target: 0 },
-      ],
+      stages: SMOKE
+        ? [
+            { duration: '5s', target: Math.round(ITERATION_TARGET_RATE * 0.5) },
+            { duration: '5s', target: ITERATION_TARGET_RATE },
+            { duration: '5s', target: Math.round(ITERATION_TARGET_RATE * 0.5) },
+            { duration: '10s', target: ITERATION_TARGET_RATE },
+            { duration: '5s', target: ITERATION_TARGET_RATE },
+            { duration: '5s', target: 0 },
+          ]
+        : [
+            { duration: '1m', target: Math.round(ITERATION_TARGET_RATE * 0.05) },
+            { duration: '1m', target: Math.round(ITERATION_TARGET_RATE * 0.25) },
+            { duration: '1m', target: Math.round(ITERATION_TARGET_RATE * 0.50) },
+            { duration: '2m', target: ITERATION_TARGET_RATE },
+            { duration: RAMP_HOLD, target: ITERATION_TARGET_RATE },
+            { duration: '1m', target: 0 },
+          ],
     },
   },
   thresholds: {

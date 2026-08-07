@@ -1,0 +1,72 @@
+goos: darwin
+goarch: arm64
+pkg: micro-one-api/pkg/jsonx
+cpu: Apple M5 Pro
+BenchmarkUnmarshalJSONX-18                  	 3058935	       373.2 ns/op	     498 B/op	       9 allocs/op
+BenchmarkUnmarshalJSONX-18                  	 3187579	       387.3 ns/op	     493 B/op	       9 allocs/op
+BenchmarkUnmarshalJSONX-18                  	 3074466	       385.8 ns/op	     491 B/op	       9 allocs/op
+BenchmarkUnmarshalStd-18                    	 1366939	       872.8 ns/op	     432 B/op	      12 allocs/op
+BenchmarkUnmarshalStd-18                    	 1405766	       851.4 ns/op	     432 B/op	      12 allocs/op
+BenchmarkUnmarshalStd-18                    	 1395993	       865.4 ns/op	     432 B/op	      12 allocs/op
+BenchmarkMarshalJSONX-18                    	 3673821	       328.8 ns/op	     232 B/op	       3 allocs/op
+BenchmarkMarshalJSONX-18                    	 3656707	       328.4 ns/op	     232 B/op	       3 allocs/op
+BenchmarkMarshalJSONX-18                    	 3590430	       328.7 ns/op	     232 B/op	       3 allocs/op
+BenchmarkMarshalStd-18                      	 7757149	       154.0 ns/op	     208 B/op	       2 allocs/op
+BenchmarkMarshalStd-18                      	 7799482	       154.3 ns/op	     208 B/op	       2 allocs/op
+BenchmarkMarshalStd-18                      	 7824376	       152.9 ns/op	     208 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesJSONX-18      	  515967	      2352 ns/op	1292.72 MB/s	    3181 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesJSONX-18      	  499759	      2386 ns/op	1274.46 MB/s	    3171 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesJSONX-18      	  502752	      2364 ns/op	1286.30 MB/s	    3174 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesStd-18        	  555726	      2159 ns/op	1408.38 MB/s	    3074 B/op	       1 allocs/op
+BenchmarkMarshalLargeResponsesStd-18        	  558259	      2170 ns/op	1401.23 MB/s	    3074 B/op	       1 allocs/op
+BenchmarkMarshalLargeResponsesStd-18        	  557163	      2151 ns/op	1413.63 MB/s	    3074 B/op	       1 allocs/op
+BenchmarkUnmarshalLargeResponsesJSONX-18    	  406675	      2933 ns/op	1036.98 MB/s	    8024 B/op	      36 allocs/op
+BenchmarkUnmarshalLargeResponsesJSONX-18    	  409126	      2984 ns/op	1019.10 MB/s	    7949 B/op	      36 allocs/op
+BenchmarkUnmarshalLargeResponsesJSONX-18    	  405585	      2949 ns/op	1031.32 MB/s	    7974 B/op	      36 allocs/op
+BenchmarkUnmarshalLargeResponsesStd-18      	  103743	     11179 ns/op	 272.02 MB/s	    8864 B/op	      41 allocs/op
+BenchmarkUnmarshalLargeResponsesStd-18      	  109263	     11070 ns/op	 274.71 MB/s	    9221 B/op	      41 allocs/op
+BenchmarkUnmarshalLargeResponsesStd-18      	  105998	     11192 ns/op	 271.72 MB/s	    9204 B/op	      41 allocs/op
+BenchmarkMarshalAnthropicDeltaJSONX-18      	 1395285	       859.2 ns/op	1559.50 MB/s	    1491 B/op	       2 allocs/op
+BenchmarkMarshalAnthropicDeltaJSONX-18      	 1425150	       843.2 ns/op	1589.12 MB/s	    1491 B/op	       2 allocs/op
+BenchmarkMarshalAnthropicDeltaJSONX-18      	 1400295	       844.3 ns/op	1587.09 MB/s	    1490 B/op	       2 allocs/op
+BenchmarkMarshalAnthropicDeltaStd-18        	 1423528	       870.7 ns/op	1538.93 MB/s	    1409 B/op	       1 allocs/op
+BenchmarkMarshalAnthropicDeltaStd-18        	 1371877	       880.1 ns/op	1522.53 MB/s	    1409 B/op	       1 allocs/op
+BenchmarkMarshalAnthropicDeltaStd-18        	 1376995	       876.2 ns/op	1529.36 MB/s	    1409 B/op	       1 allocs/op
+BenchmarkMarshalAggMapSliceJSONX-18         	  503749	      2412 ns/op	 180.78 MB/s	    1053 B/op	       8 allocs/op
+BenchmarkMarshalAggMapSliceJSONX-18         	  505441	      2418 ns/op	 180.29 MB/s	    1058 B/op	       8 allocs/op
+BenchmarkMarshalAggMapSliceJSONX-18         	  492362	      2390 ns/op	 182.43 MB/s	    1053 B/op	       8 allocs/op
+BenchmarkMarshalAggMapSliceStd-18           	  528080	      2251 ns/op	 193.70 MB/s	    2177 B/op	      55 allocs/op
+BenchmarkMarshalAggMapSliceStd-18           	  534368	      2348 ns/op	 185.71 MB/s	    2177 B/op	      55 allocs/op
+BenchmarkMarshalAggMapSliceStd-18           	  528482	      2296 ns/op	 189.92 MB/s	    2177 B/op	      55 allocs/op
+BenchmarkUnmarshalAggMapSliceJSONX-18       	  691029	      1569 ns/op	 277.84 MB/s	    3681 B/op	      70 allocs/op
+BenchmarkUnmarshalAggMapSliceJSONX-18       	  785962	      1550 ns/op	 281.35 MB/s	    3614 B/op	      70 allocs/op
+BenchmarkUnmarshalAggMapSliceJSONX-18       	  780189	      1554 ns/op	 280.61 MB/s	    3590 B/op	      70 allocs/op
+BenchmarkUnmarshalAggMapSliceStd-18         	  371436	      3297 ns/op	 132.24 MB/s	    3216 B/op	      97 allocs/op
+BenchmarkUnmarshalAggMapSliceStd-18         	  370908	      3314 ns/op	 131.55 MB/s	    3216 B/op	      97 allocs/op
+BenchmarkUnmarshalAggMapSliceStd-18         	  357012	      3294 ns/op	 132.36 MB/s	    3216 B/op	      97 allocs/op
+BenchmarkEncoderLargeResponsesJSONX-18      	  486110	      2484 ns/op	1224.02 MB/s	    5128 B/op	       4 allocs/op
+BenchmarkEncoderLargeResponsesJSONX-18      	  484702	      2514 ns/op	1209.79 MB/s	    5137 B/op	       4 allocs/op
+BenchmarkEncoderLargeResponsesJSONX-18      	  484804	      2506 ns/op	1213.25 MB/s	    5122 B/op	       4 allocs/op
+BenchmarkEncoderLargeResponsesStd-18        	  602835	      1982 ns/op	1534.23 MB/s	       0 B/op	       0 allocs/op
+BenchmarkEncoderLargeResponsesStd-18        	  613872	      1982 ns/op	1534.42 MB/s	       0 B/op	       0 allocs/op
+BenchmarkEncoderLargeResponsesStd-18        	  603452	      1980 ns/op	1535.69 MB/s	       0 B/op	       0 allocs/op
+PASS
+ok  	micro-one-api/pkg/jsonx	69.366s
+goos: darwin
+goarch: arm64
+pkg: micro-one-api/internal/apicompat
+cpu: Apple M5 Pro
+BenchmarkAnthropicToResponses-18                 	   65995	     16217 ns/op	   30706 B/op	     130 allocs/op
+BenchmarkAnthropicToResponses-18                 	   75958	     15999 ns/op	   31308 B/op	     130 allocs/op
+BenchmarkAnthropicToResponses-18                 	   76556	     15877 ns/op	   31836 B/op	     130 allocs/op
+BenchmarkResponsesToChatCompletionsRequest-18    	   85656	     14515 ns/op	   70189 B/op	     178 allocs/op
+BenchmarkResponsesToChatCompletionsRequest-18    	   83246	     14563 ns/op	   70106 B/op	     178 allocs/op
+BenchmarkResponsesToChatCompletionsRequest-18    	   82185	     14344 ns/op	   69978 B/op	     178 allocs/op
+BenchmarkAnthropicToResponsesResponse-18         	 2099598	       571.3 ns/op	     904 B/op	       9 allocs/op
+BenchmarkAnthropicToResponsesResponse-18         	 2105461	       572.9 ns/op	     904 B/op	       9 allocs/op
+BenchmarkAnthropicToResponsesResponse-18         	 2101232	       576.1 ns/op	     904 B/op	       9 allocs/op
+BenchmarkResponsesEventToSSE-18                  	  436033	      2765 ns/op	    2732 B/op	      14 allocs/op
+BenchmarkResponsesEventToSSE-18                  	  433137	      2735 ns/op	    2739 B/op	      14 allocs/op
+BenchmarkResponsesEventToSSE-18                  	  439212	      2767 ns/op	    2741 B/op	      14 allocs/op
+PASS
+ok  	micro-one-api/internal/apicompat	17.773s

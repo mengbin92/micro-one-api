@@ -63,6 +63,30 @@ scripts/benchmark/results/summary-<sha>-<timestamp>.json
 The summary should be committed or uploaded as a CI artifact; raw samples may
 remain a CI artifact when they are too large for Git.
 
+## Smoke mode
+
+`SMOKE=1` collapses the six hard-coded stages (6m+) into a ~35s run, for
+verifying the script end-to-end on any machine before a full-length run:
+
+```bash
+BASE_URL=$BASE_URL API_KEY=$API_KEY SMOKE=1 \
+  ITERATION_START_RATE=5 ITERATION_TARGET_RATE=20 \
+  k6 run scripts/benchmark/k6-baseline.js
+```
+
+The SMOKE profile is NOT comparable to the full stages — it exists only to
+verify syntax, summary export and raw output.
+
+## Known k6 quirks
+
+- `make benchmark-baseline` writes the summary via k6's native
+  `--summary-export` flag (the old `RESULTS_FILE=` env var is not read by k6
+  and produced no file).
+- On some k6 versions (observed: v2.1.0 devel), the `--summary-export` JSON
+  reports rate metrics with `passes`/`fails` swapped and unreliable
+  `thresholds` entries. Trust the stdout summary and the process exit code
+  (0 = all thresholds passed). Use the same k6 version for all comparison runs.
+
 ## Reproducibility requirements
 
 Performance conclusions must be based on runs on **Linux/amd64** with:
