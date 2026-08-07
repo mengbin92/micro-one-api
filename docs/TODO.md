@@ -259,30 +259,31 @@
 
 ## P1 — Phase 0 可观测性基线
 
-> 依据 `docs/design/BASELINE.md`。当前基线表有 16 处 TBD，需先建立量化基线，为后续优化提供对比依据。
+> 依据 `docs/design/BASELINE.md`。历史不可恢复数据已标记为 N/A；仍需在 Linux/amd64
+> 上完成 v0.16.0 与当前 develop 的可复现量化基线，为后续优化提供对比依据。
 
-### [x] 填充性能基线数据
+### [ ] 填充性能基线数据（方法已修订，Linux/amd64 运行待完成）
 
 关联基线表：[design/BASELINE.md](./design/BASELINE.md)
 
 现状：
 
-- `docs/design/BASELINE.md` 中 P50/P95/P99 延迟、错误率、吞吐量、gRPC 服务调用延迟、缓存命中率、熔断器状态均为 TBD（共 16 处）。
-- 压测脚本 `scripts/benchmark/k6-baseline.js` 已存在但未运行记录。
+- `docs/design/BASELINE.md` 已将不可恢复的历史数据标记为 `N/A — not recorded`，不再使用 TBD 占位；`v0.16.0` 与当前 develop 的 Linux/amd64 数据仍待实际采集。
+- `scripts/benchmark/k6-baseline.js` 已修复为 arrival-rate 负载模型，并新增确定性 mock upstream；当前尚未完成 Linux/amd64 运行记录。
 
 任务：
 
-- [x] 在本地或预发环境按 `BASELINE.md` 的「How to Run」章节运行 `k6-baseline.js`。
-- [x] 记录 `/healthz`、`/v1/models`、`/v1/chat/completions` 的 P50/P95/P99 与错误率。
-- [x] 记录 identity / channel / billing / log 四个 gRPC 服务的调用延迟。
-- [x] 记录 auth / channel 缓存的 L1/L2 命中率与 miss 率。
-- [x] 记录各下游服务的熔断器状态与 24h trip 次数。
-- [x] 将结果填入 `BASELINE.md` 的基线表，并写入 History 表首行。
+- [x] 修复 k6 吞吐计算、错误口径、endpoint 延迟采集和结果 summary 归档流程。
+- [x] 增加固定响应、固定 token、可配置延迟的 deterministic mock upstream。
+- [ ] 在 Linux/amd64、相同配置和相同数据集上分别运行 Phase 0、`v0.16.0` 和当前 develop，每个版本至少 3 次。
+- [ ] 记录 `/healthz`、`/v1/models`、`/v1/chat/completions` 的 P50/P95/P99 与错误率。
+- [ ] 通过 Prometheus 记录 identity / channel / billing / log gRPC 延迟、billing commit、routing selection、缓存命中率和熔断状态。
+- [ ] 将 summary JSON 纳入提交或 CI artifact，并把实际结果填入 `BASELINE.md`。
 
 验收标准：
 
-- `BASELINE.md` 中不再有 TBD 占位项。
-- 原始 `results.json` 保存归档，可在后续 Phase 对比。
+- 当前版本基线可复现，原始结果可追溯；历史不可恢复数据明确标记 N/A。
+- raw k6 samples 与 summary JSON 分离保存，summary 可提交或作为 CI artifact 下载。
 - 记录测试环境的 CPU / 内存 / Go 版本 / Kratos 版本。
 
 ## 已完成

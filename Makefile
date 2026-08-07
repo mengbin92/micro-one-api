@@ -324,6 +324,31 @@ security-fix:
 	@echo "Security fix check completed!"
 
 .PHONY: all
+.PHONY: benchmark-mock
+# start the deterministic mock upstream for k6 baseline benchmarks (blocking)
+benchmark-mock:
+	go run ./scripts/benchmark/mock-upstream -addr $${MOCK_UPSTREAM_ADDR:-127.0.0.1:18099}
+
+.PHONY: benchmark-baseline
+# run the k6 baseline benchmark against a running relay-gateway + mock upstream.
+# Requires: k6 installed, relay-gateway running on $BASE_URL, mock upstream
+# running (make benchmark-mock). Archives raw samples and a summary JSON to
+# scripts/benchmark/results/.
+benchmark-baseline:
+	@command -v k6 >/dev/null 2>&1 || { echo "k6 not found — install: brew install k6 (macOS) or https://k6.io/docs/get-started/installation/"; exit 1; }
+	@test -n "$${BASE_URL}" || { echo "set BASE_URL (e.g. export BASE_URL=http://localhost:8080)"; exit 1; }
+	@test -n "$${API_KEY}" || { echo "set API_KEY"; exit 1; }
+	@mkdir -p scripts/benchmark/results
+	@set -eu; SHA=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown); \
+	TS=$$(date +%Y%m%d-%H%M%S); \
+	RAW_FILE=scripts/benchmark/results/raw-$${SHA}-$${TS}.json; \
+	SUMMARY_FILE=scripts/benchmark/results/summary-$${SHA}-$${TS}.json; \
+	echo "Running k6 baseline against $$BASE_URL (git SHA: $$SHA)"; \
+	RESULTS_FILE=$$SUMMARY_FILE k6 run scripts/benchmark/k6-baseline.js \
+	  --out json=$$RAW_FILE; \
+	echo "Raw samples: $$RAW_FILE"; \
+	echo "Summary: $$SUMMARY_FILE"
+
 # generate all
 all: api config generate
 
