@@ -104,14 +104,47 @@ jobs:
       - name: Check deployment manifests and documentation
         run: ./scripts/check-deployment-docs.sh
 
+  services:
+    name: Load service matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      matrix-ci: ${{ steps.set-matrix-ci.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set service matrix
+        id: set-matrix
+        # Single source of truth for the service -> path/dockerfile mapping,
+        # shared by ci.yml, release.yml and dockerhub-verify.yml. Adding or
+        # renaming a service only requires editing this JSON file
+        # (.github/workflows/matrix/services.json) instead of touching every
+        # workflow, so the build/test/release matrices can never drift
+        # silently (code-review M2).
+        run: echo "matrix=$(jq -c . < .github/workflows/matrix/services.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Expand CI matrix (services x platforms)
+        id: set-matrix-ci
+        # Full cartesian product of the 9 services with the two build
+        # platforms, emitted as a single include array. A plain `include`
+        # array plus a separate `platform:` array dimension collapses to the
+        # last include entry (GitHub Actions matrix semantics), so the
+        # 9 x 2 = 18 combinations are computed explicitly here.
+        run: |
+          jq -c '
+            [ .[] as $s
+            | ("linux/amd64", "linux/arm64") as $p
+            | ($s + {platform: $p}) ]
+          ' < .github/workflows/matrix/services.json >> "$GITHUB_OUTPUT"
+
   docker:
     name: Docker Build (${{ matrix.service }} / ${{ matrix.platform }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.services.outputs.matrix) }}
-        platform: [ linux/amd64, linux/arm64 ]
+        include: ${{ fromJSON(needs.services.outputs.matrix-ci) }}
     needs: services
     steps:
       - name: Checkout code
@@ -134,21 +167,3 @@ jobs:
             SERVICE_PATH=${{ matrix.path }}
           push: false
           tags: micro-one-api/${{ matrix.service }}:ci
-
-  services:
-    name: Load service matrix
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-      - name: Set service matrix
-        id: set-matrix
-        # Single source of truth for the service -> path/dockerfile mapping,
-        # shared by ci.yml, release.yml and dockerhub-verify.yml. Adding or
-        # renaming a service only requires editing this JSON file
-        # (.github/workflows/matrix/services.json) instead of touching every
-        # workflow, so the build/test/release matrices can never drift
-        # silently (code-review M2).
-        run: echo "matrix=$(jq -c . < .github/workflows/matrix/services.json)" >> "$GITHUB_OUTPUT"
