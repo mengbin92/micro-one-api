@@ -131,12 +131,14 @@ jobs:
         # array plus a separate `platform:` array dimension collapses to the
         # last include entry (GitHub Actions matrix semantics), so the
         # 9 x 2 = 18 combinations are computed explicitly here.
+        # Echo with an explicit key prefix: $GITHUB_OUTPUT requires
+        # "key=value" lines, so the compact JSON must not be written raw.
         run: |
-          jq -c '
+          echo "matrix-ci=$(jq -c '
             [ .[] as $s
             | ("linux/amd64", "linux/arm64") as $p
             | ($s + {platform: $p}) ]
-          ' < .github/workflows/matrix/services.json >> "$GITHUB_OUTPUT"
+          ' < .github/workflows/matrix/services.json)" >> "$GITHUB_OUTPUT"
 
   docker:
     name: Docker Build (${{ matrix.service }} / ${{ matrix.platform }})
