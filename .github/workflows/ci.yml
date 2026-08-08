@@ -109,7 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      matrix-ci: ${{ steps.set-matrix-ci.outputs.matrix }}
+      matrix-ci: ${{ steps.set-matrix-ci.outputs.matrix-ci }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
