@@ -1,7 +1,9 @@
 # P3.1 — 可复现性能基线执行 Runbook(Linux/amd64)
 
 > 状态:脚本与工具链已修复并完成 arm64 smoke 验证(2026-08-07)
-> 待办:在 Linux/amd64 上执行三版本对比并回填 `docs/design/BASELINE.md`
+> **延期决策(2026-08-08)**:v0.17.0 发布不依赖 P3.1;Linux/amd64 三版本对比
+> 推迟到 v0.17.x / v0.18 独立推进(见 [v0.17 路线图 §3 P3 延期决策](./../design/v0.17-roadmap.md))。
+> 待办:在 Linux/amd64 上执行三版本对比并回填 `docs/design/BASELINE.md`(延期执行)
 > 关联:[v0.17 路线图 §P3.1](./../design/v0.17-roadmap.md) ·
 > `scripts/benchmark/README.md` · `docs/design/BASELINE.md`
 

@@ -1,7 +1,9 @@
 # P3.2 — jsonx Marshal / Encoder 性能决策
 
 > 状态:初步证据已产出(Apple Silicon arm64 微基准 + CPU profile)
-> 待办:Linux/amd64 复测后固化最终决策
+> **延期决策(2026-08-08)**:v0.17.0 发布不依赖 P3.2;Linux/amd64 复测与最终
+> 决策推迟到 v0.17.x / v0.18 独立推进(见 [v0.17 路线图 §3 P3 延期决策](./v0.17-roadmap.md))。
+> 待办:Linux/amd64 复测后固化最终决策(延期执行)
 > 关联:[v0.17 路线图 §P3.2](./v0.17-roadmap.md) · `pkg/jsonx/bench_representative_test.go` · `internal/apicompat/bench_test.go`
 
 ## 1. 背景与目标

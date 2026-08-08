@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.16.0 发布公告](./docs/releases/release-v0.16.0.md)（routing-ops 双源指标降级、P1 契约加固回归测试、cache-creation charge 切换、v0.16 收尾） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.16.0)
+> 📣 **最新发布**：[v0.17.0 发布公告](./docs/releases/release-v0.17.0.md)（v0.17 路线图 P0/P1 收尾、依赖安全修复、Docker CI 矩阵 18 job 全绿） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.17.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.17.0
+
+v0.17.0 是 v0.16.0 之后的 **MINOR 功能版本**（14 个提交），完成 v0.17 路线图 P0（工程收尾）与 P1（运营闭环）两项交付并补齐发布门禁：修复两个前端依赖安全漏洞（nanoid CVE-2026-67213、js-yaml GHSA-5p4m-2wfm-xmqj，code-scanning #270/#269）；修复 Docker CI 的 **9 服务 × 2 架构（18 job）矩阵**（原 include+platform 组合被 GitHub Actions 折叠为仅 notify-worker 2 job，现显式计算 9×2 笛卡尔积，CI run 244 全量 22 job 全绿）；新增 `make test-race` 并接入 CI、charge 后监控告警、一键对账与发布后强制失败验证脚本；升级 12 个 Actions 到 Node 24 与 CodeQL v4；加固 gross-profit 指标口径、统一 Grafana dashboard；并为 P3 性能基线与 jsonx 决策补充可复现证据。**无 API 破坏性变更、无数据库迁移、无 proto 变更**。受影响服务为全部后端服务（主要为 admin-api、relay-gateway、billing-service）。详见 [docs/releases/release-v0.17.0.md](./docs/releases/release-v0.17.0.md)。
 
 ### 升级到 v0.16.0
 

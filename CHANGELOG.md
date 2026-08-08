@@ -7,6 +7,32 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-08
+
+v0.16.0 之后的 MINOR 功能版本（14 个提交），完成 v0.17 路线图 P0（工程收尾）与 P1（运营闭环）两项交付并补齐发布门禁：修复两个前端依赖安全漏洞（nanoid CVE-2026-67213、js-yaml GHSA-5p4m-2wfm-xmqj，code-scanning #270/#269）、修复 Docker CI 的 9 服务 × 2 架构（18 job）矩阵、升级 CI 运行时与 CodeQL、加固 gross-profit 指标口径、统一 Grafana dashboard，并为 P3 性能基线与 jsonx 决策补充可复现证据。无 API 破坏性变更、无数据库迁移、无 proto 变更。详见 [release-v0.17.0.md](docs/releases/release-v0.17.0.md)。
+
+### Added
+
+- **chore(p1): complete v0.17 roadmap P1 — charge monitoring, reconciliation automation, forced-failure verification**：新增 cache-creation charge 监控告警规则 + 运行手册、`scripts/reconcile/` 一键对账（reconcile.sh / checks.go / 供应商账单模板）、发布后强制失败验证脚本（verify-forced-failure.sh + forced_failure_checks.go）与运行手册。影响 admin-api、relay-gateway、billing-service。
+- **chore(p3): P3.1 baseline harness fixes + P3.2 jsonx benchmark evidence**：k6-baseline.js 新增 SMOKE 模式、Makefile benchmark 正确落盘、P3.1 运行手册、上帝 mock upstream；pkg/jsonx 与 apicompat 代表性负载 benchmark、P3.2 决策文档（arm64 证据：Unmarshal 2.2–3.8x 快、Marshal 大负载收敛 ~5%，保留 jsonx 不回退 Marshal）。
+
+### Changed
+
+- **chore(p0): complete v0.17 roadmap P0 — CI race guard, probe logging, docs index**：新增 `make test-race` 并接入 CI；anthropic_model_probe 补结构化日志；docs 索引对齐。
+- **fix(billing): isolate gross-profit metric for tests + document scope and threshold calibration**：gross-profit 指标 registry 可注入、测试不再读共享 DefaultGatherer；文档明确口径（仅覆盖成功 write-ledger 提交）；reconcile README 补阈值校准章节。
+- **fix(monitoring): unify dashboard files to raw grafana format**：billing / relay-gateway / service-dependencies dashboard 统一为 raw grafana 格式。
+- **ci: upgrade actions to Node 24 runtimes / ci(security): upgrade codeql-action v3 -> v4**：12 个 Actions 升 Node 24 majors、CodeQL 5 处引用升 v4，消除弃用告警。
+- **chore(benchmark): repair reproducible performance baseline**：k6 吞吐口径、mock upstream、BASELINE.md 重写。
+- **docs(release): 发版流程在合并 main 前先推送 develop**：AGENTS.md 发版流程调整。
+
+### Fixed
+
+- **fix(deps): bump nanoid 3.3.16 -> 3.3.17 (CVE-2026-67213)**：修复无限循环 DoS（code-scanning #270）。影响 admin-api 前端。
+- **fix(deps): bump js-yaml to 4.3.1 (GHSA-5p4m-2wfm-xmqj)**：修复 `!!omap` 二次方 CPU DoS（code-scanning #269）。
+- **fix(ci): expand Docker matrix to full 9 services x 2 platforms (18 jobs)**：修复 include+platform 组合折叠，显式计算 9×2 笛卡尔积。
+- **fix(ci): write matrix-ci output with key prefix for GITHUB_OUTPUT**：修复 `$GITHUB_OUTPUT` 缺 `matrix-ci=` 前缀导致的解析拒绝。
+- **fix(ci): reference matrix-ci output key correctly**：修复 job output 引用 `outputs.matrix-ci` 而非 `outputs.matrix`。
+
 ## [0.16.0] - 2026-08-06
 
 v0.15.3 之后的 MINOR 功能版本（7 个提交），标志着 v0.11.0 路线图收尾阶段（P0–P3）全部完成：
