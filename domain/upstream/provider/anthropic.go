@@ -19,7 +19,7 @@ import (
 // It translates between OpenAI-compatible requests/responses and the Anthropic API format.
 type AnthropicProvider struct {
 	httpClient   *http.Client
-	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	streamClient *http.Client // no hard total timeout; response-header + idle timeouts are sliding
 	baseURL      string
 	apiKey       string
 	timeout      time.Duration
@@ -42,9 +42,9 @@ func NewAnthropicProvider(baseURL, apiKey string, timeout time.Duration) (*Anthr
 	}
 	return &AnthropicProvider{
 		httpClient: &http.Client{Timeout: timeout},
-		// domain-H3: streaming client has no Client.Timeout so SSE body reads
-		// are not killed mid-stream; cancellation is driven by the request ctx.
-		streamClient: &http.Client{},
+		// Keep active SSE streams alive beyond timeout while bounding response-header
+		// waits and periods with no upstream bytes.
+		streamClient: newStreamHTTPClient(timeout),
 		baseURL:      baseURL,
 		apiKey:       apiKey,
 		timeout:      timeout,

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,115 @@ import (
 	"testing"
 	"time"
 )
+
+func TestOpenAIProviderForwardStreamTimesOutWaitingForHeaders(t *testing.T) {
+	const streamTimeout = 100 * time.Millisecond
+	releaseUpstream := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-releaseUpstream
+	}))
+	defer func() {
+		close(releaseUpstream)
+		upstream.Close()
+	}()
+
+	provider, err := NewOpenAIProvider(upstream.URL, "sk-upstream", streamTimeout)
+	if err != nil {
+		t.Fatalf("NewOpenAIProvider: %v", err)
+	}
+
+	startedAt := time.Now()
+	_, err = provider.ForwardStream(context.Background(), &RawRequest{
+		Method: http.MethodPost,
+		Path:   "/responses",
+		Body:   []byte(`{"model":"gpt-5","stream":true}`),
+	})
+	if err == nil {
+		t.Fatal("expected response-header timeout")
+	}
+	if elapsed := time.Since(startedAt); elapsed > 5*streamTimeout {
+		t.Fatalf("response-header timeout took %v, want <= %v", elapsed, 5*streamTimeout)
+	}
+}
+
+func TestOpenAIProviderForwardStreamTimesOutWhenBodyGoesIdle(t *testing.T) {
+	const streamTimeout = 100 * time.Millisecond
+	releaseUpstream := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("data: first\n\n"))
+		w.(http.Flusher).Flush()
+		<-releaseUpstream
+	}))
+	defer func() {
+		close(releaseUpstream)
+		upstream.Close()
+	}()
+
+	provider, err := NewOpenAIProvider(upstream.URL, "sk-upstream", streamTimeout)
+	if err != nil {
+		t.Fatalf("NewOpenAIProvider: %v", err)
+	}
+	resp, err := provider.ForwardStream(context.Background(), &RawRequest{
+		Method: http.MethodPost,
+		Path:   "/responses",
+		Body:   []byte(`{"model":"gpt-5","stream":true}`),
+	})
+	if err != nil {
+		t.Fatalf("ForwardStream: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if !errors.Is(err, ErrStreamIdleTimeout) {
+		t.Fatalf("ReadAll error = %v, want ErrStreamIdleTimeout (body=%q)", err, body)
+	}
+	if string(body) != "data: first\n\n" {
+		t.Fatalf("body = %q, want first SSE event before timeout", body)
+	}
+}
+
+func TestOpenAIProviderForwardStreamKeepsActiveLongStreamAlive(t *testing.T) {
+	const streamTimeout = 150 * time.Millisecond
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := w.(http.Flusher)
+		for _, chunk := range []string{"one", "two", "three", "four", "five"} {
+			_, _ = w.Write([]byte(chunk))
+			flusher.Flush()
+			time.Sleep(streamTimeout / 3)
+		}
+	}))
+	defer upstream.Close()
+
+	provider, err := NewOpenAIProvider(upstream.URL, "sk-upstream", streamTimeout)
+	if err != nil {
+		t.Fatalf("NewOpenAIProvider: %v", err)
+	}
+	startedAt := time.Now()
+	resp, err := provider.ForwardStream(context.Background(), &RawRequest{
+		Method: http.MethodPost,
+		Path:   "/responses",
+		Body:   []byte(`{"model":"gpt-5","stream":true}`),
+	})
+	if err != nil {
+		t.Fatalf("ForwardStream: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed <= streamTimeout {
+		t.Fatalf("stream duration = %v, test must exceed hard timeout %v", elapsed, streamTimeout)
+	}
+	if string(body) != "onetwothreefourfive" {
+		t.Fatalf("body = %q", body)
+	}
+}
 
 func TestOpenAIProviderForward(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")

@@ -2,6 +2,7 @@ package server
 
 import (
 	crypto_rand "crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -10,9 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"micro-one-api/pkg/jsonx"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
+	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
 
@@ -687,11 +690,15 @@ func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStream
 	w.Header().Set("Content-Type", safeRawContentType(resp.Header.Get("Content-Type"), "text/event-stream"))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(resp.StatusCode)
+	var copyErr error
 	if flusher, ok := w.(http.Flusher); ok {
-		_, _ = io.Copy(&flushWriter{w: w, flusher: flusher, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
-		return
+		_, copyErr = io.Copy(&flushWriter{w: w, flusher: flusher, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
+	} else {
+		_, copyErr = io.Copy(&streamUsageWriter{w: w, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
 	}
-	_, _ = io.Copy(&streamUsageWriter{w: w, usageTracker: firstRawStreamUsageTracker(usageTracker)}, resp.Body)
+	if errors.Is(copyErr, relayprovider.ErrStreamIdleTimeout) {
+		applogger.Log.Warn("upstream SSE stream closed after idle timeout", zap.Error(copyErr))
+	}
 }
 
 // firstRawStreamUsageTracker returns the first tracker in a variadic list, or
