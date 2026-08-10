@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.17.1 发布公告](./docs/releases/release-v0.17.1.md)（修复上游 SSE 流卡死、滑动 idle 超时收容连接泄漏） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.17.1)
+> 📣 **最新发布**：[v0.18.0 发布公告](./docs/releases/release-v0.18.0.md)（admin 资金写路径请求级幂等，关闭双扣款资金正确性开放项） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.18.0
+
+v0.18.0 是 v0.17.1 之后的 **MINOR 功能版本**（1 个提交），完成 v0.18 路线图 P0：admin 资金写路径的**请求级幂等**（方案 B，DB 唯一键）。购买（`PurchaseSubscription`）与充值（`TopUpQuota`）的钱包扣款/充值 ledger 携带基于 `(user_id, request_id)` 的显式去重键，复用 `billing_ledgers.ledger_dedupe_key` 既有全局唯一索引作为闸门——并发同键重复请求整笔事务回滚，钱包绝不被扣两次（关闭 M6 已知边界 #1，仓库此前唯一已知的资金正确性开放项）；同时顺带修复存量 bug：购买扣款 ledger 回退到不含 user_id 的 legacy 键导致同一 group 的第二次购买（即使不同用户）唯一键冲突失败。**无数据库迁移、无新增配置项**；API additive（两份 proto 新增 `request_id` 字段）；重复请求返回 HTTP 409。受影响服务为 admin-api、billing-service（含前端购买流程）。详见 [docs/releases/release-v0.18.0.md](./docs/releases/release-v0.18.0.md)。
 
 ### 升级到 v0.17.1
 
