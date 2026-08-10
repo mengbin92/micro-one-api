@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-08-10
+
+v0.17.0 之后的 PATCH 版本（3 个提交），修复上游 SSE 流卡死导致连接泄漏的生产问题：新增滑动 idle 超时，活跃流不受影响，仅在上游连续 timeout 无字节时主动断开；收尾 P3 性能基线文档与 jsonx 最终决策（纯文档）；修复 TODO.md 相对路径错误导致的 CI markdown 链接检查失败。无 API 破坏性变更、无数据库迁移、无 proto 变更。受影响服务为 relay-gateway。详见 [release-v0.17.1.md](docs/releases/release-v0.17.1.md)。
+
+### Fixed
+
+- **fix(relay): bound stalled upstream SSE streams**：OpenAI / Anthropic / Azure / Gemini provider 的 streamClient 此前为裸 `&http.Client{}`（无超时），上游 SSE 响应 stall（建立连接后停止吐字节不断开）时 `io.Copy` 无限阻塞、仅靠 context deadline 兜底。新增 `stream_timeout.go`：ResponseHeaderTimeout 约束响应头等待，`streamIdleReadCloser` 实现滑动 idle 超时（有字节到达就重置，连续 timeout 无字节才断开），正常长流式响应不受影响；stall 断开时输出 warn 日志。影响 relay-gateway 流式路径。
+- **fix(docs): correct P31 execution report link path in TODO.md**：`docs/TODO.md` 两处相对路径多写一层 `../`（`../../scripts/...` → `../scripts/...`），导致 `check-markdown-links.py` CI 检查失败。
+
+### Changed
+
+- **chore(p3): complete P3.1 amd64 baseline + P3.2 jsonx final decision**：P3.1 Linux/amd64 三版本基线复测（v0.16.0 vs develop，3×8min k6 全负载，chat P95 116.68ms vs 116.34ms 无回退）、P3.2 jsonx 决策（amd64 上 sonic 双向胜出，保留 pkg/jsonx 不回退），归档基准数据与 CPU profile。纯文档与基准数据，无代码逻辑变更。
+
+
 ## [0.17.0] - 2026-08-08
 
 v0.16.0 之后的 MINOR 功能版本（14 个提交），完成 v0.17 路线图 P0（工程收尾）与 P1（运营闭环）两项交付并补齐发布门禁：修复两个前端依赖安全漏洞（nanoid CVE-2026-67213、js-yaml GHSA-5p4m-2wfm-xmqj，code-scanning #270/#269）、修复 Docker CI 的 9 服务 × 2 架构（18 job）矩阵、升级 CI 运行时与 CodeQL、加固 gross-profit 指标口径、统一 Grafana dashboard，并为 P3 性能基线与 jsonx 决策补充可复现证据。无 API 破坏性变更、无数据库迁移、无 proto 变更。详见 [release-v0.17.0.md](docs/releases/release-v0.17.0.md)。
