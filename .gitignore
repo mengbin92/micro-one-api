@@ -105,3 +105,4 @@ subscription-account.*.payload.json
 scripts/benchmark/results/*.json
 !scripts/benchmark/results/phase0-baseline-*.json
 !scripts/benchmark/results/summary-*.json
+scripts/benchmark/results/**/raw-*.json

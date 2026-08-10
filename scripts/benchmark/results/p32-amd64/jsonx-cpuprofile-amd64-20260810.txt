@@ -1,0 +1,8 @@
+goos: linux
+goarch: amd64
+pkg: micro-one-api/pkg/jsonx
+cpu: Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz
+BenchmarkMarshalLargeResponsesJSONX-36      	  274825	      4806 ns/op	 632.81 MB/s	    3185 B/op	       2 allocs/op
+BenchmarkUnmarshalLargeResponsesJSONX-36    	   77349	     14765 ns/op	 205.96 MB/s	    7810 B/op	      31 allocs/op
+PASS
+ok  	micro-one-api/pkg/jsonx	2.657s

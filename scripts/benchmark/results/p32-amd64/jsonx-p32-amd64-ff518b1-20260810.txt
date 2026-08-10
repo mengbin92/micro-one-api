@@ -1,0 +1,86 @@
+goos: linux
+goarch: amd64
+pkg: micro-one-api/pkg/jsonx
+cpu: Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz
+BenchmarkUnmarshalJSONX-36                  	  742455	      2068 ns/op	     346 B/op	       7 allocs/op
+BenchmarkUnmarshalJSONX-36                  	  531507	      2066 ns/op	     344 B/op	       7 allocs/op
+BenchmarkUnmarshalJSONX-36                  	  591255	      2082 ns/op	     346 B/op	       7 allocs/op
+BenchmarkUnmarshalJSONX-36                  	  559458	      2078 ns/op	     345 B/op	       7 allocs/op
+BenchmarkUnmarshalJSONX-36                  	  552813	      2069 ns/op	     348 B/op	       7 allocs/op
+BenchmarkUnmarshalStd-36                    	  146007	      7208 ns/op	     432 B/op	      12 allocs/op
+BenchmarkUnmarshalStd-36                    	  167382	      7307 ns/op	     432 B/op	      12 allocs/op
+BenchmarkUnmarshalStd-36                    	  159967	      7143 ns/op	     432 B/op	      12 allocs/op
+BenchmarkUnmarshalStd-36                    	  163836	      7161 ns/op	     432 B/op	      12 allocs/op
+BenchmarkUnmarshalStd-36                    	  169516	      7102 ns/op	     432 B/op	      12 allocs/op
+BenchmarkMarshalJSONX-36                    	  940255	      1159 ns/op	     241 B/op	       3 allocs/op
+BenchmarkMarshalJSONX-36                    	  883910	      1166 ns/op	     243 B/op	       3 allocs/op
+BenchmarkMarshalJSONX-36                    	  944419	      1140 ns/op	     240 B/op	       3 allocs/op
+BenchmarkMarshalJSONX-36                    	  954856	      1145 ns/op	     241 B/op	       3 allocs/op
+BenchmarkMarshalJSONX-36                    	  973708	      1151 ns/op	     241 B/op	       3 allocs/op
+BenchmarkMarshalStd-36                      	  724996	      1501 ns/op	     208 B/op	       2 allocs/op
+BenchmarkMarshalStd-36                      	  766021	      1502 ns/op	     208 B/op	       2 allocs/op
+BenchmarkMarshalStd-36                      	  762634	      1509 ns/op	     208 B/op	       2 allocs/op
+BenchmarkMarshalStd-36                      	  757604	      1426 ns/op	     208 B/op	       2 allocs/op
+BenchmarkMarshalStd-36                      	  765854	      1492 ns/op	     208 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesJSONX-36      	  207178	      5460 ns/op	 556.98 MB/s	    3241 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesJSONX-36      	  213416	      5460 ns/op	 556.94 MB/s	    3249 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesJSONX-36      	  209415	      5512 ns/op	 551.68 MB/s	    3244 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesJSONX-36      	  244286	      5500 ns/op	 552.90 MB/s	    3248 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesJSONX-36      	  200845	      5543 ns/op	 548.61 MB/s	    3243 B/op	       2 allocs/op
+BenchmarkMarshalLargeResponsesStd-36        	   71275	     16619 ns/op	 182.99 MB/s	    3078 B/op	       1 allocs/op
+BenchmarkMarshalLargeResponsesStd-36        	   71931	     15978 ns/op	 190.32 MB/s	    3078 B/op	       1 allocs/op
+BenchmarkMarshalLargeResponsesStd-36        	   71358	     16581 ns/op	 183.41 MB/s	    3078 B/op	       1 allocs/op
+BenchmarkMarshalLargeResponsesStd-36        	   71923	     16527 ns/op	 184.01 MB/s	    3078 B/op	       1 allocs/op
+BenchmarkMarshalLargeResponsesStd-36        	   69939	     16504 ns/op	 184.26 MB/s	    3079 B/op	       1 allocs/op
+BenchmarkUnmarshalLargeResponsesJSONX-36    	   70729	     16975 ns/op	 179.15 MB/s	    7883 B/op	      31 allocs/op
+BenchmarkUnmarshalLargeResponsesJSONX-36    	   69708	     17133 ns/op	 177.49 MB/s	    7884 B/op	      31 allocs/op
+BenchmarkUnmarshalLargeResponsesJSONX-36    	   68966	     16961 ns/op	 179.29 MB/s	    7866 B/op	      31 allocs/op
+BenchmarkUnmarshalLargeResponsesJSONX-36    	   70414	     16858 ns/op	 180.39 MB/s	    7878 B/op	      31 allocs/op
+BenchmarkUnmarshalLargeResponsesJSONX-36    	   71494	     16541 ns/op	 183.84 MB/s	    7872 B/op	      31 allocs/op
+BenchmarkUnmarshalLargeResponsesStd-36      	   15004	     80274 ns/op	  37.88 MB/s	    5841 B/op	      40 allocs/op
+BenchmarkUnmarshalLargeResponsesStd-36      	   15069	     79952 ns/op	  38.04 MB/s	    5916 B/op	      40 allocs/op
+BenchmarkUnmarshalLargeResponsesStd-36      	   15187	     79323 ns/op	  38.34 MB/s	    5813 B/op	      40 allocs/op
+BenchmarkUnmarshalLargeResponsesStd-36      	   15048	     80001 ns/op	  38.01 MB/s	    5797 B/op	      40 allocs/op
+BenchmarkUnmarshalLargeResponsesStd-36      	   15067	     76511 ns/op	  39.75 MB/s	    5746 B/op	      40 allocs/op
+BenchmarkMarshalAnthropicDeltaJSONX-36      	  431709	      2539 ns/op	 527.73 MB/s	    1515 B/op	       2 allocs/op
+BenchmarkMarshalAnthropicDeltaJSONX-36      	  437941	      2533 ns/op	 529.04 MB/s	    1529 B/op	       2 allocs/op
+BenchmarkMarshalAnthropicDeltaJSONX-36      	  440655	      2524 ns/op	 530.95 MB/s	    1520 B/op	       2 allocs/op
+BenchmarkMarshalAnthropicDeltaJSONX-36      	  435422	      2558 ns/op	 523.94 MB/s	    1523 B/op	       2 allocs/op
+BenchmarkMarshalAnthropicDeltaJSONX-36      	  443504	      2547 ns/op	 526.12 MB/s	    1522 B/op	       2 allocs/op
+BenchmarkMarshalAnthropicDeltaStd-36        	  172651	      6637 ns/op	 201.89 MB/s	    1411 B/op	       1 allocs/op
+BenchmarkMarshalAnthropicDeltaStd-36        	  173529	      6679 ns/op	 200.62 MB/s	    1411 B/op	       1 allocs/op
+BenchmarkMarshalAnthropicDeltaStd-36        	  172844	      6507 ns/op	 205.93 MB/s	    1411 B/op	       1 allocs/op
+BenchmarkMarshalAnthropicDeltaStd-36        	  168729	      6694 ns/op	 200.19 MB/s	    1411 B/op	       1 allocs/op
+BenchmarkMarshalAnthropicDeltaStd-36        	  173744	      6703 ns/op	 199.91 MB/s	    1411 B/op	       1 allocs/op
+BenchmarkMarshalAggMapSliceJSONX-36         	  128133	      9014 ns/op	  48.37 MB/s	    1063 B/op	       8 allocs/op
+BenchmarkMarshalAggMapSliceJSONX-36         	  131078	      9069 ns/op	  48.08 MB/s	    1070 B/op	       8 allocs/op
+BenchmarkMarshalAggMapSliceJSONX-36         	  128541	      9102 ns/op	  47.90 MB/s	    1061 B/op	       8 allocs/op
+BenchmarkMarshalAggMapSliceJSONX-36         	  130202	      9015 ns/op	  48.36 MB/s	    1066 B/op	       8 allocs/op
+BenchmarkMarshalAggMapSliceJSONX-36         	  131047	      9064 ns/op	  48.10 MB/s	    1065 B/op	       8 allocs/op
+BenchmarkMarshalAggMapSliceStd-36           	   57571	     20397 ns/op	  21.38 MB/s	    2180 B/op	      55 allocs/op
+BenchmarkMarshalAggMapSliceStd-36           	   57061	     20845 ns/op	  20.92 MB/s	    2180 B/op	      55 allocs/op
+BenchmarkMarshalAggMapSliceStd-36           	   57428	     20642 ns/op	  21.12 MB/s	    2180 B/op	      55 allocs/op
+BenchmarkMarshalAggMapSliceStd-36           	   57108	     20887 ns/op	  20.87 MB/s	    2180 B/op	      55 allocs/op
+BenchmarkMarshalAggMapSliceStd-36           	   57250	     21075 ns/op	  20.69 MB/s	    2180 B/op	      55 allocs/op
+BenchmarkUnmarshalAggMapSliceJSONX-36       	   90236	     13359 ns/op	  32.64 MB/s	    3337 B/op	      69 allocs/op
+BenchmarkUnmarshalAggMapSliceJSONX-36       	   89644	     13266 ns/op	  32.87 MB/s	    3322 B/op	      69 allocs/op
+BenchmarkUnmarshalAggMapSliceJSONX-36       	   89372	     12987 ns/op	  33.57 MB/s	    3331 B/op	      69 allocs/op
+BenchmarkUnmarshalAggMapSliceJSONX-36       	   88914	     13375 ns/op	  32.60 MB/s	    3336 B/op	      69 allocs/op
+BenchmarkUnmarshalAggMapSliceJSONX-36       	   90114	     13357 ns/op	  32.64 MB/s	    3325 B/op	      69 allocs/op
+BenchmarkUnmarshalAggMapSliceStd-36         	   44476	     27112 ns/op	  16.08 MB/s	    3216 B/op	      97 allocs/op
+BenchmarkUnmarshalAggMapSliceStd-36         	   44563	     27151 ns/op	  16.06 MB/s	    3216 B/op	      97 allocs/op
+BenchmarkUnmarshalAggMapSliceStd-36         	   44572	     26908 ns/op	  16.20 MB/s	    3216 B/op	      97 allocs/op
+BenchmarkUnmarshalAggMapSliceStd-36         	   44594	     26895 ns/op	  16.21 MB/s	    3216 B/op	      97 allocs/op
+BenchmarkUnmarshalAggMapSliceStd-36         	   44770	     25640 ns/op	  17.00 MB/s	    3216 B/op	      97 allocs/op
+BenchmarkEncoderLargeResponsesJSONX-36      	  171763	      6433 ns/op	 472.69 MB/s	    5269 B/op	       4 allocs/op
+BenchmarkEncoderLargeResponsesJSONX-36      	  186294	      6347 ns/op	 479.13 MB/s	    5230 B/op	       4 allocs/op
+BenchmarkEncoderLargeResponsesJSONX-36      	  165792	      6499 ns/op	 467.92 MB/s	    5225 B/op	       4 allocs/op
+BenchmarkEncoderLargeResponsesJSONX-36      	  185659	      6382 ns/op	 476.48 MB/s	    5221 B/op	       4 allocs/op
+BenchmarkEncoderLargeResponsesJSONX-36      	  159445	      6369 ns/op	 477.45 MB/s	    5229 B/op	       4 allocs/op
+BenchmarkEncoderLargeResponsesStd-36        	  168627	      6732 ns/op	 451.72 MB/s	       0 B/op	       0 allocs/op
+BenchmarkEncoderLargeResponsesStd-36        	  202665	      6211 ns/op	 489.60 MB/s	       0 B/op	       0 allocs/op
+BenchmarkEncoderLargeResponsesStd-36        	  180602	      6133 ns/op	 495.84 MB/s	       0 B/op	       0 allocs/op
+BenchmarkEncoderLargeResponsesStd-36        	  168638	      6729 ns/op	 451.89 MB/s	       0 B/op	       0 allocs/op
+BenchmarkEncoderLargeResponsesStd-36        	  167397	      6748 ns/op	 450.63 MB/s	       0 B/op	       0 allocs/op
+PASS
+ok  	micro-one-api/pkg/jsonx	111.166s

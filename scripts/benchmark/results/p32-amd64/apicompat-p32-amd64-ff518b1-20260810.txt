@@ -1,0 +1,26 @@
+goos: linux
+goarch: amd64
+pkg: micro-one-api/internal/apicompat
+cpu: Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz
+BenchmarkAnthropicToResponses-36                 	   13429	     89283 ns/op	   23907 B/op	     106 allocs/op
+BenchmarkAnthropicToResponses-36                 	   13144	     91102 ns/op	   23728 B/op	     106 allocs/op
+BenchmarkAnthropicToResponses-36                 	   13053	     91873 ns/op	   23829 B/op	     106 allocs/op
+BenchmarkAnthropicToResponses-36                 	   13125	     91857 ns/op	   23973 B/op	     106 allocs/op
+BenchmarkAnthropicToResponses-36                 	   13014	     91736 ns/op	   24104 B/op	     106 allocs/op
+BenchmarkResponsesToChatCompletionsRequest-36    	   17365	     67376 ns/op	   50130 B/op	     140 allocs/op
+BenchmarkResponsesToChatCompletionsRequest-36    	   17338	     68150 ns/op	   50328 B/op	     140 allocs/op
+BenchmarkResponsesToChatCompletionsRequest-36    	   17385	     69041 ns/op	   50224 B/op	     140 allocs/op
+BenchmarkResponsesToChatCompletionsRequest-36    	   17517	     67773 ns/op	   50563 B/op	     140 allocs/op
+BenchmarkResponsesToChatCompletionsRequest-36    	   17655	     68414 ns/op	   50475 B/op	     140 allocs/op
+BenchmarkAnthropicToResponsesResponse-36         	  459933	      2391 ns/op	     904 B/op	       9 allocs/op
+BenchmarkAnthropicToResponsesResponse-36         	  507228	      2392 ns/op	     904 B/op	       9 allocs/op
+BenchmarkAnthropicToResponsesResponse-36         	  483445	      2430 ns/op	     904 B/op	       9 allocs/op
+BenchmarkAnthropicToResponsesResponse-36         	  515745	      2437 ns/op	     904 B/op	       9 allocs/op
+BenchmarkAnthropicToResponsesResponse-36         	  478710	      2402 ns/op	     904 B/op	       9 allocs/op
+BenchmarkResponsesEventToSSE-36                  	   65838	     17827 ns/op	    2836 B/op	      14 allocs/op
+BenchmarkResponsesEventToSSE-36                  	   66740	     17737 ns/op	    2818 B/op	      14 allocs/op
+BenchmarkResponsesEventToSSE-36                  	   67387	     17762 ns/op	    2847 B/op	      14 allocs/op
+BenchmarkResponsesEventToSSE-36                  	   66063	     17901 ns/op	    2880 B/op	      14 allocs/op
+BenchmarkResponsesEventToSSE-36                  	   66589	     17357 ns/op	    2844 B/op	      14 allocs/op
+PASS
+ok  	micro-one-api/internal/apicompat	32.509s

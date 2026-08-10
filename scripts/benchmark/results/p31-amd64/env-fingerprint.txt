@@ -1,0 +1,8 @@
+x86_64
+36
+               total        used        free      shared  buff/cache   available
+内存：          31Gi       2.9Gi        18Gi       4.7Mi        10Gi        28Gi
+PRETTY_NAME="Ubuntu 24.04.4 LTS"
+NAME="Ubuntu"
+k6 v0.54.0 (commit/baba871c8a, go1.23.1, linux/amd64)
+29.4.1

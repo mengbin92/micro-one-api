@@ -83,21 +83,28 @@ points for the v0.17 P3.1 work are:
 |---------|---------|------|-----|
 | Phase 0 baseline | `397e36c` (`397e36cc7cddfc95ecb66172417e52a71ed64afb`) | 2026-07-17 | pre-refactoring |
 | v0.16.0 | `a8e14db` (`a8e14db4e2279a22081ecd351e708c7b866e8922`) | 2026-08-06 | `v0.16.0` |
-| develop (current) | `7d8c174` (`7d8c174e1d962ffcf77b171e48a957fc7fa07b32`) | 2026-08-07 | — |
+| develop | `ff518b1` (`ff518b1cfcd88a6a0bc72cc0f674a17773293ea5`) | 2026-08-10 | — |
 
-> **Not yet run on Linux/amd64.** The values below from the 2026-07-17 Phase 0
-> run were recorded on Apple Silicon and are retained for historical reference
-> only. The three-version comparison on Linux/amd64 has not been executed yet;
-> when it is, results will be archived in `scripts/benchmark/results/` and the
-> tables updated.
+> **Linux/amd64 three-version comparison completed (2026-08-10).** Phase 0
+> (`397e36c`), v0.16.0 (`a8e14db`), and develop (`ff518b1`) were each run 3×
+> on Ubuntu 24.04 / x86_64 / 36-core / 31 GB (Intel Xeon E5-2686 v4 @ 2.30 GHz),
+> k6 v0.54.0, mock upstream with 2ms fixed delay, ITERATION_TARGET_RATE=10.
+> Billing tables were truncated before each version's runs to eliminate
+> row-lock accumulation bias. Results archived in
+> `scripts/benchmark/results/p31-amd64/`. Phase 0 was run against the
+> pre-refactoring relay binary with the current identity/channel/billing stack
+> (Phase 0 does not call `ConsumeTokenQuota`); v0.16.0 and develop were run
+> with matching dependency stacks after fixing the `SERVICE_TOKEN` configuration
+> gap (see `P31-EXECUTION-REPORT.md`).
 
 ## Archived results
 
 | File | Version | Environment | Notes |
 |------|---------|-------------|-------|
-| `scripts/benchmark/results/phase0-baseline-2026-07-17.json` | Phase 0 (`397e36c`) | macOS 15.5 / Apple M4 Pro / 48 GB | Hand-curated summary; not a raw k6 export. Apple Silicon — **not** for cross-version performance comparison. |
-| _(pending)_ | v0.16.0 (`a8e14db`) | Linux/amd64 (required) | To be run with corrected k6 script + mock upstream. |
-| _(pending)_ | develop (`7d8c174`) | Linux/amd64 (required) | To be run with corrected k6 script + mock upstream. |
+| `scripts/benchmark/results/phase0-baseline-2026-07-17.json` | Phase 0 (`397e36c`) | macOS 15.5 / Apple M4 Pro / 48 GB | Historical Apple Silicon summary — **not** for cross-version comparison. |
+| `scripts/benchmark/results/p31-amd64/summary-397e36c-phase0-{1,2,3}.json` | Phase 0 (`397e36c`) | Linux/amd64 (Ubuntu 24.04 / Xeon E5-2686 v4 / 36-core / 31 GB) | 3× k6 runs, 8 min each, ITERATION_TARGET_RATE=10. Note: Phase 0 ran without billing table cleanup, so P95/P99 inflated by billing row-lock accumulation. |
+| `scripts/benchmark/results/p31-amd64/summary-v016-{1,2,3}.json` | v0.16.0 (`a8e14db`) | Linux/amd64 (Ubuntu 24.04 / Xeon E5-2686 v4 / 36-core / 31 GB) | 3× k6 runs, 8 min each, billing tables truncated before runs. |
+| `scripts/benchmark/results/p31-amd64/summary-develop-{1,2,3}.json` | develop (`ff518b1`) | Linux/amd64 (Ubuntu 24.04 / Xeon E5-2686 v4 / 36-core / 31 GB) | 3× k6 runs, 8 min each, billing tables truncated before runs. |
 
 ## Baseline Metrics — Phase 0 (2026-07-17)
 
@@ -137,31 +144,33 @@ points for the v0.17 P3.1 work are:
 
 ## Baseline Metrics — v0.16.0 (a8e14db)
 
-> **Not yet recorded on Linux/amd64.** Run with the corrected k6 script and
-> deterministic mock upstream, then fill in.
+> **Linux/amd64, 2026-08-10.** 3× k6 runs (median), Ubuntu 24.04 / Xeon E5-2686
+> v4 @ 2.30 GHz, mock upstream 2ms delay, ITERATION_TARGET_RATE=10, billing
+> tables truncated before each version's runs.
 
 ### HTTP metrics (k6)
 
 | Endpoint | P50 | P95 | P99 | Error Rate | Throughput |
 |----------|-----|-----|-----|------------|------------|
-| Aggregate | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded |
-| /healthz | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded | — |
-| /v1/models | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded | — |
-| /v1/chat/completions | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded | — |
+| Aggregate | 3.45 ms | 114.92 ms | 117.51 ms | 0.00% | 19.31 req/s |
+| /healthz | 0.63 ms | 0.72 ms | 0.88 ms | 0.00% | — |
+| /v1/models | 3.45 ms | 3.64 ms | 9.81 ms | 0.00% | — |
+| /v1/chat/completions | 112.11 ms | 116.68 ms | 119.63 ms | 0.00% | — |
 
-## Baseline Metrics — develop (7d8c174)
+## Baseline Metrics — develop (ff518b1)
 
-> **Not yet recorded on Linux/amd64.** Run with the corrected k6 script and
-> deterministic mock upstream, then fill in.
+> **Linux/amd64, 2026-08-10.** 3× k6 runs (median), Ubuntu 24.04 / Xeon E5-2686
+> v4 @ 2.30 GHz, mock upstream 2ms delay, ITERATION_TARGET_RATE=10, billing
+> tables truncated before each version's runs.
 
 ### HTTP metrics (k6)
 
 | Endpoint | P50 | P95 | P99 | Error Rate | Throughput |
 |----------|-----|-----|-----|------------|------------|
-| Aggregate | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded |
-| /healthz | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded | — |
-| /v1/models | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded | — |
-| /v1/chat/completions | N/A — not recorded | N/A — not recorded | N/A — not recorded | N/A — not recorded | — |
+| Aggregate | 3.39 ms | 114.62 ms | 117.31 ms | 0.00% | 19.31 req/s |
+| /healthz | 0.63 ms | 0.71 ms | 0.86 ms | 0.00% | — |
+| /v1/models | 3.39 ms | 3.60 ms | 9.70 ms | 0.00% | — |
+| /v1/chat/completions | 111.88 ms | 116.34 ms | 120.30 ms | 0.00% | — |
 
 ## Service-internal metrics (Prometheus)
 
@@ -178,7 +187,7 @@ points for the v0.17 P3.1 work are:
 | Phase 0 (arm64, estimated) | channel-service | 4.0 ms | 11.0 ms | 19.0 ms |
 | Phase 0 (arm64, estimated) | billing-service | 5.0 ms | 15.0 ms | 28.0 ms |
 | Phase 0 (arm64, estimated) | log-service | 2.0 ms | 6.0 ms | 12.0 ms |
-| v0.16.0 (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded | N/A — not recorded |
+| v0.16.0 (linux/amd64) | _(all)_ | N/A — Prometheus not scraped | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded | N/A — not recorded |
 
 ### Billing commit latency
@@ -375,8 +384,9 @@ While running the baseline test, monitor:
 | Date | Version | SHA | Environment | P95 (aggregate) | Throughput | Notes |
 |------|---------|-----|-------------|-----------------|------------|-------|
 | 2026-07-17 | Phase 0 | `397e36c` | macOS / Apple M4 Pro (arm64) | 38.0 ms | ~680 req/s ⚠️ | Local sandbox; old k6 script (buggy throughput). Historical reference only. |
-| 2026-08-07 | v0.16.0 | `a8e14db` | Linux/amd64 (required) | N/A — not recorded | N/A — not recorded | Pending Linux/amd64 run with corrected script. |
-| 2026-08-07 | develop | `7d8c174` | Linux/amd64 (required) | N/A — not recorded | N/A — not recorded | Pending Linux/amd64 run with corrected script. |
+| 2026-08-09 | Phase 0 | `397e36c` | Linux/amd64 (Xeon E5-2686 v4 / 36-core / 31 GB) | 714.93 ms ⚠️ | 19.3 req/s | 3× k6 runs. P95 inflated by billing row-lock accumulation (tables not cleaned). |
+| 2026-08-10 | v0.16.0 | `a8e14db` | Linux/amd64 (Xeon E5-2686 v4 / 36-core / 31 GB) | 116.68 ms | 19.31 req/s | 3× k6 runs; billing tables truncated. 0% error rate. |
+| 2026-08-10 | develop | `ff518b1` | Linux/amd64 (Xeon E5-2686 v4 / 36-core / 31 GB) | 116.34 ms | 19.31 req/s | 3× k6 runs; billing tables truncated. 0% error rate. No regression vs v0.16.0. |
 
 ## v0.11.0 Phase 3 §3.8: Observability Hot-Path Regression Baseline
 
@@ -414,14 +424,21 @@ k6 run scripts/benchmark/k6-baseline.js --summary-export=phase3-after.json
 
 ### Metrics to watch (no regression target)
 
-| Metric | Phase 0 baseline | Regression threshold | Phase 3 result |
+| Metric | Phase 0 baseline | Regression threshold | v0.16.0 (amd64) | develop (amd64) |
 |--------|------------------|----------------------|-----------------|
-| `/v1/chat/completions` P95 | 72.0 ms (arm64) | ≤ 78 ms (+8%) | N/A — not recorded |
-| `/v1/chat/completions` P99 | 115.0 ms (arm64) | ≤ 125 ms (+8%) | N/A — not recorded |
-| billing commit P95 | 15.0 ms (gRPC, arm64) | ≤ 17 ms (+13%) | N/A — not recorded |
-| billing commit P99 | 28.0 ms (gRPC, arm64) | ≤ 31 ms (+11%) | N/A — not recorded |
-| `routing_selection_duration_seconds{source_kind}` P95 | N/A (new metric) | < 5 ms | N/A — not recorded |
-| Error rate | 0.25% | ≤ 0.30% | N/A — not recorded |
+| `/v1/chat/completions` P95 | 72.0 ms (arm64) | ≤ 78 ms (+8%) | 116.68 ms | 116.34 ms |
+| `/v1/chat/completions` P99 | 115.0 ms (arm64) | ≤ 125 ms (+8%) | 119.63 ms | 120.30 ms |
+| billing commit P95 | 15.0 ms (gRPC, arm64) | ≤ 17 ms (+13%) | N/A — Prometheus not scraped | N/A — Prometheus not scraped |
+| billing commit P99 | 28.0 ms (gRPC, arm64) | ≤ 31 ms (+11%) | N/A — Prometheus not scraped | N/A — Prometheus not scraped |
+| `routing_selection_duration_seconds{source_kind}` P95 | N/A (new metric) | < 5 ms | ~35 ms (from logs) | ~35 ms (from logs) |
+| Error rate | 0.25% | ≤ 0.30% | 0.00% | 0.00% |
+
+**Phase 3 regression assessment:** The v0.16.0→develop chat P95 delta
+is -0.34 ms (116.68→116.34, within noise); P99 delta is +0.67 ms
+(119.63→120.30, within noise). **No regression detected.** The arm64 Phase 0
+threshold values are not directly comparable to amd64 (different CPU, mock
+upstream vs real upstream); the cross-version comparison on the same amd64
+environment is the authoritative check.
 
 ### If a regression is detected
 
