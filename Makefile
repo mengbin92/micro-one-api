@@ -131,8 +131,10 @@ test-unit: proto
 .PHONY: test-race
 # run concurrency-sensitive packages under the race detector. This is the CI
 # gate for data races: any race in these packages turns the build red.
+# app/billing + app/admin carry the v0.18 P0 money-path idempotency tests
+# (concurrent duplicate purchase charges once), so they are part of the gate.
 test-race:
-	go test -race ./domain/subscription/... ./internal/biz/... ./internal/server/...
+	go test -race ./domain/subscription/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/...
 
 .PHONY: run-identity
 # run identity-service

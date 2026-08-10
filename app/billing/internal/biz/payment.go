@@ -434,7 +434,11 @@ func (i *balancePaymentAssetIssuer) IssueBalance(ctx context.Context, order *Pay
 	if i == nil || i.billing == nil {
 		return errors.New("payment asset issuer is not configured")
 	}
-	_, err := i.billing.TopUpQuota(ctx, order.UserID, "payment", order.AssetAmount, "payment:"+order.TradeNo)
+	// The trade_no is carried as the idempotency requestId so the recharge
+	// ledger dedupe key is `topup:{user}:payment:{trade_no}` — a replayed
+	// callback cannot double-credit even if the MarkOrderPaid guard were
+	// bypassed (v0.18 P0 double guard).
+	_, err := i.billing.TopUpQuota(ctx, order.UserID, "payment", order.AssetAmount, "payment:"+order.TradeNo, "payment:"+order.TradeNo)
 	return err
 }
 
@@ -442,7 +446,7 @@ func (i *balancePaymentAssetIssuer) IssueBalanceInTx(ctx context.Context, tx sub
 	if i == nil || i.billing == nil {
 		return errors.New("payment asset issuer is not configured")
 	}
-	_, err := i.billing.TopUpQuotaInTx(ctx, tx, order.UserID, "payment", order.AssetAmount, "payment:"+order.TradeNo)
+	_, err := i.billing.TopUpQuotaInTx(ctx, tx, order.UserID, "payment", order.AssetAmount, "payment:"+order.TradeNo, "payment:"+order.TradeNo)
 	return err
 }
 

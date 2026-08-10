@@ -1366,14 +1366,21 @@ func (uc *BillingUsecase) BatchGetAccountSnapshots(ctx context.Context, userIDs 
 	return uc.accountRepo.BatchGetAccountSnapshots(ctx, userIDs)
 }
 
-func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID string, amount int64, remark string) (int64, error) {
+// TopUpQuota credits the user's wallet and records a recharge ledger. The
+// recharge ledger carries an explicit dedupe key derived from (user_id,
+// requestId), so a concurrent replay of the same top-up is rejected by the
+// DB unique constraint on ledger_dedupe_key and the wallet is not credited
+// twice (v0.18 P0, docs/design/v0.18-idempotency-decision.md). requestId is
+// the client's Idempotency-Key; empty means no idempotency guarantee (the
+// ledger still gets a unique auto key, never colliding with legacy rows).
+func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID string, amount int64, remark, requestId string) (int64, error) {
 	if amount <= 0 {
 		return 0, fmt.Errorf("amount must be positive")
 	}
 	if runner := uc.resolveRunner(); runner != nil {
 		var balance int64
 		if err := runner.RunInTx(ctx, func(ctx context.Context, tx subscriptionbiz.Tx) error {
-			b, err := uc.topUpQuotaInTx(ctx, tx, userID, operatorID, amount, remark)
+			b, err := uc.topUpQuotaInTx(ctx, tx, userID, operatorID, amount, remark, requestId)
 			if err != nil {
 				return err
 			}
@@ -1392,13 +1399,17 @@ func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID str
 		return 0, fmt.Errorf("update balance: %w", err)
 	}
 	ledger := &Ledger{
-		UserID:       userID,
-		Amount:       amount,
-		BalanceAfter: newBalance,
-		Type:         LedgerTypeRecharge,
-		Remark:       fmt.Sprintf("operator=%s, remark=%s", operatorID, remark),
+		UserID:          userID,
+		Amount:          amount,
+		BalanceAfter:    newBalance,
+		Type:            LedgerTypeRecharge,
+		Remark:          fmt.Sprintf("operator=%s, remark=%s", operatorID, remark),
+		LedgerDedupeKey: ledgerDedupeKeyFor(DedupeActionTopup, userID, requestId),
 	}
 	if err := uc.ledgerRepo.CreateLedger(ctx, ledger); err != nil {
+		if isDuplicateKeyError(err) {
+			return 0, ErrDuplicateRequest
+		}
 		return 0, fmt.Errorf("create ledger: %w", err)
 	}
 	return newBalance, nil
@@ -1410,15 +1421,18 @@ func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID str
 // payment issuer so the wallet credit commits or rolls back with the payment
 // order status transition, preventing the double-credit that occurred when
 // TopUpQuota opened and committed its own transaction while the outer
-// MarkOrderPaid transaction could still fail.
-func (uc *BillingUsecase) TopUpQuotaInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, operatorID string, amount int64, remark string) (int64, error) {
+// MarkOrderPaid transaction could still fail. requestId flows into the
+// ledger dedupe key exactly like TopUpQuota; the payment issuer passes
+// "payment:<trade_no>" so a replayed callback is double-guarded by both the
+// MarkOrderPaid idempotency guard and the ledger unique constraint.
+func (uc *BillingUsecase) TopUpQuotaInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, operatorID string, amount int64, remark, requestId string) (int64, error) {
 	if amount <= 0 {
 		return 0, fmt.Errorf("amount must be positive")
 	}
-	return uc.topUpQuotaInTx(ctx, tx, userID, operatorID, amount, remark)
+	return uc.topUpQuotaInTx(ctx, tx, userID, operatorID, amount, remark, requestId)
 }
 
-func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, operatorID string, amount int64, remark string) (int64, error) {
+func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, operatorID string, amount int64, remark, requestId string) (int64, error) {
 	balance, err := uc.accountRepo.IncrementBalanceInTx(ctx, tx, userID, amount)
 	if err != nil {
 		return 0, fmt.Errorf("increment balance: %w", err)
@@ -1441,13 +1455,17 @@ func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx subscriptionbiz
 		}
 	}
 	ledger := &Ledger{
-		UserID:       userID,
-		Amount:       amount,
-		BalanceAfter: balance,
-		Type:         LedgerTypeRecharge,
-		Remark:       fmt.Sprintf("operator=%s, remark=%s", operatorID, remark),
+		UserID:          userID,
+		Amount:          amount,
+		BalanceAfter:    balance,
+		Type:            LedgerTypeRecharge,
+		Remark:          fmt.Sprintf("operator=%s, remark=%s", operatorID, remark),
+		LedgerDedupeKey: ledgerDedupeKeyFor(DedupeActionTopup, userID, requestId),
 	}
 	if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, ledger); err != nil {
+		if isDuplicateKeyError(err) {
+			return 0, ErrDuplicateRequest
+		}
 		return 0, fmt.Errorf("create ledger: %w", err)
 	}
 	return balance, nil
@@ -1468,7 +1486,17 @@ func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx subscriptionbiz
 // commit or roll back together. The in-memory fallback (reservationDB()==nil)
 // keeps the legacy best-effort sequence so mock-backed unit tests still
 // exercise the usecase logic.
-func (uc *BillingUsecase) PurchaseSubscription(ctx context.Context, userID string, priceQuota, groupID int64, remark string) (int64, error) {
+//
+// v0.18 P0 (docs/design/v0.18-idempotency-decision.md): the deduction ledger
+// now carries an explicit dedupe key derived from (user_id, requestId). The DB
+// unique constraint on ledger_dedupe_key rejects a concurrent replay of the
+// same request — the second insert fails and the whole transaction (including
+// the balance deduction) rolls back, so the wallet is never charged twice.
+// requestId is the client's Idempotency-Key; empty means no idempotency
+// guarantee (a unique auto key is still used, which also fixes the legacy
+// `{group_id}:subscription:legacy` collision that blocked any second purchase
+// of the same group).
+func (uc *BillingUsecase) PurchaseSubscription(ctx context.Context, userID string, priceQuota, groupID int64, remark, requestId string) (int64, error) {
 	if priceQuota <= 0 {
 		return 0, fmt.Errorf("price quota must be positive")
 	}
@@ -1485,14 +1513,18 @@ func (uc *BillingUsecase) PurchaseSubscription(ctx context.Context, userID strin
 			return 0, err
 		}
 		ledger := &Ledger{
-			UserID:       userID,
-			Amount:       -priceQuota,
-			BalanceAfter: newBalance,
-			Type:         LedgerTypeSubscription,
-			ReferenceID:  strconv.FormatInt(groupID, 10),
-			Remark:       remark,
+			UserID:          userID,
+			Amount:          -priceQuota,
+			BalanceAfter:    newBalance,
+			Type:            LedgerTypeSubscription,
+			ReferenceID:     strconv.FormatInt(groupID, 10),
+			Remark:          remark,
+			LedgerDedupeKey: ledgerDedupeKeyFor(DedupeActionPurchase, userID, requestId),
 		}
 		if err := uc.ledgerRepo.CreateLedger(ctx, ledger); err != nil {
+			if isDuplicateKeyError(err) {
+				return 0, ErrDuplicateRequest
+			}
 			return 0, fmt.Errorf("create ledger: %w", err)
 		}
 		return newBalance, nil
@@ -1507,14 +1539,18 @@ func (uc *BillingUsecase) PurchaseSubscription(ctx context.Context, userID strin
 		}
 		newBalance = b
 		ledger := &Ledger{
-			UserID:       userID,
-			Amount:       -priceQuota,
-			BalanceAfter: newBalance,
-			Type:         LedgerTypeSubscription,
-			ReferenceID:  strconv.FormatInt(groupID, 10),
-			Remark:       remark,
+			UserID:          userID,
+			Amount:          -priceQuota,
+			BalanceAfter:    newBalance,
+			Type:            LedgerTypeSubscription,
+			ReferenceID:     strconv.FormatInt(groupID, 10),
+			Remark:          remark,
+			LedgerDedupeKey: ledgerDedupeKeyFor(DedupeActionPurchase, userID, requestId),
 		}
 		if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, ledger); err != nil {
+			if isDuplicateKeyError(err) {
+				return ErrDuplicateRequest
+			}
 			return fmt.Errorf("create ledger: %w", err)
 		}
 		return nil

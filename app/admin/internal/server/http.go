@@ -1617,6 +1617,19 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	_ = jsonx.NewEncoder(w).Encode(v)
 }
 
+// idempotencyKeyFromRequest reads the client's idempotency key from the
+// Idempotency-Key header (same protocol as the relay-gateway idempotency
+// middleware, see platform/middleware/idempotency.go). It is forwarded to the
+// billing layer for DB-level request idempotency on money-write paths
+// (v0.18 P0, docs/design/v0.18-idempotency-decision.md). Absent header yields
+// "" which the service layer maps to a non-idempotent auto key.
+func idempotencyKeyFromRequest(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	return r.Header.Get("Idempotency-Key")
+}
+
 func getQueryInt32(r *http.Request, key string, defaultVal int32) int32 {
 	s := r.URL.Query().Get(key)
 	if s == "" {
@@ -1707,6 +1720,36 @@ func sanitizeAdminError(err error) string {
 	// Non-gRPC error (database, filesystem, etc.): never leak the raw message.
 	log.Printf("admin handler internal error: %v", err)
 	return "internal server error, please try again later"
+}
+
+// httpStatusForAdminError maps an admin/service error to the HTTP status code
+// for the write-path handlers. Downstream gRPC status codes carry the semantic
+// (duplicate idempotency key -> 409 Conflict, v0.18 P0 design §5.4; not found
+// -> 404; invalid -> 400); everything else keeps the legacy 200 +
+// success:false business-failure shape so existing clients are unaffected.
+func httpStatusForAdminError(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+	if errors.Is(err, service.ErrSubscriptionServiceNotConfigured) {
+		return http.StatusNotImplemented
+	}
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.AlreadyExists:
+			return http.StatusConflict
+		case codes.NotFound:
+			return http.StatusNotFound
+		case codes.InvalidArgument, codes.FailedPrecondition:
+			return http.StatusBadRequest
+		case codes.PermissionDenied:
+			return http.StatusForbidden
+		case codes.Unauthenticated:
+			return http.StatusUnauthorized
+		}
+	}
+	// Local/business errors keep the legacy 200 + success:false shape.
+	return http.StatusOK
 }
 
 // logEntryToJSON converts a proto LogEntry to a camelCase JSON map for frontend compatibility.
@@ -3641,6 +3684,9 @@ func handleTopUp(w http.ResponseWriter, r *http.Request, svc *service.AdminServi
 	if !decodeBody(w, r, &req) {
 		return
 	}
+	// Inject the client idempotency key into the request before delegating so
+	// the gRPC path and the HTTP path carry the same field (v0.18 P0).
+	req.RequestId = idempotencyKeyFromRequest(r)
 	resp, err := svc.TopUpQuota(r.Context(), &req)
 	writeServiceResponse(w, resp, err)
 }
@@ -3724,6 +3770,14 @@ type successErrorMessage interface {
 
 func writeServiceResponse(w http.ResponseWriter, resp interface{}, err error) {
 	if err != nil {
+		// A gRPC AlreadyExists from a downstream service is an idempotency
+		// conflict (duplicate Idempotency-Key, v0.18 P0 §5.4): surface it as
+		// 409 with the business message. Other transport/unknown errors keep
+		// the generic 500.
+		if st, ok := status.FromError(err); ok && st.Code() == codes.AlreadyExists {
+			writeJSON(w, http.StatusConflict, apiResponse(false, sanitizeAdminError(err), nil))
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}

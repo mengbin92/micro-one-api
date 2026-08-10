@@ -95,17 +95,32 @@ func (s *AdminService) SetSubscriptionUsecases(subscriptionUc *subscriptionbiz.S
 	}
 }
 
-// TopUpQuota 充值
+// TopUpQuota 充值。req.RequestId 是客户端 Idempotency-Key(HTTP 层从
+// Idempotency-Key 头注入),透传给 billing 作为 recharge ledger 的幂等键,
+// 同 (user_id, request_id) 的并发重复充值被 DB 唯一约束拦截(v0.18 P0,
+// 见 docs/design/v0.18-idempotency-decision.md);空键时 billing 侧生成
+// auto 键(不幂等,兼容旧客户端)。
 func (s *AdminService) TopUpQuota(ctx context.Context, req *adminv1.TopUpQuotaRequest) (*adminv1.TopUpQuotaResponse, error) {
+	requestID, err := normalizeRequestID(req.RequestId)
+	if err != nil {
+		return &adminv1.TopUpQuotaResponse{Success: false, ErrorMessage: err.Error()}, nil
+	}
 	billingReq := &billingv1.TopUpQuotaRequest{
 		UserId:     req.UserId,
 		Amount:     req.Amount,
 		OperatorId: req.OperatorId,
 		Remark:     req.Remark,
+		RequestId:  requestID,
 	}
 
 	resp, err := s.billingClient.TopUpQuota(ctx, billingReq)
 	if err != nil {
+		// Idempotency conflict: pass the gRPC AlreadyExists through so the
+		// HTTP layer maps it to 409 Conflict (v0.18 P0 design §5.4) instead of
+		// swallowing it into a Success:false business response (HTTP 200).
+		if st, ok := status.FromError(err); ok && st.Code() == codes.AlreadyExists {
+			return nil, status.Error(codes.AlreadyExists, st.Message())
+		}
 		st, ok := status.FromError(err)
 		if ok {
 			return &adminv1.TopUpQuotaResponse{

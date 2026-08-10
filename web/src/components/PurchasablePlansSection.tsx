@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Check, Loader2, Wallet } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api';
 import { EmptyState } from '@/components/EmptyState';
@@ -65,6 +65,12 @@ export function PurchasablePlansSection() {
   const userId = localStorage.getItem('userId');
   const queryClient = useQueryClient();
   const [pendingPlan, setPendingPlan] = useState<PurchasableGroup | null>(null);
+  // Session-scoped idempotency key (v0.18 P0): generated once per purchase
+  // intent and reused across retries of that intent, so a double-fired or
+  // retried request carries the same key and the backend (billing ledger
+  // unique constraint) dedupes it instead of creating duplicate payment
+  // orders / charging twice. Cleared once the intent definitively finishes.
+  const purchaseKeyRef = useRef<string | null>(null);
 
   // Shared query key with SubscriptionsPage so both views stay in sync without
   // a duplicate network request (react-query dedupes identical queryKeys).
@@ -89,16 +95,26 @@ export function PurchasablePlansSection() {
 
   const purchase = useMutation({
     mutationFn: async ({ groupId }: PurchaseVariables) => {
-      const res = await apiClient.post('/v1/subscriptions/purchase/payment', {
-        group_id: groupId,
-        channel: 'alipay',
-      });
+      if (!purchaseKeyRef.current) {
+        purchaseKeyRef.current = crypto.randomUUID();
+      }
+      const res = await apiClient.post(
+        '/v1/subscriptions/purchase/payment',
+        {
+          group_id: groupId,
+          channel: 'alipay',
+        },
+        { headers: { 'Idempotency-Key': purchaseKeyRef.current } }
+      );
       if (res.data?.success === false) {
         throw new Error(res.data?.message || '购买失败');
       }
       return (res.data?.data ?? {}) as PurchaseResponse;
     },
     onSuccess: (data, variables) => {
+      // The intent is definitively done (order created or subscription
+      // granted): a fresh key is fine for the next purchase.
+      purchaseKeyRef.current = null;
       if (data.subscription) {
         variables.paymentWindow?.close();
         toast.success('订阅购买成功');
@@ -131,6 +147,14 @@ export function PurchasablePlansSection() {
     },
     onError: (error: Error, variables) => {
       variables.paymentWindow?.close();
+      // 409 = the server already processed this key (duplicate request): the
+      // intent is resolved, drop the key so a fresh purchase can start.
+      // Other errors (timeout / 5xx) keep the key so the user's retry is
+      // deduped against the possibly-already-processed first attempt.
+      const status = (error as { response?: { status?: number } }).response?.status;
+      if (status === 409) {
+        purchaseKeyRef.current = null;
+      }
       toast.error(error.message || '购买失败');
     },
   });
