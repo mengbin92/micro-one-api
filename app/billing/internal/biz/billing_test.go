@@ -640,7 +640,7 @@ func TestTopUpQuota_Success(t *testing.T) {
 
 	uc := NewBillingUsecase(accountRepo, reservationRepo, ledgerRepo, redeemRepo, nil)
 
-	newQuota, err := uc.TopUpQuota(context.Background(), "user1", "admin", 500, "test topup")
+	newQuota, err := uc.TopUpQuota(context.Background(), "user1", "admin", 500, "test topup", "req-1")
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(1500), newQuota)
@@ -648,6 +648,9 @@ func TestTopUpQuota_Success(t *testing.T) {
 	assert.Len(t, ledgerRepo.ledgers, 1)
 	assert.Equal(t, LedgerTypeRecharge, ledgerRepo.ledgers[0].Type)
 	assert.Equal(t, int64(500), ledgerRepo.ledgers[0].Amount)
+	// v0.18 P0: the recharge ledger must carry the explicit (user, request)
+	// dedupe key so the DB unique constraint can reject duplicate top-ups.
+	assert.Equal(t, "topup:user1:req-1", ledgerRepo.ledgers[0].LedgerDedupeKey)
 }
 
 // 测试创建兑换码

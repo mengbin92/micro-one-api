@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-10
+
+v0.17.1 之后的 MINOR 功能版本（1 个提交），完成 v0.18 路线图 P0：admin 资金写路径的请求级幂等（方案 B，DB 唯一键）。购买（`PurchaseSubscription`）与充值（`TopUpQuota`）的钱包扣款/充值 ledger 携带基于 `(user_id, request_id)` 的显式去重键，复用 `billing_ledgers.ledger_dedupe_key` 既有全局唯一索引作为闸门——并发同键重复请求整笔事务回滚，钱包绝不被扣两次（关闭 M6 已知边界 #1）。同时顺带修复存量 bug：购买扣款 ledger 回退到不含 user_id 的 legacy 键导致同一 group 的第二次购买（即使不同用户）唯一键冲突失败。**无数据库迁移、无新增配置项**；API additive（两份 proto 新增 `request_id` 字段）。受影响服务为 admin-api、billing-service（含前端购买流程）。详见 [release-v0.18.0.md](docs/releases/release-v0.18.0.md)。
+
+### Added
+
+- **feat(billing): v0.18 P0 request-level idempotency for admin money paths**：购买/充值 ledger 显式携带 `(user_id, request_id)` 去重键（`{action}:{user_id截断48}:{request_id≤100}`），复用 `ledger_dedupe_key` 全局唯一索引；并发同键第二次 INSERT 唯一约束冲突 → 整笔事务回滚，钱包不被扣两次。客户端发送 `Idempotency-Key` 头（与 relay 同协议），空键映射 `auto:{hex}`（legacy 兼容）；重复请求 → gRPC `AlreadyExists` → HTTP 409。前端购买流程携带 session 级 `Idempotency-Key`。新增 `ErrDuplicateRequest`、`make test-race` 覆盖 app/billing + app/admin。修复 legacy 去重键冲突 bug（同一 group 多用户可各自购买）。影响 admin-api、billing-service。
+
 ## [0.17.1] - 2026-08-10
 
 v0.17.0 之后的 PATCH 版本（3 个提交），修复上游 SSE 流卡死导致连接泄漏的生产问题：新增滑动 idle 超时，活跃流不受影响，仅在上游连续 timeout 无字节时主动断开；收尾 P3 性能基线文档与 jsonx 最终决策（纯文档）；修复 TODO.md 相对路径错误导致的 CI markdown 链接检查失败。无 API 破坏性变更、无数据库迁移、无 proto 变更。受影响服务为 relay-gateway。详见 [release-v0.17.1.md](docs/releases/release-v0.17.1.md)。

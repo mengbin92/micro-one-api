@@ -157,7 +157,12 @@ func isPurchasablePlan(p *subscriptionbiz.SubscriptionPlan) bool {
 // The active-subscription pre-check in step 1 keeps the common "already
 // subscribed" rejection from ever taking money, so the refund path in step 4 is
 // reserved for genuinely rare failures (a race or a DB error).
-func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID int64) (*subscriptionbiz.UserSubscription, error) {
+//
+// requestID is the client's Idempotency-Key, forwarded to billing as the
+// purchase ledger dedupe key so a concurrent replay of the same request cannot
+// double-charge the wallet (v0.18 P0). An empty requestID yields an auto key
+// (no idempotency guarantee, legacy-compatible).
+func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID int64, requestID string) (*subscriptionbiz.UserSubscription, error) {
 	if s == nil || s.subscriptionUc == nil || s.groupUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
 	}
@@ -166,6 +171,10 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 	}
 	if userID <= 0 {
 		return nil, fmt.Errorf("invalid user id")
+	}
+	requestID, err := normalizeRequestID(requestID)
+	if err != nil {
+		return nil, err
 	}
 
 	group, err := s.groupUc.Get(ctx, groupID)
@@ -187,6 +196,7 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 		PriceAmount: group.PriceQuota,
 		GroupId:     group.ID,
 		Remark:      remark,
+		RequestId:   requestID,
 	})
 	if err != nil {
 		return nil, err
@@ -212,7 +222,7 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 	return sub, nil
 }
 
-func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, planID int64) (*subscriptionbiz.UserSubscription, error) {
+func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, planID int64, requestID string) (*subscriptionbiz.UserSubscription, error) {
 	if s == nil || s.subscriptionUc == nil || s.groupUc == nil || s.planUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
 	}
@@ -221,6 +231,10 @@ func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, pla
 	}
 	if userID <= 0 {
 		return nil, fmt.Errorf("invalid user id")
+	}
+	requestID, err := normalizeRequestID(requestID)
+	if err != nil {
+		return nil, err
 	}
 	plan, err := s.planUc.Get(ctx, planID)
 	if err != nil {
@@ -240,6 +254,7 @@ func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, pla
 		PriceAmount: plan.PriceQuota,
 		GroupId:     plan.GroupID,
 		Remark:      remark,
+		RequestId:   requestID,
 	})
 	if err != nil {
 		return nil, err
@@ -369,16 +384,23 @@ func (s *AdminService) ExtendSubscription(ctx context.Context, id int64, expires
 //   - next-cycle downgrade: record a pending_change applied at the next
 //     renewal; no wallet movement.
 //
-// The operator id is the admin who triggered the change.
+// The operator id is the admin who triggered the change. requestID is the
+// client's Idempotency-Key, forwarded to billing for the upgrade-difference
+// charge so concurrent replays of the same change request cannot double-charge
+// (v0.18 P0); empty yields an auto key (no idempotency guarantee).
 //
 // Review H7+H8 fix: previously the admin layer delegated to the subscription
 // usecase without charging the wallet, so upgrades were free while the
 // subscription metadata recorded a charged amount — a fabricated audit entry.
 // Now the wallet charge happens here, before ChangeSubscription, and the
 // ChargeResult.ChargedQuota only reflects a real charge.
-func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionbiz.ChangeRequest) (*subscriptionbiz.ChangeResult, error) {
+func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionbiz.ChangeRequest, requestID string) (*subscriptionbiz.ChangeResult, error) {
 	if s == nil || s.subscriptionUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
+	}
+	requestID, err := normalizeRequestID(requestID)
+	if err != nil {
+		return nil, err
 	}
 	// Review M7 fix: server-side price validation. When the target plan is
 	// specified, load it and verify the requested NewPriceQuota matches the
@@ -429,6 +451,7 @@ func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionb
 				PriceAmount: charged,
 				GroupId:     req.ToGroupID,
 				Remark:      remark,
+				RequestId:   requestID,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("charge upgrade difference: %w", err)

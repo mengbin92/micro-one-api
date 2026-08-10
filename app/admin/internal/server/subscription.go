@@ -12,6 +12,8 @@ import (
 	"micro-one-api/app/admin/internal/service"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/platform/audit"
+
+	"google.golang.org/grpc/status"
 )
 
 func handleCurrentSubscriptionProgress(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -79,10 +81,11 @@ func handlePurchaseSubscription(w http.ResponseWriter, r *http.Request, svc *ser
 	}
 	var sub interface{}
 	var err error
+	idemKey := idempotencyKeyFromRequest(r)
 	if req.PlanID > 0 {
-		sub, err = svc.PurchaseSubscriptionPlan(r.Context(), userID, req.PlanID)
+		sub, err = svc.PurchaseSubscriptionPlan(r.Context(), userID, req.PlanID, idemKey)
 	} else {
-		sub, err = svc.PurchaseSubscription(r.Context(), userID, req.GroupID)
+		sub, err = svc.PurchaseSubscription(r.Context(), userID, req.GroupID, idemKey)
 	}
 	writeSubscriptionResponse(w, sub, err)
 }
@@ -311,11 +314,15 @@ func handleSubscriptionPlanByID(w http.ResponseWriter, r *http.Request, svc *ser
 
 func writeSubscriptionResponse(w http.ResponseWriter, data interface{}, err error) {
 	if err != nil {
-		status := http.StatusOK
-		if errors.Is(err, service.ErrSubscriptionServiceNotConfigured) {
-			status = http.StatusNotImplemented
+		// gRPC status errors carry HTTP semantics (409 for a duplicate
+		// idempotency key, v0.18 P0 §5.4); their message is extracted without
+		// the "rpc error: code = ..." transport prefix. Local business errors
+		// keep the legacy 200 + success:false shape with the raw message.
+		msg := err.Error()
+		if _, isGRPC := status.FromError(err); isGRPC {
+			msg = sanitizeAdminError(err)
 		}
-		writeJSON(w, status, apiResponse(false, err.Error(), nil))
+		writeJSON(w, httpStatusForAdminError(err), apiResponse(false, msg, nil))
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", normalizeSubscriptionResponse(data)))
@@ -323,6 +330,16 @@ func writeSubscriptionResponse(w http.ResponseWriter, data interface{}, err erro
 
 // handlePurchaseSubscriptionWithPayment lets an authenticated user create a
 // payment order for a subscription purchase.
+//
+// Idempotency note (v0.18 P0, design §5.5 / §6): the client already sends an
+// Idempotency-Key header on this path (see web/src/components/
+// PurchasablePlansSection.tsx), but this handler does NOT consume it. Payment
+// order creation is path #3 in the design: dedupe is deferred to the plan-A
+// idempotency middleware (v0.18 follow-up), no DB structure is added here, and
+// duplicate orders are not a fund-loss vector (each order maps to real
+// payment). Once the middleware lands, this handler inherits replay behaviour
+// with no further change. Do not remove the client-side header — it is the
+// agreed protocol.
 func handlePurchaseSubscriptionWithPayment(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -678,9 +695,15 @@ func handleChangeSubscription(w http.ResponseWriter, r *http.Request, svc *servi
 		OldPriceQuota:      req.OldPriceQuota,
 		Policy:             req.Policy,
 		Operator:           adminOperatorIDFromRequest(r),
-	})
+	}, idempotencyKeyFromRequest(r))
 	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
+		// Map downstream gRPC semantics (409 for a duplicate idempotency
+		// key, v0.18 P0 §5.4); business errors keep 200 + success:false.
+		msg := err.Error()
+		if _, isGRPC := status.FromError(err); isGRPC {
+			msg = sanitizeAdminError(err)
+		}
+		writeJSON(w, httpStatusForAdminError(err), apiResponse(false, msg, nil))
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{

@@ -246,8 +246,15 @@ func (s *BillingService) BatchGetAccountSnapshots(ctx context.Context, req *bill
 }
 
 func (s *BillingService) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuotaRequest) (*billingv1.TopUpQuotaResponse, error) {
-	newQuota, err := s.uc.TopUpQuota(ctx, req.UserId, req.OperatorId, req.Amount, req.Remark)
+	newQuota, err := s.uc.TopUpQuota(ctx, req.UserId, req.OperatorId, req.Amount, req.Remark, req.RequestId)
 	if err != nil {
+		// Idempotency conflict must surface as a gRPC AlreadyExists error so
+		// the caller (admin-api) can map it to HTTP 409 Conflict instead of a
+		// business failure (v0.18 P0 design §5.4). Swallowing it into
+		// Success:false would lose the error type and yield HTTP 200.
+		if errors.Is(err, biz.ErrDuplicateRequest) {
+			return nil, status.Error(codes.AlreadyExists, err.Error())
+		}
 		return &billingv1.TopUpQuotaResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),
@@ -261,8 +268,13 @@ func (s *BillingService) TopUpQuota(ctx context.Context, req *billingv1.TopUpQuo
 }
 
 func (s *BillingService) PurchaseSubscription(ctx context.Context, req *billingv1.PurchaseSubscriptionRequest) (*billingv1.PurchaseSubscriptionResponse, error) {
-	newQuota, err := s.uc.PurchaseSubscription(ctx, req.UserId, req.PriceAmount, req.GroupId, req.Remark)
+	newQuota, err := s.uc.PurchaseSubscription(ctx, req.UserId, req.PriceAmount, req.GroupId, req.Remark, req.RequestId)
 	if err != nil {
+		// Same as TopUpQuota: surface the idempotency conflict as gRPC
+		// AlreadyExists so the caller maps it to HTTP 409 (v0.18 P0 §5.4).
+		if errors.Is(err, biz.ErrDuplicateRequest) {
+			return nil, status.Error(codes.AlreadyExists, err.Error())
+		}
 		return &billingv1.PurchaseSubscriptionResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),

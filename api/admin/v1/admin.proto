@@ -131,6 +131,10 @@ message TopUpQuotaRequest {
   int64 amount = 2;
   string operator_id = 3;
   string remark = 4;
+  // request_id is the client's Idempotency-Key, forwarded to billing as the
+  // recharge ledger dedupe key so concurrent duplicate top-ups cannot
+  // double-credit (v0.18 P0). Empty = no idempotency guarantee.
+  string request_id = 5;
 }
 
 message TopUpQuotaResponse {

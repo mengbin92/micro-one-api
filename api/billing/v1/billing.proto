@@ -189,6 +189,12 @@ message TopUpQuotaRequest {
   int64 amount = 2;
   string operator_id = 3;
   string remark = 4;
+  // request_id is the client-supplied idempotency key (from the
+  // Idempotency-Key header). Replays with the same (user_id, request_id)
+  // are rejected by the DB unique constraint on the recharge ledger dedupe
+  // key, so concurrent duplicate top-ups cannot double-credit the wallet.
+  // Empty when the client did not send a key (no idempotency guarantee).
+  string request_id = 5;
 }
 
 message TopUpQuotaResponse {
@@ -206,6 +212,13 @@ message PurchaseSubscriptionRequest {
   int64 price_amount = 2;
   int64 group_id = 3;
   string remark = 4;
+  // request_id is the client-supplied idempotency key (from the
+  // Idempotency-Key header). The wallet-deduction ledger carries an explicit
+  // dedupe key derived from (user_id, request_id); the DB unique constraint
+  // rejects a concurrent replay of the same request so the wallet cannot be
+  // charged twice (v0.18 P0, see docs/design/v0.18-idempotency-decision.md).
+  // Empty when the client did not send a key (no idempotency guarantee).
+  string request_id = 5;
 }
 
 message PurchaseSubscriptionResponse {
