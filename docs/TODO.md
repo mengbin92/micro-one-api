@@ -275,7 +275,7 @@
 - `docs/design/BASELINE.md` 已回填 v0.16.0（`a8e14db`）与 develop（`ff518b1`）的
   Linux/amd64 k6 HTTP 层基线数据；Phase 0（`397e36c`）保留 2026-08-09 历史数据，
   标注为参考（billing 表未清理，P95 被行锁竞争放大，不可直接对比绝对值）。
-- 执行报告：[scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md](../../scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md)
+- 执行报告：[scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md](../scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md)
 - 初次执行受阻根因：deployed docker-compose `&svc-env` 锚点漏配 `SERVICE_TOKEN`，
   导致 `ConsumeTokenQuota` 返回 PermissionDenied、relay 拉黑 token；2026-08-10
   补齐后三版本全部完成。
@@ -885,7 +885,7 @@ OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减�
   - [x] **Linux/amd64 三版本对比 ×3 次**（Phase 0 `397e36c` 历史数据参考 /
         v0.16.0 `a8e14db` / develop `ff518b1` 各 3 次全量），执行报告见
         [docs/runbooks/performance-baseline-p31.md](./runbooks/performance-baseline-p31.md)
-        与 [scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md](../../scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md)；
+        与 [scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md](../scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md)；
         `docs/design/BASELINE.md` 已回填。结论：v0.16.0 → develop **无性能回归**
         （chat P95 116.68→116.34 ms，差异 ±1% 噪声范围，0% 错误率）。
 - [x] **P3.2 jsonx Marshal/Encoder 性能决策（Linux/amd64 复核已完成）**：
