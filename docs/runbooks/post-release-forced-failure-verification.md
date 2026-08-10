@@ -153,3 +153,29 @@ curl -X PUT -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: applicatio
 
 - 告警与 SQL 口径：[cache-creation-charge-monitoring.md](./cache-creation-charge-monitoring.md)
 - 周期对账：[scripts/reconcile/README.md](../../scripts/reconcile/README.md)
+
+## 六、执行记录（2026-08-10，v0.18 P1 C7）
+
+> 状态：**尝试执行，环境前置不满足，验证延后**（非跳过——已核对生产环境事实并归档，待前置条件满足后补跑）。
+
+**执行内容**：发布 v0.17.1 后（生产 `root@43.133.65.212`，`/opt/micro-one-api`），按本 runbook §二
+尝试执行 `scripts/verify-forced-failure.sh`。preflight 前先核对生产环境事实：
+
+| 检查项 | 生产实况（2026-08-10 查询） | 结论 |
+|--------|------------------------------|------|
+| `subscription_accounts` | **0 行**（oneapi / oneapi_channel 均空） | 无订阅账号可禁用（场景二无对象） |
+| 渠道 | 3 个（id 1 test / 6 NVIDIA / 7 sophnet），状态启用 | 存在，但无订阅账号可作回退源（场景一无回退对） |
+| 模型-渠道映射 | `models`、`model_channel_mapping`、`model_routings` 均 **0 行** | 路由未走 DB 映射（relay 配置侧），无法确认渠道间共享模型的回退对 |
+| 服务健康 | admin-api(:3000)、relay-gateway(:8080) 可达；billing 对账链路全通（见 C6 记录） | 环境本身健康 |
+
+**判定**：runbook §二前置条件「普通渠道与订阅账号均已配置且可互相回退」**不满足**
+（生产为纯普通渠道模式、无订阅账号体系）。强行执行只会禁用渠道后无回退目标，
+无法得出有效结论且有影响生产流量的风险。**验证延后**。
+
+**延后触发条件**（满足其一即补跑，归档于发布说明）：
+1. 生产配置首个订阅账号并建立与普通渠道的回退对（同模型可被渠道与订阅账号共同服务）；
+2. 或确认渠道间共享模型回退对后，以适配版执行（serving-kind=channel，禁用渠道 A 断言回退到渠道 B）。
+
+**本次已完成的等价验证**：对账链路（触发 `POST /v1/reconciliation` + DB 侧检查）在生产
+真实数据上全通（dedupe key 0 重复 / unpriced 0 / 毛利为正 / 缓存命中 100%），
+见 [scripts/reconcile/README.md 首周期校准记录](../../scripts/reconcile/README.md)。
