@@ -1,9 +1,9 @@
 # P3.2 — jsonx Marshal / Encoder 性能决策
 
 > 状态:初步证据已产出(Apple Silicon arm64 微基准 + CPU profile)
-> **延期决策(2026-08-08)**:v0.17.0 发布不依赖 P3.2;Linux/amd64 复测与最终
-> 决策推迟到 v0.17.x / v0.18 独立推进(见 [v0.17 路线图 §3 P3 延期决策](./v0.17-roadmap.md))。
-> 待办:Linux/amd64 复测后固化最终决策(延期执行)
+> **已决策(2026-08-10)**:Linux/amd64 复测完成,sonic 在 Marshal 和 Unmarshal 方向均全面优于 std。
+> 最终决策:**保留 `pkg/jsonx` 单一封装层,不回退任何方向到 `encoding/json`。**
+> 已完成:Linux/amd64 代表性负载微基准(count=5)+ CPU profile,最终决策已固化。
 > 关联:[v0.17 路线图 §P3.2](./v0.17-roadmap.md) · `pkg/jsonx/bench_representative_test.go` · `internal/apicompat/bench_test.go`
 
 ## 1. 背景与目标
@@ -32,9 +32,52 @@ v0.15.3 将全仓库 JSON 序列化统一收敛到 `pkg/jsonx`(底层 sonic `Con
 - 环境:**Apple M5 Pro / darwin / arm64 / go1.26.5** — 本文件数据仅作方法验证与方向
   参考,不作最终结论;归档于 `scripts/benchmark/results/jsonx-p32-arm64-*.txt`。
 
-## 3. 结果(中位数,arm64)
+## 3. 结果
 
-### 3.1 pkg/jsonx 对比(sonic ConfigStd vs encoding/json)
+### 3.0 Linux/amd64 复测结果(2026-08-10,最终决策依据)
+
+> 环境:Intel Xeon E5-2686 v4 @ 2.30 GHz / Ubuntu 24.04 / go1.26 / 36 核 / 31 GB
+> count=5 取中位数,归档于 `scripts/benchmark/results/p32-amd64/`
+
+
+#### pkg/jsonx 对比(sonic ConfigStd vs encoding/json)— Linux/amd64
+
+| Benchmark | jsonx (sonic) | std (encoding/json) | jsonx/std | 方向 |
+|-----------|---------------|---------------------|-----------|------|
+| Unmarshal 小请求 | 2069 ns / 7 allocs | 7161 ns / 12 allocs | 0.29x | **jsonx 快 3.46x** |
+| Marshal 小请求 | 1151 ns / 3 allocs | 1501 ns / 2 allocs | 0.77x | **jsonx 快 1.30x** |
+| Marshal LargeResponses (~3KB) | 5500 ns / 2 allocs | 16527 ns / 1 allocs | 0.33x | **jsonx 快 3.00x** |
+| Unmarshal LargeResponses | 16961 ns / 31 allocs | 79952 ns / 40 allocs | 0.21x | **jsonx 快 4.71x** |
+| Marshal AnthropicDelta (~1.3KB) | 2539 ns / 2 allocs | 6679 ns / 1 allocs | 0.38x | **jsonx 快 2.63x** |
+| Marshal AggMapSlice | 9064 ns / 8 allocs | 20845 ns / 55 allocs | 0.43x | **jsonx 快 2.30x** |
+| Unmarshal AggMapSlice | 13357 ns / 69 allocs | 26908 ns / 97 allocs | 0.50x | **jsonx 快 2.01x** |
+| Encoder LargeResponses | 6382 ns / 4 allocs | 6729 ns / 0 allocs | 0.95x | **jsonx 快 1.05x**(持平,差距<5%) |
+
+> **关键发现:在 Linux/amd64 上,sonic 在所有 Marshal 和 Unmarshal 场景均优于或持平 encoding/json。**
+> 这与 arm64 的初步结论(Marshal 慢 2.1x)完全相反——原因是 arm64 的 sonic neon 汇编
+> 路径在 Marshal 方向有开销,而 amd64 的 SSE/AVX 路径在 Marshal 方向同样高效。
+> 小请求 Marshal jsonx 快 1.30x(1151 vs 1501 ns);大请求 Marshal jsonx 快 3.0x(5500 vs 16527 ns)。
+
+#### apicompat 热路径整体吞吐(sonic,无 std 对比)— Linux/amd64
+
+| 转换 | ns/op | allocs/op |
+|------|-------|-----------|
+| AnthropicToResponses(带 tools + 3 消息) | ~91.7 µs | 106 |
+| ResponsesToChatCompletionsRequest | ~68.2 µs | 140 |
+| AnthropicToResponsesResponse | ~2.4 µs | 9 |
+| ResponsesEventToSSE(流式逐事件) | ~17.8 µs | 14 |
+
+#### CPU profile(Marshal + Unmarshal 大响应,Linux/amd64)
+
+热点为 sonic 的 encode/decode 汇编路径:`_quote`(8.93%)、`decode_`(5.36%)、
+`encode_apicompat.ResponsesOutput`(4.02%)、`encode_*apicompat.ResponsesResponse`(0.89%)。
+GC 相关:`runtime.scanObject`(8.26%)。无异常热点。
+
+### 3.1 arm64 初步结果(方法验证,不作最终结论)
+
+> ⚠️ 以下 arm64 数据仅用于方法验证。**Linux/amd64 结论与 arm64 相反**(见 §3.0),
+> 最终决策依据为 Linux/amd64 数据。
+### 3.2 pkg/jsonx 对比 — arm64(初步证据,2026-08-07)
 
 | Benchmark | jsonx | std | jsonx/std | 方向 |
 |-----------|-------|-----|-----------|------|
@@ -76,14 +119,20 @@ v0.15.3 将全仓库 JSON 序列化统一收敛到 `pkg/jsonx`(底层 sonic `Con
 4. **NewEncoder 独立**:std 快 1.26x 且 0 allocs vs 4 allocs。Encoder 在仓库中使用点
    需单独盘点(见 §5 清单),不得随 Marshal 决策一并假设。
 
-**初步方向(arm64,待 Linux/amd64 复核):保留 `pkg/jsonx` 单一封装层,不将 Marshal
-单独回退 std。** 理由:差距集中在绝对耗时 <1µs 的小结构;大结构(真实负载形状)差距
-收敛到 ~5%;请求级影响 <0.01%;回退会破坏单一 JSON 语义层,且无法带来可测的请求级
-改善。NewEncoder 维持现状,待 §5 复核。
+**最终决策(Linux/amd64,2026-08-10):保留 `pkg/jsonx` 单一封装层,不回退任何方向到 `encoding/json`。**
 
-## 5. Linux/amd64 复核清单(最终决策依据)
+理由:
+1. **Linux/amd64 上 sonic 在所有方向均优于或持平 std。** Marshal 小请求快 1.30x、
+   大请求快 3.0x、AnthropicDelta 快 2.63x;Unmarshal 快 2.0–4.7x。Encoder 持平(0.95x)。
+2. **arm64 的 Marshal 慢 2.1x 是架构特定问题**,不影响 Linux/amd64 生产环境。
+3. **单一 JSON 语义层**(HTML escaping、sorted map keys、copied strings)不可破坏。
+4. **NewEncoder** 维持现状:仅 1 个 relay 热路径使用点(error handler),其余为
+   admin/health 端点,均非性能瓶颈。
+5. 版本边界注意事项(go1.27+ 回退 std)仍有效,保持 go.mod 在 go 1.26。
 
-在固定 Linux/amd64 runner 上执行:
+## 5. Linux/amd64 复核执行记录
+
+已在固定 Linux/amd64 runner 上执行(2026-08-10):
 
 ```bash
 # 1. 代表性负载微基准(count=5 取中位数)
@@ -103,11 +152,19 @@ grep -rn "jsonx.NewEncoder\|json\.NewEncoder" --include="*.go" internal/ app/ do
 #   仅当占比或总体 CPU/吞吐/尾延迟出现可重复改善时才评估 Marshal 回退 std。
 ```
 
-复核完成后,将最终决策写回本文件(状态改为「已决策」)并在发布说明中声明。
+**✅ 复核已完成。** 最终决策见 §4。原始数据:
+- `scripts/benchmark/results/p32-amd64/jsonx-p32-amd64-ff518b1-20260810.txt`
+- `scripts/benchmark/results/p32-amd64/apicompat-p32-amd64-ff518b1-20260810.txt`
+- `scripts/benchmark/results/p32-amd64/jsonx-cpuprofile-amd64-20260810.txt`
+
+NewEncoder 使用点盘点:全部 21 处使用 `jsonx.NewEncoder`(0 处 `json.NewEncoder`),
+仅 1 处在 relay 热路径(`internal/server/handler/chat.go:167`,error handler,非主路径)。
 
 ## 6. 归档
 
-- 原始输出:`scripts/benchmark/results/jsonx-p32-arm64-20260807-*.txt`
+- arm64 原始输出:`scripts/benchmark/results/jsonx-p32-arm64-20260807-*.txt`
+- amd64 原始输出:`scripts/benchmark/results/p32-amd64/jsonx-p32-amd64-ff518b1-20260810.txt`
+- amd64 apicompat:`scripts/benchmark/results/p32-amd64/apicompat-p32-amd64-ff518b1-20260810.txt`
 - CPU profile:`/tmp/jsonx-p32-cpu.prof`(本机临时,不入库)
 - benchmark 源码:`pkg/jsonx/bench_representative_test.go`(外部测试包,避免
   apicompat→jsonx 的 import cycle)、`internal/apicompat/bench_test.go`

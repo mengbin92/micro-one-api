@@ -17,7 +17,7 @@ const defaultAzureAPIVersion = "2024-02-15-preview"
 
 type AzureProvider struct {
 	httpClient   *http.Client
-	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	streamClient *http.Client // no hard total timeout; response-header + idle timeouts are sliding
 	baseURL      string
 	apiKey       string
 	apiVersion   string
@@ -36,9 +36,9 @@ func NewAzureProvider(baseURL, apiKey, apiVersion string, timeout time.Duration)
 	}
 	return &AzureProvider{
 		httpClient: &http.Client{Timeout: timeout},
-		// domain-H3: streaming client has no Client.Timeout so SSE body reads
-		// are not killed mid-stream; cancellation is driven by the request ctx.
-		streamClient: &http.Client{},
+		// Keep active SSE streams alive beyond timeout while bounding response-header
+		// waits and periods with no upstream bytes.
+		streamClient: newStreamHTTPClient(timeout),
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		apiKey:       apiKey,
 		apiVersion:   apiVersion,

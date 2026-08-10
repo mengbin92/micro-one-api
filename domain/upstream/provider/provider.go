@@ -175,7 +175,7 @@ type StreamDelta struct {
 // OpenAIProvider implements the Provider interface for OpenAI-compatible APIs
 type OpenAIProvider struct {
 	httpClient   *http.Client
-	streamClient *http.Client // no Client.Timeout; streams rely on ctx deadline (domain-H3)
+	streamClient *http.Client // no hard total timeout; response-header + idle timeouts are sliding
 	baseURL      string
 	apiKey       string
 	timeout      time.Duration
@@ -260,7 +260,7 @@ func NewOpenAIProviderAllowLocal(baseURL, apiKey string, timeout time.Duration) 
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		streamClient: &http.Client{},
+		streamClient: newStreamHTTPClient(timeout),
 		baseURL:      baseURL,
 		apiKey:       apiKey,
 		timeout:      timeout,
@@ -295,10 +295,9 @@ func NewOpenAIProvider(baseURL, apiKey string, timeout time.Duration) (*OpenAIPr
 		// domain-H3: the streaming client has NO Client.Timeout. http.Client.Timeout
 		// is a hard deadline covering the entire round trip including response-body
 		// reads, so it would kill an SSE stream mid-flight once the configured
-		// timeout elapsed regardless of whether bytes were still flowing. Stream
-		// cancellation is driven by the per-request context (the caller sets a
-		// deadline appropriate for a long-lived stream).
-		streamClient: &http.Client{},
+		// timeout elapsed regardless of whether bytes were still flowing. The custom
+		// client instead applies the timeout to response headers and idle periods.
+		streamClient: newStreamHTTPClient(timeout),
 		baseURL:      baseURL,
 		apiKey:       apiKey,
 		timeout:      timeout,

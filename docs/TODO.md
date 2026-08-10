@@ -1,8 +1,12 @@
 # 项目 TODO
 
-> 最后更新：2026-08-06
+> 最后更新：2026-08-10
 >
 > **当前执行入口**：[v0.17 阶段路线图](./design/v0.17-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
+>
+> 📣 **v0.17 P3 收尾（2026-08-10）**：P3.1 Linux/amd64 三版本基线复测 + P3.2 jsonx
+> 最终决策均已完成（详见文末「[P3 推进（v0.17）— 已完成](#p3-推进v017--已完成-2026-08-10)」一节），
+> 随下一版本合入；P3 全部闭环后 v0.17 阶段即告完成。
 >
 > 📣 **v0.15.2 → v0.16 阶段（2026-08-06）**：P0–P3 已全部完成，详见
 > [v0.16 路线图](./design/v0.16-roadmap.md)。
@@ -257,34 +261,39 @@
 - [x] 拆分行为零变更：无新增/删除端点、无路由变更、无响应格式调整。
 - [x] 生产环境真实流量验证：Kimi-K3（channel 4）、GLM-5.2（channel 1/3）聊天转发与 usage 上报正常。
 
-## P1 — Phase 0 可观测性基线
+## P1 — Phase 0 可观测性基线（已完成 ✅，2026-08-10）
 
-> 依据 `docs/design/BASELINE.md`。历史不可恢复数据已标记为 N/A；仍需在 Linux/amd64
-> 上完成 v0.16.0 与当前 develop 的可复现量化基线，为后续优化提供对比依据。
+> 依据 `docs/design/BASELINE.md`。Linux/amd64 上 v0.16.0 与 develop 的可复现量化
+> 基线已采集完成并回填（Phase 0 为历史数据，见执行报告标注）。
 
-### [ ] 填充性能基线数据（方法已修订，Linux/amd64 运行待完成）
+### [x] 填充性能基线数据（Linux/amd64 已完成，2026-08-10）
 
 关联基线表：[design/BASELINE.md](./design/BASELINE.md)
 
 现状：
 
-- `docs/design/BASELINE.md` 已将不可恢复的历史数据标记为 `N/A — not recorded`，不再使用 TBD 占位；`v0.16.0` 与当前 develop 的 Linux/amd64 数据仍待实际采集。
-- `scripts/benchmark/k6-baseline.js` 已修复为 arrival-rate 负载模型，并新增确定性 mock upstream；当前尚未完成 Linux/amd64 运行记录。
+- `docs/design/BASELINE.md` 已回填 v0.16.0（`a8e14db`）与 develop（`ff518b1`）的
+  Linux/amd64 k6 HTTP 层基线数据；Phase 0（`397e36c`）保留 2026-08-09 历史数据，
+  标注为参考（billing 表未清理，P95 被行锁竞争放大，不可直接对比绝对值）。
+- 执行报告：[scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md](../scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md)
+- 初次执行受阻根因：deployed docker-compose `&svc-env` 锚点漏配 `SERVICE_TOKEN`，
+  导致 `ConsumeTokenQuota` 返回 PermissionDenied、relay 拉黑 token；2026-08-10
+  补齐后三版本全部完成。
 
 任务：
 
 - [x] 修复 k6 吞吐计算、错误口径、endpoint 延迟采集和结果 summary 归档流程。
 - [x] 增加固定响应、固定 token、可配置延迟的 deterministic mock upstream。
-- [ ] 在 Linux/amd64、相同配置和相同数据集上分别运行 Phase 0、`v0.16.0` 和当前 develop，每个版本至少 3 次。
-- [ ] 记录 `/healthz`、`/v1/models`、`/v1/chat/completions` 的 P50/P95/P99 与错误率。
-- [ ] 通过 Prometheus 记录 identity / channel / billing / log gRPC 延迟、billing commit、routing selection、缓存命中率和熔断状态。
-- [ ] 将 summary JSON 纳入提交或 CI artifact，并把实际结果填入 `BASELINE.md`。
+- [x] 在 Linux/amd64、相同配置和相同数据集上分别运行 Phase 0、`v0.16.0` 和当前 develop，每个版本至少 3 次（Phase 0 因二进制兼容性问题保留历史数据，未在同一依赖栈重跑）。
+- [x] 记录 `/healthz`、`/v1/models`、`/v1/chat/completions` 的 P50/P95/P99 与错误率。
+- [ ] 通过 Prometheus 记录 identity / channel / billing / log gRPC 延迟、billing commit、routing selection、缓存命中率和熔断状态（**未执行**：本次运行未开启 Prometheus 采集，BASELINE.md 已标注 `N/A — Prometheus not scraped`；可作为后续优化期的观察项）。
+- [x] 将 summary JSON 纳入提交或 CI artifact，并把实际结果填入 `BASELINE.md`（summary 已入库 `scripts/benchmark/results/p31-amd64/`，raw 由 `.gitignore` 排除）。
 
 验收标准：
 
-- 当前版本基线可复现，原始结果可追溯；历史不可恢复数据明确标记 N/A。
-- raw k6 samples 与 summary JSON 分离保存，summary 可提交或作为 CI artifact 下载。
-- 记录测试环境的 CPU / 内存 / Go 版本 / Kratos 版本。
+- [x] 当前版本基线可复现，原始结果可追溯；历史不可恢复数据明确标记 N/A。
+- [x] raw k6 samples 与 summary JSON 分离保存，summary 可提交或作为 CI artifact 下载。
+- [x] 记录测试环境的 CPU / 内存 / Go 版本 / Kratos 版本（见 `env-fingerprint.txt` 与执行报告）。
 
 ## 已完成
 
@@ -861,23 +870,25 @@ OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减�
 - [x] **docs 索引与路线图状态**：`docs/README.md` runbook 表新增两篇文档；
       `docs/design/v0.17-roadmap.md` 状态头与 §0 总览标注 P0/P1 完成。
 
-## P3 推进（v0.17）
+## P3 推进（v0.17）— 已完成 ✅（2026-08-10）
 
-> **更新日期：2026-08-07**。P3.1 工具链修复 + arm64 smoke、P3.2 代表性负载
-> benchmark + 初步分析完成;Linux/amd64 最终执行待办。
+> **更新日期：2026-08-10**。P3.1 Linux/amd64 三版本基线复测、P3.2 jsonx 最终决策
+> 均已完成；执行报告、BASELINE 回填、决策文档固化全部落地，随下一版本合入。
 
-- [ ] **P3.1 可复现性能基线（Linux/amd64 执行待办）**：
+- [x] **P3.1 可复现性能基线（Linux/amd64 已完成）**：
   - [x] 修复 k6 脚本五处测量缺陷 + 确定性 mock upstream（`fac2d81`，此前完成）。
   - [x] `k6-baseline.js` 新增 `SMOKE=1` 模式（6m+ → ~35s，默认行为不变），arm64
         smoke 通过（42 req/s、0% 失败、0 dropped，归档于
         `scripts/benchmark/results/summary-9abff45-smoke-20260807-154820.json`）。
   - [x] 修复 `make benchmark-baseline` summary 未落盘 bug：`RESULTS_FILE=` 环境变量
         k6 不读取，改 k6 原生 `--summary-export`（Makefile）。
-  - [ ] **Linux/amd64 三版本对比 ×3 次**（Phase 0 `397e36c` / v0.16.0 `a8e14db` /
-        develop），执行手册见
-        [docs/runbooks/performance-baseline-p31.md](./runbooks/performance-baseline-p31.md)；
-        完成后回填 `docs/design/BASELINE.md`。
-- [ ] **P3.2 jsonx Marshal/Encoder 性能决策（Linux/amd64 复核待办）**：
+  - [x] **Linux/amd64 三版本对比 ×3 次**（Phase 0 `397e36c` 历史数据参考 /
+        v0.16.0 `a8e14db` / develop `ff518b1` 各 3 次全量），执行报告见
+        [docs/runbooks/performance-baseline-p31.md](./runbooks/performance-baseline-p31.md)
+        与 [scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md](../scripts/benchmark/results/p31-amd64/P31-EXECUTION-REPORT.md)；
+        `docs/design/BASELINE.md` 已回填。结论：v0.16.0 → develop **无性能回归**
+        （chat P95 116.68→116.34 ms，差异 ±1% 噪声范围，0% 错误率）。
+- [x] **P3.2 jsonx Marshal/Encoder 性能决策（Linux/amd64 复核已完成）**：
   - [x] 新增代表性负载 benchmark（`pkg/jsonx/bench_representative_test.go` 外部测试包：
         大 Responses 响应、Anthropic 流式 delta、admin/billing map+slice、NewEncoder；
         `internal/apicompat/bench_test.go`：四个热路径转换整体吞吐）。
@@ -885,6 +896,10 @@ OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减�
         Marshal 单独回退 std**（Unmarshal 快 2.1–3.8x；Marshal 差距随负载收敛到
         ~5%；小结构绝对差 <175ns，请求级影响 <0.01%；sonic neon 汇编路径确认生效）。
         分析见 [docs/design/p32-jsonx-performance-decision.md](./design/p32-jsonx-performance-decision.md)。
-  - [ ] **Linux/amd64 复测**（代表性负载 count=5 + CPU profile + NewEncoder 使用点
-        盘点），固化最终决策并回写决策文档。
+  - [x] **Linux/amd64 复测**（代表性负载 count=5 + CPU profile + NewEncoder 使用点
+        盘点，2026-08-10 完成）：**结论反转——sonic 在 amd64 上 Marshal 与 Unmarshal
+        均全面优于 std**（Unmarshal 大响应 4.7x、小结构 3.5x；Marshal 大响应 3.0x、
+        Anthropic delta 2.6x、map+slice 2.3x、小结构 1.3x；NewEncoder 持平 1.02x）。
+        最终决策：**保留 `pkg/jsonx` 单一封装层，不回退任何方向到 `encoding/json`**，
+        已固化进决策文档（§3.0）。归档于 `scripts/benchmark/results/p32-amd64/`。
 

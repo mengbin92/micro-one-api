@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.17.0 发布公告](./docs/releases/release-v0.17.0.md)（v0.17 路线图 P0/P1 收尾、依赖安全修复、Docker CI 矩阵 18 job 全绿） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.17.0)
+> 📣 **最新发布**：[v0.17.1 发布公告](./docs/releases/release-v0.17.1.md)（修复上游 SSE 流卡死、滑动 idle 超时收容连接泄漏） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.17.1)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.17.1
+
+v0.17.1 是 v0.17.0 之后的 **PATCH 修复版本**（3 个提交），核心是修复上游 SSE 流卡死导致连接泄漏的生产问题：OpenAI / Anthropic / Azure / Gemini provider 的 `streamClient` 此前为裸 `&http.Client{}`（无超时），上游流式响应 stall（建立连接后停止吐字节不断开）时 `io.Copy` 无限阻塞、仅靠请求 context deadline 兜底。本版本新增滑动 idle 超时（`stream_timeout.go`）：ResponseHeaderTimeout 约束响应头等待，`streamIdleReadCloser` 在有字节到达时重置 idle 计时器、连续 timeout 无字节才主动断开——活跃长流式响应不受影响。同时收尾 P3 性能基线文档与 jsonx 最终决策（amd64 上 sonic 双向胜出，保留 pkg/jsonx 不回退，纯文档），修复 TODO.md 相对路径错误导致的 CI markdown 链接检查失败。**无 API 破坏性变更、无数据库迁移、无 proto 变更、无新增配置项**。受影响服务为 relay-gateway。详见 [docs/releases/release-v0.17.1.md](./docs/releases/release-v0.17.1.md)。
 
 ### 升级到 v0.17.0
 
