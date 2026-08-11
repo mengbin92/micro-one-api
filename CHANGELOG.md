@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-08-11
+
+v0.18.0 之后的 PATCH 修复版本（3 个提交，`e6c1673` → `0ebe48a`），修复两个影响生产可用性的缺陷并完成 v0.18 P2 工程卫生：（1）Token 创建默认配额 bug——前端仅发送 `{name}` 时 `unlimited_quota` 被解析为 `false`（bool 零值），Token 以永久耗尽状态写入、首次使用即被拒绝；（2）identity → relay 错误码链路映射错误——`ErrTokenExhausted` 映射为 gRPC `NotFound` → HTTP 401，误导客户端将有效但耗尽的 key 当作错误 key（修正后：耗尽 → 429、禁用 → 403、子网 → 403）；同时修复 MySQL `RowsAffected==0` 导致幂等更新误判 NotFound 的 DSN 边界（影响 10+ 调用点）、补齐 billing commit/reserve Prometheus Observe 与 admin-api gRPC 客户端延迟拦截器。**无 API 破坏性变更、无数据库迁移、无 proto 变更**。受影响服务为 identity-service、relay-gateway、admin-api、billing-service。详见 [release-v0.18.1.md](docs/releases/release-v0.18.1.md)。
+
+### Fixed
+
+- **fix(identity): token create defaults to unlimited + correct error-code mapping**：请求结构 `unlimited_quota` 改用 `*bool`（省略 → nil → 默认无限），新增 biz 守卫 `ErrTokenQuotaInvalid` 拒绝退化零配额 Token；全链路错误码修正：`exhausted → ResourceExhausted(429)`、`disabled → PermissionDenied(403)`、`subnet → PermissionDenied(403)`、`not found/expired → Unauthenticated(401)`；relay-gateway 5 个错误处理器补 `codes.Unauthenticated → 401`。影响 identity-service、relay-gateway。
+- **fix(test): exclude network-bound integration tests from unit gate**：5 个 `*/internal/integration` 包绑定真实 TCP listener（需网络权限），在 CI sandbox 中 `bind: operation not permitted`；从 `test-unit` 排除、新增 `make test-integration`。同步修正 `TestRelayIntegration/DisabledToken` 断言（401 → 403）。
+
+### Added
+
+- **feat(observability): v0.18 P2 engineering hygiene (C2/C4/C5)**：C2 MySQL `withClientFoundRows` DSN helper（gorm + `*sql.DB` 双路径统一 matched-rows，修复 10+ 调用点幂等更新 false-NotFound）；C5 billing commit/reserve Prometheus Observe（sync/async 标签分离避免双重计数）+ `xgrpc.UnaryClientMetricsInterceptor` 接入 admin-api 三 dial；C4 分区触发阈值文档 + 运维手册（无代码变更）。影响 admin-api、billing-service 及全部 xdb 使用者。
+
 ## [0.18.0] - 2026-08-10
 
 v0.17.1 之后的 MINOR 功能版本（4 个提交，`fd09278` → `636fdd4`），完成 v0.18 路线图 P0 并修复 P1 首周期发现：admin 资金写路径的请求级幂等（方案 B，DB 唯一键）。购买（`PurchaseSubscription`）与充值（`TopUpQuota`）的钱包扣款/充值 ledger 携带基于 `(user_id, request_id)` 的显式去重键，复用 `billing_ledgers.ledger_dedupe_key` 既有全局唯一索引作为闸门——并发同键重复请求整笔事务回滚，钱包绝不被扣两次（关闭 M6 已知边界 #1）。同时顺带修复存量 bug：购买扣款 ledger 回退到不含 user_id 的 legacy 键导致同一 group 的第二次购买（即使不同用户）唯一键冲突失败；并修复 P1 对账首周期（C6）发现的卡单检测误报（余额订单被当卡单）。**无数据库迁移、无新增配置项**；API additive（两份 proto 新增 `request_id` 字段）。受影响服务为 admin-api、billing-service（含前端购买流程）。详见 [release-v0.18.0.md](docs/releases/release-v0.18.0.md)。
