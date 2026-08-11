@@ -2,9 +2,9 @@
 
 > 2026-08-10 · 上一版：[v0.17.1](./release-v0.17.1.md)（2026-08-10）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.0)
 
-v0.18.0 是 v0.17.1 之后的 **MINOR 功能版本**（1 个提交，`fd09278`），完成 v0.18 路线图 P0：admin 资金写路径的**请求级幂等**（方案 B，DB 唯一键）。购买（`PurchaseSubscription`）与充值（`TopUpQuota`）的钱包扣款/充值 ledger 现在携带基于 `(user_id, request_id)` 的显式去重键，复用 `billing_ledgers.ledger_dedupe_key` 既有全局唯一索引作为闸门——并发同键重复请求命中唯一约束、整笔事务回滚，钱包绝不被扣两次（关闭 M6 已知边界 #1，这是仓库此前唯一已知的资金正确性开放项）。同时顺带修复一个存量 bug：购买扣款 ledger 此前回退到不含 `user_id` 的 legacy 键，导致**同一 group 的第二次购买（即使不同用户）永远唯一键冲突失败**。
+v0.18.0 是 v0.17.1 之后的 **MINOR 功能版本**（4 个提交，`fd09278` → `636fdd4`），交付 v0.18 路线图 P0 并修复 P1 首周期发现：admin 资金写路径的**请求级幂等**（方案 B，DB 唯一键）。购买（`PurchaseSubscription`）与充值（`TopUpQuota`）的钱包扣款/充值 ledger 携带基于 `(user_id, request_id)` 的显式去重键，复用 `billing_ledgers.ledger_dedupe_key` 既有全局唯一索引作为闸门——并发同键重复请求命中唯一约束、整笔事务回滚，钱包绝不被扣两次（关闭 M6 已知边界 #1，这是仓库此前唯一已知的资金正确性开放项）。同时顺带修复存量 bug：购买扣款 ledger 此前回退到不含 `user_id` 的 legacy 键，导致**同一 group 的第二次购买（即使不同用户）永远唯一键冲突失败**。另修复 P1 对账首周期（C6）发现的卡单检测误报（余额订单被当卡单），并归档首周期校准 / 告警观察 / 强制失败验证执行记录。
 
-**无数据库迁移、无新增配置项**。API 为 additive（两份 proto 各新增 `request_id` 字段）。受影响服务为 `admin-api`、`billing-service`（含前端购买流程）。
+**无数据库迁移、无新增配置项**。API 为 additive（两份 proto 各新增 `request_id` 字段）。受影响服务为 `admin-api`、`billing-service`（含前端购买流程）。P1 修复涉及 billing 对账卡单检测（billing-service）。
 
 ## 功能内容
 
@@ -60,3 +60,7 @@ cd web && npm run build && tar -czf /tmp/web-dist.tar.gz -C dist .
 ## 完整变更日志
 
 - feat(billing): v0.18 P0 request-level idempotency for admin money paths
+- docs(release): v0.18.0
+- fix(billing): exclude balance orders from stuck-issuance detection
+- docs(ops): v0.18 P1 first-period calibration, alert observation, verification archive
+- fix(docs): remove broken .workbuddy roadmap link in v0.18 design decision
