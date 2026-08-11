@@ -9,7 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.18.0] - 2026-08-10
 
-v0.17.1 之后的 MINOR 功能版本（1 个提交），完成 v0.18 路线图 P0：admin 资金写路径的请求级幂等（方案 B，DB 唯一键）。购买（`PurchaseSubscription`）与充值（`TopUpQuota`）的钱包扣款/充值 ledger 携带基于 `(user_id, request_id)` 的显式去重键，复用 `billing_ledgers.ledger_dedupe_key` 既有全局唯一索引作为闸门——并发同键重复请求整笔事务回滚，钱包绝不被扣两次（关闭 M6 已知边界 #1）。同时顺带修复存量 bug：购买扣款 ledger 回退到不含 user_id 的 legacy 键导致同一 group 的第二次购买（即使不同用户）唯一键冲突失败。**无数据库迁移、无新增配置项**；API additive（两份 proto 新增 `request_id` 字段）。受影响服务为 admin-api、billing-service（含前端购买流程）。详见 [release-v0.18.0.md](docs/releases/release-v0.18.0.md)。
+v0.17.1 之后的 MINOR 功能版本（4 个提交，`fd09278` → `636fdd4`），完成 v0.18 路线图 P0 并修复 P1 首周期发现：admin 资金写路径的请求级幂等（方案 B，DB 唯一键）。购买（`PurchaseSubscription`）与充值（`TopUpQuota`）的钱包扣款/充值 ledger 携带基于 `(user_id, request_id)` 的显式去重键，复用 `billing_ledgers.ledger_dedupe_key` 既有全局唯一索引作为闸门——并发同键重复请求整笔事务回滚，钱包绝不被扣两次（关闭 M6 已知边界 #1）。同时顺带修复存量 bug：购买扣款 ledger 回退到不含 user_id 的 legacy 键导致同一 group 的第二次购买（即使不同用户）唯一键冲突失败；并修复 P1 对账首周期（C6）发现的卡单检测误报（余额订单被当卡单）。**无数据库迁移、无新增配置项**；API additive（两份 proto 新增 `request_id` 字段）。受影响服务为 admin-api、billing-service（含前端购买流程）。详见 [release-v0.18.0.md](docs/releases/release-v0.18.0.md)。
 
 ### Added
 
