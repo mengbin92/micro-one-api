@@ -257,15 +257,18 @@ points for the v0.17 P3.1 work are:
 | v0.16.0 (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded |
 | production (linux/amd64, 2026-08-11) | _(all)_ | N/A — interceptor not wired | N/A |
-| production (linux/amd64, v0.18.2, 2026-08-11) | _(all)_ | N/A — relay resilience not enabled | N/A |
+| production (linux/amd64, v0.18.2, 2026-08-11) | identity-service | **closed** | **0** |
+| production (linux/amd64, v0.18.2, 2026-08-11) | channel-service | **closed** | **0** |
+| production (linux/amd64, v0.18.2, 2026-08-11) | billing-service | **closed** | **0** |
+| production (linux/amd64, v0.18.2, 2026-08-11) | log-service | **closed** | **0** |
 
-> **v0.18 P4 更新 (2026-08-11)**: 熔断观测代码（`ResilientClient.Execute` 的
-> CircuitBreakerState gauge）确认已就绪，但**生产 relay 未启用熔断**
-> （`cfg.Bootstrap.Resilience.Enabled` 未配置；`resilience.yaml` 为旧配置未被 wire
-> 读取）。启用熔断 = 行为变更（熔断保护上线），属运营决策；**启用后**
-> `circuit_breaker_state` 即产生数据并回填。带 breaker 的
-> `platform/grpc/resilience.UnaryClientInterceptor` **不 wire**（避免与 ResilientClient
-> 双重熔断、且会改变执行路径，违反 P4「仅新增观测」约束）。
+> **v0.18 P4 闭环 (2026-08-11 16:3x)**: 运营启用 relay 熔断
+> （`RELAY_RESILIENCE_ENABLED=true`，docker-compose env，`cfg.Bootstrap.Resilience.Enabled`
+> 经 config.yaml 读取生效）并重启后，`circuit_breaker_state` 在真实流量下产生数据：
+> 4 个下游服务（identity/channel/billing/log）state=**0（closed）**，**24h trips=0**
+> （无跳闸，健康）。说明：`circuit_breaker_requests_total` 仅在错误路径计数
+> （`ResilientClient.Execute` 无 success 分支），当前无下游错误故无样本 —— 属指标
+> 语义（失败观测），非缺陷；如需成功计数可后续在 Execute 补 success 分支。
 
 ## Target Metrics (Post-Refactoring)
 
