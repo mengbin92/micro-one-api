@@ -24,6 +24,7 @@ import (
 	"micro-one-api/app/billing/internal/service"
 	biz2 "micro-one-api/domain/subscription/biz"
 	data2 "micro-one-api/domain/subscription/data"
+	"micro-one-api/platform/grpc/xgrpc"
 	"micro-one-api/platform/logging"
 	registry2 "micro-one-api/platform/registry"
 	"os"
@@ -173,7 +174,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		}
 		if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Notify != nil && cfg.Bootstrap.Clients.Notify.Endpoint != "" {
 			var err error
-			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint,
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 			if err != nil {
 				logger.Log.
 					Error("dial notify endpoint", zap.Error(err))
