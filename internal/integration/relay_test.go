@@ -235,8 +235,12 @@ func TestRelayIntegration(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected status 401, got %d", resp.StatusCode)
+		// A disabled token is a valid credential that has been revoked by
+		// policy, so the identity service maps it to gRPC PermissionDenied
+		// (commit 3b36034), which the relay translates to HTTP 403 — not
+		// 401, which is reserved for credential failures.
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("expected status 403, got %d", resp.StatusCode)
 		}
 	})
 }

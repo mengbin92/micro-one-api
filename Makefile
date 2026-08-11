@@ -124,9 +124,22 @@ tidy:
 test: test-unit
 
 .PHONY: test-unit
-# run unit and integration tests, excluding local-service e2e suite
+# run unit tests only. Integration tests (any package under
+# */internal/integration) bind real TCP listeners and require network
+# privileges; they are gated behind `make dev-test-integration` and
+# excluded from the default unit-test gate so `make test` stays green in
+# restricted environments (CI containers, sandboxes).
 test-unit: proto
-	go test $$(go list ./... | grep -v '/test/e2e/suite$$' | grep -v '/web/node_modules/')
+	go test $$(go list ./... \
+		| grep -v '/test/e2e/suite$$' \
+		| grep -v '/web/node_modules/' \
+		| grep -v '/internal/integration$$')
+
+.PHONY: test-integration
+# run integration tests. These bind real TCP listeners so they need a
+# network-capable environment (not the default sandbox/CI unit gate).
+test-integration: proto
+	go test $$(go list ./... | grep '/internal/integration$$' | grep -v '/web/node_modules/')
 
 .PHONY: test-race
 # run concurrency-sensitive packages under the race detector. This is the CI
