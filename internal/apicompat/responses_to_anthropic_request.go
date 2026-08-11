@@ -198,8 +198,18 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw jsonx.RawMes
 				Content: content,
 			})
 
+		case item.Type == "web_search_call":
+			// codex replays web_search_call output items in the history.
+			// Skip them: kimi k3 and other passback-required upstreams reject
+			// server_tool_use/web_search_tool_result blocks with 400
+			// ("invalid value: server_tool_use"). The search results were already
+			// incorporated into the model's text output, so dropping the item
+			// does not lose context. Mirrors FilterWebSearchHistoryBlocks in the
+			// sibling sub2api project.
+			continue
+
 		default:
-			// Unknown role/type — attempt as user message
+			// Unknown role/type — skip items with no content
 			if item.Content != nil {
 				messages = append(messages, AnthropicMessage{
 					Role:    "user",
