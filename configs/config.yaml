@@ -91,3 +91,12 @@ openai_ws:
 # Unset/empty = upstream (legacy).
 billing_model_source:
   source: ${BILLING_MODEL_SOURCE:-upstream}
+
+# Resilience / circuit-breaker for downstream gRPC clients
+# (identity/channel/billing/log). When enabled, each downstream call is
+# wrapped in a ResilientClient that applies a per-call timeout and records
+# circuit_breaker_state metrics. Disabled by default — enable via
+# RELAY_RESILIENCE_ENABLED=true in production docker-compose.
+resilience:
+  enabled: ${RELAY_RESILIENCE_ENABLED:-false}
+  timeout: ${RELAY_RESILIENCE_TIMEOUT:-3s}
