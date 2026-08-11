@@ -1306,17 +1306,17 @@ func TestResponsesToAnthropicRequest_AllToolsGetObjectInputSchema(t *testing.T) 
 
 	resp, err := ResponsesToAnthropicRequest(req)
 	require.NoError(t, err)
-	require.Len(t, resp.Tools, 2)
+	// web_search tools must be skipped, not forwarded as web_search_20250305.
+	// Only the custom tool survives the conversion.
+	require.Len(t, resp.Tools, 1)
 	assert.Equal(t, "custom", resp.Tools[0].Type)
 	assert.Equal(t, "apply_patch", resp.Tools[0].Name)
 	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(resp.Tools[0].InputSchema))
-	assert.Equal(t, "web_search_20250305", resp.Tools[1].Type)
-	assert.Equal(t, "web_search", resp.Tools[1].Name)
-	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(resp.Tools[1].InputSchema))
 
 	body, err := jsonx.Marshal(resp)
 	require.NoError(t, err)
 	assert.NotContains(t, string(body), `"input_schema":null`)
+	assert.NotContains(t, string(body), `web_search_20250305`)
 }
 
 // ---------------------------------------------------------------------------
