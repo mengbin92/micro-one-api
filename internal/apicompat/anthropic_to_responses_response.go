@@ -65,21 +65,11 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 				Status:    "completed",
 			})
 
-		case "server_tool_use":
-			// Anthropic server-side web_search → OpenAI web_search_call.
-			// Extract the query from the input JSON.
-			query := extractSearchQuery(block.Input)
-			outputs = append(outputs, ResponsesOutput{
-				Type:   "web_search_call",
-				ID:     generateItemID(),
-				Status: "completed",
-				Action: &WebSearchAction{Type: "search", Query: query},
-			})
-
-		case "web_search_tool_result":
-			// Result half of the server_tool_use pair — no separate output
-			// item; the query was already captured in the server_tool_use case.
-			// Skip.
+		case "server_tool_use", "web_search_tool_result":
+			// Server-side web search blocks have no codex-compatible
+			// Responses equivalent. Skip — the search results are already
+			// incorporated into the model's text output.
+			continue
 		}
 	}
 
@@ -164,11 +154,14 @@ type AnthropicEventToResponsesState struct {
 	// Current output tracking
 	OutputIndex     int
 	CurrentItemID   string
-	CurrentItemType string // "message" | "function_call" | "reasoning" | "web_search_call"
+	CurrentItemType string // "message" | "function_call" | "reasoning"
 
-	// For web_search_call: the query extracted from server_tool_use input
-	CurrentSearchQuery   string
-	WebSearchAddedSent   bool // true after output_item.added emitted for web_search_call
+	// SkippingBlock is true while we are silently dropping a content block
+	// whose type has no Responses equivalent (server_tool_use /
+	// web_search_tool_result). While true, content_block_delta and
+	// content_block_stop are ignored so the open message item's state is
+	// not disturbed.
+	SkippingBlock bool
 
 	// For message output: accumulate text parts
 	ContentIndex     int
@@ -353,119 +346,27 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 			},
 		}))
 
-	case "server_tool_use":
-		// Anthropic server-side web_search: the upstream performs the search
-		// itself and emits server_tool_use (the call) immediately followed by
-		// web_search_tool_result (the results). In OpenAI Responses semantics
-		// this is a single web_search_call output item. We emit added here so
-		// the client can render the search indicator immediately, and emit
-		// done when the matching web_search_tool_result arrives (or at
-		// message_stop/finalize if the upstream omits the result block).
-		events = append(events, closeCurrentResponsesItem(state)...)
-
-		state.CurrentItemID = generateItemID()
-		state.CurrentItemType = "web_search_call"
-		state.CurrentSearchQuery = extractSearchQuery(evt.ContentBlock.Input)
-		state.WebSearchAddedSent = true
-
-		events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
-			OutputIndex: state.OutputIndex,
-			Item: &ResponsesOutput{
-				Type:   "web_search_call",
-				ID:     state.CurrentItemID,
-				Status: "in_progress",
-				Action: &WebSearchAction{Type: "search", Query: state.CurrentSearchQuery},
-			},
-		}))
-
-	case "web_search_tool_result":
-		// This is the result half of the server_tool_use pair. If we have an
-		// open web_search_call item (from the preceding server_tool_use), emit
-		// its output_item.done now. If there is no open web_search_call (the
-		// upstream sent the result without a preceding server_tool_use), close
-		// whatever was open and synthesize a minimal web_search_call pair.
-		if state.CurrentItemType == "web_search_call" && state.WebSearchAddedSent {
-			// added already emitted in server_tool_use; just emit done.
-			events = append(events, makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
-				OutputIndex: state.OutputIndex,
-				Item: &ResponsesOutput{
-					Type:   "web_search_call",
-					ID:     state.CurrentItemID,
-					Status: "completed",
-					Action: &WebSearchAction{Type: "search", Query: state.CurrentSearchQuery},
-				},
-			}))
-			state.CurrentItemType = ""
-			state.CurrentItemID = ""
-			state.CurrentSearchQuery = ""
-			state.WebSearchAddedSent = false
-			state.OutputIndex++
-			return events
-		}
-		// No preceding server_tool_use — synthesize a complete web_search_call.
-		events = append(events, closeCurrentResponsesItem(state)...)
-		state.CurrentItemID = generateItemID()
-		state.CurrentItemType = "web_search_call"
-		state.CurrentSearchQuery = ""
-		events = append(events, emitWebSearchCallItem(state, true)...)
-		return events
+	case "server_tool_use", "web_search_tool_result":
+		// Anthropic server-side web search blocks have no codex-compatible
+		// Responses equivalent. codex does not understand web_search_call
+		// output items — it renders them as "Searching the web" /
+		// "Search results for query" UI chrome and, in multi-turn history,
+		// repeats and accumulates the text, eventually aborting the task.
+		// The search results are already woven into the model's text output,
+		// so dropping these blocks loses no context.
+		//
+		// We set SkippingBlock so the matching content_block_delta and
+		// content_block_stop are silently ignored without disturbing the
+		// currently open message/reasoning/function_call item.
+		state.SkippingBlock = true
+		return nil
 	}
 
 	return events
-}
-
-// emitWebSearchCallItem emits the output_item.added (and optionally
-// output_item.done) events for a web_search_call, then resets the current item
-// state. It is used by both the streaming content_block_stop path and the
-// web_search_tool_result path.
-func emitWebSearchCallItem(state *AnthropicEventToResponsesState, emitDone bool) []ResponsesStreamEvent {
-	var events []ResponsesStreamEvent
-	itemID := state.CurrentItemID
-	query := state.CurrentSearchQuery
-
-	events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
-		OutputIndex: state.OutputIndex,
-		Item: &ResponsesOutput{
-			Type:   "web_search_call",
-			ID:     itemID,
-			Status: "in_progress",
-			Action: &WebSearchAction{Type: "search", Query: query},
-		},
-	}))
-
-	if emitDone {
-		events = append(events, makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
-			OutputIndex: state.OutputIndex,
-			Item: &ResponsesOutput{
-				Type:   "web_search_call",
-				ID:     itemID,
-				Status: "completed",
-				Action: &WebSearchAction{Type: "search", Query: query},
-			},
-		}))
-		state.CurrentItemType = ""
-		state.CurrentItemID = ""
-		state.CurrentSearchQuery = ""
-		state.OutputIndex++
-	}
-	return events
-}
-
-// extractSearchQuery parses the server_tool_use input JSON to extract the
-// search query. The input is typically {"query": "..."}.
-func extractSearchQuery(input jsonx.RawMessage) string {
-	if len(input) == 0 {
-		return ""
-	}
-	var m map[string]string
-	if err := jsonx.Unmarshal(input, &m); err != nil {
-		return ""
-	}
-	return m["query"]
 }
 
 func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
-	if evt.Delta == nil {
+	if state.SkippingBlock || evt.Delta == nil {
 		return nil
 	}
 
@@ -516,6 +417,10 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 }
 
 func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
+	if state.SkippingBlock {
+		state.SkippingBlock = false
+		return nil
+	}
 	switch state.CurrentItemType {
 	case "reasoning":
 		reasoning := state.CurrentReasoning.String()
@@ -567,13 +472,6 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 			}),
 		}
 
-	case "web_search_call":
-		// The server_tool_use block is closed. We do NOT close the
-		// web_search_call item here — we wait for the matching
-		// web_search_tool_result block to arrive (handled in
-		// content_block_start). If no result block ever arrives, the item is
-		// closed by closeCurrentResponsesItem during message_stop/finalize.
-		return nil
 	}
 
 	return nil
@@ -654,10 +552,6 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 		item.CallID = callID
 		item.Name = name
 		item.Arguments = arguments
-	case "web_search_call":
-		item.Action = &WebSearchAction{Type: "search", Query: state.CurrentSearchQuery}
-		state.CurrentSearchQuery = ""
-		state.WebSearchAddedSent = false
 	}
 
 	return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{

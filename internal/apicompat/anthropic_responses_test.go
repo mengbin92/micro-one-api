@@ -1797,19 +1797,17 @@ func TestAnthropicEventToResponses_CacheTokensFromMessageDelta(t *testing.T) {
 	assert.Equal(t, 11, completed.Response.Usage.InputTokensDetails.CachedTokens)
 }
 
-// TestAnthropicEventToResponses_ServerToolUseNoDuplication reproduces the
-// "Search results for query" accumulation bug: when an Anthropic-compatible
-// upstream (e.g. kimi k3) emits server_tool_use + web_search_tool_result
-// content blocks between two text blocks, the converter must NOT re-emit
-// the first text block's output_text.done for each intervening unknown
-// content_block_stop event.
+// TestAnthropicEventToResponses_ServerToolUseDropped verifies that
+// server_tool_use + web_search_tool_result content blocks are silently
+// dropped during streaming conversion. codex does not understand
+// web_search_call output items — it renders them as "Searching the web" /
+// "Search results for query" and aborts multi-turn tasks. The search
+// results are already in the model's text, so dropping loses no context.
 //
-// Before the fix, content_block_start for server_tool_use/web_search_tool_result
-// was ignored (fell through to default), leaving CurrentItemType == "message".
-// Each subsequent content_block_stop then re-emitted output_text.done with the
-// accumulated text, causing codex to render duplicate "Search results for query"
-// blocks that grew with every turn.
-func TestAnthropicEventToResponses_ServerToolUseNoDuplication(t *testing.T) {
+// The test also ensures that the text blocks before and after the search
+// blocks are not duplicated — the SkippingBlock flag must not disturb the
+// open message item's state.
+func TestAnthropicEventToResponses_ServerToolUseDropped(t *testing.T) {
 	state := NewAnthropicEventToResponsesState()
 	var allEvents []ResponsesStreamEvent
 	collect := func(evts []ResponsesStreamEvent) {
@@ -1842,7 +1840,7 @@ func TestAnthropicEventToResponses_ServerToolUseNoDuplication(t *testing.T) {
 		Index: intPtr(0),
 	}, state))
 
-	// server_tool_use block (index 1): web_search with query "golang generics"
+	// server_tool_use block (index 1): must be silently dropped
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_start",
 		Index: intPtr(1),
@@ -1858,7 +1856,7 @@ func TestAnthropicEventToResponses_ServerToolUseNoDuplication(t *testing.T) {
 		Index: intPtr(1),
 	}, state))
 
-	// web_search_tool_result block (index 2)
+	// web_search_tool_result block (index 2): also dropped
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_start",
 		Index: intPtr(2),
@@ -1874,6 +1872,8 @@ func TestAnthropicEventToResponses_ServerToolUseNoDuplication(t *testing.T) {
 	}, state))
 
 	// second text block (index 3): "42"
+	// This re-opens a message item (the previous one was closed at block 0's
+	// content_block_stop). The "Answer: " text must NOT leak into this block.
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:         "content_block_start",
 		Index:        intPtr(3),
@@ -1894,55 +1894,48 @@ func TestAnthropicEventToResponses_ServerToolUseNoDuplication(t *testing.T) {
 		Type: "message_stop",
 	}, state))
 
-	// Collect all output_text.done events. The text must NOT be duplicated.
+	// Assert: NO web_search_call output items emitted at all.
+	for _, e := range allEvents {
+		if e.Item != nil { assert.NotEqual(t, "web_search_call", e.Item.Type,
+			"web_search_call items must not be emitted — codex cannot handle them") }
+	}
+
+	// Assert: text output is correct. The converter accumulates text across
+	// multiple text content blocks into a single message item (existing
+	// design). The first content_block_stop emits output_text.done with
+	// "Answer: ". After the skipped search blocks, the second text block
+	// appends "42" so the final output_text.done carries "Answer: 42".
+	// The key assertion is that SkippingBlock did NOT cause "Answer: " to
+	// be duplicated or the search blocks to inject any output.
 	var textDones []string
-	var webSearchAdded, webSearchDone int
 	for _, e := range allEvents {
 		if e.Type == "response.output_text.done" {
 			textDones = append(textDones, e.Text)
 		}
-		if e.Type == "response.output_item.added" && e.Item != nil && e.Item.Type == "web_search_call" {
-			webSearchAdded++
-		}
-		if e.Type == "response.output_item.done" && e.Item != nil && e.Item.Type == "web_search_call" {
-			webSearchDone++
-		}
 	}
+	assert.Contains(t, textDones, "Answer: ")
+	assert.Contains(t, textDones, "Answer: 42")
 
-	// Before the fix, "Answer: " was emitted 3 times (once per content_block_stop
-	// for idx 0, 1, 2) because server_tool_use/web_search_tool_result blocks
-	// were silently ignored, leaving the message state machine open. Each
-	// subsequent content_block_stop re-emitted the accumulated text as a new
-	// output_text.done. After the fix, "Answer: " appears exactly once.
-	answerCount := 0
+	// Count how many times "Answer: " appears as a standalone done text.
+	// Before the fix it appeared 3x (once per content_block_stop for idx 0, 1, 2)
+	// because server_tool_use blocks were not skipped, leaving CurrentItemType
+	// == "message" and re-emitting accumulated text. Now it appears once.
+	answerOnlyCount := 0
 	for _, td := range textDones {
 		if td == "Answer: " {
-			answerCount++
+			answerOnlyCount++
 		}
 	}
-	assert.Equal(t, 1, answerCount,
-		"'Answer: ' must be emitted exactly once — before the fix it was emitted 3x due to server_tool_use/web_search_tool_result being ignored")
-
-	// A single web_search_call output item must be emitted so codex renders
-	// the search indicator exactly once (not zero, not duplicated).
-	assert.Equal(t, 1, webSearchAdded, "exactly one web_search_call added event")
-	assert.Equal(t, 1, webSearchDone, "exactly one web_search_call done event")
-
-	// Verify the web_search_call carries the query from server_tool_use input.
-	for _, e := range allEvents {
-		if e.Type == "response.output_item.added" && e.Item != nil && e.Item.Type == "web_search_call" {
-			require.NotNil(t, e.Item.Action)
-			assert.Equal(t, "golang generics", e.Item.Action.Query)
-		}
-	}
+	assert.Equal(t, 1, answerOnlyCount,
+		"'Answer: ' (standalone) must appear exactly once, not duplicated by skipped blocks")
 }
 
 func intPtr(v int) *int { return &v }
 
-// TestNonStreaming_ServerToolUseConvertedToWebSearchCall verifies that a
-// non-streaming Anthropic response containing server_tool_use +
-// web_search_tool_result blocks is converted to a web_search_call output item.
-func TestNonStreaming_ServerToolUseConvertedToWebSearchCall(t *testing.T) {
+// TestNonStreaming_ServerToolUseDropped verifies that server_tool_use +
+// web_search_tool_result blocks are silently dropped in non-streaming
+// conversion. Only message (text) output items should be produced.
+func TestNonStreaming_ServerToolUseDropped(t *testing.T) {
 	resp := &AnthropicResponse{
 		ID:    "msg_nonstream_search",
 		Model: "k3",
@@ -1968,33 +1961,15 @@ func TestNonStreaming_ServerToolUseConvertedToWebSearchCall(t *testing.T) {
 	out := AnthropicToResponsesResponse(resp)
 	require.NotNil(t, out)
 
-	// Expect: a web_search_call output item is generated from the
-	// server_tool_use block, and a message output item carries the text.
-	// The web_search_tool_result block produces no separate item.
-	var wsItems []ResponsesOutput
-	var msgItems []ResponsesOutput
+	// No web_search_call items at all.
 	for _, o := range out.Output {
-		switch o.Type {
-		case "web_search_call":
-			wsItems = append(wsItems, o)
-		case "message":
-			msgItems = append(msgItems, o)
-		}
-	}
-	require.Len(t, wsItems, 1, "exactly one web_search_call output item")
-	assert.Len(t, msgItems, 1, "exactly one message output item")
-
-	// The web_search_call must carry the query.
-	require.NotNil(t, wsItems[0].Action)
-	assert.Equal(t, "rust async runtime", wsItems[0].Action.Query)
-
-	// web_search_tool_result must NOT generate a separate output item.
-	for _, o := range out.Output {
+		assert.NotEqual(t, "web_search_call", o.Type,
+			"web_search_call items must not be emitted")
+		assert.NotEqual(t, "server_tool_use", o.Type)
 		assert.NotEqual(t, "web_search_tool_result", o.Type)
 	}
 }
 
-// TestResponsesToAnthropicRequest_WebSearchCallSkipped verifies that
 // web_search_call items in the input history are skipped (not forwarded to the
 // upstream as server_tool_use, which kimi k3 rejects with 400).
 func TestResponsesToAnthropicRequest_WebSearchCallSkipped(t *testing.T) {
