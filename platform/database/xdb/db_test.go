@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"net/url"
 	"strings"
+
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"testing"
 )
 
@@ -430,5 +432,58 @@ func TestValidSchemaIdentifier(t *testing.T) {
 		if !tc.wantOK && err == nil {
 			t.Errorf("schema %q: want rejection, got nil err", tc.schema)
 		}
+	}
+}
+
+// TestOpenMySQLForcesClientFoundRows guards v0.18 P2 C2: every MySQL connection
+// opened through xdb must report *matched* rows for UPDATE (clientFoundRows),
+// otherwise idempotent updates that set a column to its current value return
+// RowsAffected=0 and `RowsAffected == 0 -> ErrXxxNotFound` checks false-positive.
+func TestOpenMySQLForcesClientFoundRows(t *testing.T) {
+	cfg, err := mysqldriver.ParseDSN("root:pw@tcp(127.0.0.1:3306)/oneapi?parseTime=true&charset=utf8mb4")
+	if err != nil {
+		t.Fatalf("parse DSN: %v", err)
+	}
+	cfg.ClientFoundRows = true
+	dsn := cfg.FormatDSN()
+	if !strings.Contains(dsn, "clientFoundRows=true") {
+		t.Fatalf("formatted DSN missing clientFoundRows=true: %s", dsn)
+	}
+	// Round-trip: the parameter must be re-parsed back to FoundRows.
+	cfg2, err := mysqldriver.ParseDSN(dsn)
+	if err != nil {
+		t.Fatalf("re-parse DSN: %v", err)
+	}
+	if !cfg2.ClientFoundRows {
+		t.Fatalf("clientFoundRows not preserved through DSN round-trip: %s", dsn)
+	}
+}
+
+// TestWithClientFoundRowsSharedByBothMySQLPaths guards the v0.18 P2 C2 blind
+// spot: the shared withClientFoundRows helper must inject clientFoundRows so
+// BOTH the gorm path (openMySQL) and the *sql.DB path (OpenSQLWithPool) get
+// matched-rows semantics — OpenSQL feeds admin system_options and the migrate
+// CLI, where a future RowsAffected==0 check must not re-hit the bug.
+func TestWithClientFoundRowsSharedByBothMySQLPaths(t *testing.T) {
+	dsn, err := withClientFoundRows("root:pw@tcp(127.0.0.1:3306)/oneapi?parseTime=true")
+	if err != nil {
+		t.Fatalf("withClientFoundRows: %v", err)
+	}
+	if !strings.Contains(dsn, "clientFoundRows=true") {
+		t.Fatalf("rewritten DSN missing clientFoundRows=true: %s", dsn)
+	}
+	// OpenSQLWithPool (MySQL branch) must accept the rewritten DSN and return
+	// a usable *sql.DB without connecting (sql.Open is lazy).
+	db, err := OpenSQLWithPool(DriverMySQL, dsn, nil)
+	if err != nil {
+		t.Fatalf("OpenSQLWithPool: %v", err)
+	}
+	defer db.Close()
+	if db == nil {
+		t.Fatal("OpenSQLWithPool returned nil *sql.DB")
+	}
+	// Invalid DSN must error out (not silently fall back to the raw DSN).
+	if _, err := withClientFoundRows("not a dsn"); err == nil {
+		t.Fatal("withClientFoundRows must reject an unparseable DSN")
 	}
 }

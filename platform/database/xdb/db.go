@@ -99,7 +99,15 @@ func OpenSQLWithPool(driver, dsn string, pool *PoolConfig) (*sql.DB, error) {
 	resolved := NormalizeDriver(driver, dsn)
 	switch resolved {
 	case DriverMySQL:
-		db, err := sql.Open("mysql", dsn)
+		// v0.18 P2 C2: enforce clientFoundRows on the *sql.DB path too
+		// (OpenSQL / migrate CLI / admin system_options), not just the gorm
+		// path — otherwise any future RowsAffected==0 check opened here would
+		// re-hit the idempotent-update false-positive (review 2026-08-11).
+		rewritten, err := withClientFoundRows(dsn)
+		if err != nil {
+			return nil, err
+		}
+		db, err := sql.Open("mysql", rewritten)
 		if err != nil {
 			return nil, err
 		}
@@ -205,6 +213,16 @@ func openMySQL(dsn string, schema string, pool *PoolConfig) (*gorm.DB, error) {
 		}
 		dsn = rewritten
 	}
+	// v0.18 P2 C2 (RowsAffected==0 boundary): enable clientFoundRows so UPDATE
+	// reports *matched* rows instead of MySQL's default *changed* rows. Without
+	// it, an idempotent update that sets a column to its current value returns
+	// RowsAffected=0 and every `RowsAffected == 0 -> ErrXxxNotFound` check
+	// false-positives (e.g. re-setting the same model status). With FoundRows,
+	// 0 reliably means "no row matched" (true not-found).
+	dsn, err := withClientFoundRows(dsn)
+	if err != nil {
+		return nil, err
+	}
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, err
@@ -218,6 +236,20 @@ func openMySQL(dsn string, schema string, pool *PoolConfig) (*gorm.DB, error) {
 	}
 	applyPool(sqlDB, pool)
 	return db, nil
+}
+
+// withClientFoundRows rewrites a MySQL DSN to enable clientFoundRows
+// (matched-rows semantics for UPDATE). Shared by openMySQL (gorm path) and
+// OpenSQLWithPool (*sql.DB path) so every MySQL connection opened through xdb
+// gets the same C2 boundary behaviour (review 2026-08-11: the *sql.DB path
+// was a blind spot — OpenSQL feeds admin system_options and the migrate CLI).
+func withClientFoundRows(dsn string) (string, error) {
+	parsed, err := mysqldriver.ParseDSN(dsn)
+	if err != nil {
+		return "", fmt.Errorf("xdb: parse MySQL DSN: %w", err)
+	}
+	parsed.ClientFoundRows = true
+	return parsed.FormatDSN(), nil
 }
 
 func openSQLite3(dsn string, pool *PoolConfig, pragmas []string) (*gorm.DB, error) {

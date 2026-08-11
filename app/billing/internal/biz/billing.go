@@ -300,6 +300,16 @@ func (uc *BillingUsecase) quotaPerUSD() int64 {
 }
 
 func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64) (*Reservation, error) {
+	// v0.18 P2 C5: instrument the sync reserve path (mode=sync). The async
+	// path already observes mode=async in AsyncBillingUsecase.PreCheck; the
+	// metric was previously only observed on one path, so the sync baseline
+	// was always empty.
+	start := time.Now()
+	defer func() {
+		if metrics.BillingReserveDuration != nil {
+			metrics.BillingReserveDuration.WithLabelValues("sync").Observe(time.Since(start).Seconds())
+		}
+	}()
 	// Idempotency: an existing reserved/committed reservation for the SAME
 	// (user_id, request_id) is returned as-is. The check is repeated inside
 	// each path's transaction (FindByRequestIDInTx) so the read and the

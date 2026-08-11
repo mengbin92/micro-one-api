@@ -171,7 +171,17 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		}, nil
 	}
 
+	// v0.18 P2 C5: instrument the SYNC commit path only. The async branch
+	// above returns before this point (the actual settlement happens in the
+	// worker, which observes mode=async in runCommitPipeline), so the sync
+	// histogram only sees real synchronous commits — placing the Observe in
+	// CommitQuotaWithUsage would double-count async commits into the sync
+	// label (review 2026-08-11).
+	commitStart := time.Now()
 	committedAmount, refundAmount, result, err := s.uc.CommitQuotaWithUsageAndSplit(ctx, req.ReservationId, req.ActualTokens, req.Success, usage)
+	if metrics.BillingCommitDuration != nil {
+		metrics.BillingCommitDuration.WithLabelValues("sync").Observe(time.Since(commitStart).Seconds())
+	}
 	if err != nil {
 		return &billingv1.CommitQuotaResponse{
 			Success:      false,

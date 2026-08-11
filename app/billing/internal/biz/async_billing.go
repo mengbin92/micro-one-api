@@ -389,6 +389,20 @@ func (uc *AsyncBillingUsecase) settleSync(ctx context.Context, task *SettleTask)
 //	BillingUsecase.commitQuotaInternal (see the "Concurrent or retry" branch).
 //	If that CAS guard is ever weakened, this async path becomes unsafe.
 func (uc *AsyncBillingUsecase) runCommitPipeline(ctx context.Context, task *SettleTask) {
+	// v0.18 P2 C5: observe the async commit duration. The sync entry point
+	// (BillingService.CommitQuota, service layer) observes mode=sync after the
+	// async branch returns early. The Observe is deliberately NOT in
+	// BillingUsecase.CommitQuotaWithUsage: that function is delegated to by
+	// CommitQuotaWithUsageAndSplit, which this async pipeline also calls —
+	// placing it there would double-count async commits into the sync label.
+	// The async worker runs the same commit pipeline but is labelled async so
+	// the baseline can separate the two paths.
+	commitStart := time.Now()
+	defer func() {
+		if metrics.BillingCommitDuration != nil {
+			metrics.BillingCommitDuration.WithLabelValues("async").Observe(time.Since(commitStart).Seconds())
+		}
+	}()
 	if _, _, _, err := uc.syncUc.CommitQuotaWithUsageAndSplit(
 		ctx,
 		task.ReservationID,
