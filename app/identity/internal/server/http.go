@@ -1460,13 +1460,13 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"items": items, "total": total}})
 	case http.MethodPost:
 		var req struct {
-			Name           string   `json:"name"`
-			Models         []string `json:"models"`
-			ExpiredAt      int64    `json:"expired_time"`
-			ExpireAt       int64    `json:"expire_at"`
-			RemainQuota    int64    `json:"remain_quota"`
-			UnlimitedQuota bool     `json:"unlimited_quota"`
-			Subnet         string   `json:"subnet"`
+			Name            string   `json:"name"`
+			Models          []string `json:"models"`
+			ExpiredAt       int64    `json:"expired_time"`
+			ExpireAt        int64    `json:"expire_at"`
+			RemainQuota     int64    `json:"remain_quota"`
+			UnlimitedQuota  *bool    `json:"unlimited_quota"`
+			Subnet          string   `json:"subnet"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -1475,9 +1475,18 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		if expireAt == 0 {
 			expireAt = req.ExpireAt
 		}
+		// When the client omits unlimited_quota (nil pointer), fall back to
+		// the biz default (unlimited). A plain bool cannot distinguish
+		// "omitted" from an explicit false, so every frontend that only
+		// posts {"name"} would otherwise create a zero-quota token that is
+		// immediately rejected as TOKEN_EXHAUSTED.
+		if req.UnlimitedQuota == nil {
+			t := true
+			req.UnlimitedQuota = &t
+		}
 		token, err := uc.CreateAccessToken(r.Context(), snapshot.UserID, req.Name, req.Models, expireAt, biz.CreateAccessTokenOptions{
 			RemainQuota:    req.RemainQuota,
-			UnlimitedQuota: req.UnlimitedQuota,
+			UnlimitedQuota: *req.UnlimitedQuota,
 			Subnet:         req.Subnet,
 		})
 		if err != nil {

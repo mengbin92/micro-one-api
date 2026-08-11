@@ -44,6 +44,7 @@ var (
 	ErrInvalidToken         = errors.New("invalid token")
 	ErrTokenExpired         = errors.New("token expired")
 	ErrTokenExhausted       = errors.New("token exhausted")
+	ErrTokenQuotaInvalid    = errors.New("token quota must be positive for a limited key")
 	ErrTokenDisabled        = errors.New("token disabled")
 	ErrTokenInUse           = errors.New("cannot delete current session token")
 	ErrUserDisabled         = errors.New("user disabled")
@@ -640,6 +641,13 @@ func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, 
 		// H2: respect the caller's UnlimitedQuota/RemainQuota rather than
 		// silently forcing unlimited. Previously both create and update
 		// overwrote unlimited_quota=true, defeating the per-key quota UI.
+		// Guard against a degenerate "finite but zero" token: a limited key
+		// with RemainQuota <= 0 is born exhausted and can never be used,
+		// because ValidateToken rejects it before the first request. Refuse
+		// the creation explicitly instead of persisting a dead key.
+		if !options.UnlimitedQuota && options.RemainQuota <= 0 {
+			return nil, ErrTokenQuotaInvalid
+		}
 	}
 	now := uc.now().Unix()
 	plaintextKey := uc.generateToken()

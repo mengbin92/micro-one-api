@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.18.0 发布公告](./docs/releases/release-v0.18.0.md)（admin 资金写路径请求级幂等，关闭双扣款资金正确性开放项） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.0)
+> 📣 **最新发布**：[v0.18.1 发布公告](./docs/releases/release-v0.18.1.md)（修复 Token 创建零配额缺陷 + 错误码映射 + 工程卫生 C2/C4/C5） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.1)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.18.1
+
+v0.18.1 是 v0.18.0 之后的 **PATCH 修复版本**（3 个提交，`e6c1673` → `0ebe48a`），核心是修复两个影响生产可用性的缺陷：（1）Token 创建默认配额 bug——前端仅发送 `{name}` 时 `unlimited_quota` 被解析为 `false`（bool 零值），Token 以永久耗尽状态写入、首次使用即被 `TOKEN_EXHAUSTED` 拒绝；（2）identity → relay 错误码链路映射错误——`ErrTokenExhausted` 映射为 gRPC `NotFound` → HTTP 401，误导客户端将有效但耗尽的 key 当作错误 key（修正后：耗尽 → 429、禁用 → 403、子网 → 403）；同时完成 v0.18 P2 工程卫生（C2 MySQL `RowsAffected==0` 幂等更新误判修复、C5 billing commit/reserve + admin-api gRPC 客户端 Prometheus 指标补齐、C4 分区触发文档化）。**无 API 破坏性变更、无数据库迁移、无 proto 变更**。受影响服务为 identity-service、relay-gateway、admin-api、billing-service。详见 [docs/releases/release-v0.18.1.md](./docs/releases/release-v0.18.1.md)。
 
 ### 升级到 v0.18.0
 

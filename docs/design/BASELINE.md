@@ -189,6 +189,13 @@ points for the v0.17 P3.1 work are:
 | Phase 0 (arm64, estimated) | log-service | 2.0 ms | 6.0 ms | 12.0 ms |
 | v0.16.0 (linux/amd64) | _(all)_ | N/A — Prometheus not scraped | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded | N/A — not recorded |
+| production (linux/amd64, 2026-08-11) | _(all)_ | N/A — metric never instrumented | N/A | N/A |
+
+> **v0.18 P2 C5 诊断 (2026-08-11)**: `micro_one_api_dependency_grpc_latency_seconds`
+> (ServiceDependencyLatency) 已注册但**从未有任何 Observe 调用**（无 gRPC 客户端拦截器埋点），
+> 因此生产 Prometheus 始终无该指标 —— 根因是代码埋点缺失，非采集配置问题。
+> 已新增 `platform/grpc/xgrpc.UnaryClientMetricsInterceptor` 并接入 admin-api 的
+> identity/channel/billing 三个 dial 点；relay-gateway 等其他 dial 点接入后部署，即可补采。
 
 ### Billing commit latency
 
@@ -197,6 +204,15 @@ points for the v0.17 P3.1 work are:
 | Phase 0 (arm64, estimated) | sync | 5.0 ms | 15.0 ms | 28.0 ms |
 | v0.16.0 (linux/amd64) | — | N/A — not recorded | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | — | N/A — not recorded | N/A — not recorded | N/A — not recorded |
+| production (linux/amd64, 2026-08-11) | sync/async | N/A — metric never instrumented | N/A | N/A |
+
+> **v0.18 P2 C5 诊断 (2026-08-11)**: `micro_one_api_billing_commit_duration_seconds`
+> 已注册但**从未被 Observe**（仅 reserve 的 async 路径有埋点）。已补埋点：
+> sync 在 `BillingService.CommitQuota`（service 层，async 分支 early-return 之后）、
+> async 在 `AsyncBillingUsecase.runCommitPipeline`；reserve 的 sync 路径也在
+> `ReserveQuota` 补上。注意：sync 埋点不在 biz 层 `CommitQuotaWithUsage` 顶层
+> （该函数被 async 管线 `CommitQuotaWithUsageAndSplit` 委托，顶层埋点会导致 async
+> 样本双重计入 sync 标签）。部署后补采。
 
 ### Routing selection latency
 
@@ -205,6 +221,11 @@ points for the v0.17 P3.1 work are:
 | Phase 0 | N/A — metric did not exist (added in v0.11.0 Phase 3) | — | — |
 | v0.16.0 (linux/amd64) | N/A — not recorded | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | N/A — not recorded | N/A — not recorded | N/A — not recorded |
+| production (linux/amd64, 2026-08-11) | **7.6 ms** (channel) | **10.0 ms** (channel) | **22.0 ms** (channel) |
+
+> 采集：生产 Prometheus 5m 窗口（2026-08-11 09:3x，`[5m]` rate），
+> `source_kind=channel`；subscription 无流量（NaN）。当前生产流量较低
+> （routing selection ≈ 0.07 req/s）。
 
 ### Cache hit rates
 
@@ -215,6 +236,11 @@ points for the v0.17 P3.1 work are:
 | Phase 0 (arm64, estimated) | Quota | N/A | N/A | 100% (no cache) |
 | v0.16.0 (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded | N/A — not recorded |
+| production (linux/amd64, 2026-08-11) | Auth | **79.6%** | **15.9%** | **4.5%** |
+
+> 采集：生产 Prometheus 5m 窗口（2026-08-11），按
+> `hits_l1 / (hits_l1 + hits_l2 + misses)` 口径归一（与 Phase 0 口径一致）。
+> Channel / Quota 缓存无流量（指标无样本）。
 
 ### Circuit breaker state
 
@@ -226,6 +252,12 @@ points for the v0.17 P3.1 work are:
 | Phase 0 (arm64) | log-service | closed | 0 |
 | v0.16.0 (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded |
+| production (linux/amd64, 2026-08-11) | _(all)_ | N/A — interceptor not wired | N/A |
+
+> **v0.18 P2 C5 诊断 (2026-08-11)**: `platform/grpc/resilience.go` 的
+> `UnaryClientInterceptor` 已实现熔断埋点（CircuitBreakerState 等），但
+> **未 wire 到任何 gRPC 客户端 dial 点**（全局无 `WithChainUnaryInterceptor`
+> 引用该拦截器），生产 Prometheus 无熔断指标。待 wire 后补采。
 
 ## Target Metrics (Post-Refactoring)
 

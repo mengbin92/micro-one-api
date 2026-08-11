@@ -845,7 +845,7 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 	st, ok := status.FromError(err)
 	if ok {
 		switch st.Code() {
-		case codes.NotFound:
+		case codes.Unauthenticated, codes.NotFound:
 			s.writeAnthropicError(w, http.StatusUnauthorized, "authentication_error: invalid API key")
 		case codes.PermissionDenied:
 			s.writeAnthropicError(w, http.StatusForbidden, "permission_error: forbidden")
