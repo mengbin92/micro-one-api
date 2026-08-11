@@ -20,6 +20,7 @@ const (
 	ReasonTokenExpired       = "TOKEN_EXPIRED"
 	ReasonTokenExhausted     = "TOKEN_EXHAUSTED"
 	ReasonTokenNotFound      = "TOKEN_NOT_FOUND"
+	ReasonTokenSubnetViolation = "TOKEN_SUBNET_VIOLATION"
 	ReasonUserNotFound       = "USER_NOT_FOUND"
 
 	// Config domain
@@ -90,8 +91,9 @@ var HTTPStatusCode = map[string]int{
 	ReasonBadGateway:           502,
 	ReasonTokenDisabled:        401,
 	ReasonTokenExpired:         401,
-	ReasonTokenExhausted:       401,
+	ReasonTokenExhausted:       429,
 	ReasonTokenNotFound:        401,
+	ReasonTokenSubnetViolation: 403,
 	ReasonUserNotFound:         404,
 	ReasonConfigNotFound:       404,
 	ReasonConfigExists:         409,
@@ -195,6 +197,8 @@ func MapIdentityError(err error) error {
 		target = &Error{Reason: ReasonTokenDisabled, Message: "token disabled"}
 	case errorMsg == "token not found":
 		target = &Error{Reason: ReasonTokenNotFound, Message: "token not found"}
+	case errorMsg == "token subnet restriction violated":
+		target = &Error{Reason: ReasonTokenSubnetViolation, Message: "token subnet restriction violated"}
 	case errorMsg == "user disabled":
 		target = &Error{Reason: ReasonUserDisabled, Message: "user disabled"}
 	case errorMsg == "user not found":
@@ -260,7 +264,6 @@ func IsUnauthorized(err error) bool {
 	return e.Reason == ReasonUnauthorized ||
 		e.Reason == ReasonTokenDisabled ||
 		e.Reason == ReasonTokenExpired ||
-		e.Reason == ReasonTokenExhausted ||
 		e.Reason == ReasonTokenNotFound
 }
 

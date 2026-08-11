@@ -1996,3 +1996,43 @@ func extractJSONNumberField(body, key string) string {
 	}
 	return rest[:end]
 }
+
+// TestIdentityHTTPTokenCreateDefaultsUnlimited verifies that creating a token
+// with only {"name"} (no quota fields) produces an unlimited-quota token, not
+// a zero-quota token that is immediately TOKEN_EXHAUSTED. This is the default
+// path for the frontend, which posts only the name.
+func TestIdentityHTTPTokenCreateDefaultsUnlimited(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo, nil)
+	_, authToken := registerAndLoginForHTTPTest(t, uc)
+	srv := NewHTTPServer(":0", uc, nil)
+
+	// Frontend sends only the name — no remain_quota, no unlimited_quota.
+	createReq := httptest.NewRequest(http.MethodPost, "/api/token/", strings.NewReader(`{"name":"frontend-default"}`))
+	createReq.Header.Set("Authorization", "Bearer "+authToken)
+	createRec := httptest.NewRecorder()
+	srv.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body=%s", createRec.Code, createRec.Body.String())
+	}
+	body := createRec.Body.String()
+	if !strings.Contains(body, `"unlimited_quota":true`) {
+		t.Fatalf("token created without quota fields must default to unlimited, got: %s", body)
+	}
+	if !strings.Contains(body, `"key":"`) {
+		t.Fatalf("create response missing key: %s", body)
+	}
+
+	// Extract the key value and verify it is usable (not born exhausted).
+	keyStart := strings.Index(body, `"key":"`) + len(`"key":"`)
+	keyEnd := strings.Index(body[keyStart:], `"`)
+	if keyStart < 0 || keyEnd < 0 {
+		t.Fatalf("could not extract key from: %s", body)
+	}
+	tokenKey := body[keyStart : keyStart+keyEnd]
+
+	_, err := uc.GetAuthSnapshot(context.Background(), tokenKey, "")
+	if err != nil {
+		t.Fatalf("default-created token failed validation (would be 401 in production): %v", err)
+	}
+}

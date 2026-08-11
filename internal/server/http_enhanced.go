@@ -412,7 +412,7 @@ func (s *EnhancedHTTPServer) handleIdentityError(w http.ResponseWriter, err erro
 	st, ok := status.FromError(err)
 	if ok {
 		switch st.Code() {
-		case codes.NotFound:
+		case codes.Unauthenticated, codes.NotFound:
 			s.writeError(w, http.StatusUnauthorized, st.Message())
 		case codes.PermissionDenied:
 			s.writeError(w, http.StatusForbidden, st.Message())

@@ -90,7 +90,7 @@ func (s *HTTPServer) handleRelayPlanError(w http.ResponseWriter, err error) {
 	st, ok := status.FromError(err)
 	if ok {
 		switch st.Code() {
-		case codes.NotFound:
+		case codes.Unauthenticated, codes.NotFound:
 			s.writeError(w, http.StatusUnauthorized, "unauthorized")
 		case codes.PermissionDenied:
 			s.writeError(w, http.StatusForbidden, "forbidden")
@@ -143,7 +143,7 @@ func (s *HTTPServer) handleIdentityError(w http.ResponseWriter, err error) {
 	st, ok := status.FromError(err)
 	if ok {
 		switch st.Code() {
-		case codes.NotFound:
+		case codes.Unauthenticated, codes.NotFound:
 			s.writeError(w, http.StatusUnauthorized, "unauthorized")
 		case codes.PermissionDenied:
 			s.writeError(w, http.StatusForbidden, "forbidden")

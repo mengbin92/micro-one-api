@@ -361,7 +361,7 @@ func statusCodeFromError(err error) int {
 	}
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
-		case codes.NotFound:
+		case codes.Unauthenticated, codes.NotFound:
 			return http.StatusUnauthorized
 		case codes.PermissionDenied:
 			return http.StatusForbidden

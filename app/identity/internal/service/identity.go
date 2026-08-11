@@ -364,14 +364,32 @@ func mapIdentityErrorToGRPC(err error) error {
 		var code codes.Code
 		var message string
 		switch structuredErr.Reason {
+		// Genuine authentication failures: the credential is missing,
+		// invalid, expired, or not found. These map to gRPC Unauthenticated
+		// → HTTP 401.
 		case errors.ReasonUnauthorized,
-			errors.ReasonTokenDisabled,
 			errors.ReasonTokenExpired,
-			errors.ReasonTokenExhausted,
 			errors.ReasonTokenNotFound,
 			errors.ReasonUserNotFound:
-			code = codes.NotFound
-			message = "resource not found"
+			code = codes.Unauthenticated
+			message = "authentication failed"
+		// Token disabled is a policy decision, not a credential problem, so
+		// it is forbidden (403) rather than unauthenticated.
+		case errors.ReasonTokenDisabled:
+			code = codes.PermissionDenied
+			message = "token disabled"
+		// Token subnet restriction violated: the credential is valid but
+		// the source IP is not allowed.
+		case errors.ReasonTokenSubnetViolation:
+			code = codes.PermissionDenied
+			message = "token subnet restriction violated"
+		// Token quota exhausted: the credential is valid but the per-key
+		// budget is spent. This is NOT an auth failure — mapping it to
+		// NotFound/401 (the old behaviour) misled clients like cc-switch
+		// into treating a valid key as wrong.
+		case errors.ReasonTokenExhausted:
+			code = codes.ResourceExhausted
+			message = "token quota exhausted"
 		case errors.ReasonUserDisabled,
 			errors.ReasonModelForbidden:
 			code = codes.PermissionDenied

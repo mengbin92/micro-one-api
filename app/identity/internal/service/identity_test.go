@@ -48,8 +48,8 @@ func TestIdentityServiceValidateTokenRejectsAPIKey(t *testing.T) {
 
 	svc := NewIdentityService(uc)
 	_, err = svc.ValidateToken(context.Background(), &identityv1.ValidateTokenRequest{Token: apiToken.Key})
-	if status.Code(err) != codes.NotFound {
-		t.Fatalf("ValidateToken() error code = %v, want %v (err=%v)", status.Code(err), codes.NotFound, err)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("ValidateToken() error code = %v, want %v (err=%v)", status.Code(err), codes.Unauthenticated, err)
 	}
 }
 
@@ -98,5 +98,60 @@ func TestIdentityServiceSetUserRoleRequiresOperatorCredential(t *testing.T) {
 	_, err := svc.SetUserRole(ctx, &identityv1.SetUserRoleRequest{UserId: 1, Role: biz.RoleAdminUser})
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("SetUserRole() error = %v, want unauthenticated", err)
+	}
+}
+
+// TestGetAuthSnapshotErrorCodeMapping verifies that each identity biz error
+// maps to the correct gRPC code via GetAuthSnapshot. This is the regression
+// guard for the error-code mismatch that caused TOKEN_EXHAUSTED (and others)
+// to be misreported as NotFound → HTTP 401 instead of their true semantics.
+func TestGetAuthSnapshotErrorCodeMapping(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	uc := biz.NewIdentityUsecase(repo, nil)
+	svc := NewIdentityService(uc)
+
+	user, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Exhausted token: unlimited=false, remain=0.
+	exhausted, err := uc.CreateAccessToken(context.Background(), user.ID, "exhausted", nil, 0,
+		biz.CreateAccessTokenOptions{RemainQuota: 100, UnlimitedQuota: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uc.UpdateAccessTokenWithOptions(context.Background(), user.ID, exhausted.ID,
+		biz.UpdateAccessTokenOptions{RemainQuota: 0, UnlimitedQuota: false, Status: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Disabled token.
+	disabled, err := uc.CreateAccessToken(context.Background(), user.ID, "disabled", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uc.UpdateAccessTokenWithOptions(context.Background(), user.ID, disabled.ID,
+		biz.UpdateAccessTokenOptions{Name: "disabled", Status: biz.TokenStatusDisabled}); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		token     string
+		wantCode  codes.Code
+	}{
+		{"nonexistent token", "does-not-exist", codes.Unauthenticated},
+		{"exhausted token", exhausted.Key, codes.ResourceExhausted},
+		{"disabled token", disabled.Key, codes.PermissionDenied},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := svc.GetAuthSnapshot(context.Background(), &identityv1.GetAuthSnapshotRequest{Token: tt.token})
+			if got := status.Code(err); got != tt.wantCode {
+				t.Fatalf("GetAuthSnapshot(%q) code = %v, want %v (err=%v)", tt.token, got, tt.wantCode, err)
+			}
+		})
 	}
 }
