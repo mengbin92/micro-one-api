@@ -7,6 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-12
+
+v0.19.0 是 v0.18.4 之后的 **MINOR 稳定化版本**（4 个提交，`c0ddf36` → `27485b7`），主线为「兼容性守护 + 迁移治理 + 可发布性」：协议转换链路显式契约矩阵、迁移静态一致性门禁、CI integration/e2e 分层、基础设施包直接单测；唯一生产代码改动是 `platform/tracing` 的 OTLP 裸 `host:port/path` 路径归一化修复。**无 API 破坏性变更、无数据库迁移、无 proto 变更、无配置变更**，无强制重新部署需求。详见 [release-v0.19.0.md](docs/releases/release-v0.19.0.md)。
+
+### Added
+
+- **协议兼容性契约矩阵（P1.1）**：`internal/apicompat` + `internal/server` 以「注册表 + 覆盖断言」登记 Responses↔Anthropic / Chat↔Responses / WebSocket sticky 全部转换坐标，新增路径漏注册即测试失败；共享 fixture 覆盖全部三种 server-side web-search tool 变体；规则文档 `docs/design/v0.19-compat-matrix.md`。
+- **迁移治理静态门禁（P1.2）**：`cmd/migrate-check` + `make migration-check`——新增重复数字前缀硬失败（历史重复 allowlist）、ownership.yaml 覆盖校验（补 `061` → billing）、`auto_mirror_from_prefix: "072"` 起 postgres/sqlite 逐字镜像强制；SQLite fresh + incremental 生命周期测试。
+- **CI 测试分层（P1.3）**：`ci.yml` 新增 integration job（所有 `internal/integration` 每次 PR 运行）+ backend 挂钩 migration-check；新增 `nightly.yml`（compose e2e + Playwright admin smoke + 失败工件采集，`E2E_KEEP_ON_FAILURE` 保留容器供诊断）。
+- **基础设施单测（P1.4）**：`platform/grpc/xgrpc`、`platform/grpc/resilience`、`platform/security/auth`（含 race 门禁纳入）、`platform/security/crypto`、`platform/tracing`、`pkg/timeout` 直接单测。
+
+### Fixed
+
+- **fix(platform/tracing)**：`normalizeOTLPEndpoint` 对裸 `host:port/path` endpoint 返回无前导斜杠的 path，导致 `otlptracehttp.WithURLPath` 拼出 malformed URL（platform-L3 回归家族）；现与带 scheme 分支行为一致。
+
+
 ## [0.18.4] - 2026-08-12
 
 v0.18.3 之后的 **PATCH 修复版本**（1 个提交，`29e875d`），修复 admin 运营后台「高消耗渠道」排行把订阅账号流量误渲染为「已删除渠道」的问题，并为全部 Top-N 用量排行补上不依赖 SQL 返回顺序的确定性 quota 降序排序；前端概览页新增「高消耗订阅账号」排行卡片。**无 API 破坏性变更、无数据库迁移、无 proto 变更、无配置变更**。受影响服务为 admin-api（含管理前端 web/dist）。详见 [release-v0.18.4.md](docs/releases/release-v0.18.4.md)。
