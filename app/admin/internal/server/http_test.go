@@ -411,7 +411,7 @@ func (c *adminHTTPBillingClient) AggregateUsage(ctx context.Context, req *billin
 			},
 			Totals: &billingv1.UsageTotals{Quota: 75, UpstreamCost: 25, GrossProfit: 50, Count: 3},
 		}, nil
-	case len(req.GetGroupBy()) == 1 && req.GetGroupBy()[0] == "channel":
+	case len(req.GetGroupBy()) == 2 && req.GetGroupBy()[0] == "channel" && req.GetGroupBy()[1] == "subscription_account":
 		return &billingv1.AggregateUsageResponse{
 			Buckets: []*billingv1.UsageBucket{
 				{ChannelId: 101, Quota: 75, UpstreamCost: 100, GrossProfit: -25, Count: 3},

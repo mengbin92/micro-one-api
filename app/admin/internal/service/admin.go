@@ -1300,19 +1300,46 @@ func (s *AdminService) AggregateUsageTopN(ctx context.Context, groupBy string, l
 	if limit <= 0 {
 		limit = 5
 	}
+	requestLimit := limit
+	if groupBy == "channel" {
+		// Subscription-account traffic keeps a synthetic channel_id equal to the
+		// account id for backward-compatible ledger consumers. Ask billing for
+		// both source dimensions so those rows can be excluded from the regular
+		// channel ranking instead of being rendered as "deleted channels".
+		requestLimit = 0
+	}
 	resp, err := s.billingClient.AggregateUsage(ctx, &billingv1.AggregateUsageRequest{
-		GroupBy: []string{groupBy},
+		GroupBy: usageAggregateGroupBy(groupBy),
 		Type:    "consume",
-		Limit:   limit,
+		Limit:   requestLimit,
 	})
 	if err != nil {
 		return nil, err
 	}
 	items := make([]UsageAggregateView, 0, len(resp.GetBuckets()))
 	for _, bucket := range resp.GetBuckets() {
+		if groupBy == "channel" && bucket.GetSubscriptionAccountId() > 0 {
+			continue
+		}
 		items = append(items, usageAggregateViewFromBucket(bucket, groupBy))
 	}
+	// Billing applies Top-N before returning only when there are more buckets
+	// than the requested limit. With fewer buckets, SQL does not guarantee row
+	// order, so always restore the dashboard's quota-descending ranking here.
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].Quota > items[j].Quota
+	})
+	if len(items) > int(limit) {
+		items = items[:limit]
+	}
 	return items, nil
+}
+
+func usageAggregateGroupBy(groupBy string) []string {
+	if groupBy == "channel" {
+		return []string{"channel", "subscription_account"}
+	}
+	return []string{groupBy}
 }
 
 func usageAggregateViewFromBucket(bucket *billingv1.UsageBucket, groupBy string) UsageAggregateView {
