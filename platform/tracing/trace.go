@@ -103,6 +103,7 @@ func InitTracer(cfg Config) (func(), error) {
 // (host:port, urlPath, useTLS) tuple expected by the OTLP HTTP exporter options.
 // It accepts all of:
 //   - "jaeger:4318"                       → ("jaeger:4318", "", false)
+//   - "jaeger:4318/v1/traces"             → ("jaeger:4318", "/v1/traces", false)
 //   - "http://jaeger:4318"                → ("jaeger:4318", "", false)
 //   - "http://jaeger:4318/v1/traces"      → ("jaeger:4318", "/v1/traces", false)
 //   - "https://collector.example.com:4318/v1/traces" → (…, "/v1/traces", true)
@@ -117,7 +118,11 @@ func normalizeOTLPEndpoint(endpoint string) (hostPort, urlPath string, useTLS bo
 	// No scheme → assume already "host:port" (with optional path).
 	if !strings.Contains(endpoint, "://") {
 		if u, p, found := strings.Cut(endpoint, "/"); found {
-			return u, p, false
+			// Keep the path form consistent with the scheme branch below:
+			// otlptracehttp.WithURLPath expects a path beginning with "/",
+			// otherwise the exporter builds a malformed URL (platform-L3
+			// regression family).
+			return u, "/" + p, false
 		}
 		return endpoint, "", false
 	}
