@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-08-12
+
+v0.18.1 之后的 PATCH 修复版本（7 个提交，`759181f` → `8b40b63`），核心是修复 Kimi K3 等 Anthropic 兼容上游联网搜索导致 codex 端「Search results for query: …」文本无限粘连、多轮对话崩溃的 bug：完全静默丢弃 `server_tool_use` / `web_search_tool_result` content blocks（codex 不支持对应 output item 类型），并在 OAuth relay 路径（`ClaudeOAuthAdaptor`）的 `convertResponsesToAnthropicTools()` 中跳过 web_search tools——此前仅 fallback 路径剥离 tool 标识符，OAuth 路径仍触发上游服务端联网搜索。同时完成 v0.18 P4 可观测性闭环：`xgrpc.UnaryClientMetricsInterceptor` 接入全部 gRPC dial 点并在真实流量下回填 BASELINE；新增 relay 下游 gRPC 熔断器 `resilience` 配置段（env-gated 默认关闭，生产已开启）。**无 API 破坏性变更、无数据库迁移、无 proto 变更**。受影响服务为 relay-gateway、channel-service、identity-service、billing-service、monitor-worker。详见 [release-v0.18.2.md](docs/releases/release-v0.18.2.md)。
+
+### Fixed
+
+- **fix(apicompat): 修复 Kimi K3 web_search 文本粘连死循环（759181f / ddacd81 / be53c14 三递进提交）**：Kimi K3 等上游联网搜索返回 `server_tool_use` + `web_search_tool_result` blocks。ddacd81 将其从「转换为 codex 不支持的 `web_search_call` output items」改为完全静默丢弃（新增 `SkippingBlock` flag 保证跳过期间 delta/stop 不干扰已打开的 message/reasoning/function_call item 状态），流式 / 非流式 / 请求三方向完整处理；be53c14 根治 OAuth relay 路径——`ClaudeOAuthAdaptor` 此前把 web_search tools 以 `web_search_20250305` 原样转发触发上游服务端联网搜索，现与 fallback 路径一致地完全跳过。影响 relay-gateway（OAuth + fallback 路径）。
+- **chore(security): gosec G101 误报标注（8b40b63）**：`ReasonTokenSubnetViolation = "TOKEN_SUBNET_VIOLATION"`（v0.18.1 引入）被 G101 硬编码凭证正则命中，实为错误码标签；按仓库惯例加 `#nosec` 标注，pre-push gosec 门禁通过。
+
+### Added
+
+- **feat(relay): 新增 resilience 配置段，env-gated 默认关闭（8f11028）**：relay-gateway 下游 gRPC 熔断器配置入口 `RELAY_RESILIENCE_ENABLED`（默认 false）/ `RELAY_RESILIENCE_TIMEOUT`（默认 3s）；启用后下游调用经 `ResilientClient` 包装并记录 `circuit_breaker_state`。默认关闭不改变行为。影响 relay-gateway。
+- **feat(observability): v0.18 P4 可观测性闭环（445771a + 30ffb73）**：`xgrpc.UnaryClientMetricsInterceptor` 接入全部 gRPC dial 点（relay-gateway / channel / identity / billing / monitor / internal/data），纯计时无 I/O；生产真实流量回填 BASELINE（identity 2.7/6.9/9.6ms、channel 1.5/9.3/18.6ms、billing 1.0/20.9ms、log 0.6/4.8/21.9ms P50/P95/P99；commit async 31/60/92ms、reserve sync 8/40/48ms），无热路径回归。运维开启 relay resilience 后 `circuit_breaker_state` 4 下游 closed、24h trips=0。附 identity server/test 与 pkg/errors 历史 gofmt 漂移修复。影响 relay-gateway、channel-service、identity-service、billing-service、monitor-worker。
+
+
 ## [0.18.1] - 2026-08-11
 
 v0.18.0 之后的 PATCH 修复版本（3 个提交，`e6c1673` → `0ebe48a`），修复两个影响生产可用性的缺陷并完成 v0.18 P2 工程卫生：（1）Token 创建默认配额 bug——前端仅发送 `{name}` 时 `unlimited_quota` 被解析为 `false`（bool 零值），Token 以永久耗尽状态写入、首次使用即被拒绝；（2）identity → relay 错误码链路映射错误——`ErrTokenExhausted` 映射为 gRPC `NotFound` → HTTP 401，误导客户端将有效但耗尽的 key 当作错误 key（修正后：耗尽 → 429、禁用 → 403、子网 → 403）；同时修复 MySQL `RowsAffected==0` 导致幂等更新误判 NotFound 的 DSN 边界（影响 10+ 调用点）、补齐 billing commit/reserve Prometheus Observe 与 admin-api gRPC 客户端延迟拦截器。**无 API 破坏性变更、无数据库迁移、无 proto 变更**。受影响服务为 identity-service、relay-gateway、admin-api、billing-service。详见 [release-v0.18.1.md](docs/releases/release-v0.18.1.md)。

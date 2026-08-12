@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.18.1 发布公告](./docs/releases/release-v0.18.1.md)（修复 Token 创建零配额缺陷 + 错误码映射 + 工程卫生 C2/C4/C5） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.1)
+> 📣 **最新发布**：[v0.18.2 发布公告](./docs/releases/release-v0.18.2.md)（修复 Kimi K3 web_search 文本粘连死循环 + relay 弹性配置 + gRPC 延迟全边缘可观测） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.2)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.18.2
+
+v0.18.2 是 v0.18.1 之后的 **PATCH 修复版本**（7 个提交，`759181f` → `8b40b63`），核心是修复 Kimi K3 等 Anthropic 兼容上游联网搜索导致 codex 端「Search results for query: …」文本无限粘连、多轮对话崩溃的 bug：完全静默丢弃 `server_tool_use` / `web_search_tool_result` content blocks（codex 不支持对应 output item 类型），并在 OAuth relay 路径（`ClaudeOAuthAdaptor`）的 `convertResponsesToAnthropicTools()` 中跳过 web_search tools——此前仅 fallback 路径剥离 tool 标识符，OAuth 路径仍触发上游服务端联网搜索。同时完成 v0.18 P4 可观测性闭环：`xgrpc.UnaryClientMetricsInterceptor` 接入全部 gRPC dial 点并在真实流量下回填 BASELINE；新增 relay 下游 gRPC 熔断器 `resilience` 配置段（env-gated 默认关闭，生产已开启，`circuit_breaker_state` 4 下游 closed / trips=0）。**无 API 破坏性变更、无数据库迁移、无 proto 变更**。受影响服务为 relay-gateway、channel-service、identity-service、billing-service、monitor-worker。详见 [docs/releases/release-v0.18.2.md](./docs/releases/release-v0.18.2.md)。
 
 ### 升级到 v0.18.1
 
