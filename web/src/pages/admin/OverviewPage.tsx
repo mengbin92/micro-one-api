@@ -76,6 +76,8 @@ interface UsageAggregateItem {
   key?: string;
   user_id?: string;
   channel_id?: number;
+  subscription_account_id?: number;
+  platform?: string;
   model?: string;
   token_name?: string;
   name?: string;
@@ -123,6 +125,7 @@ interface AdminSummary {
   top_channels?: UsageAggregateItem[];
   top_users?: UsageAggregateItem[];
   top_tokens?: UsageAggregateItem[];
+  top_subscription_accounts?: UsageAggregateItem[];
   alerts?: SummaryAlert[];
   latest_reconciliation?: ReconciliationSummary;
   model_catalog?: Array<{ id?: string; owned_by?: string }>;
@@ -392,9 +395,13 @@ function CostCard({
   );
 }
 
-function topItemLabel(item: UsageAggregateItem, kind: 'model' | 'channel' | 'user' | 'token') {
+function topItemLabel(item: UsageAggregateItem, kind: 'model' | 'channel' | 'user' | 'token' | 'subscription_account') {
   if (kind === 'model') return item.model || item.key || '-';
   if (kind === 'channel') return item.name || (item.channel_id ? `#${item.channel_id}` : item.key || '-');
+  if (kind === 'subscription_account') {
+    const name = item.name || (item.subscription_account_id ? `#${item.subscription_account_id}` : item.key || '-');
+    return item.platform ? `${name} (${subscriptionPlatformLabel(item.platform)})` : name;
+  }
   if (kind === 'token') return item.token_name || item.key || '-';
   return item.user_id || item.key || '-';
 }
@@ -409,7 +416,7 @@ function TopUsageChartCard({
   quotaPerUnit,
 }: {
   title: string;
-  kind: 'model' | 'channel' | 'user' | 'token';
+  kind: 'model' | 'channel' | 'user' | 'token' | 'subscription_account';
   items: UsageAggregateItem[];
   isLoading: boolean;
   emptyTitle: string;
@@ -422,6 +429,7 @@ function TopUsageChartCard({
     channel: 'bg-emerald-600 dark:bg-emerald-400',
     user: 'bg-orange-600 dark:bg-orange-400',
     token: 'bg-violet-600 dark:bg-violet-400',
+    subscription_account: 'bg-cyan-600 dark:bg-cyan-400',
   }[kind];
 
   return (
@@ -497,6 +505,7 @@ export function AdminOverviewPage() {
   const topChannels = data?.top_channels ?? [];
   const topUsers = data?.top_users ?? [];
   const topTokens = data?.top_tokens ?? [];
+  const topSubscriptionAccounts = data?.top_subscription_accounts ?? [];
   const alerts = data?.alerts ?? [];
   const latestReconciliation = data?.latest_reconciliation;
   const modelPrice = parseModelPriceMap(data?.pricing_options?.ModelPrice);
@@ -629,7 +638,7 @@ export function AdminOverviewPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-4">
+      <div className="grid gap-6 xl:grid-cols-5">
         <TopUsageChartCard
           title="高消耗用户"
           kind="user"
@@ -664,6 +673,15 @@ export function AdminOverviewPage() {
           isLoading={isLoading}
           emptyTitle="暂无 Token 用量"
           emptyDescription="API Token 产生调用后会显示消耗排行。"
+          quotaPerUnit={quotaPerUnit}
+        />
+        <TopUsageChartCard
+          title="高消耗订阅账号"
+          kind="subscription_account"
+          items={topSubscriptionAccounts}
+          isLoading={isLoading}
+          emptyTitle="暂无订阅账号用量"
+          emptyDescription="订阅账号产生调用后会显示消耗排行。"
           quotaPerUnit={quotaPerUnit}
         />
       </div>

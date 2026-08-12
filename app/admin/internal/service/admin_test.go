@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
+	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	relayprovider "micro-one-api/domain/upstream/provider"
@@ -216,5 +218,64 @@ func TestBalanceEndpointForChannelUsesProviderDefaults(t *testing.T) {
 				t.Fatalf("endpoint = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+type aggregateUsageBillingClient struct {
+	billingv1.BillingServiceClient
+	request *billingv1.AggregateUsageRequest
+	buckets []*billingv1.UsageBucket
+}
+
+func (c *aggregateUsageBillingClient) AggregateUsage(_ context.Context, req *billingv1.AggregateUsageRequest, _ ...grpc.CallOption) (*billingv1.AggregateUsageResponse, error) {
+	c.request = req
+	if c.buckets != nil {
+		return &billingv1.AggregateUsageResponse{Buckets: c.buckets}, nil
+	}
+	return &billingv1.AggregateUsageResponse{Buckets: []*billingv1.UsageBucket{
+		{ChannelId: 4, SubscriptionAccountId: 4, Quota: 400},
+		{ChannelId: 6, Quota: 100},
+		{ChannelId: 5, SubscriptionAccountId: 5, Quota: 200},
+		{ChannelId: 1, Quota: 300},
+	}}, nil
+}
+
+func TestAggregateUsageTopNChannelsExcludesSubscriptionAccounts(t *testing.T) {
+	billingClient := &aggregateUsageBillingClient{}
+	svc := NewAdminService(billingClient, nil, nil, nil)
+
+	items, err := svc.AggregateUsageTopN(context.Background(), "channel", 5)
+	if err != nil {
+		t.Fatalf("AggregateUsageTopN() error = %v", err)
+	}
+	if billingClient.request == nil {
+		t.Fatal("AggregateUsage was not called")
+	}
+	if got, want := billingClient.request.GetGroupBy(), []string{"channel", "subscription_account"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("group_by = %v, want %v", got, want)
+	}
+	if got := billingClient.request.GetLimit(); got != 0 {
+		t.Fatalf("request limit = %d, want 0 so filtering happens before Top-N", got)
+	}
+	if len(items) != 2 || items[0].ChannelID != 1 || items[1].ChannelID != 6 {
+		t.Fatalf("items = %+v, want only regular channels 1 and 6", items)
+	}
+}
+
+func TestAggregateUsageTopNSubscriptionAccountsSortsByQuota(t *testing.T) {
+	billingClient := &aggregateUsageBillingClient{}
+	billingClient.buckets = []*billingv1.UsageBucket{
+		{SubscriptionAccountId: 2, Quota: 100},
+		{SubscriptionAccountId: 5, Quota: 400},
+		{SubscriptionAccountId: 4, Quota: 200},
+	}
+	svc := NewAdminService(billingClient, nil, nil, nil)
+
+	items, err := svc.AggregateUsageTopN(context.Background(), "subscription_account", 5)
+	if err != nil {
+		t.Fatalf("AggregateUsageTopN() error = %v", err)
+	}
+	if got := []int64{items[0].SubscriptionAccountID, items[1].SubscriptionAccountID, items[2].SubscriptionAccountID}; !reflect.DeepEqual(got, []int64{5, 4, 2}) {
+		t.Fatalf("subscription account order = %v, want [5 4 2]", got)
 	}
 }

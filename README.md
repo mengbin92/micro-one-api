@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.18.3 发布公告](./docs/releases/release-v0.18.3.md)（Responses↔Anthropic web_search 兼容性回归加固，纯测试收口、无运行时行为变化） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.3)
+> 📣 **最新发布**：[v0.18.4 发布公告](./docs/releases/release-v0.18.4.md)（admin 用量排行维度修正与排序保证，新增订阅账号排行） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.4)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.18.4
+
+v0.18.4 是 v0.18.3 之后的 **PATCH 修复版本**（1 个提交，`29e875d`），修复 admin 运营后台「高消耗渠道」排行把订阅账号流量误渲染为「已删除渠道」的问题：渠道排行改为 `["channel", "subscription_account"]` 双维度请求并在 service 层先剔除订阅账号行再截取 Top-N，同时为全部 Top-N 排行补上不依赖 SQL 返回顺序的确定性 quota 降序排序；前端概览页新增「高消耗订阅账号」排行卡片（排行区 4 列 → 5 列）。**无 API 破坏性变更、无数据库迁移、无 proto 变更、无配置变更**。受影响服务为 admin-api（含管理前端 web/dist）。详见 [docs/releases/release-v0.18.4.md](./docs/releases/release-v0.18.4.md)。
 
 ### 升级到 v0.18.3
 

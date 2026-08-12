@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.4] - 2026-08-12
+
+v0.18.3 之后的 **PATCH 修复版本**（1 个提交，`29e875d`），修复 admin 运营后台「高消耗渠道」排行把订阅账号流量误渲染为「已删除渠道」的问题，并为全部 Top-N 用量排行补上不依赖 SQL 返回顺序的确定性 quota 降序排序；前端概览页新增「高消耗订阅账号」排行卡片。**无 API 破坏性变更、无数据库迁移、无 proto 变更、无配置变更**。受影响服务为 admin-api（含管理前端 web/dist）。详见 [release-v0.18.4.md](docs/releases/release-v0.18.4.md)。
+
+### Fixed
+
+- **fix(admin): correct usage ranking dimensions and ordering（29e875d）**：订阅账号流量携带等于账号 id 的合成 `channel_id`，`AggregateUsageTopN("channel")` 单维度聚合时这些行混入渠道排行并被渲染为「已删除渠道」，还挤占 Top-N 名额；修复为按 `["channel", "subscription_account"]` 双维度请求（limit=0），在 service 层先剔除订阅账号行再截取 Top-N。同时修复 billing 仅在 bucket 数超过 limit 时才做 SQL Top-N、bucket 较少时行序不确定的问题——所有维度统一在 service 层按 quota 降序重排。影响 admin-api。
+
+### Added
+
+- **前端「高消耗订阅账号」排行卡片**：`OverviewPage` 新增 `top_subscription_accounts` 排行（cyan 配色，标签带平台标注），概览排行区从 4 列扩展为 5 列。影响 web/dist。
+
+
 ## [0.18.3] - 2026-08-12
 
 v0.18.2 之后的 **PATCH 测试收口版本**（2 个提交，`a21970a` + 矩阵补齐），**不含任何生产代码变更，无运行时行为变化**：将发布后落在 develop 上的 Anthropic fallback tool 测试对齐（`a21970a`）收口进 tag，并补齐 fallback 路径的 web_search 兼容性最小矩阵（请求 history `web_search_call` 丢弃、非流式 blocks 丢弃、流式 blocks 丢弃 + 文本/终止事件不受干扰），与 apicompat 侧 OAuth 层用例一一对应。审查确认 `a21970a` 为纯测试对齐——fallback 与 OAuth 路径共用 `convertResponsesToAnthropicTools()`（be53c14 在该函数中跳过 web_search），「tools=2」为正确预期，且新断言方向是收紧而非放松。**无 API 变更、无数据库迁移、无 proto 变更、无配置变更**；生产运行 v0.18.2 的用户无需为本版重新部署。详见 [release-v0.18.3.md](docs/releases/release-v0.18.3.md)。
