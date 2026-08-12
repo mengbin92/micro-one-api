@@ -138,16 +138,26 @@ test-unit: proto
 .PHONY: test-integration
 # run integration tests. These bind real TCP listeners so they need a
 # network-capable environment (not the default sandbox/CI unit gate).
+# Guard against an empty package list: if every integration package were
+# accidentally deleted or renamed, a bare `go test` would run against the
+# repo root instead of failing loudly.
 test-integration: proto
-	go test $$(go list ./... | grep '/internal/integration$$' | grep -v '/web/node_modules/')
+	@pkgs=$$(go list ./... | grep '/internal/integration$$' | grep -v '/web/node_modules/'); \
+	if [ -z "$$pkgs" ]; then \
+		echo "no internal/integration packages found — the gate would silently pass; refusing to run" >&2; \
+		exit 1; \
+	fi; \
+	go test $$pkgs
 
 .PHONY: test-race
 # run concurrency-sensitive packages under the race detector. This is the CI
 # gate for data races: any race in these packages turns the build red.
 # app/billing + app/admin carry the v0.18 P0 money-path idempotency tests
 # (concurrent duplicate purchase charges once), so they are part of the gate.
+# platform/security/auth carries the in-process JWT revocation blocklist
+# (global map + RWMutex) so its concurrent-access test runs under race too.
 test-race:
-	go test -race ./domain/subscription/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/...
+	go test -race ./domain/subscription/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/...
 
 .PHONY: run-identity
 # run identity-service
@@ -251,6 +261,14 @@ test-e2e-local:
 clean:
 	rm -rf bin/
 	rm -rf logs/
+
+.PHONY: migration-check
+# static migration governance gate (v0.19 P1.2): duplicate numeric prefixes
+# (historical ones allowlisted in migrations/dialect-manifest.yaml), ownership
+# coverage, and postgres/sqlite mirror coverage for new migrations. Pure file
+# checks — no database required.
+migration-check:
+	go run ./cmd/migrate-check -dir ./migrations
 
 .PHONY: migrate
 # apply pending DB migrations; reads MIGRATIONS_DSN or SQL_DSN

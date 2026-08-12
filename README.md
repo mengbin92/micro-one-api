@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.18.4 发布公告](./docs/releases/release-v0.18.4.md)（admin 用量排行维度修正与排序保证，新增订阅账号排行） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.4)
+> 📣 **最新发布**：[v0.19.0 发布公告](./docs/releases/release-v0.19.0.md)（协议兼容性契约矩阵、迁移治理门禁、CI 测试分层、基础设施单测补强；OTLP 路径修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.19.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.19.0
+
+v0.19.0 是 v0.18.4 之后的 **MINOR 稳定化版本**（4 个提交，`c0ddf36` → `27485b7`），不含新产品功能：为协议转换链路建立显式兼容性契约矩阵（注册表 + 覆盖断言，新增路径漏注册即失败），为迁移体系补上静态一致性门禁（`make migration-check`：重复前缀硬失败 + ownership 覆盖 + postgres/sqlite 镜像强制，SQLite fresh/incremental 生命周期自动化），CI 新增 integration job 与 nightly compose e2e / Playwright smoke，并补齐 xgrpc / resilience / auth / crypto / tracing / timeout 基础设施单测；唯一生产代码改动是 `platform/tracing` 的 OTLP 裸 `host:port/path` 路径归一化修复。**无 API 破坏性变更、无数据库迁移、无 proto 变更、无配置变更**，无强制重新部署需求。详见 [docs/releases/release-v0.19.0.md](./docs/releases/release-v0.19.0.md)。
 
 ### 升级到 v0.18.4
 

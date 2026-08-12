@@ -44,12 +44,41 @@ log() { echo -e "${GREEN}[E2E]${NC} $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 fail() { echo -e "${RED}[FAIL]${NC} $*"; }
 
+# GitHub Actions runners ship `docker compose` (v2 plugin) but not the legacy
+# `docker-compose` standalone binary; local dev machines often have only the
+# legacy one. Prefer the legacy binary when present, otherwise fall back to
+# the v2 plugin so the same script works in both environments.
+if command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+else
+    COMPOSE_CMD="docker compose"
+fi
+log "Using compose command: $COMPOSE_CMD"
+
+# cleanup always tears the environment down. It is called explicitly at the
+# start of a run (Step 0) to clear leftovers from a previous run, and from the
+# EXIT trap via on_exit.
 cleanup() {
     log "Tearing down..."
     cd "$COMPOSE_DIR"
-    docker-compose -f "$COMPOSE_FILE" -f "$COMPOSE_TEST" down -v --remove-orphans 2>/dev/null || true
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -f "$COMPOSE_TEST" down -v --remove-orphans 2>/dev/null || true
 }
-trap cleanup EXIT
+
+# on_exit decides whether to keep the stack alive on failure. Only the EXIT
+# trap path consults E2E_KEEP_ON_FAILURE — the explicit Step 0 cleanup must
+# ALWAYS tear down, or a previous failed run would leave containers behind and
+# the next `up` would fail on ports/volumes.
+on_exit() {
+    local code=$?
+    if [ -n "${E2E_KEEP_ON_FAILURE:-}" ] && [ "$code" -ne 0 ]; then
+        # CI diagnostics mode (nightly workflow): keep the containers alive on
+        # failure so a later step can collect logs and container state.
+        warn "E2E_KEEP_ON_FAILURE set and suite failed (exit $code); keeping containers for CI diagnostics"
+        return
+    fi
+    cleanup
+}
+trap on_exit EXIT
 
 load_env_var() {
     local key="$1"
@@ -73,11 +102,11 @@ log "Starting docker-compose with test override..."
 cd "$COMPOSE_DIR"
 compose_log="$(mktemp)"
 compose_parallel_limit="${COMPOSE_PARALLEL_LIMIT:-2}"
-if ! COMPOSE_PARALLEL_LIMIT="$compose_parallel_limit" docker-compose -f "$COMPOSE_FILE" -f "$COMPOSE_TEST" up -d --build 2>&1 | tee "$compose_log"; then
+if ! COMPOSE_PARALLEL_LIMIT="$compose_parallel_limit" $COMPOSE_CMD -f "$COMPOSE_FILE" -f "$COMPOSE_TEST" up -d --build 2>&1 | tee "$compose_log"; then
 	tail -20 "$compose_log"
 	warn "docker-compose startup failed; retrying once after health checks settle..."
 	sleep 5
-	COMPOSE_PARALLEL_LIMIT="$compose_parallel_limit" docker-compose -f "$COMPOSE_FILE" -f "$COMPOSE_TEST" up -d --build 2>&1 | tee "$compose_log"
+	COMPOSE_PARALLEL_LIMIT="$compose_parallel_limit" $COMPOSE_CMD -f "$COMPOSE_FILE" -f "$COMPOSE_TEST" up -d --build 2>&1 | tee "$compose_log"
 fi
 rm -f "$compose_log"
 

@@ -37,6 +37,9 @@ jobs:
       - name: Check architecture boundaries
         run: ./scripts/check-architecture.sh
 
+      - name: Check migration governance (P1.2)
+        run: make migration-check
+
       - name: Verify generated files are current
         run: |
           if [ -n "$(git status --porcelain)" ]; then
@@ -44,6 +47,31 @@ jobs:
             git diff
             exit 1
           fi
+
+  integration:
+    name: Integration (bind loopback)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Install buf and protobuf generators
+        run: |
+          make init
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # integration-smoke: all packages under */internal/integration bind real
+      # loopback listeners. They are excluded from the unit gate on purpose
+      # (restricted sandboxes), so they get their own job on the normal runner.
+      - name: Run integration tests
+        run: make test-integration
+        timeout-minutes: 15
 
   frontend:
     name: Frontend
