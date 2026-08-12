@@ -20,7 +20,7 @@ const (
 	ReasonTokenExpired         = "TOKEN_EXPIRED"
 	ReasonTokenExhausted       = "TOKEN_EXHAUSTED"
 	ReasonTokenNotFound        = "TOKEN_NOT_FOUND"
-	ReasonTokenSubnetViolation = "TOKEN_SUBNET_VIOLATION"
+	ReasonTokenSubnetViolation = "TOKEN_SUBNET_VIOLATION" // #nosec G101 -- error-reason label, not a credential.
 	ReasonUserNotFound         = "USER_NOT_FOUND"
 
 	// Config domain
