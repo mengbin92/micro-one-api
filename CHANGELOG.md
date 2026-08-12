@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.3] - 2026-08-12
+
+v0.18.2 之后的 **PATCH 测试收口版本**（2 个提交，`a21970a` + 矩阵补齐），**不含任何生产代码变更，无运行时行为变化**：将发布后落在 develop 上的 Anthropic fallback tool 测试对齐（`a21970a`）收口进 tag，并补齐 fallback 路径的 web_search 兼容性最小矩阵（请求 history `web_search_call` 丢弃、非流式 blocks 丢弃、流式 blocks 丢弃 + 文本/终止事件不受干扰），与 apicompat 侧 OAuth 层用例一一对应。审查确认 `a21970a` 为纯测试对齐——fallback 与 OAuth 路径共用 `convertResponsesToAnthropicTools()`（be53c14 在该函数中跳过 web_search），「tools=2」为正确预期，且新断言方向是收紧而非放松。**无 API 变更、无数据库迁移、无 proto 变更、无配置变更**；生产运行 v0.18.2 的用户无需为本版重新部署。详见 [release-v0.18.3.md](docs/releases/release-v0.18.3.md)。
+
+### Added
+
+- **test(server): fallback web_search minimal compatibility matrix**：在 `internal/server/responses_anthropic_fallback_test.go` 新增三个用例，覆盖 fallback 边界的请求 history `web_search_call` 丢弃（`TestResponsesRequestToAnthropicBodySkipsWebSearchCallHistory`）、非流式 `server_tool_use`/`web_search_tool_result` blocks 静默丢弃（`TestAnthropicResponseToResponsesDropsServerToolBlocks`）、流式 blocks 丢弃且文本 delta 与 `response.completed`/`[DONE]` 终止事件不受干扰（`TestTransformAnthropicStreamDropsServerToolBlocks`）。无生产代码变更。
+
+### Changed
+
+- **test(server): align Anthropic fallback tool expectations（a21970a 收口）**：`TestResponsesRequestToAnthropicBodyNormalizesCodexTools` 预期 tools 数 3 → 2，新增显式断言 client tools（`exec_command`/`multi_agent_v1`）保留、`web_search` 跳过。与既有实现语义对齐，非掩盖实现偏差。
+
 ## [0.18.2] - 2026-08-12
 
 v0.18.1 之后的 PATCH 修复版本（7 个提交，`759181f` → `8b40b63`），核心是修复 Kimi K3 等 Anthropic 兼容上游联网搜索导致 codex 端「Search results for query: …」文本无限粘连、多轮对话崩溃的 bug：完全静默丢弃 `server_tool_use` / `web_search_tool_result` content blocks（codex 不支持对应 output item 类型），并在 OAuth relay 路径（`ClaudeOAuthAdaptor`）的 `convertResponsesToAnthropicTools()` 中跳过 web_search tools——此前仅 fallback 路径剥离 tool 标识符，OAuth 路径仍触发上游服务端联网搜索。同时完成 v0.18 P4 可观测性闭环：`xgrpc.UnaryClientMetricsInterceptor` 接入全部 gRPC dial 点并在真实流量下回填 BASELINE；新增 relay 下游 gRPC 熔断器 `resilience` 配置段（env-gated 默认关闭，生产已开启）。**无 API 破坏性变更、无数据库迁移、无 proto 变更**。受影响服务为 relay-gateway、channel-service、identity-service、billing-service、monitor-worker。详见 [release-v0.18.2.md](docs/releases/release-v0.18.2.md)。

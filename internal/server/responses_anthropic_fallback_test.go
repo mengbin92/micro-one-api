@@ -96,10 +96,12 @@ func TestResponsesRequestToAnthropicBodyNormalizesCodexTools(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode anthropic body: %v, body=%s", err, string(body))
 	}
-	if len(payload.Tools) != 3 {
-		t.Fatalf("tools = %d, want 3; body=%s", len(payload.Tools), string(body))
+	if len(payload.Tools) != 2 {
+		t.Fatalf("tools = %d, want 2; body=%s", len(payload.Tools), string(body))
 	}
+	toolNames := make(map[string]bool, len(payload.Tools))
 	for _, tool := range payload.Tools {
+		toolNames[tool.Name] = true
 		if tool.Type != "" {
 			t.Fatalf("tool %q has unsupported type %q; body=%s", tool.Name, tool.Type, string(body))
 		}
@@ -110,6 +112,12 @@ func TestResponsesRequestToAnthropicBodyNormalizesCodexTools(t *testing.T) {
 		if schema["type"] != "object" {
 			t.Fatalf("tool %q input_schema.type = %#v; body=%s", tool.Name, schema["type"], string(body))
 		}
+	}
+	if !toolNames["exec_command"] || !toolNames["multi_agent_v1"] {
+		t.Fatalf("client tools were not preserved: names=%v body=%s", toolNames, string(body))
+	}
+	if toolNames["web_search"] {
+		t.Fatalf("unsupported server-side web_search tool was preserved: body=%s", string(body))
 	}
 }
 
@@ -348,4 +356,170 @@ func drainStreamResponse(resp *relayprovider.RawStreamResponse) string {
 		}
 	}
 	return string(buf)
+}
+
+// ---------------------------------------------------------------------------
+// web_search fallback-path compatibility matrix (v0.18.3)
+//
+// These tests close the fallback-side gaps of the web_search contract matrix.
+// The OAuth-path equivalents live in internal/apicompat/anthropic_responses_test.go
+// (TestAnthropicEventToResponses_ServerToolUseDropped,
+//  TestNonStreaming_ServerToolUseDropped,
+//  TestResponsesToAnthropicRequest_WebSearchCallSkipped).
+// The fallback path wraps the same apicompat converters but goes through the
+// responses_fallback.go boundary (raw JSON body / SSE pipe), so each case is
+// re-asserted here at that boundary.
+// ---------------------------------------------------------------------------
+
+// TestResponsesRequestToAnthropicBodySkipsWebSearchCallHistory covers the
+// request direction: codex replays web_search_call output items in the input
+// history. The fallback path must drop them instead of forwarding them to the
+// upstream as server_tool_use/web_search_tool_result blocks, which Kimi K3
+// rejects with 400.
+func TestResponsesRequestToAnthropicBodySkipsWebSearchCallHistory(t *testing.T) {
+	body, _, err := responsesRequestToAnthropicBody([]byte(`{
+		"model":"Kimi-K2.7-Code",
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"search for rust"}]},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Let me look that up."}]},
+			{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"rust async"}},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Tokio is the answer."}]}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("responsesRequestToAnthropicBody error: %v", err)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode anthropic body: %v, body=%s", err, string(body))
+	}
+	raw := string(body)
+	for _, banned := range []string{"server_tool_use", "web_search_tool_result", "web_search_call"} {
+		if strings.Contains(raw, banned) {
+			t.Fatalf("anthropic body must not contain %q: %s", banned, raw)
+		}
+	}
+	msgs, ok := payload["messages"].([]interface{})
+	// The two assistant messages around the dropped web_search_call item are
+	// merged by the converter, so the history collapses to 1 user + 1 assistant.
+	if !ok || len(msgs) != 2 {
+		t.Fatalf("expected 2 messages (web_search_call dropped, adjacent assistant merged), got %#v body=%s", payload["messages"], raw)
+	}
+}
+
+// TestAnthropicResponseToResponsesDropsServerToolBlocks covers the non-streaming
+// response direction: server_tool_use + web_search_tool_result content blocks
+// must be silently dropped, and no web_search_call output items may be emitted
+// (codex cannot render them).
+func TestAnthropicResponseToResponsesDropsServerToolBlocks(t *testing.T) {
+	anthropicBody := []byte(`{
+		"id":"msg_search","type":"message","role":"assistant","model":"Kimi-K2.7-Code",
+		"content":[
+			{"type":"text","text":"Let me search for that. "},
+			{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{"query":"rust async"}},
+			{"type":"web_search_tool_result","tool_use_id":"srvtoolu_1","content":[]},
+			{"type":"text","text":"Tokio is the answer."}
+		],
+		"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":8}
+	}`)
+	out, _, err := anthropicResponseToResponses(anthropicBody)
+	if err != nil {
+		t.Fatalf("anthropicResponseToResponses error: %v", err)
+	}
+	raw := string(out)
+	for _, banned := range []string{"server_tool_use", "web_search_tool_result", "web_search_call"} {
+		if strings.Contains(raw, banned) {
+			t.Fatalf("responses body must not contain %q: %s", banned, raw)
+		}
+	}
+	var resp struct {
+		Output []struct {
+			Type    string `json:"type"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"output"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("decode responses body: %v, body=%s", err, raw)
+	}
+	if len(resp.Output) == 0 {
+		t.Fatalf("expected at least one message output item: %s", raw)
+	}
+	for _, item := range resp.Output {
+		if item.Type != "message" {
+			t.Fatalf("unexpected output item type %q: %s", item.Type, raw)
+		}
+	}
+	if !strings.Contains(raw, "Tokio is the answer.") {
+		t.Fatalf("text content after dropped blocks must be preserved: %s", raw)
+	}
+}
+
+// TestTransformAnthropicStreamDropsServerToolBlocks covers the streaming
+// response direction through the fallback SSE bridge: content blocks for
+// server_tool_use / web_search_tool_result must be silently dropped without
+// disturbing the surrounding text stream or the terminal events.
+func TestTransformAnthropicStreamDropsServerToolBlocks(t *testing.T) {
+	anthropicSSE := strings.Join([]string{
+		"event: message_start",
+		`data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"Kimi-K2.7-Code","usage":{"input_tokens":10,"output_tokens":0}}}`,
+		"",
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Answer: "}}`,
+		"",
+		"event: content_block_stop",
+		`data: {"type":"content_block_stop","index":0}`,
+		"",
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{"query":"golang generics"}}}`,
+		"",
+		"event: content_block_stop",
+		`data: {"type":"content_block_stop","index":1}`,
+		"",
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":2,"content_block":{"type":"web_search_tool_result","tool_use_id":"srvtoolu_1","content":[]}}`,
+		"",
+		"event: content_block_stop",
+		`data: {"type":"content_block_stop","index":2}`,
+		"",
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":3,"content_block":{"type":"text","text":""}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"42"}}`,
+		"",
+		"event: content_block_stop",
+		`data: {"type":"content_block_stop","index":3}`,
+		"",
+		"event: message_delta",
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5,"input_tokens":0}}`,
+		"",
+		"event: message_stop",
+		`data: {"type":"message_stop"}`,
+		"",
+	}, "\n")
+	src := &relayprovider.RawStreamResponse{
+		StatusCode: 200,
+		Header:     map[string][]string{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(anthropicSSE)),
+	}
+	out := drainStreamResponse(transformAnthropicStreamToResponses(src))
+	for _, banned := range []string{"server_tool_use", "web_search_tool_result", "web_search_call"} {
+		if strings.Contains(out, banned) {
+			t.Fatalf("responses stream must not contain %q:\n%s", banned, out)
+		}
+	}
+	if !strings.Contains(out, `"delta":"Answer: "`) || !strings.Contains(out, `"delta":"42"`) {
+		t.Fatalf("text deltas around skipped blocks must be preserved:\n%s", out)
+	}
+	if !strings.Contains(out, "response.completed") {
+		t.Fatalf("missing response.completed terminal event:\n%s", out)
+	}
+	if !strings.Contains(out, "data: [DONE]") {
+		t.Fatalf("missing [DONE] sentinel:\n%s", out)
+	}
 }

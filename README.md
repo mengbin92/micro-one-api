@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.18.2 发布公告](./docs/releases/release-v0.18.2.md)（修复 Kimi K3 web_search 文本粘连死循环 + relay 弹性配置 + gRPC 延迟全边缘可观测） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.2)
+> 📣 **最新发布**：[v0.18.3 发布公告](./docs/releases/release-v0.18.3.md)（Responses↔Anthropic web_search 兼容性回归加固，纯测试收口、无运行时行为变化） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.18.3)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.18.3
+
+v0.18.3 是 v0.18.2 之后的 **PATCH 测试收口版本**（2 个提交，`a21970a` + 矩阵补齐），**不含任何生产代码变更，无运行时行为变化**：将发布后落在 develop 上的 Anthropic fallback tool 测试对齐收口进 tag，并补齐 fallback 路径的 web_search 兼容性最小矩阵（请求 history `web_search_call` 丢弃、非流式 / 流式 `server_tool_use`/`web_search_tool_result` blocks 静默丢弃且文本与终止事件不受干扰），与 apicompat 侧 OAuth 层用例一一对应。**无 API 变更、无数据库迁移、无 proto 变更、无配置变更**；生产运行 v0.18.2 的用户无需为本版重新部署。详见 [docs/releases/release-v0.18.3.md](./docs/releases/release-v0.18.3.md)。
 
 ### 升级到 v0.18.2
 
