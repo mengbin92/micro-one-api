@@ -121,6 +121,8 @@ func main() {
 }
 
 func loadManifest(path string) (*manifest, error) {
+	// #nosec G304 -- path is built from the operator-supplied -dir flag plus a
+	// fixed manifest name; this is a local static-check CLI, not a server.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
@@ -133,6 +135,7 @@ func loadManifest(path string) (*manifest, error) {
 }
 
 func loadOwnership(path string) (*ownershipManifest, error) {
+	// #nosec G304 -- same as loadManifest: local CLI, path from -dir flag.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
