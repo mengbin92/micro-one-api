@@ -13,6 +13,7 @@ import (
 
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/internal/server"
+	"micro-one-api/platform/grpc/xgrpc"
 	applogger "micro-one-api/platform/logging"
 	appauth "micro-one-api/platform/security/auth"
 	apptls "micro-one-api/platform/tls"
@@ -118,11 +119,15 @@ func (t *tokenAuth) RequireTransportSecurity() bool {
 // service-token credentials. Used on the non-TLS path (review Critical #2)
 // so identity/billing gRPC interceptors receive the SERVICE_TOKEN even
 // without TLS.
-func createInsecureClient(endpoint string, tokenCreds grpc.DialOption) (*grpc.ClientConn, error) {
+func createInsecureClient(serviceName, endpoint string, tokenCreds grpc.DialOption) (*grpc.ClientConn, error) {
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	if tokenCreds != nil {
 		opts = append(opts, tokenCreds)
 	}
+	// v0.18 P2/P4: observe gRPC dependency latency on the relay hot path.
+	// The interceptor is pure timing + labels (no I/O), keeping overhead
+	// negligible for chat P95 (P4 constraint).
+	opts = append(opts, grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor(serviceName)))
 	return grpc.NewClient(endpoint, opts...)
 }
 

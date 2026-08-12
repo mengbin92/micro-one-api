@@ -1306,17 +1306,17 @@ func TestResponsesToAnthropicRequest_AllToolsGetObjectInputSchema(t *testing.T) 
 
 	resp, err := ResponsesToAnthropicRequest(req)
 	require.NoError(t, err)
-	require.Len(t, resp.Tools, 2)
+	// web_search tools must be skipped, not forwarded as web_search_20250305.
+	// Only the custom tool survives the conversion.
+	require.Len(t, resp.Tools, 1)
 	assert.Equal(t, "custom", resp.Tools[0].Type)
 	assert.Equal(t, "apply_patch", resp.Tools[0].Name)
 	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(resp.Tools[0].InputSchema))
-	assert.Equal(t, "web_search_20250305", resp.Tools[1].Type)
-	assert.Equal(t, "web_search", resp.Tools[1].Name)
-	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(resp.Tools[1].InputSchema))
 
 	body, err := jsonx.Marshal(resp)
 	require.NoError(t, err)
 	assert.NotContains(t, string(body), `"input_schema":null`)
+	assert.NotContains(t, string(body), `web_search_20250305`)
 }
 
 // ---------------------------------------------------------------------------
@@ -1795,4 +1795,214 @@ func TestAnthropicEventToResponses_CacheTokensFromMessageDelta(t *testing.T) {
 	assert.Equal(t, 8, completed.Response.Usage.OutputTokens)
 	require.NotNil(t, completed.Response.Usage.InputTokensDetails)
 	assert.Equal(t, 11, completed.Response.Usage.InputTokensDetails.CachedTokens)
+}
+
+// TestAnthropicEventToResponses_ServerToolUseDropped verifies that
+// server_tool_use + web_search_tool_result content blocks are silently
+// dropped during streaming conversion. codex does not understand
+// web_search_call output items — it renders them as "Searching the web" /
+// "Search results for query" and aborts multi-turn tasks. The search
+// results are already in the model's text, so dropping loses no context.
+//
+// The test also ensures that the text blocks before and after the search
+// blocks are not duplicated — the SkippingBlock flag must not disturb the
+// open message item's state.
+func TestAnthropicEventToResponses_ServerToolUseDropped(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	var allEvents []ResponsesStreamEvent
+	collect := func(evts []ResponsesStreamEvent) {
+		allEvents = append(allEvents, evts...)
+	}
+
+	// message_start
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_k3_search",
+			Model: "k3",
+			Usage: AnthropicUsage{InputTokens: 10},
+		},
+	}, state))
+
+	// text block (index 0): "Answer: "
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:         "content_block_start",
+		Index:        intPtr(0),
+		ContentBlock: &AnthropicContentBlock{Type: "text"},
+	}, state))
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: intPtr(0),
+		Delta: &AnthropicDelta{Type: "text_delta", Text: "Answer: "},
+	}, state))
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: intPtr(0),
+	}, state))
+
+	// server_tool_use block (index 1): must be silently dropped
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_start",
+		Index: intPtr(1),
+		ContentBlock: &AnthropicContentBlock{
+			Type:  "server_tool_use",
+			ID:    "srvtoolu_abc",
+			Name:  "web_search",
+			Input: json.RawMessage(`{"query":"golang generics"}`),
+		},
+	}, state))
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: intPtr(1),
+	}, state))
+
+	// web_search_tool_result block (index 2): also dropped
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_start",
+		Index: intPtr(2),
+		ContentBlock: &AnthropicContentBlock{
+			Type:      "web_search_tool_result",
+			ToolUseID: "srvtoolu_abc",
+			Content:   json.RawMessage(`[]`),
+		},
+	}, state))
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: intPtr(2),
+	}, state))
+
+	// second text block (index 3): "42"
+	// This re-opens a message item (the previous one was closed at block 0's
+	// content_block_stop). The "Answer: " text must NOT leak into this block.
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:         "content_block_start",
+		Index:        intPtr(3),
+		ContentBlock: &AnthropicContentBlock{Type: "text"},
+	}, state))
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_delta",
+		Index: intPtr(3),
+		Delta: &AnthropicDelta{Type: "text_delta", Text: "42"},
+	}, state))
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: intPtr(3),
+	}, state))
+
+	// message_stop
+	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_stop",
+	}, state))
+
+	// Assert: NO web_search_call output items emitted at all.
+	for _, e := range allEvents {
+		if e.Item != nil { assert.NotEqual(t, "web_search_call", e.Item.Type,
+			"web_search_call items must not be emitted — codex cannot handle them") }
+	}
+
+	// Assert: text output is correct. The converter accumulates text across
+	// multiple text content blocks into a single message item (existing
+	// design). The first content_block_stop emits output_text.done with
+	// "Answer: ". After the skipped search blocks, the second text block
+	// appends "42" so the final output_text.done carries "Answer: 42".
+	// The key assertion is that SkippingBlock did NOT cause "Answer: " to
+	// be duplicated or the search blocks to inject any output.
+	var textDones []string
+	for _, e := range allEvents {
+		if e.Type == "response.output_text.done" {
+			textDones = append(textDones, e.Text)
+		}
+	}
+	assert.Contains(t, textDones, "Answer: ")
+	assert.Contains(t, textDones, "Answer: 42")
+
+	// Count how many times "Answer: " appears as a standalone done text.
+	// Before the fix it appeared 3x (once per content_block_stop for idx 0, 1, 2)
+	// because server_tool_use blocks were not skipped, leaving CurrentItemType
+	// == "message" and re-emitting accumulated text. Now it appears once.
+	answerOnlyCount := 0
+	for _, td := range textDones {
+		if td == "Answer: " {
+			answerOnlyCount++
+		}
+	}
+	assert.Equal(t, 1, answerOnlyCount,
+		"'Answer: ' (standalone) must appear exactly once, not duplicated by skipped blocks")
+}
+
+func intPtr(v int) *int { return &v }
+
+// TestNonStreaming_ServerToolUseDropped verifies that server_tool_use +
+// web_search_tool_result blocks are silently dropped in non-streaming
+// conversion. Only message (text) output items should be produced.
+func TestNonStreaming_ServerToolUseDropped(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:    "msg_nonstream_search",
+		Model: "k3",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "Let me search for that."},
+			{
+				Type:  "server_tool_use",
+				ID:    "srvtoolu_xyz",
+				Name:  "web_search",
+				Input: json.RawMessage(`{"query":"rust async runtime"}`),
+			},
+			{
+				Type:      "web_search_tool_result",
+				ToolUseID: "srvtoolu_xyz",
+				Content:   json.RawMessage(`[]`),
+			},
+			{Type: "text", Text: "Based on the search results, tokio is the most popular."},
+		},
+		StopReason: "end_turn",
+		Usage:      AnthropicUsage{InputTokens: 10, OutputTokens: 5},
+	}
+
+	out := AnthropicToResponsesResponse(resp)
+	require.NotNil(t, out)
+
+	// No web_search_call items at all.
+	for _, o := range out.Output {
+		assert.NotEqual(t, "web_search_call", o.Type,
+			"web_search_call items must not be emitted")
+		assert.NotEqual(t, "server_tool_use", o.Type)
+		assert.NotEqual(t, "web_search_tool_result", o.Type)
+	}
+}
+
+// web_search_call items in the input history are skipped (not forwarded to the
+// upstream as server_tool_use, which kimi k3 rejects with 400).
+func TestResponsesToAnthropicRequest_WebSearchCallSkipped(t *testing.T) {
+	// Build the input as raw JSON since ResponsesInputItem does not have an
+	// Action field — codex sends web_search_call with action inline.
+	input := jsonx.RawMessage(`[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"search for rust"}]},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Let me look that up."}]},
+		{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"rust async"}},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Tokio is the answer."}]}
+	]`)
+
+	req := &ResponsesRequest{
+		Model:  "k3",
+		Input:  input,
+		Stream: false,
+	}
+
+	anthReq, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.NotNil(t, anthReq)
+
+	// The web_search_call must NOT appear as server_tool_use in any message.
+	for _, msg := range anthReq.Messages {
+		var blocks []AnthropicContentBlock
+		if err := jsonx.Unmarshal(msg.Content, &blocks); err != nil {
+			continue
+		}
+		for _, b := range blocks {
+			assert.NotEqual(t, "server_tool_use", b.Type,
+				"server_tool_use must not be forwarded to kimi k3 upstream")
+			assert.NotEqual(t, "web_search_tool_result", b.Type,
+				"web_search_tool_result must not be forwarded to kimi k3 upstream")
+		}
+	}
 }

@@ -10,6 +10,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/monitor/internal/biz"
 	monitordata "micro-one-api/app/monitor/internal/data"
+	"micro-one-api/platform/grpc/xgrpc"
 	applogger "micro-one-api/platform/logging"
 
 	"go.uber.org/zap"
@@ -45,7 +46,9 @@ func newChannelHealthCheckerImpl(cfg *Config) (*biz.ChannelHealthChecker, func()
 		}
 	}
 
-	conn, err := grpc.NewClient(clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(clients.Channel.Endpoint,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("channel-service")))
 	if err != nil {
 		applogger.Log.Warn("failed to create channel health client", zap.Error(err))
 		return nil, nil

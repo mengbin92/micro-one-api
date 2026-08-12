@@ -198,8 +198,18 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw jsonx.RawMes
 				Content: content,
 			})
 
+		case item.Type == "web_search_call":
+			// codex replays web_search_call output items in the history.
+			// Skip them: kimi k3 and other passback-required upstreams reject
+			// server_tool_use/web_search_tool_result blocks with 400
+			// ("invalid value: server_tool_use"). The search results were already
+			// incorporated into the model's text output, so dropping the item
+			// does not lose context. Mirrors FilterWebSearchHistoryBlocks in the
+			// sibling sub2api project.
+			continue
+
 		default:
-			// Unknown role/type — attempt as user message
+			// Unknown role/type — skip items with no content
 			if item.Content != nil {
 				messages = append(messages, AnthropicMessage{
 					Role:    "user",
@@ -536,11 +546,19 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 	for _, t := range tools {
 		switch t.Type {
 		case "web_search", "google_search", "web_search_20250305":
-			out = append(out, AnthropicTool{
-				Type:        "web_search_20250305",
-				Name:        "web_search",
-				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
-			})
+			// Skip: server-side web search tools are Anthropic-specific and not
+			// supported by third-party Anthropic-compatible endpoints (Kimi,
+			// Zhipu, MiniMax). Forwarding them as web_search_20250305 triggers
+			// server-side web search, which produces server_tool_use /
+			// web_search_tool_result blocks AND "Search results for query:" text
+			// in regular text blocks. That text accumulates across conversation
+			// turns, causing the infinite "Search results for query: Search
+			// results for query: ..." loop reported with Kimi K3. The fallback
+			// path (responses_fallback.go) already strips the tool type; skipping
+			// entirely here is more robust. The existing SkippingBlock logic in
+			// AnthropicEventToResponsesState remains as a safety net in case any
+			// downstream still emits these blocks.
+			continue
 		case "function":
 			out = append(out, AnthropicTool{
 				Name:        t.Name,

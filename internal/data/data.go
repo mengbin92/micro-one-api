@@ -11,6 +11,7 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	relaycredential "micro-one-api/domain/upstream/credential"
 	"micro-one-api/internal/biz"
+	"micro-one-api/platform/grpc/xgrpc"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,11 +29,15 @@ type Data struct {
 const dataClientTimeout = 30 * time.Second
 
 func NewData(identityEndpoint, channelEndpoint string) (*Data, error) {
-	identityConn, err := grpc.NewClient(identityEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	identityConn, err := grpc.NewClient(identityEndpoint,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("identity-service")))
 	if err != nil {
 		return nil, err
 	}
-	channelConn, err := grpc.NewClient(channelEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	channelConn, err := grpc.NewClient(channelEndpoint,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("channel-service")))
 	if err != nil {
 		_ = identityConn.Close()
 		return nil, err

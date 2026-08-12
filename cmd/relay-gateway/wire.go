@@ -151,19 +151,19 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		if serviceAuth != nil && serviceAuth.Token != "" {
 			tokenCreds = grpc.WithPerRPCCredentials(&tokenAuth{token: serviceAuth.Token})
 		}
-		identityConn, err = createInsecureClient(identityEndpoint, tokenCreds)
+		identityConn, err = createInsecureClient("identity-service", identityEndpoint, tokenCreds)
 		if err != nil {
 			return nil, nil, fmt.Errorf("create identity gRPC client: %w", err)
 		}
-		channelConn, err = createInsecureClient(channelEndpoint, tokenCreds)
+		channelConn, err = createInsecureClient("channel-service", channelEndpoint, tokenCreds)
 		if err != nil {
 			return nil, nil, fmt.Errorf("create channel gRPC client: %w", err)
 		}
-		billingConn, err = createInsecureClient(billingEndpoint, tokenCreds)
+		billingConn, err = createInsecureClient("billing-service", billingEndpoint, tokenCreds)
 		if err != nil {
 			return nil, nil, fmt.Errorf("create billing gRPC client: %w", err)
 		}
-		logConn, err = createInsecureClient(logEndpoint, tokenCreds)
+		logConn, err = createInsecureClient("log-service", logEndpoint, tokenCreds)
 		if err != nil {
 			return nil, nil, fmt.Errorf("create log gRPC client: %w", err)
 		}

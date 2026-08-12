@@ -1460,13 +1460,13 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"items": items, "total": total}})
 	case http.MethodPost:
 		var req struct {
-			Name            string   `json:"name"`
-			Models          []string `json:"models"`
-			ExpiredAt       int64    `json:"expired_time"`
-			ExpireAt        int64    `json:"expire_at"`
-			RemainQuota     int64    `json:"remain_quota"`
-			UnlimitedQuota  *bool    `json:"unlimited_quota"`
-			Subnet          string   `json:"subnet"`
+			Name           string   `json:"name"`
+			Models         []string `json:"models"`
+			ExpiredAt      int64    `json:"expired_time"`
+			ExpireAt       int64    `json:"expire_at"`
+			RemainQuota    int64    `json:"remain_quota"`
+			UnlimitedQuota *bool    `json:"unlimited_quota"`
+			Subnet         string   `json:"subnet"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return

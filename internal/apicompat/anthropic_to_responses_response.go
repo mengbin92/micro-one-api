@@ -64,6 +64,12 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 				Arguments: args,
 				Status:    "completed",
 			})
+
+		case "server_tool_use", "web_search_tool_result":
+			// Server-side web search blocks have no codex-compatible
+			// Responses equivalent. Skip — the search results are already
+			// incorporated into the model's text output.
+			continue
 		}
 	}
 
@@ -149,6 +155,13 @@ type AnthropicEventToResponsesState struct {
 	OutputIndex     int
 	CurrentItemID   string
 	CurrentItemType string // "message" | "function_call" | "reasoning"
+
+	// SkippingBlock is true while we are silently dropping a content block
+	// whose type has no Responses equivalent (server_tool_use /
+	// web_search_tool_result). While true, content_block_delta and
+	// content_block_stop are ignored so the open message item's state is
+	// not disturbed.
+	SkippingBlock bool
 
 	// For message output: accumulate text parts
 	ContentIndex     int
@@ -332,13 +345,28 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 				Status: "in_progress",
 			},
 		}))
+
+	case "server_tool_use", "web_search_tool_result":
+		// Anthropic server-side web search blocks have no codex-compatible
+		// Responses equivalent. codex does not understand web_search_call
+		// output items — it renders them as "Searching the web" /
+		// "Search results for query" UI chrome and, in multi-turn history,
+		// repeats and accumulates the text, eventually aborting the task.
+		// The search results are already woven into the model's text output,
+		// so dropping these blocks loses no context.
+		//
+		// We set SkippingBlock so the matching content_block_delta and
+		// content_block_stop are silently ignored without disturbing the
+		// currently open message/reasoning/function_call item.
+		state.SkippingBlock = true
+		return nil
 	}
 
 	return events
 }
 
 func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
-	if evt.Delta == nil {
+	if state.SkippingBlock || evt.Delta == nil {
 		return nil
 	}
 
@@ -389,6 +417,10 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 }
 
 func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
+	if state.SkippingBlock {
+		state.SkippingBlock = false
+		return nil
+	}
 	switch state.CurrentItemType {
 	case "reasoning":
 		reasoning := state.CurrentReasoning.String()
@@ -439,6 +471,7 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 				Part:         &ResponsesContentPart{Type: "output_text", Text: text},
 			}),
 		}
+
 	}
 
 	return nil

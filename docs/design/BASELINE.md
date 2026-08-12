@@ -190,12 +190,17 @@ points for the v0.17 P3.1 work are:
 | v0.16.0 (linux/amd64) | _(all)_ | N/A — Prometheus not scraped | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded | N/A — not recorded |
 | production (linux/amd64, 2026-08-11) | _(all)_ | N/A — metric never instrumented | N/A | N/A |
+| production (linux/amd64, v0.18.2, 2026-08-11) | identity-service | **2.7 ms** | **6.9 ms** | **9.6 ms** |
+| production (linux/amd64, v0.18.2, 2026-08-11) | channel-service | **1.5 ms** | **9.3 ms** | **18.6 ms** |
+| production (linux/amd64, v0.18.2, 2026-08-11) | billing-service | **1.0 ms** | **20.9 ms** | 1.0 s\* |
+| production (linux/amd64, v0.18.2, 2026-08-11) | log-service | **0.6 ms** | **4.8 ms** | **21.9 ms** |
 
-> **v0.18 P2 C5 诊断 (2026-08-11)**: `micro_one_api_dependency_grpc_latency_seconds`
-> (ServiceDependencyLatency) 已注册但**从未有任何 Observe 调用**（无 gRPC 客户端拦截器埋点），
-> 因此生产 Prometheus 始终无该指标 —— 根因是代码埋点缺失，非采集配置问题。
-> 已新增 `platform/grpc/xgrpc.UnaryClientMetricsInterceptor` 并接入 admin-api 的
-> identity/channel/billing 三个 dial 点；relay-gateway 等其他 dial 点接入后部署，即可补采。
+> **v0.18 P2/P4 修复后补采 (2026-08-11)**: `micro_one_api_dependency_grpc_latency_seconds`
+> 埋点修复（`xgrpc.UnaryClientMetricsInterceptor`）+ P4 全边 dial 接入（admin/relay/channel/
+> identity/billing/monitor）后部署，真实流量下采集（5m rate，部署后 ~15min）。
+> `\*` billing P99=1.0s 为直方图桶上限（样本少，流量积累后复校）。
+> 覆盖边：admin→{identity,channel,billing}、relay→{identity,channel,billing,log}、
+> channel/identity→billing、channel→notify、monitor→channel。
 
 ### Billing commit latency
 
@@ -205,14 +210,13 @@ points for the v0.17 P3.1 work are:
 | v0.16.0 (linux/amd64) | — | N/A — not recorded | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | — | N/A — not recorded | N/A — not recorded | N/A — not recorded |
 | production (linux/amd64, 2026-08-11) | sync/async | N/A — metric never instrumented | N/A | N/A |
+| production (linux/amd64, v0.18.2, 2026-08-11) | async | **31.3 ms** | **60.0 ms** | **92.0 ms** |
+| production (linux/amd64, v0.18.2, 2026-08-11) | sync | — | — | — |
 
-> **v0.18 P2 C5 诊断 (2026-08-11)**: `micro_one_api_billing_commit_duration_seconds`
-> 已注册但**从未被 Observe**（仅 reserve 的 async 路径有埋点）。已补埋点：
-> sync 在 `BillingService.CommitQuota`（service 层，async 分支 early-return 之后）、
-> async 在 `AsyncBillingUsecase.runCommitPipeline`；reserve 的 sync 路径也在
-> `ReserveQuota` 补上。注意：sync 埋点不在 biz 层 `CommitQuotaWithUsage` 顶层
-> （该函数被 async 管线 `CommitQuotaWithUsageAndSplit` 委托，顶层埋点会导致 async
-> 样本双重计入 sync 标签）。部署后补采。
+> **v0.18 P2/P4 修复后补采 (2026-08-11)**: `micro_one_api_billing_commit_duration_seconds`
+> 埋点修复后部署，真实流量下采集（5m rate，async 0.055/s ≈ 样本积累中）。sync 当前无样本
+> （生产流量低且走 async 结算路径；sync 分支需 relay 同步提交触发）。reserve 同步路径：
+> P50 **8.1ms** / P95 **39.5ms** / P99 **47.9ms**。低流量初值，流量积累后复校。
 
 ### Routing selection latency
 
@@ -253,11 +257,18 @@ points for the v0.17 P3.1 work are:
 | v0.16.0 (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded |
 | develop (linux/amd64) | _(all)_ | N/A — not recorded | N/A — not recorded |
 | production (linux/amd64, 2026-08-11) | _(all)_ | N/A — interceptor not wired | N/A |
+| production (linux/amd64, v0.18.2, 2026-08-11) | identity-service | **closed** | **0** |
+| production (linux/amd64, v0.18.2, 2026-08-11) | channel-service | **closed** | **0** |
+| production (linux/amd64, v0.18.2, 2026-08-11) | billing-service | **closed** | **0** |
+| production (linux/amd64, v0.18.2, 2026-08-11) | log-service | **closed** | **0** |
 
-> **v0.18 P2 C5 诊断 (2026-08-11)**: `platform/grpc/resilience.go` 的
-> `UnaryClientInterceptor` 已实现熔断埋点（CircuitBreakerState 等），但
-> **未 wire 到任何 gRPC 客户端 dial 点**（全局无 `WithChainUnaryInterceptor`
-> 引用该拦截器），生产 Prometheus 无熔断指标。待 wire 后补采。
+> **v0.18 P4 闭环 (2026-08-11 16:3x)**: 运营启用 relay 熔断
+> （`RELAY_RESILIENCE_ENABLED=true`，docker-compose env，`cfg.Bootstrap.Resilience.Enabled`
+> 经 config.yaml 读取生效）并重启后，`circuit_breaker_state` 在真实流量下产生数据：
+> 4 个下游服务（identity/channel/billing/log）state=**0（closed）**，**24h trips=0**
+> （无跳闸，健康）。说明：`circuit_breaker_requests_total` 仅在错误路径计数
+> （`ResilientClient.Execute` 无 success 分支），当前无下游错误故无样本 —— 属指标
+> 语义（失败观测），非缺陷；如需成功计数可后续在 Execute 补 success 分支。
 
 ## Target Metrics (Post-Refactoring)
 

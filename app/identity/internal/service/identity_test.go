@@ -137,9 +137,9 @@ func TestGetAuthSnapshotErrorCodeMapping(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		token     string
-		wantCode  codes.Code
+		name     string
+		token    string
+		wantCode codes.Code
 	}{
 		{"nonexistent token", "does-not-exist", codes.Unauthenticated},
 		{"exhausted token", exhausted.Key, codes.ResourceExhausted},

@@ -16,6 +16,7 @@ import (
 	notifyv1 "micro-one-api/api/notify/v1"
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/app/channel/internal/service"
+	"micro-one-api/platform/grpc/xgrpc"
 	applogger "micro-one-api/platform/logging"
 
 	"go.uber.org/zap"
@@ -32,7 +33,9 @@ func configureHealthAlert(uc *biz.ChannelUsecase) (*grpc.ClientConn, error) {
 		applogger.Log.Warn("channel health alert enabled but NOTIFY_GRPC_ENDPOINT is empty")
 		return nil, nil
 	}
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(endpoint,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 	if err != nil {
 		return nil, fmt.Errorf("dial notify endpoint: %w", err)
 	}
@@ -167,7 +170,9 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 		var notifier biz.QuotaAlertNotifier
 		if endpoint != "" {
 			if conn == nil {
-				c, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+				c, err := grpc.NewClient(endpoint,
+					grpc.WithTransportCredentials(insecure.NewCredentials()),
+					grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 				if err != nil {
 					applogger.Log.Warn("failed to dial notify for quota alert", zap.Error(err))
 				} else {
