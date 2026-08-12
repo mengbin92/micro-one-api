@@ -1,0 +1,205 @@
+# Dialect capability / coverage manifest — v0.19 migration governance.
+#
+# Three dialect trees coexist:
+#   migrations/            MySQL-canonical sequence (the source of truth; 74
+#                          numbered files + phase1_indexes.sql applied by the
+#                          runner on the shared schema).
+#   migrations/postgres/   Postgres deployment mode (§9.2). Consolidated
+#                          000_create_full_schema.sql baseline + numbered
+#                          mirrors of recent MySQL changes.
+#   migrations/sqlite/     SQLite Lite deployment mode (§9.1). Same layout
+#                          strategy as Postgres.
+#
+# `make migration-check` (cmd/migrate-check) enforces the contract below.
+# README files in the dialect dirs claim "CI runs migrations against
+# scratch databases on every PR" — the static checks here make that claim
+# auditable even before the DB smoke gates land.
+#
+# The numbered files >= auto_mirror_from_prefix MUST be mirrored into
+# postgres/ and sqlite/ with the IDENTICAL basename. Older files may use a different
+# numbering or be consolidated into the dialect baseline; that historical
+# coverage is documented (not enforced) in `historical_coverage`.
+
+strategy:
+  mysql: canonical
+  postgres: consolidated-baseline
+  sqlite: consolidated-baseline
+
+# Root migrations whose version prefix is >= this value must exist verbatim
+# in migrations/postgres/ and migrations/sqlite/ (same basename). Raise this
+# boundary deliberately when a dialect is allowed to diverge again.
+# Quoted: YAML would otherwise parse "072" as octal.
+auto_mirror_from_prefix: "072"
+
+# Historical duplicate numeric prefixes that are allowed to stay.
+#
+# The runner versions migrations by FULL basename (schema_migrations.version
+# is the file name without .sql), so two files sharing a prefix do not
+# collide. The prefixes are nevertheless confusing and any NEW duplicate
+# prefix is a hard error (checked by cmd/migrate-check).
+duplicate_prefix_allowlist:
+  mysql:
+    - prefix: "057"
+      files:
+        - 057_add_plan_snapshot_to_payment_orders
+        - 057_create_subscription_account_quota_reset_runs
+  sqlite:
+    - prefix: "009"
+      files:
+        - 009_add_per_bucket_cost
+        - 009_clean_orphan_model_mappings
+
+# Root migrations that intentionally have NO postgres/sqlite counterpart.
+# The check script requires every file listed here to exist in migrations/.
+not_applicable:
+  - version: 061_add_billing_schema_system_options
+    reason: MySQL-only view DDL over the oneapi_billing schema (Phase 2.4 schema isolation). Postgres/SQLite deployments do not use the oneapi_* schema split.
+
+# Files that are intentionally NOT part of the per-service ownership model.
+# They either run on the centralised shared schema or are reference DDL the
+# runner skips. The ownership check requires every other runnable root
+# migration to be claimed by exactly one service (or shared).
+ownership_exempt:
+  - file: phase1_indexes.sql
+    reason: applied by the runner on the shared schema; no single service owns it
+  - file: phase3_partitioning.sql
+    reason: optional MySQL-only partition DDL, skipped by the runner
+  - file: schema_split.sql
+    reason: reference DDL for the Phase 2.4 cutover, executed manually, skipped by the runner
+
+# Documented mirror coverage for the historical range (< auto_mirror_from_prefix).
+# Keyed by root version; value is the dialect file that carries the change
+# (or "(baseline)" when the change is folded into 000_create_full_schema).
+# This table is documentation — the check script does NOT enforce it — but it
+# makes drift in the historical range visible on review.
+historical_coverage:
+  postgres:
+    000_create_core_tables: "(baseline)"
+    007_create_system_options: "(baseline)"
+    008_create_billing_reservations: "(baseline)"
+    009_create_billing_ledgers: "(baseline)"
+    010_create_billing_redeem_codes: "(baseline)"
+    011_create_billing_redeem_records: "(baseline)"
+    013_add_redeem_code_indexes: "(baseline)"
+    014_add_token_management_fields: "(baseline)"
+    015_add_user_aff_fields: "(baseline)"
+    016_add_usage_log_fields: "(baseline)"
+    017_add_token_oneapi_fields: "(baseline)"
+    018_add_channel_oneapi_fields: "(baseline)"
+    019_create_user_oauth_identities: "(baseline)"
+    020_add_channel_balance_refresh_tracking: "(baseline)"
+    021_create_reconciliation_runs: "(baseline)"
+    022_create_schema_migrations: "(baseline)"
+    023_create_payment_orders: "(baseline)"
+    024_add_billing_ledger_usage_fields: "(baseline)"
+    025_add_user_role: "(baseline)"
+    026_fix_users_status_comment: "(baseline)"
+    027_remove_placeholder_seed_data: "(baseline)"
+    028_add_billing_ledger_aggregation_indexes: "(baseline)"
+    029_add_billing_ledger_upstream_cost: "(baseline)"
+    030_add_reconciliation_run_phase3_fields: "(baseline)"
+    031_add_cache_read_token_usage_fields: "(baseline)"
+    032_add_channel_health_fields: "(baseline)"
+    033_add_notification_last_error: "(baseline)"
+    034_create_subscription_accounts: "(baseline)"
+    035_add_subscription_account_quota_fields: "(baseline)"
+    036_add_subscription_account_id_to_billing_ledgers: "(baseline)"
+    037_add_subscription_account_id_to_logs: "(baseline)"
+    038_add_subscription_account_id_to_billing_reservations: "(baseline)"
+    039_create_user_subscriptions: "(baseline)"
+    040_create_subscription_groups: "(baseline)"
+    041_create_account_quota_snapshots: "(baseline)"
+    042_add_subscription_group_pricing: "(baseline)"
+    043_add_group_id_to_payment_orders: "(baseline)"
+    044_add_reservation_subscription_fields: "(baseline)"
+    045_add_ledger_cost_source_and_dedupe_key: "(baseline)"
+    046_create_account_receivables: "(baseline)"
+    047_backfill_empty_ledger_dedupe_keys: "(baseline)"
+    048_increase_subscription_usage_precision: "(baseline)"
+    049_backfill_subscription_usage_from_ledgers: "(baseline)"
+    050_create_subscription_plans: "(baseline)"
+    051_add_subscription_account_local_quota: "(baseline)"
+    052_create_subscription_account_quota_events: "(baseline)"
+    053_add_subscription_account_5h_quota: "(baseline)"
+    054_add_subscription_account_rpm_limit: "(baseline)"
+    055_add_subscription_account_session_window_limit: "(baseline)"
+    056_add_subscription_account_quota_reset_config: "(baseline)"
+    057_add_plan_snapshot_to_payment_orders: 001_add_plan_snapshot_and_quota_reset_runs
+    057_create_subscription_account_quota_reset_runs: 001_add_plan_snapshot_and_quota_reset_runs
+    058_add_subscription_id_to_payment_orders: 002_add_subscription_id_to_payment_orders
+    059_enforce_single_active_subscription: 003_enforce_single_active_subscription
+    062_create_model_management_tables: "(baseline)"
+    063_add_subscription_account_model_mapping: "(baseline)"
+    064_add_channel_restrict_models: "(baseline)"
+    065_add_model_routings: "(baseline)"
+    066_add_upstream_model_ids: 004_add_upstream_model_ids
+    067_add_cache_creation_token_usage_fields: 007_add_cache_creation_token_usage_fields
+    068_add_canonical_model_id_constraint: 005_add_canonical_model_id_constraint
+    069_add_subscription_account_weight: 006_add_subscription_account_weight
+    070_clean_orphan_model_mappings: 008_clean_orphan_model_mappings
+    071_add_per_bucket_cost: 010_add_per_bucket_cost
+  sqlite:
+    000_create_core_tables: "(baseline)"
+    007_create_system_options: "(baseline)"
+    008_create_billing_reservations: "(baseline)"
+    009_create_billing_ledgers: "(baseline)"
+    010_create_billing_redeem_codes: "(baseline)"
+    011_create_billing_redeem_records: "(baseline)"
+    013_add_redeem_code_indexes: "(baseline)"
+    014_add_token_management_fields: "(baseline)"
+    015_add_user_aff_fields: "(baseline)"
+    016_add_usage_log_fields: "(baseline)"
+    017_add_token_oneapi_fields: "(baseline)"
+    018_add_channel_oneapi_fields: "(baseline)"
+    019_create_user_oauth_identities: "(baseline)"
+    020_add_channel_balance_refresh_tracking: "(baseline)"
+    021_create_reconciliation_runs: "(baseline)"
+    022_create_schema_migrations: "(baseline)"
+    023_create_payment_orders: "(baseline)"
+    024_add_billing_ledger_usage_fields: "(baseline)"
+    025_add_user_role: "(baseline)"
+    026_fix_users_status_comment: "(baseline)"
+    027_remove_placeholder_seed_data: "(baseline)"
+    028_add_billing_ledger_aggregation_indexes: "(baseline)"
+    029_add_billing_ledger_upstream_cost: "(baseline)"
+    030_add_reconciliation_run_phase3_fields: "(baseline)"
+    031_add_cache_read_token_usage_fields: "(baseline)"
+    032_add_channel_health_fields: "(baseline)"
+    033_add_notification_last_error: "(baseline)"
+    034_create_subscription_accounts: "(baseline)"
+    035_add_subscription_account_quota_fields: "(baseline)"
+    036_add_subscription_account_id_to_billing_ledgers: "(baseline)"
+    037_add_subscription_account_id_to_logs: "(baseline)"
+    038_add_subscription_account_id_to_billing_reservations: "(baseline)"
+    039_create_user_subscriptions: "(baseline)"
+    040_create_subscription_groups: "(baseline)"
+    041_create_account_quota_snapshots: "(baseline)"
+    042_add_subscription_group_pricing: "(baseline)"
+    043_add_group_id_to_payment_orders: "(baseline)"
+    044_add_reservation_subscription_fields: "(baseline)"
+    045_add_ledger_cost_source_and_dedupe_key: "(baseline)"
+    046_create_account_receivables: "(baseline)"
+    047_backfill_empty_ledger_dedupe_keys: "(baseline)"
+    048_increase_subscription_usage_precision: "(baseline)"
+    049_backfill_subscription_usage_from_ledgers: "(baseline)"
+    050_create_subscription_plans: "(baseline)"
+    051_add_subscription_account_local_quota: "(baseline)"
+    052_create_subscription_account_quota_events: "(baseline)"
+    053_add_subscription_account_5h_quota: "(baseline)"
+    054_add_subscription_account_rpm_limit: "(baseline)"
+    055_add_subscription_account_session_window_limit: "(baseline)"
+    056_add_subscription_account_quota_reset_config: "(baseline)"
+    057_add_plan_snapshot_to_payment_orders: "(baseline)"
+    057_create_subscription_account_quota_reset_runs: "(baseline)"
+    058_add_subscription_id_to_payment_orders: "(baseline)"
+    059_enforce_single_active_subscription: 001_enforce_single_active_subscription
+    062_create_model_management_tables: "(baseline)"
+    063_add_subscription_account_model_mapping: 002_add_subscription_account_model_mapping
+    064_add_channel_restrict_models: 003_add_channel_restrict_models
+    065_add_model_routings: 004_add_model_routings
+    066_add_upstream_model_ids: 005_add_upstream_model_ids
+    067_add_cache_creation_token_usage_fields: 008_add_cache_creation_token_usage_fields
+    068_add_canonical_model_id_constraint: 006_add_canonical_model_id_constraint
+    069_add_subscription_account_weight: 007_add_subscription_account_weight
+    070_clean_orphan_model_mappings: 009_clean_orphan_model_mappings
+    071_add_per_bucket_cost: 009_add_per_bucket_cost
