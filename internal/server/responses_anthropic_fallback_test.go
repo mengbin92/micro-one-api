@@ -96,10 +96,12 @@ func TestResponsesRequestToAnthropicBodyNormalizesCodexTools(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode anthropic body: %v, body=%s", err, string(body))
 	}
-	if len(payload.Tools) != 3 {
-		t.Fatalf("tools = %d, want 3; body=%s", len(payload.Tools), string(body))
+	if len(payload.Tools) != 2 {
+		t.Fatalf("tools = %d, want 2; body=%s", len(payload.Tools), string(body))
 	}
+	toolNames := make(map[string]bool, len(payload.Tools))
 	for _, tool := range payload.Tools {
+		toolNames[tool.Name] = true
 		if tool.Type != "" {
 			t.Fatalf("tool %q has unsupported type %q; body=%s", tool.Name, tool.Type, string(body))
 		}
@@ -110,6 +112,12 @@ func TestResponsesRequestToAnthropicBodyNormalizesCodexTools(t *testing.T) {
 		if schema["type"] != "object" {
 			t.Fatalf("tool %q input_schema.type = %#v; body=%s", tool.Name, schema["type"], string(body))
 		}
+	}
+	if !toolNames["exec_command"] || !toolNames["multi_agent_v1"] {
+		t.Fatalf("client tools were not preserved: names=%v body=%s", toolNames, string(body))
+	}
+	if toolNames["web_search"] {
+		t.Fatalf("unsupported server-side web_search tool was preserved: body=%s", string(body))
 	}
 }
 
