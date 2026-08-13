@@ -144,6 +144,9 @@ test('admin users sends sort and filter params', async ({ page }) => {
   await seedAdminSession(page);
   await page.goto('/admin/users');
   await page.getByLabel('Filter users by status').selectOption('1');
+  // Filter/sort state lives in the URL and navigations are async (see the
+  // payment-orders test below); serialize on the URL to avoid stale reads.
+  await expect(page).toHaveURL(/status=1/);
   await page.getByRole('button', { name: /sort by username/i }).click();
 
   await expect
@@ -276,8 +279,14 @@ test('admin payment orders sends filters to backend', async ({ page }) => {
   await seedAdminSession(page);
   await page.goto('/admin/payment-orders');
   await expect(page.getByRole('heading', { name: /支付订单/ })).toBeVisible();
+  // Filter state lives in the URL (useAdminTableState -> setSearchParams).
+  // React Router navigations are async, so back-to-back setFilter calls can
+  // read a stale location and silently drop earlier filters (seen on slow CI
+  // runners). Serialize on the URL after each change instead.
   await page.getByLabel('Filter payment orders by status').selectOption('paid');
+  await expect(page).toHaveURL(/status=paid/);
   await page.getByLabel('Filter payment orders by channel').selectOption('alipay');
+  await expect(page).toHaveURL(/channel=alipay/);
   await page.getByLabel('Filter payment orders by user id').fill('42');
 
   await expect
@@ -346,7 +355,8 @@ test('regular user can open and redeem a code', async ({ page }) => {
   await page.getByRole('link', { name: '兑换码' }).click();
 
   await expect(page).toHaveURL(/\/redeem$/);
-  await expect(page.getByRole('heading', { name: '兑换码充值' })).toBeVisible();
+  // The page header (h1) and the card title (h2) both read 兑换码充值.
+  await expect(page.getByRole('heading', { name: '兑换码充值' }).first()).toBeVisible();
   await page.getByLabel('兑换码').fill('CODE-1000');
   await page.getByRole('button', { name: '立即兑换' }).click();
 
@@ -403,6 +413,9 @@ test('admin users export sends current filters to backend export route', async (
   await seedAdminSession(page);
   await page.goto('/admin/users');
   await page.getByLabel('Filter users by status').selectOption('1');
+  // Wait for the async searchParams navigation to commit (see the
+  // payment-orders test above) so the export URL includes the filter.
+  await expect(page).toHaveURL(/status=1/);
   await page.getByRole('button', { name: /export csv/i }).click();
 
   await expect.poll(() => requests.length).toBeGreaterThan(0);
