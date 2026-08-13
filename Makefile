@@ -1,15 +1,47 @@
 GOPATH := $(shell go env GOPATH)
 VERSION := $(shell git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo dev)
 
+# v0.19 P2.1: single version source for Go toolchain tools, shared by local
+# (`make init` / security-* targets) and CI (security.yml sources the same
+# file). Never pin a Go tool with @latest — bump scripts/tool-versions.env in
+# a dedicated PR instead (see `make tools-upgrade-check`).
+include scripts/tool-versions.env
+# Export the pinned versions into recipe environments so shell-level indirect
+# expansion (e.g. ${!var} in tools-upgrade-check) sees them.
+export BUF_VERSION WIRE_VERSION GOSEC_VERSION GOVULNCHECK_VERSION GITLEAKS_VERSION SYFT_VERSION GO_LICENSES_VERSION
+
 .PHONY: init
 # init env: buf + protobuf generators (versions pinned to match go.mod) + wire
 init:
-	go install github.com/bufbuild/buf/cmd/buf@latest
+	go install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
 	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v3@v3.0.0-20260626125723-668db92c2c00
 	go install github.com/google/gnostic/cmd/protoc-gen-openapi@v0.7.1
-	go install github.com/google/wire/cmd/wire@latest
+	go install github.com/google/wire/cmd/wire@$(WIRE_VERSION)
+
+.PHONY: tools-upgrade-check
+# v0.19 P2.1: compare the pinned versions in scripts/tool-versions.env against
+# the latest module versions (read-only, nothing is installed or modified).
+# Run before a scheduled toolchain upgrade PR.
+tools-upgrade-check:
+	@for m in \
+	  "BUF_VERSION=github.com/bufbuild/buf" \
+	  "WIRE_VERSION=github.com/google/wire" \
+	  "GOSEC_VERSION=github.com/securego/gosec/v2" \
+	  "GOVULNCHECK_VERSION=golang.org/x/vuln" \
+	  "GITLEAKS_VERSION=github.com/zricethezav/gitleaks/v8" \
+	  "SYFT_VERSION=github.com/anchore/syft" \
+	  "GO_LICENSES_VERSION=github.com/google/go-licenses"; do \
+	  var=$${m%%=*}; mod=$${m#*=}; \
+	  pinned=$${!var}; \
+	  latest=$$(go list -m -f '{{.Version}}' "$$mod@latest" 2>/dev/null || echo unknown); \
+	  if [ "$$pinned" = "$$latest" ]; then \
+	    printf '%-20s pinned %-12s = latest\n' "$$var" "$$pinned"; \
+	  else \
+	    printf '%-20s pinned %-12s != latest %s\n' "$$var" "$$pinned" "$$latest"; \
+	  fi; \
+	done
 
 .PHONY: config
 # generate internal config proto (app/*/internal/conf/*_conf.proto +
@@ -243,24 +275,66 @@ dev-test-all:
 
 .PHONY: test-e2e
 # run e2e tests (docker-compose environment)
-test-e2e:
+test-e2e: compose-prereq
 	./scripts/test-e2e-flow.sh
 
 .PHONY: test-e2e-suite
 # run e2e Go test suite (docker-compose environment)
-test-e2e-suite:
+test-e2e-suite: compose-prereq
 	./scripts/test-e2e-flow.sh --suite
 
+.PHONY: compose-prereq
+# v0.19 P2.2: explicit preconditions for docker-compose based targets — fail
+# with a clear message before the long build/up cycle starts.
+compose-prereq:
+	@command -v docker >/dev/null 2>&1 || { echo "docker not found — install Docker (https://docs.docker.com/get-docker/) and start the daemon"; exit 1; }
+	@test -f deployments/docker-compose/docker-compose.yml || { echo "deployments/docker-compose/docker-compose.yml not found — cannot run compose e2e"; exit 1; }
+	@test -f deployments/docker-compose/docker-compose.test.yml || { echo "deployments/docker-compose/docker-compose.test.yml not found — cannot run compose e2e"; exit 1; }
+
 .PHONY: test-e2e-local
-# run e2e Go test suite against local services (no docker)
+# run e2e Go test suite against local services (no docker). Requires the
+# relay-gateway + identity/channel/billing services already running locally
+# (see `make run-all`); ADMIN_TOKEN defaults to test-admin-token-for-dev in
+# the suite. The suite fails fast if the expected endpoints are unreachable.
 test-e2e-local:
+	@echo "ensure local services are running (make run-all) before this target"
 	go test -v -count=1 -timeout 120s ./test/e2e/suite/
 
 .PHONY: clean
-# clean build artifacts and logs
+# clean build artifacts and logs. Only explicitly listed local build outputs
+# are removed (v0.19 P2.2) — never use broad wildcards that could match
+# source directories. rm -f is idempotent when a file is already absent.
 clean:
 	rm -rf bin/
 	rm -rf logs/
+	# v0.19 P2.2: root-level binaries from ad-hoc `go build` / `go run`
+	rm -f channel identity identity-service monitor relay-gateway migrate
+	rm -f test/e2e/e2e-test
+	# coverage and test output
+	rm -f coverage.out
+	rm -rf web/test-results web/playwright-report
+	# security scan reports
+	rm -f gosec-report.json vulncheck-report.json gitleaks-report.json sbom.json
+	rm -f gosec.sarif trivy-results.sarif
+
+.PHONY: verify
+# v0.19 P2.2: aggregate the per-PR quality gates in one command:
+# unit + race + architecture + migration governance + frontend (lint/test/build).
+# This mirrors what ci.yml runs for every PR, so local `make verify` and CI
+# cannot drift apart. Integration/e2e suites need external services and are
+# deliberately not part of this gate (see `make help` for test-e2e-*).
+verify:
+	@echo "== make verify: unit =="
+	@make test-unit
+	@echo "== make verify: race =="
+	@make test-race
+	@echo "== make verify: architecture =="
+	@./scripts/check-architecture.sh
+	@echo "== make verify: migration-check =="
+	@make migration-check
+	@echo "== make verify: frontend (lint/test/build) =="
+	@cd web && npm run lint && npm test -- --run && npm run build
+	@echo "== make verify: all gates passed =="
 
 .PHONY: migration-check
 # static migration governance gate (v0.19 P1.2): duplicate numeric prefixes
@@ -270,33 +344,39 @@ clean:
 migration-check:
 	go run ./cmd/migrate-check -dir ./migrations
 
+.PHONY: migrate-prereq
+# v0.19 P2.2: explicit DSN precondition for migrate targets. cmd/migrate also
+# validates this at runtime; failing here saves the compile + connect cycle.
+migrate-prereq:
+	@test -n "$${MIGRATIONS_DSN:-}$${SQL_DSN:-}" || { echo "set MIGRATIONS_DSN (or SQL_DSN) — e.g. MIGRATIONS_DSN='user:pass@tcp(127.0.0.1:3306)/oneapi'"; exit 1; }
+
 .PHONY: migrate
 # apply pending DB migrations; reads MIGRATIONS_DSN or SQL_DSN
-migrate:
+migrate: migrate-prereq
 	go run ./cmd/migrate -dir ./migrations
 
 .PHONY: migrate-status
 # print migration status without applying anything
-migrate-status:
+migrate-status: migrate-prereq
 	go run ./cmd/migrate -dir ./migrations -status
 
 .PHONY: security-scan
-# run security scanning
+# run security scanning (tool versions pinned in scripts/tool-versions.env)
 security-scan:
 	@echo "Running security scans..."
 	@echo "1. Running gosec (SAST)..."
 	@if ! command -v gosec &> /dev/null; then \
-		go install github.com/securego/gosec/v2/cmd/gosec@latest; \
+		go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION); \
 	fi
 	@gosec -exclude-generated -exclude=G104 -exclude-dir=web/node_modules ./... || echo "gosec found issues"
 	@echo "2. Running govulncheck (SCA)..."
 	@if ! command -v govulncheck &> /dev/null; then \
-		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+		go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION); \
 	fi
 	@govulncheck ./... || echo "govulncheck found vulnerabilities"
 	@echo "3. Running gitleaks (secret scanning)..."
 	@if ! command -v gitleaks &> /dev/null; then \
-		go install github.com/zricethezav/gitleaks/v8/cmd/gitleaks@latest; \
+		go install github.com/zricethezav/gitleaks/v8/cmd/gitleaks@$(GITLEAKS_VERSION); \
 	fi
 	@gitleaks detect --source . || echo "gitleaks found secrets"
 	@echo "Security scans completed!"
@@ -305,7 +385,7 @@ security-scan:
 # run static application security testing
 security-sast:
 	@if ! command -v gosec &> /dev/null; then \
-		go install github.com/securego/gosec/v2/cmd/gosec@latest; \
+		go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION); \
 	fi
 	@gosec -fmt json -out gosec-report.json -exclude-generated -exclude=G104 -exclude-dir=web/node_modules ./...
 
@@ -313,7 +393,7 @@ security-sast:
 # run software composition analysis
 security-sca:
 	@if ! command -v govulncheck &> /dev/null; then \
-		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+		go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION); \
 	fi
 	@govulncheck -json ./... > vulncheck-report.json
 
@@ -321,7 +401,7 @@ security-sca:
 # scan for secrets in code
 security-secrets:
 	@if ! command -v gitleaks &> /dev/null; then \
-		go install github.com/zricethezav/gitleaks/v8/cmd/gitleaks@latest; \
+		go install github.com/zricethezav/gitleaks/v8/cmd/gitleaks@$(GITLEAKS_VERSION); \
 	fi
 	@gitleaks detect --source . --verbose --report-path gitleaks-report.json
 
@@ -329,7 +409,7 @@ security-secrets:
 # generate software bill of materials
 security-sbom:
 	@if ! command -v syft &> /dev/null; then \
-		go install github.com/anchore/syft/cmd/syft@latest; \
+		go install github.com/anchore/syft/cmd/syft@$(SYFT_VERSION); \
 	fi
 	@syft . -o spdx-json > sbom.json
 	@echo "SBOM generated: sbom.json"
@@ -406,13 +486,15 @@ help:
 .DEFAULT_GOAL := help
 
 .PHONY: migrate-sqlite
-# apply pending SQLite3 migrations
-migrate-sqlite:
+# apply pending SQLite3 migrations (requires MIGRATIONS_DSN pointing at a
+# writable .db file, e.g. file:/tmp/test.db?_busy_timeout=5000)
+migrate-sqlite: migrate-prereq
 	MIGRATIONS_DRIVER=sqlite3 go run ./cmd/migrate -dir ./migrations/sqlite
 
 .PHONY: migrate-postgres
-# apply pending Postgres migrations
-migrate-postgres:
+# apply pending Postgres migrations (requires MIGRATIONS_DSN, e.g.
+# postgres://user:pass@127.0.0.1:5432/oneapi)
+migrate-postgres: migrate-prereq
 	MIGRATIONS_DRIVER=postgres go run ./cmd/migrate -dir ./migrations/postgres
 
 .PHONY: test-sqlite
