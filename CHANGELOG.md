@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-08-13
+
+v0.19.1 是 v0.19.0 之后的 **PATCH 工程收尾版本**（1 个提交，`23d6c8e`），落地 v0.19 路线图 P2 全部三项：工具链版本固定（`scripts/tool-versions.env` 唯一版本源，消除 `@latest` 漂移）、`make clean` 扩展 + 新增 `make verify` 聚合门禁 + compose/migrate 前置检查、热点文件拆分评估（维持触发式）。**不含任何生产代码变更、无 API/数据库/proto/配置变更、无运行时行为变化**，无需重新部署。详见 [release-v0.19.1.md](docs/releases/release-v0.19.1.md)。
+
+### Added
+
+- **工具链版本固定（P2.1）**：`scripts/tool-versions.env` 统一固定 buf v1.72.0 / wire v0.7.0 / gosec v2.28.0 / govulncheck v1.6.0 / gitleaks v8.30.1 / syft v1.51.0 / go-licenses v1.6.0，`Makefile include` 与 `security.yml source` 共用；`make init` 与全部 `security-*` 目标不再使用 `@latest`；新增 `make tools-upgrade-check`（只读对比 pinned vs latest）；前端 `web/.nvmrc`（24）+ `package.json engines >=24 <25`；策略文档 `docs/design/v0.19-toolchain-pinning.md`。
+- **`make verify` 聚合门禁（P2.2）**：一键执行 unit / race / architecture / migration-check / frontend（lint/test/build），与 `ci.yml` PR 门禁对齐。
+- **前置检查（P2.2）**：`compose-prereq`（docker + compose 文件，挂 `test-e2e` / `test-e2e-suite`）、`migrate-prereq`（`MIGRATIONS_DSN` / `SQL_DSN`，挂 `migrate` / `migrate-status`）。
+
+### Changed
+
+- **`make clean` 扩展（P2.2）**：新增根目录 ad-hoc 二进制 6 个、`test/e2e/e2e-test`、`coverage.out`、`web/test-results`、`web/playwright-report`、安全扫描报告文件；全部显式列出、幂等，不使用宽泛通配。
+
+
 ## [0.19.0] - 2026-08-12
 
 v0.19.0 是 v0.18.4 之后的 **MINOR 稳定化版本**（4 个提交，`c0ddf36` → `27485b7`），主线为「兼容性守护 + 迁移治理 + 可发布性」：协议转换链路显式契约矩阵、迁移静态一致性门禁、CI integration/e2e 分层、基础设施包直接单测；唯一生产代码改动是 `platform/tracing` 的 OTLP 裸 `host:port/path` 路径归一化修复。**无 API 破坏性变更、无数据库迁移、无 proto 变更、无配置变更**，无强制重新部署需求。详见 [release-v0.19.0.md](docs/releases/release-v0.19.0.md)。

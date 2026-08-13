@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.19.0 发布公告](./docs/releases/release-v0.19.0.md)（协议兼容性契约矩阵、迁移治理门禁、CI 测试分层、基础设施单测补强；OTLP 路径修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.19.0)
+> 📣 **最新发布**：[v0.19.1 发布公告](./docs/releases/release-v0.19.1.md)（工具链版本固定消除 `@latest` 漂移、`make verify` 聚合门禁、`make clean` 扩展；纯工程面无运行时变更） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.19.1)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.19.1
+
+v0.19.1 是 v0.19.0 之后的 **PATCH 工程收尾版本**（1 个提交，`23d6c8e`），落地 v0.19 路线图 P2：工具链版本固定（`scripts/tool-versions.env` 唯一版本源固定 buf / wire / gosec / govulncheck / gitleaks / syft / go-licenses，`make init` 与 `security-*` 不再使用 `@latest`，新增 `make tools-upgrade-check`；前端 `.nvmrc` 24 + engines 对齐 CI）、`make clean` 扩展（显式、幂等）、新增 `make verify` 聚合门禁（unit / race / architecture / migration-check / frontend，与 `ci.yml` 对齐）与 compose/migrate 前置检查；热点文件拆分评估结论为维持触发式。**不含任何生产代码变更、无 API/数据库/proto/配置变更、无运行时行为变化**，无需重新部署。详见 [docs/releases/release-v0.19.1.md](./docs/releases/release-v0.19.1.md)。
 
 ### 升级到 v0.19.0
 
