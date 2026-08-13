@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { getPreference, setPreference } from '@/lib/preferences';
 import type { SortDirection } from '@/lib/table-utils';
@@ -24,6 +25,19 @@ function isSortDirection(value: string | null): value is Exclude<SortDirection, 
 
 export function useAdminTableState({ defaultPageSize = 20, filters: filterKeys = [] }: UseAdminTableStateOptions) {
   const [searchParams, setSearchParams] = useSearchParams();
+  // Router navigations commit asynchronously — the history entry (what
+  // window.location shows) updates before React flushes the new location
+  // into this render's searchParams. An update issued in that window (e.g.
+  // an onChange from a control whose handler closed over the previous
+  // render) would compute from stale params and silently drop the update
+  // that is still in flight. Accumulate every update on top of a ref that
+  // tracks the latest issued params instead.
+  const latestParams = useRef(new URLSearchParams(searchParams));
+  const lastIssued = useRef<string | null>(null);
+  if (lastIssued.current !== null && searchParams.toString() !== lastIssued.current) {
+    // The URL changed outside our own updates (back/forward, links): resync.
+    latestParams.current = new URLSearchParams(searchParams);
+  }
   const preferredPageSize = getPreference('admin-page-size', defaultPageSize);
   const page = readPositiveInt(searchParams.get('page'), 1);
   const pageSize = readPositiveInt(searchParams.get('page_size'), preferredPageSize);
@@ -38,17 +52,17 @@ export function useAdminTableState({ defaultPageSize = 20, filters: filterKeys =
   );
 
   const updateParams = (updates: Record<string, string | number | null>) => {
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      for (const [key, value] of Object.entries(updates)) {
-        if (value === null || value === '' || value === 1 || value === defaultPageSize) {
-          next.delete(key);
-        } else {
-          next.set(key, String(value));
-        }
+    const next = new URLSearchParams(latestParams.current);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === null || value === '' || value === 1 || value === defaultPageSize) {
+        next.delete(key);
+      } else {
+        next.set(key, String(value));
       }
-      return next;
-    });
+    }
+    latestParams.current = next;
+    lastIssued.current = next.toString();
+    setSearchParams(next);
   };
 
   return {
