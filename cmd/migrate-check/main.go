@@ -37,8 +37,10 @@ var (
 	prefixRe  = regexp.MustCompile(`^([0-9]+)_`)
 	skipNames = map[string]bool{
 		// Skipped by the runner (platform/database/migrate/runner.go).
-		"phase3_partitioning.sql": true,
-		"schema_split.sql":        true,
+		"phase3_partitioning.sql":                        true,
+		"manual/phase3_logs_partitioning.sql":            true,
+		"manual/phase3_billing_ledgers_partitioning.sql": true,
+		"schema_split.sql":                               true,
 	}
 )
 

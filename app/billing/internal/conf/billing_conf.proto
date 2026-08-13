@@ -105,7 +105,9 @@ message Recon {
 message Partition {
   bool enabled = 1 [json_name = "enabled"];
   string interval = 2 [json_name = "interval"];
-  repeated string tables = 3 [json_name = "tables"];
+  // Deprecated: billing-service owns only billing_ledgers. Retained so older
+  // config files still parse, but runtime maintenance ignores this field.
+  repeated string tables = 3 [json_name = "tables", deprecated = true];
 }
 
 // Registry holds the service registry configuration.

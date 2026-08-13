@@ -1379,7 +1379,7 @@ func (uc *BillingUsecase) BatchGetAccountSnapshots(ctx context.Context, userIDs 
 // TopUpQuota credits the user's wallet and records a recharge ledger. The
 // recharge ledger carries an explicit dedupe key derived from (user_id,
 // requestId), so a concurrent replay of the same top-up is rejected by the
-// DB unique constraint on ledger_dedupe_key and the wallet is not credited
+// global ledger dedupe claim primary key and the wallet is not credited
 // twice (v0.18 P0, docs/design/v0.18-idempotency-decision.md). requestId is
 // the client's Idempotency-Key; empty means no idempotency guarantee (the
 // ledger still gets a unique auto key, never colliding with legacy rows).
@@ -1434,7 +1434,7 @@ func (uc *BillingUsecase) TopUpQuota(ctx context.Context, userID, operatorID str
 // MarkOrderPaid transaction could still fail. requestId flows into the
 // ledger dedupe key exactly like TopUpQuota; the payment issuer passes
 // "payment:<trade_no>" so a replayed callback is double-guarded by both the
-// MarkOrderPaid idempotency guard and the ledger unique constraint.
+// MarkOrderPaid idempotency guard and the ledger dedupe claim.
 func (uc *BillingUsecase) TopUpQuotaInTx(ctx context.Context, tx subscriptionbiz.Tx, userID, operatorID string, amount int64, remark, requestId string) (int64, error) {
 	if amount <= 0 {
 		return 0, fmt.Errorf("amount must be positive")
@@ -1499,7 +1499,7 @@ func (uc *BillingUsecase) topUpQuotaInTx(ctx context.Context, tx subscriptionbiz
 //
 // v0.18 P0 (docs/design/v0.18-idempotency-decision.md): the deduction ledger
 // now carries an explicit dedupe key derived from (user_id, requestId). The DB
-// unique constraint on ledger_dedupe_key rejects a concurrent replay of the
+// global ledger dedupe claim rejects a concurrent replay of the
 // same request — the second insert fails and the whole transaction (including
 // the balance deduction) rolls back, so the wallet is never charged twice.
 // requestId is the client's Idempotency-Key; empty means no idempotency

@@ -68,7 +68,7 @@ func newApp(cfg *Config, repo *data.Repository, uc *biz.LogUsecase, svc *service
 	cleanupRetention := startLogRetentionCleanup(uc, retentionDays)
 
 	partitionCtx, partitionCancel := context.WithCancel(context.Background())
-	partitionStop := startPartitionMaintenance(partitionCtx, repo.DB(), cfg.Bootstrap.Partition)
+	partitionStop := startPartitionMaintenance(partitionCtx, repo.DB(), cfg.Bootstrap.Partition, retentionDays)
 
 	// Phase 2.3: optional async batch log writer. When disabled (default),
 	// LogUsecase.IngestLog falls back to synchronous repo.Create; when

@@ -22,13 +22,10 @@ func startPartitionMaintenance(ctx context.Context, db *gorm.DB, cfg *billingcon
 	maintenanceCtx, cancel := context.WithCancel(ctx)
 	pm := appdb.NewPartitionManager(db)
 	interval := parseDurationOrDefault(cfg.Interval, 24*time.Hour)
-	tables := partitionTables(cfg)
 	runMaintenance := func() {
-		for _, table := range tables {
-			if err := pm.PartitionMaintenanceForTable(maintenanceCtx, table); err != nil {
-				applogger.Log.Warn("partition maintenance failed",
-					zap.String("table", table), zap.Error(err))
-			}
+		if err := pm.PartitionMaintenanceForTable(maintenanceCtx, appdb.BillingLedgersTable); err != nil {
+			applogger.Log.Warn("partition maintenance failed",
+				zap.String("table", appdb.BillingLedgersTable), zap.Error(err))
 		}
 	}
 	go func() {
@@ -47,16 +44,6 @@ func startPartitionMaintenance(ctx context.Context, db *gorm.DB, cfg *billingcon
 		}
 	}()
 	return cancel
-}
-
-// partitionTables returns the tables to maintain, defaulting to both
-// partitioned tables when unset (backward compatible with v4 which ran
-// PartitionMaintenance across both tables).
-func partitionTables(cfg *billingconf.Partition) []string {
-	if cfg != nil && len(cfg.Tables) > 0 {
-		return cfg.Tables
-	}
-	return []string{"logs", "billing_ledgers"}
 }
 
 func parseDurationOrDefault(raw string, fallback time.Duration) time.Duration {

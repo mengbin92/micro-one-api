@@ -90,16 +90,21 @@ func (pm *PartitionManager) AddBillingLedgersPartition(ctx context.Context, part
 	return pm.addPartition(ctx, "billing_ledgers", partitionName, cutoffDate)
 }
 
-// addPartition is a helper that adds a new partition by reorganizing the pmax partition.
+// addPartition is a helper that adds a new partition by reorganizing the pmax
+// partition. logs stores Unix epoch seconds, while billing_ledgers stores a
+// DATETIME and is partitioned by TO_DAYS(created_at); the boundary expression
+// must match the table's partition expression exactly.
 func (pm *PartitionManager) addPartition(ctx context.Context, tableName, partitionName string, cutoffDate time.Time) error {
-	cutoffStr := cutoffDate.Format("2006-01-02 15:04:05")
-
+	boundary, err := partitionBoundary(tableName, cutoffDate)
+	if err != nil {
+		return err
+	}
 	query := fmt.Sprintf(`
 		ALTER TABLE %s REORGANIZE PARTITION pmax INTO (
-			PARTITION %s VALUES LESS THAN (UNIX_TIMESTAMP('%s')),
+			PARTITION %s VALUES LESS THAN (%s),
 			PARTITION pmax VALUES LESS THAN MAXVALUE
 		)
-	`, tableName, partitionName, cutoffStr)
+	`, tableName, partitionName, boundary)
 
 	if err := pm.db.WithContext(ctx).Exec(query).Error; err != nil {
 		return fmt.Errorf("failed to add partition %s to %s: %w", partitionName, tableName, err)
@@ -112,6 +117,18 @@ func (pm *PartitionManager) addPartition(ctx context.Context, tableName, partiti
 	)
 
 	return nil
+}
+
+func partitionBoundary(tableName string, cutoffDate time.Time) (string, error) {
+	cutoff := cutoffDate.UTC().Format("2006-01-02 15:04:05")
+	switch tableName {
+	case LogTable:
+		return fmt.Sprintf("UNIX_TIMESTAMP('%s')", cutoff), nil
+	case BillingLedgersTable:
+		return fmt.Sprintf("TO_DAYS('%s')", cutoff), nil
+	default:
+		return "", fmt.Errorf("unsupported table for partitioning: %s", tableName)
+	}
 }
 
 // DropOldPartition removes an old partition from a table.
@@ -132,7 +149,7 @@ func (pm *PartitionManager) DropOldPartition(ctx context.Context, tableName, par
 
 // DropPartitionsOlderThan removes all partitions older than the specified retention period.
 func (pm *PartitionManager) DropPartitionsOlderThan(ctx context.Context, tableName string, retention time.Duration) error {
-	cutoffDate := time.Now().Add(-retention).Format("2006-01")
+	cutoffDate := time.Now().Add(-retention).Format("200601")
 
 	partitions, err := pm.GetPartitionStatus(ctx, tableName)
 	if err != nil {
@@ -191,7 +208,9 @@ func (pm *PartitionManager) EnsureFuturePartitions(ctx context.Context, tableNam
 	for i := 1; i <= monthsAhead; i++ {
 		targetMonth := now.AddDate(0, i, 0)
 		partitionName := fmt.Sprintf("p%s", targetMonth.Format("200601"))
-		cutoffDate := time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, time.UTC)
+		// pYYYYMM contains that calendar month, so its upper boundary is the
+		// first instant of the following month.
+		cutoffDate := time.Date(targetMonth.Year(), targetMonth.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 
 		if !existing[partitionName] {
 			var err error
@@ -236,12 +255,10 @@ func (pm *PartitionManager) PartitionMaintenance(ctx context.Context) error {
 		}
 	}
 
-	// Clean up partitions older than 6 months
-	retention := 6 * 30 * 24 * time.Hour // approximately 6 months
-	for _, table := range []string{LogTable, BillingLedgersTable} {
-		if err := pm.DropPartitionsOlderThan(ctx, table, retention); err != nil {
-			return fmt.Errorf("failed to drop old partitions from %s: %w", table, err)
-		}
+	// Logs use an explicit retention policy. Billing ledgers are financial
+	// audit records and are never dropped by the generic maintenance path.
+	if err := pm.DropPartitionsOlderThan(ctx, LogTable, 6*30*24*time.Hour); err != nil {
+		return fmt.Errorf("failed to drop old partitions from %s: %w", LogTable, err)
 	}
 
 	applogger.Log.Info("Partition maintenance completed")

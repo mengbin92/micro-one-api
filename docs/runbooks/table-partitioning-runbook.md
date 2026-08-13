@@ -1,100 +1,163 @@
-# 日志/账本表分区启用 Runbook（v0.18 P2 C4）
+# 日志/账本表分区启用 Runbook（v0.19 P3）
 
-> 对应 `migrations/phase3_partitioning.sql`（手动应用，非自动 migrate）与
-> `platform/database/partition`（后台维护）。
-> 目标表：`logs`（log-service）、`billing_ledgers`（billing-service），按月
-> `RANGE (TO_DAYS(created_at))` 分区。
-> 状态：**评估完成（2026-08-11），未触发启用条件 —— 触发阈值见 §二**。
+> 适用范围：MySQL 8.0；**手动**执行的可选运维操作，不属于自动 migrate。
+>
+> 目标表位于不同 schema，且 `created_at` 的存储类型不同：
+>
+> - `oneapi_log.logs`：Unix epoch 秒（`BIGINT`），按 `RANGE(created_at)` 分区；
+> - `oneapi_billing.billing_ledgers`：`DATETIME(3)`，按
+>   `RANGE(TO_DAYS(created_at))` 分区。
+>
+> 状态：截至 **2026-08-13**，两表均未达到启用阈值；默认关闭维护开关。
 
 ## 一、生产现状（2026-08-11 实测）
 
-| 表 | Schema | 大小 | 行数 | 已分区 | 可分区性 |
-|----|--------|------|------|--------|---------|
-| `logs` | oneapi_log | 13 MB | ~22.9k | 否 | ✅ 无全局唯一索引（PK id 除外），可直接按月分区 |
-| `billing_ledgers` | oneapi_billing | 24 MB | ~22.7k | 否 | ⚠️ **唯一索引 `idx_ledger_dedupe_key(ledger_dedupe_key)` 不含分区列 created_at，分区 DDL 会失败（MySQL 1503）** |
-| `billing_reservations` | oneapi_billing | 19 MB | ~23k | 否 | （未列入 phase3 分区范围） |
+| 表 | Schema | 大小 | 行数 | 当前状态 |
+|---|---|---:|---:|---|
+| `logs` | `oneapi_log` | 13 MB | ~22.9k | 未分区；`created_at` 是 Unix 秒 |
+| `billing_ledgers` | `oneapi_billing` | 24 MB | ~22.7k | 未分区；全局 dedupe claim 已由迁移 `078` 提供 |
 
-MySQL 版本：8.0（原生分区支持 ✅）。
+## 二、触发阈值
 
-## 二、触发阈值（明确后才启用）
+满足以下任一条件后，才创建 ADR、安排低峰窗口并执行本 runbook：
 
-以下任一满足即启用分区（当前均未满足）：
+1. 单表达到 **1 GB** 或 **1,000 万行**；
+2. 出现可归因于表规模的慢查询，且 `created_at` 范围过滤可从分区裁剪受益；
+3. 已批准数据生命周期策略，需要以按月 `DROP PARTITION` 代替大范围 `DELETE`。
 
-1. `logs` 或 `billing_ledgers` 单表 ≥ **1 GB**，或行数 ≥ **1000 万**；
-2. 出现与该表规模相关的慢查询（EXPLAIN 显示全表扫描 / 索引失效，
-   与 `created_at` 范围过滤相关）；
-3. 清理需求出现：需要按月 DROP 分区代替 DELETE 以快速回收空间。
+当前表规模远低于阈值，**不得仅因 DDL 已准备而启用分区**。
 
-**当前结论（2026-08-11）：表规模 ≤ 25 MB，远低于阈值，不启用分区。**
-维持现状（无分区、维护开关默认关闭）即可；日志按既有保留策略处理。
+## 三、前置条件
 
-## 三、启用步骤（触发后执行）
+### 1. 共通
 
-### 前置约束
+- MySQL ≥ 8.0；在低峰窗口执行。`ALTER TABLE ... PARTITION BY` 会重建表并阻塞写入。
+- 已备份目标 schema，并记录 `SHOW CREATE TABLE`、`SHOW INDEX` 与行数。
+- 维护器只能由拥有该 schema 的服务运行：log-service 维护 `logs`，billing-service
+  维护 `billing_ledgers`；不允许跨 schema 维护。
 
-- **`billing_ledgers` 必须先行解决唯一索引约束**（否则 `ALTER TABLE ... PARTITION BY`
-  报 1503）。二选一：
-  - **A（推荐，成本高）**：唯一键重建为 `UNIQUE (created_at, ledger_dedupe_key)`，
-    分区列前置。语义影响：dedupe key 全局唯一性不变（key 本身唯一，复合唯一更宽）；
-    需在低峰窗口 `ALTER TABLE DROP INDEX / ADD UNIQUE`（大表重建，窗口风险）。
-  - **B（暂缓）**：`billing_ledgers` 不分区，仅 `logs` 分区。账本表 24 MB
-    增长远慢于 logs，清理需求低。
-- MySQL ≥ 8.0（生产 ✅）；表无外键引用（logs/billing_ledgers 无外键 ✅）。
+### 2. `billing_ledgers` 的并发幂等闸门
 
-### 步骤 1：低峰窗口应用分区 DDL
+MySQL 分区表的所有唯一键（包括主键）都必须包含分区列，因此
+`billing_ledgers` 不能继续使用全局 `UNIQUE(ledger_dedupe_key)`。
 
-```bash
-# 在 mysql 容器执行（低峰窗口，ALTER 会重建表，期间写阻塞）
-docker exec -i mysql mysql -uroot -p'<pass>' oneapi_log < migrations/phase3_partitioning.sql
-# 若只分 logs 表：仅执行该文件 logs 段；billing_ledgers 段单独评估后执行
+迁移 `078_create_billing_ledger_dedupe_claims.sql` 创建非分区表
+`billing_ledger_dedupe_claims`，以 `ledger_dedupe_key` 主键作为全局、并发安全的
+claim。`CreateLedgerInTx` 在**与 ledger INSERT 相同的事务**中先插入 claim：
+
+- 首个请求 claim 成功后写入 ledger；
+- 并发或重放请求命中 claim 主键，返回 `ErrLedgerDedupeExists`，再统一映射为
+  `ErrDuplicateRequest`；
+- 事务回滚时 claim 一同回滚，可安全重试。
+
+执行分区前必须确认迁移 `078` 已应用并完成历史 ledger key 回填：
+
+```sql
+USE oneapi_billing;
+SHOW TABLES LIKE 'billing_ledger_dedupe_claims';
+SELECT COUNT(*) AS ledgers_without_claim
+FROM billing_ledgers bl
+LEFT JOIN billing_ledger_dedupe_claims c
+  ON c.ledger_dedupe_key = bl.ledger_dedupe_key
+WHERE bl.ledger_dedupe_key <> ''
+  AND c.ledger_dedupe_key IS NULL;
 ```
 
-> **一致性核对（review 2026-08-11）**：`phase3_partitioning.sql` 含 `logs` +
-> `billing_ledgers` 两段 DDL，与 billing-service `partitionTables()` 默认
-> `["logs", "billing_ledgers"]`、log-service `LogTable` 一致。启用前务必先处理
-> `billing_ledgers` 的唯一索引 1503 约束（见上），否则维护开关一开，
-> `PartitionMaintenanceForTable(billing_ledgers)` 会对未分区表持续 Warn。
+结果必须为 `0`。**禁止**以 `SELECT COUNT(*)` 再 `INSERT` 代替 claim 主键。
 
-### 步骤 2：开启维护开关（log-service）
+### 3. 保留策略
+
+- `logs`：由 log-service 既有保留策略决定；分区维护可自动删除过期日志分区。
+- `billing_ledgers`：默认只创建未来分区，**不会自动 DROP 历史分区**。财务账本归档、
+  保留期与删除必须通过独立 ADR/审批后另行实施。
+
+## 四、执行步骤
+
+### 步骤 1：先应用普通迁移
+
+先运行常规 migrate，确保 `078_create_billing_ledger_dedupe_claims` 已落库：
+
+```bash
+MIGRATIONS_DRIVER=mysql \
+MIGRATIONS_DSN='root:password@tcp(mysql:3306)/oneapi_billing?parseTime=true' \
+  go run ./cmd/migrate -dir ./migrations -ownership billing
+```
+
+### 步骤 2：分区 `logs`（仅 log schema）
+
+```bash
+# 先在 oneapi_log 备份并确认 PK/created_at 类型。
+docker exec -i mysql mysql -uroot -p'<pass>' oneapi_log \
+  < migrations/manual/phase3_logs_partitioning.sql
+
+# 验证表达式、分区和实际路由。
+docker exec mysql mysql -uroot -p'<pass>' -N -e \
+  "SELECT PARTITION_NAME, PARTITION_EXPRESSION, PARTITION_DESCRIPTION
+   FROM information_schema.PARTITIONS
+   WHERE TABLE_SCHEMA='oneapi_log' AND TABLE_NAME='logs'
+   ORDER BY PARTITION_ORDINAL_POSITION;"
+```
+
+### 步骤 3：分区 `billing_ledgers`（仅 billing schema）
+
+```bash
+# 再次确认 migration 078 的 claims 完整；然后才移除 ledger 上的旧唯一索引。
+docker exec -i mysql mysql -uroot -p'<pass>' oneapi_billing \
+  < migrations/manual/phase3_billing_ledgers_partitioning.sql
+
+# 验证分区、非唯一 lookup index 和全局 claim 主键。
+docker exec mysql mysql -uroot -p'<pass>' -N -e \
+  "SHOW INDEX FROM oneapi_billing.billing_ledgers;
+   SHOW INDEX FROM oneapi_billing.billing_ledger_dedupe_claims;"
+```
+
+### 步骤 4：按 owner 开启维护器
 
 ```yaml
-# app/log/configs/config.yaml（或生产环境变量）
+# app/log/configs/config.yaml
 partition:
-  enabled: true            # 或 env PARTITION_ENABLED=true
-  interval: 86400s         # 默认 24h
+  enabled: true
+  interval: 24h
+
+# app/billing/configs/config.yaml
+partition:
+  enabled: true
+  interval: 24h
 ```
 
-billing-service 同理（若启用 billing_ledgers 分区）：
-`billing_service` 配置的 `partition.enabled` / `PARTITION_ENABLED`。
+分别重启对应服务。运行时维护 SQL 与初始化 DDL 的边界一致：
 
-### 步骤 3：重启服务并验证
+- logs：`UNIX_TIMESTAMP('YYYY-MM-01')`；
+- billing ledgers：`TO_DAYS('YYYY-MM-01')`。
+
+### 步骤 5：验证
 
 ```bash
-docker compose restart log-service
-# 验证：分区已创建 + 维护无错
-docker exec mysql mysql -uroot -p'<pass>' -N -e \
-  "SELECT PARTITION_NAME, TABLE_ROWS FROM information_schema.PARTITIONS
-   WHERE TABLE_SCHEMA='oneapi_log' AND TABLE_NAME='logs';"
-docker logs log-service | grep -i partition   # 应无 Warn
+# log-service 不应报告 billing_ledgers 维护错误；billing-service 不应访问 logs。
+docker logs log-service --tail 100 | grep -i partition
+docker logs billing-service --tail 100 | grep -i partition
 ```
 
-### 回滚
+还应执行一次同 key 并发资金请求的回归测试，确认只有一个 claim 与一个 ledger row，
+其余请求映射为 `ErrDuplicateRequest`。
 
-- 开关回退：`PARTITION_ENABLED=false` + 重启（维护停止，分区表保留不影响查询）；
-- 完全回退：`ALTER TABLE logs REMOVE PARTITIONING`（低峰窗口，需评估停机时间）。
+## 五、回滚
 
-## 四、维护机制（代码路径，已就绪无需改动）
+1. 先设置 `PARTITION_ENABLED=false`，仅停止后续维护；现有分区表仍可查询。
+2. 若必须取消分区，在低峰窗口、完成备份后分别执行：
 
-- `platform/database/partition.PartitionManager.PartitionMaintenance`：
-  自动 `REORGANIZE PARTITION pmax` 创建下月分区 + 按保留策略 DROP 旧分区
-  （`phase3_partitioning.sql` §103/121/139 的 SQL）。
-- log-service：`app/log/cmd/log/partition.go:startPartitionMaintenance`，
-  `cfg.Bootstrap.Partition.Enabled` 门控（默认关），in-memory store 时 no-op。
-- billing-service：`app/billing/cmd/billing/billing_helpers.go` 同款。
-- 幂等/安全：维护失败仅 Warn 日志，不影响主流程。
+```sql
+ALTER TABLE oneapi_log.logs REMOVE PARTITIONING;
+ALTER TABLE oneapi_billing.billing_ledgers REMOVE PARTITIONING;
+```
 
-## 五、关联
+3. **不要删除** `billing_ledger_dedupe_claims`；它仍是资金幂等的全局数据库闸门。
+4. 恢复旧的 ledger 唯一索引前，必须先移除分区或采用符合 MySQL 分区唯一键规则的设计。
 
-- DDL 源：`migrations/phase3_partitioning.sql`
-- 架构设计：`docs/design/ARCHITECTURE_REFACTOR.md` §5.3
-- 决策记录：`docs/design/v0.18-engineering-hygiene-decision.md`（v0.18 P2 C2/C4）
+## 六、关联
+
+- 入口索引：`migrations/phase3_partitioning.sql`
+- logs DDL：`migrations/manual/phase3_logs_partitioning.sql`
+- billing DDL：`migrations/manual/phase3_billing_ledgers_partitioning.sql`
+- 全局 claim 迁移：`migrations/078_create_billing_ledger_dedupe_claims.sql`
+- 运行时维护：`platform/database/partition`
