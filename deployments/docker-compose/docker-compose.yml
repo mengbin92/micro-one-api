@@ -449,8 +449,12 @@ services:
       - "--web.enable-lifecycle"
       - "--web.listen-address=:9090"
     volumes:
-      - /opt/micro-one-api/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - /opt/micro-one-api/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      # Relative to this compose file so the stack works locally and in CI —
+      # hardcoding /opt/micro-one-api/... breaks everywhere the repo is not
+      # checked out at that exact path (CI runners included). The prod host
+      # keeps its own manually-maintained compose copy, so it is unaffected.
+      - ../../deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../deploy/prometheus/alerts/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     # No host port mapping: Prometheus stays reachable only inside the
     # backend network (grafana + admin-api reach it via http://prometheus:9090).
@@ -471,8 +475,8 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_HTTP_PORT=3000
     volumes:
-      - /opt/micro-one-api/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - /opt/micro-one-api/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../../deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports:
       - "3001:3000"
