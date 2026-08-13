@@ -39,8 +39,11 @@ jobs:
           make proto
 
       - name: Run gosec (SAST)
+        # Tool versions pinned in scripts/tool-versions.env (v0.19 P2.1),
+        # shared with `make security-*` locally — never @latest.
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          set -a; . scripts/tool-versions.env; set +a
+          go install github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}
           gosec -fmt sarif -out gosec.sarif -no-fail -exclude-generated -exclude=G104 ./...
 
       - name: Upload gosec results
@@ -51,7 +54,8 @@ jobs:
 
       - name: Run govulncheck (SCA)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          set -a; . scripts/tool-versions.env; set +a
+          go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
           govulncheck -json ./... > vulncheck.json
 
       - name: Check for high severity vulnerabilities
@@ -84,7 +88,8 @@ jobs:
 
       - name: Generate SBOM
         run: |
-          go install github.com/anchore/syft/cmd/syft@latest
+          set -a; . scripts/tool-versions.env; set +a
+          go install github.com/anchore/syft/cmd/syft@${SYFT_VERSION}
           syft . -o spdx-json > sbom.json
 
       - name: Upload SBOM
@@ -163,7 +168,9 @@ jobs:
           go-version: '1.26'
 
       - name: Install go-licenses
-        run: go install github.com/google/go-licenses@latest
+        run: |
+          set -a; . scripts/tool-versions.env; set +a
+          go install github.com/google/go-licenses@${GO_LICENSES_VERSION}
 
       # buf + protobuf generators come from `make init` (versions pinned to
       # go.mod). No system protoc needed: buf.gen.yaml now covers the whole
