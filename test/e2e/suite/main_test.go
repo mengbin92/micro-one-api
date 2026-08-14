@@ -26,6 +26,7 @@ var (
 	relayHTTPBase        = envOr("RELAY_HTTP_BASE", "http://127.0.0.1:8080")
 	adminHTTPBase        = envOr("ADMIN_HTTP_BASE", "http://127.0.0.1:3000")
 	adminToken           = envOr("ADMIN_TOKEN", "test-admin-token-for-dev")
+	serviceToken         = envOr("SERVICE_TOKEN", "change-me-to-a-long-random-string")
 
 	testUsername = "e2e-test-user"
 	testPassword = "testpass123456"
@@ -712,14 +713,32 @@ func stepAdminTopUp(t *testing.T, state *e2eState) {
 
 func grpcDial(t *testing.T, endpoint string) *grpc.ClientConn {
 	t.Helper()
+	// gRPC endpoints are protected by a service-token interceptor (see
+	// app/identity/internal/server/grpc.go): every RPC must carry
+	// `authorization: Bearer <SERVICE_TOKEN>`. Attach it per-call via
+	// per-RPC credentials so the interceptor's validateServiceToken passes.
 	conn, err := grpc.NewClient(endpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(serviceTokenCredentials{token: serviceToken}),
 	)
 	if err != nil {
 		t.Fatalf("gRPC dial %s: %v", endpoint, err)
 	}
 	return conn
 }
+
+// serviceTokenCredentials attaches `authorization: Bearer <token>` to every
+// RPC, satisfying the service-token interceptor on identity/billing gRPC
+// servers.
+type serviceTokenCredentials struct {
+	token string
+}
+
+func (c serviceTokenCredentials) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + c.token}, nil
+}
+
+func (serviceTokenCredentials) RequireTransportSecurity() bool { return false }
 
 func httpGetWithAuth(t *testing.T, url, token string) []byte {
 	t.Helper()
