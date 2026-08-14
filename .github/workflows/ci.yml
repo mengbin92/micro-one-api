@@ -48,6 +48,67 @@ jobs:
             exit 1
           fi
 
+  migration-smoke-mysql:
+    name: Migration smoke (mysql)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: migration_smoke
+          MYSQL_DATABASE: migration_smoke
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pmigration_smoke"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Run MySQL migration smoke
+        run: make migration-smoke-mysql
+        timeout-minutes: 10
+
+  migration-smoke-postgres:
+    name: Migration smoke (postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: migration_smoke
+          POSTGRES_PASSWORD: migration_smoke
+          POSTGRES_DB: migration_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U migration_smoke -d migration_smoke"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Run Postgres migration smoke
+        run: make migration-smoke-postgres
+        timeout-minutes: 10
+
   integration:
     name: Integration (bind loopback)
     runs-on: ubuntu-latest

@@ -15,7 +15,11 @@ services:
       - backend
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      # Force TCP readiness. `localhost` may resolve to the Unix socket while
+      # the MySQL entrypoint is still running its temporary initdb server; the
+      # healthcheck then turns healthy before port 3306 is actually available
+      # and the migrate one-shot fails with connection refused.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
