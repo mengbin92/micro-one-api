@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.20.1 发布公告](./docs/releases/release-v0.20.1.md)（修复 nanoid CVE-2026-67213、归档 v0.19–v0.20 执行记录并确立 v0.21 路线图） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.1)
+> 📣 **最新发布**：[v0.20.2 发布公告](./docs/releases/release-v0.20.2.md)（新增管理后台上游成本配置页与缓存读取价格、补强账本 claim 覆盖对账检查） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.2)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.20.2
+
+v0.20.2 是 v0.20.1 之后的 **PATCH 补强版本**（5 个提交，`3cde415` → `538f80e`）：管理后台新增「上游成本」页面（渠道 / 订阅账号 / 全局裸模型每 1M tokens 采购价、缓存读取价格、legacy 键迁移），服务端支持可选价格显式清空并拒绝负数；对账脚本新增 ledger ↔ dedupe claim 双向覆盖完整性检查。**无 API 破坏性变更、无数据库迁移、无 proto/配置变更**。受影响范围：admin-api（含管理前端 web/dist）与运维侧 `scripts/reconcile` 工具。详见 [docs/releases/release-v0.20.2.md](./docs/releases/release-v0.20.2.md)。
 
 ### 升级到 v0.20.1
 

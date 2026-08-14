@@ -1,11 +1,18 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"google.golang.org/grpc"
+
+	channelv1 "micro-one-api/api/channel/v1"
+	commonv1 "micro-one-api/api/common/v1"
+	adminbiz "micro-one-api/app/admin/internal/biz"
 )
 
 func TestUpstreamCostKey(t *testing.T) {
@@ -162,4 +169,142 @@ func TestUpstreamCostKey_CanonicalOnlyForWrite(t *testing.T) {
 	// rejected for source_kind=channel.
 	_, err = upstreamCostKey(UpstreamCostEntry{SourceKind: "channel", SourceID: 5, PublicModelID: "glm-5.2"})
 	assert.Error(t, err, "channel entry without upstream_model_id must be rejected")
+}
+
+func TestUpstreamCostValuePreservesAndUpdatesOptionalPrices(t *testing.T) {
+	cacheRead := 2.52e-9
+	existing := map[string]interface{}{
+		"input_price":             1.0,
+		"cache_read_price":        9.9e-9,
+		"cache_creation_5m_price": 1.1e-7,
+	}
+	got := upstreamCostValue(UpstreamCostEntry{
+		InputPrice:     1.26e-7,
+		OutputPrice:    2.52e-7,
+		CacheReadPrice: &cacheRead,
+	}, existing)
+
+	assert.Equal(t, 1.26e-7, got["input_price"])
+	assert.Equal(t, 2.52e-7, got["output_price"])
+	assert.Equal(t, 2.52e-9, got["cache_read_price"])
+	assert.Equal(t, 1.1e-7, got["cache_creation_5m_price"], "unset optional prices must be preserved")
+}
+
+func TestSetUpstreamCostValidatesPrices(t *testing.T) {
+	negative := -1.0
+	valid := UpstreamCostEntry{SourceKind: "model", PublicModelID: "gpt-5.5"}
+	for name, mutate := range map[string]func(*UpstreamCostEntry){
+		"input_price":       func(e *UpstreamCostEntry) { e.InputPrice = -1 },
+		"output_price":      func(e *UpstreamCostEntry) { e.OutputPrice = -1 },
+		"cache_read_price":  func(e *UpstreamCostEntry) { e.CacheReadPrice = &negative },
+		"cache_creation_5m": func(e *UpstreamCostEntry) { e.CacheCreation5mPrice = &negative },
+		"cache_creation_1h": func(e *UpstreamCostEntry) { e.CacheCreation1hPrice = &negative },
+	} {
+		entry := valid
+		mutate(&entry)
+		err := validateUpstreamCostPrices(entry)
+		require.Error(t, err, name)
+	}
+	require.NoError(t, validateUpstreamCostPrices(valid))
+}
+
+func TestUpstreamCostValueClearsOptionalPricesExplicitly(t *testing.T) {
+	existing := map[string]interface{}{
+		"input_price":             1.0,
+		"cache_read_price":        9.9e-9,
+		"cache_creation_5m_price": 1.1e-7,
+		"cache_creation_1h_price": 2.2e-7,
+	}
+	got := upstreamCostValue(UpstreamCostEntry{
+		InputPrice:              1.26e-7,
+		OutputPrice:             2.52e-7,
+		CacheReadPriceSet:       true,
+		CacheCreation5mPriceSet: true,
+	}, existing)
+
+	assert.Equal(t, 1.26e-7, got["input_price"])
+	assert.Equal(t, 2.52e-7, got["output_price"])
+	assert.NotContains(t, got, "cache_read_price", "explicit clear must remove the stored price")
+	assert.NotContains(t, got, "cache_creation_5m_price", "explicit clear must remove the stored price")
+	assert.Equal(t, 2.2e-7, got["cache_creation_1h_price"], "unset optional price must be preserved without *_set")
+}
+
+func TestSetUpstreamCostClearsCacheReadPrice(t *testing.T) {
+	store := &fakeSystemOptionsRepo{values: map[string]string{
+		"UpstreamModelPrice": `{"channel:1:gpt":{"input_price":1e-6,"output_price":2e-6,"cache_read_price":3e-9}}`,
+	}}
+	svc := &AdminService{systemOptsUc: adminbiz.NewSystemOptionsUsecase(store)}
+
+	err := svc.SetUpstreamCost(context.Background(), UpstreamCostEntry{
+		SourceKind: "channel", SourceID: 1, UpstreamModelID: "gpt",
+		InputPrice: 1e-6, OutputPrice: 2e-6,
+		CacheReadPriceSet: true,
+	})
+	require.NoError(t, err)
+
+	var stored map[string]map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(store.values["UpstreamModelPrice"]), &stored))
+	require.Contains(t, stored, "channel:1:gpt")
+	assert.NotContains(t, stored["channel:1:gpt"], "cache_read_price")
+}
+
+type fakeUpstreamResolverChannelClient struct {
+	channelv1.ChannelServiceClient
+}
+
+func (c *fakeUpstreamResolverChannelClient) ListModels(ctx context.Context, req *channelv1.ListModelsRequest, opts ...grpc.CallOption) (*channelv1.ListModelsResponse, error) {
+	return &channelv1.ListModelsResponse{Models: []*channelv1.ModelSummary{{Id: 7, ModelId: "gpt"}}}, nil
+}
+
+func (c *fakeUpstreamResolverChannelClient) ListChannels(ctx context.Context, req *channelv1.ListChannelsRequest, opts ...grpc.CallOption) (*channelv1.ListChannelsResponse, error) {
+	return &channelv1.ListChannelsResponse{Channels: []*commonv1.ChannelSummary{{Id: 1, Name: "main"}}}, nil
+}
+
+func (c *fakeUpstreamResolverChannelClient) ListChannelModelMappings(ctx context.Context, req *channelv1.ListChannelModelMappingsRequest, opts ...grpc.CallOption) (*channelv1.ListChannelModelMappingsResponse, error) {
+	return &channelv1.ListChannelModelMappingsResponse{Mappings: []*channelv1.ModelChannelMapping{{ModelPk: 7, UpstreamModelId: "gpt"}}}, nil
+}
+
+func (c *fakeUpstreamResolverChannelClient) ListSubscriptionAccounts(ctx context.Context, req *channelv1.ListSubscriptionAccountsRequest, opts ...grpc.CallOption) (*channelv1.ListSubscriptionAccountsResponse, error) {
+	return &channelv1.ListSubscriptionAccountsResponse{}, nil
+}
+
+func (c *fakeUpstreamResolverChannelClient) ListSubscriptionModelMappings(ctx context.Context, req *channelv1.ListSubscriptionModelMappingsRequest, opts ...grpc.CallOption) (*channelv1.ListSubscriptionModelMappingsResponse, error) {
+	return &channelv1.ListSubscriptionModelMappingsResponse{}, nil
+}
+
+func TestMigrateUpstreamCostKeysPreservesExistingTarget(t *testing.T) {
+	store := &fakeSystemOptionsRepo{values: map[string]string{
+		"UpstreamModelPrice": `{
+			"1:gpt": {"input_price":1,"output_price":2},
+			"channel:1:gpt": {"input_price":9,"output_price":9}
+		}`,
+	}}
+	svc := &AdminService{
+		systemOptsUc:  adminbiz.NewSystemOptionsUsecase(store),
+		channelClient: &fakeUpstreamResolverChannelClient{},
+	}
+	plan, err := svc.MigrateUpstreamCostKeys(context.Background(), false)
+	require.NoError(t, err)
+	require.Len(t, plan.ToRewrite, 1)
+	require.Len(t, plan.Skipped, 1)
+	assert.Equal(t, 0, plan.Executed, "an existing target key must prevent the rewrite")
+
+	var stored map[string]map[string]float64
+	require.NoError(t, json.Unmarshal([]byte(store.values["UpstreamModelPrice"]), &stored))
+	require.Contains(t, stored, "1:gpt")
+	require.Contains(t, stored, "channel:1:gpt")
+	assert.Equal(t, 9.0, stored["channel:1:gpt"]["input_price"], "existing canonical price must not be overwritten")
+}
+
+type fakeSystemOptionsRepo struct {
+	values map[string]string
+}
+
+func (r *fakeSystemOptionsRepo) Get(ctx context.Context, key string) (string, error) {
+	return r.values[key], nil
+}
+
+func (r *fakeSystemOptionsRepo) Set(ctx context.Context, key, value string) error {
+	r.values[key] = value
+	return nil
 }

@@ -535,6 +535,9 @@ export function AdminOverviewPage() {
           <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/pricing" />}>
             模型价格
           </Button>
+          <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/upstream-costs" />}>
+            上游成本
+          </Button>
           <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/subscription-accounts" />}>
             订阅账号
           </Button>
