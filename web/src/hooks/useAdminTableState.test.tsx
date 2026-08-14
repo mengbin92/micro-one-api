@@ -101,4 +101,24 @@ describe('useAdminTableState', () => {
 
     expect(result.current.filters).toEqual({ status: 'paid', channel: 'alipay' });
   });
+
+  it('accumulates a third update on top of two in-flight ones from stale closures', () => {
+    // Regression: the payment-orders smoke test sets status, channel and
+    // user_id back-to-back. A render lagging behind the router navigation
+    // used to resync latestParams to the intermediate URL, dropping the
+    // channel filter that was still in flight (seen on slow CI runners).
+    const { result } = renderHook(
+      () => useAdminTableState({ storageKey: 'orders', filters: ['status', 'channel', 'user_id'] }),
+      {
+        wrapper: wrapper('/admin/payment-orders'),
+      },
+    );
+
+    const staleClosure = result.current;
+    act(() => result.current.setFilter('status', 'paid'));
+    act(() => staleClosure.setFilter('channel', 'alipay'));
+    act(() => staleClosure.setFilter('user_id', '42'));
+
+    expect(result.current.filters).toEqual({ status: 'paid', channel: 'alipay', user_id: '42' });
+  });
 });

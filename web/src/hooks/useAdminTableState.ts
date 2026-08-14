@@ -33,9 +33,21 @@ export function useAdminTableState({ defaultPageSize = 20, filters: filterKeys =
   // that is still in flight. Accumulate every update on top of a ref that
   // tracks the latest issued params instead.
   const latestParams = useRef(new URLSearchParams(searchParams));
-  const lastIssued = useRef<string | null>(null);
-  if (lastIssued.current !== null && searchParams.toString() !== lastIssued.current) {
-    // The URL changed outside our own updates (back/forward, links): resync.
+  // The last params string we issued whose navigation has not committed
+  // yet. While non-null, renders showing an older committed URL are lag
+  // renders (our navigation is still in flight, possibly interleaved with
+  // StrictMode double renders) — they must NOT resync latestParams, or an
+  // in-flight filter/sort update is silently dropped. Only when the URL
+  // commits exactly our issued params do we arm URL-following again; a URL
+  // change with nothing of ours pending is a real external navigation
+  // (back/forward, links) and resyncs the ref.
+  const pendingIssued = useRef<string | null>(null);
+  const committed = searchParams.toString();
+  if (pendingIssued.current !== null) {
+    if (committed === pendingIssued.current) {
+      pendingIssued.current = null;
+    }
+  } else if (committed !== latestParams.current.toString()) {
     latestParams.current = new URLSearchParams(searchParams);
   }
   const preferredPageSize = getPreference('admin-page-size', defaultPageSize);
@@ -61,7 +73,7 @@ export function useAdminTableState({ defaultPageSize = 20, filters: filterKeys =
       }
     }
     latestParams.current = next;
-    lastIssued.current = next.toString();
+    pendingIssued.current = next.toString();
     setSearchParams(next);
   };
 
