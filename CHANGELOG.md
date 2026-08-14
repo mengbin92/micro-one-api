@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-08-14
+
+v0.20.1 是 v0.20.0 之后的 **PATCH 修复版本**（2 个提交，`5c89752` → `64a6ed6`）：升级管理前端传递依赖 nanoid 3.3.17 → 3.3.18 修复 CVE-2026-67213（随机 ID 生成死循环 DoS，nanoid 仅存在于构建期工具链、不进入运行时 bundle）；将 v0.19–v0.20 执行记录归档并确立 v0.21 路线图为唯一规划入口。**无 API 破坏性变更、无数据库迁移、无 proto/配置变更、无运行时行为变化**，服务端无需重新部署。详见 [release-v0.20.1.md](docs/releases/release-v0.20.1.md)。
+
+### Fixed
+
+- **web(nanoid)**：postcss 传递依赖 nanoid 3.3.17 → 3.3.18，修复 CVE-2026-67213 无限循环 DoS（代码扫描告警）；lockfile 根包 `engines` 同步为 `node >=24 <25`（对齐 `web/.nvmrc`）。
+
+### Changed
+
+- **docs**：新增 `docs/design/v0.19-v0.20-execution-record.md`（归档）与 `docs/design/v0.21-roadmap.md`（唯一规划入口），`docs/README.md` / `docs/TODO.md` 精简指向。
+
 ## [0.20.0] - 2026-08-14
 
 v0.20.0 是 v0.19.1 之后的 **MINOR 功能版本**（10 个提交，`47e619e` → `79108d5`）：接通 relay-gateway HTTP 入口请求 / 延迟指标（`NewHTTPMetricsMiddleware` 挂载最外层、路径低基数归一）；为 RANGE 分区后的 `billing_ledgers` 新增非分区全局 dedupe claim 表（迁移 `078`，同事务原子裁决并发资金写，修复分区边界表达式 / 分区名比较 / 财务分区误自动 DROP）；修复 admin 表格 URL 筛选快速连续变更的 stale-closure 竞态；修复 nightly compose E2E / Playwright smoke（卷路径、locators、pb.go 生成、SERVICE_TOKEN）。**无 API 破坏性变更，包含数据库迁移 `078`**。受影响服务：relay-gateway、billing-service、log-service、admin-api（含前端）。详见 [release-v0.20.0.md](docs/releases/release-v0.20.0.md)。

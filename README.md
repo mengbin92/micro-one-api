@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.20.0 发布公告](./docs/releases/release-v0.20.0.md)（relay HTTP 入口请求/延迟指标接通、分区账本幂等加固迁移 078、admin 表格筛选竞态修复、nightly E2E 修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.0)
+> 📣 **最新发布**：[v0.20.1 发布公告](./docs/releases/release-v0.20.1.md)（修复 nanoid CVE-2026-67213、归档 v0.19–v0.20 执行记录并确立 v0.21 路线图） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.1)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.20.1
+
+v0.20.1 是 v0.20.0 之后的 **PATCH 修复版本**（2 个提交，`5c89752` → `64a6ed6`）：升级管理前端传递依赖 nanoid 3.3.17 → 3.3.18 修复 CVE-2026-67213（随机 ID 生成死循环 DoS，仅构建期依赖、不进入运行时 bundle）；归档 v0.19–v0.20 执行记录（`docs/design/v0.19-v0.20-execution-record.md`）并确立 v0.21 路线图为唯一规划入口。**无 API 破坏性变更、无数据库迁移、无 proto/配置变更、无运行时行为变化**，服务端无需重新部署。详见 [docs/releases/release-v0.20.1.md](./docs/releases/release-v0.20.1.md)。
 
 ### 升级到 v0.20.0
 
