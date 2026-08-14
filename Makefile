@@ -344,6 +344,20 @@ verify:
 migration-check:
 	go run ./cmd/migrate-check -dir ./migrations
 
+.PHONY: migration-smoke-mysql
+# v0.21 P1: execute all MySQL migrations against a scratch database, verify a
+# repeat apply is a no-op, audit schema_migrations, and prove an invalid SQL
+# migration fails. Requires a healthy MySQL at MIGRATIONS_DSN (CI provides a
+# service container; see scripts/test-migration-smoke.sh for the default DSN).
+migration-smoke-mysql:
+	./scripts/test-migration-smoke.sh mysql
+
+.PHONY: migration-smoke-postgres
+# v0.21 P1: same fresh/repeat/status/negative contract as MySQL, but against
+# the consolidated Postgres baseline plus its incremental mirror migrations.
+migration-smoke-postgres:
+	./scripts/test-migration-smoke.sh postgres
+
 .PHONY: migrate-prereq
 # v0.19 P2.2: explicit DSN precondition for migrate targets. cmd/migrate also
 # validates this at runtime; failing here saves the compile + connect cycle.

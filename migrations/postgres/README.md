@@ -39,8 +39,9 @@ uses the `host=…` key=value form.
 ## Notes for contributors
 
 - Keep this directory in sync with `migrations/sqlite/` and
-  `migrations/` (MySQL). CI runs `cmd/migrate -dir ./migrations/<dialect>`
-  against scratch databases on every PR.
+  `migrations/` (MySQL). CI runs the real
+  Postgres migration smoke job on every PR (fresh + repeat + status + failure
+  injection).
 - Use `BIGSERIAL PRIMARY KEY` for auto-incrementing ids (not
   `AUTO_INCREMENT`).
 - Use `TEXT` for variable-length strings; use `VARCHAR(N)` only when

@@ -42,8 +42,9 @@ be omitted when the DSN starts with `file:` or ends with `.db` /
 ## Notes for contributors
 
 - Keep this directory in sync with `migrations/postgres/` and
-  `migrations/` (MySQL). CI runs `cmd/migrate -dir ./migrations/<dialect>`
-  against scratch databases on every PR.
+  `migrations/` (MySQL). CI runs real
+  MySQL/Postgres migration smoke jobs; SQLite remains covered by lifecycle
+  tests plus the static dialect gate.
 - Use `INTEGER PRIMARY KEY AUTOINCREMENT` (not `AUTO_INCREMENT`) for ids.
 - Use `TEXT` for variable-length strings; avoid `VARCHAR(N)`.
 - Foreign keys must be enabled per-connection (the runner sets
