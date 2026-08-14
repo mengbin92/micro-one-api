@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { getPreference, setPreference } from '@/lib/preferences';
 import type { SortDirection } from '@/lib/table-utils';
@@ -41,15 +41,20 @@ export function useAdminTableState({ defaultPageSize = 20, filters: filterKeys =
   // commits exactly our issued params do we arm URL-following again; a URL
   // change with nothing of ours pending is a real external navigation
   // (back/forward, links) and resyncs the ref.
+  //
+  // Refs are only ever touched from event handlers (updateParams below) and
+  // from this effect — never during render, which react-hooks/refs forbids.
   const pendingIssued = useRef<string | null>(null);
   const committed = searchParams.toString();
-  if (pendingIssued.current !== null) {
-    if (committed === pendingIssued.current) {
-      pendingIssued.current = null;
+  useEffect(() => {
+    if (pendingIssued.current !== null) {
+      if (committed === pendingIssued.current) {
+        pendingIssued.current = null;
+      }
+    } else if (committed !== latestParams.current.toString()) {
+      latestParams.current = new URLSearchParams(committed);
     }
-  } else if (committed !== latestParams.current.toString()) {
-    latestParams.current = new URLSearchParams(searchParams);
-  }
+  }, [committed]);
   const preferredPageSize = getPreference('admin-page-size', defaultPageSize);
   const page = readPositiveInt(searchParams.get('page'), 1);
   const pageSize = readPositiveInt(searchParams.get('page_size'), preferredPageSize);
