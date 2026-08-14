@@ -97,6 +97,7 @@ describe('AdminUpstreamCostsPage', () => {
         input_price: 0.14 / MTOK,
         output_price: 0.28 / MTOK,
         cache_read_price: 0.0028 / MTOK,
+        cache_read_price_set: true,
       });
     });
   });
@@ -163,6 +164,7 @@ describe('AdminUpstreamCostsPage', () => {
 
   it('runs a dry-run migration and shows the plan', async () => {
     const user = userEvent.setup();
+    const successSpy = vi.spyOn(toast, 'success').mockImplementation(() => '');
     const dryRuns: boolean[] = [];
     server.use(
       http.get('/api/admin/upstream-costs', () =>
@@ -197,6 +199,7 @@ describe('AdminUpstreamCostsPage', () => {
             },
           ],
           skipped: [],
+          executed: body.dry_run === false ? 0 : undefined,
         });
       }),
     );
@@ -218,5 +221,54 @@ describe('AdminUpstreamCostsPage', () => {
       expect(screen.queryByText(/将重写 1 条/)).not.toBeInTheDocument();
     });
     expect(dryRuns).toEqual([true, false]);
+    await waitFor(() => expect(successSpy).toHaveBeenCalledWith('已迁移 0 个 legacy 键，1 条因目标键已存在被跳过'));
+    successSpy.mockRestore();
+  });
+
+  it('clears the cache-read price when the edit input is emptied', async () => {
+    const user = userEvent.setup();
+    let posted: unknown;
+    server.use(
+      http.get('/api/admin/upstream-costs', () =>
+        HttpResponse.json({
+          entries: [
+            {
+              key: 'channel:1:deepseek-v4-flash-0731',
+              source_kind: 'channel',
+              source_id: 1,
+              source_name: 'DeepSeek Main',
+              upstream_model_id: 'deepseek-v4-flash-0731',
+              public_model_id: 'deepseek-v4-flash-0731',
+              input_price: 1.4e-7,
+              output_price: 2.8e-7,
+              cache_read_price: 2.8e-9,
+            },
+          ],
+          legacy_keys: [],
+          total: 1,
+        }),
+      ),
+      http.post('/api/admin/upstream-costs', async ({ request }) => {
+        posted = await request.json();
+        return HttpResponse.json({ success: true });
+      }),
+    );
+
+    renderWithQuery(<AdminUpstreamCostsPage />);
+    await screen.findByText('渠道 1 · DeepSeek Main');
+
+    await user.click(screen.getByRole('button', { name: '编辑 channel:1:deepseek-v4-flash-0731' }));
+    await user.clear(screen.getByLabelText('缓存读取价格（$/1M tokens）'));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(posted).toMatchObject({
+        source_kind: 'channel',
+        source_id: 1,
+        upstream_model_id: 'deepseek-v4-flash-0731',
+        cache_read_price_set: true,
+      });
+    });
+    expect(posted).not.toHaveProperty('cache_read_price');
   });
 });

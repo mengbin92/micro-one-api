@@ -52,6 +52,18 @@ interface MigrationChange {
 interface MigrationPlan {
   to_rewrite: MigrationChange[];
   skipped: MigrationChange[];
+  executed?: number;
+}
+
+interface UpstreamCostSavePayload {
+  source_kind: string;
+  source_id: number;
+  upstream_model_id: string;
+  public_model_id: string;
+  input_price: number;
+  output_price: number;
+  cache_read_price?: number;
+  cache_read_price_set: boolean;
 }
 
 const MTOK = 1_000_000;
@@ -130,7 +142,7 @@ export function AdminUpstreamCostsPage() {
       } else if (!form.publicModelId.trim()) {
         throw new Error('全局默认成本需要填写公开模型 ID');
       }
-      const payload: Partial<UpstreamCostEntry> = {
+      const payload: UpstreamCostSavePayload = {
         source_kind: sourceKind,
         source_id: sourceKind === 'model' ? 0 : Number(form.sourceId),
         upstream_model_id: sourceKind === 'model' ? '' : form.upstreamModelId.trim(),
@@ -138,6 +150,7 @@ export function AdminUpstreamCostsPage() {
         input_price: inputPrice,
         output_price: outputPrice,
         cache_read_price: form.cacheReadPrice.trim() ? mTokToPerToken(form.cacheReadPrice) : undefined,
+        cache_read_price_set: true,
       };
       const res = await adminApiClient.post('/admin/upstream-costs', payload);
       ensureApiSuccess(res.data, '保存上游成本失败');
@@ -183,8 +196,10 @@ export function AdminUpstreamCostsPage() {
       // be re-submitted, and refresh the list to drop the migrated keys.
       setMigrationPlan(null);
       invalidate();
+      const executed = plan.executed ?? plan.to_rewrite.length;
+      const failedNote = plan.to_rewrite.length - executed > 0 ? `，${plan.to_rewrite.length - executed} 条因目标键已存在被跳过` : '';
       const skippedNote = plan.skipped.length > 0 ? `，${plan.skipped.length} 条需人工处理` : '';
-      toast.success(`已迁移 ${plan.to_rewrite.length} 个 legacy 键${skippedNote}`);
+      toast.success(`已迁移 ${executed} 个 legacy 键${failedNote}${skippedNote}`);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '迁移失败');

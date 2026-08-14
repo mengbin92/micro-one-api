@@ -44,6 +44,15 @@ type UpstreamCostEntry struct {
 	CacheReadPrice       *float64 `json:"cache_read_price,omitempty"`
 	CacheCreation5mPrice *float64 `json:"cache_creation_5m_price,omitempty"`
 	CacheCreation1hPrice *float64 `json:"cache_creation_1h_price,omitempty"`
+
+	// The *_set fields give partial-update callers an explicit way to clear
+	// an optional price: send e.g. cache_read_price_set=true without the price.
+	// A non-nil price always writes that value; an absent price with *_set=false
+	// preserves the stored value. They are request-only metadata and are omitted
+	// from list responses.
+	CacheReadPriceSet       bool `json:"cache_read_price_set,omitempty"`
+	CacheCreation5mPriceSet bool `json:"cache_creation_5m_price_set,omitempty"`
+	CacheCreation1hPriceSet bool `json:"cache_creation_1h_price_set,omitempty"`
 }
 
 // upstreamCostView is the list response. LegacyKeys lists the entries still
@@ -83,6 +92,9 @@ func (s *AdminService) ListUpstreamCosts(ctx context.Context) (*upstreamCostView
 // canonical key guarantees the last writer wins per key without clobbering
 // unrelated entries.
 func (s *AdminService) SetUpstreamCost(ctx context.Context, entry UpstreamCostEntry) error {
+	if err := validateUpstreamCostPrices(entry); err != nil {
+		return err
+	}
 	key, err := upstreamCostKey(entry)
 	if err != nil {
 		return err
@@ -113,6 +125,10 @@ func (s *AdminService) DeleteUpstreamCost(ctx context.Context, key string) error
 type UpstreamCostMigrationPlan struct {
 	ToRewrite []UpstreamCostMigrationChange `json:"to_rewrite"`
 	Skipped   []UpstreamCostMigrationChange `json:"skipped"`
+	// Executed counts the rewrites actually applied. During dry-run it equals
+	// len(ToRewrite); after execution it may be smaller when a target key
+	// appeared between planning and the read-modify-write.
+	Executed int `json:"executed"`
 }
 
 type UpstreamCostMigrationChange struct {
@@ -139,7 +155,6 @@ func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool)
 	if err != nil {
 		return nil, err
 	}
-
 	plan := &UpstreamCostMigrationPlan{}
 	type rewriteInfo struct {
 		oldKey string
@@ -194,6 +209,7 @@ func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool)
 		}
 		plan.ToRewrite = append(plan.ToRewrite, rewrites[newKey].change)
 	}
+	plan.Executed = len(plan.ToRewrite)
 	sortMigrationPlan(plan)
 
 	if dryRun || len(rewrites) == 0 {
@@ -209,11 +225,13 @@ func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool)
 					PublicModelID: info.change.PublicModelID, UpstreamModelID: info.change.UpstreamModelID,
 					Reason: "target canonical key already exists; legacy key preserved",
 				})
+				plan.Executed--
 				continue
 			}
 			if v, ok := prices[info.oldKey]; ok {
 				prices[newKey] = v
 				delete(prices, info.oldKey)
+				plan.Executed++
 			}
 		}
 	})
@@ -256,21 +274,40 @@ func upstreamCostKey(e UpstreamCostEntry) (string, error) {
 	}
 }
 
+func validateUpstreamCostPrices(e UpstreamCostEntry) error {
+	if e.InputPrice < 0 || e.OutputPrice < 0 {
+		return fmt.Errorf("input_price and output_price must be >= 0")
+	}
+	for name, value := range map[string]*float64{
+		"cache_read_price":        e.CacheReadPrice,
+		"cache_creation_5m_price": e.CacheCreation5mPrice,
+		"cache_creation_1h_price": e.CacheCreation1hPrice,
+	} {
+		if value != nil && *value < 0 {
+			return fmt.Errorf("%s must be >= 0", name)
+		}
+	}
+	return nil
+}
+
 func upstreamCostValue(e UpstreamCostEntry, existing map[string]interface{}) map[string]interface{} {
 	if existing == nil {
 		existing = map[string]interface{}{}
 	}
 	existing["input_price"] = e.InputPrice
 	existing["output_price"] = e.OutputPrice
-	setOptionalPrice(existing, "cache_read_price", e.CacheReadPrice)
-	setOptionalPrice(existing, "cache_creation_5m_price", e.CacheCreation5mPrice)
-	setOptionalPrice(existing, "cache_creation_1h_price", e.CacheCreation1hPrice)
+	setOptionalPrice(existing, "cache_read_price", e.CacheReadPrice, e.CacheReadPriceSet)
+	setOptionalPrice(existing, "cache_creation_5m_price", e.CacheCreation5mPrice, e.CacheCreation5mPriceSet)
+	setOptionalPrice(existing, "cache_creation_1h_price", e.CacheCreation1hPrice, e.CacheCreation1hPriceSet)
 	return existing
 }
 
-func setOptionalPrice(values map[string]interface{}, key string, value *float64) {
-	if value != nil {
+func setOptionalPrice(values map[string]interface{}, key string, value *float64, clear bool) {
+	switch {
+	case value != nil:
 		values[key] = *value
+	case clear:
+		delete(values, key)
 	}
 }
 
