@@ -148,9 +148,9 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 17, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 18, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := len(files) - 2 // last two files arrive later (e.g. 076, 077)
+	cut := len(files) - 2 // last two files arrive later (e.g. 077, 078)
 
 	db := openScratchSqlite(t)
 	// Stage 1: apply the tree up to (not including) the last two files.
@@ -176,6 +176,15 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 	require.Empty(t, all, "after upgrade the tree is fully applied")
 	require.True(t, sqliteColumnExists(t, db, "user_subscriptions", "renewal_strategy"),
 		"tail mirror must have applied during upgrade")
+	require.True(t, sqliteTableExists(t, db, "billing_ledger_dedupe_claims"),
+		"partition-safe dedupe claim migration must have applied during upgrade")
+}
+
+func sqliteTableExists(t *testing.T, db *sql.DB, table string) bool {
+	t.Helper()
+	var n int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n))
+	return n > 0
 }
 
 // tempDirWithFiles copies the given *.sql files from srcDir into a new temp

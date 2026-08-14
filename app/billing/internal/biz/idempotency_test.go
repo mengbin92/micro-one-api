@@ -59,7 +59,8 @@ func TestIsDuplicateKeyError(t *testing.T) {
 	}{
 		{"mysql 1062", errors.New("Error 1062: Duplicate entry 'purchase:1:req' for key 'idx_ledger_dedupe_key'"), true},
 		{"postgres 23505", errors.New(`pq: duplicate key value violates unique constraint "idx_ledger_dedupe_key"`), true},
-		{"sqlite", errors.New("UNIQUE constraint failed: billing_ledgers.ledger_dedupe_key"), true},
+		{"sqlite", errors.New("UNIQUE constraint failed: billing_ledger_dedupe_claims.ledger_dedupe_key"), true},
+		{"claim sentinel", ErrLedgerDedupeExists, true},
 		{"unrelated", errors.New("insufficient quota"), false},
 		{"nil", nil, false},
 	}

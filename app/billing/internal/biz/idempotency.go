@@ -10,8 +10,8 @@ import (
 // 资金写路径的 ledger 幂等键(action 前缀)。
 //
 // 设计文档 docs/design/v0.18-idempotency-decision.md §4.2:
-// 扣款/充值 ledger 显式携带 (user_id, request_id) 派生的 dedupe key,复用
-// billing_ledgers.ledger_dedupe_key 的全局唯一索引作为请求级幂等闸门。
+// 扣款/充值 ledger 显式携带 (user_id, request_id) 派生的 dedupe key；
+// 请求级幂等由非分区 billing_ledger_dedupe_claims 的主键原子裁决。
 // 键格式 `{action}:{user_id}:{request_id}` 与 legacy 格式
 // (`{reference_id}:{type}:legacy`,不含 user_id)天然区分,互不冲突。
 const (
@@ -23,8 +23,14 @@ const (
 )
 
 // ErrDuplicateRequest 表示同 (user_id, request_id) 的资金写请求重复提交。
-// 由 DB 唯一索引冲突(或事务内预检命中)触发,调用方应将其映射为 409。
+// 由数据库幂等 claim/唯一约束冲突触发，调用方应将其映射为 409。
 var ErrDuplicateRequest = errors.New("duplicate request")
+
+// ErrLedgerDedupeExists 由 ledger repo 在全局 dedupe claim 主键冲突时返回。
+// billing_ledgers 分区后不再承载全局唯一键；独立的非分区 claim 表在同一
+// 事务内原子裁决并发写入。isDuplicateKeyError 将其统一映射为
+// ErrDuplicateRequest。
+var ErrLedgerDedupeExists = errors.New("ledger dedupe key already exists")
 
 // maxDedupeUserIDLen 限制 user_id 在幂等键中的前缀长度,保证键总长不超过
 // billing_ledgers.ledger_dedupe_key 列宽(VARCHAR(160)):
@@ -62,12 +68,17 @@ func randomHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-// isDuplicateKeyError 识别三驱动(MySQL 1062 / Postgres 23505 / SQLite)的
-// 唯一约束冲突。billing_ledgers.ledger_dedupe_key 的唯一索引冲突是请求级
-// 幂等的最终闸门;识别后映射为 ErrDuplicateRequest 而非透传驱动错误。
+// isDuplicateKeyError 识别四类重复写入信号:
+//   - 全局 ledger dedupe claim 冲突: ErrLedgerDedupeExists
+//   - 三驱动唯一约束冲突: MySQL 1062 / Postgres 23505 / SQLite
+//
+// 幂等闸门冲突统一映射为 ErrDuplicateRequest 而非透传驱动错误。
 func isDuplicateKeyError(err error) bool {
 	if err == nil {
 		return false
+	}
+	if errors.Is(err, ErrLedgerDedupeExists) {
+		return true
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "duplicate entry") ||

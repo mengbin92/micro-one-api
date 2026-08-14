@@ -56,6 +56,14 @@ func setupLedgerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 
 	err = db.Exec(`
+		CREATE TABLE billing_ledger_dedupe_claims (
+			ledger_dedupe_key TEXT PRIMARY KEY,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`).Error
+	require.NoError(t, err)
+
+	err = db.Exec(`
 		CREATE TABLE users (
 			id INTEGER PRIMARY KEY,
 			username TEXT NOT NULL
@@ -112,6 +120,112 @@ func TestLedgerRepo_CreateLedger(t *testing.T) {
 	assert.Equal(t, "gpt-test", model.ModelName)
 	assert.Equal(t, int64(12), model.Quota)
 	assert.Equal(t, int64(3), model.CacheReadTokens)
+}
+
+// TestLedgerRepo_CreateLedgerInTx_IdempotentByDedupeKey covers the v0.19 P3
+// A+M1 change: after partitioning, the ledger table has no global unique key.
+// CreateLedgerInTx must atomically claim the non-partitioned dedupe key and
+// surface biz.ErrLedgerDedupeExists for a replay, even when ledger timestamps
+// differ.
+
+func TestLedgerRepo_CreateLedger_LedgerFailureRollsBackClaim(t *testing.T) {
+	db := setupLedgerTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		_ = sqlDB.Close()
+	}()
+	repo := NewLedgerRepo(&Data{db: db})
+	ctx := context.Background()
+	key := "failed-ledger-key"
+
+	require.NoError(t, db.Exec(`
+		CREATE TRIGGER reject_failed_ledger
+		BEFORE INSERT ON billing_ledgers
+		WHEN NEW.ledger_dedupe_key = 'failed-ledger-key'
+		BEGIN
+			SELECT RAISE(ABORT, 'forced ledger failure');
+		END
+	`).Error)
+	err := repo.CreateLedger(ctx, &biz.Ledger{
+		UserID: "user1", Amount: -1, BalanceAfter: 9,
+		Type: biz.LedgerTypeConsume, LedgerDedupeKey: key,
+	})
+	require.ErrorContains(t, err, "forced ledger failure")
+
+	var claims int64
+	require.NoError(t, db.Model(&ledgerDedupeClaimModel{}).
+		Where("ledger_dedupe_key = ?", key).Count(&claims).Error)
+	require.Zero(t, claims, "claim must roll back when ledger insert fails")
+}
+
+func TestLedgerRepo_CreateLedgerInTx_IdempotentByDedupeKey(t *testing.T) {
+	db := setupLedgerTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
+
+	data := &Data{db: db}
+	repo := NewLedgerRepo(data)
+
+	ctx := context.Background()
+	key := "res_abc:consume:subscription"
+	mk := func(ts time.Time) *biz.Ledger {
+		return &biz.Ledger{
+			UserID:           "user1",
+			Amount:           -100,
+			BalanceAfter:     900,
+			Type:             "consume",
+			ReferenceID:      "res_abc",
+			CreatedAt:        ts,
+			CostSource:       biz.CostSourceSubscription,
+			SubscriptionCost: 100,
+			LedgerDedupeKey:  key,
+		}
+	}
+
+	// First insert succeeds.
+	require.NoError(t, repo.CreateLedgerInTx(ctx, &gormTx{db: db}, mk(time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC))))
+
+	var cnt int64
+	require.NoError(t, db.Model(&ledgerModel{}).Where("ledger_dedupe_key = ?", key).Count(&cnt).Error)
+	require.Equal(t, int64(1), cnt)
+
+	// Same dedupe key at a DIFFERENT created_at: must be rejected with the
+	// dedupe sentinel and must not insert a second row.
+	err := repo.CreateLedgerInTx(ctx, &gormTx{db: db}, mk(time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)))
+	require.ErrorIs(t, err, biz.ErrLedgerDedupeExists)
+	require.NoError(t, db.Model(&ledgerModel{}).Where("ledger_dedupe_key = ?", key).Count(&cnt).Error)
+	assert.Equal(t, int64(1), cnt, "duplicate dedupe key must not insert a second row")
+
+	// A different dedupe key still inserts normally.
+	other := mk(time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC))
+	other.LedgerDedupeKey = "res_abc:consume:balance"
+	require.NoError(t, repo.CreateLedgerInTx(ctx, &gormTx{db: db}, other))
+	require.NoError(t, db.Model(&ledgerModel{}).Count(&cnt).Error)
+	assert.Equal(t, int64(2), cnt)
+}
+
+func TestLedgerRepo_CreateLedgerInTx_RollbackReleasesDedupeClaim(t *testing.T) {
+	db := setupLedgerTestDB(t)
+	defer func() {
+		sqlDB, _ := db.DB()
+		_ = sqlDB.Close()
+	}()
+	repo := NewLedgerRepo(&Data{db: db})
+	ctx := context.Background()
+	ledger := &biz.Ledger{UserID: "user1", Amount: -1, BalanceAfter: 9, Type: biz.LedgerTypeConsume, LedgerDedupeKey: "rollback-key"}
+
+	tx := db.Begin()
+	require.NoError(t, repo.CreateLedgerInTx(ctx, &gormTx{db: tx}, ledger))
+	require.NoError(t, tx.Rollback().Error)
+
+	// The claim participates in the caller transaction. A retry after rollback
+	// must be able to claim the same key and insert normally.
+	require.NoError(t, repo.CreateLedgerInTx(ctx, &gormTx{db: db}, ledger))
+	var count int64
+	require.NoError(t, db.Model(&ledgerModel{}).Where("ledger_dedupe_key = ?", ledger.LedgerDedupeKey).Count(&count).Error)
+	require.Equal(t, int64(1), count)
 }
 
 func TestLedgerRepo_ListLedgers(t *testing.T) {

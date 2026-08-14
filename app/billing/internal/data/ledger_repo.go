@@ -24,14 +24,19 @@ func NewLedgerRepo(data *Data) biz.LedgerRepo {
 }
 
 func (r *ledgerRepo) CreateLedger(ctx context.Context, ledger *biz.Ledger) error {
-	return r.CreateLedgerInTx(ctx, &gormTx{db: r.data.db.WithContext(ctx)}, ledger)
+	return r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return r.CreateLedgerInTx(ctx, &gormTx{db: tx}, ledger)
+	})
 }
 
 // CreateLedgerInTx inserts a ledger entry inside the caller's transaction.
-// The function is the new authoritative write path: the
-// LedgerDedupeKey uniqueness is enforced by the database, so the CAS
-// commit pipeline can safely retry on conflict and end up with exactly
-// one row per (reservation_id, type, cost_source) triple.
+//
+// Partition-safe idempotency is enforced by billing_ledger_dedupe_claims. Its
+// primary key is claimed before the ledger insert in the same transaction, so
+// concurrent writers are atomically arbitrated even after billing_ledgers loses
+// its global unique index for MySQL RANGE partitioning. A duplicate claim is
+// returned as biz.ErrLedgerDedupeExists; rolling back the caller transaction
+// also rolls back the claim.
 func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx, ledger *biz.Ledger) error {
 	db := txDB(tx)
 	costSource := ledger.CostSource
@@ -45,6 +50,15 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx
 	dedupeKey := ledger.LedgerDedupeKey
 	if dedupeKey == "" {
 		dedupeKey = legacyLedgerDedupeKey(ledger)
+	}
+	if dedupeKey != "" {
+		claim := &ledgerDedupeClaimModel{LedgerDedupeKey: dedupeKey}
+		if err := db.WithContext(ctx).Create(claim).Error; err != nil {
+			if isUniqueConstraintError(err) {
+				return biz.ErrLedgerDedupeExists
+			}
+			return err
+		}
 	}
 	model := &ledgerModel{
 		UserID:                ledger.UserID,
@@ -77,6 +91,7 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx
 		SubscriptionCost:      ledger.SubscriptionCost,
 		BalanceCost:           balanceCost,
 		LedgerDedupeKey:       dedupeKey,
+		CreatedAt:             ledger.CreatedAt,
 	}
 	return db.Create(model).Error
 }
@@ -96,6 +111,16 @@ func absLedgerAmount(amount int64) int64 {
 		return -amount
 	}
 	return amount
+}
+
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate entry") ||
+		strings.Contains(msg, "unique constraint failed") ||
+		strings.Contains(msg, "duplicate key value violates unique constraint")
 }
 
 // GetLedgerByID returns a single ledger entry by its primary key, enriched

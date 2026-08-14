@@ -5,13 +5,38 @@ test.beforeEach(async ({ page }) => {
   await mockApi(page);
 });
 
+// Seed an admin session. The mocked /user/self fixture (fixtures.ts) returns
+// role:1, and AppNavigation persists that role to localStorage after every
+// page load — which would strip the admin nav. Override /user/self with an
+// admin role here: this route is registered after mockApi(), and Playwright
+// dispatches to the most recently registered matching route first.
 async function seedAdminSession(page: Page) {
-  await page.goto('/login');
-  await page.evaluate(() => {
+  await page.route('**/api/user/self', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: {
+          id: 1,
+          username: 'alice',
+          display_name: 'Alice',
+          balance: 5000000,
+          used_amount: 1000000,
+          role: 10,
+        },
+      },
+    });
+  });
+  await page.addInitScript(() => {
     localStorage.setItem('token', 'test-user-token');
     localStorage.setItem('userRole', '10');
     localStorage.setItem('adminToken', 'test-admin-token');
   });
+  await page.goto('/dashboard');
+  // Admin links only render in the desktop sidebar; on mobile they live in
+  // the hamburger navigation, so only assert on wide viewports.
+  if ((page.viewportSize()?.width ?? 0) >= 768) {
+    await expect(page.getByRole('link', { name: 'Admin Overview' })).toBeVisible();
+  }
 }
 
 async function openMobileNavIfVisible(page: Page) {
@@ -25,18 +50,18 @@ test('unauthenticated dashboard redirects to login', async ({ page }) => {
   await page.goto('/dashboard');
 
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByLabel('Username')).toBeVisible();
+  await expect(page.getByLabel('用户名')).toBeVisible();
 });
 
 test('login stores token and shows dashboard', async ({ page }) => {
   await page.goto('/login');
-  await page.getByLabel('Username').fill('alice');
-  await page.getByLabel('Password').fill('secret');
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByLabel('用户名').fill('alice');
+  await page.getByLabel('密码').fill('secret');
+  await page.getByRole('button', { name: '登录' }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('heading', { name: /Alice/ })).toBeVisible();
-  await expect(page.getByText('剩余额度')).toBeVisible();
+  await expect(page.getByText('钱包余额')).toBeVisible();
   await expect(page.evaluate(() => localStorage.getItem('token'))).resolves.toBe('test-user-token');
 });
 
@@ -53,11 +78,11 @@ test('register creates account and signs in', async ({ page }) => {
   });
 
   await page.goto('/register');
-  await expect(page.getByText('Register with a username and password')).toBeVisible();
-  await page.getByLabel('Username').fill('bob');
-  await page.getByLabel('Password', { exact: true }).fill('password123');
-  await page.getByLabel('Confirm password').fill('password123');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByText('使用用户名和密码注册')).toBeVisible();
+  await page.getByLabel('用户名').fill('bob');
+  await page.getByLabel('密码', { exact: true }).fill('password123');
+  await page.getByLabel('确认密码').fill('password123');
+  await page.getByRole('button', { name: '注册账号' }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.evaluate(() => localStorage.getItem('token'))).resolves.toBe('test-user-token');
@@ -91,7 +116,7 @@ test('admin overview renders operational status', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '管理总览' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '上游供应商' })).toBeVisible();
   await expect(page.getByText('openai-main')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '订阅账号' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '订阅账号', exact: true })).toBeVisible();
   await expect(page.getByText('claude-pro-1')).toBeVisible();
   await expect(page.getByRole('heading', { name: '最近调用与订单动态' })).toBeVisible();
 });
@@ -100,9 +125,9 @@ test('admin options renders core settings', async ({ page }) => {
   await seedAdminSession(page);
   await page.goto('/admin/options');
 
-  await expect(page.getByRole('heading', { name: 'System Options' })).toBeVisible();
-  await expect(page.getByText('Core Settings')).toBeVisible();
-  await expect(page.getByText('Registration enabled')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '系统选项' })).toBeVisible();
+  await expect(page.getByText('核心设置')).toBeVisible();
+  await expect(page.getByText('开放注册')).toBeVisible();
 });
 
 test('admin users sends sort and filter params', async ({ page }) => {
@@ -119,6 +144,9 @@ test('admin users sends sort and filter params', async ({ page }) => {
   await seedAdminSession(page);
   await page.goto('/admin/users');
   await page.getByLabel('Filter users by status').selectOption('1');
+  // Filter/sort state lives in the URL and navigations are async (see the
+  // payment-orders test below); serialize on the URL to avoid stale reads.
+  await expect(page).toHaveURL(/status=1/);
   await page.getByRole('button', { name: /sort by username/i }).click();
 
   await expect
@@ -165,7 +193,11 @@ test('admin channels creates a channel from the web page', async ({ page }) => {
   await dialog.getByLabel('Name').fill('openai-main');
   await dialog.getByLabel('Base URL').fill('https://api.example.com/v1');
   await dialog.getByLabel('API Key').fill('sk-test');
-  await dialog.getByLabel('Models').fill('gpt-4o-mini');
+  // Models is a ModelMultiSelect (searchable checkbox list over the model
+  // registry), not a labelled input — the registry is unmocked here, so type
+  // the model ID and use the "Add <id>" custom-entry button instead.
+  await dialog.getByPlaceholder('Search models...').fill('gpt-4o-mini');
+  await dialog.getByRole('button', { name: 'Add gpt-4o-mini' }).click();
   await dialog.getByLabel('Group').fill('default');
   await dialog.getByRole('button', { name: 'Create', exact: true }).click();
 
@@ -247,8 +279,14 @@ test('admin payment orders sends filters to backend', async ({ page }) => {
   await seedAdminSession(page);
   await page.goto('/admin/payment-orders');
   await expect(page.getByRole('heading', { name: /支付订单/ })).toBeVisible();
+  // Filter state lives in the URL (useAdminTableState -> setSearchParams).
+  // React Router navigations are async, so back-to-back setFilter calls can
+  // read a stale location and silently drop earlier filters (seen on slow CI
+  // runners). Serialize on the URL after each change instead.
   await page.getByLabel('Filter payment orders by status').selectOption('paid');
+  await expect(page).toHaveURL(/status=paid/);
   await page.getByLabel('Filter payment orders by channel').selectOption('alipay');
+  await expect(page).toHaveURL(/channel=alipay/);
   await page.getByLabel('Filter payment orders by user id').fill('42');
 
   await expect
@@ -278,7 +316,7 @@ test('recharge page can be opened and creates alipay order', async ({ page }) =>
   });
   await page.goto('/dashboard');
   await openMobileNavIfVisible(page);
-  await page.getByText('充值 / 订阅').click();
+  await page.getByRole('link', { name: '充值 / 订阅' }).click();
 
   await expect(page).toHaveURL(/\/recharge$/);
   await expect(page.getByRole('heading', { name: '快捷金额' })).toBeVisible();
@@ -317,7 +355,8 @@ test('regular user can open and redeem a code', async ({ page }) => {
   await page.getByRole('link', { name: '兑换码' }).click();
 
   await expect(page).toHaveURL(/\/redeem$/);
-  await expect(page.getByRole('heading', { name: '兑换码充值' })).toBeVisible();
+  // The page header (h1) and the card title (h2) both read 兑换码充值.
+  await expect(page.getByRole('heading', { name: '兑换码充值' }).first()).toBeVisible();
   await page.getByLabel('兑换码').fill('CODE-1000');
   await page.getByRole('button', { name: '立即兑换' }).click();
 
@@ -332,8 +371,8 @@ test('orders page shows admin payment orders', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: '我的订单' })).toBeVisible();
   await expect(page.getByText('PAY-1')).toBeVisible();
-  await expect(page.getByText('支付充值')).toBeVisible();
-  await page.getByRole('button', { name: '刷新' }).first().click();
+  await expect(page.getByRole('cell', { name: '支付订单' })).toBeVisible();
+  // The paid status renders in the row remark ("状态：已支付；资产：issued").
   await expect(page.getByText(/状态：已支付/)).toBeVisible();
 });
 
@@ -374,6 +413,9 @@ test('admin users export sends current filters to backend export route', async (
   await seedAdminSession(page);
   await page.goto('/admin/users');
   await page.getByLabel('Filter users by status').selectOption('1');
+  // Wait for the async searchParams navigation to commit (see the
+  // payment-orders test above) so the export URL includes the filter.
+  await expect(page).toHaveURL(/status=1/);
   await page.getByRole('button', { name: /export csv/i }).click();
 
   await expect.poll(() => requests.length).toBeGreaterThan(0);
@@ -430,7 +472,12 @@ test('admin subscription accounts page lists and creates accounts', async ({ pag
   await dialog.getByLabel('名称').fill('codex-team');
   await dialog.getByLabel('Access Token').fill('sk-test-access');
   await dialog.getByLabel('Refresh Token').fill('rt-test-refresh');
-  await dialog.getByRole('button', { name: '创建', exact: true }).click();
+  // The form is taller than the dialog's scroll viewport (DialogContent has
+  // overflow-y-auto). On mobile the button's hit point stays covered by other
+  // fields even after scrolling (Playwright scrolls the wrong nested
+  // container), so force the click — this test asserts the request payload,
+  // not pointer hit-testing.
+  await dialog.getByRole('button', { name: '创建', exact: true }).click({ force: true });
 
   await expect.poll(() => createRequests.length).toBe(1);
   expect(createRequests[0]).toMatchObject({

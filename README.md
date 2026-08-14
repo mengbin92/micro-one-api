@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.19.1 发布公告](./docs/releases/release-v0.19.1.md)（工具链版本固定消除 `@latest` 漂移、`make verify` 聚合门禁、`make clean` 扩展；纯工程面无运行时变更） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.19.1)
+> 📣 **最新发布**：[v0.20.0 发布公告](./docs/releases/release-v0.20.0.md)（relay HTTP 入口请求/延迟指标接通、分区账本幂等加固迁移 078、admin 表格筛选竞态修复、nightly E2E 修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.20.0
+
+v0.20.0 是 v0.19.1 之后的 **MINOR 功能版本**（10 个提交，`47e619e` → `79108d5`）：接通 relay-gateway HTTP 入口请求 / 延迟指标（`NewHTTPMetricsMiddleware` 挂载最外层、路径低基数归一、`/healthz` / `/metrics` 不计入）；为 RANGE 分区后的 `billing_ledgers` 新增非分区全局 dedupe claim 表（**迁移 `078`**，`CreateLedgerInTx` 同事务先 claim 后 insert，冲突统一 409；修复分区边界表达式 / 分区名比较 / 财务分区误自动 DROP）；修复 admin 表格 URL 筛选快速连续变更的 stale-closure 竞态；修复 nightly compose E2E / Playwright smoke（卷路径、locators、pb.go 生成、SERVICE_TOKEN）。**无 API 破坏性变更、包含数据库迁移 `078`**；`partition.tables` 字段 deprecated（旧值可解析、运行时忽略）。受影响服务：relay-gateway、billing-service、log-service、admin-api（含前端）。详见 [docs/releases/release-v0.20.0.md](./docs/releases/release-v0.20.0.md)。
 
 ### 升级到 v0.19.1
 

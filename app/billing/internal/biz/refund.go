@@ -36,7 +36,7 @@ import (
 //
 // Idempotency: the reversal ledger dedupe key is
 //   "{trade_no}:refund:{cost_source}" (mirroring the consume dedupe key
-// format). The DB unique constraint on ledger_dedupe_key guarantees at most
+// format). The global ledger dedupe claim primary key guarantees at most
 // one reversal row per trade_no, so a replayed refund callback is a no-op.
 
 const (

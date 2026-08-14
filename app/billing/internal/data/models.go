@@ -91,11 +91,14 @@ type ledgerModel struct {
 	// Cost dimension tracking for the dual-track reservation flow. The dedupe
 	// key is the unique idempotency anchor for the commit pipeline and is
 	// independent of the legacy reference_id lookup.
-	CostSource       string    `gorm:"column:cost_source"`
-	SubscriptionCost int64     `gorm:"column:subscription_cost"`
-	BalanceCost      int64     `gorm:"column:balance_cost"`
-	LedgerDedupeKey  string    `gorm:"uniqueIndex:idx_ledger_dedupe_key;column:ledger_dedupe_key"`
-	CreatedAt        time.Time `gorm:"index;column:created_at"`
+	CostSource       string `gorm:"column:cost_source"`
+	SubscriptionCost int64  `gorm:"column:subscription_cost"`
+	BalanceCost      int64  `gorm:"column:balance_cost"`
+	// v0.19 P3 A+M1: after partitioning this is a non-unique lookup index.
+	// Global uniqueness is owned by billing_ledger_dedupe_claims, whose primary
+	// key is claimed in the same transaction before the ledger row is inserted.
+	LedgerDedupeKey string    `gorm:"index:idx_ledger_dedupe_key;column:ledger_dedupe_key"`
+	CreatedAt       time.Time `gorm:"index;column:created_at"`
 	// Username is not a real column — it is scanned from the users table
 	// via a LEFT JOIN in list/get queries. It must be tagged with `-:migration`
 	// so GORM AutoMigrate does not try to add it to billing_ledgers.
@@ -103,6 +106,16 @@ type ledgerModel struct {
 }
 
 func (ledgerModel) TableName() string { return "billing_ledgers" }
+
+// ledgerDedupeClaimModel is the non-partitioned global idempotency gate for
+// billing ledger writes. The ledger table itself cannot retain a global unique
+// key once MySQL partitions it by created_at, so concurrent writers atomically
+// claim this primary key inside the same transaction as the ledger insert.
+type ledgerDedupeClaimModel struct {
+	LedgerDedupeKey string `gorm:"primaryKey;column:ledger_dedupe_key"`
+}
+
+func (ledgerDedupeClaimModel) TableName() string { return "billing_ledger_dedupe_claims" }
 
 // accountReceivableModel is the GORM mirror of account_receivables, which is
 // the append-only ledger of wallet overdraft events produced by the

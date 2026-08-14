@@ -649,7 +649,7 @@ func TestTopUpQuota_Success(t *testing.T) {
 	assert.Equal(t, LedgerTypeRecharge, ledgerRepo.ledgers[0].Type)
 	assert.Equal(t, int64(500), ledgerRepo.ledgers[0].Amount)
 	// v0.18 P0: the recharge ledger must carry the explicit (user, request)
-	// dedupe key so the DB unique constraint can reject duplicate top-ups.
+	// dedupe key so the DB claim primary key can reject duplicate top-ups.
 	assert.Equal(t, "topup:user1:req-1", ledgerRepo.ledgers[0].LedgerDedupeKey)
 }
 

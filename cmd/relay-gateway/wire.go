@@ -371,6 +371,12 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	if cfg.Bootstrap.Audit.Enabled {
 		routeMiddleware = append(routeMiddleware, appaudit.NewMiddleware(appaudit.NewAuditor(true)).Handler)
 	}
+	// v0.19 P3-0: request-level HTTP observability (requests_total by
+	// service/method/path/status + latency histogram). Appended last so it is
+	// the OUTERMOST wrapper: it observes the final status code after
+	// subscription/idempotency/audit middlewares. /healthz and /metrics are
+	// registered outside the middleware chain and stay uncounted.
+	routeMiddleware = append(routeMiddleware, appmiddleware.NewHTTPMetricsMiddleware("relay-gateway"))
 	httpServer.UseRouteMiddleware(routeMiddleware...)
 
 	{

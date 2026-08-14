@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-08-14
+
+v0.20.0 是 v0.19.1 之后的 **MINOR 功能版本**（10 个提交，`47e619e` → `79108d5`）：接通 relay-gateway HTTP 入口请求 / 延迟指标（`NewHTTPMetricsMiddleware` 挂载最外层、路径低基数归一）；为 RANGE 分区后的 `billing_ledgers` 新增非分区全局 dedupe claim 表（迁移 `078`，同事务原子裁决并发资金写，修复分区边界表达式 / 分区名比较 / 财务分区误自动 DROP）；修复 admin 表格 URL 筛选快速连续变更的 stale-closure 竞态；修复 nightly compose E2E / Playwright smoke（卷路径、locators、pb.go 生成、SERVICE_TOKEN）。**无 API 破坏性变更，包含数据库迁移 `078`**。受影响服务：relay-gateway、billing-service、log-service、admin-api（含前端）。详见 [release-v0.20.0.md](docs/releases/release-v0.20.0.md)。
+
+### Added
+
+- **Relay HTTP 入口指标**：`platform/middleware.NewHTTPMetricsMiddleware` 挂载 relay-gateway 路由链最外层，记录最终 status、method、低基数 path 与延迟直方图；`/healthz` / `/metrics` 不计入。
+- **分区安全账本幂等**：新增 `billing_ledger_dedupe_claims` 非分区全局 claim 表（迁移 `078`，含存量回填）；`CreateLedgerInTx` 同事务先 claim 后 insert，冲突统一映射 409。
+
+### Fixed
+
+- **分区维护**：`billing_ledgers`（`TO_DAYS`）与 `logs`（Unix epoch）按表选择边界表达式；修复 `2006-01` / `200601` 分区名格式比较；`pYYYYMM` 上界改为次月 1 日；财务账本分区不再被自动 DROP，归档需独立审批。
+- **Admin 表格筛选竞态**：`useAdminTableState` 用 pending-issued ref 累积 URL 更新，外部 URL 变化才 resync；同步逻辑移入 effect 避免 react-hooks refs lint 违规；三组回归单测覆盖。
+- **Nightly E2E**：prometheus/grafana 卷改仓库相对路径；smoke 对齐中文文案与新组件；upload-artifact v7；compose-e2e 生成 pb.go stubs；gRPC 调用附带 SERVICE_TOKEN。
+
+### Changed
+
+- billing-service `partition.tables` 配置字段 deprecated：旧值仍可解析，运行时忽略，只维护 `billing_ledgers`。
+
 ## [0.19.1] - 2026-08-13
 
 v0.19.1 是 v0.19.0 之后的 **PATCH 工程收尾版本**（1 个提交，`23d6c8e`），落地 v0.19 路线图 P2 全部三项：工具链版本固定（`scripts/tool-versions.env` 唯一版本源，消除 `@latest` 漂移）、`make clean` 扩展 + 新增 `make verify` 聚合门禁 + compose/migrate 前置检查、热点文件拆分评估（维持触发式）。**不含任何生产代码变更、无 API/数据库/proto/配置变更、无运行时行为变化**，无需重新部署。详见 [release-v0.19.1.md](docs/releases/release-v0.19.1.md)。

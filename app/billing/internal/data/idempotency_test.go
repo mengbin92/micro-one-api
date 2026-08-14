@@ -12,22 +12,17 @@ import (
 	"gorm.io/gorm"
 )
 
-// setupIdempotencyTestDB returns a sqlite DB with the ledger_dedupe_key unique
-// index (mirroring migration 045) that the v0.18 P0 request-level idempotency
-// relies on. setupTestDB already carries the column but not the index.
-//
-// Writes are serialized (MaxOpenConns=1) so the "concurrent duplicate"
-// scenario is deterministic: the second request observes the first commit and
-// hits the unique constraint, instead of raising sqlite "database is locked"
-// noise that would obscure the idempotency assertion. The DB unique index is
-// the final gate in production (MySQL/Postgres) and behaves identically here.
+// setupIdempotencyTestDB returns a sqlite DB with the non-partitioned
+// billing_ledger_dedupe_claims primary key used by the production write path.
+// Writes are serialized (MaxOpenConns=1) because SQLite has a single-writer
+// lock; the database primary key, not process-local synchronization, remains
+// the authoritative duplicate arbiter.
 func setupIdempotencyTestDB(t *testing.T) *gorm.DB {
 	db := setupTestDB(t)
 	// setupTestDB's billing_ledgers predates the token-split columns; add the
 	// missing ones so the full ledgerModel INSERT works.
 	require.NoError(t, db.Exec(`ALTER TABLE billing_ledgers ADD COLUMN cache_creation_5m_tokens INTEGER DEFAULT 0`).Error)
 	require.NoError(t, db.Exec(`ALTER TABLE billing_ledgers ADD COLUMN cache_creation_1h_tokens INTEGER DEFAULT 0`).Error)
-	require.NoError(t, db.Exec(`CREATE UNIQUE INDEX idx_ledger_dedupe_key ON billing_ledgers(ledger_dedupe_key)`).Error)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
@@ -86,7 +81,7 @@ func ledgerCount(t *testing.T, db *gorm.DB) int64 {
 // TestPurchaseSubscription_ConcurrentDuplicateRequestChargesOnce is the P0
 // acceptance test: N concurrent purchases with the SAME (user_id, request_id)
 // must charge the wallet exactly once. This is the double-charge scenario from
-// M6 known-boundary #1, now closed by the DB unique constraint.
+// M6 known-boundary #1, now closed by the global dedupe-claim primary key.
 func TestPurchaseSubscription_ConcurrentDuplicateRequestChargesOnce(t *testing.T) {
 	db := setupIdempotencyTestDB(t)
 	insertUserForIdempotency(t, db, 1, 10000)
@@ -201,7 +196,7 @@ func TestPurchaseSubscription_EmptyRequestIDNeverCollides(t *testing.T) {
 }
 
 // TestPurchaseSubscription_ConflictRollsBackBalanceChange asserts that when
-// the duplicate insert fails inside the transaction, the balance deduction
+// the duplicate claim fails inside the transaction, the balance deduction
 // performed earlier in the SAME transaction is rolled back — the wallet is
 // left untouched.
 func TestPurchaseSubscription_ConflictRollsBackBalanceChange(t *testing.T) {
@@ -215,7 +210,7 @@ func TestPurchaseSubscription_ConflictRollsBackBalanceChange(t *testing.T) {
 	require.ErrorIs(t, err, biz.ErrDuplicateRequest)
 
 	// The failed request deducted 1000 inside its transaction, then the insert
-	// hit the unique constraint and the whole transaction rolled back: balance
+	// hit the dedupe-claim primary key and the whole transaction rolled back: balance
 	// must be 5000 - 1000 = 4000, NOT 3000.
 	require.Equal(t, int64(4000), userBalance(t, db, 1))
 }

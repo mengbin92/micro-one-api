@@ -366,6 +366,8 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	if cfg.Bootstrap.Audit.Enabled {
 		routeMiddleware = append(routeMiddleware, audit.NewMiddleware(audit.NewAuditor(true)).Handler)
 	}
+
+	routeMiddleware = append(routeMiddleware, middleware.NewHTTPMetricsMiddleware("relay-gateway"))
 	httpServer.UseRouteMiddleware(routeMiddleware...)
 
 	{

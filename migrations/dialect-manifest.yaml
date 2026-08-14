@@ -63,7 +63,7 @@ ownership_exempt:
   - file: phase1_indexes.sql
     reason: applied by the runner on the shared schema; no single service owns it
   - file: phase3_partitioning.sql
-    reason: optional MySQL-only partition DDL, skipped by the runner
+    reason: index for optional MySQL-only per-schema partition DDL, skipped by the runner
   - file: schema_split.sql
     reason: reference DDL for the Phase 2.4 cutover, executed manually, skipped by the runner
 

@@ -94,6 +94,14 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 
 	err = db.Exec(`
+		CREATE TABLE billing_ledger_dedupe_claims (
+			ledger_dedupe_key TEXT PRIMARY KEY,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`).Error
+	require.NoError(t, err)
+
+	err = db.Exec(`
 		CREATE TABLE billing_redeem_codes (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			code TEXT UNIQUE,

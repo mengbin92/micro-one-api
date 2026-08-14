@@ -92,6 +92,7 @@ load_env_var() {
 if [ -f "$ENV_FILE" ]; then
     load_env_var "MYSQL_ROOT_PASSWORD"
     load_env_var "ADMIN_TOKEN"
+    load_env_var "SERVICE_TOKEN"
 fi
 
 # ── Step 0: Start environment ──
@@ -214,6 +215,7 @@ if [ "$RUN_SUITE" = true ]; then
     cd "$PROJECT_ROOT"
     env_args=(
         "ADMIN_TOKEN=${ADMIN_TOKEN:-test-admin-token-for-dev}"
+        "SERVICE_TOKEN=${SERVICE_TOKEN:-change-me-to-a-long-random-string}"
     )
     [ -n "${PROVIDER_API_KEY:-}" ] && env_args+=("PROVIDER_API_KEY=$PROVIDER_API_KEY")
     [ -n "${PROVIDER_BASE_URL:-}" ] && env_args+=("PROVIDER_BASE_URL=$PROVIDER_BASE_URL")

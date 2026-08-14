@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { getPreference, setPreference } from '@/lib/preferences';
 import type { SortDirection } from '@/lib/table-utils';
@@ -24,6 +25,36 @@ function isSortDirection(value: string | null): value is Exclude<SortDirection, 
 
 export function useAdminTableState({ defaultPageSize = 20, filters: filterKeys = [] }: UseAdminTableStateOptions) {
   const [searchParams, setSearchParams] = useSearchParams();
+  // Router navigations commit asynchronously — the history entry (what
+  // window.location shows) updates before React flushes the new location
+  // into this render's searchParams. An update issued in that window (e.g.
+  // an onChange from a control whose handler closed over the previous
+  // render) would compute from stale params and silently drop the update
+  // that is still in flight. Accumulate every update on top of a ref that
+  // tracks the latest issued params instead.
+  const latestParams = useRef(new URLSearchParams(searchParams));
+  // The last params string we issued whose navigation has not committed
+  // yet. While non-null, renders showing an older committed URL are lag
+  // renders (our navigation is still in flight, possibly interleaved with
+  // StrictMode double renders) — they must NOT resync latestParams, or an
+  // in-flight filter/sort update is silently dropped. Only when the URL
+  // commits exactly our issued params do we arm URL-following again; a URL
+  // change with nothing of ours pending is a real external navigation
+  // (back/forward, links) and resyncs the ref.
+  //
+  // Refs are only ever touched from event handlers (updateParams below) and
+  // from this effect — never during render, which react-hooks/refs forbids.
+  const pendingIssued = useRef<string | null>(null);
+  const committed = searchParams.toString();
+  useEffect(() => {
+    if (pendingIssued.current !== null) {
+      if (committed === pendingIssued.current) {
+        pendingIssued.current = null;
+      }
+    } else if (committed !== latestParams.current.toString()) {
+      latestParams.current = new URLSearchParams(committed);
+    }
+  }, [committed]);
   const preferredPageSize = getPreference('admin-page-size', defaultPageSize);
   const page = readPositiveInt(searchParams.get('page'), 1);
   const pageSize = readPositiveInt(searchParams.get('page_size'), preferredPageSize);
@@ -38,17 +69,17 @@ export function useAdminTableState({ defaultPageSize = 20, filters: filterKeys =
   );
 
   const updateParams = (updates: Record<string, string | number | null>) => {
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      for (const [key, value] of Object.entries(updates)) {
-        if (value === null || value === '' || value === 1 || value === defaultPageSize) {
-          next.delete(key);
-        } else {
-          next.set(key, String(value));
-        }
+    const next = new URLSearchParams(latestParams.current);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === null || value === '' || value === 1 || value === defaultPageSize) {
+        next.delete(key);
+      } else {
+        next.set(key, String(value));
       }
-      return next;
-    });
+    }
+    latestParams.current = next;
+    pendingIssued.current = next.toString();
+    setSearchParams(next);
   };
 
   return {

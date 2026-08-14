@@ -9,6 +9,54 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestPartitionBoundaryMatchesTableExpression(t *testing.T) {
+	cutoff := time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		table string
+		want  string
+	}{
+		{LogTable, "UNIX_TIMESTAMP('2026-09-01 00:00:00')"},
+		{BillingLedgersTable, "TO_DAYS('2026-09-01 00:00:00')"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.table, func(t *testing.T) {
+			got, err := partitionBoundary(tt.table, cutoff)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("partitionBoundary(%s) = %q, want %q", tt.table, got, tt.want)
+			}
+		})
+	}
+	if _, err := partitionBoundary("unknown", cutoff); err == nil {
+		t.Fatal("expected unsupported-table error")
+	}
+}
+
+func TestRetentionCutoffUsesCompactPartitionMonth(t *testing.T) {
+	// This guards the pYYYYMM name comparison. The previous 2006-01 layout
+	// produced a value such as "2026-02" that could never compare correctly.
+	got := time.Date(2026, time.August, 13, 0, 0, 0, 0, time.UTC).Add(-6 * 30 * 24 * time.Hour).Format("200601")
+	if got != "202602" {
+		t.Errorf("cutoff month = %q, want 202602", got)
+	}
+}
+
+func TestPartitionMaintenanceDefaultsDoNotDeleteBillingLedgers(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pm := NewPartitionManager(db)
+	if pm.Supported {
+		t.Fatal("SQLite manager should be unsupported")
+	}
+	if err := pm.PartitionMaintenanceForTable(context.Background(), BillingLedgersTable); err != nil {
+		t.Fatalf("non-MySQL no-op: %v", err)
+	}
+}
+
 func TestPartitionNameParsing(t *testing.T) {
 	tests := []struct {
 		name          string

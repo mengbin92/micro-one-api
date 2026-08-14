@@ -203,7 +203,7 @@ kubectl kustomize deployments/k8s | grep -E 'image:'
 
 ### 3.5 执行数据库迁移
 
-在启动应用 Pod 前执行迁移。`MIGRATIONS_DSN` 与 `db-credentials` 中的 `dsn` 必须完全一致。自动迁移会执行编号迁移和 `phase1_indexes.sql`；`phase3_partitioning.sql` 是有额外主键、停机窗口和 MySQL 分区前置条件的可选运维脚本，不会自动执行：
+在启动应用 Pod 前执行迁移。`MIGRATIONS_DSN` 与 `db-credentials` 中的 `dsn` 必须完全一致。自动迁移会执行编号迁移和 `phase1_indexes.sql`；`phase3_partitioning.sql` 是按 schema 分区脚本的入口索引，实际 DDL 位于 `migrations/manual/`，需要额外主键、停机窗口和 MySQL 分区前置条件，不会自动执行：
 
 ```bash
 MIGRATIONS_DRIVER=mysql \
@@ -211,8 +211,7 @@ MIGRATIONS_DSN='root:password@tcp(mysql:3306)/oneapi?parseTime=true' \
   go run ./cmd/migrate -dir ./migrations
 ```
 
-`schema_split.sql` 与 `phase3_partitioning.sql` 一样属于参考 DDL，不会在自动迁移中
-执行：它硬编码旧版 `oneapi` 源库，只应在 Phase 2.4 切流时手动执行（见 §10.4）。
+`schema_split.sql` 与 `phase3_partitioning.sql`/`migrations/manual/phase3_*` 一样属于参考 DDL，不会在自动迁移中执行：前者硬编码旧版 `oneapi` 源库，只应在 Phase 2.4 切流时手动执行（见 §10.4）；后者必须按 `oneapi_log` / `oneapi_billing` 分别执行，并遵循表分区 runbook。
 全新 MySQL 单库与 per-service schema（8 个 `<svc>` 库 + `-ownership`）的干净建库
 路径均已通过验证；跨 schema 视图类迁移（`031`/`061`/`067`）按表/schema 存在性
 守卫，避免在缺少对应表的 schema 上失败。

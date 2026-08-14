@@ -58,6 +58,5 @@ payment:
 partition:
   enabled: ${PARTITION_ENABLED:-false}
   interval: ${PARTITION_INTERVAL:-24h}
-  # Tables to maintain. Defaults to both partitioned tables when unset.
-  # Set to ["billing_ledgers"] when log-service owns the logs table.
-  tables: ${PARTITION_TABLES:-["logs", "billing_ledgers"]}
+  # billing-service owns only billing_ledgers. Financial partitions are never
+  # automatically dropped; archival/retention requires a separate approval.
