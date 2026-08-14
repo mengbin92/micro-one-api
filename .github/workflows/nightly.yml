@@ -38,6 +38,18 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      # api/**/*.pb.go and internal/conf/*.pb.go are git-ignored and generated
+      # locally by `make api`; a clean checkout has none of them. The Go e2e
+      # suite imports the generated stubs, so install the pinned buf +
+      # protobuf generators and regenerate before compiling (mirrors ci.yml).
+      - name: Install buf and protobuf generators
+        run: |
+          make init
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Generate API stubs
+        run: make api config
+
       # .env is git-ignored (deployments/docker-compose/.env) and absent in a
       # clean checkout, but docker-compose.yml hard-requires
       # ${MYSQL_ROOT_PASSWORD:?} and ${ADMIN_TOKEN:?}. Seed it from the example
