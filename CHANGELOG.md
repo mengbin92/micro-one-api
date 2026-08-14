@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-08-14
+
+v0.20.2 是 v0.20.1 之后的 **PATCH 补强版本**（5 个提交，`3cde415` → `538f80e`）：管理后台新增「上游成本」页面，支持按渠道 / 订阅账号 / 全局裸模型配置每 1M tokens 的上游采购价、缓存读取价格与 legacy 键迁移；对账脚本新增 ledger ↔ dedupe claim 双向覆盖检查，迁移窗口孤儿账本不再静默漏检。**无 API 破坏性变更、无数据库迁移、无 proto/配置变更**。受影响范围：admin-api（含管理前端 web/dist）与运维侧对账工具。详见 [release-v0.20.2.md](docs/releases/release-v0.20.2.md)。
+
+### Added
+
+- **管理后台上游成本**：新增 `/admin/upstream-costs` 页面与导航/总览入口，支持新增、编辑、删除、legacy 键 dry-run 预览与确认迁移；上游成本条目新增 `cache_read_price` 并预留 5m/1h 缓存创建价格。
+- **对账守护**：`scripts/reconcile/checks.go` 新增 `checkClaimCoverage`，双向校验 `billing_ledgers` 与 `billing_ledger_dedupe_claims` 覆盖完整性，孤儿 ledger/claim 均判失败。
+
+### Fixed
+
+- **上游成本可选价格语义**：通过 `*_set` 标记区分「未发送」与「显式清空」；服务端拒绝负 input/output/cache 价格；迁移结果返回实际 `executed` 数量并正确计入目标键已存在的 `skipped` 项。
+
 ## [0.20.1] - 2026-08-14
 
 v0.20.1 是 v0.20.0 之后的 **PATCH 修复版本**（2 个提交，`5c89752` → `64a6ed6`）：升级管理前端传递依赖 nanoid 3.3.17 → 3.3.18 修复 CVE-2026-67213（随机 ID 生成死循环 DoS，nanoid 仅存在于构建期工具链、不进入运行时 bundle）；将 v0.19–v0.20 执行记录归档并确立 v0.21 路线图为唯一规划入口。**无 API 破坏性变更、无数据库迁移、无 proto/配置变更、无运行时行为变化**，服务端无需重新部署。详见 [release-v0.20.1.md](docs/releases/release-v0.20.1.md)。
