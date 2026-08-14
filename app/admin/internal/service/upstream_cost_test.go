@@ -163,3 +163,22 @@ func TestUpstreamCostKey_CanonicalOnlyForWrite(t *testing.T) {
 	_, err = upstreamCostKey(UpstreamCostEntry{SourceKind: "channel", SourceID: 5, PublicModelID: "glm-5.2"})
 	assert.Error(t, err, "channel entry without upstream_model_id must be rejected")
 }
+
+func TestUpstreamCostValuePreservesAndUpdatesOptionalPrices(t *testing.T) {
+	cacheRead := 2.52e-9
+	existing := map[string]interface{}{
+		"input_price":             1.0,
+		"cache_read_price":        9.9e-9,
+		"cache_creation_5m_price": 1.1e-7,
+	}
+	got := upstreamCostValue(UpstreamCostEntry{
+		InputPrice:     1.26e-7,
+		OutputPrice:    2.52e-7,
+		CacheReadPrice: &cacheRead,
+	}, existing)
+
+	assert.Equal(t, 1.26e-7, got["input_price"])
+	assert.Equal(t, 2.52e-7, got["output_price"])
+	assert.Equal(t, 2.52e-9, got["cache_read_price"])
+	assert.Equal(t, 1.1e-7, got["cache_creation_5m_price"], "unset optional prices must be preserved")
+}

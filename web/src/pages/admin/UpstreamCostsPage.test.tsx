@@ -24,6 +24,7 @@ describe('AdminUpstreamCostsPage', () => {
               public_model_id: 'deepseek-v4-flash-0731',
               input_price: 1.4e-7,
               output_price: 2.8e-7,
+              cache_read_price: 2.8e-9,
             },
           ],
           legacy_keys: [
@@ -48,6 +49,7 @@ describe('AdminUpstreamCostsPage', () => {
     expect(await screen.findByText('渠道 1 · DeepSeek Main')).toBeInTheDocument();
     expect(screen.getAllByText('deepseek-v4-flash-0731').length).toBeGreaterThan(0);
     expect(screen.getByText(`$${1.4e-7 * MTOK} / 1M`)).toBeInTheDocument();
+    expect(screen.getByText(`$${2.8e-9 * MTOK} / 1M`)).toBeInTheDocument();
     expect(screen.getByText('legacy 键（旧格式，待迁移）· 1 条')).toBeInTheDocument();
     expect(screen.getByText('1:deepseek-v4-flash')).toBeInTheDocument();
   });
@@ -83,6 +85,7 @@ describe('AdminUpstreamCostsPage', () => {
     await user.type(screen.getByLabelText('上游模型 ID'), 'deepseek-v4-flash-0731');
     await user.type(screen.getByLabelText('输入价格（$/1M tokens）'), '0.14');
     await user.type(screen.getByLabelText('输出价格（$/1M tokens）'), '0.28');
+    await user.type(screen.getByLabelText('缓存读取价格（$/1M tokens）'), '0.0028');
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
@@ -93,6 +96,7 @@ describe('AdminUpstreamCostsPage', () => {
         public_model_id: '',
         input_price: 0.14 / MTOK,
         output_price: 0.28 / MTOK,
+        cache_read_price: 0.0028 / MTOK,
       });
     });
   });
@@ -132,6 +136,7 @@ describe('AdminUpstreamCostsPage', () => {
               public_model_id: 'deepseek-v4-flash-0731',
               input_price: 1.4e-7,
               output_price: 2.8e-7,
+              cache_read_price: 2.8e-9,
             },
           ],
           legacy_keys: [],

@@ -33,14 +33,17 @@ func canonicalModelID(id string) string {
 // is grouped by source (channel/subscription) so operators can tell regular
 // channels and subscription accounts apart even when they share a numeric id.
 type UpstreamCostEntry struct {
-	Key             string  `json:"key"`               // canonical cost key
-	SourceKind      string  `json:"source_kind"`       // channel | subscription | model (legacy default)
-	SourceID        int64   `json:"source_id"`         // 0 for bare-model defaults
-	SourceName      string  `json:"source_name"`       // resolved channel/account name (best-effort, empty when unresolvable)
-	UpstreamModelID string  `json:"upstream_model_id"` // exact upstream id; empty for bare-model defaults
-	PublicModelID   string  `json:"public_model_id"`   // canonical public id, when the entry maps to a known model
-	InputPrice      float64 `json:"input_price"`
-	OutputPrice     float64 `json:"output_price"`
+	Key                  string   `json:"key"`               // canonical cost key
+	SourceKind           string   `json:"source_kind"`       // channel | subscription | model (legacy default)
+	SourceID             int64    `json:"source_id"`         // 0 for bare-model defaults
+	SourceName           string   `json:"source_name"`       // resolved channel/account name (best-effort, empty when unresolvable)
+	UpstreamModelID      string   `json:"upstream_model_id"` // exact upstream id; empty for bare-model defaults
+	PublicModelID        string   `json:"public_model_id"`   // canonical public id, when the entry maps to a known model
+	InputPrice           float64  `json:"input_price"`
+	OutputPrice          float64  `json:"output_price"`
+	CacheReadPrice       *float64 `json:"cache_read_price,omitempty"`
+	CacheCreation5mPrice *float64 `json:"cache_creation_5m_price,omitempty"`
+	CacheCreation1hPrice *float64 `json:"cache_creation_1h_price,omitempty"`
 }
 
 // upstreamCostView is the list response. LegacyKeys lists the entries still
@@ -255,15 +258,20 @@ func upstreamCostKey(e UpstreamCostEntry) (string, error) {
 
 func upstreamCostValue(e UpstreamCostEntry, existing map[string]interface{}) map[string]interface{} {
 	if existing == nil {
-		existing = map[string]interface{}{
-			"input_price":  e.InputPrice,
-			"output_price": e.OutputPrice,
-		}
-		return existing
+		existing = map[string]interface{}{}
 	}
 	existing["input_price"] = e.InputPrice
 	existing["output_price"] = e.OutputPrice
+	setOptionalPrice(existing, "cache_read_price", e.CacheReadPrice)
+	setOptionalPrice(existing, "cache_creation_5m_price", e.CacheCreation5mPrice)
+	setOptionalPrice(existing, "cache_creation_1h_price", e.CacheCreation1hPrice)
 	return existing
+}
+
+func setOptionalPrice(values map[string]interface{}, key string, value *float64) {
+	if value != nil {
+		values[key] = *value
+	}
 }
 
 // parseLegacyUpstreamKey recognises the pre-v0.11.0 "<channel_id>:<model>"
@@ -307,9 +315,12 @@ func parseUpstreamCostEntries(raw string) (canonical []UpstreamCostEntry, legacy
 	}
 	for key, val := range prices {
 		entry := UpstreamCostEntry{
-			Key:         key,
-			InputPrice:  floatValue(val["input_price"]),
-			OutputPrice: floatValue(val["output_price"]),
+			Key:                  key,
+			InputPrice:           floatValue(val["input_price"]),
+			OutputPrice:          floatValue(val["output_price"]),
+			CacheReadPrice:       optionalFloatValue(val, "cache_read_price"),
+			CacheCreation5mPrice: optionalFloatValue(val, "cache_creation_5m_price"),
+			CacheCreation1hPrice: optionalFloatValue(val, "cache_creation_1h_price"),
 		}
 		if kind, sourceID, upstreamID := parseCanonicalUpstreamKey(key); kind != "" {
 			entry.SourceKind = kind
@@ -360,6 +371,15 @@ func floatValue(v interface{}) float64 {
 		return float64(n)
 	}
 	return 0
+}
+
+func optionalFloatValue(values map[string]interface{}, key string) *float64 {
+	value, ok := values[key]
+	if !ok {
+		return nil
+	}
+	parsed := floatValue(value)
+	return &parsed
 }
 
 // mutateUpstreamCosts loads the UpstreamModelPrice map, applies fn, and writes

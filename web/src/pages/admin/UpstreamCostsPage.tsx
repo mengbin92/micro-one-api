@@ -31,6 +31,7 @@ interface UpstreamCostEntry {
   public_model_id: string;
   input_price: number;
   output_price: number;
+  cache_read_price?: number;
 }
 
 interface UpstreamCostView {
@@ -91,6 +92,7 @@ function emptyForm() {
     publicModelId: '',
     inputPrice: '',
     outputPrice: '',
+    cacheReadPrice: '',
   };
 }
 
@@ -135,6 +137,7 @@ export function AdminUpstreamCostsPage() {
         public_model_id: sourceKind === 'model' ? form.publicModelId.trim().toLowerCase() : form.publicModelId.trim(),
         input_price: inputPrice,
         output_price: outputPrice,
+        cache_read_price: form.cacheReadPrice.trim() ? mTokToPerToken(form.cacheReadPrice) : undefined,
       };
       const res = await adminApiClient.post('/admin/upstream-costs', payload);
       ensureApiSuccess(res.data, '保存上游成本失败');
@@ -203,6 +206,7 @@ export function AdminUpstreamCostsPage() {
       publicModelId: entry.public_model_id ?? '',
       inputPrice: perTokenToMTok(entry.input_price),
       outputPrice: perTokenToMTok(entry.output_price),
+      cacheReadPrice: perTokenToMTok(entry.cache_read_price),
     });
     setDialogOpen(true);
   };
@@ -247,7 +251,7 @@ export function AdminUpstreamCostsPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <TableSkeleton columns={['来源', '上游模型 ID', '公开模型 ID', '输入价格', '输出价格', '操作']} rows={6} />
+            <TableSkeleton columns={['来源', '上游模型 ID', '公开模型 ID', '输入价格', '输出价格', '缓存读取价格', '操作']} rows={6} />
           ) : entries.length === 0 && legacyKeys.length === 0 ? (
             <EmptyState
               title="暂无上游成本配置"
@@ -263,6 +267,7 @@ export function AdminUpstreamCostsPage() {
                     <TableHead>公开模型 ID</TableHead>
                     <TableHead>输入价格</TableHead>
                     <TableHead>输出价格</TableHead>
+                    <TableHead>缓存读取价格</TableHead>
                     <TableHead className="w-24 text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -274,6 +279,7 @@ export function AdminUpstreamCostsPage() {
                       <TableCell className="font-mono text-sm">{entry.public_model_id || '—'}</TableCell>
                       <TableCell>{formatPrice(entry.input_price)}</TableCell>
                       <TableCell>{formatPrice(entry.output_price)}</TableCell>
+                      <TableCell>{formatPrice(entry.cache_read_price)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button type="button" variant="ghost" size="icon-sm" aria-label={`编辑 ${entry.key}`} onClick={() => openEdit(entry)}>
@@ -305,6 +311,7 @@ export function AdminUpstreamCostsPage() {
                       <TableHead>公开模型 ID</TableHead>
                       <TableHead>输入价格</TableHead>
                       <TableHead>输出价格</TableHead>
+                      <TableHead>缓存读取价格</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -315,6 +322,7 @@ export function AdminUpstreamCostsPage() {
                         <TableCell className="font-mono text-sm">{entry.public_model_id || '—'}</TableCell>
                         <TableCell>{formatPrice(entry.input_price)}</TableCell>
                         <TableCell>{formatPrice(entry.output_price)}</TableCell>
+                        <TableCell>{formatPrice(entry.cache_read_price)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -389,7 +397,7 @@ export function AdminUpstreamCostsPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="uc-input-price">输入价格（$/1M tokens）</Label>
                 <Input
@@ -412,6 +420,18 @@ export function AdminUpstreamCostsPage() {
                   value={form.outputPrice}
                   onChange={(event) => setForm((current) => ({ ...current, outputPrice: event.target.value }))}
                   placeholder="0.28"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="uc-cache-read-price">缓存读取价格（$/1M tokens）</Label>
+                <Input
+                  id="uc-cache-read-price"
+                  type="number"
+                  min="0"
+                  step="0.000001"
+                  value={form.cacheReadPrice}
+                  onChange={(event) => setForm((current) => ({ ...current, cacheReadPrice: event.target.value }))}
+                  placeholder="0.028"
                 />
               </div>
             </div>
