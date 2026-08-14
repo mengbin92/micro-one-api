@@ -2,7 +2,8 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { toast } from 'sonner';
-import { describe, expect, it, vi } from 'vitest';import { AdminUpstreamCostsPage } from './UpstreamCostsPage';
+import { describe, expect, it, vi } from 'vitest';
+import { AdminUpstreamCostsPage } from './UpstreamCostsPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
@@ -123,7 +124,7 @@ describe('AdminUpstreamCostsPage', () => {
         HttpResponse.json({
           entries: [
             {
-              key: 'model:deepseek-v4-flash-0731',
+              key: 'deepseek-v4-flash-0731',
               source_kind: 'model',
               source_id: 0,
               source_name: '',
@@ -147,16 +148,17 @@ describe('AdminUpstreamCostsPage', () => {
     renderWithQuery(<AdminUpstreamCostsPage />);
     await screen.findByText('全局默认');
 
-    await user.click(screen.getByRole('button', { name: '删除 model:deepseek-v4-flash-0731' }));
+    await user.click(screen.getByRole('button', { name: '删除 deepseek-v4-flash-0731' }));
     await user.click(screen.getByRole('button', { name: '确认删除' }));
 
     await waitFor(() => {
-      expect(deletedKey).toBe('model:deepseek-v4-flash-0731');
+      expect(deletedKey).toBe('deepseek-v4-flash-0731');
     });
   });
 
   it('runs a dry-run migration and shows the plan', async () => {
     const user = userEvent.setup();
+    const dryRuns: boolean[] = [];
     server.use(
       http.get('/api/admin/upstream-costs', () =>
         HttpResponse.json({
@@ -176,8 +178,10 @@ describe('AdminUpstreamCostsPage', () => {
           total: 1,
         }),
       ),
-      http.post('/api/admin/upstream-costs/migrate', () =>
-        HttpResponse.json({
+      http.post('/api/admin/upstream-costs/migrate', async ({ request }) => {
+        const body = (await request.json()) as { dry_run?: boolean };
+        dryRuns.push(body.dry_run ?? true);
+        return HttpResponse.json({
           to_rewrite: [
             {
               old_key: '1:deepseek-v4-flash',
@@ -188,8 +192,8 @@ describe('AdminUpstreamCostsPage', () => {
             },
           ],
           skipped: [],
-        }),
-      ),
+        });
+      }),
     );
 
     renderWithQuery(<AdminUpstreamCostsPage />);
@@ -200,6 +204,14 @@ describe('AdminUpstreamCostsPage', () => {
     expect(await screen.findByText(/将重写 1 条/)).toBeInTheDocument();
     expect(screen.getAllByText('1:deepseek-v4-flash').length).toBeGreaterThan(0);
     expect(screen.getByText((content) => content.includes('channel:1:deepseek-v4-flash-0731'))).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '确认执行迁移' })).toBeInTheDocument();
+
+    // Executing the plan must send dry_run=false and close the dialog so the
+    // already-applied plan cannot be re-submitted.
+    await user.click(screen.getByRole('button', { name: '确认执行迁移' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/将重写 1 条/)).not.toBeInTheDocument();
+    });
+    expect(dryRuns).toEqual([true, false]);
   });
 });

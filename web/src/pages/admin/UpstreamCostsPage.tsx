@@ -172,11 +172,16 @@ export function AdminUpstreamCostsPage() {
       return res.data;
     },
     onSuccess: (plan, dryRun) => {
-      setMigrationPlan(plan);
-      if (!dryRun && plan.to_rewrite.length > 0) {
-        invalidate();
-        toast.success(`已迁移 ${plan.to_rewrite.length} 个 legacy 键`);
+      if (dryRun) {
+        setMigrationPlan(plan);
+        return;
       }
+      // Executed: close the plan dialog so the (already applied) plan cannot
+      // be re-submitted, and refresh the list to drop the migrated keys.
+      setMigrationPlan(null);
+      invalidate();
+      const skippedNote = plan.skipped.length > 0 ? `，${plan.skipped.length} 条需人工处理` : '';
+      toast.success(`已迁移 ${plan.to_rewrite.length} 个 legacy 键${skippedNote}`);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '迁移失败');
@@ -192,7 +197,7 @@ export function AdminUpstreamCostsPage() {
   const openEdit = (entry: UpstreamCostEntry) => {
     setEditing(entry);
     setForm({
-      sourceKind: entry.source_kind === 'model' ? 'model' : entry.source_kind,
+      sourceKind: entry.source_kind,
       sourceId: entry.source_id > 0 ? String(entry.source_id) : '',
       upstreamModelId: entry.upstream_model_id ?? '',
       publicModelId: entry.public_model_id ?? '',
@@ -426,8 +431,11 @@ export function AdminUpstreamCostsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>删除上游成本</DialogTitle>
-            <DialogDescription>确认删除该来源的上游成本配置？此操作不可撤销。</DialogDescription>
+            <DialogDescription>确认删除以下上游成本配置？此操作不可撤销。</DialogDescription>
           </DialogHeader>
+          {confirmKey && (
+            <div className="rounded-lg border bg-muted/20 px-3 py-2 font-mono text-xs break-all">{confirmKey}</div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmKey(null)}>
               取消
