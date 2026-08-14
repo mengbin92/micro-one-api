@@ -122,6 +122,36 @@ gross margin = **+1,917,426 quota**（24h）/ **+6,184,918 quota**（7d），正
 **后续**：对账建议按结算周期接入 cron（当前手工/按需）；`--cache-hit-min` 是否开启、
 stuck 单修复时机由运营/用户决策。
 
+### v0.20 迁移后首个结算周期对账（2026-08-14，v0.21 P0）
+
+执行：迁移 `078`（`billing_ledger_dedupe_claims` 非分区全局幂等闸门）应用后首个完整结算
+周期对账，生产 `oneapi_billing` 真实数据。完整记录见
+[docs/design/v0.21-p0-reconciliation-record.md](../../docs/design/v0.21-p0-reconciliation-record.md)。
+
+**结果摘要**：
+
+| 检查 | 结论 |
+|------|------|
+| 重复 `ledger_dedupe_key`（含 legacy） | 0 ✅ |
+| claim ↔ ledger 双向一致性 | 19 条迁移窗口孤儿 ledger（04:07:14–04:20:46 UTC，旧代码写入，无 claim）；claims without ledger = 0 |
+| claim 冲突 → 409 映射 | ✅ 代码 + 单测链路（`ErrLedgerDedupeExists` → `ErrDuplicateRequest` → gRPC `AlreadyExists` → HTTP 409） |
+| billing 全量对账 | account 3 / channel 5 / receivable 1（历史口径遗留，同 v0.18 基线）；stuck 0 |
+| DB 侧检查（24h） | 空键 0、重复 0、unbilled 0、cache hit 100%、毛利 **+720,759**（7d **+7,362,712**） |
+| Prometheus | dedupe/负毛利/信号丢失零噪音；`RoutedModelsUnpriced`(firing)、`UpstreamCostMissing`(pending) 为既有配置缺口 |
+
+**阈值决策（v0.20 幂等语义下复核）**：
+
+| 参数 | 结论 | 依据 |
+|------|------|------|
+| `--unpriced-max 0` | **保持** | 实况 0 |
+| `--cache-hit-min` | **保持 0（关闭）** | 实况 100%，无噪音价值；开启与否由运营决定 |
+| `--vendor-tolerance 0.05` | **保持** | 无供应商账单 CSV |
+| 告警 `for 30m / >100` | **保持** | 结算窗口零噪音 |
+
+**新增建议**：DB 侧检查已增加「claim 覆盖完整性」（`ledger 无 claim` + `claim 无 ledger`
+双向校验）——✅ 2026-08-14 落地，正/负路径均验证；迁移窗口 19 条孤儿账本已补插 claim
+（claims = ledgers = 26,879），当前双向一致性 0/0。
+
 ### 首周期 charge 告警观察（2026-08-10，v0.18 P1 C8）
 
 生产实况：`BILLING_CACHE_CREATION_MODE=charge`（charge 已启用）。prometheus 规则

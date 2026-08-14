@@ -142,6 +142,9 @@ func runChecks(db *sql.DB, opts options, rep *report) {
 	rep.add("== ledger dedupe key ==")
 	checkDedupeKeys(db, rep)
 
+	rep.add("== ledger dedupe claim coverage (migration 078 gate) ==")
+	checkClaimCoverage(db, rep)
+
 	rep.add("== cache-creation counted-but-unbilled (since %s) ==", opts.since.String())
 	checkUnbilledCacheCreation(db, cutoff, opts.unpricedMax, rep)
 
@@ -198,6 +201,47 @@ func checkDedupeKeys(db *sql.DB, rep *report) {
 	var legacy int64
 	if err := db.QueryRow("SELECT COUNT(*) FROM billing_ledgers WHERE ledger_dedupe_key LIKE '%:legacy'").Scan(&legacy); err == nil {
 		rep.add("  ℹ legacy backfilled dedupe keys: %d (informational)", legacy)
+	}
+}
+
+// checkClaimCoverage verifies the migration-078 idempotency gate end to end:
+// every ledger row carrying a dedupe key must have a matching claim in
+// billing_ledger_dedupe_claims, and every claim must resolve to a ledger.
+// A ledger without a claim is a window-period orphan (old code wrote the
+// ledger before the claim gate was live); once phase3 partitioning drops the
+// global unique index on billing_ledgers, claims are the only idempotency
+// guard, so orphan ledgers must fail the check.
+func checkClaimCoverage(db *sql.DB, rep *report) {
+	var orphanLedgers int64
+	err := db.QueryRow(
+		"SELECT COUNT(*) FROM billing_ledgers l " +
+			"LEFT JOIN billing_ledger_dedupe_claims c ON l.ledger_dedupe_key = c.ledger_dedupe_key " +
+			"WHERE l.ledger_dedupe_key <> '' AND c.ledger_dedupe_key IS NULL",
+	).Scan(&orphanLedgers)
+	if err != nil {
+		rep.discrepancy("count ledgers without claim: %v", err)
+		return
+	}
+	if orphanLedgers > 0 {
+		rep.discrepancy("ledgers without claim: %d (window-period orphans; backfill claims before phase3 partitioning drops the unique index)", orphanLedgers)
+	} else {
+		rep.ok("ledgers without claim: 0")
+	}
+
+	var orphanClaims int64
+	err = db.QueryRow(
+		"SELECT COUNT(*) FROM billing_ledger_dedupe_claims c " +
+			"LEFT JOIN billing_ledgers l ON l.ledger_dedupe_key = c.ledger_dedupe_key " +
+			"WHERE l.ledger_dedupe_key IS NULL",
+	).Scan(&orphanClaims)
+	if err != nil {
+		rep.discrepancy("count claims without ledger: %v", err)
+		return
+	}
+	if orphanClaims > 0 {
+		rep.discrepancy("claims without ledger: %d (claims must always resolve to a ledger row)", orphanClaims)
+	} else {
+		rep.ok("claims without ledger: 0")
 	}
 }
 
