@@ -401,34 +401,65 @@ test('admin users page size persists after reload', async ({ page }) => {
 });
 
 test('admin users export sends current filters to backend export route', async ({ page }) => {
-  const requests: string[] = [];
+  const exportRequests: string[] = [];
+  const listRequests: string[] = [];
+
   await page.route('**/api/user/export**', async (route) => {
-    requests.push(route.request().url());
+    exportRequests.push(route.request().url());
     await route.fulfill({
       contentType: 'text/csv',
       body: 'id,username\n1,alice\n',
     });
   });
 
+  // The list query and export href are both derived from the same committed
+  // searchParams render. A list request carrying status=1 proves that render's
+  // query closure (and therefore its ExportButton props) has flushed; waiting
+  // only on window.location can still race the React commit on mobile Chrome.
+  await page.route('**/api/user?**', async (route) => {
+    const url = route.request().url();
+    if (route.request().method() !== 'GET') {
+      await route.continue();
+      return;
+    }
+    listRequests.push(url);
+    await route.fulfill({
+      json: {
+        success: true,
+        data: [
+          {
+            id: '1',
+            username: 'alice',
+            displayName: 'Alice',
+            email: 'alice@example.com',
+            group: 'default',
+            status: 1,
+            balance: '5000000',
+            usedAmount: '1000000',
+            createdAt: '1710000000',
+          },
+        ],
+      },
+    });
+  });
+
   await seedAdminSession(page);
   await page.goto('/admin/users');
   await page.getByLabel('Filter users by status').selectOption('1');
-  // React Router commits filter-driven searchParams asynchronously. The URL
-  // can reach status=1 before the UsersPage render carrying that committed
-  // location (and therefore the refreshed exportHref) has flushed.
   await expect(page).toHaveURL(/status=1/);
-  // Wait until UsersPage has rendered the committed filter. The export
-  // handler closes over exportHref from its render; clicking while a prior
-  // render is still on screen can issue the request before status is included.
-  await expect.poll(() => new URL(page.url()).searchParams.get('status')).toBe('1');
+  await expect
+    .poll(() => listRequests.some((url) => new URL(url).searchParams.get('status') === '1'))
+    .toBe(true);
   await expect(page.getByRole('button', { name: /export csv/i })).toBeEnabled();
   await page.getByRole('button', { name: /export csv/i }).click();
 
-  // The export handler closes over the href from its render. Poll until the
-  // handler itself observed the filtered params, rather than asserting on an
-  // earlier URL state.
   await expect
-    .poll(() => requests.some((url) => url.includes('status=1') && url.includes('format=csv')))
+    .poll(() =>
+      exportRequests.some((url) => {
+        const parsed = new URL(url);
+        return parsed.searchParams.get('status') === '1' && parsed.searchParams.get('format') === 'csv';
+      })
+    )
     .toBe(true);
 });
 
