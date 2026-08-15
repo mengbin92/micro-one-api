@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.20.2 发布公告](./docs/releases/release-v0.20.2.md)（新增管理后台上游成本配置页与缓存读取价格、补强账本 claim 覆盖对账检查） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.2)
+> 📣 **最新发布**：[v0.20.3 发布公告](./docs/releases/release-v0.20.3.md)（新增真实 MySQL/Postgres 迁移冒烟门禁、修复 compose MySQL readiness 与 admin export E2E 竞态） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.3)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.20.3
+
+v0.20.3 是 v0.20.2 之后的 **PATCH 质量门禁版本**（7 个提交，`c366dd9` → `a338a1c`）：CI 新增真实 MySQL / Postgres migration smoke（fresh、repeat no-op、状态审计、失败注入）；修复 compose MySQL healthcheck 过早 healthy 与 admin users export E2E React Router 异步提交竞态；建立 P3-0 季度观察基线并补充 relay-gateway 延迟分位数、429/502 与熔断面板。**无 API 破坏性变更、无数据库迁移、无 proto/应用配置变更、无服务运行时代码变更**，生产服务无需重新部署。详见 [docs/releases/release-v0.20.3.md](./docs/releases/release-v0.20.3.md)。
 
 ### 升级到 v0.20.2
 
