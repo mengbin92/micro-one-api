@@ -418,8 +418,12 @@ test('admin users export sends current filters to backend export route', async (
   await expect(page).toHaveURL(/status=1/);
   await page.getByRole('button', { name: /export csv/i }).click();
 
-  await expect.poll(() => requests.length).toBeGreaterThan(0);
-  expect(requests.some((url) => url.includes('status=1') && url.includes('format=csv'))).toBe(true);
+  // Export navigation is async and the route may briefly fire with the prior
+  // URL before React Router commits the filter-driven searchParams update.
+  // Poll for the eventual URL instead of asserting on the first request.
+  await expect
+    .poll(() => requests.some((url) => url.includes('status=1') && url.includes('format=csv')))
+    .toBe(true);
 });
 
 
