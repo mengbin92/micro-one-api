@@ -109,6 +109,58 @@
             "legendFormat": "L1 Hit Rate - {{cache}}"
           }
         ]
+      },
+      {
+        "id": 9,
+        "title": "P50 / P95 / P99 Request Latency",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum by (le) (rate(micro_one_api_http_request_duration_seconds_bucket{service=\"relay-gateway\"}[5m])))",
+            "legendFormat": "P50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(micro_one_api_http_request_duration_seconds_bucket{service=\"relay-gateway\"}[5m])))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum by (le) (rate(micro_one_api_http_request_duration_seconds_bucket{service=\"relay-gateway\"}[5m])))",
+            "legendFormat": "P99"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "429 / 502 Ratio (P3-0 gate)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+        "targets": [
+          {
+            "expr": "sum(rate(micro_one_api_http_requests_total{service=\"relay-gateway\",status=\"429\"}[5m])) / sum(rate(micro_one_api_http_requests_total{service=\"relay-gateway\"}[5m]))",
+            "legendFormat": "429 ratio"
+          },
+          {
+            "expr": "sum(rate(micro_one_api_http_requests_total{service=\"relay-gateway\",status=\"502\"}[5m])) / sum(rate(micro_one_api_http_requests_total{service=\"relay-gateway\"}[5m]))",
+            "legendFormat": "502 ratio"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Circuit Breaker State / Trips",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+        "targets": [
+          {
+            "expr": "max by (service) (micro_one_api_resilience_circuit_breaker_state)",
+            "legendFormat": "state - {{service}}"
+          },
+          {
+            "expr": "sum(rate(micro_one_api_resilience_circuit_breaker_trips_total[5m]))",
+            "legendFormat": "trips/s"
+          }
+        ]
       }
     ]
 }
