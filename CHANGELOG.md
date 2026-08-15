@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.3] - 2026-08-15
+
+v0.20.3 是 v0.20.2 之后的 **PATCH 质量门禁版本**（7 个提交，`c366dd9` → `a338a1c`）：CI 新增真实 MySQL / Postgres migration smoke（fresh、repeat no-op、状态审计、失败注入）；修复 compose MySQL healthcheck 过早 healthy 与 admin users export E2E 异步提交竞态；建立 P3-0 季度观察基线并补充延迟分位数、429/502 与熔断面板。**无 API 破坏性变更、无数据库迁移、无 proto/应用配置变更、无服务运行时代码变更**。详见 [release-v0.20.3.md](docs/releases/release-v0.20.3.md)。
+
+### Added
+
+- **迁移质量门禁**：CI 新增 MySQL / Postgres service-container migration smoke，`Makefile` 暴露对应 target，脚本验证 fresh apply、repeat no-op、状态审计与无效 SQL 失败注入。
+- **P3-0 观察基线**：新增季度基线模板；Grafana relay-gateway dashboard 增加 P50/P95/P99 延迟、429/502 比例与熔断状态 / trips 面板。
+
+### Fixed
+
+- **compose MySQL readiness**：healthcheck 强制 `127.0.0.1` TCP ping，避免 entrypoint 临时 Unix socket 导致 migrate one-shot 启动竞态。
+- **admin export E2E 竞态**：等待 React Router committed filter 与实际导出请求，不再依据早期 URL 状态间接断言，nightly 恢复双 suite 成功。
+
 ## [0.20.2] - 2026-08-14
 
 v0.20.2 是 v0.20.1 之后的 **PATCH 补强版本**（5 个提交，`3cde415` → `538f80e`）：管理后台新增「上游成本」页面，支持按渠道 / 订阅账号 / 全局裸模型配置每 1M tokens 的上游采购价、缓存读取价格与 legacy 键迁移；对账脚本新增 ledger ↔ dedupe claim 双向覆盖检查，迁移窗口孤儿账本不再静默漏检。**无 API 破坏性变更、无数据库迁移、无 proto/配置变更**。受影响范围：admin-api（含管理前端 web/dist）与运维侧对账工具。详见 [release-v0.20.2.md](docs/releases/release-v0.20.2.md)。
