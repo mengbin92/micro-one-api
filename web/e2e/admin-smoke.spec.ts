@@ -413,14 +413,20 @@ test('admin users export sends current filters to backend export route', async (
   await seedAdminSession(page);
   await page.goto('/admin/users');
   await page.getByLabel('Filter users by status').selectOption('1');
-  // Wait for the async searchParams navigation to commit (see the
-  // payment-orders test above) so the export URL includes the filter.
+  // React Router commits filter-driven searchParams asynchronously. The URL
+  // can reach status=1 before the UsersPage render carrying that committed
+  // location (and therefore the refreshed exportHref) has flushed.
   await expect(page).toHaveURL(/status=1/);
+  // Wait until UsersPage has rendered the committed filter. The export
+  // handler closes over exportHref from its render; clicking while a prior
+  // render is still on screen can issue the request before status is included.
+  await expect.poll(() => new URL(page.url()).searchParams.get('status')).toBe('1');
+  await expect(page.getByRole('button', { name: /export csv/i })).toBeEnabled();
   await page.getByRole('button', { name: /export csv/i }).click();
 
-  // Export navigation is async and the route may briefly fire with the prior
-  // URL before React Router commits the filter-driven searchParams update.
-  // Poll for the eventual URL instead of asserting on the first request.
+  // The export handler closes over the href from its render. Poll until the
+  // handler itself observed the filtered params, rather than asserting on an
+  // earlier URL state.
   await expect
     .poll(() => requests.some((url) => url.includes('status=1') && url.includes('format=csv')))
     .toBe(true);
