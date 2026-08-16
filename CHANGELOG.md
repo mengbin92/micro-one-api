@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.4] - 2026-08-16
+
+v0.20.4 是 v0.20.3 之后的 **PATCH 生产稳定性版本**（7 个提交，`3ea0a6f` → `d96b3c0`）：修复路由死端以 `codes.Unknown` 穿越 gRPC 后被 relay 侧 circuit breaker 计为失败，导致 channel-service 整体熔断且无法自愈的生产事故；手动 ledger / logs 分区脚本增加 schema 治理、迁移 `078` 与 claim 覆盖硬前置检查；nightly E2E 等待 committed list query 消除 export 竞态，并沉淀 2026Q3 P3 观察基线。**无 API 破坏性变更、无数据库迁移、无 proto/应用配置变更**。受影响范围：relay-gateway、运维侧手动分区 SQL 与 nightly E2E。详见 [release-v0.20.4.md](docs/releases/release-v0.20.4.md)。
+
+### Fixed
+
+- **relay 路由死端与熔断语义**：`CHANNEL_NOT_FOUND` / `ROUTE_DEAD_END` 分别映射 gRPC `NotFound` / `FailedPrecondition`，不再计入 channel-service circuit breaker 或被当作可重试 `Unknown`；HTTP / Anthropic 边界保持路由死端 503，真实传输失败仍触发保护。
+- **手动分区前置守卫**：ledger 脚本先校验迁移治理、`078` applied 与 ledger → claim 零缺失；logs 脚本校验 schema 迁移治理，任一条件不满足即中止。
+- **admin export E2E 竞态**：等待同源 committed users list query 后再触发导出，避免 React Router 异步提交期间旧 handler 发出缺失筛选的请求。
+
+### Added
+
+- **2026Q3 P3 观察基线**：建立入口延迟、429/502、熔断与 dedupe claim 覆盖快照，并登记 Prometheus 保留窗口、Grafana 凭据与 counter 缺口；P3 议题维持触发式准入。
+
 ## [0.20.3] - 2026-08-15
 
 v0.20.3 是 v0.20.2 之后的 **PATCH 质量门禁版本**（7 个提交，`c366dd9` → `a338a1c`）：CI 新增真实 MySQL / Postgres migration smoke（fresh、repeat no-op、状态审计、失败注入）；修复 compose MySQL healthcheck 过早 healthy 与 admin users export E2E 异步提交竞态；建立 P3-0 季度观察基线并补充延迟分位数、429/502 与熔断面板。**无 API 破坏性变更、无数据库迁移、无 proto/应用配置变更、无服务运行时代码变更**。详见 [release-v0.20.3.md](docs/releases/release-v0.20.3.md)。
