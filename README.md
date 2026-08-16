@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.20.3 发布公告](./docs/releases/release-v0.20.3.md)（新增真实 MySQL/Postgres 迁移冒烟门禁、修复 compose MySQL readiness 与 admin export E2E 竞态） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.3)
+> 📣 **最新发布**：[v0.20.4 发布公告](./docs/releases/release-v0.20.4.md)（修复路由死端触发 channel-service 熔断的生产事故、强化手动分区前置守卫） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.4)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.20.4
+
+v0.20.4 是 v0.20.3 之后的 **PATCH 生产稳定性版本**（7 个提交，`3ea0a6f` → `d96b3c0`）：修复无可用渠道 / route dead-end 以 `codes.Unknown` 穿越 gRPC 后被 relay 侧 circuit breaker 计为失败，导致 channel-service 整体熔断且无法自愈的生产事故；手动 ledger / logs 分区脚本增加迁移治理、`078` 与 claim 覆盖硬前置检查；nightly E2E 修复 export 竞态并建立 2026Q3 P3 观察基线。**无 API 破坏性变更、无数据库迁移、无 proto/应用配置变更**。仅 relay-gateway 需要重新部署。详见 [docs/releases/release-v0.20.4.md](./docs/releases/release-v0.20.4.md)。
 
 ### 升级到 v0.20.3
 
