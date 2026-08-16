@@ -6,6 +6,28 @@
 -- and the runtime maintenance code therefore use RANGE(created_at) with
 -- UNIX_TIMESTAMP month boundaries.
 
+-- Hard preflight guard. Partitioning log data is operationally independent,
+-- but it must still be executed as a deliberate manual operation against a
+-- database already under migration governance.
+DROP PROCEDURE IF EXISTS verify_phase3_logs_partition_preflight;
+DELIMITER $$
+CREATE PROCEDURE verify_phase3_logs_partition_preflight()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'schema_migrations'
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET
+            MYSQL_ERRNO = 45003,
+            MESSAGE_TEXT = 'logs partitioning requires the schema_migrations table from the normal migrate path';
+    END IF;
+END$$
+DELIMITER ;
+CALL verify_phase3_logs_partition_preflight();
+DROP PROCEDURE verify_phase3_logs_partition_preflight;
+
 -- A partitioned table requires every unique key, including the primary key, to
 -- include the partition column. Backfill NULL defensively, make the column
 -- non-null, then rebuild the auto-increment primary key with id first.

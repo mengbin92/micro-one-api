@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -175,6 +178,37 @@ func (e *Error) Error() string {
 
 func (e *Error) Unwrap() error {
 	return e.Err
+}
+
+// grpcStatusCode maps error reasons to gRPC status codes at service
+// boundaries. Reasons absent from the map keep the historical codes.Unknown,
+// so only the listed routing outcomes change wire behavior.
+//
+// The two routing reasons MUST use non-retryable codes (NotFound /
+// FailedPrecondition, not Unavailable): relay-gateway's gRPC circuit breaker
+// only ignores non-retryable codes when accounting upstream health. Before
+// this mapping, channel-service returned "no available channel" as
+// codes.Unknown, the breaker counted each routing dead-end as a service
+// failure, and a storm of unroutable-model requests tripped the breaker —
+// rejecting ALL channel-service calls (2026-08-16 incident).
+var grpcStatusCode = map[string]codes.Code{
+	// No upstream serves the requested model at all.
+	ReasonChannelNotFound: codes.NotFound,
+	// Upstreams serve the model but all are saturated/circuit-opened/
+	// quota-blocked right now — a transient routing outcome, still not a
+	// channel-service health signal.
+	ReasonRouteDeadEnd: codes.FailedPrecondition,
+}
+
+// GRPCStatus implements the interface grpc-go's status.FromError honors, on
+// both the server side (handler error → wire status) and the client side.
+// Without it every structured error crossed gRPC as codes.Unknown.
+func (e *Error) GRPCStatus() *status.Status {
+	code, ok := grpcStatusCode[e.Reason]
+	if !ok {
+		code = codes.Unknown
+	}
+	return status.New(code, e.Error())
 }
 
 // MapIdentityError maps identity biz errors to structured errors

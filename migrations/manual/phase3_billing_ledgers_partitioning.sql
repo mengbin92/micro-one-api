@@ -3,22 +3,49 @@
 -- Run only after migration 078_create_billing_ledger_dedupe_claims has been
 -- applied and the maintenance window in the runbook is approved.
 
--- Defensive, idempotent preparation of the non-partitioned global dedupe gate.
--- Application code claims this primary key in the same transaction as each
--- ledger insert, preserving concurrent request idempotency after the ledger
--- table's own global unique index is removed.
-CREATE TABLE IF NOT EXISTS billing_ledger_dedupe_claims (
-    ledger_dedupe_key varchar(160) NOT NULL,
-    created_at datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    PRIMARY KEY (ledger_dedupe_key)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  COMMENT='Global idempotency claims for partitioned billing ledgers';
-
-INSERT IGNORE INTO billing_ledger_dedupe_claims (ledger_dedupe_key, created_at)
-SELECT ledger_dedupe_key, MIN(COALESCE(created_at, CURRENT_TIMESTAMP(3)))
-FROM billing_ledgers
-WHERE ledger_dedupe_key <> ''
-GROUP BY ledger_dedupe_key;
+-- Hard preflight guards. The mysql client executes a piped SQL file
+-- statement by statement; a failed CALL therefore aborts the file before any
+-- destructive ALTER can run. The version guard catches a database that has
+-- not run the normal migrate path, while the coverage guard catches an
+-- incomplete claim backfill (including ledgers written during a rolling
+-- deploy window).
+DROP PROCEDURE IF EXISTS verify_phase3_billing_partition_preflight;
+DELIMITER $$
+CREATE PROCEDURE verify_phase3_billing_partition_preflight()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'schema_migrations'
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET
+            MYSQL_ERRNO = 45000,
+            MESSAGE_TEXT = 'billing partitioning requires the schema_migrations table from the normal migrate path';
+    ELSEIF NOT EXISTS (
+        SELECT 1
+        FROM schema_migrations
+        WHERE version = '078_create_billing_ledger_dedupe_claims'
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET
+            MYSQL_ERRNO = 45001,
+            MESSAGE_TEXT = 'billing partitioning requires migration 078_create_billing_ledger_dedupe_claims to be applied';
+    ELSEIF (
+        SELECT COUNT(*)
+        FROM billing_ledgers bl
+        LEFT JOIN billing_ledger_dedupe_claims c
+          ON c.ledger_dedupe_key = bl.ledger_dedupe_key
+        WHERE bl.ledger_dedupe_key <> ''
+          AND c.ledger_dedupe_key IS NULL
+    ) > 0 THEN
+        SIGNAL SQLSTATE '45000' SET
+            MYSQL_ERRNO = 45002,
+            MESSAGE_TEXT = 'billing partitioning requires billing_ledger_dedupe_claims backfill to reach zero missing keys';
+    END IF;
+END$$
+DELIMITER ;
+CALL verify_phase3_billing_partition_preflight();
+DROP PROCEDURE verify_phase3_billing_partition_preflight;
 
 -- created_at participates in the primary key after partitioning and therefore
 -- cannot remain nullable.

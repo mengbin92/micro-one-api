@@ -844,6 +844,13 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 
 	st, ok := status.FromError(err)
 	if ok {
+		// See http_response.go: channel-selection dead-ends arrive as
+		// NotFound/FailedPrecondition — keep them 503, not the generic
+		// NotFound→401 below.
+		if isChannelUnavailableMessage(st.Message()) {
+			s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: no available channel")
+			return
+		}
 		switch st.Code() {
 		case codes.Unauthenticated, codes.NotFound:
 			s.writeAnthropicError(w, http.StatusUnauthorized, "authentication_error: invalid API key")
@@ -851,13 +858,17 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 			s.writeAnthropicError(w, http.StatusForbidden, "permission_error: forbidden")
 		case codes.ResourceExhausted:
 			s.writeAnthropicError(w, http.StatusTooManyRequests, "rate_limit_error: rate limit exceeded")
+		case codes.FailedPrecondition:
+			// ROUTE_DEAD_END crosses gRPC as FailedPrecondition (pkg/errors
+			// GRPCStatus). Its message ("circuit-opened...", "none are
+			// schedulable") does NOT match isChannelUnavailableMessage, so it
+			// must be handled by code, not message: the request is valid but
+			// no upstream is schedulable right now — a transient 503, not an
+			// internal error. Keep it 503.
+			s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: no available channel")
 		case codes.Unavailable:
 			s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: service unavailable")
 		default:
-			if isChannelUnavailableMessage(st.Message()) {
-				s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: no available channel")
-				return
-			}
 			s.writeAnthropicError(w, http.StatusInternalServerError, "api_error: internal server error")
 		}
 		return
