@@ -36,7 +36,7 @@ func TestIsRetryableError_Table(t *testing.T) {
 		{"DeadlineExceeded retryable", status.Error(codes.DeadlineExceeded, ""), true},
 		{"Aborted retryable", status.Error(codes.Aborted, ""), true},
 		{"Unavailable retryable", status.Error(codes.Unavailable, ""), true},
-		{"Unknown retryable", status.Error(codes.Unknown, ""), true},
+		{"Unknown not retryable (application error, not an upstream-health signal)", status.Error(codes.Unknown, ""), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

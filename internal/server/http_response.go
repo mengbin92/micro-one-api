@@ -89,6 +89,13 @@ func (s *HTTPServer) handleRelayPlanError(w http.ResponseWriter, err error) {
 	// Handle gRPC errors from downstream services
 	st, ok := status.FromError(err)
 	if ok {
+		// Channel-selection dead-ends now arrive as NotFound/FailedPrecondition
+		// (pkg/errors GRPCStatus); check the message BEFORE the code switch so
+		// they stay 503 instead of falling into the generic NotFound→401 below.
+		if isChannelUnavailableMessage(st.Message()) {
+			s.writeError(w, http.StatusServiceUnavailable, "no available channel")
+			return
+		}
 		switch st.Code() {
 		case codes.Unauthenticated, codes.NotFound:
 			s.writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -96,13 +103,17 @@ func (s *HTTPServer) handleRelayPlanError(w http.ResponseWriter, err error) {
 			s.writeError(w, http.StatusForbidden, "forbidden")
 		case codes.ResourceExhausted:
 			s.writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
+		case codes.FailedPrecondition:
+			// ROUTE_DEAD_END crosses gRPC as FailedPrecondition (pkg/errors
+			// GRPCStatus). Its message ("circuit-opened...", "none are
+			// schedulable") does NOT match isChannelUnavailableMessage, so it
+			// must be handled by code, not message: the request is valid but
+			// no upstream is schedulable right now — a transient 503, not an
+			// internal error. Keep it 503.
+			s.writeError(w, http.StatusServiceUnavailable, "no available channel")
 		case codes.Unavailable:
 			s.writeError(w, http.StatusServiceUnavailable, "service unavailable")
 		default:
-			if isChannelUnavailableMessage(st.Message()) {
-				s.writeError(w, http.StatusServiceUnavailable, "no available channel")
-				return
-			}
 			s.writeError(w, http.StatusInternalServerError, "internal server error")
 		}
 		return

@@ -279,7 +279,22 @@ func isRetryableError(err error) bool {
 	case codes.DataLoss:
 		return false
 	case codes.Unknown:
-		return true
+		// Application-level errors from our own services historically cross
+		// gRPC as codes.Unknown (e.g. "no available channel" routing
+		// dead-ends). They are not upstream-health signals: counting them let
+		// a storm of unroutable-model requests trip the breaker and reject
+		// ALL traffic to the service (2026-08-16 incident). Genuine transport
+		// failures arrive as Unavailable/DeadlineExceeded, which stay
+		// retryable below.
+		//
+		// NOTE: this is a GLOBAL semantic change, not channel-service-only.
+		// Every service whose errors cross gRPC as Unknown (identity, billing,
+		// config, ...) is now treated as "not an upstream-health signal" and
+		// never trips the breaker. That matches platform-H1's intent (client-
+		// side problems must not trip breakers); real transport failures still
+		// surface as Unavailable/DeadlineExceeded and remain protected. Do not
+		// flip this back to retryable without auditing every Unknown producer.
+		return false
 	default:
 		return true
 	}
