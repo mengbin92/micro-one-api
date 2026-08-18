@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.5] - 2026-08-18
+
+v0.20.5 是 v0.20.4 之后的 **PATCH 生产稳定性版本**（4 个提交，`254970a` → `e219741`）：Responses → Chat Completions fallback 改用共享协议转换器，修复 Codex / DeepSeek 工具历史中的并行调用、乱序输出、孤儿输出与中断调用导致上游 400 的问题；管理后台修复 proto3 `omitempty` 造成禁用模型状态显示 `undefined` 的问题；release 工作流在镜像和 GitHub Release 发布前强制执行与 nightly 共用的 compose E2E + Playwright admin smoke。**无 API 破坏性变更、无数据库迁移、无 proto/应用配置变更**。受影响范围：relay-gateway、admin 前端 `web/dist`、release / nightly workflow 与执行文档。详见 [release-v0.20.5.md](docs/releases/release-v0.20.5.md)。
+
+### Fixed
+
+- **Responses fallback 工具历史**：fallback 改用 `internal/apicompat` 共享转换器，合并并行 tool calls、重排 tool outputs、附加 reasoning，并过滤中断调用与孤儿输出；空 input 保留显式空 user message，复杂 Codex / DeepSeek 历史不再被上游 400 拒绝。
+- **管理后台禁用模型显示**：`listModels` / `getModel` 将 proto3 `omitempty` 省略的 `status=0` 归一化为禁用状态，列表、详情与启停操作不再显示 `undefined`。
+
+### Changed
+
+- **release 发布门禁**：新增 reusable `e2e.yml`，nightly 与 release 共用 compose E2E + Playwright admin smoke；release 先在目标 tag 上执行 E2E，失败即阻断镜像推送与 GitHub Release，并保留失败工件上传。
+
+### Added
+
+- **发布与观测证据**：记录 nightly E2E 连续 5 / 5 达标与 reusable workflow 远端验证；核实 Prometheus retention 健康并闭环 Grafana 只读凭据，补齐 2026Q3 P3 基线数据质量结论。
+
 ## [0.20.4] - 2026-08-16
 
 v0.20.4 是 v0.20.3 之后的 **PATCH 生产稳定性版本**（7 个提交，`3ea0a6f` → `d96b3c0`）：修复路由死端以 `codes.Unknown` 穿越 gRPC 后被 relay 侧 circuit breaker 计为失败，导致 channel-service 整体熔断且无法自愈的生产事故；手动 ledger / logs 分区脚本增加 schema 治理、迁移 `078` 与 claim 覆盖硬前置检查；nightly E2E 等待 committed list query 消除 export 竞态，并沉淀 2026Q3 P3 观察基线。**无 API 破坏性变更、无数据库迁移、无 proto/应用配置变更**。受影响范围：relay-gateway、运维侧手动分区 SQL 与 nightly E2E。详见 [release-v0.20.4.md](docs/releases/release-v0.20.4.md)。
