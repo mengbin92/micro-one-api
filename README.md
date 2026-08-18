@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.20.5 发布公告](./docs/releases/release-v0.20.5.md)（修复 Responses 工具历史兜底与管理后台禁用模型显示，接入发布前置 E2E 门禁） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.5)
+> 📣 **最新发布**：[v0.21.0 发布公告](./docs/releases/release-v0.21.0.md)（v0.21 阶段稳定性与质量门禁收尾） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.21.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.21.0
+
+v0.21.0 是 v0.20.5 之后的 **阶段收尾版本**：完成 v0.21 路线图定义的资金安全验证、真实 MySQL / PostgreSQL migration smoke、Release E2E 门禁和 P3-0 观察基线闭环。**无 API 破坏性变更、无新增数据库迁移、无 proto / 应用配置变更、无新增运行时功能**。已运行 v0.20.5 且不要求切换版本标识的环境无需重启；如按统一版本策略更新镜像，可直接使用 v0.21.0 标签。详见 [docs/releases/release-v0.21.0.md](./docs/releases/release-v0.21.0.md)。
 
 ### 升级到 v0.20.5
 
