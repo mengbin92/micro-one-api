@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-18
+
+v0.21.0 是 v0.20.5 之后的 **阶段收尾版本**：完成 v0.21 路线图定义的资金安全验证、真实 MySQL / PostgreSQL migration smoke、Release E2E 门禁和 P3-0 观察基线闭环。**无 API 破坏性变更、无新增数据库迁移、无 proto / 应用配置变更、无新增运行时功能**。详见 [release-v0.21.0.md](docs/releases/release-v0.21.0.md)。
+
+### Added
+
+- **v0.21 阶段验收记录**：固化首个结算周期对账、MySQL / PostgreSQL migration smoke、真实 Release E2E 和 P3-0 观察基线的验证结论。
+- **触发式治理边界**：明确手动分区 DDL、热点文件拆分和 P3 五大议题不作为本版本前置，继续按路线图触发条件管理。
+
+### Changed
+
+- **发布文档状态**：路线图更新为阶段完成并进入 v0.21.0 发布收尾；发布说明补充兼容性、升级步骤和验证证据。
+
 ## [0.20.5] - 2026-08-18
 
 v0.20.5 是 v0.20.4 之后的 **PATCH 生产稳定性版本**（4 个提交，`254970a` → `e219741`）：Responses → Chat Completions fallback 改用共享协议转换器，修复 Codex / DeepSeek 工具历史中的并行调用、乱序输出、孤儿输出与中断调用导致上游 400 的问题；管理后台修复 proto3 `omitempty` 造成禁用模型状态显示 `undefined` 的问题；release 工作流在镜像和 GitHub Release 发布前强制执行与 nightly 共用的 compose E2E + Playwright admin smoke。**无 API 破坏性变更、无数据库迁移、无 proto/应用配置变更**。受影响范围：relay-gateway、admin 前端 `web/dist`、release / nightly workflow 与执行文档。详见 [release-v0.20.5.md](docs/releases/release-v0.20.5.md)。
