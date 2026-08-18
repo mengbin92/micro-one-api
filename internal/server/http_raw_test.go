@@ -1375,6 +1375,23 @@ func TestResponsesRequestToChatCompletionsMapsMaxOutputTokens(t *testing.T) {
 	}
 }
 
+func TestResponsesRequestToChatCompletionsEmptyInputKeepsExplicitContent(t *testing.T) {
+	body, _, err := responsesRequestToChatCompletionsBody([]byte(`{"model":"gpt-4o-mini"}`))
+	if err != nil {
+		t.Fatalf("responsesRequestToChatCompletionsBody error: %v", err)
+	}
+
+	var payload struct {
+		Messages []map[string]interface{} `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v, body=%s", err, string(body))
+	}
+	if len(payload.Messages) != 1 || payload.Messages[0]["role"] != "user" || payload.Messages[0]["content"] != "" {
+		t.Fatalf("empty input fallback message mismatch: %#v, body=%s", payload.Messages, string(body))
+	}
+}
+
 func TestResponsesRequestToChatCompletionsConvertsCodexPayload(t *testing.T) {
 	body, stream, err := responsesRequestToChatCompletionsBody([]byte(`{
 		"model":"mimo-v2.5-pro",
@@ -1413,7 +1430,7 @@ func TestResponsesRequestToChatCompletionsConvertsCodexPayload(t *testing.T) {
 		t.Fatalf("messages mismatch: %#v body=%s", payload["messages"], string(body))
 	}
 	first := messages[0].(map[string]interface{})
-	if first["role"] != "system" || first["content"] != "system rules\ntool rules" {
+	if first["role"] != "system" || first["content"] != "system rules\n\ntool rules" {
 		t.Fatalf("developer message was not converted to system text: %#v", first)
 	}
 	second := messages[1].(map[string]interface{})
@@ -2275,5 +2292,71 @@ func TestHTTPServerSubscriptionUsageNotConfiguredReturnsStructuredFalse(t *testi
 	}
 	if body.Success {
 		t.Fatalf("expected success:false when subscriptions not configured, got %+v", body)
+	}
+}
+
+func TestResponsesRequestToChatCompletionsRepairsDeepSeekToolHistory(t *testing.T) {
+	body, stream, err := responsesRequestToChatCompletionsBody([]byte(`{
+		"model":"deepseek-v4-pro-0813",
+		"instructions":"follow the tool protocol",
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"run tools"}]},
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"need tools"}]},
+			{"type":"function_call","call_id":"call_a","name":"exec_command","arguments":"{\"cmd\":\"a\"}"},
+			{"type":"function_call","call_id":"call_b","name":"exec_command","arguments":"{\"cmd\":\"b\"}"},
+			{"type":"message","role":"developer","content":[{"type":"input_text","text":"notice between calls and outputs"}]},
+			{"type":"function_call_output","call_id":"call_b","output":"result b"},
+			{"type":"function_call_output","call_id":"call_a","output":"result a"},
+			{"type":"function_call","call_id":"call_missing","name":"exec_command","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_orphan","output":"orphan"}
+		],
+		"stream":true
+	}`))
+	if err != nil {
+		t.Fatalf("responsesRequestToChatCompletionsBody error: %v", err)
+	}
+	if !stream {
+		t.Fatal("stream = false, want true")
+	}
+
+	var payload struct {
+		Messages []struct {
+			Role             string `json:"role"`
+			ReasoningContent string `json:"reasoning_content,omitempty"`
+			ToolCalls        []struct {
+				ID string `json:"id"`
+			} `json:"tool_calls,omitempty"`
+			ToolCallID string `json:"tool_call_id,omitempty"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v, body=%s", err, string(body))
+	}
+
+	if len(payload.Messages) == 0 || payload.Messages[0].Role != "system" {
+		t.Fatalf("instructions were not converted to a system message: %#v body=%s", payload.Messages, string(body))
+	}
+	for i, msg := range payload.Messages {
+		if msg.Role == "tool" && msg.ToolCallID == "call_orphan" {
+			t.Fatalf("orphan tool reply leaked at message %d: %s", i, string(body))
+		}
+		if len(msg.ToolCalls) == 0 {
+			continue
+		}
+		if msg.ReasoningContent != "need tools" {
+			t.Fatalf("reasoning was not attached to assistant tool calls: %#v", msg)
+		}
+		if i+1 >= len(payload.Messages) || payload.Messages[i+1].Role != "tool" {
+			t.Fatalf("assistant tool_calls at %d is not immediately followed by a tool reply: %s", i, string(body))
+		}
+		for j, call := range msg.ToolCalls {
+			if call.ID == "call_missing" {
+				t.Fatalf("unanswered tool call leaked: %s", string(body))
+			}
+			k := i + 1 + j
+			if k >= len(payload.Messages) || payload.Messages[k].Role != "tool" || payload.Messages[k].ToolCallID != call.ID {
+				t.Fatalf("tool_call %s reply mismatch at %d: %s", call.ID, k, string(body))
+			}
+		}
 	}
 }

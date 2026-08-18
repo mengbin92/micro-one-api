@@ -162,12 +162,28 @@ export interface BatchModelsPayload {
 
 export async function listModels(params: ListModelsParams = {}): Promise<ListModelsResponse> {
   const { data } = await adminApiClient.get<ListModelsResponse>('/admin/models', { params });
-  return data;
+  return {
+    ...data,
+    models: (data.models ?? []).map(normalizeModelSummary),
+  };
 }
 
 export async function getModel(modelPk: number): Promise<GetModelResponse> {
   const { data } = await adminApiClient.get<GetModelResponse>(`/admin/models/${modelPk}`);
-  return data;
+  return {
+    ...data,
+    model: data.model ? { ...data.model, status: data.model.status ?? 0 } : data.model,
+  };
+}
+
+// The admin API serializes proto3 responses with omitempty, so a disabled model
+// (status=0) is absent from the JSON body. Normalize it back to an explicit
+// status so tables/badges don't render "undefined".
+function normalizeModelSummary(model: ModelSummary): ModelSummary {
+  return {
+    ...model,
+    status: model.status ?? 0,
+  };
 }
 
 export async function createModel(payload: CreateModelPayload): Promise<CreateModelResponse> {
