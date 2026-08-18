@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.20.4 发布公告](./docs/releases/release-v0.20.4.md)（修复路由死端触发 channel-service 熔断的生产事故、强化手动分区前置守卫） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.4)
+> 📣 **最新发布**：[v0.20.5 发布公告](./docs/releases/release-v0.20.5.md)（修复 Responses 工具历史兜底与管理后台禁用模型显示，接入发布前置 E2E 门禁） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.20.5)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.20.5
+
+v0.20.5 是 v0.20.4 之后的 **PATCH 生产稳定性版本**（4 个提交，`254970a` → `e219741`）：Responses → Chat Completions fallback 改用共享协议转换器，修复 Codex / DeepSeek 工具历史中的并行调用、乱序输出、孤儿输出与中断调用导致上游 400 的问题；管理后台修复 proto3 `omitempty` 造成禁用模型状态显示 `undefined` 的问题；release 工作流在镜像和 GitHub Release 发布前强制执行与 nightly 共用的 compose E2E + Playwright admin smoke。**无 API 破坏性变更、无数据库迁移、无 proto/应用配置变更**。仅 relay-gateway 需要重新部署，管理后台修复需单独同步 `web/dist`。详见 [docs/releases/release-v0.20.5.md](./docs/releases/release-v0.20.5.md)。
 
 ### 升级到 v0.20.4
 

@@ -14,7 +14,7 @@
 | 指标分辨率 | PromQL range step 1h；DB 快照取 2026-08-15 04:41:42 UTC |
 | 代码基线 | production `v0.20.3` 阶段（仓库记录 `be9a38d`） |
 | Prometheus 基线 | Prometheus 3.6.0（revision `4917346065`） |
-| 备注 | 本报告为 v0.21 P2 首次观察快照；Prometheus 只保留了约 41 小时数据，尚不足以形成完整季度结论。 |
+| 备注 | 本报告为 v0.21 P2 首次观察快照；P3-0 指标 2026-08-14 上线，快照时历史约 41h，尚不足以形成完整季度结论（Prometheus 存储健康，retention 15d，2026-08-16 核实）。 |
 
 ## 2. 必采指标结果
 
@@ -147,17 +147,22 @@ claim growth ratio = 7,584 / 7,584 = 1.00
 - [ ] Billing overview 中 settlement lag / ledger write duration；
 - [ ] 熔断器状态与 trips。
 
-后续建议：为季度采集创建只读 Grafana API account 或提供 service account token，不共享 admin 凭据。
+> **更新（2026-08-16）：只读凭据已闭环** ✅ — 已创建 Grafana Viewer 角色
+> Service Account `p3-observation-readonly`（org 1），token 已落盘服务器
+> `/opt/micro-one-api/.env` 的 `GRAFANA_READONLY_TOKEN`。下季度采集可直接用
+> `Authorization: Bearer $GRAFANA_READONLY_TOKEN` 读取 dashboard / datasource，
+> 无需共享 admin 凭据。快照生成方法见
+> [p3-quarterly-baseline-template.md](./p3-quarterly-baseline-template.md)。
 
 ## 5. 数据质量检查
 
 - [x] 记录 Prometheus 实际可查询时间范围；
-- [x] 指标保留窗口不足完整季度（约 41 小时，max gap 约 2 小时），本报告明确标注；
+- [x] 指标保留窗口不足完整季度（P3-0 指标 2026-08-14 上线，快照时仅约 41h 历史），本报告明确标注；**Prometheus 存储本身健康（retention 15d，磁盘充足），历史深度随指标上线时间自然增长，非配置缺陷（2026-08-16 核实）**；
 - [x] DB 快照在生产低峰只读执行；
 - [x] claim ↔ ledger 双向检查均为 0；
 - [x] 异常峰值附归因；
 - [x] 未将观察数据直接解释为实现收益；
-- [ ] Grafana 快照缺失，已登记访问缺口。
+- [x] **Grafana 只读凭据已闭环（2026-08-16）**：Viewer SA `p3-observation-readonly` + `GRAFANA_READONLY_TOKEN`（服务器 .env），下季度可补 dashboard 快照。
 
 ## 6. 季度结论
 
@@ -170,8 +175,8 @@ claim growth ratio = 7,584 / 7,584 = 1.00
 
 ## 7. 后续待办
 
-1. 增加 Prometheus 保留周期，至少覆盖完整季度观察窗口；
-2. 为 Grafana 建立只读 API account / token，补齐 dashboard 快照；
+1. ~~增加 Prometheus 保留周期，至少覆盖完整季度观察窗口~~ — ✅ **已核实无需改动**（2026-08-16）：retention=15d、磁盘充足；"41h"实为 P3-0 指标上线时间，历史深度随季度自然增长。
+2. ~~为 Grafana 建立只读 API account / token，补齐 dashboard 快照~~ — ✅ **已完成**（2026-08-16）：Viewer SA `p3-observation-readonly` + `GRAFANA_READONLY_TOKEN`（服务器 .env），下季度可直接采集 dashboard 快照。
 3. 熔断统计后续用 5m 或更细 step 重放，记录打开次数与最长持续时长；
 4. 下一季度以本文件作为 T0 基线，在 T1 重复相同采集口径；
 5. 若后续实现低基数 dedupe counter，替换 §3.4 代理口径。

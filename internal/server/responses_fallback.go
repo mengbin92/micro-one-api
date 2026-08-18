@@ -85,9 +85,22 @@ func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
 		return nil, false, fmt.Errorf("model is required")
 	}
 	stream, _ := raw["stream"].(bool)
-	messages := responsesInputToMessages(raw["input"])
+
+	// Codex sends Responses histories that may contain parallel calls,
+	// interrupted calls, orphan tool outputs, or notices between a call and its
+	// output. DeepSeek rejects those shapes verbatim; use the shared converter
+	// that normalizes tool_call/tool-reply ordering before forwarding.
+	var responsesReq apicompat.ResponsesRequest
+	if err := jsonx.Unmarshal(body, &responsesReq); err != nil {
+		return nil, false, fmt.Errorf("failed to parse responses input: %w", err)
+	}
+	chatReq, err := apicompat.ResponsesToChatCompletionsRequest(&responsesReq)
+	if err != nil {
+		return nil, false, err
+	}
+	messages := chatReq.Messages
 	if len(messages) == 0 {
-		messages = []map[string]interface{}{{"role": "user", "content": ""}}
+		messages = []apicompat.ChatMessage{{Role: "user", Content: jsonx.RawMessage(`""`)}}
 	}
 
 	chat := map[string]interface{}{
@@ -130,101 +143,9 @@ func copyOptionalRawFieldAs(dst, src map[string]interface{}, srcKey, dstKey stri
 	}
 }
 
-func responsesInputToMessages(input interface{}) []map[string]interface{} {
-	switch v := input.(type) {
-	case string:
-		return []map[string]interface{}{{"role": "user", "content": v}}
-	case []interface{}:
-		messages := make([]map[string]interface{}, 0, len(v))
-		for _, item := range v {
-			msg, ok := responseInputItemToMessage(item)
-			if ok {
-				messages = append(messages, msg)
-			}
-		}
-		return messages
-	default:
-		return nil
-	}
-}
-
-func responseInputItemToMessage(item interface{}) (map[string]interface{}, bool) {
-	m, ok := item.(map[string]interface{})
-	if !ok {
-		return nil, false
-	}
-	itemType, _ := m["type"].(string)
-	switch itemType {
-	case "function_call":
-		arguments, _ := m["arguments"].(string)
-		if strings.TrimSpace(arguments) == "" {
-			arguments = "{}"
-		}
-		return map[string]interface{}{
-			"role": "assistant",
-			"tool_calls": []map[string]interface{}{
-				{
-					"id":   stringField(m, "call_id"),
-					"type": "function",
-					"function": map[string]interface{}{
-						"name":      stringField(m, "name"),
-						"arguments": arguments,
-					},
-				},
-			},
-		}, true
-	case "function_call_output":
-		return map[string]interface{}{
-			"role":         "tool",
-			"tool_call_id": stringField(m, "call_id"),
-			"content":      stringField(m, "output"),
-		}, true
-	}
-	role, _ := m["role"].(string)
-	role = responsesRoleToChatRole(role)
-	if content, ok := m["content"].(string); ok {
-		return map[string]interface{}{"role": role, "content": content}, true
-	}
-	if content, ok := m["content"].([]interface{}); ok {
-		return map[string]interface{}{"role": role, "content": responseContentPartsToText(content)}, true
-	}
-	if text, ok := m["text"].(string); ok {
-		return map[string]interface{}{"role": role, "content": text}, true
-	}
-	return nil, false
-}
-
-func responsesRoleToChatRole(role string) string {
-	trimmed := strings.TrimSpace(role)
-	if trimmed == "" {
-		return "user"
-	}
-	if strings.EqualFold(trimmed, "developer") {
-		return "system"
-	}
-	return trimmed
-}
-
 func stringField(m map[string]interface{}, key string) string {
 	value, _ := m[key].(string)
 	return value
-}
-
-func responseContentPartsToText(parts []interface{}) string {
-	var b strings.Builder
-	for _, part := range parts {
-		m, ok := part.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if text, ok := m["text"].(string); ok {
-			if b.Len() > 0 {
-				b.WriteByte('\n')
-			}
-			b.WriteString(text)
-		}
-	}
-	return b.String()
 }
 
 func responsesToolsToChatTools(raw interface{}) []map[string]interface{} {

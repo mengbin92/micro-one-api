@@ -1,0 +1,138 @@
+name: Reusable E2E
+
+# Shared release/nightly gate. Keep this workflow as the single source of
+# truth for compose E2E and Playwright admin smoke so the release gate cannot
+# drift from the nightly stability evidence.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to test
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compose-e2e:
+    name: Compose E2E suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # api/**/*.pb.go and internal/conf/*.pb.go are git-ignored and generated
+      # locally by `make api`; a clean checkout has none of them. The Go e2e
+      # suite imports the generated stubs, so install the pinned buf +
+      # protobuf generators and regenerate before compiling (mirrors ci.yml).
+      - name: Install buf and protobuf generators
+        run: |
+          make init
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Generate API stubs
+        run: make api config
+
+      # .env is git-ignored (deployments/docker-compose/.env) and absent in a
+      # clean checkout, but docker-compose.yml hard-requires
+      # ${MYSQL_ROOT_PASSWORD:?} and ${ADMIN_TOKEN:?}. Seed it from the example
+      # so the compose stack and the e2e script agree.
+      - name: Prepare compose environment
+        run: |
+          if [ ! -f deployments/docker-compose/.env ]; then
+            cp deployments/docker-compose/.env.example deployments/docker-compose/.env
+            echo "Seeded .env from .env.example"
+          fi
+
+      - name: Run compose E2E suite
+        id: e2e
+        env:
+          # Keep the compose stack alive on failure so the diagnostics steps
+          # below can collect logs and container state before teardown.
+          E2E_KEEP_ON_FAILURE: "1"
+        run: make test-e2e-suite
+        timeout-minutes: 30
+
+      # E2E_KEEP_ON_FAILURE leaves the stack running on failure (see
+      # scripts/test-e2e-flow.sh), so containers are still alive here. Dump
+      # full compose logs + container state to /tmp for the artifact upload —
+      # the step output alone truncates, and the script's own mktemp logs are
+      # deleted before this step runs.
+      - name: Collect container state (on failure)
+        if: failure()
+        run: |
+          cd deployments/docker-compose
+          docker compose -f docker-compose.yml -f docker-compose.test.yml ps -a > /tmp/compose-ps.txt 2>&1 || true
+          docker compose -f docker-compose.yml -f docker-compose.test.yml logs --no-color --tail 500 > /tmp/compose-logs.log 2>&1 || true
+          for c in mysql redis mock-upstream identity-service channel-service billing-service relay-gateway; do
+            echo "===== $c ====="
+            docker logs --tail 200 "$c" 2>&1 || true
+          done
+        shell: bash
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compose-e2e-diagnostics
+          path: |
+            /tmp/compose-ps.txt
+            /tmp/compose-logs.log
+          if-no-files-found: ignore
+
+      - name: Tear down compose stack
+        if: always()
+        run: |
+          cd deployments/docker-compose
+          docker compose -f docker-compose.yml -f docker-compose.test.yml down -v --remove-orphans || true
+
+  frontend-smoke:
+    name: Playwright admin smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # playwright.config.ts uses channel: 'chrome' for both projects, which
+      # requires Google Chrome — installing chromium would fail at runtime
+      # with "Executable doesn't exist".
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chrome
+
+      - name: Run Playwright admin smoke
+        run: npx playwright test
+        timeout-minutes: 15
+
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          if-no-files-found: ignore

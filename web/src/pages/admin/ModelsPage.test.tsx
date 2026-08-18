@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
@@ -69,6 +69,29 @@ describe('AdminModelsPage', () => {
     expect(row?.textContent).toContain('启用');
     expect(row?.textContent).toContain('3');
     expect(row?.textContent).toContain('2');
+  });
+
+  it('renders a disabled model when backend omits status=0', async () => {
+    server.use(
+      http.get('/api/admin/models', () =>
+        HttpResponse.json({
+          models: [{ ...model, status: undefined }],
+          total: 1,
+        }),
+      ),
+    );
+
+    renderWithQuery(
+      <MemoryRouter>
+        <AdminModelsPage />
+      </MemoryRouter>,
+    );
+
+    const cell = await screen.findByText('gpt-4o');
+    const row = cell.closest('tr');
+    expect(row?.textContent).toContain('禁用');
+    expect(row?.textContent).not.toContain('undefined');
+    expect(screen.getByRole('button', { name: '启用' })).toBeInTheDocument();
   });
 
   it('shows empty state when no models exist', async () => {
@@ -208,7 +231,10 @@ describe('AdminModelsPage', () => {
         HttpResponse.json({ models: [model], total: 1 }),
       ),
       http.get('/api/admin/models/1', () =>
-        HttpResponse.json(fullModel),
+        HttpResponse.json({
+          ...fullModel,
+          model: { ...fullModel.model, status: undefined },
+        }),
       ),
       http.get('/api/admin/models/1/usage-stats', () =>
         HttpResponse.json({ stats: [], total: 0 }),
@@ -231,6 +257,7 @@ describe('AdminModelsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('gpt4o')).toBeInTheDocument();
     });
+    expect(within(screen.getByRole('dialog')).getByText('禁用')).toBeInTheDocument();
     expect(screen.getByText('10')).toBeInTheDocument();
   });
 
