@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to publish'
+        description: Release tag to publish
         required: true
         type: string
 
@@ -15,6 +15,29 @@ permissions:
   contents: write
 
 jobs:
+  release-context:
+    name: Resolve release context
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Resolve release tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${{ github.ref_name }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    name: Release E2E gate
+    needs: release-context
+    uses: ./.github/workflows/e2e.yml
+    with:
+      ref: ${{ needs.release-context.outputs.tag }}
+
   services:
     name: Load service matrix
     runs-on: ubuntu-latest
@@ -36,22 +59,12 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.services.outputs.matrix) }}
-    needs: services
+    needs: [release-context, services, e2e]
     steps:
-      - name: Resolve release tag
-        id: meta-tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
-          else
-            tag="${{ github.ref_name }}"
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ steps.meta-tag.outputs.tag }}
+          ref: ${{ needs.release-context.outputs.tag }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -73,9 +86,9 @@ jobs:
           # Gate the mutable 'latest' tag on non-prerelease semver so a
           # v0.14.0-rc1 tag cannot clobber the stable 'latest' (code-review L4).
           tags: |
-            type=raw,value=${{ steps.meta-tag.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(steps.meta-tag.outputs.tag, '-') }}
-            type=raw,value=latest,enable=${{ !contains(steps.meta-tag.outputs.tag, '-') }}
+            type=raw,value=${{ needs.release-context.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(needs.release-context.outputs.tag, '-') }}
+            type=raw,value=latest,enable=${{ !contains(needs.release-context.outputs.tag, '-') }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
@@ -96,29 +109,19 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: docker
+    needs: [release-context, docker]
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve release tag
-        id: meta
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
-          else
-            tag="${{ github.ref_name }}"
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ steps.meta.outputs.tag }}
+          ref: ${{ needs.release-context.outputs.tag }}
 
       - name: Verify release notes exist
-        run: test -f "docs/releases/release-${{ steps.meta.outputs.tag }}.md"
+        run: test -f "docs/releases/release-${{ needs.release-context.outputs.tag }}.md"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          body_path: docs/releases/release-${{ steps.meta.outputs.tag }}.md
+          tag_name: ${{ needs.release-context.outputs.tag }}
+          body_path: docs/releases/release-${{ needs.release-context.outputs.tag }}.md
