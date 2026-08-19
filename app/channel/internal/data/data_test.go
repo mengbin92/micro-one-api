@@ -1356,6 +1356,23 @@ func TestSyncChannelModelMappings_UpdateRemovesOnlyOwnedMappings(t *testing.T) {
 	assert.False(t, gotIDs["glm-4.6"])
 }
 
+func TestSyncChannelModelMappings_EmptyModelsRemovesManagedMappings(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	ch := &biz.Channel{
+		Name: "empty-models", Type: 1, Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o", "claude-sonnet-4-6"},
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	ch.Models = nil
+	require.NoError(t, repo.UpdateChannel(ctx, ch))
+
+	var count int64
+	require.NoError(t, repo.db.Model(&modelChannelMappingModel{}).Where("channel_id = ?", ch.ID).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
 // Wildcards are routing rules, not public registry model IDs.
 func TestSyncChannelModelMappings_SkipsWildcards(t *testing.T) {
 	repo := setupChannelTestDB(t)

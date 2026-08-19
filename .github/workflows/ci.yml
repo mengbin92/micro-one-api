@@ -28,6 +28,9 @@ jobs:
           make init
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
+      - name: Check OpenAPI generation
+        run: make api-check
+
       - name: Run tests
         run: make test
 
@@ -144,6 +147,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Install protobuf generators
+        run: |
+          cd ..
+          make init
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
@@ -153,6 +168,14 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check generated API types
+        run: |
+          cd ..
+          make api
+          cd web
+          npm run generate:api
+          git diff --exit-code -- src/types/api.ts
 
       - name: Lint
         run: npm run lint

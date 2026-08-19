@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { adminApiClient } from '@/lib/api';
+import type { components } from '@/types/api';
 import {
   parseNotification,
   translateError,
@@ -36,13 +37,13 @@ import {
 } from '@/lib/notification-display';
 
 // Notification types based on backend API response (snake_case)
-interface Notification {
+type GeneratedNotification = components['schemas']['api.notify.v1.NotificationItem'];
+
+interface Notification extends Omit<
+  GeneratedNotification,
+  'id' | 'retryCount' | 'createdAt' | 'sentAt' | 'lastError'
+> {
   id?: number;
-  type?: string;
-  recipient?: string;
-  subject?: string;
-  content?: string;
-  status?: string;
   retry_count?: number;
   last_error?: string;
   created_at?: string;
@@ -163,9 +164,8 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
       if (mountedRef.current) {
         setUnreadCount(data.total ?? 0);
       }
-    } catch (error) {
-      // Silently fail for unread count polling
-      console.debug('Failed to fetch unread count:', error);
+    } catch {
+      // Silently fail for unread count polling.
     }
   }, []);
 
@@ -194,8 +194,7 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
         // Note: unreadCount is maintained by fetchUnreadCount, not derived from filtered list
         // to ensure badge shows accurate pending count regardless of current filter
       }
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error);
+    } catch {
       if (mountedRef.current) {
         toast.error('获取通知列表失败');
         setNotifications([]);

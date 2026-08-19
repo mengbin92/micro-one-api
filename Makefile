@@ -45,12 +45,10 @@ tools-upgrade-check:
 
 .PHONY: config
 # generate internal config proto (app/*/internal/conf/*_conf.proto +
-# internal/conf/relay_conf.proto). buf.gen.yaml now covers the whole repo
-# (module root = .), so api and config share one buf.gen.yaml; config is
-# kept as a separate target for `make config` semantics. buf --path restricts
-# generation to the conf protos so config.yaml changes don't touch api/*.pb.go.
+# internal/conf/relay_conf.proto). Keep the config-only template free of the
+# OpenAPI plugin so this target cannot overwrite the root API specification.
 config:
-	buf generate --template buf.gen.yaml \
+	buf generate --template buf.gen.config.yaml \
 		--path internal/conf \
 		--path app/admin/internal/conf \
 		--path app/billing/internal/conf \

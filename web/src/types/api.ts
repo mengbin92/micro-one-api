@@ -181,6 +181,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/model-routings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ========== 模型路由 (P2 #3, 透传 channel-service) ========== */
+        get: operations["AdminService_ListModelRoutings"];
+        put?: never;
+        post: operations["AdminService_UpsertModelRouting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/model-routings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["AdminService_DeleteModelRouting"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/models": {
         parameters: {
             query?: never;
@@ -261,6 +294,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/subscription-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminService_ListSubscriptionAccounts"];
+        put?: never;
+        post: operations["AdminService_CreateSubscriptionAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/subscription-accounts/{accountId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["AdminService_DeleteSubscriptionAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/subscription-accounts/{accountId}/reset-quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminService_ResetSubscriptionAccountQuota"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/subscription-accounts/{accountId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["AdminService_ChangeSubscriptionAccountStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/subscription-accounts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["AdminService_UpdateSubscriptionAccount"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/system/options": {
         parameters: {
             query?: never;
@@ -302,13 +415,137 @@ export interface components {
         "api.admin.v1.AdminAccountSnapshotResponse": {
             account?: components["schemas"]["api.common.v1.AccountInfo"];
         };
+        "api.admin.v1.AdminChangeSubscriptionAccountStatusRequest": {
+            accountId?: string;
+            /** Format: int32 */
+            status?: number;
+        };
+        "api.admin.v1.AdminChangeSubscriptionAccountStatusResponse": {
+            success?: boolean;
+            message?: string;
+        };
+        "api.admin.v1.AdminCreateSubscriptionAccountRequest": {
+            name?: string;
+            platform?: string;
+            accountType?: string;
+            group?: string;
+            models?: string;
+            priority?: string;
+            baseUrl?: string;
+            accessToken?: string;
+            refreshToken?: string;
+            expiresAt?: string;
+            accountId?: string;
+            fingerprint?: string;
+            metadata?: string;
+            /** Format: double */
+            quotaLimitUsd?: number;
+            /** Format: double */
+            quotaUsedUsd?: number;
+            /** Format: double */
+            quotaDailyLimitUsd?: number;
+            /** Format: double */
+            quotaDailyUsedUsd?: number;
+            quotaDailyWindowStart?: string;
+            /** Format: double */
+            quotaWeeklyLimitUsd?: number;
+            /** Format: double */
+            quotaWeeklyUsedUsd?: number;
+            quotaWeeklyWindowStart?: string;
+            /** Format: double */
+            rateMultiplier?: number;
+            /** Format: double */
+            quota5hLimitUsd?: number;
+            /** Format: double */
+            quota5hUsedUsd?: number;
+            quota5hWindowStart?: string;
+            /** Format: int32 */
+            rpmLimit?: number;
+            /** Format: double */
+            sessionWindowLimitUsd?: number;
+            quotaResetStrategy?: string;
+            quotaTimezone?: string;
+            modelMapping?: string;
+        };
+        "api.admin.v1.AdminCreateSubscriptionAccountResponse": {
+            success?: boolean;
+            message?: string;
+            accountId?: string;
+        };
+        "api.admin.v1.AdminDeleteSubscriptionAccountResponse": {
+            success?: boolean;
+            message?: string;
+        };
         "api.admin.v1.AdminListChannelsResponse": {
             channels?: components["schemas"]["api.common.v1.ChannelSummary"][];
+            total?: string;
+        };
+        "api.admin.v1.AdminListSubscriptionAccountsResponse": {
+            accounts?: components["schemas"]["api.common.v1.SubscriptionAccountSummary"][];
             total?: string;
         };
         "api.admin.v1.AdminListUsersResponse": {
             users?: components["schemas"]["api.common.v1.UserInfo"][];
             total?: string;
+        };
+        "api.admin.v1.AdminResetSubscriptionAccountQuotaRequest": {
+            accountId?: string;
+            scope?: string;
+        };
+        "api.admin.v1.AdminResetSubscriptionAccountQuotaResponse": {
+            success?: boolean;
+            message?: string;
+        };
+        "api.admin.v1.AdminUpdateSubscriptionAccountRequest": {
+            id?: string;
+            name?: string;
+            accountType?: string;
+            group?: string;
+            models?: string;
+            priority?: string;
+            baseUrl?: string;
+            accessToken?: string;
+            refreshToken?: string;
+            expiresAt?: string;
+            accountId?: string;
+            fingerprint?: string;
+            metadata?: string;
+            /** Format: double */
+            quotaLimitUsd?: number;
+            /** Format: double */
+            quotaUsedUsd?: number;
+            /** Format: double */
+            quotaDailyLimitUsd?: number;
+            /** Format: double */
+            quotaDailyUsedUsd?: number;
+            quotaDailyWindowStart?: string;
+            /** Format: double */
+            quotaWeeklyLimitUsd?: number;
+            /** Format: double */
+            quotaWeeklyUsedUsd?: number;
+            quotaWeeklyWindowStart?: string;
+            /** Format: double */
+            rateMultiplier?: number;
+            /** Format: double */
+            quota5hLimitUsd?: number;
+            /** Format: double */
+            quota5hUsedUsd?: number;
+            quota5hWindowStart?: string;
+            /** Format: int32 */
+            rpmLimit?: number;
+            /** Format: double */
+            sessionWindowLimitUsd?: number;
+            quotaResetStrategy?: string;
+            quotaTimezone?: string;
+            modelMapping?: string;
+        };
+        "api.admin.v1.AdminUpdateSubscriptionAccountResponse": {
+            success?: boolean;
+            message?: string;
+        };
+        "api.admin.v1.DeleteModelRoutingResponse": {
+            success?: boolean;
+            message?: string;
         };
         "api.admin.v1.GetSystemOptionsResponse": {
             options?: components["schemas"]["api.common.v1.SystemOptions"];
@@ -316,6 +553,9 @@ export interface components {
         "api.admin.v1.ListLogsResponse": {
             logs?: components["schemas"]["api.admin.v1.LogEntry"][];
             total?: string;
+        };
+        "api.admin.v1.ListModelRoutingsResponse": {
+            routings?: components["schemas"]["api.admin.v1.ModelRouting"][];
         };
         "api.admin.v1.ListRedeemCodesResponse": {
             codes?: components["schemas"]["api.admin.v1.RedeemCodeInfo"][];
@@ -330,6 +570,18 @@ export interface components {
             referenceId?: string;
             remark?: string;
             createdAt?: string;
+        };
+        "api.admin.v1.ModelRouting": {
+            id?: string;
+            groupName?: string;
+            model?: string;
+            platform?: string;
+            subscriptionAccountId?: string;
+            enabled?: boolean;
+            /** Format: int32 */
+            priority?: number;
+            createdAt?: string;
+            updatedAt?: string;
         };
         "api.admin.v1.RedeemCodeInfo": {
             code?: string;
@@ -348,6 +600,20 @@ export interface components {
         "api.admin.v1.UpdateSystemOptionsResponse": {
             success?: boolean;
             message?: string;
+        };
+        "api.admin.v1.UpsertModelRoutingRequest": {
+            groupName?: string;
+            model?: string;
+            platform?: string;
+            subscriptionAccountId?: string;
+            enabled?: boolean;
+            /** Format: int32 */
+            priority?: number;
+        };
+        "api.admin.v1.UpsertModelRoutingResponse": {
+            success?: boolean;
+            message?: string;
+            id?: string;
         };
         "api.common.v1.AccountInfo": {
             userId?: string;
@@ -380,6 +646,85 @@ export interface components {
             balance?: number;
             balanceUpdatedTime?: string;
             usedQuota?: string;
+            healthStatus?: string;
+            healthLastError?: string;
+            healthLastSuccessTime?: string;
+            healthLastFailureTime?: string;
+            /** Format: int32 */
+            healthConsecutiveFailures?: number;
+            circuitOpenedUntil?: string;
+            restrictModels?: boolean;
+        };
+        "api.common.v1.SubscriptionAccountSummary": {
+            id?: string;
+            name?: string;
+            platform?: string;
+            accountType?: string;
+            /** Format: int32 */
+            status?: number;
+            group?: string;
+            models?: string;
+            priority?: string;
+            accountId?: string;
+            expiresAt?: string;
+            updatedAt?: string;
+            lastUsedAt?: string;
+            rateLimitedUntil?: string;
+            /** Format: float */
+            quotaUsedPercent?: number;
+            quotaResetAt?: string;
+            /** Format: int32 */
+            concurrency?: number;
+            /** Format: double */
+            primaryQuotaUsedPercent?: number;
+            /** Format: int32 */
+            primaryQuotaResetAfterSeconds?: number;
+            /** Format: int32 */
+            primaryQuotaWindowMinutes?: number;
+            /** Format: double */
+            secondaryQuotaUsedPercent?: number;
+            /** Format: int32 */
+            secondaryQuotaResetAfterSeconds?: number;
+            /** Format: int32 */
+            secondaryQuotaWindowMinutes?: number;
+            /** Format: double */
+            primaryOverSecondaryPercent?: number;
+            quotaSnapshotUpdatedAt?: string;
+            quotaSnapshotPaused?: boolean;
+            /** Format: double */
+            quotaLimitUsd?: number;
+            /** Format: double */
+            quotaUsedUsd?: number;
+            /** Format: double */
+            quotaDailyLimitUsd?: number;
+            /** Format: double */
+            quotaDailyUsedUsd?: number;
+            quotaDailyWindowStart?: string;
+            /** Format: double */
+            quotaWeeklyLimitUsd?: number;
+            /** Format: double */
+            quotaWeeklyUsedUsd?: number;
+            quotaWeeklyWindowStart?: string;
+            /** Format: double */
+            rateMultiplier?: number;
+            /** Format: double */
+            quota5hLimitUsd?: number;
+            /** Format: double */
+            quota5hUsedUsd?: number;
+            quota5hWindowStart?: string;
+            /** Format: int32 */
+            rpmLimit?: number;
+            /** Format: double */
+            sessionWindowLimitUsd?: number;
+            quotaResetStrategy?: string;
+            quotaTimezone?: string;
+            unschedulableReason?: string;
+            recoveryPolicy?: string;
+            expectedRecoveryAt?: string;
+            unschedulableSince?: string;
+            modelMapping?: string;
+            /** Format: int32 */
+            weight?: number;
         };
         "api.common.v1.SystemOptions": {
             siteTitle?: string;
@@ -405,6 +750,11 @@ export interface components {
             frozenAmount?: string;
             createdAt?: string;
             lastLoginAt?: string;
+            /**
+             * Format: int32
+             * @description 0=guest, 1=common, 10=admin, 100=root. See biz.Role* constants.
+             */
+            role?: number;
         };
         "api.config.v1.DeleteConfigResponse": {
             success?: boolean;
@@ -448,6 +798,10 @@ export interface components {
             elapsedTime?: string;
             isStream?: boolean;
             cacheReadTokens?: string;
+            subscriptionAccountId?: string;
+            /** @description v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md). */
+            cacheCreation5mTokens?: string;
+            cacheCreation1hTokens?: string;
         };
         "api.log.v1.IngestLogRequest": {
             level?: string;
@@ -465,6 +819,10 @@ export interface components {
             elapsedTime?: string;
             isStream?: boolean;
             cacheReadTokens?: string;
+            subscriptionAccountId?: string;
+            /** @description v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md). */
+            cacheCreation5mTokens?: string;
+            cacheCreation1hTokens?: string;
         };
         "api.log.v1.IngestLogResponse": {
             id?: string;
@@ -1064,6 +1422,76 @@ export interface operations {
             };
         };
     };
+    AdminService_ListModelRoutings: {
+        parameters: {
+            query?: {
+                groupName?: string;
+                model?: string;
+                platform?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.ListModelRoutingsResponse"];
+                };
+            };
+        };
+    };
+    AdminService_UpsertModelRouting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.admin.v1.UpsertModelRoutingRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.UpsertModelRoutingResponse"];
+                };
+            };
+        };
+    };
+    AdminService_DeleteModelRouting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.DeleteModelRoutingResponse"];
+                };
+            };
+        };
+    };
     RelayService_ListModels: {
         parameters: {
             query?: never;
@@ -1200,6 +1628,157 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["api.admin.v1.ListRedeemCodesResponse"];
+                };
+            };
+        };
+    };
+    AdminService_ListSubscriptionAccounts: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+                keyword?: string;
+                group?: string;
+                status?: number;
+                platform?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.AdminListSubscriptionAccountsResponse"];
+                };
+            };
+        };
+    };
+    AdminService_CreateSubscriptionAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.admin.v1.AdminCreateSubscriptionAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.AdminCreateSubscriptionAccountResponse"];
+                };
+            };
+        };
+    };
+    AdminService_DeleteSubscriptionAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.AdminDeleteSubscriptionAccountResponse"];
+                };
+            };
+        };
+    };
+    AdminService_ResetSubscriptionAccountQuota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.admin.v1.AdminResetSubscriptionAccountQuotaRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.AdminResetSubscriptionAccountQuotaResponse"];
+                };
+            };
+        };
+    };
+    AdminService_ChangeSubscriptionAccountStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.admin.v1.AdminChangeSubscriptionAccountStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.AdminChangeSubscriptionAccountStatusResponse"];
+                };
+            };
+        };
+    };
+    AdminService_UpdateSubscriptionAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api.admin.v1.AdminUpdateSubscriptionAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["api.admin.v1.AdminUpdateSubscriptionAccountResponse"];
                 };
             };
         };

@@ -2040,16 +2040,61 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 		return nil
 	}
 
-	wanted := make(map[int64]struct{}, len(channel.Models))
+	wantedCanonical := make(map[string]struct{}, len(channel.Models))
 	for _, raw := range channel.Models {
 		raw = strings.TrimSpace(raw)
 		if raw == "" || strings.ContainsAny(raw, "*?") {
 			continue
 		}
-		pk, err := ensureModelRegistryRowTx(tx, biz.NormalizeModelID(raw))
-		if err != nil {
+		wantedCanonical[biz.NormalizeModelID(raw)] = struct{}{}
+	}
+
+	canonicalIDs := make([]string, 0, len(wantedCanonical))
+	for canonicalID := range wantedCanonical {
+		canonicalIDs = append(canonicalIDs, canonicalID)
+	}
+	registeredByCanonical := make(map[string]int64, len(canonicalIDs))
+	if len(canonicalIDs) > 0 {
+		var registered []modelModel
+		if err := tx.Where("LOWER(model_id) IN ?", canonicalIDs).Find(&registered).Error; err != nil {
 			return err
 		}
+		for _, model := range registered {
+			registeredByCanonical[biz.NormalizeModelID(model.ModelID)] = model.ID
+		}
+
+		missing := make([]modelModel, 0, len(canonicalIDs)-len(registeredByCanonical))
+		for _, canonicalID := range canonicalIDs {
+			if _, ok := registeredByCanonical[canonicalID]; ok {
+				continue
+			}
+			now := now()
+			missing = append(missing, modelModel{
+				ModelID: canonicalID, DisplayName: canonicalID,
+				Provider: providerForModelID(canonicalID), ModelType: "chat",
+				Status: biz.ModelStatusEnabled, IsPublic: true,
+				CreatedAt: now, UpdatedAt: now,
+			})
+		}
+		if len(missing) > 0 {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&missing, len(missing)).Error; err != nil {
+				return err
+			}
+			registeredByCanonical = make(map[string]int64, len(canonicalIDs))
+			registered = nil
+			if err := tx.Where("LOWER(model_id) IN ?", canonicalIDs).Find(&registered).Error; err != nil {
+				return err
+			}
+			for _, model := range registered {
+				registeredByCanonical[biz.NormalizeModelID(model.ModelID)] = model.ID
+			}
+			if len(registeredByCanonical) != len(canonicalIDs) {
+				return fmt.Errorf("resolve channel model registry rows: got %d of %d", len(registeredByCanonical), len(canonicalIDs))
+			}
+		}
+	}
+	wanted := make(map[int64]struct{}, len(registeredByCanonical))
+	for _, pk := range registeredByCanonical {
 		wanted[pk] = struct{}{}
 	}
 
@@ -2060,34 +2105,45 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 	existingByModel := make(map[int64]struct{}, len(existing))
 	now := now()
 	priority := safecast.Int64ToInt32Saturating(channel.Priority)
+	managedToDelete := make([]int64, 0)
+	managedToUpdate := make([]int64, 0)
 	for _, row := range existing {
 		existingByModel[row.ModelPK] = struct{}{}
 		if row.Config != autoChannelModelMappingConfig {
 			continue
 		}
 		if _, ok := wanted[row.ModelPK]; !ok {
-			if err := tx.Where("id = ?", row.ID).Delete(&modelChannelMappingModel{}).Error; err != nil {
-				return err
-			}
-			continue
+			managedToDelete = append(managedToDelete, row.ID)
+		} else {
+			managedToUpdate = append(managedToUpdate, row.ID)
 		}
-		if err := tx.Model(&modelChannelMappingModel{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
+	}
+	if len(managedToDelete) > 0 {
+		if err := tx.Where("id IN ?", managedToDelete).Delete(&modelChannelMappingModel{}).Error; err != nil {
+			return err
+		}
+	}
+	if len(managedToUpdate) > 0 {
+		if err := tx.Model(&modelChannelMappingModel{}).Where("id IN ?", managedToUpdate).Updates(map[string]interface{}{
 			"enabled": true, "priority": priority, "updated_at": now,
 		}).Error; err != nil {
 			return err
 		}
 	}
 
+	missingMappings := make([]modelChannelMappingModel, 0, len(wanted))
 	for modelPK := range wanted {
 		if _, ok := existingByModel[modelPK]; ok {
 			continue
 		}
-		mapping := modelChannelMappingModel{
+		missingMappings = append(missingMappings, modelChannelMappingModel{
 			ChannelID: channel.ID, ModelPK: modelPK, Enabled: true,
 			Priority: priority, Config: autoChannelModelMappingConfig,
 			CreatedAt: now, UpdatedAt: now,
-		}
-		if err := tx.Create(&mapping).Error; err != nil {
+		})
+	}
+	if len(missingMappings) > 0 {
+		if err := tx.CreateInBatches(&missingMappings, len(missingMappings)).Error; err != nil {
 			return err
 		}
 	}
