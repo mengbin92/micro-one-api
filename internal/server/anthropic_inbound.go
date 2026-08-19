@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -405,9 +404,9 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 
 	// Read the original body so session_hash (absent from the typed struct)
 	// survives for session stickiness; then decode from those bytes.
-	originalBody, err := io.ReadAll(io.LimitReader(r.Body, 10*1024*1024))
+	originalBody, err := readRouteRequestBody(r)
 	if err != nil {
-		s.writeAnthropicError(w, http.StatusBadRequest, "failed to read request body")
+		s.writeRequestBodyError(w, r, err)
 		return
 	}
 	var anthropicReq anthropicInboundRequest

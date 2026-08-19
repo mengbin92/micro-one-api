@@ -7,6 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-19
+
+v0.22.0 是 v0.21.0 之后的 **MINOR 安全与可靠性版本**：完成渠道凭证加密写入与存量迁移、持久化服务 fail-fast、OpenAPI/前端契约门禁、批量映射与批量删除完整性、请求体分级限制和前端错误兜底；无 API/proto 破坏性变更、无自动数据库 schema 迁移。详见 [release-v0.22.0.md](docs/releases/release-v0.22.0.md)。
+
+### Added
+
+- 新增 `channel-credentials` dry-run / apply 工具，迁移输出只包含计数与记录 ID。
+- 新增 OpenAPI 生成校验、前端生成类型漂移校验和 Relay 执行边界 ADR。
+
+### Fixed
+
+- 禁止渠道凭证因缺少密钥而回退写入明文；channel / identity 持久化仓储缺少 DSN 时 fail-fast。
+- 修复渠道模型映射 N+1、禁用渠道批量删除静默遗漏、请求体超限语义和前端通知/路由错误兜底问题。
+
+### Changed
+
+- 持久化 channel-service 必须配置 16/24/32 字节 `CHANNEL_ENCRYPTION_KEY`；升级已有环境前需按发布说明完成存量凭证迁移。
+
 ## [0.21.0] - 2026-08-18
 
 v0.21.0 是 v0.20.5 之后的 **阶段收尾版本**：完成 v0.21 路线图定义的资金安全验证、真实 MySQL / PostgreSQL migration smoke、Release E2E 门禁和 P3-0 观察基线闭环。**无 API 破坏性变更、无新增数据库迁移、无 proto / 应用配置变更、无新增运行时功能**。详见 [release-v0.21.0.md](docs/releases/release-v0.21.0.md)。

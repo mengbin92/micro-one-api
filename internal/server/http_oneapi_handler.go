@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -62,9 +61,9 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024*1024))
+	body, err := readRouteRequestBody(r)
 	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "failed to read request body")
+		s.writeRequestBodyError(w, r, err)
 		return
 	}
 	model := extractRawModel(body)

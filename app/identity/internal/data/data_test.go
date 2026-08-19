@@ -2,10 +2,31 @@ package data
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"micro-one-api/app/identity/internal/biz"
 )
+
+func TestNewRepositoryFromEnvRequiresDSNUnlessMemoryModeEnabled(t *testing.T) {
+	t.Setenv("IDENTITY_SQL_DSN", "")
+	t.Setenv("SQL_DSN", "")
+	t.Setenv("IDENTITY_MEMORY_MODE", "")
+
+	_, err := NewRepositoryFromEnv("", "")
+	if err == nil || !strings.Contains(err.Error(), "IDENTITY_MEMORY_MODE=true") {
+		t.Fatalf("expected explicit memory mode error, got %v", err)
+	}
+
+	t.Setenv("IDENTITY_MEMORY_MODE", "true")
+	repo, err := NewRepositoryFromEnv("", "")
+	if err != nil {
+		t.Fatalf("NewRepositoryFromEnv() error = %v", err)
+	}
+	if repo.db != nil || repo.usersByID == nil {
+		t.Fatalf("expected memory repository, got db=%v users=%v", repo.db, repo.usersByID)
+	}
+}
 
 // newTestRepo creates an in-memory repository for testing.
 func newTestRepo() *Repository {

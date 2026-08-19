@@ -17,9 +17,11 @@ import (
 	"micro-one-api/pkg/safecast"
 	"micro-one-api/pkg/wildcard"
 	"micro-one-api/platform/database/xdb"
+	applogger "micro-one-api/platform/logging"
 	appcrypto "micro-one-api/platform/security/crypto"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -206,7 +208,14 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 		}
 	}
 	if dbDSN == "" {
-		return newMemoryRepository(), nil
+		if allowMemoryRepository() {
+			return newMemoryRepository(), nil
+		}
+		return nil, fmt.Errorf("channel database DSN is required; set CHANNEL_SQL_DSN/SQL_DSN or CHANNEL_MEMORY_MODE=true for development")
+	}
+	key, err := encryptionKeyFromEnv()
+	if err != nil {
+		return nil, err
 	}
 	// Schema isolation (Phase 2.4): effective schema comes from the wire
 	// argument, the per-service env var, or the global DATABASE_SCHEMA fallback.
@@ -225,13 +234,31 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 		if pingErr := rdb.Ping(context.Background()).Err(); pingErr != nil {
 			_ = rdb.Close()
 			rdb = nil
+			applogger.Log.Warn("channel-service Redis unavailable; continuing without Redis-backed features",
+				zap.String("component", "channel.data"), zap.Error(pingErr))
 		}
 	}
 	repo := &Repository{db: db, redis: rdb}
-	if key := os.Getenv("CHANNEL_ENCRYPTION_KEY"); key != "" {
-		repo.encKey = []byte(key)
-	}
+	repo.encKey = key
 	return repo, nil
+}
+
+func allowMemoryRepository() bool {
+	allowed, _ := strconv.ParseBool(os.Getenv("CHANNEL_MEMORY_MODE"))
+	return allowed
+}
+
+func encryptionKeyFromEnv() ([]byte, error) {
+	key := os.Getenv("CHANNEL_ENCRYPTION_KEY")
+	if key == "" {
+		return nil, fmt.Errorf("CHANNEL_ENCRYPTION_KEY is required for the persistent channel repository")
+	}
+	switch len(key) {
+	case 16, 24, 32:
+		return []byte(key), nil
+	default:
+		return nil, fmt.Errorf("CHANNEL_ENCRYPTION_KEY must be 16, 24, or 32 bytes")
+	}
 }
 
 func newMemoryRepository() *Repository {
@@ -1023,7 +1050,10 @@ func (r *Repository) listOAuthRefreshCandidatesDB(ctx context.Context, within ti
 
 func (r *Repository) createSubscriptionAccountDB(ctx context.Context, account *biz.SubscriptionAccount) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		model := r.subscriptionAccountBizToModel(account)
+		model, err := r.subscriptionAccountBizToModel(account)
+		if err != nil {
+			return err
+		}
 		if err := tx.Create(model).Error; err != nil {
 			return err
 		}
@@ -1034,7 +1064,10 @@ func (r *Repository) createSubscriptionAccountDB(ctx context.Context, account *b
 
 func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *biz.SubscriptionAccount) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		model := r.subscriptionAccountBizToModel(account)
+		model, err := r.subscriptionAccountBizToModel(account)
+		if err != nil {
+			return err
+		}
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
 			"name":                      model.Name,
 			"platform":                  model.Platform,
@@ -1880,7 +1913,10 @@ func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, k
 
 func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		model := r.channelToModel(channel)
+		model, err := r.channelToModel(channel)
+		if err != nil {
+			return err
+		}
 		if err := tx.Create(model).Error; err != nil {
 			return err
 		}
@@ -1894,7 +1930,10 @@ func (r *Repository) createChannelDB(ctx context.Context, channel *biz.Channel) 
 
 func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		model := r.channelToModel(channel)
+		model, err := r.channelToModel(channel)
+		if err != nil {
+			return err
+		}
 		if err := tx.Model(&channelModel{}).Where("id = ?", channel.ID).Updates(map[string]interface{}{
 			"name":                                 model.Name,
 			"base_url":                             model.BaseURL,
@@ -2001,16 +2040,61 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 		return nil
 	}
 
-	wanted := make(map[int64]struct{}, len(channel.Models))
+	wantedCanonical := make(map[string]struct{}, len(channel.Models))
 	for _, raw := range channel.Models {
 		raw = strings.TrimSpace(raw)
 		if raw == "" || strings.ContainsAny(raw, "*?") {
 			continue
 		}
-		pk, err := ensureModelRegistryRowTx(tx, biz.NormalizeModelID(raw))
-		if err != nil {
+		wantedCanonical[biz.NormalizeModelID(raw)] = struct{}{}
+	}
+
+	canonicalIDs := make([]string, 0, len(wantedCanonical))
+	for canonicalID := range wantedCanonical {
+		canonicalIDs = append(canonicalIDs, canonicalID)
+	}
+	registeredByCanonical := make(map[string]int64, len(canonicalIDs))
+	if len(canonicalIDs) > 0 {
+		var registered []modelModel
+		if err := tx.Where("LOWER(model_id) IN ?", canonicalIDs).Find(&registered).Error; err != nil {
 			return err
 		}
+		for _, model := range registered {
+			registeredByCanonical[biz.NormalizeModelID(model.ModelID)] = model.ID
+		}
+
+		missing := make([]modelModel, 0, len(canonicalIDs)-len(registeredByCanonical))
+		for _, canonicalID := range canonicalIDs {
+			if _, ok := registeredByCanonical[canonicalID]; ok {
+				continue
+			}
+			now := now()
+			missing = append(missing, modelModel{
+				ModelID: canonicalID, DisplayName: canonicalID,
+				Provider: providerForModelID(canonicalID), ModelType: "chat",
+				Status: biz.ModelStatusEnabled, IsPublic: true,
+				CreatedAt: now, UpdatedAt: now,
+			})
+		}
+		if len(missing) > 0 {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&missing, len(missing)).Error; err != nil {
+				return err
+			}
+			registeredByCanonical = make(map[string]int64, len(canonicalIDs))
+			registered = nil
+			if err := tx.Where("LOWER(model_id) IN ?", canonicalIDs).Find(&registered).Error; err != nil {
+				return err
+			}
+			for _, model := range registered {
+				registeredByCanonical[biz.NormalizeModelID(model.ModelID)] = model.ID
+			}
+			if len(registeredByCanonical) != len(canonicalIDs) {
+				return fmt.Errorf("resolve channel model registry rows: got %d of %d", len(registeredByCanonical), len(canonicalIDs))
+			}
+		}
+	}
+	wanted := make(map[int64]struct{}, len(registeredByCanonical))
+	for _, pk := range registeredByCanonical {
 		wanted[pk] = struct{}{}
 	}
 
@@ -2021,34 +2105,45 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 	existingByModel := make(map[int64]struct{}, len(existing))
 	now := now()
 	priority := safecast.Int64ToInt32Saturating(channel.Priority)
+	managedToDelete := make([]int64, 0)
+	managedToUpdate := make([]int64, 0)
 	for _, row := range existing {
 		existingByModel[row.ModelPK] = struct{}{}
 		if row.Config != autoChannelModelMappingConfig {
 			continue
 		}
 		if _, ok := wanted[row.ModelPK]; !ok {
-			if err := tx.Where("id = ?", row.ID).Delete(&modelChannelMappingModel{}).Error; err != nil {
-				return err
-			}
-			continue
+			managedToDelete = append(managedToDelete, row.ID)
+		} else {
+			managedToUpdate = append(managedToUpdate, row.ID)
 		}
-		if err := tx.Model(&modelChannelMappingModel{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
+	}
+	if len(managedToDelete) > 0 {
+		if err := tx.Where("id IN ?", managedToDelete).Delete(&modelChannelMappingModel{}).Error; err != nil {
+			return err
+		}
+	}
+	if len(managedToUpdate) > 0 {
+		if err := tx.Model(&modelChannelMappingModel{}).Where("id IN ?", managedToUpdate).Updates(map[string]interface{}{
 			"enabled": true, "priority": priority, "updated_at": now,
 		}).Error; err != nil {
 			return err
 		}
 	}
 
+	missingMappings := make([]modelChannelMappingModel, 0, len(wanted))
 	for modelPK := range wanted {
 		if _, ok := existingByModel[modelPK]; ok {
 			continue
 		}
-		mapping := modelChannelMappingModel{
+		missingMappings = append(missingMappings, modelChannelMappingModel{
 			ChannelID: channel.ID, ModelPK: modelPK, Enabled: true,
 			Priority: priority, Config: autoChannelModelMappingConfig,
 			CreatedAt: now, UpdatedAt: now,
-		}
-		if err := tx.Create(&mapping).Error; err != nil {
+		})
+	}
+	if len(missingMappings) > 0 {
+		if err := tx.CreateInBatches(&missingMappings, len(missingMappings)).Error; err != nil {
 			return err
 		}
 	}
@@ -2143,17 +2238,21 @@ func (r *Repository) syncSubscriptionAccountAbilitiesTx(tx *gorm.DB, account *bi
 	return tx.Create(&rows).Error
 }
 
-// encryptKey encrypts an API key for storage. Returns plaintext if no encryption key is set.
-func (r *Repository) encryptKey(key string) string {
-	if r.encKey == nil || key == "" {
-		return key
+// encryptKey encrypts a credential for storage. Persistent repositories always
+// have an encryption key; returning an error prevents accidental plaintext
+// writes when the key is invalid or encryption fails.
+func (r *Repository) encryptKey(key string) (string, error) {
+	if key == "" {
+		return "", nil
+	}
+	if len(r.encKey) == 0 {
+		return "", fmt.Errorf("channel credential encryption key is not configured")
 	}
 	encrypted, err := appcrypto.Encrypt(key, r.encKey)
 	if err != nil {
-		// Log error but return plaintext to avoid data loss
-		return key
+		return "", fmt.Errorf("encrypt channel credential: %w", err)
 	}
-	return encrypted
+	return encrypted, nil
 }
 
 // decryptKey decrypts an API key from storage. Returns as-is if no encryption key is set.
@@ -2211,7 +2310,11 @@ func (r *Repository) modelToChannel(m *channelModel) *biz.Channel {
 	}
 }
 
-func (r *Repository) channelToModel(ch *biz.Channel) *channelModel {
+func (r *Repository) channelToModel(ch *biz.Channel) (*channelModel, error) {
+	key, err := r.encryptKey(ch.Key)
+	if err != nil {
+		return nil, err
+	}
 	return &channelModel{
 		ID:                                ch.ID,
 		Type:                              ch.Type,
@@ -2238,11 +2341,11 @@ func (r *Repository) channelToModel(ch *biz.Channel) *channelModel {
 		UsedQuota:                         ch.UsedQuota,
 		ModelMapping:                      stringPtr(ch.ModelMapping),
 		Priority:                          int64Ptr(ch.Priority),
-		Key:                               r.encryptKey(ch.Key),
+		Key:                               key,
 		Config:                            "{}",
 		SystemPrompt:                      stringPtr(ch.SystemPrompt),
 		RestrictModels:                    ch.RestrictModels,
-	}
+	}, nil
 }
 
 func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) *biz.SubscriptionAccount {
@@ -2295,7 +2398,15 @@ func (r *Repository) subscriptionAccountModelToBiz(m *subscriptionAccountModel) 
 	}
 }
 
-func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) *subscriptionAccountModel {
+func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) (*subscriptionAccountModel, error) {
+	accessToken, err := r.encryptKey(a.AccessToken)
+	if err != nil {
+		return nil, err
+	}
+	refreshToken, err := r.encryptKey(a.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
 	return &subscriptionAccountModel{
 		ID:                     a.ID,
 		Name:                   a.Name,
@@ -2307,8 +2418,8 @@ func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) *
 		Priority:               a.Priority,
 		Weight:                 a.Weight,
 		BaseURL:                strPtr(a.BaseURL),
-		AccessToken:            stringPtr(r.encryptKey(a.AccessToken)),
-		RefreshToken:           stringPtr(r.encryptKey(a.RefreshToken)),
+		AccessToken:            stringPtr(accessToken),
+		RefreshToken:           stringPtr(refreshToken),
 		ExpiresAt:              a.ExpiresAt,
 		AccountID:              a.AccountID,
 		Fingerprint:            stringPtr(a.Fingerprint),
@@ -2337,7 +2448,7 @@ func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) *
 		QuotaResetStrategy:     a.EffectiveQuotaResetStrategy(),
 		QuotaTimezone:          a.EffectiveQuotaTimezone(),
 		ModelMapping:           a.ModelMapping,
-	}
+	}, nil
 }
 
 func applySubscriptionAccountQuotaUsage(account *biz.SubscriptionAccount, costUSD float64, occurredAt time.Time) {

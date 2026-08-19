@@ -6,6 +6,7 @@
 #
 #   cd deployments/docker-compose
 #   cp .env.postgres.example .env
+#   # edit .env (JWT_SECRET_KEY, CHANNEL_ENCRYPTION_KEY, SERVICE_TOKEN, ADMIN_TOKEN, REDIS_PASSWORD)
 #   docker compose -f docker-compose.postgres.yml --env-file .env up -d
 
 services:
@@ -116,6 +117,7 @@ services:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
+      - CHANNEL_ENCRYPTION_KEY=${CHANNEL_ENCRYPTION_KEY:?CHANNEL_ENCRYPTION_KEY is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - LOG_LEVEL=info

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -60,9 +59,9 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024*1024))
+	body, err := readRouteRequestBody(r)
 	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "failed to read request body")
+		s.writeRequestBodyError(w, r, err)
 		return
 	}
 
@@ -422,9 +421,9 @@ func (s *HTTPServer) handleResponsesResource(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024*1024))
+	body, err := readRouteRequestBody(r)
 	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "failed to read request body")
+		s.writeRequestBodyError(w, r, err)
 		return
 	}
 	s.forwardResponsesToStoredRoute(w, r, upstreamPath, body, token, route, false)

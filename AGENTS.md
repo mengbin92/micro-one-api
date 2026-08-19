@@ -262,6 +262,11 @@ ssh $DEPLOY_REMOTE_SERVER "cd $DEPLOY_REMOTE_DIR/docker-compose && docker compos
 - Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore(deps):`,
   `docs:`, `test:`. Regenerated files belong in the same commit as
   their source.
+- Non-trivial commits must carry a body describing root cause + impact
+  (see `cccbdf1` / `254970a` for the expected style). Title-only is only
+  acceptable for merges and trivial commits (version bumps,
+  changelog/release-notes-only). Enforced in CI by
+  `scripts/check-commit-bodies.sh`.
 - Never commit real credentials in `configs/config.yaml`.
 
 ## Releasing

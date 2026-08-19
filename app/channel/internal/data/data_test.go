@@ -2,18 +2,110 @@ package data
 
 import (
 	"context"
+	"encoding/base64"
 	"math"
 	"sync"
 	"testing"
 	"time"
 
 	"micro-one-api/app/channel/internal/biz"
+	appcrypto "micro-one-api/platform/security/crypto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestNewRepositoryFromEnvRequiresDSNUnlessMemoryModeEnabled(t *testing.T) {
+	t.Setenv("CHANNEL_SQL_DSN", "")
+	t.Setenv("SQL_DSN", "")
+	t.Setenv("CHANNEL_MEMORY_MODE", "")
+
+	_, err := NewRepositoryFromEnv("", "")
+	require.ErrorContains(t, err, "CHANNEL_MEMORY_MODE=true")
+
+	t.Setenv("CHANNEL_MEMORY_MODE", "true")
+	repo, err := NewRepositoryFromEnv("", "")
+	require.NoError(t, err)
+	require.Nil(t, repo.db)
+}
+
+func TestEncryptionKeyFromEnvRequiresAESKeyLength(t *testing.T) {
+	t.Setenv("CHANNEL_ENCRYPTION_KEY", "short")
+	_, err := encryptionKeyFromEnv()
+	require.ErrorContains(t, err, "16, 24, or 32 bytes")
+
+	t.Setenv("CHANNEL_ENCRYPTION_KEY", "01234567890123456789012345678901")
+	key, err := encryptionKeyFromEnv()
+	require.NoError(t, err)
+	require.Len(t, key, 32)
+}
+
+func TestEncryptKeyNeverFallsBackToPlaintext(t *testing.T) {
+	_, err := (&Repository{}).encryptKey("provider-secret")
+	require.ErrorContains(t, err, "encryption key is not configured")
+
+	repo := &Repository{encKey: []byte("01234567890123456789012345678901")}
+	encrypted, err := repo.encryptKey("provider-secret")
+	require.NoError(t, err)
+	require.NotEqual(t, "provider-secret", encrypted)
+	require.Equal(t, "provider-secret", repo.decryptKey(encrypted))
+}
+
+func TestCreateChannelRejectsMissingEncryptionKey(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	repo.encKey = nil
+
+	err := repo.CreateChannel(context.Background(), &biz.Channel{
+		Name:   "unprotected",
+		Key:    "provider-secret",
+		Models: []string{"gpt-4o"},
+	})
+	require.ErrorContains(t, err, "encryption key is not configured")
+
+	var count int64
+	require.NoError(t, repo.db.Model(&channelModel{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestMigrateCredentialsDryRunAndApplyIsIdempotent(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	repo.encKey = []byte("01234567890123456789012345678901")
+	encrypted, err := appcrypto.Encrypt("already-protected", repo.encKey)
+	require.NoError(t, err)
+	indeterminate := base64.StdEncoding.EncodeToString(make([]byte, 28))
+	require.NoError(t, repo.db.Create(&channelCredentialRow{ID: 1, Key: "plain-channel"}).Error)
+	require.NoError(t, repo.db.Create(&channelCredentialRow{ID: 2, Key: encrypted}).Error)
+	require.NoError(t, repo.db.Create(&channelCredentialRow{ID: 3, Key: indeterminate}).Error)
+	require.NoError(t, repo.db.Exec("INSERT INTO subscription_accounts (id, name, platform, access_token, refresh_token) VALUES (?, ?, ?, ?, ?)", 1, "one", "codex", "plain-access", encrypted).Error)
+
+	report, err := repo.MigrateCredentials(context.Background(), true)
+	require.NoError(t, err)
+	assert.Equal(t, 3, report.Channels.Scanned)
+	assert.Equal(t, 1, report.Channels.Encrypted)
+	assert.Equal(t, 1, report.Channels.SuspectedPlaintext)
+	assert.Equal(t, 1, report.Channels.Indeterminate)
+	assert.Equal(t, 2, report.SubscriptionAccounts.Scanned)
+	assert.Equal(t, 1, report.SubscriptionAccounts.Encrypted)
+	assert.Equal(t, 1, report.SubscriptionAccounts.SuspectedPlaintext)
+	assert.Zero(t, report.Channels.Rewritten)
+	assert.Len(t, report.SuspectedPlaintext, 2)
+	assert.Len(t, report.Indeterminate, 1)
+
+	report, err = repo.MigrateCredentials(context.Background(), false)
+	require.NoError(t, err)
+	assert.Equal(t, 1, report.Channels.Rewritten)
+	assert.Equal(t, 1, report.SubscriptionAccounts.Rewritten)
+
+	report, err = repo.MigrateCredentials(context.Background(), true)
+	require.NoError(t, err)
+	assert.Zero(t, report.Channels.SuspectedPlaintext)
+	assert.Zero(t, report.SubscriptionAccounts.SuspectedPlaintext)
+	assert.Equal(t, 2, report.Channels.Encrypted)
+	assert.Equal(t, 2, report.SubscriptionAccounts.Encrypted)
+	assert.Equal(t, 1, report.Channels.Indeterminate)
+}
 
 // setupChannelTestDB creates an in-memory sqlite DB matching the
 // `channels` and `abilities` schemas relevant to repo behaviour.
@@ -224,7 +316,7 @@ func setupChannelTestDB(t *testing.T) *Repository {
 		ON model_channel_mapping(channel_id, model_id)
 	`).Error)
 
-	return &Repository{db: db}
+	return &Repository{db: db, encKey: []byte("01234567890123456789012345678901")}
 }
 
 // loadAbilities returns all rows in abilities for diagnostic + assertion use.
@@ -1302,6 +1394,23 @@ func TestSyncChannelModelMappings_UpdateRemovesOnlyOwnedMappings(t *testing.T) {
 	assert.True(t, gotIDs["gpt-4o"])
 	assert.True(t, gotIDs["claude-opus-4-7"])
 	assert.False(t, gotIDs["glm-4.6"])
+}
+
+func TestSyncChannelModelMappings_EmptyModelsRemovesManagedMappings(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	ctx := context.Background()
+	ch := &biz.Channel{
+		Name: "empty-models", Type: 1, Status: biz.ChannelStatusEnabled,
+		Group: "default", Models: []string{"gpt-4o", "claude-sonnet-4-6"},
+	}
+	require.NoError(t, repo.CreateChannel(ctx, ch))
+
+	ch.Models = nil
+	require.NoError(t, repo.UpdateChannel(ctx, ch))
+
+	var count int64
+	require.NoError(t, repo.db.Model(&modelChannelMappingModel{}).Where("channel_id = ?", ch.ID).Count(&count).Error)
+	assert.Zero(t, count)
 }
 
 // Wildcards are routing rules, not public registry model IDs.

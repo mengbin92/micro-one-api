@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.21.0 发布公告](./docs/releases/release-v0.21.0.md)（v0.21 阶段稳定性与质量门禁收尾） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.21.0)
+> 📣 **最新发布**：[v0.22.0 发布公告](./docs/releases/release-v0.22.0.md)（渠道凭证加密与安全/契约可靠性收口） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.22.0
+
+v0.22.0 是 v0.21.0 之后的 **MINOR 安全与可靠性版本**：完成渠道凭证 AES-GCM 加密写入、存量凭证 dry-run / 幂等迁移、channel / identity 启动 fail-fast、OpenAPI/前端类型契约门禁、渠道批量映射、禁用渠道完整清理、请求体分级限制和前端错误兜底。**无 API/proto 破坏性变更、无自动数据库 schema 迁移**；已有环境升级前必须配置 `CHANNEL_ENCRYPTION_KEY`，先备份数据库并执行 [凭证迁移工具](./docs/deployment.md#82-渠道凭证加密存量迁移v022)，确认 `suspected_plaintext=0` 后再滚动重启 channel-service。详见 [docs/releases/release-v0.22.0.md](./docs/releases/release-v0.22.0.md)。
 
 ### 升级到 v0.21.0
 

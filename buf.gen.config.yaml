@@ -1,0 +1,13 @@
+version: v2
+plugins:
+  # Config generation must not invoke protoc-gen-openapi: the config-only
+  # target has no API paths and would otherwise overwrite the root spec.
+  - local: protoc-gen-go
+    out: .
+    opt: paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: .
+    opt: paths=source_relative
+  - local: protoc-gen-go-http
+    out: .
+    opt: paths=source_relative

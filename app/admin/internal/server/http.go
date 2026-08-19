@@ -2649,27 +2649,42 @@ func handleOneAPIDeleteDisabledChannels(w http.ResponseWriter, r *http.Request, 
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	resp, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
-		Page:     1,
-		PageSize: 1000,
-		Status:   2,
-	})
-	if err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), nil))
-		return
-	}
 	deleted := 0
-	for _, channel := range resp.GetChannels() {
-		delResp, delErr := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channel.GetId()})
-		if delErr != nil {
-			writeJSON(w, http.StatusOK, apiResponse(false, delErr.Error(), deleted))
+	deletedIDs := make(map[int64]struct{})
+	for {
+		// Always consume page one: deleting its rows causes later rows to shift
+		// into the same page, so no disabled channel can be skipped.
+		resp, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{
+			Page:     1,
+			PageSize: 1000,
+			Status:   2,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(err), deleted))
 			return
 		}
-		if delResp != nil && !delResp.GetSuccess() {
-			writeJSON(w, http.StatusOK, apiResponse(false, delResp.GetMessage(), deleted))
-			return
+		channels := resp.GetChannels()
+		if len(channels) == 0 {
+			break
 		}
-		deleted++
+		for _, channel := range channels {
+			channelID := channel.GetId()
+			if _, alreadyDeleted := deletedIDs[channelID]; alreadyDeleted {
+				writeJSON(w, http.StatusOK, apiResponse(false, "disabled channel cleanup made no progress", deleted))
+				return
+			}
+			delResp, delErr := svc.DeleteChannel(r.Context(), &adminv1.AdminDeleteChannelRequest{ChannelId: channelID})
+			if delErr != nil {
+				writeJSON(w, http.StatusOK, apiResponse(false, sanitizeAdminError(delErr), deleted))
+				return
+			}
+			if delResp != nil && !delResp.GetSuccess() {
+				writeJSON(w, http.StatusOK, apiResponse(false, delResp.GetMessage(), deleted))
+				return
+			}
+			deletedIDs[channelID] = struct{}{}
+			deleted++
+		}
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", deleted))
 }

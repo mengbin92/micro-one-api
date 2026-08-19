@@ -132,8 +132,9 @@ plugins:
 - 无 `inputs`：buf 自动用 `buf.yaml` 的 module 列表，全仓 proto 一次性生成。
 - `protoc-gen-*` 是**生成器二进制名**（由 `make init` 预装），不是 `protoc` 编译器。
   全仓不依赖系统 `protoc`。
-- `buf.gen.config.yaml` 已删除：单 `buf.gen.yaml` 覆盖 api+conf，`make config` 用
-  `buf generate --path` 限制只生成 conf 部分（见 §2.3）。
+- v0.22 P1 恢复 `buf.gen.config.yaml` 作为 config-only 模板：它复用同一套 Go/HTTP
+  生成插件但排除 OpenAPI，避免 `make config` 用空 proto 路径覆盖根规范；API 仍使用
+  `buf.gen.yaml` 全量生成。
 
 ### 2.3 Makefile 改造
 
@@ -514,7 +515,8 @@ v3 PR 出问题能立刻 `git revert` 回 v2（buf 与 v2 兼容，buf 配置不
 
 ### buf 迁移验收（2026-07-20 彻底方案实测）
 
-- [x] `buf.yaml` / `buf.gen.yaml` 存在（单文件覆盖全仓，`buf.gen.config.yaml` 已删）
+- [x] `buf.yaml` / `buf.gen.yaml` 存在，另有不含 OpenAPI 插件的 `buf.gen.config.yaml`
+      供 `make config` 使用
 - [x] `buf lint`（MINIMAL）通过 —— **无 `except`**，module root=`.` 让
       `package api.<domain>.v1` 匹配目录 `api/<domain>/v1`；conf 重命名+改 package 后
       也匹配各自目录 —— 2026-07-20 实测 `buf lint` exit 0

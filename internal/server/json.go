@@ -1,16 +1,26 @@
 package server
 
 import (
+	"errors"
 	"io"
+	"net/http"
 
 	"micro-one-api/pkg/jsonx"
 )
 
 func decodeJSON(r io.Reader, v interface{}) error {
-	limitedReader := io.LimitReader(r, 10*1024*1024) // 10MB limit
+	const maxSize = jsonRequestBodyLimit
+	limitedReader := io.LimitReader(r, maxSize+1)
 	data, err := io.ReadAll(limitedReader)
 	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return errRequestBodyTooLarge
+		}
 		return err
+	}
+	if int64(len(data)) > maxSize {
+		return errRequestBodyTooLarge
 	}
 	return jsonx.Unmarshal(data, v)
 }
