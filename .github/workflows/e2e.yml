@@ -117,11 +117,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # playwright.config.ts uses channel: 'chrome' for both projects, which
-      # requires Google Chrome — installing chromium would fail at runtime
-      # with "Executable doesn't exist".
+      # playwright.config.ts uses channel: 'chrome' for both projects. The
+      # GitHub-hosted Ubuntu runner already provides Google Chrome; avoid
+      # --with-deps here because its APT phase can hang on an Ubuntu mirror
+      # and block the release gate before the browser test starts.
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chrome
+        run: npx playwright install chrome
 
       - name: Run Playwright admin smoke
         run: npx playwright test
