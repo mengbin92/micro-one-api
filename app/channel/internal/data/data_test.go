@@ -2,12 +2,14 @@ package data
 
 import (
 	"context"
+	"encoding/base64"
 	"math"
 	"sync"
 	"testing"
 	"time"
 
 	"micro-one-api/app/channel/internal/biz"
+	appcrypto "micro-one-api/platform/security/crypto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,6 +67,44 @@ func TestCreateChannelRejectsMissingEncryptionKey(t *testing.T) {
 	var count int64
 	require.NoError(t, repo.db.Model(&channelModel{}).Count(&count).Error)
 	assert.Zero(t, count)
+}
+
+func TestMigrateCredentialsDryRunAndApplyIsIdempotent(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	repo.encKey = []byte("01234567890123456789012345678901")
+	encrypted, err := appcrypto.Encrypt("already-protected", repo.encKey)
+	require.NoError(t, err)
+	indeterminate := base64.StdEncoding.EncodeToString(make([]byte, 28))
+	require.NoError(t, repo.db.Create(&channelCredentialRow{ID: 1, Key: "plain-channel"}).Error)
+	require.NoError(t, repo.db.Create(&channelCredentialRow{ID: 2, Key: encrypted}).Error)
+	require.NoError(t, repo.db.Create(&channelCredentialRow{ID: 3, Key: indeterminate}).Error)
+	require.NoError(t, repo.db.Exec("INSERT INTO subscription_accounts (id, name, platform, access_token, refresh_token) VALUES (?, ?, ?, ?, ?)", 1, "one", "codex", "plain-access", encrypted).Error)
+
+	report, err := repo.MigrateCredentials(context.Background(), true)
+	require.NoError(t, err)
+	assert.Equal(t, 3, report.Channels.Scanned)
+	assert.Equal(t, 1, report.Channels.Encrypted)
+	assert.Equal(t, 1, report.Channels.SuspectedPlaintext)
+	assert.Equal(t, 1, report.Channels.Indeterminate)
+	assert.Equal(t, 2, report.SubscriptionAccounts.Scanned)
+	assert.Equal(t, 1, report.SubscriptionAccounts.Encrypted)
+	assert.Equal(t, 1, report.SubscriptionAccounts.SuspectedPlaintext)
+	assert.Zero(t, report.Channels.Rewritten)
+	assert.Len(t, report.SuspectedPlaintext, 2)
+	assert.Len(t, report.Indeterminate, 1)
+
+	report, err = repo.MigrateCredentials(context.Background(), false)
+	require.NoError(t, err)
+	assert.Equal(t, 1, report.Channels.Rewritten)
+	assert.Equal(t, 1, report.SubscriptionAccounts.Rewritten)
+
+	report, err = repo.MigrateCredentials(context.Background(), true)
+	require.NoError(t, err)
+	assert.Zero(t, report.Channels.SuspectedPlaintext)
+	assert.Zero(t, report.SubscriptionAccounts.SuspectedPlaintext)
+	assert.Equal(t, 2, report.Channels.Encrypted)
+	assert.Equal(t, 2, report.SubscriptionAccounts.Encrypted)
+	assert.Equal(t, 1, report.Channels.Indeterminate)
 }
 
 // setupChannelTestDB creates an in-memory sqlite DB matching the

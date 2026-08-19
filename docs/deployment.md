@@ -50,7 +50,8 @@ Secret/ConfigMap 名称、引用 key、创建命令或文件路径变更时，�
 cd deployments/docker-compose
 cp .env.example .env
 # 编辑 .env，至少替换 MYSQL_ROOT_PASSWORD、DATABASE_DSN、
-# REDIS_PASSWORD、JWT_SECRET_KEY、SERVICE_TOKEN 和 ADMIN_TOKEN。
+# REDIS_PASSWORD、JWT_SECRET_KEY、CHANNEL_ENCRYPTION_KEY、
+# SERVICE_TOKEN 和 ADMIN_TOKEN。
 # DATABASE_DSN 中的 MySQL 密码必须与 MYSQL_ROOT_PASSWORD 相同。
 
 # 部署前先验证变量展开和 Compose 结构
@@ -612,6 +613,33 @@ docker compose --env-file .env up -d --build
 
 `-baseline phase1_indexes` 只适用于已经具备这些历史表、列和索引的旧数据库；它不会补建缺失结构。若旧初始化曾失败、无法确认 schema 完整性，禁止直接 baseline，应先从备份恢复、逐项修复缺失迁移，或迁移到按本文创建的全新数据库。全新 v0.7.2 环境不需要指定 baseline，一次性 `migrate` 会执行所有编号迁移和 `phase1_indexes.sql`，并继续排除可选的 `phase3_partitioning.sql`。
 
+### 8.2 渠道凭证加密存量迁移（v0.22）
+
+v0.22 起，持久化 channel-service 必须配置 `CHANNEL_ENCRYPTION_KEY`（16、24 或
+32 字节）。新写入的渠道 key、订阅账号 access token 和 refresh token 会使用
+AES-GCM 加密；旧版本留下的明文凭证需要在启用强制启动校验前迁移。
+
+迁移前先完成数据库备份，并在能访问目标数据库的发布工作区执行默认 dry-run：
+
+```bash
+export DATABASE_DRIVER=mysql
+export CHANNEL_SQL_DSN="$DATABASE_DSN"
+export CHANNEL_ENCRYPTION_KEY='<由密钥管理系统提供的 16/24/32 字节密钥>'
+go run ./app/channel/cmd/channel-credentials
+```
+
+dry-run 只输出分类计数和记录 ID，不输出凭证内容。确认记录范围和备份可恢复后，
+显式执行写入：
+
+```bash
+go run ./app/channel/cmd/channel-credentials -apply
+```
+
+重复执行是幂等的：已能用当前密钥解密的记录不会再次写入；疑似使用其他密钥加密的
+记录会列为 `indeterminate`，必须先确认密钥，工具不会覆盖它们。执行后再次运行
+dry-run，`suspected_plaintext` 应为 0，`indeterminate` 应已按运维记录处理，再滚动
+重启 channel-service。
+
 ## 9. 多数据库方言部署
 
 Micro-One-API 在运行时支持 MySQL、SQLite3 和 Postgres 三种数据库方言。方言由配置项 `data.database.driver`（或环境变量 `DATABASE_DRIVER`）选择；DSN 由 `data.database.source`（或 `DATABASE_DSN`）提供。
@@ -631,7 +659,8 @@ Lite 模式去掉了 MySQL 容器和 `docker-entrypoint-initdb.d` 路径，数�
 ```bash
 cd deployments/docker-compose
 cp .env.lite.example .env
-# 编辑 .env：JWT_SECRET_KEY / SERVICE_TOKEN / ADMIN_TOKEN / REDIS_PASSWORD
+# 编辑 .env：JWT_SECRET_KEY / CHANNEL_ENCRYPTION_KEY / SERVICE_TOKEN /
+# ADMIN_TOKEN / REDIS_PASSWORD
 
 # 首次启动会自动跑 migrations/sqlite 下的 baseline（一次性 migrate service）
 docker compose -f docker-compose.lite.yml --env-file .env up -d
@@ -647,7 +676,8 @@ docker compose -f docker-compose.lite.yml logs migrate
 ```bash
 cd deployments/docker-compose
 cp .env.postgres.example .env
-# 编辑 .env：POSTGRES_PASSWORD / JWT_SECRET_KEY / SERVICE_TOKEN / ADMIN_TOKEN / REDIS_PASSWORD
+# 编辑 .env：POSTGRES_PASSWORD / JWT_SECRET_KEY / CHANNEL_ENCRYPTION_KEY /
+# SERVICE_TOKEN / ADMIN_TOKEN / REDIS_PASSWORD
 
 docker compose -f docker-compose.postgres.yml --env-file .env up -d
 ```
