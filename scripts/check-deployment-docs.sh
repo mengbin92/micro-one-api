@@ -25,6 +25,20 @@ validate_compose() {
     (
         cd "$COMPOSE_DIR"
         docker compose --env-file "$env_file" "$@" config --quiet
+        docker compose --env-file "$env_file" "$@" config --format json | python3 -c '
+import json
+import sys
+
+config = json.load(sys.stdin)
+services = config["services"]
+channel_env = services["channel-service"].get("environment", {})
+identity_env = services["identity-service"].get("environment", {})
+key = channel_env.get("CHANNEL_ENCRYPTION_KEY", "")
+if len(key.encode()) not in (16, 24, 32):
+    raise SystemExit("channel-service CHANNEL_ENCRYPTION_KEY must be 16, 24, or 32 bytes")
+if "CHANNEL_ENCRYPTION_KEY" in identity_env:
+    raise SystemExit("CHANNEL_ENCRYPTION_KEY must not be injected into identity-service")
+'
     )
 }
 

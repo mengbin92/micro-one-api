@@ -55,6 +55,12 @@ func newAuditAuditor() *audit.Auditor {
 }
 
 func newRepo(cfg *Config) (*data.Repository, error) {
+
+	if !usesExplicitIdentityMemoryRepository(cfg) {
+		if err := requireIdentitySecrets(); err != nil {
+			return nil, err
+		}
+	}
 	return data.NewRepositoryFromEnv(cfg.Bootstrap.Data.Database.Driver, cfg.Bootstrap.Data.Database.Source, cfg.Bootstrap.Data.Database.Schema)
 }
 

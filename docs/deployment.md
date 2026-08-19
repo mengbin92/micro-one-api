@@ -136,9 +136,10 @@ kubectl create secret generic redis-credentials \
   --from-literal=password='replace-with-the-redis-password' \
   -n one-api --dry-run=client -o yaml | kubectl apply -f -
 
-# JWT 签名密钥和管理端共享令牌
+# JWT 签名密钥、渠道凭证加密密钥和管理端共享令牌
 kubectl create secret generic app-secrets \
   --from-literal=jwt-secret-key='replace-with-at-least-32-random-bytes' \
+  --from-literal=channel-encryption-key='change-me-channel-key-32-bytes!!' \
   --from-literal=admin-token='replace-with-a-long-random-token' \
   -n one-api --dry-run=client -o yaml | kubectl apply -f -
 
@@ -164,6 +165,8 @@ kubectl create secret generic service-token-secret \
   --from-literal=token='replace-with-a-long-random-token' \
   -n one-api --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+示例中的 `channel-encryption-key` 恰好为 32 字节，仅用于展示格式。生产环境必须替换为独立随机值；已有加密数据时必须沿用原密钥，否则历史凭证无法解密。
 
 所有上述 Secret 都是生产必需项，清单不会以 `optional: true` 忽略缺失值。不要把 Secret 内容写入 YAML 或提交到仓库。
 
@@ -269,6 +272,9 @@ kubectl port-forward -n one-api service/relay-gateway 8080:80
 | `LOG_LEVEL` | 日志级别 | `info` |
 | `LOG_FORMAT` | 日志格式 (json/text) | `json` |
 | `SERVICE_TOKEN` | 服务间 HTTP 调用令牌；admin-api 访问 log-service 详情与清理接口时使用 | - |
+| `CHANNEL_ENCRYPTION_KEY` | channel-service 持久化渠道 key 和订阅账号 token 的 AES 密钥；必须为 16 / 24 / 32 字节 | - |
+| `CHANNEL_MEMORY_MODE` | 允许 channel-service 在无数据库 DSN 时使用内存仓储；仅用于开发/测试 | `false` |
+| `IDENTITY_MEMORY_MODE` | 允许 identity-service 在无数据库 DSN 时使用内存仓储；仅用于开发/测试 | `false` |
 | `LOG_MEMORY_MODE` | 允许 log-service 在无数据库 DSN 时使用内存日志仓库；仅用于开发/测试 | `false` |
 | `LOG_RETENTION_DAYS` | log-service 业务日志保留天数，`0` 表示不自动清理 | `30` |
 | `LOG_GRPC_AUTH` | 是否启用 log-service gRPC 服务令牌鉴权；启用前需确保客户端会发送 Bearer token | `false` |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -87,15 +88,10 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 		}
 	}
 	if dbDSN == "" {
-		// L9: a missing DSN is almost always a deployment mistake. Falling
-		// back to the in-memory store silently means every user, token and
-		// OAuth binding is lost on restart and a fresh root is recreated each
-		// boot. Warn loudly so operators notice instead of discovering it
-		// after data loss.
-		applogger.Log.Warn("IDENTITY_SQL_DSN/SQL_DSN not set; identity-service is starting with the volatile in-memory user store — all data is lost on restart",
-			zap.String("component", "identity.data"),
-		)
-		return newMemoryRepository(), nil
+		if allowMemoryRepository() {
+			return newMemoryRepository(), nil
+		}
+		return nil, errors.New("identity database DSN is required; set IDENTITY_SQL_DSN/SQL_DSN or IDENTITY_MEMORY_MODE=true for development")
 	}
 	// Schema isolation (Phase 2.4): effective schema comes from the wire
 	// argument, the per-service env var, or the global DATABASE_SCHEMA fallback.
@@ -114,6 +110,8 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 		if pingErr := rdb.Ping(context.Background()).Err(); pingErr != nil {
 			_ = rdb.Close()
 			rdb = nil
+			applogger.Log.Warn("identity-service Redis unavailable; continuing without Redis-backed features",
+				zap.String("component", "identity.data"), zap.Error(pingErr))
 		}
 	}
 	rep := &Repository{db: db, redis: rdb}
@@ -122,6 +120,11 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 	// subsequent boots find zero pending rows.
 	rep.BackfillTokenHashes(context.Background())
 	return rep, nil
+}
+
+func allowMemoryRepository() bool {
+	allowed, _ := strconv.ParseBool(os.Getenv("IDENTITY_MEMORY_MODE"))
+	return allowed
 }
 
 func newMemoryRepository() *Repository {
