@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -39,6 +41,9 @@ jobs:
 
       - name: Check architecture boundaries
         run: ./scripts/check-architecture.sh
+
+      - name: Check commit message bodies
+        run: ./scripts/check-commit-bodies.sh "${{ github.event.pull_request.base.sha || github.event.before }}..HEAD"
 
       - name: Check migration governance (P1.2)
         run: make migration-check
