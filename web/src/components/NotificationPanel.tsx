@@ -6,8 +6,9 @@
  * Note: Mark-as-read functionality is not available as the backend doesn't provide the HTTP endpoint
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   Bell,
   CheckCircle2,
@@ -139,119 +140,45 @@ interface NotificationPanelProps {
 
 export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps) {
   const [statusFilter, setStatusFilter] = useState<NotificationStatus>('all');
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [total, setTotal] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const canUsePortal = typeof document !== 'undefined';
 
-  // Use ref to track component mounted state
-  const mountedRef = useRef(true);
-
-  // Fetch unread count only - lightweight polling
-  const fetchUnreadCount = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({
-        page: '1',
-        page_size: '1', // Only need count, not actual data
-        status: 'pending',
-      });
-
+  const unreadQuery = useQuery<NotificationListResponse>({
+    queryKey: ['admin', 'notifications', 'pending-count'],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: '1', page_size: '1', status: 'pending' });
       const response = await adminApiClient.get(`/admin/notifications?${params}`);
-      // notify-worker returns {items, total} directly, not wrapped in {data}
-      const data: NotificationListResponse = response.data;
-      if (mountedRef.current) {
-        setUnreadCount(data.total ?? 0);
-      }
-    } catch {
-      // Silently fail for unread count polling.
-    }
-  }, []);
+      return response.data as NotificationListResponse;
+    },
+    refetchInterval: 30000,
+    meta: { suppressErrorToast: true },
+  });
 
-  const resetExpansion = useCallback(() => {
-    setExpandedIds(new Set());
-  }, []);
-
-  // Fetch notifications - full list
-  const fetchNotifications = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: '1',
-        page_size: '50',
-      });
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter);
-      }
-
+  const notificationsQuery = useQuery<NotificationListResponse>({
+    queryKey: ['admin', 'notifications', statusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: '1', page_size: '50' });
+      if (statusFilter !== 'all') params.append('status', statusFilter);
       const response = await adminApiClient.get(`/admin/notifications?${params}`);
-      // notify-worker returns {items, total} directly, not wrapped in {data}
-      const data: NotificationListResponse = response.data;
-      if (mountedRef.current) {
-        setNotifications(data.items ?? []);
-        setTotal(data.total ?? 0);
-        // Note: unreadCount is maintained by fetchUnreadCount, not derived from filtered list
-        // to ensure badge shows accurate pending count regardless of current filter
-      }
-    } catch {
-      if (mountedRef.current) {
-        toast.error('获取通知列表失败');
-        setNotifications([]);
-        setTotal(0);
-      }
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [statusFilter]);
+      return response.data as NotificationListResponse;
+    },
+    enabled: open,
+    refetchInterval: open ? 30000 : false,
+  });
 
-  // Fetch unread count periodically - always running, even when closed
-  useEffect(() => {
-    const initialFetch = window.setTimeout(() => {
-      fetchUnreadCount();
-    }, 0);
-
-    // Poll every 30 seconds
-    const interval = setInterval(() => {
-      fetchUnreadCount();
-    }, 30000);
-
-    return () => {
-      mountedRef.current = false;
-      window.clearTimeout(initialFetch);
-      clearInterval(interval);
-    };
-  }, [fetchUnreadCount]);
-
-  // Fetch full notifications when panel opens or filter changes
-  useEffect(() => {
-    if (!open) return;
-
-    const timeout = window.setTimeout(() => {
-      fetchNotifications();
-    }, 0);
-
-    return () => window.clearTimeout(timeout);
-  }, [open, fetchNotifications]);
-
-  // Auto-refresh every 30s when open
-  useEffect(() => {
-    if (!open) return;
-
-    const interval = setInterval(() => {
-      fetchNotifications();
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [open, fetchNotifications]);
-
+  const notifications = notificationsQuery.data?.items ?? [];
+  const total = notificationsQuery.data?.total ?? 0;
+  const unreadCount = unreadQuery.data?.total ?? 0;
+  const isLoading = notificationsQuery.isPending;
+  const isRefreshing = notificationsQuery.isFetching;
+  const hasInitialError = notificationsQuery.isError && notificationsQuery.data === undefined;
+  const resetExpansion = () => setExpandedIds(new Set());
 
   // Handle refresh
   const handleRefresh = () => {
-    fetchNotifications();
-    toast.success('通知列表已刷新');
+    void notificationsQuery.refetch().then(({ error }) => {
+      if (!error) toast.success('通知列表已刷新');
+    });
   };
 
   const toggleExpand = (id: number) => {
@@ -321,15 +248,17 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                     type="button"
                     variant="ghost"
                     size="icon-sm"
+                    aria-label="刷新通知"
                     onClick={handleRefresh}
-                    disabled={isLoading}
+                    disabled={isRefreshing}
                   >
-                    <RefreshCw className={cn('size-4', isLoading && 'animate-spin')} />
+                    <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin')} />
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-sm"
+                    aria-label="关闭通知"
                     onClick={() => onOpenChange(false)}
                   >
                     <X className="size-4" />
@@ -361,7 +290,17 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
 
               {/* Content */}
               <div className="flex-1 overflow-y-auto">
-                {isLoading ? (
+                {hasInitialError ? (
+                  <div className="flex h-full items-center justify-center p-8 text-center">
+                    <div className="space-y-3">
+                      <CircleAlert className="mx-auto size-12 text-red-300" />
+                      <p className="text-sm font-medium text-slate-500">通知加载失败</p>
+                      <Button type="button" variant="outline" size="sm" onClick={handleRefresh}>
+                        重试
+                      </Button>
+                    </div>
+                  </div>
+                ) : isLoading ? (
                   <div className="space-y-3 p-4">
                     {[1, 2, 3].map((i) => (
                       <div key={i} className="h-24 animate-pulse rounded-lg bg-muted/50" />

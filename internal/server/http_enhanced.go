@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -54,7 +55,7 @@ func (s *EnhancedHTTPServer) RegisterRoutesWithSecurity(srv *khttp.Server) {
 			appmiddleware.SecurityHeaders,
 			appmiddleware.RequestID,
 			appmiddleware.SimpleCORS(),
-			appmiddleware.SimpleMaxBodySize(),
+			appmiddleware.MaxBodySize(appmiddleware.JSONRequestBodyLimit),
 			appmiddleware.SimpleRateLimit(),
 			appmiddleware.LoggingMiddleware,
 		)
@@ -104,7 +105,11 @@ func (s *EnhancedHTTPServer) handleChatCompletions(w http.ResponseWriter, r *htt
 	// Parse and validate request
 	var req relayprovider.ChatCompletionsRequest
 	if err := decodeJSON(r.Body, &req); err != nil {
-		s.writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+		if stderrors.Is(err, errRequestBodyTooLarge) {
+			s.writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		} else {
+			s.writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+		}
 		return
 	}
 

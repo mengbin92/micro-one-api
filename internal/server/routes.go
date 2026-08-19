@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"micro-one-api/platform/metrics"
+	appmiddleware "micro-one-api/platform/middleware"
 
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 )
@@ -26,7 +27,7 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	s.handleFunc(srv, "/v1/moderations", s.handleRawRelay("/moderations", false))
 	s.handleFunc(srv, "/v1/edits", s.handleUnsupportedOpenAIRoute("edits"))
 	s.handleFunc(srv, "/v1/responses", s.handleResponsesRelay)
-	srv.HandlePrefix("/v1/responses/", http.HandlerFunc(s.handleResponsesRelay))
+	s.handlePrefix(srv, "/v1/responses/", http.HandlerFunc(s.handleResponsesRelay))
 	s.handleFunc(srv, "/v1/usage", s.handleUsage)
 	s.handleFunc(srv, "/v1/subscription/usage", s.handleSubscriptionUsage)
 	srv.HandleFunc("/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
@@ -55,7 +56,7 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	srv.HandlePrefix("/v1/assistants/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("assistants")))
 	srv.HandleFunc("/v1/threads", s.handleUnsupportedOpenAIRoute("threads"))
 	srv.HandlePrefix("/v1/threads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("threads")))
-	srv.HandlePrefix("/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
+	s.handlePrefix(srv, "/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
 
 	// Anthropic Messages API inbound endpoint (for Claude Code CLI / native Anthropic SDK clients)
 	s.handleFunc(srv, "/v1/messages", s.handleAnthropicMessages)
@@ -71,13 +72,14 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 }
 
 func (s *HTTPServer) handleFunc(srv *khttp.Server, pattern string, handler http.HandlerFunc) {
-	if len(s.routeMiddleware) == 0 {
-		srv.HandleFunc(pattern, handler)
-		return
-	}
 	var h http.Handler = handler
+	h = appmiddleware.RequestBodyLimitByPath(h)
 	for i := len(s.routeMiddleware) - 1; i >= 0; i-- {
 		h = s.routeMiddleware[i](h)
 	}
 	srv.Handle(pattern, h)
+}
+
+func (s *HTTPServer) handlePrefix(srv *khttp.Server, pattern string, handler http.Handler) {
+	srv.HandlePrefix(pattern, appmiddleware.RequestBodyLimitByPath(handler))
 }

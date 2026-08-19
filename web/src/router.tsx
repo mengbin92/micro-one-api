@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminRoute } from '@/components/AdminRoute';
 import { PageLoading } from '@/components/PageLoading';
+import { RouteErrorFallback } from '@/components/RouteErrorFallback';
 
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
@@ -77,14 +78,17 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: withSuspense(<LoginPage />),
+    errorElement: <RouteErrorFallback />,
   },
   {
     path: '/register',
     element: withSuspense(<LoginPage />),
+    errorElement: <RouteErrorFallback />,
   },
   {
     path: '/',
     element: <ProtectedRoute />,
+    errorElement: <RouteErrorFallback />,
     children: [
       {
         index: true,

@@ -6,7 +6,7 @@
 >
 > 📣 **v0.21 阶段（2026-08-18，已收尾）**：资金对账、MySQL / PostgreSQL migration smoke、Release E2E 门禁与 P3-0 观察基线均已闭环，v0.21.0 已发布；验收记录归档于 [v0.21 阶段路线图](./design/v0.21-roadmap.md)。
 
-> 📣 **v0.22 当前进展（2026-08-19）**：P0 启动安全与禁止新增凭证明文写入已完成，存量凭证 dry-run / 幂等迁移仍待执行；P1 的 OpenAPI/前端契约、TypeScript strict、渠道模型映射批量化和 Admin 禁用渠道完整清理均已完成，详见 [v0.22 阶段路线图](./design/v0.22-roadmap.md)。
+> 📣 **v0.22 当前进展（2026-08-19）**：P0 启动安全与禁止新增凭证明文写入已完成，存量凭证 dry-run / 幂等迁移仍待执行；P1 的 OpenAPI/前端契约、TypeScript strict、渠道模型映射批量化和 Admin 禁用渠道完整清理均已完成；P2 请求体分级限额、前端通知/错误兜底和 Relay 执行边界 ADR 已完成，executor 首切片按独立 PR 灰度，详见 [v0.22 阶段路线图](./design/v0.22-roadmap.md)。
 >
 > 📣 **v0.19 → v0.20 阶段（2026-08-14）**：v0.19.0 / v0.19.1 / v0.20.0 均已发布，
 > 执行记录归档于 [v0.19 → v0.20 执行记录](./design/v0.19-v0.20-execution-record.md)（已归档，非当前入口）。

@@ -4,7 +4,8 @@ import { getApiErrorMessage } from '@/lib/api-error';
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
-    onError: (error) => {
+    onError: (error, query) => {
+      if (query.meta?.suppressErrorToast === true) return;
       toast.error(getApiErrorMessage(error));
     },
   }),

@@ -34,7 +34,7 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——`design/` 下最新版本路线图，其头部标注「状态：进行中，当前唯一执行入口」。新阶段立项时：新建 `design/vX.Y-roadmap.md` 作为唯一入口 → 旧路线图头部降级为「已归档」并指回新入口 → 同步本表「查看下一阶段执行路线」行、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-当前 v0.22 状态：P0 启动安全与写入收紧已完成，存量凭证迁移待执行；P1 契约治理、前端 strict、模型映射批量化和 Admin 批量删除已完成。
+当前 v0.22 状态：P0 启动安全与写入收紧已完成，存量凭证迁移待执行；P1 契约治理、前端 strict、模型映射批量化和 Admin 批量删除已完成；P2 请求体分级限额、前端错误兜底和 Relay 执行边界 ADR 已完成，executor 首切片按独立 PR 灰度。
 
 ---
 
@@ -88,6 +88,7 @@ docs/
 | [v0.19-v0.20-execution-record.md](./design/v0.19-v0.20-execution-record.md) | v0.19 → v0.20 执行记录：兼容性契约、迁移治理、CI 分层与发布收口（已归档） |
 | [v0.21-roadmap.md](./design/v0.21-roadmap.md) | v0.21 路线图：事件驱动对账、质量门禁补齐与触发式观察（已归档） |
 | [v0.22-roadmap.md](./design/v0.22-roadmap.md) | v0.22 路线图：安全配置、契约治理与小范围可靠性修复（当前） |
+| [v0.22-relay-execution-boundary-adr.md](./design/v0.22-relay-execution-boundary-adr.md) | v0.22 Relay executor / adaptor 执行边界 ADR |
 | [ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) | 整体架构重构方案 |
 | [BASELINE.md](./design/BASELINE.md) | 性能基线 |
 | [hybrid-relay-adaptor-apicompat-plan.md](./design/hybrid-relay-adaptor-apicompat-plan.md) | 混合中转网关技术方案 |
