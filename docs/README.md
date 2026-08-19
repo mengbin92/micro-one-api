@@ -21,7 +21,7 @@ docs/
 | 我想... | 看这里 |
 |---------|--------|
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段执行路线 | [design/v0.21-roadmap.md](./design/v0.21-roadmap.md) |
+| 查看下一阶段执行路线 | [design/v0.22-roadmap.md](./design/v0.22-roadmap.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看产品界面预览 | [根 README 界面预览](../README.md#界面预览) |
 | 查看某版本发布内容 | [releases/](./releases/) |
@@ -53,7 +53,9 @@ docs/
 - [v0.14.0](./releases/release-v0.14.0.md) · [v0.15.0](./releases/release-v0.15.0.md) · [v0.15.1](./releases/release-v0.15.1.md) · [v0.15.2](./releases/release-v0.15.2.md) · [v0.15.3](./releases/release-v0.15.3.md) · [v0.16.0](./releases/release-v0.16.0.md)
 - [v0.17.0](./releases/release-v0.17.0.md) · [v0.17.1](./releases/release-v0.17.1.md)
 - [v0.18.0](./releases/release-v0.18.0.md) · [v0.18.1](./releases/release-v0.18.1.md) · [v0.18.2](./releases/release-v0.18.2.md) · [v0.18.3](./releases/release-v0.18.3.md) · [v0.18.4](./releases/release-v0.18.4.md)
-- [v0.19.0](./releases/release-v0.19.0.md) · [v0.19.1](./releases/release-v0.19.1.md) · [v0.20.0](./releases/release-v0.20.0.md)（最新）
+- [v0.19.0](./releases/release-v0.19.0.md) · [v0.19.1](./releases/release-v0.19.1.md)
+- [v0.20.0](./releases/release-v0.20.0.md) · [v0.20.1](./releases/release-v0.20.1.md) · [v0.20.2](./releases/release-v0.20.2.md) · [v0.20.3](./releases/release-v0.20.3.md) · [v0.20.4](./releases/release-v0.20.4.md) · [v0.20.5](./releases/release-v0.20.5.md)
+- [v0.21.0](./releases/release-v0.21.0.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -82,7 +84,8 @@ docs/
 | [v0.16-roadmap.md](./design/v0.16-roadmap.md) | v0.16 路线图：上线收尾、契约加固、运营增强与工程卫生（已收尾） |
 | [v0.17-roadmap.md](./design/v0.17-roadmap.md) | v0.17 路线图：工程收尾、运营闭环与按需增强（已收尾） |
 | [v0.19-v0.20-execution-record.md](./design/v0.19-v0.20-execution-record.md) | v0.19 → v0.20 执行记录：兼容性契约、迁移治理、CI 分层与发布收口（已归档） |
-| [v0.21-roadmap.md](./design/v0.21-roadmap.md) | v0.21 路线图：事件驱动对账、质量门禁补齐与触发式观察（当前） |
+| [v0.21-roadmap.md](./design/v0.21-roadmap.md) | v0.21 路线图：事件驱动对账、质量门禁补齐与触发式观察（已归档） |
+| [v0.22-roadmap.md](./design/v0.22-roadmap.md) | v0.22 路线图：安全配置、契约治理与小范围可靠性修复（当前） |
 | [ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) | 整体架构重构方案 |
 | [BASELINE.md](./design/BASELINE.md) | 性能基线 |
 | [hybrid-relay-adaptor-apicompat-plan.md](./design/hybrid-relay-adaptor-apicompat-plan.md) | 混合中转网关技术方案 |

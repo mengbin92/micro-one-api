@@ -1,8 +1,10 @@
 # 项目 TODO
 
-> 最后更新：2026-08-14
+> 最后更新：2026-08-19
 >
-> **当前执行入口**：[v0.21 阶段路线图](./design/v0.21-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
+> **当前执行入口**：[v0.22 阶段路线图](./design/v0.22-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
+>
+> 📣 **v0.21 阶段（2026-08-18，已收尾）**：资金对账、MySQL / PostgreSQL migration smoke、Release E2E 门禁与 P3-0 观察基线均已闭环，v0.21.0 已发布；验收记录归档于 [v0.21 阶段路线图](./design/v0.21-roadmap.md)。
 >
 > 📣 **v0.19 → v0.20 阶段（2026-08-14）**：v0.19.0 / v0.19.1 / v0.20.0 均已发布，
 > 执行记录归档于 [v0.19 → v0.20 执行记录](./design/v0.19-v0.20-execution-record.md)（已归档，非当前入口）。
@@ -904,4 +906,3 @@ OpenAI 的 cached 是 prompt 子集），计费时不需要从 input 中扣减�
         Anthropic delta 2.6x、map+slice 2.3x、小结构 1.3x；NewEncoder 持平 1.02x）。
         最终决策：**保留 `pkg/jsonx` 单一封装层，不回退任何方向到 `encoding/json`**，
         已固化进决策文档（§3.0）。归档于 `scripts/benchmark/results/p32-amd64/`。
-
