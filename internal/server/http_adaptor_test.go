@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +22,15 @@ import (
 	relayquota "micro-one-api/internal/quota"
 	"micro-one-api/platform/metrics"
 )
+
+func TestMain(m *testing.M) {
+	// These tests use synthetic upstream hostnames with injected
+	// RoundTrippers. The SSRF regression test below clears this override.
+	_ = os.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	code := m.Run()
+	_ = os.Unsetenv("PROVIDER_DISABLE_SSRF_CHECK")
+	os.Exit(code)
+}
 
 type testSubscriptionResolver struct {
 	meta      *relaycredential.SubscriptionAccountMetadata
@@ -77,11 +87,54 @@ func TestHandleChatCompletionsViaAdaptor_UsesFallbackMetadata(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"ok"`) {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
 	}
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
 	if seenAuth != "Bearer acct-123" {
 		t.Fatalf("Authorization = %q", seenAuth)
 	}
 	if seenAccountID != "11" {
 		t.Fatalf("chatgpt-account-id = %q", seenAccountID)
+	}
+}
+
+func TestHandleChatCompletionsViaAdaptor_RejectsPrivateUpstreamURL(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "")
+	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	httpServer.SetHybridAdaptorEnabled(true)
+	called := false
+	httpServer.SetOAuthHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return newJSONResponse(`{}`), nil
+		}),
+	})
+	httpServer.SetSubscriptionAccountResolver(&testSubscriptionResolver{meta: nil})
+
+	plan := &relaybiz.RelayPlan{
+		Auth: &relaybiz.AuthSnapshot{UserID: 42, Group: "default"},
+		Channel: &relaybiz.Channel{
+			ID:      12,
+			Type:    relayprovider.ChannelTypeCodexOAuth,
+			BaseURL: "http://127.0.0.1:8080",
+			Key:     "acct-123",
+			Group:   "default",
+		},
+		ResolvedModel: "gpt-5",
+		GlobalModel:   "gpt-5",
+	}
+	body := `{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	httpServer.handleChatCompletionsViaAdaptor(rec, req, plan, "gpt-5", []byte(body), "")
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if called {
+		t.Fatal("upstream client was called for a private address")
 	}
 }
 

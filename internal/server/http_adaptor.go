@@ -534,6 +534,14 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		}
 		return result
 	}
+	if err := relayprovider.ValidateBaseURL(upstreamReq.URL.String()); err != nil {
+		result.statusCode = http.StatusBadGateway
+		result.err = fmt.Errorf("validate upstream URL: %w", err)
+		result.write = func(w http.ResponseWriter) {
+			s.writeError(w, http.StatusBadGateway, gatewayErrorMessage(http.StatusBadGateway))
+		}
+		return result
+	}
 
 	// Determine whether the client requested streaming.
 	isStream := false
@@ -565,7 +573,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		}
 	}
 	result.upstreamAttempted = true
-	resp, err := client.Do(upstreamReq)
+	resp, err := client.Do(upstreamReq) // #nosec G704 -- the adaptor URL is validated immediately above.
 	if err != nil {
 		result.statusCode = http.StatusBadGateway
 		result.err = fmt.Errorf("upstream call: %w", err)
@@ -747,8 +755,9 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 	result.write = func(w http.ResponseWriter) {
 		defer releaseSlotWithReport()
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(outBody)
+		_, _ = w.Write(outBody) // #nosec G705 -- adaptor output is JSON and nosniff is set above.
 
 		// Commit real usage from the converted response body.
 		if accountUsage {

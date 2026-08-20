@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+func TestValidateBaseURLRejectsPrivateAddress(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "")
+	if err := ValidateBaseURL("http://127.0.0.1:8080/v1"); err == nil {
+		t.Fatal("ValidateBaseURL accepted a loopback address")
+	}
+}
+
 func TestResolveOpenAICompatibleBaseURL(t *testing.T) {
 	tests := []struct {
 		name        string
