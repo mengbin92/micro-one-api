@@ -152,6 +152,14 @@ type SubscriptionAccount struct {
 	QuotaSnapshotPaused             bool
 }
 
+// SubscriptionAccountChanged identifies subscription-account mutations on
+// the shared channel.changed topic. A dedicated payload prevents channel
+// events with the same numeric ID from being mistaken for account events
+// after the event crosses the JSON/Redis boundary.
+type SubscriptionAccountChanged struct {
+	AccountID int64
+}
+
 type AccountQuotaSnapshot struct {
 	AccountID                   int64
 	PrimaryUsedPercent          *float64
@@ -900,7 +908,7 @@ func (uc *ChannelUsecase) AutoPauseAccount(ctx context.Context, accountID int64,
 		return err
 	}
 	uc.invalidateModelsListCache()
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID, Status: ChannelStatusDisabled})
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccountChanged{AccountID: accountID})
 	return nil
 }
 
@@ -909,7 +917,7 @@ func (uc *ChannelUsecase) CreateSubscriptionAccount(ctx context.Context, account
 		return err
 	}
 	uc.invalidateModelsListCache()
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, account)
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccountChanged{AccountID: account.ID})
 	return nil
 }
 
@@ -918,7 +926,7 @@ func (uc *ChannelUsecase) UpdateSubscriptionAccount(ctx context.Context, account
 		return err
 	}
 	uc.invalidateModelsListCache()
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, account)
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccountChanged{AccountID: account.ID})
 	return nil
 }
 
@@ -927,7 +935,7 @@ func (uc *ChannelUsecase) DeleteSubscriptionAccount(ctx context.Context, account
 		return err
 	}
 	uc.invalidateModelsListCache()
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID})
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccountChanged{AccountID: accountID})
 	return nil
 }
 
@@ -936,7 +944,7 @@ func (uc *ChannelUsecase) ChangeSubscriptionAccountStatus(ctx context.Context, a
 		return err
 	}
 	uc.invalidateModelsListCache()
-	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccount{ID: accountID, Status: status})
+	_ = uc.eventBus.Publish(ctx, events.TopicChannelChanged, &SubscriptionAccountChanged{AccountID: accountID})
 	return nil
 }
 

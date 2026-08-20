@@ -18,6 +18,7 @@ const model = {
   is_public: true,
   channel_count: 3,
   subscription_count: 2,
+  suppliers: ['neo'],
 };
 
 const fullModel = {
@@ -42,6 +43,7 @@ const fullModel = {
     updated_at: 1700000000,
     channel_count: 3,
     subscription_count: 2,
+    suppliers: ['neo'],
   },
   aliases: [{ id: 1, model_pk: 1, alias: 'gpt4o', is_primary: true, created_at: 1700000000 }],
   channel_mappings: [{ id: 1, channel_id: 10, model_pk: 1, enabled: true, priority: 0, config: '', created_at: 1700000000, updated_at: 1700000000 }],
@@ -66,9 +68,28 @@ describe('AdminModelsPage', () => {
     const row = cell.closest('tr');
     expect(row?.textContent).toContain('GPT-4o');
     expect(row?.textContent).toContain('openai');
+    expect(row?.textContent).toContain('neo');
     expect(row?.textContent).toContain('启用');
     expect(row?.textContent).toContain('3');
     expect(row?.textContent).toContain('2');
+  });
+
+  it('labels the default status and type filters distinctly', async () => {
+    server.use(
+      http.get('/api/admin/models', () =>
+        HttpResponse.json({ models: [model], total: 1 }),
+      ),
+    );
+
+    renderWithQuery(
+      <MemoryRouter>
+        <AdminModelsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('gpt-4o');
+    expect(screen.getByRole('combobox', { name: '状态筛选' })).toHaveDisplayValue('全部状态');
+    expect(screen.getByRole('combobox', { name: '类型筛选' })).toHaveDisplayValue('全部类型');
   });
 
   it('renders a disabled model when backend omits status=0', async () => {

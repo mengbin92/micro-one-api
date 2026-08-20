@@ -377,9 +377,9 @@ export function AdminModelsPage() {
               value={providerFilter}
               onChange={(e) => setFilter('provider', e.target.value)}
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
-              aria-label="提供商筛选"
+              aria-label="模型开发商筛选"
             >
-              <option value="">全部提供商</option>
+              <option value="">全部开发商</option>
               {PROVIDER_OPTIONS.filter((o) => o.value).map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
@@ -421,7 +421,7 @@ export function AdminModelsPage() {
       />
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', '模型', '提供商', '类型', '状态', '渠道', '订阅', '操作']} />
+        <TableSkeleton columns={['ID', '模型', '供应商', '模型开发商', '类型', '状态', '渠道', '订阅', '操作']} />
       ) : sortedModels.length === 0 ? (
         <EmptyState title="暂无模型" description="点击右上角新建模型开始管理" />
       ) : (
@@ -448,8 +448,9 @@ export function AdminModelsPage() {
                   <SortableHeader<ModelSummary> columnKey="display_name" sort={sort} onSortChange={setSort}>
                     显示名称
                   </SortableHeader>
+                  <TableHead>供应商</TableHead>
                   <SortableHeader<ModelSummary> columnKey="provider" sort={sort} onSortChange={setSort}>
-                    提供商
+                    模型开发商
                   </SortableHeader>
                   <SortableHeader<ModelSummary> columnKey="model_type" sort={sort} onSortChange={setSort} className="hidden md:table-cell">
                     类型
@@ -477,6 +478,7 @@ export function AdminModelsPage() {
                     <TableCell className="font-mono text-sm">{m.id}</TableCell>
                     <TableCell className="font-mono text-sm">{m.model_id}</TableCell>
                     <TableCell className="font-medium">{m.display_name}</TableCell>
+                    <TableCell>{m.suppliers.length > 0 ? m.suppliers.join('、') : '—'}</TableCell>
                     <TableCell>{m.provider || '—'}</TableCell>
                     <TableCell className="hidden md:table-cell">{m.model_type || '—'}</TableCell>
                     <TableCell>

@@ -154,14 +154,36 @@ func (s *ChannelModelProbeService) syncRegistryModels(ctx context.Context, chann
 			routes[model.ID] = discoveredRoute{model: model, upstreamModelID: upstreamModelID, rank: rank}
 		}
 	}
+	existing, err := s.modelUC.ListChannelMappings(ctx, channel.ID)
+	if err != nil {
+		return fmt.Errorf("list channel mappings for channel %d: %w", channel.ID, err)
+	}
+	existingByModel := make(map[int64]*biz.ModelChannelMapping, len(existing))
+	for _, mapping := range existing {
+		if mapping == nil {
+			continue
+		}
+		existingByModel[mapping.ModelPK] = mapping
+		if _, ok := routes[mapping.ModelPK]; ok {
+			continue
+		}
+		if err := s.modelUC.DeleteChannelMapping(ctx, channel.ID, mapping.ModelPK); err != nil {
+			return fmt.Errorf("remove stale channel mapping for channel %d: %w", channel.ID, err)
+		}
+	}
 	for _, route := range routes {
-		if err := s.modelUC.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
+		mapping := &biz.ModelChannelMapping{
 			ChannelID:       channel.ID,
 			ModelPK:         route.model.ID,
 			Enabled:         true,
 			EnabledHasValue: true,
 			UpstreamModelID: route.upstreamModelID,
-		}); err != nil {
+		}
+		if current := existingByModel[route.model.ID]; current != nil {
+			mapping.Priority = current.Priority
+			mapping.Config = current.Config
+		}
+		if err := s.modelUC.UpsertChannelMapping(ctx, mapping); err != nil {
 			return fmt.Errorf("map discovered model %q to channel %d: %w", route.upstreamModelID, channel.ID, err)
 		}
 	}

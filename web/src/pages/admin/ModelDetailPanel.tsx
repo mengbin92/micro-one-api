@@ -130,7 +130,11 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                 <p className="font-mono text-sm">{model.model_id}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">提供商</p>
+                <p className="text-xs text-muted-foreground">供应商</p>
+                <p>{model.suppliers.length > 0 ? model.suppliers.join('、') : '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">模型开发商</p>
                 <p>{model.provider || '—'}</p>
               </div>
               <div>

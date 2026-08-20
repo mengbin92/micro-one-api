@@ -3238,12 +3238,12 @@ func (c *adminHTTPModelChannelClient) DryRunImportModels(ctx context.Context, re
 func newAdminHTTPModelTestServer() http.Handler {
 	ch := &adminHTTPModelChannelClient{
 		models: []*channelv1.ModelSummary{
-			{Id: 1, ModelId: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai", Status: 1},
+			{Id: 1, ModelId: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai", Status: 1, Suppliers: []string{"neo"}},
 		},
 		modelDetail: &channelv1.GetModelResponse{
 			Model: &channelv1.ModelInfo{
 				Id: 1, ModelId: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai",
-				Status: 1, Capabilities: []string{"vision"},
+				Status: 1, Capabilities: []string{"vision"}, Suppliers: []string{"neo"},
 			},
 		},
 		batchAffected: 2,
@@ -3263,8 +3263,10 @@ func TestAdminHTTPListModels(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "gpt-4o") {
-		t.Fatalf("expected gpt-4o in response: %s", rec.Body.String())
+	for _, want := range []string{`"model_id":"gpt-4o"`, `"provider":"openai"`, `"suppliers":["neo"]`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("expected %s in response: %s", want, rec.Body.String())
+		}
 	}
 }
 

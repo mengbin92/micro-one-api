@@ -38,6 +38,7 @@ func toModelInfo(m *biz.Model) *channelv1.ModelInfo {
 		UpdatedAt:         m.UpdatedAt,
 		ChannelCount:      m.ChannelCount,
 		SubscriptionCount: m.SubscriptionCount,
+		Suppliers:         append([]string(nil), m.Suppliers...),
 	}
 }
 
@@ -57,6 +58,7 @@ func toModelSummary(m *biz.Model) *channelv1.ModelSummary {
 		IsPublic:          m.IsPublic,
 		ChannelCount:      m.ChannelCount,
 		SubscriptionCount: m.SubscriptionCount,
+		Suppliers:         append([]string(nil), m.Suppliers...),
 	}
 }
 

@@ -18,6 +18,7 @@ export interface ModelSummary {
   is_public: boolean;
   channel_count: number;
   subscription_count: number;
+  suppliers: string[];
 }
 
 export interface ModelInfo {
@@ -41,6 +42,7 @@ export interface ModelInfo {
   updated_at: number;
   channel_count: number;
   subscription_count: number;
+  suppliers: string[];
 }
 
 export interface ModelAlias {
@@ -172,7 +174,11 @@ export async function getModel(modelPk: number): Promise<GetModelResponse> {
   const { data } = await adminApiClient.get<GetModelResponse>(`/admin/models/${modelPk}`);
   return {
     ...data,
-    model: data.model ? { ...data.model, status: data.model.status ?? 0 } : data.model,
+    model: data.model ? {
+      ...data.model,
+      status: data.model.status ?? 0,
+      suppliers: data.model.suppliers ?? [],
+    } : data.model,
   };
 }
 
@@ -183,6 +189,7 @@ function normalizeModelSummary(model: ModelSummary): ModelSummary {
   return {
     ...model,
     status: model.status ?? 0,
+    suppliers: model.suppliers ?? [],
   };
 }
 

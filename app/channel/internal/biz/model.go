@@ -63,6 +63,7 @@ type Model struct {
 	// Aggregated counts populated by list/detail queries; not persisted columns.
 	ChannelCount      int32
 	SubscriptionCount int32
+	Suppliers         []string
 }
 
 // ModelAlias is an alternative name that resolves to a model.

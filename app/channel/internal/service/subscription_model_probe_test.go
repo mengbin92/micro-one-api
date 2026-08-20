@@ -46,14 +46,20 @@ func (p *probeLookupStub) Updated() *biz.SubscriptionAccount {
 }
 
 func TestSubscriptionAccountIDFromEventPayload(t *testing.T) {
-	if got := subscriptionAccountIDFromEventPayload(&biz.SubscriptionAccount{ID: 9}); got != 9 {
+	if got := subscriptionAccountIDFromEventPayload(&biz.SubscriptionAccountChanged{AccountID: 9}); got != 9 {
 		t.Fatalf("pointer payload = %d, want 9", got)
 	}
-	if got := subscriptionAccountIDFromEventPayload(map[string]any{"id": float64(7)}); got != 7 {
+	if got := subscriptionAccountIDFromEventPayload(map[string]any{"AccountID": float64(7)}); got != 7 {
 		t.Fatalf("map payload = %d, want 7", got)
 	}
-	if got := subscriptionAccountIDFromEventPayload(`{"Payload":{"id":5}}`); got != 0 {
-		t.Fatalf("string wrapper should not decode as account directly, got %d", got)
+	if got := subscriptionAccountIDFromEventPayload(`{"Payload":{"AccountID":5}}`); got != 5 {
+		t.Fatalf("string wrapper payload = %d, want 5", got)
+	}
+	if got := subscriptionAccountIDFromEventPayload(&biz.Channel{ID: 9}); got != 0 {
+		t.Fatalf("channel payload must not be treated as an account, got %d", got)
+	}
+	if got := subscriptionAccountIDFromEventPayload(map[string]any{"id": float64(7)}); got != 0 {
+		t.Fatalf("ambiguous id-only payload must be ignored, got %d", got)
 	}
 }
 
@@ -81,7 +87,7 @@ func TestCodexModelProbeServiceSyncExistingCodexAccounts(t *testing.T) {
 			Platform:    "codex",
 			AccessToken: "token",
 			AccountID:   "acc-1",
-			Models:      []string{"gpt-5", "gpt-5", "o4-mini"},
+			Models:      nil,
 		},
 	}
 	probe := newCodexModelProbeService(lookup)
@@ -126,11 +132,33 @@ func TestHandleSubscriptionAccountEventParsesJSONStringPayload(t *testing.T) {
 	})}
 	if err := probe.HandleSubscriptionAccountEvent(context.Background(), events.Event{
 		Topic:   events.TopicChannelChanged,
-		Payload: `{"id":3}`,
+		Payload: `{"AccountID":3}`,
 	}); err != nil {
 		t.Fatalf("HandleSubscriptionAccountEvent() error = %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
+}
+
+func TestSubscriptionModelProbeKeepsConfiguredModelsAuthoritative(t *testing.T) {
+	lookup := &probeLookupStub{account: &biz.SubscriptionAccount{
+		ID: 8, Platform: "codex", Models: []string{"gpt-5"},
+	}}
+	probe := newCodexModelProbeService(lookup)
+	requests := 0
+	probe.client = &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})}
+
+	if err := probe.syncModelsForAccount(context.Background(), 8); err != nil {
+		t.Fatalf("syncModelsForAccount() error = %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("configured account triggered %d upstream probes, want 0", requests)
+	}
+	if lookup.Updated() != nil {
+		t.Fatal("configured model list must not be overwritten")
+	}
 }
 
 func TestCodexProbeCandidates(t *testing.T) {
@@ -167,6 +195,29 @@ func TestSubscriptionModelProbeSyncsExactUpstreamIDsForEveryGroup(t *testing.T) 
 	}
 	if !groups["default"] || !groups["vip"] {
 		t.Fatalf("mapping groups = %v", groups)
+	}
+}
+
+func TestSubscriptionModelProbeRemovesMappingsOutsideConfiguredModels(t *testing.T) {
+	repo := newModelProbeRepoStub()
+	modelUC := biz.NewModelUsecase(repo)
+	for _, id := range []string{"gpt-5", "o4-mini"} {
+		requireNoError(t, modelUC.CreateModel(context.Background(), &biz.Model{ModelID: id, DisplayName: id}))
+	}
+	gpt := repo.models["gpt-5"]
+	o4 := repo.models["o4-mini"]
+	repo.subscriptionMappings = []*biz.ModelSubscriptionMapping{
+		{SubscriptionAccountID: 9, ModelPK: gpt.ID, GroupName: "default", Enabled: true},
+		{SubscriptionAccountID: 9, ModelPK: o4.ID, GroupName: "default", Enabled: true},
+	}
+	probe := newCodexModelProbeService(nil)
+	probe.SetModelUsecase(modelUC)
+
+	requireNoError(t, probe.syncRegistryModelsForAccount(context.Background(), &biz.SubscriptionAccount{
+		ID: 9, Group: "default",
+	}, []string{"gpt-5"}))
+	if len(repo.subscriptionMappings) != 1 || repo.subscriptionMappings[0].ModelPK != gpt.ID {
+		t.Fatalf("mappings = %+v, want only configured gpt-5", repo.subscriptionMappings)
 	}
 }
 

@@ -46,7 +46,7 @@ export const PROVIDER_OPTIONS = [
 ];
 
 export const TYPE_OPTIONS = [
-  { value: '', label: '全部' },
+  { value: '', label: '全部类型' },
   { value: 'chat', label: '对话' },
   { value: 'completion', label: '补全' },
   { value: 'embedding', label: '嵌入' },
@@ -61,7 +61,7 @@ export const TIER_OPTIONS = [
 ];
 
 export const STATUS_OPTIONS = [
-  { value: '', label: '全部' },
+  { value: '', label: '全部状态' },
   { value: '0', label: '禁用' },
   { value: '1', label: '启用' },
   { value: '2', label: '测试中' },
