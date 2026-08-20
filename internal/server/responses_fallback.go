@@ -10,10 +10,13 @@ import (
 	"strings"
 
 	"micro-one-api/pkg/jsonx"
+	applogger "micro-one-api/platform/logging"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/apicompat"
 	relaybiz "micro-one-api/internal/biz"
+
+	"go.uber.org/zap"
 )
 
 type responsesFallbackResult struct {
@@ -73,6 +76,40 @@ func (s *HTTPServer) forwardResponsesViaChatFallback(ctx context.Context, ch *re
 		Response: &relayprovider.RawResponse{StatusCode: resp.StatusCode, Header: headerResp, Body: bodyResp},
 		Usage:    usage,
 	}, nil
+}
+
+func (s *HTTPServer) forwardResponsesViaChatFallbackObserved(ctx context.Context, ch *relaybiz.Channel, header http.Header, body []byte, triggerErr error) (*responsesFallbackResult, error) {
+	result, fallbackErr := s.forwardResponsesViaChatFallback(ctx, ch, header, body)
+	fields := []zap.Field{
+		zap.Int64("channel_id", ch.ID),
+		zap.String("channel", ch.Name),
+		zap.Int("responses_status", relaybiz.UpstreamStatus(triggerErr)),
+		zap.String("responses_error", applogger.SanitizeAndTruncate(triggerErr.Error(), 2048)),
+	}
+	if fallbackErr != nil {
+		fields = append(fields,
+			zap.Int("chat_fallback_status", relaybiz.UpstreamStatus(fallbackErr)),
+			zap.String("chat_fallback_error", applogger.SanitizeAndTruncate(fallbackErr.Error(), 2048)),
+		)
+		applogger.Log.Warn("responses to chat fallback failed", fields...)
+		return result, fallbackErr
+	}
+	status := 0
+	if result != nil && result.Stream != nil {
+		status = result.Stream.StatusCode
+	} else if result != nil && result.Response != nil {
+		status = result.Response.StatusCode
+	}
+	fields = append(fields, zap.Int("chat_fallback_status", status))
+	applogger.Log.Info("responses to chat fallback succeeded", fields...)
+	return result, nil
+}
+
+func responsesFallbackTerminalError(originalErr, fallbackErr error) error {
+	if fallbackErr != nil {
+		return fallbackErr
+	}
+	return originalErr
 }
 
 func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {

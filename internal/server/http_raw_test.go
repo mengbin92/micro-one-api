@@ -1036,6 +1036,90 @@ func TestShouldFallbackResponsesToChatIncludesProviderBadRequest(t *testing.T) {
 	}
 }
 
+func TestResponsesFallbackTerminalErrorUsesActualFallbackFailure(t *testing.T) {
+	original := &relayprovider.UpstreamHTTPError{
+		StatusCode: http.StatusMethodNotAllowed,
+		Body:       []byte("responses endpoint unavailable"),
+	}
+	fallback := &relayprovider.UpstreamHTTPError{
+		StatusCode: http.StatusBadRequest,
+		Body:       []byte("reasoning_content must be passed back"),
+	}
+
+	got := responsesFallbackTerminalError(original, fallback)
+	if got != fallback {
+		t.Fatalf("terminal error = %v, want actual chat fallback error %v", got, fallback)
+	}
+	if status := relaybiz.UpstreamStatus(got); status != http.StatusBadRequest {
+		t.Fatalf("terminal status = %d, want 400", status)
+	}
+}
+
+func TestHTTPServerResponsesFallbackReturnsChatFailure(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	var gotPaths []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/responses":
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`{"error":{"message":"responses unavailable"}}`))
+		case "/v1/chat/completions":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"reasoning_content must be passed back"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	identityClient := rawIdentityClient{}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	billingClient := &rawBillingClient{}
+	logClient := &rawLogClient{}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		relaydata.NewIdentityAdapter(identityClient),
+		relaydata.NewChannelAdapter(channelClient),
+		nil,
+		&relaybiz.RetryPolicy{MaxAttempts: 1},
+	)
+	httpServer := NewHTTPServer(
+		identityClient,
+		channelClient,
+		billingClient,
+		relayprovider.NewProviderFactory(time.Second),
+		relayUsecase,
+		logClient,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"deepseek-v4-pro-0813","input":"ping"}`))
+	req.Header.Set("Authorization", "Bearer user-token")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+	if got := strings.Join(gotPaths, ","); got != "/v1/responses,/v1/chat/completions" {
+		t.Fatalf("upstream paths = %q", got)
+	}
+	if !strings.Contains(rec.Body.String(), `"message":"upstream service error"`) {
+		t.Fatalf("client error body should stay sanitized: %s", rec.Body.String())
+	}
+	if billingClient.commits != 0 || billingClient.releases != 1 {
+		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+	if len(logClient.entries) != 0 {
+		t.Fatalf("usage logs = %d, want 0", len(logClient.entries))
+	}
+}
+
 func TestHTTPServerResponsesPreviousResponseFallsBackToChatCompletions(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 

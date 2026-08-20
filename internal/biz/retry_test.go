@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	relayprovider "micro-one-api/domain/upstream/provider"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,6 +18,7 @@ func TestDefaultRetryPolicy(t *testing.T) {
 	assert.Equal(t, 5*time.Second, p.MaxInterval)
 	assert.Equal(t, 2.0, p.Multiplier)
 	assert.True(t, p.RetryableStatus[429])
+	assert.True(t, p.RetryableStatus[405])
 	assert.True(t, p.RetryableStatus[500])
 	assert.True(t, p.RetryableStatus[502])
 	assert.True(t, p.RetryableStatus[503])
@@ -32,6 +35,8 @@ func TestRetryPolicy_IsRetryable(t *testing.T) {
 		{"nil error", nil, false},
 		{"retryable error 429", &RetryableError{Status: 429, Err: errors.New("rate limited")}, true},
 		{"retryable error 500", &RetryableError{Status: 500, Err: errors.New("internal")}, true},
+		{"capability error 405", &RetryableError{Status: 405, Err: errors.New("method not allowed")}, true},
+		{"reasoning protocol mismatch 400", &relayprovider.UpstreamHTTPError{StatusCode: 400, Body: []byte("The reasoning_content in the thinking mode must be passed back to the API")}, true},
 		{"non-retryable error 400", &RetryableError{Status: 400, Err: errors.New("bad request")}, false},
 		{"upstream status=502", errors.New("upstream error: status=502, body=bad gateway"), true},
 		{"upstream status=400", errors.New("upstream error: status=400, body=bad request"), false},
@@ -203,6 +208,72 @@ func TestRetryExecutor_Execute_NonRetryableFailsImmediately(t *testing.T) {
 
 	assert.Error(t, result.Err)
 	assert.Equal(t, 0, result.Attempt)
+	if len(selector.healthEvents) != 1 || !selector.healthEvents[0].success {
+		t.Fatalf("client 400 health events = %+v, want one healthy transport outcome", selector.healthEvents)
+	}
+}
+
+func TestRetryExecutor_MethodNotAllowedFallsBackWithoutPoisoningHealth(t *testing.T) {
+	selector := &mockChannelSelector{
+		channels: []*Channel{
+			{ID: 1, Name: "responses-unsupported"},
+			{ID: 2, Name: "responses-native"},
+		},
+	}
+	policy := DefaultRetryPolicy()
+	policy.InitialInterval = time.Nanosecond
+	policy.MaxInterval = time.Nanosecond
+	exec := NewRetryExecutor(policy, selector)
+
+	result := exec.Execute(context.Background(), "default", "deepseek-v4-pro-0813", func(_ context.Context, ch *Channel) error {
+		if ch.ID == 1 {
+			return &relayprovider.UpstreamHTTPError{StatusCode: 405, Body: []byte("method not allowed")}
+		}
+		return nil
+	})
+
+	if result.Err != nil || result.Channel == nil || result.Channel.ID != 2 || !result.Fallback {
+		t.Fatalf("result = %+v, want successful fallback to channel 2", result)
+	}
+	if result.FallbackReason != "capability_mismatch" {
+		t.Fatalf("fallback reason = %q, want capability_mismatch", result.FallbackReason)
+	}
+	if len(selector.healthEvents) != 2 || !selector.healthEvents[0].success || !selector.healthEvents[1].success {
+		t.Fatalf("health events = %+v, 405 must not record a channel failure", selector.healthEvents)
+	}
+}
+
+func TestRetryExecutor_ReasoningProtocolMismatchFallsBackWithoutPoisoningHealth(t *testing.T) {
+	selector := &mockChannelSelector{
+		channels: []*Channel{
+			{ID: 1, Name: "chat-thinking-incompatible"},
+			{ID: 2, Name: "responses-native"},
+		},
+	}
+	policy := DefaultRetryPolicy()
+	policy.InitialInterval = time.Nanosecond
+	policy.MaxInterval = time.Nanosecond
+	exec := NewRetryExecutor(policy, selector)
+
+	result := exec.Execute(context.Background(), "default", "deepseek-v4-pro-0813", func(_ context.Context, ch *Channel) error {
+		if ch.ID == 1 {
+			return &relayprovider.UpstreamHTTPError{
+				StatusCode: 400,
+				Body:       []byte("The reasoning_content in the thinking mode must be passed back to the API"),
+			}
+		}
+		return nil
+	})
+
+	if result.Err != nil || result.Channel == nil || result.Channel.ID != 2 || !result.Fallback {
+		t.Fatalf("result = %+v, want successful fallback to channel 2", result)
+	}
+	if result.FallbackReason != "capability_mismatch" {
+		t.Fatalf("fallback reason = %q, want capability_mismatch", result.FallbackReason)
+	}
+	if len(selector.healthEvents) != 2 || !selector.healthEvents[0].success || !selector.healthEvents[1].success {
+		t.Fatalf("health events = %+v, protocol mismatch must not record a channel failure", selector.healthEvents)
+	}
 }
 
 func TestRetryExecutor_Execute_ExhaustsRetries(t *testing.T) {
@@ -338,6 +409,19 @@ func TestRetryExecutor_ExecuteWithAccountHealth_FeedsSelector(t *testing.T) {
 	}
 	if sel.accountHealthCalls[0].id != 42 || !sel.accountHealthCalls[0].success {
 		t.Fatalf("expected (42,true), got %+v", sel.accountHealthCalls[0])
+	}
+
+	// A request-scoped 4xx proves that the account is reachable. It must
+	// release selector inflight state without advancing the circuit breaker.
+	sel.accountHealthCalls = nil
+	_ = exec.ExecuteWithAccountHealth(context.Background(), "default", "gpt-4", &Channel{ID: 1}, 42, func(_ context.Context, _ *Channel) error {
+		return &relayprovider.UpstreamHTTPError{StatusCode: 400, Body: []byte("invalid request")}
+	})
+	if len(sel.accountHealthCalls) != 1 {
+		t.Fatalf("expected 1 account-health call for 400, got %d", len(sel.accountHealthCalls))
+	}
+	if sel.accountHealthCalls[0].id != 42 || !sel.accountHealthCalls[0].success {
+		t.Fatalf("expected neutral 400 to record (42,true), got %+v", sel.accountHealthCalls[0])
 	}
 
 	// accountID<=0 degrades to plain execute — no account-health recording.
