@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -163,10 +164,10 @@ func NewBillingUsecaseWithPricing(
 		options:           BillingOptions{AccountRepo: accountRepo, ReservationRepo: reservationRepo, LedgerRepo: ledgerRepo, RedeemRepo: redeemRepo, AllowOverdraft: true},
 		pricingStore:      pricing.PricingStore,
 		groupRatios:       groupRatios,
-		modelRatios:       normalizePositiveRatios(pricing.ModelRatios),
-		completionRatios:  normalizePositiveRatios(pricing.CompletionRatios),
+		modelRatios:       normalizeModelRatios(pricing.ModelRatios),
+		completionRatios:  normalizeModelRatios(pricing.CompletionRatios),
 		modelPrices:       normalizeModelPrices(pricing.ModelPrices),
-		upstreamPrices:    normalizeModelPrices(pricing.UpstreamPrices),
+		upstreamPrices:    normalizeUpstreamPrices(pricing.UpstreamPrices),
 		cacheCreationMode: resolveCacheCreationMode(),
 	}
 }
@@ -1766,7 +1767,7 @@ func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, mod
 	// them and charge mode is intentionally still a no-op until a ModelPrice
 	// is added (roadmap §1.3: unpriced -> v0.10.2 behaviour).
 	pricing := uc.pricingConfig(ctx)
-	if price, ok := pricing.ModelPrices[model]; ok {
+	if price, ok := pricing.ModelPrices[normalizePricingModelKey(model)]; ok {
 		prompt := usage.PromptTokens
 		completion := usage.CompletionTokens
 		cacheRead := usage.CacheReadTokens
@@ -1863,16 +1864,16 @@ func (uc *BillingUsecase) pricingConfig(ctx context.Context) PricingConfig {
 		config.GroupRatios = normalizePositiveRatios(dynamic.GroupRatios)
 	}
 	if len(dynamic.ModelRatios) > 0 {
-		config.ModelRatios = normalizePositiveRatios(dynamic.ModelRatios)
+		config.ModelRatios = normalizeModelRatios(dynamic.ModelRatios)
 	}
 	if len(dynamic.CompletionRatios) > 0 {
-		config.CompletionRatios = normalizePositiveRatios(dynamic.CompletionRatios)
+		config.CompletionRatios = normalizeModelRatios(dynamic.CompletionRatios)
 	}
 	if len(dynamic.ModelPrices) > 0 {
 		config.ModelPrices = normalizeModelPrices(dynamic.ModelPrices)
 	}
 	if len(dynamic.UpstreamPrices) > 0 {
-		config.UpstreamPrices = normalizeModelPrices(dynamic.UpstreamPrices)
+		config.UpstreamPrices = normalizeUpstreamPrices(dynamic.UpstreamPrices)
 	}
 	return config
 }
@@ -1886,18 +1887,20 @@ func (uc *BillingUsecase) calculateUpstreamCostWithUsage(ctx context.Context, ch
 	// (channel:<id>:<upstream_model_id> / subscription:<id>:<upstream_model_id>),
 	// then fall back to the legacy <channel_id>:<public_model_id> key so
 	// existing configs keep resolving until they are migrated, then the bare
-	// model id. The model passed in here is the canonical public id; the
-	// upstream_model_id (exact upstream spelling) comes from LedgerUsage.
+	// model id. The legacy/bare fallback treats model as a public id and
+	// normalizes it; the upstream_model_id (exact upstream spelling) from
+	// LedgerUsage is used unchanged for canonical keys.
 	sourceID := channelID
 	if usage.SubscriptionAccountID > 0 && strings.TrimSpace(usage.SourceKind) == CostSourceSubscription {
 		sourceID = usage.SubscriptionAccountID
 	}
 	price, ok := pricing.UpstreamPrices[canonicalUpstreamPriceKey(usage.SourceKind, sourceID, usage.UpstreamModelID)]
+	legacyModel := normalizePricingModelKey(model)
 	if !ok {
-		price, ok = pricing.UpstreamPrices[upstreamPriceKey(channelID, model)]
+		price, ok = pricing.UpstreamPrices[upstreamPriceKey(channelID, legacyModel)]
 	}
 	if !ok {
-		price, ok = pricing.UpstreamPrices[model]
+		price, ok = pricing.UpstreamPrices[legacyModel]
 	}
 	if !ok {
 		return 0
@@ -2167,15 +2170,70 @@ func normalizePositiveRatios(input map[string]float64) map[string]float64 {
 	return out
 }
 
+func normalizePricingModelKey(model string) string {
+	return strings.ToLower(strings.TrimSpace(model))
+}
+
+func normalizeModelRatios(input map[string]float64) map[string]float64 {
+	if len(input) == 0 {
+		return map[string]float64{}
+	}
+	keys := make([]string, 0, len(input))
+	for key := range input {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	out := make(map[string]float64, len(input))
+	for _, key := range keys {
+		ratio := input[key]
+		if ratio <= 0 {
+			continue
+		}
+		canonical := normalizePricingModelKey(key)
+		if canonical == "" {
+			continue
+		}
+		// A canonical lowercase key wins over case-only variants. Other
+		// variants are processed in sorted order for deterministic behavior.
+		if _, exists := out[canonical]; exists && key != canonical {
+			continue
+		}
+		out[canonical] = ratio
+	}
+	return out
+}
+
 func normalizeModelPrices(input map[string]ModelPrice) map[string]ModelPrice {
+	return normalizePrices(input, normalizePricingModelKey)
+}
+
+func normalizeUpstreamPrices(input map[string]ModelPrice) map[string]ModelPrice {
+	return normalizePrices(input, normalizeUpstreamPriceKey)
+}
+
+func normalizePrices(input map[string]ModelPrice, keyFn func(string) string) map[string]ModelPrice {
 	if len(input) == 0 {
 		return map[string]ModelPrice{}
 	}
+	keys := make([]string, 0, len(input))
+	for key := range input {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
 	out := make(map[string]ModelPrice, len(input))
-	for model, price := range input {
-		if model == "" {
+	for _, key := range keys {
+		canonical := keyFn(key)
+		if canonical == "" {
 			continue
 		}
+		// A canonical key wins over case-only variants. Other variants are
+		// processed in sorted order for deterministic behavior.
+		if _, exists := out[canonical]; exists && key != canonical {
+			continue
+		}
+		price := input[key]
 		if price.InputPrice < 0 {
 			price.InputPrice = 0
 		}
@@ -2195,10 +2253,21 @@ func normalizeModelPrices(input map[string]ModelPrice) map[string]ModelPrice {
 			price.CacheCreation1hPrice = &zero
 		}
 		if price.InputPrice > 0 || price.OutputPrice > 0 || price.CacheReadPrice != nil || price.CacheCreation5mPrice != nil || price.CacheCreation1hPrice != nil {
-			out[model] = price
+			out[canonical] = price
 		}
 	}
 	return out
+}
+
+func normalizeUpstreamPriceKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	if strings.HasPrefix(key, CostSourceChannel+":") || strings.HasPrefix(key, CostSourceSubscription+":") {
+		return key
+	}
+	return normalizePricingModelKey(key)
 }
 
 func maxInt64(a, b int64) int64 {
@@ -2278,14 +2347,14 @@ func (uc *BillingUsecase) getGroupRatio(pricing PricingConfig, group string) flo
 }
 
 func (uc *BillingUsecase) getModelRatio(pricing PricingConfig, model string) float64 {
-	if ratio, ok := pricing.ModelRatios[model]; ok {
+	if ratio, ok := pricing.ModelRatios[normalizePricingModelKey(model)]; ok {
 		return ratio
 	}
 	return 1.0
 }
 
 func (uc *BillingUsecase) getCompletionRatio(pricing PricingConfig, model string) float64 {
-	if ratio, ok := pricing.CompletionRatios[model]; ok {
+	if ratio, ok := pricing.CompletionRatios[normalizePricingModelKey(model)]; ok {
 		return ratio
 	}
 	return 1.0
@@ -2295,7 +2364,7 @@ func (uc *BillingUsecase) calculateCost(ctx context.Context, group, model string
 	pricing := uc.pricingConfig(ctx)
 	prompt := float64(maxInt64(promptTokens, 0))
 	completion := float64(maxInt64(completionTokens, 0))
-	if price, ok := pricing.ModelPrices[model]; ok {
+	if price, ok := pricing.ModelPrices[normalizePricingModelKey(model)]; ok {
 		return calculateModelPriceCost(price, promptTokens, completionTokens, cacheReadTokens, uc.getGroupRatio(pricing, group))
 	}
 	cost := (prompt + completion*uc.getCompletionRatio(pricing, model)) * uc.getModelRatio(pricing, model) * uc.getGroupRatio(pricing, group)

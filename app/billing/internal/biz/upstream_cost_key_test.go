@@ -116,6 +116,44 @@ func TestCalculateUpstreamCostWithUsage_SubscriptionVsChannel(t *testing.T) {
 	assert.NotEqual(t, chCost, subCost, "channel vs subscription cost must differ")
 }
 
+func TestCalculateUpstreamCostWithUsage_LegacyModelKeyIsCaseInsensitive(t *testing.T) {
+	price := ModelPrice{InputPrice: 1.0, OutputPrice: 2.0}
+	uc := newUpstreamCostTestUsecase(map[string]ModelPrice{
+		"5:GLM-5.2": price,
+	})
+
+	got := uc.calculateUpstreamCostWithUsage(context.Background(), 5, "glm-5.2", 0, LedgerUsage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+	})
+
+	assert.Equal(t, canonicalCost(price, 1000, 500), got)
+	got = uc.calculateUpstreamCostWithUsage(context.Background(), 5, "GLM-5.2", 0, LedgerUsage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+	})
+	assert.Equal(t, canonicalCost(price, 1000, 500), got)
+}
+
+func TestCalculateUpstreamCostWithUsage_CanonicalModelKeyIsCaseSensitive(t *testing.T) {
+	upper := ModelPrice{InputPrice: 1.0, OutputPrice: 2.0}
+	lower := ModelPrice{InputPrice: 10.0, OutputPrice: 20.0}
+	uc := newUpstreamCostTestUsecase(map[string]ModelPrice{
+		"channel:5:GLM-5.2": upper,
+		"channel:5:glm-5.2": lower,
+	})
+
+	usage := LedgerUsage{
+		PromptTokens:     1000,
+		CompletionTokens: 500,
+		UpstreamModelID:  "GLM-5.2",
+		SourceKind:       CostSourceChannel,
+	}
+	got := uc.calculateUpstreamCostWithUsage(context.Background(), 5, "glm-5.2", 0, usage)
+
+	assert.Equal(t, canonicalCost(upper, 1000, 500), got)
+}
+
 // canonicalCost applies the canonical formula to a price tier so the test
 // asserts on the resolved price rather than duplicating the arithmetic.
 func canonicalCost(p ModelPrice, prompt, completion int64) int64 {
