@@ -26,6 +26,14 @@ Status after the wallet API/frontend rename:
 - Preserved: relay/OpenAI-compatible quota endpoints, channel usage fields,
   log/usage aggregate fields, reconciliation quota fields, and subscription
   quota windows.
+- Done: subscription-priority billing uses the canonical fixed-point `amount`
+  terminology internally. `billing_reservations.balance_amount` and
+  `ReserveQuotaResponse.balance_amount` are canonical; the former
+  `balance_amount_quota` fields are dual-written/emitted only for rollback and
+  client compatibility.
+- Done: relay converts committed billing amounts with the fixed
+  `AmountScale=10000`; it no longer applies the removed
+  `PAYMENT_QUOTA_PER_UNIT` conversion to wallet costs.
 
 Follow-up items:
 

@@ -41,9 +41,10 @@ type reservationModel struct {
 	SubscriptionWeeklyWindowStart  int64   `gorm:"column:subscription_weekly_window_start"`
 	SubscriptionMonthlyWindowStart int64   `gorm:"column:subscription_monthly_window_start"`
 
-	// Balance-side pre-deduction. Authoritative for the wallet side of the
-	// dual-track flow; equals Amount on the legacy balance-only path.
-	BalanceAmountQuota int64 `gorm:"column:balance_amount_quota"`
+	// Balance-side pre-deduction. balance_amount is the canonical fixed-point
+	// amount; the legacy column is dual-written during the compatibility window.
+	BalanceAmount            int64 `gorm:"column:balance_amount"`
+	LegacyBalanceAmountQuota int64 `gorm:"column:balance_amount_quota"`
 
 	// ActualCost is the real settlement cost persisted at commit time
 	// (code-review 2026-07-30 billing-L1). Zero until the reservation reaches

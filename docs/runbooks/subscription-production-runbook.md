@@ -29,7 +29,7 @@
 | `configs/relay-gateway.yaml` `hybrid_adaptor.runtime_block.*` | ⬜ | 冷却时长，默认 429=5s/401=2m/5xx=2m/529=30s |
 | `configs/billing-service.yaml` `payment.alipay.enabled` | ⬜（在线支付时 ✅） | 支付宝支付通道 |
 | `.env` `ALIPAY_APP_ID` / 密钥 / 证书 | ⬜（在线支付时 ✅） | 支付宝凭证 |
-| `PAYMENT_QUOTA_PER_UNIT` | ⬜ | quota↔金额换算，默认 500000 |
+| `PAYMENT_AMOUNT_PER_UNIT` | ⬜ | 支付资产↔金额换算，默认 500000；部署编排仍可读取旧 `PAYMENT_QUOTA_PER_UNIT` 作过渡 |
 | `NOTIFY_GRPC_ENDPOINT` | ⬜ | 告警投递（额度告警/对账告警） |
 
 完整环境变量参考见 [部署运维文档](../deployment.md) §4。

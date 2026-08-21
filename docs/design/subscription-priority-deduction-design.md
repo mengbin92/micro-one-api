@@ -15,7 +15,7 @@
 ```
 
 - **订阅中间件**（`subscription_middleware.go`）：仅做限额预检。有活跃订阅且日/周/月用量超限 → 直接 **429 拒绝**，**不降级到余额**。
-- **reserveQuota**（`billing.go:ReserveQuota`）：从用户**余额**预扣估算成本，`AvailableBalance < cost` 报 `ErrInsufficientQuota`。全程操作 `accountRepo.UpdateBalance / UpdateFrozenAmount`。
+- **reserveQuota**（`billing.go:ReserveQuota`）：从用户**余额**预扣估算成本，`AvailableBalance < cost` 报 `ErrInsufficientQuota`。RPC/方法名为兼容旧客户端保留，内部资金语义是固定精度 amount。
 - **commitQuota**（`billing.go:CommitQuotaWithUsage`）：按实际 token 多退少补调整**余额**，写 ledger，再调用 `recordSubscriptionUsage → RecordUsage` 把用量**累加**到订阅统计（仅用于限额判断，**不参与扣费**）。
 
 **本质**：订阅套餐 = 日/周/月 USD 消费上限（限流）+ 套餐定价倍率（`RateMultiplier`）。买不买订阅，token 都从余额扣；订阅超限是硬拒绝。
@@ -83,7 +83,7 @@
      → 失败/超时/release：统一释放两侧预留
 ```
 
-核心思路：每笔请求估算成本 `costUSD` 拆成两段——订阅可吸收部分（`subscriptionAmountUSD`）+ 余额承担部分（`balanceAmountQuota`）。冻结量**独立记录在每个 reservation 上**，不挂订阅行，避免跨窗口释放错乱（见 5.1）。
+核心思路：每笔请求估算成本 `costUSD` 拆成两段——订阅可吸收部分（`subscriptionAmountUSD`）+ 余额承担部分（`balanceAmount`）。冻结量**独立记录在每个 reservation 上**，不挂订阅行，避免跨窗口释放错乱（见 5.1）。
 
 ---
 
@@ -101,7 +101,7 @@
 ```go
 type Reservation struct {
     // ... 现有字段 ...
-    Amount           int64   // 现有：预留余额（quota）。兼容旧路径，新流程下=balanceAmountQuota
+    Amount           int64   // 固定 4 位小数的请求预估总金额
 
     // 新增：订阅侧预留
     SubscriptionID             int64   // 关联的活跃订阅；0 表示无订阅预留
@@ -111,7 +111,7 @@ type Reservation struct {
     SubscriptionMonthlyWindowStart int64 // 预扣时的订阅月窗口起点快照
 
     // 新增：余额侧预留（与现有 Amount 冗余但语义清晰，便于对账）
-    BalanceAmountQuota int64 // 本次预留的余额（quota）；无订阅预留时等于 Amount
+    BalanceAmount int64 // 本次从钱包预留的固定精度金额；无订阅预留时等于 Amount
 }
 ```
 
@@ -121,10 +121,14 @@ type Reservation struct {
 - `subscription_daily_window_start BIGINT NOT NULL DEFAULT 0`
 - `subscription_weekly_window_start BIGINT NOT NULL DEFAULT 0`
 - `subscription_monthly_window_start BIGINT NOT NULL DEFAULT 0`
-- `balance_amount_quota BIGINT NOT NULL DEFAULT 0`
+- `balance_amount BIGINT NOT NULL DEFAULT 0`
 - 索引 `idx_billing_reservations_user_status (user_id, status)`（已存在则跳过，用于 CheckQuota 汇总）
 
 > Review 反馈：文档原写 `reservations`，实际 GORM model 用 `billing_reservations`（`models.go:36`）。所有 migration、索引名、`SumActiveFrozenInTx` 都已改为 `billing_reservations`。
+>
+> 兼容说明：`balance_amount_quota` 是早期订阅优先实现误引入的名称。
+> migration 079 新增并回填 `balance_amount`；过渡期应用双写两列，新代码只在
+> `balance_amount` 为 0 时回退读取旧列，便于旧二进制安全回滚。
 
 **单位约定（关键）**：
 
@@ -163,25 +167,25 @@ subscriptionAbsorbableUSD  = min(remainingDailyAccounting, remainingWeeklyAccoun
 
 > 关键：`limit`、`rolledUsageUSD`、冻结汇总三者必须同在"记账 USD"空间相减，最后除一次 `multiplier` 得到可吸收的原始 USD。`reservation.SubscriptionAmountUSD` 存原始 USD，汇总时乘 `multiplier` 换算到记账空间。冻结量随 reservation 的窗口快照走——预扣在窗口 A 的 reservation，窗口滚到 B 后其窗口快照不匹配，自动不再占用 B 窗口额度，避免"释放错窗口"。
 
-**quota ↔ USD 舍入规则**（关键，避免对账漂移）：
+**固定精度 amount ↔ USD 舍入规则**（关键，避免对账漂移）：
 
-> Review 反馈：cost quota→USD→quota 的舍入未定义，向下取整漏扣、向上取整影响 refund/对账。
-> 修正：**整数 quota 是资金事实**（balance/frozen/ledger 都存 quota），USD 仅用于订阅限额空间。转换规则统一：
+> 钱包资金事实是固定 4 位小数的整数 amount（`AmountScale=10000`）；
+> USD 浮点只用于订阅限额空间。全额订阅承担时直接沿用原始整数 amount，
+> 避免 amount→USD→amount 的浮点往返损失 1 个最小单位。
 
 | 转换 | 规则 | 用途 |
 |------|------|------|
-| `quotaToUSD(quota)` | `quota / quotaPerUSD`（浮点，不取整） | 限额空间比较、订阅用量累加 |
-| `usdToQuotaFloor(usd)` | `floor(usd * quotaPerUSD)` | 订阅承担额度换算为 quota（向下取整，避免余额少扣） |
-| 余额侧 reserve/commit | **直接用 quota 差额计算**，不经 USD 中转 | 资金事实，避免舍入 |
+| `amountToUSD(amount)` | `amount / AmountScale`（浮点，不取整） | 限额空间比较、订阅用量累加 |
+| `usdToAmountFloor(usd)` | `floor(usd * AmountScale)` | 部分订阅承担金额换算（向下取整，避免钱包少扣） |
+| 余额侧 reserve/commit | **直接用整数 amount 差额计算**，不经 USD 中转 | 资金事实，避免舍入 |
 | 订阅侧 | USD 浮点，仅在限额空间比较和 `SubscriptionAmountUSD` 存储 | 限额，非资金 |
 
-- `PAYMENT_QUOTA_PER_UNIT`（现有，`http.go:1648`，默认 500000）作为唯一换算基数。
-- 余额侧 `reserveQuota` 由 `calculateCost` 直接返回 quota（不经 USD）。
-- 订阅承担部分换算为 quota 时统一取 floor：`subscriptionQuota = min(reserveQuota, usdToQuotaFloor(absorbUSD))`。
-- 余额预扣：`balanceAmountQuota = max(0, reserveQuota - subscriptionQuota)`。
-- 余额结算：`actualAbsorbQuota = min(actualCostQuota, usdToQuotaFloor(actualAbsorbUSD))`，`actualBalanceQuota = max(0, actualCostQuota - actualAbsorbQuota)`。
-- 若浮点误差导致 `usdToQuotaFloor(absorbUSD)` 偏差，按 `epsilon=1e-9` 归一化后再 floor，并加边界测试。
-- ledger 的 `Amount` / `BalanceAfter` 始终是整数 quota，对账以 quota 为准。
+- `AmountScale=10000` 是钱包金额唯一换算基数；已移除的 `PAYMENT_QUOTA_PER_UNIT` 不参与钱包结算。
+- 余额侧 `ReserveQuota` 由 `calculateCost` 直接返回固定精度 amount（不经 USD）。
+- 订阅全额承担时 `subscriptionAmount=cost`；只有部分承担才调用 `usdToAmountFloor`。
+- 余额预扣：`balanceAmount = max(0, cost - subscriptionAmount)`。
+- 余额结算：`actualSubscriptionAmount = min(actualCostAmount, usdToAmountFloor(actualAbsorbUSD))`，`actualBalanceAmount = max(0, actualCostAmount - actualSubscriptionAmount)`。
+- ledger 的 `Amount` / `BalanceAfter` 始终是固定精度整数 amount，对账以该整数为准。
 
 ### 5.2 预扣阶段（ReserveQuota 改造）
 
@@ -196,8 +200,8 @@ subscriptionAbsorbableUSD  = min(remainingDailyAccounting, remainingWeeklyAccoun
 
 ```
 1. 查活跃订阅（若有，订阅快照只读）
-2. cost = calculateCost(估算 token)  // 余额单位（quota），估算时向上取整保守预估
-3. costUSD = quotaToUSD(cost)
+2. cost = calculateCost(估算 token)  // 固定 4 位小数的 amount，估算时向上取整保守预估
+3. costUSD = amountToUSD(cost)
 4. 若有活跃订阅：
    a. 开启 DB 事务 T
    b. SELECT ... FROM user_subscriptions WHERE id = ? FOR UPDATE
@@ -210,17 +214,17 @@ subscriptionAbsorbableUSD  = min(remainingDailyAccounting, remainingWeeklyAccoun
       - subscriptionAbsorbableUSD = ComputeAbsorbablePure(rolled, group, frozenAccounting)
         （5.1 的纯函数公式，billing 内联或注入纯函数）
    d. absorbUSD = min(costUSD, subscriptionAbsorbableUSD)        // 原始 USD
-   e. subscriptionQuota = min(cost, usdToQuotaFloor(absorbUSD))
-   f. balanceAmountQuota = cost - subscriptionQuota
+   e. subscriptionAmount = min(cost, usdToAmountFloor(absorbUSD))
+   f. balanceAmount = cost - subscriptionAmount
    g. 若 absorbUSD > 0：
       在 T 内 INSERT reservation（status=Reserved）记录
-      SubscriptionID / SubscriptionAmountUSD=absorbUSD / BalanceAmountQuota=balanceAmountQuota /
+      SubscriptionID / SubscriptionAmountUSD=absorbUSD / BalanceAmount=balanceAmount /
       三个窗口起点快照=rolled 当前窗口起点
-   h. 若 balanceAmountQuota > 0：
-      在同一事务 T 内调用 accountRepo.ReserveBalanceInTx(T, userID, balanceAmountQuota)
+   h. 若 balanceAmount > 0：
+      在同一事务 T 内调用 accountRepo.ReserveBalanceInTx(T, userID, balanceAmount)
       （失败则整个 T 回滚，reservation 不落库，订阅冻结自然不存在，不需要 release 补偿）
    i. 提交事务 T（订阅行锁释放，reservation 和余额冻结同时可见）
-   j. 若 balanceAmountQuota == 0：余额不动
+   j. 若 balanceAmount == 0：余额不动
 5. 若无订阅：走现有余额预扣逻辑（Amount = cost，无订阅字段）
 ```
 
@@ -250,31 +254,31 @@ subscriptionAbsorbableUSD  = min(remainingDailyAccounting, remainingWeeklyAccoun
 `CommitQuotaWithUsage` 改造（success=true 分支，单事务 CAS）：
 
 ```
-1. actualCostQuota = calculateCostWithUsage(实际 token)   // 直接得 quota，不经 USD
-   actualCostUSD = quotaToUSD(actualCostQuota)
+1. actualCostAmount = calculateCostWithUsage(实际 token)   // 直接得到固定精度 amount，不经 USD
+   actualCostUSD = amountToUSD(actualCostAmount)
 2. 开启 DB 事务 T
 3. CAS: UPDATE billing_reservations SET status='committing' WHERE reservation_id=? AND status='reserved'
    - 影响行数 0 → 已在 committing/committed/releasing/released（重试或并发），读取当前状态并返回当前结果（幂等）
 4. 读取 reservation（T 内）：
    - reservedSubUSD = reservation.SubscriptionAmountUSD
-   - reservedBalQuota = reservation.BalanceAmountQuota
+   - reservedBalanceAmount = reservation.BalanceAmount
 5. 订阅优先消耗（不按比例）：
    - actualAbsorbUSD = min(actualCostUSD, reservedSubUSD)
-   - actualAbsorbQuota = min(actualCostQuota, usdToQuotaFloor(actualAbsorbUSD))
-   - actualBalanceQuota = max(0, actualCostQuota - actualAbsorbQuota)
+   - actualSubscriptionAmount = min(actualCostAmount, usdToAmountFloor(actualAbsorbUSD))
+   - actualBalanceAmount = max(0, actualCostAmount - actualSubscriptionAmount)
 6. 订阅部分（actualAbsorbUSD > 0 时，T 内）：
    - RecordUsageForSubscriptionInTx(T, reservation.SubscriptionID, actualAbsorbUSD, now)
     （行锁该订阅 FOR UPDATE，按 ID 结算；同一事务 CAS 防重复累加）
 7. 余额部分（T 内）：
-   - CommitBalanceInTx(T, userID, reservedBalQuota, actualBalanceQuota, allowOverdraft=true)
-     （释放 frozen=reservedBalQuota；balance += (reservedBalQuota - actualBalanceQuota)，允许负数）
+   - CommitBalanceInTx(T, userID, reservedBalanceAmount, actualBalanceAmount, allowOverdraft=true)
+     （释放 frozen=reservedBalanceAmount；balance += (reservedBalanceAmount - actualBalanceAmount)，允许负数）
      返回 oldBalance, newBalance
 8. 应收账款（newBalance < 0 时，T 内，见下方"超扣策略"）：
    - newOverdueQuota = max(0, -newBalance) - max(0, -oldBalance)   // 本次新增欠费增量
    - 若 newOverdueQuota > 0：INSERT account_receivables (reservation_id, overdue_quota=newOverdueQuota, status=pending)
 9. ledger 写入（T 内，幂等键 ledger_dedupe_key）：
-   - subscription ledger（actualAbsorbQuota > 0）：CostSource=subscription, Amount=-actualAbsorbQuota, ReferenceID=reservation_id
-   - balance ledger（actualBalanceQuota > 0）：CostSource=balance, Amount=-actualBalanceQuota, ReferenceID=reservation_id
+   - subscription ledger（actualSubscriptionAmount > 0）：CostSource=subscription, Amount=-actualSubscriptionAmount, ReferenceID=reservation_id
+   - balance ledger（actualBalanceAmount > 0）：CostSource=balance, Amount=-actualBalanceAmount, ReferenceID=reservation_id
 10. CAS: UPDATE billing_reservations SET status='committed' WHERE reservation_id=? AND status='committing'
 11. 提交事务 T
 ```
@@ -293,7 +297,7 @@ subscriptionAbsorbableUSD  = min(remainingDailyAccounting, remainingWeeklyAccoun
   - expired/revoked → 仍累加计数器（行还在），限额已失效不影响判断。
   - 物理删除（不应发生）→ 返回错误，T 回滚，告警，对账兜底。
 
-**超扣策略**（actualBalanceQuota > reservedBalQuota 且余额不足）：
+**超扣策略**（actualBalanceAmount > reservedBalanceAmount 且余额不足）：
 
 > Review 反馈（多轮）：
 > ① overdue_quota = -newBalance 重复记录历史欠费（已有 balance=-100，本次超扣 10，应是 10 不是 110）。
@@ -378,11 +382,11 @@ releaseReservation(ctx, reservationID, reason, finalStatus='released'):
   2. CAS: UPDATE billing_reservations SET status='releasing' WHERE reservation_id=? AND status='reserved'
      - 影响行数 0 → 已在 releasing/released/committed（重试/并发），返回（幂等）
   3. 读取 reservation（T 内）：
-     - reservedBalQuota = reservation.BalanceAmountQuota
+     - reservedBalanceAmount = reservation.BalanceAmount
      - reservedSubUSD = reservation.SubscriptionAmountUSD
-  4. 余额侧（reservedBalQuota > 0 时，T 内）：
-     - ReleaseBalanceInTx(T, userID, reservedBalQuota)
-       （释放 frozen += reservedBalQuota... 实为 frozen -= reservedBalQuota 释放；balance += reservedBalQuota 退还）
+  4. 余额侧（reservedBalanceAmount > 0 时，T 内）：
+     - ReleaseBalanceInTx(T, userID, reservedBalanceAmount)
+       （释放 frozen += reservedBalanceAmount... 实为 frozen -= reservedBalanceAmount 释放；balance += reservedBalanceAmount 退还）
      - 写 refund ledger（ledger_dedupe_key=`{reservation_id}:refund:balance`）
   5. 订阅侧（reservedSubUSD > 0 时）：
      - 不累加用量，不调 RecordUsageForSubscriptionInTx
@@ -416,7 +420,7 @@ ReservationStatusReleasing  = "releasing"   // 新增中间态
 ### 5.5 订阅中间件行为变更（`subscription_middleware.go`）
 
 - **不再**因订阅超限直接 429。
-- 改为：仅采集 metrics（订阅配额使用情况），**拒绝统一交给 billing 层 `reserveQuota`** 判断 `ErrInsufficientQuota`（订阅超限 + 余额不足时由 reserveQuota 抛出）。
+- 改为：仅采集 metrics（订阅配额使用情况），**拒绝统一交给 billing 层 `ReserveQuota`** 判断 `ErrInsufficientQuota`（订阅超限 + 余额不足时由 `ReserveQuota` 抛出）。这里的 Quota 仅是兼容名。
 
 ### 5.6 账单流水拆分（ledger）
 
@@ -425,14 +429,14 @@ ReservationStatusReleasing  = "releasing"   // 新增中间态
 | 字段 | 说明 |
 |------|------|
 | `CostSource` 枚举 | `subscription` / `balance` / `mixed` |
-| `SubscriptionCost` int64 | 订阅承担的 quota（actualAbsorbUSD 换算） |
-| `BalanceCost` int64 | 余额承担的 quota（actualBalanceQuota） |
+| `SubscriptionCost` int64 | 订阅承担的固定精度 amount |
+| `BalanceCost` int64 | 余额承担的固定精度 amount |
 
 `mixed` 时拆成两条 ledger（一条 `subscription`、一条 `balance`），便于对账与统计。`AggregateUsage` 等统计接口需相应适配：按 `CostSource` 分别聚合。
 
 ### 5.7 gRPC proto 变更（`api/billing/v1/billing.proto`）
 
-- `ReserveQuotaResponse` / `CommitQuotaResponse` 新增订阅分摊金额字段（`subscription_amount_usd` / `balance_amount_quota`），便于 relay 层日志与前端展示。
+- `ReserveQuotaResponse` / `CommitQuotaResponse` 新增订阅分摊金额字段（`subscription_amount_usd` / `balance_amount`），便于 relay 层日志与前端展示。
 - `LedgerEntry` 新增 `cost_source` / `subscription_cost` / `balance_cost`。
 
 ---
@@ -538,7 +542,7 @@ ReservationStatusReleasing  = "releasing"   // 新增中间态
   - 跨窗口结算：预扣在窗口 A、结算在窗口 B，用量落 B，A 的冻结自动失效。
   - **overdue 增量**：oldBalance=-100 本次超扣 10 → newOverdue=10（非 110）；oldBalance=50 超扣 80 → newOverdue=30；oldBalance=-100 退回 20 → newOverdue=0。
   - **充值核销镜像**：balance=-100 充值 60 → balance=-40 且 settle 60 应收（同事务，不是"先核销剩余进 balance"）；部分核销 settled_quota 正确。
-  - 余额超扣：actualBalanceQuota > reservedBalQuota 且余额不足时扣到负数，ledger BalanceAfter 为负，写 account_receivables pending，告警触发。
+  - 余额超扣：actualBalanceAmount > reservedBalanceAmount 且余额不足时扣到负数，ledger BalanceAfter 为负，写 account_receivables pending，告警触发。
   - 欠费拦截：`BILLING_BLOCK_OVERDRAFT_USERS=true` 时，balance<0 的用户新请求被 ReserveQuota 拒绝。
   - 释放路径：success=false / 显式 ReleaseQuota / cleanup 三条路径都正确释放两侧预留；幂等性（重复 release 不重复退）。
   - **中间态事务回滚**：模拟 commit/release 事务内错误，断言 reservation 回到 reserved，可安全重试。
@@ -557,7 +561,7 @@ ReservationStatusReleasing  = "releasing"   // 新增中间态
 
 | 文件 | 改动 |
 |------|------|
-| `internal/billing/biz/reservation.go` | `Reservation` 加订阅预留字段 + 窗口快照 + `BalanceAmountQuota`；新增事务内中间态 `committing`/`releasing` 状态常量 |
+| `internal/billing/biz/reservation.go` | `Reservation` 加订阅预留字段 + 窗口快照 + `BalanceAmount`；新增事务内中间态 `committing`/`releasing` 状态常量 |
 | `migrations/NNN_add_billing_reservations_subscription_fields.sql` | billing_reservations 表加列 |
 | `migrations/NNN_create_account_receivables.sql` | account_receivables 表（含 settled_quota 部分核销 + reservation_id 唯一约束） |
 | `internal/billing/data/account_repo.go` | 新增 `ReserveBalanceInTx` / `CommitBalanceInTx`（返回 oldBalance,newBalance）/ `ReleaseBalanceInTx` 原子事务方法 |

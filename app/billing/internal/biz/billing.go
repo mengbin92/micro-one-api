@@ -48,10 +48,6 @@ type ModelPrice struct {
 	CacheCreation1hPrice *float64 `json:"cache_creation_1h_price,omitempty"`
 }
 
-// QuotaPerUSD is the conversion factor used to translate between the integer
-// amount ledger columns and the USD amounts shown in the UI.
-var QuotaPerUSD = int64(AmountScale)
-
 // BillingOptions wires the optional dependencies the dual-track
 // "subscription priority" flow needs. The default zero value disables
 // the new flow so existing call sites keep working unchanged.
@@ -78,8 +74,6 @@ type BillingOptions struct {
 	// that are NEVER allowed to overdraft even when AllowOverdraft is
 	// true.
 	BlockOverdraftUsers map[string]struct{}
-	// QuotaPerUSD overrides the default QuotaPerUSD when non-zero.
-	QuotaPerUSD int64
 	// Now, when set, overrides time.Now. Tests use it to make
 	// reservation expiry + subscription window calculations
 	// deterministic.
@@ -188,9 +182,6 @@ func NewBillingUsecaseWithOptions(opts BillingOptions) *BillingUsecase {
 	if uc.options.Now == nil {
 		uc.options.Now = time.Now
 	}
-	if uc.options.QuotaPerUSD > 0 {
-		QuotaPerUSD = uc.options.QuotaPerUSD
-	}
 	uc.cacheCreationMode = resolveCacheCreationMode()
 	return uc
 }
@@ -263,41 +254,24 @@ func (uc *BillingUsecase) Now() time.Time {
 	return time.Now()
 }
 
-// quotaToUSD converts quota (integer) to USD (float) using the
-// configured QuotaPerUSD. The conversion is exact (no rounding) so the
-// caller is responsible for flooring / ceiling as the design mandates.
-func (uc *BillingUsecase) quotaToUSD(quota int64) float64 {
-	perUSD := uc.quotaPerUSD()
-	if perUSD <= 0 {
-		return 0
-	}
-	return float64(quota) / float64(perUSD)
+// amountToUSD converts the wallet's fixed-point amount into USD. Wallet
+// amounts always use AmountScale (four decimal places); the former configurable
+// quota conversion was removed from the product model.
+func (uc *BillingUsecase) amountToUSD(amount int64) float64 {
+	return float64(amount) / float64(AmountScale)
 }
 
-// usdToQuotaFloor converts USD to quota with floor rounding.
-func (uc *BillingUsecase) usdToQuotaFloor(usd float64) int64 {
-	perUSD := uc.quotaPerUSD()
-	if perUSD <= 0 {
-		return 0
-	}
+// usdToAmountFloor converts USD into the wallet's fixed-point amount, flooring
+// partial units so the subscription side never absorbs more than its limit.
+func (uc *BillingUsecase) usdToAmountFloor(usd float64) int64 {
 	if usd <= 0 {
 		return 0
 	}
-	v := math.Floor(usd * float64(perUSD))
+	v := math.Floor(usd * float64(AmountScale))
 	if v > math.MaxInt64 {
 		return math.MaxInt64
 	}
 	return int64(v)
-}
-
-func (uc *BillingUsecase) quotaPerUSD() int64 {
-	if uc.options.QuotaPerUSD > 0 {
-		return uc.options.QuotaPerUSD
-	}
-	if QuotaPerUSD > 0 {
-		return QuotaPerUSD
-	}
-	return AmountScale
 }
 
 func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64) (*Reservation, error) {
@@ -399,7 +373,7 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 			UserID:                userID,
 			RequestID:             requestID,
 			Amount:                cost,
-			BalanceAmountQuota:    cost,
+			BalanceAmount:         cost,
 			Status:                ReservationStatusReserved,
 			Model:                 model,
 			ChannelID:             channelID,
@@ -531,8 +505,8 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 		if multiplier <= 0 {
 			multiplier = 1.0
 		}
-		// Cost is in quota; convert to USD for the absorber check.
-		costUSD := uc.quotaToUSD(cost)
+		// Cost is a fixed-point amount; convert to USD for the absorber check.
+		costUSD := uc.amountToUSD(cost)
 
 		now := uc.Now()
 		rolled := subscriptionbiz.RollUsageWindowsPure(lockedSub, now.Unix())
@@ -562,18 +536,21 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 		if absorbUSD < 0 {
 			absorbUSD = 0
 		}
-		subscriptionQuota := uc.usdToQuotaFloor(absorbUSD)
-		// If absorbUSD is 0.0001 USD we still round it to 0 quota, in
-		// which case the subscription has not absorbed anything and the
-		// entire cost falls on the wallet. Conversely, when
-		// subscriptionQuota >= cost we keep cost on the wallet at 0.
-		if subscriptionQuota > cost {
-			subscriptionQuota = cost
+		// Preserve the original fixed-point amount when the subscription absorbs
+		// the full request. Converting amount -> USD -> amount and flooring can
+		// lose one unit to float64 representation (for example 209 becomes
+		// 208), which would incorrectly require a non-zero wallet balance.
+		subscriptionAmount := cost
+		if absorbUSD < costUSD {
+			subscriptionAmount = uc.usdToAmountFloor(absorbUSD)
 		}
-		balanceQuota := cost - subscriptionQuota
+		if subscriptionAmount > cost {
+			subscriptionAmount = cost
+		}
+		balanceAmount := cost - subscriptionAmount
 		// Wallet pre-deduction.
-		if balanceQuota > 0 {
-			_, _, _, err = uc.accountRepo.ReserveBalanceInTx(ctx, tx, userID, balanceQuota, false)
+		if balanceAmount > 0 {
+			_, _, _, err = uc.accountRepo.ReserveBalanceInTx(ctx, tx, userID, balanceAmount, false)
 			if err != nil {
 				// The whole transaction (including the subscription
 				// pre-deduction) must roll back. We must NOT call
@@ -591,7 +568,7 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 			UserID:                         userID,
 			RequestID:                      requestID,
 			Amount:                         cost,
-			BalanceAmountQuota:             balanceQuota,
+			BalanceAmount:                  balanceAmount,
 			SubscriptionID:                 subscription.ID,
 			SubscriptionAmountUSD:          absorbUSD,
 			SubscriptionDailyWindowStart:   rolled.DailyWindowStart,
@@ -712,8 +689,8 @@ func (uc *BillingUsecase) CommitQuotaWithUsageAndSplit(ctx context.Context, rese
 		return committed, refund, CommitResult{
 			CommittedAmount:  committed,
 			RefundAmount:     refund,
-			SubscriptionCost: committed - reservation.BalanceAmountQuota,
-			BalanceCost:      reservation.BalanceAmountQuota,
+			SubscriptionCost: committed - reservation.BalanceAmount,
+			BalanceCost:      reservation.BalanceAmount,
 		}, nil
 	}
 	return committed, refund, CommitResult{
@@ -986,20 +963,20 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		// estimate. At commit time the actual usage may be slightly higher, so while
 		// holding the subscription row lock we let remaining subscription capacity
 		// absorb the delta before falling back to wallet balance.
-		costUSD := uc.quotaToUSD(actualCost)
+		costUSD := uc.amountToUSD(actualCost)
 		actualAbsorbUSD := uc.commitSubscriptionAbsorbUSD(ctx, tx, reservation, costUSD)
-		var actualAbsorbQuota int64
+		var actualSubscriptionAmount int64
 		if actualAbsorbUSD >= costUSD {
-			actualAbsorbQuota = actualCost
+			actualSubscriptionAmount = actualCost
 		} else {
-			actualAbsorbQuota = uc.usdToQuotaFloor(actualAbsorbUSD)
+			actualSubscriptionAmount = uc.usdToAmountFloor(actualAbsorbUSD)
 		}
-		if actualAbsorbQuota > actualCost {
-			actualAbsorbQuota = actualCost
+		if actualSubscriptionAmount > actualCost {
+			actualSubscriptionAmount = actualCost
 		}
-		actualBalanceQuota := actualCost - actualAbsorbQuota
-		if actualBalanceQuota < 0 {
-			actualBalanceQuota = 0
+		actualBalanceAmount := actualCost - actualSubscriptionAmount
+		if actualBalanceAmount < 0 {
+			actualBalanceAmount = 0
 		}
 		// Subscription side: record the (un-multiplied) actual cost. The
 		// subscription Usecase multiplies by RateMultiplier inside the
@@ -1010,7 +987,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			}
 		}
 		// Wallet side: settle the reservation's balance pre-deduction.
-		oldBalance, newBalance, err := uc.accountRepo.CommitBalanceInTx(ctx, tx, reservation.UserID, reservation.BalanceAmountQuota, actualBalanceQuota, uc.canOverdraft(reservation.UserID))
+		oldBalance, newBalance, err := uc.accountRepo.CommitBalanceInTx(ctx, tx, reservation.UserID, reservation.BalanceAmount, actualBalanceAmount, uc.canOverdraft(reservation.UserID))
 		if err != nil {
 			return fmt.Errorf("commit balance: %w", err)
 		}
@@ -1025,7 +1002,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 					UserID:        reservation.UserID,
 					ReservationID: reservationID,
 					OverdueQuota:  delta,
-					OverdueUSD:    uc.quotaToUSD(delta),
+					OverdueUSD:    uc.amountToUSD(delta),
 					Status:        ReceivableStatusPending,
 					CreatedAt:     uc.Now(),
 					UpdatedAt:     uc.Now(),
@@ -1037,7 +1014,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		}
 		// Ledger entries. We split into two rows when both dimensions
 		// participate so each carries its own dedupe key. A pure-
-		// subscription commit (actualBalanceQuota == 0) writes only the
+		// subscription commit (actualBalanceAmount == 0) writes only the
 		// subscription row, and vice versa.
 		upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
 		// Emit the upstream-cost-recorded metric so the UpstreamCostMissing alert
@@ -1061,10 +1038,10 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		}
 		resolvedSubAccountID := resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
 		commonRemark := fmt.Sprintf("model=%s, tokens=%d", reservation.Model, actualTokens)
-		if actualAbsorbQuota > 0 {
+		if actualSubscriptionAmount > 0 {
 			subLedger := &Ledger{
 				UserID:                reservation.UserID,
-				Amount:                -actualAbsorbQuota,
+				Amount:                -actualSubscriptionAmount,
 				UpstreamCost:          0,
 				BalanceAfter:          newBalance,
 				Type:                  LedgerTypeConsume,
@@ -1084,13 +1061,13 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				IsStream:              usage.IsStream,
 				Endpoint:              usage.Endpoint,
 				CostSource:            CostSourceSubscription,
-				SubscriptionCost:      actualAbsorbQuota,
+				SubscriptionCost:      actualSubscriptionAmount,
 				BalanceCost:           0,
 				LedgerDedupeKey:       fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceSubscription),
 			}
 			// Per-bucket costs live on the balance ledger when one exists; otherwise
 			// attach them to the subscription ledger so the request remains auditable.
-			if actualBalanceQuota <= 0 {
+			if actualBalanceAmount <= 0 {
 				subLedger.PromptCost = costBreakdown.PromptCost
 				subLedger.CompletionCost = costBreakdown.CompletionCost
 				subLedger.CacheReadCost = costBreakdown.CacheReadCost
@@ -1102,10 +1079,10 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				return fmt.Errorf("create subscription ledger: %w", err)
 			}
 		}
-		if actualBalanceQuota > 0 {
+		if actualBalanceAmount > 0 {
 			balLedger := &Ledger{
 				UserID:                reservation.UserID,
-				Amount:                -actualBalanceQuota,
+				Amount:                -actualBalanceAmount,
 				UpstreamCost:          upstreamCost,
 				BalanceAfter:          newBalance,
 				Type:                  LedgerTypeConsume,
@@ -1132,7 +1109,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				Endpoint:              usage.Endpoint,
 				CostSource:            CostSourceBalance,
 				SubscriptionCost:      0,
-				BalanceCost:           actualBalanceQuota,
+				BalanceCost:           actualBalanceAmount,
 				LedgerDedupeKey:       fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceBalance),
 			}
 			if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, balLedger); err != nil {
@@ -1240,7 +1217,7 @@ func (uc *BillingUsecase) ReleaseQuota(ctx context.Context, reservationID, reaso
 // It lets the reconciliation job atomically expire reservations through the
 // same single-transaction path as explicit ReleaseQuota / CommitQuota
 // success=false, so the wallet refund + ledger entry + status transition
-// commit atomically and refund the wallet-side BalanceAmountQuota instead
+// commit atomically and refund the wallet-side BalanceAmount instead
 // of the full Amount.
 func (uc *BillingUsecase) ReleaseReservation(ctx context.Context, reservationID, reason, finalStatus string) error {
 	return uc.releaseReservation(ctx, reservationID, reason, finalStatus)
@@ -1281,9 +1258,9 @@ func (uc *BillingUsecase) releaseReservation(ctx context.Context, reservationID,
 		if err != nil {
 			return fmt.Errorf("get reservation in tx: %w", err)
 		}
-		// Wallet side: refund the reserved quota.
-		if reservation.BalanceAmountQuota > 0 {
-			_, err := uc.accountRepo.ReleaseBalanceInTx(ctx, tx, reservation.UserID, reservation.BalanceAmountQuota)
+		// Wallet side: refund the reserved amount.
+		if reservation.BalanceAmount > 0 {
+			_, err := uc.accountRepo.ReleaseBalanceInTx(ctx, tx, reservation.UserID, reservation.BalanceAmount)
 			if err != nil {
 				return fmt.Errorf("release balance: %w", err)
 			}
@@ -1291,7 +1268,7 @@ func (uc *BillingUsecase) releaseReservation(ctx context.Context, reservationID,
 			// when a retry enters this branch after a partial commit.
 			refund := &Ledger{
 				UserID:          reservation.UserID,
-				Amount:          reservation.BalanceAmountQuota,
+				Amount:          reservation.BalanceAmount,
 				Type:            LedgerTypeRefund,
 				ReferenceID:     reservationID,
 				Remark:          reason,

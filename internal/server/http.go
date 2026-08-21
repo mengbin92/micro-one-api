@@ -24,8 +24,6 @@ import (
 
 const postResponseWriteTimeout = 10 * time.Second
 
-const defaultQuotaPerUSD = 500000
-
 const amountUnitsPerUSD = 10000
 
 type tokenQuotaBlocker interface {

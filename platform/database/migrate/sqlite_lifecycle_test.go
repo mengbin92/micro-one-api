@@ -148,9 +148,9 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 18, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 19, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := len(files) - 2 // last two files arrive later (e.g. 077, 078)
+	cut := len(files) - 3 // last three files arrive later (077, 078, 079)
 
 	db := openScratchSqlite(t)
 	// Stage 1: apply the tree up to (not including) the last two files.
@@ -178,6 +178,36 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		"tail mirror must have applied during upgrade")
 	require.True(t, sqliteTableExists(t, db, "billing_ledger_dedupe_claims"),
 		"partition-safe dedupe claim migration must have applied during upgrade")
+	require.True(t, sqliteColumnExists(t, db, "billing_reservations", "balance_amount"),
+		"canonical balance amount migration must have applied during upgrade")
+}
+
+func TestSQLiteDialect_BalanceAmountMigrationBackfillsLegacyColumn(t *testing.T) {
+	dir := sqliteDialectDir(t)
+	db := openScratchSqlite(t)
+	_, err := db.Exec(`
+		CREATE TABLE billing_reservations (
+			reservation_id TEXT PRIMARY KEY,
+			balance_amount_quota INTEGER NOT NULL DEFAULT 0
+		);
+		INSERT INTO billing_reservations (reservation_id, balance_amount_quota)
+		VALUES ('legacy-reservation', 209);
+	`)
+	require.NoError(t, err)
+
+	migrationDir := tempDirWithFiles(t, []string{"079_add_balance_amount_to_billing_reservations.sql"}, dir)
+	applied, err := NewWithDriver(db, migrationDir, "sqlite3").Apply(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"079_add_balance_amount_to_billing_reservations"}, applied)
+	require.True(t, sqliteColumnExists(t, db, "billing_reservations", "balance_amount"))
+
+	var balanceAmount int64
+	require.NoError(t, db.QueryRow(`
+		SELECT balance_amount
+		FROM billing_reservations
+		WHERE reservation_id = 'legacy-reservation'
+	`).Scan(&balanceAmount))
+	require.Equal(t, int64(209), balanceAmount)
 }
 
 func sqliteTableExists(t *testing.T, db *sql.DB, table string) bool {

@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -50,8 +51,7 @@ func TestComputeAbsorbablePure_FrozenSubtraction(t *testing.T) {
 
 func TestComputeAbsorbablePure_NoLimit(t *testing.T) {
 	r := ComputeAbsorbablePure(AbsorbableWindow{}, 1.0, 0.0)
-	// No limit means "uncapped" — caller uses cost as-is.
-	assert.Equal(t, 0.0, r.AbsorbableUSD)
+	assert.True(t, math.IsInf(r.AbsorbableUSD, 1), "uncapped subscription should have infinite absorbable quota")
 }
 
 func TestComputeAbsorbablePure_FullyConsumed(t *testing.T) {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	channelv1 "micro-one-api/api/channel/v1"
@@ -16,7 +17,9 @@ import (
 // pointer receiver so the counter is observable.
 type recordingChannelClient struct {
 	channelv1.ChannelServiceClient
-	channelUsageCalls int
+	channelUsageCalls      int
+	subscriptionCostUSD    float64
+	subscriptionUsageCalls int
 }
 
 func (c *recordingChannelClient) RecordChannelUsage(context.Context, *channelv1.RecordChannelUsageRequest, ...grpc.CallOption) (*channelv1.RecordChannelUsageResponse, error) {
@@ -28,7 +31,9 @@ func (c *recordingChannelClient) RecordModelUsage(context.Context, *channelv1.Re
 	return &channelv1.RecordModelUsageResponse{Success: true, Message: "ok"}, nil
 }
 
-func (c *recordingChannelClient) RecordSubscriptionAccountQuotaUsage(context.Context, *channelv1.RecordSubscriptionAccountQuotaUsageRequest, ...grpc.CallOption) (*channelv1.RecordSubscriptionAccountQuotaUsageResponse, error) {
+func (c *recordingChannelClient) RecordSubscriptionAccountQuotaUsage(_ context.Context, req *channelv1.RecordSubscriptionAccountQuotaUsageRequest, _ ...grpc.CallOption) (*channelv1.RecordSubscriptionAccountQuotaUsageResponse, error) {
+	c.subscriptionUsageCalls++
+	c.subscriptionCostUSD = req.CostUsd
 	return &channelv1.RecordSubscriptionAccountQuotaUsageResponse{Success: true, Message: "ok"}, nil
 }
 
@@ -94,6 +99,12 @@ func TestCommitQuotaSkipsChannelUsageForSubscription(t *testing.T) {
 
 	if ch.channelUsageCalls != 0 {
 		t.Fatalf("RecordChannelUsage calls = %d, want 0 for subscription-sourced traffic", ch.channelUsageCalls)
+	}
+	if ch.subscriptionUsageCalls != 1 {
+		t.Fatalf("RecordSubscriptionAccountQuotaUsage calls = %d, want 1", ch.subscriptionUsageCalls)
+	}
+	if math.Abs(ch.subscriptionCostUSD-0.01) > 1e-12 {
+		t.Fatalf("subscription cost_usd = %.12f, want 0.01 for 100 fixed-point amount units", ch.subscriptionCostUSD)
 	}
 
 	// Explicitly assert the SourceKind-driven skip seam: driving

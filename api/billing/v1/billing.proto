@@ -48,7 +48,7 @@ service BillingService {
   rpc AggregateUsage(AggregateUsageRequest) returns (AggregateUsageResponse);
 }
 
-// ========== 配额预扣 ==========
+// ========== 金额预扣（RPC 名称为兼容既有客户端保留） ==========
 
 message ReserveQuotaRequest {
   string user_id = 1;
@@ -70,8 +70,9 @@ message ReserveQuotaResponse {
   // portion is zero and the relay can keep serving the request even
   // when the wallet would otherwise have refused the deduction.
   int64 subscription_amount_usd = 5;   // USD absorbed by the subscription (original, un-multiplied)
-  int64 balance_amount_quota = 6;      // quota pre-deducted from the wallet
+  int64 balance_amount_quota = 6 [deprecated = true]; // Compatibility alias for balance_amount.
   int64 subscription_id = 7;           // 0 when the reservation was created via the legacy balance-only path
+  int64 balance_amount = 8;            // Fixed-point amount pre-deducted from the wallet.
 }
 
 message CommitQuotaRequest {
@@ -86,7 +87,7 @@ message CommitQuotaRequest {
   int64 elapsed_time = 9;
   bool is_stream = 10;
   int64 cache_read_tokens = 11;
-  // Optional upstream cost override in quota units. When omitted, billing-service
+  // Optional upstream cost override in fixed-point amount units. When omitted, billing-service
   // calculates it from upstream pricing config.
   int64 upstream_cost = 12;
   int64 subscription_account_id = 13;  // 订阅账号 ID（0 = 非订阅账号请求；覆盖预留时记录的账号）
@@ -125,8 +126,8 @@ message CommitQuotaResponse {
   // subscription_cost + balance_cost equals committed_amount in the
   // dual-track flow; the values are zero on the legacy balance-only
   // path so callers can detect the new flow.
-  int64 subscription_cost = 5;   // quota-equivalent share absorbed by the subscription
-  int64 balance_cost = 6;        // quota-equivalent share paid out of the wallet
+  int64 subscription_cost = 5;   // Fixed-point amount absorbed by the subscription.
+  int64 balance_cost = 6;        // Fixed-point amount paid out of the wallet.
   // async_enqueued is true when the settlement was enqueued for background
   // processing (Phase 2.1 async billing). committed_amount is provisional
   // and the authoritative values are written by the worker. Callers should

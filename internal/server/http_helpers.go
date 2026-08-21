@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
@@ -116,18 +114,6 @@ func (s *HTTPServer) applyModelWhitelist(availableModels []string, allowedModels
 
 func amountUnitsToUSD(amount int64) float64 {
 	return float64(amount) / float64(amountUnitsPerUSD)
-}
-
-func quotaPerUSDFromEnv() int64 {
-	raw := strings.TrimSpace(os.Getenv("PAYMENT_QUOTA_PER_UNIT"))
-	if raw == "" {
-		return defaultQuotaPerUSD
-	}
-	value, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || value <= 0 {
-		return defaultQuotaPerUSD
-	}
-	return value
 }
 
 func (s *HTTPServer) estimateTokens(req *relayprovider.ChatCompletionsRequest) int64 {

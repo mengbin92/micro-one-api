@@ -268,7 +268,6 @@ func TestHTTPServerAPIStatusCompatibility(t *testing.T) {
 }
 
 func TestHTTPServerUsageReturnsBalanceForAPIKey(t *testing.T) {
-	t.Setenv("PAYMENT_QUOTA_PER_UNIT", "500000")
 	httpServer := NewHTTPServer(
 		rawIdentityClient{userIDByToken: map[string]int64{"test-token": 42}},
 		nil,
@@ -960,7 +959,6 @@ func TestHTTPServerBillingMutationsIgnoreCanceledRequestContext(t *testing.T) {
 }
 
 func TestHTTPServerCommitQuotaSkipsRelaySubscriptionUsage(t *testing.T) {
-	t.Setenv("PAYMENT_QUOTA_PER_UNIT", "100")
 	billingClient := &rawBillingClient{failOnCanceledContext: true}
 	repo := subscriptiondata.NewMemoryRepositoryForTest()
 	group := &subscriptionbiz.SubscriptionGroup{Name: "pro", Platform: "openai", Status: subscriptionbiz.SubscriptionGroupStatusEnabled}

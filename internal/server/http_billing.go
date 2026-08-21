@@ -137,7 +137,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		detail := details[0]
 		s.recordChannelUsageFromDetail(ctx, detail, actualTokens)
 		s.recordModelUsage(ctx, detail.ModelName, actualTokens, detail.ElapsedTime, false)
-		costUSD := quotaToUSD(resp.GetCommittedAmount())
+		costUSD := amountUnitsToUSD(resp.GetCommittedAmount())
 		s.recordSubscriptionAccountQuotaUsage(ctx, detail.SubscriptionAccountID, reservationID, costUSD)
 		s.recordSubscriptionSessionWindowUsage(ctx, detail, reservationID, costUSD)
 		// recordSubscriptionUsage is a no-op on the dual-track
@@ -239,21 +239,10 @@ func (s *HTTPServer) consumeTokenQuota(ctx context.Context, userID, tokenID, amo
 	}
 }
 
-func (s *HTTPServer) recordSubscriptionUsage(ctx context.Context, userID int64, quota int64) {
+func (s *HTTPServer) recordSubscriptionUsage(ctx context.Context, userID int64, amount int64) {
 	// Billing CommitQuotaWithUsage records subscription usage transactionally.
 	// Keeping a relay-side write would double-count subscription windows.
 	metrics.SubscriptionUsageRecordsTotal.WithLabelValues("skipped").Inc()
-}
-
-func quotaToUSD(quota int64) float64 {
-	if quota <= 0 {
-		return 0
-	}
-	perUSD := quotaPerUSDFromEnv()
-	if perUSD <= 0 {
-		perUSD = defaultQuotaPerUSD
-	}
-	return float64(quota) / float64(perUSD)
 }
 
 // recordChannelUsageFromDetail records channel token usage only for
