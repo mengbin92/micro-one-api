@@ -100,5 +100,6 @@ describe('TokensPage', () => {
     });
     expect(screen.queryByText(fullKey)).not.toBeInTheDocument();
     expect(screen.getByText(maskedKey)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CC Switch' })).not.toBeInTheDocument();
   });
 });

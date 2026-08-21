@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.3] - 2026-08-21
+
+v0.22.3 是 v0.22.2 的 **PATCH 生产修复版本**：修复 billing 价格键大小写不一致、CC Switch / Claude 模型探测与流式兼容，以及上游敏感词策略拒绝误触发渠道熔断的问题。详见
+[release-v0.22.3.md](docs/releases/release-v0.22.3.md)。
+
+### Fixed
+
+- billing 价格、倍率和三级上游价格键统一大小写归一化，避免静默回退默认倍率。
+- CC Switch / Claude 模型鉴权、模型可见性、Token 导入和 SSE 流式响应兼容性。
+- `sensitive_words_detected` 不再作为渠道基础设施失败计入健康熔断。
+
 ## [0.22.2] - 2026-08-21
 
 v0.22.2 是 v0.22.1 的 **PATCH 兼容性修复版本**：适配 Kimi K3 对聊天请求参数和输出 token 字段的限制，修复 Kimi K3 调用持续返回参数错误的问题。详见

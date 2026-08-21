@@ -525,6 +525,7 @@ message ModelInfo {
   // aggregated counts for list views
   int32 channel_count = 19;
   int32 subscription_count = 20;
+  repeated string suppliers = 21; // mapped channel/account names that supply this model
 }
 
 message ModelSummary {
@@ -539,6 +540,7 @@ message ModelSummary {
   bool is_public = 9;
   int32 channel_count = 10;
   int32 subscription_count = 11;
+  repeated string suppliers = 12; // mapped channel/account names that supply this model
 }
 
 message ModelAlias {

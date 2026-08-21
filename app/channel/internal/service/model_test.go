@@ -215,6 +215,15 @@ func TestChannelService_ListModels(t *testing.T) {
 	}
 }
 
+func TestToModelSummarySeparatesSuppliersFromDeveloper(t *testing.T) {
+	got := toModelSummary(&biz.Model{
+		ModelID: "DeepSeek-V4-Pro-0813", Provider: "deepseek", Suppliers: []string{"neo"},
+	})
+	if got.GetProvider() != "deepseek" || len(got.GetSuppliers()) != 1 || got.GetSuppliers()[0] != "neo" {
+		t.Fatalf("summary = %+v, want supplier neo and developer deepseek", got)
+	}
+}
+
 func TestChannelService_CreateModelPreservesExplicitDisabledStatus(t *testing.T) {
 	svc := newModelService()
 	ctx := context.Background()

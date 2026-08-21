@@ -26,6 +26,7 @@ retry:
   max_interval: 5s
   multiplier: 2.0
   retryable_status:
+    - 405
     - 429
     - 500
     - 502

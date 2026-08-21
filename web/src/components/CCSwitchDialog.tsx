@@ -110,9 +110,7 @@ export function CCSwitchDialog({
   const [app, setApp] = useState<AppType>('claude');
   const [name, setName] = useState(APP_CONFIGS.claude.defaultName);
   const [models, setModels] = useState<Record<string, string>>({});
-  const [apiKey, setApiKey] = useState(
-    tokenKey.startsWith('sk-') ? tokenKey : tokenKey ? `sk-${tokenKey}` : '',
-  );
+  const [apiKey, setApiKey] = useState(tokenKey);
   const [baseUrl, setBaseUrl] = useState(window.location.origin);
 
   // The parent bumps a `key` prop each time the dialog opens so this is a
@@ -177,7 +175,7 @@ export function CCSwitchDialog({
               id="ccs-api-key"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder="aB3dE5fG7hJ9kL2mN4pQ6rS8tU0vW1xY"
               className="font-mono text-xs"
             />
             <p className="text-xs text-slate-400">在「API 密钥」页面创建密钥后粘贴到此处。</p>

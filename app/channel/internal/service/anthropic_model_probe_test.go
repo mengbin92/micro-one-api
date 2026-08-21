@@ -134,14 +134,14 @@ func TestHandleSubscriptionAccountEventRoutesDomesticPlatform(t *testing.T) {
 		Platform:    "zhipu",
 		AccessToken: "k",
 		BaseURL:     srv.URL,
-		Models:      []string{"glm-4.6"},
+		Models:      nil,
 	}}
 	probe := NewCodexModelProbeService(lookup)
 	probe.SetAnthropicProber(NewAnthropicModelProbeService())
 
 	if err := probe.HandleSubscriptionAccountEvent(context.Background(), events.Event{
 		Topic:   events.TopicChannelChanged,
-		Payload: &biz.SubscriptionAccount{ID: 42},
+		Payload: &biz.SubscriptionAccountChanged{AccountID: 42},
 	}); err != nil {
 		t.Fatalf("HandleSubscriptionAccountEvent() error = %v", err)
 	}
@@ -198,14 +198,14 @@ func TestHandleSubscriptionAccountEventRoutesClaude(t *testing.T) {
 		AccountType: "oauth",
 		AccessToken: "sk-ant-oat-1",
 		BaseURL:     srv.URL, // operator override; empty BaseURL falls back to api.anthropic.com
-		Models:      []string{"claude-sonnet-4-20250514"},
+		Models:      nil,
 	}}
 	probe := NewCodexModelProbeService(lookup)
 	probe.SetAnthropicProber(NewAnthropicModelProbeService())
 
 	if err := probe.HandleSubscriptionAccountEvent(context.Background(), events.Event{
 		Topic:   events.TopicChannelChanged,
-		Payload: &biz.SubscriptionAccount{ID: 55},
+		Payload: &biz.SubscriptionAccountChanged{AccountID: 55},
 	}); err != nil {
 		t.Fatalf("HandleSubscriptionAccountEvent() error = %v", err)
 	}
@@ -275,7 +275,7 @@ func TestHandleSubscriptionAccountEventSkipsDomesticWhenNoProber(t *testing.T) {
 	probe := NewCodexModelProbeService(lookup) // no SetAnthropicProber
 	if err := probe.HandleSubscriptionAccountEvent(context.Background(), events.Event{
 		Topic:   events.TopicChannelChanged,
-		Payload: &biz.SubscriptionAccount{ID: 7},
+		Payload: &biz.SubscriptionAccountChanged{AccountID: 7},
 	}); err != nil {
 		t.Fatalf("HandleSubscriptionAccountEvent() error = %v", err)
 	}

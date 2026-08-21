@@ -260,6 +260,28 @@ func TestRepository_ListModelsFiltering(t *testing.T) {
 	assert.Equal(t, "anthropic-1", models[0].ModelID)
 }
 
+func TestRepository_ListModelsAggregatesSupplierNames(t *testing.T) {
+	repo := setupModelTestDB(t)
+	ctx := context.Background()
+	model := &biz.Model{ModelID: "DeepSeek-V4-Pro-0813", DisplayName: "DeepSeek V4", Provider: "deepseek"}
+	require.NoError(t, repo.CreateModel(ctx, model))
+	require.NoError(t, repo.db.Exec(`INSERT INTO channels (id, name, status) VALUES (10, 'neo', 1)`).Error)
+	require.NoError(t, repo.db.Exec(`INSERT INTO subscription_accounts (id, name, status) VALUES (20, 'neo-plan', 1)`).Error)
+	require.NoError(t, repo.UpsertChannelMapping(ctx, &biz.ModelChannelMapping{
+		ChannelID: 10, ModelPK: model.ID, Enabled: true, EnabledHasValue: true,
+	}))
+	require.NoError(t, repo.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
+		SubscriptionAccountID: 20, ModelPK: model.ID, GroupName: "default", Enabled: true, EnabledHasValue: true,
+	}))
+
+	models, total, err := repo.ListModels(ctx, 1, 10, biz.ListModelsFilter{})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, models, 1)
+	assert.Equal(t, "deepseek", models[0].Provider, "provider remains the model developer")
+	assert.Equal(t, []string{"neo", "neo-plan"}, models[0].Suppliers)
+}
+
 func TestRepository_AliasCRUD(t *testing.T) {
 	repo := setupModelTestDB(t)
 	ctx := context.Background()

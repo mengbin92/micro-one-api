@@ -134,11 +134,11 @@ func TestMapUpstreamError(t *testing.T) {
 		input    int
 		expected int
 	}{
+		{400, 400},
 		{429, 429},
 		{502, 502},
 		{503, 503},
 		{504, 504},
-		{400, 502}, // default -> BadGateway
 		{500, 502}, // default -> BadGateway
 	}
 

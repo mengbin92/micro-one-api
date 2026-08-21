@@ -212,6 +212,12 @@ func (s *CodexModelProbeService) syncModelsForAccount(ctx context.Context, accou
 	if err != nil {
 		return err
 	}
+	// An operator-selected model list is authoritative, just like the manual
+	// channel model list. Account status/token updates must never expand it by
+	// replaying the platform-wide discovery candidates.
+	if len(account.Models) > 0 {
+		return s.syncRegistryModelsForAccount(ctx, account, account.Models)
+	}
 	models, err := s.ProbeAccountModels(ctx, account)
 	if err != nil {
 		return err
@@ -242,18 +248,46 @@ func (s *CodexModelProbeService) syncRegistryModelsForAccount(ctx context.Contex
 	if len(groups) == 0 {
 		groups = []string{"default"}
 	}
+	type mappingKey struct {
+		modelPK   int64
+		groupName string
+	}
+	desired := make(map[mappingKey]discoveredRoute, len(routes)*len(groups))
 	for _, group := range groups {
 		for _, route := range routes {
-			if err := s.modelUC.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
-				SubscriptionAccountID: account.ID,
-				ModelPK:               route.model.ID,
-				GroupName:             group,
-				Enabled:               true,
-				EnabledHasValue:       true,
-				UpstreamModelID:       route.upstreamModelID,
-			}); err != nil {
-				return fmt.Errorf("map discovered model %q to subscription account %d: %w", route.upstreamModelID, account.ID, err)
-			}
+			desired[mappingKey{modelPK: route.model.ID, groupName: group}] = route
+		}
+	}
+
+	// Reconcile the account's registry mappings to the authoritative model and
+	// group lists. The previous append-only behavior left every model ever
+	// discovered attached to the account after an operator narrowed the list.
+	existing, err := s.modelUC.ListSubscriptionMappings(ctx, account.ID)
+	if err != nil {
+		return fmt.Errorf("list subscription mappings for account %d: %w", account.ID, err)
+	}
+	for _, mapping := range existing {
+		if mapping == nil {
+			continue
+		}
+		key := mappingKey{modelPK: mapping.ModelPK, groupName: mapping.GroupName}
+		if _, ok := desired[key]; ok {
+			continue
+		}
+		if err := s.modelUC.DeleteSubscriptionMapping(ctx, account.ID, mapping.ModelPK, mapping.GroupName); err != nil {
+			return fmt.Errorf("remove stale subscription mapping for account %d: %w", account.ID, err)
+		}
+	}
+	for key, route := range desired {
+		if err := s.modelUC.UpsertSubscriptionMapping(ctx, &biz.ModelSubscriptionMapping{
+			SubscriptionAccountID: account.ID,
+			ModelPK:               key.modelPK,
+			GroupName:             key.groupName,
+			Enabled:               true,
+			EnabledHasValue:       true,
+			UpstreamModelID:       route.upstreamModelID,
+		}); err != nil {
+			return fmt.Errorf("map discovered model %q to subscription account %d: %w", route.upstreamModelID, account.ID, err)
 		}
 	}
 	return nil
@@ -420,14 +454,18 @@ func dedupeSortedStrings(values []string) []string {
 
 func subscriptionAccountIDFromEventPayload(payload any) int64 {
 	switch v := payload.(type) {
-	case *biz.SubscriptionAccount:
+	case *biz.SubscriptionAccountChanged:
 		if v != nil {
-			return v.ID
+			return v.AccountID
 		}
-	case biz.SubscriptionAccount:
-		return v.ID
+	case biz.SubscriptionAccountChanged:
+		return v.AccountID
 	case map[string]any:
-		if id, ok := v["id"]; ok {
+		id, ok := v["AccountID"]
+		if !ok {
+			id, ok = v["account_id"]
+		}
+		if ok {
 			switch n := id.(type) {
 			case float64:
 				return int64(n)
@@ -440,9 +478,9 @@ func subscriptionAccountIDFromEventPayload(payload any) int64 {
 	}
 	if payload != nil {
 		if raw, ok := payload.(string); ok && strings.TrimSpace(raw) != "" {
-			var account biz.SubscriptionAccount
-			if err := jsonx.Unmarshal([]byte(raw), &account); err == nil {
-				return account.ID
+			var change biz.SubscriptionAccountChanged
+			if err := jsonx.Unmarshal([]byte(raw), &change); err == nil && change.AccountID > 0 {
+				return change.AccountID
 			}
 			var event events.Event
 			if err := jsonx.Unmarshal([]byte(raw), &event); err == nil {
@@ -450,9 +488,9 @@ func subscriptionAccountIDFromEventPayload(payload any) int64 {
 			}
 		}
 		if raw, ok := payload.([]byte); ok && len(raw) > 0 {
-			var account biz.SubscriptionAccount
-			if err := jsonx.Unmarshal(raw, &account); err == nil {
-				return account.ID
+			var change biz.SubscriptionAccountChanged
+			if err := jsonx.Unmarshal(raw, &change); err == nil {
+				return change.AccountID
 			}
 		}
 	}

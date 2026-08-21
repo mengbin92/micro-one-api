@@ -28,6 +28,7 @@ func DefaultRetryPolicy() *RetryPolicy {
 		MaxInterval:     5 * time.Second,
 		Multiplier:      2.0,
 		RetryableStatus: map[int]bool{
+			405: true,
 			429: true,
 			500: true,
 			502: true,
@@ -55,6 +56,12 @@ func (p *RetryPolicy) IsRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
+	// Protocol capability mismatches are not malformed client requests. Another
+	// channel may support Responses natively or preserve the required reasoning
+	// history, so they remain retryable even with an older custom status list.
+	if IsProtocolCapabilityMismatch(err) {
+		return true
+	}
 
 	// Check for RetryableError
 	var re *RetryableError
@@ -69,14 +76,71 @@ func (p *RetryPolicy) IsRetryable(err error) bool {
 	}
 
 	// Network errors are always retryable
-	networkErrors := []string{"connection refused", "timeout", "EOF", "dial tcp"}
-	for _, pattern := range networkErrors {
+	return isRetryableNetworkError(err)
+}
+
+func isRetryableNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, pattern := range []string{"connection refused", "timeout", "EOF", "dial tcp"} {
 		if strings.Contains(msg, pattern) {
 			return true
 		}
 	}
-
 	return false
+}
+
+// IsProtocolCapabilityMismatch identifies request failures caused by an
+// upstream protocol limitation rather than invalid client input. Keep the 400
+// match deliberately narrow: other bad requests must still fail immediately.
+func IsProtocolCapabilityMismatch(err error) bool {
+	status := UpstreamStatus(err)
+	if status == 405 {
+		return true
+	}
+	if status != 400 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "reasoning_content in the thinking mode must be passed back")
+}
+
+// upstreamAttemptHealthy distinguishes channel failures from request/local
+// failures. A 4xx response proves the channel is reachable and must release
+// selector inflight state without advancing its circuit breaker. Rate limits,
+// 5xx responses, timeouts, and transport failures still count as unhealthy.
+func upstreamAttemptHealthy(err error) bool {
+	if err == nil {
+		return true
+	}
+	// Some upstreams encode request-specific policy rejection as HTTP 500.
+	// The source is reachable and may still be useful for other prompts, so
+	// keep failover enabled without poisoning channel health.
+	if isUpstreamPolicyRejection(err) {
+		return true
+	}
+	status := UpstreamStatus(err)
+	if status > 0 {
+		return status < 500 && status != 429
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	if errors.Is(err, context.DeadlineExceeded) || isRetryableNetworkError(err) {
+		return false
+	}
+	// Conversion, billing, and other local failures are not channel health
+	// evidence. Record them as neutral/healthy so selector inflight is released.
+	return true
+}
+
+func isUpstreamPolicyRejection(err error) bool {
+	var upstreamErr *relayprovider.UpstreamHTTPError
+	if !errors.As(err, &upstreamErr) {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(upstreamErr.Body)), "sensitive_words_detected")
 }
 
 // BackoffDuration calculates the sleep duration for the given attempt (0-indexed).
@@ -249,7 +313,7 @@ func (e *RetryExecutor) ExecuteWithAccountHealth(
 	wrapped := func(ctx context.Context, ch *Channel) error {
 		err := fn(ctx, ch)
 		if ch == initialChannel {
-			e.RecordAccountHealth(ctx, accountID, err == nil)
+			e.RecordAccountHealth(ctx, accountID, upstreamAttemptHealthy(err))
 		}
 		return err
 	}
@@ -279,7 +343,7 @@ func (e *RetryExecutor) ExecuteWithCandidates(
 	wrapped := func(ctx context.Context, ch *Channel) error {
 		err := fn(ctx, ch)
 		if ch == initialChannel {
-			e.RecordAccountHealth(ctx, accountID, err == nil)
+			e.RecordAccountHealth(ctx, accountID, upstreamAttemptHealthy(err))
 		}
 		return err
 	}
@@ -370,7 +434,11 @@ func (e *RetryExecutor) execute(
 		}
 
 		lastErr = err
-		e.recordHealth(ctx, lastChannel, false, err.Error(), responseTime)
+		if upstreamAttemptHealthy(err) {
+			e.recordHealth(ctx, lastChannel, true, "", responseTime)
+		} else {
+			e.recordHealth(ctx, lastChannel, false, err.Error(), responseTime)
+		}
 
 		// If not retryable, fail immediately
 		if !e.policy.IsRetryable(err) {
@@ -518,6 +586,10 @@ func ClassifyRetryFallbackReason(firstErr error) string {
 	}
 	status := UpstreamStatus(firstErr)
 	switch {
+	case IsProtocolCapabilityMismatch(firstErr):
+		return "capability_mismatch"
+	case isUpstreamPolicyRejection(firstErr):
+		return "policy_rejection"
 	case status == 429:
 		return "rate_limited"
 	case status >= 500:

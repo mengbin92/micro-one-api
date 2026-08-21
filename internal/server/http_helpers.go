@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -15,6 +16,20 @@ import (
 
 	"micro-one-api/platform/audit"
 )
+
+// extractAPIKey accepts the two credential headers used by OpenAI- and
+// Anthropic-compatible clients. Anthropic clients prefer x-api-key when both
+// headers are present, matching the Messages API behavior.
+func extractAPIKey(r *http.Request) string {
+	if key := strings.TrimSpace(r.Header.Get("x-api-key")); key != "" {
+		return key
+	}
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	}
+	return ""
+}
 
 func isSubscriptionChannel(t int32) bool {
 	switch t {

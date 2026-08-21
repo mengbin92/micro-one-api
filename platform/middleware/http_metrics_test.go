@@ -101,6 +101,30 @@ func TestHTTPMetricsMiddleware_durationObserved(t *testing.T) {
 	}
 }
 
+func TestHTTPMetricsMiddleware_preservesFlusher(t *testing.T) {
+	svc := "test-relay-flusher"
+	mw := NewHTTPMetricsMiddleware(svc)
+	flusherAvailable := false
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		flusherAvailable = ok
+		if ok {
+			flusher.Flush()
+		}
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "http://relay/v1/messages", nil)
+	mw(handler).ServeHTTP(rec, req)
+
+	if !flusherAvailable {
+		t.Fatal("metrics middleware hid http.Flusher")
+	}
+	if !rec.Flushed {
+		t.Fatal("Flush was not forwarded to the underlying response writer")
+	}
+}
+
 func TestNormalizePath(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"", ""},

@@ -17,36 +17,10 @@ func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		s.writeError(w, http.StatusUnauthorized, "missing authorization header")
+	models, ok := s.availableModelsForRequest(w, r)
+	if !ok {
 		return
 	}
-
-	if !strings.HasPrefix(authHeader, "Bearer ") {
-		s.writeError(w, http.StatusUnauthorized, "invalid authorization header format")
-		return
-	}
-
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	if token == "" {
-		s.writeError(w, http.StatusUnauthorized, "missing token")
-		return
-	}
-
-	authSnapshot, err := s.getAuthSnapshot(r.Context(), token)
-	if err != nil {
-		s.handleIdentityError(w, err)
-		return
-	}
-
-	modelsReply, err := s.listAvailableModels(r.Context(), authSnapshot.Group)
-	if err != nil {
-		s.handleChannelError(w, err)
-		return
-	}
-
-	models := s.applyModelWhitelist(modelsReply.Models, authSnapshot.AllowedModels)
 
 	response := struct {
 		Object string `json:"object"`
@@ -237,6 +211,10 @@ func (s *HTTPServer) handleRetrieveModel(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	models, ok := s.availableModelsForRequest(w, r)
+	if !ok {
+		return
+	}
 
 	const prefix = "/v1/models/"
 	modelID := strings.TrimPrefix(r.URL.Path, prefix)
@@ -244,8 +222,38 @@ func (s *HTTPServer) handleRetrieveModel(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusNotFound, "model not found")
 		return
 	}
+	visible := false
+	for _, model := range models {
+		if model == modelID {
+			visible = true
+			break
+		}
+	}
+	if !visible {
+		s.writeError(w, http.StatusNotFound, "model not found")
+		return
+	}
 
 	s.writeJSON(w, http.StatusOK, openAIModelResponse(modelID))
+}
+
+func (s *HTTPServer) availableModelsForRequest(w http.ResponseWriter, r *http.Request) ([]string, bool) {
+	token := extractAPIKey(r)
+	if token == "" {
+		s.writeError(w, http.StatusUnauthorized, "missing API key")
+		return nil, false
+	}
+	authSnapshot, err := s.getAuthSnapshot(r.Context(), token)
+	if err != nil {
+		s.handleIdentityError(w, err)
+		return nil, false
+	}
+	modelsReply, err := s.listAvailableModels(r.Context(), authSnapshot.Group)
+	if err != nil {
+		s.handleChannelError(w, err)
+		return nil, false
+	}
+	return s.applyModelWhitelist(modelsReply.Models, authSnapshot.AllowedModels), true
 }
 
 func (s *HTTPServer) handleAPIStatus(w http.ResponseWriter, r *http.Request) {

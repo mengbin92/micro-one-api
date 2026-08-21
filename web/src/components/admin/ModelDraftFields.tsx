@@ -43,7 +43,7 @@ export function ModelDraftFields({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
-          <Label htmlFor="provider">提供商</Label>
+          <Label htmlFor="provider">模型开发商</Label>
           <select
             id="provider"
             value={draft.provider}

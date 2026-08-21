@@ -343,42 +343,70 @@ func (r *Repository) batchFillModelCounts(ctx context.Context, models []*biz.Mod
 	}
 
 	type countRow struct {
-		ModelID int64
-		Count   int64
+		ModelID    int64
+		SourceName string
+		Count      int64
 	}
 
 	// Channel counts: join channels so orphaned mappings (parent deleted
 	// without cascade) do not inflate the count.
 	var chRows []countRow
 	_ = r.db.WithContext(ctx).Model(&modelChannelMappingModel{}).
-		Select("model_channel_mapping.model_id as model_id, count(*) as count").
+		Select("model_channel_mapping.model_id as model_id, channels.name as source_name, count(*) as count").
 		Joins("JOIN channels ON channels.id = model_channel_mapping.channel_id").
 		Where("model_channel_mapping.model_id IN ? AND model_channel_mapping.enabled = ?", ids, true).
-		Group("model_channel_mapping.model_id").
+		Group("model_channel_mapping.model_id, channels.id, channels.name").
 		Scan(&chRows).Error
-	chMap := make(map[int64]int32, len(chRows))
+	chMap := make(map[int64]int64, len(chRows))
+	supplierSets := make(map[int64]map[string]struct{}, len(models))
 	for _, row := range chRows {
-		chMap[row.ModelID] = safecast.Int64ToInt32Saturating(row.Count)
+		chMap[row.ModelID] += row.Count
+		addModelSupplier(supplierSets, row.ModelID, row.SourceName)
 	}
 
 	// Subscription counts: join subscription_accounts so orphaned mappings
 	// do not inflate the count.
 	var subRows []countRow
 	_ = r.db.WithContext(ctx).Model(&modelSubscriptionMappingModel{}).
-		Select("model_subscription_mapping.model_id as model_id, count(*) as count").
+		Select("model_subscription_mapping.model_id as model_id, subscription_accounts.name as source_name, count(*) as count").
 		Joins("JOIN subscription_accounts ON subscription_accounts.id = model_subscription_mapping.subscription_account_id").
 		Where("model_subscription_mapping.model_id IN ? AND model_subscription_mapping.enabled = ?", ids, true).
-		Group("model_subscription_mapping.model_id").
+		Group("model_subscription_mapping.model_id, subscription_accounts.id, subscription_accounts.name").
 		Scan(&subRows).Error
-	subMap := make(map[int64]int32, len(subRows))
+	subMap := make(map[int64]int64, len(subRows))
 	for _, row := range subRows {
-		subMap[row.ModelID] = safecast.Int64ToInt32Saturating(row.Count)
+		subMap[row.ModelID] += row.Count
+		addModelSupplier(supplierSets, row.ModelID, row.SourceName)
 	}
 
 	for _, m := range models {
-		m.ChannelCount = chMap[m.ID]
-		m.SubscriptionCount = subMap[m.ID]
+		m.ChannelCount = safecast.Int64ToInt32Saturating(chMap[m.ID])
+		m.SubscriptionCount = safecast.Int64ToInt32Saturating(subMap[m.ID])
+		m.Suppliers = sortedSupplierNames(supplierSets[m.ID])
 	}
+}
+
+func addModelSupplier(supplierSets map[int64]map[string]struct{}, modelID int64, name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	if supplierSets[modelID] == nil {
+		supplierSets[modelID] = make(map[string]struct{})
+	}
+	supplierSets[modelID][name] = struct{}{}
+}
+
+func sortedSupplierNames(names map[string]struct{}) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(names))
+	for name := range names {
+		result = append(result, name)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func (r *Repository) GetModel(ctx context.Context, modelPK int64) (*biz.Model, error) {
@@ -845,7 +873,9 @@ func (r *Repository) listModelsMemory(page, pageSize int32, filter biz.ListModel
 	var filtered []*biz.Model
 	for _, m := range r.models {
 		if matchesModelFilter(m, filter) {
-			filtered = append(filtered, cloneModel(m))
+			cloned := cloneModel(m)
+			r.fillModelAggregatesMemory(cloned)
+			filtered = append(filtered, cloned)
 		}
 	}
 	total := int64(len(filtered))
@@ -867,7 +897,9 @@ func (r *Repository) getModelMemory(modelPK int64) (*biz.Model, error) {
 	if !ok {
 		return nil, biz.ErrModelNotFound
 	}
-	return cloneModel(m), nil
+	cloned := cloneModel(m)
+	r.fillModelAggregatesMemory(cloned)
+	return cloned, nil
 }
 
 func (r *Repository) getModelByIDMemory(modelID string) (*biz.Model, error) {
@@ -875,10 +907,48 @@ func (r *Repository) getModelByIDMemory(modelID string) (*biz.Model, error) {
 	defer r.lock.RUnlock()
 	for _, m := range r.models {
 		if strings.EqualFold(m.ModelID, modelID) {
-			return cloneModel(m), nil
+			cloned := cloneModel(m)
+			r.fillModelAggregatesMemory(cloned)
+			return cloned, nil
 		}
 	}
 	return nil, biz.ErrModelNotFound
+}
+
+// fillModelAggregatesMemory mirrors batchFillModelCounts while the caller
+// holds r.lock for reading.
+func (r *Repository) fillModelAggregatesMemory(model *biz.Model) {
+	if model == nil {
+		return
+	}
+	suppliers := make(map[string]struct{})
+	for _, mapping := range r.modelChannelMappings {
+		if mapping == nil || !mapping.Enabled || mapping.ModelPK != model.ID {
+			continue
+		}
+		channel := r.channels[mapping.ChannelID]
+		if channel == nil {
+			continue
+		}
+		model.ChannelCount++
+		if name := strings.TrimSpace(channel.Name); name != "" {
+			suppliers[name] = struct{}{}
+		}
+	}
+	for _, mapping := range r.modelSubscriptionMappings {
+		if mapping == nil || !mapping.Enabled || mapping.ModelPK != model.ID {
+			continue
+		}
+		account := r.subAccounts[mapping.SubscriptionAccountID]
+		if account == nil {
+			continue
+		}
+		model.SubscriptionCount++
+		if name := strings.TrimSpace(account.Name); name != "" {
+			suppliers[name] = struct{}{}
+		}
+	}
+	model.Suppliers = sortedSupplierNames(suppliers)
 }
 
 func (r *Repository) createModelMemory(do *biz.Model) error {
@@ -1265,6 +1335,7 @@ func cloneModel(m *biz.Model) *biz.Model {
 	c := *m
 	c.Capabilities = append([]string(nil), m.Capabilities...)
 	c.Tags = append([]string(nil), m.Tags...)
+	c.Suppliers = append([]string(nil), m.Suppliers...)
 	return &c
 }
 

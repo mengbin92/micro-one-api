@@ -71,23 +71,6 @@ type anthropicRespUsage struct {
 }
 
 // ----------------------------------------------------------------------------
-// Auth
-// ----------------------------------------------------------------------------
-
-// extractTokenFromAnthropicRequest resolves the access token from either the
-// Anthropic-style x-api-key header or a standard Authorization: Bearer header.
-func extractTokenFromAnthropicRequest(r *http.Request) string {
-	if key := strings.TrimSpace(r.Header.Get("x-api-key")); key != "" {
-		return key
-	}
-	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
-	}
-	return ""
-}
-
-// ----------------------------------------------------------------------------
 // Request conversion: Anthropic Messages → internal ChatCompletionsRequest
 // ----------------------------------------------------------------------------
 
@@ -396,7 +379,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	token := extractTokenFromAnthropicRequest(r)
+	token := extractAPIKey(r)
 	if token == "" {
 		s.writeAnthropicError(w, http.StatusUnauthorized, "missing API key")
 		return

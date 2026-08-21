@@ -52,15 +52,73 @@ func (r *modelProbeRepoStub) CreateModel(_ context.Context, model *biz.Model) er
 }
 
 func (r *modelProbeRepoStub) UpsertChannelMapping(_ context.Context, mapping *biz.ModelChannelMapping) error {
+	for i, existing := range r.channelMappings {
+		if existing.ChannelID == mapping.ChannelID && existing.ModelPK == mapping.ModelPK {
+			clone := *mapping
+			r.channelMappings[i] = &clone
+			return nil
+		}
+	}
 	clone := *mapping
 	r.channelMappings = append(r.channelMappings, &clone)
 	return nil
 }
 
+func (r *modelProbeRepoStub) ListChannelMappings(_ context.Context, channelID int64) ([]*biz.ModelChannelMapping, error) {
+	result := make([]*biz.ModelChannelMapping, 0, len(r.channelMappings))
+	for _, mapping := range r.channelMappings {
+		if channelID != 0 && mapping.ChannelID != channelID {
+			continue
+		}
+		clone := *mapping
+		result = append(result, &clone)
+	}
+	return result, nil
+}
+
+func (r *modelProbeRepoStub) DeleteChannelMapping(_ context.Context, channelID, modelPK int64) error {
+	for i, mapping := range r.channelMappings {
+		if mapping.ChannelID == channelID && mapping.ModelPK == modelPK {
+			r.channelMappings = append(r.channelMappings[:i], r.channelMappings[i+1:]...)
+			return nil
+		}
+	}
+	return biz.ErrMappingNotFound
+}
+
 func (r *modelProbeRepoStub) UpsertSubscriptionMapping(_ context.Context, mapping *biz.ModelSubscriptionMapping) error {
+	for i, existing := range r.subscriptionMappings {
+		if existing.SubscriptionAccountID == mapping.SubscriptionAccountID && existing.ModelPK == mapping.ModelPK && existing.GroupName == mapping.GroupName {
+			clone := *mapping
+			r.subscriptionMappings[i] = &clone
+			return nil
+		}
+	}
 	clone := *mapping
 	r.subscriptionMappings = append(r.subscriptionMappings, &clone)
 	return nil
+}
+
+func (r *modelProbeRepoStub) ListSubscriptionMappings(_ context.Context, accountID int64) ([]*biz.ModelSubscriptionMapping, error) {
+	result := make([]*biz.ModelSubscriptionMapping, 0, len(r.subscriptionMappings))
+	for _, mapping := range r.subscriptionMappings {
+		if accountID != 0 && mapping.SubscriptionAccountID != accountID {
+			continue
+		}
+		clone := *mapping
+		result = append(result, &clone)
+	}
+	return result, nil
+}
+
+func (r *modelProbeRepoStub) DeleteSubscriptionMapping(_ context.Context, accountID, modelPK int64, groupName string) error {
+	for i, mapping := range r.subscriptionMappings {
+		if mapping.SubscriptionAccountID == accountID && mapping.ModelPK == modelPK && mapping.GroupName == groupName {
+			r.subscriptionMappings = append(r.subscriptionMappings[:i], r.subscriptionMappings[i+1:]...)
+			return nil
+		}
+	}
+	return biz.ErrMappingNotFound
 }
 
 func (s *channelModelProbeUsecaseStub) GetChannel(context.Context, int64) (*biz.Channel, error) {
@@ -178,6 +236,26 @@ func TestChannelModelProbeSyncsStoredModelsWithoutUpstreamProbe(t *testing.T) {
 	}
 	if got := repo.channelMappings[0].UpstreamModelID; got != "z-ai/glm-5.2" {
 		t.Fatalf("upstream model id = %q", got)
+	}
+}
+
+func TestChannelModelProbeRemovesMappingsOutsideConfiguredModels(t *testing.T) {
+	repo := newModelProbeRepoStub()
+	modelUC := biz.NewModelUsecase(repo)
+	for _, id := range []string{"gpt-4o", "o4-mini"} {
+		requireNoError(t, modelUC.CreateModel(context.Background(), &biz.Model{ModelID: id, DisplayName: id}))
+	}
+	gpt := repo.models["gpt-4o"]
+	o4 := repo.models["o4-mini"]
+	repo.channelMappings = []*biz.ModelChannelMapping{
+		{ChannelID: 6, ModelPK: gpt.ID, Enabled: true},
+		{ChannelID: 6, ModelPK: o4.ID, Enabled: true},
+	}
+	probe := &ChannelModelProbeService{modelUC: modelUC}
+
+	requireNoError(t, probe.syncRegistryModels(context.Background(), &biz.Channel{ID: 6}, []string{"gpt-4o"}))
+	if len(repo.channelMappings) != 1 || repo.channelMappings[0].ModelPK != gpt.ID {
+		t.Fatalf("mappings = %+v, want only configured gpt-4o", repo.channelMappings)
 	}
 }
 

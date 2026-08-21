@@ -145,6 +145,8 @@ func upstreamStatus(err error) int {
 // Used for the writeError path to map upstream errors to proper HTTP responses.
 func mapUpstreamError(statusCode int) int {
 	switch statusCode {
+	case http.StatusBadRequest:
+		return http.StatusBadRequest
 	case http.StatusPaymentRequired:
 		return http.StatusPaymentRequired
 	case http.StatusTooManyRequests:

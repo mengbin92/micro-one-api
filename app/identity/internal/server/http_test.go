@@ -1303,6 +1303,9 @@ func TestIdentityHTTPTokenPathGetAndDelete(t *testing.T) {
 	if !strings.Contains(getRec.Body.String(), `"name":"path-token"`) {
 		t.Fatalf("get response mismatch: %s", getRec.Body.String())
 	}
+	if !strings.Contains(getRec.Body.String(), `"masked_key":`) || strings.Contains(getRec.Body.String(), `"key":`) {
+		t.Fatalf("get must not expose a token as a reusable key: %s", getRec.Body.String())
+	}
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/token/"+tokenID, nil)
 	deleteReq.Header.Set("Authorization", "Bearer "+authToken)
@@ -1369,6 +1372,9 @@ func TestIdentityHTTPTokenUpdateAcceptsBodyID(t *testing.T) {
 	}
 	if !strings.Contains(updateRec.Body.String(), `"success":true`) || !strings.Contains(updateRec.Body.String(), `"name":"new-name"`) {
 		t.Fatalf("update response mismatch: %s", updateRec.Body.String())
+	}
+	if !strings.Contains(updateRec.Body.String(), `"masked_key":`) || strings.Contains(updateRec.Body.String(), `"key":`) {
+		t.Fatalf("update must not expose a token as a reusable key: %s", updateRec.Body.String())
 	}
 }
 
