@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.22.1 发布公告](./docs/releases/release-v0.22.1.md)（OAuth adaptor SSRF 安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.1)
+> 📣 **最新发布**：[v0.22.2 发布公告](./docs/releases/release-v0.22.2.md)（Kimi K3 请求参数兼容修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.2)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.22.2
+
+v0.22.2 是 v0.22.1 的 **PATCH 兼容性修复版本**：适配 Kimi K3 对聊天请求参数和输出 token 字段的限制，移除 Kimi K3 不支持的固定采样参数并将 `max_tokens` 映射为 `max_completion_tokens`。**无 API/proto 破坏性变更、无数据库 schema 迁移、无新增配置项**；仅需重新部署 `relay-gateway`，详见 [docs/releases/release-v0.22.2.md](./docs/releases/release-v0.22.2.md)。
 
 ### 升级到 v0.22.1
 

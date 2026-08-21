@@ -125,9 +125,13 @@ func (s *HTTPServer) estimateTokens(req *relayprovider.ChatCompletionsRequest) i
 		tokens += int64(len(msg.Content) / 4) // 假设平均每个 token 4 个字符
 	}
 
-	// 估算输出 tokens (基于 max_tokens 或默认值)
-	if req.MaxTokens != nil && *req.MaxTokens > 0 {
-		tokens += int64(*req.MaxTokens)
+	// 估算输出 tokens (优先使用 OpenAI 新字段 max_completion_tokens)
+	maxTokens := req.MaxTokens
+	if req.MaxCompletionTokens != nil {
+		maxTokens = req.MaxCompletionTokens
+	}
+	if maxTokens != nil && *maxTokens > 0 {
+		tokens += int64(*maxTokens)
 	} else {
 		tokens += 1000 // 默认输出 tokens
 	}
