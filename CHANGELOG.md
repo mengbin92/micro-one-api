@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-08-21
+
+v0.22.2 是 v0.22.1 的 **PATCH 兼容性修复版本**：适配 Kimi K3 对聊天请求参数和输出 token 字段的限制，修复 Kimi K3 调用持续返回参数错误的问题。详见
+[release-v0.22.2.md](docs/releases/release-v0.22.2.md)。
+
+### Fixed
+
+- Kimi K3 请求移除不支持的固定采样参数，并将 `max_tokens` 规范化为 `max_completion_tokens`。
+
 ## [0.22.1] - 2026-08-21
 
 v0.22.1 是 v0.22.0 的 **PATCH 安全修复版本**：阻断 OAuth adaptor 对私有/保留
