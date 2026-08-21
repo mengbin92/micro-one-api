@@ -76,13 +76,15 @@ const MaxUpstreamErrorBody = 1 << 20
 
 // ChatCompletionsRequest represents a standardized chat completions request
 type ChatCompletionsRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Stream      bool      `json:"stream"`
-	Temperature *float64  `json:"temperature,omitempty"`
-	MaxTokens   *int      `json:"max_tokens,omitempty"`
-	Tools       any       `json:"tools,omitempty"`
-	ToolChoice  any       `json:"tool_choice,omitempty"`
+	Model               string    `json:"model"`
+	Messages            []Message `json:"messages"`
+	Stream              bool      `json:"stream"`
+	Temperature         *float64  `json:"temperature,omitempty"`
+	MaxTokens           *int      `json:"max_tokens,omitempty"`
+	MaxCompletionTokens *int      `json:"max_completion_tokens,omitempty"`
+	ReasoningEffort     string    `json:"reasoning_effort,omitempty"`
+	Tools               any       `json:"tools,omitempty"`
+	ToolChoice          any       `json:"tool_choice,omitempty"`
 }
 
 // Message represents a chat message.
@@ -315,6 +317,14 @@ func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 	if req == nil {
 		return nil, fmt.Errorf("raw request is nil")
 	}
+	body := req.Body
+	if isChatCompletionsPath(req.Path) {
+		normalized, err := normalizeKimiK3ChatBody(body)
+		if err != nil {
+			return nil, fmt.Errorf("normalize Kimi K3 request: %w", err)
+		}
+		body = normalized
+	}
 	method := req.Method
 	if method == "" {
 		method = http.MethodPost
@@ -325,7 +335,7 @@ func (p *OpenAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawResp
 		upstreamURL += "?" + req.Query
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, method, upstreamURL, bytes.NewReader(req.Body))
+	httpReq, err := http.NewRequestWithContext(ctx, method, upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create raw request: %w", err)
 	}
@@ -370,6 +380,14 @@ func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*R
 	if req == nil {
 		return nil, fmt.Errorf("raw request is nil")
 	}
+	body := req.Body
+	if isChatCompletionsPath(req.Path) {
+		normalized, err := normalizeKimiK3ChatBody(body)
+		if err != nil {
+			return nil, fmt.Errorf("normalize Kimi K3 request: %w", err)
+		}
+		body = normalized
+	}
 	method := req.Method
 	if method == "" {
 		method = http.MethodPost
@@ -380,7 +398,7 @@ func (p *OpenAIProvider) ForwardStream(ctx context.Context, req *RawRequest) (*R
 		upstreamURL += "?" + req.Query
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, method, upstreamURL, bytes.NewReader(req.Body))
+	httpReq, err := http.NewRequestWithContext(ctx, method, upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create raw request: %w", err)
 	}
@@ -420,6 +438,7 @@ func isHopByHopHeader(key string) bool {
 // ChatCompletions sends a chat completions request to the upstream provider
 func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletionsRequest) (*ChatCompletionsResponse, error) {
 	url := fmt.Sprintf("%s/chat/completions", p.baseURL)
+	req = normalizeKimiK3ChatRequest(req)
 
 	body, err := jsonx.Marshal(req)
 	if err != nil {
@@ -460,6 +479,7 @@ func (p *OpenAIProvider) ChatCompletions(ctx context.Context, req *ChatCompletio
 // ChatCompletionsStream sends a streaming chat completions request to upstream provider
 func (p *OpenAIProvider) ChatCompletionsStream(ctx context.Context, req *ChatCompletionsRequest) (<-chan StreamChunk, error) {
 	url := fmt.Sprintf("%s/chat/completions", p.baseURL)
+	req = normalizeKimiK3ChatRequest(req)
 
 	body, err := jsonx.Marshal(req)
 	if err != nil {
