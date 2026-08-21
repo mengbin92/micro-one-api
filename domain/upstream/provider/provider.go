@@ -225,6 +225,12 @@ func validateBaseURL(rawURL string) error {
 	return nil
 }
 
+// ValidateBaseURL checks that an upstream URL is safe to use for an outbound
+// request. It is shared by provider-backed and adaptor-backed request paths.
+func ValidateBaseURL(rawURL string) error {
+	return validateBaseURL(rawURL)
+}
+
 // validateBaseURLAllowLocal is the local/self-hosted variant of validateBaseURL.
 // It keeps the scheme check (http/https only) and hostname requirement but
 // permits loopback and private IP ranges, because self-hosted providers such as

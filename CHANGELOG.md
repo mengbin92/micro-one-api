@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-08-21
+
+v0.22.1 是 v0.22.0 的 **PATCH 安全修复版本**：阻断 OAuth adaptor 对私有/保留
+地址的 SSRF 请求，并为 adaptor JSON 响应补充 `nosniff` 防护。详见
+[release-v0.22.1.md](docs/releases/release-v0.22.1.md)。
+
+### Fixed
+
+- 在 OAuth adaptor 发起 outbound call 前校验最终上游 URL，拒绝私有和保留地址。
+- 为 adaptor JSON 响应设置 `X-Content-Type-Options: nosniff`。
+
 ## [0.22.0] - 2026-08-19
 
 v0.22.0 是 v0.21.0 之后的 **MINOR 安全与可靠性版本**：完成渠道凭证加密写入与存量迁移、持久化服务 fail-fast、OpenAPI/前端契约门禁、批量映射与批量删除完整性、请求体分级限制和前端错误兜底；无 API/proto 破坏性变更、无自动数据库 schema 迁移。详见 [release-v0.22.0.md](docs/releases/release-v0.22.0.md)。
