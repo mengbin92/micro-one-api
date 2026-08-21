@@ -142,11 +142,12 @@ func TestHTTPServerUnsupportedOpenAIRoutesReturnStableNotImplemented(t *testing.
 }
 
 func TestHTTPServerRetrieveModelCompatibility(t *testing.T) {
-	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
+	httpServer := NewHTTPServer(rawIdentityClient{}, rawChannelClient{models: []string{"gpt-4o-mini"}}, nil, nil, nil)
 	srv := khttp.NewServer()
 	httpServer.RegisterRoutes(srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/models/gpt-4o-mini", nil)
+	req.Header.Set("x-api-key", "test-token")
 	rec := httptest.NewRecorder()
 
 	srv.ServeHTTP(rec, req)
@@ -159,6 +160,92 @@ func TestHTTPServerRetrieveModelCompatibility(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"permission"`) {
 		t.Fatalf("model response missing permission: %s", rec.Body.String())
+	}
+}
+
+func TestHTTPServerModelsAcceptsAnthropicAndBearerCredentials(t *testing.T) {
+	httpServer := NewHTTPServer(rawIdentityClient{}, rawChannelClient{models: []string{"gpt-4o-mini"}}, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	tests := []struct {
+		name   string
+		header string
+		value  string
+	}{
+		{name: "anthropic", header: "x-api-key", value: "test-token"},
+		{name: "bearer", header: "Authorization", value: "Bearer test-token"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+			req.Header.Set(tt.header, tt.value)
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), `"id":"gpt-4o-mini"`) {
+				t.Fatalf("model list missing id: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestHTTPServerModelsRequireAPIKey(t *testing.T) {
+	httpServer := NewHTTPServer(rawIdentityClient{}, rawChannelClient{models: []string{"gpt-4o-mini"}}, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	for _, path := range []string{"/v1/models", "/v1/models/gpt-4o-mini"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+
+			srv.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestHTTPServerRetrieveModelRejectsUnavailableModel(t *testing.T) {
+	httpServer := NewHTTPServer(rawIdentityClient{}, rawChannelClient{models: []string{"gpt-4o-mini"}}, nil, nil, nil)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models/not-available", nil)
+	req.Header.Set("x-api-key", "test-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHTTPServerRetrieveModelAppliesTokenWhitelist(t *testing.T) {
+	httpServer := NewHTTPServer(
+		rawIdentityClient{allowedModels: []string{"gpt-4o-mini"}},
+		rawChannelClient{models: []string{"gpt-4o-mini", "gpt-4o"}},
+		nil, nil, nil,
+	)
+	srv := khttp.NewServer()
+	httpServer.RegisterRoutes(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models/gpt-4o", nil)
+	req.Header.Set("x-api-key", "test-token")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404, body=%s", rec.Code, rec.Body.String())
 	}
 }
 

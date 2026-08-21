@@ -281,15 +281,6 @@ export function TokensPage() {
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300"
-                        onClick={() => openCCSwitch(token.masked_key || '')}
-                      >
-                        <Zap className="size-3.5" />
-                        CC Switch
-                      </Button>
-                      <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => deleteMutation.mutate(token.id)}

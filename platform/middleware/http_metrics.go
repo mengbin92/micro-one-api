@@ -59,6 +59,19 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
+// Flush preserves SSE/streaming support through the metrics wrapper.
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap lets http.ResponseController reach optional interfaces implemented
+// by the underlying response writer.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // NewHTTPMetricsMiddleware returns a middleware that records per-request
 // counters and latency histograms into the shared platform metrics.
 //   - service: label value, e.g. "relay-gateway".

@@ -1442,7 +1442,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 				writeJSON(w, http.StatusNotFound, apiResponse{Success: false, Message: "token not found"})
 				return
 			}
-			writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: tokenToMap(token, true)})
+			writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: tokenToMap(token, false)})
 			return
 		}
 		page := queryInt32(r, "page", 1)
@@ -1530,7 +1530,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: tokenToMap(token, true)})
+		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: tokenToMap(token, false)})
 	case http.MethodDelete:
 		if !hasTokenID {
 			writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "token id is required"})

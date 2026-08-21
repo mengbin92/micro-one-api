@@ -15,6 +15,7 @@ import (
 type rawIdentityClient struct {
 	identityv1.IdentityServiceClient
 	userIDByToken map[string]int64
+	allowedModels []string
 }
 
 func (c rawIdentityClient) GetAuthSnapshot(ctx context.Context, req *identityv1.GetAuthSnapshotRequest, opts ...grpc.CallOption) (*identityv1.GetAuthSnapshotReply, error) {
@@ -29,7 +30,7 @@ func (c rawIdentityClient) GetAuthSnapshot(ctx context.Context, req *identityv1.
 		TokenId:       7,
 		TokenName:     "test-token",
 		Group:         "default",
-		AllowedModels: []string{},
+		AllowedModels: c.allowedModels,
 		UserEnabled:   true,
 		TokenEnabled:  true,
 	}, nil
@@ -41,8 +42,13 @@ type rawChannelClient struct {
 	key            string
 	chType         int32
 	apiVersion     string
+	models         []string
 	usageRequests  []*channelv1.RecordChannelUsageRequest
 	healthRequests []*channelv1.RecordChannelHealthRequest
+}
+
+func (c rawChannelClient) ListAvailableModels(context.Context, *channelv1.ListAvailableModelsRequest, ...grpc.CallOption) (*channelv1.ListAvailableModelsReply, error) {
+	return &channelv1.ListAvailableModelsReply{Models: c.models}, nil
 }
 
 func (c rawChannelClient) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest, opts ...grpc.CallOption) (*channelv1.SelectChannelReply, error) {
