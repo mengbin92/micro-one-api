@@ -114,6 +114,12 @@ func upstreamAttemptHealthy(err error) bool {
 	if err == nil {
 		return true
 	}
+	// Some upstreams encode request-specific policy rejection as HTTP 500.
+	// The source is reachable and may still be useful for other prompts, so
+	// keep failover enabled without poisoning channel health.
+	if isUpstreamPolicyRejection(err) {
+		return true
+	}
 	status := UpstreamStatus(err)
 	if status > 0 {
 		return status < 500 && status != 429
@@ -127,6 +133,14 @@ func upstreamAttemptHealthy(err error) bool {
 	// Conversion, billing, and other local failures are not channel health
 	// evidence. Record them as neutral/healthy so selector inflight is released.
 	return true
+}
+
+func isUpstreamPolicyRejection(err error) bool {
+	var upstreamErr *relayprovider.UpstreamHTTPError
+	if !errors.As(err, &upstreamErr) {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(upstreamErr.Body)), "sensitive_words_detected")
 }
 
 // BackoffDuration calculates the sleep duration for the given attempt (0-indexed).
@@ -574,6 +588,8 @@ func ClassifyRetryFallbackReason(firstErr error) string {
 	switch {
 	case IsProtocolCapabilityMismatch(firstErr):
 		return "capability_mismatch"
+	case isUpstreamPolicyRejection(firstErr):
+		return "policy_rejection"
 	case status == 429:
 		return "rate_limited"
 	case status >= 500:

@@ -276,6 +276,39 @@ func TestRetryExecutor_ReasoningProtocolMismatchFallsBackWithoutPoisoningHealth(
 	}
 }
 
+func TestRetryExecutor_PolicyRejectionFallsBackWithoutPoisoningHealth(t *testing.T) {
+	selector := &mockChannelSelector{
+		channels: []*Channel{
+			{ID: 8, Name: "policy-rejecting"},
+			{ID: 1, Name: "fallback"},
+		},
+	}
+	policy := DefaultRetryPolicy()
+	policy.InitialInterval = time.Nanosecond
+	policy.MaxInterval = time.Nanosecond
+	exec := NewRetryExecutor(policy, selector)
+
+	result := exec.Execute(context.Background(), "default", "deepseek-v4-pro-0813", func(_ context.Context, ch *Channel) error {
+		if ch.ID == 8 {
+			return &relayprovider.UpstreamHTTPError{
+				StatusCode: 500,
+				Body:       []byte(`{"error":{"type":"gpunexus_error","code":"sensitive_words_detected"}}`),
+			}
+		}
+		return nil
+	})
+
+	if result.Err != nil || result.Channel == nil || result.Channel.ID != 1 || !result.Fallback {
+		t.Fatalf("result = %+v, want successful fallback to channel 1", result)
+	}
+	if result.FallbackReason != "policy_rejection" {
+		t.Fatalf("fallback reason = %q, want policy_rejection", result.FallbackReason)
+	}
+	if len(selector.healthEvents) != 2 || !selector.healthEvents[0].success || !selector.healthEvents[1].success {
+		t.Fatalf("health events = %+v, request policy rejection must not record a channel failure", selector.healthEvents)
+	}
+}
+
 func TestRetryExecutor_Execute_ExhaustsRetries(t *testing.T) {
 	selector := &mockChannelSelector{
 		channels: []*Channel{
