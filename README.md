@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.22.2 发布公告](./docs/releases/release-v0.22.2.md)（Kimi K3 请求参数兼容修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.2)
+> 📣 **最新发布**：[v0.22.3 发布公告](./docs/releases/release-v0.22.3.md)（计费、Claude 兼容与渠道健康修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.3)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.22.3
+
+v0.22.3 是 v0.22.2 的 **PATCH 生产修复版本**：修复 billing 价格键大小写不一致、CC Switch / Claude 模型探测与流式兼容，以及上游敏感词策略拒绝误触发渠道熔断的问题。**无 API/proto 破坏性变更、无数据库 schema 迁移、无新增配置项**；升级 `billing-service`、`relay-gateway`、`identity-service` 并发布 `web/dist` 即可，详见 [docs/releases/release-v0.22.3.md](./docs/releases/release-v0.22.3.md)。
 
 ### 升级到 v0.22.2
 
