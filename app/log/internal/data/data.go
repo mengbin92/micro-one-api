@@ -17,10 +17,11 @@ import (
 )
 
 type Repository struct {
-	db  *gorm.DB
-	mu  sync.RWMutex
-	mem map[int64]*biz.LogEntry
-	seq int64
+	db     *gorm.DB
+	mu     sync.RWMutex
+	mem    map[int64]*biz.LogEntry
+	dedupe map[string]int64
+	seq    int64
 }
 
 type logModel struct {
@@ -45,6 +46,14 @@ type logModel struct {
 	ElapsedTime           int64  `gorm:"column:elapsed_time"`
 	IsStream              bool   `gorm:"column:is_stream"`
 }
+
+type logIngestDedupeClaimModel struct {
+	DedupeKey string `gorm:"column:dedupe_key;primaryKey"`
+	LogID     int64  `gorm:"column:log_id"`
+	CreatedAt int64  `gorm:"column:created_at"`
+}
+
+func (logIngestDedupeClaimModel) TableName() string { return "log_ingest_dedupe_claims" }
 
 func (logModel) TableName() string { return "logs" }
 
@@ -94,12 +103,13 @@ func newMemoryRepository() *Repository {
 				CreatedAt: time.Now(),
 			},
 		},
-		seq: 1,
+		seq:    1,
+		dedupe: make(map[string]int64),
 	}
 }
 
 func NewMemoryRepositoryForTest() *Repository {
-	return &Repository{mem: map[int64]*biz.LogEntry{}}
+	return &Repository{mem: map[int64]*biz.LogEntry{}, dedupe: map[string]int64{}}
 }
 
 // DB returns the underlying *gorm.DB used by the repository, or nil when the
@@ -273,11 +283,43 @@ func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
 		ElapsedTime:           entry.ElapsedTime,
 		IsStream:              entry.IsStream,
 	}
-	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
+	if entry.DedupeKey == "" {
+		if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
+			return err
+		}
+		entry.ID = m.ID
+		return nil
+	}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		claim := &logIngestDedupeClaimModel{DedupeKey: entry.DedupeKey, CreatedAt: time.Now().Unix()}
+		if err := tx.Create(claim).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&m).Error; err != nil {
+			return err
+		}
+		entry.ID = m.ID
+		return tx.Model(claim).Update("log_id", m.ID).Error
+	})
+	if !isLogDuplicateKeyErr(err) {
 		return err
 	}
-	entry.ID = m.ID
+	claim := &logIngestDedupeClaimModel{}
+	if err := r.db.WithContext(ctx).Where("dedupe_key = ?", entry.DedupeKey).Take(claim).Error; err != nil {
+		return err
+	}
+	entry.ID = claim.LogID
 	return nil
+}
+
+func isLogDuplicateKeyErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate entry") ||
+		strings.Contains(msg, "unique constraint failed") ||
+		strings.Contains(msg, "duplicate key value")
 }
 
 // CreateBatch persists many log entries in a single DB round-trip via gorm
@@ -292,6 +334,18 @@ func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) e
 		return nil
 	}
 	if r.db != nil {
+		for _, entry := range entries {
+			if entry.DedupeKey != "" {
+				// Dedupe claims must be committed atomically with their individual
+				// log rows; fall back to the correctness-first path for this batch.
+				for _, item := range entries {
+					if err := r.createDB(ctx, item); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+		}
 		models := make([]logModel, 0, len(entries))
 		for _, e := range entries {
 			if e.CreatedAt.IsZero() {
@@ -490,9 +544,21 @@ func (r *Repository) listByUserMemory(userID int64, page, pageSize int32, level,
 func (r *Repository) createMemory(entry *biz.LogEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.dedupe == nil {
+		r.dedupe = make(map[string]int64)
+	}
+	if entry.DedupeKey != "" {
+		if id, exists := r.dedupe[entry.DedupeKey]; exists {
+			entry.ID = id
+			return nil
+		}
+	}
 	r.seq++
 	entry.ID = r.seq
 	r.mem[entry.ID] = entry
+	if entry.DedupeKey != "" {
+		r.dedupe[entry.DedupeKey] = entry.ID
+	}
 	return nil
 }
 

@@ -3,7 +3,9 @@ package data
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"gorm.io/gorm"
 	"micro-one-api/app/billing/internal/biz"
 )
 
@@ -39,16 +41,22 @@ func (r *reconciliationRepo) ListAllAccounts(ctx context.Context) ([]*biz.Accoun
 	return accounts, nil
 }
 
-func (r *reconciliationRepo) SumLedgerAmounts(ctx context.Context, userID string) (int64, error) {
-	var sum int64
-	if err := r.data.db.WithContext(ctx).
-		Model(&ledgerModel{}).
-		Where("user_id = ?", userID).
-		Select("COALESCE(SUM(amount), 0)").
-		Scan(&sum).Error; err != nil {
-		return 0, err
+func (r *reconciliationRepo) LatestLedgerBalanceAfter(ctx context.Context, userID string) (int64, bool, error) {
+	var row struct {
+		BalanceAfter int64 `gorm:"column:balance_after"`
 	}
-	return sum, nil
+	err := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
+		Select("balance_after").
+		Where("user_id = ?", userID).
+		Order("created_at DESC, id DESC").
+		Take(&row).Error
+	if err == gorm.ErrRecordNotFound {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return row.BalanceAfter, true, nil
 }
 
 type reconciliationChannelUsageModel struct {
@@ -83,9 +91,12 @@ func (r *reconciliationRepo) SumConsumeLedgerUsageByChannel(ctx context.Context)
 	}
 	var rows []row
 	if err := r.data.db.WithContext(ctx).
-		Model(&ledgerModel{}).
+		Table("(?) AS request_usage", r.data.db.Model(&ledgerModel{}).
+			Select("reference_id, MAX(channel_id) AS channel_id, MAX(quota) AS quota, SUM(upstream_cost) AS upstream_cost").
+			Where("type = ? AND channel_id > 0 AND source_kind = ?", biz.LedgerTypeConsume, biz.CostSourceChannel).
+			Group("reference_id"),
+		).
 		Select("channel_id, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(upstream_cost), 0) AS upstream_cost").
-		Where("type = ? AND channel_id > 0", biz.LedgerTypeConsume).
 		Group("channel_id").
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -104,9 +115,11 @@ func (r *reconciliationRepo) SumConsumeLedgerUsageByChannel(ctx context.Context)
 func (r *reconciliationRepo) GetLedgerConsumeSummary(ctx context.Context) (*biz.ConsumeSummary, error) {
 	var summary biz.ConsumeSummary
 	if err := r.data.db.WithContext(ctx).
-		Model(&ledgerModel{}).
+		Table("(?) AS consumes", r.data.db.Model(&ledgerModel{}).
+			Select("reference_id, MAX(quota) AS quota").
+			Where("type = ?", biz.LedgerTypeConsume).
+			Group("reference_id")).
 		Select("COUNT(*) AS count, COALESCE(SUM(quota), 0) AS quota").
-		Where("type = ?", biz.LedgerTypeConsume).
 		Scan(&summary).Error; err != nil {
 		return nil, err
 	}
@@ -164,13 +177,17 @@ func (r *reconciliationRepo) ListReservationsByStatus(ctx context.Context, statu
 // intentionally mirrors the columns we care about, not the entire
 // subscription model (which lives in the subscription domain).
 type subscriptionRow struct {
-	ID              int64   `gorm:"column:id"`
-	UserID          int64   `gorm:"column:user_id"`
-	GroupID         int64   `gorm:"column:group_id"`
-	Status          string  `gorm:"column:status"`
-	DailyUsageUSD   float64 `gorm:"column:daily_usage_usd"`
-	WeeklyUsageUSD  float64 `gorm:"column:weekly_usage_usd"`
-	MonthlyUsageUSD float64 `gorm:"column:monthly_usage_usd"`
+	ID                 int64   `gorm:"column:id"`
+	UserID             int64   `gorm:"column:user_id"`
+	GroupID            int64   `gorm:"column:group_id"`
+	Status             string  `gorm:"column:status"`
+	DailyUsageUSD      float64 `gorm:"column:daily_usage_usd"`
+	WeeklyUsageUSD     float64 `gorm:"column:weekly_usage_usd"`
+	MonthlyUsageUSD    float64 `gorm:"column:monthly_usage_usd"`
+	DailyWindowStart   int64   `gorm:"column:daily_window_start"`
+	WeeklyWindowStart  int64   `gorm:"column:weekly_window_start"`
+	MonthlyWindowStart int64   `gorm:"column:monthly_window_start"`
+	RateMultiplier     float64 `gorm:"column:rate_multiplier"`
 }
 
 func (subscriptionRow) TableName() string { return "user_subscriptions" }
@@ -178,22 +195,43 @@ func (subscriptionRow) TableName() string { return "user_subscriptions" }
 func (r *reconciliationRepo) ListActiveSubscriptions(ctx context.Context) ([]*biz.SubscriptionUsageSnapshot, error) {
 	var rows []subscriptionRow
 	if err := r.data.db.WithContext(ctx).
-		Where("status = ?", "active").
+		Table("user_subscriptions AS s").
+		Select("s.*, COALESCE(g.rate_multiplier, 1) AS rate_multiplier").
+		Joins("LEFT JOIN subscription_groups g ON g.id = s.group_id").
+		Where("s.status = ?", "active").
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]*biz.SubscriptionUsageSnapshot, len(rows))
 	for i, row := range rows {
 		out[i] = &biz.SubscriptionUsageSnapshot{
-			UserID:          row.UserID,
-			GroupID:         row.GroupID,
-			Status:          row.Status,
-			DailyUsageUSD:   row.DailyUsageUSD,
-			WeeklyUsageUSD:  row.WeeklyUsageUSD,
-			MonthlyUsageUSD: row.MonthlyUsageUSD,
+			SubscriptionID:     row.ID,
+			UserID:             row.UserID,
+			GroupID:            row.GroupID,
+			Status:             row.Status,
+			DailyUsageUSD:      row.DailyUsageUSD,
+			WeeklyUsageUSD:     row.WeeklyUsageUSD,
+			MonthlyUsageUSD:    row.MonthlyUsageUSD,
+			DailyWindowStart:   row.DailyWindowStart,
+			WeeklyWindowStart:  row.WeeklyWindowStart,
+			MonthlyWindowStart: row.MonthlyWindowStart,
+			RateMultiplier:     row.RateMultiplier,
 		}
 	}
 	return out, nil
+}
+
+func (r *reconciliationRepo) SumSubscriptionCostSince(ctx context.Context, subscriptionID int64, since time.Time) (int64, error) {
+	var total int64
+	err := r.data.db.WithContext(ctx).
+		Table("billing_ledgers AS l").
+		Joins("JOIN billing_reservations r ON r.reservation_id = l.reference_id").
+		Where("r.subscription_id = ?", subscriptionID).
+		Where("l.type = ? AND l.cost_source = ?", biz.LedgerTypeConsume, biz.CostSourceSubscription).
+		Where("l.created_at >= ?", since).
+		Select("COALESCE(SUM(l.subscription_cost), 0)").
+		Scan(&total).Error
+	return total, err
 }
 
 func (r *reconciliationRepo) SumPendingReceivables(ctx context.Context) (int64, error) {

@@ -180,6 +180,20 @@ func newMockLogRepo(entries ...*LogEntry) *mockLogRepo {
 	return m
 }
 
+func TestLogUsecase_DeduplicatedUsageLogIsSynchronous(t *testing.T) {
+	repo := newMockLogRepo()
+	uc := NewLogUsecase(repo)
+	uc.SetBatchWriter(NewBatchLogWriter(repo, 10, time.Hour))
+	entry := &LogEntry{Level: "consume", DedupeKey: "consume:1:req-1"}
+
+	if err := uc.IngestLog(context.Background(), entry); err != nil {
+		t.Fatalf("IngestLog() error = %v", err)
+	}
+	if entry.ID == 0 || len(repo.entries) != 1 {
+		t.Fatalf("deduplicated usage log was not durably persisted: id=%d entries=%d", entry.ID, len(repo.entries))
+	}
+}
+
 func TestLogUsecase_GetLog(t *testing.T) {
 	now := time.Now()
 	repo := newMockLogRepo(&LogEntry{ID: 1, Level: "info", Message: "test", Source: "api", CreatedAt: now})

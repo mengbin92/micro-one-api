@@ -823,6 +823,8 @@ export interface components {
             /** @description v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md). */
             cacheCreation5mTokens?: string;
             cacheCreation1hTokens?: string;
+            /** @description Stable producer key. Retries with the same key return the original row. */
+            dedupeKey?: string;
         };
         "api.log.v1.IngestLogResponse": {
             id?: string;

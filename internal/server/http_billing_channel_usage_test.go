@@ -18,12 +18,14 @@ import (
 type recordingChannelClient struct {
 	channelv1.ChannelServiceClient
 	channelUsageCalls      int
+	lastReservationID      string
 	subscriptionCostUSD    float64
 	subscriptionUsageCalls int
 }
 
-func (c *recordingChannelClient) RecordChannelUsage(context.Context, *channelv1.RecordChannelUsageRequest, ...grpc.CallOption) (*channelv1.RecordChannelUsageResponse, error) {
+func (c *recordingChannelClient) RecordChannelUsage(_ context.Context, req *channelv1.RecordChannelUsageRequest, _ ...grpc.CallOption) (*channelv1.RecordChannelUsageResponse, error) {
 	c.channelUsageCalls++
+	c.lastReservationID = req.GetReservationId()
 	return &channelv1.RecordChannelUsageResponse{Success: true, Message: "ok"}, nil
 }
 
@@ -141,5 +143,25 @@ func TestCommitQuotaRecordsChannelUsageForChannel(t *testing.T) {
 
 	if ch.channelUsageCalls != 1 {
 		t.Fatalf("RecordChannelUsage calls = %d, want 1 for channel-sourced traffic", ch.channelUsageCalls)
+	}
+	if ch.lastReservationID != "res-1" {
+		t.Fatalf("reservation id = %q, want res-1", ch.lastReservationID)
+	}
+}
+
+func TestCommitQuotaSkipsUsageCountersForRefundedAttempt(t *testing.T) {
+	ch := &recordingChannelClient{}
+	srv := &HTTPServer{billingClient: &rawBillingClient{}, channelClient: ch}
+
+	if err := srv.commitQuota(context.Background(), "res-failed", 100, false, usageLogInput{
+		ChannelID:  7,
+		SourceKind: relaybiz.UpstreamSourceChannel,
+		ModelName:  "gpt-4o",
+		UserID:     1,
+	}); err != nil {
+		t.Fatalf("commitQuota error = %v", err)
+	}
+	if ch.channelUsageCalls != 0 {
+		t.Fatalf("RecordChannelUsage calls = %d, want 0 for refunded attempt", ch.channelUsageCalls)
 	}
 }

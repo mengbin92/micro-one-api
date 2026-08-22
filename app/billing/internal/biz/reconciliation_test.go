@@ -25,17 +25,19 @@ type mockReconRepo struct {
 	refundedOrderCents   int64
 	reversalLedgerAmount int64
 	stuckIssuedOrders    []*PaymentOrder
+	activeSubscriptions  []*SubscriptionUsageSnapshot
+	subscriptionCosts    map[int64]map[int64]int64 // subscription id -> window start unix -> amount
 }
 
 func (m *mockReconRepo) ListAllAccounts(ctx context.Context) ([]*Account, error) {
 	return m.accounts, nil
 }
 
-func (m *mockReconRepo) SumLedgerAmounts(ctx context.Context, userID string) (int64, error) {
+func (m *mockReconRepo) LatestLedgerBalanceAfter(ctx context.Context, userID string) (int64, bool, error) {
 	if sum, ok := m.ledgerSums[userID]; ok {
-		return sum, nil
+		return sum, true, nil
 	}
-	return 0, nil
+	return 0, false, nil
 }
 
 func (m *mockReconRepo) ListChannelUsage(ctx context.Context) ([]*ChannelUsageSnapshot, error) {
@@ -71,7 +73,14 @@ func (m *mockReconRepo) ListReservationsByStatus(ctx context.Context, status str
 }
 
 func (m *mockReconRepo) ListActiveSubscriptions(ctx context.Context) ([]*SubscriptionUsageSnapshot, error) {
-	return nil, nil
+	return m.activeSubscriptions, nil
+}
+
+func (m *mockReconRepo) SumSubscriptionCostSince(ctx context.Context, subscriptionID int64, since time.Time) (int64, error) {
+	if windows := m.subscriptionCosts[subscriptionID]; windows != nil {
+		return windows[since.Unix()], nil
+	}
+	return 0, nil
 }
 
 func (m *mockReconRepo) SumPendingReceivables(ctx context.Context) (int64, error) {
@@ -158,6 +167,56 @@ func TestRunReconciliation_NoInconsistencies(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, result.AccountInconsistencies)
 	assert.Equal(t, 1, result.TotalAccounts)
+}
+
+func TestRunReconciliation_ActiveFrozenBalanceMatchesSettledSnapshot(t *testing.T) {
+	account := &Account{UserID: "user1", Balance: 900, FrozenAmount: 100, Group: "default"}
+	reconRepo := &mockReconRepo{
+		accounts:   []*Account{account},
+		ledgerSums: map[string]int64{"user1": 1000},
+	}
+	uc := NewReconciliationUsecase(
+		&mockAccountRepo{account: account},
+		&mockReservationRepo{reservations: map[string]*Reservation{}},
+		reconRepo,
+		nil,
+	)
+
+	result, err := uc.RunReconciliation(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, result.AccountInconsistencies)
+}
+
+func TestRunReconciliation_SubscriptionWindows(t *testing.T) {
+	daily := time.Unix(100, 0)
+	weekly := time.Unix(200, 0)
+	monthly := time.Unix(300, 0)
+	repo := &mockReconRepo{
+		activeSubscriptions: []*SubscriptionUsageSnapshot{{
+			SubscriptionID:     7,
+			UserID:             42,
+			DailyUsageUSD:      1.25,
+			WeeklyUsageUSD:     2.50,
+			MonthlyUsageUSD:    3.01, // expected 3.00: one real mismatch
+			DailyWindowStart:   daily.Unix(),
+			WeeklyWindowStart:  weekly.Unix(),
+			MonthlyWindowStart: monthly.Unix(),
+			RateMultiplier:     2,
+		}},
+		subscriptionCosts: map[int64]map[int64]int64{
+			7: {
+				daily.Unix():   6250,
+				weekly.Unix():  12500,
+				monthly.Unix(): 15000,
+			},
+		},
+	}
+	uc := NewReconciliationUsecase(&mockAccountRepo{}, &mockReservationRepo{reservations: map[string]*Reservation{}}, repo, nil)
+	result, err := uc.RunReconciliation(context.Background())
+	require.NoError(t, err)
+	require.Len(t, result.SubscriptionInconsistencies, 1)
+	assert.Equal(t, "monthly", result.SubscriptionInconsistencies[0].Window)
+	assert.InDelta(t, 0.01, result.SubscriptionInconsistencies[0].Difference, 1e-9)
 }
 
 func TestRunReconciliation_RecordsMetrics(t *testing.T) {

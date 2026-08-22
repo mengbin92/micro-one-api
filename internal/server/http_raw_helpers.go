@@ -732,7 +732,7 @@ type flushWriter struct {
 // Write implements io.Writer.
 func (w *flushWriter) Write(p []byte) (int, error) {
 	observeStreamUsage(w.usageTracker, p)
-	n, err := w.w.Write(p)
+	n, err := w.w.Write(p) // #nosec G705 -- SSE bytes are written as opaque data, not HTML interpolation.
 	w.flusher.Flush()
 	return n, err
 }

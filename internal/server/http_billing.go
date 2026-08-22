@@ -113,6 +113,12 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	if resp == nil || !resp.GetSuccess() {
 		return resp, stderrors.New(billingErrorMessage(resp, "commit quota failed"))
 	}
+	// A failed upstream attempt is released/refunded by billing and therefore
+	// has no consume ledger. Do not increment channel/model/token counters for
+	// it; doing so was the source of the persistent channel-vs-ledger drift.
+	if !success {
+		return resp, nil
+	}
 	// Phase 2.1 async billing: when the billing service enqueues the
 	// settlement instead of committing synchronously, the returned amounts are
 	// provisional (committed_amount=0). Downstream usage accounting must not
@@ -126,7 +132,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		// and session-window accounting must still wait for the authoritative
 		// worker result, so they are skipped here.
 		if len(details) > 0 {
-			s.recordChannelUsageFromDetail(ctx, details[0], actualTokens)
+			s.recordChannelUsageFromDetail(ctx, details[0], actualTokens, reservationID)
 			s.recordModelUsage(ctx, details[0].ModelName, actualTokens, details[0].ElapsedTime, false)
 			// High #5: consume per-key token quota even on the async path.
 			s.consumeTokenQuota(ctx, details[0].UserID, details[0].TokenID, actualTokens)
@@ -135,7 +141,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	}
 	if len(details) > 0 {
 		detail := details[0]
-		s.recordChannelUsageFromDetail(ctx, detail, actualTokens)
+		s.recordChannelUsageFromDetail(ctx, detail, actualTokens, reservationID)
 		s.recordModelUsage(ctx, detail.ModelName, actualTokens, detail.ElapsedTime, false)
 		costUSD := amountUnitsToUSD(resp.GetCommittedAmount())
 		s.recordSubscriptionAccountQuotaUsage(ctx, detail.SubscriptionAccountID, reservationID, costUSD)
@@ -252,31 +258,46 @@ func (s *HTTPServer) recordSubscriptionUsage(ctx context.Context, userID int64, 
 // value derived from the subscription account id, so recording it as a
 // channel would always fail with "channel not found" on the channel-service
 // side. Model-usage stats apply to both sources and are handled separately.
-func (s *HTTPServer) recordChannelUsageFromDetail(ctx context.Context, detail usageLogInput, quota int64) {
+func (s *HTTPServer) recordChannelUsageFromDetail(ctx context.Context, detail usageLogInput, quota int64, reservationIDs ...string) {
 	if detail.SourceKind == relaybiz.UpstreamSourceSubscription {
 		metrics.SubscriptionUsageRecordsTotal.WithLabelValues("skipped_channel_stats").Inc()
 		return
 	}
-	s.recordChannelUsage(ctx, detail.ChannelID, quota)
+	reservationID := ""
+	if len(reservationIDs) > 0 {
+		reservationID = reservationIDs[0]
+	}
+	s.recordChannelUsage(ctx, detail.ChannelID, quota, reservationID)
 }
 
-func (s *HTTPServer) recordChannelUsage(ctx context.Context, channelID int64, quota int64) {
+func (s *HTTPServer) recordChannelUsage(ctx context.Context, channelID int64, quota int64, reservationID string) {
 	if s.channelClient == nil || channelID <= 0 || quota <= 0 {
 		return
 	}
 	channelCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
-	resp, err := s.channelClient.RecordChannelUsage(channelCtx, &channelv1.RecordChannelUsageRequest{
-		ChannelId: channelID,
-		Quota:     quota,
-	})
+	var resp *channelv1.RecordChannelUsageResponse
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		resp, err = s.channelClient.RecordChannelUsage(channelCtx, &channelv1.RecordChannelUsageRequest{
+			ChannelId:     channelID,
+			Quota:         quota,
+			ReservationId: reservationID,
+		})
+		if err == nil && resp != nil && resp.GetSuccess() {
+			return
+		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+		}
+	}
+	fields := []zap.Field{zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.String("reservation_id", reservationID)}
 	if err != nil {
-		applogger.Log.Warn("failed to record channel usage", zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.Error(err))
-		return
+		fields = append(fields, zap.Error(err))
+	} else if resp != nil {
+		fields = append(fields, zap.String("message", resp.GetMessage()))
 	}
-	if resp != nil && !resp.GetSuccess() {
-		applogger.Log.Warn("failed to record channel usage", zap.Int64("channel_id", channelID), zap.Int64("quota", quota), zap.String("message", resp.GetMessage()))
-	}
+	applogger.Log.Warn("failed to record channel usage after retries", fields...)
 }
 
 // recordModelUsage records a usage event to the model usage stats table via

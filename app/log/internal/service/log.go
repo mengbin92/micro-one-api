@@ -75,6 +75,7 @@ func (s *LogService) IngestLog(ctx context.Context, req *logv1.IngestLogRequest)
 		Message:               applogger.Sanitize(req.Message),
 		Source:                req.Source,
 		RequestID:             req.RequestId,
+		DedupeKey:             req.DedupeKey,
 		UserID:                req.UserId,
 		Username:              req.Username,
 		TokenName:             req.TokenName,

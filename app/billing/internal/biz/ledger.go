@@ -18,6 +18,9 @@ const (
 	CostSourceSubscription = "subscription"
 	CostSourceBalance      = "balance"
 	CostSourceMixed        = "mixed"
+	CostAuditPriced        = "priced"
+	CostAuditUnpriced      = "unpriced"
+	CostAuditLegacy        = "legacy"
 )
 
 // Ledger is the append-only audit trail for every wallet/subscription
@@ -51,9 +54,16 @@ type Ledger struct {
 	ShadowCost            int64
 	ChannelID             int64
 	SubscriptionAccountID int64
-	ElapsedTime           int64
-	IsStream              bool
-	Endpoint              string
+	// SourceKind records the upstream execution source (channel/subscription),
+	// independently of CostSource which records how the user paid. Keeping the
+	// dimensions separate prevents synthetic subscription-account IDs from
+	// being reconciled as real channel IDs.
+	SourceKind      string
+	UpstreamModelID string
+	CostAuditStatus string
+	ElapsedTime     int64
+	IsStream        bool
+	Endpoint        string
 	// CostSource mirrors the CostSource constant and powers cost-dimension
 	// aggregations.
 	CostSource string

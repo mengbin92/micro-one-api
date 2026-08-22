@@ -3,3 +3,4 @@
 7253d2f4e145a22816d8a2bca642ecb4a6d53611:domain/upstream/credential/claude_token_provider.go:generic-api-key:22
 b6de4899c1c711a43d83136726c763b63a037703:docs/community-promotion-blog.md:curl-auth-header:140
 79bb43299082816bb97b7c4582b7cbafd7649868:README.md:curl-auth-header:118
+644d962eb8236dcd41beeb906413ab165cd6bbc8:web/src/components/CCSwitchDialog.test.tsx:generic-api-key:10

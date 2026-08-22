@@ -852,7 +852,7 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *channelv1.Updat
 }
 
 func (s *ChannelService) RecordChannelUsage(ctx context.Context, req *channelv1.RecordChannelUsageRequest) (*channelv1.RecordChannelUsageResponse, error) {
-	if err := s.uc.RecordUsage(ctx, req.ChannelId, req.Quota); err != nil {
+	if err := s.uc.RecordUsageOnce(ctx, req.ReservationId, req.ChannelId, req.Quota); err != nil {
 		return &channelv1.RecordChannelUsageResponse{
 			Success: false,
 			Message: err.Error(),

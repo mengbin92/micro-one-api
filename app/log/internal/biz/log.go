@@ -17,6 +17,7 @@ type LogEntry struct {
 	Message   string
 	Source    string // service name or component
 	RequestID string
+	DedupeKey string
 	UserID    int64
 	CreatedAt time.Time
 
@@ -128,6 +129,12 @@ func (uc *LogUsecase) UserUsageStats(ctx context.Context, userID int64, startTim
 func (uc *LogUsecase) IngestLog(ctx context.Context, entry *LogEntry) error {
 	if entry.CreatedAt.IsZero() {
 		entry.CreatedAt = time.Now()
+	}
+	// A deduplicated usage log must be durably committed before the relay sees
+	// success; otherwise the asynchronous writer can fail after the caller has
+	// lost its opportunity to retry.
+	if entry.DedupeKey != "" {
+		return uc.repo.Create(ctx, entry)
 	}
 	// Async/batch path: enqueue the entry and return immediately. The
 	// batch writer flushes to the repo (CreateBatch when supported,

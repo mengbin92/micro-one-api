@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"micro-one-api/app/log/internal/biz"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestMemoryRepository_CreateAndGet(t *testing.T) {
@@ -34,6 +37,58 @@ func TestMemoryRepository_CreateAndGet(t *testing.T) {
 	}
 	if got.Message != "test error" {
 		t.Fatalf("expected 'test error', got %s", got.Message)
+	}
+}
+
+func TestMemoryRepository_CreateIsIdempotentByDedupeKey(t *testing.T) {
+	repo := NewMemoryRepositoryForTest()
+	first := &biz.LogEntry{Level: "consume", RequestID: "req-1", DedupeKey: "consume:req-1", CreatedAt: time.Now()}
+	second := &biz.LogEntry{Level: "consume", RequestID: "req-1", DedupeKey: "consume:req-1", CreatedAt: time.Now()}
+
+	if err := repo.Create(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Create(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	if first.ID == 0 || second.ID != first.ID {
+		t.Fatalf("ids = %d/%d, want same non-zero id", first.ID, second.ID)
+	}
+	_, total, err := repo.List(context.Background(), 1, 20, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("total = %d, want 1", total)
+	}
+}
+
+func TestDBRepository_CreateIsIdempotentByDedupeKey(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&logModel{}, &logIngestDedupeClaimModel{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := &Repository{db: db}
+	first := &biz.LogEntry{Level: "consume", RequestID: "req-1", DedupeKey: "consume:1:req-1", CreatedAt: time.Now()}
+	second := &biz.LogEntry{Level: "consume", RequestID: "req-1", DedupeKey: "consume:1:req-1", CreatedAt: time.Now()}
+	if err := repo.Create(context.Background(), first); err != nil {
+		t.Fatalf("first Create: %v", err)
+	}
+	if err := repo.Create(context.Background(), second); err != nil {
+		t.Fatalf("second Create: %v", err)
+	}
+	if first.ID == 0 || second.ID != first.ID {
+		t.Fatalf("ids = (%d, %d), want same non-zero id", first.ID, second.ID)
+	}
+	var count int64
+	if err := db.Model(&logModel{}).Count(&count).Error; err != nil {
+		t.Fatalf("count logs: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("log count = %d, want 1", count)
 	}
 }
 

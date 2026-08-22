@@ -148,12 +148,12 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 19, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 22, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := len(files) - 3 // last three files arrive later (077, 078, 079)
+	cut := len(files) - 3 // last three files arrive later (080, 081, 082)
 
 	db := openScratchSqlite(t)
-	// Stage 1: apply the tree up to (not including) the last two files.
+	// Stage 1: apply the tree up to (not including) the last three files.
 	stage1 := tempDirWithFiles(t, files[:cut], dir)
 	r1 := NewWithDriver(db, stage1, "sqlite3")
 	applied1, err := r1.Apply(context.Background())
@@ -174,12 +174,12 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 	all, err := NewWithDriver(db, dir, "sqlite3").Apply(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, all, "after upgrade the tree is fully applied")
-	require.True(t, sqliteColumnExists(t, db, "user_subscriptions", "renewal_strategy"),
-		"tail mirror must have applied during upgrade")
-	require.True(t, sqliteTableExists(t, db, "billing_ledger_dedupe_claims"),
-		"partition-safe dedupe claim migration must have applied during upgrade")
-	require.True(t, sqliteColumnExists(t, db, "billing_reservations", "balance_amount"),
-		"canonical balance amount migration must have applied during upgrade")
+	require.True(t, sqliteColumnExists(t, db, "billing_ledgers", "cost_audit_status"),
+		"ledger cost-audit migration must have applied during upgrade")
+	require.True(t, sqliteTableExists(t, db, "channel_usage_events"),
+		"channel usage idempotency migration must have applied during upgrade")
+	require.True(t, sqliteTableExists(t, db, "log_ingest_dedupe_claims"),
+		"log ingestion idempotency migration must have applied during upgrade")
 }
 
 func TestSQLiteDialect_BalanceAmountMigrationBackfillsLegacyColumn(t *testing.T) {

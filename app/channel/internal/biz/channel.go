@@ -1012,6 +1012,19 @@ func (uc *ChannelUsecase) RecordUsage(ctx context.Context, channelID int64, quot
 	return nil
 }
 
+func (uc *ChannelUsecase) RecordUsageOnce(ctx context.Context, reservationID string, channelID int64, quota int64) error {
+	if quota <= 0 {
+		return nil
+	}
+	type idempotentUsageRepo interface {
+		RecordUsageOnce(context.Context, string, int64, int64) error
+	}
+	if repo, ok := uc.repo.(idempotentUsageRepo); ok && reservationID != "" {
+		return repo.RecordUsageOnce(ctx, reservationID, channelID, quota)
+	}
+	return uc.RecordUsage(ctx, channelID, quota)
+}
+
 func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthEvent) error {
 	if event.ChannelID <= 0 {
 		return ErrChannelNotFound

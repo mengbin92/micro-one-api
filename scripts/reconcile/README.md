@@ -11,6 +11,15 @@
 退出码：`0` 无差异；`1` 有差异；`2` 配置/运行错误。无差异时输出
 `RESULT: PASS (no discrepancies)`，可直接接入 cron / CI。
 
+## 历史漂移一次性修复
+
+升级并完成 080-082 迁移后，使用
+`repair_usage_accounting.sql` 修复历史 channel `used_quota` 与缺失的 consume
+日志。脚本以 ledger 为权威来源，先按 reservation 去重，并默认以 `ROLLBACK`
+结束；先检查预览结果，再把最后一行改成 `COMMIT` 执行。旧流水缺少当时的
+上游模型/价格快照，迁移只将其标记为 `cost_audit_status=legacy`，不会用现价
+伪造历史成本。
+
 ## 覆盖的检查
 
 | 检查 | 来源 | 判定 |
