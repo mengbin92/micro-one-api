@@ -133,6 +133,15 @@ func (j *ReconciliationJob) runReconciliation(ctx context.Context) {
 			zap.Int64("quota_diff", inc.QuotaDiff),
 		)
 	}
+	for _, inc := range result.SubscriptionInconsistencies {
+		applogger.Log.Warn("subscription usage inconsistency",
+			zap.Int64("subscription_id", inc.SubscriptionID),
+			zap.String("window", inc.Window),
+			zap.Float64("expected_usd", inc.SubscriptionUsedUSD-inc.Difference),
+			zap.Float64("actual_usd", inc.SubscriptionUsedUSD),
+			zap.Float64("difference_usd", inc.Difference),
+		)
+	}
 	for _, inc := range result.StuckIssuanceInconsistencies {
 		applogger.Log.Warn("stuck asset issuance (paid+issued+unfulfilled)",
 			zap.String("trade_no", inc.TradeNo),
@@ -183,6 +192,7 @@ func buildAlertContent(r *ReconciliationResult) string {
 	fmt.Fprintf(&b, "Accounts checked: %d (mismatches: %d)\n", r.TotalAccounts, len(r.AccountInconsistencies))
 	fmt.Fprintf(&b, "Channels checked: %d (mismatches: %d)\n", r.TotalChannels, len(r.ChannelInconsistencies))
 	fmt.Fprintf(&b, "Ledger/log consume groups drifted: %d\n", len(r.LogInconsistencies))
+	fmt.Fprintf(&b, "Subscriptions checked: %d (window mismatches: %d)\n", r.TotalSubscriptions, len(r.SubscriptionInconsistencies))
 
 	if len(r.AccountInconsistencies) > 0 {
 		b.WriteString("\nAccount quota mismatches (showing up to 5):\n")
@@ -212,6 +222,16 @@ func buildAlertContent(r *ReconciliationResult) string {
 			}
 			fmt.Fprintf(&b, "  - ledger_count=%d log_count=%d count_diff=%d quota_diff=%d\n",
 				inc.LedgerCount, inc.LogCount, inc.CountDiff, inc.QuotaDiff)
+		}
+	}
+	if len(r.SubscriptionInconsistencies) > 0 {
+		b.WriteString("\nSubscription window mismatches (showing up to 5):\n")
+		for i, inc := range r.SubscriptionInconsistencies {
+			if i >= 5 {
+				break
+			}
+			fmt.Fprintf(&b, "  - subscription=%d window=%s expected_usd=%.6f actual_usd=%.6f diff_usd=%.6f\n",
+				inc.SubscriptionID, inc.Window, inc.SubscriptionUsedUSD-inc.Difference, inc.SubscriptionUsedUSD, inc.Difference)
 		}
 	}
 	if len(r.StuckIssuanceInconsistencies) > 0 {

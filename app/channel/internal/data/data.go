@@ -40,6 +40,7 @@ type Repository struct {
 	channels    map[int64]*biz.Channel
 	subAccounts map[int64]*biz.SubscriptionAccount
 	quotaEvents map[string]biz.SubscriptionAccountQuotaEventAggregate
+	usageEvents map[string]bool
 	resetRuns   map[string]bool
 	lock        sync.RWMutex
 	encKey      []byte // AES key for encrypting API keys at rest (nil = no encryption)
@@ -94,6 +95,15 @@ type channelModel struct {
 	SystemPrompt                      *string `gorm:"column:system_prompt"`
 	RestrictModels                    bool    `gorm:"column:restrict_models"`
 }
+
+type channelUsageEventModel struct {
+	ReservationID string    `gorm:"column:reservation_id;primaryKey"`
+	ChannelID     int64     `gorm:"column:channel_id"`
+	Quota         int64     `gorm:"column:quota"`
+	CreatedAt     time.Time `gorm:"column:created_at"`
+}
+
+func (channelUsageEventModel) TableName() string { return "channel_usage_events" }
 
 func (channelModel) TableName() string { return "channels" }
 
@@ -266,6 +276,7 @@ func newMemoryRepository() *Repository {
 		channels:                  make(map[int64]*biz.Channel),
 		subAccounts:               make(map[int64]*biz.SubscriptionAccount),
 		quotaEvents:               make(map[string]biz.SubscriptionAccountQuotaEventAggregate),
+		usageEvents:               make(map[string]bool),
 		resetRuns:                 make(map[string]bool),
 		models:                    make(map[int64]*biz.Model),
 		modelAliases:              make(map[int64]*biz.ModelAlias),
@@ -847,6 +858,54 @@ func (r *Repository) RecordUsage(ctx context.Context, channelID int64, quota int
 		return biz.ErrChannelNotFound
 	}
 	channel.UsedQuota += quota
+	return nil
+}
+
+// RecordUsageOnce increments a channel counter at most once per billing
+// reservation. The dedupe claim and counter update share one transaction, so
+// a failed update does not consume the retry key.
+func (r *Repository) RecordUsageOnce(ctx context.Context, reservationID string, channelID int64, quota int64) error {
+	if reservationID == "" {
+		return r.RecordUsage(ctx, channelID, quota)
+	}
+	if quota <= 0 {
+		return nil
+	}
+	if r.db != nil {
+		err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			claim := &channelUsageEventModel{ReservationID: reservationID, ChannelID: channelID, Quota: quota, CreatedAt: time.Now().UTC()}
+			if err := tx.Create(claim).Error; err != nil {
+				return err
+			}
+			updated := tx.Model(&channelModel{}).Where("id = ?", channelID).
+				UpdateColumn("used_quota", gorm.Expr("used_quota + ?", quota))
+			if updated.Error != nil {
+				return updated.Error
+			}
+			if updated.RowsAffected == 0 {
+				return biz.ErrChannelNotFound
+			}
+			return nil
+		})
+		if isDuplicateKeyErr(err) {
+			return nil
+		}
+		return err
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.usageEvents == nil {
+		r.usageEvents = make(map[string]bool)
+	}
+	if r.usageEvents[reservationID] {
+		return nil
+	}
+	channel, ok := r.channels[channelID]
+	if !ok {
+		return biz.ErrChannelNotFound
+	}
+	channel.UsedQuota += quota
+	r.usageEvents[reservationID] = true
 	return nil
 }
 

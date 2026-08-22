@@ -442,6 +442,8 @@ message UpdateChannelResponse {
 message RecordChannelUsageRequest {
   int64 channel_id = 1;
   int64 quota = 2;
+  // Stable billing reservation id used to make retries idempotent.
+  string reservation_id = 3;
 }
 
 message RecordChannelUsageResponse {

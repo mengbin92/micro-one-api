@@ -86,6 +86,9 @@ type ledgerModel struct {
 	ShadowCost            int64  `gorm:"column:shadow_cost"`
 	ChannelID             int64  `gorm:"column:channel_id"`
 	SubscriptionAccountID int64  `gorm:"column:subscription_account_id"`
+	SourceKind            string `gorm:"column:source_kind"`
+	UpstreamModelID       string `gorm:"column:upstream_model_id"`
+	CostAuditStatus       string `gorm:"column:cost_audit_status"`
 	ElapsedTime           int64  `gorm:"column:elapsed_time"`
 	IsStream              bool   `gorm:"column:is_stream"`
 	Endpoint              string `gorm:"column:endpoint"`

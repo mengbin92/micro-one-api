@@ -482,6 +482,59 @@ type mockTx struct{}
 
 func (m *mockTx) DB() any { return nil }
 
+func TestCommitQuotaDualTrack_FullyAbsorbedPersistsUpstreamCost(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	accountRepo := &mockAccountRepo{account: &Account{UserID: "42", Balance: 0, Group: "default"}}
+	reservationRepo := &mockReservationRepo{reservations: map[string]*Reservation{
+		"res-cost": {
+			ReservationID:                  "res-cost",
+			UserID:                         "42",
+			Amount:                         1,
+			Status:                         ReservationStatusReserved,
+			Model:                          "public-model",
+			ChannelID:                      "1",
+			SubscriptionID:                 7,
+			SubscriptionAmountUSD:          0.0001,
+			SubscriptionDailyWindowStart:   now.Unix(),
+			SubscriptionWeeklyWindowStart:  now.Unix(),
+			SubscriptionMonthlyWindowStart: now.Unix(),
+		},
+	}}
+	ledgerRepo := &mockLedgerRepo{}
+	uc := NewBillingUsecaseWithOptions(BillingOptions{
+		AccountRepo:     accountRepo,
+		ReservationRepo: reservationRepo,
+		LedgerRepo:      ledgerRepo,
+		SubscriptionUsecase: &mockSubscriptionPrimitives{
+			subscription: &subscriptionbiz.UserSubscription{
+				ID:                 7,
+				UserID:             42,
+				DailyWindowStart:   now.Unix(),
+				WeeklyWindowStart:  now.Unix(),
+				MonthlyWindowStart: now.Unix(),
+			},
+			group: &subscriptionbiz.SubscriptionGroup{RateMultiplier: 1},
+		},
+		TxRunner: &mockTxRunner{},
+		Now:      func() time.Time { return now },
+	})
+	uc.upstreamPrices = normalizeUpstreamPrices(map[string]ModelPrice{
+		"channel:1:vendor-model": {InputPrice: 0.001},
+	})
+
+	_, _, err := uc.CommitQuotaWithUsage(context.Background(), "res-cost", 100, true, LedgerUsage{
+		PromptTokens:    100,
+		SourceKind:      CostSourceChannel,
+		UpstreamModelID: "vendor-model",
+	})
+	require.NoError(t, err)
+	require.Len(t, ledgerRepo.ledgers, 1)
+	assert.Equal(t, CostSourceSubscription, ledgerRepo.ledgers[0].CostSource)
+	assert.Equal(t, int64(1000), ledgerRepo.ledgers[0].UpstreamCost)
+	assert.Equal(t, CostAuditPriced, ledgerRepo.ledgers[0].CostAuditStatus)
+	assert.Equal(t, "vendor-model", ledgerRepo.ledgers[0].UpstreamModelID)
+}
+
 func TestReserveQuotaDualTrack_UnlimitedGroupAbsorbsFullCost(t *testing.T) {
 	now := time.Unix(1_000, 0)
 	accountRepo := &mockAccountRepo{account: &Account{UserID: "42", Balance: 0, FrozenAmount: 0, Group: "default"}}

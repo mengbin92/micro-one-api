@@ -3,8 +3,11 @@ package biz
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
+	"go.uber.org/zap"
+	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
 
@@ -12,8 +15,10 @@ import (
 type ReconciliationRepo interface {
 	// ListAllAccounts returns all accounts for consistency checks.
 	ListAllAccounts(ctx context.Context) ([]*Account, error)
-	// SumLedgerAmounts returns the net ledger amount for a user (sum of all amounts).
-	SumLedgerAmounts(ctx context.Context, userID string) (int64, error)
+	// LatestLedgerBalanceAfter returns the latest persisted wallet snapshot for
+	// a user. Summing ledger.amount is invalid because subscription absorption
+	// never moves the wallet and accounts may have an opening balance.
+	LatestLedgerBalanceAfter(ctx context.Context, userID string) (balance int64, found bool, err error)
 	// ListChannelUsage returns the current channel usage counters.
 	ListChannelUsage(ctx context.Context) ([]*ChannelUsageSnapshot, error)
 	// SumConsumeLedgerUsageByChannel returns local consume ledger totals grouped by channel.
@@ -29,6 +34,9 @@ type ReconciliationRepo interface {
 	// reservation-side absorber totals match the subscription's running
 	// counters.
 	ListActiveSubscriptions(ctx context.Context) ([]*SubscriptionUsageSnapshot, error)
+	// SumSubscriptionCostSince returns the unmultiplied fixed-point
+	// subscription cost for one subscription inside a single usage window.
+	SumSubscriptionCostSince(ctx context.Context, subscriptionID int64, since time.Time) (int64, error)
 	// SumPendingReceivables returns the total pending (un-settled)
 	// overdue_quota across all users. Used by reconciliation to verify
 	// the receivables mirror matches the user-wallets with negative
@@ -123,12 +131,17 @@ type ChannelUsageSnapshot struct {
 // exposed to reconciliation. It mirrors the columns the reconciliation
 // job needs to verify the reservation-side absorber totals.
 type SubscriptionUsageSnapshot struct {
-	UserID          int64
-	GroupID         int64
-	Status          string
-	DailyUsageUSD   float64
-	WeeklyUsageUSD  float64
-	MonthlyUsageUSD float64
+	SubscriptionID     int64
+	UserID             int64
+	GroupID            int64
+	Status             string
+	DailyUsageUSD      float64
+	WeeklyUsageUSD     float64
+	MonthlyUsageUSD    float64
+	DailyWindowStart   int64
+	WeeklyWindowStart  int64
+	MonthlyWindowStart int64
+	RateMultiplier     float64
 }
 
 // SubscriptionInconsistency captures a mismatch between the
@@ -136,6 +149,9 @@ type SubscriptionUsageSnapshot struct {
 // The reconciliation job reports it but does not auto-repair.
 type SubscriptionInconsistency struct {
 	UserID                 int64   `json:"user_id"`
+	SubscriptionID         int64   `json:"subscription_id"`
+	Window                 string  `json:"window"`
+	WindowStart            int64   `json:"window_start"`
 	SubscriptionUsedUSD    float64 `json:"subscription_used_usd"`
 	LedgerSubscriptionCost int64   `json:"ledger_subscription_cost_quota"`
 	Difference             float64 `json:"difference_usd"`
@@ -331,11 +347,10 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 		result.ExpiredCleaned++
 	}
 
-	// Step 2: Account-level consistency. The dual-track flow allows
-	// balance to go negative (overdraft), so the tolerance check
-	// only fires for |balance - ledger_net| > 100, regardless of
-	// the sign. Previously the check required balance >= ledger_net
-	// which was a false-positive on every overdrafted user.
+	// Step 2: Account-level consistency. Compare the available wallet against
+	// the latest settled balance snapshot after accounting for active frozen
+	// reservations. Subscription ledger amounts are deliberately not summed
+	// because subscription absorption never moves the wallet.
 	accounts, err := uc.reconRepo.ListAllAccounts(ctx)
 	if err != nil {
 		return result, fmt.Errorf("list accounts: %w", err)
@@ -343,20 +358,29 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 	result.TotalAccounts = len(accounts)
 
 	for _, account := range accounts {
-		ledgerNet, err := uc.reconRepo.SumLedgerAmounts(ctx, account.UserID)
+		ledgerBalance, found, err := uc.reconRepo.LatestLedgerBalanceAfter(ctx, account.UserID)
 		if err != nil {
 			continue
 		}
-		diff := account.Balance - ledgerNet
+		// An account with no ledger has no persisted opening-balance baseline;
+		// do not manufacture a mismatch from an unknown initial value.
+		if !found {
+			continue
+		}
+		// Reserving quota moves funds from balance to frozen without writing a
+		// ledger entry. Subtract the currently frozen amount from the latest
+		// settled snapshot before comparing the available wallet balance.
+		expectedBalance := ledgerBalance - account.FrozenAmount
+		diff := account.Balance - expectedBalance
 		if diff < 0 {
 			diff = -diff
 		}
 		if diff > 100 {
 			result.AccountInconsistencies = append(result.AccountInconsistencies, AccountInconsistency{
 				UserID:          account.UserID,
-				ExpectedQuota:   ledgerNet,
+				ExpectedQuota:   expectedBalance,
 				ActualQuota:     account.Balance,
-				LedgerNetAmount: ledgerNet,
+				LedgerNetAmount: ledgerBalance,
 				FrozenQuota:     account.FrozenAmount,
 			})
 		}
@@ -444,6 +468,46 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 	// track ledger entries. We report but do not auto-repair.
 	if subs, err := uc.reconRepo.ListActiveSubscriptions(ctx); err == nil {
 		result.TotalSubscriptions = len(subs)
+		for _, sub := range subs {
+			multiplier := sub.RateMultiplier
+			if multiplier <= 0 {
+				multiplier = 1
+			}
+			windows := []struct {
+				name  string
+				start int64
+				used  float64
+			}{
+				{name: "daily", start: sub.DailyWindowStart, used: sub.DailyUsageUSD},
+				{name: "weekly", start: sub.WeeklyWindowStart, used: sub.WeeklyUsageUSD},
+				{name: "monthly", start: sub.MonthlyWindowStart, used: sub.MonthlyUsageUSD},
+			}
+			for _, window := range windows {
+				if window.start <= 0 {
+					continue
+				}
+				ledgerCost, sumErr := uc.reconRepo.SumSubscriptionCostSince(ctx, sub.SubscriptionID, time.Unix(window.start, 0))
+				if sumErr != nil {
+					apploggerError(sumErr, "sum subscription window for reconciliation")
+					continue
+				}
+				expectedUSD := float64(ledgerCost) / float64(AmountScale) * multiplier
+				difference := window.used - expectedUSD
+				// The subscription columns store four decimal places. Permit one
+				// fixed-point unit plus a small float representation epsilon.
+				if math.Abs(difference) > 0.0001001 {
+					result.SubscriptionInconsistencies = append(result.SubscriptionInconsistencies, SubscriptionInconsistency{
+						UserID:                 sub.UserID,
+						SubscriptionID:         sub.SubscriptionID,
+						Window:                 window.name,
+						WindowStart:            window.start,
+						SubscriptionUsedUSD:    window.used,
+						LedgerSubscriptionCost: ledgerCost,
+						Difference:             difference,
+					})
+				}
+			}
+		}
 	} else {
 		apploggerError(err, "list active subscriptions for reconciliation")
 	}
@@ -528,11 +592,11 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 // apploggerError is a thin adapter so this file does not need to
 // import the application logger. When the logger is unavailable the
 // call is a no-op.
-func apploggerError(err error, _ string) {
+func apploggerError(err error, message string) {
 	if err == nil {
 		return
 	}
-	_ = err
+	applogger.Log.Warn(message, zap.Error(err))
 }
 
 func diffAbs(v int64) int64 {

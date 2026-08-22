@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"time"
 
 	logv1 "micro-one-api/api/log/v1"
 	relaybiz "micro-one-api/internal/biz"
@@ -89,7 +90,11 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		return
 	}
 	message := applogger.Sanitize(fmt.Sprintf("model=%s quota=%d prompt_tokens=%d completion_tokens=%d cache_read_tokens=%d channel=%d", in.ModelName, in.Quota, in.PromptTokens, in.CompletionTokens, in.CacheReadTokens, in.ChannelID))
-	_, err := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{
+	dedupeKey := ""
+	if in.RequestID != "" {
+		dedupeKey = fmt.Sprintf("consume:%d:%s", in.UserID, in.RequestID)
+	}
+	req := &logv1.IngestLogRequest{
 		Level:                  "consume",
 		Message:                message,
 		Source:                 "relay-gateway",
@@ -107,13 +112,24 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		SubscriptionAccountId:  in.SubscriptionAccountID,
 		ElapsedTime:            in.ElapsedTime,
 		IsStream:               in.IsStream,
-	})
+		DedupeKey:              dedupeKey,
+	}
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		_, err = s.logClient.IngestLog(ctx, req)
+		if err == nil {
+			metrics.UsageLogIngestTotal.WithLabelValues("success").Inc()
+			return
+		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+		}
+	}
 	if err != nil {
 		metrics.UsageLogIngestTotal.WithLabelValues("error").Inc()
-		applogger.Log.Warn("failed to ingest usage log", zap.Error(err))
+		applogger.Log.Warn("failed to ingest usage log after retries", zap.String("dedupe_key", dedupeKey), zap.Error(err))
 		return
 	}
-	metrics.UsageLogIngestTotal.WithLabelValues("success").Inc()
 }
 
 func logUpstreamUsage(in usageLogInput) {

@@ -84,6 +84,8 @@ message IngestLogRequest {
   // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
   int64 cache_creation_5m_tokens = 17;  // 写入 5 分钟 TTL cache 的 token
   int64 cache_creation_1h_tokens = 18;  // 写入 1 小时 TTL cache 的 token
+  // Stable producer key. Retries with the same key return the original row.
+  string dedupe_key = 19;
 }
 
 message IngestLogResponse {

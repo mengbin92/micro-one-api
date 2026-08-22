@@ -814,9 +814,9 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 		// v0.11.0 review L2: emit the upstream-cost metric on the legacy commit
 		// path as well, so UpstreamCostMissing alert sees all traffic.
 		upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
-		resultLabel := "unpriced"
+		resultLabel := CostAuditUnpriced
 		if upstreamCost > 0 {
-			resultLabel = "priced"
+			resultLabel = CostAuditPriced
 		}
 		if metrics.BillingLedgerUpstreamCostRecorded != nil {
 			metrics.BillingLedgerUpstreamCostRecorded.WithLabelValues(
@@ -857,6 +857,9 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 			ShadowCost:            costBreakdown.ShadowCost,
 			ChannelID:             parseInt64Default(reservation.ChannelID, 0),
 			SubscriptionAccountID: resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID),
+			SourceKind:            usage.SourceKind,
+			UpstreamModelID:       usage.UpstreamModelID,
+			CostAuditStatus:       resultLabel,
 			ElapsedTime:           usage.ElapsedTime,
 			IsStream:              usage.IsStream,
 			Endpoint:              usage.Endpoint,
@@ -1019,9 +1022,9 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
 		// Emit the upstream-cost-recorded metric so the UpstreamCostMissing alert
 		// (deploy/prometheus/alerts/alerts.yml) can compare priced vs total traffic.
-		resultLabel := "unpriced"
+		resultLabel := CostAuditUnpriced
 		if upstreamCost > 0 {
-			resultLabel = "priced"
+			resultLabel = CostAuditPriced
 		}
 		if metrics.BillingLedgerUpstreamCostRecorded != nil {
 			metrics.BillingLedgerUpstreamCostRecorded.WithLabelValues(
@@ -1040,9 +1043,12 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		commonRemark := fmt.Sprintf("model=%s, tokens=%d", reservation.Model, actualTokens)
 		if actualSubscriptionAmount > 0 {
 			subLedger := &Ledger{
-				UserID:                reservation.UserID,
-				Amount:                -actualSubscriptionAmount,
-				UpstreamCost:          0,
+				UserID: reservation.UserID,
+				Amount: -actualSubscriptionAmount,
+				// A request's vendor cost is recorded exactly once. Prefer the
+				// subscription row when it exists because a fully absorbed request
+				// has no balance row at all.
+				UpstreamCost:          upstreamCost,
 				BalanceAfter:          newBalance,
 				Type:                  LedgerTypeConsume,
 				ReferenceID:           reservationID,
@@ -1057,6 +1063,9 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				CacheCreation1hTokens: usage.CacheCreation1hTokens,
 				ChannelID:             parseInt64Default(reservation.ChannelID, 0),
 				SubscriptionAccountID: resolvedSubAccountID,
+				SourceKind:            usage.SourceKind,
+				UpstreamModelID:       usage.UpstreamModelID,
+				CostAuditStatus:       resultLabel,
 				ElapsedTime:           usage.ElapsedTime,
 				IsStream:              usage.IsStream,
 				Endpoint:              usage.Endpoint,
@@ -1104,6 +1113,9 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				ShadowCost:            costBreakdown.ShadowCost,
 				ChannelID:             parseInt64Default(reservation.ChannelID, 0),
 				SubscriptionAccountID: resolvedSubAccountID,
+				SourceKind:            usage.SourceKind,
+				UpstreamModelID:       usage.UpstreamModelID,
+				CostAuditStatus:       resultLabel,
 				ElapsedTime:           usage.ElapsedTime,
 				IsStream:              usage.IsStream,
 				Endpoint:              usage.Endpoint,
@@ -1111,6 +1123,9 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				SubscriptionCost:      0,
 				BalanceCost:           actualBalanceAmount,
 				LedgerDedupeKey:       fmt.Sprintf("%s:%s:%s", reservationID, LedgerTypeConsume, CostSourceBalance),
+			}
+			if actualSubscriptionAmount > 0 {
+				balLedger.UpstreamCost = 0
 			}
 			if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, balLedger); err != nil {
 				return fmt.Errorf("create balance ledger: %w", err)

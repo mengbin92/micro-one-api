@@ -69,6 +69,21 @@ func TestCreateChannelRejectsMissingEncryptionKey(t *testing.T) {
 	assert.Zero(t, count)
 }
 
+func TestRecordUsageOnceIsIdempotent(t *testing.T) {
+	repo := setupChannelTestDB(t)
+	require.NoError(t, repo.db.Exec("INSERT INTO channels (id, name, used_quota) VALUES (1, 'primary', 10)").Error)
+
+	require.NoError(t, repo.RecordUsageOnce(context.Background(), "res-1", 1, 25))
+	require.NoError(t, repo.RecordUsageOnce(context.Background(), "res-1", 1, 25))
+
+	var used int64
+	require.NoError(t, repo.db.Table("channels").Select("used_quota").Where("id = 1").Scan(&used).Error)
+	assert.Equal(t, int64(35), used)
+	var claims int64
+	require.NoError(t, repo.db.Table("channel_usage_events").Count(&claims).Error)
+	assert.Equal(t, int64(1), claims)
+}
+
 func TestMigrateCredentialsDryRunAndApplyIsIdempotent(t *testing.T) {
 	repo := setupChannelTestDB(t)
 	repo.encKey = []byte("01234567890123456789012345678901")
@@ -160,6 +175,14 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			channel_id INTEGER NOT NULL,
 			enabled INTEGER DEFAULT 1,
 			priority INTEGER DEFAULT 0
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE channel_usage_events (
+			reservation_id TEXT PRIMARY KEY,
+			channel_id INTEGER NOT NULL,
+			quota INTEGER NOT NULL,
+			created_at INTEGER NOT NULL DEFAULT 0
 		)
 	`).Error)
 
