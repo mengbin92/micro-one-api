@@ -61,9 +61,9 @@ func writeChatStreamError(w *io.PipeWriter) {
 func writeAnthropicStreamError(w *io.PipeWriter) {
 	evt := apicompat.AnthropicStreamEvent{
 		Type: "error",
-		Delta: &apicompat.AnthropicDelta{
-			Type: "error",
-			Text: streamErrorMessage,
+		Error: &apicompat.AnthropicError{
+			Type:    "api_error",
+			Message: streamErrorMessage,
 		},
 	}
 	if sse, err := apicompat.ResponsesAnthropicEventToSSE(evt); err == nil {
@@ -282,6 +282,153 @@ func pumpResponsesToChat(src io.Reader, w *io.PipeWriter, model string) {
 		_, _ = io.WriteString(w, sse)
 	}
 	_, _ = io.WriteString(w, "data: [DONE]\n\n")
+}
+
+// pumpChatToResponses reads an OpenAI Chat Completions SSE stream and writes
+// Responses SSE. It is shared by API-key adaptors whose native wire protocol
+// is Chat Completions.
+func pumpChatToResponses(src io.Reader, w *io.PipeWriter, model string) {
+	defer w.Close()
+	scanner := bufio.NewScanner(src)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	state := apicompat.NewChatCompletionsToResponsesStreamState(model)
+	for scanner.Scan() {
+		data, ok := sseData(scanner.Text())
+		if !ok {
+			continue
+		}
+		var chunk apicompat.ChatCompletionsChunk
+		if err := jsonx.UnmarshalFromString(data, &chunk); err != nil {
+			writeResponsesStreamError(w)
+			_, _ = io.WriteString(w, "data: [DONE]\n\n")
+			return
+		}
+		if chatChunkHasErrorFinish(&chunk) {
+			writeResponsesStreamError(w)
+			_, _ = io.WriteString(w, "data: [DONE]\n\n")
+			return
+		}
+		for _, event := range apicompat.ChatCompletionsChunkToResponsesEvents(&chunk, state) {
+			sse, err := apicompat.ResponsesEventToSSE(event)
+			if err != nil {
+				continue
+			}
+			if _, err := io.WriteString(w, sse); err != nil {
+				return
+			}
+		}
+	}
+	if scanner.Err() != nil {
+		writeResponsesStreamError(w)
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		return
+	}
+	for _, event := range apicompat.FinalizeChatCompletionsResponsesStream(state) {
+		sse, err := apicompat.ResponsesEventToSSE(event)
+		if err != nil {
+			continue
+		}
+		_, _ = io.WriteString(w, sse)
+	}
+	_, _ = io.WriteString(w, "data: [DONE]\n\n")
+}
+
+// pumpChatToAnthropic composes the Chat -> Responses -> Anthropic stream
+// bridges. The Anthropic stage buffers tool calls so parallel OpenAI deltas
+// are emitted as ordered, non-overlapping Anthropic content blocks.
+func pumpChatToAnthropic(src io.Reader, w *io.PipeWriter, model string) {
+	defer w.Close()
+	scanner := bufio.NewScanner(src)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	chatState := apicompat.NewChatCompletionsToResponsesStreamState(model)
+	anthropicState := apicompat.NewBufferedResponsesEventToAnthropicState()
+	anthropicState.Model = model
+	sawChunk := false
+	sawDone := false
+
+	emitResponsesEvent := func(event apicompat.ResponsesStreamEvent) bool {
+		for _, anthropicEvent := range apicompat.ResponsesEventToAnthropicEvents(&event, anthropicState) {
+			sse, err := apicompat.ResponsesAnthropicEventToSSE(anthropicEvent)
+			if err != nil {
+				continue
+			}
+			if _, err := io.WriteString(w, sse); err != nil {
+				return false
+			}
+		}
+		return true
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if isSSEDone(line) {
+			sawDone = true
+			continue
+		}
+		data, ok := sseData(line)
+		if !ok {
+			continue
+		}
+		var chunk apicompat.ChatCompletionsChunk
+		if err := jsonx.UnmarshalFromString(data, &chunk); err != nil {
+			writeAnthropicStreamError(w)
+			return
+		}
+		if chatChunkHasErrorFinish(&chunk) {
+			writeAnthropicStreamError(w)
+			return
+		}
+		sawChunk = true
+		for _, event := range apicompat.ChatCompletionsChunkToResponsesEvents(&chunk, chatState) {
+			if !emitResponsesEvent(event) {
+				return
+			}
+		}
+	}
+	if scanner.Err() != nil {
+		writeAnthropicStreamError(w)
+		return
+	}
+	// A clean TCP EOF is not a successful model response unless at least one
+	// valid chunk plus either a finish_reason or an explicit [DONE] sentinel
+	// were observed. Some compatible providers omit finish_reason but still
+	// terminate correctly with [DONE]. A bare EOF remains an interruption.
+	if !sawChunk || (chatState.FinishReason == "" && !sawDone) {
+		writeAnthropicStreamError(w)
+		return
+	}
+	if chatState.FinishReason == "" {
+		chatState.FinishReason = "stop"
+	}
+	for _, event := range apicompat.FinalizeChatCompletionsResponsesStream(chatState) {
+		if !emitResponsesEvent(event) {
+			return
+		}
+	}
+	for _, event := range apicompat.FinalizeResponsesAnthropicStream(anthropicState) {
+		sse, err := apicompat.ResponsesAnthropicEventToSSE(event)
+		if err != nil {
+			continue
+		}
+		_, _ = io.WriteString(w, sse)
+	}
+}
+
+func chatChunkHasErrorFinish(chunk *apicompat.ChatCompletionsChunk) bool {
+	if chunk == nil {
+		return false
+	}
+	for _, choice := range chunk.Choices {
+		if choice.FinishReason != nil && *choice.FinishReason == "error" {
+			return true
+		}
+	}
+	return false
+}
+
+func isSSEDone(line string) bool {
+	data, ok := strings.CutPrefix(strings.TrimSpace(line), "data:")
+	return ok && strings.TrimSpace(data) == "[DONE]"
 }
 
 // sseData extracts the JSON payload from a "data: ..." SSE line. Returns

@@ -11,8 +11,7 @@ import (
 )
 
 // openAIModels is the default model list reported by OpenAI-compatible
-// adaptors when the channel carries no explicit model list. The MVP exposes
-// only the names the provider layer can already serve; channels can override
+// adaptors when the channel carries no explicit model list. Channels can override
 // via RelayContext.Channel.Models.
 var openAIModels = []string{
 	"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo",
@@ -21,10 +20,8 @@ var openAIModels = []string{
 // OpenAICompatibleAdaptor wraps a provider.Provider (OpenAI-family) behind the
 // Adaptor interface. It covers the 20+ OpenAI-compatible API-key channels.
 //
-// Upstream protocol: chat_completions. When the inbound format is already
-// chat_completions the body is passed through unchanged; the responses⇄
-// chat_completions conversion is handled by apicompat once the server layer
-// is wired to call ConvertRequest with the inbound format.
+// Upstream protocol: chat_completions. Matching requests pass through;
+// Responses and Anthropic Messages requests are converted via apicompat.
 type OpenAICompatibleAdaptor struct {
 	baseAdaptor
 	provider provider.Provider
@@ -49,35 +46,21 @@ func (a *OpenAICompatibleAdaptor) Name() string { return "openai_compatible" }
 // ModelList returns the models this adaptor advertises.
 func (a *OpenAICompatibleAdaptor) ModelList() []string { return a.models }
 
-// ConvertRequest passes chat_completions bodies through unchanged. Non-chat
-// inbound formats require the apicompat converters, which will be invoked by
-// the server layer in a later phase; for the MVP this returns the body as-is
-// so existing behavior is preserved.
-func (a *OpenAICompatibleAdaptor) ConvertRequest(_ *RelayContext, inbound Format, body []byte) (Format, []byte, error) {
-	if inbound == FormatOpenAIChatCompletions {
-		return FormatOpenAIChatCompletions, body, nil
-	}
-	// Inbound conversion (responses/anthropic -> chat_completions) is owned by
-	// apicompat. The adaptor's role is to declare the upstream format; the
-	// server layer is responsible for calling the right converter before
-	// BuildUpstreamRequest. Until then we surface a clear error rather than
-	// silently corrupting a request.
-	return "", nil, fmt.Errorf("openai_compatible adaptor: inbound format %q is not yet supported by the MVP conversion path", inbound)
+// ConvertRequest bridges the inbound client format to Chat Completions.
+func (a *OpenAICompatibleAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body []byte) (Format, []byte, error) {
+	return convertRequestToChat(rc, inbound, body)
 }
 
 // GetUpstreamURL returns the chat/completions endpoint of the channel.
 func (a *OpenAICompatibleAdaptor) GetUpstreamURL(ctx *RelayContext) (string, error) {
-	base := baseURLFromContext(ctx)
-	if base == "" {
-		return "", fmt.Errorf("openai_compatible adaptor: channel has no base_url")
+	if ctx == nil || ctx.Channel == nil {
+		return "", fmt.Errorf("openai_compatible adaptor: channel is required")
 	}
+	base := provider.ResolveOpenAICompatibleBaseURL(ctx.Channel.Type, ctx.Channel.BaseURL)
 	return strings.TrimRight(base, "/") + "/chat/completions", nil
 }
 
-// BuildUpstreamRequest constructs the POST request for /chat/completions. For
-// the MVP it delegates to the wrapped provider's Forward path: callers that
-// already hold a *provider.Provider should keep using it directly; this method
-// exists so the Adaptor interface is complete and testable.
+// BuildUpstreamRequest constructs the POST request for /chat/completions.
 func (a *OpenAICompatibleAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayContext, _ Format, body []byte) (*http.Request, error) {
 	url, err := a.GetUpstreamURL(rc)
 	if err != nil {
@@ -97,25 +80,17 @@ func (a *OpenAICompatibleAdaptor) BuildUpstreamRequest(ctx context.Context, rc *
 // ConvertResponse returns the upstream body unchanged. The OpenAI-compatible
 // provider already returns chat_completions JSON, which is the default
 // outbound format for this adaptor.
-func (a *OpenAICompatibleAdaptor) ConvertResponse(_ *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, provider.MaxUpstreamResponseBody))
-	if err != nil {
-		return "", nil, fmt.Errorf("read upstream response: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", nil, &provider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body}
-	}
-	return FormatOpenAIChatCompletions, body, nil
+func (a *OpenAICompatibleAdaptor) ConvertResponse(rc *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
+	return convertChatResponse(rc, resp)
 }
 
 // ConvertStreamResponse returns the upstream stream reader unchanged. The
 // OpenAI-compatible provider emits chat_completions SSE directly.
-func (a *OpenAICompatibleAdaptor) ConvertStreamResponse(_ *RelayContext, upstream Format, resp *http.Response) (Format, io.Reader, error) {
-	return FormatOpenAIChatCompletions, resp.Body, nil
+func (a *OpenAICompatibleAdaptor) ConvertStreamResponse(rc *RelayContext, upstream Format, resp *http.Response) (Format, io.Reader, error) {
+	return convertChatStream(rc, resp)
 }
 
-// --- helpers used by the MVP adaptors ---
+// --- helpers shared by API-key adaptors ---
 
 func bytesReader(body []byte) io.Reader { return &byteReader{data: body} }
 

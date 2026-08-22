@@ -183,12 +183,12 @@ func extractRawUsageValue(value interface{}) rawUsage {
 			usage = extractRawUsageValue(nested)
 		}
 		fiveM, oneH, _, _ := cacheCreationDetailTokens(typed)
-		prompt := numberField(typed, "prompt_tokens", "input_tokens")
+		prompt := numberField(typed, "prompt_tokens", "input_tokens", "promptTokenCount")
 		if prompt < 0 {
 			recordTokenUsageAnomaly("negative")
 			prompt = 0
 		}
-		completion := numberField(typed, "completion_tokens", "output_tokens")
+		completion := numberField(typed, "completion_tokens", "output_tokens", "candidatesTokenCount")
 		if completion < 0 {
 			recordTokenUsageAnomaly("negative")
 			completion = 0
@@ -199,7 +199,7 @@ func extractRawUsageValue(value interface{}) rawUsage {
 			CacheReadTokens:       cacheReadTokensFromUsageMap(typed),
 			CacheCreation5mTokens: fiveM,
 			CacheCreation1hTokens: oneH,
-			TotalTokens:           numberField(typed, "total_tokens"),
+			TotalTokens:           numberField(typed, "total_tokens", "totalTokenCount"),
 		})
 		if hasRawUsage(usage) {
 			return usage
@@ -287,7 +287,7 @@ func hasRawUsage(usage rawUsage) bool {
 // Anthropic (cache_read_input_tokens), OpenAI-compatible relays
 // (cache_read_tokens) and OpenAI Responses (cached_tokens).
 func cacheReadTokensFromUsageMap(m map[string]interface{}) int64 {
-	if value := numberField(m, "cache_read_input_tokens", "cache_read_tokens", "cached_tokens"); value != 0 {
+	if value := numberField(m, "cache_read_input_tokens", "cache_read_tokens", "cached_tokens", "cachedContentTokenCount"); value != 0 {
 		if value < 0 {
 			recordTokenUsageAnomaly("negative")
 			return 0
@@ -617,7 +617,8 @@ func (t *rawStreamUsageTracker) ObserveBytes(p []byte) {
 			break
 		}
 		t.pending = rest
-		data, ok := strings.CutPrefix(strings.TrimSpace(line), "data: ")
+		data, ok := strings.CutPrefix(strings.TrimSpace(line), "data:")
+		data = strings.TrimSpace(data)
 		if !ok || data == "" || data == "[DONE]" {
 			continue
 		}

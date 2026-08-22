@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"micro-one-api/domain/upstream/provider"
+	"micro-one-api/pkg/jsonx"
 )
 
 // AzureAdaptor wraps the Azure OpenAI API-key provider behind the Adaptor
@@ -33,7 +35,11 @@ func NewAzureAdaptor(p provider.Provider, models []string, apiVersion string) *A
 	return &AzureAdaptor{provider: p, models: models, apiVersion: apiVersion}
 }
 
-func (a *AzureAdaptor) Init(_ *RelayContext) {}
+func (a *AzureAdaptor) Init(rc *RelayContext) {
+	if a.apiVersion == "" && rc != nil && rc.Channel != nil {
+		a.apiVersion = rc.Channel.Config.APIVersion
+	}
+}
 
 // Name returns the adaptor identifier.
 func (a *AzureAdaptor) Name() string { return "azure" }
@@ -41,14 +47,23 @@ func (a *AzureAdaptor) Name() string { return "azure" }
 // ModelList returns the models this adaptor advertises.
 func (a *AzureAdaptor) ModelList() []string { return a.models }
 
-// ConvertRequest passes chat_completions bodies through unchanged (Azure
-// expects the OpenAI chat schema minus the model field, which the provider
-// layer already strips).
-func (a *AzureAdaptor) ConvertRequest(_ *RelayContext, inbound Format, body []byte) (Format, []byte, error) {
-	if inbound == FormatOpenAIChatCompletions {
-		return FormatOpenAIChatCompletions, body, nil
+// ConvertRequest bridges to Chat Completions and removes model because Azure
+// selects the deployment in the URL.
+func (a *AzureAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body []byte) (Format, []byte, error) {
+	format, converted, err := convertRequestToChat(rc, inbound, body)
+	if err != nil {
+		return "", nil, err
 	}
-	return "", nil, fmt.Errorf("azure adaptor: inbound format %q is not yet supported by the MVP conversion path", inbound)
+	var request map[string]jsonx.RawMessage
+	if err := jsonx.Unmarshal(converted, &request); err != nil {
+		return "", nil, fmt.Errorf("azure adaptor: parse chat request: %w", err)
+	}
+	delete(request, "model")
+	converted, err = jsonx.Marshal(request)
+	if err != nil {
+		return "", nil, fmt.Errorf("azure adaptor: marshal chat request: %w", err)
+	}
+	return format, converted, nil
 }
 
 // GetUpstreamURL returns the Azure deployment chat/completions endpoint. The
@@ -70,13 +85,31 @@ func (a *AzureAdaptor) GetUpstreamURL(ctx *RelayContext) (string, error) {
 	if v == "" {
 		v = "2024-02-15-preview"
 	}
-	// Azure base URLs may already contain /openai/deployments/<dep>; if so we
-	// append the chat path, otherwise we build the canonical deployment path.
-	trimmed := strings.TrimRight(base, "/")
-	if idx := strings.Index(trimmed, "/openai/deployments/"); idx >= 0 {
-		return trimmed + "/chat/completions?api-version=" + v, nil
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("azure adaptor: invalid base URL: %w", err)
 	}
-	return trimmed + "/openai/deployments/" + deployment + "/chat/completions?api-version=" + v, nil
+	basePath := strings.TrimRight(u.Path, "/")
+	if index := strings.Index(basePath, "/openai/deployments/"); index >= 0 {
+		parts := strings.Split(strings.Trim(basePath[index:], "/"), "/")
+		if len(parts) < 3 || parts[2] == "" {
+			return "", fmt.Errorf("azure adaptor: deployment is required")
+		}
+		u.Path = strings.TrimRight(basePath[:index], "/") + "/openai/deployments/" + url.PathEscape(parts[2]) + "/chat/completions"
+	} else {
+		if basePath == "" {
+			basePath = "/openai"
+		} else if !strings.HasSuffix(basePath, "/openai") {
+			basePath += "/openai"
+		}
+		u.Path = strings.TrimRight(basePath, "/") + "/deployments/" + url.PathEscape(deployment) + "/chat/completions"
+	}
+	query := u.Query()
+	if query.Get("api-version") == "" {
+		query.Set("api-version", v)
+	}
+	u.RawQuery = query.Encode()
+	return u.String(), nil
 }
 
 // BuildUpstreamRequest constructs the POST request using Azure api-key auth.
@@ -98,19 +131,11 @@ func (a *AzureAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayContex
 }
 
 // ConvertResponse returns the upstream body unchanged for chat_completions.
-func (a *AzureAdaptor) ConvertResponse(_ *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, provider.MaxUpstreamResponseBody))
-	if err != nil {
-		return "", nil, fmt.Errorf("read upstream response: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", nil, &provider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body}
-	}
-	return FormatOpenAIChatCompletions, body, nil
+func (a *AzureAdaptor) ConvertResponse(rc *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
+	return convertChatResponse(rc, resp)
 }
 
 // ConvertStreamResponse returns the upstream stream reader unchanged.
-func (a *AzureAdaptor) ConvertStreamResponse(_ *RelayContext, upstream Format, resp *http.Response) (Format, io.Reader, error) {
-	return FormatOpenAIChatCompletions, resp.Body, nil
+func (a *AzureAdaptor) ConvertStreamResponse(rc *RelayContext, upstream Format, resp *http.Response) (Format, io.Reader, error) {
+	return convertChatStream(rc, resp)
 }

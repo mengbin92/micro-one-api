@@ -37,10 +37,20 @@ func TestResolveOpenAICompatibleBaseURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := resolveOpenAICompatibleBaseURL(tt.channelType, tt.baseURL); got != tt.want {
+			if got := ResolveOpenAICompatibleBaseURL(tt.channelType, tt.baseURL); got != tt.want {
 				t.Fatalf("base url = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidateBaseURLForChannelAllowsOllamaLocalhostOnly(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "")
+	if err := ValidateBaseURLForChannel(ChannelTypeOllama, "http://localhost:11434/v1/chat/completions"); err != nil {
+		t.Fatalf("Ollama localhost URL rejected: %v", err)
+	}
+	if err := ValidateBaseURLForChannel(ChannelTypeOpenAI, "http://localhost:11434/v1/chat/completions"); err == nil {
+		t.Fatal("non-Ollama localhost URL accepted")
 	}
 }
 

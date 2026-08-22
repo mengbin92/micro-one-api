@@ -24,6 +24,16 @@ func NewProviderFactory(defaultTimeout time.Duration) *ProviderFactory {
 	}
 }
 
+// DefaultTimeout returns the timeout used by providers created by this
+// factory. Unified adaptor call sites use it to preserve the same non-stream
+// upstream timeout as the legacy provider path.
+func (f *ProviderFactory) DefaultTimeout() time.Duration {
+	if f == nil {
+		return time.Minute
+	}
+	return f.defaultTimeout
+}
+
 // CreateProvider creates a provider based on channel type
 func (f *ProviderFactory) CreateProvider(channelType int32, baseURL, apiKey string) (Provider, error) {
 	return f.CreateProviderWithConfig(channelType, baseURL, apiKey, ProviderConfig{})
@@ -41,7 +51,7 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		}
 		return NewAzureProvider(baseURL, apiKey, config.APIVersion, f.defaultTimeout)
 	case ChannelTypeVoyageAI:
-		return NewVoyageAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
+		return NewVoyageAIProvider(ResolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	case ChannelTypeHunyuan,
 		ChannelTypeXingchen,
 		ChannelTypeBedrock,
@@ -58,7 +68,7 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		// advertised Ollama channel type impossible to use without the global
 		// PROVIDER_DISABLE_SSRF_CHECK escape hatch (which disables protection for
 		// ALL channels). Use the allow-local constructor instead.
-		return NewOpenAIProviderAllowLocal(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
+		return NewOpenAIProviderAllowLocal(ResolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	case ChannelTypeOpenAI,
 		ChannelTypeDeepSeek,
 		ChannelTypeMistral,
@@ -76,14 +86,18 @@ func (f *ProviderFactory) CreateProviderWithConfig(channelType int32, baseURL, a
 		ChannelTypeOpenRouter,
 		ChannelTypeSiliconFlow,
 		ChannelTypeDoubao:
-		return NewOpenAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
+		return NewOpenAIProvider(ResolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	default:
 		// Default to OpenAI-compatible for unknown types
-		return NewOpenAIProvider(resolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
+		return NewOpenAIProvider(ResolveOpenAICompatibleBaseURL(channelType, baseURL), apiKey, f.defaultTimeout)
 	}
 }
 
-func resolveOpenAICompatibleBaseURL(channelType int32, baseURL string) string {
+// ResolveOpenAICompatibleBaseURL applies the same channel defaults used by
+// ProviderFactory. Adaptor-backed callers use it when they need to construct
+// the final endpoint themselves rather than delegating URL construction to a
+// Provider implementation.
+func ResolveOpenAICompatibleBaseURL(channelType int32, baseURL string) string {
 	if baseURL != "" {
 		return baseURL
 	}

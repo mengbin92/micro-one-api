@@ -31,6 +31,7 @@ func channelRef(chType int32, base, key string) *RelayContext {
 func TestRegistry_HasAllExpectedTypes(t *testing.T) {
 	want := map[int32]bool{
 		provider.ChannelTypeOpenAI:      true,
+		provider.ChannelTypeClaude:      true,
 		provider.ChannelTypeDeepSeek:    true,
 		provider.ChannelTypeAnthropic:   true,
 		provider.ChannelTypeGemini:      true,
@@ -189,8 +190,15 @@ func TestGeminiAdaptor_URL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUpstreamURL: %v", err)
 	}
-	if want := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=gem-key"; url != want {
+	if want := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent"; url != want {
 		t.Errorf("url = %q, want %q", url, want)
+	}
+	req, err := a.BuildUpstreamRequest(context.Background(), rc, FormatGemini, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("BuildUpstreamRequest: %v", err)
+	}
+	if got := req.Header.Get("x-goog-api-key"); got != "gem-key" {
+		t.Fatalf("x-goog-api-key = %q", got)
 	}
 }
 
@@ -203,15 +211,24 @@ func TestAzureAdaptor_URL(t *testing.T) {
 			Type:    provider.ChannelTypeAzure,
 			BaseURL: "https://example.openai.azure.com",
 			Key:     "az-key",
+			Config:  relaybiz.ChannelConfig{APIVersion: "2025-01-01-preview"},
 		},
 	}
 	a.Init(rc)
+
+	format, converted, err := a.ConvertRequest(rc, FormatAnthropicMessages, []byte(`{"model":"client-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`))
+	if err != nil {
+		t.Fatalf("ConvertRequest: %v", err)
+	}
+	if format != FormatOpenAIChatCompletions || strings.Contains(string(converted), `"model"`) {
+		t.Fatalf("Azure request format/body = %q/%s", format, converted)
+	}
 
 	url, err := a.GetUpstreamURL(rc)
 	if err != nil {
 		t.Fatalf("GetUpstreamURL: %v", err)
 	}
-	if want := "https://example.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-02-15-preview"; url != want {
+	if want := "https://example.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview"; url != want {
 		t.Errorf("url = %q, want %q", url, want)
 	}
 
