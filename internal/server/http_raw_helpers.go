@@ -578,15 +578,23 @@ func safeRawContentType(contentType, fallback string) string {
 // rawStreamUsageTracker observes SSE chunks from a raw stream and accumulates
 // usage + response-id information.
 type rawStreamUsageTracker struct {
-	fallback   rawUsage
-	usage      rawUsage
-	responseID string
-	pending    string
+	fallback            rawUsage
+	usage               rawUsage
+	responseID          string
+	pending             string
+	preserveTotalTokens bool
 }
 
 // newRawStreamUsageTracker creates a tracker seeded with a fallback usage.
 func newRawStreamUsageTracker(fallback rawUsage) *rawStreamUsageTracker {
 	return &rawStreamUsageTracker{fallback: fallback}
+}
+
+// newResponsesStreamUsageTracker preserves the Responses API's reported
+// total_tokens. Its cached_tokens value is a subset of input_tokens, so
+// deriving the total from all rawUsage buckets would count cache reads twice.
+func newResponsesStreamUsageTracker(fallback rawUsage) *rawStreamUsageTracker {
+	return &rawStreamUsageTracker{fallback: fallback, preserveTotalTokens: true}
 }
 
 // Observe parses a complete data payload (without the "data: " prefix) and
@@ -597,12 +605,14 @@ func (t *rawStreamUsageTracker) Observe(chunk []byte) {
 	}
 	usage := extractRawUsage(chunk, 0)
 	if hasRawUsage(usage) {
-		// Per-chunk total_tokens is unreliable for the Anthropic
-		// message_start/message_delta split (start reports input-side total,
-		// delta reports output-side total; neither is the full five-bucket
-		// sum per ADR §2). Drop it here and let normalizeRawUsageWithFallback
-		// derive the real total from the accumulated buckets at Usage() time.
-		usage.TotalTokens = 0
+		if !t.preserveTotalTokens {
+			// Per-chunk total_tokens is unreliable for the Anthropic
+			// message_start/message_delta split (start reports input-side total,
+			// delta reports output-side total; neither is the full five-bucket
+			// sum per ADR §2). Drop it here and let normalizeRawUsageWithFallback
+			// derive the real total from the accumulated buckets at Usage() time.
+			usage.TotalTokens = 0
+		}
 		t.usage = mergeRawUsage(usage, t.usage)
 	}
 }

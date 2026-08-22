@@ -656,6 +656,19 @@ func TestExtractRawUsageFindsNestedResponsesUsage(t *testing.T) {
 	}
 }
 
+func TestResponsesStreamUsageTrackerDoesNotDoubleCountCachedTokens(t *testing.T) {
+	tracker := newResponsesStreamUsageTracker(rawUsage{})
+	tracker.Observe([]byte(`{
+		"type":"response.completed",
+		"response":{"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6,"input_tokens_details":{"cached_tokens":3}}}
+	}`))
+
+	usage := tracker.Usage()
+	if usage.TotalTokens != 6 || usage.PromptTokens != 4 || usage.CompletionTokens != 2 || usage.CacheReadTokens != 3 {
+		t.Fatalf("usage = total:%d prompt:%d completion:%d cache:%d", usage.TotalTokens, usage.PromptTokens, usage.CompletionTokens, usage.CacheReadTokens)
+	}
+}
+
 func TestExtractRawUsageParsesAnthropicUsage(t *testing.T) {
 	usage := extractRawUsage([]byte(`{
 		"id":"msg_123",
@@ -1022,7 +1035,7 @@ func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
 				"created":1710000000,
 				"model":"gpt-4o-mini",
 				"choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],
-				"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}
+				"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6,"prompt_tokens_details":{"cached_tokens":3}}
 			}`))
 		default:
 			http.NotFound(w, r)
@@ -1070,6 +1083,9 @@ func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"object":"response"`) || !strings.Contains(rec.Body.String(), `"output_text":"pong"`) {
 		t.Fatalf("fallback response mismatch: %s", rec.Body.String())
 	}
+	if !strings.Contains(rec.Body.String(), `"input_tokens_details":{"cached_tokens":3}`) {
+		t.Fatalf("fallback response missing cached token detail: %s", rec.Body.String())
+	}
 	if billingClient.commits != 1 || billingClient.releases != 0 {
 		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
 	}
@@ -1080,19 +1096,19 @@ func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
 		t.Fatalf("commit endpoint mismatch: %#v", billingClient.commitRequests)
 	}
 	gotLog := logClient.entries[0]
-	if gotLog.Quota != 6 || gotLog.PromptTokens != 4 || gotLog.CompletionTokens != 2 {
-		t.Fatalf("usage log mismatch: quota=%d prompt=%d completion=%d", gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens)
+	if gotLog.Quota != 6 || gotLog.PromptTokens != 4 || gotLog.CompletionTokens != 2 || gotLog.CacheReadTokens != 3 {
+		t.Fatalf("usage log mismatch: quota=%d prompt=%d completion=%d cache=%d", gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens, gotLog.CacheReadTokens)
 	}
 }
 
-func TestChatCompletionResponseToResponsesAcceptsInputOutputUsage(t *testing.T) {
+func TestChatCompletionResponseToResponsesPreservesTokenDetails(t *testing.T) {
 	body, usage, err := chatCompletionResponseToResponses([]byte(`{
 		"id":"chatcmpl_fallback_123",
 		"object":"chat.completion",
 		"created":1710000000,
 		"model":"gpt-4o-mini",
 		"choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],
-		"usage":{"input_tokens":31,"output_tokens":17,"total_tokens":48}
+		"usage":{"input_tokens":31,"output_tokens":17,"total_tokens":48,"prompt_tokens_details":{"cached_tokens":12,"cache_creation_5m_tokens":3,"cache_creation_1h_tokens":2}}
 	}`))
 	if err != nil {
 		t.Fatalf("chatCompletionResponseToResponses error: %v", err)
@@ -1100,9 +1116,17 @@ func TestChatCompletionResponseToResponsesAcceptsInputOutputUsage(t *testing.T) 
 	if usage.PromptTokens != 31 || usage.CompletionTokens != 17 || usage.TotalTokens != 48 {
 		t.Fatalf("usage = prompt:%d completion:%d total:%d", usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens)
 	}
+	if usage.CacheReadTokens != 12 || usage.CacheCreation5mTokens != 3 || usage.CacheCreation1hTokens != 2 {
+		t.Fatalf("cache usage = read:%d creation5m:%d creation1h:%d", usage.CacheReadTokens, usage.CacheCreation5mTokens, usage.CacheCreation1hTokens)
+	}
 	for _, want := range []string{`"input_tokens":31`, `"output_tokens":17`, `"total_tokens":48`} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("fallback response missing %s: %s", want, string(body))
+		}
+	}
+	for _, want := range []string{`"input_tokens_details"`, `"cached_tokens":12`, `"cache_creation_5m_tokens":3`, `"cache_creation_1h_tokens":2`} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("fallback response missing cache detail %s: %s", want, string(body))
 		}
 	}
 }
@@ -1320,7 +1344,7 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"po"},"finish_reason":null}]}` + "\n\n"))
 			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"ng"},"finish_reason":null}]}` + "\n\n"))
 			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n"))
-			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[],"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"id":"chatcmpl_stream_123","object":"chat.completion.chunk","created":1710000000,"model":"gpt-4o-mini","choices":[],"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6,"prompt_tokens_details":{"cached_tokens":3}}}` + "\n\n"))
 			_, _ = w.Write([]byte("data: [DONE]\n\n"))
 		default:
 			http.NotFound(w, r)
@@ -1408,25 +1432,28 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 		t.Fatalf("stream usage log mismatch: entries=%#v", logClient.entries)
 	}
 	gotLog := logClient.entries[0]
-	if gotLog.Quota != 6 || gotLog.PromptTokens != 4 || gotLog.CompletionTokens != 2 {
-		t.Fatalf("stream usage log = quota:%d prompt:%d completion:%d", gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens)
+	if gotLog.Quota != 6 || gotLog.PromptTokens != 4 || gotLog.CompletionTokens != 2 || gotLog.CacheReadTokens != 3 {
+		t.Fatalf("stream usage log = quota:%d prompt:%d completion:%d cache:%d", gotLog.Quota, gotLog.PromptTokens, gotLog.CompletionTokens, gotLog.CacheReadTokens)
 	}
-	for _, want := range []string{`"usage":`, `"input_tokens":4`, `"output_tokens":2`, `"total_tokens":6`} {
+	for _, want := range []string{`"usage":`, `"input_tokens":4`, `"output_tokens":2`, `"total_tokens":6`, `"input_tokens_details"`, `"cached_tokens":3`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("fallback stream response missing responses usage field %s: %s", want, body)
 		}
 	}
 }
 
-func TestResponsesStreamFallbackAcceptsInputOutputUsage(t *testing.T) {
+func TestResponsesStreamFallbackPreservesTokenDetails(t *testing.T) {
 	state := newResponsesStreamFallbackState("resp_test", "msg_resp_test")
 	var out strings.Builder
-	done := state.writeChunk(&out, []byte(`{"id":"chatcmpl_stream_123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"input_tokens":29,"output_tokens":11,"total_tokens":40}}`))
+	if done := state.writeChunk(&out, []byte(`{"id":"chatcmpl_stream_123","object":"chat.completion.chunk","choices":[],"usage":{"input_tokens":29,"prompt_tokens_details":{"cached_tokens":7}}}`)); done {
+		t.Fatal("input usage chunk unexpectedly completed the stream")
+	}
+	done := state.writeChunk(&out, []byte(`{"id":"chatcmpl_stream_123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"output_tokens":11,"total_tokens":40}}`))
 	if !done {
 		t.Fatal("writeChunk done = false, want true")
 	}
-	if state.usage.PromptTokens != 29 || state.usage.CompletionTokens != 11 || state.usage.TotalTokens != 40 {
-		t.Fatalf("usage = prompt:%d completion:%d total:%d", state.usage.PromptTokens, state.usage.CompletionTokens, state.usage.TotalTokens)
+	if state.usage.PromptTokens != 29 || state.usage.CompletionTokens != 11 || state.usage.TotalTokens != 40 || state.usage.CacheReadTokens != 7 {
+		t.Fatalf("usage = prompt:%d completion:%d total:%d cache:%d", state.usage.PromptTokens, state.usage.CompletionTokens, state.usage.TotalTokens, state.usage.CacheReadTokens)
 	}
 }
 

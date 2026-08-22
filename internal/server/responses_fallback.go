@@ -263,11 +263,12 @@ func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage struct {
-			PromptTokens     int64 `json:"prompt_tokens"`
-			CompletionTokens int64 `json:"completion_tokens"`
-			InputTokens      int64 `json:"input_tokens"`
-			OutputTokens     int64 `json:"output_tokens"`
-			TotalTokens      int64 `json:"total_tokens"`
+			PromptTokens        int64                       `json:"prompt_tokens"`
+			CompletionTokens    int64                       `json:"completion_tokens"`
+			InputTokens         int64                       `json:"input_tokens"`
+			OutputTokens        int64                       `json:"output_tokens"`
+			TotalTokens         int64                       `json:"total_tokens"`
+			PromptTokensDetails *apicompat.ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
 		} `json:"usage"`
 	}
 	if err := jsonx.Unmarshal(body, &chat); err != nil {
@@ -290,6 +291,11 @@ func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 		PromptTokens:     chat.Usage.PromptTokens,
 		CompletionTokens: chat.Usage.CompletionTokens,
 		TotalTokens:      chat.Usage.TotalTokens,
+	}
+	if details := chat.Usage.PromptTokensDetails; details != nil {
+		usage.CacheReadTokens = int64(details.CachedTokens)
+		usage.CacheCreation5mTokens = int64(details.CacheCreation5mTokens)
+		usage.CacheCreation1hTokens = int64(details.CacheCreation1hTokens)
 	}
 	if usage.PromptTokens == 0 {
 		usage.PromptTokens = chat.Usage.InputTokens
@@ -316,11 +322,7 @@ func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 			},
 		},
 		"output_text": outputText,
-		"usage": map[string]interface{}{
-			"input_tokens":  usage.PromptTokens,
-			"output_tokens": usage.CompletionTokens,
-			"total_tokens":  usage.TotalTokens,
-		},
+		"usage":       responsesUsageMap(usage),
 		"metadata": map[string]interface{}{
 			"fallback":      "chat_completions",
 			"finish_reason": finishReason,
@@ -414,7 +416,7 @@ func (s *responsesStreamFallbackState) writeChunk(w io.Writer, data []byte) bool
 	if err := jsonx.Unmarshal(data, &chunk); err != nil {
 		return false
 	}
-	if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.InputTokens > 0 || chunk.Usage.OutputTokens > 0 {
+	if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.InputTokens > 0 || chunk.Usage.OutputTokens > 0 || chunk.Usage.PromptTokensDetails != nil {
 		promptTokens := chunk.Usage.PromptTokens
 		if promptTokens == 0 {
 			promptTokens = chunk.Usage.InputTokens
@@ -423,11 +425,17 @@ func (s *responsesStreamFallbackState) writeChunk(w io.Writer, data []byte) bool
 		if completionTokens == 0 {
 			completionTokens = chunk.Usage.OutputTokens
 		}
-		s.usage = rawUsage{
+		usage := rawUsage{
 			PromptTokens:     int64(promptTokens),
 			CompletionTokens: int64(completionTokens),
 			TotalTokens:      int64(chunk.Usage.TotalTokens),
 		}
+		if details := chunk.Usage.PromptTokensDetails; details != nil {
+			usage.CacheReadTokens = int64(details.CachedTokens)
+			usage.CacheCreation5mTokens = int64(details.CacheCreation5mTokens)
+			usage.CacheCreation1hTokens = int64(details.CacheCreation1hTokens)
+		}
+		s.usage = mergeRawUsage(usage, s.usage)
 	}
 	if len(chunk.Choices) == 0 {
 		return false
@@ -659,11 +667,12 @@ type chatCompletionStreamChunk struct {
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-		InputTokens      int `json:"input_tokens"`
-		OutputTokens     int `json:"output_tokens"`
-		TotalTokens      int `json:"total_tokens"`
+		PromptTokens        int                         `json:"prompt_tokens"`
+		CompletionTokens    int                         `json:"completion_tokens"`
+		InputTokens         int                         `json:"input_tokens"`
+		OutputTokens        int                         `json:"output_tokens"`
+		TotalTokens         int                         `json:"total_tokens"`
+		PromptTokensDetails *apicompat.ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
 	} `json:"usage"`
 }
 
@@ -671,11 +680,25 @@ func responsesUsageMap(usage rawUsage) map[string]interface{} {
 	if usage.TotalTokens == 0 && usage.PromptTokens+usage.CompletionTokens > 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
-	return map[string]interface{}{
+	out := map[string]interface{}{
 		"input_tokens":  usage.PromptTokens,
 		"output_tokens": usage.CompletionTokens,
 		"total_tokens":  usage.TotalTokens,
 	}
+	if usage.CacheReadTokens > 0 || usage.CacheCreation5mTokens > 0 || usage.CacheCreation1hTokens > 0 {
+		details := map[string]interface{}{}
+		if usage.CacheReadTokens > 0 {
+			details["cached_tokens"] = usage.CacheReadTokens
+		}
+		if usage.CacheCreation5mTokens > 0 {
+			details["cache_creation_5m_tokens"] = usage.CacheCreation5mTokens
+		}
+		if usage.CacheCreation1hTokens > 0 {
+			details["cache_creation_1h_tokens"] = usage.CacheCreation1hTokens
+		}
+		out["input_tokens_details"] = details
+	}
+	return out
 }
 
 type chatCompletionStreamToolCallDelta struct {
