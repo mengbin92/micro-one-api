@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.22.4 发布公告](./docs/releases/release-v0.22.4.md)（订阅空钱包、Anthropic 工具调用与缓存 Token 修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.4)
+> 📣 **最新发布**：[v0.22.5 发布公告](./docs/releases/release-v0.22.5.md)（用量核算幂等、对账与安全扫描修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.5)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.22.5
+
+v0.22.5 是 v0.22.4 的 **PATCH 账务正确性与安全修复版本**：分离支付与执行核算口径，补齐订阅流量上游成本，并为 channel 用量与 usage log 增加事务级幂等键。包含向后兼容数据库迁移 `080`-`082`；升级先迁移、再依次部署 `billing-service`、`channel-service`、`log-service`、`relay-gateway`，详见 [docs/releases/release-v0.22.5.md](./docs/releases/release-v0.22.5.md)。
 
 ### 升级到 v0.22.4
 

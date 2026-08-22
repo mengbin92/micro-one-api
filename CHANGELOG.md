@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.5] - 2026-08-22
+
+v0.22.5 是 v0.22.4 的 **PATCH 账务正确性与安全修复版本**：分离支付与执行核算口径，补齐订阅流量上游成本，为 channel 用量与 usage log 写入增加事务级幂等键，并修复 gosec / gitleaks 扫描阻塞项。包含向后兼容迁移 `080`-`082`。详见 [release-v0.22.5.md](docs/releases/release-v0.22.5.md)。
+
+### Fixed
+
+- 订阅账本不再与钱包余额直接比较；上游成本按请求固化，渠道对账同时核对用量与成本。
+- channel 用量以 billing reservation 为幂等键，claim 与计数更新同事务提交，重试不再重复累加。
+- usage log 以 `user_id + request_id` 为幂等键，claim 与日志写入同事务提交，历史 consume 日志已回填 claim。
+- gosec G705 误报的 SSE passthrough 获得精确 suppression；gitleaks 命中的测试合成密钥改为显式占位符并保留历史 fingerprint。
+
 ## [0.22.4] - 2026-08-22
 
 v0.22.4 是 v0.22.3 的 **PATCH 生产修复版本**：修复订阅零余额误扣、Anthropic 工具调用丢失、Responses 回退缓存 Token 丢失，并将订阅续费入口改为日期时间选择器。包含一次向后兼容的数据库迁移 `079`（新增 `balance_amount` 并双写兼容旧列），RPC 新增 `balance_amount` 字段并保留旧字段别名。详见 [release-v0.22.4.md](docs/releases/release-v0.22.4.md)。
