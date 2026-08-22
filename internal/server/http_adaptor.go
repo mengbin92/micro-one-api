@@ -668,7 +668,11 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 		// token counts. The converted output is already in the client's
 		// protocol (chat/anthropic/responses), whose usage objects
 		// extractRawUsage understands.
-		usageTracker := newRawStreamUsageTracker(estimateRawUsage(rawBody))
+		estimatedUsage := estimateRawUsage(rawBody)
+		usageTracker := newRawStreamUsageTracker(estimatedUsage)
+		if inbound == relayadaptor.FormatOpenAIResponses {
+			usageTracker = newResponsesStreamUsageTracker(estimatedUsage)
+		}
 		result.statusCode = http.StatusOK
 		slotTransferred = true // slot released when the stream finishes, below
 		result.write = func(w http.ResponseWriter) {

@@ -47,7 +47,8 @@ func (r *reservationRepo) CreateReservationInTx(ctx context.Context, tx subscrip
 		SubscriptionDailyWindowStart:   reservation.SubscriptionDailyWindowStart,
 		SubscriptionWeeklyWindowStart:  reservation.SubscriptionWeeklyWindowStart,
 		SubscriptionMonthlyWindowStart: reservation.SubscriptionMonthlyWindowStart,
-		BalanceAmountQuota:             reservation.BalanceAmountQuota,
+		BalanceAmount:                  reservation.BalanceAmount,
+		LegacyBalanceAmountQuota:       reservation.BalanceAmount,
 		CreatedAt:                      time.Now(),
 		UpdatedAt:                      time.Now(),
 		ExpiredAt:                      timePtr(reservation.ExpiredAt),
@@ -241,6 +242,10 @@ func reservationFromModel(model *reservationModel) *biz.Reservation {
 	if model == nil {
 		return nil
 	}
+	balanceAmount := model.BalanceAmount
+	if balanceAmount == 0 {
+		balanceAmount = model.LegacyBalanceAmountQuota
+	}
 	return &biz.Reservation{
 		ReservationID:                  model.ReservationID,
 		UserID:                         model.UserID,
@@ -255,7 +260,7 @@ func reservationFromModel(model *reservationModel) *biz.Reservation {
 		SubscriptionDailyWindowStart:   model.SubscriptionDailyWindowStart,
 		SubscriptionWeeklyWindowStart:  model.SubscriptionWeeklyWindowStart,
 		SubscriptionMonthlyWindowStart: model.SubscriptionMonthlyWindowStart,
-		BalanceAmountQuota:             model.BalanceAmountQuota,
+		BalanceAmount:                  balanceAmount,
 		ActualCost:                     model.ActualCost,
 		CreatedAt:                      model.CreatedAt,
 		UpdatedAt:                      model.UpdatedAt,

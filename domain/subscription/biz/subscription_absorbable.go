@@ -25,8 +25,8 @@ type AbsorbableWindow struct {
 
 // AbsorbableResult is the output of ComputeAbsorbablePure. The values are
 // in the original (un-multiplied) USD because the caller is responsible
-// for converting reservation.SubscriptionAmountUSD into quota via
-// usdToQuotaFloor.
+// for converting reservation.SubscriptionAmountUSD into the wallet's
+// fixed-point amount via usdToAmountFloor.
 type AbsorbableResult struct {
 	// AbsorbableUSD is the maximum cost (in original USD) the next
 	// request can absorb against the subscription without exceeding
@@ -104,12 +104,13 @@ func ComputeAbsorbablePure(window AbsorbableWindow, rateMultiplier float64, froz
 	if monthlyRem < minRem {
 		minRem = monthlyRem
 	}
-	absorbable := 0.0
-	if !math.IsInf(minRem, 1) {
-		absorbable = minRem / multiplier
-		if absorbable < 0 {
-			absorbable = 0
-		}
+	// Preserve +Inf when every dimension is uncapped. AbsorbableUSD is the
+	// maximum the subscription can absorb, so zero would be indistinguishable
+	// from a fully consumed subscription and force every caller to special-case
+	// the three nil limits.
+	absorbable := minRem / multiplier
+	if absorbable < 0 {
+		absorbable = 0
 	}
 	return AbsorbableResult{
 		AbsorbableUSD:              absorbable,

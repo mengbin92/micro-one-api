@@ -233,6 +233,15 @@ func ValidateBaseURL(rawURL string) error {
 	return validateBaseURL(rawURL)
 }
 
+// ValidateBaseURLForChannel validates an adaptor-built upstream URL while
+// preserving the explicit local-network allowance of self-hosted channels.
+func ValidateBaseURLForChannel(channelType int32, rawURL string) error {
+	if channelType == ChannelTypeOllama {
+		return validateBaseURLAllowLocal(rawURL)
+	}
+	return validateBaseURL(rawURL)
+}
+
 // validateBaseURLAllowLocal is the local/self-hosted variant of validateBaseURL.
 // It keeps the scheme check (http/https only) and hostname requirement but
 // permits loopback and private IP ranges, because self-hosted providers such as

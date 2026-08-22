@@ -102,8 +102,9 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 		Success:            true,
 		ReservationId:      reservation.ReservationID,
 		ReservedAmount:     reservation.Amount,
-		BalanceAmountQuota: reservation.BalanceAmountQuota,
+		BalanceAmountQuota: reservation.BalanceAmount, // Deprecated compatibility field.
 		SubscriptionId:     reservation.SubscriptionID,
+		BalanceAmount:      reservation.BalanceAmount,
 	}
 	if reservation.SubscriptionAmountUSD > 0 {
 		// Convert to nanodollars for stable int64 transport.

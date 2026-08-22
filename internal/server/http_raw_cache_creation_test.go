@@ -77,6 +77,19 @@ func TestRawStreamUsageTrackerMergesCacheCreation(t *testing.T) {
 	}
 }
 
+func TestRawStreamUsageTrackerAcceptsDataWithoutSpace(t *testing.T) {
+	tracker := newRawStreamUsageTracker(rawUsage{})
+	tracker.ObserveBytes([]byte("data:{\"response_id\":\"msg_7\",\"usage\":{\"input_tokens\":8,\"output_tokens\":3}}\n\n"))
+
+	usage := tracker.Usage()
+	if usage.PromptTokens != 8 || usage.CompletionTokens != 3 || usage.TotalTokens != 11 {
+		t.Fatalf("usage = %+v", usage)
+	}
+	if tracker.ResponseID() != "msg_7" {
+		t.Fatalf("response id = %q", tracker.ResponseID())
+	}
+}
+
 // TestExtractRawUsageNegativeClampsAndRecordsAnomaly verifies ADR §4.1:
 // negatives are clamped to 0 and a "negative" anomaly is recorded via the
 // low-cardinality token_usage_parse_anomaly metric.
@@ -108,6 +121,14 @@ func TestExtractRawUsageTTLDetailExceedsTotalRecordsAnomaly(t *testing.T) {
 	after := readAnomalyCount(t, "ttl_detail_exceeds_total")
 	if after <= before {
 		t.Fatalf("ttl_detail_exceeds_total anomaly metric not incremented: before=%d after=%d", before, after)
+	}
+}
+
+func TestExtractRawUsageGeminiMetadata(t *testing.T) {
+	body := []byte(`{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":3,"totalTokenCount":13,"cachedContentTokenCount":4}}`)
+	usage := extractRawUsage(body, 999)
+	if usage.PromptTokens != 10 || usage.CompletionTokens != 3 || usage.TotalTokens != 13 || usage.CacheReadTokens != 4 {
+		t.Fatalf("Gemini usage = %+v", usage)
 	}
 }
 

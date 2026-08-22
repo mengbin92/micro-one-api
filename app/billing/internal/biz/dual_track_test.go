@@ -26,9 +26,7 @@ func TestComputeAbsorbablePure_Unit(t *testing.T) {
 		// alias; the test asserts the function's contract on
 		// float64 inputs directly.
 		frozen := 0.0
-		// unlimited: limit is nil => +Inf remaining => absorbable
-		// is "uncapped" in this build (we report 0.0 for the
-		// "no cap" branch because the relay uses the cost as-is).
+		// unlimited: limit is nil => +Inf remaining.
 		_ = frozen
 		_ = cap
 		_ = multiplier
@@ -83,13 +81,13 @@ func TestCommitQuotaDualTrack_ReleaseReservations(t *testing.T) {
 	accountRepo := &mockAccountRepo{account: account}
 	reservationRepo := &mockReservationRepo{reservations: map[string]*Reservation{
 		"res1": {
-			ReservationID:      "res1",
-			UserID:             "u1",
-			Amount:             100,
-			BalanceAmountQuota: 50,
-			Status:             ReservationStatusReserved,
-			Model:              "gpt-4o-mini",
-			ChannelID:          "1",
+			ReservationID: "res1",
+			UserID:        "u1",
+			Amount:        100,
+			BalanceAmount: 50,
+			Status:        ReservationStatusReserved,
+			Model:         "gpt-4o-mini",
+			ChannelID:     "1",
 		},
 	}}
 	ledgerRepo := &mockLedgerRepo{}
@@ -97,7 +95,7 @@ func TestCommitQuotaDualTrack_ReleaseReservations(t *testing.T) {
 	err := uc.ReleaseQuota(context.Background(), "res1", "test release")
 	require.NoError(t, err)
 	// Legacy path: refund uses reservation.Amount (= 100) rather
-	// than BalanceAmountQuota (= 50) because the mock does not
+	// than BalanceAmount (= 50) because the mock does not
 	// implement DB() and the dual-track path requires a real
 	// *gorm.DB. The dual-track path is exercised end-to-end by
 	// the data-layer tests below.
@@ -181,19 +179,18 @@ func TestCommitBalanceInTx_AllCases(t *testing.T) {
 	assert.Equal(t, int64(0), account.FrozenAmount)
 }
 
-// TestUsecaseUSDToQuotaFloor verifies the floor rounding rule for
-// the subscription-side USD-to-quota conversion.
-func TestUsecaseUSDToQuotaFloor(t *testing.T) {
+// TestUsecaseUSDToAmountFloor verifies the floor rounding rule for
+// the subscription-side USD-to-fixed-point-amount conversion.
+func TestUsecaseUSDToAmountFloor(t *testing.T) {
 	uc := &BillingUsecase{}
-	QuotaPerUSD = AmountScale
 	// 1.5 USD * 10000 = 15000, no rounding.
-	assert.Equal(t, int64(15000), uc.usdToQuotaFloor(1.5))
+	assert.Equal(t, int64(15000), uc.usdToAmountFloor(1.5))
 	// 1.5555 USD * 10000 = 15555, no rounding.
-	assert.Equal(t, int64(15555), uc.usdToQuotaFloor(1.5555))
+	assert.Equal(t, int64(15555), uc.usdToAmountFloor(1.5555))
 	// 0.0001 USD * 10000 = 1, no rounding.
-	assert.Equal(t, int64(1), uc.usdToQuotaFloor(0.0001))
+	assert.Equal(t, int64(1), uc.usdToAmountFloor(0.0001))
 	// 0 USD -> 0
-	assert.Equal(t, int64(0), uc.usdToQuotaFloor(0))
+	assert.Equal(t, int64(0), uc.usdToAmountFloor(0))
 }
 
 func TestCommitSubscriptionAbsorbUSD_UsesRemainingWindowForEstimateDelta(t *testing.T) {
@@ -268,6 +265,41 @@ func TestCommitSubscriptionAbsorbUSD_FallsBackToReservedWhenWindowFull(t *testin
 
 	got := uc.commitSubscriptionAbsorbUSD(context.Background(), nil, reservation, 0.1233)
 	assert.InDelta(t, 0.1230, got, 1e-9)
+}
+
+func TestCommitSubscriptionAbsorbUSD_UnlimitedGroupUsesFullCost(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	reservation := &Reservation{
+		ReservationID:                  "res1",
+		UserID:                         "42",
+		Status:                         ReservationStatusCommitting,
+		SubscriptionID:                 7,
+		SubscriptionAmountUSD:          0.05,
+		SubscriptionDailyWindowStart:   now.Unix(),
+		SubscriptionWeeklyWindowStart:  now.Unix(),
+		SubscriptionMonthlyWindowStart: now.Unix(),
+	}
+	uc := NewBillingUsecaseWithOptions(BillingOptions{
+		ReservationRepo: &mockReservationRepo{reservations: map[string]*Reservation{"res1": reservation}},
+		SubscriptionUsecase: &mockSubscriptionPrimitives{
+			subscription: &subscriptionbiz.UserSubscription{
+				ID:                 7,
+				UserID:             42,
+				DailyWindowStart:   now.Unix(),
+				WeeklyWindowStart:  now.Unix(),
+				MonthlyWindowStart: now.Unix(),
+			},
+			// All limits nil means uncapped; the full actual cost should be
+			// absorbable.
+			group: &subscriptionbiz.SubscriptionGroup{
+				RateMultiplier: 1,
+			},
+		},
+		Now: func() time.Time { return now },
+	})
+
+	got := uc.commitSubscriptionAbsorbUSD(context.Background(), nil, reservation, 0.1233)
+	assert.InDelta(t, 0.1233, got, 1e-9)
 }
 
 // TestReservationLifecycleStates confirms the helper functions
@@ -435,4 +467,122 @@ func TestDedupeKeyFormat(t *testing.T) {
 	reservationID := "res_abc"
 	key := reservationID + ":" + LedgerTypeConsume + ":" + CostSourceSubscription
 	assert.Equal(t, "res_abc:consume:subscription", key)
+}
+
+// mockTxRunner executes the callback inline without a real database
+// transaction. Tests that need cross-table atomicity use the data-layer
+// suite; this is enough to exercise the dual-track biz logic.
+type mockTxRunner struct{}
+
+func (m *mockTxRunner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx subscriptionbiz.Tx) error) error {
+	return fn(ctx, &mockTx{})
+}
+
+type mockTx struct{}
+
+func (m *mockTx) DB() any { return nil }
+
+func TestReserveQuotaDualTrack_UnlimitedGroupAbsorbsFullCost(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	accountRepo := &mockAccountRepo{account: &Account{UserID: "42", Balance: 0, FrozenAmount: 0, Group: "default"}}
+	reservationRepo := &mockReservationRepo{reservations: map[string]*Reservation{}}
+	uc := NewBillingUsecaseWithOptions(BillingOptions{
+		AccountRepo:     accountRepo,
+		ReservationRepo: reservationRepo,
+		SubscriptionUsecase: &mockSubscriptionPrimitives{
+			subscription: &subscriptionbiz.UserSubscription{
+				ID:                 7,
+				UserID:             42,
+				DailyWindowStart:   now.Unix(),
+				WeeklyWindowStart:  now.Unix(),
+				MonthlyWindowStart: now.Unix(),
+			},
+			// All limits nil means uncapped; the full cost must be absorbed
+			// by the subscription so a zero-balance user is not rejected.
+			group: &subscriptionbiz.SubscriptionGroup{
+				RateMultiplier: 1,
+			},
+		},
+		TxRunner: &mockTxRunner{},
+		Now:      func() time.Time { return now },
+	})
+
+	reservation, err := uc.ReserveQuota(context.Background(), "42", "req-1", 1000, "gpt-4o-mini", "1", 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), reservation.BalanceAmount, "wallet should not be charged for unlimited subscription")
+	assert.Greater(t, reservation.SubscriptionAmountUSD, 0.0, "subscription should absorb the full cost")
+	assert.Equal(t, int64(0), accountRepo.account.Balance, "balance must stay at zero")
+}
+
+func TestReserveQuotaDualTrack_CappedGroupStillRequiresBalance(t *testing.T) {
+	limit := 0.001 // very low cap, less than the estimated cost
+	now := time.Unix(1_000, 0)
+	accountRepo := &mockAccountRepo{account: &Account{UserID: "42", Balance: 0, FrozenAmount: 0, Group: "default"}}
+	reservationRepo := &mockReservationRepo{reservations: map[string]*Reservation{}}
+	uc := NewBillingUsecaseWithOptions(BillingOptions{
+		AccountRepo:     accountRepo,
+		ReservationRepo: reservationRepo,
+		SubscriptionUsecase: &mockSubscriptionPrimitives{
+			subscription: &subscriptionbiz.UserSubscription{
+				ID:                 7,
+				UserID:             42,
+				DailyWindowStart:   now.Unix(),
+				WeeklyWindowStart:  now.Unix(),
+				MonthlyWindowStart: now.Unix(),
+			},
+			group: &subscriptionbiz.SubscriptionGroup{
+				DailyLimitUSD:   &limit,
+				WeeklyLimitUSD:  &limit,
+				MonthlyLimitUSD: &limit,
+				RateMultiplier:  1,
+			},
+		},
+		TxRunner: &mockTxRunner{},
+		Now:      func() time.Time { return now },
+	})
+
+	_, err := uc.ReserveQuota(context.Background(), "42", "req-1", 1000, "gpt-4o-mini", "1", 0)
+	assert.ErrorIs(t, err, ErrInsufficientQuota, "capped subscription with zero balance should still fail when cost exceeds cap")
+}
+
+func TestReserveQuotaDualTrack_FullSubscriptionCoverageDoesNotSpillRoundingRemainderToWallet(t *testing.T) {
+	dailyLimit := 500.0
+	weeklyLimit := 3000.0
+	monthlyLimit := 10000.0
+	now := time.Unix(1_000, 0)
+	account := &Account{UserID: "2", Balance: 0, FrozenAmount: 0, Group: "default"}
+	accountRepo := &mockAccountRepo{account: account}
+	reservationRepo := &mockReservationRepo{reservations: map[string]*Reservation{}}
+	uc := NewBillingUsecaseWithOptions(BillingOptions{
+		AccountRepo:     accountRepo,
+		ReservationRepo: reservationRepo,
+		SubscriptionUsecase: &mockSubscriptionPrimitives{
+			subscription: &subscriptionbiz.UserSubscription{
+				ID:                 2,
+				UserID:             2,
+				DailyUsageUSD:      0.017,
+				WeeklyUsageUSD:     0.457,
+				MonthlyUsageUSD:    0.5613,
+				DailyWindowStart:   now.Unix(),
+				WeeklyWindowStart:  now.Unix(),
+				MonthlyWindowStart: now.Unix(),
+			},
+			group: &subscriptionbiz.SubscriptionGroup{
+				DailyLimitUSD:   &dailyLimit,
+				WeeklyLimitUSD:  &weeklyLimit,
+				MonthlyLimitUSD: &monthlyLimit,
+				RateMultiplier:  1,
+			},
+		},
+		TxRunner: &mockTxRunner{},
+		Now:      func() time.Time { return now },
+	})
+
+	// 209 fixed-point amount units round-trip through float64 as
+	// floor((209/10000)*10000) == 208. The subscription has ample headroom,
+	// so no fractional remainder may be sent to the empty wallet.
+	reservation, err := uc.reserveQuotaDualTrack(context.Background(), "2", account, "req-rounding", "glm-5.3", "4", 0, 209, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), reservation.BalanceAmount)
+	assert.InDelta(t, 0.0209, reservation.SubscriptionAmountUSD, 1e-12)
 }

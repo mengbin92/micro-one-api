@@ -136,7 +136,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					return fallbackErr
 				}
 				if fallbackResp.Stream != nil {
-					usage := newRawStreamUsageTracker(estimateRawUsage(retriedBody))
+					usage := newResponsesStreamUsageTracker(estimateRawUsage(retriedBody))
 					writeRawStreamResponse(w, fallbackResp.Stream, usage)
 					actualUsage := usage.Usage()
 					logInput := usageLogInput{
@@ -175,7 +175,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				if shouldFallbackResponsesToChat(upstreamPath, streamErr) {
 					fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(ctx, ch, r.Header.Clone(), retriedBody, streamErr)
 					if fallbackErr == nil && fallbackResp.Stream != nil {
-						usage := newRawStreamUsageTracker(estimateRawUsage(retriedBody))
+						usage := newResponsesStreamUsageTracker(estimateRawUsage(retriedBody))
 						writeRawStreamResponse(w, fallbackResp.Stream, usage)
 						actualUsage := usage.Usage()
 						logInput := usageLogInput{
@@ -212,7 +212,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				_ = s.releaseQuota(ctx, reservation.ReservationId, "upstream stream error")
 				return terminalErr
 			}
-			usage := newRawStreamUsageTracker(estimateRawUsage(upstreamBody))
+			usage := newResponsesStreamUsageTracker(estimateRawUsage(upstreamBody))
 			writeRawStreamResponse(w, streamResp, usage)
 			actualUsage := usage.Usage()
 			logInput := usageLogInput{
@@ -479,7 +479,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		if isAnthropicAPIKeyChannel(&route.Channel) {
 			fallbackResp, fallbackErr := s.forwardResponsesViaAnthropicFallback(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody)
 			if fallbackErr == nil && fallbackResp.Stream != nil {
-				usage := newRawStreamUsageTracker(estimateRawUsage(fallbackBody))
+				usage := newResponsesStreamUsageTracker(estimateRawUsage(fallbackBody))
 				writeRawStreamResponse(w, fallbackResp.Stream, usage)
 				actualUsage := usage.Usage()
 				logInput := usageLogInput{
@@ -521,7 +521,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			if shouldFallbackResponsesToChat(upstreamPath, err) {
 				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody, err)
 				if fallbackErr == nil && fallbackResp.Stream != nil {
-					usage := newRawStreamUsageTracker(estimateRawUsage(fallbackBody))
+					usage := newResponsesStreamUsageTracker(estimateRawUsage(fallbackBody))
 					writeRawStreamResponse(w, fallbackResp.Stream, usage)
 					actualUsage := usage.Usage()
 					logInput := usageLogInput{
@@ -559,7 +559,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(terminalErr)), "upstream service error")
 			return
 		}
-		usage := newRawStreamUsageTracker(estimateRawUsage(body))
+		usage := newResponsesStreamUsageTracker(estimateRawUsage(body))
 		writeRawStreamResponse(w, streamResp, usage)
 		actualUsage := usage.Usage()
 		logInput := usageLogInput{

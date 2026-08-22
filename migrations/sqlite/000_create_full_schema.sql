@@ -273,6 +273,7 @@ CREATE TABLE IF NOT EXISTS billing_reservations (
   subscription_weekly_window_start INTEGER NOT NULL DEFAULT 0,
   subscription_monthly_window_start INTEGER NOT NULL DEFAULT 0,
   balance_amount_quota INTEGER NOT NULL DEFAULT 0,
+  balance_amount INTEGER NOT NULL DEFAULT 0,
   actual_cost INTEGER NOT NULL DEFAULT 0
 );
 

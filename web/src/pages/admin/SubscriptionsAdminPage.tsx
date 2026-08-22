@@ -25,6 +25,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -76,11 +77,19 @@ function toUnixSeconds(datetimeLocal: string): number {
   return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
 }
 
+function toDatetimeLocal(unix: number): string {
+  if (!unix) return '';
+  const date = new Date(unix * 1000);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function AdminSubscriptionsPage() {
   const [userIdInput, setUserIdInput] = useState('');
   // null => list every subscription; a positive id => filter to that user.
   const [filterUserId, setFilterUserId] = useState<number | null>(null);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [extendSubscription, setExtendSubscription] = useState<UserSubscription | null>(null);
   const queryClient = useQueryClient();
 
   const invalidate = () => {
@@ -157,6 +166,7 @@ export function AdminSubscriptionsPage() {
     },
     onSuccess: () => {
       invalidate();
+      setExtendSubscription(null);
       toast.success('订阅到期时间已更新');
     },
     onError: (error: Error) => toast.error(error.message),
@@ -194,14 +204,7 @@ export function AdminSubscriptionsPage() {
   };
 
   const handleExtend = (sub: UserSubscription) => {
-    const input = prompt('输入新的到期时间(Unix 秒)：', String(sub.expires_at || ''));
-    if (input == null) return;
-    const parsed = parseInt(input.trim(), 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      toast.error('无效的时间戳');
-      return;
-    }
-    extendMutation.mutate({ id: sub.id, expiresAt: parsed });
+    setExtendSubscription(sub);
   };
 
   const handleRevoke = (sub: UserSubscription) => {
@@ -242,6 +245,19 @@ export function AdminSubscriptionsPage() {
           }
         />
       </div>
+
+      {extendSubscription && (
+        <ExtendDialog
+          key={extendSubscription.id}
+          open
+          subscription={extendSubscription}
+          pending={extendMutation.isPending}
+          onOpenChange={(open) => {
+            if (!open && !extendMutation.isPending) setExtendSubscription(null);
+          }}
+          onSubmit={(expiresAt) => extendMutation.mutate({ id: extendSubscription.id, expiresAt })}
+        />
+      )}
 
       <p className="text-sm text-muted-foreground">
         默认列出全部订阅。可按用户 ID 筛选，筛选后额外展示该用户的配额进度。
@@ -351,6 +367,61 @@ export function AdminSubscriptionsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+interface ExtendDialogProps {
+  open: boolean;
+  subscription: UserSubscription;
+  pending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (expiresAt: number) => void;
+}
+
+function ExtendDialog({ open, subscription, pending, onOpenChange, onSubmit }: ExtendDialogProps) {
+  const [expiresAt, setExpiresAt] = useState(() => toDatetimeLocal(subscription.expires_at));
+
+  const handleSubmit = () => {
+    const parsed = toUnixSeconds(expiresAt);
+    if (parsed <= 0) {
+      toast.error('请选择有效的到期时间');
+      return;
+    }
+    onSubmit(parsed);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>延长订阅</DialogTitle>
+          <DialogDescription>
+            为「{subscription.subscription_name || `订阅 #${subscription.id}`}」选择新的到期日期和时间。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2 pt-2">
+          <Label htmlFor="extend-subscription-expires">新的到期时间</Label>
+          <Input
+            id="extend-subscription-expires"
+            type="datetime-local"
+            value={expiresAt}
+            onChange={(event) => setExpiresAt(event.target.value)}
+            disabled={pending}
+          />
+          <p className="text-xs text-muted-foreground">
+            当前到期：{formatTimestamp(subscription.expires_at)}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+            取消
+          </Button>
+          <Button onClick={handleSubmit} disabled={pending}>
+            {pending ? '保存中...' : '保存到期时间'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

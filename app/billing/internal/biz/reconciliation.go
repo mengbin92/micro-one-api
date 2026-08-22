@@ -306,12 +306,12 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 		}
 		if uc.releaser != nil {
 			// Atomic path: CAS reserved -> releasing -> expired in one
-			// transaction, refunding the wallet-side BalanceAmountQuota
+			// transaction, refunding the wallet-side BalanceAmount
 			// (not the full Amount) and writing the dedupe-keyed refund
 			// ledger. This is the same pipeline used by explicit
 			// ReleaseQuota and CommitQuota success=false, so a dual-track
 			// reservation whose cost was fully absorbed by the
-			// subscription (BalanceAmountQuota == 0) refunds zero to the
+			// subscription (BalanceAmount == 0) refunds zero to the
 			// wallet instead of minting the full Amount.
 			if err := uc.releaser.ReleaseReservation(ctx, res.ReservationID, "reconciliation: reservation expired", ReservationStatusExpired); err != nil {
 				apploggerError(err, "release expired reservation during reconciliation")
@@ -319,9 +319,9 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 			}
 		} else {
 			// Legacy fallback when no billing usecase is wired (tests).
-			// Refund the wallet-side BalanceAmountQuota so a fully
+			// Refund the wallet-side BalanceAmount so a fully
 			// subscription-absorbed reservation does not mint money.
-			refundAmount := res.BalanceAmountQuota
+			refundAmount := res.BalanceAmount
 			if refundAmount > 0 {
 				_ = uc.accountRepo.UpdateFrozenAmount(ctx, res.UserID, -refundAmount)
 				_, _ = uc.accountRepo.UpdateBalance(ctx, res.UserID, refundAmount, LedgerTypeRefund)

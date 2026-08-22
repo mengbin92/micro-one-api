@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
@@ -112,5 +112,33 @@ describe('AdminSubscriptionsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /撤销/ }));
 
     await waitFor(() => expect(captured.hit).toBe(true));
+  });
+
+  it('opens a date-time picker when extending a subscription and submits Unix seconds', async () => {
+    mockBaseEndpoints();
+    const captured = { expiresAt: 0 };
+    server.use(
+      http.post('/api/v1/admin/subscriptions/3/extend', async ({ request }) => {
+        const body = (await request.json()) as { expires_at: number };
+        captured.expiresAt = body.expires_at;
+        return HttpResponse.json({ success: true });
+      }),
+    );
+
+    renderWithQuery(
+      <MemoryRouter>
+        <AdminSubscriptionsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('alice-pro');
+    await userEvent.click(screen.getByRole('button', { name: /延长/ }));
+
+    const picker = screen.getByLabelText('新的到期时间');
+    expect(picker).toHaveAttribute('type', 'datetime-local');
+    fireEvent.change(picker, { target: { value: '2030-01-02T12:34' } });
+    await userEvent.click(screen.getByRole('button', { name: '保存到期时间' }));
+
+    await waitFor(() => expect(captured.expiresAt).toBe(Math.floor(new Date('2030-01-02T12:34').getTime() / 1000)));
   });
 });

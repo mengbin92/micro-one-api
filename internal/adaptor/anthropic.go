@@ -8,15 +8,14 @@ import (
 	"strings"
 
 	"micro-one-api/domain/upstream/provider"
+	"micro-one-api/pkg/jsonx"
 )
 
 // AnthropicAdaptor wraps the Anthropic API-key provider behind the Adaptor
 // interface.
 //
-// Upstream protocol: anthropic_messages. When the inbound format is already
-// anthropic_messages the body is passed through; chat_completions inbound
-// conversion will be handled by apicompat once the server layer is wired to
-// call ConvertRequest with the inbound format.
+// Upstream protocol: anthropic_messages. Native Messages bodies retain
+// extension fields while the adaptor rewrites only the resolved model.
 type AnthropicAdaptor struct {
 	baseAdaptor
 	provider provider.Provider
@@ -44,13 +43,28 @@ func (a *AnthropicAdaptor) Name() string { return "anthropic" }
 // ModelList returns the models this adaptor advertises.
 func (a *AnthropicAdaptor) ModelList() []string { return a.models }
 
-// ConvertRequest passes anthropic_messages bodies through unchanged. Other
-// inbound formats require the apicompat converters (wired in a later phase).
-func (a *AnthropicAdaptor) ConvertRequest(_ *RelayContext, inbound Format, body []byte) (Format, []byte, error) {
+// ConvertRequest preserves the native Messages request shape and rewrites the
+// model selected by routing.
+func (a *AnthropicAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body []byte) (Format, []byte, error) {
 	if inbound == FormatAnthropicMessages {
-		return FormatAnthropicMessages, body, nil
+		var request map[string]jsonx.RawMessage
+		if err := jsonx.Unmarshal(body, &request); err != nil {
+			return "", nil, fmt.Errorf("anthropic adaptor: parse request: %w", err)
+		}
+		if rc != nil && rc.ResolvedModel != "" {
+			model, err := jsonx.Marshal(rc.ResolvedModel)
+			if err != nil {
+				return "", nil, fmt.Errorf("anthropic adaptor: marshal model: %w", err)
+			}
+			request["model"] = model
+		}
+		out, err := jsonx.Marshal(request)
+		if err != nil {
+			return "", nil, fmt.Errorf("anthropic adaptor: marshal request: %w", err)
+		}
+		return FormatAnthropicMessages, out, nil
 	}
-	return "", nil, fmt.Errorf("anthropic adaptor: inbound format %q is not yet supported by the MVP conversion path", inbound)
+	return "", nil, fmt.Errorf("anthropic adaptor: inbound format %q is not supported", inbound)
 }
 
 // GetUpstreamURL returns the Anthropic /v1/messages endpoint.
@@ -59,7 +73,9 @@ func (a *AnthropicAdaptor) GetUpstreamURL(ctx *RelayContext) (string, error) {
 	if base == "" {
 		base = "https://api.anthropic.com"
 	}
-	return strings.TrimRight(base, "/") + "/v1/messages", nil
+	base = strings.TrimRight(base, "/")
+	base = strings.TrimSuffix(base, "/v1")
+	return base + "/v1/messages", nil
 }
 
 // BuildUpstreamRequest constructs the POST request for /v1/messages using the
@@ -73,7 +89,12 @@ func (a *AnthropicAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayCo
 	if err != nil {
 		return nil, err
 	}
+	if rc != nil {
+		a.copyForwardHeaders(req.Header, rc.InboundHeader)
+	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Del("Authorization")
+	req.Header.Del("x-api-key")
 	if key := apiKeyFromContext(rc); key != "" {
 		req.Header.Set("x-api-key", key)
 	}

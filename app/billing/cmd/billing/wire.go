@@ -150,7 +150,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	// Code-review 2026-07-30 billing-C1: route expired-reservation cleanup
 	// through the billing usecase's atomic CAS release pipeline so the wallet
 	// refund + ledger entry + status transition commit atomically and refund
-	// the wallet-side BalanceAmountQuota instead of the full Amount (which
+	// the wallet-side BalanceAmount instead of the full Amount (which
 	// minted money on dual-track reservations whose cost was fully absorbed by
 	// the subscription). uc (BillingUsecase) satisfies the ReservationReleaser
 	// seam declared by ReconciliationUsecase.

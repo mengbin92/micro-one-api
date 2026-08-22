@@ -150,6 +150,9 @@ type AnthropicUsage struct {
 type AnthropicStreamEvent struct {
 	Type string `json:"type"`
 
+	// error
+	Error *AnthropicError `json:"error,omitempty"`
+
 	// message_start
 	Message *AnthropicResponse `json:"message,omitempty"`
 
@@ -162,6 +165,12 @@ type AnthropicStreamEvent struct {
 
 	// message_delta
 	Usage *AnthropicUsage `json:"usage,omitempty"`
+}
+
+// AnthropicError is the error payload carried by an Anthropic SSE error event.
+type AnthropicError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
 }
 
 // AnthropicDelta carries incremental content in streaming events.

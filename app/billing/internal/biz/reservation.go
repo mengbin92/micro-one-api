@@ -23,8 +23,8 @@ type Reservation struct {
 	ReservationID string
 	UserID        string
 	RequestID     string
-	// Amount is the original "amount" column (quota). For the new dual-track
-	// flow it equals BalanceAmountQuota and is kept populated so legacy readers
+	// Amount is the original fixed-point amount estimate. For the dual-track
+	// flow it equals the total estimated request cost and is kept populated so legacy readers
 	// continue to work; the field is not authoritative for the subscription
 	// side of the pre-deduction.
 	Amount                int64
@@ -35,7 +35,7 @@ type Reservation struct {
 
 	// Subscription side of the pre-deduction. SubscriptionID==0 means the
 	// reservation was created via the legacy balance-only path. The reservation
-	// stores the original (un-multiplied) USD cost; the subscription quota
+	// stores the original (un-multiplied) USD cost; the subscription limit
 	// check is responsible for converting that to the accounting USD it
 	// compares against limits.
 	SubscriptionID        int64
@@ -43,15 +43,15 @@ type Reservation struct {
 	// Per-window reservation snapshot so the absorber check only credits the
 	// reservation against the window that was active at pre-deduction time.
 	// After the window rolls the snapshot mismatches and the pre-deduction no
-	// longer consumes quota from the new window.
+	// longer consumes capacity from the new window.
 	SubscriptionDailyWindowStart   int64
 	SubscriptionWeeklyWindowStart  int64
 	SubscriptionMonthlyWindowStart int64
 
-	// Balance side of the pre-deduction. BalanceAmountQuota is the
+	// Balance side of the pre-deduction. BalanceAmount is the
 	// authoritative "frozen" amount that will be released / settled at commit
 	// or release time. For the legacy balance-only path it equals Amount.
-	BalanceAmountQuota int64
+	BalanceAmount int64
 
 	// ActualCost is the real settlement cost persisted at commit time
 	// (code-review 2026-07-30 billing-L1). The reservation's Amount is only

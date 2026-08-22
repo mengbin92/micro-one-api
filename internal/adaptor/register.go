@@ -58,6 +58,7 @@ func init() {
 	// OpenAIProvider and share the same adaptor shape.
 	for _, t := range []int32{
 		provider.ChannelTypeOpenAI,
+		provider.ChannelTypeClaude,
 		provider.ChannelTypeDeepSeek,
 		provider.ChannelTypeMistral,
 		provider.ChannelTypeMoonshot,
@@ -151,8 +152,7 @@ func (l *lazyAdaptor) Init(ctx *RelayContext) {
 		return
 	}
 	l.inner = l.build(p, l.models(ctx))
-	// Propagate Init to the concrete adaptor in case it needs context state
-	// (none of the MVP adaptors do, but it keeps the contract honest).
+	// Propagate Init to the concrete adaptor in case it needs context state.
 	l.inner.Init(ctx)
 }
 

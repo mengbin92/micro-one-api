@@ -91,7 +91,6 @@ func newApp(
 	grpcSrv := server.NewGRPCServer(cfg.Server.Grpc.Addr, svc)
 	httpSrv := server.NewHTTPServer(cfg.Server.Http.Addr, svc.Usecase())
 
-	var stopEventBus func()
 	var modelProbe *service.CodexModelProbeService
 	if probe := service.NewCodexModelProbeService(repo); probe != nil {
 		probe.SetModelUsecase(modelUC)
@@ -110,11 +109,6 @@ func newApp(
 	}); probe != nil {
 		quotaProbe = probe
 	}
-	if streamBus, ok := eventBus.(interface {
-		StartListening(context.Context) func()
-	}); ok {
-		stopEventBus = streamBus.StartListening(context.Background())
-	}
 	notifyConn, err := configureHealthAlert(uc)
 	if err != nil {
 
@@ -131,9 +125,6 @@ func newApp(
 	return app, func() {
 		if stopOpsAutomation != nil {
 			stopOpsAutomation()
-		}
-		if stopEventBus != nil {
-			stopEventBus()
 		}
 		if notifyConn != nil {
 			_ = notifyConn.Close()

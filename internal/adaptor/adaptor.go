@@ -8,11 +8,9 @@
 // mimicry), and converting the upstream response back to the client's expected
 // outbound protocol.
 //
-// MVP scope (plan §十): this layer is a pure wrapper over the existing
-// provider.Provider implementations and does not yet replace the server call
-// sites. Existing /v1/chat/completions flows continue to call ProviderFactory
-// directly; the Adaptor registry is exercised by tests and is available for
-// the feature-flag-controlled new path introduced in later phases.
+// The /v1/messages API-key path uses this layer as its only protocol bridge;
+// routing, retries and quota accounting remain in internal/server. Other
+// entry points can migrate independently without duplicating conversions.
 package adaptor
 
 import (
@@ -75,8 +73,7 @@ type RelayContext struct {
 	InboundHeader http.Header
 
 	// HTTPClient is the client used to call the upstream. Adaptors MAY use it
-	// in BuildUpstreamRequest when they need to issue the request themselves;
-	// the MVP providers own their own client and ignore this field.
+	// in BuildUpstreamRequest when they need to issue the request themselves.
 	HTTPClient *http.Client
 }
 

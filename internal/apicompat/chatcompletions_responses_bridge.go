@@ -606,9 +606,14 @@ func ChatUsageToResponsesUsage(usage *ChatUsage) *ResponsesUsage {
 	if out.TotalTokens == 0 {
 		out.TotalTokens = out.InputTokens + out.OutputTokens
 	}
-	if usage.PromptTokensDetails != nil && usage.PromptTokensDetails.CachedTokens > 0 {
-		out.InputTokensDetails = &ResponsesInputTokensDetails{
-			CachedTokens: usage.PromptTokensDetails.CachedTokens,
+	if usage.PromptTokensDetails != nil {
+		details := &ResponsesInputTokensDetails{
+			CachedTokens:          usage.PromptTokensDetails.CachedTokens,
+			CacheCreation5mTokens: usage.PromptTokensDetails.CacheCreation5mTokens,
+			CacheCreation1hTokens: usage.PromptTokensDetails.CacheCreation1hTokens,
+		}
+		if details.CachedTokens > 0 || details.CacheCreation5mTokens > 0 || details.CacheCreation1hTokens > 0 {
+			out.InputTokensDetails = details
 		}
 	}
 	return out
@@ -734,6 +739,9 @@ func ChatCompletionsChunkToResponsesEvents(
 				// A tool call closes any open reasoning item first.
 				events = append(events, closeChatReasoningItem(state)...)
 				copyCall := toolCall
+				// Arguments are appended by the common delta path below. Clear the
+				// copied first fragment so it is not counted twice on creation.
+				copyCall.Function.Arguments = ""
 				if copyCall.ID == "" {
 					copyCall.ID = generateItemID()
 				}

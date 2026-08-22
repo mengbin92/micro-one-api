@@ -2,6 +2,8 @@ package apicompat
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"micro-one-api/pkg/jsonx"
@@ -97,19 +99,23 @@ func anthropicUsageFromResponsesUsage(usage *ResponsesUsage) AnthropicUsage {
 	}
 
 	cachedTokens := 0
+	cacheCreationTokens := 0
 	if usage.InputTokensDetails != nil {
 		cachedTokens = usage.InputTokensDetails.CachedTokens
+		cacheCreationTokens = usage.InputTokensDetails.CacheCreation5mTokens +
+			usage.InputTokensDetails.CacheCreation1hTokens
 	}
 
-	inputTokens := usage.InputTokens - cachedTokens
+	inputTokens := usage.InputTokens - cachedTokens - cacheCreationTokens
 	if inputTokens < 0 {
 		inputTokens = 0
 	}
 
 	return AnthropicUsage{
-		InputTokens:          inputTokens,
-		OutputTokens:         usage.OutputTokens,
-		CacheReadInputTokens: cachedTokens,
+		InputTokens:              inputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheReadInputTokens:     cachedTokens,
+		CacheCreationInputTokens: cacheCreationTokens,
 	}
 }
 
@@ -178,6 +184,8 @@ type ResponsesEventToAnthropicState struct {
 	CurrentToolArgs     string
 	CurrentToolHadDelta bool
 	HasToolCall         bool
+	BufferToolCalls     bool
+	PendingTools        map[int]*pendingAnthropicTool
 
 	// OutputIndexToBlockIdx maps Responses output_index → Anthropic content block index.
 	OutputIndexToBlockIdx map[int]int
@@ -185,10 +193,19 @@ type ResponsesEventToAnthropicState struct {
 	InputTokens          int
 	OutputTokens         int
 	CacheReadInputTokens int
+	CacheCreationTokens  int
 
 	ResponseID string
 	Model      string
 	Created    int64
+}
+
+type pendingAnthropicTool struct {
+	OutputIndex int
+	CallID      string
+	Name        string
+	Arguments   strings.Builder
+	FinalArgs   string
 }
 
 // NewResponsesEventToAnthropicState returns an initialised stream state.
@@ -197,6 +214,17 @@ func NewResponsesEventToAnthropicState() *ResponsesEventToAnthropicState {
 		OutputIndexToBlockIdx: make(map[int]int),
 		Created:               time.Now().Unix(),
 	}
+}
+
+// NewBufferedResponsesEventToAnthropicState returns a converter state that
+// buffers function-call arguments and emits tool_use blocks sequentially at
+// completion. Chat Completions can interleave deltas for parallel tool calls;
+// buffering preserves Anthropic's ordered content-block lifecycle.
+func NewBufferedResponsesEventToAnthropicState() *ResponsesEventToAnthropicState {
+	state := NewResponsesEventToAnthropicState()
+	state.BufferToolCalls = true
+	state.PendingTools = make(map[int]*pendingAnthropicTool)
+	return state
 }
 
 // ResponsesEventToAnthropicEvents converts a single Responses SSE event into
@@ -246,6 +274,11 @@ func FinalizeResponsesAnthropicStream(state *ResponsesEventToAnthropicState) []A
 
 	var events []AnthropicStreamEvent
 	events = append(events, closeCurrentBlock(state)...)
+	if state.BufferToolCalls && len(state.PendingTools) > 0 {
+		events = append(events, anthropicToolStreamError("upstream stream ended before tool arguments completed"))
+		state.MessageStopSent = true
+		return events
+	}
 
 	stopReason := "end_turn"
 	if state.HasToolCall {
@@ -259,9 +292,10 @@ func FinalizeResponsesAnthropicStream(state *ResponsesEventToAnthropicState) []A
 				StopReason: stopReason,
 			},
 			Usage: &AnthropicUsage{
-				InputTokens:          state.InputTokens,
-				OutputTokens:         state.OutputTokens,
-				CacheReadInputTokens: state.CacheReadInputTokens,
+				InputTokens:              state.InputTokens,
+				OutputTokens:             state.OutputTokens,
+				CacheReadInputTokens:     state.CacheReadInputTokens,
+				CacheCreationInputTokens: state.CacheCreationTokens,
 			},
 		},
 		AnthropicStreamEvent{Type: "message_stop"},
@@ -322,6 +356,20 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 	case "function_call", "custom_tool_call":
 		var events []AnthropicStreamEvent
 		events = append(events, closeCurrentBlock(state)...)
+		state.HasToolCall = true
+		if state.BufferToolCalls {
+			tool, ok := state.PendingTools[evt.OutputIndex]
+			if !ok {
+				tool = &pendingAnthropicTool{OutputIndex: evt.OutputIndex}
+				state.PendingTools[evt.OutputIndex] = tool
+			}
+			tool.CallID = evt.Item.CallID
+			tool.Name = evt.Item.Name
+			if evt.Item.Arguments != "" {
+				tool.FinalArgs = evt.Item.Arguments
+			}
+			return events
+		}
 
 		idx := state.ContentBlockIndex
 		state.OutputIndexToBlockIdx[evt.OutputIndex] = idx
@@ -330,7 +378,6 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 		state.CurrentToolName = evt.Item.Name
 		state.CurrentToolArgs = ""
 		state.CurrentToolHadDelta = false
-		state.HasToolCall = true
 
 		events = append(events, AnthropicStreamEvent{
 			Type:  "content_block_start",
@@ -410,6 +457,15 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 	if evt.Delta == "" {
 		return nil
 	}
+	if state.BufferToolCalls {
+		tool, ok := state.PendingTools[evt.OutputIndex]
+		if !ok {
+			tool = &pendingAnthropicTool{OutputIndex: evt.OutputIndex}
+			state.PendingTools[evt.OutputIndex] = tool
+		}
+		_, _ = tool.Arguments.WriteString(evt.Delta)
+		return nil
+	}
 
 	if state.CurrentBlockType == "tool_use" && state.CurrentToolName == "Read" {
 		state.CurrentToolArgs += evt.Delta
@@ -435,6 +491,23 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 }
 
 func resToAnthHandleFuncArgsDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if state.BufferToolCalls {
+		tool, ok := state.PendingTools[evt.OutputIndex]
+		if !ok {
+			tool = &pendingAnthropicTool{OutputIndex: evt.OutputIndex}
+			state.PendingTools[evt.OutputIndex] = tool
+		}
+		if evt.CallID != "" {
+			tool.CallID = evt.CallID
+		}
+		if evt.Name != "" {
+			tool.Name = evt.Name
+		}
+		if evt.Arguments != "" {
+			tool.FinalArgs = evt.Arguments
+		}
+		return nil
+	}
 	if state.CurrentBlockType != "tool_use" {
 		return resToAnthHandleBlockDone(state)
 	}
@@ -496,6 +569,23 @@ func resToAnthHandleBlockDone(state *ResponsesEventToAnthropicState) []Anthropic
 
 func resToAnthHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
 	if evt.Item == nil {
+		return nil
+	}
+	if state.BufferToolCalls && (evt.Item.Type == "function_call" || evt.Item.Type == "custom_tool_call") {
+		tool, ok := state.PendingTools[evt.OutputIndex]
+		if !ok {
+			tool = &pendingAnthropicTool{OutputIndex: evt.OutputIndex}
+			state.PendingTools[evt.OutputIndex] = tool
+		}
+		if evt.Item.CallID != "" {
+			tool.CallID = evt.Item.CallID
+		}
+		if evt.Item.Name != "" {
+			tool.Name = evt.Item.Name
+		}
+		if evt.Item.Arguments != "" {
+			tool.FinalArgs = evt.Item.Arguments
+		}
 		return nil
 	}
 
@@ -572,6 +662,15 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 
 	var events []AnthropicStreamEvent
 	events = append(events, closeCurrentBlock(state)...)
+	if state.BufferToolCalls {
+		toolEvents, err := flushPendingAnthropicTools(state)
+		if err != nil {
+			events = append(events, anthropicToolStreamError(err.Error()))
+			state.MessageStopSent = true
+			return events
+		}
+		events = append(events, toolEvents...)
+	}
 
 	stopReason := "end_turn"
 	if evt.Usage != nil {
@@ -579,6 +678,7 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 		state.InputTokens = usage.InputTokens
 		state.OutputTokens = usage.OutputTokens
 		state.CacheReadInputTokens = usage.CacheReadInputTokens
+		state.CacheCreationTokens = usage.CacheCreationInputTokens
 	}
 	if evt.Response != nil {
 		if evt.Response.Usage != nil {
@@ -586,6 +686,7 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 			state.InputTokens = usage.InputTokens
 			state.OutputTokens = usage.OutputTokens
 			state.CacheReadInputTokens = usage.CacheReadInputTokens
+			state.CacheCreationTokens = usage.CacheCreationInputTokens
 		}
 		switch evt.Response.Status {
 		case "incomplete":
@@ -606,15 +707,76 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 				StopReason: stopReason,
 			},
 			Usage: &AnthropicUsage{
-				InputTokens:          state.InputTokens,
-				OutputTokens:         state.OutputTokens,
-				CacheReadInputTokens: state.CacheReadInputTokens,
+				InputTokens:              state.InputTokens,
+				OutputTokens:             state.OutputTokens,
+				CacheReadInputTokens:     state.CacheReadInputTokens,
+				CacheCreationInputTokens: state.CacheCreationTokens,
 			},
 		},
 		AnthropicStreamEvent{Type: "message_stop"},
 	)
 	state.MessageStopSent = true
 	return events
+}
+
+func flushPendingAnthropicTools(state *ResponsesEventToAnthropicState) ([]AnthropicStreamEvent, error) {
+	if len(state.PendingTools) == 0 {
+		return nil, nil
+	}
+	indices := make([]int, 0, len(state.PendingTools))
+	for index := range state.PendingTools {
+		indices = append(indices, index)
+	}
+	sort.Ints(indices)
+
+	var events []AnthropicStreamEvent
+	for _, outputIndex := range indices {
+		tool := state.PendingTools[outputIndex]
+		raw := tool.FinalArgs
+		if raw == "" {
+			raw = tool.Arguments.String()
+		}
+		if strings.TrimSpace(raw) == "" {
+			raw = "{}"
+		}
+		sanitized := sanitizeAnthropicToolUseInput(tool.Name, raw)
+		if !validJSONObject(sanitized) {
+			return nil, fmt.Errorf("tool %q returned invalid JSON object arguments", tool.Name)
+		}
+
+		idx := state.ContentBlockIndex
+		events = append(events,
+			AnthropicStreamEvent{
+				Type:  "content_block_start",
+				Index: &idx,
+				ContentBlock: &AnthropicContentBlock{
+					Type:  "tool_use",
+					ID:    fromResponsesCallID(tool.CallID),
+					Name:  tool.Name,
+					Input: jsonx.RawMessage("{}"),
+				},
+			},
+			AnthropicStreamEvent{
+				Type:  "content_block_delta",
+				Index: &idx,
+				Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: string(sanitized)},
+			},
+			AnthropicStreamEvent{Type: "content_block_stop", Index: &idx},
+		)
+		state.ContentBlockIndex++
+	}
+	clear(state.PendingTools)
+	return events, nil
+}
+
+func anthropicToolStreamError(message string) AnthropicStreamEvent {
+	return AnthropicStreamEvent{
+		Type: "error",
+		Error: &AnthropicError{
+			Type:    "api_error",
+			Message: message,
+		},
+	}
 }
 
 func closeCurrentBlock(state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {

@@ -131,7 +131,7 @@ curl -s -X POST http://127.0.0.1:3000/api/v1/subscriptions/purchase/payment \
 ```
 
 - `plan_id` 或 `group_id` 至少传一个。传 `plan_id` 走套餐流（推荐）。
-- `money_cents` 留空时 = `price_quota * 100`（`quota_per_unit` 默认 500000，价格以 quota 为单位）。
+- `money_cents` 留空时按套餐价格计算；支付换算配置使用 `amount_per_unit`（默认 500000）。
 - `channel` 留空默认 `alipay`。
 
 返回两种情况：

@@ -29,6 +29,13 @@ func newStreamHTTPClient(timeout time.Duration) *http.Client {
 	}
 }
 
+// NewStreamHTTPClient exposes the provider-standard SSE client to unified
+// adaptor executors. It bounds response-header and idle-byte waits without
+// imposing a hard deadline on a healthy long-lived stream.
+func NewStreamHTTPClient(timeout time.Duration) *http.Client {
+	return newStreamHTTPClient(timeout)
+}
+
 func streamTransport(timeout time.Duration) *http.Transport {
 	if cached, ok := streamTransports.Load(timeout); ok {
 		return cached.(*http.Transport)

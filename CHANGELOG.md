@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.4] - 2026-08-22
+
+v0.22.4 是 v0.22.3 的 **PATCH 生产修复版本**：修复订阅零余额误扣、Anthropic 工具调用丢失、Responses 回退缓存 Token 丢失，并将订阅续费入口改为日期时间选择器。包含一次向后兼容的数据库迁移 `079`（新增 `balance_amount` 并双写兼容旧列），RPC 新增 `balance_amount` 字段并保留旧字段别名。详见 [release-v0.22.4.md](docs/releases/release-v0.22.4.md)。
+
+### Fixed
+
+- 订阅覆盖金额不再经 float64 USD 向下取整，零余额订阅用户不再被误判为余额不足；无限订阅显式表达为无上限。
+- `/v1/messages` 经 adaptor 管线保留 OpenAI 兼容渠道的工具调用增量，Anthropic 工具调用不再被流式桥接丢弃。
+- Responses 转 Chat 回退保留 prompt 缓存明细并合并流式 usage，Codex 用量日志不再把缓存命中记录为 0。
+- 管理后台订阅续费由原始 Unix 时间戳 `prompt` 改为原生日期时间选择器。
+
 ## [0.22.3] - 2026-08-21
 
 v0.22.3 是 v0.22.2 的 **PATCH 生产修复版本**：修复 billing 价格键大小写不一致、CC Switch / Claude 模型探测与流式兼容，以及上游敏感词策略拒绝误触发渠道熔断的问题。详见

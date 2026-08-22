@@ -100,6 +100,7 @@ services:
     - 074_add_actual_cost_to_billing_reservations # billing-L1 persist real settlement cost
     - 077_add_subscription_renewal_strategy   # M2 renewal_strategy on user_subscriptions
     - 078_create_billing_ledger_dedupe_claims # partition-safe global ledger idempotency gate
+    - 079_add_balance_amount_to_billing_reservations # canonical wallet amount + legacy dual-write
 
   log:
     # logs table (a subset of 000_create_core_tables on the shared schema,

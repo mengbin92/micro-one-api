@@ -34,6 +34,7 @@ func setupReservationTestDB(t *testing.T) *gorm.DB {
 			subscription_weekly_window_start INTEGER NOT NULL DEFAULT 0,
 			subscription_monthly_window_start INTEGER NOT NULL DEFAULT 0,
 			balance_amount_quota INTEGER NOT NULL DEFAULT 0,
+			balance_amount INTEGER NOT NULL DEFAULT 0,
 			actual_cost INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME,
 			updated_at DATETIME,
@@ -62,6 +63,7 @@ func TestReservationRepo_CreateReservation(t *testing.T) {
 		UserID:        "user1",
 		RequestID:     "req_test_001",
 		Amount:        100,
+		BalanceAmount: 40,
 		Status:        "reserved",
 		Model:         "gpt-4o-mini",
 		ChannelID:     "channel1",
@@ -81,6 +83,8 @@ func TestReservationRepo_CreateReservation(t *testing.T) {
 	assert.Equal(t, "user1", model.UserID)
 	assert.Equal(t, "req_test_001", model.RequestID)
 	assert.Equal(t, int64(100), model.Amount)
+	assert.Equal(t, int64(40), model.BalanceAmount)
+	assert.Equal(t, int64(40), model.LegacyBalanceAmountQuota)
 	assert.Equal(t, "reserved", model.Status)
 }
 
@@ -94,8 +98,8 @@ func TestReservationRepo_GetReservation(t *testing.T) {
 	// 插入测试数据
 	now := time.Now()
 	err := db.Exec(`
-		INSERT INTO billing_reservations (reservation_id, user_id, request_id, amount, status, model, channel_id, created_at, updated_at, expired_at)
-		VALUES ('res_test_001', 'user1', 'req_test_001', 100, 'reserved', 'gpt-4o-mini', 'channel1', ?, ?, ?)
+		INSERT INTO billing_reservations (reservation_id, user_id, request_id, amount, balance_amount_quota, status, model, channel_id, created_at, updated_at, expired_at)
+		VALUES ('res_test_001', 'user1', 'req_test_001', 100, 75, 'reserved', 'gpt-4o-mini', 'channel1', ?, ?, ?)
 	`, now, now, now.Add(5*time.Minute)).Error
 	require.NoError(t, err)
 
@@ -111,6 +115,7 @@ func TestReservationRepo_GetReservation(t *testing.T) {
 	assert.Equal(t, "user1", reservation.UserID)
 	assert.Equal(t, "req_test_001", reservation.RequestID)
 	assert.Equal(t, int64(100), reservation.Amount)
+	assert.Equal(t, int64(75), reservation.BalanceAmount, "legacy column should remain readable during the compatibility window")
 	assert.Equal(t, "reserved", reservation.Status)
 	assert.Equal(t, "gpt-4o-mini", reservation.Model)
 	assert.Equal(t, "channel1", reservation.ChannelID)

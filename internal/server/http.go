@@ -17,14 +17,13 @@ import (
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	relaycredential "micro-one-api/domain/upstream/credential"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	relayadaptor "micro-one-api/internal/adaptor"
 	relaybiz "micro-one-api/internal/biz"
 	applogger "micro-one-api/platform/logging"
 	appws "micro-one-api/platform/websocket"
 )
 
 const postResponseWriteTimeout = 10 * time.Second
-
-const defaultQuotaPerUSD = 500000
 
 const amountUnitsPerUSD = 10000
 
@@ -59,8 +58,8 @@ type HTTPServer struct {
 	wsDrainCfg      appws.DrainConfig
 	runtimeBlockCfg runtimeBlockConfig
 
-	// hybridAdaptorEnabled gates the new adaptor-based request path (plan §十).
-	// When false the gateway uses the legacy provider-factory path unchanged.
+	// hybridAdaptorEnabled gates subscription-account adaptor routing. API-key
+	// /v1/messages requests always use the unified adaptor path.
 	hybridAdaptorEnabled bool
 
 	// subscriptionSessionStickyEnabled gates cross-session subscription-account
@@ -85,6 +84,11 @@ type HTTPServer struct {
 	// upstream calls. It mirrors the provider-factory timeout so OAuth calls
 	// don't outlive the configured upstream timeout.
 	oauthHTTPClient *http.Client
+	// API-key adaptor clients preserve ProviderFactory timeout behavior. The
+	// stream client uses sliding idle/header timeouts instead of a hard request
+	// deadline.
+	apiKeyHTTPClient       *http.Client
+	apiKeyStreamHTTPClient *http.Client
 
 	// subscriptionUsecase is an optional business-layer hook used to enforce
 	// user subscription quota and record usage after successful commits.
@@ -159,6 +163,13 @@ func NewHTTPServer(
 	relayUsecase *relaybiz.RelayUsecase,
 	logClients ...logv1.LogServiceClient,
 ) *HTTPServer {
+	var upstreamHTTPClient *http.Client
+	var upstreamStreamHTTPClient *http.Client
+	if providerFactory != nil {
+		relayadaptor.SetProviderFactory(providerFactory)
+		upstreamHTTPClient = &http.Client{Timeout: providerFactory.DefaultTimeout()}
+		upstreamStreamHTTPClient = relayprovider.NewStreamHTTPClient(providerFactory.DefaultTimeout())
+	}
 	var logClient logv1.LogServiceClient
 	if len(logClients) > 0 {
 		logClient = logClients[0]
@@ -168,29 +179,27 @@ func NewHTTPServer(
 		relayUsecase.SetRuntimeBlocker(runtimeBlocker)
 	}
 	return &HTTPServer{
-		identityClient:     identityClient,
-		channelClient:      channelClient,
-		billingClient:      billingClient,
-		logClient:          logClient,
-		providerFactory:    providerFactory,
-		relayUsecase:       relayUsecase,
-		responseRoutes:     make(map[string]responseRouteEntry),
-		runtimeBlocker:     runtimeBlocker,
-		accountConcurrency: relaybiz.NewAccountConcurrencyLimiter(),
-		accountRPM:         relaybiz.NewAccountRPMLimiter(),
-		userRPM:            relaybiz.NewAccountRPMLimiter(),
-		sessionWindow:      newSubscriptionSessionWindowStore(nil),
+		identityClient:         identityClient,
+		channelClient:          channelClient,
+		billingClient:          billingClient,
+		logClient:              logClient,
+		providerFactory:        providerFactory,
+		oauthHTTPClient:        upstreamHTTPClient,
+		apiKeyHTTPClient:       upstreamHTTPClient,
+		apiKeyStreamHTTPClient: upstreamStreamHTTPClient,
+		relayUsecase:           relayUsecase,
+		responseRoutes:         make(map[string]responseRouteEntry),
+		runtimeBlocker:         runtimeBlocker,
+		accountConcurrency:     relaybiz.NewAccountConcurrencyLimiter(),
+		accountRPM:             relaybiz.NewAccountRPMLimiter(),
+		userRPM:                relaybiz.NewAccountRPMLimiter(),
+		sessionWindow:          newSubscriptionSessionWindowStore(nil),
 	}
 }
 
-// SetHybridAdaptorEnabled turns on the hybrid adaptor request path. When true,
-
-// subscription-account channel types (Codex/Claude OAuth) are routed through
-
-// the relay/adaptor layer instead of the provider factory. API-key channels are
-
-// unaffected and continue to use the existing path either way.
-
+// SetHybridAdaptorEnabled routes subscription-account channel types
+// (Codex/Claude OAuth) through the relay/adaptor layer. The /v1/messages
+// API-key path always uses adaptors and is independent of this switch.
 func (s *HTTPServer) SetHybridAdaptorEnabled(enabled bool) {
 	if s == nil {
 		return

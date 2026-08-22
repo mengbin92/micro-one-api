@@ -285,6 +285,7 @@ CREATE TABLE IF NOT EXISTS billing_reservations (
   subscription_weekly_window_start BIGINT NOT NULL DEFAULT 0,
   subscription_monthly_window_start BIGINT NOT NULL DEFAULT 0,
   balance_amount_quota BIGINT NOT NULL DEFAULT 0,
+  balance_amount BIGINT NOT NULL DEFAULT 0,
   actual_cost BIGINT NOT NULL DEFAULT 0
 );
 
