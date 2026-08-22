@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.22.3 发布公告](./docs/releases/release-v0.22.3.md)（计费、Claude 兼容与渠道健康修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.3)
+> 📣 **最新发布**：[v0.22.4 发布公告](./docs/releases/release-v0.22.4.md)（订阅空钱包、Anthropic 工具调用与缓存 Token 修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.4)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.22.4
+
+v0.22.4 是 v0.22.3 的 **PATCH 生产修复版本**：修复订阅零余额误扣、Anthropic 工具调用丢失、Responses 回退缓存 Token 丢失，并将订阅续费入口改为日期时间选择器。包含一次向后兼容的数据库迁移 `079`（新增 `balance_amount` 并双写兼容旧列），RPC 新增 `balance_amount` 字段并保留旧字段别名；升级先迁移数据库再重启 `billing-service`，同时部署 `relay-gateway` 并发布 `web/dist`，详见 [docs/releases/release-v0.22.4.md](./docs/releases/release-v0.22.4.md)。
 
 ### 升级到 v0.22.3
 
