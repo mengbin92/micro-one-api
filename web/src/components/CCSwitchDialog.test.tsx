@@ -7,7 +7,7 @@ import { server } from '@/test/msw/server';
 
 describe('CCSwitchDialog', () => {
   it('preserves the platform API key without adding an sk- prefix', async () => {
-    const tokenKey = 'aB3dE5fG7hJ9kL2mN4pQ6rS8tU0vW1xY';
+    const tokenKey = 'TEST-PLATFORM-KEY';
     server.use(
       http.get('/api/status', () =>
         HttpResponse.json({ success: true, data: { server_address: 'https://api.example.com' } }),

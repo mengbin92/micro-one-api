@@ -204,7 +204,7 @@ func (s *HTTPServer) writeAnthropicAdaptorStream(
 		_, _ = output.Write(firstEvent)
 		_, _ = io.Copy(output, reader)
 	} else {
-		_, _ = w.Write(firstEvent)
+		_, _ = w.Write(firstEvent) // #nosec G705 -- SSE bytes are opaque protocol data, not HTML interpolation.
 		_, _ = io.Copy(w, reader)
 	}
 	if closer, ok := reader.(io.Closer); ok {
