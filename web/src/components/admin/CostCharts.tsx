@@ -90,7 +90,8 @@ function polarToCartesian(cx: number, cy: number, radius: number, angle: number)
   };
 }
 
-function getPieLabelLayouts(
+// eslint-disable-next-line react-refresh/only-export-components -- pure layout helper is unit-tested separately
+export function getPieLabelLayouts(
   data: CostBreakdownData[],
   props: Pick<PieLabelRenderProps, 'cx' | 'cy' | 'outerRadius'>,
 ): PieLabelLayout[] {
