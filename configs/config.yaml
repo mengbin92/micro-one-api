@@ -77,8 +77,9 @@ subscription:
 # bearer tokens whose SHA-256 hex digest is listed here may use it; raw tokens
 # must not be placed in configuration.
 relay_orchestrator:
-  enabled: false
-  allowlist_token_sha256: []
+  enabled: ${RELAY_ORCHESTRATOR_ENABLED:-false}
+  allowlist_token_sha256:
+    - ${RELAY_ORCHESTRATOR_TOKEN_SHA256:-}
 
 # openai_ws tunes the Codex Responses WebSocket relay (inbound /v1/responses
 # upgrade). All fields are optional; omitted values fall back to sensible
