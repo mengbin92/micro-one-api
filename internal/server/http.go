@@ -70,10 +70,11 @@ type HTTPServer struct {
 	subscriptionSessionStickyEnabled bool
 
 	// relayOrchestratorEnabled gates the handler -> orchestrator -> forwarder
-	// request path for /v1/chat/completions. It remains disabled by default so
-	// the legacy billing path is preserved unless explicitly enabled.
-	relayOrchestratorEnabled bool
-	routeMiddleware          []func(http.Handler) http.Handler
+	// request path for /v1/chat/completions. It remains disabled by default and
+	// is further restricted to the configured bearer-token allowlist.
+	relayOrchestratorEnabled        bool
+	relayOrchestratorTokenAllowlist map[string]struct{}
+	routeMiddleware                 []func(http.Handler) http.Handler
 
 	// accountResolver resolves subscription-account metadata (real account id,
 	// upstream account id, fingerprint) for subscription-typed channels. nil

@@ -26,10 +26,6 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if s.billingClient == nil {
-		s.writeError(w, http.StatusServiceUnavailable, "billing service unavailable")
-		return
-	}
 
 	token, err := bearerTokenFromRequest(r)
 	if err != nil {
@@ -54,6 +50,17 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 	}
 	if len(req.Messages) == 0 {
 		s.writeError(w, http.StatusBadRequest, "messages are required")
+		return
+	}
+	if req.Stream {
+		// The v0.23 first slice is non-streaming only. Restore the body before
+		// delegating so the legacy handler can apply its existing stream path.
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		s.handleChatCompletions(w, r)
+		return
+	}
+	if s.billingClient == nil {
+		s.writeError(w, http.StatusServiceUnavailable, "billing service unavailable")
 		return
 	}
 
