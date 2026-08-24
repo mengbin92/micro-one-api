@@ -114,6 +114,12 @@ func upstreamAttemptHealthy(err error) bool {
 	if err == nil {
 		return true
 	}
+	// A model-specific outage proves the channel itself is reachable. Keep
+	// fallback enabled, but do not let one unavailable model open the
+	// channel-wide circuit and remove unrelated models from routing.
+	if isUpstreamModelUnavailable(err) {
+		return true
+	}
 	// Some upstreams encode request-specific policy rejection as HTTP 500.
 	// The source is reachable and may still be useful for other prompts, so
 	// keep failover enabled without poisoning channel health.
@@ -133,6 +139,16 @@ func upstreamAttemptHealthy(err error) bool {
 	// Conversion, billing, and other local failures are not channel health
 	// evidence. Record them as neutral/healthy so selector inflight is released.
 	return true
+}
+
+func isUpstreamModelUnavailable(err error) bool {
+	var upstreamErr *relayprovider.UpstreamHTTPError
+	if !errors.As(err, &upstreamErr) {
+		return false
+	}
+	body := strings.ToLower(string(upstreamErr.Body))
+	return strings.Contains(body, "service do not have healthy model") ||
+		strings.Contains(body, "no healthy model")
 }
 
 func isUpstreamPolicyRejection(err error) bool {
@@ -378,6 +394,33 @@ func (e *RetryExecutor) execute(
 	// excluded accumulates every source that failed in this request so retries
 	// never re-select it (sub2api #2 request-level exclusion set).
 	excluded := make(map[RoutingSourceIdentity]bool)
+	type healthOutcome struct {
+		channel      *Channel
+		success      bool
+		message      string
+		responseTime int64
+	}
+	var pendingHealth *healthOutcome
+	flushHealth := func() {
+		if pendingHealth == nil {
+			return
+		}
+		e.recordHealth(ctx, pendingHealth.channel, pendingHealth.success, pendingHealth.message, pendingHealth.responseTime)
+		pendingHealth = nil
+	}
+	queueHealth := func(ch *Channel, success bool, message string, responseTime int64) {
+		if pendingHealth != nil && SameRoutingSource(pendingHealth.channel, ch) {
+			// Same-source retries are one logical channel outcome. Accumulate only
+			// upstream time (backoff is intentionally excluded) and let the latest
+			// attempt determine the terminal result.
+			pendingHealth.success = success
+			pendingHealth.message = message
+			pendingHealth.responseTime += responseTime
+			return
+		}
+		flushHealth()
+		pendingHealth = &healthOutcome{channel: ch, success: success, message: message, responseTime: responseTime}
+	}
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		// On retry, wait with backoff
@@ -385,6 +428,7 @@ func (e *RetryExecutor) execute(
 			wait := e.policy.BackoffDuration(attempt - 1)
 			select {
 			case <-ctx.Done():
+				flushHealth()
 				return &ExecuteResult{Channel: lastChannel, Err: ctx.Err(), Attempt: attempt, Fallback: switched, FirstErr: firstErr, FallbackReason: ClassifyRetryFallbackReason(firstErr)}
 			case <-time.After(wait):
 			}
@@ -395,6 +439,9 @@ func (e *RetryExecutor) execute(
 			previous := lastChannel
 			ch := e.selectNextForRetry(ctx, group, model, candidates, excluded, initialChannel)
 			if ch != nil {
+				if !SameRoutingSource(ch, lastChannel) {
+					flushHealth()
+				}
 				// A genuine source switch: the selector returned a different
 				// channel than the one that just failed. Only this counts as
 				// a fallback for routing_fallback_total.
@@ -423,7 +470,8 @@ func (e *RetryExecutor) execute(
 		err := fn(ctx, lastChannel)
 		responseTime := time.Since(startedAt).Milliseconds()
 		if err == nil {
-			e.recordHealth(ctx, lastChannel, true, "", responseTime)
+			queueHealth(lastChannel, true, "", responseTime)
+			flushHealth()
 			return &ExecuteResult{
 				Channel:        lastChannel,
 				Attempt:        attempt,
@@ -435,13 +483,14 @@ func (e *RetryExecutor) execute(
 
 		lastErr = err
 		if upstreamAttemptHealthy(err) {
-			e.recordHealth(ctx, lastChannel, true, "", responseTime)
+			queueHealth(lastChannel, true, "", responseTime)
 		} else {
-			e.recordHealth(ctx, lastChannel, false, err.Error(), responseTime)
+			queueHealth(lastChannel, false, err.Error(), responseTime)
 		}
 
 		// If not retryable, fail immediately
 		if !e.policy.IsRetryable(err) {
+			flushHealth()
 			return &ExecuteResult{
 				Channel:        lastChannel,
 				Err:            err,
@@ -452,6 +501,7 @@ func (e *RetryExecutor) execute(
 			}
 		}
 	}
+	flushHealth()
 
 	return &ExecuteResult{
 		Channel:        lastChannel,
@@ -588,6 +638,8 @@ func ClassifyRetryFallbackReason(firstErr error) string {
 	switch {
 	case IsProtocolCapabilityMismatch(firstErr):
 		return "capability_mismatch"
+	case isUpstreamModelUnavailable(firstErr):
+		return "model_unavailable"
 	case isUpstreamPolicyRejection(firstErr):
 		return "policy_rejection"
 	case status == 429:

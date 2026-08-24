@@ -109,6 +109,31 @@ func TestChannelHealthChecker_CheckOnceRecordsFailure(t *testing.T) {
 	assertMonitorMetricDelta(t, probeBefore, probeAfter, 1)
 }
 
+func TestChannelHealthChecker_CheckOnceRejectsHTMLSuccess(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	probeBefore := testutil.ToFloat64(metrics.ChannelHealthProbeTotal.WithLabelValues("error", "invalid_response"))
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><html><body>models</body></html>`))
+	}))
+	defer upstream.Close()
+
+	client := &checkerChannelClient{
+		channels: []ChannelProbeSummary{{ID: 1, Type: 1, Status: 1}},
+		details: map[int64]*ChannelProbeDetail{
+			1: {ID: 1, Type: 1, BaseURL: upstream.URL + "/v1", Key: "sk-test"},
+		},
+	}
+	checker := NewChannelHealthChecker(client, ChannelHealthCheckerConfig{Enabled: true, Timeout: time.Second})
+	checker.CheckOnce(context.Background())
+
+	if len(client.healthReqs) != 1 || client.healthReqs[0].Success || client.healthReqs[0].ChannelID != 1 {
+		t.Fatalf("health requests = %+v, want one invalid-response failure", client.healthReqs)
+	}
+	probeAfter := testutil.ToFloat64(metrics.ChannelHealthProbeTotal.WithLabelValues("error", "invalid_response"))
+	assertMonitorMetricDelta(t, probeBefore, probeAfter, 1)
+}
+
 func TestChannelHealthChecker_CheckOnceSkipsUnsupportedProvider(t *testing.T) {
 	client := &checkerChannelClient{
 		channels: []ChannelProbeSummary{{ID: 1, Type: 2, Status: 1}},
