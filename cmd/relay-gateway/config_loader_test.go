@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,13 +26,14 @@ func TestLoadConfigRelayOrchestratorAllowlistEmptyAndConfigured(t *testing.T) {
 	})
 
 	t.Run("configured", func(t *testing.T) {
-		t.Setenv("MOA_RELAY_TOKEN_SHA256", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+		configuredDigest := strings.Repeat("a", 64)
+		t.Setenv("MOA_RELAY_TOKEN_SHA256", configuredDigest)
 		cfg, err := loadConfig(configPath)
 		if err != nil {
 			t.Fatalf("loadConfig() error = %v", err)
 		}
 		got := cfg.Bootstrap.RelayOrchestrator.GetAllowlistTokenSha256()
-		if len(got) != 1 || got[0] != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" {
+		if len(got) != 1 || got[0] != configuredDigest {
 			t.Fatalf("allowlist = %#v, want configured digest", got)
 		}
 	})
