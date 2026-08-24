@@ -12,22 +12,51 @@ import (
 // legacy handler, so disabling or narrowing the allowlist is an immediate
 // rollback without changing the billing or storage layers.
 func (s *HTTPServer) relayOrchestratorChatHandler(w http.ResponseWriter, r *http.Request) {
-	if !s.shouldUseRelayOrchestrator(r) {
-		s.handleChatCompletions(w, r)
-		return
+	path := relayExecutionPathLegacy
+	handler := s.handleChatCompletions
+	if s.shouldUseRelayOrchestrator(r) {
+		path = relayExecutionPathOrchestrator
+		handler = s.handleChatCompletionsWithOrchestrator
 	}
-	s.handleChatCompletionsWithOrchestrator(w, r)
+	serveObservedRelay(w, r, relayEndpointChatCompletions, path, relayStreamUnknown, handler)
+}
+
+func (s *HTTPServer) relayOrchestratorResponsesHandler(w http.ResponseWriter, r *http.Request) {
+	path := relayExecutionPathLegacy
+	stream := relayStreamUnknown
+	handler := s.handleResponsesRelay
+	if isOpenAIWSUpgradeRequest(r) {
+		stream = "true"
+	} else if r.Method == http.MethodPost && r.URL.Path == relayEndpointResponses && s.isRelayOrchestratorTokenAllowed(extractAPIKey(r)) {
+		path = relayExecutionPathOrchestrator
+		handler = s.handleResponsesWithOrchestrator
+	}
+	serveObservedRelay(w, r, relayEndpointResponses, path, stream, handler)
+}
+
+func (s *HTTPServer) relayOrchestratorMessagesHandler(w http.ResponseWriter, r *http.Request) {
+	path := relayExecutionPathLegacy
+	handler := s.handleAnthropicMessages
+	if r.Method == http.MethodPost && s.isRelayOrchestratorTokenAllowed(extractAPIKey(r)) {
+		path = relayExecutionPathOrchestrator
+		handler = s.handleAnthropicMessagesWithOrchestrator
+	}
+	serveObservedRelay(w, r, relayEndpointMessages, path, relayStreamUnknown, handler)
 }
 
 func (s *HTTPServer) shouldUseRelayOrchestrator(r *http.Request) bool {
 	if s == nil || !s.relayOrchestratorEnabled || r == nil || r.Method != http.MethodPost {
 		return false
 	}
-	if len(s.relayOrchestratorTokenAllowlist) == 0 {
-		return false
-	}
 	token, err := bearerTokenFromRequest(r)
 	if err != nil {
+		return false
+	}
+	return s.isRelayOrchestratorTokenAllowed(token)
+}
+
+func (s *HTTPServer) isRelayOrchestratorTokenAllowed(token string) bool {
+	if s == nil || !s.relayOrchestratorEnabled || len(s.relayOrchestratorTokenAllowlist) == 0 || strings.TrimSpace(token) == "" {
 		return false
 	}
 	_, ok := s.relayOrchestratorTokenAllowlist[sha256Hex(token)]

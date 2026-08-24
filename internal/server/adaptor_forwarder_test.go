@@ -34,7 +34,7 @@ func TestRelayAdaptorForwarderUsesRegistryForAPIKeyChannel(t *testing.T) {
 	factory := relayprovider.NewProviderFactory(time.Second)
 	// NewHTTPServer is the production bootstrap point that wires the registry.
 	_ = NewHTTPServer(nil, nil, nil, factory, nil)
-	forwarder := newRelayAdaptorForwarder(factory, nil, &http.Client{Timeout: time.Second}, nil)
+	forwarder := newRelayAdaptorForwarder(factory, nil, &http.Client{Timeout: time.Second}, nil, nil)
 	response, err := forwarder.Forward(context.Background(), &relaybiz.RelayPlan{
 		Auth:          &relaybiz.AuthSnapshot{UserID: 42},
 		Channel:       &relaybiz.Channel{ID: 9, Type: relayprovider.ChannelTypeOpenAI, BaseURL: upstream.URL + "/v1", Key: "upstream-key"},
@@ -70,7 +70,7 @@ func TestRelayAdaptorForwarderCapsUpstreamErrorBody(t *testing.T) {
 
 	factory := relayprovider.NewProviderFactory(time.Second)
 	_ = NewHTTPServer(nil, nil, nil, factory, nil)
-	forwarder := newRelayAdaptorForwarder(factory, nil, &http.Client{Timeout: time.Second}, nil)
+	forwarder := newRelayAdaptorForwarder(factory, nil, &http.Client{Timeout: time.Second}, nil, nil)
 	_, err := forwarder.Forward(context.Background(), &relaybiz.RelayPlan{
 		Channel: &relaybiz.Channel{ID: 9, Type: relayprovider.ChannelTypeOpenAI, BaseURL: upstream.URL + "/v1", Key: "upstream-key"},
 	}, relaybiz.ExecutorRequest{

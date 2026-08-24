@@ -63,6 +63,8 @@ type RelayRequest struct {
 	ClientID string
 	// RequestID is a unique identifier for this request (for idempotency).
 	RequestID string
+	// SessionHash preserves caller stickiness without exposing transport types.
+	SessionHash string
 }
 
 // RelayResult contains the response and metadata from orchestration.
@@ -103,6 +105,14 @@ type relayUserRateLimitHook interface {
 	CheckUserRateLimit(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest) error
 }
 
+type relayStreamCompletionHook interface {
+	CompleteStream(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, responseID string)
+}
+
+type relayAttemptAdmissionHook interface {
+	AcquireRelayAttempt(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest) (func(), error)
+}
+
 // OrchestratorConfig holds configuration for the orchestrator.
 type OrchestratorConfig struct {
 	// MaxAttempts is the maximum number of retry attempts (including initial).
@@ -138,6 +148,7 @@ type relayOrchestrator struct {
 	planner         relaybiz.Planner
 	quotaPort       relaybiz.QuotaPort
 	forwardPort     relaybiz.Forwarder
+	streamPort      relaybiz.StreamForwarder
 	eventLogger     relaybiz.EventLogger
 	providerFactory *relayprovider.ProviderFactory
 	hooks           RelayLifecycleHooks
@@ -160,7 +171,7 @@ func NewRelayOrchestratorWithDependencies(relayUsecase *relaybiz.RelayUsecase, p
 	return newRelayOrchestrator(relayUsecase, providerFactory, hooks, cfg)
 }
 
-// NewRelayExecutorWithDependencies exposes the same non-stream executor
+// NewRelayExecutorWithDependencies exposes the same relay executor
 // through the transport-neutral business contract used by the staging HTTP
 // adapter. Legacy callers may keep NewRelayOrchestratorWithDependencies during
 // the migration window.
@@ -176,6 +187,9 @@ func NewRelayExecutorWithForwarder(relayUsecase *relaybiz.RelayUsecase, provider
 	orchestrator := newRelayOrchestrator(relayUsecase, providerFactory, hooks, cfg)
 	if customForwarder != nil {
 		orchestrator.forwardPort = customForwarder
+		if streamForwarder, ok := customForwarder.(relaybiz.StreamForwarder); ok {
+			orchestrator.streamPort = streamForwarder
+		}
 	}
 	return relayExecutorAdapter{orchestrator: orchestrator}
 }
@@ -199,6 +213,7 @@ func newRelayOrchestrator(relayUsecase *relaybiz.RelayUsecase, providerFactory *
 	}
 	if providerFactory != nil {
 		orchestrator.forwardPort = relayNonStreamForwarder{forwarder: forwarder.NewNonStreamForwarder(providerFactory)}
+		orchestrator.streamPort = relayProviderStreamForwarder{forwarder: forwarder.NewStreamForwarder(providerFactory)}
 	}
 	return orchestrator
 }
@@ -238,7 +253,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 
 	// Stage 1-3: Planning (auth, model mapping, channel selection)
 	// This reuses the existing RelayUsecase.Plan() logic
-	plan, err := o.planner.Plan(ctx, relaybiz.RelayRequest{Token: req.Token, Model: req.Model, RequestID: req.RequestID})
+	plan, err := o.planner.Plan(ctx, relaybiz.RelayRequest{Token: req.Token, Model: req.Model, RequestID: req.RequestID, SessionHash: req.SessionHash})
 	if err != nil {
 		result.Error = err
 		result.StatusCode = statusCodeFromError(err)
@@ -301,40 +316,146 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 	}
 
 	if req.IsStream {
-		estimatedUsage := estimateUsageFromBody(body)
-		var reservation *Reservation
-		if o.hooks != nil {
-			reservation, err = o.hooks.ReserveQuota(ctx, plan, req, estimatedUsage)
-			if err != nil {
-				result.Error = err
-				result.StatusCode = http.StatusPaymentRequired
-				result.Latency = time.Since(startTime)
-				return result, err
+		var finalStream *relaybiz.StreamForwardResponse
+		var finalPlan *relaybiz.RelayPlan
+		var finalRequest relaybiz.ExecutorRequest
+		var finalReservation *relaybiz.QuotaReservation
+		var finalReleaseAdmission func()
+		lastFailureStatus := 0
+		attemptNumber := 0
+		executeStreamAttempt := func(attemptCtx context.Context, channel *relaybiz.Channel) error {
+			attemptPlan, planErr := o.relayPlanForAttempt(attemptCtx, plan, channel, req.Model)
+			if planErr != nil {
+				lastFailureStatus = http.StatusServiceUnavailable
+				return planErr
 			}
+			attemptBody := rewriteRequestModel(rawBody, attemptPlan.ResolvedModel)
+			attemptRequest := relaybiz.ExecutorRequest{
+				Token:       req.Token,
+				Model:       req.Model,
+				Endpoint:    string(req.Endpoint),
+				Body:        attemptBody,
+				Headers:     httpHeaderToMap(req.Headers),
+				RequestID:   req.RequestID,
+				SessionHash: req.SessionHash,
+				Stream:      true,
+			}
+			if attemptNumber > 0 {
+				attemptRequest.RequestID = generateRequestID()
+			}
+			attemptNumber++
+			estimatedUsage := estimateUsageFromBody(attemptBody)
+			releaseAdmission := func() {}
+			if admission, ok := o.hooks.(relayAttemptAdmissionHook); ok {
+				releaseAdmission, err = admission.AcquireRelayAttempt(attemptCtx, attemptPlan, attemptRequest)
+				if err != nil {
+					lastFailureStatus = http.StatusServiceUnavailable
+					return err
+				}
+			}
+			var reservation *relaybiz.QuotaReservation
+			if o.quotaPort != nil {
+				reservation, err = o.quotaPort.Reserve(attemptCtx, attemptPlan, attemptRequest, estimatedUsage)
+				if err != nil {
+					releaseAdmission()
+					lastFailureStatus = http.StatusPaymentRequired
+					return err
+				}
+			}
+			if o.streamPort == nil {
+				err := fmt.Errorf("relay stream forwarder unavailable")
+				if o.quotaPort != nil {
+					_ = o.quotaPort.Release(attemptCtx, reservation, "stream forwarder unavailable")
+				}
+				releaseAdmission()
+				lastFailureStatus = http.StatusInternalServerError
+				return err
+			}
+			streamResponse, forwardErr := o.streamPort.ForwardStream(attemptCtx, attemptPlan, attemptRequest)
+			if forwardErr != nil {
+				if o.quotaPort != nil {
+					_ = o.quotaPort.Release(attemptCtx, reservation, "upstream stream error")
+				}
+				releaseAdmission()
+				lastFailureStatus = mapUpstreamOrInternalStatus(forwardErr)
+				return forwardErr
+			}
+			if streamResponse == nil || streamResponse.Stream == nil {
+				err := fmt.Errorf("stream forwarder returned no stream")
+				if o.quotaPort != nil {
+					_ = o.quotaPort.Release(attemptCtx, reservation, "empty upstream stream")
+				}
+				releaseAdmission()
+				lastFailureStatus = http.StatusBadGateway
+				return err
+			}
+			finalStream = streamResponse
+			finalPlan = attemptPlan
+			finalRequest = attemptRequest
+			finalReservation = reservation
+			finalReleaseAdmission = releaseAdmission
+			return nil
 		}
-		streamForwarder := forwarder.NewStreamForwarder(o.providerFactory)
-		resp, chunks, err := streamForwarder.ForwardRequest(ctx, plan, endpoint, body, req.Headers)
-		if err != nil {
-			o.releaseReservedQuota(ctx, reservation, "upstream stream error")
-			o.finalizeSelectionResult(plan, "error", time.Since(startTime))
+
+		retryResult := o.relayUsecase.NewRetryExecutor().ExecuteWithCandidates(ctx, plan, subscriptionAccountIDFromPlan(plan), executeStreamAttempt)
+		if retryResult != nil && retryResult.Err != nil {
+			latency := time.Since(startTime)
+			o.finalizeSelectionFromRetryResult(plan, retryResult, latency)
+			if retryResult.Fallback {
+				recordRelayFailover(ctx, "exhausted", retryResult.FallbackReason)
+			}
+			result.Error = retryResult.Err
+			result.StatusCode = lastFailureStatus
+			if result.StatusCode == 0 {
+				result.StatusCode = mapUpstreamOrInternalStatus(retryResult.Err)
+			}
+			result.Latency = latency
+			return result, retryResult.Err
+		}
+		if finalStream == nil || finalPlan == nil {
+			err := fmt.Errorf("relay executor returned no stream")
 			result.Error = err
-			result.StatusCode = mapUpstreamOrInternalStatus(err)
+			result.StatusCode = http.StatusBadGateway
 			result.Latency = time.Since(startTime)
 			return result, err
 		}
-		result.StatusCode = resp.StatusCode
-		result.Headers = resp.Header.Clone()
-		result.Response = newChunkReadCloser(chunks, func(streamUsage relaybiz.CanonicalUsage) error {
-			if streamUsage.TotalTokens == 0 {
-				streamUsage = estimatedUsage
+		if retryResult != nil && retryResult.Fallback {
+			recordRelayFailover(ctx, "switched", retryResult.FallbackReason)
+		}
+		estimatedUsage := estimateUsageFromBody(finalRequest.Body)
+		result.StatusCode = finalStream.StatusCode
+		result.Headers = headerMapToHTTP(finalStream.Headers)
+		result.ChannelID = finalPlan.Channel.ID
+		result.SubscriptionAccountID = subscriptionAccountIDFromPlan(finalPlan)
+		result.Response = newFinalizingRelayStream(req.Endpoint, finalStream.Stream, estimatedUsage, func(streamUsage relaybiz.CanonicalUsage, responseID string, completed bool) error {
+			if finalReleaseAdmission != nil {
+				defer finalReleaseAdmission()
 			}
-			streamUsage.PromptExclusive = relaybiz.IsPromptExclusiveChannel(plan)
+			streamUsage.PromptExclusive = relaybiz.IsPromptExclusiveChannel(finalPlan)
 			latency := time.Since(startTime)
-			o.finalizeSelectionResult(plan, "success", latency)
-			if err := o.commitReservedQuota(context.Background(), plan, req, reservation, streamUsage, true, latency); err != nil {
-				return err
+			settleCtx := settlementContext(ctx)
+			if !completed {
+				setRelayObservationResult(settleCtx, "stream_error")
+				o.finalizeSelectionResult(plan, "error", latency)
+				if o.quotaPort != nil {
+					return o.quotaPort.Release(settleCtx, finalReservation, "downstream stream interrupted")
+				}
+				return nil
 			}
-			o.logUsage(context.Background(), plan, req, streamUsage, latency, true)
+			o.finalizeSelectionFromRetryResult(plan, retryResult, latency)
+			if o.quotaPort != nil {
+				if err := o.quotaPort.Commit(settleCtx, finalPlan, finalRequest, finalReservation, streamUsage, true, latency); err != nil {
+					setRelayObservationResult(settleCtx, "quota_error")
+					return err
+				}
+			}
+			if o.eventLogger != nil {
+				o.eventLogger.LogUsage(settleCtx, finalPlan, finalRequest, streamUsage, latency, true)
+			}
+			if hook, ok := o.hooks.(relayStreamCompletionHook); ok {
+				hook.CompleteStream(settleCtx, finalPlan, req, responseID)
+			}
+			setRelayObservationResult(settleCtx, "success")
 			return nil
 		})
 		result.Latency = time.Since(startTime)
@@ -342,19 +463,26 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 	}
 
 	var finalResult *RelayResult
+	var finalPlan *relaybiz.RelayPlan
+	var finalResponseID string
 	lastFailureStatus := 0
 	attemptNumber := 0
 	executeAttempt := func(attemptCtx context.Context, channel *relaybiz.Channel) error {
-		attemptPlan := relayPlanForChannel(plan, channel)
+		attemptPlan, planErr := o.relayPlanForAttempt(attemptCtx, plan, channel, req.Model)
+		if planErr != nil {
+			lastFailureStatus = http.StatusServiceUnavailable
+			return planErr
+		}
 		attemptBody := rewriteRequestModel(rawBody, attemptPlan.ResolvedModel)
 		attemptReq := relaybiz.ExecutorRequest{
-			Token:     req.Token,
-			Model:     req.Model,
-			Endpoint:  string(req.Endpoint),
-			Body:      attemptBody,
-			Headers:   httpHeaderToMap(req.Headers),
-			RequestID: req.RequestID,
-			Stream:    false,
+			Token:       req.Token,
+			Model:       req.Model,
+			Endpoint:    string(req.Endpoint),
+			Body:        attemptBody,
+			Headers:     httpHeaderToMap(req.Headers),
+			RequestID:   req.RequestID,
+			SessionHash: req.SessionHash,
+			Stream:      false,
 		}
 		// Billing reserves are idempotent by (user_id, request_id). Keep the
 		// original ID for the first attempt, but mint a new one before retrying:
@@ -365,6 +493,15 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		}
 		attemptNumber++
 		estimatedUsage := estimateUsageFromBody(attemptBody)
+		releaseAdmission := func() {}
+		if admission, ok := o.hooks.(relayAttemptAdmissionHook); ok {
+			releaseAdmission, err = admission.AcquireRelayAttempt(attemptCtx, attemptPlan, attemptReq)
+			if err != nil {
+				lastFailureStatus = http.StatusServiceUnavailable
+				return err
+			}
+		}
+		defer releaseAdmission()
 		var reservation *relaybiz.QuotaReservation
 		if o.quotaPort != nil {
 			reservation, err = o.quotaPort.Reserve(attemptCtx, attemptPlan, attemptReq, estimatedUsage)
@@ -424,29 +561,33 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				// transport request through this boundary: it contains client
 				// headers, body, and bearer credentials.
 				o.eventLogger.LogUsage(attemptCtx, attemptPlan, relaybiz.ExecutorRequest{
-					Model:     attemptReq.Model,
-					Endpoint:  attemptReq.Endpoint,
-					RequestID: attemptReq.RequestID,
-					Stream:    attemptReq.Stream,
+					Model:       attemptReq.Model,
+					Endpoint:    attemptReq.Endpoint,
+					RequestID:   attemptReq.RequestID,
+					SessionHash: attemptReq.SessionHash,
+					Stream:      attemptReq.Stream,
 				}, *attemptResult.Usage, latency, false)
 			}
 		}
 		finalResult = attemptResult
+		finalPlan = attemptPlan
+		if req.Endpoint == EndpointResponses {
+			finalResponseID = extractResponseID(forwardResp.Body)
+		}
 		return nil
 	}
 
-	var retryResult *relaybiz.ExecuteResult
-	if plan.Account != nil || (plan.Channel != nil && plan.Channel.SubscriptionAccountID > 0) {
-		// Subscription candidates need the adaptor credential resolver. Until
-		// the executor owns that port, preserve the previous single-attempt
-		// behavior instead of retrying with the first account's metadata.
-		retryResult = &relaybiz.ExecuteResult{Channel: plan.Channel, Err: executeAttempt(ctx, plan.Channel)}
-	} else {
-		retryResult = o.relayUsecase.NewRetryExecutor().ExecuteWithCandidates(ctx, plan, 0, executeAttempt)
-	}
+	retryResult := o.relayUsecase.NewRetryExecutor().ExecuteWithCandidates(ctx, plan, subscriptionAccountIDFromPlan(plan), executeAttempt)
 
 	latency := time.Since(startTime)
 	o.finalizeSelectionFromRetryResult(plan, retryResult, latency)
+	if retryResult != nil && retryResult.Fallback {
+		failoverResult := "switched"
+		if retryResult.Err != nil {
+			failoverResult = "exhausted"
+		}
+		recordRelayFailover(ctx, failoverResult, retryResult.FallbackReason)
+	}
 	if retryResult != nil && retryResult.Err != nil {
 		result.Error = retryResult.Err
 		result.StatusCode = lastFailureStatus
@@ -464,6 +605,9 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		return result, err
 	}
 	finalResult.Latency = latency
+	if hook, ok := o.hooks.(relayStreamCompletionHook); ok && finalPlan != nil {
+		hook.CompleteStream(settlementContext(ctx), finalPlan, req, finalResponseID)
+	}
 	return finalResult, nil
 }
 
@@ -504,6 +648,10 @@ func endpointPath(endpoint APIEndpoint) string {
 		return "/chat/completions"
 	case EndpointCompletions:
 		return "/completions"
+	case EndpointResponses:
+		return "/responses"
+	case EndpointAnthropicMessages:
+		return "/messages"
 	default:
 		return ""
 	}
@@ -619,8 +767,38 @@ func relayPlanForChannel(base *relaybiz.RelayPlan, channel *relaybiz.Channel) *r
 	}
 	plan := *base
 	plan.Channel = channel
+	if plan.Account != nil && channel != nil && channel.SubscriptionAccountID != plan.Account.ID {
+		plan.Account = nil
+	}
 	plan.ResolvedModel = relaybiz.ResolveChannelModel(channel, base.BaseModel())
 	return &plan
+}
+
+func (o *relayOrchestrator) relayPlanForAttempt(ctx context.Context, base *relaybiz.RelayPlan, channel *relaybiz.Channel, clientModel string) (*relaybiz.RelayPlan, error) {
+	plan := relayPlanForChannel(base, channel)
+	if plan == nil || channel == nil || channel.SubscriptionAccountID <= 0 {
+		return plan, nil
+	}
+	if plan.Account != nil && plan.Account.ID == channel.SubscriptionAccountID {
+		return plan, nil
+	}
+	if o == nil || o.relayUsecase == nil || base == nil || base.Auth == nil {
+		return nil, fmt.Errorf("subscription routing source cannot be materialized")
+	}
+	resolvedChannel, account, err := o.relayUsecase.ResolveSubscriptionRoutingSource(
+		ctx,
+		channel.SubscriptionAccountID,
+		base.Auth.Group,
+		clientModel,
+		base.BaseModel(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	plan.Channel = resolvedChannel
+	plan.Account = account
+	plan.ResolvedModel = relaybiz.ResolveChannelModel(resolvedChannel, base.BaseModel())
+	return plan, nil
 }
 
 func (o *relayOrchestrator) finalizeSelectionFromRetryResult(plan *relaybiz.RelayPlan, retryResult *relaybiz.ExecuteResult, latency time.Duration) {

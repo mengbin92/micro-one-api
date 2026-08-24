@@ -11,11 +11,9 @@ import (
 
 // RegisterRoutes registers HTTP routes to a Kratos *khttp.Server.
 func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
-	chatHandler := s.handleChatCompletions
-	if s.relayOrchestratorEnabled {
-		chatHandler = s.relayOrchestratorChatHandler
-	}
-	s.handleFunc(srv, "/v1/chat/completions", chatHandler)
+	// Keep the gate wrapper installed even when the feature is disabled so
+	// legacy traffic remains observable without changing its behavior.
+	s.handleFunc(srv, "/v1/chat/completions", s.relayOrchestratorChatHandler)
 	s.handleFunc(srv, "/v1/completions", s.handleRawRelay("/completions", true))
 	s.handleFunc(srv, "/v1/embeddings", s.handleRawRelay("/embeddings", false))
 	s.handleFunc(srv, "/v1/images/generations", s.handleRawRelay("/images/generations", true))
@@ -26,8 +24,8 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	s.handleFunc(srv, "/v1/audio/speech", s.handleRawRelay("/audio/speech", false))
 	s.handleFunc(srv, "/v1/moderations", s.handleRawRelay("/moderations", false))
 	s.handleFunc(srv, "/v1/edits", s.handleUnsupportedOpenAIRoute("edits"))
-	s.handleFunc(srv, "/v1/responses", s.handleResponsesRelay)
-	s.handlePrefix(srv, "/v1/responses/", http.HandlerFunc(s.handleResponsesRelay))
+	s.handleFunc(srv, "/v1/responses", s.relayOrchestratorResponsesHandler)
+	s.handlePrefix(srv, "/v1/responses/", http.HandlerFunc(s.relayOrchestratorResponsesHandler))
 	s.handleFunc(srv, "/v1/usage", s.handleUsage)
 	s.handleFunc(srv, "/v1/subscription/usage", s.handleSubscriptionUsage)
 	srv.HandleFunc("/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
@@ -59,7 +57,7 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	s.handlePrefix(srv, "/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
 
 	// Anthropic Messages API inbound endpoint (for Claude Code CLI / native Anthropic SDK clients)
-	s.handleFunc(srv, "/v1/messages", s.handleAnthropicMessages)
+	s.handleFunc(srv, "/v1/messages", s.relayOrchestratorMessagesHandler)
 	s.handleFunc(srv, "/v1/models", s.handleModels)
 	srv.HandlePrefix("/v1/models/", http.HandlerFunc(s.handleRetrieveModel))
 	srv.HandleFunc("/api/status", s.handleAPIStatus)

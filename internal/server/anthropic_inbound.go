@@ -42,6 +42,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		s.writeAnthropicError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	setRelayObservationStream(r.Context(), anthropicReq.Stream)
 	if anthropicReq.Model == "" {
 		s.writeAnthropicError(w, http.StatusBadRequest, "model is required")
 		return
@@ -85,6 +86,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 	})
 
 	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
+	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
 	if result.Err != nil {
 		s.writeAnthropicError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
 	}

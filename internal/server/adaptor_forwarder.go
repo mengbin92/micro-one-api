@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	relaycredential "micro-one-api/domain/upstream/credential"
 	relayprovider "micro-one-api/domain/upstream/provider"
@@ -19,22 +20,26 @@ import (
 // ownership in the orchestrator; this type only resolves the selected
 // credential, builds the adaptor request, and returns an owned response.
 type relayAdaptorForwarder struct {
-	fallback         *forwarder.NonStreamForwarder
-	accountResolver  relaycredential.SubscriptionAccountResolver
-	apiKeyHTTPClient *http.Client
-	oauthHTTPClient  *http.Client
+	fallback               *forwarder.NonStreamForwarder
+	streamFallback         *forwarder.StreamForwarder
+	accountResolver        relaycredential.SubscriptionAccountResolver
+	apiKeyHTTPClient       *http.Client
+	apiKeyStreamHTTPClient *http.Client
+	oauthHTTPClient        *http.Client
 }
 
 func newRelayAdaptorForwarder(
 	providerFactory *relayprovider.ProviderFactory,
 	accountResolver relaycredential.SubscriptionAccountResolver,
-	apiKeyHTTPClient, oauthHTTPClient *http.Client,
+	apiKeyHTTPClient, apiKeyStreamHTTPClient, oauthHTTPClient *http.Client,
 ) relaybiz.Forwarder {
 	return relayAdaptorForwarder{
-		fallback:         forwarder.NewNonStreamForwarder(providerFactory),
-		accountResolver:  accountResolver,
-		apiKeyHTTPClient: apiKeyHTTPClient,
-		oauthHTTPClient:  oauthHTTPClient,
+		fallback:               forwarder.NewNonStreamForwarder(providerFactory),
+		streamFallback:         forwarder.NewStreamForwarder(providerFactory),
+		accountResolver:        accountResolver,
+		apiKeyHTTPClient:       apiKeyHTTPClient,
+		apiKeyStreamHTTPClient: apiKeyStreamHTTPClient,
+		oauthHTTPClient:        oauthHTTPClient,
 	}
 }
 
@@ -55,7 +60,7 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 		return nil, err
 	}
 	ad.Init(rc)
-	upstreamFormat, upstreamBody, err := ad.ConvertRequest(rc, relayadaptor.FormatOpenAIChatCompletions, req.Body)
+	upstreamFormat, upstreamBody, err := ad.ConvertRequest(rc, rc.InboundFormat, req.Body)
 	if err != nil {
 		return nil, fmt.Errorf("adaptor convert request: %w", err)
 	}
@@ -106,13 +111,74 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 	}, nil
 }
 
+func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest) (*relaybiz.StreamForwardResponse, error) {
+	if plan == nil || plan.Channel == nil {
+		return nil, fmt.Errorf("adaptor stream forwarder requires a selected channel")
+	}
+	ad, ok := relayadaptor.GetAdaptor(plan.Channel.Type)
+	if !ok {
+		if f.streamFallback == nil {
+			return nil, fmt.Errorf("no adaptor registered for channel type %d", plan.Channel.Type)
+		}
+		return (relayProviderStreamForwarder{forwarder: f.streamFallback}).ForwardStream(ctx, plan, req)
+	}
+	rc, client, err := f.relayContext(ctx, plan, req)
+	if err != nil {
+		return nil, err
+	}
+	ad.Init(rc)
+	upstreamFormat, upstreamBody, err := ad.ConvertRequest(rc, rc.InboundFormat, req.Body)
+	if err != nil {
+		return nil, fmt.Errorf("adaptor convert stream request: %w", err)
+	}
+	upstreamReq, err := ad.BuildUpstreamRequest(ctx, rc, upstreamFormat, upstreamBody)
+	if err != nil {
+		return nil, fmt.Errorf("adaptor build stream request: %w", err)
+	}
+	if upstreamReq == nil || upstreamReq.URL == nil {
+		return nil, fmt.Errorf("adaptor returned an incomplete stream request")
+	}
+	if rc.Account == nil {
+		copyRelayExecutorHeaders(upstreamReq.Header, rc.InboundHeader)
+	}
+	if err := relayprovider.ValidateBaseURLForChannel(plan.Channel.Type, upstreamReq.URL.String()); err != nil {
+		return nil, fmt.Errorf("validate upstream URL: %w", err)
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	client = streamHTTPClient(client)
+	resp, err := client.Do(upstreamReq) // #nosec G704 -- adaptor URL is validated above.
+	if err != nil {
+		return nil, fmt.Errorf("upstream stream call: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		defer resp.Body.Close()
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, relayprovider.MaxUpstreamErrorBody))
+		if readErr != nil {
+			return nil, fmt.Errorf("read upstream stream error response: %w", readErr)
+		}
+		return nil, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body}
+	}
+	_, reader, err := ad.ConvertStreamResponse(rc, upstreamFormat, resp)
+	if err != nil {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("adaptor convert stream response: %w", err)
+	}
+	return &relaybiz.StreamForwardResponse{
+		StatusCode: resp.StatusCode,
+		Headers:    httpHeaderToMap(resp.Header),
+		Stream:     newConvertedRelayStream(reader, resp.Body),
+	}, nil
+}
+
 func (f relayAdaptorForwarder) relayContext(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest) (*relayadaptor.RelayContext, *http.Client, error) {
 	rc := &relayadaptor.RelayContext{
-		InboundFormat: relayadaptor.FormatOpenAIChatCompletions,
+		InboundFormat: executorInboundFormat(req.Endpoint),
 		ClientModel:   req.Model,
 		ResolvedModel: plan.ResolvedModel,
 		Channel:       plan.Channel,
-		IsStream:      false,
+		IsStream:      req.Stream,
 		RequestID:     req.RequestID,
 		RawBody:       append([]byte(nil), req.Body...),
 		InboundHeader: headerMapToHTTP(req.Headers),
@@ -121,17 +187,19 @@ func (f relayAdaptorForwarder) relayContext(ctx context.Context, plan *relaybiz.
 		rc.UserID = plan.Auth.UserID
 	}
 	if plan.Account == nil && plan.Channel.SubscriptionAccountID == 0 {
+		if req.Stream && f.apiKeyStreamHTTPClient != nil {
+			return rc, f.apiKeyStreamHTTPClient, nil
+		}
 		return rc, f.apiKeyHTTPClient, nil
 	}
 
 	meta := fallbackSubscriptionAccountMetadata(plan, plan.Channel)
-	accountID := plan.Channel.ID
+	resolverChannelID := plan.Channel.ID
 	if plan.Account != nil {
 		meta = subscriptionAccountMetadataFromPlan(plan.Account)
-		accountID = plan.Account.ID
 	}
 	if f.accountResolver != nil {
-		resolved, err := f.accountResolver.Resolve(ctx, accountID)
+		resolved, err := f.accountResolver.Resolve(ctx, resolverChannelID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("resolve subscription account credential: %w", err)
 		}
@@ -153,6 +221,61 @@ func (f relayAdaptorForwarder) relayContext(ctx context.Context, plan *relaybiz.
 	}
 	rc.HTTPClient = f.oauthHTTPClient
 	return rc, f.oauthHTTPClient, nil
+}
+
+func executorInboundFormat(endpoint string) relayadaptor.Format {
+	switch APIEndpoint(endpoint) {
+	case EndpointResponses:
+		return relayadaptor.FormatOpenAIResponses
+	case EndpointAnthropicMessages:
+		return relayadaptor.FormatAnthropicMessages
+	default:
+		return relayadaptor.FormatOpenAIChatCompletions
+	}
+}
+
+func streamHTTPClient(client *http.Client) *http.Client {
+	if client == nil || client.Timeout == 0 {
+		return client
+	}
+	return &http.Client{
+		Transport:     client.Transport,
+		CheckRedirect: client.CheckRedirect,
+		Jar:           client.Jar,
+	}
+}
+
+type convertedRelayStream struct {
+	reader  io.Reader
+	closers []io.Closer
+	once    sync.Once
+	err     error
+}
+
+func newConvertedRelayStream(reader io.Reader, upstream io.Closer) relaybiz.RelayStream {
+	stream := &convertedRelayStream{reader: reader}
+	if closer, ok := reader.(io.Closer); ok {
+		stream.closers = append(stream.closers, closer)
+	}
+	if upstream != nil {
+		stream.closers = append(stream.closers, upstream)
+	}
+	return stream
+}
+
+func (s *convertedRelayStream) Read(p []byte) (int, error) {
+	return s.reader.Read(p)
+}
+
+func (s *convertedRelayStream) Close() error {
+	s.once.Do(func() {
+		for _, closer := range s.closers {
+			if err := closer.Close(); s.err == nil {
+				s.err = err
+			}
+		}
+	})
+	return s.err
 }
 
 func copyRelayExecutorHeaders(dst, src http.Header) {

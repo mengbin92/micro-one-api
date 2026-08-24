@@ -69,9 +69,9 @@ type HTTPServer struct {
 	// no-op unless hybridAdaptorEnabled is also true.
 	subscriptionSessionStickyEnabled bool
 
-	// relayOrchestratorEnabled gates the handler -> orchestrator -> forwarder
-	// request path for /v1/chat/completions. It remains disabled by default and
-	// is further restricted to the configured bearer-token allowlist.
+	// relayOrchestratorEnabled gates the handler -> executor -> adaptor path for
+	// Chat Completions, Responses, and Anthropic Messages. It remains disabled
+	// by default and is further restricted to the configured token allowlist.
 	relayOrchestratorEnabled        bool
 	relayOrchestratorTokenAllowlist map[string]struct{}
 	routeMiddleware                 []func(http.Handler) http.Handler
