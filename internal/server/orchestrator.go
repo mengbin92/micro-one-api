@@ -420,7 +420,15 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				return err
 			}
 			if o.eventLogger != nil {
-				o.eventLogger.LogUsage(attemptCtx, attemptPlan, attemptReq, *attemptResult.Usage, latency, false)
+				// Usage logging only needs request metadata. Do not pass the
+				// transport request through this boundary: it contains client
+				// headers, body, and bearer credentials.
+				o.eventLogger.LogUsage(attemptCtx, attemptPlan, relaybiz.ExecutorRequest{
+					Model:     attemptReq.Model,
+					Endpoint:  attemptReq.Endpoint,
+					RequestID: attemptReq.RequestID,
+					Stream:    attemptReq.Stream,
+				}, *attemptResult.Usage, latency, false)
 			}
 		}
 		finalResult = attemptResult

@@ -309,6 +309,39 @@ func TestRetryExecutor_PolicyRejectionFallsBackWithoutPoisoningHealth(t *testing
 	}
 }
 
+func TestRetryExecutor_ModelUnavailableFallsBackWithoutPoisoningChannelHealth(t *testing.T) {
+	selector := &mockChannelSelector{
+		channels: []*Channel{
+			{ID: 1, Name: "model-unavailable"},
+			{ID: 2, Name: "fallback"},
+		},
+	}
+	policy := DefaultRetryPolicy()
+	policy.InitialInterval = time.Nanosecond
+	policy.MaxInterval = time.Nanosecond
+	exec := NewRetryExecutor(policy, selector)
+
+	result := exec.Execute(context.Background(), "default", "kimi-k3", func(_ context.Context, ch *Channel) error {
+		if ch.ID == 1 {
+			return &relayprovider.UpstreamHTTPError{
+				StatusCode: 500,
+				Body:       []byte(`{"message":"service do not have healthy model Kimi-K3 now"}`),
+			}
+		}
+		return nil
+	})
+
+	if result.Err != nil || result.Channel == nil || result.Channel.ID != 2 || !result.Fallback {
+		t.Fatalf("result = %+v, want successful fallback to channel 2", result)
+	}
+	if result.FallbackReason != "model_unavailable" {
+		t.Fatalf("fallback reason = %q, want model_unavailable", result.FallbackReason)
+	}
+	if len(selector.healthEvents) != 2 || !selector.healthEvents[0].success || !selector.healthEvents[1].success {
+		t.Fatalf("health events = %+v, model outage must not record a channel failure", selector.healthEvents)
+	}
+}
+
 func TestRetryExecutor_Execute_ExhaustsRetries(t *testing.T) {
 	selector := &mockChannelSelector{
 		channels: []*Channel{
@@ -364,6 +397,9 @@ func TestRetryExecutor_FailoverDoesNotWidenToCatchAll(t *testing.T) {
 	}
 	if attempts != policy.MaxAttempts {
 		t.Fatalf("same-channel attempts = %d, want %d", attempts, policy.MaxAttempts)
+	}
+	if len(sel.healthEvents) != 1 || sel.healthEvents[0].success {
+		t.Fatalf("same-channel health events = %+v, want one terminal failure", sel.healthEvents)
 	}
 }
 

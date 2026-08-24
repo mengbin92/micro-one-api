@@ -2,11 +2,13 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
+	"micro-one-api/pkg/jsonx"
 	"micro-one-api/platform/metrics"
 )
 
@@ -97,11 +99,14 @@ func (c *ChannelHealthChecker) probeChannel(ctx context.Context, channelID int64
 		c.record(context.WithoutCancel(ctx), channelID, false, err.Error(), time.Since(startedAt).Milliseconds())
 		return
 	}
-	_, err = provider.Forward(probeCtx, &relayprovider.RawRequest{
+	resp, err := provider.Forward(probeCtx, &relayprovider.RawRequest{
 		Method: http.MethodGet,
 		Path:   "/models",
 		Header: http.Header{"Accept": []string{"application/json"}},
 	})
+	if err == nil {
+		err = validateModelsProbeResponse(resp)
+	}
 	responseTime := time.Since(startedAt).Milliseconds()
 	if err != nil {
 		observeHealthProbe("error", healthProbeReason(err), time.Since(startedAt))
@@ -110,6 +115,31 @@ func (c *ChannelHealthChecker) probeChannel(ctx context.Context, channelID int64
 	}
 	observeHealthProbe("success", "none", time.Since(startedAt))
 	c.record(context.WithoutCancel(ctx), channelID, true, "", responseTime)
+}
+
+func validateModelsProbeResponse(resp *relayprovider.RawResponse) error {
+	if resp == nil {
+		return fmt.Errorf("invalid models response: empty response")
+	}
+	var payload struct {
+		Data   jsonx.RawMessage `json:"data"`
+		Models jsonx.RawMessage `json:"models"`
+	}
+	if err := jsonx.Unmarshal(resp.Body, &payload); err != nil {
+		return fmt.Errorf("invalid models response: %w", err)
+	}
+	raw := payload.Data
+	if len(raw) == 0 {
+		raw = payload.Models
+	}
+	if len(raw) == 0 {
+		return fmt.Errorf("invalid models response: missing data or models list")
+	}
+	var models []jsonx.RawMessage
+	if err := jsonx.Unmarshal(raw, &models); err != nil {
+		return fmt.Errorf("invalid models response: model list: %w", err)
+	}
+	return nil
 }
 
 func (c *ChannelHealthChecker) record(ctx context.Context, channelID int64, success bool, message string, responseTime int64) {
@@ -130,6 +160,8 @@ func healthProbeReason(err error) string {
 	}
 	msg := strings.ToLower(err.Error())
 	switch {
+	case strings.Contains(msg, "invalid models response"):
+		return "invalid_response"
 	case strings.Contains(msg, "context deadline exceeded"), strings.Contains(msg, "timeout"):
 		return "timeout"
 	case strings.Contains(msg, "unsupported"):

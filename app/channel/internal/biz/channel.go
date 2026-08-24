@@ -1047,7 +1047,8 @@ func (uc *ChannelUsecase) RecordHealth(ctx context.Context, event ChannelHealthE
 	}
 	// §10.2 contract — RecordHealth must NOT invalidate the
 	// /v1/models L1 cache or publish a TopicChannelChanged event. Health
-	// is recorded on every relay attempt (retry.go recordHealth); under load
+	// is recorded for every source reached by a relay request (same-source
+	// retries are collapsed); under load
 	// that would continuously clear the cache (hit-rate → 0) and republish to
 	// the stream, forcing every other instance to clear too. Health changes
 	// do not change which models a channel exposes; the selector's own

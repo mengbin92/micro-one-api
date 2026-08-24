@@ -19,6 +19,7 @@ type portLifecycleHooks struct {
 	reserveReq  *RelayRequest
 	committed   *Reservation
 	logged      relaybiz.CanonicalUsage
+	loggedReq   *RelayRequest
 	released    *Reservation
 }
 
@@ -38,7 +39,8 @@ func (h *portLifecycleHooks) ReleaseQuota(_ context.Context, reservation *Reserv
 	return nil
 }
 
-func (h *portLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, usage relaybiz.CanonicalUsage, _ time.Duration, _ bool) {
+func (h *portLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, _ time.Duration, _ bool) {
+	h.loggedReq = req
 	h.logged = usage
 }
 
@@ -91,6 +93,19 @@ func TestRelayQuotaAndEventPortsAdaptTransportNeutralRequest(t *testing.T) {
 	logger.LogUsage(context.Background(), plan, req, estimated, time.Second, false)
 	if hooks.logged != estimated {
 		t.Fatalf("logged usage = %#v, want %#v", hooks.logged, estimated)
+	}
+	var loggedBody []byte
+	if hooks.loggedReq != nil && hooks.loggedReq.Body != nil {
+		loggedBody, err = io.ReadAll(hooks.loggedReq.Body)
+		if err != nil {
+			t.Fatalf("read logged request body: %v", err)
+		}
+	}
+	if hooks.loggedReq == nil || hooks.loggedReq.Token != "" || len(loggedBody) != 0 || len(hooks.loggedReq.Headers) != 0 {
+		t.Fatalf("logged request carried sensitive data: %#v", hooks.loggedReq)
+	}
+	if hooks.loggedReq.Model != req.Model || hooks.loggedReq.RequestID != req.RequestID {
+		t.Fatalf("logged request lost metadata: %#v", hooks.loggedReq)
 	}
 }
 

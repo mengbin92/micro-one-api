@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-08-24
+
+v0.23.1 是 v0.23.0 之后的 **PATCH 可靠性与安全修复版本**：隔离单模型上游故障，避免 retry 放大渠道级熔断；阻断请求凭证进入用量日志；并校验 `/models` 健康探测响应。无数据库迁移、无公共 API / proto 破坏性变更。详见 [release-v0.23.1.md](docs/releases/release-v0.23.1.md)。
+
+### Fixed
+
+- 同一请求同一来源的 retry 健康结果合并结算；模型无健康节点不再污染渠道级熔断，也不再重复减少选择器 `inflight`。
+- transport-neutral executor 的用量日志仅接收安全请求元数据，敏感请求 headers、body 和 bearer token 不再进入日志边界（CodeQL #277）。
+- monitor-worker 拒绝 HTML 200、缺字段或错误字段类型的 `/models` 响应，记录为 `invalid_response`。
+
 ## [0.23.0] - 2026-08-24
 
 v0.23.0 是 v0.22.5 之后的 **MINOR 执行边界与灰度能力版本**：新增默认关闭、token allowlist 保护的 Chat Completions 非流式 executor staging 路径，补齐 transport-neutral 端口、adaptor registry、failover 结算和失败矩阵，并修复成本图表标签重叠。无数据库迁移、无公共 API / proto 破坏性变更。详见 [release-v0.23.0.md](docs/releases/release-v0.23.0.md)。
