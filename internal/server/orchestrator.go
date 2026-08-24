@@ -135,6 +135,10 @@ func DefaultOrchestratorConfig() *OrchestratorConfig {
 type relayOrchestrator struct {
 	config          *OrchestratorConfig
 	relayUsecase    *relaybiz.RelayUsecase
+	planner         relaybiz.Planner
+	quotaPort       relaybiz.QuotaPort
+	forwardPort     relaybiz.Forwarder
+	eventLogger     relaybiz.EventLogger
 	providerFactory *relayprovider.ProviderFactory
 	hooks           RelayLifecycleHooks
 }
@@ -153,15 +157,38 @@ func NewRelayOrchestratorWithProviderFactory(relayUsecase *relaybiz.RelayUsecase
 // NewRelayOrchestratorWithDependencies creates a relay orchestrator with
 // optional lifecycle hooks for quota and logging side effects.
 func NewRelayOrchestratorWithDependencies(relayUsecase *relaybiz.RelayUsecase, providerFactory *relayprovider.ProviderFactory, hooks RelayLifecycleHooks, cfg *OrchestratorConfig) Orchestrator {
+	return newRelayOrchestrator(relayUsecase, providerFactory, hooks, cfg)
+}
+
+// NewRelayExecutorWithDependencies exposes the same non-stream executor
+// through the transport-neutral business contract used by the staging HTTP
+// adapter. Legacy callers may keep NewRelayOrchestratorWithDependencies during
+// the migration window.
+func NewRelayExecutorWithDependencies(relayUsecase *relaybiz.RelayUsecase, providerFactory *relayprovider.ProviderFactory, hooks RelayLifecycleHooks, cfg *OrchestratorConfig) relaybiz.Executor {
+	return relayExecutorAdapter{orchestrator: newRelayOrchestrator(relayUsecase, providerFactory, hooks, cfg)}
+}
+
+func newRelayOrchestrator(relayUsecase *relaybiz.RelayUsecase, providerFactory *relayprovider.ProviderFactory, hooks RelayLifecycleHooks, cfg *OrchestratorConfig) *relayOrchestrator {
 	if cfg == nil {
 		cfg = DefaultOrchestratorConfig()
 	}
-	return &relayOrchestrator{
+	orchestrator := &relayOrchestrator{
 		config:          cfg,
 		relayUsecase:    relayUsecase,
 		providerFactory: providerFactory,
 		hooks:           hooks,
 	}
+	if relayUsecase != nil {
+		orchestrator.planner = relayUsecase
+	}
+	if hooks != nil {
+		orchestrator.quotaPort = relayQuotaPort{hooks: hooks}
+		orchestrator.eventLogger = relayEventLogger{hooks: hooks}
+	}
+	if providerFactory != nil {
+		orchestrator.forwardPort = relayNonStreamForwarder{forwarder: forwarder.NewNonStreamForwarder(providerFactory)}
+	}
+	return orchestrator
 }
 
 // Execute runs the complete relay pipeline.
@@ -193,13 +220,13 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		result.Latency = time.Since(startTime)
 		return result, err
 	}
+	if req.RequestID == "" {
+		req.RequestID = generateRequestID()
+	}
 
 	// Stage 1-3: Planning (auth, model mapping, channel selection)
 	// This reuses the existing RelayUsecase.Plan() logic
-	plan, err := o.relayUsecase.Plan(ctx, relaybiz.RelayRequest{
-		Token: req.Token,
-		Model: req.Model,
-	})
+	plan, err := o.planner.Plan(ctx, relaybiz.RelayRequest{Token: req.Token, Model: req.Model, RequestID: req.RequestID})
 	if err != nil {
 		result.Error = err
 		result.StatusCode = statusCodeFromError(err)
@@ -261,9 +288,6 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		return result, err
 	}
 
-	if req.RequestID == "" {
-		req.RequestID = generateRequestID()
-	}
 	if req.IsStream {
 		estimatedUsage := estimateUsageFromBody(body)
 		var reservation *Reservation
@@ -305,14 +329,21 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		return result, nil
 	}
 
-	nonStreamForwarder := forwarder.NewNonStreamForwarder(o.providerFactory)
 	var finalResult *RelayResult
 	lastFailureStatus := 0
 	attemptNumber := 0
 	executeAttempt := func(attemptCtx context.Context, channel *relaybiz.Channel) error {
 		attemptPlan := relayPlanForChannel(plan, channel)
 		attemptBody := rewriteRequestModel(rawBody, attemptPlan.ResolvedModel)
-		attemptReq := *req
+		attemptReq := relaybiz.ExecutorRequest{
+			Token:     req.Token,
+			Model:     req.Model,
+			Endpoint:  string(req.Endpoint),
+			Body:      attemptBody,
+			Headers:   httpHeaderToMap(req.Headers),
+			RequestID: req.RequestID,
+			Stream:    false,
+		}
 		// Billing reserves are idempotent by (user_id, request_id). Keep the
 		// original ID for the first attempt, but mint a new one before retrying:
 		// if releasing the failed reservation was unavailable, reusing its ID
@@ -321,45 +352,64 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			attemptReq.RequestID = generateRequestID()
 		}
 		attemptNumber++
-		attemptReq.Body = bytes.NewReader(attemptBody)
 		estimatedUsage := estimateUsageFromBody(attemptBody)
-		var reservation *Reservation
-		if o.hooks != nil {
-			reservation, err = o.hooks.ReserveQuota(attemptCtx, attemptPlan, &attemptReq, estimatedUsage)
+		var reservation *relaybiz.QuotaReservation
+		if o.quotaPort != nil {
+			reservation, err = o.quotaPort.Reserve(attemptCtx, attemptPlan, attemptReq, estimatedUsage)
 			if err != nil {
 				lastFailureStatus = http.StatusPaymentRequired
 				return err
 			}
 		}
 
-		resp, bodyReader, usage, forwardErr := nonStreamForwarder.ForwardRequest(attemptCtx, attemptPlan, endpoint, attemptBody, req.Headers)
+		if o.forwardPort == nil {
+			err := fmt.Errorf("relay forwarder unavailable")
+			if o.quotaPort != nil {
+				_ = o.quotaPort.Release(attemptCtx, reservation, "forwarder unavailable")
+			}
+			lastFailureStatus = http.StatusInternalServerError
+			return err
+		}
+		forwardResp, forwardErr := o.forwardPort.Forward(attemptCtx, attemptPlan, attemptReq)
 		if forwardErr != nil {
-			o.releaseReservedQuota(attemptCtx, reservation, "upstream error")
+			if o.quotaPort != nil {
+				_ = o.quotaPort.Release(attemptCtx, reservation, "upstream error")
+			}
 			lastFailureStatus = mapUpstreamOrInternalStatus(forwardErr)
 			return forwardErr
 		}
+		if forwardResp == nil {
+			err := fmt.Errorf("forwarder returned no response")
+			if o.quotaPort != nil {
+				_ = o.quotaPort.Release(attemptCtx, reservation, "empty upstream response")
+			}
+			lastFailureStatus = http.StatusBadGateway
+			return err
+		}
 
 		attemptResult := &RelayResult{
-			StatusCode:            resp.StatusCode,
-			Headers:               resp.Header.Clone(),
-			Response:              bodyReader,
+			StatusCode:            forwardResp.StatusCode,
+			Headers:               headerMapToHTTP(forwardResp.Headers),
+			Response:              io.NopCloser(bytes.NewReader(forwardResp.Body)),
 			ChannelID:             channel.ID,
 			SubscriptionAccountID: subscriptionAccountIDFromPlan(attemptPlan),
 		}
-		if usage != nil {
-			attemptResult.Usage = usage
+		if forwardResp.Usage != nil {
+			attemptResult.Usage = forwardResp.Usage
 		}
 		if attemptResult.Usage == nil || attemptResult.Usage.TotalTokens == 0 {
 			attemptResult.Usage = &estimatedUsage
 		}
-		if o.hooks != nil {
+		if o.quotaPort != nil {
 			latency := time.Since(startTime)
-			if err := o.commitReservedQuota(attemptCtx, attemptPlan, &attemptReq, reservation, *attemptResult.Usage, resp.StatusCode < http.StatusBadRequest, latency); err != nil {
-				_ = bodyReader.Close()
+			if err := o.quotaPort.Commit(attemptCtx, attemptPlan, attemptReq, reservation, *attemptResult.Usage, forwardResp.StatusCode < http.StatusBadRequest, latency); err != nil {
+				_ = attemptResult.Response.Close()
 				lastFailureStatus = http.StatusPaymentRequired
 				return err
 			}
-			o.logUsage(attemptCtx, attemptPlan, &attemptReq, *attemptResult.Usage, latency, false)
+			if o.eventLogger != nil {
+				o.eventLogger.LogUsage(attemptCtx, attemptPlan, attemptReq, *attemptResult.Usage, latency, false)
+			}
 		}
 		finalResult = attemptResult
 		return nil
