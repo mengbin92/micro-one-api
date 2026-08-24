@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.22.5 发布公告](./docs/releases/release-v0.22.5.md)（用量核算幂等、对账与安全扫描修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.22.5)
+> 📣 **最新发布**：[v0.23.0 发布公告](./docs/releases/release-v0.23.0.md)（Chat Completions 非流式 executor 灰度与路由可靠性加固） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.23.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.23.0
+
+v0.23.0 是 v0.22.5 之后的 **MINOR 执行边界与灰度能力版本**：新增默认关闭、token allowlist 保护的 Chat Completions 非流式 executor staging 路径，补齐 transport-neutral 端口、adaptor registry、failover 结算和失败矩阵；修复管理后台成本图表标签重叠。**无数据库迁移、无公共 API / proto 破坏性变更**；升级部署 `relay-gateway` 并同步 `web/dist`，保持 `RELAY_ORCHESTRATOR_ENABLED=false` 即继续使用旧路径。详见 [docs/releases/release-v0.23.0.md](./docs/releases/release-v0.23.0.md)。
 
 ### 升级到 v0.22.5
 
