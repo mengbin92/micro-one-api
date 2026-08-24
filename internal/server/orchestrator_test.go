@@ -127,6 +127,7 @@ type recordingLifecycleHooks struct {
 	reserved  relaybiz.CanonicalUsage
 	committed relaybiz.CanonicalUsage
 	logged    relaybiz.CanonicalUsage
+	loggedReq *RelayRequest
 }
 
 func (h *recordingLifecycleHooks) ReserveQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, estimated relaybiz.CanonicalUsage) (*Reservation, error) {
@@ -143,7 +144,8 @@ func (h *recordingLifecycleHooks) ReleaseQuota(_ context.Context, _ *Reservation
 	return nil
 }
 
-func (h *recordingLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, usage relaybiz.CanonicalUsage, _ time.Duration, _ bool) {
+func (h *recordingLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, _ time.Duration, _ bool) {
+	h.loggedReq = req
 	h.logged = usage
 }
 
@@ -183,6 +185,9 @@ func TestRelayOrchestratorCommitsAndLogsUsage(t *testing.T) {
 	}
 	if hooks.logged.TotalTokens != 11 {
 		t.Fatalf("logged usage = %#v, want total 11", hooks.logged)
+	}
+	if hooks.loggedReq == nil || hooks.loggedReq.Token != "" || len(hooks.loggedReq.Headers) != 0 {
+		t.Fatalf("usage log request carried sensitive data: %#v", hooks.loggedReq)
 	}
 }
 
