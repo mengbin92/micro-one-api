@@ -168,6 +168,18 @@ func NewRelayExecutorWithDependencies(relayUsecase *relaybiz.RelayUsecase, provi
 	return relayExecutorAdapter{orchestrator: newRelayOrchestrator(relayUsecase, providerFactory, hooks, cfg)}
 }
 
+// NewRelayExecutorWithForwarder is the migration seam for transport-neutral
+// executors that need a server-owned forwarding implementation, such as the
+// adaptor registry path. The legacy constructor remains provider-backed for
+// callers that have not opted into the staged route.
+func NewRelayExecutorWithForwarder(relayUsecase *relaybiz.RelayUsecase, providerFactory *relayprovider.ProviderFactory, hooks RelayLifecycleHooks, customForwarder relaybiz.Forwarder, cfg *OrchestratorConfig) relaybiz.Executor {
+	orchestrator := newRelayOrchestrator(relayUsecase, providerFactory, hooks, cfg)
+	if customForwarder != nil {
+		orchestrator.forwardPort = customForwarder
+	}
+	return relayExecutorAdapter{orchestrator: orchestrator}
+}
+
 func newRelayOrchestrator(relayUsecase *relaybiz.RelayUsecase, providerFactory *relayprovider.ProviderFactory, hooks RelayLifecycleHooks, cfg *OrchestratorConfig) *relayOrchestrator {
 	if cfg == nil {
 		cfg = DefaultOrchestratorConfig()

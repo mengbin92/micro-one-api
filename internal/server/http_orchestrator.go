@@ -65,7 +65,13 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 		return
 	}
 
-	executor := NewRelayExecutorWithDependencies(s.relayUsecase, s.providerFactory, httpRelayLifecycleHooks{s: s}, nil)
+	executor := NewRelayExecutorWithForwarder(
+		s.relayUsecase,
+		s.providerFactory,
+		httpRelayLifecycleHooks{s: s},
+		newRelayAdaptorForwarder(s.providerFactory, s.accountResolver, s.apiKeyHTTPClient, s.oauthHTTPClient),
+		nil,
+	)
 	result, err := executor.Execute(r.Context(), relaybiz.ExecutorRequest{
 		Token:     token,
 		Model:     req.Model,
@@ -91,12 +97,20 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 func relayExecutorHeaders(headers http.Header) map[string][]string {
 	result := make(map[string][]string)
 	for key, values := range headers {
-		switch strings.ToLower(key) {
-		case "accept", "content-type", "openai-beta", "openai-organization", "openai-project", "user-agent", "x-request-id":
+		if isRelayExecutorHeader(key) {
 			result[key] = append([]string(nil), values...)
 		}
 	}
 	return result
+}
+
+func isRelayExecutorHeader(key string) bool {
+	switch strings.ToLower(key) {
+	case "accept", "content-type", "openai-beta", "openai-organization", "openai-project", "user-agent", "x-request-id":
+		return true
+	default:
+		return false
+	}
 }
 
 func relayResultFromExecutionResponse(result relaybiz.ExecutionResponse) *RelayResult {
