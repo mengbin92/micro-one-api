@@ -12,6 +12,7 @@ import (
 
 	"micro-one-api/pkg/jsonx"
 
+	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 )
 
@@ -79,10 +80,18 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 		if result != nil && result.StatusCode != 0 {
 			status = result.StatusCode
 		}
-		s.writeError(w, status, err.Error())
+		s.writeError(w, status, orchestratorErrorMessage(status, err))
 		return
 	}
 	writeOrchestratedRelayResult(w, result)
+}
+
+func orchestratorErrorMessage(statusCode int, err error) string {
+	var upstreamErr *relayprovider.UpstreamHTTPError
+	if errors.As(err, &upstreamErr) {
+		return sanitizeUpstreamError(statusCode, err)
+	}
+	return gatewayErrorMessage(statusCode)
 }
 
 func bearerTokenFromRequest(r *http.Request) (string, error) {
