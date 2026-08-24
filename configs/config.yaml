@@ -78,8 +78,9 @@ subscription:
 # must not be placed in configuration.
 relay_orchestrator:
   enabled: ${RELAY_ORCHESTRATOR_ENABLED:-false}
-  allowlist_token_sha256:
-    - ${RELAY_ORCHESTRATOR_TOKEN_SHA256:-}
+  # Flow-sequence syntax keeps an unset allowlist as [] instead of a YAML
+  # null item, which protobuf repeated-string scanning rejects at startup.
+  allowlist_token_sha256: [${RELAY_ORCHESTRATOR_TOKEN_SHA256:-}]
 
 # openai_ws tunes the Codex Responses WebSocket relay (inbound /v1/responses
 # upgrade). All fields are optional; omitted values fall back to sensible
