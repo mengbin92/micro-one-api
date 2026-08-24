@@ -2080,6 +2080,7 @@ func TestHTTPServerChatCompletionOrchestratorRouteCommitsAndLogs(t *testing.T) {
 		logClient,
 	)
 	httpServer.SetRelayOrchestratorEnabled(true)
+	httpServer.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("user-token")})
 	srv := khttp.NewServer()
 	httpServer.RegisterRoutes(srv)
 
@@ -2146,6 +2147,8 @@ func TestHTTPServerStreamingChatCompletionWritesPreciseUsageLogOnSuccess(t *test
 		relayUsecase,
 		logClient,
 	)
+	httpServer.SetRelayOrchestratorEnabled(true)
+	httpServer.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("user-token")})
 	srv := khttp.NewServer()
 	httpServer.RegisterRoutes(srv)
 

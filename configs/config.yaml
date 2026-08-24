@@ -73,6 +73,14 @@ subscription:
   enabled: true
   user_rpm_limit: ${SUBSCRIPTION_USER_RPM_LIMIT:-0}
 
+# The executor staging route is disabled by default. When enabled, only
+# bearer tokens whose SHA-256 hex digest is listed here may use it; raw tokens
+# must not be placed in configuration.
+relay_orchestrator:
+  enabled: ${RELAY_ORCHESTRATOR_ENABLED:-false}
+  allowlist_token_sha256:
+    - ${RELAY_ORCHESTRATOR_TOKEN_SHA256:-}
+
 # openai_ws tunes the Codex Responses WebSocket relay (inbound /v1/responses
 # upgrade). All fields are optional; omitted values fall back to sensible
 # defaults (see internal/conf OpenAIWSConfig getters). drain_timeout bounds the

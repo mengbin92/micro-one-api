@@ -7,6 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-08-24
+
+v0.23.0 是 v0.22.5 之后的 **MINOR 执行边界与灰度能力版本**：新增默认关闭、token allowlist 保护的 Chat Completions 非流式 executor staging 路径，补齐 transport-neutral 端口、adaptor registry、failover 结算和失败矩阵，并修复成本图表标签重叠。无数据库迁移、无公共 API / proto 破坏性变更。详见 [release-v0.23.0.md](docs/releases/release-v0.23.0.md)。
+
+### Added
+
+- 新增 relay executor transport-neutral 端口、adaptor registry 和按 SHA-256 bearer token allowlist 控制的 staging 路径。
+- 新增失败候选 Release、成功候选单次 Commit / Log、重试 request ID 隔离及默认关闭 / 一键回滚测试。
+
+### Fixed
+
+- 修复上游 executor 错误体直接透传和 failover 结算边界问题。
+- 修复管理后台成本图表标签重叠。
+
+### Changed
+
+- 新增 `RELAY_ORCHESTRATOR_ENABLED`、`RELAY_ORCHESTRATOR_TOKEN_SHA256` 配置，默认关闭且不保存原始 token。
+
 ## [0.22.5] - 2026-08-22
 
 v0.22.5 是 v0.22.4 的 **PATCH 账务正确性与安全修复版本**：分离支付与执行核算口径，补齐订阅流量上游成本，为 channel 用量与 usage log 写入增加事务级幂等键，并修复 gosec / gitleaks 扫描阻塞项。包含向后兼容迁移 `080`-`082`。详见 [release-v0.22.5.md](docs/releases/release-v0.22.5.md)。

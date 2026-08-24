@@ -12,6 +12,7 @@ import (
 
 	"micro-one-api/pkg/jsonx"
 
+	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 )
 
@@ -24,10 +25,6 @@ type chatOrchestratorRequest struct {
 func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if s.billingClient == nil {
-		s.writeError(w, http.StatusServiceUnavailable, "billing service unavailable")
 		return
 	}
 
@@ -56,26 +53,83 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 		s.writeError(w, http.StatusBadRequest, "messages are required")
 		return
 	}
+	if req.Stream {
+		// The v0.23 first slice is non-streaming only. Restore the body before
+		// delegating so the legacy handler can apply its existing stream path.
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		s.handleChatCompletions(w, r)
+		return
+	}
+	if s.billingClient == nil {
+		s.writeError(w, http.StatusServiceUnavailable, "billing service unavailable")
+		return
+	}
 
-	orchestrator := NewRelayOrchestratorWithDependencies(s.relayUsecase, s.providerFactory, httpRelayLifecycleHooks{s: s}, nil)
-	result, err := orchestrator.Execute(r.Context(), &RelayRequest{
+	executor := NewRelayExecutorWithForwarder(
+		s.relayUsecase,
+		s.providerFactory,
+		httpRelayLifecycleHooks{s: s},
+		newRelayAdaptorForwarder(s.providerFactory, s.accountResolver, s.apiKeyHTTPClient, s.oauthHTTPClient),
+		nil,
+	)
+	result, err := executor.Execute(r.Context(), relaybiz.ExecutorRequest{
 		Token:     token,
 		Model:     req.Model,
-		Endpoint:  EndpointChatCompletions,
-		Body:      bytes.NewReader(body),
-		IsStream:  req.Stream,
-		Headers:   r.Header.Clone(),
+		Endpoint:  string(EndpointChatCompletions),
+		Body:      body,
+		Headers:   relayExecutorHeaders(r.Header),
 		RequestID: generateRequestID(),
 	})
 	if err != nil {
 		status := http.StatusInternalServerError
-		if result != nil && result.StatusCode != 0 {
+		if result.StatusCode != 0 {
 			status = result.StatusCode
 		}
-		s.writeError(w, status, err.Error())
+		s.writeError(w, status, orchestratorErrorMessage(status, err))
 		return
 	}
-	writeOrchestratedRelayResult(w, result)
+	writeOrchestratedRelayResult(w, relayResultFromExecutionResponse(result))
+}
+
+// relayExecutorHeaders copies only headers that are meaningful to an
+// upstream Chat Completions request. Authentication and transport-owned
+// headers stay at the HTTP boundary.
+func relayExecutorHeaders(headers http.Header) map[string][]string {
+	result := make(map[string][]string)
+	for key, values := range headers {
+		if isRelayExecutorHeader(key) {
+			result[key] = append([]string(nil), values...)
+		}
+	}
+	return result
+}
+
+func isRelayExecutorHeader(key string) bool {
+	switch strings.ToLower(key) {
+	case "accept", "content-type", "openai-beta", "openai-organization", "openai-project", "user-agent", "x-request-id":
+		return true
+	default:
+		return false
+	}
+}
+
+func relayResultFromExecutionResponse(result relaybiz.ExecutionResponse) *RelayResult {
+	return &RelayResult{
+		Response:              io.NopCloser(bytes.NewReader(result.Body)),
+		Headers:               httpHeaderToMap(result.Headers),
+		StatusCode:            result.StatusCode,
+		Usage:                 result.Usage,
+		ChannelID:             result.ChannelID,
+		SubscriptionAccountID: result.SubscriptionAccountID,
+	}
+}
+
+func orchestratorErrorMessage(statusCode int, err error) string {
+	var upstreamErr *relayprovider.UpstreamHTTPError
+	if errors.As(err, &upstreamErr) {
+		return sanitizeUpstreamError(statusCode, err)
+	}
+	return gatewayErrorMessage(statusCode)
 }
 
 func bearerTokenFromRequest(r *http.Request) (string, error) {

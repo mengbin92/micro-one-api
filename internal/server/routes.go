@@ -13,7 +13,7 @@ import (
 func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	chatHandler := s.handleChatCompletions
 	if s.relayOrchestratorEnabled {
-		chatHandler = s.handleChatCompletionsWithOrchestrator
+		chatHandler = s.relayOrchestratorChatHandler
 	}
 	s.handleFunc(srv, "/v1/chat/completions", chatHandler)
 	s.handleFunc(srv, "/v1/completions", s.handleRawRelay("/completions", true))

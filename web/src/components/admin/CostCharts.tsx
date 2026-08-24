@@ -19,6 +19,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import type { PieLabelRenderProps } from 'recharts';
 import { cn } from '@/lib/utils';
 
 interface CostTrendData {
@@ -46,14 +47,6 @@ interface CostBreakdownData {
   color: string;
 }
 
-interface PieLabelProps {
-  name?: string;
-  value?: number;
-  payload?: {
-    value?: number;
-  };
-}
-
 const COLORS = {
   revenue: '#10b981',
   cost: '#ef4444',
@@ -61,6 +54,115 @@ const COLORS = {
   grid: '#e5e7eb',
   text: '#64748b',
 };
+
+const PIE_START_ANGLE = 90;
+const PIE_END_ANGLE = -270;
+const PIE_PADDING_ANGLE = 2;
+const PIE_LABEL_OFFSET = 20;
+const PIE_LABEL_GAP = 22;
+
+interface PiePoint {
+  x: number;
+  y: number;
+}
+
+interface PieLabelLineProps {
+  cx?: number;
+  cy?: number;
+  outerRadius?: number;
+  index?: number;
+  points?: PiePoint[];
+  stroke?: string;
+}
+
+interface PieLabelLayout {
+  x: number;
+  y: number;
+  textAnchor: 'start' | 'end';
+  side: 'left' | 'right';
+}
+
+function polarToCartesian(cx: number, cy: number, radius: number, angle: number): PiePoint {
+  const radians = -angle * (Math.PI / 180);
+  return {
+    x: cx + Math.cos(radians) * radius,
+    y: cy + Math.sin(radians) * radius,
+  };
+}
+
+// eslint-disable-next-line react-refresh/only-export-components -- pure layout helper is unit-tested separately
+export function getPieLabelLayouts(
+  data: CostBreakdownData[],
+  props: Pick<PieLabelRenderProps, 'cx' | 'cy' | 'outerRadius'>,
+): PieLabelLayout[] {
+  const total = data.reduce((sum, item) => sum + Math.max(item.value, 0), 0);
+  if (total <= 0 || typeof props.cx !== 'number' || typeof props.cy !== 'number' || typeof props.outerRadius !== 'number') {
+    return data.map(() => ({ x: 0, y: 0, textAnchor: 'start', side: 'right' }));
+  }
+
+  const nonZeroCount = data.filter((item) => item.value > 0).length;
+  const totalPaddingAngle = nonZeroCount > 0 ? nonZeroCount * PIE_PADDING_ANGLE : 0;
+  const realTotalAngle = 360 - totalPaddingAngle;
+  const direction = PIE_END_ANGLE >= PIE_START_ANGLE ? 1 : -1;
+  let previousEndAngle = PIE_START_ANGLE;
+
+  const points = data.map((item, index) => {
+    const value = Math.max(item.value, 0);
+    const startAngle = index === 0
+      ? PIE_START_ANGLE
+      : previousEndAngle + direction * PIE_PADDING_ANGLE;
+    const endAngle = startAngle + direction * (value > 0 ? (value / total) * realTotalAngle : 0);
+    previousEndAngle = endAngle;
+
+    const midAngle = (startAngle + endAngle) / 2;
+    const point = polarToCartesian(props.cx, props.cy, props.outerRadius + PIE_LABEL_OFFSET, midAngle);
+    return {
+      ...point,
+      baseY: point.y,
+      side: point.x >= props.cx ? 'right' as const : 'left' as const,
+    };
+  });
+
+  const layouts = points.map((point) => ({
+    x: props.cx + (point.side === 'right' ? 1 : -1) * (props.outerRadius + 52),
+    y: point.baseY,
+    textAnchor: point.side === 'right' ? 'start' as const : 'end' as const,
+    side: point.side,
+  }));
+
+  (['left', 'right'] as const).forEach((side) => {
+    const indexes = layouts
+      .map((layout, index) => ({ index, y: layout.y }))
+      .filter((item) => layouts[item.index].side === side)
+      .sort((a, b) => a.y - b.y);
+
+    if (indexes.length === 0) return;
+
+    const minY = props.cy - props.outerRadius - PIE_LABEL_OFFSET;
+    const maxY = props.cy + props.outerRadius + PIE_LABEL_OFFSET;
+    let nextY = minY;
+    indexes.forEach(({ index }) => {
+      layouts[index].y = Math.max(layouts[index].y, nextY);
+      nextY = layouts[index].y + PIE_LABEL_GAP;
+    });
+
+    const overflow = layouts[indexes[indexes.length - 1].index].y - maxY;
+    if (overflow > 0) {
+      indexes.forEach(({ index }) => {
+        layouts[index].y -= overflow;
+      });
+    }
+
+    const underflow = minY - layouts[indexes[0].index].y;
+    if (underflow > 0) {
+      indexes.forEach(({ index }) => {
+        layouts[index].y += underflow;
+      });
+    }
+  });
+
+  return layouts;
+}
 
 /**
  * Cost trend over time showing revenue, cost, and profit
@@ -298,9 +400,49 @@ export function CostBreakdownChart({ data }: { data: CostBreakdownData[] }) {
   }
 
   const total = data.reduce((sum, d) => sum + d.value, 0);
+  const renderLabel = (props: PieLabelRenderProps) => {
+    const layout = getPieLabelLayouts(data, props)[props.index];
+    const value = props.payload?.value ?? props.value ?? 0;
+
+    return (
+      <text
+        x={layout.x}
+        y={layout.y}
+        textAnchor={layout.textAnchor}
+        dominantBaseline="middle"
+        fill={props.fill}
+        fontSize={11}
+      >
+        {props.name || ''} ${value.toFixed(1)}
+      </text>
+    );
+  };
+  const renderLabelLine = (props: PieLabelLineProps) => {
+    if (!props.points?.[0] || typeof props.cx !== 'number' || typeof props.cy !== 'number' || typeof props.outerRadius !== 'number' || typeof props.index !== 'number') {
+      return <path d="" />;
+    }
+
+    const layout = getPieLabelLayouts(data, {
+      cx: props.cx,
+      cy: props.cy,
+      outerRadius: props.outerRadius,
+    })[props.index];
+    const elbowX = props.cx + (layout.side === 'right' ? 1 : -1) * (props.outerRadius + 30);
+    const start = props.points[0];
+
+    return (
+      <path
+        d={`M ${start.x} ${start.y} L ${elbowX} ${layout.y} L ${layout.x} ${layout.y}`}
+        fill="none"
+        stroke={props.stroke || '#94a3b8'}
+        strokeWidth={1}
+        strokeOpacity={0.8}
+      />
+    );
+  };
 
   return (
-    <div className="flex items-center justify-center">
+    <div className="relative flex items-center justify-center">
       <ResponsiveContainer width="100%" height={220}>
         <PieChart>
           <Pie
@@ -308,15 +450,11 @@ export function CostBreakdownChart({ data }: { data: CostBreakdownData[] }) {
             dataKey="value"
             innerRadius="60%"
             outerRadius="80%"
-            paddingAngle={2}
-            label={(props: PieLabelProps) => {
-              const name = props.name || '';
-              const value = props.payload?.value ?? props.value ?? 0;
-              // Show actual dollar amount instead of percentage to match the data being passed
-              return `${name} $${value.toFixed(1)}`;
-            }}
-            labelLine={false}
-            fontSize={11}
+            startAngle={PIE_START_ANGLE}
+            endAngle={PIE_END_ANGLE}
+            paddingAngle={PIE_PADDING_ANGLE}
+            label={renderLabel}
+            labelLine={renderLabelLine}
           >
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.color} />
