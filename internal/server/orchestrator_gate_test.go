@@ -51,3 +51,30 @@ func TestSetRelayOrchestratorTokenAllowlistNormalizesAndRejectsInvalidDigests(t 
 		t.Fatal("request without an allowlisted token entered the orchestrator route")
 	}
 }
+
+func TestRelayOrchestratorGateDefaultsOffAndAllowlistClearRollsBack(t *testing.T) {
+	s := NewHTTPServer(nil, nil, nil, nil, nil)
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	request.Header.Set("Authorization", "Bearer staging-token")
+
+	if s.relayOrchestratorEnabled {
+		t.Fatal("relay orchestrator is enabled by default")
+	}
+	if s.shouldUseRelayOrchestrator(request) {
+		t.Fatal("default-off gate selected the orchestrator")
+	}
+
+	s.SetRelayOrchestratorEnabled(true)
+	s.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("staging-token")})
+	if !s.shouldUseRelayOrchestrator(request) {
+		t.Fatal("enabled allowlisted gate did not select the orchestrator")
+	}
+
+	// Clearing the allowlist is the one-click rollback for a live staging
+	// cohort: even with the feature flag still enabled, no request can enter
+	// the staged path.
+	s.SetRelayOrchestratorTokenAllowlist(nil)
+	if s.shouldUseRelayOrchestrator(request) {
+		t.Fatal("cleared allowlist still selected the orchestrator")
+	}
+}

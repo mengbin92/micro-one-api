@@ -93,6 +93,17 @@ if [ -f "$ENV_FILE" ]; then
     load_env_var "MYSQL_ROOT_PASSWORD"
     load_env_var "ADMIN_TOKEN"
     load_env_var "SERVICE_TOKEN"
+    load_env_var "CHANNEL_ENCRYPTION_KEY"
+fi
+
+# The compose test override requires this key for channel credential
+# encryption, but it is intentionally not committed to the repository's
+# deployment .env. Keep the E2E flow self-contained by using a deterministic
+# test-only key when the caller did not provide one. This value must never be
+# copied into production configuration.
+if [ -z "${CHANNEL_ENCRYPTION_KEY:-}" ]; then
+    export CHANNEL_ENCRYPTION_KEY="0123456789abcdef0123456789abcdef"
+    warn "CHANNEL_ENCRYPTION_KEY not set; using a test-only fallback key"
 fi
 
 # ── Step 0: Start environment ──
