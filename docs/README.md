@@ -91,6 +91,7 @@ docs/
 | [v0.22-relay-execution-boundary-adr.md](./design/v0.22-relay-execution-boundary-adr.md) | v0.22 Relay executor / adaptor 执行边界 ADR |
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（当前） |
 | [architecture-review-remediation-report-2026-08-25.md](./design/architecture-review-remediation-report-2026-08-25.md) | 系统架构审查复核、修复方案与执行状态（2026-08-25） |
+| [systematic-code-review-remediation-2026-08-25.md](./design/systematic-code-review-remediation-2026-08-25.md) | 系统性代码审查方案复核、优化与修复状态（2026-08-25） |
 | [ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) | 整体架构重构方案 |
 | [BASELINE.md](./design/BASELINE.md) | 性能基线 |
 | [hybrid-relay-adaptor-apicompat-plan.md](./design/hybrid-relay-adaptor-apicompat-plan.md) | 混合中转网关技术方案 |

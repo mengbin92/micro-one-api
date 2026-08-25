@@ -86,6 +86,19 @@ func TestRelayAdaptorForwarderCapsUpstreamErrorBody(t *testing.T) {
 	}
 }
 
+func TestClassifyExecutorCapabilityErrorScopesMethodNotAllowedToResponses(t *testing.T) {
+	upstreamErr := &relayprovider.UpstreamHTTPError{StatusCode: http.StatusMethodNotAllowed, Body: []byte("method not allowed")}
+
+	responsesErr := classifyExecutorCapabilityError(string(EndpointResponses), upstreamErr)
+	if !relaybiz.IsProtocolCapabilityMismatch(responsesErr) {
+		t.Fatalf("responses error = %v, want protocol capability mismatch", responsesErr)
+	}
+	chatErr := classifyExecutorCapabilityError(string(EndpointChatCompletions), upstreamErr)
+	if relaybiz.IsProtocolCapabilityMismatch(chatErr) {
+		t.Fatalf("chat error = %v, generic 405 must not be a capability mismatch", chatErr)
+	}
+}
+
 func TestRelayAdaptorForwarderResolvesSubscriptionCredential(t *testing.T) {
 	resolver := relaycredential.NewNoopAccountResolver()
 	resolver.SeedByChannel(17, &relaycredential.SubscriptionAccountMetadata{

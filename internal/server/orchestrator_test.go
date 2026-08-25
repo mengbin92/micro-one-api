@@ -198,7 +198,7 @@ func TestStatusCodeFromError(t *testing.T) {
 		want int
 	}{
 		{name: "unauthorized", err: apperrors.New(apperrors.ReasonUnauthorized), want: http.StatusUnauthorized},
-		{name: "forbidden", err: fmt.Errorf("model %q not allowed for this token", "gpt-x"), want: http.StatusForbidden},
+		{name: "forbidden", err: apperrors.Newf(apperrors.ReasonModelForbidden, "model %q not allowed for this token", "gpt-x"), want: http.StatusForbidden},
 		{name: "unavailable", err: fmt.Errorf("no available channel"), want: http.StatusServiceUnavailable},
 		{name: "subscription unavailable", err: fmt.Errorf("subscription account not found"), want: http.StatusServiceUnavailable},
 		{name: "grpc subscription unavailable", err: status.Error(codes.Unknown, "subscription account not found"), want: http.StatusServiceUnavailable},

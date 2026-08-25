@@ -52,7 +52,8 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 		if f.fallback == nil {
 			return nil, fmt.Errorf("no adaptor registered for channel type %d", plan.Channel.Type)
 		}
-		return (relayNonStreamForwarder{forwarder: f.fallback}).Forward(ctx, plan, req)
+		response, err := (relayNonStreamForwarder{forwarder: f.fallback}).Forward(ctx, plan, req)
+		return response, classifyExecutorCapabilityError(req.Endpoint, err)
 	}
 
 	rc, client, err := f.relayContext(ctx, plan, req)
@@ -91,7 +92,7 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 		if readErr != nil {
 			return nil, fmt.Errorf("read upstream error response: %w", readErr)
 		}
-		return nil, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body}
+		return nil, classifyExecutorCapabilityError(req.Endpoint, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body})
 	}
 
 	_, body, err := ad.ConvertResponse(rc, upstreamFormat, resp)
@@ -120,7 +121,8 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 		if f.streamFallback == nil {
 			return nil, fmt.Errorf("no adaptor registered for channel type %d", plan.Channel.Type)
 		}
-		return (relayProviderStreamForwarder{forwarder: f.streamFallback}).ForwardStream(ctx, plan, req)
+		response, err := (relayProviderStreamForwarder{forwarder: f.streamFallback}).ForwardStream(ctx, plan, req)
+		return response, classifyExecutorCapabilityError(req.Endpoint, err)
 	}
 	rc, client, err := f.relayContext(ctx, plan, req)
 	if err != nil {
@@ -158,7 +160,7 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 		if readErr != nil {
 			return nil, fmt.Errorf("read upstream stream error response: %w", readErr)
 		}
-		return nil, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body}
+		return nil, classifyExecutorCapabilityError(req.Endpoint, &relayprovider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body})
 	}
 	_, reader, err := ad.ConvertStreamResponse(rc, upstreamFormat, resp)
 	if err != nil {
@@ -170,6 +172,18 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 		Headers:    httpHeaderToMap(resp.Header),
 		Stream:     newConvertedRelayStream(reader, resp.Body),
 	}, nil
+}
+
+func classifyExecutorCapabilityError(endpoint string, err error) error {
+	if err == nil || relaybiz.UpstreamStatus(err) != http.StatusMethodNotAllowed {
+		return err
+	}
+	switch endpoint {
+	case string(EndpointResponses), "/responses", "/v1/responses":
+		return relaybiz.MarkProtocolCapabilityError(err)
+	default:
+		return err
+	}
 }
 
 func (f relayAdaptorForwarder) relayContext(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest) (*relayadaptor.RelayContext, *http.Client, error) {

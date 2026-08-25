@@ -194,7 +194,8 @@ data:
   redis-addr: "redis:6379"
   rate-limit-rps: "100"
   rate-limit-burst: "200"
-  cors-origins: "https://yourdomain.com,https://app.yourdomain.com"
+  # Fail closed until an environment overlay supplies the real browser origins.
+  cors-origins: ""
   log-level: "info"
 ---
 apiVersion: networking.k8s.io/v1

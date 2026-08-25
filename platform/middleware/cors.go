@@ -22,12 +22,14 @@ type CORSConfig struct {
 
 // DefaultCORSConfig returns default CORS configuration
 func DefaultCORSConfig() *CORSConfig {
-	allowedOrigins := []string{"https://yourdomain.com", "https://app.yourdomain.com"}
-	if origins := os.Getenv("CORS_ALLOWED_ORIGINS"); origins != "" {
+	var allowedOrigins []string
+	if origins := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")); origins != "" {
 		allowedOrigins = strings.Split(origins, ",")
 		for i, origin := range allowedOrigins {
 			allowedOrigins[i] = strings.TrimSpace(origin)
 		}
+	} else {
+		applogger.Log.Warn("CORS_ALLOWED_ORIGINS is empty; cross-origin browser requests will be denied")
 	}
 
 	return &CORSConfig{

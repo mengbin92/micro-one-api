@@ -16,10 +16,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 
+	billingdomain "micro-one-api/domain/billing"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
-
-	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
 
 type PricingConfig struct {
@@ -2107,7 +2107,7 @@ func calculateModelPriceCost(price ModelPrice, promptTokens, completionTokens, c
 // regular channel. CostSourceSubscription and CostSourceBalance are declared
 // in ledger.go.
 const (
-	CostSourceChannel = "channel"
+	CostSourceChannel = billingdomain.SourceKindChannel
 )
 
 // upstreamPriceKey builds the key used to look up UpstreamModelPrice.

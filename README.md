@@ -444,7 +444,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `CHANNEL_HEALTH_ALERT_RECIPIENTS` | 渠道不可用告警目标，JSON 数组；webhook/event 可填 URL 或留空走 `NOTIFY_WEBHOOK_URL`，email 填邮箱，IM 通道留空走对应配置 |
 | `SUBSCRIPTION_USER_RPM_LIMIT` | relay 订阅用户 RPM 限制；默认 `0` 表示关闭，避免无配置时误限流 |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` / `RATE_LIMIT_BURST` | 网关限流参数 |
-| `CORS_ALLOWED_ORIGINS` | CORS 允许来源 |
+| `CORS_ALLOWED_ORIGINS` | CORS 允许来源，逗号分隔；空值默认拒绝跨域请求，生产必须配置真实 HTTPS 来源 |
 | `ADMIN_WEB_ROOT` | admin-api 使用的外部前端构建目录 |
 | `NOTIFY_GRPC_ENDPOINT` | channel 健康告警和 billing 对账告警投递目标（notify-worker gRPC）；留空则不投递通知 |
 | `RECON_ALERT_ENABLED` | 是否启用对账差异告警（`true`/`false`） |

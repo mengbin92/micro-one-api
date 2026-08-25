@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -133,10 +132,6 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 
 	if isChannelUnavailableMessage(err.Error()) {
 		s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: no available channel")
-		return
-	}
-	if strings.Contains(err.Error(), "not allowed") {
-		s.writeAnthropicError(w, http.StatusForbidden, "permission_error: model not allowed")
 		return
 	}
 	s.writeAnthropicError(w, http.StatusInternalServerError, "api_error: internal server error")

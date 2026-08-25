@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	billingdomain "micro-one-api/domain/billing"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	apperrors "micro-one-api/pkg/errors"
 	"micro-one-api/pkg/jsonx"
 	"micro-one-api/pkg/wildcard"
 	"micro-one-api/platform/metrics"
@@ -16,17 +18,13 @@ import (
 // subscription account is only reusable via session stickiness when enabled.
 const subscriptionAccountStatusEnabled int32 = 1
 
-// Upstream cost-source kinds (v0.11.0 Phase 2 §2.2). These mirror the
-// billing-side CostSource* constants and are the prefix of the stable
+// Upstream cost-source kinds (v0.11.0 Phase 2 §2.2). These are aliases of the
+// shared billing contract and are the prefix of the stable
 // upstream cost key (channel:<id>:<upstream_model_id> /
-// subscription:<id>:<upstream_model_id>). They are declared here, in the
-// relay biz package, so the server layer can populate them without importing
-// the billing service (layering: server → relay biz, never server → billing
-// biz). The string values must stay in lockstep with
-// app/billing/internal/biz.CostSourceChannel / CostSourceSubscription.
+// subscription:<id>:<upstream_model_id>).
 const (
-	UpstreamSourceChannel      = "channel"
-	UpstreamSourceSubscription = "subscription"
+	UpstreamSourceChannel      = billingdomain.SourceKindChannel
+	UpstreamSourceSubscription = billingdomain.SourceKindSubscription
 )
 
 type IdentityClient interface {
@@ -506,7 +504,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			}
 		}
 		if !allowed {
-			return nil, fmt.Errorf("model %q not allowed for this token", req.Model)
+			return nil, apperrors.Newf(apperrors.ReasonModelForbidden, "model %q not allowed for this token", req.Model)
 		}
 	}
 

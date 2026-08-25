@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"micro-one-api/pkg/jsonx"
@@ -554,7 +553,10 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			if err := o.quotaPort.Commit(attemptCtx, attemptPlan, attemptReq, reservation, *attemptResult.Usage, forwardResp.StatusCode < http.StatusBadRequest, latency); err != nil {
 				_ = attemptResult.Response.Close()
 				lastFailureStatus = http.StatusPaymentRequired
-				return err
+				// The upstream response is already complete. A billing transport
+				// error may be retryable in isolation, but retrying the relay would
+				// duplicate upstream cost and can produce a different response.
+				return relaybiz.MarkPostForwardError(err)
 			}
 			if o.eventLogger != nil {
 				// Usage logging only needs request metadata. Do not pass the
@@ -619,7 +621,7 @@ func statusCodeFromError(err error) int {
 	if apperrors.IsUnauthorized(err) {
 		return http.StatusUnauthorized
 	}
-	if apperrors.IsForbidden(err) || strings.Contains(err.Error(), "not allowed") {
+	if apperrors.IsForbidden(err) {
 		return http.StatusForbidden
 	}
 	if apperrors.IsServiceUnavailable(err) || isChannelUnavailableMessage(err.Error()) {

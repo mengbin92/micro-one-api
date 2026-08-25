@@ -124,12 +124,6 @@ func (s *HTTPServer) handleRelayPlanError(w http.ResponseWriter, err error) {
 		return
 	}
 
-	// Model not allowed (string match from biz layer)
-	if strings.Contains(err.Error(), "not allowed") {
-		s.writeError(w, http.StatusForbidden, "model not allowed")
-		return
-	}
-
 	s.writeError(w, http.StatusInternalServerError, "internal server error")
 }
 
