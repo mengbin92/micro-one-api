@@ -38,3 +38,19 @@ func TestLoadConfigRelayOrchestratorAllowlistEmptyAndConfigured(t *testing.T) {
 		}
 	})
 }
+
+func TestLoadConfigRelayAddressesFromEnv(t *testing.T) {
+	configPath := filepath.Join("..", "..", "configs", "config.yaml")
+	t.Setenv("RELAY_HTTP_ADDR", "127.0.0.1:18080")
+	t.Setenv("RELAY_GRPC_ADDR", "127.0.0.1:19003")
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		t.Fatalf("loadConfig() error = %v", err)
+	}
+	if got := cfg.Bootstrap.Server.Http.GetAddr(); got != "127.0.0.1:18080" {
+		t.Fatalf("HTTP addr = %q, want 127.0.0.1:18080", got)
+	}
+	if got := cfg.Bootstrap.Server.Grpc.GetAddr(); got != "127.0.0.1:19003" {
+		t.Fatalf("gRPC addr = %q, want 127.0.0.1:19003", got)
+	}
+}

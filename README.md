@@ -435,6 +435,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `CHANNEL_GRPC_ENDPOINT` | channel-service gRPC 地址 |
 | `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 |
 | `RELAY_HTTP_ADDR` | relay-gateway HTTP 监听地址 |
+| `RELAY_GRPC_ADDR` | relay-gateway gRPC 监听地址；默认 `0.0.0.0:9003` |
 | `RELAY_PROVIDER_TIMEOUT` | 上游 provider 请求超时 |
 | `CHANNEL_HEALTH_FAILURE_THRESHOLD` / `CHANNEL_HEALTH_COOLDOWN` | 渠道自动熔断阈值和冷却时间；默认连续 3 次上游失败后跳过 5 分钟 |
 | `CHANNEL_HEALTH_CHECK_ENABLED` / `CHANNEL_HEALTH_CHECK_INTERVAL` / `CHANNEL_HEALTH_CHECK_TIMEOUT` | monitor-worker 定时渠道 `/models` 健康探测开关、间隔和单次超时 |
