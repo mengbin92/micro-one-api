@@ -48,11 +48,13 @@ interface CostBreakdownData {
 }
 
 const COLORS = {
-  revenue: '#10b981',
-  cost: '#ef4444',
-  profit: '#3b82f6',
-  grid: '#e5e7eb',
-  text: '#64748b',
+  grid: 'var(--chart-grid)',
+  text: 'var(--chart-label)',
+};
+const SERIES_COLORS = {
+  revenue: 'var(--chart-3)',
+  cost: 'var(--destructive)',
+  profit: 'var(--chart-1)',
 };
 
 const PIE_START_ANGLE = 90;
@@ -181,22 +183,22 @@ export function CostTrendChart({ data }: { data: CostTrendData[] }) {
       <AreaChart data={data} margin={{ left: 0, right: 8, top: 20, bottom: 0 }}>
         <defs>
           <linearGradient id="revenueGradient" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={COLORS.revenue} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={COLORS.revenue} stopOpacity={0.05} />
+            <stop offset="0%" stopColor={SERIES_COLORS.revenue} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={SERIES_COLORS.revenue} stopOpacity={0.05} />
           </linearGradient>
           <linearGradient id="costGradient" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={COLORS.cost} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={COLORS.cost} stopOpacity={0.05} />
+            <stop offset="0%" stopColor={SERIES_COLORS.cost} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={SERIES_COLORS.cost} stopOpacity={0.05} />
           </linearGradient>
           <linearGradient id="profitGradient" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={COLORS.profit} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={COLORS.profit} stopOpacity={0.05} />
+            <stop offset="0%" stopColor={SERIES_COLORS.profit} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={SERIES_COLORS.profit} stopOpacity={0.05} />
           </linearGradient>
         </defs>
         <CartesianGrid stroke={COLORS.grid} strokeDasharray="4 4" vertical={false} />
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
           interval="preserveStartEnd"
@@ -206,7 +208,7 @@ export function CostTrendChart({ data }: { data: CostTrendData[] }) {
           }}
         />
         <YAxis
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
           width={48}
@@ -221,13 +223,13 @@ export function CostTrendChart({ data }: { data: CostTrendData[] }) {
               nameStr === 'revenue' ? '收入' : nameStr === 'cost' ? '成本' : '利润'
             ];
           }}
-          contentStyle={{ fontSize: '12px' }}
+          contentStyle={{ fontSize: '12px', background: 'var(--popover)', color: 'var(--popover-foreground)', border: '1px solid var(--border)', borderRadius: '8px' }}
         />
         <Area
           type="monotone"
           dataKey="revenue"
           name="revenue"
-          stroke={COLORS.revenue}
+          stroke={SERIES_COLORS.revenue}
           strokeWidth={2}
           fill="url(#revenueGradient)"
         />
@@ -235,7 +237,7 @@ export function CostTrendChart({ data }: { data: CostTrendData[] }) {
           type="monotone"
           dataKey="cost"
           name="cost"
-          stroke={COLORS.cost}
+          stroke={SERIES_COLORS.cost}
           strokeWidth={2}
           fill="url(#costGradient)"
         />
@@ -243,7 +245,7 @@ export function CostTrendChart({ data }: { data: CostTrendData[] }) {
           type="monotone"
           dataKey="profit"
           name="profit"
-          stroke={COLORS.profit}
+          stroke={SERIES_COLORS.profit}
           strokeWidth={2}
           fill="url(#profitGradient)"
         />
@@ -283,7 +285,7 @@ export function ChannelCostComparison({ data }: { data: ChannelCostData[] }) {
             <div className="relative h-8 w-full overflow-hidden rounded-lg bg-muted">
               {/* Cost bar */}
               <div
-                className="absolute left-0 top-0 h-full rounded-l-lg bg-red-500 transition-all"
+                className="absolute left-0 top-0 h-full rounded-l-lg bg-red-500 transition-[width] duration-200 ease-standard motion-reduce:transition-none"
                 style={{ width: `${costPercentage}%` }}
               >
                 <span className="ml-2 flex h-full items-center text-xs font-medium text-white">
@@ -292,7 +294,7 @@ export function ChannelCostComparison({ data }: { data: ChannelCostData[] }) {
               </div>
               {/* Revenue overlay */}
               <div
-                className="absolute left-0 top-0 h-full bg-green-500/30 transition-all"
+                className="absolute left-0 top-0 h-full bg-green-500/30 transition-[width] duration-200 ease-standard motion-reduce:transition-none"
                 style={{ width: `${(item.revenue / maxValue) * 100}%` }}
               />
               {/* Profit indicator */}
@@ -339,7 +341,7 @@ export function ProfitMarginChart({ data }: { data: ProfitMarginData[] }) {
         <CartesianGrid stroke={COLORS.grid} strokeDasharray="4 4" vertical={false} />
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
           interval="preserveStartEnd"
@@ -349,7 +351,7 @@ export function ProfitMarginChart({ data }: { data: ProfitMarginData[] }) {
           }}
         />
         <YAxis
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
           width={48}
@@ -361,7 +363,7 @@ export function ProfitMarginChart({ data }: { data: ProfitMarginData[] }) {
             const numValue = typeof value === 'number' ? value : 0;
             return [`${numValue.toFixed(1)}%`, '利润率'];
           }}
-          contentStyle={{ fontSize: '12px' }}
+          contentStyle={{ fontSize: '12px', background: 'var(--popover)', color: 'var(--popover-foreground)', border: '1px solid var(--border)', borderRadius: '8px' }}
         />
         {/* Average line */}
         <Line
@@ -377,7 +379,7 @@ export function ProfitMarginChart({ data }: { data: ProfitMarginData[] }) {
         <Line
           type="monotone"
           dataKey="margin"
-          stroke={COLORS.profit}
+          stroke={SERIES_COLORS.profit}
           strokeWidth={2}
           dot={false}
           activeDot={{ r: 4 }}
@@ -411,7 +413,7 @@ export function CostBreakdownChart({ data }: { data: CostBreakdownData[] }) {
         textAnchor={layout.textAnchor}
         dominantBaseline="middle"
         fill={props.fill}
-        fontSize={11}
+        fontSize={12}
       >
         {props.name || ''} ${value.toFixed(1)}
       </text>
@@ -434,7 +436,7 @@ export function CostBreakdownChart({ data }: { data: CostBreakdownData[] }) {
       <path
         d={`M ${start.x} ${start.y} L ${elbowX} ${layout.y} L ${layout.x} ${layout.y}`}
         fill="none"
-        stroke={props.stroke || '#94a3b8'}
+        stroke={props.stroke || COLORS.text}
         strokeWidth={1}
         strokeOpacity={0.8}
       />
@@ -465,12 +467,12 @@ export function CostBreakdownChart({ data }: { data: CostBreakdownData[] }) {
               const numValue = typeof value === 'number' ? value : 0;
               return `$${numValue.toFixed(2)}`;
             }}
-            contentStyle={{ fontSize: '12px' }}
+            contentStyle={{ fontSize: '12px', background: 'var(--popover)', color: 'var(--popover-foreground)', border: '1px solid var(--border)', borderRadius: '8px' }}
           />
         </PieChart>
       </ResponsiveContainer>
       <div className="absolute text-center">
-        <div className="text-2xl font-black text-foreground">${total.toFixed(2)}</div>
+        <div className="text-2xl font-bold text-foreground">${total.toFixed(2)}</div>
         <div className="text-xs font-semibold text-muted-foreground">总计成本</div>
       </div>
     </div>
@@ -497,12 +499,12 @@ export function BudgetVsActualChart({ data }: {
         <CartesianGrid stroke={COLORS.grid} strokeDasharray="4 4" vertical={false} />
         <XAxis
           dataKey="period"
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
         />
         <YAxis
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
           width={48}
@@ -517,10 +519,10 @@ export function BudgetVsActualChart({ data }: {
               nameStr === 'budget' ? '预算' : '实际'
             ];
           }}
-          contentStyle={{ fontSize: '12px' }}
+          contentStyle={{ fontSize: '12px', background: 'var(--popover)', color: 'var(--popover-foreground)', border: '1px solid var(--border)', borderRadius: '8px' }}
         />
         <Bar dataKey="budget" name="budget" fill={COLORS.text} radius={[4, 4, 0, 0]} opacity={0.5} />
-        <Bar dataKey="actual" name="actual" fill={COLORS.profit} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="actual" name="actual" fill={SERIES_COLORS.profit} radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

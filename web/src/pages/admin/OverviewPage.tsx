@@ -226,7 +226,7 @@ function SubscriptionQuotaMini({ account, nowUnix }: { account: AdminSubscriptio
         const barColor = ratio >= 1 ? 'bg-red-500' : ratio >= 0.8 ? 'bg-amber-500' : 'bg-emerald-500';
         return (
           <div key={row.label} className="space-y-0.5">
-            <div className="flex items-center justify-between gap-2 text-[11px]">
+            <div className="flex items-center justify-between gap-2 text-xs">
               <span className="font-medium">{row.label}</span>
               <span className="tabular-nums text-muted-foreground">
                 ${row.used.toFixed(2)}
@@ -234,8 +234,8 @@ function SubscriptionQuotaMini({ account, nowUnix }: { account: AdminSubscriptio
               </span>
             </div>
             {row.limit > 0 && (
-              <div className="h-1 overflow-hidden rounded-full bg-muted">
-                <div className={barColor} style={{ width: `${ratio * 100}%`, height: '100%' }} />
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className={`${barColor} h-full transition-[width] duration-200 ease-standard motion-reduce:transition-none`} style={{ width: `${ratio * 100}%` }} />
               </div>
             )}
           </div>
@@ -243,19 +243,19 @@ function SubscriptionQuotaMini({ account, nowUnix }: { account: AdminSubscriptio
       })}
       {upstreamPercent != null && (
         <div className="space-y-0.5">
-          <div className="flex items-center justify-between gap-2 text-[11px]">
+          <div className="flex items-center justify-between gap-2 text-xs">
             <span className="font-medium">上游</span>
             <span className="tabular-nums text-muted-foreground">{upstreamPercent.toFixed(1)}%</span>
           </div>
-          <div className="h-1 overflow-hidden rounded-full bg-muted">
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             <div
-              className={upstreamPercent >= 100 ? 'bg-red-500' : upstreamPercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}
-              style={{ width: `${Math.min(upstreamPercent, 100)}%`, height: '100%' }}
+              className={`${upstreamPercent >= 100 ? 'bg-red-500' : upstreamPercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500'} h-full transition-[width] duration-200 ease-standard motion-reduce:transition-none`}
+              style={{ width: `${Math.min(upstreamPercent, 100)}%` }}
             />
           </div>
         </div>
       )}
-      <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${badgeClass}`}>
+      <span className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${badgeClass}`}>
         {worstRatio >= 1 ? '已耗尽' : worstRatio >= 0.8 ? '即将耗尽' : '正常'}
       </span>
     </div>
@@ -344,15 +344,15 @@ function StatCard({
   icon: typeof Users;
 }) {
   return (
-    <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+    <Card className="min-h-40">
       <CardContent className="flex items-center gap-4 p-5">
-        <div className="grid size-11 place-items-center rounded-lg bg-slate-950 text-white dark:bg-white dark:text-slate-950">
+        <div className="grid size-11 place-items-center rounded-lg bg-primary text-primary-foreground">
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">{title}</div>
-          <div className="mt-1 truncate text-2xl font-black text-slate-950 dark:text-white">{value}</div>
-          <div className="mt-1 text-xs font-medium text-slate-400">{detail}</div>
+          <div className="text-sm font-medium text-muted-foreground">{title}</div>
+          <div className="mt-1 truncate text-2xl font-semibold text-foreground">{value}</div>
+          <div className="mt-1 text-xs font-medium text-muted-foreground">{detail}</div>
         </div>
       </CardContent>
     </Card>
@@ -380,15 +380,15 @@ function CostCard({
   }[tone];
 
   return (
-    <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+    <Card className="min-h-40">
       <CardContent className="flex items-center gap-4 p-5">
         <div className={`grid size-11 place-items-center rounded-lg ${styles}`}>
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">{title}</div>
-          <div className="mt-1 truncate text-2xl font-black text-slate-950 dark:text-white">{value}</div>
-          <div className="mt-1 text-xs font-medium text-slate-400">{detail}</div>
+          <div className="text-sm font-medium text-muted-foreground">{title}</div>
+          <div className="mt-1 truncate text-2xl font-semibold text-foreground">{value}</div>
+          <div className="mt-1 text-xs font-medium text-muted-foreground">{detail}</div>
         </div>
       </CardContent>
     </Card>
@@ -433,8 +433,8 @@ function TopUsageChartCard({
   }[kind];
 
   return (
-    <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-      <CardHeader className="border-b border-slate-100 dark:border-white/10">
+    <Card>
+      <CardHeader className="border-b border-border">
         <CardTitle role="heading" aria-level={3}>{title}</CardTitle>
       </CardHeader>
       <CardContent className="p-4">
@@ -452,21 +452,21 @@ function TopUsageChartCard({
                 <div key={`${kind}-${item.key || item.user_id || item.channel_id || item.model || item.token_name || index}`} className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-slate-100 text-xs font-black text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                         {index + 1}
                       </span>
-                      <span className="truncate text-sm font-bold text-slate-900 dark:text-white" title={label}>
+                      <span className="truncate text-sm font-semibold text-foreground" title={label}>
                         {label}
                       </span>
                     </div>
-                    <span className="shrink-0 text-sm font-black text-slate-950 dark:text-white">
+                    <span className="shrink-0 text-sm font-semibold text-foreground">
                       {formatQuota(quota, quotaPerUnit)}
                     </span>
                   </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10">
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
                     <div className={`h-full rounded-full ${barStyles}`} style={{ width }} />
                   </div>
-                  <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-400">
+                  <div className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
                     <span>{formatCompactInteger(item.count)} 次请求</span>
                     <span>{formatCompactInteger(totalTokens(item))} tokens</span>
                   </div>
@@ -523,8 +523,8 @@ export function AdminOverviewPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">管理总览</h2>
-          <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+          <h2 className="text-2xl font-bold tracking-normal text-foreground">管理总览</h2>
+          <p className="mt-1 text-sm font-medium text-muted-foreground">
             查看平台运行状态、上游渠道、用户规模、调用流水和价格配置。
           </p>
         </div>
@@ -609,33 +609,33 @@ export function AdminOverviewPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+        <Card>
           <CardContent className="flex items-center gap-4 p-5">
             <Gauge className="size-10 text-emerald-600" />
             <div>
-              <div className="text-sm font-semibold text-slate-500">渠道余额</div>
-              <div className="text-2xl font-black">${numberValue(totals.channel_balance).toFixed(2)}</div>
-              <div className="text-xs font-medium text-slate-400">{formatInteger(totals.stale_balance_channels)} 个余额待刷新</div>
+              <div className="text-sm font-medium text-muted-foreground">渠道余额</div>
+              <div className="text-2xl font-semibold">${numberValue(totals.channel_balance).toFixed(2)}</div>
+              <div className="text-xs font-medium text-muted-foreground">{formatInteger(totals.stale_balance_channels)} 个余额待刷新</div>
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+        <Card>
           <CardContent className="flex items-center gap-4 p-5">
             <Boxes className="size-10 text-blue-600" />
             <div>
-              <div className="text-sm font-semibold text-slate-500">可用模型</div>
-              <div className="text-2xl font-black">{configuredModels}</div>
-              <div className="text-xs font-medium text-slate-400">{Object.keys(modelPrice).length || Object.keys(modelRatio).length} 个模型价格项</div>
+              <div className="text-sm font-medium text-muted-foreground">可用模型</div>
+              <div className="text-2xl font-semibold">{configuredModels}</div>
+              <div className="text-xs font-medium text-muted-foreground">{Object.keys(modelPrice).length || Object.keys(modelRatio).length} 个模型价格项</div>
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+        <Card>
           <CardContent className="flex items-center gap-4 p-5">
             <LineChart className="size-10 text-violet-600" />
             <div>
-              <div className="text-sm font-semibold text-slate-500">金额消耗</div>
-              <div className="text-2xl font-black">{formatQuota(totals.quota_used, quotaPerUnit)}</div>
-              <div className="text-xs font-medium text-slate-400">{Object.keys(completionRatio).length} 个兼容倍率项</div>
+              <div className="text-sm font-medium text-muted-foreground">金额消耗</div>
+              <div className="text-2xl font-semibold">{formatQuota(totals.quota_used, quotaPerUnit)}</div>
+              <div className="text-xs font-medium text-muted-foreground">{Object.keys(completionRatio).length} 个兼容倍率项</div>
             </div>
           </CardContent>
         </Card>
@@ -690,8 +690,8 @@ export function AdminOverviewPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-4">
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10 xl:col-span-4">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+        <Card className="xl:col-span-4">
+          <CardHeader className="border-b border-border">
             <CardTitle role="heading" aria-level={3}>风险告警</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 p-4">
@@ -723,8 +723,8 @@ export function AdminOverviewPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+        <Card>
+          <CardHeader className="border-b border-border">
             <CardTitle role="heading" aria-level={3}>上游供应商</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -763,8 +763,8 @@ export function AdminOverviewPage() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+        <Card>
+          <CardHeader className="border-b border-border">
             <CardTitle role="heading" aria-level={3}>订阅账号</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -839,8 +839,8 @@ export function AdminOverviewPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+        <Card>
+          <CardHeader className="border-b border-border">
             <CardTitle role="heading" aria-level={3}>最近调用与订单动态</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -873,7 +873,7 @@ export function AdminOverviewPage() {
                         <TableCell className="font-mono text-xs">{log.endpoint || '-'}</TableCell>
                         <TableCell>
                           {log.channelName ? (
-                            <span className="inline-flex rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                            <span className="inline-flex rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
                               {log.channelName}
                               {log.channelTypeStr && log.channelTypeStr !== 'Unknown' && ` (${log.channelTypeStr})`}
                             </span>
@@ -894,8 +894,8 @@ export function AdminOverviewPage() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+        <Card>
+          <CardHeader className="border-b border-border">
             <CardTitle role="heading" aria-level={3}>最近用户</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -919,7 +919,7 @@ export function AdminOverviewPage() {
                     <TableRow key={user.id}>
                       <TableCell>
                         <div className="font-semibold">{user.display_name || user.displayName || user.username || `#${user.id}`}</div>
-                        <div className="text-xs text-slate-400">{user.email || user.username || '-'}</div>
+                        <div className="text-xs text-muted-foreground">{user.email || user.username || '-'}</div>
                       </TableCell>
                       <TableCell>{user.group || '-'}</TableCell>
                       <TableCell>{user.status === 1 ? '启用' : '停用'}</TableCell>
