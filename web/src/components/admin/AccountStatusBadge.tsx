@@ -64,7 +64,7 @@ interface StateMeta {
 const STATE_STYLES: Record<StateKind, Omit<StateMeta, 'tooltip'>> = {
   disabled: {
     label: '已禁用',
-    badgeClass: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    badgeClass: 'bg-muted text-muted-foreground dark:text-foreground',
   },
   token_expired: {
     label: 'Token 已过期',
@@ -195,7 +195,7 @@ export function AccountStatusBadge({
 
   return (
     <span
-      className={cn('inline-flex items-center rounded-full px-2 py-1 text-xs font-medium', meta.badgeClass, className)}
+      className={cn('inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium', meta.badgeClass, className)}
       title={tooltip}
     >
       {meta.label}

@@ -368,7 +368,7 @@ function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary
             </div>
             {limit > 0 && (
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${barWidth}%` }} />
+                <div className={cn('h-full rounded-full transition-[width] duration-200 ease-standard motion-reduce:transition-none', barColor)} style={{ width: `${barWidth}%` }} />
               </div>
             )}
           </div>
@@ -387,31 +387,31 @@ function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
               <div
-                className={cn('h-full rounded-full transition-all', barColor)}
+                className={cn('h-full rounded-full transition-[width] duration-200 ease-standard motion-reduce:transition-none', barColor)}
                 style={{ width: `${barWidth}%` }}
               />
             </div>
-            {resetAfter && <div className="text-[11px] text-muted-foreground">重置：{resetAfter}</div>}
+            {resetAfter && <div className="text-xs text-muted-foreground">重置：{resetAfter}</div>}
           </div>
         );
       })}
       {snapshotPaused && (
-        <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+        <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
           已因限额暂停
         </span>
       )}
       {rpmLimit > 0 && (
-        <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+        <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
           RPM {rpmLimit}/min
         </span>
       )}
       {sessionWindowLimitUsd > 0 && (
-        <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+        <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
           Session {formatUSD(sessionWindowLimitUsd)}
         </span>
       )}
       {resetStrategy === 'fixed' && (
-        <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+        <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
           固定周期 {quotaTimezone}
         </span>
       )}
@@ -422,7 +422,7 @@ function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary
         const recoveryAt = account.expectedRecoveryAt ?? 0;
         const recoveryLabel = recoveryAt > 0 ? formatResetAfter(Math.max(0, recoveryAt - now)) : '未知';
         return (
-          <div className="flex items-center gap-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+          <div className="flex items-center gap-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
             <span className="truncate max-w-[160px]" title={reason}>{reason}</span>
             <span className="text-amber-600 dark:text-amber-400">·</span>
             <span>{recoveryLabel}</span>

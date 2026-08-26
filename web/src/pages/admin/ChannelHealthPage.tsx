@@ -136,7 +136,7 @@ function MetricCard({
   }[tone];
 
   return (
-    <Card className="min-h-32 rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+    <Card className="min-h-32">
       <CardContent className="flex h-full flex-col justify-between p-5">
         <div className="flex items-start justify-between gap-4">
           <span className="text-sm font-bold text-slate-500 dark:text-slate-400">{title}</span>
@@ -536,9 +536,9 @@ function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccou
             <span className="tabular-nums text-muted-foreground">{formatPercentCHP(usedPercent)}</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-            <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${Math.min(100, usedPercent)}%` }} />
+            <div className={cn('h-full rounded-full transition-[width] duration-200 ease-standard motion-reduce:transition-none', barColor)} style={{ width: `${Math.min(100, usedPercent)}%` }} />
           </div>
-          {resetAfter != null && resetAfter > 0 && <div className="text-[11px] text-muted-foreground">重置：{formatResetAfterCHP(resetAfter)}</div>}
+          {resetAfter != null && resetAfter > 0 && <div className="text-xs text-muted-foreground">重置：{formatResetAfterCHP(resetAfter)}</div>}
         </div>
       );
     }
@@ -564,7 +564,7 @@ function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccou
             </div>
             {limit > 0 && (
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${barWidth}%` }} />
+                <div className={cn('h-full rounded-full transition-[width] duration-200 ease-standard motion-reduce:transition-none', barColor)} style={{ width: `${barWidth}%` }} />
               </div>
             )}
           </div>
@@ -581,10 +581,10 @@ function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccou
               <span className="tabular-nums text-muted-foreground">{formatPercentCHP(usedPercent)}</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${barWidth}%` }} />
+              <div className={cn('h-full rounded-full transition-[width] duration-200 ease-standard motion-reduce:transition-none', barColor)} style={{ width: `${barWidth}%` }} />
             </div>
             {window.resetAfter != null && window.resetAfter > 0 && (
-              <div className="text-[11px] text-muted-foreground">重置：{formatResetAfterCHP(window.resetAfter)}</div>
+              <div className="text-xs text-muted-foreground">重置：{formatResetAfterCHP(window.resetAfter)}</div>
             )}
           </div>
         );

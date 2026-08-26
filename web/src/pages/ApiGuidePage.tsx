@@ -503,7 +503,7 @@ export function ApiGuidePage() {
       </div>
 
       {/* Quick start */}
-      <Card className="rounded-xl border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+      <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-bold">快速开始</CardTitle>
           <CardDescription>三步完成首次 API 调用。</CardDescription>
@@ -524,7 +524,7 @@ export function ApiGuidePage() {
       </Card>
 
       {/* Client code examples */}
-      <Card className="rounded-xl border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-bold">客户端接入示例</CardTitle>
           <CardDescription>选择客户端查看对应的代码示例。</CardDescription>
@@ -608,7 +608,7 @@ export function ApiGuidePage() {
       </Card>
 
       {/* CC Switch */}
-      <Card className="rounded-xl border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-bold">
             CC Switch 一键导入
@@ -660,7 +660,7 @@ export function ApiGuidePage() {
       </Card>
 
       {/* Endpoint reference */}
-      <Card className="rounded-xl border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-bold">
             <FileText className="size-4 text-slate-400" />
@@ -714,7 +714,7 @@ export function ApiGuidePage() {
       </Card>
 
       {/* Safety tips */}
-      <Card className="rounded-xl border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-bold">
             <ShieldCheck className="size-4 text-orange-500" />

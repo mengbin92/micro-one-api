@@ -304,7 +304,7 @@ export function UsagePage() {
         <EmptyState title="暂无使用记录" description="API 请求处理完成后，消费记录会显示在这里。" />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-surface-sm">
             <Table className="min-w-[1050px]">
               <TableHeader>
                 <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">

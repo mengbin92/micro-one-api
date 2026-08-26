@@ -315,7 +315,7 @@ export function OrdersPage() {
         <EmptyState title="暂无订单记录" description="充值、兑换或退款后会显示在这里。" />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-surface-sm">
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">

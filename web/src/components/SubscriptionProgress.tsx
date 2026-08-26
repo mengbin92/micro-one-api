@@ -82,7 +82,7 @@ function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimensi
         <>
           <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
             <div
-              className={cn('h-2 rounded-full transition-all', barColorClass(ratio))}
+              className={cn('h-2 rounded-full transition-[width] duration-200 ease-standard motion-reduce:transition-none', barColorClass(ratio))}
               style={{ width: `${Math.round(ratio * 100)}%` }}
             />
           </div>
@@ -92,7 +92,7 @@ function QuotaBar({ label, dimension }: { label: string; dimension: QuotaDimensi
         </>
       )}
       {refreshLabel && (
-        <span className="ml-auto w-24 shrink-0 whitespace-nowrap text-right text-[10px] text-muted-foreground/70 sm:ml-0">
+        <span className="ml-auto w-24 shrink-0 whitespace-nowrap text-right text-xs text-muted-foreground sm:ml-0">
           {refreshLabel}
         </span>
       )}
@@ -117,7 +117,7 @@ function statusBadgeClass(status: string) {
     case 'revoked':
       return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
     default: // expired / Expired
-      return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
+      return 'bg-muted text-foreground dark:text-foreground';
   }
 }
 
