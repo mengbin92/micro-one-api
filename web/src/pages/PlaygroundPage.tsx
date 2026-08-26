@@ -355,12 +355,12 @@ export function PlaygroundPage() {
         <div>
           <div className="flex items-center gap-3">
             <FlaskConical className="size-7 text-blue-600 dark:text-blue-300" />
-            <h2 className="text-3xl font-black tracking-tight text-slate-950 dark:text-white">在线调试</h2>
-            <span className={cn('rounded-full px-2.5 py-1 text-xs font-bold', status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300')}>
+            <h2 className="text-3xl font-bold tracking-normal text-foreground">在线调试</h2>
+            <span className={cn('rounded-full px-2.5 py-1 text-xs font-semibold', status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300' : 'bg-accent text-accent-foreground')}>
               {statusLabel(status)}
             </span>
           </div>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">使用真实 API Key 调试 Chat Completions，结果会计入正常使用记录。</p>
+          <p className="mt-2 text-sm text-muted-foreground">使用真实 API Key 调试 Chat Completions，结果会计入正常使用记录。</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={clearConversation} disabled={messages.length === 0 && !inspector.requestId}>
@@ -385,8 +385,8 @@ export function PlaygroundPage() {
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
-        <Card className="rounded-2xl border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+        <Card className="rounded-2xl">
+          <CardHeader className="border-b border-border">
             <CardTitle className="text-base">连接与模型</CardTitle>
             <CardDescription>密钥只保留在当前页面内存中。</CardDescription>
           </CardHeader>
@@ -405,7 +405,7 @@ export function PlaygroundPage() {
                 </Button>
               </div>
               {verifiedKey ? <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-300"><Check className="mr-1 inline size-3.5" />已验证：{maskSecret(apiKey)}</p> : null}
-              {!apiKey ? <Link className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-300" to="/tokens">还没有 API Key？前往创建</Link> : null}
+              {!apiKey ? <Link className="text-xs font-semibold text-primary hover:underline" to="/tokens">还没有 API Key？前往创建</Link> : null}
               <Button type="button" className="w-full" onClick={() => void verifyKey()} disabled={!apiKey.trim() || !address || status === 'loading_models' || Boolean(activeRequest.current)}>
                 {status === 'loading_models' ? '加载模型中…' : '验证并加载模型'}
               </Button>
@@ -413,15 +413,15 @@ export function PlaygroundPage() {
 
             <div className="space-y-2">
               <Label htmlFor="playground-model">模型</Label>
-              <select id="playground-model" value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)} disabled={!verifiedKey || models.length === 0 || Boolean(activeRequest.current)} className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30">
+              <select id="playground-model" value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)} disabled={!verifiedKey || models.length === 0 || Boolean(activeRequest.current)} className="h-9 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50">
                 <option value="">{verifiedKey ? '请选择模型' : '先验证 API Key'}</option>
                 {models.map((model) => <option key={model.id} value={model.id}>{model.id}</option>)}
               </select>
               {modelError ? <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-300">{isRelayError(modelError) ? `${errorTitle(modelError.kind)}：${modelError.message}` : modelError.message}</p> : null}
             </div>
 
-            <details className="rounded-xl border border-slate-200 p-3 dark:border-white/10" open>
-              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-700 dark:text-slate-200"><span>高级参数</span><ChevronDown className="size-4" /></summary>
+            <details className="rounded-xl border border-border p-3" open>
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-foreground"><span>高级参数</span><ChevronDown className="size-4" /></summary>
               <div className="mt-4 space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="playground-temperature">Temperature</Label>
@@ -431,49 +431,61 @@ export function PlaygroundPage() {
                   <Label htmlFor="playground-max-tokens">Max Tokens</Label>
                   <Input id="playground-max-tokens" type="number" min="1" max="128000" step="1" value={maxTokens} onChange={(event) => setMaxTokens(event.target.value)} placeholder="自动" disabled={Boolean(activeRequest.current)} />
                 </div>
-                <label className="flex items-center justify-between gap-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                <label className="flex items-center justify-between gap-3 text-sm font-semibold text-foreground">
                   流式输出
-                  <input type="checkbox" checked={stream} onChange={(event) => setStream(event.target.checked)} disabled={Boolean(activeRequest.current)} className="size-4 accent-blue-600" />
+                  <input type="checkbox" checked={stream} onChange={(event) => setStream(event.target.checked)} disabled={Boolean(activeRequest.current)} className="size-4 accent-primary" />
                 </label>
               </div>
             </details>
           </CardContent>
         </Card>
 
-        <Card className="flex min-h-[620px] flex-col rounded-2xl border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+        <Card className="flex min-h-[620px] flex-col rounded-2xl">
+          <CardHeader className="border-b border-border">
             <CardTitle className="flex items-center gap-2 text-base"><Activity className="size-4 text-blue-600" />对话</CardTitle>
             <CardDescription>{selectedModel || '验证 API Key 后选择模型'}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-4 p-5">
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-xl bg-slate-50 p-4 dark:bg-white/5">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-xl bg-muted p-4">
               {messages.length === 0 ? (
-                <div className="grid min-h-[380px] place-items-center text-center text-sm text-slate-400">
-                  <div><FlaskConical className="mx-auto mb-3 size-8 text-slate-300 dark:text-slate-600" /><p>输入一条消息开始调试</p><p className="mt-1 text-xs">Ctrl / Cmd + Enter 发送</p></div>
+                <div className="grid min-h-[380px] place-items-center text-center text-sm text-muted-foreground">
+                  <div><FlaskConical className="mx-auto mb-3 size-8 text-muted-foreground" /><p>输入一条消息开始调试</p><p className="mt-1 text-xs">Ctrl / Cmd + Enter 发送</p></div>
                 </div>
-              ) : messages.map((message) => (
-                <div key={message.id} className={cn('rounded-xl px-4 py-3 text-sm', message.role === 'user' ? 'ml-8 bg-blue-600 text-white' : 'mr-8 bg-white text-slate-800 shadow-sm dark:bg-card dark:text-slate-100')}>
-                  <div className="mb-1 text-xs font-bold uppercase tracking-wide opacity-60">{message.role === 'user' ? 'You' : message.role === 'system' ? 'System' : 'Assistant'}{message.status === 'stopped' ? ' · 已停止' : ''}</div>
-                  <div className="whitespace-pre-wrap break-words leading-6">{message.content || (message.status === 'streaming' ? '…' : '')}</div>
-                </div>
-              ))}
+              ) : messages.map((message) => {
+                const roleLabel = message.role === 'user' ? '用户' : message.role === 'system' ? '系统' : '助手';
+                return (
+                  <article
+                    key={message.id}
+                    aria-label={`${roleLabel}消息`}
+                    className={cn(
+                      'rounded-2xl px-4 py-3 text-sm motion-safe:animate-in motion-safe:fade-in-0',
+                      message.role === 'user'
+                        ? 'ml-8 bg-primary text-primary-foreground'
+                        : 'mr-8 border border-border bg-card text-foreground shadow-sm',
+                    )}
+                  >
+                    <div className="mb-1 text-xs font-medium opacity-70">{roleLabel}{message.status === 'stopped' ? ' · 已停止' : ''}</div>
+                    <div className="whitespace-pre-wrap break-words leading-6">{message.content || (message.status === 'streaming' ? '…' : '')}</div>
+                  </article>
+                );
+              })}
               {currentAssistant?.status === 'streaming' && !currentAssistant.content ? <span className="sr-only" aria-live="polite">正在生成</span> : null}
             </div>
             <div className="space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="playground-system">System Prompt（可选）</Label>
-                <textarea id="playground-system" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} disabled={Boolean(activeRequest.current)} rows={2} placeholder="定义助手行为…" className="w-full resize-y rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30" />
+                <textarea id="playground-system" value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} disabled={Boolean(activeRequest.current)} rows={2} placeholder="定义助手行为…" className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50" />
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <textarea aria-label="输入消息" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); void sendMessage(); } }} disabled={!verifiedKey || Boolean(activeRequest.current)} rows={3} placeholder={verifiedKey ? '输入消息…' : '先验证 API Key'} className="min-h-20 flex-1 resize-y rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30" />
+                <textarea aria-label="输入消息" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); void sendMessage(); } }} disabled={!verifiedKey || Boolean(activeRequest.current)} rows={3} placeholder={verifiedKey ? '输入消息…' : '先验证 API Key'} className="min-h-20 flex-1 resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50" />
                 {activeRequest.current ? <Button type="button" variant="destructive" className="sm:w-28" onClick={stopGeneration}><Square className="size-4" />停止</Button> : <Button type="button" className="sm:w-28" onClick={() => void sendMessage()} disabled={!canSend}><Send className="size-4" />发送</Button>}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 dark:border-white/10">
+        <Card className="rounded-2xl">
+          <CardHeader className="border-b border-border">
             <div className="flex items-center justify-between gap-2"><div><CardTitle className="text-base">调试信息</CardTitle><CardDescription>不显示完整 API Key</CardDescription></div><Button type="button" variant="ghost" size="sm" onClick={() => setShowInspector((value) => !value)}>{showInspector ? '收起' : '展开'}</Button></div>
           </CardHeader>
           <CardContent className="space-y-4 p-5">
@@ -485,13 +497,13 @@ export function PlaygroundPage() {
               <Metric label="输入 Token" value={formatTokens(inspector.usage?.prompt_tokens)} />
               <Metric label="输出 Token" value={formatTokens(inspector.usage?.completion_tokens)} />
             </div>
-            {inspector.requestId ? <div className="rounded-lg bg-slate-50 p-3 dark:bg-white/5"><p className="text-xs font-bold text-slate-400">Request ID</p><p className="mt-1 break-all font-mono text-xs text-slate-700 dark:text-slate-200">{inspector.requestId}</p></div> : null}
+            {inspector.requestId ? <div className="rounded-xl bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">Request ID</p><p className="mt-1 break-all font-mono text-xs text-foreground">{inspector.requestId}</p></div> : null}
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => void copyRequest()} disabled={!inspector.requestBody}><Copy className="size-3.5" />复制请求 JSON</Button>
               <Button type="button" variant="outline" size="sm" onClick={() => setShowInspector((value) => !value)}><Eye className="size-3.5" />原始事件</Button>
             </div>
-            {showInspector ? <pre className="max-h-72 overflow-auto rounded-lg bg-slate-950 p-3 text-[11px] leading-5 text-slate-200">{inspector.rawEvents.length ? inspector.rawEvents.join('\n\n') : '暂无原始事件'}</pre> : null}
-            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">费用和最终 Token 以使用记录为准。停止流式请求后，服务端可能已经产生部分用量。</div>
+            {showInspector ? <pre className="max-h-72 overflow-auto rounded-xl bg-slate-950 p-3 text-xs leading-5 text-slate-200">{inspector.rawEvents.length ? inspector.rawEvents.join('\n\n') : '暂无原始事件'}</pre> : null}
+            <div className="rounded-xl border border-primary/20 bg-accent p-3 text-xs leading-5 text-accent-foreground">费用和最终 Token 以使用记录为准。停止流式请求后，服务端可能已经产生部分用量。</div>
           </CardContent>
         </Card>
       </div>
@@ -500,5 +512,5 @@ export function PlaygroundPage() {
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-lg bg-slate-50 p-3 dark:bg-white/5"><p className="text-xs font-bold text-slate-400">{label}</p><p className="mt-1 truncate font-semibold text-slate-800 dark:text-slate-100">{value}</p></div>;
+  return <div className="rounded-xl bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">{label}</p><p className="mt-1 truncate font-semibold text-foreground">{value}</p></div>;
 }

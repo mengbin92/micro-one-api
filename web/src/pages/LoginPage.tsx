@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { CheckCircle2, Network, ShieldCheck } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -12,13 +13,23 @@ import { oauthProviders, redirectToApiPath } from '@/lib/oauth';
 
 export function LoginPage() {
   const location = useLocation();
-  const [mode, setMode] = useState<'login' | 'register'>(location.pathname === '/register' ? 'register' : 'login');
+  const mode = location.pathname === '/register' ? 'register' : 'login';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const loginTabRef = useRef<HTMLButtonElement>(null);
+  const registerTabRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
+
+  const selectMode = (nextMode: 'login' | 'register') => {
+    if (nextMode !== mode) {
+      navigate(nextMode === 'register' ? '/register' : '/login', { replace: true });
+    }
+    setError('');
+    setConfirmPassword('');
+  };
 
   const signIn = async (nextUsername: string) => {
     const response = await apiClient.post('/user/login', {
@@ -75,100 +86,180 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>{mode === 'login' ? '登录' : '注册账号'}</CardTitle>
-          <CardDescription>
-            {mode === 'login' ? '登录您的 micro-one-api 账号' : '使用用户名和密码注册'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">用户名</Label>
-              <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoFocus
-                autoComplete="username"
-              />
+    <main className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
+      <section
+        aria-hidden="true"
+        className="relative hidden overflow-hidden bg-slate-950 px-12 py-14 text-white lg:flex lg:flex-col lg:justify-between"
+      >
+        <div className="absolute -left-32 top-1/4 size-96 rounded-full bg-blue-500/20 blur-3xl" />
+        <div className="absolute -right-24 bottom-0 size-80 rounded-full bg-emerald-400/15 blur-3xl" />
+        <div className="relative flex items-center gap-4">
+          <img src="/logo-icon.svg" alt="" className="size-14 rounded-2xl" />
+          <div>
+            <p className="text-xl font-bold">Micro-One API</p>
+            <p className="text-sm text-white/60">Gateway Console</p>
+          </div>
+        </div>
+
+        <div className="relative max-w-xl space-y-8">
+          <div className="space-y-4">
+            <p className="text-sm font-semibold tracking-wide text-blue-300">统一 AI 网关控制台</p>
+            <h1 className="text-5xl font-bold leading-tight tracking-tight">
+              一个入口，管理模型、路由与成本。
+            </h1>
+            <p className="max-w-lg text-lg leading-8 text-white/65">
+              在清晰一致的工作台中管理 API 密钥、调用用量、订阅账号和上游渠道。
+            </p>
+          </div>
+          <div className="grid gap-4 text-sm text-white/75 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <Network className="mb-3 size-5 text-blue-300" />
+              统一路由
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">密码</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={mode === 'register' ? 8 : undefined}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              />
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <ShieldCheck className="mb-3 size-5 text-emerald-300" />
+              安全访问
             </div>
-            {mode === 'register' && (
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">确认密码</Label>
-                <Input
-                  id="confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                />
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <CheckCircle2 className="mb-3 size-5 text-amber-300" />
+              用量可追踪
+            </div>
+          </div>
+        </div>
+
+        <p className="relative text-xs text-white/45">Micro-One API · AI gateway operations</p>
+      </section>
+
+      <section className="flex min-h-screen items-center justify-center px-4 py-8 sm:px-8 lg:px-12">
+        <div className="w-full max-w-md">
+          <div className="mb-6 flex items-center gap-3 lg:hidden">
+            <img src="/logo-icon.svg" alt="" className="size-11 rounded-xl" />
+            <div>
+              <p className="font-bold text-foreground">Micro-One API</p>
+              <p className="text-xs text-muted-foreground">Gateway Console</p>
+            </div>
+          </div>
+
+          <Card className="shadow-surface-md">
+            <CardHeader className="space-y-5">
+              <div>
+                <CardTitle className="text-2xl font-bold">
+                  {mode === 'login' ? '欢迎回来' : '创建账号'}
+                </CardTitle>
+                <CardDescription className="mt-2">
+                  {mode === 'login' ? '登录后继续管理您的 API 服务。' : '使用用户名和密码注册，开始使用控制台。'}
+                </CardDescription>
               </div>
-            )}
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (mode === 'login' ? '登录中…' : '创建中…') : mode === 'login' ? '登录' : '注册账号'}
-            </Button>
-            {mode === 'login' && (
-              <>
-                <div className="flex items-center gap-3 py-1">
-                  <div className="h-px flex-1 bg-border" />
-                  <span className="text-xs font-semibold text-muted-foreground">或使用第三方账号</span>
-                  <div className="h-px flex-1 bg-border" />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {oauthProviders.map((provider) => (
-                    <Button
-                      key={provider.id}
+
+              <div role="tablist" aria-label="账号入口" className="grid grid-cols-2 rounded-xl bg-muted p-1">
+                {(['login', 'register'] as const).map((item) => {
+                  const selected = mode === item;
+                  const label = item === 'login' ? '登录' : '注册';
+                  return (
+                    <button
+                      key={item}
+                      ref={item === 'login' ? loginTabRef : registerTabRef}
+                      id={`auth-tab-${item}`}
                       type="button"
-                      variant="outline"
-                      disabled={loading}
-                      onClick={() => redirectToApiPath(provider.loginPath)}
+                      role="tab"
+                      aria-controls="auth-panel"
+                      aria-selected={selected}
+                      tabIndex={selected ? 0 : -1}
+                      className={selected
+                        ? 'rounded-lg bg-card px-3 py-2 text-sm font-semibold text-foreground shadow-sm'
+                        : 'rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground'}
+                      onClick={() => selectMode(item)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                          event.preventDefault();
+                          const nextMode = item === 'login' ? 'register' : 'login';
+                          selectMode(nextMode);
+                          (nextMode === 'login' ? loginTabRef : registerTabRef).current?.focus();
+                        }
+                      }}
                     >
-                      {provider.label}
-                    </Button>
-                  ))}
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </CardHeader>
+
+            <CardContent id="auth-panel" role="tabpanel" aria-labelledby={`auth-tab-${mode}`}>
+              <form onSubmit={handleSubmit} className="space-y-4" aria-describedby={error ? 'auth-error' : undefined}>
+                <div className="space-y-2">
+                  <Label htmlFor="username">用户名</Label>
+                  <Input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    autoFocus
+                    autoComplete="username"
+                  />
                 </div>
-              </>
-            )}
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full"
-              disabled={loading}
-              onClick={() => {
-                setMode((current) => {
-                  const nextMode = current === 'login' ? 'register' : 'login';
-                  navigate(nextMode === 'register' ? '/register' : '/login', { replace: true });
-                  return nextMode;
-                });
-                setError('');
-                setConfirmPassword('');
-              }}
-            >
-              {mode === 'login' ? '注册新账号' : '返回登录'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">密码</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={mode === 'register' ? 8 : undefined}
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  />
+                </div>
+                {mode === 'register' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">确认密码</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                )}
+                {error && (
+                  <p id="auth-error" role="alert" className="text-sm font-medium text-destructive">
+                    {error}
+                  </p>
+                )}
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (mode === 'login' ? '登录中…' : '创建中…') : mode === 'login' ? '登录' : '注册账号'}
+                </Button>
+                {mode === 'login' && (
+                  <>
+                    <div className="flex items-center gap-3 py-1">
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-xs font-semibold text-muted-foreground">或使用第三方账号</span>
+                      <div className="h-px flex-1 bg-border" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {oauthProviders.map((provider) => (
+                        <Button
+                          key={provider.id}
+                          type="button"
+                          variant="outline"
+                          disabled={loading}
+                          onClick={() => redirectToApiPath(provider.loginPath)}
+                        >
+                          {provider.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+    </main>
   );
 }
