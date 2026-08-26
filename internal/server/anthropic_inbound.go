@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -42,6 +41,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 		s.writeAnthropicError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	setRelayObservationStream(r.Context(), anthropicReq.Stream)
 	if anthropicReq.Model == "" {
 		s.writeAnthropicError(w, http.StatusBadRequest, "model is required")
 		return
@@ -85,6 +85,7 @@ func (s *HTTPServer) handleAnthropicMessages(w http.ResponseWriter, r *http.Requ
 	})
 
 	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
+	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
 	if result.Err != nil {
 		s.writeAnthropicError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
 	}
@@ -131,10 +132,6 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 
 	if isChannelUnavailableMessage(err.Error()) {
 		s.writeAnthropicError(w, http.StatusServiceUnavailable, "api_error: no available channel")
-		return
-	}
-	if strings.Contains(err.Error(), "not allowed") {
-		s.writeAnthropicError(w, http.StatusForbidden, "permission_error: model not allowed")
 		return
 	}
 	s.writeAnthropicError(w, http.StatusInternalServerError, "api_error: internal server error")

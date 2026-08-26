@@ -22,12 +22,14 @@ type CORSConfig struct {
 
 // DefaultCORSConfig returns default CORS configuration
 func DefaultCORSConfig() *CORSConfig {
-	allowedOrigins := []string{"https://yourdomain.com", "https://app.yourdomain.com"}
-	if origins := os.Getenv("CORS_ALLOWED_ORIGINS"); origins != "" {
+	var allowedOrigins []string
+	if origins := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")); origins != "" {
 		allowedOrigins = strings.Split(origins, ",")
 		for i, origin := range allowedOrigins {
 			allowedOrigins[i] = strings.TrimSpace(origin)
 		}
+	} else {
+		applogger.Log.Warn("CORS_ALLOWED_ORIGINS is empty; cross-origin browser requests will be denied")
 	}
 
 	return &CORSConfig{
@@ -38,6 +40,39 @@ func DefaultCORSConfig() *CORSConfig {
 		AllowCredentials: true,
 		MaxAge:           86400, // 24 hours
 	}
+}
+
+// RelayCORSConfig returns the credential-free CORS policy used by the public
+// Relay HTTP endpoints. Relay authenticates with an Authorization bearer key,
+// not browser cookies, so allowing credentials would expand the browser
+// attack surface without providing a supported capability.
+func RelayCORSConfig() *CORSConfig {
+	config := DefaultCORSConfig()
+	config.AllowedMethods = []string{"GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"}
+	config.AllowedHeaders = []string{
+		"Authorization",
+		"Content-Type",
+		"X-Request-ID",
+		"X-API-Key",
+		"Anthropic-Version",
+		"Anthropic-Beta",
+		"OpenAI-Beta",
+		"OpenAI-Organization",
+		"OpenAI-Project",
+		"Idempotency-Key",
+		"X-Session-Hash",
+		"OpenAI-Session-Hash",
+	}
+	config.ExposedHeaders = []string{
+		"Content-Length",
+		"Content-Type",
+		"X-Request-ID",
+		"X-RateLimit-Limit",
+		"X-RateLimit-Remaining",
+		"X-RateLimit-Reset",
+	}
+	config.AllowCredentials = false
+	return config
 }
 
 // CORS creates a CORS middleware with the given configuration

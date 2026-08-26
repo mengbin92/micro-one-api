@@ -347,6 +347,8 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	}
 
 	var routeMiddleware []func(http.Handler) http.Handler
+
+	routeMiddleware = append(routeMiddleware, middleware.CORS(middleware.RelayCORSConfig()), middleware.SecurityHeaders, middleware.RequestID)
 	if cfg.Bootstrap.Subscription.GetSubscriptionEnabled() {
 		subscriptionRepo, subErr := data2.NewRepositoryFromEnv(os.Getenv("SQL_DRIVER"))
 		if subErr != nil {

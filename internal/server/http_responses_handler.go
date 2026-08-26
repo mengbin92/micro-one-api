@@ -64,6 +64,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		s.writeRequestBodyError(w, r, err)
 		return
 	}
+	setRelayObservationStream(r.Context(), isRawStreamRequest(body))
 
 	clientModel := extractRawModel(body)
 	previousResponseID := extractPreviousResponseID(body)
@@ -155,7 +156,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						IsStream:         true,
 					}
 					logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
-					if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+					if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 						s.logPostResponseCommitError(err)
 					} else {
 						logUpstreamUsage(logInput)
@@ -194,7 +195,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 							IsStream:         true,
 						}
 						logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
-						if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+						if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 							s.logPostResponseCommitError(err)
 						} else {
 							logUpstreamUsage(logInput)
@@ -231,7 +232,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				IsStream:         true,
 			}
 			logInput.PromptExclusive = isPromptExclusiveChannelType(ch.Type)
-			if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+			if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
 				logUpstreamUsage(logInput)
@@ -357,6 +358,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 
 	// Finalize routing selection outcome (code review #1/#2).
 	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
+	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
 
 	if result.Err != nil {
 		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
@@ -499,7 +501,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 					IsStream:              true,
 				}
 				logInput.PromptExclusive = isPromptExclusiveChannelType(route.Channel.Type)
-				if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+				if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
 				} else {
 					s.ingestUsageLogAfterResponse(logInput)
@@ -541,7 +543,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 						IsStream:              true,
 					}
 					logInput.PromptExclusive = isPromptExclusiveChannelType(route.Channel.Type)
-					if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+					if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 						s.logPostResponseCommitError(err)
 					} else {
 						s.ingestUsageLogAfterResponse(logInput)
@@ -579,7 +581,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			IsStream:              true,
 		}
 		logInput.PromptExclusive = isPromptExclusiveChannelType(route.Channel.Type)
-		if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+		if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
 		} else {
 			s.ingestUsageLogAfterResponse(logInput)

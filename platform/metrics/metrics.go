@@ -65,6 +65,58 @@ var (
 		[]string{"service"},
 	)
 
+	// RelayExecutorRequestsTotal counts completed relay requests by inbound
+	// endpoint, stream mode, execution path, HTTP status, and terminal result.
+	// The labels are intentionally bounded to make the metric safe for
+	// production use.
+	RelayExecutorRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "micro_one_api",
+			Subsystem: "relay",
+			Name:      "executor_requests_total",
+			Help:      "Completed relay requests by endpoint, stream mode, execution path, HTTP status, and result",
+		},
+		[]string{"endpoint", "stream", "execution_path", "status", "result"},
+	)
+
+	// RelayExecutorRequestDuration records end-to-end handler latency. For SSE
+	// and WebSocket requests this includes the lifetime of the stream.
+	RelayExecutorRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "micro_one_api",
+			Subsystem: "relay",
+			Name:      "executor_request_duration_seconds",
+			Help:      "Relay request duration by endpoint, stream mode, and execution path",
+			Buckets:   []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300},
+		},
+		[]string{"endpoint", "stream", "execution_path"},
+	)
+
+	// RelayExecutorQuotaOutcomeTotal counts reservation lifecycle outcomes for
+	// the same bounded cohort dimensions used by request observations.
+	RelayExecutorQuotaOutcomeTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "micro_one_api",
+			Subsystem: "relay",
+			Name:      "executor_quota_outcome_total",
+			Help:      "Relay quota lifecycle outcomes by endpoint, stream mode, and execution path",
+		},
+		[]string{"endpoint", "stream", "execution_path", "outcome"},
+	)
+
+	// RelayExecutorFailoverTotal counts request-level failover outcomes by
+	// execution cohort and low-cardinality cause. A request that did not attempt
+	// failover is not emitted.
+	RelayExecutorFailoverTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "micro_one_api",
+			Subsystem: "relay",
+			Name:      "executor_failover_total",
+			Help:      "Relay failover outcomes by endpoint, stream mode, execution path, and reason",
+		},
+		[]string{"endpoint", "stream", "execution_path", "result", "reason"},
+	)
+
 	// BillingReservationsTotal counts billing reservations by status.
 	BillingReservationsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -186,6 +238,10 @@ func init() {
 		GRPCRequestTotal,
 		GRPCRequestDuration,
 		ActiveRequests,
+		RelayExecutorRequestsTotal,
+		RelayExecutorRequestDuration,
+		RelayExecutorQuotaOutcomeTotal,
+		RelayExecutorFailoverTotal,
 		BillingReservationsTotal,
 		ChannelSelectionTotal,
 		UsageLogIngestTotal,

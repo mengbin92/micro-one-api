@@ -12,8 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
+	"micro-one-api/platform/metrics"
 )
 
 type orchestratorFailoverChannelClient struct {
@@ -48,6 +51,25 @@ type orchestratorFailoverLifecycleHooks struct {
 	committed             []string
 	logged                []int64
 	releaseErr            error
+}
+
+type orchestratorFailoverStreamForwarder struct {
+	calls []int64
+}
+
+func (f *orchestratorFailoverStreamForwarder) ForwardStream(_ context.Context, plan *relaybiz.RelayPlan, _ relaybiz.ExecutorRequest) (*relaybiz.StreamForwardResponse, error) {
+	f.calls = append(f.calls, plan.Channel.ID)
+	if plan.Channel.ID == 11 {
+		return nil, &relayprovider.UpstreamHTTPError{StatusCode: http.StatusBadGateway, Body: []byte("temporary")}
+	}
+	return &relaybiz.StreamForwardResponse{
+		StatusCode: http.StatusOK,
+		Headers:    map[string][]string{"Content-Type": {"text/event-stream"}},
+		Stream: io.NopCloser(strings.NewReader(
+			"data: {\"choices\":[{\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":5,\"total_tokens\":9}}\n\n" +
+				"data: [DONE]\n\n",
+		)),
+	}, nil
 }
 
 func (h *orchestratorFailoverLifecycleHooks) ReserveQuota(_ context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, _ relaybiz.CanonicalUsage) (*Reservation, error) {
@@ -148,5 +170,64 @@ func TestRelayOrchestratorFailoverReleasesFailedCandidateAndCommitsOnce(t *testi
 	}
 	if len(hooks.requestIDs) != 2 || hooks.requestIDs[0] != "request-failover" || hooks.requestIDs[1] == "" || hooks.requestIDs[1] == hooks.requestIDs[0] {
 		t.Fatalf("request IDs = %v, want original then a distinct retry ID", hooks.requestIDs)
+	}
+}
+
+func TestRelayOrchestratorStreamingFailoverSettlesOnlySuccessfulStream(t *testing.T) {
+	first := &relaybiz.Channel{ID: 11, Type: relayprovider.ChannelTypeOpenAI, BaseURL: "https://first.invalid/v1", Key: "sk-first"}
+	second := &relaybiz.Channel{ID: 22, Type: relayprovider.ChannelTypeOpenAI, BaseURL: "https://second.invalid/v1", Key: "sk-second"}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		orchestratorIdentityClient{},
+		orchestratorFailoverChannelClient{first: first, second: second},
+		nil,
+		&relaybiz.RetryPolicy{
+			MaxAttempts:     2,
+			RetryableStatus: map[int]bool{http.StatusBadGateway: true},
+		},
+	)
+	hooks := &orchestratorFailoverLifecycleHooks{}
+	orchestrator := newRelayOrchestrator(relayUsecase, relayprovider.NewProviderFactory(time.Second), hooks, nil)
+	streamForwarder := &orchestratorFailoverStreamForwarder{}
+	orchestrator.streamPort = streamForwarder
+
+	observation := &relayExecutionObservation{
+		endpoint: relayEndpointChatCompletions,
+		stream:   "true",
+		path:     relayExecutionPathOrchestrator,
+	}
+	ctx := context.WithValue(context.Background(), relayExecutionObservationKey{}, observation)
+	failoverBefore := testutil.ToFloat64(metrics.RelayExecutorFailoverTotal.WithLabelValues(
+		relayEndpointChatCompletions, "true", relayExecutionPathOrchestrator, "switched", "upstream_5xx",
+	))
+	result, err := orchestrator.Execute(ctx, &RelayRequest{
+		Token:     "client-token",
+		Model:     "gpt-4o-mini",
+		Endpoint:  EndpointChatCompletions,
+		Body:      strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}],"stream":true}`),
+		Headers:   http.Header{"Authorization": []string{"Bearer client-token"}},
+		RequestID: "request-stream-failover",
+		IsStream:  true,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result.ChannelID != second.ID || result.Response == nil {
+		t.Fatalf("stream result = channel:%d response:%v", result.ChannelID, result.Response)
+	}
+	body, readErr := io.ReadAll(result.Response)
+	closeErr := result.Response.Close()
+	if readErr != nil || closeErr != nil || !strings.Contains(string(body), "[DONE]") {
+		t.Fatalf("stream drain = read:%v close:%v body:%s", readErr, closeErr, body)
+	}
+	if !reflect.DeepEqual(streamForwarder.calls, []int64{11, 22}) {
+		t.Fatalf("stream attempts = %v, want [11 22]", streamForwarder.calls)
+	}
+	if !reflect.DeepEqual(hooks.released, []string{"reservation-1"}) || !reflect.DeepEqual(hooks.committed, []string{"reservation-2"}) || !reflect.DeepEqual(hooks.logged, []int64{22}) {
+		t.Fatalf("stream lifecycle = released:%v committed:%v logged:%v", hooks.released, hooks.committed, hooks.logged)
+	}
+	if got := testutil.ToFloat64(metrics.RelayExecutorFailoverTotal.WithLabelValues(
+		relayEndpointChatCompletions, "true", relayExecutionPathOrchestrator, "switched", "upstream_5xx",
+	)); got != failoverBefore+1 {
+		t.Fatalf("stream failover metric = %v, want %v", got, failoverBefore+1)
 	}
 }

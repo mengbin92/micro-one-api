@@ -175,7 +175,7 @@ func writeRelayResult(w http.ResponseWriter, result *server.RelayResult) {
 	defer result.Response.Close()
 
 	for key, values := range result.Headers {
-		if isHopByHopHeader(key) {
+		if isHopByHopHeader(key) || server.IsRelayCORSResponseHeader(key) {
 			continue
 		}
 		for _, value := range values {

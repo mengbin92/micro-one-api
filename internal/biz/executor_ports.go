@@ -9,13 +9,14 @@ import (
 // Transport adapters read and validate the request before constructing it;
 // the executor never receives an http.Request or owns a response writer.
 type ExecutorRequest struct {
-	Token     string
-	Model     string
-	Endpoint  string
-	Body      []byte
-	Headers   map[string][]string
-	RequestID string
-	Stream    bool
+	Token       string
+	Model       string
+	Endpoint    string
+	Body        []byte
+	Headers     map[string][]string
+	RequestID   string
+	SessionHash string
+	Stream      bool
 }
 
 // ExecutionResponse is the transport-neutral result of an upstream call.
@@ -28,6 +29,9 @@ type ExecutionResponse struct {
 	ChannelID             int64
 	SubscriptionAccountID int64
 	RequestID             string
+	// Stream is set only for streaming executions. The transport adapter owns
+	// draining and closing it; Body remains empty for these responses.
+	Stream RelayStream
 }
 
 // Executor is the business execution boundary shared by transport adapters.
@@ -63,9 +67,30 @@ type ForwardResponse struct {
 	Usage      *CanonicalUsage
 }
 
+// RelayStream is the transport-neutral byte stream returned by a streaming
+// forwarder. It deliberately mirrors io.ReadCloser without importing HTTP,
+// SSE, or WebSocket types into the business boundary.
+type RelayStream interface {
+	Read([]byte) (int, error)
+	Close() error
+}
+
+// StreamForwardResponse contains headers and a live upstream byte stream.
+// Usage is finalized by the executor as the stream is drained.
+type StreamForwardResponse struct {
+	StatusCode int
+	Headers    map[string][]string
+	Stream     RelayStream
+}
+
 // Forwarder sends one normalized request to the selected upstream source.
 type Forwarder interface {
 	Forward(context.Context, *RelayPlan, ExecutorRequest) (*ForwardResponse, error)
+}
+
+// StreamForwarder sends one streaming request through the adaptor registry.
+type StreamForwarder interface {
+	ForwardStream(context.Context, *RelayPlan, ExecutorRequest) (*StreamForwardResponse, error)
 }
 
 // EventLogger records the successful execution usage event. Error and route

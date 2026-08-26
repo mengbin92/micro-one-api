@@ -1,6 +1,10 @@
 package biz
 
-import "time"
+import (
+	"time"
+
+	billingdomain "micro-one-api/domain/billing"
+)
 
 const (
 	LedgerTypeConsume      = "consume"
@@ -15,7 +19,7 @@ const (
 // emits one subscription-side entry and one balance-side entry so the values
 // stay separated for reconciliation.
 const (
-	CostSourceSubscription = "subscription"
+	CostSourceSubscription = billingdomain.SourceKindSubscription
 	CostSourceBalance      = "balance"
 	CostSourceMixed        = "mixed"
 	CostAuditPriced        = "priced"

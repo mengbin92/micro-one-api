@@ -11,11 +11,9 @@ import (
 
 // RegisterRoutes registers HTTP routes to a Kratos *khttp.Server.
 func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
-	chatHandler := s.handleChatCompletions
-	if s.relayOrchestratorEnabled {
-		chatHandler = s.relayOrchestratorChatHandler
-	}
-	s.handleFunc(srv, "/v1/chat/completions", chatHandler)
+	// Keep the gate wrapper installed even when the feature is disabled so
+	// legacy traffic remains observable without changing its behavior.
+	s.handleFunc(srv, "/v1/chat/completions", s.relayOrchestratorChatHandler)
 	s.handleFunc(srv, "/v1/completions", s.handleRawRelay("/completions", true))
 	s.handleFunc(srv, "/v1/embeddings", s.handleRawRelay("/embeddings", false))
 	s.handleFunc(srv, "/v1/images/generations", s.handleRawRelay("/images/generations", true))
@@ -26,45 +24,45 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 	s.handleFunc(srv, "/v1/audio/speech", s.handleRawRelay("/audio/speech", false))
 	s.handleFunc(srv, "/v1/moderations", s.handleRawRelay("/moderations", false))
 	s.handleFunc(srv, "/v1/edits", s.handleUnsupportedOpenAIRoute("edits"))
-	s.handleFunc(srv, "/v1/responses", s.handleResponsesRelay)
-	s.handlePrefix(srv, "/v1/responses/", http.HandlerFunc(s.handleResponsesRelay))
+	s.handleFunc(srv, "/v1/responses", s.relayOrchestratorResponsesHandler)
+	s.handlePrefix(srv, "/v1/responses/", http.HandlerFunc(s.relayOrchestratorResponsesHandler))
 	s.handleFunc(srv, "/v1/usage", s.handleUsage)
 	s.handleFunc(srv, "/v1/subscription/usage", s.handleSubscriptionUsage)
-	srv.HandleFunc("/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
-	srv.HandlePrefix("/v1/engines/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("engines")))
-	srv.HandleFunc("/v1/files", s.handleUnsupportedOpenAIRoute("files"))
-	srv.HandlePrefix("/v1/files/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("files")))
-	srv.HandleFunc("/v1/fine-tunes", s.handleUnsupportedOpenAIRoute("fine-tunes"))
-	srv.HandlePrefix("/v1/fine-tunes/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("fine-tunes")))
-	srv.HandleFunc("/v1/fine_tuning/jobs", s.handleUnsupportedOpenAIRoute("fine_tuning.jobs"))
-	srv.HandlePrefix("/v1/fine_tuning/jobs/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("fine_tuning.jobs")))
-	srv.HandleFunc("/v1/batches", s.handleUnsupportedOpenAIRoute("batches"))
-	srv.HandlePrefix("/v1/batches/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("batches")))
-	srv.HandleFunc("/v1/uploads", s.handleUnsupportedOpenAIRoute("uploads"))
-	srv.HandlePrefix("/v1/uploads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("uploads")))
-	srv.HandleFunc("/v1/vector_stores", s.handleUnsupportedOpenAIRoute("vector_stores"))
-	srv.HandlePrefix("/v1/vector_stores/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("vector_stores")))
-	srv.HandleFunc("/v1/evals", s.handleUnsupportedOpenAIRoute("evals"))
-	srv.HandlePrefix("/v1/evals/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("evals")))
-	srv.HandleFunc("/v1/containers", s.handleUnsupportedOpenAIRoute("containers"))
-	srv.HandlePrefix("/v1/containers/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("containers")))
-	srv.HandlePrefix("/v1/fine_tuning/alpha/graders/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("graders")))
-	srv.HandlePrefix("/v1/realtime/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("realtime")))
-	srv.HandleFunc("/v1/conversations", s.handleUnsupportedOpenAIRoute("conversations"))
-	srv.HandlePrefix("/v1/conversations/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("conversations")))
-	srv.HandleFunc("/v1/assistants", s.handleUnsupportedOpenAIRoute("assistants"))
-	srv.HandlePrefix("/v1/assistants/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("assistants")))
-	srv.HandleFunc("/v1/threads", s.handleUnsupportedOpenAIRoute("threads"))
-	srv.HandlePrefix("/v1/threads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("threads")))
+	s.handleFunc(srv, "/v1/engines", s.handleUnsupportedOpenAIRoute("engines"))
+	s.handlePrefix(srv, "/v1/engines/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("engines")))
+	s.handleFunc(srv, "/v1/files", s.handleUnsupportedOpenAIRoute("files"))
+	s.handlePrefix(srv, "/v1/files/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("files")))
+	s.handleFunc(srv, "/v1/fine-tunes", s.handleUnsupportedOpenAIRoute("fine-tunes"))
+	s.handlePrefix(srv, "/v1/fine-tunes/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("fine-tunes")))
+	s.handleFunc(srv, "/v1/fine_tuning/jobs", s.handleUnsupportedOpenAIRoute("fine_tuning.jobs"))
+	s.handlePrefix(srv, "/v1/fine_tuning/jobs/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("fine_tuning.jobs")))
+	s.handleFunc(srv, "/v1/batches", s.handleUnsupportedOpenAIRoute("batches"))
+	s.handlePrefix(srv, "/v1/batches/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("batches")))
+	s.handleFunc(srv, "/v1/uploads", s.handleUnsupportedOpenAIRoute("uploads"))
+	s.handlePrefix(srv, "/v1/uploads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("uploads")))
+	s.handleFunc(srv, "/v1/vector_stores", s.handleUnsupportedOpenAIRoute("vector_stores"))
+	s.handlePrefix(srv, "/v1/vector_stores/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("vector_stores")))
+	s.handleFunc(srv, "/v1/evals", s.handleUnsupportedOpenAIRoute("evals"))
+	s.handlePrefix(srv, "/v1/evals/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("evals")))
+	s.handleFunc(srv, "/v1/containers", s.handleUnsupportedOpenAIRoute("containers"))
+	s.handlePrefix(srv, "/v1/containers/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("containers")))
+	s.handlePrefix(srv, "/v1/fine_tuning/alpha/graders/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("graders")))
+	s.handlePrefix(srv, "/v1/realtime/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("realtime")))
+	s.handleFunc(srv, "/v1/conversations", s.handleUnsupportedOpenAIRoute("conversations"))
+	s.handlePrefix(srv, "/v1/conversations/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("conversations")))
+	s.handleFunc(srv, "/v1/assistants", s.handleUnsupportedOpenAIRoute("assistants"))
+	s.handlePrefix(srv, "/v1/assistants/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("assistants")))
+	s.handleFunc(srv, "/v1/threads", s.handleUnsupportedOpenAIRoute("threads"))
+	s.handlePrefix(srv, "/v1/threads/", http.HandlerFunc(s.handleUnsupportedOpenAIRoute("threads")))
 	s.handlePrefix(srv, "/v1/oneapi/proxy/", http.HandlerFunc(s.handleOneAPIProxy))
 
 	// Anthropic Messages API inbound endpoint (for Claude Code CLI / native Anthropic SDK clients)
-	s.handleFunc(srv, "/v1/messages", s.handleAnthropicMessages)
+	s.handleFunc(srv, "/v1/messages", s.relayOrchestratorMessagesHandler)
 	s.handleFunc(srv, "/v1/models", s.handleModels)
-	srv.HandlePrefix("/v1/models/", http.HandlerFunc(s.handleRetrieveModel))
-	srv.HandleFunc("/api/status", s.handleAPIStatus)
-	srv.HandleFunc("/api/models", s.handleDashboardModels)
-	srv.HandleFunc("/api/group", s.handleGroups)
+	s.handlePrefix(srv, "/v1/models/", http.HandlerFunc(s.handleRetrieveModel))
+	s.handleFunc(srv, "/api/status", s.handleAPIStatus)
+	s.handleFunc(srv, "/api/models", s.handleDashboardModels)
+	s.handleFunc(srv, "/api/group", s.handleGroups)
 	srv.HandleFunc("/healthz", s.handleHealth)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		metrics.Handler().ServeHTTP(w, r)
@@ -72,14 +70,18 @@ func (s *HTTPServer) RegisterRoutes(srv *khttp.Server) {
 }
 
 func (s *HTTPServer) handleFunc(srv *khttp.Server, pattern string, handler http.HandlerFunc) {
+	srv.Handle(pattern, s.wrapRoute(handler))
+}
+
+func (s *HTTPServer) wrapRoute(handler http.Handler) http.Handler {
 	var h http.Handler = handler
 	h = appmiddleware.RequestBodyLimitByPath(h)
 	for i := len(s.routeMiddleware) - 1; i >= 0; i-- {
 		h = s.routeMiddleware[i](h)
 	}
-	srv.Handle(pattern, h)
+	return h
 }
 
 func (s *HTTPServer) handlePrefix(srv *khttp.Server, pattern string, handler http.Handler) {
-	srv.HandlePrefix(pattern, appmiddleware.RequestBodyLimitByPath(handler))
+	srv.HandlePrefix(pattern, s.wrapRoute(handler))
 }

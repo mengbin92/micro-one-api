@@ -183,3 +183,44 @@ func TestRelayExecutorAdapterReturnsTransportNeutralResponse(t *testing.T) {
 		t.Fatalf("response body = %s", response.Body)
 	}
 }
+
+func TestRelayExecutorAdapterReturnsTransportNeutralStream(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	usecase := relaybiz.NewRelayUsecase(
+		orchestratorIdentityClient{},
+		orchestratorChannelClient{baseURL: upstream.URL + "/v1"},
+		nil,
+		nil,
+	)
+	executor := NewRelayExecutorWithDependencies(usecase, relayprovider.NewProviderFactory(time.Second), nil, nil)
+	response, err := executor.Execute(context.Background(), relaybiz.ExecutorRequest{
+		Token:    "client-token",
+		Model:    "gpt-4o-mini",
+		Endpoint: "chat/completions",
+		Body:     []byte(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}],"stream":true}`),
+		Stream:   true,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if response.Stream == nil || len(response.Body) != 0 {
+		t.Fatalf("stream response = stream:%#v body:%q", response.Stream, response.Body)
+	}
+	body, err := io.ReadAll(response.Stream)
+	if err != nil {
+		t.Fatalf("read stream: %v", err)
+	}
+	if err := response.Stream.Close(); err != nil {
+		t.Fatalf("close stream: %v", err)
+	}
+	if !strings.Contains(string(body), `"total_tokens":3`) {
+		t.Fatalf("stream body = %s", body)
+	}
+}

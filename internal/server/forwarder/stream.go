@@ -64,7 +64,7 @@ func (f *StreamForwarder) ForwardRequest(
 		Header:     streamResp.Header.Clone(),
 		Body:       streamResp.Body,
 	}
-	return response, readChunks(streamResp.Body), nil
+	return response, readChunks(ctx, streamResp.Body), nil
 }
 
 // ProcessChunk processes a single stream chunk from upstream.
@@ -77,7 +77,7 @@ func (f *StreamForwarder) Close() error {
 	return nil
 }
 
-func readChunks(body io.ReadCloser) <-chan []byte {
+func readChunks(ctx context.Context, body io.ReadCloser) <-chan []byte {
 	chunks := make(chan []byte, 16)
 	go func() {
 		defer close(chunks)
@@ -89,7 +89,11 @@ func readChunks(body io.ReadCloser) <-chan []byte {
 			if n > 0 {
 				chunk := make([]byte, n)
 				copy(chunk, buf[:n])
-				chunks <- chunk
+				select {
+				case chunks <- chunk:
+				case <-ctx.Done():
+					return
+				}
 			}
 			if err != nil {
 				return

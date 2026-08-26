@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { API_BASE_URL } from '@/lib/api';
+import { resolveRelayBaseUrl } from '@/lib/server-address';
 
 // ---------------------------------------------------------------------------
 // Types & helpers
@@ -67,28 +67,6 @@ function CopyableCode({ code, language }: { code: string; language: string }) {
       </pre>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Server address resolution
-// ---------------------------------------------------------------------------
-
-let cachedServerAddress: string | null = null;
-
-async function getServerAddress(): Promise<string> {
-  if (cachedServerAddress) return cachedServerAddress;
-  try {
-    const res = await fetch(`${API_BASE_URL}/status`);
-    const json = await res.json();
-    const addr = json?.data?.server_address;
-    if (addr && typeof addr === 'string' && addr.trim()) {
-      cachedServerAddress = addr.replace(/\/+$/, '');
-      return cachedServerAddress;
-    }
-  } catch {
-    /* fall through */
-  }
-  return window.location.origin;
 }
 
 // ---------------------------------------------------------------------------
@@ -453,9 +431,13 @@ export function ApiGuidePage() {
 
   useEffect(() => {
     let cancelled = false;
-    getServerAddress().then((addr) => {
-      if (!cancelled) setBaseUrl(addr);
-    });
+    resolveRelayBaseUrl()
+      .then((resolved) => {
+        if (!cancelled) setBaseUrl(resolved.url);
+      })
+      .catch(() => {
+        // Keep the same-origin snippet fallback if status/build configuration is invalid.
+      });
     return () => {
       cancelled = true;
     };

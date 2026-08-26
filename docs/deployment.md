@@ -297,7 +297,7 @@ kubectl port-forward -n one-api service/relay-gateway 8080:80
 | `CHANNEL_HEALTH_ALERT_RECIPIENTS` | JSON 数组；webhook/event 可填 URL 或留空走 `NOTIFY_WEBHOOK_URL`，email 填邮箱 | `[""]` |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` | 每秒请求数限制 | `100` |
 | `RATE_LIMIT_BURST` | 突发请求上限 | `200` |
-| `CORS_ALLOWED_ORIGINS` | CORS 允许的源 | - |
+| `CORS_ALLOWED_ORIGINS` | CORS 允许的源，逗号分隔；生产填写真实 HTTPS 来源 | 空（拒绝跨域） |
 
 ### 4.3 Admin API 专用
 

@@ -57,6 +57,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusBadRequest, "model is required")
 		return
 	}
+	setRelayObservationStream(r.Context(), req.Stream)
 
 	sessionHash := ""
 	if s.subscriptionSessionStickyEnabled {
@@ -188,6 +189,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 	// (success/error + fallback info) so routing_selection_total and
 	// routing_fallback_total fire once (code review #1/#2).
 	s.finalizeSelectionFromResult(plan, result, time.Since(retryStartedAt))
+	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
 
 	if result.Err != nil {
 		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
@@ -268,7 +270,7 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		if logInput.Endpoint == "" {
 			logInput.Endpoint = "/v1/chat/completions"
 		}
-		if err := s.commitQuotaAfterResponse(reservation.ReservationId, totalTokens, true, logInput); err != nil {
+		if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, totalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
 		} else {
 			logUpstreamUsage(logInput)

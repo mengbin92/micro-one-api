@@ -34,7 +34,7 @@ func TestRelayAdaptorForwarderUsesRegistryForAPIKeyChannel(t *testing.T) {
 	factory := relayprovider.NewProviderFactory(time.Second)
 	// NewHTTPServer is the production bootstrap point that wires the registry.
 	_ = NewHTTPServer(nil, nil, nil, factory, nil)
-	forwarder := newRelayAdaptorForwarder(factory, nil, &http.Client{Timeout: time.Second}, nil)
+	forwarder := newRelayAdaptorForwarder(factory, nil, &http.Client{Timeout: time.Second}, nil, nil)
 	response, err := forwarder.Forward(context.Background(), &relaybiz.RelayPlan{
 		Auth:          &relaybiz.AuthSnapshot{UserID: 42},
 		Channel:       &relaybiz.Channel{ID: 9, Type: relayprovider.ChannelTypeOpenAI, BaseURL: upstream.URL + "/v1", Key: "upstream-key"},
@@ -70,7 +70,7 @@ func TestRelayAdaptorForwarderCapsUpstreamErrorBody(t *testing.T) {
 
 	factory := relayprovider.NewProviderFactory(time.Second)
 	_ = NewHTTPServer(nil, nil, nil, factory, nil)
-	forwarder := newRelayAdaptorForwarder(factory, nil, &http.Client{Timeout: time.Second}, nil)
+	forwarder := newRelayAdaptorForwarder(factory, nil, &http.Client{Timeout: time.Second}, nil, nil)
 	_, err := forwarder.Forward(context.Background(), &relaybiz.RelayPlan{
 		Channel: &relaybiz.Channel{ID: 9, Type: relayprovider.ChannelTypeOpenAI, BaseURL: upstream.URL + "/v1", Key: "upstream-key"},
 	}, relaybiz.ExecutorRequest{
@@ -83,6 +83,19 @@ func TestRelayAdaptorForwarderCapsUpstreamErrorBody(t *testing.T) {
 	}
 	if upstreamErr.StatusCode != http.StatusBadGateway || len(upstreamErr.Body) != relayprovider.MaxUpstreamErrorBody {
 		t.Fatalf("upstream error = status:%d body:%d", upstreamErr.StatusCode, len(upstreamErr.Body))
+	}
+}
+
+func TestClassifyExecutorCapabilityErrorScopesMethodNotAllowedToResponses(t *testing.T) {
+	upstreamErr := &relayprovider.UpstreamHTTPError{StatusCode: http.StatusMethodNotAllowed, Body: []byte("method not allowed")}
+
+	responsesErr := classifyExecutorCapabilityError(string(EndpointResponses), upstreamErr)
+	if !relaybiz.IsProtocolCapabilityMismatch(responsesErr) {
+		t.Fatalf("responses error = %v, want protocol capability mismatch", responsesErr)
+	}
+	chatErr := classifyExecutorCapabilityError(string(EndpointChatCompletions), upstreamErr)
+	if relaybiz.IsProtocolCapabilityMismatch(chatErr) {
+		t.Fatalf("chat error = %v, generic 405 must not be a capability mismatch", chatErr)
 	}
 }
 

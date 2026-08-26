@@ -32,8 +32,11 @@ func detachedBillingContext(parent context.Context) (context.Context, context.Ca
 	return context.WithTimeout(context.WithoutCancel(parent), postResponseWriteTimeout)
 }
 
-func (s *HTTPServer) commitQuotaAfterResponse(reservationID string, actualTokens int64, success bool, details ...usageLogInput) error {
-	ctx, cancel := postResponseContext()
+func (s *HTTPServer) commitQuotaAfterResponseObserved(parent context.Context, reservationID string, actualTokens int64, success bool, details ...usageLogInput) error {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := detachedBillingContext(context.WithoutCancel(parent))
 	defer cancel()
 	return s.commitQuota(ctx, reservationID, actualTokens, success, details...)
 }
@@ -68,11 +71,14 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	}
 	resp, err := s.billingClient.ReserveQuota(ctx, req)
 	if err != nil {
+		recordRelayQuotaOutcome(ctx, "reserve_error")
 		return nil, err
 	}
 	if resp == nil || !resp.GetSuccess() {
+		recordRelayQuotaOutcome(ctx, "reserve_error")
 		return resp, stderrors.New(billingErrorMessage(resp, "reserve quota failed"))
 	}
+	recordRelayQuotaOutcome(ctx, "reserve_success")
 	return resp, nil
 }
 
@@ -108,15 +114,20 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	defer cancel()
 	resp, err := s.billingClient.CommitQuota(billingCtx, req)
 	if err != nil {
+		recordRelayQuotaOutcome(ctx, "commit_error")
+		setRelayObservationResult(ctx, "quota_error")
 		return nil, err
 	}
 	if resp == nil || !resp.GetSuccess() {
+		recordRelayQuotaOutcome(ctx, "commit_error")
+		setRelayObservationResult(ctx, "quota_error")
 		return resp, stderrors.New(billingErrorMessage(resp, "commit quota failed"))
 	}
 	// A failed upstream attempt is released/refunded by billing and therefore
 	// has no consume ledger. Do not increment channel/model/token counters for
 	// it; doing so was the source of the persistent channel-vs-ledger drift.
 	if !success {
+		recordRelayQuotaOutcome(ctx, "commit_failure_settlement")
 		return resp, nil
 	}
 	// Phase 2.1 async billing: when the billing service enqueues the
@@ -137,6 +148,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 			// High #5: consume per-key token quota even on the async path.
 			s.consumeTokenQuota(ctx, details[0].UserID, details[0].TokenID, actualTokens)
 		}
+		recordRelayQuotaOutcome(ctx, "commit_async")
 		return resp, nil
 	}
 	if len(details) > 0 {
@@ -157,6 +169,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		// failures fail-close this token in the relay until validation recovers.
 		s.consumeTokenQuota(ctx, detail.UserID, detail.TokenID, actualTokens)
 	}
+	recordRelayQuotaOutcome(ctx, "commit_success")
 	return resp, nil
 }
 
@@ -348,11 +361,14 @@ func (s *HTTPServer) releaseQuota(ctx context.Context, reservationID, reason str
 	defer cancel()
 	resp, err := s.billingClient.ReleaseQuota(billingCtx, req)
 	if err != nil {
+		recordRelayQuotaOutcome(ctx, "release_error")
 		return err
 	}
 	if resp == nil || !resp.GetSuccess() {
+		recordRelayQuotaOutcome(ctx, "release_error")
 		return stderrors.New(billingErrorMessage(resp, "release quota failed"))
 	}
+	recordRelayQuotaOutcome(ctx, "release_success")
 	return nil
 }
 

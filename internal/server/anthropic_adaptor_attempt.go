@@ -214,7 +214,7 @@ func (s *HTTPServer) writeAnthropicAdaptorStream(
 
 	usage := upstreamUsage.Usage()
 	populateAnthropicUsageLog(&logInput, usage, time.Since(startedAt))
-	if err := s.commitQuotaAfterResponse(reservationID, usage.TotalTokens, true, logInput); err != nil {
+	if err := s.commitQuotaAfterResponseObserved(ctx, reservationID, usage.TotalTokens, true, logInput); err != nil {
 		s.logPostResponseCommitError(err)
 	} else {
 		logUpstreamUsage(logInput)
@@ -240,7 +240,7 @@ type observedReadCloser struct {
 
 func copyAnthropicUpstreamHeaders(destination, source http.Header) {
 	for key, values := range source {
-		if isRelayHopByHopHeader(key) || strings.EqualFold(key, "Content-Type") || strings.EqualFold(key, "Content-Length") {
+		if isRelayHopByHopHeader(key) || IsRelayCORSResponseHeader(key) || strings.EqualFold(key, "Content-Type") || strings.EqualFold(key, "Content-Length") {
 			continue
 		}
 		for _, value := range values {

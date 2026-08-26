@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"micro-one-api/pkg/jsonx"
@@ -53,32 +55,26 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 		s.writeError(w, http.StatusBadRequest, "messages are required")
 		return
 	}
-	if req.Stream {
-		// The v0.23 first slice is non-streaming only. Restore the body before
-		// delegating so the legacy handler can apply its existing stream path.
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		s.handleChatCompletions(w, r)
-		return
-	}
+	setRelayObservationStream(r.Context(), req.Stream)
 	if s.billingClient == nil {
 		s.writeError(w, http.StatusServiceUnavailable, "billing service unavailable")
 		return
 	}
 
-	executor := NewRelayExecutorWithForwarder(
-		s.relayUsecase,
-		s.providerFactory,
-		httpRelayLifecycleHooks{s: s},
-		newRelayAdaptorForwarder(s.providerFactory, s.accountResolver, s.apiKeyHTTPClient, s.oauthHTTPClient),
-		nil,
-	)
+	executor := s.newStagedRelayExecutor()
+	sessionHash := ""
+	if s.subscriptionSessionStickyEnabled {
+		sessionHash = extractSessionHashFromRequest(r, body)
+	}
 	result, err := executor.Execute(r.Context(), relaybiz.ExecutorRequest{
-		Token:     token,
-		Model:     req.Model,
-		Endpoint:  string(EndpointChatCompletions),
-		Body:      body,
-		Headers:   relayExecutorHeaders(r.Header),
-		RequestID: generateRequestID(),
+		Token:       token,
+		Model:       req.Model,
+		Endpoint:    string(EndpointChatCompletions),
+		Body:        body,
+		Headers:     relayExecutorHeaders(r.Header),
+		RequestID:   generateRequestID(),
+		SessionHash: sessionHash,
+		Stream:      req.Stream,
 	})
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -86,6 +82,10 @@ func (s *HTTPServer) handleChatCompletionsWithOrchestrator(w http.ResponseWriter
 			status = result.StatusCode
 		}
 		s.writeError(w, status, orchestratorErrorMessage(status, err))
+		return
+	}
+	if result.Stream != nil {
+		writeOrchestratedRelayStream(w, result)
 		return
 	}
 	writeOrchestratedRelayResult(w, relayResultFromExecutionResponse(result))
@@ -106,7 +106,7 @@ func relayExecutorHeaders(headers http.Header) map[string][]string {
 
 func isRelayExecutorHeader(key string) bool {
 	switch strings.ToLower(key) {
-	case "accept", "content-type", "openai-beta", "openai-organization", "openai-project", "user-agent", "x-request-id":
+	case "accept", "content-type", "anthropic-beta", "anthropic-version", "openai-beta", "openai-organization", "openai-project", "user-agent", "x-request-id":
 		return true
 	default:
 		return false
@@ -159,7 +159,7 @@ func writeOrchestratedRelayResult(w http.ResponseWriter, result *RelayResult) {
 	defer result.Response.Close()
 
 	for key, values := range result.Headers {
-		if isRelayHopByHopHeader(key) {
+		if isRelayHopByHopHeader(key) || IsRelayCORSResponseHeader(key) {
 			continue
 		}
 		for _, value := range values {
@@ -175,6 +175,47 @@ func writeOrchestratedRelayResult(w http.ResponseWriter, result *RelayResult) {
 	}
 	w.WriteHeader(status)
 	_, _ = io.Copy(w, result.Response)
+}
+
+func writeOrchestratedRelayStream(w http.ResponseWriter, result relaybiz.ExecutionResponse) {
+	if result.Stream == nil {
+		http.Error(w, "empty upstream stream", http.StatusBadGateway)
+		return
+	}
+	defer result.Stream.Close()
+	for key, values := range result.Headers {
+		if isRelayHopByHopHeader(key) || IsRelayCORSResponseHeader(key) || strings.EqualFold(key, "Content-Length") {
+			continue
+		}
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "text/event-stream")
+	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	status := result.StatusCode
+	if status == 0 {
+		status = http.StatusOK
+	}
+	w.WriteHeader(status)
+	if flusher, ok := w.(http.Flusher); ok {
+		_, err := io.Copy(&flushWriter{w: w, flusher: flusher}, result.Stream)
+		markRelayStreamInterrupted(result.Stream, err)
+		return
+	}
+	_, err := io.Copy(w, result.Stream)
+	markRelayStreamInterrupted(result.Stream, err)
+}
+
+func markRelayStreamInterrupted(stream relaybiz.RelayStream, err error) {
+	if err == nil {
+		return
+	}
+	if observed, ok := stream.(interface{ markInterrupted() }); ok {
+		observed.markInterrupted()
+	}
 }
 
 type httpRelayLifecycleHooks struct {
@@ -242,13 +283,73 @@ func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.Re
 	// too would double-count.
 }
 
+func (h httpRelayLifecycleHooks) CompleteStream(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, responseID string) {
+	if h.s == nil || plan == nil || plan.Channel == nil || plan.Auth == nil || req == nil {
+		return
+	}
+	if req.SessionHash != "" {
+		h.s.bindSubscriptionSession(ctx, plan.Auth.Group, req.SessionHash, plan)
+	}
+	if req.Endpoint != EndpointResponses || responseID == "" {
+		return
+	}
+	route := responseRoute{
+		Model: req.Model, GlobalModel: plan.BaseModel(), ResolvedModel: plan.ResolvedModel,
+		Channel: *plan.Channel, UserID: plan.Auth.UserID,
+		SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
+	}
+	if route.SubscriptionAccountID > 0 && plan.Account != nil && plan.Account.ID == route.SubscriptionAccountID {
+		route.Account = plan.Account
+	}
+	h.s.storeResponseRoute(responseID, route)
+}
+
+func (h httpRelayLifecycleHooks) AcquireRelayAttempt(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest) (func(), error) {
+	if h.s == nil || plan == nil || plan.Channel == nil || plan.Channel.SubscriptionAccountID <= 0 {
+		return func() {}, nil
+	}
+	accountID := subscriptionAccountIDFromPlan(plan)
+	var concurrencyLimit, rpmLimit int32
+	var sessionWindowLimitUSD float64
+	if plan.Account != nil {
+		concurrencyLimit = plan.Account.Concurrency
+		rpmLimit = plan.Account.RPMLimit
+		sessionWindowLimitUSD = plan.Account.SessionWindowLimitUSD
+	}
+	releaseSlot, acquired := h.s.accountConcurrency.TryAcquire(ctx, accountID, concurrencyLimit)
+	if !acquired {
+		return nil, &relaybiz.RetryableError{Status: http.StatusServiceUnavailable, Err: fmt.Errorf("subscription account %d at concurrency limit", accountID)}
+	}
+	h.s.reportSubscriptionAccountSlot(accountID, true)
+	var releaseOnce sync.Once
+	release := func() {
+		releaseOnce.Do(func() {
+			releaseSlot()
+			h.s.reportSubscriptionAccountSlot(accountID, false)
+		})
+	}
+	if h.s.accountRPM != nil && !h.s.accountRPM.TryAcquire(ctx, accountID, rpmLimit) {
+		release()
+		return nil, &relaybiz.RetryableError{Status: http.StatusServiceUnavailable, Err: fmt.Errorf("subscription account %d at rpm limit", accountID)}
+	}
+	if h.s.sessionWindow != nil && plan.Auth != nil && h.s.sessionWindow.Exceeded(ctx, plan.Auth.Group, req.SessionHash, accountID, sessionWindowLimitUSD) {
+		release()
+		return nil, &relaybiz.RetryableError{Status: http.StatusServiceUnavailable, Err: fmt.Errorf("subscription account %d at session window limit", accountID)}
+	}
+	return release, nil
+}
+
 func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) usageLogInput {
+	endpoint := "/v1" + endpointPath(req.Endpoint)
+	if endpoint == "/v1" {
+		endpoint = "/v1/chat/completions"
+	}
 	input := usageLogInput{
 		UserID:                plan.Auth.UserID,
 		TokenID:               plan.Auth.TokenID,
 		TokenName:             plan.Auth.TokenName,
 		RequestID:             req.RequestID,
-		Endpoint:              "/v1/chat/completions",
+		Endpoint:              endpoint,
 		ModelName:             h.s.BillingModelName(req.Model, plan.ResolvedModel, plan.ResolvedModel),
 		Quota:                 usage.TotalTokens,
 		PromptTokens:          usage.PromptTokens,

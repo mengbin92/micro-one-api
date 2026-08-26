@@ -3,7 +3,12 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	"micro-one-api/platform/metrics"
 )
 
 func TestShouldUseRelayOrchestratorRequiresEnabledAllowlistedPost(t *testing.T) {
@@ -36,6 +41,45 @@ func TestShouldUseRelayOrchestratorRequiresEnabledAllowlistedPost(t *testing.T) 
 				t.Fatalf("shouldUseRelayOrchestrator() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRelayOrchestratorHandlerRecordsExecutionPath(t *testing.T) {
+	s := NewHTTPServer(nil, nil, nil, nil, nil)
+
+	legacyBefore := testutil.ToFloat64(metrics.RelayExecutorRequestsTotal.WithLabelValues(
+		relayEndpointChatCompletions, relayStreamUnknown, relayExecutionPathLegacy, "405", "error",
+	))
+	legacyReq := httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil)
+	legacyRec := httptest.NewRecorder()
+	s.relayOrchestratorChatHandler(legacyRec, legacyReq)
+	if legacyRec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("legacy status = %d, want %d", legacyRec.Code, http.StatusMethodNotAllowed)
+	}
+	if got := testutil.ToFloat64(metrics.RelayExecutorRequestsTotal.WithLabelValues(
+		relayEndpointChatCompletions, relayStreamUnknown, relayExecutionPathLegacy, "405", "error",
+	)); got != legacyBefore+1 {
+		t.Fatalf("legacy execution metric = %v, want %v", got, legacyBefore+1)
+	}
+
+	s.SetRelayOrchestratorEnabled(true)
+	s.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("staging-token")})
+	orchestratorBefore := testutil.ToFloat64(metrics.RelayExecutorRequestsTotal.WithLabelValues(
+		relayEndpointChatCompletions, "false", relayExecutionPathOrchestrator, "503", "error",
+	))
+	orchestratorReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(
+		`{"model":"test-model","messages":[{"role":"user","content":"ping"}]}`,
+	))
+	orchestratorReq.Header.Set("Authorization", "Bearer staging-token")
+	orchestratorRec := httptest.NewRecorder()
+	s.relayOrchestratorChatHandler(orchestratorRec, orchestratorReq)
+	if orchestratorRec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("orchestrator status = %d, want %d", orchestratorRec.Code, http.StatusServiceUnavailable)
+	}
+	if got := testutil.ToFloat64(metrics.RelayExecutorRequestsTotal.WithLabelValues(
+		relayEndpointChatCompletions, "false", relayExecutionPathOrchestrator, "503", "error",
+	)); got != orchestratorBefore+1 {
+		t.Fatalf("orchestrator execution metric = %v, want %v", got, orchestratorBefore+1)
 	}
 }
 

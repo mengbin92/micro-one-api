@@ -28,7 +28,6 @@ func DefaultRetryPolicy() *RetryPolicy {
 		MaxInterval:     5 * time.Second,
 		Multiplier:      2.0,
 		RetryableStatus: map[int]bool{
-			405: true,
 			429: true,
 			500: true,
 			502: true,
@@ -51,9 +50,67 @@ func (e *RetryableError) Unwrap() error {
 	return e.Err
 }
 
+// PostForwardError marks a local lifecycle failure that happened after the
+// upstream already returned a response. Retrying such an error would duplicate
+// the upstream request, and it must not count against upstream channel health.
+type PostForwardError struct {
+	Err error
+}
+
+func (e *PostForwardError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *PostForwardError) Unwrap() error {
+	return e.Err
+}
+
+// MarkPostForwardError preserves the original error while making its retry
+// and channel-health disposition explicit.
+func MarkPostForwardError(err error) error {
+	if err == nil || IsPostForwardError(err) {
+		return err
+	}
+	return &PostForwardError{Err: err}
+}
+
+// IsPostForwardError reports whether the upstream call already completed
+// before the wrapped local lifecycle failure occurred.
+func IsPostForwardError(err error) bool {
+	var target *PostForwardError
+	return errors.As(err, &target)
+}
+
+// ProtocolCapabilityError marks an upstream response as evidence that the
+// selected source cannot serve the requested protocol. Unlike a generic 405,
+// another source may satisfy this request and is therefore eligible for retry.
+type ProtocolCapabilityError struct {
+	Err error
+}
+
+func (e *ProtocolCapabilityError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *ProtocolCapabilityError) Unwrap() error {
+	return e.Err
+}
+
+// MarkProtocolCapabilityError preserves the typed upstream error while adding
+// the endpoint-aware retry classification.
+func MarkProtocolCapabilityError(err error) error {
+	if err == nil || IsProtocolCapabilityMismatch(err) {
+		return err
+	}
+	return &ProtocolCapabilityError{Err: err}
+}
+
 // IsRetryable checks whether an error should trigger a retry attempt.
 func (p *RetryPolicy) IsRetryable(err error) bool {
 	if err == nil {
+		return false
+	}
+	if IsPostForwardError(err) {
 		return false
 	}
 	// Protocol capability mismatches are not malformed client requests. Another
@@ -63,15 +120,9 @@ func (p *RetryPolicy) IsRetryable(err error) bool {
 		return true
 	}
 
-	// Check for RetryableError
-	var re *RetryableError
-	if AsRetryableError(err, &re) {
-		return p.RetryableStatus[re.Status]
-	}
-
-	// Check error message for upstream HTTP status patterns
-	msg := err.Error()
-	if status := extractStatus(msg); status > 0 {
+	// Prefer typed RetryableError / UpstreamHTTPError values. UpstreamStatus
+	// retains string parsing only as a compatibility fallback for legacy callers.
+	if status := UpstreamStatus(err); status > 0 {
 		return p.RetryableStatus[status]
 	}
 
@@ -96,10 +147,11 @@ func isRetryableNetworkError(err error) bool {
 // upstream protocol limitation rather than invalid client input. Keep the 400
 // match deliberately narrow: other bad requests must still fail immediately.
 func IsProtocolCapabilityMismatch(err error) bool {
-	status := UpstreamStatus(err)
-	if status == 405 {
+	var capabilityErr *ProtocolCapabilityError
+	if errors.As(err, &capabilityErr) {
 		return true
 	}
+	status := UpstreamStatus(err)
 	if status != 400 {
 		return false
 	}
@@ -112,6 +164,9 @@ func IsProtocolCapabilityMismatch(err error) bool {
 // 5xx responses, timeouts, and transport failures still count as unhealthy.
 func upstreamAttemptHealthy(err error) bool {
 	if err == nil {
+		return true
+	}
+	if IsPostForwardError(err) {
 		return true
 	}
 	// A model-specific outage proves the channel itself is reachable. Keep

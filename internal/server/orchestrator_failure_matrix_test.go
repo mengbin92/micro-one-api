@@ -17,6 +17,7 @@ type matrixChannelClient struct {
 	selectErr   error
 	healthErr   error
 	healthCalls int
+	healthOK    []bool
 	selectCalls int
 	noCandidate bool
 }
@@ -33,8 +34,9 @@ func (c *matrixChannelClient) SelectChannelExcluding(ctx context.Context, group,
 	return c.SelectChannel(ctx, group, model, true)
 }
 
-func (c *matrixChannelClient) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
+func (c *matrixChannelClient) RecordChannelHealth(_ context.Context, _ int64, success bool, _ string, _ int64) error {
 	c.healthCalls++
+	c.healthOK = append(c.healthOK, success)
 	return c.healthErr
 }
 
@@ -156,7 +158,7 @@ func TestRelayOrchestratorFailureMatrixContextCancellationReleasesOnce(t *testin
 
 func TestRelayOrchestratorFailureMatrixCommitErrorDoesNotRetryOrRelease(t *testing.T) {
 	channel := &matrixChannelClient{channel: &relaybiz.Channel{ID: 11}}
-	hooks := &matrixLifecycleHooks{commitErr: errors.New("billing commit uncertain")}
+	hooks := &matrixLifecycleHooks{commitErr: errors.New("dial tcp billing: connection refused")}
 	forwarder := &matrixForwarder{response: &relaybiz.ForwardResponse{
 		StatusCode: http.StatusOK,
 		Headers:    map[string][]string{"Content-Type": {"application/json"}},
@@ -172,6 +174,9 @@ func TestRelayOrchestratorFailureMatrixCommitErrorDoesNotRetryOrRelease(t *testi
 	}
 	if hooks.reserve != 1 || hooks.commit != 1 || hooks.release != 0 || hooks.log != 0 || forwarder.calls != 1 {
 		t.Fatalf("lifecycle = reserve:%d commit:%d release:%d log:%d forward:%d", hooks.reserve, hooks.commit, hooks.release, hooks.log, forwarder.calls)
+	}
+	if len(channel.healthOK) != 1 || !channel.healthOK[0] {
+		t.Fatalf("channel health = %+v, want one healthy upstream outcome", channel.healthOK)
 	}
 }
 

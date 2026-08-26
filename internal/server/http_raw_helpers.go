@@ -538,7 +538,7 @@ func extractTotalTokens(body []byte, fallback int64) int64 {
 // client, filtering hop-by-hop and Content-Type headers.
 func writeRawResponse(w http.ResponseWriter, resp *relayprovider.RawResponse) {
 	for key, values := range resp.Header {
-		if isRelayHopByHopHeader(key) || strings.EqualFold(key, "Content-Type") {
+		if isRelayHopByHopHeader(key) || IsRelayCORSResponseHeader(key) || strings.EqualFold(key, "Content-Type") {
 			continue
 		}
 		for _, value := range values {
@@ -691,7 +691,7 @@ func writeRawStreamResponse(w http.ResponseWriter, resp *relayprovider.RawStream
 	defer resp.Body.Close()
 
 	for key, values := range resp.Header {
-		if isRelayHopByHopHeader(key) || strings.EqualFold(key, "Content-Type") {
+		if isRelayHopByHopHeader(key) || IsRelayCORSResponseHeader(key) || strings.EqualFold(key, "Content-Type") {
 			continue
 		}
 		for _, value := range values {

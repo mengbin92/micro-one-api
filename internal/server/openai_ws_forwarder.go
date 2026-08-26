@@ -149,6 +149,13 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 			}
 		}
 		s.finalizeSelectionDirect(plan, execution.resultLabel, execution.fallbackReason, execution.fallback, finalSourceID, time.Since(selectionStartedAt))
+		if execution.fallback {
+			failoverResult := "switched"
+			if execution.resultLabel != "success" {
+				failoverResult = "exhausted"
+			}
+			recordRelayFailover(ctx, failoverResult, execution.fallbackReason)
+		}
 	}()
 	if err := s.checkUserRPM(ctx, plan.Auth.UserID); err != nil {
 		execution.resultLabel = "client_error"
@@ -651,7 +658,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				}
 			}
 			if turnReservationID != "" {
-				if commitErr := s.commitQuotaAfterResponse(turnReservationID, actualTotal, true, logInput); commitErr != nil {
+				if commitErr := s.commitQuotaAfterResponseObserved(ctx, turnReservationID, actualTotal, true, logInput); commitErr != nil {
 					applogger.Log.Warn("failed to commit openai ws turn quota",
 						zap.String("request_id", turnID),
 						zap.Error(commitErr),

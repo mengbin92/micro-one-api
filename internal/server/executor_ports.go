@@ -15,16 +15,13 @@ import (
 var _ relaybiz.Executor = relayExecutorAdapter{}
 
 // relayExecutorAdapter exposes the server's staged orchestrator through the
-// business executor contract. The adapter only supports the v0.23 non-stream
-// slice; SSE and WebSocket remain owned by their existing transport handlers.
+// business executor contract. SSE transport remains owned by the caller; the
+// adapter returns a transport-neutral stream handle for streaming requests.
 type relayExecutorAdapter struct {
 	orchestrator *relayOrchestrator
 }
 
 func (a relayExecutorAdapter) Execute(ctx context.Context, req relaybiz.ExecutorRequest) (relaybiz.ExecutionResponse, error) {
-	if req.Stream {
-		return relaybiz.ExecutionResponse{}, fmt.Errorf("transport-neutral executor supports non-stream requests only")
-	}
 	if a.orchestrator == nil {
 		return relaybiz.ExecutionResponse{}, fmt.Errorf("relay executor unavailable")
 	}
@@ -40,6 +37,10 @@ func (a relayExecutorAdapter) Execute(ctx context.Context, req relaybiz.Executor
 		ChannelID:             result.ChannelID,
 		SubscriptionAccountID: result.SubscriptionAccountID,
 		RequestID:             relayReq.RequestID,
+	}
+	if req.Stream {
+		response.Stream = result.Response
+		return response, executeErr
 	}
 	if result.Response != nil {
 		body, readErr := io.ReadAll(result.Response)
@@ -98,10 +99,11 @@ func (l relayEventLogger) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan
 	// Usage logging needs metadata only. Keep credentials, body, and inbound
 	// headers out of the lifecycle hook even if a future caller passes them.
 	safeReq := relaybiz.ExecutorRequest{
-		Model:     req.Model,
-		Endpoint:  req.Endpoint,
-		RequestID: req.RequestID,
-		Stream:    req.Stream,
+		Model:       req.Model,
+		Endpoint:    req.Endpoint,
+		RequestID:   req.RequestID,
+		SessionHash: req.SessionHash,
+		Stream:      req.Stream,
 	}
 	l.hooks.LogUsage(ctx, plan, relayRequestFromExecutorRequest(safeReq), usage, latency, stream)
 }
@@ -144,15 +146,38 @@ func (f relayNonStreamForwarder) Forward(ctx context.Context, plan *relaybiz.Rel
 	}, nil
 }
 
+type relayProviderStreamForwarder struct {
+	forwarder *forwarder.StreamForwarder
+}
+
+func (f relayProviderStreamForwarder) ForwardStream(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest) (*relaybiz.StreamForwardResponse, error) {
+	if f.forwarder == nil {
+		return nil, fmt.Errorf("stream forwarder unavailable")
+	}
+	resp, chunks, err := f.forwarder.ForwardRequest(ctx, plan, endpointPath(APIEndpoint(req.Endpoint)), req.Body, headerMapToHTTP(req.Headers))
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || chunks == nil {
+		return nil, fmt.Errorf("stream forwarder returned an incomplete response")
+	}
+	return &relaybiz.StreamForwardResponse{
+		StatusCode: resp.StatusCode,
+		Headers:    httpHeaderToMap(resp.Header),
+		Stream:     newChunkReadCloser(chunks),
+	}, nil
+}
+
 func relayRequestFromExecutorRequest(req relaybiz.ExecutorRequest) *RelayRequest {
 	return &RelayRequest{
-		Token:     req.Token,
-		Model:     req.Model,
-		Endpoint:  APIEndpoint(req.Endpoint),
-		Body:      bytes.NewReader(req.Body),
-		IsStream:  req.Stream,
-		Headers:   headerMapToHTTP(req.Headers),
-		RequestID: req.RequestID,
+		Token:       req.Token,
+		Model:       req.Model,
+		Endpoint:    APIEndpoint(req.Endpoint),
+		Body:        bytes.NewReader(req.Body),
+		IsStream:    req.Stream,
+		Headers:     headerMapToHTTP(req.Headers),
+		RequestID:   req.RequestID,
+		SessionHash: req.SessionHash,
 	}
 }
 

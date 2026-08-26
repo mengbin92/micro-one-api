@@ -18,7 +18,7 @@ func TestDefaultRetryPolicy(t *testing.T) {
 	assert.Equal(t, 5*time.Second, p.MaxInterval)
 	assert.Equal(t, 2.0, p.Multiplier)
 	assert.True(t, p.RetryableStatus[429])
-	assert.True(t, p.RetryableStatus[405])
+	assert.False(t, p.RetryableStatus[405])
 	assert.True(t, p.RetryableStatus[500])
 	assert.True(t, p.RetryableStatus[502])
 	assert.True(t, p.RetryableStatus[503])
@@ -35,7 +35,8 @@ func TestRetryPolicy_IsRetryable(t *testing.T) {
 		{"nil error", nil, false},
 		{"retryable error 429", &RetryableError{Status: 429, Err: errors.New("rate limited")}, true},
 		{"retryable error 500", &RetryableError{Status: 500, Err: errors.New("internal")}, true},
-		{"capability error 405", &RetryableError{Status: 405, Err: errors.New("method not allowed")}, true},
+		{"generic method not allowed", &RetryableError{Status: 405, Err: errors.New("method not allowed")}, false},
+		{"responses capability error 405", MarkProtocolCapabilityError(&RetryableError{Status: 405, Err: errors.New("method not allowed")}), true},
 		{"reasoning protocol mismatch 400", &relayprovider.UpstreamHTTPError{StatusCode: 400, Body: []byte("The reasoning_content in the thinking mode must be passed back to the API")}, true},
 		{"non-retryable error 400", &RetryableError{Status: 400, Err: errors.New("bad request")}, false},
 		{"upstream status=502", errors.New("upstream error: status=502, body=bad gateway"), true},
@@ -44,6 +45,7 @@ func TestRetryPolicy_IsRetryable(t *testing.T) {
 		{"timeout", errors.New("context deadline exceeded: timeout"), true},
 		{"EOF", errors.New("unexpected EOF"), true},
 		{"dial tcp", errors.New("dial tcp 10.0.0.1:443: connect: no route to host"), true},
+		{"post-forward billing transport error", MarkPostForwardError(errors.New("dial tcp: connection refused")), false},
 		{"generic error", errors.New("something else"), false},
 	}
 
@@ -227,7 +229,7 @@ func TestRetryExecutor_MethodNotAllowedFallsBackWithoutPoisoningHealth(t *testin
 
 	result := exec.Execute(context.Background(), "default", "deepseek-v4-pro-0813", func(_ context.Context, ch *Channel) error {
 		if ch.ID == 1 {
-			return &relayprovider.UpstreamHTTPError{StatusCode: 405, Body: []byte("method not allowed")}
+			return MarkProtocolCapabilityError(&relayprovider.UpstreamHTTPError{StatusCode: 405, Body: []byte("method not allowed")})
 		}
 		return nil
 	})

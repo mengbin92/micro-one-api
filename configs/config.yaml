@@ -2,7 +2,7 @@ server:
   http:
     addr: ${RELAY_HTTP_ADDR:-0.0.0.0:8080}
   grpc:
-    addr: 0.0.0.0:9003
+    addr: ${RELAY_GRPC_ADDR:-0.0.0.0:9003}
 registry:
   type: ${REGISTRY_TYPE:-}
   consul:
@@ -26,7 +26,6 @@ retry:
   max_interval: 5s
   multiplier: 2.0
   retryable_status:
-    - 405
     - 429
     - 500
     - 502
@@ -59,8 +58,10 @@ hybrid_adaptor:
 # account that served it so subsequent turns reuse the same upstream account
 # (prompt-cache reuse, docs #7). Applies to the chat-completions and
 # anthropic-messages entry points; the Responses/WS path keeps its own sticky.
-# Disabled by default; only effective when hybrid_adaptor is enabled. The
-# binding TTL reuses openai_ws.sticky_ttl (default 1h).
+# Enabled in the checked-in production-oriented config; only effective when
+# hybrid_adaptor is enabled. Set this to false in an environment-specific
+# config when cross-session account affinity is not wanted. The binding TTL
+# reuses openai_ws.sticky_ttl (default 1h).
 session_sticky:
   enabled: true
 

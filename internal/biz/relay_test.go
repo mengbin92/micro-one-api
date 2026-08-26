@@ -8,6 +8,7 @@ import (
 	"time"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
+	apperrors "micro-one-api/pkg/errors"
 )
 
 type testIdentityClient struct{}
@@ -208,6 +209,9 @@ func TestRelayUsecasePlan_ModelNotAllowed(t *testing.T) {
 	_, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "gpt-4"})
 	if err == nil {
 		t.Fatal("expected error for disallowed model, got nil")
+	}
+	if !apperrors.IsForbidden(err) {
+		t.Fatalf("error = %v, want typed model-forbidden error", err)
 	}
 }
 

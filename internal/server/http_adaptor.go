@@ -175,6 +175,7 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 			fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailErr)
 		}
 		s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, finalAccountID, time.Since(adaptorStartedAt))
+		recordRelayRetryOutcome(r.Context(), switched, result.err, fallbackReason)
 		return
 	}
 	// All attempts exhausted without success.
@@ -184,6 +185,7 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 		fallbackReason = relaybiz.ClassifyRetryFallbackReason(firstFailErr)
 	}
 	s.finalizeSelectionDirect(plan, resultLabel, fallbackReason, switched, finalAccountID, time.Since(adaptorStartedAt))
+	recordRelayRetryOutcome(r.Context(), switched, lastErr, fallbackReason)
 	if lastErr != nil {
 		s.writeError(w, http.StatusBadGateway, fmt.Sprintf("upstream call: %v", lastErr))
 		return
@@ -712,7 +714,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				}
 				// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 				logInput.applyPlanInputs(plan)
-				if err := s.commitQuotaAfterResponse(reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
+				if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
 				} else {
 					s.ingestUsageLogAfterResponse(logInput)
@@ -788,7 +790,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			}
 			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 			logInput.applyPlanInputs(plan)
-			if err := s.commitQuotaAfterResponse(reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
+			if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {
 				s.ingestUsageLogAfterResponse(logInput)

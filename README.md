@@ -435,6 +435,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `CHANNEL_GRPC_ENDPOINT` | channel-service gRPC 地址 |
 | `BILLING_GRPC_ENDPOINT` | billing-service gRPC 地址 |
 | `RELAY_HTTP_ADDR` | relay-gateway HTTP 监听地址 |
+| `RELAY_GRPC_ADDR` | relay-gateway gRPC 监听地址；默认 `0.0.0.0:9003` |
 | `RELAY_PROVIDER_TIMEOUT` | 上游 provider 请求超时 |
 | `CHANNEL_HEALTH_FAILURE_THRESHOLD` / `CHANNEL_HEALTH_COOLDOWN` | 渠道自动熔断阈值和冷却时间；默认连续 3 次上游失败后跳过 5 分钟 |
 | `CHANNEL_HEALTH_CHECK_ENABLED` / `CHANNEL_HEALTH_CHECK_INTERVAL` / `CHANNEL_HEALTH_CHECK_TIMEOUT` | monitor-worker 定时渠道 `/models` 健康探测开关、间隔和单次超时 |
@@ -443,7 +444,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 | `CHANNEL_HEALTH_ALERT_RECIPIENTS` | 渠道不可用告警目标，JSON 数组；webhook/event 可填 URL 或留空走 `NOTIFY_WEBHOOK_URL`，email 填邮箱，IM 通道留空走对应配置 |
 | `SUBSCRIPTION_USER_RPM_LIMIT` | relay 订阅用户 RPM 限制；默认 `0` 表示关闭，避免无配置时误限流 |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` / `RATE_LIMIT_BURST` | 网关限流参数 |
-| `CORS_ALLOWED_ORIGINS` | CORS 允许来源 |
+| `CORS_ALLOWED_ORIGINS` | CORS 允许来源，逗号分隔；空值默认拒绝跨域请求，生产必须配置真实 HTTPS 来源 |
 | `ADMIN_WEB_ROOT` | admin-api 使用的外部前端构建目录 |
 | `NOTIFY_GRPC_ENDPOINT` | channel 健康告警和 billing 对账告警投递目标（notify-worker gRPC）；留空则不投递通知 |
 | `RECON_ALERT_ENABLED` | 是否启用对账差异告警（`true`/`false`） |
