@@ -48,7 +48,21 @@ func DefaultCORSConfig() *CORSConfig {
 // attack surface without providing a supported capability.
 func RelayCORSConfig() *CORSConfig {
 	config := DefaultCORSConfig()
-	config.AllowedMethods = []string{"GET", "POST", "OPTIONS"}
+	config.AllowedMethods = []string{"GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"}
+	config.AllowedHeaders = []string{
+		"Authorization",
+		"Content-Type",
+		"X-Request-ID",
+		"X-API-Key",
+		"Anthropic-Version",
+		"Anthropic-Beta",
+		"OpenAI-Beta",
+		"OpenAI-Organization",
+		"OpenAI-Project",
+		"Idempotency-Key",
+		"X-Session-Hash",
+		"OpenAI-Session-Hash",
+	}
 	config.ExposedHeaders = []string{
 		"Content-Length",
 		"Content-Type",

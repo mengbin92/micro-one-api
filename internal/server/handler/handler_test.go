@@ -18,8 +18,11 @@ type stubOrchestrator struct {
 func (o *stubOrchestrator) Execute(_ context.Context, req *server.RelayRequest) (*server.RelayResult, error) {
 	o.req = req
 	return &server.RelayResult{
-		Response:   io.NopCloser(strings.NewReader(`{"id":"chatcmpl-test"}`)),
-		Headers:    http.Header{"Content-Type": []string{"application/json"}},
+		Response: io.NopCloser(strings.NewReader(`{"id":"chatcmpl-test"}`)),
+		Headers: http.Header{
+			"Content-Type":                []string{"application/json"},
+			"Access-Control-Allow-Origin": []string{"*"},
+		},
 		StatusCode: http.StatusCreated,
 	}, nil
 }
@@ -38,6 +41,9 @@ func TestChatHandlerWritesOrchestratorResponse(t *testing.T) {
 	}
 	if strings.TrimSpace(rec.Body.String()) != `{"id":"chatcmpl-test"}` {
 		t.Fatalf("body = %q", rec.Body.String())
+	}
+	if got := rec.Header().Values("Access-Control-Allow-Origin"); len(got) != 0 {
+		t.Fatalf("upstream Access-Control-Allow-Origin leaked: %v", got)
 	}
 	if orchestrator.req == nil || orchestrator.req.Body == nil {
 		t.Fatalf("orchestrator request/body was not populated")

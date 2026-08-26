@@ -39,8 +39,13 @@ func TestRelayCORSConfigIsCredentialFree(t *testing.T) {
 	if config.AllowCredentials {
 		t.Fatal("Relay CORS must not allow browser credentials")
 	}
-	if len(config.AllowedMethods) != 3 || config.AllowedMethods[0] != http.MethodGet || config.AllowedMethods[1] != http.MethodPost || config.AllowedMethods[2] != http.MethodOptions {
+	if !contains(config.AllowedMethods, http.MethodGet) || !contains(config.AllowedMethods, http.MethodPost) || !contains(config.AllowedMethods, http.MethodDelete) || !contains(config.AllowedMethods, http.MethodPatch) || !contains(config.AllowedMethods, http.MethodPut) {
 		t.Fatalf("Relay allowed methods = %v", config.AllowedMethods)
+	}
+	for _, header := range []string{"Authorization", "X-API-Key", "Anthropic-Version", "OpenAI-Beta", "Idempotency-Key", "X-Session-Hash"} {
+		if !contains(config.AllowedHeaders, header) {
+			t.Fatalf("Relay allowed headers %v missing %q", config.AllowedHeaders, header)
+		}
 	}
 	if !contains(config.ExposedHeaders, "X-RateLimit-Remaining") {
 		t.Fatalf("Relay exposed headers = %v", config.ExposedHeaders)
@@ -56,7 +61,7 @@ func TestRelayCORSPreflightAllowsAuthorization(t *testing.T) {
 	req := httptest.NewRequest(http.MethodOptions, "/v1/chat/completions", nil)
 	req.Header.Set("Origin", "https://console.example.com")
 	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
-	req.Header.Set("Access-Control-Request-Headers", "authorization,content-type,x-request-id")
+	req.Header.Set("Access-Control-Request-Headers", "authorization,content-type,x-request-id,x-api-key,anthropic-version,idempotency-key")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -68,6 +73,11 @@ func TestRelayCORSPreflightAllowsAuthorization(t *testing.T) {
 	}
 	if got := rec.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(strings.ToLower(got), "authorization") {
 		t.Fatalf("allow headers = %q", got)
+	}
+	for _, header := range []string{"x-api-key", "anthropic-version", "idempotency-key"} {
+		if got := strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers")); !strings.Contains(got, header) {
+			t.Fatalf("allow headers = %q, missing %q", got, header)
+		}
 	}
 	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "" {
 		t.Fatalf("allow credentials = %q, want empty", got)

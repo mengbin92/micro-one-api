@@ -240,7 +240,7 @@ type observedReadCloser struct {
 
 func copyAnthropicUpstreamHeaders(destination, source http.Header) {
 	for key, values := range source {
-		if isRelayHopByHopHeader(key) || strings.EqualFold(key, "Content-Type") || strings.EqualFold(key, "Content-Length") {
+		if isRelayHopByHopHeader(key) || IsRelayCORSResponseHeader(key) || strings.EqualFold(key, "Content-Type") || strings.EqualFold(key, "Content-Length") {
 			continue
 		}
 		for _, value := range values {

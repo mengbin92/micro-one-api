@@ -16,6 +16,7 @@ export interface PlaygroundRequest {
   model: string;
   messages: PlaygroundMessageInput[];
   stream: boolean;
+  stream_options?: { include_usage: boolean };
   temperature?: number;
   max_tokens?: number;
 }
@@ -23,6 +24,8 @@ export interface PlaygroundRequest {
 export interface RelayUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
+  input_tokens?: number;
+  output_tokens?: number;
   total_tokens?: number;
   prompt_tokens_details?: { cached_tokens?: number };
 }
@@ -149,6 +152,15 @@ function parseCompletionPayload(payload: unknown) {
   return { response, choice };
 }
 
+function normalizeUsage(usage?: RelayUsage): RelayUsage | undefined {
+  if (!usage) return undefined;
+  return {
+    ...usage,
+    prompt_tokens: usage.prompt_tokens ?? usage.input_tokens,
+    completion_tokens: usage.completion_tokens ?? usage.output_tokens,
+  };
+}
+
 async function throwResponseError(response: Response, fallbackRequestId?: string): Promise<never> {
   const body = await parseResponseBody(response);
   throw new RelayPlaygroundError(messageFromPayload(body.payload, response.status), {
@@ -247,10 +259,11 @@ export async function executeChatCompletion(
       });
     }
     const { response: completionResponse, choice } = completion;
-    callbacks?.onUsage?.(completionResponse.usage ?? {});
+    const usage = normalizeUsage(completionResponse.usage);
+    callbacks?.onUsage?.(usage ?? {});
     callbacks?.onFinishReason?.(choice?.finish_reason);
     callbacks?.onDelta?.(choice.message?.content || '');
-    return { status: response.status, requestId, response: completionResponse, usage: completionResponse.usage, finishReason: choice?.finish_reason, streamed: false };
+    return { status: response.status, requestId, response: completionResponse, usage, finishReason: choice?.finish_reason, streamed: false };
   }
 
   if (!response.body) {
@@ -288,8 +301,11 @@ export async function executeChatCompletion(
       const reasoning = choice?.delta?.reasoning_content;
       if (reasoning) callbacks?.onReasoning?.(reasoning);
       if (completion.usage) {
-        usage = completion.usage;
-        callbacks?.onUsage?.(usage);
+        const normalizedUsage = normalizeUsage(completion.usage);
+        if (normalizedUsage) {
+          usage = normalizedUsage;
+          callbacks?.onUsage?.(normalizedUsage);
+        }
       }
       if (choice?.finish_reason != null) {
         finishReason = choice.finish_reason;

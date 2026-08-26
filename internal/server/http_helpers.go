@@ -15,6 +15,14 @@ import (
 	"micro-one-api/platform/audit"
 )
 
+// IsRelayCORSResponseHeader reports whether key belongs to the browser CORS
+// policy. The relay boundary middleware is the sole owner of these headers;
+// forwarding provider values can append a wildcard or second origin and make
+// an otherwise valid response fail the browser's CORS check.
+func IsRelayCORSResponseHeader(key string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "access-control-")
+}
+
 // extractAPIKey accepts the two credential headers used by OpenAI- and
 // Anthropic-compatible clients. Anthropic clients prefer x-api-key when both
 // headers are present, matching the Messages API behavior.

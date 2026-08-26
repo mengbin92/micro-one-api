@@ -67,6 +67,44 @@ describe('PlaygroundPage', () => {
     expect(screen.queryByText('private reasoning')).not.toBeInTheDocument();
   });
 
+  it('requests and displays streaming input and output token usage', async () => {
+    const user = userEvent.setup();
+    const encoder = new TextEncoder();
+    server.use(
+      http.get('/api/status', () => HttpResponse.json({ success: true, data: { server_address: 'https://relay.test' } })),
+      http.get('https://relay.test/v1/models', () => HttpResponse.json({ data: [{ id: 'demo-model' }] })),
+      http.post('https://relay.test/v1/chat/completions', async ({ request }) => {
+        const body = await request.json() as { stream_options?: { include_usage?: boolean } };
+        expect(body.stream_options?.include_usage).toBe(true);
+        return new HttpResponse(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"answer"},"finish_reason":"stop"}]}\n\n'));
+              controller.enqueue(encoder.encode('data: {"choices":[],"usage":{"input_tokens":12,"output_tokens":4,"total_tokens":16}}\n\n'));
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+            },
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        );
+      }),
+    );
+    setPlaygroundCredential('sk-playground-secret');
+    renderWithQuery(
+      <MemoryRouter initialEntries={['/playground']}>
+        <PlaygroundPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('已验证：sk-p••••cret');
+    await user.type(screen.getByLabelText('输入消息'), 'hello');
+    await user.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(await screen.findByText('answer')).toBeInTheDocument();
+    expect(await screen.findByText('12')).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
+  });
+
   it('stops before retaining more than 4 MiB of assistant content', async () => {
     const user = userEvent.setup();
     server.use(

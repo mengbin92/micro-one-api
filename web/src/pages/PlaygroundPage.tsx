@@ -257,6 +257,7 @@ export function PlaygroundPage() {
       model: selectedModel,
       messages: conversation,
       stream,
+      ...(stream ? { stream_options: { include_usage: true } } : {}),
       ...(temperatureValue != null ? { temperature: temperatureValue } : {}),
       ...(maxTokensValue != null ? { max_tokens: maxTokensValue } : {}),
     };

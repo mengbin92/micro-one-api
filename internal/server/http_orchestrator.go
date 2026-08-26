@@ -159,7 +159,7 @@ func writeOrchestratedRelayResult(w http.ResponseWriter, result *RelayResult) {
 	defer result.Response.Close()
 
 	for key, values := range result.Headers {
-		if isRelayHopByHopHeader(key) {
+		if isRelayHopByHopHeader(key) || IsRelayCORSResponseHeader(key) {
 			continue
 		}
 		for _, value := range values {
@@ -184,7 +184,7 @@ func writeOrchestratedRelayStream(w http.ResponseWriter, result relaybiz.Executi
 	}
 	defer result.Stream.Close()
 	for key, values := range result.Headers {
-		if isRelayHopByHopHeader(key) || strings.EqualFold(key, "Content-Length") {
+		if isRelayHopByHopHeader(key) || IsRelayCORSResponseHeader(key) || strings.EqualFold(key, "Content-Length") {
 			continue
 		}
 		for _, value := range values {

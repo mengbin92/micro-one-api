@@ -2271,22 +2271,34 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 
 func TestHTTPServerRouteMiddlewareWrapsRegisteredRoutes(t *testing.T) {
 	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
-	var called bool
+	calledPaths := make(map[string]int)
 	httpServer.UseRouteMiddleware(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			called = true
-			next.ServeHTTP(w, r)
+			calledPaths[r.URL.Path]++
+			w.WriteHeader(http.StatusNoContent)
 		})
 	})
 	srv := khttp.NewServer()
 	httpServer.RegisterRoutes(srv)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{}`))
-	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req)
-
-	if !called {
-		t.Fatal("route middleware was not called")
+	paths := []string{
+		"/v1/chat/completions",
+		"/v1/responses/resp_1",
+		"/v1/files",
+		"/v1/files/file_1",
+		"/v1/models/model_1",
+		"/api/status",
+	}
+	for _, path := range paths {
+		req := httptest.NewRequest(http.MethodOptions, path, nil)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("%s status = %d, want %d", path, rec.Code, http.StatusNoContent)
+		}
+		if calledPaths[path] != 1 {
+			t.Errorf("%s route middleware calls = %d, want 1", path, calledPaths[path])
+		}
 	}
 }
 

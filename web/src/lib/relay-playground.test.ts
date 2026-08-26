@@ -30,7 +30,7 @@ describe('relay playground client', () => {
         const encoder = new TextEncoder();
         controller.enqueue(encoder.encode('data: null\n\n'));
         controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n'));
-        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}],"usage":{"total_tokens":2}}\n\n'));
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}\n\n'));
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
       },
@@ -39,20 +39,25 @@ describe('relay playground client', () => {
       response(stream, { headers: { 'Content-Type': 'text/event-stream', 'X-Request-ID': 'req-stream' } }),
     );
     const deltas: string[] = [];
-    const usages: number[] = [];
+    const usages: Array<{ prompt?: number; completion?: number }> = [];
     const result = await executeChatCompletion({
       baseUrl: 'https://relay.test',
       apiKey: 'sk-test',
       request: { model: 'demo', messages: [{ role: 'user', content: 'hello' }], stream: true },
       callbacks: {
         onDelta: (delta) => deltas.push(delta),
-        onUsage: (usage) => usages.push(usage.total_tokens ?? 0),
+        onUsage: (usage) => usages.push({ prompt: usage.prompt_tokens, completion: usage.completion_tokens }),
       },
     });
 
     expect(deltas.join('')).toBe('Hi!');
-    expect(usages).toEqual([2]);
-    expect(result).toMatchObject({ streamed: true, finishReason: 'stop', requestId: 'req-stream' });
+    expect(usages).toEqual([{ prompt: 3, completion: 2 }]);
+    expect(result).toMatchObject({
+      streamed: true,
+      finishReason: 'stop',
+      requestId: 'req-stream',
+      usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+    });
   });
 
   it('classifies HTTP errors without exposing the key', async () => {
