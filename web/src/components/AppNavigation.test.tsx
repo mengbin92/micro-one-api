@@ -21,6 +21,7 @@ function mockSelf(role: number, id = 7) {
       HttpResponse.json({ success: true, data: { id, username: 'alice', display_name: 'Alice', role } }),
     ),
     http.get('/api/user/dashboard', () => HttpResponse.json({ success: true, data: null })),
+    http.get('/api/admin/notifications', () => HttpResponse.json({ items: [], total: 0 })),
   );
 }
 
@@ -64,8 +65,8 @@ describe('AppNavigation', () => {
 
     const overviewLink = await screen.findByRole('link', { name: 'Admin Overview' });
     const usersLink = screen.getByRole('link', { name: 'Users' });
-    expect(overviewLink).not.toHaveClass('text-blue-600');
-    expect(usersLink).toHaveClass('text-blue-600');
+    expect(overviewLink).not.toHaveAttribute('aria-current');
+    expect(usersLink).toHaveAttribute('aria-current', 'page');
   });
 
   it('hides admin nav and entry link for non-admin users', async () => {

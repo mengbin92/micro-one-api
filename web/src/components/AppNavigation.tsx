@@ -159,10 +159,10 @@ function NavigationLinks({
             aria-label={link.ariaLabel}
             className={({ isActive }) =>
               cn(
-                'flex h-12 items-center gap-3 rounded-2xl px-4 text-sm font-semibold transition-colors',
+                'flex h-12 items-center gap-3 rounded-2xl px-4 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white',
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )
             }
             onClick={onNavigate}
@@ -186,7 +186,7 @@ function SecondaryLinks({ onNavigate }: { onNavigate?: () => void }) {
             <Icon className="size-5" />
             <span className="min-w-0 flex-1">{item.label}</span>
             {!item.to && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-400 dark:bg-white/10">
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                 开发中
               </span>
             )}
@@ -200,10 +200,10 @@ function SecondaryLinks({ onNavigate }: { onNavigate?: () => void }) {
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  'flex h-11 w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold transition-colors',
+                  'flex h-11 w-full items-center gap-3 rounded-2xl px-4 text-left text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300'
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white',
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )
               }
               onClick={onNavigate}
@@ -219,7 +219,7 @@ function SecondaryLinks({ onNavigate }: { onNavigate?: () => void }) {
             type="button"
             disabled
             title="开发中"
-            className="flex h-11 w-full cursor-not-allowed items-center gap-3 rounded-2xl px-4 text-left text-sm font-semibold text-slate-400 opacity-75 dark:text-slate-500"
+            className="flex h-11 w-full cursor-not-allowed items-center gap-3 rounded-2xl px-4 text-left text-sm font-medium text-muted-foreground opacity-75"
           >
             {content}
           </button>
@@ -293,41 +293,41 @@ export function AppNavigation() {
   ) : null;
 
   const sidebar = (
-    <div className="flex h-full flex-col bg-white dark:bg-card">
-      <div className="flex h-20 items-center border-b border-slate-200 px-6 dark:border-white/10">
+    <div className="flex h-full flex-col bg-sidebar supports-backdrop-filter:bg-sidebar/70 supports-backdrop-filter:backdrop-blur-xl supports-backdrop-filter:backdrop-saturate-[1.8]">
+      <div className="flex h-20 items-center border-b border-border px-6">
         <div className="flex items-center gap-3">
           <img src="/logo-icon.svg" alt="" aria-hidden="true" className="size-10 shrink-0 rounded-xl" />
           <div>
-            <div className="text-lg font-black tracking-normal text-slate-950 dark:text-white">Micro-One API</div>
-            <div className="text-xs font-semibold text-slate-400">Gateway Console</div>
+            <div className="text-lg font-semibold tracking-normal text-foreground">Micro-One API</div>
+            <div className="text-xs font-medium text-muted-foreground">Gateway Console</div>
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-6">
-        <p className="mb-3 px-4 text-xs font-bold text-slate-400">核心功能</p>
+        <p className="mb-3 px-4 text-xs font-medium text-muted-foreground">核心功能</p>
         <NavigationLinks items={userLinks} onNavigate={() => setMobileOpen(false)} />
 
-        <p className="mb-3 mt-7 px-4 text-xs font-bold text-slate-400">钱包 & 活动</p>
+        <p className="mb-3 mt-7 px-4 text-xs font-medium text-muted-foreground">钱包 & 活动</p>
         <SecondaryLinks onNavigate={() => setMobileOpen(false)} />
 
         {isAdmin && (
           <>
-            <p className="mb-3 mt-7 px-4 text-xs font-bold text-slate-400">管理后台</p>
+            <p className="mb-3 mt-7 px-4 text-xs font-medium text-muted-foreground">管理后台</p>
             <NavigationLinks items={adminLinks} onNavigate={() => setMobileOpen(false)} />
           </>
         )}
       </div>
 
-      <div className="border-t border-slate-200 p-4 dark:border-white/10">
+      <div className="border-t border-border p-4">
         <button
           type="button"
-          className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/5"
+          className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold text-foreground/70 hover:bg-muted"
         >
           <ChevronsLeft className="size-5" />
           <span>
-            <span className="block text-slate-900 dark:text-white">收起侧边栏</span>
-            <span className="block text-xs font-medium text-slate-400">为内容保留更多空间</span>
+            <span className="block text-foreground">收起侧边栏</span>
+            <span className="block text-xs font-medium text-muted-foreground">为内容保留更多空间</span>
           </span>
         </button>
       </div>
@@ -336,11 +336,11 @@ export function AppNavigation() {
 
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-slate-200 md:block dark:border-white/10">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border md:block">
         {sidebar}
       </aside>
 
-      <header className="fixed left-0 right-0 top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur md:left-72 dark:border-white/10 dark:bg-card/95">
+      <header className="fixed left-0 right-0 top-0 z-20 border-b border-border bg-background/95 backdrop-blur md:left-64">
         <div className="flex h-20 items-center gap-3 px-4 sm:px-5 md:px-8 xl:px-10">
           <div className="flex items-center gap-3 md:hidden">
             <MobileNav open={effectiveMobileOpen} onOpenChange={setMobileOpen}>
@@ -348,7 +348,7 @@ export function AppNavigation() {
             </MobileNav>
           </div>
 
-          <h1 className="min-w-0 text-xl font-black tracking-normal text-slate-950 dark:text-white sm:text-2xl">
+          <h1 className="min-w-0 text-xl font-bold tracking-normal text-foreground sm:text-2xl">
             {currentTitle}
           </h1>
 
@@ -357,7 +357,7 @@ export function AppNavigation() {
               <Languages className="size-4" />
               CN ZH
             </Button>
-            <div className="hidden h-10 items-center gap-2 rounded-2xl bg-emerald-50 px-4 text-sm font-black text-emerald-600 sm:flex dark:bg-emerald-500/10 dark:text-emerald-300">
+            <div className="hidden h-10 items-center gap-2 rounded-2xl bg-emerald-50 px-4 text-sm font-semibold text-emerald-600 sm:flex dark:bg-emerald-500/10 dark:text-emerald-300">
               <WalletCards className="size-4" />
               {formatBalance(account?.balance)}
             </div>
@@ -366,16 +366,16 @@ export function AppNavigation() {
             {adminControl}
             <button
               type="button"
-              className="hidden min-w-0 items-center gap-3 rounded-2xl border border-blue-100 bg-white px-3 py-2 shadow-sm sm:flex dark:border-white/10 dark:bg-card"
+              className="hidden min-w-0 items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm sm:flex"
             >
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-sm font-black text-white">
+              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-sm font-semibold text-white">
                 {initials}
               </span>
               <span className="min-w-0 text-left">
-                <span className="block max-w-36 truncate text-sm font-black text-slate-950 dark:text-white">
+                <span className="block max-w-36 truncate text-sm font-semibold text-foreground">
                   {displayName}
                 </span>
-                <span className="block text-xs font-semibold text-slate-400">控制台用户</span>
+                <span className="block text-xs font-medium text-muted-foreground">控制台用户</span>
               </span>
             </button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Logout" onClick={handleLogout}>

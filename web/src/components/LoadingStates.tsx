@@ -30,7 +30,7 @@ export function ChartSkeleton() {
 
 export function TableSkeleton({ columns, rows = 6 }: { columns: string[]; rows?: number }) {
   return (
-    <div className="overflow-x-auto rounded-lg border">
+    <div className="overflow-x-auto rounded-2xl border border-border">
       <Table>
         <TableHeader>
           <TableRow>
