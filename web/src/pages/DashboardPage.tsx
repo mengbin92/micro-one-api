@@ -71,6 +71,22 @@ interface TokenListData {
   total?: number;
 }
 
+const CHART_COLORS = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+];
+
+const CHART_TOOLTIP_STYLE = {
+  background: 'var(--popover)',
+  color: 'var(--popover-foreground)',
+  border: '1px solid var(--border)',
+  borderRadius: '8px',
+  fontSize: '12px',
+};
+
 function formatAmount(q: number, digits = 4) {
   return formatAmountUnits(q, digits);
 }
@@ -141,17 +157,17 @@ function MetricCard({
   }[tone];
 
   return (
-    <Card className="min-h-40 rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+    <Card className="min-h-40">
       <CardContent className="flex h-full flex-col justify-between p-5">
         <div className="flex items-start justify-between gap-4">
-          <span className="text-sm font-bold text-slate-500 dark:text-slate-400">{title}</span>
+          <span className="text-sm font-medium text-muted-foreground">{title}</span>
           <span className={cn('grid size-12 shrink-0 place-items-center rounded-lg', styles)}>
             <Icon className="size-5" />
           </span>
         </div>
         <div>
-          <div className={cn('break-words text-3xl font-black tracking-normal', styles.split(' ')[0])}>{value}</div>
-          <div className="mt-4 text-sm font-semibold text-slate-400">{subtitle}</div>
+          <div className={cn('break-words text-3xl font-semibold tracking-normal', styles.split(' ')[0])}>{value}</div>
+          <div className="mt-4 text-sm font-medium text-muted-foreground">{subtitle}</div>
         </div>
       </CardContent>
     </Card>
@@ -213,26 +229,25 @@ export function DashboardPage() {
 
   // Model distribution from backend
   const modelDistribution = dashboard?.model_distribution ?? [];
-  const modelColors = ['#f97316', '#2563eb', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4', '#f59e0b', '#6366f1', '#ec4899', '#14b8a6'];
   const pieData = modelDistribution.length > 0
     ? modelDistribution.map((item, index) => ({
         name: item.model,
         value: item.tokens,
-        color: modelColors[index % modelColors.length],
+        color: CHART_COLORS[index % CHART_COLORS.length],
       }))
     : [
-        { name: '输入 Tokens', value: promptTokens, color: '#f97316' },
-        { name: '输出 Tokens', value: completionTokens, color: '#2563eb' },
+        { name: '输入 Tokens', value: promptTokens, color: CHART_COLORS[0] },
+        { name: '输出 Tokens', value: completionTokens, color: CHART_COLORS[1] },
       ].filter((item) => item.value > 0);
-  const distributionData = pieData.length > 0 ? pieData : [{ name: '总 Tokens', value: totalTokens || 1, color: '#f97316' }];
+  const distributionData = pieData.length > 0 ? pieData : [{ name: '总 Tokens', value: totalTokens || 1, color: CHART_COLORS[0] }];
 
   return (
     <div className="space-y-7">
       <section>
-        <h2 className="text-4xl font-black tracking-normal text-slate-950 dark:text-white">
+        <h2 className="text-3xl font-bold tracking-normal text-foreground sm:text-4xl lg:text-5xl">
           {getGreeting()}，{displayName}
         </h2>
-        <p className="mt-4 text-lg font-medium text-slate-500 dark:text-slate-400">
+        <p className="mt-4 text-lg font-medium text-muted-foreground">
           欢迎使用 Micro API 中转平台，实时掌握你的 API 使用情况。
         </p>
       </section>
@@ -253,21 +268,21 @@ export function DashboardPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)_360px]">
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
+        <Card>
+          <CardHeader className="border-b border-border p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <CardTitle className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">
+                <CardTitle className="text-2xl font-bold tracking-normal text-foreground">
                   Token 使用趋势
                 </CardTitle>
-                <p className="mt-3 text-base font-semibold text-slate-500 dark:text-slate-400">
+                <p className="mt-3 text-base font-medium text-muted-foreground">
                   总量 {compactNumber(totalTokens)} Tokens
                 </p>
-                <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-sm font-medium text-muted-foreground">
                   输入 {compactNumber(promptTokens)} / 输出 {compactNumber(completionTokens)} / 缓存 {compactNumber(cacheReadTokens)}
                 </p>
               </div>
-              <div className="h-11 rounded-lg border border-slate-200 px-4 text-sm font-bold leading-11 text-slate-700 dark:border-white/10 dark:text-slate-200">
+              <div className="h-11 rounded-lg border border-border px-4 text-sm font-semibold leading-11 text-foreground">
                 近 7 天
               </div>
             </div>
@@ -282,23 +297,23 @@ export function DashboardPage() {
                 <AreaChart data={chartData} margin={{ left: 0, right: 8, top: 20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="inputTokens" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#f97316" stopOpacity={0.24} />
-                      <stop offset="100%" stopColor="#f97316" stopOpacity={0.02} />
+                      <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.24} />
+                      <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.02} />
                     </linearGradient>
                     <linearGradient id="cacheReadTokens" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.20} />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                      <stop offset="0%" stopColor="var(--chart-3)" stopOpacity={0.20} />
+                      <stop offset="100%" stopColor="var(--chart-3)" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 12, fill: '#94a3b8' }} tickLine={false} axisLine={false} width={48} tickFormatter={compactNumber} />
-                  <Tooltip formatter={(value) => compactNumber(Number(value))} />
+                  <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="4 4" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'var(--chart-label)' }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 12, fill: 'var(--chart-label)' }} tickLine={false} axisLine={false} width={48} tickFormatter={compactNumber} />
+                  <Tooltip formatter={(value) => compactNumber(Number(value))} contentStyle={CHART_TOOLTIP_STYLE} />
                   <Area
                     type="monotone"
                     dataKey="input_tokens"
                     name="输入 Tokens"
-                    stroke="#f97316"
+                    stroke="var(--chart-1)"
                     strokeWidth={3}
                     fill="url(#inputTokens)"
                   />
@@ -306,16 +321,18 @@ export function DashboardPage() {
                     type="monotone"
                     dataKey="output_tokens"
                     name="输出 Tokens"
-                    stroke="#2563eb"
+                    stroke="var(--chart-2)"
                     strokeWidth={3}
+                    strokeDasharray="6 4"
                     fill="transparent"
                   />
                   <Area
                     type="monotone"
                     dataKey="cache_read_tokens"
                     name="缓存 Tokens"
-                    stroke="#10b981"
+                    stroke="var(--chart-3)"
                     strokeWidth={2}
+                    strokeDasharray="2 4"
                     fill="url(#cacheReadTokens)"
                   />
                 </AreaChart>
@@ -324,9 +341,9 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
-            <CardTitle className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">
+        <Card>
+          <CardHeader className="border-b border-border p-6">
+            <CardTitle className="text-2xl font-bold tracking-normal text-foreground">
               {modelDistribution.length > 0 ? "模型分布" : "Token 分布"}
             </CardTitle>
           </CardHeader>
@@ -344,22 +361,22 @@ export function DashboardPage() {
                         <Cell key={entry.name} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => compactNumber(Number(value))} />
+                    <Tooltip formatter={(value) => compactNumber(Number(value))} contentStyle={CHART_TOOLTIP_STYLE} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="-mt-40 text-center">
-                  <div className="text-4xl font-black text-slate-950 dark:text-white">{compactNumber(totalTokens)}</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-400">总 Tokens</div>
+                  <div className="text-4xl font-bold text-foreground">{compactNumber(totalTokens)}</div>
+                  <div className="mt-2 text-sm font-medium text-muted-foreground">总 Tokens</div>
                 </div>
                 <div className="mt-12 flex flex-wrap justify-center gap-4">
                   {distributionData.map((entry) => (
-                    <div key={entry.name} className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                    <div key={entry.name} className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                       <span className="size-3 rounded-full" style={{ backgroundColor: entry.color }} />
                       {entry.name}
                     </div>
                   ))}
                   {cacheReadTokens > 0 ? (
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                       <span className="size-3 rounded-full bg-emerald-500" />
                       缓存 Tokens {compactNumber(cacheReadTokens)}
                     </div>
@@ -370,64 +387,64 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
-          <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
-            <CardTitle className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">
+        <Card>
+          <CardHeader className="border-b border-border p-6">
+            <CardTitle className="text-2xl font-bold tracking-normal text-foreground">
               快捷操作
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 p-6">
             <Link
               to="/tokens"
-              className="flex items-center gap-4 rounded-lg border border-slate-100 p-5 transition-colors hover:border-orange-200 hover:bg-orange-50/50 dark:border-white/10 dark:hover:bg-orange-500/10"
+              className="flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-orange-200 hover:bg-orange-50/50 dark:hover:bg-orange-500/10"
             >
-              <span className="grid size-14 place-items-center rounded-lg bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300">
+              <span className="grid size-14 place-items-center rounded-xl bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300">
                 <KeyRound className="size-6" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block font-black text-slate-950 dark:text-white">创建 API 密钥</span>
-                <span className="mt-1 block text-sm font-medium text-slate-400">生成新的 API 密钥</span>
+                <span className="block font-semibold text-foreground">创建 API 密钥</span>
+                <span className="mt-1 block text-sm font-medium text-muted-foreground">生成新的 API 密钥</span>
               </span>
-              <ChevronRight className="size-5 shrink-0 text-slate-300" />
+              <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
             </Link>
             <Link
               to="/usage"
-              className="flex items-center gap-4 rounded-lg border border-slate-100 p-5 transition-colors hover:border-blue-200 hover:bg-blue-50/50 dark:border-white/10 dark:hover:bg-blue-500/10"
+              className="flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-blue-200 hover:bg-blue-50/50 dark:hover:bg-blue-500/10"
             >
-              <span className="grid size-14 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
+              <span className="grid size-14 place-items-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
                 <BarChart3 className="size-6" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block font-black text-slate-950 dark:text-white">查看使用记录</span>
-                <span className="mt-1 block text-sm font-medium text-slate-400">查看详细的调用日志</span>
+                <span className="block font-semibold text-foreground">查看使用记录</span>
+                <span className="mt-1 block text-sm font-medium text-muted-foreground">查看详细的调用日志</span>
               </span>
-              <ChevronRight className="size-5 shrink-0 text-slate-300" />
+              <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
             </Link>
             <Link
               to="/playground"
-              className="flex items-center gap-4 rounded-lg border border-slate-100 p-5 transition-colors hover:border-emerald-200 hover:bg-emerald-50/50 dark:border-white/10 dark:hover:bg-emerald-500/10"
+              className="flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-emerald-200 hover:bg-emerald-50/50 dark:hover:bg-emerald-500/10"
             >
-              <span className="grid size-14 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <span className="grid size-14 place-items-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
                 <FlaskConical className="size-6" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block font-black text-slate-950 dark:text-white">在线调试 API</span>
-                <span className="mt-1 block text-sm font-medium text-slate-400">直接发送一条测试请求</span>
+                <span className="block font-semibold text-foreground">在线调试 API</span>
+                <span className="mt-1 block text-sm font-medium text-muted-foreground">直接发送一条测试请求</span>
               </span>
-              <ChevronRight className="size-5 shrink-0 text-slate-300" />
+              <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
             </Link>
             <Link
               to="/redeem"
-              className="flex items-center gap-4 rounded-lg border border-slate-100 p-5 transition-colors hover:border-violet-200 hover:bg-violet-50/50 dark:border-white/10 dark:hover:bg-violet-500/10"
+              className="flex items-center gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-violet-200 hover:bg-violet-50/50 dark:hover:bg-violet-500/10"
             >
-              <span className="grid size-14 place-items-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
+              <span className="grid size-14 place-items-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
                 <Gift className="size-6" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block font-black text-slate-950 dark:text-white">兑换充值码</span>
-                <span className="mt-1 block text-sm font-medium text-slate-400">使用兑换码为账户充值</span>
+                <span className="block font-semibold text-foreground">兑换充值码</span>
+                <span className="mt-1 block text-sm font-medium text-muted-foreground">使用兑换码为账户充值</span>
               </span>
-              <ChevronRight className="size-5 shrink-0 text-slate-300" />
+              <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
             </Link>
           </CardContent>
         </Card>

@@ -19,6 +19,14 @@ import { ChannelCostComparison, CostBreakdownChart } from '@/components/admin/Co
 import { amountUnitsToCurrencyUnits, formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 
+const CHART_COLORS = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+];
+
 interface AdminSummary {
   totals?: {
     users?: number;
@@ -123,19 +131,19 @@ function MetricCard({
   }[tone];
 
   return (
-    <Card className="min-h-36 rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+    <Card className="min-h-36">
       <CardContent className="flex h-full flex-col justify-between p-5">
         <div className="flex items-start justify-between gap-4">
-          <span className="text-sm font-bold text-slate-500 dark:text-slate-400">{title}</span>
+          <span className="text-sm font-medium text-muted-foreground">{title}</span>
           <span className={cn('grid size-12 shrink-0 place-items-center rounded-lg', styles)}>
             <Icon className="size-5" />
           </span>
         </div>
         <div>
-          <div className={cn('break-words text-3xl font-black tracking-normal', styles.split(' ')[0])}>
+          <div className={cn('break-words text-3xl font-semibold tracking-normal', styles.split(' ')[0])}>
             {value}
           </div>
-          <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-400">
+          <div className="mt-3 flex items-center gap-2 text-sm font-medium text-muted-foreground">
             {trend === 'up' && <TrendingUp className="size-4 text-green-600" />}
             {trend === 'down' && <TrendingDown className="size-4 text-red-600" />}
             {subtitle}
@@ -235,13 +243,12 @@ export function CostAnalysisPage() {
   }, [topChannels]);
 
   const costBreakdownData = useMemo(() => {
-    const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#6366f1'];
     // Use actual cost values instead of percentages to avoid confusion
     // The pie chart will automatically calculate percentages from the values
     return topModels.map((m, index) => ({
       name: m.model,
       value: m.cost,
-      color: colors[index % colors.length],
+      color: CHART_COLORS[index % CHART_COLORS.length],
     }));
   }, [topModels]);
 
@@ -320,7 +327,7 @@ export function CostAnalysisPage() {
           {channelCostData.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl font-black">渠道成本对比</CardTitle>
+                <CardTitle className="text-xl font-bold">渠道成本对比</CardTitle>
               </CardHeader>
               <CardContent>
                 <ChannelCostComparison data={channelCostData} />
@@ -332,7 +339,7 @@ export function CostAnalysisPage() {
           {costBreakdownData.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl font-black">TOP 模型成本分布</CardTitle>
+                <CardTitle className="text-xl font-bold">TOP 模型成本分布</CardTitle>
                 <p className="text-sm text-muted-foreground">
                   显示成本最高的模型分布
                 </p>
@@ -349,7 +356,7 @@ export function CostAnalysisPage() {
       {hasData && topModels.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-black">高成本模型 TOP 5</CardTitle>
+            <CardTitle className="text-xl font-bold">高成本模型 TOP 5</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -378,7 +385,7 @@ export function CostAnalysisPage() {
       {hasData && topChannels.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-black">高成本渠道 TOP 5</CardTitle>
+            <CardTitle className="text-xl font-bold">高成本渠道 TOP 5</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -407,7 +414,7 @@ export function CostAnalysisPage() {
       {hasData && topSubscriptionAccounts.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-black">订阅账号成本 TOP 5</CardTitle>
+            <CardTitle className="text-xl font-bold">订阅账号成本 TOP 5</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -446,7 +453,7 @@ export function CostAnalysisPage() {
       {hasData && topSubscriptionAccountQuotaEvents.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-black">账号本地额度事件 TOP 5</CardTitle>
+            <CardTitle className="text-xl font-bold">账号本地额度事件 TOP 5</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -466,7 +473,7 @@ export function CostAnalysisPage() {
                       Ledger 成本: ${item.ledgerCost.toFixed(2)} | Ledger 收入: ${item.ledgerQuota.toFixed(2)} | Ledger 调用: {item.ledgerCount}
                     </div>
                   </div>
-                  <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <div className="text-sm font-medium text-muted-foreground dark:text-foreground">
                     ×{item.averageRateMultiplier.toFixed(2)}
                   </div>
                 </div>

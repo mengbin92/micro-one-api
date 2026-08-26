@@ -56,12 +56,20 @@ interface FailureRateData {
 }
 
 const COLORS = {
-  healthy: '#10b981',
-  degraded: '#f59e0b',
-  unavailable: '#ef4444',
-  unknown: '#64748b',
-  grid: '#e5e7eb',
-  text: '#64748b',
+  healthy: 'var(--chart-3)',
+  degraded: 'var(--chart-4)',
+  unavailable: 'var(--destructive)',
+  unknown: 'var(--chart-5)',
+  grid: 'var(--chart-grid)',
+  text: 'var(--chart-label)',
+};
+
+const TOOLTIP_STYLE = {
+  background: 'var(--popover)',
+  color: 'var(--popover-foreground)',
+  border: '1px solid var(--border)',
+  borderRadius: '8px',
+  fontSize: '12px',
 };
 
 /**
@@ -92,19 +100,19 @@ export function HealthTrendChart({ data }: { data: HealthTrendData[] }) {
         <CartesianGrid stroke={COLORS.grid} strokeDasharray="4 4" vertical={false} />
         <XAxis
           dataKey="timestamp"
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
           interval="preserveStartEnd"
         />
-        <YAxis tick={{ fontSize: 11, fill: COLORS.text }} tickLine={false} axisLine={false} width={32} />
+        <YAxis tick={{ fontSize: 12, fill: COLORS.text }} tickLine={false} axisLine={false} width={32} />
         <Tooltip
           formatter={(value, name) => {
             const numValue = typeof value === 'number' ? value : 0;
             const nameStr = typeof name === 'string' ? name : '';
             return [numValue, nameStr === 'healthy' ? '健康' : nameStr === 'unavailable' ? '不可用' : nameStr];
           }}
-          contentStyle={{ fontSize: '12px' }}
+          contentStyle={TOOLTIP_STYLE}
         />
         <Area
           type="monotone"
@@ -154,7 +162,7 @@ export function ResponseTimeChart({ data }: { data: ResponseTimeData[] }) {
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className={cn(
-                  'h-full rounded-full transition-all',
+                  'h-full rounded-full transition-[width] duration-200 ease-standard motion-reduce:transition-none',
                   item.avgResponseTime < 200 ? 'bg-green-500' :
                   item.avgResponseTime < 500 ? 'bg-amber-500' : 'bg-red-500'
                 )}
@@ -205,6 +213,7 @@ export function UptimePieChart({ data }: { data: UptimeData[] }) {
             const numValue = typeof value === 'number' ? value : 0;
             return `${numValue.toFixed(1)}%`;
           }}
+          contentStyle={TOOLTIP_STYLE}
         />
       </PieChart>
     </ResponsiveContainer>
@@ -231,13 +240,13 @@ export function FailureRateChart({ data }: { data: FailureRateData[] }) {
         <CartesianGrid stroke={COLORS.grid} strokeDasharray="4 4" vertical={false} />
         <XAxis
           dataKey="timestamp"
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
           interval="preserveStartEnd"
         />
         <YAxis
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
           width={40}
@@ -248,7 +257,7 @@ export function FailureRateChart({ data }: { data: FailureRateData[] }) {
             const numValue = typeof value === 'number' ? value : 0;
             return [`${numValue.toFixed(2)}%`, '失败率'];
           }}
-          contentStyle={{ fontSize: '12px' }}
+          contentStyle={TOOLTIP_STYLE}
         />
         {/* Threshold line */}
         <Line
@@ -302,11 +311,11 @@ export function HealthDistributionChart({ healthy, degraded, unavailable, unknow
     <ResponsiveContainer width="100%" height={200}>
       <BarChart data={data} layout="vertical" margin={{ left: 40, right: 8, top: 20, bottom: 0 }}>
         <CartesianGrid stroke={COLORS.grid} strokeDasharray="4 4" horizontal={false} />
-        <XAxis type="number" tick={{ fontSize: 11, fill: COLORS.text }} tickLine={false} axisLine={false} />
+        <XAxis type="number" tick={{ fontSize: 12, fill: COLORS.text }} tickLine={false} axisLine={false} />
         <YAxis
           type="category"
           dataKey="name"
-          tick={{ fontSize: 11, fill: COLORS.text }}
+          tick={{ fontSize: 12, fill: COLORS.text }}
           tickLine={false}
           axisLine={false}
           width={40}
@@ -316,7 +325,7 @@ export function HealthDistributionChart({ healthy, degraded, unavailable, unknow
             const numValue = typeof value === 'number' ? value : 0;
             return numValue;
           }}
-          contentStyle={{ fontSize: '12px' }}
+          contentStyle={TOOLTIP_STYLE}
         />
         <Bar dataKey="value" radius={[0, 4, 4, 0]}>
           {data.map((entry, index) => (
