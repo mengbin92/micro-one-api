@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Copy, Zap } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { Copy, FlaskConical, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { CCSwitchDialog } from '@/components/CCSwitchDialog';
+import { setPlaygroundCredential } from '@/lib/playground-credential';
 
 interface Token {
   id: number;
@@ -91,6 +93,7 @@ export function TokensPage() {
   // controlled `open=true` through onOpenChange.
   const [ccSwitchSessionId, setCCSwitchSessionId] = useState(0);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: tokens, isLoading } = useQuery({
     queryKey: ['tokens'],
@@ -113,22 +116,7 @@ export function TokensPage() {
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
 
-  const createMutation = useMutation({
-    mutationFn: async (name: string) => {
-      const res = await apiClient.post('/token', { name });
-      return unwrapApiData<Token>(res.data);
-    },
-    onSuccess: (token) => {
-      setCreatedToken(token);
-      queryClient.setQueryData<Token[]>(['tokens'], (current = []) => {
-        const safeToken = tokenForList(token);
-        const withoutCreated = current.filter((item) => item.id !== token.id);
-        return [safeToken, ...withoutCreated];
-      });
-      setNewTokenName('');
-      toast.success('Token created');
-    },
-  });
+  const [isCreating, setIsCreating] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -144,12 +132,30 @@ export function TokensPage() {
     },
   });
 
-  const handleCreate = () => {
-    if (newTokenName.trim()) {
-      createMutation.mutate(newTokenName);
+  const handleCreate = async () => {
+    const name = newTokenName.trim();
+    if (!name) {
+      toast.error('Token name is required');
       return;
     }
-    toast.error('Token name is required');
+
+    setIsCreating(true);
+    try {
+      const res = await apiClient.post('/token', { name });
+      const token = unwrapApiData<Token>(res.data);
+      setCreatedToken(token);
+      queryClient.setQueryData<Token[]>(['tokens'], (current = []) => {
+        const safeToken = tokenForList(token);
+        const withoutCreated = current.filter((item) => item.id !== token.id);
+        return [safeToken, ...withoutCreated];
+      });
+      setNewTokenName('');
+      toast.success('Token created');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Token creation failed');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const handleCreateOpenChange = (open: boolean) => {
@@ -219,6 +225,18 @@ export function TokensPage() {
                 <div className="space-y-3">
                   <Button
                     variant="outline"
+                    className="w-full gap-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300"
+                    onClick={() => {
+                      setPlaygroundCredential(createdToken.key as string);
+                      handleCreateOpenChange(false);
+                      navigate('/playground');
+                    }}
+                  >
+                    <FlaskConical className="size-4" />
+                    在在线调试中使用
+                  </Button>
+                  <Button
+                    variant="outline"
                     className="w-full gap-2 border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300"
                     onClick={() => openCCSwitch(createdToken.key as string)}
                   >
@@ -232,10 +250,10 @@ export function TokensPage() {
               ) : (
                 <Button
                   onClick={handleCreate}
-                  disabled={createMutation.isPending || !newTokenName.trim()}
+                  disabled={isCreating || !newTokenName.trim()}
                   className="w-full"
                 >
-                  {createMutation.isPending ? 'Creating...' : 'Create'}
+                  {isCreating ? 'Creating...' : 'Create'}
                 </Button>
               )}
             </div>

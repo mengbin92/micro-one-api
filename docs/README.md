@@ -90,6 +90,7 @@ docs/
 | [v0.22-roadmap.md](./design/v0.22-roadmap.md) | v0.22 路线图：安全配置、契约治理与小范围可靠性修复（已归档） |
 | [v0.22-relay-execution-boundary-adr.md](./design/v0.22-relay-execution-boundary-adr.md) | v0.22 Relay executor / adaptor 执行边界 ADR |
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（当前） |
+| [web-playground-implementation-plan.md](./design/web-playground-implementation-plan.md) | 用户侧 Web Playground：交互、密钥安全、SSE、Relay CORS、测试与发布方案 |
 | [architecture-review-remediation-report-2026-08-25.md](./design/architecture-review-remediation-report-2026-08-25.md) | 系统架构审查复核、修复方案与执行状态（2026-08-25） |
 | [systematic-code-review-remediation-2026-08-25.md](./design/systematic-code-review-remediation-2026-08-25.md) | 系统性代码审查方案复核、优化与修复状态（2026-08-25） |
 | [ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) | 整体架构重构方案 |

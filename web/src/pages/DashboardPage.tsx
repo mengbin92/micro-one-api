@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { BarChart3, Box, ChevronRight, Gift, KeyRound, Sparkles, WalletCards, Zap } from 'lucide-react';
+import { BarChart3, Box, ChevronRight, FlaskConical, Gift, KeyRound, Sparkles, WalletCards, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -400,6 +400,19 @@ export function DashboardPage() {
               <span className="min-w-0 flex-1">
                 <span className="block font-black text-slate-950 dark:text-white">查看使用记录</span>
                 <span className="mt-1 block text-sm font-medium text-slate-400">查看详细的调用日志</span>
+              </span>
+              <ChevronRight className="size-5 shrink-0 text-slate-300" />
+            </Link>
+            <Link
+              to="/playground"
+              className="flex items-center gap-4 rounded-lg border border-slate-100 p-5 transition-colors hover:border-emerald-200 hover:bg-emerald-50/50 dark:border-white/10 dark:hover:bg-emerald-500/10"
+            >
+              <span className="grid size-14 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <FlaskConical className="size-6" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-black text-slate-950 dark:text-white">在线调试 API</span>
+                <span className="mt-1 block text-sm font-medium text-slate-400">直接发送一条测试请求</span>
               </span>
               <ChevronRight className="size-5 shrink-0 text-slate-300" />
             </Link>

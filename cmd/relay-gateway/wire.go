@@ -352,6 +352,15 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	}
 
 	var routeMiddleware []func(http.Handler) http.Handler
+	// The browser Playground calls the public Relay endpoints directly. Keep
+	// this policy on the actual production route chain (rather than the
+	// unused enhanced server) and install it first so OPTIONS preflight is
+	// handled before auth, quota and business handlers.
+	routeMiddleware = append(routeMiddleware,
+		appmiddleware.CORS(appmiddleware.RelayCORSConfig()),
+		appmiddleware.SecurityHeaders,
+		appmiddleware.RequestID,
+	)
 	if cfg.Bootstrap.Subscription.GetSubscriptionEnabled() {
 		subscriptionRepo, subErr := subscriptiondata.NewRepositoryFromEnv(os.Getenv("SQL_DRIVER"))
 		if subErr != nil {

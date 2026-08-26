@@ -42,6 +42,25 @@ func DefaultCORSConfig() *CORSConfig {
 	}
 }
 
+// RelayCORSConfig returns the credential-free CORS policy used by the public
+// Relay HTTP endpoints. Relay authenticates with an Authorization bearer key,
+// not browser cookies, so allowing credentials would expand the browser
+// attack surface without providing a supported capability.
+func RelayCORSConfig() *CORSConfig {
+	config := DefaultCORSConfig()
+	config.AllowedMethods = []string{"GET", "POST", "OPTIONS"}
+	config.ExposedHeaders = []string{
+		"Content-Length",
+		"Content-Type",
+		"X-Request-ID",
+		"X-RateLimit-Limit",
+		"X-RateLimit-Remaining",
+		"X-RateLimit-Reset",
+	}
+	config.AllowCredentials = false
+	return config
+}
+
 // CORS creates a CORS middleware with the given configuration
 func CORS(config *CORSConfig) func(http.Handler) http.Handler {
 	if config == nil {

@@ -10,6 +10,7 @@ const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default:
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 const TokensPage = lazy(() => import('@/pages/TokensPage').then((m) => ({ default: m.TokensPage })));
 const UsagePage = lazy(() => import('@/pages/UsagePage').then((m) => ({ default: m.UsagePage })));
+const PlaygroundPage = lazy(() => import('@/pages/PlaygroundPage').then((m) => ({ default: m.PlaygroundPage })));
 const ApiGuidePage = lazy(() => import('@/pages/ApiGuidePage').then((m) => ({ default: m.ApiGuidePage })));
 const PricingPage = lazy(() => import('@/pages/PricingPage').then((m) => ({ default: m.PricingPage })));
 const OrdersPage = lazy(() => import('@/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })));
@@ -101,6 +102,10 @@ export const router = createBrowserRouter([
       {
         path: 'tokens',
         element: withSuspense(<TokensPage />),
+      },
+      {
+        path: 'playground',
+        element: withSuspense(<PlaygroundPage />),
       },
       {
         path: 'usage',

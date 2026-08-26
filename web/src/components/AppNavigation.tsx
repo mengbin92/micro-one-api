@@ -9,6 +9,7 @@ import {
   ChevronsLeft,
   CreditCard,
   Database,
+  FlaskConical,
   IdCard,
   Gift,
   KeyRound,
@@ -69,6 +70,7 @@ interface AccountDashboard {
 const userLinks: NavItem[] = [
   { to: '/dashboard', label: '仪表盘', ariaLabel: 'Dashboard', icon: LayoutDashboard },
   { to: '/tokens', label: 'API 密钥', ariaLabel: 'Tokens', icon: KeyRound },
+  { to: '/playground', label: '在线调试', ariaLabel: 'Playground', icon: FlaskConical },
   { to: '/usage', label: '使用记录', ariaLabel: 'Usage', icon: BarChart3 },
   { to: '/api-guide', label: 'API 使用指南', ariaLabel: 'API Guide', icon: BookOpen },
 ];
@@ -106,6 +108,7 @@ const adminLinks: NavItem[] = [
 const routeTitles: Record<string, string> = {
   '/dashboard': '仪表盘',
   '/tokens': 'API 密钥',
+  '/playground': '在线调试',
   '/usage': '使用记录',
   '/api-guide': 'API 使用指南',
   '/pricing': '模型价格',

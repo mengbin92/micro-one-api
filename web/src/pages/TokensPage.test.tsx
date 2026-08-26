@@ -2,9 +2,19 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { MemoryRouter } from 'react-router';
 import { TokensPage } from './TokensPage';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
+import { takePlaygroundCredential } from '@/lib/playground-credential';
+
+function renderTokensPage() {
+  return renderWithQuery(
+    <MemoryRouter>
+      <TokensPage />
+    </MemoryRouter>,
+  );
+}
 
 describe('TokensPage', () => {
   it('does not show unnamed session tokens as API keys', async () => {
@@ -29,7 +39,7 @@ describe('TokensPage', () => {
       ),
     );
 
-    renderWithQuery(<TokensPage />);
+    renderTokensPage();
 
     expect(await screen.findByText('No tokens yet')).toBeInTheDocument();
     expect(screen.queryByText('sess********oken')).not.toBeInTheDocument();
@@ -78,7 +88,7 @@ describe('TokensPage', () => {
       }),
     );
 
-    renderWithQuery(<TokensPage />);
+    renderTokensPage();
 
     await user.click(await screen.findByRole('button', { name: 'Create Token' }));
     await user.type(screen.getByLabelText('Token Name'), 'test key');
@@ -93,11 +103,12 @@ describe('TokensPage', () => {
     });
     expect(screen.getByDisplayValue(fullKey)).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole('button', { name: 'Done' }));
+    await user.click(within(dialog).getByRole('button', { name: '在在线调试中使用' }));
 
     await waitFor(() => {
       expect(screen.queryByDisplayValue(fullKey)).not.toBeInTheDocument();
     });
+    expect(takePlaygroundCredential()).toBe(fullKey);
     expect(screen.queryByText(fullKey)).not.toBeInTheDocument();
     expect(screen.getByText(maskedKey)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CC Switch' })).not.toBeInTheDocument();
