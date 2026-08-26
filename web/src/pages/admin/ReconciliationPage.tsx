@@ -149,7 +149,7 @@ export function AdminReconciliationPage() {
         <EmptyState title="暂无对账记录" description="触发对账任务后，运行记录会显示在这里。" />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-surface-sm">
             <Table className="min-w-[960px]">
               <TableHeader>
                 <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">
@@ -227,7 +227,7 @@ export function AdminReconciliationPage() {
           ) : discrepancies.length === 0 ? (
             <EmptyState title="无差异" description="本次对账未发现账户、渠道或双写一致性差异。" />
           ) : (
-            <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200 dark:ring-white/10">
+            <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-surface-sm">
               <Table className="min-w-[760px]">
                 <TableHeader>
                   <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">

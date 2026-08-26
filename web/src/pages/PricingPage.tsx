@@ -66,13 +66,13 @@ export function PricingPage() {
             当前可用模型的输入、输出和缓存读取价格。
           </p>
         </div>
-        <div className="inline-flex w-fit items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 dark:bg-card dark:text-slate-300 dark:ring-white/10">
+        <div className="inline-flex w-fit items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-bold text-foreground shadow-surface-sm">
           <Database className="size-4 text-blue-600" />
           {rows.length.toLocaleString()} 个模型
         </div>
       </div>
 
-      <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+      <Card>
         <CardHeader>
           <CardTitle>当前价格</CardTitle>
           <CardDescription>价格单位为每 {unit}。</CardDescription>

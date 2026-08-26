@@ -167,7 +167,7 @@ export function ProfilePage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-        <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+        <Card>
           <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
             <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">
               基本信息
@@ -298,7 +298,7 @@ export function ProfilePage() {
         </Card>
 
         <div className="space-y-6">
-          <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <Card>
             <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
               <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">
                 第三方账号
@@ -320,7 +320,7 @@ export function ProfilePage() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <Card>
             <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
               <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">
                 账户概览

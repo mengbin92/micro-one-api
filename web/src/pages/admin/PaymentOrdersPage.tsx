@@ -232,7 +232,7 @@ export function AdminPaymentOrdersPage() {
         <EmptyState title="暂无支付订单" description="用户发起充值或订阅支付后会显示在这里。" />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-surface-sm">
             <Table className="min-w-[1120px]">
               <TableHeader>
                 <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">
