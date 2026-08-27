@@ -1,26 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
   <title id="title">Micro-One-API</title>
-  <desc id="desc">Micro-One-API gateway logo icon.</desc>
+  <desc id="desc">Micro-One-API number one gateway mark.</desc>
   <defs>
-    <linearGradient id="bg" x1="38" y1="20" x2="218" y2="236" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#10364a"/>
-      <stop offset="0.54" stop-color="#0f5c68"/>
-      <stop offset="1" stop-color="#248866"/>
-    </linearGradient>
-    <linearGradient id="route" x1="55" y1="128" x2="201" y2="128" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#65b7ff"/>
-      <stop offset="0.52" stop-color="#95f0d0"/>
-      <stop offset="1" stop-color="#f4b34e"/>
+    <linearGradient id="surface" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071a2b"/>
+      <stop offset="1" stop-color="#103d61"/>
     </linearGradient>
   </defs>
-  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
-  <path d="M60 94H92C106 94 113 101 122 113L134 128L122 143C113 155 106 162 92 162H60" fill="none" stroke="url(#route)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M196 94H164C150 94 143 101 134 113L122 128L134 143C143 155 150 162 164 162H196" fill="none" stroke="url(#route)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="102" y="78" width="52" height="100" rx="20" fill="#f8fbff"/>
-  <path d="M128 101V155" stroke="#123242" stroke-width="14" stroke-linecap="round"/>
-  <circle cx="60" cy="94" r="13" fill="#65b7ff"/>
-  <circle cx="60" cy="162" r="13" fill="#65b7ff"/>
-  <circle cx="196" cy="94" r="13" fill="#95f0d0"/>
-  <circle cx="196" cy="162" r="13" fill="#f4b34e"/>
-  <circle cx="128" cy="128" r="10" fill="#f4b34e"/>
+  <rect width="64" height="64" rx="14" fill="url(#surface)"/>
+  <path d="M12 22h10c4 0 6 2 8 6l2 3M12 42h10c4 0 6-2 8-6l2-3" fill="none" stroke="#4aa3ff" stroke-width="4" stroke-linecap="round"/>
+  <path d="M33 31l2-3c2-4 4-6 8-6h9" fill="none" stroke="#63d9c5" stroke-width="4" stroke-linecap="round"/>
+  <path d="M33 33l2 3c2 4 4 6 8 6h9" fill="none" stroke="#f5ad42" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="12" cy="22" r="3.5" fill="#4aa3ff"/>
+  <circle cx="12" cy="42" r="3.5" fill="#4aa3ff"/>
+  <circle cx="52" cy="22" r="3.5" fill="#63d9c5"/>
+  <circle cx="52" cy="42" r="3.5" fill="#f5ad42"/>
+  <rect x="24.5" y="13.5" width="15" height="37" rx="6" fill="#f8fafc"/>
+  <path d="M27 27l4.5-4h3v19H30V29l-3 2.5z" fill="#102334"/>
 </svg>
