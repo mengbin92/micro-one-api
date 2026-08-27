@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"micro-one-api/domain/upstream/provider"
+	"micro-one-api/internal/apicompat"
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -43,10 +44,12 @@ func (a *AnthropicAdaptor) Name() string { return "anthropic" }
 // ModelList returns the models this adaptor advertises.
 func (a *AnthropicAdaptor) ModelList() []string { return a.models }
 
-// ConvertRequest preserves the native Messages request shape and rewrites the
-// model selected by routing.
+// ConvertRequest preserves native Messages requests and bridges Responses
+// requests to the common subset of the Anthropic Messages schema supported by
+// API-key channels, including third-party Anthropic-compatible providers.
 func (a *AnthropicAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body []byte) (Format, []byte, error) {
-	if inbound == FormatAnthropicMessages {
+	switch inbound {
+	case FormatAnthropicMessages:
 		var request map[string]jsonx.RawMessage
 		if err := jsonx.Unmarshal(body, &request); err != nil {
 			return "", nil, fmt.Errorf("anthropic adaptor: parse request: %w", err)
@@ -63,8 +66,39 @@ func (a *AnthropicAdaptor) ConvertRequest(rc *RelayContext, inbound Format, body
 			return "", nil, fmt.Errorf("anthropic adaptor: marshal request: %w", err)
 		}
 		return FormatAnthropicMessages, out, nil
+	case FormatOpenAIResponses:
+		var request apicompat.ResponsesRequest
+		if err := jsonx.Unmarshal(body, &request); err != nil {
+			return "", nil, fmt.Errorf("anthropic adaptor: parse responses request: %w", err)
+		}
+		if rc != nil && rc.ResolvedModel != "" {
+			request.Model = rc.ResolvedModel
+		}
+		if strings.TrimSpace(request.Model) == "" {
+			return "", nil, fmt.Errorf("anthropic adaptor: model is required")
+		}
+		converted, err := apicompat.ResponsesToAnthropicRequest(&request)
+		if err != nil {
+			return "", nil, fmt.Errorf("anthropic adaptor: responses→anthropic: %w", err)
+		}
+		// API-key channels may target third-party Anthropic-compatible
+		// endpoints. Keep the request on their common Messages subset.
+		converted.Thinking = nil
+		converted.OutputConfig = nil
+		for index := range converted.Tools {
+			converted.Tools[index].Type = ""
+			if len(converted.Tools[index].InputSchema) == 0 || string(converted.Tools[index].InputSchema) == "null" {
+				converted.Tools[index].InputSchema = []byte(`{"type":"object","properties":{}}`)
+			}
+		}
+		out, err := jsonx.Marshal(converted)
+		if err != nil {
+			return "", nil, fmt.Errorf("anthropic adaptor: marshal responses request: %w", err)
+		}
+		return FormatAnthropicMessages, out, nil
+	default:
+		return "", nil, fmt.Errorf("anthropic adaptor: inbound format %q is not supported", inbound)
 	}
-	return "", nil, fmt.Errorf("anthropic adaptor: inbound format %q is not supported", inbound)
 }
 
 // GetUpstreamURL returns the Anthropic /v1/messages endpoint.
@@ -102,8 +136,9 @@ func (a *AnthropicAdaptor) BuildUpstreamRequest(ctx context.Context, rc *RelayCo
 	return req, nil
 }
 
-// ConvertResponse returns the upstream body unchanged for anthropic_messages.
-func (a *AnthropicAdaptor) ConvertResponse(_ *RelayContext, upstream Format, resp *http.Response) (Format, []byte, error) {
+// ConvertResponse returns native Messages unchanged and converts successful
+// Anthropic responses back to Responses when that was the inbound protocol.
+func (a *AnthropicAdaptor) ConvertResponse(rc *RelayContext, _ Format, resp *http.Response) (Format, []byte, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, provider.MaxUpstreamResponseBody))
 	if err != nil {
@@ -112,10 +147,26 @@ func (a *AnthropicAdaptor) ConvertResponse(_ *RelayContext, upstream Format, res
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", nil, &provider.UpstreamHTTPError{StatusCode: resp.StatusCode, Body: body}
 	}
+	if rc != nil && rc.InboundFormat == FormatOpenAIResponses {
+		var response apicompat.AnthropicResponse
+		if err := jsonx.Unmarshal(body, &response); err != nil {
+			return "", nil, fmt.Errorf("anthropic adaptor: parse upstream response: %w", err)
+		}
+		out, err := jsonx.Marshal(apicompat.AnthropicToResponsesResponse(&response))
+		if err != nil {
+			return "", nil, fmt.Errorf("anthropic adaptor: marshal responses response: %w", err)
+		}
+		return FormatOpenAIResponses, out, nil
+	}
 	return FormatAnthropicMessages, body, nil
 }
 
-// ConvertStreamResponse returns the upstream stream reader unchanged.
-func (a *AnthropicAdaptor) ConvertStreamResponse(_ *RelayContext, upstream Format, resp *http.Response) (Format, io.Reader, error) {
+// ConvertStreamResponse converts Anthropic SSE to Responses SSE when needed.
+func (a *AnthropicAdaptor) ConvertStreamResponse(rc *RelayContext, _ Format, resp *http.Response) (Format, io.Reader, error) {
+	if rc != nil && rc.InboundFormat == FormatOpenAIResponses {
+		reader, writer := io.Pipe()
+		go pumpAnthropicToResponses(resp.Body, writer)
+		return FormatOpenAIResponses, reader, nil
+	}
 	return FormatAnthropicMessages, resp.Body, nil
 }

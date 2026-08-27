@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.23.1 发布公告](./docs/releases/release-v0.23.1.md)（渠道健康与日志安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.23.1)
+> 📣 **最新发布**：[v0.23.2 发布公告](./docs/releases/release-v0.23.2.md)（Responses / Anthropic 兼容与 executor 灰度修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.23.2)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.23.2
+
+v0.23.2 是 v0.23.1 之后的 **PATCH 协议兼容与灰度可靠性版本**：修复 `/v1/responses` 经 Anthropic API-key 渠道时在本地被误报为 502 的问题，补齐流式 executor 观察和失败边界，并发布受控 Relay Playground。**无数据库迁移、无公共 API / proto 破坏性变更**；重新部署 `relay-gateway`，如需 Playground 再同步发布 `web/dist`。详见 [docs/releases/release-v0.23.2.md](./docs/releases/release-v0.23.2.md)。
 
 ### 升级到 v0.23.1
 
