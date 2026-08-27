@@ -7,6 +7,32 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.2] - 2026-08-27
+
+v0.23.2 是 v0.23.1 之后的 **PATCH 协议兼容与灰度可靠性版本**：修复 Responses 经 Anthropic
+API-key 渠道时的本地 502，补齐流式 executor 观察和失败边界，并发布受控 Relay Playground。
+无数据库迁移、无公共 API / proto 破坏性变更。详见
+[release-v0.23.2.md](docs/releases/release-v0.23.2.md)。
+
+### Added
+
+- staged executor 覆盖流式 Responses、Anthropic Messages 和 Chat Completions，补齐终态感知的
+  quota 结算、retry / failover 与按执行路径分组的 Prometheus 指标。
+- 新增内存态凭证、模型发现、SSE 解析、取消和请求检查能力的 Relay Playground。
+
+### Fixed
+
+- Anthropic API-key adaptor 支持 Responses 请求、非流式响应和 SSE 双向转换，不再在请求发往
+  StepFun 前以 unsupported-format 本地失败并映射为 502。
+- post-forward 失败不再触发重复上游调用；协议能力 retry 限定到 Responses；流消费者取消可终止
+  chunk 投递；生产 CORS 默认 fail closed。
+- 修复 Playground 上线后的重复 CORS 响应头、raw-request 路由与客户端错误映射问题。
+
+### Changed
+
+- relay gRPC 地址可通过可选 `RELAY_GRPC_ADDR` 覆盖；未配置时保持原默认值。
+- 新增 executor 7 天观察手册，记录生产回滚、根因、修复 canary 与新旧路径判定口径。
+
 ## [0.23.1] - 2026-08-24
 
 v0.23.1 是 v0.23.0 之后的 **PATCH 可靠性与安全修复版本**：隔离单模型上游故障，避免 retry 放大渠道级熔断；阻断请求凭证进入用量日志；并校验 `/models` 健康探测响应。无数据库迁移、无公共 API / proto 破坏性变更。详见 [release-v0.23.1.md](docs/releases/release-v0.23.1.md)。
