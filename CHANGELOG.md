@@ -7,6 +7,30 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-08-31
+
+v0.24.0 是 v0.23.3 之后的 **MINOR Web 体验与运营基础版本**：完成用户端与管理端的
+可访问性设计重构，增加中英文界面、中国用户协议与隐私政策、注册显式同意和
+可配置的运营主体信息。无数据库迁移、无公共 API / proto 破坏性变更，详见
+[release-v0.24.0.md](docs/releases/release-v0.24.0.md)。
+
+### Added
+
+- 新增持久化中英文切换，用户端与管理端文案、日期和数字格式跟随 locale。
+- 新增公开用户协议、隐私政策和注册显式同意；`admin-api` 支持配置并公示运营者名称、
+  注册地址与隐私联系邮箱。
+- 重建 Web 设计令牌、响应式导航、状态组件、登录 / Playground 流程和语义化图表。
+
+### Fixed
+
+- 英文注册页的协议同意文案、法律链接、校验错误和运营主体配置保持英文。
+
+### Changed
+
+- 刷新 Micro-One API 图标、字标、本地 Noto Sans SC 字体资产与授权记录。
+- Anthropic native SSE 测试覆盖 `Edit` 工具跨多个 `input_json_delta` 的原样传递；
+  无 relay 运行时变更。
+
 ## [0.23.3] - 2026-08-31
 
 v0.23.3 是 v0.23.2 之后的 **PATCH 安全修复版本**：收紧服务间认证、上游网络访问、登录限流和 relay 编排器灰度凭证边界，并修复 CodeQL 报告的凭证配置风险。无数据库迁移、无公共 API / proto 破坏性变更，但升级前必须统一配置 `SERVICE_TOKEN` 并重新计算编排器 HMAC allowlist。详见 [release-v0.23.3.md](docs/releases/release-v0.23.3.md)。
