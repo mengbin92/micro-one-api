@@ -28,6 +28,11 @@ describe('legal pages', () => {
 
     expect(screen.getByRole('heading', { name: 'Micro-One API 用户协议' })).toBeInTheDocument();
     expect(await screen.findByText('示例科技有限公司')).toBeInTheDocument();
+    expect(screen.getByText('上海市示例路 1 号')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'privacy@example.com' })).toHaveAttribute(
+      'href',
+      'mailto:privacy@example.com',
+    );
     expect(screen.queryByText('运营信息尚未完整配置')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '十一、法律适用与争议解决' })).toBeInTheDocument();
   });
