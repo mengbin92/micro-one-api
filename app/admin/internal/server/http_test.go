@@ -827,6 +827,31 @@ func TestAdminHTTPStatusIsUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPStatusExposesConfiguredLegalIdentity(t *testing.T) {
+	srv := newAdminHTTPOptionTestServer(&adminHTTPSystemOptionsStore{values: map[string]string{
+		"LegalOperatorName":    "Example Technology Co., Ltd.",
+		"LegalOperatorAddress": "Shanghai, China",
+		"LegalContactEmail":    "privacy@example.com",
+	}})
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{
+		`"legal_operator_name":"Example Technology Co., Ltd."`,
+		`"legal_operator_address":"Shanghai, China"`,
+		`"legal_contact_email":"privacy@example.com"`,
+	} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("status response missing %s: %s", want, rec.Body.String())
+		}
+	}
+}
+
 func TestAdminHTTPProxiesUserPaymentOrderDetail(t *testing.T) {
 	var gotPath string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

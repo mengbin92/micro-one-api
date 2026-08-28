@@ -327,6 +327,10 @@ export function AppNavigation() {
             <span className="block text-xs font-medium text-muted-foreground">{t("为内容保留更多空间")}</span>
           </span>
         </button>
+        <div className="mt-3 flex justify-center gap-3 text-xs text-muted-foreground">
+          <Link to="/terms" onClick={() => setMobileOpen(false)} className="hover:text-foreground hover:underline">{t("用户协议")}</Link>
+          <Link to="/privacy" onClick={() => setMobileOpen(false)} className="hover:text-foreground hover:underline">{t("隐私政策")}</Link>
+        </div>
       </div>
     </div>
   );

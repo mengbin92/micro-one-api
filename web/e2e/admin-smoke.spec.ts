@@ -82,6 +82,7 @@ test('register creates account and signs in', async ({ page }) => {
   await page.getByLabel('用户名').fill('bob');
   await page.getByLabel('密码', { exact: true }).fill('password123');
   await page.getByLabel('确认密码').fill('password123');
+  await page.getByRole('checkbox', { name: /我已阅读并同意/ }).check();
   await page.getByRole('button', { name: '注册账号' }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
