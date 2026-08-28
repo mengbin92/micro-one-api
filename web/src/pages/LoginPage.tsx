@@ -12,6 +12,7 @@ import { getApiErrorMessage } from '@/lib/api-error';
 import { unwrapApiData } from '@/lib/api-response';
 import { oauthProviders, redirectToApiPath } from '@/lib/oauth';
 import { t } from '@/lib/i18n';
+import { useI18n } from '@/hooks/useI18n';
 
 export function LoginPage() {
   const location = useLocation();
@@ -25,6 +26,9 @@ export function LoginPage() {
   const loginTabRef = useRef<HTMLButtonElement>(null);
   const registerTabRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
+  const { language } = useI18n();
+  const userAgreementLabel = language === 'en-US' ? t("用户协议") : `《${t("用户协议")}》`;
+  const privacyPolicyLabel = language === 'en-US' ? t("隐私政策") : `《${t("隐私政策")}》`;
 
   const selectMode = (nextMode: 'login' | 'register') => {
     if (nextMode !== mode) {
@@ -64,7 +68,7 @@ export function LoginPage() {
       return;
     }
     if (mode === 'register' && !acceptedLegal) {
-      setError('请先阅读并同意用户协议和隐私政策');
+      setError(t("请先阅读并同意用户协议和隐私政策"));
       return;
     }
 
@@ -242,7 +246,7 @@ export function LoginPage() {
                       className="mt-0.5 size-4 shrink-0 accent-primary"
                     />
                     <label htmlFor="accepted-legal">
-                      我已阅读并同意 <Link to="/terms" target="_blank" className="font-medium text-primary hover:underline">《用户协议》</Link> 和 <Link to="/privacy" target="_blank" className="font-medium text-primary hover:underline">《隐私政策》</Link>
+                      {t("我已阅读并同意")} <Link to="/terms" target="_blank" className="font-medium text-primary hover:underline">{userAgreementLabel}</Link> {language === 'en-US' ? 'and' : '和'} <Link to="/privacy" target="_blank" className="font-medium text-primary hover:underline">{privacyPolicyLabel}</Link>
                     </label>
                   </div>
                 )}
@@ -275,8 +279,8 @@ export function LoginPage() {
             </CardContent>
           </Card>
           <div className="mt-5 flex justify-center gap-4 text-xs text-muted-foreground">
-            <Link to="/terms" className="hover:text-foreground hover:underline">用户协议</Link>
-            <Link to="/privacy" className="hover:text-foreground hover:underline">隐私政策</Link>
+            <Link to="/terms" className="hover:text-foreground hover:underline">{t("用户协议")}</Link>
+            <Link to="/privacy" className="hover:text-foreground hover:underline">{t("隐私政策")}</Link>
           </div>
         </div>
       </section>

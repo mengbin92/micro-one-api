@@ -829,8 +829,8 @@ func TestAdminHTTPStatusIsUnauthenticated(t *testing.T) {
 
 func TestAdminHTTPStatusExposesConfiguredLegalIdentity(t *testing.T) {
 	srv := newAdminHTTPOptionTestServer(&adminHTTPSystemOptionsStore{values: map[string]string{
-		"LegalOperatorName":    "Example Technology Co., Ltd.",
-		"LegalOperatorAddress": "Shanghai, China",
+		"LegalOperatorName":    "示例科技有限公司",
+		"LegalOperatorAddress": "上海市示例路 1 号",
 		"LegalContactEmail":    "privacy@example.com",
 	}})
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
@@ -842,8 +842,8 @@ func TestAdminHTTPStatusExposesConfiguredLegalIdentity(t *testing.T) {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
 	for _, want := range []string{
-		`"legal_operator_name":"Example Technology Co., Ltd."`,
-		`"legal_operator_address":"Shanghai, China"`,
+		`"legal_operator_name":"示例科技有限公司"`,
+		`"legal_operator_address":"上海市示例路 1 号"`,
 		`"legal_contact_email":"privacy@example.com"`,
 	} {
 		if !strings.Contains(rec.Body.String(), want) {

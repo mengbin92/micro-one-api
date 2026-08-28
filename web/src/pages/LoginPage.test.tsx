@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './LoginPage';
 import { renderWithQuery } from '@/test/render';
 import { redirectToApiPath } from '@/lib/oauth';
@@ -17,7 +17,10 @@ vi.mock('@/lib/oauth', async () => {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.mocked(redirectToApiPath).mockClear();
+    window.localStorage.removeItem('web:language');
   });
+
+  afterEach(() => window.localStorage.removeItem('web:language'));
 
   it('starts OAuth login from provider buttons', async () => {
     const user = userEvent.setup();
@@ -76,6 +79,30 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: '注册账号' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('请先阅读并同意用户协议和隐私政策');
+  });
+
+  it('translates the registration legal consent and validation in English', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem('web:language', JSON.stringify('en-US'));
+
+    renderWithQuery(
+      <MemoryRouter initialEntries={['/register']}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('checkbox', { name: /I have read and agree to/ })).not.toBeChecked();
+    expect(screen.getAllByRole('link', { name: 'User Agreement' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'Privacy Policy' })).toHaveLength(2);
+
+    await user.type(screen.getByLabelText('Username'), 'alice');
+    await user.type(screen.getByLabelText('Password'), 'password-1');
+    await user.type(screen.getByLabelText('Confirm password'), 'password-1');
+    await user.click(screen.getByRole('button', { name: 'Register an account' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Please read and accept the User Agreement and Privacy Policy first',
+    );
   });
 
   it('associates registration validation errors with the form panel', async () => {
