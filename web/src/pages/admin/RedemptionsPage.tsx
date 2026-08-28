@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { locale } from '@/lib/i18n';
 import { adminApiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -310,7 +311,7 @@ export function AdminRedemptionsPage() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{code.createdBy || '—'}</TableCell>
                     <TableCell>
-                      {new Date(parseInt(code.createdAt) * 1000).toLocaleDateString()}
+                      {new Date(parseInt(code.createdAt) * 1000).toLocaleDateString(locale())}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button

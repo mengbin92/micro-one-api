@@ -20,6 +20,7 @@ import {
   YAxis,
 } from 'recharts';
 import { cn } from '@/lib/utils';
+import { t } from '@/lib/i18n';
 
 interface HealthTrendData {
   timestamp: string;
@@ -78,9 +79,7 @@ const TOOLTIP_STYLE = {
 export function HealthTrendChart({ data }: { data: HealthTrendData[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-60 items-center justify-center text-muted-foreground">
-        暂无趋势数据
-      </div>
+      <div className="flex h-60 items-center justify-center text-muted-foreground">{t("暂无趋势数据")}</div>
     );
   }
 
@@ -110,7 +109,7 @@ export function HealthTrendChart({ data }: { data: HealthTrendData[] }) {
           formatter={(value, name) => {
             const numValue = typeof value === 'number' ? value : 0;
             const nameStr = typeof name === 'string' ? name : '';
-            return [numValue, nameStr === 'healthy' ? '健康' : nameStr === 'unavailable' ? '不可用' : nameStr];
+            return [numValue, nameStr === 'healthy' ? t("健康") : nameStr === 'unavailable' ? t("不可用") : nameStr];
           }}
           contentStyle={TOOLTIP_STYLE}
         />
@@ -141,9 +140,7 @@ export function HealthTrendChart({ data }: { data: HealthTrendData[] }) {
 export function ResponseTimeChart({ data }: { data: ResponseTimeData[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-60 items-center justify-center text-muted-foreground">
-        暂无响应时间数据
-      </div>
+      <div className="flex h-60 items-center justify-center text-muted-foreground">{t("暂无响应时间数据")}</div>
     );
   }
 
@@ -182,9 +179,7 @@ export function ResponseTimeChart({ data }: { data: ResponseTimeData[] }) {
 export function UptimePieChart({ data }: { data: UptimeData[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-60 items-center justify-center text-muted-foreground">
-        暂无运行时间数据
-      </div>
+      <div className="flex h-60 items-center justify-center text-muted-foreground">{t("暂无运行时间数据")}</div>
     );
   }
 
@@ -226,9 +221,7 @@ export function UptimePieChart({ data }: { data: UptimeData[] }) {
 export function FailureRateChart({ data }: { data: FailureRateData[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-60 items-center justify-center text-muted-foreground">
-        暂无失败率数据
-      </div>
+      <div className="flex h-60 items-center justify-center text-muted-foreground">{t("暂无失败率数据")}</div>
     );
   }
 
@@ -255,7 +248,7 @@ export function FailureRateChart({ data }: { data: FailureRateData[] }) {
         <Tooltip
           formatter={(value) => {
             const numValue = typeof value === 'number' ? value : 0;
-            return [`${numValue.toFixed(2)}%`, '失败率'];
+            return [`${numValue.toFixed(2)}%`, t("失败率")];
           }}
           contentStyle={TOOLTIP_STYLE}
         />
@@ -294,17 +287,15 @@ export function HealthDistributionChart({ healthy, degraded, unavailable, unknow
   const total = healthy + degraded + unavailable + unknown;
   if (total === 0) {
     return (
-      <div className="flex h-60 items-center justify-center text-muted-foreground">
-        暂无数据
-      </div>
+      <div className="flex h-60 items-center justify-center text-muted-foreground">{t("暂无数据")}</div>
     );
   }
 
   const data = [
-    { name: '健康', value: healthy, color: COLORS.healthy },
-    { name: '降级', value: degraded, color: COLORS.degraded },
-    { name: '不可用', value: unavailable, color: COLORS.unavailable },
-    ...(unknown > 0 ? [{ name: '未知', value: unknown, color: COLORS.unknown }] : []),
+    { name: t("健康"), value: healthy, color: COLORS.healthy },
+    { name: t("降级"), value: degraded, color: COLORS.degraded },
+    { name: t("不可用"), value: unavailable, color: COLORS.unavailable },
+    ...(unknown > 0 ? [{ name: t("未知"), value: unknown, color: COLORS.unknown }] : []),
   ];
 
   return (

@@ -40,6 +40,7 @@ import {
   type RawSubscriptionAccount,
   type SubscriptionAccountSummary,
 } from '@/lib/subscription-account';
+import { locale, t } from '@/lib/i18n';
 
 // Mirrors common.v1.SubscriptionAccountInfo JSON tags returned by
 // GET /api/subscription-accounts/{id}. The protobuf-generated JSON uses
@@ -209,12 +210,12 @@ const QUOTA_RESET_STRATEGY_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 function platformLabel(platform: string) {
-  return PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform;
+  return t(PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform);
 }
 
 function formatTimestamp(unix?: number) {
   if (!unix) return '—';
-  return new Date(unix * 1000).toLocaleString();
+  return new Date(unix * 1000).toLocaleString(locale());
 }
 
 function formatPercent(value: number) {
@@ -224,24 +225,24 @@ function formatPercent(value: number) {
 }
 
 function formatWindowLabel(minutes?: number | null) {
-  if (!minutes) return '配额';
-  if (minutes === 300) return '5小时';
-  if (minutes === 10080) return '7天';
-  if (minutes % 1440 === 0) return `${minutes / 1440}天`;
-  if (minutes % 60 === 0) return `${minutes / 60}小时`;
-  return `${minutes}分钟`;
+  if (!minutes) return t("配额");
+  if (minutes === 300) return t("5小时");
+  if (minutes === 10080) return t("7天");
+  if (minutes % 1440 === 0) return t(`${minutes / 1440}天`);
+  if (minutes % 60 === 0) return t(`${minutes / 60}小时`);
+  return t(`${minutes}分钟`);
 }
 
 function formatResetAfter(seconds?: number | null) {
   if (seconds == null || !Number.isFinite(seconds)) return '';
-  if (seconds <= 0) return '即将重置';
+  if (seconds <= 0) return t("即将重置");
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days}天${hours > 0 ? `${hours}小时` : ''}后`;
-  if (hours > 0) return `${hours}小时${minutes > 0 ? `${minutes}分钟` : ''}后`;
-  if (minutes > 0) return `${minutes}分钟后`;
-  return '1分钟内';
+  if (days > 0) return t(`${days}天${hours > 0 ? `${hours}小时` : ''}后`);
+  if (hours > 0) return t(`${hours}小时${minutes > 0 ? `${minutes}分钟` : ''}后`);
+  if (minutes > 0) return t(`${minutes}分钟后`);
+  return t("1分钟内");
 }
 
 function formatUSD(value?: number | null) {
@@ -275,7 +276,7 @@ function localQuotaRows(account: SubscriptionAccountSummary) {
   const quota5hUsedUsd = account.quota5hUsedUsd;
   const quota5hLimitUsd = account.quota5hLimitUsd;
   return [
-    { label: '总额', used: account.quotaUsedUsd, limit: account.quotaLimitUsd },
+    { label: t("总额"), used: account.quotaUsedUsd, limit: account.quotaLimitUsd },
     { label: '5h', used: quota5hUsedUsd, limit: quota5hLimitUsd },
     { label: '24h', used: account.quotaDailyUsedUsd, limit: account.quotaDailyLimitUsd },
     { label: '7d', used: account.quotaWeeklyUsedUsd, limit: account.quotaWeeklyLimitUsd },
@@ -329,7 +330,7 @@ function quotaWindows(account: SubscriptionAccountSummary) {
     return [
       {
         key: 'quota',
-        label: '配额',
+        label: t("配额"),
         usedPercent,
         resetAfter: resetAfterFromUnix(resetAt),
       },
@@ -391,14 +392,12 @@ function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary
                 style={{ width: `${barWidth}%` }}
               />
             </div>
-            {resetAfter && <div className="text-xs text-muted-foreground">重置：{resetAfter}</div>}
+            {resetAfter && <div className="text-xs text-muted-foreground">{t("重置：")}{resetAfter}</div>}
           </div>
         );
       })}
       {snapshotPaused && (
-        <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-          已因限额暂停
-        </span>
+        <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">{t("已因限额暂停")}</span>
       )}
       {rpmLimit > 0 && (
         <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
@@ -411,8 +410,7 @@ function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary
         </span>
       )}
       {resetStrategy === 'fixed' && (
-        <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-          固定周期 {quotaTimezone}
+        <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">{t("固定周期")}{quotaTimezone}
         </span>
       )}
       {(() => {
@@ -420,7 +418,7 @@ function QuotaStatusCell({ account, now }: { account: SubscriptionAccountSummary
         const since = account.unschedulableSince;
         if (!reason || !since || since <= 0) return null;
         const recoveryAt = account.expectedRecoveryAt ?? 0;
-        const recoveryLabel = recoveryAt > 0 ? formatResetAfter(Math.max(0, recoveryAt - now)) : '未知';
+        const recoveryLabel = recoveryAt > 0 ? formatResetAfter(Math.max(0, recoveryAt - now)) : t("未知");
         return (
           <div className="flex items-center gap-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
             <span className="truncate max-w-[160px]" title={reason}>{reason}</span>
@@ -542,7 +540,7 @@ export function AdminSubscriptionAccountsPage() {
     onSuccess: () => {
       invalidate();
       setIsCreateOpen(false);
-      toast.success('订阅账号已创建');
+      toast.success(t("订阅账号已创建"));
     },
   });
 
@@ -584,7 +582,7 @@ export function AdminSubscriptionAccountsPage() {
     onSuccess: () => {
       invalidate();
       setEditingAccount(null);
-      toast.success('订阅账号配置已保存');
+      toast.success(t("订阅账号配置已保存"));
     },
   });
 
@@ -599,7 +597,7 @@ export function AdminSubscriptionAccountsPage() {
     },
     onSuccess: () => {
       invalidate();
-      toast.success('订阅账号状态已更新');
+      toast.success(t("订阅账号状态已更新"));
     },
   });
 
@@ -610,7 +608,7 @@ export function AdminSubscriptionAccountsPage() {
     },
     onSuccess: () => {
       invalidate();
-      toast.success('订阅账号用量已重置');
+      toast.success(t("订阅账号用量已重置"));
     },
   });
 
@@ -625,7 +623,7 @@ export function AdminSubscriptionAccountsPage() {
     onSuccess: () => {
       invalidate();
       setSelectedAccountIDs(new Set());
-      toast.success('已批量重置订阅账号用量');
+      toast.success(t("已批量重置订阅账号用量"));
     },
   });
 
@@ -641,7 +639,7 @@ export function AdminSubscriptionAccountsPage() {
       invalidate();
       setSelectedAccountIDs(new Set());
       setIsBatchTemplateOpen(false);
-      toast.success('已批量应用额度模板');
+      toast.success(t("已批量应用额度模板"));
     },
   });
 
@@ -652,7 +650,7 @@ export function AdminSubscriptionAccountsPage() {
     },
     onSuccess: () => {
       invalidate();
-      toast.success('订阅账号已删除');
+      toast.success(t("订阅账号已删除"));
     },
   });
 
@@ -662,7 +660,7 @@ export function AdminSubscriptionAccountsPage() {
       const info = res.data as SubscriptionAccountInfo;
       setEditingAccount(toDraft(info));
     } catch {
-      toast.error('加载订阅账号详情失败');
+      toast.error(t("加载订阅账号详情失败"));
     }
   };
 
@@ -717,7 +715,7 @@ export function AdminSubscriptionAccountsPage() {
     for (const [formKey, payloadKey] of numberFields) {
       const value = optionalNumberInput(batchTemplate[formKey]);
       if (value === null) {
-        toast.error('批量额度模板包含无效数字');
+        toast.error(t("批量额度模板包含无效数字"));
         return;
       }
       if (value !== undefined) {
@@ -726,7 +724,7 @@ export function AdminSubscriptionAccountsPage() {
     }
     const rpmLimit = optionalNumberInput(batchTemplate.rpmLimit);
     if (rpmLimit === null) {
-      toast.error('RPM 限制必须是非负整数');
+      toast.error(t("RPM 限制必须是非负整数"));
       return;
     }
     if (rpmLimit !== undefined) {
@@ -739,7 +737,7 @@ export function AdminSubscriptionAccountsPage() {
       template.quota_timezone = normalizeQuotaTimezone(batchTemplate.quotaTimezone);
     }
     if (Object.keys(template).length === 0) {
-      toast.error('请至少填写一个额度模板字段');
+      toast.error(t("请至少填写一个额度模板字段"));
       return;
     }
     batchQuotaTemplateMutation.mutate({ ids: selectedIDs, template });
@@ -748,7 +746,7 @@ export function AdminSubscriptionAccountsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">订阅账号管理</h2>
+        <h2 className="text-2xl font-semibold">{t("订阅账号管理")}</h2>
         <div className="flex items-center gap-2">
           <OAuthBindDialog onBound={invalidate} />
           <CreateAccountDialog
@@ -762,44 +760,44 @@ export function AdminSubscriptionAccountsPage() {
 
       <AdminTableToolbar
         search={search}
-        searchPlaceholder="按名称搜索..."
+        searchPlaceholder={t("按名称搜索...")}
         onSearchChange={setSearch}
         onClear={clearSearch}
         actions={
           <div className="flex items-center gap-2">
             <select
-              aria-label="按平台筛选"
+              aria-label={t("按平台筛选")}
               value={platformFilter}
               onChange={(event) => setFilter('platform', event.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm"
             >
-              <option value="">全部平台</option>
+              <option value="">{t("全部平台")}</option>
               {PLATFORM_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {t(option.label)}
                 </option>
               ))}
             </select>
             <select
-              aria-label="按状态筛选"
+              aria-label={t("按状态筛选")}
               value={statusFilter}
               onChange={(event) => setFilter('status', event.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm"
             >
-              <option value="">全部状态</option>
+              <option value="">{t("全部状态")}</option>
               <option value="1">Active</option>
               <option value="2">Disabled</option>
             </select>
             <select
-              aria-label="按本地额度筛选"
+              aria-label={t("按本地额度筛选")}
               value={quotaFilter}
               onChange={(event) => setFilter('quota', event.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm"
             >
-              <option value="">全部额度</option>
-              <option value="exhausted">本地额度耗尽</option>
-              <option value="almost">即将耗尽</option>
-              <option value="no_usage">最近无用量</option>
+              <option value="">{t("全部额度")}</option>
+              <option value="exhausted">{t("本地额度耗尽")}</option>
+              <option value="almost">{t("即将耗尽")}</option>
+              <option value="no_usage">{t("最近无用量")}</option>
             </select>
           </div>
         }
@@ -807,50 +805,44 @@ export function AdminSubscriptionAccountsPage() {
 
       {selectedIDs.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-          <div className="text-sm text-muted-foreground">已选择 {selectedIDs.length} 个订阅账号</div>
+          <div className="text-sm text-muted-foreground">{t("已选择")}{selectedIDs.length}{t("个订阅账号")}</div>
           <div className="flex flex-wrap items-center gap-2">
             <select
-              aria-label="批量重置范围"
+              aria-label={t("批量重置范围")}
               value={batchResetScope}
               onChange={(event) => setBatchResetScope(event.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm"
             >
-              <option value="daily">重置 24h</option>
-              <option value="weekly">重置 7d</option>
-              <option value="5h">重置 5h</option>
-              <option value="total">重置总额</option>
-              <option value="all">重置全部</option>
+              <option value="daily">{t("重置 24h")}</option>
+              <option value="weekly">{t("重置 7d")}</option>
+              <option value="5h">{t("重置 5h")}</option>
+              <option value="total">{t("重置总额")}</option>
+              <option value="all">{t("重置全部")}</option>
             </select>
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                if (confirm(`确认批量重置 ${selectedIDs.length} 个订阅账号的用量？`)) {
+                if (confirm(t(`确认批量重置 ${selectedIDs.length} 个订阅账号的用量？`))) {
                   batchResetQuotaMutation.mutate({ ids: selectedIDs, scope: batchResetScope });
                 }
               }}
               disabled={batchResetQuotaMutation.isPending}
             >
-              <RotateCcw className="size-3.5" />
-              批量重置
-            </Button>
+              <RotateCcw className="size-3.5" />{t("批量重置")}</Button>
             <Button variant="outline" size="sm" onClick={() => setIsBatchTemplateOpen(true)}>
-              <Save className="size-3.5" />
-              应用额度模板
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedAccountIDs(new Set())}>
-              取消选择
-            </Button>
+              <Save className="size-3.5" />{t("应用额度模板")}</Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedAccountIDs(new Set())}>{t("取消选择")}</Button>
           </div>
         </div>
       )}
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', '名称', '平台', '分组', '优先级', '过期时间', '状态', '操作']} />
+        <TableSkeleton columns={['ID', t("名称"), t("平台"), t("分组"), t("优先级"), t("过期时间"), t("状态"), t("操作")]} />
       ) : !accounts || accounts.length === 0 ? (
-        <EmptyState title="暂无订阅账号" description="新建一个 Claude / Codex 订阅账号以启用混合中继。" />
+        <EmptyState title={t("暂无订阅账号")} description={t("新建一个 Claude / Codex 订阅账号以启用混合中继。")} />
       ) : visibleAccounts.length === 0 ? (
-        <EmptyState title="没有匹配的订阅账号" description="清除筛选条件以查看已加载的账号。" />
+        <EmptyState title={t("没有匹配的订阅账号")} description={t("清除筛选条件以查看已加载的账号。")} />
       ) : (
         <>
           <div className="border rounded-lg">
@@ -859,33 +851,21 @@ export function AdminSubscriptionAccountsPage() {
                 <TableRow>
                   <TableHead className="w-10">
                     <input
-                      aria-label="选择当前页订阅账号"
+                      aria-label={t("选择当前页订阅账号")}
                       type="checkbox"
                       checked={allVisibleSelected}
                       onChange={(event) => toggleVisibleSelected(event.target.checked)}
                     />
                   </TableHead>
                   <TableHead>ID</TableHead>
-                  <SortableHeader<SubscriptionAccountSummary> columnKey="name" sort={sort} onSortChange={setSort}>
-                    名称
-                  </SortableHeader>
-                  <SortableHeader<SubscriptionAccountSummary> columnKey="platform" sort={sort} onSortChange={setSort}>
-                    平台
-                  </SortableHeader>
-                  <SortableHeader<SubscriptionAccountSummary> columnKey="group" sort={sort} onSortChange={setSort}>
-                    分组
-                  </SortableHeader>
-                  <SortableHeader<SubscriptionAccountSummary> columnKey="priority" sort={sort} onSortChange={setSort} className="hidden lg:table-cell">
-                    优先级
-                  </SortableHeader>
-                  <SortableHeader<SubscriptionAccountSummary> columnKey="expiresAt" sort={sort} onSortChange={setSort} className="hidden xl:table-cell">
-                    过期时间
-                  </SortableHeader>
-                  <SortableHeader<SubscriptionAccountSummary> columnKey="status" sort={sort} onSortChange={setSort}>
-                    状态
-                  </SortableHeader>
-                  <TableHead className="hidden md:table-cell">限额状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <SortableHeader<SubscriptionAccountSummary> columnKey="name" sort={sort} onSortChange={setSort}>{t("名称")}</SortableHeader>
+                  <SortableHeader<SubscriptionAccountSummary> columnKey="platform" sort={sort} onSortChange={setSort}>{t("平台")}</SortableHeader>
+                  <SortableHeader<SubscriptionAccountSummary> columnKey="group" sort={sort} onSortChange={setSort}>{t("分组")}</SortableHeader>
+                  <SortableHeader<SubscriptionAccountSummary> columnKey="priority" sort={sort} onSortChange={setSort} className="hidden lg:table-cell">{t("优先级")}</SortableHeader>
+                  <SortableHeader<SubscriptionAccountSummary> columnKey="expiresAt" sort={sort} onSortChange={setSort} className="hidden xl:table-cell">{t("过期时间")}</SortableHeader>
+                  <SortableHeader<SubscriptionAccountSummary> columnKey="status" sort={sort} onSortChange={setSort}>{t("状态")}</SortableHeader>
+                  <TableHead className="hidden md:table-cell">{t("限额状态")}</TableHead>
+                  <TableHead className="text-right">{t("操作")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -893,7 +873,7 @@ export function AdminSubscriptionAccountsPage() {
                   <TableRow key={account.id}>
                     <TableCell>
                       <input
-                        aria-label={`选择订阅账号 ${account.name}`}
+                        aria-label={t(`选择订阅账号 ${account.name}`)}
                         type="checkbox"
                         checked={selectedAccountIDs.has(account.id)}
                         onChange={(event) => toggleAccountSelected(account.id, event.target.checked)}
@@ -938,42 +918,36 @@ export function AdminSubscriptionAccountsPage() {
                     </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="sm" onClick={() => openEdit(account)}>
-                        <Pencil className="size-3.5" />
-                        编辑
-                      </Button>
+                        <Pencil className="size-3.5" />{t("编辑")}</Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => toggleStatusMutation.mutate({ id: account.id, currentStatus: account.status })}
                         disabled={toggleStatusMutation.isPending}
                       >
-                        {account.status === 1 ? '停用' : '启用'}
+                        {account.status === 1 ? t("停用") : t("启用")}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          if (confirm(`确认重置订阅账号「${account.name}」的本地用量？`)) {
+                          if (confirm(t(`确认重置订阅账号「${account.name}」的本地用量？`))) {
                             resetQuotaMutation.mutate({ id: account.id, scope: 'all' });
                           }
                         }}
                         disabled={resetQuotaMutation.isPending}
                       >
-                        <RotateCcw className="size-3.5" />
-                        重置
-                      </Button>
+                        <RotateCcw className="size-3.5" />{t("重置")}</Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          if (confirm(`确认删除订阅账号「${account.name}」？`)) {
+                          if (confirm(t(`确认删除订阅账号「${account.name}」？`))) {
                             deleteMutation.mutate(account.id);
                           }
                         }}
                         disabled={deleteMutation.isPending}
-                      >
-                        删除
-                      </Button>
+                      >{t("删除")}</Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1002,66 +976,64 @@ export function AdminSubscriptionAccountsPage() {
       <Dialog open={isBatchTemplateOpen} onOpenChange={setIsBatchTemplateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>批量应用额度模板</DialogTitle>
-            <DialogDescription>
-              空字段不会覆盖现有账号配置；填写 0 可清空对应限额。
-            </DialogDescription>
+            <DialogTitle>{t("批量应用额度模板")}</DialogTitle>
+            <DialogDescription>{t("空字段不会覆盖现有账号配置；填写 0 可清空对应限额。")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 pt-2 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="batch-quota-limit">总额度 USD</Label>
+              <Label htmlFor="batch-quota-limit">{t("总额度 USD")}</Label>
               <Input id="batch-quota-limit" type="number" min="0" step="0.01" value={batchTemplate.quotaLimitUsd} onChange={(e) => setBatchTemplate({ ...batchTemplate, quotaLimitUsd: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="batch-5h-limit">5h 额度 USD</Label>
+              <Label htmlFor="batch-5h-limit">{t("5h 额度 USD")}</Label>
               <Input id="batch-5h-limit" type="number" min="0" step="0.01" value={batchTemplate.quota5hLimitUsd} onChange={(e) => setBatchTemplate({ ...batchTemplate, quota5hLimitUsd: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="batch-daily-limit">24h 额度 USD</Label>
+              <Label htmlFor="batch-daily-limit">{t("24h 额度 USD")}</Label>
               <Input id="batch-daily-limit" type="number" min="0" step="0.01" value={batchTemplate.quotaDailyLimitUsd} onChange={(e) => setBatchTemplate({ ...batchTemplate, quotaDailyLimitUsd: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="batch-weekly-limit">7d 额度 USD</Label>
+              <Label htmlFor="batch-weekly-limit">{t("7d 额度 USD")}</Label>
               <Input id="batch-weekly-limit" type="number" min="0" step="0.01" value={batchTemplate.quotaWeeklyLimitUsd} onChange={(e) => setBatchTemplate({ ...batchTemplate, quotaWeeklyLimitUsd: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="batch-rate-multiplier">用量倍率</Label>
+              <Label htmlFor="batch-rate-multiplier">{t("用量倍率")}</Label>
               <Input id="batch-rate-multiplier" type="number" min="0" step="0.01" value={batchTemplate.rateMultiplier} onChange={(e) => setBatchTemplate({ ...batchTemplate, rateMultiplier: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="batch-rpm-limit">RPM 限制</Label>
+              <Label htmlFor="batch-rpm-limit">{t("RPM 限制")}</Label>
               <Input id="batch-rpm-limit" type="number" min="0" step="1" value={batchTemplate.rpmLimit} onChange={(e) => setBatchTemplate({ ...batchTemplate, rpmLimit: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="batch-session-window-limit">Session 额度 USD</Label>
+              <Label htmlFor="batch-session-window-limit">{t("Session 额度 USD")}</Label>
               <Input id="batch-session-window-limit" type="number" min="0" step="0.01" value={batchTemplate.sessionWindowLimitUsd} onChange={(e) => setBatchTemplate({ ...batchTemplate, sessionWindowLimitUsd: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="batch-quota-reset-strategy">重置周期</Label>
+              <Label htmlFor="batch-quota-reset-strategy">{t("重置周期")}</Label>
               <select
                 id="batch-quota-reset-strategy"
                 value={batchTemplate.quotaResetStrategy}
                 onChange={(e) => setBatchTemplate({ ...batchTemplate, quotaResetStrategy: e.target.value })}
                 className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
               >
-                <option value="">不修改</option>
+                <option value="">{t("不修改")}</option>
                 {QUOTA_RESET_STRATEGY_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
-                    {option.label}
+                    {t(option.label)}
                   </option>
                 ))}
               </select>
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="batch-quota-timezone">额度时区</Label>
-              <Input id="batch-quota-timezone" value={batchTemplate.quotaTimezone} onChange={(e) => setBatchTemplate({ ...batchTemplate, quotaTimezone: e.target.value })} placeholder="留空不修改" />
+              <Label htmlFor="batch-quota-timezone">{t("额度时区")}</Label>
+              <Input id="batch-quota-timezone" value={batchTemplate.quotaTimezone} onChange={(e) => setBatchTemplate({ ...batchTemplate, quotaTimezone: e.target.value })} placeholder={t("留空不修改")} />
             </div>
             <Button
               onClick={submitBatchTemplate}
               disabled={batchQuotaTemplateMutation.isPending || selectedIDs.length === 0}
               className="sm:col-span-2"
             >
-              {batchQuotaTemplateMutation.isPending ? '应用中...' : `应用到 ${selectedIDs.length} 个账号`}
+              {batchQuotaTemplateMutation.isPending ? t("应用中...") : t(`应用到 ${selectedIDs.length} 个账号`)}
             </Button>
           </div>
         </DialogContent>
@@ -1137,11 +1109,11 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
 
   const handleSubmit = () => {
     if (!form.name.trim() || !form.accessToken.trim()) {
-      toast.error('名称、access_token 为必填项');
+      toast.error(t("名称、access_token 为必填项"));
       return;
     }
     if (!isStaticKey && !form.refreshToken.trim()) {
-      toast.error('OAuth 平台需要 refresh_token');
+      toast.error(t("OAuth 平台需要 refresh_token"));
       return;
     }
     const accountType = isStaticKey && form.accountType === 'oauth' ? 'static_key' : form.accountType;
@@ -1179,19 +1151,15 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger render={<Button />}>
-        <KeyRound className="size-4" />
-        新建订阅账号
-      </DialogTrigger>
+        <KeyRound className="size-4" />{t("新建订阅账号")}</DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>新建订阅账号</DialogTitle>
-          <DialogDescription>
-            添加订阅账号（Claude / Codex / 智谱 GLM / MiniMax / Kimi），用于混合中继的身份伪装与协议转换。GLM/MiniMax/Kimi 填静态 Key 即可，Claude/Codex 走 OAuth。
-          </DialogDescription>
+          <DialogTitle>{t("新建订阅账号")}</DialogTitle>
+          <DialogDescription>{t("添加订阅账号（Claude / Codex / 智谱 GLM / MiniMax / Kimi），用于混合中继的身份伪装与协议转换。GLM/MiniMax/Kimi 填静态 Key 即可，Claude/Codex 走 OAuth。")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 pt-2 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="sub-name">名称</Label>
+            <Label htmlFor="sub-name">{t("名称")}</Label>
             <Input
               id="sub-name"
               value={form.name}
@@ -1200,7 +1168,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-platform">平台</Label>
+            <Label htmlFor="sub-platform">{t("平台")}</Label>
             <select
               id="sub-platform"
               value={form.platform}
@@ -1228,15 +1196,15 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
               }}
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
             >
-              {PLATFORM_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+            {PLATFORM_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                  {t(option.label)}
+              </option>
+            ))}
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-account-type">账号类型</Label>
+            <Label htmlFor="sub-account-type">{t("账号类型")}</Label>
             <select
               id="sub-account-type"
               value={form.accountType}
@@ -1245,13 +1213,13 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             >
               {ACCOUNT_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {t(option.label)}
                 </option>
               ))}
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-group">分组</Label>
+            <Label htmlFor="sub-group">{t("分组")}</Label>
             <Input
               id="sub-group"
               value={form.group}
@@ -1259,14 +1227,14 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-models">模型</Label>
+            <Label htmlFor="sub-models">{t("模型")}</Label>
             <ModelMultiSelect
               value={form.models}
               onChange={(csv) => setForm({ ...form, models: csv })}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-priority">优先级</Label>
+            <Label htmlFor="sub-priority">{t("优先级")}</Label>
             <Input
               id="sub-priority"
               type="number"
@@ -1275,7 +1243,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-expires">过期时间（Unix 秒）</Label>
+            <Label htmlFor="sub-expires">{t("过期时间（Unix 秒）")}</Label>
             <Input
               id="sub-expires"
               type="number"
@@ -1284,7 +1252,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-quota-limit">总额度 USD</Label>
+            <Label htmlFor="sub-quota-limit">{t("总额度 USD")}</Label>
             <Input
               id="sub-quota-limit"
               type="number"
@@ -1295,7 +1263,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-5h-limit">5h 额度 USD</Label>
+            <Label htmlFor="sub-5h-limit">{t("5h 额度 USD")}</Label>
             <Input
               id="sub-5h-limit"
               type="number"
@@ -1306,7 +1274,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-daily-limit">24h 额度 USD</Label>
+            <Label htmlFor="sub-daily-limit">{t("24h 额度 USD")}</Label>
             <Input
               id="sub-daily-limit"
               type="number"
@@ -1317,7 +1285,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-weekly-limit">7d 额度 USD</Label>
+            <Label htmlFor="sub-weekly-limit">{t("7d 额度 USD")}</Label>
             <Input
               id="sub-weekly-limit"
               type="number"
@@ -1328,7 +1296,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-rate-multiplier">用量倍率</Label>
+            <Label htmlFor="sub-rate-multiplier">{t("用量倍率")}</Label>
             <Input
               id="sub-rate-multiplier"
               type="number"
@@ -1339,7 +1307,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-rpm-limit">RPM 限制</Label>
+            <Label htmlFor="sub-rpm-limit">{t("RPM 限制")}</Label>
             <Input
               id="sub-rpm-limit"
               type="number"
@@ -1350,7 +1318,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-session-window-limit">Session 额度 USD</Label>
+            <Label htmlFor="sub-session-window-limit">{t("Session 额度 USD")}</Label>
             <Input
               id="sub-session-window-limit"
               type="number"
@@ -1361,22 +1329,22 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-quota-reset-strategy">重置周期</Label>
+            <Label htmlFor="sub-quota-reset-strategy">{t("重置周期")}</Label>
             <select
               id="sub-quota-reset-strategy"
               value={form.quotaResetStrategy}
               onChange={(e) => setForm({ ...form, quotaResetStrategy: e.target.value })}
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
             >
-              {QUOTA_RESET_STRATEGY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+            {QUOTA_RESET_STRATEGY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                  {t(option.label)}
+              </option>
+            ))}
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-quota-timezone">额度时区</Label>
+            <Label htmlFor="sub-quota-timezone">{t("额度时区")}</Label>
             <Input
               id="sub-quota-timezone"
               value={form.quotaTimezone}
@@ -1385,7 +1353,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-base-url">Base URL（可选，留空走默认上游）</Label>
+            <Label htmlFor="sub-base-url">{t("Base URL（可选，留空走默认上游）")}</Label>
             <Input
               id="sub-base-url"
               value={form.baseUrl}
@@ -1395,7 +1363,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="sub-access-token">
-              {isStaticKey ? 'Coding Plan Key（即 Access Token）' : 'Access Token'}
+              {isStaticKey ? t("Coding Plan Key（即 Access Token）") : 'Access Token'}
             </Label>
             <Input
               id="sub-access-token"
@@ -1407,19 +1375,19 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="sub-refresh-token">
-              Refresh Token{isStaticKey ? '（静态 Key 平台无需填写）' : ''}
+              Refresh Token{isStaticKey ? t("（静态 Key 平台无需填写）") : ''}
             </Label>
             <Input
               id="sub-refresh-token"
               type="password"
               value={form.refreshToken}
               onChange={(e) => setForm({ ...form, refreshToken: e.target.value })}
-              placeholder={isStaticKey ? 'GLM/MiniMax 留空' : 'sk-ant-oat-...'}
+              placeholder={isStaticKey ? t("GLM/MiniMax 留空") : 'sk-ant-oat-...'}
               disabled={isStaticKey}
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-account-id">上游 Account ID（可选）</Label>
+            <Label htmlFor="sub-account-id">{t("上游 Account ID（可选）")}</Label>
             <Input
               id="sub-account-id"
               value={form.accountId}
@@ -1428,7 +1396,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-fingerprint">指纹（JSON，可选）</Label>
+            <Label htmlFor="sub-fingerprint">{t("指纹（JSON，可选）")}</Label>
             <Input
               id="sub-fingerprint"
               value={form.fingerprint}
@@ -1437,7 +1405,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="sub-metadata">Metadata（JSON，可选）</Label>
+            <Label htmlFor="sub-metadata">{t("Metadata（JSON，可选）")}</Label>
             <Input
               id="sub-metadata"
               value={form.metadata}
@@ -1445,7 +1413,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             />
           </div>
           <Button onClick={handleSubmit} disabled={pending} className="sm:col-span-2">
-            {pending ? '创建中...' : '创建'}
+            {pending ? t("创建中...") : t("创建")}
           </Button>
         </div>
       </DialogContent>
@@ -1465,7 +1433,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
   const handleUpdate = () => {
     if (!draft) return;
     if (!draft.name.trim() || !draft.group.trim() || !draft.models.trim()) {
-      toast.error('名称、模型、分组为必填项');
+      toast.error(t("名称、模型、分组为必填项"));
       return;
     }
     onSubmit();
@@ -1475,15 +1443,13 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
     <Dialog open={!!draft} onOpenChange={(open) => !open && onDraftChange(null)}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>编辑订阅账号</DialogTitle>
-          <DialogDescription>
-            修改路由与凭证配置。access_token / refresh_token 留空则保留原值（服务端已脱敏，无法回显）。
-          </DialogDescription>
+          <DialogTitle>{t("编辑订阅账号")}</DialogTitle>
+          <DialogDescription>{t("修改路由与凭证配置。access_token / refresh_token 留空则保留原值（服务端已脱敏，无法回显）。")}</DialogDescription>
         </DialogHeader>
         {draft && (
           <div className="grid gap-4 pt-2 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-name">名称</Label>
+              <Label htmlFor="edit-sub-name">{t("名称")}</Label>
               <Input
                 id="edit-sub-name"
                 value={draft.name}
@@ -1491,14 +1457,14 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-models">模型</Label>
+              <Label htmlFor="edit-sub-models">{t("模型")}</Label>
               <ModelMultiSelect
                 value={draft.models}
                 onChange={(csv) => onDraftChange({ ...draft, models: csv })}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-group">分组</Label>
+              <Label htmlFor="edit-sub-group">{t("分组")}</Label>
               <Input
                 id="edit-sub-group"
                 value={draft.group}
@@ -1506,7 +1472,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-priority">优先级</Label>
+              <Label htmlFor="edit-sub-priority">{t("优先级")}</Label>
               <Input
                 id="edit-sub-priority"
                 type="number"
@@ -1523,7 +1489,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-access-token">Access Token（留空保留原值）</Label>
+              <Label htmlFor="edit-sub-access-token">{t("Access Token（留空保留原值）")}</Label>
               <Input
                 id="edit-sub-access-token"
                 type="password"
@@ -1532,7 +1498,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-refresh-token">Refresh Token（留空保留原值）</Label>
+              <Label htmlFor="edit-sub-refresh-token">{t("Refresh Token（留空保留原值）")}</Label>
               <Input
                 id="edit-sub-refresh-token"
                 type="password"
@@ -1541,7 +1507,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-expires">过期时间（Unix 秒）</Label>
+              <Label htmlFor="edit-sub-expires">{t("过期时间（Unix 秒）")}</Label>
               <Input
                 id="edit-sub-expires"
                 type="number"
@@ -1550,7 +1516,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-account-id">上游 Account ID</Label>
+              <Label htmlFor="edit-sub-account-id">{t("上游 Account ID")}</Label>
               <Input
                 id="edit-sub-account-id"
                 value={draft.accountId}
@@ -1558,7 +1524,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-quota-limit">总额度 USD</Label>
+              <Label htmlFor="edit-sub-quota-limit">{t("总额度 USD")}</Label>
               <Input
                 id="edit-sub-quota-limit"
                 type="number"
@@ -1569,7 +1535,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-quota-used">总已用 USD</Label>
+              <Label htmlFor="edit-sub-quota-used">{t("总已用 USD")}</Label>
               <Input
                 id="edit-sub-quota-used"
                 type="number"
@@ -1580,7 +1546,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-5h-limit">5h 额度 USD</Label>
+              <Label htmlFor="edit-sub-5h-limit">{t("5h 额度 USD")}</Label>
               <Input
                 id="edit-sub-5h-limit"
                 type="number"
@@ -1591,7 +1557,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-5h-used">5h 已用 USD</Label>
+              <Label htmlFor="edit-sub-5h-used">{t("5h 已用 USD")}</Label>
               <Input
                 id="edit-sub-5h-used"
                 type="number"
@@ -1602,7 +1568,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-daily-limit">24h 额度 USD</Label>
+              <Label htmlFor="edit-sub-daily-limit">{t("24h 额度 USD")}</Label>
               <Input
                 id="edit-sub-daily-limit"
                 type="number"
@@ -1613,7 +1579,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-daily-used">24h 已用 USD</Label>
+              <Label htmlFor="edit-sub-daily-used">{t("24h 已用 USD")}</Label>
               <Input
                 id="edit-sub-daily-used"
                 type="number"
@@ -1624,7 +1590,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-weekly-limit">7d 额度 USD</Label>
+              <Label htmlFor="edit-sub-weekly-limit">{t("7d 额度 USD")}</Label>
               <Input
                 id="edit-sub-weekly-limit"
                 type="number"
@@ -1635,7 +1601,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-weekly-used">7d 已用 USD</Label>
+              <Label htmlFor="edit-sub-weekly-used">{t("7d 已用 USD")}</Label>
               <Input
                 id="edit-sub-weekly-used"
                 type="number"
@@ -1646,7 +1612,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-rate-multiplier">用量倍率</Label>
+              <Label htmlFor="edit-sub-rate-multiplier">{t("用量倍率")}</Label>
               <Input
                 id="edit-sub-rate-multiplier"
                 type="number"
@@ -1657,7 +1623,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-rpm-limit">RPM 限制</Label>
+              <Label htmlFor="edit-sub-rpm-limit">{t("RPM 限制")}</Label>
               <Input
                 id="edit-sub-rpm-limit"
                 type="number"
@@ -1668,7 +1634,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-session-window-limit">Session 额度 USD</Label>
+              <Label htmlFor="edit-sub-session-window-limit">{t("Session 额度 USD")}</Label>
               <Input
                 id="edit-sub-session-window-limit"
                 type="number"
@@ -1679,7 +1645,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-quota-reset-strategy">重置周期</Label>
+              <Label htmlFor="edit-sub-quota-reset-strategy">{t("重置周期")}</Label>
               <select
                 id="edit-sub-quota-reset-strategy"
                 value={draft.quotaResetStrategy}
@@ -1688,13 +1654,13 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               >
                 {QUOTA_RESET_STRATEGY_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
-                    {option.label}
+                    {t(option.label)}
                   </option>
                 ))}
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-quota-timezone">额度时区</Label>
+              <Label htmlFor="edit-sub-quota-timezone">{t("额度时区")}</Label>
               <Input
                 id="edit-sub-quota-timezone"
                 value={draft.quotaTimezone}
@@ -1703,7 +1669,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-fingerprint">指纹（JSON）</Label>
+              <Label htmlFor="edit-sub-fingerprint">{t("指纹（JSON）")}</Label>
               <Input
                 id="edit-sub-fingerprint"
                 value={draft.fingerprint}
@@ -1724,7 +1690,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               className="sm:col-span-2"
             >
               <Save className="size-4" />
-              {pending ? '保存中...' : '保存配置'}
+              {pending ? t("保存中...") : t("保存配置")}
             </Button>
           </div>
         )}

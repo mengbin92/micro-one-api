@@ -8,14 +8,15 @@ import {
   SubscriptionProgressCard,
   type SubscriptionProgressData,
 } from '@/components/SubscriptionProgress';
+import { t } from '@/lib/i18n';
 
 interface UserLimits {
   user_rpm_limit?: number;
 }
 
 function formatRPMLimit(limit?: number) {
-  if (!limit || limit <= 0) return '不限';
-  return `${limit} 次/分钟`;
+  if (!limit || limit <= 0) return t("不限");
+  return t(`${limit} 次/分钟`);
 }
 
 export function SubscriptionsPage() {
@@ -44,8 +45,8 @@ export function SubscriptionsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold">我的订阅</h2>
-        <p className="mt-1 text-sm text-muted-foreground">查看当前订阅用量与到期时间。购买套餐请前往「充值 / 订阅」。</p>
+        <h2 className="text-2xl font-semibold">{t("我的订阅")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t("查看当前订阅用量与到期时间。购买套餐请前往「充值 / 订阅」。")}</p>
       </div>
 
       <Card className="rounded-lg border bg-card shadow-sm">
@@ -55,8 +56,8 @@ export function SubscriptionsPage() {
               <Gauge className="size-5" />
             </span>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">请求频率</div>
-              <div className="text-xs text-muted-foreground">API 请求每分钟上限</div>
+              <div className="text-sm font-semibold text-foreground">{t("请求频率")}</div>
+              <div className="text-xs text-muted-foreground">{t("API 请求每分钟上限")}</div>
             </div>
           </div>
           {limitsLoading ? (
@@ -79,11 +80,11 @@ export function SubscriptionsPage() {
           </div>
         </div>
       ) : progress ? (
-        <SubscriptionProgressCard progress={progress} title={progress.subscription_name || "当前订阅"} />
+        <SubscriptionProgressCard progress={progress} title={progress.subscription_name || t("当前订阅")} />
       ) : (
         <EmptyState
-          title="暂无活跃订阅"
-          description="你当前没有生效中的订阅，可前往「充值 / 订阅」选择套餐购买。"
+          title={t("暂无活跃订阅")}
+          description={t("你当前没有生效中的订阅，可前往「充值 / 订阅」选择套餐购买。")}
         />
       )}
     </div>

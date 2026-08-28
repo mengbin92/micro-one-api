@@ -96,11 +96,24 @@ describe('AppNavigation', () => {
     const user = userEvent.setup();
     renderNavigation();
 
-    await user.click(screen.getByRole('button', { name: /open navigation/i }));
+    await user.click(screen.getByRole('button', { name: '打开导航' }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /close/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('switches language and persists the preference', async () => {
+    mockSelfAndDashboardEmpty();
+    const user = userEvent.setup();
+    renderNavigation();
+
+    expect(screen.getByRole('heading', { name: '仪表盘' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '切换至英文' }));
+
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(window.localStorage.getItem('web:language')).toBe(JSON.stringify('en-US'));
+    expect(document.documentElement.lang).toBe('en-US');
   });
 
   it('logout clears session state and redirects to login', async () => {

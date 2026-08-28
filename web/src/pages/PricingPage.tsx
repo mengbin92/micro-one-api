@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { apiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
+import { locale, t } from '@/lib/i18n';
 
 interface PricingRow {
   model: string;
@@ -39,7 +40,7 @@ function normalizeRows(rows: PricingRow[] | undefined) {
 
 function formatPrice(value: number | undefined, unit: string) {
   if (value === undefined) return '-';
-  return `$${value.toLocaleString(undefined, {
+  return `$${value.toLocaleString(locale(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 6,
   })} / ${unit}`;
@@ -61,36 +62,33 @@ export function PricingPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">模型价格</h2>
-          <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-            当前可用模型的输入、输出和缓存读取价格。
-          </p>
+          <h2 className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">{t("模型价格")}</h2>
+          <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">{t("当前可用模型的输入、输出和缓存读取价格。")}</p>
         </div>
         <div className="inline-flex w-fit items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-bold text-foreground shadow-surface-sm">
           <Database className="size-4 text-blue-600" />
-          {rows.length.toLocaleString()} 个模型
-        </div>
+          {rows.length.toLocaleString(locale())}{t("个模型")}</div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>当前价格</CardTitle>
-          <CardDescription>价格单位为每 {unit}。</CardDescription>
+          <CardTitle>{t("当前价格")}</CardTitle>
+          <CardDescription>{t("价格单位为每")}{unit}。</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <TableSkeleton columns={['模型名称', '输入价格', '输出价格', '缓存读取']} rows={8} />
+            <TableSkeleton columns={[t("模型名称"), t("输入价格"), t("输出价格"), t("缓存读取")]} rows={8} />
           ) : rows.length === 0 ? (
-            <EmptyState title="暂无模型价格" description="管理员配置价格后会显示在这里。" />
+            <EmptyState title={t("暂无模型价格")} description={t("管理员配置价格后会显示在这里。")} />
           ) : (
             <div className="overflow-x-auto rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">
-                    <TableHead>模型名称</TableHead>
-                    <TableHead>输入价格</TableHead>
-                    <TableHead>输出价格</TableHead>
-                    <TableHead>缓存读取</TableHead>
+                    <TableHead>{t("模型名称")}</TableHead>
+                    <TableHead>{t("输入价格")}</TableHead>
+                    <TableHead>{t("输出价格")}</TableHead>
+                    <TableHead>{t("缓存读取")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

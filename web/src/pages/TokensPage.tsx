@@ -30,6 +30,7 @@ import { TableSkeleton } from '@/components/LoadingStates';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { CCSwitchDialog } from '@/components/CCSwitchDialog';
 import { setPlaygroundCredential } from '@/lib/playground-credential';
+import { locale, t } from '@/lib/i18n';
 
 interface Token {
   id: number;
@@ -232,17 +233,13 @@ export function TokensPage() {
                       navigate('/playground');
                     }}
                   >
-                    <FlaskConical className="size-4" />
-                    在在线调试中使用
-                  </Button>
+                    <FlaskConical className="size-4" />{t("在在线调试中使用")}</Button>
                   <Button
                     variant="outline"
                     className="w-full gap-2 border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300"
                     onClick={() => openCCSwitch(createdToken.key as string)}
                   >
-                    <Zap className="size-4" />
-                    导入到 CC Switch
-                  </Button>
+                    <Zap className="size-4" />{t("导入到 CC Switch")}</Button>
                   <DialogFooter>
                     <DialogClose render={<Button className="w-full" />}>Done</DialogClose>
                   </DialogFooter>
@@ -294,7 +291,7 @@ export function TokensPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    {token.created_time ? new Date(token.created_time * 1000).toLocaleDateString() : '—'}
+                    {token.created_time ? new Date(token.created_time * 1000).toLocaleDateString(locale()) : '—'}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">

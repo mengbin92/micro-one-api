@@ -21,6 +21,7 @@ import {
 } from 'recharts';
 import type { PieLabelRenderProps } from 'recharts';
 import { cn } from '@/lib/utils';
+import { t } from '@/lib/i18n';
 
 interface CostTrendData {
   date: string;
@@ -172,9 +173,7 @@ export function getPieLabelLayouts(
 export function CostTrendChart({ data }: { data: CostTrendData[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        暂无趋势数据
-      </div>
+      <div className="flex h-64 items-center justify-center text-muted-foreground">{t("暂无趋势数据")}</div>
     );
   }
 
@@ -220,7 +219,7 @@ export function CostTrendChart({ data }: { data: CostTrendData[] }) {
             const nameStr = typeof name === 'string' ? name : '';
             return [
               `$${numValue.toFixed(2)}`,
-              nameStr === 'revenue' ? '收入' : nameStr === 'cost' ? '成本' : '利润'
+              nameStr === 'revenue' ? t("收入") : nameStr === 'cost' ? t("成本") : t("利润")
             ];
           }}
           contentStyle={{ fontSize: '12px', background: 'var(--popover)', color: 'var(--popover-foreground)', border: '1px solid var(--border)', borderRadius: '8px' }}
@@ -260,9 +259,7 @@ export function CostTrendChart({ data }: { data: CostTrendData[] }) {
 export function ChannelCostComparison({ data }: { data: ChannelCostData[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        暂无渠道成本数据
-      </div>
+      <div className="flex h-64 items-center justify-center text-muted-foreground">{t("暂无渠道成本数据")}</div>
     );
   }
 
@@ -288,8 +285,7 @@ export function ChannelCostComparison({ data }: { data: ChannelCostData[] }) {
                 className="absolute left-0 top-0 h-full rounded-l-lg bg-red-500 transition-[width] duration-200 ease-standard motion-reduce:transition-none"
                 style={{ width: `${costPercentage}%` }}
               >
-                <span className="ml-2 flex h-full items-center text-xs font-medium text-white">
-                  成本 ${item.cost.toFixed(0)}
+                <span className="ml-2 flex h-full items-center text-xs font-medium text-white">{t("成本 $")}{item.cost.toFixed(0)}
                 </span>
               </div>
               {/* Revenue overlay */}
@@ -305,12 +301,11 @@ export function ChannelCostComparison({ data }: { data: ChannelCostData[] }) {
               )}
             </div>
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>收入: ${item.revenue.toFixed(2)}</span>
+              <span>{t("收入: $")}{item.revenue.toFixed(2)}</span>
               <span className={cn(
                 'font-medium',
                 profitMargin >= 30 ? 'text-green-600' : profitMargin >= 10 ? 'text-amber-600' : 'text-red-600'
-              )}>
-                利润率: {profitMargin.toFixed(1)}%
+              )}>{t("利润率:")}{profitMargin.toFixed(1)}%
               </span>
             </div>
           </div>
@@ -326,9 +321,7 @@ export function ChannelCostComparison({ data }: { data: ChannelCostData[] }) {
 export function ProfitMarginChart({ data }: { data: ProfitMarginData[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        暂无利润率数据
-      </div>
+      <div className="flex h-64 items-center justify-center text-muted-foreground">{t("暂无利润率数据")}</div>
     );
   }
 
@@ -361,7 +354,7 @@ export function ProfitMarginChart({ data }: { data: ProfitMarginData[] }) {
         <Tooltip
           formatter={(value) => {
             const numValue = typeof value === 'number' ? value : 0;
-            return [`${numValue.toFixed(1)}%`, '利润率'];
+            return [`${numValue.toFixed(1)}%`, t("利润率")];
           }}
           contentStyle={{ fontSize: '12px', background: 'var(--popover)', color: 'var(--popover-foreground)', border: '1px solid var(--border)', borderRadius: '8px' }}
         />
@@ -395,9 +388,7 @@ export function ProfitMarginChart({ data }: { data: ProfitMarginData[] }) {
 export function CostBreakdownChart({ data }: { data: CostBreakdownData[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        暂无分布数据
-      </div>
+      <div className="flex h-64 items-center justify-center text-muted-foreground">{t("暂无分布数据")}</div>
     );
   }
 
@@ -473,7 +464,7 @@ export function CostBreakdownChart({ data }: { data: CostBreakdownData[] }) {
       </ResponsiveContainer>
       <div className="absolute text-center">
         <div className="text-2xl font-bold text-foreground">${total.toFixed(2)}</div>
-        <div className="text-xs font-semibold text-muted-foreground">总计成本</div>
+        <div className="text-xs font-semibold text-muted-foreground">{t("总计成本")}</div>
       </div>
     </div>
   );
@@ -487,9 +478,7 @@ export function BudgetVsActualChart({ data }: {
 }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        暂无预算对比数据
-      </div>
+      <div className="flex h-64 items-center justify-center text-muted-foreground">{t("暂无预算对比数据")}</div>
     );
   }
 
@@ -516,7 +505,7 @@ export function BudgetVsActualChart({ data }: {
             const nameStr = typeof name === 'string' ? name : '';
             return [
               `$${numValue.toFixed(2)}`,
-              nameStr === 'budget' ? '预算' : '实际'
+              nameStr === 'budget' ? t("预算") : t("实际")
             ];
           }}
           contentStyle={{ fontSize: '12px', background: 'var(--popover)', color: 'var(--popover-foreground)', border: '1px solid var(--border)', borderRadius: '8px' }}

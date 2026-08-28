@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { adminApiClient } from '@/lib/api';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { amountUnitsToCurrencyUnits, currencyUnitsToAmountUnits } from '@/lib/amount';
+import { t } from '@/lib/i18n';
 
 interface OptionItem {
   key: string;
@@ -81,11 +82,11 @@ export function AdminOptionsPage() {
   const updateMutation = useMutation({
     mutationFn: async ({ key, value }: OptionItem) => {
       const res = await adminApiClient.put('/option/', { key, value });
-      ensureApiSuccess(res.data, '选项更新失败');
+      ensureApiSuccess(res.data, t("选项更新失败"));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-options'] });
-      toast.success('选项已保存');
+      toast.success(t("选项已保存"));
     },
   });
 
@@ -113,7 +114,7 @@ export function AdminOptionsPage() {
   const handleCustomSave = () => {
     const key = customKey.trim();
     if (!key) {
-      toast.error('请输入选项键名');
+      toast.error(t("请输入选项键名"));
       return;
     }
     updateMutation.mutate(
@@ -130,36 +131,34 @@ export function AdminOptionsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold">系统选项</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          管理系统注册、钱包金额发放和兼容 one-api 的设置项。
-        </p>
+        <h2 className="text-2xl font-semibold">{t("系统选项")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t("管理系统注册、钱包金额发放和兼容 one-api 的设置项。")}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>核心设置</CardTitle>
-          <CardDescription>用户入门相关的常用配置项。</CardDescription>
+          <CardTitle>{t("核心设置")}</CardTitle>
+          <CardDescription>{t("用户入门相关的常用配置项。")}</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <TableSkeleton columns={['配置项', '当前值', '操作']} rows={4} />
+            <TableSkeleton columns={[t("配置项"), t("当前值"), t("操作")]} rows={4} />
           ) : (
             <div className="overflow-x-auto rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>配置项</TableHead>
-                    <TableHead>值</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    <TableHead>{t("配置项")}</TableHead>
+                    <TableHead>{t("值")}</TableHead>
+                    <TableHead className="text-right">{t("操作")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {featuredRows.map((option) => (
                     <TableRow key={option.key}>
                       <TableCell>
-                        <div className="font-medium">{option.label}</div>
-                        <div className="text-xs text-muted-foreground">{option.description}</div>
+                        <div className="font-medium">{t(option.label)}</div>
+                        <div className="text-xs text-muted-foreground">{t(option.description)}</div>
                       </TableCell>
                       <TableCell>
                         {option.type === 'boolean' ? (
@@ -168,8 +167,8 @@ export function AdminOptionsPage() {
                             onChange={(event) => setDraft(option.key, event.target.value)}
                             className="h-8 rounded-md border bg-background px-2 text-sm"
                           >
-                            <option value="true">启用</option>
-                            <option value="false">禁用</option>
+                            <option value="true">{t("启用")}</option>
+                            <option value="false">{t("禁用")}</option>
                           </select>
                         ) : option.type === 'text' ? (
                           <Input
@@ -197,9 +196,7 @@ export function AdminOptionsPage() {
                           disabled={updateMutation.isPending}
                           onClick={() => saveOption(option.key, option.value, option.type)}
                         >
-                          <Save className="size-3.5" />
-                          保存
-                        </Button>
+                          <Save className="size-3.5" />{t("保存")}</Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -212,17 +209,17 @@ export function AdminOptionsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>自定义选项</CardTitle>
-          <CardDescription>创建或覆盖任意 one-api 兼容的选项。</CardDescription>
+          <CardTitle>{t("自定义选项")}</CardTitle>
+          <CardDescription>{t("创建或覆盖任意 one-api 兼容的选项。")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-[1fr_2fr_auto] md:items-end">
             <div className="space-y-2">
-              <Label htmlFor="option-key">键名</Label>
+              <Label htmlFor="option-key">{t("键名")}</Label>
               <Input id="option-key" value={customKey} onChange={(event) => setCustomKey(event.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="option-value">选项值</Label>
+              <Label htmlFor="option-value">{t("选项值")}</Label>
               <Input id="option-value" value={customValue} onChange={(event) => setCustomValue(event.target.value)} />
             </div>
             <Button onClick={handleCustomSave} disabled={updateMutation.isPending}>
@@ -234,21 +231,21 @@ export function AdminOptionsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>全部选项</CardTitle>
-          <CardDescription>查看后端返回的所有选项值（只读）。</CardDescription>
+          <CardTitle>{t("全部选项")}</CardTitle>
+          <CardDescription>{t("查看后端返回的所有选项值（只读）。")}</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <TableSkeleton columns={['键名', '值']} rows={8} />
+            <TableSkeleton columns={[t("键名"), t("值")]} rows={8} />
           ) : !options || options.length === 0 ? (
-            <EmptyState title="未找到任何选项" description="系统选项存储可能尚未配置。" />
+            <EmptyState title={t("未找到任何选项")} description={t("系统选项存储可能尚未配置。")} />
           ) : (
             <div className="max-h-[420px] overflow-auto rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>键名</TableHead>
-                    <TableHead>值</TableHead>
+                    <TableHead>{t("键名")}</TableHead>
+                    <TableHead>{t("值")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

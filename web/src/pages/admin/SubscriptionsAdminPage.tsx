@@ -30,6 +30,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { locale, t } from '@/lib/i18n';
 
 // Mirrors subscriptionDTO JSON tags (internal/admin/server/subscription.go).
 interface UserSubscription {
@@ -56,7 +57,7 @@ interface SubscriptionGroupOption {
 
 function formatTimestamp(unix: number) {
   if (!unix) return '—';
-  return new Date(unix * 1000).toLocaleString();
+  return new Date(unix * 1000).toLocaleString(locale());
 }
 
 function statusBadgeClass(status: string) {
@@ -135,12 +136,12 @@ export function AdminSubscriptionsPage() {
       metadata: string;
     }) => {
       const res = await adminApiClient.post('/v1/admin/subscriptions/assign', payload);
-      ensureApiSuccess(res.data, '分配订阅失败');
+      ensureApiSuccess(res.data, t("分配订阅失败"));
     },
     onSuccess: () => {
       invalidate();
       setIsAssignOpen(false);
-      toast.success('订阅已分配');
+      toast.success(t("订阅已分配"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -148,11 +149,11 @@ export function AdminSubscriptionsPage() {
   const revokeMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
       const res = await adminApiClient.post(`/v1/admin/subscriptions/${id}/revoke`, { reason });
-      ensureApiSuccess(res.data, '撤销订阅失败');
+      ensureApiSuccess(res.data, t("撤销订阅失败"));
     },
     onSuccess: () => {
       invalidate();
-      toast.success('订阅已撤销');
+      toast.success(t("订阅已撤销"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -162,12 +163,12 @@ export function AdminSubscriptionsPage() {
       const res = await adminApiClient.post(`/v1/admin/subscriptions/${id}/extend`, {
         expires_at: expiresAt,
       });
-      ensureApiSuccess(res.data, '延长订阅失败');
+      ensureApiSuccess(res.data, t("延长订阅失败"));
     },
     onSuccess: () => {
       invalidate();
       setExtendSubscription(null);
-      toast.success('订阅到期时间已更新');
+      toast.success(t("订阅到期时间已更新"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -175,11 +176,11 @@ export function AdminSubscriptionsPage() {
   const resetQuotaMutation = useMutation({
     mutationFn: async ({ id, scope }: { id: number; scope: string }) => {
       const res = await adminApiClient.post(`/v1/admin/subscriptions/${id}/reset-quota`, { scope });
-      ensureApiSuccess(res.data, '重置配额失败');
+      ensureApiSuccess(res.data, t("重置配额失败"));
     },
     onSuccess: () => {
       invalidate();
-      toast.success('配额已重置');
+      toast.success(t("配额已重置"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -192,7 +193,7 @@ export function AdminSubscriptionsPage() {
     }
     const parsed = parseInt(trimmed, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      toast.error('请输入有效的用户 ID');
+      toast.error(t("请输入有效的用户 ID"));
       return;
     }
     setFilterUserId(parsed);
@@ -208,17 +209,17 @@ export function AdminSubscriptionsPage() {
   };
 
   const handleRevoke = (sub: UserSubscription) => {
-    if (!confirm(`确认撤销订阅「${sub.subscription_name || sub.id}」？`)) return;
-    const reason = prompt('撤销原因(可选)：', '') ?? '';
+    if (!confirm(t(`确认撤销订阅「${sub.subscription_name || sub.id}」？`))) return;
+    const reason = prompt(t("撤销原因(可选)："), '') ?? '';
     revokeMutation.mutate({ id: sub.id, reason });
   };
 
   const handleResetQuota = (sub: UserSubscription) => {
-    const scope = prompt('重置范围(daily / weekly / monthly / all)：', 'all');
+    const scope = prompt(t("重置范围(daily / weekly / monthly / all)："), 'all');
     if (scope == null) return;
     const normalized = scope.trim().toLowerCase();
     if (!['daily', 'weekly', 'monthly', 'all'].includes(normalized)) {
-      toast.error('范围必须是 daily / weekly / monthly / all');
+      toast.error(t("范围必须是 daily / weekly / monthly / all"));
       return;
     }
     resetQuotaMutation.mutate({ id: sub.id, scope: normalized });
@@ -227,7 +228,7 @@ export function AdminSubscriptionsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">用户订阅</h2>
+        <h2 className="text-2xl font-semibold">{t("用户订阅")}</h2>
         <AssignDialog
           open={isAssignOpen}
           onOpenChange={setIsAssignOpen}
@@ -259,43 +260,37 @@ export function AdminSubscriptionsPage() {
         />
       )}
 
-      <p className="text-sm text-muted-foreground">
-        默认列出全部订阅。可按用户 ID 筛选，筛选后额外展示该用户的配额进度。
-      </p>
+      <p className="text-sm text-muted-foreground">{t("默认列出全部订阅。可按用户 ID 筛选，筛选后额外展示该用户的配额进度。")}</p>
 
       <div className="flex items-center gap-2">
         <Input
           value={userIdInput}
           onChange={(e) => setUserIdInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleFilter()}
-          placeholder="按用户 ID 筛选(留空为全部)"
+          placeholder={t("按用户 ID 筛选(留空为全部)")}
           type="number"
           className="max-w-64"
         />
         <Button onClick={handleFilter}>
-          <Search className="size-4" />
-          筛选
-        </Button>
+          <Search className="size-4" />{t("筛选")}</Button>
         {filterUserId != null && (
-          <Button variant="outline" onClick={clearFilter}>
-            全部
-          </Button>
+          <Button variant="outline" onClick={clearFilter}>{t("全部")}</Button>
         )}
       </div>
 
       {filterUserId != null && progress && (
         <SubscriptionProgressCard
           progress={progress}
-          title={`用户 ${filterUserId} 当前活跃订阅配额`}
+          title={t(`用户 ${filterUserId} 当前活跃订阅配额`)}
         />
       )}
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', '用户', '名称', '分组', '状态', '开始', '到期', '日/周/月用量', '操作']} />
+        <TableSkeleton columns={['ID', t("用户"), t("名称"), t("分组"), t("状态"), t("开始"), t("到期"), t("日/周/月用量"), t("操作")]} />
       ) : !subscriptions || subscriptions.length === 0 ? (
         <EmptyState
-          title={filterUserId != null ? '该用户暂无订阅' : '暂无订阅'}
-          description="点击右上角「分配订阅」为用户分配一个订阅分组。"
+          title={filterUserId != null ? t("该用户暂无订阅") : t("暂无订阅")}
+          description={t("点击右上角「分配订阅」为用户分配一个订阅分组。")}
         />
       ) : (
         <div className="border rounded-lg">
@@ -303,14 +298,14 @@ export function AdminSubscriptionsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
-                <TableHead>用户</TableHead>
-                <TableHead>名称</TableHead>
-                <TableHead className="hidden md:table-cell">分组</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead className="hidden lg:table-cell">开始</TableHead>
-                <TableHead className="hidden lg:table-cell">到期</TableHead>
-                <TableHead className="hidden xl:table-cell">日/周/月用量 USD</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <TableHead>{t("用户")}</TableHead>
+                <TableHead>{t("名称")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("分组")}</TableHead>
+                <TableHead>{t("状态")}</TableHead>
+                <TableHead className="hidden lg:table-cell">{t("开始")}</TableHead>
+                <TableHead className="hidden lg:table-cell">{t("到期")}</TableHead>
+                <TableHead className="hidden xl:table-cell">{t("日/周/月用量 USD")}</TableHead>
+                <TableHead className="text-right">{t("操作")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -345,20 +340,14 @@ export function AdminSubscriptionsPage() {
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button variant="outline" size="sm" onClick={() => handleExtend(sub)}>
-                      <CalendarClock className="size-3.5" />
-                      延长
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleResetQuota(sub)}>
-                      重置配额
-                    </Button>
+                      <CalendarClock className="size-3.5" />{t("延长")}</Button>
+                    <Button variant="outline" size="sm" onClick={() => handleResetQuota(sub)}>{t("重置配额")}</Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleRevoke(sub)}
                       disabled={sub.status === 'revoked'}
-                    >
-                      撤销
-                    </Button>
+                    >{t("撤销")}</Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -384,7 +373,7 @@ function ExtendDialog({ open, subscription, pending, onOpenChange, onSubmit }: E
   const handleSubmit = () => {
     const parsed = toUnixSeconds(expiresAt);
     if (parsed <= 0) {
-      toast.error('请选择有效的到期时间');
+      toast.error(t("请选择有效的到期时间"));
       return;
     }
     onSubmit(parsed);
@@ -394,13 +383,11 @@ function ExtendDialog({ open, subscription, pending, onOpenChange, onSubmit }: E
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>延长订阅</DialogTitle>
-          <DialogDescription>
-            为「{subscription.subscription_name || `订阅 #${subscription.id}`}」选择新的到期日期和时间。
-          </DialogDescription>
+          <DialogTitle>{t("延长订阅")}</DialogTitle>
+          <DialogDescription>{t("为「")}{subscription.subscription_name || t(`订阅 #${subscription.id}`)}{t("」选择新的到期日期和时间。")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 pt-2">
-          <Label htmlFor="extend-subscription-expires">新的到期时间</Label>
+          <Label htmlFor="extend-subscription-expires">{t("新的到期时间")}</Label>
           <Input
             id="extend-subscription-expires"
             type="datetime-local"
@@ -408,16 +395,13 @@ function ExtendDialog({ open, subscription, pending, onOpenChange, onSubmit }: E
             onChange={(event) => setExpiresAt(event.target.value)}
             disabled={pending}
           />
-          <p className="text-xs text-muted-foreground">
-            当前到期：{formatTimestamp(subscription.expires_at)}
+          <p className="text-xs text-muted-foreground">{t("当前到期：")}{formatTimestamp(subscription.expires_at)}
           </p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            取消
-          </Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>{t("取消")}</Button>
           <Button onClick={handleSubmit} disabled={pending}>
-            {pending ? '保存中...' : '保存到期时间'}
+            {pending ? t("保存中...") : t("保存到期时间")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -454,15 +438,15 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
     const parsedGroup = parseInt(groupId, 10);
     const expiresUnix = toUnixSeconds(expiresAt);
     if (!Number.isFinite(parsedUser) || parsedUser <= 0) {
-      toast.error('请输入有效的用户 ID');
+      toast.error(t("请输入有效的用户 ID"));
       return;
     }
     if (!Number.isFinite(parsedGroup) || parsedGroup <= 0) {
-      toast.error('请选择订阅分组');
+      toast.error(t("请选择订阅分组"));
       return;
     }
     if (expiresUnix <= 0) {
-      toast.error('请选择到期时间');
+      toast.error(t("请选择到期时间"));
       return;
     }
     onSubmit({
@@ -477,17 +461,15 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger render={<Button />}>
-        <UserPlus className="size-4" />
-        分配订阅
-      </DialogTrigger>
+        <UserPlus className="size-4" />{t("分配订阅")}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>分配订阅</DialogTitle>
-          <DialogDescription>为指定用户分配一个订阅分组并设置到期时间。</DialogDescription>
+          <DialogTitle>{t("分配订阅")}</DialogTitle>
+          <DialogDescription>{t("为指定用户分配一个订阅分组并设置到期时间。")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 pt-2">
           <div className="space-y-2">
-            <Label htmlFor="assign-user">用户 ID</Label>
+            <Label htmlFor="assign-user">{t("用户 ID")}</Label>
             <Input
               id="assign-user"
               type="number"
@@ -496,14 +478,14 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="assign-group">订阅分组</Label>
+            <Label htmlFor="assign-group">{t("订阅分组")}</Label>
             <select
               id="assign-group"
               value={groupId}
               onChange={(e) => setGroupId(e.target.value)}
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
             >
-              <option value="">请选择分组</option>
+              <option value="">{t("请选择分组")}</option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
                   {group.display_name || group.name} (#{group.id})
@@ -512,7 +494,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="assign-name">订阅名称(可选)</Label>
+            <Label htmlFor="assign-name">{t("订阅名称(可选)")}</Label>
             <Input
               id="assign-name"
               value={subscriptionName}
@@ -521,7 +503,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="assign-expires">到期时间</Label>
+            <Label htmlFor="assign-expires">{t("到期时间")}</Label>
             <Input
               id="assign-expires"
               type="datetime-local"
@@ -530,7 +512,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="assign-metadata">Metadata(JSON，可选)</Label>
+            <Label htmlFor="assign-metadata">{t("Metadata(JSON，可选)")}</Label>
             <Input
               id="assign-metadata"
               value={metadata}
@@ -538,7 +520,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
             />
           </div>
           <Button onClick={handleSubmit} disabled={pending}>
-            {pending ? '分配中...' : '分配'}
+            {pending ? t("分配中...") : t("分配")}
           </Button>
         </div>
       </DialogContent>

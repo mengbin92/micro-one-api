@@ -33,6 +33,7 @@ import {
   type ImportModelsDryRunResponse,
   type ImportModelsResponse,
 } from '@/lib/model-exchange';
+import { t } from '@/lib/i18n';
 
 type Mode = 'export' | 'import';
 
@@ -82,9 +83,9 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
       const doc = await exportModels({ export_prices: exportPrices });
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
       downloadExportDocument(doc, `model-export-${stamp}.json`);
-      toast.success(`已导出 ${doc.models.length} 个模型`);
+      toast.success(t(`已导出 ${doc.models.length} 个模型`));
     } catch (err) {
-      toast.error((err as Error).message || '导出失败');
+      toast.error((err as Error).message || t("导出失败"));
     } finally {
       setExporting(false);
     }
@@ -100,13 +101,13 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
       try {
         const doc = parseImportFile(String(reader.result));
         setParsedDoc(doc);
-        toast.success(`已加载 ${doc.models.length} 个模型记录`);
+        toast.success(t(`已加载 ${doc.models.length} 个模型记录`));
       } catch (err) {
         setParsedDoc(null);
-        setParseError((err as Error).message || '文件解析失败');
+        setParseError((err as Error).message || t("文件解析失败"));
       }
     };
-    reader.onerror = () => setParseError('文件读取失败');
+    reader.onerror = () => setParseError(t("文件读取失败"));
     reader.readAsText(file);
   };
 
@@ -122,12 +123,12 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
       });
       setDryRunResult(result);
       if (result.conflicts > 0 || result.errors > 0) {
-        toast.warning(`预检完成：${result.conflicts} 个冲突，${result.errors} 个错误`);
+        toast.warning(t(`预检完成：${result.conflicts} 个冲突，${result.errors} 个错误`));
       } else {
-        toast.success(`预检通过：新增 ${result.would_create}，更新 ${result.would_update}，跳过 ${result.would_skip}`);
+        toast.success(t(`预检通过：新增 ${result.would_create}，更新 ${result.would_update}，跳过 ${result.would_skip}`));
       }
     } catch (err) {
-      toast.error((err as Error).message || '预检失败');
+      toast.error((err as Error).message || t("预检失败"));
     } finally {
       setBusy(false);
     }
@@ -145,13 +146,13 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
       });
       setImportResult(result);
       if (result.success) {
-        toast.success(`导入完成：新增 ${result.created}，更新 ${result.updated}，跳过 ${result.skipped}`);
+        toast.success(t(`导入完成：新增 ${result.created}，更新 ${result.updated}，跳过 ${result.skipped}`));
         onImported?.();
       } else {
-        toast.error(`导入完成但有冲突：${result.conflicts} 个冲突，${result.errors} 个错误`);
+        toast.error(t(`导入完成但有冲突：${result.conflicts} 个冲突，${result.errors} 个错误`));
       }
     } catch (err) {
-      toast.error((err as Error).message || '导入失败');
+      toast.error((err as Error).message || t("导入失败"));
     } finally {
       setBusy(false);
     }
@@ -164,41 +165,31 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) resetImportState(); }}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>模型导入 / 导出</DialogTitle>
-          <DialogDescription>
-            版本化 JSON 配置迁移（schema v{MODEL_EXCHANGE_SCHEMA_VERSION}）。导出不包含渠道 API Key 或 OAuth 凭据。
-          </DialogDescription>
+          <DialogTitle>{t("模型导入 / 导出")}</DialogTitle>
+          <DialogDescription>{t("版本化 JSON 配置迁移（schema v")}{MODEL_EXCHANGE_SCHEMA_VERSION}{t("）。导出不包含渠道 API Key 或 OAuth 凭据。")}</DialogDescription>
         </DialogHeader>
 
         {/* Mode tabs */}
         <div className="flex gap-2 border-b pb-3">
           <Button variant={mode === 'export' ? 'default' : 'outline'} size="sm" onClick={() => handleModeSwitch('export')}>
-            <Download className="size-4" />
-            导出
-          </Button>
+            <Download className="size-4" />{t("导出")}</Button>
           <Button variant={mode === 'import' ? 'default' : 'outline'} size="sm" onClick={() => handleModeSwitch('import')}>
-            <Upload className="size-4" />
-            导入
-          </Button>
+            <Upload className="size-4" />{t("导入")}</Button>
         </div>
 
         {mode === 'export' && (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              导出当前模型注册表（含别名、渠道映射和订阅映射）为 JSON 文件，可用于多环境配置迁移或备份。
-            </p>
+            <p className="text-sm text-muted-foreground">{t("导出当前模型注册表（含别名、渠道映射和订阅映射）为 JSON 文件，可用于多环境配置迁移或备份。")}</p>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={exportPrices}
                 onChange={(e) => setExportPrices(e.target.checked)}
                 className="size-4 rounded border-input"
-              />
-              包含用户售价（需要管理员权限）
-            </label>
+              />{t("包含用户售价（需要管理员权限）")}</label>
             <Button onClick={handleExport} disabled={exporting}>
               {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-              {exporting ? '导出中…' : '下载导出文件'}
+              {exporting ? t("导出中…") : t("下载导出文件")}
             </Button>
           </div>
         )}
@@ -218,11 +209,9 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
                 }}
               />
               <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                <FileJson className="size-4" />
-                选择 JSON 文件
-              </Button>
+                <FileJson className="size-4" />{t("选择 JSON 文件")}</Button>
               {fileName && (
-                <p className="text-sm text-muted-foreground">已选择：{fileName}</p>
+                <p className="text-sm text-muted-foreground">{t("已选择：")}{fileName}</p>
               )}
               {parseError && (
                 <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
@@ -234,15 +223,13 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
 
             {/* Options */}
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1 text-sm">
-                冲突策略
-                <select
+              <label className="flex flex-col gap-1 text-sm">{t("冲突策略")}<select
                   value={conflictStrategy}
                   onChange={(e) => { setConflictStrategy(e.target.value as 'reject' | 'update'); setDryRunResult(null); }}
                   className="h-9 rounded-lg border border-input bg-transparent px-3"
                 >
-                  <option value="reject">拒绝（reject）</option>
-                  <option value="update">覆盖（update）</option>
+                  <option value="reject">{t("拒绝（reject）")}</option>
+                  <option value="update">{t("覆盖（update）")}</option>
                 </select>
               </label>
               <label className="flex items-end gap-2 text-sm pb-2">
@@ -251,21 +238,15 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
                   checked={importPrices}
                   onChange={(e) => { setImportPrices(e.target.checked); setDryRunResult(null); }}
                   className="size-4 rounded border-input"
-                />
-                导入价格（需要管理员权限）
-              </label>
+                />{t("导入价格（需要管理员权限）")}</label>
             </div>
 
             {/* Actions */}
             <div className="flex gap-2">
               <Button variant="outline" onClick={handleDryRun} disabled={!canDryRun}>
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                预检（dry-run）
-              </Button>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}{t("预检（dry-run）")}</Button>
               <Button onClick={handleImport} disabled={!canImport}>
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                确认导入
-              </Button>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}{t("确认导入")}</Button>
             </div>
 
             {/* Dry-run result */}
@@ -281,7 +262,7 @@ export function ModelExchangeDialog({ open, onOpenChange, onImported }: ModelExc
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("关闭")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -296,19 +277,17 @@ function DryRunSummary({ result }: { result: ImportModelsDryRunResponse }) {
           <CheckCircle2 className="size-4 text-green-600" />
         ) : (
           <AlertTriangle className="size-4 text-amber-600" />
-        )}
-        预检结果
-      </div>
+        )}{t("预检结果")}</div>
       <div className="grid grid-cols-5 gap-2 text-center text-sm">
-        <Stat label="新增" value={result.would_create} color="text-green-600" />
-        <Stat label="更新" value={result.would_update} color="text-blue-600" />
-        <Stat label="跳过" value={result.would_skip} color="text-muted-foreground" />
-        <Stat label="冲突" value={result.conflicts} color="text-amber-600" />
-        <Stat label="错误" value={result.errors} color="text-red-600" />
+        <Stat label={t("新增")} value={result.would_create} color="text-green-600" />
+        <Stat label={t("更新")} value={result.would_update} color="text-blue-600" />
+        <Stat label={t("跳过")} value={result.would_skip} color="text-muted-foreground" />
+        <Stat label={t("冲突")} value={result.conflicts} color="text-amber-600" />
+        <Stat label={t("错误")} value={result.errors} color="text-red-600" />
       </div>
       {result.results.length > 0 && (
         <details className="text-xs">
-          <summary className="cursor-pointer text-muted-foreground">明细（{result.results.length} 条）</summary>
+          <summary className="cursor-pointer text-muted-foreground">{t("明细（")}{result.results.length}{t("条）")}</summary>
           <div className="mt-2 max-h-40 overflow-y-auto space-y-1">
             {result.results.map((r, i) => (
               <div key={i} className="flex gap-2">
@@ -338,15 +317,13 @@ function ImportResultSummary({ result }: { result: ImportModelsResponse }) {
           <CheckCircle2 className="size-4 text-green-600" />
         ) : (
           <AlertTriangle className="size-4 text-amber-600" />
-        )}
-        导入结果
-      </div>
+        )}{t("导入结果")}</div>
       <div className="grid grid-cols-5 gap-2 text-center text-sm">
-        <Stat label="新增" value={result.created} color="text-green-600" />
-        <Stat label="更新" value={result.updated} color="text-blue-600" />
-        <Stat label="跳过" value={result.skipped} color="text-muted-foreground" />
-        <Stat label="冲突" value={result.conflicts} color="text-amber-600" />
-        <Stat label="错误" value={result.errors} color="text-red-600" />
+        <Stat label={t("新增")} value={result.created} color="text-green-600" />
+        <Stat label={t("更新")} value={result.updated} color="text-blue-600" />
+        <Stat label={t("跳过")} value={result.skipped} color="text-muted-foreground" />
+        <Stat label={t("冲突")} value={result.conflicts} color="text-amber-600" />
+        <Stat label={t("错误")} value={result.errors} color="text-red-600" />
       </div>
     </div>
   );

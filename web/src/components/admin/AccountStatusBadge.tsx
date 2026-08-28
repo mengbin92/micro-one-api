@@ -2,6 +2,7 @@
  * the pure deriveAccountStatus() helper alongside the badge component; pure
  * functions are safe for fast refresh. */
 import { cn } from '@/lib/utils';
+import { t } from '@/lib/i18n';
 
 /**
  * Composite status badge for subscription accounts.
@@ -132,14 +133,14 @@ function upstreamQuotaExceeded(info: AccountStatusInfo): boolean {
 
 function formatCountdown(targetUnix: number, nowUnix: number): string {
   const diff = targetUnix - nowUnix;
-  if (diff <= 0) return '即将恢复';
+  if (diff <= 0) return t("即将恢复");
   const days = Math.floor(diff / DAY_S);
   const hours = Math.floor((diff % DAY_S) / HOUR_S);
   const minutes = Math.floor((diff % HOUR_S) / 60);
-  if (days > 0) return `${days}天${hours}h后恢复`;
-  if (hours > 0) return `${hours}h${minutes}m后恢复`;
-  if (minutes > 0) return `${minutes}m后恢复`;
-  return '即将恢复';
+  if (days > 0) return t(`${days}天${hours}h后恢复`);
+  if (hours > 0) return t(`${hours}h${minutes}m后恢复`);
+  if (minutes > 0) return t(`${minutes}m后恢复`);
+  return t("即将恢复");
 }
 
 export function deriveAccountStatus(info: AccountStatusInfo, nowUnix: number): StateKind {
@@ -185,8 +186,8 @@ export function AccountStatusBadge({
   if (kind === 'rate_limited' && info.rateLimitedUntil) {
     tooltip = formatCountdown(info.rateLimitedUntil, nowUnix);
   } else if (kind === 'unschedulable') {
-    const parts: string[] = [info.unschedulableReason ?? '不可调度'];
-    if (info.recoveryPolicy) parts.push(`策略: ${info.recoveryPolicy}`);
+    const parts: string[] = [info.unschedulableReason ?? t("不可调度")];
+    if (info.recoveryPolicy) parts.push(t(`策略: ${info.recoveryPolicy}`));
     if (info.expectedRecoveryAt && info.expectedRecoveryAt > 0) parts.push(formatCountdown(info.expectedRecoveryAt, nowUnix));
     tooltip = parts.join(' · ');
   } else if (kind === 'token_expiring' && info.expiresAt) {
@@ -198,7 +199,7 @@ export function AccountStatusBadge({
       className={cn('inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium', meta.badgeClass, className)}
       title={tooltip}
     >
-      {meta.label}
+      {t(meta.label)}
     </span>
   );
 }

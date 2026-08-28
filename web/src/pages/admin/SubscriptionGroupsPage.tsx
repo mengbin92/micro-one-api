@@ -29,6 +29,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { t } from '@/lib/i18n';
 
 // Mirrors subscriptionGroupDTO JSON tags returned by
 // /api/v1/admin/subscription-groups (internal/admin/server/subscription.go).
@@ -106,7 +107,7 @@ function platformLabel(platform: string) {
 }
 
 function formatLimit(value: number | null) {
-  return value == null ? '不限' : `$${value}`;
+  return value == null ? t("不限") : `$${value}`;
 }
 
 function formatPrice(value: number) {
@@ -189,12 +190,12 @@ export function AdminSubscriptionGroupsPage() {
   const createMutation = useMutation({
     mutationFn: async (payload: GroupPayload) => {
       const res = await adminApiClient.post('/v1/admin/subscription-groups', payload);
-      ensureApiSuccess(res.data, '分组创建失败');
+      ensureApiSuccess(res.data, t("分组创建失败"));
     },
     onSuccess: () => {
       invalidate();
       setIsCreateOpen(false);
-      toast.success('订阅分组已创建');
+      toast.success(t("订阅分组已创建"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -202,12 +203,12 @@ export function AdminSubscriptionGroupsPage() {
   const updateMutation = useMutation({
     mutationFn: async (payload: GroupPayload) => {
       const res = await adminApiClient.put(`/v1/admin/subscription-groups/${payload.id}`, payload);
-      ensureApiSuccess(res.data, '分组更新失败');
+      ensureApiSuccess(res.data, t("分组更新失败"));
     },
     onSuccess: () => {
       invalidate();
       setEditingDraft(null);
-      toast.success('订阅分组已保存');
+      toast.success(t("订阅分组已保存"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -215,11 +216,11 @@ export function AdminSubscriptionGroupsPage() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await adminApiClient.delete(`/v1/admin/subscription-groups/${id}`);
-      ensureApiSuccess(res.data, '分组删除失败');
+      ensureApiSuccess(res.data, t("分组删除失败"));
     },
     onSuccess: () => {
       invalidate();
-      toast.success('订阅分组已删除');
+      toast.success(t("订阅分组已删除"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -239,7 +240,7 @@ export function AdminSubscriptionGroupsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">订阅分组</h2>
+        <h2 className="text-2xl font-semibold">{t("订阅分组")}</h2>
         <GroupDialog
           mode="create"
           open={isCreateOpen}
@@ -251,37 +252,33 @@ export function AdminSubscriptionGroupsPage() {
 
       <AdminTableToolbar
         search={search}
-        searchPlaceholder="按名称搜索..."
+        searchPlaceholder={t("按名称搜索...")}
         onSearchChange={setSearch}
         onClear={clearSearch}
       />
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', '名称', '平台', '类型', '日限额', '周限额', '月限额', '倍率', '售价/有效期', '状态', '操作']} />
+        <TableSkeleton columns={['ID', t("名称"), t("平台"), t("类型"), t("日限额"), t("周限额"), t("月限额"), t("倍率"), t("售价/有效期"), t("状态"), t("操作")]} />
       ) : !groups || groups.length === 0 ? (
-        <EmptyState title="暂无订阅分组" description="新建一个订阅分组以配置平台、配额限额与计费倍率。" />
+        <EmptyState title={t("暂无订阅分组")} description={t("新建一个订阅分组以配置平台、配额限额与计费倍率。")} />
       ) : visibleGroups.length === 0 ? (
-        <EmptyState title="没有匹配的分组" description="清除搜索条件以查看全部分组。" />
+        <EmptyState title={t("没有匹配的分组")} description={t("清除搜索条件以查看全部分组。")} />
       ) : (
         <div className="border rounded-lg">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
-                <SortableHeader<SubscriptionGroup> columnKey="name" sort={sort} onSortChange={setSort}>
-                  名称
-                </SortableHeader>
-                <SortableHeader<SubscriptionGroup> columnKey="platform" sort={sort} onSortChange={setSort}>
-                  平台
-                </SortableHeader>
-                <TableHead className="hidden lg:table-cell">类型</TableHead>
-                <TableHead className="hidden lg:table-cell">日限额</TableHead>
-                <TableHead className="hidden xl:table-cell">周限额</TableHead>
-                <TableHead className="hidden xl:table-cell">月限额</TableHead>
-                <TableHead className="hidden md:table-cell">倍率</TableHead>
-                <TableHead className="hidden lg:table-cell">售价/有效期</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <SortableHeader<SubscriptionGroup> columnKey="name" sort={sort} onSortChange={setSort}>{t("名称")}</SortableHeader>
+                <SortableHeader<SubscriptionGroup> columnKey="platform" sort={sort} onSortChange={setSort}>{t("平台")}</SortableHeader>
+                <TableHead className="hidden lg:table-cell">{t("类型")}</TableHead>
+                <TableHead className="hidden lg:table-cell">{t("日限额")}</TableHead>
+                <TableHead className="hidden xl:table-cell">{t("周限额")}</TableHead>
+                <TableHead className="hidden xl:table-cell">{t("月限额")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("倍率")}</TableHead>
+                <TableHead className="hidden lg:table-cell">{t("售价/有效期")}</TableHead>
+                <TableHead>{t("状态")}</TableHead>
+                <TableHead className="text-right">{t("操作")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -300,8 +297,8 @@ export function AdminSubscriptionGroupsPage() {
                   <TableCell className="hidden md:table-cell">×{group.rate_multiplier}</TableCell>
                   <TableCell className="hidden lg:table-cell">
                     {group.price_quota > 0 && group.duration_days > 0
-                      ? `${formatPrice(group.price_quota)} / ${group.duration_days}天`
-                      : '不可购买'}
+                      ? t(`${formatPrice(group.price_quota)} / ${group.duration_days}天`)
+                      : t("不可购买")}
                   </TableCell>
                   <TableCell>
                     <span
@@ -311,26 +308,22 @@ export function AdminSubscriptionGroupsPage() {
                           : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                       }`}
                     >
-                      {group.status === 1 ? '启用' : '停用'}
+                      {group.status === 1 ? t("启用") : t("停用")}
                     </span>
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button variant="outline" size="sm" onClick={() => setEditingDraft(toDraft(group))}>
-                      <Pencil className="size-3.5" />
-                      编辑
-                    </Button>
+                      <Pencil className="size-3.5" />{t("编辑")}</Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        if (confirm(`确认删除订阅分组「${group.display_name || group.name}」？`)) {
+                        if (confirm(t(`确认删除订阅分组「${group.display_name || group.name}」？`))) {
                           deleteMutation.mutate(group.id);
                         }
                       }}
                       disabled={deleteMutation.isPending}
-                    >
-                      删除
-                    </Button>
+                    >{t("删除")}</Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -371,7 +364,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
 
   const handleSubmit = () => {
     if (!form.name.trim()) {
-      toast.error('分组名称为必填项');
+      toast.error(t("分组名称为必填项"));
       return;
     }
     onSubmit(draftToPayload(form));
@@ -381,14 +374,12 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
   const body = (
     <DialogContent className="sm:max-w-lg">
       <DialogHeader>
-        <DialogTitle>{mode === 'create' ? '新建订阅分组' : '编辑订阅分组'}</DialogTitle>
-        <DialogDescription>
-          配置平台、订阅类型、日/周/月 USD 配额限额(留空表示不限)、计费倍率，以及用户自助购买的价格与有效期。
-        </DialogDescription>
+        <DialogTitle>{mode === 'create' ? t("新建订阅分组") : t("编辑订阅分组")}</DialogTitle>
+        <DialogDescription>{t("配置平台、订阅类型、日/周/月 USD 配额限额(留空表示不限)、计费倍率，以及用户自助购买的价格与有效期。")}</DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 pt-2 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="grp-name">名称(唯一)</Label>
+          <Label htmlFor="grp-name">{t("名称(唯一)")}</Label>
           <Input
             id="grp-name"
             value={form.name}
@@ -397,16 +388,16 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-display">显示名称</Label>
+          <Label htmlFor="grp-display">{t("显示名称")}</Label>
           <Input
             id="grp-display"
             value={form.displayName}
             onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-            placeholder="Claude Pro 订阅"
+            placeholder={t("Claude Pro 订阅")}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-platform">平台</Label>
+          <Label htmlFor="grp-platform">{t("平台")}</Label>
           <select
             id="grp-platform"
             value={form.platform}
@@ -421,7 +412,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-type">订阅类型</Label>
+          <Label htmlFor="grp-type">{t("订阅类型")}</Label>
           <Input
             id="grp-type"
             value={form.subscriptionType}
@@ -430,7 +421,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-daily">日限额 USD(留空不限)</Label>
+          <Label htmlFor="grp-daily">{t("日限额 USD(留空不限)")}</Label>
           <Input
             id="grp-daily"
             type="number"
@@ -439,7 +430,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-weekly">周限额 USD(留空不限)</Label>
+          <Label htmlFor="grp-weekly">{t("周限额 USD(留空不限)")}</Label>
           <Input
             id="grp-weekly"
             type="number"
@@ -448,7 +439,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-monthly">月限额 USD(留空不限)</Label>
+          <Label htmlFor="grp-monthly">{t("月限额 USD(留空不限)")}</Label>
           <Input
             id="grp-monthly"
             type="number"
@@ -457,7 +448,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-rate">计费倍率</Label>
+          <Label htmlFor="grp-rate">{t("计费倍率")}</Label>
           <Input
             id="grp-rate"
             type="number"
@@ -467,7 +458,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-price">购买价格(USD)</Label>
+          <Label htmlFor="grp-price">{t("购买价格(USD)")}</Label>
           <Input
             id="grp-price"
             type="number"
@@ -478,7 +469,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-duration">有效期(天)</Label>
+          <Label htmlFor="grp-duration">{t("有效期(天)")}</Label>
           <Input
             id="grp-duration"
             type="number"
@@ -488,24 +479,22 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
             placeholder="30"
           />
         </div>
-        <p className="text-xs text-muted-foreground sm:col-span-2">
-          价格与有效期任一为 0 时，该分组仅供管理员分配、不在用户端出售。
-        </p>
+        <p className="text-xs text-muted-foreground sm:col-span-2">{t("价格与有效期任一为 0 时，该分组仅供管理员分配、不在用户端出售。")}</p>
         <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor="grp-status">状态</Label>
+          <Label htmlFor="grp-status">{t("状态")}</Label>
           <select
             id="grp-status"
             value={form.status}
             onChange={(e) => setForm({ ...form, status: e.target.value })}
             className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
           >
-            <option value="1">启用</option>
-            <option value="2">停用</option>
+            <option value="1">{t("启用")}</option>
+            <option value="2">{t("停用")}</option>
           </select>
         </div>
         <Button onClick={handleSubmit} disabled={pending} className="sm:col-span-2">
           <Save className="size-4" />
-          {pending ? '保存中...' : mode === 'create' ? '创建' : '保存配置'}
+          {pending ? t("保存中...") : mode === 'create' ? t("创建") : t("保存配置")}
         </Button>
       </div>
     </DialogContent>
@@ -515,9 +504,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogTrigger render={<Button />}>
-          <Layers className="size-4" />
-          新建分组
-        </DialogTrigger>
+          <Layers className="size-4" />{t("新建分组")}</DialogTrigger>
         {body}
       </Dialog>
     );

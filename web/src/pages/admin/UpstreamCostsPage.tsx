@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApiClient } from '@/lib/api';
 import { ensureApiSuccess } from '@/lib/api-response';
+import { t } from '@/lib/i18n';
 
 // ── Types matching the /api/admin/upstream-costs contract ──────────────────
 
@@ -88,11 +89,11 @@ function formatPrice(value: number | undefined) {
 function sourceLabel(kind: string, entry?: UpstreamCostEntry) {
   switch (kind) {
     case 'channel':
-      return `渠道 ${entry?.source_id ?? ''}${entry?.source_name ? ` · ${entry.source_name}` : ''}`;
+      return t(`渠道 ${entry?.source_id ?? ''}${entry?.source_name ? ` · ${entry.source_name}` : ''}`);
     case 'subscription':
-      return `订阅账号 ${entry?.source_id ?? ''}${entry?.source_name ? ` · ${entry.source_name}` : ''}`;
+      return t(`订阅账号 ${entry?.source_id ?? ''}${entry?.source_name ? ` · ${entry.source_name}` : ''}`);
     default:
-      return '全局默认';
+      return t("全局默认");
   }
 }
 
@@ -137,10 +138,10 @@ export function AdminUpstreamCostsPage() {
       const outputPrice = mTokToPerToken(form.outputPrice);
       if (sourceKind === 'channel' || sourceKind === 'subscription') {
         if (!form.sourceId.trim() || !form.upstreamModelId.trim()) {
-          throw new Error('渠道/订阅账号成本需要填写来源 ID 和上游模型 ID');
+          throw new Error(t("渠道/订阅账号成本需要填写来源 ID 和上游模型 ID"));
         }
       } else if (!form.publicModelId.trim()) {
-        throw new Error('全局默认成本需要填写公开模型 ID');
+        throw new Error(t("全局默认成本需要填写公开模型 ID"));
       }
       const payload: UpstreamCostSavePayload = {
         source_kind: sourceKind,
@@ -153,32 +154,32 @@ export function AdminUpstreamCostsPage() {
         cache_read_price_set: true,
       };
       const res = await adminApiClient.post('/admin/upstream-costs', payload);
-      ensureApiSuccess(res.data, '保存上游成本失败');
+      ensureApiSuccess(res.data, t("保存上游成本失败"));
     },
     onSuccess: () => {
       setDialogOpen(false);
       setEditing(null);
       setForm(emptyForm());
       invalidate();
-      toast.success('上游成本已保存');
+      toast.success(t("上游成本已保存"));
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '保存上游成本失败');
+      toast.error(error instanceof Error ? error.message : t("保存上游成本失败"));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (key: string) => {
       const res = await adminApiClient.delete('/admin/upstream-costs', { params: { key } });
-      ensureApiSuccess(res.data, '删除上游成本失败');
+      ensureApiSuccess(res.data, t("删除上游成本失败"));
     },
     onSuccess: () => {
       setConfirmKey(null);
       invalidate();
-      toast.success('已删除');
+      toast.success(t("已删除"));
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '删除失败');
+      toast.error(error instanceof Error ? error.message : t("删除失败"));
     },
   });
 
@@ -197,12 +198,12 @@ export function AdminUpstreamCostsPage() {
       setMigrationPlan(null);
       invalidate();
       const executed = plan.executed ?? plan.to_rewrite.length;
-      const failedNote = plan.to_rewrite.length - executed > 0 ? `，${plan.to_rewrite.length - executed} 条因目标键已存在被跳过` : '';
-      const skippedNote = plan.skipped.length > 0 ? `，${plan.skipped.length} 条需人工处理` : '';
-      toast.success(`已迁移 ${executed} 个 legacy 键${failedNote}${skippedNote}`);
+      const failedNote = plan.to_rewrite.length - executed > 0 ? t(`，${plan.to_rewrite.length - executed} 条因目标键已存在被跳过`) : '';
+      const skippedNote = plan.skipped.length > 0 ? t(`，${plan.skipped.length} 条需人工处理`) : '';
+      toast.success(t(`已迁移 ${executed} 个 legacy 键${failedNote}${skippedNote}`));
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '迁移失败');
+      toast.error(error instanceof Error ? error.message : t("迁移失败"));
     },
   });
 
@@ -234,10 +235,8 @@ export function AdminUpstreamCostsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">上游成本</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            配置各渠道 / 订阅账号的上游采购成本，与用户售价（模型价格）相互独立；保存后用于毛利核算与告警。
-          </p>
+          <h2 className="text-2xl font-semibold">{t("上游成本")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("配置各渠道 / 订阅账号的上游采购成本，与用户售价（模型价格）相互独立；保存后用于毛利核算与告警。")}</p>
         </div>
         <div className="flex gap-2">
           {legacyKeys.length > 0 && (
@@ -246,44 +245,38 @@ export function AdminUpstreamCostsPage() {
               onClick={() => migrateMutation.mutate(true)}
               disabled={migrateMutation.isPending}
             >
-              <Upload className="size-4" />
-              迁移 legacy 键
-            </Button>
+              <Upload className="size-4" />{t("迁移 legacy 键")}</Button>
           )}
           <Button onClick={openCreate}>
-            <Plus className="size-4" />
-            添加上游成本
-          </Button>
+            <Plus className="size-4" />{t("添加上游成本")}</Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>当前上游成本</CardTitle>
-          <CardDescription>
-            键格式：`channel:&lt;id&gt;:&lt;上游模型ID&gt;` / `subscription:&lt;id&gt;:&lt;上游模型ID&gt;`；全局默认使用裸公开模型 ID。
-          </CardDescription>
+          <CardTitle>{t("当前上游成本")}</CardTitle>
+          <CardDescription>{t("键格式：`channel:&lt;id&gt;:&lt;上游模型ID&gt;` / `subscription:&lt;id&gt;:&lt;上游模型ID&gt;`；全局默认使用裸公开模型 ID。")}</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <TableSkeleton columns={['来源', '上游模型 ID', '公开模型 ID', '输入价格', '输出价格', '缓存读取价格', '操作']} rows={6} />
+            <TableSkeleton columns={[t("来源"), t("上游模型 ID"), t("公开模型 ID"), t("输入价格"), t("输出价格"), t("缓存读取价格"), t("操作")]} rows={6} />
           ) : entries.length === 0 && legacyKeys.length === 0 ? (
             <EmptyState
-              title="暂无上游成本配置"
-              description="添加上游成本后，此处将按来源列出各渠道 / 订阅账号的采购价格。"
+              title={t("暂无上游成本配置")}
+              description={t("添加上游成本后，此处将按来源列出各渠道 / 订阅账号的采购价格。")}
             />
           ) : (
             <div className="overflow-x-auto rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>来源</TableHead>
-                    <TableHead>上游模型 ID</TableHead>
-                    <TableHead>公开模型 ID</TableHead>
-                    <TableHead>输入价格</TableHead>
-                    <TableHead>输出价格</TableHead>
-                    <TableHead>缓存读取价格</TableHead>
-                    <TableHead className="w-24 text-right">操作</TableHead>
+                    <TableHead>{t("来源")}</TableHead>
+                    <TableHead>{t("上游模型 ID")}</TableHead>
+                    <TableHead>{t("公开模型 ID")}</TableHead>
+                    <TableHead>{t("输入价格")}</TableHead>
+                    <TableHead>{t("输出价格")}</TableHead>
+                    <TableHead>{t("缓存读取价格")}</TableHead>
+                    <TableHead className="w-24 text-right">{t("操作")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -297,10 +290,10 @@ export function AdminUpstreamCostsPage() {
                       <TableCell>{formatPrice(entry.cache_read_price)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button type="button" variant="ghost" size="icon-sm" aria-label={`编辑 ${entry.key}`} onClick={() => openEdit(entry)}>
+                          <Button type="button" variant="ghost" size="icon-sm" aria-label={t(`编辑 ${entry.key}`)} onClick={() => openEdit(entry)}>
                             <Pencil className="size-4" />
                           </Button>
-                          <Button type="button" variant="ghost" size="icon-sm" aria-label={`删除 ${entry.key}`} onClick={() => setConfirmKey(entry.key)}>
+                          <Button type="button" variant="ghost" size="icon-sm" aria-label={t(`删除 ${entry.key}`)} onClick={() => setConfirmKey(entry.key)}>
                             <Trash2 className="size-4" />
                           </Button>
                         </div>
@@ -315,18 +308,18 @@ export function AdminUpstreamCostsPage() {
           {legacyKeys.length > 0 && (
             <div className="mt-6">
               <h3 className="mb-2 text-sm font-semibold text-amber-600 dark:text-amber-400">
-                legacy 键（旧格式，待迁移）· {legacyKeys.length} 条
+                {t(`legacy 键（旧格式，待迁移）· ${legacyKeys.length} 条`)}
               </h3>
               <div className="overflow-x-auto rounded-lg border">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>旧键</TableHead>
-                      <TableHead>来源</TableHead>
-                      <TableHead>公开模型 ID</TableHead>
-                      <TableHead>输入价格</TableHead>
-                      <TableHead>输出价格</TableHead>
-                      <TableHead>缓存读取价格</TableHead>
+                      <TableHead>{t("旧键")}</TableHead>
+                      <TableHead>{t("来源")}</TableHead>
+                      <TableHead>{t("公开模型 ID")}</TableHead>
+                      <TableHead>{t("输入价格")}</TableHead>
+                      <TableHead>{t("输出价格")}</TableHead>
+                      <TableHead>{t("缓存读取价格")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -343,10 +336,7 @@ export function AdminUpstreamCostsPage() {
                   </TableBody>
                 </Table>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                legacy 键使用旧格式 `&lt;channel_id&gt;:&lt;public_model_id&gt;`，迁移后可解析为规范的
-                `channel:&lt;id&gt;:&lt;upstream_model_id&gt;`。可先点「迁移 legacy 键」预览，再确认执行。
-              </p>
+              <p className="mt-2 text-xs text-muted-foreground">{t("legacy 键使用旧格式 `&lt;channel_id&gt;:&lt;public_model_id&gt;`，迁移后可解析为规范的 `channel:&lt;id&gt;:&lt;upstream_model_id&gt;`。可先点「迁移 legacy 键」预览，再确认执行。")}</p>
             </div>
           )}
         </CardContent>
@@ -355,39 +345,39 @@ export function AdminUpstreamCostsPage() {
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && setDialogOpen(false)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing ? '编辑上游成本' : '添加上游成本'}</DialogTitle>
-            <DialogDescription>按来源配置每 1M tokens 的上游采购成本（美元）。</DialogDescription>
+            <DialogTitle>{editing ? t("编辑上游成本") : t("添加上游成本")}</DialogTitle>
+            <DialogDescription>{t("按来源配置每 1M tokens 的上游采购成本（美元）。")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="uc-source-kind">来源类型</Label>
+              <Label htmlFor="uc-source-kind">{t("来源类型")}</Label>
               <select
                 id="uc-source-kind"
                 value={form.sourceKind}
                 onChange={(event) => setForm((current) => ({ ...current, sourceKind: event.target.value }))}
                 className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
               >
-                <option value="channel">渠道（channel）</option>
-                <option value="subscription">订阅账号（subscription）</option>
-                <option value="model">全局默认（裸模型 ID）</option>
+                <option value="channel">{t("渠道（channel）")}</option>
+                <option value="subscription">{t("订阅账号（subscription）")}</option>
+                <option value="model">{t("全局默认（裸模型 ID）")}</option>
               </select>
             </div>
 
             {form.sourceKind !== 'model' && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="uc-source-id">来源 ID</Label>
+                  <Label htmlFor="uc-source-id">{t("来源 ID")}</Label>
                   <Input
                     id="uc-source-id"
                     type="number"
                     min="1"
                     value={form.sourceId}
                     onChange={(event) => setForm((current) => ({ ...current, sourceId: event.target.value }))}
-                    placeholder={form.sourceKind === 'channel' ? '渠道 ID，如 1' : '订阅账号 ID，如 4'}
+                    placeholder={form.sourceKind === 'channel' ? t("渠道 ID，如 1") : t("订阅账号 ID，如 4")}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="uc-upstream-model">上游模型 ID</Label>
+                  <Label htmlFor="uc-upstream-model">{t("上游模型 ID")}</Label>
                   <Input
                     id="uc-upstream-model"
                     value={form.upstreamModelId}
@@ -401,7 +391,7 @@ export function AdminUpstreamCostsPage() {
 
             {form.sourceKind === 'model' && (
               <div className="space-y-2">
-                <Label htmlFor="uc-public-model">公开模型 ID</Label>
+                <Label htmlFor="uc-public-model">{t("公开模型 ID")}</Label>
                 <Input
                   id="uc-public-model"
                   value={form.publicModelId}
@@ -414,7 +404,7 @@ export function AdminUpstreamCostsPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="uc-input-price">输入价格（$/1M tokens）</Label>
+                <Label htmlFor="uc-input-price">{t("输入价格（$/1M tokens）")}</Label>
                 <Input
                   id="uc-input-price"
                   type="number"
@@ -426,7 +416,7 @@ export function AdminUpstreamCostsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="uc-output-price">输出价格（$/1M tokens）</Label>
+                <Label htmlFor="uc-output-price">{t("输出价格（$/1M tokens）")}</Label>
                 <Input
                   id="uc-output-price"
                   type="number"
@@ -438,7 +428,7 @@ export function AdminUpstreamCostsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="uc-cache-read-price">缓存读取价格（$/1M tokens）</Label>
+                <Label htmlFor="uc-cache-read-price">{t("缓存读取价格（$/1M tokens）")}</Label>
                 <Input
                   id="uc-cache-read-price"
                   type="number"
@@ -452,11 +442,9 @@ export function AdminUpstreamCostsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              取消
-            </Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t("取消")}</Button>
             <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? '保存中...' : '保存'}
+              {saveMutation.isPending ? t("保存中...") : t("保存")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -465,22 +453,20 @@ export function AdminUpstreamCostsPage() {
       <Dialog open={!!confirmKey} onOpenChange={(open) => !open && setConfirmKey(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>删除上游成本</DialogTitle>
-            <DialogDescription>确认删除以下上游成本配置？此操作不可撤销。</DialogDescription>
+            <DialogTitle>{t("删除上游成本")}</DialogTitle>
+            <DialogDescription>{t("确认删除以下上游成本配置？此操作不可撤销。")}</DialogDescription>
           </DialogHeader>
           {confirmKey && (
             <div className="rounded-lg border bg-muted/20 px-3 py-2 font-mono text-xs break-all">{confirmKey}</div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmKey(null)}>
-              取消
-            </Button>
+            <Button variant="outline" onClick={() => setConfirmKey(null)}>{t("取消")}</Button>
             <Button
               variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={() => confirmKey && deleteMutation.mutate(confirmKey)}
             >
-              {deleteMutation.isPending ? '删除中...' : '确认删除'}
+              {deleteMutation.isPending ? t("删除中...") : t("确认删除")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -489,11 +475,11 @@ export function AdminUpstreamCostsPage() {
       <Dialog open={migrationPlan !== null} onOpenChange={(open) => !open && setMigrationPlan(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>legacy 键迁移计划（{migrationCount} 条）</DialogTitle>
+            <DialogTitle>{t("legacy 键迁移计划（")}{migrationCount}{t("条）")}</DialogTitle>
             <DialogDescription>
               {migrationPlan && migrationPlan.to_rewrite.length > 0
-                ? `将重写 ${migrationPlan.to_rewrite.length} 条为规范键格式，${migrationPlan.skipped.length} 条需人工处理。`
-                : '没有可自动重写的 legacy 键，全部需要人工处理。'}
+                ? t(`将重写 ${migrationPlan.to_rewrite.length} 条为规范键格式，${migrationPlan.skipped.length} 条需人工处理。`)
+                : t("没有可自动重写的 legacy 键，全部需要人工处理。")}
             </DialogDescription>
           </DialogHeader>
           {migrationPlan && (
@@ -507,18 +493,16 @@ export function AdminUpstreamCostsPage() {
               {migrationPlan.skipped.map((change) => (
                 <div key={change.old_key} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
                   <div className="font-mono text-xs">{change.old_key}</div>
-                  <div className="mt-1 text-xs text-amber-600 dark:text-amber-400">{change.reason || '无法解析'}</div>
+                  <div className="mt-1 text-xs text-amber-600 dark:text-amber-400">{change.reason || t("无法解析")}</div>
                 </div>
               ))}
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMigrationPlan(null)}>
-              关闭
-            </Button>
+            <Button variant="outline" onClick={() => setMigrationPlan(null)}>{t("关闭")}</Button>
             {migrationPlan && migrationPlan.to_rewrite.length > 0 && (
               <Button onClick={() => migrateMutation.mutate(false)} disabled={migrateMutation.isPending}>
-                {migrateMutation.isPending ? '执行中...' : '确认执行迁移'}
+                {migrateMutation.isPending ? t("执行中...") : t("确认执行迁移")}
               </Button>
             )}
           </DialogFooter>

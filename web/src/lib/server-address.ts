@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 export type RelayAddressSource = 'server-status' | 'build-env' | 'same-origin-fallback';
 
@@ -11,21 +12,21 @@ export interface RelayAddress {
 export function normalizeRelayBaseUrl(value: string) {
   const candidate = value.trim().replace(/\/+$/, '');
   if (!candidate) {
-    throw new Error('Relay 地址不能为空');
+    throw new Error(t("Relay 地址不能为空"));
   }
 
   let parsed: URL;
   try {
     parsed = new URL(candidate);
   } catch {
-    throw new Error('Relay 地址格式无效');
+    throw new Error(t("Relay 地址格式无效"));
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('Relay 地址必须使用 HTTP 或 HTTPS');
+    throw new Error(t("Relay 地址必须使用 HTTP 或 HTTPS"));
   }
   if (parsed.username || parsed.password) {
-    throw new Error('Relay 地址不能包含用户名或密码');
+    throw new Error(t("Relay 地址不能包含用户名或密码"));
   }
 
   return parsed.toString().replace(/\/+$/, '');
@@ -34,7 +35,7 @@ export function normalizeRelayBaseUrl(value: string) {
 export function validateRelayAddressForPage(address: RelayAddress, pageProtocol?: string) {
   const protocol = pageProtocol ?? (typeof window === 'undefined' ? undefined : window.location.protocol);
   if (protocol === 'https:' && address.url.startsWith('http:')) {
-    throw new Error('HTTPS 控制台不能调用 HTTP Relay');
+    throw new Error(t("HTTPS 控制台不能调用 HTTP Relay"));
   }
 }
 
@@ -74,7 +75,7 @@ export async function resolveRelayBaseUrl(): Promise<RelayAddress> {
   const address: RelayAddress = {
     url: normalizeRelayBaseUrl(window.location.origin),
     source: 'same-origin-fallback',
-    warning: '未读取到平台 Relay 地址，当前使用同源地址；若未配置反向代理，调用可能失败。',
+    warning: t("未读取到平台 Relay 地址，当前使用同源地址；若未配置反向代理，调用可能失败。"),
   };
   validateRelayAddressForPage(address);
   return address;

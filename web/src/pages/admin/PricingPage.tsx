@@ -12,6 +12,7 @@ import { adminApiClient } from '@/lib/api';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { AMOUNT_SCALE } from '@/lib/amount';
 import { listModels, type ModelSummary } from '@/lib/model-management';
+import { t } from '@/lib/i18n';
 
 interface OptionItem {
   key: string;
@@ -320,49 +321,43 @@ export function AdminPricingPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">模型价格</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            按用户请求的公开模型 ID 配置每 1M tokens 价格；同一模型的渠道、订阅账号和上游模型 ID 共用一份售价。
-          </p>
+          <h2 className="text-2xl font-semibold">{t("模型价格")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("按用户请求的公开模型 ID 配置每 1M tokens 价格；同一模型的渠道、订阅账号和上游模型 ID 共用一份售价。")}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={addRow}>
-            <Plus className="size-4" />
-            添加模型
-          </Button>
+            <Plus className="size-4" />{t("添加模型")}</Button>
           <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
             <Save className="size-4" />
-            {saveMutation.isPending ? '保存中...' : '保存价格'}
+            {saveMutation.isPending ? t("保存中...") : t("保存价格")}
           </Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>当前价格</CardTitle>
-          <CardDescription>模型来自公开且启用的模型清单。上游供应商模型 ID 和采购成本不在此处配置。</CardDescription>
+          <CardTitle>{t("当前价格")}</CardTitle>
+          <CardDescription>{t("模型来自公开且启用的模型清单。上游供应商模型 ID 和采购成本不在此处配置。")}</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading || areModelsLoading ? (
-            <TableSkeleton columns={['模型名称', '输入价格', '输出价格', '缓存读取', '操作']} rows={8} />
+            <TableSkeleton columns={[t("模型名称"), t("输入价格"), t("输出价格"), t("缓存读取"), t("操作")]} rows={8} />
           ) : rows.length === 0 ? (
             <div className="space-y-4">
-              <EmptyState title="暂无模型价格" description="添加模型后会保存输入、输出和缓存读取价格。" />
+              <EmptyState title={t("暂无模型价格")} description={t("添加模型后会保存输入、输出和缓存读取价格。")} />
               <Button variant="outline" onClick={addRow}>
-                <Plus className="size-4" />
-                添加模型
-              </Button>
+                <Plus className="size-4" />{t("添加模型")}</Button>
             </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>模型名称</TableHead>
-                    <TableHead>输入价格</TableHead>
-                    <TableHead>输出价格</TableHead>
-                    <TableHead>缓存读取</TableHead>
-                    <TableHead className="w-20 text-right">操作</TableHead>
+                    <TableHead>{t("模型名称")}</TableHead>
+                    <TableHead>{t("输入价格")}</TableHead>
+                    <TableHead>{t("输出价格")}</TableHead>
+                    <TableHead>{t("缓存读取")}</TableHead>
+                    <TableHead className="w-20 text-right">{t("操作")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -414,7 +409,7 @@ export function AdminPricingPage() {
                           type="button"
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={`删除 ${row.model || 'model row'}`}
+                          aria-label={t(`删除 ${row.model || 'model row'}`)}
                           onClick={() => removeRow(row.id)}
                         >
                           <Trash2 className="size-4" />

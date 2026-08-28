@@ -20,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { locale, t } from '@/lib/i18n';
 
 interface PaymentOrder {
   id: number | string;
@@ -88,7 +89,7 @@ function timestampSeconds(value: unknown): number {
 function formatDate(value: unknown) {
   const seconds = timestampSeconds(value);
   if (!seconds) return '-';
-  return new Date(seconds * 1000).toLocaleString();
+  return new Date(seconds * 1000).toLocaleString(locale());
 }
 
 function getTradeNo(order: PaymentOrder) {
@@ -113,7 +114,7 @@ function getGroupID(order: PaymentOrder) {
 
 function formatAsset(order: PaymentOrder) {
   if (getAssetType(order) === 'subscription') {
-    return `订阅分组 #${getGroupID(order) || '-'}`;
+    return t(`订阅分组 #${getGroupID(order) || '-'}`);
   }
   return formatAmount(getAssetAmount(order));
 }
@@ -180,17 +181,13 @@ export function AdminPaymentOrdersPage() {
     <div className="space-y-5">
       <div>
         <h2 className="flex items-center gap-2 text-2xl font-black tracking-normal text-slate-950 dark:text-white">
-          <CreditCard className="size-6" />
-          支付订单
-        </h2>
-        <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-          查看所有用户的支付订单、支付状态、订单金额和资产发放状态。
-        </p>
+          <CreditCard className="size-6" />{t("支付订单")}</h2>
+        <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">{t("查看所有用户的支付订单、支付状态、订单金额和资产发放状态。")}</p>
       </div>
 
       <AdminTableToolbar
         search={search}
-        searchPlaceholder="搜索商户订单号或渠道订单号..."
+        searchPlaceholder={t("搜索商户订单号或渠道订单号...")}
         onSearchChange={setSearch}
         onClear={clearSearch}
       />
@@ -202,10 +199,10 @@ export function AdminPaymentOrdersPage() {
           className="h-8 rounded-md border bg-background px-2 text-sm"
           aria-label="Filter payment orders by status"
         >
-          <option value="">全部状态</option>
-          <option value="pending">待支付</option>
-          <option value="paid">已支付</option>
-          <option value="closed">已关闭</option>
+          <option value="">{t("全部状态")}</option>
+          <option value="pending">{t("待支付")}</option>
+          <option value="paid">{t("已支付")}</option>
+          <option value="closed">{t("已关闭")}</option>
         </select>
         <select
           value={channelFilter}
@@ -213,45 +210,37 @@ export function AdminPaymentOrdersPage() {
           className="h-8 rounded-md border bg-background px-2 text-sm"
           aria-label="Filter payment orders by channel"
         >
-          <option value="">全部渠道</option>
-          <option value="alipay">支付宝</option>
+          <option value="">{t("全部渠道")}</option>
+          <option value="alipay">{t("支付宝")}</option>
           <option value="mock">Mock</option>
         </select>
         <input
           value={userIDFilter}
           onChange={(event) => setFilter('user_id', event.target.value.trim())}
-          placeholder="用户 ID"
+          placeholder={t("用户 ID")}
           className="h-8 w-36 rounded-md border bg-background px-2 text-sm"
           aria-label="Filter payment orders by user id"
         />
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['订单号', '用户', '渠道', '状态', '金额', '资产', '渠道单号', '创建时间']} rows={8} />
+        <TableSkeleton columns={[t("订单号"), t("用户"), t("渠道"), t("状态"), t("金额"), t("资产"), t("渠道单号"), t("创建时间")]} rows={8} />
       ) : visibleOrders.length === 0 ? (
-        <EmptyState title="暂无支付订单" description="用户发起充值或订阅支付后会显示在这里。" />
+        <EmptyState title={t("暂无支付订单")} description={t("用户发起充值或订阅支付后会显示在这里。")} />
       ) : (
         <>
           <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-surface-sm">
             <Table className="min-w-[1120px]">
               <TableHeader>
                 <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">
-                  <SortableHeader<PaymentOrder> columnKey="trade_no" sort={sort} onSortChange={setSort}>
-                    订单号
-                  </SortableHeader>
-                  <SortableHeader<PaymentOrder> columnKey="user_id" sort={sort} onSortChange={setSort}>
-                    用户
-                  </SortableHeader>
-                  <TableHead>渠道</TableHead>
-                  <SortableHeader<PaymentOrder> columnKey="status" sort={sort} onSortChange={setSort}>
-                    状态
-                  </SortableHeader>
-                  <TableHead>金额</TableHead>
-                  <TableHead>资产</TableHead>
-                  <TableHead>渠道单号</TableHead>
-                  <SortableHeader<PaymentOrder> columnKey="created_at" sort={sort} onSortChange={setSort}>
-                    创建时间
-                  </SortableHeader>
+                  <SortableHeader<PaymentOrder> columnKey="trade_no" sort={sort} onSortChange={setSort}>{t("订单号")}</SortableHeader>
+                  <SortableHeader<PaymentOrder> columnKey="user_id" sort={sort} onSortChange={setSort}>{t("用户")}</SortableHeader>
+                  <TableHead>{t("渠道")}</TableHead>
+                  <SortableHeader<PaymentOrder> columnKey="status" sort={sort} onSortChange={setSort}>{t("状态")}</SortableHeader>
+                  <TableHead>{t("金额")}</TableHead>
+                  <TableHead>{t("资产")}</TableHead>
+                  <TableHead>{t("渠道单号")}</TableHead>
+                  <SortableHeader<PaymentOrder> columnKey="created_at" sort={sort} onSortChange={setSort}>{t("创建时间")}</SortableHeader>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -262,7 +251,7 @@ export function AdminPaymentOrdersPage() {
                     <TableCell>{CHANNEL_NAMES[order.channel || ''] || order.channel || '-'}</TableCell>
                     <TableCell>
                       <span className="inline-flex rounded-md bg-blue-100 px-2 py-1 text-xs font-bold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
-                        {STATUS_NAMES[order.status || ''] || order.status || '-'}
+                        {t(STATUS_NAMES[order.status || ''] || order.status || '-')}
                       </span>
                     </TableCell>
                     <TableCell className="font-semibold">{formatMoney(getMoneyCents(order), order.currency)}</TableCell>
