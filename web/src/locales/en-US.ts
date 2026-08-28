@@ -34,6 +34,8 @@ export const EN_US_MESSAGES: Record<string, string> = {
   '支付订单': 'Payment Orders',
   '账务对账': 'Reconciliation',
   '系统设置': 'System Settings',
+  '用户协议': 'User Agreement',
+  '隐私政策': 'Privacy Policy',
   '管理后台': 'Administration',
   '核心功能': 'Core Features',
   '钱包 & 活动': 'Wallet & Activity',

@@ -33,6 +33,24 @@ const FEATURED_OPTIONS = [
     type: 'boolean',
   },
   {
+    key: 'LegalOperatorName',
+    label: '运营者名称',
+    description: '用户协议和隐私政策中公示的个人信息处理者及合同主体全称。',
+    type: 'text',
+  },
+  {
+    key: 'LegalOperatorAddress',
+    label: '运营者注册地址',
+    description: '用户协议和隐私政策中公示的运营者注册地址。',
+    type: 'text',
+  },
+  {
+    key: 'LegalContactEmail',
+    label: '隐私联系邮箱',
+    description: '接收个人信息查阅、更正、删除、注销及投诉请求的有效邮箱。',
+    type: 'text',
+  },
+  {
     key: 'AmountForNewUser',
     label: '新用户默认金额',
     description: '新用户注册时获得的初始钱包金额。',
@@ -175,7 +193,7 @@ export function AdminOptionsPage() {
                             type="text"
                             value={option.value}
                             onChange={(event) => setDraft(option.key, event.target.value)}
-                            placeholder="https://api.example.com"
+                            placeholder={option.key === 'ServerAddress' ? 'https://api.example.com' : undefined}
                             className="max-w-80 font-mono text-xs"
                           />
                         ) : (

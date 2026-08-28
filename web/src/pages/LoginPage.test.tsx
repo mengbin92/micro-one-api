@@ -51,11 +51,31 @@ describe('LoginPage', () => {
 
     expect(screen.getByRole('tab', { name: '注册' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByLabelText('确认密码')).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.getByRole('checkbox', { name: /我已阅读并同意/ })).not.toBeChecked();
+    expect(screen.getByRole('link', { name: '《用户协议》' })).toHaveAttribute('href', '/terms');
+    expect(screen.getByRole('link', { name: '《隐私政策》' })).toHaveAttribute('href', '/privacy');
 
     await user.keyboard('{ArrowLeft}');
 
     expect(screen.getByRole('tab', { name: '登录' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: '登录' })).toHaveFocus();
+  });
+
+  it('requires explicit agreement before registration', async () => {
+    const user = userEvent.setup();
+
+    renderWithQuery(
+      <MemoryRouter initialEntries={['/register']}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText('用户名'), 'alice');
+    await user.type(screen.getByLabelText('密码'), 'password-1');
+    await user.type(screen.getByLabelText('确认密码'), 'password-1');
+    await user.click(screen.getByRole('button', { name: '注册账号' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('请先阅读并同意用户协议和隐私政策');
   });
 
   it('associates registration validation errors with the form panel', async () => {

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { CheckCircle2, Network, ShieldCheck } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const loginTabRef = useRef<HTMLButtonElement>(null);
@@ -31,6 +32,7 @@ export function LoginPage() {
     }
     setError('');
     setConfirmPassword('');
+    setAcceptedLegal(false);
   };
 
   const signIn = async (nextUsername: string) => {
@@ -59,6 +61,10 @@ export function LoginPage() {
     }
     if (mode === 'register' && password !== confirmPassword) {
       setError(t("两次输入的密码不一致"));
+      return;
+    }
+    if (mode === 'register' && !acceptedLegal) {
+      setError('请先阅读并同意用户协议和隐私政策');
       return;
     }
 
@@ -225,6 +231,21 @@ export function LoginPage() {
                     {error}
                   </p>
                 )}
+                {mode === 'register' && (
+                  <div className="flex items-start gap-2.5 rounded-xl bg-muted/60 p-3 text-xs leading-5 text-muted-foreground">
+                    <input
+                      id="accepted-legal"
+                      type="checkbox"
+                      checked={acceptedLegal}
+                      onChange={(event) => setAcceptedLegal(event.target.checked)}
+                      aria-required="true"
+                      className="mt-0.5 size-4 shrink-0 accent-primary"
+                    />
+                    <label htmlFor="accepted-legal">
+                      我已阅读并同意 <Link to="/terms" target="_blank" className="font-medium text-primary hover:underline">《用户协议》</Link> 和 <Link to="/privacy" target="_blank" className="font-medium text-primary hover:underline">《隐私政策》</Link>
+                    </label>
+                  </div>
+                )}
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? (mode === 'login' ? t("登录中…") : t("创建中…")) : mode === 'login' ? t("登录") : t("注册账号")}
                 </Button>
@@ -253,6 +274,10 @@ export function LoginPage() {
               </form>
             </CardContent>
           </Card>
+          <div className="mt-5 flex justify-center gap-4 text-xs text-muted-foreground">
+            <Link to="/terms" className="hover:text-foreground hover:underline">用户协议</Link>
+            <Link to="/privacy" className="hover:text-foreground hover:underline">隐私政策</Link>
+          </div>
         </div>
       </section>
     </main>

@@ -240,19 +240,30 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 				systemName = v
 			}
 		}
+		legalOperatorName := ""
+		legalOperatorAddress := ""
+		legalContactEmail := ""
+		if svc != nil {
+			legalOperatorName, _ = svc.GetOneAPIOption(r.Context(), "LegalOperatorName")
+			legalOperatorAddress, _ = svc.GetOneAPIOption(r.Context(), "LegalOperatorAddress")
+			legalContactEmail, _ = svc.GetOneAPIOption(r.Context(), "LegalContactEmail")
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true,
 			"message": "",
 			"data": map[string]interface{}{
-				"version":              "micro-one-api",
-				"system_name":          systemName,
-				"server_address":       serverAddress,
-				"registration_enabled": true,
-				"email_verification":   false,
-				"github_oauth":         false,
-				"wechat_login":         false,
-				"turnstile_check":      false,
-				"display_in_currency":  false,
+				"version":                "micro-one-api",
+				"system_name":            systemName,
+				"server_address":         serverAddress,
+				"legal_operator_name":    legalOperatorName,
+				"legal_operator_address": legalOperatorAddress,
+				"legal_contact_email":    legalContactEmail,
+				"registration_enabled":   true,
+				"email_verification":     false,
+				"github_oauth":           false,
+				"wechat_login":           false,
+				"turnstile_check":        false,
+				"display_in_currency":    false,
 			},
 		})
 	})
