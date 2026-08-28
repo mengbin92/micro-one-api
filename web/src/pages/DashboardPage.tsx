@@ -21,6 +21,7 @@ import { ChartSkeleton, MetricCardsSkeleton } from '@/components/LoadingStates';
 import { unwrapApiData } from '@/lib/api-response';
 import { formatAmountUnits, formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
+import { locale, t } from '@/lib/i18n';
 
 interface UsageItem {
   date?: string;
@@ -102,7 +103,7 @@ function compactNumber(value: number) {
   if (value >= 1000) {
     return `${(value / 1000).toFixed(1)}K`;
   }
-  return value.toLocaleString();
+  return value.toLocaleString(locale());
 }
 
 function numberOrZero(value: unknown) {
@@ -129,10 +130,10 @@ function normalizeTokens(data: Token[] | TokenListData): Token[] {
 
 function getGreeting() {
   const hour = new Date().getHours();
-  if (hour < 6) return '凌晨好';
-  if (hour < 12) return '上午好';
-  if (hour < 18) return '下午好';
-  return '晚上好';
+  if (hour < 6) return t("凌晨好");
+  if (hour < 12) return t("上午好");
+  if (hour < 18) return t("下午好");
+  return t("晚上好");
 }
 
 function MetricCard({
@@ -225,7 +226,7 @@ export function DashboardPage() {
   const tokenCount = tokens?.length ?? 0;
   const activeTokenCount = tokens?.filter((token) => token.status === 1).length ?? tokenCount;
   const isSummaryLoading = isUserLoading || isLoading || isTokensLoading;
-  const displayName = user?.display_name || user?.username || '用户';
+  const displayName = user?.display_name || user?.username || t("用户");
 
   // Model distribution from backend
   const modelDistribution = dashboard?.model_distribution ?? [];
@@ -236,10 +237,10 @@ export function DashboardPage() {
         color: CHART_COLORS[index % CHART_COLORS.length],
       }))
     : [
-        { name: '输入 Tokens', value: promptTokens, color: CHART_COLORS[0] },
-        { name: '输出 Tokens', value: completionTokens, color: CHART_COLORS[1] },
+        { name: t("输入 Tokens"), value: promptTokens, color: CHART_COLORS[0] },
+        { name: t("输出 Tokens"), value: completionTokens, color: CHART_COLORS[1] },
       ].filter((item) => item.value > 0);
-  const distributionData = pieData.length > 0 ? pieData : [{ name: '总 Tokens', value: totalTokens || 1, color: CHART_COLORS[0] }];
+  const distributionData = pieData.length > 0 ? pieData : [{ name: t("总 Tokens"), value: totalTokens || 1, color: CHART_COLORS[0] }];
 
   return (
     <div className="space-y-7">
@@ -247,9 +248,7 @@ export function DashboardPage() {
         <h2 className="text-3xl font-bold tracking-normal text-foreground sm:text-4xl lg:text-5xl">
           {getGreeting()}，{displayName}
         </h2>
-        <p className="mt-4 text-lg font-medium text-muted-foreground">
-          欢迎使用 Micro API 中转平台，实时掌握你的 API 使用情况。
-        </p>
+        <p className="mt-4 text-lg font-medium text-muted-foreground">{t("欢迎使用 Micro API 中转平台，实时掌握你的 API 使用情况。")}</p>
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
@@ -257,12 +256,12 @@ export function DashboardPage() {
           <MetricCardsSkeleton />
         ) : (
           <>
-            <MetricCard title="钱包余额" value={formatMoney(balance)} subtitle="可用余额" tone="orange" icon={WalletCards} />
-            <MetricCard title="已用金额" value={`$${formatAmount(usedAmount, 4)}`} subtitle="累计消耗" tone="purple" icon={Sparkles} />
-            <MetricCard title="调用次数" value={requestCount.toLocaleString()} subtitle={`今日 ${todayRequests.toLocaleString()}`} tone="green" icon={BarChart3} />
-            <MetricCard title="API 密钥" value={tokenCount.toLocaleString()} subtitle={`可用 ${activeTokenCount.toLocaleString()}`} tone="blue" icon={KeyRound} />
-            <MetricCard title="今日消耗" value={`$${formatAmount(todayAmount, 4)}`} subtitle={`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)} / 缓存 ${compactNumber(todayCacheReadTokens)}`} tone="amber" icon={Box} />
-            <MetricCard title="平均延迟" value={avgLatency > 0 ? `${(avgLatency / 1000).toFixed(2)}s` : "-"} subtitle={avgLatency > 0 ? `${totalCount} 次调用` : "暂无数据"} tone="blue" icon={Zap} />
+            <MetricCard title={t("钱包余额")} value={formatMoney(balance)} subtitle={t("可用余额")} tone="orange" icon={WalletCards} />
+            <MetricCard title={t("已用金额")} value={`$${formatAmount(usedAmount, 4)}`} subtitle={t("累计消耗")} tone="purple" icon={Sparkles} />
+            <MetricCard title={t("调用次数")} value={requestCount.toLocaleString(locale())} subtitle={t(`今日 ${todayRequests.toLocaleString(locale())}`)} tone="green" icon={BarChart3} />
+            <MetricCard title={t("API 密钥")} value={tokenCount.toLocaleString(locale())} subtitle={t(`可用 ${activeTokenCount.toLocaleString(locale())}`)} tone="blue" icon={KeyRound} />
+            <MetricCard title={t("今日消耗")} value={`$${formatAmount(todayAmount, 4)}`} subtitle={t(`今日 Token ${compactNumber(todayPromptTokens + todayCompletionTokens)} / 缓存 ${compactNumber(todayCacheReadTokens)}`)} tone="amber" icon={Box} />
+            <MetricCard title={t("平均延迟")} value={avgLatency > 0 ? `${(avgLatency / 1000).toFixed(2)}s` : "-"} subtitle={avgLatency > 0 ? t(`${totalCount} 次调用`) : t("暂无数据")} tone="blue" icon={Zap} />
           </>
         )}
       </section>
@@ -272,26 +271,20 @@ export function DashboardPage() {
           <CardHeader className="border-b border-border p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <CardTitle className="text-2xl font-bold tracking-normal text-foreground">
-                  Token 使用趋势
-                </CardTitle>
-                <p className="mt-3 text-base font-medium text-muted-foreground">
-                  总量 {compactNumber(totalTokens)} Tokens
+                <CardTitle className="text-2xl font-bold tracking-normal text-foreground">{t("Token 使用趋势")}</CardTitle>
+                <p className="mt-3 text-base font-medium text-muted-foreground">{t("总量")}{compactNumber(totalTokens)} Tokens
                 </p>
-                <p className="mt-1 text-sm font-medium text-muted-foreground">
-                  输入 {compactNumber(promptTokens)} / 输出 {compactNumber(completionTokens)} / 缓存 {compactNumber(cacheReadTokens)}
+                <p className="mt-1 text-sm font-medium text-muted-foreground">{t("输入")}{compactNumber(promptTokens)}{t("/ 输出")}{compactNumber(completionTokens)}{t("/ 缓存")}{compactNumber(cacheReadTokens)}
                 </p>
               </div>
-              <div className="h-11 rounded-lg border border-border px-4 text-sm font-semibold leading-11 text-foreground">
-                近 7 天
-              </div>
+              <div className="h-11 rounded-lg border border-border px-4 text-sm font-semibold leading-11 text-foreground">{t("近 7 天")}</div>
             </div>
           </CardHeader>
           <CardContent className="p-6">
             {isLoading ? (
               <ChartSkeleton />
             ) : chartData.length === 0 ? (
-              <EmptyState title="暂无使用数据" description="请求完成后会在这里展示 Token 使用趋势。" />
+              <EmptyState title={t("暂无使用数据")} description={t("请求完成后会在这里展示 Token 使用趋势。")} />
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={chartData} margin={{ left: 0, right: 8, top: 20, bottom: 0 }}>
@@ -312,7 +305,7 @@ export function DashboardPage() {
                   <Area
                     type="monotone"
                     dataKey="input_tokens"
-                    name="输入 Tokens"
+                    name={t("输入 Tokens")}
                     stroke="var(--chart-1)"
                     strokeWidth={3}
                     fill="url(#inputTokens)"
@@ -320,7 +313,7 @@ export function DashboardPage() {
                   <Area
                     type="monotone"
                     dataKey="output_tokens"
-                    name="输出 Tokens"
+                    name={t("输出 Tokens")}
                     stroke="var(--chart-2)"
                     strokeWidth={3}
                     strokeDasharray="6 4"
@@ -329,7 +322,7 @@ export function DashboardPage() {
                   <Area
                     type="monotone"
                     dataKey="cache_read_tokens"
-                    name="缓存 Tokens"
+                    name={t("缓存 Tokens")}
                     stroke="var(--chart-3)"
                     strokeWidth={2}
                     strokeDasharray="2 4"
@@ -344,14 +337,14 @@ export function DashboardPage() {
         <Card>
           <CardHeader className="border-b border-border p-6">
             <CardTitle className="text-2xl font-bold tracking-normal text-foreground">
-              {modelDistribution.length > 0 ? "模型分布" : "Token 分布"}
+              {modelDistribution.length > 0 ? t("模型分布") : t("Token 分布")}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
             {isLoading ? (
               <ChartSkeleton />
             ) : totalTokens === 0 ? (
-              <EmptyState title="暂无分布数据" description="产生 Token 消耗后会展示占比。" />
+              <EmptyState title={t("暂无分布数据")} description={t("产生 Token 消耗后会展示占比。")} />
             ) : (
               <div className="grid min-h-[300px] place-items-center">
                 <ResponsiveContainer width="100%" height={260}>
@@ -366,7 +359,7 @@ export function DashboardPage() {
                 </ResponsiveContainer>
                 <div className="-mt-40 text-center">
                   <div className="text-4xl font-bold text-foreground">{compactNumber(totalTokens)}</div>
-                  <div className="mt-2 text-sm font-medium text-muted-foreground">总 Tokens</div>
+                  <div className="mt-2 text-sm font-medium text-muted-foreground">{t("总 Tokens")}</div>
                 </div>
                 <div className="mt-12 flex flex-wrap justify-center gap-4">
                   {distributionData.map((entry) => (
@@ -377,8 +370,7 @@ export function DashboardPage() {
                   ))}
                   {cacheReadTokens > 0 ? (
                     <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                      <span className="size-3 rounded-full bg-emerald-500" />
-                      缓存 Tokens {compactNumber(cacheReadTokens)}
+                      <span className="size-3 rounded-full bg-emerald-500" />{t("缓存 Tokens")}{compactNumber(cacheReadTokens)}
                     </div>
                   ) : null}
                 </div>
@@ -389,9 +381,7 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader className="border-b border-border p-6">
-            <CardTitle className="text-2xl font-bold tracking-normal text-foreground">
-              快捷操作
-            </CardTitle>
+            <CardTitle className="text-2xl font-bold tracking-normal text-foreground">{t("快捷操作")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 p-6">
             <Link
@@ -402,8 +392,8 @@ export function DashboardPage() {
                 <KeyRound className="size-6" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-foreground">创建 API 密钥</span>
-                <span className="mt-1 block text-sm font-medium text-muted-foreground">生成新的 API 密钥</span>
+                <span className="block font-semibold text-foreground">{t("创建 API 密钥")}</span>
+                <span className="mt-1 block text-sm font-medium text-muted-foreground">{t("生成新的 API 密钥")}</span>
               </span>
               <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
             </Link>
@@ -415,8 +405,8 @@ export function DashboardPage() {
                 <BarChart3 className="size-6" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-foreground">查看使用记录</span>
-                <span className="mt-1 block text-sm font-medium text-muted-foreground">查看详细的调用日志</span>
+                <span className="block font-semibold text-foreground">{t("查看使用记录")}</span>
+                <span className="mt-1 block text-sm font-medium text-muted-foreground">{t("查看详细的调用日志")}</span>
               </span>
               <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
             </Link>
@@ -428,8 +418,8 @@ export function DashboardPage() {
                 <FlaskConical className="size-6" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-foreground">在线调试 API</span>
-                <span className="mt-1 block text-sm font-medium text-muted-foreground">直接发送一条测试请求</span>
+                <span className="block font-semibold text-foreground">{t("在线调试 API")}</span>
+                <span className="mt-1 block text-sm font-medium text-muted-foreground">{t("直接发送一条测试请求")}</span>
               </span>
               <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
             </Link>
@@ -441,8 +431,8 @@ export function DashboardPage() {
                 <Gift className="size-6" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-foreground">兑换充值码</span>
-                <span className="mt-1 block text-sm font-medium text-muted-foreground">使用兑换码为账户充值</span>
+                <span className="block font-semibold text-foreground">{t("兑换充值码")}</span>
+                <span className="mt-1 block text-sm font-medium text-muted-foreground">{t("使用兑换码为账户充值")}</span>
               </span>
               <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
             </Link>

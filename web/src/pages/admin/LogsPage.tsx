@@ -32,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { locale, t } from '@/lib/i18n';
 
 interface LogEntry {
   id: string;
@@ -211,7 +212,7 @@ export function AdminLogsPage() {
 
   function formatTimestamp(value: string | number | undefined) {
     const seconds = Number(value ?? 0);
-    return seconds > 0 ? new Date(seconds * 1000).toLocaleString() : '-';
+    return seconds > 0 ? new Date(seconds * 1000).toLocaleString(locale()) : '-';
   }
 
   function displayValue(value: string | number | boolean | undefined | null) {
@@ -270,7 +271,7 @@ export function AdminLogsPage() {
           <option value="refund">Refund</option>
         </select>
         <Input
-          placeholder="订阅账号 ID"
+          placeholder={t("订阅账号 ID")}
           value={subscriptionAccountId}
           onChange={(e) => setFilter('subscription_account_id', e.target.value.trim())}
           className="max-w-xs"
@@ -374,7 +375,7 @@ export function AdminLogsPage() {
                     <TableCell className="font-mono text-sm">{log.userId}</TableCell>
                     <TableCell>
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                        {LOG_TYPE_NAMES[log.type] || log.type}
+                        {t(LOG_TYPE_NAMES[log.type] || log.type)}
                       </span>
                     </TableCell>
                     <TableCell>{formatQuota(log.amount)}</TableCell>
@@ -385,7 +386,7 @@ export function AdminLogsPage() {
                     <TableCell className="hidden font-mono text-xs lg:table-cell">{log.referenceId || '—'}</TableCell>
                     <TableCell className="hidden max-w-xs truncate lg:table-cell">{log.remark || '—'}</TableCell>
                     <TableCell>
-                      {new Date(parseInt(log.createdAt) * 1000).toLocaleString()}
+                      {new Date(parseInt(log.createdAt) * 1000).toLocaleString(locale())}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button

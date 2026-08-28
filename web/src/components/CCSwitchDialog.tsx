@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { API_BASE_URL } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 type AppType = 'claude' | 'codex' | 'gemini';
 
@@ -161,8 +162,8 @@ export function CCSwitchDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>导入到 CC Switch</DialogTitle>
-          <DialogDescription>选择目标应用和模型，一键导入供应商配置到 CC Switch。</DialogDescription>
+          <DialogTitle>{t("导入到 CC Switch")}</DialogTitle>
+          <DialogDescription>{t("选择目标应用和模型，一键导入供应商配置到 CC Switch。")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2 max-h-[60vh] overflow-y-auto">
           {/* API Key */}
@@ -178,12 +179,12 @@ export function CCSwitchDialog({
               placeholder="aB3dE5fG7hJ9kL2mN4pQ6rS8tU0vW1xY"
               className="font-mono text-xs"
             />
-            <p className="text-xs text-slate-400">在「API 密钥」页面创建密钥后粘贴到此处。</p>
+            <p className="text-xs text-slate-400">{t("在「API 密钥」页面创建密钥后粘贴到此处。")}</p>
           </div>
 
           {/* Base URL */}
           <div className="space-y-2">
-            <Label htmlFor="ccs-base-url">API 地址</Label>
+            <Label htmlFor="ccs-base-url">{t("API 地址")}</Label>
             <Input
               id="ccs-base-url"
               value={baseUrl}
@@ -191,12 +192,12 @@ export function CCSwitchDialog({
               placeholder="https://your-api-domain.com"
               className="font-mono text-xs"
             />
-            <p className="text-xs text-slate-400">CC Switch 会将此地址写入对应客户端的配置。</p>
+            <p className="text-xs text-slate-400">{t("CC Switch 会将此地址写入对应客户端的配置。")}</p>
           </div>
 
           {/* Application selector */}
           <div className="space-y-2">
-            <Label>目标应用</Label>
+            <Label>{t("目标应用")}</Label>
             <div className="flex gap-2">
               {(Object.keys(APP_CONFIGS) as AppType[]).map((key) => {
                 const cfg = APP_CONFIGS[key];
@@ -224,7 +225,7 @@ export function CCSwitchDialog({
 
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="ccs-name">名称</Label>
+            <Label htmlFor="ccs-name">{t("名称")}</Label>
             <Input
               id="ccs-name"
               value={name}
@@ -237,14 +238,14 @@ export function CCSwitchDialog({
           {currentConfig.modelFields.map((field) => (
             <div key={field.key} className="space-y-2">
               <Label htmlFor={`ccs-model-${field.key}`}>
-                {field.label}
+                {t(field.label)}
                 {field.required && <span className="ml-0.5 text-destructive">*</span>}
               </Label>
               <Input
                 id={`ccs-model-${field.key}`}
                 value={models[field.key] || ''}
                 onChange={(e) => handleModelChange(field.key, e.target.value)}
-                placeholder="输入或选择模型名称"
+                placeholder={t("输入或选择模型名称")}
                 className="font-mono text-xs"
                 list={modelOptions.length > 0 ? `ccs-model-list-${field.key}` : undefined}
               />
@@ -259,10 +260,8 @@ export function CCSwitchDialog({
           ))}
         </div>
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>取消</DialogClose>
-          <Button onClick={handleSubmit} disabled={!models[currentConfig.modelFields.find((f) => f.required)?.key ?? "model"] || !apiKey}>
-            打开 CC Switch
-          </Button>
+          <DialogClose render={<Button variant="outline" />}>{t("取消")}</DialogClose>
+          <Button onClick={handleSubmit} disabled={!models[currentConfig.modelFields.find((f) => f.required)?.key ?? "model"] || !apiKey}>{t("打开 CC Switch")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

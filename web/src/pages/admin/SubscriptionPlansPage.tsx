@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { t } from '@/lib/i18n';
 
 // Mirrors subscriptionPlanDTO JSON tags returned by
 // /api/v1/admin/subscription-plans (internal/admin/server/subscription.go).
@@ -108,7 +109,7 @@ export function AdminSubscriptionPlansPage() {
       ensureApiSuccess(res.data);
     },
     onSuccess: (_d, vars) => {
-      toast.success(vars.forSale ? '套餐已上架' : '套餐已下架');
+      toast.success(vars.forSale ? t("套餐已上架") : t("套餐已下架"));
       void queryClient.invalidateQueries({ queryKey: ['admin', 'subscription-plans'] });
     },
     onError: (e: unknown) => toast.error(String(e instanceof Error ? e.message : e)),
@@ -128,7 +129,7 @@ export function AdminSubscriptionPlansPage() {
       }
     },
     onSuccess: () => {
-      toast.success('套餐已保存');
+      toast.success(t("套餐已保存"));
       setEditing(null);
       void queryClient.invalidateQueries({ queryKey: ['admin', 'subscription-plans'] });
     },
@@ -152,20 +153,16 @@ export function AdminSubscriptionPlansPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
-            <Package className="h-5 w-5" /> 订阅套餐
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            套餐上下架、在售状态审计与用户侧展示收敛。
-          </p>
+            <Package className="h-5 w-5" />{t("订阅套餐")}</h1>
+          <p className="text-sm text-muted-foreground">{t("套餐上下架、在售状态审计与用户侧展示收敛。")}</p>
         </div>
         <Button onClick={() => setEditing({ ...emptyPayload })}>
-          <ShoppingCart className="mr-1 h-4 w-4" /> 新建套餐
-        </Button>
+          <ShoppingCart className="mr-1 h-4 w-4" />{t("新建套餐")}</Button>
       </div>
 
       <AdminTableToolbar
         search={keyword}
-        searchPlaceholder="搜索套餐名称 / ID"
+        searchPlaceholder={t("搜索套餐名称 / ID")}
         onSearchChange={setKeyword}
         onClear={() => setKeyword('')}
         actions={
@@ -177,7 +174,7 @@ export function AdminSubscriptionPlansPage() {
                 size="sm"
                 onClick={() => setSaleFilter(f)}
               >
-                {f === 'all' ? '全部' : f === 'on' ? '在售' : '已下架'}
+                {f === 'all' ? t("全部") : f === 'on' ? t("在售") : t("已下架")}
               </Button>
             ))}
           </div>
@@ -185,20 +182,20 @@ export function AdminSubscriptionPlansPage() {
       />
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', '名称', '分组', '价格', '有效期', '状态', '操作']} />
+        <TableSkeleton columns={['ID', t("名称"), t("分组"), t("价格"), t("有效期"), t("状态"), t("操作")]} />
       ) : filtered.length === 0 ? (
-        <EmptyState title="暂无套餐" description="新建套餐后会显示在这里。" />
+        <EmptyState title={t("暂无套餐")} description={t("新建套餐后会显示在这里。")} />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead>
-              <TableHead>名称</TableHead>
-              <TableHead>分组</TableHead>
-              <TableHead>价格 (quota)</TableHead>
-              <TableHead>有效期</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead className="text-right">操作</TableHead>
+              <TableHead>{t("名称")}</TableHead>
+              <TableHead>{t("分组")}</TableHead>
+              <TableHead>{t("价格 (quota)")}</TableHead>
+              <TableHead>{t("有效期")}</TableHead>
+              <TableHead>{t("状态")}</TableHead>
+              <TableHead className="text-right">{t("操作")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -209,17 +206,13 @@ export function AdminSubscriptionPlansPage() {
                 <TableCell>{p.group_id}</TableCell>
                 <TableCell>{p.price_quota}</TableCell>
                 <TableCell>
-                  {p.validity_days} {p.validity_unit === 'day' ? '天' : p.validity_unit}
+                  {p.validity_days} {p.validity_unit === 'day' ? t("天") : p.validity_unit}
                 </TableCell>
                 <TableCell>
                   {p.for_sale ? (
-                    <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900 dark:text-green-300">
-                      在售
-                    </span>
+                    <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900 dark:text-green-300">{t("在售")}</span>
                   ) : (
-                    <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                      已下架
-                    </span>
+                    <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400">{t("已下架")}</span>
                   )}
                 </TableCell>
                 <TableCell className="text-right">
@@ -232,17 +225,13 @@ export function AdminSubscriptionPlansPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => toggleForSale.mutate({ id: p.id, forSale: false })}
-                      >
-                        下架
-                      </Button>
+                      >{t("下架")}</Button>
                     ) : (
                       <Button
                         variant="default"
                         size="sm"
                         onClick={() => toggleForSale.mutate({ id: p.id, forSale: true })}
-                      >
-                        上架
-                      </Button>
+                      >{t("上架")}</Button>
                     )}
                   </div>
                 </TableCell>
@@ -255,10 +244,8 @@ export function AdminSubscriptionPlansPage() {
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing?.id ? '编辑套餐' : '新建套餐'}</DialogTitle>
-            <DialogDescription>
-              价格、有效期变更不会影响已下单订单（按下单时的快照发放）。
-            </DialogDescription>
+            <DialogTitle>{editing?.id ? t("编辑套餐") : t("新建套餐")}</DialogTitle>
+            <DialogDescription>{t("价格、有效期变更不会影响已下单订单（按下单时的快照发放）。")}</DialogDescription>
           </DialogHeader>
           {editing && (
             <PlanEditForm
@@ -299,7 +286,7 @@ function PlanEditForm({
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="plan-name">套餐名称</Label>
+        <Label htmlFor="plan-name">{t("套餐名称")}</Label>
         <Input
           id="plan-name"
           value={form.name}
@@ -308,7 +295,7 @@ function PlanEditForm({
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="plan-product">产品名称</Label>
+        <Label htmlFor="plan-product">{t("产品名称")}</Label>
         <Input
           id="plan-product"
           value={form.product_name}
@@ -317,7 +304,7 @@ function PlanEditForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="plan-group">分组 ID</Label>
+          <Label htmlFor="plan-group">{t("分组 ID")}</Label>
           <Input
             id="plan-group"
             type="number"
@@ -327,7 +314,7 @@ function PlanEditForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="plan-price">价格 (quota)</Label>
+          <Label htmlFor="plan-price">{t("价格 (quota)")}</Label>
           <Input
             id="plan-price"
             type="number"
@@ -339,7 +326,7 @@ function PlanEditForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="plan-validity">有效期</Label>
+          <Label htmlFor="plan-validity">{t("有效期")}</Label>
           <Input
             id="plan-validity"
             type="number"
@@ -349,7 +336,7 @@ function PlanEditForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="plan-sort">排序</Label>
+          <Label htmlFor="plan-sort">{t("排序")}</Label>
           <Input
             id="plan-sort"
             type="number"
@@ -359,12 +346,9 @@ function PlanEditForm({
         </div>
       </div>
       <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          取消
-        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>{t("取消")}</Button>
         <Button type="submit" disabled={saving}>
-          <Save className="mr-1 h-4 w-4" /> 保存
-        </Button>
+          <Save className="mr-1 h-4 w-4" />{t("保存")}</Button>
       </div>
     </form>
   );

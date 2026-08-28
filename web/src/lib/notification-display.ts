@@ -1,4 +1,4 @@
-/**
+import { t } from '@/lib/i18n';/**
  * Notification display helpers
  *
  * The backend notify-worker stores alerts in raw English technical text
@@ -42,8 +42,8 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export function notifyTypeLabel(type?: string): string {
-  if (!type) return '未知渠道';
-  return TYPE_LABELS[type] ?? type;
+  if (!type) return t("未知渠道");
+  return t(TYPE_LABELS[type] ?? type);
 }
 
 // ---- Error translation ----
@@ -60,7 +60,7 @@ export function translateError(raw?: string): string | undefined {
   if (!raw) return undefined;
   for (const { match, zh } of ERROR_TRANSLATIONS) {
     if (match.test(raw)) {
-      return zh.replace('$1', (raw.match(match)?.[1] ?? '') || '');
+      return t(zh).replace('$1', (raw.match(match)?.[1] ?? '') || '');
     }
   }
   return raw;
@@ -92,53 +92,53 @@ function parseReconContent(content: string): { label: string; value: string }[] 
     let m =
       trimmed.match(/^Reconciliation run at\s*(.+?)\s*found\s*(\d+)\s*discrepanc(?:y|ies)\.?$/i);
     if (m) {
-      details.push({ label: '对账时间(UTC)', value: m[1] });
-      details.push({ label: '差异总数', value: `${m[2]} 项` });
+      details.push({ label: t("对账时间(UTC)"), value: m[1] });
+      details.push({ label: t("差异总数"), value: t(`${m[2]} 项`) });
       continue;
     }
 
     m = trimmed.match(/^Expired reservations cleaned:\s*(\d+)/i);
     if (m) {
-      details.push({ label: '已清理过期预留', value: `${m[1]} 个` });
+      details.push({ label: t("已清理过期预留"), value: t(`${m[1]} 个`) });
       continue;
     }
 
     m = trimmed.match(/^Accounts checked:\s*(\d+)\s*\(mismatches:\s*(\d+)\)/i);
     if (m) {
-      details.push({ label: '账户核查', value: `检查 ${m[1]} 个,不一致 ${m[2]} 个` });
+      details.push({ label: t("账户核查"), value: t(`检查 ${m[1]} 个,不一致 ${m[2]} 个`) });
       continue;
     }
 
     m = trimmed.match(/^Channels checked:\s*(\d+)\s*\(mismatches:\s*(\d+)\)/i);
     if (m) {
-      details.push({ label: '渠道核查', value: `检查 ${m[1]} 个,不一致 ${m[2]} 个` });
+      details.push({ label: t("渠道核查"), value: t(`检查 ${m[1]} 个,不一致 ${m[2]} 个`) });
       continue;
     }
 
     m = trimmed.match(/^Ledger\/log consume groups drifted:\s*(\d+)/i);
     if (m) {
-      details.push({ label: '账本/日志偏移', value: `${m[1]} 组` });
+      details.push({ label: t("账本/日志偏移"), value: t(`${m[1]} 组`) });
       continue;
     }
 
     // Section headers — keep as context rows
     if (/^Account quota mismatches/i.test(trimmed)) {
-      details.push({ label: '账户配额不一致', value: '' });
+      details.push({ label: t("账户配额不一致"), value: '' });
       continue;
     }
     if (/^Channel usage mismatches/i.test(trimmed)) {
-      details.push({ label: '渠道用量不一致', value: '' });
+      details.push({ label: t("渠道用量不一致"), value: '' });
       continue;
     }
     if (/^Ledger\/log consume drift/i.test(trimmed)) {
-      details.push({ label: '账本/日志消耗漂移', value: '' });
+      details.push({ label: t("账本/日志消耗漂移"), value: '' });
       continue;
     }
 
     // Indented detail bullets
     const bullet = trimmed.match(/^- user=(\S+)\s+expected=(-?\d+)\s+actual=(-?\d+)\s+frozen=(-?\d+)/i);
     if (bullet) {
-      details.push({ label: `  用户 ${bullet[1]}`, value: `预期 ${bullet[2]} / 实际 ${bullet[3]} / 冻结 ${bullet[4]}` });
+      details.push({ label: t(`  用户 ${bullet[1]}`), value: t(`预期 ${bullet[2]} / 实际 ${bullet[3]} / 冻结 ${bullet[4]}`) });
       continue;
     }
     const chBullet = trimmed.match(
@@ -146,8 +146,8 @@ function parseReconContent(content: string): { label: string; value: string }[] 
     );
     if (chBullet) {
       details.push({
-        label: `  渠道 ${chBullet[1]}`,
-        value: `预期 ${chBullet[2]} / 实际 ${chBullet[3]} / 差异 ${chBullet[4]} / 上游成本 ${chBullet[5]}`,
+        label: t(`  渠道 ${chBullet[1]}`),
+        value: t(`预期 ${chBullet[2]} / 实际 ${chBullet[3]} / 差异 ${chBullet[4]} / 上游成本 ${chBullet[5]}`),
       });
       continue;
     }
@@ -156,8 +156,8 @@ function parseReconContent(content: string): { label: string; value: string }[] 
     );
     if (logBullet) {
       details.push({
-        label: '  账本/日志',
-        value: `账本 ${logBullet[1]} / 日志 ${logBullet[2]} / 条数差 ${logBullet[3]} / 配额差 ${logBullet[4]}`,
+        label: t("  账本/日志"),
+        value: t(`账本 ${logBullet[1]} / 日志 ${logBullet[2]} / 条数差 ${logBullet[3]} / 配额差 ${logBullet[4]}`),
       });
       continue;
     }
@@ -188,7 +188,7 @@ function parseQuotaAlertContent(content: string): { label: string; value: string
   const kindLine = lines.find((l) => l.startsWith('Subscription account alert:'));
   if (kindLine) {
     const kind = kindLine.replace(/.*alert:\s*/i, '').trim();
-    details.push({ label: '告警类型', value: QUOTA_KIND_LABELS[kind] ?? kind });
+    details.push({ label: t("告警类型"), value: t(QUOTA_KIND_LABELS[kind] ?? kind) });
   }
 
   for (const line of lines) {
@@ -197,51 +197,51 @@ function parseQuotaAlertContent(content: string): { label: string; value: string
 
     let m = trimmed.match(/^Account:\s*(.+?)\s*\(ID:\s*(\d+)\)/i);
     if (m) {
-      details.push({ label: '订阅账户', value: `${m[1]} (ID: ${m[2]})` });
+      details.push({ label: t("订阅账户"), value: `${m[1]} (ID: ${m[2]})` });
       continue;
     }
     m = trimmed.match(/^Platform:\s*(.+)/i);
     if (m) {
-      details.push({ label: '平台', value: m[1] });
+      details.push({ label: t("平台"), value: m[1] });
       continue;
     }
     m = trimmed.match(/^Group:\s*(.+)/i);
     if (m) {
-      details.push({ label: '渠道组', value: m[1] });
+      details.push({ label: t("渠道组"), value: m[1] });
       continue;
     }
     m = trimmed.match(/^Primary quota used:\s*([\d.]+)%/i);
     if (m) {
-      details.push({ label: '主配额使用率', value: `${m[1]}%` });
+      details.push({ label: t("主配额使用率"), value: `${m[1]}%` });
       continue;
     }
     m = trimmed.match(/^Secondary quota used:\s*([\d.]+)%/i);
     if (m) {
-      details.push({ label: '副配额使用率', value: `${m[1]}%` });
+      details.push({ label: t("副配额使用率"), value: `${m[1]}%` });
       continue;
     }
     m = trimmed.match(/^Local quota used USD:\s*([\d.]+)\s*\/\s*limit\s*([\d.]+)/i);
     if (m) {
-      details.push({ label: '本地配额(USD)', value: `已用 ${m[1]} / 上限 ${m[2]}` });
+      details.push({ label: t("本地配额(USD)"), value: t(`已用 ${m[1]} / 上限 ${m[2]}`) });
       continue;
     }
     m = trimmed.match(/^Daily used USD:\s*([\d.]+)\s*\/\s*limit\s*([\d.]+)/i);
     if (m) {
-      details.push({ label: '今日用量(USD)', value: `已用 ${m[1]} / 上限 ${m[2]}` });
+      details.push({ label: t("今日用量(USD)"), value: t(`已用 ${m[1]} / 上限 ${m[2]}`) });
       continue;
     }
     m = trimmed.match(/^Last used:\s*(.+)/i);
     if (m) {
-      details.push({ label: '最后使用时间', value: m[1] });
+      details.push({ label: t("最后使用时间"), value: m[1] });
       continue;
     }
     m = trimmed.match(/^Evaluated at:\s*(.+)/i);
     if (m) {
-      details.push({ label: '评估时间(UTC)', value: m[1] });
+      details.push({ label: t("评估时间(UTC)"), value: m[1] });
       continue;
     }
     if (/Quota snapshot recording is paused/i.test(trimmed)) {
-      details.push({ label: '配额快照', value: '记录已暂停' });
+      details.push({ label: t("配额快照"), value: t("记录已暂停") });
       continue;
     }
   }
@@ -261,37 +261,37 @@ function parseChannelUnavailableContent(content: string): { label: string; value
 
     let m = trimmed.match(/^Channel:\s*(.+?)\s*\(ID:\s*(\d+)\)/i);
     if (m) {
-      details.push({ label: '渠道', value: `${m[1]} (ID: ${m[2]})` });
+      details.push({ label: t("渠道"), value: `${m[1]} (ID: ${m[2]})` });
       continue;
     }
     m = trimmed.match(/^Group:\s*(.+)/i);
     if (m) {
-      details.push({ label: '渠道组', value: m[1] });
+      details.push({ label: t("渠道组"), value: m[1] });
       continue;
     }
     m = trimmed.match(/^Models:\s*(.+)/i);
     if (m) {
-      details.push({ label: '模型', value: m[1] });
+      details.push({ label: t("模型"), value: m[1] });
       continue;
     }
     m = trimmed.match(/^Consecutive failures:\s*(\d+)/i);
     if (m) {
-      details.push({ label: '连续失败次数', value: `${m[1]} 次` });
+      details.push({ label: t("连续失败次数"), value: t(`${m[1]} 次`) });
       continue;
     }
     m = trimmed.match(/^Circuit opened until:\s*(.+)/i);
     if (m) {
-      details.push({ label: '熔断至', value: m[1] });
+      details.push({ label: t("熔断至"), value: m[1] });
       continue;
     }
     m = trimmed.match(/^Response time:\s*(\d+)ms/i);
     if (m) {
-      details.push({ label: '响应时间', value: `${m[1]} 毫秒` });
+      details.push({ label: t("响应时间"), value: t(`${m[1]} 毫秒`) });
       continue;
     }
     m = trimmed.match(/^Last error:\s*(.+)/i);
     if (m) {
-      details.push({ label: '最近错误', value: m[1] });
+      details.push({ label: t("最近错误"), value: m[1] });
       continue;
     }
   }
@@ -318,8 +318,8 @@ export function parseNotification(input: {
   const reconSubject = parseReconSubject(subject);
   if (reconSubject) {
     return {
-      categoryLabel: '对账告警',
-      summary: `对账发现 ${reconSubject.count} 项差异`,
+      categoryLabel: t("对账告警"),
+      summary: t(`对账发现 ${reconSubject.count} 项差异`),
       severity: isError ? 'error' : 'info',
       details: parseReconContent(content),
     };
@@ -328,10 +328,10 @@ export function parseNotification(input: {
   // Quota alert
   const quotaSubject = parseQuotaAlertSubject(subject);
   if (quotaSubject) {
-    const kindLabel = QUOTA_KIND_LABELS[quotaSubject.kind] ?? quotaSubject.kind;
+    const kindLabel = t(QUOTA_KIND_LABELS[quotaSubject.kind] ?? quotaSubject.kind);
     return {
-      categoryLabel: '配额告警',
-      summary: `订阅账户「${quotaSubject.account}」${kindLabel}`,
+      categoryLabel: t("配额告警"),
+      summary: t(`订阅账户「${quotaSubject.account}」${kindLabel}`),
       severity: quotaSubject.kind === 'exhausted' ? 'error' : 'warning',
       details: parseQuotaAlertContent(content),
     };
@@ -341,8 +341,8 @@ export function parseNotification(input: {
   if (/^Channel unavailable:/i.test(subject)) {
     const channelName = subject.replace(/^Channel unavailable:\s*/i, '').trim();
     return {
-      categoryLabel: '渠道异常',
-      summary: `渠道「${channelName}」不可用`,
+      categoryLabel: t("渠道异常"),
+      summary: t(`渠道「${channelName}」不可用`),
       severity: 'error',
       details: parseChannelUnavailableContent(content),
     };
@@ -350,8 +350,8 @@ export function parseNotification(input: {
 
   // Fallback: unknown notification shape — show raw text, still useful
   return {
-    categoryLabel: '系统通知',
-    summary: subject || '无主题',
+    categoryLabel: t("系统通知"),
+    summary: subject || t("无主题"),
     severity: isError ? 'error' : 'info',
     details: content
       ? content.split('\n').filter((l) => l.trim()).map((l) => ({ label: '', value: l.trim() }))

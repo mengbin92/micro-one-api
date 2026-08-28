@@ -1,4 +1,4 @@
-export interface SSEEvent {
+import { t } from '@/lib/i18n';export interface SSEEvent {
   data: string;
   raw: string;
 }
@@ -65,7 +65,7 @@ export async function* parseSSEStream(stream: ReadableStream<Uint8Array>): Async
       boundary = buffer.indexOf('\n\n');
     }
     if (bufferBytes > MAX_SSE_EVENT_BYTES) {
-      throw new SSEProtocolError('SSE 单个事件超过 2 MiB 限制');
+      throw new SSEProtocolError(t("SSE 单个事件超过 2 MiB 限制"));
     }
     return events;
   };

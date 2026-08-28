@@ -34,6 +34,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { ModelMultiSelect } from '@/components/admin/ModelMultiSelect';
+import { locale, t } from '@/lib/i18n';
 
 interface Channel {
   id: string;
@@ -590,7 +591,7 @@ export function AdminChannelsPage() {
                         {channelHealthFailures(ch) > 0 && (
                           <span className="text-xs text-muted-foreground">
                             {channelHealthFailures(ch)} failures
-                            {channelCircuitUntil(ch) > 0 ? ` · until ${new Date(channelCircuitUntil(ch) * 1000).toLocaleString()}` : ''}
+                            {channelCircuitUntil(ch) > 0 ? ` · until ${new Date(channelCircuitUntil(ch) * 1000).toLocaleString(locale())}` : ''}
                           </span>
                         )}
                         {channelHealthError(ch) && <span className="max-w-48 truncate text-xs text-muted-foreground">{channelHealthError(ch)}</span>}
@@ -647,7 +648,7 @@ export function AdminChannelsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          if (confirm(`确认删除渠道「${ch.name}」？此操作不可撤销。`)) {
+                          if (confirm(t(`确认删除渠道「${ch.name}」？此操作不可撤销。`))) {
                             deleteChannelMutation.mutate(ch.id);
                           }
                         }}

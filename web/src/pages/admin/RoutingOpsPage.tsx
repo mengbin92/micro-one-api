@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { locale, t } from '@/lib/i18n';
 
 // ── Types matching the /api/admin/routing-ops response ──────────────────────
 
@@ -121,11 +122,11 @@ export function RoutingOpsPage() {
     return (
       <div className="space-y-4">
         <EmptyState
-          title="无法加载路由运营数据"
-          description={error ? String(error) : '请检查后端服务状态'}
+          title={t("无法加载路由运营数据")}
+          description={error ? String(error) : t("请检查后端服务状态")}
         />
         <div className="flex justify-center">
-          <Button variant="outline" onClick={() => refetch()}>重试</Button>
+          <Button variant="outline" onClick={() => refetch()}>{t("重试")}</Button>
         </div>
       </div>
     );
@@ -148,15 +149,12 @@ export function RoutingOpsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">路由运营视图</h1>
-          <p className="text-sm text-muted-foreground">
-            跨来源流量、成本与告警（窗口：{data.window.start ? new Date(data.window.start * 1000).toLocaleString() : '-'} —{' '}
-            {data.window.end ? new Date(data.window.end * 1000).toLocaleString() : '-'})
+          <h1 className="text-2xl font-bold">{t("路由运营视图")}</h1>
+          <p className="text-sm text-muted-foreground">{t("跨来源流量、成本与告警（窗口：")}{data.window.start ? new Date(data.window.start * 1000).toLocaleString(locale()) : '-'} —{' '}
+            {data.window.end ? new Date(data.window.end * 1000).toLocaleString(locale()) : '-'})
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          刷新
-        </Button>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>{t("刷新")}</Button>
       </div>
 
       {/* Dependency errors banner */}
@@ -166,7 +164,7 @@ export function RoutingOpsPage() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-yellow-500" />
               <div className="space-y-1">
-                <p className="font-medium text-yellow-700 dark:text-yellow-400">部分数据加载失败</p>
+                <p className="font-medium text-yellow-700 dark:text-yellow-400">{t("部分数据加载失败")}</p>
                 <ul className="text-sm text-muted-foreground">
                   {data.errors.map((e, i) => (
                     <li key={i}>{e}</li>
@@ -210,39 +208,38 @@ export function RoutingOpsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">总请求数</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("总请求数")}</CardTitle>
             <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatNumber(totals.count)}</div>
-            <p className="text-xs text-muted-foreground">
-              渠道 {channelShare}% · 订阅 {subShare}%
+            <p className="text-xs text-muted-foreground">{t("渠道")}{channelShare}{t("% · 订阅")}{subShare}%
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">收入</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("收入")}</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatQuotaAsUSD(totals.quota)}</div>
-            <p className="text-xs text-muted-foreground">用户扣费总额</p>
+            <p className="text-xs text-muted-foreground">{t("用户扣费总额")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">上游成本</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("上游成本")}</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatQuotaAsUSD(totals.upstream_cost)}</div>
-            <p className="text-xs text-muted-foreground">供应商采购成本</p>
+            <p className="text-xs text-muted-foreground">{t("供应商采购成本")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">毛利</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("毛利")}</CardTitle>
             <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -254,7 +251,7 @@ export function RoutingOpsPage() {
             >
               {formatQuotaAsUSD(totals.gross_profit)}
             </div>
-            <p className="text-xs text-muted-foreground">收入 − 上游成本</p>
+            <p className="text-xs text-muted-foreground">{t("收入 − 上游成本")}</p>
           </CardContent>
         </Card>
       </div>
@@ -264,17 +261,17 @@ export function RoutingOpsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">总选择数</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("总选择数")}</CardTitle>
               <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{formatNumber(data.rates.selection_total)}</div>
-              <p className="text-xs text-muted-foreground">进程启动至今累计</p>
+              <p className="text-xs text-muted-foreground">{t("进程启动至今累计")}</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">成功率</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("成功率")}</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -283,14 +280,13 @@ export function RoutingOpsPage() {
                   ? ((data.rates.success_total / data.rates.selection_total) * 100).toFixed(1) + '%'
                   : 'N/A'}
               </div>
-              <p className="text-xs text-muted-foreground">
-                成功 {formatNumber(data.rates.success_total)} / {formatNumber(data.rates.selection_total)}
+              <p className="text-xs text-muted-foreground">{t("成功")}{formatNumber(data.rates.success_total)} / {formatNumber(data.rates.selection_total)}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">错误率</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("错误率")}</CardTitle>
               <ShieldAlert className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -302,14 +298,12 @@ export function RoutingOpsPage() {
               >
                 {(data.rates.error_rate * 100).toFixed(1)}%
               </div>
-              <p className="text-xs text-muted-foreground">
-                错误 {formatNumber(data.rates.error_total + data.rates.client_error_total)} 次
-              </p>
+              <p className="text-xs text-muted-foreground">{t("错误")}{formatNumber(data.rates.error_total + data.rates.client_error_total)}{t("次")}</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">回退率</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("回退率")}</CardTitle>
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -321,9 +315,7 @@ export function RoutingOpsPage() {
               >
                 {(data.rates.fallback_rate * 100).toFixed(1)}%
               </div>
-              <p className="text-xs text-muted-foreground">
-                来源切换 {formatNumber(data.rates.fallback_total)} 次
-              </p>
+              <p className="text-xs text-muted-foreground">{t("来源切换")}{formatNumber(data.rates.fallback_total)}{t("次")}</p>
             </CardContent>
           </Card>
         </div>
@@ -333,30 +325,28 @@ export function RoutingOpsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>来源明细</span>
+            <span>{t("来源明细")}</span>
             {data.truncated && (
-              <span className="text-xs font-normal text-yellow-500">
-                仅显示前 200 条（已截断，合计使用全局数据）
-              </span>
+              <span className="text-xs font-normal text-yellow-500">{t("仅显示前 200 条（已截断，合计使用全局数据）")}</span>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {sources.length === 0 ? (
             <EmptyState
-              title="无流量数据"
-              description="当前时间窗口内没有路由记录"
+              title={t("无流量数据")}
+              description={t("当前时间窗口内没有路由记录")}
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>来源类型</TableHead>
-                  <TableHead>来源 ID</TableHead>
-                  <TableHead className="text-right">请求数</TableHead>
-                  <TableHead className="text-right">收入</TableHead>
-                  <TableHead className="text-right">上游成本</TableHead>
-                  <TableHead className="text-right">毛利</TableHead>
+                  <TableHead>{t("来源类型")}</TableHead>
+                  <TableHead>{t("来源 ID")}</TableHead>
+                  <TableHead className="text-right">{t("请求数")}</TableHead>
+                  <TableHead className="text-right">{t("收入")}</TableHead>
+                  <TableHead className="text-right">{t("上游成本")}</TableHead>
+                  <TableHead className="text-right">{t("毛利")}</TableHead>
                   <TableHead className="text-right">Prompt</TableHead>
                   <TableHead className="text-right">Completion</TableHead>
                 </TableRow>
@@ -373,7 +363,7 @@ export function RoutingOpsPage() {
                             : 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
                         )}
                       >
-                        {src.source_kind === 'channel' ? '渠道' : '订阅'}
+                        {src.source_kind === 'channel' ? t("渠道") : t("订阅")}
                       </span>
                     </TableCell>
                     <TableCell>{src.source_id}</TableCell>

@@ -1,4 +1,4 @@
-export interface ModelDraft {
+import { t } from '@/lib/i18n';export interface ModelDraft {
   modelId: string;
   displayName: string;
   description: string;
@@ -85,6 +85,6 @@ export function validateMetadata(metadata: string): string | null {
     JSON.parse(metadata);
     return null;
   } catch {
-    return '元数据不是有效的 JSON 格式';
+    return t("元数据不是有效的 JSON 格式");
   }
 }

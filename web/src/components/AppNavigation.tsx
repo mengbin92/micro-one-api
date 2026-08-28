@@ -15,7 +15,6 @@ import {
   KeyRound,
   Layers,
   LayoutDashboard,
-  Languages,
   LogOut,
   MonitorCog,
   Package,
@@ -35,12 +34,14 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { MobileNav } from '@/components/MobileNav';
 import { NotificationPanel } from '@/components/NotificationPanel';
+import { LanguageToggle } from '@/components/LanguageToggle';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { apiClient } from '@/lib/api';
 import { canAccessAdmin } from '@/lib/admin-access';
 import { unwrapApiData } from '@/lib/api-response';
 import { formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
+import { t } from '@/lib/i18n';
 
 interface NavItem {
   to: string;
@@ -168,7 +169,7 @@ function NavigationLinks({
             onClick={onNavigate}
           >
             <Icon className="size-5" />
-            <span aria-hidden="true">{link.label}</span>
+            <span aria-hidden="true">{t(link.label)}</span>
           </NavLink>
         );
       })}
@@ -184,11 +185,9 @@ function SecondaryLinks({ onNavigate }: { onNavigate?: () => void }) {
         const content = (
           <>
             <Icon className="size-5" />
-            <span className="min-w-0 flex-1">{item.label}</span>
+            <span className="min-w-0 flex-1">{t(item.label)}</span>
             {!item.to && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                开发中
-              </span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{t("开发中")}</span>
             )}
           </>
         );
@@ -218,7 +217,7 @@ function SecondaryLinks({ onNavigate }: { onNavigate?: () => void }) {
             key={item.label}
             type="button"
             disabled
-            title="开发中"
+            title={t("开发中")}
             className="flex h-11 w-full cursor-not-allowed items-center gap-3 rounded-2xl px-4 text-left text-sm font-medium text-muted-foreground opacity-75"
           >
             {content}
@@ -243,8 +242,8 @@ export function AppNavigation() {
   const isWide = useMediaQuery('(min-width: 768px)');
   const isAdmin = canAccessAdmin({ role });
   const effectiveMobileOpen = !isWide && mobileOpen;
-  const currentTitle = routeTitles[location.pathname] ?? '仪表盘';
-  const displayName = user?.display_name || user?.username || '用户';
+  const currentTitle = t(routeTitles[location.pathname] ?? '仪表盘');
+  const displayName = user?.display_name || user?.username || t("用户");
   const initials = useMemo(() => displayName.slice(0, 2).toUpperCase(), [displayName]);
 
   useEffect(() => {
@@ -286,10 +285,8 @@ export function AppNavigation() {
   };
 
   const adminControl = isAdmin ? (
-    <Link to="/admin" aria-label="进入管理" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-      <MonitorCog className="size-4" />
-      进入管理
-    </Link>
+    <Link to="/admin" aria-label={t("进入管理")} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+      <MonitorCog className="size-4" />{t("进入管理")}</Link>
   ) : null;
 
   const sidebar = (
@@ -305,15 +302,15 @@ export function AppNavigation() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-6">
-        <p className="mb-3 px-4 text-xs font-medium text-muted-foreground">核心功能</p>
+        <p className="mb-3 px-4 text-xs font-medium text-muted-foreground">{t("核心功能")}</p>
         <NavigationLinks items={userLinks} onNavigate={() => setMobileOpen(false)} />
 
-        <p className="mb-3 mt-7 px-4 text-xs font-medium text-muted-foreground">钱包 & 活动</p>
+        <p className="mb-3 mt-7 px-4 text-xs font-medium text-muted-foreground">{t("钱包 & 活动")}</p>
         <SecondaryLinks onNavigate={() => setMobileOpen(false)} />
 
         {isAdmin && (
           <>
-            <p className="mb-3 mt-7 px-4 text-xs font-medium text-muted-foreground">管理后台</p>
+            <p className="mb-3 mt-7 px-4 text-xs font-medium text-muted-foreground">{t("管理后台")}</p>
             <NavigationLinks items={adminLinks} onNavigate={() => setMobileOpen(false)} />
           </>
         )}
@@ -326,8 +323,8 @@ export function AppNavigation() {
         >
           <ChevronsLeft className="size-5" />
           <span>
-            <span className="block text-foreground">收起侧边栏</span>
-            <span className="block text-xs font-medium text-muted-foreground">为内容保留更多空间</span>
+            <span className="block text-foreground">{t("收起侧边栏")}</span>
+            <span className="block text-xs font-medium text-muted-foreground">{t("为内容保留更多空间")}</span>
           </span>
         </button>
       </div>
@@ -353,10 +350,7 @@ export function AppNavigation() {
           </h1>
 
           <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
-            <Button type="button" variant="outline" size="sm" className="hidden gap-2 sm:inline-flex">
-              <Languages className="size-4" />
-              CN ZH
-            </Button>
+            <LanguageToggle className="gap-2" />
             <div className="hidden h-10 items-center gap-2 rounded-2xl bg-emerald-50 px-4 text-sm font-semibold text-emerald-600 sm:flex dark:bg-emerald-500/10 dark:text-emerald-300">
               <WalletCards className="size-4" />
               {formatBalance(account?.balance)}
@@ -375,7 +369,7 @@ export function AppNavigation() {
                 <span className="block max-w-36 truncate text-sm font-semibold text-foreground">
                   {displayName}
                 </span>
-                <span className="block text-xs font-medium text-muted-foreground">控制台用户</span>
+                <span className="block text-xs font-medium text-muted-foreground">{t("控制台用户")}</span>
               </span>
             </button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Logout" onClick={handleLogout}>

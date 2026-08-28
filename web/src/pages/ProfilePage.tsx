@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { User, Mail, Shield, Users, Save, X } from 'lucide-react';
+import { t } from '@/lib/i18n';
 
 interface UserProfile {
   id: number;
@@ -65,28 +66,28 @@ export function ProfilePage() {
       }
       if (password) {
         if (password !== confirmPassword) {
-          throw new Error('两次输入的密码不一致');
+          throw new Error(t("两次输入的密码不一致"));
         }
         if (password.length < 8) {
-          throw new Error('密码长度不能少于8位');
+          throw new Error(t("密码长度不能少于8位"));
         }
         payload.password = password;
       }
       if (Object.keys(payload).length === 0) {
-        throw new Error('没有需要更新的内容');
+        throw new Error(t("没有需要更新的内容"));
       }
       const res = await apiClient.put('/user/self', payload);
       return unwrapApiData(res.data);
     },
     onSuccess: () => {
-      toast.success('个人资料已更新');
+      toast.success(t("个人资料已更新"));
       setEditing(false);
       setPassword('');
       setConfirmPassword('');
       queryClient.invalidateQueries({ queryKey: ['user-self'] });
     },
     onError: (error: Error) => {
-      toast.error(error.message || '更新失败');
+      toast.error(error.message || t("更新失败"));
     },
   });
 
@@ -107,40 +108,36 @@ export function ProfilePage() {
 
   if (!user) {
     return (
-      <div className="text-center py-12 text-slate-500">无法加载用户信息</div>
+      <div className="text-center py-12 text-slate-500">{t("无法加载用户信息")}</div>
     );
   }
 
-  const roleLabel = ROLE_LABELS[user.role] || `角色 ${user.role}`;
+  const roleLabel = t(ROLE_LABELS[user.role] || `角色 ${user.role}`);
 
   const startOAuthBind = async (path: string) => {
     try {
       const res = await apiClient.get(path);
-      const data = unwrapApiData<{ auth_url?: string }>(res.data, '发起绑定失败');
+      const data = unwrapApiData<{ auth_url?: string }>(res.data, t("发起绑定失败"));
       if (!data.auth_url) {
-        throw new Error('发起绑定失败');
+        throw new Error(t("发起绑定失败"));
       }
       redirectToURL(data.auth_url);
     } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, '发起绑定失败'));
+      toast.error(getApiErrorMessage(err, t("发起绑定失败")));
     }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">
-          个人资料
-        </h2>
+        <h2 className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">{t("个人资料")}</h2>
         {!editing ? (
           <Button
             onClick={() => {
               setDisplayName(user.display_name || '');
               setEditing(true);
             }}
-          >
-            编辑资料
-          </Button>
+          >{t("编辑资料")}</Button>
         ) : (
           <div className="flex gap-2">
             <Button
@@ -152,15 +149,13 @@ export function ProfilePage() {
                 setConfirmPassword('');
               }}
             >
-              <X className="size-4 mr-1" />
-              取消
-            </Button>
+              <X className="size-4 mr-1" />{t("取消")}</Button>
             <Button
               onClick={() => updateMutation.mutate()}
               disabled={updateMutation.isPending}
             >
               <Save className="size-4 mr-1" />
-              {updateMutation.isPending ? '保存中...' : '保存'}
+              {updateMutation.isPending ? t("保存中...") : t("保存")}
             </Button>
           </div>
         )}
@@ -169,9 +164,7 @@ export function ProfilePage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <Card>
           <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
-            <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">
-              基本信息
-            </CardTitle>
+            <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">{t("基本信息")}</CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-5">
             <div className="flex items-center gap-4">
@@ -194,9 +187,7 @@ export function ProfilePage() {
               <div className="flex items-center gap-3">
                 <User className="size-5 text-slate-400" />
                 <div className="flex-1">
-                  <Label className="text-xs font-bold text-slate-400">
-                    用户名
-                  </Label>
+                  <Label className="text-xs font-bold text-slate-400">{t("用户名")}</Label>
                   <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {user.username}
                   </div>
@@ -206,14 +197,12 @@ export function ProfilePage() {
               <div className="flex items-center gap-3">
                 <User className="size-5 text-slate-400" />
                 <div className="flex-1">
-                  <Label className="text-xs font-bold text-slate-400">
-                    显示名称
-                  </Label>
+                  <Label className="text-xs font-bold text-slate-400">{t("显示名称")}</Label>
                   {editing ? (
                     <Input
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="输入显示名称"
+                      placeholder={t("输入显示名称")}
                       className="mt-1"
                     />
                   ) : (
@@ -227,9 +216,7 @@ export function ProfilePage() {
               <div className="flex items-center gap-3">
                 <Mail className="size-5 text-slate-400" />
                 <div className="flex-1">
-                  <Label className="text-xs font-bold text-slate-400">
-                    邮箱
-                  </Label>
+                  <Label className="text-xs font-bold text-slate-400">{t("邮箱")}</Label>
                   <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {user.email || '—'}
                   </div>
@@ -239,9 +226,7 @@ export function ProfilePage() {
               <div className="flex items-center gap-3">
                 <Shield className="size-5 text-slate-400" />
                 <div className="flex-1">
-                  <Label className="text-xs font-bold text-slate-400">
-                    角色
-                  </Label>
+                  <Label className="text-xs font-bold text-slate-400">{t("角色")}</Label>
                   <div className="mt-1">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
                       {roleLabel}
@@ -253,9 +238,7 @@ export function ProfilePage() {
               <div className="flex items-center gap-3">
                 <Users className="size-5 text-slate-400" />
                 <div className="flex-1">
-                  <Label className="text-xs font-bold text-slate-400">
-                    分组
-                  </Label>
+                  <Label className="text-xs font-bold text-slate-400">{t("分组")}</Label>
                   <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {user.group || 'default'}
                   </div>
@@ -265,30 +248,24 @@ export function ProfilePage() {
 
             {editing && (
               <div className="pt-4 border-t border-slate-100 dark:border-white/10 space-y-4">
-                <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400">
-                  修改密码（可选）
-                </h3>
+                <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400">{t("修改密码（可选）")}</h3>
                 <div>
-                  <Label className="text-xs font-bold text-slate-400">
-                    新密码
-                  </Label>
+                  <Label className="text-xs font-bold text-slate-400">{t("新密码")}</Label>
                   <Input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="留空则不修改密码"
+                    placeholder={t("留空则不修改密码")}
                     className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-bold text-slate-400">
-                    确认新密码
-                  </Label>
+                  <Label className="text-xs font-bold text-slate-400">{t("确认新密码")}</Label>
                   <Input
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="再次输入新密码"
+                    placeholder={t("再次输入新密码")}
                     className="mt-1"
                   />
                 </div>
@@ -300,9 +277,7 @@ export function ProfilePage() {
         <div className="space-y-6">
           <Card>
             <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
-              <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">
-                第三方账号
-              </CardTitle>
+              <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">{t("第三方账号")}</CardTitle>
             </CardHeader>
             <CardContent className="p-6">
               <div className="grid grid-cols-2 gap-2">
@@ -312,8 +287,7 @@ export function ProfilePage() {
                     type="button"
                     variant="outline"
                     onClick={() => provider.bindPath && void startOAuthBind(provider.bindPath)}
-                  >
-                    绑定{provider.label}
+                  >{t("绑定")}{t(provider.label)}
                   </Button>
                 ))}
               </div>
@@ -322,25 +296,23 @@ export function ProfilePage() {
 
           <Card>
             <CardHeader className="border-b border-slate-100 p-6 dark:border-white/10">
-              <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">
-                账户概览
-              </CardTitle>
+              <CardTitle className="text-xl font-black tracking-normal text-slate-950 dark:text-white">{t("账户概览")}</CardTitle>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
               <div>
-                <div className="text-xs font-bold text-slate-400">钱包余额</div>
+                <div className="text-xs font-bold text-slate-400">{t("钱包余额")}</div>
                 <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
                   {formatAmount(dashboard?.balance ?? 0)}
                 </div>
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-400">已用金额</div>
+                <div className="text-xs font-bold text-slate-400">{t("已用金额")}</div>
                 <div className="text-lg font-black text-slate-700 dark:text-slate-200">
                   {formatAmount(dashboard?.used_amount ?? 0)}
                 </div>
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-400">用户 ID</div>
+                <div className="text-xs font-bold text-slate-400">{t("用户 ID")}</div>
                 <div className="text-sm font-mono font-semibold text-slate-500">
                   {user.id}
                 </div>

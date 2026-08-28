@@ -2,6 +2,7 @@ import { Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { usePreference } from '@/hooks/usePreference';
+import { t } from '@/lib/i18n';
 
 type Theme = 'light' | 'dark';
 
@@ -22,6 +23,7 @@ export function ThemeToggle() {
   }, [theme]);
 
   const nextTheme = theme === 'dark' ? 'light' : 'dark';
+  const nextThemeLabel = nextTheme === 'dark' ? t('切换至深色模式') : t('切换至浅色模式');
 
   return (
     <Button
@@ -29,8 +31,8 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       className="rounded-full"
-      aria-label={`Switch to ${nextTheme} mode`}
-      title={`Switch to ${nextTheme} mode`}
+      aria-label={nextThemeLabel}
+      title={nextThemeLabel}
       onClick={() => setTheme(nextTheme)}
     >
       {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}

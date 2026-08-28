@@ -55,6 +55,7 @@ import {
 } from '@/components/ui/dialog';
 import { ModelDetailPanel } from './ModelDetailPanel';
 import { ModelExchangeDialog } from '@/components/admin/ModelExchangeDialog';
+import { t } from '@/lib/i18n';
 
 function draftToCreatePayload(draft: ModelDraft): CreateModelPayload {
   return {
@@ -199,60 +200,60 @@ export function AdminModelsPage() {
   const createMutation = useMutation({
     mutationFn: (payload: CreateModelPayload) => createModel(payload),
     onSuccess: (resp) => {
-      if (!resp.success) { toast.error(resp.message || '创建失败'); return; }
-      toast.success('模型已创建');
+      if (!resp.success) { toast.error(resp.message || t("创建失败")); return; }
+      toast.success(t("模型已创建"));
       setIsCreateOpen(false);
       invalidateModels();
     },
-    onError: (err: unknown) => toast.error((err as Error).message || '创建失败'),
+    onError: (err: unknown) => toast.error((err as Error).message || t("创建失败")),
   });
 
   const updateMutation = useMutation({
     mutationFn: (payload: UpdateModelPayload) => updateModel(payload),
     onSuccess: (resp) => {
-      if (!resp.success) { toast.error(resp.message || '更新失败'); return; }
-      toast.success('模型已更新');
+      if (!resp.success) { toast.error(resp.message || t("更新失败")); return; }
+      toast.success(t("模型已更新"));
       setEditingModel(null);
       invalidateModels();
     },
-    onError: (err: unknown) => toast.error((err as Error).message || '更新失败'),
+    onError: (err: unknown) => toast.error((err as Error).message || t("更新失败")),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (pk: number) => deleteModel(pk),
     onSuccess: (resp) => {
-      if (!resp.success) { toast.error(resp.message || '删除失败'); return; }
-      toast.success('模型已删除');
+      if (!resp.success) { toast.error(resp.message || t("删除失败")); return; }
+      toast.success(t("模型已删除"));
       invalidateModels();
     },
-    onError: (err: unknown) => toast.error((err as Error).message || '删除失败'),
+    onError: (err: unknown) => toast.error((err as Error).message || t("删除失败")),
   });
 
   const toggleStatusMutation = useMutation({
     mutationFn: ({ pk, status }: { pk: number; status: number }) => changeModelStatus(pk, status),
     onSuccess: (resp) => {
-      if (!resp.success) { toast.error(resp.message || '状态更新失败'); return; }
-      toast.success('状态已更新');
+      if (!resp.success) { toast.error(resp.message || t("状态更新失败")); return; }
+      toast.success(t("状态已更新"));
       invalidateModels();
     },
-    onError: (err: unknown) => toast.error((err as Error).message || '状态更新失败'),
+    onError: (err: unknown) => toast.error((err as Error).message || t("状态更新失败")),
   });
 
   const batchMutation = useMutation({
     mutationFn: (payload: { action: 'enable' | 'disable' | 'delete'; model_pks: number[] }) =>
       batchModels(payload),
     onSuccess: (resp) => {
-      if (!resp.success) { toast.error(resp.message || '批量操作失败'); return; }
-      toast.success('已处理 ' + resp.affected + ' 个模型');
+      if (!resp.success) { toast.error(resp.message || t("批量操作失败")); return; }
+      toast.success(t("已处理 ") + resp.affected + t(" 个模型"));
       setSelectedPks(new Set());
       invalidateModels();
     },
-    onError: (err: unknown) => toast.error((err as Error).message || '批量操作失败'),
+    onError: (err: unknown) => toast.error((err as Error).message || t("批量操作失败")),
   });
 
   const handleCreate = () => {
     if (!createDraft.modelId.trim() || !createDraft.displayName.trim()) {
-      toast.error('模型 ID 和显示名称不能为空');
+      toast.error(t("模型 ID 和显示名称不能为空"));
       return;
     }
     const metadataError = validateMetadata(createDraft.metadata);
@@ -269,8 +270,8 @@ export function AdminModelsPage() {
 
   const handleDelete = (pk: number) => {
     setConfirmState({
-      title: '删除模型',
-      message: '确认删除此模型？相关映射将一并删除。',
+      title: t("删除模型"),
+      message: t("确认删除此模型？相关映射将一并删除。"),
       onConfirm: () => { deleteMutation.mutate(pk); setConfirmState(null); },
     });
   };
@@ -293,11 +294,11 @@ export function AdminModelsPage() {
   };
 
   const handleBatch = (action: 'enable' | 'disable' | 'delete') => {
-    if (selectedPks.size === 0) { toast.error('请先选择模型'); return; }
+    if (selectedPks.size === 0) { toast.error(t("请先选择模型")); return; }
     if (action === 'delete') {
       setConfirmState({
-        title: '批量删除',
-        message: '确认批量删除 ' + selectedPks.size + ' 个模型？',
+        title: t("批量删除"),
+        message: t("确认批量删除 ") + selectedPks.size + t(" 个模型？"),
         onConfirm: () => {
           batchMutation.mutate({ action, model_pks: [...selectedPks] });
           setConfirmState(null);
@@ -315,7 +316,7 @@ export function AdminModelsPage() {
       const detail = await getModel(model.id);
       setEditingModel({ pk: model.id, draft: modelInfoToDraft(detail.model) });
     } catch (err) {
-      toast.error((err as Error).message || '加载模型详情失败');
+      toast.error((err as Error).message || t("加载模型详情失败"));
       setEditingModel(null);
     } finally {
       setEditLoading(false);
@@ -329,26 +330,20 @@ export function AdminModelsPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">模型管理</h2>
-          <p className="text-sm text-muted-foreground">
-            统一管理所有可用模型，支持启用/禁用、分组和映射
-          </p>
+          <h2 className="text-2xl font-bold">{t("模型管理")}</h2>
+          <p className="text-sm text-muted-foreground">{t("统一管理所有可用模型，支持启用/禁用、分组和映射")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setExchangeOpen(true)}>
-            <Download className="size-4" />
-            导入/导出
-          </Button>
+            <Download className="size-4" />{t("导入/导出")}</Button>
           <Button onClick={() => { setCreateDraft(emptyDraft); setIsCreateOpen(true); }}>
-            <Plus className="size-4" />
-            新建模型
-          </Button>
+            <Plus className="size-4" />{t("新建模型")}</Button>
         </div>
       </div>
 
       <AdminTableToolbar
         search={search}
-        searchPlaceholder="搜索模型 ID 或名称…"
+        searchPlaceholder={t("搜索模型 ID 或名称…")}
         onSearchChange={setSearch}
         onClear={clearSearch}
         actions={
@@ -357,63 +352,61 @@ export function AdminModelsPage() {
               value={statusFilter}
               onChange={(e) => setFilter('status', e.target.value)}
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
-              aria-label="状态筛选"
+              aria-label={t("状态筛选")}
             >
               {STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
             </select>
             <select
               value={typeFilter}
               onChange={(e) => setFilter('model_type', e.target.value)}
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
-              aria-label="类型筛选"
+              aria-label={t("类型筛选")}
             >
               {TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
             </select>
             <select
               value={providerFilter}
               onChange={(e) => setFilter('provider', e.target.value)}
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
-              aria-label="模型开发商筛选"
+              aria-label={t("模型开发商筛选")}
             >
-              <option value="">全部开发商</option>
+              <option value="">{t("全部开发商")}</option>
               {PROVIDER_OPTIONS.filter((o) => o.value).map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
             </select>
             <select
               value={categoryFilter}
               onChange={(e) => setFilter('category', e.target.value)}
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
-              aria-label="分类筛选"
+              aria-label={t("分类筛选")}
             >
               {CATEGORY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
             </select>
             <select
               value={tierFilter}
               onChange={(e) => setFilter('tier', e.target.value)}
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
-              aria-label="等级筛选"
+              aria-label={t("等级筛选")}
             >
-              <option value="">全部等级</option>
+              <option value="">{t("全部等级")}</option>
               {TIER_OPTIONS.filter((o) => o.value).map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
             </select>
             {selectedPks.size > 0 && (
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">已选 {selectedPks.size} 个</span>
-                <Button variant="outline" size="sm" onClick={() => handleBatch('enable')}>启用</Button>
-                <Button variant="outline" size="sm" onClick={() => handleBatch('disable')}>禁用</Button>
+                <span className="text-sm text-muted-foreground">{t("已选")}{selectedPks.size}{t("个")}</span>
+                <Button variant="outline" size="sm" onClick={() => handleBatch('enable')}>{t("启用")}</Button>
+                <Button variant="outline" size="sm" onClick={() => handleBatch('disable')}>{t("禁用")}</Button>
                 <Button variant="outline" size="sm" onClick={() => handleBatch('delete')}>
-                  <Trash2 className="size-3.5" />
-                  删除
-                </Button>
+                  <Trash2 className="size-3.5" />{t("删除")}</Button>
               </div>
             )}
           </div>
@@ -421,9 +414,9 @@ export function AdminModelsPage() {
       />
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', '模型', '供应商', '模型开发商', '类型', '状态', '渠道', '订阅', '操作']} />
+        <TableSkeleton columns={['ID', t("模型"), t("供应商"), t("模型开发商"), t("类型"), t("状态"), t("渠道"), t("订阅"), t("操作")]} />
       ) : sortedModels.length === 0 ? (
-        <EmptyState title="暂无模型" description="点击右上角新建模型开始管理" />
+        <EmptyState title={t("暂无模型")} description={t("点击右上角新建模型开始管理")} />
       ) : (
         <>
           <div className="overflow-x-auto rounded-lg border">
@@ -436,31 +429,21 @@ export function AdminModelsPage() {
                       checked={selectedPks.size === sortedModels.length && sortedModels.length > 0}
                       onChange={toggleSelectAll}
                       className="size-4 rounded border-input"
-                      aria-label="全选"
+                      aria-label={t("全选")}
                     />
                   </TableHead>
                   <SortableHeader<ModelSummary> columnKey="id" sort={sort} onSortChange={setSort} className="font-mono text-sm">
                     ID
                   </SortableHeader>
-                  <SortableHeader<ModelSummary> columnKey="model_id" sort={sort} onSortChange={setSort}>
-                    模型 ID
-                  </SortableHeader>
-                  <SortableHeader<ModelSummary> columnKey="display_name" sort={sort} onSortChange={setSort}>
-                    显示名称
-                  </SortableHeader>
-                  <TableHead>供应商</TableHead>
-                  <SortableHeader<ModelSummary> columnKey="provider" sort={sort} onSortChange={setSort}>
-                    模型开发商
-                  </SortableHeader>
-                  <SortableHeader<ModelSummary> columnKey="model_type" sort={sort} onSortChange={setSort} className="hidden md:table-cell">
-                    类型
-                  </SortableHeader>
-                  <SortableHeader<ModelSummary> columnKey="status" sort={sort} onSortChange={setSort}>
-                    状态
-                  </SortableHeader>
-                  <TableHead className="hidden lg:table-cell">渠道数</TableHead>
-                  <TableHead className="hidden lg:table-cell">订阅数</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <SortableHeader<ModelSummary> columnKey="model_id" sort={sort} onSortChange={setSort}>{t("模型 ID")}</SortableHeader>
+                  <SortableHeader<ModelSummary> columnKey="display_name" sort={sort} onSortChange={setSort}>{t("显示名称")}</SortableHeader>
+                  <TableHead>{t("供应商")}</TableHead>
+                  <SortableHeader<ModelSummary> columnKey="provider" sort={sort} onSortChange={setSort}>{t("模型开发商")}</SortableHeader>
+                  <SortableHeader<ModelSummary> columnKey="model_type" sort={sort} onSortChange={setSort} className="hidden md:table-cell">{t("类型")}</SortableHeader>
+                  <SortableHeader<ModelSummary> columnKey="status" sort={sort} onSortChange={setSort}>{t("状态")}</SortableHeader>
+                  <TableHead className="hidden lg:table-cell">{t("渠道数")}</TableHead>
+                  <TableHead className="hidden lg:table-cell">{t("订阅数")}</TableHead>
+                  <TableHead className="text-right">{t("操作")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -472,7 +455,7 @@ export function AdminModelsPage() {
                         checked={selectedPks.has(m.id)}
                         onChange={() => toggleSelect(m.id)}
                         className="size-4 rounded border-input"
-                        aria-label={'选择 ' + m.model_id}
+                        aria-label={t("选择 ") + m.model_id}
                       />
                     </TableCell>
                     <TableCell className="font-mono text-sm">{m.id}</TableCell>
@@ -483,27 +466,23 @@ export function AdminModelsPage() {
                     <TableCell className="hidden md:table-cell">{m.model_type || '—'}</TableCell>
                     <TableCell>
                       <span className={'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ' + statusBadgeClass(m.status)}>
-                        {MODEL_STATUS_LABELS[m.status] ?? String(m.status)}
+                        {t(MODEL_STATUS_LABELS[m.status] ?? String(m.status))}
                       </span>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">{m.channel_count}</TableCell>
                     <TableCell className="hidden lg:table-cell">{m.subscription_count}</TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="sm" onClick={() => setDetailModelPk(m.id)}>
-                        <Eye className="size-3.5" />
-                        详情
-                      </Button>
+                        <Eye className="size-3.5" />{t("详情")}</Button>
                       <Button variant="outline" size="sm" onClick={() => openEdit(m)} disabled={editLoading}>
-                        <Pencil className="size-3.5" />
-                        编辑
-                      </Button>
+                        <Pencil className="size-3.5" />{t("编辑")}</Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => toggleStatusMutation.mutate({ pk: m.id, status: m.status === 1 ? 0 : 1 })}
                         disabled={toggleStatusMutation.isPending}
                       >
-                        {m.status === 1 ? '禁用' : '启用'}
+                        {m.status === 1 ? t("禁用") : t("启用")}
                       </Button>
                       <Button
                         variant="outline"
@@ -534,14 +513,14 @@ export function AdminModelsPage() {
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>新建模型</DialogTitle>
-            <DialogDescription>填写模型信息创建新的模型记录</DialogDescription>
+            <DialogTitle>{t("新建模型")}</DialogTitle>
+            <DialogDescription>{t("填写模型信息创建新的模型记录")}</DialogDescription>
           </DialogHeader>
           <ModelDraftFields draft={createDraft} onChange={(patch) => setCreateDraft((prev) => ({ ...prev, ...patch }))} />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>{t("取消")}</Button>
             <Button onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? '创建中…' : '创建'}
+              {createMutation.isPending ? t("创建中…") : t("创建")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -551,16 +530,16 @@ export function AdminModelsPage() {
       <Dialog open={!!editingModel} onOpenChange={(open) => { if (!open) setEditingModel(null); }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>编辑模型</DialogTitle>
+            <DialogTitle>{t("编辑模型")}</DialogTitle>
             <DialogDescription>{editingModel?.draft.modelId}</DialogDescription>
           </DialogHeader>
           {editingModel && (
             <ModelDraftFields draft={editingModel.draft} onChange={updateEditDraft} isEdit />
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingModel(null)}>取消</Button>
+            <Button variant="outline" onClick={() => setEditingModel(null)}>{t("取消")}</Button>
             <Button onClick={handleUpdate} disabled={updateMutation.isPending || editLoading}>
-              {editLoading ? '加载中…' : updateMutation.isPending ? '保存中…' : '保存'}
+              {editLoading ? t("加载中…") : updateMutation.isPending ? t("保存中…") : t("保存")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -570,12 +549,12 @@ export function AdminModelsPage() {
       <Dialog open={!!confirmState} onOpenChange={(open) => { if (!open) setConfirmState(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{confirmState?.title ?? '确认'}</DialogTitle>
+            <DialogTitle>{confirmState?.title ?? t("确认")}</DialogTitle>
             <DialogDescription>{confirmState?.message ?? ''}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmState(null)}>取消</Button>
-            <Button variant="destructive" onClick={() => confirmState?.onConfirm()}>确认</Button>
+            <Button variant="outline" onClick={() => setConfirmState(null)}>{t("取消")}</Button>
+            <Button variant="destructive" onClick={() => confirmState?.onConfirm()}>{t("确认")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

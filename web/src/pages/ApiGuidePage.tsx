@@ -17,6 +17,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { resolveRelayBaseUrl } from '@/lib/server-address';
+import { t } from '@/lib/i18n';
 
 // ---------------------------------------------------------------------------
 // Types & helpers
@@ -59,7 +60,7 @@ function CopyableCode({ code, language }: { code: string; language: string }) {
           aria-label="Copy code"
         >
           {copied ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
-          {copied ? '已复制' : '复制'}
+          {copied ? t("已复制") : t("复制")}
         </button>
       </div>
       <pre className="overflow-x-auto p-4 text-sm leading-relaxed text-slate-200">
@@ -87,33 +88,33 @@ function curlSnippets(baseUrl: string): CodeSnippet[] {
   const v1 = baseUrl.replace(/\/+$/, '');
   return [
     {
-      label: '列出模型',
+      label: t("列出模型"),
       language: 'bash',
       code: `curl ${v1}/v1/models \\
   -H "Authorization: Bearer $API_KEY"`,
     },
     {
-      label: '非流式对话',
+      label: t("非流式对话"),
       language: 'bash',
-      code: `curl -X POST ${v1}/v1/chat/completions \\
+      code: t(`curl -X POST ${v1}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer $API_KEY" \\
   -d '{
     "model": "gpt-4o-mini",
     "messages": [{"role": "user", "content": "你好"}]
-  }'`,
+  }'`),
     },
     {
-      label: '流式对话',
+      label: t("流式对话"),
       language: 'bash',
-      code: `curl -X POST ${v1}/v1/chat/completions \\
+      code: t(`curl -X POST ${v1}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer $API_KEY" \\
   -d '{
     "model": "gpt-4o-mini",
     "messages": [{"role": "user", "content": "讲个故事"}],
     "stream": true
-  }'`,
+  }'`),
     },
   ];
 }
@@ -122,14 +123,14 @@ function pythonSnippets(baseUrl: string): CodeSnippet[] {
   const v1 = `${baseUrl.replace(/\/+$/, '')}/v1`;
   return [
     {
-      label: '安装 SDK',
+      label: t("安装 SDK"),
       language: 'bash',
       code: `pip install openai`,
     },
     {
-      label: '非流式',
+      label: t("非流式"),
       language: 'python',
-      code: `from openai import OpenAI
+      code: t(`from openai import OpenAI
 
 client = OpenAI(
     api_key="<YOUR_API_KEY>",
@@ -140,20 +141,12 @@ response = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role": "user", "content": "你好"}],
 )
-print(response.choices[0].message.content)`,
+print(response.choices[0].message.content)`),
     },
     {
-      label: '流式',
+      label: t("流式"),
       language: 'python',
-      code: `stream = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "讲个故事"}],
-    stream=True,
-)
-for chunk in stream:
-    delta = chunk.choices[0].delta.content
-    if delta:
-        print(delta, end="", flush=True)`,
+      code: t("stream = client.chat.completions.create(\n    model=\"gpt-4o-mini\",\n    messages=[{\"role\": \"user\", \"content\": \"讲个故事\"}],\n    stream=True,\n)\nfor chunk in stream:\n    delta = chunk.choices[0].delta.content\n    if delta:\n        print(delta, end=\"\", flush=True)"),
     },
   ];
 }
@@ -162,14 +155,14 @@ function nodejsSnippets(baseUrl: string): CodeSnippet[] {
   const v1 = `${baseUrl.replace(/\/+$/, '')}/v1`;
   return [
     {
-      label: '安装 SDK',
+      label: t("安装 SDK"),
       language: 'bash',
       code: `npm install openai`,
     },
     {
-      label: '非流式',
+      label: t("非流式"),
       language: 'typescript',
-      code: `import OpenAI from "openai";
+      code: t(`import OpenAI from "openai";
 
 const client = new OpenAI({
   apiKey: "<YOUR_API_KEY>",
@@ -180,7 +173,7 @@ const response = await client.chat.completions.create({
   model: "gpt-4o-mini",
   messages: [{ role: "user", content: "你好" }],
 });
-console.log(response.choices[0].message.content);`,
+console.log(response.choices[0].message.content);`),
     },
   ];
 }
@@ -230,27 +223,27 @@ export CLAUDE_CODE_ATTRIBUTION_HEADER=0`;
 
   return [
     {
-      label: '方式一：环境变量（推荐）',
+      label: t("方式一：环境变量（推荐）"),
       language: shellLabel,
       code: shellCode,
       notes: [
-        '将环境变量加入 Shell 配置（~/.zshrc / ~/.bashrc）可实现持久化。',
-        'ANTHROPIC_BASE_URL 不要带 /v1 后缀，SDK 会自动拼接路径。',
+        t("将环境变量加入 Shell 配置（~/.zshrc / ~/.bashrc）可实现持久化。"),
+        t("ANTHROPIC_BASE_URL 不要带 /v1 后缀，SDK 会自动拼接路径。"),
       ],
     },
     {
-      label: '方式二：settings.json',
+      label: t("方式二：settings.json"),
       language: settingsPath,
       code: settingsJson,
       notes: [
-        '写入 ~/.claude/settings.json 后重启 Claude Code 即可生效。',
-        '本平台提供 /v1/messages（Anthropic Messages API）兼容端点。',
+        t("写入 ~/.claude/settings.json 后重启 Claude Code 即可生效。"),
+        t("本平台提供 /v1/messages（Anthropic Messages API）兼容端点。"),
       ],
     },
     {
-      label: '验证连通',
+      label: t("验证连通"),
       language: 'bash',
-      code: `claude --print "你好"`,
+      code: t("claude --print \"你好\""),
     },
   ];
 }
@@ -280,19 +273,19 @@ export OPENAI_API_BASE="${v1}"`;
 
   return [
     {
-      label: '环境变量',
+      label: t("环境变量"),
       language: envLabel,
       code: envCode,
     },
     {
-      label: 'config.toml（可选）',
+      label: t("config.toml（可选）"),
       language: '~/.codex/config.toml',
       code: `[api]
 base_url = "${v1}"
 api_key = "<YOUR_API_KEY>"`,
     },
     {
-      label: '验证',
+      label: t("验证"),
       language: 'bash',
       code: `curl ${v1}/models \\
   -H "Authorization: Bearer $OPENAI_API_KEY"`,
@@ -324,10 +317,10 @@ export GOOGLE_GEMINI_BASE_URL="${clean}"`;
 
   return [
     {
-      label: '环境变量',
+      label: t("环境变量"),
       language: envLabel,
       code: envCode,
-      notes: ['需管理员在渠道中配置 Gemini provider 适配器后使用。'],
+      notes: [t("需管理员在渠道中配置 Gemini provider 适配器后使用。")],
     },
   ];
 }
@@ -398,8 +391,7 @@ function StepCard({ index, icon: Icon, title, children }: StepCardProps) {
         {index < 3 && <div className="mt-1 w-px flex-1 bg-slate-200 dark:bg-white/10" />}
       </div>
       <div className="min-w-0 flex-1 pb-6">
-        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">
-          步骤 {String(index).padStart(2, '0')}
+        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{t("步骤")}{String(index).padStart(2, '0')}
         </p>
         <h4 className="text-sm font-bold text-slate-900 dark:text-white">{title}</h4>
         <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">{children}</div>
@@ -471,21 +463,15 @@ export function ApiGuidePage() {
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Header */}
       <div className="space-y-1">
-        <h2 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">
-          API 使用指南
-        </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          创建 API 密钥后，参照以下示例接入各类客户端和 CLI 工具。
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">{t("API 使用指南")}</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t("创建 API 密钥后，参照以下示例接入各类客户端和 CLI 工具。")}</p>
       </div>
 
       {/* Connection info banner */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 p-4 dark:from-blue-500/10 dark:to-indigo-500/10">
         <Globe className="size-5 shrink-0 text-blue-600 dark:text-blue-400" />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">
-            API 地址
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">{t("API 地址")}</p>
           <input
             type="text"
             value={baseUrl}
@@ -495,7 +481,7 @@ export function ApiGuidePage() {
           />
         </div>
         <div className="shrink-0 rounded-lg bg-white/60 px-3 py-2 dark:bg-white/5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">鉴权</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("鉴权")}</p>
           <p className="font-mono text-sm font-semibold text-slate-900 dark:text-white">
             Bearer &lt;key&gt;
           </p>
@@ -505,29 +491,21 @@ export function ApiGuidePage() {
       {/* Quick start */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-bold">快速开始</CardTitle>
-          <CardDescription>三步完成首次 API 调用。</CardDescription>
+          <CardTitle className="text-base font-bold">{t("快速开始")}</CardTitle>
+          <CardDescription>{t("三步完成首次 API 调用。")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <StepCard index={1} icon={KeyRound} title="创建 API 密钥">
-            进入 <strong className="font-semibold text-slate-900 dark:text-white">API 密钥</strong>{' '}
-            页面，点击「Create Token」。新密钥只会完整显示一次，请立即复制。
-          </StepCard>
-          <StepCard index={2} icon={Globe} title="确认 API 地址">
-            上方显示的就是你的 API 服务地址。下方所有代码示例会自动使用此地址。
-          </StepCard>
-          <StepCard index={3} icon={Terminal} title="选择客户端接入">
-            在下方选择对应的客户端标签，复制代码并将 <CodeBadge>{'<YOUR_API_KEY>'}</CodeBadge>{' '}
-            替换为你的密钥。
-          </StepCard>
+          <StepCard index={1} icon={KeyRound} title={t("创建 API 密钥")}>{t("进入")}<strong className="font-semibold text-slate-900 dark:text-white">{t("API 密钥")}</strong>{' '}{t("页面，点击「Create Token」。新密钥只会完整显示一次，请立即复制。")}</StepCard>
+          <StepCard index={2} icon={Globe} title={t("确认 API 地址")}>{t("上方显示的就是你的 API 服务地址。下方所有代码示例会自动使用此地址。")}</StepCard>
+          <StepCard index={3} icon={Terminal} title={t("选择客户端接入")}>{t("在下方选择对应的客户端标签，复制代码并将")}<CodeBadge>{'<YOUR_API_KEY>'}</CodeBadge>{' '}{t("替换为你的密钥。")}</StepCard>
         </CardContent>
       </Card>
 
       {/* Client code examples */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold">客户端接入示例</CardTitle>
-          <CardDescription>选择客户端查看对应的代码示例。</CardDescription>
+          <CardTitle className="text-base font-bold">{t("客户端接入示例")}</CardTitle>
+          <CardDescription>{t("选择客户端查看对应的代码示例。")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Client tabs */}
@@ -610,18 +588,12 @@ export function ApiGuidePage() {
       {/* CC Switch */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base font-bold">
-            CC Switch 一键导入
-          </CardTitle>
-          <CardDescription>
-            已安装 CC Switch 的用户可通过深度链接快速导入配置。
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2 text-base font-bold">{t("CC Switch 一键导入")}</CardTitle>
+          <CardDescription>{t("已安装 CC Switch 的用户可通过深度链接快速导入配置。")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            点击下方按钮打开 CC Switch 导入窗口，导入前请将{' '}
-            <CodeBadge>{'<YOUR_API_KEY>'}</CodeBadge> 替换为实际密钥。
-          </p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t("点击下方按钮打开 CC Switch 导入窗口，导入前请将")}{' '}
+            <CodeBadge>{'<YOUR_API_KEY>'}</CodeBadge>{t("替换为实际密钥。")}</p>
           <div className="grid gap-2 sm:grid-cols-3">
             {[
               { app: 'claude' as const, label: 'Claude Code' },
@@ -634,15 +606,13 @@ export function ApiGuidePage() {
                 </p>
                 <div className="overflow-hidden rounded-lg bg-slate-950 dark:bg-black/40">
                   <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5">
-                    <span className="text-xs font-semibold text-slate-400">深度链接</span>
+                    <span className="text-xs font-semibold text-slate-400">{t("深度链接")}</span>
                     <button
                       type="button"
                       onClick={() => window.open(buildCCSwitchLink(app), '_blank')}
                       className="flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700"
                     >
-                      <ArrowRight className="size-3" />
-                      打开
-                    </button>
+                      <ArrowRight className="size-3" />{t("打开")}</button>
                   </div>
                   <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-slate-300">
                     <code>{buildCCSwitchLink(app)}</code>
@@ -652,9 +622,7 @@ export function ApiGuidePage() {
             ))}
           </div>
           <div className="rounded-lg bg-blue-50 p-3 dark:bg-blue-500/10">
-            <p className="text-xs text-blue-700 dark:text-blue-300">
-              💡 也可以在「API 密钥」页面直接点击某个密钥的「CC Switch」按钮，系统会自动填入该密钥，无需手动替换。
-            </p>
+            <p className="text-xs text-blue-700 dark:text-blue-300">{t("💡 也可以在「API 密钥」页面直接点击某个密钥的「CC Switch」按钮，系统会自动填入该密钥，无需手动替换。")}</p>
           </div>
         </CardContent>
       </Card>
@@ -663,24 +631,16 @@ export function ApiGuidePage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-bold">
-            <FileText className="size-4 text-slate-400" />
-            API 端点参考
-          </CardTitle>
+            <FileText className="size-4 text-slate-400" />{t("API 端点参考")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-white/10">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-400">
-                    方法
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-400">
-                    路径
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-400">
-                    说明
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-400">{t("方法")}</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-400">{t("路径")}</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-400">{t("说明")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -703,7 +663,7 @@ export function ApiGuidePage() {
                       {endpoint.path}
                     </td>
                     <td className="px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400">
-                      {endpoint.desc}
+                      {t(endpoint.desc)}
                     </td>
                   </tr>
                 ))}
@@ -717,28 +677,18 @@ export function ApiGuidePage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-bold">
-            <ShieldCheck className="size-4 text-orange-500" />
-            安全提示
-          </CardTitle>
+            <ShieldCheck className="size-4 text-orange-500" />{t("安全提示")}</CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="space-y-2.5 text-sm text-slate-600 dark:text-slate-300">
             <li className="flex gap-2.5">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-orange-400" />
-              API 密钥创建后只会完整显示一次，请立即复制并保存到安全的密钥管理工具中。
-            </li>
+              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-orange-400" />{t("API 密钥创建后只会完整显示一次，请立即复制并保存到安全的密钥管理工具中。")}</li>
             <li className="flex gap-2.5">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-orange-400" />
-              切勿将 API 密钥写入代码仓库、聊天记录或公开文档。
-            </li>
+              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-orange-400" />{t("切勿将 API 密钥写入代码仓库、聊天记录或公开文档。")}</li>
             <li className="flex gap-2.5">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-orange-400" />
-              为不同用途创建独立命名的 Token，便于在「使用记录」中区分调用来源。
-            </li>
+              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-orange-400" />{t("为不同用途创建独立命名的 Token，便于在「使用记录」中区分调用来源。")}</li>
             <li className="flex gap-2.5">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-orange-400" />
-              不再使用的 Token 应及时删除，避免密钥泄露风险。
-            </li>
+              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-orange-400" />{t("不再使用的 Token 应及时删除，避免密钥泄露风险。")}</li>
           </ul>
         </CardContent>
       </Card>

@@ -33,6 +33,7 @@ import {
   type SubscriptionAccountSummary,
 } from '@/lib/subscription-account';
 import { cn } from '@/lib/utils';
+import { locale, t } from '@/lib/i18n';
 
 interface ChannelHealth {
   id: string;
@@ -109,7 +110,7 @@ function formatTime(dateString?: string | number): string {
   if (!dateString) return '-';
   try {
     const date = typeof dateString === 'number' ? new Date(dateString) : new Date(dateString);
-    return date.toLocaleString('zh-CN');
+    return date.toLocaleString(locale());
   } catch {
     return String(dateString);
   }
@@ -208,10 +209,8 @@ export function ChannelHealthPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">渠道健康监控</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            实时监控所有渠道的健康状态和可用性（包含启用和禁用的渠道）
-          </p>
+          <h2 className="text-2xl font-semibold">{t("渠道健康监控")}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{t("实时监控所有渠道的健康状态和可用性（包含启用和禁用的渠道）")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -222,7 +221,7 @@ export function ChannelHealthPage() {
             className={cn(autoRefresh && 'bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-300')}
           >
             {autoRefresh ? <Activity className="size-4 mr-2" /> : <Clock className="size-4 mr-2" />}
-            {autoRefresh ? '自动刷新开启' : '自动刷新关闭'}
+            {autoRefresh ? t("自动刷新开启") : t("自动刷新关闭")}
           </Button>
           <Button
             type="button"
@@ -231,9 +230,7 @@ export function ChannelHealthPage() {
             onClick={() => void refetch()}
             disabled={isFetching}
           >
-            <RefreshCw className={cn('size-4 mr-2', isFetching && 'animate-spin')} />
-            刷新
-          </Button>
+            <RefreshCw className={cn('size-4 mr-2', isFetching && 'animate-spin')} />{t("刷新")}</Button>
         </div>
       </div>
 
@@ -243,44 +240,44 @@ export function ChannelHealthPage() {
       ) : (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <MetricCard
-            title="总渠道数"
+            title={t("总渠道数")}
             value={healthMetrics.total}
-            subtitle="配置的渠道总数"
+            subtitle={t("配置的渠道总数")}
             tone="blue"
             icon={Database}
           />
           <MetricCard
-            title="健康渠道"
+            title={t("健康渠道")}
             value={healthMetrics.healthy}
-            subtitle="运行正常"
+            subtitle={t("运行正常")}
             tone="green"
             icon={CheckCircle2}
           />
           <MetricCard
-            title="降级渠道"
+            title={t("降级渠道")}
             value={healthMetrics.degraded}
-            subtitle="性能下降"
+            subtitle={t("性能下降")}
             tone="amber"
             icon={AlertTriangle}
           />
           <MetricCard
-            title="不可用"
+            title={t("不可用")}
             value={healthMetrics.unavailable}
-            subtitle="无法访问"
+            subtitle={t("无法访问")}
             tone="red"
             icon={AlertCircle}
           />
           <MetricCard
-            title="未知状态"
+            title={t("未知状态")}
             value={healthMetrics.unknown}
-            subtitle="暂无数据"
+            subtitle={t("暂无数据")}
             tone="blue"
             icon={Clock}
           />
           <MetricCard
-            title="健康率"
+            title={t("健康率")}
             value={`${healthMetrics.healthRate}%`}
-            subtitle="可用性比例"
+            subtitle={t("可用性比例")}
             tone="green"
             icon={TrendingUp}
           />
@@ -291,7 +288,7 @@ export function ChannelHealthPage() {
       {channels && channels.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-black">渠道健康分布</CardTitle>
+            <CardTitle className="text-xl font-black">{t("渠道健康分布")}</CardTitle>
           </CardHeader>
           <CardContent>
             <HealthDistributionChart
@@ -311,8 +308,7 @@ export function ChannelHealthPage() {
             <AlertTriangle className="size-5 shrink-0 text-amber-600 dark:text-amber-300" />
             <div className="min-w-0 flex-1">
               <div className="font-semibold text-amber-950 dark:text-amber-100">
-                {unhealthyChannels.length} 个渠道状态异常
-              </div>
+                {unhealthyChannels.length}{t("个渠道状态异常")}</div>
               <div className="mt-1 text-sm text-amber-900/80 dark:text-amber-100/80">
                 {unhealthyChannels.slice(0, 3).map((ch) => (
                   <span key={ch.id} className="mr-3">
@@ -320,7 +316,7 @@ export function ChannelHealthPage() {
                   </span>
                 ))}
                 {unhealthyChannels.length > 3 && (
-                  <span>以及其他 {unhealthyChannels.length - 3} 个渠道</span>
+                  <span>{t("以及其他")}{unhealthyChannels.length - 3}{t("个渠道")}</span>
                 )}
               </div>
             </div>
@@ -331,9 +327,7 @@ export function ChannelHealthPage() {
               onClick={() => {
                 document.getElementById('unhealthy-channels-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }}
-            >
-              查看详情
-            </Button>
+            >{t("查看详情")}</Button>
           </CardContent>
         </Card>
       )}
@@ -341,7 +335,7 @@ export function ChannelHealthPage() {
       {/* Channel Health Grid */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl font-black">渠道健康状态</CardTitle>
+          <CardTitle className="text-xl font-black">{t("渠道健康状态")}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -351,7 +345,7 @@ export function ChannelHealthPage() {
               ))}
             </div>
           ) : !channels || channels.length === 0 ? (
-            <EmptyState title="暂无渠道" description="请先配置渠道" />
+            <EmptyState title={t("暂无渠道")} description={t("请先配置渠道")} />
           ) : (
             <div className="space-y-2" id="unhealthy-channels-container">
               {channels.map((channel, index) => {
@@ -386,7 +380,7 @@ export function ChannelHealthPage() {
                       <div className="flex items-center gap-3">
                         <span className="font-semibold text-foreground">{channel.name}</span>
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${healthBadgeClass(status)}`}>
-                          {status === 'healthy' ? '健康' : status === 'degraded' ? '降级' : status === 'unknown' ? '未知' : '不可用'}
+                          {status === 'healthy' ? t("健康") : status === 'degraded' ? t("降级") : status === 'unknown' ? t("未知") : t("不可用")}
                         </span>
                         {channel.type && PROVIDER_NAMES[channel.type] && (
                           <span className="text-xs text-muted-foreground">
@@ -400,25 +394,20 @@ export function ChannelHealthPage() {
                       <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
                         {failures > 0 && (
                           <span className="flex items-center gap-1">
-                            <AlertCircle className="size-3" />
-                            连续失败 {failures} 次
-                          </span>
+                            <AlertCircle className="size-3" />{t("连续失败")}{failures}{t("次")}</span>
                         )}
                         {circuitUntil > 0 && (
                           <span className="flex items-center gap-1">
-                            <Clock className="size-3" />
-                            熔断恢复于 {formatTime(circuitUntil * 1000)}
+                            <Clock className="size-3" />{t("熔断恢复于")}{formatTime(circuitUntil * 1000)}
                           </span>
                         )}
                         {channel.balance !== undefined && (
                           <span className="flex items-center gap-1">
-                            <Zap className="size-3" />
-                            余额 ${channel.balance.toFixed(2)}
+                            <Zap className="size-3" />{t("余额 $")}{channel.balance.toFixed(2)}
                           </span>
                         )}
                         {channel.group && (
-                          <span className="flex items-center gap-1">
-                            分组: {channel.group}
+                          <span className="flex items-center gap-1">{t("分组:")}{channel.group}
                           </span>
                         )}
                       </div>
@@ -433,9 +422,7 @@ export function ChannelHealthPage() {
                         onClick={() => {
                           navigate(`/admin/channels?search=${encodeURIComponent(channel.name)}`);
                         }}
-                      >
-                        管理
-                      </Button>
+                      >{t("管理")}</Button>
                     </div>
                   </div>
                 );
@@ -455,13 +442,12 @@ export function ChannelHealthPage() {
             <InfoIcon className="mt-0.5 size-4 shrink-0 text-blue-600" />
             <div className="space-y-1 text-muted-foreground">
               <p>
-                <strong>健康状态说明：</strong>系统会定期检查所有渠道的可用性
-              </p>
+                <strong>{t("健康状态说明：")}</strong>{t("系统会定期检查所有渠道的可用性")}</p>
               <ul className="ml-4 list-disc space-y-1">
-                <li><strong>健康：</strong>渠道响应正常，性能良好</li>
-                <li><strong>降级：</strong>渠道可用但响应较慢或部分功能受限</li>
-                <li><strong>不可用：</strong>渠道无法访问或连续多次失败</li>
-                <li><strong>未知：</strong>渠道暂无健康检查数据或检查尚未完成</li>
+                <li><strong>{t("健康：")}</strong>{t("渠道响应正常，性能良好")}</li>
+                <li><strong>{t("降级：")}</strong>{t("渠道可用但响应较慢或部分功能受限")}</li>
+                <li><strong>{t("不可用：")}</strong>{t("渠道无法访问或连续多次失败")}</li>
+                <li><strong>{t("未知：")}</strong>{t("渠道暂无健康检查数据或检查尚未完成")}</li>
               </ul>
             </div>
           </div>
@@ -486,14 +472,14 @@ function formatPercentCHP(value: number) {
 
 function formatResetAfterCHP(seconds?: number | null) {
   if (seconds == null || !Number.isFinite(seconds)) return '';
-  if (seconds <= 0) return '即将重置';
+  if (seconds <= 0) return t("即将重置");
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days}天${hours > 0 ? `${hours}小时` : ''}后`;
-  if (hours > 0) return `${hours}小时${minutes > 0 ? `${minutes}分钟` : ''}后`;
-  if (minutes > 0) return `${minutes}分钟后`;
-  return '1分钟内';
+  if (days > 0) return t(`${days}天${hours > 0 ? `${hours}小时` : ''}后`);
+  if (hours > 0) return t(`${hours}小时${minutes > 0 ? `${minutes}分钟` : ''}后`);
+  if (minutes > 0) return t(`${minutes}分钟后`);
+  return t("1分钟内");
 }
 
 function effectiveWindowUsedCHP(used: number, windowStart: number | undefined, nowUnix: number, windowS: number): number {
@@ -503,7 +489,7 @@ function effectiveWindowUsedCHP(used: number, windowStart: number | undefined, n
 
 function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccountSummary; now: number }) {
   const localRows: Array<{ label: string; used?: number; limit?: number; windowStart?: number; windowS: number }> = [
-    { label: '总额', used: account.quotaUsedUsd, limit: account.quotaLimitUsd, windowS: 0 },
+    { label: t("总额"), used: account.quotaUsedUsd, limit: account.quotaLimitUsd, windowS: 0 },
     { label: '5h', used: account.quota5hUsedUsd, limit: account.quota5hLimitUsd, windowStart: account.quota5hWindowStart, windowS: FIVE_H_S },
     { label: '24h', used: account.quotaDailyUsedUsd, limit: account.quotaDailyLimitUsd, windowStart: account.quotaDailyWindowStart, windowS: DAY_S },
     { label: '7d', used: account.quotaWeeklyUsedUsd, limit: account.quotaWeeklyLimitUsd, windowStart: account.quotaWeeklyWindowStart, windowS: WEEK_S },
@@ -512,13 +498,13 @@ function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccou
   const upstreamWindows: Array<{ key: string; label: string; usedPercent?: number | null; resetAfter?: number | null }> = [
     {
       key: 'primary',
-      label: account.primaryQuotaWindowMinutes === 300 ? '5h' : account.primaryQuotaWindowMinutes === 10080 ? '7d' : '主',
+      label: account.primaryQuotaWindowMinutes === 300 ? '5h' : account.primaryQuotaWindowMinutes === 10080 ? '7d' : t("主"),
       usedPercent: account.primaryQuotaUsedPercent,
       resetAfter: account.primaryQuotaResetAfterSeconds,
     },
     {
       key: 'secondary',
-      label: account.secondaryQuotaWindowMinutes === 300 ? '5h' : account.secondaryQuotaWindowMinutes === 10080 ? '7d' : '次',
+      label: account.secondaryQuotaWindowMinutes === 300 ? '5h' : account.secondaryQuotaWindowMinutes === 10080 ? '7d' : t("次"),
       usedPercent: account.secondaryQuotaUsedPercent,
       resetAfter: account.secondaryQuotaResetAfterSeconds,
     },
@@ -532,13 +518,13 @@ function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccou
       return (
         <div className="min-w-[140px] space-y-0.5">
           <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="font-medium">配额</span>
+            <span className="font-medium">{t("配额")}</span>
             <span className="tabular-nums text-muted-foreground">{formatPercentCHP(usedPercent)}</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             <div className={cn('h-full rounded-full transition-[width] duration-200 ease-standard motion-reduce:transition-none', barColor)} style={{ width: `${Math.min(100, usedPercent)}%` }} />
           </div>
-          {resetAfter != null && resetAfter > 0 && <div className="text-xs text-muted-foreground">重置：{formatResetAfterCHP(resetAfter)}</div>}
+          {resetAfter != null && resetAfter > 0 && <div className="text-xs text-muted-foreground">{t("重置：")}{formatResetAfterCHP(resetAfter)}</div>}
         </div>
       );
     }
@@ -584,7 +570,7 @@ function SubscriptionQuotaSummary({ account, now }: { account: SubscriptionAccou
               <div className={cn('h-full rounded-full transition-[width] duration-200 ease-standard motion-reduce:transition-none', barColor)} style={{ width: `${barWidth}%` }} />
             </div>
             {window.resetAfter != null && window.resetAfter > 0 && (
-              <div className="text-xs text-muted-foreground">重置：{formatResetAfterCHP(window.resetAfter)}</div>
+              <div className="text-xs text-muted-foreground">{t("重置：")}{formatResetAfterCHP(window.resetAfter)}</div>
             )}
           </div>
         );
@@ -627,7 +613,7 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
   function formatTime(ts?: number): string {
     if (!ts || ts === 0) return '-';
     try {
-      return new Date(ts * 1000).toLocaleString('zh-CN');
+      return new Date(ts * 1000).toLocaleString(locale());
     } catch {
       return String(ts);
     }
@@ -641,12 +627,12 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl font-black">订阅账号 Token 健康</CardTitle>
+          <CardTitle className="text-xl font-black">{t("订阅账号 Token 健康")}</CardTitle>
         </CardHeader>
         <CardContent>
           <EmptyState
-            title="暂无订阅账号"
-            description="配置 Codex / Claude OAuth 订阅账号后，这里会展示 Token 过期、限流等健康状态"
+            title={t("暂无订阅账号")}
+            description={t("配置 Codex / Claude OAuth 订阅账号后，这里会展示 Token 过期、限流等健康状态")}
           />
         </CardContent>
       </Card>
@@ -656,29 +642,29 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl font-black">订阅账号 Token 健康</CardTitle>
+        <CardTitle className="text-xl font-black">{t("订阅账号 Token 健康")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <div className="rounded-lg border p-3">
             <div className="text-2xl font-black text-blue-600">{all.length}</div>
-            <div className="text-xs text-muted-foreground">总账号数</div>
+            <div className="text-xs text-muted-foreground">{t("总账号数")}</div>
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-2xl font-black text-green-600">{healthy.length}</div>
-            <div className="text-xs text-muted-foreground">Token 正常</div>
+            <div className="text-xs text-muted-foreground">{t("Token 正常")}</div>
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-2xl font-black text-amber-600">{expiringSoon.length}</div>
-            <div className="text-xs text-muted-foreground">即将过期</div>
+            <div className="text-xs text-muted-foreground">{t("即将过期")}</div>
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-2xl font-black text-red-600">{expired.length}</div>
-            <div className="text-xs text-muted-foreground">已过期</div>
+            <div className="text-xs text-muted-foreground">{t("已过期")}</div>
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-2xl font-black text-orange-600">{rateLimited.length}</div>
-            <div className="text-xs text-muted-foreground">被限流</div>
+            <div className="text-xs text-muted-foreground">{t("被限流")}</div>
           </div>
         </div>
 
@@ -686,13 +672,13 @@ function SubscriptionAccountHealth({ autoRefresh }: { autoRefresh: boolean }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>名称</TableHead>
-                <TableHead>平台</TableHead>
-                <TableHead className="hidden md:table-cell">上游账号</TableHead>
-                <TableHead>过期时间</TableHead>
-                <TableHead className="hidden md:table-cell">最近使用</TableHead>
-                <TableHead className="hidden lg:table-cell">限额状态</TableHead>
-                <TableHead>状态</TableHead>
+                <TableHead>{t("名称")}</TableHead>
+                <TableHead>{t("平台")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("上游账号")}</TableHead>
+                <TableHead>{t("过期时间")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("最近使用")}</TableHead>
+                <TableHead className="hidden lg:table-cell">{t("限额状态")}</TableHead>
+                <TableHead>{t("状态")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

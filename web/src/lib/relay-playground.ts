@@ -1,4 +1,5 @@
 import { parseSSEStream, SSEProtocolError, type SSEEvent } from '@/lib/sse';
+import { t } from '@/lib/i18n';
 
 export interface RelayModel {
   id: string;
@@ -140,7 +141,7 @@ function messageFromPayload(payload: unknown, status?: number) {
     if (typeof error === 'string' && error.trim()) return error.slice(0, 1000);
     if (typeof value.message === 'string' && value.message.trim()) return value.message.slice(0, 1000);
   }
-  return status ? `Relay 请求失败（HTTP ${status}）` : 'Relay 请求失败';
+  return status ? t(`Relay 请求失败（HTTP ${status}）`) : t("Relay 请求失败");
 }
 
 function parseCompletionPayload(payload: unknown) {
@@ -174,9 +175,9 @@ async function throwResponseError(response: Response, fallbackRequestId?: string
 function throwNetworkError(error: unknown): never {
   if (error instanceof RelayPlaygroundError) throw error;
   if (error instanceof DOMException && error.name === 'AbortError') {
-    throw new RelayPlaygroundError('请求已停止', { kind: 'aborted' });
+    throw new RelayPlaygroundError(t("请求已停止"), { kind: 'aborted' });
   }
-  throw new RelayPlaygroundError('无法连接 Relay，请检查 API 地址、网络和 CORS 配置', {
+  throw new RelayPlaygroundError(t("无法连接 Relay，请检查 API 地址、网络和 CORS 配置"), {
     kind: 'cors_or_network',
   });
 }
@@ -202,12 +203,12 @@ export async function fetchRelayModels(options: RequestOptions): Promise<RelayMo
   try {
     payload = await response.json();
   } catch {
-    throw new RelayPlaygroundError('Relay 模型列表不是有效 JSON', { kind: 'protocol_error', status: response.status });
+    throw new RelayPlaygroundError(t("Relay 模型列表不是有效 JSON"), { kind: 'protocol_error', status: response.status });
   }
 
   const rows = payload && typeof payload === 'object' ? (payload as { data?: unknown }).data : undefined;
   if (!Array.isArray(rows)) {
-    throw new RelayPlaygroundError('Relay 模型列表格式异常', { kind: 'protocol_error', status: response.status });
+    throw new RelayPlaygroundError(t("Relay 模型列表格式异常"), { kind: 'protocol_error', status: response.status });
   }
 
   return rows
@@ -248,11 +249,11 @@ export async function executeChatCompletion(
     try {
       payload = await response.json();
     } catch {
-      throw new RelayPlaygroundError('Relay 返回了无法解析的响应', { kind: 'protocol_error', status: response.status, requestId });
+      throw new RelayPlaygroundError(t("Relay 返回了无法解析的响应"), { kind: 'protocol_error', status: response.status, requestId });
     }
     const completion = parseCompletionPayload(payload);
     if (!completion) {
-      throw new RelayPlaygroundError('Relay 响应缺少 choices[0].message.content', {
+      throw new RelayPlaygroundError(t("Relay 响应缺少 choices[0].message.content"), {
         kind: 'protocol_error',
         status: response.status,
         requestId,
@@ -267,7 +268,7 @@ export async function executeChatCompletion(
   }
 
   if (!response.body) {
-    throw new RelayPlaygroundError('Relay 没有返回可读取的流', { kind: 'protocol_error', status: response.status, requestId });
+    throw new RelayPlaygroundError(t("Relay 没有返回可读取的流"), { kind: 'protocol_error', status: response.status, requestId });
   }
 
   let sawDone = false;
@@ -289,7 +290,7 @@ export async function executeChatCompletion(
       } catch {
         malformedEvents += 1;
         if (malformedEvents >= 3) {
-          throw new RelayPlaygroundError('Relay 流式响应格式异常', { kind: 'protocol_error', status: response.status, requestId });
+          throw new RelayPlaygroundError(t("Relay 流式响应格式异常"), { kind: 'protocol_error', status: response.status, requestId });
         }
         continue;
       }
@@ -321,7 +322,7 @@ export async function executeChatCompletion(
   }
 
   if (!sawDone) {
-    throw new RelayPlaygroundError('Relay 流在收到 [DONE] 前结束', { kind: 'protocol_error', status: response.status, requestId });
+    throw new RelayPlaygroundError(t("Relay 流在收到 [DONE] 前结束"), { kind: 'protocol_error', status: response.status, requestId });
   }
 
   return { status: response.status, requestId, usage, finishReason, streamed: true };
