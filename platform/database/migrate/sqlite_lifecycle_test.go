@@ -148,17 +148,22 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 23, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 24, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := len(files) - 3 // last three files arrive later (081, 082, 083)
+	cut := len(files) - 4 // last four files arrive later (081, 082, 083, 084)
 
 	db := openScratchSqlite(t)
-	// Stage 1: apply the tree up to (not including) the last three files.
+	// Stage 1: apply the tree up to (not including) the last four files.
 	stage1 := tempDirWithFiles(t, files[:cut], dir)
 	r1 := NewWithDriver(db, stage1, "sqlite3")
 	applied1, err := r1.Apply(context.Background())
 	require.NoError(t, err)
 	require.Len(t, applied1, cut, "stage-1 fresh install applies %d migrations", cut)
+	_, err = db.Exec(`
+		INSERT INTO models (model_id, display_name, pricing_input, pricing_output)
+		VALUES ('migration-price-model', 'Migration Price Model', 0.005, 0.015)
+	`)
+	require.NoError(t, err)
 
 	// Stage 2: same DB now sees the complete tree — only the new files run.
 	r2 := NewWithDriver(db, dir, "sqlite3")
@@ -184,6 +189,17 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		"model input modalities migration must have applied during upgrade")
 	require.True(t, sqliteColumnExists(t, db, "models", "output_modalities"),
 		"model output modalities migration must have applied during upgrade")
+	require.True(t, sqliteColumnExists(t, db, "models", "pricing_cache_read"),
+		"model cache-read price migration must have applied during upgrade")
+	var inputPrice, outputPrice, cacheReadPrice float64
+	err = db.QueryRow(`
+		SELECT pricing_input, pricing_output, pricing_cache_read
+		FROM models WHERE model_id = ?
+	`, "migration-price-model").Scan(&inputPrice, &outputPrice, &cacheReadPrice)
+	require.NoError(t, err)
+	require.InDelta(t, 5, inputPrice, 1e-12, "input price must migrate from per-1K to per-1M")
+	require.InDelta(t, 15, outputPrice, 1e-12, "output price must migrate from per-1K to per-1M")
+	require.Zero(t, cacheReadPrice, "existing models receive the cache-read default")
 }
 
 func TestSQLiteDialect_BalanceAmountMigrationBackfillsLegacyColumn(t *testing.T) {

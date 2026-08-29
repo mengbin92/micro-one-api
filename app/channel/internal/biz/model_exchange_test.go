@@ -44,21 +44,24 @@ func (r *exchangeTestRepo) ExportAllModels(ctx context.Context, filter ListModel
 			continue
 		}
 		em := &ModelExportModel{
-			ModelID:       m.ModelID,
-			DisplayName:   m.DisplayName,
-			Description:   m.Description,
-			Provider:      m.Provider,
-			ModelType:     m.ModelType,
-			ContextWindow: m.ContextWindow,
-			PricingInput:  m.PricingInput,
-			PricingOutput: m.PricingOutput,
-			Status:        m.Status,
-			IsPublic:      m.IsPublic,
-			Capabilities:  append([]string(nil), m.Capabilities...),
-			Tags:          append([]string(nil), m.Tags...),
-			Category:      m.Category,
-			Tier:          m.Tier,
-			Metadata:      m.Metadata,
+			ModelID:          m.ModelID,
+			DisplayName:      m.DisplayName,
+			Description:      m.Description,
+			Provider:         m.Provider,
+			ModelType:        m.ModelType,
+			ContextWindow:    m.ContextWindow,
+			PricingInput:     m.PricingInput,
+			PricingOutput:    m.PricingOutput,
+			PricingCacheRead: m.PricingCacheRead,
+			Status:           m.Status,
+			IsPublic:         m.IsPublic,
+			Capabilities:     append([]string(nil), m.Capabilities...),
+			InputModalities:  append([]string(nil), m.InputModalities...),
+			OutputModalities: append([]string(nil), m.OutputModalities...),
+			Tags:             append([]string(nil), m.Tags...),
+			Category:         m.Category,
+			Tier:             m.Tier,
+			Metadata:         m.Metadata,
 		}
 		for _, a := range r.aliases {
 			if a.ModelPK == m.ID {
@@ -139,24 +142,27 @@ func (r *exchangeTestRepo) ImportModels(ctx context.Context, models []*ModelExpo
 		case "create":
 			r.nextID++
 			do := &Model{
-				ID:            r.nextID,
-				ModelID:       NormalizeModelID(em.ModelID),
-				DisplayName:   em.DisplayName,
-				Description:   em.Description,
-				Provider:      em.Provider,
-				ModelType:     em.ModelType,
-				ContextWindow: em.ContextWindow,
-				Status:        em.Status,
-				IsPublic:      em.IsPublic,
-				Capabilities:  append([]string(nil), em.Capabilities...),
-				Tags:          append([]string(nil), em.Tags...),
-				Category:      em.Category,
-				Tier:          em.Tier,
-				Metadata:      em.Metadata,
+				ID:               r.nextID,
+				ModelID:          NormalizeModelID(em.ModelID),
+				DisplayName:      em.DisplayName,
+				Description:      em.Description,
+				Provider:         em.Provider,
+				ModelType:        em.ModelType,
+				ContextWindow:    em.ContextWindow,
+				Status:           em.Status,
+				IsPublic:         em.IsPublic,
+				Capabilities:     append([]string(nil), em.Capabilities...),
+				InputModalities:  append([]string(nil), em.InputModalities...),
+				OutputModalities: append([]string(nil), em.OutputModalities...),
+				Tags:             append([]string(nil), em.Tags...),
+				Category:         em.Category,
+				Tier:             em.Tier,
+				Metadata:         em.Metadata,
 			}
 			if options.ImportPrices {
 				do.PricingInput = em.PricingInput
 				do.PricingOutput = em.PricingOutput
+				do.PricingCacheRead = em.PricingCacheRead
 			}
 			r.models[do.ID] = do
 			existingByCanonical[NormalizeModelID(do.ModelID)] = do
@@ -170,6 +176,8 @@ func (r *exchangeTestRepo) ImportModels(ctx context.Context, models []*ModelExpo
 			exist.Status = em.Status
 			exist.IsPublic = em.IsPublic
 			exist.Capabilities = append([]string(nil), em.Capabilities...)
+			exist.InputModalities = append([]string(nil), em.InputModalities...)
+			exist.OutputModalities = append([]string(nil), em.OutputModalities...)
 			exist.Tags = append([]string(nil), em.Tags...)
 			exist.Category = em.Category
 			exist.Tier = em.Tier
@@ -177,6 +185,7 @@ func (r *exchangeTestRepo) ImportModels(ctx context.Context, models []*ModelExpo
 			if options.ImportPrices {
 				exist.PricingInput = em.PricingInput
 				exist.PricingOutput = em.PricingOutput
+				exist.PricingCacheRead = em.PricingCacheRead
 			}
 			summary.Updated++
 		case "skip":
@@ -198,7 +207,8 @@ func modelsContentEqualForTest(em *ModelExportModel, existing *Model, options Im
 		return false
 	}
 	if options.ImportPrices {
-		if em.PricingInput != existing.PricingInput || em.PricingOutput != existing.PricingOutput {
+		if em.PricingInput != existing.PricingInput || em.PricingOutput != existing.PricingOutput ||
+			em.PricingCacheRead != existing.PricingCacheRead {
 			return false
 		}
 	}
@@ -225,7 +235,11 @@ func TestExportImport_RoundTrip(t *testing.T) {
 	repo := newExchangeTestRepo()
 	uc := newExchangeTestUC(repo)
 	// Seed two models.
-	if err := uc.CreateModel(context.Background(), &Model{ModelID: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai", Status: 1}); err != nil {
+	if err := uc.CreateModel(context.Background(), &Model{
+		ModelID: "gpt-4o", DisplayName: "GPT-4o", Provider: "openai", Status: 1,
+		PricingInput: 2.5, PricingOutput: 10, PricingCacheRead: 0.25,
+		InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"},
+	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	if err := uc.CreateModel(context.Background(), &Model{ModelID: "claude-4", DisplayName: "Claude 4", Provider: "anthropic", Status: 1}); err != nil {
@@ -245,7 +259,10 @@ func TestExportImport_RoundTrip(t *testing.T) {
 	// Import into a fresh repo → should create both.
 	target := newExchangeTestRepo()
 	targetUC := newExchangeTestUC(target)
-	summary, err := targetUC.ImportModels(context.Background(), result.Models, ImportOptions{ConflictStrategy: ConflictStrategyReject})
+	summary, err := targetUC.ImportModels(context.Background(), result.Models, ImportOptions{
+		ConflictStrategy: ConflictStrategyReject,
+		ImportPrices:     true,
+	})
 	if err != nil {
 		t.Fatalf("ImportModels: %v", err)
 	}
@@ -265,7 +282,7 @@ func TestExportImport_RoundTrip(t *testing.T) {
 func TestExport_StripsPricesWhenNotRequested(t *testing.T) {
 	repo := newExchangeTestRepo()
 	uc := newExchangeTestUC(repo)
-	if err := uc.CreateModel(context.Background(), &Model{ModelID: "gpt-4o", PricingInput: 0.01, PricingOutput: 0.03, Status: 1}); err != nil {
+	if err := uc.CreateModel(context.Background(), &Model{ModelID: "gpt-4o", PricingInput: 0.01, PricingOutput: 0.03, PricingCacheRead: 0.005, Status: 1}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	result, err := uc.ExportModels(context.Background(), ListModelsFilter{}, false)
@@ -275,8 +292,9 @@ func TestExport_StripsPricesWhenNotRequested(t *testing.T) {
 	if len(result.Models) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(result.Models))
 	}
-	if result.Models[0].PricingInput != 0 || result.Models[0].PricingOutput != 0 {
-		t.Fatalf("expected prices zeroed, got input=%v output=%v", result.Models[0].PricingInput, result.Models[0].PricingOutput)
+	if result.Models[0].PricingInput != 0 || result.Models[0].PricingOutput != 0 || result.Models[0].PricingCacheRead != 0 {
+		t.Fatalf("expected prices zeroed, got input=%v output=%v cache_read=%v",
+			result.Models[0].PricingInput, result.Models[0].PricingOutput, result.Models[0].PricingCacheRead)
 	}
 }
 

@@ -60,6 +60,7 @@ services:
     - 070_clean_orphan_model_mappings         # v0.11.0 review L4: orphan cleanup + cascade FKs
     - 081_create_channel_usage_events         # reservation-keyed exactly-once used_quota updates
     - 083_add_model_modalities                # model input/output modality metadata
+    - 084_add_model_pricing_cache_read        # cache-read price + per-1M unit switch
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /

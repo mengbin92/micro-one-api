@@ -95,8 +95,9 @@ describe('AdminPricingPage', () => {
               display_name: 'Step 3.7 Flash',
               status: 1,
               is_public: true,
-              pricing_input: 0.001,
-              pricing_output: 0.004,
+              pricing_input: 1,
+              pricing_output: 4,
+              pricing_cache_read: 0.25,
               input_modalities: ['text', 'image'],
               output_modalities: ['text'],
             },
@@ -120,9 +121,13 @@ describe('AdminPricingPage', () => {
     const enabled = await screen.findByDisplayValue('step-3.7-flash');
     const enabledRow = enabled.closest('tr');
     expect(enabledRow?.textContent).toContain('启用');
-    expect(enabledRow?.textContent).toContain('text / image');
+    // Modalities render as OpenRouter-style icons with accessible labels.
+    expect(within(enabledRow!).getAllByLabelText('文本')).toHaveLength(2);
+    expect(within(enabledRow!).getByLabelText('图像')).toBeInTheDocument();
+    // Registry prices are per 1M tokens and prefill input/output/cache-read.
     expect(within(enabledRow!).getByDisplayValue('1')).toBeInTheDocument();
     expect(within(enabledRow!).getByDisplayValue('4')).toBeInTheDocument();
+    expect(within(enabledRow!).getByDisplayValue('0.25')).toBeInTheDocument();
 
     const disabledRow = screen.getByDisplayValue('step-explore').closest('tr');
     expect(disabledRow?.textContent).toContain('禁用');

@@ -9,6 +9,7 @@ import { AdminPagination } from '@/components/admin/AdminPagination';
 import { AdminTableToolbar } from '@/components/admin/AdminTableToolbar';
 import { SortableHeader } from '@/components/admin/SortableHeader';
 import { ModelDraftFields } from '@/components/admin/ModelDraftFields';
+import { ModalityFlow } from '@/components/admin/ModalityIcons';
 import {
   emptyDraft,
   PROVIDER_OPTIONS,
@@ -67,6 +68,7 @@ function draftToCreatePayload(draft: ModelDraft): CreateModelPayload {
     context_window: draft.contextWindow ? Number(draft.contextWindow) : 0,
     pricing_input: draft.pricingInput ? Number(draft.pricingInput) : 0,
     pricing_output: draft.pricingOutput ? Number(draft.pricingOutput) : 0,
+    pricing_cache_read: draft.pricingCacheRead ? Number(draft.pricingCacheRead) : 0,
     status: 1,
     is_public: draft.isPublic,
     capabilities: splitCsv(draft.capabilities),
@@ -89,6 +91,7 @@ function draftToUpdatePayload(modelPk: number, draft: ModelDraft): UpdateModelPa
     context_window: draft.contextWindow ? Number(draft.contextWindow) : 0,
     pricing_input: draft.pricingInput ? Number(draft.pricingInput) : 0,
     pricing_output: draft.pricingOutput ? Number(draft.pricingOutput) : 0,
+    pricing_cache_read: draft.pricingCacheRead ? Number(draft.pricingCacheRead) : 0,
     is_public: draft.isPublic,
     capabilities: splitCsv(draft.capabilities),
     input_modalities: draft.inputModalities,
@@ -109,6 +112,7 @@ interface ModelInfoLike {
   context_window: number;
   pricing_input: number;
   pricing_output: number;
+  pricing_cache_read: number;
   is_public: boolean;
   capabilities: string[];
   input_modalities: string[];
@@ -129,6 +133,7 @@ function modelInfoToDraft(model: ModelInfoLike): ModelDraft {
     contextWindow: model.context_window ? String(model.context_window) : '',
     pricingInput: model.pricing_input ? String(model.pricing_input) : '',
     pricingOutput: model.pricing_output ? String(model.pricing_output) : '',
+    pricingCacheRead: model.pricing_cache_read ? String(model.pricing_cache_read) : '',
     category: model.category ?? '',
     tier: model.tier ?? '',
     isPublic: model.is_public,
@@ -476,8 +481,7 @@ export function AdminModelsPage() {
                     <TableCell>{m.provider || '—'}</TableCell>
                     <TableCell className="hidden md:table-cell">{m.model_type || '—'}</TableCell>
                     <TableCell className="hidden md:table-cell text-xs">
-                      <div>{t("输入")}：{m.input_modalities.length > 0 ? m.input_modalities.join(' / ') : '—'}</div>
-                      <div>{t("输出")}：{m.output_modalities.length > 0 ? m.output_modalities.join(' / ') : '—'}</div>
+                      <ModalityFlow inputModalities={m.input_modalities} outputModalities={m.output_modalities} />
                     </TableCell>
                     <TableCell>
                       <span className={'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ' + statusBadgeClass(m.status)}>

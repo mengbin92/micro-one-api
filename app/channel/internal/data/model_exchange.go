@@ -78,6 +78,7 @@ func (r *Repository) ExportAllModels(ctx context.Context, filter biz.ListModelsF
 			ContextWindow:        m.ContextWindow,
 			PricingInput:         m.PricingInput,
 			PricingOutput:        m.PricingOutput,
+			PricingCacheRead:     m.PricingCacheRead,
 			Status:               m.Status,
 			IsPublic:             m.IsPublic,
 			Capabilities:         append([]string(nil), m.Capabilities...),
@@ -375,7 +376,8 @@ func modelsContentEqual(em *biz.ModelExportModel, existing *existingModelView, o
 		return false
 	}
 	if options.ImportPrices {
-		if em.PricingInput != m.PricingInput || em.PricingOutput != m.PricingOutput {
+		if em.PricingInput != m.PricingInput || em.PricingOutput != m.PricingOutput ||
+			em.PricingCacheRead != m.PricingCacheRead {
 			return false
 		}
 	}
@@ -569,6 +571,7 @@ func (r *Repository) applyImportModel(tx *gorm.DB, em *biz.ModelExportModel, exi
 		if options.ImportPrices {
 			updates["pricing_input"] = po.PricingInput
 			updates["pricing_output"] = po.PricingOutput
+			updates["pricing_cache_read"] = po.PricingCacheRead
 		}
 		if err := tx.Model(&modelModel{}).Where("id = ?", existing.Model.ID).Updates(updates).Error; err != nil {
 			return outcome, fmt.Errorf("%w: update %s: %v", biz.ErrImportInvalidRecord, em.ModelID, err)
@@ -720,6 +723,7 @@ func importModelToPO(em *biz.ModelExportModel, options biz.ImportOptions, now in
 	if options.ImportPrices {
 		po.PricingInput = em.PricingInput
 		po.PricingOutput = em.PricingOutput
+		po.PricingCacheRead = em.PricingCacheRead
 	}
 	return po
 }
@@ -782,6 +786,7 @@ func (r *Repository) exportAllModelsMemory(filter biz.ListModelsFilter) ([]*biz.
 			ContextWindow:        m.ContextWindow,
 			PricingInput:         m.PricingInput,
 			PricingOutput:        m.PricingOutput,
+			PricingCacheRead:     m.PricingCacheRead,
 			Status:               m.Status,
 			IsPublic:             m.IsPublic,
 			Capabilities:         append([]string(nil), m.Capabilities...),
@@ -972,6 +977,7 @@ func (r *Repository) importModelsMemory(models []*biz.ModelExportModel, options 
 			if !options.ImportPrices {
 				do.PricingInput = exist.Model.PricingInput
 				do.PricingOutput = exist.Model.PricingOutput
+				do.PricingCacheRead = exist.Model.PricingCacheRead
 			}
 			r.models[do.ID] = do
 			// Clear and re-insert aliases/mappings.
@@ -1012,6 +1018,7 @@ func importModelToDO(em *biz.ModelExportModel, options biz.ImportOptions, now in
 	if options.ImportPrices {
 		do.PricingInput = em.PricingInput
 		do.PricingOutput = em.PricingOutput
+		do.PricingCacheRead = em.PricingCacheRead
 	}
 	return do
 }

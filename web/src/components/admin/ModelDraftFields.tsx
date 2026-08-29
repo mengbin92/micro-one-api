@@ -114,27 +114,41 @@ export function ModelDraftFields({
           </select>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <div className="grid gap-2">
-          <Label htmlFor="pricing-input">{t("输入价格 (/1K tokens)")}</Label>
+          <Label htmlFor="pricing-input">{t("输入价格 ($/1M tokens)")}</Label>
           <Input
             id="pricing-input"
             type="number"
+            min="0"
             step="0.000001"
             value={draft.pricingInput}
             onChange={(e) => onChange({ pricingInput: e.target.value })}
-            placeholder={t("如 0.005")}
+            placeholder={t("如 2.5")}
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="pricing-output">{t("输出价格 (/1K tokens)")}</Label>
+          <Label htmlFor="pricing-output">{t("输出价格 ($/1M tokens)")}</Label>
           <Input
             id="pricing-output"
             type="number"
+            min="0"
             step="0.000001"
             value={draft.pricingOutput}
             onChange={(e) => onChange({ pricingOutput: e.target.value })}
-            placeholder={t("如 0.015")}
+            placeholder={t("如 10")}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="pricing-cache-read">{t("缓存读取价格 ($/1M tokens)")}</Label>
+          <Input
+            id="pricing-cache-read"
+            type="number"
+            min="0"
+            step="0.000001"
+            value={draft.pricingCacheRead}
+            onChange={(e) => onChange({ pricingCacheRead: e.target.value })}
+            placeholder={t("如 0.25")}
           />
         </div>
       </div>

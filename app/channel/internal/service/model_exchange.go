@@ -138,6 +138,7 @@ func exportModelToProto(m *biz.ModelExportModel) *channelv1.ModelExportModel {
 		ContextWindow:    m.ContextWindow,
 		PricingInput:     m.PricingInput,
 		PricingOutput:    m.PricingOutput,
+		PricingCacheRead: m.PricingCacheRead,
 		Status:           m.Status,
 		IsPublic:         m.IsPublic,
 		Capabilities:     append([]string(nil), m.Capabilities...),
@@ -207,6 +208,7 @@ func protoToExportModels(in []*channelv1.ModelExportModel, importPrices bool) []
 		if importPrices {
 			do.PricingInput = m.GetPricingInput()
 			do.PricingOutput = m.GetPricingOutput()
+			do.PricingCacheRead = m.GetPricingCacheRead()
 		}
 		for _, a := range m.GetAliases() {
 			if a != nil {

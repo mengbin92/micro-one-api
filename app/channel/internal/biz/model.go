@@ -41,15 +41,21 @@ func ModelIDEqual(a, b string) bool {
 // Model is the domain object for the independent model registry (方案B).
 // It carries no proto or storage tags — it is the pure biz model owned by biz.
 type Model struct {
-	ID               int64
-	ModelID          string // unique identifier, e.g. gpt-4o
-	DisplayName      string
-	Description      string
-	Provider         string
-	ModelType        string
-	ContextWindow    int32
-	PricingInput     float64
-	PricingOutput    float64
+	ID            int64
+	ModelID       string // unique identifier, e.g. gpt-4o
+	DisplayName   string
+	Description   string
+	Provider      string
+	ModelType     string
+	ContextWindow int32
+	// Registry prices are stored per 1M tokens, matching the unit shown in
+	// pricing management. They are reference defaults; billing charges are
+	// driven by the ModelPrice option.
+	PricingInput  float64
+	PricingOutput float64
+	// PricingCacheRead is the optional cache-read price (per 1M tokens);
+	// zero means "not configured".
+	PricingCacheRead float64
 	Status           int32
 	IsPublic         bool
 	Capabilities     []string

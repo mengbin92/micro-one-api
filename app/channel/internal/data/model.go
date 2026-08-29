@@ -28,6 +28,7 @@ type modelModel struct {
 	ModelType        string  `gorm:"column:model_type"`
 	ContextWindow    int32   `gorm:"column:context_window"`
 	PricingInput     float64 `gorm:"column:pricing_input"`
+	PricingCacheRead float64 `gorm:"column:pricing_cache_read"`
 	PricingOutput    float64 `gorm:"column:pricing_output"`
 	Status           int32   `gorm:"column:status"`
 	IsPublic         bool    `gorm:"column:is_public"`
@@ -106,6 +107,7 @@ func newModelPO(do *biz.Model) *modelModel {
 		ContextWindow:    do.ContextWindow,
 		PricingInput:     do.PricingInput,
 		PricingOutput:    do.PricingOutput,
+		PricingCacheRead: do.PricingCacheRead,
 		Status:           do.Status,
 		IsPublic:         do.IsPublic,
 		Capabilities:     jsonStringArray(do.Capabilities),
@@ -139,6 +141,7 @@ func toModelDO(po *modelModel) *biz.Model {
 		ContextWindow:    po.ContextWindow,
 		PricingInput:     po.PricingInput,
 		PricingOutput:    po.PricingOutput,
+		PricingCacheRead: po.PricingCacheRead,
 		Status:           po.Status,
 		IsPublic:         po.IsPublic,
 		Capabilities:     parseStringArray(po.Capabilities),
@@ -467,22 +470,23 @@ func (r *Repository) UpdateModel(ctx context.Context, do *biz.Model) error {
 	}
 	po := newModelPO(do)
 	updates := map[string]interface{}{
-		"display_name":      po.DisplayName,
-		"description":       po.Description,
-		"provider":          po.Provider,
-		"model_type":        po.ModelType,
-		"context_window":    po.ContextWindow,
-		"pricing_input":     po.PricingInput,
-		"pricing_output":    po.PricingOutput,
-		"is_public":         po.IsPublic,
-		"capabilities":      po.Capabilities,
-		"input_modalities":  po.InputModalities,
-		"output_modalities": po.OutputModalities,
-		"tags":              po.Tags,
-		"category":          po.Category,
-		"tier":              po.Tier,
-		"metadata":          po.Metadata,
-		"updated_at":        po.UpdatedAt,
+		"display_name":       po.DisplayName,
+		"description":        po.Description,
+		"provider":           po.Provider,
+		"model_type":         po.ModelType,
+		"context_window":     po.ContextWindow,
+		"pricing_input":      po.PricingInput,
+		"pricing_output":     po.PricingOutput,
+		"pricing_cache_read": po.PricingCacheRead,
+		"is_public":          po.IsPublic,
+		"capabilities":       po.Capabilities,
+		"input_modalities":   po.InputModalities,
+		"output_modalities":  po.OutputModalities,
+		"tags":               po.Tags,
+		"category":           po.Category,
+		"tier":               po.Tier,
+		"metadata":           po.Metadata,
+		"updated_at":         po.UpdatedAt,
 	}
 	res := r.db.WithContext(ctx).Model(&modelModel{}).Where("id = ?", do.ID).Updates(updates)
 	if res.Error != nil {
@@ -990,6 +994,7 @@ func (r *Repository) updateModelMemory(do *biz.Model) error {
 	existing.ContextWindow = do.ContextWindow
 	existing.PricingInput = do.PricingInput
 	existing.PricingOutput = do.PricingOutput
+	existing.PricingCacheRead = do.PricingCacheRead
 	existing.IsPublic = do.IsPublic
 	existing.Capabilities = append([]string(nil), do.Capabilities...)
 	existing.Tags = append([]string(nil), do.Tags...)
