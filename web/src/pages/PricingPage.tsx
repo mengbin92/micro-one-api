@@ -13,6 +13,8 @@ interface PricingRow {
   input_price?: number;
   output_price?: number;
   cache_read_price?: number;
+  input_modalities?: string[];
+  output_modalities?: string[];
 }
 
 interface PricingPayload {
@@ -33,6 +35,8 @@ function normalizeRows(rows: PricingRow[] | undefined) {
       input_price: normalizePrice(row.input_price),
       output_price: normalizePrice(row.output_price),
       cache_read_price: normalizePrice(row.cache_read_price),
+      input_modalities: Array.isArray(row.input_modalities) ? row.input_modalities : [],
+      output_modalities: Array.isArray(row.output_modalities) ? row.output_modalities : [],
     }))
     .filter((row) => row.model)
     .sort((a, b) => a.model.localeCompare(b.model));
@@ -77,7 +81,7 @@ export function PricingPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <TableSkeleton columns={[t("模型名称"), t("输入价格"), t("输出价格"), t("缓存读取")]} rows={8} />
+            <TableSkeleton columns={[t("模型名称"), t("输入模态"), t("输出模态"), t("输入价格"), t("输出价格"), t("缓存读取")]} rows={8} />
           ) : rows.length === 0 ? (
             <EmptyState title={t("暂无模型价格")} description={t("管理员配置价格后会显示在这里。")} />
           ) : (
@@ -86,6 +90,8 @@ export function PricingPage() {
                 <TableHeader>
                   <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">
                     <TableHead>{t("模型名称")}</TableHead>
+                    <TableHead>{t("输入模态")}</TableHead>
+                    <TableHead>{t("输出模态")}</TableHead>
                     <TableHead>{t("输入价格")}</TableHead>
                     <TableHead>{t("输出价格")}</TableHead>
                     <TableHead>{t("缓存读取")}</TableHead>
@@ -95,6 +101,8 @@ export function PricingPage() {
                   {rows.map((row) => (
                     <TableRow key={row.model}>
                       <TableCell className="min-w-64 font-mono text-sm font-semibold">{row.model}</TableCell>
+                      <TableCell className="min-w-32">{row.input_modalities.length > 0 ? row.input_modalities.join(' / ') : '—'}</TableCell>
+                      <TableCell className="min-w-32">{row.output_modalities.length > 0 ? row.output_modalities.join(' / ') : '—'}</TableCell>
                       <TableCell className="min-w-44 font-semibold">{formatPrice(row.input_price, unit)}</TableCell>
                       <TableCell className="min-w-44 font-semibold">{formatPrice(row.output_price, unit)}</TableCell>
                       <TableCell className="min-w-44 font-semibold">{formatPrice(row.cache_read_price, unit)}</TableCell>

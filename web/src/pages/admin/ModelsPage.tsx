@@ -70,6 +70,8 @@ function draftToCreatePayload(draft: ModelDraft): CreateModelPayload {
     status: 1,
     is_public: draft.isPublic,
     capabilities: splitCsv(draft.capabilities),
+    input_modalities: draft.inputModalities,
+    output_modalities: draft.outputModalities,
     tags: splitCsv(draft.tags),
     category: draft.category,
     tier: draft.tier,
@@ -89,6 +91,8 @@ function draftToUpdatePayload(modelPk: number, draft: ModelDraft): UpdateModelPa
     pricing_output: draft.pricingOutput ? Number(draft.pricingOutput) : 0,
     is_public: draft.isPublic,
     capabilities: splitCsv(draft.capabilities),
+    input_modalities: draft.inputModalities,
+    output_modalities: draft.outputModalities,
     tags: splitCsv(draft.tags),
     category: draft.category,
     tier: draft.tier,
@@ -107,6 +111,8 @@ interface ModelInfoLike {
   pricing_output: number;
   is_public: boolean;
   capabilities: string[];
+  input_modalities: string[];
+  output_modalities: string[];
   tags: string[];
   category: string;
   tier: string;
@@ -127,6 +133,8 @@ function modelInfoToDraft(model: ModelInfoLike): ModelDraft {
     tier: model.tier ?? '',
     isPublic: model.is_public,
     capabilities: (model.capabilities ?? []).join(', '),
+    inputModalities: model.input_modalities ?? [],
+    outputModalities: model.output_modalities ?? [],
     tags: (model.tags ?? []).join(', '),
     metadata: model.metadata ?? '',
   };
@@ -368,17 +376,19 @@ export function AdminModelsPage() {
                 <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
             </select>
-            <select
+            <input
+              list="model-provider-filter-options"
               value={providerFilter}
               onChange={(e) => setFilter('provider', e.target.value)}
               className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
-              aria-label={t("模型开发商筛选")}
-            >
-              <option value="">{t("全部开发商")}</option>
+              aria-label={t("大模型厂商筛选")}
+              placeholder={t("全部厂商")}
+            />
+            <datalist id="model-provider-filter-options">
               {PROVIDER_OPTIONS.filter((o) => o.value).map((o) => (
                 <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
-            </select>
+            </datalist>
             <select
               value={categoryFilter}
               onChange={(e) => setFilter('category', e.target.value)}
@@ -414,7 +424,7 @@ export function AdminModelsPage() {
       />
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', t("模型"), t("供应商"), t("模型开发商"), t("类型"), t("状态"), t("渠道"), t("订阅"), t("操作")]} />
+        <TableSkeleton columns={['ID', t("模型"), t("供应商"), t("大模型厂商"), t("类型"), t("输入/输出模态"), t("状态"), t("渠道"), t("订阅"), t("操作")]} />
       ) : sortedModels.length === 0 ? (
         <EmptyState title={t("暂无模型")} description={t("点击右上角新建模型开始管理")} />
       ) : (
@@ -438,8 +448,9 @@ export function AdminModelsPage() {
                   <SortableHeader<ModelSummary> columnKey="model_id" sort={sort} onSortChange={setSort}>{t("模型 ID")}</SortableHeader>
                   <SortableHeader<ModelSummary> columnKey="display_name" sort={sort} onSortChange={setSort}>{t("显示名称")}</SortableHeader>
                   <TableHead>{t("供应商")}</TableHead>
-                  <SortableHeader<ModelSummary> columnKey="provider" sort={sort} onSortChange={setSort}>{t("模型开发商")}</SortableHeader>
+                  <SortableHeader<ModelSummary> columnKey="provider" sort={sort} onSortChange={setSort}>{t("大模型厂商")}</SortableHeader>
                   <SortableHeader<ModelSummary> columnKey="model_type" sort={sort} onSortChange={setSort} className="hidden md:table-cell">{t("类型")}</SortableHeader>
+                  <TableHead className="hidden md:table-cell">{t("输入/输出模态")}</TableHead>
                   <SortableHeader<ModelSummary> columnKey="status" sort={sort} onSortChange={setSort}>{t("状态")}</SortableHeader>
                   <TableHead className="hidden lg:table-cell">{t("渠道数")}</TableHead>
                   <TableHead className="hidden lg:table-cell">{t("订阅数")}</TableHead>
@@ -464,6 +475,10 @@ export function AdminModelsPage() {
                     <TableCell>{m.suppliers.length > 0 ? m.suppliers.join('、') : '—'}</TableCell>
                     <TableCell>{m.provider || '—'}</TableCell>
                     <TableCell className="hidden md:table-cell">{m.model_type || '—'}</TableCell>
+                    <TableCell className="hidden md:table-cell text-xs">
+                      <div>{t("输入")}：{m.input_modalities.length > 0 ? m.input_modalities.join(' / ') : '—'}</div>
+                      <div>{t("输出")}：{m.output_modalities.length > 0 ? m.output_modalities.join(' / ') : '—'}</div>
+                    </TableCell>
                     <TableCell>
                       <span className={'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ' + statusBadgeClass(m.status)}>
                         {t(MODEL_STATUS_LABELS[m.status] ?? String(m.status))}

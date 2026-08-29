@@ -148,9 +148,9 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 22, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 23, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := len(files) - 3 // last three files arrive later (080, 081, 082)
+	cut := len(files) - 3 // last three files arrive later (081, 082, 083)
 
 	db := openScratchSqlite(t)
 	// Stage 1: apply the tree up to (not including) the last three files.
@@ -180,6 +180,10 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		"channel usage idempotency migration must have applied during upgrade")
 	require.True(t, sqliteTableExists(t, db, "log_ingest_dedupe_claims"),
 		"log ingestion idempotency migration must have applied during upgrade")
+	require.True(t, sqliteColumnExists(t, db, "models", "input_modalities"),
+		"model input modalities migration must have applied during upgrade")
+	require.True(t, sqliteColumnExists(t, db, "models", "output_modalities"),
+		"model output modalities migration must have applied during upgrade")
 }
 
 func TestSQLiteDialect_BalanceAmountMigrationBackfillsLegacyColumn(t *testing.T) {

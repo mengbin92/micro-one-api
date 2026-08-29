@@ -403,14 +403,16 @@ func TestDryRun_NoWrite(t *testing.T) {
 
 func TestModelExchangeContentHash_Stable(t *testing.T) {
 	models := []*ModelExportModel{
-		{ModelID: "b", DisplayName: "B", Capabilities: []string{"x", "y"}, Status: 1},
-		{ModelID: "a", DisplayName: "A", Capabilities: []string{"y", "x"}, Status: 1},
+		{ModelID: "b", DisplayName: "B", Capabilities: []string{"x", "y"}, InputModalities: []string{"image", "text"}, OutputModalities: []string{"text"}, Status: 1},
+		{ModelID: "a", DisplayName: "A", Capabilities: []string{"y", "x"}, InputModalities: []string{"text", "image"}, OutputModalities: []string{"audio", "text"}, Status: 1},
 	}
 	h1, err := ModelExchangeContentHash(models)
 	if err != nil {
 		t.Fatalf("hash1: %v", err)
 	}
-	// Swap order — hash must be identical because canonicalExportView sorts.
+	// Swap model and modality order — the canonical export view sorts both.
+	models[0].InputModalities = []string{"text", "image"}
+	models[1].OutputModalities = []string{"text", "audio"}
 	models[0], models[1] = models[1], models[0]
 	h2, err := ModelExchangeContentHash(models)
 	if err != nil {

@@ -4,6 +4,8 @@ import {
   PROVIDER_OPTIONS,
   TYPE_OPTIONS,
   TIER_OPTIONS,
+  INPUT_MODALITY_OPTIONS,
+  OUTPUT_MODALITY_OPTIONS,
   validateMetadata,
   type ModelDraft,
 } from '@/lib/model-draft';
@@ -19,6 +21,7 @@ export function ModelDraftFields({
   isEdit?: boolean;
 }) {
   const metadataError = validateMetadata(draft.metadata);
+  const providerListId = isEdit ? 'model-provider-options-edit' : 'model-provider-options-create';
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-4">
@@ -44,17 +47,19 @@ export function ModelDraftFields({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
-          <Label htmlFor="provider">{t("模型开发商")}</Label>
-          <select
+          <Label htmlFor="provider">{t("大模型厂商")}</Label>
+          <Input
             id="provider"
+            list={providerListId}
             value={draft.provider}
             onChange={(e) => onChange({ provider: e.target.value })}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
-          >
+            placeholder={t("可选择或输入自定义厂商，如 StepFun")}
+          />
+          <datalist id={providerListId}>
             {PROVIDER_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{t(o.label)}</option>
+              o.value ? <option key={o.value} value={o.value}>{t(o.label)}</option> : null
             ))}
-          </select>
+          </datalist>
         </div>
         <div className="grid gap-2">
           <Label htmlFor="model-type">{t("模型类型")}</Label>
@@ -69,6 +74,20 @@ export function ModelDraftFields({
             ))}
           </select>
         </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <ModalityPicker
+          label={t("输入模态")}
+          options={INPUT_MODALITY_OPTIONS}
+          values={draft.inputModalities}
+          onChange={(inputModalities) => onChange({ inputModalities })}
+        />
+        <ModalityPicker
+          label={t("输出模态")}
+          options={OUTPUT_MODALITY_OPTIONS}
+          values={draft.outputModalities}
+          onChange={(outputModalities) => onChange({ outputModalities })}
+        />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
@@ -180,5 +199,40 @@ export function ModelDraftFields({
         <span className="text-sm">{t("公开显示给用户")}</span>
       </label>
     </div>
+  );
+}
+
+function ModalityPicker({
+  label,
+  options,
+  values,
+  onChange,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  values: string[];
+  onChange: (values: string[]) => void;
+}) {
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="text-sm font-medium">{label}</legend>
+      <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-input p-3">
+        {options.map((option) => (
+          <label key={option.value} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={values.includes(option.value)}
+              onChange={(event) => onChange(
+                event.target.checked
+                  ? [...values, option.value]
+                  : values.filter((value) => value !== option.value),
+              )}
+              className="size-4 rounded border-input"
+            />
+            {t(option.label)}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }

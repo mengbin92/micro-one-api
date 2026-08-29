@@ -100,7 +100,7 @@ export interface ImportModelsDryRunResponse {
   results: ImportRecordResult[];
 }
 
-export const MODEL_EXCHANGE_SCHEMA_VERSION = '1.0.0';
+export const MODEL_EXCHANGE_SCHEMA_VERSION = '1.1.0';
 
 /**
  * Export the model registry as a versioned JSON document and trigger a browser

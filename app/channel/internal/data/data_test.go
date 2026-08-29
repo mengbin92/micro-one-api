@@ -309,6 +309,8 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			status INTEGER NOT NULL DEFAULT 1,
 			is_public INTEGER NOT NULL DEFAULT 1,
 			capabilities TEXT DEFAULT '',
+			input_modalities TEXT DEFAULT '',
+			output_modalities TEXT DEFAULT '',
 			tags TEXT DEFAULT '',
 			category TEXT NOT NULL DEFAULT '',
 			tier TEXT NOT NULL DEFAULT '',

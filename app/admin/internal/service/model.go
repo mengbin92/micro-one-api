@@ -12,13 +12,15 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 )
 
-// ── Model management passthrough (方案B) ────────────────────────────────────
+// ── Model management orchestration (方案B) ──────────────────────────────────
 // Admin-api proxies model management RPCs to channel-service, mirroring the
-// existing channel/subscription-account passthrough pattern. The admin service
-// is a thin DTO forwarder — no business rules, no storage access.
+// existing channel/subscription-account pattern.
 
 // ListModels lists models from the registry.
 func (s *AdminService) ListModels(ctx context.Context, req *channelv1.ListModelsRequest) (*channelv1.ListModelsResponse, error) {
+	if s == nil || s.channelClient == nil {
+		return &channelv1.ListModelsResponse{}, nil
+	}
 	return s.channelClient.ListModels(ctx, req)
 }
 

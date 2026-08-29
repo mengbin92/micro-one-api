@@ -19,6 +19,10 @@ export interface ModelSummary {
   channel_count: number;
   subscription_count: number;
   suppliers: string[];
+  input_modalities: string[];
+  output_modalities: string[];
+  pricing_input: number;
+  pricing_output: number;
 }
 
 export interface ModelInfo {
@@ -34,6 +38,8 @@ export interface ModelInfo {
   status: number;
   is_public: boolean;
   capabilities: string[];
+  input_modalities: string[];
+  output_modalities: string[];
   tags: string[];
   category: string;
   tier: string;
@@ -132,6 +138,8 @@ export interface CreateModelPayload {
   status?: number;
   is_public?: boolean;
   capabilities?: string[];
+  input_modalities?: string[];
+  output_modalities?: string[];
   tags?: string[];
   category?: string;
   tier?: string;
@@ -149,6 +157,8 @@ export interface UpdateModelPayload {
   pricing_output?: number;
   is_public?: boolean;
   capabilities?: string[];
+  input_modalities?: string[];
+  output_modalities?: string[];
   tags?: string[];
   category?: string;
   tier?: string;
@@ -178,6 +188,8 @@ export async function getModel(modelPk: number): Promise<GetModelResponse> {
       ...data.model,
       status: data.model.status ?? 0,
       suppliers: data.model.suppliers ?? [],
+      input_modalities: data.model.input_modalities ?? [],
+      output_modalities: data.model.output_modalities ?? [],
     } : data.model,
   };
 }
@@ -190,6 +202,8 @@ function normalizeModelSummary(model: ModelSummary): ModelSummary {
     ...model,
     status: model.status ?? 0,
     suppliers: model.suppliers ?? [],
+    input_modalities: model.input_modalities ?? [],
+    output_modalities: model.output_modalities ?? [],
   };
 }
 
