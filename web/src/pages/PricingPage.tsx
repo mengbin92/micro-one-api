@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Database } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
 import { TableSkeleton } from '@/components/LoadingStates';
+import { ModalityFlow } from '@/components/ModalityIcons';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { apiClient } from '@/lib/api';
@@ -81,7 +82,7 @@ export function PricingPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <TableSkeleton columns={[t("模型名称"), t("输入模态"), t("输出模态"), t("输入价格"), t("输出价格"), t("缓存读取")]} rows={8} />
+            <TableSkeleton columns={[t("模型名称"), t("输入/输出模态"), t("输入价格"), t("输出价格"), t("缓存读取")]} rows={8} />
           ) : rows.length === 0 ? (
             <EmptyState title={t("暂无模型价格")} description={t("管理员配置价格后会显示在这里。")} />
           ) : (
@@ -90,8 +91,7 @@ export function PricingPage() {
                 <TableHeader>
                   <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">
                     <TableHead>{t("模型名称")}</TableHead>
-                    <TableHead>{t("输入模态")}</TableHead>
-                    <TableHead>{t("输出模态")}</TableHead>
+                    <TableHead>{t("输入/输出模态")}</TableHead>
                     <TableHead>{t("输入价格")}</TableHead>
                     <TableHead>{t("输出价格")}</TableHead>
                     <TableHead>{t("缓存读取")}</TableHead>
@@ -101,8 +101,9 @@ export function PricingPage() {
                   {rows.map((row) => (
                     <TableRow key={row.model}>
                       <TableCell className="min-w-64 font-mono text-sm font-semibold">{row.model}</TableCell>
-                      <TableCell className="min-w-32">{row.input_modalities.length > 0 ? row.input_modalities.join(' / ') : '—'}</TableCell>
-                      <TableCell className="min-w-32">{row.output_modalities.length > 0 ? row.output_modalities.join(' / ') : '—'}</TableCell>
+                      <TableCell className="min-w-32">
+                        <ModalityFlow inputModalities={row.input_modalities} outputModalities={row.output_modalities} />
+                      </TableCell>
                       <TableCell className="min-w-44 font-semibold">{formatPrice(row.input_price, unit)}</TableCell>
                       <TableCell className="min-w-44 font-semibold">{formatPrice(row.output_price, unit)}</TableCell>
                       <TableCell className="min-w-44 font-semibold">{formatPrice(row.cache_read_price, unit)}</TableCell>

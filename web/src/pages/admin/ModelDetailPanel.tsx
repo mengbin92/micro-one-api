@@ -36,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ModalityFlow } from '@/components/admin/ModalityIcons';
+import { ModalityFlow } from '@/components/ModalityIcons';
 import { t } from '@/lib/i18n';
 
 interface ModelDetailPanelProps {
