@@ -9,7 +9,7 @@ import { AdminPagination } from '@/components/admin/AdminPagination';
 import { AdminTableToolbar } from '@/components/admin/AdminTableToolbar';
 import { SortableHeader } from '@/components/admin/SortableHeader';
 import { ModelDraftFields } from '@/components/admin/ModelDraftFields';
-import { ModalityFlow } from '@/components/admin/ModalityIcons';
+import { ModalityFlow } from '@/components/ModalityIcons';
 import {
   emptyDraft,
   PROVIDER_OPTIONS,

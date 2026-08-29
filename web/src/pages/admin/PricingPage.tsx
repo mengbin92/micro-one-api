@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ModalityFlow } from '@/components/admin/ModalityIcons';
+import { ModalityFlow } from '@/components/ModalityIcons';
 import { adminApiClient } from '@/lib/api';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { AMOUNT_SCALE } from '@/lib/amount';
