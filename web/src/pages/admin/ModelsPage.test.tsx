@@ -19,6 +19,11 @@ const model = {
   channel_count: 3,
   subscription_count: 2,
   suppliers: ['neo'],
+  input_modalities: ['text', 'image'],
+  output_modalities: ['text'],
+  pricing_input: 2.5,
+  pricing_output: 10,
+  pricing_cache_read: 0.25,
 };
 
 const fullModel = {
@@ -30,8 +35,9 @@ const fullModel = {
     provider: 'openai',
     model_type: 'chat',
     context_window: 128000,
-    pricing_input: 0.005,
-    pricing_output: 0.015,
+    pricing_input: 2.5,
+    pricing_output: 10,
+    pricing_cache_read: 0.25,
     status: 1,
     is_public: true,
     capabilities: ['vision', 'function_calling'],
@@ -44,6 +50,8 @@ const fullModel = {
     channel_count: 3,
     subscription_count: 2,
     suppliers: ['neo'],
+    input_modalities: ['text', 'image'],
+    output_modalities: ['text'],
   },
   aliases: [{ id: 1, model_pk: 1, alias: 'gpt4o', is_primary: true, created_at: 1700000000 }],
   channel_mappings: [{ id: 1, channel_id: 10, model_pk: 1, enabled: true, priority: 0, config: '', created_at: 1700000000, updated_at: 1700000000 }],
@@ -72,6 +80,8 @@ describe('AdminModelsPage', () => {
     expect(row?.textContent).toContain('启用');
     expect(row?.textContent).toContain('3');
     expect(row?.textContent).toContain('2');
+    expect(within(row!).getAllByLabelText('文本')).toHaveLength(2);
+    expect(within(row!).getByLabelText('图像')).toBeInTheDocument();
   });
 
   it('labels the default status and type filters distinctly', async () => {
@@ -163,6 +173,9 @@ describe('AdminModelsPage', () => {
     await user.type(screen.getByPlaceholderText('如 GPT-4o'), 'Claude 3.5 Sonnet');
     await user.type(screen.getByLabelText('大模型厂商'), 'StepFun');
     await user.click(within(screen.getByRole('group', { name: '输入模态' })).getByText('图像'));
+    await user.type(screen.getByLabelText('输入价格 ($/1M tokens)'), '2.5');
+    await user.type(screen.getByLabelText('输出价格 ($/1M tokens)'), '10');
+    await user.type(screen.getByLabelText('缓存读取价格 ($/1M tokens)'), '0.25');
     await user.click(screen.getByText('创建'));
 
     await waitFor(() => {
@@ -173,6 +186,9 @@ describe('AdminModelsPage', () => {
     expect(captured.body?.provider).toBe('StepFun');
     expect(captured.body?.input_modalities).toEqual(['text', 'image']);
     expect(captured.body?.output_modalities).toEqual(['text']);
+    expect(captured.body?.pricing_input).toBe(2.5);
+    expect(captured.body?.pricing_output).toBe(10);
+    expect(captured.body?.pricing_cache_read).toBe(0.25);
   });
 
   it('opens edit dialog with full model data fetched from getModel', async () => {
@@ -209,8 +225,9 @@ describe('AdminModelsPage', () => {
     // context_window should be populated
     expect(screen.getByDisplayValue('128000')).toBeInTheDocument();
     // pricing fields should be populated
-    expect(screen.getByDisplayValue('0.005')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('0.015')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('2.5')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('10')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('0.25')).toBeInTheDocument();
   });
 
   it('deletes a model via confirm dialog', async () => {
@@ -285,6 +302,7 @@ describe('AdminModelsPage', () => {
     });
     expect(within(screen.getByRole('dialog')).getByText('禁用')).toBeInTheDocument();
     expect(screen.getByText('10')).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByText('$0.25/1M')).toBeInTheDocument();
   });
 
   it('creates an alias via the detail panel', async () => {

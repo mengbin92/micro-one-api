@@ -305,6 +305,7 @@ func setupChannelTestDB(t *testing.T) *Repository {
 			model_type TEXT NOT NULL DEFAULT 'chat',
 			context_window INTEGER NOT NULL DEFAULT 0,
 			pricing_input REAL NOT NULL DEFAULT 0,
+			pricing_cache_read REAL NOT NULL DEFAULT 0,
 			pricing_output REAL NOT NULL DEFAULT 0,
 			status INTEGER NOT NULL DEFAULT 1,
 			is_public INTEGER NOT NULL DEFAULT 1,

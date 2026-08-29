@@ -27,6 +27,7 @@ func toModelInfo(m *biz.Model) *channelv1.ModelInfo {
 		ContextWindow:     m.ContextWindow,
 		PricingInput:      m.PricingInput,
 		PricingOutput:     m.PricingOutput,
+		PricingCacheRead:  m.PricingCacheRead,
 		Status:            m.Status,
 		IsPublic:          m.IsPublic,
 		Capabilities:      append([]string(nil), m.Capabilities...),
@@ -65,6 +66,7 @@ func toModelSummary(m *biz.Model) *channelv1.ModelSummary {
 		OutputModalities:  append([]string(nil), m.OutputModalities...),
 		PricingInput:      m.PricingInput,
 		PricingOutput:     m.PricingOutput,
+		PricingCacheRead:  m.PricingCacheRead,
 	}
 }
 
@@ -233,6 +235,7 @@ func (s *ChannelService) CreateModel(ctx context.Context, req *channelv1.CreateM
 		ContextWindow:    req.ContextWindow,
 		PricingInput:     req.PricingInput,
 		PricingOutput:    req.PricingOutput,
+		PricingCacheRead: req.PricingCacheRead,
 		Status:           status,
 		IsPublic:         req.IsPublic,
 		Capabilities:     append([]string(nil), req.Capabilities...),
@@ -263,6 +266,7 @@ func (s *ChannelService) UpdateModel(ctx context.Context, req *channelv1.UpdateM
 		ContextWindow:    req.ContextWindow,
 		PricingInput:     req.PricingInput,
 		PricingOutput:    req.PricingOutput,
+		PricingCacheRead: req.PricingCacheRead,
 		IsPublic:         req.IsPublic,
 		Capabilities:     append([]string(nil), req.Capabilities...),
 		InputModalities:  append([]string(nil), req.InputModalities...),

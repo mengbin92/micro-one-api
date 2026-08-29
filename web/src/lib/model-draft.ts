@@ -7,6 +7,7 @@ import { t } from '@/lib/i18n';export interface ModelDraft {
   contextWindow: string;
   pricingInput: string;
   pricingOutput: string;
+  pricingCacheRead: string;
   category: string;
   tier: string;
   isPublic: boolean;
@@ -26,6 +27,7 @@ export const emptyDraft: ModelDraft = {
   contextWindow: '',
   pricingInput: '',
   pricingOutput: '',
+  pricingCacheRead: '',
   category: '',
   tier: '',
   isPublic: true,

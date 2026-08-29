@@ -34,11 +34,14 @@ export interface ModelExportModel {
   provider: string;
   model_type: string;
   context_window: number;
-  pricing_input: number;
-  pricing_output: number;
+  pricing_input?: number;
+  pricing_output?: number;
+  pricing_cache_read?: number;
   status: number;
   is_public: boolean;
   capabilities: string[];
+  input_modalities?: string[];
+  output_modalities?: string[];
   tags: string[];
   category: string;
   tier: string;
@@ -100,7 +103,7 @@ export interface ImportModelsDryRunResponse {
   results: ImportRecordResult[];
 }
 
-export const MODEL_EXCHANGE_SCHEMA_VERSION = '1.1.0';
+export const MODEL_EXCHANGE_SCHEMA_VERSION = '1.2.0';
 
 /**
  * Export the model registry as a versioned JSON document and trigger a browser

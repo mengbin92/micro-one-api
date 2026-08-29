@@ -23,6 +23,7 @@ export interface ModelSummary {
   output_modalities: string[];
   pricing_input: number;
   pricing_output: number;
+  pricing_cache_read: number;
 }
 
 export interface ModelInfo {
@@ -35,6 +36,7 @@ export interface ModelInfo {
   context_window: number;
   pricing_input: number;
   pricing_output: number;
+  pricing_cache_read: number;
   status: number;
   is_public: boolean;
   capabilities: string[];
@@ -135,6 +137,7 @@ export interface CreateModelPayload {
   context_window?: number;
   pricing_input?: number;
   pricing_output?: number;
+  pricing_cache_read?: number;
   status?: number;
   is_public?: boolean;
   capabilities?: string[];
@@ -155,6 +158,7 @@ export interface UpdateModelPayload {
   context_window?: number;
   pricing_input?: number;
   pricing_output?: number;
+  pricing_cache_read?: number;
   is_public?: boolean;
   capabilities?: string[];
   input_modalities?: string[];
@@ -187,6 +191,9 @@ export async function getModel(modelPk: number): Promise<GetModelResponse> {
     model: data.model ? {
       ...data.model,
       status: data.model.status ?? 0,
+      pricing_input: data.model.pricing_input ?? 0,
+      pricing_output: data.model.pricing_output ?? 0,
+      pricing_cache_read: data.model.pricing_cache_read ?? 0,
       suppliers: data.model.suppliers ?? [],
       input_modalities: data.model.input_modalities ?? [],
       output_modalities: data.model.output_modalities ?? [],
@@ -201,6 +208,9 @@ function normalizeModelSummary(model: ModelSummary): ModelSummary {
   return {
     ...model,
     status: model.status ?? 0,
+    pricing_input: model.pricing_input ?? 0,
+    pricing_output: model.pricing_output ?? 0,
+    pricing_cache_read: model.pricing_cache_read ?? 0,
     suppliers: model.suppliers ?? [],
     input_modalities: model.input_modalities ?? [],
     output_modalities: model.output_modalities ?? [],
@@ -312,9 +322,11 @@ export function statusBadgeClass(status: number): string {
   return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
 }
 
+// Registry prices are per 1M tokens (see api/channel/v1 ModelInfo), matching
+// the unit shown in pricing management.
 export function formatPricing(price: number): string {
   if (!price || price === 0) return '—';
-  return `$${price.toFixed(4)}/1K`;
+  return `$${Number(price.toPrecision(10))}/1M`;
 }
 
 export function formatContextWindow(window: number): string {

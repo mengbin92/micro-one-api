@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ModalityFlow } from '@/components/admin/ModalityIcons';
 import { adminApiClient } from '@/lib/api';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { AMOUNT_SCALE } from '@/lib/amount';
@@ -115,9 +116,11 @@ function ratioToMTokPrice(ratio: number | undefined, amountPerUnit: number) {
   return String(Number(((ratio / amountPerUnit) * MTOK).toPrecision(10)));
 }
 
-function registryPerKToMTok(value: number | undefined) {
+// Registry prices are already stored per 1M tokens; they only serve as the
+// prefill reference until the model is saved into the ModelPrice config.
+function registryMTokPrice(value: number | undefined) {
   if (value === undefined || value <= 0) return '';
-  return String(Number((value * 1000).toPrecision(10)));
+  return String(Number(value.toPrecision(10)));
 }
 
 function rowsFromPricing(
@@ -161,12 +164,12 @@ function rowsFromPricing(
       inputPrice:
       normalizedModelPrice[model]?.input_price !== undefined
         ? perTokenToMTok(normalizedModelPrice[model].input_price)
-        : registryPerKToMTok(registered?.pricing_input)
+        : registryMTokPrice(registered?.pricing_input)
           || ratioToMTokPrice(normalizedModelRatio[model], amountPerUnit),
       outputPrice:
       normalizedModelPrice[model]?.output_price !== undefined
         ? perTokenToMTok(normalizedModelPrice[model].output_price)
-        : registryPerKToMTok(registered?.pricing_output)
+        : registryMTokPrice(registered?.pricing_output)
           || ratioToMTokPrice(
             normalizedModelRatio[model] === undefined
               ? undefined
@@ -176,7 +179,7 @@ function rowsFromPricing(
       cacheReadPrice:
       normalizedModelPrice[model]?.cache_read_price !== undefined
         ? perTokenToMTok(normalizedModelPrice[model].cache_read_price)
-        : '',
+        : registryMTokPrice(registered?.pricing_cache_read),
       status: registered?.status,
       inputModalities: registered?.input_modalities ?? [],
       outputModalities: registered?.output_modalities ?? [],
@@ -400,9 +403,8 @@ export function AdminPricingPage() {
                       <TableCell className="whitespace-nowrap">
                         {row.status === 1 ? t("启用") : row.status === 2 ? t("测试中") : row.status === 0 ? t("禁用") : t("未登记")}
                       </TableCell>
-                      <TableCell className="min-w-40 text-xs">
-                        <div>{t("输入")}：{row.inputModalities.length > 0 ? row.inputModalities.join(' / ') : '—'}</div>
-                        <div>{t("输出")}：{row.outputModalities.length > 0 ? row.outputModalities.join(' / ') : '—'}</div>
+                      <TableCell className="min-w-32 text-xs">
+                        <ModalityFlow inputModalities={row.inputModalities} outputModalities={row.outputModalities} />
                       </TableCell>
                       <TableCell>
                         <Input

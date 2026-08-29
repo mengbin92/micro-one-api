@@ -36,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { ModalityFlow } from '@/components/admin/ModalityIcons';
 import { t } from '@/lib/i18n';
 
 interface ModelDetailPanelProps {
@@ -143,12 +144,8 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                 <p>{t(MODEL_TYPE_LABELS[model.model_type] ?? model.model_type ?? '—')}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">{t("输入模态")}</p>
-                <p>{model.input_modalities.length > 0 ? model.input_modalities.join('、') : '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("输出模态")}</p>
-                <p>{model.output_modalities.length > 0 ? model.output_modalities.join('、') : '—'}</p>
+                <p className="text-xs text-muted-foreground">{t("输入/输出模态")}</p>
+                <ModalityFlow inputModalities={model.input_modalities} outputModalities={model.output_modalities} />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("状态")}</p>
@@ -175,6 +172,10 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
               <div>
                 <p className="text-xs text-muted-foreground">{t("输出价格")}</p>
                 <p>{formatPricing(model.pricing_output)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("缓存读取价格")}</p>
+                <p>{formatPricing(model.pricing_cache_read)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("公开显示")}</p>
