@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -1271,6 +1274,29 @@ func TestReadonlyPricingReturnsModelPriceRows(t *testing.T) {
 			t.Fatalf("pricing response missing %q: %s", want, body)
 		}
 	}
+}
+
+func TestMergeReadonlyPricingModelsFiltersUnavailableAndAddsModalities(t *testing.T) {
+	rows := []readonlyPricingRow{
+		{Model: "enabled-model", InputPrice: floatPtr(1)},
+		{Model: "disabled-model", InputPrice: floatPtr(2)},
+		{Model: "legacy-model", InputPrice: floatPtr(3)},
+	}
+	merged := mergeReadonlyPricingModels(rows, []*channelv1.ModelSummary{
+		{ModelId: "enabled-model", Status: 1, IsPublic: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}},
+		{ModelId: "disabled-model", Status: 0, IsPublic: true},
+		{ModelId: "registry-only", Status: 1, IsPublic: true, PricingInput: 0.005, PricingOutput: 0.015},
+	})
+
+	require.Len(t, merged, 2)
+	byModel := map[string]readonlyPricingRow{}
+	for _, row := range merged {
+		byModel[row.Model] = row
+	}
+	assert.NotContains(t, byModel, "disabled-model")
+	assert.Equal(t, []string{"text", "image"}, byModel["enabled-model"].InputModalities)
+	assert.NotContains(t, byModel, "registry-only")
+	assert.Contains(t, byModel, "legacy-model")
 }
 
 func TestReadonlyPricingReadsLegacyQuotaPerUnit(t *testing.T) {

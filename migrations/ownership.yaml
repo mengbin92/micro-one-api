@@ -59,6 +59,7 @@ services:
     - 069_add_subscription_account_weight     # v0.11.0 Phase 3 §3.1
     - 070_clean_orphan_model_mappings         # v0.11.0 review L4: orphan cleanup + cascade FKs
     - 081_create_channel_usage_events         # reservation-keyed exactly-once used_quota updates
+    - 083_add_model_modalities                # model input/output modality metadata
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /

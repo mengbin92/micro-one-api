@@ -24,6 +24,7 @@ import (
 
 	adminv1 "micro-one-api/api/admin/v1"
 	billingv1 "micro-one-api/api/billing/v1"
+	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/pkg/safecast"
@@ -1276,7 +1277,9 @@ type readonlyPricingRow struct {
 	// CacheCreationUnpriced is true when the model row carries no
 	// cache-creation prices; surfaced so ops can see the v0.11.0 pricing gap
 	// (roadmap §1.3).
-	CacheCreationUnpriced bool `json:"cache_creation_unpriced,omitempty"`
+	CacheCreationUnpriced bool     `json:"cache_creation_unpriced,omitempty"`
+	InputModalities       []string `json:"input_modalities,omitempty"`
+	OutputModalities      []string `json:"output_modalities,omitempty"`
 }
 
 type readonlyModelPrice struct {
@@ -1323,6 +1326,10 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 	}
 
 	rows := readonlyPricingRows(optionMap, amountPerUnit)
+	modelsResp, modelsErr := svc.ListModels(r.Context(), &channelv1.ListModelsRequest{Page: 1, PageSize: 1000})
+	if modelsErr == nil && modelsResp != nil {
+		rows = mergeReadonlyPricingModels(rows, modelsResp.GetModels())
+	}
 	unpricedCount := 0
 	for _, row := range rows {
 		if row.CacheCreationUnpriced {
@@ -1340,6 +1347,41 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 			"unpriced_model_count": unpricedCount,
 		},
 	})
+}
+
+func mergeReadonlyPricingModels(rows []readonlyPricingRow, models []*channelv1.ModelSummary) []readonlyPricingRow {
+	byID := make(map[string]readonlyPricingRow, len(rows)+len(models))
+	for _, row := range rows {
+		byID[strings.ToLower(strings.TrimSpace(row.Model))] = row
+	}
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		id := strings.ToLower(strings.TrimSpace(model.GetModelId()))
+		if id == "" {
+			continue
+		}
+		if !model.GetIsPublic() || model.GetStatus() != 1 {
+			delete(byID, id)
+			continue
+		}
+		row, ok := byID[id]
+		if !ok {
+			// Registry prices are editing defaults, not billing configuration.
+			// Only expose rows backed by ModelPrice or the legacy ratio options.
+			continue
+		}
+		row.InputModalities = append([]string(nil), model.GetInputModalities()...)
+		row.OutputModalities = append([]string(nil), model.GetOutputModalities()...)
+		byID[id] = row
+	}
+	merged := make([]readonlyPricingRow, 0, len(byID))
+	for _, row := range byID {
+		merged = append(merged, row)
+	}
+	sort.Slice(merged, func(i, j int) bool { return merged[i].Model < merged[j].Model })
+	return merged
 }
 
 // currentCacheCreationMode reports the active cache-creation billing mode for

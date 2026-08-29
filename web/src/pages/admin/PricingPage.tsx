@@ -25,6 +25,9 @@ interface PricingRow {
   inputPrice: string;
   outputPrice: string;
   cacheReadPrice: string;
+  status?: number;
+  inputModalities: string[];
+  outputModalities: string[];
 }
 
 interface ModelPrice {
@@ -112,6 +115,11 @@ function ratioToMTokPrice(ratio: number | undefined, amountPerUnit: number) {
   return String(Number(((ratio / amountPerUnit) * MTOK).toPrecision(10)));
 }
 
+function registryPerKToMTok(value: number | undefined) {
+  if (value === undefined || value <= 0) return '';
+  return String(Number((value * 1000).toPrecision(10)));
+}
+
 function rowsFromPricing(
   modelPrice: Record<string, ModelPrice>,
   modelRatio: Record<string, number>,
@@ -128,8 +136,13 @@ function rowsFromPricing(
   const normalizedCompletionRatio = Object.fromEntries(
     Object.entries(completionRatio).map(([model, ratio]) => [model.trim().toLowerCase(), ratio]),
   );
+  const registryModels = Object.fromEntries(
+    publicModels
+      .filter((model) => model.is_public)
+      .map((model) => [model.model_id.trim().toLowerCase(), model]),
+  );
   const publicModelIDs = publicModels
-    .filter((model) => model.status === 1 && model.is_public)
+    .filter((model) => model.is_public)
     .map((model) => model.model_id.trim().toLowerCase())
     .filter(Boolean);
   const models = Array.from(
@@ -140,27 +153,35 @@ function rowsFromPricing(
       ...Object.keys(normalizedCompletionRatio),
     ]),
   ).sort();
-  return models.map((model) => ({
-    id: model,
-    model,
-    inputPrice:
+  return models.map((model) => {
+    const registered = registryModels[model];
+    return {
+      id: model,
+      model,
+      inputPrice:
       normalizedModelPrice[model]?.input_price !== undefined
         ? perTokenToMTok(normalizedModelPrice[model].input_price)
-        : ratioToMTokPrice(normalizedModelRatio[model], amountPerUnit),
-    outputPrice:
+        : registryPerKToMTok(registered?.pricing_input)
+          || ratioToMTokPrice(normalizedModelRatio[model], amountPerUnit),
+      outputPrice:
       normalizedModelPrice[model]?.output_price !== undefined
         ? perTokenToMTok(normalizedModelPrice[model].output_price)
-        : ratioToMTokPrice(
+        : registryPerKToMTok(registered?.pricing_output)
+          || ratioToMTokPrice(
             normalizedModelRatio[model] === undefined
               ? undefined
               : normalizedModelRatio[model] * (normalizedCompletionRatio[model] ?? 1),
             amountPerUnit,
           ),
-    cacheReadPrice:
+      cacheReadPrice:
       normalizedModelPrice[model]?.cache_read_price !== undefined
         ? perTokenToMTok(normalizedModelPrice[model].cache_read_price)
         : '',
-  }));
+      status: registered?.status,
+      inputModalities: registered?.input_modalities ?? [],
+      outputModalities: registered?.output_modalities ?? [],
+    };
+  });
 }
 
 function modelPriceMapFromRows(rows: PricingRow[]) {
@@ -215,6 +236,9 @@ function newRow(): PricingRow {
     inputPrice: '',
     outputPrice: '',
     cacheReadPrice: '',
+    status: undefined,
+    inputModalities: [],
+    outputModalities: [],
   };
 }
 
@@ -232,7 +256,7 @@ export function AdminPricingPage() {
   const { data: publicModels, isLoading: areModelsLoading } = useQuery({
     queryKey: ['admin-models', 'pricing'],
     queryFn: async () => {
-      const response = await listModels({ page: 1, page_size: 500, status: 1, public_only: true });
+      const response = await listModels({ page: 1, page_size: 500, public_only: true });
       return response.models ?? [];
     },
   });
@@ -337,11 +361,11 @@ export function AdminPricingPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("当前价格")}</CardTitle>
-          <CardDescription>{t("模型来自公开且启用的模型清单。上游供应商模型 ID 和采购成本不在此处配置。")}</CardDescription>
+          <CardDescription>{t("模型页价格会作为未配置模型的预填参考；点击保存价格后才会写入实际计费配置。上游供应商模型 ID 和采购成本不在此处配置。")}</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading || areModelsLoading ? (
-            <TableSkeleton columns={[t("模型名称"), t("输入价格"), t("输出价格"), t("缓存读取"), t("操作")]} rows={8} />
+            <TableSkeleton columns={[t("模型名称"), t("可用性"), t("输入/输出模态"), t("输入价格"), t("输出价格"), t("缓存读取"), t("操作")]} rows={8} />
           ) : rows.length === 0 ? (
             <div className="space-y-4">
               <EmptyState title={t("暂无模型价格")} description={t("添加模型后会保存输入、输出和缓存读取价格。")} />
@@ -354,6 +378,8 @@ export function AdminPricingPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("模型名称")}</TableHead>
+                    <TableHead>{t("可用性")}</TableHead>
+                    <TableHead>{t("输入/输出模态")}</TableHead>
                     <TableHead>{t("输入价格")}</TableHead>
                     <TableHead>{t("输出价格")}</TableHead>
                     <TableHead>{t("缓存读取")}</TableHead>
@@ -370,6 +396,13 @@ export function AdminPricingPage() {
                           placeholder="gpt-5.5"
                           className="min-w-64 font-mono"
                         />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {row.status === 1 ? t("启用") : row.status === 2 ? t("测试中") : row.status === 0 ? t("禁用") : t("未登记")}
+                      </TableCell>
+                      <TableCell className="min-w-40 text-xs">
+                        <div>{t("输入")}：{row.inputModalities.length > 0 ? row.inputModalities.join(' / ') : '—'}</div>
+                        <div>{t("输出")}：{row.outputModalities.length > 0 ? row.outputModalities.join(' / ') : '—'}</div>
                       </TableCell>
                       <TableCell>
                         <Input

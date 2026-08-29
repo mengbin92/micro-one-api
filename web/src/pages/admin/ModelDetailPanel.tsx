@@ -135,12 +135,20 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                 <p>{model.suppliers.length > 0 ? model.suppliers.join('、') : '—'}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">{t("模型开发商")}</p>
+                <p className="text-xs text-muted-foreground">{t("大模型厂商")}</p>
                 <p>{model.provider || '—'}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("类型")}</p>
                 <p>{t(MODEL_TYPE_LABELS[model.model_type] ?? model.model_type ?? '—')}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("输入模态")}</p>
+                <p>{model.input_modalities.length > 0 ? model.input_modalities.join('、') : '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("输出模态")}</p>
+                <p>{model.output_modalities.length > 0 ? model.output_modalities.join('、') : '—'}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("状态")}</p>

@@ -41,24 +41,26 @@ func ModelIDEqual(a, b string) bool {
 // Model is the domain object for the independent model registry (方案B).
 // It carries no proto or storage tags — it is the pure biz model owned by biz.
 type Model struct {
-	ID            int64
-	ModelID       string // unique identifier, e.g. gpt-4o
-	DisplayName   string
-	Description   string
-	Provider      string
-	ModelType     string
-	ContextWindow int32
-	PricingInput  float64
-	PricingOutput float64
-	Status        int32
-	IsPublic      bool
-	Capabilities  []string
-	Tags          []string
-	Category      string
-	Tier          string
-	Metadata      string
-	CreatedAt     int64
-	UpdatedAt     int64
+	ID               int64
+	ModelID          string // unique identifier, e.g. gpt-4o
+	DisplayName      string
+	Description      string
+	Provider         string
+	ModelType        string
+	ContextWindow    int32
+	PricingInput     float64
+	PricingOutput    float64
+	Status           int32
+	IsPublic         bool
+	Capabilities     []string
+	InputModalities  []string
+	OutputModalities []string
+	Tags             []string
+	Category         string
+	Tier             string
+	Metadata         string
+	CreatedAt        int64
+	UpdatedAt        int64
 
 	// Aggregated counts populated by list/detail queries; not persisted columns.
 	ChannelCount      int32

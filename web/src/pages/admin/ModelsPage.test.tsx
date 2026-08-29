@@ -161,6 +161,8 @@ describe('AdminModelsPage', () => {
     await user.click(screen.getByText('新建模型'));
     await user.type(screen.getByPlaceholderText('如 gpt-4o, claude-3-5-sonnet'), 'claude-3-5-sonnet');
     await user.type(screen.getByPlaceholderText('如 GPT-4o'), 'Claude 3.5 Sonnet');
+    await user.type(screen.getByLabelText('大模型厂商'), 'StepFun');
+    await user.click(within(screen.getByRole('group', { name: '输入模态' })).getByText('图像'));
     await user.click(screen.getByText('创建'));
 
     await waitFor(() => {
@@ -168,6 +170,9 @@ describe('AdminModelsPage', () => {
     });
     expect(captured.body?.model_id).toBe('claude-3-5-sonnet');
     expect(captured.body?.display_name).toBe('Claude 3.5 Sonnet');
+    expect(captured.body?.provider).toBe('StepFun');
+    expect(captured.body?.input_modalities).toEqual(['text', 'image']);
+    expect(captured.body?.output_modalities).toEqual(['text']);
   });
 
   it('opens edit dialog with full model data fetched from getModel', async () => {

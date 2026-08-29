@@ -30,6 +30,8 @@ func toModelInfo(m *biz.Model) *channelv1.ModelInfo {
 		Status:            m.Status,
 		IsPublic:          m.IsPublic,
 		Capabilities:      append([]string(nil), m.Capabilities...),
+		InputModalities:   append([]string(nil), m.InputModalities...),
+		OutputModalities:  append([]string(nil), m.OutputModalities...),
 		Tags:              append([]string(nil), m.Tags...),
 		Category:          m.Category,
 		Tier:              m.Tier,
@@ -59,6 +61,10 @@ func toModelSummary(m *biz.Model) *channelv1.ModelSummary {
 		ChannelCount:      m.ChannelCount,
 		SubscriptionCount: m.SubscriptionCount,
 		Suppliers:         append([]string(nil), m.Suppliers...),
+		InputModalities:   append([]string(nil), m.InputModalities...),
+		OutputModalities:  append([]string(nil), m.OutputModalities...),
+		PricingInput:      m.PricingInput,
+		PricingOutput:     m.PricingOutput,
 	}
 }
 
@@ -219,21 +225,23 @@ func (s *ChannelService) CreateModel(ctx context.Context, req *channelv1.CreateM
 		status = req.GetStatus()
 	}
 	model := &biz.Model{
-		ModelID:       req.ModelId,
-		DisplayName:   req.DisplayName,
-		Description:   req.Description,
-		Provider:      req.Provider,
-		ModelType:     req.ModelType,
-		ContextWindow: req.ContextWindow,
-		PricingInput:  req.PricingInput,
-		PricingOutput: req.PricingOutput,
-		Status:        status,
-		IsPublic:      req.IsPublic,
-		Capabilities:  append([]string(nil), req.Capabilities...),
-		Tags:          append([]string(nil), req.Tags...),
-		Category:      req.Category,
-		Tier:          req.Tier,
-		Metadata:      req.Metadata,
+		ModelID:          req.ModelId,
+		DisplayName:      req.DisplayName,
+		Description:      req.Description,
+		Provider:         req.Provider,
+		ModelType:        req.ModelType,
+		ContextWindow:    req.ContextWindow,
+		PricingInput:     req.PricingInput,
+		PricingOutput:    req.PricingOutput,
+		Status:           status,
+		IsPublic:         req.IsPublic,
+		Capabilities:     append([]string(nil), req.Capabilities...),
+		InputModalities:  append([]string(nil), req.InputModalities...),
+		OutputModalities: append([]string(nil), req.OutputModalities...),
+		Tags:             append([]string(nil), req.Tags...),
+		Category:         req.Category,
+		Tier:             req.Tier,
+		Metadata:         req.Metadata,
 	}
 	if err := uc.CreateModel(ctx, model); err != nil {
 		return &channelv1.CreateModelResponse{Success: false, Message: err.Error()}, nil
@@ -247,20 +255,22 @@ func (s *ChannelService) UpdateModel(ctx context.Context, req *channelv1.UpdateM
 		return &channelv1.UpdateModelResponse{Success: false, Message: "model management not configured"}, nil
 	}
 	model := &biz.Model{
-		ID:            req.ModelPk,
-		DisplayName:   req.DisplayName,
-		Description:   req.Description,
-		Provider:      req.Provider,
-		ModelType:     req.ModelType,
-		ContextWindow: req.ContextWindow,
-		PricingInput:  req.PricingInput,
-		PricingOutput: req.PricingOutput,
-		IsPublic:      req.IsPublic,
-		Capabilities:  append([]string(nil), req.Capabilities...),
-		Tags:          append([]string(nil), req.Tags...),
-		Category:      req.Category,
-		Tier:          req.Tier,
-		Metadata:      req.Metadata,
+		ID:               req.ModelPk,
+		DisplayName:      req.DisplayName,
+		Description:      req.Description,
+		Provider:         req.Provider,
+		ModelType:        req.ModelType,
+		ContextWindow:    req.ContextWindow,
+		PricingInput:     req.PricingInput,
+		PricingOutput:    req.PricingOutput,
+		IsPublic:         req.IsPublic,
+		Capabilities:     append([]string(nil), req.Capabilities...),
+		InputModalities:  append([]string(nil), req.InputModalities...),
+		OutputModalities: append([]string(nil), req.OutputModalities...),
+		Tags:             append([]string(nil), req.Tags...),
+		Category:         req.Category,
+		Tier:             req.Tier,
+		Metadata:         req.Metadata,
 	}
 	if err := uc.UpdateModel(ctx, model); err != nil {
 		return &channelv1.UpdateModelResponse{Success: false, Message: err.Error()}, nil

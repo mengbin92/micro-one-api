@@ -218,9 +218,14 @@ func TestChannelService_ListModels(t *testing.T) {
 func TestToModelSummarySeparatesSuppliersFromDeveloper(t *testing.T) {
 	got := toModelSummary(&biz.Model{
 		ModelID: "DeepSeek-V4-Pro-0813", Provider: "deepseek", Suppliers: []string{"neo"},
+		InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"},
+		PricingInput: 0.005, PricingOutput: 0.015,
 	})
 	if got.GetProvider() != "deepseek" || len(got.GetSuppliers()) != 1 || got.GetSuppliers()[0] != "neo" {
 		t.Fatalf("summary = %+v, want supplier neo and developer deepseek", got)
+	}
+	if len(got.GetInputModalities()) != 2 || len(got.GetOutputModalities()) != 1 || got.GetPricingInput() != 0.005 || got.GetPricingOutput() != 0.015 {
+		t.Fatalf("summary = %+v, want modalities and registry prices", got)
 	}
 }
 
@@ -250,12 +255,14 @@ func TestChannelService_CreateAndGetModel(t *testing.T) {
 	ctx := context.Background()
 
 	createResp, err := svc.CreateModel(ctx, &channelv1.CreateModelRequest{
-		ModelId:       "claude-3-5-sonnet",
-		DisplayName:   "Claude 3.5 Sonnet",
-		Provider:      "anthropic",
-		ModelType:     "chat",
-		ContextWindow: 200000,
-		Capabilities:  []string{"vision", "function_calling"},
+		ModelId:          "claude-3-5-sonnet",
+		DisplayName:      "Claude 3.5 Sonnet",
+		Provider:         "anthropic",
+		ModelType:        "chat",
+		ContextWindow:    200000,
+		Capabilities:     []string{"vision", "function_calling"},
+		InputModalities:  []string{"text", "image"},
+		OutputModalities: []string{"text"},
 	})
 	if err != nil {
 		t.Fatalf("CreateModel: %v", err)
@@ -276,6 +283,9 @@ func TestChannelService_CreateAndGetModel(t *testing.T) {
 	}
 	if len(getResp.Model.Capabilities) != 2 {
 		t.Fatalf("expected 2 capabilities, got %d", len(getResp.Model.Capabilities))
+	}
+	if len(getResp.Model.InputModalities) != 2 || len(getResp.Model.OutputModalities) != 1 {
+		t.Fatalf("unexpected modalities: input=%v output=%v", getResp.Model.InputModalities, getResp.Model.OutputModalities)
 	}
 }
 

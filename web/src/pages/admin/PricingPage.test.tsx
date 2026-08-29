@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -72,5 +72,59 @@ describe('AdminPricingPage', () => {
         'glm-5.2': { input_price: 0.000001, output_price: 0.000002 },
       });
     });
+  });
+
+  it('shows registry prices, availability, and input/output modalities', async () => {
+    server.use(
+      http.get('/api/option/', () =>
+        HttpResponse.json({
+          success: true,
+          data: [
+            { key: 'ModelRatio', value: JSON.stringify({ 'step-3.7-flash': 0.5 }) },
+            { key: 'CompletionRatio', value: JSON.stringify({ 'step-3.7-flash': 2 }) },
+            { key: 'AmountPerUnit', value: '10000' },
+          ],
+        }),
+      ),
+      http.get('/api/admin/models', () =>
+        HttpResponse.json({
+          models: [
+            {
+              id: 1,
+              model_id: 'step-3.7-flash',
+              display_name: 'Step 3.7 Flash',
+              status: 1,
+              is_public: true,
+              pricing_input: 0.001,
+              pricing_output: 0.004,
+              input_modalities: ['text', 'image'],
+              output_modalities: ['text'],
+            },
+            {
+              id: 2,
+              model_id: 'step-explore',
+              display_name: 'Step Explore',
+              status: 0,
+              is_public: true,
+              input_modalities: ['text'],
+              output_modalities: ['text'],
+            },
+          ],
+          total: 2,
+        }),
+      ),
+    );
+
+    renderWithQuery(<AdminPricingPage />);
+
+    const enabled = await screen.findByDisplayValue('step-3.7-flash');
+    const enabledRow = enabled.closest('tr');
+    expect(enabledRow?.textContent).toContain('启用');
+    expect(enabledRow?.textContent).toContain('text / image');
+    expect(within(enabledRow!).getByDisplayValue('1')).toBeInTheDocument();
+    expect(within(enabledRow!).getByDisplayValue('4')).toBeInTheDocument();
+
+    const disabledRow = screen.getByDisplayValue('step-explore').closest('tr');
+    expect(disabledRow?.textContent).toContain('禁用');
   });
 });
