@@ -513,7 +513,7 @@ message ModelInfo {
   string provider = 5;
   string model_type = 6;          // chat, completion, embedding, image
   int32 context_window = 7;
-  double pricing_input = 8;       // per 1K tokens
+  double pricing_input = 8;       // per 1M tokens
   double pricing_output = 9;
   int32 status = 10;              // 0=disabled, 1=enabled, 2=testing
   bool is_public = 11;
@@ -528,6 +528,9 @@ message ModelInfo {
   int32 channel_count = 19;
   int32 subscription_count = 20;
   repeated string suppliers = 21; // mapped channel/account names that supply this model
+  repeated string input_modalities = 22;  // text, image, audio, video, file
+  repeated string output_modalities = 23; // text, image, audio, video
+  double pricing_cache_read = 24;  // per 1M tokens
 }
 
 message ModelSummary {
@@ -543,6 +546,11 @@ message ModelSummary {
   int32 channel_count = 10;
   int32 subscription_count = 11;
   repeated string suppliers = 12; // mapped channel/account names that supply this model
+  repeated string input_modalities = 13;
+  repeated string output_modalities = 14;
+  double pricing_input = 15;       // per 1M tokens
+  double pricing_output = 16;
+  double pricing_cache_read = 17;  // per 1M tokens
 }
 
 message ModelAlias {
@@ -636,6 +644,9 @@ message CreateModelRequest {
   string category = 13;
   string tier = 14;
   string metadata = 15;
+  repeated string input_modalities = 16;
+  repeated string output_modalities = 17;
+  double pricing_cache_read = 18;
 }
 
 message CreateModelResponse {
@@ -660,6 +671,9 @@ message UpdateModelRequest {
   string category = 12;
   string tier = 13;
   string metadata = 14;
+  repeated string input_modalities = 15;
+  repeated string output_modalities = 16;
+  double pricing_cache_read = 17;
 }
 
 message UpdateModelResponse {
@@ -957,8 +971,8 @@ message ModelExportModel {
   string provider = 4;
   string model_type = 5;
   int32 context_window = 6;
-  double pricing_input = 7;        // only populated when export_prices=true
-  double pricing_output = 8;       // only populated when export_prices=true
+  double pricing_input = 7;        // per 1M tokens; only populated when export_prices=true
+  double pricing_output = 8;       // per 1M tokens; only populated when export_prices=true
   int32 status = 9;
   bool is_public = 10;
   repeated string capabilities = 11;
@@ -969,6 +983,9 @@ message ModelExportModel {
   repeated ModelAlias aliases = 16;
   repeated ModelExportChannelMapping channel_mappings = 17;
   repeated ModelExportSubscriptionMapping subscription_mappings = 18;
+  repeated string input_modalities = 19;
+  repeated string output_modalities = 20;
+  double pricing_cache_read = 21;  // per 1M tokens; only populated when export_prices=true
 }
 
 // Channel mapping in export/import context references the channel by its
@@ -990,7 +1007,7 @@ message ModelExportSubscriptionMapping {
 }
 
 message ExportModelsRequest {
-  // When true, user-facing pricing (pricing_input/output) is included in the
+  // When true, user-facing pricing (pricing_input/output/cache_read) is included in the
   // export. Requires admin/root role; enforced at admin-api. Upstream costs
   // (UpstreamModelPrice) are NEVER exported.
   bool export_prices = 1;

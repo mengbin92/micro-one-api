@@ -205,7 +205,7 @@ func TestAnthropicMessagesNativeChannelPassthrough(t *testing.T) {
 	}
 }
 
-func TestAnthropicMessagesNativeChannelStreamingPassthrough(t *testing.T) {
+func TestAnthropicMessagesNativeChannelStreamingPreservesFragmentedEditToolInput(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -219,8 +219,9 @@ func TestAnthropicMessagesNativeChannelStreamingPassthrough(t *testing.T) {
 			data string
 		}{
 			{"message_start", `{"type":"message_start","message":{"id":"msg_stream_native","type":"message","role":"assistant","content":[],"model":"claude-native","stop_reason":null,"usage":{"input_tokens":9,"output_tokens":0,"cache_creation_input_tokens":2,"cache_read_input_tokens":4}}}`},
-			{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_native","name":"Read","input":{}}}`},
-			{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"README.md\"}"}}`},
+			{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_native","name":"Edit","input":{}}}`},
+			{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\":\"/tmp/demo.go\",\"old_"}}`},
+			{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"string\":\"before\",\"new_string\":\"after\"}"}}`},
 			{"content_block_stop", `{"type":"content_block_stop","index":0}`},
 			{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":3}}`},
 			{"message_stop", `{"type":"message_stop"}`},
@@ -253,7 +254,14 @@ func TestAnthropicMessagesNativeChannelStreamingPassthrough(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
-	for _, expected := range []string{`"id":"msg_stream_native"`, `"id":"toolu_native"`, `"partial_json":"{\"path\":\"README.md\"}"`, `"stop_reason":"tool_use"`} {
+	for _, expected := range []string{
+		`"id":"msg_stream_native"`,
+		`"id":"toolu_native"`,
+		`"name":"Edit"`,
+		`"partial_json":"{\"file_path\":\"/tmp/demo.go\",\"old_"`,
+		`"partial_json":"string\":\"before\",\"new_string\":\"after\"}"`,
+		`"stop_reason":"tool_use"`,
+	} {
 		if !strings.Contains(rec.Body.String(), expected) {
 			t.Fatalf("native stream missing %q:\n%s", expected, rec.Body.String())
 		}

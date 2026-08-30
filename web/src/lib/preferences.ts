@@ -1,5 +1,6 @@
 export type PreferenceName =
   | 'theme'
+  | 'language'
   | 'admin-page-size'
   | `admin-visible-columns:${string}`
   | 'timezone';

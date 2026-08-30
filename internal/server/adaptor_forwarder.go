@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	relaycredential "micro-one-api/domain/upstream/credential"
 	relayprovider "micro-one-api/domain/upstream/provider"
@@ -78,8 +79,11 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 	if err := relayprovider.ValidateBaseURLForChannel(plan.Channel.Type, upstreamReq.URL.String()); err != nil {
 		return nil, fmt.Errorf("validate upstream URL: %w", err)
 	}
+	if plan.Channel.Type == relayprovider.ChannelTypeOllama {
+		upstreamReq = relayprovider.WithLocalNetworkAccess(upstreamReq)
+	}
 	if client == nil {
-		client = http.DefaultClient
+		client = relayprovider.NewHTTPClient(30 * time.Second)
 	}
 	resp, err := client.Do(upstreamReq) // #nosec G704 -- adaptor URL is validated above.
 	if err != nil {
@@ -146,8 +150,11 @@ func (f relayAdaptorForwarder) ForwardStream(ctx context.Context, plan *relaybiz
 	if err := relayprovider.ValidateBaseURLForChannel(plan.Channel.Type, upstreamReq.URL.String()); err != nil {
 		return nil, fmt.Errorf("validate upstream URL: %w", err)
 	}
+	if plan.Channel.Type == relayprovider.ChannelTypeOllama {
+		upstreamReq = relayprovider.WithLocalNetworkAccess(upstreamReq)
+	}
 	if client == nil {
-		client = http.DefaultClient
+		client = relayprovider.NewStreamHTTPClient(30 * time.Second)
 	}
 	client = streamHTTPClient(client)
 	resp, err := client.Do(upstreamReq) // #nosec G704 -- adaptor URL is validated above.

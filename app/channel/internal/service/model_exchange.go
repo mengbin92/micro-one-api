@@ -130,21 +130,24 @@ func exportModelToProto(m *biz.ModelExportModel) *channelv1.ModelExportModel {
 		return nil
 	}
 	out := &channelv1.ModelExportModel{
-		ModelId:       m.ModelID,
-		DisplayName:   m.DisplayName,
-		Description:   m.Description,
-		Provider:      m.Provider,
-		ModelType:     m.ModelType,
-		ContextWindow: m.ContextWindow,
-		PricingInput:  m.PricingInput,
-		PricingOutput: m.PricingOutput,
-		Status:        m.Status,
-		IsPublic:      m.IsPublic,
-		Capabilities:  append([]string(nil), m.Capabilities...),
-		Tags:          append([]string(nil), m.Tags...),
-		Category:      m.Category,
-		Tier:          m.Tier,
-		Metadata:      m.Metadata,
+		ModelId:          m.ModelID,
+		DisplayName:      m.DisplayName,
+		Description:      m.Description,
+		Provider:         m.Provider,
+		ModelType:        m.ModelType,
+		ContextWindow:    m.ContextWindow,
+		PricingInput:     m.PricingInput,
+		PricingOutput:    m.PricingOutput,
+		PricingCacheRead: m.PricingCacheRead,
+		Status:           m.Status,
+		IsPublic:         m.IsPublic,
+		Capabilities:     append([]string(nil), m.Capabilities...),
+		InputModalities:  append([]string(nil), m.InputModalities...),
+		OutputModalities: append([]string(nil), m.OutputModalities...),
+		Tags:             append([]string(nil), m.Tags...),
+		Category:         m.Category,
+		Tier:             m.Tier,
+		Metadata:         m.Metadata,
 	}
 	for _, a := range m.Aliases {
 		if a != nil {
@@ -186,23 +189,26 @@ func protoToExportModels(in []*channelv1.ModelExportModel, importPrices bool) []
 			continue
 		}
 		do := &biz.ModelExportModel{
-			ModelID:       m.GetModelId(),
-			DisplayName:   m.GetDisplayName(),
-			Description:   m.GetDescription(),
-			Provider:      m.GetProvider(),
-			ModelType:     m.GetModelType(),
-			ContextWindow: m.GetContextWindow(),
-			Status:        m.GetStatus(),
-			IsPublic:      m.GetIsPublic(),
-			Capabilities:  append([]string(nil), m.GetCapabilities()...),
-			Tags:          append([]string(nil), m.GetTags()...),
-			Category:      m.GetCategory(),
-			Tier:          m.GetTier(),
-			Metadata:      m.GetMetadata(),
+			ModelID:          m.GetModelId(),
+			DisplayName:      m.GetDisplayName(),
+			Description:      m.GetDescription(),
+			Provider:         m.GetProvider(),
+			ModelType:        m.GetModelType(),
+			ContextWindow:    m.GetContextWindow(),
+			Status:           m.GetStatus(),
+			IsPublic:         m.GetIsPublic(),
+			Capabilities:     append([]string(nil), m.GetCapabilities()...),
+			InputModalities:  append([]string(nil), m.GetInputModalities()...),
+			OutputModalities: append([]string(nil), m.GetOutputModalities()...),
+			Tags:             append([]string(nil), m.GetTags()...),
+			Category:         m.GetCategory(),
+			Tier:             m.GetTier(),
+			Metadata:         m.GetMetadata(),
 		}
 		if importPrices {
 			do.PricingInput = m.GetPricingInput()
 			do.PricingOutput = m.GetPricingOutput()
+			do.PricingCacheRead = m.GetPricingCacheRead()
 		}
 		for _, a := range m.GetAliases() {
 			if a != nil {

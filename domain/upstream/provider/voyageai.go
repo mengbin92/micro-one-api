@@ -28,10 +28,10 @@ func NewVoyageAIProvider(baseURL, apiKey string, timeout time.Duration) (*Voyage
 		timeout = 30 * time.Second
 	}
 	return &VoyageAIProvider{
-		httpClient: &http.Client{Timeout: timeout},
+		httpClient: newHTTPClient(timeout, false),
 		// domain-H3: streaming client has no Client.Timeout so SSE body reads
 		// are not killed mid-stream; cancellation is driven by the request ctx.
-		streamClient: &http.Client{},
+		streamClient: newStreamHTTPClient(timeout),
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		apiKey:       apiKey,
 		timeout:      timeout,

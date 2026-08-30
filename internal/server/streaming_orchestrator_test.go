@@ -119,7 +119,7 @@ func TestStreamingExecutorAllowlistCoversActiveSSEEndpoints(t *testing.T) {
 			)
 			httpServer := NewHTTPServer(identityClient, channelClient, billingClient, relayprovider.NewProviderFactory(time.Second), usecase, logClient)
 			httpServer.SetRelayOrchestratorEnabled(true)
-			httpServer.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("user-token")})
+			httpServer.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{relayOrchestratorTestDigest("user-token")})
 			srv := khttp.NewServer()
 			httpServer.RegisterRoutes(srv)
 
@@ -185,7 +185,7 @@ func TestStreamingExecutorAllowlistCoversActiveSSEEndpoints(t *testing.T) {
 func TestResponsesWebSocketStaysLegacyAndObservable(t *testing.T) {
 	httpServer := NewHTTPServer(nil, nil, nil, nil, nil)
 	httpServer.SetRelayOrchestratorEnabled(true)
-	httpServer.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("user-token")})
+	httpServer.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{relayOrchestratorTestDigest("user-token")})
 
 	invoke := func() int {
 		req := httptest.NewRequest(http.MethodGet, relayEndpointResponses, nil)
@@ -232,7 +232,7 @@ func TestStreamingExecutorReleasesQuotaWhenTerminalEventIsMissing(t *testing.T) 
 	)
 	httpServer := NewHTTPServer(identityClient, channelClient, billingClient, relayprovider.NewProviderFactory(time.Second), usecase)
 	httpServer.SetRelayOrchestratorEnabled(true)
-	httpServer.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("user-token")})
+	httpServer.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{relayOrchestratorTestDigest("user-token")})
 	srv := khttp.NewServer()
 	httpServer.RegisterRoutes(srv)
 

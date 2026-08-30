@@ -1,4 +1,4 @@
-export interface ModelDraft {
+import { t } from '@/lib/i18n';export interface ModelDraft {
   modelId: string;
   displayName: string;
   description: string;
@@ -7,10 +7,13 @@ export interface ModelDraft {
   contextWindow: string;
   pricingInput: string;
   pricingOutput: string;
+  pricingCacheRead: string;
   category: string;
   tier: string;
   isPublic: boolean;
   capabilities: string;
+  inputModalities: string[];
+  outputModalities: string[];
   tags: string;
   metadata: string;
 }
@@ -24,10 +27,13 @@ export const emptyDraft: ModelDraft = {
   contextWindow: '',
   pricingInput: '',
   pricingOutput: '',
+  pricingCacheRead: '',
   category: '',
   tier: '',
   isPublic: true,
   capabilities: '',
+  inputModalities: ['text'],
+  outputModalities: ['text'],
   tags: '',
   metadata: '',
 };
@@ -51,6 +57,21 @@ export const TYPE_OPTIONS = [
   { value: 'completion', label: '补全' },
   { value: 'embedding', label: '嵌入' },
   { value: 'image', label: '图像' },
+];
+
+export const INPUT_MODALITY_OPTIONS = [
+  { value: 'text', label: '文本' },
+  { value: 'image', label: '图像' },
+  { value: 'audio', label: '音频' },
+  { value: 'video', label: '视频' },
+  { value: 'file', label: '文件' },
+];
+
+export const OUTPUT_MODALITY_OPTIONS = [
+  { value: 'text', label: '文本' },
+  { value: 'image', label: '图像' },
+  { value: 'audio', label: '音频' },
+  { value: 'video', label: '视频' },
 ];
 
 export const TIER_OPTIONS = [
@@ -85,6 +106,6 @@ export function validateMetadata(metadata: string): string | null {
     JSON.parse(metadata);
     return null;
   } catch {
-    return '元数据不是有效的 JSON 格式';
+    return t("元数据不是有效的 JSON 格式");
   }
 }

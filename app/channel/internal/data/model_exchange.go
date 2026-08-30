@@ -78,9 +78,12 @@ func (r *Repository) ExportAllModels(ctx context.Context, filter biz.ListModelsF
 			ContextWindow:        m.ContextWindow,
 			PricingInput:         m.PricingInput,
 			PricingOutput:        m.PricingOutput,
+			PricingCacheRead:     m.PricingCacheRead,
 			Status:               m.Status,
 			IsPublic:             m.IsPublic,
 			Capabilities:         append([]string(nil), m.Capabilities...),
+			InputModalities:      append([]string(nil), m.InputModalities...),
+			OutputModalities:     append([]string(nil), m.OutputModalities...),
 			Tags:                 append([]string(nil), m.Tags...),
 			Category:             m.Category,
 			Tier:                 m.Tier,
@@ -373,7 +376,8 @@ func modelsContentEqual(em *biz.ModelExportModel, existing *existingModelView, o
 		return false
 	}
 	if options.ImportPrices {
-		if em.PricingInput != m.PricingInput || em.PricingOutput != m.PricingOutput {
+		if em.PricingInput != m.PricingInput || em.PricingOutput != m.PricingOutput ||
+			em.PricingCacheRead != m.PricingCacheRead {
 			return false
 		}
 	}
@@ -393,6 +397,12 @@ func modelsContentEqual(em *biz.ModelExportModel, existing *existingModelView, o
 		return false
 	}
 	if !stringSliceEqualSorted(em.Capabilities, m.Capabilities) {
+		return false
+	}
+	if !stringSliceEqualSorted(em.InputModalities, m.InputModalities) {
+		return false
+	}
+	if !stringSliceEqualSorted(em.OutputModalities, m.OutputModalities) {
 		return false
 	}
 	if !stringSliceEqualSorted(em.Tags, m.Tags) {
@@ -542,23 +552,26 @@ func (r *Repository) applyImportModel(tx *gorm.DB, em *biz.ModelExportModel, exi
 		po := importModelToPO(em, options, now)
 		po.ID = existing.Model.ID
 		updates := map[string]interface{}{
-			"display_name":   po.DisplayName,
-			"description":    po.Description,
-			"provider":       po.Provider,
-			"model_type":     po.ModelType,
-			"context_window": po.ContextWindow,
-			"is_public":      po.IsPublic,
-			"capabilities":   po.Capabilities,
-			"tags":           po.Tags,
-			"category":       po.Category,
-			"tier":           po.Tier,
-			"metadata":       po.Metadata,
-			"status":         po.Status,
-			"updated_at":     po.UpdatedAt,
+			"display_name":      po.DisplayName,
+			"description":       po.Description,
+			"provider":          po.Provider,
+			"model_type":        po.ModelType,
+			"context_window":    po.ContextWindow,
+			"is_public":         po.IsPublic,
+			"capabilities":      po.Capabilities,
+			"input_modalities":  po.InputModalities,
+			"output_modalities": po.OutputModalities,
+			"tags":              po.Tags,
+			"category":          po.Category,
+			"tier":              po.Tier,
+			"metadata":          po.Metadata,
+			"status":            po.Status,
+			"updated_at":        po.UpdatedAt,
 		}
 		if options.ImportPrices {
 			updates["pricing_input"] = po.PricingInput
 			updates["pricing_output"] = po.PricingOutput
+			updates["pricing_cache_read"] = po.PricingCacheRead
 		}
 		if err := tx.Model(&modelModel{}).Where("id = ?", existing.Model.ID).Updates(updates).Error; err != nil {
 			return outcome, fmt.Errorf("%w: update %s: %v", biz.ErrImportInvalidRecord, em.ModelID, err)
@@ -677,19 +690,21 @@ func (r *Repository) applyImportSubscriptionMappings(tx *gorm.DB, modelPK int64,
 // zero pricing on create and the update map omits price columns.
 func importModelToPO(em *biz.ModelExportModel, options biz.ImportOptions, now int64) *modelModel {
 	po := &modelModel{
-		ModelID:       biz.NormalizeModelID(em.ModelID),
-		DisplayName:   em.DisplayName,
-		Provider:      em.Provider,
-		ModelType:     em.ModelType,
-		ContextWindow: em.ContextWindow,
-		Status:        em.Status,
-		IsPublic:      em.IsPublic,
-		Capabilities:  jsonStringArray(em.Capabilities),
-		Tags:          jsonStringArray(em.Tags),
-		Category:      em.Category,
-		Tier:          em.Tier,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ModelID:          biz.NormalizeModelID(em.ModelID),
+		DisplayName:      em.DisplayName,
+		Provider:         em.Provider,
+		ModelType:        em.ModelType,
+		ContextWindow:    em.ContextWindow,
+		Status:           em.Status,
+		IsPublic:         em.IsPublic,
+		Capabilities:     jsonStringArray(em.Capabilities),
+		InputModalities:  jsonStringArray(em.InputModalities),
+		OutputModalities: jsonStringArray(em.OutputModalities),
+		Tags:             jsonStringArray(em.Tags),
+		Category:         em.Category,
+		Tier:             em.Tier,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 	if em.DisplayName == "" {
 		po.DisplayName = po.ModelID
@@ -708,6 +723,7 @@ func importModelToPO(em *biz.ModelExportModel, options biz.ImportOptions, now in
 	if options.ImportPrices {
 		po.PricingInput = em.PricingInput
 		po.PricingOutput = em.PricingOutput
+		po.PricingCacheRead = em.PricingCacheRead
 	}
 	return po
 }
@@ -770,9 +786,12 @@ func (r *Repository) exportAllModelsMemory(filter biz.ListModelsFilter) ([]*biz.
 			ContextWindow:        m.ContextWindow,
 			PricingInput:         m.PricingInput,
 			PricingOutput:        m.PricingOutput,
+			PricingCacheRead:     m.PricingCacheRead,
 			Status:               m.Status,
 			IsPublic:             m.IsPublic,
 			Capabilities:         append([]string(nil), m.Capabilities...),
+			InputModalities:      append([]string(nil), m.InputModalities...),
+			OutputModalities:     append([]string(nil), m.OutputModalities...),
 			Tags:                 append([]string(nil), m.Tags...),
 			Category:             m.Category,
 			Tier:                 m.Tier,
@@ -958,6 +977,7 @@ func (r *Repository) importModelsMemory(models []*biz.ModelExportModel, options 
 			if !options.ImportPrices {
 				do.PricingInput = exist.Model.PricingInput
 				do.PricingOutput = exist.Model.PricingOutput
+				do.PricingCacheRead = exist.Model.PricingCacheRead
 			}
 			r.models[do.ID] = do
 			// Clear and re-insert aliases/mappings.
@@ -971,21 +991,23 @@ func (r *Repository) importModelsMemory(models []*biz.ModelExportModel, options 
 
 func importModelToDO(em *biz.ModelExportModel, options biz.ImportOptions, now int64) *biz.Model {
 	do := &biz.Model{
-		ModelID:       em.ModelID,
-		DisplayName:   em.DisplayName,
-		Description:   em.Description,
-		Provider:      em.Provider,
-		ModelType:     em.ModelType,
-		ContextWindow: em.ContextWindow,
-		Status:        em.Status,
-		IsPublic:      em.IsPublic,
-		Capabilities:  append([]string(nil), em.Capabilities...),
-		Tags:          append([]string(nil), em.Tags...),
-		Category:      em.Category,
-		Tier:          em.Tier,
-		Metadata:      em.Metadata,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ModelID:          em.ModelID,
+		DisplayName:      em.DisplayName,
+		Description:      em.Description,
+		Provider:         em.Provider,
+		ModelType:        em.ModelType,
+		ContextWindow:    em.ContextWindow,
+		Status:           em.Status,
+		IsPublic:         em.IsPublic,
+		Capabilities:     append([]string(nil), em.Capabilities...),
+		InputModalities:  append([]string(nil), em.InputModalities...),
+		OutputModalities: append([]string(nil), em.OutputModalities...),
+		Tags:             append([]string(nil), em.Tags...),
+		Category:         em.Category,
+		Tier:             em.Tier,
+		Metadata:         em.Metadata,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 	if do.DisplayName == "" {
 		do.DisplayName = do.ModelID
@@ -996,6 +1018,7 @@ func importModelToDO(em *biz.ModelExportModel, options biz.ImportOptions, now in
 	if options.ImportPrices {
 		do.PricingInput = em.PricingInput
 		do.PricingOutput = em.PricingOutput
+		do.PricingCacheRead = em.PricingCacheRead
 	}
 	return do
 }

@@ -81,6 +81,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - IDENTITY_TRUSTED_PROXY_CIDRS=${IDENTITY_TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - RECHARGE_AMOUNT_MULTIPLIER=${RECHARGE_AMOUNT_MULTIPLIER:-10}
@@ -120,6 +121,7 @@ services:
       - CHANNEL_ENCRYPTION_KEY=${CHANNEL_ENCRYPTION_KEY:?CHANNEL_ENCRYPTION_KEY is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
       - LOG_LEVEL=info
       - LOG_FORMAT=json
       - NOTIFY_GRPC_ENDPOINT=${NOTIFY_GRPC_ENDPOINT:-notify-worker:9008}
@@ -158,6 +160,7 @@ services:
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
       - PAYMENT_AMOUNT_PER_UNIT=${PAYMENT_AMOUNT_PER_UNIT:-${PAYMENT_QUOTA_PER_UNIT:-500000}}
       - ALIPAY_ENABLED=${ALIPAY_ENABLED:-false}
       - ALIPAY_FORM_URL=${ALIPAY_FORM_URL:-https://openapi-sandbox.dl.alipaydev.com/gateway.do}
@@ -209,6 +212,7 @@ services:
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     depends_on:
@@ -241,6 +245,7 @@ services:
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     depends_on:
@@ -273,6 +278,7 @@ services:
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     depends_on:
@@ -305,6 +311,7 @@ services:
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
       - LOG_LEVEL=info
       - LOG_FORMAT=json
       - NOTIFY_WEBHOOK_URL=${NOTIFY_WEBHOOK_URL:-}
@@ -394,6 +401,7 @@ services:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - ADMIN_TRUSTED_PROXY_CIDRS=${ADMIN_TRUSTED_PROXY_CIDRS:-}
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - IDENTITY_HTTP_ENDPOINT=http://identity-service:8001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002

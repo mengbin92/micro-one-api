@@ -48,17 +48,25 @@ type Model struct {
 	Provider      string
 	ModelType     string
 	ContextWindow int32
+	// Registry prices are stored per 1M tokens, matching the unit shown in
+	// pricing management. They are reference defaults; billing charges are
+	// driven by the ModelPrice option.
 	PricingInput  float64
 	PricingOutput float64
-	Status        int32
-	IsPublic      bool
-	Capabilities  []string
-	Tags          []string
-	Category      string
-	Tier          string
-	Metadata      string
-	CreatedAt     int64
-	UpdatedAt     int64
+	// PricingCacheRead is the optional cache-read price (per 1M tokens);
+	// zero means "not configured".
+	PricingCacheRead float64
+	Status           int32
+	IsPublic         bool
+	Capabilities     []string
+	InputModalities  []string
+	OutputModalities []string
+	Tags             []string
+	Category         string
+	Tier             string
+	Metadata         string
+	CreatedAt        int64
+	UpdatedAt        int64
 
 	// Aggregated counts populated by list/detail queries; not persisted columns.
 	ChannelCount      int32

@@ -28,7 +28,7 @@ import (
 // ModelExchangeSchemaVersion is the version stamped on every export document.
 // Import rejects a mismatched version rather than guessing the shape, so a
 // future schema change is a coordinated upgrade, not a silent corruption.
-const ModelExchangeSchemaVersion = "1.0.0"
+const ModelExchangeSchemaVersion = "1.2.0"
 
 // ModelExportModel is the domain shape of one exported model with its
 // aliases and mappings. It mirrors the proto ModelExportModel but carries no
@@ -42,9 +42,12 @@ type ModelExportModel struct {
 	ContextWindow        int32
 	PricingInput         float64 // zero when prices are not exported
 	PricingOutput        float64
+	PricingCacheRead     float64
 	Status               int32
 	IsPublic             bool
 	Capabilities         []string
+	InputModalities      []string
+	OutputModalities     []string
 	Tags                 []string
 	Category             string
 	Tier                 string
@@ -159,6 +162,7 @@ func (uc *ModelUsecase) ExportModels(ctx context.Context, filter ListModelsFilte
 			}
 			m.PricingInput = 0
 			m.PricingOutput = 0
+			m.PricingCacheRead = 0
 		}
 	}
 	// Deterministic ordering by canonical model id so re-export of the same
@@ -302,9 +306,12 @@ type canonicalModelView struct {
 	ContextWindow        int32                  `json:"context_window"`
 	PricingInput         float64                `json:"pricing_input"`
 	PricingOutput        float64                `json:"pricing_output"`
+	PricingCacheRead     float64                `json:"pricing_cache_read"`
 	Status               int32                  `json:"status"`
 	IsPublic             bool                   `json:"is_public"`
 	Capabilities         []string               `json:"capabilities"`
+	InputModalities      []string               `json:"input_modalities"`
+	OutputModalities     []string               `json:"output_modalities"`
 	Tags                 []string               `json:"tags"`
 	Category             string                 `json:"category"`
 	Tier                 string                 `json:"tier"`
@@ -331,21 +338,24 @@ func canonicalExportView(models []*ModelExportModel) []canonicalModelView {
 			continue
 		}
 		view := canonicalModelView{
-			ModelID:       NormalizeModelID(m.ModelID),
-			DisplayName:   m.DisplayName,
-			Description:   m.Description,
-			Provider:      m.Provider,
-			ModelType:     m.ModelType,
-			ContextWindow: m.ContextWindow,
-			PricingInput:  m.PricingInput,
-			PricingOutput: m.PricingOutput,
-			Status:        m.Status,
-			IsPublic:      m.IsPublic,
-			Capabilities:  sortedCopy(m.Capabilities),
-			Tags:          sortedCopy(m.Tags),
-			Category:      m.Category,
-			Tier:          m.Tier,
-			Metadata:      m.Metadata,
+			ModelID:          NormalizeModelID(m.ModelID),
+			DisplayName:      m.DisplayName,
+			Description:      m.Description,
+			Provider:         m.Provider,
+			ModelType:        m.ModelType,
+			ContextWindow:    m.ContextWindow,
+			PricingInput:     m.PricingInput,
+			PricingOutput:    m.PricingOutput,
+			PricingCacheRead: m.PricingCacheRead,
+			Status:           m.Status,
+			IsPublic:         m.IsPublic,
+			Capabilities:     sortedCopy(m.Capabilities),
+			InputModalities:  sortedCopy(m.InputModalities),
+			OutputModalities: sortedCopy(m.OutputModalities),
+			Tags:             sortedCopy(m.Tags),
+			Category:         m.Category,
+			Tier:             m.Tier,
+			Metadata:         m.Metadata,
 		}
 		for _, a := range m.Aliases {
 			if a != nil && a.Alias != "" {

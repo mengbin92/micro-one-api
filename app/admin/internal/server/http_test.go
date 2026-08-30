@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -827,6 +830,31 @@ func TestAdminHTTPStatusIsUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPStatusExposesConfiguredLegalIdentity(t *testing.T) {
+	srv := newAdminHTTPOptionTestServer(&adminHTTPSystemOptionsStore{values: map[string]string{
+		"LegalOperatorName":    "示例科技有限公司",
+		"LegalOperatorAddress": "上海市示例路 1 号",
+		"LegalContactEmail":    "privacy@example.com",
+	}})
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{
+		`"legal_operator_name":"示例科技有限公司"`,
+		`"legal_operator_address":"上海市示例路 1 号"`,
+		`"legal_contact_email":"privacy@example.com"`,
+	} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("status response missing %s: %s", want, rec.Body.String())
+		}
+	}
+}
+
 func TestAdminHTTPProxiesUserPaymentOrderDetail(t *testing.T) {
 	var gotPath string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1116,6 +1144,25 @@ func TestParseReverseProxyTargetRejectsUnsafeEndpoints(t *testing.T) {
 	}
 }
 
+func TestServiceReverseProxyDropsSpoofedForwardedFor(t *testing.T) {
+	var forwarded string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded = r.Header.Get("X-Forwarded-For")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer backend.Close()
+	t.Setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+	proxy := newServiceReverseProxy(backend.URL)
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	proxy.ServeHTTP(httptest.NewRecorder(), req)
+
+	if strings.Contains(forwarded, "1.2.3.4") || !strings.Contains(forwarded, "203.0.113.9") {
+		t.Fatalf("forwarded chain = %q, want validated direct client only", forwarded)
+	}
+}
+
 func TestAdminHTTPPageUsesExternalWebRoot(t *testing.T) {
 	webRoot := t.TempDir()
 	if err := os.Mkdir(filepath.Join(webRoot, "assets"), 0o755); err != nil {
@@ -1227,6 +1274,29 @@ func TestReadonlyPricingReturnsModelPriceRows(t *testing.T) {
 			t.Fatalf("pricing response missing %q: %s", want, body)
 		}
 	}
+}
+
+func TestMergeReadonlyPricingModelsFiltersUnavailableAndAddsModalities(t *testing.T) {
+	rows := []readonlyPricingRow{
+		{Model: "enabled-model", InputPrice: floatPtr(1)},
+		{Model: "disabled-model", InputPrice: floatPtr(2)},
+		{Model: "legacy-model", InputPrice: floatPtr(3)},
+	}
+	merged := mergeReadonlyPricingModels(rows, []*channelv1.ModelSummary{
+		{ModelId: "enabled-model", Status: 1, IsPublic: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}},
+		{ModelId: "disabled-model", Status: 0, IsPublic: true},
+		{ModelId: "registry-only", Status: 1, IsPublic: true, PricingInput: 0.005, PricingOutput: 0.015},
+	})
+
+	require.Len(t, merged, 2)
+	byModel := map[string]readonlyPricingRow{}
+	for _, row := range merged {
+		byModel[row.Model] = row
+	}
+	assert.NotContains(t, byModel, "disabled-model")
+	assert.Equal(t, []string{"text", "image"}, byModel["enabled-model"].InputModalities)
+	assert.NotContains(t, byModel, "registry-only")
+	assert.Contains(t, byModel, "legacy-model")
 }
 
 func TestReadonlyPricingReadsLegacyQuotaPerUnit(t *testing.T) {

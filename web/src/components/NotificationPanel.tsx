@@ -36,6 +36,7 @@ import {
   translateError,
   notifyTypeLabel,
 } from '@/lib/notification-display';
+import { locale, t } from '@/lib/i18n';
 
 // Notification types based on backend API response (snake_case)
 type GeneratedNotification = components['schemas']['api.notify.v1.NotificationItem'];
@@ -122,12 +123,12 @@ function formatTime(dateString?: string): string {
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return '刚刚';
-    if (diffMins < 60) return `${diffMins} 分钟前`;
-    if (diffHours < 24) return `${diffHours} 小时前`;
-    if (diffDays < 7) return `${diffDays} 天前`;
+    if (diffMins < 1) return t("刚刚");
+    if (diffMins < 60) return t(`${diffMins} 分钟前`);
+    if (diffHours < 24) return t(`${diffHours} 小时前`);
+    if (diffDays < 7) return t(`${diffDays} 天前`);
 
-    return date.toLocaleString('zh-CN', { hour12: false });
+    return date.toLocaleString(locale(), { hour12: false });
   } catch {
     return '-';
   }
@@ -177,7 +178,7 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
   // Handle refresh
   const handleRefresh = () => {
     void notificationsQuery.refetch().then(({ error }) => {
-      if (!error) toast.success('通知列表已刷新');
+      if (!error) toast.success(t("通知列表已刷新"));
     });
   };
 
@@ -195,10 +196,10 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
 
   // Filter buttons
   const filterButtons: { key: NotificationStatus; label: string }[] = [
-    { key: 'all', label: '全部' },
-    { key: 'pending', label: '发送中' },
-    { key: 'sent', label: '已发送' },
-    { key: 'failed', label: '失败' },
+    { key: 'all', label: t("全部") },
+    { key: 'pending', label: t("发送中") },
+    { key: 'sent', label: t("已发送") },
+    { key: 'failed', label: t("失败") },
   ];
 
   return (
@@ -214,7 +215,7 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
       >
         <Bell className="size-4" />
         {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+          <span className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -236,11 +237,10 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Bell className="size-5 text-blue-600" />
-                  <h3 className="text-lg font-bold">通知中心</h3>
+                  <h3 className="text-lg font-bold">{t("通知中心")}</h3>
                   {unreadCount > 0 && (
                     <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
-                      {unreadCount} 未读
-                    </span>
+                      {unreadCount}{t("未读")}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-1">
@@ -248,7 +248,7 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="刷新通知"
+                    aria-label={t("刷新通知")}
                     onClick={handleRefresh}
                     disabled={isRefreshing}
                   >
@@ -258,7 +258,7 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="关闭通知"
+                    aria-label={t("关闭通知")}
                     onClick={() => onOpenChange(false)}
                   >
                     <X className="size-4" />
@@ -279,8 +279,8 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                     className={cn(
                       'rounded-full px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap',
                       statusFilter === filter.key
-                        ? 'bg-blue-600 text-white'
-                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-muted'
                     )}
                   >
                     {filter.label}
@@ -294,10 +294,8 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                   <div className="flex h-full items-center justify-center p-8 text-center">
                     <div className="space-y-3">
                       <CircleAlert className="mx-auto size-12 text-red-300" />
-                      <p className="text-sm font-medium text-slate-500">通知加载失败</p>
-                      <Button type="button" variant="outline" size="sm" onClick={handleRefresh}>
-                        重试
-                      </Button>
+                      <p className="text-sm font-medium text-muted-foreground">{t("通知加载失败")}</p>
+                      <Button type="button" variant="outline" size="sm" onClick={handleRefresh}>{t("重试")}</Button>
                     </div>
                   </div>
                 ) : isLoading ? (
@@ -309,10 +307,10 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                 ) : notifications.length === 0 ? (
                   <div className="flex h-full items-center justify-center p-8 text-center">
                     <div className="space-y-2">
-                      <Bell className="mx-auto size-12 text-slate-300" />
-                      <p className="text-sm font-medium text-slate-500">暂无通知</p>
-                      <p className="text-xs text-slate-400">
-                        {statusFilter === 'all' ? '您还没有收到任何通知' : '该状态下没有通知'}
+                      <Bell className="mx-auto size-12 text-muted-foreground" />
+                      <p className="text-sm font-medium text-muted-foreground">{t("暂无通知")}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {statusFilter === 'all' ? t("您还没有收到任何通知") : t("该状态下没有通知")}
                       </p>
                     </div>
                   </div>
@@ -344,12 +342,12 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                         <div
                           key={id}
                           className={cn(
-                            'relative rounded-lg border p-3 transition-colors',
+                            'relative rounded-xl border border-border bg-card p-3 transition-colors',
                             isFailed
                               ? 'border-red-200 bg-red-50/40 dark:border-red-500/30 dark:bg-red-500/5'
                               : isPending
                                 ? 'border-blue-200 bg-blue-50/40 dark:border-blue-500/20 dark:bg-blue-500/5'
-                                : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800/50'
+                                : 'hover:bg-muted'
                           )}
                         >
                           {/* Top row: category badge + severity + time */}
@@ -358,30 +356,30 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                               <span className={cn('flex items-center gap-1', sev.color)}>
                                 <SevIcon className="size-3.5" />
                               </span>
-                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                              <span className="text-xs font-semibold text-foreground">
                                 {parsed.categoryLabel}
                               </span>
                             </div>
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-muted-foreground">
                               {formatTime(notification.created_at)}
                             </span>
                           </div>
 
                           {/* Summary (the headline an operator understands) */}
-                          <p className="mb-1.5 text-sm font-medium text-slate-900 dark:text-slate-100">
+                          <p className="mb-1.5 text-sm font-medium text-foreground">
                             {parsed.summary}
                           </p>
 
                           {/* Meta chips: status + channel type + recipient */}
                           <div className="mb-2 flex flex-wrap items-center gap-1.5">
                             <span className={cn(
-                              'flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                              'flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
                               config.color
                             )}>
                               <StatusIcon className="size-3" />
-                              {config.label}
+                              {t(config.label)}
                             </span>
-                            <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                            <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                               <TypeIcon className="size-3" />
                               {notifyTypeLabel(notification.type)}
                             </span>
@@ -392,7 +390,7 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                             <div className="mb-2 flex items-start gap-1.5 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
                               <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
                               <div>
-                                <span className="font-medium">失败原因:</span>{' '}
+                                <span className="font-medium">{t("失败原因:")}</span>{' '}
                                 <span className="break-words">{translatedErr}</span>
                               </div>
                             </div>
@@ -400,9 +398,7 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
 
                           {/* Retry count for failed */}
                           {isFailed && (notification.retry_count ?? 0) > 0 && (
-                            <div className="mb-2 text-xs text-red-600 dark:text-red-400">
-                              已重试 {notification.retry_count} 次
-                            </div>
+                            <div className="mb-2 text-xs text-red-600 dark:text-red-400">{t("已重试")}{notification.retry_count}{t("次")}</div>
                           )}
 
                           {/* Expandable structured details */}
@@ -410,15 +406,15 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                             <button
                               type="button"
                               onClick={() => toggleExpand(id)}
-                              className="flex w-full items-center gap-1 rounded-md px-1 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                              className="flex w-full items-center gap-1 rounded-md px-1 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                             >
                               <ChevronDown className={cn('size-3.5 transition-transform', isExpanded && 'rotate-180')} />
-                              {isExpanded ? '收起详情' : '查看详情'}
+                              {isExpanded ? t("收起详情") : t("查看详情")}
                             </button>
                           )}
 
                           {hasDetails && isExpanded && (
-                            <div className="mt-1.5 space-y-1 rounded-md bg-slate-50 p-2 dark:bg-slate-800/50">
+                            <div className="mt-1.5 space-y-1 rounded-md bg-muted p-2">
                               {parsed.details.map((detail, idx) => (
                                 <div
                                   key={idx}
@@ -426,17 +422,17 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                                 >
                                   {detail.label ? (
                                     <>
-                                      <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                                      <span className="shrink-0 text-muted-foreground">
                                         {detail.label}
                                       </span>
                                       {detail.value && (
-                                        <span className="break-all text-right font-medium text-slate-700 dark:text-slate-200">
+                                        <span className="break-all text-right font-medium text-foreground">
                                           {detail.value}
                                         </span>
                                       )}
                                     </>
                                   ) : (
-                                    <span className="break-all text-slate-600 dark:text-slate-300">
+                                    <span className="break-all text-muted-foreground">
                                       {detail.value}
                                     </span>
                                   )}
@@ -446,8 +442,8 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
                           )}
 
                           {/* Footer */}
-                          <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-                            <span className="truncate">收件人: {notification.recipient || '未知'}</span>
+                          <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                            <span className="truncate">{t("收件人:")}{notification.recipient || t("未知")}</span>
                           </div>
                         </div>
                       );
@@ -458,8 +454,8 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
 
               {/* Footer */}
               <div className="border-t px-4 py-3">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>共 {total} 条通知</span>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{t(`共 ${total} 条通知`)}</span>
                 </div>
               </div>
             </div>

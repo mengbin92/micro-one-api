@@ -90,7 +90,11 @@ func TestRelayQuotaAndEventPortsAdaptTransportNeutralRequest(t *testing.T) {
 	if hooks.released == nil || hooks.released.ID != reservation.ID {
 		t.Fatalf("released reservation = %#v", hooks.released)
 	}
-	logger.LogUsage(context.Background(), plan, req, estimated, time.Second, false)
+	logger.LogUsage(context.Background(), plan, relaybiz.UsageEvent{
+		Model:     req.Model,
+		Endpoint:  req.Endpoint,
+		RequestID: req.RequestID,
+	}, estimated, time.Second, false)
 	if hooks.logged != estimated {
 		t.Fatalf("logged usage = %#v, want %#v", hooks.logged, estimated)
 	}

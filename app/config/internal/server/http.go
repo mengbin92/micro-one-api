@@ -12,7 +12,7 @@ import (
 
 // NewHTTPServer wires HTTP transport for config-service.
 func NewHTTPServer(addr string, svc *service.ConfigService) *khttp.Server {
-	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
+	srv := xhttp.NewServer(khttp.Address(addr))
 	srv.HandlePrefix("/v1/configs/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

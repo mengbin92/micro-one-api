@@ -243,13 +243,14 @@ func TestImportModelsMemory_UpdatePreservesCreatedAtAndPrices(t *testing.T) {
 	r := &Repository{
 		models: map[int64]*biz.Model{
 			1: {
-				ID:            1,
-				ModelID:       "gpt-4o",
-				DisplayName:   "Original",
-				PricingInput:  1.25,
-				PricingOutput: 2.5,
-				CreatedAt:     123,
-				UpdatedAt:     456,
+				ID:               1,
+				ModelID:          "gpt-4o",
+				DisplayName:      "Original",
+				PricingInput:     1.25,
+				PricingOutput:    2.5,
+				PricingCacheRead: 0.5,
+				CreatedAt:        123,
+				UpdatedAt:        456,
 			},
 		},
 		modelNextID: 1,
@@ -257,10 +258,11 @@ func TestImportModelsMemory_UpdatePreservesCreatedAtAndPrices(t *testing.T) {
 
 	summary, err := r.importModelsMemory([]*biz.ModelExportModel{
 		{
-			ModelID:       "gpt-4o",
-			DisplayName:   "Changed",
-			PricingInput:  99,
-			PricingOutput: 100,
+			ModelID:          "gpt-4o",
+			DisplayName:      "Changed",
+			PricingInput:     99,
+			PricingOutput:    100,
+			PricingCacheRead: 101,
 		},
 	}, biz.ImportOptions{ConflictStrategy: biz.ConflictStrategyUpdate, ImportPrices: false})
 	if err != nil {
@@ -273,8 +275,8 @@ func TestImportModelsMemory_UpdatePreservesCreatedAtAndPrices(t *testing.T) {
 	if got.CreatedAt != 123 {
 		t.Fatalf("CreatedAt = %d, want 123", got.CreatedAt)
 	}
-	if got.PricingInput != 1.25 || got.PricingOutput != 2.5 {
-		t.Fatalf("prices = (%v, %v), want (1.25, 2.5)", got.PricingInput, got.PricingOutput)
+	if got.PricingInput != 1.25 || got.PricingOutput != 2.5 || got.PricingCacheRead != 0.5 {
+		t.Fatalf("prices = (%v, %v, %v), want (1.25, 2.5, 0.5)", got.PricingInput, got.PricingOutput, got.PricingCacheRead)
 	}
 	if got.DisplayName != "Changed" {
 		t.Fatalf("DisplayName = %q, want Changed", got.DisplayName)

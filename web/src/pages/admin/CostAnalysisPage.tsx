@@ -18,6 +18,15 @@ import { MetricCardsSkeleton } from '@/components/LoadingStates';
 import { ChannelCostComparison, CostBreakdownChart } from '@/components/admin/CostCharts';
 import { amountUnitsToCurrencyUnits, formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
+import { t } from '@/lib/i18n';
+
+const CHART_COLORS = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+];
 
 interface AdminSummary {
   totals?: {
@@ -123,19 +132,19 @@ function MetricCard({
   }[tone];
 
   return (
-    <Card className="min-h-36 rounded-lg border-0 bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+    <Card className="min-h-36">
       <CardContent className="flex h-full flex-col justify-between p-5">
         <div className="flex items-start justify-between gap-4">
-          <span className="text-sm font-bold text-slate-500 dark:text-slate-400">{title}</span>
+          <span className="text-sm font-medium text-muted-foreground">{title}</span>
           <span className={cn('grid size-12 shrink-0 place-items-center rounded-lg', styles)}>
             <Icon className="size-5" />
           </span>
         </div>
         <div>
-          <div className={cn('break-words text-3xl font-black tracking-normal', styles.split(' ')[0])}>
+          <div className={cn('break-words text-3xl font-semibold tracking-normal', styles.split(' ')[0])}>
             {value}
           </div>
-          <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-400">
+          <div className="mt-3 flex items-center gap-2 text-sm font-medium text-muted-foreground">
             {trend === 'up' && <TrendingUp className="size-4 text-green-600" />}
             {trend === 'down' && <TrendingDown className="size-4 text-red-600" />}
             {subtitle}
@@ -235,18 +244,17 @@ export function CostAnalysisPage() {
   }, [topChannels]);
 
   const costBreakdownData = useMemo(() => {
-    const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#6366f1'];
     // Use actual cost values instead of percentages to avoid confusion
     // The pie chart will automatically calculate percentages from the values
     return topModels.map((m, index) => ({
       name: m.model,
       value: m.cost,
-      color: colors[index % colors.length],
+      color: CHART_COLORS[index % CHART_COLORS.length],
     }));
   }, [topModels]);
 
   const handleExport = () => {
-    toast.success('成本报表导出功能开发中，敬请期待...');
+    toast.success(t("成本报表导出功能开发中，敬请期待..."));
   };
 
   const hasData = costMetrics.revenue > 0 || costMetrics.upstreamCost > 0 || costMetrics.grossProfit > 0 || topSubscriptionAccountQuotaEvents.length > 0;
@@ -255,16 +263,12 @@ export function CostAnalysisPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">成本分析</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            全面的成本、收入和利润分析
-          </p>
+          <h2 className="text-2xl font-semibold">{t("成本分析")}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{t("全面的成本、收入和利润分析")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={handleExport}>
-            <Download className="mr-2 size-4" />
-            导出报表
-          </Button>
+            <Download className="mr-2 size-4" />{t("导出报表")}</Button>
         </div>
       </div>
 
@@ -273,39 +277,39 @@ export function CostAnalysisPage() {
         <MetricCardsSkeleton />
       ) : !hasData ? (
         <EmptyState
-          title="暂无成本数据"
-          description="成本数据将在有 API 调用和消费记录后显示"
+          title={t("暂无成本数据")}
+          description={t("成本数据将在有 API 调用和消费记录后显示")}
         />
       ) : (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard
-            title="总收入"
+            title={t("总收入")}
             value={formatMoney(costMetrics.revenue)}
-            subtitle={`累计收入`}
+            subtitle={t("累计收入")}
             tone="green"
             trend="up"
             icon={ArrowUpCircle}
           />
           <MetricCard
-            title="上游成本"
+            title={t("上游成本")}
             value={formatMoney(costMetrics.upstreamCost)}
-            subtitle={`渠道支出`}
+            subtitle={t("渠道支出")}
             tone="red"
             trend="down"
             icon={ArrowDownCircle}
           />
           <MetricCard
-            title="毛利润"
+            title={t("毛利润")}
             value={formatMoney(costMetrics.grossProfit)}
-            subtitle={`营收 - 成本`}
+            subtitle={t("营收 - 成本")}
             tone="blue"
             trend={costMetrics.grossProfit > 0 ? 'up' : 'down'}
             icon={DollarSign}
           />
           <MetricCard
-            title="毛利率"
+            title={t("毛利率")}
             value={`${costMetrics.margin.toFixed(1)}%`}
-            subtitle={`利润 / 收入`}
+            subtitle={t("利润 / 收入")}
             tone="purple"
             trend={costMetrics.margin > 30 ? 'up' : 'neutral'}
             icon={TrendingUp}
@@ -320,7 +324,7 @@ export function CostAnalysisPage() {
           {channelCostData.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl font-black">渠道成本对比</CardTitle>
+                <CardTitle className="text-xl font-bold">{t("渠道成本对比")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ChannelCostComparison data={channelCostData} />
@@ -332,10 +336,8 @@ export function CostAnalysisPage() {
           {costBreakdownData.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl font-black">TOP 模型成本分布</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  显示成本最高的模型分布
-                </p>
+                <CardTitle className="text-xl font-bold">{t("TOP 模型成本分布")}</CardTitle>
+                <p className="text-sm text-muted-foreground">{t("显示成本最高的模型分布")}</p>
               </CardHeader>
               <CardContent>
                 <CostBreakdownChart data={costBreakdownData} />
@@ -349,7 +351,7 @@ export function CostAnalysisPage() {
       {hasData && topModels.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-black">高成本模型 TOP 5</CardTitle>
+            <CardTitle className="text-xl font-bold">{t("高成本模型 TOP 5")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -357,8 +359,7 @@ export function CostAnalysisPage() {
                 <div key={index} className="flex items-center justify-between rounded-lg border p-3">
                   <div>
                     <div className="font-medium text-foreground">{item.model}</div>
-                    <div className="text-xs text-muted-foreground">
-                      成本: ${item.cost.toFixed(2)} | 收入: ${item.quota.toFixed(2)}
+                    <div className="text-xs text-muted-foreground">{t("成本: $")}{item.cost.toFixed(2)}{t("| 收入: $")}{item.quota.toFixed(2)}
                     </div>
                   </div>
                   <div className={cn(
@@ -378,7 +379,7 @@ export function CostAnalysisPage() {
       {hasData && topChannels.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-black">高成本渠道 TOP 5</CardTitle>
+            <CardTitle className="text-xl font-bold">{t("高成本渠道 TOP 5")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -386,8 +387,7 @@ export function CostAnalysisPage() {
                 <div key={index} className="flex items-center justify-between rounded-lg border p-3">
                   <div>
                     <div className="font-medium text-foreground">{item.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      成本: ${item.cost.toFixed(2)} | 收入: ${item.quota.toFixed(2)}
+                    <div className="text-xs text-muted-foreground">{t("成本: $")}{item.cost.toFixed(2)}{t("| 收入: $")}{item.quota.toFixed(2)}
                     </div>
                   </div>
                   <div className={cn(
@@ -407,7 +407,7 @@ export function CostAnalysisPage() {
       {hasData && topSubscriptionAccounts.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-black">订阅账号成本 TOP 5</CardTitle>
+            <CardTitle className="text-xl font-bold">{t("订阅账号成本 TOP 5")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -420,12 +420,10 @@ export function CostAnalysisPage() {
                         <span className="ml-2 text-xs text-muted-foreground">{item.platform}</span>
                       )}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      成本: ${item.cost.toFixed(2)} | 收入: ${item.quota.toFixed(2)} | 调用: {item.count}
+                    <div className="text-xs text-muted-foreground">{t("成本: $")}{item.cost.toFixed(2)}{t("| 收入: $")}{item.quota.toFixed(2)}{t("| 调用:")}{item.count}
                     </div>
                     {item.accountEventCount > 0 && (
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        账号本地扣减: {formatUSDValue(item.accountEventChargedUsd, 4)} | 平均倍率: ×{item.accountEventRateMultiplier.toFixed(2)}
+                      <div className="mt-1 text-xs text-muted-foreground">{t("账号本地扣减:")}{formatUSDValue(item.accountEventChargedUsd, 4)}{t("| 平均倍率: ×")}{item.accountEventRateMultiplier.toFixed(2)}
                       </div>
                     )}
                   </div>
@@ -446,7 +444,7 @@ export function CostAnalysisPage() {
       {hasData && topSubscriptionAccountQuotaEvents.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-black">账号本地额度事件 TOP 5</CardTitle>
+            <CardTitle className="text-xl font-bold">{t("账号本地额度事件 TOP 5")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -459,14 +457,12 @@ export function CostAnalysisPage() {
                         <span className="ml-2 text-xs text-muted-foreground">{item.platform}</span>
                       )}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      事件成本: {formatUSDValue(item.chargedUsd, 4)} | 原始成本: {formatUSDValue(item.rawUsd, 4)} | 事件: {item.count}
+                    <div className="text-xs text-muted-foreground">{t("事件成本:")}{formatUSDValue(item.chargedUsd, 4)}{t("| 原始成本:")}{formatUSDValue(item.rawUsd, 4)}{t("| 事件:")}{item.count}
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      Ledger 成本: ${item.ledgerCost.toFixed(2)} | Ledger 收入: ${item.ledgerQuota.toFixed(2)} | Ledger 调用: {item.ledgerCount}
+                    <div className="mt-1 text-xs text-muted-foreground">{t("Ledger 成本: $")}{item.ledgerCost.toFixed(2)}{t("| Ledger 收入: $")}{item.ledgerQuota.toFixed(2)}{t("| Ledger 调用:")}{item.ledgerCount}
                     </div>
                   </div>
-                  <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <div className="text-sm font-medium text-muted-foreground dark:text-foreground">
                     ×{item.averageRateMultiplier.toFixed(2)}
                   </div>
                 </div>
@@ -483,13 +479,12 @@ export function CostAnalysisPage() {
             <InfoIcon className="mt-0.5 size-4 shrink-0 text-blue-600" />
             <div className="space-y-1 text-muted-foreground">
               <p>
-                <strong>成本分析说明：</strong>数据基于实际使用量和配置的渠道价格计算
-              </p>
+                <strong>{t("成本分析说明：")}</strong>{t("数据基于实际使用量和配置的渠道价格计算")}</p>
               <ul className="ml-4 list-disc space-y-1">
-                <li><strong>收入：</strong>用户消耗的金额</li>
-                <li><strong>上游成本：</strong>调用外部 API 的实际支出</li>
-                <li><strong>毛利润：</strong>收入减去上游成本（未包含运营成本）</li>
-                <li><strong>毛利率：</strong>毛利润占收入的比例</li>
+                <li><strong>{t("收入：")}</strong>{t("用户消耗的金额")}</li>
+                <li><strong>{t("上游成本：")}</strong>{t("调用外部 API 的实际支出")}</li>
+                <li><strong>{t("毛利润：")}</strong>{t("收入减去上游成本（未包含运营成本）")}</li>
+                <li><strong>{t("毛利率：")}</strong>{t("毛利润占收入的比例")}</li>
               </ul>
             </div>
           </div>

@@ -556,10 +556,10 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 
 	// Use the relay context's client (configured timeout/transport) rather than
 	// http.DefaultClient so the OAuth path inherits the gateway's upstream
-	// settings. Fall back to DefaultClient only when none is configured.
+	// settings. Fall back to the same SSRF-safe client when none is configured.
 	client := rc.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = relayprovider.NewHTTPClient(30 * time.Second)
 	}
 	if isStream && client.Timeout > 0 {
 		// http.Client.Timeout covers the entire exchange including reading the

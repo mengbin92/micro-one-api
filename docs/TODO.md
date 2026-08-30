@@ -1,12 +1,15 @@
 # 项目 TODO
 
-> 最后更新：2026-08-20
+> 最后更新：2026-08-28
 >
 > **当前执行入口**：[v0.23 阶段路线图](./design/v0.23-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
 >
 > 📣 **v0.22 阶段（2026-08-19，已收尾）**：渠道凭证迁移、启动安全、契约治理、批量可靠性修复、请求体限额、前端错误兜底和 Relay 执行边界 ADR 均已闭环，v0.22.0 已发布并完成线上更新；验收记录归档于 [v0.22 阶段路线图](./design/v0.22-roadmap.md)。
 >
-> 📣 **v0.23 当前进展（2026-08-20）**：先完成 v0.22.0 上线后 48–72 小时观察，再按 [Relay 执行边界 ADR](./design/v0.22-relay-execution-boundary-adr.md) 实施 Chat Completions 非流式 executor 首切片；观察未通过前不启动切流，不预设 v0.22.1。2026-08-20 另有两个计划外缺陷修复保留在 develop（配置模型来源 / 订阅探测、Responses fallback 与重试健康度），不属于 v0.23 路线图范围，将随下一个正式版本发布。
+> 📣 **v0.23 当前进展（2026-08-28）**：v0.23.2 已发布并修复 Responses 经 Anthropic API-key
+> 渠道的本地协议转换 502。executor 第四次正式观察窗口于 2026-08-28 10:40:47 CST
+> 成立，预计 2026-09-04 10:40:47 CST 结束；观察期间冻结 relay-gateway 部署、executor
+> flag 与 allowlist，日检结论以 [executor 观察手册](./design/v0.23-executor-observation.md) 为准。
 >
 > 📣 **v0.21 阶段（2026-08-18，已收尾）**：资金对账、MySQL / PostgreSQL migration smoke、Release E2E 门禁与 P3-0 观察基线均已闭环，v0.21.0 已发布；验收记录归档于 [v0.21 阶段路线图](./design/v0.21-roadmap.md)。
 >

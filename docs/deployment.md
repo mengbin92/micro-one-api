@@ -272,13 +272,15 @@ kubectl port-forward -n one-api service/relay-gateway 8080:80
 | `REDIS_ADDR` | Redis 地址 | - |
 | `LOG_LEVEL` | 日志级别 | `info` |
 | `LOG_FORMAT` | 日志格式 (json/text) | `json` |
-| `SERVICE_TOKEN` | 服务间 HTTP 调用令牌；admin-api 访问 log-service 详情与清理接口时使用 | - |
+| `SERVICE_TOKEN` | 服务间 HTTP/gRPC 共享令牌；所有内部 gRPC 服务均强制校验，必须在调用端与服务端保持一致 | - |
+| `IDENTITY_TRUSTED_PROXY_CIDRS` | identity-service 可信任的上游代理网段；仅填写 admin-api 所在的内部网段 | 空（忽略转发头） |
+| `ADMIN_TRUSTED_PROXY_CIDRS` | admin-api 可信任的入口代理网段；直连 3000 端口时保持为空 | 空（忽略转发头） |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana 管理员密码；Docker Compose 启动监控栈时必填，不提供默认密码 | - |
 | `CHANNEL_ENCRYPTION_KEY` | channel-service 持久化渠道 key 和订阅账号 token 的 AES 密钥；必须为 16 / 24 / 32 字节 | - |
 | `CHANNEL_MEMORY_MODE` | 允许 channel-service 在无数据库 DSN 时使用内存仓储；仅用于开发/测试 | `false` |
 | `IDENTITY_MEMORY_MODE` | 允许 identity-service 在无数据库 DSN 时使用内存仓储；仅用于开发/测试 | `false` |
 | `LOG_MEMORY_MODE` | 允许 log-service 在无数据库 DSN 时使用内存日志仓库；仅用于开发/测试 | `false` |
 | `LOG_RETENTION_DAYS` | log-service 业务日志保留天数，`0` 表示不自动清理 | `30` |
-| `LOG_GRPC_AUTH` | 是否启用 log-service gRPC 服务令牌鉴权；启用前需确保客户端会发送 Bearer token | `false` |
 
 ### 4.2 Relay Gateway 专用
 
@@ -298,6 +300,15 @@ kubectl port-forward -n one-api service/relay-gateway 8080:80
 | `RATE_LIMIT_REQUESTS_PER_SECOND` | 每秒请求数限制 | `100` |
 | `RATE_LIMIT_BURST` | 突发请求上限 | `200` |
 | `CORS_ALLOWED_ORIGINS` | CORS 允许的源，逗号分隔；生产填写真实 HTTPS 来源 | 空（拒绝跨域） |
+| `RELAY_ORCHESTRATOR_TOKEN_HMAC_SHA256` | 编排器灰度 bearer token 的 HMAC-SHA256 摘要列表；密钥为 `SERVICE_TOKEN` | 空（不允许任何 token 进入灰度路径） |
+
+启用编排器灰度前，在已导出 `SERVICE_TOKEN` 的可信终端中逐个计算 bearer token 摘要；命令通过隐藏输入读取 token，避免把明文写入 shell 历史：
+
+```bash
+python3 -c 'import getpass,hashlib,hmac,os; print(hmac.new(os.environ["SERVICE_TOKEN"].encode(), getpass.getpass("Bearer token: ").encode(), hashlib.sha256).hexdigest())'
+```
+
+多个摘要用逗号分隔。旧变量 `RELAY_ORCHESTRATOR_TOKEN_SHA256` 不再读取；升级前必须重新计算并设置新变量。轮换 `SERVICE_TOKEN` 时也必须同步重新计算，否则灰度入口会按 fail-closed 策略拒绝全部 token。
 
 ### 4.3 Admin API 专用
 

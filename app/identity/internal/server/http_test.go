@@ -65,6 +65,22 @@ func TestIdentityHTTPRegisterLoginAndSelf(t *testing.T) {
 	}
 }
 
+func TestRequestRemoteIPOnlyTrustsConfiguredProxies(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	t.Setenv("IDENTITY_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+	if got := requestRemoteIP(req); got != "203.0.113.9" {
+		t.Fatalf("untrusted requestRemoteIP() = %q, want direct peer", got)
+	}
+
+	req.RemoteAddr = "10.0.0.5:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
+	if got := requestRemoteIP(req); got != "198.51.100.7" {
+		t.Fatalf("trusted requestRemoteIP() = %q, want forwarded client", got)
+	}
+}
+
 func TestIdentityHTTPAffCodeRequiresAuth(t *testing.T) {
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo, nil)

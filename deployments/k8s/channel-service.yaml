@@ -75,6 +75,11 @@ spec:
             secretKeyRef:
               name: app-secrets
               key: channel-encryption-key
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: service-token-secret
+              key: token
         - name: NOTIFY_GRPC_ENDPOINT
           valueFrom:
             configMapKeyRef:

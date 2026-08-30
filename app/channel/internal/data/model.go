@@ -20,24 +20,27 @@ import (
 // PO types stay inside data. Driver-specific GORM tags never leave this file.
 
 type modelModel struct {
-	ID            int64   `gorm:"column:id;primaryKey;autoIncrement"`
-	ModelID       string  `gorm:"column:model_id"`
-	DisplayName   string  `gorm:"column:display_name"`
-	Description   *string `gorm:"column:description"`
-	Provider      string  `gorm:"column:provider"`
-	ModelType     string  `gorm:"column:model_type"`
-	ContextWindow int32   `gorm:"column:context_window"`
-	PricingInput  float64 `gorm:"column:pricing_input"`
-	PricingOutput float64 `gorm:"column:pricing_output"`
-	Status        int32   `gorm:"column:status"`
-	IsPublic      bool    `gorm:"column:is_public"`
-	Capabilities  string  `gorm:"column:capabilities"` // JSON array
-	Tags          string  `gorm:"column:tags"`         // JSON array
-	Category      string  `gorm:"column:category"`
-	Tier          string  `gorm:"column:tier"`
-	Metadata      *string `gorm:"column:metadata"` // JSON object
-	CreatedAt     int64   `gorm:"column:created_at"`
-	UpdatedAt     int64   `gorm:"column:updated_at"`
+	ID               int64   `gorm:"column:id;primaryKey;autoIncrement"`
+	ModelID          string  `gorm:"column:model_id"`
+	DisplayName      string  `gorm:"column:display_name"`
+	Description      *string `gorm:"column:description"`
+	Provider         string  `gorm:"column:provider"`
+	ModelType        string  `gorm:"column:model_type"`
+	ContextWindow    int32   `gorm:"column:context_window"`
+	PricingInput     float64 `gorm:"column:pricing_input"`
+	PricingCacheRead float64 `gorm:"column:pricing_cache_read"`
+	PricingOutput    float64 `gorm:"column:pricing_output"`
+	Status           int32   `gorm:"column:status"`
+	IsPublic         bool    `gorm:"column:is_public"`
+	Capabilities     string  `gorm:"column:capabilities"`      // JSON array
+	InputModalities  string  `gorm:"column:input_modalities"`  // JSON array
+	OutputModalities string  `gorm:"column:output_modalities"` // JSON array
+	Tags             string  `gorm:"column:tags"`              // JSON array
+	Category         string  `gorm:"column:category"`
+	Tier             string  `gorm:"column:tier"`
+	Metadata         *string `gorm:"column:metadata"` // JSON object
+	CreatedAt        int64   `gorm:"column:created_at"`
+	UpdatedAt        int64   `gorm:"column:updated_at"`
 }
 
 func (modelModel) TableName() string { return "models" }
@@ -96,22 +99,25 @@ func (modelUsageStatModel) TableName() string { return "model_usage_stats" }
 
 func newModelPO(do *biz.Model) *modelModel {
 	po := &modelModel{
-		ID:            do.ID,
-		ModelID:       do.ModelID,
-		DisplayName:   do.DisplayName,
-		Provider:      do.Provider,
-		ModelType:     do.ModelType,
-		ContextWindow: do.ContextWindow,
-		PricingInput:  do.PricingInput,
-		PricingOutput: do.PricingOutput,
-		Status:        do.Status,
-		IsPublic:      do.IsPublic,
-		Capabilities:  jsonStringArray(do.Capabilities),
-		Tags:          jsonStringArray(do.Tags),
-		Category:      do.Category,
-		Tier:          do.Tier,
-		CreatedAt:     do.CreatedAt,
-		UpdatedAt:     do.UpdatedAt,
+		ID:               do.ID,
+		ModelID:          do.ModelID,
+		DisplayName:      do.DisplayName,
+		Provider:         do.Provider,
+		ModelType:        do.ModelType,
+		ContextWindow:    do.ContextWindow,
+		PricingInput:     do.PricingInput,
+		PricingOutput:    do.PricingOutput,
+		PricingCacheRead: do.PricingCacheRead,
+		Status:           do.Status,
+		IsPublic:         do.IsPublic,
+		Capabilities:     jsonStringArray(do.Capabilities),
+		InputModalities:  jsonStringArray(do.InputModalities),
+		OutputModalities: jsonStringArray(do.OutputModalities),
+		Tags:             jsonStringArray(do.Tags),
+		Category:         do.Category,
+		Tier:             do.Tier,
+		CreatedAt:        do.CreatedAt,
+		UpdatedAt:        do.UpdatedAt,
 	}
 	if do.Description != "" {
 		d := do.Description
@@ -126,24 +132,27 @@ func newModelPO(do *biz.Model) *modelModel {
 
 func toModelDO(po *modelModel) *biz.Model {
 	return &biz.Model{
-		ID:            po.ID,
-		ModelID:       po.ModelID,
-		DisplayName:   po.DisplayName,
-		Description:   derefString(po.Description),
-		Provider:      po.Provider,
-		ModelType:     po.ModelType,
-		ContextWindow: po.ContextWindow,
-		PricingInput:  po.PricingInput,
-		PricingOutput: po.PricingOutput,
-		Status:        po.Status,
-		IsPublic:      po.IsPublic,
-		Capabilities:  parseStringArray(po.Capabilities),
-		Tags:          parseStringArray(po.Tags),
-		Category:      po.Category,
-		Tier:          po.Tier,
-		Metadata:      derefString(po.Metadata),
-		CreatedAt:     po.CreatedAt,
-		UpdatedAt:     po.UpdatedAt,
+		ID:               po.ID,
+		ModelID:          po.ModelID,
+		DisplayName:      po.DisplayName,
+		Description:      derefString(po.Description),
+		Provider:         po.Provider,
+		ModelType:        po.ModelType,
+		ContextWindow:    po.ContextWindow,
+		PricingInput:     po.PricingInput,
+		PricingOutput:    po.PricingOutput,
+		PricingCacheRead: po.PricingCacheRead,
+		Status:           po.Status,
+		IsPublic:         po.IsPublic,
+		Capabilities:     parseStringArray(po.Capabilities),
+		InputModalities:  parseStringArray(po.InputModalities),
+		OutputModalities: parseStringArray(po.OutputModalities),
+		Tags:             parseStringArray(po.Tags),
+		Category:         po.Category,
+		Tier:             po.Tier,
+		Metadata:         derefString(po.Metadata),
+		CreatedAt:        po.CreatedAt,
+		UpdatedAt:        po.UpdatedAt,
 	}
 }
 
@@ -461,20 +470,23 @@ func (r *Repository) UpdateModel(ctx context.Context, do *biz.Model) error {
 	}
 	po := newModelPO(do)
 	updates := map[string]interface{}{
-		"display_name":   po.DisplayName,
-		"description":    po.Description,
-		"provider":       po.Provider,
-		"model_type":     po.ModelType,
-		"context_window": po.ContextWindow,
-		"pricing_input":  po.PricingInput,
-		"pricing_output": po.PricingOutput,
-		"is_public":      po.IsPublic,
-		"capabilities":   po.Capabilities,
-		"tags":           po.Tags,
-		"category":       po.Category,
-		"tier":           po.Tier,
-		"metadata":       po.Metadata,
-		"updated_at":     po.UpdatedAt,
+		"display_name":       po.DisplayName,
+		"description":        po.Description,
+		"provider":           po.Provider,
+		"model_type":         po.ModelType,
+		"context_window":     po.ContextWindow,
+		"pricing_input":      po.PricingInput,
+		"pricing_output":     po.PricingOutput,
+		"pricing_cache_read": po.PricingCacheRead,
+		"is_public":          po.IsPublic,
+		"capabilities":       po.Capabilities,
+		"input_modalities":   po.InputModalities,
+		"output_modalities":  po.OutputModalities,
+		"tags":               po.Tags,
+		"category":           po.Category,
+		"tier":               po.Tier,
+		"metadata":           po.Metadata,
+		"updated_at":         po.UpdatedAt,
 	}
 	res := r.db.WithContext(ctx).Model(&modelModel{}).Where("id = ?", do.ID).Updates(updates)
 	if res.Error != nil {
@@ -982,6 +994,7 @@ func (r *Repository) updateModelMemory(do *biz.Model) error {
 	existing.ContextWindow = do.ContextWindow
 	existing.PricingInput = do.PricingInput
 	existing.PricingOutput = do.PricingOutput
+	existing.PricingCacheRead = do.PricingCacheRead
 	existing.IsPublic = do.IsPublic
 	existing.Capabilities = append([]string(nil), do.Capabilities...)
 	existing.Tags = append([]string(nil), do.Tags...)
@@ -1334,6 +1347,8 @@ func cloneModel(m *biz.Model) *biz.Model {
 	}
 	c := *m
 	c.Capabilities = append([]string(nil), m.Capabilities...)
+	c.InputModalities = append([]string(nil), m.InputModalities...)
+	c.OutputModalities = append([]string(nil), m.OutputModalities...)
 	c.Tags = append([]string(nil), m.Tags...)
 	c.Suppliers = append([]string(nil), m.Suppliers...)
 	return &c

@@ -24,6 +24,7 @@ import (
 
 	adminv1 "micro-one-api/api/admin/v1"
 	billingv1 "micro-one-api/api/billing/v1"
+	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/pkg/safecast"
@@ -185,12 +186,13 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	// point the router's NotFoundHandler at handlePage so ANY unmatched path
 	// serves the SPA shell (handlePage serves index.html for extension-less
 	// paths and the real asset otherwise). This option is appended AFTER
-	// SafeKratosServerOptions (which sets NotFoundHandler to a 404 responder) so
-	// our SPA fallback wins. API routes (/api/..., /v1/...) and /metrics,
+	// xhttp.NewServer's safe 404 option so our SPA fallback wins. API routes
+	// (/api/..., /v1/...) and /metrics,
 	// /healthz register longer patterns and are never "not found".
-	spaOpts := xhttp.SafeKratosServerOptions(khttp.Address(addr))
-	spaOpts = append(spaOpts, khttp.NotFoundHandler(http.HandlerFunc(handlePage)))
-	srv := khttp.NewServer(spaOpts...)
+	srv := xhttp.NewServer(
+		khttp.Address(addr),
+		khttp.NotFoundHandler(http.HandlerFunc(handlePage)),
+	)
 	adminAuth := newAdminGuard(svc)
 
 	// Health and metrics (unauthenticated)
@@ -240,19 +242,30 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 				systemName = v
 			}
 		}
+		legalOperatorName := ""
+		legalOperatorAddress := ""
+		legalContactEmail := ""
+		if svc != nil {
+			legalOperatorName, _ = svc.GetOneAPIOption(r.Context(), "LegalOperatorName")
+			legalOperatorAddress, _ = svc.GetOneAPIOption(r.Context(), "LegalOperatorAddress")
+			legalContactEmail, _ = svc.GetOneAPIOption(r.Context(), "LegalContactEmail")
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"success": true,
 			"message": "",
 			"data": map[string]interface{}{
-				"version":              "micro-one-api",
-				"system_name":          systemName,
-				"server_address":       serverAddress,
-				"registration_enabled": true,
-				"email_verification":   false,
-				"github_oauth":         false,
-				"wechat_login":         false,
-				"turnstile_check":      false,
-				"display_in_currency":  false,
+				"version":                "micro-one-api",
+				"system_name":            systemName,
+				"server_address":         serverAddress,
+				"legal_operator_name":    legalOperatorName,
+				"legal_operator_address": legalOperatorAddress,
+				"legal_contact_email":    legalContactEmail,
+				"registration_enabled":   true,
+				"email_verification":     false,
+				"github_oauth":           false,
+				"wechat_login":           false,
+				"turnstile_check":        false,
+				"display_in_currency":    false,
 			},
 		})
 	})
@@ -685,7 +698,22 @@ func newServiceReverseProxy(endpoint string) *httputil.ReverseProxy {
 	if err != nil {
 		return nil
 	}
-	return httputil.NewSingleHostReverseProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
+	proxy := httputil.NewSingleHostReverseProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
+	director := proxy.Director
+	trustedProxies := xhttp.TrustedProxyCIDRsFromEnv("ADMIN_TRUSTED_PROXY_CIDRS")
+	proxy.Director = func(req *http.Request) {
+		clientIP := xhttp.ClientIP(req, trustedProxies)
+		director(req)
+		// Go's ReverseProxy appends the direct peer after Director returns. Start
+		// from one validated client hop so an untrusted caller cannot smuggle a
+		// fake leftmost X-Forwarded-For value into identity-service.
+		req.Header.Del("X-Forwarded-For")
+		req.Header.Del("X-Real-IP")
+		if clientIP != "" {
+			req.Header.Set("X-Forwarded-For", clientIP)
+		}
+	}
+	return proxy
 }
 
 func parseReverseProxyTarget(endpoint string) (*url.URL, error) {
@@ -1249,7 +1277,9 @@ type readonlyPricingRow struct {
 	// CacheCreationUnpriced is true when the model row carries no
 	// cache-creation prices; surfaced so ops can see the v0.11.0 pricing gap
 	// (roadmap §1.3).
-	CacheCreationUnpriced bool `json:"cache_creation_unpriced,omitempty"`
+	CacheCreationUnpriced bool     `json:"cache_creation_unpriced,omitempty"`
+	InputModalities       []string `json:"input_modalities,omitempty"`
+	OutputModalities      []string `json:"output_modalities,omitempty"`
 }
 
 type readonlyModelPrice struct {
@@ -1296,6 +1326,10 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 	}
 
 	rows := readonlyPricingRows(optionMap, amountPerUnit)
+	modelsResp, modelsErr := svc.ListModels(r.Context(), &channelv1.ListModelsRequest{Page: 1, PageSize: 1000})
+	if modelsErr == nil && modelsResp != nil {
+		rows = mergeReadonlyPricingModels(rows, modelsResp.GetModels())
+	}
 	unpricedCount := 0
 	for _, row := range rows {
 		if row.CacheCreationUnpriced {
@@ -1313,6 +1347,41 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 			"unpriced_model_count": unpricedCount,
 		},
 	})
+}
+
+func mergeReadonlyPricingModels(rows []readonlyPricingRow, models []*channelv1.ModelSummary) []readonlyPricingRow {
+	byID := make(map[string]readonlyPricingRow, len(rows)+len(models))
+	for _, row := range rows {
+		byID[strings.ToLower(strings.TrimSpace(row.Model))] = row
+	}
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		id := strings.ToLower(strings.TrimSpace(model.GetModelId()))
+		if id == "" {
+			continue
+		}
+		if !model.GetIsPublic() || model.GetStatus() != 1 {
+			delete(byID, id)
+			continue
+		}
+		row, ok := byID[id]
+		if !ok {
+			// Registry prices are editing defaults, not billing configuration.
+			// Only expose rows backed by ModelPrice or the legacy ratio options.
+			continue
+		}
+		row.InputModalities = append([]string(nil), model.GetInputModalities()...)
+		row.OutputModalities = append([]string(nil), model.GetOutputModalities()...)
+		byID[id] = row
+	}
+	merged := make([]readonlyPricingRow, 0, len(byID))
+	for _, row := range byID {
+		merged = append(merged, row)
+	}
+	sort.Slice(merged, func(i, j int) bool { return merged[i].Model < merged[j].Model })
+	return merged
 }
 
 // currentCacheCreationMode reports the active cache-creation billing mode for

@@ -14,18 +14,28 @@ import (
 // bytes for the configured provider timeout.
 var ErrStreamIdleTimeout = errors.New("upstream stream idle timeout")
 
-var streamTransports sync.Map // map[time.Duration]*http.Transport
+var streamTransports sync.Map // map[streamTransportKey]*http.Transport
+
+type streamTransportKey struct {
+	timeout    time.Duration
+	allowLocal bool
+}
 
 // newStreamHTTPClient builds a client without http.Client.Timeout (which would
 // impose a hard deadline on an otherwise healthy long-lived SSE response).
 // Instead, the transport bounds the response-header wait and wraps successful
 // response bodies with a sliding idle timeout that resets whenever bytes arrive.
 func newStreamHTTPClient(timeout time.Duration) *http.Client {
+	return newStreamHTTPClientWithLocalAccess(timeout, false)
+}
+
+func newStreamHTTPClientWithLocalAccess(timeout time.Duration, allowLocal bool) *http.Client {
 	return &http.Client{
 		Transport: &streamTimeoutRoundTripper{
-			base:        streamTransport(timeout),
+			base:        streamTransport(timeout, allowLocal),
 			idleTimeout: timeout,
 		},
+		CheckRedirect: upstreamRedirectPolicy(allowLocal),
 	}
 }
 
@@ -36,13 +46,13 @@ func NewStreamHTTPClient(timeout time.Duration) *http.Client {
 	return newStreamHTTPClient(timeout)
 }
 
-func streamTransport(timeout time.Duration) *http.Transport {
-	if cached, ok := streamTransports.Load(timeout); ok {
+func streamTransport(timeout time.Duration, allowLocal bool) *http.Transport {
+	key := streamTransportKey{timeout: timeout, allowLocal: allowLocal}
+	if cached, ok := streamTransports.Load(key); ok {
 		return cached.(*http.Transport)
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.ResponseHeaderTimeout = timeout
-	actual, loaded := streamTransports.LoadOrStore(timeout, transport)
+	transport := newUpstreamTransport(timeout, allowLocal)
+	actual, loaded := streamTransports.LoadOrStore(key, transport)
 	if loaded {
 		transport.CloseIdleConnections()
 		return actual.(*http.Transport)

@@ -46,7 +46,7 @@ func ServiceAuth(next http.HandlerFunc) http.HandlerFunc {
 
 // NewHTTPServer wires HTTP transport for billing-service.
 func NewHTTPServer(addr string, svc *service.BillingService) *khttp.Server {
-	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
+	srv := xhttp.NewServer(khttp.Address(addr))
 
 	// Health and metrics (unauthenticated)
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {

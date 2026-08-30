@@ -32,10 +32,13 @@ func setupModelTestDB(t *testing.T) *Repository {
 			model_type TEXT NOT NULL DEFAULT 'chat',
 			context_window INTEGER NOT NULL DEFAULT 0,
 			pricing_input REAL NOT NULL DEFAULT 0,
+			pricing_cache_read REAL NOT NULL DEFAULT 0,
 			pricing_output REAL NOT NULL DEFAULT 0,
 			status INTEGER NOT NULL DEFAULT 1,
 			is_public INTEGER NOT NULL DEFAULT 1,
 			capabilities TEXT DEFAULT '[]',
+			input_modalities TEXT DEFAULT '[]',
+			output_modalities TEXT DEFAULT '[]',
 			tags TEXT DEFAULT '[]',
 			category TEXT NOT NULL DEFAULT '',
 			tier TEXT NOT NULL DEFAULT '',
@@ -124,15 +127,18 @@ func TestRepository_CreateAndGetModel(t *testing.T) {
 	ctx := context.Background()
 
 	m := &biz.Model{
-		ModelID:       "gpt-4o",
-		DisplayName:   "GPT-4o",
-		Provider:      "openai",
-		ModelType:     "chat",
-		ContextWindow: 128000,
-		PricingInput:  0.005,
-		PricingOutput: 0.015,
-		Capabilities:  []string{"vision", "function_calling"},
-		Tags:          []string{"fast"},
+		ModelID:          "gpt-4o",
+		DisplayName:      "GPT-4o",
+		Provider:         "openai",
+		ModelType:        "chat",
+		ContextWindow:    128000,
+		PricingInput:     0.005,
+		PricingOutput:    0.015,
+		PricingCacheRead: 0.001,
+		Capabilities:     []string{"vision", "function_calling"},
+		InputModalities:  []string{"text", "image"},
+		OutputModalities: []string{"text"},
+		Tags:             []string{"fast"},
 	}
 	require.NoError(t, repo.CreateModel(ctx, m))
 	assert.NotZero(t, m.ID)
@@ -141,7 +147,12 @@ func TestRepository_CreateAndGetModel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "gpt-4o", got.ModelID)
 	assert.Equal(t, "GPT-4o", got.DisplayName)
+	assert.Equal(t, 0.005, got.PricingInput)
+	assert.Equal(t, 0.015, got.PricingOutput)
+	assert.Equal(t, 0.001, got.PricingCacheRead)
 	assert.Equal(t, []string{"vision", "function_calling"}, got.Capabilities)
+	assert.Equal(t, []string{"text", "image"}, got.InputModalities)
+	assert.Equal(t, []string{"text"}, got.OutputModalities)
 	assert.Equal(t, []string{"fast"}, got.Tags)
 
 	byID, err := repo.GetModelByID(ctx, "gpt-4o")
@@ -166,12 +177,16 @@ func TestRepository_UpdateModel(t *testing.T) {
 	m.DisplayName = "Updated"
 	m.Description = "desc"
 	m.Capabilities = []string{"streaming"}
+	m.InputModalities = []string{"text", "audio"}
+	m.OutputModalities = []string{"text", "audio"}
 	require.NoError(t, repo.UpdateModel(ctx, m))
 
 	got, _ := repo.GetModel(ctx, m.ID)
 	assert.Equal(t, "Updated", got.DisplayName)
 	assert.Equal(t, "desc", got.Description)
 	assert.Equal(t, []string{"streaming"}, got.Capabilities)
+	assert.Equal(t, []string{"text", "audio"}, got.InputModalities)
+	assert.Equal(t, []string{"text", "audio"}, got.OutputModalities)
 }
 
 func TestRepository_UpdateModelNotFound(t *testing.T) {

@@ -34,7 +34,10 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——`design/` 下最新版本路线图，其头部标注「状态：进行中，当前唯一执行入口」。新阶段立项时：新建 `design/vX.Y-roadmap.md` 作为唯一入口 → 旧路线图头部降级为「已归档」并指回新入口 → 同步本表「查看下一阶段执行路线」行、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-当前 v0.23 状态：v0.22.0 已发布并完成线上更新；先执行 48–72 小时上线观察，再按 ADR 推进 Chat Completions 非流式 executor 首切片。当前没有需要预发的 v0.22 patch；2026-08-20 的两个计划外缺陷修复保留在 develop，不属于 v0.23 路线图范围，将随下一个正式版本发布。
+当前 v0.23 状态：v0.23.2 已发布并完成 Responses / Anthropic 兼容修复部署；
+executor 第四次正式观察窗口于 2026-08-28 10:40:47 CST 成立，若不中断，
+预计 2026-09-04 10:40:47 CST 结束。观察期间冻结 relay-gateway 部署、executor flag 与
+allowlist；双语 Web 与中国法律协议按 v0.24 独立准备。
 
 ---
 
@@ -90,6 +93,8 @@ docs/
 | [v0.22-roadmap.md](./design/v0.22-roadmap.md) | v0.22 路线图：安全配置、契约治理与小范围可靠性修复（已归档） |
 | [v0.22-relay-execution-boundary-adr.md](./design/v0.22-relay-execution-boundary-adr.md) | v0.22 Relay executor / adaptor 执行边界 ADR |
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（当前） |
+| [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
+| [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
 | [web-playground-implementation-plan.md](./design/web-playground-implementation-plan.md) | 用户侧 Web Playground：交互、密钥安全、SSE、Relay CORS、测试与发布方案 |
 | [architecture-review-remediation-report-2026-08-25.md](./design/architecture-review-remediation-report-2026-08-25.md) | 系统架构审查复核、修复方案与执行状态（2026-08-25） |
 | [systematic-code-review-remediation-2026-08-25.md](./design/systematic-code-review-remediation-2026-08-25.md) | 系统性代码审查方案复核、优化与修复状态（2026-08-25） |

@@ -218,9 +218,14 @@ func TestChannelService_ListModels(t *testing.T) {
 func TestToModelSummarySeparatesSuppliersFromDeveloper(t *testing.T) {
 	got := toModelSummary(&biz.Model{
 		ModelID: "DeepSeek-V4-Pro-0813", Provider: "deepseek", Suppliers: []string{"neo"},
+		InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"},
+		PricingInput: 0.005, PricingOutput: 0.015, PricingCacheRead: 0.001,
 	})
 	if got.GetProvider() != "deepseek" || len(got.GetSuppliers()) != 1 || got.GetSuppliers()[0] != "neo" {
 		t.Fatalf("summary = %+v, want supplier neo and developer deepseek", got)
+	}
+	if len(got.GetInputModalities()) != 2 || len(got.GetOutputModalities()) != 1 || got.GetPricingInput() != 0.005 || got.GetPricingOutput() != 0.015 || got.GetPricingCacheRead() != 0.001 {
+		t.Fatalf("summary = %+v, want modalities and registry prices", got)
 	}
 }
 
@@ -250,12 +255,17 @@ func TestChannelService_CreateAndGetModel(t *testing.T) {
 	ctx := context.Background()
 
 	createResp, err := svc.CreateModel(ctx, &channelv1.CreateModelRequest{
-		ModelId:       "claude-3-5-sonnet",
-		DisplayName:   "Claude 3.5 Sonnet",
-		Provider:      "anthropic",
-		ModelType:     "chat",
-		ContextWindow: 200000,
-		Capabilities:  []string{"vision", "function_calling"},
+		ModelId:          "claude-3-5-sonnet",
+		DisplayName:      "Claude 3.5 Sonnet",
+		Provider:         "anthropic",
+		ModelType:        "chat",
+		ContextWindow:    200000,
+		PricingInput:     3,
+		PricingOutput:    15,
+		PricingCacheRead: 0.3,
+		Capabilities:     []string{"vision", "function_calling"},
+		InputModalities:  []string{"text", "image"},
+		OutputModalities: []string{"text"},
 	})
 	if err != nil {
 		t.Fatalf("CreateModel: %v", err)
@@ -276,6 +286,13 @@ func TestChannelService_CreateAndGetModel(t *testing.T) {
 	}
 	if len(getResp.Model.Capabilities) != 2 {
 		t.Fatalf("expected 2 capabilities, got %d", len(getResp.Model.Capabilities))
+	}
+	if len(getResp.Model.InputModalities) != 2 || len(getResp.Model.OutputModalities) != 1 {
+		t.Fatalf("unexpected modalities: input=%v output=%v", getResp.Model.InputModalities, getResp.Model.OutputModalities)
+	}
+	if getResp.Model.PricingInput != 3 || getResp.Model.PricingOutput != 15 || getResp.Model.PricingCacheRead != 0.3 {
+		t.Fatalf("unexpected prices: input=%v output=%v cache_read=%v",
+			getResp.Model.PricingInput, getResp.Model.PricingOutput, getResp.Model.PricingCacheRead)
 	}
 }
 
@@ -529,13 +546,14 @@ func (r *modelServiceRepo) ExportAllModels(ctx context.Context, filter biz.ListM
 	out := make([]*biz.ModelExportModel, 0, len(r.models))
 	for _, m := range r.models {
 		out = append(out, &biz.ModelExportModel{
-			ModelID:       m.ModelID,
-			DisplayName:   m.DisplayName,
-			Provider:      m.Provider,
-			ModelType:     m.ModelType,
-			Status:        m.Status,
-			PricingInput:  m.PricingInput,
-			PricingOutput: m.PricingOutput,
+			ModelID:          m.ModelID,
+			DisplayName:      m.DisplayName,
+			Provider:         m.Provider,
+			ModelType:        m.ModelType,
+			Status:           m.Status,
+			PricingInput:     m.PricingInput,
+			PricingOutput:    m.PricingOutput,
+			PricingCacheRead: m.PricingCacheRead,
 		})
 	}
 	return out, nil
@@ -577,9 +595,12 @@ func TestChannelService_ExportImportRoundTrip(t *testing.T) {
 
 	// Seed a model.
 	_, err := svc.CreateModel(ctx, &channelv1.CreateModelRequest{
-		ModelId:     "export-test",
-		DisplayName: "Export Test",
-		Provider:    "openai",
+		ModelId:          "export-test",
+		DisplayName:      "Export Test",
+		Provider:         "openai",
+		PricingInput:     2.5,
+		PricingOutput:    10,
+		PricingCacheRead: 0.25,
 	})
 	if err != nil {
 		t.Fatalf("CreateModel: %v", err)
@@ -601,8 +622,9 @@ func TestChannelService_ExportImportRoundTrip(t *testing.T) {
 	}
 
 	// Export should NOT leak pricing when export_prices is false.
-	if exportResp.Models[0].PricingInput != 0 {
-		t.Fatalf("expected pricing stripped, got %v", exportResp.Models[0].PricingInput)
+	if exportResp.Models[0].PricingInput != 0 || exportResp.Models[0].PricingOutput != 0 || exportResp.Models[0].PricingCacheRead != 0 {
+		t.Fatalf("expected pricing stripped, got input=%v output=%v cache_read=%v",
+			exportResp.Models[0].PricingInput, exportResp.Models[0].PricingOutput, exportResp.Models[0].PricingCacheRead)
 	}
 }
 

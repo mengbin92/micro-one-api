@@ -21,6 +21,7 @@ function mockSelf(role: number, id = 7) {
       HttpResponse.json({ success: true, data: { id, username: 'alice', display_name: 'Alice', role } }),
     ),
     http.get('/api/user/dashboard', () => HttpResponse.json({ success: true, data: null })),
+    http.get('/api/admin/notifications', () => HttpResponse.json({ items: [], total: 0 })),
   );
 }
 
@@ -64,8 +65,8 @@ describe('AppNavigation', () => {
 
     const overviewLink = await screen.findByRole('link', { name: 'Admin Overview' });
     const usersLink = screen.getByRole('link', { name: 'Users' });
-    expect(overviewLink).not.toHaveClass('text-blue-600');
-    expect(usersLink).toHaveClass('text-blue-600');
+    expect(overviewLink).not.toHaveAttribute('aria-current');
+    expect(usersLink).toHaveAttribute('aria-current', 'page');
   });
 
   it('hides admin nav and entry link for non-admin users', async () => {
@@ -95,11 +96,24 @@ describe('AppNavigation', () => {
     const user = userEvent.setup();
     renderNavigation();
 
-    await user.click(screen.getByRole('button', { name: /open navigation/i }));
+    await user.click(screen.getByRole('button', { name: '打开导航' }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /close/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('switches language and persists the preference', async () => {
+    mockSelfAndDashboardEmpty();
+    const user = userEvent.setup();
+    renderNavigation();
+
+    expect(screen.getByRole('heading', { name: '仪表盘' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '切换至英文' }));
+
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(window.localStorage.getItem('web:language')).toBe(JSON.stringify('en-US'));
+    expect(document.documentElement.lang).toBe('en-US');
   });
 
   it('logout clears session state and redirects to login', async () => {

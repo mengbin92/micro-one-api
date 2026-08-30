@@ -15,6 +15,34 @@ type mockIdentityRepo struct {
 	oauthIdentities map[string]*OAuthIdentity
 }
 
+type distributedRateRepo struct {
+	*mockIdentityRepo
+	failures map[string]int64
+	failErr  error
+}
+
+func (r *distributedRateRepo) LoginFailureCount(_ context.Context, key string) (int64, error) {
+	if r.failErr != nil {
+		return 0, r.failErr
+	}
+	return r.failures[key], nil
+}
+
+func (r *distributedRateRepo) RecordLoginFailure(_ context.Context, key string, _ time.Duration) error {
+	if r.failErr != nil {
+		return r.failErr
+	}
+	r.failures[key]++
+	return nil
+}
+
+func (r *distributedRateRepo) ClearLoginFailures(_ context.Context, keys ...string) error {
+	for _, key := range keys {
+		delete(r.failures, key)
+	}
+	return nil
+}
+
 func (m *mockIdentityRepo) FindTokenByKey(ctx context.Context, key string) (*Token, error) {
 	token, ok := m.tokens[key]
 	if !ok {
@@ -846,6 +874,54 @@ func TestIdentityUsecase_Login_UserDisabled(t *testing.T) {
 	_, _, err := uc.Login(context.Background(), "alice", "secret", "")
 	if !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("expected ErrUserDisabled, got: %v", err)
+	}
+}
+
+func TestIdentityUsecase_LoginRateLimitIsSharedAcrossReplicas(t *testing.T) {
+	repo := &distributedRateRepo{
+		mockIdentityRepo: &mockIdentityRepo{
+			users:  map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusDisabled}},
+			tokens: make(map[string]*Token),
+		},
+		failures: make(map[string]int64),
+	}
+	first := NewIdentityUsecase(repo, nil)
+	second := NewIdentityUsecase(repo, nil)
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		_, _, _ = first.Login(ctx, "alice", "wrong", "203.0.113.8")
+	}
+	for i := 0; i < 2; i++ {
+		_, _, _ = second.Login(ctx, "alice", "wrong", "203.0.113.8")
+	}
+	_, _, err := first.Login(ctx, "alice", "wrong", "203.0.113.8")
+	if err == nil || !strings.Contains(err.Error(), "too many failed login attempts") {
+		t.Fatalf("sixth cross-replica login error = %v, want shared rate-limit rejection", err)
+	}
+}
+
+func TestIdentityUsecase_LoginRateLimitUsesLocalStateOnlyAsFallback(t *testing.T) {
+	repo := &distributedRateRepo{
+		mockIdentityRepo: &mockIdentityRepo{
+			users:  map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusDisabled}},
+			tokens: make(map[string]*Token),
+		},
+		failures: make(map[string]int64),
+	}
+	uc := NewIdentityUsecase(repo, nil)
+	ctx := context.Background()
+	ipKey, userKey := loginRateKeys("alice", "203.0.113.8")
+	for _, key := range []string{ipKey, userKey} {
+		uc.loginLimiter[key] = &loginAttempt{count: maxLoginAttempts, lastSeen: uc.now()}
+	}
+
+	// A successful login handled by another replica clears the shared state.
+	// Healthy Redis must remain authoritative instead of consulting stale local
+	// shadow counters on this replica.
+	clear(repo.failures)
+	_, _, err := uc.Login(ctx, "alice", "wrong", "203.0.113.8")
+	if !errors.Is(err, ErrUserDisabled) {
+		t.Fatalf("login error = %v, want authentication to run after shared state clears", err)
 	}
 }
 

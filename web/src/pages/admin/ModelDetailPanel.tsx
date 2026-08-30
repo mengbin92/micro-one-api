@@ -36,6 +36,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { ModalityFlow } from '@/components/ModalityIcons';
+import { t } from '@/lib/i18n';
 
 interface ModelDetailPanelProps {
   modelPk: number | null;
@@ -69,24 +71,24 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
     mutationFn: (payload: { alias: string; is_primary: boolean }) =>
       createModelAlias(modelPk!, payload),
     onSuccess: (resp) => {
-      if (!resp.success) { toast.error(resp.message || '创建别名失败'); return; }
-      toast.success('别名已创建');
+      if (!resp.success) { toast.error(resp.message || t("创建别名失败")); return; }
+      toast.success(t("别名已创建"));
       setNewAlias('');
       setNewAliasPrimary(false);
       invalidateDetail();
     },
-    onError: (err: unknown) => toast.error((err as Error).message || '创建别名失败'),
+    onError: (err: unknown) => toast.error((err as Error).message || t("创建别名失败")),
   });
 
   const deleteAliasMutation = useMutation({
     mutationFn: (aliasId: number) => deleteModelAlias(modelPk!, aliasId),
     onSuccess: (resp) => {
-      if (!resp.success) { toast.error(resp.message || '删除别名失败'); return; }
-      toast.success('别名已删除');
+      if (!resp.success) { toast.error(resp.message || t("删除别名失败")); return; }
+      toast.success(t("别名已删除"));
       setConfirmDeleteAlias(null);
       invalidateDetail();
     },
-    onError: (err: unknown) => toast.error((err as Error).message || '删除别名失败'),
+    onError: (err: unknown) => toast.error((err as Error).message || t("删除别名失败")),
   });
 
   const model = data?.model;
@@ -96,7 +98,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
   const usageStats = usageData?.stats ?? [];
 
   const handleCreateAlias = () => {
-    if (!newAlias.trim()) { toast.error('别名不能为空'); return; }
+    if (!newAlias.trim()) { toast.error(t("别名不能为空")); return; }
     createAliasMutation.mutate({ alias: newAlias.trim(), is_primary: newAliasPrimary });
   };
 
@@ -105,9 +107,9 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
       <Dialog open={modelPk != null} onOpenChange={(open) => { if (!open) onClose(); }}>
         <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>模型详情</DialogTitle>
+          <DialogTitle>{t("模型详情")}</DialogTitle>
           <DialogDescription>
-            {model ? model.model_id : '加载中…'}
+            {model ? model.model_id : t("加载中…")}
           </DialogDescription>
         </DialogHeader>
 
@@ -122,71 +124,79 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
             {/* Basic info */}
             <section className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-muted-foreground">显示名称</p>
+                <p className="text-xs text-muted-foreground">{t("显示名称")}</p>
                 <p className="font-medium">{model.display_name}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">模型 ID</p>
+                <p className="text-xs text-muted-foreground">{t("模型 ID")}</p>
                 <p className="font-mono text-sm">{model.model_id}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">供应商</p>
+                <p className="text-xs text-muted-foreground">{t("供应商")}</p>
                 <p>{model.suppliers.length > 0 ? model.suppliers.join('、') : '—'}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">模型开发商</p>
+                <p className="text-xs text-muted-foreground">{t("大模型厂商")}</p>
                 <p>{model.provider || '—'}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">类型</p>
-                <p>{MODEL_TYPE_LABELS[model.model_type] ?? model.model_type ?? '—'}</p>
+                <p className="text-xs text-muted-foreground">{t("类型")}</p>
+                <p>{t(MODEL_TYPE_LABELS[model.model_type] ?? model.model_type ?? '—')}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">状态</p>
+                <p className="text-xs text-muted-foreground">{t("输入/输出模态")}</p>
+                <ModalityFlow inputModalities={model.input_modalities} outputModalities={model.output_modalities} />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("状态")}</p>
                 <span className={'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ' + statusBadgeClass(model.status)}>
-                  {MODEL_STATUS_LABELS[model.status] ?? String(model.status)}
+                  {t(MODEL_STATUS_LABELS[model.status] ?? String(model.status))}
                 </span>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">等级</p>
-                <p>{MODEL_TIER_LABELS[model.tier] ?? (model.tier || '—')}</p>
+                <p className="text-xs text-muted-foreground">{t("等级")}</p>
+                <p>{t(MODEL_TIER_LABELS[model.tier] ?? (model.tier || '—'))}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">上下文窗口</p>
+                <p className="text-xs text-muted-foreground">{t("上下文窗口")}</p>
                 <p>{formatContextWindow(model.context_window)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">分类</p>
+                <p className="text-xs text-muted-foreground">{t("分类")}</p>
                 <p>{model.category || '—'}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">输入价格</p>
+                <p className="text-xs text-muted-foreground">{t("输入价格")}</p>
                 <p>{formatPricing(model.pricing_input)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">输出价格</p>
+                <p className="text-xs text-muted-foreground">{t("输出价格")}</p>
                 <p>{formatPricing(model.pricing_output)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">公开显示</p>
-                <p>{model.is_public ? '是' : '否'}</p>
+                <p className="text-xs text-muted-foreground">{t("缓存读取价格")}</p>
+                <p>{formatPricing(model.pricing_cache_read)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">渠道/订阅数</p>
+                <p className="text-xs text-muted-foreground">{t("公开显示")}</p>
+                <p>{model.is_public ? t("是") : t("否")}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">{t("渠道/订阅数")}</p>
                 <p>{model.channel_count} / {model.subscription_count}</p>
               </div>
             </section>
 
             {model.description && (
               <section>
-                <h4 className="mb-2 text-sm font-semibold">描述</h4>
+                <h4 className="mb-2 text-sm font-semibold">{t("描述")}</h4>
                 <p className="text-sm text-muted-foreground">{model.description}</p>
               </section>
             )}
 
             {model.capabilities && model.capabilities.length > 0 && (
               <section>
-                <h4 className="mb-2 text-sm font-semibold">能力标签</h4>
+                <h4 className="mb-2 text-sm font-semibold">{t("能力标签")}</h4>
                 <div className="flex flex-wrap gap-2">
                   {model.capabilities.map((cap) => (
                     <span key={cap} className="inline-flex items-center rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
@@ -199,7 +209,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
 
             {model.tags && model.tags.length > 0 && (
               <section>
-                <h4 className="mb-2 text-sm font-semibold">自定义标签</h4>
+                <h4 className="mb-2 text-sm font-semibold">{t("自定义标签")}</h4>
                 <div className="flex flex-wrap gap-2">
                   {model.tags.map((tag) => (
                     <span key={tag} className="inline-flex items-center rounded-full bg-purple-100 px-2 py-1 text-xs font-medium text-purple-800 dark:bg-purple-900 dark:text-purple-200">
@@ -212,15 +222,15 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
 
             {/* Aliases with create/delete UI */}
             <section>
-              <h4 className="mb-2 text-sm font-semibold">别名 ({aliases.length})</h4>
+              <h4 className="mb-2 text-sm font-semibold">{t("别名 (")}{aliases.length})</h4>
               <div className="flex items-end gap-2 mb-3">
                 <div className="grid gap-1 flex-1">
-                  <Label htmlFor="new-alias" className="text-xs">新增别名</Label>
+                  <Label htmlFor="new-alias" className="text-xs">{t("新增别名")}</Label>
                   <Input
                     id="new-alias"
                     value={newAlias}
                     onChange={(e) => setNewAlias(e.target.value)}
-                    placeholder="如 gpt4o"
+                    placeholder={t("如 gpt4o")}
                     className="h-8"
                   />
                 </div>
@@ -230,33 +240,29 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                     checked={newAliasPrimary}
                     onChange={(e) => setNewAliasPrimary(e.target.checked)}
                     className="size-4 rounded border-input"
-                  />
-                  主别名
-                </label>
+                  />{t("主别名")}</label>
                 <Button
                   size="sm"
                   onClick={handleCreateAlias}
                   disabled={createAliasMutation.isPending}
                 >
-                  <Plus className="size-3.5" />
-                  添加
-                </Button>
+                  <Plus className="size-3.5" />{t("添加")}</Button>
               </div>
               {aliases.length > 0 && (
                 <div className="overflow-x-auto rounded-lg border">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>别名</TableHead>
-                        <TableHead>主别名</TableHead>
-                        <TableHead className="text-right">操作</TableHead>
+                        <TableHead>{t("别名")}</TableHead>
+                        <TableHead>{t("主别名")}</TableHead>
+                        <TableHead className="text-right">{t("操作")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {aliases.map((a) => (
                         <TableRow key={a.id}>
                           <TableCell className="font-mono text-sm">{a.alias}</TableCell>
-                          <TableCell>{a.is_primary ? '是' : '否'}</TableCell>
+                          <TableCell>{a.is_primary ? t("是") : t("否")}</TableCell>
                           <TableCell className="text-right">
                             <Button
                               variant="outline"
@@ -278,16 +284,16 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
             {/* Usage statistics */}
             {usageStats.length > 0 && (
               <section>
-                <h4 className="mb-2 text-sm font-semibold">使用统计 (近 {usageStats.length} 条)</h4>
+                <h4 className="mb-2 text-sm font-semibold">{t("使用统计 (近")}{usageStats.length}{t("条)")}</h4>
                 <div className="overflow-x-auto rounded-lg border">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>日期</TableHead>
-                        <TableHead>请求数</TableHead>
-                        <TableHead>Token 数</TableHead>
-                        <TableHead>错误数</TableHead>
-                        <TableHead>平均延迟 (ms)</TableHead>
+                        <TableHead>{t("日期")}</TableHead>
+                        <TableHead>{t("请求数")}</TableHead>
+                        <TableHead>{t("Token 数")}</TableHead>
+                        <TableHead>{t("错误数")}</TableHead>
+                        <TableHead>{t("平均延迟 (ms)")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -309,15 +315,15 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
             {/* Channel mappings */}
             {channelMappings.length > 0 && (
               <section>
-                <h4 className="mb-2 text-sm font-semibold">渠道映射 ({channelMappings.length})</h4>
+                <h4 className="mb-2 text-sm font-semibold">{t("渠道映射 (")}{channelMappings.length})</h4>
                 <div className="overflow-x-auto rounded-lg border">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>渠道 ID</TableHead>
-                        <TableHead>上游模型 ID</TableHead>
-                        <TableHead>启用</TableHead>
-                        <TableHead>优先级</TableHead>
+                        <TableHead>{t("渠道 ID")}</TableHead>
+                        <TableHead>{t("上游模型 ID")}</TableHead>
+                        <TableHead>{t("启用")}</TableHead>
+                        <TableHead>{t("优先级")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -325,7 +331,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                         <TableRow key={c.id}>
                           <TableCell className="font-mono text-sm">{c.channel_id}</TableCell>
                           <TableCell className="font-mono text-sm">{c.upstream_model_id || model.model_id}</TableCell>
-                          <TableCell>{c.enabled ? '是' : '否'}</TableCell>
+                          <TableCell>{c.enabled ? t("是") : t("否")}</TableCell>
                           <TableCell>{c.priority}</TableCell>
                         </TableRow>
                       ))}
@@ -338,16 +344,16 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
             {/* Subscription mappings */}
             {subscriptionMappings.length > 0 && (
               <section>
-                <h4 className="mb-2 text-sm font-semibold">订阅映射 ({subscriptionMappings.length})</h4>
+                <h4 className="mb-2 text-sm font-semibold">{t("订阅映射 (")}{subscriptionMappings.length})</h4>
                 <div className="overflow-x-auto rounded-lg border">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>订阅账户 ID</TableHead>
-                        <TableHead>用户组</TableHead>
-                        <TableHead>上游模型 ID</TableHead>
-                        <TableHead>启用</TableHead>
-                        <TableHead>优先级</TableHead>
+                        <TableHead>{t("订阅账户 ID")}</TableHead>
+                        <TableHead>{t("用户组")}</TableHead>
+                        <TableHead>{t("上游模型 ID")}</TableHead>
+                        <TableHead>{t("启用")}</TableHead>
+                        <TableHead>{t("优先级")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -356,7 +362,7 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
                           <TableCell className="font-mono text-sm">{s.subscription_account_id}</TableCell>
                           <TableCell>{s.group_name}</TableCell>
                           <TableCell className="font-mono text-sm">{s.upstream_model_id || model.model_id}</TableCell>
-                          <TableCell>{s.enabled ? '是' : '否'}</TableCell>
+                          <TableCell>{s.enabled ? t("是") : t("否")}</TableCell>
                           <TableCell>{s.priority}</TableCell>
                         </TableRow>
                       ))}
@@ -374,21 +380,18 @@ export function ModelDetailPanel({ modelPk, onClose }: ModelDetailPanelProps) {
       <Dialog open={!!confirmDeleteAlias} onOpenChange={(open) => { if (!open) setConfirmDeleteAlias(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>删除别名</DialogTitle>
-            <DialogDescription>
-              确认删除别名「{confirmDeleteAlias?.alias}」？
+            <DialogTitle>{t("删除别名")}</DialogTitle>
+            <DialogDescription>{t("确认删除别名「")}{confirmDeleteAlias?.alias}」？
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDeleteAlias(null)}>取消</Button>
+            <Button variant="outline" onClick={() => setConfirmDeleteAlias(null)}>{t("取消")}</Button>
             <Button
               variant="destructive"
               onClick={() => {
                 if (confirmDeleteAlias) deleteAliasMutation.mutate(confirmDeleteAlias.id);
               }}
-            >
-              确认
-            </Button>
+            >{t("确认")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

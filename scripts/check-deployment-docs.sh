@@ -38,6 +38,15 @@ if len(key.encode()) not in (16, 24, 32):
     raise SystemExit("channel-service CHANNEL_ENCRYPTION_KEY must be 16, 24, or 32 bytes")
 if "CHANNEL_ENCRYPTION_KEY" in identity_env:
     raise SystemExit("CHANNEL_ENCRYPTION_KEY must not be injected into identity-service")
+for service_name in (
+    "identity-service", "channel-service", "billing-service", "config-service",
+    "log-service", "monitor-worker", "notify-worker", "relay-gateway", "admin-api",
+):
+    if not services[service_name].get("environment", {}).get("SERVICE_TOKEN"):
+        raise SystemExit(f"{service_name} must receive SERVICE_TOKEN")
+grafana_password = services.get("grafana", {}).get("environment", {}).get("GF_SECURITY_ADMIN_PASSWORD")
+if grafana_password in ("", "admin"):
+    raise SystemExit("Grafana must require a non-default admin password")
 '
     )
 }

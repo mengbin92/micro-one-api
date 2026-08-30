@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { locale, t } from '@/lib/i18n';
 
 interface LedgerLog {
   id?: string;
@@ -133,7 +134,7 @@ function timestampSeconds(value: unknown): number {
 
 function formatDate(value: number) {
   if (!value) return '-';
-  return new Date(value * 1000).toLocaleString();
+  return new Date(value * 1000).toLocaleString(locale());
 }
 
 function getTradeNo(order: PaymentOrder) {
@@ -172,14 +173,14 @@ function paymentOrderToRow(order: PaymentOrder): OrderRow {
   const tradeNo = getTradeNo(order);
   const issueStatus = order.asset_issue_status || order.assetIssueStatus || '-';
   const assetType = getAssetType(order);
-  const assetLabel = assetType === 'subscription' ? `订阅分组 #${getGroupID(order) || '-'}` : formatAmount(getAssetAmount(order));
+  const assetLabel = assetType === 'subscription' ? t(`订阅分组 #${getGroupID(order) || '-'}`) : formatAmount(getAssetAmount(order));
   return {
     id: `payment-${order.id || tradeNo}`,
     type: 'payment',
     amount: formatMoney(getMoneyCents(order), order.currency),
     balance: assetLabel,
     reference: tradeNo,
-    remark: `状态：${STATUS_NAMES[order.status || ''] || order.status || '-'}；资产：${assetType === 'subscription' ? '订阅' : issueStatus}`,
+    remark: t(`状态：${t(STATUS_NAMES[order.status || ''] || order.status || '-')}；资产：${assetType === 'subscription' ? t('订阅') : issueStatus}`),
     createdAt: getCreatedAt(order),
     userID: getUserID(order),
     status: order.status,
@@ -288,9 +289,9 @@ export function OrdersPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">我的订单</h2>
+          <h2 className="text-2xl font-black tracking-normal text-slate-950 dark:text-white">{t("我的订单")}</h2>
           <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-            {isAdminView ? '展示全部支付订单，并合并当前账号的兑换和退款记录。' : '展示支付充值、兑换和退款相关记录。'}
+            {isAdminView ? t("展示全部支付订单，并合并当前账号的兑换和退款记录。") : t("展示支付充值、兑换和退款相关记录。")}
           </p>
         </div>
         <select
@@ -301,32 +302,32 @@ export function OrdersPage() {
           }}
           className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold dark:border-white/10 dark:bg-background"
         >
-          <option value="">全部订单</option>
-          <option value="payment">支付订单</option>
-          <option value="recharge">充值记录</option>
-          <option value="redeem">兑换记录</option>
-          <option value="refund">退款记录</option>
+          <option value="">{t("全部订单")}</option>
+          <option value="payment">{t("支付订单")}</option>
+          <option value="recharge">{t("充值记录")}</option>
+          <option value="redeem">{t("兑换记录")}</option>
+          <option value="refund">{t("退款记录")}</option>
         </select>
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['类型', '金额', '到账/余额', '关联 ID', '备注', '时间']} rows={8} />
+        <TableSkeleton columns={[t("类型"), t("金额"), t("到账/余额"), t("关联 ID"), t("备注"), t("时间")]} rows={8} />
       ) : rows.length === 0 ? (
-        <EmptyState title="暂无订单记录" description="充值、兑换或退款后会显示在这里。" />
+        <EmptyState title={t("暂无订单记录")} description={t("充值、兑换或退款后会显示在这里。")} />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 dark:bg-card dark:ring-white/10">
+          <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-surface-sm">
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50 hover:bg-slate-50 dark:bg-white/5">
-                  <TableHead>类型</TableHead>
-                  {isAdminView && <TableHead>用户</TableHead>}
-                  <TableHead>金额</TableHead>
-                  <TableHead>到账/余额</TableHead>
-                  <TableHead>关联 ID</TableHead>
-                  <TableHead>备注</TableHead>
-                  <TableHead>时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("类型")}</TableHead>
+                  {isAdminView && <TableHead>{t("用户")}</TableHead>}
+                  <TableHead>{t("金额")}</TableHead>
+                  <TableHead>{t("到账/余额")}</TableHead>
+                  <TableHead>{t("关联 ID")}</TableHead>
+                  <TableHead>{t("备注")}</TableHead>
+                  <TableHead>{t("时间")}</TableHead>
+                  <TableHead className="text-right">{t("操作")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -334,7 +335,7 @@ export function OrdersPage() {
                   <TableRow key={row.id}>
                     <TableCell>
                       <span className="inline-flex rounded-md bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-                        {TYPE_NAMES[row.type] || row.type || '-'}
+                        {t(TYPE_NAMES[row.type] || row.type || '-')}
                       </span>
                     </TableCell>
                     {isAdminView && <TableCell className="font-mono text-xs">{row.userID || '-'}</TableCell>}
@@ -350,11 +351,9 @@ export function OrdersPage() {
                           variant="outline"
                           size="sm"
                           disabled={paymentOrderDetail.isPending}
-                          aria-label={`查看订单 ${row.reference}`}
+                          aria-label={t(`查看订单 ${row.reference}`)}
                           onClick={() => handleOpenPaymentDetail(row)}
-                        >
-                          详情
-                        </Button>
+                        >{t("详情")}</Button>
                       ) : (
                         '-'
                       )}
@@ -366,13 +365,9 @@ export function OrdersPage() {
           </div>
 
           <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1}>
-              上一页
-            </Button>
-            <span className="min-w-14 text-center text-sm text-muted-foreground">第 {page} 页</span>
-            <Button variant="outline" size="sm" onClick={() => setPage((value) => value + 1)} disabled={rows.length < pageSize}>
-              下一页
-            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1}>{t("上一页")}</Button>
+            <span className="min-w-14 text-center text-sm text-muted-foreground">{t("第")}{page}{t("页")}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage((value) => value + 1)} disabled={rows.length < pageSize}>{t("下一页")}</Button>
           </div>
         </>
       )}
@@ -380,23 +375,23 @@ export function OrdersPage() {
       <Dialog open={Boolean(selectedOrder)} onOpenChange={(open) => !open && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>订单详情</DialogTitle>
-            <DialogDescription>查看支付订单状态，未支付订单可继续打开原支付链接。</DialogDescription>
+            <DialogTitle>{t("订单详情")}</DialogTitle>
+            <DialogDescription>{t("查看支付订单状态，未支付订单可继续打开原支付链接。")}</DialogDescription>
           </DialogHeader>
 
           {selectedOrder && (
             <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-white/10 dark:bg-background">
-              <DetailRow label="订单号" value={getTradeNo(selectedOrder)} mono />
-              {isAdminView && <DetailRow label="用户" value={getUserID(selectedOrder) || '-'} mono />}
-              <DetailRow label="支付渠道" value={selectedOrder.channel || '-'} />
-              <DetailRow label="状态" value={STATUS_NAMES[selectedOrder.status || ''] || selectedOrder.status || '-'} />
-              <DetailRow label="支付金额" value={formatMoney(getMoneyCents(selectedOrder), selectedOrder.currency)} />
+              <DetailRow label={t("订单号")} value={getTradeNo(selectedOrder)} mono />
+              {isAdminView && <DetailRow label={t("用户")} value={getUserID(selectedOrder) || '-'} mono />}
+              <DetailRow label={t("支付渠道")} value={selectedOrder.channel || '-'} />
+              <DetailRow label={t("状态")} value={t(STATUS_NAMES[selectedOrder.status || ''] || selectedOrder.status || '-')} />
+              <DetailRow label={t("支付金额")} value={formatMoney(getMoneyCents(selectedOrder), selectedOrder.currency)} />
               <DetailRow
-                label={getAssetType(selectedOrder) === 'subscription' ? '订阅权益' : '到账金额'}
-                value={getAssetType(selectedOrder) === 'subscription' ? `订阅分组 #${getGroupID(selectedOrder) || '-'}` : formatAmount(getAssetAmount(selectedOrder))}
+                label={getAssetType(selectedOrder) === 'subscription' ? t("订阅权益") : t("到账金额")}
+                value={getAssetType(selectedOrder) === 'subscription' ? t(`订阅分组 #${getGroupID(selectedOrder) || '-'}`) : formatAmount(getAssetAmount(selectedOrder))}
               />
-              <DetailRow label="资产状态" value={selectedOrder.asset_issue_status || selectedOrder.assetIssueStatus || '-'} />
-              <DetailRow label="创建时间" value={formatDate(getCreatedAt(selectedOrder))} />
+              <DetailRow label={t("资产状态")} value={selectedOrder.asset_issue_status || selectedOrder.assetIssueStatus || '-'} />
+              <DetailRow label={t("创建时间")} value={formatDate(getCreatedAt(selectedOrder))} />
             </div>
           )}
 
@@ -407,17 +402,11 @@ export function OrdersPage() {
                 disabled={!canContinuePayment}
                 onClick={handleContinuePayment}
                 className="bg-blue-600 text-white hover:bg-blue-700"
-              >
-                继续支付
-              </Button>
+              >{t("继续支付")}</Button>
             ) : selectedOrder?.status === 'paid' ? (
-              <div className="rounded-lg bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-                订单已支付
-              </div>
+              <div className="rounded-lg bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{t("订单已支付")}</div>
             ) : selectedOrder?.status === 'closed' ? (
-              <div className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">
-                订单已关闭
-              </div>
+              <div className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">{t("订单已关闭")}</div>
             ) : null}
           </DialogFooter>
         </DialogContent>
