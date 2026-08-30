@@ -231,7 +231,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	relayadaptor.SetTokenProviderFactory(tokenFactory)
 
 	accountResolver := accountLookup
-	oauthHTTPClient := &http.Client{Timeout: providerTimeout}
+	oauthHTTPClient := relayprovider.NewHTTPClient(providerTimeout)
 
 	// refreshProviders maps a platform to the provider that can refresh its
 	// tokens. Static platforms (zhipu/minimax) are intentionally absent: their

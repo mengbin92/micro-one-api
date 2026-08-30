@@ -194,6 +194,8 @@ data:
   redis-addr: "redis:6379"
   rate-limit-rps: "100"
   rate-limit-burst: "200"
+  # Replace with the cluster's actual ingress/pod CIDRs; never use public ranges.
+  trusted-proxy-cidrs: "10.0.0.0/8"
   # Fail closed until an environment overlay supplies the real browser origins.
   cors-origins: ""
   log-level: "info"

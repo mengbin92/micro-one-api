@@ -1896,8 +1896,10 @@ func TestAnthropicEventToResponses_ServerToolUseDropped(t *testing.T) {
 
 	// Assert: NO web_search_call output items emitted at all.
 	for _, e := range allEvents {
-		if e.Item != nil { assert.NotEqual(t, "web_search_call", e.Item.Type,
-			"web_search_call items must not be emitted — codex cannot handle them") }
+		if e.Item != nil {
+			assert.NotEqual(t, "web_search_call", e.Item.Type,
+				"web_search_call items must not be emitted — codex cannot handle them")
+		}
 	}
 
 	// Assert: text output is correct. The converter accumulates text across

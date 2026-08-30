@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
@@ -274,10 +275,8 @@ func NewOpenAIProviderAllowLocal(baseURL, apiKey string, timeout time.Duration) 
 		timeout = 30 * time.Second
 	}
 	return &OpenAIProvider{
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
-		streamClient: newStreamHTTPClient(timeout),
+		httpClient:   newHTTPClient(timeout, true),
+		streamClient: newStreamHTTPClientWithLocalAccess(timeout, true),
 		baseURL:      baseURL,
 		apiKey:       apiKey,
 		timeout:      timeout,
@@ -286,14 +285,32 @@ func NewOpenAIProviderAllowLocal(baseURL, apiKey string, timeout time.Duration) 
 
 // isPrivateOrReservedIP checks if an IP address is in a private, loopback,
 // link-local, or other reserved range.
+var nonPublicPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("2001:db8::/32"),
+}
+
 func isPrivateOrReservedIP(ip net.IP) bool {
-	return ip.IsLoopback() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsPrivate() ||
-		ip.IsUnspecified() ||
-		// Cloud metadata endpoint (169.254.169.254)
-		ip.Equal(net.IPv4(169, 254, 169, 254))
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	addr = addr.Unmap()
+	if !addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.IsUnspecified() {
+		return true
+	}
+	for _, prefix := range nonPublicPrefixes {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 // NewOpenAIProvider creates a new OpenAI-compatible provider
@@ -306,9 +323,7 @@ func NewOpenAIProvider(baseURL, apiKey string, timeout time.Duration) (*OpenAIPr
 		timeout = 30 * time.Second
 	}
 	return &OpenAIProvider{
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
+		httpClient: newHTTPClient(timeout, false),
 		// domain-H3: the streaming client has NO Client.Timeout. http.Client.Timeout
 		// is a hard deadline covering the entire round trip including response-body
 		// reads, so it would kill an SSE stream mid-flight once the configured

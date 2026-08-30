@@ -173,7 +173,12 @@ func newGRPCServer(cfg *Config, svc *service.AdminService) *grpcx.Server {
 	if cfg.Bootstrap == nil || cfg.Bootstrap.Server == nil || cfg.Bootstrap.Server.Grpc == nil {
 		return grpcx.NewServer()
 	}
-	grpcSrv := grpcx.NewServer(grpcx.Address(cfg.Bootstrap.Server.Grpc.Addr))
+	serviceToken := os.Getenv("SERVICE_TOKEN")
+	grpcSrv := grpcx.NewServer(
+		grpcx.Address(cfg.Bootstrap.Server.Grpc.Addr),
+		grpcx.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(serviceToken)),
+		grpcx.StreamInterceptor(xgrpc.ServiceTokenStreamInterceptor(serviceToken)),
+	)
 	adminv1.RegisterAdminServiceServer(grpcSrv, svc)
 	return grpcSrv
 }

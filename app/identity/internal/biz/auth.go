@@ -186,16 +186,26 @@ type loginAttempt struct {
 	lastSeen time.Time
 }
 
+// LoginRateLimiter is the cross-replica failed-login state owned by the data
+// layer. IdentityUsecase keeps its bounded in-process limiter as a fallback
+// when the shared store is unavailable.
+type LoginRateLimiter interface {
+	LoginFailureCount(ctx context.Context, key string) (int64, error)
+	RecordLoginFailure(ctx context.Context, key string, window time.Duration) error
+	ClearLoginFailures(ctx context.Context, keys ...string) error
+}
+
 type IdentityUsecase struct {
-	repo            IdentityRepo
-	auditor         *audit.Auditor
-	now             func() time.Time
-	defaultQuota    int64
-	sessionSecret   []byte
-	sessionIssuer   string
-	sessionDuration time.Duration
-	loginLimiter    map[string]*loginAttempt
-	loginMutex      sync.Mutex
+	repo                    IdentityRepo
+	auditor                 *audit.Auditor
+	now                     func() time.Time
+	defaultQuota            int64
+	sessionSecret           []byte
+	sessionIssuer           string
+	sessionDuration         time.Duration
+	loginLimiter            map[string]*loginAttempt
+	loginMutex              sync.Mutex
+	distributedLoginLimiter LoginRateLimiter
 }
 
 const (
@@ -239,7 +249,7 @@ func NewIdentityUsecase(repo IdentityRepo, auditor *audit.Auditor) *IdentityUsec
 	if auditor == nil {
 		auditor = audit.NewAuditor(true)
 	}
-	return &IdentityUsecase{
+	uc := &IdentityUsecase{
 		repo:            repo,
 		auditor:         auditor,
 		now:             time.Now,
@@ -249,6 +259,8 @@ func NewIdentityUsecase(repo IdentityRepo, auditor *audit.Auditor) *IdentityUsec
 		sessionDuration: sessionDuration,
 		loginLimiter:    make(map[string]*loginAttempt),
 	}
+	uc.distributedLoginLimiter, _ = repo.(LoginRateLimiter)
+	return uc
 }
 
 // ValidateToken validates an API access token. clientIP is the caller's
@@ -375,7 +387,20 @@ func (uc *IdentityUsecase) GetUser(ctx context.Context, userID int64) (*User, er
 // checkLoginRateLimit checks if the given key is rate-limited due to too
 // many failed attempts. The key is composed by loginRateKey (username+IP),
 // so both per-username and per-IP spraying are bounded (review L2).
-func (uc *IdentityUsecase) checkLoginRateLimit(key string) error {
+func (uc *IdentityUsecase) checkLoginRateLimit(ctx context.Context, key string) error {
+	if key == "" {
+		return nil
+	}
+	if uc.distributedLoginLimiter != nil {
+		count, err := uc.distributedLoginLimiter.LoginFailureCount(ctx, key)
+		if err == nil {
+			if count >= maxLoginAttempts {
+				return fmt.Errorf("too many failed login attempts, try again later")
+			}
+			return nil
+		}
+	}
+
 	uc.loginMutex.Lock()
 	defer uc.loginMutex.Unlock()
 
@@ -401,7 +426,16 @@ func (uc *IdentityUsecase) checkLoginRateLimit(key string) error {
 // To keep loginLimiter bounded (review L2), a single sweep of expired entries
 // runs every loginSweepInterval; this prevents an attacker spamming unique
 // usernames from growing the map without bound.
-func (uc *IdentityUsecase) recordLoginFailure(key string) {
+func (uc *IdentityUsecase) recordLoginFailure(ctx context.Context, key string) {
+	if key == "" {
+		return
+	}
+	if uc.distributedLoginLimiter != nil {
+		if err := uc.distributedLoginLimiter.RecordLoginFailure(ctx, key, loginLockoutTime); err == nil {
+			return
+		}
+	}
+
 	uc.loginMutex.Lock()
 	defer uc.loginMutex.Unlock()
 
@@ -434,6 +468,12 @@ func (uc *IdentityUsecase) clearLoginAttempts(key string) {
 	delete(uc.loginLimiter, key)
 }
 
+func (uc *IdentityUsecase) clearDistributedLoginAttempts(ctx context.Context, keys ...string) {
+	if uc.distributedLoginLimiter != nil {
+		_ = uc.distributedLoginLimiter.ClearLoginFailures(ctx, keys...)
+	}
+}
+
 // sweepLoginLimiterLocked drops all entries whose lockout window has elapsed.
 // Caller must hold loginMutex.
 func (uc *IdentityUsecase) sweepLoginLimiterLocked() {
@@ -458,11 +498,11 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 	// A single IP spraying many usernames and a single username being stuffed
 	// from many IPs are each independently capped at maxLoginAttempts.
 	ipKey, userKey := loginRateKeys(username, clientIP)
-	if err := uc.checkLoginRateLimit(ipKey); err != nil {
+	if err := uc.checkLoginRateLimit(ctx, ipKey); err != nil {
 		uc.auditor.LogUserLogin(ctx, 0, username, clientIP, false)
 		return nil, "", err
 	}
-	if err := uc.checkLoginRateLimit(userKey); err != nil {
+	if err := uc.checkLoginRateLimit(ctx, userKey); err != nil {
 		uc.auditor.LogUserLogin(ctx, 0, username, clientIP, false)
 		return nil, "", err
 	}
@@ -470,9 +510,9 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 	// recordBothFailures records the failure in both buckets.
 	recordBothFailures := func() {
 		if ipKey != "" {
-			uc.recordLoginFailure(ipKey)
+			uc.recordLoginFailure(ctx, ipKey)
 		}
-		uc.recordLoginFailure(userKey)
+		uc.recordLoginFailure(ctx, userKey)
 	}
 
 	user, err := uc.repo.FindUserByUsername(ctx, username)
@@ -505,6 +545,7 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 		uc.clearLoginAttempts(ipKey)
 	}
 	uc.clearLoginAttempts(userKey)
+	uc.clearDistributedLoginAttempts(ctx, ipKey, userKey)
 
 	token, err := uc.generateSessionToken(user)
 	if err != nil {

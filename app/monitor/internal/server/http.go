@@ -12,7 +12,7 @@ import (
 
 // NewHTTPServer wires HTTP transport for monitor-worker.
 func NewHTTPServer(addr string, svc *service.MonitorService) *khttp.Server {
-	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
+	srv := xhttp.NewServer(khttp.Address(addr))
 	srv.HandleFunc("/v1/health-checks", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

@@ -20,7 +20,7 @@ import (
 
 // NewHTTPServer wires HTTP transport for channel-service.
 func NewHTTPServer(addr string, usecases ...*biz.ChannelUsecase) *khttp.Server {
-	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
+	srv := xhttp.NewServer(khttp.Address(addr))
 	var uc *biz.ChannelUsecase
 	if len(usecases) > 0 {
 		uc = usecases[0]

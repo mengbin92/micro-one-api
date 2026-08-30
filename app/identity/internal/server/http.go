@@ -99,10 +99,10 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 	// context (X-Request-ID header or a generated UUID) so audit records and
 	// structured logs carry a traceable identifier — the same pattern
 	// admin-api uses in newAdminGuard.
-	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(
+	srv := xhttp.NewServer(
 		khttp.Address(addr),
 		khttp.Filter(appmiddleware.RequestID),
-	)...)
+	)
 	var billingClient billingv1.BillingServiceClient
 	if len(billingClients) > 0 {
 		billingClient = billingClients[0]
@@ -453,18 +453,7 @@ func emailDomainAllowed(email string, whitelist []string) bool {
 }
 
 func requestRemoteIP(r *http.Request) string {
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
-		first, _, _ := strings.Cut(forwarded, ",")
-		return strings.TrimSpace(first)
-	}
-	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
-		return realIP
-	}
-	host, _, ok := strings.Cut(r.RemoteAddr, ":")
-	if ok {
-		return host
-	}
-	return r.RemoteAddr
+	return xhttp.ClientIP(r, xhttp.TrustedProxyCIDRsFromEnv("IDENTITY_TRUSTED_PROXY_CIDRS"))
 }
 
 func (v *defaultTurnstileVerifier) VerifyTurnstile(ctx context.Context, secret, token, remoteIP string) error {

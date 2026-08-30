@@ -19,7 +19,7 @@ func TestSafeKratosServerOptionsDoNotUseDefaultServeMux(t *testing.T) {
 		t.Fatal("http.DefaultServeMux should not handle unmatched Kratos routes")
 	})
 
-	srv := khttp.NewServer(SafeKratosServerOptions()...)
+	srv := NewServer()
 	srv.Route("/").GET("/registered", func(ctx khttp.Context) error {
 		return ctx.String(http.StatusOK, "ok")
 	})
@@ -37,5 +37,18 @@ func TestSafeKratosServerOptionsDoNotUseDefaultServeMux(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), http.StatusText(http.StatusMethodNotAllowed)) {
 		t.Fatalf("405 body = %q", rec.Body.String())
+	}
+}
+
+func TestNewServerAppliesTransportLimits(t *testing.T) {
+	srv := NewServer()
+	if srv.ReadHeaderTimeout != defaultReadHeaderTimeout || srv.ReadTimeout != defaultReadTimeout || srv.IdleTimeout != defaultIdleTimeout {
+		t.Fatalf("unexpected transport timeouts: header=%s read=%s idle=%s", srv.ReadHeaderTimeout, srv.ReadTimeout, srv.IdleTimeout)
+	}
+	if srv.MaxHeaderBytes != defaultMaxHeaderBytes {
+		t.Fatalf("MaxHeaderBytes = %d, want %d", srv.MaxHeaderBytes, defaultMaxHeaderBytes)
+	}
+	if srv.WriteTimeout != 0 {
+		t.Fatalf("WriteTimeout = %s, want 0 for streaming responses", srv.WriteTimeout)
 	}
 }

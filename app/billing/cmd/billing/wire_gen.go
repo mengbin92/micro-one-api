@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"github.com/go-kratos/kratos/v3"
 	"github.com/go-kratos/kratos/v3/registry"
-	grpc2 "github.com/go-kratos/kratos/v3/transport/grpc"
+	grpc3 "github.com/go-kratos/kratos/v3/transport/grpc"
 	"github.com/go-kratos/kratos/v3/transport/http"
 	"github.com/google/wire"
 	"go.uber.org/zap"
@@ -24,6 +24,7 @@ import (
 	"micro-one-api/app/billing/internal/service"
 	biz2 "micro-one-api/domain/subscription/biz"
 	data2 "micro-one-api/domain/subscription/data"
+	grpc2 "micro-one-api/platform/grpc"
 	"micro-one-api/platform/grpc/xgrpc"
 	"micro-one-api/platform/logging"
 	registry2 "micro-one-api/platform/registry"
@@ -174,7 +175,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		}
 		if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Notify != nil && cfg.Bootstrap.Clients.Notify.Endpoint != "" {
 			var err error
-			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
+			notifyConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Notify.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))), grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 			if err != nil {
 				logger.Log.
 					Error("dial notify endpoint", zap.Error(err))
@@ -189,7 +190,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		}
 	}
 
-	var grpcSrv *grpc2.Server = nil
+	var grpcSrv *grpc3.Server = nil
 	var httpSrv *http.Server = nil
 	if cfg.Bootstrap.Server != nil {
 		if cfg.Bootstrap.Server.Grpc != nil {

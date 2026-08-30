@@ -35,7 +35,7 @@ func NewAzureProvider(baseURL, apiKey, apiVersion string, timeout time.Duration)
 		apiVersion = defaultAzureAPIVersion
 	}
 	return &AzureProvider{
-		httpClient: &http.Client{Timeout: timeout},
+		httpClient: newHTTPClient(timeout, false),
 		// Keep active SSE streams alive beyond timeout while bounding response-header
 		// waits and periods with no upstream bytes.
 		streamClient: newStreamHTTPClient(timeout),

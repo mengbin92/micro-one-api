@@ -69,7 +69,7 @@ func newRetryPolicy(cfg *Config) *relaybiz.RetryPolicy {
 // newKratosHTTPServer creates a kratos HTTP server for relay-gateway.
 // It wraps the internal HTTPServer and registers its routes.
 func newKratosHTTPServer(cfg *Config, httpServer *server.HTTPServer, providerTimeout time.Duration) *khttp.Server {
-	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(cfg.Bootstrap.Server.Http.Addr), khttp.Timeout(providerTimeout))...)
+	srv := xhttp.NewServer(khttp.Address(cfg.Bootstrap.Server.Http.Addr), khttp.Timeout(providerTimeout))
 	httpServer.RegisterRoutes(srv)
 	return srv
 }

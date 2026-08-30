@@ -1,9 +1,12 @@
 package server
 
 import (
+	"os"
+
 	relayv1 "micro-one-api/api/relay/v1"
 	"micro-one-api/internal/service"
 	apptimeout "micro-one-api/pkg/timeout"
+	"micro-one-api/platform/grpc/xgrpc"
 
 	kgrpc "github.com/go-kratos/kratos/v3/transport/grpc"
 	"google.golang.org/grpc"
@@ -14,6 +17,8 @@ func NewGRPCServer(addr string, svc *service.RelayGrpcService, opts ...grpc.Serv
 	serverOpts := []kgrpc.ServerOption{
 		kgrpc.Address(addr),
 		kgrpc.Timeout(apptimeout.GetGRPCTimeout()),
+		kgrpc.UnaryInterceptor(xgrpc.ServiceTokenUnaryInterceptor(os.Getenv("SERVICE_TOKEN"))),
+		kgrpc.StreamInterceptor(xgrpc.ServiceTokenStreamInterceptor(os.Getenv("SERVICE_TOKEN"))),
 	}
 	if len(opts) > 0 {
 		serverOpts = append(serverOpts, kgrpc.Options(opts...))

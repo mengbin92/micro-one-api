@@ -75,11 +75,21 @@ spec:
             secretKeyRef:
               name: app-secrets
               key: jwt-secret-key
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: service-token-secret
+              key: token
         - name: BILLING_GRPC_ENDPOINT
           valueFrom:
             configMapKeyRef:
               name: app-config
               key: billing-grpc-endpoint
+        - name: IDENTITY_TRUSTED_PROXY_CIDRS
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: trusted-proxy-cidrs
         - name: LOG_LEVEL
           valueFrom:
             configMapKeyRef:

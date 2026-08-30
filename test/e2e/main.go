@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
+	grpcauth "micro-one-api/platform/grpc"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -387,6 +388,7 @@ func stepVerifyLogs(userID int64) {
 func grpcDial(endpoint string) *grpc.ClientConn {
 	conn, err := grpc.NewClient(endpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))),
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: gRPC dial %s: %v\n", endpoint, err)

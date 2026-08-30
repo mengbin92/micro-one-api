@@ -110,6 +110,11 @@ spec:
             secretKeyRef:
               name: service-token-secret
               key: token
+        - name: ADMIN_TRUSTED_PROXY_CIDRS
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: trusted-proxy-cidrs
         - name: LOG_LEVEL
           valueFrom:
             configMapKeyRef:
@@ -157,10 +162,6 @@ spec:
     targetPort: 8000
     protocol: TCP
     name: http
-  - port: 9000
-    targetPort: 9000
-    protocol: TCP
-    name: grpc
   selector:
     app: admin-api
 ---
