@@ -40,7 +40,7 @@ async function seedAdminSession(page: Page) {
 }
 
 async function openMobileNavIfVisible(page: Page) {
-  const openNavigation = page.getByRole('button', { name: /open navigation/i });
+  const openNavigation = page.getByRole('button', { name: /打开导航|open navigation/i });
   if (await openNavigation.isVisible()) {
     await openNavigation.click();
   }
@@ -322,9 +322,9 @@ test('recharge page can be opened and creates alipay order', async ({ page }) =>
   await expect(page).toHaveURL(/\/recharge$/);
   await expect(page.getByRole('heading', { name: '快捷金额' })).toBeVisible();
   await page.getByRole('button', { name: /¥50/ }).click();
-  await expect(page.getByRole('button', { name: /确认支付 ¥ 50.00/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /确认支付|Confirm payment/ }).filter({ hasText: /50/ })).toBeEnabled();
   const pagePromise = page.context().waitForEvent('page');
-  await page.getByRole('button', { name: /确认支付 ¥ 50.00/ }).click();
+  await page.getByRole('button', { name: /确认支付|Confirm payment/ }).filter({ hasText: /50/ }).click();
   const paymentPage = await pagePromise;
 
   await expect.poll(() => paymentRequests.length).toBe(1);
@@ -382,7 +382,7 @@ test('mobile navigation exposes admin links and closes after navigation', async 
 
   await seedAdminSession(page);
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: /open navigation/i }).click();
+  await page.getByRole('button', { name: /打开导航|open navigation/i }).click();
   await expect(page.getByRole('link', { name: 'Options' })).toBeVisible();
   await page.getByRole('link', { name: 'Options' }).click();
 
