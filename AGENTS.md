@@ -167,9 +167,9 @@ single, consistent JSON layer across all services.
   buffer). Always go through `jsonx`.
 
 **Version boundary**: sonic's `compat.go` build tags fall back to
-`encoding/json` under `go1.27+`, on non-amd64/arm64 architectures, or on
+`encoding/json` under `go1.28+`, on non-amd64/arm64 architectures, or on
 arm64 with go < 1.20. Behavior stays identical but the performance
-benefit disappears. Keep `go.mod` at go 1.26 (or re-benchmark
+benefit disappears. Keep `go.mod` at go 1.27 (or re-benchmark
 `pkg/jsonx` before bumping past that boundary).
 
 ## Deployment

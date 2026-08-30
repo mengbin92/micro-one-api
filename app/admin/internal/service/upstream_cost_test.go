@@ -92,7 +92,7 @@ func TestParseCanonicalUpstreamKey(t *testing.T) {
 }
 
 func TestParseUpstreamCostEntries_SplitsCanonicalAndLegacy(t *testing.T) {
-	raw, err := json.Marshal(map[string]map[string]interface{}{
+	raw, err := json.Marshal(map[string]map[string]any{
 		"channel:5:z-ai/glm-5.2":  {"input_price": 1.0, "output_price": 2.0},
 		"subscription:7:claude-3": {"input_price": 0.5, "output_price": 1.0},
 		"5:gpt-4o":                {"input_price": 3.0, "output_price": 6.0}, // legacy
@@ -173,7 +173,7 @@ func TestUpstreamCostKey_CanonicalOnlyForWrite(t *testing.T) {
 
 func TestUpstreamCostValuePreservesAndUpdatesOptionalPrices(t *testing.T) {
 	cacheRead := 2.52e-9
-	existing := map[string]interface{}{
+	existing := map[string]any{
 		"input_price":             1.0,
 		"cache_read_price":        9.9e-9,
 		"cache_creation_5m_price": 1.1e-7,
@@ -209,7 +209,7 @@ func TestSetUpstreamCostValidatesPrices(t *testing.T) {
 }
 
 func TestUpstreamCostValueClearsOptionalPricesExplicitly(t *testing.T) {
-	existing := map[string]interface{}{
+	existing := map[string]any{
 		"input_price":             1.0,
 		"cache_read_price":        9.9e-9,
 		"cache_creation_5m_price": 1.1e-7,

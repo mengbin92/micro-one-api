@@ -300,9 +300,7 @@ func (b *RedisRuntimeBlocker) StartActiveGaugeReporter(interval time.Duration, s
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		b.reportActive(ctx, set) // publish promptly on startup
@@ -314,7 +312,7 @@ func (b *RedisRuntimeBlocker) StartActiveGaugeReporter(interval time.Duration, s
 				b.reportActive(ctx, set)
 			}
 		}
-	}()
+	})
 	return func() {
 		cancel()
 		wg.Wait()

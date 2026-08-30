@@ -21,7 +21,7 @@ func TestSubscriptionQuotaMiddlewareAllowsExceededQuota(t *testing.T) {
 		Name:          "pro",
 		Platform:      "openai",
 		Status:        subscriptionbiz.SubscriptionGroupStatusEnabled,
-		DailyLimitUSD: ptrFloat64Server(1),
+		DailyLimitUSD: new(float64(1)),
 	}
 	if err := repo.CreateGroup(context.Background(), group); err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -72,6 +72,7 @@ func TestSubscriptionEstimatedCostFromHeader(t *testing.T) {
 	}
 }
 
+//go:fix inline
 func ptrFloat64Server(v float64) *float64 {
-	return &v
+	return new(v)
 }

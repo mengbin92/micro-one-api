@@ -3,6 +3,7 @@ package websocket
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -165,9 +166,7 @@ func (c *Connection) Metadata() map[string]string {
 	c.metadataMu.RLock()
 	defer c.metadataMu.RUnlock()
 	out := make(map[string]string, len(c.metadata))
-	for k, v := range c.metadata {
-		out[k] = v
-	}
+	maps.Copy(out, c.metadata)
 	return out
 }
 

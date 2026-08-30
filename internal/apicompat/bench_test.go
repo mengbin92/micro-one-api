@@ -57,7 +57,7 @@ func buildAnthropicBenchRequest() *AnthropicRequest {
 			},
 		},
 		Stream:      false,
-		Temperature: float64Ptr(0.2),
+		Temperature: new(0.2),
 		Thinking:    &AnthropicThinking{Type: "enabled", BudgetTokens: 4096},
 		Metadata:    jsonx.RawMessage(`{"user_id":"user_bench_01"}`),
 	}
@@ -87,7 +87,8 @@ func buildResponsesBenchRequest() *ResponsesRequest {
 	}
 }
 
-func float64Ptr(v float64) *float64 { return &v }
+//go:fix inline
+func float64Ptr(v float64) *float64 { return new(v) }
 
 func BenchmarkAnthropicToResponses(b *testing.B) {
 	req := buildAnthropicBenchRequest()

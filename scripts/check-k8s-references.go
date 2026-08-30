@@ -90,10 +90,10 @@ func walk(value any, namespace, source string, refs *[]reference, seen map[strin
 					kind = "ConfigMap"
 				}
 				addReference(refs, seen, reference{
-					resourceID: resourceID{kind: kind, namespace: namespace, name: stringValue(refMap["name"])},
-					key:        stringValue(refMap["key"]),
-					optional:   boolValue(refMap["optional"]),
-					source:     source,
+					kind: kind, namespace: namespace, name: stringValue(refMap["name"]),
+					key:      stringValue(refMap["key"]),
+					optional: boolValue(refMap["optional"]),
+					source:   source,
 				})
 			case "secretRef", "configMapRef":
 				refMap := mapValue(child)
@@ -102,35 +102,35 @@ func walk(value any, namespace, source string, refs *[]reference, seen map[strin
 					kind = "ConfigMap"
 				}
 				addReference(refs, seen, reference{
-					resourceID: resourceID{kind: kind, namespace: namespace, name: stringValue(refMap["name"])},
-					optional:   boolValue(refMap["optional"]),
-					source:     source,
+					kind: kind, namespace: namespace, name: stringValue(refMap["name"]),
+					optional: boolValue(refMap["optional"]),
+					source:   source,
 				})
 			case "secretName":
 				addReference(refs, seen, reference{
-					resourceID: resourceID{kind: "Secret", namespace: namespace, name: stringValue(child)},
-					source:     source,
+					kind: "Secret", namespace: namespace, name: stringValue(child),
+					source: source,
 				})
 			case "secret":
 				refMap := mapValue(child)
 				addReference(refs, seen, reference{
-					resourceID: resourceID{kind: "Secret", namespace: namespace, name: stringValue(refMap["secretName"])},
-					optional:   boolValue(refMap["optional"]),
-					source:     source,
+					kind: "Secret", namespace: namespace, name: stringValue(refMap["secretName"]),
+					optional: boolValue(refMap["optional"]),
+					source:   source,
 				})
 			case "configMap":
 				refMap := mapValue(child)
 				addReference(refs, seen, reference{
-					resourceID: resourceID{kind: "ConfigMap", namespace: namespace, name: stringValue(refMap["name"])},
-					optional:   boolValue(refMap["optional"]),
-					source:     source,
+					kind: "ConfigMap", namespace: namespace, name: stringValue(refMap["name"]),
+					optional: boolValue(refMap["optional"]),
+					source:   source,
 				})
 			case "annotations":
 				for annotation, rawName := range mapValue(child) {
 					if strings.HasSuffix(annotation, "/auth-secret") {
 						addReference(refs, seen, reference{
-							resourceID: resourceID{kind: "Secret", namespace: namespace, name: stringValue(rawName)},
-							source:     source,
+							kind: "Secret", namespace: namespace, name: stringValue(rawName),
+							source: source,
 						})
 					}
 				}

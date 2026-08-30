@@ -13,6 +13,7 @@ package stresstest
 import (
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"sort"
 	"strings"
@@ -169,9 +170,7 @@ func cloneMap(m map[string]int) map[string]int {
 		return map[string]int{}
 	}
 	cp := make(map[string]int, len(m))
-	for k, v := range m {
-		cp[k] = v
-	}
+	maps.Copy(cp, m)
 	return cp
 }
 
@@ -216,10 +215,7 @@ func (rp *Report) Percentile(p float64) float64 {
 		return lat[len(lat)-1]
 	}
 	// Nearest-rank: index = ceil(p/100 * N) - 1, clamped.
-	idx := int(math.Ceil(p/100.0*float64(len(lat)))) - 1
-	if idx < 0 {
-		idx = 0
-	}
+	idx := max(int(math.Ceil(p/100.0*float64(len(lat))))-1, 0)
 	if idx >= len(lat) {
 		idx = len(lat) - 1
 	}

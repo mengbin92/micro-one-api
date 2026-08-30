@@ -29,8 +29,8 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 		Model:   model,
 	}
 
-	var contentText string
-	var reasoningText string
+	var contentText strings.Builder
+	var reasoningText strings.Builder
 	var toolCalls []ChatToolCall
 
 	for _, item := range resp.Output {
@@ -38,7 +38,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 		case "message":
 			for _, part := range item.Content {
 				if part.Type == "output_text" && part.Text != "" {
-					contentText += part.Text
+					contentText.WriteString(part.Text)
 				}
 			}
 		case "function_call":
@@ -53,7 +53,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 		case "reasoning":
 			for _, s := range item.Summary {
 				if s.Type == "summary_text" && s.Text != "" {
-					reasoningText += s.Text
+					reasoningText.WriteString(s.Text)
 				}
 			}
 		case "web_search_call":
@@ -65,12 +65,12 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 	if len(toolCalls) > 0 {
 		msg.ToolCalls = toolCalls
 	}
-	if contentText != "" {
-		raw, _ := jsonx.Marshal(contentText)
+	if contentText.String() != "" {
+		raw, _ := jsonx.Marshal(contentText.String())
 		msg.Content = raw
 	}
-	if reasoningText != "" {
-		msg.ReasoningContent = reasoningText
+	if reasoningText.String() != "" {
+		msg.ReasoningContent = reasoningText.String()
 	}
 
 	finishReason := responsesStatusToChatFinishReason(resp.Status, resp.IncompleteDetails, toolCalls)

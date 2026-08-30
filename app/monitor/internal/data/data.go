@@ -279,7 +279,7 @@ func (r *Repository) listAlertRulesDB(ctx context.Context, page, pageSize int32)
 }
 
 func (r *Repository) updateAlertRuleDB(ctx context.Context, rule *biz.AlertRule) error {
-	return r.db.WithContext(ctx).Model(&alertRuleModel{}).Where("id = ?", rule.ID).Updates(map[string]interface{}{
+	return r.db.WithContext(ctx).Model(&alertRuleModel{}).Where("id = ?", rule.ID).Updates(map[string]any{
 		"name":         rule.Name,
 		"service_name": rule.ServiceName,
 		"metric":       rule.Metric,
@@ -321,10 +321,7 @@ func (r *Repository) listHealthChecksMemory(serviceName string, page, pageSize i
 	if start >= len(all) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(all) {
-		end = len(all)
-	}
+	end := min(start+int(pageSize), len(all))
 	return all[start:end], total, nil
 }
 
@@ -382,10 +379,7 @@ func (r *Repository) listAlertRulesMemory(page, pageSize int32) ([]*biz.AlertRul
 	if start >= len(all) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(all) {
-		end = len(all)
-	}
+	end := min(start+int(pageSize), len(all))
 	return all[start:end], total, nil
 }
 

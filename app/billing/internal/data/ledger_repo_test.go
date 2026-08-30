@@ -296,7 +296,7 @@ func TestLedgerRepo_ListLedgers_Pagination(t *testing.T) {
 
 	// 插入测试数据
 	now := time.Now()
-	for i := 0; i < 15; i++ {
+	for i := range 15 {
 		err := db.Exec(`
 			INSERT INTO billing_ledgers (user_id, amount, balance_after, type, reference_id, remark, created_at)
 			VALUES (?, -100, ?, 'consume', ?, ?, ?)

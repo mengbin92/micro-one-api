@@ -163,7 +163,7 @@ func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeN
 		}
 
 		now := time.Now()
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"status":             biz.PaymentOrderStatusPaid,
 			"provider_trade_no":  providerTradeNo,
 			"asset_issue_status": biz.PaymentAssetIssueStatusIssued,
@@ -227,7 +227,7 @@ func (r *paymentRepo) MarkOrderClosed(ctx context.Context, tradeNo, providerTrad
 		}
 
 		now := time.Now()
-		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]interface{}{
+		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]any{
 			"status":            biz.PaymentOrderStatusClosed,
 			"provider_trade_no": providerTradeNo,
 			"updated_at":        now,
@@ -294,7 +294,7 @@ func (r *paymentRepo) MarkOrderRefunded(ctx context.Context, tradeNo, reason str
 		}
 
 		now := time.Now()
-		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]interface{}{
+		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]any{
 			"status":             biz.PaymentOrderStatusRefunded,
 			"refund_reason":      reason,
 			"asset_issue_status": "refunded",
@@ -357,7 +357,7 @@ func (r *paymentRepo) MarkOrderAssetIssued(ctx context.Context, tradeNo, userID 
 			return nil
 		}
 		now := time.Now()
-		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]interface{}{
+		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]any{
 			"asset_issue_status": biz.PaymentAssetIssueStatusIssued,
 			"updated_at":         now,
 		}).Error; err != nil {
@@ -407,7 +407,7 @@ func (r *paymentRepo) UnmarkOrderAssetIssued(ctx context.Context, tradeNo string
 			return nil
 		}
 		now := time.Now()
-		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]interface{}{
+		if err := tx.Model(&PaymentOrder{}).Where("id = ?", po.ID).Updates(map[string]any{
 			"asset_issue_status": biz.PaymentAssetIssueStatusPending,
 			"updated_at":         now,
 		}).Error; err != nil {

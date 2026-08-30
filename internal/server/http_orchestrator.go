@@ -125,8 +125,7 @@ func relayResultFromExecutionResponse(result relaybiz.ExecutionResponse) *RelayR
 }
 
 func orchestratorErrorMessage(statusCode int, err error) string {
-	var upstreamErr *relayprovider.UpstreamHTTPError
-	if errors.As(err, &upstreamErr) {
+	if _, ok := errors.AsType[*relayprovider.UpstreamHTTPError](err); ok {
 		return sanitizeUpstreamError(statusCode, err)
 	}
 	return gatewayErrorMessage(statusCode)

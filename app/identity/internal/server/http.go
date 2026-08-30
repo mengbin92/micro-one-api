@@ -120,7 +120,7 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 			handleLegacyOAuth(w, r, oauthRegistry, "google")
 		})
 		srv.HandleFunc("/v1/oauth/providers", func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, http.StatusOK, map[string]interface{}{
+			writeJSON(w, http.StatusOK, map[string]any{
 				"providers": oauthRegistry.Names(),
 			})
 		})
@@ -248,9 +248,9 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 }
 
 type apiResponse struct {
-	Success bool        `json:"success"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 const (
@@ -395,7 +395,7 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 		return
 	}
 	creditInvitationBonus(r.Context(), user, billingClient)
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"user_id": user.ID}})
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{"user_id": user.ID}})
 }
 
 // creditInvitationBonus best-effort credits the invitee + inviter via the billing service so a ledger row is written.
@@ -626,11 +626,11 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	}
 
 	// Build sorted usage array
-	var usageArr []map[string]interface{}
+	var usageArr []map[string]any
 	for d := sevenDaysAgo; !d.After(startOfDay); d = d.AddDate(0, 0, 1) {
 		key := d.Format("2006-01-02")
 		day := dayMap[key]
-		usageArr = append(usageArr, map[string]interface{}{
+		usageArr = append(usageArr, map[string]any{
 			"date":              key,
 			"count":             day.Count,
 			"amount":            day.Quota,
@@ -647,7 +647,7 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 	}
 
 	// Model distribution (top 10, from server-side aggregation)
-	var modelDistribution []map[string]interface{}
+	var modelDistribution []map[string]any
 	if aggResp != nil {
 		for _, m := range aggResp.GetModels() {
 			if m.GetModel() == "" {
@@ -656,14 +656,14 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 			if len(modelDistribution) >= 10 {
 				break
 			}
-			modelDistribution = append(modelDistribution, map[string]interface{}{
+			modelDistribution = append(modelDistribution, map[string]any{
 				"model":  m.GetModel(),
 				"tokens": m.GetTokens(),
 			})
 		}
 	}
 
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{
 		"balance":                 account.GetBalance(),
 		"used_amount":             account.GetUsedAmount(),
 		"request_count":           account.GetRequestCount(),
@@ -696,10 +696,7 @@ func handleUserLogs(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 	}
 
 	page := queryInt32(r, "page", 1)
-	pageSize := queryInt32(r, "page_size", 20)
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	pageSize := min(queryInt32(r, "page_size", 20), 100)
 	logType := strings.TrimSpace(r.URL.Query().Get("type"))
 	userID := strconv.FormatInt(snapshot.UserID, 10)
 
@@ -714,23 +711,23 @@ func handleUserLogs(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 		return
 	}
 
-	items := make([]map[string]interface{}, 0)
+	items := make([]map[string]any, 0)
 	for _, entry := range resp.GetEntries() {
 		items = append(items, ledgerEntryToMap(entry))
 	}
 
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{
 		"items": items,
 		"total": resp.GetTotal(),
 	}})
 }
 
-func ledgerEntryToMap(entry *commonv1.LedgerEntry) map[string]interface{} {
+func ledgerEntryToMap(entry *commonv1.LedgerEntry) map[string]any {
 	createdAt := int64(0)
 	if entry.GetCreatedAt() != nil {
 		createdAt = entry.GetCreatedAt().AsTime().Unix()
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"id":                entry.GetId(),
 		"user_id":           entry.GetUserId(),
 		"type":              entry.GetType(),
@@ -763,25 +760,25 @@ func handleDashboardBillingUsage(w http.ResponseWriter, r *http.Request, uc *biz
 	}
 	snapshot, err := authSnapshotFromRequest(r, uc)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": map[string]interface{}{"message": "unauthorized", "type": "one_api_error"}})
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"message": "unauthorized", "type": "one_api_error"}})
 		return
 	}
 	if billingClient == nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"error": map[string]interface{}{"message": "billing service unavailable", "type": "one_api_error"}})
+		writeJSON(w, http.StatusOK, map[string]any{"error": map[string]any{"message": "billing service unavailable", "type": "one_api_error"}})
 		return
 	}
 	resp, err := billingClient.GetAccountSnapshot(r.Context(), &billingv1.GetAccountSnapshotRequest{
 		UserId: strconv.FormatInt(snapshot.UserID, 10),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"error": map[string]interface{}{"message": err.Error(), "type": "one_api_error"}})
+		writeJSON(w, http.StatusOK, map[string]any{"error": map[string]any{"message": err.Error(), "type": "one_api_error"}})
 		return
 	}
 	usedQuota := int64(0)
 	if resp.GetSnapshot() != nil {
 		usedQuota = resp.GetSnapshot().GetUsedAmount()
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"object":      "list",
 		"total_usage": usedQuota * 100,
 	})
@@ -794,25 +791,25 @@ func handleDashboardBillingSubscription(w http.ResponseWriter, r *http.Request, 
 	}
 	snapshot, err := authSnapshotFromRequest(r, uc)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": map[string]interface{}{"message": "unauthorized", "type": "one_api_error"}})
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"message": "unauthorized", "type": "one_api_error"}})
 		return
 	}
 	if billingClient == nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"error": map[string]interface{}{"message": "billing service unavailable", "type": "one_api_error"}})
+		writeJSON(w, http.StatusOK, map[string]any{"error": map[string]any{"message": "billing service unavailable", "type": "one_api_error"}})
 		return
 	}
 	resp, err := billingClient.GetAccountSnapshot(r.Context(), &billingv1.GetAccountSnapshotRequest{
 		UserId: strconv.FormatInt(snapshot.UserID, 10),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"error": map[string]interface{}{"message": err.Error(), "type": "one_api_error"}})
+		writeJSON(w, http.StatusOK, map[string]any{"error": map[string]any{"message": err.Error(), "type": "one_api_error"}})
 		return
 	}
 	limit := int64(0)
 	if resp.GetSnapshot() != nil {
 		limit = resp.GetSnapshot().GetBalance()
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"object":                "billing_subscription",
 		"has_payment_method":    false,
 		"canceled":              false,
@@ -938,7 +935,7 @@ func handleCreatePaymentOrder(w http.ResponseWriter, r *http.Request, uc *biz.Id
 	writeJSON(w, http.StatusOK, apiResponse{
 		Success: true,
 		Message: "",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"trade_no":   resp.GetOrder().GetTradeNo(),
 			"pay_url":    resp.GetOrder().GetPayUrl(),
 			"order":      resp.GetOrder(),
@@ -979,10 +976,7 @@ func handleUserPaymentOrders(w http.ResponseWriter, r *http.Request, uc *biz.Ide
 		userID = ""
 	}
 	query := r.URL.Query()
-	pageSize := queryInt32(r, "page_size", 20)
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	pageSize := min(queryInt32(r, "page_size", 20), 100)
 	resp, err := billingClient.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{
 		Page:     queryInt32(r, "page", 1),
 		PageSize: pageSize,
@@ -1037,7 +1031,7 @@ func handleUserPaymentOrderByTradeNo(w http.ResponseWriter, r *http.Request, uc 
 		writeJSON(w, http.StatusForbidden, apiResponse{Success: false, Message: "forbidden"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"order": order}})
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{"order": order}})
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase) {
@@ -1060,7 +1054,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase
 	writeJSON(w, http.StatusOK, apiResponse{
 		Success: true,
 		Message: "",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"token":   token,
 			"user_id": user.ID,
 			"user":    userToMap(user),
@@ -1198,7 +1192,7 @@ func handleEmailVerification(w http.ResponseWriter, r *http.Request, deliverer C
 		return
 	}
 	// Never return the code in the response; it is delivered out-of-band.
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "verification code sent", Data: map[string]interface{}{"email": email}})
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "verification code sent", Data: map[string]any{"email": email}})
 }
 
 func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, deliverer CodeDeliverer) {
@@ -1229,7 +1223,7 @@ func handleResetPasswordRequest(w http.ResponseWriter, r *http.Request, delivere
 		return
 	}
 	// Never return the token in the response; it is delivered out-of-band.
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "reset token sent", Data: map[string]interface{}{"email": email}})
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "reset token sent", Data: map[string]any{"email": email}})
 }
 
 func handleResetPassword(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecase, deliverer CodeDeliverer) {
@@ -1282,7 +1276,7 @@ func handleOAuthState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setOAuthStateCookie(w, state)
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"state": state}})
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{"state": state}})
 }
 
 func handleOneAPIOAuthAlias(w http.ResponseWriter, r *http.Request, registry *oauth.ProviderRegistry, providerName string) {
@@ -1332,7 +1326,7 @@ func handleOneAPIOAuthBind(w http.ResponseWriter, r *http.Request, registry *oau
 		oauthBindStore.items[state] = oauthBindRecord{Token: token, At: time.Now(), Provider: providerName}
 		oauthBindStore.Unlock()
 		setOAuthStateCookie(w, state)
-		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"auth_url": provider.AuthURL(state)}})
+		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{"auth_url": provider.AuthURL(state)}})
 		return
 	}
 	state := r.URL.Query().Get("state")
@@ -1355,7 +1349,7 @@ func handleOneAPIOAuthBind(w http.ResponseWriter, r *http.Request, registry *oau
 		http.Redirect(w, r, "/profile?oauth_bind=success&provider="+url.QueryEscape(providerName), http.StatusFound)
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{
 		"user_id":        user.ID,
 		"oauth_provider": user.OAuthProvider,
 	}})
@@ -1442,11 +1436,11 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 			return
 		}
-		items := make([]map[string]interface{}, 0, len(tokens))
+		items := make([]map[string]any, 0, len(tokens))
 		for _, token := range tokens {
 			items = append(items, tokenToMap(token, false))
 		}
-		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]interface{}{"items": items, "total": total}})
+		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{"items": items, "total": total}})
 	case http.MethodPost:
 		var req struct {
 			Name           string   `json:"name"`
@@ -1535,7 +1529,7 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 	}
 }
 
-func decodeJSON(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	if err := jsonx.NewDecoder(r.Body).Decode(dst); err != nil {
 		writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "invalid request body"})
 		return false
@@ -1588,8 +1582,8 @@ func queryInt32(r *http.Request, key string, defaultVal int32) int32 {
 	return int32(n)
 }
 
-func userToMap(user *biz.User) map[string]interface{} {
-	return map[string]interface{}{
+func userToMap(user *biz.User) map[string]any {
+	return map[string]any{
 		"id":           user.ID,
 		"username":     user.Username,
 		"display_name": user.DisplayName,
@@ -1600,8 +1594,8 @@ func userToMap(user *biz.User) map[string]interface{} {
 	}
 }
 
-func tokenToMap(token *biz.Token, includeKey bool) map[string]interface{} {
-	data := map[string]interface{}{
+func tokenToMap(token *biz.Token, includeKey bool) map[string]any {
+	data := map[string]any{
 		"id":              token.ID,
 		"name":            token.Name,
 		"status":          token.Status,
@@ -1785,7 +1779,7 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success":  true,
 		"token":    token,
 		"user_id":  user.ID,
@@ -1801,7 +1795,7 @@ func generateState() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func writeJSON(w http.ResponseWriter, code int, v interface{}) {
+func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = jsonx.NewEncoder(w).Encode(v)

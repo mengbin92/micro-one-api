@@ -505,10 +505,7 @@ func (r *Repository) listMemory(page, pageSize int32, level, source, keyword str
 	if start >= len(all) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(all) {
-		end = len(all)
-	}
+	end := min(start+int(pageSize), len(all))
 	return all[start:end], total, nil
 }
 
@@ -534,10 +531,7 @@ func (r *Repository) listByUserMemory(userID int64, page, pageSize int32, level,
 	if start >= len(all) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(all) {
-		end = len(all)
-	}
+	end := min(start+int(pageSize), len(all))
 	return all[start:end], total, nil
 }
 

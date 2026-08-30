@@ -18,7 +18,7 @@ ARG SERVICE_PATH=./app/notify/cmd/notify
 # cross-building them on $BUILDPLATFORM would yield binaries the builder
 # cannot exec. `go mod download` under QEMU only downloads (no compile), so
 # the slowdown is acceptable.
-FROM golang:1.26-alpine AS go-deps
+FROM golang:1.27-alpine AS go-deps
 
 RUN apk add --no-cache git ca-certificates
 ENV GOPROXY=https://proxy.golang.org|https://goproxy.cn|direct
@@ -51,7 +51,7 @@ RUN go install github.com/bufbuild/buf/cmd/buf@v1.70.0 && \
 # docker/setup-qemu-action (configured in the CI workflow) supplies the
 # emulation, so linux/arm64 is handled transparently.
 # ---------------------------------------------------------------------------
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 # build-base pulls gcc + musl-dev for CGO (mattn/go-sqlite3); sqlite-dev
 # provides the headers/libs libsqlite3 links against, and sqlite-libs is

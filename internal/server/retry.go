@@ -70,8 +70,8 @@ func isRetryableError(err error, retryable map[int]bool) bool {
 	}
 	msg := err.Error()
 	// Parse "upstream error: status=XXX, body=..." pattern
-	if idx := strings.Index(msg, "status="); idx >= 0 {
-		statusStr := msg[idx+7:]
+	if _, after, ok := strings.Cut(msg, "status="); ok {
+		statusStr := after
 		if end := strings.Index(statusStr, ","); end >= 0 {
 			statusStr = statusStr[:end]
 		}
@@ -99,10 +99,7 @@ func isRetryableError(err error, retryable map[int]bool) bool {
 
 // backoffDuration calculates the sleep duration for the given attempt (0-indexed).
 func backoffDuration(attempt int, initial time.Duration, max time.Duration, multiplier float64) time.Duration {
-	d := time.Duration(float64(initial) * math.Pow(multiplier, float64(attempt)))
-	if d > max {
-		d = max
-	}
+	d := min(time.Duration(float64(initial)*math.Pow(multiplier, float64(attempt))), max)
 	return d
 }
 
@@ -123,8 +120,8 @@ func upstreamStatus(err error) int {
 		return 0
 	}
 	msg := err.Error()
-	if idx := strings.Index(msg, "status="); idx >= 0 {
-		statusStr := msg[idx+7:]
+	if _, after, ok := strings.Cut(msg, "status="); ok {
+		statusStr := after
 		if end := strings.Index(statusStr, ","); end >= 0 {
 			statusStr = statusStr[:end]
 		}

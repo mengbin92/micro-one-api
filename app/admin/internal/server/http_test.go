@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1278,9 +1279,9 @@ func TestReadonlyPricingReturnsModelPriceRows(t *testing.T) {
 
 func TestMergeReadonlyPricingModelsFiltersUnavailableAndAddsModalities(t *testing.T) {
 	rows := []readonlyPricingRow{
-		{Model: "enabled-model", InputPrice: floatPtr(1)},
-		{Model: "disabled-model", InputPrice: floatPtr(2)},
-		{Model: "legacy-model", InputPrice: floatPtr(3)},
+		{Model: "enabled-model", InputPrice: new(float64(1))},
+		{Model: "disabled-model", InputPrice: new(float64(2))},
+		{Model: "legacy-model", InputPrice: new(float64(3))},
 	}
 	merged := mergeReadonlyPricingModels(rows, []*channelv1.ModelSummary{
 		{ModelId: "enabled-model", Status: 1, IsPublic: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}},
@@ -1594,12 +1595,7 @@ func TestAdminHTTPGroupManagementUsesGroupRatioOption(t *testing.T) {
 }
 
 func stringSliceContains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, want)
 }
 
 func TestAdminHTTPCreateChannel(t *testing.T) {

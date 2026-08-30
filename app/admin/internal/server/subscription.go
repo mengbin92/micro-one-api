@@ -79,7 +79,7 @@ func handlePurchaseSubscription(w http.ResponseWriter, r *http.Request, svc *ser
 		writeJSON(w, http.StatusBadRequest, apiResponse(false, "plan_id or group_id is required", nil))
 		return
 	}
-	var sub interface{}
+	var sub any
 	var err error
 	idemKey := idempotencyKeyFromRequest(r)
 	if req.PlanID > 0 {
@@ -312,7 +312,7 @@ func handleSubscriptionPlanByID(w http.ResponseWriter, r *http.Request, svc *ser
 	}
 }
 
-func writeSubscriptionResponse(w http.ResponseWriter, data interface{}, err error) {
+func writeSubscriptionResponse(w http.ResponseWriter, data any, err error) {
 	if err != nil {
 		// gRPC status errors carry HTTP semantics (409 for a duplicate
 		// idempotency key, v0.18 P0 §5.4); their message is extracted without
@@ -372,7 +372,7 @@ func handlePurchaseSubscriptionWithPayment(w http.ResponseWriter, r *http.Reques
 
 	// If subscription was created directly (balance sufficient)
 	if sub != nil {
-		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
 			"subscription": subscriptionResponse(sub),
 			"payment":      nil,
 		}))
@@ -380,7 +380,7 @@ func handlePurchaseSubscriptionWithPayment(w http.ResponseWriter, r *http.Reques
 	}
 
 	// If payment order was created (balance insufficient)
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
 		"subscription": nil,
 		"payment":      paymentOrder,
 	}))
@@ -412,7 +412,7 @@ func handleCompleteSubscriptionPurchase(w http.ResponseWriter, r *http.Request, 
 	writeSubscriptionResponse(w, sub, err)
 }
 
-func normalizeSubscriptionResponse(data interface{}) interface{} {
+func normalizeSubscriptionResponse(data any) any {
 	switch v := data.(type) {
 	case *subscriptionbiz.UserSubscription:
 		return subscriptionResponse(v)
@@ -613,7 +613,7 @@ func handleRefundPaymentOrder(w http.ResponseWriter, r *http.Request, svc *servi
 	}
 	adminAuditor().LogSuccess(r.Context(), audit.EventTypePayment, adminActorFromRequest(r),
 		audit.ResourceInfo{Type: "payment_order", ID: req.TradeNo}, "refund")
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
 		"refunded_quota":      resp.GetRefundedQuota(),
 		"balance_after":       resp.GetBalanceAfter(),
 		"subscription_id":     resp.GetSubscriptionId(),
@@ -644,7 +644,7 @@ func handleSubscriptionOperationReport(w http.ResponseWriter, r *http.Request, s
 		writeJSON(w, http.StatusOK, apiResponse(false, resp.GetErrorMessage(), nil))
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
 		"rows":                 resp.GetRows(),
 		"total_revenue_quota":  resp.GetTotalRevenueQuota(),
 		"total_refunded_quota": resp.GetTotalRefundedQuota(),
@@ -706,7 +706,7 @@ func handleChangeSubscription(w http.ResponseWriter, r *http.Request, svc *servi
 		writeJSON(w, httpStatusForAdminError(err), apiResponse(false, msg, nil))
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
 		"subscription_id":       res.SubscriptionID,
 		"applied":               res.Applied,
 		"charged_quota":         res.ChargedQuota,

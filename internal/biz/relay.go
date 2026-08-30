@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -879,7 +880,7 @@ func (uc *RelayUsecase) selectSchedulableSubscriptionAccount(ctx context.Context
 			}
 		}
 		var lastErr error
-		for attempt := 0; attempt < 8; attempt++ {
+		for range 8 {
 			account, err := exClient.SelectSubscriptionAccountExcluding(ctx, group, model, platform, localExclude)
 			if err != nil {
 				return nil, err
@@ -908,7 +909,7 @@ func (uc *RelayUsecase) selectSchedulableSubscriptionAccount(ctx context.Context
 		}
 	}
 	var lastErr error
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for range maxAttempts {
 		account, err := uc.subscription.SelectSubscriptionAccount(ctx, group, model, platform, excludedPriority)
 		if err != nil {
 			return nil, err
@@ -970,12 +971,7 @@ func platformServesModel(platform, model string) bool {
 	if strings.TrimSpace(model) == "" {
 		return false
 	}
-	for _, p := range subscriptionPlatformsForModel(model) {
-		if p == platform {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(subscriptionPlatformsForModel(model), platform)
 }
 
 // accountServesModel reports whether the account exposes the requested model.

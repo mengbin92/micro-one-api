@@ -38,10 +38,7 @@ func (r *fakeModelRepo) ListModels(ctx context.Context, page, pageSize int32, fi
 	if start >= len(filtered) {
 		return []*Model{}, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(filtered) {
-		end = len(filtered)
-	}
+	end := min(start+int(pageSize), len(filtered))
 	return filtered[start:end], total, nil
 }
 
@@ -357,7 +354,7 @@ func TestModelUsecase_BatchEnable(t *testing.T) {
 	repo := newFakeModelRepo()
 	uc := NewModelUsecase(repo)
 	var pks []int64
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		m := &Model{ModelID: "m" + string(rune('A'+i)), DisplayName: "M"}
 		_ = uc.CreateModel(context.Background(), m)
 		pks = append(pks, m.ID)

@@ -405,10 +405,7 @@ func (st *accountState) loadFactor() int32 {
 	}
 	local := st.inflight.Load()
 	cross := st.crossReplicaInflight.Load()
-	inflight := local
-	if cross > inflight {
-		inflight = cross
-	}
+	inflight := max(cross, local)
 	if inflight <= 0 {
 		return 100
 	}

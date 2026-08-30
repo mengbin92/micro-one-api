@@ -52,10 +52,7 @@ func (m *mockLogRepo) List(ctx context.Context, page, pageSize int32, level, sou
 	if start >= len(result) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(result) {
-		end = len(result)
-	}
+	end := min(start+int(pageSize), len(result))
 	return result[start:end], total, nil
 }
 
@@ -83,10 +80,7 @@ func (m *mockLogRepo) ListByUser(ctx context.Context, userID int64, page, pageSi
 	if start >= len(result) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(result) {
-		end = len(result)
-	}
+	end := min(start+int(pageSize), len(result))
 	return result[start:end], total, nil
 }
 
@@ -489,7 +483,7 @@ func TestBatchLogWriter_QueueFullReturnsError(t *testing.T) {
 	repo := newBatchMockLogRepo()
 	w := NewBatchLogWriter(repo, 1, time.Hour)
 	// Fill the queue to its capacity (1*10 = 10).
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if err := w.IngestLog(context.Background(), &LogEntry{Level: "info", Message: "fill"}); err != nil {
 			t.Fatalf("fill IngestLog %d errored unexpectedly: %v", i, err)
 		}

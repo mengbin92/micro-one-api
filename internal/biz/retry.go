@@ -147,8 +147,7 @@ func isRetryableNetworkError(err error) bool {
 // upstream protocol limitation rather than invalid client input. Keep the 400
 // match deliberately narrow: other bad requests must still fail immediately.
 func IsProtocolCapabilityMismatch(err error) bool {
-	var capabilityErr *ProtocolCapabilityError
-	if errors.As(err, &capabilityErr) {
+	if _, ok := errors.AsType[*ProtocolCapabilityError](err); ok {
 		return true
 	}
 	status := UpstreamStatus(err)
@@ -216,10 +215,7 @@ func isUpstreamPolicyRejection(err error) bool {
 
 // BackoffDuration calculates the sleep duration for the given attempt (0-indexed).
 func (p *RetryPolicy) BackoffDuration(attempt int) time.Duration {
-	d := time.Duration(float64(p.InitialInterval) * math.Pow(p.Multiplier, float64(attempt)))
-	if d > p.MaxInterval {
-		d = p.MaxInterval
-	}
+	d := min(time.Duration(float64(p.InitialInterval)*math.Pow(p.Multiplier, float64(attempt))), p.MaxInterval)
 	return d
 }
 
@@ -246,8 +242,8 @@ func unwrap(err error) error {
 }
 
 func extractStatus(msg string) int {
-	if idx := strings.Index(msg, "status="); idx >= 0 {
-		statusStr := msg[idx+7:]
+	if _, after, ok := strings.Cut(msg, "status="); ok {
+		statusStr := after
 		var status int
 		for _, c := range statusStr {
 			if c >= '0' && c <= '9' {
@@ -277,8 +273,7 @@ func UpstreamStatus(err error) int {
 	if AsRetryableError(err, &re) {
 		return re.Status
 	}
-	var upstreamErr *relayprovider.UpstreamHTTPError
-	if errors.As(err, &upstreamErr) {
+	if upstreamErr, ok := errors.AsType[*relayprovider.UpstreamHTTPError](err); ok {
 		return upstreamErr.StatusCode
 	}
 	return extractStatus(err.Error())

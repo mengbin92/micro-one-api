@@ -121,13 +121,7 @@ func validateMTLSCertificate(cert *x509.Certificate, cfg *mTLSAuthConfig) error 
 	// an allow-listed subject like "admin" match "CN=not-admin").
 	if len(cfg.AllowedSubjects) > 0 {
 		subject := cert.Subject.String()
-		allowed := false
-		for _, allowedSubject := range cfg.AllowedSubjects {
-			if subject == allowedSubject {
-				allowed = true
-				break
-			}
-		}
+		allowed := slices.Contains(cfg.AllowedSubjects, subject)
 		if !allowed {
 			return fmt.Errorf("certificate subject not allowed: %s", subject)
 		}
@@ -139,11 +133,8 @@ func validateMTLSCertificate(cert *x509.Certificate, cfg *mTLSAuthConfig) error 
 	if len(cfg.AllowedServices) > 0 {
 		allowed := false
 		for _, san := range cert.DNSNames {
-			for _, allowedService := range cfg.AllowedServices {
-				if san == allowedService {
-					allowed = true
-					break
-				}
+			if slices.Contains(cfg.AllowedServices, san) {
+				allowed = true
 			}
 			if allowed {
 				break

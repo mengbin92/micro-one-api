@@ -13,7 +13,7 @@ import (
 
 func TestAccountConcurrencyLimiter_UnlimitedWhenLimitNonPositive(t *testing.T) {
 	l := NewAccountConcurrencyLimiter()
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		if _, ok := l.TryAcquire(context.Background(), 7, 0); !ok {
 			t.Fatalf("limit=0 must be unlimited, acquire %d failed", i)
 		}
@@ -73,17 +73,15 @@ func TestAccountConcurrencyLimiter_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	var granted int32
 	var mu sync.Mutex
-	for i := 0; i < 64; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 64 {
+		wg.Go(func() {
 			if release, ok := l.TryAcquire(context.Background(), id, limit); ok {
 				mu.Lock()
 				granted++
 				mu.Unlock()
 				release()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if got := l.Inflight(id); got != 0 {

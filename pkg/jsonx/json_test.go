@@ -58,7 +58,7 @@ func TestMarshalMatchesEncodingJSON(t *testing.T) {
 }
 
 func TestMarshalMapKeyOrderMatchesEncodingJSON(t *testing.T) {
-	m := map[string]interface{}{
+	m := map[string]any{
 		"zebra": 1,
 		"alpha": 2,
 		"mango": 3,
@@ -316,13 +316,13 @@ func TestFloatRoundTrip(t *testing.T) {
 func TestNumberLargeIntPrecision(t *testing.T) {
 	// Large int64 must round-trip exactly through interface{} decode.
 	data := []byte(`{"id":9223372036854775807}`)
-	var got map[string]interface{}
+	var got map[string]any
 	if err := Unmarshal(data, &got); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	// Default (no UseNumber) decodes to float64, losing precision beyond 2^53 —
 	// this must match std behavior exactly.
-	var want map[string]interface{}
+	var want map[string]any
 	if err := json.Unmarshal(data, &want); err != nil {
 		t.Fatalf("std Unmarshal: %v", err)
 	}
@@ -338,12 +338,12 @@ func TestNumberLargeIntPrecision(t *testing.T) {
 var benchPayload = []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hello world"}],"max_tokens":128,"stream":false,"temperature":0.7}`)
 
 type benchRequest struct {
-	Model       string                 `json:"model"`
-	Messages    []benchMessage         `json:"messages"`
-	MaxTokens   int                    `json:"max_tokens"`
-	Stream      bool                   `json:"stream"`
-	Temperature float64                `json:"temperature"`
-	Extra       map[string]interface{} `json:"-"`
+	Model       string         `json:"model"`
+	Messages    []benchMessage `json:"messages"`
+	MaxTokens   int            `json:"max_tokens"`
+	Stream      bool           `json:"stream"`
+	Temperature float64        `json:"temperature"`
+	Extra       map[string]any `json:"-"`
 }
 
 type benchMessage struct {

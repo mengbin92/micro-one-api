@@ -29,16 +29,16 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 	for _, item := range resp.Output {
 		switch item.Type {
 		case "reasoning":
-			summaryText := ""
+			var summaryText strings.Builder
 			for _, s := range item.Summary {
 				if s.Type == "summary_text" && s.Text != "" {
-					summaryText += s.Text
+					summaryText.WriteString(s.Text)
 				}
 			}
-			if summaryText != "" {
+			if summaryText.String() != "" {
 				blocks = append(blocks, AnthropicContentBlock{
 					Type:     "thinking",
-					Thinking: summaryText,
+					Thinking: summaryText.String(),
 				})
 			}
 		case "message":
@@ -106,10 +106,7 @@ func anthropicUsageFromResponsesUsage(usage *ResponsesUsage) AnthropicUsage {
 			usage.InputTokensDetails.CacheCreation1hTokens
 	}
 
-	inputTokens := usage.InputTokens - cachedTokens - cacheCreationTokens
-	if inputTokens < 0 {
-		inputTokens = 0
-	}
+	inputTokens := max(usage.InputTokens-cachedTokens-cacheCreationTokens, 0)
 
 	return AnthropicUsage{
 		InputTokens:              inputTokens,

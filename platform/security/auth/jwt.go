@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -93,15 +94,13 @@ func (jm *JWTManager) GenerateServiceToken(serviceName, serviceType string, role
 		ServiceName: serviceName,
 		ServiceType: serviceType,
 		Roles:       roles,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        generateJTI(),
-			Issuer:    jm.issuer,
-			Subject:   serviceName,
-			Audience:  []string{"micro-one-api"},
-			ExpiresAt: jwt.NewNumericDate(now.Add(jm.tokenDuration)),
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now),
-		},
+		ID:          generateJTI(),
+		Issuer:      jm.issuer,
+		Subject:     serviceName,
+		Audience:    []string{"micro-one-api"},
+		ExpiresAt:   jwt.NewNumericDate(now.Add(jm.tokenDuration)),
+		IssuedAt:    jwt.NewNumericDate(now),
+		NotBefore:   jwt.NewNumericDate(now),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -124,7 +123,7 @@ func (jm *JWTManager) ValidateServiceToken(tokenString string) (*JWTClaims, erro
 	// Remove "Bearer " prefix if present
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -185,7 +184,7 @@ func isTokenRevoked(jti string) bool {
 func (jm *JWTManager) RevokeToken(tokenString string) error {
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -261,8 +260,8 @@ func ExtractTokenFromHeader(authHeader string) string {
 		return ""
 	}
 
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
+	if after, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
+		return after
 	}
 
 	return authHeader
@@ -309,22 +308,12 @@ func LoadServiceAuthConfig() (*ServiceAuthConfig, error) {
 
 // HasRole checks if claims contain a specific role
 func (c *JWTClaims) HasRole(role string) bool {
-	for _, r := range c.Roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.Roles, role)
 }
 
 // HasAnyRole checks if claims contain any of the specified roles
 func (c *JWTClaims) HasAnyRole(roles ...string) bool {
-	for _, role := range roles {
-		if c.HasRole(role) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(roles, c.HasRole)
 }
 
 // HasAllRoles checks if claims contain all of the specified roles
@@ -359,12 +348,7 @@ func (c *JWTClaims) CanAccess(resource string, action string) bool {
 
 // contains checks if a string slice contains a string
 func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
 
 // ValidateServiceTokenWithRoles validates a token and checks if it has required roles

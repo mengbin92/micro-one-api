@@ -140,9 +140,9 @@ func (s *HTTPServer) handleAnthropicPlanError(w http.ResponseWriter, err error) 
 func (s *HTTPServer) writeAnthropicError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	_ = encodeJSON(w, map[string]interface{}{
+	_ = encodeJSON(w, map[string]any{
 		"type":  "error",
-		"error": map[string]interface{}{"type": anthropicErrorType(statusCode), "message": message},
+		"error": map[string]any{"type": anthropicErrorType(statusCode), "message": message},
 	})
 }
 

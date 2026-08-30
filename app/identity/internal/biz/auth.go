@@ -337,7 +337,7 @@ func (uc *IdentityUsecase) ValidateSessionToken(ctx context.Context, tokenString
 		jwt.WithIssuer(uc.sessionIssuer),
 		jwt.WithAudience("micro-one-api-web"),
 	)
-	token, err := parser.ParseWithClaims(tokenString, &UserSessionClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := parser.ParseWithClaims(tokenString, &UserSessionClaims{}, func(token *jwt.Token) (any, error) {
 		return uc.sessionSecret, nil
 	})
 	if err != nil {
@@ -621,7 +621,7 @@ func (uc *IdentityUsecase) GetOrCreateAffCode(ctx context.Context, userID int64)
 }
 
 func (uc *IdentityUsecase) generateUniqueAffCode(ctx context.Context) (string, error) {
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		code := uc.generateAffCode()
 		if _, err := uc.repo.FindUserByAffCode(ctx, code); errors.Is(err, ErrUserNotFound) {
 			return code, nil
@@ -1109,16 +1109,14 @@ func (uc *IdentityUsecase) generateSessionToken(user *User) (string, error) {
 		// Stamp the current password epoch so the validator can reject this
 		// session once the password changes / a forced logout bumps the
 		// epoch (review M6).
-		PwdEpoch: user.PasswordChangedAt,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        uc.generateToken(),
-			Issuer:    uc.sessionIssuer,
-			Subject:   strconv.FormatInt(user.ID, 10),
-			Audience:  []string{"micro-one-api-web"},
-			ExpiresAt: jwt.NewNumericDate(now.Add(uc.sessionDuration)),
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now),
-		},
+		PwdEpoch:  user.PasswordChangedAt,
+		ID:        uc.generateToken(),
+		Issuer:    uc.sessionIssuer,
+		Subject:   strconv.FormatInt(user.ID, 10),
+		Audience:  []string{"micro-one-api-web"},
+		ExpiresAt: jwt.NewNumericDate(now.Add(uc.sessionDuration)),
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(uc.sessionSecret)

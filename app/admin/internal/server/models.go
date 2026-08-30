@@ -203,14 +203,14 @@ func handleModelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminS
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{"mappings": detail.GetChannelMappings()})
+		writeJSON(w, http.StatusOK, map[string]any{"mappings": detail.GetChannelMappings()})
 	case action == "subscriptions" && r.Method == http.MethodGet:
 		detail, err := svc.GetModel(r.Context(), &channelv1.GetModelRequest{ModelPk: modelPK})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{"mappings": detail.GetSubscriptionMappings()})
+		writeJSON(w, http.StatusOK, map[string]any{"mappings": detail.GetSubscriptionMappings()})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 	}
@@ -574,7 +574,7 @@ func handleSetUpstreamCost(w http.ResponseWriter, r *http.Request, svc *service.
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func handleDeleteUpstreamCost(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -587,7 +587,7 @@ func handleDeleteUpstreamCost(w http.ResponseWriter, r *http.Request, svc *servi
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func handleMigrateUpstreamCostKeys(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {

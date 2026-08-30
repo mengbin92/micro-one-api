@@ -527,7 +527,7 @@ func withPostgresSearchPath(dsn, schema string) (string, error) {
 // never silently drop an existing option.
 func parsePostgresQueryString(q string) []pgKV {
 	var out []pgKV
-	for _, pair := range strings.Split(q, "&") {
+	for pair := range strings.SplitSeq(q, "&") {
 		if pair == "" {
 			continue
 		}

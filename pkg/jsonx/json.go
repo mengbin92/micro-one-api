@@ -7,7 +7,7 @@
 // architectures, or on arm64 with go < 1.20. Under that fallback every function
 // here behaves identically (ConfigStd is encoding/json-compatible) but the
 // performance benefit disappears — EXCEPT Get, which is sonic-specific (see its
-// doc comment). Keep go.mod <= go1.26, or re-benchmark before upgrading past
+// doc comment). Keep go.mod <= go1.27, or re-benchmark before upgrading past
 // that boundary.
 package jsonx
 
@@ -88,6 +88,6 @@ func NewDecoder(r io.Reader) sonic.Decoder {
 // field extraction (model, response.id, etc.) where the input is already known
 // to be well-formed, and fall back gracefully when the node is absent or the
 // conversion errors.
-func Get(data []byte, path ...interface{}) (sonicast.Node, error) {
+func Get(data []byte, path ...any) (sonicast.Node, error) {
 	return sonic.Get(data, path...)
 }

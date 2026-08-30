@@ -459,9 +459,7 @@ func (m *recordingAccountSelector) RecordSubscriptionAccountHealth(_ context.Con
 
 func TestRetryExecutor_ExecuteWithAccountHealth_FeedsSelector(t *testing.T) {
 	sel := &recordingAccountSelector{
-		mockChannelSelector: mockChannelSelector{
-			channels: []*Channel{{ID: 1, Name: "ch1"}},
-		},
+		channels: []*Channel{{ID: 1, Name: "ch1"}},
 	}
 	policy := &RetryPolicy{
 		MaxAttempts:     1,
@@ -509,7 +507,7 @@ func TestRetryExecutor_AccountHealthIsNotAttributedToFallbackChannel(t *testing.
 	initial := &Channel{ID: 42, Name: "subscription-account"}
 	fallback := &Channel{ID: 7, Name: "api-key-fallback"}
 	sel := &recordingAccountSelector{
-		mockChannelSelector: mockChannelSelector{channels: []*Channel{fallback}},
+		channels: []*Channel{fallback},
 	}
 	exec := NewRetryExecutor(&RetryPolicy{
 		MaxAttempts:     2,

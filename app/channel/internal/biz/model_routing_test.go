@@ -169,7 +169,7 @@ func TestSubscriptionAccountSelector_FailingAccountDerated(t *testing.T) {
 	sel := NewSubscriptionAccountSelector()
 	// Account 1: healthy.
 	// Account 2: record many failures to derate its health factor.
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		sel.RecordAccountHealth(2, false)
 	}
 	tier := []*SubscriptionAccount{
@@ -178,7 +178,7 @@ func TestSubscriptionAccountSelector_FailingAccountDerated(t *testing.T) {
 	}
 	// Run several selections; account 1 (healthy) should win the vast majority.
 	healthyPicks := 0
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		acct, err := sel.Select(context.Background(), "default", tier)
 		if err != nil {
 			t.Fatalf("Select() error = %v", err)
@@ -195,14 +195,14 @@ func TestSubscriptionAccountSelector_FailingAccountDerated(t *testing.T) {
 func TestSubscriptionAccountSelector_CircuitOpenExcludesAccount(t *testing.T) {
 	sel := NewSubscriptionAccountSelector()
 	// Trip account 2's circuit breaker (>0.5 errors/sec).
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		sel.RecordAccountHealth(2, false)
 	}
 	tier := []*SubscriptionAccount{
 		{ID: 1, Priority: 10},
 		{ID: 2, Priority: 10},
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		acct, err := sel.Select(context.Background(), "default", tier)
 		if err != nil {
 			t.Fatalf("Select() error = %v", err)
@@ -255,7 +255,7 @@ func TestSubscriptionAccountSelector_WeightDistribution(t *testing.T) {
 	}
 	counts := map[int64]int{}
 	const iterations = 1100
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		acct, err := sel.Select(context.Background(), "default", tier)
 		if err != nil {
 			t.Fatalf("Select() error = %v", err)
@@ -284,7 +284,7 @@ func TestRoutingMatchForSelect_MostSpecificWildcard(t *testing.T) {
 		{ID: 2, Model: "claude-sonnet-*", SubscriptionAccountID: 20, Enabled: true, Priority: 1},
 		{ID: 3, Model: "claude-*", SubscriptionAccountID: 30, Enabled: true, Priority: 1},
 	}
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		matches := RoutingMatchForSelect(rows, "claude-sonnet-4")
 		if len(matches) != 1 || matches[0].SubscriptionAccountID != 20 {
 			t.Fatalf("iter %d: expected only account 20 (claude-sonnet-*), got %v", i, matches)

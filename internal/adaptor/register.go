@@ -78,7 +78,6 @@ func init() {
 		provider.ChannelTypeDoubao,
 		provider.ChannelTypeVoyageAI,
 	} {
-		t := t
 		Register(t, func() Adaptor {
 			return &lazyAdaptor{
 				kind:   "openai_compatible",

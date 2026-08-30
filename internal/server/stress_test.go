@@ -169,7 +169,7 @@ func TestStress_SessionHashSticky_CrossReplicaBindAndReuse(t *testing.T) {
 	const sessionHash = "stress-session-1"
 	var wg sync.WaitGroup
 	start := make(chan struct{})
-	for i := 0; i < turns; i++ {
+	for i := range turns {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -235,15 +235,13 @@ func TestStress_PreviousResponseIDSticky_CrossReplicaLookup(t *testing.T) {
 	const readers = 32
 	seen := atomic.Int64{}
 	start := make(chan struct{})
-	for i := 0; i < readers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range readers {
+		wg.Go(func() {
 			<-start
 			if serverB.wsSticky.LookupResponseChannel(context.Background(), group, responseID) == 1 {
 				seen.Add(1)
 			}
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()
@@ -329,10 +327,8 @@ func TestStress_Failover_429_UnderLoad(t *testing.T) {
 	switchedBefore := testutil.ToFloat64(metrics.RelaySubscriptionFailoverTotal.WithLabelValues("429", "switched"))
 	var wg sync.WaitGroup
 	start := make(chan struct{})
-	for i := 0; i < reqs; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range reqs {
+		wg.Go(func() {
 			<-start
 			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(stressBody))
 			req.Header.Set("Authorization", "Bearer test-token")
@@ -348,7 +344,7 @@ func TestStress_Failover_429_UnderLoad(t *testing.T) {
 				a.Failed = true
 			}
 			rec.Record(a)
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()
@@ -397,7 +393,7 @@ func TestStress_Failover_5xx_Then529_BothRecordReasons(t *testing.T) {
 	// "switched". Sequential execution keeps the per-request failover chain
 	// deterministic: account1 5xx -> switch to account2 -> 529 -> exhausted.
 	// Blocks are cleared between requests so each starts from a clean slate.
-	for i := 0; i < reqs; i++ {
+	for range reqs {
 		// Clear runtime blocks so each request re-selects account 1 first.
 		_ = server.runtimeBlocker.Clear(context.Background(), 1)
 		_ = server.runtimeBlocker.Clear(context.Background(), 2)
@@ -470,7 +466,7 @@ func TestStress_ConcurrencyFailover_UnderLoad(t *testing.T) {
 	blockBefore := testutil.ToFloat64(metrics.RelayRuntimeBlocksTotal.WithLabelValues("concurrency"))
 	// Sequential: avoids the selector cycling past the held slot before the
 	// concurrency check (which would make the assertion brittle).
-	for i := 0; i < reqs; i++ {
+	for range reqs {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(stressBody))
 		req.Header.Set("Authorization", "Bearer test-token")
 		rw := httptest.NewRecorder()
@@ -588,7 +584,7 @@ func TestStress_SessionWindowFailover_UnderLoad(t *testing.T) {
 	// Sequential: the session window is per-account+session, so concurrent
 	// requests would all hit the pre-charged account and cascade; sequential
 	// keeps the invariant that each request fails over from account 1.
-	for i := 0; i < reqs; i++ {
+	for range reqs {
 		// Clear runtime blocks so failover selection can re-pick account 2.
 		_ = server.runtimeBlocker.Clear(context.Background(), 1)
 		_ = server.runtimeBlocker.Clear(context.Background(), 2)

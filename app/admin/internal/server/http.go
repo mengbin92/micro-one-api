@@ -250,10 +250,10 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 			legalOperatorAddress, _ = svc.GetOneAPIOption(r.Context(), "LegalOperatorAddress")
 			legalContactEmail, _ = svc.GetOneAPIOption(r.Context(), "LegalContactEmail")
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"success": true,
 			"message": "",
-			"data": map[string]interface{}{
+			"data": map[string]any{
 				"version":                "micro-one-api",
 				"system_name":            systemName,
 				"server_address":         serverAddress,
@@ -278,8 +278,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 		// Authenticate user
 		authHeader := r.Header.Get("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
-				"error": map[string]interface{}{
+			writeJSON(w, http.StatusUnauthorized, map[string]any{
+				"error": map[string]any{
 					"message": "missing or invalid authorization header",
 					"type":    "invalid_request_error",
 				},
@@ -291,8 +291,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 		// Validate token with identity service
 		validated, err := svc.ValidateToken(r.Context(), token)
 		if err != nil || !validated {
-			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{
-				"error": map[string]interface{}{
+			writeJSON(w, http.StatusUnauthorized, map[string]any{
+				"error": map[string]any{
 					"message": "invalid API key",
 					"type":    "invalid_request_error",
 				},
@@ -307,8 +307,8 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 			Status:   1, // active channels only
 		})
 		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]interface{}{
-				"error": map[string]interface{}{
+			writeJSON(w, http.StatusBadGateway, map[string]any{
+				"error": map[string]any{
 					"message": "failed to fetch available models",
 					"type":    "server_error",
 				},
@@ -322,7 +322,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 			if ch.GetModels() == "" {
 				continue
 			}
-			for _, model := range strings.Split(ch.GetModels(), ",") {
+			for model := range strings.SplitSeq(ch.GetModels(), ",") {
 				model = strings.TrimSpace(model)
 				if model != "" {
 					key := strings.ToLower(model)
@@ -353,7 +353,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 			})
 		}
 
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"object": "list",
 			"data":   data,
 		})
@@ -764,7 +764,7 @@ func handleAdminAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role, _ := r.Context().Value(adminRoleContextKey{}).(int32)
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"admin": true, "role": role}))
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{"admin": true, "role": role}))
 }
 
 func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -793,7 +793,7 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	}
 	recentLogs, recentLogsTotal, err := svc.ListLedgerEntries(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 8})
 	if err != nil {
-		recentLogs = []map[string]interface{}{}
+		recentLogs = []map[string]any{}
 		recentLogsTotal = 0
 	}
 	paymentOrders, err := svc.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{Page: 1, PageSize: 8, Status: "paid"})
@@ -802,7 +802,7 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	}
 	stats, err := svc.GetLogStats(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 1000})
 	if err != nil {
-		stats = map[string]interface{}{}
+		stats = map[string]any{}
 	}
 	topModels, err := svc.AggregateUsageTopN(r.Context(), "model", 5)
 	if err != nil {
@@ -896,7 +896,7 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		if channel.GetBalanceUpdatedTime() == 0 || now-channel.GetBalanceUpdatedTime() > 24*60*60 {
 			staleBalanceCount++
 		}
-		for _, model := range strings.Split(channel.GetModels(), ",") {
+		for model := range strings.SplitSeq(channel.GetModels(), ",") {
 			model = strings.TrimSpace(model)
 			if model != "" {
 				models[model] = struct{}{}
@@ -908,8 +908,8 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		configuredModels = len(oneAPIChannelModelCatalog())
 	}
 
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
-		"totals": map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
+		"totals": map[string]any{
 			"users":                        users.GetTotal(),
 			"active_users":                 activeUsers.GetTotal(),
 			"channels":                     channels.GetTotal(),
@@ -946,12 +946,12 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	}))
 }
 
-func costAnalysisSummary(quotaUsed, upstreamCost, grossProfit int64) map[string]interface{} {
+func costAnalysisSummary(quotaUsed, upstreamCost, grossProfit int64) map[string]any {
 	margin := float64(0)
 	if quotaUsed > 0 {
 		margin = float64(grossProfit) / float64(quotaUsed)
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"revenue_quota": quotaUsed,
 		"upstream_cost": upstreamCost,
 		"gross_profit":  grossProfit,
@@ -960,16 +960,16 @@ func costAnalysisSummary(quotaUsed, upstreamCost, grossProfit int64) map[string]
 	}
 }
 
-func usageAggregateViewsToMaps(items []service.UsageAggregateView) []map[string]interface{} {
-	out := make([]map[string]interface{}, 0, len(items))
+func usageAggregateViewsToMaps(items []service.UsageAggregateView) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		out = append(out, usageAggregateViewToMap(item))
 	}
 	return out
 }
 
-func usageAggregateViewToMap(item service.UsageAggregateView) map[string]interface{} {
-	return map[string]interface{}{
+func usageAggregateViewToMap(item service.UsageAggregateView) map[string]any {
+	return map[string]any{
 		"key":                     item.Key,
 		"user_id":                 item.UserID,
 		"channel_id":              item.ChannelID,
@@ -988,7 +988,7 @@ func usageAggregateViewToMap(item service.UsageAggregateView) map[string]interfa
 	}
 }
 
-func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1.ChannelSummary, enrichmentChannels map[int64]*commonv1.ChannelSummary) []map[string]interface{} {
+func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1.ChannelSummary, enrichmentChannels map[int64]*commonv1.ChannelSummary) []map[string]any {
 	channelByID := map[int64]*commonv1.ChannelSummary{}
 	for _, channel := range channels {
 		channelByID[channel.GetId()] = channel
@@ -1000,7 +1000,7 @@ func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1
 			channelByID[id] = channel
 		}
 	}
-	out := make([]map[string]interface{}, 0, len(items))
+	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		row := usageAggregateViewToMap(item)
 		if channel := channelByID[item.ChannelID]; channel != nil {
@@ -1028,7 +1028,7 @@ func enrichChannelUsage(items []service.UsageAggregateView, channels []*commonv1
 // here: otherwise the entire non-subscription usage collapses into a single
 // "subscription_account_id = 0" bucket whose cost equals the total channel
 // cost, which would make the "订阅账号成本" card wrongly display channel cost.
-func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, eventItems []service.SubscriptionAccountQuotaEventAggregateView, accounts []*commonv1.SubscriptionAccountSummary, enrichmentAccounts map[int64]*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
+func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, eventItems []service.SubscriptionAccountQuotaEventAggregateView, accounts []*commonv1.SubscriptionAccountSummary, enrichmentAccounts map[int64]*commonv1.SubscriptionAccountSummary) []map[string]any {
 	accountByID := map[int64]*commonv1.SubscriptionAccountSummary{}
 	for _, account := range accounts {
 		accountByID[account.GetId()] = account
@@ -1046,7 +1046,7 @@ func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, eventIte
 	}
 	// The summary only fetches the overview account page. Keep enrichment
 	// best-effort: unresolved ids still surface as rows with a fallback label.
-	out := make([]map[string]interface{}, 0, len(items))
+	out := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		// Skip the synthetic "no subscription account" bucket (id == 0) so the
 		// subscription-account cost card only reflects real subscription-account
@@ -1076,7 +1076,7 @@ func enrichSubscriptionAccountUsage(items []service.UsageAggregateView, eventIte
 	return out
 }
 
-func enrichSubscriptionAccountQuotaEventUsage(eventItems []service.SubscriptionAccountQuotaEventAggregateView, ledgerItems []service.UsageAggregateView, accounts []*commonv1.SubscriptionAccountSummary, enrichmentAccounts map[int64]*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
+func enrichSubscriptionAccountQuotaEventUsage(eventItems []service.SubscriptionAccountQuotaEventAggregateView, ledgerItems []service.UsageAggregateView, accounts []*commonv1.SubscriptionAccountSummary, enrichmentAccounts map[int64]*commonv1.SubscriptionAccountSummary) []map[string]any {
 	accountByID := map[int64]*commonv1.SubscriptionAccountSummary{}
 	for _, account := range accounts {
 		accountByID[account.GetId()] = account
@@ -1094,12 +1094,12 @@ func enrichSubscriptionAccountQuotaEventUsage(eventItems []service.SubscriptionA
 			ledgerByAccountID[item.SubscriptionAccountID] = item
 		}
 	}
-	out := make([]map[string]interface{}, 0, len(eventItems))
+	out := make([]map[string]any, 0, len(eventItems))
 	for _, item := range eventItems {
 		if item.SubscriptionAccountID == 0 {
 			continue
 		}
-		row := map[string]interface{}{
+		row := map[string]any{
 			"subscription_account_id": item.SubscriptionAccountID,
 			"cost_usd":                item.CostUSD,
 			"charged_usd":             item.ChargedUSD,
@@ -1131,15 +1131,15 @@ func enrichSubscriptionAccountQuotaEventUsage(eventItems []service.SubscriptionA
 	return out
 }
 
-func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []service.UsageAggregateView, reconciliation *service.ListReconciliationRunsResult, subscriptionAccounts []*commonv1.SubscriptionAccountSummary) []map[string]interface{} {
-	alerts := []map[string]interface{}{}
+func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []service.UsageAggregateView, reconciliation *service.ListReconciliationRunsResult, subscriptionAccounts []*commonv1.SubscriptionAccountSummary) []map[string]any {
+	alerts := []map[string]any{}
 	now := time.Now().Unix()
 	for _, channel := range channels {
 		if channel.GetStatus() != 1 {
 			continue
 		}
 		if channel.GetBalanceUpdatedTime() == 0 || now-channel.GetBalanceUpdatedTime() > 24*60*60 {
-			alerts = append(alerts, map[string]interface{}{
+			alerts = append(alerts, map[string]any{
 				"type":       "stale_balance",
 				"severity":   "warning",
 				"category":   "channel",
@@ -1148,7 +1148,7 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 			})
 		}
 		if channel.GetBalanceUpdatedTime() > 0 && channel.GetBalance() <= 1 {
-			alerts = append(alerts, map[string]interface{}{
+			alerts = append(alerts, map[string]any{
 				"type":       "low_balance",
 				"severity":   "critical",
 				"category":   "channel",
@@ -1159,7 +1159,7 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 	}
 	for _, item := range topChannels {
 		if item.GrossProfit < 0 {
-			alerts = append(alerts, map[string]interface{}{
+			alerts = append(alerts, map[string]any{
 				"type":         "negative_profit",
 				"severity":     "critical",
 				"category":     "channel",
@@ -1171,7 +1171,7 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 	}
 	if latest := latestReconciliationRun(reconciliation); latest != nil {
 		if count := interfaceToInt64(latest["discrepancy_count"]); count > 0 {
-			alerts = append(alerts, map[string]interface{}{
+			alerts = append(alerts, map[string]any{
 				"type":              "reconciliation_discrepancy",
 				"severity":          "critical",
 				"category":          "billing",
@@ -1194,7 +1194,7 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 			if account.GetRecoveryPolicy() == "manual" {
 				severity = "critical"
 			}
-			alerts = append(alerts, map[string]interface{}{
+			alerts = append(alerts, map[string]any{
 				"type":                 "subscription_account_unschedulable",
 				"severity":             severity,
 				"category":             "subscription_account",
@@ -1207,7 +1207,7 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 			})
 		}
 		if account.GetQuotaSnapshotPaused() {
-			alerts = append(alerts, map[string]interface{}{
+			alerts = append(alerts, map[string]any{
 				"type":         "subscription_account_writeback_down",
 				"severity":     "critical",
 				"category":     "subscription_account",
@@ -1220,12 +1220,12 @@ func adminSummaryAlerts(channels []*commonv1.ChannelSummary, topChannels []servi
 	return alerts
 }
 
-func latestReconciliationRun(reconciliation *service.ListReconciliationRunsResult) map[string]interface{} {
+func latestReconciliationRun(reconciliation *service.ListReconciliationRunsResult) map[string]any {
 	if reconciliation == nil || len(reconciliation.Runs) == 0 || reconciliation.Runs[0] == nil {
 		return nil
 	}
 	run := reconciliation.Runs[0]
-	return map[string]interface{}{
+	return map[string]any{
 		"run_id":             run.RunID,
 		"run_at":             run.RunAt,
 		"discrepancy_count":  run.DiscrepancyCount,
@@ -1235,7 +1235,7 @@ func latestReconciliationRun(reconciliation *service.ListReconciliationRunsResul
 	}
 }
 
-func interfaceToInt64(value interface{}) int64 {
+func interfaceToInt64(value any) int64 {
 	switch v := value.(type) {
 	case int:
 		return int64(v)
@@ -1301,10 +1301,10 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 		return
 	}
 	if svc == nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"success": true,
 			"message": "",
-			"data": map[string]interface{}{
+			"data": map[string]any{
 				"prices":               []readonlyPricingRow{},
 				"amount_per_unit":      float64(readonlyPricingUnitScale),
 				"unit":                 "1M tokens",
@@ -1336,10 +1336,10 @@ func handleReadonlyPricing(w http.ResponseWriter, r *http.Request, svc *service.
 			unpricedCount++
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"prices":               rows,
 			"amount_per_unit":      amountPerUnit,
 			"unit":                 "1M tokens",
@@ -1423,23 +1423,23 @@ func readonlyPricingRows(options map[string]string, quotaPerUnit float64) []read
 		price := modelPrices[model]
 		row := readonlyPricingRow{Model: model}
 		if price.InputPrice != nil {
-			row.InputPrice = floatPtr(*price.InputPrice * readonlyPricingMTok)
+			row.InputPrice = new(*price.InputPrice * readonlyPricingMTok)
 		} else if ratio, ok := modelRatios[model]; ok {
-			row.InputPrice = floatPtr((ratio / quotaPerUnit) * readonlyPricingMTok)
+			row.InputPrice = new((ratio / quotaPerUnit) * readonlyPricingMTok)
 		}
 		if price.OutputPrice != nil {
-			row.OutputPrice = floatPtr(*price.OutputPrice * readonlyPricingMTok)
+			row.OutputPrice = new(*price.OutputPrice * readonlyPricingMTok)
 		} else if ratio, ok := modelRatios[model]; ok {
-			row.OutputPrice = floatPtr(((ratio * ratioOrDefault(completionRatios[model], 1)) / quotaPerUnit) * readonlyPricingMTok)
+			row.OutputPrice = new(((ratio * ratioOrDefault(completionRatios[model], 1)) / quotaPerUnit) * readonlyPricingMTok)
 		}
 		if price.CacheReadPrice != nil {
-			row.CacheReadPrice = floatPtr(*price.CacheReadPrice * readonlyPricingMTok)
+			row.CacheReadPrice = new(*price.CacheReadPrice * readonlyPricingMTok)
 		}
 		if price.CacheCreation5mPrice != nil {
-			row.CacheCreation5mPrice = floatPtr(*price.CacheCreation5mPrice * readonlyPricingMTok)
+			row.CacheCreation5mPrice = new(*price.CacheCreation5mPrice * readonlyPricingMTok)
 		}
 		if price.CacheCreation1hPrice != nil {
-			row.CacheCreation1hPrice = floatPtr(*price.CacheCreation1hPrice * readonlyPricingMTok)
+			row.CacheCreation1hPrice = new(*price.CacheCreation1hPrice * readonlyPricingMTok)
 		}
 		// A model is "unpriced" for cache creation when it exposes neither
 		// 5m nor 1h cache-creation prices. Pure ratio-priced models are not
@@ -1509,11 +1509,12 @@ func ratioOrDefault(value, fallback float64) float64 {
 	return fallback
 }
 
+//go:fix inline
 func floatPtr(value float64) *float64 {
-	return &value
+	return new(value)
 }
 
-func paymentSummaryFromOrders(resp *billingv1.ListPaymentOrdersResponse) map[string]interface{} {
+func paymentSummaryFromOrders(resp *billingv1.ListPaymentOrdersResponse) map[string]any {
 	amount := int64(0)
 	total := int64(0)
 	if resp != nil {
@@ -1530,7 +1531,7 @@ func paymentSummaryFromOrders(resp *billingv1.ListPaymentOrdersResponse) map[str
 			total = resp.GetTotal()
 		}
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"recent_order_count":        total,
 		"recent_amount_cents":       amount,
 		"recent_amount_money_cents": amount,
@@ -1538,8 +1539,8 @@ func paymentSummaryFromOrders(resp *billingv1.ListPaymentOrdersResponse) map[str
 	}
 }
 
-func userInfoToMap(u *commonv1.UserInfo, balance, usedAmount int64) map[string]interface{} {
-	return map[string]interface{}{
+func userInfoToMap(u *commonv1.UserInfo, balance, usedAmount int64) map[string]any {
+	return map[string]any{
 		"id":          u.GetId(),
 		"username":    u.GetUsername(),
 		"displayName": u.GetDisplayName(),
@@ -1588,8 +1589,8 @@ func providerNameFromType(channelType int32) string {
 	}
 }
 
-func enrichUsersWithBilling(ctx context.Context, svc *service.AdminService, users []*commonv1.UserInfo) []map[string]interface{} {
-	result := make([]map[string]interface{}, 0, len(users))
+func enrichUsersWithBilling(ctx context.Context, svc *service.AdminService, users []*commonv1.UserInfo) []map[string]any {
+	result := make([]map[string]any, 0, len(users))
 
 	// Collect user IDs for batch query
 	userIDs := make([]string, 0, len(users))
@@ -1680,7 +1681,7 @@ func (a adminWebAssets) handlePage(w http.ResponseWriter, r *http.Request) {
 	http.FileServer(http.FS(a.root)).ServeHTTP(w, r)
 }
 
-func writeJSON(w http.ResponseWriter, code int, v interface{}) {
+func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = jsonx.NewEncoder(w).Encode(v)
@@ -1748,8 +1749,8 @@ func oneAPIPageSize(r *http.Request) int32 {
 	return 20
 }
 
-func apiResponse(success bool, message string, data interface{}) map[string]interface{} {
-	resp := map[string]interface{}{
+func apiResponse(success bool, message string, data any) map[string]any {
+	resp := map[string]any{
 		"success": success,
 		"message": message,
 	}
@@ -1822,8 +1823,8 @@ func httpStatusForAdminError(err error) int {
 }
 
 // logEntryToJSON converts a proto LogEntry to a camelCase JSON map for frontend compatibility.
-func logEntryToJSON(entry *adminv1.LogEntry) map[string]interface{} {
-	return map[string]interface{}{
+func logEntryToJSON(entry *adminv1.LogEntry) map[string]any {
+	return map[string]any{
 		"id":           entry.GetId(),
 		"userId":       entry.GetUserId(),
 		"type":         entry.GetType(),
@@ -1836,15 +1837,15 @@ func logEntryToJSON(entry *adminv1.LogEntry) map[string]interface{} {
 }
 
 // logEntriesToJSON converts a slice of proto LogEntries to camelCase JSON maps.
-func logEntriesToJSON(entries []*adminv1.LogEntry) []map[string]interface{} {
-	result := make([]map[string]interface{}, 0, len(entries))
+func logEntriesToJSON(entries []*adminv1.LogEntry) []map[string]any {
+	result := make([]map[string]any, 0, len(entries))
 	for _, entry := range entries {
 		result = append(result, logEntryToJSON(entry))
 	}
 	return result
 }
 
-func writeOneAPIServiceResponse(w http.ResponseWriter, resp interface{}, err error) {
+func writeOneAPIServiceResponse(w http.ResponseWriter, resp any, err error) {
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
@@ -1966,7 +1967,7 @@ func handleGroupManagement(w http.ResponseWriter, r *http.Request, svc *service.
 	}
 }
 
-func decodeBody(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
+func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	if err := jsonx.NewDecoder(r.Body).Decode(dst); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return false
@@ -2118,7 +2119,7 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 			writeJSON(w, http.StatusOK, apiResponse(false, message, nil))
 			return
 		}
-		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"status": status, "role": user.GetRole()}))
+		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{"status": status, "role": user.GetRole()}))
 	case "delete":
 		resp, err := svc.DeleteUser(r.Context(), &adminv1.AdminDeleteUserRequest{UserId: userID})
 		if err != nil || !resp.GetSuccess() {
@@ -2132,7 +2133,7 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 			writeJSON(w, http.StatusOK, apiResponse(false, message, nil))
 			return
 		}
-		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"status": user.GetStatus(), "role": user.GetRole()}))
+		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{"status": user.GetStatus(), "role": user.GetRole()}))
 	case "promote", "demote":
 		// 0=guest, 1=common, 10=admin, 100=root. Promote raises a common
 		// user to admin; demote returns them to common. Root cannot be
@@ -2165,7 +2166,7 @@ func handleOneAPIUserManage(w http.ResponseWriter, r *http.Request, svc *service
 			writeJSON(w, http.StatusOK, apiResponse(false, message, nil))
 			return
 		}
-		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"status": user.GetStatus(), "role": resp.GetRole()}))
+		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{"status": user.GetStatus(), "role": resp.GetRole()}))
 	default:
 		writeJSON(w, http.StatusOK, apiResponse(false, "unsupported action", nil))
 	}
@@ -2454,8 +2455,8 @@ func handleSubscriptionAccountByID(w http.ResponseWriter, r *http.Request, svc *
 		handleBatchApplySubscriptionAccountQuotaTemplate(w, r, svc)
 		return
 	}
-	if strings.HasSuffix(rest, "/reset-quota") {
-		idPart := strings.TrimSuffix(rest, "/reset-quota")
+	if before, ok := strings.CutSuffix(rest, "/reset-quota"); ok {
+		idPart := before
 		accountID, err := strconv.ParseInt(strings.Trim(idPart, "/"), 10, 64)
 		if err != nil || accountID <= 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription account id"})
@@ -2474,8 +2475,8 @@ func handleSubscriptionAccountByID(w http.ResponseWriter, r *http.Request, svc *
 		writeServiceResponse(w, resp, err)
 		return
 	}
-	if strings.HasSuffix(rest, "/status") {
-		idPart := strings.TrimSuffix(rest, "/status")
+	if before, ok := strings.CutSuffix(rest, "/status"); ok {
+		idPart := before
 		accountID, err := strconv.ParseInt(strings.Trim(idPart, "/"), 10, 64)
 		if err != nil || accountID <= 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription account id"})
@@ -2870,13 +2871,13 @@ func handleOneAPIChannelModels(w http.ResponseWriter, r *http.Request, svc *serv
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"object": "list",
 		"data":   oneAPIChannelModelCatalog(),
 	})
 }
 
-func oneAPIChannelModelCatalog() []map[string]interface{} {
+func oneAPIChannelModelCatalog() []map[string]any {
 	models := []struct {
 		id      string
 		ownedBy string
@@ -2904,7 +2905,7 @@ func oneAPIChannelModelCatalog() []map[string]interface{} {
 		{id: "llama-3.1-sonar-small-128k-online", ownedBy: "perplexity"},
 		{id: "voyage-3", ownedBy: "voyageai"},
 	}
-	permission := []map[string]interface{}{
+	permission := []map[string]any{
 		{
 			"id":                   "modelperm-micro-one-api",
 			"object":               "model_permission",
@@ -2920,9 +2921,9 @@ func oneAPIChannelModelCatalog() []map[string]interface{} {
 			"is_blocking":          false,
 		},
 	}
-	result := make([]map[string]interface{}, 0, len(models))
+	result := make([]map[string]any, 0, len(models))
 	for _, model := range models {
-		result = append(result, map[string]interface{}{
+		result = append(result, map[string]any{
 			"id":         model.id,
 			"object":     "model",
 			"created":    1626777600,
@@ -2937,8 +2938,8 @@ func oneAPIChannelModelCatalog() []map[string]interface{} {
 
 func handleChannelByID(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/channels/")
-	if strings.HasSuffix(rest, "/status") {
-		idPart := strings.TrimSuffix(rest, "/status")
+	if before, ok := strings.CutSuffix(rest, "/status"); ok {
+		idPart := before
 		channelID, err := strconv.ParseInt(strings.Trim(idPart, "/"), 10, 64)
 		if err != nil || channelID <= 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid channel id"})
@@ -2995,9 +2996,9 @@ func handleTestChannels(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	results := make([]map[string]interface{}, 0, len(resp.Channels))
+	results := make([]map[string]any, 0, len(resp.Channels))
 	for _, channel := range resp.Channels {
-		results = append(results, map[string]interface{}{
+		results = append(results, map[string]any{
 			"success":    true,
 			"channel_id": channel.Id,
 			"name":       channel.Name,
@@ -3008,7 +3009,7 @@ func handleTestChannels(w http.ResponseWriter, r *http.Request, svc *service.Adm
 			"message":    "channel metadata resolved",
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "", "data": results})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "", "data": results})
 }
 
 func handleTestChannel(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -3023,10 +3024,10 @@ func handleTestChannel(w http.ResponseWriter, r *http.Request, svc *service.Admi
 	}
 	result, err := svc.TestChannel(r.Context(), channelID)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"success": false, "message": sanitizeAdminError(err)})
+		writeJSON(w, http.StatusOK, map[string]any{"success": false, "message": sanitizeAdminError(err)})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "", "data": result})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "", "data": result})
 }
 
 func handleUpdateChannelBalances(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -3175,7 +3176,7 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"success": true,
 			"message": "",
 			"data":    options,
@@ -3210,7 +3211,7 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 				return
 			}
-			out := map[string]interface{}{
+			out := map[string]any{
 				"success": resp.GetSuccess(),
 				"message": resp.GetMessage(),
 			}
@@ -3247,14 +3248,14 @@ func handleOneAPIOptions(w http.ResponseWriter, r *http.Request, svc *service.Ad
 				return
 			}
 			if !resp.GetSuccess() {
-				writeJSON(w, http.StatusOK, map[string]interface{}{
+				writeJSON(w, http.StatusOK, map[string]any{
 					"success": false,
 					"message": resp.GetMessage(),
 				})
 				return
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"success": true,
 			"message": "",
 		})
@@ -3289,7 +3290,7 @@ func handleListLogs(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 		return
 	}
 
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
 		"logs":  entries,
 		"total": total,
 	}))
@@ -3317,7 +3318,7 @@ func handleLogStats(w http.ResponseWriter, r *http.Request, svc *service.AdminSe
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "", "data": stats})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "", "data": stats})
 }
 
 func handleOneAPILogs(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
@@ -3395,9 +3396,9 @@ func handleOneAPIDeleteLogs(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, resp.StatusCode, apiResponse(false, string(body), nil))
 		return
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
-		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"raw": string(body)}))
+		writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{"raw": string(body)}))
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", payload))
@@ -3498,7 +3499,7 @@ func handleOneAPIListLogs(w http.ResponseWriter, r *http.Request, svc *service.A
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
 		"logs":  entries,
 		"total": total,
 	}))
@@ -3807,7 +3808,7 @@ func handlePaymentOrders(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		writeJSON(w, http.StatusInternalServerError, apiResponse(false, sanitizeAdminError(err), nil))
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
 		"orders": resp.GetOrders(),
 		"total":  resp.GetTotal(),
 	}))
@@ -3836,7 +3837,7 @@ func handlePaymentOrderByTradeNo(w http.ResponseWriter, r *http.Request, svc *se
 		writeJSON(w, http.StatusOK, apiResponse(false, message, nil))
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{"order": resp.GetOrder()}))
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{"order": resp.GetOrder()}))
 }
 
 // successMessage is the union of the two proto-generated getter shapes used
@@ -3852,7 +3853,7 @@ type successErrorMessage interface {
 	GetErrorMessage() string
 }
 
-func writeServiceResponse(w http.ResponseWriter, resp interface{}, err error) {
+func writeServiceResponse(w http.ResponseWriter, resp any, err error) {
 	if err != nil {
 		// A gRPC AlreadyExists from a downstream service is an idempotency
 		// conflict (duplicate Idempotency-Key, v0.18 P0 §5.4): surface it as
@@ -3975,7 +3976,7 @@ func handleNotifyProxyByID(w http.ResponseWriter, r *http.Request, proxy *httput
 
 		// Proxy to notify-worker's gRPC endpoint via HTTP (not available in current HTTP server)
 		// For now, return an error indicating this feature is not yet available
-		writeJSON(w, http.StatusNotImplemented, map[string]interface{}{
+		writeJSON(w, http.StatusNotImplemented, map[string]any{
 			"success": false,
 			"message": "Notification status update via HTTP is not yet implemented. Please use the gRPC endpoint.",
 		})

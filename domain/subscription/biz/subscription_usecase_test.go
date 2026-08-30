@@ -245,9 +245,9 @@ func TestSubscriptionUsecase_AssignAndQuotaFlow(t *testing.T) {
 		Name:            "pro",
 		Platform:        "openai",
 		Status:          SubscriptionGroupStatusEnabled,
-		DailyLimitUSD:   ptrFloat64(10),
-		WeeklyLimitUSD:  ptrFloat64(70),
-		MonthlyLimitUSD: ptrFloat64(300),
+		DailyLimitUSD:   new(float64(10)),
+		WeeklyLimitUSD:  new(float64(70)),
+		MonthlyLimitUSD: new(float64(300)),
 	}
 	if err := repo.CreateGroup(context.Background(), requireGroup); err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -374,8 +374,9 @@ func TestSubscriptionUsecase_RejectsDuplicateAssignmentAndRevokedExtend(t *testi
 	}
 }
 
+//go:fix inline
 func ptrFloat64(v float64) *float64 {
-	return &v
+	return new(v)
 }
 
 // TestAssignOrExtend_AccumulatesRemainingTime (review §6 regression for H3):
@@ -463,9 +464,9 @@ func TestSubscriptionUsecase_GetProgressNextRefresh(t *testing.T) {
 		DisplayName:     "Pro 套餐",
 		Platform:        "openai",
 		Status:          SubscriptionGroupStatusEnabled,
-		DailyLimitUSD:   ptrFloat64(10),
-		WeeklyLimitUSD:  ptrFloat64(70),
-		MonthlyLimitUSD: ptrFloat64(300),
+		DailyLimitUSD:   new(float64(10)),
+		WeeklyLimitUSD:  new(float64(70)),
+		MonthlyLimitUSD: new(float64(300)),
 	}
 	if err := repo.CreateGroup(context.Background(), group); err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -524,8 +525,8 @@ func TestSubscriptionUsecase_GetProgressRollsWindowAndResetsNextRefresh(t *testi
 		Name:           "pro",
 		Platform:       "openai",
 		Status:         SubscriptionGroupStatusEnabled,
-		DailyLimitUSD:  ptrFloat64(10),
-		WeeklyLimitUSD: ptrFloat64(70),
+		DailyLimitUSD:  new(float64(10)),
+		WeeklyLimitUSD: new(float64(70)),
 	}
 	if err := repo.CreateGroup(context.Background(), group); err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
@@ -814,15 +815,13 @@ func TestAssign_PropagatesDuplicateKeyFromDB(t *testing.T) {
 
 	var wg sync.WaitGroup
 	results := make(chan error, 2)
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 2 {
+		wg.Go(func() {
 			_, err := uc.Assign(context.Background(), &AssignSubscriptionRequest{
 				UserID: 9001, GroupID: group.ID, ExpiresAt: 2000,
 			})
 			results <- err
-		}()
+		})
 	}
 	wg.Wait()
 	close(results)

@@ -382,7 +382,7 @@ func rewriteOpenAIWSModel(message []byte, clientModel, resolvedModel string) []b
 	if clientModel == resolvedModel || clientModel == "" || resolvedModel == "" {
 		return message
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(message, &payload); err != nil {
 		return message
 	}

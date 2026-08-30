@@ -45,10 +45,7 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	out.Text = &ResponsesText{Verbosity: "medium"}
 
 	if req.MaxTokens > 0 {
-		v := req.MaxTokens
-		if v < minMaxOutputTokens {
-			v = minMaxOutputTokens
-		}
+		v := max(req.MaxTokens, minMaxOutputTokens)
 		out.MaxOutputTokens = &v
 	}
 
@@ -435,14 +432,15 @@ func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 			Name:        t.Name,
 			Description: t.Description,
 			Parameters:  normalizeToolParameters(t.InputSchema),
-			Strict:      boolPtr(false),
+			Strict:      new(false),
 		})
 	}
 	return out
 }
 
+//go:fix inline
 func boolPtr(v bool) *bool {
-	return &v
+	return new(v)
 }
 
 // isReasoningModel reports whether model is a reasoning model that does not

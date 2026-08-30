@@ -96,11 +96,11 @@ func (p *VoyageAIProvider) Forward(ctx context.Context, req *RawRequest) (*RawRe
 }
 
 func normalizeVoyageAIEmbeddingResponse(body []byte) []byte {
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}
-	usage, ok := payload["usage"].(map[string]interface{})
+	usage, ok := payload["usage"].(map[string]any)
 	if !ok {
 		return body
 	}

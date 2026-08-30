@@ -125,8 +125,8 @@ func parseSince(s string) (time.Duration, error) {
 	if s == "" {
 		return 24 * time.Hour, nil
 	}
-	if strings.HasSuffix(s, "d") {
-		days := strings.TrimSuffix(s, "d")
+	if before, ok := strings.CutSuffix(s, "d"); ok {
+		days := before
 		var n int
 		if _, err := fmt.Sscanf(days, "%d", &n); err != nil || n <= 0 {
 			return 0, fmt.Errorf("expected e.g. 24h or 7d")
@@ -411,7 +411,7 @@ func checkVendorBill(db *sql.DB, cutoff time.Time, opts options, rep *report) {
 			return
 		}
 		row := &vendorRow{family: strings.ToLower(strings.TrimSpace(rec[col[0]])), date: rec[col[1]]}
-		for i := 0; i < 6; i++ {
+		for i := range 6 {
 			n, perr := parseInt64(rec[col[i+2]])
 			if perr != nil {
 				rep.discrepancy("vendor bill row %s/%s field %q: %v", row.family, row.date, header[col[i+2]], perr)
@@ -458,7 +458,7 @@ func checkVendorBill(db *sql.DB, cutoff time.Time, opts options, rep *report) {
 			t = &vendorRow{family: providerFamilyForModel(model), date: date}
 			actual[key] = t
 		}
-		for i := 0; i < 6; i++ {
+		for i := range 6 {
 			t.fields[i] += row.fields[i]
 		}
 	}
@@ -476,7 +476,7 @@ func checkVendorBill(db *sql.DB, cutoff time.Time, opts options, rep *report) {
 			rep.discrepancy("vendor row %s/%s has no matching ledger traffic in window", v.family, v.date)
 			continue
 		}
-		for i := 0; i < 6; i++ {
+		for i := range 6 {
 			diff := float64(a.fields[i] - v.fields[i])
 			rel := 0.0
 			if v.fields[i] != 0 {

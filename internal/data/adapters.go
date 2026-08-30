@@ -3,7 +3,7 @@ package data
 import (
 	"context"
 	"errors"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -152,7 +152,7 @@ func sortedExcludedIDs(excluded map[int64]bool) []int64 {
 			ids = append(ids, id)
 		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	return ids
 }
 

@@ -12,7 +12,7 @@ func TestRateLimiterTokenBucketBurstAndRefill(t *testing.T) {
 		Window:            time.Second,
 		MaxClients:        10,
 	})
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		allowed, _ := limiter.Allow("client")
 		if !allowed {
 			t.Fatalf("burst request %d was rejected", i+1)

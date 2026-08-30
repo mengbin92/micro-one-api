@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"net"
+	"slices"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -39,9 +40,9 @@ func (r *testMonitorRepo) ListHealthChecks(ctx context.Context, serviceName stri
 }
 
 func (r *testMonitorRepo) GetLatestHealthCheck(ctx context.Context, serviceName string) (*monitorbiz.HealthCheck, error) {
-	for i := len(r.checks) - 1; i >= 0; i-- {
-		if r.checks[i].ServiceName == serviceName {
-			return r.checks[i], nil
+	for _, v := range slices.Backward(r.checks) {
+		if v.ServiceName == serviceName {
+			return v, nil
 		}
 	}
 	return nil, monitorbiz.ErrHealthCheckNotFound

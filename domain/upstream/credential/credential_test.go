@@ -17,7 +17,7 @@ import (
 type fakeLookup struct {
 	mu       sync.Mutex
 	store    map[int64]*AccountCredentials
-	stores   int32
+	stores   atomic.Int32
 	expiring []int64
 }
 
@@ -40,7 +40,7 @@ func (f *fakeLookup) Lookup(_ context.Context, id int64) (*AccountCredentials, e
 func (f *fakeLookup) Store(_ context.Context, id int64, c *AccountCredentials) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	atomic.AddInt32(&f.stores, 1)
+	f.stores.Add(1)
 	cp := *c
 	f.store[id] = &cp
 	return nil
@@ -182,7 +182,7 @@ func TestClaudeTokenProvider_GetAccessToken_CachesValidToken(t *testing.T) {
 	p := NewClaudeTokenProviderWithHTTPClient(lookup, &http.Client{Timeout: 5 * time.Second})
 
 	// Two rapid calls should only hit the cache.
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		token, err := p.GetAccessToken(context.Background(), 1)
 		if err != nil {
 			t.Fatalf("call %d: %v", i, err)

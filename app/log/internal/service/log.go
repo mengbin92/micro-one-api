@@ -162,11 +162,11 @@ func (s *LogService) HandleListLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	items := make([]map[string]interface{}, 0, len(entries))
+	items := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
 		items = append(items, logEntryToMap(e))
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
 func (s *LogService) HandleIngestLog(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +234,7 @@ func (s *LogService) HandleDeleteLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 }
 
 func parseUnixQuery(raw string) (time.Time, error) {
@@ -307,7 +307,7 @@ func (s *LogService) HandleOneAPIUserLogStats(w http.ResponseWriter, r *http.Req
 		writeOneAPI(w, http.StatusOK, false, err.Error(), nil)
 		return
 	}
-	writeOneAPI(w, http.StatusOK, true, "", map[string]interface{}{
+	writeOneAPI(w, http.StatusOK, true, "", map[string]any{
 		"total":         total,
 		"sampled_count": len(entries),
 		"count_by_type": countByType,
@@ -315,8 +315,8 @@ func (s *LogService) HandleOneAPIUserLogStats(w http.ResponseWriter, r *http.Req
 	})
 }
 
-func logEntryToMap(e *biz.LogEntry) map[string]interface{} {
-	return map[string]interface{}{
+func logEntryToMap(e *biz.LogEntry) map[string]any {
+	return map[string]any{
 		"id":                       e.ID,
 		"level":                    e.Level,
 		"type":                     e.Level,
@@ -340,8 +340,8 @@ func logEntryToMap(e *biz.LogEntry) map[string]interface{} {
 	}
 }
 
-func logEntriesToMaps(entries []*biz.LogEntry) []map[string]interface{} {
-	items := make([]map[string]interface{}, 0, len(entries))
+func logEntriesToMaps(entries []*biz.LogEntry) []map[string]any {
+	items := make([]map[string]any, 0, len(entries))
 	for _, entry := range entries {
 		items = append(items, logEntryToMap(entry))
 	}
@@ -391,8 +391,8 @@ func oneAPIPage(r *http.Request) (int32, int32) {
 	return page, pageSize
 }
 
-func writeOneAPI(w http.ResponseWriter, status int, success bool, message string, data interface{}) {
-	resp := map[string]interface{}{
+func writeOneAPI(w http.ResponseWriter, status int, success bool, message string, data any) {
+	resp := map[string]any{
 		"success": success,
 		"message": message,
 	}
@@ -402,7 +402,7 @@ func writeOneAPI(w http.ResponseWriter, status int, success bool, message string
 	writeJSON(w, status, resp)
 }
 
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = jsonx.NewEncoder(w).Encode(data)
@@ -411,5 +411,5 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = jsonx.NewEncoder(w).Encode(map[string]interface{}{"error": message})
+	_ = jsonx.NewEncoder(w).Encode(map[string]any{"error": message})
 }

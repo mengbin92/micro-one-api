@@ -99,7 +99,7 @@ func (s *AdminService) SetUpstreamCost(ctx context.Context, entry UpstreamCostEn
 	if err != nil {
 		return err
 	}
-	return s.mutateUpstreamCosts(ctx, func(prices map[string]map[string]interface{}) {
+	return s.mutateUpstreamCosts(ctx, func(prices map[string]map[string]any) {
 		prices[key] = upstreamCostValue(entry, prices[key])
 	})
 }
@@ -109,7 +109,7 @@ func (s *AdminService) DeleteUpstreamCost(ctx context.Context, key string) error
 	if key == "" {
 		return fmt.Errorf("key is required")
 	}
-	return s.mutateUpstreamCosts(ctx, func(prices map[string]map[string]interface{}) {
+	return s.mutateUpstreamCosts(ctx, func(prices map[string]map[string]any) {
 		delete(prices, key)
 	})
 }
@@ -217,7 +217,7 @@ func (s *AdminService) MigrateUpstreamCostKeys(ctx context.Context, dryRun bool)
 	}
 	// Apply: move each value from old key to new key. Done in one
 	// read-modify-write so a partial failure leaves the option unchanged.
-	err = s.mutateUpstreamCostsRaw(ctx, func(prices map[string]map[string]interface{}) {
+	err = s.mutateUpstreamCostsRaw(ctx, func(prices map[string]map[string]any) {
 		for newKey, info := range rewrites {
 			if _, exists := prices[newKey]; exists {
 				plan.Skipped = append(plan.Skipped, UpstreamCostMigrationChange{
@@ -290,9 +290,9 @@ func validateUpstreamCostPrices(e UpstreamCostEntry) error {
 	return nil
 }
 
-func upstreamCostValue(e UpstreamCostEntry, existing map[string]interface{}) map[string]interface{} {
+func upstreamCostValue(e UpstreamCostEntry, existing map[string]any) map[string]any {
 	if existing == nil {
-		existing = map[string]interface{}{}
+		existing = map[string]any{}
 	}
 	existing["input_price"] = e.InputPrice
 	existing["output_price"] = e.OutputPrice
@@ -302,7 +302,7 @@ func upstreamCostValue(e UpstreamCostEntry, existing map[string]interface{}) map
 	return existing
 }
 
-func setOptionalPrice(values map[string]interface{}, key string, value *float64, clear bool) {
+func setOptionalPrice(values map[string]any, key string, value *float64, clear bool) {
 	switch {
 	case value != nil:
 		values[key] = *value
@@ -329,14 +329,14 @@ func parseLegacyUpstreamKey(key string) (channelID int64, model string, ok bool)
 	return id, key[idx+1:], true
 }
 
-func decodeUpstreamCostMap(raw string) (map[string]map[string]interface{}, error) {
-	out := map[string]map[string]interface{}{}
+func decodeUpstreamCostMap(raw string) (map[string]map[string]any, error) {
+	out := map[string]map[string]any{}
 	if strings.TrimSpace(raw) == "" {
 		return out, nil
 	}
 	if err := jsonx.Unmarshal([]byte(raw), &out); err != nil {
 		// The value may be map[string]ModelPrice (typed); retry as generic.
-		typed := map[string]map[string]interface{}{}
+		typed := map[string]map[string]any{}
 		if err2 := jsonx.Unmarshal([]byte(raw), &typed); err2 != nil {
 			return nil, fmt.Errorf("decode UpstreamModelPrice: %w", err)
 		}
@@ -398,7 +398,7 @@ func parseCanonicalUpstreamKey(key string) (kind string, sourceID int64, upstrea
 	return parts[0], id, parts[2]
 }
 
-func floatValue(v interface{}) float64 {
+func floatValue(v any) float64 {
 	switch n := v.(type) {
 	case float64:
 		return n
@@ -410,7 +410,7 @@ func floatValue(v interface{}) float64 {
 	return 0
 }
 
-func optionalFloatValue(values map[string]interface{}, key string) *float64 {
+func optionalFloatValue(values map[string]any, key string) *float64 {
 	value, ok := values[key]
 	if !ok {
 		return nil
@@ -421,11 +421,11 @@ func optionalFloatValue(values map[string]interface{}, key string) *float64 {
 
 // mutateUpstreamCosts loads the UpstreamModelPrice map, applies fn, and writes
 // it back atomically (last-writer-wins per key).
-func (s *AdminService) mutateUpstreamCosts(ctx context.Context, fn func(prices map[string]map[string]interface{})) error {
+func (s *AdminService) mutateUpstreamCosts(ctx context.Context, fn func(prices map[string]map[string]any)) error {
 	return s.mutateUpstreamCostsRaw(ctx, fn)
 }
 
-func (s *AdminService) mutateUpstreamCostsRaw(ctx context.Context, fn func(prices map[string]map[string]interface{})) error {
+func (s *AdminService) mutateUpstreamCostsRaw(ctx context.Context, fn func(prices map[string]map[string]any)) error {
 	if s.systemOptsUc == nil {
 		return fmt.Errorf("system options storage not configured")
 	}

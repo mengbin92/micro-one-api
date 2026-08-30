@@ -119,7 +119,7 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	var finalAccountID int64
 	var finalSuccess bool
 
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for range maxAttempts {
 		if current == nil || current.Channel == nil {
 			break
 		}

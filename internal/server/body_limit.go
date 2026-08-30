@@ -21,8 +21,7 @@ func readRequestBody(r *http.Request, maxSize int64) ([]byte, error) {
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxSize+1))
 	if err != nil {
-		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			return nil, errRequestBodyTooLarge
 		}
 		return nil, err

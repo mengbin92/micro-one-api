@@ -35,7 +35,7 @@ func ValidateServiceToken(ctx context.Context, serviceToken string) error {
 // ServiceTokenUnaryInterceptor authenticates internal unary RPCs with the
 // shared service token.
 func ServiceTokenUnaryInterceptor(serviceToken string) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if err := ValidateServiceToken(ctx, serviceToken); err != nil {
 			return nil, err
 		}
@@ -46,7 +46,7 @@ func ServiceTokenUnaryInterceptor(serviceToken string) grpc.UnaryServerIntercept
 // ServiceTokenStreamInterceptor authenticates internal streaming RPCs with
 // the shared service token.
 func ServiceTokenStreamInterceptor(serviceToken string) grpc.StreamServerInterceptor {
-	return func(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if err := ValidateServiceToken(ss.Context(), serviceToken); err != nil {
 			return err
 		}

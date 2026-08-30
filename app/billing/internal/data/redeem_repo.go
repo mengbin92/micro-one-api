@@ -118,7 +118,7 @@ func (r *redeemRepo) SearchRedeemCodes(ctx context.Context, keyword string) ([]*
 }
 
 func (r *redeemRepo) UpdateRedeemCode(ctx context.Context, code *biz.RedeemCode) error {
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"updated_at": time.Now(),
 	}
 

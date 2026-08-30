@@ -173,7 +173,7 @@ func (a *anomalyCounter) record(reason string) {
 // normalization rules. For streaming, parseCanonicalStream merges the usage
 // objects observed across SSE chunks.
 func parseCanonicalUsage(body []byte, protocol string, anomalies *anomalyCounter) canonicalBuckets {
-	var payload interface{}
+	var payload any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return canonicalBuckets{}
 	}
@@ -186,11 +186,11 @@ func parseCanonicalUsage(body []byte, protocol string, anomalies *anomalyCounter
 
 // findUsageMap recursively searches an unmarshalled JSON value for the first
 // map that looks like a usage block (has any token field).
-func findUsageMap(value interface{}) map[string]interface{} {
+func findUsageMap(value any) map[string]any {
 	switch typed := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		if nested, ok := typed["usage"]; ok {
-			if inner, ok := nested.(map[string]interface{}); ok && looksLikeUsage(inner) {
+			if inner, ok := nested.(map[string]any); ok && looksLikeUsage(inner) {
 				return inner
 			}
 		}
@@ -202,7 +202,7 @@ func findUsageMap(value interface{}) map[string]interface{} {
 				return found
 			}
 		}
-	case []interface{}:
+	case []any:
 		for _, item := range typed {
 			if found := findUsageMap(item); found != nil {
 				return found
@@ -212,7 +212,7 @@ func findUsageMap(value interface{}) map[string]interface{} {
 	return nil
 }
 
-func looksLikeUsage(m map[string]interface{}) bool {
+func looksLikeUsage(m map[string]any) bool {
 	for _, key := range []string{
 		"prompt_tokens", "input_tokens", "completion_tokens", "output_tokens",
 		"total_tokens", "cache_read_input_tokens", "cache_creation_input_tokens",
@@ -230,12 +230,12 @@ func looksLikeUsage(m map[string]interface{}) bool {
 // cache_read_tokens, Responses cached_tokens), then nested *_details objects.
 // This is required so OpenAI/Responses fixtures (F1, F2, F10) and the nested
 // Responses payload all resolve cache-read correctly.
-func canonicalCacheReadTokens(m map[string]interface{}) int64 {
+func canonicalCacheReadTokens(m map[string]any) int64 {
 	if v := numberField(m, "cache_read_input_tokens", "cache_read_tokens", "cached_tokens"); v != 0 {
 		return v
 	}
 	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
-		details, ok := m[key].(map[string]interface{})
+		details, ok := m[key].(map[string]any)
 		if !ok {
 			continue
 		}
@@ -247,7 +247,7 @@ func canonicalCacheReadTokens(m map[string]interface{}) int64 {
 }
 
 // canonicalFromUsageMap applies the ADR §3/§4 rules to a single usage map.
-func canonicalFromUsageMap(m map[string]interface{}, protocol string, anomalies *anomalyCounter) canonicalBuckets {
+func canonicalFromUsageMap(m map[string]any, protocol string, anomalies *anomalyCounter) canonicalBuckets {
 	var b canonicalBuckets
 
 	cacheRead := nonNeg(canonicalCacheReadTokens(m), anomalies, "negative")
@@ -303,8 +303,8 @@ func canonicalFromUsageMap(m map[string]interface{}, protocol string, anomalies 
 // object. Returns 0 when the detail is absent (caller distinguishes absent vs
 // explicit 0 via the existence check in the streaming path; here absence is
 // treated as 0 which is the documented default).
-func cacheCreationDetail(m map[string]interface{}, sub string) int64 {
-	nested, ok := m["cache_creation"].(map[string]interface{})
+func cacheCreationDetail(m map[string]any, sub string) int64 {
+	nested, ok := m["cache_creation"].(map[string]any)
 	if !ok {
 		return 0
 	}
@@ -335,13 +335,13 @@ func clampNonNeg(v int64) int64 {
 // back-fill: later non-zero values win, but cache fields missing in the delta
 // are inherited from message_start.
 func parseCanonicalStream(chunks []string, protocol string, anomalies *anomalyCounter) canonicalBuckets {
-	merged := map[string]interface{}{}
+	merged := map[string]any{}
 	for _, raw := range chunks {
 		data := extractSSEDataPayload(raw)
 		if data == "" {
 			continue
 		}
-		var payload interface{}
+		var payload any
 		if err := jsonx.Unmarshal([]byte(data), &payload); err != nil {
 			continue
 		}
@@ -358,7 +358,7 @@ func parseCanonicalStream(chunks []string, protocol string, anomalies *anomalyCo
 // "" if no data line is present. A chunk may include an "event:" line plus a
 // "data:" line (Anthropic format); only the data payload is parsed.
 func extractSSEDataPayload(chunk string) string {
-	for _, line := range strings.Split(chunk, "\n") {
+	for line := range strings.SplitSeq(chunk, "\n") {
 		line = strings.TrimSpace(line)
 		data, ok := strings.CutPrefix(line, "data: ")
 		if !ok {
@@ -381,16 +381,16 @@ func extractSSEDataPayload(chunk string) string {
 // when src only adds a zero (so the delta's output_tokens wins over the
 // start's placeholder output, but the start's input/cache survive a delta
 // that omits them). Nested cache_creation objects are merged key-by-key.
-func mergeUsageMaps(dst, src map[string]interface{}) {
+func mergeUsageMaps(dst, src map[string]any) {
 	for key, val := range src {
 		if key == "cache_creation" {
-			dstNested, _ := dst[key].(map[string]interface{})
-			srcNested, ok := val.(map[string]interface{})
+			dstNested, _ := dst[key].(map[string]any)
+			srcNested, ok := val.(map[string]any)
 			if !ok {
 				continue
 			}
 			if dstNested == nil {
-				dstNested = map[string]interface{}{}
+				dstNested = map[string]any{}
 			}
 			for sub, subVal := range srcNested {
 				if _, present := dstNested[sub]; !present {

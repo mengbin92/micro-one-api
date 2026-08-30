@@ -17,7 +17,7 @@ func TestSelectSubscriptionAccount_FailClosedOnAllCircuitOpen(t *testing.T) {
 	// Trip the circuit on the only candidate by recording >0.5 err/s.
 	// SlidingCounter window is 60s; record 35 failures fast to exceed the
 	// 0.5 err/s threshold and trip the 30s circuit.
-	for i := 0; i < 35; i++ {
+	for range 35 {
 		sel.RecordAccountHealth(42, false)
 	}
 	got, err := sel.Select(context.Background(), "default", []*SubscriptionAccount{
@@ -98,7 +98,7 @@ func TestSubscriptionAccountSelector_PreservesHealthWeightRatio(t *testing.T) {
 	// record a mixed stream that lands the degraded account in the <0.30 band
 	// (factor 20): 2 failures + 8 successes = 0.2 ratio.
 	ds := s.accounts[degraded.ID]
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ds.recentErrors.RecordOutcome(i >= 2) // i=0,1 are failures
 	}
 	if got := ds.healthFactor(); got != 20 {
@@ -106,7 +106,7 @@ func TestSubscriptionAccountSelector_PreservesHealthWeightRatio(t *testing.T) {
 	}
 
 	counts := map[int64]int{}
-	for i := 0; i < 600; i++ {
+	for range 600 {
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -154,7 +154,7 @@ func TestSubscriptionAccountSelector_ExcludesOpenCircuitFromTotalWeight(t *testi
 	s.accounts[high.ID].circuitOpenUntil = time.Now().Add(time.Minute).UnixNano()
 	s.mu.Unlock()
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -207,7 +207,7 @@ func TestSubscriptionAccountSelector_WeightDrivesDistribution(t *testing.T) {
 
 	counts := map[int64]int{}
 	const iterations = 600
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -232,7 +232,7 @@ func TestSubscriptionAccountSelector_WeightSamePriorityNotEqualDistribution(t *t
 
 	counts := map[int64]int{}
 	const iterations = 1000
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -261,7 +261,7 @@ func TestSubscriptionAccountSelector_LoadFactorNeutralWithoutOracle(t *testing.T
 	candidates := []*SubscriptionAccount{a, b}
 
 	// Prime the selector.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		if _, err := s.Select(context.Background(), "g", candidates); err != nil {
 			t.Fatalf("Select err = %v", err)
 		}
@@ -282,7 +282,7 @@ func TestSubscriptionAccountSelector_LoadFactorNeutralWithoutOracle(t *testing.T
 
 	// Distribution still works via configured weight (100:100 → ~50:50).
 	counts := map[int64]int{}
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -309,7 +309,7 @@ func TestSubscriptionAccountSelector_LoadFactorDegradesWhenAcquireCalled(t *test
 	}
 
 	// Simulate a future seam that reports in-flight load.
-	for i := 0; i < 25; i++ {
+	for range 25 {
 		s.Acquire(1)
 	}
 	st := s.accounts[1]
@@ -322,7 +322,7 @@ func TestSubscriptionAccountSelector_LoadFactorDegradesWhenAcquireCalled(t *test
 	}
 
 	// Release back to neutral.
-	for i := 0; i < 25; i++ {
+	for range 25 {
 		s.Release(1)
 	}
 	if got := st.loadFactor(); got != 100 {
@@ -365,7 +365,7 @@ func TestSubscriptionAccountSelector_LoadOracleDeratesAcrossReplicas(t *testing.
 	candidates := []*SubscriptionAccount{a, b}
 
 	counts := map[int64]int{}
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		// Reset WRR state each iteration to isolate the load-factor comparison.
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {

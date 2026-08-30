@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/subtle"
 	"errors"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -80,7 +81,7 @@ func oauthAuthURLHandler(oauthSvc *channeloauth.Service, platform string) http.H
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"auth_url":   result.AuthURL,
 			"session_id": result.SessionID,
 			"state":      result.State,
@@ -119,7 +120,7 @@ func oauthExchangeHandler(oauthSvc *channeloauth.Service, platform string) http.
 			writeJSON(w, status, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"success":    true,
 			"account_id": result.AccountID,
 			"platform":   result.Platform,
@@ -128,7 +129,7 @@ func oauthExchangeHandler(oauthSvc *channeloauth.Service, platform string) http.
 	}
 }
 
-func decodeJSON(r *http.Request, dst interface{}) error {
+func decodeJSON(r *http.Request, dst any) error {
 	if r.Body == nil || r.ContentLength == 0 {
 		return nil
 	}
@@ -136,7 +137,7 @@ func decodeJSON(r *http.Request, dst interface{}) error {
 	return jsonx.NewDecoder(r.Body).Decode(dst)
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = jsonx.NewEncoder(w).Encode(payload)
@@ -221,12 +222,10 @@ func authorizeAdmin(r *http.Request) bool {
 
 // selectorStatsPayload shapes biz.ChannelStats into a JSON-friendly map keyed
 // by channel id so the endpoint output is stable and self-describing.
-func selectorStatsPayload(stats map[int64]biz.ChannelStats) map[string]interface{} {
+func selectorStatsPayload(stats map[int64]biz.ChannelStats) map[string]any {
 	channels := make(map[int64]biz.ChannelStats, len(stats))
-	for id, s := range stats {
-		channels[id] = s
-	}
-	return map[string]interface{}{
+	maps.Copy(channels, stats)
+	return map[string]any{
 		"channels": channels,
 	}
 }

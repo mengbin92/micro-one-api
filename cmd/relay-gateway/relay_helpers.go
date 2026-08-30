@@ -146,14 +146,8 @@ var _ = http.Client{}
 // timeout. CloseTimeout and NotifyBeforeClose use sensible fractions of the
 // drain window; MaxConcurrentClose caps the goroutine fan-out on force close.
 func appwsDrainConfig(drainTimeout time.Duration) *appws.DrainConfig {
-	closeTimeout := drainTimeout / 3
-	if closeTimeout < 5*time.Second {
-		closeTimeout = 5 * time.Second
-	}
-	notifyBefore := drainTimeout / 6
-	if notifyBefore < 2*time.Second {
-		notifyBefore = 2 * time.Second
-	}
+	closeTimeout := max(drainTimeout/3, 5*time.Second)
+	notifyBefore := max(drainTimeout/6, 2*time.Second)
 	return &appws.DrainConfig{
 		DrainTimeout:       drainTimeout,
 		CloseTimeout:       closeTimeout,

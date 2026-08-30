@@ -227,7 +227,7 @@ func TestRepository_BatchChangeStatus(t *testing.T) {
 	repo := setupModelTestDB(t)
 	ctx := context.Background()
 	var pks []int64
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		m := &biz.Model{ModelID: "b" + string(rune('A'+i)), DisplayName: "B"}
 		require.NoError(t, repo.CreateModel(ctx, m))
 		pks = append(pks, m.ID)
@@ -241,7 +241,7 @@ func TestRepository_BatchDelete(t *testing.T) {
 	repo := setupModelTestDB(t)
 	ctx := context.Background()
 	var pks []int64
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		m := &biz.Model{ModelID: "bd" + string(rune('A'+i)), DisplayName: "BD"}
 		require.NoError(t, repo.CreateModel(ctx, m))
 		pks = append(pks, m.ID)

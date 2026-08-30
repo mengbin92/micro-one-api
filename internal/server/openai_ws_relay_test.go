@@ -44,12 +44,12 @@ func TestShouldParseOpenAIWSUsage(t *testing.T) {
 
 func TestParseOpenAIWSFrameUsage(t *testing.T) {
 	t.Run("input_tokens aliases", func(t *testing.T) {
-		frame := map[string]interface{}{
-			"response": map[string]interface{}{
-				"usage": map[string]interface{}{
+		frame := map[string]any{
+			"response": map[string]any{
+				"usage": map[string]any{
 					"input_tokens":  float64(120),
 					"output_tokens": float64(40),
-					"input_tokens_details": map[string]interface{}{
+					"input_tokens_details": map[string]any{
 						"cached_tokens": float64(10),
 					},
 				},
@@ -64,9 +64,9 @@ func TestParseOpenAIWSFrameUsage(t *testing.T) {
 		}
 	})
 	t.Run("prompt_tokens aliases", func(t *testing.T) {
-		frame := map[string]interface{}{
-			"response": map[string]interface{}{
-				"usage": map[string]interface{}{
+		frame := map[string]any{
+			"response": map[string]any{
+				"usage": map[string]any{
 					"prompt_tokens":     float64(50),
 					"completion_tokens": float64(20),
 				},
@@ -81,8 +81,8 @@ func TestParseOpenAIWSFrameUsage(t *testing.T) {
 		}
 	})
 	t.Run("no usage block", func(t *testing.T) {
-		frame := map[string]interface{}{
-			"response": map[string]interface{}{
+		frame := map[string]any{
+			"response": map[string]any{
 				"status": "completed",
 			},
 		}
@@ -91,9 +91,9 @@ func TestParseOpenAIWSFrameUsage(t *testing.T) {
 		}
 	})
 	t.Run("zero tokens", func(t *testing.T) {
-		frame := map[string]interface{}{
-			"response": map[string]interface{}{
-				"usage": map[string]interface{}{
+		frame := map[string]any{
+			"response": map[string]any{
+				"usage": map[string]any{
 					"input_tokens":  float64(0),
 					"output_tokens": float64(0),
 				},

@@ -1,5 +1,7 @@
 package conf
 
+import "maps"
+
 import appregistry "micro-one-api/platform/registry"
 
 // ToRegistryConfig converts the proto Registry to the platform registry Config.
@@ -10,9 +12,7 @@ func (r *Registry) ToRegistryConfig() appregistry.Config {
 
 	if r.Consul != nil {
 		metadata := make(map[string]string)
-		for k, v := range r.Metadata {
-			metadata[k] = v
-		}
+		maps.Copy(metadata, r.Metadata)
 
 		cfg.Consul = appregistry.ConsulConfig{
 			Address:             r.Consul.Address,

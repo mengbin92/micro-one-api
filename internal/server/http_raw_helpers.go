@@ -21,7 +21,7 @@ import (
 
 // extractRawModel pulls the "model" field out of a JSON request body.
 func extractRawModel(body []byte) string {
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
@@ -37,7 +37,7 @@ func rewriteRawModel(body []byte, model string) []byte {
 	if model == "" {
 		return body
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}
@@ -62,7 +62,7 @@ func ensureRawModel(body []byte, model string) []byte {
 	if model == "" {
 		return body
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}
@@ -89,7 +89,7 @@ func routeResolvedModel(route responseRoute) string {
 
 // isRawStreamRequest reports whether the request body requests streaming.
 func isRawStreamRequest(body []byte) bool {
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return false
 	}
@@ -99,7 +99,7 @@ func isRawStreamRequest(body []byte) bool {
 
 // extractPreviousResponseID pulls the previous_response_id from a body.
 func extractPreviousResponseID(body []byte) string {
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
@@ -113,7 +113,7 @@ func extractPreviousResponseID(body []byte) string {
 
 // extractSessionHash pulls the sticky session hash from a JSON request body.
 func extractSessionHash(body []byte) string {
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
@@ -166,7 +166,7 @@ type rawUsage struct {
 // extractRawUsage finds the usage block anywhere in a JSON document and
 // normalizes it with the supplied fallback when fields are missing.
 func extractRawUsage(body []byte, fallback int64) rawUsage {
-	var payload interface{}
+	var payload any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return rawUsage{TotalTokens: fallback}
 	}
@@ -175,9 +175,9 @@ func extractRawUsage(body []byte, fallback int64) rawUsage {
 
 // extractRawUsageValue recursively searches an unmarshalled JSON value for a
 // usage-like object.
-func extractRawUsageValue(value interface{}) rawUsage {
+func extractRawUsageValue(value any) rawUsage {
 	switch typed := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		var usage rawUsage
 		if nested, ok := typed["usage"]; ok {
 			usage = extractRawUsageValue(nested)
@@ -210,7 +210,7 @@ func extractRawUsageValue(value interface{}) rawUsage {
 				return usage
 			}
 		}
-	case []interface{}:
+	case []any:
 		for _, item := range typed {
 			usage := extractRawUsageValue(item)
 			if hasRawUsage(usage) {
@@ -286,7 +286,7 @@ func hasRawUsage(usage rawUsage) bool {
 // checking both flat keys and nested *_details objects. Flat keys cover
 // Anthropic (cache_read_input_tokens), OpenAI-compatible relays
 // (cache_read_tokens) and OpenAI Responses (cached_tokens).
-func cacheReadTokensFromUsageMap(m map[string]interface{}) int64 {
+func cacheReadTokensFromUsageMap(m map[string]any) int64 {
 	if value := numberField(m, "cache_read_input_tokens", "cache_read_tokens", "cached_tokens", "cachedContentTokenCount"); value != 0 {
 		if value < 0 {
 			recordTokenUsageAnomaly("negative")
@@ -295,7 +295,7 @@ func cacheReadTokensFromUsageMap(m map[string]interface{}) int64 {
 		return value
 	}
 	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
-		details, ok := m[key].(map[string]interface{})
+		details, ok := m[key].(map[string]any)
 		if !ok {
 			continue
 		}
@@ -328,7 +328,7 @@ func cacheReadTokensFromUsageMap(m map[string]interface{}) int64 {
 //     helper records it once.
 //   - Negative values are clamped to 0 and recorded as a negative anomaly
 //     (ADR §4.1).
-func cacheCreationDetailTokens(m map[string]interface{}) (fiveM, oneH, flatTotal int64, hadDetail bool) {
+func cacheCreationDetailTokens(m map[string]any) (fiveM, oneH, flatTotal int64, hadDetail bool) {
 	if raw := numberField(m, "cache_creation_input_tokens"); raw != 0 {
 		if raw < 0 {
 			recordTokenUsageAnomaly("negative")
@@ -356,7 +356,7 @@ func cacheCreationDetailTokens(m map[string]interface{}) (fiveM, oneH, flatTotal
 	// Provider-level flattened buckets may also live inside prompt_tokens_details /
 	// input_tokens_details (e.g. after apicompat Responses->Chat conversion).
 	for _, detailsKey := range []string{"prompt_tokens_details", "input_tokens_details"} {
-		details, ok := m[detailsKey].(map[string]interface{})
+		details, ok := m[detailsKey].(map[string]any)
 		if !ok {
 			continue
 		}
@@ -377,7 +377,7 @@ func cacheCreationDetailTokens(m map[string]interface{}) (fiveM, oneH, flatTotal
 			}
 		}
 	}
-	nested, _ := m["cache_creation"].(map[string]interface{})
+	nested, _ := m["cache_creation"].(map[string]any)
 	if nested != nil {
 		if raw := numberField(nested, "ephemeral_5m_input_tokens"); raw != 0 {
 			hadDetail = true
@@ -429,7 +429,7 @@ func clampNonNegInt64(v int64) int64 {
 
 // numberField returns the first non-zero numeric value found under any of the
 // given keys in a map.
-func numberField(m map[string]interface{}, keys ...string) int64 {
+func numberField(m map[string]any, keys ...string) int64 {
 	for _, key := range keys {
 		if value, ok := m[key]; ok {
 			if number := int64Value(value); number != 0 {
@@ -441,7 +441,7 @@ func numberField(m map[string]interface{}, keys ...string) int64 {
 }
 
 // int64Value coerces an unmarshalled JSON numeric value to int64.
-func int64Value(value interface{}) int64 {
+func int64Value(value any) int64 {
 	switch v := value.(type) {
 	case float64:
 		return int64(v)
@@ -655,7 +655,7 @@ func (t *rawStreamUsageTracker) ResponseID() string {
 
 // extractRawStreamResponseID pulls a response id from a raw stream chunk.
 func extractRawStreamResponseID(chunk []byte) string {
-	var payload interface{}
+	var payload any
 	if err := jsonx.Unmarshal(chunk, &payload); err != nil {
 		return ""
 	}
@@ -664,15 +664,15 @@ func extractRawStreamResponseID(chunk []byte) string {
 
 // extractRawStreamResponseIDValue searches an unmarshalled value for a
 // response id in the shapes emitted by the Responses API.
-func extractRawStreamResponseIDValue(value interface{}) string {
-	typed, ok := value.(map[string]interface{})
+func extractRawStreamResponseIDValue(value any) string {
+	typed, ok := value.(map[string]any)
 	if !ok {
 		return ""
 	}
 	if responseID, _ := typed["response_id"].(string); strings.TrimSpace(responseID) != "" {
 		return strings.TrimSpace(responseID)
 	}
-	if response, ok := typed["response"].(map[string]interface{}); ok {
+	if response, ok := typed["response"].(map[string]any); ok {
 		if responseID, _ := response["id"].(string); strings.TrimSpace(responseID) != "" {
 			return strings.TrimSpace(responseID)
 		}

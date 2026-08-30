@@ -115,7 +115,7 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		DedupeKey:              dedupeKey,
 	}
 	var err error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range 3 {
 		_, err = s.logClient.IngestLog(ctx, req)
 		if err == nil {
 			metrics.UsageLogIngestTotal.WithLabelValues("success").Inc()
@@ -145,10 +145,7 @@ func logUpstreamUsage(in usageLogInput) {
 	// For exclusive buckets (Anthropic/GLM) prompt_tokens is already uncached.
 	nonCachedInputTokens := in.PromptTokens
 	if in.CacheReadTokens > 0 && !in.PromptExclusive {
-		nonCachedInputTokens = in.PromptTokens - in.CacheReadTokens
-		if nonCachedInputTokens < 0 {
-			nonCachedInputTokens = 0
-		}
+		nonCachedInputTokens = max(in.PromptTokens-in.CacheReadTokens, 0)
 	}
 	cacheDenominator := nonCachedInputTokens + in.CacheReadTokens + cacheCreationTotal
 	cacheRatio := float64(0)

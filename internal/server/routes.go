@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"slices"
 
 	"micro-one-api/platform/metrics"
 	appmiddleware "micro-one-api/platform/middleware"
@@ -76,8 +77,8 @@ func (s *HTTPServer) handleFunc(srv *khttp.Server, pattern string, handler http.
 func (s *HTTPServer) wrapRoute(handler http.Handler) http.Handler {
 	var h http.Handler = handler
 	h = appmiddleware.RequestBodyLimitByPath(h)
-	for i := len(s.routeMiddleware) - 1; i >= 0; i-- {
-		h = s.routeMiddleware[i](h)
+	for _, v := range slices.Backward(s.routeMiddleware) {
+		h = v(h)
 	}
 	return h
 }

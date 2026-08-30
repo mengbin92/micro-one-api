@@ -105,10 +105,10 @@ func (a *AuthInterceptor) WithRoles(roles ...string) *AuthInterceptor {
 // Unary intercepts unary RPC calls
 func (a *AuthInterceptor) Unary(
 	ctx context.Context,
-	req interface{},
+	req any,
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
-) (interface{}, error) {
+) (any, error) {
 	// Validate authentication
 	if err := a.validateRequest(ctx, info.FullMethod); err != nil {
 		applogger.Log.Warn("Authentication failed",
@@ -124,7 +124,7 @@ func (a *AuthInterceptor) Unary(
 
 // Stream intercepts streaming RPC calls
 func (a *AuthInterceptor) Stream(
-	srv interface{},
+	srv any,
 	ss grpc.ServerStream,
 	info *grpc.StreamServerInfo,
 	handler grpc.StreamHandler,

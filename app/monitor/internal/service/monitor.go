@@ -197,14 +197,14 @@ func (s *MonitorService) HandleListHealthChecks(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	items := make([]map[string]interface{}, 0, len(checks))
+	items := make([]map[string]any, 0, len(checks))
 	for _, c := range checks {
-		items = append(items, map[string]interface{}{
+		items = append(items, map[string]any{
 			"id": c.ID, "service_name": c.ServiceName, "status": c.Status,
 			"response_time": c.ResponseTime, "checked_at": c.CheckedAt,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
 func (s *MonitorService) HandleListAlertRules(w http.ResponseWriter, r *http.Request) {
@@ -220,11 +220,11 @@ func (s *MonitorService) HandleListAlertRules(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	items := make([]map[string]interface{}, 0, len(rules))
+	items := make([]map[string]any, 0, len(rules))
 	for _, rule := range rules {
 		items = append(items, alertRuleToMap(rule))
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
 func (s *MonitorService) HandleCreateAlertRule(w http.ResponseWriter, r *http.Request) {
@@ -339,15 +339,15 @@ func extractIDFromPath(path, prefix string) (int64, error) {
 	return strconv.ParseInt(idStr, 10, 64)
 }
 
-func alertRuleToMap(rule *biz.AlertRule) map[string]interface{} {
-	return map[string]interface{}{
+func alertRuleToMap(rule *biz.AlertRule) map[string]any {
+	return map[string]any{
 		"id": rule.ID, "name": rule.Name, "service_name": rule.ServiceName,
 		"metric": rule.Metric, "threshold": rule.Threshold, "operator": rule.Operator,
 		"duration": rule.Duration, "enabled": rule.Enabled, "created_at": rule.CreatedAt,
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = jsonx.NewEncoder(w).Encode(data)
@@ -356,5 +356,5 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = jsonx.NewEncoder(w).Encode(map[string]interface{}{"error": message})
+	_ = jsonx.NewEncoder(w).Encode(map[string]any{"error": message})
 }

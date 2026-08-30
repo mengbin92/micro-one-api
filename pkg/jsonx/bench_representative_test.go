@@ -75,7 +75,7 @@ var benchLargeResponses = &apicompat.ResponsesResponse{
 // a long text delta — the per-event serialization point on the adaptor path.
 var benchAnthropicDelta = &apicompat.AnthropicStreamEvent{
 	Type:  "content_block_delta",
-	Index: intPtr(0),
+	Index: new(0),
 	Delta: &apicompat.AnthropicDelta{
 		Type: "text_delta",
 		Text: strings.Repeat("streaming delta text ", 60),
@@ -85,16 +85,16 @@ var benchAnthropicDelta = &apicompat.AnthropicStreamEvent{
 // benchAggMapSlice mirrors an admin/billing aggregation response: a small
 // map envelope holding a slice of per-model rows (the shape produced by
 // billing aggregation RPCs and echoed through admin-api).
-var benchAggMapSlice = map[string]interface{}{
+var benchAggMapSlice = map[string]any{
 	"total_requests": 12800,
 	"total_tokens":   512000,
 	"total_cost_usd": 31.2048,
-	"items": []interface{}{
-		map[string]interface{}{"model": "gpt-4o-mini", "tokens": 152000, "cost_usd": 9.3100, "requests": 4100},
-		map[string]interface{}{"model": "gpt-4o", "tokens": 98000, "cost_usd": 12.7400, "requests": 2300},
-		map[string]interface{}{"model": "claude-5.2", "tokens": 120000, "cost_usd": 6.4000, "requests": 3100},
-		map[string]interface{}{"model": "gemini-2.5-pro", "tokens": 72000, "cost_usd": 2.1548, "requests": 1900},
-		map[string]interface{}{"model": "deepseek-r1", "tokens": 70000, "cost_usd": 0.6000, "requests": 1400},
+	"items": []any{
+		map[string]any{"model": "gpt-4o-mini", "tokens": 152000, "cost_usd": 9.3100, "requests": 4100},
+		map[string]any{"model": "gpt-4o", "tokens": 98000, "cost_usd": 12.7400, "requests": 2300},
+		map[string]any{"model": "claude-5.2", "tokens": 120000, "cost_usd": 6.4000, "requests": 3100},
+		map[string]any{"model": "gemini-2.5-pro", "tokens": 72000, "cost_usd": 2.1548, "requests": 1900},
+		map[string]any{"model": "deepseek-r1", "tokens": 70000, "cost_usd": 0.6000, "requests": 1400},
 	},
 }
 
@@ -102,9 +102,10 @@ var benchLargeResponsesPayload = mustMarshal(benchLargeResponses)
 var benchAnthropicDeltaPayload = mustMarshal(benchAnthropicDelta)
 var benchAggMapSlicePayload = mustMarshal(benchAggMapSlice)
 
-func intPtr(v int) *int { return &v }
+//go:fix inline
+func intPtr(v int) *int { return new(v) }
 
-func mustMarshal(v interface{}) []byte {
+func mustMarshal(v any) []byte {
 	b, err := jsonx.Marshal(v)
 	if err != nil {
 		panic(err)
@@ -214,7 +215,7 @@ func BenchmarkUnmarshalAggMapSliceJSONX(b *testing.B) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(benchAggMapSlicePayload)))
 	for i := 0; i < b.N; i++ {
-		var m map[string]interface{}
+		var m map[string]any
 		if err := jsonx.Unmarshal(benchAggMapSlicePayload, &m); err != nil {
 			b.Fatal(err)
 		}
@@ -225,7 +226,7 @@ func BenchmarkUnmarshalAggMapSliceStd(b *testing.B) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(benchAggMapSlicePayload)))
 	for i := 0; i < b.N; i++ {
-		var m map[string]interface{}
+		var m map[string]any
 		if err := json.Unmarshal(benchAggMapSlicePayload, &m); err != nil {
 			b.Fatal(err)
 		}

@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"google.golang.org/grpc/credentials"
@@ -164,10 +165,8 @@ func ValidateClientCert(cert *x509.Certificate, config *TLSConfig) error {
 	}
 
 	// Check extended key usage
-	for _, extKeyUsage := range cert.ExtKeyUsage {
-		if extKeyUsage == x509.ExtKeyUsageClientAuth {
-			return nil
-		}
+	if slices.Contains(cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth) {
+		return nil
 	}
 
 	return fmt.Errorf("certificate missing client auth extended key usage")

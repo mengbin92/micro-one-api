@@ -2,6 +2,7 @@ package biz
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -286,12 +287,7 @@ func entryHasCapability(entry *ModelEntry, capability string) bool {
 	if entry == nil {
 		return false
 	}
-	for _, cap := range entry.Capabilities {
-		if cap == capability {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(entry.Capabilities, capability)
 }
 
 // NewModelMapperForTest builds a ModelMapper directly from an in-memory map,

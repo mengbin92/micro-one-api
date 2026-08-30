@@ -463,12 +463,10 @@ type trackingMockSubscriptionRepo struct {
 
 func newTrackingMockSubscriptionRepo() *trackingMockSubscriptionRepo {
 	return &trackingMockSubscriptionRepo{
-		mockSubscriptionRepo: mockSubscriptionRepo{
-			groups:        map[int64]*SubscriptionGroup{},
-			subscriptions: map[int64]*UserSubscription{},
-			nextGroupID:   1,
-			nextSubID:     1,
-		},
+		groups:        map[int64]*SubscriptionGroup{},
+		subscriptions: map[int64]*UserSubscription{},
+		nextGroupID:   1,
+		nextSubID:     1,
 	}
 }
 

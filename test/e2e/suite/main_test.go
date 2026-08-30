@@ -160,7 +160,7 @@ func stepLogin(t *testing.T, ctx context.Context, state *e2eState) {
 }
 
 func stepCreateAPIToken(t *testing.T, state *e2eState) {
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"name":            "e2e-api-token",
 		"models":          []string{testModel},
 		"unlimited_quota": true,
@@ -289,7 +289,7 @@ func stepListModels(t *testing.T, state *e2eState) {
 }
 
 func stepChatCompletion(t *testing.T, state *e2eState) {
-	reqBody, _ := json.Marshal(map[string]interface{}{
+	reqBody, _ := json.Marshal(map[string]any{
 		"model":    testModel,
 		"messages": []map[string]string{{"role": "user", "content": "Hello, how are you?"}},
 	})
@@ -463,7 +463,7 @@ func stepAdminGetUser(t *testing.T, state *e2eState) {
 }
 
 func stepAdminUpdateUser(t *testing.T, state *e2eState) {
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"user_id":      state.userID,
 		"display_name": "E2E Test User Updated",
 	})
@@ -496,7 +496,7 @@ func stepAdminUpdateUser(t *testing.T, state *e2eState) {
 // ═══════════════════════════════════════════════════
 
 func stepAdminCreateProviderChannel(t *testing.T) {
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"name":     "e2e-real-provider",
 		"type":     1, // OpenAI-compatible
 		"base_url": providerBaseURL,
@@ -553,7 +553,7 @@ func stepAdminListChannels(t *testing.T) {
 var testRedeemCode = "E2E-TEST-CODE-001"
 
 func stepAdminCreateRedeemCode(t *testing.T) {
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"code":   testRedeemCode,
 		"name":   "e2e-test-code",
 		"amount": 100000,
@@ -665,7 +665,7 @@ func stepAdminLogs(t *testing.T, state *e2eState) {
 	url := fmt.Sprintf("%s/v1/logs?user_id=%d&page_size=10", adminHTTPBase, state.userID)
 	body := httpGetWithAuth(t, url, adminToken)
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(body, &result); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
@@ -677,7 +677,7 @@ func stepAdminLogs(t *testing.T, state *e2eState) {
 // ═══════════════════════════════════════════════════
 
 func stepAdminTopUp(t *testing.T, state *e2eState) {
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"user_id": fmt.Sprintf("%d", state.userID),
 		"amount":  500000,
 		"remark":  "e2e-test-topup",

@@ -69,7 +69,7 @@ func deriveConsumerGroup(consumerID string) string {
 
 // Publish sends an event to a Redis Stream with guaranteed persistence.
 // Events survive process restarts.
-func (b *StreamEventBus) Publish(ctx context.Context, topic string, payload interface{}) error {
+func (b *StreamEventBus) Publish(ctx context.Context, topic string, payload any) error {
 	data, err := jsonx.Marshal(Event{
 		Topic:     topic,
 		Payload:   payload,
@@ -83,7 +83,7 @@ func (b *StreamEventBus) Publish(ctx context.Context, topic string, payload inte
 		Stream: topic,
 		MaxLen: b.maxlen,
 		Approx: true,
-		Values: map[string]interface{}{
+		Values: map[string]any{
 			"payload":   string(data),
 			"timestamp": time.Now().UnixNano(),
 			"producer":  b.consumerID,

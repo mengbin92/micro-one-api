@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 	"time"
 
@@ -73,9 +74,7 @@ type recordingFallbackSelector struct {
 func (r *recordingFallbackSelector) SelectFallbackRoutingSource(_ context.Context, _, _, _ string, excluded map[RoutingSourceIdentity]bool) (*Channel, error) {
 	r.calls++
 	r.excluded = make(map[RoutingSourceIdentity]bool, len(excluded))
-	for id, blocked := range excluded {
-		r.excluded[id] = blocked
-	}
+	maps.Copy(r.excluded, excluded)
 	if r.channel == nil {
 		return nil, errors.New("no fallback routing source")
 	}

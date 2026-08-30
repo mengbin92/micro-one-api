@@ -422,7 +422,7 @@ func TestRelayUsecasePlan_BalancesAPIKeyAndSubscriptionAtEqualPriority(t *testin
 	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
 
 	var channelCount, subscriptionCount int
-	for i := 0; i < 6; i++ {
+	for range 6 {
 		plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "gpt-4o"})
 		if err != nil {
 			t.Fatalf("Plan() error = %v", err)
@@ -449,7 +449,7 @@ func TestRelayUsecasePlan_HigherPriorityWinsAcrossSourceTypes(t *testing.T) {
 		},
 	}
 	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		plan, err := uc.Plan(context.Background(), RelayRequest{Token: "demo-token", Model: "gpt-4o"})
 		if err != nil {
 			t.Fatalf("Plan() error = %v", err)
@@ -1060,7 +1060,7 @@ func TestSelectFallbackRoutingSourceAppliesCrossSourcePriorityAndWeight(t *testi
 		}
 		uc := NewRelayUsecase(nil, client, nil, nil)
 		counts := map[UpstreamRouteKind]int{}
-		for i := 0; i < 40; i++ {
+		for i := range 40 {
 			got, err := uc.SelectFallbackRoutingSource(context.Background(), "default", "gpt-4o", "gpt-4o", nil)
 			if err != nil {
 				t.Fatalf("iteration %d: SelectFallbackRoutingSource() error = %v", i, err)
@@ -1078,7 +1078,7 @@ func TestSelectFallbackRoutingSourceAppliesCrossSourcePriorityAndWeight(t *testi
 // specific mapping wins, deterministically across repeated calls.
 func TestApplyPerAccountModelMapping_MostSpecificWildcard(t *testing.T) {
 	mapping := `{"claude-*":"claude-family","claude-sonnet-*":"claude-sonnet-family"}`
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		if got := applyPerAccountModelMapping(mapping, "claude-sonnet-4"); got != "claude-sonnet-family" {
 			t.Fatalf("iter %d: claude-sonnet-4 = %s, want claude-sonnet-family", i, got)
 		}

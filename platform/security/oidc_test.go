@@ -8,10 +8,8 @@ import (
 
 func TestOIDCProviderAuthURL(t *testing.T) {
 	provider := NewOIDCProvider(OIDCConfig{
-		Config: Config{
-			ClientID:    "client-id",
-			RedirectURL: "https://one-api.example.com/v1/oauth/oidc/callback",
-		},
+		ClientID:     "client-id",
+		RedirectURL:  "https://one-api.example.com/v1/oauth/oidc/callback",
 		AuthorizeURL: "https://idp.example.com/oauth2/authorize",
 		Scopes:       []string{"openid", "email", "profile"},
 	})
@@ -43,10 +41,8 @@ func TestOIDCProviderAuthURL(t *testing.T) {
 
 func TestLarkProviderAuthURL(t *testing.T) {
 	provider := NewLarkProvider(EndpointConfig{
-		Config: Config{
-			ClientID:    "lark-client",
-			RedirectURL: "https://one-api.example.com/v1/oauth/lark/callback",
-		},
+		ClientID:     "lark-client",
+		RedirectURL:  "https://one-api.example.com/v1/oauth/lark/callback",
 		AuthorizeURL: "https://passport.feishu.cn/suite/passport/oauth/authorize",
 	})
 
@@ -76,10 +72,8 @@ func TestLarkProviderAuthURL(t *testing.T) {
 
 func TestWeChatProviderAuthURL(t *testing.T) {
 	provider := NewWeChatProvider(EndpointConfig{
-		Config: Config{
-			ClientID:    "wechat-client",
-			RedirectURL: "https://one-api.example.com/v1/oauth/wechat/callback",
-		},
+		ClientID:     "wechat-client",
+		RedirectURL:  "https://one-api.example.com/v1/oauth/wechat/callback",
 		AuthorizeURL: "https://open.weixin.qq.com/connect/qrconnect",
 	})
 

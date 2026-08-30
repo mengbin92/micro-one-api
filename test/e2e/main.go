@@ -35,7 +35,7 @@ var (
 	passed, failed int
 )
 
-func logf(format string, args ...interface{}) {
+func logf(format string, args ...any) {
 	fmt.Printf("[E2E] "+format+"\n", args...)
 }
 
@@ -274,7 +274,7 @@ func stepListModels(token string) {
 
 func stepChatCompletion(token string) {
 	url := fmt.Sprintf("%s/v1/chat/completions", relayHTTPBase)
-	reqBody, _ := jsonx.Marshal(map[string]interface{}{
+	reqBody, _ := jsonx.Marshal(map[string]any{
 		"model":    testModel,
 		"messages": []map[string]string{{"role": "user", "content": "Hello, how are you?"}},
 	})
@@ -373,7 +373,7 @@ func stepVerifyLogs(userID int64) {
 	url := fmt.Sprintf("%s/v1/logs?user_id=%d&page_size=10", adminHTTPBase, userID)
 	body := httpGetWithAuth(url, adminToken())
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := jsonx.Unmarshal(body, &result); err != nil {
 		fail("admin-logs", fmt.Sprintf("decode response: %v", err))
 		return

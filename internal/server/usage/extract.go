@@ -16,7 +16,7 @@ import (
 // internal/server/http_raw_helpers.go but emits the CanonicalUsage type used by
 // the orchestrator and forwarder.
 func ExtractFromJSON(body []byte, fallback int64, promptExclusive bool) relaybiz.CanonicalUsage {
-	var payload interface{}
+	var payload any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return relaybiz.CanonicalUsage{TotalTokens: fallback, PromptExclusive: promptExclusive}
 	}
@@ -25,9 +25,9 @@ func ExtractFromJSON(body []byte, fallback int64, promptExclusive bool) relaybiz
 	return u
 }
 
-func extractFromValue(value interface{}, fallback int64) relaybiz.CanonicalUsage {
+func extractFromValue(value any, fallback int64) relaybiz.CanonicalUsage {
 	switch typed := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		var usage relaybiz.CanonicalUsage
 		if nested, ok := typed["usage"]; ok {
 			usage = extractFromValue(nested, 0)
@@ -60,7 +60,7 @@ func extractFromValue(value interface{}, fallback int64) relaybiz.CanonicalUsage
 				return normalize(usage, fallback)
 			}
 		}
-	case []interface{}:
+	case []any:
 		for _, item := range typed {
 			usage := extractFromValue(item, 0)
 			if !usage.IsEmpty() {
@@ -113,7 +113,7 @@ func normalize(usage relaybiz.CanonicalUsage, fallback int64) relaybiz.Canonical
 
 // cacheReadTokensFromMap extracts cache-read tokens from a usage map, checking
 // both flat keys and nested *_details objects.
-func cacheReadTokensFromMap(m map[string]interface{}) int64 {
+func cacheReadTokensFromMap(m map[string]any) int64 {
 	if value := numberField(m, "cache_read_input_tokens", "cache_read_tokens", "cached_tokens"); value != 0 {
 		if value < 0 {
 			recordAnomaly("negative")
@@ -122,7 +122,7 @@ func cacheReadTokensFromMap(m map[string]interface{}) int64 {
 		return value
 	}
 	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
-		details, ok := m[key].(map[string]interface{})
+		details, ok := m[key].(map[string]any)
 		if !ok {
 			continue
 		}
@@ -143,7 +143,7 @@ func cacheReadTokensFromMap(m map[string]interface{}) int64 {
 // the provider-level flattened shape (cache_creation_5m_tokens /
 // cache_creation_1h_tokens), either at the usage top level or inside
 // prompt_tokens_details / input_tokens_details.
-func cacheCreationDetailTokens(m map[string]interface{}) (fiveM, oneH, flatTotal int64, hadDetail bool) {
+func cacheCreationDetailTokens(m map[string]any) (fiveM, oneH, flatTotal int64, hadDetail bool) {
 	if raw := numberField(m, "cache_creation_input_tokens"); raw != 0 {
 		if raw < 0 {
 			recordAnomaly("negative")
@@ -163,7 +163,7 @@ func cacheCreationDetailTokens(m map[string]interface{}) (fiveM, oneH, flatTotal
 		}
 	}
 	for _, detailsKey := range []string{"prompt_tokens_details", "input_tokens_details"} {
-		details, ok := m[detailsKey].(map[string]interface{})
+		details, ok := m[detailsKey].(map[string]any)
 		if !ok {
 			continue
 		}
@@ -177,7 +177,7 @@ func cacheCreationDetailTokens(m map[string]interface{}) (fiveM, oneH, flatTotal
 		}
 	}
 	// Anthropic nested detail shape.
-	nested, _ := m["cache_creation"].(map[string]interface{})
+	nested, _ := m["cache_creation"].(map[string]any)
 	if nested != nil {
 		if raw := numberField(nested, "ephemeral_5m_input_tokens"); raw != 0 {
 			hadDetail = true
@@ -212,7 +212,7 @@ func recordAnomaly(reason string) {
 	}
 }
 
-func numberField(m map[string]interface{}, keys ...string) int64 {
+func numberField(m map[string]any, keys ...string) int64 {
 	for _, key := range keys {
 		if value, ok := m[key]; ok {
 			if number := int64Value(value); number != 0 {
@@ -223,7 +223,7 @@ func numberField(m map[string]interface{}, keys ...string) int64 {
 	return 0
 }
 
-func int64Value(value interface{}) int64 {
+func int64Value(value any) int64 {
 	switch v := value.(type) {
 	case float64:
 		return int64(v)

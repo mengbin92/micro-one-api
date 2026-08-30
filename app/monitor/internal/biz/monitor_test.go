@@ -31,10 +31,7 @@ func (m *mockMonitorRepo) ListHealthChecks(ctx context.Context, serviceName stri
 	if start >= len(result) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(result) {
-		end = len(result)
-	}
+	end := min(start+int(pageSize), len(result))
 	return result[start:end], total, nil
 }
 
@@ -78,10 +75,7 @@ func (m *mockMonitorRepo) ListAlertRules(ctx context.Context, page, pageSize int
 	if start >= len(result) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(result) {
-		end = len(result)
-	}
+	end := min(start+int(pageSize), len(result))
 	return result[start:end], total, nil
 }
 
@@ -281,7 +275,7 @@ func TestMonitorUsecase_ListPagination(t *testing.T) {
 	repo := newMockMonitorRepo()
 	uc := NewMonitorUsecase(repo)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		uc.RecordHealthCheck(context.Background(), "svc", HealthStatusHealthy, int64(i*10))
 	}
 
