@@ -11,11 +11,17 @@ import (
 	"micro-one-api/platform/metrics"
 )
 
+const relayOrchestratorTestHMACKey = "test-service-token"
+
+func relayOrchestratorTestDigest(token string) string {
+	return hmacSHA256Hex([]byte(relayOrchestratorTestHMACKey), token)
+}
+
 func TestShouldUseRelayOrchestratorRequiresEnabledAllowlistedPost(t *testing.T) {
 	s := NewHTTPServer(nil, nil, nil, nil, nil)
 	s.SetRelayOrchestratorEnabled(true)
-	s.SetRelayOrchestratorTokenAllowlist([]string{
-		sha256Hex("staging-token"),
+	s.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{
+		relayOrchestratorTestDigest("staging-token"),
 		"not-a-digest",
 	})
 
@@ -63,7 +69,7 @@ func TestRelayOrchestratorHandlerRecordsExecutionPath(t *testing.T) {
 	}
 
 	s.SetRelayOrchestratorEnabled(true)
-	s.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("staging-token")})
+	s.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{relayOrchestratorTestDigest("staging-token")})
 	orchestratorBefore := testutil.ToFloat64(metrics.RelayExecutorRequestsTotal.WithLabelValues(
 		relayEndpointChatCompletions, "false", relayExecutionPathOrchestrator, "503", "error",
 	))
@@ -83,16 +89,34 @@ func TestRelayOrchestratorHandlerRecordsExecutionPath(t *testing.T) {
 	}
 }
 
-func TestSetRelayOrchestratorTokenAllowlistNormalizesAndRejectsInvalidDigests(t *testing.T) {
+func TestSetRelayOrchestratorTokenHMACAllowlistNormalizesAndRejectsInvalidInputs(t *testing.T) {
 	s := NewHTTPServer(nil, nil, nil, nil, nil)
-	digest := sha256Hex("staging-token")
-	s.SetRelayOrchestratorTokenAllowlist([]string{"  " + digest + "  ", "xyz"})
+	s.SetRelayOrchestratorEnabled(true)
+	digest := relayOrchestratorTestDigest("staging-token")
+	s.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{"  " + digest + "  ", "xyz"})
 
-	if len(s.relayOrchestratorTokenAllowlist) != 1 {
-		t.Fatalf("allowlist size = %d, want 1", len(s.relayOrchestratorTokenAllowlist))
+	if len(s.relayOrchestratorTokenHMACAllowlist) != 1 {
+		t.Fatalf("allowlist size = %d, want 1", len(s.relayOrchestratorTokenHMACAllowlist))
 	}
-	if s.shouldUseRelayOrchestrator(httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)) {
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	request.Header.Set("Authorization", "Bearer staging-token")
+	if !s.shouldUseRelayOrchestrator(request) {
+		t.Fatal("valid keyed digest did not allow the staging token")
+	}
+
+	s.SetRelayOrchestratorTokenHMACAllowlist("different-key", []string{digest})
+	if s.shouldUseRelayOrchestrator(request) {
+		t.Fatal("digest generated with another HMAC key allowed the staging token")
+	}
+
+	request.Header.Del("Authorization")
+	if s.shouldUseRelayOrchestrator(request) {
 		t.Fatal("request without an allowlisted token entered the orchestrator route")
+	}
+
+	s.SetRelayOrchestratorTokenHMACAllowlist("", []string{digest})
+	if len(s.relayOrchestratorTokenHMACKey) != 0 || len(s.relayOrchestratorTokenHMACAllowlist) != 0 {
+		t.Fatal("empty HMAC key did not clear the allowlist")
 	}
 }
 
@@ -109,7 +133,7 @@ func TestRelayOrchestratorGateDefaultsOffAndAllowlistClearRollsBack(t *testing.T
 	}
 
 	s.SetRelayOrchestratorEnabled(true)
-	s.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("staging-token")})
+	s.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{relayOrchestratorTestDigest("staging-token")})
 	if !s.shouldUseRelayOrchestrator(request) {
 		t.Fatal("enabled allowlisted gate did not select the orchestrator")
 	}
@@ -117,7 +141,7 @@ func TestRelayOrchestratorGateDefaultsOffAndAllowlistClearRollsBack(t *testing.T
 	// Clearing the allowlist is the one-click rollback for a live staging
 	// cohort: even with the feature flag still enabled, no request can enter
 	// the staged path.
-	s.SetRelayOrchestratorTokenAllowlist(nil)
+	s.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, nil)
 	if s.shouldUseRelayOrchestrator(request) {
 		t.Fatal("cleared allowlist still selected the orchestrator")
 	}

@@ -58,7 +58,7 @@ func runChatCompletionPath(t *testing.T, orchestrator bool, upstreamStatus int, 
 	)
 	if orchestrator {
 		httpServer.SetRelayOrchestratorEnabled(true)
-		httpServer.SetRelayOrchestratorTokenAllowlist([]string{sha256Hex("user-token")})
+		httpServer.SetRelayOrchestratorTokenHMACAllowlist(relayOrchestratorTestHMACKey, []string{relayOrchestratorTestDigest("user-token")})
 	}
 	srv := khttp.NewServer()
 	httpServer.RegisterRoutes(srv)

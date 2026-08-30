@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -56,23 +57,29 @@ func (s *HTTPServer) shouldUseRelayOrchestrator(r *http.Request) bool {
 }
 
 func (s *HTTPServer) isRelayOrchestratorTokenAllowed(token string) bool {
-	if s == nil || !s.relayOrchestratorEnabled || len(s.relayOrchestratorTokenAllowlist) == 0 || strings.TrimSpace(token) == "" {
+	if s == nil || !s.relayOrchestratorEnabled || len(s.relayOrchestratorTokenHMACKey) == 0 || len(s.relayOrchestratorTokenHMACAllowlist) == 0 || strings.TrimSpace(token) == "" {
 		return false
 	}
-	_, ok := s.relayOrchestratorTokenAllowlist[sha256Hex(token)]
+	_, ok := s.relayOrchestratorTokenHMACAllowlist[hmacSHA256Hex(s.relayOrchestratorTokenHMACKey, token)]
 	return ok
 }
 
-func sha256Hex(value string) string {
-	digest := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(digest[:])
+func hmacSHA256Hex(key []byte, value string) string {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(value))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// SetRelayOrchestratorTokenAllowlist configures SHA-256 bearer-token digests
-// allowed to enter the staging executor route. Invalid digests are ignored so
-// a malformed config entry cannot accidentally broaden the route.
-func (s *HTTPServer) SetRelayOrchestratorTokenAllowlist(digests []string) {
+// SetRelayOrchestratorTokenHMACAllowlist configures HMAC-SHA256 bearer-token
+// digests keyed by SERVICE_TOKEN. Invalid inputs fail closed so configuration
+// disclosure alone cannot enable offline guessing of an allowlisted token.
+func (s *HTTPServer) SetRelayOrchestratorTokenHMACAllowlist(key string, digests []string) {
 	if s == nil {
+		return
+	}
+	s.relayOrchestratorTokenHMACKey = nil
+	s.relayOrchestratorTokenHMACAllowlist = nil
+	if key == "" {
 		return
 	}
 	allowlist := make(map[string]struct{}, len(digests))
@@ -86,5 +93,9 @@ func (s *HTTPServer) SetRelayOrchestratorTokenAllowlist(digests []string) {
 		}
 		allowlist[digest] = struct{}{}
 	}
-	s.relayOrchestratorTokenAllowlist = allowlist
+	if len(allowlist) == 0 {
+		return
+	}
+	s.relayOrchestratorTokenHMACKey = append([]byte(nil), key...)
+	s.relayOrchestratorTokenHMACAllowlist = allowlist
 }

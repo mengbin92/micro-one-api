@@ -72,9 +72,10 @@ type HTTPServer struct {
 	// relayOrchestratorEnabled gates the handler -> executor -> adaptor path for
 	// Chat Completions, Responses, and Anthropic Messages. It remains disabled
 	// by default and is further restricted to the configured token allowlist.
-	relayOrchestratorEnabled        bool
-	relayOrchestratorTokenAllowlist map[string]struct{}
-	routeMiddleware                 []func(http.Handler) http.Handler
+	relayOrchestratorEnabled            bool
+	relayOrchestratorTokenHMACKey       []byte
+	relayOrchestratorTokenHMACAllowlist map[string]struct{}
+	routeMiddleware                     []func(http.Handler) http.Handler
 
 	// accountResolver resolves subscription-account metadata (real account id,
 	// upstream account id, fingerprint) for subscription-typed channels. nil

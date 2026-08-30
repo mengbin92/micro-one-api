@@ -160,9 +160,9 @@ message Subscription {
 // RelayOrchestratorConfig controls the handler -> orchestrator -> forwarder route.
 message RelayOrchestrator {
   bool enabled = 1 [json_name = "enabled"];
-  // SHA-256 hex digests of bearer tokens allowed to use the staging route.
-  // Raw tokens must never be stored in runtime configuration.
-  repeated string allowlist_token_sha256 = 2 [json_name = "allowlist_token_sha256"];
+  // HMAC-SHA256 hex digests of bearer tokens allowed to use the staging route.
+  // SERVICE_TOKEN is the HMAC key; raw bearer tokens must never be configured.
+  repeated string allowlist_token_hmac_sha256 = 2 [json_name = "allowlist_token_hmac_sha256"];
 }
 
 // ChannelCacheConfig controls the multi-level ChannelCache.
