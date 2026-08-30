@@ -449,7 +449,12 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				}
 			}
 			if o.eventLogger != nil {
-				o.eventLogger.LogUsage(settleCtx, finalPlan, finalRequest, streamUsage, latency, true)
+				o.eventLogger.LogUsage(settleCtx, finalPlan, relaybiz.UsageEvent{
+					Model:     finalRequest.Model,
+					Endpoint:  finalRequest.Endpoint,
+					RequestID: finalRequest.RequestID,
+					Stream:    true,
+				}, streamUsage, latency, true)
 			}
 			if hook, ok := o.hooks.(relayStreamCompletionHook); ok {
 				hook.CompleteStream(settleCtx, finalPlan, req, responseID)
@@ -562,12 +567,11 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				// Usage logging only needs request metadata. Do not pass the
 				// transport request through this boundary: it contains client
 				// headers, body, and bearer credentials.
-				o.eventLogger.LogUsage(attemptCtx, attemptPlan, relaybiz.ExecutorRequest{
-					Model:       attemptReq.Model,
-					Endpoint:    attemptReq.Endpoint,
-					RequestID:   attemptReq.RequestID,
-					SessionHash: attemptReq.SessionHash,
-					Stream:      attemptReq.Stream,
+				o.eventLogger.LogUsage(attemptCtx, attemptPlan, relaybiz.UsageEvent{
+					Model:     attemptReq.Model,
+					Endpoint:  attemptReq.Endpoint,
+					RequestID: attemptReq.RequestID,
+					Stream:    false,
 				}, *attemptResult.Usage, latency, false)
 			}
 		}

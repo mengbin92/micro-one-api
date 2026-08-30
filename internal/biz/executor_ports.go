@@ -93,9 +93,18 @@ type StreamForwarder interface {
 	ForwardStream(context.Context, *RelayPlan, ExecutorRequest) (*StreamForwardResponse, error)
 }
 
+// UsageEvent contains only the non-sensitive request metadata needed by usage
+// logging. Credentials, headers, and bodies cannot cross this boundary.
+type UsageEvent struct {
+	Model     string
+	Endpoint  string
+	RequestID string
+	Stream    bool
+}
+
 // EventLogger records the successful execution usage event. Error and route
 // events remain owned by the existing selection/error instrumentation until
 // their transport-neutral event shape is introduced.
 type EventLogger interface {
-	LogUsage(context.Context, *RelayPlan, ExecutorRequest, CanonicalUsage, time.Duration, bool)
+	LogUsage(context.Context, *RelayPlan, UsageEvent, CanonicalUsage, time.Duration, bool)
 }

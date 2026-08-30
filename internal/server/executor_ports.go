@@ -92,20 +92,16 @@ type relayEventLogger struct {
 	hooks RelayLifecycleHooks
 }
 
-func (l relayEventLogger) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) {
+func (l relayEventLogger) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, event relaybiz.UsageEvent, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) {
 	if l.hooks == nil {
 		return
 	}
-	// Usage logging needs metadata only. Keep credentials, body, and inbound
-	// headers out of the lifecycle hook even if a future caller passes them.
-	safeReq := relaybiz.ExecutorRequest{
-		Model:       req.Model,
-		Endpoint:    req.Endpoint,
-		RequestID:   req.RequestID,
-		SessionHash: req.SessionHash,
-		Stream:      req.Stream,
-	}
-	l.hooks.LogUsage(ctx, plan, relayRequestFromExecutorRequest(safeReq), usage, latency, stream)
+	l.hooks.LogUsage(ctx, plan, &RelayRequest{
+		Model:     event.Model,
+		Endpoint:  APIEndpoint(event.Endpoint),
+		RequestID: event.RequestID,
+		IsStream:  event.Stream,
+	}, usage, latency, stream)
 }
 
 // relayNonStreamForwarder adapts the existing ProviderFactory-backed
