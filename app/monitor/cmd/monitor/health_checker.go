@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -10,6 +11,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/monitor/internal/biz"
 	monitordata "micro-one-api/app/monitor/internal/data"
+	grpcauth "micro-one-api/platform/grpc"
 	"micro-one-api/platform/grpc/xgrpc"
 	applogger "micro-one-api/platform/logging"
 
@@ -48,6 +50,7 @@ func newChannelHealthCheckerImpl(cfg *Config) (*biz.ChannelHealthChecker, func()
 
 	conn, err := grpc.NewClient(clients.Channel.Endpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("channel-service")))
 	if err != nil {
 		applogger.Log.Warn("failed to create channel health client", zap.Error(err))

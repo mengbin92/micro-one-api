@@ -168,7 +168,7 @@ func NewHTTPServer(
 	var upstreamStreamHTTPClient *http.Client
 	if providerFactory != nil {
 		relayadaptor.SetProviderFactory(providerFactory)
-		upstreamHTTPClient = &http.Client{Timeout: providerFactory.DefaultTimeout()}
+		upstreamHTTPClient = relayprovider.NewHTTPClient(providerFactory.DefaultTimeout())
 		upstreamStreamHTTPClient = relayprovider.NewStreamHTTPClient(providerFactory.DefaultTimeout())
 	}
 	var logClient logv1.LogServiceClient

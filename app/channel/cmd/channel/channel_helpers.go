@@ -16,6 +16,7 @@ import (
 	notifyv1 "micro-one-api/api/notify/v1"
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/app/channel/internal/service"
+	grpcauth "micro-one-api/platform/grpc"
 	"micro-one-api/platform/grpc/xgrpc"
 	applogger "micro-one-api/platform/logging"
 
@@ -35,6 +36,7 @@ func configureHealthAlert(uc *biz.ChannelUsecase) (*grpc.ClientConn, error) {
 	}
 	conn, err := grpc.NewClient(endpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))),
 		grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 	if err != nil {
 		return nil, fmt.Errorf("dial notify endpoint: %w", err)
@@ -172,6 +174,7 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 			if conn == nil {
 				c, err := grpc.NewClient(endpoint,
 					grpc.WithTransportCredentials(insecure.NewCredentials()),
+					grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))),
 					grpc.WithChainUnaryInterceptor(xgrpc.UnaryClientMetricsInterceptor("notify-worker")))
 				if err != nil {
 					applogger.Log.Warn("failed to dial notify for quota alert", zap.Error(err))

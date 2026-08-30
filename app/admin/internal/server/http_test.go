@@ -1144,6 +1144,25 @@ func TestParseReverseProxyTargetRejectsUnsafeEndpoints(t *testing.T) {
 	}
 }
 
+func TestServiceReverseProxyDropsSpoofedForwardedFor(t *testing.T) {
+	var forwarded string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded = r.Header.Get("X-Forwarded-For")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer backend.Close()
+	t.Setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+	proxy := newServiceReverseProxy(backend.URL)
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	proxy.ServeHTTP(httptest.NewRecorder(), req)
+
+	if strings.Contains(forwarded, "1.2.3.4") || !strings.Contains(forwarded, "203.0.113.9") {
+		t.Fatalf("forwarded chain = %q, want validated direct client only", forwarded)
+	}
+}
+
 func TestAdminHTTPPageUsesExternalWebRoot(t *testing.T) {
 	webRoot := t.TempDir()
 	if err := os.Mkdir(filepath.Join(webRoot, "assets"), 0o755); err != nil {

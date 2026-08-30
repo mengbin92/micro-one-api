@@ -47,7 +47,7 @@ func ServiceAuth(next http.HandlerFunc) http.HandlerFunc {
 
 // NewHTTPServer wires HTTP transport for log-service.
 func NewHTTPServer(addr string, svc *service.LogService, identityClients ...identityv1.IdentityServiceClient) *khttp.Server {
-	srv := khttp.NewServer(xhttp.SafeKratosServerOptions(khttp.Address(addr))...)
+	srv := xhttp.NewServer(khttp.Address(addr))
 	var identityClient identityv1.IdentityServiceClient
 	if len(identityClients) > 0 {
 		identityClient = identityClients[0]

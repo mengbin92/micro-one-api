@@ -83,7 +83,11 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 		client = s.apiKeyStreamHTTPClient
 	}
 	if client == nil {
-		client = http.DefaultClient
+		if request.Stream {
+			client = provider.NewStreamHTTPClient(30 * time.Second)
+		} else {
+			client = provider.NewHTTPClient(30 * time.Second)
+		}
 	}
 
 	response, err := client.Do(upstreamRequest) // #nosec G704 -- adaptor URL validated above.

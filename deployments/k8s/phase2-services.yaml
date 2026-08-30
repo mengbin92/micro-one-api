@@ -69,6 +69,11 @@ spec:
             secretKeyRef:
               name: redis-credentials
               key: password
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: service-token-secret
+              key: token
         resources:
           requests:
             memory: "64Mi"
@@ -291,6 +296,11 @@ spec:
             configMapKeyRef:
               name: app-config
               key: channel-grpc-endpoint
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: service-token-secret
+              key: token
         resources:
           requests:
             memory: "64Mi"
@@ -397,6 +407,11 @@ spec:
             configMapKeyRef:
               name: app-config
               key: database-driver
+        - name: SERVICE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: service-token-secret
+              key: token
         resources:
           requests:
             memory: "64Mi"

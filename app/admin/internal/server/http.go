@@ -186,12 +186,13 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	// point the router's NotFoundHandler at handlePage so ANY unmatched path
 	// serves the SPA shell (handlePage serves index.html for extension-less
 	// paths and the real asset otherwise). This option is appended AFTER
-	// SafeKratosServerOptions (which sets NotFoundHandler to a 404 responder) so
-	// our SPA fallback wins. API routes (/api/..., /v1/...) and /metrics,
+	// xhttp.NewServer's safe 404 option so our SPA fallback wins. API routes
+	// (/api/..., /v1/...) and /metrics,
 	// /healthz register longer patterns and are never "not found".
-	spaOpts := xhttp.SafeKratosServerOptions(khttp.Address(addr))
-	spaOpts = append(spaOpts, khttp.NotFoundHandler(http.HandlerFunc(handlePage)))
-	srv := khttp.NewServer(spaOpts...)
+	srv := xhttp.NewServer(
+		khttp.Address(addr),
+		khttp.NotFoundHandler(http.HandlerFunc(handlePage)),
+	)
 	adminAuth := newAdminGuard(svc)
 
 	// Health and metrics (unauthenticated)
@@ -697,7 +698,22 @@ func newServiceReverseProxy(endpoint string) *httputil.ReverseProxy {
 	if err != nil {
 		return nil
 	}
-	return httputil.NewSingleHostReverseProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
+	proxy := httputil.NewSingleHostReverseProxy(target) // #nosec G704 -- endpoint is configured by operators and validated by parseReverseProxyTarget.
+	director := proxy.Director
+	trustedProxies := xhttp.TrustedProxyCIDRsFromEnv("ADMIN_TRUSTED_PROXY_CIDRS")
+	proxy.Director = func(req *http.Request) {
+		clientIP := xhttp.ClientIP(req, trustedProxies)
+		director(req)
+		// Go's ReverseProxy appends the direct peer after Director returns. Start
+		// from one validated client hop so an untrusted caller cannot smuggle a
+		// fake leftmost X-Forwarded-For value into identity-service.
+		req.Header.Del("X-Forwarded-For")
+		req.Header.Del("X-Real-IP")
+		if clientIP != "" {
+			req.Header.Set("X-Forwarded-For", clientIP)
+		}
+	}
+	return proxy
 }
 
 func parseReverseProxyTarget(endpoint string) (*url.URL, error) {
