@@ -255,7 +255,7 @@ export function AdminUpstreamCostsPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("当前上游成本")}</CardTitle>
-          <CardDescription>{t("键格式：`channel:&lt;id&gt;:&lt;上游模型ID&gt;` / `subscription:&lt;id&gt;:&lt;上游模型ID&gt;`；全局默认使用裸公开模型 ID。")}</CardDescription>
+          <CardDescription>{t("键格式：`channel:<id>:<上游模型ID>` / `subscription:<id>:<上游模型ID>`；全局默认使用裸公开模型 ID。")}</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -336,7 +336,7 @@ export function AdminUpstreamCostsPage() {
                   </TableBody>
                 </Table>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">{t("legacy 键使用旧格式 `&lt;channel_id&gt;:&lt;public_model_id&gt;`，迁移后可解析为规范的 `channel:&lt;id&gt;:&lt;upstream_model_id&gt;`。可先点「迁移 legacy 键」预览，再确认执行。")}</p>
+              <p className="mt-2 text-xs text-muted-foreground">{t("legacy 键使用旧格式 `<channel_id>:<public_model_id>`，迁移后可解析为规范的 `channel:<id>:<upstream_model_id>`。可先点「迁移 legacy 键」预览，再确认执行。")}</p>
             </div>
           )}
         </CardContent>
