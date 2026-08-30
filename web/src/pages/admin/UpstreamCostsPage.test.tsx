@@ -46,12 +46,14 @@ describe('AdminUpstreamCostsPage', () => {
 
     renderWithQuery(<AdminUpstreamCostsPage />);
 
+    expect(screen.getByText('键格式：`channel:<id>:<上游模型ID>` / `subscription:<id>:<上游模型ID>`；全局默认使用裸公开模型 ID。')).toBeInTheDocument();
     expect(await screen.findByText('渠道 1 · DeepSeek Main')).toBeInTheDocument();
     expect(screen.getAllByText('deepseek-v4-flash-0731').length).toBeGreaterThan(0);
     expect(screen.getByText(`$${1.4e-7 * MTOK} / 1M`)).toBeInTheDocument();
     expect(screen.getByText(`$${2.8e-9 * MTOK} / 1M`)).toBeInTheDocument();
     expect(screen.getByText('legacy 键（旧格式，待迁移）· 1 条')).toBeInTheDocument();
     expect(screen.getByText('1:deepseek-v4-flash')).toBeInTheDocument();
+    expect(screen.getByText(/legacy 键使用旧格式 `<channel_id>:<public_model_id>`/)).toBeInTheDocument();
   });
 
   it('shows empty state when no costs are configured', async () => {
