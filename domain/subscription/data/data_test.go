@@ -313,10 +313,10 @@ func TestSubscriptionRepository_AddUsageConcurrent(t *testing.T) {
 	const perGoroutine = 20
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < perGoroutine; j++ {
+			for range perGoroutine {
 				if err := repo.AddUsage(ctx, 2002, 0.01, 100); err != nil {
 					t.Errorf("AddUsage() error = %v", err)
 					return

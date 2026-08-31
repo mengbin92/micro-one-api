@@ -56,10 +56,7 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 		maxTokens = *req.MaxCompletionTokens
 	}
 	if maxTokens > 0 {
-		v := maxTokens
-		if v < minMaxOutputTokens {
-			v = minMaxOutputTokens
-		}
+		v := max(maxTokens, minMaxOutputTokens)
 		out.MaxOutputTokens = &v
 	}
 
@@ -324,7 +321,7 @@ func parseChatContent(raw jsonx.RawMessage) (string, error) {
 
 func parseChatMessageContent(raw jsonx.RawMessage) (chatMessageContent, error) {
 	if len(raw) == 0 {
-		return chatMessageContent{Text: stringPtr("")}, nil
+		return chatMessageContent{Text: new("")}, nil
 	}
 
 	var s string
@@ -403,8 +400,9 @@ func flattenChatContentParts(parts []ChatContentPart) string {
 	return strings.Join(textParts, "")
 }
 
+//go:fix inline
 func stringPtr(s string) *string {
-	return &s
+	return new(s)
 }
 
 // convertChatToolsToResponses maps Chat Completions tool definitions and legacy

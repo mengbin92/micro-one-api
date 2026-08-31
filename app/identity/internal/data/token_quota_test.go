@@ -36,13 +36,11 @@ func TestConsumeTokenQuotaDBAtomicAndUserScoped(t *testing.T) {
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 10)
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			_, err := repo.ConsumeTokenQuota(context.Background(), 7, model.ID, 10)
 			errs <- err
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

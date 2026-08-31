@@ -158,7 +158,7 @@ func TestMultiLevelCache_ConcurrentGetSingleflight(t *testing.T) {
 	// loads so the loader is called far fewer than N times.
 	const n = 100
 	done := make(chan struct{}, n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			defer func() { done <- struct{}{} }()
 			got, err := c.Get(context.Background(), "k")
@@ -167,7 +167,7 @@ func TestMultiLevelCache_ConcurrentGetSingleflight(t *testing.T) {
 			}
 		}()
 	}
-	for i := 0; i < n; i++ {
+	for range n {
 		<-done
 	}
 	if ld.calls > 10 {

@@ -54,16 +54,11 @@ func stressConcurrencyReplicas(t *testing.T, replicas, load int, limit int32, ho
 	var peak atomic.Int32
 	start := make(chan struct{})
 	var wg sync.WaitGroup
-	perReplica := load / replicas
-	if perReplica < 1 {
-		perReplica = 1
-	}
-	for r := 0; r < replicas; r++ {
+	perReplica := max(load/replicas, 1)
+	for r := range replicas {
 		limiter := newRedisAccountConcurrencyLimiter(rdb, fmt.Sprintf("r-%d", r))
-		for w := 0; w < perReplica; w++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range perReplica {
+			wg.Go(func() {
 				<-start
 				begin := time.Now()
 				release, ok := limiter.TryAcquire(context.Background(), accountID, limit)
@@ -81,7 +76,7 @@ func stressConcurrencyReplicas(t *testing.T, replicas, load int, limit int32, ho
 				rec.Record(stresstest.Attempt{Duration: time.Since(begin), Succeeded: true, InflightAtAttempt: cur})
 				time.Sleep(hold)
 				release()
-			}()
+			})
 		}
 	}
 	close(start)
@@ -135,10 +130,8 @@ func TestStress_AccountConcurrency_RedisOutageFailsOpenWithFallbackMetric(t *tes
 	var wg sync.WaitGroup
 	const workers = 16
 	start := make(chan struct{})
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range workers {
+		wg.Go(func() {
 			<-start
 			begin := time.Now()
 			release, ok := limiter.TryAcquire(context.Background(), accountID, limit)
@@ -152,7 +145,7 @@ func TestStress_AccountConcurrency_RedisOutageFailsOpenWithFallbackMetric(t *tes
 			defer release()
 			rec.Record(stresstest.Attempt{Duration: time.Since(begin), Succeeded: true, RedisFallback: "acquire_error"})
 			time.Sleep(2 * time.Millisecond)
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()
@@ -195,15 +188,13 @@ func TestStress_RuntimeBlocker_CrossReplicaAndExpiry(t *testing.T) {
 	const readers = 32
 	seen := atomic.Int64{}
 	start := make(chan struct{})
-	for i := 0; i < readers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range readers {
+		wg.Go(func() {
 			<-start
 			if _, ok := replicaB.IsBlocked(context.Background(), accountID, time.Now()); ok {
 				seen.Add(1)
 			}
-		}()
+		})
 	}
 	close(start)
 	wg.Wait()
@@ -233,17 +224,15 @@ func TestStress_AccountRPM_MultiReplicaWithinLimit(t *testing.T) {
 	var granted atomic.Int64
 	var wg sync.WaitGroup
 	start := make(chan struct{})
-	for r := 0; r < replicas; r++ {
+	for r := range replicas {
 		limiter := newRedisAccountRPMLimiter(rdb, fmt.Sprintf("rpm-%d", r))
-		for i := 0; i < perReplica; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range perReplica {
+			wg.Go(func() {
 				<-start
 				if limiter.TryAcquire(context.Background(), accountID, rpmLimit) {
 					granted.Add(1)
 				}
-			}()
+			})
 		}
 	}
 	close(start)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -362,13 +363,10 @@ func (r *Repository) listUnrestrictedChannelsByGroupMemory(_ context.Context, gr
 		if channel.RestrictModels {
 			continue
 		}
-		for _, channelGroup := range biz.SplitCSV(channel.Group) {
-			if channelGroup == group {
-				cloned := *channel
-				cloned.Models = append([]string(nil), channel.Models...)
-				result = append(result, &cloned)
-				break
-			}
+		if slices.Contains(biz.SplitCSV(channel.Group), group) {
+			cloned := *channel
+			cloned.Models = append([]string(nil), channel.Models...)
+			result = append(result, &cloned)
 		}
 	}
 	return result, nil
@@ -487,7 +485,7 @@ func (r *Repository) ListOAuthRefreshCandidates(ctx context.Context, within time
 			ids = append(ids, id)
 		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	return ids, nil
 }
 
@@ -1127,7 +1125,7 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 		if err != nil {
 			return err
 		}
-		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
+		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", account.ID).Updates(map[string]any{
 			"name":                      model.Name,
 			"platform":                  model.Platform,
 			"account_type":              model.AccountType,
@@ -1198,8 +1196,8 @@ func (r *Repository) setSubscriptionAccountErrorDB(ctx context.Context, accountI
 		return err
 	}
 	metadata := setSubscriptionAccountMetadataValue(account.Metadata, "last_error", message)
-	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
-		"metadata":   stringPtr(metadata),
+	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
+		"metadata":   new(metadata),
 		"updated_at": now(),
 	}).Error
 }
@@ -1210,15 +1208,15 @@ func (r *Repository) setTempUnschedulableDB(ctx context.Context, accountID int64
 		return err
 	}
 	metadata := stampRecoveryMetadata(account.Metadata, reason, until.Unix(), now())
-	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
+	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
 		"rate_limited_until": until.Unix(),
-		"metadata":           stringPtr(metadata),
+		"metadata":           new(metadata),
 		"updated_at":         now(),
 	}).Error
 }
 
 func (r *Repository) clearTempUnschedulableDB(ctx context.Context, accountID int64) error {
-	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
+	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
 		"rate_limited_until": 0,
 		"updated_at":         now(),
 	}).Error
@@ -1230,7 +1228,7 @@ func (r *Repository) recordAccountQuotaSnapshotDB(ctx context.Context, snapshot 
 		if err := tx.Save(model).Error; err != nil {
 			return err
 		}
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"updated_at": now(),
 		}
 		if snapshot.PrimaryUsedPercent != nil {
@@ -1298,7 +1296,7 @@ func (r *Repository) recordSubscriptionAccountQuotaUsageDB(ctx context.Context, 
 			}
 		}
 		applySubscriptionAccountQuotaUsage(account, usage.CostUSD, usage.OccurredAt)
-		return tx.Model(&subscriptionAccountModel{}).Where("id = ?", usage.AccountID).Updates(map[string]interface{}{
+		return tx.Model(&subscriptionAccountModel{}).Where("id = ?", usage.AccountID).Updates(map[string]any{
 			"quota_used_usd":            account.QuotaUsedUSD,
 			"quota_5h_used_usd":         account.Quota5hUsedUSD,
 			"quota_5h_window_start":     account.Quota5hWindowStart,
@@ -1397,9 +1395,9 @@ func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, re
 		abilityEnabled = false
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
+		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
 			"status":     status,
-			"metadata":   stringPtr(metadata),
+			"metadata":   new(metadata),
 			"updated_at": now(),
 		}).Error; err != nil {
 			return err
@@ -1407,7 +1405,7 @@ func (r *Repository) autoPauseAccountDB(ctx context.Context, accountID int64, re
 		if err := tx.Model(&subscriptionAccountAbilityModel{}).Where("account_id = ?", accountID).Update("enabled", abilityEnabled).Error; err != nil {
 			return err
 		}
-		return tx.Model(&accountQuotaSnapshotModel{}).Where("account_id = ?", accountID).Updates(map[string]interface{}{
+		return tx.Model(&accountQuotaSnapshotModel{}).Where("account_id = ?", accountID).Updates(map[string]any{
 			"snapshot_paused": true,
 			"updated_at":      time.Now(),
 		}).Error
@@ -1439,11 +1437,11 @@ func (r *Repository) recordHealthDB(ctx context.Context, event biz.ChannelHealth
 		}
 		channel := r.modelToChannel(&model)
 		applyHealthEvent(channel, event, threshold, cooldown)
-		if err := tx.Model(&channelModel{}).Where("id = ?", event.ChannelID).Updates(map[string]interface{}{
+		if err := tx.Model(&channelModel{}).Where("id = ?", event.ChannelID).Updates(map[string]any{
 			"test_time":                   channel.TestTime,
 			"response_time":               channel.ResponseTime,
 			"health_status":               channel.EffectiveHealthStatus(),
-			"health_last_error":           stringPtr(channel.HealthLastError),
+			"health_last_error":           new(channel.HealthLastError),
 			"health_last_success_time":    channel.HealthLastSuccessTime,
 			"health_last_failure_time":    channel.HealthLastFailureTime,
 			"health_consecutive_failures": channel.HealthConsecutiveFailures,
@@ -1838,12 +1836,7 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 }
 
 func csvContains(csv, value string) bool {
-	for _, item := range biz.SplitCSV(csv) {
-		if item == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(biz.SplitCSV(csv), value)
 }
 
 func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) ([]string, error) {
@@ -1911,11 +1904,8 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 		if !ok || channel.Status != biz.ChannelStatusEnabled {
 			continue
 		}
-		for _, channelGroup := range biz.SplitCSV(channel.Group) {
-			if channelGroup == group {
-				seen[strings.ToLower(model.ModelID)] = struct{}{}
-				break
-			}
+		if slices.Contains(biz.SplitCSV(channel.Group), group) {
+			seen[strings.ToLower(model.ModelID)] = struct{}{}
 		}
 	}
 
@@ -1993,7 +1983,7 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 		if err != nil {
 			return err
 		}
-		if err := tx.Model(&channelModel{}).Where("id = ?", channel.ID).Updates(map[string]interface{}{
+		if err := tx.Model(&channelModel{}).Where("id = ?", channel.ID).Updates(map[string]any{
 			"name":                                 model.Name,
 			"base_url":                             model.BaseURL,
 			"key":                                  model.Key,
@@ -2183,7 +2173,7 @@ func (r *Repository) syncChannelModelMappingsTx(tx *gorm.DB, channel *biz.Channe
 		}
 	}
 	if len(managedToUpdate) > 0 {
-		if err := tx.Model(&modelChannelMappingModel{}).Where("id IN ?", managedToUpdate).Updates(map[string]interface{}{
+		if err := tx.Model(&modelChannelMappingModel{}).Where("id IN ?", managedToUpdate).Updates(map[string]any{
 			"enabled": true, "priority": priority, "updated_at": now,
 		}).Error; err != nil {
 			return err
@@ -2379,18 +2369,18 @@ func (r *Repository) channelToModel(ch *biz.Channel) (*channelModel, error) {
 		Type:                              ch.Type,
 		Name:                              ch.Name,
 		Status:                            ch.Status,
-		BaseURL:                           strPtr(ch.BaseURL),
+		BaseURL:                           new(ch.BaseURL),
 		Weight:                            uintPtr(ch.Weight),
 		CreatedTime:                       ch.CreatedTime,
 		TestTime:                          ch.TestTime,
 		ResponseTime:                      ch.ResponseTime,
 		Balance:                           ch.Balance,
 		BalanceUpdatedTime:                ch.BalanceUpdatedTime,
-		BalanceRefreshLastError:           stringPtr(ch.BalanceRefreshLastError),
+		BalanceRefreshLastError:           new(ch.BalanceRefreshLastError),
 		BalanceRefreshLastSuccessTime:     ch.BalanceRefreshLastSuccessTime,
 		ConsecutiveBalanceRefreshFailures: ch.ConsecutiveBalanceRefreshFailures,
 		HealthStatus:                      ch.EffectiveHealthStatus(),
-		HealthLastError:                   stringPtr(ch.HealthLastError),
+		HealthLastError:                   new(ch.HealthLastError),
 		HealthLastSuccessTime:             ch.HealthLastSuccessTime,
 		HealthLastFailureTime:             ch.HealthLastFailureTime,
 		HealthConsecutiveFailures:         ch.HealthConsecutiveFailures,
@@ -2398,11 +2388,11 @@ func (r *Repository) channelToModel(ch *biz.Channel) (*channelModel, error) {
 		Models:                            ch.ModelsCSV(),
 		Group:                             ch.Group,
 		UsedQuota:                         ch.UsedQuota,
-		ModelMapping:                      stringPtr(ch.ModelMapping),
-		Priority:                          int64Ptr(ch.Priority),
+		ModelMapping:                      new(ch.ModelMapping),
+		Priority:                          new(ch.Priority),
 		Key:                               key,
 		Config:                            "{}",
-		SystemPrompt:                      stringPtr(ch.SystemPrompt),
+		SystemPrompt:                      new(ch.SystemPrompt),
 		RestrictModels:                    ch.RestrictModels,
 	}, nil
 }
@@ -2476,13 +2466,13 @@ func (r *Repository) subscriptionAccountBizToModel(a *biz.SubscriptionAccount) (
 		Models:                 a.ModelsCSV(),
 		Priority:               a.Priority,
 		Weight:                 a.Weight,
-		BaseURL:                strPtr(a.BaseURL),
-		AccessToken:            stringPtr(accessToken),
-		RefreshToken:           stringPtr(refreshToken),
+		BaseURL:                new(a.BaseURL),
+		AccessToken:            new(accessToken),
+		RefreshToken:           new(refreshToken),
 		ExpiresAt:              a.ExpiresAt,
 		AccountID:              a.AccountID,
-		Fingerprint:            stringPtr(a.Fingerprint),
-		Metadata:               stringPtr(a.Metadata),
+		Fingerprint:            new(a.Fingerprint),
+		Metadata:               new(a.Metadata),
 		CreatedAt:              a.CreatedAt,
 		UpdatedAt:              a.UpdatedAt,
 		LastUsedAt:             a.LastUsedAt,
@@ -2594,18 +2584,18 @@ func subscriptionAccountQuotaEventKey(reservationID string, accountID int64, cos
 	return reservationID + "\x00" + strconv.FormatInt(accountID, 10) + "\x00" + costSource
 }
 
-func subscriptionAccountQuotaResetUpdates(scope string) map[string]interface{} {
+func subscriptionAccountQuotaResetUpdates(scope string) map[string]any {
 	switch scope {
 	case "total":
-		return map[string]interface{}{"quota_used_usd": 0}
+		return map[string]any{"quota_used_usd": 0}
 	case "5h":
-		return map[string]interface{}{"quota_5h_used_usd": 0, "quota_5h_window_start": 0}
+		return map[string]any{"quota_5h_used_usd": 0, "quota_5h_window_start": 0}
 	case "daily":
-		return map[string]interface{}{"quota_daily_used_usd": 0, "quota_daily_window_start": 0}
+		return map[string]any{"quota_daily_used_usd": 0, "quota_daily_window_start": 0}
 	case "weekly":
-		return map[string]interface{}{"quota_weekly_used_usd": 0, "quota_weekly_window_start": 0}
+		return map[string]any{"quota_weekly_used_usd": 0, "quota_weekly_window_start": 0}
 	case "all":
-		return map[string]interface{}{
+		return map[string]any{
 			"quota_used_usd":            0,
 			"quota_5h_used_usd":         0,
 			"quota_5h_window_start":     0,
@@ -2619,7 +2609,7 @@ func subscriptionAccountQuotaResetUpdates(scope string) map[string]interface{} {
 	}
 }
 
-func subscriptionAccountQuotaResetUpdatesToWindow(scope string, windowStart int64) map[string]interface{} {
+func subscriptionAccountQuotaResetUpdatesToWindow(scope string, windowStart int64) map[string]any {
 	updates := subscriptionAccountQuotaResetUpdates(scope)
 	if updates == nil {
 		return nil
@@ -2705,13 +2695,18 @@ func quotaResetAt(updatedAt time.Time, primary, secondary *int32) int64 {
 	return updatedAt.Add(time.Duration(resetAfter) * time.Second).Unix()
 }
 
-func strPtr(s string) *string { return &s }
-func int64Ptr(i int64) *int64 { return &i }
+//go:fix inline
+func strPtr(s string) *string { return new(s) }
+
+//go:fix inline
+func int64Ptr(i int64) *int64 { return new(i) }
 func uintPtr(i uint32) *uint {
 	v := uint(i)
 	return &v
 }
-func stringPtr(s string) *string { return &s }
+
+//go:fix inline
+func stringPtr(s string) *string { return new(s) }
 func derefString(s *string) string {
 	if s == nil {
 		return ""
@@ -2741,7 +2736,7 @@ func subscriptionAccountMetadataValue(raw, key string) string {
 func setSubscriptionAccountMetadataValue(raw, key, value string) string {
 	values := subscriptionAccountMetadata(raw)
 	if values == nil {
-		values = make(map[string]interface{})
+		values = make(map[string]any)
 		if strings.TrimSpace(raw) != "" {
 			values["raw"] = raw
 		}
@@ -2761,11 +2756,11 @@ func setSubscriptionAccountMetadataValue(raw, key, value string) string {
 	return string(b)
 }
 
-func subscriptionAccountMetadata(raw string) map[string]interface{} {
+func subscriptionAccountMetadata(raw string) map[string]any {
 	if strings.TrimSpace(raw) == "" {
-		return map[string]interface{}{}
+		return map[string]any{}
 	}
-	values := make(map[string]interface{})
+	values := make(map[string]any)
 	if err := jsonx.Unmarshal([]byte(raw), &values); err != nil {
 		return nil
 	}
@@ -2989,7 +2984,7 @@ func (r *Repository) clearRecoveryMarkersDB(ctx context.Context, accountID int64
 		return err
 	}
 	metadata := account.Metadata
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"updated_at": now(),
 	}
 	if clearTemp {
@@ -3001,7 +2996,7 @@ func (r *Repository) clearRecoveryMarkersDB(ctx context.Context, accountID int64
 	if clearMeta {
 		metadata = clearSubscriptionAccountRecoveryMetadata(metadata)
 	}
-	updates["metadata"] = stringPtr(metadata)
+	updates["metadata"] = new(metadata)
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(updates).Error; err != nil {
 			return err
@@ -3021,8 +3016,8 @@ func (r *Repository) clearRecoveryMetadataDB(ctx context.Context, accountID int6
 		return err
 	}
 	metadata := clearSubscriptionAccountRecoveryMetadata(account.Metadata)
-	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
-		"metadata":   stringPtr(metadata),
+	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
+		"metadata":   new(metadata),
 		"updated_at": now(),
 	}).Error
 }
@@ -3072,7 +3067,7 @@ func isDuplicateKeyErr(err error) bool {
 func stampRecoveryMetadata(raw, reason string, untilUnix, nowUnix int64) string {
 	values := subscriptionAccountMetadata(raw)
 	if values == nil {
-		values = make(map[string]interface{})
+		values = make(map[string]any)
 	}
 	values["last_error"] = reason
 	values["unschedulable_reason"] = reason
@@ -3145,8 +3140,8 @@ func (r *Repository) stampQuotaAlertMetadataDB(ctx context.Context, accountID in
 		return err
 	}
 	metadata := setSubscriptionAccountMetadataValue(setSubscriptionAccountMetadataValue(account.Metadata, "last_quota_alert_kind", kind), "last_quota_alert_at", strconv.FormatInt(alertAt, 10))
-	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]interface{}{
-		"metadata":   stringPtr(metadata),
+	return r.db.WithContext(ctx).Model(&subscriptionAccountModel{}).Where("id = ?", accountID).Updates(map[string]any{
+		"metadata":   new(metadata),
 		"updated_at": now(),
 	}).Error
 }

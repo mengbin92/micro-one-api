@@ -161,8 +161,8 @@ func (p *AzureProvider) endpoint(deployment, path, rawQuery string) (string, err
 		return "", fmt.Errorf("invalid azure base URL: %w", err)
 	}
 	targetPath := strings.TrimLeft(path, "/")
-	if strings.HasPrefix(targetPath, "v1/") {
-		targetPath = strings.TrimPrefix(targetPath, "v1/")
+	if after, ok := strings.CutPrefix(targetPath, "v1/"); ok {
+		targetPath = after
 	}
 	targetPath = strings.TrimPrefix(targetPath, "openai/")
 	basePath := strings.TrimRight(u.Path, "/")
@@ -209,7 +209,7 @@ func (p *AzureProvider) setHeaders(dst http.Header, src http.Header) {
 }
 
 func extractDeploymentFromRawBody(body []byte) string {
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
@@ -220,7 +220,7 @@ func extractDeploymentFromRawBody(body []byte) string {
 }
 
 func removeModelFromRawBody(body []byte) []byte {
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.Unmarshal(body, &payload); err != nil {
 		return body
 	}

@@ -114,7 +114,7 @@ func responsesFallbackTerminalError(originalErr, fallbackErr error) error {
 }
 
 func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := jsonx.Unmarshal(body, &raw); err != nil {
 		return nil, false, fmt.Errorf("failed to parse responses request: %w", err)
 	}
@@ -141,7 +141,7 @@ func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
 		messages = []apicompat.ChatMessage{{Role: "user", Content: jsonx.RawMessage(`""`)}}
 	}
 
-	chat := map[string]interface{}{
+	chat := map[string]any{
 		"model":    model,
 		"messages": messages,
 	}
@@ -160,7 +160,7 @@ func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
 	}
 	if stream {
 		chat["stream"] = true
-		chat["stream_options"] = map[string]interface{}{"include_usage": true}
+		chat["stream_options"] = map[string]any{"include_usage": true}
 	}
 	chatBody, err := jsonx.Marshal(chat)
 	if err != nil {
@@ -169,36 +169,36 @@ func responsesRequestToChatCompletionsBody(body []byte) ([]byte, bool, error) {
 	return chatBody, stream, nil
 }
 
-func copyOptionalRawField(dst, src map[string]interface{}, key string) {
+func copyOptionalRawField(dst, src map[string]any, key string) {
 	if value, ok := src[key]; ok {
 		dst[key] = value
 	}
 }
 
-func copyOptionalRawFieldAs(dst, src map[string]interface{}, srcKey, dstKey string) {
+func copyOptionalRawFieldAs(dst, src map[string]any, srcKey, dstKey string) {
 	if value, ok := src[srcKey]; ok {
 		dst[dstKey] = value
 	}
 }
 
-func stringField(m map[string]interface{}, key string) string {
+func stringField(m map[string]any, key string) string {
 	value, _ := m[key].(string)
 	return value
 }
 
-func responsesToolsToChatTools(raw interface{}) []map[string]interface{} {
-	items, ok := raw.([]interface{})
+func responsesToolsToChatTools(raw any) []map[string]any {
+	items, ok := raw.([]any)
 	if !ok {
 		return nil
 	}
-	tools := make([]map[string]interface{}, 0, len(items))
+	tools := make([]map[string]any, 0, len(items))
 	for _, item := range items {
-		tool, ok := item.(map[string]interface{})
+		tool, ok := item.(map[string]any)
 		if !ok || stringField(tool, "type") != "function" {
 			continue
 		}
-		function := map[string]interface{}{}
-		if nested, ok := tool["function"].(map[string]interface{}); ok {
+		function := map[string]any{}
+		if nested, ok := tool["function"].(map[string]any); ok {
 			copyOptionalRawField(function, nested, "name")
 			copyOptionalRawField(function, nested, "description")
 			copyOptionalRawField(function, nested, "parameters")
@@ -212,7 +212,7 @@ func responsesToolsToChatTools(raw interface{}) []map[string]interface{} {
 		if strings.TrimSpace(stringField(function, "name")) == "" {
 			continue
 		}
-		tools = append(tools, map[string]interface{}{
+		tools = append(tools, map[string]any{
 			"type":     "function",
 			"function": function,
 		})
@@ -220,29 +220,29 @@ func responsesToolsToChatTools(raw interface{}) []map[string]interface{} {
 	return tools
 }
 
-func responsesToolChoiceToChatToolChoice(raw interface{}) (interface{}, bool) {
+func responsesToolChoiceToChatToolChoice(raw any) (any, bool) {
 	switch value := raw.(type) {
 	case string:
 		if strings.TrimSpace(value) == "" {
 			return nil, false
 		}
 		return value, true
-	case map[string]interface{}:
+	case map[string]any:
 		if stringField(value, "type") != "function" {
 			return value, true
 		}
 		name := stringField(value, "name")
 		if name == "" {
-			if function, ok := value["function"].(map[string]interface{}); ok {
+			if function, ok := value["function"].(map[string]any); ok {
 				name = stringField(function, "name")
 			}
 		}
 		if strings.TrimSpace(name) == "" {
 			return nil, false
 		}
-		return map[string]interface{}{
+		return map[string]any{
 			"type": "function",
-			"function": map[string]interface{}{
+			"function": map[string]any{
 				"name": name,
 			},
 		}, true
@@ -310,24 +310,24 @@ func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"id":         responseID,
 		"object":     "response",
 		"created_at": chat.Created,
 		"model":      chat.Model,
 		"status":     "completed",
-		"output": []map[string]interface{}{
+		"output": []map[string]any{
 			{
 				"id":      "msg_" + responseID,
 				"type":    "message",
 				"role":    "assistant",
 				"status":  "completed",
-				"content": []map[string]interface{}{{"type": "output_text", "text": outputText}},
+				"content": []map[string]any{{"type": "output_text", "text": outputText}},
 			},
 		},
 		"output_text": outputText,
 		"usage":       responsesUsageMap(usage),
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"fallback":      "chat_completions",
 			"finish_reason": finishReason,
 		},
@@ -350,19 +350,19 @@ func transformChatCompletionStreamToResponses(resp *relayprovider.RawStreamRespo
 		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		responseID := "resp_" + generateRequestID()
 		outputItemID := "msg_" + responseID
-		writeResponsesSSE(writer, map[string]interface{}{
+		writeResponsesSSE(writer, map[string]any{
 			"type": "response.created",
-			"response": map[string]interface{}{
+			"response": map[string]any{
 				"id":     responseID,
 				"object": "response",
 				"status": "in_progress",
-				"output": []interface{}{},
+				"output": []any{},
 			},
 		})
-		writeResponsesSSE(writer, map[string]interface{}{
+		writeResponsesSSE(writer, map[string]any{
 			"type":        "response.in_progress",
 			"response_id": responseID,
-			"response": map[string]interface{}{
+			"response": map[string]any{
 				"id":     responseID,
 				"object": "response",
 				"status": "in_progress",
@@ -465,32 +465,32 @@ func (s *responsesStreamFallbackState) writeChunk(w io.Writer, data []byte) bool
 func (s *responsesStreamFallbackState) writeTextDelta(w io.Writer, delta string) {
 	if !s.textStarted {
 		s.textStarted = true
-		writeResponsesSSE(w, map[string]interface{}{
+		writeResponsesSSE(w, map[string]any{
 			"type":         "response.output_item.added",
 			"response_id":  s.responseID,
 			"output_index": 0,
-			"item": map[string]interface{}{
+			"item": map[string]any{
 				"id":      s.textItemID,
 				"type":    "message",
 				"role":    "assistant",
 				"status":  "in_progress",
-				"content": []interface{}{},
+				"content": []any{},
 			},
 		})
-		writeResponsesSSE(w, map[string]interface{}{
+		writeResponsesSSE(w, map[string]any{
 			"type":          "response.content_part.added",
 			"response_id":   s.responseID,
 			"item_id":       s.textItemID,
 			"output_index":  0,
 			"content_index": 0,
-			"part": map[string]interface{}{
+			"part": map[string]any{
 				"type": "output_text",
 				"text": "",
 			},
 		})
 	}
 	s.text.WriteString(delta)
-	writeResponsesSSE(w, map[string]interface{}{
+	writeResponsesSSE(w, map[string]any{
 		"type":            "response.output_text.delta",
 		"response_id":     s.responseID,
 		"item_id":         s.textItemID,
@@ -529,11 +529,11 @@ func (s *responsesStreamFallbackState) writeToolCallDelta(w io.Writer, delta cha
 	if !tool.Added {
 		tool.Added = true
 		s.hasToolCalls = true
-		writeResponsesSSE(w, map[string]interface{}{
+		writeResponsesSSE(w, map[string]any{
 			"type":         "response.output_item.added",
 			"response_id":  s.responseID,
 			"output_index": s.nextToolIndex,
-			"item": map[string]interface{}{
+			"item": map[string]any{
 				"id":        tool.ItemID,
 				"type":      "function_call",
 				"status":    "in_progress",
@@ -545,7 +545,7 @@ func (s *responsesStreamFallbackState) writeToolCallDelta(w io.Writer, delta cha
 		s.nextToolIndex++
 	}
 	if delta.Function.Arguments != "" {
-		writeResponsesSSE(w, map[string]interface{}{
+		writeResponsesSSE(w, map[string]any{
 			"type":         "response.function_call_arguments.delta",
 			"response_id":  s.responseID,
 			"item_id":      tool.ItemID,
@@ -568,52 +568,52 @@ func (s *responsesStreamFallbackState) finishText(w io.Writer) {
 		s.writeTextDelta(w, "")
 	}
 	text := s.text.String()
-	writeResponsesSSE(w, map[string]interface{}{
+	writeResponsesSSE(w, map[string]any{
 		"type":          "response.output_text.done",
 		"response_id":   s.responseID,
 		"item_id":       s.textItemID,
 		"output_index":  0,
 		"content_index": 0,
 	})
-	writeResponsesSSE(w, map[string]interface{}{
+	writeResponsesSSE(w, map[string]any{
 		"type":          "response.content_part.done",
 		"response_id":   s.responseID,
 		"item_id":       s.textItemID,
 		"output_index":  0,
 		"content_index": 0,
-		"part": map[string]interface{}{
+		"part": map[string]any{
 			"type": "output_text",
 			"text": text,
 		},
 	})
-	writeResponsesSSE(w, map[string]interface{}{
+	writeResponsesSSE(w, map[string]any{
 		"type":         "response.output_item.done",
 		"response_id":  s.responseID,
 		"output_index": 0,
-		"item": map[string]interface{}{
+		"item": map[string]any{
 			"id":     s.textItemID,
 			"type":   "message",
 			"role":   "assistant",
 			"status": "completed",
-			"content": []map[string]interface{}{
+			"content": []map[string]any{
 				{"type": "output_text", "text": text},
 			},
 		},
 	})
-	writeResponsesSSE(w, map[string]interface{}{
+	writeResponsesSSE(w, map[string]any{
 		"type":        "response.completed",
 		"response_id": s.responseID,
-		"response": map[string]interface{}{
+		"response": map[string]any{
 			"id":     s.responseID,
 			"object": "response",
 			"status": "completed",
-			"output": []map[string]interface{}{
+			"output": []map[string]any{
 				{
 					"id":     s.textItemID,
 					"type":   "message",
 					"role":   "assistant",
 					"status": "completed",
-					"content": []map[string]interface{}{
+					"content": []map[string]any{
 						{"type": "output_text", "text": text},
 					},
 				},
@@ -625,18 +625,18 @@ func (s *responsesStreamFallbackState) finishText(w io.Writer) {
 }
 
 func (s *responsesStreamFallbackState) finishToolCalls(w io.Writer) {
-	output := make([]map[string]interface{}, 0, len(s.toolOrder))
+	output := make([]map[string]any, 0, len(s.toolOrder))
 	for outputIndex, toolIndex := range s.toolOrder {
 		tool := s.toolByIndex[toolIndex]
 		arguments := tool.Arguments.String()
-		writeResponsesSSE(w, map[string]interface{}{
+		writeResponsesSSE(w, map[string]any{
 			"type":         "response.function_call_arguments.done",
 			"response_id":  s.responseID,
 			"item_id":      tool.ItemID,
 			"output_index": outputIndex,
 			"arguments":    arguments,
 		})
-		item := map[string]interface{}{
+		item := map[string]any{
 			"id":        tool.ItemID,
 			"type":      "function_call",
 			"status":    "completed",
@@ -644,7 +644,7 @@ func (s *responsesStreamFallbackState) finishToolCalls(w io.Writer) {
 			"name":      tool.Name,
 			"arguments": arguments,
 		}
-		writeResponsesSSE(w, map[string]interface{}{
+		writeResponsesSSE(w, map[string]any{
 			"type":         "response.output_item.done",
 			"response_id":  s.responseID,
 			"output_index": outputIndex,
@@ -652,10 +652,10 @@ func (s *responsesStreamFallbackState) finishToolCalls(w io.Writer) {
 		})
 		output = append(output, item)
 	}
-	writeResponsesSSE(w, map[string]interface{}{
+	writeResponsesSSE(w, map[string]any{
 		"type":        "response.completed",
 		"response_id": s.responseID,
-		"response": map[string]interface{}{
+		"response": map[string]any{
 			"id":     s.responseID,
 			"object": "response",
 			"status": "completed",
@@ -683,17 +683,17 @@ type chatCompletionStreamChunk struct {
 	} `json:"usage"`
 }
 
-func responsesUsageMap(usage rawUsage) map[string]interface{} {
+func responsesUsageMap(usage rawUsage) map[string]any {
 	if usage.TotalTokens == 0 && usage.PromptTokens+usage.CompletionTokens > 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
-	out := map[string]interface{}{
+	out := map[string]any{
 		"input_tokens":  usage.PromptTokens,
 		"output_tokens": usage.CompletionTokens,
 		"total_tokens":  usage.TotalTokens,
 	}
 	if usage.CacheReadTokens > 0 || usage.CacheCreation5mTokens > 0 || usage.CacheCreation1hTokens > 0 {
-		details := map[string]interface{}{}
+		details := map[string]any{}
 		if usage.CacheReadTokens > 0 {
 			details["cached_tokens"] = usage.CacheReadTokens
 		}
@@ -718,7 +718,7 @@ type chatCompletionStreamToolCallDelta struct {
 	} `json:"function"`
 }
 
-func writeResponsesSSE(w io.Writer, event map[string]interface{}) {
+func writeResponsesSSE(w io.Writer, event map[string]any) {
 	encoded, err := jsonx.Marshal(event)
 	if err != nil {
 		return

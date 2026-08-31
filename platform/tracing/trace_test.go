@@ -46,7 +46,7 @@ func TestGenerateTraceID_Format(t *testing.T) {
 
 func TestGenerateTraceID_Uniqueness(t *testing.T) {
 	seen := map[string]bool{}
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := GenerateTraceID()
 		require.False(t, seen[id], "trace IDs must be unique")
 		seen[id] = true

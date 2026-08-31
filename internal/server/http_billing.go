@@ -371,7 +371,7 @@ func (s *HTTPServer) recordChannelUsage(ctx context.Context, channelID int64, qu
 	defer cancel()
 	var resp *channelv1.RecordChannelUsageResponse
 	var err error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range 3 {
 		resp, err = s.channelClient.RecordChannelUsage(channelCtx, &channelv1.RecordChannelUsageRequest{
 			ChannelId:     channelID,
 			Quota:         quota,

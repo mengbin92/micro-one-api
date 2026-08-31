@@ -152,7 +152,7 @@ func New(reason string) error {
 }
 
 // Newf creates a new formatted error with a reason
-func Newf(reason string, format string, args ...interface{}) error {
+func Newf(reason string, format string, args ...any) error {
 	return &Error{
 		Reason:  reason,
 		Message: fmt.Sprintf(format, args...),

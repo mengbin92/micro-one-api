@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -398,12 +399,7 @@ func TestHTTPServerAPIModelsReturnsProviderCatalogMetadata(t *testing.T) {
 }
 
 func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, want)
 }
 
 func TestHTTPServerRawRouteRequiresAuthorization(t *testing.T) {
@@ -706,7 +702,7 @@ func TestHTTPServerResponsesCreateStreamsRawSSE(t *testing.T) {
 	var gotStream bool
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		var payload map[string]interface{}
+		var payload map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 		gotStream, _ = payload["stream"].(bool)
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -1019,7 +1015,7 @@ func TestHTTPServerResponsesCreateFallsBackToChatCompletions(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
 	var gotPaths []string
-	var chatPayload map[string]interface{}
+	var chatPayload map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPaths = append(gotPaths, r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
@@ -1232,7 +1228,7 @@ func TestHTTPServerResponsesFallbackReturnsChatFailure(t *testing.T) {
 func TestHTTPServerResponsesPreviousResponseFallsBackToChatCompletions(t *testing.T) {
 	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
 
-	var chatPayloads []map[string]interface{}
+	var chatPayloads []map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -1240,7 +1236,7 @@ func TestHTTPServerResponsesPreviousResponseFallsBackToChatCompletions(t *testin
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
 		case "/v1/chat/completions":
-			var payload map[string]interface{}
+			var payload map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&payload)
 			chatPayloads = append(chatPayloads, payload)
 			_, _ = w.Write([]byte(`{
@@ -1337,7 +1333,7 @@ func TestHTTPServerResponsesCreateStreamFallsBackToChatCompletions(t *testing.T)
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
 		case "/v1/chat/completions":
-			var payload map[string]interface{}
+			var payload map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&payload)
 			chatStream, _ = payload["stream"].(bool)
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -1468,7 +1464,7 @@ func TestHTTPServerResponsesCreateStreamFallbackConvertsToolCalls(t *testing.T) 
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":{"message":"not found"}}`))
 		case "/v1/chat/completions":
-			var payload map[string]interface{}
+			var payload map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&payload)
 			chatStream, _ = payload["stream"].(bool)
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -1559,7 +1555,7 @@ func TestResponsesRequestToChatCompletionsMapsMaxOutputTokens(t *testing.T) {
 	if !stream {
 		t.Fatal("stream = false, want true")
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode chat body: %v, body=%s", err, string(body))
 	}
@@ -1578,7 +1574,7 @@ func TestResponsesRequestToChatCompletionsEmptyInputKeepsExplicitContent(t *test
 	}
 
 	var payload struct {
-		Messages []map[string]interface{} `json:"messages"`
+		Messages []map[string]any `json:"messages"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode chat body: %v, body=%s", err, string(body))
@@ -1617,42 +1613,42 @@ func TestResponsesRequestToChatCompletionsConvertsCodexPayload(t *testing.T) {
 	if !stream {
 		t.Fatal("stream = false, want true")
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode chat body: %v, body=%s", err, string(body))
 	}
-	messages, ok := payload["messages"].([]interface{})
+	messages, ok := payload["messages"].([]any)
 	if !ok || len(messages) != 2 {
 		t.Fatalf("messages mismatch: %#v body=%s", payload["messages"], string(body))
 	}
-	first := messages[0].(map[string]interface{})
+	first := messages[0].(map[string]any)
 	if first["role"] != "system" || first["content"] != "system rules\n\ntool rules" {
 		t.Fatalf("developer message was not converted to system text: %#v", first)
 	}
-	second := messages[1].(map[string]interface{})
+	second := messages[1].(map[string]any)
 	if second["role"] != "user" || second["content"] != "只回复 pong" {
 		t.Fatalf("user message mismatch: %#v", second)
 	}
-	tools, ok := payload["tools"].([]interface{})
+	tools, ok := payload["tools"].([]any)
 	if !ok || len(tools) != 1 {
 		t.Fatalf("tools mismatch: %#v body=%s", payload["tools"], string(body))
 	}
-	tool := tools[0].(map[string]interface{})
+	tool := tools[0].(map[string]any)
 	if tool["type"] != "function" {
 		t.Fatalf("tool type = %#v, want function", tool["type"])
 	}
-	fn, ok := tool["function"].(map[string]interface{})
+	fn, ok := tool["function"].(map[string]any)
 	if !ok || fn["name"] != "exec_command" || fn["description"] != "run shell" {
 		t.Fatalf("function tool was not converted: %#v", tool)
 	}
 	if _, ok := payload["parallel_tool_calls"]; ok {
 		t.Fatalf("chat body should not include Responses-only parallel_tool_calls: %s", string(body))
 	}
-	choice := payload["tool_choice"].(map[string]interface{})
+	choice := payload["tool_choice"].(map[string]any)
 	if choice["type"] != "function" {
 		t.Fatalf("tool_choice type mismatch: %#v", choice)
 	}
-	choiceFn := choice["function"].(map[string]interface{})
+	choiceFn := choice["function"].(map[string]any)
 	if choiceFn["name"] != "exec_command" {
 		t.Fatalf("tool_choice function mismatch: %#v", choice)
 	}
@@ -2302,7 +2298,8 @@ func TestHTTPServerRouteMiddlewareWrapsRegisteredRoutes(t *testing.T) {
 	}
 }
 
-func ptrFloat64Relay(v float64) *float64 { return &v }
+//go:fix inline
+func ptrFloat64Relay(v float64) *float64 { return new(v) }
 
 type failingSubscriptionRepo struct {
 	subscriptionbiz.SubscriptionRepository
@@ -2320,9 +2317,9 @@ func TestHTTPServerSubscriptionUsageReturnsProgressForAPIKey(t *testing.T) {
 		DisplayName:     "Pro 套餐",
 		Platform:        "openai",
 		Status:          subscriptionbiz.SubscriptionGroupStatusEnabled,
-		DailyLimitUSD:   ptrFloat64Relay(10),
-		WeeklyLimitUSD:  ptrFloat64Relay(70),
-		MonthlyLimitUSD: ptrFloat64Relay(300),
+		DailyLimitUSD:   new(float64(10)),
+		WeeklyLimitUSD:  new(float64(70)),
+		MonthlyLimitUSD: new(float64(300)),
 	}
 	if err := repo.CreateGroup(context.Background(), group); err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)

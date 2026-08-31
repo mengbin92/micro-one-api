@@ -9,7 +9,7 @@
 #   * postgres -> /migrations/postgres
 #   * mysql / empty -> /migrations
 
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates build-base
 ENV GOPROXY=https://proxy.golang.org|https://goproxy.cn|direct

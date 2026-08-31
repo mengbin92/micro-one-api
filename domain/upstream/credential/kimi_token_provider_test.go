@@ -87,11 +87,11 @@ func TestKimiTokenProvider_RefreshFailure(t *testing.T) {
 // endpoint: the per-account mutex in baseTokenProvider serialises them so
 // only one refresh occurs.
 func TestKimiTokenProvider_ConcurrentDedup(t *testing.T) {
-	var refreshes int32
+	var refreshes atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Simulate a slow token endpoint so concurrent callers pile up.
 		time.Sleep(50 * time.Millisecond)
-		atomic.AddInt32(&refreshes, 1)
+		refreshes.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"access_token":"kimi-dedup","refresh_token":"rt","expires_in":3600}`))
 	}))
@@ -112,13 +112,13 @@ func TestKimiTokenProvider_ConcurrentDedup(t *testing.T) {
 
 	const n = 5
 	errs := make(chan error, n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			_, err := p.GetAccessToken(context.Background(), 3)
 			errs <- err
 		}()
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if err := <-errs; err != nil {
 			t.Fatalf("concurrent GetAccessToken[%d]: %v", i, err)
 		}
@@ -126,7 +126,7 @@ func TestKimiTokenProvider_ConcurrentDedup(t *testing.T) {
 	// Exactly one refresh should have hit the server: baseTokenProvider's
 	// per-account mutex serialises concurrent callers so only the first
 	// refreshes; the rest read the updated cache.
-	if got := atomic.LoadInt32(&refreshes); got != 1 {
+	if got := refreshes.Load(); got != 1 {
 		t.Fatalf("expected exactly one upstream refresh, got %d", got)
 	}
 }

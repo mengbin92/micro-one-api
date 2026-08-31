@@ -3,7 +3,7 @@ package biz
 import (
 	"context"
 	"math"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -90,12 +90,9 @@ func (w *SlidingWindow) P95() time.Duration {
 	copy(sorted, w.values)
 	w.mu.Unlock()
 
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	slices.Sort(sorted)
 
-	idx := int(math.Ceil(float64(n)*0.95)) - 1
-	if idx < 0 {
-		idx = 0
-	}
+	idx := max(int(math.Ceil(float64(n)*0.95))-1, 0)
 	if idx >= n {
 		idx = n - 1
 	}

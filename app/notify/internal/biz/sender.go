@@ -75,7 +75,7 @@ func (s *MultiSender) sendWebhook(ctx context.Context, n *Notification) error {
 	if endpoint == "" {
 		return ErrNotificationSenderNotReady
 	}
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"id":         n.ID,
 		"type":       n.Type,
 		"recipient":  n.Recipient,
@@ -250,9 +250,9 @@ func (s *MultiSender) sendWeCom(ctx context.Context, n *Notification) error {
 	}
 	// Build message content with subject included
 	content := n.Subject + "\n" + n.Content
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"msgtype": "text",
-		"text": map[string]interface{}{
+		"text": map[string]any{
 			"content": content,
 		},
 	}
@@ -274,9 +274,9 @@ func (s *MultiSender) sendDingTalk(ctx context.Context, n *Notification) error {
 	}
 	// Build message content with subject included
 	content := n.Subject + "\n" + n.Content
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"msgtype": "text",
-		"text": map[string]interface{}{
+		"text": map[string]any{
 			"content": content,
 		},
 	}
@@ -298,9 +298,9 @@ func (s *MultiSender) sendFeishu(ctx context.Context, n *Notification) error {
 	}
 	// Build message content with subject included
 	content := n.Subject + "\n" + n.Content
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"msg_type": "text",
-		"content": map[string]interface{}{
+		"content": map[string]any{
 			"text": content,
 		},
 	}
@@ -322,14 +322,14 @@ func (s *MultiSender) sendSlack(ctx context.Context, n *Notification) error {
 	}
 	// Build message content with subject included
 	content := n.Subject + "\n" + n.Content
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"text": content,
 	}
 	return s.sendJSONWebhook(ctx, endpoint, payload)
 }
 
 // sendJSONWebhook is a helper for sending JSON payloads to webhook endpoints.
-func (s *MultiSender) sendJSONWebhook(ctx context.Context, endpoint string, payload map[string]interface{}) error {
+func (s *MultiSender) sendJSONWebhook(ctx context.Context, endpoint string, payload map[string]any) error {
 	body, err := jsonx.Marshal(payload)
 	if err != nil {
 		return err

@@ -253,8 +253,8 @@ func parseOAuthCallbackInput(input string) oauthCallbackInput {
 		rawQuery = parsed.RawQuery
 	}
 	if rawQuery == "" {
-		if idx := strings.Index(trimmed, "?"); idx >= 0 {
-			rawQuery = trimmed[idx+1:]
+		if _, after, ok := strings.Cut(trimmed, "?"); ok {
+			rawQuery = after
 		} else {
 			rawQuery = strings.TrimPrefix(trimmed, "?")
 		}

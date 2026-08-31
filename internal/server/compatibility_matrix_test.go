@@ -14,6 +14,7 @@ package server
 // expected one.
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -105,13 +106,7 @@ func TestServerCompatibilityMatrix_Coverage(t *testing.T) {
 		require.NotNilf(t, c.check, "server matrix cell %s has no check", want)
 	}
 	for k := range registered {
-		found := false
-		for _, want := range expectedServerMatrixCells {
-			if k == want {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(expectedServerMatrixCells, k)
 		require.Truef(t, found, "server matrix cell %s is not in expectedServerMatrixCells", k)
 	}
 }

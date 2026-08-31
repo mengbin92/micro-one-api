@@ -79,7 +79,7 @@ func TestBufferedResponsesToAnthropicParallelToolsAreSequential(t *testing.T) {
 			}}}},
 		},
 		{
-			Choices: []ChatChunkChoice{{FinishReason: stringPointer("tool_calls")}},
+			Choices: []ChatChunkChoice{{FinishReason: new("tool_calls")}},
 			Usage:   &ChatUsage{PromptTokens: 10, CompletionTokens: 4, TotalTokens: 14},
 		},
 	}
@@ -160,4 +160,5 @@ func TestBufferedResponsesToAnthropicRejectsInvalidToolJSON(t *testing.T) {
 	assert.Nil(t, FinalizeResponsesAnthropicStream(state))
 }
 
-func stringPointer(value string) *string { return &value }
+//go:fix inline
+func stringPointer(value string) *string { return new(value) }

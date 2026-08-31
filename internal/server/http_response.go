@@ -174,14 +174,14 @@ func (s *HTTPServer) handleChannelError(w http.ResponseWriter, err error) {
 func (s *HTTPServer) writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	_ = encodeJSON(w, map[string]interface{}{
-		"error": map[string]interface{}{
+	_ = encodeJSON(w, map[string]any{
+		"error": map[string]any{
 			"message": message,
 		},
 	})
 }
 
-func (s *HTTPServer) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func (s *HTTPServer) writeJSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = encodeJSON(w, data)

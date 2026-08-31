@@ -9,7 +9,7 @@ func TestUpstreamRouteSelectorWeightedRoundRobin(t *testing.T) {
 		{Kind: UpstreamRouteSubscription, ID: 2, Priority: 5, Weight: 1},
 	}
 	counts := map[UpstreamRouteKind]int{}
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		counts[selector.Select("default", "glm-5.2", candidates).Kind]++
 	}
 	if counts[UpstreamRouteChannel] != 30 || counts[UpstreamRouteSubscription] != 10 {

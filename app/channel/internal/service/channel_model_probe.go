@@ -297,8 +297,8 @@ func decodeUpstreamModels(body []byte) ([]string, error) {
 		if model == "" {
 			model = strings.TrimSpace(entry.Name)
 		}
-		if strings.HasPrefix(model, "models/") {
-			model = strings.TrimPrefix(model, "models/")
+		if after, ok := strings.CutPrefix(model, "models/"); ok {
+			model = after
 		}
 		if model != "" {
 			models = append(models, model)

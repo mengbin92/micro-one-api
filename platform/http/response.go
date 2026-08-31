@@ -8,9 +8,9 @@ import (
 
 // Response is the standard API response envelope.
 type Response struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
+	Code    int    `json:"code"`
+	Message string `json:"message,omitempty"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // ErrorDetail is returned on error responses.
@@ -20,7 +20,7 @@ type ErrorDetail struct {
 }
 
 // JSON writes a successful JSON response.
-func JSON(w http.ResponseWriter, code int, data interface{}) {
+func JSON(w http.ResponseWriter, code int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = jsonx.NewEncoder(w).Encode(Response{

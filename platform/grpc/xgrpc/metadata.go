@@ -44,7 +44,7 @@ func TraceIDFromIncoming(ctx context.Context) context.Context {
 
 // UnaryClientInterceptor returns a gRPC unary client interceptor that propagates trace IDs.
 func UnaryClientInterceptor() grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		ctx = WithTraceID(ctx)
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
@@ -52,7 +52,7 @@ func UnaryClientInterceptor() grpc.UnaryClientInterceptor {
 
 // UnaryServerInterceptor returns a gRPC unary server interceptor that extracts trace IDs from metadata.
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		ctx = TraceIDFromIncoming(ctx)
 		return handler(ctx, req)
 	}
@@ -60,7 +60,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 // MetricsUnaryServerInterceptor returns a gRPC unary server interceptor that records Prometheus metrics.
 func MetricsUnaryServerInterceptor(service string) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		start := time.Now()
 		resp, err := handler(ctx, req)
 		duration := time.Since(start).Seconds()

@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -193,9 +194,7 @@ func cloneIdempotencyResponse(resp *IdempotencyResponse) *IdempotencyResponse {
 	clone := *resp
 	clone.Body = append([]byte(nil), resp.Body...)
 	clone.Headers = make(map[string]string, len(resp.Headers))
-	for key, value := range resp.Headers {
-		clone.Headers[key] = value
-	}
+	maps.Copy(clone.Headers, resp.Headers)
 	return &clone
 }
 

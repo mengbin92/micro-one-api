@@ -235,7 +235,7 @@ func (r *Repository) listPendingDB(ctx context.Context, limit int32, maxRetry in
 }
 
 func (r *Repository) updateStatusDB(ctx context.Context, id int64, status string) error {
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"status": status,
 	}
 	if status == biz.NotifyStatusSent {
@@ -246,13 +246,13 @@ func (r *Repository) updateStatusDB(ctx context.Context, id int64, status string
 }
 
 func (r *Repository) markFailedDB(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]interface{}{
+	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]any{
 		"status": biz.NotifyStatusFailed,
 	}).Error
 }
 
 func (r *Repository) recordFailureDB(ctx context.Context, id int64, maxRetry int, lastError string) error {
-	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]interface{}{
+	return r.db.WithContext(ctx).Model(&notificationModel{}).Where("id = ?", id).Updates(map[string]any{
 		"status":      gorm.Expr("CASE WHEN retry_count + 1 >= ? THEN ? ELSE status END", maxRetry, biz.NotifyStatusFailed),
 		"retry_count": gorm.Expr("retry_count + ?", 1),
 		"last_error":  lastError,
@@ -300,10 +300,7 @@ func (r *Repository) listMemory(page, pageSize int32, notifyType, status string)
 	if start >= len(all) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(all) {
-		end = len(all)
-	}
+	end := min(start+int(pageSize), len(all))
 	return all[start:end], total, nil
 }
 

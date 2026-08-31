@@ -14,7 +14,7 @@ func handleUserLimits(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, apiResponse(false, "method not allowed", nil))
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]interface{}{
+	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
 		"user_rpm_limit": userRPMLimitFromEnv(),
 	}))
 }

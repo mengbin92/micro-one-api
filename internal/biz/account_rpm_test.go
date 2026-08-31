@@ -12,7 +12,7 @@ import (
 
 func TestAccountRPMLimiter_UnlimitedWhenLimitNonPositive(t *testing.T) {
 	l := NewAccountRPMLimiter()
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		if !l.TryAcquire(context.Background(), 7, 0) {
 			t.Fatalf("limit=0 must be unlimited, acquire %d failed", i)
 		}
@@ -45,16 +45,14 @@ func TestAccountRPMLimiter_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var granted int32
-	for i := 0; i < 64; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 64 {
+		wg.Go(func() {
 			if l.TryAcquire(context.Background(), id, limit) {
 				mu.Lock()
 				granted++
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if granted != limit {

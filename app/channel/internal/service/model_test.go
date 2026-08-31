@@ -19,9 +19,9 @@ type modelServiceRepo struct {
 
 func newModelServiceRepo() *modelServiceRepo {
 	return &modelServiceRepo{
-		channelServiceRepo: channelServiceRepo{channel: &biz.Channel{ID: 1, Status: biz.ChannelStatusEnabled}},
-		models:             make(map[int64]*biz.Model),
-		aliases:            make(map[int64]*biz.ModelAlias),
+		channel: &biz.Channel{ID: 1, Status: biz.ChannelStatusEnabled},
+		models:  make(map[int64]*biz.Model),
+		aliases: make(map[int64]*biz.ModelAlias),
 	}
 }
 
@@ -393,7 +393,7 @@ func TestChannelService_BatchModels(t *testing.T) {
 	ctx := context.Background()
 
 	var pks []int64
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		resp, _ := svc.CreateModel(ctx, &channelv1.CreateModelRequest{
 			ModelId:     "batch" + string(rune('A'+i)),
 			DisplayName: "B",

@@ -346,7 +346,7 @@ func TestModelMapper_Resolve_MostSpecificWildcard(t *testing.T) {
 		"claude-*":        {ActualName: "claude-family"},
 		"claude-sonnet-*": {ActualName: "claude-sonnet-family"},
 	})
-	for i := 0; i < 16; i++ { // repeat to catch map-iteration nondeterminism
+	for i := range 16 { // repeat to catch map-iteration nondeterminism
 		if got := m.Resolve("claude-sonnet-4"); got != "claude-sonnet-family" {
 			t.Fatalf("iter %d: Resolve(claude-sonnet-4) = %s, want claude-sonnet-family", i, got)
 		}
@@ -363,7 +363,7 @@ func TestModelMapper_GetEntry_MostSpecificWildcard(t *testing.T) {
 		"claude-*":        {ActualName: "claude-family", Capabilities: []string{"streaming"}},
 		"claude-sonnet-*": {ActualName: "claude-sonnet-family", Capabilities: []string{"vision"}},
 	})
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		e := m.GetEntry("claude-sonnet-4")
 		if e == nil || e.ActualName != "claude-sonnet-family" {
 			t.Fatalf("iter %d: GetEntry should pick claude-sonnet-family, got %v", i, e)

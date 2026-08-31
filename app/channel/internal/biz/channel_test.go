@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -73,11 +74,8 @@ func (m *mockChannelRepo) ListUnrestrictedChannelsByGroup(ctx context.Context, g
 		if ch.Status != ChannelStatusEnabled || ch.RestrictModels {
 			continue
 		}
-		for _, g := range SplitCSV(ch.Group) {
-			if g == group {
-				result = append(result, ch)
-				break
-			}
+		if slices.Contains(SplitCSV(ch.Group), group) {
+			result = append(result, ch)
 		}
 	}
 	return result, nil
@@ -741,7 +739,7 @@ func TestChannelUsecase_SelectChannel_SamePriorityRandom(t *testing.T) {
 	uc := NewChannelUsecase(repo, nil)
 	results := make(map[int64]int)
 
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		channel, err := uc.SelectChannel(context.Background(), "default", "gpt-4o-mini", false)
 		if err != nil {
 			t.Fatalf("SelectChannel() error = %v", err)
@@ -840,7 +838,7 @@ func TestChannelUsecase_SelectChannelExcluding_KeepsTierSiblings(t *testing.T) {
 	}
 	uc := NewChannelUsecase(repo, nil)
 
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		channel, err := uc.SelectChannelExcluding(context.Background(), "default", "gpt-4o-mini", map[int64]bool{1: true})
 		if err != nil {
 			t.Fatalf("iter %d: SelectChannelExcluding() error = %v", i, err)
@@ -1137,7 +1135,7 @@ func TestChannelUsecase_RecordHealth_NotifyOnceWhenTransitioningFromHealthy(t *t
 		Recipients: []string{"https://hooks.example.com/ops"},
 	})
 
-	for i := int32(0); i < 4; i++ {
+	for i := range int32(4) {
 		err := uc.RecordHealth(context.Background(), ChannelHealthEvent{
 			ChannelID: 1,
 			Success:   false,
@@ -1522,7 +1520,7 @@ func TestChannelUsecase_SelectSubscriptionAccountExcluding_KeepsTierSiblings(t *
 	uc := NewChannelUsecase(repo, nil)
 	uc.now = func() time.Time { return now }
 
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		account, err := uc.SelectSubscriptionAccountExcluding(context.Background(), "default", "gpt-5", "codex", map[int64]bool{1: true})
 		if err != nil {
 			t.Fatalf("iter %d: SelectSubscriptionAccountExcluding() error = %v", i, err)

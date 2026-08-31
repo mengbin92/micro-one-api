@@ -8,13 +8,12 @@ import (
 	"micro-one-api/pkg/jsonx"
 )
 
-func decodeJSON(r io.Reader, v interface{}) error {
+func decodeJSON(r io.Reader, v any) error {
 	const maxSize = jsonRequestBodyLimit
 	limitedReader := io.LimitReader(r, maxSize+1)
 	data, err := io.ReadAll(limitedReader)
 	if err != nil {
-		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			return errRequestBodyTooLarge
 		}
 		return err
@@ -25,7 +24,7 @@ func decodeJSON(r io.Reader, v interface{}) error {
 	return jsonx.Unmarshal(data, v)
 }
 
-func encodeJSON(w io.Writer, v interface{}) error {
+func encodeJSON(w io.Writer, v any) error {
 	data, err := jsonx.Marshal(v)
 	if err != nil {
 		return err

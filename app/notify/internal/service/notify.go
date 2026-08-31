@@ -168,22 +168,22 @@ func (s *NotifyService) HandleListNotifications(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	items := make([]map[string]interface{}, 0, len(notifications))
+	items := make([]map[string]any, 0, len(notifications))
 	for _, n := range notifications {
 		items = append(items, notificationToMap(n))
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
-func notificationToMap(n *biz.Notification) map[string]interface{} {
-	return map[string]interface{}{
+func notificationToMap(n *biz.Notification) map[string]any {
+	return map[string]any{
 		"id": n.ID, "type": n.Type, "recipient": n.Recipient, "subject": n.Subject,
 		"content": n.Content, "status": n.Status, "retry_count": n.RetryCount,
 		"created_at": n.CreatedAt, "sent_at": n.SentAt, "last_error": n.LastError,
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = jsonx.NewEncoder(w).Encode(data)
@@ -192,5 +192,5 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = jsonx.NewEncoder(w).Encode(map[string]interface{}{"error": message})
+	_ = jsonx.NewEncoder(w).Encode(map[string]any{"error": message})
 }

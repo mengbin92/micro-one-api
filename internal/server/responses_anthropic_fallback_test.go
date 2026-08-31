@@ -20,7 +20,7 @@ func TestResponsesRequestToAnthropicBodyMapsSimple(t *testing.T) {
 	if !stream {
 		t.Fatal("stream = false, want true")
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode anthropic body: %v, body=%s", err, string(body))
 	}
@@ -30,11 +30,11 @@ func TestResponsesRequestToAnthropicBodyMapsSimple(t *testing.T) {
 	if got := payload["max_tokens"]; got != float64(64) {
 		t.Fatalf("max_tokens = %#v, want 64; body=%s", got, string(body))
 	}
-	msgs, ok := payload["messages"].([]interface{})
+	msgs, ok := payload["messages"].([]any)
 	if !ok || len(msgs) != 1 {
 		t.Fatalf("messages mismatch: %#v body=%s", payload["messages"], string(body))
 	}
-	msg := msgs[0].(map[string]interface{})
+	msg := msgs[0].(map[string]any)
 	if msg["role"] != "user" {
 		t.Fatalf("role = %#v, want user; body=%s", msg["role"], string(body))
 	}
@@ -105,7 +105,7 @@ func TestResponsesRequestToAnthropicBodyNormalizesCodexTools(t *testing.T) {
 		if tool.Type != "" {
 			t.Fatalf("tool %q has unsupported type %q; body=%s", tool.Name, tool.Type, string(body))
 		}
-		var schema map[string]interface{}
+		var schema map[string]any
 		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
 			t.Fatalf("tool %q input_schema is not an object: %s", tool.Name, string(tool.InputSchema))
 		}
@@ -132,18 +132,18 @@ func TestAnthropicResponseToResponsesConvertsText(t *testing.T) {
 	if usage.PromptTokens != 5 || usage.CompletionTokens != 7 || usage.TotalTokens != 12 {
 		t.Fatalf("usage = %#v, want {5,7,12}", usage)
 	}
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(out, &resp); err != nil {
 		t.Fatalf("decode responses body: %v, body=%s", err, string(out))
 	}
 	if resp["object"] != "response" {
 		t.Fatalf("object = %#v, want response; body=%s", resp["object"], string(out))
 	}
-	output, _ := resp["output"].([]interface{})
+	output, _ := resp["output"].([]any)
 	if len(output) == 0 {
 		t.Fatalf("output empty; body=%s", string(out))
 	}
-	first := output[0].(map[string]interface{})
+	first := output[0].(map[string]any)
 	if first["type"] != "message" {
 		t.Fatalf("first output type = %#v, want message; body=%s", first["type"], string(out))
 	}
@@ -389,7 +389,7 @@ func TestResponsesRequestToAnthropicBodySkipsWebSearchCallHistory(t *testing.T) 
 	if err != nil {
 		t.Fatalf("responsesRequestToAnthropicBody error: %v", err)
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode anthropic body: %v, body=%s", err, string(body))
 	}
@@ -399,7 +399,7 @@ func TestResponsesRequestToAnthropicBodySkipsWebSearchCallHistory(t *testing.T) 
 			t.Fatalf("anthropic body must not contain %q: %s", banned, raw)
 		}
 	}
-	msgs, ok := payload["messages"].([]interface{})
+	msgs, ok := payload["messages"].([]any)
 	// The two assistant messages around the dropped web_search_call item are
 	// merged by the converter, so the history collapses to 1 user + 1 assistant.
 	if !ok || len(msgs) != 2 {

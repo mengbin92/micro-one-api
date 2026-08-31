@@ -469,7 +469,7 @@ func (r *Repository) UpdateModel(ctx context.Context, do *biz.Model) error {
 		return r.updateModelMemory(do)
 	}
 	po := newModelPO(do)
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"display_name":       po.DisplayName,
 		"description":        po.Description,
 		"provider":           po.Provider,
@@ -528,7 +528,7 @@ func (r *Repository) ChangeModelStatus(ctx context.Context, modelPK int64, statu
 		return r.changeModelStatusMemory(modelPK, status)
 	}
 	res := r.db.WithContext(ctx).Model(&modelModel{}).Where("id = ?", modelPK).
-		Updates(map[string]interface{}{"status": status, "updated_at": time.Now().Unix()})
+		Updates(map[string]any{"status": status, "updated_at": time.Now().Unix()})
 	if res.Error != nil {
 		return res.Error
 	}
@@ -543,7 +543,7 @@ func (r *Repository) BatchChangeStatus(ctx context.Context, modelPKs []int64, st
 		return r.batchChangeStatusMemory(modelPKs, status)
 	}
 	res := r.db.WithContext(ctx).Model(&modelModel{}).Where("id IN ?", modelPKs).
-		Updates(map[string]interface{}{"status": status, "updated_at": time.Now().Unix()})
+		Updates(map[string]any{"status": status, "updated_at": time.Now().Unix()})
 	if res.Error != nil {
 		return 0, res.Error
 	}
@@ -676,7 +676,7 @@ func (r *Repository) UpsertChannelMapping(ctx context.Context, do *biz.ModelChan
 		if err == nil {
 			// enabled is proto3 optional; only write it when the
 			// caller set it, so a priority-only update does not disable the row.
-			updates := map[string]interface{}{
+			updates := map[string]any{
 				"priority":          po.Priority,
 				"config":            po.Config,
 				"upstream_model_id": po.UpstreamModelID,
@@ -763,7 +763,7 @@ func (r *Repository) UpsertSubscriptionMapping(ctx context.Context, do *biz.Mode
 		err := tx.Where("subscription_account_id = ? AND model_id = ? AND group_name = ?",
 			po.SubscriptionAccountID, po.ModelPK, po.GroupName).First(&existing).Error
 		if err == nil {
-			updates := map[string]interface{}{
+			updates := map[string]any{
 				"priority":          po.Priority,
 				"upstream_model_id": po.UpstreamModelID,
 				"updated_at":        po.UpdatedAt,
@@ -814,7 +814,7 @@ func (r *Repository) RecordModelUsage(ctx context.Context, modelPK int64, stat *
 		var existing modelUsageStatModel
 		err := tx.Where("model_id = ? AND date = ?", modelPK, po.Date).First(&existing).Error
 		if err == nil {
-			return tx.Model(&modelUsageStatModel{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
+			return tx.Model(&modelUsageStatModel{}).Where("id = ?", existing.ID).Updates(map[string]any{
 				"request_count": existing.RequestCount + po.RequestCount,
 				"token_count":   existing.TokenCount + po.TokenCount,
 				"error_count":   existing.ErrorCount + po.ErrorCount,
@@ -895,10 +895,7 @@ func (r *Repository) listModelsMemory(page, pageSize int32, filter biz.ListModel
 	if start >= len(filtered) {
 		return []*biz.Model{}, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(filtered) {
-		end = len(filtered)
-	}
+	end := min(start+int(pageSize), len(filtered))
 	return filtered[start:end], total, nil
 }
 
@@ -1303,10 +1300,7 @@ func (r *Repository) listModelUsageStatsMemory(modelPK int64, startDate, endDate
 	if start >= len(filtered) {
 		return []*biz.ModelUsageStat{}, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(filtered) {
-		end = len(filtered)
-	}
+	end := min(start+int(pageSize), len(filtered))
 	return filtered[start:end], total, nil
 }
 
@@ -1581,7 +1575,7 @@ func (r *Repository) MergeCanonicalModels(ctx context.Context, group biz.Duplica
 				var surv modelUsageStatModel
 				err := tx.Where("model_id = ? AND date = ?", survivor, ls.Date).First(&surv).Error
 				if err == nil {
-					if err := tx.Model(&modelUsageStatModel{}).Where("id = ?", surv.ID).Updates(map[string]interface{}{
+					if err := tx.Model(&modelUsageStatModel{}).Where("id = ?", surv.ID).Updates(map[string]any{
 						"request_count": surv.RequestCount + ls.RequestCount,
 						"token_count":   surv.TokenCount + ls.TokenCount,
 						"error_count":   surv.ErrorCount + ls.ErrorCount,

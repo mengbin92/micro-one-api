@@ -311,10 +311,7 @@ func (m *mockIdentityRepo) ListTokens(ctx context.Context, userID int64, page, p
 	if start >= len(result) {
 		return []*Token{}, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(result) {
-		end = len(result)
-	}
+	end := min(start+int(pageSize), len(result))
 	return result[start:end], total, nil
 }
 
@@ -347,10 +344,7 @@ func (m *mockIdentityRepo) ConsumeTokenQuota(ctx context.Context, userID, tokenI
 			if token.UnlimitedQuota {
 				return token.RemainQuota, nil
 			}
-			consumed := amount
-			if consumed > token.RemainQuota {
-				consumed = token.RemainQuota
-			}
+			consumed := min(amount, token.RemainQuota)
 			token.RemainQuota -= consumed
 			if token.RemainQuota == 0 {
 				token.Status = TokenStatusExhausted
@@ -757,12 +751,12 @@ func TestSplitCSVPtr(t *testing.T) {
 		expected []string
 	}{
 		{"nil input", nil, nil},
-		{"empty string", strPtr(""), []string{}},
-		{"single item", strPtr("gpt-4o-mini"), []string{"gpt-4o-mini"}},
-		{"multiple items", strPtr("gpt-4o-mini,gpt-4o"), []string{"gpt-4o-mini", "gpt-4o"}},
-		{"items with spaces", strPtr("gpt-4o-mini, gpt-4o, gpt-3.5-turbo"), []string{"gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"}},
-		{"items with extra spaces", strPtr("  gpt-4o-mini  ,  gpt-4o  "), []string{"gpt-4o-mini", "gpt-4o"}},
-		{"empty items", strPtr("gpt-4o-mini,,gpt-4o"), []string{"gpt-4o-mini", "gpt-4o"}},
+		{"empty string", new(""), []string{}},
+		{"single item", new("gpt-4o-mini"), []string{"gpt-4o-mini"}},
+		{"multiple items", new("gpt-4o-mini,gpt-4o"), []string{"gpt-4o-mini", "gpt-4o"}},
+		{"items with spaces", new("gpt-4o-mini, gpt-4o, gpt-3.5-turbo"), []string{"gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"}},
+		{"items with extra spaces", new("  gpt-4o-mini  ,  gpt-4o  "), []string{"gpt-4o-mini", "gpt-4o"}},
+		{"empty items", new("gpt-4o-mini,,gpt-4o"), []string{"gpt-4o-mini", "gpt-4o"}},
 	}
 
 	for _, tt := range tests {
@@ -797,8 +791,9 @@ func TestSplitCSV(t *testing.T) {
 	}
 }
 
+//go:fix inline
 func strPtr(s string) *string {
-	return &s
+	return new(s)
 }
 
 func equalStringSlices(a, b []string) bool {
@@ -888,10 +883,10 @@ func TestIdentityUsecase_LoginRateLimitIsSharedAcrossReplicas(t *testing.T) {
 	first := NewIdentityUsecase(repo, nil)
 	second := NewIdentityUsecase(repo, nil)
 	ctx := context.Background()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, _, _ = first.Login(ctx, "alice", "wrong", "203.0.113.8")
 	}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		_, _, _ = second.Login(ctx, "alice", "wrong", "203.0.113.8")
 	}
 	_, _, err := first.Login(ctx, "alice", "wrong", "203.0.113.8")

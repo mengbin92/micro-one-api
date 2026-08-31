@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"go.uber.org/zap"
@@ -83,12 +84,9 @@ func CORS(config *CORSConfig) func(http.Handler) http.Handler {
 
 	// Reject wildcard origin with credentials (insecure per CORS spec)
 	if config.AllowCredentials {
-		for _, origin := range config.AllowedOrigins {
-			if origin == "*" {
-				applogger.Log.Warn("CORS: wildcard origin with AllowCredentials is insecure, disabling AllowCredentials")
-				config.AllowCredentials = false
-				break
-			}
+		if slices.Contains(config.AllowedOrigins, "*") {
+			applogger.Log.Warn("CORS: wildcard origin with AllowCredentials is insecure, disabling AllowCredentials")
+			config.AllowCredentials = false
 		}
 	}
 

@@ -57,11 +57,11 @@ func TestListStuckIssuedOrders_ExcludesBalanceOrders(t *testing.T) {
 
 	// Mark all three paid+issued; give PAY-SUB-2 a fulfilled subscription_id.
 	require.NoError(t, db.Model(&PaymentOrder{}).Where("trade_no = ?", "PAY-BAL-1").
-		Updates(map[string]interface{}{"status": biz.PaymentOrderStatusPaid, "asset_issue_status": biz.PaymentAssetIssueStatusIssued}).Error)
+		Updates(map[string]any{"status": biz.PaymentOrderStatusPaid, "asset_issue_status": biz.PaymentAssetIssueStatusIssued}).Error)
 	require.NoError(t, db.Model(&PaymentOrder{}).Where("trade_no = ?", "PAY-SUB-1").
-		Updates(map[string]interface{}{"status": biz.PaymentOrderStatusPaid, "asset_issue_status": biz.PaymentAssetIssueStatusIssued}).Error)
+		Updates(map[string]any{"status": biz.PaymentOrderStatusPaid, "asset_issue_status": biz.PaymentAssetIssueStatusIssued}).Error)
 	require.NoError(t, db.Model(&PaymentOrder{}).Where("trade_no = ?", "PAY-SUB-2").
-		Updates(map[string]interface{}{"status": biz.PaymentOrderStatusPaid, "asset_issue_status": biz.PaymentAssetIssueStatusIssued, "subscription_id": 42}).Error)
+		Updates(map[string]any{"status": biz.PaymentOrderStatusPaid, "asset_issue_status": biz.PaymentAssetIssueStatusIssued, "subscription_id": 42}).Error)
 
 	stuck, err := reconRepo.ListStuckIssuedOrders(ctx)
 	require.NoError(t, err)

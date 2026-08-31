@@ -119,13 +119,13 @@ func (r *accountRepo) UpdateUsageInTx(ctx context.Context, tx subscriptionbiz.Tx
 	db := txDB(tx)
 	return db.WithContext(ctx).Table("users").
 		Where("id = ?", userID).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"used_amount":   gorm.Expr("used_amount + ?", usedQuotaExpr(usedAmountDelta)),
 			"request_count": gorm.Expr("request_count + ?", requestCountDelta),
 		}).Error
 }
 
-func usedQuotaExpr(delta int64) interface{} {
+func usedQuotaExpr(delta int64) any {
 	if delta < 0 {
 		// used_amount is monotonically increasing; never let a refund decrement
 		// the running total.
@@ -217,7 +217,7 @@ func (r *accountRepo) ReserveBalanceInTx(ctx context.Context, tx subscriptionbiz
 		SET balance = balance - ?,
 		    frozen_amount = frozen_amount + ?
 		WHERE id = ?`
-	args := []interface{}{amount, amount, userID}
+	args := []any{amount, amount, userID}
 	if !allowOverdraft {
 		stmt += ` AND balance >= ?`
 		args = append(args, amount)
@@ -280,7 +280,7 @@ func (r *accountRepo) CommitBalanceInTx(ctx context.Context, tx subscriptionbiz.
 		stmt := `UPDATE users
 			SET balance = balance + ?
 			WHERE id = ?`
-		args := []interface{}{delta, userID}
+		args := []any{delta, userID}
 		if !allowOverdraft {
 			stmt += ` AND balance + ? >= 0`
 			args = append(args, delta)
@@ -307,7 +307,7 @@ func (r *accountRepo) CommitBalanceInTx(ctx context.Context, tx subscriptionbiz.
 			SET balance = balance + ?,
 			    frozen_amount = frozen_amount - ?
 			WHERE id = ?`
-	args := []interface{}{delta, reserved, userID}
+	args := []any{delta, reserved, userID}
 	if !allowOverdraft {
 		stmt += ` AND balance + ? >= 0`
 		args = append(args, delta)

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -18,7 +19,7 @@ func TrustedProxyCIDRsFromEnv(envNames ...string) []netip.Prefix {
 		envName = envNames[0]
 	}
 	var prefixes []netip.Prefix
-	for _, raw := range strings.Split(os.Getenv(envName), ",") {
+	for raw := range strings.SplitSeq(os.Getenv(envName), ",") {
 		prefix, err := netip.ParsePrefix(strings.TrimSpace(raw))
 		if err == nil {
 			prefixes = append(prefixes, prefix.Masked())
@@ -46,8 +47,8 @@ func ClientIP(r *http.Request, trusted []netip.Prefix) string {
 	if forwarded != "" {
 		hops := strings.Split(forwarded, ",")
 		current := peer
-		for i := len(hops) - 1; i >= 0; i-- {
-			hop, err := netip.ParseAddr(strings.TrimSpace(hops[i]))
+		for _, hop := range slices.Backward(hops) {
+			hop, err := netip.ParseAddr(strings.TrimSpace(hop))
 			if err != nil {
 				return current.String()
 			}

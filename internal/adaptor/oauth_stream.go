@@ -46,8 +46,8 @@ func writeChatStreamError(w *io.PipeWriter) {
 		Model:   "",
 		Choices: []apicompat.ChatChunkChoice{{
 			Index:        0,
-			FinishReason: strPtr("error"),
-			Delta:        apicompat.ChatDelta{Role: "assistant", Content: strPtr(streamErrorMessage)},
+			FinishReason: new("error"),
+			Delta:        apicompat.ChatDelta{Role: "assistant", Content: new(streamErrorMessage)},
 		}},
 	}
 	if sse, err := apicompat.ChatChunkToSSE(chunk); err == nil {
@@ -71,7 +71,8 @@ func writeAnthropicStreamError(w *io.PipeWriter) {
 	}
 }
 
-func strPtr(s string) *string { return &s }
+//go:fix inline
+func strPtr(s string) *string { return new(s) }
 
 func pumpAnthropicToResponses(src io.Reader, w *io.PipeWriter) {
 	defer w.Close()

@@ -453,7 +453,7 @@ func subscriptionAccountMetadataValue(raw, key string) string {
 	// Minimal JSON map read without importing encoding/json here to keep the
 	// biz package free of transport concerns; the data layer's canonical
 	// implementation remains the source of truth. We only need string values.
-	var values map[string]interface{}
+	var values map[string]any
 	if err := jsonUnmarshal(raw, &values); err != nil {
 		return ""
 	}
@@ -463,7 +463,7 @@ func subscriptionAccountMetadataValue(raw, key string) string {
 
 // jsonUnmarshal parses a metadata JSON blob into a map. Wraps encoding/json
 // so callers in this package share one implementation.
-var jsonUnmarshal = func(raw string, out *map[string]interface{}) error {
+var jsonUnmarshal = func(raw string, out *map[string]any) error {
 	return jsonx.Unmarshal([]byte(raw), out)
 }
 
@@ -514,7 +514,7 @@ func parseMetadataInt(raw, key string) int64 {
 	if raw == "" {
 		return 0
 	}
-	var values map[string]interface{}
+	var values map[string]any
 	if err := jsonUnmarshal(raw, &values); err != nil {
 		return 0
 	}

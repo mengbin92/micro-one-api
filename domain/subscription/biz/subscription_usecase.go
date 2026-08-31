@@ -224,10 +224,7 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *A
 		startsAt = now
 	}
 	duration := req.ExpiresAt - startsAt
-	base := active.ExpiresAt
-	if base < now {
-		base = now
-	}
+	base := max(active.ExpiresAt, now)
 	active.ExpiresAt = base + duration
 	if req.SubscriptionName != "" {
 		active.SubscriptionName = req.SubscriptionName
@@ -334,10 +331,7 @@ func (uc *SubscriptionUsecase) Shorten(ctx context.Context, id int64, subtractSe
 		return ErrSubscriptionRevoked
 	}
 	now := uc.now().Unix()
-	newExpiry := subscription.ExpiresAt - subtractSeconds
-	if newExpiry < now {
-		newExpiry = now
-	}
+	newExpiry := max(subscription.ExpiresAt-subtractSeconds, now)
 	subscription.ExpiresAt = newExpiry
 	subscription.UpdatedAt = now
 	return uc.repo.UpdateSubscription(ctx, subscription)
@@ -355,10 +349,7 @@ func (uc *SubscriptionUsecase) ShortenInTx(ctx context.Context, tx Tx, id int64,
 		return ErrSubscriptionRevoked
 	}
 	now := uc.now().Unix()
-	newExpiry := subscription.ExpiresAt - subtractSeconds
-	if newExpiry < now {
-		newExpiry = now
-	}
+	newExpiry := max(subscription.ExpiresAt-subtractSeconds, now)
 	subscription.ExpiresAt = newExpiry
 	subscription.UpdatedAt = now
 	return uc.repo.UpdateSubscriptionFieldsInTx(ctx, tx, subscription, []SubscriptionField{SubscriptionFieldExpiresAt})

@@ -48,10 +48,7 @@ func (m *mockNotifyRepo) List(ctx context.Context, page, pageSize int32, notifyT
 	if start >= len(result) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(result) {
-		end = len(result)
-	}
+	end := min(start+int(pageSize), len(result))
 	return result[start:end], total, nil
 }
 
@@ -437,7 +434,7 @@ func TestMultiSenderWeCom(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(receivedBody, &payload); err != nil {
 		t.Fatalf("failed to parse payload: %v", err)
 	}
@@ -475,7 +472,7 @@ func TestMultiSenderDingTalk(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(receivedBody, &payload); err != nil {
 		t.Fatalf("failed to parse payload: %v", err)
 	}
@@ -513,7 +510,7 @@ func TestMultiSenderFeishu(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(receivedBody, &payload); err != nil {
 		t.Fatalf("failed to parse payload: %v", err)
 	}
@@ -551,7 +548,7 @@ func TestMultiSenderSlack(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(receivedBody, &payload); err != nil {
 		t.Fatalf("failed to parse payload: %v", err)
 	}

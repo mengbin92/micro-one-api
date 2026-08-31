@@ -14,7 +14,7 @@
 #   docker build -f deployments/docker/Dockerfile.deps -t "micro-one-api/go-deps:${TAG}" ../..
 #   docker tag "micro-one-api/go-deps:${TAG}" micro-one-api/go-deps:latest
 
-FROM golang:1.26-alpine
+FROM golang:1.27-alpine
 
 # git and ca-certificates are required for go mod download/verify
 # ca-certificates enables HTTPS downloads and sum db verification

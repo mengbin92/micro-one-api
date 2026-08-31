@@ -123,11 +123,9 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 			Timeout:  timeout,
 			PageSize: 200,
 		})
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sweeper.Run(ctx)
-		}()
+		})
 		applogger.Log.Info("subscription quota reset sweeper started",
 			zap.Duration("interval", interval))
 	}
@@ -147,22 +145,18 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 		if modelProbe != nil {
 			recovery.SetProber(service.NewRecoveryProbeAdapter(modelProbe))
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			recovery.Run(ctx)
-		}()
+		})
 		applogger.Log.Info("subscription account recovery sweeper started",
 			zap.Duration("interval", interval))
 	}
 
 	// 3. Coding-plan quota probe (Zhipu/MiniMax/Kimi upstream quota).
 	if quotaProbe != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			quotaProbe.Run(ctx)
-		}()
+		})
 		applogger.Log.Info("coding plan quota probe started")
 	}
 
@@ -199,11 +193,9 @@ func startAccountOpsAutomation(uc *biz.ChannelUsecase, repo biz.ChannelRepo, exi
 				Interval: interval,
 				PageSize: 200,
 			})
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				evaluator.Run(ctx)
-			}()
+			})
 			applogger.Log.Info("subscription quota alert evaluator started",
 				zap.Duration("interval", interval))
 		} else {

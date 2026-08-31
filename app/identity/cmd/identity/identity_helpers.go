@@ -143,11 +143,9 @@ func setupOAuth(cfg *Config) *oauth.ProviderRegistry {
 	if oauthCfg.Oidc != nil && oauthCfg.Oidc.Enabled && oauthCfg.Oidc.ClientId != "" &&
 		oauthCfg.Oidc.AuthorizeUrl != "" && oauthCfg.Oidc.TokenUrl != "" && oauthCfg.Oidc.UserInfoUrl != "" {
 		registry.Register(oauth.NewOIDCProvider(oauth.OIDCConfig{
-			Config: oauth.Config{
-				ClientID:     oauthCfg.Oidc.ClientId,
-				ClientSecret: oauthCfg.Oidc.ClientSecret,
-				RedirectURL:  baseURL + "/v1/oauth/oidc/callback",
-			},
+			ClientID:     oauthCfg.Oidc.ClientId,
+			ClientSecret: oauthCfg.Oidc.ClientSecret,
+			RedirectURL:  baseURL + "/v1/oauth/oidc/callback",
 			AuthorizeURL: oauthCfg.Oidc.AuthorizeUrl,
 			TokenURL:     oauthCfg.Oidc.TokenUrl,
 			UserInfoURL:  oauthCfg.Oidc.UserInfoUrl,
@@ -156,20 +154,16 @@ func setupOAuth(cfg *Config) *oauth.ProviderRegistry {
 	}
 	if oauthCfg.Lark != nil && oauthCfg.Lark.Enabled && oauthCfg.Lark.ClientId != "" {
 		registry.Register(oauth.NewLarkProvider(oauth.EndpointConfig{
-			Config: oauth.Config{
-				ClientID:     oauthCfg.Lark.ClientId,
-				ClientSecret: oauthCfg.Lark.ClientSecret,
-				RedirectURL:  baseURL + "/v1/oauth/lark/callback",
-			},
+			ClientID:     oauthCfg.Lark.ClientId,
+			ClientSecret: oauthCfg.Lark.ClientSecret,
+			RedirectURL:  baseURL + "/v1/oauth/lark/callback",
 		}))
 	}
 	if oauthCfg.Wechat != nil && oauthCfg.Wechat.Enabled && oauthCfg.Wechat.ClientId != "" {
 		registry.Register(oauth.NewWeChatProvider(oauth.EndpointConfig{
-			Config: oauth.Config{
-				ClientID:     oauthCfg.Wechat.ClientId,
-				ClientSecret: oauthCfg.Wechat.ClientSecret,
-				RedirectURL:  baseURL + "/v1/oauth/wechat/callback",
-			},
+			ClientID:     oauthCfg.Wechat.ClientId,
+			ClientSecret: oauthCfg.Wechat.ClientSecret,
+			RedirectURL:  baseURL + "/v1/oauth/wechat/callback",
 		}))
 	}
 	return registry

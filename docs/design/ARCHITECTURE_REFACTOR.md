@@ -24,19 +24,19 @@
 
 ### 1.1 项目概述
 
-micro-one-api 是基于 one-api、new-api、sub2api 三个开源项目融合重构的 **AI API 网关与管理系统**，采用 Go + Kratos v2 微服务框架，已拆分为 9 个独立服务。
+micro-one-api 是基于 one-api、new-api、sub2api 三个开源项目融合重构的 **AI API 网关与管理系统**，采用 Go + Kratos v3 微服务框架，已拆分为 9 个独立服务。
 
 ### 1.2 技术栈
 
 | 层次 | 技术 | 版本 |
 |------|------|------|
-| 语言 | Go | 1.26 |
-| 微服务框架 | go-kratos/kratos/v2 | v2.9.2 |
+| 语言 | Go | 1.27 |
+| 微服务框架 | go-kratos/kratos/v3 | v3.0.0 |
 | 依赖注入 | google/wire | v0.7.0 |
 | ORM | gorm (MySQL) | v1.30.0 |
 | 缓存 | go-redis/v9 | v9.19.0 |
 | 通信协议 | gRPC + HTTP REST | - |
-| JSON 序列化 | bytedance/sonic | v1.15.1 |
+| JSON 序列化 | bytedance/sonic | v1.15.3 |
 | 日志 | zap | v1.28.0 |
 | 链路追踪 | OpenTelemetry | v1.43.0 |
 | 监控 | prometheus | v1.23.2 |

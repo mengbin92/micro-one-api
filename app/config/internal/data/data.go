@@ -181,7 +181,7 @@ func (r *Repository) setDB(ctx context.Context, entry *biz.ConfigEntry) error {
 	if err != nil {
 		return err
 	}
-	return r.db.WithContext(ctx).Model(&existing).Updates(map[string]interface{}{
+	return r.db.WithContext(ctx).Model(&existing).Updates(map[string]any{
 		"value":      entry.Value,
 		"comment":    entry.Comment,
 		"updated_at": entry.UpdatedAt.Unix(),
@@ -222,10 +222,7 @@ func (r *Repository) listMemory(namespace string, page, pageSize int32) ([]*biz.
 	if start >= len(all) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(all) {
-		end = len(all)
-	}
+	end := min(start+int(pageSize), len(all))
 	return all[start:end], total, nil
 }
 

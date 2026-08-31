@@ -26,7 +26,7 @@ func TestPhase3_ChannelSelector_WeightDistribution(t *testing.T) {
 
 	counts := map[int64]int{}
 	const iterations = 800
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -58,7 +58,7 @@ func TestPhase3_ChannelSelector_PriorityTierOrdering(t *testing.T) {
 	candidates := []*Channel{a, b}
 
 	counts := map[int64]int{}
-	for i := 0; i < 800; i++ {
+	for range 800 {
 		got, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -83,7 +83,7 @@ func TestPhase3_ChannelSelector_HealthDerating(t *testing.T) {
 	candidates := []*Channel{healthy, degraded}
 
 	// Prime + degrade channel 2.
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		if _, err := s.Select(context.Background(), "g", candidates); err != nil {
 			t.Fatalf("Select err = %v", err)
 		}
@@ -97,7 +97,7 @@ func TestPhase3_ChannelSelector_HealthDerating(t *testing.T) {
 	}
 
 	counts := map[int64]int{}
-	for i := 0; i < 400; i++ {
+	for range 400 {
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -135,7 +135,7 @@ func TestPhase3_ChannelSelector_ConcurrencySaturation(t *testing.T) {
 	}
 
 	// Now all further selections must go to channel 2 (1 is at max-concurrent).
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		got, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -155,7 +155,7 @@ func TestPhase3_ChannelSelector_FailureExhaustsTier(t *testing.T) {
 	candidates := []*Channel{a, b}
 
 	// Trip both circuits with a sustained high error rate.
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		s.Select(context.Background(), "g", candidates)
 		s.RecordHealth(1, false, 100, "err")
 		s.RecordHealth(2, false, 100, "err")
@@ -177,7 +177,7 @@ func TestPhase3_AccountSelector_WeightDistribution(t *testing.T) {
 
 	counts := map[int64]int{}
 	const iterations = 1000
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -204,7 +204,7 @@ func TestPhase3_AccountSelector_HealthDerating(t *testing.T) {
 	// in the <0.30 band (factor 20). Prime the state first so the account exists.
 	s.Select(context.Background(), "g", candidates)
 	ds := s.accounts[2]
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ds.recentErrors.RecordOutcome(i >= 2) // i=0,1 are failures
 	}
 	if got := ds.healthFactor(); got != 20 {
@@ -212,7 +212,7 @@ func TestPhase3_AccountSelector_HealthDerating(t *testing.T) {
 	}
 
 	counts := map[int64]int{}
-	for i := 0; i < 500; i++ {
+	for range 500 {
 		selected, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -235,7 +235,7 @@ func TestPhase3_AccountSelector_CircuitOpenFailClosed(t *testing.T) {
 	candidates := []*SubscriptionAccount{a, b}
 
 	// Trip both circuits.
-	for i := 0; i < 40; i++ {
+	for range 40 {
 		s.Select(context.Background(), "g", candidates)
 		s.RecordAccountHealth(1, false)
 		s.RecordAccountHealth(2, false)

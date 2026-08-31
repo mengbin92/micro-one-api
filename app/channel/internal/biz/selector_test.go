@@ -9,7 +9,7 @@ import (
 
 func TestSlidingWindow_AddAndP95(t *testing.T) {
 	w := NewSlidingWindow(100)
-	for i := int64(0); i < 100; i++ {
+	for i := range int64(100) {
 		w.Add(i)
 	}
 	p95 := w.P95()
@@ -21,7 +21,7 @@ func TestSlidingWindow_AddAndP95(t *testing.T) {
 
 func TestSlidingWindow_RingBufferNoGrowth(t *testing.T) {
 	w := NewSlidingWindow(10)
-	for i := int64(0); i < 1000; i++ {
+	for i := range int64(1000) {
 		w.Add(i)
 	}
 	w.mu.Lock()
@@ -46,7 +46,7 @@ func TestSlidingWindow_Empty(t *testing.T) {
 
 func TestSlidingWindow_DefaultSize(t *testing.T) {
 	w := NewSlidingWindow(0)
-	for i := int64(0); i < 200; i++ {
+	for i := range int64(200) {
 		w.Add(i)
 	}
 	w.mu.Lock()
@@ -61,7 +61,7 @@ func TestSlidingCounter_RateIsTrueRatio(t *testing.T) {
 	// channel-H1: Rate() returns a true error RATIO (errors/total), not
 	// errors-per-second. 10 failures with no successes → ratio 1.0.
 	c := NewSlidingCounter(60 * time.Second)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		c.Increment()
 	}
 	if rate := c.Rate(); rate != 1.0 {
@@ -70,7 +70,7 @@ func TestSlidingCounter_RateIsTrueRatio(t *testing.T) {
 
 	// Mixed outcomes: 3 failures of 10 total → ratio 0.3.
 	c2 := NewSlidingCounter(60 * time.Second)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		c2.RecordOutcome(i >= 3) // i=0,1,2 are failures (success=false)
 	}
 	if rate := c2.Rate(); rate < 0.29 || rate > 0.31 {
@@ -139,7 +139,7 @@ func TestWeightedSelector_DistributionFavorsHigherWeight(t *testing.T) {
 
 	counts := map[int64]int{}
 	const iterations = 1000
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		// Reset currentWeight each iteration to isolate the dynamic-weight
 		// comparison (we are not testing full smooth-WRR rotation here, only
 		// that a higher-weight channel wins more often from a clean state).
@@ -189,15 +189,13 @@ func TestWeightedSelector_ConcurrentSelect(t *testing.T) {
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 100)
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			_, err := s.Select(context.Background(), "g", candidates)
 			if err != nil {
 				errs <- err
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)
@@ -256,7 +254,7 @@ func TestWeightedSelector_PreservesHealthWeightRatio(t *testing.T) {
 	// (factor 20): 2 failures + 8 successes = 0.2 ratio. RecordOutcome writes
 	// directly to the counter; inflight is managed by Select/RecordHealth below.
 	ds := s.channels[degraded.ID]
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ds.recentErrors.RecordOutcome(i >= 2) // i=0,1 are failures
 	}
 	if got := ds.healthFactor(); got != 20 {
@@ -271,7 +269,7 @@ func TestWeightedSelector_PreservesHealthWeightRatio(t *testing.T) {
 	// so the 5:1 effectiveWeight ratio surfaces over the run. Reset inflight
 	// only (Select increments it, and without RecordHealth it never decrements).
 	counts := map[int64]int{}
-	for i := 0; i < 600; i++ {
+	for range 600 {
 		selected, err = s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -333,7 +331,7 @@ func TestWeightedSelector_ExcludesOpenCircuitFromTotalWeight(t *testing.T) {
 	s.channels[high.ID].circuitOpenUntil = time.Now().Add(time.Minute).UnixNano()
 	s.mu.Unlock()
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		selected, err = s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)
@@ -373,7 +371,7 @@ func TestWeightedSelector_LoadFactorDeratesHighInflight(t *testing.T) {
 
 	// Simulate 75 concurrent in-flight on channel 1.
 	st1, _ := s.GetState(1)
-	for i := 0; i < 75; i++ {
+	for range 75 {
 		st1.inflight.Add(1)
 	}
 	// 75/100 = 75% → [0.75,0.9) band → loadFactor 20.
@@ -386,7 +384,7 @@ func TestWeightedSelector_LoadFactorDeratesHighInflight(t *testing.T) {
 	}
 
 	counts := map[int64]int{}
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		got, err := s.Select(context.Background(), "g", candidates)
 		if err != nil {
 			t.Fatalf("Select err = %v", err)

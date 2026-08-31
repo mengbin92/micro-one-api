@@ -551,7 +551,7 @@ func (r *Repository) applyImportModel(tx *gorm.DB, em *biz.ModelExportModel, exi
 	case "update":
 		po := importModelToPO(em, options, now)
 		po.ID = existing.Model.ID
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"display_name":      po.DisplayName,
 			"description":       po.Description,
 			"provider":          po.Provider,

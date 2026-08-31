@@ -119,7 +119,7 @@ func SimpleMaxBodySize() func(http.Handler) http.Handler {
 }
 
 // ValidateJSONBody validates and limits JSON request body size
-func ValidateJSONBody(v interface{}, maxSize int64) func(http.Handler) http.Handler {
+func ValidateJSONBody(v any, maxSize int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Body == nil {
@@ -131,8 +131,7 @@ func ValidateJSONBody(v interface{}, maxSize int64) func(http.Handler) http.Hand
 			// while any larger body gets a deterministic 413.
 			data, readErr := io.ReadAll(io.LimitReader(r.Body, maxSize+1))
 			if readErr != nil {
-				var maxErr *http.MaxBytesError
-				if errors.As(readErr, &maxErr) {
+				if _, ok := errors.AsType[*http.MaxBytesError](readErr); ok {
 					WriteRequestBodyTooLarge(w, r.URL.Path)
 				} else {
 					http.Error(w, `{"error":{"message":"invalid request body","code":400}}`, http.StatusBadRequest)

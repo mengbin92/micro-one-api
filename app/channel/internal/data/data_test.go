@@ -788,11 +788,9 @@ func TestSubscriptionAccountQuotaUsage_ConcurrentReplayOnlyRecordsOnce(t *testin
 	var wg sync.WaitGroup
 	errs := make(chan error, 8)
 	for i := 0; i < cap(errs); i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			errs <- repo.RecordSubscriptionAccountQuotaUsage(ctx, usage)
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

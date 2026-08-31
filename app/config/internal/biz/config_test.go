@@ -40,10 +40,7 @@ func (m *mockConfigRepo) List(ctx context.Context, namespace string, page, pageS
 	if start >= len(result) {
 		return nil, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(result) {
-		end = len(result)
-	}
+	end := min(start+int(pageSize), len(result))
 	return result[start:end], total, nil
 }
 

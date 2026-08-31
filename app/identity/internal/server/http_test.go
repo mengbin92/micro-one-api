@@ -6,6 +6,7 @@ import (
 	khttp "github.com/go-kratos/kratos/v3/transport/http"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -842,12 +843,7 @@ func TestIdentityHTTPAvailableModelsReturnsDefaultsWhenTokenIsUnrestricted(t *te
 }
 
 func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, want)
 }
 
 func TestIdentityHTTPDashboardBillingUsageReturnsOpenAIShape(t *testing.T) {
@@ -1599,10 +1595,8 @@ func TestIdentityHTTPOneAPIOAuthAliasesAreStableWhenProviderDisabled(t *testing.
 func TestIdentityHTTPOneAPIOIDCAliasRedirectsWhenProviderEnabled(t *testing.T) {
 	registry := oauth.NewProviderRegistry()
 	registry.Register(oauth.NewOIDCProvider(oauth.OIDCConfig{
-		Config: oauth.Config{
-			ClientID:    "client-id",
-			RedirectURL: "http://localhost/v1/oauth/oidc/callback",
-		},
+		ClientID:     "client-id",
+		RedirectURL:  "http://localhost/v1/oauth/oidc/callback",
 		AuthorizeURL: "https://idp.example.com/oauth2/authorize",
 		TokenURL:     "https://idp.example.com/oauth2/token",
 		UserInfoURL:  "https://idp.example.com/oauth2/userinfo",
@@ -1993,25 +1987,25 @@ func newHTTPServerWithDeliverer(addr string, uc *biz.IdentityUsecase, d CodeDeli
 
 func extractJSONField(body, key string) string {
 	prefix := `"` + key + `":"`
-	idx := strings.Index(body, prefix)
-	if idx < 0 {
+	_, after, ok := strings.Cut(body, prefix)
+	if !ok {
 		return ""
 	}
-	rest := body[idx+len(prefix):]
-	end := strings.Index(rest, `"`)
-	if end < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, `"`)
+	if !ok0 {
 		return ""
 	}
-	return rest[:end]
+	return before0
 }
 
 func extractJSONNumberField(body, key string) string {
 	prefix := `"` + key + `":`
-	idx := strings.Index(body, prefix)
-	if idx < 0 {
+	_, after, ok := strings.Cut(body, prefix)
+	if !ok {
 		return ""
 	}
-	rest := body[idx+len(prefix):]
+	rest := after
 	end := 0
 	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
 		end++

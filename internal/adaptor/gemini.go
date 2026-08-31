@@ -338,8 +338,8 @@ func geminiPartsFromChatMessage(message apicompat.ChatMessage, callNames map[str
 }
 
 func geminiImagePart(uri string) geminiPart {
-	if strings.HasPrefix(uri, "data:") {
-		header, data, ok := strings.Cut(strings.TrimPrefix(uri, "data:"), ",")
+	if after, ok := strings.CutPrefix(uri, "data:"); ok {
+		header, data, ok := strings.Cut(after, ",")
 		if ok && strings.HasSuffix(header, ";base64") {
 			return geminiPart{InlineData: &geminiBlob{MIMEType: strings.TrimSuffix(header, ";base64"), Data: data}}
 		}

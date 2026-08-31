@@ -206,10 +206,7 @@ func (r *ledgerRepo) listLedgersInternal(ctx context.Context, userID string, pag
 	var models []ledgerModel
 	var total int64
 
-	offset := int((page - 1) * pageSize)
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(int((page-1)*pageSize), 0)
 
 	query := r.data.db.WithContext(ctx).Model(&ledgerModel{})
 	if userID != "" {
@@ -262,10 +259,7 @@ func (r *ledgerRepo) ListLedgersBySubscriptionAccount(ctx context.Context, subsc
 	var models []ledgerModel
 	var total int64
 
-	offset := int((page - 1) * pageSize)
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(int((page-1)*pageSize), 0)
 
 	query := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
 		Where("subscription_account_id = ?", subscriptionAccountID)

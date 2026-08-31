@@ -18,6 +18,7 @@ package apicompat
 //	WebSocket Responses sticky     stream   history/rebind           | graceful drain
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -148,13 +149,7 @@ func TestCompatibilityMatrix_Coverage(t *testing.T) {
 	// Every registered cell must be an expected coordinate (no orphan cells
 	// that silently pass with a nil/stub check).
 	for k := range registered {
-		found := false
-		for _, want := range expectedMatrixCells {
-			if k == want {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(expectedMatrixCells, k)
 		require.Truef(t, found, "matrix cell %s is not in expectedMatrixCells — remove it or extend the contract", k)
 	}
 }

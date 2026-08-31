@@ -5,6 +5,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -314,8 +315,8 @@ func (s *EnhancedHTTPServer) validateAuthorization(r *http.Request) (string, err
 func (s *EnhancedHTTPServer) writeValidationError(w http.ResponseWriter, err error) {
 	if appvalidation.IsValidationError(err) {
 		w.WriteHeader(http.StatusBadRequest)
-		_ = encodeJSON(w, map[string]interface{}{
-			"error": map[string]interface{}{
+		_ = encodeJSON(w, map[string]any{
+			"error": map[string]any{
 				"message": err.Error(),
 				"code":    400,
 				"type":    "validation_error",
@@ -329,8 +330,8 @@ func (s *EnhancedHTTPServer) writeValidationError(w http.ResponseWriter, err err
 // chainMiddlewares chains multiple middleware functions
 func chainMiddlewares(middlewares ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		for i := len(middlewares) - 1; i >= 0; i-- {
-			next = middlewares[i](next)
+		for _, middleware := range slices.Backward(middlewares) {
+			next = middleware(next)
 		}
 		return next
 	}
@@ -376,12 +377,7 @@ func (s *EnhancedHTTPServer) isModelAllowed(allowedModels []string, model string
 	if len(allowedModels) == 0 {
 		return true
 	}
-	for _, allowed := range allowedModels {
-		if allowed == model {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(allowedModels, model)
 }
 
 func (s *EnhancedHTTPServer) applyModelWhitelist(availableModels []string, allowedModels []string) []string {
@@ -447,15 +443,15 @@ func (s *EnhancedHTTPServer) handleAuthError(w http.ResponseWriter, err error) {
 func (s *EnhancedHTTPServer) writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	_ = encodeJSON(w, map[string]interface{}{
-		"error": map[string]interface{}{
+	_ = encodeJSON(w, map[string]any{
+		"error": map[string]any{
 			"message": applogger.Sanitize(message),
 			"code":    statusCode,
 		},
 	})
 }
 
-func (s *EnhancedHTTPServer) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func (s *EnhancedHTTPServer) writeJSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = encodeJSON(w, data)

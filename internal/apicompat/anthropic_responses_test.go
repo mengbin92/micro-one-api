@@ -1827,23 +1827,23 @@ func TestAnthropicEventToResponses_ServerToolUseDropped(t *testing.T) {
 	// text block (index 0): "Answer: "
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:         "content_block_start",
-		Index:        intPtr(0),
+		Index:        new(0),
 		ContentBlock: &AnthropicContentBlock{Type: "text"},
 	}, state))
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_delta",
-		Index: intPtr(0),
+		Index: new(0),
 		Delta: &AnthropicDelta{Type: "text_delta", Text: "Answer: "},
 	}, state))
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_stop",
-		Index: intPtr(0),
+		Index: new(0),
 	}, state))
 
 	// server_tool_use block (index 1): must be silently dropped
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_start",
-		Index: intPtr(1),
+		Index: new(1),
 		ContentBlock: &AnthropicContentBlock{
 			Type:  "server_tool_use",
 			ID:    "srvtoolu_abc",
@@ -1853,13 +1853,13 @@ func TestAnthropicEventToResponses_ServerToolUseDropped(t *testing.T) {
 	}, state))
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_stop",
-		Index: intPtr(1),
+		Index: new(1),
 	}, state))
 
 	// web_search_tool_result block (index 2): also dropped
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_start",
-		Index: intPtr(2),
+		Index: new(2),
 		ContentBlock: &AnthropicContentBlock{
 			Type:      "web_search_tool_result",
 			ToolUseID: "srvtoolu_abc",
@@ -1868,7 +1868,7 @@ func TestAnthropicEventToResponses_ServerToolUseDropped(t *testing.T) {
 	}, state))
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_stop",
-		Index: intPtr(2),
+		Index: new(2),
 	}, state))
 
 	// second text block (index 3): "42"
@@ -1876,17 +1876,17 @@ func TestAnthropicEventToResponses_ServerToolUseDropped(t *testing.T) {
 	// content_block_stop). The "Answer: " text must NOT leak into this block.
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:         "content_block_start",
-		Index:        intPtr(3),
+		Index:        new(3),
 		ContentBlock: &AnthropicContentBlock{Type: "text"},
 	}, state))
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_delta",
-		Index: intPtr(3),
+		Index: new(3),
 		Delta: &AnthropicDelta{Type: "text_delta", Text: "42"},
 	}, state))
 	collect(AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
 		Type:  "content_block_stop",
-		Index: intPtr(3),
+		Index: new(3),
 	}, state))
 
 	// message_stop
@@ -1932,7 +1932,8 @@ func TestAnthropicEventToResponses_ServerToolUseDropped(t *testing.T) {
 		"'Answer: ' (standalone) must appear exactly once, not duplicated by skipped blocks")
 }
 
-func intPtr(v int) *int { return &v }
+//go:fix inline
+func intPtr(v int) *int { return new(v) }
 
 // TestNonStreaming_ServerToolUseDropped verifies that server_tool_use +
 // web_search_tool_result blocks are silently dropped in non-streaming

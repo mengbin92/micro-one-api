@@ -114,11 +114,11 @@ func (s *ConfigService) HandleListConfigs(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	items := make([]map[string]interface{}, 0, len(entries))
+	items := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
 		items = append(items, configEntryToMap(e))
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"items": items, "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
 func (s *ConfigService) HandleSetConfig(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +170,7 @@ func (s *ConfigService) HandleDeleteConfig(w http.ResponseWriter, r *http.Reques
 func (s *ConfigService) HandleOneAPIContent(namespace, key, defaultValue string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{
 				"success": false,
 				"message": "method not allowed",
 			})
@@ -181,7 +181,7 @@ func (s *ConfigService) HandleOneAPIContent(namespace, key, defaultValue string)
 		if err == nil && entry != nil {
 			value = entry.Value
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"success": true,
 			"message": "",
 			"data":    value,
@@ -201,8 +201,8 @@ func parseTwoSegments(path, prefix string) (string, string) {
 	return parts[0], parts[1]
 }
 
-func configEntryToMap(e *biz.ConfigEntry) map[string]interface{} {
-	return map[string]interface{}{
+func configEntryToMap(e *biz.ConfigEntry) map[string]any {
+	return map[string]any{
 		"id":         e.ID,
 		"namespace":  e.Namespace,
 		"key":        e.Key,
@@ -212,7 +212,7 @@ func configEntryToMap(e *biz.ConfigEntry) map[string]interface{} {
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = jsonx.NewEncoder(w).Encode(data)
@@ -221,5 +221,5 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = jsonx.NewEncoder(w).Encode(map[string]interface{}{"error": message})
+	_ = jsonx.NewEncoder(w).Encode(map[string]any{"error": message})
 }

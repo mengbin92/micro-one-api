@@ -133,7 +133,7 @@ func (st *openAIWSRelayState) observeUpstreamFrame(payload []byte, msgType coder
 		return "", "", false
 	}
 
-	var frame map[string]interface{}
+	var frame map[string]any
 	if err := jsonx.Unmarshal(payload, &frame); err != nil {
 		return "", "", false
 	}
@@ -142,7 +142,7 @@ func (st *openAIWSRelayState) observeUpstreamFrame(payload []byte, msgType coder
 	eventType = strings.TrimSpace(rawType)
 
 	// response.id is the canonical location; response_id is a legacy fallback.
-	if response, ok := frame["response"].(map[string]interface{}); ok {
+	if response, ok := frame["response"].(map[string]any); ok {
 		if rid, _ := response["id"].(string); strings.TrimSpace(rid) != "" {
 			responseID = strings.TrimSpace(rid)
 		}
@@ -207,10 +207,7 @@ func (st *openAIWSRelayState) finishTurn(opts *openAIWSRelayOptions, eventType, 
 	var duration time.Duration
 	st.mu.Lock()
 	if startAt, ok := st.turnStartByID[responseID]; ok {
-		duration = now.Sub(startAt)
-		if duration < 0 {
-			duration = 0
-		}
+		duration = max(now.Sub(startAt), 0)
 		delete(st.turnStartByID, responseID)
 	}
 	usage := st.usage
@@ -239,12 +236,12 @@ func (st *openAIWSRelayState) snapshot() (openAIWSRelayUsage, string, string) {
 // It reads response.usage.{input_tokens,output_tokens,input_tokens_details.cached_tokens},
 // falling back to the prompt_tokens / completion_tokens aliases. Mirrors
 // sub2api's parseUsageAndAccumulate field selection.
-func parseOpenAIWSFrameUsage(frame map[string]interface{}) (openAIWSRelayUsage, bool) {
-	response, ok := frame["response"].(map[string]interface{})
+func parseOpenAIWSFrameUsage(frame map[string]any) (openAIWSRelayUsage, bool) {
+	response, ok := frame["response"].(map[string]any)
 	if !ok {
 		return openAIWSRelayUsage{}, false
 	}
-	usageMap, ok := response["usage"].(map[string]interface{})
+	usageMap, ok := response["usage"].(map[string]any)
 	if !ok {
 		return openAIWSRelayUsage{}, false
 	}

@@ -8,7 +8,7 @@ import (
 
 func TestQuotaChecker_DelegatesToUsecase(t *testing.T) {
 	repo := newMockSubscriptionRepo()
-	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled, DailyLimitUSD: ptrFloat64(5)}
+	group := &SubscriptionGroup{Name: "pro", Platform: "openai", Status: SubscriptionGroupStatusEnabled, DailyLimitUSD: new(float64(5))}
 	if err := repo.CreateGroup(context.Background(), group); err != nil {
 		t.Fatalf("CreateGroup() error = %v", err)
 	}

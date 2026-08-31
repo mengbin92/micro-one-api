@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"sort"
@@ -400,7 +401,7 @@ func (s *AdminService) ListUserLedger(ctx context.Context, req *adminv1.ListUser
 }
 
 // GetLedgerEntry returns one complete billing ledger entry for the admin API.
-func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string]interface{}, error) {
+func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string]any, error) {
 	resp, err := s.billingClient.GetLedgerEntry(ctx, &billingv1.GetLedgerEntryRequest{Id: id})
 	if err != nil {
 		return nil, err
@@ -423,7 +424,7 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		channel = upstream
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"id":                       entry.GetId(),
 		"userId":                   entry.GetUserId(),
 		"user_id":                  entry.GetUserId(),
@@ -785,7 +786,7 @@ func (s *AdminService) ResetUserQuota(ctx context.Context, req *adminv1.ResetUse
 	return &adminv1.ResetUserQuotaResponse{Success: true, Message: "ok"}, nil
 }
 
-func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[string]interface{}, error) {
+func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[string]any, error) {
 	startedAt := time.Now()
 	resp, err := s.channelClient.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: channelID})
 	if err != nil {
@@ -795,7 +796,7 @@ func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[st
 		return nil, status.Error(codes.NotFound, "channel not found")
 	}
 	channel := resp.Channel
-	result := map[string]interface{}{
+	result := map[string]any{
 		"success":    true,
 		"channel_id": channel.Id,
 		"name":       channel.Name,
@@ -832,7 +833,7 @@ func (s *AdminService) TestChannel(ctx context.Context, channelID int64) (map[st
 		probeRequest.Method = http.MethodPost
 		probeRequest.Path = "/messages"
 		probeRequest.Header = http.Header{"Content-Type": []string{"application/json"}}
-		probeRequest.Body, err = jsonx.Marshal(map[string]interface{}{
+		probeRequest.Body, err = jsonx.Marshal(map[string]any{
 			"model":      model,
 			"max_tokens": 1,
 			"messages": []map[string]string{{
@@ -1686,7 +1687,7 @@ func fetchOpenRouterBalance(ctx context.Context, client *http.Client, channel *c
 	if err != nil {
 		return 0, err
 	}
-	data, _ := payload["data"].(map[string]interface{})
+	data, _ := payload["data"].(map[string]any)
 	if total, ok := floatFromMap(data, "total_credits"); ok {
 		if used, usedOK := floatFromMap(data, "total_usage"); usedOK {
 			return total - used, nil
@@ -1713,7 +1714,7 @@ func fetchSiliconFlowBalance(ctx context.Context, client *http.Client, channel *
 	if err != nil {
 		return 0, err
 	}
-	if data, _ := payload["data"].(map[string]interface{}); data != nil {
+	if data, _ := payload["data"].(map[string]any); data != nil {
 		if balance, ok := floatFromMap(data, "balance"); ok {
 			return balance, nil
 		}
@@ -1735,10 +1736,10 @@ func fetchDeepSeekBalance(ctx context.Context, client *http.Client, channel *com
 	if err != nil {
 		return 0, err
 	}
-	if infos, ok := payload["balance_infos"].([]interface{}); ok {
+	if infos, ok := payload["balance_infos"].([]any); ok {
 		total := 0.0
 		for _, item := range infos {
-			info, _ := item.(map[string]interface{})
+			info, _ := item.(map[string]any)
 			if balance, ok := floatFromMap(info, "total_balance"); ok {
 				total += balance
 			}
@@ -1756,7 +1757,7 @@ func deepSeekBalanceEndpoint(channel *commonv1.ChannelInfo) string {
 	return strings.TrimRight(trimV1Base(base), "/") + "/user/balance"
 }
 
-func fetchBalancePayload(ctx context.Context, client *http.Client, endpoint, key string) (map[string]interface{}, error) {
+func fetchBalancePayload(ctx context.Context, client *http.Client, endpoint, key string) (map[string]any, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -1772,7 +1773,7 @@ func fetchBalancePayload(ctx context.Context, client *http.Client, endpoint, key
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("balance upstream returned status %d", resp.StatusCode)
 	}
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := jsonx.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, err
 	}
@@ -1784,7 +1785,7 @@ func trimV1Base(baseURL string) string {
 	return strings.TrimSuffix(base, "/v1")
 }
 
-func firstFloat(payload map[string]interface{}, keys ...string) (float64, error) {
+func firstFloat(payload map[string]any, keys ...string) (float64, error) {
 	for _, key := range keys {
 		if value, ok := floatFromMap(payload, key); ok {
 			return value, nil
@@ -1793,7 +1794,7 @@ func firstFloat(payload map[string]interface{}, keys ...string) (float64, error)
 	return 0, fmt.Errorf("balance field not found")
 }
 
-func floatFromMap(payload map[string]interface{}, key string) (float64, bool) {
+func floatFromMap(payload map[string]any, key string) (float64, bool) {
 	if payload == nil {
 		return 0, false
 	}
@@ -1901,9 +1902,7 @@ var oneAPIOptionLegacyAliases = map[string]string{
 
 func (s *AdminService) ListOneAPIOptions(ctx context.Context) ([]OneAPIOption, error) {
 	values := make(map[string]string, len(oneAPIOptionDefaults))
-	for key, value := range oneAPIOptionDefaults {
-		values[key] = value
-	}
+	maps.Copy(values, oneAPIOptionDefaults)
 	if s.systemOptsUc != nil {
 		for key := range values {
 			if v, err := s.systemOptsUc.Get(ctx, key); err == nil && v != "" {
@@ -2214,7 +2213,7 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 // GetLogStats returns ledger statistics computed by real SQL aggregation in the
 // billing service (GROUP BY type), rather than summing a sampled page of rows.
 // total_amount is the true consumed quota (ABS sum of consume entries).
-func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsRequest) (map[string]interface{}, error) {
+func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsRequest) (map[string]any, error) {
 	aggReq := &billingv1.AggregateUsageRequest{
 		GroupBy: []string{"type"},
 		UserId:  req.UserId,
@@ -2251,7 +2250,7 @@ func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsReq
 	upstreamCost = upstreamCostByType["consume"]
 	grossProfit = grossProfitByType["consume"]
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total":                 totalCount,
 		"total_amount":          amountByType["consume"],
 		"upstream_cost":         upstreamCost,
@@ -2265,7 +2264,7 @@ func (s *AdminService) GetLogStats(ctx context.Context, req *adminv1.ListLogsReq
 
 // ListLedgerEntries returns raw billing ledger entries with all fields preserved.
 // This is used for admin API responses that need full entry data.
-func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListLogsRequest) ([]map[string]interface{}, int64, error) {
+func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListLogsRequest) ([]map[string]any, int64, error) {
 	page := req.Page
 	if page <= 0 {
 		page = 1
@@ -2302,7 +2301,7 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 	channelEnrichments := s.loadChannelEnrichments(ctx, billingResp.GetEntries())
 	subscriptionEnrichments := s.loadSubscriptionAccountEnrichments(ctx, billingResp.GetEntries())
 
-	entries := make([]map[string]interface{}, 0, len(billingResp.GetEntries()))
+	entries := make([]map[string]any, 0, len(billingResp.GetEntries()))
 	for _, entry := range billingResp.GetEntries() {
 		var createdAt int64
 		if entry.GetCreatedAt() != nil {
@@ -2323,7 +2322,7 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			upstream = subscriptionEnrichments[subscriptionAccountID]
 		}
 
-		entries = append(entries, map[string]interface{}{
+		entries = append(entries, map[string]any{
 			"id":                    parseInt64(entry.GetId()),
 			"userId":                entry.GetUserId(),
 			"type":                  entry.GetType(),

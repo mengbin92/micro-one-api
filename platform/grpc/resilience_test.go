@@ -92,7 +92,7 @@ func TestResilientClient_NonRetryableErrorsDoNotTrip(t *testing.T) {
 	// breaker, otherwise all traffic to identity is rejected.
 	rc := newTripFastClient("identity", 10*time.Minute, TypedRejectFallback[any]())
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err := rc.Execute(context.Background(), func(ctx context.Context, client any) (any, error) {
 			return nil, status.Error(codes.Unauthenticated, "bad key")
 		})

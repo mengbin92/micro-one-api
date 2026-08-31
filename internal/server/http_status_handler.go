@@ -4,6 +4,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -98,7 +99,7 @@ func (s *HTTPServer) handleUsage(w http.ResponseWriter, r *http.Request) {
 	used := account.GetUsedAmount()
 	frozen := account.GetFrozenAmount()
 	remainingUSD := amountUnitsToUSD(remaining)
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	s.writeJSON(w, http.StatusOK, map[string]any{
 		"mode":      "unrestricted",
 		"isValid":   true,
 		"is_active": true,
@@ -108,15 +109,15 @@ func (s *HTTPServer) handleUsage(w http.ResponseWriter, r *http.Request) {
 		"remaining": remainingUSD,
 		"balance":   remainingUSD,
 		"unit":      "USD",
-		"quota": map[string]interface{}{
+		"quota": map[string]any{
 			"remaining": remaining,
 			"used":      used,
 			"frozen":    frozen,
 			"unit":      "quota",
 			"per_usd":   amountUnitsPerUSD,
 		},
-		"usage": map[string]interface{}{
-			"total": map[string]interface{}{
+		"usage": map[string]any{
+			"total": map[string]any{
 				"cost":     used,
 				"requests": account.GetRequestCount(),
 			},
@@ -159,7 +160,7 @@ func (s *HTTPServer) handleSubscriptionUsage(w http.ResponseWriter, r *http.Requ
 		// Subscriptions are not enabled on this deployment. Report a structured
 		// success:false so tooling can surface "no subscription" rather than a
 		// hard 5xx.
-		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		s.writeJSON(w, http.StatusOK, map[string]any{
 			"success":   false,
 			"isValid":   false,
 			"is_active": false,
@@ -178,7 +179,7 @@ func (s *HTTPServer) handleSubscriptionUsage(w http.ResponseWriter, r *http.Requ
 		// No active subscription is a normal state for a wallet-only user; return
 		// success:false instead of an error status so cc-switch-style tools render
 		// "no subscription" rather than a failure banner.
-		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		s.writeJSON(w, http.StatusOK, map[string]any{
 			"success":   false,
 			"isValid":   false,
 			"is_active": false,
@@ -193,7 +194,7 @@ func (s *HTTPServer) handleSubscriptionUsage(w http.ResponseWriter, r *http.Requ
 	if planName == "" {
 		planName = fmt.Sprintf("subscription #%d", progress.ID)
 	}
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	s.writeJSON(w, http.StatusOK, map[string]any{
 		"success":   true,
 		"isValid":   progress.Status == subscriptionbiz.SubscriptionStatusActive,
 		"is_active": progress.Status == subscriptionbiz.SubscriptionStatusActive,
@@ -222,13 +223,7 @@ func (s *HTTPServer) handleRetrieveModel(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusNotFound, "model not found")
 		return
 	}
-	visible := false
-	for _, model := range models {
-		if model == modelID {
-			visible = true
-			break
-		}
-	}
+	visible := slices.Contains(models, modelID)
 	if !visible {
 		s.writeError(w, http.StatusNotFound, "model not found")
 		return
@@ -262,10 +257,10 @@ func (s *HTTPServer) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	s.writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"version":              "micro-one-api",
 			"system_name":          "micro-one-api",
 			"email_verification":   false,
@@ -283,7 +278,7 @@ func (s *HTTPServer) handleDashboardModels(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	s.writeJSON(w, http.StatusOK, map[string]any{
 		"success":  true,
 		"message":  "",
 		"data":     oneAPIChannelModelsByType(),
@@ -300,7 +295,7 @@ func (s *HTTPServer) handleGroups(w http.ResponseWriter, r *http.Request) {
 	if group == "" {
 		group = "default"
 	}
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	s.writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "",
 		"data":    []string{group},
@@ -326,14 +321,14 @@ func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func openAIModelResponse(modelID string) map[string]interface{} {
+func openAIModelResponse(modelID string) map[string]any {
 	permissionID := "modelperm-micro-one-api"
-	return map[string]interface{}{
+	return map[string]any{
 		"id":       modelID,
 		"object":   "model",
 		"created":  1626777600,
 		"owned_by": "organization",
-		"permission": []map[string]interface{}{
+		"permission": []map[string]any{
 			{
 				"id":                   permissionID,
 				"object":               "model_permission",

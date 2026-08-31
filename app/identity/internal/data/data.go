@@ -387,10 +387,7 @@ func (r *Repository) ListTokens(ctx context.Context, userID int64, page, pageSiz
 	if start >= len(tokens) {
 		return []*biz.Token{}, total, nil
 	}
-	end := start + int(pageSize)
-	if end > len(tokens) {
-		end = len(tokens)
-	}
+	end := min(start+int(pageSize), len(tokens))
 	return tokens[start:end], total, nil
 }
 
@@ -430,10 +427,7 @@ func (r *Repository) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amo
 	defer r.identityLock.Unlock()
 	for _, token := range r.tokensByHash {
 		if token.ID == tokenID && token.UserID == userID {
-			consumed := amount
-			if consumed > token.RemainQuota {
-				consumed = token.RemainQuota
-			}
+			consumed := min(amount, token.RemainQuota)
 			token.RemainQuota -= consumed
 			token.UsedQuota += consumed
 			if token.RemainQuota == 0 {
@@ -625,7 +619,7 @@ func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 }
 
 func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
-	return r.db.WithContext(ctx).Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
+	return r.db.WithContext(ctx).Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]any{
 		"username":            user.Username,
 		"display_name":        user.DisplayName,
 		"email":               user.Email,
@@ -672,8 +666,8 @@ func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error 
 		RemainQuota:    token.RemainQuota,
 		UnlimitedQuota: token.UnlimitedQuota,
 		UsedQuota:      token.UsedQuota,
-		Models:         strPtr(strings.Join(token.Models, ",")),
-		Subnet:         strPtr(token.Subnet),
+		Models:         new(strings.Join(token.Models, ",")),
+		Subnet:         new(token.Subnet),
 		CreatedAt:      token.CreatedAt,
 		CreatedTime:    token.CreatedAt,
 		AccessedTime:   token.AccessedAt,
@@ -717,7 +711,7 @@ func (r *Repository) listTokensDB(ctx context.Context, userID int64, page, pageS
 func (r *Repository) updateTokenDB(ctx context.Context, token *biz.Token) error {
 	return r.db.WithContext(ctx).Model(&tokenModel{}).
 		Where("id = ? AND user_id = ?", token.ID, token.UserID).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"name":            token.Name,
 			"status":          token.Status,
 			"expired_time":    token.ExpiredAt,
@@ -896,7 +890,8 @@ func (r *Repository) CountUsers(ctx context.Context) (int64, error) {
 	return int64(len(r.usersByID)), nil
 }
 
-func strPtr(s string) *string { return &s }
+//go:fix inline
+func strPtr(s string) *string { return new(s) }
 
 func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, "!", "!!")
@@ -953,7 +948,7 @@ func (r *Repository) BackfillTokenHashes(ctx context.Context) {
 	for _, m := range pending {
 		hash := biz.HashTokenKey(m.Key)
 		if err := r.db.WithContext(ctx).Model(&tokenModel{}).Where("id = ?", m.ID).
-			Updates(map[string]interface{}{
+			Updates(map[string]any{
 				"key_hash": hash,
 				"key":      biz.TokenDisplayPrefix(m.Key),
 			}).Error; err != nil {

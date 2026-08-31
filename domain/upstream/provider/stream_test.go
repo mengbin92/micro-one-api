@@ -303,7 +303,7 @@ func TestOpenAIProvider_ChatCompletions(t *testing.T) {
 }
 
 func TestOpenAIProvider_ChatCompletionsPassesBackReasoningContentWithToolCalls(t *testing.T) {
-	var gotBody map[string]interface{}
+	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Fatalf("failed to decode request: %v", err)
@@ -332,16 +332,16 @@ func TestOpenAIProvider_ChatCompletionsPassesBackReasoningContentWithToolCalls(t
 
 	_, err = provider.ChatCompletions(context.Background(), &ChatCompletionsRequest{
 		Model: "mimo-v2.5",
-		Tools: []map[string]interface{}{
+		Tools: []map[string]any{
 			{
 				"type": "function",
-				"function": map[string]interface{}{
+				"function": map[string]any{
 					"name":        "get_current_weather",
 					"description": "Get current weather.",
-					"parameters": map[string]interface{}{
+					"parameters": map[string]any{
 						"type": "object",
-						"properties": map[string]interface{}{
-							"location": map[string]interface{}{"type": "string"},
+						"properties": map[string]any{
+							"location": map[string]any{"type": "string"},
 						},
 					},
 				},
@@ -371,37 +371,37 @@ func TestOpenAIProvider_ChatCompletionsPassesBackReasoningContentWithToolCalls(t
 		t.Fatalf("ChatCompletions() error = %v", err)
 	}
 
-	messages, ok := gotBody["messages"].([]interface{})
+	messages, ok := gotBody["messages"].([]any)
 	if !ok || len(messages) != 4 {
 		t.Fatalf("messages mismatch: %#v", gotBody["messages"])
 	}
-	tools, ok := gotBody["tools"].([]interface{})
+	tools, ok := gotBody["tools"].([]any)
 	if !ok || len(tools) != 1 {
 		t.Fatalf("tools were not passed through: %#v", gotBody["tools"])
 	}
 	if gotBody["tool_choice"] != "auto" {
 		t.Fatalf("tool_choice was not passed through: %#v", gotBody["tool_choice"])
 	}
-	assistantMessage, ok := messages[1].(map[string]interface{})
+	assistantMessage, ok := messages[1].(map[string]any)
 	if !ok {
 		t.Fatalf("assistant message mismatch: %#v", messages[1])
 	}
 	if assistantMessage["reasoning_content"] != "Need to call the weather tool for Beijing." {
 		t.Fatalf("reasoning_content was not passed back: %#v", assistantMessage)
 	}
-	toolCalls, ok := assistantMessage["tool_calls"].([]interface{})
+	toolCalls, ok := assistantMessage["tool_calls"].([]any)
 	if !ok || len(toolCalls) != 1 {
 		t.Fatalf("tool_calls were not passed back: %#v", assistantMessage["tool_calls"])
 	}
-	toolCall := toolCalls[0].(map[string]interface{})
+	toolCall := toolCalls[0].(map[string]any)
 	if toolCall["id"] != "call_weather_beijing" || toolCall["type"] != "function" {
 		t.Fatalf("tool_call metadata mismatch: %#v", toolCall)
 	}
-	function := toolCall["function"].(map[string]interface{})
+	function := toolCall["function"].(map[string]any)
 	if function["name"] != "get_current_weather" || function["arguments"] != `{"location":"Beijing"}` {
 		t.Fatalf("tool_call function mismatch: %#v", function)
 	}
-	toolMessage := messages[2].(map[string]interface{})
+	toolMessage := messages[2].(map[string]any)
 	if toolMessage["tool_call_id"] != "call_weather_beijing" {
 		t.Fatalf("tool message tool_call_id mismatch: %#v", toolMessage)
 	}
@@ -431,7 +431,7 @@ func TestAzureProvider_ChatCompletionsUsesDeploymentPathAndAPIVersion(t *testing
 	var gotPath string
 	var gotQuery string
 	var gotAuth string
-	var gotBody map[string]interface{}
+	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotQuery = r.URL.RawQuery

@@ -47,7 +47,7 @@ func TestRedisRateLimiter_LimitBoundary(t *testing.T) {
 
 	ctx := context.Background()
 	// The first `limit` requests must be allowed.
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		allowed, err := limiter.Allow(ctx, "boundary-key")
 		assert.NoError(t, err, "request %d should not error", i+1)
 		assert.True(t, allowed, "request %d (within limit %d) should be allowed", i+1, limit)
@@ -73,7 +73,7 @@ func TestRedisRateLimiter_UsesBurstCapacity(t *testing.T) {
 		Window:            time.Second,
 		KeyPrefix:         "burst:",
 	})
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		allowed, err := limiter.Allow(context.Background(), "client")
 		assert.NoError(t, err)
 		assert.True(t, allowed, "burst request %d", i+1)

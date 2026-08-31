@@ -19,7 +19,7 @@ const (
 // Event represents a domain event.
 type Event struct {
 	Topic     string
-	Payload   interface{}
+	Payload   any
 	Timestamp time.Time
 }
 
@@ -28,7 +28,7 @@ type Handler func(ctx context.Context, event Event) error
 
 // EventBus defines the interface for publishing and subscribing to events.
 type EventBus interface {
-	Publish(ctx context.Context, topic string, payload interface{}) error
+	Publish(ctx context.Context, topic string, payload any) error
 	Subscribe(topic string, handler Handler)
 }
 
@@ -45,7 +45,7 @@ func NewMemoryEventBus() *MemoryEventBus {
 	}
 }
 
-func (b *MemoryEventBus) Publish(ctx context.Context, topic string, payload interface{}) error {
+func (b *MemoryEventBus) Publish(ctx context.Context, topic string, payload any) error {
 	b.mu.RLock()
 	handlers := b.handlers[topic]
 	b.mu.RUnlock()

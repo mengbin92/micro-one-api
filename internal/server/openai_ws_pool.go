@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -197,9 +198,7 @@ func (p *openAIWSConnPool) dialNew(ctx context.Context, poolKey string, wsURL st
 	dialCtx, cancel := context.WithTimeout(ctx, p.dialTimeout)
 	defer cancel()
 	hdr := make(map[string][]string, len(headers))
-	for k, v := range headers {
-		hdr[k] = v
-	}
+	maps.Copy(hdr, headers)
 	conn, _, _, err := dialer.Dial(dialCtx, wsURL, hdr)
 	if err != nil {
 		return nil, err

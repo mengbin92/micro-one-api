@@ -31,7 +31,7 @@ func TestProvider_ChatCompletion(t *testing.T) {
 
 	client := &http.Client{Timeout: 30 * time.Second}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"model": providerModel,
 		"messages": []map[string]string{
 			{"role": "user", "content": "你好，请用一句话介绍你自己。"},
@@ -138,7 +138,7 @@ func TestProvider_Streaming(t *testing.T) {
 
 	client := &http.Client{Timeout: 30 * time.Second}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"model": providerModel,
 		"messages": []map[string]string{
 			{"role": "user", "content": "说\"你好\"两个字"},
@@ -293,7 +293,7 @@ func relayLoginUser(t *testing.T, ctx context.Context) (string, int64) {
 
 func relayCreateChannel(t *testing.T, baseURL, apiKey, models string) int64 {
 	t.Helper()
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"name":     "e2e-real-provider",
 		"type":     1,
 		"base_url": baseURL,
@@ -328,7 +328,7 @@ func relayCreateChannel(t *testing.T, baseURL, apiKey, models string) int64 {
 
 func relayTopUp(t *testing.T, userID, amount int64) {
 	t.Helper()
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"user_id": fmt.Sprintf("%d", userID),
 		"amount":  amount,
 		"remark":  "e2e-provider-test",
@@ -370,7 +370,7 @@ func relayGetQuota(t *testing.T, userID int64) int64 {
 
 func relayChatCompletion(t *testing.T, token, model, prompt string) chatResult {
 	t.Helper()
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, _ := json.Marshal(map[string]any{
 		"model":    model,
 		"messages": []map[string]string{{"role": "user", "content": prompt}},
 	})

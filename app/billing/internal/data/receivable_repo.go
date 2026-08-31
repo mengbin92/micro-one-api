@@ -95,10 +95,7 @@ func (r *receivableRepo) SettleOldestForUserInTx(ctx context.Context, tx subscri
 		if outstanding <= 0 {
 			continue
 		}
-		settleThis := outstanding
-		if settleThis > remaining {
-			settleThis = remaining
-		}
+		settleThis := min(outstanding, remaining)
 		newSettled := row.SettledQuota + settleThis
 		status := biz.ReceivableStatusPending
 		var settledAt *time.Time
@@ -109,7 +106,7 @@ func (r *receivableRepo) SettleOldestForUserInTx(ctx context.Context, tx subscri
 		res := db.WithContext(ctx).Model(&accountReceivableModel{}).
 			Where("id = ? AND status = ?", row.ID, biz.ReceivableStatusPending).
 			Where("settled_quota = ?", row.SettledQuota).
-			Updates(map[string]interface{}{
+			Updates(map[string]any{
 				"settled_quota": newSettled,
 				"status":        status,
 				"settled_at":    settledAt,

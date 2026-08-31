@@ -26,7 +26,7 @@ type mockAuthSnapshot struct {
 	TokenEnabled  bool
 }
 
-func (m *mockIdentityClient) GetAuthSnapshot(ctx context.Context, token string) (interface{}, error) {
+func (m *mockIdentityClient) GetAuthSnapshot(ctx context.Context, token string) (any, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -50,7 +50,7 @@ type mockChannel struct {
 	Key     string
 }
 
-func (m *mockChannelClient) SelectChannel(ctx context.Context, group, model string, exclude bool) (interface{}, error) {
+func (m *mockChannelClient) SelectChannel(ctx context.Context, group, model string, exclude bool) (any, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -106,7 +106,7 @@ func TestCachedIdentityClientUsesAuthCache(t *testing.T) {
 	defer cache.Close()
 
 	client := NewCachedIdentityClient(base, cache)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		got, err := client.GetAuthSnapshot(context.Background(), &identityv1.GetAuthSnapshotRequest{Token: "token-1"})
 		if err != nil {
 			t.Fatalf("GetAuthSnapshot: %v", err)

@@ -33,8 +33,8 @@ func extractAPIKey(r *http.Request) string {
 		return key
 	}
 	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	if after, ok := strings.CutPrefix(auth, "Bearer "); ok {
+		return strings.TrimSpace(after)
 	}
 	return ""
 }

@@ -165,7 +165,7 @@ func TestStreamEventBus_ClaimPending(t *testing.T) {
 	if _, err := rdb.XAdd(context.Background(), &redis.XAddArgs{
 		Stream: topic,
 		MaxLen: 1000,
-		Values: map[string]interface{}{
+		Values: map[string]any{
 			"payload":   `{"Topic":"claim.topic","Payload":"x"}`,
 			"timestamp": "1",
 			"producer":  "dead",
@@ -215,10 +215,10 @@ func TestStreamEventBus_Trim(t *testing.T) {
 	b := NewStreamEventBus(rdb, "trimmer-"+t.Name())
 	defer b.Close()
 	topic := "trim.topic." + t.Name()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		if err := rdb.XAdd(context.Background(), &redis.XAddArgs{
 			Stream: topic,
-			Values: map[string]interface{}{"payload": "x"},
+			Values: map[string]any{"payload": "x"},
 		}).Err(); err != nil {
 			t.Fatalf("XAdd: %v", err)
 		}

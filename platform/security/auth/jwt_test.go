@@ -97,13 +97,11 @@ func TestValidate_ExpiredToken_Rejected(t *testing.T) {
 	now := time.Now()
 	claims := JWTClaims{
 		ServiceName: "relay",
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        "jti-expired",
-			Issuer:    "test-issuer",
-			Audience:  []string{"micro-one-api"},
-			ExpiresAt: jwt.NewNumericDate(now.Add(-time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
-		},
+		ID:          "jti-expired",
+		Issuer:      "test-issuer",
+		Audience:    []string{"micro-one-api"},
+		ExpiresAt:   jwt.NewNumericDate(now.Add(-time.Hour)),
+		IssuedAt:    jwt.NewNumericDate(now.Add(-2 * time.Hour)),
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jm.secretKey)
 	require.NoError(t, err)
@@ -120,13 +118,11 @@ func TestValidate_MissingExp_Rejected_NoPanic(t *testing.T) {
 	jm := newTestManager(t)
 	claims := JWTClaims{
 		ServiceName: "relay",
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:     "jti-noexp",
-			Issuer: "test-issuer",
-			// Audience present so the check reaches the exp guard; ExpiresAt
-			// intentionally nil.
-			Audience: []string{"micro-one-api"},
-		},
+		ID:          "jti-noexp",
+		Issuer:      "test-issuer",
+		// Audience present so the check reaches the exp guard; ExpiresAt
+		// intentionally nil.
+		Audience: []string{"micro-one-api"},
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jm.secretKey)
 	require.NoError(t, err)
@@ -142,12 +138,10 @@ func TestValidate_WrongIssuer_Rejected(t *testing.T) {
 	jm := newTestManager(t)
 	claims := JWTClaims{
 		ServiceName: "relay",
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        "jti-issuer",
-			Issuer:    "someone-else",
-			Audience:  []string{"micro-one-api"},
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-		},
+		ID:          "jti-issuer",
+		Issuer:      "someone-else",
+		Audience:    []string{"micro-one-api"},
+		ExpiresAt:   jwt.NewNumericDate(time.Now().Add(time.Hour)),
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jm.secretKey)
 	require.NoError(t, err)
@@ -183,12 +177,10 @@ func TestValidate_NonHMACAlgorithm_Rejected(t *testing.T) {
 	jm := newTestManager(t)
 	claims := JWTClaims{
 		ServiceName: "relay",
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        "jti-nonalg",
-			Issuer:    "test-issuer",
-			Audience:  []string{"micro-one-api"},
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-		},
+		ID:          "jti-nonalg",
+		Issuer:      "test-issuer",
+		Audience:    []string{"micro-one-api"},
+		ExpiresAt:   jwt.NewNumericDate(time.Now().Add(time.Hour)),
 	}
 	// Sign with the none algorithm (unsigned). The validator must reject any
 	// non-HMAC signing method.
@@ -348,12 +340,10 @@ func TestRevocation_ConcurrentAccess_NoRace(t *testing.T) {
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 20 {
+		wg.Go(func() {
 			_, _ = jm.ValidateServiceToken(token)
-		}()
+		})
 	}
 	wg.Wait()
 	// No race detector failure is the assertion; also confirm validity.

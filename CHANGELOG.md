@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-08-31
+
+v0.26.1 是 v0.26.0 之后的 **PATCH 工具链与仓库现代化版本**：统一 Go 1.27 工具链与代码风格，升级兼容依赖，修复 middleware 测试 goroutine 清理，并携带最新 executor observation 文档。无公共 API / proto 变更、无数据库迁移。详见 [release-v0.26.1.md](docs/releases/release-v0.26.1.md)。
+
+### Fixed
+
+- 修复 middleware idempotency 测试的 goroutine 清理路径。
+
+### Changed
+
+- 所有服务、Dockerfile、CI 和 Go module 统一使用 Go 1.27，采用 `any`、整数 range、`min` / `max` 和集合辅助函数。
+- 更新运行时 / 依赖文档及 executor observation 的最新窗口记录。
+
 ## [0.26.0] - 2026-08-31
 
 v0.26.0 是 v0.25.0 之后的 **MINOR 用量语义与计费审计版本**：分离 reported usage 与规范五桶计费值，增加 ambiguous 语义隔离、逐笔定价快照和管理端五桶审计展示，包含数据库迁移 `085`–`088`。详见 [release-v0.26.0.md](docs/releases/release-v0.26.0.md)。

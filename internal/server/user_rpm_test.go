@@ -8,7 +8,7 @@ import (
 
 func TestHTTPServerUserRPMDefaultLimitIsDisabledInUnitConstructor(t *testing.T) {
 	srv := NewHTTPServer(nil, nil, nil, nil, nil)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		if err := srv.checkUserRPM(context.Background(), 42); err != nil {
 			t.Fatalf("checkUserRPM() with unset limit error = %v", err)
 		}
@@ -19,7 +19,7 @@ func TestHTTPServerUserRPMEnforcesConfiguredLimit(t *testing.T) {
 	srv := NewHTTPServer(nil, nil, nil, nil, nil)
 	srv.SetUserRPMLimit(3)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := srv.checkUserRPM(context.Background(), 42); err != nil {
 			t.Fatalf("request %d should pass, got %v", i+1, err)
 		}

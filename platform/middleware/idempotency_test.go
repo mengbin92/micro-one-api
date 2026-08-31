@@ -116,11 +116,10 @@ func TestIdempotencyMiddleware_NonCacheableRetriesAreSerialized(t *testing.T) {
 	})
 	wrapped := NewIdempotencyMiddleware(nil, DefaultIdempotencyConfig()).Handler(handler)
 	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		req := httptest.NewRequest(http.MethodPost, "/charge", nil)
 		req.Header.Set("Idempotency-Key", "error-key")
-		wg.Add(1)
-		go func() { defer wg.Done(); wrapped.ServeHTTP(httptest.NewRecorder(), req) }()
+		wg.Go(func() { wrapped.ServeHTTP(httptest.NewRecorder(), req) })
 	}
 	wg.Wait()
 	if got := calls.Load(); got != 2 {
@@ -331,7 +330,7 @@ func TestIdempotencyMiddleware_NoKeyDoesNotCache(t *testing.T) {
 	})
 	mw := NewIdempotencyMiddleware(nil, DefaultIdempotencyConfig())
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		req := httptest.NewRequest("POST", "/test", nil)
 		rec := httptest.NewRecorder()
 		mw.Handler(handler).ServeHTTP(rec, req)

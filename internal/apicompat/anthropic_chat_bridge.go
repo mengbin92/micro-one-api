@@ -28,10 +28,7 @@ func AnthropicToChatCompletionsRequest(req *AnthropicRequest) (*ChatCompletionsR
 	// max_tokens field. Do not retain the Responses bridge's
 	// max_completion_tokens form: DeepSeek-compatible endpoints may reject it.
 	if req.MaxTokens > 0 {
-		maxTokens := req.MaxTokens
-		if maxTokens > 64000 {
-			maxTokens = 64000
-		}
+		maxTokens := min(req.MaxTokens, 64000)
 		chatReq.MaxTokens = &maxTokens
 		chatReq.MaxCompletionTokens = nil
 	}

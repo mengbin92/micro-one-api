@@ -33,7 +33,7 @@ func matrixWebSearchResponsesRequest(stream bool) *ResponsesRequest {
 		Model:           "claude-sonnet-4-5",
 		Instructions:    "Be concise.",
 		Input:           input,
-		MaxOutputTokens: intPtr(256),
+		MaxOutputTokens: new(256),
 		Stream:          stream,
 		Tools: []ResponsesTool{
 			{Type: "web_search", Name: "web_search"},
@@ -85,13 +85,13 @@ func matrixServerToolAnthropicResponse() *AnthropicResponse {
 func matrixServerToolAnthropicStream() []*AnthropicStreamEvent {
 	return []*AnthropicStreamEvent{
 		{Type: "message_start", Message: matrixServerToolAnthropicResponse()},
-		{Type: "content_block_start", Index: intPtr(0), ContentBlock: &AnthropicContentBlock{Type: "text", Text: "Tokyo"}},
-		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "text_delta", Text: " is 18C"}},
-		{Type: "content_block_stop", Index: intPtr(0)},
+		{Type: "content_block_start", Index: new(0), ContentBlock: &AnthropicContentBlock{Type: "text", Text: "Tokyo"}},
+		{Type: "content_block_delta", Index: new(0), Delta: &AnthropicDelta{Type: "text_delta", Text: " is 18C"}},
+		{Type: "content_block_stop", Index: new(0)},
 		// server_tool_use block: must be skipped entirely.
-		{Type: "content_block_start", Index: intPtr(1), ContentBlock: &AnthropicContentBlock{Type: "server_tool_use", ID: "toolu_ws_2", Name: "web_search"}},
-		{Type: "content_block_delta", Index: intPtr(1), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"query":"Tokyo"}`}},
-		{Type: "content_block_stop", Index: intPtr(1)},
+		{Type: "content_block_start", Index: new(1), ContentBlock: &AnthropicContentBlock{Type: "server_tool_use", ID: "toolu_ws_2", Name: "web_search"}},
+		{Type: "content_block_delta", Index: new(1), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"query":"Tokyo"}`}},
+		{Type: "content_block_stop", Index: new(1)},
 		{Type: "message_delta", Delta: &AnthropicDelta{Type: "message_delta"}, Usage: &AnthropicUsage{OutputTokens: 7}},
 		{Type: "message_stop"},
 	}

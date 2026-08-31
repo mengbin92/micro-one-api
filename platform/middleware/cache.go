@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -123,10 +124,8 @@ func ResponseCacheMiddleware(config *CacheConfig) func(http.Handler) http.Handle
 	shouldCache := func(path string, method string) bool {
 		for _, m := range config.Methods {
 			if m == method {
-				for _, p := range config.Paths {
-					if p == path {
-						return true
-					}
+				if slices.Contains(config.Paths, path) {
+					return true
 				}
 			}
 		}
@@ -195,7 +194,7 @@ func ResponseCacheMiddleware(config *CacheConfig) func(http.Handler) http.Handle
 
 // InvalidateCache removes a cached entry by key pattern
 func (rc *ResponseCache) Invalidate(keyPattern string) {
-	rc.entries.Range(func(key, value interface{}) bool {
+	rc.entries.Range(func(key, value any) bool {
 		if k, ok := key.(string); ok && k == keyPattern {
 			rc.entries.Delete(key)
 			rc.mu.Lock()

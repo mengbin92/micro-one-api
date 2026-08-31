@@ -271,8 +271,8 @@ func zhipuQuotaBase(accountBaseURL string) string {
 	}
 	// Fall back to the account's own base (strip the path) — the quota endpoint
 	// lives on the same host as the coding endpoint.
-	if idx := strings.Index(accountBaseURL, "://"); idx >= 0 {
-		host := accountBaseURL[idx+3:]
+	if _, after, ok := strings.Cut(accountBaseURL, "://"); ok {
+		host := after
 		if slash := strings.Index(host, "/"); slash >= 0 {
 			host = host[:slash]
 		}
