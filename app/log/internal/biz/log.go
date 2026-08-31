@@ -34,6 +34,22 @@ type LogEntry struct {
 	SubscriptionAccountID int64
 	ElapsedTime           int64
 	IsStream              bool
+
+	// Usage-semantics audit/display contract
+	// (token-usage-billing-semantics-remediation §6.1, migration 086).
+	// Quota keeps its legacy reported-total meaning; new consumers must use
+	// ReportedTotalTokens / BillableTotalTokens instead of re-deriving.
+	UncachedInputTokens  int64
+	ReportedPromptTokens int64
+	ReportedTotalTokens  int64
+	BillableTotalTokens  int64
+	UsageSemantics       string
+	UsageProtocol        string
+	UsageFieldShape      string
+	UsageParseStatus     string
+	UsageContractVersion int32
+	CanonicalPresent     bool
+	UsageDecisionReason  string
 }
 
 // UsageStat is a One API-style usage aggregate grouped by day and model.

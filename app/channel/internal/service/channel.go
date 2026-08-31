@@ -437,6 +437,67 @@ func (s *ChannelService) ClearTempUnschedulable(ctx context.Context, req *channe
 	return &channelv1.ClearTempUnschedulableResponse{Success: true, Message: "ok"}, nil
 }
 
+// RecordUsageSemanticVerdict is the usage-semantics control plane
+// (token-usage-billing-semantics-remediation §5.2). It is deliberately NOT
+// the transport health path: the upstream HTTP call succeeded, so nothing
+// here touches channel health / circuit breakers.
+func (s *ChannelService) RecordUsageSemanticVerdict(ctx context.Context, req *channelv1.RecordUsageSemanticVerdictRequest) (*channelv1.RecordUsageSemanticVerdictResponse, error) {
+	blocked, blockedUntil, consecutive, err := s.uc.RecordUsageSemanticVerdict(ctx, biz.UsageSemanticVerdict{
+		SourceKind:      req.GetSourceKind(),
+		SourceID:        req.GetSourceId(),
+		UpstreamModelID: req.GetUpstreamModelId(),
+		AdapterProtocol: req.GetAdapterProtocol(),
+		ParseStatus:     req.GetParseStatus(),
+		Reason:          req.GetReason(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp := &channelv1.RecordUsageSemanticVerdictResponse{
+		Blocked:              blocked,
+		ConsecutiveAmbiguous: consecutive,
+	}
+	if !blockedUntil.IsZero() {
+		resp.BlockedUntil = blockedUntil.UnixMilli()
+	}
+	return resp, nil
+}
+
+// ResolveUsageSemanticBlock is the manual recovery path: an operator clears
+// the persisted block after confirming the adapter was fixed (§5.2 point 6).
+func (s *ChannelService) ResolveUsageSemanticBlock(ctx context.Context, req *channelv1.ResolveUsageSemanticBlockRequest) (*channelv1.ResolveUsageSemanticBlockResponse, error) {
+	resolved, err := s.uc.ResolveUsageSemanticBlock(ctx, req.GetSourceKind(), req.GetSourceId(), req.GetUpstreamModelId(), req.GetAdapterProtocol())
+	if err != nil {
+		return nil, err
+	}
+	return &channelv1.ResolveUsageSemanticBlockResponse{Resolved: resolved}, nil
+}
+
+func (s *ChannelService) ListUsageSemanticBlocks(ctx context.Context, req *channelv1.ListUsageSemanticBlocksRequest) (*channelv1.ListUsageSemanticBlocksResponse, error) {
+	blocks, total, err := s.uc.ListUsageSemanticBlocks(ctx, req.GetOnlyBlocked(), req.GetPage(), req.GetPageSize())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*channelv1.UsageSemanticBlock, len(blocks))
+	for i, b := range blocks {
+		out[i] = &channelv1.UsageSemanticBlock{
+			Id:                   b.ID,
+			SourceKind:           b.SourceKind,
+			SourceId:             b.SourceID,
+			UpstreamModelId:      b.UpstreamModelID,
+			AdapterProtocol:      b.AdapterProtocol,
+			Status:               b.Status,
+			Reason:               b.Reason,
+			WindowStartedAt:      b.WindowStartedAt.UnixMilli(),
+			ConsecutiveAmbiguous: b.ConsecutiveAmbiguous,
+			BlockedUntil:         b.BlockedUntil.UnixMilli(),
+			LastVerifiedAt:       b.LastVerifiedAt.UnixMilli(),
+			UpdatedAt:            b.UpdatedAt.UnixMilli(),
+		}
+	}
+	return &channelv1.ListUsageSemanticBlocksResponse{Blocks: out, Total: total}, nil
+}
+
 func (s *ChannelService) CreateSubscriptionAccount(ctx context.Context, req *channelv1.CreateSubscriptionAccountRequest) (*channelv1.CreateSubscriptionAccountResponse, error) {
 	account := &biz.SubscriptionAccount{
 		Name:                   req.Name,

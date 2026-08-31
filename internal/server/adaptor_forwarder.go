@@ -103,16 +103,16 @@ func (f relayAdaptorForwarder) Forward(ctx context.Context, plan *relaybiz.Relay
 	if err != nil {
 		return nil, fmt.Errorf("adaptor convert response: %w", err)
 	}
-	u := usage.ExtractFromJSON(body, 0, relaybiz.IsPromptExclusiveChannel(plan))
-	var canonical *relaybiz.CanonicalUsage
-	if !u.IsEmpty() {
-		canonical = &u
+	env := usage.ExtractEnvelopeFromJSON(body, 0)
+	var parsed *relaybiz.UsageEnvelope
+	if !(env.ParseStatus == relaybiz.UsageParseEstimated && env.CanonicalOrZero().IsEmpty()) {
+		parsed = &env
 	}
 	return &relaybiz.ForwardResponse{
 		StatusCode: resp.StatusCode,
 		Headers:    httpHeaderToMap(responseHeaders),
 		Body:       body,
-		Usage:      canonical,
+		Usage:      parsed,
 	}, nil
 }
 

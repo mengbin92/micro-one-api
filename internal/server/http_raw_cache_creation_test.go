@@ -6,6 +6,8 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
+	relaybiz "micro-one-api/internal/biz"
+	usagepkg "micro-one-api/internal/server/usage"
 	"micro-one-api/platform/metrics"
 )
 
@@ -72,8 +74,18 @@ func TestRawStreamUsageTrackerMergesCacheCreation(t *testing.T) {
 	// ADR §2: real billing total = sum of all five canonical buckets =
 	// 300 (uncached/input) + 60 (cache_read) + 40 (5m) + 70 (1h) + 25 (output).
 	want := rawUsage{PromptTokens: 300, CompletionTokens: 25, CacheReadTokens: 60, CacheCreation5mTokens: 40, CacheCreation1hTokens: 70, TotalTokens: 495}
+	gotShape := u.Shape
+	u.Shape = usagepkg.FieldShapeSignals{}
 	if u != want {
 		t.Fatalf("got = %+v, want %+v", u, want)
+	}
+	// The accumulated shape proves anthropic_messages: message_start carried
+	// cache_read_input_tokens and the nested cache_creation detail.
+	if !gotShape.HasAnthropicCacheRead || !gotShape.HasAnthropicCacheCreation {
+		t.Fatalf("shape = %v, want anthropic markers", gotShape)
+	}
+	if env := envelopeFromRawUsage(tracker.Usage()); env.Semantics != relaybiz.UsageSemanticsAnthropicExclusive {
+		t.Fatalf("envelope semantics = %q, want anthropic_exclusive", env.Semantics)
 	}
 }
 
@@ -90,19 +102,17 @@ func TestRawStreamUsageTrackerAcceptsDataWithoutSpace(t *testing.T) {
 	}
 }
 
-// TestExtractRawUsageNegativeClampsAndRecordsAnomaly verifies ADR §4.1:
-// negatives are clamped to 0 and a "negative" anomaly is recorded via the
-// low-cardinality token_usage_parse_anomaly metric.
-func TestExtractRawUsageNegativeClampsAndRecordsAnomaly(t *testing.T) {
-	before := readAnomalyCount(t, "negative")
+// TestExtractRawUsageNegativeStaysAmbiguous verifies the remediation rule:
+// an invalid bucket cannot be clamped and then trusted as verified usage.
+func TestExtractRawUsageNegativeStaysAmbiguous(t *testing.T) {
 	body := []byte(`{"usage":{"prompt_tokens":-10,"completion_tokens":50,"prompt_tokens_details":{"cached_tokens":-5}}}`)
 	u := extractRawUsage(body, 40)
-	if u.PromptTokens != 0 || u.CacheReadTokens != 0 || u.CompletionTokens != 50 {
-		t.Fatalf("usage = %+v, want prompt=0 cacheRead=0 completion=50", u)
+	if u.PromptTokens != -10 || u.CacheReadTokens != -5 || u.CompletionTokens != 50 {
+		t.Fatalf("reported usage was sanitized before audit: %+v", u)
 	}
-	after := readAnomalyCount(t, "negative")
-	if after <= before {
-		t.Fatalf("negative anomaly metric not incremented: before=%d after=%d", before, after)
+	env := envelopeFromRawUsage(u)
+	if env.ParseStatus != relaybiz.UsageParseAmbiguous || env.DecisionReason != relaybiz.UsageReasonNegativeBucket {
+		t.Fatalf("status=%q reason=%q", env.ParseStatus, env.DecisionReason)
 	}
 }
 
@@ -122,6 +132,10 @@ func TestExtractRawUsageTTLDetailExceedsTotalRecordsAnomaly(t *testing.T) {
 	if after <= before {
 		t.Fatalf("ttl_detail_exceeds_total anomaly metric not incremented: before=%d after=%d", before, after)
 	}
+	env := envelopeFromRawUsage(u)
+	if env.ParseStatus != relaybiz.UsageParseAmbiguous {
+		t.Fatalf("inconsistent cache-creation detail must be ambiguous: %+v", env)
+	}
 }
 
 func TestExtractRawUsageGeminiMetadata(t *testing.T) {
@@ -129,6 +143,17 @@ func TestExtractRawUsageGeminiMetadata(t *testing.T) {
 	usage := extractRawUsage(body, 999)
 	if usage.PromptTokens != 10 || usage.CompletionTokens != 3 || usage.TotalTokens != 13 || usage.CacheReadTokens != 4 {
 		t.Fatalf("Gemini usage = %+v", usage)
+	}
+}
+
+func TestExtractRawUsage_DerivedTotalIsNotReportedTotal(t *testing.T) {
+	u := extractRawUsage([]byte(`{"usage":{"prompt_tokens":10,"completion_tokens":3}}`), 0)
+	if u.TotalTokens != 13 || u.ReportedTotalTokens != 0 {
+		t.Fatalf("usage totals = compat:%d reported:%d", u.TotalTokens, u.ReportedTotalTokens)
+	}
+	env := envelopeFromRawUsage(u)
+	if env.Reported.TotalTokens != 0 || env.BillableTotal() != 13 {
+		t.Fatalf("envelope reported/billable totals = %d/%d", env.Reported.TotalTokens, env.BillableTotal())
 	}
 }
 

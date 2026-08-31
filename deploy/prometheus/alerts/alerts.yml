@@ -360,3 +360,48 @@ groups:
         annotations:
           summary: "Token usage parsing anomalies"
           description: "Token usage parser is reporting anomalies at {{ $value }}/s — reason: {{ $labels.reason }}"
+
+      # usage 语义 ambiguous — §5.2 保守结算被触发,第一笔即高优先级告警
+      # (token-usage-billing-semantics-remediation §9)。切 charge 前要求恒为 0。
+      - alert: BillingUsageAmbiguous
+        expr: increase(micro_one_api_billing_usage_ambiguous_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: billing-service
+        annotations:
+          summary: "Ambiguous usage semantics settled conservatively"
+          description: "{{ $value }} request(s) in 5m settled via the ambiguous lower-candidate policy — model: {{ $labels.model }}, source: {{ $labels.source_kind }}. Investigate the adapter before charge mode."
+
+      # usage 语义 invariant 冲突 — 仅作异常信号,不改变扣费(§2.5)
+      - alert: TokenUsageInvariantMismatch
+        expr: rate(micro_one_api_relay_token_usage_invariant_mismatch_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: relay-gateway
+        annotations:
+          summary: "Token usage invariant mismatches"
+          description: "Usage invariant violations at {{ $value }}/s — reason: {{ $labels.reason }}, protocol: {{ $labels.protocol }}"
+
+      # source+model 被 usage 语义隔离
+      - alert: UsageSemanticSourceIsolated
+        expr: increase(micro_one_api_channel_usage_semantic_source_isolation_total{reason="blocked"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: channel-service
+        annotations:
+          summary: "Usage-semantics quarantine blocked a source+model key"
+          description: "{{ $value }} source isolation event(s) in 5m — source_kind: {{ $labels.source_kind }}. Check usage_semantic_source_blocks and resolve after the adapter is fixed."
+
+      # observe 窗口 canonical 与 legacy 扣费出现非零 delta — 切 charge 前必须为 0
+      - alert: BillingUsageSemanticsCostDelta
+        expr: sum(rate(micro_one_api_billing_usage_semantics_cost_delta_sum[15m])) != 0
+        for: 15m
+        labels:
+          severity: warning
+          service: billing-service
+        annotations:
+          summary: "Canonical vs legacy cost delta detected"
+          description: "Observed non-zero canonical/legacy cost delta over 15m — investigate before flipping BILLING_CANONICAL_USAGE_MODE to charge"

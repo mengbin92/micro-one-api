@@ -37,7 +37,7 @@ func (f *NonStreamForwarder) ForwardRequest(
 	endpoint string,
 	body []byte,
 	headers http.Header,
-) (response *http.Response, bodyReader io.ReadCloser, usage *relaybiz.CanonicalUsage, err error) {
+) (response *http.Response, bodyReader io.ReadCloser, usage *relaybiz.UsageEnvelope, err error) {
 	if f == nil || f.providerFactory == nil {
 		return nil, nil, nil, fmt.Errorf("non-stream forwarder unavailable: no provider factory configured")
 	}
@@ -72,19 +72,19 @@ func (f *NonStreamForwarder) ForwardRequest(
 	return response, bodyReader, usage, nil
 }
 
-// extractCanonicalUsage builds a provider-agnostic bucketed usage view from a
-// non-streaming upstream response. It reuses the same JSON normalization rules
-// as the raw handler so cache_read / cache_creation buckets survive the
-// orchestrator path.
-func extractCanonicalUsage(body []byte, plan *relaybiz.RelayPlan) *relaybiz.CanonicalUsage {
+// extractCanonicalUsage builds the usage envelope from a non-streaming
+// upstream response. The parser proves the semantics from the response's
+// field shape; routing identity (channel type / platform) is NOT consulted
+// (token-usage-billing-semantics-remediation §4.2).
+func extractCanonicalUsage(body []byte, plan *relaybiz.RelayPlan) *relaybiz.UsageEnvelope {
 	if plan == nil {
 		return nil
 	}
-	u := usage.ExtractFromJSON(body, 0, relaybiz.IsPromptExclusiveChannel(plan))
-	if u.IsEmpty() {
+	env := usage.ExtractEnvelopeFromJSON(body, 0)
+	if env.ParseStatus == relaybiz.UsageParseEstimated && env.CanonicalOrZero().IsEmpty() {
 		return nil
 	}
-	return &u
+	return &env
 }
 
 // Close closes the forwarder and releases resources.

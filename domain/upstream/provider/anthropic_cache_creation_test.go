@@ -55,9 +55,23 @@ func TestConvertFromAnthropicResponsePopulatesCacheCreationBuckets(t *testing.T)
 			if got := out.Usage.PromptTokensDetails.CacheReadTokens; got != tc.usage.CacheReadInputTokens {
 				t.Fatalf("cache_read = %d, want %d", got, tc.usage.CacheReadInputTokens)
 			}
-			// ADR §3.3: uncached input == input_tokens (NOT input - cache_read).
-			if out.Usage.PromptTokens != tc.usage.InputTokens {
-				t.Fatalf("prompt = %d, want %d (Anthropic buckets are exclusive)", out.Usage.PromptTokens, tc.usage.InputTokens)
+			// §4.3: the client-facing OpenAI projection is INCLUSIVE of every
+			// cache bucket; the canonical buckets stay exclusive.
+			wantPrompt := tc.usage.InputTokens + tc.usage.CacheReadInputTokens + tc.want5m + tc.want1h
+			if out.Usage.PromptTokens != wantPrompt {
+				t.Fatalf("prompt = %d, want %d (inclusive projection)", out.Usage.PromptTokens, wantPrompt)
+			}
+			if out.Usage.TotalTokens != wantPrompt+tc.usage.OutputTokens {
+				t.Fatalf("total = %d, want %d (prompt+output)", out.Usage.TotalTokens, wantPrompt+tc.usage.OutputTokens)
+			}
+			if out.Canonical == nil {
+				t.Fatal("Canonical must be populated from the Anthropic usage")
+			}
+			if got := out.Canonical.UncachedInputTokens; got != int64(tc.usage.InputTokens) {
+				t.Fatalf("Canonical.UncachedInputTokens = %d, want %d (exclusive: no subtraction)", got, tc.usage.InputTokens)
+			}
+			if out.Canonical.Semantics != "anthropic_exclusive" {
+				t.Fatalf("Canonical.Semantics = %q, want anthropic_exclusive", out.Canonical.Semantics)
 			}
 		})
 	}

@@ -132,6 +132,10 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 		UpstreamModelID: req.UpstreamModelId,
 		SourceKind:      req.SourceKind,
 		PromptExclusive: req.PromptExclusive,
+		// §5.3: the v1 envelope is authoritative for pricing when present;
+		// the legacy fields above only serve the version=0 branch.
+		UsageContractVersion: req.UsageContractVersion,
+		Envelope:             usageEnvelopeFromProto(req.Usage),
 	}
 
 	// Async path: enqueue the settlement task and return a provisional
@@ -519,6 +523,19 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 			BalanceCost:            ledger.BalanceCost,
 			LedgerDedupeKey:        ledger.LedgerDedupeKey,
 			Username:               ledger.Username,
+			UncachedInputTokens:    ledger.UncachedInputTokens,
+			ReportedPromptTokens:   ledger.ReportedPromptTokens,
+			ReportedTotalTokens:    ledger.ReportedTotalTokens,
+			BillableTotalTokens:    ledger.BillableTotalTokens,
+			UsageSemantics:         ledger.UsageSemantics,
+			UsageProtocol:          ledger.UsageProtocol,
+			UsageFieldShape:        ledger.UsageFieldShape,
+			UsageParseStatus:       ledger.UsageParseStatus,
+			UsageContractVersion:   ledger.UsageContractVersion,
+			CanonicalPresent:       ledger.CanonicalPresent,
+			UsageDecisionReason:    ledger.UsageDecisionReason,
+			SubsetCandidateCost:    ledger.SubsetCandidateCost,
+			ExclusiveCandidateCost: ledger.ExclusiveCandidateCost,
 		}
 	}
 
@@ -571,6 +588,19 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 			BalanceCost:            ledger.BalanceCost,
 			LedgerDedupeKey:        ledger.LedgerDedupeKey,
 			Username:               ledger.Username,
+			UncachedInputTokens:    ledger.UncachedInputTokens,
+			ReportedPromptTokens:   ledger.ReportedPromptTokens,
+			ReportedTotalTokens:    ledger.ReportedTotalTokens,
+			BillableTotalTokens:    ledger.BillableTotalTokens,
+			UsageSemantics:         ledger.UsageSemantics,
+			UsageProtocol:          ledger.UsageProtocol,
+			UsageFieldShape:        ledger.UsageFieldShape,
+			UsageParseStatus:       ledger.UsageParseStatus,
+			UsageContractVersion:   ledger.UsageContractVersion,
+			CanonicalPresent:       ledger.CanonicalPresent,
+			UsageDecisionReason:    ledger.UsageDecisionReason,
+			SubsetCandidateCost:    ledger.SubsetCandidateCost,
+			ExclusiveCandidateCost: ledger.ExclusiveCandidateCost,
 		},
 	}, nil
 }
@@ -605,6 +635,8 @@ func (s *BillingService) AggregateLedgerByDate(ctx context.Context, req *billing
 			CacheReadTokens:        d.CacheReadTokens,
 			CacheCreation_5MTokens: d.CacheCreation5mTokens,
 			CacheCreation_1HTokens: d.CacheCreation1hTokens,
+			UncachedInputTokens:    d.UncachedInputTokens,
+			BillableTotalTokens:    d.BillableTotalTokens,
 			Count:                  d.Count,
 			ElapsedTime:            d.ElapsedTime,
 		}

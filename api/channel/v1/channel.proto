@@ -94,6 +94,21 @@ service ChannelService {
   rpc ImportModels(ImportModelsRequest) returns (ImportModelsResponse);
   rpc DryRunImportModels(ImportModelsRequest) returns (ImportModelsDryRunResponse);
 
+  // ========== Usage-semantics quarantine (token-usage-billing-semantics-remediation §5.2) ==========
+  // Usage-semantic control plane, deliberately separate from the transport
+  // health RPCs above: the upstream HTTP call succeeded, so a semantic
+  // failure MUST NOT be recorded as a health/circuit-breaker failure. The
+  // relay reports each final-attempt usage verdict; channel-service persists
+  // consecutive-ambiguous windows and block state in
+  // usage_semantic_source_blocks (migration 087), and selectors filter
+  // blocked (source_kind, source_id, upstream_model_id, adapter_protocol) keys.
+  rpc RecordUsageSemanticVerdict(RecordUsageSemanticVerdictRequest) returns (RecordUsageSemanticVerdictResponse);
+  // ResolveUsageSemanticBlock is the manual recovery path: an operator clears
+  // the persisted block after confirming the adapter was fixed. Clearing the
+  // row also invalidates selector caches (the database is authoritative).
+  rpc ResolveUsageSemanticBlock(ResolveUsageSemanticBlockRequest) returns (ResolveUsageSemanticBlockResponse);
+  rpc ListUsageSemanticBlocks(ListUsageSemanticBlocksRequest) returns (ListUsageSemanticBlocksResponse);
+
 }
 
 message SelectChannelRequest {
@@ -1080,4 +1095,67 @@ message ImportModelsDryRunResponse {
   int32 conflicts = 6;
   int32 errors = 7;
   repeated ImportRecordResult results = 8;
+}
+
+// ========== Usage-semantics quarantine (§5.2) ==========
+
+// RecordUsageSemanticVerdictRequest reports the usage parse verdict of the
+// FINAL successful attempt (never the initial plan's guess). Only
+// parse_status='verified' and 'ambiguous' move the quarantine state;
+// estimated verdicts are informational and do not touch the counters.
+message RecordUsageSemanticVerdictRequest {
+  string source_kind = 1;        // channel | subscription
+  int64 source_id = 2;           // channel_id or subscription_account_id
+  string upstream_model_id = 3;  // exact identifier the upstream requires
+  string adapter_protocol = 4;   // protocol the parser proved (may be '')
+  string parse_status = 5;       // verified | estimated | ambiguous
+  string reason = 6;             // invariant reason when ambiguous
+}
+
+message RecordUsageSemanticVerdictResponse {
+  // blocked is true when this verdict tripped a new block or the key is
+  // currently inside a block window; the relay should stop routing this
+  // (source, model, protocol) key immediately.
+  bool blocked = 1;
+  int64 blocked_until = 2;          // unix millis; 0 when not blocked
+  int32 consecutive_ambiguous = 3;  // counter after this verdict
+}
+
+message ResolveUsageSemanticBlockRequest {
+  string source_kind = 1;
+  int64 source_id = 2;
+  string upstream_model_id = 3;
+  string adapter_protocol = 4;
+  string operator_id = 5;  // who confirmed the adapter fix
+  string note = 6;
+}
+
+message ResolveUsageSemanticBlockResponse {
+  bool resolved = 1;  // false when no matching block row existed
+}
+
+message UsageSemanticBlock {
+  int64 id = 1;
+  string source_kind = 2;
+  int64 source_id = 3;
+  string upstream_model_id = 4;
+  string adapter_protocol = 5;
+  string status = 6;   // active | blocked | resolved
+  string reason = 7;
+  int64 window_started_at = 8;   // unix millis
+  int32 consecutive_ambiguous = 9;
+  int64 blocked_until = 10;      // unix millis
+  int64 last_verified_at = 11;   // unix millis
+  int64 updated_at = 12;         // unix millis
+}
+
+message ListUsageSemanticBlocksRequest {
+  bool only_blocked = 1;  // true: only status='blocked' rows
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListUsageSemanticBlocksResponse {
+  repeated UsageSemanticBlock blocks = 1;
+  int64 total = 2;
 }

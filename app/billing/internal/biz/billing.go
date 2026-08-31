@@ -105,21 +105,22 @@ type SubscriptionPrimatives interface {
 }
 
 type BillingUsecase struct {
-	accountRepo       AccountRepo
-	reservationRepo   ReservationRepo
-	ledgerRepo        LedgerRepo
-	redeemRepo        RedeemRepo
-	receivableRepo    ReceivableRepo
-	txRunner          subscriptionbiz.TxRunner
-	subscription      SubscriptionPrimatives
-	options           BillingOptions
-	pricingStore      PricingConfigStore
-	groupRatios       map[string]float64
-	modelRatios       map[string]float64
-	completionRatios  map[string]float64
-	modelPrices       map[string]ModelPrice
-	upstreamPrices    map[string]ModelPrice
-	cacheCreationMode CacheCreationMode
+	accountRepo        AccountRepo
+	reservationRepo    ReservationRepo
+	ledgerRepo         LedgerRepo
+	redeemRepo         RedeemRepo
+	receivableRepo     ReceivableRepo
+	txRunner           subscriptionbiz.TxRunner
+	subscription       SubscriptionPrimatives
+	options            BillingOptions
+	pricingStore       PricingConfigStore
+	groupRatios        map[string]float64
+	modelRatios        map[string]float64
+	completionRatios   map[string]float64
+	modelPrices        map[string]ModelPrice
+	upstreamPrices     map[string]ModelPrice
+	cacheCreationMode  CacheCreationMode
+	canonicalUsageMode CanonicalUsageMode
 	// grossProfitMetric is the per-commit gross-profit histogram. It defaults
 	// to the package-global metrics.BillingLedgerGrossProfit; tests inject a
 	// registry-local instance via SetGrossProfitMetric so assertions never
@@ -151,18 +152,19 @@ func NewBillingUsecaseWithPricing(
 		groupRatios = DefaultGroupRatios()
 	}
 	return &BillingUsecase{
-		accountRepo:       accountRepo,
-		reservationRepo:   reservationRepo,
-		ledgerRepo:        ledgerRepo,
-		redeemRepo:        redeemRepo,
-		options:           BillingOptions{AccountRepo: accountRepo, ReservationRepo: reservationRepo, LedgerRepo: ledgerRepo, RedeemRepo: redeemRepo, AllowOverdraft: true},
-		pricingStore:      pricing.PricingStore,
-		groupRatios:       groupRatios,
-		modelRatios:       normalizeModelRatios(pricing.ModelRatios),
-		completionRatios:  normalizeModelRatios(pricing.CompletionRatios),
-		modelPrices:       normalizeModelPrices(pricing.ModelPrices),
-		upstreamPrices:    normalizeUpstreamPrices(pricing.UpstreamPrices),
-		cacheCreationMode: resolveCacheCreationMode(),
+		accountRepo:        accountRepo,
+		reservationRepo:    reservationRepo,
+		ledgerRepo:         ledgerRepo,
+		redeemRepo:         redeemRepo,
+		options:            BillingOptions{AccountRepo: accountRepo, ReservationRepo: reservationRepo, LedgerRepo: ledgerRepo, RedeemRepo: redeemRepo, AllowOverdraft: true},
+		pricingStore:       pricing.PricingStore,
+		groupRatios:        groupRatios,
+		modelRatios:        normalizeModelRatios(pricing.ModelRatios),
+		completionRatios:   normalizeModelRatios(pricing.CompletionRatios),
+		modelPrices:        normalizeModelPrices(pricing.ModelPrices),
+		upstreamPrices:     normalizeUpstreamPrices(pricing.UpstreamPrices),
+		cacheCreationMode:  resolveCacheCreationMode(),
+		canonicalUsageMode: resolveCanonicalUsageMode(),
 	}
 }
 
@@ -183,6 +185,7 @@ func NewBillingUsecaseWithOptions(opts BillingOptions) *BillingUsecase {
 		uc.options.Now = time.Now
 	}
 	uc.cacheCreationMode = resolveCacheCreationMode()
+	uc.canonicalUsageMode = resolveCanonicalUsageMode()
 	return uc
 }
 
@@ -719,7 +722,20 @@ type LedgerUsage struct {
 	// prompt because prompt already excludes cached tokens. When false
 	// (default, OpenAI subset semantics), cacheRead IS a subset of prompt and
 	// the classic input = prompt - cacheRead subtraction applies.
+	//
+	// Deprecated (token-usage-billing-semantics-remediation §5.3): only the
+	// legacy (UsageContractVersion=0) branch may consult it. v1 requests are
+	// priced from Envelope canonical buckets exclusively.
 	PromptExclusive bool
+
+	// UsageContractVersion selects the usage contract the producer honors:
+	// 0 = legacy flat fields above; 1 = Envelope is authoritative (§5.3).
+	UsageContractVersion int32
+	// Envelope carries the parser verdict and canonical buckets for v1
+	// producers. Nil for legacy producers. A v1 request with a nil/invalid
+	// envelope is a producer contract error and is settled via the ambiguous
+	// conservative policy (NEVER via a silent legacy fallback).
+	Envelope *UsageEnvelopeData
 
 	// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs. UpstreamModelID
 	// is the exact identifier the selected upstream requires (e.g.
@@ -780,7 +796,7 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 		return 0, 0, fmt.Errorf("get account snapshot: %w", err)
 	}
 
-	actualCost, costBreakdown := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
+	actualCost, costBreakdown, usageAudit := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
 	if actualCost <= 0 {
 		actualCost = 1
 	}
@@ -814,10 +830,7 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 		// v0.11.0 review L2: emit the upstream-cost metric on the legacy commit
 		// path as well, so UpstreamCostMissing alert sees all traffic.
 		upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
-		resultLabel := CostAuditUnpriced
-		if upstreamCost > 0 {
-			resultLabel = CostAuditPriced
-		}
+		resultLabel := upstreamCostAuditStatus(upstreamCost, usage)
 		if metrics.BillingLedgerUpstreamCostRecorded != nil {
 			metrics.BillingLedgerUpstreamCostRecorded.WithLabelValues(
 				resultLabel,
@@ -864,6 +877,7 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 			IsStream:              usage.IsStream,
 			Endpoint:              usage.Endpoint,
 		}
+		usageAudit.applyTo(ledger)
 
 		if err := uc.ledgerRepo.CreateLedger(ctx, ledger); err != nil {
 			return 0, 0, fmt.Errorf("create ledger: %w", err)
@@ -958,7 +972,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		if err != nil {
 			return fmt.Errorf("get account in tx: %w", err)
 		}
-		actualCost, costBreakdown := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
+		actualCost, costBreakdown, usageAudit := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
 		if actualCost <= 0 {
 			actualCost = 1
 		}
@@ -1022,10 +1036,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
 		// Emit the upstream-cost-recorded metric so the UpstreamCostMissing alert
 		// (deploy/prometheus/alerts/alerts.yml) can compare priced vs total traffic.
-		resultLabel := CostAuditUnpriced
-		if upstreamCost > 0 {
-			resultLabel = CostAuditPriced
-		}
+		resultLabel := upstreamCostAuditStatus(upstreamCost, usage)
 		if metrics.BillingLedgerUpstreamCostRecorded != nil {
 			metrics.BillingLedgerUpstreamCostRecorded.WithLabelValues(
 				resultLabel,
@@ -1084,6 +1095,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 				subLedger.CacheCreation1hCost = costBreakdown.CacheCreation1hCost
 				subLedger.ShadowCost = costBreakdown.ShadowCost
 			}
+			usageAudit.applyTo(subLedger)
 			if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, subLedger); err != nil {
 				return fmt.Errorf("create subscription ledger: %w", err)
 			}
@@ -1127,6 +1139,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			if actualSubscriptionAmount > 0 {
 				balLedger.UpstreamCost = 0
 			}
+			usageAudit.applyTo(balLedger)
 			if err := uc.ledgerRepo.CreateLedgerInTx(ctx, tx, balLedger); err != nil {
 				return fmt.Errorf("create balance ledger: %w", err)
 			}
@@ -1750,7 +1763,7 @@ func (uc *BillingUsecase) RedeemCode(ctx context.Context, userID, code string) (
 	return redeemCode.Amount, newBalance, nil
 }
 
-func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown) {
+func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
 	// v0.11.0: when a per-token ModelPrice is configured, compute the full
 	// five-bucket canonical cost and select observe vs charge per
 	// BILLING_CACHE_CREATION_MODE (docs/design/token-usage-semantics.md §5).
@@ -1759,29 +1772,268 @@ func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, mod
 	// them and charge mode is intentionally still a no-op until a ModelPrice
 	// is added (roadmap §1.3: unpriced -> v0.10.2 behaviour).
 	pricing := uc.pricingConfig(ctx)
-	if price, ok := pricing.ModelPrices[normalizePricingModelKey(model)]; ok {
-		prompt := usage.PromptTokens
-		completion := usage.CompletionTokens
-		cacheRead := usage.CacheReadTokens
-		if prompt <= 0 && completion <= 0 && cacheRead <= 0 {
-			prompt = actualTokens
-		}
-		breakdown := calculateCanonicalCost(price, prompt, completion, cacheRead, usage.CacheCreation5mTokens, usage.CacheCreation1hTokens, uc.getGroupRatio(pricing, group), usage.PromptExclusive)
-		uc.recordCacheCreationCostSignal(ctx, model, breakdown)
-		if uc.CacheCreationBillingMode() == CacheCreationModeCharge {
-			// In charge mode the user pays the canonical cost. An unpriced
-			// cache-creation bucket contributes zero (tokens present but no
-			// price configured); priced buckets still charge. This means
-			// partial pricing does not silently zero the whole charge, and
-			// CacheCreationUnpriced signals the config gap to ops.
-			return breakdown.CanonicalCost, breakdown
-		}
-		return breakdown.V0_10_2Cost, breakdown
+	price, ok := pricing.ModelPrices[normalizePricingModelKey(model)]
+	if !ok {
+		return uc.resolveRatioUserCost(pricing, group, model, actualTokens, usage)
 	}
-	if usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.CacheReadTokens > 0 {
-		return uc.calculateCost(ctx, group, model, usage.PromptTokens, usage.CompletionTokens, usage.CacheReadTokens, usage.PromptExclusive), canonicalCostBreakdown{}
+	multiplier := uc.getGroupRatio(pricing, group)
+	return uc.resolveUserCost(ctx, price, multiplier, model, actualTokens, usage)
+}
+
+// resolveRatioUserCost applies the same v1 trust and ambiguity rules to
+// ratio-priced models. Ratio pricing has no cache-specific price, so
+// canonical cache-read tokens use the normal input ratio and cache-creation
+// remains uncharged until a ModelPrice supplies explicit creation prices.
+func (uc *BillingUsecase) resolveRatioUserCost(pricing PricingConfig, group, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
+	legacyPrompt := usage.PromptTokens
+	legacyCompletion := usage.CompletionTokens
+	if legacyPrompt <= 0 && legacyCompletion <= 0 && usage.CacheReadTokens <= 0 {
+		legacyPrompt = actualTokens
 	}
-	return uc.calculateCost(ctx, group, model, actualTokens, 0, 0, usage.PromptExclusive), canonicalCostBreakdown{}
+	legacyCost := uc.calculateRatioCost(pricing, group, model, legacyPrompt, legacyCompletion)
+	audit := ledgerUsageAudit{UsageContractVersion: usage.UsageContractVersion}
+	if usage.UsageContractVersion < UsageContractVersionV1 {
+		buckets := legacyCanonicalBuckets(usage, actualTokens)
+		audit.UsageParseStatus = UsageParseStatusLegacy
+		audit.UsageDecisionReason = UsageReasonLegacyProducer
+		audit.UncachedInputTokens = buckets.UncachedInputTokens
+		audit.BillableTotalTokens = buckets.BillableTotal()
+		audit.ReportedPromptTokens = usage.PromptTokens
+		return legacyCost, canonicalCostBreakdown{}, audit
+	}
+
+	env := usage.Envelope
+	if env != nil {
+		audit.UsageSemantics = env.Semantics
+		audit.UsageProtocol = env.Protocol
+		audit.UsageFieldShape = env.FieldShape
+		audit.ReportedPromptTokens = env.ReportedPromptTokens
+		audit.ReportedTotalTokens = env.ReportedTotalTokens
+		audit.CanonicalPresent = env.Canonical != nil
+	}
+	invalidReason := validateV1Envelope(env)
+	if invalidReason == "" && (env.ParseStatus == UsageParseStatusVerified || env.ParseStatus == UsageParseStatusEstimated) {
+		audit.UsageParseStatus = env.ParseStatus
+		audit.UsageDecisionReason = env.DecisionReason
+		audit.UncachedInputTokens = env.Canonical.UncachedInputTokens
+		audit.BillableTotalTokens = env.Canonical.BillableTotal()
+		canonicalCost := uc.calculateRatioCanonicalCost(pricing, group, model, *env.Canonical)
+		uc.recordUsageSemanticsCostDelta(model, usage.SourceKind, uc.CanonicalUsageMode(), canonicalCost-legacyCost)
+		if uc.CanonicalUsageMode() == CanonicalUsageModeCharge {
+			return canonicalCost, canonicalCostBreakdown{}, audit
+		}
+		return legacyCost, canonicalCostBreakdown{}, audit
+	}
+
+	reason := invalidReason
+	if reason == "" {
+		reason = env.DecisionReason
+	}
+	audit.UsageParseStatus = UsageParseStatusAmbiguous
+	audit.UsageDecisionReason = reason
+	subset, exclusive := reportedCandidateBuckets(usage)
+	if env != nil {
+		if env.SubsetCandidate != nil && validCanonical(*env.SubsetCandidate) {
+			subset = *env.SubsetCandidate
+		}
+		if env.ExclusiveCandidate != nil && validCanonical(*env.ExclusiveCandidate) {
+			exclusive = *env.ExclusiveCandidate
+		}
+	}
+	subsetCost := uc.calculateRatioCanonicalCost(pricing, group, model, subset)
+	exclusiveCost := uc.calculateRatioCanonicalCost(pricing, group, model, exclusive)
+	audit.SubsetCandidateCost = subsetCost
+	audit.ExclusiveCandidateCost = exclusiveCost
+	audit.UncachedInputTokens = subset.UncachedInputTokens
+	audit.BillableTotalTokens = subset.BillableTotal()
+	if metrics.BillingUsageAmbiguousTotal != nil {
+		metrics.BillingUsageAmbiguousTotal.WithLabelValues(model, usage.SourceKind).Inc()
+	}
+	if uc.CanonicalUsageMode() == CanonicalUsageModeLegacy {
+		return legacyCost, canonicalCostBreakdown{}, audit
+	}
+	return minInt64(subsetCost, exclusiveCost), canonicalCostBreakdown{}, audit
+}
+
+func (uc *BillingUsecase) calculateRatioCanonicalCost(pricing PricingConfig, group, model string, buckets CanonicalBuckets) int64 {
+	input, overflow := safeAddInt64(buckets.UncachedInputTokens, buckets.CacheReadTokens)
+	if overflow {
+		input = math.MaxInt64
+	}
+	return uc.calculateRatioCost(pricing, group, model, input, buckets.OutputTokens)
+}
+
+func (uc *BillingUsecase) calculateRatioCost(pricing PricingConfig, group, model string, inputTokens, outputTokens int64) int64 {
+	cost := (float64(maxInt64(inputTokens, 0)) + float64(maxInt64(outputTokens, 0))*uc.getCompletionRatio(pricing, model)) *
+		uc.getModelRatio(pricing, model) * uc.getGroupRatio(pricing, group)
+	if cost <= 0 {
+		return 0
+	}
+	if cost >= float64(math.MaxInt64) {
+		return math.MaxInt64
+	}
+	return int64(math.Ceil(cost))
+}
+
+func safeAddInt64(a, b int64) (int64, bool) {
+	a = maxInt64(a, 0)
+	b = maxInt64(b, 0)
+	if b > math.MaxInt64-a {
+		return 0, true
+	}
+	return a + b, false
+}
+
+// resolveUserCost prices a ModelPrice-covered request under the §5.3 contract
+// and the BILLING_CANONICAL_USAGE_MODE rollout gate (§11):
+//
+//   - legacy : charge the legacy-derived cost (emergency rollback only);
+//   - observe: charge the legacy cost, record the canonical shadow delta;
+//   - charge : charge the canonical bucket cost, legacy kept as shadow.
+//
+// ambiguous envelopes are the safety exception in every mode except the
+// emergency legacy rollback: the user is settled at the LOWER candidate cost
+// and the request is counted for isolation (§5.2). A v1 request whose
+// envelope/canonical is missing or invalid is a producer contract error and
+// follows the same ambiguous path — never a silent legacy fallback.
+func (uc *BillingUsecase) resolveUserCost(ctx context.Context, price ModelPrice, multiplier float64, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
+	mode := uc.CanonicalUsageMode()
+	audit := ledgerUsageAudit{UsageContractVersion: usage.UsageContractVersion}
+
+	legacyBuckets := legacyCanonicalBuckets(usage, actualTokens)
+	legacyBreakdown := calculateCanonicalCost(price, legacyBuckets, multiplier)
+	legacyFinal := uc.finalUserCost(legacyBreakdown)
+
+	if usage.UsageContractVersion >= UsageContractVersionV1 {
+		env := usage.Envelope
+		if env != nil {
+			audit.UsageSemantics = env.Semantics
+			audit.UsageProtocol = env.Protocol
+			audit.UsageFieldShape = env.FieldShape
+			audit.ReportedPromptTokens = env.ReportedPromptTokens
+			audit.ReportedTotalTokens = env.ReportedTotalTokens
+			audit.CanonicalPresent = env.Canonical != nil
+		}
+		if invalidReason := validateV1Envelope(env); invalidReason != "" {
+			return uc.ambiguousUserCost(ctx, price, multiplier, model, usage, legacyBreakdown, legacyFinal, audit, invalidReason)
+		}
+		switch {
+		case env.ParseStatus == UsageParseStatusVerified || env.ParseStatus == UsageParseStatusEstimated:
+			audit.UsageParseStatus = env.ParseStatus
+			audit.UsageDecisionReason = env.DecisionReason
+			audit.UncachedInputTokens = env.Canonical.UncachedInputTokens
+			audit.BillableTotalTokens = env.Canonical.BillableTotal()
+			canonicalBreakdown := calculateCanonicalCost(price, *env.Canonical, multiplier)
+			canonicalFinal := uc.finalUserCost(canonicalBreakdown)
+			uc.recordCacheCreationCostSignal(ctx, model, canonicalBreakdown)
+			// Shadow comparison: the delta metric must read zero before the
+			// charge gate flips (§12 acceptance).
+			uc.recordUsageSemanticsCostDelta(model, usage.SourceKind, mode, canonicalFinal-legacyFinal)
+			if mode == CanonicalUsageModeCharge {
+				return canonicalFinal, canonicalBreakdown, audit
+			}
+			return legacyFinal, legacyBreakdown, audit
+		case env.ParseStatus == UsageParseStatusAmbiguous:
+			return uc.ambiguousUserCost(ctx, price, multiplier, model, usage, legacyBreakdown, legacyFinal, audit, env.DecisionReason)
+		default:
+			// v1 contract error: envelope nil, canonical nil, or an invalid
+			// parse status. Treat as ambiguous with an explicit reason.
+			return uc.ambiguousUserCost(ctx, price, multiplier, model, usage, legacyBreakdown, legacyFinal, audit, UsageReasonV1ContractError)
+		}
+	}
+
+	// version=0: a real legacy producer. Charge the legacy cost in every
+	// mode and record why the row carries legacy semantics.
+	audit.UsageParseStatus = UsageParseStatusLegacy
+	audit.UsageDecisionReason = UsageReasonLegacyProducer
+	audit.UncachedInputTokens = legacyBuckets.UncachedInputTokens
+	audit.BillableTotalTokens = legacyBuckets.BillableTotal()
+	audit.ReportedPromptTokens = usage.PromptTokens
+	uc.recordCacheCreationCostSignal(ctx, model, legacyBreakdown)
+	return legacyFinal, legacyBreakdown, audit
+}
+
+// ambiguousUserCost implements the §5.2 conservative settlement: both
+// candidates are priced with the SAME pure function and the user pays the
+// lower final cost. The candidate costs land on the ledger for audit, the
+// request is counted for alerting/isolation, and (outside the emergency
+// legacy rollback) no mode may charge the higher candidate.
+func (uc *BillingUsecase) ambiguousUserCost(ctx context.Context, price ModelPrice, multiplier float64, model string, usage LedgerUsage, legacyBreakdown canonicalCostBreakdown, legacyFinal int64, audit ledgerUsageAudit, reason string) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
+	mode := uc.CanonicalUsageMode()
+	audit.UsageParseStatus = UsageParseStatusAmbiguous
+	audit.UsageDecisionReason = reason
+
+	subset, exclusive := reportedCandidateBuckets(usage)
+	if env := usage.Envelope; env != nil {
+		if env.SubsetCandidate != nil && validCanonical(*env.SubsetCandidate) {
+			subset = *env.SubsetCandidate
+		}
+		if env.ExclusiveCandidate != nil && validCanonical(*env.ExclusiveCandidate) {
+			exclusive = *env.ExclusiveCandidate
+		}
+		if audit.ReportedPromptTokens == 0 {
+			audit.ReportedPromptTokens = env.ReportedPromptTokens
+		}
+		if audit.ReportedTotalTokens == 0 {
+			audit.ReportedTotalTokens = env.ReportedTotalTokens
+		}
+	}
+	subsetBreakdown := calculateCanonicalCost(price, subset, multiplier)
+	exclusiveBreakdown := calculateCanonicalCost(price, exclusive, multiplier)
+	subsetFinal := uc.finalUserCost(subsetBreakdown)
+	exclusiveFinal := uc.finalUserCost(exclusiveBreakdown)
+	audit.SubsetCandidateCost = subsetFinal
+	audit.ExclusiveCandidateCost = exclusiveFinal
+	audit.BillableTotalTokens = subset.BillableTotal()
+	audit.UncachedInputTokens = subset.UncachedInputTokens
+
+	// High-priority alert signal: the first ambiguous request on a key must
+	// page ops; the counter drives both the alert and the isolation window.
+	if metrics.BillingUsageAmbiguousTotal != nil {
+		metrics.BillingUsageAmbiguousTotal.WithLabelValues(model, usage.SourceKind).Inc()
+	}
+	applogger.Log.Warn("usage semantics ambiguous: settling user at lower candidate cost",
+		zap.String("model", model),
+		zap.String("source_kind", usage.SourceKind),
+		zap.String("reason", reason),
+		zap.Int64("subset_candidate_cost", subsetFinal),
+		zap.Int64("exclusive_candidate_cost", exclusiveFinal),
+		zap.String("mode", string(mode)),
+	)
+
+	if mode == CanonicalUsageModeLegacy {
+		// Emergency rollback only: keep the pre-migration charge.
+		return legacyFinal, legacyBreakdown, audit
+	}
+	if subsetFinal <= exclusiveFinal {
+		return subsetFinal, subsetBreakdown, audit
+	}
+	return exclusiveFinal, exclusiveBreakdown, audit
+}
+
+// recordUsageSemanticsCostDelta emits the canonical-vs-legacy shadow delta
+// (§9 billing_usage_semantics_cost_delta). The 48h observe window requires
+// unexplained delta=0 before charge mode flips.
+func (uc *BillingUsecase) recordUsageSemanticsCostDelta(model, sourceKind string, mode CanonicalUsageMode, delta int64) {
+	if metrics.BillingUsageSemanticsCostDelta == nil || delta == 0 {
+		return
+	}
+	metrics.BillingUsageSemanticsCostDelta.WithLabelValues(string(mode), model, sourceKind).Observe(float64(delta))
+}
+
+// finalUserCost applies the cache-creation observe/charge selection to a
+// bucket breakdown: in observe mode the user pays the v0.10.2 cost
+// (cache-creation free), in charge mode the full canonical cost.
+func (uc *BillingUsecase) finalUserCost(breakdown canonicalCostBreakdown) int64 {
+	if uc.CacheCreationBillingMode() == CacheCreationModeCharge {
+		// In charge mode the user pays the canonical cost. An unpriced
+		// cache-creation bucket contributes zero (tokens present but no
+		// price configured); priced buckets still charge. This means
+		// partial pricing does not silently zero the whole charge, and
+		// CacheCreationUnpriced signals the config gap to ops.
+		return breakdown.CanonicalCost
+	}
+	return breakdown.V0_10_2Cost
 }
 
 // recordCacheCreationCostSignal emits the shadow cost + unpriced signal for a
@@ -1897,18 +2149,38 @@ func (uc *BillingUsecase) calculateUpstreamCostWithUsage(ctx context.Context, ch
 	if !ok {
 		return 0
 	}
-	promptTokens := usage.PromptTokens
-	completionTokens := usage.CompletionTokens
-	cacheReadTokens := usage.CacheReadTokens
-	if promptTokens <= 0 && completionTokens <= 0 && cacheReadTokens <= 0 {
-		promptTokens = actualTokens
-	}
 	// Upstream cost always reflects the real vendor cost (canonical), even in
 	// observe mode — observe only protects the user balance, not the upstream
 	// accounting. When cache-creation prices are unpriced, canonical collapses
 	// to v0.10.2 (calculateCanonicalCost handles that).
-	breakdown := calculateCanonicalCost(price, promptTokens, completionTokens, cacheReadTokens, usage.CacheCreation5mTokens, usage.CacheCreation1hTokens, 1, usage.PromptExclusive)
+	//
+	// Bucket selection (§5.2): a verified v1 envelope is the vendor-proven
+	// semantics and wins. Anything else — legacy producers, and ambiguous
+	// envelopes where the vendor's own protocol is NOT proven — keeps the
+	// legacy-derived buckets: the ambiguous user-side lower candidate must
+	// never be reused as the upstream cost.
+	buckets := legacyCanonicalBuckets(usage, actualTokens)
+	if usage.UsageContractVersion >= UsageContractVersionV1 && usage.Envelope != nil &&
+		usage.Envelope.ParseStatus == UsageParseStatusVerified && usage.Envelope.Canonical != nil {
+		buckets = *usage.Envelope.Canonical
+	}
+	breakdown := calculateCanonicalCost(price, buckets, 1)
 	return breakdown.CanonicalCost
+}
+
+func upstreamCostAuditStatus(upstreamCost int64, usage LedgerUsage) string {
+	if usage.UsageContractVersion >= UsageContractVersionV1 {
+		if validateV1Envelope(usage.Envelope) != "" || usage.Envelope.ParseStatus == UsageParseStatusAmbiguous {
+			// The legacy-derived amount may still be useful as an estimate, but
+			// it is not vendor-confirmed and must not be labeled "priced" for
+			// reconciliation or margin alerts.
+			return CostAuditAmbiguous
+		}
+	}
+	if upstreamCost > 0 {
+		return CostAuditPriced
+	}
+	return CostAuditUnpriced
 }
 
 // CacheCreationMode controls whether v0.11.0 cache-creation buckets are
@@ -1927,6 +2199,48 @@ const (
 	// the user balance.
 	CacheCreationModeCharge CacheCreationMode = "charge"
 )
+
+// CanonicalUsageMode gates the usage-semantics rollout
+// (token-usage-billing-semantics-remediation §11,
+// BILLING_CANONICAL_USAGE_MODE). Default observe so the canonical shadow cost
+// is measured against the charged legacy cost before any balance changes.
+type CanonicalUsageMode string
+
+const (
+	// CanonicalUsageModeLegacy charges the legacy-derived cost in every case,
+	// including ambiguous (emergency rollback only). New audit fields are
+	// still dual-written.
+	CanonicalUsageModeLegacy CanonicalUsageMode = "legacy"
+	// CanonicalUsageModeObserve charges the legacy cost while recording the
+	// canonical shadow cost and delta. Ambiguous still settles at the lower
+	// candidate (§5.2 safety exception).
+	CanonicalUsageModeObserve CanonicalUsageMode = "observe"
+	// CanonicalUsageModeCharge charges the canonical bucket cost; the legacy
+	// algorithm only remains as the shadow comparison.
+	CanonicalUsageModeCharge CanonicalUsageMode = "charge"
+)
+
+// resolveCanonicalUsageMode reads BILLING_CANONICAL_USAGE_MODE (default
+// observe). Unknown values fall back to observe so a typo can never silently
+// change user bills.
+func resolveCanonicalUsageMode() CanonicalUsageMode {
+	switch CanonicalUsageMode(strings.ToLower(strings.TrimSpace(os.Getenv("BILLING_CANONICAL_USAGE_MODE")))) {
+	case CanonicalUsageModeLegacy:
+		return CanonicalUsageModeLegacy
+	case CanonicalUsageModeCharge:
+		return CanonicalUsageModeCharge
+	default:
+		return CanonicalUsageModeObserve
+	}
+}
+
+// CanonicalUsageMode exposes the active rollout mode.
+func (uc *BillingUsecase) CanonicalUsageMode() CanonicalUsageMode {
+	if uc == nil || uc.canonicalUsageMode == "" {
+		return CanonicalUsageModeObserve
+	}
+	return uc.canonicalUsageMode
+}
 
 // canonicalCostBreakdown is the pure result of applying ModelPrice to the five
 // canonical billing buckets. It is computed once per request and consumed by
@@ -1958,9 +2272,13 @@ type canonicalCostBreakdown struct {
 }
 
 // calculateCanonicalCost is the single pure pricing function for the five
-// canonical buckets (ADR §2). It returns both the v0.10.2-compatible cost and
-// the full canonical cost so the caller can pick based on the observe/charge
-// mode. multiplier applies group ratios / long-context scaling.
+// canonical buckets (token-usage-billing-semantics-remediation §5.1). The
+// input is already the five MUTUALLY-EXCLUSIVE buckets: this function never
+// sees prompt_exclusive, never subtracts cache from prompt, and never looks
+// at channel/provider/model identity or reported totals. It returns both the
+// v0.10.2-compatible cost and the full canonical cost so the caller can pick
+// based on the observe/charge mode. multiplier applies group ratios /
+// long-context scaling.
 //
 // Pricing rules (ADR §5):
 //   - cache_read priced at CacheReadPrice when configured, else InputPrice
@@ -1968,24 +2286,10 @@ type canonicalCostBreakdown struct {
 //   - cache_creation_5m / cache_creation_1h priced at their configured prices.
 //     When tokens are present but the price is nil, the model is marked
 //     unpriced and those tokens are NOT charged (no fallback to InputPrice).
-//   - promptExclusive controls the subset vs exclusive semantics (ADR §3.1 vs
-//     §3.3). When false (default, OpenAI subset), cacheRead is a subset of
-//     prompt so input = prompt - cacheRead. When true (Anthropic / GLM), the
-//     buckets are mutually exclusive so input = prompt and cacheRead is priced
-//     on its own — the subtraction must NOT happen (ADR §3.3 "不得相减").
-func calculateCanonicalCost(price ModelPrice, promptTokens, completionTokens, cacheReadTokens, cacheCreation5mTokens, cacheCreation1hTokens int64, multiplier float64, promptExclusive bool) canonicalCostBreakdown {
-	prompt := int64(maxInt64(promptTokens, 0))
-	var input int64
-	if promptExclusive {
-		// ADR §3.3: Anthropic / GLM buckets are mutually exclusive.
-		// input_tokens already excludes cached tokens; do NOT subtract.
-		input = prompt
-	} else {
-		// ADR §3.1: OpenAI subset semantics — cacheRead is part of prompt.
-		input = prompt - minInt64(maxInt64(cacheReadTokens, 0), maxInt64(promptTokens, 0))
-	}
-	completion := int64(maxInt64(completionTokens, 0))
-	cacheRead := int64(maxInt64(cacheReadTokens, 0))
+func calculateCanonicalCost(price ModelPrice, buckets CanonicalBuckets, multiplier float64) canonicalCostBreakdown {
+	input := int64(maxInt64(buckets.UncachedInputTokens, 0))
+	completion := int64(maxInt64(buckets.OutputTokens, 0))
+	cacheRead := int64(maxInt64(buckets.CacheReadTokens, 0))
 	cacheReadPrice := price.InputPrice
 	if price.CacheReadPrice != nil {
 		cacheReadPrice = *price.CacheReadPrice
@@ -2000,11 +2304,11 @@ func calculateCanonicalCost(price ModelPrice, promptTokens, completionTokens, ca
 	inputCost := roundScaled(input, price.InputPrice, multiplier)
 	cacheReadCost := roundScaled(cacheRead, cacheReadPrice, multiplier)
 	completionCost := roundScaled(completion, price.OutputPrice, multiplier)
-	v0_10_2Cost := inputCost + cacheReadCost + completionCost
+	v0_10_2Cost := saturatingCostSum(inputCost, cacheReadCost, completionCost)
 
 	// Canonical cost adds cache-creation charges only when priced.
-	creation5m := int64(maxInt64(cacheCreation5mTokens, 0))
-	creation1h := int64(maxInt64(cacheCreation1hTokens, 0))
+	creation5m := int64(maxInt64(buckets.CacheCreation5mTokens, 0))
+	creation1h := int64(maxInt64(buckets.CacheCreation1hTokens, 0))
 	creation5mCost := int64(0)
 	creation1hCost := int64(0)
 	canonicalCost := v0_10_2Cost
@@ -2012,7 +2316,7 @@ func calculateCanonicalCost(price ModelPrice, promptTokens, completionTokens, ca
 	if creation5m > 0 {
 		if price.CacheCreation5mPrice != nil {
 			creation5mCost = roundScaled(creation5m, *price.CacheCreation5mPrice, multiplier)
-			canonicalCost += creation5mCost
+			canonicalCost = saturatingCostSum(canonicalCost, creation5mCost)
 		} else {
 			unpriced = true
 		}
@@ -2020,7 +2324,7 @@ func calculateCanonicalCost(price ModelPrice, promptTokens, completionTokens, ca
 	if creation1h > 0 {
 		if price.CacheCreation1hPrice != nil {
 			creation1hCost = roundScaled(creation1h, *price.CacheCreation1hPrice, multiplier)
-			canonicalCost += creation1hCost
+			canonicalCost = saturatingCostSum(canonicalCost, creation1hCost)
 		} else {
 			unpriced = true
 		}
@@ -2083,7 +2387,24 @@ func roundScaled(tokens int64, perTokenPrice, multiplier float64) int64 {
 	if raw <= 0 {
 		return 0
 	}
+	if raw >= float64(math.MaxInt64) {
+		return math.MaxInt64
+	}
 	return int64(math.Round(raw))
+}
+
+func saturatingCostSum(values ...int64) int64 {
+	var total int64
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if value > math.MaxInt64-total {
+			return math.MaxInt64
+		}
+		total += value
+	}
+	return total
 }
 
 func calculateModelPriceCost(price ModelPrice, promptTokens, completionTokens, cacheReadTokens int64, multiplier float64) int64 {

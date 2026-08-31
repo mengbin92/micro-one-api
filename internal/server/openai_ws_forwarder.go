@@ -638,6 +638,16 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 				IsStream:              true,
 			}
 			logInput.applyChannelInputs(currentChannel)
+			logInput.applyEnvelope(envelopeFromRawUsage(rawUsage{
+				PromptTokens:          usage.promptTokens,
+				CompletionTokens:      usage.completionTokens,
+				CacheReadTokens:       usage.cacheReadTokens,
+				CacheCreation5mTokens: usage.cacheCreation5mTokens,
+				CacheCreation1hTokens: usage.cacheCreation1hTokens,
+				TotalTokens:           usage.totalTokens,
+				ReportedTotalTokens:   usage.reportedTotalTokens,
+				Shape:                 usage.shape,
+			}))
 			logUpstreamUsage(logInput)
 			// Each turn commits against its own reservation. The connection-level
 			// reservation only covers the first turn; a Responses WebSocket is

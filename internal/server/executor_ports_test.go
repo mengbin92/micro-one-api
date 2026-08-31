@@ -18,18 +18,18 @@ type portLifecycleHooks struct {
 	reservePlan *relaybiz.RelayPlan
 	reserveReq  *RelayRequest
 	committed   *Reservation
-	logged      relaybiz.CanonicalUsage
+	logged      relaybiz.UsageEnvelope
 	loggedReq   *RelayRequest
 	released    *Reservation
 }
 
-func (h *portLifecycleHooks) ReserveQuota(_ context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, _ relaybiz.CanonicalUsage) (*Reservation, error) {
+func (h *portLifecycleHooks) ReserveQuota(_ context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, _ relaybiz.UsageEnvelope) (*Reservation, error) {
 	h.reservePlan = plan
 	h.reserveReq = req
 	return &Reservation{ID: "reservation-port"}, nil
 }
 
-func (h *portLifecycleHooks) CommitQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, reservation *Reservation, _ relaybiz.CanonicalUsage, _ bool, _ time.Duration) error {
+func (h *portLifecycleHooks) CommitQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, reservation *Reservation, _ relaybiz.UsageEnvelope, _ bool, _ time.Duration) error {
 	h.committed = reservation
 	return nil
 }
@@ -39,7 +39,7 @@ func (h *portLifecycleHooks) ReleaseQuota(_ context.Context, reservation *Reserv
 	return nil
 }
 
-func (h *portLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, _ time.Duration, _ bool) {
+func (h *portLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.UsageEnvelope, _ time.Duration, _ bool) {
 	h.loggedReq = req
 	h.logged = usage
 }
@@ -57,7 +57,7 @@ func TestRelayQuotaAndEventPortsAdaptTransportNeutralRequest(t *testing.T) {
 		Headers:   map[string][]string{"Authorization": []string{"Bearer token"}},
 		RequestID: "request-port",
 	}
-	estimated := relaybiz.CanonicalUsage{TotalTokens: 3}
+	estimated := relaybiz.UsageEnvelope{Canonical: &relaybiz.CanonicalUsage{UncachedInputTokens: 3}}
 	reservation, err := quota.Reserve(context.Background(), plan, req, estimated)
 	if err != nil {
 		t.Fatalf("Reserve() error = %v", err)

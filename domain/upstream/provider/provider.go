@@ -127,6 +127,32 @@ type ChatCompletionsResponse struct {
 	Model   string   `json:"model"`
 	Choices []Choice `json:"choices"`
 	Usage   Usage    `json:"usage"`
+	// Canonical carries the parser-proven five mutually-exclusive billing
+	// buckets BEFORE the client-facing OpenAI projection (§4.3). In-process
+	// only: never serialized to clients.
+	Canonical *CanonicalUsage `json:"-"`
+}
+
+// CanonicalUsage carries the five mutually-exclusive billing buckets exactly
+// as proven by the provider's protocol parser, before any client-facing
+// projection (token-usage-billing-semantics-remediation §4.3). The OpenAI
+// Usage above is a projection of these buckets, never the other way around.
+type CanonicalUsage struct {
+	UncachedInputTokens   int64
+	CacheReadTokens       int64
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
+	OutputTokens          int64
+	// Reported values as the upstream sent them (exclusive input for
+	// Anthropic, inclusive prompt for OpenAI), for audit and legacy
+	// dual-write. ReportedTotalTokens may be 0 when the upstream omits total.
+	ReportedPromptTokens int64
+	ReportedTotalTokens  int64
+	// Semantics is the parser-proven semantics: "openai_subset" or
+	// "anthropic_exclusive".
+	Semantics string
+	// Protocol is the upstream protocol: "openai_chat" | "anthropic_messages".
+	Protocol string
 }
 
 // Choice represents a completion choice
@@ -160,6 +186,9 @@ type StreamChunk struct {
 	Model   string         `json:"model"`
 	Choices []StreamChoice `json:"choices"`
 	Usage   Usage          `json:"usage,omitempty"`
+	// Canonical carries the parser-proven billing buckets for terminal usage
+	// chunks (in-process only, see ChatCompletionsResponse.Canonical).
+	Canonical *CanonicalUsage `json:"-"`
 }
 
 type StreamChoice struct {

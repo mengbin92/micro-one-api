@@ -22,43 +22,54 @@ func TestExtractCanonicalUsagePreservesBuckets(t *testing.T) {
 		}
 	}`)
 
-	usage := extractCanonicalUsage(body, plan)
-	if usage == nil {
+	env := extractCanonicalUsage(body, plan)
+	if env == nil {
 		t.Fatal("expected usage, got nil")
 	}
-	if usage.PromptTokens != 10 {
-		t.Errorf("PromptTokens = %d, want 10", usage.PromptTokens)
+	if env.ParseStatus != relaybiz.UsageParseVerified || env.Semantics != relaybiz.UsageSemanticsOpenAISubset {
+		t.Fatalf("status=%q semantics=%q, want verified subset", env.ParseStatus, env.Semantics)
 	}
-	if usage.CompletionTokens != 5 {
-		t.Errorf("CompletionTokens = %d, want 5", usage.CompletionTokens)
+	reported := env.Reported
+	if reported.PromptTokens != 10 || reported.OutputTokens != 5 || reported.CacheReadTokens != 2 ||
+		reported.CacheCreation5mTokens != 4 || reported.CacheCreation1hTokens != 3 || reported.TotalTokens != 25 {
+		t.Fatalf("Reported = %+v, buckets not preserved", reported)
 	}
-	if usage.CacheReadTokens != 2 {
-		t.Errorf("CacheReadTokens = %d, want 2", usage.CacheReadTokens)
+	canonical := env.CanonicalOrZero()
+	if canonical.UncachedInputTokens != 8 {
+		t.Errorf("UncachedInputTokens = %d, want 8 (10-2)", canonical.UncachedInputTokens)
 	}
-	if usage.CacheCreation5mTokens != 4 {
-		t.Errorf("CacheCreation5mTokens = %d, want 4", usage.CacheCreation5mTokens)
-	}
-	if usage.CacheCreation1hTokens != 3 {
-		t.Errorf("CacheCreation1hTokens = %d, want 3", usage.CacheCreation1hTokens)
-	}
-	if usage.TotalTokens != 25 {
-		t.Errorf("TotalTokens = %d, want 25", usage.TotalTokens)
-	}
-	if usage.PromptExclusive {
-		t.Error("OpenAI channel should not be prompt-exclusive")
+	if canonical.CacheReadTokens != 2 || canonical.CacheCreation5mTokens != 4 || canonical.CacheCreation1hTokens != 3 || canonical.OutputTokens != 5 {
+		t.Errorf("Canonical = %+v, buckets not preserved", canonical)
 	}
 }
 
-func TestExtractCanonicalUsagePromptExclusive(t *testing.T) {
-	plan := &relaybiz.RelayPlan{
+// The semantics verdict comes from the response's field shape, NOT from the
+// channel type (§4.2/F15): an Anthropic channel returning an OpenAI-shaped
+// body yields subset, and vice versa.
+func TestExtractCanonicalUsageSemanticsFromShapeNotChannel(t *testing.T) {
+	anthropicPlan := &relaybiz.RelayPlan{
 		Channel: &relaybiz.Channel{Type: relayprovider.ChannelTypeAnthropic},
 	}
-	usage := extractCanonicalUsage([]byte(`{"usage":{"prompt_tokens":1,"completion_tokens":1}}`), plan)
-	if usage == nil {
+	env := extractCanonicalUsage([]byte(`{"usage":{"prompt_tokens":1,"completion_tokens":1}}`), anthropicPlan)
+	if env == nil {
 		t.Fatal("expected usage")
 	}
-	if !usage.PromptExclusive {
-		t.Error("Anthropic channel should be prompt-exclusive")
+	if env.ParseStatus != relaybiz.UsageParseVerified {
+		t.Fatalf("ParseStatus = %q, want verified", env.ParseStatus)
+	}
+
+	openAIPlan := &relaybiz.RelayPlan{
+		Channel: &relaybiz.Channel{Type: relayprovider.ChannelTypeOpenAI},
+	}
+	env = extractCanonicalUsage([]byte(`{"usage":{"input_tokens":130,"output_tokens":9,"cache_read_input_tokens":45056}}`), openAIPlan)
+	if env == nil {
+		t.Fatal("expected usage")
+	}
+	if env.Semantics != relaybiz.UsageSemanticsAnthropicExclusive {
+		t.Fatalf("Semantics = %q, want anthropic_exclusive proven by field shape", env.Semantics)
+	}
+	if env.CanonicalOrZero().UncachedInputTokens != 130 {
+		t.Fatalf("UncachedInputTokens = %d, want 130 (no subtraction under exclusive semantics)", env.CanonicalOrZero().UncachedInputTokens)
 	}
 }
 

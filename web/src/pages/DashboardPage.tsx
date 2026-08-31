@@ -31,6 +31,10 @@ interface UsageItem {
   prompt_tokens?: number;
   completion_tokens?: number;
   cache_read_tokens?: number;
+  // §9.1: canonical sums from the billing aggregate (zero for legacy rows).
+  cache_creation_tokens?: number;
+  uncached_input_tokens?: number;
+  billable_total_tokens?: number;
 }
 
 interface UserSelf {
@@ -110,11 +114,20 @@ function numberOrZero(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-function nonCachedInputTokens(item: UsageItem) {
-  const inputTokens = item.prompt_tokens || 0;
-  const cacheReadTokens = item.cache_read_tokens || 0;
-  if (cacheReadTokens <= 0) return inputTokens;
-  return Math.max(0, inputTokens - cacheReadTokens);
+// §9.1 display contract: prefer the canonical uncached-input sum from the
+// billing aggregate; legacy rows (all canonical sums zero) fall back to the
+// reported prompt WITHOUT a prompt-cache subtraction — mixed legacy
+// subset/exclusive rows make that arithmetic unsound.
+function displayInputTokens(item: UsageItem) {
+  if ((item.uncached_input_tokens || 0) > 0 || (item.billable_total_tokens || 0) > 0) {
+    return item.uncached_input_tokens || 0;
+  }
+  return item.prompt_tokens || 0;
+}
+
+function displayTotalTokens(item: UsageItem) {
+  if ((item.billable_total_tokens || 0) > 0) return item.billable_total_tokens || 0;
+  return displayInputTokens(item) + (item.completion_tokens || 0) + (item.cache_read_tokens || 0) + (item.cache_creation_tokens || 0);
 }
 
 function normalizeTokens(data: Token[] | TokenListData): Token[] {
@@ -203,25 +216,27 @@ export function DashboardPage() {
   const items = Array.isArray(dashboard?.usage) ? dashboard.usage : [];
   const latest = items.at(-1);
   const totalCount = items.reduce((s, x) => s + (x.count || 0), 0);
-  const promptTokens = items.reduce((s, x) => s + nonCachedInputTokens(x), 0);
+  const promptTokens = items.reduce((s, x) => s + displayInputTokens(x), 0);
   const completionTokens = items.reduce((s, x) => s + (x.completion_tokens || 0), 0);
   const cacheReadTokens = items.reduce((s, x) => s + (x.cache_read_tokens || 0), 0);
-  const totalTokens = promptTokens + completionTokens + cacheReadTokens;
+  const totalTokens = items.reduce((sum, item) => sum + displayTotalTokens(item), 0);
   const balance = numberOrZero(dashboard?.balance);
   const usedAmount = numberOrZero(dashboard?.used_amount);
   const requestCount = items.length > 0 ? totalCount : numberOrZero(dashboard?.request_count);
   const todayRequests = latest?.count ?? 0;
   const todayAmount = dashboard?.today_amount ?? latest?.amount ?? 0;
-  const todayPromptTokens = latest ? nonCachedInputTokens(latest) : dashboard?.today_prompt_tokens ?? 0;
+  const todayPromptTokens = latest ? displayInputTokens(latest) : dashboard?.today_prompt_tokens ?? 0;
   const todayCompletionTokens = dashboard?.today_completion_tokens ?? latest?.completion_tokens ?? 0;
   const todayCacheReadTokens = dashboard?.today_cache_read_tokens ?? latest?.cache_read_tokens ?? 0;
   const avgLatency = dashboard?.avg_latency ?? 0;
   const chartData = items.map((item) => ({
     ...item,
     label: item.date || item.day,
-    input_tokens: nonCachedInputTokens(item),
+    input_tokens: displayInputTokens(item),
     output_tokens: item.completion_tokens || 0,
     cache_read_tokens: item.cache_read_tokens || 0,
+    cache_creation_tokens: item.cache_creation_tokens || 0,
+    total_tokens: displayTotalTokens(item),
   }));
   const tokenCount = tokens?.length ?? 0;
   const activeTokenCount = tokens?.filter((token) => token.status === 1).length ?? tokenCount;

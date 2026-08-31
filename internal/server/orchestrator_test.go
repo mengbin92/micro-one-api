@@ -112,7 +112,7 @@ func TestRelayOrchestratorForwardsNonStreamResponse(t *testing.T) {
 	if !strings.Contains(string(body), `"total_tokens":7`) {
 		t.Fatalf("result body = %s", string(body))
 	}
-	if result.Usage == nil || result.Usage.TotalTokens != 7 {
+	if result.Usage == nil || result.Usage.BillableTotal() != 7 {
 		t.Fatalf("usage = %#v, want total 7", result.Usage)
 	}
 	if upstreamAuth != "Bearer sk-upstream" {
@@ -124,18 +124,18 @@ func TestRelayOrchestratorForwardsNonStreamResponse(t *testing.T) {
 }
 
 type recordingLifecycleHooks struct {
-	reserved  relaybiz.CanonicalUsage
-	committed relaybiz.CanonicalUsage
-	logged    relaybiz.CanonicalUsage
+	reserved  relaybiz.UsageEnvelope
+	committed relaybiz.UsageEnvelope
+	logged    relaybiz.UsageEnvelope
 	loggedReq *RelayRequest
 }
 
-func (h *recordingLifecycleHooks) ReserveQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, estimated relaybiz.CanonicalUsage) (*Reservation, error) {
+func (h *recordingLifecycleHooks) ReserveQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, estimated relaybiz.UsageEnvelope) (*Reservation, error) {
 	h.reserved = estimated
 	return &Reservation{ID: "reservation-1"}, nil
 }
 
-func (h *recordingLifecycleHooks) CommitQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, _ *Reservation, usage relaybiz.CanonicalUsage, _ bool, _ time.Duration) error {
+func (h *recordingLifecycleHooks) CommitQuota(_ context.Context, _ *relaybiz.RelayPlan, _ *RelayRequest, _ *Reservation, usage relaybiz.UsageEnvelope, _ bool, _ time.Duration) error {
 	h.committed = usage
 	return nil
 }
@@ -144,7 +144,7 @@ func (h *recordingLifecycleHooks) ReleaseQuota(_ context.Context, _ *Reservation
 	return nil
 }
 
-func (h *recordingLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, _ time.Duration, _ bool) {
+func (h *recordingLifecycleHooks) LogUsage(_ context.Context, _ *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.UsageEnvelope, _ time.Duration, _ bool) {
 	h.loggedReq = req
 	h.logged = usage
 }
@@ -177,13 +177,13 @@ func TestRelayOrchestratorCommitsAndLogsUsage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if hooks.reserved.TotalTokens == 0 {
+	if hooks.reserved.BillableTotal() == 0 {
 		t.Fatalf("reserved usage = %#v, want estimated tokens", hooks.reserved)
 	}
-	if hooks.committed.TotalTokens != 11 {
+	if hooks.committed.BillableTotal() != 11 {
 		t.Fatalf("committed usage = %#v, want total 11", hooks.committed)
 	}
-	if hooks.logged.TotalTokens != 11 {
+	if hooks.logged.BillableTotal() != 11 {
 		t.Fatalf("logged usage = %#v, want total 11", hooks.logged)
 	}
 	if hooks.loggedReq == nil || hooks.loggedReq.Token != "" || len(hooks.loggedReq.Headers) != 0 {

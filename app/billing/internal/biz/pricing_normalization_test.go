@@ -51,7 +51,7 @@ func TestCalculateCostWithUsage_CaseInsensitiveModelPrice(t *testing.T) {
 		},
 	})
 
-	got, _ := uc.calculateCostWithUsage(context.Background(), "default", "DeepSeek-V4-Flash-0731", 0, LedgerUsage{
+	got, _, _ := uc.calculateCostWithUsage(context.Background(), "default", "DeepSeek-V4-Flash-0731", 0, LedgerUsage{
 		PromptTokens:     1000,
 		CompletionTokens: 500,
 	})

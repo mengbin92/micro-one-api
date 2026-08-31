@@ -148,9 +148,9 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 24, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 27, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := len(files) - 4 // last four files arrive later (081, 082, 083, 084)
+	cut := len(files) - 4 // last four files arrive later (085, 086, 087 and the previous tail)
 
 	db := openScratchSqlite(t)
 	// Stage 1: apply the tree up to (not including) the last four files.
