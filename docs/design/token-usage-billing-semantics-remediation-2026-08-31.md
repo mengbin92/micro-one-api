@@ -1,6 +1,6 @@
 # Token Usage 语义与计费可审计性修复方案（2026-08-31）
 
-> 状态：Phase 1 implemented（2026-08-31）
+> 状态：Phase 1 + Phase 2 implemented（2026-08-31）
 >
 > 日期：2026-08-31
 >
@@ -35,6 +35,51 @@
 > apicompat 内部改为复用统一投影 helper（当前行为已正确，仅代码复用层面的
 > 防漂移）;Admin 用量详情页的完整五桶+价格快照展示（底层字段已全部透出）;灰度
 > 发布本身（§11 的 observe 48 小时窗口与 charge allowlist 属于运维动作）。
+
+> ## 实施状态（2026-08-31 第二阶段）
+>
+> 已落地：
+>
+> - **统一投影 helper（§4.3 防漂移）**：新增纯工具包 `pkg/usage`
+>   （`Buckets` 五桶 + `ProjectOpenAI` inclusive 投影 + `SplitInclusive` 逆投影）。
+>   provider Chat 非流式/流式 terminal、apicompat Anthropic→Responses 非流式/
+>   流式 terminal、Responses→Anthropic 反向拆分全部收敛到同一实现；行为与
+>   第一阶段完全一致（现有投影矩阵测试全数通过，另补 pkg/usage 单测含
+>   GLM 生产样本数值）。
+> - **§6.3 088 定价快照**：migration `088_create_billing_pricing_snapshots`
+>   （三方言 + ownership;`billing_pricing_snapshots` 表 `config_hash` 唯一 +
+>   `billing_ledgers.pricing_config_hash`,ledger 列刻意不加索引——分区大表、
+>   仅按行审计查询）。billing 在 `resolveUserCost` 冻结 EFFECTIVE 单价
+>   （cache-read 的 InputPrice 兜底、未定价 creation 桶记 0）、group ratio 与
+>   cache-creation mode 的 sha256；快照在 `commitQuotaDualTrack` 与 ledger 行
+>   **同一事务**内 claim（同 hash 复用，镜像 078 dedupe claim 模式），legacy
+>   路径用独立事务 claim。ratio 计价模型无五桶单价可冻结，hash 保持空（§8.2
+>   口径，不伪造证据）。proto：`common.v1.LedgerEntry.pricing_config_hash`(46)
+>   + `PricingSnapshot`(47,详情专用)+ list/detail 映射。
+> - **§9 Admin 用量详情页**：`app/admin` `GetLedgerEntry`/`ListLedgerEntries`
+>   透传 per-bucket 成本、reported/billable totals、semantics/protocol/
+>   field_shape/parse_status/decision_reason、候选成本与 pricing hash；detail
+>   额外内嵌快照单价。Web `components/admin/UsageAuditPanel.tsx`：五桶×
+>   （token/快照单价/成本）表、计费总 Token（含全部缓存桶）、上游上报对照、
+>   ambiguous 双候选说明、定价快照 hash/倍率/mode；legacy 行显示"历史口径"
+>   警示且不伪造 uncached；列表新增 Token 用量摘要列（历史/存疑徽标）。
+>
+> 关于跳过 observe 验证直接实现 088 的决策：088 是纯增量审计能力（新表 +
+> 新列 + 同事务 claim），不改变任何计费金额、不依赖 `BILLING_CANONICAL_-
+> USAGE_MODE` 的档位——legacy/observe/charge 三种模式下快照都只是额外记录
+> 证据，反而让 observe 窗口本身可审计。原方案"charge 稳定后再上 088"的排序
+> 是优先级判断而非安全约束，故提前落地；风险仅为每笔 consume 多一次按唯一键
+> 的 INSERT（冲突即复用）。
+>
+> 验证：`make api`、`make test-unit`、`make migration-check`、
+> `./scripts/check-architecture.sh`、`go test -race ./internal/server/...
+> ./domain/upstream/provider/... ./app/billing/... ./pkg/usage/...`、
+> sqlite lifecycle（count 28 + 088 表/列断言）、web `tsc -b`/`eslint`/
+> `vitest run`（153 tests）全部通过。
+>
+> 仍未做：§8 历史审计/冲正脚本；灰度发布运维动作（§11 的 observe 48 小时
+> 窗口、charge allowlist、`usage_contract_version=0` 流量归零后移除
+> PromptExclusive 依赖）。
 
 ## 1. 结论摘要
 
