@@ -14,6 +14,7 @@ import { buildAdminListParams } from '@/lib/admin-table-query';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { formatAmountUnits } from '@/lib/amount';
 import { sortRows, type SortState } from '@/lib/table-utils';
+import { t } from '@/lib/i18n';
 import {
   Table,
   TableBody,
@@ -44,13 +45,13 @@ const ROLE_ROOT = 100;
 function roleLabel(role: number) {
   switch (role) {
     case ROLE_ROOT:
-      return 'Root';
+      return t('超级管理员');
     case ROLE_ADMIN:
-      return 'Admin';
+      return t('管理员');
     case ROLE_COMMON:
-      return 'User';
+      return t('用户');
     case ROLE_GUEST:
-      return 'Guest';
+      return t('访客');
     default:
       return String(role);
   }
@@ -119,25 +120,25 @@ export function AdminUsersPage() {
       } else {
         res = await adminApiClient.post(`/user/enable/${id}`);
       }
-      ensureApiSuccess(res.data, 'Failed to update user status');
+      ensureApiSuccess(res.data, t('更新用户状态失败'));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-      toast.success('User status updated');
+      toast.success(t('用户状态已更新'));
     },
   });
 
   const setRoleMutation = useMutation({
     mutationFn: async ({ username, action }: { username: string; action: 'promote' | 'demote' }) => {
       const res = await adminApiClient.post('/user/manage', { username, action });
-      ensureApiSuccess(res.data, 'Failed to update role');
+      ensureApiSuccess(res.data, t('更新角色失败'));
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
-      toast.success(variables.action === 'promote' ? 'User promoted to admin' : 'Admin demoted to user');
+      toast.success(variables.action === 'promote' ? t('用户已提升为管理员') : t('管理员已降级为用户'));
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Failed to update role';
+      const message = error instanceof Error ? error.message : t('更新角色失败');
       toast.error(message);
     },
   });
@@ -153,12 +154,12 @@ export function AdminUsersPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Users Management</h2>
+        <h2 className="text-2xl font-semibold">{t('用户管理')}</h2>
       </div>
 
       <AdminTableToolbar
         search={search}
-        searchPlaceholder="Search by username or email..."
+        searchPlaceholder={t('按用户名或邮箱搜索...')}
         onSearchChange={setSearch}
         onClear={clearSearch}
         actions={
@@ -168,15 +169,15 @@ export function AdminUsersPage() {
             rows={visibleUsers}
             columns={[
               { key: 'id', label: 'ID' },
-              { key: 'username', label: 'Username' },
-              { key: 'displayName', label: 'Display Name' },
-              { key: 'email', label: 'Email' },
-              { key: 'group', label: 'Group' },
-              { key: 'role', label: 'Role' },
-              { key: 'balance', label: 'Balance' },
-              { key: 'usedAmount', label: 'Used Amount' },
-              { key: 'status', label: 'Status' },
-              { key: 'createdAt', label: 'Created At' },
+              { key: 'username', label: t('用户名') },
+              { key: 'displayName', label: t('显示名称') },
+              { key: 'email', label: t('邮箱') },
+              { key: 'group', label: t('分组') },
+              { key: 'role', label: t('角色') },
+              { key: 'balance', label: t('余额') },
+              { key: 'usedAmount', label: t('已用金额') },
+              { key: 'status', label: t('状态') },
+              { key: 'createdAt', label: t('创建时间') },
             ]}
           />
         }
@@ -187,27 +188,27 @@ export function AdminUsersPage() {
           value={statusFilter}
           onChange={(event) => setFilter('status', event.target.value)}
           className="h-8 rounded-md border bg-background px-2 text-sm"
-          aria-label="Filter users by status"
+          aria-label={t('按状态筛选用户')}
         >
-          <option value="">All statuses</option>
-          <option value="1">Active</option>
-          <option value="2">Disabled</option>
+          <option value="">{t('全部状态')}</option>
+          <option value="1">{t('启用')}</option>
+          <option value="2">{t('禁用')}</option>
         </select>
         <input
           value={groupFilter}
           onChange={(event) => setFilter('group', event.target.value)}
-          placeholder="Filter group"
+          placeholder={t('筛选分组')}
           className="h-8 w-40 rounded-md border bg-background px-2 text-sm"
-          aria-label="Filter users by group"
+          aria-label={t('按分组筛选用户')}
         />
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', 'Username', 'Display Name', 'Email', 'Group', 'Role', 'Balance', 'Used', 'Status', 'Actions']} />
+        <TableSkeleton columns={['ID', t('用户名'), t('显示名称'), t('邮箱'), t('分组'), t('角色'), t('余额'), t('已用'), t('状态'), t('操作')]} />
       ) : !users || users.length === 0 ? (
-        <EmptyState title="No users found" description="Try clearing the search term or checking another page." />
+        <EmptyState title={t('未找到用户')} description={t('请尝试清除搜索词或查看其他页面。')} />
       ) : visibleUsers.length === 0 ? (
-        <EmptyState title="No users match the filters" description="Clear the table filters to show the loaded rows." />
+        <EmptyState title={t('没有用户符合筛选条件')} description={t('清除表格筛选条件以显示已加载的数据。')} />
       ) : (
         <>
           <div className="border rounded-lg">
@@ -216,26 +217,26 @@ export function AdminUsersPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <SortableHeader<User> columnKey="username" sort={sort} onSortChange={setSort}>
-                    Username
+                    {t('用户名')}
                   </SortableHeader>
-                  <TableHead className="hidden lg:table-cell">Display Name</TableHead>
+                  <TableHead className="hidden lg:table-cell">{t('显示名称')}</TableHead>
                   <SortableHeader<User> columnKey="email" sort={sort} onSortChange={setSort}>
-                    Email
+                    {t('邮箱')}
                   </SortableHeader>
                   <SortableHeader<User> columnKey="group" sort={sort} onSortChange={setSort}>
-                    Group
+                    {t('分组')}
                   </SortableHeader>
                   <SortableHeader<User> columnKey="role" sort={sort} onSortChange={setSort}>
-                    Role
+                    {t('角色')}
                   </SortableHeader>
                   <SortableHeader<User> columnKey="balance" sort={sort} onSortChange={setSort}>
-                    Balance
+                    {t('余额')}
                   </SortableHeader>
-                  <TableHead>Used</TableHead>
+                  <TableHead>{t('已用')}</TableHead>
                   <SortableHeader<User> columnKey="status" sort={sort} onSortChange={setSort}>
-                    Status
+                    {t('状态')}
                   </SortableHeader>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right">{t('操作')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -243,7 +244,7 @@ export function AdminUsersPage() {
                   const isRoot = user.role >= ROLE_ROOT;
                   const isAdmin = user.role >= ROLE_ADMIN && user.role < ROLE_ROOT;
                   const roleAction: 'promote' | 'demote' = isAdmin ? 'demote' : 'promote';
-                  const roleActionLabel = isAdmin ? 'Demote' : 'Promote';
+                  const roleActionLabel = isAdmin ? t('降级') : t('提升');
                   return (
                     <TableRow key={user.id}>
                       <TableCell className="font-mono text-sm">{user.id}</TableCell>
@@ -268,7 +269,7 @@ export function AdminUsersPage() {
                               : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                           }`}
                         >
-                          {user.status === 1 ? 'Active' : 'Disabled'}
+                          {user.status === 1 ? t('启用') : t('禁用')}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
@@ -280,7 +281,7 @@ export function AdminUsersPage() {
                               setRoleMutation.mutate({ username: user.username, action: roleAction })
                             }
                             disabled={isRoot || setRoleMutation.isPending}
-                            title={isRoot ? 'Root role cannot be changed here' : undefined}
+                            title={isRoot ? t('无法在此修改超级管理员角色') : undefined}
                           >
                             {roleActionLabel}
                           </Button>
@@ -292,7 +293,7 @@ export function AdminUsersPage() {
                             }
                             disabled={toggleStatusMutation.isPending}
                           >
-                            {user.status === 1 ? 'Disable' : 'Enable'}
+                            {user.status === 1 ? t('禁用') : t('启用')}
                           </Button>
                         </div>
                       </TableCell>

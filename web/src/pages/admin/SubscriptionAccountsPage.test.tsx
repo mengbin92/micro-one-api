@@ -267,7 +267,7 @@ describe('AdminSubscriptionAccountsPage', () => {
     await user.click(screen.getByRole('button', { name: /新建订阅账号/i }));
 
     await user.type(screen.getByLabelText('名称'), 'codex-team');
-    await user.type(screen.getByLabelText('Access Token'), 'sk-test-access');
+    await user.type(screen.getByLabelText('访问令牌'), 'sk-test-access');
     await user.type(screen.getByLabelText('Refresh Token'), 'rt-test-refresh');
 
     await user.click(screen.getByRole('button', { name: '创建' }));

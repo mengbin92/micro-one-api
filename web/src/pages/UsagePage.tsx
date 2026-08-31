@@ -375,7 +375,7 @@ export function UsagePage() {
                     <TableCell>
                       <span className="inline-flex rounded-md bg-blue-100 px-2 py-1 text-xs font-bold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
                         {t(LOG_TYPE_NAMES[log.type] || log.type || '-')}
-                        {log.is_stream ? t(" / 流式") : ''}
+                        {log.is_stream ? ` / ${t('流式')}` : ''}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -394,7 +394,7 @@ export function UsagePage() {
 
           <div className="flex items-center justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1}>{t("上一页")}</Button>
-            <span className="min-w-14 text-center text-sm text-muted-foreground">{t("第")}{page}{t("页")}</span>
+            <span className="min-w-14 text-center text-sm text-muted-foreground">{t('页码：')}{page}</span>
             <Button variant="outline" size="sm" onClick={() => setPage((value) => value + 1)} disabled={logs.length < pageSize}>{t("下一页")}</Button>
           </div>
         </>

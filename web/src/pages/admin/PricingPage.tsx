@@ -292,17 +292,17 @@ export function AdminPricingPage() {
         (row, index) => row.model && normalizedRows.findIndex((candidate) => candidate.model === row.model) !== index,
       );
       if (duplicate) {
-        throw new Error(`Duplicate model: ${duplicate.model}`);
+        throw new Error(`${t('模型重复：')}${duplicate.model}`);
       }
       for (const row of normalizedRows) {
         if (!row.model && (row.inputPrice || row.outputPrice || row.cacheReadPrice)) {
-          throw new Error('Model name is required for every priced row');
+          throw new Error(t('每个价格行都必须填写模型名称'));
         }
         for (const field of ['inputPrice', 'outputPrice', 'cacheReadPrice'] as const) {
           if (row[field] !== '') {
             const parsed = Number(row[field]);
             if (!Number.isFinite(parsed) || parsed < 0) {
-              throw new Error('Prices must be non-negative numbers');
+              throw new Error(t('价格必须为非负数'));
             }
           }
         }
@@ -317,7 +317,7 @@ export function AdminPricingPage() {
       await Promise.all(
         payloads.map(async (payload) => {
           const res = await adminApiClient.put('/option/', payload);
-          ensureApiSuccess(res.data, `${payload.key} save failed`);
+          ensureApiSuccess(res.data, `${payload.key} ${t('保存失败')}`);
         }),
       );
     },
@@ -325,10 +325,10 @@ export function AdminPricingPage() {
       setDraftRows(null);
       queryClient.invalidateQueries({ queryKey: ['admin-options'] });
       queryClient.invalidateQueries({ queryKey: ['admin-summary'] });
-      toast.success('Pricing saved');
+      toast.success(t('价格已保存'));
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Pricing save failed');
+      toast.error(error instanceof Error ? error.message : t('保存价格失败'));
     },
   });
 

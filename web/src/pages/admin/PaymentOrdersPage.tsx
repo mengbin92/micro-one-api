@@ -197,7 +197,7 @@ export function AdminPaymentOrdersPage() {
           value={statusFilter}
           onChange={(event) => setFilter('status', event.target.value)}
           className="h-8 rounded-md border bg-background px-2 text-sm"
-          aria-label="Filter payment orders by status"
+          aria-label={t('按状态筛选支付订单')}
         >
           <option value="">{t("全部状态")}</option>
           <option value="pending">{t("待支付")}</option>
@@ -208,7 +208,7 @@ export function AdminPaymentOrdersPage() {
           value={channelFilter}
           onChange={(event) => setFilter('channel', event.target.value)}
           className="h-8 rounded-md border bg-background px-2 text-sm"
-          aria-label="Filter payment orders by channel"
+          aria-label={t('按渠道筛选支付订单')}
         >
           <option value="">{t("全部渠道")}</option>
           <option value="alipay">{t("支付宝")}</option>
@@ -219,7 +219,7 @@ export function AdminPaymentOrdersPage() {
           onChange={(event) => setFilter('user_id', event.target.value.trim())}
           placeholder={t("用户 ID")}
           className="h-8 w-36 rounded-md border bg-background px-2 text-sm"
-          aria-label="Filter payment orders by user id"
+          aria-label={t('按用户 ID 筛选支付订单')}
         />
       </div>
 

@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.26.1 发布公告](./docs/releases/release-v0.26.1.md)（Go 1.27 运行时现代化） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.1)
+> 📣 **最新发布**：[v0.26.2 发布公告](./docs/releases/release-v0.26.2.md)（Relay 模型路由与双语界面修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.2)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.26.2
+
+v0.26.2 是 v0.26.1 之后的 **PATCH Relay 路由与 Web 界面修复版本**：统一模型标识大小写和 `[1M]` 扩展上下文处理，恢复显式渠道模型映射优先级，并同步中英文界面文案。**无公共 API / proto 变更、无数据库迁移**；更新 `relay-gateway` 并同步 `web/dist`，无需因本版本执行数据库迁移。详见 [docs/releases/release-v0.26.2.md](./docs/releases/release-v0.26.2.md)。
 
 ### 升级到 v0.26.1
 

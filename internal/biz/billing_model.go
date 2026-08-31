@@ -42,6 +42,9 @@ const (
 // applied on top of the globally-resolved name in Plan() — using the
 // resolved name keeps the lookup consistent with the selection path.
 func BillingModelForSource(source, clientModel, resolvedModel, upstreamModel string) string {
+	clientModel = RelayModelName(clientModel)
+	resolvedModel = RelayModelName(resolvedModel)
+	upstreamModel = RelayModelName(upstreamModel)
 	switch strings.ToLower(strings.TrimSpace(source)) {
 	case BillingModelSourceRequested:
 		// Bill on the client-requested model name, before any mapping.

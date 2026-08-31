@@ -112,7 +112,7 @@ export function LoginPage() {
           <img src="/logo-icon.svg" alt="" className="size-14 rounded-2xl" />
           <div>
             <p className="text-xl font-bold">Micro-One API</p>
-            <p className="text-sm text-white/60">Gateway Console</p>
+            <p className="text-sm text-white/60">{t('网关控制台')}</p>
           </div>
         </div>
 
@@ -132,7 +132,7 @@ export function LoginPage() {
           </div>
         </div>
 
-        <p className="relative text-xs text-white/45">Micro-One API · AI gateway operations</p>
+        <p className="relative text-xs text-white/45">Micro-One API · {t('AI 网关运营平台')}</p>
       </section>
 
       <section className="flex min-h-screen items-center justify-center px-4 py-8 sm:px-8 lg:px-12">
@@ -141,7 +141,7 @@ export function LoginPage() {
             <img src="/logo-icon.svg" alt="" className="size-11 rounded-xl" />
             <div>
               <p className="font-bold text-foreground">Micro-One API</p>
-              <p className="text-xs text-muted-foreground">Gateway Console</p>
+              <p className="text-xs text-muted-foreground">{t('网关控制台')}</p>
             </div>
           </div>
 

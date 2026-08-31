@@ -124,10 +124,10 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 }
 
 func (s *OpenAIWSRoutingScheduler) routeModels(route responseRoute, clientModel string) (string, string) {
-	globalModel := strings.TrimSpace(route.GlobalModel)
-	requestedModel := strings.TrimSpace(clientModel)
+	globalModel := relaybiz.RelayModelName(route.GlobalModel)
+	requestedModel := relaybiz.RelayModelName(clientModel)
 	if requestedModel == "" {
-		requestedModel = strings.TrimSpace(route.Model)
+		requestedModel = relaybiz.RelayModelName(route.Model)
 	}
 	if globalModel == "" {
 		globalModel = requestedModel
@@ -135,7 +135,7 @@ func (s *OpenAIWSRoutingScheduler) routeModels(route responseRoute, clientModel 
 			globalModel = strings.TrimSpace(s.server.relayUsecase.ResolveModel(requestedModel))
 		}
 	}
-	resolvedModel := strings.TrimSpace(route.ResolvedModel)
+	resolvedModel := relaybiz.RelayModelName(route.ResolvedModel)
 	if resolvedModel == "" && globalModel != "" {
 		resolvedModel = relaybiz.ResolveChannelModel(&route.Channel, globalModel)
 	}
@@ -180,12 +180,12 @@ func (s *OpenAIWSRoutingScheduler) BindSession(ctx context.Context, plan *relayb
 }
 
 func authAllowsModel(allowedModels []string, model string) bool {
-	model = strings.TrimSpace(model)
+	model = relaybiz.RelayModelName(model)
 	if model == "" || len(allowedModels) == 0 {
 		return true
 	}
 	for _, allowed := range allowedModels {
-		if strings.TrimSpace(allowed) == model {
+		if strings.EqualFold(relaybiz.RelayModelName(allowed), model) {
 			return true
 		}
 	}

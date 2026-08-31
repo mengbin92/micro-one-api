@@ -66,14 +66,26 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		s.writeRequestBodyError(w, r, err)
 		return
 	}
-	model := extractRawModel(body)
-	if model == "" {
+	clientModel := extractRawModel(body)
+	model := clientModel
+	if clientModel == "" {
 		model = "proxy"
+	} else {
+		model = relaybiz.ResolveChannelModel(&relaybiz.Channel{
+			Models:          strings.Split(channelReply.Channel.Models, ","),
+			ModelMapping:    channelReply.Channel.ModelMapping,
+			UpstreamModelID: channelReply.Channel.UpstreamModelId,
+		}, clientModel)
+		body = rewriteRawModel(body, model)
 	}
 
 	requestID := generateRequestID()
 	startedAt := time.Now()
-	billingModel := s.BillingModelName(model, model, model)
+	billingClientModel := clientModel
+	if billingClientModel == "" {
+		billingClientModel = model
+	}
+	billingModel := s.BillingModelName(billingClientModel, model, model)
 	reservation, err := s.reserveQuota(
 		r.Context(),
 		fmt.Sprintf("%d", authSnapshot.UserId),

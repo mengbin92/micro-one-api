@@ -105,6 +105,12 @@ function healthBadgeClass(status: string) {
   return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
 }
 
+function healthStatusLabel(status: string) {
+  if (status === 'unavailable') return t('不可用');
+  if (status === 'degraded') return t('性能下降');
+  return t('正常');
+}
+
 export function AdminChannelsPage() {
   const {
     page,
@@ -182,7 +188,7 @@ export function AdminChannelsPage() {
         priority: parseInt(newChannelPriority || '0', 10),
         weight: parseInt(newChannelWeight || '1', 10),
       });
-      ensureApiSuccess(res.data, 'Channel create failed');
+      ensureApiSuccess(res.data, t('创建渠道失败'));
     },
     onSuccess: () => {
       invalidateChannelQueries();
@@ -195,7 +201,7 @@ export function AdminChannelsPage() {
       setNewChannelGroup('default');
       setNewChannelPriority('0');
       setNewChannelWeight('1');
-      toast.success('Channel created');
+      toast.success(t('渠道已创建'));
     },
   });
 
@@ -207,11 +213,11 @@ export function AdminChannelsPage() {
       } else {
         res = await adminApiClient.post(`/channel/enable/${id}`);
       }
-      ensureApiSuccess(res.data, 'Channel status update failed');
+      ensureApiSuccess(res.data, t('更新渠道状态失败'));
     },
     onSuccess: () => {
       invalidateChannelQueries();
-      toast.success('Channel status updated');
+      toast.success(t('渠道状态已更新'));
     },
   });
 
@@ -226,45 +232,45 @@ export function AdminChannelsPage() {
         priority: parseInt(draft.priority || '0', 10),
         weight: parseInt(draft.weight || '1', 10),
       });
-      ensureApiSuccess(res.data, 'Channel update failed');
+      ensureApiSuccess(res.data, t('更新渠道失败'));
     },
     onSuccess: () => {
       invalidateChannelQueries();
       setEditingChannel(null);
-      toast.success('Channel configuration saved');
+      toast.success(t('渠道配置已保存'));
     },
   });
 
   const refreshBalanceMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await adminApiClient.get(`/channel/update_balance/${id}`);
-      ensureApiSuccess(res.data, 'Channel balance refresh failed');
+      ensureApiSuccess(res.data, t('刷新渠道余额失败'));
     },
     onSuccess: () => {
       invalidateChannelQueries();
-      toast.success('Channel balance refreshed');
+      toast.success(t('渠道余额已刷新'));
     },
   });
 
   const testChannelMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await adminApiClient.get(`/channel/test/${id}`);
-      ensureApiSuccess(res.data, 'Channel health probe failed');
+      ensureApiSuccess(res.data, t('渠道健康检测失败'));
     },
     onSuccess: () => {
       invalidateChannelQueries();
-      toast.success('Channel health probe completed');
+      toast.success(t('渠道健康检测已完成'));
     },
   });
 
   const deleteChannelMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await adminApiClient.delete(`/channel/${id}`);
-      ensureApiSuccess(res.data, 'Channel delete failed');
+      ensureApiSuccess(res.data, t('删除渠道失败'));
     },
     onSuccess: () => {
       invalidateChannelQueries();
-      toast.success('Channel deleted');
+      toast.success(t('渠道已删除'));
     },
   });
 
@@ -275,7 +281,7 @@ export function AdminChannelsPage() {
 
   const handleCreate = () => {
     if (!newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelGroup.trim()) {
-      toast.error('Name, base URL, API key, and group are required');
+      toast.error(t('名称、基础 URL、API 密钥和分组为必填项'));
       return;
     }
     createMutation.mutate();
@@ -295,7 +301,7 @@ export function AdminChannelsPage() {
   const handleUpdate = () => {
     if (!editingChannel) return;
     if (!editingChannel.name.trim() || !editingChannel.models.trim() || !editingChannel.group.trim()) {
-      toast.error('Name, models, and group are required');
+      toast.error(t('名称、模型和分组为必填项'));
       return;
     }
     updateMutation.mutate(editingChannel);
@@ -304,23 +310,23 @@ export function AdminChannelsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Channels Management</h2>
+        <h2 className="text-2xl font-semibold">{t('渠道管理')}</h2>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger render={<Button />}>
-            Create Channel
+            {t('创建渠道')}
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Create Channel</DialogTitle>
-              <DialogDescription>Add an upstream provider channel.</DialogDescription>
+              <DialogTitle>{t('创建渠道')}</DialogTitle>
+              <DialogDescription>{t('添加上游供应商渠道。')}</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 pt-2 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="channel-name">Name</Label>
+                <Label htmlFor="channel-name">{t('名称')}</Label>
                 <Input id="channel-name" value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} placeholder="openai-main" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="channel-type">Provider</Label>
+                <Label htmlFor="channel-type">{t('供应商')}</Label>
                 <select
                   id="channel-type"
                   value={newChannelType}
@@ -335,28 +341,28 @@ export function AdminChannelsPage() {
                 </select>
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="channel-base-url">Base URL</Label>
+                <Label htmlFor="channel-base-url">{t('基础 URL')}</Label>
                 <Input id="channel-base-url" value={newChannelBaseUrl} onChange={(e) => setNewChannelBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="channel-key">API Key</Label>
+                <Label htmlFor="channel-key">{t('API 密钥')}</Label>
                 <Input id="channel-key" type="password" value={newChannelKey} onChange={(e) => setNewChannelKey(e.target.value)} placeholder="sk-..." />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="channel-models">Models (optional)</Label>
+                <Label htmlFor="channel-models">{t('模型（可选）')}</Label>
                 <ModelMultiSelect value={newChannelModels} onChange={setNewChannelModels} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="channel-group">Group</Label>
+                <Label htmlFor="channel-group">{t('分组')}</Label>
                 <Input id="channel-group" value={newChannelGroup} onChange={(e) => setNewChannelGroup(e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="channel-priority">Priority</Label>
+                  <Label htmlFor="channel-priority">{t('优先级')}</Label>
                   <Input id="channel-priority" type="number" value={newChannelPriority} onChange={(e) => setNewChannelPriority(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="channel-weight">Weight</Label>
+                  <Label htmlFor="channel-weight">{t('权重')}</Label>
                   <Input id="channel-weight" type="number" min="1" value={newChannelWeight} onChange={(e) => setNewChannelWeight(e.target.value)} />
                 </div>
               </div>
@@ -365,7 +371,7 @@ export function AdminChannelsPage() {
                 disabled={createMutation.isPending || !newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelGroup.trim()}
                 className="sm:col-span-2"
               >
-                {createMutation.isPending ? 'Creating...' : 'Create'}
+                {createMutation.isPending ? t('创建中...') : t('创建')}
               </Button>
             </div>
           </DialogContent>
@@ -375,13 +381,13 @@ export function AdminChannelsPage() {
       <Dialog open={!!editingChannel} onOpenChange={(open) => !open && setEditingChannel(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Model Configuration</DialogTitle>
-            <DialogDescription>Edit the models and routing settings for this channel.</DialogDescription>
+            <DialogTitle>{t('模型配置')}</DialogTitle>
+            <DialogDescription>{t('编辑此渠道的模型和路由设置。')}</DialogDescription>
           </DialogHeader>
           {editingChannel && (
             <div className="grid gap-4 pt-2 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="edit-channel-name">Name</Label>
+                <Label htmlFor="edit-channel-name">{t('名称')}</Label>
                 <Input
                   id="edit-channel-name"
                   value={editingChannel.name}
@@ -389,14 +395,14 @@ export function AdminChannelsPage() {
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="edit-channel-models">Models</Label>
+                <Label htmlFor="edit-channel-models">{t('模型')}</Label>
                 <ModelMultiSelect
                   value={editingChannel.models}
                   onChange={(csv) => setEditingChannel({ ...editingChannel, models: csv })}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-channel-group">Group</Label>
+                <Label htmlFor="edit-channel-group">{t('分组')}</Label>
                 <Input
                   id="edit-channel-group"
                   value={editingChannel.group}
@@ -405,7 +411,7 @@ export function AdminChannelsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="edit-channel-priority">Priority</Label>
+                  <Label htmlFor="edit-channel-priority">{t('优先级')}</Label>
                   <Input
                     id="edit-channel-priority"
                     type="number"
@@ -414,7 +420,7 @@ export function AdminChannelsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-channel-weight">Weight</Label>
+                  <Label htmlFor="edit-channel-weight">{t('权重')}</Label>
                   <Input
                     id="edit-channel-weight"
                     type="number"
@@ -430,7 +436,7 @@ export function AdminChannelsPage() {
                 className="sm:col-span-2"
               >
                 <Save className="size-4" />
-                {updateMutation.isPending ? 'Saving...' : 'Save Configuration'}
+                {updateMutation.isPending ? t('保存中...') : t('保存配置')}
               </Button>
             </div>
           )}
@@ -439,7 +445,7 @@ export function AdminChannelsPage() {
 
       <AdminTableToolbar
         search={search}
-        searchPlaceholder="Search by name..."
+        searchPlaceholder={t('按名称搜索...')}
         onSearchChange={setSearch}
         onClear={clearSearch}
         actions={
@@ -449,14 +455,14 @@ export function AdminChannelsPage() {
             rows={visibleChannels}
             columns={[
               { key: 'id', label: 'ID' },
-              { key: 'name', label: 'Name' },
-              { key: 'type', label: 'Type' },
-              { key: 'group', label: 'Group' },
-              { key: 'priority', label: 'Priority' },
-              { key: 'balance', label: 'Balance' },
-              { key: 'healthStatus', label: 'Health' },
-              { key: 'status', label: 'Status' },
-              { key: 'usedQuota', label: 'Used Quota' },
+              { key: 'name', label: t('名称') },
+              { key: 'type', label: t('类型') },
+              { key: 'group', label: t('分组') },
+              { key: 'priority', label: t('优先级') },
+              { key: 'balance', label: t('余额') },
+              { key: 'healthStatus', label: t('健康状态') },
+              { key: 'status', label: t('状态') },
+              { key: 'usedQuota', label: t('已用额度') },
             ]}
           />
         }
@@ -469,8 +475,8 @@ export function AdminChannelsPage() {
             <div className="min-w-0 space-y-1">
               <div className="font-medium">
                 {healthSummary.unavailable.length > 0
-                  ? `${healthSummary.unavailable.length} channel${healthSummary.unavailable.length > 1 ? 's are' : ' is'} unavailable`
-                  : `${healthSummary.degraded.length} channel${healthSummary.degraded.length > 1 ? 's are' : ' is'} degraded`}
+                  ? `${t('不可用渠道：')}${healthSummary.unavailable.length}`
+                  : `${t('性能下降渠道：')}${healthSummary.degraded.length}`}
               </div>
               {healthSummary.primary && (
                 <div className="truncate text-xs text-amber-900/80 dark:text-amber-100/80">
@@ -495,7 +501,7 @@ export function AdminChannelsPage() {
                 invalidateChannelQueries();
               }}
             >
-              View Channel
+              {t('查看渠道')}
             </Button>
             <Button
               type="button"
@@ -505,7 +511,7 @@ export function AdminChannelsPage() {
               disabled={isFetchingHealthChannels}
             >
               <RefreshCw className="size-3.5" />
-              {isFetchingHealthChannels ? 'Refreshing' : 'Refresh'}
+              {isFetchingHealthChannels ? t('刷新中') : t('刷新')}
             </Button>
           </div>
         </div>
@@ -516,19 +522,19 @@ export function AdminChannelsPage() {
           value={statusFilter}
           onChange={(event) => setFilter('status', event.target.value)}
           className="h-8 rounded-md border bg-background px-2 text-sm"
-          aria-label="Filter channels by status"
+          aria-label={t('按状态筛选渠道')}
         >
-          <option value="">All statuses</option>
-          <option value="1">Active</option>
-          <option value="2">Disabled</option>
+          <option value="">{t('全部状态')}</option>
+          <option value="1">{t('启用')}</option>
+          <option value="2">{t('禁用')}</option>
         </select>
         <select
           value={typeFilter}
           onChange={(event) => setFilter('type', event.target.value)}
           className="h-8 rounded-md border bg-background px-2 text-sm"
-          aria-label="Filter channels by provider"
+          aria-label={t('按供应商筛选渠道')}
         >
-          <option value="">All providers</option>
+          <option value="">{t('全部供应商')}</option>
           {Object.entries(PROVIDER_NAMES).map(([type, name]) => (
             <option key={type} value={type}>
               {name}
@@ -538,11 +544,11 @@ export function AdminChannelsPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', 'Name', 'Type', 'Group', 'Priority', 'Balance', 'Health', 'Status', 'Actions']} />
+        <TableSkeleton columns={['ID', t('名称'), t('类型'), t('分组'), t('优先级'), t('余额'), t('健康状态'), t('状态'), t('操作')]} />
       ) : !channels || channels.length === 0 ? (
-        <EmptyState title="No channels found" description="Try clearing the search term or checking another page." />
+        <EmptyState title={t('未找到渠道')} description={t('请尝试清除搜索词或查看其他页面。')} />
       ) : visibleChannels.length === 0 ? (
-        <EmptyState title="No channels match the filters" description="Clear the table filters to show the loaded rows." />
+        <EmptyState title={t('没有渠道符合筛选条件')} description={t('清除表格筛选条件以显示已加载的数据。')} />
       ) : (
         <>
           <div className="border rounded-lg overflow-x-auto">
@@ -551,25 +557,25 @@ export function AdminChannelsPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <SortableHeader<Channel> columnKey="name" sort={sort} onSortChange={setSort}>
-                    Name
+                    {t('名称')}
                   </SortableHeader>
                   <SortableHeader<Channel> columnKey="type" sort={sort} onSortChange={setSort}>
-                    Type
+                    {t('类型')}
                   </SortableHeader>
                   <SortableHeader<Channel> columnKey="group" sort={sort} onSortChange={setSort}>
-                    Group
+                    {t('分组')}
                   </SortableHeader>
                   <SortableHeader<Channel> columnKey="priority" sort={sort} onSortChange={setSort} className="hidden lg:table-cell">
-                    Priority
+                    {t('优先级')}
                   </SortableHeader>
                   <SortableHeader<Channel> columnKey="balance" sort={sort} onSortChange={setSort} className="hidden md:table-cell">
-                    Balance
+                    {t('余额')}
                   </SortableHeader>
-                  <TableHead className="hidden xl:table-cell">Health</TableHead>
+                  <TableHead className="hidden xl:table-cell">{t('健康状态')}</TableHead>
                   <SortableHeader<Channel> columnKey="status" sort={sort} onSortChange={setSort}>
-                    Status
+                    {t('状态')}
                   </SortableHeader>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right">{t('操作')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -577,7 +583,7 @@ export function AdminChannelsPage() {
                   <TableRow key={ch.id}>
                     <TableCell className="font-mono text-sm">{ch.id}</TableCell>
                     <TableCell className="font-medium">{ch.name}</TableCell>
-                    <TableCell>{PROVIDER_NAMES[ch.type] || `Type ${ch.type}`}</TableCell>
+                    <TableCell>{PROVIDER_NAMES[ch.type] || `${t('类型')} ${ch.type}`}</TableCell>
                     <TableCell>{ch.group}</TableCell>
                     <TableCell className="hidden lg:table-cell">{ch.priority ?? 0}</TableCell>
                     <TableCell className="hidden md:table-cell">
@@ -586,12 +592,12 @@ export function AdminChannelsPage() {
                     <TableCell className="hidden xl:table-cell">
                       <div className="flex flex-col gap-1">
                         <span className={`inline-flex w-fit items-center rounded-full px-2 py-1 text-xs font-medium ${healthBadgeClass(channelHealthStatus(ch))}`}>
-                          {channelHealthStatus(ch)}
+                          {healthStatusLabel(channelHealthStatus(ch))}
                         </span>
                         {channelHealthFailures(ch) > 0 && (
                           <span className="text-xs text-muted-foreground">
-                            {channelHealthFailures(ch)} failures
-                            {channelCircuitUntil(ch) > 0 ? ` · until ${new Date(channelCircuitUntil(ch) * 1000).toLocaleString(locale())}` : ''}
+                            {channelHealthFailures(ch)} {t('次失败')}
+                            {channelCircuitUntil(ch) > 0 ? ` · ${t('持续至')} ${new Date(channelCircuitUntil(ch) * 1000).toLocaleString(locale())}` : ''}
                           </span>
                         )}
                         {channelHealthError(ch) && <span className="max-w-48 truncate text-xs text-muted-foreground">{channelHealthError(ch)}</span>}
@@ -605,7 +611,7 @@ export function AdminChannelsPage() {
                             : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                         }`}
                       >
-                        {ch.status === 1 ? 'Active' : 'Disabled'}
+                        {ch.status === 1 ? t('启用') : t('禁用')}
                       </span>
                     </TableCell>
                     <TableCell className="text-right space-x-2">
@@ -615,7 +621,7 @@ export function AdminChannelsPage() {
                         onClick={() => openEdit(ch)}
                       >
                         <Pencil className="size-3.5" />
-                        Edit
+                        {t('编辑')}
                       </Button>
                       <Button
                         variant="outline"
@@ -624,7 +630,7 @@ export function AdminChannelsPage() {
                         disabled={refreshBalanceMutation.isPending}
                       >
                         <RefreshCw className="size-3.5" />
-                        Refresh
+                        {t('刷新')}
                       </Button>
                       <Button
                         variant="outline"
@@ -632,7 +638,7 @@ export function AdminChannelsPage() {
                         onClick={() => testChannelMutation.mutate(ch.id)}
                         disabled={testChannelMutation.isPending}
                       >
-                        Test
+                        {t('测试')}
                       </Button>
                       <Button
                         variant="outline"
@@ -642,7 +648,7 @@ export function AdminChannelsPage() {
                         }
                         disabled={toggleStatusMutation.isPending}
                       >
-                        {ch.status === 1 ? 'Disable' : 'Enable'}
+                        {ch.status === 1 ? t('禁用') : t('启用')}
                       </Button>
                       <Button
                         variant="outline"
@@ -655,7 +661,7 @@ export function AdminChannelsPage() {
                         disabled={deleteChannelMutation.isPending}
                       >
                         <Trash2 className="size-3.5" />
-                        Delete
+                        {t('删除')}
                       </Button>
                     </TableCell>
                   </TableRow>

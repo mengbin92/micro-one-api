@@ -169,7 +169,7 @@ export function UsageAuditPanel({ log }: { log: UsageAuditLog }) {
         <ParseStatusBadge log={log} />
         {log.usageSemantics ? (
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            {SEMANTICS_LABELS[log.usageSemantics] ?? log.usageSemantics}
+            {t(SEMANTICS_LABELS[log.usageSemantics] ?? log.usageSemantics)}
           </span>
         ) : null}
         {log.usageProtocol ? (

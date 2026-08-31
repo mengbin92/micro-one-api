@@ -122,21 +122,21 @@ export function TokensPage() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiClient.delete(`/token/${id}`);
-      ensureApiSuccess(res.data, 'Token delete failed');
+      ensureApiSuccess(res.data, t('删除 Token 失败'));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tokens'] });
-      toast.success('Token deleted');
+      toast.success(t('Token 已删除'));
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Token delete failed');
+      toast.error(error instanceof Error ? error.message : t('删除 Token 失败'));
     },
   });
 
   const handleCreate = async () => {
     const name = newTokenName.trim();
     if (!name) {
-      toast.error('Token name is required');
+      toast.error(t('Token 名称为必填项'));
       return;
     }
 
@@ -151,9 +151,9 @@ export function TokensPage() {
         return [safeToken, ...withoutCreated];
       });
       setNewTokenName('');
-      toast.success('Token created');
+      toast.success(t('Token 已创建'));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Token creation failed');
+      toast.error(error instanceof Error ? error.message : t('创建 Token 失败'));
     } finally {
       setIsCreating(false);
     }
@@ -170,9 +170,9 @@ export function TokensPage() {
   const copyKey = async (key: string) => {
     try {
       await navigator.clipboard.writeText(key);
-      toast.success('Token copied');
+      toast.success(t('Token 已复制'));
     } catch {
-      toast.error('Unable to copy token');
+      toast.error(t('无法复制 Token'));
     }
   };
 
@@ -185,21 +185,21 @@ export function TokensPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-semibold">Tokens</h2>
+        <h2 className="text-2xl font-semibold">{t('API 密钥')}</h2>
         <Dialog open={isCreateOpen} onOpenChange={handleCreateOpenChange}>
           <DialogTrigger render={<Button />}>
-            Create Token
+            {t('创建 Token')}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{createdToken?.key ? 'Token Created' : 'Create New Token'}</DialogTitle>
+              <DialogTitle>{createdToken?.key ? t('Token 已创建') : t('创建新 Token')}</DialogTitle>
               <DialogDescription>
-                {createdToken?.key ? 'Copy this API key now. It will not be shown again.' : 'Enter a name for your new API token.'}
+                {createdToken?.key ? t('请立即复制此 API 密钥，之后将不再完整显示。') : t('请为新的 API Token 输入名称。')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div className="space-y-2">
-                <Label htmlFor="token-name">Token Name</Label>
+                <Label htmlFor="token-name">{t('Token 名称')}</Label>
                 {createdToken?.key ? (
                   <Input id="token-name" readOnly value={createdToken.name || newTokenName} />
                 ) : (
@@ -207,16 +207,16 @@ export function TokensPage() {
                     id="token-name"
                     value={newTokenName}
                     onChange={(e) => setNewTokenName(e.target.value)}
-                    placeholder="My Token"
+                    placeholder={t('我的 Token')}
                   />
                 )}
               </div>
               {createdToken?.key && (
                 <div className="space-y-2">
-                  <Label htmlFor="created-token-key">API Key</Label>
+                  <Label htmlFor="created-token-key">{t('API 密钥')}</Label>
                   <div className="flex gap-2">
                     <Input id="created-token-key" readOnly value={createdToken.key} className="font-mono text-xs" />
-                    <Button type="button" variant="outline" size="icon" onClick={() => copyKey(createdToken.key as string)} aria-label="Copy token">
+                    <Button type="button" variant="outline" size="icon" onClick={() => copyKey(createdToken.key as string)} aria-label={t('复制 Token')}>
                       <Copy />
                     </Button>
                   </div>
@@ -241,7 +241,7 @@ export function TokensPage() {
                   >
                     <Zap className="size-4" />{t("导入到 CC Switch")}</Button>
                   <DialogFooter>
-                    <DialogClose render={<Button className="w-full" />}>Done</DialogClose>
+                    <DialogClose render={<Button className="w-full" />}>{t('完成')}</DialogClose>
                   </DialogFooter>
                 </div>
               ) : (
@@ -250,7 +250,7 @@ export function TokensPage() {
                   disabled={isCreating || !newTokenName.trim()}
                   className="w-full"
                 >
-                  {isCreating ? 'Creating...' : 'Create'}
+                  {isCreating ? t('创建中...') : t('创建')}
                 </Button>
               )}
             </div>
@@ -259,26 +259,26 @@ export function TokensPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['Name', 'Key', 'Status', 'Created', 'Actions']} />
+        <TableSkeleton columns={[t('名称'), t('密钥'), t('状态'), t('创建时间'), t('操作')]} />
       ) : !tokens || tokens.length === 0 ? (
-        <EmptyState title="No tokens yet" description="Create a token to start calling the API." />
+        <EmptyState title={t('暂无 API 密钥')} description={t('创建一个 Token 后即可开始调用 API。')} />
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Key</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t('名称')}</TableHead>
+                <TableHead>{t('密钥')}</TableHead>
+                <TableHead>{t('状态')}</TableHead>
+                <TableHead>{t('创建时间')}</TableHead>
+                <TableHead className="text-right">{t('操作')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tokens.map((token) => (
                 <TableRow key={token.id}>
                   <TableCell className="font-medium">{token.name}</TableCell>
-                  <TableCell className="font-mono text-sm">{token.masked_key || 'Hidden'}</TableCell>
+                  <TableCell className="font-mono text-sm">{token.masked_key || t('已隐藏')}</TableCell>
                   <TableCell>
                     <span
                       className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -287,7 +287,7 @@ export function TokensPage() {
                           : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                       }`}
                     >
-                      {token.status === 1 ? 'Active' : 'Disabled'}
+                      {token.status === 1 ? t('启用') : t('禁用')}
                     </span>
                   </TableCell>
                   <TableCell>
@@ -301,7 +301,7 @@ export function TokensPage() {
                         onClick={() => deleteMutation.mutate(token.id)}
                         disabled={deleteMutation.isPending}
                       >
-                        Delete
+                        {t('删除')}
                       </Button>
                     </div>
                   </TableCell>

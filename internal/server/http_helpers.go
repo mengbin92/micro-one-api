@@ -109,12 +109,12 @@ func (s *HTTPServer) applyModelWhitelist(availableModels []string, allowedModels
 
 	allowedSet := make(map[string]bool)
 	for _, model := range allowedModels {
-		allowedSet[model] = true
+		allowedSet[strings.ToLower(relaybiz.RelayModelName(model))] = true
 	}
 
 	filtered := make([]string, 0, len(availableModels))
 	for _, model := range availableModels {
-		if allowedSet[model] {
+		if allowedSet[strings.ToLower(relaybiz.RelayModelName(model))] {
 			filtered = append(filtered, model)
 		}
 	}
