@@ -107,6 +107,7 @@ services:
     - 079_add_balance_amount_to_billing_reservations # canonical wallet amount + legacy dual-write
     - 080_add_billing_ledger_cost_audit_fields # execution source + upstream cost auditability
     - 085_add_billing_usage_semantics       # reported/canonical usage split + parse verdict on ledgers
+    - 088_create_billing_pricing_snapshots  # §6.3 phase 2: immutable per-request pricing evidence
 
   log:
     # logs table (a subset of 000_create_core_tables on the shared schema,

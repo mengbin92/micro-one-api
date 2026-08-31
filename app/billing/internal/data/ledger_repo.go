@@ -108,6 +108,7 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx
 		UsageDecisionReason:    ledger.UsageDecisionReason,
 		SubsetCandidateCost:    ledger.SubsetCandidateCost,
 		ExclusiveCandidateCost: ledger.ExclusiveCandidateCost,
+		PricingConfigHash:      ledger.PricingConfigHash,
 	}
 	return db.Create(model).Error
 }
@@ -661,5 +662,6 @@ func ledgerFromModel(model *ledgerModel) *biz.Ledger {
 		UsageDecisionReason:    model.UsageDecisionReason,
 		SubsetCandidateCost:    model.SubsetCandidateCost,
 		ExclusiveCandidateCost: model.ExclusiveCandidateCost,
+		PricingConfigHash:      model.PricingConfigHash,
 	}
 }

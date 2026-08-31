@@ -97,6 +97,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 			usage_decision_reason TEXT NOT NULL DEFAULT '',
 			subset_candidate_cost INTEGER NOT NULL DEFAULT 0,
 			exclusive_candidate_cost INTEGER NOT NULL DEFAULT 0,
+			pricing_config_hash TEXT NOT NULL DEFAULT '',
 			elapsed_time INTEGER DEFAULT 0,
 			is_stream INTEGER DEFAULT 0,
 			endpoint TEXT DEFAULT '',

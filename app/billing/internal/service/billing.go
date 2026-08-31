@@ -13,7 +13,10 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/pkg/safecast"
+	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
+
+	"go.uber.org/zap"
 
 	"strings"
 
@@ -536,6 +539,7 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 			UsageDecisionReason:    ledger.UsageDecisionReason,
 			SubsetCandidateCost:    ledger.SubsetCandidateCost,
 			ExclusiveCandidateCost: ledger.ExclusiveCandidateCost,
+			PricingConfigHash:      ledger.PricingConfigHash,
 		}
 	}
 
@@ -552,6 +556,25 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 			return nil, status.Errorf(codes.NotFound, "ledger entry not found")
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get ledger entry: %v", err)
+	}
+
+	// Resolve the pricing evidence for the detail view (§9 admin usage detail:
+	// show the actual per-bucket unit prices, never amounts reverse-derived
+	// "prices"). A missing snapshot for a pre-088 hash is not an error — the
+	// row simply predates the evidence table — but a genuine lookup failure
+	// must be visible: it is an audit-coverage gap, not a rendering detail.
+	var pricingSnapshot *commonv1.PricingSnapshot
+	if ledger.PricingConfigHash != "" {
+		snap, snapErr := s.uc.GetPricingSnapshot(ctx, ledger.PricingConfigHash)
+		if snapErr == nil && snap != nil {
+			pricingSnapshot = pricingSnapshotToProto(snap)
+		} else if snapErr != nil && !errors.Is(snapErr, biz.ErrPricingSnapshotNotFound) {
+			applogger.Log.Warn("ledger detail: pricing snapshot lookup failed",
+				zap.String("ledger_id", fmt.Sprintf("%d", ledger.ID)),
+				zap.String("pricing_config_hash", ledger.PricingConfigHash),
+				zap.Error(snapErr),
+			)
+		}
 	}
 
 	return &billingv1.GetLedgerEntryResponse{
@@ -601,8 +624,30 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 			UsageDecisionReason:    ledger.UsageDecisionReason,
 			SubsetCandidateCost:    ledger.SubsetCandidateCost,
 			ExclusiveCandidateCost: ledger.ExclusiveCandidateCost,
+			PricingConfigHash:      ledger.PricingConfigHash,
+			PricingSnapshot:        pricingSnapshot,
 		},
 	}, nil
+}
+
+// pricingSnapshotToProto maps the persisted pricing evidence onto the wire DTO.
+func pricingSnapshotToProto(snap *biz.PricingSnapshot) *commonv1.PricingSnapshot {
+	if snap == nil {
+		return nil
+	}
+	return &commonv1.PricingSnapshot{
+		ConfigHash:            snap.ConfigHash,
+		ModelName:             snap.ModelName,
+		InputPrice:            snap.InputPrice,
+		OutputPrice:           snap.OutputPrice,
+		CacheReadPrice:        snap.CacheReadPrice,
+		CacheCreation_5MPrice: snap.CacheCreation5mPrice,
+		CacheCreation_1HPrice: snap.CacheCreation1hPrice,
+		GroupRatio:            snap.GroupRatio,
+		CacheCreationMode:     snap.CacheCreationMode,
+		SnapshotVersion:       snap.SnapshotVersion,
+		CreatedAt:             toProtoTimestamp(snap.CreatedAt),
+	}
 }
 
 func (s *BillingService) AggregateLedgerByDate(ctx context.Context, req *billingv1.AggregateLedgerByDateRequest) (*billingv1.AggregateLedgerByDateResponse, error) {
