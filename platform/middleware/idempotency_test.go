@@ -119,7 +119,7 @@ func TestIdempotencyMiddleware_NonCacheableRetriesAreSerialized(t *testing.T) {
 	for range 2 {
 		req := httptest.NewRequest(http.MethodPost, "/charge", nil)
 		req.Header.Set("Idempotency-Key", "error-key")
-		wg.Go(func() { ; wrapped.ServeHTTP(httptest.NewRecorder(), req) })
+		wg.Go(func() { wrapped.ServeHTTP(httptest.NewRecorder(), req) })
 	}
 	wg.Wait()
 	if got := calls.Load(); got != 2 {
