@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.24.0 发布公告](./docs/releases/release-v0.24.0.md)（全新双语控制台与中国法律协议） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.24.0)
+> 📣 **最新发布**：[v0.25.0 发布公告](./docs/releases/release-v0.25.0.md)（模型模态与注册表定价） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.25.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.25.0
+
+v0.25.0 是 v0.24.0 之后的 **MINOR 模型能力与定价注册版本**：增加模型输入 / 输出模态、cache-read 定价和每 1M tokens 价格单位，包含数据库迁移 `083`、`084`。**必须先按 `083 → 084` 顺序迁移，并确认历史输入 / 输出价格只转换一次**；随后按 `channel-service`、`admin-api`、`web/dist` 顺序发布。executor 观察期间不要重启 `relay-gateway`。详见 [docs/releases/release-v0.25.0.md](./docs/releases/release-v0.25.0.md)。
 
 ### 升级到 v0.24.0
 
