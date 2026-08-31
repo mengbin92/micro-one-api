@@ -103,10 +103,10 @@ type DetailRow = [string, string | number | boolean | undefined | null];
 const EMPTY_LOGS: LogEntry[] = [];
 
 const LOG_TYPE_NAMES: Record<string, string> = {
-  redeem: 'Redeem',
-  recharge: 'Recharge',
-  consume: 'Consume',
-  refund: 'Refund',
+  redeem: '兑换',
+  recharge: '充值',
+  consume: '消费',
+  refund: '退款',
 };
 
 function datetimeLocalToUnixSeconds(value: string) {
@@ -131,7 +131,7 @@ function formatUpstreamProvider(log: LogEntry) {
     return `${log.channelName}${log.channelTypeStr && log.channelTypeStr !== 'Unknown' ? ` (${log.channelTypeStr})` : ''}`;
   }
   const subscriptionAccountId = log.subscription_account_id ?? log.subscriptionAccountId;
-  if (subscriptionAccountId) return `Subscription #${subscriptionAccountId}`;
+  if (subscriptionAccountId) return `${t('订阅账号')} #${subscriptionAccountId}`;
   if (log.channelId) return `#${log.channelId}`;
   if (log.channel) return String(log.channel);
   return '—';
@@ -207,24 +207,24 @@ export function AdminLogsPage() {
     mutationFn: async () => {
       const endTime = Math.floor(new Date(cleanEndTime).getTime() / 1000);
       if (!Number.isFinite(endTime) || endTime <= 0) {
-        throw new Error('End time is required');
+        throw new Error(t('结束时间为必填项'));
       }
       const params = new URLSearchParams({ end_time: String(endTime) });
       if (startTime) params.set('start_time', startTime);
       if (userId) params.set('user_id', userId);
       if (type) params.set('type', type);
       const res = await adminApiClient.delete(`/log?${params}`);
-      ensureApiSuccess(res.data, 'Log cleanup failed');
+      ensureApiSuccess(res.data, t('清理日志失败'));
       return unwrapApiData<{ deleted?: number }>(res.data);
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin-logs'] });
       setIsCleanOpen(false);
       setCleanEndTime('');
-      toast.success(`Deleted ${Number(data?.deleted ?? 0)} log entries`);
+      toast.success(t('已删除 {count} 条日志', { count: Number(data?.deleted ?? 0) }));
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Log cleanup failed';
+      const message = error instanceof Error ? error.message : t('清理日志失败');
       toast.error(message);
     },
   });
@@ -240,7 +240,7 @@ export function AdminLogsPage() {
 
   function displayValue(value: string | number | boolean | undefined | null) {
     if (value === undefined || value === null || value === '') return '-';
-    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'boolean') return value ? t('是') : t('否');
     return String(value);
   }
 
@@ -250,31 +250,31 @@ export function AdminLogsPage() {
   const detailRows: DetailRow[] = selectedLog
     ? [
         ['ID', selectedLog.id],
-        ['Type', selectedLog.type || selectedLog.level],
-        ['User ID', selectedLog.userId || selectedLog.user_id],
-        ['Username', selectedLog.username],
-        ['Request ID', selectedLog.request_id],
-        ['Model', selectedLog.model_name],
+        [t('类型'), t(LOG_TYPE_NAMES[selectedLog.type] || selectedLog.type || selectedLog.level || '')],
+        [t('用户 ID'), selectedLog.userId || selectedLog.user_id],
+        [t('用户名'), selectedLog.username],
+        [t('请求 ID'), selectedLog.request_id],
+        [t('模型'), selectedLog.model_name],
         ['Token', selectedLog.token_name],
-        ['Upstream Provider', formatUpstreamProvider(selectedLog)],
-        ['Amount', formatQuota(selectedLog.amount)],
-        ['Balance After', formatQuota(selectedLog.balanceAfter)],
-        ['Quota', selectedLog.quota],
-        ['Elapsed Time', selectedLog.elapsed_time ? `${selectedLog.elapsed_time} ms` : undefined],
-        ['Stream', selectedLog.is_stream],
-        ['Created At', formatTimestamp(selectedLog.created_at ?? selectedLog.createdAt)],
+        [t('上游供应商'), formatUpstreamProvider(selectedLog)],
+        [t('金额'), formatQuota(selectedLog.amount)],
+        [t('操作后余额'), formatQuota(selectedLog.balanceAfter)],
+        [t('额度'), selectedLog.quota],
+        [t('耗时'), selectedLog.elapsed_time ? `${selectedLog.elapsed_time} ms` : undefined],
+        [t('流式请求'), selectedLog.is_stream],
+        [t('创建时间'), formatTimestamp(selectedLog.created_at ?? selectedLog.createdAt)],
       ]
     : [];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Billing Logs</h2>
+        <h2 className="text-2xl font-semibold">{t('账务日志')}</h2>
       </div>
 
       <div className="flex items-center gap-4">
         <Input
-          placeholder="User ID"
+          placeholder={t('用户 ID')}
           value={userId}
           onChange={(e) => setFilter('user_id', e.target.value.trim())}
           className="max-w-xs"
@@ -284,11 +284,11 @@ export function AdminLogsPage() {
           onChange={(e) => setFilter('type', e.target.value)}
           className="border rounded px-3 py-2 text-sm"
         >
-          <option value="">All Types</option>
-          <option value="redeem">Redeem</option>
-          <option value="recharge">Recharge</option>
-          <option value="consume">Consume</option>
-          <option value="refund">Refund</option>
+          <option value="">{t('全部类型')}</option>
+          <option value="redeem">{t('兑换')}</option>
+          <option value="recharge">{t('充值')}</option>
+          <option value="consume">{t('消费')}</option>
+          <option value="refund">{t('退款')}</option>
         </select>
         <Input
           placeholder={t("订阅账号 ID")}
@@ -306,11 +306,11 @@ export function AdminLogsPage() {
             setFilter('subscription_account_id', '');
           }}
         >
-          Clear
+          {t('清除')}
         </Button>
         <Button type="button" variant="destructive" onClick={() => setIsCleanOpen(true)}>
           <Trash2 className="size-4" />
-          Clean
+          {t('清理')}
         </Button>
         <div className="ml-auto">
           <ExportButton
@@ -319,13 +319,13 @@ export function AdminLogsPage() {
             rows={visibleLogs}
             columns={[
               { key: 'id', label: 'ID' },
-              { key: 'userId', label: 'User ID' },
-              { key: 'type', label: 'Type' },
-              { key: 'amount', label: 'Amount' },
-              { key: 'balanceAfter', label: 'Balance After' },
-              { key: 'referenceId', label: 'Reference' },
-              { key: 'remark', label: 'Remark' },
-              { key: 'createdAt', label: 'Created At' },
+              { key: 'userId', label: t('用户 ID') },
+              { key: 'type', label: t('类型') },
+              { key: 'amount', label: t('金额') },
+              { key: 'balanceAfter', label: t('操作后余额') },
+              { key: 'referenceId', label: t('关联信息') },
+              { key: 'remark', label: t('备注') },
+              { key: 'createdAt', label: t('创建时间') },
             ]}
           />
         </div>
@@ -334,7 +334,7 @@ export function AdminLogsPage() {
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <Label htmlFor="log-start-time" className="text-xs text-muted-foreground">
-            From
+            {t('开始时间')}
           </Label>
           <Input
             id="log-start-time"
@@ -346,7 +346,7 @@ export function AdminLogsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Label htmlFor="log-end-time" className="text-xs text-muted-foreground">
-            To
+            {t('结束时间')}
           </Label>
           <Input
             id="log-end-time"
@@ -359,9 +359,9 @@ export function AdminLogsPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', 'User ID', 'Type', 'Amount', 'Upstream Provider', 'Balance After', 'Reference', 'Remark', 'Created At', 'Actions']} rows={8} />
+        <TableSkeleton columns={['ID', t('用户 ID'), t('类型'), t('金额'), t('上游供应商'), t('操作后余额'), t('关联信息'), t('备注'), t('创建时间'), t('操作')]} rows={8} />
       ) : !logs || logs.length === 0 ? (
-        <EmptyState title="No logs found" description="Adjust the filters or check back after billing events are recorded." />
+        <EmptyState title={t('未找到日志')} description={t('请调整筛选条件，或在产生账务事件后再查看。')} />
       ) : (
         <>
           <div className="border rounded-lg overflow-x-auto">
@@ -370,23 +370,23 @@ export function AdminLogsPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <SortableHeader<LogEntry> columnKey="userId" sort={sort} onSortChange={setSort}>
-                    User ID
+                    {t('用户 ID')}
                   </SortableHeader>
                   <SortableHeader<LogEntry> columnKey="type" sort={sort} onSortChange={setSort}>
-                    Type
+                    {t('类型')}
                   </SortableHeader>
                   <SortableHeader<LogEntry> columnKey="amount" sort={sort} onSortChange={setSort}>
-                    Amount
+                    {t('金额')}
                   </SortableHeader>
-                  <TableHead className="hidden lg:table-cell">Upstream Provider</TableHead>
+                  <TableHead className="hidden lg:table-cell">{t('上游供应商')}</TableHead>
                   <TableHead className="hidden xl:table-cell">{t('Token 用量')}</TableHead>
-                  <TableHead className="hidden md:table-cell">Balance After</TableHead>
-                  <TableHead className="hidden lg:table-cell">Reference</TableHead>
-                  <TableHead className="hidden lg:table-cell">Remark</TableHead>
+                  <TableHead className="hidden md:table-cell">{t('操作后余额')}</TableHead>
+                  <TableHead className="hidden lg:table-cell">{t('关联信息')}</TableHead>
+                  <TableHead className="hidden lg:table-cell">{t('备注')}</TableHead>
                   <SortableHeader<LogEntry> columnKey="createdAt" sort={sort} onSortChange={setSort}>
-                    Created At
+                    {t('创建时间')}
                   </SortableHeader>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right">{t('操作')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -417,7 +417,7 @@ export function AdminLogsPage() {
                         type="button"
                         variant="outline"
                         size="icon-sm"
-                        aria-label={`View log ${log.id}`}
+                        aria-label={`${t('查看日志')} ${log.id}`}
                         onClick={() => setSelectedLogId(String(log.id))}
                       >
                         <Eye className="size-4" />
@@ -442,13 +442,13 @@ export function AdminLogsPage() {
       <Dialog open={selectedLogId !== null} onOpenChange={(open) => !open && setSelectedLogId(null)}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Log Details</DialogTitle>
+            <DialogTitle>{t('日志详情')}</DialogTitle>
             <DialogDescription>
-              {selectedLogId ? `Inspect billing and relay metadata for log ${selectedLogId}.` : 'Inspect billing and relay metadata.'}
+              {selectedLogId ? t('查看日志 {id} 的账务和中继元数据。', { id: selectedLogId }) : t('查看账务和中继元数据。')}
             </DialogDescription>
           </DialogHeader>
           {isDetailLoading ? (
-            <TableSkeleton columns={['Field', 'Value']} rows={8} />
+            <TableSkeleton columns={[t('字段'), t('值')]} rows={8} />
           ) : selectedLog ? (
             <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
               <div className="overflow-x-auto rounded-lg border">
@@ -468,14 +468,14 @@ export function AdminLogsPage() {
                 <UsageAuditPanel log={selectedLog} />
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
-                <div className="mb-2 text-xs font-medium text-muted-foreground">Message</div>
+                <div className="mb-2 text-xs font-medium text-muted-foreground">{t('消息')}</div>
                 <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs leading-5">
                   {displayValue(selectedLog.message || selectedLog.remark)}
                 </pre>
               </div>
             </div>
           ) : (
-            <EmptyState title="Log details unavailable" description="The log service did not return details for this entry." />
+            <EmptyState title={t('日志详情不可用')} description={t('日志服务未返回此条目的详情。')} />
           )}
         </DialogContent>
       </Dialog>
@@ -483,14 +483,14 @@ export function AdminLogsPage() {
       <Dialog open={isCleanOpen} onOpenChange={setIsCleanOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Clean Logs</DialogTitle>
+            <DialogTitle>{t('清理日志')}</DialogTitle>
             <DialogDescription>
-              Delete matching log entries up to the selected time.
+              {t('删除所选时间之前符合条件的日志条目。')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="log-clean-end-time">End Time</Label>
+              <Label htmlFor="log-clean-end-time">{t('结束时间')}</Label>
               <Input
                 id="log-clean-end-time"
                 type="datetime-local"
@@ -499,12 +499,12 @@ export function AdminLogsPage() {
               />
             </div>
             <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-              Scope: user {userId || 'all'} · type {type || 'all'}
+              {t('范围：用户')} {userId || t('全部')} · {t('类型')} {type ? t(LOG_TYPE_NAMES[type] || type) : t('全部')}
             </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setIsCleanOpen(false)}>
-              Cancel
+              {t('取消')}
             </Button>
             <Button
               type="button"
@@ -513,7 +513,7 @@ export function AdminLogsPage() {
               onClick={() => cleanMutation.mutate()}
             >
               <Trash2 className="size-4" />
-              {cleanMutation.isPending ? 'Cleaning...' : 'Clean Logs'}
+              {cleanMutation.isPending ? t('清理中...') : t('清理日志')}
             </Button>
           </DialogFooter>
         </DialogContent>

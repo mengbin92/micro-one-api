@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { locale } from '@/lib/i18n';
+import { locale, t } from '@/lib/i18n';
 import { adminApiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -110,7 +110,7 @@ export function AdminRedemptionsPage() {
         count,
         batch_size: count,
       });
-      const payload = unwrapApiData<CreateRedemptionPayload>(res.data, 'Redemption code create failed');
+      const payload = unwrapApiData<CreateRedemptionPayload>(res.data, t('创建兑换码失败'));
       return payload.codes ?? [];
     },
     onSuccess: (codes) => {
@@ -120,18 +120,18 @@ export function AdminRedemptionsPage() {
       setNewCodeName('');
       setNewCodeAmount('');
       setNewCodeCount('1');
-      toast.success('Redemption code created');
+      toast.success(t('兑换码已创建'));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (code: string) => {
       const res = await adminApiClient.delete(`/redemption/${code}`);
-      ensureApiSuccess(res.data, 'Redemption code delete failed');
+      ensureApiSuccess(res.data, t('删除兑换码失败'));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-redemptions'] });
-      toast.success('Redemption code deleted');
+      toast.success(t('兑换码已删除'));
     },
   });
 
@@ -145,7 +145,7 @@ export function AdminRedemptionsPage() {
       createMutation.mutate();
       return;
     }
-    toast.error('Name and a positive amount are required');
+    toast.error(t('名称和大于零的金额为必填项'));
   };
 
   const visibleCodes = useMemo(() => {
@@ -155,39 +155,39 @@ export function AdminRedemptionsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Redemption Codes</h2>
+        <h2 className="text-2xl font-semibold">{t('兑换码')}</h2>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger render={<Button />}>
-            Create Code
+            {t('创建兑换码')}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create Redemption Code</DialogTitle>
-              <DialogDescription>Generate new redemption codes for users.</DialogDescription>
+              <DialogTitle>{t('创建兑换码')}</DialogTitle>
+              <DialogDescription>{t('为用户生成新的兑换码。')}</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div className="space-y-2">
-                <Label htmlFor="code-name">Name</Label>
+                <Label htmlFor="code-name">{t('名称')}</Label>
                 <Input
                   id="code-name"
                   value={newCodeName}
                   onChange={(e) => setNewCodeName(e.target.value)}
-                  placeholder="e.g., Welcome Bonus"
+                  placeholder={t('例如：新用户奖励')}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="code-amount">Amount</Label>
+                <Label htmlFor="code-amount">{t('金额')}</Label>
                 <Input
                   id="code-amount"
                   type="number"
                   step="0.01"
                   value={newCodeAmount}
                   onChange={(e) => setNewCodeAmount(e.target.value)}
-                  placeholder="e.g., 10.00"
+                  placeholder={t('例如：10.00')}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="code-count">Count</Label>
+                <Label htmlFor="code-count">{t('数量')}</Label>
                 <Input
                   id="code-count"
                   type="number"
@@ -201,7 +201,7 @@ export function AdminRedemptionsPage() {
                 disabled={createMutation.isPending || !newCodeName.trim() || !newCodeAmount}
                 className="w-full"
               >
-                {createMutation.isPending ? 'Creating...' : 'Create'}
+                {createMutation.isPending ? t('创建中...') : t('创建')}
               </Button>
             </div>
           </DialogContent>
@@ -210,7 +210,7 @@ export function AdminRedemptionsPage() {
 
       <div className="flex items-center gap-4">
         <Input
-          placeholder="Search by code or name..."
+          placeholder={t('按兑换码或名称搜索...')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
@@ -219,14 +219,14 @@ export function AdminRedemptionsPage() {
           value={statusFilter}
           onChange={(event) => setFilter('status', event.target.value)}
           className="h-8 rounded-md border bg-background px-2 text-sm"
-          aria-label="Filter redemption codes by status"
+          aria-label={t('按状态筛选兑换码')}
         >
-          <option value="">All statuses</option>
-          <option value="1">Active</option>
-          <option value="2">Used</option>
+          <option value="">{t('全部状态')}</option>
+          <option value="1">{t('可用')}</option>
+          <option value="2">{t('已使用')}</option>
         </select>
         <Button variant="outline" onClick={clearSearch}>
-          Clear
+          {t('清除')}
         </Button>
         <div className="ml-auto">
           <ExportButton
@@ -234,13 +234,13 @@ export function AdminRedemptionsPage() {
             href={exportHref}
             rows={visibleCodes}
             columns={[
-              { key: 'code', label: 'Code' },
-              { key: 'name', label: 'Name' },
-              { key: 'amount', label: 'Amount' },
-              { key: 'count', label: 'Count' },
-              { key: 'status', label: 'Status' },
-              { key: 'createdBy', label: 'Created By' },
-              { key: 'createdAt', label: 'Created At' },
+              { key: 'code', label: t('兑换码') },
+              { key: 'name', label: t('名称') },
+              { key: 'amount', label: t('金额') },
+              { key: 'count', label: t('数量') },
+              { key: 'status', label: t('状态') },
+              { key: 'createdBy', label: t('创建人') },
+              { key: 'createdAt', label: t('创建时间') },
             ]}
           />
         </div>
@@ -248,7 +248,7 @@ export function AdminRedemptionsPage() {
 
       {generatedCodes.length > 0 && (
         <div className="rounded-lg border bg-muted/30 p-3">
-          <div className="mb-2 text-sm font-medium">Generated Codes</div>
+          <div className="mb-2 text-sm font-medium">{t('已生成的兑换码')}</div>
           <div className="flex flex-wrap gap-2">
             {generatedCodes.map((code) => (
               <span key={code} className="rounded-md border bg-background px-2 py-1 font-mono text-sm">
@@ -260,11 +260,11 @@ export function AdminRedemptionsPage() {
       )}
 
       {isLoading ? (
-        <TableSkeleton columns={['Code', 'Name', 'Amount', 'Count', 'Status', 'Created By', 'Created At', 'Actions']} />
+        <TableSkeleton columns={[t('兑换码'), t('名称'), t('金额'), t('数量'), t('状态'), t('创建人'), t('创建时间'), t('操作')]} />
       ) : !codes || codes.length === 0 ? (
-        <EmptyState title="No redemption codes found" description="Create codes for balance grants or clear the search term." />
+        <EmptyState title={t('未找到兑换码')} description={t('请创建用于发放余额的兑换码，或清除搜索词。')} />
       ) : visibleCodes.length === 0 ? (
-        <EmptyState title="No redemption codes match the filters" description="Clear the table filters to show the loaded rows." />
+        <EmptyState title={t('没有兑换码符合筛选条件')} description={t('清除表格筛选条件以显示已加载的数据。')} />
       ) : (
         <>
           <div className="border rounded-lg overflow-x-auto">
@@ -272,23 +272,23 @@ export function AdminRedemptionsPage() {
               <TableHeader>
                 <TableRow>
                   <SortableHeader<RedeemCode> columnKey="code" sort={sort} onSortChange={setSort}>
-                    Code
+                    {t('兑换码')}
                   </SortableHeader>
                   <SortableHeader<RedeemCode> columnKey="name" sort={sort} onSortChange={setSort}>
-                    Name
+                    {t('名称')}
                   </SortableHeader>
                   <SortableHeader<RedeemCode> columnKey="amount" sort={sort} onSortChange={setSort}>
-                    Amount
+                    {t('金额')}
                   </SortableHeader>
-                  <TableHead>Count</TableHead>
+                  <TableHead>{t('数量')}</TableHead>
                   <SortableHeader<RedeemCode> columnKey="status" sort={sort} onSortChange={setSort}>
-                    Status
+                    {t('状态')}
                   </SortableHeader>
-                  <TableHead className="hidden md:table-cell">Created By</TableHead>
+                  <TableHead className="hidden md:table-cell">{t('创建人')}</TableHead>
                   <SortableHeader<RedeemCode> columnKey="createdAt" sort={sort} onSortChange={setSort}>
-                    Created At
+                    {t('创建时间')}
                   </SortableHeader>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right">{t('操作')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -306,7 +306,7 @@ export function AdminRedemptionsPage() {
                             : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
                         }`}
                       >
-                        {code.status === 1 ? 'Active' : 'Used'}
+                        {code.status === 1 ? t('可用') : t('已使用')}
                       </span>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{code.createdBy || '—'}</TableCell>
@@ -320,7 +320,7 @@ export function AdminRedemptionsPage() {
                         onClick={() => deleteMutation.mutate(code.code)}
                         disabled={deleteMutation.isPending}
                       >
-                        Delete
+                        {t('删除')}
                       </Button>
                     </TableCell>
                   </TableRow>

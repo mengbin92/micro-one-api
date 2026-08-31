@@ -57,7 +57,7 @@ function CopyableCode({ code, language }: { code: string; language: string }) {
           type="button"
           onClick={handleCopy}
           className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Copy code"
+          aria-label={t('复制代码')}
         >
           {copied ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
           {copied ? t("已复制") : t("复制")}
@@ -96,25 +96,25 @@ function curlSnippets(baseUrl: string): CodeSnippet[] {
     {
       label: t("非流式对话"),
       language: 'bash',
-      code: t(`curl -X POST ${v1}/v1/chat/completions \\
+      code: `curl -X POST ${v1}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer $API_KEY" \\
   -d '{
     "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "你好"}]
-  }'`),
+    "messages": [{"role": "user", "content": "${t('你好')}"}]
+  }'`,
     },
     {
       label: t("流式对话"),
       language: 'bash',
-      code: t(`curl -X POST ${v1}/v1/chat/completions \\
+      code: `curl -X POST ${v1}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer $API_KEY" \\
   -d '{
     "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "讲个故事"}],
+    "messages": [{"role": "user", "content": "${t('讲个故事')}"}],
     "stream": true
-  }'`),
+  }'`,
     },
   ];
 }
@@ -130,7 +130,7 @@ function pythonSnippets(baseUrl: string): CodeSnippet[] {
     {
       label: t("非流式"),
       language: 'python',
-      code: t(`from openai import OpenAI
+      code: `from openai import OpenAI
 
 client = OpenAI(
     api_key="<YOUR_API_KEY>",
@@ -139,14 +139,22 @@ client = OpenAI(
 
 response = client.chat.completions.create(
     model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "你好"}],
+    messages=[{"role": "user", "content": "${t('你好')}"}],
 )
-print(response.choices[0].message.content)`),
+print(response.choices[0].message.content)`,
     },
     {
       label: t("流式"),
       language: 'python',
-      code: t("stream = client.chat.completions.create(\n    model=\"gpt-4o-mini\",\n    messages=[{\"role\": \"user\", \"content\": \"讲个故事\"}],\n    stream=True,\n)\nfor chunk in stream:\n    delta = chunk.choices[0].delta.content\n    if delta:\n        print(delta, end=\"\", flush=True)"),
+      code: `stream = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "${t('讲个故事')}"}],
+    stream=True,
+)
+for chunk in stream:
+    delta = chunk.choices[0].delta.content
+    if delta:
+        print(delta, end="", flush=True)`,
     },
   ];
 }
@@ -162,7 +170,7 @@ function nodejsSnippets(baseUrl: string): CodeSnippet[] {
     {
       label: t("非流式"),
       language: 'typescript',
-      code: t(`import OpenAI from "openai";
+      code: `import OpenAI from "openai";
 
 const client = new OpenAI({
   apiKey: "<YOUR_API_KEY>",
@@ -171,9 +179,9 @@ const client = new OpenAI({
 
 const response = await client.chat.completions.create({
   model: "gpt-4o-mini",
-  messages: [{ role: "user", content: "你好" }],
+  messages: [{ role: "user", content: "${t('你好')}" }],
 });
-console.log(response.choices[0].message.content);`),
+console.log(response.choices[0].message.content);`,
     },
   ];
 }
@@ -243,7 +251,7 @@ export CLAUDE_CODE_ATTRIBUTION_HEADER=0`;
     {
       label: t("验证连通"),
       language: 'bash',
-      code: t("claude --print \"你好\""),
+      code: `claude --print "${t('你好')}"`,
     },
   ];
 }

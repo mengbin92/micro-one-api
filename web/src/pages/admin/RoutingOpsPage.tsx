@@ -347,8 +347,8 @@ export function RoutingOpsPage() {
                   <TableHead className="text-right">{t("收入")}</TableHead>
                   <TableHead className="text-right">{t("上游成本")}</TableHead>
                   <TableHead className="text-right">{t("毛利")}</TableHead>
-                  <TableHead className="text-right">Prompt</TableHead>
-                  <TableHead className="text-right">Completion</TableHead>
+                  <TableHead className="text-right">{t('输入')}</TableHead>
+                  <TableHead className="text-right">{t('输出')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

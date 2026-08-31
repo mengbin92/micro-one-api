@@ -209,7 +209,7 @@ export function NotificationPanel({ open, onOpenChange }: NotificationPanelProps
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Notifications"
+        aria-label={t('通知')}
         onClick={() => onOpenChange(!open)}
         className="relative inline-flex"
       >

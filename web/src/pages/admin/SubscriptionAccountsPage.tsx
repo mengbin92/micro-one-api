@@ -535,7 +535,7 @@ export function AdminSubscriptionAccountsPage() {
   const createMutation = useMutation({
     mutationFn: async (payload: CreatePayload) => {
       const res = await adminApiClient.post('/subscription-accounts', payload);
-      ensureApiSuccess(res.data, 'Subscription account create failed');
+      ensureApiSuccess(res.data, t('创建订阅账号失败'));
     },
     onSuccess: () => {
       invalidate();
@@ -577,7 +577,7 @@ export function AdminSubscriptionAccountsPage() {
         quota_timezone: normalizeQuotaTimezone(draft.quotaTimezone),
       };
       const res = await adminApiClient.put(`/subscription-accounts/${draft.id}`, payload);
-      ensureApiSuccess(res.data, 'Subscription account update failed');
+      ensureApiSuccess(res.data, t('更新订阅账号失败'));
     },
     onSuccess: () => {
       invalidate();
@@ -593,7 +593,7 @@ export function AdminSubscriptionAccountsPage() {
         account_id: id,
         status: nextStatus,
       });
-      ensureApiSuccess(res.data, 'Subscription account status update failed');
+      ensureApiSuccess(res.data, t('更新订阅账号状态失败'));
     },
     onSuccess: () => {
       invalidate();
@@ -604,7 +604,7 @@ export function AdminSubscriptionAccountsPage() {
   const resetQuotaMutation = useMutation({
     mutationFn: async ({ id, scope }: { id: number; scope: string }) => {
       const res = await adminApiClient.post(`/subscription-accounts/${id}/reset-quota`, { account_id: id, scope });
-      ensureApiSuccess(res.data, 'Subscription account quota reset failed');
+      ensureApiSuccess(res.data, t('重置订阅账号用量失败'));
     },
     onSuccess: () => {
       invalidate();
@@ -618,7 +618,7 @@ export function AdminSubscriptionAccountsPage() {
         account_ids: ids,
         scope,
       });
-      ensureApiSuccess(res.data, 'Subscription account batch quota reset failed');
+      ensureApiSuccess(res.data, t('批量重置订阅账号用量失败'));
     },
     onSuccess: () => {
       invalidate();
@@ -633,7 +633,7 @@ export function AdminSubscriptionAccountsPage() {
         account_ids: ids,
         template,
       });
-      ensureApiSuccess(res.data, 'Subscription account batch quota template failed');
+      ensureApiSuccess(res.data, t('批量应用额度模板失败'));
     },
     onSuccess: () => {
       invalidate();
@@ -646,7 +646,7 @@ export function AdminSubscriptionAccountsPage() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await adminApiClient.delete(`/subscription-accounts/${id}`);
-      ensureApiSuccess(res.data, 'Subscription account delete failed');
+      ensureApiSuccess(res.data, t('删除订阅账号失败'));
     },
     onSuccess: () => {
       invalidate();
@@ -785,8 +785,8 @@ export function AdminSubscriptionAccountsPage() {
               className="h-8 rounded-md border bg-background px-2 text-sm"
             >
               <option value="">{t("全部状态")}</option>
-              <option value="1">Active</option>
-              <option value="2">Disabled</option>
+              <option value="1">{t('启用')}</option>
+              <option value="2">{t('禁用')}</option>
             </select>
             <select
               aria-label={t("按本地额度筛选")}
@@ -1363,7 +1363,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="sub-access-token">
-              {isStaticKey ? t("Coding Plan Key（即 Access Token）") : 'Access Token'}
+              {isStaticKey ? t("Coding Plan Key（即 Access Token）") : t('访问令牌')}
             </Label>
             <Input
               id="sub-access-token"
@@ -1481,7 +1481,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-base-url">Base URL</Label>
+              <Label htmlFor="edit-sub-base-url">{t('基础 URL')}</Label>
               <Input
                 id="edit-sub-base-url"
                 value={draft.baseUrl}
@@ -1677,7 +1677,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="edit-sub-metadata">Metadata（JSON）</Label>
+              <Label htmlFor="edit-sub-metadata">{t('元数据（JSON）')}</Label>
               <Input
                 id="edit-sub-metadata"
                 value={draft.metadata}

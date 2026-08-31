@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 import { ModelMultiSelect } from './ModelMultiSelect';
@@ -18,9 +18,12 @@ function ControlledModelMultiSelect() {
 }
 
 describe('ModelMultiSelect', () => {
+  beforeEach(() => window.localStorage.setItem('web:language', JSON.stringify('en-US')));
+  afterEach(() => window.localStorage.removeItem('web:language'));
+
   it('adds a provider-specific model that is absent from the registry', async () => {
     server.use(
-      http.get('/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
     );
     const user = userEvent.setup();
     renderWithQuery(<ControlledModelMultiSelect />);
@@ -35,7 +38,7 @@ describe('ModelMultiSelect', () => {
 
   it('adds a custom model with Enter', async () => {
     server.use(
-      http.get('/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
+      http.get('/api/admin/models', () => HttpResponse.json({ models: [], total: 0 })),
     );
     const user = userEvent.setup();
     renderWithQuery(<ControlledModelMultiSelect />);

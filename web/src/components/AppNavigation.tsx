@@ -46,7 +46,6 @@ import { t } from '@/lib/i18n';
 interface NavItem {
   to: string;
   label: string;
-  ariaLabel: string;
   icon: LucideIcon;
 }
 
@@ -69,11 +68,11 @@ interface AccountDashboard {
 }
 
 const userLinks: NavItem[] = [
-  { to: '/dashboard', label: '仪表盘', ariaLabel: 'Dashboard', icon: LayoutDashboard },
-  { to: '/tokens', label: 'API 密钥', ariaLabel: 'Tokens', icon: KeyRound },
-  { to: '/playground', label: '在线调试', ariaLabel: 'Playground', icon: FlaskConical },
-  { to: '/usage', label: '使用记录', ariaLabel: 'Usage', icon: BarChart3 },
-  { to: '/api-guide', label: 'API 使用指南', ariaLabel: 'API Guide', icon: BookOpen },
+  { to: '/dashboard', label: '仪表盘', icon: LayoutDashboard },
+  { to: '/tokens', label: 'API 密钥', icon: KeyRound },
+  { to: '/playground', label: '在线调试', icon: FlaskConical },
+  { to: '/usage', label: '使用记录', icon: BarChart3 },
+  { to: '/api-guide', label: 'API 使用指南', icon: BookOpen },
 ];
 
 const secondaryUserLinks: SecondaryNavItem[] = [
@@ -86,24 +85,24 @@ const secondaryUserLinks: SecondaryNavItem[] = [
 ];
 
 const adminLinks: NavItem[] = [
-  { to: '/admin', label: '总览', ariaLabel: 'Admin Overview', icon: MonitorCog },
-  { to: '/admin/users', label: '用户', ariaLabel: 'Users', icon: Users },
-  { to: '/admin/channels', label: '渠道', ariaLabel: 'Channels', icon: Database },
-  { to: '/admin/models', label: '模型', ariaLabel: 'Models', icon: Boxes },
-  { to: '/admin/subscription-accounts', label: '订阅账号', ariaLabel: 'Subscription Accounts', icon: IdCard },
-  { to: '/admin/subscription-groups', label: '订阅分组', ariaLabel: 'Subscription Groups', icon: Layers },
-  { to: '/admin/subscription-plans', label: '订阅套餐', ariaLabel: 'Subscription Plans', icon: Package },
-  { to: '/admin/subscriptions', label: '用户订阅', ariaLabel: 'User Subscriptions', icon: BadgeCheck },
-  { to: '/admin/channel-health', label: '健康监控', ariaLabel: 'Channel Health', icon: Activity },
-  { to: '/admin/cost-analysis', label: '成本分析', ariaLabel: 'Cost Analysis', icon: TrendingUp },
-  { to: '/admin/routing-ops', label: '路由运营', ariaLabel: 'Routing Ops', icon: Route },
-  { to: '/admin/pricing', label: '模型价格', ariaLabel: 'Model Pricing', icon: ReceiptText },
-  { to: '/admin/upstream-costs', label: '上游成本', ariaLabel: 'Upstream Costs', icon: WalletCards },
-  { to: '/admin/logs', label: '日志', ariaLabel: 'Logs', icon: ScrollText },
-  { to: '/admin/payment-orders', label: '订单', ariaLabel: 'Payment Orders', icon: CreditCard },
-  { to: '/admin/reconciliation', label: '对账', ariaLabel: 'Reconciliation', icon: Scale },
-  { to: '/admin/redemptions', label: '兑换码', ariaLabel: 'Redemptions', icon: Ticket },
-  { to: '/admin/options', label: '设置', ariaLabel: 'Options', icon: Settings2 },
+  { to: '/admin', label: '总览', icon: MonitorCog },
+  { to: '/admin/users', label: '用户', icon: Users },
+  { to: '/admin/channels', label: '渠道', icon: Database },
+  { to: '/admin/models', label: '模型', icon: Boxes },
+  { to: '/admin/subscription-accounts', label: '订阅账号', icon: IdCard },
+  { to: '/admin/subscription-groups', label: '订阅分组', icon: Layers },
+  { to: '/admin/subscription-plans', label: '订阅套餐', icon: Package },
+  { to: '/admin/subscriptions', label: '用户订阅', icon: BadgeCheck },
+  { to: '/admin/channel-health', label: '健康监控', icon: Activity },
+  { to: '/admin/cost-analysis', label: '成本分析', icon: TrendingUp },
+  { to: '/admin/routing-ops', label: '路由运营', icon: Route },
+  { to: '/admin/pricing', label: '模型价格', icon: ReceiptText },
+  { to: '/admin/upstream-costs', label: '上游成本', icon: WalletCards },
+  { to: '/admin/logs', label: '日志', icon: ScrollText },
+  { to: '/admin/payment-orders', label: '订单', icon: CreditCard },
+  { to: '/admin/reconciliation', label: '对账', icon: Scale },
+  { to: '/admin/redemptions', label: '兑换码', icon: Ticket },
+  { to: '/admin/options', label: '设置', icon: Settings2 },
 ];
 
 const routeTitles: Record<string, string> = {
@@ -157,7 +156,7 @@ function NavigationLinks({
             key={link.to}
             to={link.to}
             end={link.to === '/admin'}
-            aria-label={link.ariaLabel}
+            aria-label={t(link.label)}
             className={({ isActive }) =>
               cn(
                 'flex h-12 items-center gap-3 rounded-2xl px-4 text-sm font-medium transition-colors',
@@ -296,7 +295,7 @@ export function AppNavigation() {
           <img src="/logo-icon.svg" alt="" aria-hidden="true" className="size-10 shrink-0 rounded-xl" />
           <div>
             <div className="text-lg font-semibold tracking-normal text-foreground">Micro-One API</div>
-            <div className="text-xs font-medium text-muted-foreground">Gateway Console</div>
+            <div className="text-xs font-medium text-muted-foreground">{t('网关控制台')}</div>
           </div>
         </div>
       </div>
@@ -376,7 +375,7 @@ export function AppNavigation() {
                 <span className="block text-xs font-medium text-muted-foreground">{t("控制台用户")}</span>
               </span>
             </button>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Logout" onClick={handleLogout}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={t('退出登录')} onClick={handleLogout}>
               <LogOut className="size-4" />
             </Button>
           </div>

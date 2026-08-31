@@ -156,7 +156,7 @@ function parseReconContent(content: string): { label: string; value: string }[] 
     );
     if (logBullet) {
       details.push({
-        label: t("  账本/日志"),
+        label: t('账本/日志'),
         value: t(`账本 ${logBullet[1]} / 日志 ${logBullet[2]} / 条数差 ${logBullet[3]} / 配额差 ${logBullet[4]}`),
       });
       continue;

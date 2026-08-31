@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { listModels } from '@/lib/model-management';
 import { splitCsv } from '@/lib/model-draft';
+import { t } from '@/lib/i18n';
 
 /**
  * ModelMultiSelect lets the user pick models from the model registry
@@ -19,7 +20,7 @@ import { splitCsv } from '@/lib/model-draft';
 export function ModelMultiSelect({
   value,
   onChange,
-  placeholder = 'Search models...',
+  placeholder,
   maxheight = 'max-h-48',
 }: {
   value: string;
@@ -98,24 +99,24 @@ export function ModelMultiSelect({
               addCustom();
             }
           }}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t('搜索模型...')}
           className="pl-8"
         />
       </div>
       {canAddCustom && (
         <Button type="button" variant="outline" size="sm" className="w-full justify-start" onClick={addCustom}>
           <Plus className="size-4" />
-          Add {customCandidate}
+          {t('添加')} {customCandidate}
         </Button>
       )}
       <div className={`overflow-y-auto rounded-lg border ${maxheight}`}>
         {isLoading ? (
           <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-            Loading models...
+            {t('正在加载模型...')}
           </div>
         ) : filteredModels.length === 0 && customModels.length === 0 ? (
           <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-            {search ? 'No models match your search' : 'No models available'}
+            {search ? t('没有模型符合搜索条件') : t('没有可用模型')}
           </div>
         ) : (
           <div className="divide-y">
@@ -144,7 +145,7 @@ export function ModelMultiSelect({
       </div>
       {selectedSet.size > 0 && (
         <div className="text-xs text-muted-foreground">
-          {selectedSet.size} model{selectedSet.size > 1 ? 's' : ''} selected
+          {t('已选择模型：')}{selectedSet.size}
         </div>
       )}
     </div>

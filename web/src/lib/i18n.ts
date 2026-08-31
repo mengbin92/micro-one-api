@@ -2,6 +2,7 @@ import { getPreference } from '@/lib/preferences';
 import { EN_US_MESSAGES } from '@/locales/en-US';
 
 export type Language = 'zh-CN' | 'en-US';
+export type TranslationValues = Record<string, string | number>;
 
 const DEFAULT_LANGUAGE: Language = 'zh-CN';
 const EN_US_SEGMENTS = Object.entries(EN_US_MESSAGES)
@@ -18,18 +19,26 @@ export function currentLanguage(): Language {
   return isLanguage(stored) ? stored : DEFAULT_LANGUAGE;
 }
 
-export function t(message: string): string {
-  if (currentLanguage() === 'zh-CN' || !message) return message;
+function interpolate(message: string, values?: TranslationValues): string {
+  if (!values) return message;
+  return message.replace(/\{([A-Za-z0-9_]+)\}/g, (placeholder, key: string) => (
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : placeholder
+  ));
+}
+
+export function t(message: string, values?: TranslationValues): string {
+  if (!message) return message;
+  if (currentLanguage() === 'zh-CN') return interpolate(message, values);
 
   const normalized = message.replace(/\s+/g, ' ').trim();
   const exact = EN_US_MESSAGES[normalized];
-  if (exact) return exact.replace(/^[a-z]/, (letter) => letter.toUpperCase());
+  if (exact) return interpolate(exact.replace(/^[a-z]/, (letter) => letter.toUpperCase()), values);
 
   let translated = normalized;
   for (const [source, target] of EN_US_SEGMENTS) {
     if (translated.includes(source)) translated = translated.replaceAll(source, target);
   }
-  return translated;
+  return interpolate(translated, values);
 }
 
 export function locale(): Language {

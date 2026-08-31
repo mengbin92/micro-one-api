@@ -56,6 +56,15 @@ describe('UsageAuditPanel', () => {
     expect(screen.getByText('charge')).toBeInTheDocument();
   });
 
+  it('translates the usage-semantics badge in English mode', () => {
+    window.localStorage.setItem('web:language', JSON.stringify('en-US'));
+
+    render(<UsageAuditPanel log={verifiedLog} />);
+
+    expect(screen.getByText('Anthropic Exclusive Buckets')).toBeInTheDocument();
+    expect(screen.queryByText('Anthropic 互斥桶')).not.toBeInTheDocument();
+  });
+
   it('labels legacy rows and never fabricates an uncached bucket', () => {
     render(
       <UsageAuditPanel

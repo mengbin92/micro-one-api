@@ -395,7 +395,7 @@ export function PlaygroundPage() {
               {address?.source === 'same-origin-fallback' ? <p className="text-xs text-amber-600 dark:text-amber-300">{t("同源回退地址，请确认已配置反向代理。")}</p> : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="playground-key">API Key</Label>
+              <Label htmlFor="playground-key">{t('API 密钥')}</Label>
               <div className="flex gap-2">
                 <Input id="playground-key" type={showKey ? 'text' : 'password'} autoComplete="off" value={verifiedKey ? maskSecret(apiKey) : apiKey} onChange={(event) => changeApiKey(event.target.value)} placeholder={t("粘贴 sk-...")} disabled={status === 'loading_models' || Boolean(activeRequest.current)} />
                 <Button type="button" variant="outline" size="icon" onClick={() => setShowKey((value) => !value)} aria-label={showKey ? t("隐藏 API Key") : t("显示 API Key")} disabled={verifiedKey}>
@@ -422,11 +422,11 @@ export function PlaygroundPage() {
               <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-foreground"><span>{t("高级参数")}</span><ChevronDown className="size-4" /></summary>
               <div className="mt-4 space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="playground-temperature">Temperature</Label>
+                  <Label htmlFor="playground-temperature">{t('温度')}</Label>
                   <Input id="playground-temperature" type="number" min="0" max="2" step="0.1" value={temperature} onChange={(event) => setTemperature(event.target.value)} placeholder={t("自动")} disabled={Boolean(activeRequest.current)} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="playground-max-tokens">Max Tokens</Label>
+                  <Label htmlFor="playground-max-tokens">{t('最大 Token')}</Label>
                   <Input id="playground-max-tokens" type="number" min="1" max="128000" step="1" value={maxTokens} onChange={(event) => setMaxTokens(event.target.value)} placeholder={t("自动")} disabled={Boolean(activeRequest.current)} />
                 </div>
                 <label className="flex items-center justify-between gap-3 text-sm font-semibold text-foreground">{t("流式输出")}<input type="checkbox" checked={stream} onChange={(event) => setStream(event.target.checked)} disabled={Boolean(activeRequest.current)} className="size-4 accent-primary" />
@@ -460,7 +460,7 @@ export function PlaygroundPage() {
                         : 'mr-8 border border-border bg-card text-foreground shadow-sm',
                     )}
                   >
-                    <div className="mb-1 text-xs font-medium opacity-70">{roleLabel}{message.status === 'stopped' ? t(" · 已停止") : ''}</div>
+                    <div className="mb-1 text-xs font-medium opacity-70">{roleLabel}{message.status === 'stopped' ? ` · ${t('已停止')}` : ''}</div>
                     <div className="whitespace-pre-wrap break-words leading-6">{message.content || (message.status === 'streaming' ? '…' : '')}</div>
                   </article>
                 );
@@ -487,13 +487,13 @@ export function PlaygroundPage() {
           <CardContent className="space-y-4 p-5">
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Metric label="HTTP" value={inspector.status ? String(inspector.status) : '—'} />
-              <Metric label="Finish" value={inspector.finishReason || '—'} />
+              <Metric label={t('完成原因')} value={inspector.finishReason || '—'} />
               <Metric label="TTFT" value={formatDuration(inspector.startedAt, inspector.firstContentAt)} />
               <Metric label={t("总耗时")} value={formatDuration(inspector.startedAt, inspector.completedAt)} />
               <Metric label={t("输入 Token")} value={formatTokens(inspector.usage?.prompt_tokens)} />
               <Metric label={t("输出 Token")} value={formatTokens(inspector.usage?.completion_tokens)} />
             </div>
-            {inspector.requestId ? <div className="rounded-xl bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">Request ID</p><p className="mt-1 break-all font-mono text-xs text-foreground">{inspector.requestId}</p></div> : null}
+            {inspector.requestId ? <div className="rounded-xl bg-muted p-3"><p className="text-xs font-semibold text-muted-foreground">{t('请求 ID')}</p><p className="mt-1 break-all font-mono text-xs text-foreground">{inspector.requestId}</p></div> : null}
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => void copyRequest()} disabled={!inspector.requestBody}><Copy className="size-3.5" />{t("复制请求 JSON")}</Button>
               <Button type="button" variant="outline" size="sm" onClick={() => setShowInspector((value) => !value)}><Eye className="size-3.5" />{t("原始事件")}</Button>

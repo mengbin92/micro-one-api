@@ -41,8 +41,8 @@ describe('AppNavigation', () => {
     mockSelfAndDashboardEmpty();
     renderNavigation();
 
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Tokens' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '仪表盘' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'API 密钥' })).toBeInTheDocument();
   });
 
   it('shows admin links when the current user has admin role', async () => {
@@ -51,9 +51,9 @@ describe('AppNavigation', () => {
 
     renderNavigation();
 
-    expect(await screen.findByRole('link', { name: 'Users' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Payment Orders' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Options' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '用户' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '订单' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '设置' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '进入管理' })).toHaveAttribute('href', '/admin');
   });
 
@@ -63,8 +63,8 @@ describe('AppNavigation', () => {
 
     renderNavigation('/admin/users');
 
-    const overviewLink = await screen.findByRole('link', { name: 'Admin Overview' });
-    const usersLink = screen.getByRole('link', { name: 'Users' });
+    const overviewLink = await screen.findByRole('link', { name: '总览' });
+    const usersLink = screen.getByRole('link', { name: '用户' });
     expect(overviewLink).not.toHaveAttribute('aria-current');
     expect(usersLink).toHaveAttribute('aria-current', 'page');
   });
@@ -77,7 +77,7 @@ describe('AppNavigation', () => {
 
     expect(await screen.findByRole('heading', { name: '仪表盘' })).toBeInTheDocument();
     expect(screen.queryByText('管理后台')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '用户' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '进入管理' })).not.toBeInTheDocument();
   });
 
@@ -86,7 +86,7 @@ describe('AppNavigation', () => {
 
     renderNavigation();
 
-    expect(await screen.findByRole('link', { name: 'Users' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '用户' })).toBeInTheDocument();
     expect(window.localStorage.getItem('userRole')).toBe('10');
     expect(window.localStorage.getItem('userId')).toBe('42');
   });
@@ -99,7 +99,7 @@ describe('AppNavigation', () => {
     await user.click(screen.getByRole('button', { name: '打开导航' }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /close/i }));
+    await user.click(screen.getByRole('button', { name: '关闭' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
@@ -112,6 +112,7 @@ describe('AppNavigation', () => {
     await user.click(screen.getByRole('button', { name: '切换至英文' }));
 
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(window.localStorage.getItem('web:language')).toBe(JSON.stringify('en-US'));
     expect(document.documentElement.lang).toBe('en-US');
   });
@@ -124,7 +125,7 @@ describe('AppNavigation', () => {
     window.localStorage.setItem('userRole', '10');
     renderNavigation();
 
-    await user.click(screen.getByRole('button', { name: 'Logout' }));
+    await user.click(screen.getByRole('button', { name: '退出登录' }));
 
     expect(window.localStorage.getItem('token')).toBeNull();
     expect(window.localStorage.getItem('userId')).toBeNull();

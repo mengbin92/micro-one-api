@@ -257,7 +257,7 @@ export function AdminModelsPage() {
       batchModels(payload),
     onSuccess: (resp) => {
       if (!resp.success) { toast.error(resp.message || t("批量操作失败")); return; }
-      toast.success(t("已处理 ") + resp.affected + t(" 个模型"));
+      toast.success(t('已处理 {count} 个模型', { count: resp.affected }));
       setSelectedPks(new Set());
       invalidateModels();
     },
@@ -311,7 +311,7 @@ export function AdminModelsPage() {
     if (action === 'delete') {
       setConfirmState({
         title: t("批量删除"),
-        message: t("确认批量删除 ") + selectedPks.size + t(" 个模型？"),
+        message: t('确认批量删除 {count} 个模型？', { count: selectedPks.size }),
         onConfirm: () => {
           batchMutation.mutate({ action, model_pks: [...selectedPks] });
           setConfirmState(null);
@@ -471,7 +471,7 @@ export function AdminModelsPage() {
                         checked={selectedPks.has(m.id)}
                         onChange={() => toggleSelect(m.id)}
                         className="size-4 rounded border-input"
-                        aria-label={t("选择 ") + m.model_id}
+                        aria-label={t('选择 {model}', { model: m.model_id })}
                       />
                     </TableCell>
                     <TableCell className="font-mono text-sm">{m.id}</TableCell>
