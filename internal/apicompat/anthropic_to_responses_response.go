@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"micro-one-api/pkg/jsonx"
 	"strings"
 	"time"
+
+	"micro-one-api/pkg/jsonx"
+	"micro-one-api/pkg/usage"
 )
 
 // ---------------------------------------------------------------------------
@@ -101,24 +103,42 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 		out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
 	}
 
-	// Usage
-	// Anthropic's input_tokens excludes cache_read/cache_creation, while OpenAI
-	// Responses' input_tokens is the total including cached tokens. Add them back
-	// when converting so downstream consumers see OpenAI semantics.
-	totalInputTokens := resp.Usage.InputTokens +
-		resp.Usage.CacheReadInputTokens +
-		resp.Usage.CacheCreationInputTokens
-	out.Usage = &ResponsesUsage{
-		InputTokens:  totalInputTokens,
-		OutputTokens: resp.Usage.OutputTokens,
-		TotalTokens:  totalInputTokens + resp.Usage.OutputTokens,
+	// Usage: Anthropic's buckets are exclusive while OpenAI Responses' usage is
+	// inclusive; project through the shared pkg/usage helper (§4.3) so this
+	// path can never drift from the provider Chat projection.
+	out.Usage = responsesUsageFromAnthropic(
+		resp.Usage.InputTokens,
+		resp.Usage.OutputTokens,
+		resp.Usage.CacheReadInputTokens,
+		resp.Usage.CacheCreationInputTokens,
+	)
+
+	return out
+}
+
+// responsesUsageFromAnthropic projects mutually-exclusive Anthropic usage
+// buckets into the inclusive OpenAI Responses usage shape via the single
+// pkg/usage projection. Anthropic reports cache creation only as a flat
+// aggregate, so it lands in the 5m bucket (ADR §4.2 default). The details
+// object stays nil when there is no cache-read, keeping the wire output
+// identical to the pre-helper implementation.
+func responsesUsageFromAnthropic(input, output, cacheRead, cacheCreation int) *ResponsesUsage {
+	p := usage.ProjectOpenAI(usage.Buckets{
+		UncachedInputTokens:   int64(input),
+		CacheReadTokens:       int64(cacheRead),
+		CacheCreation5mTokens: int64(cacheCreation),
+		OutputTokens:          int64(output),
+	})
+	out := &ResponsesUsage{
+		InputTokens:  int(p.PromptTokens),
+		OutputTokens: int(p.OutputTokens),
+		TotalTokens:  int(p.TotalTokens),
 	}
-	if resp.Usage.CacheReadInputTokens > 0 {
-		out.Usage.InputTokensDetails = &ResponsesInputTokensDetails{
-			CachedTokens: resp.Usage.CacheReadInputTokens,
+	if p.CachedTokens > 0 {
+		out.InputTokensDetails = &ResponsesInputTokensDetails{
+			CachedTokens: int(p.CachedTokens),
 		}
 	}
-
 	return out
 }
 
@@ -584,19 +604,15 @@ func makeResponsesCompletedEvent(
 	seq := state.SequenceNumber
 	state.SequenceNumber++
 
-	// Anthropic's input_tokens excludes cache_read/cache_creation; add them
-	// back to match OpenAI Responses semantics where input_tokens is the total.
-	totalInputTokens := state.InputTokens + state.CacheReadInputTokens + state.CacheCreationInputTokens
-	usage := &ResponsesUsage{
-		InputTokens:  totalInputTokens,
-		OutputTokens: state.OutputTokens,
-		TotalTokens:  totalInputTokens + state.OutputTokens,
-	}
-	if state.CacheReadInputTokens > 0 {
-		usage.InputTokensDetails = &ResponsesInputTokensDetails{
-			CachedTokens: state.CacheReadInputTokens,
-		}
-	}
+	// Same shared projection as the non-streaming path: message_start and
+	// message_delta usage is exclusive; the terminal Responses usage must be
+	// inclusive (§4.3 stream row of the projection matrix).
+	respUsage := responsesUsageFromAnthropic(
+		state.InputTokens,
+		state.OutputTokens,
+		state.CacheReadInputTokens,
+		state.CacheCreationInputTokens,
+	)
 
 	return ResponsesStreamEvent{
 		Type:           "response.completed",
@@ -607,7 +623,7 @@ func makeResponsesCompletedEvent(
 			Model:             state.Model,
 			Status:            status,
 			Output:            []ResponsesOutput{}, // Simplified; full output tracking would add complexity
-			Usage:             usage,
+			Usage:             respUsage,
 			IncompleteDetails: incompleteDetails,
 		},
 	}

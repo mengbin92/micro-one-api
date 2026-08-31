@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/pkg/usage"
 )
 
 // ---------------------------------------------------------------------------
@@ -93,26 +94,31 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 	return out
 }
 
-func anthropicUsageFromResponsesUsage(usage *ResponsesUsage) AnthropicUsage {
-	if usage == nil {
+// anthropicUsageFromResponsesUsage projects the inclusive Responses usage
+// back into Anthropic's exclusive buckets via the shared pkg/usage inverse
+// projection, so the forward and reverse directions cannot drift.
+func anthropicUsageFromResponsesUsage(u *ResponsesUsage) AnthropicUsage {
+	if u == nil {
 		return AnthropicUsage{}
 	}
 
 	cachedTokens := 0
-	cacheCreationTokens := 0
-	if usage.InputTokensDetails != nil {
-		cachedTokens = usage.InputTokensDetails.CachedTokens
-		cacheCreationTokens = usage.InputTokensDetails.CacheCreation5mTokens +
-			usage.InputTokensDetails.CacheCreation1hTokens
+	cacheCreation5m := 0
+	cacheCreation1h := 0
+	if u.InputTokensDetails != nil {
+		cachedTokens = u.InputTokensDetails.CachedTokens
+		cacheCreation5m = u.InputTokensDetails.CacheCreation5mTokens
+		cacheCreation1h = u.InputTokensDetails.CacheCreation1hTokens
 	}
 
-	inputTokens := max(usage.InputTokens-cachedTokens-cacheCreationTokens, 0)
+	b := usage.SplitInclusive(int64(u.InputTokens), int64(cachedTokens),
+		int64(cacheCreation5m), int64(cacheCreation1h), int64(u.OutputTokens))
 
 	return AnthropicUsage{
-		InputTokens:              inputTokens,
-		OutputTokens:             usage.OutputTokens,
-		CacheReadInputTokens:     cachedTokens,
-		CacheCreationInputTokens: cacheCreationTokens,
+		InputTokens:              int(b.UncachedInputTokens),
+		OutputTokens:             int(b.OutputTokens),
+		CacheReadInputTokens:     int(b.CacheReadTokens),
+		CacheCreationInputTokens: int(cacheCreation5m + cacheCreation1h),
 	}
 }
 
