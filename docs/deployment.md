@@ -115,7 +115,7 @@ docker compose --env-file .env down -v        # 停止并删除数据卷
 - Kustomize 5+
 - Nginx Ingress Controller 已安装
 - MySQL 8 和启用密码认证的 Redis 可用（集群内或外部），并能通过清单中的 `mysql:3306`、`redis:6379` 地址访问；使用外部地址时先修改 `app-config`
-- 已安装 Go 1.26（执行数据库迁移）
+- 已安装 Go 1.27（执行数据库迁移）
 - 已准备九个服务镜像；本仓库的 Release 流程只发布 GitHub Release，不代替用户推送镜像
 
 ### 3.2 创建命名空间

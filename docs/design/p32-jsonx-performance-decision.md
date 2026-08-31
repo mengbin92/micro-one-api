@@ -128,7 +128,10 @@ GC 相关:`runtime.scanObject`(8.26%)。无异常热点。
 3. **单一 JSON 语义层**(HTML escaping、sorted map keys、copied strings)不可破坏。
 4. **NewEncoder** 维持现状:仅 1 个 relay 热路径使用点(error handler),其余为
    admin/health 端点,均非性能瓶颈。
-5. 版本边界注意事项(go1.27+ 回退 std)仍有效,保持 go.mod 在 go 1.26。
+5. sonic v1.15.3 原生支持 Go 1.27；版本边界已前移到 go1.28+ 回退 std，
+   因此 go.mod 可升级并保持在 go 1.27。
+6. 上述性能数据来自 go1.26 环境基准；升级到 go 1.27 后尚未重新 benchmark，
+   当前只确认依赖 build-tag 兼容，不延伸声称性能结论已复核。
 
 ## 5. Linux/amd64 复核执行记录
 
