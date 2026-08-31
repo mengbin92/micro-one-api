@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.2] - 2026-08-31
+
+v0.26.2 是 v0.26.1 之后的 **PATCH Relay 路由与 Web 界面修复版本**：统一模型标识处理，恢复显式渠道模型映射优先级，并同步中英文界面文案。无公共 API / proto 变更、无数据库迁移。详见 [release-v0.26.2.md](docs/releases/release-v0.26.2.md)。
+
+### Fixed
+
+- 修复模型路由大小写不一致和客户端 `[1M]` 标记泄漏到路由、计费及上游请求的问题。
+- 修复渠道显式 `model_mapping` 被 `upstream_model_id` 覆盖的问题。
+- 修复 Web 管理端和用户端中英文切换不完整、动态文案粘连及法律页面未翻译的问题。
+
+### Changed
+
+- 模型精确映射、白名单、能力检查、重试和 sticky 路由统一使用大小写不敏感的标识匹配。
+- 前端共享翻译目录增加占位符插值和完整英文法律文案。
+
 ## [0.26.1] - 2026-08-31
 
 v0.26.1 是 v0.26.0 之后的 **PATCH 工具链与仓库现代化版本**：统一 Go 1.27 工具链与代码风格，升级兼容依赖，修复 middleware 测试 goroutine 清理，并携带最新 executor observation 文档。无公共 API / proto 变更、无数据库迁移。详见 [release-v0.26.1.md](docs/releases/release-v0.26.1.md)。
