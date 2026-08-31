@@ -176,6 +176,9 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// v0.11.0 review M1: record the source that actually executed the
 		// request, not the original plan, so failover attribution is correct.
 		logInput.applyChannelInputs(ch)
+		// §4.3: the envelope comes from the provider-proven canonical buckets
+		// (Anthropic) or the OpenAI field shape — never the channel type.
+		logInput.applyEnvelope(envelopeFromProviderUsage(resp.Usage, resp.Canonical))
 		if err := s.commitQuota(ctx, reservation.ReservationId, actualTokens, true, logInput); err != nil {
 			return err
 		}
@@ -225,9 +228,12 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 	cacheCreation1hTokens := int64(0)
 	estimatedTokens := int64(0)
 	streamError := false
+	var lastUsage relayprovider.Usage
+	var streamCanonical *relayprovider.CanonicalUsage
 
 	for chunk := range chunkChan {
 		if chunk.Usage.TotalTokens > 0 {
+			lastUsage = chunk.Usage
 			totalTokens = int64(chunk.Usage.TotalTokens)
 			promptTokens = int64(chunk.Usage.PromptTokens)
 			completionTokens = int64(chunk.Usage.CompletionTokens)
@@ -236,6 +242,9 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 				cacheCreation5mTokens = fiveM
 				cacheCreation1hTokens = oneH
 			}
+		}
+		if chunk.Canonical != nil {
+			streamCanonical = chunk.Canonical
 		}
 		for _, choice := range chunk.Choices {
 			estimatedTokens += int64(len(choice.Delta.Content) / 4)
@@ -269,6 +278,11 @@ func (s *HTTPServer) handleStreamingResponse(w http.ResponseWriter, r *http.Requ
 		logInput.ElapsedTime = time.Since(startedAt).Milliseconds()
 		if logInput.Endpoint == "" {
 			logInput.Endpoint = "/v1/chat/completions"
+		}
+		// §4.3: prefer the provider-proven canonical buckets from the
+		// terminal usage chunk; otherwise decide from the OpenAI shape.
+		if totalTokens > 0 {
+			logInput.applyEnvelope(envelopeFromProviderUsage(lastUsage, streamCanonical))
 		}
 		if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, totalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)

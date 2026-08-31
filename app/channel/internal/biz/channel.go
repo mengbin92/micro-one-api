@@ -376,6 +376,14 @@ type ChannelUsecase struct {
 	// not configured; SelectSubscriptionAccount then uses the normal
 	// priority-tier selection. See docs/model-management-design.md §9.3 #3.
 	routingRepo ModelRoutingRepo
+
+	// usageSemanticBlocksCache is the short-TTL read cache for the
+	// usage-semantics quarantine (§5.2); the database row is authoritative
+	// and writers flip the dirty flag to observe their own writes.
+	usageSemanticBlocksMu         sync.Mutex
+	usageSemanticBlocksCache      []UsageSemanticBlock
+	usageSemanticBlocksCacheUntil time.Time
+	usageSemanticBlocksDirty      bool
 }
 
 func NewChannelUsecase(repo ChannelRepo, eventBus events.EventBus) *ChannelUsecase {
@@ -463,6 +471,12 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 			}
 			if channel.SelectableAt(uc.now()) {
 				channel.UpstreamModelID = ability.UpstreamModelID
+				// §5.2 usage-semantics quarantine: a source+model key whose
+				// adapter keeps producing ambiguous usage is paused. This is
+				// a usage control-plane filter, NOT a transport health state.
+				if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, ability.UpstreamModelID) {
+					continue
+				}
 				tier = append(tier, channel)
 			}
 		}
@@ -517,6 +531,12 @@ func (uc *ChannelUsecase) SelectChannelExcluding(ctx context.Context, group, mod
 			}
 			if channel.SelectableAt(uc.now()) {
 				channel.UpstreamModelID = ability.UpstreamModelID
+				// §5.2 usage-semantics quarantine: a source+model key whose
+				// adapter keeps producing ambiguous usage is paused. This is
+				// a usage control-plane filter, NOT a transport health state.
+				if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, ability.UpstreamModelID) {
+					continue
+				}
 				tier = append(tier, channel)
 			}
 		}
@@ -703,6 +723,13 @@ func (uc *ChannelUsecase) selectSubscriptionAccount(ctx context.Context, group, 
 				continue
 			}
 			if excluded[ability.AccountID] {
+				continue
+			}
+			// Usage-semantics quarantine is scoped to the exact subscription
+			// account + upstream model. Do not reuse the broader account-level
+			// rate-limit flag here: one broken adapter/model combination must
+			// not take unrelated models on the same account out of rotation.
+			if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindSubscription, ability.AccountID, ability.UpstreamModelID) {
 				continue
 			}
 			account, err := uc.repo.FindSubscriptionAccountByID(ctx, ability.AccountID)

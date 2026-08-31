@@ -235,6 +235,10 @@ func populateAnthropicUsageLog(input *usageLogInput, usage rawUsage, elapsed tim
 	input.CacheCreation5mTokens = usage.CacheCreation5mTokens
 	input.CacheCreation1hTokens = usage.CacheCreation1hTokens
 	input.ElapsedTime = elapsed.Milliseconds()
+	// §4.2: the semantics verdict comes from the accumulated field shape of
+	// the raw upstream response (anthropic_messages markers for Anthropic
+	// channels), not from the channel type.
+	input.applyEnvelope(envelopeFromRawUsage(usage))
 }
 
 type observedReadCloser struct {

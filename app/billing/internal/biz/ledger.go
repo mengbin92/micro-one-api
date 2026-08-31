@@ -25,6 +25,7 @@ const (
 	CostAuditPriced        = "priced"
 	CostAuditUnpriced      = "unpriced"
 	CostAuditLegacy        = "legacy"
+	CostAuditAmbiguous     = "ambiguous"
 )
 
 // Ledger is the append-only audit trail for every wallet/subscription
@@ -85,6 +86,27 @@ type Ledger struct {
 	LedgerDedupeKey string
 	Username        string // resolved from users table at read time
 	CreatedAt       time.Time
+
+	// Usage-semantics audit trail (token-usage-billing-semantics-remediation
+	// §6.1, migration 085). Existing rows keep usage_parse_status='legacy' and
+	// usage_semantics=''; semantics is NEVER backfilled from token arithmetic.
+	UncachedInputTokens    int64
+	ReportedPromptTokens   int64
+	ReportedTotalTokens    int64
+	BillableTotalTokens    int64
+	UsageSemantics         string
+	UsageProtocol          string
+	UsageFieldShape        string
+	UsageParseStatus       string
+	UsageContractVersion   int32
+	CanonicalPresent       bool
+	UsageDecisionReason    string
+	SubsetCandidateCost    int64
+	ExclusiveCandidateCost int64
+	// PricingConfigHash references the billing_pricing_snapshots row holding
+	// the per-bucket unit prices this row was charged with (migration 088,
+	// §6.3). Empty for pre-088 rows and ratio-priced models; never guessed.
+	PricingConfigHash string
 }
 
 // DailyAggregate holds per-day aggregated ledger stats (consume only).
@@ -98,6 +120,9 @@ type DailyAggregate struct {
 	CacheCreation1hTokens int64
 	Count                 int64
 	ElapsedTime           int64
+	// Canonical sums (migration 085); zero for pre-contract legacy rows.
+	UncachedInputTokens int64
+	BillableTotalTokens int64
 }
 
 // ModelAggregate holds per-model aggregated token stats (consume only).

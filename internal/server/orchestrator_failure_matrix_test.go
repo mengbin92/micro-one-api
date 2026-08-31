@@ -67,7 +67,7 @@ type matrixLifecycleHooks struct {
 	logSinkErr error
 }
 
-func (h *matrixLifecycleHooks) ReserveQuota(context.Context, *relaybiz.RelayPlan, *RelayRequest, relaybiz.CanonicalUsage) (*Reservation, error) {
+func (h *matrixLifecycleHooks) ReserveQuota(context.Context, *relaybiz.RelayPlan, *RelayRequest, relaybiz.UsageEnvelope) (*Reservation, error) {
 	h.reserve++
 	if h.reserveErr != nil {
 		return nil, h.reserveErr
@@ -75,7 +75,7 @@ func (h *matrixLifecycleHooks) ReserveQuota(context.Context, *relaybiz.RelayPlan
 	return &Reservation{ID: "matrix-reservation"}, nil
 }
 
-func (h *matrixLifecycleHooks) CommitQuota(context.Context, *relaybiz.RelayPlan, *RelayRequest, *Reservation, relaybiz.CanonicalUsage, bool, time.Duration) error {
+func (h *matrixLifecycleHooks) CommitQuota(context.Context, *relaybiz.RelayPlan, *RelayRequest, *Reservation, relaybiz.UsageEnvelope, bool, time.Duration) error {
 	h.commit++
 	return h.commitErr
 }
@@ -85,7 +85,7 @@ func (h *matrixLifecycleHooks) ReleaseQuota(context.Context, *Reservation, strin
 	return nil
 }
 
-func (h *matrixLifecycleHooks) LogUsage(context.Context, *relaybiz.RelayPlan, *RelayRequest, relaybiz.CanonicalUsage, time.Duration, bool) {
+func (h *matrixLifecycleHooks) LogUsage(context.Context, *relaybiz.RelayPlan, *RelayRequest, relaybiz.UsageEnvelope, time.Duration, bool) {
 	h.log++
 	// Usage logging is best-effort by contract. A failed sink must not cause a
 	// second upstream attempt or a second billing commit.
@@ -163,7 +163,7 @@ func TestRelayOrchestratorFailureMatrixCommitErrorDoesNotRetryOrRelease(t *testi
 		StatusCode: http.StatusOK,
 		Headers:    map[string][]string{"Content-Type": {"application/json"}},
 		Body:       []byte(`{"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`),
-		Usage:      &relaybiz.CanonicalUsage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2},
+		Usage:      &relaybiz.UsageEnvelope{Canonical: &relaybiz.CanonicalUsage{UncachedInputTokens: 1, OutputTokens: 1}},
 	}}
 	executor := newMatrixExecutor(matrixUsecase(channel, &relaybiz.RetryPolicy{MaxAttempts: 3}), hooks, forwarder)
 	req := matrixRequest()

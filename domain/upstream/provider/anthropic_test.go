@@ -34,11 +34,18 @@ func TestAnthropicChatCompletionsParsesUsage(t *testing.T) {
 		t.Fatalf("ChatCompletions: %v", err)
 	}
 
-	if resp.Usage.PromptTokens != 100 || resp.Usage.CompletionTokens != 25 || resp.Usage.TotalTokens != 125 {
+	// §4.3 inclusive projection: prompt = 100+60, total = prompt+25.
+	if resp.Usage.PromptTokens != 160 || resp.Usage.CompletionTokens != 25 || resp.Usage.TotalTokens != 185 {
 		t.Fatalf("usage = %+v", resp.Usage)
 	}
 	if got := resp.Usage.PromptTokensDetails.CacheReadTokens; got != 60 {
 		t.Fatalf("cache_read_tokens = %d, want 60", got)
+	}
+	if resp.Canonical == nil || resp.Canonical.UncachedInputTokens != 100 || resp.Canonical.CacheReadTokens != 60 || resp.Canonical.OutputTokens != 25 {
+		t.Fatalf("Canonical = %+v, want exclusive buckets 100/60/25", resp.Canonical)
+	}
+	if resp.Canonical.ReportedTotalTokens != 0 {
+		t.Fatalf("Anthropic omitted total_tokens; reported audit total = %d, want 0", resp.Canonical.ReportedTotalTokens)
 	}
 }
 
@@ -90,7 +97,7 @@ func TestAnthropicChatCompletionsStreamCollectsUsage(t *testing.T) {
 	if usage == nil {
 		t.Fatal("no usage chunk received")
 	}
-	if usage.PromptTokens != 100 || usage.CompletionTokens != 25 || usage.TotalTokens != 125 {
+	if usage.PromptTokens != 160 || usage.CompletionTokens != 25 || usage.TotalTokens != 185 {
 		t.Fatalf("usage = %+v", usage)
 	}
 	if usage.PromptTokensDetails.CacheReadTokens != 60 {

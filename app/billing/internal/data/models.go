@@ -98,6 +98,22 @@ type ledgerModel struct {
 	CostSource       string `gorm:"column:cost_source"`
 	SubscriptionCost int64  `gorm:"column:subscription_cost"`
 	BalanceCost      int64  `gorm:"column:balance_cost"`
+	// Usage-semantics audit trail (migration 085).
+	UncachedInputTokens    int64  `gorm:"column:uncached_input_tokens"`
+	ReportedPromptTokens   int64  `gorm:"column:reported_prompt_tokens"`
+	ReportedTotalTokens    int64  `gorm:"column:reported_total_tokens"`
+	BillableTotalTokens    int64  `gorm:"column:billable_total_tokens"`
+	UsageSemantics         string `gorm:"column:usage_semantics"`
+	UsageProtocol          string `gorm:"column:usage_protocol"`
+	UsageFieldShape        string `gorm:"column:usage_field_shape"`
+	UsageParseStatus       string `gorm:"column:usage_parse_status"`
+	UsageContractVersion   int32  `gorm:"column:usage_contract_version"`
+	CanonicalPresent       bool   `gorm:"column:canonical_present"`
+	UsageDecisionReason    string `gorm:"column:usage_decision_reason"`
+	SubsetCandidateCost    int64  `gorm:"column:subset_candidate_cost"`
+	ExclusiveCandidateCost int64  `gorm:"column:exclusive_candidate_cost"`
+	// Pricing evidence (migration 088): references billing_pricing_snapshots.
+	PricingConfigHash string `gorm:"column:pricing_config_hash"`
 	// v0.19 P3 A+M1: after partitioning this is a non-unique lookup index.
 	// Global uniqueness is owned by billing_ledger_dedupe_claims, whose primary
 	// key is claimed in the same transaction before the ledger row is inserted.

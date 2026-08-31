@@ -51,6 +51,20 @@ message GetLogResponse {
   // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
   int64 cache_creation_5m_tokens = 19;  // 写入 5 分钟 TTL cache 的 token
   int64 cache_creation_1h_tokens = 20;  // 写入 1 小时 TTL cache 的 token
+  // token-usage-billing-semantics-remediation (2026-08-31) §9.1 display
+  // contract. quota keeps its legacy reported-total meaning; new consumers
+  // must prefer billable_total_tokens and MUST NOT re-derive totals via
+  // prompt-cache+output+cache. usage_parse_status='legacy' rows have unknown
+  // historical semantics and must be displayed as such.
+  int64 uncached_input_tokens = 21;   // canonical bucket (already net of cache)
+  int64 reported_prompt_tokens = 22;  // raw upstream-reported prompt/input
+  int64 reported_total_tokens = 23;   // raw upstream-reported total
+  int64 billable_total_tokens = 24;   // sum of the five canonical buckets
+  string usage_semantics = 25;        // openai_subset | anthropic_exclusive | ''
+  string usage_protocol = 26;         // protocol the parser proved
+  string usage_parse_status = 27;     // verified | estimated | ambiguous | legacy
+  int32 usage_contract_version = 28;  // 0 = legacy producer
+  string usage_decision_reason = 29;  // e.g. cached_exceeds_reported_prompt
 }
 
 message ListLogsRequest {
@@ -86,6 +100,22 @@ message IngestLogRequest {
   int64 cache_creation_1h_tokens = 18;  // 写入 1 小时 TTL cache 的 token
   // Stable producer key. Retries with the same key return the original row.
   string dedupe_key = 19;
+  // token-usage-billing-semantics-remediation (2026-08-31) §6.2/§9.1.
+  // quota keeps its legacy reported-total meaning; the fields below carry the
+  // canonical display contract. Legacy producers (usage_contract_version=0)
+  // leave them at zero value and the row is stored with
+  // usage_parse_status='legacy'.
+  int64 uncached_input_tokens = 20;
+  int64 reported_prompt_tokens = 21;
+  int64 reported_total_tokens = 22;
+  int64 billable_total_tokens = 23;
+  string usage_semantics = 24;
+  string usage_protocol = 25;
+  string usage_field_shape = 26;
+  string usage_parse_status = 27;
+  int32 usage_contract_version = 28;
+  bool canonical_present = 29;
+  string usage_decision_reason = 30;
 }
 
 message IngestLogResponse {

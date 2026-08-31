@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/pkg/usage"
 	applogger "micro-one-api/platform/logging"
 )
 
@@ -298,6 +299,13 @@ func anthropicFinishReason(stopReason string) string {
 }
 
 // convertFromAnthropicResponse converts an Anthropic response to OpenAI format.
+//
+// The canonical five mutually-exclusive buckets are proven FIRST from the
+// Anthropic Messages usage (exclusive semantics, §2.4); the client-facing
+// OpenAI Usage is then an independent INCLUSIVE projection of those buckets
+// (§4.3): prompt and total include every cache bucket. Before this fix the
+// projection wrote total=input+output, dropping cache buckets from the
+// displayed total while billing (correctly) charged them.
 func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCompletionsResponse {
 	content := ""
 	if len(resp.Content) > 0 {
@@ -305,6 +313,7 @@ func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCo
 	}
 
 	finishReason := anthropicFinishReason(resp.StopReason)
+	canonical := canonicalFromAnthropicUsage(resp.Usage)
 
 	return &ChatCompletionsResponse{
 		ID:      resp.ID,
@@ -321,15 +330,55 @@ func convertFromAnthropicResponse(resp *anthropicResponse, model string) *ChatCo
 				FinishReason: finishReason,
 			},
 		},
-		Usage: Usage{
-			PromptTokens:     resp.Usage.InputTokens,
-			CompletionTokens: resp.Usage.OutputTokens,
-			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
-			PromptTokensDetails: UsageTokenDetails{
-				CacheReadTokens:       resp.Usage.CacheReadInputTokens,
-				CacheCreation5mTokens: anthropicCacheCreation5m(resp.Usage),
-				CacheCreation1hTokens: anthropicCacheCreation1h(resp.Usage),
-			},
+		Usage:     projectOpenAIUsageFromCanonical(canonical),
+		Canonical: canonical,
+	}
+}
+
+// canonicalFromAnthropicUsage proves the five mutually-exclusive buckets from
+// an Anthropic Messages usage object: uncached input = input_tokens (NO
+// cache subtraction may happen), cache read/creation are their own buckets
+// (§2.4, §4.2 verified anthropic_exclusive).
+func canonicalFromAnthropicUsage(u anthropicUsage) *CanonicalUsage {
+	return &CanonicalUsage{
+		UncachedInputTokens:   int64(u.InputTokens),
+		CacheReadTokens:       int64(u.CacheReadInputTokens),
+		CacheCreation5mTokens: int64(anthropicCacheCreation5m(u)),
+		CacheCreation1hTokens: int64(anthropicCacheCreation1h(u)),
+		OutputTokens:          int64(u.OutputTokens),
+		ReportedPromptTokens:  int64(u.InputTokens),
+		// Anthropic reports no total_tokens. Keep the reported audit field at
+		// zero; the inclusive client projection below computes its own total.
+		ReportedTotalTokens: 0,
+		Semantics:           "anthropic_exclusive",
+		Protocol:            "anthropic_messages",
+	}
+}
+
+// projectOpenAIUsageFromCanonical renders the client-facing OpenAI usage from
+// canonical buckets (§4.3 projection matrix). The arithmetic lives in
+// pkg/usage so provider Chat and apicompat's Anthropic→Responses projection
+// share one implementation and cannot drift apart.
+func projectOpenAIUsageFromCanonical(c *CanonicalUsage) Usage {
+	if c == nil {
+		return Usage{}
+	}
+	p := usage.ProjectOpenAI(usage.Buckets{
+		UncachedInputTokens:   c.UncachedInputTokens,
+		CacheReadTokens:       c.CacheReadTokens,
+		CacheCreation5mTokens: c.CacheCreation5mTokens,
+		CacheCreation1hTokens: c.CacheCreation1hTokens,
+		OutputTokens:          c.OutputTokens,
+	})
+	return Usage{
+		PromptTokens:     int(p.PromptTokens),
+		CompletionTokens: int(p.OutputTokens),
+		TotalTokens:      int(p.TotalTokens),
+		PromptTokensDetails: UsageTokenDetails{
+			CachedTokens:          int(p.CachedTokens),
+			CacheReadTokens:       int(p.CacheReadTokens),
+			CacheCreation5mTokens: int(p.CacheCreation5mTokens),
+			CacheCreation1hTokens: int(p.CacheCreation1hTokens),
 		},
 	}
 }
@@ -499,22 +548,18 @@ func (p *AnthropicProvider) ChatCompletionsStream(ctx context.Context, req *Chat
 				if event.Delta != nil {
 					finishReason = anthropicFinishReason(event.Delta.StopReason)
 				}
+				// Same canonical-first rule as the non-stream path (§4.3):
+				// the merged message_start/delta usage is exclusive, and the
+				// emitted OpenAI chunk is an inclusive projection of it.
+				canonical := canonicalFromAnthropicUsage(*usage)
 				chunkChan <- StreamChunk{
 					Object: "chat.completion.chunk",
 					Model:  req.Model,
 					Choices: []StreamChoice{
 						{Index: 0, FinishReason: &finishReason},
 					},
-					Usage: Usage{
-						PromptTokens:     usage.InputTokens,
-						CompletionTokens: usage.OutputTokens,
-						TotalTokens:      usage.InputTokens + usage.OutputTokens,
-						PromptTokensDetails: UsageTokenDetails{
-							CacheReadTokens:       usage.CacheReadInputTokens,
-							CacheCreation5mTokens: anthropicCacheCreation5m(*usage),
-							CacheCreation1hTokens: anthropicCacheCreation1h(*usage),
-						},
-					},
+					Usage:     projectOpenAIUsageFromCanonical(canonical),
+					Canonical: canonical,
 				}
 				continue
 			}

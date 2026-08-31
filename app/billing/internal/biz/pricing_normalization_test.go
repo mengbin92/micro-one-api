@@ -2,10 +2,49 @@ package biz
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestNormalizePricingRejectsNonFiniteValues(t *testing.T) {
+	nan := math.NaN()
+	posInf := math.Inf(1)
+	negInf := math.Inf(-1)
+	prices := normalizeModelPrices(map[string]ModelPrice{
+		"invalid-only": {InputPrice: nan, OutputPrice: posInf},
+		"mixed": {
+			InputPrice:           1,
+			CacheReadPrice:       &nan,
+			CacheCreation5mPrice: &posInf,
+			CacheCreation1hPrice: &negInf,
+		},
+	})
+
+	assert.NotContains(t, prices, "invalid-only")
+	mixed, ok := prices["mixed"]
+	assert.True(t, ok)
+	assert.Nil(t, mixed.CacheReadPrice, "invalid cache-read price must fall back to input price")
+	assert.Nil(t, mixed.CacheCreation5mPrice, "invalid creation price must remain unpriced")
+	assert.Nil(t, mixed.CacheCreation1hPrice, "invalid creation price must remain unpriced")
+
+	assert.Empty(t, normalizePositiveRatios(map[string]float64{"nan": nan, "inf": posInf}))
+	assert.Empty(t, normalizeModelRatios(map[string]float64{"nan": nan, "inf": posInf}))
+}
+
+func TestStaticPricingNormalizesGroupRatiosAndSaturatesHugeCost(t *testing.T) {
+	uc := NewBillingUsecaseWithPricing(nil, nil, nil, nil, PricingConfig{
+		GroupRatios: map[string]float64{"bad": math.Inf(1), "huge": math.MaxFloat64},
+		ModelRatios: map[string]float64{"m": math.MaxFloat64},
+	})
+
+	assert.Equal(t, 1.0, uc.getGroupRatio(uc.pricingConfig(context.Background()), "bad"))
+	assert.Equal(t, int64(math.MaxInt64), uc.calculateCost(context.Background(), "huge", "m", math.MaxInt64, math.MaxInt64, 0, false))
+
+	price := ModelPrice{InputPrice: math.MaxFloat64, OutputPrice: math.MaxFloat64}
+	assert.Equal(t, int64(math.MaxInt64), calculateModelPriceCost(price, math.MaxInt64, math.MaxInt64, 0, 1))
+}
 
 func TestNormalizeModelPricingKeys(t *testing.T) {
 	prices := normalizeModelPrices(map[string]ModelPrice{
@@ -51,7 +90,7 @@ func TestCalculateCostWithUsage_CaseInsensitiveModelPrice(t *testing.T) {
 		},
 	})
 
-	got, _ := uc.calculateCostWithUsage(context.Background(), "default", "DeepSeek-V4-Flash-0731", 0, LedgerUsage{
+	got, _, _ := uc.calculateCostWithUsage(context.Background(), "default", "DeepSeek-V4-Flash-0731", 0, LedgerUsage{
 		PromptTokens:     1000,
 		CompletionTokens: 500,
 	})

@@ -15,15 +15,16 @@ type Data struct {
 	db    *gorm.DB
 	redis *redis.Client
 
-	accountRepo     biz.AccountRepo
-	reservationRepo biz.ReservationRepo
-	ledgerRepo      biz.LedgerRepo
-	redeemRepo      biz.RedeemRepo
-	pricingRepo     biz.PricingConfigStore
-	paymentRepo     biz.PaymentRepo
-	reconRepo       biz.ReconciliationRepo
-	reconRunStore   biz.ReconciliationRunStore
-	receivableRepo  biz.ReceivableRepo
+	accountRepo         biz.AccountRepo
+	reservationRepo     biz.ReservationRepo
+	ledgerRepo          biz.LedgerRepo
+	redeemRepo          biz.RedeemRepo
+	pricingRepo         biz.PricingConfigStore
+	pricingSnapshotRepo biz.PricingSnapshotRepo
+	paymentRepo         biz.PaymentRepo
+	reconRepo           biz.ReconciliationRepo
+	reconRunStore       biz.ReconciliationRunStore
+	receivableRepo      biz.ReceivableRepo
 }
 
 func NewData(driver string, dsn ...string) (*Data, error) {
@@ -69,6 +70,7 @@ func NewData(driver string, dsn ...string) (*Data, error) {
 	d.ledgerRepo = NewLedgerRepo(d)
 	d.redeemRepo = NewRedeemRepo(d)
 	d.pricingRepo = NewPricingConfigRepo(d)
+	d.pricingSnapshotRepo = NewPricingSnapshotRepo(d)
 	d.paymentRepo = NewPaymentRepo(d)
 	d.reconRepo = NewReconciliationRepo(d)
 	d.reconRunStore = NewReconciliationRunRepo(d)
@@ -95,6 +97,10 @@ func (d *Data) RedeemRepo() biz.RedeemRepo {
 
 func (d *Data) PricingConfigStore() biz.PricingConfigStore {
 	return d.pricingRepo
+}
+
+func (d *Data) PricingSnapshotRepo() biz.PricingSnapshotRepo {
+	return d.pricingSnapshotRepo
 }
 
 func (d *Data) PaymentRepo() biz.PaymentRepo {

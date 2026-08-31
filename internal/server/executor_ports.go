@@ -62,7 +62,7 @@ type relayQuotaPort struct {
 	hooks RelayLifecycleHooks
 }
 
-func (p relayQuotaPort) Reserve(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest, estimated relaybiz.CanonicalUsage) (*relaybiz.QuotaReservation, error) {
+func (p relayQuotaPort) Reserve(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest, estimated relaybiz.UsageEnvelope) (*relaybiz.QuotaReservation, error) {
 	if p.hooks == nil {
 		return nil, nil
 	}
@@ -73,7 +73,7 @@ func (p relayQuotaPort) Reserve(ctx context.Context, plan *relaybiz.RelayPlan, r
 	return &relaybiz.QuotaReservation{ID: reservation.ID}, nil
 }
 
-func (p relayQuotaPort) Commit(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest, reservation *relaybiz.QuotaReservation, usage relaybiz.CanonicalUsage, success bool, latency time.Duration) error {
+func (p relayQuotaPort) Commit(ctx context.Context, plan *relaybiz.RelayPlan, req relaybiz.ExecutorRequest, reservation *relaybiz.QuotaReservation, usage relaybiz.UsageEnvelope, success bool, latency time.Duration) error {
 	if p.hooks == nil || reservation == nil {
 		return nil
 	}
@@ -92,7 +92,7 @@ type relayEventLogger struct {
 	hooks RelayLifecycleHooks
 }
 
-func (l relayEventLogger) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, event relaybiz.UsageEvent, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) {
+func (l relayEventLogger) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, event relaybiz.UsageEvent, usage relaybiz.UsageEnvelope, latency time.Duration, stream bool) {
 	if l.hooks == nil {
 		return
 	}

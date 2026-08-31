@@ -61,6 +61,7 @@ services:
     - 081_create_channel_usage_events         # reservation-keyed exactly-once used_quota updates
     - 083_add_model_modalities                # model input/output modality metadata
     - 084_add_model_pricing_cache_read        # cache-read price + per-1M unit switch
+    - 087_create_usage_semantic_source_blocks # usage-semantics quarantine (source+model isolation)
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /
@@ -105,6 +106,8 @@ services:
     - 078_create_billing_ledger_dedupe_claims # partition-safe global ledger idempotency gate
     - 079_add_balance_amount_to_billing_reservations # canonical wallet amount + legacy dual-write
     - 080_add_billing_ledger_cost_audit_fields # execution source + upstream cost auditability
+    - 085_add_billing_usage_semantics       # reported/canonical usage split + parse verdict on ledgers
+    - 088_create_billing_pricing_snapshots  # §6.3 phase 2: immutable per-request pricing evidence
 
   log:
     # logs table (a subset of 000_create_core_tables on the shared schema,
@@ -115,6 +118,7 @@ services:
     - 067_add_cache_creation_token_usage_fields
     - 037_add_subscription_account_id_to_logs
     - 082_create_log_ingest_dedupe_claims     # durable relay usage-log idempotency gate
+    - 086_add_log_usage_semantics             # reported/canonical usage split + parse verdict on logs
 
   admin:
     # system_options (007); the rest is owned elsewhere.

@@ -92,6 +92,7 @@ app/admin/internal/server/static/web/*
 
 cert/
 .claude
+.codex
 # Local build/save outputs
 dist/
 

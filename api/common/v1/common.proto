@@ -274,6 +274,51 @@ message LedgerEntry {
   int64 cache_creation_5m_cost = 30;
   int64 cache_creation_1h_cost = 31;
   int64 shadow_cost = 32;
+  // token-usage-billing-semantics-remediation (2026-08-31) §6.1 audit fields.
+  // Rows written before the contract keep usage_parse_status='legacy' and
+  // usage_semantics=''; their semantics are unknown and MUST NOT be inferred
+  // from token arithmetic.
+  int64 uncached_input_tokens = 33;   // canonical bucket (already net of cache)
+  int64 reported_prompt_tokens = 34;  // raw upstream-reported prompt/input
+  int64 reported_total_tokens = 35;   // raw upstream-reported total
+  int64 billable_total_tokens = 36;   // sum of the five canonical buckets
+  string usage_semantics = 37;        // openai_subset | anthropic_exclusive | ''
+  string usage_protocol = 38;         // protocol the parser proved
+  string usage_field_shape = 39;      // raw field names that carried the buckets
+  string usage_parse_status = 40;     // verified | estimated | ambiguous | legacy
+  int32 usage_contract_version = 41;  // 0 = legacy producer
+  bool canonical_present = 42;
+  string usage_decision_reason = 43;
+  // Candidate costs persisted when usage_parse_status='ambiguous': the user
+  // was settled at the lower of the two (§5.2 conservative policy).
+  int64 subset_candidate_cost = 44;
+  int64 exclusive_candidate_cost = 45;
+  // §6.3 (migration 088): hash of the pricing snapshot this row was charged
+  // with. Empty for pre-088 rows and ratio-priced models (no per-bucket
+  // ModelPrice); prices MUST NOT be inferred from ledger amounts for those.
+  string pricing_config_hash = 46;
+  // Detail views only (GetLedgerEntry): the snapshot the hash references, so
+  // admin can show the actual per-bucket unit prices. Nil on list rows and
+  // when the hash is empty.
+  PricingSnapshot pricing_snapshot = 47;
+}
+
+// PricingSnapshot is the immutable per-request pricing evidence stored in
+// billing_pricing_snapshots (migration 088, §6.3). Prices are the EFFECTIVE
+// per-token values the charge consumed: cache_read already carries the
+// input-price fallback and unpriced cache-creation buckets are zero.
+message PricingSnapshot {
+  string config_hash = 1;
+  string model_name = 2;              // normalized pricing key used for the lookup
+  double input_price = 3;
+  double output_price = 4;
+  double cache_read_price = 5;
+  double cache_creation_5m_price = 6;
+  double cache_creation_1h_price = 7;
+  double group_ratio = 8;
+  string cache_creation_mode = 9;     // charge | observe
+  int32 snapshot_version = 10;
+  google.protobuf.Timestamp created_at = 11;
 }
 
 // ========== 流水信息（管理端视图）==========

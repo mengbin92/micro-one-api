@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	logv1 "micro-one-api/api/log/v1"
@@ -81,7 +82,82 @@ type usageLogInput struct {
 	// PromptExclusive (v0.11.0 Phase 0/1, ADR §3.3): true when prompt and
 	// cache_read are mutually exclusive buckets (Anthropic / GLM). Set from
 	// the channel type at the relay boundary.
+	//
+	// Deprecated (token-usage-billing-semantics-remediation §5.3): kept only
+	// for the legacy wire dual-write while old billing consumers exist. The
+	// parser verdict in Usage is authoritative for the v1 contract.
 	PromptExclusive bool
+
+	// Usage is the parser verdict envelope of the FINAL attempt (§4.1). Nil
+	// only on legacy handler paths that have not been migrated to envelope
+	// parsing; those keep the flat legacy fields above.
+	Usage *relaybiz.UsageEnvelope
+}
+
+// applyEnvelope fills the legacy dual-write fields from the envelope's
+// reported usage (§5.3: legacy fields keep their OLD meanings — reported
+// prompt, not uncached — so old billing consumers are unaffected) and stores
+// the envelope for the v1 producer path.
+func (in *usageLogInput) applyEnvelope(env relaybiz.UsageEnvelope) {
+	in.Usage = &env
+	reported := env.Reported
+	in.PromptTokens = reported.PromptTokens
+	in.CompletionTokens = reported.OutputTokens
+	in.CacheReadTokens = reported.CacheReadTokens
+	in.CacheCreation5mTokens = reported.CacheCreation5mTokens
+	in.CacheCreation1hTokens = reported.CacheCreation1hTokens
+	in.Quota = reported.TotalTokens
+	if in.Quota <= 0 {
+		in.Quota = env.BillableTotal()
+	}
+	if env.ParseStatus == relaybiz.UsageParseEstimated {
+		// Estimator path: no reported values exist; mirror the
+		// estimator-provable buckets into the legacy fields so old consumers
+		// see the same charge as before the migration.
+		canonical := env.CanonicalOrZero()
+		if in.PromptTokens == 0 {
+			in.PromptTokens = canonical.UncachedInputTokens
+		}
+		if in.CompletionTokens == 0 {
+			in.CompletionTokens = canonical.OutputTokens
+		}
+		if in.Quota <= 0 {
+			in.Quota = canonical.BillableTotal()
+		}
+	}
+}
+
+// billableTokens is the token count used as CommitQuota actual_tokens: the
+// canonical billable total when an envelope exists, else the legacy quota.
+func (in usageLogInput) billableTokens() int64 {
+	if in.Usage != nil {
+		if total, ok := safeRelayCanonicalTotal(in.Usage.Canonical); ok && total > 0 {
+			return total
+		}
+		// Ambiguous settlement chooses the cheaper interpretation. With
+		// non-negative prices the subset candidate is never more expensive
+		// than the exclusive candidate, and it also has the lower token total.
+		if in.Usage.ParseStatus == relaybiz.UsageParseAmbiguous {
+			if total, ok := safeRelayCanonicalTotal(in.Usage.SubsetCandidate); ok && total > 0 {
+				return total
+			}
+		}
+	}
+	return in.Quota
+}
+
+func safeRelayCanonicalTotal(u *relaybiz.CanonicalUsage) (int64, bool) {
+	if u == nil {
+		return 0, false
+	}
+	var total int64
+	for _, value := range []int64{u.UncachedInputTokens, u.CacheReadTokens, u.CacheCreation5mTokens, u.CacheCreation1hTokens, u.OutputTokens} {
+		if value < 0 || value > math.MaxInt64-total {
+			return 0, false
+		}
+		total += value
+	}
+	return total, true
 }
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
@@ -114,8 +190,24 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		IsStream:               in.IsStream,
 		DedupeKey:              dedupeKey,
 	}
+	// §6.2/§9.1 display contract: dual-write the canonical fields once the
+	// producer gate is on. quota keeps its legacy reported-total meaning.
+	if in.Usage != nil && canonicalUsageProducerEnabled() {
+		env := in.Usage
+		req.UncachedInputTokens = env.CanonicalOrZero().UncachedInputTokens
+		req.ReportedPromptTokens = env.Reported.PromptTokens
+		req.ReportedTotalTokens = env.Reported.TotalTokens
+		req.BillableTotalTokens = in.billableTokens()
+		req.UsageSemantics = string(env.Semantics)
+		req.UsageProtocol = env.Reported.SourceProtocol
+		req.UsageFieldShape = env.Reported.FieldShape
+		req.UsageParseStatus = string(env.ParseStatus)
+		req.UsageContractVersion = env.ContractVersion
+		req.CanonicalPresent = env.Canonical != nil
+		req.UsageDecisionReason = env.DecisionReason
+	}
 	var err error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range 3 {
 		_, err = s.logClient.IngestLog(ctx, req)
 		if err == nil {
 			metrics.UsageLogIngestTotal.WithLabelValues("success").Inc()
@@ -139,23 +231,21 @@ func logUpstreamUsage(in usageLogInput) {
 	// caller still passes prompt_tokens inclusive of cached; the ratio is an
 	// operational signal only, billing uses the canonical buckets.
 	cacheCreationTotal := in.CacheCreation5mTokens + in.CacheCreation1hTokens
-	// v0.11.0 review L1: for non-exclusive buckets (OpenAI subset protocol)
-	// prompt_tokens already includes cache_read_tokens, so subtract them to get
-	// the uncached portion before adding cache_read back into the denominator.
-	// For exclusive buckets (Anthropic/GLM) prompt_tokens is already uncached.
+	// The parser's canonical uncached-input bucket is authoritative; the
+	// PromptExclusive-based recomputation is the legacy fallback for paths
+	// without an envelope (§4.1: billing/display never re-derive semantics).
 	nonCachedInputTokens := in.PromptTokens
-	if in.CacheReadTokens > 0 && !in.PromptExclusive {
-		nonCachedInputTokens = in.PromptTokens - in.CacheReadTokens
-		if nonCachedInputTokens < 0 {
-			nonCachedInputTokens = 0
-		}
+	if in.Usage != nil && in.Usage.Canonical != nil {
+		nonCachedInputTokens = in.Usage.Canonical.UncachedInputTokens
+	} else if in.CacheReadTokens > 0 && !in.PromptExclusive {
+		nonCachedInputTokens = max(in.PromptTokens-in.CacheReadTokens, 0)
 	}
 	cacheDenominator := nonCachedInputTokens + in.CacheReadTokens + cacheCreationTotal
 	cacheRatio := float64(0)
 	if cacheDenominator > 0 {
 		cacheRatio = float64(in.CacheReadTokens) / float64(cacheDenominator)
 	}
-	applogger.Log.Info("upstream usage reported",
+	fields := []zap.Field{
 		zap.String("request_id", in.RequestID),
 		zap.String("endpoint", in.Endpoint),
 		zap.String("model", in.ModelName),
@@ -171,5 +261,59 @@ func logUpstreamUsage(in usageLogInput) {
 		zap.Int64("cache_creation_1h_tokens", in.CacheCreation1hTokens),
 		zap.Int64("cache_creation_tokens", cacheCreationTotal),
 		zap.Float64("cache_read_input_ratio", cacheRatio),
-	)
+	}
+	if in.Usage != nil {
+		fields = append(fields,
+			zap.Int64("reported_total_tokens", in.Usage.Reported.TotalTokens),
+			zap.Int64("billable_total_tokens", in.billableTokens()),
+			zap.String("usage_semantics", string(in.Usage.Semantics)),
+			zap.String("usage_protocol", in.Usage.Reported.SourceProtocol),
+			zap.String("usage_parse_status", string(in.Usage.ParseStatus)),
+			zap.String("usage_decision_reason", in.Usage.DecisionReason),
+		)
+		recordUsageSemanticsMetrics(in)
+	}
+	applogger.Log.Info("upstream usage reported", fields...)
+}
+
+// recordUsageSemanticsMetrics emits the §9 semantics/invariant counters at
+// the relay boundary — the single point where both the parser verdict and
+// the execution source are known. Labels stay low-cardinality; request and
+// model identifiers stay in the structured log above.
+func recordUsageSemanticsMetrics(in usageLogInput) {
+	env := in.Usage
+	protocol := env.Reported.SourceProtocol
+	if protocol == "" {
+		protocol = "unknown"
+	}
+	sourceKind := in.SourceKind
+	if sourceKind == "" {
+		sourceKind = "unknown"
+	}
+	semantics := string(env.Semantics)
+	if semantics == "" {
+		semantics = "none"
+	}
+	if metrics.TokenUsageSemanticsTotal != nil {
+		metrics.TokenUsageSemanticsTotal.WithLabelValues(protocol, semantics, sourceKind).Inc()
+	}
+	recordInvariantMismatch := func(reason string) {
+		if metrics.TokenUsageInvariantMismatchTotal != nil {
+			metrics.TokenUsageInvariantMismatchTotal.WithLabelValues(reason, protocol, sourceKind).Inc()
+		}
+	}
+	if env.ParseStatus == relaybiz.UsageParseAmbiguous && env.DecisionReason != "" {
+		recordInvariantMismatch(env.DecisionReason)
+	}
+	// reported_total_mismatch (§2.5 anomaly signal only — never a billing
+	// input): the upstream-reported total must equal one of the totals the
+	// proven semantics implies (prompt+output, or the five-bucket sum).
+	if rt := env.Reported.TotalTokens; rt > 0 {
+		reported := env.Reported
+		legacyTotal := reported.PromptTokens + reported.OutputTokens
+		bucketTotal := legacyTotal + reported.CacheReadTokens + reported.CacheCreation5mTokens + reported.CacheCreation1hTokens
+		if rt != legacyTotal && rt != bucketTotal {
+			recordInvariantMismatch(relaybiz.UsageReasonReportedTotalMismatch)
+		}
+	}
 }

@@ -45,6 +45,17 @@ type logModel struct {
 	SubscriptionAccountID int64  `gorm:"column:subscription_account_id"`
 	ElapsedTime           int64  `gorm:"column:elapsed_time"`
 	IsStream              bool   `gorm:"column:is_stream"`
+	UncachedInputTokens   int64  `gorm:"column:uncached_input_tokens"`
+	ReportedPromptTokens  int64  `gorm:"column:reported_prompt_tokens"`
+	ReportedTotalTokens   int64  `gorm:"column:reported_total_tokens"`
+	BillableTotalTokens   int64  `gorm:"column:billable_total_tokens"`
+	UsageSemantics        string `gorm:"column:usage_semantics"`
+	UsageProtocol         string `gorm:"column:usage_protocol"`
+	UsageFieldShape       string `gorm:"column:usage_field_shape"`
+	UsageParseStatus      string `gorm:"column:usage_parse_status"`
+	UsageContractVersion  int32  `gorm:"column:usage_contract_version"`
+	CanonicalPresent      bool   `gorm:"column:canonical_present"`
+	UsageDecisionReason   string `gorm:"column:usage_decision_reason"`
 }
 
 type logIngestDedupeClaimModel struct {
@@ -207,6 +218,17 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.LogEntry, error)
 		SubscriptionAccountID: m.SubscriptionAccountID,
 		ElapsedTime:           m.ElapsedTime,
 		IsStream:              m.IsStream,
+		UncachedInputTokens:   m.UncachedInputTokens,
+		ReportedPromptTokens:  m.ReportedPromptTokens,
+		ReportedTotalTokens:   m.ReportedTotalTokens,
+		BillableTotalTokens:   m.BillableTotalTokens,
+		UsageSemantics:        m.UsageSemantics,
+		UsageProtocol:         m.UsageProtocol,
+		UsageFieldShape:       m.UsageFieldShape,
+		UsageParseStatus:      m.UsageParseStatus,
+		UsageContractVersion:  m.UsageContractVersion,
+		CanonicalPresent:      m.CanonicalPresent,
+		UsageDecisionReason:   m.UsageDecisionReason,
 	}, nil
 }
 
@@ -282,6 +304,17 @@ func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
 		SubscriptionAccountID: entry.SubscriptionAccountID,
 		ElapsedTime:           entry.ElapsedTime,
 		IsStream:              entry.IsStream,
+		UncachedInputTokens:   entry.UncachedInputTokens,
+		ReportedPromptTokens:  entry.ReportedPromptTokens,
+		ReportedTotalTokens:   entry.ReportedTotalTokens,
+		BillableTotalTokens:   entry.BillableTotalTokens,
+		UsageSemantics:        entry.UsageSemantics,
+		UsageProtocol:         entry.UsageProtocol,
+		UsageFieldShape:       entry.UsageFieldShape,
+		UsageParseStatus:      entry.UsageParseStatus,
+		UsageContractVersion:  entry.UsageContractVersion,
+		CanonicalPresent:      entry.CanonicalPresent,
+		UsageDecisionReason:   entry.UsageDecisionReason,
 	}
 	if entry.DedupeKey == "" {
 		if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
@@ -371,6 +404,17 @@ func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) e
 				SubscriptionAccountID: e.SubscriptionAccountID,
 				ElapsedTime:           e.ElapsedTime,
 				IsStream:              e.IsStream,
+				UncachedInputTokens:   e.UncachedInputTokens,
+				ReportedPromptTokens:  e.ReportedPromptTokens,
+				ReportedTotalTokens:   e.ReportedTotalTokens,
+				BillableTotalTokens:   e.BillableTotalTokens,
+				UsageSemantics:        e.UsageSemantics,
+				UsageProtocol:         e.UsageProtocol,
+				UsageFieldShape:       e.UsageFieldShape,
+				UsageParseStatus:      e.UsageParseStatus,
+				UsageContractVersion:  e.UsageContractVersion,
+				CanonicalPresent:      e.CanonicalPresent,
+				UsageDecisionReason:   e.UsageDecisionReason,
 			})
 		}
 		if err := r.db.WithContext(ctx).CreateInBatches(&models, len(models)).Error; err != nil {
@@ -467,6 +511,17 @@ func logModelToEntry(m logModel) *biz.LogEntry {
 		SubscriptionAccountID: m.SubscriptionAccountID,
 		ElapsedTime:           m.ElapsedTime,
 		IsStream:              m.IsStream,
+		UncachedInputTokens:   m.UncachedInputTokens,
+		ReportedPromptTokens:  m.ReportedPromptTokens,
+		ReportedTotalTokens:   m.ReportedTotalTokens,
+		BillableTotalTokens:   m.BillableTotalTokens,
+		UsageSemantics:        m.UsageSemantics,
+		UsageProtocol:         m.UsageProtocol,
+		UsageFieldShape:       m.UsageFieldShape,
+		UsageParseStatus:      m.UsageParseStatus,
+		UsageContractVersion:  m.UsageContractVersion,
+		CanonicalPresent:      m.CanonicalPresent,
+		UsageDecisionReason:   m.UsageDecisionReason,
 	}
 }
 

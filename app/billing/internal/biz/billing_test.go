@@ -203,7 +203,8 @@ func (m *mockReservationRepo) SumActiveFrozenInTx(ctx context.Context, tx subscr
 }
 
 type mockLedgerRepo struct {
-	ledgers []*Ledger
+	ledgers   []*Ledger
+	insertTxs []subscriptionbiz.Tx
 }
 
 func (m *mockLedgerRepo) CreateLedger(ctx context.Context, ledger *Ledger) error {
@@ -245,6 +246,7 @@ func (m *mockLedgerRepo) AggregateUsage(ctx context.Context, filter UsageFilter)
 }
 
 func (m *mockLedgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx, ledger *Ledger) error {
+	m.insertTxs = append(m.insertTxs, tx)
 	return m.CreateLedger(ctx, ledger)
 }
 

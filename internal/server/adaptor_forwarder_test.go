@@ -60,7 +60,7 @@ func TestRelayAdaptorForwarderConvertsResponsesForAnthropicAPIKeyChannel(t *test
 	if body := string(response.Body); !strings.Contains(body, `"object":"response"`) || !strings.Contains(body, `"text":"done"`) {
 		t.Fatalf("responses body = %s", body)
 	}
-	if response.Usage == nil || response.Usage.TotalTokens != 7 {
+	if response.Usage == nil || response.Usage.BillableTotal() != 7 {
 		t.Fatalf("usage = %#v", response.Usage)
 	}
 }
@@ -106,7 +106,7 @@ func TestRelayAdaptorForwarderUsesRegistryForAPIKeyChannel(t *testing.T) {
 	if response == nil || response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"total_tokens":5`) {
 		t.Fatalf("response = %#v", response)
 	}
-	if response.Usage == nil || response.Usage.TotalTokens != 5 {
+	if response.Usage == nil || response.Usage.BillableTotal() != 5 {
 		t.Fatalf("usage = %#v", response.Usage)
 	}
 }

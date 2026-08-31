@@ -15,6 +15,7 @@ import (
 	relayprovider "micro-one-api/domain/upstream/provider"
 	"micro-one-api/internal/apicompat"
 	relaybiz "micro-one-api/internal/biz"
+	usagepkg "micro-one-api/internal/server/usage"
 
 	"go.uber.org/zap"
 )
@@ -288,14 +289,17 @@ func chatCompletionResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 		finishReason = "stop"
 	}
 	usage := rawUsage{
-		PromptTokens:     chat.Usage.PromptTokens,
-		CompletionTokens: chat.Usage.CompletionTokens,
-		TotalTokens:      chat.Usage.TotalTokens,
+		PromptTokens:        chat.Usage.PromptTokens,
+		CompletionTokens:    chat.Usage.CompletionTokens,
+		TotalTokens:         chat.Usage.TotalTokens,
+		ReportedTotalTokens: chat.Usage.TotalTokens,
+		Shape:               usagepkg.FieldShapeSignals{HasPromptTokens: true},
 	}
 	if details := chat.Usage.PromptTokensDetails; details != nil {
 		usage.CacheReadTokens = int64(details.CachedTokens)
 		usage.CacheCreation5mTokens = int64(details.CacheCreation5mTokens)
 		usage.CacheCreation1hTokens = int64(details.CacheCreation1hTokens)
+		usage.Shape.HasOpenAICachedDetail = true
 	}
 	if usage.PromptTokens == 0 {
 		usage.PromptTokens = chat.Usage.InputTokens
@@ -426,14 +430,17 @@ func (s *responsesStreamFallbackState) writeChunk(w io.Writer, data []byte) bool
 			completionTokens = chunk.Usage.OutputTokens
 		}
 		usage := rawUsage{
-			PromptTokens:     int64(promptTokens),
-			CompletionTokens: int64(completionTokens),
-			TotalTokens:      int64(chunk.Usage.TotalTokens),
+			PromptTokens:        int64(promptTokens),
+			CompletionTokens:    int64(completionTokens),
+			TotalTokens:         int64(chunk.Usage.TotalTokens),
+			ReportedTotalTokens: int64(chunk.Usage.TotalTokens),
+			Shape:               usagepkg.FieldShapeSignals{HasPromptTokens: true},
 		}
 		if details := chunk.Usage.PromptTokensDetails; details != nil {
 			usage.CacheReadTokens = int64(details.CachedTokens)
 			usage.CacheCreation5mTokens = int64(details.CacheCreation5mTokens)
 			usage.CacheCreation1hTokens = int64(details.CacheCreation1hTokens)
+			usage.Shape.HasOpenAICachedDetail = true
 		}
 		s.usage = mergeRawUsage(usage, s.usage)
 	}
@@ -824,11 +831,17 @@ func anthropicResponseToResponses(body []byte) ([]byte, rawUsage, error) {
 		return nil, rawUsage{}, fmt.Errorf("failed to marshal responses response: %w", err)
 	}
 	usage := rawUsage{
-		PromptTokens:     int64(ar.Usage.InputTokens),
-		CompletionTokens: int64(ar.Usage.OutputTokens),
-		CacheReadTokens:  int64(ar.Usage.CacheReadInputTokens),
+		PromptTokens:          int64(ar.Usage.InputTokens),
+		CompletionTokens:      int64(ar.Usage.OutputTokens),
+		CacheReadTokens:       int64(ar.Usage.CacheReadInputTokens),
+		CacheCreation5mTokens: int64(ar.Usage.CacheCreationInputTokens),
+		Shape: usagepkg.FieldShapeSignals{
+			HasInputTokens:            true,
+			HasAnthropicCacheRead:     true,
+			HasAnthropicCacheCreation: ar.Usage.CacheCreationInputTokens != 0,
+		},
 	}
-	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	usage.TotalTokens = usage.PromptTokens + usage.CacheReadTokens + usage.CacheCreation5mTokens + usage.CompletionTokens
 	if usage.TotalTokens <= 0 {
 		usage.TotalTokens = estimateRawTokens(body)
 	}

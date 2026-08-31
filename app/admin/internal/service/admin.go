@@ -470,7 +470,54 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		"subscriptionCost":         entry.GetSubscriptionCost(),
 		"balanceCost":              entry.GetBalanceCost(),
 		"ledgerDedupeKey":          entry.GetLedgerDedupeKey(),
+		// Per-bucket costs + usage-semantics audit block (§9 admin usage
+		// detail): five canonical buckets, reported vs billable totals, the
+		// parse verdict, and the pricing evidence. Legacy rows surface as
+		// usage_parse_status='legacy' with zeros — the Web layer labels them
+		// "历史口径" instead of fabricating values.
+		"promptCost":             entry.GetPromptCost(),
+		"completionCost":         entry.GetCompletionCost(),
+		"cacheReadCost":          entry.GetCacheReadCost(),
+		"cacheCreation5mCost":    entry.GetCacheCreation_5MCost(),
+		"cacheCreation1hCost":    entry.GetCacheCreation_1HCost(),
+		"shadowCost":             entry.GetShadowCost(),
+		"uncachedInputTokens":    entry.GetUncachedInputTokens(),
+		"reportedPromptTokens":   entry.GetReportedPromptTokens(),
+		"reportedTotalTokens":    entry.GetReportedTotalTokens(),
+		"billableTotalTokens":    entry.GetBillableTotalTokens(),
+		"usageSemantics":         entry.GetUsageSemantics(),
+		"usageProtocol":          entry.GetUsageProtocol(),
+		"usageFieldShape":        entry.GetUsageFieldShape(),
+		"usageParseStatus":       entry.GetUsageParseStatus(),
+		"usageContractVersion":   entry.GetUsageContractVersion(),
+		"canonicalPresent":       entry.GetCanonicalPresent(),
+		"usageDecisionReason":    entry.GetUsageDecisionReason(),
+		"subsetCandidateCost":    entry.GetSubsetCandidateCost(),
+		"exclusiveCandidateCost": entry.GetExclusiveCandidateCost(),
+		"pricingConfigHash":      entry.GetPricingConfigHash(),
+		"pricingSnapshot":        pricingSnapshotToMap(entry.GetPricingSnapshot()),
 	}, nil
+}
+
+// pricingSnapshotToMap flattens the per-bucket unit prices a ledger row was
+// actually charged with (migration 088 evidence). Nil for legacy rows and
+// ratio-priced models: those have no pricing evidence by design (§6.3/§8.2).
+func pricingSnapshotToMap(snap *commonv1.PricingSnapshot) map[string]any {
+	if snap == nil {
+		return nil
+	}
+	return map[string]any{
+		"configHash":           snap.GetConfigHash(),
+		"modelName":            snap.GetModelName(),
+		"inputPrice":           snap.GetInputPrice(),
+		"outputPrice":          snap.GetOutputPrice(),
+		"cacheReadPrice":       snap.GetCacheReadPrice(),
+		"cacheCreation5mPrice": snap.GetCacheCreation_5MPrice(),
+		"cacheCreation1hPrice": snap.GetCacheCreation_1HPrice(),
+		"groupRatio":           snap.GetGroupRatio(),
+		"cacheCreationMode":    snap.GetCacheCreationMode(),
+		"snapshotVersion":      snap.GetSnapshotVersion(),
+	}
 }
 
 func (s *AdminService) ListPaymentOrders(ctx context.Context, req *billingv1.ListPaymentOrdersRequest) (*billingv1.ListPaymentOrdersResponse, error) {
@@ -2293,21 +2340,44 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"cacheReadTokens":       entry.GetCacheReadTokens(),
 			"cacheCreation5mTokens": entry.GetCacheCreation_5MTokens(),
 			"cacheCreation1hTokens": entry.GetCacheCreation_1HTokens(),
-			"channelId":             entry.GetChannelId(),
-			"channelName":           channelName,
-			"channelType":           channelType,
-			"channelTypeStr":        channelTypeStr,
-			"upstreamName":          upstream.Name,
-			"upstreamProtocol":      upstream.TypeStr,
-			"subscriptionAccountId": entry.GetSubscriptionAccountId(),
-			"elapsedTime":           entry.GetElapsedTime(),
-			"isStream":              entry.GetIsStream(),
-			"endpoint":              entry.GetEndpoint(),
-			"costSource":            entry.GetCostSource(),
-			"subscriptionCost":      entry.GetSubscriptionCost(),
-			"balanceCost":           entry.GetBalanceCost(),
-			"ledgerDedupeKey":       entry.GetLedgerDedupeKey(),
-			"username":              entry.GetUsername(),
+			// Per-bucket costs + usage-semantics audit block (§9): the Web
+			// detail view needs these verbatim; deriving them from totals is
+			// forbidden.
+			"promptCost":             entry.GetPromptCost(),
+			"completionCost":         entry.GetCompletionCost(),
+			"cacheReadCost":          entry.GetCacheReadCost(),
+			"cacheCreation5mCost":    entry.GetCacheCreation_5MCost(),
+			"cacheCreation1hCost":    entry.GetCacheCreation_1HCost(),
+			"shadowCost":             entry.GetShadowCost(),
+			"uncachedInputTokens":    entry.GetUncachedInputTokens(),
+			"reportedPromptTokens":   entry.GetReportedPromptTokens(),
+			"reportedTotalTokens":    entry.GetReportedTotalTokens(),
+			"billableTotalTokens":    entry.GetBillableTotalTokens(),
+			"usageSemantics":         entry.GetUsageSemantics(),
+			"usageProtocol":          entry.GetUsageProtocol(),
+			"usageFieldShape":        entry.GetUsageFieldShape(),
+			"usageParseStatus":       entry.GetUsageParseStatus(),
+			"usageContractVersion":   entry.GetUsageContractVersion(),
+			"canonicalPresent":       entry.GetCanonicalPresent(),
+			"usageDecisionReason":    entry.GetUsageDecisionReason(),
+			"subsetCandidateCost":    entry.GetSubsetCandidateCost(),
+			"exclusiveCandidateCost": entry.GetExclusiveCandidateCost(),
+			"pricingConfigHash":      entry.GetPricingConfigHash(),
+			"channelId":              entry.GetChannelId(),
+			"channelName":            channelName,
+			"channelType":            channelType,
+			"channelTypeStr":         channelTypeStr,
+			"upstreamName":           upstream.Name,
+			"upstreamProtocol":       upstream.TypeStr,
+			"subscriptionAccountId":  entry.GetSubscriptionAccountId(),
+			"elapsedTime":            entry.GetElapsedTime(),
+			"isStream":               entry.GetIsStream(),
+			"endpoint":               entry.GetEndpoint(),
+			"costSource":             entry.GetCostSource(),
+			"subscriptionCost":       entry.GetSubscriptionCost(),
+			"balanceCost":            entry.GetBalanceCost(),
+			"ledgerDedupeKey":        entry.GetLedgerDedupeKey(),
+			"username":               entry.GetUsername(),
 		})
 	}
 
