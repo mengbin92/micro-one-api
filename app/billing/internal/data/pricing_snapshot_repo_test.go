@@ -59,3 +59,9 @@ func TestPricingSnapshotRepo_GetMissingHash(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, snap)
 }
+
+func TestPricingSnapshotRepo_GetWithoutDatabaseReturnsError(t *testing.T) {
+	repo := &pricingSnapshotRepo{}
+	_, err := repo.GetPricingSnapshotByHash(context.Background(), "hash")
+	assert.EqualError(t, err, "pricing snapshot repo: no database available")
+}

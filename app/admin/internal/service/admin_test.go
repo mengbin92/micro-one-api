@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	adminv1 "micro-one-api/api/admin/v1"
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -225,6 +226,51 @@ type aggregateUsageBillingClient struct {
 	billingv1.BillingServiceClient
 	request *billingv1.AggregateUsageRequest
 	buckets []*billingv1.UsageBucket
+}
+
+type listLedgerBillingClient struct {
+	billingv1.BillingServiceClient
+	entry *commonv1.LedgerEntry
+}
+
+func (c *listLedgerBillingClient) ListLedger(_ context.Context, _ *billingv1.ListLedgerRequest, _ ...grpc.CallOption) (*billingv1.ListLedgerResponse, error) {
+	return &billingv1.ListLedgerResponse{Entries: []*commonv1.LedgerEntry{c.entry}, Total: 1}, nil
+}
+
+func TestListLedgerEntriesPreservesUsageAuditContract(t *testing.T) {
+	client := &listLedgerBillingClient{entry: &commonv1.LedgerEntry{
+		Id:                     "42",
+		UsageFieldShape:        "openai_prompt_cached",
+		UsageParseStatus:       "ambiguous",
+		UsageContractVersion:   1,
+		CanonicalPresent:       false,
+		SubsetCandidateCost:    123,
+		ExclusiveCandidateCost: 456,
+		PricingConfigHash:      "hash",
+	}}
+	svc := NewAdminService(client, nil, nil, nil)
+
+	entries, total, err := svc.ListLedgerEntries(context.Background(), &adminv1.ListLogsRequest{})
+	if err != nil {
+		t.Fatalf("ListLedgerEntries() error = %v", err)
+	}
+	if total != 1 || len(entries) != 1 {
+		t.Fatalf("ListLedgerEntries() count = %d/%d, want 1/1", total, len(entries))
+	}
+	got := entries[0]
+	checks := map[string]any{
+		"usageFieldShape":        "openai_prompt_cached",
+		"usageContractVersion":   int32(1),
+		"canonicalPresent":       false,
+		"subsetCandidateCost":    int64(123),
+		"exclusiveCandidateCost": int64(456),
+		"pricingConfigHash":      "hash",
+	}
+	for key, want := range checks {
+		if !reflect.DeepEqual(got[key], want) {
+			t.Errorf("entry[%q] = %#v, want %#v", key, got[key], want)
+		}
+	}
 }
 
 func (c *aggregateUsageBillingClient) AggregateUsage(_ context.Context, req *billingv1.AggregateUsageRequest, _ ...grpc.CallOption) (*billingv1.AggregateUsageResponse, error) {

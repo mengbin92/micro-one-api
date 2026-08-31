@@ -307,7 +307,7 @@ export function UsageSummaryCell({ log }: { log: UsageAuditLog }) {
     ? legacyDisplayTotal(log)
     : num(log.billableTotalTokens) || num(log.reportedTotalTokens);
 
-  if (input <= 0 && num(log.completionTokens) <= 0 && cacheRead <= 0) {
+  if (input <= 0 && num(log.completionTokens) <= 0 && cacheRead <= 0 && creation <= 0 && total <= 0) {
     return <span className="text-xs text-muted-foreground">—</span>;
   }
 

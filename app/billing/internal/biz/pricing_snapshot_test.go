@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -64,6 +65,7 @@ func TestBuildPricingSnapshot_HashDifferentiatesChargeInputs(t *testing.T) {
 
 func TestResolveUserCost_SetsPricingEvidence(t *testing.T) {
 	uc := newUsageSemanticsTestUsecase()
+	uc.SetPricingSnapshotRepo(&recordingPricingSnapshotRepo{})
 	_, _, audit := uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 2, "Test-Model", 0, LedgerUsage{
 		PromptTokens: 100, CompletionTokens: 10,
 	})
@@ -75,6 +77,25 @@ func TestResolveUserCost_SetsPricingEvidence(t *testing.T) {
 	})
 	assert.Equal(t, audit.PricingConfigHash, lower.PricingConfigHash)
 	assert.Equal(t, 2.0, audit.pricingSnapshot.GroupRatio)
+}
+
+func TestResolveUserCost_UnwiredSnapshotRepoLeavesHashEmpty(t *testing.T) {
+	uc := newUsageSemanticsTestUsecase()
+	_, _, audit := uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 2, "test-model", 0, LedgerUsage{
+		PromptTokens: 100, CompletionTokens: 10,
+	})
+
+	assert.Empty(t, audit.PricingConfigHash)
+	assert.Nil(t, audit.pricingSnapshot)
+}
+
+func TestBuildPricingSnapshot_NonFiniteFallbackDoesNotCollide(t *testing.T) {
+	nanSnapshot := buildPricingSnapshot("m", ModelPrice{InputPrice: math.NaN()}, 1, CacheCreationModeObserve)
+	infSnapshot := buildPricingSnapshot("m", ModelPrice{InputPrice: math.Inf(1)}, 1, CacheCreationModeObserve)
+
+	assert.Len(t, nanSnapshot.ConfigHash, 64)
+	assert.Len(t, infSnapshot.ConfigHash, 64)
+	assert.NotEqual(t, nanSnapshot.ConfigHash, infSnapshot.ConfigHash)
 }
 
 // Ratio-priced models have no per-bucket ModelPrice to freeze, so their

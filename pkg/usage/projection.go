@@ -76,10 +76,26 @@ func ProjectOpenAI(b Buckets) OpenAIProjection {
 // buckets an Anthropic-shaped usage object needs. A cache breakdown larger
 // than the inclusive input clamps the uncached bucket to zero — callers that
 // must treat that shape as an anomaly decide so in the parser; this helper
-// never returns a negative bucket.
+// preserves negative inputs unchanged so the anomaly cannot be laundered by
+// arithmetic before the parser validates it.
 func SplitInclusive(inclusiveInput, cacheRead, cacheCreation5m, cacheCreation1h, output int64) Buckets {
+	// Preserve malformed negative fields for the parser to reject, but avoid
+	// subtracting them here: MinInt64 arithmetic could otherwise wrap into a
+	// plausible positive uncached count before validation sees the anomaly.
+	if inclusiveInput < 0 || cacheRead < 0 || cacheCreation5m < 0 || cacheCreation1h < 0 {
+		return Buckets{
+			UncachedInputTokens:   inclusiveInput,
+			CacheReadTokens:       cacheRead,
+			CacheCreation5mTokens: cacheCreation5m,
+			CacheCreation1hTokens: cacheCreation1h,
+			OutputTokens:          output,
+		}
+	}
 	cacheTotal := addClamped(cacheRead, cacheCreation5m, cacheCreation1h)
-	uncached := max(inclusiveInput-cacheTotal, 0)
+	uncached := int64(0)
+	if cacheTotal < inclusiveInput {
+		uncached = inclusiveInput - cacheTotal
+	}
 	return Buckets{
 		UncachedInputTokens:   uncached,
 		CacheReadTokens:       cacheRead,
@@ -93,6 +109,14 @@ func SplitInclusive(inclusiveInput, cacheRead, cacheCreation5m, cacheCreation1h,
 // of wrapping. Negative inputs (a parser-level anomaly) pass through
 // unchanged so they remain visible to callers.
 func addClamped(values ...int64) int64 {
+	// A negative token count is invalid. Return the first one unchanged so a
+	// caller cannot mistake the result for a valid aggregate, and so the
+	// remaining additions cannot underflow around MinInt64.
+	for _, value := range values {
+		if value < 0 {
+			return value
+		}
+	}
 	var total int64
 	for _, value := range values {
 		if value > math.MaxInt64-total {

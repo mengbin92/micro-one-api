@@ -148,7 +148,7 @@ func NewBillingUsecaseWithPricing(
 	redeemRepo RedeemRepo,
 	pricing PricingConfig,
 ) *BillingUsecase {
-	groupRatios := pricing.GroupRatios
+	groupRatios := normalizePositiveRatios(pricing.GroupRatios)
 	if len(groupRatios) == 0 {
 		groupRatios = DefaultGroupRatios()
 	}
@@ -1923,9 +1923,14 @@ func (uc *BillingUsecase) resolveUserCost(ctx context.Context, price ModelPrice,
 	// Freeze the pricing evidence (§6.3): the effective per-bucket prices,
 	// group ratio and cache-creation mode this request is charged with. The
 	// snapshot is claimed in the commit transaction alongside the ledger row.
-	snapshot := buildPricingSnapshot(normalizePricingModelKey(model), price, multiplier, uc.CacheCreationBillingMode())
-	audit.PricingConfigHash = snapshot.ConfigHash
-	audit.pricingSnapshot = snapshot
+	// An unwired repository is an intentional compatibility mode for mixed
+	// deployments. Keep the hash empty in that mode: writing a reference that
+	// can never resolve would make the ledger evidence internally inconsistent.
+	if uc.pricingSnapshotRepo != nil {
+		snapshot := buildPricingSnapshot(normalizePricingModelKey(model), price, multiplier, uc.CacheCreationBillingMode())
+		audit.PricingConfigHash = snapshot.ConfigHash
+		audit.pricingSnapshot = snapshot
+	}
 
 	legacyBuckets := legacyCanonicalBuckets(usage, actualTokens)
 	legacyBreakdown := calculateCanonicalCost(price, legacyBuckets, multiplier)
@@ -2442,9 +2447,11 @@ func calculateModelPriceCost(price ModelPrice, promptTokens, completionTokens, c
 	if price.CacheReadPrice != nil {
 		cacheReadPrice = *price.CacheReadPrice
 	}
-	cost := roundScaled(input, price.InputPrice, multiplier) +
-		roundScaled(cacheRead, cacheReadPrice, multiplier) +
-		roundScaled(completion, price.OutputPrice, multiplier)
+	cost := saturatingCostSum(
+		roundScaled(input, price.InputPrice, multiplier),
+		roundScaled(cacheRead, cacheReadPrice, multiplier),
+		roundScaled(completion, price.OutputPrice, multiplier),
+	)
 	if cost <= 0 {
 		return 0
 	}
@@ -2503,7 +2510,7 @@ func normalizePositiveRatios(input map[string]float64) map[string]float64 {
 	}
 	out := make(map[string]float64, len(input))
 	for key, ratio := range input {
-		if key != "" && ratio > 0 {
+		if key != "" && ratio > 0 && !math.IsNaN(ratio) && !math.IsInf(ratio, 0) {
 			out[key] = ratio
 		}
 	}
@@ -2527,7 +2534,7 @@ func normalizeModelRatios(input map[string]float64) map[string]float64 {
 	out := make(map[string]float64, len(input))
 	for _, key := range keys {
 		ratio := input[key]
-		if ratio <= 0 {
+		if ratio <= 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) {
 			continue
 		}
 		canonical := normalizePricingModelKey(key)
@@ -2574,21 +2581,27 @@ func normalizePrices(input map[string]ModelPrice, keyFn func(string) string) map
 			continue
 		}
 		price := input[key]
-		if price.InputPrice < 0 {
+		if price.InputPrice < 0 || math.IsNaN(price.InputPrice) || math.IsInf(price.InputPrice, 0) {
 			price.InputPrice = 0
 		}
-		if price.OutputPrice < 0 {
+		if price.OutputPrice < 0 || math.IsNaN(price.OutputPrice) || math.IsInf(price.OutputPrice, 0) {
 			price.OutputPrice = 0
 		}
-		if price.CacheReadPrice != nil && *price.CacheReadPrice < 0 {
+		if price.CacheReadPrice != nil && (math.IsNaN(*price.CacheReadPrice) || math.IsInf(*price.CacheReadPrice, 0)) {
+			price.CacheReadPrice = nil
+		} else if price.CacheReadPrice != nil && *price.CacheReadPrice < 0 {
 			zero := 0.0
 			price.CacheReadPrice = &zero
 		}
-		if price.CacheCreation5mPrice != nil && *price.CacheCreation5mPrice < 0 {
+		if price.CacheCreation5mPrice != nil && (math.IsNaN(*price.CacheCreation5mPrice) || math.IsInf(*price.CacheCreation5mPrice, 0)) {
+			price.CacheCreation5mPrice = nil
+		} else if price.CacheCreation5mPrice != nil && *price.CacheCreation5mPrice < 0 {
 			zero := 0.0
 			price.CacheCreation5mPrice = &zero
 		}
-		if price.CacheCreation1hPrice != nil && *price.CacheCreation1hPrice < 0 {
+		if price.CacheCreation1hPrice != nil && (math.IsNaN(*price.CacheCreation1hPrice) || math.IsInf(*price.CacheCreation1hPrice, 0)) {
+			price.CacheCreation1hPrice = nil
+		} else if price.CacheCreation1hPrice != nil && *price.CacheCreation1hPrice < 0 {
 			zero := 0.0
 			price.CacheCreation1hPrice = &zero
 		}
@@ -2710,6 +2723,9 @@ func (uc *BillingUsecase) calculateCost(ctx context.Context, group, model string
 	cost := (prompt + completion*uc.getCompletionRatio(pricing, model)) * uc.getModelRatio(pricing, model) * uc.getGroupRatio(pricing, group)
 	if cost <= 0 {
 		return 0
+	}
+	if cost >= float64(math.MaxInt64) {
+		return math.MaxInt64
 	}
 	return int64(math.Ceil(cost))
 }
