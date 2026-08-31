@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.3] - 2026-08-31
+
+v0.23.3 是 v0.23.2 之后的 **PATCH 安全修复版本**：收紧服务间认证、上游网络访问、登录限流和 relay 编排器灰度凭证边界，并修复 CodeQL 报告的凭证配置风险。无数据库迁移、无公共 API / proto 破坏性变更，但升级前必须统一配置 `SERVICE_TOKEN` 并重新计算编排器 HMAC allowlist。详见 [release-v0.23.3.md](docs/releases/release-v0.23.3.md)。
+
+### Fixed
+
+- 内部 gRPC 服务统一校验 `SERVICE_TOKEN`，identity-service 增加跨副本 Redis 登录失败限流，入口代理地址改为按可信 CIDR 解析。
+- 上游 provider 使用 SSRF 安全 transport，阻断私有 / 保留地址、代理绕过和不安全重定向。
+- relay 编排器 allowlist 改为使用 `SERVICE_TOKEN` 作为密钥的 HMAC-SHA256 摘要，旧的普通 SHA-256 配置不再读取。
+- Grafana 默认管理员密码改为显式必填，补齐部署清单中的内部令牌和代理边界配置，修复 CodeQL 凭证告警。
+
+### Changed
+
+- 内部部署与运维文档更新服务令牌、可信代理 CIDR、HMAC allowlist 和 fail-closed 运行约束。
+
 ## [0.24.0] - 2026-09-04
 
 v0.24.0 是 v0.23.2 之后的 **MINOR Web 体验与运营基础版本**：完成用户端与管理端的
