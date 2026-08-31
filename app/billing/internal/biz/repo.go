@@ -166,3 +166,21 @@ type RedeemRepo interface {
 type PricingConfigStore interface {
 	GetPricingConfig(ctx context.Context) (PricingConfig, error)
 }
+
+// PricingSnapshotRepo persists the immutable per-request pricing evidence
+// (migration 088, §6.3). Claims are idempotent on config_hash: an identical
+// hash reuses the existing snapshot instead of failing.
+type PricingSnapshotRepo interface {
+	// ClaimPricingSnapshotInTx inserts the snapshot inside the caller's
+	// transaction — the SAME transaction as the ledger insert, so a ledger row
+	// and its pricing evidence commit or roll back together. A unique violation
+	// on config_hash is a benign reuse of an already-claimed snapshot; any
+	// other error fails the transaction.
+	ClaimPricingSnapshotInTx(ctx context.Context, tx subscriptionbiz.Tx, snapshot *PricingSnapshot) error
+	// ClaimPricingSnapshot is the own-transaction variant for the legacy
+	// non-dual-track commit path.
+	ClaimPricingSnapshot(ctx context.Context, snapshot *PricingSnapshot) error
+	// GetPricingSnapshotByHash returns the snapshot for a ledger row's
+	// pricing_config_hash; ErrSnapshotNotFound wraps a missing row.
+	GetPricingSnapshotByHash(ctx context.Context, configHash string) (*PricingSnapshot, error)
+}

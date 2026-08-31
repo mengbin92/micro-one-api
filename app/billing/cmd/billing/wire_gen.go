@@ -104,6 +104,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	uc.SetSubscriptionPrimatives(subscriptionUc)
 	uc.SetTxRunner(data.NewTxRunner(d))
 	uc.SetReceivableRepo(d.ReceivableRepo())
+	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
 
 	var asyncBilling *biz.AsyncBillingUsecase
 	if cfg.Bootstrap.Billing != nil && cfg.Bootstrap.Billing.Async != nil && cfg.Bootstrap.Billing.Async.Enabled {

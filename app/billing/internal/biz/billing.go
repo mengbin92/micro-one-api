@@ -105,22 +105,23 @@ type SubscriptionPrimatives interface {
 }
 
 type BillingUsecase struct {
-	accountRepo        AccountRepo
-	reservationRepo    ReservationRepo
-	ledgerRepo         LedgerRepo
-	redeemRepo         RedeemRepo
-	receivableRepo     ReceivableRepo
-	txRunner           subscriptionbiz.TxRunner
-	subscription       SubscriptionPrimatives
-	options            BillingOptions
-	pricingStore       PricingConfigStore
-	groupRatios        map[string]float64
-	modelRatios        map[string]float64
-	completionRatios   map[string]float64
-	modelPrices        map[string]ModelPrice
-	upstreamPrices     map[string]ModelPrice
-	cacheCreationMode  CacheCreationMode
-	canonicalUsageMode CanonicalUsageMode
+	accountRepo         AccountRepo
+	reservationRepo     ReservationRepo
+	ledgerRepo          LedgerRepo
+	redeemRepo          RedeemRepo
+	receivableRepo      ReceivableRepo
+	pricingSnapshotRepo PricingSnapshotRepo
+	txRunner            subscriptionbiz.TxRunner
+	subscription        SubscriptionPrimatives
+	options             BillingOptions
+	pricingStore        PricingConfigStore
+	groupRatios         map[string]float64
+	modelRatios         map[string]float64
+	completionRatios    map[string]float64
+	modelPrices         map[string]ModelPrice
+	upstreamPrices      map[string]ModelPrice
+	cacheCreationMode   CacheCreationMode
+	canonicalUsageMode  CanonicalUsageMode
 	// grossProfitMetric is the per-commit gross-profit histogram. It defaults
 	// to the package-global metrics.BillingLedgerGrossProfit; tests inject a
 	// registry-local instance via SetGrossProfitMetric so assertions never
@@ -221,6 +222,13 @@ func (uc *BillingUsecase) SetLedgerRepo(r LedgerRepo) {
 func (uc *BillingUsecase) SetRedeemRepo(r RedeemRepo) {
 	uc.redeemRepo = r
 	uc.options.RedeemRepo = r
+}
+
+// SetPricingSnapshotRepo wires the pricing-evidence store (migration 088).
+// When unset the ledger keeps working exactly as before — rows just carry an
+// empty pricing_config_hash, which is the documented pre-088 state.
+func (uc *BillingUsecase) SetPricingSnapshotRepo(r PricingSnapshotRepo) {
+	uc.pricingSnapshotRepo = r
 }
 
 // SetTxRunner wires the data-owned transaction runner so the dual-track
@@ -879,6 +887,12 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 		}
 		usageAudit.applyTo(ledger)
 
+		// Legacy path has no shared transaction; claim the snapshot with its
+		// own so the hash on the row above never dangles.
+		if err := uc.claimPricingSnapshot(ctx, usageAudit.pricingSnapshot); err != nil {
+			return 0, 0, fmt.Errorf("claim pricing snapshot: %w", err)
+		}
+
 		if err := uc.ledgerRepo.CreateLedger(ctx, ledger); err != nil {
 			return 0, 0, fmt.Errorf("create ledger: %w", err)
 		}
@@ -975,6 +989,12 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		actualCost, costBreakdown, usageAudit := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
 		if actualCost <= 0 {
 			actualCost = 1
+		}
+		// §6.3: the pricing snapshot is claimed in the SAME transaction as the
+		// ledger rows below, so a row and its pricing evidence commit or roll
+		// back together. An identical hash reuses the existing snapshot.
+		if err := uc.claimPricingSnapshotInTx(ctx, tx, usageAudit.pricingSnapshot); err != nil {
+			return fmt.Errorf("claim pricing snapshot: %w", err)
 		}
 		// Subscription priority: the reservation's subscription pre-deduction is an
 		// estimate. At commit time the actual usage may be slightly higher, so while
@@ -1899,6 +1919,13 @@ func safeAddInt64(a, b int64) (int64, bool) {
 func (uc *BillingUsecase) resolveUserCost(ctx context.Context, price ModelPrice, multiplier float64, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
 	mode := uc.CanonicalUsageMode()
 	audit := ledgerUsageAudit{UsageContractVersion: usage.UsageContractVersion}
+
+	// Freeze the pricing evidence (§6.3): the effective per-bucket prices,
+	// group ratio and cache-creation mode this request is charged with. The
+	// snapshot is claimed in the commit transaction alongside the ledger row.
+	snapshot := buildPricingSnapshot(normalizePricingModelKey(model), price, multiplier, uc.CacheCreationBillingMode())
+	audit.PricingConfigHash = snapshot.ConfigHash
+	audit.pricingSnapshot = snapshot
 
 	legacyBuckets := legacyCanonicalBuckets(usage, actualTokens)
 	legacyBreakdown := calculateCanonicalCost(price, legacyBuckets, multiplier)

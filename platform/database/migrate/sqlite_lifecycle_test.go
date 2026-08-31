@@ -148,9 +148,9 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 27, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 28, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := len(files) - 4 // last four files arrive later (085, 086, 087 and the previous tail)
+	cut := len(files) - 5 // last five files arrive later (084–088 incremental tail)
 
 	db := openScratchSqlite(t)
 	// Stage 1: apply the tree up to (not including) the last four files.
@@ -191,6 +191,10 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		"model output modalities migration must have applied during upgrade")
 	require.True(t, sqliteColumnExists(t, db, "models", "pricing_cache_read"),
 		"model cache-read price migration must have applied during upgrade")
+	require.True(t, sqliteColumnExists(t, db, "billing_ledgers", "pricing_config_hash"),
+		"pricing snapshot hash migration must have applied during upgrade")
+	require.True(t, sqliteTableExists(t, db, "billing_pricing_snapshots"),
+		"pricing snapshot table migration must have applied during upgrade")
 	var inputPrice, outputPrice, cacheReadPrice float64
 	err = db.QueryRow(`
 		SELECT pricing_input, pricing_output, pricing_cache_read

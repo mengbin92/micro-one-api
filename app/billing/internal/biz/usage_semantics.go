@@ -211,6 +211,11 @@ type ledgerUsageAudit struct {
 	UsageDecisionReason    string
 	SubsetCandidateCost    int64
 	ExclusiveCandidateCost int64
+	// Pricing evidence (migration 088, §6.3). Set only on the ModelPrice path;
+	// ratio-priced models keep an empty hash. The snapshot itself is claimed in
+	// the commit transaction, not persisted by applyTo.
+	PricingConfigHash string
+	pricingSnapshot   *PricingSnapshot
 }
 
 // legacyCanonicalBuckets derives the five buckets from the legacy flat fields
@@ -260,4 +265,5 @@ func (a ledgerUsageAudit) applyTo(l *Ledger) {
 	l.UsageDecisionReason = a.UsageDecisionReason
 	l.SubsetCandidateCost = a.SubsetCandidateCost
 	l.ExclusiveCandidateCost = a.ExclusiveCandidateCost
+	l.PricingConfigHash = a.PricingConfigHash
 }

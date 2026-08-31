@@ -103,6 +103,10 @@ type Ledger struct {
 	UsageDecisionReason    string
 	SubsetCandidateCost    int64
 	ExclusiveCandidateCost int64
+	// PricingConfigHash references the billing_pricing_snapshots row holding
+	// the per-bucket unit prices this row was charged with (migration 088,
+	// §6.3). Empty for pre-088 rows and ratio-priced models; never guessed.
+	PricingConfigHash string
 }
 
 // DailyAggregate holds per-day aggregated ledger stats (consume only).
