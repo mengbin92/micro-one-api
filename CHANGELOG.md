@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-08-31
+
+v0.26.0 是 v0.25.0 之后的 **MINOR 用量语义与计费审计版本**：分离 reported usage 与规范五桶计费值，增加 ambiguous 语义隔离、逐笔定价快照和管理端五桶审计展示，包含数据库迁移 `085`–`088`。详见 [release-v0.26.0.md](docs/releases/release-v0.26.0.md)。
+
+### Added
+
+- 新增五桶 usage envelope、reported / billable totals、解析状态、字段形状、候选成本和 usage semantic source blocks。
+- 新增 `billing_pricing_snapshots` 定价证据表与 `pricing_config_hash`，并在管理端展示逐桶 token、单价、成本和快照信息。
+- 新增 MySQL、PostgreSQL、SQLite 的 usage 语义与定价快照迁移 `085`–`088`。
+
+### Fixed
+
+- 修复通过 channel 类型猜测 prompt/cache 语义的问题，ambiguous usage 不再被算术关系静默解释。
+- 修复 producer gate 配置不一致导致 canonical usage 证据链不完整的问题。
+
+### Changed
+
+- 新增 `legacy` / `observe` / `charge` canonical usage 模式和历史行“历史口径”展示；`088` 只增加定价证据，不改变当前计费金额。
+
 ## [0.25.0] - 2026-08-31
 
 v0.25.0 是 v0.24.0 之后的 **MINOR 模型能力与定价注册版本**：增加模型输入 / 输出模态与 cache-read 定价，统一注册表价格为每 1M tokens，并补齐 `083`、`084` 数据库迁移和旧 MySQL 默认值兼容。详见 [release-v0.25.0.md](docs/releases/release-v0.25.0.md)。

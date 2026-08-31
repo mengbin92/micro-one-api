@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.25.0 发布公告](./docs/releases/release-v0.25.0.md)（模型模态与注册表定价） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.25.0)
+> 📣 **最新发布**：[v0.26.0 发布公告](./docs/releases/release-v0.26.0.md)（用量语义与可审计计费） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.0)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.26.0
+
+v0.26.0 是 v0.25.0 之后的 **MINOR 用量语义与计费审计版本**：分离 reported usage 与规范五桶计费值，增加 ambiguous 隔离、逐笔定价快照和五桶审计页，包含迁移 `085`–`088`。**必须按 `085 → 086 → 087 → 088` 顺序执行迁移**；先以 `BILLING_CANONICAL_USAGE_MODE=observe` 验证，再按审批开启 charge。部署 billing/log/channel/admin 和 `web/dist` 时使用 `--no-deps`，executor 观察期间不要重启 `relay-gateway`。详见 [docs/releases/release-v0.26.0.md](./docs/releases/release-v0.26.0.md)。
 
 ### 升级到 v0.25.0
 
