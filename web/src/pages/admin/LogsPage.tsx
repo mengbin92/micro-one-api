@@ -24,6 +24,7 @@ import { buildAdminListParams } from '@/lib/admin-table-query';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { formatAmountUnits } from '@/lib/amount';
 import { sortRows, type SortState } from '@/lib/table-utils';
+import { UsageAuditPanel, UsageSummaryCell, type UsageAuditLog } from '@/components/admin/UsageAuditPanel';
 import {
   Table,
   TableBody,
@@ -68,6 +69,28 @@ interface LogEntry {
   subscriptionAccountId?: number;
   elapsed_time?: string | number;
   is_stream?: boolean;
+  // Usage-semantics audit + pricing evidence (§9; populated by /log/{id} and
+  // the enriched /log list since the 085/088 contracts).
+  promptCost?: number | string;
+  completionCost?: number | string;
+  cacheReadCost?: number | string;
+  cacheCreation5mCost?: number | string;
+  cacheCreation1hCost?: number | string;
+  shadowCost?: number | string;
+  uncachedInputTokens?: number | string;
+  reportedPromptTokens?: number | string;
+  reportedTotalTokens?: number | string;
+  billableTotalTokens?: number | string;
+  usageSemantics?: string;
+  usageProtocol?: string;
+  usageFieldShape?: string;
+  usageParseStatus?: string;
+  usageContractVersion?: number | string;
+  usageDecisionReason?: string;
+  subsetCandidateCost?: number | string;
+  exclusiveCandidateCost?: number | string;
+  pricingConfigHash?: string;
+  pricingSnapshot?: UsageAuditLog['pricingSnapshot'];
 }
 
 interface LogListData {
@@ -237,9 +260,6 @@ export function AdminLogsPage() {
         ['Amount', formatQuota(selectedLog.amount)],
         ['Balance After', formatQuota(selectedLog.balanceAfter)],
         ['Quota', selectedLog.quota],
-        ['Prompt Tokens', selectedLog.prompt_tokens],
-        ['Completion Tokens', selectedLog.completion_tokens],
-        ['Cache Read Tokens', selectedLog.cache_read_tokens],
         ['Elapsed Time', selectedLog.elapsed_time ? `${selectedLog.elapsed_time} ms` : undefined],
         ['Stream', selectedLog.is_stream],
         ['Created At', formatTimestamp(selectedLog.created_at ?? selectedLog.createdAt)],
@@ -359,6 +379,7 @@ export function AdminLogsPage() {
                     Amount
                   </SortableHeader>
                   <TableHead className="hidden lg:table-cell">Upstream Provider</TableHead>
+                  <TableHead className="hidden xl:table-cell">{t('Token 用量')}</TableHead>
                   <TableHead className="hidden md:table-cell">Balance After</TableHead>
                   <TableHead className="hidden lg:table-cell">Reference</TableHead>
                   <TableHead className="hidden lg:table-cell">Remark</TableHead>
@@ -381,6 +402,9 @@ export function AdminLogsPage() {
                     <TableCell>{formatQuota(log.amount)}</TableCell>
                     <TableCell className="hidden lg:table-cell">
                       {formatUpstreamProvider(log)}
+                    </TableCell>
+                    <TableCell className="hidden xl:table-cell">
+                      <UsageSummaryCell log={log} />
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{formatQuota(log.balanceAfter)}</TableCell>
                     <TableCell className="hidden font-mono text-xs lg:table-cell">{log.referenceId || '—'}</TableCell>
@@ -416,7 +440,7 @@ export function AdminLogsPage() {
       )}
 
       <Dialog open={selectedLogId !== null} onOpenChange={(open) => !open && setSelectedLogId(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Log Details</DialogTitle>
             <DialogDescription>
@@ -426,7 +450,7 @@ export function AdminLogsPage() {
           {isDetailLoading ? (
             <TableSkeleton columns={['Field', 'Value']} rows={8} />
           ) : selectedLog ? (
-            <div className="space-y-4">
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
               <div className="overflow-x-auto rounded-lg border">
                 <Table>
                   <TableBody>
@@ -438,6 +462,10 @@ export function AdminLogsPage() {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+              <div>
+                <div className="mb-2 text-xs font-medium text-muted-foreground">{t('用量与计费口径')}</div>
+                <UsageAuditPanel log={selectedLog} />
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
                 <div className="mb-2 text-xs font-medium text-muted-foreground">Message</div>
