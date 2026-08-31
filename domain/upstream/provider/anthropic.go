@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/pkg/usage"
 	applogger "micro-one-api/platform/logging"
 )
 
@@ -355,24 +356,29 @@ func canonicalFromAnthropicUsage(u anthropicUsage) *CanonicalUsage {
 }
 
 // projectOpenAIUsageFromCanonical renders the client-facing OpenAI usage from
-// canonical buckets (§4.3 projection matrix): prompt/input includes uncached
-// + cache_read + cache_creation, cached_tokens carries cache_read, and total
-// = prompt + output. This is the single projection helper; apicompat's
-// (already-correct) Anthropic→Responses projection follows the same rules.
+// canonical buckets (§4.3 projection matrix). The arithmetic lives in
+// pkg/usage so provider Chat and apicompat's Anthropic→Responses projection
+// share one implementation and cannot drift apart.
 func projectOpenAIUsageFromCanonical(c *CanonicalUsage) Usage {
 	if c == nil {
 		return Usage{}
 	}
-	prompt := c.UncachedInputTokens + c.CacheReadTokens + c.CacheCreation5mTokens + c.CacheCreation1hTokens
+	p := usage.ProjectOpenAI(usage.Buckets{
+		UncachedInputTokens:   c.UncachedInputTokens,
+		CacheReadTokens:       c.CacheReadTokens,
+		CacheCreation5mTokens: c.CacheCreation5mTokens,
+		CacheCreation1hTokens: c.CacheCreation1hTokens,
+		OutputTokens:          c.OutputTokens,
+	})
 	return Usage{
-		PromptTokens:     int(prompt),
-		CompletionTokens: int(c.OutputTokens),
-		TotalTokens:      int(prompt + c.OutputTokens),
+		PromptTokens:     int(p.PromptTokens),
+		CompletionTokens: int(p.OutputTokens),
+		TotalTokens:      int(p.TotalTokens),
 		PromptTokensDetails: UsageTokenDetails{
-			CachedTokens:          int(c.CacheReadTokens),
-			CacheReadTokens:       int(c.CacheReadTokens),
-			CacheCreation5mTokens: int(c.CacheCreation5mTokens),
-			CacheCreation1hTokens: int(c.CacheCreation1hTokens),
+			CachedTokens:          int(p.CachedTokens),
+			CacheReadTokens:       int(p.CacheReadTokens),
+			CacheCreation5mTokens: int(p.CacheCreation5mTokens),
+			CacheCreation1hTokens: int(p.CacheCreation1hTokens),
 		},
 	}
 }
