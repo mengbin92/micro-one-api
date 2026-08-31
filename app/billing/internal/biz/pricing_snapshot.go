@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"math"
 	"time"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
@@ -105,9 +107,17 @@ func buildPricingSnapshot(modelKey string, price ModelPrice, multiplier float64,
 		Mode:            s.CacheCreationMode,
 	})
 	if err != nil {
-		// jsonx.Marshal of a plain struct with no channels/maps cannot fail;
-		// fall back to a constant hash rather than dropping the evidence.
-		s.ConfigHash = "unhashable-pricing-snapshot"
+		// Non-finite floats are rejected during pricing normalization, but keep
+		// the low-level builder collision-safe as well: hashing their exact IEEE
+		// bits is deterministic and never aliases unrelated invalid configs.
+		fallback := fmt.Sprintf("%d|%q|%016x|%016x|%016x|%016x|%016x|%016x|%q",
+			s.SnapshotVersion, s.ModelName,
+			math.Float64bits(s.InputPrice), math.Float64bits(s.OutputPrice),
+			math.Float64bits(s.CacheReadPrice), math.Float64bits(s.CacheCreation5mPrice),
+			math.Float64bits(s.CacheCreation1hPrice), math.Float64bits(s.GroupRatio),
+			s.CacheCreationMode)
+		sum := sha256.Sum256([]byte(fallback))
+		s.ConfigHash = hex.EncodeToString(sum[:])
 		return s
 	}
 	sum := sha256.Sum256(payload)

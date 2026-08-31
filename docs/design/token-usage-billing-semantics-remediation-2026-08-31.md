@@ -75,11 +75,17 @@
 > `./scripts/check-architecture.sh`、`go test -race ./internal/server/...
 > ./domain/upstream/provider/... ./app/billing/... ./pkg/usage/...`、
 > sqlite lifecycle（count 28 + 088 表/列断言）、web `tsc -b`/`eslint`/
-> `vitest run`（153 tests）全部通过。
+> `vitest run`（155 tests）全部通过。
 >
 > 仍未做：§8 历史审计/冲正脚本；灰度发布运维动作（§11 的 observe 48 小时
 > 窗口、charge allowlist、`usage_contract_version=0` 流量归零后移除
 > PromptExclusive 依赖）。
+>
+> 最近 4 次提交 code review 补强（2026-08-31）：未接入 snapshot repo 的兼容
+> 部署不再写入无法解析的 `pricing_config_hash`；ModelPrice 与倍率配置拒绝 NaN/Inf，
+> 非有限快照的兜底 hash 按 IEEE 位生成以避免碰撞；统一 usage 投影在负数与 int64
+> 极值下不再发生回绕并保留异常信号；Admin list 补齐 field shape、contract version、
+> canonical present 与 ambiguous 双候选成本，cache-creation-only 行不再被误判为空用量。
 
 ## 1. 结论摘要
 

@@ -98,3 +98,17 @@ func TestSaturatingAdd(t *testing.T) {
 		t.Fatalf("InclusiveTotalTokens overflow = %d, want saturated MaxInt64", got)
 	}
 }
+
+func TestProjectionPreservesNegativeAnomalyWithoutOverflow(t *testing.T) {
+	if got := addClamped(math.MinInt64, -1); got != math.MinInt64 {
+		t.Fatalf("addClamped(MinInt64, -1) = %d, want MinInt64 anomaly", got)
+	}
+	if got := addClamped(math.MaxInt64, math.MinInt64); got != math.MinInt64 {
+		t.Fatalf("addClamped(MaxInt64, MinInt64) = %d, want negative anomaly", got)
+	}
+
+	got := SplitInclusive(100, math.MinInt64, 0, 0, 9)
+	if got.UncachedInputTokens != 100 || got.CacheReadTokens != math.MinInt64 {
+		t.Fatalf("SplitInclusive laundered negative cache bucket: %+v", got)
+	}
+}

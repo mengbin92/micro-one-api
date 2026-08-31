@@ -132,4 +132,15 @@ describe('UsageSummaryCell', () => {
 
     expect(screen.getByText('存疑')).toBeInTheDocument();
   });
+
+  it('shows cache-creation-only rows instead of treating them as empty', () => {
+    render(
+      <UsageSummaryCell
+        log={{ usageParseStatus: 'verified', cacheCreation5mTokens: 128, billableTotalTokens: 128 }}
+      />,
+    );
+
+    expect(screen.getByText('128')).toBeInTheDocument();
+    expect(screen.getByText('Σ 128')).toBeInTheDocument();
+  });
 });

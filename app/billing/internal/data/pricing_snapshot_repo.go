@@ -103,6 +103,9 @@ func (r *pricingSnapshotRepo) GetPricingSnapshotByHash(ctx context.Context, conf
 	if configHash == "" {
 		return nil, nil
 	}
+	if r == nil || r.data == nil || r.data.db == nil {
+		return nil, errors.New("pricing snapshot repo: no database available")
+	}
 	var model pricingSnapshotModel
 	if err := r.data.db.WithContext(ctx).
 		Where("config_hash = ?", configHash).
