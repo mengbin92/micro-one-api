@@ -221,14 +221,14 @@ type httpRelayLifecycleHooks struct {
 	s *HTTPServer
 }
 
-func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated relaybiz.CanonicalUsage) (*Reservation, error) {
+func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated relaybiz.UsageEnvelope) (*Reservation, error) {
 	if h.s == nil || h.s.billingClient == nil {
 		return nil, errors.New("billing service unavailable")
 	}
 	reservation, err := h.s.reserveQuota(ctx,
 		strconv.FormatInt(plan.Auth.UserID, 10),
 		req.RequestID,
-		estimated.TotalTokens,
+		estimated.BillableTotal(),
 		h.s.BillingModelName(req.Model, plan.ResolvedModel, plan.ResolvedModel),
 		strconv.FormatInt(plan.Channel.ID, 10),
 		subscriptionAccountIDFromPlan(plan),
@@ -246,18 +246,19 @@ func (h httpRelayLifecycleHooks) CheckUserRateLimit(ctx context.Context, plan *r
 	return h.s.checkUserRPM(ctx, plan.Auth.UserID)
 }
 
-func (h httpRelayLifecycleHooks) CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage relaybiz.CanonicalUsage, success bool, latency time.Duration) error {
+func (h httpRelayLifecycleHooks) CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage relaybiz.UsageEnvelope, success bool, latency time.Duration) error {
 	if reservation == nil {
 		return nil
 	}
 	if h.s == nil || h.s.billingClient == nil {
 		return errors.New("billing service unavailable")
 	}
-	if usage.TotalTokens == 0 {
-		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	actualTokens := usage.BillableTotal()
+	if actualTokens == 0 {
+		actualTokens = usage.Reported.TotalTokens
 	}
 	logInput := orchestratorUsageLogInput(h, plan, req, usage, latency, req.IsStream)
-	return h.s.commitQuota(ctx, reservation.ID, usage.TotalTokens, success, logInput)
+	return h.s.commitQuota(ctx, reservation.ID, actualTokens, success, logInput)
 }
 
 func (h httpRelayLifecycleHooks) ReleaseQuota(ctx context.Context, reservation *Reservation, reason string) error {
@@ -270,7 +271,7 @@ func (h httpRelayLifecycleHooks) ReleaseQuota(ctx context.Context, reservation *
 	return h.s.releaseQuota(ctx, reservation.ID, reason)
 }
 
-func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) {
+func (h httpRelayLifecycleHooks) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.UsageEnvelope, latency time.Duration, stream bool) {
 	if h.s == nil {
 		return
 	}
@@ -338,7 +339,7 @@ func (h httpRelayLifecycleHooks) AcquireRelayAttempt(ctx context.Context, plan *
 	return release, nil
 }
 
-func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) usageLogInput {
+func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.UsageEnvelope, latency time.Duration, stream bool) usageLogInput {
 	endpoint := "/v1" + endpointPath(req.Endpoint)
 	if endpoint == "/v1" {
 		endpoint = "/v1/chat/completions"
@@ -350,19 +351,16 @@ func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPl
 		RequestID:             req.RequestID,
 		Endpoint:              endpoint,
 		ModelName:             h.s.BillingModelName(req.Model, plan.ResolvedModel, plan.ResolvedModel),
-		Quota:                 usage.TotalTokens,
-		PromptTokens:          usage.PromptTokens,
-		CompletionTokens:      usage.CompletionTokens,
-		CacheReadTokens:       usage.CacheReadTokens,
-		CacheCreation5mTokens: usage.CacheCreation5mTokens,
-		CacheCreation1hTokens: usage.CacheCreation1hTokens,
 		ChannelID:             plan.Channel.ID,
 		SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 		ElapsedTime:           latency.Milliseconds(),
 		IsStream:              stream,
 	}
+	// §5.3 dual-write: legacy token fields keep their old (reported) meanings;
+	// the envelope rides along for the v1 producer path.
+	input.applyEnvelope(usage)
 	// v0.11.0 Phase 2 §2.2 + Phase 0/1 ADR §3.3: thread plan-derived inputs
-	// (upstream cost-key + prompt-exclusivity flag).
+	// (upstream cost-key + legacy prompt-exclusivity dual-write).
 	input.applyPlanInputs(plan)
 	return input
 }

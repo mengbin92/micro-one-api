@@ -110,6 +110,7 @@ allowlist；双语 Web 与中国法律协议按 v0.24 独立准备。
 | [subscription-follow-up-code-review.md](./design/subscription-follow-up-code-review.md) | 订阅系统后续规划 Code Review |
 | [subscription-account-quota-follow-up.md](./design/subscription-account-quota-follow-up.md) | 上游账号额度后续工作 |
 | [usage-billing-reconciliation-plan.md](./design/usage-billing-reconciliation-plan.md) | 用量统计 / 对账复盘 |
+| [token-usage-billing-semantics-remediation-2026-08-31.md](./design/token-usage-billing-semantics-remediation-2026-08-31.md) | Token usage 协议语义、计费规范桶与历史审计修复方案 |
 | [quota-removal-follow-up.md](./design/quota-removal-follow-up.md) | Quota 移除后续工作 |
 | [sub2api-borrowable-ideas.md](./design/sub2api-borrowable-ideas.md) | sub2api 可借鉴内容清单 |
 | [issue-4-sqlite-solution.md](./design/issue-4-sqlite-solution.md) | Issue #4 SQLite/Postgres 轻量化部署 |

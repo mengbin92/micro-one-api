@@ -274,6 +274,25 @@ message LedgerEntry {
   int64 cache_creation_5m_cost = 30;
   int64 cache_creation_1h_cost = 31;
   int64 shadow_cost = 32;
+  // token-usage-billing-semantics-remediation (2026-08-31) §6.1 audit fields.
+  // Rows written before the contract keep usage_parse_status='legacy' and
+  // usage_semantics=''; their semantics are unknown and MUST NOT be inferred
+  // from token arithmetic.
+  int64 uncached_input_tokens = 33;   // canonical bucket (already net of cache)
+  int64 reported_prompt_tokens = 34;  // raw upstream-reported prompt/input
+  int64 reported_total_tokens = 35;   // raw upstream-reported total
+  int64 billable_total_tokens = 36;   // sum of the five canonical buckets
+  string usage_semantics = 37;        // openai_subset | anthropic_exclusive | ''
+  string usage_protocol = 38;         // protocol the parser proved
+  string usage_field_shape = 39;      // raw field names that carried the buckets
+  string usage_parse_status = 40;     // verified | estimated | ambiguous | legacy
+  int32 usage_contract_version = 41;  // 0 = legacy producer
+  bool canonical_present = 42;
+  string usage_decision_reason = 43;
+  // Candidate costs persisted when usage_parse_status='ambiguous': the user
+  // was settled at the lower of the two (§5.2 conservative policy).
+  int64 subset_candidate_cost = 44;
+  int64 exclusive_candidate_cost = 45;
 }
 
 // ========== 流水信息（管理端视图）==========

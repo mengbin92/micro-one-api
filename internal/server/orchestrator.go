@@ -74,8 +74,9 @@ type RelayResult struct {
 	Headers http.Header
 	// StatusCode is the HTTP status code.
 	StatusCode int
-	// Usage contains token usage information for billing.
-	Usage *relaybiz.CanonicalUsage
+	// Usage contains the parsed usage envelope (reported + canonical +
+	// parse verdict) of the FINAL successful attempt for billing.
+	Usage *relaybiz.UsageEnvelope
 	// ChannelID is the selected channel ID.
 	ChannelID int64
 	// SubscriptionAccountID is the selected subscription account ID (if applicable).
@@ -94,10 +95,10 @@ type Reservation struct {
 // RelayLifecycleHooks integrates side effects that are owned by the outer
 // server layer, such as billing and usage logging.
 type RelayLifecycleHooks interface {
-	ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated relaybiz.CanonicalUsage) (*Reservation, error)
-	CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage relaybiz.CanonicalUsage, success bool, latency time.Duration) error
+	ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated relaybiz.UsageEnvelope) (*Reservation, error)
+	CommitQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage relaybiz.UsageEnvelope, success bool, latency time.Duration) error
 	ReleaseQuota(ctx context.Context, reservation *Reservation, reason string) error
-	LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool)
+	LogUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.UsageEnvelope, latency time.Duration, stream bool)
 }
 
 type relayUserRateLimitHook interface {
@@ -426,11 +427,20 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		result.Headers = headerMapToHTTP(finalStream.Headers)
 		result.ChannelID = finalPlan.Channel.ID
 		result.SubscriptionAccountID = subscriptionAccountIDFromPlan(finalPlan)
-		result.Response = newFinalizingRelayStream(req.Endpoint, finalStream.Stream, estimatedUsage, func(streamUsage relaybiz.CanonicalUsage, responseID string, completed bool) error {
+		result.Response = newFinalizingRelayStream(req.Endpoint, finalStream.Stream, estimatedUsage, func(streamUsage relaybiz.UsageEnvelope, responseID string, completed bool) error {
 			if finalReleaseAdmission != nil {
 				defer finalReleaseAdmission()
 			}
-			streamUsage.PromptExclusive = relaybiz.IsPromptExclusiveChannel(finalPlan)
+			// §7: the semantics come from the parser's verdict on the final
+			// attempt's stream; they MUST NOT be re-derived here from the plan
+			// (no IsPromptExclusiveChannel override). A verified envelope that
+			// carries cache buckets without proven semantics is a parser bug:
+			// count it and let billing's ambiguous safety path handle it.
+			if streamUsage.ParseStatus == relaybiz.UsageParseVerified && streamUsage.Semantics == "" &&
+				streamUsage.Canonical != nil && (streamUsage.Canonical.CacheReadTokens > 0 ||
+				streamUsage.Canonical.CacheCreation5mTokens > 0 || streamUsage.Canonical.CacheCreation1hTokens > 0) {
+				recordTokenUsageAnomaly(relaybiz.UsageReasonFinalAttemptSemanticsMissing)
+			}
 			latency := time.Since(startTime)
 			settleCtx := settlementContext(ctx)
 			if !completed {
@@ -550,7 +560,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		if forwardResp.Usage != nil {
 			attemptResult.Usage = forwardResp.Usage
 		}
-		if attemptResult.Usage == nil || attemptResult.Usage.TotalTokens == 0 {
+		if attemptResult.Usage == nil || attemptResult.Usage.BillableTotal() == 0 {
 			attemptResult.Usage = &estimatedUsage
 		}
 		if o.quotaPort != nil {
@@ -689,14 +699,14 @@ func mapUpstreamOrInternalStatus(err error) int {
 type chunkReadCloser struct {
 	chunks   <-chan []byte
 	buf      *bytes.Reader
-	onClose  func(relaybiz.CanonicalUsage) error
-	usage    relaybiz.CanonicalUsage
+	onClose  func(relaybiz.UsageEnvelope) error
+	usage    rawUsage
 	closeErr error
 	closed   bool
 }
 
-func newChunkReadCloser(chunks <-chan []byte, onClose ...func(relaybiz.CanonicalUsage) error) io.ReadCloser {
-	var closeFn func(relaybiz.CanonicalUsage) error
+func newChunkReadCloser(chunks <-chan []byte, onClose ...func(relaybiz.UsageEnvelope) error) io.ReadCloser {
+	var closeFn func(relaybiz.UsageEnvelope) error
 	if len(onClose) > 0 {
 		closeFn = onClose[0]
 	}
@@ -712,7 +722,7 @@ func (r *chunkReadCloser) Read(p []byte) (int, error) {
 		if len(chunk) == 0 {
 			continue
 		}
-		r.usage = mergeUsage(r.usage, usageFromBody(chunk))
+		r.usage = mergeRawUsage(extractRawUsage(chunk, 0), r.usage)
 		r.buf = bytes.NewReader(chunk)
 	}
 	return r.buf.Read(p)
@@ -726,7 +736,7 @@ func (r *chunkReadCloser) Close() error {
 	for range r.chunks {
 	}
 	if r.onClose != nil {
-		r.closeErr = r.onClose(r.usage)
+		r.closeErr = r.onClose(envelopeFromRawUsage(normalizeRawUsage(r.usage, 0)))
 	}
 	return r.closeErr
 }
@@ -738,14 +748,14 @@ func (o *relayOrchestrator) releaseReservedQuota(ctx context.Context, reservatio
 	_ = o.hooks.ReleaseQuota(ctx, reservation, reason)
 }
 
-func (o *relayOrchestrator) commitReservedQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage relaybiz.CanonicalUsage, success bool, latency time.Duration) error {
+func (o *relayOrchestrator) commitReservedQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, reservation *Reservation, usage relaybiz.UsageEnvelope, success bool, latency time.Duration) error {
 	if o.hooks == nil || reservation == nil {
 		return nil
 	}
 	return o.hooks.CommitQuota(ctx, plan, req, reservation, usage, success, latency)
 }
 
-func (o *relayOrchestrator) logUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.CanonicalUsage, latency time.Duration, stream bool) {
+func (o *relayOrchestrator) logUsage(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, usage relaybiz.UsageEnvelope, latency time.Duration, stream bool) {
 	if o.hooks == nil {
 		return
 	}
@@ -834,48 +844,17 @@ func (o *relayOrchestrator) finalizeSelectionFromRetryResult(plan *relaybiz.Rela
 	relaybiz.FinalizeSelectionResult(recorder, *plan.SelectionEvent, resultLabel, fallbackReason, fallback, latency)
 }
 
-func estimateUsageFromBody(body []byte) relaybiz.CanonicalUsage {
+// estimateUsageFromBody builds the pre-request estimate envelope. The
+// estimator only proves the uncached input bucket; it never fabricates cache
+// (§4.1 estimated).
+func estimateUsageFromBody(body []byte) relaybiz.UsageEnvelope {
 	raw := estimateRawUsage(body)
-	return relaybiz.CanonicalUsage{
-		PromptTokens:          raw.PromptTokens,
-		CompletionTokens:      raw.CompletionTokens,
-		CacheReadTokens:       raw.CacheReadTokens,
-		CacheCreation5mTokens: raw.CacheCreation5mTokens,
-		CacheCreation1hTokens: raw.CacheCreation1hTokens,
-		TotalTokens:           raw.TotalTokens,
+	return relaybiz.UsageEnvelope{
+		ContractVersion: relaybiz.UsageContractVersionV1,
+		ParseStatus:     relaybiz.UsageParseEstimated,
+		Canonical: &relaybiz.CanonicalUsage{
+			UncachedInputTokens: raw.PromptTokens,
+			OutputTokens:        raw.CompletionTokens,
+		},
 	}
-}
-
-func usageFromBody(body []byte) relaybiz.CanonicalUsage {
-	raw := extractRawUsage(body, 0)
-	return relaybiz.CanonicalUsage{
-		PromptTokens:          raw.PromptTokens,
-		CompletionTokens:      raw.CompletionTokens,
-		CacheReadTokens:       raw.CacheReadTokens,
-		CacheCreation5mTokens: raw.CacheCreation5mTokens,
-		CacheCreation1hTokens: raw.CacheCreation1hTokens,
-		TotalTokens:           raw.TotalTokens,
-	}
-}
-
-func mergeUsage(primary, fallback relaybiz.CanonicalUsage) relaybiz.CanonicalUsage {
-	if primary.PromptTokens == 0 {
-		primary.PromptTokens = fallback.PromptTokens
-	}
-	if primary.CompletionTokens == 0 {
-		primary.CompletionTokens = fallback.CompletionTokens
-	}
-	if primary.CacheReadTokens == 0 {
-		primary.CacheReadTokens = fallback.CacheReadTokens
-	}
-	if primary.CacheCreation5mTokens == 0 {
-		primary.CacheCreation5mTokens = fallback.CacheCreation5mTokens
-	}
-	if primary.CacheCreation1hTokens == 0 {
-		primary.CacheCreation1hTokens = fallback.CacheCreation1hTokens
-	}
-	if primary.TotalTokens == 0 {
-		primary.TotalTokens = fallback.TotalTokens
-	}
-	return primary
 }

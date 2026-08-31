@@ -21,7 +21,7 @@ func TestCalculateCanonicalCost_NoCreationPriceKeepsV0_10_2(t *testing.T) {
 		OutputPrice:    0.002,
 		CacheReadPrice: floatPtr(0.0001),
 	}
-	bd := calculateCanonicalCost(price, 100, 50, 10, 40, 70, 1.0, false)
+	bd := calculateCanonicalCost(price, CanonicalBuckets{UncachedInputTokens: 90, OutputTokens: 50, CacheReadTokens: 10, CacheCreation5mTokens: 40, CacheCreation1hTokens: 70}, 1.0)
 	assert.Equal(t, bd.V0_10_2Cost, bd.CanonicalCost, "unpriced canonical must equal v0.10.2")
 	assert.Equal(t, int64(0), bd.ShadowCost, "unpriced shadow cost must be 0")
 	assert.True(t, bd.CacheCreationUnpriced, "must be flagged unpriced")
@@ -38,7 +38,7 @@ func TestCalculateCanonicalCost_5m1hPricingInChargeMode(t *testing.T) {
 		CacheCreation5mPrice: floatPtr(0.00125),
 		CacheCreation1hPrice: floatPtr(0.0015),
 	}
-	bd := calculateCanonicalCost(price, 100, 50, 10, 40, 70, 1.0, false)
+	bd := calculateCanonicalCost(price, CanonicalBuckets{UncachedInputTokens: 90, OutputTokens: 50, CacheReadTokens: 10, CacheCreation5mTokens: 40, CacheCreation1hTokens: 70}, 1.0)
 	// input = (100-10)*0.001 = 0.09 ; cacheRead = 10*0.0001 = 0.001
 	// output = 50*0.002 = 0.1 ; creation5m = 40*0.00125 = 0.05 ; creation1h = 70*0.0015 = 0.105
 	// canonical raw = 0.09+0.001+0.1+0.05+0.105 = 0.346 ; *AmountScale(10000) = 3460
@@ -61,7 +61,7 @@ func TestCalculateCanonicalCost_OnlyOneTTLPrice(t *testing.T) {
 		CacheCreation5mPrice: floatPtr(0.00125),
 		// CacheCreation1hPrice intentionally nil
 	}
-	bd := calculateCanonicalCost(price, 100, 50, 0, 40, 70, 1.0, false)
+	bd := calculateCanonicalCost(price, CanonicalBuckets{UncachedInputTokens: 100, OutputTokens: 50, CacheCreation5mTokens: 40, CacheCreation1hTokens: 70}, 1.0)
 	// v0.10.2 raw = (100-0)*0.001 + 0*0.0001 + 50*0.002 = 0.1+0.1 = 0.2 ; *10000 = 2000
 	assert.Equal(t, int64(2000), bd.V0_10_2Cost)
 	// Canonical includes 5m charge: 0.2 + 40*0.00125 = 0.2+0.05 = 0.25 ; *10000 = 2500
@@ -78,7 +78,7 @@ func TestCalculateCanonicalCost_BothTTLsUnpriced(t *testing.T) {
 		InputPrice:  0.001,
 		OutputPrice: 0.002,
 	}
-	bd := calculateCanonicalCost(price, 100, 50, 0, 40, 70, 1.0, false)
+	bd := calculateCanonicalCost(price, CanonicalBuckets{UncachedInputTokens: 100, OutputTokens: 50, CacheCreation5mTokens: 40, CacheCreation1hTokens: 70}, 1.0)
 	assert.True(t, bd.CacheCreationUnpriced)
 	assert.Equal(t, bd.V0_10_2Cost, bd.CanonicalCost, "no priced creation buckets -> canonical == v0.10.2")
 	assert.Equal(t, int64(0), bd.ShadowCost)
@@ -224,15 +224,17 @@ func TestCalculateCanonicalCost_AnthropicExclusiveSemantics(t *testing.T) {
 	const cacheRead = int64(60)
 	const completion = int64(50)
 
-	// Exclusive (Anthropic): input = 300, cacheRead priced separately.
-	exclusive := calculateCanonicalCost(price, prompt, completion, cacheRead, 0, 0, 1.0, true)
+	// Exclusive (Anthropic): input = 300, cacheRead priced separately. The
+	// subset-vs-exclusive decision now lives in legacyCanonicalBuckets; the
+	// pure function only ever sees mutually-exclusive buckets.
+	exclusive := calculateCanonicalCost(price, CanonicalBuckets{UncachedInputTokens: prompt, OutputTokens: completion, CacheReadTokens: cacheRead}, 1.0)
 	// input=300*0.001=0.3 ; cacheRead=60*0.0001=0.006 ; completion=50*0.002=0.1
 	// raw = 0.406 ; *AmountScale = 4060
 	assert.Equal(t, int64(4060), exclusive.V0_10_2Cost,
 		"exclusive: input=300 (no subtraction)")
 
 	// Subset (OpenAI): input = 300-60 = 240.
-	subset := calculateCanonicalCost(price, prompt, completion, cacheRead, 0, 0, 1.0, false)
+	subset := calculateCanonicalCost(price, CanonicalBuckets{UncachedInputTokens: prompt - cacheRead, OutputTokens: completion, CacheReadTokens: cacheRead}, 1.0)
 	// input=240*0.001=0.24 ; cacheRead=60*0.0001=0.006 ; completion=50*0.002=0.1
 	// raw = 0.346 ; *AmountScale = 3460
 	assert.Equal(t, int64(3460), subset.V0_10_2Cost,
@@ -258,10 +260,17 @@ func TestCalculateCanonicalCost_AnthropicZeroCacheReadExclusive(t *testing.T) {
 		OutputPrice:    0.002,
 		CacheReadPrice: floatPtr(0.0001),
 	}
-	exclusive := calculateCanonicalCost(price, 300, 50, 0, 0, 0, 1.0, true)
-	subset := calculateCanonicalCost(price, 300, 50, 0, 0, 0, 1.0, false)
+	exclusive := calculateCanonicalCost(price, CanonicalBuckets{UncachedInputTokens: 300, OutputTokens: 50}, 1.0)
+	subset := calculateCanonicalCost(price, CanonicalBuckets{UncachedInputTokens: 300, OutputTokens: 50}, 1.0)
 	assert.Equal(t, exclusive.V0_10_2Cost, subset.V0_10_2Cost,
 		"with cacheRead=0, both semantics must be identical")
+
+	// The subset subtraction survives only in legacyCanonicalBuckets
+	// (the legacy dual-write branch), never in the pure function.
+	legacy := legacyCanonicalBuckets(LedgerUsage{PromptTokens: 300, CompletionTokens: 50, CacheReadTokens: 60}, 0)
+	assert.Equal(t, int64(240), legacy.UncachedInputTokens, "legacy subset: uncached = prompt - cacheRead")
+	legacyExclusive := legacyCanonicalBuckets(LedgerUsage{PromptTokens: 300, CompletionTokens: 50, CacheReadTokens: 60, PromptExclusive: true}, 0)
+	assert.Equal(t, int64(300), legacyExclusive.UncachedInputTokens, "legacy exclusive: uncached = prompt (no subtraction)")
 }
 
 // TestBillingUsecase_PromptExclusiveEndToEnd verifies the full pipeline

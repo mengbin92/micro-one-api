@@ -13,13 +13,15 @@ import (
 type streamUsageObserver interface {
 	ObserveBytes([]byte)
 	Usage() rawUsage
+	SawUsage() bool
 	ResponseID() string
 }
 
 type finalizingRelayStream struct {
 	stream      relaybiz.RelayStream
 	usage       streamUsageObserver
-	finalize    func(relaybiz.CanonicalUsage, string, bool) error
+	estimated   relaybiz.UsageEnvelope
+	finalize    func(relaybiz.UsageEnvelope, string, bool) error
 	mu          sync.Mutex
 	completed   bool
 	interrupted bool
@@ -28,13 +30,13 @@ type finalizingRelayStream struct {
 	closeError  error
 }
 
-func newFinalizingRelayStream(endpoint APIEndpoint, stream relaybiz.RelayStream, estimated relaybiz.CanonicalUsage, finalize func(relaybiz.CanonicalUsage, string, bool) error) relaybiz.RelayStream {
-	fallback := rawUsageFromCanonical(estimated)
+func newFinalizingRelayStream(endpoint APIEndpoint, stream relaybiz.RelayStream, estimated relaybiz.UsageEnvelope, finalize func(relaybiz.UsageEnvelope, string, bool) error) relaybiz.RelayStream {
+	fallback := rawUsageFromEnvelope(estimated)
 	var observer streamUsageObserver = newRawStreamUsageTracker(fallback)
 	if endpoint == EndpointResponses {
 		observer = newResponsesStreamUsageTracker(fallback)
 	}
-	return &finalizingRelayStream{stream: stream, usage: observer, finalize: finalize, terminal: streamTerminalTracker{endpoint: endpoint}}
+	return &finalizingRelayStream{stream: stream, usage: observer, estimated: estimated, finalize: finalize, terminal: streamTerminalTracker{endpoint: endpoint}}
 }
 
 func (s *finalizingRelayStream) Read(p []byte) (int, error) {
@@ -58,15 +60,34 @@ func (s *finalizingRelayStream) Close() error {
 		s.mu.Unlock()
 
 		closeErr := s.stream.Close()
-		usage := canonicalUsageFromRaw(s.usage.Usage())
+		env := s.finalUsage()
 		if s.finalize != nil {
-			if err := s.finalize(usage, s.usage.ResponseID(), completed); closeErr == nil {
+			if err := s.finalize(env, s.usage.ResponseID(), completed); closeErr == nil {
 				closeErr = err
 			}
 		}
 		s.closeError = closeErr
 	})
 	return s.closeError
+}
+
+// finalUsage decides the envelope from the accumulated stream usage. When the
+// upstream never reported usage, the pre-request estimate is returned with
+// parse_status=estimated (§4.2: no fabricated cache buckets); otherwise the
+// shared §4.2 decision proves the semantics from the accumulated field shape
+// of the FINAL attempt's stream.
+func (s *finalizingRelayStream) finalUsage() relaybiz.UsageEnvelope {
+	if !s.usage.SawUsage() {
+		if s.estimated.ContractVersion != 0 {
+			return s.estimated
+		}
+		return relaybiz.UsageEnvelope{
+			ContractVersion: relaybiz.UsageContractVersionV1,
+			ParseStatus:     relaybiz.UsageParseEstimated,
+			Canonical:       &relaybiz.CanonicalUsage{},
+		}
+	}
+	return envelopeFromRawUsage(s.usage.Usage())
 }
 
 func (s *finalizingRelayStream) markInterrupted() {
@@ -189,25 +210,15 @@ func (t *streamTerminalTracker) Success() bool {
 	return t.success && !t.failed
 }
 
-func rawUsageFromCanonical(usage relaybiz.CanonicalUsage) rawUsage {
+// rawUsageFromEnvelope seeds the stream tracker's fallback from the
+// pre-request estimate. Only the estimator-provable buckets are carried; the
+// tracker never fabricates cache buckets from it.
+func rawUsageFromEnvelope(env relaybiz.UsageEnvelope) rawUsage {
+	canonical := env.CanonicalOrZero()
 	return rawUsage{
-		PromptTokens:          usage.PromptTokens,
-		CompletionTokens:      usage.CompletionTokens,
-		CacheReadTokens:       usage.CacheReadTokens,
-		CacheCreation5mTokens: usage.CacheCreation5mTokens,
-		CacheCreation1hTokens: usage.CacheCreation1hTokens,
-		TotalTokens:           usage.TotalTokens,
-	}
-}
-
-func canonicalUsageFromRaw(usage rawUsage) relaybiz.CanonicalUsage {
-	return relaybiz.CanonicalUsage{
-		PromptTokens:          usage.PromptTokens,
-		CompletionTokens:      usage.CompletionTokens,
-		CacheReadTokens:       usage.CacheReadTokens,
-		CacheCreation5mTokens: usage.CacheCreation5mTokens,
-		CacheCreation1hTokens: usage.CacheCreation1hTokens,
-		TotalTokens:           usage.TotalTokens,
+		PromptTokens:        canonical.UncachedInputTokens,
+		TotalTokens:         canonical.BillableTotal(),
+		ReportedTotalTokens: env.Reported.TotalTokens,
 	}
 }
 

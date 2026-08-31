@@ -38,6 +38,16 @@ interface UsageLog {
   cost_source?: string;
   subscription_cost?: number;
   balance_cost?: number;
+  // token-usage-billing-semantics-remediation §9.1 display contract.
+  uncached_input_tokens?: number;
+  reported_prompt_tokens?: number;
+  reported_total_tokens?: number;
+  billable_total_tokens?: number;
+  cache_creation_5m_tokens?: number;
+  cache_creation_1h_tokens?: number;
+  usage_semantics?: string;
+  usage_parse_status?: string;
+  usage_decision_reason?: string;
 }
 
 interface UsageLogData {
@@ -74,15 +84,29 @@ function formatDuration(value?: number) {
   return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${value}ms`;
 }
 
-function nonCachedInputTokens(log: UsageLog) {
-  const inputTokens = log.prompt_tokens || 0;
-  const cacheReadTokens = log.cache_read_tokens || 0;
-  if (cacheReadTokens <= 0) return inputTokens;
-  return Math.max(0, inputTokens - cacheReadTokens);
+// §9.1 display contract: rows written before the usage-semantics contract
+// (usage_parse_status='legacy' or absent) have UNKNOWN historical semantics.
+// They are rendered from their raw reported fields and tagged 历史口径; the
+// UI must NOT fabricate a pseudo-precise uncached input via prompt-cache.
+function isLegacyRow(log: UsageLog) {
+  return !log.usage_parse_status || log.usage_parse_status === 'legacy';
+}
+
+function uncachedInputTokens(log: UsageLog) {
+  if (!isLegacyRow(log)) {
+    // The canonical bucket is authoritative; never re-derive prompt-cache.
+    return log.uncached_input_tokens || 0;
+  }
+  return log.prompt_tokens || 0;
 }
 
 function displayTotalTokens(log: UsageLog) {
-  return log.quota || nonCachedInputTokens(log) + (log.completion_tokens || 0) + (log.cache_read_tokens || 0);
+  if (!isLegacyRow(log)) {
+    // billable total is the financial total (includes every cache bucket).
+    if ((log.billable_total_tokens || 0) > 0) return log.billable_total_tokens || 0;
+    return log.reported_total_tokens || log.quota || 0;
+  }
+  return log.quota || (log.prompt_tokens || 0) + (log.completion_tokens || 0) + (log.cache_read_tokens || 0);
 }
 
 function hasTokenBreakdown(log: UsageLog) {
@@ -125,33 +149,45 @@ interface TooltipState {
 }
 
 function TokenUsageTooltip({
+  log,
   inputTokens,
   upstreamInputTokens,
   outputTokens,
   cacheReadTokens,
+  cacheCreationTokens,
   total,
   state,
 }: {
+  log: UsageLog;
   inputTokens: number;
   upstreamInputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
+  cacheCreationTokens: number;
   total: number;
   state: TooltipState;
 }) {
   return createPortal(
     <div
-      className="pointer-events-none fixed z-[100] w-44 rounded-lg bg-slate-950 px-4 py-3 text-xs font-medium text-slate-300 shadow-xl dark:bg-slate-900"
+      className="pointer-events-none fixed z-[100] w-52 rounded-lg bg-slate-950 px-4 py-3 text-xs font-medium text-slate-300 shadow-xl dark:bg-slate-900"
       style={{
         left: state.x,
         top: state.y,
         transform: state.placement === 'top' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
       }}
     >
-      <div className="mb-2 text-sm font-bold text-white">{t("Token 明细")}</div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-sm font-bold text-white">{t("Token 明细")}</span>
+        {isLegacyRow(log) ? (
+          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">{t("历史口径")}</span>
+        ) : null}
+        {log.usage_parse_status === 'ambiguous' ? (
+          <span className="rounded bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300">{t("口径存疑")}</span>
+        ) : null}
+      </div>
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-4">
-          <span>{t("输入 Token")}</span>
+          <span>{isLegacyRow(log) ? t("输入 Token（上报）") : t("非缓存输入 Token")}</span>
           <span className="font-bold text-white">{inputTokens.toLocaleString(locale())}</span>
         </div>
         {cacheReadTokens > 0 ? (
@@ -168,10 +204,22 @@ function TokenUsageTooltip({
           <span>{t("缓存读取 Token")}</span>
           <span className="font-bold text-white">{cacheReadTokens.toLocaleString(locale())}</span>
         </div>
+        {cacheCreationTokens > 0 ? (
+          <div className="flex items-center justify-between gap-4">
+            <span>{t("缓存创建 Token")}</span>
+            <span className="font-bold text-white">{cacheCreationTokens.toLocaleString(locale())}</span>
+          </div>
+        ) : null}
         <div className="mt-2 flex items-center justify-between gap-4 border-t border-white/10 pt-2">
-          <span>{t("总 Token")}</span>
+          <span>{isLegacyRow(log) ? t("总 Token（历史口径）") : t("计费总 Token")}</span>
           <span className="font-bold text-sky-300">{total.toLocaleString(locale())}</span>
         </div>
+        {!isLegacyRow(log) && (log.reported_total_tokens || 0) > 0 && (log.reported_total_tokens || 0) !== total ? (
+          <div className="flex items-center justify-between gap-4 text-slate-500">
+            <span>{t("上游上报总 Token")}</span>
+            <span className="font-bold">{(log.reported_total_tokens || 0).toLocaleString(locale())}</span>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body,
@@ -180,10 +228,11 @@ function TokenUsageTooltip({
 
 function TokenUsageCell({ log }: { log: UsageLog }) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
-  const upstreamInputTokens = log.prompt_tokens || 0;
-  const inputTokens = nonCachedInputTokens(log);
+  const upstreamInputTokens = log.reported_prompt_tokens || log.prompt_tokens || 0;
+  const inputTokens = uncachedInputTokens(log);
   const outputTokens = log.completion_tokens || 0;
   const cacheReadTokens = log.cache_read_tokens || 0;
+  const cacheCreationTokens = (log.cache_creation_5m_tokens || 0) + (log.cache_creation_1h_tokens || 0);
   const total = displayTotalTokens(log);
 
   if (!hasTokenBreakdown(log)) {
@@ -229,10 +278,12 @@ function TokenUsageCell({ log }: { log: UsageLog }) {
       </div>
       {tooltip ? (
         <TokenUsageTooltip
+          log={log}
           inputTokens={inputTokens}
           upstreamInputTokens={upstreamInputTokens}
           outputTokens={outputTokens}
           cacheReadTokens={cacheReadTokens}
+          cacheCreationTokens={cacheCreationTokens}
           total={total}
           state={tooltip}
         />

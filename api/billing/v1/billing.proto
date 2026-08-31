@@ -115,6 +115,70 @@ message CommitQuotaRequest {
   int64 cache_creation_5m_cost = 22;
   int64 cache_creation_1h_cost = 23;
   int64 shadow_cost = 24;
+  // usage_contract_version selects the usage contract the producer honors
+  // (token-usage-billing-semantics-remediation §5.3):
+  //   0 = legacy producer; billing falls back to fields 7-18 with their old
+  //       semantics and records legacy_producer.
+  //   1 = canonical v1; the usage envelope below is authoritative and
+  //       prompt_exclusive MUST NOT be consulted for billing decisions.
+  // A v1 producer that omits/empties the envelope is a contract error: billing
+  // treats the request as ambiguous (conservative settlement) and alerts; it
+  // MUST NOT silently fall back to the legacy branch.
+  int32 usage_contract_version = 25;
+  // usage is the canonical-v1 usage envelope (presence matters: nil means the
+  // producer did not send the new contract). Legacy fields 7-18 keep their old
+  // meanings and are dual-written during the rolling upgrade.
+  UsageEnvelope usage = 26;
+}
+
+// ========== Usage 语义契约（token-usage-billing-semantics-remediation §4.1/§6.2） ==========
+
+// CanonicalUsageV1 carries exactly the five mutually-exclusive billing
+// buckets. uncached_input_tokens is already net of cache-read (the parser,
+// not the billing layer, performs any subtraction).
+message CanonicalUsageV1 {
+  int64 uncached_input_tokens = 1;
+  int64 cache_read_tokens = 2;
+  int64 cache_creation_5m_tokens = 3;
+  int64 cache_creation_1h_tokens = 4;
+  int64 output_tokens = 5;
+}
+
+// ReportedUsageV1 preserves the raw upstream-reported values for audit and
+// display. reported totals never participate in cost computation.
+message ReportedUsageV1 {
+  int64 prompt_tokens = 1;
+  int64 output_tokens = 2;
+  int64 cache_read_tokens = 3;
+  int64 cache_creation_5m_tokens = 4;
+  int64 cache_creation_1h_tokens = 5;
+  int64 total_tokens = 6;
+  // source_protocol identifies the upstream protocol the parser proved
+  // (e.g. "openai_chat", "responses", "anthropic_messages"); empty when unknown.
+  string source_protocol = 7;
+  // field_shape records which raw field names carried the buckets, for audit.
+  string field_shape = 8;
+}
+
+// UsageEnvelope separates reported usage from the canonical billing buckets
+// and carries the parse verdict. parse_status values:
+//   verified  : exactly one canonical is present; semantics is set when any
+//               cache bucket is non-zero.
+//   estimated : estimator-produced canonical without fabricated cache buckets.
+//   ambiguous : no single canonical; subset_candidate and exclusive_candidate
+//               carry the two interpretations for conservative settlement.
+//   legacy    : reserved for old producers on the wire; new producers MUST NOT
+//               emit it for parse failures (use ambiguous instead).
+message UsageEnvelope {
+  ReportedUsageV1 reported = 1;
+  CanonicalUsageV1 canonical = 2;
+  string semantics = 3;      // openai_subset | anthropic_exclusive | ""
+  string parse_status = 4;   // verified | estimated | ambiguous | legacy
+  CanonicalUsageV1 subset_candidate = 5;
+  CanonicalUsageV1 exclusive_candidate = 6;
+  // decision_reason records why the verdict was reached (e.g.
+  // "cached_exceeds_reported_prompt", "v1_contract_error"), for ledger audit.
+  string decision_reason = 7;
 }
 
 message CommitQuotaResponse {
@@ -563,6 +627,11 @@ message DailyUsage {
   // v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md).
   int64 cache_creation_5m_tokens = 8;   // SUM of 5 分钟 TTL cache 创建 token
   int64 cache_creation_1h_tokens = 9;   // SUM of 1 小时 TTL cache 创建 token
+  // token-usage-billing-semantics-remediation §9.1: canonical sums so
+  // dashboards can render five-bucket totals instead of re-deriving them.
+  // Zero for rows predating the contract (usage_parse_status='legacy').
+  int64 uncached_input_tokens = 10;
+  int64 billable_total_tokens = 11;
 }
 
 message ModelUsage {

@@ -54,6 +54,15 @@ func (s *LogService) GetLog(ctx context.Context, req *logv1.GetLogRequest) (*log
 		SubscriptionAccountId:  entry.SubscriptionAccountID,
 		ElapsedTime:            entry.ElapsedTime,
 		IsStream:               entry.IsStream,
+		UncachedInputTokens:    entry.UncachedInputTokens,
+		ReportedPromptTokens:   entry.ReportedPromptTokens,
+		ReportedTotalTokens:    entry.ReportedTotalTokens,
+		BillableTotalTokens:    entry.BillableTotalTokens,
+		UsageSemantics:         entry.UsageSemantics,
+		UsageProtocol:          entry.UsageProtocol,
+		UsageParseStatus:       entry.UsageParseStatus,
+		UsageContractVersion:   entry.UsageContractVersion,
+		UsageDecisionReason:    entry.UsageDecisionReason,
 	}, nil
 }
 
@@ -90,6 +99,20 @@ func (s *LogService) IngestLog(ctx context.Context, req *logv1.IngestLogRequest)
 		SubscriptionAccountID: req.SubscriptionAccountId,
 		ElapsedTime:           req.ElapsedTime,
 		IsStream:              req.IsStream,
+		// §6.1: legacy producers (usage_contract_version=0) leave these at
+		// zero value and the row keeps usage_parse_status='legacy' (the DB
+		// default); semantics is NEVER inferred from token arithmetic.
+		UncachedInputTokens:  req.UncachedInputTokens,
+		ReportedPromptTokens: req.ReportedPromptTokens,
+		ReportedTotalTokens:  req.ReportedTotalTokens,
+		BillableTotalTokens:  req.BillableTotalTokens,
+		UsageSemantics:       req.UsageSemantics,
+		UsageProtocol:        req.UsageProtocol,
+		UsageFieldShape:      req.UsageFieldShape,
+		UsageParseStatus:     req.UsageParseStatus,
+		UsageContractVersion: req.UsageContractVersion,
+		CanonicalPresent:     req.CanonicalPresent,
+		UsageDecisionReason:  req.UsageDecisionReason,
 	}
 	if err := s.uc.IngestLog(ctx, entry); err != nil {
 		return nil, err
@@ -119,6 +142,15 @@ func logEntryToProto(e *biz.LogEntry) *logv1.GetLogResponse {
 		SubscriptionAccountId:  e.SubscriptionAccountID,
 		ElapsedTime:            e.ElapsedTime,
 		IsStream:               e.IsStream,
+		UncachedInputTokens:    e.UncachedInputTokens,
+		ReportedPromptTokens:   e.ReportedPromptTokens,
+		ReportedTotalTokens:    e.ReportedTotalTokens,
+		BillableTotalTokens:    e.BillableTotalTokens,
+		UsageSemantics:         e.UsageSemantics,
+		UsageProtocol:          e.UsageProtocol,
+		UsageParseStatus:       e.UsageParseStatus,
+		UsageContractVersion:   e.UsageContractVersion,
+		UsageDecisionReason:    e.UsageDecisionReason,
 	}
 }
 
@@ -337,6 +369,15 @@ func logEntryToMap(e *biz.LogEntry) map[string]any {
 		"channel":                  e.ChannelID,
 		"elapsed_time":             e.ElapsedTime,
 		"is_stream":                e.IsStream,
+		"uncached_input_tokens":    e.UncachedInputTokens,
+		"reported_prompt_tokens":   e.ReportedPromptTokens,
+		"reported_total_tokens":    e.ReportedTotalTokens,
+		"billable_total_tokens":    e.BillableTotalTokens,
+		"usage_semantics":          e.UsageSemantics,
+		"usage_protocol":           e.UsageProtocol,
+		"usage_parse_status":       e.UsageParseStatus,
+		"usage_contract_version":   e.UsageContractVersion,
+		"usage_decision_reason":    e.UsageDecisionReason,
 	}
 }
 

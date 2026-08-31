@@ -25,7 +25,7 @@ type ExecutionResponse struct {
 	StatusCode            int
 	Headers               map[string][]string
 	Body                  []byte
-	Usage                 *CanonicalUsage
+	Usage                 *UsageEnvelope
 	ChannelID             int64
 	SubscriptionAccountID int64
 	RequestID             string
@@ -53,8 +53,8 @@ type QuotaReservation struct {
 
 // QuotaPort owns the quota lifecycle for one execution attempt.
 type QuotaPort interface {
-	Reserve(context.Context, *RelayPlan, ExecutorRequest, CanonicalUsage) (*QuotaReservation, error)
-	Commit(context.Context, *RelayPlan, ExecutorRequest, *QuotaReservation, CanonicalUsage, bool, time.Duration) error
+	Reserve(context.Context, *RelayPlan, ExecutorRequest, UsageEnvelope) (*QuotaReservation, error)
+	Commit(context.Context, *RelayPlan, ExecutorRequest, *QuotaReservation, UsageEnvelope, bool, time.Duration) error
 	Release(context.Context, *QuotaReservation, string) error
 }
 
@@ -64,7 +64,7 @@ type ForwardResponse struct {
 	StatusCode int
 	Headers    map[string][]string
 	Body       []byte
-	Usage      *CanonicalUsage
+	Usage      *UsageEnvelope
 }
 
 // RelayStream is the transport-neutral byte stream returned by a streaming
@@ -106,5 +106,5 @@ type UsageEvent struct {
 // events remain owned by the existing selection/error instrumentation until
 // their transport-neutral event shape is introduced.
 type EventLogger interface {
-	LogUsage(context.Context, *RelayPlan, UsageEvent, CanonicalUsage, time.Duration, bool)
+	LogUsage(context.Context, *RelayPlan, UsageEvent, UsageEnvelope, time.Duration, bool)
 }

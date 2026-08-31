@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -18,6 +19,61 @@ import (
 
 	"micro-one-api/pkg/safecast"
 )
+
+// canonicalUsageProducerEnabled reports the §5.3 relay producer feature gate
+// (RELAY_CANONICAL_USAGE_PRODUCER). It must stay OFF until every billing/log
+// consumer instance is upgraded to the v1 contract; regardless of the gate,
+// the legacy token fields are always dual-written with their OLD meanings so
+// mixed-version fleets keep behaving identically. Read per call so tests and
+// rollout switches take effect without a restart of the process context.
+func canonicalUsageProducerEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("RELAY_CANONICAL_USAGE_PRODUCER"))) {
+	case "1", "true", "on", "enabled":
+		return true
+	}
+	return false
+}
+
+// usageEnvelopeToProto maps the parser verdict onto the v1 wire envelope
+// (§6.2). Candidates travel with ambiguous verdicts so billing can settle at
+// the lower candidate cost without re-deriving semantics.
+func usageEnvelopeToProto(env relaybiz.UsageEnvelope) *billingv1.UsageEnvelope {
+	out := &billingv1.UsageEnvelope{
+		Reported: &billingv1.ReportedUsageV1{
+			PromptTokens:           env.Reported.PromptTokens,
+			OutputTokens:           env.Reported.OutputTokens,
+			CacheReadTokens:        env.Reported.CacheReadTokens,
+			CacheCreation_5MTokens: env.Reported.CacheCreation5mTokens,
+			CacheCreation_1HTokens: env.Reported.CacheCreation1hTokens,
+			TotalTokens:            env.Reported.TotalTokens,
+			SourceProtocol:         env.Reported.SourceProtocol,
+			FieldShape:             env.Reported.FieldShape,
+		},
+		Semantics:      string(env.Semantics),
+		ParseStatus:    string(env.ParseStatus),
+		DecisionReason: env.DecisionReason,
+	}
+	if env.Canonical != nil {
+		out.Canonical = canonicalUsageToProto(*env.Canonical)
+	}
+	if env.SubsetCandidate != nil {
+		out.SubsetCandidate = canonicalUsageToProto(*env.SubsetCandidate)
+	}
+	if env.ExclusiveCandidate != nil {
+		out.ExclusiveCandidate = canonicalUsageToProto(*env.ExclusiveCandidate)
+	}
+	return out
+}
+
+func canonicalUsageToProto(u relaybiz.CanonicalUsage) *billingv1.CanonicalUsageV1 {
+	return &billingv1.CanonicalUsageV1{
+		UncachedInputTokens:    u.UncachedInputTokens,
+		CacheReadTokens:        u.CacheReadTokens,
+		CacheCreation_5MTokens: u.CacheCreation5mTokens,
+		CacheCreation_1HTokens: u.CacheCreation1hTokens,
+		OutputTokens:           u.OutputTokens,
+	}
+}
 
 // 配额管理方法
 
@@ -88,6 +144,15 @@ func (s *HTTPServer) commitQuota(ctx context.Context, reservationID string, actu
 }
 
 func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID string, actualTokens int64, success bool, details ...usageLogInput) (*billingv1.CommitQuotaResponse, error) {
+	if len(details) > 0 && details[0].Usage != nil {
+		// Canonical (or conservative ambiguous-candidate) total is the only
+		// count allowed into settlement and downstream usage counters. Raw
+		// reported totals may omit exclusive cache tokens or double-count
+		// subset cache tokens when the upstream omitted total_tokens.
+		if canonicalTotal := details[0].billableTokens(); canonicalTotal > 0 {
+			actualTokens = canonicalTotal
+		}
+	}
 	req := &billingv1.CommitQuotaRequest{
 		ReservationId: reservationID,
 		ActualTokens:  actualTokens,
@@ -109,6 +174,13 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		req.UpstreamModelId = detail.UpstreamModelID
 		req.SourceKind = detail.SourceKind
 		req.PromptExclusive = detail.PromptExclusive
+		// §5.3 dual-write: the v1 envelope is sent only when the producer
+		// feature gate is on; the legacy fields above always keep their old
+		// meanings so old billing consumers are unaffected.
+		if detail.Usage != nil && canonicalUsageProducerEnabled() {
+			req.UsageContractVersion = relaybiz.UsageContractVersionV1
+			req.Usage = usageEnvelopeToProto(*detail.Usage)
+		}
 	}
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
@@ -117,6 +189,14 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		recordRelayQuotaOutcome(ctx, "commit_error")
 		setRelayObservationResult(ctx, "quota_error")
 		return nil, err
+	}
+	if len(details) > 0 {
+		// §5.2: feed the usage-semantics quarantine with the final attempt's
+		// parser verdict. Best-effort — billing has already committed.
+		// Use the same detached, bounded context as the financial commit. The
+		// client may disconnect immediately after receiving the response; that
+		// must not cancel the quarantine verdict for the final attempt.
+		s.reportUsageSemanticVerdict(billingCtx, details[0])
 	}
 	if resp == nil || !resp.GetSuccess() {
 		recordRelayQuotaOutcome(ctx, "commit_error")
@@ -350,6 +430,58 @@ func usageTokenName(in usageLogInput) string {
 		return strings.TrimSpace(in.TokenName)
 	}
 	return fmt.Sprintf("token-%d", in.TokenID)
+}
+
+// reportUsageSemanticVerdict feeds the §5.2 quarantine control plane with the
+// FINAL attempt's parser verdict (never the initial plan's guess). Failures
+// are logged, never propagated: billing has already committed and a
+// control-plane blip must not affect the user.
+func (s *HTTPServer) reportUsageSemanticVerdict(ctx context.Context, detail usageLogInput) {
+	if s == nil || s.channelClient == nil || detail.Usage == nil {
+		return
+	}
+	env := detail.Usage
+	if env.ParseStatus != relaybiz.UsageParseVerified && env.ParseStatus != relaybiz.UsageParseAmbiguous {
+		return
+	}
+	sourceKind := detail.SourceKind
+	var sourceID int64
+	if sourceKind == relaybiz.UpstreamSourceSubscription {
+		sourceID = detail.SubscriptionAccountID
+	} else {
+		sourceKind = relaybiz.UpstreamSourceChannel
+		sourceID = detail.ChannelID
+	}
+	if sourceID <= 0 || strings.TrimSpace(detail.UpstreamModelID) == "" {
+		return
+	}
+	if env.ParseStatus == relaybiz.UsageParseAmbiguous && metrics.UsageSemanticSourceIsolationTotal != nil {
+		metrics.UsageSemanticSourceIsolationTotal.WithLabelValues(sourceKind, "ambiguous_reported").Inc()
+	}
+	resp, err := s.channelClient.RecordUsageSemanticVerdict(ctx, &channelv1.RecordUsageSemanticVerdictRequest{
+		SourceKind:      sourceKind,
+		SourceId:        sourceID,
+		UpstreamModelId: detail.UpstreamModelID,
+		AdapterProtocol: env.Reported.SourceProtocol,
+		ParseStatus:     string(env.ParseStatus),
+		Reason:          env.DecisionReason,
+	})
+	if err != nil {
+		applogger.Log.Warn("failed to report usage semantic verdict",
+			zap.String("source_kind", sourceKind), zap.Int64("source_id", sourceID), zap.Error(err))
+		return
+	}
+	if resp != nil && resp.GetBlocked() {
+		if metrics.UsageSemanticSourceIsolationTotal != nil {
+			metrics.UsageSemanticSourceIsolationTotal.WithLabelValues(sourceKind, "blocked").Inc()
+		}
+		applogger.Log.Warn("usage semantic source blocked by quarantine",
+			zap.String("source_kind", sourceKind),
+			zap.Int64("source_id", sourceID),
+			zap.String("upstream_model_id", detail.UpstreamModelID),
+			zap.Int64("blocked_until_ms", resp.GetBlockedUntil()),
+		)
+	}
 }
 
 func (s *HTTPServer) releaseQuota(ctx context.Context, reservationID, reason string) error {

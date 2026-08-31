@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
+	usagepkg "micro-one-api/internal/server/usage"
 
 	"micro-one-api/platform/audit"
 )
@@ -165,6 +167,93 @@ func cacheReadTokensFromProviderUsage(usage relayprovider.Usage) int64 {
 		}
 	}
 	return 0
+}
+
+// envelopeFromProviderUsage builds the usage envelope for the typed provider
+// path (token-usage-billing-semantics-remediation §4.3). When the provider
+// proved canonical buckets from its own protocol parse (e.g. Anthropic
+// Messages) they are authoritative; otherwise the OpenAI-shaped Usage goes
+// through the shared §4.2 decision with its own field shape — never through
+// channel-type/platform inference.
+func envelopeFromProviderUsage(u relayprovider.Usage, canonical *relayprovider.CanonicalUsage) relaybiz.UsageEnvelope {
+	if canonical != nil {
+		env := relaybiz.UsageEnvelope{
+			ContractVersion: relaybiz.UsageContractVersionV1,
+			ParseStatus:     relaybiz.UsageParseVerified,
+			Semantics:       relaybiz.UsageSemantics(canonical.Semantics),
+			Reported: relaybiz.ReportedUsage{
+				PromptTokens:          canonical.ReportedPromptTokens,
+				OutputTokens:          canonical.OutputTokens,
+				CacheReadTokens:       canonical.CacheReadTokens,
+				CacheCreation5mTokens: canonical.CacheCreation5mTokens,
+				CacheCreation1hTokens: canonical.CacheCreation1hTokens,
+				TotalTokens:           canonical.ReportedTotalTokens,
+				SourceProtocol:        canonical.Protocol,
+				FieldShape:            "provider:" + canonical.Protocol,
+			},
+			Canonical: &relaybiz.CanonicalUsage{
+				UncachedInputTokens:   canonical.UncachedInputTokens,
+				CacheReadTokens:       canonical.CacheReadTokens,
+				CacheCreation5mTokens: canonical.CacheCreation5mTokens,
+				CacheCreation1hTokens: canonical.CacheCreation1hTokens,
+				OutputTokens:          canonical.OutputTokens,
+			},
+		}
+		if reason := providerCanonicalInvalidReason(canonical); reason != "" {
+			env.Canonical = nil
+			env.Semantics = ""
+			return usagepkg.AmbiguousEnvelope(env, reason)
+		}
+		return env
+	}
+	// OpenAI-shaped typed response: the provider did NOT convert protocols,
+	// so the Usage fields are the upstream's own OpenAI shape.
+	signals := usagepkg.FieldShapeSignals{HasPromptTokens: true}
+	if u.PromptTokensDetails.CachedTokens > 0 || u.InputTokensDetails.CachedTokens > 0 {
+		signals.HasOpenAICachedDetail = true
+	} else if u.PromptTokensDetails.CacheReadTokens > 0 || u.InputTokensDetails.CacheReadTokens > 0 {
+		signals.HasFlatCacheRead = true
+	}
+	fiveM, oneH := cacheCreationTokensFromProviderUsage(u)
+	reported := relaybiz.ReportedUsage{
+		PromptTokens:          int64(u.PromptTokens),
+		OutputTokens:          int64(u.CompletionTokens),
+		CacheReadTokens:       cacheReadTokensFromProviderUsage(u),
+		CacheCreation5mTokens: fiveM,
+		CacheCreation1hTokens: oneH,
+		TotalTokens:           int64(u.TotalTokens),
+	}
+	return usagepkg.DecideEnvelope(reported, signals, 0)
+}
+
+func providerCanonicalInvalidReason(c *relayprovider.CanonicalUsage) string {
+	if c == nil {
+		return relaybiz.UsageReasonFinalAttemptSemanticsMissing
+	}
+	var total int64
+	for _, value := range []int64{
+		c.UncachedInputTokens, c.CacheReadTokens, c.CacheCreation5mTokens,
+		c.CacheCreation1hTokens, c.OutputTokens,
+	} {
+		if value < 0 {
+			return relaybiz.UsageReasonNegativeBucket
+		}
+		if value > math.MaxInt64-total {
+			return relaybiz.UsageReasonOverflow
+		}
+		total += value
+	}
+	if c.ReportedPromptTokens < 0 || c.ReportedTotalTokens < 0 {
+		return relaybiz.UsageReasonNegativeBucket
+	}
+	if (c.CacheReadTokens > 0 || c.CacheCreation5mTokens > 0 || c.CacheCreation1hTokens > 0) &&
+		c.Semantics != string(relaybiz.UsageSemanticsOpenAISubset) && c.Semantics != string(relaybiz.UsageSemanticsAnthropicExclusive) {
+		return relaybiz.UsageReasonFinalAttemptSemanticsMissing
+	}
+	if c.Semantics != "" && c.Semantics != string(relaybiz.UsageSemanticsOpenAISubset) && c.Semantics != string(relaybiz.UsageSemanticsAnthropicExclusive) {
+		return relaybiz.UsageReasonFinalAttemptSemanticsMissing
+	}
+	return ""
 }
 
 // cacheCreationTokensFromProviderUsage extracts the 5m / 1h cache-creation

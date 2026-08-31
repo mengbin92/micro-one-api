@@ -9,6 +9,8 @@ import (
 	"time"
 
 	coderws "github.com/coder/websocket"
+	relaybiz "micro-one-api/internal/biz"
+	usagepkg "micro-one-api/internal/server/usage"
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -30,6 +32,10 @@ type openAIWSRelayUsage struct {
 	cacheCreation5mTokens int64
 	cacheCreation1hTokens int64
 	totalTokens           int64
+	reportedTotalTokens   int64
+	// shape records which protocol fields carried the buckets, for the §4.2
+	// semantics decision (same rule as the raw/SSE paths).
+	shape usagepkg.FieldShapeSignals
 }
 
 // openAIWSTurnResult is reported once per upstream terminal event
@@ -169,6 +175,8 @@ func (st *openAIWSRelayState) observeUpstreamFrame(payload []byte, msgType coder
 			st.usage.cacheReadTokens += usage.cacheReadTokens
 			st.usage.cacheCreation5mTokens += usage.cacheCreation5mTokens
 			st.usage.cacheCreation1hTokens += usage.cacheCreation1hTokens
+			st.usage.shape.Merge(usage.shape)
+			st.usage.reportedTotalTokens += usage.reportedTotalTokens
 			if usage.totalTokens > 0 {
 				st.usage.totalTokens += usage.totalTokens
 			} else {
@@ -238,21 +246,35 @@ func parseOpenAIWSFrameUsage(frame map[string]any) (openAIWSRelayUsage, bool) {
 		return openAIWSRelayUsage{}, false
 	}
 
+	var shape usagepkg.FieldShapeSignals
+	if _, ok := usageMap["prompt_tokens"]; ok {
+		shape.HasPromptTokens = true
+	}
+	if _, ok := usageMap["input_tokens"]; ok {
+		shape.HasInputTokens = true
+	}
 	inputTokens := numberField(usageMap, "input_tokens", "prompt_tokens")
 	outputTokens := numberField(usageMap, "output_tokens", "completion_tokens")
-	cachedTokens := cacheReadTokensFromUsageMap(usageMap)
+	if inputTokens < 0 || outputTokens < 0 {
+		shape.InvalidReason = relaybiz.UsageReasonNegativeBucket
+	}
+	cachedTokens := cacheReadTokensFromUsageMap(usageMap, &shape)
 
 	// cache_creation buckets (v0.11.0 ADR §3.3/§4.2). The OpenAI Responses
 	// WebSocket usage object can carry cache_creation_input_tokens and a nested
 	// cache_creation.ephemeral_5m/1h_input_tokens detail for caching-capable
 	// upstreams; reuse the same helper as the raw relay so the semantics stay
 	// identical across paths.
-	fiveM, oneH, _, _ := cacheCreationDetailTokens(usageMap)
+	fiveM, oneH, _, _ := cacheCreationDetailTokens(usageMap, &shape)
 
 	if inputTokens == 0 && outputTokens == 0 {
 		return openAIWSRelayUsage{}, false
 	}
-	total := inputTokens + outputTokens
+	reportedTotal := numberField(usageMap, "total_tokens")
+	total := reportedTotal
+	if total == 0 {
+		total = inputTokens + outputTokens
+	}
 	return openAIWSRelayUsage{
 		promptTokens:          inputTokens,
 		completionTokens:      outputTokens,
@@ -260,6 +282,8 @@ func parseOpenAIWSFrameUsage(frame map[string]any) (openAIWSRelayUsage, bool) {
 		cacheCreation5mTokens: fiveM,
 		cacheCreation1hTokens: oneH,
 		totalTokens:           total,
+		reportedTotalTokens:   reportedTotal,
+		shape:                 shape,
 	}, true
 }
 

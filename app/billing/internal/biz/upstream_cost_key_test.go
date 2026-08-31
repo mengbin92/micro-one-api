@@ -157,5 +157,5 @@ func TestCalculateUpstreamCostWithUsage_CanonicalModelKeyIsCaseSensitive(t *test
 // canonicalCost applies the canonical formula to a price tier so the test
 // asserts on the resolved price rather than duplicating the arithmetic.
 func canonicalCost(p ModelPrice, prompt, completion int64) int64 {
-	return calculateCanonicalCost(p, prompt, completion, 0, 0, 0, 1, false).CanonicalCost
+	return calculateCanonicalCost(p, CanonicalBuckets{UncachedInputTokens: prompt, OutputTokens: completion}, 1).CanonicalCost
 }

@@ -130,6 +130,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			// request, not the original plan, so failover attribution is correct.
 			logInput.applyChannelInputs(ch)
 			logUpstreamUsage(logInput)
+			logInput.applyEnvelope(envelopeFromRawUsage(usage))
 			if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				return err
 			}

@@ -261,8 +261,8 @@ func TestOrchestratedStreamDoesNotCommitAfterDownstreamWriteFailure(t *testing.T
 	stream := newFinalizingRelayStream(
 		EndpointChatCompletions,
 		&terminalEOFStream{body: []byte("data: [DONE]\n\n")},
-		relaybiz.CanonicalUsage{},
-		func(_ relaybiz.CanonicalUsage, _ string, success bool) error {
+		relaybiz.UsageEnvelope{},
+		func(_ relaybiz.UsageEnvelope, _ string, success bool) error {
 			completed = success
 			return nil
 		},

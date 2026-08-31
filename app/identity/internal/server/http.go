@@ -589,12 +589,15 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 
 	// Build lookup from aggregated daily data
 	type dailyUsage struct {
-		Quota            int64
-		PromptTokens     int64
-		CompletionTokens int64
-		CacheReadTokens  int64
-		Count            int64
-		ElapsedTime      int64
+		Quota               int64
+		PromptTokens        int64
+		CompletionTokens    int64
+		CacheReadTokens     int64
+		CacheCreationTokens int64
+		UncachedInputTokens int64
+		BillableTotalTokens int64
+		Count               int64
+		ElapsedTime         int64
 	}
 	dayMap := map[string]*dailyUsage{}
 	for d := sevenDaysAgo; !d.After(startOfDay); d = d.AddDate(0, 0, 1) {
@@ -611,6 +614,9 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 				day.PromptTokens = d.GetPromptTokens()
 				day.CompletionTokens = d.GetCompletionTokens()
 				day.CacheReadTokens = d.GetCacheReadTokens()
+				day.CacheCreationTokens = d.GetCacheCreation_5MTokens() + d.GetCacheCreation_1HTokens()
+				day.UncachedInputTokens = d.GetUncachedInputTokens()
+				day.BillableTotalTokens = d.GetBillableTotalTokens()
 				day.Count = d.GetCount()
 				day.ElapsedTime = d.GetElapsedTime()
 			}
@@ -631,12 +637,15 @@ func handleUserDashboard(w http.ResponseWriter, r *http.Request, uc *biz.Identit
 		key := d.Format("2006-01-02")
 		day := dayMap[key]
 		usageArr = append(usageArr, map[string]any{
-			"date":              key,
-			"count":             day.Count,
-			"amount":            day.Quota,
-			"prompt_tokens":     day.PromptTokens,
-			"completion_tokens": day.CompletionTokens,
-			"cache_read_tokens": day.CacheReadTokens,
+			"date":                  key,
+			"count":                 day.Count,
+			"amount":                day.Quota,
+			"prompt_tokens":         day.PromptTokens,
+			"completion_tokens":     day.CompletionTokens,
+			"cache_read_tokens":     day.CacheReadTokens,
+			"cache_creation_tokens": day.CacheCreationTokens,
+			"uncached_input_tokens": day.UncachedInputTokens,
+			"billable_total_tokens": day.BillableTotalTokens,
 		})
 	}
 
@@ -750,6 +759,16 @@ func ledgerEntryToMap(entry *commonv1.LedgerEntry) map[string]any {
 		"subscription_cost": entry.GetSubscriptionCost(),
 		"balance_cost":      entry.GetBalanceCost(),
 		"ledger_dedupe_key": entry.GetLedgerDedupeKey(),
+		// §9.1 display contract: reported vs billable vs canonical buckets.
+		"cache_creation_5m_tokens": entry.GetCacheCreation_5MTokens(),
+		"cache_creation_1h_tokens": entry.GetCacheCreation_1HTokens(),
+		"uncached_input_tokens":    entry.GetUncachedInputTokens(),
+		"reported_prompt_tokens":   entry.GetReportedPromptTokens(),
+		"reported_total_tokens":    entry.GetReportedTotalTokens(),
+		"billable_total_tokens":    entry.GetBillableTotalTokens(),
+		"usage_semantics":          entry.GetUsageSemantics(),
+		"usage_parse_status":       entry.GetUsageParseStatus(),
+		"usage_decision_reason":    entry.GetUsageDecisionReason(),
 	}
 }
 

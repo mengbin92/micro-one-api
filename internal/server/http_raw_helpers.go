@@ -15,6 +15,8 @@ import (
 	"micro-one-api/pkg/jsonx"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
+	relaybiz "micro-one-api/internal/biz"
+	usagepkg "micro-one-api/internal/server/usage"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
 )
@@ -152,8 +154,9 @@ func extractResponseID(body []byte) string {
 // (v0.11.0 ADR). CacheCreation5mTokens / CacheCreation1hTokens are the
 // canonical TTL-split buckets; providers that only return a total
 // cache_creation_input_tokens with no ephemeral detail default the whole
-// total into the 5m bucket (ADR §4.2). Negative values are clamped to 0 by
-// the callers (nonNeg) and recorded via metrics.TokenUsageParseAnomaly.
+// total into the 5m bucket (ADR §4.2). Invalid values remain visible in the
+// reported audit fields and mark Shape.InvalidReason; normalization then
+// emits an ambiguous envelope instead of laundering them through a clamp.
 type rawUsage struct {
 	PromptTokens          int64
 	CompletionTokens      int64
@@ -161,6 +164,32 @@ type rawUsage struct {
 	CacheCreation5mTokens int64
 	CacheCreation1hTokens int64
 	TotalTokens           int64
+	// ReportedTotalTokens is zero when the upstream omitted total_tokens.
+	// TotalTokens may contain a compatibility/estimator fallback and must not
+	// be copied into ReportedUsage.
+	ReportedTotalTokens int64
+	// Shape records which protocol fields carried the buckets; the envelope
+	// decision (usage.DecideEnvelope) proves the semantics from it, never from
+	// routing identity (token-usage-billing-semantics-remediation §4.2).
+	Shape usagepkg.FieldShapeSignals
+}
+
+// reportedUsage converts the raw buckets into the envelope's reported view.
+func (u rawUsage) reportedUsage() relaybiz.ReportedUsage {
+	return relaybiz.ReportedUsage{
+		PromptTokens:          u.PromptTokens,
+		OutputTokens:          u.CompletionTokens,
+		CacheReadTokens:       u.CacheReadTokens,
+		CacheCreation5mTokens: u.CacheCreation5mTokens,
+		CacheCreation1hTokens: u.CacheCreation1hTokens,
+		TotalTokens:           u.ReportedTotalTokens,
+	}
+}
+
+// envelopeFromRawUsage runs the shared §4.2 decision over a rawUsage that was
+// accumulated with shape tracking (non-stream and SSE paths alike).
+func envelopeFromRawUsage(u rawUsage) relaybiz.UsageEnvelope {
+	return usagepkg.DecideEnvelope(u.reportedUsage(), u.Shape, 0)
 }
 
 // extractRawUsage finds the usage block anywhere in a JSON document and
@@ -182,24 +211,37 @@ func extractRawUsageValue(value any) rawUsage {
 		if nested, ok := typed["usage"]; ok {
 			usage = extractRawUsageValue(nested)
 		}
-		fiveM, oneH, _, _ := cacheCreationDetailTokens(typed)
+		var shape usagepkg.FieldShapeSignals
+		fiveM, oneH, _, _ := cacheCreationDetailTokens(typed, &shape)
+		if _, ok := typed["prompt_tokens"]; ok {
+			shape.HasPromptTokens = true
+		}
+		if _, ok := typed["input_tokens"]; ok {
+			shape.HasInputTokens = true
+		}
+		if _, ok := typed["promptTokenCount"]; ok {
+			shape.HasPromptTokens = true
+		}
 		prompt := numberField(typed, "prompt_tokens", "input_tokens", "promptTokenCount")
 		if prompt < 0 {
-			recordTokenUsageAnomaly("negative")
-			prompt = 0
+			shape.InvalidReason = relaybiz.UsageReasonNegativeBucket
 		}
 		completion := numberField(typed, "completion_tokens", "output_tokens", "candidatesTokenCount")
 		if completion < 0 {
-			recordTokenUsageAnomaly("negative")
-			completion = 0
+			shape.InvalidReason = relaybiz.UsageReasonNegativeBucket
 		}
+		cacheRead := cacheReadTokensFromUsageMap(typed, &shape)
+		scanRawCacheShapeSignals(typed, &shape)
+		reportedTotal := numberField(typed, "total_tokens", "totalTokenCount")
 		usage = mergeRawUsage(usage, rawUsage{
 			PromptTokens:          prompt,
 			CompletionTokens:      completion,
-			CacheReadTokens:       cacheReadTokensFromUsageMap(typed),
+			CacheReadTokens:       cacheRead,
 			CacheCreation5mTokens: fiveM,
 			CacheCreation1hTokens: oneH,
-			TotalTokens:           numberField(typed, "total_tokens", "totalTokenCount"),
+			TotalTokens:           reportedTotal,
+			ReportedTotalTokens:   reportedTotal,
+			Shape:                 shape,
 		})
 		if hasRawUsage(usage) {
 			return usage
@@ -241,6 +283,10 @@ func mergeRawUsage(primary, fallback rawUsage) rawUsage {
 	if primary.TotalTokens == 0 {
 		primary.TotalTokens = fallback.TotalTokens
 	}
+	if primary.ReportedTotalTokens == 0 {
+		primary.ReportedTotalTokens = fallback.ReportedTotalTokens
+	}
+	primary.Shape.Merge(fallback.Shape)
 	return primary
 }
 
@@ -279,18 +325,67 @@ func normalizeRawUsageWithFallback(usage rawUsage, fallback rawUsage) rawUsage {
 
 // hasRawUsage reports whether any usage field is set.
 func hasRawUsage(usage rawUsage) bool {
-	return usage.TotalTokens > 0 || usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.CacheReadTokens > 0 || usage.CacheCreation5mTokens > 0 || usage.CacheCreation1hTokens > 0
+	return usage.Shape.InvalidReason != "" || usage.TotalTokens != 0 || usage.PromptTokens != 0 || usage.CompletionTokens != 0 || usage.CacheReadTokens != 0 || usage.CacheCreation5mTokens != 0 || usage.CacheCreation1hTokens != 0
+}
+
+// scanRawCacheShapeSignals marks every cache-related field present in the
+// map (not just the first match), so conflicting protocol markers surface as
+// protocol_field_conflict in the §4.2 decision.
+func scanRawCacheShapeSignals(m map[string]any, signals *usagepkg.FieldShapeSignals) {
+	if _, ok := m["cache_read_input_tokens"]; ok {
+		signals.HasAnthropicCacheRead = true
+	}
+	if _, ok := m["cache_read_tokens"]; ok {
+		signals.HasFlatCacheRead = true
+	}
+	if _, ok := m["cached_tokens"]; ok {
+		signals.HasOpenAICachedDetail = true
+	}
+	for _, key := range []string{"prompt_tokens_details", "input_tokens_details"} {
+		details, ok := m[key].(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, ok := details["cached_tokens"]; ok {
+			signals.HasOpenAICachedDetail = true
+		}
+		if _, ok := details["cache_read_tokens"]; ok {
+			signals.HasFlatCacheRead = true
+		}
+	}
 }
 
 // cacheReadTokensFromUsageMap extracts cache-read tokens from a usage map,
 // checking both flat keys and nested *_details objects. Flat keys cover
 // Anthropic (cache_read_input_tokens), OpenAI-compatible relays
-// (cache_read_tokens) and OpenAI Responses (cached_tokens).
-func cacheReadTokensFromUsageMap(m map[string]any) int64 {
-	if value := numberField(m, "cache_read_input_tokens", "cache_read_tokens", "cached_tokens", "cachedContentTokenCount"); value != 0 {
+// (cache_read_tokens) and OpenAI Responses (cached_tokens). When signals is
+// non-nil, the field that carried the value is recorded for the semantics
+// decision (§4.2).
+func cacheReadTokensFromUsageMap(m map[string]any, signals *usagepkg.FieldShapeSignals) int64 {
+	if value, ok := numberFieldPresent(m, "cache_read_input_tokens"); ok {
+		if signals != nil {
+			signals.HasAnthropicCacheRead = true
+		}
 		if value < 0 {
-			recordTokenUsageAnomaly("negative")
-			return 0
+			signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
+		}
+		return value
+	}
+	if value, ok := numberFieldPresent(m, "cache_read_tokens"); ok {
+		if signals != nil {
+			signals.HasFlatCacheRead = true
+		}
+		if value < 0 {
+			signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
+		}
+		return value
+	}
+	if value, ok := numberFieldPresent(m, "cached_tokens", "cachedContentTokenCount"); ok {
+		if signals != nil {
+			signals.HasOpenAICachedDetail = true
+		}
+		if value < 0 {
+			signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
 		}
 		return value
 	}
@@ -299,10 +394,21 @@ func cacheReadTokensFromUsageMap(m map[string]any) int64 {
 		if !ok {
 			continue
 		}
-		if value := numberField(details, "cache_read_tokens", "cached_tokens"); value != 0 {
+		if value, ok := numberFieldPresent(details, "cached_tokens"); ok {
+			if signals != nil {
+				signals.HasOpenAICachedDetail = true
+			}
 			if value < 0 {
-				recordTokenUsageAnomaly("negative")
-				return 0
+				signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
+			}
+			return value
+		}
+		if value, ok := numberFieldPresent(details, "cache_read_tokens"); ok {
+			if signals != nil {
+				signals.HasFlatCacheRead = true
+			}
+			if value < 0 {
+				signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
 			}
 			return value
 		}
@@ -326,31 +432,30 @@ func cacheReadTokensFromUsageMap(m map[string]any) int64 {
 //     exceeds the total is recorded as a ttl_detail_exceeds_total anomaly
 //     (ADR §4.2). The caller does not need to recompute the excess; this
 //     helper records it once.
-//   - Negative values are clamped to 0 and recorded as a negative anomaly
-//     (ADR §4.1).
-func cacheCreationDetailTokens(m map[string]any) (fiveM, oneH, flatTotal int64, hadDetail bool) {
+//   - Negative values mark the envelope ambiguous (ADR §4.1).
+func cacheCreationDetailTokens(m map[string]any, signals *usagepkg.FieldShapeSignals) (fiveM, oneH, flatTotal int64, hadDetail bool) {
 	if raw := numberField(m, "cache_creation_input_tokens"); raw != 0 {
-		if raw < 0 {
-			recordTokenUsageAnomaly("negative")
-		} else {
-			flatTotal = raw
+		if signals != nil {
+			signals.HasAnthropicCacheCreation = true
+		}
+		flatTotal = raw
+		if raw < 0 && signals != nil {
+			signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
 		}
 	}
 	// Provider-level flattened buckets (relayprovider.UsageTokenDetails JSON tags).
-	if raw := numberField(m, "cache_creation_5m_tokens"); raw > 0 {
+	if raw, present := numberFieldPresent(m, "cache_creation_5m_tokens"); present {
 		hadDetail = true
-		if raw < 0 {
-			recordTokenUsageAnomaly("negative")
-		} else {
-			fiveM = raw
+		fiveM = raw
+		if raw < 0 && signals != nil {
+			signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
 		}
 	}
-	if raw := numberField(m, "cache_creation_1h_tokens"); raw > 0 {
+	if raw, present := numberFieldPresent(m, "cache_creation_1h_tokens"); present {
 		hadDetail = true
-		if raw < 0 {
-			recordTokenUsageAnomaly("negative")
-		} else {
-			oneH = raw
+		oneH = raw
+		if raw < 0 && signals != nil {
+			signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
 		}
 	}
 	// Provider-level flattened buckets may also live inside prompt_tokens_details /
@@ -360,39 +465,38 @@ func cacheCreationDetailTokens(m map[string]any) (fiveM, oneH, flatTotal int64, 
 		if !ok {
 			continue
 		}
-		if raw := numberField(details, "cache_creation_5m_tokens"); raw > 0 {
+		if raw, present := numberFieldPresent(details, "cache_creation_5m_tokens"); present {
 			hadDetail = true
-			if raw < 0 {
-				recordTokenUsageAnomaly("negative")
-			} else {
-				fiveM = raw
+			fiveM = raw
+			if raw < 0 && signals != nil {
+				signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
 			}
 		}
-		if raw := numberField(details, "cache_creation_1h_tokens"); raw > 0 {
+		if raw, present := numberFieldPresent(details, "cache_creation_1h_tokens"); present {
 			hadDetail = true
-			if raw < 0 {
-				recordTokenUsageAnomaly("negative")
-			} else {
-				oneH = raw
+			oneH = raw
+			if raw < 0 && signals != nil {
+				signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
 			}
 		}
 	}
 	nested, _ := m["cache_creation"].(map[string]any)
 	if nested != nil {
+		if signals != nil {
+			signals.HasAnthropicCacheCreation = true
+		}
 		if raw := numberField(nested, "ephemeral_5m_input_tokens"); raw != 0 {
 			hadDetail = true
-			if raw < 0 {
-				recordTokenUsageAnomaly("negative")
-			} else {
-				fiveM = raw
+			fiveM = raw
+			if raw < 0 && signals != nil {
+				signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
 			}
 		}
 		if raw := numberField(nested, "ephemeral_1h_input_tokens"); raw != 0 {
 			hadDetail = true
-			if raw < 0 {
-				recordTokenUsageAnomaly("negative")
-			} else {
-				oneH = raw
+			oneH = raw
+			if raw < 0 && signals != nil {
+				signals.InvalidReason = relaybiz.UsageReasonNegativeBucket
 			}
 		}
 	}
@@ -402,9 +506,11 @@ func cacheCreationDetailTokens(m map[string]any) (fiveM, oneH, flatTotal int64, 
 	}
 	if hadDetail && flatTotal > 0 && fiveM+oneH > flatTotal {
 		// Detail sum exceeds the flat total: detail wins (already set),
-		// record the inconsistency. Billing is unchanged because detail is
-		// the more precise signal.
+		// record the inconsistency and refuse to trust a single canonical.
 		recordTokenUsageAnomaly("ttl_detail_exceeds_total")
+		if signals != nil {
+			signals.InvalidReason = relaybiz.UsageReasonProtocolFieldConflict
+		}
 	}
 	return fiveM, oneH, flatTotal, hadDetail
 }
@@ -418,17 +524,19 @@ func recordTokenUsageAnomaly(reason string) {
 	}
 }
 
-// clampNonNegInt64 returns 0 for negative inputs (ADR §4.1); otherwise the
-// value unchanged.
-func clampNonNegInt64(v int64) int64 {
-	if v < 0 {
-		return 0
-	}
-	return v
-}
-
 // numberField returns the first non-zero numeric value found under any of the
 // given keys in a map.
+// numberFieldPresent returns the first present key's value and whether any
+// key existed, so shape signals can distinguish "absent" from "zero".
+func numberFieldPresent(m map[string]any, keys ...string) (int64, bool) {
+	for _, key := range keys {
+		if value, ok := m[key]; ok {
+			return int64Value(value), true
+		}
+	}
+	return 0, false
+}
+
 func numberField(m map[string]any, keys ...string) int64 {
 	for _, key := range keys {
 		if value, ok := m[key]; ok {
@@ -583,6 +691,7 @@ type rawStreamUsageTracker struct {
 	responseID          string
 	pending             string
 	preserveTotalTokens bool
+	sawUsage            bool
 }
 
 // newRawStreamUsageTracker creates a tracker seeded with a fallback usage.
@@ -605,6 +714,7 @@ func (t *rawStreamUsageTracker) Observe(chunk []byte) {
 	}
 	usage := extractRawUsage(chunk, 0)
 	if hasRawUsage(usage) {
+		t.sawUsage = true
 		if !t.preserveTotalTokens {
 			// Per-chunk total_tokens is unreliable for the Anthropic
 			// message_start/message_delta split (start reports input-side total,
@@ -642,6 +752,17 @@ func (t *rawStreamUsageTracker) Usage() rawUsage {
 		t.ObserveBytes([]byte("\n"))
 	}
 	return normalizeRawUsageWithFallback(t.usage, t.fallback)
+}
+
+// SawUsage reports whether any upstream usage object was observed. When it is
+// false the caller must fall back to the pre-request estimate with
+// parse_status=estimated instead of trusting the fallback-filled rawUsage
+// (§4.2: estimators never fabricate buckets).
+func (t *rawStreamUsageTracker) SawUsage() bool {
+	if strings.TrimSpace(t.pending) != "" {
+		t.ObserveBytes([]byte("\n"))
+	}
+	return t.sawUsage
 }
 
 // ResponseID returns the response id observed so far, flushing any pending

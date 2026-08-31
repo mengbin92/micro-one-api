@@ -49,6 +49,7 @@ type orchestratorFailoverLifecycleHooks struct {
 	reservationsByRequest map[string]*Reservation
 	released              []string
 	committed             []string
+	committedUsage        []relaybiz.UsageEnvelope
 	logged                []int64
 	releaseErr            error
 }
@@ -72,7 +73,7 @@ func (f *orchestratorFailoverStreamForwarder) ForwardStream(_ context.Context, p
 	}, nil
 }
 
-func (h *orchestratorFailoverLifecycleHooks) ReserveQuota(_ context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, _ relaybiz.CanonicalUsage) (*Reservation, error) {
+func (h *orchestratorFailoverLifecycleHooks) ReserveQuota(_ context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, _ relaybiz.UsageEnvelope) (*Reservation, error) {
 	h.reservedIDs = append(h.reservedIDs, plan.Channel.ID)
 	h.requestIDs = append(h.requestIDs, req.RequestID)
 	if h.reservationsByRequest == nil {
@@ -86,8 +87,9 @@ func (h *orchestratorFailoverLifecycleHooks) ReserveQuota(_ context.Context, pla
 	return reservation, nil
 }
 
-func (h *orchestratorFailoverLifecycleHooks) CommitQuota(_ context.Context, plan *relaybiz.RelayPlan, _ *RelayRequest, reservation *Reservation, _ relaybiz.CanonicalUsage, _ bool, _ time.Duration) error {
+func (h *orchestratorFailoverLifecycleHooks) CommitQuota(_ context.Context, plan *relaybiz.RelayPlan, _ *RelayRequest, reservation *Reservation, usage relaybiz.UsageEnvelope, _ bool, _ time.Duration) error {
 	h.committed = append(h.committed, reservation.ID)
+	h.committedUsage = append(h.committedUsage, usage)
 	if plan == nil || plan.Channel == nil {
 		return fmt.Errorf("commit plan is incomplete")
 	}
@@ -101,7 +103,7 @@ func (h *orchestratorFailoverLifecycleHooks) ReleaseQuota(_ context.Context, res
 	return h.releaseErr
 }
 
-func (h *orchestratorFailoverLifecycleHooks) LogUsage(_ context.Context, plan *relaybiz.RelayPlan, _ *RelayRequest, _ relaybiz.CanonicalUsage, _ time.Duration, _ bool) {
+func (h *orchestratorFailoverLifecycleHooks) LogUsage(_ context.Context, plan *relaybiz.RelayPlan, _ *RelayRequest, _ relaybiz.UsageEnvelope, _ time.Duration, _ bool) {
 	h.logged = append(h.logged, plan.Channel.ID)
 }
 
@@ -229,5 +231,72 @@ func TestRelayOrchestratorStreamingFailoverSettlesOnlySuccessfulStream(t *testin
 		relayEndpointChatCompletions, "true", relayExecutionPathOrchestrator, "switched", "upstream_5xx",
 	)); got != failoverBefore+1 {
 		t.Fatalf("stream failover metric = %v, want %v", got, failoverBefore+1)
+	}
+}
+
+// F16 / §7: retry switching the execution source must bill with the FINAL
+// successful attempt's parser-proven semantics — an OpenAI-TYPE channel
+// returning an Anthropic-shaped usage yields anthropic_exclusive (the
+// StepFun production anomaly), never a channel-type guess.
+func TestRelayOrchestratorFailoverUsesFinalAttemptSemantics(t *testing.T) {
+	t.Setenv("PROVIDER_DISABLE_SSRF_CHECK", "true")
+
+	firstUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":{"message":"temporary upstream failure"}}`, http.StatusBadGateway)
+	}))
+	defer firstUpstream.Close()
+	secondUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Anthropic Messages shape on an OpenAI-type channel.
+		_, _ = w.Write([]byte(`{"usage":{"input_tokens":130,"output_tokens":9,"cache_read_input_tokens":45056},"choices":[]}`))
+	}))
+	defer secondUpstream.Close()
+
+	first := &relaybiz.Channel{ID: 11, Type: relayprovider.ChannelTypeOpenAI, BaseURL: firstUpstream.URL + "/v1", Key: "sk-first"}
+	second := &relaybiz.Channel{ID: 22, Type: relayprovider.ChannelTypeOpenAI, BaseURL: secondUpstream.URL + "/v1", Key: "sk-second"}
+	relayUsecase := relaybiz.NewRelayUsecase(
+		orchestratorIdentityClient{},
+		orchestratorFailoverChannelClient{first: first, second: second},
+		nil,
+		&relaybiz.RetryPolicy{
+			MaxAttempts:     2,
+			RetryableStatus: map[int]bool{http.StatusBadGateway: true},
+		},
+	)
+	hooks := &orchestratorFailoverLifecycleHooks{}
+	orchestrator := NewRelayOrchestratorWithDependencies(
+		relayUsecase,
+		relayprovider.NewProviderFactory(time.Second),
+		hooks,
+		nil,
+	)
+
+	result, err := orchestrator.Execute(context.Background(), &RelayRequest{
+		Token:     "client-token",
+		Model:     "gpt-4o-mini",
+		Endpoint:  EndpointChatCompletions,
+		Body:      strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}`),
+		Headers:   http.Header{"Authorization": []string{"Bearer client-token"}},
+		RequestID: "request-f16",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if result.ChannelID != second.ID {
+		t.Fatalf("final channel = %d, want %d", result.ChannelID, second.ID)
+	}
+	if len(hooks.committedUsage) != 1 {
+		t.Fatalf("commits = %d, want 1", len(hooks.committedUsage))
+	}
+	env := hooks.committedUsage[0]
+	if env.ParseStatus != relaybiz.UsageParseVerified || env.Semantics != relaybiz.UsageSemanticsAnthropicExclusive {
+		t.Fatalf("committed verdict = %q/%q, want verified anthropic_exclusive from the final attempt's field shape", env.ParseStatus, env.Semantics)
+	}
+	canonical := env.CanonicalOrZero()
+	if canonical.UncachedInputTokens != 130 || canonical.CacheReadTokens != 45056 || canonical.OutputTokens != 9 {
+		t.Fatalf("canonical = %+v, want exclusive buckets 130/45056/9", canonical)
+	}
+	if env.BillableTotal() != 45195 {
+		t.Fatalf("billable total = %d, want 45195", env.BillableTotal())
 	}
 }

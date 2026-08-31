@@ -714,6 +714,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 				}
 				// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 				logInput.applyPlanInputs(plan)
+				logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
 				if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
 				} else {
@@ -790,6 +791,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			}
 			// v0.11.0 Phase 2 §2.2: stable upstream cost-key inputs.
 			logInput.applyPlanInputs(plan)
+			logInput.applyEnvelope(envelopeFromRawUsage(usage))
 			if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
 			} else {

@@ -67,3 +67,78 @@ var UnpricedRoutedModels = prometheus.NewGaugeVec(
 	},
 	[]string{"source"},
 )
+
+// ---------------------------------------------------------------------------
+// token-usage-billing-semantics-remediation (2026-08-31) §9 metrics.
+// Labels stay low-cardinality: protocol / semantics / parse status / reason
+// and source_kind only; model id appears only where the doc explicitly
+// requires it (billing-side delta/ambiguous) and never request/user ids.
+// ---------------------------------------------------------------------------
+
+// TokenUsageSemanticsTotal counts parsed usage envelopes by proven protocol
+// and semantics verdict (§9 token_usage_semantics_total). Emitted at the
+// relay boundary where the execution source is known.
+var TokenUsageSemanticsTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "relay",
+		Name:      "token_usage_semantics_total",
+		Help:      "Usage envelopes by parser-proven protocol and semantics",
+	},
+	[]string{"protocol", "semantics", "source_kind"},
+)
+
+// TokenUsageInvariantMismatchTotal counts usage invariant violations that did
+// NOT change the bill on their own (§9 token_usage_invariant_mismatch_total).
+// Reasons: cached_exceeds_reported_prompt, reported_total_mismatch,
+// protocol_field_conflict, final_attempt_semantics_missing, negative_bucket,
+// overflow, stream_usage_missing.
+var TokenUsageInvariantMismatchTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "relay",
+		Name:      "token_usage_invariant_mismatch_total",
+		Help:      "Usage invariant violations by reason/protocol/source",
+	},
+	[]string{"reason", "protocol", "source_kind"},
+)
+
+// BillingUsageSemanticsCostDelta records canonical-final minus legacy-final
+// user cost per request (§9 billing_usage_semantics_cost_delta), so the
+// observe window can prove delta=0 before charge mode flips.
+var BillingUsageSemanticsCostDelta = prometheus.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "billing",
+		Name:      "usage_semantics_cost_delta",
+		Help:      "Canonical vs legacy user cost delta in quota units",
+		Buckets:   []float64{-100000, -10000, -1000, -100, -10, -1, 0, 1, 10, 100, 1000, 10000, 100000},
+	},
+	[]string{"mode", "model", "source_kind"},
+)
+
+// BillingUsageAmbiguousTotal counts requests settled via the §5.2 ambiguous
+// conservative path (§9 billing_usage_ambiguous_total). Any sample is a
+// high-priority alert: verified production traffic must keep this at zero.
+var BillingUsageAmbiguousTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "billing",
+		Name:      "usage_ambiguous_total",
+		Help:      "Requests settled via the ambiguous conservative policy",
+	},
+	[]string{"model", "source_kind"},
+)
+
+// UsageSemanticSourceIsolationTotal counts source+model quarantine events
+// (§9 usage_semantic_source_isolation_total): block applied, block observed
+// while routing, and block resolved.
+var UsageSemanticSourceIsolationTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "channel",
+		Name:      "usage_semantic_source_isolation_total",
+		Help:      "Usage-semantics source isolation events",
+	},
+	[]string{"source_kind", "reason"},
+)
