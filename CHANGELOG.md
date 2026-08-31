@@ -7,6 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-08-31
+
+v0.25.0 是 v0.24.0 之后的 **MINOR 模型能力与定价注册版本**：增加模型输入 / 输出模态与 cache-read 定价，统一注册表价格为每 1M tokens，并补齐 `083`、`084` 数据库迁移和旧 MySQL 默认值兼容。详见 [release-v0.25.0.md](docs/releases/release-v0.25.0.md)。
+
+### Added
+
+- channel API、模型管理和导入导出新增输入 / 输出模态与 cache-read 定价字段。
+- 新增 MySQL、PostgreSQL、SQLite 的模型模态和定价迁移 `083`、`084`。
+
+### Fixed
+
+- 将历史模型输入 / 输出价格从每 1K tokens 正确转换为每 1M tokens。
+- 修复旧 MySQL 默认值兼容和 Web 上游成本 key 格式展示。
+
+### Changed
+
+- Web 模型管理、模态图标、用户定价页和上游成本页面同步新的注册表字段。
+
 ## [0.24.0] - 2026-08-31
 
 v0.24.0 是 v0.23.3 之后的 **MINOR Web 体验与运营基础版本**：完成用户端与管理端的
