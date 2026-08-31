@@ -482,6 +482,9 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	if req.RequestID == "" {
 		req.RequestID = generateSelectionRequestID()
 	}
+	// A terminal [1M] is a client-side extended-context hint, not part of the
+	// model identifier understood by the registry or upstream provider.
+	req.Model = RelayModelName(req.Model)
 
 	// 1. Resolve model name mapping (e.g. gpt-4o -> gpt-4o-2024-08-06)
 	resolvedModel := req.Model
@@ -499,7 +502,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	if len(authSnapshot.AllowedModels) > 0 {
 		allowed := false
 		for _, m := range authSnapshot.AllowedModels {
-			if strings.EqualFold(m, req.Model) {
+			if strings.EqualFold(RelayModelName(m), req.Model) {
 				allowed = true
 				break
 			}
@@ -782,6 +785,8 @@ func (uc *RelayUsecase) SelectSubscriptionFailover(ctx context.Context, group, c
 	if uc.subscription == nil {
 		return nil, fmt.Errorf("subscription account selector is not configured")
 	}
+	clientModel = RelayModelName(clientModel)
+	resolvedModel = RelayModelName(resolvedModel)
 	account, err := uc.selectSubscriptionAccountForModel(ctx, group, clientModel, failedAccountIDs)
 	if err != nil && resolvedModel != clientModel {
 		account, err = uc.selectSubscriptionAccountForModel(ctx, group, resolvedModel, failedAccountIDs)
@@ -948,7 +953,7 @@ func (uc *RelayUsecase) isSubscriptionAccountSchedulable(ctx context.Context, ac
 }
 
 func subscriptionPlatformsForModel(model string) []string {
-	lower := strings.ToLower(strings.TrimSpace(model))
+	lower := strings.ToLower(RelayModelName(model))
 	switch {
 	case strings.HasPrefix(lower, "claude-"):
 		return []string{"claude"}
@@ -981,10 +986,10 @@ func accountServesModel(account *SubscriptionAccount, clientModel, resolvedModel
 	if account == nil || len(account.Models) == 0 {
 		return true
 	}
-	client := strings.TrimSpace(clientModel)
-	resolved := strings.TrimSpace(resolvedModel)
+	client := RelayModelName(clientModel)
+	resolved := RelayModelName(resolvedModel)
 	for _, m := range account.Models {
-		m = strings.TrimSpace(m)
+		m = RelayModelName(m)
 		if m == "" {
 			continue
 		}
@@ -1062,17 +1067,18 @@ func ApplyChannelModelMapping(mappingJSON, model string) string {
 // case-sensitive. Wildcard abilities remain routing-only and are never sent as
 // model identifiers.
 func ResolveChannelModel(channel *Channel, model string) string {
+	model = RelayModelName(model)
 	if channel == nil {
 		return model
 	}
 	if upstream := strings.TrimSpace(channel.UpstreamModelID); upstream != "" {
-		return upstream
+		return RelayModelName(upstream)
 	}
 	if mapped, ok := resolvePerAccountModelMapping(channel.ModelMapping, model); ok {
-		return mapped
+		return RelayModelName(mapped)
 	}
 	for _, configured := range channel.Models {
-		configured = strings.TrimSpace(configured)
+		configured = RelayModelName(configured)
 		if configured != "" && !wildcard.IsPattern(configured) && strings.EqualFold(configured, model) {
 			return configured
 		}
@@ -1081,13 +1087,15 @@ func ResolveChannelModel(channel *Channel, model string) string {
 }
 
 func applyPerAccountModelMapping(mappingJSON, model string) string {
+	model = RelayModelName(model)
 	if mapped, ok := resolvePerAccountModelMapping(mappingJSON, model); ok {
-		return mapped
+		return RelayModelName(mapped)
 	}
 	return model
 }
 
 func resolvePerAccountModelMapping(mappingJSON, model string) (string, bool) {
+	model = RelayModelName(model)
 	mappingJSON = strings.TrimSpace(mappingJSON)
 	if mappingJSON == "" {
 		return "", false
@@ -1102,6 +1110,13 @@ func resolvePerAccountModelMapping(mappingJSON, model string) (string, bool) {
 	}
 	if dst, ok := mapping[strings.ToLower(model)]; ok && dst != "" {
 		return dst, true
+	}
+	// A JSON object may contain mixed-case keys. Map lookup cannot express a
+	// true case-insensitive comparison, so finish the exact pass explicitly.
+	for key, dst := range mapping {
+		if !wildcard.IsPattern(key) && dst != "" && strings.EqualFold(RelayModelName(key), model) {
+			return dst, true
+		}
 	}
 	// 2) Wildcard keys: specific patterns before the "*" catch-all. When
 	// several specific patterns match, pick the MOST SPECIFIC one (by
@@ -1172,7 +1187,7 @@ func (uc *RelayUsecase) SelectFallbackChannel(ctx context.Context, group, model 
 	if uc == nil || uc.channel == nil {
 		return nil, fmt.Errorf("channel selector unavailable")
 	}
-	return uc.channel.SelectChannel(ctx, group, model, true)
+	return uc.channel.SelectChannel(ctx, group, RelayModelName(model), true)
 }
 
 // SelectFallbackRoutingSource selects a fallback across both API-key channels
@@ -1187,6 +1202,8 @@ func (uc *RelayUsecase) SelectFallbackRoutingSource(
 	if uc == nil {
 		return nil, fmt.Errorf("relay usecase unavailable")
 	}
+	clientModel = RelayModelName(clientModel)
+	resolvedModel = RelayModelName(resolvedModel)
 
 	var channel *Channel
 	var channelErr error
@@ -1271,6 +1288,7 @@ func (uc *RelayUsecase) RecordRoutingSourceHealth(ctx context.Context, ch *Chann
 // ResolveModel returns the upstream model name for the given client model name.
 // Returns the original name if no mapping exists or mapper is nil.
 func (uc *RelayUsecase) ResolveModel(modelName string) string {
+	modelName = RelayModelName(modelName)
 	if uc.modelMapper == nil {
 		return modelName
 	}
@@ -1282,5 +1300,5 @@ func (uc *RelayUsecase) HasCapability(modelName, capability string) bool {
 	if uc.modelMapper == nil {
 		return false
 	}
-	return uc.modelMapper.HasCapability(modelName, capability)
+	return uc.modelMapper.HasCapability(RelayModelName(modelName), capability)
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"testing"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
@@ -16,6 +17,17 @@ type rawIdentityClient struct {
 	identityv1.IdentityServiceClient
 	userIDByToken map[string]int64
 	allowedModels []string
+}
+
+func TestHTTPServerApplyModelWhitelistIgnoresCaseAndExtendedContextSuffix(t *testing.T) {
+	s := &HTTPServer{}
+	got := s.applyModelWhitelist(
+		[]string{"deepseek-v4-pro-0813", "gpt-5"},
+		[]string{"DeepSeek-V4-Pro-0813[1M]"},
+	)
+	if len(got) != 1 || got[0] != "deepseek-v4-pro-0813" {
+		t.Fatalf("filtered models = %v, want deepseek model", got)
+	}
 }
 
 func (c rawIdentityClient) GetAuthSnapshot(ctx context.Context, req *identityv1.GetAuthSnapshotRequest, opts ...grpc.CallOption) (*identityv1.GetAuthSnapshotReply, error) {
@@ -43,6 +55,9 @@ type rawChannelClient struct {
 	chType         int32
 	apiVersion     string
 	models         []string
+	getModels      string
+	modelMapping   string
+	upstreamModel  string
 	usageRequests  []*channelv1.RecordChannelUsageRequest
 	healthRequests []*channelv1.RecordChannelHealthRequest
 }
@@ -80,17 +95,23 @@ func (c rawChannelClient) GetChannel(ctx context.Context, req *channelv1.GetChan
 	if chType == 0 {
 		chType = 1
 	}
+	models := c.getModels
+	if models == "" {
+		models = "gpt-3.5-turbo"
+	}
 	return &channelv1.GetChannelReply{
 		Channel: &commonv1.ChannelInfo{
-			Id:      req.ChannelId,
-			Type:    chType,
-			Name:    "openai-compatible",
-			Status:  1,
-			BaseUrl: c.baseURL,
-			Key:     c.key,
-			Group:   "default",
-			Models:  "gpt-3.5-turbo",
-			Config:  &commonv1.ChannelConfig{ApiVersion: c.apiVersion},
+			Id:              req.ChannelId,
+			Type:            chType,
+			Name:            "openai-compatible",
+			Status:          1,
+			BaseUrl:         c.baseURL,
+			Key:             c.key,
+			Group:           "default",
+			Models:          models,
+			ModelMapping:    c.modelMapping,
+			UpstreamModelId: c.upstreamModel,
+			Config:          &commonv1.ChannelConfig{ApiVersion: c.apiVersion},
 		},
 	}, nil
 }

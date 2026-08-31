@@ -9,6 +9,13 @@ func TestBillingModelForSource_Requested(t *testing.T) {
 	}
 }
 
+func TestBillingModelForSource_StripsExtendedContextSuffix(t *testing.T) {
+	got := BillingModelForSource("requested", "glm-5.3[1M]", "", "")
+	if got != "glm-5.3" {
+		t.Fatalf("extended-context hint must not become a billing model, got %q", got)
+	}
+}
+
 func TestBillingModelForSource_Upstream(t *testing.T) {
 	got := BillingModelForSource("upstream", "gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-2024-08-06")
 	if got != "gpt-4o-2024-08-06" {

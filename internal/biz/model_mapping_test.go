@@ -182,6 +182,25 @@ func TestModelMapper_JSONFormat(t *testing.T) {
 	}
 }
 
+func TestModelMapper_MixedCaseExactKey(t *testing.T) {
+	mapper := NewModelMapperForTest(map[string]*ModelEntry{
+		"DeepSeek-V4-Pro-0813": {
+			ActualName:   "vendor/DeepSeek-V4-Pro-0813",
+			Capabilities: []string{"streaming"},
+		},
+	})
+
+	if got := mapper.Resolve("deepseek-v4-pro-0813"); got != "vendor/DeepSeek-V4-Pro-0813" {
+		t.Fatalf("Resolve() = %q, want mixed-case exact mapping", got)
+	}
+	if !mapper.HasCapability("deepseek-v4-pro-0813", "streaming") {
+		t.Fatal("HasCapability() did not use mixed-case exact mapping")
+	}
+	if got := mapper.GetEntry("deepseek-v4-pro-0813"); got == nil || got.ActualName != "vendor/DeepSeek-V4-Pro-0813" {
+		t.Fatalf("GetEntry() = %#v, want mixed-case exact mapping", got)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
 }

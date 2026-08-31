@@ -781,6 +781,18 @@ func TestResolveChannelModel_PreservesSelectedUpstreamCase(t *testing.T) {
 			want:    "GLM-5.2",
 		},
 		{
+			name:    "deepseek configured model spelling",
+			channel: &Channel{Models: []string{"DeepSeek-V4-Pro-0813"}},
+			model:   "deepseek-v4-pro-0813",
+			want:    "DeepSeek-V4-Pro-0813",
+		},
+		{
+			name:    "extended context suffix is routing only",
+			channel: &Channel{Models: []string{"GLM-5.3"}},
+			model:   "glm-5.3[1M]",
+			want:    "GLM-5.3",
+		},
+		{
 			name:    "explicit mapping remains authoritative",
 			channel: &Channel{Models: []string{"GLM-5.2"}, ModelMapping: `{"glm-5.2":"vendor/glm-5.2"}`},
 			model:   "glm-5.2",
@@ -816,10 +828,34 @@ func TestRelayUsecasePlan_UsesSelectedChannelModelCase(t *testing.T) {
 	}
 }
 
-type caseSensitiveModelChannelClient struct{}
+func TestRelayUsecasePlan_StripsExtendedContextSuffixBeforeSelection(t *testing.T) {
+	channelClient := &caseSensitiveModelChannelClient{upstreamModel: "GLM-5.3"}
+	uc := NewRelayUsecase(&testIdentityClientAllowAll{}, channelClient, nil, nil)
 
-func (*caseSensitiveModelChannelClient) SelectChannel(context.Context, string, string, bool) (*Channel, error) {
-	return &Channel{ID: 1, Models: []string{"GLM-5.2"}}, nil
+	plan, err := uc.Plan(context.Background(), RelayRequest{Token: "tok", Model: "glm-5.3[1m]"})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if channelClient.selectedModel != "glm-5.3" {
+		t.Fatalf("selected model = %q, want suffix-free model", channelClient.selectedModel)
+	}
+	if plan.GlobalModel != "glm-5.3" || plan.ResolvedModel != "GLM-5.3" {
+		t.Fatalf("models = global %q, resolved %q; want glm-5.3 -> GLM-5.3", plan.GlobalModel, plan.ResolvedModel)
+	}
+}
+
+type caseSensitiveModelChannelClient struct {
+	selectedModel string
+	upstreamModel string
+}
+
+func (c *caseSensitiveModelChannelClient) SelectChannel(_ context.Context, _ string, model string, _ bool) (*Channel, error) {
+	c.selectedModel = model
+	upstreamModel := c.upstreamModel
+	if upstreamModel == "" {
+		upstreamModel = "GLM-5.2"
+	}
+	return &Channel{ID: 1, Models: []string{upstreamModel}}, nil
 }
 
 func (*caseSensitiveModelChannelClient) SelectChannelExcluding(_ context.Context, _, _ string, excluded map[int64]bool) (*Channel, error) {
@@ -835,6 +871,13 @@ func (*caseSensitiveModelChannelClient) RecordChannelHealth(context.Context, int
 
 func (*caseSensitiveModelChannelClient) RecordSubscriptionAccountHealth(context.Context, int64, bool) error {
 	return nil
+}
+
+func TestApplyPerAccountModelMapping_MixedCaseExactKey(t *testing.T) {
+	mapping := `{"GLM-5.3":"vendor/GLM-5.3"}`
+	if got := applyPerAccountModelMapping(mapping, "glm-5.3[1M]"); got != "vendor/GLM-5.3" {
+		t.Fatalf("mixed-case exact mapping = %q, want vendor/GLM-5.3", got)
+	}
 }
 
 // TestSelectSubscriptionFailover_AppliesFailoverAccountModelMapping proves the

@@ -2227,15 +2227,21 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 
 	var gotMethod string
 	var gotPath string
+	var gotModel string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		gotModel = extractRawModel(body)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer upstream.Close()
 
 	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	channelClient := rawChannelClient{
+		baseURL: upstream.URL + "/v1", key: "sk-upstream",
+		getModels: "DeepSeek-V4-Pro-0813",
+	}
 	billingClient := &rawBillingClient{}
 	httpServer := NewHTTPServer(
 		identityClient,
@@ -2247,7 +2253,7 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 	srv := khttp.NewServer()
 	httpServer.RegisterRoutes(srv)
 
-	req := httptest.NewRequest(http.MethodPatch, "/v1/oneapi/proxy/11/custom/path", strings.NewReader(`{"model":"gpt-3.5-turbo"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/v1/oneapi/proxy/11/custom/path", strings.NewReader(`{"model":"deepseek-v4-pro-0813[1M]"}`))
 	req.Header.Set("Authorization", "Bearer user-token")
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -2262,6 +2268,9 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 	}
 	if gotPath != "/v1/custom/path" {
 		t.Fatalf("path = %q", gotPath)
+	}
+	if gotModel != "DeepSeek-V4-Pro-0813" {
+		t.Fatalf("upstream model = %q, want channel spelling", gotModel)
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	commonv1 "micro-one-api/api/common/v1"
 	"micro-one-api/api/identity/v1"
 	relayprovider "micro-one-api/domain/upstream/provider"
+	relaybiz "micro-one-api/internal/biz"
 	appvalidation "micro-one-api/internal/validation"
 	"micro-one-api/pkg/errors"
 	apptimeout "micro-one-api/pkg/timeout"
@@ -135,7 +136,9 @@ func (s *EnhancedHTTPServer) handleChatCompletions(w http.ResponseWriter, r *htt
 	}
 
 	// Check model permissions
-	if !s.isModelAllowed(authSnapshot.AllowedModels, req.Model) {
+	clientModel := req.Model
+	routingModel := relaybiz.RelayModelName(clientModel)
+	if !s.isModelAllowed(authSnapshot.AllowedModels, routingModel) {
 		applogger.Log.Warn("Model not allowed",
 			zap.String("model", req.Model),
 			zap.String("user_id", fmt.Sprintf("%d", authSnapshot.UserId)),
@@ -147,11 +150,16 @@ func (s *EnhancedHTTPServer) handleChatCompletions(w http.ResponseWriter, r *htt
 	}
 
 	// Select channel with timeout
-	channel, err := s.selectChannel(ctx, authSnapshot.Group, req.Model)
+	channel, err := s.selectChannel(ctx, authSnapshot.Group, routingModel)
 	if err != nil {
 		s.handleChannelError(w, err)
 		return
 	}
+	req.Model = relaybiz.ResolveChannelModel(&relaybiz.Channel{
+		Models:          strings.Split(channel.Models, ","),
+		ModelMapping:    channel.ModelMapping,
+		UpstreamModelID: channel.UpstreamModelId,
+	}, routingModel)
 
 	// Create provider
 	provider, err := s.providerFactory.CreateProviderWithConfig(channel.Type, channel.BaseUrl, channel.Key, relayprovider.ProviderConfig{
@@ -377,7 +385,13 @@ func (s *EnhancedHTTPServer) isModelAllowed(allowedModels []string, model string
 	if len(allowedModels) == 0 {
 		return true
 	}
-	return slices.Contains(allowedModels, model)
+	model = relaybiz.RelayModelName(model)
+	for _, allowed := range allowedModels {
+		if strings.EqualFold(relaybiz.RelayModelName(allowed), model) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *EnhancedHTTPServer) applyModelWhitelist(availableModels []string, allowedModels []string) []string {
@@ -387,12 +401,12 @@ func (s *EnhancedHTTPServer) applyModelWhitelist(availableModels []string, allow
 
 	allowedSet := make(map[string]bool)
 	for _, model := range allowedModels {
-		allowedSet[strings.ToLower(model)] = true
+		allowedSet[strings.ToLower(relaybiz.RelayModelName(model))] = true
 	}
 
 	filtered := make([]string, 0, len(availableModels))
 	for _, model := range availableModels {
-		if allowedSet[strings.ToLower(model)] {
+		if allowedSet[strings.ToLower(relaybiz.RelayModelName(model))] {
 			filtered = append(filtered, model)
 		}
 	}

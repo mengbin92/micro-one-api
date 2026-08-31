@@ -43,5 +43,19 @@ func TestApplyModelWhitelistEmpty(t *testing.T) {
 	}
 }
 
-// Ensure relaybiz is referenced to avoid unused import.
+func TestEnhancedModelMatchingIgnoresCaseAndExtendedContextSuffix(t *testing.T) {
+	s := &EnhancedHTTPServer{}
+	if !s.isModelAllowed([]string{"deepseek-v4-pro-0813"}, "DeepSeek-V4-Pro-0813[1M]") {
+		t.Fatal("expected model to be allowed")
+	}
+	filtered := s.applyModelWhitelist(
+		[]string{"deepseek-v4-pro-0813"},
+		[]string{"DeepSeek-V4-Pro-0813[1M]"},
+	)
+	if len(filtered) != 1 || filtered[0] != "deepseek-v4-pro-0813" {
+		t.Fatalf("filtered models = %v, want deepseek model", filtered)
+	}
+}
+
+// Ensure relaybiz remains available to package-level compatibility tests.
 var _ = relaybiz.RelayRequest{}

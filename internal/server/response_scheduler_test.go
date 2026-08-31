@@ -105,6 +105,16 @@ func TestOpenAIWSRoutingSchedulerRouteModels(t *testing.T) {
 		}
 	})
 
+	t.Run("stored metadata drops extended context suffix", func(t *testing.T) {
+		global, resolved := sched.routeModels(responseRoute{
+			GlobalModel:   "deepseek-v4-pro-0813[1M]",
+			ResolvedModel: "DeepSeek-V4-Pro-0813[1m]",
+		}, "deepseek-v4-pro-0813[1M]")
+		if global != "deepseek-v4-pro-0813" || resolved != "DeepSeek-V4-Pro-0813" {
+			t.Fatalf("route models = %q/%q, want suffix-free models", global, resolved)
+		}
+	})
+
 	t.Run("legacy route rebuilds both mapping stages", func(t *testing.T) {
 		global, resolved := sched.routeModels(responseRoute{
 			Model:   "client-model",
@@ -123,6 +133,26 @@ func TestOpenAIWSRoutingSchedulerRouteModels(t *testing.T) {
 			t.Fatalf("route models = %q/%q, want both empty", global, resolved)
 		}
 	})
+}
+
+func TestAuthAllowsModelIgnoresCaseAndExtendedContextSuffix(t *testing.T) {
+	if !authAllowsModel([]string{"deepseek-v4-pro-0813"}, "DeepSeek-V4-Pro-0813[1M]") {
+		t.Fatal("expected case-insensitive suffix-free permission match")
+	}
+}
+
+func TestMaterializeWSStickySourcePreservesChannelModelSpelling(t *testing.T) {
+	srv := &HTTPServer{channelClient: rawChannelClient{getModels: "DeepSeek-V4-Pro-0813"}}
+	var route responseRoute
+	ok := srv.materializeWSStickySource(context.Background(), &identityv1.GetAuthSnapshotReply{
+		UserId: 42, Group: "default",
+	}, "deepseek-v4-pro-0813[1M]", openAIWSStickySource{kind: relaybiz.UpstreamRouteChannel, id: 11}, &route)
+	if !ok {
+		t.Fatal("expected sticky source to materialize")
+	}
+	if got := relaybiz.ResolveChannelModel(&route.Channel, "deepseek-v4-pro-0813[1M]"); got != "DeepSeek-V4-Pro-0813" {
+		t.Fatalf("resolved model = %q, want channel spelling", got)
+	}
 }
 
 func TestOpenAIWSRoutingSchedulerRejectsSessionRouteWhenModelNotAllowed(t *testing.T) {

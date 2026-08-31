@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/metadata"
@@ -79,15 +80,17 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 	retryExecutor := s.relayUsecase.NewRetryExecutor()
 	var resp *relayprovider.ChatCompletionsResponse
 
-	result := retryExecutor.Execute(ctx, plan.Auth.Group, req.Model, func(ctx context.Context, ch *relaybiz.Channel) error {
+	result := retryExecutor.ExecuteWithCandidates(ctx, plan, 0, func(ctx context.Context, ch *relaybiz.Channel) error {
 		requestID := fmt.Sprintf("grpc_%d", time.Now().UnixNano())
 		estimatedTokens := estimateTokensForGRPC(providerReq)
+		resolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel())
+		providerReq.Model = resolvedModel
 
 		reservation, reserveErr := s.billingClient.ReserveQuota(ctx, &billingv1.ReserveQuotaRequest{
 			UserId:          fmt.Sprintf("%d", plan.Auth.UserID),
 			RequestId:       requestID,
 			EstimatedTokens: estimatedTokens,
-			Model:           plan.ResolvedModel,
+			Model:           resolvedModel,
 			ChannelId:       fmt.Sprintf("%d", ch.ID),
 		})
 		if reserveErr != nil {
@@ -126,7 +129,7 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		})
 		// Sprint 4: record model usage stats (best-effort).
 		_, _ = s.channelClient.RecordModelUsage(ctx, &channelv1.RecordModelUsageRequest{
-			ModelId:      req.Model,
+			ModelId:      relaybiz.RelayModelName(req.Model),
 			TokenCount:   actualTokens,
 			RequestCount: 1,
 		})
@@ -165,11 +168,11 @@ func (s *RelayGrpcService) ListModels(ctx context.Context, req *relayv1.ListMode
 	if len(authResp.AllowedModels) > 0 {
 		allowed := make(map[string]bool)
 		for _, m := range authResp.AllowedModels {
-			allowed[m] = true
+			allowed[strings.ToLower(relaybiz.RelayModelName(m))] = true
 		}
 		filtered := make([]string, 0, len(models))
 		for _, m := range models {
-			if allowed[m] {
+			if allowed[strings.ToLower(relaybiz.RelayModelName(m))] {
 				filtered = append(filtered, m)
 			}
 		}

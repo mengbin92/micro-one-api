@@ -123,6 +123,21 @@ func (m *ModelMapper) modelsSnapshot() map[string]*ModelEntry {
 	return nil
 }
 
+func exactModelEntry(models map[string]*ModelEntry, modelName string) (*ModelEntry, bool) {
+	if entry, ok := models[modelName]; ok {
+		return entry, true
+	}
+	if entry, ok := models[strings.ToLower(modelName)]; ok {
+		return entry, true
+	}
+	for key, entry := range models {
+		if !wildcard.IsPattern(key) && strings.EqualFold(key, modelName) {
+			return entry, true
+		}
+	}
+	return nil, false
+}
+
 // Resolve returns the actual upstream model name for the given client model name.
 // If no mapping exists, returns the original name unchanged.
 //
@@ -136,13 +151,7 @@ func (m *ModelMapper) Resolve(modelName string) string {
 	models := m.modelsSnapshot()
 
 	// 1) Exact (case-insensitive) match — the fast path.
-	if entry, ok := models[modelName]; ok && entry.ActualName != "" {
-		return entry.ActualName
-	}
-	// Also try a lowercase exact lookup so mixed-case client names hit the
-	// common lowercase keys without going through the wildcard pass.
-	lower := strings.ToLower(modelName)
-	if entry, ok := models[lower]; ok && entry.ActualName != "" {
+	if entry, ok := exactModelEntry(models, modelName); ok && entry.ActualName != "" {
 		return entry.ActualName
 	}
 
@@ -197,11 +206,7 @@ func (m *ModelMapper) Resolve(modelName string) string {
 // misses, wildcard keys are consulted (specific before "*").
 func (m *ModelMapper) HasCapability(modelName, capability string) bool {
 	models := m.modelsSnapshot()
-	if entry, ok := models[modelName]; ok {
-		return entryHasCapability(entry, capability)
-	}
-	lower := strings.ToLower(modelName)
-	if entry, ok := models[lower]; ok {
+	if entry, ok := exactModelEntry(models, modelName); ok {
 		return entryHasCapability(entry, capability)
 	}
 	// among matching specific patterns, pick the most specific entry
@@ -246,11 +251,7 @@ func (m *ModelMapper) HasCapability(modelName, capability string) bool {
 // wildcards, then the "*" catch-all.
 func (m *ModelMapper) GetEntry(modelName string) *ModelEntry {
 	models := m.modelsSnapshot()
-	if entry, ok := models[modelName]; ok {
-		return entry
-	}
-	lower := strings.ToLower(modelName)
-	if entry, ok := models[lower]; ok {
+	if entry, ok := exactModelEntry(models, modelName); ok {
 		return entry
 	}
 	// pick the most specific matching pattern so GetEntry is

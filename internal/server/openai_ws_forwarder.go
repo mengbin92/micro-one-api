@@ -917,6 +917,7 @@ func (s *HTTPServer) materializeWSStickySource(
 			Status:          chInfo.Channel.Status,
 			BaseURL:         chInfo.Channel.BaseUrl,
 			Group:           chInfo.Channel.Group,
+			Models:          strings.Split(chInfo.Channel.Models, ","),
 			Priority:        chInfo.Channel.Priority,
 			Weight:          chInfo.Channel.Weight,
 			Key:             chInfo.Channel.Key,
