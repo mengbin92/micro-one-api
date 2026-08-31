@@ -1,8 +1,8 @@
 # Micro-One-API v0.24.0 发布：全新双语控制台与中国法律协议
 
-> 2026-09-04 · 上一版：[v0.23.2](./release-v0.23.2.md) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.24.0)
+> 2026-08-31 · 上一版：[v0.23.3](./release-v0.23.3.md) · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.24.0)
 
-v0.24.0 是 v0.23.2 之后的 **MINOR Web 体验与运营基础版本**：完成用户端与管理端的
+v0.24.0 是 v0.23.3 之后的 **MINOR Web 体验与运营基础版本**：完成用户端与管理端的
 可访问性设计重构，新增中英文切换、响应式登录 / Playground 流程、语义化图表，
 并为中国大陆部署补齐用户协议、隐私政策、注册显式同意与可配置的运营主体信息。
 
@@ -103,7 +103,9 @@ git checkout v0.24.0
 - 视觉验收：1440×900 桌面登录 / 英文界面，390×844 移动注册 / 法律页面无主要布局回归。
 - executor 生产观察仍以
   [`v0.23-executor-observation.md`](../design/v0.23-executor-observation.md) 为唯一事实源；
-  v0.24.0 发布前须完成 PASS / ROLLBACK 判定。
+  executor observation 不阻塞 v0.24.0，因为本版本不改变 relay 运行时行为。观察期间仅部署
+  `admin-api` 和 `web/dist`；不要构建、加载、重建或重启 `relay-gateway`，不要修改
+  `RELAY_ORCHESTRATOR_ENABLED` 或 allowlist。
 
 ## 完整变更日志
 
