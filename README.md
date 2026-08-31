@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.23.2 发布公告](./docs/releases/release-v0.23.2.md)（Responses / Anthropic 兼容与 executor 灰度修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.23.2)
+> 📣 **最新发布**：[v0.23.3 发布公告](./docs/releases/release-v0.23.3.md)（服务边界与凭证安全加固） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.23.3)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.23.3
+
+v0.23.3 是 v0.23.2 之后的 **PATCH 安全修复版本**：收紧服务间认证、上游 SSRF、登录限流和 relay 编排器凭证边界，并修复 CodeQL 凭证告警。**无数据库迁移、无公共 API / proto 破坏性变更**；升级前必须统一 `SERVICE_TOKEN`，将旧的 `RELAY_ORCHESTRATOR_TOKEN_SHA256` 改为以 `SERVICE_TOKEN` 为密钥的 `RELAY_ORCHESTRATOR_TOKEN_HMAC_SHA256`，并按需配置可信代理 CIDR。executor 观察期间不要重启 `relay-gateway`。详见 [docs/releases/release-v0.23.3.md](./docs/releases/release-v0.23.3.md)。
 
 ### 升级到 v0.23.2
 
