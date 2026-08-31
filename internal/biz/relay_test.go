@@ -793,10 +793,24 @@ func TestResolveChannelModel_PreservesSelectedUpstreamCase(t *testing.T) {
 			want:    "GLM-5.3",
 		},
 		{
-			name:    "explicit mapping remains authoritative",
-			channel: &Channel{Models: []string{"GLM-5.2"}, ModelMapping: `{"glm-5.2":"vendor/glm-5.2"}`},
-			model:   "glm-5.2",
-			want:    "vendor/glm-5.2",
+			name: "explicit mapping remains authoritative",
+			channel: &Channel{
+				Models:          []string{"GLM-5.2"},
+				ModelMapping:    `{"glm-5.2":"vendor/glm-5.2"}`,
+				UpstreamModelID: "glm-5.2",
+			},
+			model: "glm-5.2",
+			want:  "vendor/glm-5.2",
+		},
+		{
+			name: "production glm mapping overrides canonical registry id",
+			channel: &Channel{
+				Models:          []string{"glm-5.3"},
+				ModelMapping:    `{"glm-5.3":"GLM-5.3"}`,
+				UpstreamModelID: "glm-5.3",
+			},
+			model: "glm-5.3[1M]",
+			want:  "GLM-5.3",
 		},
 		{
 			name:    "wildcard is not an upstream identifier",

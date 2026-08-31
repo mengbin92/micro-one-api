@@ -1071,11 +1071,11 @@ func ResolveChannelModel(channel *Channel, model string) string {
 	if channel == nil {
 		return model
 	}
-	if upstream := strings.TrimSpace(channel.UpstreamModelID); upstream != "" {
-		return RelayModelName(upstream)
-	}
 	if mapped, ok := resolvePerAccountModelMapping(channel.ModelMapping, model); ok {
 		return RelayModelName(mapped)
+	}
+	if upstream := strings.TrimSpace(channel.UpstreamModelID); upstream != "" {
+		return RelayModelName(upstream)
 	}
 	for _, configured := range channel.Models {
 		configured = RelayModelName(configured)
