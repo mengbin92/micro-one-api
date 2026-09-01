@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.3] - 2026-09-01
+
+v0.26.3 是替代未完成发布的 v0.26.2 的 **PATCH Relay 路由、双语界面与发布门禁修复版本**：完整包含 v0.26.2 的模型路由和界面修复，并同步生成 API 类型、兼容中英文 Playwright 定位器，使 Release E2E 门禁可通过。无公共 API / proto 变更、无数据库迁移。详见 [release-v0.26.3.md](docs/releases/release-v0.26.3.md)。
+
+### Fixed
+
+- 修复模型路由大小写不一致、客户端 `[1M]` 标记泄漏，以及渠道显式 `model_mapping` 被 `upstream_model_id` 覆盖的问题。
+- 修复 Web 中英文切换不完整、动态文案粘连及法律页面未翻译的问题。
+- 修复生成 API 类型未同步导致的 CI 一致性失败，以及本地化无障碍名称导致的 Release Playwright 冒烟测试失败。
+
+### Changed
+
+- v0.26.3 替代未产出完整 GitHub Release 和多架构镜像的 v0.26.2；升级和部署应直接使用 v0.26.3。
+- 管理端 Playwright 定位器同时匹配中英文可访问名称，Web API 类型包含完整 canonical usage 字段。
+
 ## [0.26.2] - 2026-08-31
 
 v0.26.2 是 v0.26.1 之后的 **PATCH Relay 路由与 Web 界面修复版本**：统一模型标识处理，恢复显式渠道模型映射优先级，并同步中英文界面文案。无公共 API / proto 变更、无数据库迁移。详见 [release-v0.26.2.md](docs/releases/release-v0.26.2.md)。
