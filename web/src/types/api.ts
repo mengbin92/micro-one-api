@@ -802,6 +802,23 @@ export interface components {
             /** @description v0.11.0 cache-creation buckets (docs/design/token-usage-semantics.md). */
             cacheCreation5mTokens?: string;
             cacheCreation1hTokens?: string;
+            /**
+             * @description token-usage-billing-semantics-remediation (2026-08-31) §9.1 display
+             *      contract. quota keeps its legacy reported-total meaning; new consumers
+             *      must prefer billable_total_tokens and MUST NOT re-derive totals via
+             *      prompt-cache+output+cache. usage_parse_status='legacy' rows have unknown
+             *      historical semantics and must be displayed as such.
+             */
+            uncachedInputTokens?: string;
+            reportedPromptTokens?: string;
+            reportedTotalTokens?: string;
+            billableTotalTokens?: string;
+            usageSemantics?: string;
+            usageProtocol?: string;
+            usageParseStatus?: string;
+            /** Format: int32 */
+            usageContractVersion?: number;
+            usageDecisionReason?: string;
         };
         "api.log.v1.IngestLogRequest": {
             level?: string;
@@ -825,6 +842,25 @@ export interface components {
             cacheCreation1hTokens?: string;
             /** @description Stable producer key. Retries with the same key return the original row. */
             dedupeKey?: string;
+            /**
+             * @description token-usage-billing-semantics-remediation (2026-08-31) §6.2/§9.1.
+             *      quota keeps its legacy reported-total meaning; the fields below carry the
+             *      canonical display contract. Legacy producers (usage_contract_version=0)
+             *      leave them at zero value and the row is stored with
+             *      usage_parse_status='legacy'.
+             */
+            uncachedInputTokens?: string;
+            reportedPromptTokens?: string;
+            reportedTotalTokens?: string;
+            billableTotalTokens?: string;
+            usageSemantics?: string;
+            usageProtocol?: string;
+            usageFieldShape?: string;
+            usageParseStatus?: string;
+            /** Format: int32 */
+            usageContractVersion?: number;
+            canonicalPresent?: boolean;
+            usageDecisionReason?: string;
         };
         "api.log.v1.IngestLogResponse": {
             id?: string;

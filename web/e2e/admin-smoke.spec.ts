@@ -35,7 +35,7 @@ async function seedAdminSession(page: Page) {
   // Admin links only render in the desktop sidebar; on mobile they live in
   // the hamburger navigation, so only assert on wide viewports.
   if ((page.viewportSize()?.width ?? 0) >= 768) {
-    await expect(page.getByRole('link', { name: 'Admin Overview' })).toBeVisible();
+    await expect(page.getByRole('link', { name: /^(总览|Overview)$/i })).toBeVisible();
   }
 }
 
@@ -95,8 +95,8 @@ test('admin token enables Options nav', async ({ page }) => {
   await page.goto('/dashboard');
   await openMobileNavIfVisible(page);
 
-  await expect(page.getByRole('link', { name: 'Admin Overview' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Options' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^(总览|Overview)$/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^(设置|Settings)$/i })).toBeVisible();
 });
 
 test('regular user shell does not show admin login control', async ({ page }) => {
@@ -106,8 +106,8 @@ test('regular user shell does not show admin login control', async ({ page }) =>
   });
   await page.goto('/dashboard');
 
-  await expect(page.getByRole('button', { name: 'Admin' })).toBeHidden();
-  await expect(page.getByRole('link', { name: 'Admin Overview' })).toBeHidden();
+  await expect(page.getByRole('link', { name: /^(进入管理|Open Admin)$/i })).toBeHidden();
+  await expect(page.getByRole('link', { name: /^(总览|Overview)$/i })).toBeHidden();
 });
 
 test('admin overview renders operational status', async ({ page }) => {
@@ -144,11 +144,11 @@ test('admin users sends sort and filter params', async ({ page }) => {
 
   await seedAdminSession(page);
   await page.goto('/admin/users');
-  await page.getByLabel('Filter users by status').selectOption('1');
+  await page.getByLabel(/^(按状态筛选用户|Filter users by status)$/i).selectOption('1');
   // Filter/sort state lives in the URL and navigations are async (see the
   // payment-orders test below); serialize on the URL to avoid stale reads.
   await expect(page).toHaveURL(/status=1/);
-  await page.getByRole('button', { name: /sort by username/i }).click();
+  await page.getByRole('button', { name: /sort by (用户名|username)/i }).click();
 
   await expect
     .poll(() => requests.some((url) => url.includes('status=1') && url.includes('sort=username') && url.includes('order=asc')))
@@ -189,18 +189,18 @@ test('admin channels creates a channel from the web page', async ({ page }) => {
 
   await seedAdminSession(page);
   await page.goto('/admin/channels');
-  await page.getByRole('button', { name: 'Create Channel' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Create Channel' });
-  await dialog.getByLabel('Name').fill('openai-main');
-  await dialog.getByLabel('Base URL').fill('https://api.example.com/v1');
-  await dialog.getByLabel('API Key').fill('sk-test');
+  await page.getByRole('button', { name: /^(创建渠道|Create Channel)$/i }).click();
+  const dialog = page.getByRole('dialog', { name: /^(创建渠道|Create Channel)$/i });
+  await dialog.getByLabel(/^(名称|Name)$/i).fill('openai-main');
+  await dialog.getByLabel(/^(基础 URL|Base URL)$/i).fill('https://api.example.com/v1');
+  await dialog.getByLabel(/^(API 密钥|API Key)$/i).fill('sk-test');
   // Models is a ModelMultiSelect (searchable checkbox list over the model
   // registry), not a labelled input — the registry is unmocked here, so type
   // the model ID and use the "Add <id>" custom-entry button instead.
-  await dialog.getByPlaceholder('Search models...').fill('gpt-4o-mini');
-  await dialog.getByRole('button', { name: 'Add gpt-4o-mini' }).click();
-  await dialog.getByLabel('Group').fill('default');
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await dialog.getByPlaceholder(/搜索模型|Search models/i).fill('gpt-4o-mini');
+  await dialog.getByRole('button', { name: /^(添加|Add) gpt-4o-mini$/i }).click();
+  await dialog.getByLabel(/^(分组|Group)$/i).fill('default');
+  await dialog.getByRole('button', { name: /^(创建|Create)$/i }).click();
 
   await expect.poll(() => channelRequests.length).toBe(1);
   expect(channelRequests[0]).toMatchObject({
@@ -237,12 +237,12 @@ test('admin redemptions shows generated code values after creation', async ({ pa
 
   await seedAdminSession(page);
   await page.goto('/admin/redemptions');
-  await page.getByRole('button', { name: 'Create Code' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Create Redemption Code' });
-  await dialog.getByLabel('Name').fill('Campaign');
-  await dialog.getByLabel('Amount').fill('10');
-  await dialog.getByLabel('Count').fill('2');
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByRole('button', { name: /^(创建兑换码|Create Redemption Code)$/i }).click();
+  const dialog = page.getByRole('dialog', { name: /^(创建兑换码|Create Redemption Code)$/i });
+  await dialog.getByLabel(/^(名称|Name)$/i).fill('Campaign');
+  await dialog.getByLabel(/^(金额|Amount)$/i).fill('10');
+  await dialog.getByLabel(/^(数量|Count)$/i).fill('2');
+  await dialog.getByRole('button', { name: /^(创建|Create)$/i }).click();
 
   await expect(page.getByText('redeem-a')).toBeVisible();
   await expect(page.getByText('redeem-b')).toBeVisible();
@@ -284,11 +284,11 @@ test('admin payment orders sends filters to backend', async ({ page }) => {
   // React Router navigations are async, so back-to-back setFilter calls can
   // read a stale location and silently drop earlier filters (seen on slow CI
   // runners). Serialize on the URL after each change instead.
-  await page.getByLabel('Filter payment orders by status').selectOption('paid');
+  await page.getByLabel(/^(按状态筛选支付订单|Filter payment orders by status)$/i).selectOption('paid');
   await expect(page).toHaveURL(/status=paid/);
-  await page.getByLabel('Filter payment orders by channel').selectOption('alipay');
+  await page.getByLabel(/^(按渠道筛选支付订单|Filter payment orders by channel)$/i).selectOption('alipay');
   await expect(page).toHaveURL(/channel=alipay/);
-  await page.getByLabel('Filter payment orders by user id').fill('42');
+  await page.getByLabel(/^(按用户 ID 筛选支付订单|Filter payment orders by user ID)$/i).fill('42');
 
   await expect
     .poll(() => requests.some((url) => url.includes('status=paid') && url.includes('channel=alipay') && url.includes('user_id=42')))
@@ -383,8 +383,8 @@ test('mobile navigation exposes admin links and closes after navigation', async 
   await seedAdminSession(page);
   await page.goto('/dashboard');
   await page.getByRole('button', { name: /打开导航|open navigation/i }).click();
-  await expect(page.getByRole('link', { name: 'Options' })).toBeVisible();
-  await page.getByRole('link', { name: 'Options' }).click();
+  await expect(page.getByRole('link', { name: /^(设置|Settings)$/i })).toBeVisible();
+  await page.getByRole('link', { name: /^(设置|Settings)$/i }).click();
 
   await expect(page).toHaveURL(/\/admin\/options$/);
   await expect(page.getByRole('dialog')).toBeHidden();
@@ -393,12 +393,12 @@ test('mobile navigation exposes admin links and closes after navigation', async 
 test('admin users page size persists after reload', async ({ page }) => {
   await seedAdminSession(page);
   await page.goto('/admin/users');
-  await page.getByLabel('Rows per page').selectOption('50');
+  await page.getByLabel(/^(每页行数|Rows per page)$/i).selectOption('50');
   await expect(page).toHaveURL(/page_size=50/);
 
   await page.reload();
 
-  await expect(page.getByLabel('Rows per page')).toHaveValue('50');
+  await expect(page.getByLabel(/^(每页行数|Rows per page)$/i)).toHaveValue('50');
 });
 
 test('admin users export sends current filters to backend export route', async ({ page }) => {
@@ -446,7 +446,7 @@ test('admin users export sends current filters to backend export route', async (
 
   await seedAdminSession(page);
   await page.goto('/admin/users');
-  await page.getByLabel('Filter users by status').selectOption('1');
+  await page.getByLabel(/^(按状态筛选用户|Filter users by status)$/i).selectOption('1');
   await expect(page).toHaveURL(/status=1/);
   await expect
     .poll(() => listRequests.some((url) => new URL(url).searchParams.get('status') === '1'))
@@ -512,7 +512,7 @@ test('admin subscription accounts page lists and creates accounts', async ({ pag
   await page.getByRole('button', { name: /新建订阅账号/ }).click();
   const dialog = page.getByRole('dialog', { name: '新建订阅账号' });
   await dialog.getByLabel('名称').fill('codex-team');
-  await dialog.getByLabel('Access Token').fill('sk-test-access');
+  await dialog.getByLabel(/^(访问令牌|Access Token)$/i).fill('sk-test-access');
   await dialog.getByLabel('Refresh Token').fill('rt-test-refresh');
   // The form is taller than the dialog's scroll viewport (DialogContent has
   // overflow-y-auto). On mobile the button's hit point stays covered by other
