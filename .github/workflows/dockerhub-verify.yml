@@ -55,5 +55,8 @@ jobs:
             SERVICE_NAME=${{ matrix.service }}
             SERVICE_PATH=${{ matrix.path }}
           # Reuse the GitHub Actions cache (code-review L5).
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Per-service scope avoids parallel matrix jobs racing on the
+          # shared default scope; ignore-error keeps cache export failures
+          # from failing the build.
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }},ignore-error=true
