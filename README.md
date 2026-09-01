@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.26.3 发布公告](./docs/releases/release-v0.26.3.md)（Relay 路由、双语界面与发布门禁修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.3)
+> 📣 **最新发布**：[v0.26.4 发布公告](./docs/releases/release-v0.26.4.md)（控制台页面切换延迟修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.4)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.26.4
+
+v0.26.4 是 v0.26.3 之后的 **PATCH 控制台性能修复版本**：哈希静态资源改为一年 immutable 缓存并启用 gzip，charts 依赖隔离到图表页按需加载，导航悬停预取路由模块，账户查询跨组件复用。**无公共 API / proto 变更；包含迁移 089**（Dashboard 聚合联合索引）；需配套更新 `admin-api`、同步 `web/dist` 并执行 089 迁移，其余服务（含 `relay-gateway`）无需重启。详见 [docs/releases/release-v0.26.4.md](./docs/releases/release-v0.26.4.md)。
 
 ### 升级到 v0.26.3
 

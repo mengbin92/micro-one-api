@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.4] - 2026-09-01
+
+v0.26.4 是 v0.26.3 之后的 **PATCH 控制台性能修复版本**：消除 `/dashboard`、`/usage`、`/admin/logs` 等页面约 1 秒的打开延时——哈希静态资源改为一年 immutable 缓存并启用 gzip，charts 依赖隔离到图表页按需加载，导航悬停预取路由模块，账户查询跨组件复用并修复跨账号缓存与旧角色闪现问题；新增迁移 089（Dashboard 聚合联合索引）。无公共 API / proto 变更。详见 [release-v0.26.4.md](docs/releases/release-v0.26.4.md)。
+
+### Added
+
+- 迁移 089：`billing_ledgers` 新增 `(user_id, type, created_at)` 联合索引，加速用户 Dashboard consume 聚合（MySQL / PostgreSQL / SQLite）。
+
+### Fixed
+
+- 修复控制台页面每次打开约 1 秒的延时：懒加载页面先下载 JS 才发 API、charts 公共包被非图表页面预加载、哈希资源无长期缓存且无压缩、导航与页面重复请求账户接口。
+- 修复 `AdminRoute` 刷新时信任 `localStorage.userRole`，可能短暂放行旧角色进入管理页面的问题。
+- 修复登录/退出后 React Query 缓存残留，可能短暂显示上一用户数据的问题。
+
+### Changed
+
+- `/assets/*` 返回 `public, max-age=31536000, immutable`，文本资源按 `Accept-Encoding` 协商 gzip（尊重 `q=0` 与 `Range`，WOFF2 不压缩，404 不加长缓存，空文件输出合法空 gzip 流）；HTML 保持禁缓存。
+- 侧边栏链接悬停/聚焦时预取目标路由模块；导航栏、Dashboard、个人资料、充值、兑换共用账户查询缓存（用户信息 5 分钟、账户概览 30 秒）。
+
 ## [0.26.3] - 2026-09-01
 
 v0.26.3 是替代未完成发布的 v0.26.2 的 **PATCH Relay 路由、双语界面与发布门禁修复版本**：完整包含 v0.26.2 的模型路由和界面修复，并同步生成 API 类型、兼容中英文 Playwright 定位器，使 Release E2E 门禁可通过。无公共 API / proto 变更、无数据库迁移。详见 [release-v0.26.3.md](docs/releases/release-v0.26.3.md)。
