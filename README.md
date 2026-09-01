@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.26.2 发布公告](./docs/releases/release-v0.26.2.md)（Relay 模型路由与双语界面修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.2)
+> 📣 **最新发布**：[v0.26.3 发布公告](./docs/releases/release-v0.26.3.md)（Relay 路由、双语界面与发布门禁修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.3)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.26.3
+
+v0.26.3 是替代未完成发布的 v0.26.2 的 **PATCH Relay 路由、双语界面与发布门禁修复版本**：完整包含 v0.26.2 的模型标识归一化、显式渠道模型映射和中英文界面修复，并同步生成 API 类型、兼容本地化 Playwright 定位器。**无公共 API / proto 变更、无数据库迁移**；v0.26.2 未产出完整 Release 制品，请直接更新 `relay-gateway`、同步 `web/dist` 并使用 v0.26.3。详见 [docs/releases/release-v0.26.3.md](./docs/releases/release-v0.26.3.md)。
 
 ### 升级到 v0.26.2
 
