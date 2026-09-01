@@ -1,6 +1,7 @@
 package server
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/subtle"
 	"encoding/csv"
@@ -44,6 +45,8 @@ import (
 type adminWebAssets struct {
 	root fs.FS
 }
+
+const immutableAssetCacheControl = "public, max-age=31536000, immutable"
 
 // adminRoleContextKey carries the resolved role of an authorised admin
 // request so downstream handlers (e.g. /api/admin/access) can report it.
@@ -1678,7 +1681,129 @@ func (a adminWebAssets) handlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.FileServer(http.FS(a.root)).ServeHTTP(w, r)
+	if strings.HasPrefix(path, "assets/") {
+		serveWebAsset(&immutableAssetResponseWriter{ResponseWriter: w}, r, a.root)
+		return
+	}
+	serveWebAsset(w, r, a.root)
+}
+
+type immutableAssetResponseWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *immutableAssetResponseWriter) WriteHeader(statusCode int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices || statusCode == http.StatusNotModified {
+		w.Header().Set("Cache-Control", immutableAssetCacheControl)
+	}
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *immutableAssetResponseWriter) Write(p []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func serveWebAsset(w http.ResponseWriter, r *http.Request, root fs.FS) {
+	if !isCompressibleWebAsset(r.URL.Path) {
+		http.FileServer(http.FS(root)).ServeHTTP(w, r)
+		return
+	}
+
+	w.Header().Add("Vary", "Accept-Encoding")
+	if !acceptsGzip(r.Header.Get("Accept-Encoding")) || r.Header.Get("Range") != "" {
+		http.FileServer(http.FS(root)).ServeHTTP(w, r)
+		return
+	}
+
+	compressed := &gzipResponseWriter{ResponseWriter: w}
+	defer compressed.Close()
+	http.FileServer(http.FS(root)).ServeHTTP(compressed, r)
+}
+
+func isCompressibleWebAsset(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".css", ".html", ".js", ".json", ".map", ".svg", ".txt", ".xml":
+		return true
+	default:
+		return false
+	}
+}
+
+func acceptsGzip(value string) bool {
+	wildcardAccepted := false
+	for encoding := range strings.SplitSeq(value, ",") {
+		parts := strings.Split(strings.TrimSpace(encoding), ";")
+		if len(parts) == 0 {
+			continue
+		}
+		quality := 1.0
+		for _, parameter := range parts[1:] {
+			name, raw, found := strings.Cut(strings.TrimSpace(parameter), "=")
+			if !found || !strings.EqualFold(name, "q") {
+				continue
+			}
+			parsed, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+			if err != nil {
+				quality = 0
+			} else {
+				quality = parsed
+			}
+		}
+		name := strings.TrimSpace(parts[0])
+		if strings.EqualFold(name, "gzip") {
+			return quality > 0
+		}
+		if name == "*" {
+			wildcardAccepted = quality > 0
+		}
+	}
+	return wildcardAccepted
+}
+
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	writer  *gzip.Writer
+	enabled bool
+}
+
+func (w *gzipResponseWriter) WriteHeader(statusCode int) {
+	if statusCode >= 200 && statusCode != http.StatusNoContent && statusCode != http.StatusNotModified {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Del("Content-Length")
+		w.enabled = true
+	}
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *gzipResponseWriter) Write(p []byte) (int, error) {
+	if !w.enabled {
+		w.WriteHeader(http.StatusOK)
+	}
+	if !w.enabled {
+		return w.ResponseWriter.Write(p)
+	}
+	if w.writer == nil {
+		w.writer = gzip.NewWriter(w.ResponseWriter)
+	}
+	return w.writer.Write(p)
+}
+
+func (w *gzipResponseWriter) Close() error {
+	if !w.enabled {
+		return nil
+	}
+	if w.writer == nil {
+		w.writer = gzip.NewWriter(w.ResponseWriter)
+	}
+	return w.writer.Close()
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
