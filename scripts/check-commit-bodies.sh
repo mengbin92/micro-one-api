@@ -15,7 +15,7 @@ set -euo pipefail
 
 range="${1:?usage: $0 <git-range> (e.g. origin/develop..HEAD)}"
 
-trivial_re='^(chore\(release\): bump|bump version|docs\(changelog\)|Merge )'
+trivial_re='^(chore\(release\): bump|bump version|docs\(changelog\)|docs\(release\)|Merge )'
 
 violations=0
 while IFS= read -r commit; do
