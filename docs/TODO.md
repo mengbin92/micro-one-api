@@ -1,15 +1,20 @@
 # 项目 TODO
 
-> 最后更新：2026-08-28
+> 最后更新：2026-09-01
 >
-> **当前执行入口**：[v0.23 阶段路线图](./design/v0.23-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
+> **当前执行入口**：[v0.27 阶段路线图](./design/v0.27-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
 >
-> 📣 **v0.22 阶段（2026-08-19，已收尾）**：渠道凭证迁移、启动安全、契约治理、批量可靠性修复、请求体限额、前端错误兜底和 Relay 执行边界 ADR 均已闭环，v0.22.0 已发布并完成线上更新；验收记录归档于 [v0.22 阶段路线图](./design/v0.22-roadmap.md)。
+> 📣 **v0.27 当前进展（2026-09-01）**：v0.26.3 Release 制品已收口——workflow
+> attempt 2 全部成功，GitHub Release 已发布，9 服务的 `v0.26.3` / `0.26` / `latest`
+> 镜像均包含 amd64/arm64。当前继续 executor 第五次正式观察窗口；窗口于
+> 2026-09-01 10:43:15 CST 成立，若不中断，最早于 2026-09-08 10:43:15 CST 结束。
+> 窗口闭环后再按顺序执行 canonical usage `observe → charge`，不得同时改变 executor
+> 路径与计费模式。
 >
-> 📣 **v0.23 当前进展（2026-08-28）**：v0.23.2 已发布并修复 Responses 经 Anthropic API-key
-> 渠道的本地协议转换 502。executor 第四次正式观察窗口于 2026-08-28 10:40:47 CST
-> 成立，预计 2026-09-04 10:40:47 CST 结束；观察期间冻结 relay-gateway 部署、executor
-> flag 与 allowlist，日检结论以 [executor 观察手册](./design/v0.23-executor-observation.md) 为准。
+> 📣 **v0.23 阶段（实现已完成，观察延续）**：HTTP / SSE executor 首切片、端口、
+> 新旧路径测试和回滚门均已落地；日检结论继续以
+> [executor 观察手册](./design/v0.23-executor-observation.md) 为准，阶段依赖和后续决策由
+> [v0.27 路线图](./design/v0.27-roadmap.md) 管理。
 >
 > 📣 **v0.21 阶段（2026-08-18，已收尾）**：资金对账、MySQL / PostgreSQL migration smoke、Release E2E 门禁与 P3-0 观察基线均已闭环，v0.21.0 已发布；验收记录归档于 [v0.21 阶段路线图](./design/v0.21-roadmap.md)。
 >

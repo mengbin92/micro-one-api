@@ -21,7 +21,7 @@ docs/
 | 我想... | 看这里 |
 |---------|--------|
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段执行路线 | [design/v0.23-roadmap.md](./design/v0.23-roadmap.md) |
+| 查看下一阶段执行路线 | [design/v0.27-roadmap.md](./design/v0.27-roadmap.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看产品界面预览 | [根 README 界面预览](../README.md#界面预览) |
 | 查看某版本发布内容 | [releases/](./releases/) |
@@ -34,10 +34,10 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——`design/` 下最新版本路线图，其头部标注「状态：进行中，当前唯一执行入口」。新阶段立项时：新建 `design/vX.Y-roadmap.md` 作为唯一入口 → 旧路线图头部降级为「已归档」并指回新入口 → 同步本表「查看下一阶段执行路线」行、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-当前 v0.23 状态：v0.23.2 已发布并完成 Responses / Anthropic 兼容修复部署；
-executor 第四次正式观察窗口于 2026-08-28 10:40:47 CST 成立，若不中断，
-预计 2026-09-04 10:40:47 CST 结束。观察期间冻结 relay-gateway 部署、executor flag 与
-allowlist；双语 Web 与中国法律协议按 v0.24 独立准备。
+当前 v0.27 状态：v0.26.3 Release workflow 重跑后已全部成功，GitHub Release 与
+9 服务双架构镜像均已发布。executor 第五次正式观察窗口于 2026-09-01 10:43:15 CST
+成立，若不中断，最早于 2026-09-08 10:43:15 CST 结束；窗口完成后再按顺序执行
+canonical usage `observe → charge`，同一时间只改变一条生产主线。
 
 ---
 
@@ -60,7 +60,9 @@ allowlist；双语 Web 与中国法律协议按 v0.24 独立准备。
 - [v0.18.0](./releases/release-v0.18.0.md) · [v0.18.1](./releases/release-v0.18.1.md) · [v0.18.2](./releases/release-v0.18.2.md) · [v0.18.3](./releases/release-v0.18.3.md) · [v0.18.4](./releases/release-v0.18.4.md)
 - [v0.19.0](./releases/release-v0.19.0.md) · [v0.19.1](./releases/release-v0.19.1.md)
 - [v0.20.0](./releases/release-v0.20.0.md) · [v0.20.1](./releases/release-v0.20.1.md) · [v0.20.2](./releases/release-v0.20.2.md) · [v0.20.3](./releases/release-v0.20.3.md) · [v0.20.4](./releases/release-v0.20.4.md) · [v0.20.5](./releases/release-v0.20.5.md)
-- [v0.21.0](./releases/release-v0.21.0.md) · [v0.22.0](./releases/release-v0.22.0.md)（最新）
+- [v0.21.0](./releases/release-v0.21.0.md) · [v0.22.0](./releases/release-v0.22.0.md)
+- [v0.23.0](./releases/release-v0.23.0.md) · [v0.23.1](./releases/release-v0.23.1.md) · [v0.23.2](./releases/release-v0.23.2.md) · [v0.23.3](./releases/release-v0.23.3.md)
+- [v0.24.0](./releases/release-v0.24.0.md) · [v0.25.0](./releases/release-v0.25.0.md) · [v0.26.0](./releases/release-v0.26.0.md) · [v0.26.1](./releases/release-v0.26.1.md) · [v0.26.2](./releases/release-v0.26.2.md) · [v0.26.3](./releases/release-v0.26.3.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -92,9 +94,10 @@ allowlist；双语 Web 与中国法律协议按 v0.24 独立准备。
 | [v0.21-roadmap.md](./design/v0.21-roadmap.md) | v0.21 路线图：事件驱动对账、质量门禁补齐与触发式观察（已归档） |
 | [v0.22-roadmap.md](./design/v0.22-roadmap.md) | v0.22 路线图：安全配置、契约治理与小范围可靠性修复（已归档） |
 | [v0.22-relay-execution-boundary-adr.md](./design/v0.22-relay-execution-boundary-adr.md) | v0.22 Relay executor / adaptor 执行边界 ADR |
-| [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（当前） |
+| [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
+| [v0.27-roadmap.md](./design/v0.27-roadmap.md) | v0.27 路线图：发布完整性、双灰度闭环与轻量产品化（当前） |
 | [web-playground-implementation-plan.md](./design/web-playground-implementation-plan.md) | 用户侧 Web Playground：交互、密钥安全、SSE、Relay CORS、测试与发布方案 |
 | [architecture-review-remediation-report-2026-08-25.md](./design/architecture-review-remediation-report-2026-08-25.md) | 系统架构审查复核、修复方案与执行状态（2026-08-25） |
 | [systematic-code-review-remediation-2026-08-25.md](./design/systematic-code-review-remediation-2026-08-25.md) | 系统性代码审查方案复核、优化与修复状态（2026-08-25） |
