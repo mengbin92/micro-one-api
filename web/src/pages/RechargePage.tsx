@@ -9,14 +9,11 @@ import { unwrapApiData } from '@/lib/api-response';
 import { amountUnitsToCurrencyUnits } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
+import { accountDashboardQueryOptions } from '@/lib/account-queries';
 
 const DEFAULT_RECHARGE_AMOUNT_MULTIPLIER = 10;
 const RATE = rechargeAmountMultiplier();
 const PRESET_AMOUNTS = [2, 10, 20, 50, 100];
-
-interface AccountDashboard {
-  balance?: number;
-}
 
 interface PaymentOrder {
   trade_no?: string;
@@ -61,13 +58,7 @@ export function RechargePage() {
   const amount = normalizeAmount(amountInput);
   const receiveAmount = useMemo(() => amount * RATE, [amount]);
 
-  const { data: dashboard } = useQuery({
-    queryKey: ['recharge-dashboard'],
-    queryFn: async () => {
-      const res = await apiClient.get('/user/dashboard');
-      return unwrapApiData<AccountDashboard>(res.data);
-    },
-  });
+  const { data: dashboard } = useQuery(accountDashboardQueryOptions);
 
   const createPayment = useMutation({
     mutationFn: async (variables: PaymentMutationVariables) => {

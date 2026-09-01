@@ -1,53 +1,20 @@
 import { ShieldAlert } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Outlet } from 'react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageLoading } from '@/components/PageLoading';
-import { apiClient } from '@/lib/api';
 import { isAdminRole } from '@/lib/admin-access';
-import { unwrapApiData } from '@/lib/api-response';
 import { t } from '@/lib/i18n';
-
-function readStoredRole(): number | null {
-  const raw = localStorage.getItem('userRole');
-  if (raw == null || raw === '') return null;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+import { userSelfQueryOptions } from '@/lib/account-queries';
 
 export function AdminRoute() {
-  const [role, setRole] = useState<number | null>(readStoredRole);
-  const [loading, setLoading] = useState<boolean>(role === null);
+  const { data: user, isLoading } = useQuery(userSelfQueryOptions);
 
-  useEffect(() => {
-    if (role !== null) return;
-    let cancelled = false;
-    apiClient
-      .get('/user/self')
-      .then((response) => {
-        if (cancelled) return;
-        const data = unwrapApiData<{ role?: number } | null>(response.data);
-        const nextRole = typeof data?.role === 'number' ? data.role : 0;
-        localStorage.setItem('userRole', String(nextRole));
-        setRole(nextRole);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setRole(0);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [role]);
-
-  if (loading) {
+  if (isLoading) {
     return <PageLoading />;
   }
 
-  if (isAdminRole(role)) {
+  if (isAdminRole(user?.role)) {
     return <Outlet />;
   }
 

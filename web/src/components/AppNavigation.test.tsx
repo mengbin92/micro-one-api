@@ -1,11 +1,13 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useQuery } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { AppNavigation } from './AppNavigation';
 import { server } from '@/test/msw/server';
 import { renderWithQuery } from '@/test/render';
+import { accountDashboardQueryOptions, userSelfQueryOptions } from '@/lib/account-queries';
 
 function renderNavigation(initialPath = '/dashboard') {
   return renderWithQuery(
@@ -13,6 +15,12 @@ function renderNavigation(initialPath = '/dashboard') {
       <AppNavigation />
     </MemoryRouter>
   );
+}
+
+function SharedAccountQueryProbe() {
+  useQuery(userSelfQueryOptions);
+  useQuery(accountDashboardQueryOptions);
+  return null;
 }
 
 function mockSelf(role: number, id = 7) {
@@ -89,6 +97,33 @@ describe('AppNavigation', () => {
     expect(await screen.findByRole('link', { name: '用户' })).toBeInTheDocument();
     expect(window.localStorage.getItem('userRole')).toBe('10');
     expect(window.localStorage.getItem('userId')).toBe('42');
+  });
+
+  it('deduplicates account requests shared with page queries', async () => {
+    let selfRequests = 0;
+    let dashboardRequests = 0;
+    server.use(
+      http.get('/api/user/self', () => {
+        selfRequests += 1;
+        return HttpResponse.json({ success: true, data: { id: 7, username: 'alice', display_name: 'Alice', role: 1 } });
+      }),
+      http.get('/api/user/dashboard', () => {
+        dashboardRequests += 1;
+        return HttpResponse.json({ success: true, data: { balance: 10 } });
+      }),
+    );
+
+    renderWithQuery(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <AppNavigation />
+        <SharedAccountQueryProbe />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(selfRequests).toBe(1);
+      expect(dashboardRequests).toBe(1);
+    });
   });
 
   it('opens and closes the mobile menu', async () => {

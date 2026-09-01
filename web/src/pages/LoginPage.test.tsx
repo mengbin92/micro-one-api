@@ -1,10 +1,20 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { LoginPage } from './LoginPage';
 import { renderWithQuery } from '@/test/render';
 import { redirectToApiPath } from '@/lib/oauth';
+import { server } from '@/test/msw/server';
+
+function QueryClientCapture({ onCapture }: { onCapture: (queryClient: QueryClient) => void }) {
+  const queryClient = useQueryClient();
+  useEffect(() => onCapture(queryClient), [onCapture, queryClient]);
+  return null;
+}
 
 vi.mock('@/lib/oauth', async () => {
   const actual = await vi.importActual<typeof import('@/lib/oauth')>('@/lib/oauth');
@@ -17,10 +27,10 @@ vi.mock('@/lib/oauth', async () => {
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.mocked(redirectToApiPath).mockClear();
-    window.localStorage.removeItem('web:language');
+    window.localStorage.clear();
   });
 
-  afterEach(() => window.localStorage.removeItem('web:language'));
+  afterEach(() => window.localStorage.clear());
 
   it('starts OAuth login from provider buttons', async () => {
     const user = userEvent.setup();
@@ -34,6 +44,39 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'GitHub' }));
 
     expect(redirectToApiPath).toHaveBeenCalledWith('/oauth/github');
+  });
+
+  it('clears the previous user identity when a new session starts', async () => {
+    const user = userEvent.setup();
+    const captureQueryClient = vi.fn<(queryClient: QueryClient) => void>();
+    window.localStorage.setItem('token', 'old-token');
+    window.localStorage.setItem('userId', '42');
+    window.localStorage.setItem('userRole', '10');
+    server.use(
+      http.post('/api/user/login', () =>
+        HttpResponse.json({ success: true, data: { token: 'new-token' } }),
+      ),
+    );
+
+    renderWithQuery(
+      <MemoryRouter initialEntries={['/login']}>
+        <LoginPage />
+        <QueryClientCapture onCapture={captureQueryClient} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(captureQueryClient).toHaveBeenCalledOnce());
+    const queryClient = captureQueryClient.mock.calls[0][0];
+    queryClient.setQueryData(['old-session-data'], { secret: true });
+
+    await user.type(screen.getByLabelText('用户名'), 'bob');
+    await user.type(screen.getByLabelText('密码'), 'password-1');
+    await user.click(screen.getByRole('button', { name: '登录' }));
+
+    await waitFor(() => expect(window.localStorage.getItem('token')).toBe('new-token'));
+    expect(window.localStorage.getItem('userId')).toBeNull();
+    expect(window.localStorage.getItem('userRole')).toBeNull();
+    expect(queryClient.getQueryData(['old-session-data'])).toBeUndefined();
   });
 
   it('switches between login and registration with accessible tabs', async () => {

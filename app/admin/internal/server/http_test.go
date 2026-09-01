@@ -1,6 +1,7 @@
 package server
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io"
@@ -1224,8 +1225,101 @@ func TestAdminHTTPPageDisablesShellCache(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
+	if got := rec.Header().Get("Cache-Control"); got != immutableAssetCacheControl {
+		t.Fatalf("asset Cache-Control = %q, want %q", got, immutableAssetCacheControl)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/assets/missing.js", nil)
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing asset status = %d, want 404", rec.Code)
+	}
 	if got := rec.Header().Get("Cache-Control"); got != "" {
-		t.Fatalf("asset Cache-Control = %q, want empty", got)
+		t.Fatalf("missing asset Cache-Control = %q, want empty", got)
+	}
+}
+
+func TestAdminHTTPPageCompressesTextAssets(t *testing.T) {
+	webRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(webRoot, "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webRoot, "index.html"), []byte(`<!doctype html>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat(`console.log("compressible asset");`, 100)
+	if err := os.WriteFile(filepath.Join(webRoot, "assets", "app-hash.js"), []byte(want), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webRoot, "assets", "empty-hash.js"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := NewHTTPServer(":0", nil, nil, "", webRoot)
+	req := httptest.NewRequest(http.MethodGet, "/assets/app-hash.js", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", got)
+	}
+	if got := rec.Header().Get("Vary"); !strings.Contains(got, "Accept-Encoding") {
+		t.Fatalf("Vary = %q, want Accept-Encoding", got)
+	}
+	reader, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	got, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("decompressed body does not match source asset")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/assets/empty-hash.js", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	reader, err = gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("empty asset is not a valid gzip stream: %v", err)
+	}
+	defer reader.Close()
+	got, err = io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("empty asset decompressed length = %d, want 0", len(got))
+	}
+}
+
+func TestAcceptsGzipHonorsQuality(t *testing.T) {
+	tests := []struct {
+		header string
+		want   bool
+	}{
+		{header: "gzip", want: true},
+		{header: "br, gzip;q=0.5", want: true},
+		{header: "gzip ; q=0.5", want: true},
+		{header: "gzip;q=0", want: false},
+		{header: "*;q=1, gzip;q=0", want: false},
+		{header: "br, *;q=0.5", want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.header, func(t *testing.T) {
+			if got := acceptsGzip(tt.header); got != tt.want {
+				t.Fatalf("acceptsGzip(%q) = %v, want %v", tt.header, got, tt.want)
+			}
+		})
 	}
 }
 

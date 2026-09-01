@@ -36,12 +36,13 @@ import { MobileNav } from '@/components/MobileNav';
 import { NotificationPanel } from '@/components/NotificationPanel';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { apiClient } from '@/lib/api';
 import { canAccessAdmin } from '@/lib/admin-access';
-import { unwrapApiData } from '@/lib/api-response';
 import { formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
+import { preloadRoute } from '@/route-loaders';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { accountDashboardQueryOptions, userSelfQueryOptions } from '@/lib/account-queries';
 
 interface NavItem {
   to: string;
@@ -53,18 +54,6 @@ interface SecondaryNavItem {
   label: string;
   icon: LucideIcon;
   to?: string;
-}
-
-interface UserSelf {
-  id?: number | string;
-  username?: string;
-  display_name?: string;
-  role?: number;
-}
-
-interface AccountDashboard {
-  balance?: number;
-  used_amount?: number;
 }
 
 const userLinks: NavItem[] = [
@@ -166,6 +155,8 @@ function NavigationLinks({
               )
             }
             onClick={onNavigate}
+            onMouseEnter={() => preloadRoute(link.to)}
+            onFocus={() => preloadRoute(link.to)}
           >
             <Icon className="size-5" />
             <span aria-hidden="true">{t(link.label)}</span>
@@ -205,6 +196,8 @@ function SecondaryLinks({ onNavigate }: { onNavigate?: () => void }) {
                 )
               }
               onClick={onNavigate}
+              onMouseEnter={() => preloadRoute(item.to!)}
+              onFocus={() => preloadRoute(item.to!)}
             >
               {content}
             </NavLink>
@@ -229,15 +222,17 @@ function SecondaryLinks({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppNavigation() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
-  const [role, setRole] = useState<number | null>(() => {
+  const [storedRole] = useState<number | null>(() => {
     const stored = localStorage.getItem('userRole');
     return stored != null && stored !== '' ? Number(stored) : null;
   });
-  const [user, setUser] = useState<UserSelf | null>(null);
-  const [account, setAccount] = useState<AccountDashboard | null>(null);
+  const { data: user } = useQuery(userSelfQueryOptions);
+  const { data: account } = useQuery(accountDashboardQueryOptions);
+  const role = typeof user?.role === 'number' ? user.role : storedRole;
   const isWide = useMediaQuery('(min-width: 768px)');
   const isAdmin = canAccessAdmin({ role });
   const effectiveMobileOpen = !isWide && mobileOpen;
@@ -246,45 +241,31 @@ export function AppNavigation() {
   const initials = useMemo(() => displayName.slice(0, 2).toUpperCase(), [displayName]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    Promise.allSettled([apiClient.get('/user/self'), apiClient.get('/user/dashboard')]).then((results) => {
-      if (cancelled) return;
-
-      const userResult = results[0];
-      if (userResult.status === 'fulfilled') {
-        const self = unwrapApiData<UserSelf | null>(userResult.value.data);
-        setUser(self);
-        if (self?.id != null) {
-          localStorage.setItem('userId', String(self.id));
-        }
-        if (typeof self?.role === 'number') {
-          localStorage.setItem('userRole', String(self.role));
-          setRole(self.role);
-        }
-      }
-
-      const dashboardResult = results[1];
-      if (dashboardResult.status === 'fulfilled') {
-        setAccount(unwrapApiData<AccountDashboard | null>(dashboardResult.value.data));
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (user?.id != null) {
+      localStorage.setItem('userId', String(user.id));
+    }
+    if (typeof user?.role === 'number') {
+      localStorage.setItem('userRole', String(user.role));
+    }
+  }, [user]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('adminToken');
     localStorage.removeItem('userId');
     localStorage.removeItem('userRole');
+    queryClient.clear();
     navigate('/login', { replace: true });
   };
 
   const adminControl = isAdmin ? (
-    <Link to="/admin" aria-label={t("进入管理")} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+    <Link
+      to="/admin"
+      aria-label={t("进入管理")}
+      className={buttonVariants({ variant: 'outline', size: 'sm' })}
+      onMouseEnter={() => preloadRoute('/admin')}
+      onFocus={() => preloadRoute('/admin')}
+    >
       <MonitorCog className="size-4" />{t("进入管理")}</Link>
   ) : null;
 

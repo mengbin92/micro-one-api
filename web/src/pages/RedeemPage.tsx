@@ -9,10 +9,7 @@ import { apiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
 import { formatUSD } from '@/lib/amount';
 import { t } from '@/lib/i18n';
-
-interface AccountDashboard {
-  balance?: number;
-}
+import { accountDashboardQueryOptions } from '@/lib/account-queries';
 
 function formatAmount(value?: number) {
   return formatUSD(value);
@@ -23,13 +20,7 @@ export function RedeemPage() {
   const [redeemedAmount, setRedeemedAmount] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
-  const { data: dashboard } = useQuery({
-    queryKey: ['redeem-dashboard'],
-    queryFn: async () => {
-      const res = await apiClient.get('/user/dashboard');
-      return unwrapApiData<AccountDashboard>(res.data);
-    },
-  });
+  const { data: dashboard } = useQuery(accountDashboardQueryOptions);
 
   const redeemMutation = useMutation({
     mutationFn: async () => {
@@ -39,8 +30,7 @@ export function RedeemPage() {
     onSuccess: (amount) => {
       setRedeemedAmount(amount);
       setCode('');
-      queryClient.invalidateQueries({ queryKey: ['redeem-dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: accountDashboardQueryOptions.queryKey });
       toast.success(t(`兑换成功：${formatAmount(amount)}`));
     },
   });
