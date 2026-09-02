@@ -1,15 +1,16 @@
 # 项目 TODO
 
-> 最后更新：2026-09-01
+> 最后更新：2026-09-02
 >
 > **当前执行入口**：[v0.27 阶段路线图](./design/v0.27-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
 >
-> 📣 **v0.27 当前进展（2026-09-01）**：v0.26.3 Release 制品已收口——workflow
-> attempt 2 全部成功，GitHub Release 已发布，9 服务的 `v0.26.3` / `0.26` / `latest`
-> 镜像均包含 amd64/arm64。当前继续 executor 第五次正式观察窗口；窗口于
-> 2026-09-01 10:43:15 CST 成立，若不中断，最早于 2026-09-08 10:43:15 CST 结束。
-> 窗口闭环后再按顺序执行 canonical usage `observe → charge`，不得同时改变 executor
-> 路径与计费模式。
+> 📣 **v0.27 当前进展（2026-09-02）**：v0.26.3 Release 制品已收口，后续的
+> [v0.26.4 控制台性能 PATCH](./releases/release-v0.26.4.md) 也已于 2026-09-01 发布；
+> 当前发布基线为 v0.26.4。Executor 第五次正式窗口在 24h 快照中因 Messages 流式 P95
+> 相对 legacy 回归约 69.7% 判定 FAIL，2026-09-02 10:50:06 CST 已关闭 flag 并保持 legacy。
+> Canonical observe 随后发现 legacy Responses 缺失 source/upstream 字段；修复镜像已于
+> 11:05:58 CST 部署，首条合格 v1 自然样本于 11:12:00.225 CST 写入，正式 48h observe
+> 已从该时刻起算；最早 2026-09-04 11:12:00.225 CST 满窗，此前不进入 charge。
 >
 > 📣 **v0.23 阶段（实现已完成，观察延续）**：HTTP / SSE executor 首切片、端口、
 > 新旧路径测试和回滚门均已落地；日检结论继续以

@@ -156,6 +156,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						IsStream:         true,
 
 						PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
+					logInput.applyChannelInputs(ch)
 					logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
 					if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 						s.logPostResponseCommitError(err)
@@ -196,6 +197,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 							IsStream:         true,
 
 							PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
+						logInput.applyChannelInputs(ch)
 						logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
 						if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 							s.logPostResponseCommitError(err)
@@ -234,6 +236,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				IsStream:         true,
 
 				PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
+			logInput.applyChannelInputs(ch)
 			logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
 			if err := s.commitQuotaAfterResponseObserved(ctx, reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 				s.logPostResponseCommitError(err)
@@ -273,6 +276,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					IsStream:         false,
 
 					PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
+				logInput.applyChannelInputs(ch)
 				logInput.applyEnvelope(envelopeFromRawUsage(usage))
 				if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 					return err
@@ -318,6 +322,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						IsStream:         false,
 
 						PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
+					logInput.applyChannelInputs(ch)
 					logInput.applyEnvelope(envelopeFromRawUsage(usage))
 					if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 						return err
@@ -351,6 +356,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			IsStream:         false,
 
 			PromptExclusive: isPromptExclusiveChannelType(ch.Type)}
+		logInput.applyChannelInputs(ch)
 		logInput.applyEnvelope(envelopeFromRawUsage(usage))
 		if err := s.commitQuota(ctx, reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 			return err
@@ -507,6 +513,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 					IsStream:              true,
 
 					PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
+				logInput.applyChannelInputs(&route.Channel)
 				logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
 				if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 					s.logPostResponseCommitError(err)
@@ -550,6 +557,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 						IsStream:              true,
 
 						PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
+					logInput.applyChannelInputs(&route.Channel)
 					logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
 					if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 						s.logPostResponseCommitError(err)
@@ -589,6 +597,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			IsStream:              true,
 
 			PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
+		logInput.applyChannelInputs(&route.Channel)
 		logInput.applyEnvelope(envelopeFromRawUsage(actualUsage))
 		if err := s.commitQuotaAfterResponseObserved(r.Context(), reservation.ReservationId, actualUsage.TotalTokens, true, logInput); err != nil {
 			s.logPostResponseCommitError(err)
@@ -627,6 +636,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 				IsStream:              false,
 
 				PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
+			logInput.applyChannelInputs(&route.Channel)
 			logInput.applyEnvelope(envelopeFromRawUsage(usage))
 			if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 				s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
@@ -673,6 +683,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 					IsStream:              false,
 
 					PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
+				logInput.applyChannelInputs(&route.Channel)
 				logInput.applyEnvelope(envelopeFromRawUsage(usage))
 				if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 					s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
@@ -712,6 +723,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		IsStream:              false,
 
 		PromptExclusive: isPromptExclusiveChannelType(route.Channel.Type)}
+	logInput.applyChannelInputs(&route.Channel)
 	logInput.applyEnvelope(envelopeFromRawUsage(usage))
 	if err := s.commitQuota(r.Context(), reservation.ReservationId, usage.TotalTokens, true, logInput); err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "billing commit failed")
