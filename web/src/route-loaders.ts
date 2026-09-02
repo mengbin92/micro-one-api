@@ -1,0 +1,40 @@
+export const routeLoaders = {
+  '/login': () => import('@/pages/LoginPage'),
+  '/register': () => import('@/pages/LoginPage'),
+  '/terms': () => import('@/pages/LegalPage'),
+  '/privacy': () => import('@/pages/LegalPage'),
+  '/dashboard': () => import('@/pages/DashboardPage'),
+  '/tokens': () => import('@/pages/TokensPage'),
+  '/usage': () => import('@/pages/UsagePage'),
+  '/playground': () => import('@/pages/PlaygroundPage'),
+  '/api-guide': () => import('@/pages/ApiGuidePage'),
+  '/pricing': () => import('@/pages/PricingPage'),
+  '/orders': () => import('@/pages/OrdersPage'),
+  '/recharge': () => import('@/pages/RechargePage'),
+  '/redeem': () => import('@/pages/RedeemPage'),
+  '/profile': () => import('@/pages/ProfilePage'),
+  '/subscriptions': () => import('@/pages/SubscriptionsPage'),
+  '/admin': () => import('@/pages/admin/OverviewPage'),
+  '/admin/users': () => import('@/pages/admin/UsersPage'),
+  '/admin/channels': () => import('@/pages/admin/ChannelsPage'),
+  '/admin/models': () => import('@/pages/admin/ModelsPage'),
+  '/admin/subscription-accounts': () => import('@/pages/admin/SubscriptionAccountsPage'),
+  '/admin/subscription-groups': () => import('@/pages/admin/SubscriptionGroupsPage'),
+  '/admin/subscription-plans': () => import('@/pages/admin/SubscriptionPlansPage'),
+  '/admin/subscriptions': () => import('@/pages/admin/SubscriptionsAdminPage'),
+  '/admin/pricing': () => import('@/pages/admin/PricingPage'),
+  '/admin/logs': () => import('@/pages/admin/LogsPage'),
+  '/admin/payment-orders': () => import('@/pages/admin/PaymentOrdersPage'),
+  '/admin/redemptions': () => import('@/pages/admin/RedemptionsPage'),
+  '/admin/options': () => import('@/pages/admin/OptionsPage'),
+  '/admin/reconciliation': () => import('@/pages/admin/ReconciliationPage'),
+  '/admin/channel-health': () => import('@/pages/admin/ChannelHealthPage'),
+  '/admin/cost-analysis': () => import('@/pages/admin/CostAnalysisPage'),
+  '/admin/routing-ops': () => import('@/pages/admin/RoutingOpsPage'),
+  '/admin/upstream-costs': () => import('@/pages/admin/UpstreamCostsPage'),
+} as const;
+
+export function preloadRoute(pathname: string) {
+  const loader = routeLoaders[pathname as keyof typeof routeLoaders];
+  if (loader) void loader().catch(() => undefined);
+}

@@ -13,16 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { User, Mail, Shield, Users, Save, X } from 'lucide-react';
 import { t } from '@/lib/i18n';
-
-interface UserProfile {
-  id: number;
-  username: string;
-  display_name: string;
-  email: string;
-  group: string;
-  status: number;
-  role: number;
-}
+import { accountDashboardQueryOptions, userSelfQueryOptions } from '@/lib/account-queries';
 
 const ROLE_LABELS: Record<number, string> = {
   0: '访客',
@@ -42,21 +33,9 @@ export function ProfilePage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const { data: user, isLoading } = useQuery({
-    queryKey: ['user-self'],
-    queryFn: async () => {
-      const res = await apiClient.get('/user/self');
-      return unwrapApiData<UserProfile>(res.data);
-    },
-  });
+  const { data: user, isLoading } = useQuery(userSelfQueryOptions);
 
-  const { data: dashboard } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: async () => {
-      const res = await apiClient.get('/user/dashboard');
-      return unwrapApiData<{ balance?: number; used_amount?: number }>(res.data);
-    },
-  });
+  const { data: dashboard } = useQuery(accountDashboardQueryOptions);
 
   const updateMutation = useMutation({
     mutationFn: async () => {

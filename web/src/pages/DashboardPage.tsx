@@ -22,48 +22,11 @@ import { unwrapApiData } from '@/lib/api-response';
 import { formatAmountUnits, formatUSD } from '@/lib/amount';
 import { cn } from '@/lib/utils';
 import { locale, t } from '@/lib/i18n';
-
-interface UsageItem {
-  date?: string;
-  day?: string;
-  count: number;
-  amount: number;
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  cache_read_tokens?: number;
-  // §9.1: canonical sums from the billing aggregate (zero for legacy rows).
-  cache_creation_tokens?: number;
-  uncached_input_tokens?: number;
-  billable_total_tokens?: number;
-}
-
-interface UserSelf {
-  id: number;
-  username: string;
-  display_name: string;
-  role: number;
-}
-
-interface AccountDashboard {
-  balance?: number;
-  used_amount?: number;
-  request_count?: number;
-  frozen_amount?: number;
-  group?: string;
-  group_ratio?: number;
-  usage?: UsageItem[];
-  today_amount?: number;
-  today_prompt_tokens?: number;
-  today_completion_tokens?: number;
-  today_cache_read_tokens?: number;
-  avg_latency?: number;
-  model_distribution?: ModelDistributionItem[];
-}
-
-interface ModelDistributionItem {
-  model: string;
-  tokens: number;
-}
+import {
+  accountDashboardQueryOptions,
+  userSelfQueryOptions,
+  type UsageSummaryItem,
+} from '@/lib/account-queries';
 
 interface Token {
   id: number;
@@ -118,14 +81,14 @@ function numberOrZero(value: unknown) {
 // billing aggregate; legacy rows (all canonical sums zero) fall back to the
 // reported prompt WITHOUT a prompt-cache subtraction — mixed legacy
 // subset/exclusive rows make that arithmetic unsound.
-function displayInputTokens(item: UsageItem) {
+function displayInputTokens(item: UsageSummaryItem) {
   if ((item.uncached_input_tokens || 0) > 0 || (item.billable_total_tokens || 0) > 0) {
     return item.uncached_input_tokens || 0;
   }
   return item.prompt_tokens || 0;
 }
 
-function displayTotalTokens(item: UsageItem) {
+function displayTotalTokens(item: UsageSummaryItem) {
   if ((item.billable_total_tokens || 0) > 0) return item.billable_total_tokens || 0;
   return displayInputTokens(item) + (item.completion_tokens || 0) + (item.cache_read_tokens || 0) + (item.cache_creation_tokens || 0);
 }
@@ -189,21 +152,9 @@ function MetricCard({
 }
 
 export function DashboardPage() {
-  const { data: user, isLoading: isUserLoading } = useQuery({
-    queryKey: ['user-self'],
-    queryFn: async () => {
-      const res = await apiClient.get('/user/self');
-      return unwrapApiData<UserSelf>(res.data);
-    },
-  });
+  const { data: user, isLoading: isUserLoading } = useQuery(userSelfQueryOptions);
 
-  const { data: dashboard, isLoading } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: async () => {
-      const res = await apiClient.get('/user/dashboard');
-      return unwrapApiData<AccountDashboard>(res.data);
-    },
-  });
+  const { data: dashboard, isLoading } = useQuery(accountDashboardQueryOptions);
 
   const { data: tokens, isLoading: isTokensLoading } = useQuery({
     queryKey: ['tokens'],

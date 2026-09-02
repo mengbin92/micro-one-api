@@ -522,7 +522,7 @@ func TestHTTPServerResponsesCreateForwardsAndCommitsResponsesUsage(t *testing.T)
 	defer upstream.Close()
 
 	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream", upstreamModel: "gpt-4o-mini"}
 	billingClient := &rawBillingClient{}
 	logClient := &rawLogClient{}
 	relayUsecase := relaybiz.NewRelayUsecase(
@@ -563,6 +563,9 @@ func TestHTTPServerResponsesCreateForwardsAndCommitsResponsesUsage(t *testing.T)
 	}
 	if billingClient.commits != 1 || billingClient.releases != 0 {
 		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].SourceKind != relaybiz.UpstreamSourceChannel || billingClient.commitRequests[0].UpstreamModelId != "gpt-4o-mini" {
+		t.Fatalf("billing source attribution mismatch: %#v", billingClient.commitRequests)
 	}
 	if len(logClient.entries) != 1 {
 		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
@@ -773,7 +776,7 @@ func TestHTTPServerResponsesCreateStreamsRawSSECommitsUsage(t *testing.T) {
 	defer upstream.Close()
 
 	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream", upstreamModel: "gpt-4o-mini"}
 	billingClient := &rawBillingClient{}
 	logClient := &rawLogClient{}
 	relayUsecase := relaybiz.NewRelayUsecase(
@@ -810,6 +813,9 @@ func TestHTTPServerResponsesCreateStreamsRawSSECommitsUsage(t *testing.T) {
 	if commit.ActualTokens != 18 || commit.PromptTokens != 11 || commit.CompletionTokens != 7 {
 		t.Fatalf("commit usage = total:%d prompt:%d completion:%d", commit.ActualTokens, commit.PromptTokens, commit.CompletionTokens)
 	}
+	if commit.SourceKind != relaybiz.UpstreamSourceChannel || commit.UpstreamModelId != "gpt-4o-mini" {
+		t.Fatalf("commit source = %q/%q, want channel/gpt-4o-mini", commit.SourceKind, commit.UpstreamModelId)
+	}
 	if len(logClient.entries) != 1 {
 		t.Fatalf("usage logs = %d, want 1", len(logClient.entries))
 	}
@@ -845,7 +851,7 @@ func TestHTTPServerResponsesCreateStreamStoresRouteForPreviousResponse(t *testin
 	defer upstream.Close()
 
 	identityClient := rawIdentityClient{}
-	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream"}
+	channelClient := rawChannelClient{baseURL: upstream.URL + "/v1", key: "sk-upstream", upstreamModel: "gpt-4o-mini"}
 	billingClient := &rawBillingClient{}
 	relayUsecase := relaybiz.NewRelayUsecase(
 		relaydata.NewIdentityAdapter(identityClient),
@@ -889,6 +895,11 @@ func TestHTTPServerResponsesCreateStreamStoresRouteForPreviousResponse(t *testin
 	}
 	if billingClient.commits != 2 || billingClient.releases != 0 {
 		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)
+	}
+	for i, commit := range billingClient.commitRequests {
+		if commit.SourceKind != relaybiz.UpstreamSourceChannel || commit.UpstreamModelId != "gpt-4o-mini" {
+			t.Fatalf("commit %d source = %q/%q, want channel/gpt-4o-mini", i, commit.SourceKind, commit.UpstreamModelId)
+		}
 	}
 }
 
@@ -2240,7 +2251,7 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 	identityClient := rawIdentityClient{}
 	channelClient := rawChannelClient{
 		baseURL: upstream.URL + "/v1", key: "sk-upstream",
-		getModels: "DeepSeek-V4-Pro-0813",
+		getModels: "DeepSeek-V4-Pro-0813", upstreamModel: "DeepSeek-V4-Pro-0813",
 	}
 	billingClient := &rawBillingClient{}
 	httpServer := NewHTTPServer(
@@ -2271,6 +2282,9 @@ func TestHTTPServerOneAPIProxyForwardsExplicitChannel(t *testing.T) {
 	}
 	if gotModel != "DeepSeek-V4-Pro-0813" {
 		t.Fatalf("upstream model = %q, want channel spelling", gotModel)
+	}
+	if len(billingClient.commitRequests) != 1 || billingClient.commitRequests[0].SourceKind != relaybiz.UpstreamSourceChannel || billingClient.commitRequests[0].UpstreamModelId != "DeepSeek-V4-Pro-0813" {
+		t.Fatalf("billing source attribution mismatch: %#v", billingClient.commitRequests)
 	}
 }
 

@@ -6,11 +6,6 @@ import path from 'path';
 
 const vendorChunks = [
   {
-    name: 'charts',
-    test: /node_modules[\\/](?:recharts|d3-|decimal\.js-light|es-toolkit|victory-vendor)[\\/]/,
-    priority: 40,
-  },
-  {
     name: 'react',
     test: /node_modules[\\/](?:react|react-dom|react-is|react-router|scheduler)[\\/]/,
     priority: 30,
@@ -24,11 +19,6 @@ const vendorChunks = [
     name: 'ui',
     test: /node_modules[\\/](?:@base-ui|lucide-react|sonner|class-variance-authority|clsx|tailwind-merge)[\\/]/,
     priority: 10,
-  },
-  {
-    name: 'vendor',
-    test: /node_modules[\\/]/,
-    priority: 0,
   },
 ];
 

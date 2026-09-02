@@ -5,72 +5,77 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AdminRoute } from '@/components/AdminRoute';
 import { PageLoading } from '@/components/PageLoading';
 import { RouteErrorFallback } from '@/components/RouteErrorFallback';
+import { routeLoaders } from '@/route-loaders';
 
-const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })));
-const UserAgreementPage = lazy(() => import('@/pages/LegalPage').then((m) => ({ default: m.UserAgreementPage })));
-const PrivacyPolicyPage = lazy(() => import('@/pages/LegalPage').then((m) => ({ default: m.PrivacyPolicyPage })));
-const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
-const TokensPage = lazy(() => import('@/pages/TokensPage').then((m) => ({ default: m.TokensPage })));
-const UsagePage = lazy(() => import('@/pages/UsagePage').then((m) => ({ default: m.UsagePage })));
-const PlaygroundPage = lazy(() => import('@/pages/PlaygroundPage').then((m) => ({ default: m.PlaygroundPage })));
-const ApiGuidePage = lazy(() => import('@/pages/ApiGuidePage').then((m) => ({ default: m.ApiGuidePage })));
-const PricingPage = lazy(() => import('@/pages/PricingPage').then((m) => ({ default: m.PricingPage })));
-const OrdersPage = lazy(() => import('@/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })));
-const RechargePage = lazy(() => import('@/pages/RechargePage').then((m) => ({ default: m.RechargePage })));
-const RedeemPage = lazy(() => import('@/pages/RedeemPage').then((m) => ({ default: m.RedeemPage })));
-const ProfilePage = lazy(() => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const LoginPage = lazy(() => routeLoaders['/login']().then((m) => ({ default: m.LoginPage })));
+const UserAgreementPage = lazy(() => routeLoaders['/terms']().then((m) => ({ default: m.UserAgreementPage })));
+const PrivacyPolicyPage = lazy(() => routeLoaders['/privacy']().then((m) => ({ default: m.PrivacyPolicyPage })));
+const DashboardPage = lazy(() => routeLoaders['/dashboard']().then((m) => ({ default: m.DashboardPage })));
+const TokensPage = lazy(() => routeLoaders['/tokens']().then((m) => ({ default: m.TokensPage })));
+const UsagePage = lazy(() => routeLoaders['/usage']().then((m) => ({ default: m.UsagePage })));
+const PlaygroundPage = lazy(() => routeLoaders['/playground']().then((m) => ({ default: m.PlaygroundPage })));
+const ApiGuidePage = lazy(() => routeLoaders['/api-guide']().then((m) => ({ default: m.ApiGuidePage })));
+const PricingPage = lazy(() => routeLoaders['/pricing']().then((m) => ({ default: m.PricingPage })));
+const OrdersPage = lazy(() => routeLoaders['/orders']().then((m) => ({ default: m.OrdersPage })));
+const RechargePage = lazy(() => routeLoaders['/recharge']().then((m) => ({ default: m.RechargePage })));
+const RedeemPage = lazy(() => routeLoaders['/redeem']().then((m) => ({ default: m.RedeemPage })));
+const ProfilePage = lazy(() => routeLoaders['/profile']().then((m) => ({ default: m.ProfilePage })));
 const SubscriptionsPage = lazy(() =>
-  import('@/pages/SubscriptionsPage').then((m) => ({ default: m.SubscriptionsPage }))
+  routeLoaders['/subscriptions']().then((m) => ({ default: m.SubscriptionsPage }))
 );
 const AdminOverviewPage = lazy(() =>
-  import('@/pages/admin/OverviewPage').then((m) => ({ default: m.AdminOverviewPage }))
+  routeLoaders['/admin']().then((m) => ({ default: m.AdminOverviewPage }))
 );
-const AdminUsersPage = lazy(() => import('@/pages/admin/UsersPage').then((m) => ({ default: m.AdminUsersPage })));
+const AdminUsersPage = lazy(() =>
+  routeLoaders['/admin/users']().then((m) => ({ default: m.AdminUsersPage }))
+);
 const AdminChannelsPage = lazy(() =>
-  import('@/pages/admin/ChannelsPage').then((m) => ({ default: m.AdminChannelsPage }))
+  routeLoaders['/admin/channels']().then((m) => ({ default: m.AdminChannelsPage }))
 );
 const AdminModelsPage = lazy(() =>
-  import('@/pages/admin/ModelsPage').then((m) => ({ default: m.AdminModelsPage }))
+  routeLoaders['/admin/models']().then((m) => ({ default: m.AdminModelsPage }))
 );
 const AdminSubscriptionAccountsPage = lazy(() =>
-  import('@/pages/admin/SubscriptionAccountsPage').then((m) => ({ default: m.AdminSubscriptionAccountsPage }))
+  routeLoaders['/admin/subscription-accounts']().then((m) => ({ default: m.AdminSubscriptionAccountsPage }))
 );
 const AdminSubscriptionGroupsPage = lazy(() =>
-  import('@/pages/admin/SubscriptionGroupsPage').then((m) => ({ default: m.AdminSubscriptionGroupsPage }))
+  routeLoaders['/admin/subscription-groups']().then((m) => ({ default: m.AdminSubscriptionGroupsPage }))
 );
 const AdminSubscriptionPlansPage = lazy(() =>
-  import('@/pages/admin/SubscriptionPlansPage').then((m) => ({ default: m.AdminSubscriptionPlansPage }))
+  routeLoaders['/admin/subscription-plans']().then((m) => ({ default: m.AdminSubscriptionPlansPage }))
 );
 const AdminSubscriptionsPage = lazy(() =>
-  import('@/pages/admin/SubscriptionsAdminPage').then((m) => ({ default: m.AdminSubscriptionsPage }))
+  routeLoaders['/admin/subscriptions']().then((m) => ({ default: m.AdminSubscriptionsPage }))
 );
 const AdminPricingPage = lazy(() =>
-  import('@/pages/admin/PricingPage').then((m) => ({ default: m.AdminPricingPage }))
+  routeLoaders['/admin/pricing']().then((m) => ({ default: m.AdminPricingPage }))
 );
-const AdminLogsPage = lazy(() => import('@/pages/admin/LogsPage').then((m) => ({ default: m.AdminLogsPage })));
+const AdminLogsPage = lazy(() =>
+  routeLoaders['/admin/logs']().then((m) => ({ default: m.AdminLogsPage }))
+);
 const AdminPaymentOrdersPage = lazy(() =>
-  import('@/pages/admin/PaymentOrdersPage').then((m) => ({ default: m.AdminPaymentOrdersPage }))
+  routeLoaders['/admin/payment-orders']().then((m) => ({ default: m.AdminPaymentOrdersPage }))
 );
 const AdminRedemptionsPage = lazy(() =>
-  import('@/pages/admin/RedemptionsPage').then((m) => ({ default: m.AdminRedemptionsPage }))
+  routeLoaders['/admin/redemptions']().then((m) => ({ default: m.AdminRedemptionsPage }))
 );
 const AdminOptionsPage = lazy(() =>
-  import('@/pages/admin/OptionsPage').then((m) => ({ default: m.AdminOptionsPage }))
+  routeLoaders['/admin/options']().then((m) => ({ default: m.AdminOptionsPage }))
 );
 const AdminReconciliationPage = lazy(() =>
-  import('@/pages/admin/ReconciliationPage').then((m) => ({ default: m.AdminReconciliationPage }))
+  routeLoaders['/admin/reconciliation']().then((m) => ({ default: m.AdminReconciliationPage }))
 );
 const AdminChannelHealthPage = lazy(() =>
-  import('@/pages/admin/ChannelHealthPage').then((m) => ({ default: m.ChannelHealthPage }))
+  routeLoaders['/admin/channel-health']().then((m) => ({ default: m.ChannelHealthPage }))
 );
 const AdminCostAnalysisPage = lazy(() =>
-  import('@/pages/admin/CostAnalysisPage').then((m) => ({ default: m.CostAnalysisPage }))
+  routeLoaders['/admin/cost-analysis']().then((m) => ({ default: m.CostAnalysisPage }))
 );
 const AdminRoutingOpsPage = lazy(() =>
-  import('@/pages/admin/RoutingOpsPage').then((m) => ({ default: m.RoutingOpsPage }))
+  routeLoaders['/admin/routing-ops']().then((m) => ({ default: m.RoutingOpsPage }))
 );
 const AdminUpstreamCostsPage = lazy(() =>
-  import('@/pages/admin/UpstreamCostsPage').then((m) => ({ default: m.AdminUpstreamCostsPage }))
+  routeLoaders['/admin/upstream-costs']().then((m) => ({ default: m.AdminUpstreamCostsPage }))
 );
 
 function withSuspense(element: React.ReactNode) {

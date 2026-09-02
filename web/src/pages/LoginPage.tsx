@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Network, ShieldCheck } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -7,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LanguageToggle } from '@/components/LanguageToggle';
-import { apiClient } from '@/lib/api';
+import { apiClient, clearUserSession } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api-error';
 import { unwrapApiData } from '@/lib/api-response';
 import { oauthProviders, redirectToApiPath } from '@/lib/oauth';
@@ -26,6 +27,7 @@ export function LoginPage() {
   const loginTabRef = useRef<HTMLButtonElement>(null);
   const registerTabRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { language } = useI18n();
   const userAgreementLabel = language === 'en-US' ? t("用户协议") : `《${t("用户协议")}》`;
   const privacyPolicyLabel = language === 'en-US' ? t("隐私政策") : `《${t("隐私政策")}》`;
@@ -51,6 +53,8 @@ export function LoginPage() {
       throw new Error(t("登录失败"));
     }
 
+    clearUserSession();
+    queryClient.clear();
     localStorage.setItem('token', token);
   };
 

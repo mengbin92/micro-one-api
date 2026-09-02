@@ -104,8 +104,12 @@ jobs:
             SERVICE_PATH=${{ matrix.path }}
           # Reuse the GitHub Actions cache so repeated releases / minor
           # revisions don't rebuild layers from scratch (code-review L5).
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Per-service scope: 9 parallel matrix jobs sharing the default
+          # scope race on cache export ("error writing layer blob: not_found").
+          # ignore-error: a failed cache export must not fail a job whose
+          # image push already succeeded.
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }},ignore-error=true
 
   publish:
     name: Publish GitHub Release

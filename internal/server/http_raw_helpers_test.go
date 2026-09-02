@@ -73,15 +73,16 @@ func (c rawChannelClient) SelectChannel(ctx context.Context, req *channelv1.Sele
 	}
 	return &channelv1.SelectChannelReply{
 		Channel: &commonv1.ChannelInfo{
-			Id:      11,
-			Type:    chType,
-			Name:    "openai-compatible",
-			Status:  1,
-			BaseUrl: c.baseURL,
-			Key:     c.key,
-			Group:   req.Group,
-			Models:  req.Model,
-			Config:  &commonv1.ChannelConfig{ApiVersion: c.apiVersion},
+			Id:              11,
+			Type:            chType,
+			Name:            "openai-compatible",
+			Status:          1,
+			BaseUrl:         c.baseURL,
+			Key:             c.key,
+			Group:           req.Group,
+			Models:          req.Model,
+			UpstreamModelId: c.upstreamModel,
+			Config:          &commonv1.ChannelConfig{ApiVersion: c.apiVersion},
 		},
 	}, nil
 }
@@ -128,6 +129,10 @@ func (c rawChannelClient) RecordChannelHealth(ctx context.Context, req *channelv
 
 func (c rawChannelClient) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest, opts ...grpc.CallOption) (*channelv1.RecordModelUsageResponse, error) {
 	return &channelv1.RecordModelUsageResponse{Success: true, Message: "ok"}, nil
+}
+
+func (c rawChannelClient) RecordUsageSemanticVerdict(ctx context.Context, req *channelv1.RecordUsageSemanticVerdictRequest, opts ...grpc.CallOption) (*channelv1.RecordUsageSemanticVerdictResponse, error) {
+	return &channelv1.RecordUsageSemanticVerdictResponse{}, nil
 }
 
 func (c rawChannelClient) ListModelUsageStats(ctx context.Context, req *channelv1.ListModelUsageStatsRequest, opts ...grpc.CallOption) (*channelv1.ListModelUsageStatsResponse, error) {

@@ -135,6 +135,8 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		CacheReadTokens:       usage.CacheReadTokens,
 		ChannelID:             channelReply.Channel.Id,
 		SubscriptionAccountID: 0,
+		UpstreamModelID:       channelReply.Channel.UpstreamModelId,
+		SourceKind:            relaybiz.UpstreamSourceChannel,
 		ElapsedTime:           time.Since(startedAt).Milliseconds(),
 		IsStream:              false,
 		// v0.11.0 Phase 0/1 ADR §3.3: Anthropic-compatible channels use
