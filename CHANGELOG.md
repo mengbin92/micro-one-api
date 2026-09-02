@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.5] - 2026-09-02
+
+v0.26.5 是 v0.26.4 之后的 **PATCH Relay 计费归因修复版本**：修复 legacy `/v1/responses` 与显式 OneAPI 渠道成功结算缺失 `source_kind` / `upstream_model_id` 的问题，使 canonical usage observe 记录可还原实际上游来源和定价模型；同时修正 `docs(release)` 提交被 commit-body 门禁误报的 CI 规则。无公共 API / proto 变更、无新增数据库迁移、无新增配置项。详见 [release-v0.26.5.md](docs/releases/release-v0.26.5.md)。
+
+### Fixed
+
+- 修复 legacy Responses 普通、流式、fallback 与 previous-response stored-route 成功结算未应用渠道来源字段，导致 canonical observe 的 `source_kind` / `upstream_model_id` 覆盖率不足。
+- 修复 OneAPI 显式渠道成功结算未写入 `source_kind=channel` 和渠道上游模型的问题。
+- 修正 commit-body 检查规则，使已文档化的 `docs(release)` 平凡提交豁免与仓库规范一致。
+
+### Changed
+
+- Responses / OneAPI 成功记录现在持久化实际渠道来源与上游定价模型；Token、价格、扣费模式、路由和对外响应不变。
+
 ## [0.26.4] - 2026-09-01
 
 v0.26.4 是 v0.26.3 之后的 **PATCH 控制台性能修复版本**：消除 `/dashboard`、`/usage`、`/admin/logs` 等页面约 1 秒的打开延时——哈希静态资源改为一年 immutable 缓存并启用 gzip，charts 依赖隔离到图表页按需加载，导航悬停预取路由模块，账户查询跨组件复用并修复跨账号缓存与旧角色闪现问题；新增迁移 089（Dashboard 聚合联合索引）。无公共 API / proto 变更。详见 [release-v0.26.4.md](docs/releases/release-v0.26.4.md)。

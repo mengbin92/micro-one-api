@@ -5,8 +5,9 @@
 > **当前执行入口**：[v0.27 阶段路线图](./design/v0.27-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
 >
 > 📣 **v0.27 当前进展（2026-09-02）**：v0.26.3 Release 制品已收口，后续的
-> [v0.26.4 控制台性能 PATCH](./releases/release-v0.26.4.md) 也已于 2026-09-01 发布；
-> 当前发布基线为 v0.26.4。Executor 第五次正式窗口在 24h 快照中因 Messages 流式 P95
+> [v0.26.4 控制台性能 PATCH](./releases/release-v0.26.4.md) 已于 2026-09-01 发布；
+> [v0.26.5 Responses 归因 PATCH](./releases/release-v0.26.5.md) 已于 2026-09-02 固化紧急修复，
+> 当前发布基线为 v0.26.5。Executor 第五次正式窗口在 24h 快照中因 Messages 流式 P95
 > 相对 legacy 回归约 69.7% 判定 FAIL，2026-09-02 10:50:06 CST 已关闭 flag 并保持 legacy。
 > Canonical observe 随后发现 legacy Responses 缺失 source/upstream 字段；修复镜像已于
 > 11:05:58 CST 部署，首条合格 v1 自然样本于 11:12:00.225 CST 写入，正式 48h observe
