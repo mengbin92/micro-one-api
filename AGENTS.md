@@ -318,3 +318,10 @@ of sync and breaks the `release.yml` CI pipeline (it reads the tag).
 - [ ] commit `docs(release): vX.Y.Z` → push `develop`
 - [ ] merge `develop` into `main`
 - [ ] tag `vX.Y.Z` → push `main` + tag
+
+## Shared debugging skill
+
+When a request asks to diagnose, debug, or investigate broken, failing, or slow
+behavior, read and follow [`.agents/skills/diagnosing-bugs/SKILL.md`](.agents/skills/diagnosing-bugs/SKILL.md).
+The same skill is exposed to Claude Code through
+`.claude/skills/diagnosing-bugs/SKILL.md`.
