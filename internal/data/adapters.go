@@ -270,6 +270,34 @@ func (a *ChannelAdapter) RecordChannelHealth(ctx context.Context, channelID int6
 	return nil
 }
 
+func (a *ChannelAdapter) RecordModelHealth(ctx context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, message string, responseTime int64) (err error) {
+	if a == nil || a.client == nil {
+		return nil
+	}
+	// Model health is an additive, best-effort RPC. Some lightweight callers
+	// embed ChannelServiceClient only to fake the older required methods; the
+	// newly promoted method then panics through a nil embedded interface. Treat
+	// that exactly like an unavailable RPC so rolling upgrades and legacy fakes
+	// cannot affect request forwarding.
+	defer func() {
+		if recover() != nil {
+			err = errors.New("model health RPC unavailable")
+		}
+	}()
+	reply, err := a.client.RecordModelHealth(ctx, &channelv1.RecordModelHealthRequest{
+		SourceKind: sourceKind, SourceId: sourceID, ModelId: modelID,
+		UpstreamModelId: upstreamModelID, Success: success, Error: message,
+		ResponseTime: responseTime,
+	})
+	if err != nil {
+		return err
+	}
+	if reply != nil && !reply.GetSuccess() {
+		return errors.New(reply.GetMessage())
+	}
+	return nil
+}
+
 func (a *ChannelAdapter) RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error {
 	if accountID <= 0 {
 		return nil

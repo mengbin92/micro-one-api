@@ -132,6 +132,21 @@ func toUsageStatProto(s *biz.ModelUsageStat) *channelv1.ModelUsageStat {
 	}
 }
 
+func toModelHealthProto(state *biz.ModelHealthState) *channelv1.ModelHealthState {
+	if state == nil {
+		return nil
+	}
+	return &channelv1.ModelHealthState{
+		Id: state.ID, SourceKind: state.SourceKind, SourceId: state.SourceID,
+		ModelId: state.ModelID, UpstreamModelId: state.UpstreamModelID,
+		Status: state.Status, RequestCount: state.RequestCount,
+		SuccessCount: state.SuccessCount, FailureCount: state.FailureCount,
+		ConsecutiveFailures: state.ConsecutiveFailures, AvgLatencyMs: state.AvgLatencyMs,
+		LastError: state.LastError, LastCheckedAt: state.LastCheckedAt,
+		LastSuccessAt: state.LastSuccessAt, LastFailureAt: state.LastFailureAt,
+	}
+}
+
 func mapModelError(err error) error {
 	return errors.MapChannelError(err)
 }
@@ -568,6 +583,40 @@ func (s *ChannelService) ListModelUsageStats(ctx context.Context, req *channelv1
 		result = append(result, toUsageStatProto(s))
 	}
 	return &channelv1.ListModelUsageStatsResponse{Stats: result, Total: total}, nil
+}
+
+func (s *ChannelService) RecordModelHealth(ctx context.Context, req *channelv1.RecordModelHealthRequest) (*channelv1.RecordModelHealthResponse, error) {
+	uc := s.modelUc()
+	if uc == nil {
+		return &channelv1.RecordModelHealthResponse{Success: false, Message: "model management not configured"}, nil
+	}
+	err := uc.RecordModelHealth(ctx, &biz.ModelHealthOutcome{
+		SourceKind: req.SourceKind, SourceID: req.SourceId,
+		ModelID: req.ModelId, UpstreamModelID: req.UpstreamModelId,
+		Success: req.Success, Error: req.Error, ResponseTimeMs: req.ResponseTime,
+	})
+	if err != nil {
+		return &channelv1.RecordModelHealthResponse{Success: false, Message: err.Error()}, nil
+	}
+	return &channelv1.RecordModelHealthResponse{Success: true, Message: "ok"}, nil
+}
+
+func (s *ChannelService) ListModelHealth(ctx context.Context, req *channelv1.ListModelHealthRequest) (*channelv1.ListModelHealthResponse, error) {
+	uc := s.modelUc()
+	if uc == nil {
+		return &channelv1.ListModelHealthResponse{States: []*channelv1.ModelHealthState{}}, nil
+	}
+	states, total, err := uc.ListModelHealth(ctx, req.Page, req.PageSize, biz.ListModelHealthFilter{
+		Keyword: req.Keyword, SourceKind: req.SourceKind, Status: req.Status,
+	})
+	if err != nil {
+		return nil, mapModelError(err)
+	}
+	result := make([]*channelv1.ModelHealthState, 0, len(states))
+	for _, state := range states {
+		result = append(result, toModelHealthProto(state))
+	}
+	return &channelv1.ListModelHealthResponse{States: result, Total: total}, nil
 }
 
 // ── Canonical model ID governance (v0.11.0 Phase 2 §2.1) ──────────────────

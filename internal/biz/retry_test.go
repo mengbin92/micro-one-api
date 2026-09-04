@@ -100,6 +100,7 @@ type mockChannelSelector struct {
 	channels     []*Channel
 	callIdx      int
 	healthEvents []healthEvent
+	modelHealth  []modelHealthEvent
 }
 
 type healthEvent struct {
@@ -107,6 +108,14 @@ type healthEvent struct {
 	success      bool
 	err          string
 	responseTime int64
+}
+
+type modelHealthEvent struct {
+	sourceKind      string
+	sourceID        int64
+	modelID         string
+	upstreamModelID string
+	success         bool
 }
 
 func (m *mockChannelSelector) SelectChannel(_ context.Context, _, _ string, excludeFirst bool) (*Channel, error) {
@@ -130,6 +139,37 @@ func (m *mockChannelSelector) RecordChannelHealth(_ context.Context, channelID i
 		responseTime: responseTime,
 	})
 	return nil
+}
+
+func (m *mockChannelSelector) RecordModelHealth(_ context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, _ string, _ int64) error {
+	m.modelHealth = append(m.modelHealth, modelHealthEvent{sourceKind, sourceID, modelID, upstreamModelID, success})
+	return nil
+}
+
+func TestRetryExecutor_RecordsModelSpecificOutageWithoutPoisoningChannel(t *testing.T) {
+	selector := &mockChannelSelector{channels: []*Channel{{ID: 7, ModelMapping: `{"kimi-k3":"kimi-k3-prod"}`}}}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+	errModelUnavailable := &relayprovider.UpstreamHTTPError{StatusCode: 500, Body: []byte(`{"message":"no healthy model"}`)}
+
+	result := exec.Execute(context.Background(), "default", "Kimi-K3", func(context.Context, *Channel) error {
+		return errModelUnavailable
+	})
+
+	assert.Error(t, result.Err)
+	assert.Len(t, selector.healthEvents, 1)
+	assert.True(t, selector.healthEvents[0].success, "model outage must stay neutral for channel health")
+	assert.Equal(t, []modelHealthEvent{{"channel", 7, "Kimi-K3", "kimi-k3-prod", false}}, selector.modelHealth)
+}
+
+func TestRetryExecutor_DoesNotRecordClientErrorAsModelHealth(t *testing.T) {
+	selector := &mockChannelSelector{channels: []*Channel{{ID: 8}}}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+
+	_ = exec.Execute(context.Background(), "default", "gpt-4o", func(context.Context, *Channel) error {
+		return &RetryableError{Status: 400, Err: errors.New("bad request")}
+	})
+
+	assert.Empty(t, selector.modelHealth)
 }
 
 func TestRetryExecutor_Execute_Success(t *testing.T) {

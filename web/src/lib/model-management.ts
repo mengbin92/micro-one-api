@@ -259,6 +259,29 @@ export interface ListModelUsageStatsResponse {
   total: number;
 }
 
+export interface ModelHealthState {
+  id: number;
+  source_kind: 'channel' | 'subscription';
+  source_id: number;
+  model_id: string;
+  upstream_model_id: string;
+  status: 'healthy' | 'degraded' | 'unavailable';
+  request_count: number;
+  success_count: number;
+  failure_count: number;
+  consecutive_failures: number;
+  avg_latency_ms: number;
+  last_error: string;
+  last_checked_at: number;
+  last_success_at: number;
+  last_failure_at: number;
+}
+
+export interface ListModelHealthResponse {
+  states: ModelHealthState[];
+  total: number;
+}
+
 export interface ListModelUsageStatsParams {
   start_date?: string;
   end_date?: string;
@@ -268,6 +291,17 @@ export interface ListModelUsageStatsParams {
 
 export async function listModelUsageStats(modelPk: number, params: ListModelUsageStatsParams = {}): Promise<ListModelUsageStatsResponse> {
   const { data } = await adminApiClient.get<ListModelUsageStatsResponse>(`/admin/models/${modelPk}/usage-stats`, { params });
+  return data;
+}
+
+export async function listModelHealth(params: {
+  page?: number;
+  page_size?: number;
+  keyword?: string;
+  source_kind?: string;
+  status?: string;
+} = {}): Promise<ListModelHealthResponse> {
+  const { data } = await adminApiClient.get<ListModelHealthResponse>('/admin/model-health', { params });
   return data;
 }
 

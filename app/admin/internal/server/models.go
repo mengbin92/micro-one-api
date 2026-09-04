@@ -352,6 +352,24 @@ func handleModelUsageStats(w http.ResponseWriter, r *http.Request, svc *service.
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// handleModelHealth serves the passive per-source model health dashboard.
+func handleModelHealth(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	resp, err := svc.ListModelHealth(r.Context(), &channelv1.ListModelHealthRequest{
+		Page: getQueryInt32(r, "page", 1), PageSize: getQueryInt32(r, "page_size", 50),
+		Keyword: r.URL.Query().Get("keyword"), SourceKind: r.URL.Query().Get("source_kind"),
+		Status: r.URL.Query().Get("status"),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // parseChannelMappingPathID extracts the {id} segment from a path shaped
 // /prefix/{id}/suffix, returning the numeric id.
 func parseChannelMappingPathID(path, prefix, suffix string) (int64, bool) {

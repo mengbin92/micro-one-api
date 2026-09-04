@@ -29,6 +29,7 @@ export const routeLoaders = {
   '/admin/options': () => import('@/pages/admin/OptionsPage'),
   '/admin/reconciliation': () => import('@/pages/admin/ReconciliationPage'),
   '/admin/channel-health': () => import('@/pages/admin/ChannelHealthPage'),
+  '/admin/model-health': () => import('@/pages/admin/ModelHealthPage'),
   '/admin/cost-analysis': () => import('@/pages/admin/CostAnalysisPage'),
   '/admin/routing-ops': () => import('@/pages/admin/RoutingOpsPage'),
   '/admin/upstream-costs': () => import('@/pages/admin/UpstreamCostsPage'),

@@ -215,6 +215,21 @@ func (c *channelClient) RecordChannelHealth(ctx context.Context, channelID int64
 	return nil
 }
 
+func (c *channelClient) RecordModelHealth(ctx context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, message string, responseTime int64) error {
+	resp, err := c.client.RecordModelHealth(ctx, &channelv1.RecordModelHealthRequest{
+		SourceKind: sourceKind, SourceId: sourceID, ModelId: modelID,
+		UpstreamModelId: upstreamModelID, Success: success, Error: message,
+		ResponseTime: responseTime,
+	})
+	if err != nil {
+		return err
+	}
+	if resp != nil && !resp.GetSuccess() {
+		return errors.New(resp.GetMessage())
+	}
+	return nil
+}
+
 func (c *channelClient) RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error {
 	if accountID <= 0 {
 		return nil

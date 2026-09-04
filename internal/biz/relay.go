@@ -1285,6 +1285,37 @@ func (uc *RelayUsecase) RecordRoutingSourceHealth(ctx context.Context, ch *Chann
 	}
 }
 
+// RecordRoutingSourceModelHealth records the model dimension for execution
+// paths that do not use RetryExecutor (currently Responses WebSocket). Calls
+// remain best-effort and do not alter routing eligibility. The shared
+// disposition keeps client cancellations and policy rejections from poisoning
+// an otherwise healthy upstream model.
+func (uc *RelayUsecase) RecordRoutingSourceModelHealth(ctx context.Context, ch *Channel, model string, relayErr error, responseTime int64) {
+	if uc == nil || uc.channel == nil || ch == nil {
+		return
+	}
+	record, success := modelHealthDisposition(relayErr)
+	if !record {
+		return
+	}
+	recorder, ok := uc.channel.(ModelHealthRecorder)
+	if !ok {
+		return
+	}
+	sourceKind, sourceID := UpstreamSourceChannel, ch.ID
+	if ch.SubscriptionAccountID > 0 {
+		sourceKind, sourceID = UpstreamSourceSubscription, ch.SubscriptionAccountID
+	}
+	if sourceID <= 0 {
+		return
+	}
+	errMessage := ""
+	if relayErr != nil {
+		errMessage = relayErr.Error()
+	}
+	_ = recorder.RecordModelHealth(ctx, sourceKind, sourceID, RelayModelName(model), ResolveChannelModel(ch, model), success, errMessage, responseTime)
+}
+
 // ResolveModel returns the upstream model name for the given client model name.
 // Returns the original name if no mapping exists or mapper is nil.
 func (uc *RelayUsecase) ResolveModel(modelName string) string {

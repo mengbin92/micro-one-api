@@ -1042,7 +1042,7 @@ func TestAdminHTTPPageIsServed(t *testing.T) {
 
 func TestAdminHTTPPageSPARouteFallback(t *testing.T) {
 	srv := NewHTTPServer(":0", nil, nil, "", adminWebRootFixture(t))
-	for _, path := range []string{"/", "/login", "/register", "/dashboard", "/tokens", "/pricing", "/redeem", "/admin/channel-health", "/admin/cost-analysis", "/admin/reconciliation", "/admin/options", "/admin/subscription-plans"} {
+	for _, path := range []string{"/", "/login", "/register", "/dashboard", "/tokens", "/pricing", "/redeem", "/admin/channel-health", "/admin/model-health", "/admin/cost-analysis", "/admin/reconciliation", "/admin/options", "/admin/subscription-plans"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		srv.ServeHTTP(rec, req)
@@ -3359,6 +3359,13 @@ func (c *adminHTTPModelChannelClient) ListModelUsageStats(ctx context.Context, r
 	return &channelv1.ListModelUsageStatsResponse{Stats: []*channelv1.ModelUsageStat{}, Total: 0}, nil
 }
 
+func (c *adminHTTPModelChannelClient) ListModelHealth(context.Context, *channelv1.ListModelHealthRequest, ...grpc.CallOption) (*channelv1.ListModelHealthResponse, error) {
+	return &channelv1.ListModelHealthResponse{States: []*channelv1.ModelHealthState{{
+		Id: 1, SourceKind: "channel", SourceId: 7, ModelId: "gpt-4o",
+		UpstreamModelId: "gpt-4o", Status: "healthy", RequestCount: 2, SuccessCount: 2,
+	}}}, nil
+}
+
 func (c *adminHTTPModelChannelClient) ListModelRoutings(ctx context.Context, req *channelv1.ListModelRoutingsRequest, opts ...grpc.CallOption) (*channelv1.ListModelRoutingsResponse, error) {
 	return &channelv1.ListModelRoutingsResponse{Routings: []*channelv1.ModelRouting{}}, nil
 }
@@ -3680,5 +3687,17 @@ func TestAdminHTTPListModelUsageStats(t *testing.T) {
 	// Empty stats list is valid (the stub returns no stats).
 	if rec.Body.String() == "" {
 		t.Fatal("expected non-empty response")
+	}
+}
+
+func TestAdminHTTPListModelHealth(t *testing.T) {
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	srv := newAdminHTTPModelTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/model-health?status=healthy", nil)
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"model_id":"gpt-4o"`) {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
 	}
 }

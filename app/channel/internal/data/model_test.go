@@ -118,6 +118,20 @@ func setupModelTestDB(t *testing.T) *Repository {
 		)
 	`).Error)
 	require.NoError(t, db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mus_model_date ON model_usage_stats(model_id, date)`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE model_health_states (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source_kind TEXT NOT NULL, source_id INTEGER NOT NULL,
+			model_id TEXT NOT NULL, upstream_model_id TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'healthy', request_count INTEGER NOT NULL DEFAULT 0,
+			success_count INTEGER NOT NULL DEFAULT 0, failure_count INTEGER NOT NULL DEFAULT 0,
+			consecutive_failures INTEGER NOT NULL DEFAULT 0, avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+			last_error TEXT, last_checked_at INTEGER NOT NULL DEFAULT 0,
+			last_success_at INTEGER NOT NULL DEFAULT 0, last_failure_at INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`CREATE UNIQUE INDEX uk_model_health_route ON model_health_states(source_kind, source_id, model_id, upstream_model_id)`).Error)
 
 	return &Repository{db: db}
 }
@@ -702,4 +716,32 @@ func TestRepository_ModelUsageStatsMemory(t *testing.T) {
 	assert.Len(t, stats, 1)
 	assert.Equal(t, int32(2), stats[0].RequestCount)
 	assert.Equal(t, int64(300), stats[0].TokenCount)
+}
+
+func TestRepository_RecordAndListModelHealth(t *testing.T) {
+	for _, repo := range []*Repository{setupModelTestDB(t), newMemoryRepository()} {
+		ctx := context.Background()
+		for i := 0; i < 3; i++ {
+			require.NoError(t, repo.RecordModelHealth(ctx, &biz.ModelHealthOutcome{
+				SourceKind: "channel", SourceID: 9, ModelID: "kimi-k3",
+				UpstreamModelID: "kimi-k3-prod", Error: "no healthy model",
+				ResponseTimeMs: 100, CheckedAt: int64(i + 1),
+			}))
+		}
+		states, total, err := repo.ListModelHealth(ctx, 1, 10, biz.ListModelHealthFilter{Status: biz.ModelHealthUnavailable})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), total)
+		require.Len(t, states, 1)
+		assert.Equal(t, int32(3), states[0].ConsecutiveFailures)
+		assert.Equal(t, int64(3), states[0].RequestCount)
+
+		require.NoError(t, repo.RecordModelHealth(ctx, &biz.ModelHealthOutcome{
+			SourceKind: "channel", SourceID: 9, ModelID: "kimi-k3",
+			UpstreamModelID: "kimi-k3-prod", Success: true, ResponseTimeMs: 200, CheckedAt: 4,
+		}))
+		states, total, err = repo.ListModelHealth(ctx, 1, 10, biz.ListModelHealthFilter{Keyword: "KIMI", Status: biz.ModelHealthHealthy})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), total)
+		assert.Equal(t, int64(125), states[0].AvgLatencyMs)
+	}
 }

@@ -128,6 +128,105 @@ type ModelUsageStat struct {
 	AvgLatency   int32
 }
 
+const (
+	ModelHealthHealthy     = "healthy"
+	ModelHealthDegraded    = "degraded"
+	ModelHealthUnavailable = "unavailable"
+
+	modelHealthFailureThreshold = 3
+)
+
+// ModelHealthState is the latest passive health snapshot for one concrete
+// upstream route. ModelID is the canonical/client-facing model while
+// UpstreamModelID is the identifier sent to the selected source.
+type ModelHealthState struct {
+	ID                  int64
+	SourceKind          string
+	SourceID            int64
+	ModelID             string
+	UpstreamModelID     string
+	Status              string
+	RequestCount        int64
+	SuccessCount        int64
+	FailureCount        int64
+	ConsecutiveFailures int32
+	AvgLatencyMs        int64
+	LastError           string
+	LastCheckedAt       int64
+	LastSuccessAt       int64
+	LastFailureAt       int64
+	CreatedAt           int64
+	UpdatedAt           int64
+}
+
+// ModelHealthOutcome is one terminal result after same-source retries have
+// been collapsed by the relay executor.
+type ModelHealthOutcome struct {
+	SourceKind      string
+	SourceID        int64
+	ModelID         string
+	UpstreamModelID string
+	Success         bool
+	Error           string
+	ResponseTimeMs  int64
+	CheckedAt       int64
+}
+
+type ListModelHealthFilter struct {
+	Keyword    string
+	SourceKind string
+	Status     string
+}
+
+// ApplyModelHealthOutcome owns the health state transition. Persistence
+// adapters call this inside their transaction so every dialect and the memory
+// implementation share identical semantics.
+func ApplyModelHealthOutcome(state *ModelHealthState, outcome *ModelHealthOutcome) {
+	if state == nil || outcome == nil {
+		return
+	}
+	checkedAt := outcome.CheckedAt
+	if checkedAt <= 0 {
+		checkedAt = time.Now().Unix()
+	}
+	previousRequests := state.RequestCount
+	state.RequestCount++
+	if outcome.ResponseTimeMs >= 0 {
+		state.AvgLatencyMs = (state.AvgLatencyMs*previousRequests + outcome.ResponseTimeMs) / state.RequestCount
+	}
+	state.LastCheckedAt = checkedAt
+	state.UpdatedAt = checkedAt
+	if state.CreatedAt == 0 {
+		state.CreatedAt = checkedAt
+	}
+	if outcome.Success {
+		state.SuccessCount++
+		state.ConsecutiveFailures = 0
+		state.Status = ModelHealthHealthy
+		state.LastError = ""
+		state.LastSuccessAt = checkedAt
+		return
+	}
+	state.FailureCount++
+	state.ConsecutiveFailures++
+	state.LastError = truncateModelHealthError(outcome.Error)
+	state.LastFailureAt = checkedAt
+	state.Status = ModelHealthDegraded
+	if state.ConsecutiveFailures >= modelHealthFailureThreshold {
+		state.Status = ModelHealthUnavailable
+	}
+}
+
+func truncateModelHealthError(message string) string {
+	const maxRunes = 1000
+	message = strings.TrimSpace(message)
+	runes := []rune(message)
+	if len(runes) <= maxRunes {
+		return message
+	}
+	return string(runes[:maxRunes])
+}
+
 // ListModelsFilter holds the optional filters for listing models.
 type ListModelsFilter struct {
 	Keyword    string
@@ -189,6 +288,14 @@ type ModelRepo interface {
 	// collide on the survivor's unique keys.
 	CanonicalModelPreflight(ctx context.Context) (*PreflightReport, error)
 	MergeCanonicalModels(ctx context.Context, group DuplicateModelGroup) (*MergeResult, error)
+}
+
+// ModelHealthRepo is an additive persistence capability. Keeping it separate
+// from ModelRepo lets lightweight model-registry implementations continue to
+// operate while deployments roll out migration 090.
+type ModelHealthRepo interface {
+	RecordModelHealth(ctx context.Context, outcome *ModelHealthOutcome) error
+	ListModelHealth(ctx context.Context, page, pageSize int32, filter ListModelHealthFilter) ([]*ModelHealthState, int64, error)
 }
 
 // ModelsListCacheInvalidator is the optional seam ModelUsecase uses to drop
@@ -568,6 +675,61 @@ func (uc *ModelUsecase) ListModelUsageStats(ctx context.Context, modelPK int64, 
 		pageSize = 20
 	}
 	return uc.repo.ListModelUsageStats(ctx, modelPK, startDate, endDate, page, pageSize)
+}
+
+// RecordModelHealth records a passive health outcome from real relay traffic.
+// It is best-effort at the caller, but invalid source identities are rejected
+// here so malformed rows can never enter the health table.
+func (uc *ModelUsecase) RecordModelHealth(ctx context.Context, outcome *ModelHealthOutcome) error {
+	if uc == nil || uc.repo == nil || outcome == nil {
+		return nil
+	}
+	healthRepo, ok := uc.repo.(ModelHealthRepo)
+	if !ok {
+		return nil
+	}
+	outcome.SourceKind = strings.ToLower(strings.TrimSpace(outcome.SourceKind))
+	if outcome.SourceKind != "channel" && outcome.SourceKind != "subscription" {
+		return fmt.Errorf("source_kind must be channel or subscription")
+	}
+	if outcome.SourceID <= 0 {
+		return fmt.Errorf("source_id must be positive")
+	}
+	outcome.ModelID = NormalizeModelID(outcome.ModelID)
+	outcome.UpstreamModelID = strings.TrimSpace(outcome.UpstreamModelID)
+	if outcome.ModelID == "" {
+		return fmt.Errorf("model_id is required")
+	}
+	if outcome.UpstreamModelID == "" {
+		outcome.UpstreamModelID = outcome.ModelID
+	}
+	if outcome.CheckedAt <= 0 {
+		outcome.CheckedAt = uc.timestamp()
+	}
+	if outcome.ResponseTimeMs < 0 {
+		outcome.ResponseTimeMs = 0
+	}
+	return healthRepo.RecordModelHealth(ctx, outcome)
+}
+
+func (uc *ModelUsecase) ListModelHealth(ctx context.Context, page, pageSize int32, filter ListModelHealthFilter) ([]*ModelHealthState, int64, error) {
+	if uc == nil || uc.repo == nil {
+		return nil, 0, nil
+	}
+	healthRepo, ok := uc.repo.(ModelHealthRepo)
+	if !ok {
+		return nil, 0, nil
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 200 {
+		pageSize = 20
+	}
+	filter.Keyword = strings.TrimSpace(filter.Keyword)
+	filter.SourceKind = strings.ToLower(strings.TrimSpace(filter.SourceKind))
+	filter.Status = strings.ToLower(strings.TrimSpace(filter.Status))
+	return healthRepo.ListModelHealth(ctx, page, pageSize, filter)
 }
 
 // ── v0.11.0 Phase 2 §2.1: canonical model ID governance ────────────────────

@@ -130,6 +130,8 @@ func TestSQLiteDialect_FreshInstall(t *testing.T) {
 	// Recent mirror (077) landed: renewal_strategy on user_subscriptions.
 	require.True(t, sqliteColumnExists(t, db, "user_subscriptions", "renewal_strategy"),
 		"077_add_subscription_renewal_strategy mirror must have applied")
+	require.Contains(t, tables, "model_health_states",
+		"090_create_model_health_states mirror must have applied")
 }
 
 // TestSQLiteDialect_IncrementalUpgrade simulates a deployed Lite instance
@@ -148,12 +150,12 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 29, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 30, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := len(files) - 6 // last six files arrive later (084–089 incremental tail)
+	cut := len(files) - 7 // last seven files arrive later (084–090 incremental tail)
 
 	db := openScratchSqlite(t)
-	// Stage 1: apply the tree up to (not including) the last four files.
+	// Stage 1: apply the tree up to (not including) the incremental tail.
 	stage1 := tempDirWithFiles(t, files[:cut], dir)
 	r1 := NewWithDriver(db, stage1, "sqlite3")
 	applied1, err := r1.Apply(context.Background())

@@ -289,6 +289,13 @@ type ChannelSelector interface {
 	RecordSubscriptionAccountHealth(ctx context.Context, accountID int64, success bool) error
 }
 
+// ModelHealthRecorder is an optional extension implemented by production
+// channel clients. Keeping it separate preserves compatibility with selector
+// fakes while passive model monitoring rolls out independently of routing.
+type ModelHealthRecorder interface {
+	RecordModelHealth(ctx context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, err string, responseTime int64) error
+}
+
 // RoutingFallbackSelector resolves a fallback source across both source
 // namespaces (API-key channels + subscription accounts), excluding every
 // source that already failed in the current request. RelayUsecase implements
@@ -446,7 +453,9 @@ func (e *RetryExecutor) execute(
 	excluded := make(map[RoutingSourceIdentity]bool)
 	type healthOutcome struct {
 		channel      *Channel
-		success      bool
+		channelOK    bool
+		modelRecord  bool
+		modelOK      bool
 		message      string
 		responseTime int64
 	}
@@ -455,21 +464,29 @@ func (e *RetryExecutor) execute(
 		if pendingHealth == nil {
 			return
 		}
-		e.recordHealth(ctx, pendingHealth.channel, pendingHealth.success, pendingHealth.message, pendingHealth.responseTime)
+		e.recordHealth(ctx, model, pendingHealth.channel, pendingHealth.channelOK, pendingHealth.modelRecord, pendingHealth.modelOK, pendingHealth.message, pendingHealth.responseTime)
 		pendingHealth = nil
 	}
-	queueHealth := func(ch *Channel, success bool, message string, responseTime int64) {
+	queueHealth := func(ch *Channel, err error, responseTime int64) {
+		channelOK := upstreamAttemptHealthy(err)
+		modelRecord, modelOK := modelHealthDisposition(err)
+		message := ""
+		if err != nil {
+			message = err.Error()
+		}
 		if pendingHealth != nil && SameRoutingSource(pendingHealth.channel, ch) {
 			// Same-source retries are one logical channel outcome. Accumulate only
 			// upstream time (backoff is intentionally excluded) and let the latest
 			// attempt determine the terminal result.
-			pendingHealth.success = success
+			pendingHealth.channelOK = channelOK
+			pendingHealth.modelRecord = modelRecord
+			pendingHealth.modelOK = modelOK
 			pendingHealth.message = message
 			pendingHealth.responseTime += responseTime
 			return
 		}
 		flushHealth()
-		pendingHealth = &healthOutcome{channel: ch, success: success, message: message, responseTime: responseTime}
+		pendingHealth = &healthOutcome{channel: ch, channelOK: channelOK, modelRecord: modelRecord, modelOK: modelOK, message: message, responseTime: responseTime}
 	}
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
@@ -520,7 +537,7 @@ func (e *RetryExecutor) execute(
 		err := fn(ctx, lastChannel)
 		responseTime := time.Since(startedAt).Milliseconds()
 		if err == nil {
-			queueHealth(lastChannel, true, "", responseTime)
+			queueHealth(lastChannel, nil, responseTime)
 			flushHealth()
 			return &ExecuteResult{
 				Channel:        lastChannel,
@@ -532,11 +549,7 @@ func (e *RetryExecutor) execute(
 		}
 
 		lastErr = err
-		if upstreamAttemptHealthy(err) {
-			queueHealth(lastChannel, true, "", responseTime)
-		} else {
-			queueHealth(lastChannel, false, err.Error(), responseTime)
-		}
+		queueHealth(lastChannel, err, responseTime)
 
 		// If not retryable, fail immediately
 		if !e.policy.IsRetryable(err) {
@@ -727,11 +740,54 @@ func isTimeoutError(err error) bool {
 	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded")
 }
 
-func (e *RetryExecutor) recordHealth(ctx context.Context, ch *Channel, success bool, message string, responseTime int64) {
-	if e.selector == nil || ch == nil || ch.ID <= 0 || ch.SubscriptionAccountID > 0 {
+func (e *RetryExecutor) recordHealth(ctx context.Context, model string, ch *Channel, channelOK, modelRecord, modelOK bool, message string, responseTime int64) {
+	if e.selector == nil || ch == nil {
 		return
 	}
-	_ = e.selector.RecordChannelHealth(ctx, ch.ID, success, message, responseTime)
+	if ch.ID > 0 && ch.SubscriptionAccountID <= 0 {
+		channelMessage := message
+		if channelOK {
+			channelMessage = ""
+		}
+		_ = e.selector.RecordChannelHealth(ctx, ch.ID, channelOK, channelMessage, responseTime)
+	}
+	if !modelRecord {
+		return
+	}
+	recorder, ok := e.selector.(ModelHealthRecorder)
+	if !ok {
+		return
+	}
+	sourceKind, sourceID := UpstreamSourceChannel, ch.ID
+	if ch.SubscriptionAccountID > 0 {
+		sourceKind, sourceID = UpstreamSourceSubscription, ch.SubscriptionAccountID
+	}
+	if sourceID <= 0 {
+		return
+	}
+	_ = recorder.RecordModelHealth(ctx, sourceKind, sourceID, RelayModelName(model), ResolveChannelModel(ch, model), modelOK, message, responseTime)
+}
+
+// modelHealthDisposition excludes caller/local failures and records only
+// outcomes that say something about the concrete upstream model route.
+func modelHealthDisposition(err error) (record, success bool) {
+	if err == nil {
+		return true, true
+	}
+	if IsPostForwardError(err) || isUpstreamPolicyRejection(err) || errors.Is(err, context.Canceled) {
+		return false, false
+	}
+	if isUpstreamModelUnavailable(err) {
+		return true, false
+	}
+	status := UpstreamStatus(err)
+	if status > 0 && status < 500 && status != 429 {
+		return false, false
+	}
+	if status >= 500 || status == 429 || errors.Is(err, context.DeadlineExceeded) || isRetryableNetworkError(err) {
+		return true, false
+	}
+	return false, false
 }
 
 // RecordAccountHealth feeds a known subscription-account upstream outcome

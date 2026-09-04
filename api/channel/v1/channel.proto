@@ -65,6 +65,10 @@ service ChannelService {
   // ========== Sprint 4: Usage statistics ==========
   rpc RecordModelUsage(RecordModelUsageRequest) returns (RecordModelUsageResponse);
   rpc ListModelUsageStats(ListModelUsageStatsRequest) returns (ListModelUsageStatsResponse);
+  // Passive model health is keyed by the concrete upstream source and model.
+  // It observes real relay outcomes and never sends synthetic paid probes.
+  rpc RecordModelHealth(RecordModelHealthRequest) returns (RecordModelHealthResponse);
+  rpc ListModelHealth(ListModelHealthRequest) returns (ListModelHealthResponse);
   // ========== Model routing (P2 #3) ==========
   rpc ListModelRoutings(ListModelRoutingsRequest) returns (ListModelRoutingsResponse);
   rpc UpsertModelRouting(UpsertModelRoutingRequest) returns (UpsertModelRoutingResponse);
@@ -851,6 +855,54 @@ message ListModelUsageStatsRequest {
 
 message ListModelUsageStatsResponse {
   repeated ModelUsageStat stats = 1;
+  int64 total = 2;
+}
+
+// ModelHealthState is the latest passive health snapshot for one concrete
+// (source, model) route. source_kind is "channel" or "subscription".
+message ModelHealthState {
+  int64 id = 1;
+  string source_kind = 2;
+  int64 source_id = 3;
+  string model_id = 4;
+  string upstream_model_id = 5;
+  string status = 6; // healthy, degraded, unavailable
+  int64 request_count = 7;
+  int64 success_count = 8;
+  int64 failure_count = 9;
+  int32 consecutive_failures = 10;
+  int64 avg_latency_ms = 11;
+  string last_error = 12;
+  int64 last_checked_at = 13; // unix seconds
+  int64 last_success_at = 14; // unix seconds; 0 when none
+  int64 last_failure_at = 15; // unix seconds; 0 when none
+}
+
+message RecordModelHealthRequest {
+  string source_kind = 1;
+  int64 source_id = 2;
+  string model_id = 3;
+  string upstream_model_id = 4;
+  bool success = 5;
+  string error = 6;
+  int64 response_time = 7; // milliseconds
+}
+
+message RecordModelHealthResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListModelHealthRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string keyword = 3;    // model_id or upstream_model_id
+  string source_kind = 4;
+  string status = 5;
+}
+
+message ListModelHealthResponse {
+  repeated ModelHealthState states = 1;
   int64 total = 2;
 }
 

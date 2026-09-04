@@ -576,7 +576,9 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// Acquire a (possibly pooled) upstream connection.
 		pooledConn, err := s.acquireOpenAIWSUpstreamConn(ctx, currentChannel, wsURL, headers)
 		if err != nil {
-			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, err.Error(), time.Since(attemptStartedAt).Milliseconds())
+			responseTime := time.Since(attemptStartedAt).Milliseconds()
+			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, err.Error(), responseTime)
+			s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.BaseModel(), err, responseTime)
 			// Dial failed. Try failover if we haven't exhausted switches.
 			// Capture the failed channel id before maybeFailoverChannel mutates
 			// currentChannel, otherwise the log records the channel we switched to.
@@ -710,9 +712,13 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		broken := relayExit != nil && relayExit.err != nil && !relayExit.graceful
 		s.releaseOpenAIWSUpstreamConn(pooledConn, broken)
 		if relayExit != nil && relayExit.err != nil && !relayExit.graceful {
-			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, relayExit.err.Error(), time.Since(attemptStartedAt).Milliseconds())
+			responseTime := time.Since(attemptStartedAt).Milliseconds()
+			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, relayExit.err.Error(), responseTime)
+			s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.BaseModel(), relayExit.err, responseTime)
 		} else {
-			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, true, "", time.Since(attemptStartedAt).Milliseconds())
+			responseTime := time.Since(attemptStartedAt).Milliseconds()
+			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, true, "", responseTime)
+			s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.BaseModel(), nil, responseTime)
 		}
 
 		// Failover decision: only retry if nothing was written downstream yet

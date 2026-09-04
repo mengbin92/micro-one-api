@@ -706,3 +706,20 @@ func TestNormalizeModelID_TrimsAndLowercases(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyModelHealthOutcome_DegradesAndRecovers(t *testing.T) {
+	state := &ModelHealthState{}
+	for i := 0; i < 3; i++ {
+		ApplyModelHealthOutcome(state, &ModelHealthOutcome{Error: "upstream unavailable", ResponseTimeMs: 100, CheckedAt: int64(i + 1)})
+	}
+	if state.Status != ModelHealthUnavailable || state.ConsecutiveFailures != 3 || state.FailureCount != 3 {
+		t.Fatalf("failure state = %+v", state)
+	}
+	ApplyModelHealthOutcome(state, &ModelHealthOutcome{Success: true, ResponseTimeMs: 200, CheckedAt: 4})
+	if state.Status != ModelHealthHealthy || state.ConsecutiveFailures != 0 || state.LastError != "" {
+		t.Fatalf("recovered state = %+v", state)
+	}
+	if state.AvgLatencyMs != 125 {
+		t.Fatalf("average latency = %d, want 125", state.AvgLatencyMs)
+	}
+}
