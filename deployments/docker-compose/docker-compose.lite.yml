@@ -45,11 +45,27 @@ services:
   # The volume is shared with the backend services so the .db file
   # persists across container restarts.
 
+  # Named volumes are created as root by Docker. The application images run
+  # as uid 65534, so prepare the shared SQLite directory before the non-root
+  # migration container starts. This is idempotent and runs only once per
+  # compose project/volume creation.
+  sqlite-permissions:
+    image: alpine:3.20
+    container_name: micro-one-api-sqlite-permissions
+    command: ["sh", "-c", "mkdir -p /data && chown 65534:65534 /data && chmod 0770 /data"]
+    volumes:
+      - sqlite_data:/data:rw
+    networks:
+      - backend
+    restart: "no"
+
   migrate:
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.migrate
     container_name: micro-one-api-migrate
+    # Match the uid used by the application images and the prepared volume.
+    user: "65534:65534"
     environment:
       - MIGRATIONS_DRIVER=sqlite3
       - MIGRATIONS_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
@@ -57,6 +73,9 @@ services:
       - sqlite_data:/data
     networks:
       - backend
+    depends_on:
+      sqlite-permissions:
+        condition: service_completed_successfully
     restart: "no"
 
   # ────────────── Backend Services ──────────────

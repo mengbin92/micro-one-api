@@ -106,6 +106,50 @@ docker compose --env-file .env down -v        # 停止并删除数据卷
 ./scripts/test-docker-compose.sh
 ```
 
+### 2.5 Lite（SQLite）快速启动
+
+Lite Compose 适合本地验收、演示和无 MySQL 的开发机；它使用 SQLite 持久化账务，
+不应直接承载生产数据。配置文件位于 `deployments/docker-compose/`：
+
+```bash
+cd deployments/docker-compose
+cp .env.lite.example .env.lite
+# 至少替换 JWT_SECRET_KEY、CHANNEL_ENCRYPTION_KEY、SERVICE_TOKEN、ADMIN_TOKEN
+docker compose -f docker-compose.lite.yml --env-file .env.lite config --quiet
+docker compose -f docker-compose.lite.yml --env-file .env.lite up -d --build
+docker compose -f docker-compose.lite.yml --env-file .env.lite ps
+```
+
+默认入口是管理端 `http://localhost:3000`，Relay API 是
+`http://localhost:8080`。启动完成后先做无副作用的健康检查：
+
+```bash
+curl --fail http://localhost:8080/healthz
+curl --fail http://localhost:3000/healthz
+```
+
+首次验收的业务顺序是：管理端登录 → 创建一个测试渠道 → 生成 API Token → 使用
+该 Token 调用 `/v1/chat/completions`。渠道必须指向可控的 mock/upstream；没有可用
+上游时只验证登录、渠道和 Token 创建，不把失败的上游请求当作服务故障。
+
+Lite 启动会先运行一次 `migrate`。`sqlite-permissions` 负责将命名卷交给应用的
+非 root UID；不要手工以 root 写入该卷。首次构建若因 Docker 内存不足被系统杀掉，
+请提高 Docker 内存或按服务串行构建后再执行 `up -d`：
+
+```bash
+for svc in identity-service channel-service billing-service config-service log-service \
+  monitor-worker notify-worker relay-gateway admin-api; do
+  docker compose -f docker-compose.lite.yml --env-file .env.lite build "$svc"
+done
+docker compose -f docker-compose.lite.yml --env-file .env.lite up -d
+```
+
+停止并清理 Lite（会删除 SQLite 数据卷，仅用于临时验收）：
+
+```bash
+docker compose -f docker-compose.lite.yml --env-file .env.lite down -v --remove-orphans
+```
+
 ## 3. Kubernetes 部署（生产）
 
 ### 3.1 前置条件
