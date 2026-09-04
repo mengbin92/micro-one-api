@@ -1,14 +1,30 @@
 -- Canonical usage 48-hour observe gate (v0.27).
 --
 -- Production MySQL stores billing_ledgers.created_at in UTC. The qualified
--- natural-traffic window starts at 2026-09-02 11:12:00.225 CST and ends 48
--- hours later. Every statement is read-only.
+-- natural-traffic window starts at 2026-09-04 09:49:52.108 CST (the first
+-- qualified natural sample after the beda02b relay deploy; container start
+-- 2026-09-04 09:49:44 CST) and ends 48 hours later. The original window
+-- (2026-09-02 11:12:00.225 CST start) was voided by the P0 relay deploy per
+-- roadmap v0.27 section 5. Every statement is read-only.
+--
+-- Documented baselines for this window:
+--   * step-explore: v0.23 executor controlled test cohort (isolated from
+--     natural-traffic mismatch judgement).
+--   * zero-usage legacy fallback: a streaming upstream returned NO usage at
+--     all; the relay intentionally skips applyEnvelope when totalTokens==0
+--     so estimated tokens are never mislabelled verified. Billing records
+--     such rows as legacy_producer with zero tokens and minimum charge 1.
+--     First observed 2026-09-03 08:40-08:51 UTC (6 rows, deepseek channel,
+--     pre-deploy); financially safe (legacy rows always charge legacy cost)
+--     and does not affect canonical charge correctness. Excluded from the
+--     contract gate as a documented baseline, still counted in
+--     baseline_legacy_fallback_rows for visibility.
 --
 -- Run from the repository root against a MySQL client connected to production:
 --   mysql --table < scripts/reconcile/canonical_observe_48h.sql
 
-SET @observe_start = TIMESTAMP('2026-09-02 03:12:00.225');
-SET @observe_end = TIMESTAMP('2026-09-04 03:12:00.225');
+SET @observe_start = TIMESTAMP('2026-09-04 01:49:52.108');
+SET @observe_end = TIMESTAMP('2026-09-06 01:49:52.108');
 SET @controlled_test_model = 'step-explore';
 
 SELECT
@@ -34,20 +50,36 @@ WITH window_rows AS (
   SELECT
     COUNT(*) AS total_rows,
     COALESCE(SUM(
-      usage_contract_version <> 1
-      OR usage_parse_status NOT IN ('verified', 'estimated')
-      OR canonical_present <> 1
-      OR billable_total_tokens <>
-         uncached_input_tokens + cache_read_tokens
-         + cache_creation_5m_tokens + cache_creation_1h_tokens
-         + completion_tokens
-      OR (
-        cache_read_tokens + cache_creation_5m_tokens
-          + cache_creation_1h_tokens > 0
-        AND (
-          usage_parse_status <> 'verified'
-          OR usage_semantics NOT IN ('openai_subset', 'anthropic_exclusive')
+      usage_parse_status = 'legacy'
+      AND usage_contract_version = 0
+      AND usage_decision_reason = 'legacy_producer'
+      AND billable_total_tokens = 0
+      AND reported_total_tokens = 0
+    ), 0) AS baseline_legacy_fallback_rows,
+    COALESCE(SUM(
+      (
+        usage_contract_version <> 1
+        OR usage_parse_status NOT IN ('verified', 'estimated')
+        OR canonical_present <> 1
+        OR billable_total_tokens <>
+           uncached_input_tokens + cache_read_tokens
+           + cache_creation_5m_tokens + cache_creation_1h_tokens
+           + completion_tokens
+        OR (
+          cache_read_tokens + cache_creation_5m_tokens
+            + cache_creation_1h_tokens > 0
+          AND (
+            usage_parse_status <> 'verified'
+            OR usage_semantics NOT IN ('openai_subset', 'anthropic_exclusive')
+          )
         )
+      )
+      AND NOT (
+        usage_parse_status = 'legacy'
+        AND usage_contract_version = 0
+        AND usage_decision_reason = 'legacy_producer'
+        AND billable_total_tokens = 0
+        AND reported_total_tokens = 0
       )
     ), 0) AS invalid_rows,
     COALESCE(SUM(usage_parse_status = 'ambiguous'), 0) AS ambiguous_rows
@@ -62,7 +94,8 @@ SELECT
   END AS status,
   total_rows,
   invalid_rows,
-  ambiguous_rows
+  ambiguous_rows,
+  baseline_legacy_fallback_rows
 FROM contract_check;
 
 -- Every v1 consume row must identify the final execution source and resolve an
@@ -177,7 +210,16 @@ WITH mismatch_check AS (
       upstream_model_id <> @controlled_test_model
       AND ABS(prompt_cost + completion_cost + cache_read_cost
         + cache_creation_5m_cost + cache_creation_1h_cost) <> ABS(amount)
-    ), 0) AS natural_mismatch_rows
+    ), 0) AS natural_mismatch_rows,
+    COALESCE(SUM(
+      upstream_model_id <> @controlled_test_model
+      AND usage_parse_status = 'legacy'
+      AND usage_decision_reason = 'legacy_producer'
+      AND billable_total_tokens = 0
+      AND reported_total_tokens = 0
+      AND ABS(prompt_cost + completion_cost + cache_read_cost
+        + cache_creation_5m_cost + cache_creation_1h_cost) <> ABS(amount)
+    ), 0) AS baseline_legacy_fallback_rows
   FROM oneapi_billing.billing_ledgers
   WHERE type = 'consume'
     AND created_at >= @observe_start
@@ -187,13 +229,15 @@ SELECT
   'persisted_cost_arithmetic' AS check_name,
   CASE
     WHEN UTC_TIMESTAMP(3) < @observe_end THEN 'WAIT'
-    WHEN total_rows > 0 AND natural_mismatch_rows = 0 THEN 'PASS'
+    WHEN total_rows > 0
+      AND natural_mismatch_rows = baseline_legacy_fallback_rows THEN 'PASS'
     ELSE 'FAIL'
   END AS status,
   total_rows,
   raw_mismatch_rows,
   controlled_mismatch_rows,
-  natural_mismatch_rows
+  natural_mismatch_rows,
+  baseline_legacy_fallback_rows
 FROM mismatch_check;
 
 -- Rebuild canonical cost from the five canonical buckets and the frozen
@@ -374,6 +418,12 @@ WITH combined AS (
   WHERE type = 'consume'
     AND created_at >= @observe_start
     AND created_at < @observe_end
+    AND NOT (
+      usage_parse_status = 'legacy'
+      AND usage_decision_reason = 'legacy_producer'
+      AND billable_total_tokens = 0
+      AND reported_total_tokens = 0
+    )
 
   UNION ALL
 
@@ -392,6 +442,13 @@ WITH combined AS (
   WHERE level = 'consume'
     AND created_at >= FLOOR(UNIX_TIMESTAMP(@observe_start))
     AND created_at < CEIL(UNIX_TIMESTAMP(@observe_end))
+    AND NOT (
+      usage_contract_version = 0
+      AND quota = 0
+      AND prompt_tokens = 0
+      AND completion_tokens = 0
+      AND canonical_present = 0
+    )
 ), grouped AS (
   SELECT
     user_id, token_name, model_name, quota,
@@ -432,5 +489,16 @@ SELECT
   END AS status,
   billing_rows,
   log_rows,
-  differing_groups
+  differing_groups,
+  (
+    SELECT COUNT(*)
+    FROM oneapi_billing.billing_ledgers
+    WHERE type = 'consume'
+      AND created_at >= @observe_start
+      AND created_at < @observe_end
+      AND usage_parse_status = 'legacy'
+      AND usage_decision_reason = 'legacy_producer'
+      AND billable_total_tokens = 0
+      AND reported_total_tokens = 0
+  ) AS baseline_legacy_fallback_rows
 FROM multiset_check;

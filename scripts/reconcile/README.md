@@ -15,8 +15,11 @@
 
 v0.27 的 production observe 使用固定窗口，而不是运行时滚动的 `last 48h`：
 
-- CST：`2026-09-02 11:12:00.225`（含）至 `2026-09-04 11:12:00.225`（不含）；
-- MySQL UTC：`2026-09-02 03:12:00.225`（含）至 `2026-09-04 03:12:00.225`（不含）。
+- CST：`2026-09-04 09:49:52.108`（含）至 `2026-09-06 09:49:52.108`（不含）；
+- MySQL UTC：`2026-09-04 01:49:52.108`（含）至 `2026-09-06 01:49:52.108`（不含）。
+
+原窗口（2026-09-02 11:12:00.225 CST 起算）因 2026-09-04 09:49 CST 部署 P0 修复
+（`beda02b`）按 roadmap §5 作废；新窗口从部署后首条合格自然样本起算。
 
 窗口满时执行只读脚本：
 
@@ -38,6 +41,14 @@ docker exec -i mysql sh -lc \
 但只有排除该 cohort 后的自然流量 mismatch 参与 charge 判定。脚本不会输出用户、请求、
 渠道、订阅、token 或金额明细。
 
+第二个已解释基线是「上游零用量 legacy 兜底」（2026-09-04 书面判定）：流式上游完全
+未返回 usage 时，relay 有意跳过 `applyEnvelope`（避免把估算 token 误标 verified），
+billing 按 legacy_producer 记零 token、最小扣费 1，log 侧不写 v1 字段。此类行在任何
+mode 下都按 legacy 成本结算，不影响 canonical charge 正确性，故在 contract、cost 与
+multiset 门禁中作为 `baseline_legacy_fallback_rows` 单列计数并排除；multiset 在
+billing 与 log 两侧对称排除，排除不对称仍会留下差异组并 FAIL，不能掩盖真实分叉。
+首次观测为 2026-09-03 08:40–08:51 UTC 的 6 行（某测试渠道 deepseek 流式）。
+
 同时在 Prometheus 使用相同固定时间范围执行以下查询；值为空按 0 处理：
 
 ```promql
@@ -49,7 +60,7 @@ max(max_over_time(micro_one_api_billing_async_queue_size[48h]))
 ```
 
 前四项必须为 0，异步队列当前值与窗口最大值也必须为 0。Prometheus 控制台的查询结束
-时间固定为 `2026-09-04 11:12:00.225 CST`；不要用执行当天的滚动窗口替代。Histogram
+时间固定为 `2026-09-06 09:49:52.108 CST`；不要用执行当天的滚动窗口替代。Histogram
 `_sum` 含负数观察值，不能使用
 `increase(micro_one_api_billing_usage_semantics_cost_delta_sum[48h])` 作为金额结论；差额以
 SQL 对 ledger + pricing snapshot 的逐桶重建为准。
