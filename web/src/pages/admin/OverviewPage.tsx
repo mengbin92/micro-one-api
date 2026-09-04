@@ -396,6 +396,79 @@ function CostCard({
   );
 }
 
+const managementAreas = [
+  {
+    title: '资源与路由',
+    description: '配置模型、渠道、订阅账号和流量分配。',
+    icon: Database,
+    links: [
+      { label: '渠道', to: '/admin/channels' },
+      { label: '模型', to: '/admin/models' },
+      { label: '订阅账号', to: '/admin/subscription-accounts' },
+      { label: '路由策略', to: '/admin/routing-ops' },
+    ],
+  },
+  {
+    title: '监控与分析',
+    description: '定位渠道、模型、调用和经营异常。',
+    icon: Activity,
+    links: [
+      { label: '渠道健康', to: '/admin/channel-health' },
+      { label: '模型健康', to: '/admin/model-health' },
+      { label: '调用日志', to: '/admin/logs' },
+      { label: '经营分析', to: '/admin/cost-analysis' },
+    ],
+  },
+  {
+    title: '用户与产品',
+    description: '管理用户、套餐、订阅和兑换权益。',
+    icon: Users,
+    links: [
+      { label: '用户', to: '/admin/users' },
+      { label: '订阅套餐', to: '/admin/subscription-plans' },
+      { label: '用户订阅', to: '/admin/subscriptions' },
+      { label: '兑换码', to: '/admin/redemptions' },
+    ],
+  },
+  {
+    title: '计费与财务',
+    description: '维护定价、成本、支付订单和账务核对。',
+    icon: CreditCard,
+    links: [
+      { label: '销售定价', to: '/admin/pricing' },
+      { label: '上游成本', to: '/admin/upstream-costs' },
+      { label: '支付订单', to: '/admin/payment-orders' },
+      { label: '账务对账', to: '/admin/reconciliation' },
+    ],
+  },
+] as const;
+
+function ManagementAreaCard({ area }: { area: (typeof managementAreas)[number] }) {
+  const Icon = area.icon;
+  return (
+    <Card className="h-full">
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 place-items-center rounded-xl bg-accent text-accent-foreground">
+            <Icon className="size-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-foreground">{t(area.title)}</h3>
+            <p className="mt-0.5 text-sm text-muted-foreground">{t(area.description)}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {area.links.map((link) => (
+            <Link key={link.to} to={link.to} className="rounded-lg bg-muted px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+              {t(link.label)}
+            </Link>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function topItemLabel(item: UsageAggregateItem, kind: 'model' | 'channel' | 'user' | 'token' | 'subscription_account') {
   if (kind === 'model') return item.model || item.key || '-';
   if (kind === 'channel') return item.name || (item.channel_id ? `#${item.channel_id}` : item.key || '-');
@@ -524,15 +597,13 @@ export function AdminOverviewPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-normal text-foreground">{t("管理总览")}</h2>
-          <p className="mt-1 text-sm font-medium text-muted-foreground">{t("查看平台运行状态、上游渠道、用户规模、调用流水和价格配置。")}</p>
+          <h2 className="text-2xl font-bold tracking-normal text-foreground">{t("运营总览")}</h2>
+          <p className="mt-1 text-sm font-medium text-muted-foreground">{t("按业务域进入管理，先处理异常，再查看运营指标。")}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/channels" />}>{t("渠道配置")}</Button>
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/pricing" />}>{t("模型价格")}</Button>
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/upstream-costs" />}>{t("上游成本")}</Button>
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/subscription-accounts" />}>{t("订阅账号")}</Button>
-        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {managementAreas.map((area) => <ManagementAreaCard key={area.title} area={area} />)}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
