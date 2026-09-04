@@ -175,7 +175,8 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			streamResp, streamErr := s.forwardResponsesRawStream(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), retriedBody)
 			if streamErr != nil {
 				terminalErr := streamErr
-				if shouldFallbackResponsesToChat(upstreamPath, streamErr) {
+				logResponsesUpstreamFailure(ctx, r.URL.Path, true, "native", streamErr)
+				if shouldFallbackResponsesToChat(upstreamPath, retriedBody, streamErr) {
 					fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(ctx, ch, r.Header.Clone(), retriedBody, streamErr)
 					if fallbackErr == nil && fallbackResp.Stream != nil {
 						usage := newResponsesStreamUsageTracker(estimateRawUsage(retriedBody))
@@ -299,7 +300,8 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 		resp, forwardErr := s.forwardResponsesRaw(ctx, ch, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), upstreamBody)
 		if forwardErr != nil {
 			terminalErr := forwardErr
-			if shouldFallbackResponsesToChat(upstreamPath, forwardErr) {
+			logResponsesUpstreamFailure(ctx, r.URL.Path, false, "native", forwardErr)
+			if shouldFallbackResponsesToChat(upstreamPath, retriedBody, forwardErr) {
 				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(ctx, ch, r.Header.Clone(), retriedBody, forwardErr)
 				if fallbackErr == nil && fallbackResp.Response != nil {
 					usage := fallbackResp.Usage
@@ -373,7 +375,8 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	recordRelayRetryOutcome(r.Context(), result.Fallback, result.Err, result.FallbackReason)
 
 	if result.Err != nil {
-		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(result.Err)), "upstream service error")
+		logResponsesUpstreamFailure(r.Context(), r.URL.Path, isRawStreamRequest(body), "terminal", result.Err)
+		s.writeResponsesUpstreamError(w, result.Err)
 		return
 	}
 	if upstreamResp == nil || responseChannel == nil {
@@ -528,13 +531,15 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 				return
 			}
 			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
-			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(fallbackErr)), "upstream service error")
+			logResponsesUpstreamFailure(r.Context(), r.URL.Path, true, "terminal", fallbackErr)
+			s.writeResponsesUpstreamError(w, fallbackErr)
 			return
 		}
 		streamResp, err := s.forwardResponsesRawStream(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 		if err != nil {
 			terminalErr := err
-			if shouldFallbackResponsesToChat(upstreamPath, err) {
+			logResponsesUpstreamFailure(r.Context(), r.URL.Path, true, "native", err)
+			if shouldFallbackResponsesToChat(upstreamPath, fallbackBody, err) {
 				fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody, err)
 				if fallbackErr == nil && fallbackResp.Stream != nil {
 					usage := newResponsesStreamUsageTracker(estimateRawUsage(fallbackBody))
@@ -574,7 +579,8 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 				terminalErr = responsesFallbackTerminalError(err, fallbackErr)
 			}
 			_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream stream error")
-			s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(terminalErr)), "upstream service error")
+			logResponsesUpstreamFailure(r.Context(), r.URL.Path, true, "terminal", terminalErr)
+			s.writeResponsesUpstreamError(w, terminalErr)
 			return
 		}
 		usage := newResponsesStreamUsageTracker(estimateRawUsage(body))
@@ -652,14 +658,16 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			return
 		}
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream error")
-		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(fallbackErr)), "upstream service error")
+		logResponsesUpstreamFailure(r.Context(), r.URL.Path, false, "terminal", fallbackErr)
+		s.writeResponsesUpstreamError(w, fallbackErr)
 		return
 	}
 
 	resp, err := s.forwardResponsesRaw(r.Context(), &route.Channel, r.Method, upstreamPath, r.URL.RawQuery, r.Header.Clone(), body)
 	if err != nil {
 		terminalErr := err
-		if shouldFallbackResponsesToChat(upstreamPath, err) {
+		logResponsesUpstreamFailure(r.Context(), r.URL.Path, false, "native", err)
+		if shouldFallbackResponsesToChat(upstreamPath, fallbackBody, err) {
 			fallbackResp, fallbackErr := s.forwardResponsesViaChatFallbackObserved(r.Context(), &route.Channel, r.Header.Clone(), fallbackBody, err)
 			if fallbackErr == nil && fallbackResp.Response != nil {
 				usage := fallbackResp.Usage
@@ -701,7 +709,8 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 			terminalErr = responsesFallbackTerminalError(err, fallbackErr)
 		}
 		_ = s.releaseQuota(r.Context(), reservation.ReservationId, "upstream error")
-		s.writeError(w, mapUpstreamError(relaybiz.UpstreamStatus(terminalErr)), "upstream service error")
+		logResponsesUpstreamFailure(r.Context(), r.URL.Path, false, "terminal", terminalErr)
+		s.writeResponsesUpstreamError(w, terminalErr)
 		return
 	}
 

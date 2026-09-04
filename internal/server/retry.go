@@ -144,8 +144,20 @@ func mapUpstreamError(statusCode int) int {
 	switch statusCode {
 	case http.StatusBadRequest:
 		return http.StatusBadRequest
+	case http.StatusUnauthorized, http.StatusForbidden:
+		// These statuses describe the relay's upstream credential, not the
+		// client's relay token. Keep them behind a gateway error so callers do
+		// not mistake an operator-side credential failure for their own auth.
+		return http.StatusBadGateway
 	case http.StatusPaymentRequired:
 		return http.StatusPaymentRequired
+	case http.StatusRequestEntityTooLarge:
+		return http.StatusRequestEntityTooLarge
+	case http.StatusUnsupportedMediaType, http.StatusUnprocessableEntity:
+		// Compatible Responses providers use both statuses for deterministic
+		// request-shape rejections. Present them as a client request error after
+		// any safe Responses-to-Chat fallback has been exhausted.
+		return http.StatusBadRequest
 	case http.StatusTooManyRequests:
 		return http.StatusTooManyRequests
 	case http.StatusBadGateway:

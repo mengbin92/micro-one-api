@@ -1143,12 +1143,32 @@ func TestShouldFallbackResponsesToChatIncludesProviderBadRequest(t *testing.T) {
 		StatusCode: http.StatusBadRequest,
 		Body:       []byte(`{"error":{"message":"responses not supported"}}`),
 	}
+	body := []byte(`{"model":"gpt-4o-mini","input":"ping"}`)
 
-	if !shouldFallbackResponsesToChat("/responses", err) {
+	if !shouldFallbackResponsesToChat("/responses", body, err) {
 		t.Fatal("expected responses bad request to fall back to chat completions")
 	}
-	if shouldFallbackResponsesToChat("/responses/input_tokens", err) {
+	if shouldFallbackResponsesToChat("/responses/input_tokens", body, err) {
 		t.Fatal("input_tokens should not fall back to chat completions")
+	}
+}
+
+func TestShouldFallbackResponsesToChatCompatibilityStatusesRequireConvertibleBody(t *testing.T) {
+	convertible := []byte(`{"model":"gpt-4o-mini","input":"ping"}`)
+	notConvertible := []byte(`{"input":"ping"}`)
+	for _, status := range []int{http.StatusUnsupportedMediaType, http.StatusUnprocessableEntity} {
+		err := &relayprovider.UpstreamHTTPError{StatusCode: status, Body: []byte(`{"error":{"message":"unsupported responses request"}}`)}
+		if !shouldFallbackResponsesToChat("/responses", convertible, err) {
+			t.Fatalf("status %d with convertible body should fall back", status)
+		}
+		if shouldFallbackResponsesToChat("/responses", notConvertible, err) {
+			t.Fatalf("status %d with non-convertible body should not fall back", status)
+		}
+	}
+
+	err := &relayprovider.UpstreamHTTPError{StatusCode: http.StatusRequestEntityTooLarge}
+	if shouldFallbackResponsesToChat("/responses", convertible, err) {
+		t.Fatal("413 must not fall back")
 	}
 }
 
@@ -1225,8 +1245,8 @@ func TestHTTPServerResponsesFallbackReturnsChatFailure(t *testing.T) {
 	if got := strings.Join(gotPaths, ","); got != "/v1/responses,/v1/chat/completions" {
 		t.Fatalf("upstream paths = %q", got)
 	}
-	if !strings.Contains(rec.Body.String(), `"message":"upstream service error"`) {
-		t.Fatalf("client error body should stay sanitized: %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"message":"reasoning_content must be passed back"`) {
+		t.Fatalf("client error body should preserve actionable fallback detail: %s", rec.Body.String())
 	}
 	if billingClient.commits != 0 || billingClient.releases != 1 {
 		t.Fatalf("billing commits=%d releases=%d", billingClient.commits, billingClient.releases)

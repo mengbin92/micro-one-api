@@ -11,6 +11,72 @@
 退出码：`0` 无差异；`1` 有差异；`2` 配置/运行错误。无差异时输出
 `RESULT: PASS (no discrepancies)`，可直接接入 cron / CI。
 
+## Canonical usage 固定 48h 验收
+
+v0.27 的 production observe 使用固定窗口，而不是运行时滚动的 `last 48h`：
+
+- CST：`2026-09-02 11:12:00.225`（含）至 `2026-09-04 11:12:00.225`（不含）；
+- MySQL UTC：`2026-09-02 03:12:00.225`（含）至 `2026-09-04 03:12:00.225`（不含）。
+
+窗口满时执行只读脚本：
+
+```bash
+mysql --table < scripts/reconcile/canonical_observe_48h.sql
+```
+
+在生产 Docker Compose 主机上可让 MySQL 密码仅在容器内展开：
+
+```bash
+docker exec -i mysql sh -lc \
+  'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --table' \
+  < scripts/reconcile/canonical_observe_48h.sql
+```
+
+脚本输出以下固定门禁：窗口是否满 48h、v1 契约与语义、来源与定价快照、ledger/claim
+幂等、持久化成本算术、自然流量 delta 解释，以及 billing/log 24 字段多重集一致性。
+`step-explore` 是 v0.23 executor 的已留证受控测试 cohort：原始 mismatch 仍原样报告，
+但只有排除该 cohort 后的自然流量 mismatch 参与 charge 判定。脚本不会输出用户、请求、
+渠道、订阅、token 或金额明细。
+
+同时在 Prometheus 使用相同固定时间范围执行以下查询；值为空按 0 处理：
+
+```promql
+sum(increase(micro_one_api_relay_token_usage_invariant_mismatch_total[48h]))
+sum(increase(micro_one_api_relay_token_usage_parse_anomaly_total[48h]))
+sum(increase(micro_one_api_billing_usage_ambiguous_total[48h]))
+sum(increase(micro_one_api_channel_usage_semantic_source_isolation_total[48h]))
+max(max_over_time(micro_one_api_billing_async_queue_size[48h]))
+```
+
+前四项必须为 0，异步队列当前值与窗口最大值也必须为 0。Prometheus 控制台的查询结束
+时间固定为 `2026-09-04 11:12:00.225 CST`；不要用执行当天的滚动窗口替代。Histogram
+`_sum` 含负数观察值，不能使用
+`increase(micro_one_api_billing_usage_semantics_cost_delta_sum[48h])` 作为金额结论；差额以
+SQL 对 ledger + pricing snapshot 的逐桶重建为准。
+
+SQL 全部 `PASS` 且 Prometheus 门禁为 0 仍不自动授权切换 charge。自然生产 delta 必须有
+原始供应商 usage、供应商账单或等价不可变外部证据抽样；缺少该证据时结论只能是
+“observe 数据面通过，charge 暂缓”。
+
+### 固定月费订阅的供应商证据口径
+
+K3/Kimi 当前由运营确认为固定月费订阅，费用为 `199/月`（本记录不推断币种、是否为每个
+套餐分别计费或是否存在超额费用，这些信息必须以套餐凭证为准）。固定月费本身不能与单笔
+token、请求或 `upstream_cost` 一一对应，因此：
+
+- 不把 `199` 除以请求数/token 数制造伪精确单请求成本；
+- 不把月费写进按日、provider-family token 汇总的 `vendor_bill.csv`；
+- canonical usage 的 subset/exclusive 语义由上游返回的 verified usage 字段、billing/log
+  双写和冻结的用户售价快照验证；
+- `billing_ledgers.cost_audit_status=priced`、非零 `upstream_cost` 只说明系统存在内部配置的
+  成本模型，不代表该金额已被供应商逐笔开票；
+- 供应商证据改为核对套餐主体、账期、固定月费、币种和是否有超额计费。若存在超额计费，
+  超额部分仍必须取得供应商 usage/账单后才能纳入毛利结论。
+
+因此，固定月费账单的逐笔 token 对账记为“不适用”，不再单独阻塞 canonical 用户计费
+语义灰度；但在套餐币种、计费范围和超额规则留证前，不得用 ledger 的内部
+`upstream_cost` 宣称已完成真实供应商毛利对账。
+
 ## 历史漂移一次性修复
 
 升级并完成 080-082 迁移后，使用
