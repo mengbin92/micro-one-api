@@ -231,9 +231,17 @@ services:
     ports:
       - "3000:8000"
     depends_on:
-      - identity-service
-      - channel-service
-      - billing-service
+      # admin-api initializes its system-options and subscription repositories
+      # at startup. Both degrade permanently if MySQL is briefly unavailable,
+      # so wait for the database health gate before starting the container.
+      mysql:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      channel-service:
+        condition: service_started
+      billing-service:
+        condition: service_started
     networks:
       - backend
     restart: unless-stopped
