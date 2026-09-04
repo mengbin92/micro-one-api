@@ -132,8 +132,9 @@ curl --fail http://localhost:3000/healthz
 该 Token 调用 `/v1/chat/completions`。渠道必须指向可控的 mock/upstream；没有可用
 上游时只验证登录、渠道和 Token 创建，不把失败的上游请求当作服务故障。
 
-Lite 启动会先运行一次 `migrate`。`sqlite-permissions` 负责将命名卷交给应用的
-非 root UID；不要手工以 root 写入该卷。首次构建若因 Docker 内存不足被系统杀掉，
+Lite 启动会先运行一次 `migrate`。`sqlite-permissions` 负责将命名卷及已有数据库文件
+交给应用的非 root UID，因此也支持从旧版 root migration 创建的卷升级；不要手工以
+root 写入该卷。首次构建若因 Docker 内存不足被系统杀掉，
 请提高 Docker 内存或按服务串行构建后再执行 `up -d`：
 
 ```bash

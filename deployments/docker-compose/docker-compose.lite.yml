@@ -47,12 +47,12 @@ services:
 
   # Named volumes are created as root by Docker. The application images run
   # as uid 65534, so prepare the shared SQLite directory before the non-root
-  # migration container starts. This is idempotent and runs only once per
-  # compose project/volume creation.
+  # migration container starts. The recursive ownership repair is idempotent,
+  # so it is safe when Compose recreates this one-shot service during upgrades.
   sqlite-permissions:
     image: alpine:3.20
     container_name: micro-one-api-sqlite-permissions
-    command: ["sh", "-c", "mkdir -p /data && chown 65534:65534 /data && chmod 0770 /data"]
+    command: ["sh", "-c", "mkdir -p /data && chown -R 65534:65534 /data && chmod 0770 /data"]
     volumes:
       - sqlite_data:/data:rw
     networks:

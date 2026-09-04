@@ -323,6 +323,27 @@ func (p *RelayPlan) BaseModel() string {
 	return strings.TrimSpace(p.ResolvedModel)
 }
 
+// ModelHealthID returns the client-facing model identifier for passive health
+// aggregation. BaseModel cannot be used for this dimension because it already
+// contains the global model mapping (for example gpt-4o -> a dated upstream
+// model). Candidate and selection metadata both retain the pre-mapping name.
+func (p *RelayPlan) ModelHealthID() string {
+	if p == nil {
+		return ""
+	}
+	if p.Candidates != nil {
+		if model := RelayModelName(p.Candidates.Model); model != "" {
+			return model
+		}
+	}
+	if p.SelectionEvent != nil {
+		if model := RelayModelName(p.SelectionEvent.Model); model != "" {
+			return model
+		}
+	}
+	return RelayModelName(p.BaseModel())
+}
+
 // RelayUsecase orchestrates the relay planning flow:
 // model mapping → auth → model validation → channel selection.
 type RelayUsecase struct {
@@ -1290,7 +1311,7 @@ func (uc *RelayUsecase) RecordRoutingSourceHealth(ctx context.Context, ch *Chann
 // remain best-effort and do not alter routing eligibility. The shared
 // disposition keeps client cancellations and policy rejections from poisoning
 // an otherwise healthy upstream model.
-func (uc *RelayUsecase) RecordRoutingSourceModelHealth(ctx context.Context, ch *Channel, model string, relayErr error, responseTime int64) {
+func (uc *RelayUsecase) RecordRoutingSourceModelHealth(ctx context.Context, ch *Channel, modelID, baseModel string, relayErr error, responseTime int64) {
 	if uc == nil || uc.channel == nil || ch == nil {
 		return
 	}
@@ -1313,7 +1334,7 @@ func (uc *RelayUsecase) RecordRoutingSourceModelHealth(ctx context.Context, ch *
 	if relayErr != nil {
 		errMessage = relayErr.Error()
 	}
-	_ = recorder.RecordModelHealth(ctx, sourceKind, sourceID, RelayModelName(model), ResolveChannelModel(ch, model), success, errMessage, responseTime)
+	_ = recorder.RecordModelHealth(ctx, sourceKind, sourceID, RelayModelName(modelID), ResolveChannelModel(ch, baseModel), success, errMessage, responseTime)
 }
 
 // ResolveModel returns the upstream model name for the given client model name.

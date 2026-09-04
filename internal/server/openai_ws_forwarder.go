@@ -578,7 +578,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		if err != nil {
 			responseTime := time.Since(attemptStartedAt).Milliseconds()
 			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, err.Error(), responseTime)
-			s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.BaseModel(), err, responseTime)
+			s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.ModelHealthID(), plan.BaseModel(), err, responseTime)
 			// Dial failed. Try failover if we haven't exhausted switches.
 			// Capture the failed channel id before maybeFailoverChannel mutates
 			// currentChannel, otherwise the log records the channel we switched to.
@@ -614,6 +614,13 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// Per-turn usage logging / quota commit. Closure captures the current
 		// channel so failover switches log against the right channel.
 		onTurnComplete := func(turn openAIWSTurnResult) {
+			if record, success := openAIWSTerminalModelHealth(turn.terminalEventType); record {
+				var healthErr error
+				if !success {
+					healthErr = &relaybiz.RetryableError{Status: http.StatusInternalServerError, Err: fmt.Errorf("upstream terminal event %s", turn.terminalEventType)}
+				}
+				s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.ModelHealthID(), plan.BaseModel(), healthErr, turn.duration.Milliseconds())
+			}
 			usage := turn.usage
 			actualTotal := usage.totalTokens
 			if actualTotal <= 0 {
@@ -714,11 +721,15 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		if relayExit != nil && relayExit.err != nil && !relayExit.graceful {
 			responseTime := time.Since(attemptStartedAt).Milliseconds()
 			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, relayExit.err.Error(), responseTime)
-			s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.BaseModel(), relayExit.err, responseTime)
+			// A connection error before any terminal turn is attributable to the
+			// current model route. After completed turns it may just be an idle
+			// connection closing, so do not turn that into a false model outage.
+			if turnCommits == 0 {
+				s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.ModelHealthID(), plan.BaseModel(), relayExit.err, responseTime)
+			}
 		} else {
 			responseTime := time.Since(attemptStartedAt).Milliseconds()
 			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, true, "", responseTime)
-			s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.BaseModel(), nil, responseTime)
 		}
 
 		// Failover decision: only retry if nothing was written downstream yet
@@ -778,6 +789,22 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 		outcome.finalChannel = currentChannel
 		return outcome
+	}
+}
+
+// openAIWSTerminalModelHealth classifies a completed Responses WebSocket turn.
+// Success/failure is recorded per terminal turn, rather than once per
+// long-lived connection, so counts and latency remain request-shaped. Client
+// cancellation and incomplete output are neutral because they do not prove a
+// model-route outage.
+func openAIWSTerminalModelHealth(eventType string) (record, success bool) {
+	switch strings.TrimSpace(eventType) {
+	case "response.completed", "response.done":
+		return true, true
+	case "response.failed":
+		return true, false
+	default:
+		return false, false
 	}
 }
 

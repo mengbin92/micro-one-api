@@ -200,6 +200,11 @@ func isUpstreamModelUnavailable(err error) bool {
 	if !errors.As(err, &upstreamErr) {
 		return false
 	}
+	// A concrete upstream 404 means this route cannot serve the requested
+	// model even when the vendor does not return a recognizable error body.
+	if upstreamErr.StatusCode == 404 {
+		return true
+	}
 	body := strings.ToLower(string(upstreamErr.Body))
 	return strings.Contains(body, "service do not have healthy model") ||
 		strings.Contains(body, "no healthy model")
@@ -420,7 +425,7 @@ func (e *RetryExecutor) ExecuteWithCandidates(
 		}
 		return err
 	}
-	return e.execute(ctx, group, model, initialChannel, plan.Candidates, wrapped)
+	return e.execute(ctx, group, model, plan.ModelHealthID(), initialChannel, plan.Candidates, wrapped)
 }
 
 func (e *RetryExecutor) ExecuteWithInitialChannel(
@@ -429,12 +434,12 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 	initialChannel *Channel,
 	fn func(ctx context.Context, ch *Channel) error,
 ) *ExecuteResult {
-	return e.execute(ctx, group, model, initialChannel, nil, fn)
+	return e.execute(ctx, group, model, model, initialChannel, nil, fn)
 }
 
 func (e *RetryExecutor) execute(
 	ctx context.Context,
-	group, model string,
+	group, model, healthModel string,
 	initialChannel *Channel,
 	candidates *RoutingCandidateList,
 	fn func(ctx context.Context, ch *Channel) error,
@@ -464,7 +469,7 @@ func (e *RetryExecutor) execute(
 		if pendingHealth == nil {
 			return
 		}
-		e.recordHealth(ctx, model, pendingHealth.channel, pendingHealth.channelOK, pendingHealth.modelRecord, pendingHealth.modelOK, pendingHealth.message, pendingHealth.responseTime)
+		e.recordHealth(ctx, healthModel, model, pendingHealth.channel, pendingHealth.channelOK, pendingHealth.modelRecord, pendingHealth.modelOK, pendingHealth.message, pendingHealth.responseTime)
 		pendingHealth = nil
 	}
 	queueHealth := func(ch *Channel, err error, responseTime int64) {
@@ -740,7 +745,7 @@ func isTimeoutError(err error) bool {
 	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded")
 }
 
-func (e *RetryExecutor) recordHealth(ctx context.Context, model string, ch *Channel, channelOK, modelRecord, modelOK bool, message string, responseTime int64) {
+func (e *RetryExecutor) recordHealth(ctx context.Context, modelID, baseModel string, ch *Channel, channelOK, modelRecord, modelOK bool, message string, responseTime int64) {
 	if e.selector == nil || ch == nil {
 		return
 	}
@@ -765,7 +770,7 @@ func (e *RetryExecutor) recordHealth(ctx context.Context, model string, ch *Chan
 	if sourceID <= 0 {
 		return
 	}
-	_ = recorder.RecordModelHealth(ctx, sourceKind, sourceID, RelayModelName(model), ResolveChannelModel(ch, model), modelOK, message, responseTime)
+	_ = recorder.RecordModelHealth(ctx, sourceKind, sourceID, RelayModelName(modelID), ResolveChannelModel(ch, baseModel), modelOK, message, responseTime)
 }
 
 // modelHealthDisposition excludes caller/local failures and records only

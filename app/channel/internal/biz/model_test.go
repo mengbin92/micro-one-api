@@ -723,3 +723,25 @@ func TestApplyModelHealthOutcome_DegradesAndRecovers(t *testing.T) {
 		t.Fatalf("average latency = %d, want 125", state.AvgLatencyMs)
 	}
 }
+
+func TestApplyModelHealthOutcome_KeepsExactRunningAverage(t *testing.T) {
+	state := &ModelHealthState{}
+	for index, latency := range []int64{1, 2, 3} {
+		ApplyModelHealthOutcome(state, &ModelHealthOutcome{
+			Success: true, ResponseTimeMs: latency, CheckedAt: int64(index + 1),
+		})
+	}
+	if state.AvgLatencyMs != 2 {
+		t.Fatalf("average latency = %d, want 2", state.AvgLatencyMs)
+	}
+}
+
+func TestApplyModelHealthOutcome_SeedsAccumulatorForExistingSnapshot(t *testing.T) {
+	state := &ModelHealthState{RequestCount: 4, AvgLatencyMs: 125}
+	ApplyModelHealthOutcome(state, &ModelHealthOutcome{
+		Success: true, ResponseTimeMs: 500, CheckedAt: 5,
+	})
+	if state.TotalLatencyMs != 1_000 || state.AvgLatencyMs != 200 {
+		t.Fatalf("latency state = total %d, average %d; want total 1000, average 200", state.TotalLatencyMs, state.AvgLatencyMs)
+	}
+}

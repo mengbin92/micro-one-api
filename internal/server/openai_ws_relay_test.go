@@ -42,6 +42,30 @@ func TestShouldParseOpenAIWSUsage(t *testing.T) {
 	}
 }
 
+func TestOpenAIWSTerminalModelHealth(t *testing.T) {
+	tests := []struct {
+		event   string
+		record  bool
+		success bool
+	}{
+		{event: "response.completed", record: true, success: true},
+		{event: "response.done", record: true, success: true},
+		{event: "response.failed", record: true, success: false},
+		{event: "response.incomplete"},
+		{event: "response.cancelled"},
+		{event: "response.canceled"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.event, func(t *testing.T) {
+			record, success := openAIWSTerminalModelHealth(tt.event)
+			if record != tt.record || success != tt.success {
+				t.Fatalf("openAIWSTerminalModelHealth(%q) = (%v, %v), want (%v, %v)", tt.event, record, success, tt.record, tt.success)
+			}
+		})
+	}
+}
+
 func TestParseOpenAIWSFrameUsage(t *testing.T) {
 	t.Run("input_tokens aliases", func(t *testing.T) {
 		frame := map[string]any{

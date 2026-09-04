@@ -2,6 +2,9 @@ package data
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	"micro-one-api/app/channel/internal/biz"
@@ -125,7 +128,8 @@ func setupModelTestDB(t *testing.T) *Repository {
 			model_id TEXT NOT NULL, upstream_model_id TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'healthy', request_count INTEGER NOT NULL DEFAULT 0,
 			success_count INTEGER NOT NULL DEFAULT 0, failure_count INTEGER NOT NULL DEFAULT 0,
-			consecutive_failures INTEGER NOT NULL DEFAULT 0, avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+			consecutive_failures INTEGER NOT NULL DEFAULT 0, total_latency_ms INTEGER NOT NULL DEFAULT 0,
+			avg_latency_ms INTEGER NOT NULL DEFAULT 0,
 			last_error TEXT, last_checked_at INTEGER NOT NULL DEFAULT 0,
 			last_success_at INTEGER NOT NULL DEFAULT 0, last_failure_at INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0
@@ -744,4 +748,68 @@ func TestRepository_RecordAndListModelHealth(t *testing.T) {
 		require.Equal(t, int64(1), total)
 		assert.Equal(t, int64(125), states[0].AvgLatencyMs)
 	}
+}
+
+func TestIsRetryableModelHealthWrite(t *testing.T) {
+	for _, message := range []string{
+		"Error 1062: Duplicate entry",
+		"Error 1213 (40001): Deadlock found when trying to get lock",
+		"ERROR: could not serialize access due to concurrent update (SQLSTATE 40001)",
+		"database is locked",
+		"database table is locked: model_health_states",
+	} {
+		assert.True(t, isRetryableModelHealthWrite(errors.New(message)), message)
+	}
+	assert.False(t, isRetryableModelHealthWrite(errors.New("connection refused")))
+}
+
+func TestRepository_RecordModelHealthConcurrentFirstWrite(t *testing.T) {
+	dsn := filepath.Join(t.TempDir(), "model-health.db") + "?_busy_timeout=5000&_journal_mode=WAL"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE model_health_states (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source_kind TEXT NOT NULL, source_id INTEGER NOT NULL,
+			model_id TEXT NOT NULL, upstream_model_id TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'healthy', request_count INTEGER NOT NULL DEFAULT 0,
+			success_count INTEGER NOT NULL DEFAULT 0, failure_count INTEGER NOT NULL DEFAULT 0,
+			consecutive_failures INTEGER NOT NULL DEFAULT 0, total_latency_ms INTEGER NOT NULL DEFAULT 0,
+			avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+			last_error TEXT, last_checked_at INTEGER NOT NULL DEFAULT 0,
+			last_success_at INTEGER NOT NULL DEFAULT 0, last_failure_at INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(source_kind, source_id, model_id, upstream_model_id)
+		)
+	`).Error)
+	repo := &Repository{db: db}
+
+	const writers = 8
+	start := make(chan struct{})
+	errs := make(chan error, writers)
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(checkedAt int64) {
+			defer wg.Done()
+			<-start
+			errs <- repo.RecordModelHealth(context.Background(), &biz.ModelHealthOutcome{
+				SourceKind: "channel", SourceID: 1, ModelID: "gpt-4o", UpstreamModelID: "gpt-4o",
+				Success: true, ResponseTimeMs: 100, CheckedAt: checkedAt,
+			})
+		}(int64(i + 1))
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	states, total, err := repo.ListModelHealth(context.Background(), 1, writers, biz.ListModelHealthFilter{})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, states, 1)
+	assert.Equal(t, int64(writers), states[0].RequestCount)
+	assert.Equal(t, int64(writers), states[0].SuccessCount)
 }

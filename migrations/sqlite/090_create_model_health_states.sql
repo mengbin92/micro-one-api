@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS model_health_states (
   success_count INTEGER NOT NULL DEFAULT 0,
   failure_count INTEGER NOT NULL DEFAULT 0,
   consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  total_latency_ms INTEGER NOT NULL DEFAULT 0,
   avg_latency_ms INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
   last_checked_at INTEGER NOT NULL DEFAULT 0,

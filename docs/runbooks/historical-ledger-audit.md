@@ -10,7 +10,7 @@ billing RPC、不生成退款或冲正。历史行缺少当时的 usage/价格�
 在有权限的 MySQL 客户端执行：
 
 ```bash
-mysql --batch --raw < scripts/reconcile/historical_ledger_audit.sql \
+mysql --batch < scripts/reconcile/historical_ledger_audit.sql \
   > historical-ledger-audit.tsv
 ```
 
@@ -27,15 +27,16 @@ python3 scripts/reconcile/format_historical_ledger_audit.py --format json \
 
 ```bash
 docker exec -i mysql sh -lc \
-  'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --batch --raw' \
+  'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --batch' \
   < scripts/reconcile/historical_ledger_audit.sql \
   > historical-ledger-audit.tsv
 ```
 
 需要限定窗口时，先在 SQL 文件开头把 `@audit_start` / `@audit_end` 设置为 UTC
-`DATETIME(3)`；结束时间为开区间。导出后按 `ledger_id`、`created_at` 排序的顺序保持
+`DATETIME(3)`；结束时间为开区间。导出后按 `created_at`、`ledger_id` 排序的顺序保持
 不变，便于重复运行后做 diff。JSON/CSV 转换应在受控审计环境完成，并保留原始 TSV
-作为不可变输入；不要把用户、token 或渠道凭证加入导出。
+作为不可变输入；不要加 `--raw`，否则模型名中的制表符或换行会破坏 TSV 行列边界。
+不要把用户、token 或渠道凭证加入导出。
 
 ## 分类与人工复核
 
@@ -43,11 +44,12 @@ docker exec -i mysql sh -lc \
 |---|---|---|
 | `verified` | v1 verified usage、有效来源、存在 immutable pricing snapshot | 可进入供应商证据抽样；仍需外部账单/usage 才能下毛利结论 |
 | `candidate` | v1 usage 可解释，但缺少来源、定价快照或仍为 estimated | 补证据或保持 observe；不得自动改账 |
-| `unknown` | legacy、ambiguous 或结构不完整 | 仅记录并归档；不得按现价重算 |
+| `unknown` | legacy、ambiguous、usage contract 不受支持或 canonical 数据不完整 | 仅记录并归档；不得按现价重算 |
 
 重点字段包括来源 (`source_kind`/`upstream_model_id`)、usage contract 与 parse 状态、五个
 canonical 成本桶、`upstream_cost`、`cost_audit_status`、pricing hash、重建差额
-`candidate_delta_quota` 和 `evidence_source`。差额是候选证据，不是授权冲正金额。
+`candidate_delta_quota` 和 `evidence_source`。差额只为 canonical 结构可用且能关联价格快照的
+`verified`/`candidate` 行计算；`unknown` 行保持 `NULL`。差额是候选证据，不是授权冲正金额。
 
 只有在 `verified` 行完成供应商原始 usage/账单抽样、人工批准并生成单独的 reversal
 草案后，才可讨论后续账务动作；本脚本本身永远不执行该动作。

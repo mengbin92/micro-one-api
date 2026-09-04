@@ -61,6 +61,8 @@ SELECT
   CASE
     WHEN l.usage_parse_status = 'legacy' THEN 'legacy_usage'
     WHEN l.usage_parse_status = 'ambiguous' THEN 'ambiguous_usage'
+    WHEN COALESCE(l.usage_contract_version, 0) <> 1 THEN 'unsupported_usage_contract'
+    WHEN COALESCE(l.canonical_present, 0) <> 1 THEN 'missing_canonical_usage'
     WHEN l.source_kind NOT IN ('channel', 'subscription')
       OR l.upstream_model_id = '' THEN 'missing_source'
     WHEN l.pricing_config_hash = '' OR s.config_hash IS NULL
@@ -70,7 +72,10 @@ SELECT
     ELSE 'insufficient_evidence'
   END AS evidence_source,
   CASE
-    WHEN s.config_hash IS NULL THEN NULL
+    WHEN COALESCE(l.usage_contract_version, 0) <> 1
+      OR COALESCE(l.usage_parse_status, '') NOT IN ('verified', 'estimated')
+      OR COALESCE(l.canonical_present, 0) <> 1
+      OR s.config_hash IS NULL THEN NULL
     ELSE (
       ROUND(l.uncached_input_tokens * s.input_price * s.group_ratio * 10000)
       + ROUND(l.cache_read_tokens * s.cache_read_price * s.group_ratio * 10000)

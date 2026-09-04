@@ -10,9 +10,10 @@
 ## 变更
 
 1. **模型健康被动监测**：按来源类型/来源 ID、请求模型和上游模型记录终态健康，避免
-   不同模型或不同渠道之间相互覆盖；仅在上游终态错误时更新健康状态。
+   不同模型或不同渠道之间相互覆盖；成功和可归因的上游失败都会更新健康状态。
 2. **Lite Compose 可验收**：SQLite 命名卷由一次性权限初始化服务交给非 root 应用 UID，
-   提供无 MySQL 的本地 Quickstart 和健康检查路径。
+   包括旧版 root migration 已创建的数据库文件，并提供无 MySQL 的本地 Quickstart 和
+   健康检查路径。
 3. **历史账本只读审计**：输出来源、usage contract、五个 canonical 成本桶、价格快照、
    候选差额和证据分类；不写账、不调用 billing RPC。
 4. **canonical 48 小时验收**：固定 CST/UTC 窗口、SQL 与 Prometheus 门禁、外部供应商
@@ -36,9 +37,11 @@
 ## 完整变更日志（草案）
 
 - `feat: add passive model health monitoring`
-- `fix(deploy): initialize Lite SQLite volume permissions`
-- `feat(reconcile): add read-only historical ledger audit`
-- `docs: add canonical usage 48h acceptance runbook`
+- `refactor(web): reorganize admin workspace navigation`
+- `feat(reconcile): add v0.27 observe audit materials`
+- `docs(v0.27): record observe preparation status`
+- `docs(release): include model health migration`
+- `chore: integrate shared debugging skill`
 
 正式发布前必须依据观测结论补齐日期、上一版本链接、兼容性说明、升级步骤、验证结果，
 再按仓库发布流程更新 `CHANGELOG.md` 与 `README.md` 并打标签。

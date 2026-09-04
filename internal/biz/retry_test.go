@@ -161,6 +161,24 @@ func TestRetryExecutor_RecordsModelSpecificOutageWithoutPoisoningChannel(t *test
 	assert.Equal(t, []modelHealthEvent{{"channel", 7, "Kimi-K3", "kimi-k3-prod", false}}, selector.modelHealth)
 }
 
+func TestRetryExecutor_RecordsUpstreamModelNotFound(t *testing.T) {
+	selector := &mockChannelSelector{channels: []*Channel{{ID: 7}}}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+	errModelNotFound := &relayprovider.UpstreamHTTPError{
+		StatusCode: 404,
+		Body:       []byte(`{"error":{"code":"model_not_found","message":"model not found"}}`),
+	}
+
+	result := exec.Execute(context.Background(), "default", "gpt-4o", func(context.Context, *Channel) error {
+		return errModelNotFound
+	})
+
+	assert.Error(t, result.Err)
+	assert.Len(t, selector.healthEvents, 1)
+	assert.True(t, selector.healthEvents[0].success, "model-specific 404 must stay neutral for channel health")
+	assert.Equal(t, []modelHealthEvent{{"channel", 7, "gpt-4o", "gpt-4o", false}}, selector.modelHealth)
+}
+
 func TestRetryExecutor_DoesNotRecordClientErrorAsModelHealth(t *testing.T) {
 	selector := &mockChannelSelector{channels: []*Channel{{ID: 8}}}
 	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
@@ -170,6 +188,26 @@ func TestRetryExecutor_DoesNotRecordClientErrorAsModelHealth(t *testing.T) {
 	})
 
 	assert.Empty(t, selector.modelHealth)
+}
+
+func TestRetryExecutor_RecordsClientModelBeforeGlobalMapping(t *testing.T) {
+	selector := &mockChannelSelector{}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+	plan := &RelayPlan{
+		Auth:        &AuthSnapshot{Group: "default"},
+		Channel:     &Channel{ID: 9},
+		GlobalModel: "gpt-4o-2024-08-06",
+		Candidates: &RoutingCandidateList{
+			Model: "gpt-4o",
+		},
+	}
+
+	result := exec.ExecuteWithCandidates(context.Background(), plan, 0, func(context.Context, *Channel) error {
+		return nil
+	})
+
+	assert.NoError(t, result.Err)
+	assert.Equal(t, []modelHealthEvent{{"channel", 9, "gpt-4o", "gpt-4o-2024-08-06", true}}, selector.modelHealth)
 }
 
 func TestRetryExecutor_Execute_Success(t *testing.T) {

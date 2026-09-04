@@ -675,6 +675,44 @@ func TestRelayPlan_BaseModel(t *testing.T) {
 	}
 }
 
+func TestRelayPlan_ModelHealthID(t *testing.T) {
+	tests := []struct {
+		name string
+		plan *RelayPlan
+		want string
+	}{
+		{
+			name: "candidate model wins",
+			plan: &RelayPlan{
+				GlobalModel: "gpt-4o-2024-08-06",
+				Candidates:  &RoutingCandidateList{Model: "gpt-4o"},
+			},
+			want: "gpt-4o",
+		},
+		{
+			name: "selection model supports websocket plans",
+			plan: &RelayPlan{
+				GlobalModel:    "gpt-4o-2024-08-06",
+				SelectionEvent: &SelectionEvent{Model: "gpt-4o"},
+			},
+			want: "gpt-4o",
+		},
+		{
+			name: "global model is compatibility fallback",
+			plan: &RelayPlan{GlobalModel: " gpt-4o-2024-08-06 "},
+			want: "gpt-4o-2024-08-06",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.plan.ModelHealthID(); got != tt.want {
+				t.Fatalf("ModelHealthID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRelayUsecase_ResolveModel(t *testing.T) {
 	mapper := NewModelMapperForTest(map[string]*ModelEntry{"gpt-4o": {ActualName: "gpt-4o-2024-08-06"}})
 	uc := NewRelayUsecase(testIdentityClient{}, testChannelClient{}, mapper, nil)

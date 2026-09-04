@@ -150,6 +150,7 @@ type ModelHealthState struct {
 	SuccessCount        int64
 	FailureCount        int64
 	ConsecutiveFailures int32
+	TotalLatencyMs      int64
 	AvgLatencyMs        int64
 	LastError           string
 	LastCheckedAt       int64
@@ -189,10 +190,16 @@ func ApplyModelHealthOutcome(state *ModelHealthState, outcome *ModelHealthOutcom
 	if checkedAt <= 0 {
 		checkedAt = time.Now().Unix()
 	}
-	previousRequests := state.RequestCount
+	// Seed the exact accumulator when reading a snapshot written before the
+	// total-latency column existed. This preserves its historical average on
+	// the first post-upgrade observation.
+	if state.TotalLatencyMs == 0 && state.RequestCount > 0 && state.AvgLatencyMs > 0 {
+		state.TotalLatencyMs = state.AvgLatencyMs * state.RequestCount
+	}
 	state.RequestCount++
 	if outcome.ResponseTimeMs >= 0 {
-		state.AvgLatencyMs = (state.AvgLatencyMs*previousRequests + outcome.ResponseTimeMs) / state.RequestCount
+		state.TotalLatencyMs += outcome.ResponseTimeMs
+		state.AvgLatencyMs = state.TotalLatencyMs / state.RequestCount
 	}
 	state.LastCheckedAt = checkedAt
 	state.UpdatedAt = checkedAt

@@ -107,6 +107,7 @@ type modelHealthStateModel struct {
 	SuccessCount        int64  `gorm:"column:success_count"`
 	FailureCount        int64  `gorm:"column:failure_count"`
 	ConsecutiveFailures int32  `gorm:"column:consecutive_failures"`
+	TotalLatencyMs      int64  `gorm:"column:total_latency_ms"`
 	AvgLatencyMs        int64  `gorm:"column:avg_latency_ms"`
 	LastError           string `gorm:"column:last_error"`
 	LastCheckedAt       int64  `gorm:"column:last_checked_at"`
@@ -285,8 +286,9 @@ func newModelHealthStatePO(do *biz.ModelHealthState) *modelHealthStateModel {
 		ModelID: do.ModelID, UpstreamModelID: do.UpstreamModelID,
 		Status: do.Status, RequestCount: do.RequestCount,
 		SuccessCount: do.SuccessCount, FailureCount: do.FailureCount,
-		ConsecutiveFailures: do.ConsecutiveFailures, AvgLatencyMs: do.AvgLatencyMs,
-		LastError: do.LastError, LastCheckedAt: do.LastCheckedAt,
+		ConsecutiveFailures: do.ConsecutiveFailures, TotalLatencyMs: do.TotalLatencyMs,
+		AvgLatencyMs: do.AvgLatencyMs,
+		LastError:    do.LastError, LastCheckedAt: do.LastCheckedAt,
 		LastSuccessAt: do.LastSuccessAt, LastFailureAt: do.LastFailureAt,
 		CreatedAt: do.CreatedAt, UpdatedAt: do.UpdatedAt,
 	}
@@ -298,8 +300,9 @@ func toModelHealthStateDO(po *modelHealthStateModel) *biz.ModelHealthState {
 		ModelID: po.ModelID, UpstreamModelID: po.UpstreamModelID,
 		Status: po.Status, RequestCount: po.RequestCount,
 		SuccessCount: po.SuccessCount, FailureCount: po.FailureCount,
-		ConsecutiveFailures: po.ConsecutiveFailures, AvgLatencyMs: po.AvgLatencyMs,
-		LastError: po.LastError, LastCheckedAt: po.LastCheckedAt,
+		ConsecutiveFailures: po.ConsecutiveFailures, TotalLatencyMs: po.TotalLatencyMs,
+		AvgLatencyMs: po.AvgLatencyMs,
+		LastError:    po.LastError, LastCheckedAt: po.LastCheckedAt,
 		LastSuccessAt: po.LastSuccessAt, LastFailureAt: po.LastFailureAt,
 		CreatedAt: po.CreatedAt, UpdatedAt: po.UpdatedAt,
 	}
@@ -911,7 +914,17 @@ func (r *Repository) RecordModelHealth(ctx context.Context, outcome *biz.ModelHe
 	if r.db == nil {
 		return r.recordModelHealthMemory(outcome)
 	}
-	for attempt := 0; attempt < 2; attempt++ {
+	// SQLite has no row-level SELECT ... FOR UPDATE and returns SQLITE_BUSY
+	// immediately when several relay outcomes try to upgrade read transactions
+	// into writers. Lite mode has one channel-service repository, so serialize
+	// this small read-modify-write section in-process to avoid dropping data.
+	if r.db.Dialector.Name() == "sqlite" {
+		r.lock.Lock()
+		defer r.lock.Unlock()
+	}
+	var lastErr error
+	const maxAttempts = 5
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			var po modelHealthStateModel
 			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
@@ -933,11 +946,22 @@ func (r *Repository) RecordModelHealth(ctx context.Context, outcome *biz.ModelHe
 			biz.ApplyModelHealthOutcome(state, outcome)
 			return tx.Save(newModelHealthStatePO(state)).Error
 		})
-		if err == nil || !isDuplicateEntry(err) {
+		if err == nil {
+			return nil
+		}
+		if !isRetryableModelHealthWrite(err) {
 			return err
 		}
+		lastErr = err
+		if attempt+1 < maxAttempts {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(1<<attempt) * 5 * time.Millisecond):
+			}
+		}
 	}
-	return fmt.Errorf("record model health: concurrent insert conflict")
+	return fmt.Errorf("record model health after concurrent write retries: %w", lastErr)
 }
 
 func (r *Repository) ListModelHealth(ctx context.Context, page, pageSize int32, filter biz.ListModelHealthFilter) ([]*biz.ModelHealthState, int64, error) {
@@ -985,6 +1009,21 @@ func isDuplicateEntry(err error) bool {
 	return strings.Contains(msg, "duplicate entry") ||
 		strings.Contains(msg, "unique constraint") ||
 		strings.Contains(msg, "constraint failed: unique")
+}
+
+func isRetryableModelHealthWrite(err error) bool {
+	if isDuplicateEntry(err) {
+		return true
+	}
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "deadlock found") ||
+		strings.Contains(msg, "lock wait timeout") ||
+		strings.Contains(msg, "could not serialize access") ||
+		strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked")
 }
 
 // ── In-memory fallback implementations ─────────────────────────────────────
