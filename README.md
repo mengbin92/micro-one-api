@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.26.5 发布公告](./docs/releases/release-v0.26.5.md)（Responses 用量来源归因修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.5)
+> 📣 **最新发布**：[v0.26.6 发布公告](./docs/releases/release-v0.26.6.md)（Canonical Charge 精确门禁、Responses 错误语义与部署安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.6)
 
 ## 功能概览
 
@@ -180,6 +180,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.26.6
+
+v0.26.6 是 v0.26.5 之后的 **PATCH 计费与生产可靠性修复版本**：canonical charge 新增按订阅账号与上游模型精确匹配、默认 fail-close 的白名单，Responses 上游 4xx 不再统一误报 502，Compose 在数据库 readiness 后再启动 admin，并升级 Go/Web 安全依赖。**无公共 API / proto 变更、无新增数据库迁移**；新增可选配置 `BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST`。当前生产已经运行修复等价镜像，发布 tag 不重启正在执行 72 小时 charge 验收的容器。详见 [docs/releases/release-v0.26.6.md](./docs/releases/release-v0.26.6.md)。
 
 ### 升级到 v0.26.5
 
