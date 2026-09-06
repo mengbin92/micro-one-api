@@ -101,11 +101,14 @@ func splitModels(models string) []string {
 // ChannelAdapter wraps a gRPC ChannelServiceClient to implement biz.ChannelClient.
 type ChannelAdapter struct {
 	client channelv1.ChannelServiceClient
+	// modelHealth moves the passive RecordModelHealth RPC off the request
+	// goroutine; see modelHealthQueue. Other methods stay synchronous.
+	modelHealth *modelHealthQueue
 }
 
 // NewChannelAdapter creates a new ChannelAdapter.
 func NewChannelAdapter(client channelv1.ChannelServiceClient) *ChannelAdapter {
-	return &ChannelAdapter{client: client}
+	return &ChannelAdapter{client: client, modelHealth: newModelHealthQueue(client)}
 }
 
 func (a *ChannelAdapter) Resolve(ctx context.Context, channelID int64) (*relaycredential.SubscriptionAccountMetadata, error) {
@@ -270,31 +273,46 @@ func (a *ChannelAdapter) RecordChannelHealth(ctx context.Context, channelID int6
 	return nil
 }
 
-func (a *ChannelAdapter) RecordModelHealth(ctx context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, message string, responseTime int64) (err error) {
+// RecordModelHealth enqueues a passive model-health sample for background
+// submission. It returns nil on acceptance; the caller treats the recording as
+// fire-and-forget anyway (best-effort telemetry), and queue-full drops are
+// counted rather than surfaced as relay-path errors. Use FlushModelHealth /
+// Close when deterministic submission is required.
+func (a *ChannelAdapter) RecordModelHealth(_ context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, message string, responseTime int64) error {
 	if a == nil || a.client == nil {
 		return nil
 	}
-	// Model health is an additive, best-effort RPC. Some lightweight callers
-	// embed ChannelServiceClient only to fake the older required methods; the
-	// newly promoted method then panics through a nil embedded interface. Treat
-	// that exactly like an unavailable RPC so rolling upgrades and legacy fakes
-	// cannot affect request forwarding.
-	defer func() {
-		if recover() != nil {
-			err = errors.New("model health RPC unavailable")
-		}
-	}()
-	reply, err := a.client.RecordModelHealth(ctx, &channelv1.RecordModelHealthRequest{
+	if a.modelHealth == nil {
+		a.modelHealth = newModelHealthQueue(a.client)
+	}
+	a.modelHealth.record(&channelv1.RecordModelHealthRequest{
 		SourceKind: sourceKind, SourceId: sourceID, ModelId: modelID,
 		UpstreamModelId: upstreamModelID, Success: success, Error: message,
 		ResponseTime: responseTime,
 	})
-	if err != nil {
-		return err
+	return nil
+}
+
+// FlushModelHealth blocks until every model-health sample enqueued so far has
+// been submitted to the channel service.
+func (a *ChannelAdapter) FlushModelHealth(ctx context.Context) error {
+	if a == nil || a.modelHealth == nil {
+		return nil
 	}
-	if reply != nil && !reply.GetSuccess() {
-		return errors.New(reply.GetMessage())
+	return a.modelHealth.flush(ctx)
+}
+
+// ModelHealthStats reports submitted / dropped / failed sample counts.
+func (a *ChannelAdapter) ModelHealthStats() (submitted, dropped, failed int64) {
+	if a == nil || a.modelHealth == nil {
+		return 0, 0, 0
 	}
+	return a.modelHealth.stats()
+}
+
+// Close stops accepting model-health samples and drains the queue.
+func (a *ChannelAdapter) Close() error {
+	a.modelHealth.close(3 * time.Second)
 	return nil
 }
 

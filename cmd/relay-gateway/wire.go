@@ -461,6 +461,11 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 			refreshTask.Stop()
 		}
 		stopBlockerReporter()
+		// Drain queued passive model-health samples before the gRPC
+		// connections go away.
+		if channelAdapter != nil {
+			_ = channelAdapter.Close()
+		}
 		if authCache != nil {
 			_ = authCache.Close()
 		}
