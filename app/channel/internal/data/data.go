@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"micro-one-api/domain/routing"
+
 	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
@@ -363,7 +365,7 @@ func (r *Repository) listUnrestrictedChannelsByGroupMemory(_ context.Context, gr
 		if channel.RestrictModels {
 			continue
 		}
-		if slices.Contains(biz.SplitCSV(channel.Group), group) {
+		if routing.ContainsGroup(channel.Group, group) {
 			cloned := *channel
 			cloned.Models = append([]string(nil), channel.Models...)
 			result = append(result, &cloned)
@@ -424,7 +426,7 @@ func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group
 		if platform != "" && account.Platform != platform {
 			continue
 		}
-		for _, accountGroup := range biz.SplitCSV(account.Group) {
+		for _, accountGroup := range routing.Groups(account.Group) {
 			if accountGroup != group {
 				continue
 			}
@@ -1778,7 +1780,7 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 				continue
 			}
 			channel, ok := r.channels[mapping.ChannelID]
-			if !ok || channel.Status != biz.ChannelStatusEnabled || !csvContains(channel.Group, group) {
+			if !ok || channel.Status != biz.ChannelStatusEnabled || !routing.ContainsGroup(channel.Group, group) {
 				continue
 			}
 			priority := int64(mapping.Priority)
@@ -1808,7 +1810,7 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 		if channel.Status != biz.ChannelStatusEnabled {
 			continue
 		}
-		for _, channelGroup := range biz.SplitCSV(channel.Group) {
+		for _, channelGroup := range routing.Groups(channel.Group) {
 			if channelGroup != group {
 				continue
 			}
@@ -1835,10 +1837,6 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 	return wild, nil
 }
 
-func csvContains(csv, value string) bool {
-	return slices.Contains(biz.SplitCSV(csv), value)
-}
-
 func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) ([]string, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
@@ -1857,7 +1855,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 			if channel.Status != biz.ChannelStatusEnabled {
 				continue
 			}
-			for _, channelGroup := range biz.SplitCSV(channel.Group) {
+			for _, channelGroup := range routing.Groups(channel.Group) {
 				if channelGroup != group {
 					continue
 				}
@@ -1875,7 +1873,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 			if account.Status != biz.ChannelStatusEnabled {
 				continue
 			}
-			for _, accountGroup := range biz.SplitCSV(account.Group) {
+			for _, accountGroup := range routing.Groups(account.Group) {
 				if accountGroup != group {
 					continue
 				}
@@ -1904,7 +1902,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 		if !ok || channel.Status != biz.ChannelStatusEnabled {
 			continue
 		}
-		if slices.Contains(biz.SplitCSV(channel.Group), group) {
+		if routing.ContainsGroup(channel.Group, group) {
 			seen[strings.ToLower(model.ModelID)] = struct{}{}
 		}
 	}
@@ -2048,7 +2046,7 @@ func (r *Repository) syncAbilitiesTx(tx *gorm.DB, channel *biz.Channel) error {
 	enabled := channel.Status == biz.ChannelStatusEnabled
 	priority := channel.Priority
 	rows := make([]abilityModel, 0)
-	for _, group := range biz.SplitCSV(channel.Group) {
+	for _, group := range routing.Groups(channel.Group) {
 		if group == "" {
 			continue
 		}
@@ -2263,7 +2261,7 @@ func (r *Repository) syncSubscriptionAccountAbilitiesTx(tx *gorm.DB, account *bi
 	enabled := account.Status == biz.ChannelStatusEnabled
 	priority := account.Priority
 	rows := make([]subscriptionAccountAbilityModel, 0)
-	for _, group := range biz.SplitCSV(account.Group) {
+	for _, group := range routing.Groups(account.Group) {
 		if group == "" {
 			continue
 		}

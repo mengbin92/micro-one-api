@@ -190,18 +190,11 @@ func handleSubscriptionGroups(w http.ResponseWriter, r *http.Request, svc *servi
 		groups, err := svc.ListSubscriptionGroups(r.Context())
 		writeSubscriptionResponse(w, groups, err)
 	case http.MethodPost:
-		var group subscriptionbiz.SubscriptionGroup
+		// Apply the default before decoding so an explicit status:0 remains
+		// disabled. This flag controls the quota policy, not routing membership.
+		group := subscriptionbiz.SubscriptionGroup{Status: subscriptionbiz.SubscriptionGroupStatusEnabled}
 		if !decodeBody(w, r, &group) {
 			return
-		}
-		// domain-L3: default status to Enabled at the DTO/service boundary
-		// (the common create case). The biz layer no longer silently coerces
-		// Status==0 (which is the Disabled constant) to Enabled, so a caller that
-		// genuinely wants to create a pre-disabled group can pass an explicit
-		// status; the admin update path (PATCH) is the canonical way to toggle a
-		// group to Disabled after creation.
-		if group.Status == 0 {
-			group.Status = subscriptionbiz.SubscriptionGroupStatusEnabled
 		}
 		err := svc.CreateSubscriptionGroup(r.Context(), &group)
 		writeSubscriptionResponse(w, &group, err)

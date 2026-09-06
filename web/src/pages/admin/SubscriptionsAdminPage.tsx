@@ -286,11 +286,11 @@ export function AdminSubscriptionsPage() {
       )}
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', t("用户"), t("名称"), t("分组"), t("状态"), t("开始"), t("到期"), t("日/周/月用量"), t("操作")]} />
+        <TableSkeleton columns={['ID', t("用户"), t("名称"), t("额度策略"), t("状态"), t("开始"), t("到期"), t("日/周/月用量"), t("操作")]} />
       ) : !subscriptions || subscriptions.length === 0 ? (
         <EmptyState
           title={filterUserId != null ? t("该用户暂无订阅") : t("暂无订阅")}
-          description={t("点击右上角「分配订阅」为用户分配一个订阅分组。")}
+          description={t("点击右上角「分配订阅」为用户分配一个订阅额度策略。")}
         />
       ) : (
         <div className="border rounded-lg">
@@ -300,7 +300,7 @@ export function AdminSubscriptionsPage() {
                 <TableHead>ID</TableHead>
                 <TableHead>{t("用户")}</TableHead>
                 <TableHead>{t("名称")}</TableHead>
-                <TableHead className="hidden md:table-cell">{t("分组")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("额度策略")}</TableHead>
                 <TableHead>{t("状态")}</TableHead>
                 <TableHead className="hidden lg:table-cell">{t("开始")}</TableHead>
                 <TableHead className="hidden lg:table-cell">{t("到期")}</TableHead>
@@ -442,7 +442,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
       return;
     }
     if (!Number.isFinite(parsedGroup) || parsedGroup <= 0) {
-      toast.error(t("请选择订阅分组"));
+      toast.error(t("请选择订阅额度策略"));
       return;
     }
     if (expiresUnix <= 0) {
@@ -465,7 +465,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t("分配订阅")}</DialogTitle>
-          <DialogDescription>{t("为指定用户分配一个订阅分组并设置到期时间。")}</DialogDescription>
+          <DialogDescription>{t("为指定用户分配一个订阅额度策略并设置到期时间。")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 pt-2">
           <div className="space-y-2">
@@ -478,14 +478,14 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="assign-group">{t("订阅分组")}</Label>
+            <Label htmlFor="assign-group">{t("订阅额度策略")}</Label>
             <select
               id="assign-group"
               value={groupId}
               onChange={(e) => setGroupId(e.target.value)}
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
             >
-              <option value="">{t("请选择分组")}</option>
+              <option value="">{t("请选择额度策略")}</option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
                   {group.display_name || group.name} (#{group.id})

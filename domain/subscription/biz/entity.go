@@ -80,6 +80,10 @@ const (
 	SubscriptionFieldUsageAll SubscriptionField = "usage_all"
 )
 
+// SubscriptionGroup is a subscription quota policy, referenced by numeric ID
+// from plans and user subscriptions. Name is its own unique policy key; it is
+// not a routing group and granting this policy never changes users.group.
+// Platform and SubscriptionType describe the policy; they do not filter routes.
 type SubscriptionGroup struct {
 	ID               int64  `json:"id"`
 	Name             string `json:"name"`
@@ -90,8 +94,9 @@ type SubscriptionGroup struct {
 	DailyLimitUSD   *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD *float64 `json:"monthly_limit_usd"`
-	RateMultiplier  float64  `json:"rate_multiplier"`
-	Status          int32    `json:"status"`
+	// RateMultiplier scales quota-window consumption, after routing-group pricing.
+	RateMultiplier float64 `json:"rate_multiplier"`
+	Status         int32   `json:"status"`
 	// PriceQuota stores the configured self-purchase price amount. The JSON/DB
 	// name is kept for compatibility with earlier quota-based pricing.
 	PriceQuota   int64 `json:"price_quota"`

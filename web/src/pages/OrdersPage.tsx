@@ -173,7 +173,7 @@ function paymentOrderToRow(order: PaymentOrder): OrderRow {
   const tradeNo = getTradeNo(order);
   const issueStatus = order.asset_issue_status || order.assetIssueStatus || '-';
   const assetType = getAssetType(order);
-  const assetLabel = assetType === 'subscription' ? t(`订阅分组 #${getGroupID(order) || '-'}`) : formatAmount(getAssetAmount(order));
+  const assetLabel = assetType === 'subscription' ? t("订阅额度策略 #{id}", { id: getGroupID(order) || '-' }) : formatAmount(getAssetAmount(order));
   return {
     id: `payment-${order.id || tradeNo}`,
     type: 'payment',
@@ -388,7 +388,7 @@ export function OrdersPage() {
               <DetailRow label={t("支付金额")} value={formatMoney(getMoneyCents(selectedOrder), selectedOrder.currency)} />
               <DetailRow
                 label={getAssetType(selectedOrder) === 'subscription' ? t("订阅权益") : t("到账金额")}
-                value={getAssetType(selectedOrder) === 'subscription' ? t(`订阅分组 #${getGroupID(selectedOrder) || '-'}`) : formatAmount(getAssetAmount(selectedOrder))}
+                value={getAssetType(selectedOrder) === 'subscription' ? t("订阅额度策略 #{id}", { id: getGroupID(selectedOrder) || '-' }) : formatAmount(getAssetAmount(selectedOrder))}
               />
               <DetailRow label={t("资产状态")} value={selectedOrder.asset_issue_status || selectedOrder.assetIssueStatus || '-'} />
               <DetailRow label={t("创建时间")} value={formatDate(getCreatedAt(selectedOrder))} />

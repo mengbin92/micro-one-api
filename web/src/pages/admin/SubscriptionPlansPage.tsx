@@ -182,7 +182,7 @@ export function AdminSubscriptionPlansPage() {
       />
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', t("名称"), t("分组"), t("价格"), t("有效期"), t("状态"), t("操作")]} />
+        <TableSkeleton columns={['ID', t("名称"), t("额度策略"), t("价格"), t("有效期"), t("状态"), t("操作")]} />
       ) : filtered.length === 0 ? (
         <EmptyState title={t("暂无套餐")} description={t("新建套餐后会显示在这里。")} />
       ) : (
@@ -191,7 +191,7 @@ export function AdminSubscriptionPlansPage() {
             <TableRow>
               <TableHead>ID</TableHead>
               <TableHead>{t("名称")}</TableHead>
-              <TableHead>{t("分组")}</TableHead>
+              <TableHead>{t("额度策略")}</TableHead>
               <TableHead>{t("价格 (quota)")}</TableHead>
               <TableHead>{t("有效期")}</TableHead>
               <TableHead>{t("状态")}</TableHead>
@@ -304,7 +304,7 @@ function PlanEditForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="plan-group">{t("分组 ID")}</Label>
+          <Label htmlFor="plan-group">{t("额度策略 ID")}</Label>
           <Input
             id="plan-group"
             type="number"

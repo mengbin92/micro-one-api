@@ -267,7 +267,7 @@ export function UsageAuditPanel({ log }: { log: UsageAuditLog }) {
             <div className="grid grid-cols-2 gap-y-1 tabular-nums">
               <span className="text-muted-foreground">{t('模型（定价键）')}</span>
               <span className="text-right font-mono">{snapshot.modelName || '—'}</span>
-              <span className="text-muted-foreground">{t('分组倍率')}</span>
+              <span className="text-muted-foreground">{t('路由分组价格倍率')}</span>
               <span className="text-right font-medium">×{snapshot.groupRatio ?? 1}</span>
               <span className="text-muted-foreground">{t('缓存创建模式')}</span>
               <span className="text-right font-medium">{snapshot.cacheCreationMode || '—'}</span>

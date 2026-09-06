@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/routing"
+
 	billingdomain "micro-one-api/domain/billing"
 	relayprovider "micro-one-api/domain/upstream/provider"
 	apperrors "micro-one-api/pkg/errors"
@@ -761,9 +763,9 @@ func (uc *RelayUsecase) stickySubscriptionAccountValid(ctx context.Context, acco
 	if account.Status != subscriptionAccountStatusEnabled {
 		return false
 	}
-	// Group is the subscription-account tenancy boundary: never reuse a binding
-	// across groups.
-	if account.Group != group {
+	// Group stores CSV routing memberships. Reuse requires the current request
+	// group to remain a member; session bindings themselves stay group-scoped.
+	if !routing.ContainsGroup(account.Group, group) {
 		return false
 	}
 	// Explicit account models are the source of truth and support operator-defined
@@ -829,7 +831,7 @@ func (uc *RelayUsecase) ResolveSubscriptionRoutingSource(
 	if err != nil {
 		return nil, nil, err
 	}
-	if account == nil || account.ID <= 0 || account.Status != subscriptionAccountStatusEnabled || account.Group != group {
+	if account == nil || account.ID <= 0 || account.Status != subscriptionAccountStatusEnabled || !routing.ContainsGroup(account.Group, group) {
 		return nil, nil, fmt.Errorf("subscription account %d is not reusable", accountID)
 	}
 	if strings.TrimSpace(clientModel) != "" || strings.TrimSpace(resolvedModel) != "" {

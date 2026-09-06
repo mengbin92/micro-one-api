@@ -217,7 +217,7 @@ export function ProfilePage() {
               <div className="flex items-center gap-3">
                 <Users className="size-5 text-slate-400" />
                 <div className="flex-1">
-                  <Label className="text-xs font-bold text-slate-400">{t("分组")}</Label>
+                  <Label className="text-xs font-bold text-slate-400">{t("路由分组")}</Label>
                   <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {user.group || 'default'}
                   </div>

@@ -2,6 +2,14 @@
 
 ## Purpose
 
+The legacy `SubscriptionGroup` name means a **subscription quota policy**
+(订阅额度策略). Its numeric ID is independent of the string routing groups on
+users, channels, and upstream accounts. Assigning a subscription does not change
+a user's routing group. `RateMultiplier` scales subscription-window consumption;
+it is separate from billing's routing-group price ratio (`GroupRatio`).
+See [group concepts and implementation](../../docs/design/group-concepts-and-implementation.md)
+for the current boundaries and migration plan.
+
 `domain/subscription` is a **shared modular domain library**, not an
 independently deployable microservice. It bundles the subscription business
 model (DOs, usecases, repo interfaces) and its data implementation

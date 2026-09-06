@@ -838,7 +838,7 @@ export function AdminSubscriptionAccountsPage() {
       )}
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', t("名称"), t("平台"), t("分组"), t("优先级"), t("过期时间"), t("状态"), t("操作")]} />
+        <TableSkeleton columns={['ID', t("名称"), t("平台"), t("路由分组"), t("优先级"), t("过期时间"), t("状态"), t("操作")]} />
       ) : !accounts || accounts.length === 0 ? (
         <EmptyState title={t("暂无订阅账号")} description={t("新建一个 Claude / Codex 订阅账号以启用混合中继。")} />
       ) : visibleAccounts.length === 0 ? (
@@ -860,7 +860,7 @@ export function AdminSubscriptionAccountsPage() {
                   <TableHead>ID</TableHead>
                   <SortableHeader<SubscriptionAccountSummary> columnKey="name" sort={sort} onSortChange={setSort}>{t("名称")}</SortableHeader>
                   <SortableHeader<SubscriptionAccountSummary> columnKey="platform" sort={sort} onSortChange={setSort}>{t("平台")}</SortableHeader>
-                  <SortableHeader<SubscriptionAccountSummary> columnKey="group" sort={sort} onSortChange={setSort}>{t("分组")}</SortableHeader>
+                  <SortableHeader<SubscriptionAccountSummary> columnKey="group" sort={sort} onSortChange={setSort}>{t("路由分组")}</SortableHeader>
                   <SortableHeader<SubscriptionAccountSummary> columnKey="priority" sort={sort} onSortChange={setSort} className="hidden lg:table-cell">{t("优先级")}</SortableHeader>
                   <SortableHeader<SubscriptionAccountSummary> columnKey="expiresAt" sort={sort} onSortChange={setSort} className="hidden xl:table-cell">{t("过期时间")}</SortableHeader>
                   <SortableHeader<SubscriptionAccountSummary> columnKey="status" sort={sort} onSortChange={setSort}>{t("状态")}</SortableHeader>
@@ -1219,7 +1219,7 @@ function CreateAccountDialog({ open, onOpenChange, onSubmit, pending }: CreateAc
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sub-group">{t("分组")}</Label>
+            <Label htmlFor="sub-group">{t("路由分组")}</Label>
             <Input
               id="sub-group"
               value={form.group}
@@ -1433,7 +1433,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
   const handleUpdate = () => {
     if (!draft) return;
     if (!draft.name.trim() || !draft.group.trim() || !draft.models.trim()) {
-      toast.error(t("名称、模型、分组为必填项"));
+      toast.error(t("名称、模型、路由分组为必填项"));
       return;
     }
     onSubmit();
@@ -1464,7 +1464,7 @@ function EditAccountDialog({ draft, onDraftChange, onSubmit, pending }: EditAcco
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-sub-group">{t("分组")}</Label>
+              <Label htmlFor="edit-sub-group">{t("路由分组")}</Label>
               <Input
                 id="edit-sub-group"
                 value={draft.group}

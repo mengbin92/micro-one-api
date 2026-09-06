@@ -156,6 +156,7 @@ export function AdminUsersPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">{t('用户管理')}</h2>
       </div>
+      <p className="text-sm text-muted-foreground">{t("用户所属的路由分组决定上游资源访问范围，并作为价格倍率的查找键。订阅额度策略单独管理。")}</p>
 
       <AdminTableToolbar
         search={search}
@@ -172,7 +173,7 @@ export function AdminUsersPage() {
               { key: 'username', label: t('用户名') },
               { key: 'displayName', label: t('显示名称') },
               { key: 'email', label: t('邮箱') },
-              { key: 'group', label: t('分组') },
+              { key: 'group', label: t('路由分组') },
               { key: 'role', label: t('角色') },
               { key: 'balance', label: t('余额') },
               { key: 'usedAmount', label: t('已用金额') },
@@ -197,14 +198,14 @@ export function AdminUsersPage() {
         <input
           value={groupFilter}
           onChange={(event) => setFilter('group', event.target.value)}
-          placeholder={t('筛选分组')}
+          placeholder={t('筛选路由分组')}
           className="h-8 w-40 rounded-md border bg-background px-2 text-sm"
-          aria-label={t('按分组筛选用户')}
+          aria-label={t('按路由分组筛选用户')}
         />
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', t('用户名'), t('显示名称'), t('邮箱'), t('分组'), t('角色'), t('余额'), t('已用'), t('状态'), t('操作')]} />
+        <TableSkeleton columns={['ID', t('用户名'), t('显示名称'), t('邮箱'), t('路由分组'), t('角色'), t('余额'), t('已用'), t('状态'), t('操作')]} />
       ) : !users || users.length === 0 ? (
         <EmptyState title={t('未找到用户')} description={t('请尝试清除搜索词或查看其他页面。')} />
       ) : visibleUsers.length === 0 ? (
@@ -224,7 +225,7 @@ export function AdminUsersPage() {
                     {t('邮箱')}
                   </SortableHeader>
                   <SortableHeader<User> columnKey="group" sort={sort} onSortChange={setSort}>
-                    {t('分组')}
+                    {t('路由分组')}
                   </SortableHeader>
                   <SortableHeader<User> columnKey="role" sort={sort} onSortChange={setSort}>
                     {t('角色')}
