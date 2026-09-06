@@ -227,6 +227,9 @@ func ApplyModelHealthOutcome(state *ModelHealthState, outcome *ModelHealthOutcom
 func truncateModelHealthError(message string) string {
 	const maxRunes = 1000
 	message = strings.TrimSpace(message)
+	if len(message) <= maxRunes {
+		return message
+	}
 	runes := []rune(message)
 	if len(runes) <= maxRunes {
 		return message

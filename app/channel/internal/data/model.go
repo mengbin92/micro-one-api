@@ -918,13 +918,15 @@ func (r *Repository) RecordModelHealth(ctx context.Context, outcome *biz.ModelHe
 	// immediately when several relay outcomes try to upgrade read transactions
 	// into writers. Lite mode has one channel-service repository, so serialize
 	// this small read-modify-write section in-process to avoid dropping data.
-	if r.db.Dialector.Name() == "sqlite" {
-		r.lock.Lock()
-		defer r.lock.Unlock()
-	}
+	// The lock covers a single attempt only: releasing it around the backoff
+	// sleep keeps other repository work from stalling while we retry.
+	serialize := r.db.Dialector.Name() == "sqlite"
 	var lastErr error
 	const maxAttempts = 5
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if serialize {
+			r.lock.Lock()
+		}
 		err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			var po modelHealthStateModel
 			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
@@ -946,6 +948,9 @@ func (r *Repository) RecordModelHealth(ctx context.Context, outcome *biz.ModelHe
 			biz.ApplyModelHealthOutcome(state, outcome)
 			return tx.Save(newModelHealthStatePO(state)).Error
 		})
+		if serialize {
+			r.lock.Unlock()
+		}
 		if err == nil {
 			return nil
 		}
@@ -970,8 +975,8 @@ func (r *Repository) ListModelHealth(ctx context.Context, page, pageSize int32, 
 	}
 	query := r.db.WithContext(ctx).Model(&modelHealthStateModel{})
 	if filter.Keyword != "" {
-		like := "%" + strings.ToLower(filter.Keyword) + "%"
-		query = query.Where("LOWER(model_id) LIKE ? OR LOWER(upstream_model_id) LIKE ?", like, like)
+		like := "%" + escapeLike(strings.ToLower(filter.Keyword)) + "%"
+		query = query.Where("LOWER(model_id) LIKE ? ESCAPE '!' OR LOWER(upstream_model_id) LIKE ? ESCAPE '!'", like, like)
 	}
 	if filter.SourceKind != "" {
 		query = query.Where("source_kind = ?", filter.SourceKind)
