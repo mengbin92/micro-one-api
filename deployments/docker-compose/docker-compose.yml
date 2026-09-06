@@ -153,6 +153,8 @@ services:
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - SQL_DSN=${DATABASE_DSN}
       - BILLING_SCHEMA=${BILLING_SCHEMA:-}
+      - BILLING_CANONICAL_USAGE_MODE=${BILLING_CANONICAL_USAGE_MODE:-observe}
+      - BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST=${BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - PAYMENT_AMOUNT_PER_UNIT=${PAYMENT_AMOUNT_PER_UNIT:-${PAYMENT_QUOTA_PER_UNIT:-500000}}
@@ -231,9 +233,17 @@ services:
     ports:
       - "3000:8000"
     depends_on:
-      - identity-service
-      - channel-service
-      - billing-service
+      # admin-api initializes its system-options and subscription repositories
+      # at startup. Both degrade permanently if MySQL is briefly unavailable,
+      # so wait for the database health gate before starting the container.
+      mysql:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      channel-service:
+        condition: service_started
+      billing-service:
+        condition: service_started
     networks:
       - backend
     restart: unless-stopped

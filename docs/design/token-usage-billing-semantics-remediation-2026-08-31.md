@@ -824,6 +824,11 @@ make migration-check
 2. **observe**：实际扣旧成本，同时计算 canonical shadow cost 和 delta；
 3. **charge**：使用 canonical bucket 成本；旧算法只保留 shadow 对比。
 
+`charge` 还受 `BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST` 限定。条目格式为
+`<subscription_account_id>:<upstream_model_id>`，多个条目用逗号分隔；变量缺失、为空或
+全部非法时一律按 observe，避免配置丢失扩大扣费范围。只有全量 charge 获得独立审批后
+才允许显式配置 `*`。
+
 `ambiguous` 是安全例外：除紧急 legacy 回滚模式外，observe/charge 均按 §5.2 的较低
 候选结算并触发隔离，避免观察期继续产生潜在用户多扣。
 
@@ -835,7 +840,7 @@ make migration-check
 4. 小流量开启 canonical producer，至少观察 48 小时；
 5. 验证 priced 请求 `ambiguous=0`、无 unexplained delta、日志/UI 总量契约正确；
 6. 先对 Kimi / Z.AI / MiniMax allowlist 切 `charge`，再全量；
-7. 完成供应商账单对账后关闭 allowlist；
+7. 完成供应商账单对账并独立批准全量 charge 后，将 allowlist 显式设为 `*`；
 8. canonical charge 稳定后再决定是否上线第二阶段 088 定价快照；
 9. 跨两个版本且 `usage_contract_version=0` 流量归零后移除 `PromptExclusive` 依赖。
 

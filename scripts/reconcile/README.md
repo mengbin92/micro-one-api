@@ -11,6 +11,131 @@
 退出码：`0` 无差异；`1` 有差异；`2` 配置/运行错误。无差异时输出
 `RESULT: PASS (no discrepancies)`，可直接接入 cron / CI。
 
+## Canonical usage 固定 48h 验收
+
+v0.27 的 production observe 使用固定窗口，而不是运行时滚动的 `last 48h`：
+
+- CST：`2026-09-04 09:49:52.108`（含）至 `2026-09-06 09:49:52.108`（不含）；
+- MySQL UTC：`2026-09-04 01:49:52.108`（含）至 `2026-09-06 01:49:52.108`（不含）。
+
+原窗口（2026-09-02 11:12:00.225 CST 起算）因 2026-09-04 09:49 CST 部署 P0 修复
+（`beda02b`）按 roadmap §5 作废；新窗口从部署后首条合格自然样本起算。
+
+窗口满时执行只读脚本：
+
+```bash
+mysql --table < scripts/reconcile/canonical_observe_48h.sql
+```
+
+在生产 Docker Compose 主机上可让 MySQL 密码仅在容器内展开：
+
+```bash
+docker exec -i mysql sh -lc \
+  'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --table' \
+  < scripts/reconcile/canonical_observe_48h.sql
+```
+
+脚本输出以下固定门禁：窗口是否满 48h、v1 契约与语义、来源与定价快照、ledger/claim
+幂等、持久化成本算术、自然流量 delta 解释，以及 billing/log 24 字段多重集一致性。
+`step-explore` 是 v0.23 executor 的已留证受控测试 cohort：成本比较先应用线上最低 1 quota
+结算规则，仍存在的受控差异会单独报告，只有自然流量 mismatch 参与 charge 判定。脚本不会
+输出用户、请求、渠道、订阅、token 或金额明细。
+
+第二个已解释基线是「上游零用量 legacy 兜底」（2026-09-04 书面判定）：流式上游完全
+未返回 usage 时，relay 有意跳过 `applyEnvelope`（避免把估算 token 误标 verified），
+billing 按 legacy_producer 记零 token、最小扣费 1，log 侧不写 v1 字段。此类行在任何
+mode 下都按 legacy 成本结算，不影响 canonical charge 正确性，故在 contract、cost 与
+multiset 门禁中作为 `baseline_legacy_fallback_rows` 单列计数；contract 与 multiset 显式
+排除，cost 门禁按最低 1 quota 规则自然通过。multiset 在 billing 与 log 两侧对称排除，
+排除不对称仍会留下差异组并 FAIL，不能掩盖真实分叉。
+首次观测为 2026-09-03 08:40–08:51 UTC 的 6 行（某测试渠道 deepseek 流式）。
+
+第三个已解释基线是 2026-09-05 确认的 2 条手工 test 渠道可用性检查：两条均为
+channel、空 upstream model、v1/verified、canonical present、非流式、OpenAI Chat 协议，
+并由 subscription cost source 支付；billing 已落账但没有对应 log。固定 SQL 只按这组
+完整签名排除，并要求数量必须恰好为 2；任何新增同形记录都会使门禁失败，不能把未来真实
+来源缺失或 billing/log 分叉吞进测试基线。
+
+Billing 在 bucket cost 小于等于 0 时执行最低 1 quota 扣费。固定 SQL 的持久化成本和
+canonical 重建均用 `GREATEST(1, bucket_cost)` 复刻该最终结算规则，避免把“桶成本为 0、
+最终最低扣费为 1”的合法账本误报为 cost mismatch 或 unexplained delta。
+
+同时在 Prometheus 使用相同固定时间范围执行以下查询；值为空按 0 处理：
+
+```promql
+sum(increase(micro_one_api_relay_token_usage_invariant_mismatch_total[48h]))
+sum(increase(micro_one_api_relay_token_usage_parse_anomaly_total[48h]))
+sum(increase(micro_one_api_billing_usage_ambiguous_total[48h]))
+sum(increase(micro_one_api_channel_usage_semantic_source_isolation_total[48h]))
+max(max_over_time(micro_one_api_billing_async_queue_size[48h]))
+```
+
+前四项必须为 0，异步队列当前值与窗口最大值也必须为 0。Prometheus 控制台的查询结束
+时间固定为 `2026-09-06 09:49:52.108 CST`；不要用执行当天的滚动窗口替代。Histogram
+`_sum` 含负数观察值，不能使用
+`increase(micro_one_api_billing_usage_semantics_cost_delta_sum[48h])` 作为金额结论；差额以
+SQL 对 ledger + pricing snapshot 的逐桶重建为准。
+
+SQL 全部 `PASS` 且 Prometheus 门禁为 0 仍不自动授权切换 charge。自然生产 delta 必须有
+原始供应商 usage、供应商账单或等价不可变外部证据抽样；缺少该证据时结论只能是
+“observe 数据面通过，charge 暂缓”。
+
+本窗口于 2026-09-06 09:49:52.108 CST 满 48 小时，最终验收为 `PASS`：1718 条
+consume，契约非法、ambiguous、真实来源缺失、pricing hash/snapshot 缺失、dedupe/claim
+异常、自然成本 mismatch、未解释 delta 和 billing/log 多重集差异均为 0。两条手工 test
+渠道记录被完整签名基线精确识别；自然 delta 为 589 条 subscription
+Responses/openai_subset 负向差异，均使用固定月费订阅成本口径。固定 PromQL 的前四项为空
+（按 0 处理），异步队列窗口最大值和当前值均为 0，billing-service `up` 最小值为 1。
+
+## Canonical usage 有限来源 72h charge 验收
+
+Observe 通过后，生产于 2026-09-06 10:40:07.806 CST 部署完成 code review 修订后的 billing
+白名单版本，并只对一个精确的 K3 订阅账号 + upstream model 组合开启 charge。10:19 的初始
+部署及其 10:27 首样本窗口因 fail-close 修复重启作废。配置如下：
+
+- `BILLING_CANONICAL_USAGE_MODE=charge`；
+- `BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST=<subscription_account_id>:k3`；
+- allowlist 变量缺失、为空或条目非法时，全部流量回退 Observe；未命中的订阅或任何渠道
+  来源也保持 Observe；只有后续全量 charge 获得独立审批时才允许显式配置 `*`；
+- 生产文档和验收输出只保存来源 key 的 SHA-256，不输出订阅账号 ID。
+
+首条合格白名单 consume 已于 2026-09-06 10:41:50.397 CST 到达，固定窗口冻结至
+2026-09-09 10:41:50.397 CST。执行：
+
+```bash
+docker exec -i mysql sh -lc \
+  'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --table' \
+  < scripts/reconcile/canonical_charge_72h.sql
+```
+
+满窗后以下门禁必须全部 `PASS`：白名单来源/契约/快照完整；K3 实扣等于 Canonical 且没有
+正向差额；至少出现一笔
+Canonical 与 legacy 可区分的非白名单样本且仍按 legacy 扣费；ledger/claim 幂等和
+reservation `actual_cost` 一致；billing/log 多重集一致。任一门禁失败时，将
+`BILLING_CANONICAL_USAGE_MODE` 切回 `observe` 并重建 billing-service，无需 schema 回滚。
+其中 billing ledger 为毫秒时间、log 为整秒时间，多重集对账在固定窗口内部取双方相同的
+整秒交集，避免 `floor/ceil` 把边界外请求纳入而产生假差异；双轨结算拆成 subscription /
+balance 两条 ledger 时，先按 reservation reference 合并相同审计字段，再与单条 log 对账。
+
+### 固定月费订阅的供应商证据口径
+
+K3/Kimi 当前由运营确认为固定月费订阅，费用为 `199/月`（本记录不推断币种、是否为每个
+套餐分别计费或是否存在超额费用，这些信息必须以套餐凭证为准）。固定月费本身不能与单笔
+token、请求或 `upstream_cost` 一一对应，因此：
+
+- 不把 `199` 除以请求数/token 数制造伪精确单请求成本；
+- 不把月费写进按日、provider-family token 汇总的 `vendor_bill.csv`；
+- canonical usage 的 subset/exclusive 语义由上游返回的 verified usage 字段、billing/log
+  双写和冻结的用户售价快照验证；
+- `billing_ledgers.cost_audit_status=priced`、非零 `upstream_cost` 只说明系统存在内部配置的
+  成本模型，不代表该金额已被供应商逐笔开票；
+- 供应商证据改为核对套餐主体、账期、固定月费、币种和是否有超额计费。若存在超额计费，
+  超额部分仍必须取得供应商 usage/账单后才能纳入毛利结论。
+
+因此，固定月费账单的逐笔 token 对账记为“不适用”，不再单独阻塞 canonical 用户计费
+语义灰度；但在套餐币种、计费范围和超额规则留证前，不得用 ledger 的内部
+`upstream_cost` 宣称已完成真实供应商毛利对账。
+
 ## 历史漂移一次性修复
 
 升级并完成 080-082 迁移后，使用

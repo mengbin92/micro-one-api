@@ -26,7 +26,7 @@ type responsesFallbackResult struct {
 	Usage    rawUsage
 }
 
-func shouldFallbackResponsesToChat(path string, err error) bool {
+func shouldFallbackResponsesToChat(path string, body []byte, err error) bool {
 	if path != "/responses" || err == nil {
 		return false
 	}
@@ -37,6 +37,13 @@ func shouldFallbackResponsesToChat(path string, err error) bool {
 	switch upstreamErr.StatusCode {
 	case http.StatusBadRequest, http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented, http.StatusBadGateway, http.StatusServiceUnavailable:
 		return true
+	case http.StatusUnsupportedMediaType, http.StatusUnprocessableEntity:
+		// A 415/422 can mean either an unsupported Responses request shape or
+		// a genuine client error. Only try Chat Completions when the inbound
+		// request satisfies the converter contract; otherwise preserve the
+		// deterministic client failure without issuing a second upstream call.
+		_, _, conversionErr := responsesRequestToChatCompletionsBody(body)
+		return conversionErr == nil
 	default:
 		return false
 	}
@@ -85,12 +92,12 @@ func (s *HTTPServer) forwardResponsesViaChatFallbackObserved(ctx context.Context
 		zap.Int64("channel_id", ch.ID),
 		zap.String("channel", ch.Name),
 		zap.Int("responses_status", relaybiz.UpstreamStatus(triggerErr)),
-		zap.String("responses_error", applogger.SanitizeAndTruncate(triggerErr.Error(), 2048)),
+		zap.String("responses_error_category", responsesUpstreamErrorCategory(relaybiz.UpstreamStatus(triggerErr))),
 	}
 	if fallbackErr != nil {
 		fields = append(fields,
 			zap.Int("chat_fallback_status", relaybiz.UpstreamStatus(fallbackErr)),
-			zap.String("chat_fallback_error", applogger.SanitizeAndTruncate(fallbackErr.Error(), 2048)),
+			zap.String("chat_fallback_error_category", responsesUpstreamErrorCategory(relaybiz.UpstreamStatus(fallbackErr))),
 		)
 		applogger.Log.Warn("responses to chat fallback failed", fields...)
 		return result, fallbackErr

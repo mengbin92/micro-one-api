@@ -21,6 +21,7 @@ var usageSemanticsTestPrice = ModelPrice{
 func TestResolveUserCost_InvalidV1EnvelopeNeverTrustsCanonical(t *testing.T) {
 	uc := newUsageSemanticsTestUsecase()
 	uc.canonicalUsageMode = CanonicalUsageModeCharge
+	uc.canonicalCharge.all = true
 	cases := []struct {
 		name string
 		env  *UsageEnvelopeData
@@ -62,6 +63,7 @@ func TestResolveUserCost_InvalidV1EnvelopeNeverTrustsCanonical(t *testing.T) {
 func TestResolveUserCost_ContractErrorCandidatesIgnorePromptExclusive(t *testing.T) {
 	uc := newUsageSemanticsTestUsecase()
 	uc.canonicalUsageMode = CanonicalUsageModeCharge
+	uc.canonicalCharge.all = true
 	cost, _, audit := uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 1, "m", 0, LedgerUsage{
 		PromptTokens: 100, CompletionTokens: 10, CacheReadTokens: 40,
 		PromptExclusive:      true, // must not collapse both candidates to exclusive
@@ -79,6 +81,7 @@ func TestResolveRatioUserCost_AmbiguousUsesLowerCandidate(t *testing.T) {
 		ModelRatios: map[string]float64{"m": 1},
 	})
 	uc.canonicalUsageMode = CanonicalUsageModeCharge
+	uc.canonicalCharge.all = true
 	cost, _, audit := uc.calculateCostWithUsage(context.Background(), "default", "m", 0, LedgerUsage{
 		PromptTokens: 100, CompletionTokens: 10, CacheReadTokens: 40,
 		PromptExclusive:      true,
@@ -100,6 +103,7 @@ func newUsageSemanticsTestUsecase() *BillingUsecase {
 // final cost, with both candidate costs on the audit trail.
 func TestResolveUserCost_AmbiguousSettlesAtLowerCandidate(t *testing.T) {
 	uc := newUsageSemanticsTestUsecase()
+	uc.canonicalCharge.all = true
 	// GLM-shaped anomaly: reported prompt=130, cache_read=45056, output=9.
 	// subset candidate: uncached=0 -> 45056*0.0001 + 9*0.002 = 4.5056+0.018 = 4.5236 -> 45236
 	// exclusive candidate: uncached=130 -> +130*0.001=0.13 -> 46536
@@ -160,6 +164,7 @@ func TestResolveUserCost_AmbiguousLegacyRollbackKeepsOldCharge(t *testing.T) {
 // branch.
 func TestResolveUserCost_LegacyProducer(t *testing.T) {
 	uc := newUsageSemanticsTestUsecase()
+	uc.canonicalCharge.all = true
 	// OpenAI subset shape: prompt=1000 inclusive of 200 cached, output=100.
 	// Legacy: uncached=800 -> 800*0.001 + 200*0.0001 + 100*0.002 = 0.8+0.02+0.2 = 1.02 -> 10200
 	usage := LedgerUsage{PromptTokens: 1000, CompletionTokens: 100, CacheReadTokens: 200}
@@ -239,11 +244,97 @@ func TestResolveUserCost_VerifiedCanonicalModes(t *testing.T) {
 	assert.Equal(t, UsageParseStatusVerified, audit.UsageParseStatus)
 
 	uc.canonicalUsageMode = CanonicalUsageModeCharge
+	uc.canonicalCharge.all = true
 	chargeCost, breakdown, _ := uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 1, "m", 0, usage)
 	assert.Equal(t, int64(46536), chargeCost, "charge uses canonical buckets; consistent usage -> delta 0")
 	assert.Equal(t, int64(1300), breakdown.PromptCost)
 	assert.Equal(t, int64(45056), breakdown.CacheReadCost)
 	assert.Equal(t, int64(180), breakdown.CompletionCost)
+}
+
+func TestResolveUserCost_ChargeAllowlistIsExactAndFailsSafe(t *testing.T) {
+	t.Setenv("BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST", "42:k3,invalid,0:model")
+	uc := newUsageSemanticsTestUsecase()
+	uc.canonicalUsageMode = CanonicalUsageModeCharge
+	usage := LedgerUsage{
+		SourceKind:            CostSourceSubscription,
+		SubscriptionAccountID: 42,
+		UpstreamModelID:       "k3",
+		PromptTokens:          200,
+		UsageContractVersion:  UsageContractVersionV1,
+		Envelope: &UsageEnvelopeData{
+			ParseStatus: UsageParseStatusVerified,
+			Canonical:   &CanonicalBuckets{UncachedInputTokens: 100},
+		},
+	}
+
+	cost, _, _ := uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 1, "m", 0, usage)
+	assert.Equal(t, int64(1000), cost, "exact allowlist source charges canonical cost")
+
+	usage.SubscriptionAccountID = 43
+	cost, _, _ = uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 1, "m", 0, usage)
+	assert.Equal(t, int64(2000), cost, "different subscription account remains observe")
+
+	usage.SubscriptionAccountID = 42
+	usage.UpstreamModelID = "glm-5.3"
+	cost, _, _ = uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 1, "m", 0, usage)
+	assert.Equal(t, int64(2000), cost, "different upstream model remains observe")
+
+	usage.UpstreamModelID = "k3"
+	usage.SourceKind = CostSourceChannel
+	cost, _, _ = uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 1, "m", 0, usage)
+	assert.Equal(t, int64(2000), cost, "channel traffic cannot join a subscription allowlist")
+
+	t.Setenv("BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST", "")
+	uc = newUsageSemanticsTestUsecase()
+	uc.canonicalUsageMode = CanonicalUsageModeCharge
+	usage.SourceKind = CostSourceSubscription
+	cost, _, _ = uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 1, "m", 0, usage)
+	assert.Equal(t, int64(2000), cost, "empty allowlist fails safe to observe")
+
+	t.Setenv("BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST", "*")
+	uc = newUsageSemanticsTestUsecase()
+	uc.canonicalUsageMode = CanonicalUsageModeCharge
+	cost, _, _ = uc.resolveUserCost(context.Background(), usageSemanticsTestPrice, 1, "m", 0, usage)
+	assert.Equal(t, int64(1000), cost, "global charge requires an explicit wildcard")
+}
+
+func TestCommitQuotaWithUsage_ChargeAllowlistUsesReservationSource(t *testing.T) {
+	t.Setenv("BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST", "42:k3")
+	account := &Account{UserID: "u1", Balance: 10_000, FrozenAmount: 2_000, Group: "default"}
+	accountRepo := &mockAccountRepo{account: account}
+	reservationRepo := &mockReservationRepo{reservations: map[string]*Reservation{
+		"res-allowlist": {
+			ReservationID:         "res-allowlist",
+			UserID:                "u1",
+			Amount:                2_000,
+			BalanceAmount:         2_000,
+			Status:                ReservationStatusReserved,
+			Model:                 "m",
+			SubscriptionAccountID: "42",
+		},
+	}}
+	ledgerRepo := &mockLedgerRepo{}
+	uc := NewBillingUsecaseWithPricing(accountRepo, reservationRepo, ledgerRepo, &mockRedeemRepo{}, PricingConfig{
+		ModelPrices: map[string]ModelPrice{"m": usageSemanticsTestPrice},
+	})
+	uc.canonicalUsageMode = CanonicalUsageModeCharge
+
+	committed, _, err := uc.CommitQuotaWithUsage(context.Background(), "res-allowlist", 200, true, LedgerUsage{
+		SourceKind:           CostSourceSubscription,
+		UpstreamModelID:      "k3",
+		PromptTokens:         200,
+		UsageContractVersion: UsageContractVersionV1,
+		Envelope: &UsageEnvelopeData{
+			ParseStatus: UsageParseStatusVerified,
+			Canonical:   &CanonicalBuckets{UncachedInputTokens: 100},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1000), committed)
+	require.Len(t, ledgerRepo.ledgers, 1)
+	assert.Equal(t, int64(42), ledgerRepo.ledgers[0].SubscriptionAccountID)
+	assert.Equal(t, int64(-1000), ledgerRepo.ledgers[0].Amount)
 }
 
 // Per-bucket integer rounding must be asserted directly (§10): each bucket
