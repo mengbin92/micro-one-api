@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	relayprovider "micro-one-api/domain/upstream/provider"
+	"micro-one-api/pkg/jsonx"
 )
 
 // RetryPolicy defines the retry behavior for upstream provider calls.
@@ -200,14 +202,30 @@ func isUpstreamModelUnavailable(err error) bool {
 	if !errors.As(err, &upstreamErr) {
 		return false
 	}
-	// A concrete upstream 404 means this route cannot serve the requested
-	// model even when the vendor does not return a recognizable error body.
+	// A concrete API-shaped upstream 404 means this route cannot serve the
+	// requested model. Only an API error body (JSON, or a body naming the
+	// model) counts: a proxy/HTML 404 from a misconfigured base_url is
+	// channel-level breakage, and recording it as model unavailability would
+	// mark every model on the channel red while channel health stays green.
 	if upstreamErr.StatusCode == 404 {
-		return true
+		return upstream404IndicatesModel(upstreamErr.Body)
 	}
 	body := strings.ToLower(string(upstreamErr.Body))
 	return strings.Contains(body, "service do not have healthy model") ||
 		strings.Contains(body, "no healthy model")
+}
+
+// upstream404IndicatesModel reports whether a 404 body is an API error about
+// the model rather than an unrelated not-found page.
+func upstream404IndicatesModel(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return false
+	}
+	if jsonx.Valid(trimmed) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(string(trimmed)), "model")
 }
 
 func isUpstreamPolicyRejection(err error) bool {

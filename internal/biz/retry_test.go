@@ -179,6 +179,35 @@ func TestRetryExecutor_RecordsUpstreamModelNotFound(t *testing.T) {
 	assert.Equal(t, []modelHealthEvent{{"channel", 7, "gpt-4o", "gpt-4o", false}}, selector.modelHealth)
 }
 
+func TestRetryExecutor_DoesNotRecordProxy404AsModelUnavailable(t *testing.T) {
+	// A misconfigured base_url yields a proxy/HTML 404 page. That is
+	// channel-level breakage, not proof the model is unservable, so it must
+	// not poison model health while channel health stays green.
+	selector := &mockChannelSelector{channels: []*Channel{{ID: 9}}}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+	errProxy404 := &relayprovider.UpstreamHTTPError{
+		StatusCode: 404,
+		Body:       []byte("<html><head><title>404 Not Found</title></head><body>nginx</body></html>"),
+	}
+
+	result := exec.Execute(context.Background(), "default", "gpt-4o", func(context.Context, *Channel) error {
+		return errProxy404
+	})
+
+	assert.Error(t, result.Err)
+	assert.Empty(t, selector.modelHealth, "proxy 404 page must not be recorded as model unavailability")
+	assert.Len(t, selector.healthEvents, 1)
+	assert.True(t, selector.healthEvents[0].success, "4xx still proves the channel is reachable")
+}
+
+func TestUpstream404IndicatesModel(t *testing.T) {
+	assert.True(t, upstream404IndicatesModel([]byte(`{"error":{"code":"model_not_found"}}`)), "JSON API error body")
+	assert.True(t, upstream404IndicatesModel([]byte(`model gpt-4o not found`)), "plain-text body naming the model")
+	assert.False(t, upstream404IndicatesModel(nil), "empty body is ambiguous")
+	assert.False(t, upstream404IndicatesModel([]byte("  \n")), "whitespace-only body is ambiguous")
+	assert.False(t, upstream404IndicatesModel([]byte("<html>404</html>")), "proxy HTML page")
+}
+
 func TestRetryExecutor_DoesNotRecordClientErrorAsModelHealth(t *testing.T) {
 	selector := &mockChannelSelector{channels: []*Channel{{ID: 8}}}
 	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
