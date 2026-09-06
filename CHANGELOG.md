@@ -7,6 +7,32 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.6] - 2026-09-06
+
+v0.26.6 是 v0.26.5 之后的 **PATCH 计费与生产可靠性修复版本**：canonical charge 新增按
+订阅账号与上游模型精确匹配、默认 fail-close 的白名单，Responses 上游 4xx 不再统一误报
+502，Compose 在数据库 readiness 后再启动 admin，并升级 Go/Web 安全依赖。无公共 API /
+proto 变更、无新增数据库迁移；新增可选配置
+`BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST`。详见
+[release-v0.26.6.md](docs/releases/release-v0.26.6.md)。
+
+### Fixed
+
+- canonical charge allowlist 缺失、为空或非法时回退 Observe，精确限制订阅账号与上游模型；
+  reservation 提交路径补齐来源回填。
+- 修复 billing/log 毫秒与整秒窗口边界、双轨 ledger 对账误报，并增加固定 72 小时 charge
+  验收脚本。
+- 修复 Responses 确定性上游 4xx 被统一改写为 502，补充 413/415/422、fallback 和脱敏日志
+  状态矩阵。
+- 修复 Compose 重建时 `admin-api` 抢在数据库就绪前启动，导致订阅与系统选项能力持续 501。
+- 升级命中安全告警的前端传递依赖。
+
+### Changed
+
+- 升级 `google.golang.org/grpc`、`golang.org/x/crypto`、`fast-uri` 与 `qs`。
+- 48 小时 canonical observe 已通过，K3 精确订阅来源进入固定 72 小时有限 charge 观察；
+  v0.26.6 tag 不触发当前生产 Relay/billing 容器重启。
+
 ## [0.26.5] - 2026-09-02
 
 v0.26.5 是 v0.26.4 之后的 **PATCH Relay 计费归因修复版本**：修复 legacy `/v1/responses` 与显式 OneAPI 渠道成功结算缺失 `source_kind` / `upstream_model_id` 的问题，使 canonical usage observe 记录可还原实际上游来源和定价模型；同时修正 `docs(release)` 提交被 commit-body 门禁误报的 CI 规则。无公共 API / proto 变更、无新增数据库迁移、无新增配置项。详见 [release-v0.26.5.md](docs/releases/release-v0.26.5.md)。
