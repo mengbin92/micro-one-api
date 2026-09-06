@@ -19,6 +19,15 @@
 --     and does not affect canonical charge correctness. Excluded from the
 --     contract gate as a documented baseline, still counted in
 --     baseline_legacy_fallback_rows for visibility.
+--   * manual test-channel availability checks: exactly two non-streaming,
+--     verified v1 OpenAI-chat rows used a channel without an upstream-model
+--     mapping and intentionally have no matching usage log. They are excluded
+--     only by the full signature below; the gate fails if the count is not
+--     exactly two, so later production rows cannot silently join the baseline.
+--
+-- Billing applies a minimum successful charge of 1 quota after calculating
+-- the bucket breakdown. Every persisted/rebuilt cost comparison below mirrors
+-- that finalization with GREATEST(1, bucket_cost).
 --
 -- Run from the repository root against a MySQL client connected to production:
 --   mysql --table < scripts/reconcile/canonical_observe_48h.sql
@@ -26,6 +35,7 @@
 SET @observe_start = TIMESTAMP('2026-09-04 01:49:52.108');
 SET @observe_end = TIMESTAMP('2026-09-06 01:49:52.108');
 SET @controlled_test_model = 'step-explore';
+SET @expected_manual_test_channel_rows = 2;
 
 SELECT
   'window_elapsed' AS check_name,
@@ -105,10 +115,34 @@ WITH evidence_check AS (
   SELECT
     COUNT(*) AS total_rows,
     COALESCE(SUM(
-      l.source_kind NOT IN ('channel', 'subscription')
-      OR l.upstream_model_id = ''
-      OR (l.source_kind = 'channel' AND l.channel_id <= 0)
-      OR (l.source_kind = 'subscription' AND l.subscription_account_id <= 0)
+      l.source_kind = 'channel'
+      AND l.upstream_model_id = ''
+      AND l.channel_id > 0
+      AND l.cost_source = 'subscription'
+      AND l.usage_protocol = 'openai_chat'
+      AND l.usage_contract_version = 1
+      AND l.usage_parse_status = 'verified'
+      AND l.canonical_present = 1
+      AND l.is_stream = 0
+    ), 0) AS manual_test_channel_rows,
+    COALESCE(SUM(
+      (
+        l.source_kind NOT IN ('channel', 'subscription')
+        OR l.upstream_model_id = ''
+        OR (l.source_kind = 'channel' AND l.channel_id <= 0)
+        OR (l.source_kind = 'subscription' AND l.subscription_account_id <= 0)
+      )
+      AND NOT (
+        l.source_kind = 'channel'
+        AND l.upstream_model_id = ''
+        AND l.channel_id > 0
+        AND l.cost_source = 'subscription'
+        AND l.usage_protocol = 'openai_chat'
+        AND l.usage_contract_version = 1
+        AND l.usage_parse_status = 'verified'
+        AND l.canonical_present = 1
+        AND l.is_stream = 0
+      )
     ), 0) AS missing_source_rows,
     COALESCE(SUM(l.pricing_config_hash = ''), 0) AS missing_hash_rows,
     COALESCE(SUM(s.config_hash IS NULL), 0) AS unresolved_snapshot_rows
@@ -125,11 +159,13 @@ SELECT
     WHEN UTC_TIMESTAMP(3) < @observe_end THEN 'WAIT'
     WHEN total_rows > 0
       AND missing_source_rows = 0
+      AND manual_test_channel_rows = @expected_manual_test_channel_rows
       AND missing_hash_rows = 0
       AND unresolved_snapshot_rows = 0 THEN 'PASS'
     ELSE 'FAIL'
   END AS status,
   total_rows,
+  manual_test_channel_rows,
   missing_source_rows,
   missing_hash_rows,
   unresolved_snapshot_rows
@@ -192,23 +228,24 @@ SELECT
   claims_without_ledger
 FROM dedupe_check;
 
--- Preserve the raw cost-mismatch count, then isolate the known step-explore
--- controlled cohort. Only natural-traffic mismatch is a charge blocker.
+-- Apply the same minimum-1 finalization as billing, then retain the known
+-- controlled and legacy cohorts as visible counters. Any remaining natural-
+-- traffic mismatch is a charge blocker.
 WITH mismatch_check AS (
   SELECT
     COUNT(*) AS total_rows,
     COALESCE(SUM(
-      ABS(prompt_cost + completion_cost + cache_read_cost
+      GREATEST(1, prompt_cost + completion_cost + cache_read_cost
         + cache_creation_5m_cost + cache_creation_1h_cost) <> ABS(amount)
     ), 0) AS raw_mismatch_rows,
     COALESCE(SUM(
       upstream_model_id = @controlled_test_model
-      AND ABS(prompt_cost + completion_cost + cache_read_cost
+      AND GREATEST(1, prompt_cost + completion_cost + cache_read_cost
         + cache_creation_5m_cost + cache_creation_1h_cost) <> ABS(amount)
     ), 0) AS controlled_mismatch_rows,
     COALESCE(SUM(
       upstream_model_id <> @controlled_test_model
-      AND ABS(prompt_cost + completion_cost + cache_read_cost
+      AND GREATEST(1, prompt_cost + completion_cost + cache_read_cost
         + cache_creation_5m_cost + cache_creation_1h_cost) <> ABS(amount)
     ), 0) AS natural_mismatch_rows,
     COALESCE(SUM(
@@ -217,8 +254,6 @@ WITH mismatch_check AS (
       AND usage_decision_reason = 'legacy_producer'
       AND billable_total_tokens = 0
       AND reported_total_tokens = 0
-      AND ABS(prompt_cost + completion_cost + cache_read_cost
-        + cache_creation_5m_cost + cache_creation_1h_cost) <> ABS(amount)
     ), 0) AS baseline_legacy_fallback_rows
   FROM oneapi_billing.billing_ledgers
   WHERE type = 'consume'
@@ -230,7 +265,7 @@ SELECT
   CASE
     WHEN UTC_TIMESTAMP(3) < @observe_end THEN 'WAIT'
     WHEN total_rows > 0
-      AND natural_mismatch_rows = baseline_legacy_fallback_rows THEN 'PASS'
+      AND natural_mismatch_rows = 0 THEN 'PASS'
     ELSE 'FAIL'
   END AS status,
   total_rows,
@@ -250,7 +285,7 @@ WITH rebuilt AS (
     l.usage_protocol,
     l.usage_semantics,
     l.upstream_model_id,
-    (
+    GREATEST(1,
       ROUND(l.uncached_input_tokens * s.input_price * s.group_ratio * 10000)
       + ROUND(l.cache_read_tokens * s.cache_read_price * s.group_ratio * 10000)
       + ROUND(l.completion_tokens * s.output_price * s.group_ratio * 10000)
@@ -306,7 +341,7 @@ WITH rebuilt AS (
     l.usage_protocol,
     l.usage_semantics,
     l.upstream_model_id,
-    (
+    GREATEST(1,
       ROUND(l.uncached_input_tokens * s.input_price * s.group_ratio * 10000)
       + ROUND(l.cache_read_tokens * s.cache_read_price * s.group_ratio * 10000)
       + ROUND(l.completion_tokens * s.output_price * s.group_ratio * 10000)
@@ -350,7 +385,7 @@ WITH rebuilt AS (
     l.cost_source,
     l.upstream_cost,
     l.upstream_model_id,
-    (
+    GREATEST(1,
       ROUND(l.uncached_input_tokens * s.input_price * s.group_ratio * 10000)
       + ROUND(l.cache_read_tokens * s.cache_read_price * s.group_ratio * 10000)
       + ROUND(l.completion_tokens * s.output_price * s.group_ratio * 10000)
@@ -400,10 +435,29 @@ SELECT
 FROM fixed_plan_check;
 
 -- Billing and log do not share a safe one-to-one request key. Compare their
--- 24 common usage/source/latency fields as multisets instead. Only aggregate
--- counts and the number of differing groups are printed.
-WITH combined AS (
+-- 24 common usage/source/latency fields as multisets instead. Logs have whole-
+-- second timestamps, so both sides use the same interior whole-second
+-- subwindow. Dual-track settlement may write subscription and balance rows for
+-- one request, so identical audit fields are collapsed by reference first.
+-- Only aggregate counts and differing groups are printed.
+WITH manual_test_baseline AS (
+  SELECT COUNT(*) AS rows_n
+  FROM oneapi_billing.billing_ledgers
+  WHERE type = 'consume'
+    AND created_at >= @observe_start
+    AND created_at < @observe_end
+    AND source_kind = 'channel'
+    AND upstream_model_id = ''
+    AND channel_id > 0
+    AND cost_source = 'subscription'
+    AND usage_protocol = 'openai_chat'
+    AND usage_contract_version = 1
+    AND usage_parse_status = 'verified'
+    AND canonical_present = 1
+    AND is_stream = 0
+), billing_requests AS (
   SELECT
+    COALESCE(NULLIF(reference_id, ''), CONCAT('__ledger__:', id)) AS request_key,
     CAST(user_id AS CHAR) AS user_id,
     token_name, model_name, quota,
     prompt_tokens, completion_tokens, cache_read_tokens,
@@ -412,18 +466,50 @@ WITH combined AS (
     billable_total_tokens, usage_semantics, usage_protocol,
     usage_field_shape, usage_parse_status, usage_contract_version,
     canonical_present, usage_decision_reason, channel_id,
-    subscription_account_id, elapsed_time, is_stream,
-    1 AS billing_n, 0 AS log_n
+    subscription_account_id, elapsed_time, is_stream
   FROM oneapi_billing.billing_ledgers
   WHERE type = 'consume'
-    AND created_at >= @observe_start
-    AND created_at < @observe_end
+    AND created_at >= FROM_UNIXTIME(CEIL(UNIX_TIMESTAMP(@observe_start)))
+    AND created_at < FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(@observe_end)))
     AND NOT (
       usage_parse_status = 'legacy'
       AND usage_decision_reason = 'legacy_producer'
       AND billable_total_tokens = 0
       AND reported_total_tokens = 0
     )
+    AND NOT (
+      source_kind = 'channel'
+      AND upstream_model_id = ''
+      AND channel_id > 0
+      AND cost_source = 'subscription'
+      AND usage_protocol = 'openai_chat'
+      AND usage_contract_version = 1
+      AND usage_parse_status = 'verified'
+      AND canonical_present = 1
+      AND is_stream = 0
+    )
+  GROUP BY
+    request_key,
+    user_id, token_name, model_name, quota,
+    prompt_tokens, completion_tokens, cache_read_tokens,
+    cache_creation_5m_tokens, cache_creation_1h_tokens,
+    uncached_input_tokens, reported_prompt_tokens, reported_total_tokens,
+    billable_total_tokens, usage_semantics, usage_protocol,
+    usage_field_shape, usage_parse_status, usage_contract_version,
+    canonical_present, usage_decision_reason, channel_id,
+    subscription_account_id, elapsed_time, is_stream
+), combined AS (
+  SELECT
+    user_id, token_name, model_name, quota,
+    prompt_tokens, completion_tokens, cache_read_tokens,
+    cache_creation_5m_tokens, cache_creation_1h_tokens,
+    uncached_input_tokens, reported_prompt_tokens, reported_total_tokens,
+    billable_total_tokens, usage_semantics, usage_protocol,
+    usage_field_shape, usage_parse_status, usage_contract_version,
+    canonical_present, usage_decision_reason, channel_id,
+    subscription_account_id, elapsed_time, is_stream,
+    1 AS billing_n, 0 AS log_n
+  FROM billing_requests
 
   UNION ALL
 
@@ -440,8 +526,8 @@ WITH combined AS (
     0, 1
   FROM oneapi_log.logs
   WHERE level = 'consume'
-    AND created_at >= FLOOR(UNIX_TIMESTAMP(@observe_start))
-    AND created_at < CEIL(UNIX_TIMESTAMP(@observe_end))
+    AND created_at >= CEIL(UNIX_TIMESTAMP(@observe_start))
+    AND created_at < FLOOR(UNIX_TIMESTAMP(@observe_end))
     AND NOT (
       usage_contract_version = 0
       AND quota = 0
@@ -484,12 +570,15 @@ SELECT
     WHEN UTC_TIMESTAMP(3) < @observe_end THEN 'WAIT'
     WHEN billing_rows > 0
       AND billing_rows = log_rows
-      AND differing_groups = 0 THEN 'PASS'
+      AND differing_groups = 0
+      AND manual_test_baseline.rows_n = @expected_manual_test_channel_rows
+      THEN 'PASS'
     ELSE 'FAIL'
   END AS status,
   billing_rows,
   log_rows,
   differing_groups,
+  manual_test_baseline.rows_n AS manual_test_channel_rows,
   (
     SELECT COUNT(*)
     FROM oneapi_billing.billing_ledgers
@@ -501,4 +590,5 @@ SELECT
       AND billable_total_tokens = 0
       AND reported_total_tokens = 0
   ) AS baseline_legacy_fallback_rows
-FROM multiset_check;
+FROM multiset_check
+CROSS JOIN manual_test_baseline;

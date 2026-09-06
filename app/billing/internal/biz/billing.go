@@ -122,6 +122,7 @@ type BillingUsecase struct {
 	upstreamPrices      map[string]ModelPrice
 	cacheCreationMode   CacheCreationMode
 	canonicalUsageMode  CanonicalUsageMode
+	canonicalCharge     canonicalUsageChargeGate
 	// grossProfitMetric is the per-commit gross-profit histogram. It defaults
 	// to the package-global metrics.BillingLedgerGrossProfit; tests inject a
 	// registry-local instance via SetGrossProfitMetric so assertions never
@@ -166,6 +167,7 @@ func NewBillingUsecaseWithPricing(
 		upstreamPrices:     normalizeUpstreamPrices(pricing.UpstreamPrices),
 		cacheCreationMode:  resolveCacheCreationMode(),
 		canonicalUsageMode: resolveCanonicalUsageMode(),
+		canonicalCharge:    resolveCanonicalUsageChargeAllowlist(),
 	}
 }
 
@@ -187,6 +189,7 @@ func NewBillingUsecaseWithOptions(opts BillingOptions) *BillingUsecase {
 	}
 	uc.cacheCreationMode = resolveCacheCreationMode()
 	uc.canonicalUsageMode = resolveCanonicalUsageMode()
+	uc.canonicalCharge = resolveCanonicalUsageChargeAllowlist()
 	return uc
 }
 
@@ -804,6 +807,7 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 		return 0, 0, fmt.Errorf("get account snapshot: %w", err)
 	}
 
+	usage.SubscriptionAccountID = resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
 	actualCost, costBreakdown, usageAudit := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
 	if actualCost <= 0 {
 		actualCost = 1
@@ -986,6 +990,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		if err != nil {
 			return fmt.Errorf("get account in tx: %w", err)
 		}
+		usage.SubscriptionAccountID = resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
 		actualCost, costBreakdown, usageAudit := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
 		if actualCost <= 0 {
 			actualCost = 1
@@ -1805,6 +1810,7 @@ func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, mod
 // canonical cache-read tokens use the normal input ratio and cache-creation
 // remains uncharged until a ModelPrice supplies explicit creation prices.
 func (uc *BillingUsecase) resolveRatioUserCost(pricing PricingConfig, group, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
+	mode := uc.CanonicalUsageModeFor(usage)
 	legacyPrompt := usage.PromptTokens
 	legacyCompletion := usage.CompletionTokens
 	if legacyPrompt <= 0 && legacyCompletion <= 0 && usage.CacheReadTokens <= 0 {
@@ -1838,8 +1844,8 @@ func (uc *BillingUsecase) resolveRatioUserCost(pricing PricingConfig, group, mod
 		audit.UncachedInputTokens = env.Canonical.UncachedInputTokens
 		audit.BillableTotalTokens = env.Canonical.BillableTotal()
 		canonicalCost := uc.calculateRatioCanonicalCost(pricing, group, model, *env.Canonical)
-		uc.recordUsageSemanticsCostDelta(model, usage.SourceKind, uc.CanonicalUsageMode(), canonicalCost-legacyCost)
-		if uc.CanonicalUsageMode() == CanonicalUsageModeCharge {
+		uc.recordUsageSemanticsCostDelta(model, usage.SourceKind, mode, canonicalCost-legacyCost)
+		if mode == CanonicalUsageModeCharge {
 			return canonicalCost, canonicalCostBreakdown{}, audit
 		}
 		return legacyCost, canonicalCostBreakdown{}, audit
@@ -1869,7 +1875,7 @@ func (uc *BillingUsecase) resolveRatioUserCost(pricing PricingConfig, group, mod
 	if metrics.BillingUsageAmbiguousTotal != nil {
 		metrics.BillingUsageAmbiguousTotal.WithLabelValues(model, usage.SourceKind).Inc()
 	}
-	if uc.CanonicalUsageMode() == CanonicalUsageModeLegacy {
+	if mode == CanonicalUsageModeLegacy {
 		return legacyCost, canonicalCostBreakdown{}, audit
 	}
 	return minInt64(subsetCost, exclusiveCost), canonicalCostBreakdown{}, audit
@@ -1917,7 +1923,7 @@ func safeAddInt64(a, b int64) (int64, bool) {
 // envelope/canonical is missing or invalid is a producer contract error and
 // follows the same ambiguous path — never a silent legacy fallback.
 func (uc *BillingUsecase) resolveUserCost(ctx context.Context, price ModelPrice, multiplier float64, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
-	mode := uc.CanonicalUsageMode()
+	mode := uc.CanonicalUsageModeFor(usage)
 	audit := ledgerUsageAudit{UsageContractVersion: usage.UsageContractVersion}
 
 	// Freeze the pricing evidence (§6.3): the effective per-bucket prices,
@@ -1991,7 +1997,7 @@ func (uc *BillingUsecase) resolveUserCost(ctx context.Context, price ModelPrice,
 // request is counted for alerting/isolation, and (outside the emergency
 // legacy rollback) no mode may charge the higher candidate.
 func (uc *BillingUsecase) ambiguousUserCost(ctx context.Context, price ModelPrice, multiplier float64, model string, usage LedgerUsage, legacyBreakdown canonicalCostBreakdown, legacyFinal int64, audit ledgerUsageAudit, reason string) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
-	mode := uc.CanonicalUsageMode()
+	mode := uc.CanonicalUsageModeFor(usage)
 	audit.UsageParseStatus = UsageParseStatusAmbiguous
 	audit.UsageDecisionReason = reason
 
@@ -2272,6 +2278,70 @@ func (uc *BillingUsecase) CanonicalUsageMode() CanonicalUsageMode {
 		return CanonicalUsageModeObserve
 	}
 	return uc.canonicalUsageMode
+}
+
+// CanonicalUsageModeFor narrows charge mode to an exact subscription account
+// and upstream-model pair when BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST is
+// configured. A missing, empty, or malformed allowlist fails safe to observe;
+// global charge requires an explicit "*" entry.
+func (uc *BillingUsecase) CanonicalUsageModeFor(usage LedgerUsage) CanonicalUsageMode {
+	mode := uc.CanonicalUsageMode()
+	if mode != CanonicalUsageModeCharge {
+		return mode
+	}
+	if uc == nil {
+		return CanonicalUsageModeObserve
+	}
+	if uc.canonicalCharge.all {
+		return CanonicalUsageModeCharge
+	}
+	if usage.SourceKind != CostSourceSubscription {
+		return CanonicalUsageModeObserve
+	}
+	_, allowed := uc.canonicalCharge.allowlist[canonicalUsageChargeSourceKey(usage.SubscriptionAccountID, usage.UpstreamModelID)]
+	if !allowed {
+		return CanonicalUsageModeObserve
+	}
+	return CanonicalUsageModeCharge
+}
+
+type canonicalUsageChargeGate struct {
+	allowlist map[string]struct{}
+	all       bool
+}
+
+func resolveCanonicalUsageChargeAllowlist() canonicalUsageChargeGate {
+	raw := os.Getenv("BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST")
+	allowlist := make(map[string]struct{})
+	gate := canonicalUsageChargeGate{allowlist: allowlist}
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "*" {
+			gate.all = true
+			continue
+		}
+		account, model, ok := strings.Cut(item, ":")
+		if !ok {
+			continue
+		}
+		accountID, err := strconv.ParseInt(strings.TrimSpace(account), 10, 64)
+		if err != nil || accountID <= 0 {
+			continue
+		}
+		key := canonicalUsageChargeSourceKey(accountID, strings.TrimSpace(model))
+		if key != "" {
+			allowlist[key] = struct{}{}
+		}
+	}
+	return gate
+}
+
+func canonicalUsageChargeSourceKey(subscriptionAccountID int64, upstreamModelID string) string {
+	upstreamModelID = strings.TrimSpace(upstreamModelID)
+	if subscriptionAccountID <= 0 || upstreamModelID == "" {
+		return ""
+	}
+	return strconv.FormatInt(subscriptionAccountID, 10) + ":" + upstreamModelID
 }
 
 // canonicalCostBreakdown is the pure result of applying ModelPrice to the five
