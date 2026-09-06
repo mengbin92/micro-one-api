@@ -32,6 +32,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	driver := flags.String("driver", "mysql", "mysql or sqlite3 (existing database snapshot)")
 	dsnEnv := flags.String("dsn-env", "GROUP_AUDIT_DSN", "environment variable containing the DSN; never printed")
 	baseEnv := flags.String("base-ratios-env", "", "optional environment variable containing billing base GroupRatios JSON")
+	identitySchema := flags.String("identity-schema", "", "MySQL schema owning users; default DSN database")
+	optionsSchema := flags.String("options-schema", "", "MySQL schema owning system_options; default DSN database")
 	output := flags.String("output", "", "new report file (0600); default stdout")
 	limit := flags.Int("max-probes", 100000, "maximum group/model/source authorization checks")
 	timeout := flags.Duration("timeout", 2*time.Minute, "snapshot timeout")
@@ -90,7 +92,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	defer tx.Rollback()
-	channelRepo, routingRepo, inventoryRepo, err := data.NewGroupAuditRepositories(tx, *driver)
+	channelRepo, routingRepo, inventoryRepo, err := data.NewGroupAuditRepositories(tx, *driver, data.GroupAuditSchemas{Identity: *identitySchema, Options: *optionsSchema})
 	if err != nil {
 		fmt.Fprintln(stderr, "cannot initialize audit repositories")
 		return 2

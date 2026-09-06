@@ -5,6 +5,18 @@
 
 ## 2026-09-07：清点工具与统一授权
 
+### 后续：按服务拆 schema 的清点支持
+
+环境元数据核验发现用户、渠道、价格配置已按服务拆 schema，单库读取不足以形成完整基线。
+审计命令新增 `--identity-schema` / `--options-schema`，在同一 MySQL 只读事务内查询所有表；
+schema 标识符严格校验，SQLite 拒绝 schema 覆盖，真实数据报告目录加入 Git 忽略。
+
+`go test -race ./app/channel/cmd/group-audit ./app/channel/internal/data ./app/channel/internal/biz` 通过，
+包括原有只读回归、无效 schema 输入与 MySQL 跨 schema SQL 引用。Linux/amd64 命令已在本机交叉编译完成。
+真实数据报告导出需明确的数据源与本地目的地授权；准备命令和读取元数据不等于已完成授权基线清点。
+
+### 统一授权阶段验证
+
 上一阶段已提交为 `669d7af8`。本阶段实现和运行方式见
 [分组清点与统一路由授权](./group-audit-and-routing-authorization.md)。
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"micro-one-api/app/channel/internal/biz"
@@ -18,9 +19,27 @@ import (
 // groupAuditRepo uses the production ability and registry queries in one
 // caller-owned read-only transaction. Source lookups project routing metadata
 // only: the audit never loads keys, tokens, names, or credential metadata.
-type groupAuditRepo struct{ *Repository }
+type groupAuditRepo struct {
+	*Repository
+	usersTable   string
+	optionsTable string
+}
 
-func NewGroupAuditRepositories(tx *sql.Tx, driver string) (biz.ChannelRepo, biz.ModelRoutingRepo, biz.GroupInventoryRepo, error) {
+// GroupAuditSchemas locates the two non-channel tables on a split-schema
+// deployment. All reads still use the same caller-owned MySQL transaction.
+type GroupAuditSchemas struct {
+	Identity string
+	Options  string
+}
+
+var auditSchemaIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
+
+func NewGroupAuditRepositories(tx *sql.Tx, driver string, schemas GroupAuditSchemas) (biz.ChannelRepo, biz.ModelRoutingRepo, biz.GroupInventoryRepo, error) {
+	for _, schema := range []string{schemas.Identity, schemas.Options} {
+		if schema != "" && (driver != "mysql" || !auditSchemaIdentifier.MatchString(schema)) {
+			return nil, nil, nil, fmt.Errorf("audit schema overrides require MySQL identifiers")
+		}
+	}
 	var dialector gorm.Dialector
 	switch driver {
 	case "mysql":
@@ -34,7 +53,13 @@ func NewGroupAuditRepositories(tx *sql.Tx, driver string) (biz.ChannelRepo, biz.
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	r := &groupAuditRepo{Repository: &Repository{db: db}}
+	r := &groupAuditRepo{Repository: &Repository{db: db}, usersTable: "users", optionsTable: "system_options"}
+	if schemas.Identity != "" {
+		r.usersTable = schemas.Identity + ".users"
+	}
+	if schemas.Options != "" {
+		r.optionsTable = schemas.Options + ".system_options"
+	}
 	return r, r, r, nil
 }
 
@@ -83,7 +108,7 @@ func (r *groupAuditRepo) LoadGroupInventory(ctx context.Context) (*biz.GroupInve
 		ID    int64
 		Group string
 	}
-	if err := db.Table("users").Select("id", "group").Find(&users).Error; err != nil {
+	if err := db.Table(r.usersTable).Select("id", "group").Find(&users).Error; err != nil {
 		return nil, err
 	}
 	for _, row := range users {
@@ -164,7 +189,7 @@ func (r *groupAuditRepo) LoadGroupInventory(ctx context.Context) (*biz.GroupInve
 		add("model_routings", row.ID, row.GroupName, false, routing.Source{Kind: routing.Subscription, ID: row.SubscriptionAccountID}, row.Model)
 	}
 	var options []struct{ OptionValue string }
-	if err := db.Table("system_options").Select("option_value").Where("option_key = ?", "GroupRatio").Find(&options).Error; err != nil {
+	if err := db.Table(r.optionsTable).Select("option_value").Where("option_key = ?", "GroupRatio").Find(&options).Error; err != nil {
 		return nil, err
 	}
 	if len(options) > 1 {

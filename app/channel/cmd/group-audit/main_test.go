@@ -89,7 +89,7 @@ func TestAuditReadOnlyDeterministicAndModelScoped(t *testing.T) {
 
 func TestAuditIncompleteProducesNoBaseline(t *testing.T) {
 	t.Setenv("GROUP_AUDIT_DSN", auditFixture(t))
-	for _, args := range [][]string{{"--driver=sqlite3", "--max-probes=1"}, {"--driver=postgres"}} {
+	for _, args := range [][]string{{"--driver=sqlite3", "--max-probes=1"}, {"--driver=postgres"}, {"--driver=sqlite3", "--identity-schema=identity"}} {
 		var output, diagnostic bytes.Buffer
 		require.Equal(t, 2, run(args, &output, &diagnostic))
 		require.Empty(t, output.String())

@@ -96,6 +96,9 @@ cert/
 # Local build/save outputs
 dist/
 
+# Local reports from real database routing audits (never commit live records)
+/artifacts/group-audit/
+
 # Subscription account import payloads (contain plaintext OAuth tokens)
 subscription-account.*.payload.json
 

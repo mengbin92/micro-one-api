@@ -32,6 +32,11 @@ go build -o /tmp/group-audit ./app/channel/cmd/group-audit
 # 通过环境安全注入 GROUP_AUDIT_DSN，不把带密码的 DSN 放进命令参数。
 /tmp/group-audit --driver=mysql --output=/tmp/group-baseline.json
 
+# 同一 MySQL 实例按服务拆 schema：DSN 指向 channel 拥有的数据库。
+/tmp/group-audit --driver=mysql \
+  --identity-schema=oneapi_identity --options-schema=oneapi_admin \
+  --base-ratios-env=GROUP_AUDIT_BASE_RATIOS --output=/tmp/group-baseline-split.json
+
 # SQLite 接受已有文件路径或 file:/绝对路径，工具强制 mode=ro。
 GROUP_AUDIT_DSN=/absolute/path/snapshot.db /tmp/group-audit \
   --driver=sqlite3 --model=legacy-chat --output=/tmp/group-baseline-sqlite.json
@@ -43,7 +48,10 @@ MySQL 使用只读、可重复读事务；SQLite 使用只读文件连接和事�
 
 清点要求同一快照内存在 `users`、`channels`、`subscription_accounts`、两类 abilities、`models`、
 两类模型映射、`model_routings` 和 `system_options`。缺表、查询失败或超出限制时整体失败。
-已按服务拆库的部署需要先提供包含这些表的一致快照；当前命令不跨多个数据库拼接快照。
+同一 MySQL 实例按服务拆 schema 时，通过 `--identity-schema` / `--options-schema` 指定两类跨服务表，
+其余表使用 DSN 中的 channel 数据库。全部查询共用一个只读事务；底层表应使用 InnoDB，账号需具有对应 SELECT 权限。
+schema 参数仅接受字母、数字、下划线构成的标识符（首位不能为数字，最多 63 字符），由数据库驱动引用。
+不支持跨 MySQL 实例拼接事务，也不为审计创建数据库或视图；SQLite 不接受 schema 覆盖。
 仅支持 MySQL / SQLite；PostgreSQL 成员查询方言一致性尚待单独验证，命令会拒绝该 driver。
 
 可选参数：
@@ -52,6 +60,8 @@ MySQL 使用只读、可重复读事务；SQLite 使用只读文件连接和事�
 |---|---|
 | `--dsn-env` | DSN 环境变量名，默认 `GROUP_AUDIT_DSN` |
 | `--base-ratios-env` | billing 基础 `GroupRatios` JSON 的环境变量名 |
+| `--identity-schema` | MySQL 用户表的 schema，默认 DSN 数据库 |
+| `--options-schema` | MySQL 价格配置表的 schema，默认 DSN 数据库 |
 | `--model` | 补充一个具体模型名，可重复，用于验证通配符规则 |
 | `--max-probes` | 授权查询次数上限，默认 100000 |
 | `--timeout` | 整次事务期限，默认 2 分钟 |
@@ -77,6 +87,9 @@ MySQL 使用只读、可重复读事务；SQLite 使用只读文件连接和事�
 模型探测集合是注册模型、资源/能力中出现的具体模型名以及 `--model` 参数。
 通配符覆盖无限集合，报告保留符号规则，不声称穷尽所有未来模型。对数据库大小写规则、CSV 空白和 `%` / `_`
 的现有 SQL 行为，工具使用实际查询结果记录，不自动清洗或改变权限。
+
+真实数据报告保存到项目内时，使用被 Git 忽略的 `artifacts/group-audit/` 目录；报告不含凭据，但仍属于内部路由数据，
+导出前确认数据来源、目的地和授权。不要将报告提交到代码仓库。
 
 本阶段已在无凭据列的 SQLite 样例快照上验证：授权矩阵、越组映射、诊断、重复输出一致、数据库文件不变、
 写入被只读连接拒绝，以及不完整运行不输出基线。尚未清点生产数据，也未验证真实 MySQL 实例。
