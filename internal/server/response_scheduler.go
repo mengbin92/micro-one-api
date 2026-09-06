@@ -64,6 +64,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 			}
 			globalModel, resolvedModel := s.routeModels(route, clientModel)
 			return &relaybiz.RelayPlan{
+				ClientModel: modelForPermission,
 				Auth: &relaybiz.AuthSnapshot{
 					UserID:        authSnapshot.UserId,
 					TokenID:       authSnapshot.TokenId,
@@ -107,6 +108,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 	}
 	globalModel, resolvedModel := s.routeModels(route, clientModel)
 	return &relaybiz.RelayPlan{
+		ClientModel: clientModel,
 		Auth: &relaybiz.AuthSnapshot{
 			UserID:        authSnapshot.UserId,
 			TokenID:       authSnapshot.TokenId,

@@ -145,6 +145,9 @@ SQL 与内存的全部一致性属于下节的迁移任务，不把本次 helper
 
 ### P2：统一授权判定，再迁移成员关系
 
+2026-09-07 已完成只读清点工具与下述第 1 项的本地实现，详见
+[清点与授权说明](./group-audit-and-routing-authorization.md)。实际数据清点与关系表迁移仍需后续执行。
+
 1. channel 提供统一的 `CanRoute(group, model, source)` 判定，普通选择、模型目录、重试、HTTP sticky、
    Responses / WebSocket 恢复使用同一规则；模型映射保留模型级授权，不自动扩展成账号级全模型授权。
 2. 新增路由组及成员关系表；所有方言提供等价迁移、唯一约束和索引。

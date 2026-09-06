@@ -467,6 +467,12 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		})
 		return
 	}
+	refreshed, allowed := s.refreshStoredResponseRoute(r.Context(), authSnapshot, route.Model, route)
+	if !allowed {
+		s.writeError(w, http.StatusNotFound, "response route not found")
+		return
+	}
+	route = refreshed
 	if err := s.checkUserRPM(r.Context(), authSnapshot.UserId); err != nil {
 		s.writeUserRPMError(w)
 		return

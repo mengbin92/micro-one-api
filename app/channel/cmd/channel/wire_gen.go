@@ -82,6 +82,7 @@ func newApp(
 ) (*kratos.App, func()) {
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
+	routingUC.SetCacheInvalidator(uc)
 	uc.SetModelRoutingRepo(repo)
 
 	uc.SetLoadOracle(data.NewRedisLoadOracle(repo.Redis()))

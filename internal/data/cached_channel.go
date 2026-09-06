@@ -2,8 +2,10 @@ package data
 
 import (
 	"context"
+	"micro-one-api/domain/routing"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
@@ -53,8 +55,17 @@ func (c *CachedChannelClient) SelectChannel(ctx context.Context, req *channelv1.
 	model := req.GetModel()
 	channels, err := c.cache.Get(ctx, group, model)
 	if err == nil && len(channels) > 0 {
-		// Cache hit — return the first (highest-priority) candidate.
-		return &channelv1.SelectChannelReply{Channel: channels[0]}, nil
+		// A cached selection is not an authorization grant. Mapping/group
+		// changes must take effect even if an invalidation event was missed.
+		permission, checkErr := checkRoute(ctx, c.ChannelServiceClient, group, model, routing.Source{Kind: routing.Channel, ID: channels[0].GetId()})
+		if checkErr != nil {
+			return nil, checkErr
+		}
+		if permission.Allowed {
+			ch := proto.Clone(channels[0]).(*commonv1.ChannelInfo)
+			ch.UpstreamModelId = permission.UpstreamModelID
+			return &channelv1.SelectChannelReply{Channel: ch}, nil
+		}
 	}
 
 	// Cache miss (or cache error) — call upstream.

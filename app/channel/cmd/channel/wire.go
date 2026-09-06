@@ -75,6 +75,7 @@ func newApp(
 ) (*kratos.App, func()) {
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
+	routingUC.SetCacheInvalidator(uc)
 	uc.SetModelRoutingRepo(repo)
 	// Phase D #12: wire the cross-replica in-flight oracle so the
 	// subscription-account selector de-rates saturated accounts across all

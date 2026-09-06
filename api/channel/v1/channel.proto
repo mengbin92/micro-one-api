@@ -8,6 +8,9 @@ import "google/protobuf/empty.proto";
 option go_package = "micro-one-api/api/channel/v1;channelv1";
 
 service ChannelService {
+  // Read-only, model-scoped authorization for stored/cached routing sources.
+  // It never grants account-wide access and never returns credentials.
+  rpc CheckRoute(CheckRouteRequest) returns (CheckRouteReply);
   rpc SelectChannel(SelectChannelRequest) returns (SelectChannelReply);
   rpc SelectSubscriptionAccount(SelectSubscriptionAccountRequest) returns (SelectSubscriptionAccountReply);
   rpc GetSubscriptionAccount(GetSubscriptionAccountRequest) returns (GetSubscriptionAccountReply);
@@ -1158,4 +1161,15 @@ message ListUsageSemanticBlocksRequest {
 message ListUsageSemanticBlocksResponse {
   repeated UsageSemanticBlock blocks = 1;
   int64 total = 2;
+}
+
+message CheckRouteRequest {
+  string group = 1;
+  string model = 2;
+  string source_kind = 3; // channel | subscription
+  int64 source_id = 4;
+}
+message CheckRouteReply {
+  bool allowed = 1;
+  string upstream_model_id = 2;
 }

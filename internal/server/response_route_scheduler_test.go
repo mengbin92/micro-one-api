@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	relaybiz "micro-one-api/internal/biz"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -52,11 +54,12 @@ func TestLookupResponseRouteWithStickyRejectsNonResponseIDs(t *testing.T) {
 
 func TestLookupResponseRouteWithStickyPrefersLocalRoute(t *testing.T) {
 	srv := &HTTPServer{
+		identityClient: rawIdentityClient{}, channelClient: rawChannelClient{},
 		responseRoutes: map[string]responseRouteEntry{
-			"resp_123": {route: responseRoute{Model: "gpt-5"}, expiresAt: time.Now().Add(time.Hour)},
+			"resp_123": {route: responseRoute{Model: "gpt-5", Channel: relaybiz.Channel{ID: 11}}, expiresAt: time.Now().Add(time.Hour)},
 		},
 	}
-	route, ok := srv.lookupResponseRouteWithSticky(nil, "token", "", "resp_123")
+	route, ok := srv.lookupResponseRouteWithSticky(context.Background(), "token", "", "resp_123")
 	if !ok {
 		t.Fatal("expected local route hit")
 	}

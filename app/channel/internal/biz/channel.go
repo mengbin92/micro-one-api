@@ -431,7 +431,7 @@ func (uc *ChannelUsecase) ConfigureHealthAlert(notifier Notifier, cfg HealthAler
 }
 
 func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string, excludeFirstPriority bool) (*Channel, error) {
-	abilities, err := uc.repo.ListAbilitiesByGroupAndModel(ctx, group, model)
+	abilities, err := uc.routeChannelAbilities(ctx, group, model)
 	if err != nil {
 		return nil, err
 	}
@@ -506,7 +506,7 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 // widens to catch-all channels: failover must not silently route unregistered
 // models.
 func (uc *ChannelUsecase) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*Channel, error) {
-	abilities, err := uc.repo.ListAbilitiesByGroupAndModel(ctx, group, model)
+	abilities, err := uc.routeChannelAbilities(ctx, group, model)
 	if err != nil {
 		return nil, err
 	}
@@ -678,32 +678,9 @@ func (uc *ChannelUsecase) SelectSubscriptionAccountExcluding(ctx context.Context
 }
 
 func (uc *ChannelUsecase) selectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool, excluded map[int64]bool) (*SubscriptionAccount, error) {
-	// P2 #3: model→account routing. When a routing row matches the requested
-	// model, restrict the candidate pool to the routed account set (still
-	// honouring status/quota/runtime-blocked). Exact-before-wildcard
-	// precedence is applied by RoutingMatchForSelect. Routed accounts still
-	// go through the same priority-tier + selector flow below so health and
-	// load factor continue to apply. See docs/model-management-design.md §9.3 #3.
-	routed := uc.routedMatches(ctx, group, model, platform)
-
-	abilities, err := uc.repo.ListSubscriptionAccountAbilities(ctx, group, model, platform)
+	abilities, err := uc.routeSubscriptionAbilities(ctx, group, model, platform)
 	if err != nil {
 		return nil, err
-	}
-	routedBefore := 0
-	if len(routed) > 0 {
-		routedBefore = len(abilities)
-		abilities = filterAbilitiesByRouted(abilities, routed)
-	}
-	if len(abilities) == 0 {
-		if routed != nil && routedBefore > 0 {
-			// Routing matched and pinned accounts that exist, but none were
-			// schedulable (disabled / unschedulable / runtime-blocked). Surface a
-			// distinct error so operators can tell routing dead-ends apart from a
-			// genuine "no account serves this model".
-			return nil, fmt.Errorf("model routing matched %d account(s) for %q but none are schedulable", len(routed), model)
-		}
-		return nil, ErrSubscriptionAccountNotFound
 	}
 	sort.Slice(abilities, func(i, j int) bool {
 		return abilities[i].Priority > abilities[j].Priority
@@ -781,33 +758,6 @@ func (uc *ChannelUsecase) selectSubscriptionAccount(ctx context.Context, group, 
 		return nil, fmt.Errorf("all subscription accounts serving %q are circuit-opened or saturated; try again after the circuit window", model)
 	}
 	return nil, ErrSubscriptionAccountNotFound
-}
-
-// routedMatches returns the enabled routing rows that pin a model to a set of
-// subscription accounts for this (group, model, platform) tuple. nil when no
-// routing repo is configured or no rule matches — the caller then uses the
-// normal abilities-based selection. The rows carry a Priority used to order
-// routed candidates within a tier (higher wins). See
-// docs/model-management-design.md §9.3 #3.
-func (uc *ChannelUsecase) routedMatches(ctx context.Context, group, model, platform string) []*ModelRouting {
-	if uc == nil || uc.routingRepo == nil {
-		return nil
-	}
-	rows, err := uc.routingRepo.ListModelRoutingsForSelect(ctx, group, model, platform)
-	if err != nil || len(rows) == 0 {
-		return nil
-	}
-	matches := RoutingMatchForSelect(rows, model)
-	if len(matches) == 0 {
-		return nil
-	}
-	enabled := make([]*ModelRouting, 0, len(matches))
-	for _, r := range matches {
-		if r.Enabled {
-			enabled = append(enabled, r)
-		}
-	}
-	return enabled
 }
 
 // routedPriority returns the routing priority for an account id within the
@@ -985,6 +935,17 @@ func (uc *ChannelUsecase) ListAvailableModels(ctx context.Context, group string)
 	if err != nil {
 		return nil, err
 	}
+	visible := make([]string, 0, len(models))
+	for _, model := range models {
+		allowed, err := uc.hasAuthorizedModel(ctx, group, model)
+		if err != nil {
+			return nil, err
+		}
+		if allowed {
+			visible = append(visible, model)
+		}
+	}
+	models = visible
 	if uc.modelsListCache != nil {
 		uc.modelsListCache.set(group, models)
 	}

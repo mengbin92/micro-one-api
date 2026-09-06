@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/routing"
 	"net/http"
 	"net/url"
 	"strings"
@@ -903,11 +904,15 @@ func (s *HTTPServer) materializeWSStickySource(
 		}
 		return true
 	case relaybiz.UpstreamRouteChannel:
+		permission, err := s.checkStoredSource(ctx, authSnapshot.Group, clientModel, routing.Source{Kind: routing.Channel, ID: source.id})
+		if err != nil || !permission.Allowed {
+			return false
+		}
 		if s.channelClient == nil {
 			return false
 		}
 		chInfo, err := s.channelClient.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: source.id})
-		if err != nil || chInfo == nil || chInfo.Channel == nil {
+		if err != nil || chInfo == nil || chInfo.Channel == nil || chInfo.Channel.Status != 1 {
 			return false
 		}
 		ch := relaybiz.Channel{
@@ -922,7 +927,7 @@ func (s *HTTPServer) materializeWSStickySource(
 			Weight:          chInfo.Channel.Weight,
 			Key:             chInfo.Channel.Key,
 			ModelMapping:    chInfo.Channel.ModelMapping,
-			UpstreamModelID: chInfo.Channel.UpstreamModelId,
+			UpstreamModelID: permission.UpstreamModelID,
 			RestrictModels:  chInfo.Channel.RestrictModels,
 		}
 		if chInfo.Channel.Config != nil {

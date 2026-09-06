@@ -336,11 +336,15 @@ func (r *Repository) ListUnrestrictedChannelsByGroup(ctx context.Context, group 
 // listUnrestrictedChannelsByGroupDB returns enabled channels in the group
 // whose restrict_models flag is false (catch-all channels). They accept any
 // model not matched by the abilities table. See docs §9.3 #2.
-func (r *Repository) listUnrestrictedChannelsByGroupDB(ctx context.Context, group string) ([]*biz.Channel, error) {
+func (r *Repository) listUnrestrictedChannelsByGroupDB(ctx context.Context, group string, columns ...string) ([]*biz.Channel, error) {
 	var models []channelModel
+	query := r.db.WithContext(ctx)
+	if len(columns) > 0 {
+		query = query.Select(columns)
+	}
 	// channels.group is a CSV; match exact, prefix, suffix, or infix to stay
 	// cross-driver compatible (no FIND_IN_SET in SQLite/Postgres).
-	if err := r.db.WithContext(ctx).
+	if err := query.
 		Where("status = ? AND restrict_models = ?", biz.ChannelStatusEnabled, false).
 		Where("`group` = ? OR `group` LIKE ? OR `group` LIKE ? OR `group` LIKE ?",
 			group, group+",%", "%,"+group, "%,"+group+",%").

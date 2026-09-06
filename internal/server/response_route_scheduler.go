@@ -22,7 +22,14 @@ func (s *HTTPServer) lookupResponseRouteWithSticky(ctx context.Context, token, c
 		return responseRoute{}, false
 	}
 	if route, ok := s.lookupResponseRoute(responseID); ok {
-		return route, true
+		if s.identityClient == nil {
+			return responseRoute{}, false
+		}
+		auth, err := s.getAuthSnapshot(ctx, token)
+		if err != nil {
+			return responseRoute{}, false
+		}
+		return s.refreshStoredResponseRoute(ctx, auth, clientModel, route)
 	}
 	if s.wsSticky != nil {
 		var route responseRoute

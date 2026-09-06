@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"micro-one-api/domain/routing"
 	"testing"
 	"time"
 
@@ -20,6 +21,10 @@ type schedulerPlannerStub struct {
 
 type wsStickySubscriptionClient struct {
 	account *relaybiz.SubscriptionAccount
+}
+
+func (c *wsStickySubscriptionClient) CanRoute(_ context.Context, group, model string, source routing.Source) (routing.Permission, error) {
+	return routing.Permission{Allowed: c.account != nil && source.Kind == routing.Subscription && source.ID == c.account.ID && c.account.Status == 1 && routing.ContainsGroup(c.account.Group, group) && model != ""}, nil
 }
 
 func (*wsStickySubscriptionClient) SelectChannel(context.Context, string, string, bool) (*relaybiz.Channel, error) {
@@ -71,8 +76,9 @@ func (c rawIdentityClientWithAllowedModels) GetAuthSnapshot(ctx context.Context,
 func TestOpenAIWSRoutingSchedulerResolveStoredRoute(t *testing.T) {
 	srv := &HTTPServer{
 		identityClient: rawIdentityClient{},
+		channelClient:  rawChannelClient{},
 		responseRoutes: map[string]responseRouteEntry{
-			"resp_123": {route: responseRoute{Model: "gpt-5"}, expiresAt: time.Now().Add(time.Hour)},
+			"resp_123": {route: responseRoute{Model: "gpt-5", Channel: relaybiz.Channel{ID: 11}}, expiresAt: time.Now().Add(time.Hour)},
 		},
 	}
 	sched := NewOpenAIWSRoutingScheduler(srv)
