@@ -377,4 +377,10 @@ export const EN_US_MESSAGES: Record<string, string> = {
   '已处理 {count} 个模型': 'Processed {count} models',
   '确认批量删除 {count} 个模型？': 'Delete {count} models?',
   '选择 {model}': 'Select {model}',
+  // Admin overview (model-health dashboard rework).
+  '运行正常，暂无告警': 'Running normally, no alerts',
+  '消耗排行': 'Consumption Ranking',
+  '消耗排行维度': 'Consumption Ranking Dimensions',
+  // Count suffix for `t(`${n} 条账务日志`)` template strings (segment match).
+  '条账务日志': 'billing log entries',
 };

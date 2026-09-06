@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Boxes, CreditCard, Database, Gauge, KeyRound, LineChart, Scale, TrendingUp, Users } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, CreditCard, Database, KeyRound, LineChart, Scale, TrendingUp, Users } from 'lucide-react';
 
 import { Link } from 'react-router';
 import { EmptyState } from '@/components/EmptyState';
@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { adminApiClient } from '@/lib/api';
 import { unwrapApiData } from '@/lib/api-response';
 import { quotaPerUnitFromOptions, quotaToCurrencyUnits } from '@/lib/amount';
+import { cn } from '@/lib/utils';
 import { AccountStatusBadge } from '@/components/admin/AccountStatusBadge';
 import {
   normalizeSubscriptionAccount,
@@ -297,26 +298,6 @@ function formatDate(value?: number | string) {
   return new Date(timestamp * 1000).toLocaleString(locale());
 }
 
-function parsePricingMap(value?: string) {
-  if (!value) return {};
-  try {
-    const parsed = JSON.parse(value) as Record<string, number>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function parseModelPriceMap(value?: string) {
-  if (!value) return {};
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 function modelCount(channels: AdminChannel[]) {
   const models = new Set<string>();
   channels.forEach((channel) => {
@@ -443,33 +424,7 @@ const managementAreas = [
   },
 ] as const;
 
-function ManagementAreaCard({ area }: { area: (typeof managementAreas)[number] }) {
-  const Icon = area.icon;
-  return (
-    <Card className="h-full">
-      <CardContent className="space-y-4 p-5">
-        <div className="flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-xl bg-accent text-accent-foreground">
-            <Icon className="size-5" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-foreground">{t(area.title)}</h3>
-            <p className="mt-0.5 text-sm text-muted-foreground">{t(area.description)}</p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {area.links.map((link) => (
-            <Link key={link.to} to={link.to} className="rounded-lg bg-muted px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-              {t(link.label)}
-            </Link>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function topItemLabel(item: UsageAggregateItem, kind: 'model' | 'channel' | 'user' | 'token' | 'subscription_account') {
+function topItemLabel(item: UsageAggregateItem, kind: TopUsageKind) {
   if (kind === 'model') return item.model || item.key || '-';
   if (kind === 'channel') return item.name || (item.channel_id ? `#${item.channel_id}` : item.key || '-');
   if (kind === 'subscription_account') {
@@ -480,8 +435,9 @@ function topItemLabel(item: UsageAggregateItem, kind: 'model' | 'channel' | 'use
   return item.user_id || item.key || '-';
 }
 
-function TopUsageChartCard({
-  title,
+type TopUsageKind = 'model' | 'channel' | 'user' | 'token' | 'subscription_account';
+
+function TopUsageList({
   kind,
   items,
   isLoading,
@@ -489,8 +445,7 @@ function TopUsageChartCard({
   emptyDescription,
   quotaPerUnit,
 }: {
-  title: string;
-  kind: 'model' | 'channel' | 'user' | 'token' | 'subscription_account';
+  kind: TopUsageKind;
   items: UsageAggregateItem[];
   isLoading: boolean;
   emptyTitle: string;
@@ -506,51 +461,44 @@ function TopUsageChartCard({
     subscription_account: 'bg-cyan-600 dark:bg-cyan-400',
   }[kind];
 
+  if (isLoading) {
+    return <TableSkeleton columns={[t("对象"), t("消耗"), t("占比")]} rows={5} />;
+  }
+  if (items.length === 0) {
+    return <EmptyState title={emptyTitle} description={emptyDescription} />;
+  }
   return (
-    <Card>
-      <CardHeader className="border-b border-border">
-        <CardTitle role="heading" aria-level={3}>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="p-4">
-        {isLoading ? (
-          <TableSkeleton columns={[t("对象"), t("消耗"), t("占比")]} rows={5} />
-        ) : items.length === 0 ? (
-          <EmptyState title={emptyTitle} description={emptyDescription} />
-        ) : (
-          <div className="space-y-4">
-            {items.map((item, index) => {
-              const quota = Math.abs(numberValue(item.quota));
-              const width = `${Math.max(4, (quota / maxQuota) * 100)}%`;
-              const label = topItemLabel(item, kind);
-              return (
-                <div key={`${kind}-${item.key || item.user_id || item.channel_id || item.model || item.token_name || index}`} className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
-                        {index + 1}
-                      </span>
-                      <span className="truncate text-sm font-semibold text-foreground" title={label}>
-                        {label}
-                      </span>
-                    </div>
-                    <span className="shrink-0 text-sm font-semibold text-foreground">
-                      {formatQuota(quota, quotaPerUnit)}
-                    </span>
-                  </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-                    <div className={`h-full rounded-full ${barStyles}`} style={{ width }} />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
-                    <span>{formatCompactInteger(item.count)}{t("次请求")}</span>
-                    <span>{formatCompactInteger(totalTokens(item))} tokens</span>
-                  </div>
-                </div>
-              );
-            })}
+    <div className="space-y-4">
+      {items.map((item, index) => {
+        const quota = Math.abs(numberValue(item.quota));
+        const width = `${Math.max(4, (quota / maxQuota) * 100)}%`;
+        const label = topItemLabel(item, kind);
+        return (
+          <div key={`${kind}-${item.key || item.user_id || item.channel_id || item.model || item.token_name || index}`} className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="grid size-6 shrink-0 place-items-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
+                  {index + 1}
+                </span>
+                <span className="truncate text-sm font-semibold text-foreground" title={label}>
+                  {label}
+                </span>
+              </div>
+              <span className="shrink-0 text-sm font-semibold text-foreground">
+                {formatQuota(quota, quotaPerUnit)}
+              </span>
+            </div>
+            <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+              <div className={`h-full rounded-full ${barStyles}`} style={{ width }} />
+            </div>
+            <div className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
+              <span>{formatCompactInteger(item.count)}{t("次请求")}</span>
+              <span>{formatCompactInteger(totalTokens(item))} tokens</span>
+            </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        );
+      })}
+    </div>
   );
 }
 
@@ -562,6 +510,7 @@ export function AdminOverviewPage() {
       return unwrapApiData<AdminSummary>(res.data);
     },
   });
+  const [rankingTab, setRankingTab] = useState<TopUsageKind>('user');
 
   // Render clock derived from the query fetch time (pure render).
   const nowUnix = dataUpdatedAt ? Math.floor(dataUpdatedAt / 1000) : 0;
@@ -582,9 +531,6 @@ export function AdminOverviewPage() {
   const topSubscriptionAccounts = data?.top_subscription_accounts ?? [];
   const alerts = data?.alerts ?? [];
   const latestReconciliation = data?.latest_reconciliation;
-  const modelPrice = parseModelPriceMap(data?.pricing_options?.ModelPrice);
-  const modelRatio = parsePricingMap(data?.pricing_options?.ModelRatio);
-  const completionRatio = parsePricingMap(data?.pricing_options?.CompletionRatio);
   const quotaPerUnit = quotaPerUnitFromOptions(data?.pricing_options);
   const configuredModels = totals.configured_models || modelCount(channels) || data?.model_catalog?.length || 0;
   const paymentAmountCents =
@@ -592,6 +538,21 @@ export function AdminOverviewPage() {
     data?.payment_summary?.recent_amount_money_cents ??
     data?.payment_summary?.recent_amount ??
     0;
+
+  const rankingTabs: Array<{
+    key: TopUsageKind;
+    label: string;
+    items: UsageAggregateItem[];
+    emptyTitle: string;
+    emptyDescription: string;
+  }> = [
+    { key: 'user', label: t("用户"), items: topUsers, emptyTitle: t("暂无用户用量"), emptyDescription: t("产生调用后会显示高消耗用户。") },
+    { key: 'model', label: t("模型"), items: topModels, emptyTitle: t("暂无模型用量"), emptyDescription: t("产生调用后会显示模型消耗排行。") },
+    { key: 'channel', label: t("渠道"), items: topChannels, emptyTitle: t("暂无渠道用量"), emptyDescription: t("渠道产生调用后会显示消耗排行。") },
+    { key: 'token', label: 'Token', items: topTokens, emptyTitle: t("暂无 Token 用量"), emptyDescription: t("API Token 产生调用后会显示消耗排行。") },
+    { key: 'subscription_account', label: t("订阅账号"), items: topSubscriptionAccounts, emptyTitle: t("暂无订阅账号用量"), emptyDescription: t("订阅账号产生调用后会显示消耗排行。") },
+  ];
+  const activeRanking = rankingTabs.find((tab) => tab.key === rankingTab) ?? rankingTabs[0];
 
   return (
     <div className="space-y-6">
@@ -602,9 +563,54 @@ export function AdminOverviewPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {managementAreas.map((area) => <ManagementAreaCard key={area.title} area={area} />)}
-      </div>
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-4">
+            <TableSkeleton columns={[t("类型"), t("对象")]} rows={3} />
+          </CardContent>
+        </Card>
+      ) : alerts.length > 0 ? (
+        <Card>
+          <CardHeader className="border-b border-border">
+            <CardTitle role="heading" aria-level={3}>{t("风险告警")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4">
+            {alerts.slice(0, 5).map((alert, index) => (
+              <div key={`${alert.type}-${alert.channel_id || alert.run_id || index}`} className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                <div className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-200">
+                  <AlertTriangle className="size-4" />
+                  {alert.message || alert.type || t("告警")}
+                </div>
+                <div className="mt-1 text-xs font-medium text-amber-700/80 dark:text-amber-200/80">
+                  {alert.channel_id ? t(`渠道 #${alert.channel_id}`) : alert.run_id ? t(`对账 #${alert.run_id}`) : alert.severity || '-'}
+                </div>
+              </div>
+            ))}
+            {latestReconciliation?.run_id ? (
+              <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/reconciliation" />}>
+                <Scale className="size-4" />{t("查看对账")}</Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 text-sm">
+          <span className="flex items-center gap-2 font-medium text-emerald-600 dark:text-emerald-300">
+            <CheckCircle2 className="size-4" />{t("运行正常，暂无告警")}
+          </span>
+          <span className="text-muted-foreground">
+            {t("渠道余额")} <span className="font-semibold text-foreground">${numberValue(totals.channel_balance).toFixed(2)}</span>
+          </span>
+          <span className="text-muted-foreground">
+            {t("可用模型")} <span className="font-semibold text-foreground">{configuredModels}</span>
+          </span>
+          <span className="text-muted-foreground">
+            {latestReconciliation?.run_id ? t(`最近对账 #${latestReconciliation.run_id}`) : t("暂无对账记录")}
+          </span>
+          {latestReconciliation?.run_id ? (
+            <Link to="/admin/reconciliation" className="font-medium text-foreground hover:underline">{t("查看对账")}</Link>
+          ) : null}
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -628,18 +634,9 @@ export function AdminOverviewPage() {
         <StatCard
           title={t("调用请求")}
           value={formatInteger(totals.request_count)}
-          detail={t(`${formatQuota(totals.quota_used, quotaPerUnit)} 金额消耗`)}
+          detail={t(`${formatInteger(totals.log_count)} 条账务日志`)}
           icon={Activity}
         />
-        <StatCard
-          title={t("账务记录")}
-          value={formatMoneyCents(paymentAmountCents)}
-          detail={t(`${formatInteger(data?.payment_summary?.recent_order_count)} 条近期充值/兑换/退款`)}
-          icon={CreditCard}
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <CostCard
           title={t("用户侧收入")}
           value={formatQuota(costAnalysis.revenue_quota ?? totals.quota_used, quotaPerUnit)}
@@ -661,126 +658,68 @@ export function AdminOverviewPage() {
           icon={LineChart}
           tone={numberValue(costAnalysis.gross_profit ?? totals.gross_profit) >= 0 ? 'green' : 'red'}
         />
-        <CostCard
-          title={t("告警")}
-          value={formatInteger(alerts.length)}
-          detail={latestReconciliation?.run_id ? t(`最近对账 #${latestReconciliation.run_id}`) : t("暂无对账记录")}
-          icon={AlertTriangle}
-          tone={alerts.length > 0 ? 'amber' : 'green'}
+        <StatCard
+          title={t("账务记录")}
+          value={formatMoneyCents(paymentAmountCents)}
+          detail={t(`${formatInteger(data?.payment_summary?.recent_order_count)} 条近期充值/兑换/退款`)}
+          icon={CreditCard}
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-5">
-            <Gauge className="size-10 text-emerald-600" />
-            <div>
-              <div className="text-sm font-medium text-muted-foreground">{t("渠道余额")}</div>
-              <div className="text-2xl font-semibold">${numberValue(totals.channel_balance).toFixed(2)}</div>
-              <div className="text-xs font-medium text-muted-foreground">{formatInteger(totals.stale_balance_channels)}{t("个余额待刷新")}</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-5">
-            <Boxes className="size-10 text-blue-600" />
-            <div>
-              <div className="text-sm font-medium text-muted-foreground">{t("可用模型")}</div>
-              <div className="text-2xl font-semibold">{configuredModels}</div>
-              <div className="text-xs font-medium text-muted-foreground">{Object.keys(modelPrice).length || Object.keys(modelRatio).length}{t("个模型价格项")}</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-5">
-            <LineChart className="size-10 text-violet-600" />
-            <div>
-              <div className="text-sm font-medium text-muted-foreground">{t("金额消耗")}</div>
-              <div className="text-2xl font-semibold">{formatQuota(totals.quota_used, quotaPerUnit)}</div>
-              <div className="text-xs font-medium text-muted-foreground">{Object.keys(completionRatio).length}{t("个兼容倍率项")}</div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          {managementAreas.map((area) => {
+            const Icon = area.icon;
+            return (
+              <div key={area.title} className="flex flex-wrap items-center gap-2">
+                <span className="flex w-32 shrink-0 items-center gap-2 text-sm font-semibold text-foreground">
+                  <Icon className="size-4 text-muted-foreground" />{t(area.title)}
+                </span>
+                {area.links.map((link) => (
+                  <Link key={link.to} to={link.to} className="rounded-lg bg-muted px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+                    {t(link.label)}
+                  </Link>
+                ))}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
 
-      <div className="grid gap-6 xl:grid-cols-5">
-        <TopUsageChartCard
-          title={t("高消耗用户")}
-          kind="user"
-          items={topUsers}
-          isLoading={isLoading}
-          emptyTitle={t("暂无用户用量")}
-          emptyDescription={t("产生调用后会显示高消耗用户。")}
-          quotaPerUnit={quotaPerUnit}
-        />
-        <TopUsageChartCard
-          title={t("高消耗模型")}
-          kind="model"
-          items={topModels}
-          isLoading={isLoading}
-          emptyTitle={t("暂无模型用量")}
-          emptyDescription={t("产生调用后会显示模型消耗排行。")}
-          quotaPerUnit={quotaPerUnit}
-        />
-        <TopUsageChartCard
-          title={t("高消耗渠道")}
-          kind="channel"
-          items={topChannels}
-          isLoading={isLoading}
-          emptyTitle={t("暂无渠道用量")}
-          emptyDescription={t("渠道产生调用后会显示消耗排行。")}
-          quotaPerUnit={quotaPerUnit}
-        />
-        <TopUsageChartCard
-          title={t("高消耗 Token")}
-          kind="token"
-          items={topTokens}
-          isLoading={isLoading}
-          emptyTitle={t("暂无 Token 用量")}
-          emptyDescription={t("API Token 产生调用后会显示消耗排行。")}
-          quotaPerUnit={quotaPerUnit}
-        />
-        <TopUsageChartCard
-          title={t("高消耗订阅账号")}
-          kind="subscription_account"
-          items={topSubscriptionAccounts}
-          isLoading={isLoading}
-          emptyTitle={t("暂无订阅账号用量")}
-          emptyDescription={t("订阅账号产生调用后会显示消耗排行。")}
-          quotaPerUnit={quotaPerUnit}
-        />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-4">
-        <Card className="xl:col-span-4">
-          <CardHeader className="border-b border-border">
-            <CardTitle role="heading" aria-level={3}>{t("风险告警")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 p-4">
-            {isLoading ? (
-              <TableSkeleton columns={[t("类型"), t("对象")]} rows={4} />
-            ) : alerts.length === 0 ? (
-              <EmptyState title={t("暂无告警")} description={t("渠道余额、毛利和对账差异正常。")} />
-            ) : (
-              alerts.slice(0, 5).map((alert, index) => (
-                <div key={`${alert.type}-${alert.channel_id || alert.run_id || index}`} className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
-                  <div className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-200">
-                    <AlertTriangle className="size-4" />
-                    {alert.message || alert.type || t("告警")}
-                  </div>
-                  <div className="mt-1 text-xs font-medium text-amber-700/80 dark:text-amber-200/80">
-                    {alert.channel_id ? t(`渠道 #${alert.channel_id}`) : alert.run_id ? t(`对账 #${alert.run_id}`) : alert.severity || '-'}
-                  </div>
-                </div>
-              ))
-            )}
-            {latestReconciliation?.run_id ? (
-              <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/admin/reconciliation" />}>
-                <Scale className="size-4" />{t("查看对账")}</Button>
-            ) : null}
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader className="border-b border-border">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle role="heading" aria-level={3}>{t("消耗排行")}</CardTitle>
+            <div className="flex flex-wrap gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label={t("消耗排行维度")}>
+              {rankingTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab.key === rankingTab}
+                  onClick={() => setRankingTab(tab.key)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                    tab.key === rankingTab ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4">
+          <TopUsageList
+            kind={activeRanking.key}
+            items={activeRanking.items}
+            isLoading={isLoading}
+            emptyTitle={activeRanking.emptyTitle}
+            emptyDescription={activeRanking.emptyDescription}
+            quotaPerUnit={quotaPerUnit}
+          />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Card>

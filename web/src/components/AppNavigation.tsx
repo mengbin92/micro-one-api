@@ -270,14 +270,24 @@ export function AppNavigation() {
   const { data: user } = useQuery(userSelfQueryOptions);
   const { data: account } = useQuery(accountDashboardQueryOptions);
   const role = typeof user?.role === 'number' ? user.role : storedRole;
-  const isWide = useMediaQuery('(min-width: 768px)');
+  const isWide = useMediaQuery('(min-width: 1024px)');
   const isAdmin = canAccessAdmin({ role });
   const isAdminRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
   const activeAdminGroup = adminNavGroups.find((group) => group.items.some((item) => (
     location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
   )))?.label;
-  const [adminNavDisclosure, setAdminNavDisclosure] = useState<{ path: string; group: string } | null>(null);
-  const expandedAdminGroup = adminNavDisclosure?.path === location.pathname
+  // group: '' = explicitly all-collapsed, null = follow the active route's
+  // group. The disclosure is keyed to the pathname it was made on and resets
+  // when the route changes, so a manual toggle on one route cannot resurrect
+  // itself when the user navigates back to an older path.
+  const [adminNavDisclosure, setAdminNavDisclosure] = useState<{ path: string; group: string | null }>({
+    path: location.pathname,
+    group: null,
+  });
+  if (adminNavDisclosure.path !== location.pathname) {
+    setAdminNavDisclosure({ path: location.pathname, group: null });
+  }
+  const expandedAdminGroup = adminNavDisclosure.path === location.pathname && adminNavDisclosure.group !== null
     ? adminNavDisclosure.group
     : activeAdminGroup;
   const effectiveMobileOpen = !isWide && mobileOpen;
@@ -312,7 +322,7 @@ export function AppNavigation() {
       onFocus={() => preloadRoute(isAdminRoute ? '/dashboard' : '/admin')}
     >
       {isAdminRoute ? <ArrowLeft className="size-4" /> : <MonitorCog className="size-4" />}
-      {t(isAdminRoute ? '返回控制台' : '进入管理')}
+      <span className="hidden sm:inline">{t(isAdminRoute ? '返回控制台' : '进入管理')}</span>
     </Link>
   ) : null;
 
@@ -341,10 +351,7 @@ export function AppNavigation() {
                     <button
                       type="button"
                       aria-expanded={expanded}
-                      onClick={() => setAdminNavDisclosure({
-                        path: location.pathname,
-                        group: expanded ? '' : group.label,
-                      })}
+                      onClick={() => setAdminNavDisclosure({ path: location.pathname, group: expanded ? '' : group.label })}
                       className="flex h-10 w-full items-center justify-between rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
                     >
                       <span>{t(group.label)}</span>
@@ -376,6 +383,10 @@ export function AppNavigation() {
             <ArrowLeft className="size-5" />{t('返回用户控制台')}
           </Link>
         )}
+        <div className="mt-3 flex items-center justify-center gap-2 lg:hidden">
+          <LanguageToggle className="gap-2" />
+          <ThemeToggle />
+        </div>
         <div className="mt-3 flex justify-center gap-3 text-xs text-muted-foreground">
           <Link to="/terms" onClick={() => setMobileOpen(false)} className="hover:text-foreground hover:underline">{t("用户协议")}</Link>
           <Link to="/privacy" onClick={() => setMobileOpen(false)} className="hover:text-foreground hover:underline">{t("隐私政策")}</Link>
@@ -386,34 +397,38 @@ export function AppNavigation() {
 
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border md:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border lg:block">
         {sidebar}
       </aside>
 
-      <header className="fixed left-0 right-0 top-0 z-20 border-b border-border bg-background/95 backdrop-blur md:left-64">
-        <div className="flex h-20 items-center gap-3 px-4 sm:px-5 md:px-8 xl:px-10">
-          <div className="flex items-center gap-3 md:hidden">
+      <header className="fixed left-0 right-0 top-0 z-20 border-b border-border bg-background/95 backdrop-blur lg:left-64">
+        <div className="flex h-20 items-center gap-3 px-4 sm:px-5 lg:px-8 xl:px-10">
+          <div className="flex items-center gap-3 lg:hidden">
             <MobileNav open={effectiveMobileOpen} onOpenChange={setMobileOpen}>
               {sidebar}
             </MobileNav>
           </div>
 
-          <h1 className="min-w-0 text-xl font-bold tracking-normal text-foreground sm:text-2xl">
+          <h1 className="min-w-0 truncate text-lg font-bold tracking-normal text-foreground sm:text-2xl">
             {currentTitle}
           </h1>
 
-          <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
-            <LanguageToggle className="gap-2" />
-            <div className={cn('h-10 items-center gap-2 rounded-2xl bg-emerald-50 px-4 text-sm font-semibold text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300', isAdminRoute ? 'hidden' : 'hidden sm:flex')}>
+          <div className="ml-auto flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
+            <div className="hidden md:block">
+              <LanguageToggle className="gap-2" />
+            </div>
+            <div className={cn('h-10 items-center gap-2 rounded-2xl bg-emerald-50 px-4 text-sm font-semibold text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300', isAdminRoute ? 'hidden' : 'hidden xl:flex')}>
               <WalletCards className="size-4" />
               {formatBalance(account?.balance)}
             </div>
-            <ThemeToggle />
+            <div className="hidden md:block">
+              <ThemeToggle />
+            </div>
             {isAdmin && <NotificationPanel open={notificationOpen} onOpenChange={setNotificationOpen} />}
             {adminControl}
             <button
               type="button"
-              className="hidden min-w-0 items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm sm:flex"
+              className="hidden min-w-0 items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm xl:flex"
             >
               <span className="grid size-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-sm font-semibold text-white">
                 {initials}

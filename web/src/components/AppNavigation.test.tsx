@@ -165,7 +165,8 @@ describe('AppNavigation', () => {
     renderNavigation();
 
     expect(screen.getByRole('heading', { name: '仪表盘' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '切换至英文' }));
+    // 顶栏与移动端抽屉菜单中各有一个语言切换按钮，点击任意一个即可
+    await user.click(screen.getAllByRole('button', { name: '切换至英文' })[0]);
 
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();

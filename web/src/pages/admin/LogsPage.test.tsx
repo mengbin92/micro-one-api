@@ -201,7 +201,7 @@ describe('AdminLogsPage', () => {
     await user.type(within(dialog).getByLabelText('End Time'), '2026-06-15T12:30');
     await user.click(within(dialog).getByRole('button', { name: 'Clean Logs' }));
 
-    expect(await screen.findByText('Billing Logs')).toBeInTheDocument();
+    expect(await screen.findByText('Request Logs')).toBeInTheDocument();
     expect(deletedRequest.url).not.toBeNull();
     const deleteURL = deletedRequest.url;
     if (!deleteURL) throw new Error('delete request was not captured');
