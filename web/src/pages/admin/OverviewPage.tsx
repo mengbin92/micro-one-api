@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { Tabs } from '@base-ui/react/tabs';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, AlertTriangle, CheckCircle2, CreditCard, Database, KeyRound, LineChart, Scale, TrendingUp, Users } from 'lucide-react';
 
@@ -327,14 +328,16 @@ function StatCard({
 }) {
   return (
     <Card className="min-h-40">
-      <CardContent className="flex items-center gap-4 p-5">
-        <div className="grid size-11 place-items-center rounded-lg bg-primary text-primary-foreground">
-          <Icon className="size-5" />
+      <CardContent className="@container flex h-full flex-col gap-3 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 break-words text-sm font-medium text-muted-foreground">{title}</div>
+          <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <Icon className="size-5" />
+          </div>
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-medium text-muted-foreground">{title}</div>
-          <div className="mt-1 truncate text-2xl font-semibold text-foreground">{value}</div>
-          <div className="mt-1 text-xs font-medium text-muted-foreground">{detail}</div>
+          <div className={cn('whitespace-nowrap font-semibold tabular-nums text-foreground', value.length > 10 ? 'text-[clamp(1rem,7cqi,1.5rem)]' : 'text-2xl')}>{value}</div>
+          <div className="mt-1 break-words text-xs font-medium text-muted-foreground">{detail}</div>
         </div>
       </CardContent>
     </Card>
@@ -363,14 +366,16 @@ function CostCard({
 
   return (
     <Card className="min-h-40">
-      <CardContent className="flex items-center gap-4 p-5">
-        <div className={`grid size-11 place-items-center rounded-lg ${styles}`}>
-          <Icon className="size-5" />
+      <CardContent className="@container flex h-full flex-col gap-3 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 break-words text-sm font-medium text-muted-foreground">{title}</div>
+          <div className={`grid size-9 shrink-0 place-items-center rounded-lg ${styles}`}>
+            <Icon className="size-5" />
+          </div>
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-medium text-muted-foreground">{title}</div>
-          <div className="mt-1 truncate text-2xl font-semibold text-foreground">{value}</div>
-          <div className="mt-1 text-xs font-medium text-muted-foreground">{detail}</div>
+          <div className={cn('whitespace-nowrap font-semibold tabular-nums text-foreground', value.length > 10 ? 'text-[clamp(1rem,7cqi,1.5rem)]' : 'text-2xl')}>{value}</div>
+          <div className="mt-1 break-words text-xs font-medium text-muted-foreground">{detail}</div>
         </div>
       </CardContent>
     </Card>
@@ -503,14 +508,13 @@ function TopUsageList({
 }
 
 export function AdminOverviewPage() {
-  const { data, isLoading, dataUpdatedAt } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['admin-summary'],
     queryFn: async () => {
       const res = await adminApiClient.get('/admin/summary');
       return unwrapApiData<AdminSummary>(res.data);
     },
   });
-  const [rankingTab, setRankingTab] = useState<TopUsageKind>('user');
 
   // Render clock derived from the query fetch time (pure render).
   const nowUnix = dataUpdatedAt ? Math.floor(dataUpdatedAt / 1000) : 0;
@@ -552,7 +556,16 @@ export function AdminOverviewPage() {
     { key: 'token', label: 'Token', items: topTokens, emptyTitle: t("暂无 Token 用量"), emptyDescription: t("API Token 产生调用后会显示消耗排行。") },
     { key: 'subscription_account', label: t("订阅账号"), items: topSubscriptionAccounts, emptyTitle: t("暂无订阅账号用量"), emptyDescription: t("订阅账号产生调用后会显示消耗排行。") },
   ];
-  const activeRanking = rankingTabs.find((tab) => tab.key === rankingTab) ?? rankingTabs[0];
+  if (isError) {
+    return (
+      <div role="alert" className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-6 py-10 text-center">
+        <AlertTriangle className="size-8 text-destructive" />
+        <p className="text-sm font-semibold">{t('运营总览加载失败')}</p>
+        <p className="text-sm text-muted-foreground">{t('暂时无法确认运行状态，请重试。')}</p>
+        <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>{t('重试')}</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -577,9 +590,9 @@ export function AdminOverviewPage() {
           <CardContent className="space-y-3 p-4">
             {alerts.slice(0, 5).map((alert, index) => (
               <div key={`${alert.type}-${alert.channel_id || alert.run_id || index}`} className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
-                <div className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-200">
-                  <AlertTriangle className="size-4" />
-                  {alert.message || alert.type || t("告警")}
+                <div className="flex items-start gap-2 text-sm font-bold text-amber-800 dark:text-amber-200">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  <span className="min-w-0 break-words">{alert.message || alert.type || t("告警")}</span>
                 </div>
                 <div className="mt-1 text-xs font-medium text-amber-700/80 dark:text-amber-200/80">
                   {alert.channel_id ? t(`渠道 #${alert.channel_id}`) : alert.run_id ? t(`对账 #${alert.run_id}`) : alert.severity || '-'}
@@ -687,38 +700,36 @@ export function AdminOverviewPage() {
       </Card>
 
       <Card>
-        <CardHeader className="border-b border-border">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle role="heading" aria-level={3}>{t("消耗排行")}</CardTitle>
-            <div className="flex flex-wrap gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label={t("消耗排行维度")}>
-              {rankingTabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab.key === rankingTab}
-                  onClick={() => setRankingTab(tab.key)}
-                  className={cn(
-                    'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                    tab.key === rankingTab ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
+        <Tabs.Root defaultValue="user">
+          <CardHeader className="border-b border-border">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle role="heading" aria-level={3}>{t("消耗排行")}</CardTitle>
+              <Tabs.List activateOnFocus className="flex flex-wrap gap-1 rounded-lg bg-muted p-1" aria-label={t("消耗排行维度")}>
+                {rankingTabs.map((tab) => (
+                  <Tabs.Tab
+                    key={tab.key}
+                    value={tab.key}
+                    className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring data-active:bg-background data-active:text-foreground data-active:shadow-sm"
+                  >
+                    {tab.label}
+                  </Tabs.Tab>
+                ))}
+              </Tabs.List>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4">
-          <TopUsageList
-            kind={activeRanking.key}
-            items={activeRanking.items}
-            isLoading={isLoading}
-            emptyTitle={activeRanking.emptyTitle}
-            emptyDescription={activeRanking.emptyDescription}
-            quotaPerUnit={quotaPerUnit}
-          />
-        </CardContent>
+          </CardHeader>
+          {rankingTabs.map((tab) => (
+            <Tabs.Panel key={tab.key} value={tab.key} className="p-4">
+              <TopUsageList
+                kind={tab.key}
+                items={tab.items}
+                isLoading={isLoading}
+                emptyTitle={tab.emptyTitle}
+                emptyDescription={tab.emptyDescription}
+                quotaPerUnit={quotaPerUnit}
+              />
+            </Tabs.Panel>
+          ))}
+        </Tabs.Root>
       </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">

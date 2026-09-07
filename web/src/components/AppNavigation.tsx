@@ -146,6 +146,7 @@ const routeTitles: Record<string, string> = {
   '/admin/subscription-accounts': '订阅账号管理',
   '/admin/subscription-groups': '订阅分组',
   '/admin/subscriptions': '用户订阅',
+  '/admin/subscription-plans': '订阅套餐',
   '/admin/channel-health': '渠道健康',
   '/admin/model-health': '模型健康',
   '/admin/cost-analysis': '经营分析',
@@ -328,7 +329,7 @@ export function AppNavigation() {
 
   const sidebar = (
     <div className="flex h-full flex-col bg-sidebar supports-backdrop-filter:bg-sidebar/70 supports-backdrop-filter:backdrop-blur-xl supports-backdrop-filter:backdrop-saturate-[1.8]">
-      <div className="flex h-20 items-center border-b border-border px-6">
+      <div className="flex h-20 shrink-0 items-center border-b border-border px-6">
         <div className="flex items-center gap-3">
           <img src="/logo-icon.svg" alt="" aria-hidden="true" className="size-10 shrink-0 rounded-xl" />
           <div>
@@ -338,7 +339,7 @@ export function AppNavigation() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
         {isAdminRoute && isAdmin ? (
           <>
             <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('管理工作台')}</p>
@@ -377,7 +378,7 @@ export function AppNavigation() {
         )}
       </div>
 
-      <div className="border-t border-border p-4">
+      <div className="shrink-0 border-t border-border p-4">
         {isAdminRoute && (
           <Link to="/dashboard" onClick={() => setMobileOpen(false)} className="flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
             <ArrowLeft className="size-5" />{t('返回用户控制台')}

@@ -135,7 +135,7 @@ function MetricCard({
 
   return (
     <Card className="min-h-40">
-      <CardContent className="flex h-full flex-col justify-between p-5">
+      <CardContent className="@container flex h-full flex-col justify-between p-5">
         <div className="flex items-start justify-between gap-4">
           <span className="text-sm font-medium text-muted-foreground">{title}</span>
           <span className={cn('grid size-12 shrink-0 place-items-center rounded-lg', styles)}>
@@ -143,7 +143,11 @@ function MetricCard({
           </span>
         </div>
         <div>
-          <div className={cn('break-words text-3xl font-semibold leading-tight tracking-normal tabular-nums', styles.split(' ')[0])}>{value}</div>
+          <div className={cn(
+            'whitespace-nowrap font-semibold leading-tight tracking-normal tabular-nums',
+            value.length > 12 ? 'text-[clamp(1rem,7cqi,1.875rem)]' : 'text-3xl',
+            styles.split(' ')[0],
+          )}>{value}</div>
           <div className="mt-4 text-sm font-medium text-muted-foreground">{subtitle}</div>
         </div>
       </CardContent>
@@ -217,9 +221,9 @@ export function DashboardPage() {
         <p className="mt-2 text-base font-medium text-muted-foreground">{t("欢迎使用 Micro API 中转平台，实时掌握你的 API 使用情况。")}</p>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {isSummaryLoading ? (
-          <MetricCardsSkeleton />
+            <MetricCardsSkeleton count={6} />
         ) : (
           <>
             <MetricCard title={t("钱包余额")} value={formatMoney(balance)} subtitle={t("可用余额")} tone="orange" icon={WalletCards} />
@@ -232,7 +236,7 @@ export function DashboardPage() {
         )}
       </section>
 
-      <section aria-label={t("快捷操作")} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section aria-label={t("快捷操作")} className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
         <Link
           to="/tokens"
           className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-orange-200 hover:bg-orange-50/50 dark:hover:bg-orange-500/10"

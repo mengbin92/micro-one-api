@@ -10,6 +10,8 @@ export const EN_US_MESSAGES: Record<string, string> = {
   '总览': 'Overview',
   '管理总览': 'Admin Overview',
   '运营总览': 'Operations Overview',
+  '运营总览加载失败': 'Could Not Load Operations Overview',
+  '暂时无法确认运行状态，请重试。': 'Unable to confirm operational status. Please retry.',
   '管理工作台': 'Admin Workspace',
   '管理控制台': 'Admin Console',
   '资源与路由': 'Resources & Routing',

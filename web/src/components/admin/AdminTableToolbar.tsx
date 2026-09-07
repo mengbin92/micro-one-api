@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { t } from '@/lib/i18n';
 
 interface AdminTableToolbarProps {
   search: string;
@@ -26,7 +27,7 @@ export function AdminTableToolbar({
         className="w-full min-w-0 sm:max-w-sm"
       />
       <Button variant="outline" onClick={onClear}>
-        Clear
+        {t('清除')}
       </Button>
       {actions && <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{actions}</div>}
     </div>

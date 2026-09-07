@@ -157,13 +157,13 @@ export function AdminLogsPage() {
   } = useAdminTableState({
     storageKey: 'logs',
     defaultPageSize: 50,
-    filters: ['user_id', 'type', 'start_time', 'end_time', 'subscription_account_id'],
+    // Match ListLogsRequest: the ledger endpoint does not support an account filter.
+    filters: ['user_id', 'type', 'start_time', 'end_time'],
   });
   const userId = filters.user_id ?? '';
   const type = filters.type ?? '';
   const startTime = filters.start_time ?? '';
   const endTime = filters.end_time ?? '';
-  const subscriptionAccountId = filters.subscription_account_id ?? '';
   const sort = useMemo(
     () => ({ key: sortKey as keyof LogEntry | null, direction: sortDirection }) satisfies SortState<LogEntry>,
     [sortKey, sortDirection],
@@ -173,7 +173,7 @@ export function AdminLogsPage() {
     pageSize,
     sortKey,
     sortDirection,
-    filters: { user_id: userId, type, start_time: startTime, end_time: endTime, subscription_account_id: subscriptionAccountId },
+    filters: { user_id: userId, type, start_time: startTime, end_time: endTime },
   });
   exportParams.set('format', 'csv');
   const exportHref = `/log/export?${exportParams}`;
@@ -324,12 +324,6 @@ export function AdminLogsPage() {
             <option value="consume">{t('消费')}</option>
             <option value="refund">{t('退款')}</option>
           </select>
-          <Input
-            placeholder={t("订阅账号 ID")}
-            value={subscriptionAccountId}
-            onChange={(e) => setFilter('subscription_account_id', e.target.value.trim())}
-            className="w-full min-w-0 sm:max-w-xs"
-          />
           <div className="flex items-center gap-2">
             <Label htmlFor="log-start-time" className="shrink-0 text-xs text-muted-foreground">
               {t('开始时间')}
@@ -361,6 +355,7 @@ export function AdminLogsPage() {
               setFilter('type', '');
               setFilter('start_time', '');
               setFilter('end_time', '');
+              // Clear links saved before the unsupported account control was removed.
               setFilter('subscription_account_id', '');
             }}
           >
