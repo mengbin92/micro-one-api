@@ -35,10 +35,11 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——`design/` 下最新版本路线图，其头部标注「状态：进行中，当前唯一执行入口」。新阶段立项时：新建 `design/vX.Y-roadmap.md` 作为唯一入口 → 旧路线图头部降级为「已归档」并指回新入口 → 同步本表「查看下一阶段执行路线」行、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-当前 v0.27 状态：v0.26.3 Release workflow 重跑后已全部成功，GitHub Release 与
-9 服务双架构镜像均已发布。executor 第五次正式观察窗口于 2026-09-01 10:43:15 CST
-成立，若不中断，最早于 2026-09-08 10:43:15 CST 结束；窗口完成后再按顺序执行
-canonical usage `observe → charge`，同一时间只改变一条生产主线。
+当前 v0.27 状态（2026-09-08）：[v0.26.6](./releases/release-v0.26.6.md) 已于
+2026-09-06 发布，为当前发布基线。executor 第五次正式观察已判定 FAIL 并回滚 legacy；
+canonical usage 48h Observe 已通过，K3 有限 charge 的固定 72h 窗口为
+2026-09-06 10:41:50.397 至 2026-09-09 10:41:50.397 CST，尚待满窗验收。
+发布未重启生产容器；后续依次完成 charge 验收、历史账务只读审计与个人部署文档收口。
 
 ---
 
@@ -63,7 +64,7 @@ canonical usage `observe → charge`，同一时间只改变一条生产主线�
 - [v0.20.0](./releases/release-v0.20.0.md) · [v0.20.1](./releases/release-v0.20.1.md) · [v0.20.2](./releases/release-v0.20.2.md) · [v0.20.3](./releases/release-v0.20.3.md) · [v0.20.4](./releases/release-v0.20.4.md) · [v0.20.5](./releases/release-v0.20.5.md)
 - [v0.21.0](./releases/release-v0.21.0.md) · [v0.22.0](./releases/release-v0.22.0.md)
 - [v0.23.0](./releases/release-v0.23.0.md) · [v0.23.1](./releases/release-v0.23.1.md) · [v0.23.2](./releases/release-v0.23.2.md) · [v0.23.3](./releases/release-v0.23.3.md)
-- [v0.24.0](./releases/release-v0.24.0.md) · [v0.25.0](./releases/release-v0.25.0.md) · [v0.26.0](./releases/release-v0.26.0.md) · [v0.26.1](./releases/release-v0.26.1.md) · [v0.26.2](./releases/release-v0.26.2.md) · [v0.26.3](./releases/release-v0.26.3.md)（最新）
+- [v0.24.0](./releases/release-v0.24.0.md) · [v0.25.0](./releases/release-v0.25.0.md) · [v0.26.0](./releases/release-v0.26.0.md) · [v0.26.1](./releases/release-v0.26.1.md) · [v0.26.2](./releases/release-v0.26.2.md) · [v0.26.3](./releases/release-v0.26.3.md) · [v0.26.4](./releases/release-v0.26.4.md) · [v0.26.5](./releases/release-v0.26.5.md) · [v0.26.6](./releases/release-v0.26.6.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
