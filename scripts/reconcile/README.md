@@ -11,6 +11,78 @@
 退出码：`0` 无差异；`1` 有差异；`2` 配置/运行错误。无差异时输出
 `RESULT: PASS (no discrepancies)`，可直接接入 cron / CI。
 
+## 历史 usage 只读审计（v0.27 §6）
+
+独立入口 [`history-audit`](./history-audit/main.go) 只读取 consume ledger、定价快照和
+reservation 的订阅归属。默认输出 JSON，也可输出 CSV；不会触发上述 `reconcile.sh`
+中的 billing RPC，不提供 apply、退款、追扣或 reversal 选项。
+
+```bash
+# 无数据库的可复现示例，全部为虚构数据
+go run ./scripts/reconcile/history-audit \
+  -input scripts/reconcile/history-audit/testdata/ledgers.json -format json
+go run ./scripts/reconcile/history-audit \
+  -input scripts/reconcile/history-audit/testdata/ledgers.json -format csv
+
+# 实库：先通过安全环境变量注入 SELECT-only 账号的 MySQL DSN
+# HISTORY_AUDIT_DSN='audit_user:<secret>@tcp(<host>:3306)/oneapi_billing'
+umask 077
+go run ./scripts/reconcile/history-audit \
+  -start 2026-08-01T00:00:00Z -end 2026-09-01T00:00:00Z \
+  -format json > /tmp/history-audit.json
+```
+
+实库模式要求显式给定固定 `[start,end)`，会将时间转换为 UTC，使用只读、可重复读事务。
+默认查询超时为 2 分钟，可通过 `-timeout` 修改；大账期建议按天拆分。仅支持 MySQL 8.0，
+要求 billing schema 已应用至 `088`。账号只需对 `billing_ledgers`、
+`billing_pricing_snapshots`、`billing_reservations` 三表具有 SELECT 权限，不需要创建临时表
+或写权限。只读取 `HISTORY_AUDIT_DSN`，不会自动加载 `.env` 或沿用服务的写账号。
+报告包含账本、用户和来源 ID，应留在受控环境；不要提交实库报告到仓库或公开粘贴。
+
+每个请求输出一条报告，按最早 ledger 的 UTC 时间和 ID 排序，没有运行时刻等易变字段：
+
+| 分类 | 判定依据 | 差额 |
+|------|----------|------|
+| `verified` | 完整且一致的 v1/verified canonical 审计记录、明确协议/field shape、来源和可校验 SHA-256 的 v1 冻结价格快照 | 计算 canonical 请求总成本与实扣的差额 |
+| `candidate` | legacy、estimated、ambiguous，或来源/价格证据不足 | 价格和来源完整时展示 subset/exclusive 两种假设；缺证据时为 null |
+| `unknown` | 无 usage、非法桶/溢出、未知契约、拆分记录冲突或窗口只包含请求的部分 ledger | 不复算，不输出差额 |
+
+这里的 verified 依据是 append-only ledger 中的不可变 v1 usage 审计事件，**不表示已通过
+供应商发票核对或已获冲正审批**。旧行不会因为模型名、渠道类型、`cache_read > prompt`
+或 total 数值关系自动升级；没有快照的旧价格不会从当前配置或原扣费反推。报告保留
+`evidence_source` 和具体 `reason`，便于人工逐项补证。外部原始 usage/账单的认证与冲正
+草案仍属于后续独立任务。
+
+`ledgers` 保留每条原账本的 ID、时间、reference、dedupe key、执行来源、upstream model、
+usage contract/parse status、原始与 canonical token、五桶成本、pricing hash/完整快照，
+以及 `cost_source`、订阅/钱包金额、reservation 的 `subscription_id`。五桶成本数组顺序为
+**input、cache read、creation 5m、creation 1h、output**。订阅和钱包两条 ledger 按
+`user_id + reference_id` 合并实扣，usage 证据必须一致；差额只出现在请求层，不分摊给
+钱包或订阅，也不重复计算两次。窗口外仍有同请求 consume 时标记 unknown，应扩大窗口
+重跑；已被历史保留策略删除的证据无法恢复。空 reference 的旧行独立保留。
+
+所有 `*_delta = 候选成本 - 请求实扣`：负数表示候选口径更低，正数表示更高；**不是退款或
+追扣指令**。CSV 一行一个请求，`ledgers_json` 单元格携带完整原始投影，null 数值写为空单元格。
+冻价复算使用 Go float64 的逐桶 `math.Round`、10000 quota 换算、最低 1 quota 和快照中的
+cache-creation mode，覆盖十进制 0.5 边界；不使用 MySQL DECIMAL ROUND。此实现不修改
+已经冻结的 72h charge SQL，下一来源扩面前的门禁 SQL 修订仍是独立前置项。
+退出码 `0` 表示报告生成成功（包括 candidate/unknown），`2` 表示输入、连接或输出失败，
+不把报告生成成功解释为账务全量验收通过。
+
+验证：
+
+```bash
+go test -race ./scripts/reconcile/history-audit
+# 可选真实 MySQL smoke：仅接受名为 history_audit_test 的隔离空数据库，
+# 先用 cmd/migrate 应用现有迁移，再设置专用测试管理员 DSN（绝不可使用生产 DSN）。
+HISTORY_AUDIT_TEST_ADMIN_DSN='root@tcp(127.0.0.1:<test-port>)/history_audit_test' \
+  go test -race -count=1 -run TestMySQLSelectOnly ./scripts/reconcile/history-audit
+```
+
+MySQL smoke 由测试管理员写入虚构 fixture，再创建只具有三表 SELECT 权限的账号；验证
+写操作被拒绝、默认实库报告与离线报告一致、重复输出一致、半开窗口不拆账误算、ledger
+条数及金额不变。测试清理只发生在指定隔离数据库；命令本身只有 SELECT 和只读事务回滚。
+
 ## Canonical usage 固定 48h 验收
 
 v0.27 的 production observe 使用固定窗口，而不是运行时滚动的 `last 48h`：
