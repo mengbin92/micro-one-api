@@ -1,0 +1,101 @@
+package biz
+
+import (
+	"context"
+
+	channelv1 "micro-one-api/api/channel/v1"
+	"micro-one-api/domain/routing"
+	"micro-one-api/pkg/ordering"
+
+	"github.com/go-kratos/kratos/v3/errors"
+)
+
+type RoutingGroup = routing.Group
+type RoutingGroupDetail = routing.GroupDetail
+
+var (
+	ErrRoutingGroupNotFound          = errors.NotFound(channelv1.RoutingGroupErrorReason_ROUTING_GROUP_NOT_FOUND.String(), "routing group not found")
+	ErrRoutingGroupInvalid           = errors.BadRequest(channelv1.RoutingGroupErrorReason_ROUTING_GROUP_INVALID.String(), "invalid routing group request")
+	ErrRoutingGroupMigrationRequired = errors.ServiceUnavailable(channelv1.RoutingGroupErrorReason_ROUTING_GROUP_MIGRATION_REQUIRED.String(), "routing group migration is required")
+	ErrRoutingGroupBaselineConflict  = errors.Conflict(channelv1.RoutingGroupErrorReason_ROUTING_GROUP_BASELINE_CONFLICT.String(), "routing group baseline differs; refresh the audit before backfill")
+	ErrRoutingGroupStorage           = errors.ServiceUnavailable(channelv1.RoutingGroupErrorReason_ROUTING_GROUP_STORAGE_UNAVAILABLE.String(), "routing group storage unavailable")
+)
+
+type RoutingGroupRepo interface {
+	ListRoutingGroups(context.Context, RoutingGroupListOptions) ([]*RoutingGroup, error)
+	GetRoutingGroup(context.Context, int64) (*RoutingGroupDetail, error)
+}
+
+type RoutingGroupListOptions struct {
+	Filter  map[string]string
+	OrderBy []ordering.Field
+	Offset  int
+	Limit   int
+}
+
+type RoutingGroupUsecase struct{ repo RoutingGroupRepo }
+
+func NewRoutingGroupUsecase(repo RoutingGroupRepo) *RoutingGroupUsecase {
+	return &RoutingGroupUsecase{repo: repo}
+}
+func (uc *RoutingGroupUsecase) List(ctx context.Context, options RoutingGroupListOptions) ([]*RoutingGroup, error) {
+	if options.Offset < 0 || options.Limit < 1 || options.Limit > 201 {
+		return nil, ErrRoutingGroupInvalid
+	}
+	return uc.repo.ListRoutingGroups(ctx, options)
+}
+func (uc *RoutingGroupUsecase) Get(ctx context.Context, id int64) (*RoutingGroupDetail, error) {
+	if id <= 0 {
+		return nil, ErrRoutingGroupInvalid
+	}
+	return uc.repo.GetRoutingGroup(ctx, id)
+}
+
+type RoutingGroupBackfillResult struct {
+	ReportHash string `json:"report_hash"`
+	Groups     int    `json:"groups"`
+	Grants     int    `json:"verified_grants"`
+}
+type RoutingGroupBackfillRepo interface {
+	ApplyRoutingGroupBackfill(context.Context, *GroupAuditReport) (*RoutingGroupBackfillResult, error)
+}
+type RoutingGroupBackfillUsecase struct{ repo RoutingGroupBackfillRepo }
+
+func NewRoutingGroupBackfillUsecase(repo RoutingGroupBackfillRepo) *RoutingGroupBackfillUsecase {
+	return &RoutingGroupBackfillUsecase{repo: repo}
+}
+func (uc *RoutingGroupBackfillUsecase) Apply(ctx context.Context, report *GroupAuditReport) (*RoutingGroupBackfillResult, error) {
+	if report == nil || report.Version != 2 || !report.Migration.ReadyForBackfill || report.Migration.BlockingIssues != 0 || len(report.Migration.Groups) == 0 || len(report.Models) == 0 {
+		return nil, ErrRoutingGroupBaselineConflict
+	}
+	for _, issue := range report.Issues {
+		if issue.Blocking {
+			return nil, ErrRoutingGroupBaselineConflict
+		}
+	}
+	keys := map[string]bool{}
+	for _, group := range report.Migration.Groups {
+		if group.LegacyKey == "" || len(group.LegacyKey) > 1024 || keys[group.LegacyKey] || (group.InitialStatus != "enabled" && group.InitialStatus != "disabled") || group.AccessMode != "restricted" {
+			return nil, ErrRoutingGroupInvalid
+		}
+		keys[group.LegacyKey] = true
+	}
+	if len(keys) != len(report.Groups) {
+		return nil, ErrRoutingGroupBaselineConflict
+	}
+	seen := map[string]bool{}
+	for _, key := range report.Groups {
+		if !keys[key] || seen[key] {
+			return nil, ErrRoutingGroupBaselineConflict
+		}
+		seen[key] = true
+	}
+	seen = map[string]bool{}
+	for _, model := range report.Models {
+		if model == "" || seen[model] {
+			return nil, ErrRoutingGroupInvalid
+		}
+		seen[model] = true
+	}
+	return uc.repo.ApplyRoutingGroupBackfill(ctx, report)
+}

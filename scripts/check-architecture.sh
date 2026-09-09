@@ -151,13 +151,16 @@ while IFS='|' read -r package_path imports; do
     # API DTOs to perform DTO↔DO conversion. This applies to:
     #   - relay-gateway's internal/data (aggregates identity/channel/billing/log)
     #   - monitor's internal/data (wraps channel-service client for health probing)
+    #   - admin's data/channelclient (narrow channel-owner DO reader; v2 §7.1)
     # In these cases, the data layer is the correct location for DTO imports,
     # not the biz layer.
     if [[ "${pkg_layer}" == "data" \
           && "${imported}" =~ ^${module_path}/api/[^/]+/v1$ \
           && "${imported}" != "${module_path}/api/common/v1" \
           && "${package_path}" != "${module_path}/internal/data" \
-          && "${package_path}" != "${module_path}/app/monitor/internal/data" ]]; then
+          && "${package_path}" != "${module_path}/app/monitor/internal/data" \
+          && ! ( "${package_path}" == "${module_path}/app/admin/internal/data/channelclient" \
+               && "${imported}" == "${module_path}/api/channel/v1" ) ]]; then
       echo "${package_path} (data layer) imports API DTO package: ${imported}"
       violations=1
     fi

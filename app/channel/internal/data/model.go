@@ -758,7 +758,7 @@ func (r *Repository) UpsertSubscriptionMapping(ctx context.Context, do *biz.Mode
 		return r.upsertSubscriptionMappingMemory(do)
 	}
 	po := newSubscriptionMappingPO(do)
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return r.routingMappingTransaction(ctx, "model_subscription_mapping", map[string]any{"subscription_account_id": po.SubscriptionAccountID, "model_id": po.ModelPK, "group_name": po.GroupName}, po.GroupName, func(tx *gorm.DB) error {
 		var existing modelSubscriptionMappingModel
 		err := tx.Where("subscription_account_id = ? AND model_id = ? AND group_name = ?",
 			po.SubscriptionAccountID, po.ModelPK, po.GroupName).First(&existing).Error

@@ -108,7 +108,7 @@ func (r *Repository) ListModelRoutingsForSelect(ctx context.Context, group, mode
 func (r *Repository) listModelRoutingsDB(ctx context.Context, group, model, platform string) ([]*biz.ModelRouting, error) {
 	query := r.db.WithContext(ctx).Model(&modelRoutingModel{})
 	if group != "" {
-		query = query.Where("group_name = ?", group)
+		query = r.mappingGroupScope(query, group, "")
 	}
 	if model != "" {
 		query = query.Where("model = ?", model)
@@ -166,7 +166,7 @@ func (r *Repository) upsertModelRoutingDB(ctx context.Context, do *biz.ModelRout
 	// Read-then-write upsert (matches the existing UpsertChannelMapping /
 	// UpsertSubscriptionMapping pattern and works across MySQL/SQLite/Postgres
 	// without relying on driver-specific ON CONFLICT column matching).
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return r.routingMappingTransaction(ctx, "model_routings", map[string]any{"group_name": po.GroupName, "model": po.Model, "platform": po.Platform, "subscription_account_id": po.SubscriptionAccountID}, po.GroupName, func(tx *gorm.DB) error {
 		var existing modelRoutingModel
 		err := tx.Where("group_name = ? AND model = ? AND platform = ? AND subscription_account_id = ?",
 			po.GroupName, po.Model, po.Platform, po.SubscriptionAccountID).First(&existing).Error

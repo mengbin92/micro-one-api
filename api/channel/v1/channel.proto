@@ -8,6 +8,9 @@ import "google/protobuf/empty.proto";
 option go_package = "micro-one-api/api/channel/v1;channelv1";
 
 service ChannelService {
+  // Phase B read-only group registry; mutations remain with the resource owners.
+  rpc ListRoutingGroups(ListRoutingGroupsRequest) returns (ListRoutingGroupsReply);
+  rpc GetRoutingGroup(GetRoutingGroupRequest) returns (RoutingGroupDetail);
   // Read-only, model-scoped authorization for stored/cached routing sources.
   // It never grants account-wide access and never returns credentials.
   rpc CheckRoute(CheckRouteRequest) returns (CheckRouteReply);
@@ -112,6 +115,53 @@ service ChannelService {
   rpc ResolveUsageSemanticBlock(ResolveUsageSemanticBlockRequest) returns (ResolveUsageSemanticBlockResponse);
   rpc ListUsageSemanticBlocks(ListUsageSemanticBlocksRequest) returns (ListUsageSemanticBlocksResponse);
 
+}
+
+message RoutingGroup {
+  int64 id = 1;
+  string key = 2;
+  string display_name = 3;
+  string description = 4;
+  string status = 5;
+  string access_mode = 6;
+  string model_access_mode = 7;
+  int32 sort_order = 8;
+  int64 revision = 9;
+  int64 created_at = 10;
+  int64 updated_at = 11;
+}
+message ListRoutingGroupsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  // Equality filters on key, status, access_mode joined with AND.
+  string filter = 3;
+  // id, key, sort_order with optional asc/desc; id is the stable tie breaker.
+  string order_by = 4;
+}
+message ListRoutingGroupsReply {
+  repeated RoutingGroup groups = 1;
+  string next_page_token = 2;
+}
+message GetRoutingGroupRequest { int64 id = 1; }
+message RoutingGroupResource {
+  string source_kind = 1;
+  int64 source_id = 2;
+  int64 priority = 3;
+  int64 weight = 4;
+}
+message RoutingGroupModelGrant {
+  int64 mapping_id = 1;
+  int64 account_id = 2;
+  string model = 3;
+  string upstream_model_id = 4;
+  bool enabled = 5;
+  int32 priority = 6;
+  bool extra_authorization = 7;
+}
+message RoutingGroupDetail {
+  RoutingGroup group = 1;
+  repeated RoutingGroupResource resources = 2;
+  repeated RoutingGroupModelGrant model_grants = 3;
 }
 
 message SelectChannelRequest {

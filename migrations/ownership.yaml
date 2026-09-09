@@ -35,6 +35,7 @@ services:
     - 076_add_key_hash_to_tokens             # identity-L6 HMAC hash of access-token key
 
   channel:
+    - 090_create_routing_groups
     # channels / abilities / subscription_accounts / subscription_account_quota_*
     # + model management tables (方案B: models, model_aliases, model_*_mapping)
     - 000_create_core_tables          # channels, abilities (subset)

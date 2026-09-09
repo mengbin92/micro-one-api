@@ -17,6 +17,7 @@ type ChannelService struct {
 	uc                *biz.ChannelUsecase
 	modelUC           *biz.ModelUsecase
 	routingUC         *biz.ModelRoutingUsecase
+	routingGroupUC    routingGroupUsecase
 	channelModelProbe channelModelProbeScheduler
 }
 

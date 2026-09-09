@@ -16,6 +16,7 @@ import (
 	"micro-one-api/api/channel/v1"
 	"micro-one-api/api/identity/v1"
 	"micro-one-api/app/admin/internal/biz"
+	"micro-one-api/app/admin/internal/data/channelclient"
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/platform/audit"
@@ -41,9 +42,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	mainSystemOptionsResult := newSystemOptionsRepo(config)
 	systemOptionsUsecase := newSystemOptionsUsecase(mainSystemOptionsResult)
 	adminService := service.NewAdminService(billingServiceClient, identityServiceClient, channelServiceClient, systemOptionsUsecase)
+	routingGroupReader := channelclient.NewRoutingGroupReader(channelServiceClient)
+	routingGroupUsecase := biz.NewRoutingGroupUsecase(routingGroupReader)
 	auditor := newAuditAuditor()
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, mainClientsResult, mainSubscriptionResult, adminService, auditor, mainRegistrarResult)
+	app, cleanup := newApp(config, mainClientsResult, mainSubscriptionResult, adminService, routingGroupUsecase, auditor, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -59,7 +62,7 @@ var ProviderSet = wire.NewSet(
 	provideIdentityClient,
 	provideChannelClient,
 	provideBillingClient,
-	newAuditAuditor, service.NewAdminService, provideRegistrar,
+	newAuditAuditor, channelclient.NewRoutingGroupReader, biz.NewRoutingGroupUsecase, service.NewAdminService, provideRegistrar,
 )
 
 // newAuditAuditor provides the audit sink for admin-api sensitive operations
@@ -100,9 +103,11 @@ func newApp(
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService,
+	routingGroups *biz.RoutingGroupUsecase,
 	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	svc.SetRoutingGroupUsecase(routingGroups)
 
 	if sub.SubUc != nil {
 		planUc := sub.PlanUc

@@ -9,8 +9,10 @@ import (
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/domain/routing"
+	"micro-one-api/pkg/jsonx"
 
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -21,23 +23,25 @@ import (
 // only: the audit never loads keys, tokens, names, or credential metadata.
 type groupAuditRepo struct {
 	*Repository
-	usersTable   string
-	optionsTable string
+	usersTable    string
+	optionsTable  string
+	billingSchema string
 }
 
-// GroupAuditSchemas locates the two non-channel tables on a split-schema
-// deployment. All reads still use the same caller-owned MySQL transaction.
+// GroupAuditSchemas locates non-channel tables on a split-schema deployment.
+// All reads still use the same caller-owned read-only transaction.
 type GroupAuditSchemas struct {
 	Identity string
 	Options  string
+	Billing  string
 }
 
 var auditSchemaIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 
 func NewGroupAuditRepositories(tx *sql.Tx, driver string, schemas GroupAuditSchemas) (biz.ChannelRepo, biz.ModelRoutingRepo, biz.GroupInventoryRepo, error) {
-	for _, schema := range []string{schemas.Identity, schemas.Options} {
-		if schema != "" && (driver != "mysql" || !auditSchemaIdentifier.MatchString(schema)) {
-			return nil, nil, nil, fmt.Errorf("audit schema overrides require MySQL identifiers")
+	for _, schema := range []string{schemas.Identity, schemas.Options, schemas.Billing} {
+		if schema != "" && ((driver != "mysql" && driver != "postgres") || !auditSchemaIdentifier.MatchString(schema)) {
+			return nil, nil, nil, fmt.Errorf("audit schema overrides require MySQL/PostgreSQL identifiers")
 		}
 	}
 	var dialector gorm.Dialector
@@ -46,14 +50,16 @@ func NewGroupAuditRepositories(tx *sql.Tx, driver string, schemas GroupAuditSche
 		dialector = mysql.New(mysql.Config{Conn: tx, SkipInitializeWithVersion: true})
 	case "sqlite3":
 		dialector = sqlite.New(sqlite.Config{Conn: tx})
+	case "postgres":
+		dialector = postgres.New(postgres.Config{Conn: tx})
 	default:
-		return nil, nil, nil, fmt.Errorf("audit supports mysql and sqlite3 snapshots")
+		return nil, nil, nil, fmt.Errorf("audit supports mysql, postgres and sqlite3 snapshots")
 	}
 	db, err := gorm.Open(dialector, &gorm.Config{DisableAutomaticPing: true, SkipDefaultTransaction: true, Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	r := &groupAuditRepo{Repository: &Repository{db: db}, usersTable: "users", optionsTable: "system_options"}
+	r := &groupAuditRepo{Repository: &Repository{db: db}, usersTable: "users", optionsTable: "system_options", billingSchema: schemas.Billing}
 	if schemas.Identity != "" {
 		r.usersTable = schemas.Identity + ".users"
 	}
@@ -113,6 +119,10 @@ func (r *groupAuditRepo) LoadGroupInventory(ctx context.Context) (*biz.GroupInve
 	}
 	for _, row := range users {
 		add("users", row.ID, row.Group, false, routing.Source{}, "")
+	}
+	tokensTable := strings.TrimSuffix(r.usersTable, "users") + "tokens"
+	if err := db.Table(tokensTable).Select("id", "user_id").Find(&inventory.Tokens).Error; err != nil {
+		return nil, err
 	}
 	var channels []channelModel
 	if err := db.Select("id", "group", "models").Find(&channels).Error; err != nil {
@@ -198,5 +208,64 @@ func (r *groupAuditRepo) LoadGroupInventory(ctx context.Context) (*biz.GroupInve
 	if len(options) == 1 {
 		inventory.GroupRatioJSON = options[0].OptionValue
 	}
+	if err := r.loadSubscriptionInventory(ctx, inventory); err != nil {
+		return nil, err
+	}
 	return inventory, nil
+}
+
+func (r *groupAuditRepo) loadSubscriptionInventory(ctx context.Context, inventory *biz.GroupInventory) error {
+	table := func(name string) string {
+		if r.billingSchema != "" {
+			return r.billingSchema + "." + name
+		}
+		return name
+	}
+	db := r.db.WithContext(ctx)
+	if err := db.Table(table("subscription_groups")).Select("id", "status", "daily_limit_usd", "weekly_limit_usd", "monthly_limit_usd", "rate_multiplier").Find(&inventory.QuotaPolicies).Error; err != nil {
+		return err
+	}
+	if err := db.Table(table("subscription_plans")).Select("id, group_id AS quota_policy_id, for_sale").Find(&inventory.Plans).Error; err != nil {
+		return err
+	}
+	if err := db.Table(table("user_subscriptions")).Select("id, user_id, group_id AS quota_policy_id, status, starts_at, expires_at").Find(&inventory.Subscriptions).Error; err != nil {
+		return err
+	}
+	// Read purchase-contract metadata only. Provider payloads, transaction IDs,
+	// payment URLs, subscription metadata and personal names are never selected.
+	var orders []struct {
+		ID               int64
+		UserID           string
+		GroupID          int64
+		PlanID           int64
+		SubscriptionID   int64
+		Status           string
+		AssetIssueStatus string
+		PlanSnapshot     string
+	}
+	if err := db.Table(table("payment_orders")).Select("id", "user_id", "group_id", "plan_id", "subscription_id", "status", "asset_issue_status", "plan_snapshot").Where("asset_type = ? OR group_id <> 0 OR plan_id <> 0 OR subscription_id <> 0", "subscription").Find(&orders).Error; err != nil {
+		return err
+	}
+	for _, row := range orders {
+		order := biz.GroupAuditOrder{ID: row.ID, UserID: row.UserID, QuotaPolicyID: row.GroupID, PlanID: row.PlanID, SubscriptionID: row.SubscriptionID, Status: row.Status, AssetIssueStatus: row.AssetIssueStatus, SnapshotState: "absent"}
+		if strings.TrimSpace(row.PlanSnapshot) != "" {
+			// Decode only numeric references, never re-emit the raw JSON or plan
+			// display strings (including on parse errors).
+			var snapshot struct {
+				PlanID       int64 `json:"plan_id"`
+				GroupID      int64 `json:"group_id"`
+				PriceQuota   int64 `json:"price_quota"`
+				ValidityDays int32 `json:"validity_days"`
+			}
+			if err := jsonx.Unmarshal([]byte(row.PlanSnapshot), &snapshot); err != nil || snapshot.PlanID <= 0 || snapshot.GroupID <= 0 || snapshot.PriceQuota < 0 || snapshot.ValidityDays <= 0 {
+				order.SnapshotState = "invalid"
+			} else {
+				order.SnapshotState = "present"
+				order.SnapshotPlanID = snapshot.PlanID
+				order.SnapshotQuotaPolicyID = snapshot.GroupID
+			}
+		}
+		inventory.Orders = append(inventory.Orders, order)
+	}
+	return nil
 }

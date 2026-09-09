@@ -29,11 +29,12 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("group-audit", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	driver := flags.String("driver", "mysql", "mysql or sqlite3 (existing database snapshot)")
+	driver := flags.String("driver", "mysql", "mysql, postgres or sqlite3 (existing database snapshot)")
 	dsnEnv := flags.String("dsn-env", "GROUP_AUDIT_DSN", "environment variable containing the DSN; never printed")
 	baseEnv := flags.String("base-ratios-env", "", "optional environment variable containing billing base GroupRatios JSON")
-	identitySchema := flags.String("identity-schema", "", "MySQL schema owning users; default DSN database")
-	optionsSchema := flags.String("options-schema", "", "MySQL schema owning system_options; default DSN database")
+	identitySchema := flags.String("identity-schema", "", "MySQL/PostgreSQL schema owning users and tokens; default DSN database/search path")
+	optionsSchema := flags.String("options-schema", "", "MySQL/PostgreSQL schema providing billing's system_options; default DSN database/search path")
+	billingSchema := flags.String("billing-schema", "", "MySQL/PostgreSQL schema owning subscriptions and payment orders; default DSN database/search path")
 	output := flags.String("output", "", "new report file (0600); default stdout")
 	limit := flags.Int("max-probes", 100000, "maximum group/model/source authorization checks")
 	timeout := flags.Duration("timeout", 2*time.Minute, "snapshot timeout")
@@ -54,8 +55,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "DSN environment variable is empty")
 		return 2
 	}
-	if *driver != "mysql" && *driver != "sqlite3" {
-		fmt.Fprintln(stderr, "supported drivers: mysql, sqlite3")
+	if *driver != "mysql" && *driver != "sqlite3" && *driver != "postgres" {
+		fmt.Fprintln(stderr, "supported drivers: mysql, postgres, sqlite3")
 		return 2
 	}
 	if *driver == "sqlite3" {
@@ -75,7 +76,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	db, err := sql.Open(*driver, dsn)
+	sqlDriver := *driver
+	if sqlDriver == "postgres" {
+		sqlDriver = "pgx"
+	}
+	db, err := sql.Open(sqlDriver, dsn)
 	if err != nil {
 		fmt.Fprintln(stderr, "cannot open audit database")
 		return 2
@@ -92,7 +97,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	defer tx.Rollback()
-	channelRepo, routingRepo, inventoryRepo, err := data.NewGroupAuditRepositories(tx, *driver, data.GroupAuditSchemas{Identity: *identitySchema, Options: *optionsSchema})
+	channelRepo, routingRepo, inventoryRepo, err := data.NewGroupAuditRepositories(tx, *driver, data.GroupAuditSchemas{Identity: *identitySchema, Options: *optionsSchema, Billing: *billingSchema})
 	if err != nil {
 		fmt.Fprintln(stderr, "cannot initialize audit repositories")
 		return 2

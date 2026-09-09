@@ -29,6 +29,11 @@ type GroupInventory struct {
 	Sources        []routing.Source
 	Models         []string
 	GroupRatioJSON string
+	Tokens         []GroupAuditToken
+	QuotaPolicies  []GroupAuditQuotaPolicy
+	Plans          []GroupAuditPlan
+	Subscriptions  []GroupAuditSubscription
+	Orders         []GroupAuditOrder
 }
 
 type GroupInventoryRepo interface {
@@ -42,6 +47,8 @@ type RoutePermissionChecker interface {
 type GroupAuditIssue struct {
 	Code      string         `json:"code"`
 	Reference GroupReference `json:"reference"`
+	Action    string         `json:"action"`
+	Blocking  bool           `json:"blocking"`
 }
 
 type GroupAuditGrant struct {
@@ -61,15 +68,21 @@ type GroupAuditPrice struct {
 }
 
 type GroupAuditReport struct {
-	Version    int               `json:"version"`
-	Coverage   string            `json:"coverage"`
-	Groups     []string          `json:"groups"`
-	Models     []string          `json:"models"`
-	References []GroupReference  `json:"references"`
-	Issues     []GroupAuditIssue `json:"issues"`
-	Grants     []GroupAuditGrant `json:"grants"`
-	Prices     []GroupAuditPrice `json:"prices"`
-	Probes     int               `json:"probes"`
+	Version       int                      `json:"version"`
+	Coverage      string                   `json:"coverage"`
+	Groups        []string                 `json:"groups"`
+	Models        []string                 `json:"models"`
+	References    []GroupReference         `json:"references"`
+	Issues        []GroupAuditIssue        `json:"issues"`
+	Grants        []GroupAuditGrant        `json:"grants"`
+	Prices        []GroupAuditPrice        `json:"prices"`
+	Probes        int                      `json:"probes"`
+	Migration     GroupAuditMigration      `json:"migration"`
+	Tokens        []GroupAuditToken        `json:"tokens"`
+	QuotaPolicies []GroupAuditQuotaPolicy  `json:"quota_policies"`
+	Plans         []GroupAuditPlan         `json:"plans"`
+	Subscriptions []GroupAuditSubscription `json:"subscriptions"`
+	Orders        []GroupAuditOrder        `json:"orders"`
 }
 
 type GroupAuditUsecase struct {
@@ -99,7 +112,10 @@ func (uc *GroupAuditUsecase) Run(ctx context.Context, extraModels []string, base
 	for key := range configured {
 		inventory.References = append(inventory.References, GroupReference{Table: "GroupRatio", Group: key})
 	}
-	report := &GroupAuditReport{Version: 1, Coverage: "registered and literal ability models plus explicit probes; wildcard rules are retained in references; excludes health/quota/concurrency", References: inventory.References, Issues: []GroupAuditIssue{}, Grants: []GroupAuditGrant{}, Prices: []GroupAuditPrice{}}
+	for key := range baseRatios {
+		inventory.References = append(inventory.References, GroupReference{Table: "billing_base_ratios", Group: key})
+	}
+	report := &GroupAuditReport{Version: 2, Coverage: "registered and literal ability models plus explicit probes; wildcard rules are retained in references; excludes health/quota/concurrency; subscription references retain legacy coverage without routing access grants", References: inventory.References, Issues: []GroupAuditIssue{}, Grants: []GroupAuditGrant{}, Prices: []GroupAuditPrice{}, Tokens: inventory.Tokens, QuotaPolicies: inventory.QuotaPolicies, Plans: inventory.Plans, Subscriptions: inventory.Subscriptions, Orders: inventory.Orders}
 	groups, resourceGroups := map[string]bool{}, map[string]bool{}
 	memberships := map[routing.Source]string{}
 	sources := map[routing.Source]bool{}
@@ -107,7 +123,8 @@ func (uc *GroupAuditUsecase) Run(ctx context.Context, extraModels []string, base
 		sources[source] = true
 	}
 	issue := func(code string, ref GroupReference) {
-		report.Issues = append(report.Issues, GroupAuditIssue{Code: code, Reference: ref})
+		action, blocking := groupAuditDisposition(code)
+		report.Issues = append(report.Issues, GroupAuditIssue{Code: code, Reference: ref, Action: action, Blocking: blocking})
 	}
 	for _, ref := range inventory.References {
 		if ref.CSV {
@@ -168,6 +185,14 @@ func (uc *GroupAuditUsecase) Run(ctx context.Context, extraModels []string, base
 			for key := range keys {
 				issue("case_or_whitespace_collision", GroupReference{Table: "group_keys", Group: key})
 			}
+		}
+	}
+	if len(positiveAuditRatios(baseRatios)) == 0 {
+		issue("billing_base_not_verified", GroupReference{Table: "billing_base_ratios"})
+	}
+	for key, ratio := range baseRatios {
+		if key == "" || ratio <= 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+			issue("invalid_price_ratio", GroupReference{Table: "billing_base_ratios", Group: key})
 		}
 	}
 	for key := range configured {
@@ -258,6 +283,7 @@ func (uc *GroupAuditUsecase) Run(ctx context.Context, extraModels []string, base
 			}
 		}
 	}
+	report.buildMigration(inventory, issue)
 	sort.Slice(report.References, func(i, j int) bool { return auditReferenceLess(report.References[i], report.References[j]) })
 	sort.Slice(report.Issues, func(i, j int) bool {
 		a, b := report.Issues[i], report.Issues[j]

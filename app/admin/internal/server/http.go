@@ -441,6 +441,13 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	srv.HandlePrefix("/api/v1/admin/subscriptions/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleSubscriptionByID(w, r, svc)
 	}))
+	srv.HandleFunc("/api/v1/admin/routing-groups", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleRoutingGroups(w, r, svc)
+	}))
+	srv.HandlePrefix("/api/v1/admin/routing-groups/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleRoutingGroupByID(w, r, svc)
+	}))
+
 	srv.HandleFunc("/api/v1/admin/subscription-groups", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleSubscriptionGroups(w, r, svc)
 	}))

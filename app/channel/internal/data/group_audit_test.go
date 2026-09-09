@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -14,9 +15,26 @@ func TestGroupAuditRejectsUnsafeSchemaOverridesBeforeOpeningDatabase(t *testing.
 		require.Error(t, err)
 		_, _, _, err = NewGroupAuditRepositories(nil, "mysql", GroupAuditSchemas{Options: schema})
 		require.Error(t, err)
+		_, _, _, err = NewGroupAuditRepositories(nil, "mysql", GroupAuditSchemas{Billing: schema})
+		require.Error(t, err)
+		_, _, _, err = NewGroupAuditRepositories(nil, "postgres", GroupAuditSchemas{Billing: schema})
+		require.Error(t, err)
 	}
 	_, _, _, err := NewGroupAuditRepositories(nil, "sqlite3", GroupAuditSchemas{Identity: "identity"})
 	require.Error(t, err, "SQLite audit must not silently use a different attached schema")
+}
+
+func TestGroupAuditPostgresQuotesReservedColumnAndCrossSchemaTables(t *testing.T) {
+	db, err := gorm.Open(postgres.New(postgres.Config{}), &gorm.Config{DryRun: true, DisableAutomaticPing: true})
+	require.NoError(t, err)
+	var users []struct {
+		ID    int64
+		Group string
+	}
+	query := db.Table("identity.users").Select("id", "group").Where(quoteGroupColumnSQL(db, "`group` = ?"), "a_b").Find(&users)
+	require.NoError(t, query.Error)
+	require.Equal(t, `SELECT "id","group" FROM "identity"."users" WHERE "group" = $1`, query.Statement.SQL.String())
+	require.Equal(t, []any{"a_b"}, query.Statement.Vars)
 }
 
 func TestGroupAuditMySQLQuotesCrossSchemaReadTables(t *testing.T) {

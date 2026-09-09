@@ -44,6 +44,7 @@ type AdminService struct {
 	subscriptionUc  *subscriptionbiz.SubscriptionUsecase
 	groupUc         *subscriptionbiz.GroupUsecase
 	planUc          *subscriptionbiz.PlanUsecase
+	routingGroupUc  routingGroupUsecase
 }
 
 type operatorCredentialKey struct{}

@@ -15,6 +15,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/app/admin/internal/biz"
+	"micro-one-api/app/admin/internal/data/channelclient"
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
 
@@ -32,6 +33,8 @@ var ProviderSet = wire.NewSet(
 	provideChannelClient,
 	provideBillingClient,
 	newAuditAuditor,
+	channelclient.NewRoutingGroupReader,
+	biz.NewRoutingGroupUsecase,
 	service.NewAdminService,
 	provideRegistrar,
 )
@@ -79,9 +82,11 @@ func newApp(
 	clients *clientsResult,
 	sub subscriptionResult,
 	svc *service.AdminService,
+	routingGroups *biz.RoutingGroupUsecase,
 	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	svc.SetRoutingGroupUsecase(routingGroups)
 	// Wire optional subscription usecases onto the admin service.
 	if sub.SubUc != nil {
 		planUc := sub.PlanUc

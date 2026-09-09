@@ -19,6 +19,7 @@ export const routeLoaders = {
   '/admin/channels': () => import('@/pages/admin/ChannelsPage'),
   '/admin/models': () => import('@/pages/admin/ModelsPage'),
   '/admin/subscription-accounts': () => import('@/pages/admin/SubscriptionAccountsPage'),
+  '/admin/routing-groups': () => import('@/pages/admin/RoutingGroupsPage'),
   '/admin/subscription-groups': () => import('@/pages/admin/SubscriptionGroupsPage'),
   '/admin/subscription-plans': () => import('@/pages/admin/SubscriptionPlansPage'),
   '/admin/subscriptions': () => import('@/pages/admin/SubscriptionsAdminPage'),
