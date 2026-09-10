@@ -7,6 +7,30 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-09-10
+
+v0.27.0 是 v0.26.6 之后的 **MINOR Lite 部署与账务审计版本**：修复 SQLite Lite 结算自等待和方言 schema 缺口，新增空环境 Quickstart / smoke / 脱敏演示与只读历史 usage 审计工具，固化 canonical charge 门禁的 float64 与 PromptExclusive 口径，并升级安全依赖。无公共 API / proto 变更；MySQL 无新增迁移，SQLite / PostgreSQL 包含方言迁移 `011` 与 `090`。详见 [release-v0.27.0.md](docs/releases/release-v0.27.0.md)。
+
+### Added
+
+- 新增 Lite 从 clone 到首个 Relay 请求的 Quickstart、空环境 smoke、脱敏截图和操作演示；初始管理员密码写入卷内 0600 私有文件。
+- 新增 `scripts/reconcile/history-audit` 只读审计命令，基于三表 SELECT 输出确定性 JSON / CSV，不提供写入或冲正路径。
+- SQLite / PostgreSQL 新增 `011` 渠道字段补齐迁移和 `090` 账务时间类型修复迁移；旧行数据在升级中保留。
+- 新增 LLM 计费讲解与 Chat / Responses / Messages 协议转换指南。
+
+### Fixed
+
+- 修复 SQLite 单连接结算事务的自等待：账户、订阅组和定价读取改为事务绑定，动态定价在占用连接前加载；钱包与订阅双轨结算通过真实 SQLite 回归。
+- 修复 Lite bootstrap 密码输出、数据卷权限、project 隔离和增量迁移路径。
+- 修复 72h charge 门禁 SQL 的 DECIMAL 舍入和 legacy PromptExclusive 推导差异；冻结 K3 窗口复验 0/0，配置-only 回滚演练双向通过。
+- 升级 gRPC / x/net 修复 CVE-2026-84445，并移除 Lite 示例中的确定性加密密钥。
+
+### Changed
+
+- K3 精确订阅来源 canonical charge 维持不变；GLM-5.3 扩面与全量 charge 经书面决策顺延到后续版本。
+- Lite `.env` 示例要求部署者生成唯一 `CHANNEL_ENCRYPTION_KEY`，浏览器跨域默认拒绝。
+- 升级 `hono`、`js-yaml`、`@vitest/mocker` 与相关前端传递依赖。
+
 ## [0.26.6] - 2026-09-06
 
 v0.26.6 是 v0.26.5 之后的 **PATCH 计费与生产可靠性修复版本**：canonical charge 新增按

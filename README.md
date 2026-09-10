@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.26.6 发布公告](./docs/releases/release-v0.26.6.md)（Canonical Charge 精确门禁、Responses 错误语义与部署安全修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.26.6)
+> 📣 **最新发布**：[v0.27.0 发布公告](./docs/releases/release-v0.27.0.md)（Lite 部署收口、只读账务审计与计费门禁口径修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.27.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.27.0
+
+v0.27.0 是 v0.26.6 之后的 **MINOR Lite 部署与账务审计版本**：修复 SQLite Lite 单连接结算自等待和方言 schema 缺口，新增空环境 Quickstart、可重复 smoke、脱敏演示和只读历史 usage 审计工具，并固化 K3 canonical charge 门禁的 float64 / PromptExclusive 口径。**无公共 API / proto 变更**；MySQL 无新增迁移，SQLite / PostgreSQL 包含方言迁移 `011` 与 `090`，Lite 的 `CHANNEL_ENCRYPTION_KEY` 必须由部署者生成并保存。详见 [docs/releases/release-v0.27.0.md](./docs/releases/release-v0.27.0.md)。
 
 ### 升级到 v0.26.6
 
