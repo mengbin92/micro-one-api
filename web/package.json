@@ -63,13 +63,13 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.1.0",
-    "vitest": "^4.1.6"
+    "vitest": "^5.0.0"
   },
   "overrides": {
     "@babel/core": "^7.29.6",
     "form-data": "^4.0.6",
     "hono": "^4.12.34",
-    "js-yaml": "^4.3.1",
+    "js-yaml": "^4.3.2",
     "brace-expansion": "^5.0.9",
     "body-parser": "^2.3.0",
     "@hono/node-server": "^2.0.5",
