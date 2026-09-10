@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -97,7 +98,7 @@ func TestChannelAdapterLegacyClientDoesNotPanicOnModelHealth(t *testing.T) {
 
 func TestModelHealthQueueDropsWhenFull(t *testing.T) {
 	block := make(chan struct{})
-	client := &blockingModelHealthClient{block: block}
+	client := &blockingModelHealthClient{block: block, started: make(chan struct{})}
 	q := newModelHealthQueue(client)
 	defer close(block)
 
@@ -105,6 +106,12 @@ func TestModelHealthQueueDropsWhenFull(t *testing.T) {
 	if !q.record(&channelv1.RecordModelHealthRequest{SourceId: 1}) {
 		t.Fatal("first sample must be accepted")
 	}
+	// Wait until the worker has actually entered the (blocked) RPC before
+	// filling the queue. Without this handshake the test races the scheduler:
+	// if the worker has not picked the first sample up yet, the queue still
+	// holds it and the final "beyond depth" record is accepted instead of the
+	// last fill slot being rejected.
+	<-client.started
 	// Fill the queue: the worker is busy, so the bounded channel fills.
 	for i := 0; i < modelHealthQueueDepth; i++ {
 		if !q.record(&channelv1.RecordModelHealthRequest{SourceId: int64(i + 2)}) {
@@ -141,9 +148,14 @@ func TestModelHealthQueueCloseDrains(t *testing.T) {
 type blockingModelHealthClient struct {
 	channelv1.ChannelServiceClient
 	block chan struct{}
+	// started is closed when the worker goroutine enters the first (blocked)
+	// RPC, proving it has taken the first sample off the queue.
+	started chan struct{}
+	once    sync.Once
 }
 
 func (c *blockingModelHealthClient) RecordModelHealth(_ context.Context, _ *channelv1.RecordModelHealthRequest, _ ...grpc.CallOption) (*channelv1.RecordModelHealthResponse, error) {
+	c.once.Do(func() { close(c.started) })
 	<-c.block
 	return &channelv1.RecordModelHealthResponse{Success: true}, nil
 }

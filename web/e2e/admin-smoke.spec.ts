@@ -32,11 +32,10 @@ async function seedAdminSession(page: Page) {
     localStorage.setItem('adminToken', 'test-admin-token');
   });
   await page.goto('/dashboard');
-  // Admin links only render in the desktop sidebar; on mobile they live in
-  // the hamburger navigation, so only assert on wide viewports.
-  if ((page.viewportSize()?.width ?? 0) >= 768) {
-    await expect(page.getByRole('link', { name: /^(总览|Overview)$/i })).toBeVisible();
-  }
+  // The admin workspace was split out of the shared sidebar: on user routes
+  // the only admin affordance is the "进入管理" control in the topbar, which
+  // renders at every breakpoint.
+  await expect(page.getByRole('link', { name: /^(进入管理|Open Admin)$/i })).toBeVisible();
 }
 
 async function openMobileNavIfVisible(page: Page) {
@@ -93,10 +92,13 @@ test('register creates account and signs in', async ({ page }) => {
 test('admin token enables Options nav', async ({ page }) => {
   await seedAdminSession(page);
   await page.goto('/dashboard');
-  await openMobileNavIfVisible(page);
+  await expect(page.getByRole('link', { name: /^(进入管理|Open Admin)$/i })).toBeVisible();
 
-  await expect(page.getByRole('link', { name: /^(总览|Overview)$/i })).toBeVisible();
-  await expect(page.getByRole('link', { name: /^(设置|Settings)$/i })).toBeVisible();
+  // Admin nav entries live on /admin routes only after the workspace split.
+  await page.goto('/admin');
+  await openMobileNavIfVisible(page);
+  await expect(page.getByRole('link', { name: /^(运营总览|Operations Overview)$/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^(系统设置|System Settings)$/i })).toBeVisible();
 });
 
 test('regular user shell does not show admin login control', async ({ page }) => {
@@ -107,14 +109,14 @@ test('regular user shell does not show admin login control', async ({ page }) =>
   await page.goto('/dashboard');
 
   await expect(page.getByRole('link', { name: /^(进入管理|Open Admin)$/i })).toBeHidden();
-  await expect(page.getByRole('link', { name: /^(总览|Overview)$/i })).toBeHidden();
+  await expect(page.getByRole('link', { name: /^(运营总览|Operations Overview)$/i })).toBeHidden();
 });
 
 test('admin overview renders operational status', async ({ page }) => {
   await seedAdminSession(page);
   await page.goto('/admin');
 
-  await expect(page.getByRole('heading', { name: '管理总览' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '运营总览' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '上游供应商' })).toBeVisible();
   await expect(page.getByText('openai-main')).toBeVisible();
   await expect(page.getByRole('heading', { name: '订阅账号', exact: true })).toBeVisible();
@@ -381,10 +383,12 @@ test('mobile navigation exposes admin links and closes after navigation', async 
   test.skip(testInfo.project.name !== 'mobile-chrome', 'mobile-only coverage');
 
   await seedAdminSession(page);
-  await page.goto('/dashboard');
+  // Admin links render on /admin routes only; on mobile they live in the
+  // hamburger navigation, so open it before asserting.
+  await page.goto('/admin');
   await page.getByRole('button', { name: /打开导航|open navigation/i }).click();
-  await expect(page.getByRole('link', { name: /^(设置|Settings)$/i })).toBeVisible();
-  await page.getByRole('link', { name: /^(设置|Settings)$/i }).click();
+  await expect(page.getByRole('link', { name: /^(系统设置|System Settings)$/i })).toBeVisible();
+  await page.getByRole('link', { name: /^(系统设置|System Settings)$/i }).click();
 
   await expect(page).toHaveURL(/\/admin\/options$/);
   await expect(page.getByRole('dialog')).toBeHidden();
