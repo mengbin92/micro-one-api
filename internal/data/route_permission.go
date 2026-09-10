@@ -6,10 +6,20 @@ import (
 	"google.golang.org/grpc"
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/domain/routing"
+	relaybiz "micro-one-api/internal/biz"
+	"micro-one-api/platform/routingclient"
 )
 
 func checkRoute(ctx context.Context, client channelv1.ChannelServiceClient, group, model string, source routing.Source) (routing.Permission, error) {
-	reply, err := client.CheckRoute(ctx, &channelv1.CheckRouteRequest{Group: group, Model: model, SourceKind: source.Kind, SourceId: source.ID})
+	var groupID int64
+	if relaybiz.RoutingContextV2Enabled() {
+		g, err := routingclient.New(client).FindRoutingGroup(ctx, group)
+		if err != nil {
+			return routing.Permission{}, err
+		}
+		groupID = g.ID
+	}
+	reply, err := client.CheckRoute(ctx, &channelv1.CheckRouteRequest{Group: group, Model: model, SourceKind: source.Kind, SourceId: source.ID, RoutingGroupId: groupID})
 	if err != nil {
 		return routing.Permission{}, err
 	}

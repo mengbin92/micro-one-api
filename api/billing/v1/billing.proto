@@ -8,6 +8,7 @@ import "api/common/v1/common.proto";
 option go_package = "micro-one-api/api/billing/v1;billingv1";
 
 service BillingService {
+  rpc GetRoutingCapabilities(GetRoutingCapabilitiesRequest) returns (GetRoutingCapabilitiesResponse);
   rpc ReserveQuota(ReserveQuotaRequest) returns (ReserveQuotaResponse);
   rpc CommitQuota(CommitQuotaRequest) returns (CommitQuotaResponse);
   rpc ReleaseQuota(ReleaseQuotaRequest) returns (ReleaseQuotaResponse);
@@ -48,6 +49,9 @@ service BillingService {
   rpc AggregateUsage(AggregateUsageRequest) returns (AggregateUsageResponse);
 }
 
+message GetRoutingCapabilitiesRequest {}
+message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; }
+
 // ========== 金额预扣（RPC 名称为兼容既有客户端保留） ==========
 
 message ReserveQuotaRequest {
@@ -57,6 +61,7 @@ message ReserveQuotaRequest {
   string model = 4;
   string channel_id = 5;
   int64 subscription_account_id = 6;  // 订阅账号 ID（0 = 非订阅账号请求）
+  common.v1.ResolvedRoutingContext routing_context = 7;
 }
 
 message ReserveQuotaResponse {
@@ -73,6 +78,9 @@ message ReserveQuotaResponse {
   int64 balance_amount_quota = 6 [deprecated = true]; // Compatibility alias for balance_amount.
   int64 subscription_id = 7;           // 0 when the reservation was created via the legacy balance-only path
   int64 balance_amount = 8;            // Fixed-point amount pre-deducted from the wallet.
+  int32 request_snapshot_version = 9;
+  string routing_context_hash = 10;
+  string request_snapshot_hash = 11;
 }
 
 message CommitQuotaRequest {

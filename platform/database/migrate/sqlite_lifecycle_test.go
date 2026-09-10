@@ -148,7 +148,7 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 30, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 32, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
 	// Keep seeded legacy prices before 084 regardless of later appended migrations.
 	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql")

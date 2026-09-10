@@ -641,6 +641,7 @@ func (s *HTTPServer) executeSubscriptionAccountViaAdaptor(
 			billingModel,
 			channelID,
 			subscriptionAccountIDFromPlan(plan),
+			plan.Auth.RoutingContext,
 		)
 		if reserveErr != nil {
 			result.statusCode = http.StatusPaymentRequired

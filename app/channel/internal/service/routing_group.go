@@ -17,6 +17,23 @@ type routingGroupUsecase interface {
 }
 
 func (s *ChannelService) SetRoutingGroupUsecase(uc routingGroupUsecase) { s.routingGroupUC = uc }
+
+func (s *ChannelService) validateRoutingGroupPair(ctx context.Context, id int64, key string) error {
+	if id == 0 {
+		return nil
+	}
+	if id < 0 || s.routingGroupUC == nil {
+		return biz.ErrRoutingGroupInvalid
+	}
+	detail, err := s.routingGroupUC.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if detail == nil || detail.Group == nil || detail.Group.Key != key || detail.Group.Status != "enabled" {
+		return biz.ErrRoutingGroupInvalid
+	}
+	return nil
+}
 func (s *ChannelService) ListRoutingGroups(ctx context.Context, req *channelv1.ListRoutingGroupsRequest) (*channelv1.ListRoutingGroupsReply, error) {
 	if s.routingGroupUC == nil {
 		return nil, biz.ErrRoutingGroupMigrationRequired

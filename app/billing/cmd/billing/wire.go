@@ -29,6 +29,7 @@ import (
 	"micro-one-api/platform/grpc/xgrpc"
 	applogger "micro-one-api/platform/logging"
 	appregistry "micro-one-api/platform/registry"
+	"micro-one-api/platform/routingclient"
 
 	grpcx "github.com/go-kratos/kratos/v3/transport/grpc"
 	httpx "github.com/go-kratos/kratos/v3/transport/http"
@@ -94,6 +95,15 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	uc.SetTxRunner(data.NewTxRunner(d))
 	uc.SetReceivableRepo(d.ReceivableRepo())
 	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
+	closeRouting := func() {}
+	if biz.RequestSnapshotsEnabled() {
+		reader, cleanup, err := routingclient.Dial(os.Getenv("CHANNEL_GRPC_ENDPOINT"))
+		if err != nil {
+			panic(err)
+		}
+		uc.SetRoutingGroupReader(reader)
+		closeRouting = cleanup
+	}
 
 	var asyncBilling *biz.AsyncBillingUsecase
 	if cfg.Bootstrap.Billing != nil && cfg.Bootstrap.Billing.Async != nil && cfg.Bootstrap.Billing.Async.Enabled {
@@ -262,14 +272,17 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 
 	_ = fmt.Sprintf // keep fmt import used; the real error paths are handled above
 	return app, func() {
-		d.Close()
 		cancel()
+		// Drain accepted settlements while their database and pricing evidence
+		// are still available, then close long-lived dependencies.
 		if asyncBilling != nil {
 			_ = asyncBilling.Close()
 		}
 		if partitionStop != nil {
 			partitionStop()
 		}
+		closeRouting()
+		d.Close()
 		if notifyConn != nil {
 			_ = notifyConn.Close()
 		}

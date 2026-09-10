@@ -109,6 +109,9 @@ func (s *ChannelService) GetSubscriptionAccountWithSecrets(ctx context.Context, 
 }
 
 func (s *ChannelService) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest) (*channelv1.SelectChannelReply, error) {
+	if err := s.validateRoutingGroupPair(ctx, req.RoutingGroupId, req.Group); err != nil {
+		return nil, err
+	}
 	var channel *biz.Channel
 	var err error
 	if len(req.ExcludedChannelIds) > 0 {
@@ -348,6 +351,9 @@ func (s *ChannelService) ListChannels(ctx context.Context, req *channelv1.ListCh
 }
 
 func (s *ChannelService) SelectSubscriptionAccount(ctx context.Context, req *channelv1.SelectSubscriptionAccountRequest) (*channelv1.SelectSubscriptionAccountReply, error) {
+	if err := s.validateRoutingGroupPair(ctx, req.RoutingGroupId, req.Group); err != nil {
+		return nil, err
+	}
 	var account *biz.SubscriptionAccount
 	var err error
 	if len(req.ExcludedAccountIds) > 0 {

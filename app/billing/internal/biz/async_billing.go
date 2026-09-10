@@ -495,7 +495,11 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 			)
 		}
 	}()
-	uc.runCommitPipeline(uc.workerCtx, task)
+	// Close cancels workerCtx to stop accepting queue work, but queued billing
+	// still has to commit. A bounded detached context also covers the drain.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(uc.workerCtx), 30*time.Second)
+	defer cancel()
+	uc.runCommitPipeline(ctx, task)
 }
 
 // Close closes the async billing use case and waits for workers to finish.

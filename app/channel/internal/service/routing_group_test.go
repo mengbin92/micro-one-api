@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/domain/routing"
-	"testing"
 )
 
 type routingGroupFake struct {
@@ -25,7 +26,7 @@ func (f *routingGroupFake) List(_ context.Context, o biz.RoutingGroupListOptions
 }
 func (f *routingGroupFake) Get(_ context.Context, id int64) (*biz.RoutingGroupDetail, error) {
 	f.calls++
-	return &biz.RoutingGroupDetail{Group: &routing.Group{ID: id, Key: "vip"}, ModelGrants: []routing.GroupModelGrant{{AccountID: 1, Model: "managed", ExtraAuthorization: true}}}, f.err
+	return &biz.RoutingGroupDetail{Group: &routing.Group{ID: id, Key: "vip", Status: "enabled"}, ModelGrants: []routing.GroupModelGrant{{AccountID: 1, Model: "managed", ExtraAuthorization: true}}}, f.err
 }
 func TestRoutingGroupServicePaginationAndValidation(t *testing.T) {
 	f := &routingGroupFake{}
@@ -61,4 +62,16 @@ func TestRoutingGroupServicePaginationAndValidation(t *testing.T) {
 	f.err = biz.ErrRoutingGroupStorage
 	_, err = s.ListRoutingGroups(ctx, &channelv1.ListRoutingGroupsRequest{})
 	require.ErrorIs(t, err, biz.ErrRoutingGroupStorage)
+}
+
+func TestRoutingGroupPairRejectsMismatchBeforeSelection(t *testing.T) {
+	s := &ChannelService{}
+	s.SetRoutingGroupUsecase(&routingGroupFake{})
+	ctx := context.Background()
+	_, err := s.SelectChannel(ctx, &channelv1.SelectChannelRequest{Group: "VIP", RoutingGroupId: 2, Model: "m"})
+	require.ErrorIs(t, err, biz.ErrRoutingGroupInvalid)
+	_, err = s.SelectSubscriptionAccount(ctx, &channelv1.SelectSubscriptionAccountRequest{Group: "VIP", RoutingGroupId: 2, Model: "m"})
+	require.ErrorIs(t, err, biz.ErrRoutingGroupInvalid)
+	_, err = s.CheckRoute(ctx, &channelv1.CheckRouteRequest{Group: "VIP", RoutingGroupId: 2, Model: "m", SourceKind: "channel", SourceId: 1})
+	require.ErrorIs(t, err, biz.ErrRoutingGroupInvalid)
 }

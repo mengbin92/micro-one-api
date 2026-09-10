@@ -86,7 +86,7 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		billingClientModel = model
 	}
 	billingModel := s.BillingModelName(billingClientModel, model, model)
-	reservation, err := s.reserveQuota(
+	reservation, err := s.reserveAuthenticatedQuota(
 		r.Context(),
 		fmt.Sprintf("%d", authSnapshot.UserId),
 		requestID,
@@ -94,6 +94,7 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		billingModel,
 		fmt.Sprintf("%d", channelReply.Channel.Id),
 		0,
+		authSnapshot,
 	)
 	if err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "quota reservation failed")

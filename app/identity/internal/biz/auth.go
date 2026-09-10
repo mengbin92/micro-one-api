@@ -19,6 +19,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	"micro-one-api/domain/routing"
 	"micro-one-api/platform/audit"
 )
 
@@ -63,19 +64,22 @@ var (
 )
 
 type User struct {
-	ID            int64
-	Username      string
-	DisplayName   string
-	Email         string
-	Group         string
-	Status        int32
-	Role          int32
-	PasswordHash  string
-	OAuthProvider string
-	OAuthID       string
-	Balance       int64
-	AffCode       string
-	InviterID     int64
+	DefaultRoutingGroupID int64
+	RoutingAccessRevision int64
+	PublicGroupAccess     string
+	ID                    int64
+	Username              string
+	DisplayName           string
+	Email                 string
+	Group                 string
+	Status                int32
+	Role                  int32
+	PasswordHash          string
+	OAuthProvider         string
+	OAuthID               string
+	Balance               int64
+	AffCode               string
+	InviterID             int64
 	// PasswordChangedAt is the unix epoch (milliseconds) of the most recent
 	// password change. It is embedded in session JWTs as `pwd_epoch`; any
 	// session token whose epoch predates this value is rejected on
@@ -131,6 +135,7 @@ type Token struct {
 
 // AuthSnapshot is the minimum authorization view returned to relay-gateway.
 type AuthSnapshot struct {
+	RoutingFacts  *routing.SubjectFacts
 	UserID        int64
 	TokenID       int64
 	TokenName     string
@@ -196,6 +201,7 @@ type LoginRateLimiter interface {
 }
 
 type IdentityUsecase struct {
+	routingGroups           RoutingGroupReader
 	repo                    IdentityRepo
 	auditor                 *audit.Auditor
 	now                     func() time.Time
@@ -316,7 +322,19 @@ func (uc *IdentityUsecase) GetAuthSnapshot(ctx context.Context, key, clientIP st
 	if user.Status != UserStatusEnabled {
 		return nil, ErrUserDisabled
 	}
+	var facts *routing.SubjectFacts
+	if RoutingV2Enabled() {
+		repo, ok := uc.repo.(RoutingFactsRepo)
+		if !ok {
+			return nil, ErrRoutingFactsUnavailable
+		}
+		facts, err = repo.GetRoutingFacts(ctx, user.ID, token.ID, user.Group)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &AuthSnapshot{
+		RoutingFacts:  facts,
 		UserID:        user.ID,
 		TokenID:       token.ID,
 		TokenName:     token.Name,
@@ -560,6 +578,7 @@ func (uc *IdentityUsecase) Register(ctx context.Context, username, password, ema
 }
 
 func (uc *IdentityUsecase) RegisterWithAffCode(ctx context.Context, username, password, email, group, affCode string) (*User, error) {
+	group = registrationGroup(group)
 	existing, _ := uc.repo.FindUserByUsername(ctx, username)
 	if existing != nil {
 		return nil, ErrUserExists
@@ -595,7 +614,7 @@ func (uc *IdentityUsecase) RegisterWithAffCode(ctx context.Context, username, pa
 	if inviter != nil {
 		user.InviterID = inviter.ID
 	}
-	if err := uc.repo.CreateUser(ctx, user); err != nil {
+	if err := uc.createUser(ctx, user); err != nil {
 		return nil, err
 	}
 	return user, nil
@@ -851,7 +870,7 @@ func (uc *IdentityUsecase) CreateUser(ctx context.Context, username, displayName
 		}
 		user.PasswordHash = string(hash)
 	}
-	if err := uc.repo.CreateUser(ctx, user); err != nil {
+	if err := uc.createUser(ctx, user); err != nil {
 		return nil, err
 	}
 	return user, nil
@@ -870,6 +889,9 @@ func (uc *IdentityUsecase) UpdateUser(ctx context.Context, userID int64, display
 	}
 	if group != "" {
 		user.Group = group
+		if err := uc.bindLegacyGroup(ctx, user); err != nil {
+			return err
+		}
 	}
 	user.Status = status
 	return uc.repo.UpdateUser(ctx, user)
@@ -1156,7 +1178,8 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 			OAuthProvider: provider,
 			OAuthID:       oauthID,
 		}
-		if err := uc.repo.CreateUser(ctx, user); err != nil {
+		user.Group = registrationGroup(user.Group)
+		if err := uc.createUser(ctx, user); err != nil {
 			return nil, "", err
 		}
 		_, identityErr := uc.repo.FindOAuthIdentity(ctx, provider, oauthID)

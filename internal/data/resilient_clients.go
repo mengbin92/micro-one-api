@@ -5,12 +5,15 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	logv1 "micro-one-api/api/log/v1"
+	relaybiz "micro-one-api/internal/biz"
 	appgrpc "micro-one-api/platform/grpc"
+	"micro-one-api/platform/routingclient"
 )
 
 func NewResilientIdentityClient(client identityv1.IdentityServiceClient, timeout time.Duration) identityv1.IdentityServiceClient {
@@ -55,6 +58,14 @@ type resilientChannelClient struct {
 
 func (c *resilientChannelClient) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest, opts ...grpc.CallOption) (*channelv1.SelectChannelReply, error) {
 	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		if relaybiz.RoutingContextV2Enabled() && req.RoutingGroupId == 0 {
+			group, err := routingclient.New(client).FindRoutingGroup(ctx, req.Group)
+			if err != nil {
+				return nil, err
+			}
+			req = proto.Clone(req).(*channelv1.SelectChannelRequest)
+			req.RoutingGroupId = group.ID
+		}
 		return client.SelectChannel(ctx, req, opts...)
 	})
 	if err != nil {
@@ -65,6 +76,14 @@ func (c *resilientChannelClient) SelectChannel(ctx context.Context, req *channel
 
 func (c *resilientChannelClient) SelectSubscriptionAccount(ctx context.Context, req *channelv1.SelectSubscriptionAccountRequest, opts ...grpc.CallOption) (*channelv1.SelectSubscriptionAccountReply, error) {
 	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		if relaybiz.RoutingContextV2Enabled() && req.RoutingGroupId == 0 {
+			group, err := routingclient.New(client).FindRoutingGroup(ctx, req.Group)
+			if err != nil {
+				return nil, err
+			}
+			req = proto.Clone(req).(*channelv1.SelectSubscriptionAccountRequest)
+			req.RoutingGroupId = group.ID
+		}
 		return client.SelectSubscriptionAccount(ctx, req, opts...)
 	})
 	if err != nil {
@@ -216,6 +235,16 @@ func (c *resilientBillingClient) ReserveQuota(ctx context.Context, req *billingv
 		return nil, err
 	}
 	return resp.(*billingv1.ReserveQuotaResponse), nil
+}
+
+func (c *resilientBillingClient) GetRoutingCapabilities(ctx context.Context, req *billingv1.GetRoutingCapabilitiesRequest, opts ...grpc.CallOption) (*billingv1.GetRoutingCapabilitiesResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client billingv1.BillingServiceClient) (any, error) {
+		return client.GetRoutingCapabilities(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*billingv1.GetRoutingCapabilitiesResponse), nil
 }
 
 func (c *resilientBillingClient) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest, opts ...grpc.CallOption) (*billingv1.CommitQuotaResponse, error) {

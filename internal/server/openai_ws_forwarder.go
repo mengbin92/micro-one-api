@@ -168,7 +168,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 
 	// Reservations mirror the HTTP path: estimate tokens from the request body
 	// and commit per terminal turn.
-	reservation, err := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimateRawTokens(rewrittenFirstMessage), s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel), fmt.Sprintf("%d", plan.Channel.ID), subscriptionAccountIDFromPlan(plan))
+	reservation, err := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimateRawTokens(rewrittenFirstMessage), s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel), fmt.Sprintf("%d", plan.Channel.ID), subscriptionAccountIDFromPlan(plan), plan.Auth.RoutingContext)
 	if err != nil {
 		execution.resultLabel = "client_error"
 		closeOpenAIWSClientConn(wsConn, coderws.StatusTryAgainLater, "quota reservation failed")
@@ -255,11 +255,12 @@ func (s *HTTPServer) replaceResponsesWSReservation(
 	return s.reserveQuota(
 		ctx,
 		fmt.Sprintf("%d", plan.Auth.UserID),
-		requestID,
+		generateRequestID(), // A released attempt cannot reuse its idempotency key.
 		estimateRawTokens(rewritten),
 		s.BillingModelName(clientModel, resolvedModel, resolvedModel),
 		fmt.Sprintf("%d", channel.ID),
 		routingSubscriptionAccountID(channel),
+		plan.Auth.RoutingContext,
 	)
 }
 
@@ -610,6 +611,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 
 		turnCommits := 0
+		v2Turns := s.newRoutingWSTurns(extractOpenAIBearerToken(r), clientModel, resolvedModel, plan, currentChannel, reservation)
 		// Per-turn usage logging / quota commit. Closure captures the current
 		// channel so failover switches log against the right channel.
 		onTurnComplete := func(turn openAIWSTurnResult) {
@@ -655,10 +657,15 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			// long-lived and multi-turn, so reusing one reservation id for every
 			// turn would under-bill (or double-commit) every turn after the first.
 			turnReservationID := reservation.ReservationId
-			if turnCommits > 0 {
+			if v2Turns != nil {
+				turnReservationID = ""
+				if admitted := v2Turns.take(); admitted != nil {
+					turnReservationID = admitted.ReservationId
+				}
+			} else if turnCommits > 0 {
 				turnReservationID = ""
 				if s.billingClient != nil {
-					if turnRes, rerr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, s.BillingModelName(clientModel, resolvedModel, resolvedModel), fmt.Sprintf("%d", currentChannel.ID), routingSubscriptionAccountID(currentChannel)); rerr == nil && turnRes != nil {
+					if turnRes, rerr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, s.BillingModelName(clientModel, resolvedModel, resolvedModel), fmt.Sprintf("%d", currentChannel.ID), routingSubscriptionAccountID(currentChannel), plan.Auth.RoutingContext); rerr == nil && turnRes != nil {
 						turnReservationID = turnRes.ReservationId
 					} else {
 						applogger.Log.Warn("failed to reserve openai ws turn quota",
@@ -700,11 +707,15 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			turnCommits++
 		}
 
-		relayResult, relayExit := relayOpenAIWSFrames(ctx, clientFrameConn, pooledConn.FrameConn(), rewrittenFirstMessage, openAIWSRelayOptions{
+		relayOptions := openAIWSRelayOptions{
 			writeTimeout:   s.openAIWSWriteTimeout(),
 			idleTimeout:    s.openAIWSIdleTimeout(),
 			onTurnComplete: onTurnComplete,
-		})
+		}
+		if v2Turns != nil {
+			relayOptions.beforeWriteUp = v2Turns.beforeWrite
+		}
+		relayResult, relayExit := relayOpenAIWSFrames(ctx, clientFrameConn, pooledConn.FrameConn(), rewrittenFirstMessage, relayOptions)
 
 		// Release the pooled connection. Mark broken if the relay errored so the
 		// pool doesn't hand a dead conn to the next request.
@@ -721,6 +732,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// terminate; retrying would double-send to the client.
 		canFailover := relayExit != nil &&
 			relayExit.err != nil &&
+			!errors.Is(relayExit.err, errWSRoutingAdmission) &&
 			!relayExit.wroteDownstream &&
 			turnCommits == 0 &&
 			attempt < maxSwitches
@@ -752,6 +764,13 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 
 		// Terminal path: either success or unrecoverable failure.
+		if v2Turns != nil {
+			if pending := v2Turns.take(); pending != nil {
+				releaseCtx, cancel := detachedBillingContext(ctx)
+				_ = s.releaseQuota(releaseCtx, pending.ReservationId, "no completed websocket turn")
+				cancel()
+			}
+		}
 		if turnCommits == 0 {
 			if releaseErr := s.releaseQuota(ctx, reservation.ReservationId, "no completed ws turn"); releaseErr != nil {
 				applogger.Log.Warn("failed to release openai ws reservation", zap.String("request_id", requestID), zap.Error(releaseErr))

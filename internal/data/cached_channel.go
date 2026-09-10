@@ -47,7 +47,7 @@ func NewCachedChannelClient(client channelv1.ChannelServiceClient, cache *appcac
 //     the cached first candidate is very likely one of those just-failed IDs,
 //     so serving from cache would silently defeat the exclusion set.
 func (c *CachedChannelClient) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest, opts ...grpc.CallOption) (*channelv1.SelectChannelReply, error) {
-	if c.cache == nil || req.GetExcludeFirstPriority() || len(req.GetExcludedChannelIds()) > 0 {
+	if relaybiz.RoutingContextV2Enabled() || c.cache == nil || req.GetExcludeFirstPriority() || len(req.GetExcludedChannelIds()) > 0 {
 		return c.ChannelServiceClient.SelectChannel(ctx, req, opts...)
 	}
 

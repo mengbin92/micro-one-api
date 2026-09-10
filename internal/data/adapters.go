@@ -11,8 +11,11 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	"micro-one-api/domain/routing"
 	relaycredential "micro-one-api/domain/upstream/credential"
 	relaybiz "micro-one-api/internal/biz"
+	"micro-one-api/platform/routingclient"
+	"micro-one-api/platform/routingdto"
 )
 
 // IdentityAdapter wraps a gRPC IdentityServiceClient to implement biz.IdentityClient.
@@ -36,13 +39,15 @@ func (a *IdentityAdapter) GetAuthSnapshot(ctx context.Context, token, clientIP s
 		return nil, errors.New("token quota temporarily unavailable")
 	}
 	return &relaybiz.AuthSnapshot{
-		UserID:        reply.UserId,
-		TokenID:       reply.TokenId,
-		TokenName:     reply.TokenName,
-		Group:         reply.Group,
-		AllowedModels: reply.AllowedModels,
-		UserEnabled:   reply.UserEnabled,
-		TokenEnabled:  reply.TokenEnabled,
+		RoutingFacts:          routingdto.FactsFromProto(reply.RoutingFacts),
+		RoutingContextVersion: reply.RoutingContextVersion,
+		UserID:                reply.UserId,
+		TokenID:               reply.TokenId,
+		TokenName:             reply.TokenName,
+		Group:                 reply.Group,
+		AllowedModels:         reply.AllowedModels,
+		UserEnabled:           reply.UserEnabled,
+		TokenEnabled:          reply.TokenEnabled,
 	}, nil
 }
 
@@ -101,6 +106,10 @@ func splitModels(models string) []string {
 // ChannelAdapter wraps a gRPC ChannelServiceClient to implement biz.ChannelClient.
 type ChannelAdapter struct {
 	client channelv1.ChannelServiceClient
+}
+
+func (a *ChannelAdapter) GetRoutingGroup(ctx context.Context, id int64) (*routing.Group, error) {
+	return routingclient.New(a.client).GetRoutingGroup(ctx, id)
 }
 
 // NewChannelAdapter creates a new ChannelAdapter.

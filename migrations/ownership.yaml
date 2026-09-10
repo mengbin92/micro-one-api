@@ -33,6 +33,7 @@ services:
     - 027_remove_placeholder_seed_data
     - 075_add_password_changed_at_to_users  # identity-M6 password-change epoch for session revocation
     - 076_add_key_hash_to_tokens             # identity-L6 HMAC hash of access-token key
+    - 092_add_identity_routing_facts
 
   channel:
     - 090_create_routing_groups
@@ -110,6 +111,7 @@ services:
     - 085_add_billing_usage_semantics       # reported/canonical usage split + parse verdict on ledgers
     - 088_create_billing_pricing_snapshots  # §6.3 phase 2: immutable per-request pricing evidence
     - 089_add_billing_ledger_dashboard_index # dashboard consume aggregates by user/type/time
+    - 091_add_request_snapshots
 
   log:
     # logs table (a subset of 000_create_core_tables on the shared schema,

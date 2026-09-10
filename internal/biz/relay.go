@@ -107,13 +107,16 @@ type RelayRequest struct {
 }
 
 type AuthSnapshot struct {
-	UserID        int64
-	TokenID       int64
-	TokenName     string
-	Group         string
-	AllowedModels []string
-	UserEnabled   bool
-	TokenEnabled  bool
+	RoutingFacts          *routing.SubjectFacts
+	RoutingContextVersion int32
+	RoutingContext        *routing.ResolvedRoutingContext
+	UserID                int64
+	TokenID               int64
+	TokenName             string
+	Group                 string
+	AllowedModels         []string
+	UserEnabled           bool
+	TokenEnabled          bool
 }
 
 type Channel struct {
@@ -498,6 +501,9 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	// 2. Authenticate
 	authSnapshot, err := uc.identity.GetAuthSnapshot(ctx, req.Token, req.ClientIP)
 	if err != nil {
+		return nil, err
+	}
+	if err := uc.ResolveRoutingContext(ctx, authSnapshot); err != nil {
 		return nil, err
 	}
 

@@ -19,6 +19,13 @@ type ledgerRepo struct {
 	data *Data
 }
 
+func boolInt(v bool) int32 {
+	if v {
+		return 1
+	}
+	return 0
+}
+
 func NewLedgerRepo(data *Data) biz.LedgerRepo {
 	return &ledgerRepo{data: data}
 }
@@ -88,7 +95,7 @@ func (r *ledgerRepo) CreateLedgerInTx(ctx context.Context, tx subscriptionbiz.Tx
 		UpstreamModelID:        ledger.UpstreamModelID,
 		CostAuditStatus:        ledger.CostAuditStatus,
 		ElapsedTime:            ledger.ElapsedTime,
-		IsStream:               ledger.IsStream,
+		IsStream:               boolInt(ledger.IsStream),
 		Endpoint:               ledger.Endpoint,
 		CostSource:             costSource,
 		SubscriptionCost:       ledger.SubscriptionCost,
@@ -641,7 +648,7 @@ func ledgerFromModel(model *ledgerModel) *biz.Ledger {
 		UpstreamModelID:        model.UpstreamModelID,
 		CostAuditStatus:        model.CostAuditStatus,
 		ElapsedTime:            model.ElapsedTime,
-		IsStream:               model.IsStream,
+		IsStream:               model.IsStream != 0,
 		Endpoint:               model.Endpoint,
 		CostSource:             model.CostSource,
 		SubscriptionCost:       model.SubscriptionCost,

@@ -68,6 +68,9 @@ func (s *HTTPServer) getAuthSnapshot(ctx context.Context, token string) (*identi
 	if err != nil {
 		return nil, err
 	}
+	if _, err := s.routingAuth(ctx, reply); err != nil {
+		return nil, err
+	}
 	// Stamp the audit actor so the audit middleware records the real caller
 	// instead of an empty actor. WithActor writes into the mutable
 	// *actorHolder injected by the audit middleware (when present), or falls

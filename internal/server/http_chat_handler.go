@@ -115,7 +115,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		req.Model = currentResolvedModel
 		// P3 #6: derive the billing model name from billing_model_source.
 		billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
-		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, billingModel, fmt.Sprintf("%d", ch.ID), subscriptionAccountIDFromPlan(plan))
+		reservation, reserveErr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimatedTokens, billingModel, fmt.Sprintf("%d", ch.ID), subscriptionAccountIDFromPlan(plan), plan.Auth.RoutingContext)
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
 		}

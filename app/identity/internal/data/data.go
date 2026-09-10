@@ -28,20 +28,23 @@ type Repository struct {
 }
 
 type userModel struct {
-	ID                int64  `gorm:"column:id"`
-	Username          string `gorm:"column:username;uniqueIndex"`
-	DisplayName       string `gorm:"column:display_name"`
-	Email             string `gorm:"column:email"`
-	Group             string `gorm:"column:group"`
-	Status            int32  `gorm:"column:status"`
-	Role              int32  `gorm:"column:role"`
-	PasswordHash      string `gorm:"column:password_hash"`
-	OAuthProvider     string `gorm:"column:oauth_provider;index"`
-	OAuthID           string `gorm:"column:oauth_id;index"`
-	Balance           int64  `gorm:"column:balance"`
-	AffCode           string `gorm:"column:aff_code;uniqueIndex"`
-	InviterID         int64  `gorm:"column:inviter_id;index"`
-	PasswordChangedAt int64  `gorm:"column:password_changed_at"`
+	DefaultRoutingGroupID int64  `gorm:"column:default_routing_group_id"`
+	RoutingAccessRevision int64  `gorm:"column:routing_access_revision"`
+	PublicGroupAccess     string `gorm:"column:public_group_access"`
+	ID                    int64  `gorm:"column:id"`
+	Username              string `gorm:"column:username;uniqueIndex"`
+	DisplayName           string `gorm:"column:display_name"`
+	Email                 string `gorm:"column:email"`
+	Group                 string `gorm:"column:group"`
+	Status                int32  `gorm:"column:status"`
+	Role                  int32  `gorm:"column:role"`
+	PasswordHash          string `gorm:"column:password_hash"`
+	OAuthProvider         string `gorm:"column:oauth_provider;index"`
+	OAuthID               string `gorm:"column:oauth_id;index"`
+	Balance               int64  `gorm:"column:balance"`
+	AffCode               string `gorm:"column:aff_code;uniqueIndex"`
+	InviterID             int64  `gorm:"column:inviter_id;index"`
+	PasswordChangedAt     int64  `gorm:"column:password_changed_at"`
 }
 
 func (userModel) TableName() string { return "users" }
@@ -611,7 +614,10 @@ func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 		InviterID:         user.InviterID,
 		PasswordChangedAt: user.PasswordChangedAt,
 	}
-	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+	if biz.RoutingV2Enabled() {
+		return r.createRoutingUserDB(ctx, user, &model)
+	}
+	if err := r.db.WithContext(ctx).Omit("DefaultRoutingGroupID", "RoutingAccessRevision", "PublicGroupAccess").Create(&model).Error; err != nil {
 		return err
 	}
 	user.ID = model.ID
@@ -619,7 +625,7 @@ func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 }
 
 func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
-	return r.db.WithContext(ctx).Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]any{
+	updates := map[string]any{
 		"username":            user.Username,
 		"display_name":        user.DisplayName,
 		"email":               user.Email,
@@ -632,7 +638,11 @@ func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
 		"aff_code":            user.AffCode,
 		"inviter_id":          user.InviterID,
 		"password_changed_at": user.PasswordChangedAt,
-	}).Error
+	}
+	if biz.RoutingV2Enabled() {
+		return r.updateRoutingUserDB(ctx, user, updates)
+	}
+	return r.db.WithContext(ctx).Model(&userModel{}).Where("id = ?", user.ID).Updates(updates).Error
 }
 
 func (r *Repository) increaseUserBalanceDB(ctx context.Context, userID int64, amount int64) error {
@@ -807,20 +817,23 @@ func stringPtrValue(value *string) string {
 
 func userModelToBiz(model userModel) *biz.User {
 	return &biz.User{
-		ID:                model.ID,
-		Username:          model.Username,
-		DisplayName:       model.DisplayName,
-		Email:             model.Email,
-		Group:             model.Group,
-		Status:            model.Status,
-		Role:              model.Role,
-		PasswordHash:      model.PasswordHash,
-		OAuthProvider:     model.OAuthProvider,
-		OAuthID:           model.OAuthID,
-		Balance:           model.Balance,
-		AffCode:           model.AffCode,
-		InviterID:         model.InviterID,
-		PasswordChangedAt: model.PasswordChangedAt,
+		DefaultRoutingGroupID: model.DefaultRoutingGroupID,
+		RoutingAccessRevision: model.RoutingAccessRevision,
+		PublicGroupAccess:     model.PublicGroupAccess,
+		ID:                    model.ID,
+		Username:              model.Username,
+		DisplayName:           model.DisplayName,
+		Email:                 model.Email,
+		Group:                 model.Group,
+		Status:                model.Status,
+		Role:                  model.Role,
+		PasswordHash:          model.PasswordHash,
+		OAuthProvider:         model.OAuthProvider,
+		OAuthID:               model.OAuthID,
+		Balance:               model.Balance,
+		AffCode:               model.AffCode,
+		InviterID:             model.InviterID,
+		PasswordChangedAt:     model.PasswordChangedAt,
 	}
 }
 

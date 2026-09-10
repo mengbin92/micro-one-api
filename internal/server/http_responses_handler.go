@@ -121,6 +121,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			billingModel,
 			fmt.Sprintf("%d", ch.ID),
 			subscriptionAccountIDFromPlan(plan),
+			plan.Auth.RoutingContext,
 		)
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
@@ -482,7 +483,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	resolvedModel := routeResolvedModel(route)
 	fallbackBody := ensureRawModel(body, resolvedModel)
 	billingModel := s.BillingModelName(route.Model, routeResolvedModel(route), resolvedModel)
-	reservation, err := s.reserveQuota(
+	reservation, err := s.reserveAuthenticatedQuota(
 		r.Context(),
 		fmt.Sprintf("%d", authSnapshot.UserId),
 		requestID,
@@ -490,6 +491,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		billingModel,
 		fmt.Sprintf("%d", route.Channel.ID),
 		route.SubscriptionAccountID,
+		authSnapshot,
 	)
 	if err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "quota reservation failed")

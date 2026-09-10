@@ -12,6 +12,7 @@ import (
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/pkg/safecast"
+	"micro-one-api/platform/routingdto"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
@@ -85,8 +86,15 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		estimatedTokens := estimateTokensForGRPC(providerReq)
 		resolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel())
 		providerReq.Model = resolvedModel
+		if plan.Auth.RoutingContext != nil {
+			capability, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
+			if err != nil || capability.GetRequestSnapshotVersion() != 2 {
+				return fmt.Errorf("billing routing capability unavailable")
+			}
+		}
 
 		reservation, reserveErr := s.billingClient.ReserveQuota(ctx, &billingv1.ReserveQuotaRequest{
+			RoutingContext:  routingdto.ContextToProto(plan.Auth.RoutingContext),
 			UserId:          fmt.Sprintf("%d", plan.Auth.UserID),
 			RequestId:       requestID,
 			EstimatedTokens: estimatedTokens,
@@ -95,6 +103,13 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		})
 		if reserveErr != nil {
 			return reserveErr
+		}
+		if reservation == nil || !reservation.Success {
+			return fmt.Errorf("quota reservation failed")
+		}
+		if c := plan.Auth.RoutingContext; c != nil && (reservation.RequestSnapshotVersion != 2 || reservation.RoutingContextHash != c.Digest() || len(reservation.RequestSnapshotHash) != 64) {
+			_, _ = s.billingClient.ReleaseQuota(ctx, &billingv1.ReleaseQuotaRequest{ReservationId: reservation.ReservationId, Reason: "routing snapshot mismatch"})
+			return fmt.Errorf("billing routing snapshot mismatch")
 		}
 
 		provider, provErr := s.providerFactory.CreateProviderWithConfig(ch.Type, ch.BaseURL, ch.Key, relayprovider.ProviderConfig{

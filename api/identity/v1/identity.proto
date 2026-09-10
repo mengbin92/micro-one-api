@@ -50,6 +50,8 @@ message GetAuthSnapshotReply {
   bool user_enabled = 5;
   bool token_enabled = 6;
   string token_name = 7;
+  common.v1.RoutingSubjectFacts routing_facts = 8;
+  int32 routing_context_version = 9;
 }
 
 message GetUserRequest {

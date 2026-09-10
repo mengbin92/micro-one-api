@@ -173,6 +173,7 @@ message SelectChannelRequest {
   // walk healthy channels in any tier. Supersedes exclude_first_priority for
   // callers that track per-request failures.
   repeated int64 excluded_channel_ids = 4;
+  int64 routing_group_id = 5;
 }
 
 message SelectChannelReply {
@@ -189,6 +190,7 @@ message SelectSubscriptionAccountRequest {
   // failover can still walk healthy accounts in any tier. Supersedes
   // exclude_first_priority for callers that track per-request failures.
   repeated int64 excluded_account_ids = 5;
+  int64 routing_group_id = 6;
 }
 
 message SelectSubscriptionAccountReply {
@@ -1218,6 +1220,7 @@ message CheckRouteRequest {
   string model = 2;
   string source_kind = 3; // channel | subscription
   int64 source_id = 4;
+  int64 routing_group_id = 5;
 }
 message CheckRouteReply {
   bool allowed = 1;

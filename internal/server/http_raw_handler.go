@@ -82,6 +82,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				billingModel,
 				fmt.Sprintf("%d", ch.ID),
 				subscriptionAccountIDFromPlan(plan),
+				plan.Auth.RoutingContext,
 			)
 			if reserveErr != nil {
 				return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}

@@ -232,6 +232,7 @@ func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybi
 		h.s.BillingModelName(req.Model, plan.ResolvedModel, plan.ResolvedModel),
 		strconv.FormatInt(plan.Channel.ID, 10),
 		subscriptionAccountIDFromPlan(plan),
+		plan.Auth.RoutingContext,
 	)
 	if err != nil {
 		return nil, err

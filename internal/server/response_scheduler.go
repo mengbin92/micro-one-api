@@ -63,17 +63,13 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 				route.Account = account
 			}
 			globalModel, resolvedModel := s.routeModels(route, clientModel)
+			resolvedAuth, err := s.server.routingAuth(ctx, authSnapshot)
+			if err != nil {
+				return nil, false
+			}
 			return &relaybiz.RelayPlan{
-				ClientModel: modelForPermission,
-				Auth: &relaybiz.AuthSnapshot{
-					UserID:        authSnapshot.UserId,
-					TokenID:       authSnapshot.TokenId,
-					TokenName:     authSnapshot.TokenName,
-					Group:         authSnapshot.Group,
-					AllowedModels: authSnapshot.AllowedModels,
-					UserEnabled:   authSnapshot.UserEnabled,
-					TokenEnabled:  authSnapshot.TokenEnabled,
-				},
+				ClientModel:   modelForPermission,
+				Auth:          resolvedAuth,
 				Channel:       &route.Channel,
 				Account:       route.Account,
 				GlobalModel:   globalModel,
@@ -107,17 +103,13 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 		return nil, false
 	}
 	globalModel, resolvedModel := s.routeModels(route, clientModel)
+	resolvedAuth, err := s.server.routingAuth(ctx, authSnapshot)
+	if err != nil {
+		return nil, false
+	}
 	return &relaybiz.RelayPlan{
-		ClientModel: clientModel,
-		Auth: &relaybiz.AuthSnapshot{
-			UserID:        authSnapshot.UserId,
-			TokenID:       authSnapshot.TokenId,
-			TokenName:     authSnapshot.TokenName,
-			Group:         authSnapshot.Group,
-			AllowedModels: authSnapshot.AllowedModels,
-			UserEnabled:   authSnapshot.UserEnabled,
-			TokenEnabled:  authSnapshot.TokenEnabled,
-		},
+		ClientModel:   clientModel,
+		Auth:          resolvedAuth,
 		Channel:       &route.Channel,
 		Account:       route.Account,
 		GlobalModel:   globalModel,

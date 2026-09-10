@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	stderrors "errors"
 	"net"
 	"strings"
 
+	kerrors "github.com/go-kratos/kratos/v3/errors"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -16,6 +18,7 @@ import (
 	"micro-one-api/app/identity/internal/biz"
 	"micro-one-api/pkg/errors"
 	applogger "micro-one-api/platform/logging"
+	"micro-one-api/platform/routingdto"
 )
 
 // IdentityService is the transport layer entry for identity-service.
@@ -77,14 +80,23 @@ func (s *IdentityService) GetAuthSnapshot(ctx context.Context, req *identityv1.G
 		return nil, mapIdentityErrorToGRPC(err)
 	}
 	return &identityv1.GetAuthSnapshotReply{
-		UserId:        snapshot.UserID,
-		TokenId:       snapshot.TokenID,
-		TokenName:     snapshot.TokenName,
-		Group:         snapshot.Group,
-		AllowedModels: snapshot.AllowedModels,
-		UserEnabled:   snapshot.UserEnabled,
-		TokenEnabled:  snapshot.TokenEnabled,
+		RoutingFacts:          routingdto.FactsToProto(snapshot.RoutingFacts),
+		RoutingContextVersion: routingFactsVersion(snapshot.RoutingFacts != nil),
+		UserId:                snapshot.UserID,
+		TokenId:               snapshot.TokenID,
+		TokenName:             snapshot.TokenName,
+		Group:                 snapshot.Group,
+		AllowedModels:         snapshot.AllowedModels,
+		UserEnabled:           snapshot.UserEnabled,
+		TokenEnabled:          snapshot.TokenEnabled,
 	}, nil
+}
+
+func routingFactsVersion(present bool) int32 {
+	if present {
+		return 2
+	}
+	return 0
 }
 
 func (s *IdentityService) GetUser(ctx context.Context, req *identityv1.GetUserRequest) (*identityv1.GetUserReply, error) {
@@ -357,6 +369,12 @@ func (s *IdentityService) ConsumeTokenQuota(ctx context.Context, req *identityv1
 func mapIdentityErrorToGRPC(err error) error {
 	if err == nil {
 		return nil
+	}
+	// New domain errors already implement GRPCStatus with their typed reason.
+	// Preserve those details instead of flattening migration/capability errors.
+	var domainErr *kerrors.Error
+	if stderrors.As(err, &domainErr) {
+		return domainErr
 	}
 
 	mappedErr := errors.MapIdentityError(err)
