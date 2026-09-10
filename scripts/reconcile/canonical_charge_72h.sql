@@ -7,6 +7,23 @@
 --
 -- The fixed 72-hour window was frozen at the first qualifying allowlisted
 -- consume after deployment. Every statement is read-only.
+--
+-- Cost rebuild replicates production float64 semantics, not DECIMAL exact
+-- arithmetic (2026-09-09 scoped-PASS decision): production roundScaled
+-- computes float64(tokens)*price*multiplier*AmountScale left-to-right and
+-- rounds with Go math.Round (half away from zero), so a bucket whose exact
+-- decimal product lands on a .5 boundary can be 1 ULP below it in float64
+-- and round DOWN, while DECIMAL ROUND rounds it UP (the 8 glm-5.3-flash
+-- rows in the frozen window). Snapshot prices are decimal(32,17), which
+-- round-trips the float64 values the pricing function consumed (migration
+-- 088), so CAST(... AS DOUBLE) restores the exact production operands.
+-- Go math.Round is emulated as FLOOR(x) + (x - FLOOR(x) >= 0.5): both the
+-- subtraction and the comparison are exact in double arithmetic, so the
+-- result is bit-for-bit identical for every non-negative double. The
+-- naive FLOOR(x + 0.5) is NOT equivalent: for x = 0.49999999999999994
+-- (1 ULP below 0.5) the addition x + 0.5 lands exactly halfway between
+-- 0.9999999999999999 and 1.0 and rounds to even 1.0, producing 1 where
+-- Go yields 0 (the glm-5.3-flash 200-completion bucket).
 
 SET @charge_deployed_at = TIMESTAMP('2026-09-06 02:40:07.806');
 SET @charge_source_hash = 'bc8fc070f270e9f88fc41ac5aa7932f88c10e9bd440ac2f1afa35bf174e2ebf0';
@@ -134,7 +151,7 @@ WITH window_references AS (
     AND l.usage_contract_version = 1
     AND l.usage_parse_status IN ('verified', 'estimated')
   GROUP BY l.reference_id
-), rebuilt AS (
+), rebuilt_raw AS (
   SELECT *,
     CASE
       WHEN source_kind = 'subscription'
@@ -142,34 +159,63 @@ WITH window_references AS (
           = @charge_source_hash
       THEN 1 ELSE 0
     END AS is_allowlisted,
+    -- roundScaled replica, step 1: float64(tokens)*price*multiplier*AmountScale
+    -- as left-to-right double multiplication (billing.go roundScaled).
+    CAST(uncached_input_tokens AS DOUBLE) * CAST(input_price AS DOUBLE)
+      * CAST(group_ratio AS DOUBLE) * 10000 AS raw_canon_input,
+    CAST((CASE
+      WHEN usage_semantics = 'anthropic_exclusive' THEN prompt_tokens
+      ELSE GREATEST(prompt_tokens - cache_read_tokens, 0)
+    END) AS DOUBLE) * CAST(input_price AS DOUBLE)
+      * CAST(group_ratio AS DOUBLE) * 10000 AS raw_legacy_input,
+    CAST(cache_read_tokens AS DOUBLE)
+      * CAST(COALESCE(cache_read_price, input_price) AS DOUBLE)
+      * CAST(group_ratio AS DOUBLE) * 10000 AS raw_cache_read,
+    CAST(canonical_output_tokens AS DOUBLE) * CAST(output_price AS DOUBLE)
+      * CAST(group_ratio AS DOUBLE) * 10000 AS raw_canon_output,
+    CAST(completion_tokens AS DOUBLE) * CAST(output_price AS DOUBLE)
+      * CAST(group_ratio AS DOUBLE) * 10000 AS raw_legacy_output,
+    CAST(cache_creation_5m_tokens AS DOUBLE)
+      * CAST(COALESCE(cache_creation_5m_price, 0) AS DOUBLE)
+      * CAST(group_ratio AS DOUBLE) * 10000 AS raw_cc5m,
+    CAST(cache_creation_1h_tokens AS DOUBLE)
+      * CAST(COALESCE(cache_creation_1h_price, 0) AS DOUBLE)
+      * CAST(group_ratio AS DOUBLE) * 10000 AS raw_cc1h
+  FROM request_rows
+), rebuilt AS (
+  SELECT *,
+    -- roundScaled replica, step 2: Go math.Round per bucket (exact
+    -- FLOOR(x) + (fraction >= 0.5), NOT FLOOR(x + 0.5)), integer sum
+    -- (billing.go calculateCanonicalCost / calculateModelPriceCost).
     GREATEST(1,
-      ROUND(uncached_input_tokens * input_price * group_ratio * 10000)
-      + ROUND(cache_read_tokens * COALESCE(cache_read_price, input_price)
-        * group_ratio * 10000)
-      + ROUND(canonical_output_tokens * output_price * group_ratio * 10000)
+      CAST(FLOOR(raw_canon_input)
+        + (raw_canon_input - FLOOR(raw_canon_input) >= 0.5) AS SIGNED)
+      + CAST(FLOOR(raw_cache_read)
+        + (raw_cache_read - FLOOR(raw_cache_read) >= 0.5) AS SIGNED)
+      + CAST(FLOOR(raw_canon_output)
+        + (raw_canon_output - FLOOR(raw_canon_output) >= 0.5) AS SIGNED)
       + CASE WHEN cache_creation_mode = 'charge' THEN
-          ROUND(cache_creation_5m_tokens
-            * COALESCE(cache_creation_5m_price, 0) * group_ratio * 10000)
-          + ROUND(cache_creation_1h_tokens
-            * COALESCE(cache_creation_1h_price, 0) * group_ratio * 10000)
+          CAST(FLOOR(raw_cc5m)
+            + (raw_cc5m - FLOOR(raw_cc5m) >= 0.5) AS SIGNED)
+          + CAST(FLOOR(raw_cc1h)
+            + (raw_cc1h - FLOOR(raw_cc1h) >= 0.5) AS SIGNED)
         ELSE 0 END
     ) AS canonical_cost,
     GREATEST(1,
-      ROUND((CASE
-        WHEN usage_semantics = 'anthropic_exclusive' THEN prompt_tokens
-        ELSE GREATEST(prompt_tokens - cache_read_tokens, 0)
-      END) * input_price * group_ratio * 10000)
-      + ROUND(cache_read_tokens * COALESCE(cache_read_price, input_price)
-        * group_ratio * 10000)
-      + ROUND(completion_tokens * output_price * group_ratio * 10000)
+      CAST(FLOOR(raw_legacy_input)
+        + (raw_legacy_input - FLOOR(raw_legacy_input) >= 0.5) AS SIGNED)
+      + CAST(FLOOR(raw_cache_read)
+        + (raw_cache_read - FLOOR(raw_cache_read) >= 0.5) AS SIGNED)
+      + CAST(FLOOR(raw_legacy_output)
+        + (raw_legacy_output - FLOOR(raw_legacy_output) >= 0.5) AS SIGNED)
       + CASE WHEN cache_creation_mode = 'charge' THEN
-          ROUND(cache_creation_5m_tokens
-            * COALESCE(cache_creation_5m_price, 0) * group_ratio * 10000)
-          + ROUND(cache_creation_1h_tokens
-            * COALESCE(cache_creation_1h_price, 0) * group_ratio * 10000)
+          CAST(FLOOR(raw_cc5m)
+            + (raw_cc5m - FLOOR(raw_cc5m) >= 0.5) AS SIGNED)
+          + CAST(FLOOR(raw_cc1h)
+            + (raw_cc1h - FLOOR(raw_cc1h) >= 0.5) AS SIGNED)
         ELSE 0 END
     ) AS legacy_cost
-  FROM request_rows
+  FROM rebuilt_raw
 ), cost_check AS (
   SELECT
     COUNT(*) AS total_requests,

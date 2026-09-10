@@ -189,6 +189,23 @@ reservation `actual_cost` 一致；billing/log 多重集一致。任一门禁失
 整秒交集，避免 `floor/ceil` 把边界外请求纳入而产生假差异；双轨结算拆成 subscription /
 balance 两条 ledger 时，先按 reservation reference 合并相同审计字段，再与单条 log 对账。
 
+**成本重建复刻生产 float64 舍入（2026-09-10 修订）**：门禁 SQL 的逐桶成本重建与
+`billing.go roundScaled` 位级一致——操作数经 `CAST(... AS DOUBLE)` 还原为
+`float64(tokens)*price*multiplier*AmountScale` 的左结合 double 乘法（snapshot 的
+decimal(32,17) 按 migration 088 设计可 round-trip 生产消费的 float64，已验证位级
+一致），舍入用 `FLOOR(x) + (x - FLOOR(x) >= 0.5)` 复刻 Go `math.Round`：减 floor
+与比较在 double 下均为精确运算，故对任意非负 double 与 Go 逐位相同。注意朴素公式
+`FLOOR(x + 0.5)` **不等价**：当 `x = 0.49999999999999994`（0.5 下方 1 ULP）时，
+`x + 0.5` 恰落在两个 double 正中并按 round-half-to-even 进成 1.0，会多得 1——
+glm-5.3-flash 的 200-completion 桶（200×0.00000025×10000）正是此形状。此前用
+MySQL `DECIMAL ROUND` 精确舍入，在十进制 0.5 边界（float64 乘积低 1 ULP）会比生产
+多重建 1 quota，K3 窗口的 8 条 glm-5.3-flash 即属此类（方向为少扣、利于用户）。
+修订已用 5279 个用例（193 个 float64 低于半边界、1177 个 float64 恰半、6 个生产
+残留行桶组合、3903 个随机）在 MySQL 8.0 上验证与 Go `roundScaled` 零偏差；朴素
+`FLOOR(x+0.5)` 口径在同批用例上偏差 9 例，旧 DECIMAL 口径偏差 260 例。扩到下一
+来源（GLM-5.3 候选）前，必须先在冻结的 K3 窗口重跑本脚本，确认
+`nonallowlisted_wrong_cost` 由 8 降为 0。
+
 ### 固定月费订阅的供应商证据口径
 
 K3/Kimi 当前由运营确认为固定月费订阅，费用为 `199/月`（本记录不推断币种、是否为每个
