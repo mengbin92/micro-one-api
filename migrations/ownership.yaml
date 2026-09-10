@@ -62,6 +62,7 @@ services:
     - 083_add_model_modalities                # model input/output modality metadata
     - 084_add_model_pricing_cache_read        # cache-read price + per-1M unit switch
     - 087_create_usage_semantic_source_blocks # usage-semantics quarantine (source+model isolation)
+    - 091_create_model_health_states         # passive per-source model health snapshots
 
   billing:
     # billing_reservations / billing_ledgers / billing_redeem_* / payment_orders /

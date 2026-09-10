@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, Trash2 } from 'lucide-react';
+import { Eye, ListFilter, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
@@ -34,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { locale, t } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 
 interface LogEntry {
   id: string;
@@ -141,6 +142,7 @@ export function AdminLogsPage() {
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const [isCleanOpen, setIsCleanOpen] = useState(false);
   const [cleanEndTime, setCleanEndTime] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const queryClient = useQueryClient();
   const {
     page,
@@ -155,13 +157,13 @@ export function AdminLogsPage() {
   } = useAdminTableState({
     storageKey: 'logs',
     defaultPageSize: 50,
-    filters: ['user_id', 'type', 'start_time', 'end_time', 'subscription_account_id'],
+    // Match ListLogsRequest: the ledger endpoint does not support an account filter.
+    filters: ['user_id', 'type', 'start_time', 'end_time'],
   });
   const userId = filters.user_id ?? '';
   const type = filters.type ?? '';
   const startTime = filters.start_time ?? '';
   const endTime = filters.end_time ?? '';
-  const subscriptionAccountId = filters.subscription_account_id ?? '';
   const sort = useMemo(
     () => ({ key: sortKey as keyof LogEntry | null, direction: sortDirection }) satisfies SortState<LogEntry>,
     [sortKey, sortDirection],
@@ -171,7 +173,7 @@ export function AdminLogsPage() {
     pageSize,
     sortKey,
     sortDirection,
-    filters: { user_id: userId, type, start_time: startTime, end_time: endTime, subscription_account_id: subscriptionAccountId },
+    filters: { user_id: userId, type, start_time: startTime, end_time: endTime },
   });
   exportParams.set('format', 'csv');
   const exportHref = `/log/export?${exportParams}`;
@@ -268,51 +270,23 @@ export function AdminLogsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">{t('账务日志')}</h2>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <Input
-          placeholder={t('用户 ID')}
-          value={userId}
-          onChange={(e) => setFilter('user_id', e.target.value.trim())}
-          className="max-w-xs"
-        />
-        <select
-          value={type}
-          onChange={(e) => setFilter('type', e.target.value)}
-          className="border rounded px-3 py-2 text-sm"
-        >
-          <option value="">{t('全部类型')}</option>
-          <option value="redeem">{t('兑换')}</option>
-          <option value="recharge">{t('充值')}</option>
-          <option value="consume">{t('消费')}</option>
-          <option value="refund">{t('退款')}</option>
-        </select>
-        <Input
-          placeholder={t("订阅账号 ID")}
-          value={subscriptionAccountId}
-          onChange={(e) => setFilter('subscription_account_id', e.target.value.trim())}
-          className="max-w-xs"
-        />
-        <Button
-          variant="outline"
-          onClick={() => {
-            setFilter('user_id', '');
-            setFilter('type', '');
-            setFilter('start_time', '');
-            setFilter('end_time', '');
-            setFilter('subscription_account_id', '');
-          }}
-        >
-          {t('清除')}
-        </Button>
-        <Button type="button" variant="destructive" onClick={() => setIsCleanOpen(true)}>
-          <Trash2 className="size-4" />
-          {t('清理')}
-        </Button>
-        <div className="ml-auto">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-semibold">{t('调用日志')}</h2>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="sm:hidden"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            <ListFilter className="size-4" />
+            {t('筛选')}
+          </Button>
+          <Button type="button" variant="destructive" onClick={() => setIsCleanOpen(true)}>
+            <Trash2 className="size-4" />
+            {t('清理')}
+          </Button>
           <ExportButton
             filename="admin-billing-logs.csv"
             href={exportHref}
@@ -331,30 +305,62 @@ export function AdminLogsPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="log-start-time" className="text-xs text-muted-foreground">
-            {t('开始时间')}
-          </Label>
-          <Input
-            id="log-start-time"
-            type="datetime-local"
-            value={unixSecondsToDatetimeLocal(startTime)}
-            onChange={(event) => setFilter('start_time', datetimeLocalToUnixSeconds(event.target.value))}
-            className="w-auto"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="log-end-time" className="text-xs text-muted-foreground">
-            {t('结束时间')}
-          </Label>
-          <Input
-            id="log-end-time"
-            type="datetime-local"
-            value={unixSecondsToDatetimeLocal(endTime)}
-            onChange={(event) => setFilter('end_time', datetimeLocalToUnixSeconds(event.target.value))}
-            className="w-auto"
-          />
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          placeholder={t('用户 ID')}
+          value={userId}
+          onChange={(e) => setFilter('user_id', e.target.value.trim())}
+          className="w-full min-w-0 sm:max-w-xs"
+        />
+        <div className={cn('w-full flex-col gap-3 sm:flex sm:w-auto sm:flex-row sm:flex-wrap sm:items-center', filtersOpen ? 'flex' : 'hidden')}>
+          <select
+            value={type}
+            onChange={(e) => setFilter('type', e.target.value)}
+            className="w-full rounded border bg-background px-3 py-2 text-sm sm:w-auto"
+          >
+            <option value="">{t('全部类型')}</option>
+            <option value="redeem">{t('兑换')}</option>
+            <option value="recharge">{t('充值')}</option>
+            <option value="consume">{t('消费')}</option>
+            <option value="refund">{t('退款')}</option>
+          </select>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="log-start-time" className="shrink-0 text-xs text-muted-foreground">
+              {t('开始时间')}
+            </Label>
+            <Input
+              id="log-start-time"
+              type="datetime-local"
+              value={unixSecondsToDatetimeLocal(startTime)}
+              onChange={(event) => setFilter('start_time', datetimeLocalToUnixSeconds(event.target.value))}
+              className="w-full min-w-0 sm:w-auto"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="log-end-time" className="shrink-0 text-xs text-muted-foreground">
+              {t('结束时间')}
+            </Label>
+            <Input
+              id="log-end-time"
+              type="datetime-local"
+              value={unixSecondsToDatetimeLocal(endTime)}
+              onChange={(event) => setFilter('end_time', datetimeLocalToUnixSeconds(event.target.value))}
+              className="w-full min-w-0 sm:w-auto"
+            />
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setFilter('user_id', '');
+              setFilter('type', '');
+              setFilter('start_time', '');
+              setFilter('end_time', '');
+              // Clear links saved before the unsupported account control was removed.
+              setFilter('subscription_account_id', '');
+            }}
+          >
+            {t('清除')}
+          </Button>
         </div>
       </div>
 

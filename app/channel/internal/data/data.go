@@ -52,8 +52,10 @@ type Repository struct {
 	modelChannelMappings      map[int64]*biz.ModelChannelMapping
 	modelSubscriptionMappings map[int64]*biz.ModelSubscriptionMapping
 	// Sprint 4: usage stats memory store
-	modelUsageStats      map[int64]*biz.ModelUsageStat
-	modelUsageStatNextID int64
+	modelUsageStats        map[int64]*biz.ModelUsageStat
+	modelUsageStatNextID   int64
+	modelHealthStates      map[int64]*biz.ModelHealthState
+	modelHealthStateNextID int64
 	// Monotonic counters for memory-mode ID generation (avoids ID reuse
 	// after deletes, which len(map)+1 would cause).
 	modelNextID           int64
@@ -284,6 +286,7 @@ func newMemoryRepository() *Repository {
 		modelChannelMappings:      make(map[int64]*biz.ModelChannelMapping),
 		modelSubscriptionMappings: make(map[int64]*biz.ModelSubscriptionMapping),
 		modelUsageStats:           make(map[int64]*biz.ModelUsageStat),
+		modelHealthStates:         make(map[int64]*biz.ModelHealthState),
 		modelRoutings:             make(map[int64]*biz.ModelRouting),
 	}
 }

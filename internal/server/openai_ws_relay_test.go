@@ -42,6 +42,115 @@ func TestShouldParseOpenAIWSUsage(t *testing.T) {
 	}
 }
 
+func TestOpenAIWSTerminalModelHealth(t *testing.T) {
+	tests := []struct {
+		name    string
+		turn    openAIWSTurnResult
+		record  bool
+		success bool
+	}{
+		{name: "completed", turn: openAIWSTurnResult{terminalEventType: "response.completed"}, record: true, success: true},
+		{name: "done without status", turn: openAIWSTurnResult{terminalEventType: "response.done"}, record: true, success: true},
+		{name: "done with completed status", turn: openAIWSTurnResult{terminalEventType: "response.done", responseStatus: "completed"}, record: true, success: true},
+		{name: "done with failed status", turn: openAIWSTurnResult{terminalEventType: "response.done", responseStatus: "failed"}, record: true, success: false},
+		{name: "done with incomplete status stays neutral", turn: openAIWSTurnResult{terminalEventType: "response.done", responseStatus: "incomplete"}},
+		{name: "failed without error code", turn: openAIWSTurnResult{terminalEventType: "response.failed"}, record: true, success: false},
+		{name: "failed with server error code", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorCode: "server_error", errorMessage: "internal error"}, record: true, success: false},
+		{name: "failed content policy is client-caused", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorCode: "content_policy_violation", errorMessage: "output blocked"}},
+		{name: "failed moderation via message", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorMessage: "prompt flagged by moderation system"}},
+		{name: "failed sensitive words via message", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorCode: "upstream_error", errorMessage: "sensitive_words_detected"}},
+		{name: "failed invalid request is client-caused", turn: openAIWSTurnResult{terminalEventType: "response.failed", errorCode: "invalid_request_error"}},
+		{name: "incomplete", turn: openAIWSTurnResult{terminalEventType: "response.incomplete"}},
+		{name: "cancelled", turn: openAIWSTurnResult{terminalEventType: "response.cancelled"}},
+		{name: "canceled", turn: openAIWSTurnResult{terminalEventType: "response.canceled"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			record, success := openAIWSTerminalModelHealth(tt.turn)
+			if record != tt.record || success != tt.success {
+				t.Fatalf("openAIWSTerminalModelHealth(%+v) = (%v, %v), want (%v, %v)", tt.turn, record, success, tt.record, tt.success)
+			}
+		})
+	}
+}
+
+func TestParseOpenAIWSTerminalOutcome(t *testing.T) {
+	outcome := parseOpenAIWSTerminalOutcome(map[string]any{
+		"response": map[string]any{
+			"id":     "resp_1",
+			"status": " failed ",
+			"error": map[string]any{
+				"code":    " content_policy_violation ",
+				"message": " blocked ",
+			},
+		},
+	})
+	if outcome.status != "failed" || outcome.errorCode != "content_policy_violation" || outcome.errorMessage != "blocked" {
+		t.Fatalf("parseOpenAIWSTerminalOutcome() = %+v", outcome)
+	}
+
+	// Missing response object / error object must yield zero values, not panic.
+	empty := parseOpenAIWSTerminalOutcome(map[string]any{"response_id": "resp_2"})
+	if empty != (openAIWSTurnOutcome{}) {
+		t.Fatalf("parseOpenAIWSTerminalOutcome(no response) = %+v", empty)
+	}
+}
+
+// TestRelayOpenAIWSFramesTerminalOutcomePropagation asserts the terminal
+// payload outcome (status/error) reaches onTurnComplete instead of being
+// dropped at the parse boundary, and does not leak into the next turn.
+func TestRelayOpenAIWSFramesTerminalOutcomePropagation(t *testing.T) {
+	clientConn := newFakeFrameConn(8)
+	upstreamConn := newFakeFrameConn(8)
+
+	created1 := []byte(`{"type":"response.created","response":{"id":"resp_a","status":"in_progress"}}`)
+	doneFailed := []byte(`{"type":"response.done","response":{"id":"resp_a","status":"failed","error":{"code":"server_busy","message":"overloaded"},"usage":{"input_tokens":10,"output_tokens":5}}}`)
+	created2 := []byte(`{"type":"response.created","response":{"id":"resp_b","status":"in_progress"}}`)
+	completed2 := []byte(`{"type":"response.completed","response":{"id":"resp_b","status":"completed","usage":{"input_tokens":20,"output_tokens":2}}}`)
+	go func() {
+		go func() {
+			for range upstreamConn.out {
+			}
+		}()
+		upstreamConn.in <- fakeFrame{msgType: coderws.MessageText, payload: created1}
+		upstreamConn.in <- fakeFrame{msgType: coderws.MessageText, payload: doneFailed}
+		upstreamConn.in <- fakeFrame{msgType: coderws.MessageText, payload: created2}
+		upstreamConn.in <- fakeFrame{msgType: coderws.MessageText, payload: completed2}
+		close(upstreamConn.in)
+		go func() {
+			for range clientConn.out {
+			}
+		}()
+	}()
+
+	var turns []openAIWSTurnResult
+	opts := openAIWSRelayOptions{
+		writeTimeout:   time.Second,
+		idleTimeout:    2 * time.Second,
+		onTurnComplete: func(turn openAIWSTurnResult) { turns = append(turns, turn) },
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	_, exit := relayOpenAIWSFrames(ctx, clientConn, upstreamConn, []byte(`{"type":"response.create","model":"gpt-5"}`), opts)
+	if exit == nil {
+		t.Fatal("expected non-nil exit")
+	}
+	if len(turns) != 2 {
+		t.Fatalf("expected 2 turn callbacks, got %d (exit=%+v)", len(turns), exit)
+	}
+	if turns[0].responseStatus != "failed" || turns[0].errorCode != "server_busy" || turns[0].errorMessage != "overloaded" {
+		t.Fatalf("turn 0 outcome not propagated: %+v", turns[0])
+	}
+	if turns[1].responseStatus != "completed" || turns[1].errorCode != "" {
+		t.Fatalf("turn 1 outcome leaked from previous turn: %+v", turns[1])
+	}
+	if record, success := openAIWSTerminalModelHealth(turns[0]); !record || success {
+		t.Fatalf("response.done + failed status must classify as failure, got record=%v success=%v", record, success)
+	}
+}
+
 func TestParseOpenAIWSFrameUsage(t *testing.T) {
 	t.Run("input_tokens aliases", func(t *testing.T) {
 		frame := map[string]any{
@@ -221,6 +330,62 @@ func TestRelayOpenAIWSFramesCompletesTerminalTurn(t *testing.T) {
 		t.Errorf("unexpected turn usage: %+v", turns[0].usage)
 	}
 	if result.usage.promptTokens != 10 {
+		t.Errorf("unexpected aggregate usage: %+v", result.usage)
+	}
+}
+
+// TestRelayOpenAIWSFramesPerTurnUsageDelta pins the multi-turn billing
+// contract: st.usage accumulates across the connection, but each turn callback
+// must carry only that turn's usage. Handing every turn the cumulative
+// snapshot would commit turn N against turns 1..N all over again.
+func TestRelayOpenAIWSFramesPerTurnUsageDelta(t *testing.T) {
+	clientConn := newFakeFrameConn(8)
+	upstreamConn := newFakeFrameConn(8)
+
+	created1 := []byte(`{"type":"response.created","response":{"id":"resp_1"}}`)
+	completed1 := []byte(`{"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":10,"output_tokens":5}}}`)
+	created2 := []byte(`{"type":"response.created","response":{"id":"resp_2"}}`)
+	completed2 := []byte(`{"type":"response.completed","response":{"id":"resp_2","usage":{"input_tokens":30,"output_tokens":7}}}`)
+	go func() {
+		go func() {
+			for range upstreamConn.out {
+			}
+		}()
+		upstreamConn.in <- fakeFrame{msgType: coderws.MessageText, payload: created1}
+		upstreamConn.in <- fakeFrame{msgType: coderws.MessageText, payload: completed1}
+		upstreamConn.in <- fakeFrame{msgType: coderws.MessageText, payload: created2}
+		upstreamConn.in <- fakeFrame{msgType: coderws.MessageText, payload: completed2}
+		close(upstreamConn.in)
+		go func() {
+			for range clientConn.out {
+			}
+		}()
+	}()
+
+	var turns []openAIWSTurnResult
+	opts := openAIWSRelayOptions{
+		writeTimeout:   time.Second,
+		idleTimeout:    2 * time.Second,
+		onTurnComplete: func(turn openAIWSTurnResult) { turns = append(turns, turn) },
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	result, exit := relayOpenAIWSFrames(ctx, clientConn, upstreamConn, []byte(`{"type":"response.create","model":"gpt-5"}`), opts)
+	if exit == nil {
+		t.Fatal("expected non-nil exit")
+	}
+	if len(turns) != 2 {
+		t.Fatalf("expected 2 turn callbacks, got %d (exit=%+v)", len(turns), exit)
+	}
+	if turns[0].usage.promptTokens != 10 || turns[0].usage.completionTokens != 5 {
+		t.Errorf("unexpected turn 1 usage: %+v", turns[0].usage)
+	}
+	if turns[1].usage.promptTokens != 30 || turns[1].usage.completionTokens != 7 {
+		t.Errorf("unexpected turn 2 usage (want delta 30/7, not cumulative 40/12): %+v", turns[1].usage)
+	}
+	// The aggregate snapshot stays cumulative for logging.
+	if result.usage.promptTokens != 40 || result.usage.completionTokens != 12 {
 		t.Errorf("unexpected aggregate usage: %+v", result.usage)
 	}
 }

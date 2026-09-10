@@ -111,6 +111,10 @@ func (s *AdminService) ListModelUsageStats(ctx context.Context, req *channelv1.L
 	return s.channelClient.ListModelUsageStats(ctx, req)
 }
 
+func (s *AdminService) ListModelHealth(ctx context.Context, req *channelv1.ListModelHealthRequest) (*channelv1.ListModelHealthResponse, error) {
+	return s.channelClient.ListModelHealth(ctx, req)
+}
+
 // ── Model routing (P2 #3, passthrough channel-service) ────────────────────
 //
 // admin-api owns its own request/response types (adminv1) but forwards to

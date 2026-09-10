@@ -14,6 +14,7 @@ import (
 	"micro-one-api/pkg/safecast"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ── Persistent Objects (PO) ────────────────────────────────────────────────
@@ -94,6 +95,29 @@ type modelUsageStatModel struct {
 }
 
 func (modelUsageStatModel) TableName() string { return "model_usage_stats" }
+
+type modelHealthStateModel struct {
+	ID                  int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	SourceKind          string `gorm:"column:source_kind"`
+	SourceID            int64  `gorm:"column:source_id"`
+	ModelID             string `gorm:"column:model_id"`
+	UpstreamModelID     string `gorm:"column:upstream_model_id"`
+	Status              string `gorm:"column:status"`
+	RequestCount        int64  `gorm:"column:request_count"`
+	SuccessCount        int64  `gorm:"column:success_count"`
+	FailureCount        int64  `gorm:"column:failure_count"`
+	ConsecutiveFailures int32  `gorm:"column:consecutive_failures"`
+	TotalLatencyMs      int64  `gorm:"column:total_latency_ms"`
+	AvgLatencyMs        int64  `gorm:"column:avg_latency_ms"`
+	LastError           string `gorm:"column:last_error"`
+	LastCheckedAt       int64  `gorm:"column:last_checked_at"`
+	LastSuccessAt       int64  `gorm:"column:last_success_at"`
+	LastFailureAt       int64  `gorm:"column:last_failure_at"`
+	CreatedAt           int64  `gorm:"column:created_at"`
+	UpdatedAt           int64  `gorm:"column:updated_at"`
+}
+
+func (modelHealthStateModel) TableName() string { return "model_health_states" }
 
 // ── DO ↔ PO conversion helpers (free functions, data-only) ─────────────────
 
@@ -253,6 +277,34 @@ func toUsageStatDO(po *modelUsageStatModel) *biz.ModelUsageStat {
 		TokenCount:   po.TokenCount,
 		ErrorCount:   po.ErrorCount,
 		AvgLatency:   po.AvgLatency,
+	}
+}
+
+func newModelHealthStatePO(do *biz.ModelHealthState) *modelHealthStateModel {
+	return &modelHealthStateModel{
+		ID: do.ID, SourceKind: do.SourceKind, SourceID: do.SourceID,
+		ModelID: do.ModelID, UpstreamModelID: do.UpstreamModelID,
+		Status: do.Status, RequestCount: do.RequestCount,
+		SuccessCount: do.SuccessCount, FailureCount: do.FailureCount,
+		ConsecutiveFailures: do.ConsecutiveFailures, TotalLatencyMs: do.TotalLatencyMs,
+		AvgLatencyMs: do.AvgLatencyMs,
+		LastError:    do.LastError, LastCheckedAt: do.LastCheckedAt,
+		LastSuccessAt: do.LastSuccessAt, LastFailureAt: do.LastFailureAt,
+		CreatedAt: do.CreatedAt, UpdatedAt: do.UpdatedAt,
+	}
+}
+
+func toModelHealthStateDO(po *modelHealthStateModel) *biz.ModelHealthState {
+	return &biz.ModelHealthState{
+		ID: po.ID, SourceKind: po.SourceKind, SourceID: po.SourceID,
+		ModelID: po.ModelID, UpstreamModelID: po.UpstreamModelID,
+		Status: po.Status, RequestCount: po.RequestCount,
+		SuccessCount: po.SuccessCount, FailureCount: po.FailureCount,
+		ConsecutiveFailures: po.ConsecutiveFailures, TotalLatencyMs: po.TotalLatencyMs,
+		AvgLatencyMs: po.AvgLatencyMs,
+		LastError:    po.LastError, LastCheckedAt: po.LastCheckedAt,
+		LastSuccessAt: po.LastSuccessAt, LastFailureAt: po.LastFailureAt,
+		CreatedAt: po.CreatedAt, UpdatedAt: po.UpdatedAt,
 	}
 }
 
@@ -858,6 +910,96 @@ func (r *Repository) ListModelUsageStats(ctx context.Context, modelPK int64, sta
 	return result, total, nil
 }
 
+func (r *Repository) RecordModelHealth(ctx context.Context, outcome *biz.ModelHealthOutcome) error {
+	if r.db == nil {
+		return r.recordModelHealthMemory(outcome)
+	}
+	// SQLite has no row-level SELECT ... FOR UPDATE and returns SQLITE_BUSY
+	// immediately when several relay outcomes try to upgrade read transactions
+	// into writers. Lite mode has one channel-service repository, so serialize
+	// this small read-modify-write section in-process to avoid dropping data.
+	// The lock covers a single attempt only: releasing it around the backoff
+	// sleep keeps other repository work from stalling while we retry.
+	serialize := r.db.Dialector.Name() == "sqlite"
+	var lastErr error
+	const maxAttempts = 5
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if serialize {
+			r.lock.Lock()
+		}
+		err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var po modelHealthStateModel
+			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
+				"source_kind = ? AND source_id = ? AND model_id = ? AND upstream_model_id = ?",
+				outcome.SourceKind, outcome.SourceID, outcome.ModelID, outcome.UpstreamModelID,
+			).First(&po).Error
+			if isGormNotFound(err) {
+				state := &biz.ModelHealthState{
+					SourceKind: outcome.SourceKind, SourceID: outcome.SourceID,
+					ModelID: outcome.ModelID, UpstreamModelID: outcome.UpstreamModelID,
+				}
+				biz.ApplyModelHealthOutcome(state, outcome)
+				return tx.Create(newModelHealthStatePO(state)).Error
+			}
+			if err != nil {
+				return err
+			}
+			state := toModelHealthStateDO(&po)
+			biz.ApplyModelHealthOutcome(state, outcome)
+			return tx.Save(newModelHealthStatePO(state)).Error
+		})
+		if serialize {
+			r.lock.Unlock()
+		}
+		if err == nil {
+			return nil
+		}
+		if !isRetryableModelHealthWrite(err) {
+			return err
+		}
+		lastErr = err
+		if attempt+1 < maxAttempts {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(1<<attempt) * 5 * time.Millisecond):
+			}
+		}
+	}
+	return fmt.Errorf("record model health after concurrent write retries: %w", lastErr)
+}
+
+func (r *Repository) ListModelHealth(ctx context.Context, page, pageSize int32, filter biz.ListModelHealthFilter) ([]*biz.ModelHealthState, int64, error) {
+	if r.db == nil {
+		return r.listModelHealthMemory(page, pageSize, filter)
+	}
+	query := r.db.WithContext(ctx).Model(&modelHealthStateModel{})
+	if filter.Keyword != "" {
+		like := "%" + escapeLike(strings.ToLower(filter.Keyword)) + "%"
+		query = query.Where("LOWER(model_id) LIKE ? ESCAPE '!' OR LOWER(upstream_model_id) LIKE ? ESCAPE '!'", like, like)
+	}
+	if filter.SourceKind != "" {
+		query = query.Where("source_kind = ?", filter.SourceKind)
+	}
+	if filter.Status != "" {
+		query = query.Where("status = ?", filter.Status)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []modelHealthStateModel
+	offset := (page - 1) * pageSize
+	if err := query.Order("last_checked_at DESC, id DESC").Offset(int(offset)).Limit(int(pageSize)).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	result := make([]*biz.ModelHealthState, 0, len(rows))
+	for i := range rows {
+		result = append(result, toModelHealthStateDO(&rows[i]))
+	}
+	return result, total, nil
+}
+
 // ── GORM error helpers ─────────────────────────────────────────────────────
 
 func isGormNotFound(err error) bool {
@@ -872,6 +1014,21 @@ func isDuplicateEntry(err error) bool {
 	return strings.Contains(msg, "duplicate entry") ||
 		strings.Contains(msg, "unique constraint") ||
 		strings.Contains(msg, "constraint failed: unique")
+}
+
+func isRetryableModelHealthWrite(err error) bool {
+	if isDuplicateEntry(err) {
+		return true
+	}
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "deadlock found") ||
+		strings.Contains(msg, "lock wait timeout") ||
+		strings.Contains(msg, "could not serialize access") ||
+		strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked")
 }
 
 // ── In-memory fallback implementations ─────────────────────────────────────
@@ -1302,6 +1459,64 @@ func (r *Repository) listModelUsageStatsMemory(modelPK int64, startDate, endDate
 	}
 	end := min(start+int(pageSize), len(filtered))
 	return filtered[start:end], total, nil
+}
+
+func (r *Repository) recordModelHealthMemory(outcome *biz.ModelHealthOutcome) error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.modelHealthStates == nil {
+		r.modelHealthStates = make(map[int64]*biz.ModelHealthState)
+	}
+	for _, state := range r.modelHealthStates {
+		if state.SourceKind == outcome.SourceKind && state.SourceID == outcome.SourceID &&
+			state.ModelID == outcome.ModelID && state.UpstreamModelID == outcome.UpstreamModelID {
+			biz.ApplyModelHealthOutcome(state, outcome)
+			return nil
+		}
+	}
+	r.modelHealthStateNextID++
+	state := &biz.ModelHealthState{
+		ID: r.modelHealthStateNextID, SourceKind: outcome.SourceKind,
+		SourceID: outcome.SourceID, ModelID: outcome.ModelID,
+		UpstreamModelID: outcome.UpstreamModelID,
+	}
+	biz.ApplyModelHealthOutcome(state, outcome)
+	r.modelHealthStates[state.ID] = state
+	return nil
+}
+
+func (r *Repository) listModelHealthMemory(page, pageSize int32, filter biz.ListModelHealthFilter) ([]*biz.ModelHealthState, int64, error) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	keyword := strings.ToLower(filter.Keyword)
+	result := make([]*biz.ModelHealthState, 0, len(r.modelHealthStates))
+	for _, state := range r.modelHealthStates {
+		if keyword != "" && !strings.Contains(strings.ToLower(state.ModelID), keyword) &&
+			!strings.Contains(strings.ToLower(state.UpstreamModelID), keyword) {
+			continue
+		}
+		if filter.SourceKind != "" && state.SourceKind != filter.SourceKind {
+			continue
+		}
+		if filter.Status != "" && state.Status != filter.Status {
+			continue
+		}
+		clone := *state
+		result = append(result, &clone)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].LastCheckedAt != result[j].LastCheckedAt {
+			return result[i].LastCheckedAt > result[j].LastCheckedAt
+		}
+		return result[i].ID > result[j].ID
+	})
+	total := int64(len(result))
+	start := int((page - 1) * pageSize)
+	if start >= len(result) {
+		return []*biz.ModelHealthState{}, total, nil
+	}
+	end := min(start+int(pageSize), len(result))
+	return result[start:end], total, nil
 }
 
 // ── Memory helpers ─────────────────────────────────────────────────────────

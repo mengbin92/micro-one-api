@@ -17,11 +17,11 @@ export function AdminPagination({
   onPageSizeChange,
 }: AdminPaginationProps) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <Button variant="outline" onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page === 1}>
         {t('上一页')}
       </Button>
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+      <div className="order-first flex w-full flex-wrap items-center justify-center gap-3 text-sm text-muted-foreground sm:order-none sm:w-auto">
         <span>{t('页码：')}{page}</span>
         <select
           value={pageSize}

@@ -106,6 +106,14 @@ docker compose --env-file .env down -v        # 停止并删除数据卷
 ./scripts/test-docker-compose.sh
 ```
 
+### 2.5 Lite（SQLite）快速启动
+
+完整的配置、构建、首次登录、渠道与 Token 创建及首个 Relay 请求步骤见
+[Lite Quickstart](quickstart-lite.md)。Lite Compose 使用 `sqlite-init` 初始化命名卷权限，
+再以非 root UID 运行迁移和应用；升级时也会应用新增的模型健康迁移 `091`。
+
+可运行 `make test-lite-smoke` 验证全新环境、业务请求和重启后的数据保持。
+
 ## 3. Kubernetes 部署（生产）
 
 ### 3.1 前置条件

@@ -173,6 +173,26 @@ func (c *resilientChannelClient) RecordChannelHealth(ctx context.Context, req *c
 	return resp.(*channelv1.RecordChannelHealthResponse), nil
 }
 
+func (c *resilientChannelClient) RecordModelHealth(ctx context.Context, req *channelv1.RecordModelHealthRequest, opts ...grpc.CallOption) (*channelv1.RecordModelHealthResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		return client.RecordModelHealth(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*channelv1.RecordModelHealthResponse), nil
+}
+
+func (c *resilientChannelClient) ListModelHealth(ctx context.Context, req *channelv1.ListModelHealthRequest, opts ...grpc.CallOption) (*channelv1.ListModelHealthResponse, error) {
+	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
+		return client.ListModelHealth(ctx, req, opts...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.(*channelv1.ListModelHealthResponse), nil
+}
+
 func (c *resilientChannelClient) RecordModelUsage(ctx context.Context, req *channelv1.RecordModelUsageRequest, opts ...grpc.CallOption) (*channelv1.RecordModelUsageResponse, error) {
 	resp, err := c.breaker.Execute(ctx, func(ctx context.Context, client channelv1.ChannelServiceClient) (any, error) {
 		return client.RecordModelUsage(ctx, req, opts...)

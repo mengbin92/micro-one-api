@@ -323,6 +323,27 @@ func (p *RelayPlan) BaseModel() string {
 	return strings.TrimSpace(p.ResolvedModel)
 }
 
+// ModelHealthID returns the client-facing model identifier for passive health
+// aggregation. BaseModel cannot be used for this dimension because it already
+// contains the global model mapping (for example gpt-4o -> a dated upstream
+// model). Candidate and selection metadata both retain the pre-mapping name.
+func (p *RelayPlan) ModelHealthID() string {
+	if p == nil {
+		return ""
+	}
+	if p.Candidates != nil {
+		if model := RelayModelName(p.Candidates.Model); model != "" {
+			return model
+		}
+	}
+	if p.SelectionEvent != nil {
+		if model := RelayModelName(p.SelectionEvent.Model); model != "" {
+			return model
+		}
+	}
+	return RelayModelName(p.BaseModel())
+}
+
 // RelayUsecase orchestrates the relay planning flow:
 // model mapping → auth → model validation → channel selection.
 type RelayUsecase struct {
@@ -1283,6 +1304,37 @@ func (uc *RelayUsecase) RecordRoutingSourceHealth(ctx context.Context, ch *Chann
 	if ch.ID > 0 {
 		_ = uc.channel.RecordChannelHealth(ctx, ch.ID, success, errMessage, responseTime)
 	}
+}
+
+// RecordRoutingSourceModelHealth records the model dimension for execution
+// paths that do not use RetryExecutor (currently Responses WebSocket). Calls
+// remain best-effort and do not alter routing eligibility. The shared
+// disposition keeps client cancellations and policy rejections from poisoning
+// an otherwise healthy upstream model.
+func (uc *RelayUsecase) RecordRoutingSourceModelHealth(ctx context.Context, ch *Channel, modelID, baseModel string, relayErr error, responseTime int64) {
+	if uc == nil || uc.channel == nil || ch == nil {
+		return
+	}
+	record, success := modelHealthDisposition(relayErr)
+	if !record {
+		return
+	}
+	recorder, ok := uc.channel.(ModelHealthRecorder)
+	if !ok {
+		return
+	}
+	sourceKind, sourceID := UpstreamSourceChannel, ch.ID
+	if ch.SubscriptionAccountID > 0 {
+		sourceKind, sourceID = UpstreamSourceSubscription, ch.SubscriptionAccountID
+	}
+	if sourceID <= 0 {
+		return
+	}
+	errMessage := ""
+	if relayErr != nil {
+		errMessage = relayErr.Error()
+	}
+	_ = recorder.RecordModelHealth(ctx, sourceKind, sourceID, RelayModelName(modelID), ResolveChannelModel(ch, baseModel), success, errMessage, responseTime)
 }
 
 // ResolveModel returns the upstream model name for the given client model name.

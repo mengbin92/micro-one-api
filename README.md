@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.27.0 发布公告](./docs/releases/release-v0.27.0.md)（Lite 部署收口、只读账务审计与计费门禁口径修复） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.27.0)
+> 📣 **最新发布**：[v0.28.0 发布公告](./docs/releases/release-v0.28.0.md)（模型健康被动监测、Websocket 多轮计费修复与控制台布局升级） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.28.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.28.0
+
+v0.28.0 是 v0.27.0 之后的 **MINOR 模型可观测性版本**：新增按来源与上游模型粒度的被动模型健康监测与管理台看板，修复多轮 `/v1/responses` Websocket 连接按累计 usage 重复计费的问题，并把 404 模型不可用判定收窄到 API 形状响应体。**proto additive**（`channel.v1` 新增 `RecordModelHealth` / `ListModelHealth`）；MySQL / SQLite / PostgreSQL 三方言新增迁移 `091`（`model_health_states` 表），升级时需先运行 `migrate`；无新增必填配置，不改变路由与计费决策。详见 [docs/releases/release-v0.28.0.md](./docs/releases/release-v0.28.0.md)。
 
 ### 升级到 v0.27.0
 

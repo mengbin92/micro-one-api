@@ -619,6 +619,9 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	srv.HandleFunc("/api/admin/models", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleModels(w, r, svc)
 	}))
+	srv.HandleFunc("/api/admin/model-health", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		handleModelHealth(w, r, svc)
+	}))
 	// Canonical model ID governance (v0.11.0 Phase 2 §2.1): registered with a
 	// longer prefix than /api/admin/models/ so net/http's longest-match wins
 	// and these operator endpoints don't fall through to the {model_pk} path.

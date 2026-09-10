@@ -132,6 +132,10 @@ func TestSQLiteDialect_FreshInstall(t *testing.T) {
 	// Recent mirror (077) landed: renewal_strategy on user_subscriptions.
 	require.True(t, sqliteColumnExists(t, db, "user_subscriptions", "renewal_strategy"),
 		"077_add_subscription_renewal_strategy mirror must have applied")
+	require.Contains(t, tables, "model_health_states",
+		"091_create_model_health_states mirror must have applied")
+	require.True(t, sqliteColumnExists(t, db, "model_health_states", "total_latency_ms"),
+		"091 model health snapshots must retain total latency for exact averages")
 }
 
 // TestSQLiteDialect_IncrementalUpgrade simulates a deployed Lite instance
@@ -150,7 +154,7 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 31, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 32, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
 	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql") // preserve the pre-price-normalization upgrade boundary
 
@@ -197,6 +201,8 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		"pricing snapshot hash migration must have applied during upgrade")
 	require.True(t, sqliteTableExists(t, db, "billing_pricing_snapshots"),
 		"pricing snapshot table migration must have applied during upgrade")
+	require.True(t, sqliteColumnExists(t, db, "model_health_states", "total_latency_ms"),
+		"model health migration must have applied during upgrade")
 	var inputPrice, outputPrice, cacheReadPrice float64
 	err = db.QueryRow(`
 		SELECT pricing_input, pricing_output, pricing_cache_read

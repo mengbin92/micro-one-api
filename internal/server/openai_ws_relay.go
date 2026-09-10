@@ -40,10 +40,15 @@ type openAIWSRelayUsage struct {
 
 // openAIWSTurnResult is reported once per upstream terminal event
 // (response.completed / response.done / response.failed / ...). The relay uses
-// it to drive quota commit and usage logging.
+// it to drive quota commit and usage logging. responseStatus / errorCode /
+// errorMessage carry the payload's own outcome when the dialect provides it,
+// so callers can classify the turn without trusting the event name alone.
 type openAIWSTurnResult struct {
 	requestID         string
 	terminalEventType string
+	responseStatus    string
+	errorCode         string
+	errorMessage      string
 	usage             openAIWSRelayUsage
 	duration          time.Duration
 }
@@ -113,9 +118,28 @@ func shouldParseOpenAIWSUsage(eventType string) bool {
 type openAIWSRelayState struct {
 	mu             sync.Mutex
 	usage          openAIWSRelayUsage
+	// billedUsage is the cumulative usage already reported through
+	// onTurnComplete. st.usage accumulates across the whole connection, so
+	// per-turn callbacks must report only the delta since the last turn —
+	// handing them the cumulative snapshot would bill turn N for turns
+	// 1..N all over again.
+	billedUsage    openAIWSRelayUsage
 	lastResponseID string
 	terminalEvent  string
-	turnStartByID  map[string]time.Time
+	// pendingTerminal holds the payload outcome of the most recent terminal
+	// frame. The upstream pump is sequential, so observeUpstreamFrame →
+	// finishTurn cannot interleave; finishTurn consumes and clears the slot so
+	// a stale status never leaks into the next turn's classification.
+	pendingTerminal openAIWSTurnOutcome
+	turnStartByID   map[string]time.Time
+}
+
+// openAIWSTurnOutcome is the outcome evidence carried by a terminal event
+// payload (response.status plus response.error), independent of the event name.
+type openAIWSTurnOutcome struct {
+	status      string
+	errorCode   string
+	errorMessage string
 }
 
 func newOpenAIWSRelayState() *openAIWSRelayState {
@@ -190,12 +214,35 @@ func (st *openAIWSRelayState) observeUpstreamFrame(payload []byte, msgType coder
 		terminal = true
 		st.mu.Lock()
 		st.terminalEvent = eventType
+		st.pendingTerminal = parseOpenAIWSTerminalOutcome(frame)
 		if responseID != "" {
 			st.lastResponseID = responseID
 		}
 		st.mu.Unlock()
 	}
 	return eventType, responseID, terminal
+}
+
+// parseOpenAIWSTerminalOutcome extracts response.status and response.error
+// {code,message} from a terminal event frame. Dialects differ: response.failed
+// carries error, and some end a failed turn with response.done + status
+// "failed" instead. Missing fields stay empty and callers treat the event name
+// as before.
+func parseOpenAIWSTerminalOutcome(frame map[string]any) openAIWSTurnOutcome {
+	var outcome openAIWSTurnOutcome
+	resp, ok := frame["response"].(map[string]any)
+	if !ok {
+		return outcome
+	}
+	outcome.status, _ = resp["status"].(string)
+	if errMap, ok := resp["error"].(map[string]any); ok {
+		outcome.errorCode, _ = errMap["code"].(string)
+		outcome.errorMessage, _ = errMap["message"].(string)
+	}
+	outcome.status = strings.TrimSpace(outcome.status)
+	outcome.errorCode = strings.TrimSpace(outcome.errorCode)
+	outcome.errorMessage = strings.TrimSpace(outcome.errorMessage)
+	return outcome
 }
 
 // finishTurn reports a completed turn through the onTurnComplete callback. It
@@ -210,7 +257,17 @@ func (st *openAIWSRelayState) finishTurn(opts *openAIWSRelayOptions, eventType, 
 		duration = max(now.Sub(startAt), 0)
 		delete(st.turnStartByID, responseID)
 	}
-	usage := st.usage
+	// Consume the terminal payload outcome together with the turn so a
+	// skipped turn (duration == 0 below) cannot leak its status into the next
+	// turn's classification.
+	outcome := st.pendingTerminal
+	st.pendingTerminal = openAIWSTurnOutcome{}
+	// Report only this turn's usage: the delta since the previous turn
+	// callback. The baseline advances even when the turn is not emitted
+	// (below), so usage re-parsed by a stray duplicate terminal event is
+	// discarded instead of inflating the next turn.
+	usage := deltaOpenAIWSRelayUsage(st.usage, st.billedUsage)
+	st.billedUsage = st.usage
 	st.mu.Unlock()
 	if duration == 0 {
 		// No recorded start (e.g. terminal event without a prior response id
@@ -220,6 +277,9 @@ func (st *openAIWSRelayState) finishTurn(opts *openAIWSRelayOptions, eventType, 
 	opts.onTurnComplete(openAIWSTurnResult{
 		requestID:         responseID,
 		terminalEventType: eventType,
+		responseStatus:    outcome.status,
+		errorCode:         outcome.errorCode,
+		errorMessage:      outcome.errorMessage,
 		usage:             usage,
 		duration:          duration,
 	})
@@ -230,6 +290,21 @@ func (st *openAIWSRelayState) snapshot() (openAIWSRelayUsage, string, string) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	return st.usage, st.lastResponseID, st.terminalEvent
+}
+
+// deltaOpenAIWSRelayUsage returns total - reported. The shape signals are
+// protocol evidence, not additive counters, so they pass through from total.
+func deltaOpenAIWSRelayUsage(total, reported openAIWSRelayUsage) openAIWSRelayUsage {
+	return openAIWSRelayUsage{
+		promptTokens:          total.promptTokens - reported.promptTokens,
+		completionTokens:      total.completionTokens - reported.completionTokens,
+		cacheReadTokens:       total.cacheReadTokens - reported.cacheReadTokens,
+		cacheCreation5mTokens: total.cacheCreation5mTokens - reported.cacheCreation5mTokens,
+		cacheCreation1hTokens: total.cacheCreation1hTokens - reported.cacheCreation1hTokens,
+		totalTokens:           total.totalTokens - reported.totalTokens,
+		reportedTotalTokens:   total.reportedTotalTokens - reported.reportedTotalTokens,
+		shape:                 total.shape,
+	}
 }
 
 // parseOpenAIWSFrameUsage extracts usage fields from a terminal event frame.

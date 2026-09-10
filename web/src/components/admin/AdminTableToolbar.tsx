@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { t } from '@/lib/i18n';
 
 interface AdminTableToolbarProps {
   search: string;
@@ -18,17 +19,17 @@ export function AdminTableToolbar({
   actions,
 }: AdminTableToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-4">
+    <div className="flex flex-wrap items-center gap-3">
       <Input
         placeholder={searchPlaceholder}
         value={search}
         onChange={(event) => onSearchChange(event.target.value)}
-        className="max-w-sm"
+        className="w-full min-w-0 sm:max-w-sm"
       />
       <Button variant="outline" onClick={onClear}>
-        Clear
+        {t('清除')}
       </Button>
-      {actions && <div className="ml-auto">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{actions}</div>}
     </div>
   );
 }

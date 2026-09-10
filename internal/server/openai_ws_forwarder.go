@@ -576,7 +576,9 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// Acquire a (possibly pooled) upstream connection.
 		pooledConn, err := s.acquireOpenAIWSUpstreamConn(ctx, currentChannel, wsURL, headers)
 		if err != nil {
-			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, err.Error(), time.Since(attemptStartedAt).Milliseconds())
+			responseTime := time.Since(attemptStartedAt).Milliseconds()
+			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, err.Error(), responseTime)
+			s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.ModelHealthID(), plan.BaseModel(), err, responseTime)
 			// Dial failed. Try failover if we haven't exhausted switches.
 			// Capture the failed channel id before maybeFailoverChannel mutates
 			// currentChannel, otherwise the log records the channel we switched to.
@@ -612,6 +614,13 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// Per-turn usage logging / quota commit. Closure captures the current
 		// channel so failover switches log against the right channel.
 		onTurnComplete := func(turn openAIWSTurnResult) {
+			if record, success := openAIWSTerminalModelHealth(turn); record {
+				var healthErr error
+				if !success {
+					healthErr = &relaybiz.RetryableError{Status: http.StatusInternalServerError, Err: fmt.Errorf("upstream terminal event %s (status=%s, code=%s)", turn.terminalEventType, turn.responseStatus, turn.errorCode)}
+				}
+				s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.ModelHealthID(), plan.BaseModel(), healthErr, turn.duration.Milliseconds())
+			}
 			usage := turn.usage
 			actualTotal := usage.totalTokens
 			if actualTotal <= 0 {
@@ -710,9 +719,17 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		broken := relayExit != nil && relayExit.err != nil && !relayExit.graceful
 		s.releaseOpenAIWSUpstreamConn(pooledConn, broken)
 		if relayExit != nil && relayExit.err != nil && !relayExit.graceful {
-			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, relayExit.err.Error(), time.Since(attemptStartedAt).Milliseconds())
+			responseTime := time.Since(attemptStartedAt).Milliseconds()
+			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, false, relayExit.err.Error(), responseTime)
+			// A connection error before any terminal turn is attributable to the
+			// current model route. After completed turns it may just be an idle
+			// connection closing, so do not turn that into a false model outage.
+			if turnCommits == 0 {
+				s.relayUsecase.RecordRoutingSourceModelHealth(ctx, currentChannel, plan.ModelHealthID(), plan.BaseModel(), relayExit.err, responseTime)
+			}
 		} else {
-			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, true, "", time.Since(attemptStartedAt).Milliseconds())
+			responseTime := time.Since(attemptStartedAt).Milliseconds()
+			s.relayUsecase.RecordRoutingSourceHealth(ctx, currentChannel, true, "", responseTime)
 		}
 
 		// Failover decision: only retry if nothing was written downstream yet
@@ -773,6 +790,52 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		outcome.finalChannel = currentChannel
 		return outcome
 	}
+}
+
+// openAIWSTerminalModelHealth classifies a completed Responses WebSocket turn.
+// Success/failure is recorded per terminal turn, rather than once per
+// long-lived connection, so counts and latency remain request-shaped. The
+// payload's own outcome (response.status / response.error) wins over the event
+// name: some dialects end a failed turn with response.done + status "failed",
+// and response.failed may carry a client-caused rejection. Client cancellation
+// and incomplete output are neutral because they do not prove a model-route
+// outage.
+func openAIWSTerminalModelHealth(turn openAIWSTurnResult) (record, success bool) {
+	switch strings.TrimSpace(turn.terminalEventType) {
+	case "response.completed", "response.done":
+		switch strings.TrimSpace(turn.responseStatus) {
+		case "", "completed", "succeeded", "success":
+			return true, true
+		case "failed":
+			return openAIWSFailureDisposition(turn.errorCode, turn.errorMessage)
+		default:
+			// "incomplete" / "cancelled" / unknown statuses do not prove a
+			// model-route outage.
+			return false, false
+		}
+	case "response.failed":
+		return openAIWSFailureDisposition(turn.errorCode, turn.errorMessage)
+	default:
+		return false, false
+	}
+}
+
+// openAIWSFailureDisposition classifies a turn the payload reports as failed.
+// Client-caused policy/validation rejections — the WebSocket analog of the
+// HTTP path's 4xx and sensitive-words exclusions — say nothing about the model
+// route and must not accumulate consecutive failures; everything else is
+// recorded as a model-route failure.
+func openAIWSFailureDisposition(errorCode, errorMessage string) (record, success bool) {
+	evidence := strings.ToLower(errorCode + " " + errorMessage)
+	for _, marker := range []string{
+		"content_policy", "content_filter", "moderation",
+		"sensitive_words_detected", "invalid_prompt", "invalid_request",
+	} {
+		if strings.Contains(evidence, marker) {
+			return false, false
+		}
+	}
+	return true, false
 }
 
 // openAIWSPoolKey returns the namespace-safe pool key for a routing source.
