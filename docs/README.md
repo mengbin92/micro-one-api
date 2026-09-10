@@ -20,6 +20,7 @@ docs/
 
 | 我想... | 看这里 |
 |---------|--------|
+| 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
 | 查看下一阶段执行路线 | [design/v0.27-roadmap.md](./design/v0.27-roadmap.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |

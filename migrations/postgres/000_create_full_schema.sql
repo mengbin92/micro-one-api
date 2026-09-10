@@ -646,9 +646,11 @@ CREATE TABLE IF NOT EXISTS account_receivables (
   overdue_quota BIGINT NOT NULL,
   overdue_usd DOUBLE PRECISION NOT NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'pending',
-  created_at INTEGER DEFAULT 0,
-  updated_at INTEGER DEFAULT 0,
-  settled_at INTEGER DEFAULT 0,
+  -- TIMESTAMPTZ (not INTEGER): accountReceivableModel maps these to time.Time /
+  -- *time.Time (MySQL 046 datetime(3) parity).
+  created_at TIMESTAMPTZ DEFAULT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NULL,
+  settled_at TIMESTAMPTZ DEFAULT NULL,
   settled_quota BIGINT NOT NULL DEFAULT 0,
   remark TEXT DEFAULT NULL
 );

@@ -471,3 +471,7 @@ func TestRefund_FallsBackToPlanPriceWhenMoneyCentsZero(t *testing.T) {
 		t.Fatalf("refunded quota = %d, want 2000 (plan snapshot fallback)", res.RefundedQuota)
 	}
 }
+
+func (s *stubAccountRepo) GetAccountSnapshotInTx(ctx context.Context, _ subscriptionbiz.Tx, userID string) (*Account, error) {
+	return s.GetAccountSnapshot(ctx, userID)
+}

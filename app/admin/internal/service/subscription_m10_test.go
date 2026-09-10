@@ -342,3 +342,7 @@ func TestCompleteSubscriptionPurchase_WrongUserClaimRefused(t *testing.T) {
 		t.Fatalf("createdCount = %d, want 0", subRepo.createdCount)
 	}
 }
+
+func (r *fakeGroupRepo) GetGroupByIDInTx(ctx context.Context, _ subscriptionbiz.Tx, id int64) (*subscriptionbiz.SubscriptionGroup, error) {
+	return r.GetGroupByID(ctx, id)
+}

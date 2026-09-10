@@ -60,6 +60,13 @@ func (r *Repository) GetGroupByID(ctx context.Context, groupID int64) (*biz.Subs
 	return r.getGroupByIDMemory(ctx, groupID)
 }
 
+func (r *Repository) GetGroupByIDInTx(ctx context.Context, tx biz.Tx, groupID int64) (*biz.SubscriptionGroup, error) {
+	if tx == nil {
+		return nil, errors.New("nil transaction")
+	}
+	return r.getGroupByIDWithDB(ctx, txDB(tx), groupID)
+}
+
 func (r *Repository) GetGroupByName(ctx context.Context, name string) (*biz.SubscriptionGroup, error) {
 	if r.db != nil {
 		return r.getGroupByNameDB(ctx, name)
@@ -107,8 +114,12 @@ func (r *Repository) deleteGroupDB(ctx context.Context, groupID int64) error {
 }
 
 func (r *Repository) getGroupByIDDB(ctx context.Context, groupID int64) (*biz.SubscriptionGroup, error) {
+	return r.getGroupByIDWithDB(ctx, r.db, groupID)
+}
+
+func (r *Repository) getGroupByIDWithDB(ctx context.Context, db *gorm.DB, groupID int64) (*biz.SubscriptionGroup, error) {
 	var model groupModel
-	if err := r.db.WithContext(ctx).Where("id = ?", groupID).First(&model).Error; err != nil {
+	if err := db.WithContext(ctx).Where("id = ?", groupID).First(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, biz.ErrSubscriptionGroupNotFound
 		}

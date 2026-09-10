@@ -53,6 +53,10 @@ func (r *accountRepo) GetAccountSnapshot(ctx context.Context, userID string) (*b
 	}, nil
 }
 
+func (r *accountRepo) GetAccountSnapshotInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string) (*biz.Account, error) {
+	return r.getAccountForUpdate(ctx, txDB(tx), userID)
+}
+
 func (r *accountRepo) UpdateBalance(ctx context.Context, userID string, delta int64, operationType string) (int64, error) {
 	tx := r.data.db.WithContext(ctx).Begin()
 	defer func() {

@@ -41,13 +41,16 @@
 | 账务日志 | |
 | ![脱敏后的账务日志](./docs/assets/screenshots/billing-logs.png) | |
 
+完整的 Lite 操作演示（登录、创建渠道、创建 Token、在线调试）见
+[脱敏演示视频](./docs/assets/demos/lite-quickstart.mp4)；演示使用隔离测试数据和本地 mock 上游。
+
 ## 适合谁 / 不适合谁
 
 | 适合 | 不适合 |
 |------|--------|
 | 需要自托管统一入口，管理多个 OpenAI-compatible 或专用 provider 渠道的团队 | 只需要单机、单用户、单上游转发，希望一个二进制零配置启动的场景 |
 | 需要用户、Token、钱包、订阅、账务、用量、成本和运营后台的内部平台或 SaaS 团队 | 希望项目直接提供上游模型账号、订阅、API Key 或代替第三方模型服务的用户 |
-| 需要 Docker Compose / Kubernetes 部署，并希望按服务边界扩展和审计的工程团队 | 不准备维护 MySQL、Redis、多服务部署和监控体系的轻量个人用途 |
+| 需要 Docker Compose / Kubernetes 部署，并希望按服务边界扩展和审计的工程团队 | 不准备维护 Redis 与多服务部署的零运维个人用途 |
 | 已获得上游服务合法授权，需要在组织内部做统一鉴权、调度和成本治理的使用者 | 试图绕过上游访问限制、账号规则、计费规则或服务条款的用途 |
 
 ## 架构
@@ -105,7 +108,14 @@ flowchart LR
 
 ## 快速开始
 
-### Docker Compose
+### 个人单机：SQLite Lite
+
+从 [SQLite Lite Quickstart](./docs/quickstart-lite.md) 开始：生成密钥、启动迁移与服务、
+取回初始管理员密码、创建渠道和 Token，再发出首个聊天请求。Lite 使用 SQLite + Redis，
+保留现有服务边界；默认后台 `127.0.0.1:3000`、Relay `127.0.0.1:8080`，端口可配置。
+首次源码构建时间另计。指南包含钱包充值、备份、恢复与升级边界。
+
+### Docker Compose（MySQL）
 
 适合开发、测试和功能验收。
 
@@ -135,20 +145,9 @@ docker compose up -d
 
 ### 从空环境到首个渠道和 Token
 
-1. 按上面的 Docker Compose 步骤启动服务，确认 `http://localhost:8080/healthz` 返回成功。
-2. 打开 `http://localhost:3000`，使用首次启动时配置或生成的管理员账号登录。
-3. 进入 **管理后台 → 渠道 → Create Channel**，填写 `Name`、`Provider`、`Base URL`、`API Key`、`Models` 和 `Group`；`Priority`、`Weight` 可先保留默认值。
-4. 保存后在渠道列表执行 **Test**，并在 **健康监控** 中确认渠道状态为健康。测试失败时先核对 Base URL 是否包含正确的 API 前缀，以及模型名称是否被上游支持。
-5. 进入 **API 密钥 → Create Token**，输入用途名称（例如 `quickstart`）。新 Token 只会完整显示一次，应立即复制并安全保存。
-6. 使用新 Token 验证 Relay：
-
-```bash
-export API_TOKEN='<刚创建的 Token>'
-curl -H "Authorization: Bearer ${API_TOKEN}" \
-  http://localhost:8080/v1/models
-```
-
-返回模型列表后，即完成从空环境部署到首个渠道和 Token 的最短链路。生产环境不要把上游 API Key、用户 Token 或管理员密码写入文档、命令历史和版本库。
+完整操作见 [Quickstart：登录、渠道、钱包与 Token](./docs/quickstart-lite.md#2-登录与创建渠道)。
+MySQL 部署启动后的页面操作相同；先验证 `/v1/models`，再完成一次
+`/v1/chat/completions` 请求并检查用量记录。
 
 ### 本地开发
 

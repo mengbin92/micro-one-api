@@ -276,6 +276,11 @@ dev-test-all:
 test-e2e: compose-prereq
 	./scripts/test-e2e-flow.sh
 
+.PHONY: test-lite-smoke
+# Fresh SQLite Compose project: bootstrap, channel, wallet, Token, chat, restart.
+test-lite-smoke:
+	python3 scripts/test-lite-smoke.py
+
 .PHONY: test-e2e-suite
 # run e2e Go test suite (docker-compose environment)
 test-e2e-suite: compose-prereq

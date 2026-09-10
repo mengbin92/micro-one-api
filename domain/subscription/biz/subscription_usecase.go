@@ -439,7 +439,7 @@ func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Contex
 	// back to 1.0x (see RecordUsage). This runs inside the dual-track commit tx,
 	// so failing here rolls the whole settlement back for retry rather than
 	// persisting under-recorded usage.
-	group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID)
+	group, gerr := uc.groupRepo.GetGroupByIDInTx(ctx, tx, subscription.GroupID)
 	if gerr != nil {
 		return fmt.Errorf("lookup billing group %d for usage recording: %w", subscription.GroupID, gerr)
 	}
@@ -479,6 +479,14 @@ func (uc *SubscriptionUsecase) GetGroupForSubscription(ctx context.Context, subs
 		return nil, ErrSubscriptionNotFound
 	}
 	return uc.groupRepo.GetGroupByID(ctx, subscription.GroupID)
+}
+
+// GetGroupForSubscriptionInTx reads limits and multiplier in the caller transaction.
+func (uc *SubscriptionUsecase) GetGroupForSubscriptionInTx(ctx context.Context, tx Tx, subscription *UserSubscription) (*SubscriptionGroup, error) {
+	if subscription == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	return uc.groupRepo.GetGroupByIDInTx(ctx, tx, subscription.GroupID)
 }
 
 func (uc *SubscriptionUsecase) CheckQuota(ctx context.Context, userID int64, estimatedCost float64) (*QuotaCheckResult, error) {

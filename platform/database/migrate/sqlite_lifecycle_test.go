@@ -20,7 +20,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
@@ -148,12 +150,12 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 29, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 31, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := len(files) - 6 // last six files arrive later (084–089 incremental tail)
+	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql") // preserve the pre-price-normalization upgrade boundary
 
 	db := openScratchSqlite(t)
-	// Stage 1: apply the tree up to (not including) the last four files.
+	// Stage 1: apply the tree up to (not including) 084 and later.
 	stage1 := tempDirWithFiles(t, files[:cut], dir)
 	r1 := NewWithDriver(db, stage1, "sqlite3")
 	applied1, err := r1.Apply(context.Background())
@@ -252,4 +254,65 @@ func tempDirWithFiles(t *testing.T, names []string, srcDir string) string {
 		require.NoError(t, os.WriteFile(filepath.Join(dst, n), data, 0o644))
 	}
 	return dst
+}
+
+// A deployed baseline is already recorded as applied, so changing only 000
+// cannot repair timestamp scanning. Upgrade populated INTEGER columns, retain
+// GORM timestamp strings verbatim, and preserve amounts, indexes and sequences.
+func TestSQLiteDialect_TimestampUpgradePreservesLedger(t *testing.T) {
+	dir := sqliteDialectDir(t)
+	stage := t.TempDir()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".sql") || strings.HasPrefix(entry.Name(), "090_") || strings.HasPrefix(entry.Name(), "011_") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		require.NoError(t, err)
+		if strings.HasPrefix(entry.Name(), "000_") {
+			// Restore the previous INTEGER declarations for the affected tables.
+			text := string(body)
+			for _, table := range []string{"billing_reservations", "billing_ledgers", "billing_redeem_codes", "billing_redeem_records", "payment_orders", "account_receivables"} {
+				start := strings.Index(text, "CREATE TABLE IF NOT EXISTS "+table+" (")
+				end := start + strings.Index(text[start:], "\n);")
+				part := strings.ReplaceAll(text[start:end], "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP", "INTEGER DEFAULT 0")
+				part = strings.ReplaceAll(part, "DATETIME DEFAULT NULL", "INTEGER DEFAULT 0")
+				text = text[:start] + part + text[end:]
+			}
+			body = []byte(text)
+		}
+		require.NoError(t, os.WriteFile(filepath.Join(stage, entry.Name()), body, 0600))
+	}
+	db := openScratchSqlite(t)
+	_, err = NewWithDriver(db, stage, "sqlite3").Apply(context.Background())
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO billing_ledgers (id, user_id, amount, balance_after, type, ledger_dedupe_key, created_at)
+        VALUES (1, '1', 17, 983, 'consume', 'old-integer', 1700000000),
+               (2, '1', 23, 960, 'consume', 'old-string', '2026-09-09 01:02:03.123456789+00:00')`)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE sqlite_sequence SET seq = 999 WHERE name = 'billing_ledgers'`)
+	require.NoError(t, err)
+	var indexesBefore int
+	require.NoError(t, db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND tbl_name='billing_ledgers'`).Scan(&indexesBefore))
+	applied, err := NewWithDriver(db, dir, "sqlite3").Apply(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"011_add_channel_oneapi_fields", "090_fix_billing_timestamp_types"}, applied)
+	require.True(t, sqliteColumnExists(t, db, "channels", "model_mapping"))
+	var created time.Time
+	require.NoError(t, db.QueryRow(`SELECT created_at FROM billing_ledgers WHERE id=1`).Scan(&created))
+	require.Equal(t, int64(1700000000), created.Unix())
+	require.NoError(t, db.QueryRow(`SELECT created_at FROM billing_ledgers WHERE id=2`).Scan(&created))
+	require.Equal(t, 123456789, created.Nanosecond())
+	var total, balance, seq, indexesAfter int
+	require.NoError(t, db.QueryRow(`SELECT sum(amount), sum(balance_after) FROM billing_ledgers`).Scan(&total, &balance))
+	require.Equal(t, 40, total)
+	require.Equal(t, 1943, balance)
+	require.NoError(t, db.QueryRow(`SELECT seq FROM sqlite_sequence WHERE name='billing_ledgers'`).Scan(&seq))
+	require.Equal(t, 999, seq)
+	require.NoError(t, db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND tbl_name='billing_ledgers'`).Scan(&indexesAfter))
+	require.Equal(t, indexesBefore, indexesAfter)
+	again, err := NewWithDriver(db, dir, "sqlite3").Apply(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, again)
 }

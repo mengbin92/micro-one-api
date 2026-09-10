@@ -97,7 +97,7 @@ type SubscriptionPrimatives interface {
 	GetActiveSubscriptionForUserInTx(ctx context.Context, tx subscriptionbiz.Tx, userID int64) (*subscriptionbiz.UserSubscription, error)
 	// GetGroupForSubscription loads the subscription group (limits
 	// and multiplier) for the given subscription.
-	GetGroupForSubscription(ctx context.Context, subscription *subscriptionbiz.UserSubscription) (*subscriptionbiz.SubscriptionGroup, error)
+	GetGroupForSubscriptionInTx(ctx context.Context, tx subscriptionbiz.Tx, subscription *subscriptionbiz.UserSubscription) (*subscriptionbiz.SubscriptionGroup, error)
 	// RecordUsageForSubscriptionInTx adds the given USD cost to every
 	// window of the subscription's usage counters, performing the
 	// read-roll-increment in the caller's transaction.
@@ -511,7 +511,7 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 		if lockedID != subscription.ID {
 			lockedID = subscription.ID
 		}
-		group, gerr := uc.subscription.GetGroupForSubscription(ctx, lockedSub)
+		group, gerr := uc.subscription.GetGroupForSubscriptionInTx(ctx, tx, lockedSub)
 		if gerr != nil {
 			return gerr
 		}
@@ -952,6 +952,9 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 	if runner == nil {
 		return 0, 0, ErrCrossDBReservation
 	}
+	// Read dynamic prices before acquiring SQLite's single connection. Both
+	// user and upstream costs use this per-settlement snapshot.
+	pricing := uc.pricingConfig(ctx)
 	now := uc.Now().Unix()
 	var resultActualCost int64
 	var resultRefundAmount int64
@@ -986,12 +989,12 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		if err != nil {
 			return fmt.Errorf("get reservation in tx: %w", err)
 		}
-		account, err := uc.accountSnapshotInTx(ctx, tx, reservation.UserID)
+		account, err := uc.accountRepo.GetAccountSnapshotInTx(ctx, tx, reservation.UserID)
 		if err != nil {
 			return fmt.Errorf("get account in tx: %w", err)
 		}
 		usage.SubscriptionAccountID = resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
-		actualCost, costBreakdown, usageAudit := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
+		actualCost, costBreakdown, usageAudit := uc.calculateCostWithPricing(ctx, pricing, account.Group, reservation.Model, actualTokens, usage)
 		if actualCost <= 0 {
 			actualCost = 1
 		}
@@ -1058,7 +1061,7 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		// participate so each carries its own dedupe key. A pure-
 		// subscription commit (actualBalanceAmount == 0) writes only the
 		// subscription row, and vice versa.
-		upstreamCost := uc.calculateUpstreamCostWithUsage(ctx, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
+		upstreamCost := uc.calculateUpstreamCostWithPricing(pricing, parseInt64Default(reservation.ChannelID, 0), reservation.Model, actualTokens, usage)
 		// Emit the upstream-cost-recorded metric so the UpstreamCostMissing alert
 		// (deploy/prometheus/alerts/alerts.yml) can compare priced vs total traffic.
 		resultLabel := upstreamCostAuditStatus(upstreamCost, usage)
@@ -1221,7 +1224,7 @@ func (uc *BillingUsecase) commitSubscriptionAbsorbUSD(ctx context.Context, tx su
 	if err != nil || subscription == nil || subscription.ID != reservation.SubscriptionID {
 		return absorbUSD
 	}
-	group, err := uc.subscription.GetGroupForSubscription(ctx, subscription)
+	group, err := uc.subscription.GetGroupForSubscriptionInTx(ctx, tx, subscription)
 	if err != nil || group == nil {
 		return absorbUSD
 	}
@@ -1385,18 +1388,6 @@ func (uc *BillingUsecase) releaseReservationLegacy(ctx context.Context, reservat
 	}
 
 	return nil
-}
-
-func (uc *BillingUsecase) accountSnapshotInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string) (*Account, error) {
-	// Concrete account repos expose a per-transaction read. We fall
-	// back to a non-transactional snapshot when the repo does not.
-	type inTxAccount interface {
-		GetAccountSnapshotInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string) (*Account, error)
-	}
-	if r, ok := uc.accountRepo.(inTxAccount); ok {
-		return r.GetAccountSnapshotInTx(ctx, tx, userID)
-	}
-	return uc.accountRepo.GetAccountSnapshot(ctx, userID)
 }
 
 func (uc *BillingUsecase) GetAccountSnapshot(ctx context.Context, userID string) (*Account, error) {
@@ -1789,6 +1780,10 @@ func (uc *BillingUsecase) RedeemCode(ctx context.Context, userID, code string) (
 }
 
 func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
+	return uc.calculateCostWithPricing(ctx, uc.pricingConfig(ctx), group, model, actualTokens, usage)
+}
+
+func (uc *BillingUsecase) calculateCostWithPricing(ctx context.Context, pricing PricingConfig, group, model string, actualTokens int64, usage LedgerUsage) (int64, canonicalCostBreakdown, ledgerUsageAudit) {
 	// v0.11.0: when a per-token ModelPrice is configured, compute the full
 	// five-bucket canonical cost and select observe vs charge per
 	// BILLING_CACHE_CREATION_MODE (docs/design/token-usage-semantics.md §5).
@@ -1796,7 +1791,6 @@ func (uc *BillingUsecase) calculateCostWithUsage(ctx context.Context, group, mod
 	// path, which never charged cache-creation; observe mode is a no-op for
 	// them and charge mode is intentionally still a no-op until a ModelPrice
 	// is added (roadmap §1.3: unpriced -> v0.10.2 behaviour).
-	pricing := uc.pricingConfig(ctx)
 	price, ok := pricing.ModelPrices[normalizePricingModelKey(model)]
 	if !ok {
 		return uc.resolveRatioUserCost(pricing, group, model, actualTokens, usage)
@@ -2164,7 +2158,13 @@ func (uc *BillingUsecase) calculateUpstreamCostWithUsage(ctx context.Context, ch
 	if usage.UpstreamCost > 0 {
 		return usage.UpstreamCost
 	}
-	pricing := uc.pricingConfig(ctx)
+	return uc.calculateUpstreamCostWithPricing(uc.pricingConfig(ctx), channelID, model, actualTokens, usage)
+}
+
+func (uc *BillingUsecase) calculateUpstreamCostWithPricing(pricing PricingConfig, channelID int64, model string, actualTokens int64, usage LedgerUsage) int64 {
+	if usage.UpstreamCost > 0 {
+		return usage.UpstreamCost
+	}
 	// v0.11.0 Phase 2 §2.2: prefer the stable canonical cost key
 	// (channel:<id>:<upstream_model_id> / subscription:<id>:<upstream_model_id>),
 	// then fall back to the legacy <channel_id>:<public_model_id> key so

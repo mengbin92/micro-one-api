@@ -62,6 +62,7 @@ type GroupRepository interface {
 	UpdateGroup(ctx context.Context, group *SubscriptionGroup) error
 	DeleteGroup(ctx context.Context, groupID int64) error
 	GetGroupByID(ctx context.Context, groupID int64) (*SubscriptionGroup, error)
+	GetGroupByIDInTx(ctx context.Context, tx Tx, groupID int64) (*SubscriptionGroup, error)
 	GetGroupByName(ctx context.Context, name string) (*SubscriptionGroup, error)
 	ListGroups(ctx context.Context) ([]*SubscriptionGroup, error)
 }

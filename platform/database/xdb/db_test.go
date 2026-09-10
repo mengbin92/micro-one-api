@@ -139,6 +139,29 @@ func TestOpenSQLite3WithCustomPragma(t *testing.T) {
 	}
 }
 
+func TestWithSQLite3Pragmas(t *testing.T) {
+	cases := []struct {
+		name string
+		dsn  string
+		want string
+	}{
+		{name: "file DSN existing parameters", dsn: "file:/tmp/app.db?_busy_timeout=5000&_foreign_keys=on", want: "file:/tmp/app.db?_busy_timeout=5000&_foreign_keys=on&_journal_mode=WAL"},
+		{name: "file DSN no parameters", dsn: "file:/tmp/app.db", want: "file:/tmp/app.db?_journal_mode=WAL"},
+		{name: "path DSN existing parameters", dsn: "/tmp/app.db?_busy_timeout=5000", want: "/tmp/app.db?_busy_timeout=5000&_journal_mode=WAL"},
+		{name: "path DSN no parameters", dsn: "/tmp/app.db", want: "/tmp/app.db?_journal_mode=WAL"},
+		{name: "path explicit journal preserved", dsn: "/tmp/app.db?_journal_mode=DELETE", want: "/tmp/app.db?_journal_mode=DELETE"},
+		{name: "journal alias preserved", dsn: "file:/tmp/app.db?_journal=MEMORY", want: "file:/tmp/app.db?_journal=MEMORY"},
+		{name: "explicit journal mode preserved", dsn: "file:/tmp/app.db?_journal_mode=DELETE", want: "file:/tmp/app.db?_journal_mode=DELETE"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := withSQLite3Pragmas(tc.dsn); got != tc.want {
+				t.Fatalf("withSQLite3Pragmas(%q) = %q, want %q", tc.dsn, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSQLite3PoolConfig(t *testing.T) {
 	p := SQLite3PoolConfig()
 	if p == nil {

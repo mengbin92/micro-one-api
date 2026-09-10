@@ -263,9 +263,11 @@ CREATE TABLE IF NOT EXISTS billing_reservations (
   status TEXT NOT NULL,
   model TEXT DEFAULT NULL,
   channel_id TEXT DEFAULT NULL,
-  created_at INTEGER DEFAULT 0,
-  updated_at INTEGER DEFAULT 0,
-  expired_at INTEGER DEFAULT 0,
+  -- DATETIME (not INTEGER): GORM models map these to time.Time; mattn/go-sqlite3
+  -- only scans declared datetime columns back into time.Time (MySQL 008 parity).
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expired_at DATETIME DEFAULT NULL,
   subscription_account_id TEXT DEFAULT '0',
   subscription_id INTEGER NOT NULL DEFAULT 0,
   subscription_amount_usd REAL NOT NULL DEFAULT 0,
@@ -299,7 +301,7 @@ CREATE TABLE IF NOT EXISTS billing_ledgers (
   type TEXT NOT NULL,
   reference_id TEXT DEFAULT NULL,
   remark TEXT,
-  created_at INTEGER DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   token_name TEXT DEFAULT '',
   model_name TEXT DEFAULT '',
   quota INTEGER DEFAULT 0,
@@ -343,8 +345,8 @@ CREATE TABLE IF NOT EXISTS billing_redeem_codes (
   count INTEGER NOT NULL,
   status INTEGER NOT NULL DEFAULT 1,
   created_by TEXT DEFAULT NULL,
-  created_at INTEGER DEFAULT 0,
-  updated_at INTEGER DEFAULT 0
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_billing_redeem_codes_name              ON billing_redeem_codes(name);
@@ -359,7 +361,7 @@ CREATE TABLE IF NOT EXISTS billing_redeem_records (
   amount INTEGER NOT NULL,
   balance_before INTEGER NOT NULL,
   balance_after INTEGER NOT NULL,
-  created_at INTEGER DEFAULT 0
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_billing_redeem_records_user_id    ON billing_redeem_records(user_id);
@@ -383,9 +385,9 @@ CREATE TABLE IF NOT EXISTS payment_orders (
   provider_trade_no TEXT DEFAULT '',
   provider_payload TEXT,
   pay_url TEXT,
-  paid_at INTEGER DEFAULT 0,
-  created_at INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL DEFAULT 0,
+  paid_at DATETIME DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   asset_issue_status TEXT NOT NULL DEFAULT 'pending',
   group_id INTEGER NOT NULL DEFAULT 0,
   plan_id INTEGER NOT NULL DEFAULT 0,
@@ -611,9 +613,11 @@ CREATE TABLE IF NOT EXISTS account_receivables (
   overdue_quota INTEGER NOT NULL,
   overdue_usd REAL NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
-  created_at INTEGER DEFAULT 0,
-  updated_at INTEGER DEFAULT 0,
-  settled_at INTEGER DEFAULT 0,
+  -- DATETIME (not INTEGER): accountReceivableModel maps these to time.Time /
+  -- *time.Time (MySQL 046 datetime(3) parity).
+  created_at DATETIME DEFAULT NULL,
+  updated_at DATETIME DEFAULT NULL,
+  settled_at DATETIME DEFAULT NULL,
   settled_quota INTEGER NOT NULL DEFAULT 0,
   remark TEXT DEFAULT NULL
 );

@@ -8,7 +8,7 @@
 #   * Single-host write concurrency — fine for personal/team use, not
 #     suitable for high-throughput multi-instance production.
 #
-# See docs/deployment.md §4 "Lite deployment" and
+# See docs/quickstart-lite.md and
 # docs/design/issue-4-sqlite-solution.md for the full design rationale.
 #
 # Usage:
@@ -19,14 +19,13 @@
 #   docker compose -f docker-compose.lite.yml --env-file .env up -d
 #
 # A one-shot `migrate` service applies the SQLite3 baseline on first run.
-# Subsequent starts detect the existing schema and apply no further changes.
+# Subsequent starts apply pending incremental migrations only.
 
 services:
   # ────────────── Infrastructure ──────────────
 
   redis:
     image: redis:8.4
-    container_name: redis
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
     volumes:
       - redis_data:/data
@@ -39,6 +38,16 @@ services:
       timeout: 5s
       retries: 5
 
+  # Prepare the shared volume for the same unprivileged UID as all services.
+  # Only this short-lived container needs root; migrate also runs as 65534.
+  sqlite-init:
+    image: alpine:3.20
+    command: ["sh", "-ec", "chown 65534:65534 /data && chmod 700 /data"]
+    volumes:
+      - sqlite_data:/data
+    network_mode: none
+    restart: "no"
+
   # ────────────── One-shot migration ──────────────
   #
   # Builds the migrate binary, applies the SQLite3 baseline, and exits.
@@ -46,10 +55,13 @@ services:
   # persists across container restarts.
 
   migrate:
+    user: "65534:65534"
+    depends_on:
+      sqlite-init:
+        condition: service_completed_successfully
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.migrate
-    container_name: micro-one-api-migrate
     environment:
       - MIGRATIONS_DRIVER=sqlite3
       - MIGRATIONS_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
@@ -68,13 +80,10 @@ services:
       args:
         SERVICE_NAME: identity-service
         SERVICE_PATH: ./app/identity/cmd/identity
-    container_name: identity-service
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
-      - BILLING_CANONICAL_USAGE_MODE=${BILLING_CANONICAL_USAGE_MODE:-observe}
-      - BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST=${BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
@@ -86,6 +95,7 @@ services:
       - INITIAL_ADMIN_USERNAME=${INITIAL_ADMIN_USERNAME:-}
       - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL:-}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-}
+      - INITIAL_ADMIN_PASSWORD_FILE=/data/initial-admin-password.txt
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     depends_on:
@@ -113,7 +123,6 @@ services:
       args:
         SERVICE_NAME: channel-service
         SERVICE_PATH: ./app/channel/cmd/channel
-    container_name: channel-service
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
@@ -155,7 +164,6 @@ services:
       args:
         SERVICE_NAME: billing-service
         SERVICE_PATH: ./app/billing/cmd/billing
-    container_name: billing-service
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
@@ -163,6 +171,8 @@ services:
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - SERVICE_TOKEN=${SERVICE_TOKEN:?SERVICE_TOKEN is required}
+      - BILLING_CANONICAL_USAGE_MODE=${BILLING_CANONICAL_USAGE_MODE:-observe}
+      - BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST=${BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST:-}
       - PAYMENT_AMOUNT_PER_UNIT=${PAYMENT_AMOUNT_PER_UNIT:-${PAYMENT_QUOTA_PER_UNIT:-500000}}
       - ALIPAY_ENABLED=${ALIPAY_ENABLED:-false}
       - ALIPAY_FORM_URL=${ALIPAY_FORM_URL:-https://openapi-sandbox.dl.alipaydev.com/gateway.do}
@@ -208,7 +218,6 @@ services:
       args:
         SERVICE_NAME: config-service
         SERVICE_PATH: ./app/config/cmd/config
-    container_name: config-service
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
@@ -243,7 +252,6 @@ services:
       args:
         SERVICE_NAME: log-service
         SERVICE_PATH: ./app/log/cmd/log
-    container_name: log-service
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
@@ -278,7 +286,6 @@ services:
       args:
         SERVICE_NAME: monitor-worker
         SERVICE_PATH: ./app/monitor/cmd/monitor
-    container_name: monitor-worker
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
@@ -313,7 +320,6 @@ services:
       args:
         SERVICE_NAME: notify-worker
         SERVICE_PATH: ./app/notify/cmd/notify
-    container_name: notify-worker
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
@@ -359,7 +365,6 @@ services:
       args:
         SERVICE_NAME: relay-gateway
         SERVICE_PATH: ./cmd/relay-gateway
-    container_name: relay-gateway
     environment:
       - CONF_PATH=/configs/config.yaml
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
@@ -367,6 +372,8 @@ services:
       - BILLING_GRPC_ENDPOINT=billing-service:9004
       - LOG_GRPC_ENDPOINT=log-service:9006
       - RELAY_HTTP_ADDR=:8080
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - RELAY_CANONICAL_USAGE_PRODUCER=${RELAY_CANONICAL_USAGE_PRODUCER:-false}
       - UPSTREAM_TIMEOUT=300s
       - RELAY_PROVIDER_TIMEOUT=300s
@@ -378,7 +385,7 @@ services:
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     ports:
-      - "8080:8080"
+      - "${LITE_BIND_ADDRESS:-127.0.0.1}:${LITE_RELAY_PORT:-8080}:8080"
     depends_on:
       - identity-service
       - channel-service
@@ -405,7 +412,6 @@ services:
         SERVICE_NAME: admin-api
         SERVICE_PATH: ./app/admin/cmd/admin
         VITE_RECHARGE_AMOUNT_MULTIPLIER: ${RECHARGE_AMOUNT_MULTIPLIER:-10}
-    container_name: admin-api
     environment:
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
@@ -425,7 +431,7 @@ services:
       - LOG_LEVEL=info
       - LOG_FORMAT=json
     ports:
-      - "3000:8000"
+      - "${LITE_BIND_ADDRESS:-127.0.0.1}:${LITE_ADMIN_PORT:-3000}:8000"
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -9,6 +9,8 @@ import (
 
 type AccountRepo interface {
 	GetAccountSnapshot(ctx context.Context, userID string) (*Account, error)
+	// Reads through the caller transaction, without acquiring another connection.
+	GetAccountSnapshotInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string) (*Account, error)
 	BatchGetAccountSnapshots(ctx context.Context, userIDs []string) (map[string]*Account, error)
 	UpdateBalance(ctx context.Context, userID string, delta int64, operationType string) (int64, error)
 	UpdateBalanceInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, delta int64, operationType string) (int64, error)

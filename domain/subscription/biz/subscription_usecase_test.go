@@ -892,3 +892,7 @@ func TestAssignOrExtend_PropagatesDuplicateKeyFromDB(t *testing.T) {
 		t.Fatalf("AssignOrExtend() error = %v, want ErrSubscriptionAlreadyAssigned (DB unique index collision must propagate)", err)
 	}
 }
+
+func (m *mockSubscriptionRepo) GetGroupByIDInTx(ctx context.Context, _ Tx, groupID int64) (*SubscriptionGroup, error) {
+	return m.GetGroupByID(ctx, groupID)
+}

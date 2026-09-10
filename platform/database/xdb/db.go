@@ -121,9 +121,11 @@ func OpenSQLWithPool(driver, dsn string, pool *PoolConfig) (*sql.DB, error) {
 			pool = SQLite3PoolConfig()
 		}
 		// Open with the registered "sqlite3" driver (mattn/go-sqlite3).
-		// Pragmas are connection-local, so we apply defaults now and
-		// re-apply any caller-supplied list below.
-		db, err := sql.Open("sqlite3", dsn)
+		// Pragmas are connection-local; the DSN should therefore carry the
+		// deployment's required settings. Apply the defaults once on the
+		// initial connection as a compatibility fallback for callers that
+		// hand-built a minimal DSN.
+		db, err := sql.Open("sqlite3", withSQLite3Pragmas(dsn))
 		if err != nil {
 			return nil, err
 		}
@@ -340,6 +342,21 @@ func defaultSQLite3Pragmas() []string {
 		"PRAGMA foreign_keys = ON",
 		"PRAGMA synchronous = NORMAL",
 	}
+}
+
+// withSQLite3Pragmas carries the default journal mode into every physical
+// connection. Preserve an explicit mode, including mattn/go-sqlite3's alias.
+// The remaining defaults are applied by OpenSQLWithPool; deployments that
+// need connection-local settings on recycled connections should supply them
+// in the DSN, as the lite compose example does.
+func withSQLite3Pragmas(dsn string) string {
+	if strings.Contains(dsn, "_journal_mode=") || strings.Contains(dsn, "_journal=") {
+		return dsn
+	}
+	if strings.Contains(dsn, "?") {
+		return dsn + "&_journal_mode=WAL"
+	}
+	return dsn + "?_journal_mode=WAL"
 }
 
 // ResolveSchema picks the effective schema for a service connection.

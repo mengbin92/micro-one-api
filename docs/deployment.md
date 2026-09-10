@@ -665,6 +665,9 @@ Micro-One-API 在运行时支持 MySQL、SQLite3 和 Postgres 三种数据库方
 
 ### 9.1 Lite 部署（SQLite3）
 
+首次部署请直接使用 [SQLite Lite Quickstart](./quickstart-lite.md)，其中包含密钥生成、
+初始密码读取、端口、首个聊天请求以及停机备份/恢复。下面保留部署参数说明。
+
 Lite 模式去掉了 MySQL 容器和 `docker-entrypoint-initdb.d` 路径，数据落在一个可挂载的 SQLite3 文件卷中。`phase3_partitioning.sql` 在该模式下不适用：`internal/pkg/db.PartitionManager` 检测到非 MySQL 拨号器时会自动把 `Supported` 置为 `false`，所有分区维护调用变成 no-op。
 
 ```bash

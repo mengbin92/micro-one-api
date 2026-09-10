@@ -989,3 +989,7 @@ func TestReserveQuota_ZeroCost(t *testing.T) {
 	// 零成本请求最少需要 1 配额
 	assert.Equal(t, int64(1), reservation.Amount)
 }
+
+func (m *mockAccountRepo) GetAccountSnapshotInTx(ctx context.Context, _ subscriptionbiz.Tx, userID string) (*Account, error) {
+	return m.GetAccountSnapshot(ctx, userID)
+}
