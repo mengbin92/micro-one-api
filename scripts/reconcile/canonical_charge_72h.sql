@@ -24,6 +24,18 @@
 -- (1 ULP below 0.5) the addition x + 0.5 lands exactly halfway between
 -- 0.9999999999999999 and 1.0 and rounds to even 1.0, producing 1 where
 -- Go yields 0 (the glm-5.3-flash 200-completion bucket).
+--
+-- The legacy rebuild mirrors production legacyCanonicalBuckets: the flat
+-- prompt is reduced by cache_read ONLY when the producer is not
+-- PromptExclusive. PromptExclusive is not persisted on the ledger; it is
+-- derived here from the subscription account platform
+-- (claude/zhipu/minimax/kimi) or the channel type
+-- (2,4,17,27,33,34,35,36) -- the same inputs relay uses
+-- (internal/biz/usage.go IsPromptExclusiveChannel). usage_semantics is NOT
+-- the discriminator: a kimi/zhipu subscription /v1/responses row is
+-- openai_subset in envelope semantics but PromptExclusive in legacy cost,
+-- which the 2026-09-10 rollback drill exposed (17 K3 rows charged legacy
+-- full-prompt while the gate rebuilt prompt-minus-cache).
 
 SET @charge_deployed_at = TIMESTAMP('2026-09-06 02:40:07.806');
 SET @charge_source_hash = 'bc8fc070f270e9f88fc41ac5aa7932f88c10e9bd440ac2f1afa35bf174e2ebf0';
@@ -124,6 +136,14 @@ WITH window_references AS (
     MAX(l.source_kind) AS source_kind,
     MAX(l.upstream_model_id) AS upstream_model_id,
     MAX(l.subscription_account_id) AS subscription_account_id,
+    -- PromptExclusive per legacyCanonicalBuckets (see header): flat prompt is
+    -- reduced by cache_read only for non-exclusive producers.
+    MAX(CASE
+      WHEN l.source_kind = 'subscription'
+        AND sa.platform IN ('claude', 'zhipu', 'minimax', 'kimi') THEN 1
+      WHEN l.source_kind = 'channel'
+        AND c.type IN (2, 4, 17, 27, 33, 34, 35, 36) THEN 1
+      ELSE 0 END) AS prompt_exclusive,
     SUM(ABS(l.amount)) AS charged_cost,
     MAX(l.prompt_tokens) AS prompt_tokens,
     MAX(l.completion_tokens) AS completion_tokens,
@@ -147,6 +167,12 @@ WITH window_references AS (
     ON w.reference_id = l.reference_id
   JOIN oneapi_billing.billing_pricing_snapshots s
     ON s.config_hash = l.pricing_config_hash
+  LEFT JOIN oneapi_channel.subscription_accounts sa
+    ON l.source_kind = 'subscription'
+    AND sa.id = l.subscription_account_id
+  LEFT JOIN oneapi_channel.channels c
+    ON l.source_kind = 'channel'
+    AND c.id = l.channel_id
   WHERE l.type = 'consume'
     AND l.usage_contract_version = 1
     AND l.usage_parse_status IN ('verified', 'estimated')
@@ -164,7 +190,7 @@ WITH window_references AS (
     CAST(uncached_input_tokens AS DOUBLE) * CAST(input_price AS DOUBLE)
       * CAST(group_ratio AS DOUBLE) * 10000 AS raw_canon_input,
     CAST((CASE
-      WHEN usage_semantics = 'anthropic_exclusive' THEN prompt_tokens
+      WHEN prompt_exclusive = 1 THEN prompt_tokens
       ELSE GREATEST(prompt_tokens - cache_read_tokens, 0)
     END) AS DOUBLE) * CAST(input_price AS DOUBLE)
       * CAST(group_ratio AS DOUBLE) * 10000 AS raw_legacy_input,

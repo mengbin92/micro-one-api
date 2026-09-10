@@ -204,7 +204,21 @@ MySQL `DECIMAL ROUND` 精确舍入，在十进制 0.5 边界（float64 乘积低
 残留行桶组合、3903 个随机）在 MySQL 8.0 上验证与 Go `roundScaled` 零偏差；朴素
 `FLOOR(x+0.5)` 口径在同批用例上偏差 9 例，旧 DECIMAL 口径偏差 260 例。扩到下一
 来源（GLM-5.3 候选）前，必须先在冻结的 K3 窗口重跑本脚本，确认
-`nonallowlisted_wrong_cost` 由 8 降为 0。
+`nonallowlisted_wrong_cost` 由 8 降为 0（已于 2026-09-10 复核通过）。
+
+**legacy 重建按 PromptExclusive 口径（2026-09-10 回滚演练暴露并修复）**：生产
+`legacyCanonicalBuckets` 仅在 producer 非 PromptExclusive 时才从 flat prompt 中减去
+cache_read；PromptExclusive 的判别输入是订阅平台（claude/zhipu/minimax/kimi）或渠道
+类型（2/4/17/27/33/34/35/36，见 `internal/biz/usage.go`），**不是** ledger 的
+`usage_semantics`。kimi/zhipu 订阅的 `/v1/responses` 行 envelope 语义为
+openai_subset，legacy 仍按 prompt 全量 + cache_read 计价。门禁 SQL 据此 LEFT JOIN
+`oneapi_channel.subscription_accounts` / `oneapi_channel.channels` 推导逐行口径；
+该列未持久化在 ledger 上，若未来新增订阅平台或渠道类型，须同步两处清单。
+
+**回滚演练（2026-09-10）**：仅切 `BILLING_CANONICAL_USAGE_MODE=observe` 并重建
+billing-service 即完成回滚，无 schema 变更。observe 阶段 19 条 K3 全部按 legacy 实扣
+（17 条高于 canonical），切回 charge 后 2 条全部按 canonical 实扣（1 条低于
+legacy）；两阶段幂等与多重集一致，恢复后 allowlist SHA-256 无漂移。
 
 ### 固定月费订阅的供应商证据口径
 
