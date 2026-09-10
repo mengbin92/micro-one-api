@@ -6,3 +6,5 @@ b6de4899c1c711a43d83136726c763b63a037703:docs/community-promotion-blog.md:curl-a
 644d962eb8236dcd41beeb906413ab165cd6bbc8:web/src/components/CCSwitchDialog.test.tsx:generic-api-key:10
 ff55afacb81e41cf6210de1d36ec50932f04ed4c:cmd/relay-gateway/config_loader_test.go:generic-api-key:28
 479ef3d95637500000f5d69849ed053ac79a2194:scripts/test-e2e-flow.sh:generic-api-key:105
+# Historical Lite example: deterministic repeated hexadecimal placeholder, never a deployed secret.
+10f94db099f9e2eedac206fa05baeb8f502bc054:deployments/docker-compose/.env.lite.example:generic-api-key:22
