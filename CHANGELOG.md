@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-09-10
+
+v0.28.0 是 v0.27.0 之后的 **MINOR 模型可观测性版本**：新增按来源与上游模型粒度的被动模型健康监测与管理台看板，修复多轮 `/v1/responses` Websocket 连接按累计 usage 重复计费的问题，并把 404 模型不可用判定收窄到 API 形状响应体。proto additive（`channel.v1` 新增 `RecordModelHealth` / `ListModelHealth`）；MySQL / SQLite / PostgreSQL 三方言新增迁移 `091`；无新增必填配置，不改变路由与计费决策。详见 [release-v0.28.0.md](docs/releases/release-v0.28.0.md)。
+
 ## [0.27.0] - 2026-09-10
 
 v0.27.0 是 v0.26.6 之后的 **MINOR Lite 部署与账务审计版本**：修复 SQLite Lite 结算自等待和方言 schema 缺口，新增空环境 Quickstart / smoke / 脱敏演示与只读历史 usage 审计工具，固化 canonical charge 门禁的 float64 与 PromptExclusive 口径，并升级安全依赖。无公共 API / proto 变更；MySQL 无新增迁移，SQLite / PostgreSQL 包含方言迁移 `011` 与 `090`。详见 [release-v0.27.0.md](docs/releases/release-v0.27.0.md)。
