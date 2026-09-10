@@ -52,6 +52,9 @@ if grafana_password in ("", "admin"):
 }
 
 validate_compose .env.example -f docker-compose.yml
+# Lite intentionally ships without a key. Generate one for this validation only;
+# keep the deployment's required-key guard and example unchanged.
+CHANNEL_ENCRYPTION_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(16))')" \
 validate_compose .env.lite.example -f docker-compose.lite.yml
 validate_compose .env.postgres.example -f docker-compose.postgres.yml
 validate_compose .env.example \

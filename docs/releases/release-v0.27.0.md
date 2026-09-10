@@ -2,8 +2,8 @@
 
 > 2026-09-10 · 上一版：[v0.26.6](./release-v0.26.6.md)（2026-09-06）· [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.27.0)
 
-v0.27.0 是 v0.26.6 之后的 **MINOR Lite 部署与账务审计版本**，包含 13 个提交
-（2 feat/fix 功能 + 3 build/deps/security + 5 docs + 1 merge + 2 发布前修复）。它修复
+v0.27.0 是 v0.26.6 之后的 **MINOR Lite 部署与账务审计版本**，包含 14 个提交
+（2 feat/fix 功能 + 3 build/deps/security + 5 docs + 1 merge + 3 发布前修复，不含发布文档提交）。它修复
 SQLite Lite 从空环境到首个聊天请求的结算死锁和方言 schema 缺口，补齐可重复部署
 Quickstart 与只读历史账务审计入口，并固化 K3 canonical charge 的验收 SQL 口径与
 安全依赖基线。
@@ -103,6 +103,16 @@ Token 到首个聊天请求的完整验证路径；LLM 计费链路和三协议�
 
 **影响服务**：发布制品中的 Go/Web 依赖基线与 Lite 部署安全默认值。
 
+## 6. 部署检查适配 Lite 必填密钥
+
+**根因**：Lite 示例清空加密密钥后，部署文档检查仍直接加载示例，导致 Compose 在
+`CHANNEL_ENCRYPTION_KEY` 必填校验处退出，CI 的 Deployment and docs drift 失败。
+
+**修复**：仅为 Lite 静态配置检查生成一次性随机 32 字节 ASCII 密钥，作用域限制在
+该次检查；示例继续留空，真实部署仍要求用户提供密钥。
+
+**影响服务**：CI 部署配置检查脚本，无服务运行时或部署安全策略变更。
+
 ## 兼容性说明
 
 - **API / proto**：无新增或破坏性公共 API、HTTP 路由或 proto 变更。
@@ -151,6 +161,8 @@ git checkout v0.27.0
 - 冻结 K3 72h 窗口在 float64 与 PromptExclusive 修订后复验 `0/0`；配置-only 回滚演练
   双向行为证据通过。
 - `npm audit` 0 vulnerabilities；Trivy 0.70.0 无 high/critical；govulncheck 无受影响代码。
+- 清除 shell 中的 `CHANNEL_ENCRYPTION_KEY` 后，部署检查通过四组 Compose、Kubernetes
+  schema / 引用和本地 Markdown 链接校验；直接使用空密钥的 Lite Compose 仍拒绝渲染。
 
 ## 完整变更日志
 
@@ -166,3 +178,4 @@ git checkout v0.27.0
 - docs(design): add protocol conversion guide for Chat/Responses/Messages
 - fix(reconcile): replicate production float64 rounding in charge gate SQL
 - fix(reconcile): rebuild legacy cost with PromptExclusive semantics
+- fix(ci): generate an ephemeral key for Lite manifest validation
