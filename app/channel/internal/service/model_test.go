@@ -15,6 +15,7 @@ type modelServiceRepo struct {
 	models  map[int64]*biz.Model
 	nextID  int64
 	aliases map[int64]*biz.ModelAlias
+	health  []*biz.ModelHealthState
 }
 
 func newModelServiceRepo() *modelServiceRepo {
@@ -161,6 +162,17 @@ func (r *modelServiceRepo) ListModelUsageStats(ctx context.Context, modelPK int6
 	return nil, 0, nil
 }
 
+func (r *modelServiceRepo) RecordModelHealth(_ context.Context, outcome *biz.ModelHealthOutcome) error {
+	state := &biz.ModelHealthState{ID: 1, SourceKind: outcome.SourceKind, SourceID: outcome.SourceID, ModelID: outcome.ModelID, UpstreamModelID: outcome.UpstreamModelID}
+	biz.ApplyModelHealthOutcome(state, outcome)
+	r.health = []*biz.ModelHealthState{state}
+	return nil
+}
+
+func (r *modelServiceRepo) ListModelHealth(context.Context, int32, int32, biz.ListModelHealthFilter) ([]*biz.ModelHealthState, int64, error) {
+	return r.health, int64(len(r.health)), nil
+}
+
 // v0.11.0 Phase 2 §2.1: canonical model ID governance — stubs.
 func (r *modelServiceRepo) CanonicalModelPreflight(ctx context.Context) (*biz.PreflightReport, error) {
 	return &biz.PreflightReport{}, nil
@@ -212,6 +224,26 @@ func TestChannelService_ListModels(t *testing.T) {
 	}
 	if resp.Models[0].ModelId != "gpt-4o" {
 		t.Fatalf("unexpected model_id: %s", resp.Models[0].ModelId)
+	}
+}
+
+func TestChannelService_RecordAndListModelHealth(t *testing.T) {
+	svc := newModelService()
+	ctx := context.Background()
+	recorded, err := svc.RecordModelHealth(ctx, &channelv1.RecordModelHealthRequest{
+		SourceKind: "channel", SourceId: 3, ModelId: "GPT-4o",
+		UpstreamModelId: "gpt-4o-2026", Success: false, Error: "upstream 503", ResponseTime: 250,
+	})
+	if err != nil || !recorded.GetSuccess() {
+		t.Fatalf("RecordModelHealth() = %+v, %v", recorded, err)
+	}
+	listed, err := svc.ListModelHealth(ctx, &channelv1.ListModelHealthRequest{Page: 1, PageSize: 10})
+	if err != nil || len(listed.GetStates()) != 1 {
+		t.Fatalf("ListModelHealth() = %+v, %v", listed, err)
+	}
+	state := listed.GetStates()[0]
+	if state.GetModelId() != "gpt-4o" || state.GetStatus() != biz.ModelHealthDegraded {
+		t.Fatalf("state = %+v", state)
 	}
 }
 

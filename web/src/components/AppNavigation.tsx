@@ -2,11 +2,12 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  ArrowLeft,
   BadgeCheck,
   BarChart3,
   Boxes,
   BookOpen,
-  ChevronsLeft,
+  ChevronDown,
   CreditCard,
   Database,
   FlaskConical,
@@ -56,6 +57,11 @@ interface SecondaryNavItem {
   to?: string;
 }
 
+interface AdminNavGroup {
+  label: string;
+  items: NavItem[];
+}
+
 const userLinks: NavItem[] = [
   { to: '/dashboard', label: '仪表盘', icon: LayoutDashboard },
   { to: '/tokens', label: 'API 密钥', icon: KeyRound },
@@ -73,25 +79,52 @@ const secondaryUserLinks: SecondaryNavItem[] = [
   { label: '兑换码', icon: Gift, to: '/redeem' },
 ];
 
-const adminLinks: NavItem[] = [
-  { to: '/admin', label: '总览', icon: MonitorCog },
-  { to: '/admin/users', label: '用户', icon: Users },
-  { to: '/admin/channels', label: '渠道', icon: Database },
-  { to: '/admin/models', label: '模型', icon: Boxes },
-  { to: '/admin/subscription-accounts', label: '订阅账号', icon: IdCard },
-  { to: '/admin/subscription-groups', label: '订阅分组', icon: Layers },
-  { to: '/admin/subscription-plans', label: '订阅套餐', icon: Package },
-  { to: '/admin/subscriptions', label: '用户订阅', icon: BadgeCheck },
-  { to: '/admin/channel-health', label: '健康监控', icon: Activity },
-  { to: '/admin/cost-analysis', label: '成本分析', icon: TrendingUp },
-  { to: '/admin/routing-ops', label: '路由运营', icon: Route },
-  { to: '/admin/pricing', label: '模型价格', icon: ReceiptText },
-  { to: '/admin/upstream-costs', label: '上游成本', icon: WalletCards },
-  { to: '/admin/logs', label: '日志', icon: ScrollText },
-  { to: '/admin/payment-orders', label: '订单', icon: CreditCard },
-  { to: '/admin/reconciliation', label: '对账', icon: Scale },
-  { to: '/admin/redemptions', label: '兑换码', icon: Ticket },
-  { to: '/admin/options', label: '设置', icon: Settings2 },
+const adminOverviewLink: NavItem[] = [
+  { to: '/admin', label: '运营总览', icon: MonitorCog },
+];
+
+const adminSystemLink: NavItem[] = [
+  { to: '/admin/options', label: '系统设置', icon: Settings2 },
+];
+
+const adminNavGroups: AdminNavGroup[] = [
+  {
+    label: '资源与路由',
+    items: [
+      { to: '/admin/channels', label: '渠道管理', icon: Database },
+      { to: '/admin/models', label: '模型目录', icon: Boxes },
+      { to: '/admin/subscription-accounts', label: '订阅账号', icon: IdCard },
+      { to: '/admin/subscription-groups', label: '账号分组', icon: Layers },
+      { to: '/admin/routing-ops', label: '路由策略', icon: Route },
+    ],
+  },
+  {
+    label: '监控与分析',
+    items: [
+      { to: '/admin/channel-health', label: '渠道健康', icon: Activity },
+      { to: '/admin/model-health', label: '模型健康', icon: Activity },
+      { to: '/admin/logs', label: '调用日志', icon: ScrollText },
+      { to: '/admin/cost-analysis', label: '经营分析', icon: TrendingUp },
+    ],
+  },
+  {
+    label: '用户与产品',
+    items: [
+      { to: '/admin/users', label: '用户管理', icon: Users },
+      { to: '/admin/subscription-plans', label: '订阅套餐', icon: Package },
+      { to: '/admin/subscriptions', label: '用户订阅', icon: BadgeCheck },
+      { to: '/admin/redemptions', label: '兑换码', icon: Ticket },
+    ],
+  },
+  {
+    label: '计费与财务',
+    items: [
+      { to: '/admin/pricing', label: '销售定价', icon: ReceiptText },
+      { to: '/admin/upstream-costs', label: '上游成本', icon: WalletCards },
+      { to: '/admin/payment-orders', label: '支付订单', icon: CreditCard },
+      { to: '/admin/reconciliation', label: '账务对账', icon: Scale },
+    ],
+  },
 ];
 
 const routeTitles: Record<string, string> = {
@@ -106,19 +139,21 @@ const routeTitles: Record<string, string> = {
   '/orders': '我的订单',
   '/profile': '个人资料',
   '/subscriptions': '我的订阅',
-  '/admin': '管理总览',
+  '/admin': '运营总览',
   '/admin/users': '用户管理',
   '/admin/channels': '渠道管理',
-  '/admin/models': '模型管理',
+  '/admin/models': '模型目录',
   '/admin/subscription-accounts': '订阅账号管理',
   '/admin/subscription-groups': '订阅分组',
   '/admin/subscriptions': '用户订阅',
-  '/admin/channel-health': '健康监控',
-  '/admin/cost-analysis': '成本分析',
-  '/admin/routing-ops': '路由运营',
-  '/admin/pricing': '模型价格',
+  '/admin/subscription-plans': '订阅套餐',
+  '/admin/channel-health': '渠道健康',
+  '/admin/model-health': '模型健康',
+  '/admin/cost-analysis': '经营分析',
+  '/admin/routing-ops': '路由策略',
+  '/admin/pricing': '销售定价',
   '/admin/upstream-costs': '上游成本',
-  '/admin/logs': '系统日志',
+  '/admin/logs': '调用日志',
   '/admin/payment-orders': '支付订单',
   '/admin/reconciliation': '账务对账',
   '/admin/redemptions': '兑换码',
@@ -132,9 +167,11 @@ function formatBalance(value?: number) {
 function NavigationLinks({
   items,
   onNavigate,
+  compact = false,
 }: {
   items: NavItem[];
   onNavigate?: () => void;
+  compact?: boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -148,7 +185,8 @@ function NavigationLinks({
             aria-label={t(link.label)}
             className={({ isActive }) =>
               cn(
-                'flex h-12 items-center gap-3 rounded-2xl px-4 text-sm font-medium transition-colors',
+                'flex items-center gap-3 text-sm font-medium transition-colors',
+                compact ? 'h-10 rounded-xl px-3' : 'h-12 rounded-2xl px-4',
                 isActive
                   ? 'bg-accent text-accent-foreground'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -233,8 +271,26 @@ export function AppNavigation() {
   const { data: user } = useQuery(userSelfQueryOptions);
   const { data: account } = useQuery(accountDashboardQueryOptions);
   const role = typeof user?.role === 'number' ? user.role : storedRole;
-  const isWide = useMediaQuery('(min-width: 768px)');
+  const isWide = useMediaQuery('(min-width: 1024px)');
   const isAdmin = canAccessAdmin({ role });
+  const isAdminRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
+  const activeAdminGroup = adminNavGroups.find((group) => group.items.some((item) => (
+    location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+  )))?.label;
+  // group: '' = explicitly all-collapsed, null = follow the active route's
+  // group. The disclosure is keyed to the pathname it was made on and resets
+  // when the route changes, so a manual toggle on one route cannot resurrect
+  // itself when the user navigates back to an older path.
+  const [adminNavDisclosure, setAdminNavDisclosure] = useState<{ path: string; group: string | null }>({
+    path: location.pathname,
+    group: null,
+  });
+  if (adminNavDisclosure.path !== location.pathname) {
+    setAdminNavDisclosure({ path: location.pathname, group: null });
+  }
+  const expandedAdminGroup = adminNavDisclosure.path === location.pathname && adminNavDisclosure.group !== null
+    ? adminNavDisclosure.group
+    : activeAdminGroup;
   const effectiveMobileOpen = !isWide && mobileOpen;
   const currentTitle = t(routeTitles[location.pathname] ?? '仪表盘');
   const displayName = user?.display_name || user?.username || t("用户");
@@ -260,53 +316,78 @@ export function AppNavigation() {
 
   const adminControl = isAdmin ? (
     <Link
-      to="/admin"
-      aria-label={t("进入管理")}
+      to={isAdminRoute ? '/dashboard' : '/admin'}
+      aria-label={t(isAdminRoute ? '返回控制台' : '进入管理')}
       className={buttonVariants({ variant: 'outline', size: 'sm' })}
-      onMouseEnter={() => preloadRoute('/admin')}
-      onFocus={() => preloadRoute('/admin')}
+      onMouseEnter={() => preloadRoute(isAdminRoute ? '/dashboard' : '/admin')}
+      onFocus={() => preloadRoute(isAdminRoute ? '/dashboard' : '/admin')}
     >
-      <MonitorCog className="size-4" />{t("进入管理")}</Link>
+      {isAdminRoute ? <ArrowLeft className="size-4" /> : <MonitorCog className="size-4" />}
+      <span className="hidden sm:inline">{t(isAdminRoute ? '返回控制台' : '进入管理')}</span>
+    </Link>
   ) : null;
 
   const sidebar = (
     <div className="flex h-full flex-col bg-sidebar supports-backdrop-filter:bg-sidebar/70 supports-backdrop-filter:backdrop-blur-xl supports-backdrop-filter:backdrop-saturate-[1.8]">
-      <div className="flex h-20 items-center border-b border-border px-6">
+      <div className="flex h-20 shrink-0 items-center border-b border-border px-6">
         <div className="flex items-center gap-3">
           <img src="/logo-icon.svg" alt="" aria-hidden="true" className="size-10 shrink-0 rounded-xl" />
           <div>
             <div className="text-lg font-semibold tracking-normal text-foreground">Micro-One API</div>
-            <div className="text-xs font-medium text-muted-foreground">{t('网关控制台')}</div>
+            <div className="text-xs font-medium text-muted-foreground">{t(isAdminRoute ? '管理控制台' : '网关控制台')}</div>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <p className="mb-3 px-4 text-xs font-medium text-muted-foreground">{t("核心功能")}</p>
-        <NavigationLinks items={userLinks} onNavigate={() => setMobileOpen(false)} />
-
-        <p className="mb-3 mt-7 px-4 text-xs font-medium text-muted-foreground">{t("钱包 & 活动")}</p>
-        <SecondaryLinks onNavigate={() => setMobileOpen(false)} />
-
-        {isAdmin && (
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+        {isAdminRoute && isAdmin ? (
           <>
-            <p className="mb-3 mt-7 px-4 text-xs font-medium text-muted-foreground">{t("管理后台")}</p>
-            <NavigationLinks items={adminLinks} onNavigate={() => setMobileOpen(false)} />
+            <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('管理工作台')}</p>
+            <NavigationLinks items={adminOverviewLink} compact onNavigate={() => setMobileOpen(false)} />
+            <div className="mt-4 space-y-1">
+              {adminNavGroups.map((group) => {
+                const expanded = expandedAdminGroup === group.label;
+                return (
+                  <section key={group.label}>
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      onClick={() => setAdminNavDisclosure({ path: location.pathname, group: expanded ? '' : group.label })}
+                      className="flex h-10 w-full items-center justify-between rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <span>{t(group.label)}</span>
+                      <ChevronDown className={cn('size-4 transition-transform', expanded && 'rotate-180')} />
+                    </button>
+                    {expanded && <NavigationLinks items={group.items} compact onNavigate={() => setMobileOpen(false)} />}
+                  </section>
+                );
+              })}
+            </div>
+            <div className="mt-4 border-t border-border pt-4">
+              <NavigationLinks items={adminSystemLink} compact onNavigate={() => setMobileOpen(false)} />
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="mb-3 px-4 text-xs font-medium text-muted-foreground">{t('核心功能')}</p>
+            <NavigationLinks items={userLinks} onNavigate={() => setMobileOpen(false)} />
+
+            <p className="mb-3 mt-7 px-4 text-xs font-medium text-muted-foreground">{t('钱包 & 活动')}</p>
+            <SecondaryLinks onNavigate={() => setMobileOpen(false)} />
           </>
         )}
       </div>
 
-      <div className="border-t border-border p-4">
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold text-foreground/70 hover:bg-muted"
-        >
-          <ChevronsLeft className="size-5" />
-          <span>
-            <span className="block text-foreground">{t("收起侧边栏")}</span>
-            <span className="block text-xs font-medium text-muted-foreground">{t("为内容保留更多空间")}</span>
-          </span>
-        </button>
+      <div className="shrink-0 border-t border-border p-4">
+        {isAdminRoute && (
+          <Link to="/dashboard" onClick={() => setMobileOpen(false)} className="flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+            <ArrowLeft className="size-5" />{t('返回用户控制台')}
+          </Link>
+        )}
+        <div className="mt-3 flex items-center justify-center gap-2 lg:hidden">
+          <LanguageToggle className="gap-2" />
+          <ThemeToggle />
+        </div>
         <div className="mt-3 flex justify-center gap-3 text-xs text-muted-foreground">
           <Link to="/terms" onClick={() => setMobileOpen(false)} className="hover:text-foreground hover:underline">{t("用户协议")}</Link>
           <Link to="/privacy" onClick={() => setMobileOpen(false)} className="hover:text-foreground hover:underline">{t("隐私政策")}</Link>
@@ -317,34 +398,38 @@ export function AppNavigation() {
 
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border md:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border lg:block">
         {sidebar}
       </aside>
 
-      <header className="fixed left-0 right-0 top-0 z-20 border-b border-border bg-background/95 backdrop-blur md:left-64">
-        <div className="flex h-20 items-center gap-3 px-4 sm:px-5 md:px-8 xl:px-10">
-          <div className="flex items-center gap-3 md:hidden">
+      <header className="fixed left-0 right-0 top-0 z-20 border-b border-border bg-background/95 backdrop-blur lg:left-64">
+        <div className="flex h-20 items-center gap-3 px-4 sm:px-5 lg:px-8 xl:px-10">
+          <div className="flex items-center gap-3 lg:hidden">
             <MobileNav open={effectiveMobileOpen} onOpenChange={setMobileOpen}>
               {sidebar}
             </MobileNav>
           </div>
 
-          <h1 className="min-w-0 text-xl font-bold tracking-normal text-foreground sm:text-2xl">
+          <h1 className="min-w-0 truncate text-lg font-bold tracking-normal text-foreground sm:text-2xl">
             {currentTitle}
           </h1>
 
-          <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
-            <LanguageToggle className="gap-2" />
-            <div className="hidden h-10 items-center gap-2 rounded-2xl bg-emerald-50 px-4 text-sm font-semibold text-emerald-600 sm:flex dark:bg-emerald-500/10 dark:text-emerald-300">
+          <div className="ml-auto flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
+            <div className="hidden md:block">
+              <LanguageToggle className="gap-2" />
+            </div>
+            <div className={cn('h-10 items-center gap-2 rounded-2xl bg-emerald-50 px-4 text-sm font-semibold text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300', isAdminRoute ? 'hidden' : 'hidden xl:flex')}>
               <WalletCards className="size-4" />
               {formatBalance(account?.balance)}
             </div>
-            <ThemeToggle />
+            <div className="hidden md:block">
+              <ThemeToggle />
+            </div>
             {isAdmin && <NotificationPanel open={notificationOpen} onOpenChange={setNotificationOpen} />}
             {adminControl}
             <button
               type="button"
-              className="hidden min-w-0 items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm sm:flex"
+              className="hidden min-w-0 items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm xl:flex"
             >
               <span className="grid size-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-sm font-semibold text-white">
                 {initials}
@@ -353,7 +438,7 @@ export function AppNavigation() {
                 <span className="block max-w-36 truncate text-sm font-semibold text-foreground">
                   {displayName}
                 </span>
-                <span className="block text-xs font-medium text-muted-foreground">{t("控制台用户")}</span>
+                <span className="block text-xs font-medium text-muted-foreground">{t(isAdminRoute ? '管理员' : '控制台用户')}</span>
               </span>
             </button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label={t('退出登录')} onClick={handleLogout}>

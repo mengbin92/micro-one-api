@@ -53,16 +53,37 @@ describe('AppNavigation', () => {
     expect(screen.getByRole('link', { name: 'API 密钥' })).toBeInTheDocument();
   });
 
-  it('shows admin links when the current user has admin role', async () => {
+  it('keeps user navigation focused and exposes the admin entry for admins', async () => {
     window.localStorage.setItem('userRole', '10');
     mockSelf(10);
 
     renderNavigation();
 
-    expect(await screen.findByRole('link', { name: '用户' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '订单' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '设置' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '进入管理' })).toHaveAttribute('href', '/admin');
+    expect(await screen.findByRole('link', { name: '进入管理' })).toHaveAttribute('href', '/admin');
+    expect(screen.queryByRole('link', { name: '用户管理' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '仪表盘' })).toBeInTheDocument();
+  });
+
+  it('groups admin navigation by business area and hides user menus', async () => {
+    window.localStorage.setItem('userRole', '10');
+    mockSelf(10);
+    const user = userEvent.setup();
+
+    renderNavigation('/admin/users');
+
+    expect(await screen.findByText('资源与路由')).toBeInTheDocument();
+    expect(screen.getByText('监控与分析')).toBeInTheDocument();
+    expect(screen.getByText('用户与产品')).toBeInTheDocument();
+    expect(screen.getByText('计费与财务')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '用户管理' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '系统设置' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '渠道管理' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '仪表盘' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: '返回控制台' })[0]).toHaveAttribute('href', '/dashboard');
+
+    await user.click(screen.getByRole('button', { name: '资源与路由' }));
+    expect(screen.getByRole('link', { name: '渠道管理' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '用户管理' })).not.toBeInTheDocument();
   });
 
   it('only highlights admin overview on the exact admin route', async () => {
@@ -71,8 +92,8 @@ describe('AppNavigation', () => {
 
     renderNavigation('/admin/users');
 
-    const overviewLink = await screen.findByRole('link', { name: '总览' });
-    const usersLink = screen.getByRole('link', { name: '用户' });
+    const overviewLink = await screen.findByRole('link', { name: '运营总览' });
+    const usersLink = screen.getByRole('link', { name: '用户管理' });
     expect(overviewLink).not.toHaveAttribute('aria-current');
     expect(usersLink).toHaveAttribute('aria-current', 'page');
   });
@@ -94,7 +115,7 @@ describe('AppNavigation', () => {
 
     renderNavigation();
 
-    expect(await screen.findByRole('link', { name: '用户' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '进入管理' })).toBeInTheDocument();
     expect(window.localStorage.getItem('userRole')).toBe('10');
     expect(window.localStorage.getItem('userId')).toBe('42');
   });
@@ -144,7 +165,8 @@ describe('AppNavigation', () => {
     renderNavigation();
 
     expect(screen.getByRole('heading', { name: '仪表盘' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '切换至英文' }));
+    // 顶栏与移动端抽屉菜单中各有一个语言切换按钮，点击任意一个即可
+    await user.click(screen.getAllByRole('button', { name: '切换至英文' })[0]);
 
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();

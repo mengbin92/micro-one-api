@@ -432,6 +432,10 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 			refreshTask.Stop()
 		}
 		stopBlockerReporter()
+
+		if channelAdapter != nil {
+			_ = channelAdapter.Close()
+		}
 		if authCache != nil {
 			_ = authCache.Close()
 		}

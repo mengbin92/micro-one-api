@@ -68,6 +68,9 @@ const AdminReconciliationPage = lazy(() =>
 const AdminChannelHealthPage = lazy(() =>
   routeLoaders['/admin/channel-health']().then((m) => ({ default: m.ChannelHealthPage }))
 );
+const AdminModelHealthPage = lazy(() =>
+  routeLoaders['/admin/model-health']().then((m) => ({ default: m.ModelHealthPage }))
+);
 const AdminCostAnalysisPage = lazy(() =>
   routeLoaders['/admin/cost-analysis']().then((m) => ({ default: m.CostAnalysisPage }))
 );
@@ -195,6 +198,10 @@ export const router = createBrowserRouter([
           {
             path: 'channel-health',
             element: withSuspense(<AdminChannelHealthPage />),
+          },
+          {
+            path: 'model-health',
+            element: withSuspense(<AdminModelHealthPage />),
           },
           {
             path: 'pricing',

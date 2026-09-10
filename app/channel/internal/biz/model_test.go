@@ -706,3 +706,42 @@ func TestNormalizeModelID_TrimsAndLowercases(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyModelHealthOutcome_DegradesAndRecovers(t *testing.T) {
+	state := &ModelHealthState{}
+	for i := 0; i < 3; i++ {
+		ApplyModelHealthOutcome(state, &ModelHealthOutcome{Error: "upstream unavailable", ResponseTimeMs: 100, CheckedAt: int64(i + 1)})
+	}
+	if state.Status != ModelHealthUnavailable || state.ConsecutiveFailures != 3 || state.FailureCount != 3 {
+		t.Fatalf("failure state = %+v", state)
+	}
+	ApplyModelHealthOutcome(state, &ModelHealthOutcome{Success: true, ResponseTimeMs: 200, CheckedAt: 4})
+	if state.Status != ModelHealthHealthy || state.ConsecutiveFailures != 0 || state.LastError != "" {
+		t.Fatalf("recovered state = %+v", state)
+	}
+	if state.AvgLatencyMs != 125 {
+		t.Fatalf("average latency = %d, want 125", state.AvgLatencyMs)
+	}
+}
+
+func TestApplyModelHealthOutcome_KeepsExactRunningAverage(t *testing.T) {
+	state := &ModelHealthState{}
+	for index, latency := range []int64{1, 2, 3} {
+		ApplyModelHealthOutcome(state, &ModelHealthOutcome{
+			Success: true, ResponseTimeMs: latency, CheckedAt: int64(index + 1),
+		})
+	}
+	if state.AvgLatencyMs != 2 {
+		t.Fatalf("average latency = %d, want 2", state.AvgLatencyMs)
+	}
+}
+
+func TestApplyModelHealthOutcome_SeedsAccumulatorForExistingSnapshot(t *testing.T) {
+	state := &ModelHealthState{RequestCount: 4, AvgLatencyMs: 125}
+	ApplyModelHealthOutcome(state, &ModelHealthOutcome{
+		Success: true, ResponseTimeMs: 500, CheckedAt: 5,
+	})
+	if state.TotalLatencyMs != 1_000 || state.AvgLatencyMs != 200 {
+		t.Fatalf("latency state = total %d, average %d; want total 1000, average 200", state.TotalLatencyMs, state.AvgLatencyMs)
+	}
+}

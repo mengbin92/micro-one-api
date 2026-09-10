@@ -100,6 +100,7 @@ type mockChannelSelector struct {
 	channels     []*Channel
 	callIdx      int
 	healthEvents []healthEvent
+	modelHealth  []modelHealthEvent
 }
 
 type healthEvent struct {
@@ -107,6 +108,14 @@ type healthEvent struct {
 	success      bool
 	err          string
 	responseTime int64
+}
+
+type modelHealthEvent struct {
+	sourceKind      string
+	sourceID        int64
+	modelID         string
+	upstreamModelID string
+	success         bool
 }
 
 func (m *mockChannelSelector) SelectChannel(_ context.Context, _, _ string, excludeFirst bool) (*Channel, error) {
@@ -130,6 +139,104 @@ func (m *mockChannelSelector) RecordChannelHealth(_ context.Context, channelID i
 		responseTime: responseTime,
 	})
 	return nil
+}
+
+func (m *mockChannelSelector) RecordModelHealth(_ context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, _ string, _ int64) error {
+	m.modelHealth = append(m.modelHealth, modelHealthEvent{sourceKind, sourceID, modelID, upstreamModelID, success})
+	return nil
+}
+
+func TestRetryExecutor_RecordsModelSpecificOutageWithoutPoisoningChannel(t *testing.T) {
+	selector := &mockChannelSelector{channels: []*Channel{{ID: 7, ModelMapping: `{"kimi-k3":"kimi-k3-prod"}`}}}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+	errModelUnavailable := &relayprovider.UpstreamHTTPError{StatusCode: 500, Body: []byte(`{"message":"no healthy model"}`)}
+
+	result := exec.Execute(context.Background(), "default", "Kimi-K3", func(context.Context, *Channel) error {
+		return errModelUnavailable
+	})
+
+	assert.Error(t, result.Err)
+	assert.Len(t, selector.healthEvents, 1)
+	assert.True(t, selector.healthEvents[0].success, "model outage must stay neutral for channel health")
+	assert.Equal(t, []modelHealthEvent{{"channel", 7, "Kimi-K3", "kimi-k3-prod", false}}, selector.modelHealth)
+}
+
+func TestRetryExecutor_RecordsUpstreamModelNotFound(t *testing.T) {
+	selector := &mockChannelSelector{channels: []*Channel{{ID: 7}}}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+	errModelNotFound := &relayprovider.UpstreamHTTPError{
+		StatusCode: 404,
+		Body:       []byte(`{"error":{"code":"model_not_found","message":"model not found"}}`),
+	}
+
+	result := exec.Execute(context.Background(), "default", "gpt-4o", func(context.Context, *Channel) error {
+		return errModelNotFound
+	})
+
+	assert.Error(t, result.Err)
+	assert.Len(t, selector.healthEvents, 1)
+	assert.True(t, selector.healthEvents[0].success, "model-specific 404 must stay neutral for channel health")
+	assert.Equal(t, []modelHealthEvent{{"channel", 7, "gpt-4o", "gpt-4o", false}}, selector.modelHealth)
+}
+
+func TestRetryExecutor_DoesNotRecordProxy404AsModelUnavailable(t *testing.T) {
+	// A misconfigured base_url yields a proxy/HTML 404 page. That is
+	// channel-level breakage, not proof the model is unservable, so it must
+	// not poison model health while channel health stays green.
+	selector := &mockChannelSelector{channels: []*Channel{{ID: 9}}}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+	errProxy404 := &relayprovider.UpstreamHTTPError{
+		StatusCode: 404,
+		Body:       []byte("<html><head><title>404 Not Found</title></head><body>nginx</body></html>"),
+	}
+
+	result := exec.Execute(context.Background(), "default", "gpt-4o", func(context.Context, *Channel) error {
+		return errProxy404
+	})
+
+	assert.Error(t, result.Err)
+	assert.Empty(t, selector.modelHealth, "proxy 404 page must not be recorded as model unavailability")
+	assert.Len(t, selector.healthEvents, 1)
+	assert.True(t, selector.healthEvents[0].success, "4xx still proves the channel is reachable")
+}
+
+func TestUpstream404IndicatesModel(t *testing.T) {
+	assert.True(t, upstream404IndicatesModel([]byte(`{"error":{"code":"model_not_found"}}`)), "JSON API error body")
+	assert.True(t, upstream404IndicatesModel([]byte(`model gpt-4o not found`)), "plain-text body naming the model")
+	assert.False(t, upstream404IndicatesModel(nil), "empty body is ambiguous")
+	assert.False(t, upstream404IndicatesModel([]byte("  \n")), "whitespace-only body is ambiguous")
+	assert.False(t, upstream404IndicatesModel([]byte("<html>404</html>")), "proxy HTML page")
+}
+
+func TestRetryExecutor_DoesNotRecordClientErrorAsModelHealth(t *testing.T) {
+	selector := &mockChannelSelector{channels: []*Channel{{ID: 8}}}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+
+	_ = exec.Execute(context.Background(), "default", "gpt-4o", func(context.Context, *Channel) error {
+		return &RetryableError{Status: 400, Err: errors.New("bad request")}
+	})
+
+	assert.Empty(t, selector.modelHealth)
+}
+
+func TestRetryExecutor_RecordsClientModelBeforeGlobalMapping(t *testing.T) {
+	selector := &mockChannelSelector{}
+	exec := NewRetryExecutor(&RetryPolicy{MaxAttempts: 1}, selector)
+	plan := &RelayPlan{
+		Auth:        &AuthSnapshot{Group: "default"},
+		Channel:     &Channel{ID: 9},
+		GlobalModel: "gpt-4o-2024-08-06",
+		Candidates: &RoutingCandidateList{
+			Model: "gpt-4o",
+		},
+	}
+
+	result := exec.ExecuteWithCandidates(context.Background(), plan, 0, func(context.Context, *Channel) error {
+		return nil
+	})
+
+	assert.NoError(t, result.Err)
+	assert.Equal(t, []modelHealthEvent{{"channel", 9, "gpt-4o", "gpt-4o-2024-08-06", true}}, selector.modelHealth)
 }
 
 func TestRetryExecutor_Execute_Success(t *testing.T) {

@@ -91,7 +91,10 @@ app/admin/internal/server/static/web/*
 !app/admin/internal/server/static/web/.gitkeep
 
 cert/
-.claude
+# Keep personal Claude/Codex state local while versioning project skills.
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 .codex
 # Local build/save outputs
 dist/
