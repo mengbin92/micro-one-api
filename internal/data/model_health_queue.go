@@ -80,8 +80,14 @@ func (q *modelHealthQueue) submit(req *channelv1.RecordModelHealthRequest) {
 		// a nil embedded interface. The call now runs on the worker goroutine,
 		// so the recover must live here — an escaping panic would kill the
 		// process instead of merely dropping the sample.
-		if recover() != nil {
-			q.failed.Add(1)
+		if r := recover(); r != nil {
+			// Same sampled Warn as the RPC-failure branch below: a panicking
+			// client is precisely the systematically failing path that Warn
+			// exists to surface, so it must not be counter-only silence.
+			if failed := q.failed.Add(1); failed%100 == 1 {
+				applogger.Log.Warn("model health sample dropped: record panic",
+					zap.Any("panic", r), zap.Int64("failed_total", failed))
+			}
 		}
 	}()
 	q.callCount.Add(1)
@@ -92,13 +98,22 @@ func (q *modelHealthQueue) submit(req *channelv1.RecordModelHealthRequest) {
 	// and its cancellation must not abort the recording.
 	reply, err := q.client.RecordModelHealth(ctx, req)
 	if err != nil {
-		q.failed.Add(1)
-		applogger.Log.Debug("model health sample dropped: rpc failed", zap.Error(err))
+		// Warn, not Debug: passive recording is fire-and-forget, so a
+		// systematically failing path (nil client, missing RPC, rejected
+		// schema) would otherwise be invisible at the production log level
+		// while the health page stays silently empty. Sampled so a persistent
+		// failure costs one line per 100 samples instead of one per request.
+		if failed := q.failed.Add(1); failed%100 == 1 {
+			applogger.Log.Warn("model health sample dropped: rpc failed",
+				zap.Error(err), zap.Int64("failed_total", failed))
+		}
 		return
 	}
 	if reply != nil && !reply.GetSuccess() {
-		q.failed.Add(1)
-		applogger.Log.Debug("model health sample rejected", zap.String("message", reply.GetMessage()))
+		if failed := q.failed.Add(1); failed%100 == 1 {
+			applogger.Log.Warn("model health sample rejected",
+				zap.String("message", reply.GetMessage()), zap.Int64("failed_total", failed))
+		}
 	}
 }
 

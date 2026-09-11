@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +16,12 @@ type accountHealthClient struct {
 	channelv1.ChannelServiceClient
 	request            *channelv1.RecordSubscriptionAccountHealthRequest
 	modelHealthRequest *channelv1.RecordModelHealthRequest
+	// modelHealthErr and modelHealthReject drive the two failure branches of
+	// model-health recording (transport error, success:false reply) so tests can
+	// assert the counters that are the only durable signal when it breaks. Both
+	// default to the healthy path, so existing tests are unaffected.
+	modelHealthErr    error
+	modelHealthReject bool
 }
 
 func (c *accountHealthClient) RecordSubscriptionAccountHealth(_ context.Context, req *channelv1.RecordSubscriptionAccountHealthRequest, _ ...grpc.CallOption) (*channelv1.RecordSubscriptionAccountHealthResponse, error) {
@@ -24,7 +31,10 @@ func (c *accountHealthClient) RecordSubscriptionAccountHealth(_ context.Context,
 
 func (c *accountHealthClient) RecordModelHealth(_ context.Context, req *channelv1.RecordModelHealthRequest, _ ...grpc.CallOption) (*channelv1.RecordModelHealthResponse, error) {
 	c.modelHealthRequest = req
-	return &channelv1.RecordModelHealthResponse{Success: true}, nil
+	if c.modelHealthErr != nil {
+		return nil, c.modelHealthErr
+	}
+	return &channelv1.RecordModelHealthResponse{Success: !c.modelHealthReject}, nil
 }
 
 func TestChannelClientsRecordSubscriptionAccountHealth(t *testing.T) {
@@ -72,6 +82,37 @@ func TestChannelAdapterRecordsModelHealth(t *testing.T) {
 	}
 	if client.modelHealthRequest == nil || client.modelHealthRequest.GetSourceId() != 42 || client.modelHealthRequest.GetUpstreamModelId() != "gpt-4o-2024" {
 		t.Fatalf("unexpected request: %+v", client.modelHealthRequest)
+	}
+}
+
+// TestModelHealthQueueCountsFailures pins the failed-sample counter. The worker
+// only reports a failure through a sampled Warn log, so the counter is the sole
+// durable signal that passive model-health recording is broken; losing it would
+// leave the path silently dead in production — the failure mode behind an empty
+// admin/model-health page while routing and billing look healthy.
+func TestModelHealthQueueCountsFailures(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		client *accountHealthClient
+	}{
+		{name: "rpc error", client: &accountHealthClient{modelHealthErr: errors.New("channel-service unavailable")}},
+		{name: "rejected reply", client: &accountHealthClient{modelHealthReject: true}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			adapter := NewChannelAdapter(test.client)
+			if err := adapter.RecordModelHealth(context.Background(), "subscription", 5, "k3", "k3", true, "", 42); err != nil {
+				t.Fatalf("RecordModelHealth() error = %v", err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if err := adapter.FlushModelHealth(ctx); err != nil {
+				t.Fatalf("FlushModelHealth() error = %v", err)
+			}
+			submitted, dropped, failed := adapter.ModelHealthStats()
+			if submitted != 1 || dropped != 0 || failed != 1 {
+				t.Fatalf("stats submitted %d, dropped %d, failed %d; want 1/0/1", submitted, dropped, failed)
+			}
+		})
 	}
 }
 

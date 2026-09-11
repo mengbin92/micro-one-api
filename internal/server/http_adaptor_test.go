@@ -971,6 +971,101 @@ func TestSubscriptionAdaptorRecordsOnlyRealUpstreamHealth(t *testing.T) {
 	})
 }
 
+// TestSubscriptionAdaptorRecordsModelHealth locks down the MODEL dimension of
+// passive health on the hybrid-adaptor path. That path replaces RetryExecutor
+// entirely for subscription-account channels, so before this guard it recorded
+// the account dimension of health but never the model dimension: production
+// served every relay request through it (hybrid_adaptor.enabled=true) and
+// model_health_states stayed at zero rows, leaving admin/model-health empty
+// while routing, billing, and account health all looked healthy.
+func TestSubscriptionAdaptorRecordsModelHealth(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`)
+
+	cases := []struct {
+		name        string
+		status      int
+		wantSamples int
+		wantSuccess bool
+	}{
+		{name: "success records a healthy model route", status: http.StatusOK, wantSamples: 1, wantSuccess: true},
+		{name: "upstream 5xx records a failure", status: http.StatusBadGateway, wantSamples: 1},
+		{name: "upstream 429 records a failure", status: http.StatusTooManyRequests, wantSamples: 1},
+		// A 4xx that is not a rate limit proves the route is reachable and says
+		// nothing about model health, exactly as modelHealthDisposition rules
+		// for the RetryExecutor path.
+		{name: "client-caused 4xx records nothing", status: http.StatusBadRequest, wantSamples: 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &adaptorFailoverChannelClient{}
+			server := NewHTTPServer(nil, nil, nil, nil, relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, client, nil, nil))
+			if tc.status == http.StatusOK {
+				server.SetOAuthHTTPClient(stickyOKClient())
+			} else {
+				server.SetOAuthHTTPClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					return newStatusResponse(tc.status, `{"error":{"message":"upstream rejected"}}`), nil
+				})})
+			}
+
+			result := server.executeAndMeter(context.Background(), stickyCodexPlan(42, 0), "gpt-5", make(http.Header), body, relayadaptor.FormatOpenAIChatCompletions, "")
+			result.write(httptest.NewRecorder())
+
+			if len(client.modelHealth) != tc.wantSamples {
+				t.Fatalf("model health samples = %+v, want %d", client.modelHealth, tc.wantSamples)
+			}
+			if tc.wantSamples == 0 {
+				return
+			}
+			got := client.modelHealth[0]
+			// The source namespace must be subscription, not channel: an account
+			// id misfiled as a channel source would surface as a phantom channel
+			// row on the health page.
+			if got.sourceKind != relaybiz.UpstreamSourceSubscription || got.sourceID != 42 {
+				t.Fatalf("model health source = %s/%d, want subscription/42", got.sourceKind, got.sourceID)
+			}
+			if got.modelID != "gpt-5" || got.upstreamModelID != "gpt-5" {
+				t.Fatalf("model health ids = %q/%q, want gpt-5/gpt-5", got.modelID, got.upstreamModelID)
+			}
+			if got.success != tc.wantSuccess {
+				t.Fatalf("model health success = %v, want %v", got.success, tc.wantSuccess)
+			}
+			// A recorded failure must carry the upstream detail so the health
+			// page can explain the row; a healthy route must not.
+			if tc.wantSuccess && got.err != "" {
+				t.Fatalf("healthy model route carried an error message: %q", got.err)
+			}
+			if !tc.wantSuccess && got.err == "" {
+				t.Fatal("recorded model failure carried no error message")
+			}
+		})
+	}
+}
+
+// TestSubscriptionAdaptorModelHealthIgnoresLocalAdmissionFailures pins the
+// guard that keeps local admission rejections out of the model dimension.
+// Those paths never reach the upstream, so recording them would mark a healthy
+// model route red under load (concurrency/RPM/session-window pressure).
+func TestSubscriptionAdaptorModelHealthIgnoresLocalAdmissionFailures(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":false}`)
+	client := &adaptorFailoverChannelClient{}
+	server := NewHTTPServer(nil, nil, nil, nil, relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, client, nil, nil))
+	// Occupy the account's only concurrency slot so the attempt is rejected
+	// locally before any upstream call.
+	release, ok := server.accountConcurrency.TryAcquire(context.Background(), 42, 1)
+	if !ok {
+		t.Fatal("failed to occupy concurrency slot")
+	}
+	defer release()
+
+	result := server.executeAndMeter(context.Background(), stickyCodexPlan(42, 1), "gpt-5", make(http.Header), body, relayadaptor.FormatOpenAIChatCompletions, "")
+	result.write(httptest.NewRecorder())
+
+	if len(client.modelHealth) != 0 {
+		t.Fatalf("local admission failure must not record model health: %+v", client.modelHealth)
+	}
+}
+
 func TestSubscriptionSticky_BindOnFirstSuccess(t *testing.T) {
 	relayUsecase := relaybiz.NewRelayUsecase(adaptorFailoverIdentity{}, &adaptorFailoverChannelClient{}, nil, nil)
 	httpServer := NewHTTPServer(nil, nil, nil, nil, relayUsecase)
@@ -1126,6 +1221,17 @@ type accountHealthOutcome struct {
 	success   bool
 }
 
+// modelHealthSample is one passive MODEL health recording as forwarded by the
+// adaptor path (the subscription namespace of admin/model-health).
+type modelHealthSample struct {
+	sourceKind      string
+	sourceID        int64
+	modelID         string
+	upstreamModelID string
+	success         bool
+	err             string
+}
+
 // accountSlotReport records a weight-loop slot feedback forwarded to
 // channel-service (RecordSubscriptionAccountSlot).
 type accountSlotReport struct {
@@ -1134,11 +1240,12 @@ type accountSlotReport struct {
 }
 
 type adaptorFailoverChannelClient struct {
-	mu       sync.Mutex
-	accounts []*relaybiz.SubscriptionAccount
-	calls    int
-	health   []accountHealthOutcome
-	slots    []accountSlotReport
+	mu          sync.Mutex
+	accounts    []*relaybiz.SubscriptionAccount
+	calls       int
+	health      []accountHealthOutcome
+	modelHealth []modelHealthSample
+	slots       []accountSlotReport
 }
 
 func (c *adaptorFailoverChannelClient) SelectChannel(context.Context, string, string, bool) (*relaybiz.Channel, error) {
@@ -1151,6 +1258,23 @@ func (c *adaptorFailoverChannelClient) SelectChannelExcluding(context.Context, s
 
 func (c *adaptorFailoverChannelClient) RecordSubscriptionAccountHealth(_ context.Context, accountID int64, success bool) error {
 	c.health = append(c.health, accountHealthOutcome{accountID: accountID, success: success})
+	return nil
+}
+
+// RecordModelHealth implements the optional biz.ModelHealthRecorder seam so the
+// adaptor tests can assert the MODEL dimension is recorded. It is deliberately
+// not part of the mandatory biz.ChannelClient interface — which is exactly why
+// the subscription adaptor path could record zero model_health_states rows
+// while every test still passed.
+func (c *adaptorFailoverChannelClient) RecordModelHealth(_ context.Context, sourceKind string, sourceID int64, modelID, upstreamModelID string, success bool, errMessage string, _ int64) error {
+	c.modelHealth = append(c.modelHealth, modelHealthSample{
+		sourceKind:      sourceKind,
+		sourceID:        sourceID,
+		modelID:         modelID,
+		upstreamModelID: upstreamModelID,
+		success:         success,
+		err:             errMessage,
+	})
 	return nil
 }
 

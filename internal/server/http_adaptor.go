@@ -230,6 +230,7 @@ func (s *HTTPServer) runSubscriptionAttempt(r *http.Request, current *relaybiz.R
 // executeAndMeter runs a single subscription-account request and records the
 // adaptor request metric for that attempt.
 func (s *HTTPServer) executeAndMeter(ctx context.Context, current *relaybiz.RelayPlan, clientModel string, header http.Header, rawBody []byte, inbound relayadaptor.Format, sessionHash string) subscriptionAdaptorResult {
+	attemptStartedAt := time.Now()
 	result := s.executeSubscriptionAccountViaAdaptor(ctx, current, clientModel, header, rawBody, inbound, sessionHash)
 	metrics.RelaySubscriptionAdaptorRequestsTotal.WithLabelValues(subscriptionMetricPlatform(current), string(inbound), subscriptionAdaptorMetricResult(result)).Inc()
 	// Feed a real upstream outcome into the account circuit breaker — but never
@@ -244,7 +245,45 @@ func (s *HTTPServer) executeAndMeter(ctx context.Context, current *relaybiz.Rela
 	if result.upstreamAttempted && s != nil && s.relayUsecase != nil && !isSubscriptionRateLimitStatus(result.statusCode) {
 		_ = s.relayUsecase.RecordSubscriptionAccountHealth(ctx, subscriptionAccountIDFromPlan(current), result.upstreamSucceeded)
 	}
+	// Passive MODEL health. This path replaces RetryExecutor wholesale for
+	// subscription-account channels, so without an explicit record here the
+	// model dimension of admin/model-health stays empty for every subscription
+	// route while only the account dimension above is populated. Guarded on
+	// upstreamAttempted so local admission failures (concurrency / RPM / session
+	// window / credential resolution) never masquerade as model-route evidence.
+	if result.upstreamAttempted && s != nil && s.relayUsecase != nil {
+		s.relayUsecase.RecordSubscriptionModelHealth(
+			ctx,
+			current.Channel,
+			subscriptionAccountIDFromPlan(current),
+			current.ModelHealthID(),
+			current.BaseModel(),
+			subscriptionAdaptorModelHealthError(result),
+			time.Since(attemptStartedAt).Milliseconds(),
+		)
+	}
 	return result
+}
+
+// subscriptionAdaptorModelHealthError shapes one adaptor attempt into the error
+// RelayUsecase.RecordSubscriptionModelHealth classifies for the model
+// dimension. A 2xx upstream response yields nil: a local failure after the
+// upstream already answered (stream conversion, quota commit) proves nothing
+// about the model route. For a non-2xx the adaptor keeps only a bare
+// "upstream returned status N" error, whose status the shared UpstreamStatus
+// extractor cannot recover from the message text, so the status is re-attached
+// as a typed *relaybiz.RetryableError. Outcomes the shared disposition then
+// declines (4xx policy rejections, 409/423 account-busy) are deliberately
+// recorded as no evidence, matching the RetryExecutor path.
+func subscriptionAdaptorModelHealthError(result subscriptionAdaptorResult) error {
+	if result.upstreamSucceeded {
+		return nil
+	}
+	cause := result.err
+	if cause == nil {
+		cause = fmt.Errorf("subscription adaptor upstream attempt failed")
+	}
+	return &relaybiz.RetryableError{Status: result.statusCode, Err: cause}
 }
 
 // isSubscriptionRateLimitStatus reports whether an upstream status means "the

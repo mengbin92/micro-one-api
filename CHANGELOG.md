@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-09-11
+
+v0.28.1 是 v0.28.0 之后的 **PATCH 修复版本**：修复 v0.28.0 引入的模型健康监测在**线上主流量路径上从未生效**的问题——订阅适配器（hybrid adaptor）路径整体替换了 RetryExecutor，却只记录账号维度健康、遗漏模型维度，导致管理台"模型健康"页面自 v0.28.0 上线起一直为空、`model_health_states` 始终 0 行。无 proto 变更、无数据库迁移、无新增配置项，不改变路由与计费决策。详见 [release-v0.28.1.md](docs/releases/release-v0.28.1.md)。
+
+### Fixed
+
+- 订阅适配器路径补齐模型维度健康记录：每次真实上游尝试记录一条样本，以 `upstreamAttempted` 守卫，本地准入失败（并发 / RPM / 会话窗口 / 凭据解析）不写入。
+- 新增 `RecordSubscriptionModelHealth`，把来源命名空间显式钉在 `subscription`，避免未投影的账号 ID 被误记为 `channel/<id>` 幽灵行；与既有路径共享同一套健康分类策略。
+- 上游状态码重新包成 typed `RetryableError`，使共享分类策略能识别 5xx / 429 并拒绝把 4xx 客户端错误计为模型故障。
+- 异步模型健康队列的失败日志从 `Debug` 提升为采样 `Warn`（每 100 次一条），panic 恢复分支同样上报；此前线上 `LOG_LEVEL=info` 下整条记录链路可"全死但零信号"。
+
 ## [0.28.0] - 2026-09-10
 
 v0.28.0 是 v0.27.0 之后的 **MINOR 模型可观测性版本**：新增按来源与上游模型粒度的被动模型健康监测与管理台看板，修复多轮 `/v1/responses` Websocket 连接按累计 usage 重复计费的问题，并把 404 模型不可用判定收窄到 API 形状响应体。proto additive（`channel.v1` 新增 `RecordModelHealth` / `ListModelHealth`）；MySQL / SQLite / PostgreSQL 三方言新增迁移 `091`；无新增必填配置，不改变路由与计费决策。详见 [release-v0.28.0.md](docs/releases/release-v0.28.0.md)。
