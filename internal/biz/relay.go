@@ -1312,7 +1312,35 @@ func (uc *RelayUsecase) RecordRoutingSourceHealth(ctx context.Context, ch *Chann
 // disposition keeps client cancellations and policy rejections from poisoning
 // an otherwise healthy upstream model.
 func (uc *RelayUsecase) RecordRoutingSourceModelHealth(ctx context.Context, ch *Channel, modelID, baseModel string, relayErr error, responseTime int64) {
-	if uc == nil || uc.channel == nil || ch == nil {
+	if ch == nil {
+		return
+	}
+	sourceKind, sourceID := UpstreamSourceChannel, ch.ID
+	if ch.SubscriptionAccountID > 0 {
+		sourceKind, sourceID = UpstreamSourceSubscription, ch.SubscriptionAccountID
+	}
+	uc.recordModelHealth(ctx, ch, sourceKind, sourceID, modelID, baseModel, relayErr, responseTime)
+}
+
+// RecordSubscriptionModelHealth records the model dimension for an execution
+// path that selects subscription accounts directly (the hybrid adaptor, which
+// replaces RetryExecutor for subscription channels) rather than through a
+// Channel projected by subscriptionAccountToChannel. The source namespace is
+// pinned to subscription, so an account whose id was never projected onto the
+// channel cannot be misfiled as a channel-source row in admin/model-health.
+// accountID<=0 is a no-op.
+func (uc *RelayUsecase) RecordSubscriptionModelHealth(ctx context.Context, ch *Channel, accountID int64, modelID, baseModel string, relayErr error, responseTime int64) {
+	if accountID <= 0 {
+		return
+	}
+	uc.recordModelHealth(ctx, ch, UpstreamSourceSubscription, accountID, modelID, baseModel, relayErr, responseTime)
+}
+
+// recordModelHealth is the shared tail of both entry points above: it applies
+// the single model-health disposition rule (the same one RetryExecutor uses)
+// and forwards the sample to the selector as best-effort telemetry.
+func (uc *RelayUsecase) recordModelHealth(ctx context.Context, ch *Channel, sourceKind string, sourceID int64, modelID, baseModel string, relayErr error, responseTime int64) {
+	if uc == nil || uc.channel == nil || sourceID <= 0 {
 		return
 	}
 	record, success := modelHealthDisposition(relayErr)
@@ -1321,13 +1349,6 @@ func (uc *RelayUsecase) RecordRoutingSourceModelHealth(ctx context.Context, ch *
 	}
 	recorder, ok := uc.channel.(ModelHealthRecorder)
 	if !ok {
-		return
-	}
-	sourceKind, sourceID := UpstreamSourceChannel, ch.ID
-	if ch.SubscriptionAccountID > 0 {
-		sourceKind, sourceID = UpstreamSourceSubscription, ch.SubscriptionAccountID
-	}
-	if sourceID <= 0 {
 		return
 	}
 	errMessage := ""

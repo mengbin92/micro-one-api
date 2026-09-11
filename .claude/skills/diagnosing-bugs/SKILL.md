@@ -93,6 +93,14 @@ If you cannot state the prediction, the hypothesis is a vibe — discard or shar
 
 **Show the ranked list to the user before testing.** They often have domain knowledge that re-ranks instantly ("we just deployed a change to #3"), or know hypotheses they've already ruled out. Cheap checkpoint, big time saver. Don't block on it — proceed with your ranking if the user is AFK.
 
+**When the symptom is *absence of data* (no rows / empty page / nothing recorded), rank "the writer is never called" first.** The instinct is "the writer is broken", but the code that writes is usually fine — it is simply not reached on the path this deployment actually serves:
+
+1. **Prove the writer works in isolation.** Invoke it directly (gRPC/CLI/curl) against the live backend and confirm the record lands. If it does, stop reading the writer's code entirely — it is not the bug.
+2. **Prove whether the production path reaches it.** Grep the call sites, then establish which execution path the deployment serves. One endpoint commonly has several paths (feature-flagged, per-tenant, per-protocol), and only some of them call the writer.
+3. **Discriminate the path from outside the process.** Use a metric label or an observable side effect that only one path produces (a metric label combination, a Redis key with a known TTL, a latency signature) rather than code reading alone. A path that bypasses the shared executor must record telemetry itself; assume nothing is inherited.
+
+**Corollary for silent failures.** Check the deployed log level before concluding "the logs show no errors". A failure logged at `Debug` on a fire-and-forget path is indistinguishable from success under `LOG_LEVEL=info`; if the counters are also not exported as metrics, the path can be fully dead with zero signal. Treat "no logs + no metrics + empty output" as *evidence of a blind spot*, not as evidence that the code ran and succeeded.
+
 ## Phase 4 — Instrument
 
 Each probe must map to a specific prediction from Phase 3. **Change one variable at a time.**
