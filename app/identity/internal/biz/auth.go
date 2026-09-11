@@ -113,6 +113,7 @@ type OAuthIdentity struct {
 type Token struct {
 	RoutingMode     string
 	RoutingGroupID  int64
+	RoutingGroupIDs []int64
 	RoutingRevision int64
 	ID              int64
 	UserID          int64
@@ -326,7 +327,7 @@ func (uc *IdentityUsecase) GetAuthSnapshot(ctx context.Context, key, clientIP st
 		return nil, ErrUserDisabled
 	}
 	var facts *routing.SubjectFacts
-	if !RoutingV2Enabled() && token.RoutingMode == "fixed" {
+	if !RoutingV2Enabled() && (token.RoutingMode == "fixed" || token.RoutingMode == "ordered") {
 		return nil, ErrRoutingFactsUnavailable
 	}
 	if RoutingV2Enabled() {
@@ -670,11 +671,12 @@ func (uc *IdentityUsecase) generateAffCode() string {
 }
 
 type CreateAccessTokenOptions struct {
-	RoutingMode    string
-	RoutingGroupID int64
-	RemainQuota    int64
-	UnlimitedQuota bool
-	Subnet         string
+	RoutingMode     string
+	RoutingGroupID  int64
+	RoutingGroupIDs []int64
+	RemainQuota     int64
+	UnlimitedQuota  bool
+	Subnet          string
 }
 
 type UpdateAccessTokenOptions struct {
@@ -720,13 +722,19 @@ func (uc *IdentityUsecase) CreateAccessToken(ctx context.Context, userID int64, 
 	if options.RoutingMode == "" {
 		options.RoutingMode = "inherit"
 	}
-	if !routing.ValidPolicy(options.RoutingMode, options.RoutingGroupID) || (options.RoutingMode == "fixed" && !RoutingV2Enabled()) {
+	validRouting := routing.ValidPolicy(options.RoutingMode, options.RoutingGroupID)
+	if options.RoutingMode == "ordered" {
+		validRouting = routing.ValidOrderedPolicy(options.RoutingMode, options.RoutingGroupID, options.RoutingGroupIDs)
+	} else if len(options.RoutingGroupIDs) > 0 {
+		validRouting = false
+	}
+	if !validRouting || (options.RoutingMode != "inherit" && !RoutingV2Enabled()) {
 		return nil, ErrRoutingDefaultInvalid
 	}
 	now := uc.now().Unix()
 	plaintextKey := uc.generateToken()
 	token := &Token{
-		RoutingMode: options.RoutingMode, RoutingGroupID: options.RoutingGroupID, RoutingRevision: 1,
+		RoutingMode: options.RoutingMode, RoutingGroupID: options.RoutingGroupID, RoutingGroupIDs: options.RoutingGroupIDs, RoutingRevision: 1,
 		UserID:         userID,
 		Name:           name,
 		Key:            plaintextKey,

@@ -10,6 +10,47 @@ import (
 	"micro-one-api/platform/routingoutbox"
 )
 
+// tokenRoutingGroupOrderModel stores the token's explicit ordered candidate
+// group list (routing_mode=ordered). position preserves user order.
+type tokenRoutingGroupOrderModel struct {
+	TokenID        int64 `gorm:"primaryKey"`
+	RoutingGroupID int64 `gorm:"primaryKey"`
+	Position       int
+}
+
+func (tokenRoutingGroupOrderModel) TableName() string { return "token_routing_group_orders" }
+
+// loadTokenGroupOrders batch-loads ordered candidate lists keyed by token ID.
+func loadTokenGroupOrders(tx *gorm.DB, tokenIDs []int64) (map[int64][]int64, error) {
+	out := make(map[int64][]int64)
+	if len(tokenIDs) == 0 {
+		return out, nil
+	}
+	var rows []tokenRoutingGroupOrderModel
+	if err := tx.Where("token_id IN ?", tokenIDs).Order("token_id, position").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.TokenID] = append(out[row.TokenID], row.RoutingGroupID)
+	}
+	return out, nil
+}
+
+// replaceTokenGroupOrders swaps the ordered candidate list for a token.
+// An empty list deletes every row (mode != ordered).
+func replaceTokenGroupOrders(tx *gorm.DB, tokenID int64, groupIDs []int64) error {
+	if err := tx.Where("token_id = ?", tokenID).Delete(&tokenRoutingGroupOrderModel{}).Error; err != nil {
+		return err
+	}
+	for i, gid := range groupIDs {
+		row := tokenRoutingGroupOrderModel{TokenID: tokenID, RoutingGroupID: gid, Position: i}
+		if err := tx.Create(&row).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *Repository) UserRoutingFacts(ctx context.Context, userID int64) (*routing.SubjectFacts, error) {
 	if r.db == nil {
 		return nil, biz.ErrRoutingFactsUnavailable
@@ -35,12 +76,20 @@ func (r *Repository) UserRoutingFacts(ctx context.Context, userID int64) (*routi
 		if err := tx.Select("id", "name", "routing_mode", "routing_group_id", "routing_revision").Where("user_id = ? AND TRIM(COALESCE(name, '')) <> ''", userID).Find(&tokens).Error; err != nil {
 			return err
 		}
+		var tokenIDs []int64
+		for i := range tokens {
+			tokenIDs = append(tokenIDs, tokens[i].ID)
+		}
+		orders, err := loadTokenGroupOrders(tx, tokenIDs)
+		if err != nil {
+			return err
+		}
 		for _, token := range tokens {
 			var id int64
 			if token.RoutingGroupID != nil {
 				id = *token.RoutingGroupID
 			}
-			f.TokenReferences = append(f.TokenReferences, routing.TokenReference{ID: token.ID, Name: token.Name, Mode: token.RoutingMode, GroupID: id, Revision: token.RoutingRevision})
+			f.TokenReferences = append(f.TokenReferences, routing.TokenReference{ID: token.ID, Name: token.Name, Mode: token.RoutingMode, GroupID: id, Revision: token.RoutingRevision, GroupIDs: orders[token.ID]})
 		}
 
 		for _, g := range grants {
@@ -55,6 +104,23 @@ func (r *Repository) UpdateRoutingAccess(ctx context.Context, c biz.RoutingAcces
 		return biz.ErrRoutingFactsUnavailable
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// A revoke targeting a grant that is not active is a no-op: it must not
+		// mint a dead 'revoked' row, bump the revision, or emit an outbox event.
+		//
+		// Probe read-only on purpose. Flipping the status here would take the
+		// grant row before the user row, while the grant/revoke upsert below
+		// takes the user row first — opposite lock orders that can deadlock when
+		// the same user is concurrently granted and revoked. The status change
+		// itself is applied by that upsert.
+		if c.Operation == "revoke" {
+			var active int64
+			if err := tx.Model(&routingGrantModel{}).Where("user_id = ? AND routing_group_id = ? AND source_type = ? AND source_ref = ? AND status = ?", c.UserID, c.GroupID, c.SourceType, c.SourceRef, "active").Count(&active).Error; err != nil {
+				return err
+			}
+			if active == 0 {
+				return nil
+			}
+		}
 		// CAS is also a write lock on SQLite. Every grant mutation shares this row.
 		updates := map[string]any{"routing_access_revision": c.ExpectedRevision + 1}
 		if c.Operation == "default" {
@@ -71,6 +137,17 @@ func (r *Repository) UpdateRoutingAccess(ctx context.Context, c biz.RoutingAcces
 		if result.RowsAffected != 1 {
 			return biz.ErrRoutingAccessConflict
 		}
+		if c.Operation == "default" {
+			// Mirror updateRoutingUserDB: moving the default group replaces the
+			// migration grant, otherwise the stale grant keeps the old group
+			// reachable forever.
+			if err := tx.Where("user_id = ? AND source_type = ? AND source_ref = ?", c.UserID, "migration", "legacy_group").Delete(&routingGrantModel{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Create(migrationGrant(c.UserID, c.GroupID)).Error; err != nil {
+				return err
+			}
+		}
 		if c.Operation == "grant" || c.Operation == "revoke" {
 			status := "active"
 			if c.Operation == "revoke" {
@@ -84,7 +161,7 @@ func (r *Repository) UpdateRoutingAccess(ctx context.Context, c biz.RoutingAcces
 		return routingoutbox.Enqueue(tx, "identity", "user", c.UserID, c.ExpectedRevision+1)
 	})
 }
-func (r *Repository) SetTokenRouting(ctx context.Context, userID, tokenID int64, mode string, groupID, revision int64) (int64, error) {
+func (r *Repository) SetTokenRouting(ctx context.Context, userID, tokenID int64, mode string, groupID, revision int64, groupIDs []int64) (int64, error) {
 	if r.db == nil {
 		return 0, biz.ErrRoutingFactsUnavailable
 	}
@@ -99,6 +176,9 @@ func (r *Repository) SetTokenRouting(ctx context.Context, userID, tokenID int64,
 		}
 		if result.RowsAffected != 1 {
 			return biz.ErrRoutingAccessConflict
+		}
+		if err := replaceTokenGroupOrders(tx, tokenID, groupIDs); err != nil {
+			return err
 		}
 		return routingoutbox.Enqueue(tx, "identity", "token", tokenID, revision+1)
 	})

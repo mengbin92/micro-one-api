@@ -46,12 +46,12 @@ func (f *routingAccessHTTPFake) Change(_ context.Context, c biz.RoutingAccessCha
 	f.self = self
 	return nil, biz.ErrRoutingAccessDenied
 }
-func (f *routingAccessHTTPFake) CreateToken(_ context.Context, u int64, n, m string, g int64) (*biz.RoutingToken, error) {
+func (f *routingAccessHTTPFake) CreateToken(_ context.Context, u int64, n, m string, g int64, groupIDs []int64) (*biz.RoutingToken, error) {
 	f.calls++
 	f.user = u
-	return &biz.RoutingToken{ID: 5, Name: n, Mode: m, GroupID: g, Key: "created-once", Revision: 1}, nil
+	return &biz.RoutingToken{ID: 5, Name: n, Mode: m, GroupID: g, GroupIDs: groupIDs, Key: "created-once", Revision: 1}, nil
 }
-func (f *routingAccessHTTPFake) SetToken(context.Context, int64, int64, string, int64, int64) (int64, error) {
+func (f *routingAccessHTTPFake) SetToken(context.Context, int64, int64, string, int64, int64, []int64) (int64, error) {
 	return 0, biz.ErrRoutingAccessDenied
 }
 func TestRoutingAccessHTTPUsesAuthenticatedPrincipal(t *testing.T) {

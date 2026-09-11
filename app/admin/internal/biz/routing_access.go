@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"math"
+
 	"github.com/go-kratos/kratos/v3/errors"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/domain/routing"
@@ -17,12 +19,19 @@ type RoutingPrice struct {
 	Ratio                        float64
 	Version, Source, BillingMode string
 	SubscriptionCovered          bool
+	// UserRatio/UserVersion are set when a user-specific override replaces
+	// the group ratio for this user.
+	UserRatio   float64
+	UserVersion int64
 }
 type AvailableRoutingGroup struct {
 	Group   *routing.Group
 	Sources []routing.UserGroupGrant
 	Price   RoutingPrice
 	Models  []string
+	// OrderedEligible reports whether this group can serve ordered (auto)
+	// tokens for the user right now.
+	OrderedEligible bool
 }
 type AvailableRoutingGroups struct {
 	Groups           []AvailableRoutingGroup
@@ -40,12 +49,13 @@ type RoutingToken struct {
 	ID                           int64
 	Key, Name, Mode              string
 	GroupID, Revision, CreatedAt int64
+	GroupIDs                     []int64
 }
 type RoutingAccessRepo interface {
 	Facts(context.Context, int64) (*routing.SubjectFacts, error)
 	Change(context.Context, RoutingAccessChange) (*routing.SubjectFacts, error)
-	CreateToken(context.Context, int64, string, string, int64) (*RoutingToken, error)
-	SetToken(context.Context, int64, int64, string, int64, int64) (int64, error)
+	CreateToken(context.Context, int64, string, string, int64, []int64) (*RoutingToken, error)
+	SetToken(context.Context, int64, int64, string, int64, int64, []int64) (int64, error)
 	Price(context.Context, int64, int64) (RoutingPrice, error)
 	Models(context.Context, int64, string) ([]string, error)
 	CheckCapabilities(context.Context) error
@@ -69,6 +79,9 @@ func NewRoutingAccessUsecase(groups RoutingGroupReader, repo RoutingAccessRepo) 
 }
 func fixedCreationEnabled() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv("ADMIN_ROUTING_FIXED_KEYS")), "true")
+}
+func orderedCreationEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("ADMIN_ROUTING_ORDERED_KEYS")), "true")
 }
 func (uc *RoutingAccessUsecase) Facts(ctx context.Context, userID int64) (*routing.SubjectFacts, error) {
 	return uc.effectiveFacts(ctx, userID)
@@ -119,7 +132,7 @@ func (uc *RoutingAccessUsecase) Available(ctx context.Context, userID int64, q r
 		if err != nil {
 			return nil, err
 		}
-		out.Groups = append(out.Groups, AvailableRoutingGroup{Group: g, Sources: sources, Price: price, Models: models})
+		out.Groups = append(out.Groups, AvailableRoutingGroup{Group: g, Sources: sources, Price: price, Models: models, OrderedEligible: orderedCreationEnabled()})
 	}
 	return out, nil
 }
@@ -148,35 +161,91 @@ func (uc *RoutingAccessUsecase) Change(ctx context.Context, c RoutingAccessChang
 	}
 	return uc.repo.Change(ctx, c)
 }
-func (uc *RoutingAccessUsecase) CreateToken(ctx context.Context, userID int64, name, mode string, groupID int64) (*RoutingToken, error) {
+
+// validateOrderedCandidates enforces the ordered (auto) creation contract:
+// every listed group must exist and not be archived; at least one must be
+// currently eligible. Pre-listed ineligible groups are allowed — they become
+// effective as soon as the user is granted access.
+func (uc *RoutingAccessUsecase) validateOrderedCandidates(ctx context.Context, facts *routing.SubjectFacts, groupIDs []int64) error {
+	eligible := 0
+	now := time.Now().Unix()
+	for _, gid := range groupIDs {
+		d, err := uc.groups.Get(ctx, gid)
+		if err != nil {
+			return err
+		}
+		if d == nil || d.Group.Status == "archived" {
+			return ErrRoutingGroupInvalid
+		}
+		if len(routing.AccessSources(facts, d.Group, now)) > 0 {
+			eligible++
+		}
+	}
+	if eligible == 0 {
+		return ErrRoutingAccessDenied
+	}
+	return nil
+}
+
+func (uc *RoutingAccessUsecase) CreateToken(ctx context.Context, userID int64, name, mode string, groupID int64, groupIDs []int64) (*RoutingToken, error) {
 	if mode == "fixed" && !fixedCreationEnabled() {
 		return nil, ErrRoutingGroupUnavailable
 	}
-	if !routing.ValidPolicy(mode, groupID) || strings.TrimSpace(name) == "" {
+	if mode == "ordered" && !orderedCreationEnabled() {
+		return nil, ErrRoutingGroupUnavailable
+	}
+	if mode == "ordered" {
+		if !routing.ValidOrderedPolicy(mode, groupID, groupIDs) || strings.TrimSpace(name) == "" {
+			return nil, ErrRoutingGroupInvalid
+		}
+	} else if !routing.ValidPolicy(mode, groupID) || strings.TrimSpace(name) == "" || len(groupIDs) > 0 {
 		return nil, ErrRoutingGroupInvalid
 	}
 	if err := uc.repo.CheckCapabilities(ctx); err != nil {
 		return nil, err
 	}
-	if _, err := uc.eligible(ctx, userID, groupID); err != nil {
+	if mode == "ordered" {
+		facts, err := uc.effectiveFacts(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if err := uc.validateOrderedCandidates(ctx, facts, groupIDs); err != nil {
+			return nil, err
+		}
+	} else if _, err := uc.eligible(ctx, userID, groupID); err != nil {
 		return nil, err
 	}
-	return uc.repo.CreateToken(ctx, userID, strings.TrimSpace(name), mode, groupID)
+	return uc.repo.CreateToken(ctx, userID, strings.TrimSpace(name), mode, groupID, groupIDs)
 }
-func (uc *RoutingAccessUsecase) SetToken(ctx context.Context, userID, tokenID int64, mode string, groupID, revision int64) (int64, error) {
-	if !routing.ValidPolicy(mode, groupID) {
-		return 0, ErrRoutingGroupInvalid
-	}
+func (uc *RoutingAccessUsecase) SetToken(ctx context.Context, userID, tokenID int64, mode string, groupID, revision int64, groupIDs []int64) (int64, error) {
 	if mode == "fixed" && !fixedCreationEnabled() {
 		return 0, ErrRoutingGroupUnavailable
+	}
+	if mode == "ordered" && !orderedCreationEnabled() {
+		return 0, ErrRoutingGroupUnavailable
+	}
+	if mode == "ordered" {
+		if !routing.ValidOrderedPolicy(mode, groupID, groupIDs) {
+			return 0, ErrRoutingGroupInvalid
+		}
+	} else if !routing.ValidPolicy(mode, groupID) || len(groupIDs) > 0 {
+		return 0, ErrRoutingGroupInvalid
 	}
 	if err := uc.repo.CheckCapabilities(ctx); err != nil {
 		return 0, err
 	}
-	if _, err := uc.eligible(ctx, userID, groupID); err != nil {
+	if mode == "ordered" {
+		facts, err := uc.effectiveFacts(ctx, userID)
+		if err != nil {
+			return 0, err
+		}
+		if err := uc.validateOrderedCandidates(ctx, facts, groupIDs); err != nil {
+			return 0, err
+		}
+	} else if _, err := uc.eligible(ctx, userID, groupID); err != nil {
 		return 0, err
 	}
-	return uc.repo.SetToken(ctx, userID, tokenID, mode, groupID, revision)
+	return uc.repo.SetToken(ctx, userID, tokenID, mode, groupID, revision, groupIDs)
 }
 
 type RoutingGroupStateWriter interface {
@@ -261,4 +330,54 @@ func (uc *RoutingAccessUsecase) PublishBillingPolicy(ctx context.Context, p *rou
 		return ErrRoutingGroupInvalid
 	}
 	return repo.PublishBillingPolicy(ctx, p, expected)
+}
+
+// RoutingUserPriceWriter is implemented by the data repo when the billing
+// capability is wired. The user override REPLACES the group ratio.
+type RoutingUserPriceWriter interface {
+	SetUserRoutingPrice(context.Context, int64, int64, float64) (int64, error)
+	ClearUserRoutingPrice(context.Context, int64, int64) error
+}
+
+func (uc *RoutingAccessUsecase) SetUserRoutingPrice(ctx context.Context, userID, groupID int64, ratio float64) (int64, error) {
+	if userID <= 0 || groupID <= 0 || ratio <= 0 || math.IsInf(ratio, 0) || math.IsNaN(ratio) {
+		return 0, ErrRoutingGroupInvalid
+	}
+	writer, ok := uc.repo.(RoutingUserPriceWriter)
+	if !ok {
+		return 0, ErrRoutingGroupUnavailable
+	}
+	return writer.SetUserRoutingPrice(ctx, userID, groupID, ratio)
+}
+
+func (uc *RoutingAccessUsecase) ClearUserRoutingPrice(ctx context.Context, userID, groupID int64) error {
+	if userID <= 0 || groupID <= 0 {
+		return ErrRoutingGroupInvalid
+	}
+	writer, ok := uc.repo.(RoutingUserPriceWriter)
+	if !ok {
+		return ErrRoutingGroupUnavailable
+	}
+	return writer.ClearUserRoutingPrice(ctx, userID, groupID)
+}
+
+// RoutingResourceOverrideWriter is implemented by the data repo when the
+// channel capability is wired. Nil priority/weight clear the override
+// (inherit the resource's own values).
+type RoutingResourceOverrideWriter interface {
+	SetRoutingGroupResourceOverrides(context.Context, int64, routing.Source, *int64, *int64) error
+}
+
+func (uc *RoutingAccessUsecase) SetResourceOverrides(ctx context.Context, groupID int64, source routing.Source, priority, weight *int64) error {
+	if groupID <= 0 || source.ID <= 0 || (source.Kind != routing.Channel && source.Kind != routing.Subscription) {
+		return ErrRoutingGroupInvalid
+	}
+	if priority != nil && *priority < 0 || weight != nil && *weight < 0 {
+		return ErrRoutingGroupInvalid
+	}
+	writer, ok := uc.repo.(RoutingResourceOverrideWriter)
+	if !ok {
+		return ErrRoutingGroupUnavailable
+	}
+	return writer.SetRoutingGroupResourceOverrides(ctx, groupID, source, priority, weight)
 }

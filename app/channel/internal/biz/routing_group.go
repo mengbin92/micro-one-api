@@ -118,3 +118,49 @@ func (uc *RoutingGroupUsecase) SetState(ctx context.Context, id, revision int64,
 	}
 	return uc.Get(ctx, id)
 }
+
+// GroupResourceOverridesRepo is implemented by the data layer over the 098
+// relation columns.
+type GroupResourceOverridesRepo interface {
+	SetRoutingGroupResourceOverrides(context.Context, int64, routing.Source, *int64, *int64) error
+}
+
+// SetResourceOverrides publishes nullable priority/weight overrides for one
+// group resource relation. Nil fields restore inheritance. The group must not
+// be archived; revision bump + outbox are the data layer's contract.
+func (uc *RoutingGroupUsecase) SetResourceOverrides(ctx context.Context, groupID int64, source routing.Source, priority, weight *int64) (*RoutingGroupDetail, error) {
+	if groupID <= 0 || source.ID <= 0 || (source.Kind != routing.Channel && source.Kind != routing.Subscription) {
+		return nil, ErrRoutingGroupInvalid
+	}
+	if priority != nil && *priority < 0 {
+		return nil, ErrRoutingGroupInvalid
+	}
+	if weight != nil && *weight < 0 {
+		return nil, ErrRoutingGroupInvalid
+	}
+	detail, err := uc.Get(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.Group == nil || detail.Group.Status == "archived" {
+		return nil, ErrRoutingGroupInvalid
+	}
+	member := false
+	for _, resource := range detail.Resources {
+		if resource.Source.Kind == source.Kind && resource.Source.ID == source.ID {
+			member = true
+			break
+		}
+	}
+	if !member {
+		return nil, ErrRoutingGroupNotFound
+	}
+	r, ok := uc.repo.(GroupResourceOverridesRepo)
+	if !ok {
+		return nil, ErrRoutingGroupStorage
+	}
+	if err := r.SetRoutingGroupResourceOverrides(ctx, groupID, source, priority, weight); err != nil {
+		return nil, err
+	}
+	return uc.Get(ctx, groupID)
+}

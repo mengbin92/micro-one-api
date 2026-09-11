@@ -3,12 +3,14 @@ package data
 import (
 	"context"
 	"errors"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	subscriptiondata "micro-one-api/domain/subscription/data"
+	applogger "micro-one-api/platform/logging"
 	"time"
 )
 
@@ -103,14 +105,27 @@ func routingPolicyHasContracts(tx *gorm.DB, id int64) (bool, error) {
 	if err != nil || n > 0 {
 		return n > 0, err
 	}
-	var orders []struct{ PlanSnapshot string }
-	if err := tx.Table("payment_orders").Select("plan_snapshot").Where("status = ? AND (plan_id > 0 OR group_id > 0)", "pending").Find(&orders).Error; err != nil {
+	var orders []struct {
+		ID           int64
+		PlanSnapshot string
+	}
+	if err := tx.Table("payment_orders").Select("id, plan_snapshot").Where("status = ? AND (plan_id > 0 OR group_id > 0)", "pending").Find(&orders).Error; err != nil {
 		return false, err
 	}
 	for _, o := range orders {
 		snapshot, err := subscriptionbiz.DecodePlanSnapshot(o.PlanSnapshot)
 		if err != nil {
-			return false, err
+			// A single corrupt pending order must not block every policy
+			// publish; treat the unknown snapshot as possibly covering the
+			// group (the check is conservative by design). Log the offender so
+			// the cause stays visible instead of surfacing only as an
+			// unexplained "referenced by contracts" rejection.
+			applogger.Log.Warn("undecodable pending order snapshot; treating it as covering every routing group",
+				zap.String("component", "billing.data"),
+				zap.Int64("order_id", o.ID),
+				zap.Int64("routing_group_id", id),
+				zap.Error(err))
+			return true, nil
 		}
 		if snapshot.Contract.Covers(id) {
 			return true, nil

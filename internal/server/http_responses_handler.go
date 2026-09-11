@@ -492,6 +492,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		fmt.Sprintf("%d", route.Channel.ID),
 		route.SubscriptionAccountID,
 		authSnapshot,
+		route.RoutingGroupID,
 	)
 	if err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "quota reservation failed")

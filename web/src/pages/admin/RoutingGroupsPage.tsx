@@ -18,7 +18,7 @@ interface RoutingGroup {
 interface GroupList { groups: RoutingGroup[]; next_page_token: string }
 interface GroupDetail {
   group: RoutingGroup;
-  resources: { source_kind: string; source_id: number; priority: number; weight: number }[];
+  resources: { source_kind: string; source_id: number; priority: number; weight: number; priority_override?: number | null; weight_override?: number | null }[];
   model_grants: { mapping_id: number; account_id: number; model: string; upstream_model_id: string; enabled: boolean; priority: number; extra_authorization: boolean }[];
 }
 const statusLabel = (value: string) => ({ enabled: t('启用'), disabled: t('停用'), archived: t('已归档') }[value] ?? value);
@@ -47,15 +47,46 @@ export function AdminRoutingGroupsPage() {
       return unwrapApiData<GroupDetail>(res.data, t('分组详情加载失败'));
     },
   });
+  const [overrideDrafts, setOverrideDrafts] = useState<Record<string, { priority: string; weight: string }>>({});
+  // A draft belongs to one group's relation row, so switching groups resets it —
+  // otherwise "保存覆盖" could write a stale value into another group's row.
+  const selectGroup = (id: number | null) => {
+    setSelected(id);
+    setOverrideDrafts({});
+  };
+  const saveOverrides = async (sourceKind: string, sourceID: number) => {
+    if (!detail.data) return;
+    const draft = overrideDrafts[`${sourceKind}:${sourceID}`] || { priority: '', weight: '' };
+    const parse = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : NaN;
+    };
+    const priority = parse(draft.priority);
+    const weight = parse(draft.weight);
+    if (Number.isNaN(priority) || Number.isNaN(weight)) {
+      toast.error(t('覆盖值必须为空（继承）或非负整数'));
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await adminApiClient.put(`/v1/admin/routing-groups/${detail.data.group.id}/resource-overrides`, { source_kind: sourceKind, source_id: sourceID, priority_override: priority, weight_override: weight });
+      ensureApiSuccess(res.data, t('保存覆盖失败'));
+      await detail.refetch();
+      toast.success(t('资源覆盖已更新'));
+    } catch (error) { toast.error(error instanceof Error ? error.message : t('保存覆盖失败')); }
+    finally { setSaving(false); }
+  };
   const changeState = async (status: string, accessMode: string) => {
     if (!detail.data) return;
     setSaving(true);
     try {
       const res = await adminApiClient.patch(`/v1/admin/routing-groups/${detail.data.group.id}`, { expected_revision: detail.data.group.revision, status, access_mode: accessMode });
-      ensureApiSuccess(res.data, '更新分组失败');
+      ensureApiSuccess(res.data, t('更新分组失败'));
       await Promise.all([detail.refetch(), groups.refetch()]);
-      toast.success('分组已更新');
-    } catch (error) { toast.error(error instanceof Error ? error.message : '更新分组失败'); await detail.refetch(); }
+      toast.success(t('分组已更新'));
+    } catch (error) { toast.error(error instanceof Error ? error.message : t('更新分组失败')); await detail.refetch(); }
     finally { setSaving(false); }
   };
   return <div className="space-y-6">
@@ -63,11 +94,11 @@ export function AdminRoutingGroupsPage() {
       <h2 className="text-2xl font-semibold">{t('分组')}</h2>
       <p className="text-sm text-muted-foreground">{t('查看路由分组的资源成员和模型授权。分组状态与上游资源健康状态分别管理。')}</p>
     </div>
-    <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); setKey(search); setPages(['']); setSelected(null); }}>
+    <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); setKey(search); setPages(['']); selectGroup(null); }}>
       <div className="space-y-2"><Label htmlFor="routing-group-key">{t('分组键（精确匹配）')}</Label>
         <Input id="routing-group-key" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="default" /></div>
       <Button type="submit" variant="outline">{t('查询')}</Button>
-      <Button type="button" variant="ghost" onClick={() => { setSearch(''); setKey(''); setPages(['']); setSelected(null); }}>{t('清除')}</Button>
+      <Button type="button" variant="ghost" onClick={() => { setSearch(''); setKey(''); setPages(['']); selectGroup(null); }}>{t('清除')}</Button>
     </form>
     {groups.isPending ? <p role="status">{t('加载中...')}</p> : groups.isError ?
       <div role="alert" className="space-y-2"><p>{t('分组加载失败，请稍后重试。')}</p><Button variant="outline" onClick={() => void groups.refetch()}>{t('重试')}</Button></div> :
@@ -77,26 +108,28 @@ export function AdminRoutingGroupsPage() {
       </TableRow></TableHeader><TableBody>{groups.data.groups.map((group) => <TableRow key={group.id}>
         <TableCell><div className="font-medium">{group.display_name || group.key}</div><code>{group.key}</code></TableCell>
         <TableCell>{statusLabel(group.status)}</TableCell><TableCell>{group.access_mode === 'public' ? t('公开') : t('需授权')}</TableCell>
-        <TableCell><Button size="sm" variant="outline" onClick={() => setSelected(group.id)} aria-label={t('查看分组 {name}', { name: group.key })}>{t('查看详情')}</Button></TableCell>
+        <TableCell><Button size="sm" variant="outline" onClick={() => selectGroup(group.id)} aria-label={t('查看分组 {name}', { name: group.key })}>{t('查看详情')}</Button></TableCell>
       </TableRow>)}</TableBody></Table></div>}
     <div className="flex gap-2">
-      <Button variant="outline" disabled={pages.length === 1 || groups.isFetching} onClick={() => { setPages((p) => p.slice(0, -1)); setSelected(null); }}>{t('上一页')}</Button>
-      <Button variant="outline" disabled={!groups.data?.next_page_token || groups.isFetching || groups.isError} onClick={() => { if (groups.data?.next_page_token) setPages((p) => [...p, groups.data.next_page_token]); setSelected(null); }}>{t('下一页')}</Button>
+      <Button variant="outline" disabled={pages.length === 1 || groups.isFetching} onClick={() => { setPages((p) => p.slice(0, -1)); selectGroup(null); }}>{t('上一页')}</Button>
+      <Button variant="outline" disabled={!groups.data?.next_page_token || groups.isFetching || groups.isError} onClick={() => { if (groups.data?.next_page_token) setPages((p) => [...p, groups.data.next_page_token]); selectGroup(null); }}>{t('下一页')}</Button>
     </div>
     {selected !== null && <section className="space-y-4 rounded-lg border p-4" aria-label={t('分组详情')}>
       {detail.isPending ? <p role="status">{t('加载中...')}</p> : detail.isError ? <div role="alert"><p>{t('分组详情加载失败。')}</p><Button variant="outline" onClick={() => void detail.refetch()}>{t('重试')}</Button></div> : detail.data && <>
         <div><h3 className="text-lg font-semibold">{detail.data.group.display_name || detail.data.group.key}</h3><p className="text-sm text-muted-foreground">ID {detail.data.group.id} · {detail.data.group.key} · {statusLabel(detail.data.group.status)}</p>
           {detail.data.group.description && <p className="mt-2 text-sm">{detail.data.group.description}</p>}</div>
         {detail.data.group.status !== 'archived' && <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">停用后拒绝新调用，已接受的请求按原价格结算；切换为专属后仅显式授权用户可用。</p>
-          <div className="flex gap-2"><Button disabled={saving} variant={detail.data.group.status === 'enabled' ? 'destructive' : 'outline'} onClick={() => changeState(detail.data.group.status === 'enabled' ? 'disabled' : 'enabled', detail.data.group.access_mode)}>{detail.data.group.status === 'enabled' ? '停用分组' : '启用分组'}</Button>
-          <select aria-label="使用资格" disabled={saving} value={detail.data.group.access_mode} onChange={(e) => changeState(detail.data.group.status, e.target.value)} className="rounded-md border bg-background px-2"><option value="restricted">专属分组</option><option value="public">公开分组</option></select></div>
+          <p className="text-sm text-muted-foreground">{t('停用后拒绝新调用，已接受的请求按原价格结算；切换为专属后仅显式授权用户可用。')}</p>
+          <div className="flex gap-2"><Button disabled={saving} variant={detail.data.group.status === 'enabled' ? 'destructive' : 'outline'} onClick={() => changeState(detail.data.group.status === 'enabled' ? 'disabled' : 'enabled', detail.data.group.access_mode)}>{detail.data.group.status === 'enabled' ? t('停用分组') : t('启用分组')}</Button>
+          <select aria-label={t('使用资格')} disabled={saving} value={detail.data.group.access_mode} onChange={(e) => changeState(detail.data.group.status, e.target.value)} className="rounded-md border bg-background px-2"><option value="restricted">{t('专属分组')}</option><option value="public">{t('公开分组')}</option></select></div>
         </div>}
         <RoutingBillingEditor key={selected} id={selected} />
         <h4 className="font-medium">{t('资源成员')}</h4>
         <p className="text-sm text-muted-foreground">{t('优先级和权重继承资源配置；具体模型仍需通过模型授权检查。')}</p>
-        {!detail.data.resources.length ? <p>{t('暂无资源成员')}</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t('资源类型')}</TableHead><TableHead>ID</TableHead><TableHead>{t('优先级')}</TableHead><TableHead>{t('权重')}</TableHead></TableRow></TableHeader><TableBody>
-          {detail.data.resources.map((r) => <TableRow key={`${r.source_kind}:${r.source_id}`}><TableCell>{r.source_kind === 'channel' ? t('API 渠道') : t('上游订阅账号')}</TableCell><TableCell>{r.source_id}</TableCell><TableCell>{r.priority}</TableCell><TableCell>{r.weight}</TableCell></TableRow>)}
+        {!detail.data.resources.length ? <p>{t('暂无资源成员')}</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t('资源类型')}</TableHead><TableHead>ID</TableHead><TableHead>{t('优先级')}</TableHead><TableHead>{t('权重')}</TableHead><TableHead>{t('组内覆盖（空=继承）')}</TableHead><TableHead>{t('操作')}</TableHead></TableRow></TableHeader><TableBody>
+          {detail.data.resources.map((r) => { const key = `${r.source_kind}:${r.source_id}`; const draft = overrideDrafts[key] || { priority: r.priority_override?.toString() ?? '', weight: r.weight_override?.toString() ?? '' }; return <TableRow key={key}><TableCell>{r.source_kind === 'channel' ? t('API 渠道') : t('上游订阅账号')}</TableCell><TableCell>{r.source_id}</TableCell><TableCell>{r.priority}{r.priority_override != null ? `（覆盖 ${r.priority_override}）` : ''}</TableCell><TableCell>{r.weight}{r.weight_override != null ? `（覆盖 ${r.weight_override}）` : ''}</TableCell>
+            <TableCell><div className="flex gap-1"><Input aria-label="优先级覆盖" className="w-20" placeholder="继承" value={draft.priority} onChange={(e) => setOverrideDrafts((d) => ({ ...d, [key]: { ...draft, priority: e.target.value } }))} /><Input aria-label="权重覆盖" className="w-20" placeholder="继承" value={draft.weight} onChange={(e) => setOverrideDrafts((d) => ({ ...d, [key]: { ...draft, weight: e.target.value } }))} /></div></TableCell>
+            <TableCell><Button size="sm" variant="outline" disabled={saving || detail.data.group.status === 'archived'} onClick={() => saveOverrides(r.source_kind, r.source_id)}>{t('保存覆盖')}</Button></TableCell></TableRow>; })}
         </TableBody></Table></div>}
         <h4 className="font-medium">{t('账号模型授权')}</h4>
         <p className="text-sm text-muted-foreground">{t('模型级额外授权仅覆盖列出的模型，不授予该账号的其他模型。')}</p>

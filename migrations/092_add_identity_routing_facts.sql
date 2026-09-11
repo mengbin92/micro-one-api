@@ -8,7 +8,7 @@ CREATE TABLE user_routing_group_grants (
   user_id BIGINT NOT NULL,
   routing_group_id BIGINT NOT NULL,
   source_type VARCHAR(16) NOT NULL,
-  source_ref VARCHAR(64) NOT NULL,
+  source_ref VARCHAR(128) NOT NULL,
   starts_at BIGINT NOT NULL DEFAULT 0,
   expires_at BIGINT NOT NULL DEFAULT 0,
   status VARCHAR(16) NOT NULL DEFAULT 'active',

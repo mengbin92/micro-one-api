@@ -693,7 +693,18 @@ func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error 
 	if !biz.RoutingV2Enabled() {
 		query = query.Omit("RoutingMode", "RoutingGroupID", "RoutingRevision")
 	}
-	if err := query.Create(&model).Error; err != nil {
+	ordered := biz.RoutingV2Enabled() && token.RoutingMode == "ordered" && len(token.RoutingGroupIDs) > 0
+	if ordered {
+		// Token row and its ordered candidate list commit atomically.
+		if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&model).Error; err != nil {
+				return err
+			}
+			return replaceTokenGroupOrders(tx, model.ID, token.RoutingGroupIDs)
+		}); err != nil {
+			return err
+		}
+	} else if err := query.Create(&model).Error; err != nil {
 		return err
 	}
 	token.ID = model.ID

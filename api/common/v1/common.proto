@@ -19,6 +19,8 @@ message ResolvedRoutingContext {
   int64 subscription_entitlement_version = 10;
   string selection_source = 11;
   int64 subscription_id = 12;
+  repeated int64 candidate_group_ids = 13;
+  int64 attempt_ordinal = 14;
 }
 
 message RoutingSubjectFacts {
@@ -29,6 +31,7 @@ message RoutingSubjectFacts {
   int64 token_group_id = 5;
   int64 token_revision = 6;
   repeated UserRoutingGroupGrant grants = 7;
+  repeated int64 token_group_ids = 8;
 }
 
 message UserRoutingGroupGrant {

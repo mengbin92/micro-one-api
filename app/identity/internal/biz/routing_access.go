@@ -15,7 +15,7 @@ type RoutingAccessChange struct {
 type RoutingAccessRepo interface {
 	UserRoutingFacts(context.Context, int64) (*routing.SubjectFacts, error)
 	UpdateRoutingAccess(context.Context, RoutingAccessChange) error
-	SetTokenRouting(context.Context, int64, int64, string, int64, int64) (int64, error)
+	SetTokenRouting(context.Context, int64, int64, string, int64, int64, []int64) (int64, error)
 }
 
 func (uc *IdentityUsecase) routingAccessRepo() (RoutingAccessRepo, error) {
@@ -61,13 +61,22 @@ func (uc *IdentityUsecase) UpdateRoutingAccess(ctx context.Context, c RoutingAcc
 	}
 	return r.UserRoutingFacts(ctx, c.UserID)
 }
-func (uc *IdentityUsecase) SetTokenRouting(ctx context.Context, userID, tokenID int64, mode string, groupID, revision int64) (int64, error) {
+func (uc *IdentityUsecase) SetTokenRouting(ctx context.Context, userID, tokenID int64, mode string, groupID, revision int64, groupIDs []int64) (int64, error) {
 	r, err := uc.routingAccessRepo()
 	if err != nil {
 		return 0, err
 	}
-	if userID <= 0 || tokenID <= 0 || revision <= 0 || !routing.ValidPolicy(mode, groupID) {
+	if userID <= 0 || tokenID <= 0 || revision <= 0 {
 		return 0, ErrRoutingDefaultInvalid
 	}
-	return r.SetTokenRouting(ctx, userID, tokenID, mode, groupID, revision)
+	valid := routing.ValidPolicy(mode, groupID)
+	if mode == "ordered" {
+		valid = routing.ValidOrderedPolicy(mode, groupID, groupIDs)
+	} else if len(groupIDs) > 0 {
+		valid = false
+	}
+	if !valid {
+		return 0, ErrRoutingDefaultInvalid
+	}
+	return r.SetTokenRouting(ctx, userID, tokenID, mode, groupID, revision, groupIDs)
 }

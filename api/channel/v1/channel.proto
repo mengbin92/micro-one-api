@@ -17,6 +17,9 @@ service ChannelService {
   rpc CheckRoute(CheckRouteRequest) returns (CheckRouteReply);
   rpc SelectChannel(SelectChannelRequest) returns (SelectChannelReply);
   rpc SelectSubscriptionAccount(SelectSubscriptionAccountRequest) returns (SelectSubscriptionAccountReply);
+  // Phase F: relation-level priority/weight overrides (owner: channel).
+  rpc SetRoutingGroupResourceOverrides(SetRoutingGroupResourceOverridesRequest) returns (SetRoutingGroupResourceOverridesReply);
+  rpc HasRoutingCandidates(HasRoutingCandidatesRequest) returns (HasRoutingCandidatesReply);
   rpc GetSubscriptionAccount(GetSubscriptionAccountRequest) returns (GetSubscriptionAccountReply);
   // Internal relay credential lookup. Unlike the management RPC above, this
   // response contains decrypted account secrets and must stay on the private
@@ -147,9 +150,26 @@ message GetRoutingGroupRequest { int64 id = 1; }
 message RoutingGroupResource {
   string source_kind = 1;
   int64 source_id = 2;
+  // Effective values (relation override > resource's own values).
   int64 priority = 3;
   int64 weight = 4;
+  // Raw relation-level overrides; unset (nil) = inherit.
+  optional int64 priority_override = 5;
+  optional int64 weight_override = 6;
 }
+message SetRoutingGroupResourceOverridesRequest {
+  int64 routing_group_id = 1;
+  string source_kind = 2; // channel | subscription
+  int64 source_id = 3;
+  optional int64 priority_override = 4;
+  optional int64 weight_override = 5;
+}
+message SetRoutingGroupResourceOverridesReply {}
+// Read-only candidate probe for ordered (auto) routing: true when the group
+// has any routable upstream for the model. Never selects, so it never
+// advances weighted-scheduler state.
+message HasRoutingCandidatesRequest { int64 routing_group_id = 1; string model = 2; }
+message HasRoutingCandidatesReply { bool has_candidates = 1; }
 message RoutingGroupModelGrant {
   int64 mapping_id = 1;
   int64 account_id = 2;
@@ -217,6 +237,10 @@ message GetChannelReply {
 message ListAvailableModelsRequest {
  int64 routing_group_id = 2;
   string group = 1;
+  // Ordered-candidate (or multi-group) model listing: the reply is the union
+  // of the models available in each routing group. Empty keeps the
+  // single-group behavior.
+  repeated int64 routing_group_ids = 3;
 }
 
 message ListAvailableModelsReply {

@@ -12,6 +12,12 @@ service BillingService {
  rpc GetRoutingBillingPolicy(GetRoutingBillingPolicyRequest) returns (RoutingBillingPolicy);
  rpc PublishRoutingBillingPolicy(PublishRoutingBillingPolicyRequest) returns (RoutingBillingPolicy);
  rpc GetRoutingGroupPrice(GetRoutingGroupPriceRequest) returns (GetRoutingGroupPriceReply);
+ // Phase F: user-specific routing-group price ratio overrides (admin-managed).
+ rpc SetUserRoutingPrice(SetUserRoutingPriceRequest) returns (SetUserRoutingPriceReply);
+ rpc ClearUserRoutingPrice(ClearUserRoutingPriceRequest) returns (ClearUserRoutingPriceReply);
+ // Phase F: ordered-routing settlement qualification probe. Relay terminates
+ // (never advances to a pricier group) when the user cannot settle in a group.
+ rpc CheckRoutingSettlement(CheckRoutingSettlementRequest) returns (CheckRoutingSettlementReply);
   rpc GetRoutingCapabilities(GetRoutingCapabilitiesRequest) returns (GetRoutingCapabilitiesResponse);
   rpc ReserveQuota(ReserveQuotaRequest) returns (ReserveQuotaResponse);
   rpc CommitQuota(CommitQuotaRequest) returns (CommitQuotaResponse);
@@ -54,7 +60,13 @@ service BillingService {
 }
 
 message GetRoutingCapabilitiesRequest {}
-message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; bool fixed_routing = 2; bool subscription_contracts = 3; }
+message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; bool fixed_routing = 2; bool subscription_contracts = 3; bool user_price_overrides = 4; }
+message SetUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; double price_ratio = 3; }
+message SetUserRoutingPriceReply { int64 version = 1; }
+message ClearUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; }
+message ClearUserRoutingPriceReply {}
+message CheckRoutingSettlementRequest { int64 user_id = 1; int64 routing_group_id = 2; }
+message CheckRoutingSettlementReply { bool allowed = 1; string reason = 2; }
 
 // ========== 金额预扣（RPC 名称为兼容既有客户端保留） ==========
 
@@ -719,6 +731,9 @@ message GetRoutingGroupPriceReply {
  string source = 4;
  string billing_mode = 5;
  bool subscription_covered = 6;
+ // Phase F: set when a user-specific override is the effective ratio.
+ optional double user_price_ratio = 7;
+ optional int64 user_price_version = 8;
 }
 
 message RequestCostBound { string protocol = 1; int64 input_tokens = 2; string upstream_model = 3; }

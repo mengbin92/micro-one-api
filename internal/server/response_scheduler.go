@@ -63,7 +63,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 				route.Account = account
 			}
 			globalModel, resolvedModel := s.routeModels(route, clientModel)
-			resolvedAuth, err := s.server.routingAuth(ctx, authSnapshot)
+			resolvedAuth, err := s.server.routingAuth(ctx, authSnapshot, route.RoutingGroupID)
 			if err != nil {
 				return nil, false
 			}
@@ -104,7 +104,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 		return nil, false
 	}
 	globalModel, resolvedModel := s.routeModels(route, clientModel)
-	resolvedAuth, err := s.server.routingAuth(ctx, authSnapshot)
+	resolvedAuth, err := s.server.routingAuth(ctx, authSnapshot, route.RoutingGroupID)
 	if err != nil {
 		return nil, false
 	}

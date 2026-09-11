@@ -75,3 +75,57 @@ func TestRoutingGroupPairRejectsMismatchBeforeSelection(t *testing.T) {
 	_, err = s.CheckRoute(ctx, &channelv1.CheckRouteRequest{Group: "VIP", RoutingGroupId: 2, Model: "m", SourceKind: "channel", SourceId: 1})
 	require.ErrorIs(t, err, biz.ErrRoutingGroupInvalid)
 }
+
+// unionListRepo shadows ListAvailableModels with a per-group table while
+// inheriting every other ChannelRepo behavior from the shared test fake.
+type unionListRepo struct {
+	*channelServiceRepo
+	models map[string][]string
+}
+
+func (r *unionListRepo) ListAvailableModels(ctx context.Context, group string) ([]string, error) {
+	return r.models[group], nil
+}
+
+type unionGroupsFake struct {
+	groups map[int64]*routing.Group
+}
+
+func (f *unionGroupsFake) List(context.Context, biz.RoutingGroupListOptions) ([]*biz.RoutingGroup, error) {
+	return nil, nil
+}
+
+func (f *unionGroupsFake) Get(_ context.Context, id int64) (*biz.RoutingGroupDetail, error) {
+	g, ok := f.groups[id]
+	if !ok {
+		return nil, biz.ErrRoutingGroupNotFound
+	}
+	return &biz.RoutingGroupDetail{Group: g}, nil
+}
+
+// TestListAvailableModelsUnionsOrderedCandidateGroups covers the ordered
+// (auto) token model listing: the reply is the deduplicated union of the
+// candidate groups' authorized models, and disabled groups contribute nothing.
+func TestListAvailableModelsUnionsOrderedCandidateGroups(t *testing.T) {
+	repo := &unionListRepo{
+		channelServiceRepo: &channelServiceRepo{channel: &biz.Channel{ID: 101, Status: biz.ChannelStatusEnabled}},
+		models: map[string][]string{
+			"vip":     {"gpt-4o", "o3"},
+			"std":     {"gpt-4o-mini", "gpt-4o"},
+			"retired": {"legacy-only"},
+		},
+	}
+	s := NewChannelService(biz.NewChannelUsecase(repo, nil))
+	s.SetRoutingGroupUsecase(&unionGroupsFake{groups: map[int64]*routing.Group{
+		20: {ID: 20, Key: "vip", Status: "enabled"},
+		21: {ID: 21, Key: "std", Status: "enabled"},
+		22: {ID: 22, Key: "retired", Status: "disabled"},
+	}})
+	reply, err := s.ListAvailableModels(context.Background(), &channelv1.ListAvailableModelsRequest{
+		Group:           "default",
+		RoutingGroupIds: []int64{20, 21, 22},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-4o", "o3", "gpt-4o-mini"}, reply.Models,
+		"union must dedup across groups and skip disabled groups")
+}

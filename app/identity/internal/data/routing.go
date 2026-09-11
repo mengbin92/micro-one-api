@@ -91,14 +91,25 @@ func (r *Repository) GetRoutingFacts(ctx context.Context, userID, tokenID int64,
 		if token.ExpiredTime > 0 && token.ExpiredTime <= time.Now().Unix() {
 			return biz.ErrTokenExpired
 		}
-		if !routing.ValidPolicy(token.RoutingMode, token.RoutingGroupID) || token.RoutingRevision <= 0 {
+		if !routing.ValidPolicy(token.RoutingMode, token.RoutingGroupID) && token.RoutingMode != "ordered" || token.RoutingRevision <= 0 {
 			return biz.ErrRoutingDefaultInvalid
+		}
+		var tokenGroupIDs []int64
+		if token.RoutingMode == "ordered" {
+			orders, err := loadTokenGroupOrders(tx, []int64{tokenID})
+			if err != nil {
+				return biz.ErrRoutingFactsUnavailable
+			}
+			tokenGroupIDs = orders[tokenID]
+			if !routing.ValidOrderedPolicy(token.RoutingMode, token.RoutingGroupID, tokenGroupIDs) {
+				return biz.ErrRoutingDefaultInvalid
+			}
 		}
 		var grants []routingGrantModel
 		if err := tx.Where("user_id = ?", userID).Order("routing_group_id, source_type, source_ref").Find(&grants).Error; err != nil {
 			return biz.ErrRoutingFactsUnavailable
 		}
-		facts = &routing.SubjectFacts{DefaultGroupID: user.DefaultRoutingGroupID, PublicGroupAccess: user.PublicGroupAccess, AccessRevision: user.RoutingAccessRevision, TokenMode: token.RoutingMode, TokenGroupID: token.RoutingGroupID, TokenRevision: token.RoutingRevision}
+		facts = &routing.SubjectFacts{DefaultGroupID: user.DefaultRoutingGroupID, PublicGroupAccess: user.PublicGroupAccess, AccessRevision: user.RoutingAccessRevision, TokenMode: token.RoutingMode, TokenGroupID: token.RoutingGroupID, TokenGroupIDs: tokenGroupIDs, TokenRevision: token.RoutingRevision}
 		for _, g := range grants {
 			facts.Grants = append(facts.Grants, routing.UserGroupGrant{GroupID: g.RoutingGroupID, SourceType: g.SourceType, SourceRef: g.SourceRef, StartsAt: g.StartsAt, ExpiresAt: g.ExpiresAt, Status: g.Status})
 		}

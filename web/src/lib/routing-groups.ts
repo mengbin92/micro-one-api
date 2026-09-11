@@ -1,8 +1,8 @@
 import { apiClient } from './api';
 import { unwrapApiData } from './api-response';
 export interface RoutingGrant { routing_group_id: number; source_type: string; source_ref: string; starts_at: number; expires_at: number; status: string }
-export interface RoutingFacts { tokens?: { id: number; name: string; mode: string; group_id: number; revision: number }[]; default_routing_group_id: number; revision: number; public_group_access: string; grants: RoutingGrant[] }
-export interface AvailableGroup { id: number; key: string; display_name: string; price_ratio: number; price_source: string; price_version: string; billing_mode: string; subscription_covered: boolean; models: string[]; sources: RoutingGrant[] }
+export interface RoutingFacts { tokens?: { id: number; name: string; mode: string; group_id: number; group_ids?: number[]; revision: number }[]; default_routing_group_id: number; revision: number; public_group_access: string; grants: RoutingGrant[] }
+export interface AvailableGroup { id: number; key: string; display_name: string; price_ratio: number; price_source: string; price_version: string; billing_mode: string; subscription_covered: boolean; models: string[]; sources: RoutingGrant[]; ordered_eligible?: boolean; user_price_ratio?: number; user_price_version?: number }
 export interface AvailableGroups { groups: AvailableGroup[]; facts: RoutingFacts; default_available: boolean; creation_enabled: boolean; next_page_token: string }
 export async function loadAvailableGroups(): Promise<AvailableGroups> {
   let token = '';

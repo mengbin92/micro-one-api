@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"micro-one-api/domain/routing"
+	"micro-one-api/platform/routingdto"
 	"net/http"
 	"net/url"
 	"strings"
@@ -765,14 +766,21 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 
 		// Terminal path: either success or unrecoverable failure.
+		pendingCovered := false
 		if v2Turns != nil {
 			if pending := v2Turns.take(); pending != nil {
+				// The pending turn reservation usually IS the connection-level
+				// reservation (seeded with it and untouched when no turn was
+				// admitted); release each distinct id exactly once.
+				if reservation != nil && pending.ReservationId == reservation.ReservationId {
+					pendingCovered = true
+				}
 				releaseCtx, cancel := detachedBillingContext(ctx)
 				_ = s.releaseQuota(releaseCtx, pending.ReservationId, "no completed websocket turn")
 				cancel()
 			}
 		}
-		if turnCommits == 0 {
+		if turnCommits == 0 && !pendingCovered {
 			if releaseErr := s.releaseQuota(ctx, reservation.ReservationId, "no completed ws turn"); releaseErr != nil {
 				applogger.Log.Warn("failed to release openai ws reservation", zap.String("request_id", requestID), zap.Error(releaseErr))
 			}
@@ -881,8 +889,13 @@ func (s *HTTPServer) lookupWSStickyRoute(ctx context.Context, token, clientModel
 	if err != nil {
 		return false
 	}
-	source := s.wsSticky.LookupResponseRoute(ctx, protoSessionScope(authSnapshot), responseID)
-	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, route)
+	source, groupID := s.lookupWSScopedSticky(ctx, authSnapshot, responseID, func(scope, id string) openAIWSStickySource {
+		return s.wsSticky.LookupResponseRoute(ctx, scope, id)
+	})
+	if source.id <= 0 {
+		return false
+	}
+	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, groupID, route)
 }
 
 func (s *HTTPServer) lookupWSStickySessionRoute(ctx context.Context, token, clientModel, sessionHash string, route *responseRoute) bool {
@@ -893,8 +906,41 @@ func (s *HTTPServer) lookupWSStickySessionRoute(ctx context.Context, token, clie
 	if err != nil {
 		return false
 	}
-	source := s.wsSticky.LookupSessionRoute(ctx, protoSessionScope(authSnapshot), sessionHash)
-	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, route)
+	source, groupID := s.lookupWSScopedSticky(ctx, authSnapshot, sessionHash, func(scope, id string) openAIWSStickySource {
+		return s.wsSticky.LookupSessionRoute(ctx, scope, id)
+	})
+	if source.id <= 0 {
+		return false
+	}
+	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, groupID, route)
+}
+
+// lookupWSScopedSticky tries the token's natural scope first, then — for
+// ordered tokens, whose bound group varies per conversation — every ordered
+// candidate scope. Binds are written under the resolved group
+// (routingSessionScope), so without the candidate scan an ordered-token
+// lookup under the proto scope (g0) would miss forever and a bound
+// conversation could silently move groups across replicas.
+func (s *HTTPServer) lookupWSScopedSticky(ctx context.Context, authSnapshot *identityv1.GetAuthSnapshotReply, id string, lookup func(scope, id string) openAIWSStickySource) (openAIWSStickySource, int64) {
+	source := lookup(protoSessionScope(authSnapshot), id)
+	if source.id > 0 {
+		return source, selectedProtoGroupID(authSnapshot)
+	}
+	if authSnapshot == nil || authSnapshot.RoutingFacts == nil || authSnapshot.RoutingFacts.TokenMode != "ordered" {
+		return openAIWSStickySource{}, 0
+	}
+	tried := map[int64]bool{selectedProtoGroupID(authSnapshot): true}
+	for _, gid := range routing.OrderedGroupIDs(routingdto.FactsFromProto(authSnapshot.RoutingFacts)) {
+		if gid <= 0 || tried[gid] {
+			continue
+		}
+		tried[gid] = true
+		scope := fmt.Sprintf("v2/u%d/t%d/g%d", authSnapshot.UserId, authSnapshot.TokenId, gid)
+		if source := lookup(scope, id); source.id > 0 {
+			return source, gid
+		}
+	}
+	return openAIWSStickySource{}, 0
 }
 
 func (s *HTTPServer) materializeWSStickySource(
@@ -902,6 +948,7 @@ func (s *HTTPServer) materializeWSStickySource(
 	authSnapshot *identityv1.GetAuthSnapshotReply,
 	clientModel string,
 	source openAIWSStickySource,
+	routingGroupID int64,
 	route *responseRoute,
 ) bool {
 	if s == nil || authSnapshot == nil || route == nil || source.id <= 0 {
@@ -923,7 +970,7 @@ func (s *HTTPServer) materializeWSStickySource(
 			Channel: *channel,
 			Account: account,
 			UserID:  authSnapshot.UserId,
-			TokenID: authSnapshot.TokenId, RoutingGroupID: selectedProtoGroupID(authSnapshot),
+			TokenID: authSnapshot.TokenId, RoutingGroupID: routingGroupID,
 			SubscriptionAccountID: account.ID,
 		}
 		return true
@@ -957,7 +1004,7 @@ func (s *HTTPServer) materializeWSStickySource(
 		if chInfo.Channel.Config != nil {
 			ch.Config = relaybiz.ChannelConfig{APIVersion: chInfo.Channel.Config.ApiVersion}
 		}
-		*route = responseRoute{Channel: ch, UserID: authSnapshot.UserId, TokenID: authSnapshot.TokenId, RoutingGroupID: selectedProtoGroupID(authSnapshot)}
+		*route = responseRoute{Channel: ch, UserID: authSnapshot.UserId, TokenID: authSnapshot.TokenId, RoutingGroupID: routingGroupID}
 		return true
 	default:
 		return false

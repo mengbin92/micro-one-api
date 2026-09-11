@@ -150,3 +150,50 @@ func (uc *ChannelUsecase) hasAuthorizedModel(ctx context.Context, group, model s
 	}
 	return false, nil
 }
+
+// HasRoutingCandidates is the read-only probe behind ordered (auto) routing:
+// true when the enabled group currently has any schedulable upstream for the
+// model, using the same ability + schedulability filters as the serving path.
+// It never selects, so weighted-scheduler state is never advanced.
+func (uc *ChannelUsecase) HasRoutingCandidates(ctx context.Context, group *routing.Group, model string) (bool, error) {
+	if uc == nil || uc.repo == nil || group == nil || group.Status != "enabled" || strings.TrimSpace(model) == "" {
+		return false, nil
+	}
+	now := uc.now()
+	abilities, err := uc.routeChannelAbilities(ctx, group.Key, model)
+	if err != nil && !errors.Is(err, ErrChannelNotFound) {
+		return false, err
+	}
+	for _, ability := range abilities {
+		if !ability.Enabled {
+			continue
+		}
+		channel, err := uc.repo.FindByID(ctx, ability.ChannelID)
+		if err != nil {
+			continue
+		}
+		if channel.SelectableAt(now) && !uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, ability.UpstreamModelID) {
+			return true, nil
+		}
+	}
+	accounts, err := uc.routeSubscriptionAbilities(ctx, group.Key, model, "")
+	if err != nil && !errors.Is(err, ErrSubscriptionAccountNotFound) {
+		return false, err
+	}
+	for _, ability := range accounts {
+		if !ability.Enabled {
+			continue
+		}
+		if uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindSubscription, ability.AccountID, ability.UpstreamModelID) {
+			continue
+		}
+		account, err := uc.repo.FindSubscriptionAccountByID(ctx, ability.AccountID)
+		if err != nil {
+			continue
+		}
+		if account.Status == ChannelStatusEnabled && account.IsSchedulableAt(now) {
+			return true, nil
+		}
+	}
+	return false, nil
+}

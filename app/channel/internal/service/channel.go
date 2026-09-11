@@ -146,6 +146,9 @@ func (s *ChannelService) GetChannel(ctx context.Context, req *channelv1.GetChann
 }
 
 func (s *ChannelService) ListAvailableModels(ctx context.Context, req *channelv1.ListAvailableModelsRequest) (*channelv1.ListAvailableModelsReply, error) {
+	if len(req.RoutingGroupIds) > 0 {
+		return s.listAvailableModelsAcrossRoutingGroups(ctx, req.RoutingGroupIds)
+	}
 	if err := s.validateRoutingGroupPair(ctx, req.RoutingGroupId, req.Group); err != nil {
 		return nil, err
 	}
@@ -157,6 +160,34 @@ func (s *ChannelService) ListAvailableModels(ctx context.Context, req *channelv1
 	return &channelv1.ListAvailableModelsReply{
 		Models: models,
 	}, nil
+}
+
+// listAvailableModelsAcrossRoutingGroups unions the authorized model lists of
+// each requested routing group (ordered-candidate listing). Disabled or
+// unknown groups are skipped, mirroring ordered-routing advance semantics.
+func (s *ChannelService) listAvailableModelsAcrossRoutingGroups(ctx context.Context, groupIDs []int64) (*channelv1.ListAvailableModelsReply, error) {
+	if s.routingGroupUC == nil {
+		return nil, biz.ErrRoutingGroupMigrationRequired
+	}
+	seen := make(map[string]bool)
+	models := make([]string, 0)
+	for _, id := range groupIDs {
+		detail, err := s.routingGroupUC.Get(ctx, id)
+		if err != nil || detail == nil || detail.Group == nil || detail.Group.Status != "enabled" {
+			continue
+		}
+		groupModels, err := s.uc.ListAvailableModels(ctx, detail.Group.Key)
+		if err != nil {
+			return nil, errors.MapChannelError(err)
+		}
+		for _, model := range groupModels {
+			if !seen[model] {
+				seen[model] = true
+				models = append(models, model)
+			}
+		}
+	}
+	return &channelv1.ListAvailableModelsReply{Models: models}, nil
 }
 
 func toSubscriptionAccountInfo(account *biz.SubscriptionAccount) *commonv1.SubscriptionAccountInfo {

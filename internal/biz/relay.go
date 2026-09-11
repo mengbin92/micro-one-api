@@ -334,6 +334,7 @@ func (p *RelayPlan) BaseModel() string {
 // model mapping → auth → model validation → channel selection.
 type RelayUsecase struct {
 	routingEntitlements RoutingEntitlementReader
+	routingSettlement   RoutingSettlementClient
 	identity            IdentityClient
 	channel             ChannelClient
 	subscription        SubscriptionAccountClient
@@ -505,7 +506,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	if err != nil {
 		return nil, err
 	}
-	if err := uc.ResolveRoutingContext(ctx, authSnapshot); err != nil {
+	if err := uc.ResolveRoutingContext(ctx, authSnapshot, RoutingResolveOptions{SessionHash: req.SessionHash, Model: req.Model}); err != nil {
 		return nil, err
 	}
 

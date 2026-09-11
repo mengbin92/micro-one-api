@@ -6,6 +6,7 @@ import (
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/channel/internal/biz"
+	"micro-one-api/domain/routing"
 	"micro-one-api/pkg/filtering"
 	"micro-one-api/pkg/ordering"
 	"micro-one-api/pkg/pagination"
@@ -87,7 +88,7 @@ func (s *ChannelService) GetRoutingGroup(ctx context.Context, req *channelv1.Get
 	g := detail.Group
 	reply := &channelv1.RoutingGroupDetail{Group: &channelv1.RoutingGroup{Id: g.ID, Key: g.Key, DisplayName: g.DisplayName, Description: g.Description, Status: g.Status, AccessMode: g.AccessMode, ModelAccessMode: g.ModelAccessMode, SortOrder: g.SortOrder, Revision: g.Revision, CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt}, Resources: []*channelv1.RoutingGroupResource{}, ModelGrants: []*channelv1.RoutingGroupModelGrant{}}
 	for _, r := range detail.Resources {
-		reply.Resources = append(reply.Resources, &channelv1.RoutingGroupResource{SourceKind: r.Source.Kind, SourceId: r.Source.ID, Priority: r.Priority, Weight: r.Weight})
+		reply.Resources = append(reply.Resources, &channelv1.RoutingGroupResource{SourceKind: r.Source.Kind, SourceId: r.Source.ID, Priority: r.Priority, Weight: r.Weight, PriorityOverride: r.PriorityOverride, WeightOverride: r.WeightOverride})
 	}
 	for _, m := range detail.ModelGrants {
 		reply.ModelGrants = append(reply.ModelGrants, &channelv1.RoutingGroupModelGrant{MappingId: m.MappingID, AccountId: m.AccountID, Model: m.Model, UpstreamModelId: m.UpstreamModelID, Enabled: m.Enabled, Priority: m.Priority, ExtraAuthorization: m.ExtraAuthorization})
@@ -106,4 +107,43 @@ func (s *ChannelService) SetRoutingGroupState(ctx context.Context, req *channelv
 		return nil, err
 	}
 	return s.GetRoutingGroup(ctx, &channelv1.GetRoutingGroupRequest{Id: req.Id})
+}
+
+func (s *ChannelService) SetRoutingGroupResourceOverrides(ctx context.Context, req *channelv1.SetRoutingGroupResourceOverridesRequest) (*channelv1.SetRoutingGroupResourceOverridesReply, error) {
+	uc, ok := s.routingGroupUC.(interface {
+		SetResourceOverrides(context.Context, int64, routing.Source, *int64, *int64) (*biz.RoutingGroupDetail, error)
+	})
+	if !ok {
+		return nil, biz.ErrRoutingGroupStorage
+	}
+	if req == nil || req.RoutingGroupId <= 0 || req.SourceId <= 0 || (req.SourceKind != "channel" && req.SourceKind != "subscription") {
+		return nil, biz.ErrRoutingGroupInvalid
+	}
+	if _, err := uc.SetResourceOverrides(ctx, req.RoutingGroupId, routing.Source{Kind: req.SourceKind, ID: req.SourceId}, req.PriorityOverride, req.WeightOverride); err != nil {
+		return nil, err
+	}
+	return &channelv1.SetRoutingGroupResourceOverridesReply{}, nil
+}
+
+// HasRoutingCandidates is the ordered-routing probe. It is read-only and never
+// advances weighted-scheduler state.
+func (s *ChannelService) HasRoutingCandidates(ctx context.Context, req *channelv1.HasRoutingCandidatesRequest) (*channelv1.HasRoutingCandidatesReply, error) {
+	if s.routingGroupUC == nil || s.uc == nil {
+		return nil, biz.ErrRoutingGroupMigrationRequired
+	}
+	if req == nil || req.RoutingGroupId <= 0 || req.Model == "" {
+		return nil, biz.ErrRoutingGroupInvalid
+	}
+	detail, err := s.routingGroupUC.Get(ctx, req.RoutingGroupId)
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.Group == nil {
+		return nil, biz.ErrRoutingGroupNotFound
+	}
+	has, err := s.uc.HasRoutingCandidates(ctx, detail.Group, req.Model)
+	if err != nil {
+		return nil, err
+	}
+	return &channelv1.HasRoutingCandidatesReply{HasCandidates: has}, nil
 }

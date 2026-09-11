@@ -40,6 +40,10 @@ func now() int64 {
 type Repository struct {
 	routingGroupDualWrite bool
 	routingGroupRelations bool
+	// overrideColsReady caches the 098 column probe so old schemas (pre-F)
+	// keep working without per-query migrator checks.
+	overrideColsReadyOnce sync.Once
+	overrideColsReady     bool
 	db                    *gorm.DB
 	redis                 *redis.Client
 	channels              map[int64]*biz.Channel
@@ -1002,7 +1006,7 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 	// rows and keep those matching the requested model. See
 	// docs/model-management-design.md §9.3 #4.
 	query := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
-		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = ?"), group, strings.ToLower(model), true)
+		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = ?"), group, strings.ToLower(model), 1)
 	if platform != "" {
 		query = query.Where("platform = ?", platform)
 	}
@@ -1015,7 +1019,7 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 	}
 	if len(rows) == 0 {
 		patternQuery := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
-			Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)"), group, true, "%*%", "%?%")
+			Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)"), group, 1, "%*%", "%?%")
 		if platform != "" {
 			patternQuery = patternQuery.Where("platform = ?", platform)
 		}
@@ -1032,12 +1036,18 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 			}
 		}
 	}
+	overrides, err := r.relationOverrides(ctx, group, true)
+	if err != nil {
+		return nil, err
+	}
 	abilities := make([]biz.SubscriptionAccountAbility, 0, len(rows))
 	for _, row := range rows {
 		priority := int64(0)
 		if row.Priority != nil {
 			priority = *row.Priority
 		}
+		var weight int64
+		priority, weight = applyRelationOverride(overrides, row.AccountID, priority, weight)
 		abilities = append(abilities, biz.SubscriptionAccountAbility{
 			Group:     row.Group,
 			Model:     row.Model,
@@ -1045,6 +1055,7 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 			AccountID: row.AccountID,
 			Enabled:   row.Enabled,
 			Priority:  priority,
+			Weight:    weight,
 		})
 	}
 	return abilities, nil
@@ -1559,7 +1570,7 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 		}
 		return q
 	}).
-		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = ?"), group, strings.ToLower(model), true).
+		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = ?"), group, strings.ToLower(model), 1).
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -1571,7 +1582,7 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 			}
 			return q
 		}).
-			Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)"), group, true, "%*%", "%?%").
+			Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)"), group, 1, "%*%", "%?%").
 			Find(&patternRows).Error; err != nil {
 			return nil, err
 		}
@@ -1581,18 +1592,25 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 			}
 		}
 	}
+	overrides, err := r.relationOverrides(ctx, group, false)
+	if err != nil {
+		return nil, err
+	}
 	abilities := make([]biz.Ability, 0, len(rows))
 	for _, row := range rows {
 		priority := int64(0)
 		if row.Priority != nil {
 			priority = *row.Priority
 		}
+		var weight int64
+		priority, weight = applyRelationOverride(overrides, row.ChannelID, priority, weight)
 		abilities = append(abilities, biz.Ability{
 			Group:     row.Group,
 			Model:     row.Model,
 			ChannelID: row.ChannelID,
 			Enabled:   row.Enabled,
 			Priority:  priority,
+			Weight:    weight,
 		})
 	}
 	return abilities, nil
@@ -1631,14 +1649,21 @@ func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, 
 	if err := query.Scan(&rows).Error; err != nil {
 		return nil, err
 	}
+	overrides, err := r.relationOverrides(ctx, group, false)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]biz.Ability, 0, len(rows))
 	for _, row := range rows {
 		priority := row.MappingPriority
 		if priority == 0 {
 			priority = row.SourcePriority
 		}
+		var weight int64
+		// Complete chain: relation override > mapping priority > source priority.
+		priority, weight = applyRelationOverride(overrides, row.ChannelID, priority, weight)
 		out = append(out, biz.Ability{
-			Group: group, Model: row.Model, ChannelID: row.ChannelID, Enabled: true, Priority: priority,
+			Group: group, Model: row.Model, ChannelID: row.ChannelID, Enabled: true, Priority: priority, Weight: weight,
 			// Empty is meaningful: ResolveChannelModel must still be able to apply
 			// channel.model_mapping or preserve the exact spelling in channel.Models.
 			UpstreamModelID: strings.TrimSpace(row.UpstreamModelID),
@@ -1670,17 +1695,24 @@ func (r *Repository) listRegistrySubscriptionAbilitiesDB(ctx context.Context, gr
 	if err := query.Scan(&rows).Error; err != nil {
 		return nil, err
 	}
+	overrides, err := r.relationOverrides(ctx, group, true)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]biz.SubscriptionAccountAbility, 0, len(rows))
 	for _, row := range rows {
 		priority := row.MappingPriority
 		if priority == 0 {
 			priority = row.SourcePriority
 		}
+		var weight int64
+		// Complete chain: relation override > mapping priority > source priority.
+		priority, weight = applyRelationOverride(overrides, row.AccountID, priority, weight)
 		upstream := strings.TrimSpace(row.UpstreamModelID)
 		if upstream == "" {
 			upstream = row.Model
 		}
-		out = append(out, biz.SubscriptionAccountAbility{Group: group, Model: row.Model, Platform: row.Platform, AccountID: row.AccountID, Enabled: true, Priority: priority, UpstreamModelID: upstream})
+		out = append(out, biz.SubscriptionAccountAbility{Group: group, Model: row.Model, Platform: row.Platform, AccountID: row.AccountID, Enabled: true, Priority: priority, Weight: weight, UpstreamModelID: upstream})
 	}
 	return out, nil
 }
@@ -1708,7 +1740,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 	var channelModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&abilityModel{}).
-		Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?"), group, true, "%*%", "%?%").
+		Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?"), group, 1, "%*%", "%?%").
 		Distinct("model").
 		Pluck("model", &channelModels).Error; err != nil {
 		return nil, err
@@ -1721,7 +1753,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 	var subscriptionModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&subscriptionAccountAbilityModel{}).
-		Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?"), group, true, "%*%", "%?%").
+		Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?"), group, 1, "%*%", "%?%").
 		Distinct("model").
 		Pluck("model", &subscriptionModels).Error; err != nil {
 		return nil, err

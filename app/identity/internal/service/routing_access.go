@@ -23,7 +23,7 @@ func (s *IdentityService) UpdateUserRoutingAccess(ctx context.Context, req *iden
 	return routingFactsReply(f), nil
 }
 func (s *IdentityService) SetTokenRouting(ctx context.Context, req *identityv1.SetTokenRoutingRequest) (*identityv1.SetTokenRoutingReply, error) {
-	rev, err := s.uc.SetTokenRouting(ctx, req.UserId, req.TokenId, req.RoutingMode, req.RoutingGroupId, req.ExpectedRevision)
+	rev, err := s.uc.SetTokenRouting(ctx, req.UserId, req.TokenId, req.RoutingMode, req.RoutingGroupId, req.ExpectedRevision, req.RoutingGroupIds)
 	if err != nil {
 		return nil, mapIdentityErrorToGRPC(err)
 	}
@@ -33,7 +33,7 @@ func (s *IdentityService) SetTokenRouting(ctx context.Context, req *identityv1.S
 func routingFactsReply(f *routing.SubjectFacts) *identityv1.GetUserRoutingFactsReply {
 	p := &identityv1.GetUserRoutingFactsReply{Facts: routingdto.FactsToProto(f)}
 	for _, t := range f.TokenReferences {
-		p.Tokens = append(p.Tokens, &identityv1.RoutingTokenReference{Id: t.ID, Name: t.Name, Mode: t.Mode, GroupId: t.GroupID, Revision: t.Revision})
+		p.Tokens = append(p.Tokens, &identityv1.RoutingTokenReference{Id: t.ID, Name: t.Name, Mode: t.Mode, GroupId: t.GroupID, Revision: t.Revision, GroupIds: t.GroupIDs})
 	}
 	return p
 }

@@ -187,13 +187,17 @@ func TestRequestSnapshotOriginalSubscriptionWindows(t *testing.T) {
 				switch change {
 				case "day":
 					now = now.Add(25 * time.Hour)
-					wantDaily = 0
+					// The day window rolled between reserve and commit; the
+					// admitted spend counts against the NEW window, so daily
+					// usage is still 0.2 (history keeps the frozen window).
 				case "week":
 					now = now.Add(8 * 24 * time.Hour)
-					wantDaily, wantWeekly = 0, 0
+					// Day and week windows rolled: the spend lands in the new
+					// day/week windows.
 				case "month":
 					now = now.Add(31 * 24 * time.Hour)
-					wantDaily, wantWeekly, wantMonthly = 0, 0, 0
+					// All three windows rolled: the spend lands in the new
+					// windows.
 				case "revoke_and_replace":
 					sub.Status = subscriptionbiz.SubscriptionStatusRevoked
 					require.NoError(t, repo.UpdateSubscriptionFields(ctx, sub, []subscriptionbiz.SubscriptionField{subscriptionbiz.SubscriptionFieldStatus}))

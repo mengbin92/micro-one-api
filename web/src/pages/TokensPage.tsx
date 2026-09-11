@@ -36,6 +36,7 @@ import { locale, t } from '@/lib/i18n';
 interface Token {
   routing_mode?: string;
   routing_group_id?: number;
+  routing_group_ids?: number[];
   routing_revision?: number;
   id: number;
   name?: string;
@@ -91,9 +92,12 @@ export function TokensPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('inherit');
+  const [orderedGroupIDs, setOrderedGroupIDs] = useState<number[]>([]);
   const [editingToken, setEditingToken] = useState<Token | null>(null);
   const available = useQuery({ queryKey: ['available-routing-groups'], queryFn: loadAvailableGroups, retry: false });
   const selected = available.data?.groups.find((g) => String(g.id) === selectedGroup);
+  const orderedSelection = (orderedGroupIDs || []).map((id) => available.data?.groups.find((g) => g.id === id)).filter((g): g is NonNullable<typeof g> => Boolean(g));
+  const orderedPrices = orderedSelection.map((g) => g.price_ratio);
   const [createdToken, setCreatedToken] = useState<Token | null>(null);
   const [ccSwitchOpen, setCCSwitchOpen] = useState(false);
   const [ccSwitchKey, setCCSwitchKey] = useState('');
@@ -150,8 +154,9 @@ export function TokensPage() {
 
     setIsCreating(true);
     try {
+      const routingPayload = routingModePayload();
       const res = available.data
-        ? await apiClient.post('/v1/routing-tokens', { name, routing_mode: selectedGroup === 'inherit' ? 'inherit' : 'fixed', routing_group_id: selectedGroup === 'inherit' ? 0 : Number(selectedGroup) })
+        ? await apiClient.post('/v1/routing-tokens', { name, ...routingPayload })
         : await apiClient.post('/token', { name });
       const token = unwrapApiData<Token>(res.data);
       setCreatedToken(token);
@@ -161,6 +166,7 @@ export function TokensPage() {
         return [safeToken, ...withoutCreated];
       });
       setNewTokenName('');
+      await queryClient.invalidateQueries({ queryKey: ['available-routing-groups'] });
       toast.success(t('Token 已创建'));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('创建 Token 失败'));
@@ -175,17 +181,25 @@ export function TokensPage() {
       setCreatedToken(null);
       setNewTokenName('');
       setSelectedGroup('inherit');
+      setOrderedGroupIDs([]);
     }
+  };
+
+  const routingModePayload = () => {
+    if (selectedGroup === 'ordered') return { routing_mode: 'ordered', routing_group_id: 0, routing_group_ids: orderedGroupIDs };
+    if (selectedGroup === 'inherit') return { routing_mode: 'inherit', routing_group_id: 0 };
+    return { routing_mode: 'fixed', routing_group_id: Number(selectedGroup) };
   };
 
   const saveRouting = async () => {
     if (!editingToken) return;
     setIsCreating(true);
     try {
-      const res = await apiClient.patch(`/v1/routing-tokens/${editingToken.id}`, { routing_mode: selectedGroup === 'inherit' ? 'inherit' : 'fixed', routing_group_id: selectedGroup === 'inherit' ? 0 : Number(selectedGroup), expected_revision: editingToken.routing_revision });
+      const res = await apiClient.patch(`/v1/routing-tokens/${editingToken.id}`, { ...routingModePayload(), expected_revision: editingToken.routing_revision });
       ensureApiSuccess(res.data, '保存分组失败');
       setEditingToken(null);
       await queryClient.invalidateQueries({ queryKey: ['tokens'] });
+      await queryClient.invalidateQueries({ queryKey: ['available-routing-groups'] });
       toast.success('Key 分组已更新');
     } catch (error) { toast.error(error instanceof Error ? error.message : '保存分组失败'); }
     finally { setIsCreating(false); }
@@ -194,9 +208,26 @@ export function TokensPage() {
     <Label htmlFor="token-routing-group">路由分组</Label>
     <select id="token-routing-group" className="h-10 w-full rounded-md border bg-background px-3" value={selectedGroup} onChange={(e) => setSelectedGroup(e.target.value)}>
       <option value="inherit">跟随默认分组{available.data && !available.data.default_available ? '（需要重新选择分组）' : ''}</option>
-      {selectedGroup !== 'inherit' && !selected && <option value={selectedGroup}>固定分组 #{selectedGroup}（当前不可用）</option>}
+      {selectedGroup !== 'inherit' && selectedGroup !== 'ordered' && !selected && <option value={selectedGroup}>固定分组 #{selectedGroup}（当前不可用）</option>}
       {available.data?.groups.filter(() => available.data.creation_enabled).map((g) => <option key={g.id} value={g.id}>{g.display_name || g.key} · ×{g.price_ratio}</option>)}
+      {available.data?.groups.some((g) => g.ordered_eligible) && <option value="ordered">有序候选组（自动跨组重试）</option>}
     </select>
+    {selectedGroup === 'ordered' && <div className="space-y-2 rounded-md border p-3">
+      <p className="text-sm text-muted-foreground">按顺序尝试候选组：仅在前置组无可用资源时切换到下一组，各组价格可能不同。</p>
+      {orderedSelection.map((g, index) => <div key={g.id} className="flex items-center justify-between gap-2 text-sm">
+        <span>{index + 1}. {g.display_name || g.key} · ×{g.price_ratio}</span>
+        <span className="flex gap-1">
+          <Button type="button" variant="outline" size="sm" disabled={index === 0} onClick={() => setOrderedGroupIDs((ids) => { const next = [...ids]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</Button>
+          <Button type="button" variant="outline" size="sm" disabled={index === orderedSelection.length - 1} onClick={() => setOrderedGroupIDs((ids) => { const next = [...ids]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setOrderedGroupIDs((ids) => ids.filter((id) => id !== g.id))}>移除</Button>
+        </span>
+      </div>)}
+      <select className="h-10 w-full rounded-md border bg-background px-3" value="" onChange={(e) => { const id = Number(e.target.value); if (id > 0 && !orderedGroupIDs.includes(id)) setOrderedGroupIDs((ids) => [...ids, id]); }}>
+        <option value="">添加候选组…</option>
+        {available.data?.groups.filter((g) => !orderedGroupIDs.includes(g.id)).map((g) => <option key={g.id} value={g.id}>{g.display_name || g.key} · ×{g.price_ratio}{g.ordered_eligible ? '' : '（当前无资格，可预列）'}</option>)}
+      </select>
+      {orderedSelection.length > 0 && orderedPrices.length > 1 && new Set(orderedPrices).size > 1 && <p className="text-sm text-amber-700">候选组价格不同，最终按实际命中的组计费。</p>}
+    </div>}
     {selected && <p className="text-sm text-muted-foreground">订阅优先，余额由钱包支付 · {selected.subscription_covered ? '当前订阅覆盖' : '当前无订阅覆盖'} · 价格来源：{selected.price_source}</p>}
   </div>;
 
@@ -281,7 +312,7 @@ export function TokensPage() {
               ) : (
                 <Button
                   onClick={handleCreate}
-                  disabled={isCreating || !newTokenName.trim() || !!(available.data && selectedGroup === 'inherit' && !available.data.default_available)}
+                  disabled={isCreating || !newTokenName.trim() || !!(available.data && selectedGroup === 'inherit' && !available.data.default_available) || (selectedGroup === 'ordered' && orderedGroupIDs.length === 0)}
                   className="w-full"
                 >
                   {isCreating ? t('创建中...') : t('创建')}
@@ -294,7 +325,7 @@ export function TokensPage() {
 
       <Dialog open={!!editingToken} onOpenChange={(open) => { if (!open) setEditingToken(null); }}>
         <DialogContent><DialogHeader><DialogTitle>修改 Key 路由分组</DialogTitle><DialogDescription>保存后新请求使用新分组，已有会话可能需要重新建立。</DialogDescription></DialogHeader>
-          {routingSelector}<Button disabled={isCreating || (selectedGroup === 'inherit' ? !available.data?.default_available : !selected)} onClick={saveRouting}>保存</Button>
+          {routingSelector}<Button disabled={isCreating || (selectedGroup === 'inherit' ? !available.data?.default_available : selectedGroup === 'ordered' ? orderedGroupIDs.length === 0 : !selected)} onClick={saveRouting}>保存</Button>
         </DialogContent>
       </Dialog>
       {available.data && <section className="mb-6 rounded-lg border p-4 space-y-3">
@@ -335,7 +366,7 @@ export function TokensPage() {
                 <TableRow key={token.id}>
                   <TableCell className="font-medium">{token.name}</TableCell>
                   <TableCell className="font-mono text-sm">{token.masked_key || t('已隐藏')}</TableCell>
-                  <TableCell>{token.routing_mode === 'fixed' ? (available.data?.groups.find((g) => g.id === token.routing_group_id)?.display_name || `固定分组 #${token.routing_group_id}（当前不可用）`) : t('跟随默认分组')}</TableCell>
+                  <TableCell>{token.routing_mode === 'ordered' ? `有序候选组（${(token.routing_group_ids || available.data?.facts.tokens?.find((item) => item.id === token.id)?.group_ids || []).length} 个）` : token.routing_mode === 'fixed' ? (available.data?.groups.find((g) => g.id === token.routing_group_id)?.display_name || `固定分组 #${token.routing_group_id}（当前不可用）`) : t('跟随默认分组')}</TableCell>
                   <TableCell>
                     <span
                       className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -352,7 +383,7 @@ export function TokensPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {available.data && token.routing_revision && <Button variant="outline" size="sm" onClick={() => { setSelectedGroup(token.routing_mode === 'fixed' ? String(token.routing_group_id) : 'inherit'); setEditingToken(token); }}>分组设置</Button>}
+                      {available.data && token.routing_revision && <Button variant="outline" size="sm" onClick={() => { const fromFacts = available.data.facts.tokens?.find((item) => item.id === token.id); const ids = token.routing_group_ids || fromFacts?.group_ids || []; setSelectedGroup(token.routing_mode === 'ordered' ? 'ordered' : token.routing_mode === 'fixed' ? String(token.routing_group_id) : 'inherit'); setOrderedGroupIDs(ids); setEditingToken(token); }}>分组设置</Button>}
                       <Button
                         variant="destructive"
                         size="sm"

@@ -22,16 +22,16 @@ func TestRelayRoutingContextUsesExplicitIdentityFacts(t *testing.T) {
 	channel := routingContextChannel{group: &routing.Group{ID: 3, Key: "default", Status: "enabled", Revision: 1}}
 	uc := NewRelayUsecase(testIdentityClient{}, channel, nil, nil)
 	auth := &AuthSnapshot{UserID: 1, TokenID: 2, Group: "default", UserEnabled: true, TokenEnabled: true}
-	require.Error(t, uc.ResolveRoutingContext(context.Background(), auth))
+	require.Error(t, uc.ResolveRoutingContext(context.Background(), auth, RoutingResolveOptions{}))
 	auth.RoutingContextVersion = 2
 	auth.RoutingFacts = &routing.SubjectFacts{DefaultGroupID: 3, PublicGroupAccess: "explicit_only", AccessRevision: 1, TokenMode: "inherit", TokenRevision: 1, Grants: []routing.UserGroupGrant{{GroupID: 3, Status: "active"}}}
-	require.NoError(t, uc.ResolveRoutingContext(context.Background(), auth))
+	require.NoError(t, uc.ResolveRoutingContext(context.Background(), auth, RoutingResolveOptions{}))
 	require.EqualValues(t, 3, auth.RoutingContext.GroupID)
 	auth.Group = "other"
-	require.Error(t, uc.ResolveRoutingContext(context.Background(), auth))
+	require.Error(t, uc.ResolveRoutingContext(context.Background(), auth, RoutingResolveOptions{}))
 	auth.Group = "default"
 	channel.group.Status = "disabled"
-	require.Error(t, uc.ResolveRoutingContext(context.Background(), auth))
+	require.Error(t, uc.ResolveRoutingContext(context.Background(), auth, RoutingResolveOptions{}))
 }
 
 type fixedIdentityFake struct {
@@ -137,5 +137,5 @@ func TestSubscriptionGrantRecheckedBeforeRetry(t *testing.T) {
 	_, err = uc.Plan(ctx, RelayRequest{Token: "key-a", Model: "m"})
 	require.Error(t, err)
 	e.err = nil
-	require.Error(t, uc.ResolveRoutingContext(ctx, plan.Auth), "reusing a request snapshot must replace old subscription grants")
+	require.Error(t, uc.ResolveRoutingContext(ctx, plan.Auth, RoutingResolveOptions{}), "reusing a request snapshot must replace old subscription grants")
 }

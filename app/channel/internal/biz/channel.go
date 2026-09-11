@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"sort"
@@ -179,6 +180,7 @@ type Ability struct {
 	ChannelID       int64
 	Enabled         bool
 	Priority        int64
+	Weight          int64 // relation-level override only; 0 = inherit channel weight
 	UpstreamModelID string
 }
 
@@ -189,6 +191,7 @@ type SubscriptionAccountAbility struct {
 	AccountID       int64
 	Enabled         bool
 	Priority        int64
+	Weight          int64 // relation-level override only; 0 = inherit account weight
 	UpstreamModelID string
 }
 
@@ -471,6 +474,12 @@ func (uc *ChannelUsecase) SelectChannel(ctx context.Context, group, model string
 			}
 			if channel.SelectableAt(uc.now()) {
 				channel.UpstreamModelID = ability.UpstreamModelID
+				if ability.Weight > 0 {
+					// #nosec G115 -- abilities.weight is BIGINT; values beyond
+					// 32 bits are clamped so a hostile/legacy row can never
+					// wrap the scheduler weight to zero or negative.
+					channel.Weight = uint32(min(ability.Weight, math.MaxUint32))
+				}
 				// §5.2 usage-semantics quarantine: a source+model key whose
 				// adapter keeps producing ambiguous usage is paused. This is
 				// a usage control-plane filter, NOT a transport health state.
@@ -531,6 +540,12 @@ func (uc *ChannelUsecase) SelectChannelExcluding(ctx context.Context, group, mod
 			}
 			if channel.SelectableAt(uc.now()) {
 				channel.UpstreamModelID = ability.UpstreamModelID
+				if ability.Weight > 0 {
+					// #nosec G115 -- abilities.weight is BIGINT; values beyond
+					// 32 bits are clamped so a hostile/legacy row can never
+					// wrap the scheduler weight to zero or negative.
+					channel.Weight = uint32(min(ability.Weight, math.MaxUint32))
+				}
 				// §5.2 usage-semantics quarantine: a source+model key whose
 				// adapter keeps producing ambiguous usage is paused. This is
 				// a usage control-plane filter, NOT a transport health state.
@@ -715,6 +730,10 @@ func (uc *ChannelUsecase) selectSubscriptionAccount(ctx context.Context, group, 
 			}
 			if account.Status == ChannelStatusEnabled && account.IsSchedulableAt(uc.now()) {
 				account.UpstreamModelID = ability.UpstreamModelID
+				if ability.Weight > 0 {
+					// #nosec G115 -- see the channel path above; same clamp.
+					account.Weight = int32(min(ability.Weight, math.MaxInt32))
+				}
 				tier = append(tier, account)
 			}
 		}

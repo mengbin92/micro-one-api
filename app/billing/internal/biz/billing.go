@@ -108,6 +108,7 @@ type SubscriptionPrimatives interface {
 type BillingUsecase struct {
 	routingPolicies     RoutingPolicyRepo
 	routingGroups       RoutingGroupReader
+	userPriceOverrides  UserPriceOverrideRepo
 	accountRepo         AccountRepo
 	reservationRepo     ReservationRepo
 	ledgerRepo          LedgerRepo
@@ -1344,7 +1345,10 @@ func (uc *BillingUsecase) commitSubscriptionAbsorbUSD(ctx context.Context, tx su
 		multiplier = 1.0
 	}
 	rolled := subscriptionbiz.RollUsageWindowsPure(subscription, uc.Now().Unix())
-	frozenDailyUSD, frozenWeeklyUSD, frozenMonthlyUSD, _, err := uc.reservationRepo.SumActiveFrozenInTx(ctx, tx, reservation.UserID, reservation.SubscriptionID, rolled.DailyWindowStart, rolled.WeeklyWindowStart, rolled.MonthlyWindowStart)
+	// Use each sibling reservation's own frozen accounting Q (falling back to
+	// the live multiplier only for pre-v2 rows); re-pricing frozen v2 siblings
+	// at the current group multiplier mis-counts them after a multiplier change.
+	frozenDailyUSD, frozenWeeklyUSD, frozenMonthlyUSD, err := uc.frozenAccounting(ctx, tx, reservation.UserID, reservation.SubscriptionID, rolled.DailyWindowStart, rolled.WeeklyWindowStart, rolled.MonthlyWindowStart, multiplier, false)
 	if err != nil {
 		return absorbUSD
 	}
@@ -1358,9 +1362,9 @@ func (uc *BillingUsecase) commitSubscriptionAbsorbUSD(ctx context.Context, tx su
 		DailyLimit:                 group.DailyLimitUSD,
 		WeeklyLimit:                group.WeeklyLimitUSD,
 		MonthlyLimit:               group.MonthlyLimitUSD,
-		FrozenDailyAccountingUSD:   frozenDailyUSD * multiplier,
-		FrozenWeeklyAccountingUSD:  frozenWeeklyUSD * multiplier,
-		FrozenMonthlyAccountingUSD: frozenMonthlyUSD * multiplier,
+		FrozenDailyAccountingUSD:   frozenDailyUSD,
+		FrozenWeeklyAccountingUSD:  frozenWeeklyUSD,
+		FrozenMonthlyAccountingUSD: frozenMonthlyUSD,
 	}
 	maxAbsorbUSD := subscriptionbiz.ComputeAbsorbablePure(window, multiplier, 0).AbsorbableUSD
 	if maxAbsorbUSD < reservedUSD {

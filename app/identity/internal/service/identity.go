@@ -173,7 +173,7 @@ func (s *IdentityService) Register(ctx context.Context, req *identityv1.Register
 }
 
 func (s *IdentityService) CreateAccessToken(ctx context.Context, req *identityv1.CreateAccessTokenRequest) (*identityv1.CreateAccessTokenResponse, error) {
-	token, err := s.uc.CreateAccessToken(ctx, req.UserId, req.Name, req.Models, req.ExpireAt, biz.CreateAccessTokenOptions{UnlimitedQuota: true, RoutingMode: req.RoutingMode, RoutingGroupID: req.RoutingGroupId})
+	token, err := s.uc.CreateAccessToken(ctx, req.UserId, req.Name, req.Models, req.ExpireAt, biz.CreateAccessTokenOptions{UnlimitedQuota: true, RoutingMode: req.RoutingMode, RoutingGroupID: req.RoutingGroupId, RoutingGroupIDs: req.RoutingGroupIds})
 	if err != nil {
 		return &identityv1.CreateAccessTokenResponse{
 			Success: false,

@@ -145,7 +145,30 @@ func (s *BillingService) GetRoutingCapabilities(context.Context, *billingv1.GetR
 	if s.uc.RoutingSnapshotsAvailable() {
 		version = 2
 	}
-	return &billingv1.GetRoutingCapabilitiesResponse{RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
+	return &billingv1.GetRoutingCapabilitiesResponse{RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
+}
+
+func (s *BillingService) SetUserRoutingPrice(ctx context.Context, req *billingv1.SetUserRoutingPriceRequest) (*billingv1.SetUserRoutingPriceReply, error) {
+	version, err := s.uc.SetUserRoutingPrice(ctx, req.GetUserId(), req.GetRoutingGroupId(), req.GetPriceRatio())
+	if err != nil {
+		return nil, err
+	}
+	return &billingv1.SetUserRoutingPriceReply{Version: version}, nil
+}
+
+func (s *BillingService) ClearUserRoutingPrice(ctx context.Context, req *billingv1.ClearUserRoutingPriceRequest) (*billingv1.ClearUserRoutingPriceReply, error) {
+	if err := s.uc.ClearUserRoutingPrice(ctx, req.GetUserId(), req.GetRoutingGroupId()); err != nil {
+		return nil, err
+	}
+	return &billingv1.ClearUserRoutingPriceReply{}, nil
+}
+
+func (s *BillingService) CheckRoutingSettlement(ctx context.Context, req *billingv1.CheckRoutingSettlementRequest) (*billingv1.CheckRoutingSettlementReply, error) {
+	settlement, err := s.uc.CheckRoutingSettlement(ctx, req.GetUserId(), req.GetRoutingGroupId())
+	if err != nil {
+		return nil, err
+	}
+	return &billingv1.CheckRoutingSettlementReply{Allowed: settlement.Allowed, Reason: settlement.Reason}, nil
 }
 
 func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest) (*billingv1.CommitQuotaResponse, error) {

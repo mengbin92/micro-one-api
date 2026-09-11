@@ -156,15 +156,25 @@ while IFS='|' read -r package_path imports; do
     # These adapter packages have no storage clients; biz sees only DOs.
     # In these cases, the data layer is the correct location for DTO imports,
     # not the biz layer.
+    # The admin exemptions are enumerated one (package, imported) pair at a
+    # time on purpose: wiring a new DTO dependency into an admin adapter must
+    # be an explicit edit here plus a design note, never a wildcard that
+    # quietly widens the hole for a whole api/ subtree.
+    admin_dto_exempt=0
+    if [[ "${package_path}" == "${module_path}/app/admin/internal/data/channelclient" \
+          && "${imported}" == "${module_path}/api/channel/v1" ]] \
+       || [[ "${package_path}" == "${module_path}/app/admin/internal/data/routingaccess" \
+             && ( "${imported}" == "${module_path}/api/identity/v1" \
+               || "${imported}" == "${module_path}/api/channel/v1" \
+               || "${imported}" == "${module_path}/api/billing/v1" ) ]]; then
+      admin_dto_exempt=1
+    fi
     if [[ "${pkg_layer}" == "data" \
           && "${imported}" =~ ^${module_path}/api/[^/]+/v1$ \
           && "${imported}" != "${module_path}/api/common/v1" \
           && "${package_path}" != "${module_path}/internal/data" \
           && "${package_path}" != "${module_path}/app/monitor/internal/data" \
-          && ! ( "${package_path}" == "${module_path}/app/admin/internal/data/channelclient" \
-               && "${imported}" == "${module_path}/api/channel/v1" ) \
-          && ! ( "${package_path}" == "${module_path}/app/admin/internal/data/routingaccess" \
-               && "${imported}" =~ ^${module_path}/api/(identity|channel|billing)/v1$ ) ]]; then
+          && "${admin_dto_exempt}" -eq 0 ]]; then
       echo "${package_path} (data layer) imports API DTO package: ${imported}"
       violations=1
     fi

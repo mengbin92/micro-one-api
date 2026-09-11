@@ -8,6 +8,7 @@ import (
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/domain/routing"
 	relaybiz "micro-one-api/internal/biz"
+	"micro-one-api/platform/routingdto"
 )
 
 func (s *HTTPServer) checkStoredSource(ctx context.Context, group, model string, source routing.Source) (routing.Permission, error) {
@@ -30,8 +31,24 @@ func (s *HTTPServer) refreshStoredResponseRoute(ctx context.Context, auth *ident
 	if auth == nil || (route.UserID != 0 && route.UserID != auth.UserId) {
 		return responseRoute{}, false
 	}
-	if auth.RoutingContextVersion > 0 && (route.UserID != auth.UserId || route.TokenID != auth.TokenId || route.RoutingGroupID != selectedProtoGroupID(auth)) {
-		return responseRoute{}, false
+	if auth.RoutingContextVersion > 0 {
+		if auth.RoutingFacts != nil && auth.RoutingFacts.TokenMode == "ordered" {
+			// Bound Responses sessions stay on their original group: the
+			// stored route's group must still be one of the token's ordered
+			// candidates (revalidated at reserve time).
+			inList := false
+			for _, gid := range routing.OrderedGroupIDs(routingdto.FactsFromProto(auth.RoutingFacts)) {
+				if gid == route.RoutingGroupID {
+					inList = true
+					break
+				}
+			}
+			if route.UserID != auth.UserId || route.TokenID != auth.TokenId || !inList {
+				return responseRoute{}, false
+			}
+		} else if route.UserID != auth.UserId || route.TokenID != auth.TokenId || route.RoutingGroupID != selectedProtoGroupID(auth) {
+			return responseRoute{}, false
+		}
 	}
 	model := strings.TrimSpace(clientModel)
 	if model == "" {
@@ -59,7 +76,7 @@ func (s *HTTPServer) refreshStoredResponseRoute(ctx context.Context, auth *ident
 		}
 	}
 	var refreshed responseRoute
-	if !s.materializeWSStickySource(ctx, auth, model, source, &refreshed) {
+	if !s.materializeWSStickySource(ctx, auth, model, source, route.RoutingGroupID, &refreshed) {
 		return responseRoute{}, false
 	}
 	refreshed.Model = model

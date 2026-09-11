@@ -63,6 +63,22 @@ func (r *inMemoryPaymentRepoForRenewal) GetOrderByTradeNo(ctx context.Context, t
 	c := *r.order
 	return &c, nil
 }
+func (r *inMemoryPaymentRepoForRenewal) AttachProviderResult(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error) {
+	if r.order == nil || r.order.TradeNo != order.TradeNo {
+		return nil, nil
+	}
+	r.order.PayURL = order.PayURL
+	r.order.ProviderPayload = order.ProviderPayload
+	r.order.ProviderTradeNo = order.ProviderTradeNo
+	c := *r.order
+	return &c, nil
+}
+func (r *inMemoryPaymentRepoForRenewal) DeletePendingOrder(ctx context.Context, tradeNo string) error {
+	if r.order != nil && r.order.TradeNo == tradeNo && r.order.Status == PaymentOrderStatusPending {
+		r.order = nil
+	}
+	return nil
+}
 func (r *inMemoryPaymentRepoForRenewal) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
 	return nil, 0, nil
 }

@@ -55,6 +55,25 @@ func handleRoutingGroupByID(w http.ResponseWriter, r *http.Request, svc *service
 	if billing {
 		path = strings.TrimSuffix(path, "/billing")
 	}
+	if strings.HasSuffix(path, "/resource-overrides") {
+		id, err := strconv.ParseInt(strings.TrimSuffix(path, "/resource-overrides"), 10, 64)
+		if err != nil || id <= 0 {
+			routingGroupError(w, errors.BadRequest("ROUTING_GROUP_INVALID", "invalid resource override path"))
+			return
+		}
+		handleRoutingResourceOverrides(w, r, svc, id)
+		return
+	}
+	if parts := strings.Split(path, "/user-price/"); len(parts) == 2 {
+		id, err := strconv.ParseInt(parts[0], 10, 64)
+		userID, err2 := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || err2 != nil || id <= 0 || userID <= 0 {
+			routingGroupError(w, errors.BadRequest("ROUTING_GROUP_INVALID", "invalid user price path"))
+			return
+		}
+		handleRoutingGroupUserPrice(w, r, svc, id, userID)
+		return
+	}
 	id, err := strconv.ParseInt(path, 10, 64)
 	if err != nil {
 		routingGroupError(w, errors.BadRequest("ROUTING_GROUP_INVALID", "invalid id"))
@@ -88,6 +107,34 @@ func handleRoutingGroupByID(w http.ResponseWriter, r *http.Request, svc *service
 	writeJSON(w, http.StatusOK, apiResponse(true, "", result))
 }
 
+func handleRoutingGroupUserPrice(w http.ResponseWriter, r *http.Request, svc *service.AdminService, id, userID int64) {
+	switch r.Method {
+	case http.MethodPut:
+		var body service.RoutingUserPriceRequest
+		if jsonx.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&body) != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		result, err := svc.SetRoutingGroupUserPrice(r.Context(), id, userID, body)
+		routingMutationAudit(r, userID, "routing_group", strconv.FormatInt(id, 10), "user_price", err)
+		if err != nil {
+			routingGroupError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
+	case http.MethodDelete:
+		err := svc.ClearRoutingGroupUserPrice(r.Context(), id, userID)
+		routingMutationAudit(r, userID, "routing_group", strconv.FormatInt(id, 10), "user_price_clear", err)
+		if err != nil {
+			routingGroupError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse(true, "", nil))
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 func handleRoutingBillingPolicy(w http.ResponseWriter, r *http.Request, svc *service.AdminService, id int64) {
 	var update *service.RoutingBillingPolicyDTO
 	if r.Method == http.MethodPatch {
@@ -109,4 +156,23 @@ func handleRoutingBillingPolicy(w http.ResponseWriter, r *http.Request, svc *ser
 		return
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", result))
+}
+
+func handleRoutingResourceOverrides(w http.ResponseWriter, r *http.Request, svc *service.AdminService, id int64) {
+	if r.Method != http.MethodPut {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var body service.RoutingResourceOverrideRequest
+	if jsonx.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&body) != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	err := svc.SetRoutingGroupResourceOverrides(r.Context(), id, body)
+	routingMutationAudit(r, 0, "routing_group", strconv.FormatInt(id, 10), "resource_overrides", err)
+	if err != nil {
+		routingGroupError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", nil))
 }

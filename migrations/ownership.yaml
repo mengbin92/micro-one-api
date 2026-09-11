@@ -35,10 +35,12 @@ services:
     - 076_add_key_hash_to_tokens             # identity-L6 HMAC hash of access-token key
     - 092_add_identity_routing_facts
     - 093_create_routing_change_outbox
+    - 096_identity_ordered_token_groups
 
   channel:
     - 090_create_routing_groups
     - 093_create_routing_change_outbox
+    - 098_channel_routing_relation_overrides
     # channels / abilities / subscription_accounts / subscription_account_quota_*
     # + model management tables (方案B: models, model_aliases, model_*_mapping)
     - 000_create_core_tables          # channels, abilities (subset)
@@ -117,6 +119,7 @@ services:
     - 093_create_routing_change_outbox # shared subscription lifecycle events
     - 094_add_subscription_contracts
     - 095_create_routing_billing_policies
+    - 097_billing_user_routing_price_overrides
 
   log:
     # logs table (a subset of 000_create_core_tables on the shared schema,

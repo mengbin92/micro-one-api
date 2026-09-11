@@ -46,6 +46,70 @@ type accountRoutingGroupModel struct {
 
 func (accountRoutingGroupModel) TableName() string { return "account_routing_groups" }
 
+// relationOverride is the raw nullable per-group override on a resource
+// relation; nil fields inherit the resource's own values.
+type relationOverride struct {
+	Priority *int64
+	Weight   *int64
+}
+
+// relationOverrides loads per-group priority/weight overrides for every
+// member of the group key. It returns an empty map on legacy (CSV) schemas or
+// when the 098 columns are absent, so pre-F deployments are untouched.
+func (r *Repository) relationOverrides(ctx context.Context, group string, subscription bool) (map[int64]relationOverride, error) {
+	empty := map[int64]relationOverride{}
+	if r.db == nil || !r.routingGroupRelations {
+		return empty, nil
+	}
+	if !r.relationOverrideColsReady() {
+		return empty, nil
+	}
+	table, column := "channel_routing_groups", "channel_id"
+	if subscription {
+		table, column = "account_routing_groups", "subscription_account_id"
+	}
+	groupIDs := r.db.Model(&routingGroupModel{}).Select("id").Where(map[string]any{"key": group})
+	var rows []struct {
+		ID       int64
+		Priority *int64
+		Weight   *int64
+	}
+	if err := r.db.WithContext(ctx).Table(table).Select(column+" AS id, priority_override AS priority, weight_override AS weight").Where("routing_group_id IN (?)", groupIDs).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[int64]relationOverride, len(rows))
+	for _, row := range rows {
+		out[row.ID] = relationOverride{Priority: row.Priority, Weight: row.Weight}
+	}
+	return out, nil
+}
+
+func (r *Repository) relationOverrideColsReady() bool {
+	if r.db == nil {
+		return false
+	}
+	r.overrideColsReadyOnce.Do(func() {
+		r.overrideColsReady = r.db.Migrator().HasColumn("channel_routing_groups", "priority_override") &&
+			r.db.Migrator().HasColumn("account_routing_groups", "weight_override")
+	})
+	return r.overrideColsReady
+}
+
+// applyRelationOverride folds a relation-level override into the effective
+// ability values: override priority wins outright; weight override > 0 is
+// carried on the ability (0 = inherit, preserving pre-F distribution).
+func applyRelationOverride(overrides map[int64]relationOverride, id, priority, weight int64) (int64, int64) {
+	if ov, ok := overrides[id]; ok {
+		if ov.Priority != nil {
+			priority = *ov.Priority
+		}
+		if ov.Weight != nil && *ov.Weight > 0 {
+			weight = *ov.Weight
+		}
+	}
+	return priority, weight
+}
+
 type routingGroupRepo struct{ data *Repository }
 
 func NewRoutingGroupRepo(d *Repository) biz.RoutingGroupRepo { return &routingGroupRepo{data: d} }
@@ -87,7 +151,7 @@ func (r *routingGroupRepo) GetRoutingGroup(ctx context.Context, id int64) (*biz.
 	var result *biz.RoutingGroupDetail
 	err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
-		result, err = getRoutingGroupTx(tx, id)
+		result, err = getRoutingGroupTx(tx, id, r.data.relationOverrideColsReady())
 		return err
 	}, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {
@@ -99,7 +163,7 @@ func (r *routingGroupRepo) GetRoutingGroup(ctx context.Context, id int64) (*biz.
 	return result, nil
 }
 
-func getRoutingGroupTx(db *gorm.DB, id int64) (*biz.RoutingGroupDetail, error) {
+func getRoutingGroupTx(db *gorm.DB, id int64, overridesReady bool) (*biz.RoutingGroupDetail, error) {
 	var group routingGroupModel
 	if err := db.First(&group, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -109,24 +173,51 @@ func getRoutingGroupTx(db *gorm.DB, id int64) (*biz.RoutingGroupDetail, error) {
 	}
 	result := &biz.RoutingGroupDetail{Group: toRoutingGroup(&group), Resources: []routing.GroupResource{}, ModelGrants: []routing.GroupModelGrant{}}
 	var members []struct {
-		ID       int64
-		Priority int64
-		Weight   int64
+		ID               int64
+		Priority         int64
+		Weight           int64
+		PriorityOverride *int64
+		WeightOverride   *int64
 	}
-	if err := db.Table("channel_routing_groups AS rg").Select("c.id, COALESCE(c.priority,0) AS priority, COALESCE(c.weight,0) AS weight").Joins("JOIN channels c ON c.id = rg.channel_id").Where("rg.routing_group_id = ?", id).Order("c.id ASC").Scan(&members).Error; err != nil {
+	channelSelect := "c.id, COALESCE(c.priority,0) AS priority, COALESCE(c.weight,0) AS weight"
+	if overridesReady {
+		channelSelect += ", rg.priority_override, rg.weight_override"
+	}
+	if err := db.Table("channel_routing_groups AS rg").Select(channelSelect).Joins("JOIN channels c ON c.id = rg.channel_id").Where("rg.routing_group_id = ?", id).Order("c.id ASC").Scan(&members).Error; err != nil {
 		return nil, biz.ErrRoutingGroupStorage
 	}
 	for _, m := range members {
-		result.Resources = append(result.Resources, routing.GroupResource{Source: routing.Source{Kind: routing.Channel, ID: m.ID}, Priority: m.Priority, Weight: m.Weight})
+		priority, weight := m.Priority, m.Weight
+		if m.PriorityOverride != nil {
+			priority = *m.PriorityOverride
+		}
+		// 0 = inherit, matching applyRelationOverride on the serving path; a
+		// stored 0 override must not present a phantom effective weight here.
+		if m.WeightOverride != nil && *m.WeightOverride > 0 {
+			weight = *m.WeightOverride
+		}
+		result.Resources = append(result.Resources, routing.GroupResource{Source: routing.Source{Kind: routing.Channel, ID: m.ID}, Priority: priority, Weight: weight, PriorityOverride: m.PriorityOverride, WeightOverride: m.WeightOverride})
 	}
 	members = nil
-	if err := db.Table("account_routing_groups AS rg").Select("a.id, COALESCE(a.priority,0) AS priority, COALESCE(a.weight,0) AS weight").Joins("JOIN subscription_accounts a ON a.id = rg.subscription_account_id").Where("rg.routing_group_id = ?", id).Order("a.id ASC").Scan(&members).Error; err != nil {
+	accountSelect := "a.id, COALESCE(a.priority,0) AS priority, COALESCE(a.weight,0) AS weight"
+	if overridesReady {
+		accountSelect += ", rg.priority_override, rg.weight_override"
+	}
+	if err := db.Table("account_routing_groups AS rg").Select(accountSelect).Joins("JOIN subscription_accounts a ON a.id = rg.subscription_account_id").Where("rg.routing_group_id = ?", id).Order("a.id ASC").Scan(&members).Error; err != nil {
 		return nil, biz.ErrRoutingGroupStorage
 	}
 	accounts := map[int64]bool{}
 	for _, m := range members {
 		accounts[m.ID] = true
-		result.Resources = append(result.Resources, routing.GroupResource{Source: routing.Source{Kind: routing.Subscription, ID: m.ID}, Priority: m.Priority, Weight: m.Weight})
+		priority, weight := m.Priority, m.Weight
+		if m.PriorityOverride != nil {
+			priority = *m.PriorityOverride
+		}
+		// 0 = inherit, matching applyRelationOverride on the serving path.
+		if m.WeightOverride != nil && *m.WeightOverride > 0 {
+			weight = *m.WeightOverride
+		}
+		result.Resources = append(result.Resources, routing.GroupResource{Source: routing.Source{Kind: routing.Subscription, ID: m.ID}, Priority: priority, Weight: weight, PriorityOverride: m.PriorityOverride, WeightOverride: m.WeightOverride})
 	}
 	var grants []struct {
 		ID                    int64
@@ -183,11 +274,30 @@ func (r *Repository) syncRoutingMembersTx(tx *gorm.DB, source routing.Source, cs
 	if equalIDs(ids, oldIDs) {
 		return nil
 	}
-	if err := tx.Table(table).Where(column+" = ?", source.ID).Delete(map[string]any{}).Error; err != nil {
-		return err
+	// Incremental sync: only insert genuinely new memberships and delete removed
+	// ones, so relation-level priority/weight overrides (098) on retained rows
+	// survive a resource CSV edit.
+	oldSet := make(map[int64]bool, len(oldIDs))
+	for _, id := range oldIDs {
+		oldSet[id] = true
 	}
+	idSet := make(map[int64]bool, len(ids))
 	for _, id := range ids {
-		if err := tx.Table(table).Create(map[string]any{column: source.ID, "routing_group_id": id}).Error; err != nil {
+		idSet[id] = true
+		if !oldSet[id] {
+			if err := tx.Table(table).Create(map[string]any{column: source.ID, "routing_group_id": id}).Error; err != nil {
+				return err
+			}
+		}
+	}
+	var removed []int64
+	for _, id := range oldIDs {
+		if !idSet[id] {
+			removed = append(removed, id)
+		}
+	}
+	if len(removed) > 0 {
+		if err := tx.Table(table).Where(column+" = ? AND routing_group_id IN ?", source.ID, removed).Delete(map[string]any{}).Error; err != nil {
 			return err
 		}
 	}
@@ -334,4 +444,39 @@ func bumpRoutingGroupsTx(tx *gorm.DB, ids []int64) error {
 		}
 	}
 	return nil
+}
+
+// SetRoutingGroupResourceOverrides upserts the nullable priority/weight
+// overrides on one resource relation row. NULL clears the override (inherit).
+// The group revision bump and routing-change outbox event commit in the same
+// transaction, matching the membership write contract.
+func (r *routingGroupRepo) SetRoutingGroupResourceOverrides(ctx context.Context, groupID int64, source routing.Source, priority, weight *int64) error {
+	if r.data.db == nil {
+		return biz.ErrRoutingGroupStorage
+	}
+	table, column := "channel_routing_groups", "channel_id"
+	if source.Kind == routing.Subscription {
+		table, column = "account_routing_groups", "subscription_account_id"
+	}
+	return r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		updates := map[string]any{"priority_override": priority, "weight_override": weight}
+		where := column + " = ? AND routing_group_id = ?"
+		args := []any{source.ID, groupID}
+		result := tx.Table(table).Where(where, args...).Updates(updates)
+		if result.Error != nil {
+			return biz.ErrRoutingGroupStorage
+		}
+		if result.RowsAffected != 1 {
+			// MySQL counts rows *changed*: an identical re-PUT reports 0 even
+			// though the membership exists. Confirm membership before failing.
+			var memberships int64
+			if err := tx.Table(table).Where(where, args...).Count(&memberships).Error; err != nil {
+				return biz.ErrRoutingGroupStorage
+			}
+			if memberships == 0 {
+				return biz.ErrRoutingGroupNotFound
+			}
+		}
+		return bumpRoutingGroupsTx(tx, []int64{groupID})
+	})
 }

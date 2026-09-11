@@ -71,9 +71,20 @@ func Start(db *gorm.DB, redisClient *redis.Client, owner string, report func(err
 		defer close(done)
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
+		var gcCount int
 		for {
 			runCtx, runCancel := context.WithTimeout(ctx, 5*time.Second)
 			err := Dispatch(runCtx, db, owner, bus.Publish)
+			// Delivered rows are dead weight once consumers have acked; sweep
+			// them so the pending scan stays cheap on high-churn deployments.
+			gcCount++
+			if gcCount >= 300 {
+				gcCount = 0
+				cutoff := time.Now().Add(-24 * time.Hour).Unix()
+				if gcErr := db.WithContext(runCtx).Where("delivered_at > 0 AND delivered_at < ?", cutoff).Delete(&record{}).Error; gcErr != nil && err == nil {
+					err = gcErr
+				}
+			}
 			runCancel()
 			if err != nil && ctx.Err() == nil && report != nil {
 				report(err)
@@ -90,6 +101,8 @@ func Start(db *gorm.DB, redisClient *redis.Client, owner string, report func(err
 
 // Invalidator serializes revision checks with eviction. Failed evictions remain
 // retryable; delayed/duplicate events cannot replace a newer cached snapshot.
+// The versions map is a bounded guard only: dropping an entry at worst causes a
+// redundant cache reload, never stale state, so it is randomly pruned at cap.
 func Invalidator(evict func(context.Context, Change) error) events.Handler {
 	var mu sync.Mutex
 	versions := map[string]int64{}
@@ -115,6 +128,16 @@ func Invalidator(evict func(context.Context, Change) error) events.Handler {
 			return err
 		}
 		versions[key] = change.Revision
+		if len(versions) > invalidatorVersionCap {
+			for k := range versions {
+				delete(versions, k)
+				if len(versions) <= invalidatorVersionCap/2 {
+					break
+				}
+			}
+		}
 		return nil
 	}
 }
+
+const invalidatorVersionCap = 65536

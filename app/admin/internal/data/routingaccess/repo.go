@@ -32,7 +32,7 @@ func (r *repo) Facts(ctx context.Context, id int64) (*routing.SubjectFacts, erro
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
 	for _, t := range p.Tokens {
-		f.TokenReferences = append(f.TokenReferences, routing.TokenReference{ID: t.Id, Name: t.Name, Mode: t.Mode, GroupID: t.GroupId, Revision: t.Revision})
+		f.TokenReferences = append(f.TokenReferences, routing.TokenReference{ID: t.Id, Name: t.Name, Mode: t.Mode, GroupID: t.GroupId, Revision: t.Revision, GroupIDs: t.GroupIds})
 	}
 	return f, nil
 }
@@ -46,22 +46,22 @@ func (r *repo) Change(ctx context.Context, c biz.RoutingAccessChange) (*routing.
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
 	for _, t := range p.Tokens {
-		f.TokenReferences = append(f.TokenReferences, routing.TokenReference{ID: t.Id, Name: t.Name, Mode: t.Mode, GroupID: t.GroupId, Revision: t.Revision})
+		f.TokenReferences = append(f.TokenReferences, routing.TokenReference{ID: t.Id, Name: t.Name, Mode: t.Mode, GroupID: t.GroupId, Revision: t.Revision, GroupIDs: t.GroupIds})
 	}
 	return f, nil
 }
-func (r *repo) CreateToken(ctx context.Context, id int64, name, mode string, group int64) (*biz.RoutingToken, error) {
-	p, err := r.identity.CreateAccessToken(ctx, &identityv1.CreateAccessTokenRequest{UserId: id, Name: name, RoutingMode: mode, RoutingGroupId: group})
+func (r *repo) CreateToken(ctx context.Context, id int64, name, mode string, group int64, groupIDs []int64) (*biz.RoutingToken, error) {
+	p, err := r.identity.CreateAccessToken(ctx, &identityv1.CreateAccessTokenRequest{UserId: id, Name: name, RoutingMode: mode, RoutingGroupId: group, RoutingGroupIds: groupIDs})
 	if err != nil {
 		return nil, err
 	}
 	if !p.GetSuccess() {
 		return nil, fmt.Errorf("%s", p.GetMessage())
 	}
-	return &biz.RoutingToken{ID: p.TokenId, Key: p.Token, Name: name, Mode: mode, GroupID: group, Revision: 1, CreatedAt: time.Now().Unix()}, nil
+	return &biz.RoutingToken{ID: p.TokenId, Key: p.Token, Name: name, Mode: mode, GroupID: group, GroupIDs: groupIDs, Revision: 1, CreatedAt: time.Now().Unix()}, nil
 }
-func (r *repo) SetToken(ctx context.Context, user, token int64, mode string, group, rev int64) (int64, error) {
-	p, err := r.identity.SetTokenRouting(ctx, &identityv1.SetTokenRoutingRequest{UserId: user, TokenId: token, RoutingMode: mode, RoutingGroupId: group, ExpectedRevision: rev})
+func (r *repo) SetToken(ctx context.Context, user, token int64, mode string, group, rev int64, groupIDs []int64) (int64, error) {
+	p, err := r.identity.SetTokenRouting(ctx, &identityv1.SetTokenRoutingRequest{UserId: user, TokenId: token, RoutingMode: mode, RoutingGroupId: group, RoutingGroupIds: groupIDs, ExpectedRevision: rev})
 	if err != nil {
 		return 0, err
 	}
@@ -72,7 +72,32 @@ func (r *repo) Price(ctx context.Context, group, user int64) (biz.RoutingPrice, 
 	if err != nil {
 		return biz.RoutingPrice{}, err
 	}
-	return biz.RoutingPrice{Ratio: p.PriceRatio, Version: p.Version, Source: p.Source, BillingMode: p.BillingMode, SubscriptionCovered: p.SubscriptionCovered}, nil
+	price := biz.RoutingPrice{Ratio: p.PriceRatio, Version: p.Version, Source: p.Source, BillingMode: p.BillingMode, SubscriptionCovered: p.SubscriptionCovered}
+	if p.UserPriceRatio != nil {
+		price.UserRatio = *p.UserPriceRatio
+	}
+	if p.UserPriceVersion != nil {
+		price.UserVersion = *p.UserPriceVersion
+	}
+	return price, nil
+}
+
+func (r *repo) SetRoutingGroupResourceOverrides(ctx context.Context, groupID int64, source routing.Source, priority, weight *int64) error {
+	_, err := r.channel.SetRoutingGroupResourceOverrides(ctx, &channelv1.SetRoutingGroupResourceOverridesRequest{RoutingGroupId: groupID, SourceKind: source.Kind, SourceId: source.ID, PriorityOverride: priority, WeightOverride: weight})
+	return err
+}
+
+func (r *repo) SetUserRoutingPrice(ctx context.Context, userID, groupID int64, ratio float64) (int64, error) {
+	reply, err := r.billing.SetUserRoutingPrice(ctx, &billingv1.SetUserRoutingPriceRequest{UserId: userID, RoutingGroupId: groupID, PriceRatio: ratio})
+	if err != nil {
+		return 0, err
+	}
+	return reply.GetVersion(), nil
+}
+
+func (r *repo) ClearUserRoutingPrice(ctx context.Context, userID, groupID int64) error {
+	_, err := r.billing.ClearUserRoutingPrice(ctx, &billingv1.ClearUserRoutingPriceRequest{UserId: userID, RoutingGroupId: groupID})
+	return err
 }
 func (r *repo) Models(ctx context.Context, groupID int64, key string) ([]string, error) {
 	p, err := r.channel.ListAvailableModels(ctx, &channelv1.ListAvailableModelsRequest{Group: key, RoutingGroupId: groupID})

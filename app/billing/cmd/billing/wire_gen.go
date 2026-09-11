@@ -109,6 +109,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	uc.SetSubscriptionPrimatives(subscriptionUc)
 	if biz2.EntitlementsEnabled() {
 		uc.SetRoutingPolicyRepo(data.NewRoutingPolicyRepo(d))
+		uc.SetUserPriceOverrideRepo(data.NewUserPriceOverrideRepo(d))
 	}
 	subscriptionUc.SetContractGroupReader(uc)
 	uc.SetTxRunner(data.NewTxRunner(d))

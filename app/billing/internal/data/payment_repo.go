@@ -87,6 +87,35 @@ func (r *paymentRepo) GetOrderByTradeNo(ctx context.Context, tradeNo string) (*b
 	return toBizPaymentOrder(&po)
 }
 
+// AttachProviderResult fills in the provider-side identifiers on the
+// pre-inserted pending order. Reload afterwards so the caller always gets the
+// row as committed (the pending guard also keeps a concurrent paid
+// transition from being silently overwritten with placeholder values).
+func (r *paymentRepo) AttachProviderResult(ctx context.Context, order *biz.PaymentOrder) (*biz.PaymentOrder, error) {
+	if order == nil || order.TradeNo == "" {
+		return nil, fmt.Errorf("failed to attach provider result: missing trade no")
+	}
+	updates := map[string]any{
+		"pay_url":           order.PayURL,
+		"provider_payload":  order.ProviderPayload,
+		"provider_trade_no": order.ProviderTradeNo,
+		"updated_at":        time.Now(),
+	}
+	if err := r.data.db.WithContext(ctx).Model(&PaymentOrder{}).Where("trade_no = ? AND status = ?", order.TradeNo, biz.PaymentOrderStatusPending).Updates(updates).Error; err != nil {
+		return nil, fmt.Errorf("failed to attach provider result: %w", err)
+	}
+	return r.GetOrderByTradeNo(ctx, order.TradeNo)
+}
+
+// DeletePendingOrder removes a placeholder that never reached the provider so
+// a retry can recreate it. Only rows still pending with no provider trade
+// number are removed; a paid or provider-bound order is never touched.
+func (r *paymentRepo) DeletePendingOrder(ctx context.Context, tradeNo string) error {
+	return r.data.db.WithContext(ctx).
+		Where("trade_no = ? AND status = ? AND (provider_trade_no IS NULL OR provider_trade_no = '')", tradeNo, biz.PaymentOrderStatusPending).
+		Delete(&PaymentOrder{}).Error
+}
+
 func (r *paymentRepo) ListOrders(ctx context.Context, req biz.ListPaymentOrdersRequest) ([]*biz.PaymentOrder, int64, error) {
 	page := req.Page
 	pageSize := req.PageSize

@@ -120,3 +120,51 @@ func TestResponseCacheRejectsOtherKeyOrGroup(t *testing.T) {
 	require.EqualValues(t, 99, store.LookupResponseChannel(context.Background(), routingSessionScope(a), "resp-known"))
 	require.Zero(t, store.LookupResponseChannel(context.Background(), routingSessionScope(b), "resp-known"))
 }
+
+// orderedGateChannel records CanRoute calls to prove whether the ordered
+// group gate in refreshStoredResponseRoute accepted the stored route.
+type orderedGateChannel struct {
+	canRouteCalls int
+}
+
+func (c *orderedGateChannel) SelectChannel(context.Context, string, string, bool) (*relaybiz.Channel, error) {
+	return &relaybiz.Channel{ID: 1, Name: "c", BaseURL: "https://example.com/v1"}, nil
+}
+func (c *orderedGateChannel) SelectChannelExcluding(ctx context.Context, group, model string, excluded map[int64]bool) (*relaybiz.Channel, error) {
+	return c.SelectChannel(ctx, group, model, false)
+}
+func (c *orderedGateChannel) RecordChannelHealth(context.Context, int64, bool, string, int64) error {
+	return nil
+}
+func (c *orderedGateChannel) RecordSubscriptionAccountHealth(context.Context, int64, bool) error {
+	return nil
+}
+func (c *orderedGateChannel) CanRoute(context.Context, string, string, routing.Source) (routing.Permission, error) {
+	c.canRouteCalls++
+	return routing.Permission{Allowed: true}, nil
+}
+
+func TestOrderedResponseRouteRestoreGroupGate(t *testing.T) {
+	channel := &orderedGateChannel{}
+	uc := relaybiz.NewRelayUsecase(nil, channel, nil, nil)
+	s := &HTTPServer{relayUsecase: uc}
+	auth := &identityv1.GetAuthSnapshotReply{
+		UserId: 1, TokenId: 2, RoutingContextVersion: 2,
+		RoutingFacts: &commonv1.RoutingSubjectFacts{TokenMode: "ordered", TokenGroupIds: []int64{3, 7}},
+	}
+	// Stored route on group 3 (in the ordered list): the gate passes and the
+	// source re-authorization runs. materializeWSStickySource then refuses
+	// (no channel client), but that is downstream of the gate.
+	route := responseRoute{UserID: 1, TokenID: 2, RoutingGroupID: 3, Model: "stored"}
+	_, allowed := s.refreshStoredResponseRoute(context.Background(), auth, "other", route)
+	require.False(t, allowed)
+	require.Equal(t, 1, channel.canRouteCalls, "in-list route must pass the ordered group gate")
+
+	// Stored route on group 9 (not in the list): rejected at the gate without
+	// any re-authorization call — bound sessions never move groups.
+	channel.canRouteCalls = 0
+	route = responseRoute{UserID: 1, TokenID: 2, RoutingGroupID: 9, Model: "stored"}
+	_, allowed = s.refreshStoredResponseRoute(context.Background(), auth, "other", route)
+	require.False(t, allowed)
+	require.Zero(t, channel.canRouteCalls, "out-of-list route must fail at the ordered group gate")
+}

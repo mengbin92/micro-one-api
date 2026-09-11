@@ -326,6 +326,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	identityAdapter := relaydata.NewIdentityAdapter(identityClient)
 	channelAdapter := relaydata.NewChannelAdapter(channelClient)
 	relayUsecase := relaybiz.NewRelayUsecase(identityAdapter, channelAdapter, modelMapper, retryPolicy)
+	relayUsecase.SetRoutingSettlementClient(relaydata.NewBillingSettlementAdapter(billingClient))
 	relayUsecase.SetRuntimeBlocker(relaybiz.NewMemoryRuntimeBlocker())
 	// v0.11.0 Phase 3 §3.4/§3.5: wire the metrics+logging selection recorder
 	// so routing selection/fallback/sticky metrics are actually emitted. Without

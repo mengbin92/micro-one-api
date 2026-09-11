@@ -20,6 +20,11 @@ type GroupResource struct {
 	Source   Source
 	Priority int64
 	Weight   int64
+	// PriorityOverride/WeightOverride are the raw relation-level overrides
+	// (nil = inherit the resource's own values). Priority/Weight above carry
+	// the effective values.
+	PriorityOverride *int64
+	WeightOverride   *int64
 }
 
 type GroupModelGrant struct {

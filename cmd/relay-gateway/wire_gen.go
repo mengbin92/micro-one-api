@@ -321,6 +321,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	identityAdapter := data.NewIdentityAdapter(identityClient)
 	channelAdapter := data.NewChannelAdapter(channelClient)
 	relayUsecase := biz.NewRelayUsecase(identityAdapter, channelAdapter, modelMapper, retryPolicy)
+	relayUsecase.SetRoutingSettlementClient(data.NewBillingSettlementAdapter(billingClient))
 	relayUsecase.SetRuntimeBlocker(biz.NewMemoryRuntimeBlocker())
 
 	relayUsecase.SetSelectionRecorder(biz.NewMetricsSelectionRecorder(logger.Current()))

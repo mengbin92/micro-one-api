@@ -13,7 +13,12 @@ func (s *BillingService) GetRoutingGroupPrice(ctx context.Context, req *billingv
 	if err != nil {
 		return nil, err
 	}
-	return &billingv1.GetRoutingGroupPriceReply{GroupKey: p.GroupKey, PriceRatio: p.PriceRatio, Version: p.Version, Source: p.Source, BillingMode: p.BillingMode, SubscriptionCovered: p.SubscriptionCovered}, nil
+	reply := &billingv1.GetRoutingGroupPriceReply{GroupKey: p.GroupKey, PriceRatio: p.PriceRatio, Version: p.Version, Source: p.Source, BillingMode: p.BillingMode, SubscriptionCovered: p.SubscriptionCovered}
+	if p.UserPrice != nil {
+		reply.UserPriceRatio = &p.UserPrice.PriceRatio
+		reply.UserPriceVersion = &p.UserPrice.Version
+	}
+	return reply, nil
 }
 
 func (s *BillingService) GetRoutingBillingPolicy(ctx context.Context, req *billingv1.GetRoutingBillingPolicyRequest) (*billingv1.RoutingBillingPolicy, error) {

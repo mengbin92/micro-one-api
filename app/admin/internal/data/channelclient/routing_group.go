@@ -53,7 +53,7 @@ func (r *routingGroupReader) Get(ctx context.Context, id int64) (*routing.GroupD
 		if v == nil {
 			return nil, biz.ErrRoutingGroupUnavailable
 		}
-		result.Resources = append(result.Resources, routing.GroupResource{Source: routing.Source{Kind: v.SourceKind, ID: v.SourceId}, Priority: v.Priority, Weight: v.Weight})
+		result.Resources = append(result.Resources, routing.GroupResource{Source: routing.Source{Kind: v.SourceKind, ID: v.SourceId}, Priority: v.Priority, Weight: v.Weight, PriorityOverride: v.PriorityOverride, WeightOverride: v.WeightOverride})
 	}
 	for _, v := range reply.ModelGrants {
 		if v == nil {

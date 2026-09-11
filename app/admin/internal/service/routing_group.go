@@ -32,10 +32,12 @@ type RoutingGroupList struct {
 	NextPageToken string         `json:"next_page_token"`
 }
 type RoutingGroupResource struct {
-	SourceKind string `json:"source_kind"`
-	SourceID   int64  `json:"source_id"`
-	Priority   int64  `json:"priority"`
-	Weight     int64  `json:"weight"`
+	SourceKind       string `json:"source_kind"`
+	SourceID         int64  `json:"source_id"`
+	Priority         int64  `json:"priority"`
+	Weight           int64  `json:"weight"`
+	PriorityOverride *int64 `json:"priority_override,omitempty"`
+	WeightOverride   *int64 `json:"weight_override,omitempty"`
 }
 type RoutingGroupModelGrant struct {
 	MappingID          int64  `json:"mapping_id"`
@@ -89,7 +91,7 @@ func (s *AdminService) GetRoutingGroup(ctx context.Context, id int64) (*RoutingG
 	g := result.Group
 	reply := &RoutingGroupDetail{Group: RoutingGroup{ID: g.ID, Key: g.Key, DisplayName: g.DisplayName, Description: g.Description, Status: g.Status, AccessMode: g.AccessMode, ModelAccessMode: g.ModelAccessMode, SortOrder: g.SortOrder, Revision: g.Revision}, Resources: []RoutingGroupResource{}, ModelGrants: []RoutingGroupModelGrant{}}
 	for _, r := range result.Resources {
-		reply.Resources = append(reply.Resources, RoutingGroupResource{SourceKind: r.Source.Kind, SourceID: r.Source.ID, Priority: r.Priority, Weight: r.Weight})
+		reply.Resources = append(reply.Resources, RoutingGroupResource{SourceKind: r.Source.Kind, SourceID: r.Source.ID, Priority: r.Priority, Weight: r.Weight, PriorityOverride: r.PriorityOverride, WeightOverride: r.WeightOverride})
 	}
 	for _, m := range result.ModelGrants {
 		reply.ModelGrants = append(reply.ModelGrants, RoutingGroupModelGrant{MappingID: m.MappingID, AccountID: m.AccountID, Model: m.Model, UpstreamModelID: m.UpstreamModelID, Enabled: m.Enabled, Priority: m.Priority, ExtraAuthorization: m.ExtraAuthorization})

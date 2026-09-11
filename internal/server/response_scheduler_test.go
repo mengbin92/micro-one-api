@@ -152,7 +152,7 @@ func TestMaterializeWSStickySourcePreservesChannelModelSpelling(t *testing.T) {
 	var route responseRoute
 	ok := srv.materializeWSStickySource(context.Background(), &identityv1.GetAuthSnapshotReply{
 		UserId: 42, Group: "default",
-	}, "deepseek-v4-pro-0813[1M]", openAIWSStickySource{kind: relaybiz.UpstreamRouteChannel, id: 11}, &route)
+	}, "deepseek-v4-pro-0813[1M]", openAIWSStickySource{kind: relaybiz.UpstreamRouteChannel, id: 11}, 0, &route)
 	if !ok {
 		t.Fatal("expected sticky source to materialize")
 	}

@@ -128,6 +128,15 @@ type PaymentNotify struct {
 type PaymentRepo interface {
 	CreateOrder(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error)
 	GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error)
+	// AttachProviderResult persists the provider-side identifiers (pay URL,
+	// provider trade no, payload) on the pre-inserted pending order after the
+	// provider order was created. It returns the reloaded order.
+	AttachProviderResult(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error)
+	// DeletePendingOrder removes a pre-inserted placeholder that never reached
+	// the provider (or whose provider result could not be persisted) so a
+	// retry can recreate it. It only deletes rows still pending with no
+	// provider trade number. Best-effort: callers ignore the error.
+	DeletePendingOrder(ctx context.Context, tradeNo string) error
 	ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error)
 	MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
 	MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error)
@@ -296,6 +305,37 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 		}
 		ApplyPlanSnapshotToOrder(order, snapshot)
 	}
+	if keyed {
+		// Pre-insert the row before calling the provider: the deterministic
+		// trade_no unique key turns concurrent duplicate (user, request) calls
+		// into a single provider order — the loser's insert fails and it
+		// returns the winner's row instead of minting an orphan provider
+		// order that the database dedupe would discard anyway.
+		created, err := uc.repo.CreateOrder(ctx, order)
+		if err != nil {
+			if existing, lookupErr := uc.repo.GetOrderByTradeNo(ctx, tradeNo); lookupErr == nil && existing != nil {
+				return matchSubscriptionOrder(existing, req)
+			}
+			return nil, err
+		}
+		order = created
+		providerOrder, err := uc.provider.CreateOrder(ctx, order)
+		if err != nil {
+			_ = uc.repo.DeletePendingOrder(ctx, tradeNo)
+			return nil, err
+		}
+		if providerOrder != nil {
+			order.PayURL = providerOrder.PayURL
+			order.ProviderPayload = providerOrder.Payload
+			order.ProviderTradeNo = providerOrder.ProviderTradeNo
+		}
+		attached, err := uc.repo.AttachProviderResult(ctx, order)
+		if err != nil {
+			_ = uc.repo.DeletePendingOrder(ctx, tradeNo)
+			return nil, err
+		}
+		return attached, nil
+	}
 	providerOrder, err := uc.provider.CreateOrder(ctx, order)
 	if err != nil {
 		return nil, err
@@ -306,7 +346,7 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 		order.ProviderTradeNo = providerOrder.ProviderTradeNo
 	}
 	created, err := uc.repo.CreateOrder(ctx, order)
-	if err != nil && keyed {
+	if err != nil {
 		if existing, lookupErr := uc.repo.GetOrderByTradeNo(ctx, tradeNo); lookupErr == nil && existing != nil {
 			return matchSubscriptionOrder(existing, req)
 		}

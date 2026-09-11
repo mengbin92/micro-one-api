@@ -95,6 +95,7 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		fmt.Sprintf("%d", channelReply.Channel.Id),
 		0,
 		authSnapshot,
+		0,
 	)
 	if err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "quota reservation failed")

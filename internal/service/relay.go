@@ -176,14 +176,24 @@ func (s *RelayGrpcService) ListModels(ctx context.Context, req *relayv1.ListMode
 
 	auth := &relaybiz.AuthSnapshot{UserID: authResp.UserId, TokenID: authResp.TokenId, Group: authResp.Group,
 		UserEnabled: authResp.UserEnabled, TokenEnabled: authResp.TokenEnabled, RoutingFacts: routingdto.FactsFromProto(authResp.RoutingFacts), RoutingContextVersion: authResp.RoutingContextVersion}
-	if err := s.relayUsecase.ResolveRoutingContext(ctx, auth); err != nil {
+	if err := s.relayUsecase.ResolveRoutingContext(ctx, auth, relaybiz.RoutingResolveOptions{}); err != nil {
 		return nil, err
 	}
 	authResp.Group = auth.Group
-	modelsResp, err := s.channelClient.ListAvailableModels(ctx, &channelv1.ListAvailableModelsRequest{
+	routingGroupID := routing.SelectedGroupID(auth.RoutingFacts)
+	if auth.RoutingContext != nil {
+		routingGroupID = auth.RoutingContext.GroupID
+	}
+	modelsReq := &channelv1.ListAvailableModelsRequest{
 		Group:          authResp.Group,
-		RoutingGroupId: routing.SelectedGroupID(auth.RoutingFacts),
-	})
+		RoutingGroupId: routingGroupID,
+	}
+	if candidates := routing.OrderedGroupIDs(auth.RoutingFacts); len(candidates) > 0 {
+		// Ordered tokens list the union of their candidate groups' models.
+		modelsReq.RoutingGroupId = 0
+		modelsReq.RoutingGroupIds = candidates
+	}
+	modelsResp, err := s.channelClient.ListAvailableModels(ctx, modelsReq)
 	if err != nil {
 		return nil, err
 	}

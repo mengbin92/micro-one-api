@@ -61,6 +61,23 @@ func providerConfigFromChannelInfo(channel *commonv1.ChannelInfo) relayprovider.
 }
 
 func (s *HTTPServer) getAuthSnapshot(ctx context.Context, token string) (*identityv1.GetAuthSnapshotReply, error) {
+	reply, err := s.getRawAuthSnapshot(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := s.routingAuth(ctx, reply, 0)
+	if err != nil {
+		return nil, err
+	}
+	reply.Group = resolved.Group
+	return reply, nil
+}
+
+// getRawAuthSnapshot fetches the identity snapshot WITHOUT resolving the
+// routing context. Callers that already know the bound group (WS turns,
+// pinned resume) must use this: an unbound ordered walk here could terminate
+// on an unrelated candidate and kill a still-valid bound conversation.
+func (s *HTTPServer) getRawAuthSnapshot(ctx context.Context, token string) (*identityv1.GetAuthSnapshotReply, error) {
 	req := &identityv1.GetAuthSnapshotRequest{
 		Token: token,
 	}
@@ -68,11 +85,6 @@ func (s *HTTPServer) getAuthSnapshot(ctx context.Context, token string) (*identi
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := s.routingAuth(ctx, reply)
-	if err != nil {
-		return nil, err
-	}
-	reply.Group = resolved.Group
 	// Stamp the audit actor so the audit middleware records the real caller
 	// instead of an empty actor. WithActor writes into the mutable
 	// *actorHolder injected by the audit middleware (when present), or falls
@@ -102,7 +114,9 @@ func auditSessionIDPrefix(token string) string {
 
 func (s *HTTPServer) listAvailableModels(ctx context.Context, group string, ids ...int64) (*channelv1.ListAvailableModelsReply, error) {
 	req := &channelv1.ListAvailableModelsRequest{Group: group}
-	if len(ids) > 0 {
+	if len(ids) > 1 {
+		req.RoutingGroupIds = ids
+	} else if len(ids) == 1 {
 		req.RoutingGroupId = ids[0]
 	}
 	return s.channelClient.ListAvailableModels(ctx, req)

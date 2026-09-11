@@ -12,8 +12,8 @@ type routingAccessUsecase interface {
 	Facts(context.Context, int64) (*routing.SubjectFacts, error)
 	Available(context.Context, int64, routing.GroupListRequest) (*biz.AvailableRoutingGroups, error)
 	Change(context.Context, biz.RoutingAccessChange, bool) (*routing.SubjectFacts, error)
-	CreateToken(context.Context, int64, string, string, int64) (*biz.RoutingToken, error)
-	SetToken(context.Context, int64, int64, string, int64, int64) (int64, error)
+	CreateToken(context.Context, int64, string, string, int64, []int64) (*biz.RoutingToken, error)
+	SetToken(context.Context, int64, int64, string, int64, int64, []int64) (int64, error)
 }
 
 func (s *AdminService) SetRoutingAccessUsecase(uc routingAccessUsecase) { s.routingAccessUc = uc }
@@ -27,11 +27,12 @@ type RoutingGrant struct {
 	Status     string `json:"status"`
 }
 type RoutingTokenReference struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Mode     string `json:"mode"`
-	GroupID  int64  `json:"group_id"`
-	Revision int64  `json:"revision"`
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Mode     string  `json:"mode"`
+	GroupID  int64   `json:"group_id"`
+	GroupIDs []int64 `json:"group_ids,omitempty"`
+	Revision int64   `json:"revision"`
 }
 type RoutingFacts struct {
 	Tokens            []RoutingTokenReference `json:"tokens"`
@@ -44,7 +45,7 @@ type RoutingFacts struct {
 func factsReply(f *routing.SubjectFacts) *RoutingFacts {
 	out := &RoutingFacts{DefaultGroupID: f.DefaultGroupID, Revision: f.AccessRevision, PublicGroupAccess: f.PublicGroupAccess, Grants: []RoutingGrant{}}
 	for _, t := range f.TokenReferences {
-		out.Tokens = append(out.Tokens, RoutingTokenReference{t.ID, t.Name, t.Mode, t.GroupID, t.Revision})
+		out.Tokens = append(out.Tokens, RoutingTokenReference{ID: t.ID, Name: t.Name, Mode: t.Mode, GroupID: t.GroupID, GroupIDs: t.GroupIDs, Revision: t.Revision})
 	}
 	for _, g := range f.Grants {
 		out.Grants = append(out.Grants, RoutingGrant{g.GroupID, g.SourceType, g.SourceRef, g.StartsAt, g.ExpiresAt, g.Status})
@@ -63,6 +64,9 @@ type AvailableGroup struct {
 	SubscriptionCovered bool           `json:"subscription_covered"`
 	Models              []string       `json:"models"`
 	Sources             []RoutingGrant `json:"sources"`
+	OrderedEligible     bool           `json:"ordered_eligible"`
+	UserPriceRatio      float64        `json:"user_price_ratio,omitempty"`
+	UserPriceVersion    int64          `json:"user_price_version,omitempty"`
 }
 type AvailableGroups struct {
 	Groups           []AvailableGroup `json:"groups"`
@@ -82,10 +86,11 @@ type RoutingAccessRequest struct {
 	PublicGroupAccess string `json:"public_group_access"`
 }
 type RoutingTokenRequest struct {
-	Name             string `json:"name"`
-	Mode             string `json:"routing_mode"`
-	GroupID          int64  `json:"routing_group_id"`
-	ExpectedRevision int64  `json:"expected_revision"`
+	Name             string  `json:"name"`
+	Mode             string  `json:"routing_mode"`
+	GroupID          int64   `json:"routing_group_id"`
+	GroupIDs         []int64 `json:"routing_group_ids,omitempty"`
+	ExpectedRevision int64   `json:"expected_revision"`
 }
 
 func (s *AdminService) RoutingFacts(ctx context.Context, user int64) (*RoutingFacts, error) {
@@ -118,7 +123,13 @@ func (s *AdminService) AvailableGroups(ctx context.Context, user int64, q routin
 	out := &AvailableGroups{Groups: []AvailableGroup{}, Facts: factsReply(a.Facts), DefaultAvailable: a.DefaultAvailable, NextPageToken: a.NextPageToken, CreationEnabled: a.CreationEnabled}
 	for _, g := range a.Groups {
 		sources := factsReply(&routing.SubjectFacts{Grants: g.Sources}).Grants
-		out.Groups = append(out.Groups, AvailableGroup{g.Group.ID, g.Group.Key, g.Group.DisplayName, g.Price.Ratio, g.Price.Source, g.Price.Version, g.Price.BillingMode, g.Price.SubscriptionCovered, g.Models, sources})
+		out.Groups = append(out.Groups, AvailableGroup{
+			ID: g.Group.ID, Key: g.Group.Key, DisplayName: g.Group.DisplayName,
+			PriceRatio: g.Price.Ratio, PriceSource: g.Price.Source, PriceVersion: g.Price.Version,
+			BillingMode: g.Price.BillingMode, SubscriptionCovered: g.Price.SubscriptionCovered,
+			Models: g.Models, Sources: sources, OrderedEligible: g.OrderedEligible,
+			UserPriceRatio: g.Price.UserRatio, UserPriceVersion: g.Price.UserVersion,
+		})
 	}
 	return out, nil
 }
@@ -136,17 +147,17 @@ func (s *AdminService) CreateRoutingToken(ctx context.Context, user int64, r Rou
 	if s.routingAccessUc == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
-	t, err := s.routingAccessUc.CreateToken(ctx, user, r.Name, r.Mode, r.GroupID)
+	t, err := s.routingAccessUc.CreateToken(ctx, user, r.Name, r.Mode, r.GroupID, r.GroupIDs)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"id": t.ID, "key": t.Key, "name": t.Name, "routing_mode": t.Mode, "routing_group_id": t.GroupID, "routing_revision": t.Revision, "status": 1, "created_time": t.CreatedAt}, nil
+	return map[string]any{"id": t.ID, "key": t.Key, "name": t.Name, "routing_mode": t.Mode, "routing_group_id": t.GroupID, "routing_group_ids": t.GroupIDs, "routing_revision": t.Revision, "status": 1, "created_time": t.CreatedAt}, nil
 }
 func (s *AdminService) SetRoutingToken(ctx context.Context, user, token int64, r RoutingTokenRequest) (map[string]any, error) {
 	if s.routingAccessUc == nil {
 		return nil, biz.ErrRoutingGroupUnavailable
 	}
-	rev, err := s.routingAccessUc.SetToken(ctx, user, token, r.Mode, r.GroupID, r.ExpectedRevision)
+	rev, err := s.routingAccessUc.SetToken(ctx, user, token, r.Mode, r.GroupID, r.ExpectedRevision, r.GroupIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -197,4 +208,51 @@ func (s *AdminService) RoutingBillingPolicy(ctx context.Context, id int64, updat
 		return nil, err
 	}
 	return &RoutingBillingPolicyDTO{GroupID: id, Version: p.Version, BillingMode: p.BillingMode, PriceRatio: p.PriceRatio, EffectiveAt: p.EffectiveAt}, nil
+}
+
+type RoutingUserPriceRequest struct {
+	PriceRatio float64 `json:"price_ratio"`
+}
+
+// SetRoutingGroupUserPrice publishes (or clears, when ratio<=0 with clear=true
+// via DELETE) a user-specific price override for one routing group.
+func (s *AdminService) SetRoutingGroupUserPrice(ctx context.Context, groupID, userID int64, r RoutingUserPriceRequest) (map[string]any, error) {
+	uc, ok := s.routingAccessUc.(interface {
+		SetUserRoutingPrice(context.Context, int64, int64, float64) (int64, error)
+	})
+	if !ok {
+		return nil, biz.ErrRoutingGroupUnavailable
+	}
+	version, err := uc.SetUserRoutingPrice(ctx, userID, groupID, r.PriceRatio)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"routing_group_id": groupID, "user_id": userID, "version": version}, nil
+}
+
+func (s *AdminService) ClearRoutingGroupUserPrice(ctx context.Context, groupID, userID int64) error {
+	uc, ok := s.routingAccessUc.(interface {
+		ClearUserRoutingPrice(context.Context, int64, int64) error
+	})
+	if !ok {
+		return biz.ErrRoutingGroupUnavailable
+	}
+	return uc.ClearUserRoutingPrice(ctx, userID, groupID)
+}
+
+type RoutingResourceOverrideRequest struct {
+	SourceKind       string `json:"source_kind"`
+	SourceID         int64  `json:"source_id"`
+	PriorityOverride *int64 `json:"priority_override"`
+	WeightOverride   *int64 `json:"weight_override"`
+}
+
+func (s *AdminService) SetRoutingGroupResourceOverrides(ctx context.Context, groupID int64, r RoutingResourceOverrideRequest) error {
+	uc, ok := s.routingAccessUc.(interface {
+		SetResourceOverrides(context.Context, int64, routing.Source, *int64, *int64) error
+	})
+	if !ok {
+		return biz.ErrRoutingGroupUnavailable
+	}
+	return uc.SetResourceOverrides(ctx, groupID, routing.Source{Kind: r.SourceKind, ID: r.SourceID}, r.PriorityOverride, r.WeightOverride)
 }

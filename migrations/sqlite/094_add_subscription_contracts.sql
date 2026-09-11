@@ -2,7 +2,7 @@ ALTER TABLE subscription_plans ADD COLUMN contract_snapshot TEXT NULL;
 ALTER TABLE subscription_plans ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE user_subscriptions ADD COLUMN contract_snapshot TEXT NULL;
 ALTER TABLE user_subscriptions ADD COLUMN entitlement_revision INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE user_subscriptions ADD COLUMN source_order VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE user_subscriptions ADD COLUMN source_order VARCHAR(192) NOT NULL DEFAULT '';
 CREATE TABLE subscription_plan_routing_groups (
  plan_id INTEGER NOT NULL,
  routing_group_id INTEGER NOT NULL,

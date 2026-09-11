@@ -112,6 +112,16 @@ func (a *ChannelAdapter) GetRoutingGroup(ctx context.Context, id int64) (*routin
 	return routingclient.New(a.client).GetRoutingGroup(ctx, id)
 }
 
+// HasRoutingCandidates is the read-only ordered-routing probe; it never
+// advances weighted-scheduler state.
+func (a *ChannelAdapter) HasRoutingCandidates(ctx context.Context, groupID int64, model string) (bool, error) {
+	reply, err := a.client.HasRoutingCandidates(ctx, &channelv1.HasRoutingCandidatesRequest{RoutingGroupId: groupID, Model: model})
+	if err != nil {
+		return false, err
+	}
+	return reply.GetHasCandidates(), nil
+}
+
 // NewChannelAdapter creates a new ChannelAdapter.
 func NewChannelAdapter(client channelv1.ChannelServiceClient) *ChannelAdapter {
 	return &ChannelAdapter{client: client}

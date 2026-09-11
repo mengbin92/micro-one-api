@@ -62,3 +62,49 @@ func TestFixedRoutingEligibilityAndIsolation(t *testing.T) {
 		require.Zero(t, SelectedGroupID(f))
 	}
 }
+
+func TestOrderedPolicyValidation(t *testing.T) {
+	require.True(t, ValidOrderedPolicy("ordered", 0, []int64{1, 2, 3}))
+	require.False(t, ValidOrderedPolicy("ordered", 1, []int64{1, 2}), "fixed group ID is mutually exclusive")
+	require.False(t, ValidOrderedPolicy("ordered", 0, nil), "empty list rejected")
+	require.False(t, ValidOrderedPolicy("ordered", 0, []int64{1, 0, 2}), "zero rejected")
+	require.False(t, ValidOrderedPolicy("ordered", 0, []int64{1, 1}), "duplicate rejected")
+	require.False(t, ValidOrderedPolicy("fixed", 0, []int64{1}), "wrong mode")
+	require.True(t, ValidSelection("ordered", "token_ordered"))
+	require.False(t, ValidSelection("ordered", "user_default"))
+}
+
+func TestResolveOrdered(t *testing.T) {
+	f := &SubjectFacts{AccessRevision: 4, TokenMode: "ordered", TokenGroupIDs: []int64{2, 3}, TokenRevision: 3, PublicGroupAccess: "explicit_only", Grants: []UserGroupGrant{{GroupID: 2, SourceType: "admin", Status: "active"}, {GroupID: 3, SourceType: "admin", Status: "active"}}}
+	g2 := &Group{ID: 2, Key: "Alpha", Status: "enabled", Revision: 5}
+	g3 := &Group{ID: 3, Key: "Beta", Status: "enabled", Revision: 6}
+
+	c0, err := ResolveOrdered(10, 20, f, g2, 0, 100)
+	require.NoError(t, err)
+	require.Equal(t, "token_ordered", c0.SelectionSource)
+	require.Zero(t, c0.AttemptOrdinal)
+	require.Equal(t, []int64{2, 3}, c0.CandidateGroupIDs)
+
+	c1, err := ResolveOrdered(10, 20, f, g3, 1, 100)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, c1.AttemptOrdinal)
+	require.NotEqual(t, c0.Digest(), c1.Digest(), "each attempt has a distinct digest")
+
+	_, err = ResolveOrdered(10, 20, f, g3, 0, 100)
+	require.Error(t, err, "group must sit at the requested ordinal")
+	_, err = ResolveOrdered(10, 20, f, g2, 2, 100)
+	require.Error(t, err, "ordinal out of range")
+
+	// CandidateGroupIDs is a frozen snapshot: mutating facts afterwards must
+	// not change the resolved context.
+	f.TokenGroupIDs[0] = 99
+	require.Equal(t, []int64{2, 3}, c0.CandidateGroupIDs)
+
+	// No access on the target group terminates instead of advancing.
+	f = &SubjectFacts{AccessRevision: 4, TokenMode: "ordered", TokenGroupIDs: []int64{2}, TokenRevision: 3, PublicGroupAccess: "explicit_only"}
+	_, err = ResolveOrdered(10, 20, f, g2, 0, 100)
+	require.Error(t, err)
+
+	require.Equal(t, []int64{2, 3}, OrderedGroupIDs(&SubjectFacts{TokenMode: "ordered", TokenGroupIDs: []int64{2, 3}}))
+	require.Nil(t, OrderedGroupIDs(&SubjectFacts{TokenMode: "ordered", TokenGroupIDs: []int64{2, 2}}))
+}

@@ -283,6 +283,17 @@ func (uc *BillingUsecase) prepareRequestSnapshot(ctx context.Context, userID, le
 			s.BillingPolicyVersion = fmt.Sprintf("routing_policy:%d:%d", policy.GroupID, policy.Version)
 		}
 	}
+	// Phase F: a user-specific override replaces the ratio (never multiplies).
+	// The billing mode stays with the published policy.
+	if routingContext != nil {
+		override, err := uc.resolveUserPriceOverride(ctx, routingContext.UserID, routingContext.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		if override != nil {
+			applyUserPriceOverride(s, override)
+		}
+	}
 	if s.BillingMode == routing.SubscriptionOnly {
 		bound := routing.GetCostBound(ctx)
 		if !bound.Valid() {

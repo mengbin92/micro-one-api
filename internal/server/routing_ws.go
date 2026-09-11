@@ -72,11 +72,11 @@ func (s *HTTPServer) newRoutingWSTurns(token, clientModel, resolvedModel string,
 		if requested != "" && requested != clientModel && requested != resolvedModel {
 			return nil, nil, fmt.Errorf("model changed; open a new websocket")
 		}
-		p, err := s.getAuthSnapshot(ctx, token)
+		p, err := s.getRawAuthSnapshot(ctx, token)
 		if err != nil {
 			return nil, nil, err
 		}
-		auth, err := s.routingAuth(ctx, p)
+		auth, err := s.routingAuth(ctx, p, plan.Auth.RoutingContext.GroupID)
 		if err != nil {
 			return nil, nil, err
 		}
