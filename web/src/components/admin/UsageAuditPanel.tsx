@@ -8,6 +8,10 @@ import { locale, t } from '@/lib/i18n';
 // usage_parse_status 'legacy' (or the field absent) — they are rendered from
 // their raw reported fields and tagged 历史口径, never re-derived.
 export interface UsageAuditLog {
+ routingGroupId?: number;
+ routingGroupKey?: string;
+ requestSnapshotHash?: string;
+ requestSnapshot?: string;
   promptTokens?: number | string;
   completionTokens?: number | string;
   cacheReadTokens?: number | string;
@@ -165,6 +169,12 @@ export function UsageAuditPanel({ log }: { log: UsageAuditLog }) {
 
   return (
     <div className="space-y-3">
+      <section className="rounded-lg border p-3 text-xs space-y-1">
+        <h4 className="font-semibold">实际路由与计费分组</h4>
+        <p>{log.routingGroupKey ? `${log.routingGroupKey} (#${log.routingGroupId || '—'})` : '未记录（历史账单）'}</p>
+        {log.requestSnapshotHash && <p className="break-all">请求快照：{log.requestSnapshotHash}</p>}
+        {log.requestSnapshot && <details><summary>查看冻结请求证据</summary><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all">{log.requestSnapshot}</pre></details>}
+      </section>
       <div className="flex flex-wrap items-center gap-2">
         <ParseStatusBadge log={log} />
         {log.usageSemantics ? (

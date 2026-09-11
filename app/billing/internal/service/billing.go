@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/routing"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"net/http"
 	"time"
 
@@ -28,6 +30,7 @@ import (
 )
 
 type BillingService struct {
+	commerceUc *biz.SubscriptionCommerce
 	billingv1.UnimplementedBillingServiceServer
 	uc             *biz.BillingUsecase
 	asyncUc        *biz.AsyncBillingUsecase // optional; nil = synchronous path
@@ -94,6 +97,9 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	if req == nil || req.UserId == "" || req.RequestId == "" || req.Model == "" || req.EstimatedTokens < 0 {
 		return nil, biz.ErrRoutingContextInvalid
 	}
+	if req.CostBound != nil {
+		ctx = routing.WithCostBound(ctx, routing.CostBound{Protocol: req.CostBound.Protocol, InputTokens: req.CostBound.InputTokens, UpstreamModel: req.CostBound.UpstreamModel})
+	}
 	reservation, err := s.uc.ReserveQuota(ctx, req.UserId, req.RequestId, req.EstimatedTokens, req.Model, req.ChannelId, req.SubscriptionAccountId, routingdto.ContextFromProto(req.RoutingContext))
 	if err != nil {
 		if req.RoutingContext != nil || errors.Is(err, biz.ErrRoutingContextConflict) {
@@ -139,7 +145,7 @@ func (s *BillingService) GetRoutingCapabilities(context.Context, *billingv1.GetR
 	if s.uc.RoutingSnapshotsAvailable() {
 		version = 2
 	}
-	return &billingv1.GetRoutingCapabilitiesResponse{RequestSnapshotVersion: version}, nil
+	return &billingv1.GetRoutingCapabilitiesResponse{RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
 }
 
 func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest) (*billingv1.CommitQuotaResponse, error) {
@@ -517,9 +523,26 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 		return nil, err
 	}
 
+	snapshots, err := s.uc.LedgerRequestSnapshots(ctx, ledgers)
+	if err != nil {
+		return nil, err
+	}
 	entries := make([]*commonv1.LedgerEntry, len(ledgers))
 	for i, ledger := range ledgers {
+		var groupID int64
+		var groupKey, hash string
+		if snap := snapshots[ledger.ReferenceID]; snap != nil {
+			groupKey = snap.GroupKey
+			hash, err = snap.Digest()
+			if err != nil {
+				return nil, err
+			}
+			if snap.Routing != nil {
+				groupID = snap.Routing.GroupID
+			}
+		}
 		entries[i] = &commonv1.LedgerEntry{
+			RoutingGroupId: groupID, RoutingGroupKey: groupKey, RequestSnapshotHash: hash,
 			Id:                     fmt.Sprintf("%d", ledger.ID),
 			UserId:                 ledger.UserID,
 			Amount:                 ledger.Amount,
@@ -841,6 +864,7 @@ func (s *BillingService) CreatePaymentOrder(ctx context.Context, req *billingv1.
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
 	}
 	order, err := s.paymentUc.CreateOrder(ctx, biz.CreatePaymentOrderRequest{
+		RequestID:   req.GetRequestId(),
 		UserID:      req.GetUserId(),
 		Channel:     req.GetChannel(),
 		AssetType:   req.GetAssetType(),

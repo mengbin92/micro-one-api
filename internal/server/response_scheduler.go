@@ -67,6 +67,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 			if err != nil {
 				return nil, false
 			}
+			s.server.relayUsecase.BindRoutingAdmission(resolvedAuth, token, "")
 			return &relaybiz.RelayPlan{
 				ClientModel:   modelForPermission,
 				Auth:          resolvedAuth,
@@ -107,6 +108,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 	if err != nil {
 		return nil, false
 	}
+	s.server.relayUsecase.BindRoutingAdmission(resolvedAuth, token, "")
 	return &relaybiz.RelayPlan{
 		ClientModel:   clientModel,
 		Auth:          resolvedAuth,
@@ -140,9 +142,12 @@ func (s *OpenAIWSRoutingScheduler) ResolvePlan(ctx context.Context, token, clien
 	if plan, ok := s.ResolveStoredRoute(ctx, token, clientModel, previousResponseID); ok {
 		return plan, nil
 	}
+	if relaybiz.RoutingContextV2Enabled() && strings.TrimSpace(previousResponseID) != "" {
+		return nil, fmt.Errorf("previous response is unavailable in the current routing context; start a new session")
+	}
 	if plan, ok := s.ResolveSessionRoute(ctx, token, clientModel, sessionHash); ok {
 		if s.server.wsSticky != nil && plan.Auth != nil {
-			s.server.wsSticky.RefreshSessionTTL(ctx, plan.Auth.Group, sessionHash, s.server.openAIWSStickyTTL())
+			s.server.wsSticky.RefreshSessionTTL(ctx, routingSessionScope(plan.Auth), sessionHash, s.server.openAIWSStickyTTL())
 		}
 		return plan, nil
 	}
@@ -170,7 +175,7 @@ func (s *OpenAIWSRoutingScheduler) BindSession(ctx context.Context, plan *relayb
 	if sessionHash == "" {
 		return
 	}
-	s.server.wsSticky.BindSessionRoute(ctx, plan.Auth.Group, sessionHash, plan.Channel, s.server.openAIWSStickyTTL())
+	s.server.wsSticky.BindSessionRoute(ctx, routingSessionScope(plan.Auth), sessionHash, plan.Channel, s.server.openAIWSStickyTTL())
 }
 
 func authAllowsModel(allowedModels []string, model string) bool {

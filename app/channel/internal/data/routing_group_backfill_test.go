@@ -46,6 +46,7 @@ func routingGroupFixture(t *testing.T) (*sql.DB, *gorm.DB) {
 	t.Cleanup(func() { db.Close() })
 	groupSQLFile(t, db, "testdata/routing_group_legacy.sql", "sqlite3")
 	groupSQLFile(t, db, "../../../../migrations/sqlite/090_create_routing_groups.sql", "sqlite3")
+	groupSQLFile(t, db, "../../../../migrations/sqlite/093_create_routing_change_outbox.sql", "sqlite3")
 	gdb, err := gorm.Open(sqlite.New(sqlite.Config{Conn: db}), &gorm.Config{})
 	require.NoError(t, err)
 	return db, gdb

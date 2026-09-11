@@ -153,3 +153,11 @@ describe('UsageSummaryCell', () => {
     expect(screen.getByText('Σ 128')).toBeInTheDocument();
   });
 });
+
+it('shows recorded routing evidence and keeps historical groups unknown', () => {
+  const { rerender } = render(<UsageAuditPanel log={{ promptTokens: 100, routingGroupId: 7, routingGroupKey: 'vip', requestSnapshotHash: 'frozen-hash' }} />);
+  expect(screen.getByText('vip (#7)')).toBeInTheDocument();
+  expect(screen.getByText('请求快照：frozen-hash')).toBeInTheDocument();
+  rerender(<UsageAuditPanel log={{ promptTokens: 100 }} />);
+  expect(screen.getByText('未记录（历史账单）')).toBeInTheDocument();
+});

@@ -243,7 +243,7 @@ func (s *HTTPServer) availableModelsForRequest(w http.ResponseWriter, r *http.Re
 		s.handleIdentityError(w, err)
 		return nil, false
 	}
-	modelsReply, err := s.listAvailableModels(r.Context(), authSnapshot.Group)
+	modelsReply, err := s.listAvailableModels(r.Context(), authSnapshot.Group, selectedProtoGroupID(authSnapshot))
 	if err != nil {
 		s.handleChannelError(w, err)
 		return nil, false

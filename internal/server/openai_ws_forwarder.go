@@ -690,19 +690,20 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			// resume the chain on the same channel.
 			if turn.requestID != "" {
 				s.storeResponseRoute(turn.requestID, responseRoute{
-					Model:                 clientModel,
-					GlobalModel:           plan.BaseModel(),
-					ResolvedModel:         resolvedModel,
-					Channel:               *currentChannel,
-					UserID:                plan.Auth.UserID,
+					Model:         clientModel,
+					GlobalModel:   plan.BaseModel(),
+					ResolvedModel: resolvedModel,
+					Channel:       *currentChannel,
+					UserID:        plan.Auth.UserID,
+					TokenID:       plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth),
 					SubscriptionAccountID: routingSubscriptionAccountID(currentChannel),
 				})
 				if s.wsSticky != nil {
-					s.wsSticky.BindResponseRoute(ctx, plan.Auth.Group, turn.requestID, currentChannel, s.openAIWSStickyTTL())
+					s.wsSticky.BindResponseRoute(ctx, routingSessionScope(plan.Auth), turn.requestID, currentChannel, s.openAIWSStickyTTL())
 				}
 			}
 			if s.wsSticky != nil && strings.TrimSpace(sessionHash) != "" {
-				s.wsSticky.BindSessionRoute(ctx, plan.Auth.Group, sessionHash, currentChannel, s.openAIWSStickyTTL())
+				s.wsSticky.BindSessionRoute(ctx, routingSessionScope(plan.Auth), sessionHash, currentChannel, s.openAIWSStickyTTL())
 			}
 			turnCommits++
 		}
@@ -857,6 +858,9 @@ func (s *HTTPServer) maybeFailoverChannel(
 	if !relaybiz.DefaultRetryPolicy().IsRetryable(cause) {
 		return false
 	}
+	if err := relaybiz.RecheckRoutingAdmission(ctx, plan.Auth, clientModel); err != nil {
+		return false
+	}
 	selected, err := s.relayUsecase.SelectFallbackRoutingSource(ctx, plan.Auth.Group, clientModel, plan.BaseModel(), excluded)
 	if err != nil || selected == nil || relaybiz.SameRoutingSource(selected, failed) {
 		return false
@@ -877,7 +881,7 @@ func (s *HTTPServer) lookupWSStickyRoute(ctx context.Context, token, clientModel
 	if err != nil {
 		return false
 	}
-	source := s.wsSticky.LookupResponseRoute(ctx, authSnapshot.Group, responseID)
+	source := s.wsSticky.LookupResponseRoute(ctx, protoSessionScope(authSnapshot), responseID)
 	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, route)
 }
 
@@ -889,7 +893,7 @@ func (s *HTTPServer) lookupWSStickySessionRoute(ctx context.Context, token, clie
 	if err != nil {
 		return false
 	}
-	source := s.wsSticky.LookupSessionRoute(ctx, authSnapshot.Group, sessionHash)
+	source := s.wsSticky.LookupSessionRoute(ctx, protoSessionScope(authSnapshot), sessionHash)
 	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, route)
 }
 
@@ -916,9 +920,10 @@ func (s *HTTPServer) materializeWSStickySource(
 			return false
 		}
 		*route = responseRoute{
-			Channel:               *channel,
-			Account:               account,
-			UserID:                authSnapshot.UserId,
+			Channel: *channel,
+			Account: account,
+			UserID:  authSnapshot.UserId,
+			TokenID: authSnapshot.TokenId, RoutingGroupID: selectedProtoGroupID(authSnapshot),
 			SubscriptionAccountID: account.ID,
 		}
 		return true
@@ -952,7 +957,7 @@ func (s *HTTPServer) materializeWSStickySource(
 		if chInfo.Channel.Config != nil {
 			ch.Config = relaybiz.ChannelConfig{APIVersion: chInfo.Channel.Config.ApiVersion}
 		}
-		*route = responseRoute{Channel: ch, UserID: authSnapshot.UserId}
+		*route = responseRoute{Channel: ch, UserID: authSnapshot.UserId, TokenID: authSnapshot.TokenId, RoutingGroupID: selectedProtoGroupID(authSnapshot)}
 		return true
 	default:
 		return false

@@ -152,6 +152,8 @@ while IFS='|' read -r package_path imports; do
     #   - relay-gateway's internal/data (aggregates identity/channel/billing/log)
     #   - monitor's internal/data (wraps channel-service client for health probing)
     #   - admin's data/channelclient (narrow channel-owner DO reader; v2 §7.1)
+    #   - admin's data/routingaccess (identity/channel/billing RPC adapters; v2 D)
+    # These adapter packages have no storage clients; biz sees only DOs.
     # In these cases, the data layer is the correct location for DTO imports,
     # not the biz layer.
     if [[ "${pkg_layer}" == "data" \
@@ -160,7 +162,9 @@ while IFS='|' read -r package_path imports; do
           && "${package_path}" != "${module_path}/internal/data" \
           && "${package_path}" != "${module_path}/app/monitor/internal/data" \
           && ! ( "${package_path}" == "${module_path}/app/admin/internal/data/channelclient" \
-               && "${imported}" == "${module_path}/api/channel/v1" ) ]]; then
+               && "${imported}" == "${module_path}/api/channel/v1" ) \
+          && ! ( "${package_path}" == "${module_path}/app/admin/internal/data/routingaccess" \
+               && "${imported}" =~ ^${module_path}/api/(identity|channel|billing)/v1$ ) ]]; then
       echo "${package_path} (data layer) imports API DTO package: ${imported}"
       violations=1
     fi

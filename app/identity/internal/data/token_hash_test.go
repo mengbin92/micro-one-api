@@ -144,7 +144,7 @@ func TestTokenHash_BackfillHashesPlaintextRows(t *testing.T) {
 	// Seed a pre-L6 row directly: full plaintext key, empty key_hash.
 	row := tokenModel{
 		UserID: 1, Name: "legacy", Key: plaintext, KeyHash: "",
-		Status: biz.TokenStatusEnabled, UnlimitedQuota: true,
+		Status: biz.TokenStatusEnabled, UnlimitedQuota: 1,
 	}
 	if err := repo.db.Create(&row).Error; err != nil {
 		t.Fatalf("seed legacy row: %v", err)

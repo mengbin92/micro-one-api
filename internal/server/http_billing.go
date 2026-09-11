@@ -14,6 +14,7 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
 	"micro-one-api/domain/routing"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	relaybiz "micro-one-api/internal/biz"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
@@ -124,7 +125,7 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 			return nil, err
 		}
 		capability, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
-		if err != nil || capability.GetRequestSnapshotVersion() != 2 {
+		if err != nil || capability.GetRequestSnapshotVersion() != 2 || (routingContext.TokenMode == "fixed" && !capability.GetFixedRouting()) || (subscriptionbiz.EntitlementsEnabled() && !capability.GetSubscriptionContracts()) {
 			return nil, fmt.Errorf("billing routing capability unavailable")
 		}
 	}
@@ -143,6 +144,10 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 		Model:                 model,
 		ChannelId:             channelID,
 		SubscriptionAccountId: subscriptionAccountID,
+	}
+	bound := routing.GetCostBound(ctx)
+	if bound.Valid() {
+		req.CostBound = &billingv1.RequestCostBound{Protocol: bound.Protocol, InputTokens: bound.InputTokens, UpstreamModel: bound.UpstreamModel}
 	}
 	resp, err := s.billingClient.ReserveQuota(ctx, req)
 	if err != nil {

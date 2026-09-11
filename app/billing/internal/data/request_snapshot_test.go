@@ -281,3 +281,71 @@ func TestRequestSnapshotCommitRollback(t *testing.T) {
 		})
 	}
 }
+
+type fixedRequestGroupReader struct{}
+
+func (fixedRequestGroupReader) GetRoutingGroup(_ context.Context, id int64) (*routing.Group, error) {
+	key := "default"
+	if id == 10 {
+		key = "vip"
+	}
+	return &routing.Group{ID: id, Key: key, Status: "enabled", Revision: 1}, nil
+}
+func TestFixedKeysFreezeSeparateBillingGroups(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		for _, async := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/async=%v", dialect, async), func(t *testing.T) {
+				t.Setenv("BILLING_REQUEST_SNAPSHOT_V2", "true")
+				db := testutil.RoutingContextDB(t, dialect)
+				uc, prices, d, _, _ := snapshotBillingFixture(t, db, false, 1, 1)
+				uc.SetRoutingGroupReader(fixedRequestGroupReader{})
+				prices.set(biz.PricingConfig{GroupRatios: map[string]float64{"default": .5, "vip": 2, "other": 9}, ModelRatios: map[string]float64{"m": 2}, CompletionRatios: map[string]float64{"m": 3}})
+				ctx := context.Background()
+				var reservations []*biz.Reservation
+				for i, key := range []string{"default", "vip"} {
+					c := requestContext()
+					c.TokenMode = "fixed"
+					c.SelectionSource = "token_fixed"
+					c.TokenID += int64(i)
+					c.GroupID += int64(i)
+					c.GroupKey = key
+					r, err := uc.ReserveQuota(ctx, "7001", fmt.Sprintf("fixed-%d", i), 1000, "m", fmt.Sprint(i+1), 0, c)
+					require.NoError(t, err)
+					require.Equal(t, key, r.RequestSnapshot.GroupKey)
+					require.Equal(t, c.Digest(), r.RequestSnapshot.Routing.Digest())
+					reservations = append(reservations, r)
+				}
+				require.EqualValues(t, 1000, reservations[0].BalanceAmount)
+				require.EqualValues(t, 4000, reservations[1].BalanceAmount)
+				require.NoError(t, db.Table("users").Where("id = ?", 7001).Update("group", "changed").Error)
+				prices.set(biz.PricingConfig{GroupRatios: map[string]float64{"default": 9, "vip": 9}, ModelRatios: map[string]float64{"m": 99}})
+				usage := biz.LedgerUsage{PromptTokens: 1000, CompletionTokens: 500}
+				for i, r := range reservations {
+					if async {
+						worker := biz.NewAsyncBillingUsecase(uc, nil, 10, 1, time.Millisecond)
+						worker.Settle(ctx, &biz.SettleTask{ReservationID: r.ReservationID, ActualTokens: 1500, Success: true, Usage: usage, Timestamp: time.Now()})
+						require.NoError(t, worker.Close())
+					} else {
+						_, _, err := uc.CommitQuotaWithUsage(ctx, r.ReservationID, 1500, true, usage)
+						require.NoError(t, err)
+					}
+					row, err := d.reservationRepo.GetReservation(ctx, r.ReservationID)
+					require.NoError(t, err)
+					require.EqualValues(t, []int64{2500, 10000}[i], row.ActualCost)
+				}
+				ledgers, _, err := uc.ListLedgers(ctx, "7001", 1, 20)
+				require.NoError(t, err)
+				require.Len(t, ledgers, 2)
+				snapshots, err := uc.LedgerRequestSnapshots(ctx, ledgers)
+				require.NoError(t, err)
+				for i, r := range reservations {
+					snap := snapshots[r.ReservationID]
+					require.NotNil(t, snap)
+					require.EqualValues(t, 9+i, snap.Routing.GroupID)
+					require.EqualValues(t, 11+i, snap.Routing.TokenID)
+					require.Equal(t, []string{"default", "vip"}[i], snap.GroupKey)
+				}
+			})
+		}
+	}
+}

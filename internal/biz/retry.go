@@ -416,6 +416,9 @@ func (e *RetryExecutor) ExecuteWithCandidates(
 	}
 	initialChannel := plan.Channel
 	wrapped := func(ctx context.Context, ch *Channel) error {
+		if err := RecheckRoutingAdmission(ctx, plan.Auth, plan.ClientModel); err != nil {
+			return err
+		}
 		err := fn(ctx, ch)
 		if ch == initialChannel {
 			e.RecordAccountHealth(ctx, accountID, upstreamAttemptHealthy(err))

@@ -36,6 +36,7 @@ import (
 	"micro-one-api/platform/metrics"
 	appmiddleware "micro-one-api/platform/middleware"
 	appregistry "micro-one-api/platform/registry"
+	"micro-one-api/platform/routingoutbox"
 	appauth "micro-one-api/platform/security/auth"
 	apptls "micro-one-api/platform/tls"
 
@@ -269,6 +270,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	}
 	redisClient := xdb.NewRedisClient(redisAddr, redisPassword)
 	eventBus := events.NewConfiguredEventBus(redisClient, "relay-gateway")
+	var routingChannelCache *appcache.ChannelCache
 	authLoader := appcache.NewAuthCacheLoader(identityClient, nil, resilienceTimeout)
 	authCache, err := appcache.NewAuthCache(redisClient, nil, authLoader.Load)
 	if err != nil {
@@ -282,7 +284,25 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("create channel cache: %w", err)
 		}
+		routingChannelCache = channelCache
 		channelClient = relaydata.NewCachedChannelClient(channelClient, channelCache)
+	}
+
+	// Each process owns a distinct consumer group: invalidations must broadcast
+	// to every L1 cache, not load-balance across gateway replicas.
+	var routingEvents *events.StreamEventBus
+	if redisClient != nil && relaybiz.RoutingContextV2Enabled() {
+		host, _ := os.Hostname()
+		routingEvents = events.NewStreamEventBus(redisClient, fmt.Sprintf("relay-routing-%s-%d", host, os.Getpid()))
+		routingEvents.Subscribe(routingoutbox.Topic, routingoutbox.Invalidator(func(ctx context.Context, change routingoutbox.Change) error {
+			if change.Owner == "identity" || change.Owner == "subscription" {
+				return authCache.InvalidateAll(ctx)
+			}
+			if routingChannelCache != nil {
+				return routingChannelCache.InvalidateByChannel(ctx, 0)
+			}
+			return nil
+		}))
 	}
 
 	modelMapper := newModelMapper(cfg)
@@ -361,14 +381,17 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		appmiddleware.SecurityHeaders,
 		appmiddleware.RequestID,
 	)
-	if cfg.Bootstrap.Subscription.GetSubscriptionEnabled() {
+	if cfg.Bootstrap.Subscription.GetSubscriptionEnabled() || subscriptionbiz.EntitlementsEnabled() {
 		subscriptionRepo, subErr := subscriptiondata.NewRepositoryFromEnv(os.Getenv("SQL_DRIVER"))
 		if subErr != nil {
 			return nil, nil, fmt.Errorf("create subscription repository: %w", subErr)
 		}
 		subscriptionUc := subscriptionbiz.NewSubscriptionUsecase(subscriptionRepo, subscriptionRepo)
 		httpServer.SetSubscriptionUsecase(subscriptionUc)
-		routeMiddleware = append(routeMiddleware, httpServer.SubscriptionQuotaMiddleware)
+		relayUsecase.SetRoutingEntitlements(subscriptionUc)
+		if !subscriptionbiz.EntitlementsEnabled() {
+			routeMiddleware = append(routeMiddleware, httpServer.SubscriptionQuotaMiddleware)
+		}
 	}
 	if cfg.Bootstrap.Idempotency.Enabled {
 		ttl := parseDurationOrDefault(cfg.Bootstrap.Idempotency.Ttl, 24*time.Hour)
@@ -462,6 +485,9 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 		}
 		stopBlockerReporter()
 		if authCache != nil {
+			if routingEvents != nil {
+				_ = routingEvents.Close()
+			}
 			_ = authCache.Close()
 		}
 		if closer, ok := eventBus.(interface{ Close() error }); ok {

@@ -18,6 +18,7 @@ message ResolvedRoutingContext {
   int64 group_revision = 9;
   int64 subscription_entitlement_version = 10;
   string selection_source = 11;
+  int64 subscription_id = 12;
 }
 
 message RoutingSubjectFacts {

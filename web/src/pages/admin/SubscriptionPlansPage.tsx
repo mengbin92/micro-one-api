@@ -1,3 +1,4 @@
+import { CoverageEditor, ContractSummary, type RoutingCoverage, type SubscriptionContract } from '@/components/SubscriptionContract';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Package, Pencil, Save, ShoppingCart } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -30,6 +31,9 @@ import { t } from '@/lib/i18n';
 // Mirrors subscriptionPlanDTO JSON tags returned by
 // /api/v1/admin/subscription-plans (internal/admin/server/subscription.go).
 interface SubscriptionPlan {
+  coverage?: RoutingCoverage[];
+  contract?: SubscriptionContract;
+  revision?: number;
   id: number;
   name: string;
   product_name: string;
@@ -44,6 +48,9 @@ interface SubscriptionPlan {
 }
 
 interface PlanPayload {
+  coverage?: RoutingCoverage[];
+  revision?: number;
+  for_sale?: boolean;
   id?: number;
   name: string;
   product_name: string;
@@ -139,6 +146,7 @@ export function AdminSubscriptionPlansPage() {
   const startEdit = (p: SubscriptionPlan) =>
     setEditing({
       id: p.id,
+      coverage: p.coverage ?? [], revision: p.revision, for_sale: p.for_sale,
       name: p.name,
       product_name: p.product_name,
       group_id: p.group_id,
@@ -202,7 +210,7 @@ export function AdminSubscriptionPlansPage() {
             {filtered.map((p) => (
               <TableRow key={p.id}>
                 <TableCell className="font-mono">{p.id}</TableCell>
-                <TableCell className="font-medium">{p.name}</TableCell>
+                <TableCell className="font-medium">{p.name}<ContractSummary contract={p.contract} /></TableCell>
                 <TableCell>{p.group_id}</TableCell>
                 <TableCell>{p.price_quota}</TableCell>
                 <TableCell>
@@ -302,6 +310,7 @@ function PlanEditForm({
           onChange={(e) => set('product_name', e.target.value)}
         />
       </div>
+      <CoverageEditor value={form.coverage ?? []} onChange={(v) => set('coverage', v)} />
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor="plan-group">{t("额度策略 ID")}</Label>

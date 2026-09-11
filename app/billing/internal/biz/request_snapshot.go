@@ -88,7 +88,7 @@ func (uc *BillingUsecase) frozenSubscriptionAbsorbUSD(ctx context.Context, tx su
 	if err != nil {
 		return 0, err
 	}
-	if sub == nil || sub.ID != r.SubscriptionID || sub.GroupID != f.PolicyID {
+	if sub == nil || sub.ID != r.SubscriptionID || sub.GroupID != f.PolicyID || (sub.Contract != nil && sub.Contract.Digest != f.ContractVersion) {
 		return reserved, nil
 	}
 	rolled := subscriptionbiz.RollUsageWindowsPure(sub, uc.Now().Unix())
@@ -110,6 +110,8 @@ func (uc *BillingUsecase) frozenSubscriptionAbsorbUSD(ctx context.Context, tx su
 // readable and unchanged. The legacy_live policy is captured per request, not
 // retroactively applied to the customer's purchased contract.
 type RequestSnapshot struct {
+	CostBound            *routing.CostBound `json:",omitempty"`
+	MaxCost              int64              `json:",omitempty"`
 	Version              int32
 	Routing              *routing.ResolvedRoutingContext
 	GroupKey             string
@@ -133,18 +135,20 @@ type FrozenRequestPricing struct {
 }
 
 type FrozenSubscription struct {
-	SubscriptionID     int64
-	PolicyID           int64
-	PolicyVersion      string
-	ContractVersion    string
-	CoverageMode       string
-	RateMultiplier     float64
-	DailyLimit         *float64
-	WeeklyLimit        *float64
-	MonthlyLimit       *float64
-	DailyWindowStart   int64
-	WeeklyWindowStart  int64
-	MonthlyWindowStart int64
+	EntitlementRevision int64                             `json:",omitempty"`
+	Coverage            []subscriptionbiz.RoutingCoverage `json:",omitempty"`
+	SubscriptionID      int64
+	PolicyID            int64
+	PolicyVersion       string
+	ContractVersion     string
+	CoverageMode        string
+	RateMultiplier      float64
+	DailyLimit          *float64
+	WeeklyLimit         *float64
+	MonthlyLimit        *float64
+	DailyWindowStart    int64
+	WeeklyWindowStart   int64
+	MonthlyWindowStart  int64
 }
 
 func RequestSnapshotsEnabled() bool {
@@ -185,17 +189,34 @@ func (uc *BillingUsecase) GetRequestSnapshot(ctx context.Context, reservationID 
 }
 
 func (s *RequestSnapshot) Validate() error {
-	if s == nil || s.Version != 2 || s.Model == "" || s.GroupKey == "" || s.BillingMode != "subscription_first" || s.BillingPolicyVersion == "" {
+	if s == nil || s.Version != 2 || s.Model == "" || s.GroupKey == "" || !routing.ValidBillingMode(s.BillingMode) || s.BillingPolicyVersion == "" {
 		return ErrRequestSnapshotInvalid
 	}
 	if s.Routing != nil && (s.Routing.Validate() != nil || s.Routing.GroupKey != s.GroupKey) {
 		return ErrRequestSnapshotInvalid
 	}
+	if s.BillingMode == routing.SubscriptionOnly && (s.CostBound == nil || !s.CostBound.Valid() || s.MaxCost < 0) {
+		return ErrRequestSnapshotInvalid
+	}
+	if s.Subscription != nil && s.Subscription.CoverageMode == "selected_groups" {
+		if s.Routing == nil || s.Subscription.EntitlementRevision <= 0 {
+			return ErrRequestSnapshotInvalid
+		}
+		covered := false
+		for _, g := range s.Subscription.Coverage {
+			if g.GroupID == s.Routing.GroupID {
+				covered = true
+			}
+		}
+		if !covered {
+			return ErrRequestSnapshotInvalid
+		}
+	}
 	p := s.Pricing
 	if (p.Method != "model_price" && p.Method != "ratio") || (p.Method == "model_price") != (p.Price != nil) || !finitePositive(p.GroupRatio) || !finitePositive(p.ModelRatio) || !finitePositive(p.CompletionRatio) {
 		return ErrRequestSnapshotInvalid
 	}
-	if s.Subscription != nil && (s.Subscription.SubscriptionID <= 0 || s.Subscription.PolicyID <= 0 || !finitePositive(s.Subscription.RateMultiplier) || s.Subscription.PolicyVersion == "" || s.Subscription.ContractVersion == "" || s.Subscription.CoverageMode != "legacy_all_authorized") {
+	if s.Subscription != nil && (s.Subscription.SubscriptionID <= 0 || s.Subscription.PolicyID <= 0 || !finitePositive(s.Subscription.RateMultiplier) || s.Subscription.PolicyVersion == "" || s.Subscription.ContractVersion == "" || (s.Subscription.CoverageMode != "legacy_all_authorized" && s.Subscription.CoverageMode != "selected_groups")) {
 		return ErrRequestSnapshotInvalid
 	}
 	if _, err := s.Digest(); err != nil {
@@ -251,6 +272,24 @@ func (uc *BillingUsecase) prepareRequestSnapshot(ctx context.Context, userID, le
 		return nil, ErrRequestSnapshotInvalid
 	}
 	s := &RequestSnapshot{Version: 2, Routing: routingContext, GroupKey: group, Model: model, BillingMode: "subscription_first", BillingPolicyVersion: "legacy_projection:" + version, Pricing: p}
+	if uc.routingPolicies != nil && routingContext != nil {
+		policy, err := uc.routingPolicies.Get(ctx, routingContext.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		if policy != nil {
+			s.BillingMode = policy.BillingMode
+			s.Pricing.GroupRatio = policy.PriceRatio
+			s.BillingPolicyVersion = fmt.Sprintf("routing_policy:%d:%d", policy.GroupID, policy.Version)
+		}
+	}
+	if s.BillingMode == routing.SubscriptionOnly {
+		bound := routing.GetCostBound(ctx)
+		if !bound.Valid() {
+			return nil, ErrSubscriptionBoundRequired
+		}
+		s.CostBound = &bound
+	}
 	// Own the input values, including optional bucket prices and allowlist.
 	b, err := jsonx.Marshal(s)
 	if err != nil {
@@ -322,5 +361,50 @@ func freezeSubscription(group *subscriptionbiz.SubscriptionGroup, sub *subscript
 		n := *v
 		return &n
 	}
-	return &FrozenSubscription{SubscriptionID: sub.ID, PolicyID: group.ID, PolicyVersion: policyVersion, ContractVersion: contractVersion, CoverageMode: "legacy_all_authorized", RateMultiplier: multiplier, DailyLimit: copyLimit(group.DailyLimitUSD), WeeklyLimit: copyLimit(group.WeeklyLimitUSD), MonthlyLimit: copyLimit(group.MonthlyLimitUSD), DailyWindowStart: sub.DailyWindowStart, WeeklyWindowStart: sub.WeeklyWindowStart, MonthlyWindowStart: sub.MonthlyWindowStart}, nil
+	f := &FrozenSubscription{SubscriptionID: sub.ID, PolicyID: group.ID, PolicyVersion: policyVersion, ContractVersion: contractVersion, CoverageMode: "legacy_all_authorized", RateMultiplier: multiplier, DailyLimit: copyLimit(group.DailyLimitUSD), WeeklyLimit: copyLimit(group.WeeklyLimitUSD), MonthlyLimit: copyLimit(group.MonthlyLimitUSD), DailyWindowStart: sub.DailyWindowStart, WeeklyWindowStart: sub.WeeklyWindowStart, MonthlyWindowStart: sub.MonthlyWindowStart}
+	if sub.Contract != nil {
+		if sub.Contract.Validate() != nil {
+			return nil, ErrRequestSnapshotInvalid
+		}
+		f.CoverageMode = sub.Contract.CoverageMode
+		f.Coverage = append([]subscriptionbiz.RoutingCoverage(nil), sub.Contract.Coverage...)
+		f.ContractVersion = sub.Contract.Digest
+		f.PolicyVersion = sub.Contract.QuotaPolicy.Version
+		f.EntitlementRevision = sub.EntitlementRevision
+	}
+	return f, nil
+}
+
+type RequestSnapshotBatchReader interface {
+	RequestSnapshots(context.Context, []string) (map[string]*RequestSnapshot, error)
+}
+
+func (uc *BillingUsecase) LedgerRequestSnapshots(ctx context.Context, ledgers []*Ledger) (map[string]*RequestSnapshot, error) {
+	ids := make([]string, 0, len(ledgers))
+	for _, l := range ledgers {
+		if l.ReferenceID != "" {
+			ids = append(ids, l.ReferenceID)
+		}
+	}
+	if len(ids) == 0 {
+		return map[string]*RequestSnapshot{}, nil
+	}
+	if r, ok := uc.reservationRepo.(RequestSnapshotBatchReader); ok {
+		return r.RequestSnapshots(ctx, ids)
+	}
+	// Compatibility for older in-memory adapters; production always batches.
+	out := map[string]*RequestSnapshot{}
+	if uc.reservationRepo == nil {
+		return out, nil
+	}
+	for _, id := range ids {
+		s, err := uc.GetRequestSnapshot(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if s != nil {
+			out[id] = s
+		}
+	}
+	return out, nil
 }

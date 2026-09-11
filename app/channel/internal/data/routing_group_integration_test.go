@@ -62,6 +62,7 @@ func TestRoutingGroupRealDatabase(t *testing.T) {
 				prefix += "postgres/"
 			}
 			groupSQLFile(t, db, prefix+"090_create_routing_groups.sql", driver)
+			groupSQLFile(t, db, prefix+"093_create_routing_change_outbox.sql", driver)
 			var dialect gorm.Dialector = mysql.New(mysql.Config{Conn: db})
 			if driver == "postgres" {
 				dialect = postgres.New(postgres.Config{Conn: db})

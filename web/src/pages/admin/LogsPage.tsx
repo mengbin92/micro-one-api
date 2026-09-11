@@ -89,6 +89,10 @@ interface LogEntry {
   usageDecisionReason?: string;
   subsetCandidateCost?: number | string;
   exclusiveCandidateCost?: number | string;
+  routingGroupId?: number;
+  routingGroupKey?: string;
+  requestSnapshotHash?: string;
+  requestSnapshot?: string;
   pricingConfigHash?: string;
   pricingSnapshot?: UsageAuditLog['pricingSnapshot'];
 }
@@ -378,6 +382,7 @@ export function AdminLogsPage() {
                   <SortableHeader<LogEntry> columnKey="amount" sort={sort} onSortChange={setSort}>
                     {t('金额')}
                   </SortableHeader>
+                  <TableHead>{t('路由分组')}</TableHead>
                   <TableHead className="hidden lg:table-cell">{t('上游供应商')}</TableHead>
                   <TableHead className="hidden xl:table-cell">{t('Token 用量')}</TableHead>
                   <TableHead className="hidden md:table-cell">{t('操作后余额')}</TableHead>
@@ -400,6 +405,7 @@ export function AdminLogsPage() {
                       </span>
                     </TableCell>
                     <TableCell>{formatQuota(log.amount)}</TableCell>
+                    <TableCell>{log.routingGroupKey || '—'}</TableCell>
                     <TableCell className="hidden lg:table-cell">
                       {formatUpstreamProvider(log)}
                     </TableCell>

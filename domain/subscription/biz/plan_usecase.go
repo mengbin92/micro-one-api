@@ -6,20 +6,29 @@ import (
 )
 
 type PlanUsecase struct {
-	repo      PlanRepository
-	groupRepo GroupRepository
-	now       func() time.Time
+	routingGroups ContractGroupReader
+	repo          PlanRepository
+	groupRepo     GroupRepository
+	now           func() time.Time
 }
 
 func NewPlanUsecase(repo PlanRepository, groupRepo GroupRepository) *PlanUsecase {
 	return &PlanUsecase{repo: repo, groupRepo: groupRepo, now: time.Now}
 }
 
+func (uc *PlanUsecase) SetContractGroupReader(r ContractGroupReader) { uc.routingGroups = r }
+
 func (uc *PlanUsecase) Create(ctx context.Context, plan *SubscriptionPlan) error {
 	if plan == nil {
 		return ErrSubscriptionPlanNotFound
 	}
+	if !EntitlementsEnabled() && (len(plan.Coverage) > 0 || plan.Contract != nil) {
+		return ErrSubscriptionRoutingUnavailable
+	}
 	plan.ForSale = true
+	if EntitlementsEnabled() && len(plan.Coverage) == 0 {
+		return ErrSubscriptionContractInvalid
+	}
 	if err := uc.preparePlan(ctx, plan); err != nil {
 		return err
 	}
@@ -32,6 +41,13 @@ func (uc *PlanUsecase) Create(ctx context.Context, plan *SubscriptionPlan) error
 func (uc *PlanUsecase) Update(ctx context.Context, plan *SubscriptionPlan) error {
 	if plan == nil {
 		return ErrSubscriptionPlanNotFound
+	}
+	previous, err := uc.repo.GetPlanByID(ctx, plan.ID)
+	if err != nil {
+		return err
+	}
+	if previous.Contract != nil && len(plan.Coverage) == 0 {
+		return ErrSubscriptionContractInvalid
 	}
 	if err := uc.preparePlan(ctx, plan); err != nil {
 		return err
@@ -86,6 +102,16 @@ func (uc *PlanUsecase) SetForSale(ctx context.Context, planID int64, forSale boo
 	if plan == nil {
 		return ErrSubscriptionPlanNotFound
 	}
+	if forSale && plan.Contract != nil {
+		if plan.Contract.Validate() != nil || uc.routingGroups == nil {
+			return ErrSubscriptionContractInvalid
+		}
+		for _, g := range plan.Contract.Coverage {
+			if _, err := uc.routingGroups.ValidateSubscriptionGroup(ctx, g.GroupID); err != nil {
+				return err
+			}
+		}
+	}
 	plan.ForSale = forSale
 	plan.UpdatedAt = uc.now().Unix()
 	return uc.repo.UpdatePlan(ctx, plan)
@@ -101,6 +127,29 @@ func (uc *PlanUsecase) preparePlan(ctx context.Context, plan *SubscriptionPlan) 
 	}
 	if group.Status != SubscriptionGroupStatusEnabled {
 		return ErrSubscriptionGroupDisabled
+	}
+	if len(plan.Coverage) > 0 || plan.Contract != nil {
+		coverage := plan.Coverage
+		if len(coverage) == 0 {
+			coverage = plan.Contract.Coverage
+		}
+		if uc.routingGroups == nil {
+			return ErrSubscriptionRoutingUnavailable
+		}
+		coverage = append([]RoutingCoverage(nil), coverage...)
+		for i := range coverage {
+			key, err := uc.routingGroups.ValidateSubscriptionGroup(ctx, coverage[i].GroupID)
+			if err != nil {
+				return err
+			}
+			coverage[i].GroupKey = key
+		}
+		contract, err := NewContract(group, coverage)
+		if err != nil {
+			return err
+		}
+		plan.Contract = contract
+		plan.Coverage = contract.Coverage
 	}
 	if plan.ValidityDays <= 0 {
 		plan.ValidityDays = 30

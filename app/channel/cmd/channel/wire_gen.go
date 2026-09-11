@@ -17,6 +17,7 @@ import (
 	"micro-one-api/app/channel/internal/service"
 	"micro-one-api/platform/events"
 	registry2 "micro-one-api/platform/registry"
+	"os"
 	"time"
 )
 
@@ -83,6 +84,10 @@ func newApp(
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	closeOutbox := func() {}
+	if os.Getenv("CHANNEL_ROUTING_GROUP_DUAL_WRITE") == "true" {
+		closeOutbox = repo.StartRoutingOutbox()
+	}
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
 	svc.SetRoutingGroupUsecase(groupUC)
@@ -128,6 +133,7 @@ func newApp(
 	app := kratos.New(opts...)
 
 	return app, func() {
+		closeOutbox()
 		if stopOpsAutomation != nil {
 			stopOpsAutomation()
 		}

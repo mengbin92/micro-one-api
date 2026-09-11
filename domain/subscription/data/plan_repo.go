@@ -11,20 +11,22 @@ import (
 )
 
 type planModel struct {
-	ID            int64  `gorm:"column:id"`
-	GroupID       int64  `gorm:"column:group_id"`
-	Name          string `gorm:"column:name"`
-	Description   string `gorm:"column:description"`
-	PriceQuota    int64  `gorm:"column:price_quota"`
-	OriginalPrice *int64 `gorm:"column:original_price"`
-	ValidityDays  int32  `gorm:"column:validity_days"`
-	ValidityUnit  string `gorm:"column:validity_unit"`
-	Features      string `gorm:"column:features"`
-	ProductName   string `gorm:"column:product_name"`
-	ForSale       bool   `gorm:"column:for_sale"`
-	SortOrder     int32  `gorm:"column:sort_order"`
-	CreatedAt     int64  `gorm:"column:created_at"`
-	UpdatedAt     int64  `gorm:"column:updated_at"`
+	ContractSnapshot *string `gorm:"column:contract_snapshot"`
+	Revision         int64   `gorm:"column:revision"`
+	ID               int64   `gorm:"column:id"`
+	GroupID          int64   `gorm:"column:group_id"`
+	Name             string  `gorm:"column:name"`
+	Description      string  `gorm:"column:description"`
+	PriceQuota       int64   `gorm:"column:price_quota"`
+	OriginalPrice    *int64  `gorm:"column:original_price"`
+	ValidityDays     int32   `gorm:"column:validity_days"`
+	ValidityUnit     string  `gorm:"column:validity_unit"`
+	Features         string  `gorm:"column:features"`
+	ProductName      string  `gorm:"column:product_name"`
+	ForSale          bool    `gorm:"column:for_sale"`
+	SortOrder        int32   `gorm:"column:sort_order"`
+	CreatedAt        int64   `gorm:"column:created_at"`
+	UpdatedAt        int64   `gorm:"column:updated_at"`
 }
 
 func (planModel) TableName() string { return "subscription_plans" }
@@ -76,8 +78,23 @@ func (r *Repository) ListPlansForSale(ctx context.Context) ([]*biz.SubscriptionP
 }
 
 func (r *Repository) createPlanDB(ctx context.Context, plan *biz.SubscriptionPlan) error {
+	plan.Revision = 1
 	model := planToModel(plan)
-	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if !biz.EntitlementsEnabled() && plan.Contract == nil {
+			return tx.Omit("ContractSnapshot", "Revision").Create(&model).Error
+		}
+		if err := LockContractReferences(tx); err != nil {
+			return err
+		}
+		if err := ValidateContractBillingModes(tx, plan.Contract); err != nil {
+			return err
+		}
+		if err := tx.Create(&model).Error; err != nil {
+			return err
+		}
+		return syncContractCoverage(tx, "subscription_plan_routing_groups", "plan_id", model.ID, plan.Contract)
+	}); err != nil {
 		return err
 	}
 	plan.ID = model.ID
@@ -86,7 +103,7 @@ func (r *Repository) createPlanDB(ctx context.Context, plan *biz.SubscriptionPla
 
 func (r *Repository) updatePlanDB(ctx context.Context, plan *biz.SubscriptionPlan) error {
 	model := planToModel(plan)
-	return r.db.WithContext(ctx).Model(&planModel{}).Where("id = ?", plan.ID).Updates(map[string]any{
+	updates := map[string]any{
 		"group_id":       model.GroupID,
 		"name":           model.Name,
 		"description":    model.Description,
@@ -99,7 +116,34 @@ func (r *Repository) updatePlanDB(ctx context.Context, plan *biz.SubscriptionPla
 		"for_sale":       model.ForSale,
 		"sort_order":     model.SortOrder,
 		"updated_at":     model.UpdatedAt,
-	}).Error
+	}
+	if !biz.EntitlementsEnabled() && plan.Contract == nil {
+		return r.db.WithContext(ctx).Model(&planModel{}).Where("id = ?", plan.ID).Updates(updates).Error
+	}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := LockContractReferences(tx); err != nil {
+			return err
+		}
+		if plan.ForSale {
+			if err := ValidateContractBillingModes(tx, plan.Contract); err != nil {
+				return err
+			}
+		}
+		updates["contract_snapshot"] = model.ContractSnapshot
+		updates["revision"] = plan.Revision + 1
+		result := tx.Model(&planModel{}).Where("id = ? AND revision = ?", plan.ID, plan.Revision).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return biz.ErrSubscriptionContractConflict
+		}
+		return syncContractCoverage(tx, "subscription_plan_routing_groups", "plan_id", plan.ID, plan.Contract)
+	})
+	if err == nil {
+		plan.Revision++
+	}
+	return err
 }
 
 func (r *Repository) deletePlanDB(ctx context.Context, planID int64) error {
@@ -151,6 +195,7 @@ func planToModel(plan *biz.SubscriptionPlan) planModel {
 		return planModel{}
 	}
 	return planModel{
+		ContractSnapshot: encodeContract(plan.Contract), Revision: plan.Revision,
 		ID:            plan.ID,
 		GroupID:       plan.GroupID,
 		Name:          plan.Name,
@@ -173,6 +218,7 @@ func planFromModel(model *planModel) biz.SubscriptionPlan {
 		return biz.SubscriptionPlan{}
 	}
 	return biz.SubscriptionPlan{
+		Contract: decodeContract(model.ContractSnapshot), Coverage: contractCoverage(model.ContractSnapshot), Revision: model.Revision,
 		ID:            model.ID,
 		GroupID:       model.GroupID,
 		Name:          model.Name,
@@ -256,6 +302,8 @@ func clonePlan(plan *biz.SubscriptionPlan) *biz.SubscriptionPlan {
 		return nil
 	}
 	cloned := *plan
+	cloned.Contract = biz.CloneContract(plan.Contract)
+	cloned.Coverage = append([]biz.RoutingCoverage(nil), plan.Coverage...)
 	if plan.Group != nil {
 		group := *plan.Group
 		cloned.Group = &group

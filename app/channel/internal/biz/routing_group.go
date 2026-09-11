@@ -99,3 +99,22 @@ func (uc *RoutingGroupBackfillUsecase) Apply(ctx context.Context, report *GroupA
 	}
 	return uc.repo.ApplyRoutingGroupBackfill(ctx, report)
 }
+
+// Group state is an explicit command so omitted fields cannot reset metadata.
+type RoutingGroupStateRepo interface {
+	SetRoutingGroupState(context.Context, int64, int64, string, string) error
+}
+
+func (uc *RoutingGroupUsecase) SetState(ctx context.Context, id, revision int64, status, access string) (*RoutingGroupDetail, error) {
+	if id <= 0 || revision <= 0 || (status != "enabled" && status != "disabled") || (access != "public" && access != "restricted") {
+		return nil, ErrRoutingGroupInvalid
+	}
+	r, ok := uc.repo.(RoutingGroupStateRepo)
+	if !ok {
+		return nil, ErrRoutingGroupStorage
+	}
+	if err := r.SetRoutingGroupState(ctx, id, revision, status, access); err != nil {
+		return nil, err
+	}
+	return uc.Get(ctx, id)
+}

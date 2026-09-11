@@ -145,3 +145,26 @@ describe('TokensPage', () => {
     expect(screen.queryByRole('button', { name: 'CC Switch' })).not.toBeInTheDocument();
   });
 });
+
+describe('fixed routing keys', () => {
+  const available = { success: true, data: { creation_enabled: true, default_available: false, next_page_token: '', facts: { default_routing_group_id: 1, revision: 3, public_group_access: 'explicit_only', grants: [] }, groups: [{ id: 2, key: 'vip', display_name: 'VIP', price_ratio: 2, price_source: 'GroupRatio', price_version: 'v1', billing_mode: 'subscription_first', subscription_covered: false, models: ['model-vip'], sources: [{ source_type: 'admin', expires_at: 0 }] }] } };
+  it('shows the invalid default and sends the selected fixed group', async () => {
+    const user = userEvent.setup();
+    let body: unknown;
+    server.use(
+      http.get('/api/v1/routing-groups/available', () => HttpResponse.json(available)),
+      http.get('/api/token', () => HttpResponse.json({ success: true, data: [] })),
+      http.get('/api/pricing', () => HttpResponse.json({ success: true, data: { prices: [] } })),
+      http.post('/api/v1/routing-tokens', async ({ request }) => { body = await request.json(); return HttpResponse.json({ success: true, data: { id: 20, key: 'sk-fixed-secret', name: 'vip-key', status: 1, routing_mode: 'fixed', routing_group_id: 2, routing_revision: 1 } }); }),
+    );
+    renderTokensPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('默认分组失效');
+    await user.click(screen.getByRole('button', { name: '创建 Token' }));
+    await user.type(screen.getByLabelText('Token 名称'), 'vip-key');
+    expect(screen.getByRole('button', { name: '创建' })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('路由分组'), '2');
+    await user.click(screen.getByRole('button', { name: '创建' }));
+    await waitFor(() => expect(body).toEqual({ name: 'vip-key', routing_mode: 'fixed', routing_group_id: 2 }));
+    expect(await screen.findByDisplayValue('sk-fixed-secret')).toBeInTheDocument();
+  });
+});

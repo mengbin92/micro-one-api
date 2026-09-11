@@ -26,13 +26,17 @@ const (
 )
 
 type UserSubscription struct {
-	ID               int64              `json:"id"`
-	UserID           int64              `json:"user_id"`
-	GroupID          int64              `json:"group_id"`
-	SubscriptionName string             `json:"subscription_name"`
-	Status           SubscriptionStatus `json:"status"`
-	StartsAt         int64              `json:"starts_at"`
-	ExpiresAt        int64              `json:"expires_at"`
+	PricePaid           int64                 `json:"price_paid"`
+	Contract            *SubscriptionContract `json:"contract,omitempty"`
+	SourceOrder         string                `json:"source_order,omitempty"`
+	EntitlementRevision int64                 `json:"entitlement_revision"`
+	ID                  int64                 `json:"id"`
+	UserID              int64                 `json:"user_id"`
+	GroupID             int64                 `json:"group_id"`
+	SubscriptionName    string                `json:"subscription_name"`
+	Status              SubscriptionStatus    `json:"status"`
+	StartsAt            int64                 `json:"starts_at"`
+	ExpiresAt           int64                 `json:"expires_at"`
 
 	// RenewalStrategy records whether the current active row was created fresh
 	// ("new") or extended from a previous active row ("extend"). Empty for
@@ -63,7 +67,9 @@ type SubscriptionField string
 
 const (
 	// SubscriptionFieldStatus maps to the subscription status column.
-	SubscriptionFieldStatus SubscriptionField = "status"
+	SubscriptionFieldStatus    SubscriptionField = "status"
+	SubscriptionFieldContract  SubscriptionField = "contract"
+	SubscriptionFieldPricePaid SubscriptionField = "price_paid"
 	// SubscriptionFieldExpiresAt maps to the absolute expiry timestamp column.
 	SubscriptionFieldExpiresAt SubscriptionField = "expires_at"
 	// SubscriptionFieldSubscriptionName maps to the display name column.
@@ -106,21 +112,24 @@ type SubscriptionGroup struct {
 }
 
 type SubscriptionPlan struct {
-	ID            int64              `json:"id"`
-	GroupID       int64              `json:"group_id"`
-	Name          string             `json:"name"`
-	Description   string             `json:"description"`
-	PriceQuota    int64              `json:"price_quota"`
-	OriginalPrice *int64             `json:"original_price,omitempty"`
-	ValidityDays  int32              `json:"validity_days"`
-	ValidityUnit  string             `json:"validity_unit"`
-	Features      string             `json:"features"`
-	ProductName   string             `json:"product_name"`
-	ForSale       bool               `json:"for_sale"`
-	SortOrder     int32              `json:"sort_order"`
-	CreatedAt     int64              `json:"created_at"`
-	UpdatedAt     int64              `json:"updated_at"`
-	Group         *SubscriptionGroup `json:"group,omitempty"`
+	Coverage      []RoutingCoverage     `json:"coverage,omitempty"`
+	Contract      *SubscriptionContract `json:"contract,omitempty"`
+	Revision      int64                 `json:"revision"`
+	ID            int64                 `json:"id"`
+	GroupID       int64                 `json:"group_id"`
+	Name          string                `json:"name"`
+	Description   string                `json:"description"`
+	PriceQuota    int64                 `json:"price_quota"`
+	OriginalPrice *int64                `json:"original_price,omitempty"`
+	ValidityDays  int32                 `json:"validity_days"`
+	ValidityUnit  string                `json:"validity_unit"`
+	Features      string                `json:"features"`
+	ProductName   string                `json:"product_name"`
+	ForSale       bool                  `json:"for_sale"`
+	SortOrder     int32                 `json:"sort_order"`
+	CreatedAt     int64                 `json:"created_at"`
+	UpdatedAt     int64                 `json:"updated_at"`
+	Group         *SubscriptionGroup    `json:"group,omitempty"`
 }
 
 type QuotaDimension struct {
@@ -142,23 +151,29 @@ type QuotaCheckResult struct {
 }
 
 type SubscriptionProgress struct {
-	ID               int64              `json:"id"`
-	Status           SubscriptionStatus `json:"status"`
-	StartsAt         int64              `json:"starts_at"`
-	ExpiresAt        int64              `json:"expires_at"`
-	GroupID          int64              `json:"group_id"`
-	SubscriptionName string             `json:"subscription_name"`
-	DailyUsed        *QuotaDimension    `json:"daily_used"`
-	WeeklyUsed       *QuotaDimension    `json:"weekly_used"`
-	MonthlyUsed      *QuotaDimension    `json:"monthly_used"`
-	RemainingSeconds int64              `json:"remaining_seconds"`
+	Contract         *SubscriptionContract `json:"contract,omitempty"`
+	ID               int64                 `json:"id"`
+	Status           SubscriptionStatus    `json:"status"`
+	StartsAt         int64                 `json:"starts_at"`
+	ExpiresAt        int64                 `json:"expires_at"`
+	GroupID          int64                 `json:"group_id"`
+	SubscriptionName string                `json:"subscription_name"`
+	DailyUsed        *QuotaDimension       `json:"daily_used"`
+	WeeklyUsed       *QuotaDimension       `json:"weekly_used"`
+	MonthlyUsed      *QuotaDimension       `json:"monthly_used"`
+	RemainingSeconds int64                 `json:"remaining_seconds"`
 }
 
 type AssignSubscriptionRequest struct {
-	UserID           int64  `json:"user_id"`
-	GroupID          int64  `json:"group_id"`
-	SubscriptionName string `json:"subscription_name"`
-	StartsAt         int64  `json:"starts_at"`
-	ExpiresAt        int64  `json:"expires_at"`
-	Metadata         string `json:"metadata"`
+	PricePaid        int64                 `json:"-"`
+	Coverage         []RoutingCoverage     `json:"coverage,omitempty"`
+	Contract         *SubscriptionContract `json:"-"` // trusted purchase snapshot, never accepted from HTTP
+	SourceOrder      string                `json:"-"`
+	LegacyPurchase   bool                  `json:"-"` // pre-v2 order fulfillment only
+	UserID           int64                 `json:"user_id"`
+	GroupID          int64                 `json:"group_id"`
+	SubscriptionName string                `json:"subscription_name"`
+	StartsAt         int64                 `json:"starts_at"`
+	ExpiresAt        int64                 `json:"expires_at"`
+	Metadata         string                `json:"metadata"`
 }

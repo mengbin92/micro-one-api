@@ -153,7 +153,7 @@ func (r *ledgerRepo) GetLedgerByID(ctx context.Context, id int64) (*biz.Ledger, 
 	var m ledgerModel
 	if err := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
 		Select("billing_ledgers.*, users.username AS username").
-		Joins("LEFT JOIN users ON users.id = billing_ledgers.user_id").
+		Joins(r.ledgerUserJoin()).
 		Where("billing_ledgers.id = ?", id).
 		First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -181,7 +181,7 @@ func (r *ledgerRepo) ListLedgers(ctx context.Context, userID string, page, pageS
 
 	fetchQuery := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
 		Select("billing_ledgers.*, users.username AS username").
-		Joins("LEFT JOIN users ON users.id = billing_ledgers.user_id")
+		Joins(r.ledgerUserJoin())
 	if userID != "" {
 		fetchQuery = fetchQuery.Where("billing_ledgers.user_id = ?", userID)
 	}
@@ -234,7 +234,7 @@ func (r *ledgerRepo) listLedgersInternal(ctx context.Context, userID string, pag
 
 	fetchQuery := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
 		Select("billing_ledgers.*, users.username AS username").
-		Joins("LEFT JOIN users ON users.id = billing_ledgers.user_id")
+		Joins(r.ledgerUserJoin())
 	if userID != "" {
 		fetchQuery = fetchQuery.Where("billing_ledgers.user_id = ?", userID)
 	}
@@ -277,7 +277,7 @@ func (r *ledgerRepo) ListLedgersBySubscriptionAccount(ctx context.Context, subsc
 
 	if err := r.data.db.WithContext(ctx).Model(&ledgerModel{}).
 		Select("billing_ledgers.*, users.username AS username").
-		Joins("LEFT JOIN users ON users.id = billing_ledgers.user_id").
+		Joins(r.ledgerUserJoin()).
 		Where("billing_ledgers.subscription_account_id = ?", subscriptionAccountID).
 		Order("billing_ledgers.created_at DESC").
 		Limit(int(pageSize)).
@@ -671,4 +671,13 @@ func ledgerFromModel(model *ledgerModel) *biz.Ledger {
 		ExclusiveCandidateCost: model.ExclusiveCandidateCost,
 		PricingConfigHash:      model.PricingConfigHash,
 	}
+}
+
+func (r *ledgerRepo) ledgerUserJoin() string {
+	// Ledger user IDs are textual (including historical/system actors). Cast
+	// the numeric side so PostgreSQL never attempts to parse arbitrary IDs.
+	if r.data.db.Dialector.Name() == "postgres" {
+		return "LEFT JOIN users ON CAST(users.id AS TEXT) = billing_ledgers.user_id"
+	}
+	return "LEFT JOIN users ON users.id = billing_ledgers.user_id"
 }

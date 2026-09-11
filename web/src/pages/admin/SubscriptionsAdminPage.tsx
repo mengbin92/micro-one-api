@@ -1,3 +1,4 @@
+import { CoverageEditor, ContractSummary, type RoutingCoverage, type SubscriptionContract } from '@/components/SubscriptionContract';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Search, UserPlus } from 'lucide-react';
 import { useState } from 'react';
@@ -34,6 +35,7 @@ import { locale, t } from '@/lib/i18n';
 
 // Mirrors subscriptionDTO JSON tags (internal/admin/server/subscription.go).
 interface UserSubscription {
+  contract?: SubscriptionContract;
   id: number;
   user_id: number;
   group_id: number;
@@ -129,6 +131,7 @@ export function AdminSubscriptionsPage() {
 
   const assignMutation = useMutation({
     mutationFn: async (payload: {
+      coverage: RoutingCoverage[];
       user_id: number;
       group_id: number;
       subscription_name: string;
@@ -237,6 +240,7 @@ export function AdminSubscriptionsPage() {
           pending={assignMutation.isPending}
           onSubmit={(draft) =>
             assignMutation.mutate({
+              coverage: draft.coverage,
               user_id: draft.userId,
               group_id: draft.groupId,
               subscription_name: draft.subscriptionName,
@@ -324,7 +328,7 @@ export function AdminSubscriptionsPage() {
                       {sub.user_id}
                     </button>
                   </TableCell>
-                  <TableCell className="font-medium">{sub.subscription_name || '—'}</TableCell>
+                  <TableCell className="font-medium">{sub.subscription_name || '—'}<ContractSummary contract={sub.contract} /></TableCell>
                   <TableCell className="hidden md:table-cell">#{sub.group_id}</TableCell>
                   <TableCell>
                     <span
@@ -410,6 +414,7 @@ function ExtendDialog({ open, subscription, pending, onOpenChange, onSubmit }: E
 }
 
 interface AssignDraft {
+  coverage: RoutingCoverage[];
   userId: number;
   groupId: number;
   subscriptionName: string;
@@ -429,6 +434,7 @@ interface AssignDialogProps {
 function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSubmit }: AssignDialogProps) {
   const [userId, setUserId] = useState(defaultUserId ? String(defaultUserId) : '');
   const [groupId, setGroupId] = useState('');
+  const [coverage, setCoverage] = useState<RoutingCoverage[]>([]);
   const [subscriptionName, setSubscriptionName] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [metadata, setMetadata] = useState('');
@@ -450,6 +456,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
       return;
     }
     onSubmit({
+      coverage,
       userId: parsedUser,
       groupId: parsedGroup,
       subscriptionName: subscriptionName.trim(),
@@ -468,6 +475,7 @@ function AssignDialog({ open, onOpenChange, groups, defaultUserId, pending, onSu
           <DialogDescription>{t("为指定用户分配一个订阅额度策略并设置到期时间。")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 pt-2">
+          <CoverageEditor value={coverage} onChange={setCoverage} />
           <div className="space-y-2">
             <Label htmlFor="assign-user">{t("用户 ID")}</Label>
             <Input

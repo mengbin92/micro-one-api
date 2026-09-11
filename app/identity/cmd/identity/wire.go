@@ -82,18 +82,21 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 func newApp(
 	cfg *Config,
+	repo *data.Repository,
 	uc *biz.IdentityUsecase,
 	svc *service.IdentityService,
 	oauthRegistry *oauth.ProviderRegistry,
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	closeRouting := func() {}
+	closeOutbox := func() {}
 	if biz.RoutingV2Enabled() {
 		reader, cleanup, err := routingclient.Dial(os.Getenv("CHANNEL_GRPC_ENDPOINT"))
 		if err != nil {
 			panic(err)
 		}
 		uc.SetRoutingGroupReader(reader)
+		closeOutbox = repo.StartRoutingOutbox()
 		closeRouting = cleanup
 	}
 	bootstrapAdmin(uc)
@@ -112,6 +115,7 @@ func newApp(
 	}
 	app := kratos.New(opts...)
 	return app, func() {
+		closeOutbox()
 		closeRouting()
 		if billingConn != nil {
 			billingConn.Close()

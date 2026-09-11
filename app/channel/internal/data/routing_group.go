@@ -6,9 +6,11 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"micro-one-api/app/channel/internal/biz"
 	"micro-one-api/domain/routing"
+	"micro-one-api/platform/routingoutbox"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -189,7 +191,7 @@ func (r *Repository) syncRoutingMembersTx(tx *gorm.DB, source routing.Source, cs
 			return err
 		}
 	}
-	return tx.Model(&routingGroupModel{}).Where("id IN ?", append(ids, oldIDs...)).Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "updated_at": now()}).Error
+	return bumpRoutingGroupsTx(tx, append(ids, oldIDs...))
 }
 
 func equalIDs(a, b []int64) bool {
@@ -212,10 +214,14 @@ func (r *Repository) syncRoutingMappingTx(tx *gorm.DB, table string, where map[s
 	if err != nil {
 		return err
 	}
+	var oldIDs []int64
+	if err := tx.Table(table).Where(where).Where("routing_group_id IS NOT NULL").Pluck("routing_group_id", &oldIDs).Error; err != nil {
+		return err
+	}
 	if err := tx.Table(table).Where(where).Update("routing_group_id", id).Error; err != nil {
 		return err
 	}
-	return tx.Model(&routingGroupModel{}).Where("id = ?", id).Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "updated_at": now()}).Error
+	return bumpRoutingGroupsTx(tx, append(oldIDs, id))
 }
 
 func (r *Repository) routingMappingTransaction(ctx context.Context, table string, where map[string]any, key string, write func(*gorm.DB) error) error {
@@ -275,6 +281,9 @@ func (r *Repository) mappingGroupScope(query *gorm.DB, group, alias string) *gor
 
 // Enable dual writes only after the explicit migration and successful backfill.
 func routingGroupSchemaReady(db *gorm.DB) error {
+	if !db.Migrator().HasTable("routing_change_outbox") {
+		return biz.ErrRoutingGroupMigrationRequired
+	}
 	for _, table := range []string{"routing_groups", "channel_routing_groups", "account_routing_groups", "routing_group_backfills"} {
 		if !db.Migrator().HasTable(table) {
 			return biz.ErrRoutingGroupMigrationRequired
@@ -288,6 +297,41 @@ func routingGroupSchemaReady(db *gorm.DB) error {
 	var count int64
 	if db.Table("routing_group_backfills").Limit(1).Count(&count).Error != nil || count == 0 {
 		return biz.ErrRoutingGroupMigrationRequired
+	}
+	return nil
+}
+
+func (r *routingGroupRepo) SetRoutingGroupState(ctx context.Context, id, revision int64, status, access string) error {
+	if r.data.db == nil {
+		return biz.ErrRoutingGroupStorage
+	}
+	return r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&routingGroupModel{}).Where("id = ? AND revision = ? AND status <> ?", id, revision, "archived").Updates(map[string]any{"status": status, "access_mode": access, "revision": revision + 1, "updated_at": time.Now().Unix()})
+		if result.Error != nil {
+			return biz.ErrRoutingGroupStorage
+		}
+		if result.RowsAffected != 1 {
+			return biz.ErrRoutingGroupBaselineConflict
+		}
+		return routingoutbox.Enqueue(tx, "channel", "group", id, revision+1)
+	})
+}
+
+func bumpRoutingGroupsTx(tx *gorm.DB, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := tx.Model(&routingGroupModel{}).Where("id IN ?", ids).Updates(map[string]any{"revision": gorm.Expr("revision + 1"), "updated_at": now()}).Error; err != nil {
+		return err
+	}
+	var groups []routingGroupModel
+	if err := tx.Select("id", "revision").Where("id IN ?", ids).Find(&groups).Error; err != nil {
+		return err
+	}
+	for _, group := range groups {
+		if err := routingoutbox.Enqueue(tx, "channel", "group", group.ID, group.Revision); err != nil {
+			return err
+		}
 	}
 	return nil
 }

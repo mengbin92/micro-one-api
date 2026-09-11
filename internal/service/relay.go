@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/routing"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"strings"
 	"time"
 
@@ -88,7 +90,7 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		providerReq.Model = resolvedModel
 		if plan.Auth.RoutingContext != nil {
 			capability, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
-			if err != nil || capability.GetRequestSnapshotVersion() != 2 {
+			if err != nil || capability.GetRequestSnapshotVersion() != 2 || (plan.Auth.RoutingContext.TokenMode == "fixed" && !capability.GetFixedRouting()) || (subscriptionbiz.EntitlementsEnabled() && !capability.GetSubscriptionContracts()) {
 				return fmt.Errorf("billing routing capability unavailable")
 			}
 		}
@@ -172,8 +174,15 @@ func (s *RelayGrpcService) ListModels(ctx context.Context, req *relayv1.ListMode
 		return nil, err
 	}
 
+	auth := &relaybiz.AuthSnapshot{UserID: authResp.UserId, TokenID: authResp.TokenId, Group: authResp.Group,
+		UserEnabled: authResp.UserEnabled, TokenEnabled: authResp.TokenEnabled, RoutingFacts: routingdto.FactsFromProto(authResp.RoutingFacts), RoutingContextVersion: authResp.RoutingContextVersion}
+	if err := s.relayUsecase.ResolveRoutingContext(ctx, auth); err != nil {
+		return nil, err
+	}
+	authResp.Group = auth.Group
 	modelsResp, err := s.channelClient.ListAvailableModels(ctx, &channelv1.ListAvailableModelsRequest{
-		Group: authResp.Group,
+		Group:          authResp.Group,
+		RoutingGroupId: routing.SelectedGroupID(auth.RoutingFacts),
 	})
 	if err != nil {
 		return nil, err

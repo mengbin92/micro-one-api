@@ -6,6 +6,10 @@ import { EN_US_LEGAL_MESSAGES } from '@/locales/en-US.legal';
 export const EN_US_MESSAGES: Record<string, string> = {
   ...GENERATED_MESSAGES,
   ...EN_US_LEGAL_MESSAGES,
+  "跟随默认分组": "Follow default group",
+  "可用分组暂不可用，无法修改分组设置。": "Routing groups are unavailable. Routing settings cannot be changed.",
+  "默认分组用于跟随默认的 Key；固定分组 Key 按所选分组路由和计费。用户可以拥有多个来源的分组授权。": "Inherited keys follow the default group. Fixed keys use their selected group for routing and billing. Users can hold grants from multiple sources.",
+  "价格版本": "Price version",
   '订阅额度策略 #{id}': 'Subscription Quota Policy #{id}',
   '确认删除订阅额度策略「{name}」？': 'Delete subscription quota policy “{name}”?',
   "订阅额度策略": "Subscription Quota Policies",

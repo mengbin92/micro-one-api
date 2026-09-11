@@ -107,6 +107,7 @@ type RelayRequest struct {
 }
 
 type AuthSnapshot struct {
+	recheckRouting        func(context.Context, string) error
 	RoutingFacts          *routing.SubjectFacts
 	RoutingContextVersion int32
 	RoutingContext        *routing.ResolvedRoutingContext
@@ -332,15 +333,16 @@ func (p *RelayPlan) BaseModel() string {
 // RelayUsecase orchestrates the relay planning flow:
 // model mapping → auth → model validation → channel selection.
 type RelayUsecase struct {
-	identity      IdentityClient
-	channel       ChannelClient
-	subscription  SubscriptionAccountClient
-	modelMapper   *ModelMapper
-	retryPolicy   *RetryPolicy
-	blocker       RuntimeBlocker
-	accountPool   *AccountPool
-	routeSelector *UpstreamRouteSelector
-	now           func() time.Time
+	routingEntitlements RoutingEntitlementReader
+	identity            IdentityClient
+	channel             ChannelClient
+	subscription        SubscriptionAccountClient
+	modelMapper         *ModelMapper
+	retryPolicy         *RetryPolicy
+	blocker             RuntimeBlocker
+	accountPool         *AccountPool
+	routeSelector       *UpstreamRouteSelector
+	now                 func() time.Time
 	// v0.11.0 Phase 3 §3.4: selection/execution boundary recorder. No-op by
 	// default; SetSelectionRecorder wires the logging+metrics recorder.
 	selectionRec selectionRecorderHolder
@@ -507,6 +509,8 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 		return nil, err
 	}
 
+	uc.BindRoutingAdmission(authSnapshot, req.Token, req.ClientIP)
+
 	// 3. Validate model permission
 	if len(authSnapshot.AllowedModels) > 0 {
 		allowed := false
@@ -526,7 +530,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	// accounts participate in one priority/weight selection instead of treating
 	// subscription accounts as a fallback that can only run when every channel
 	// fails.
-	if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, req.SessionHash, req.Model, resolvedModel); ok {
+	if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, routing.SessionKey(authSnapshot.RoutingContext, req.SessionHash), req.Model, resolvedModel); ok {
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:      req.RequestID,
 			Group:          authSnapshot.Group,

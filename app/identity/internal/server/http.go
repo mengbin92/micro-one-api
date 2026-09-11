@@ -1462,6 +1462,8 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{"items": items, "total": total}})
 	case http.MethodPost:
 		var req struct {
+			RoutingMode    *string  `json:"routing_mode"`
+			RoutingGroupID *int64   `json:"routing_group_id"`
 			Name           string   `json:"name"`
 			Models         []string `json:"models"`
 			ExpiredAt      int64    `json:"expired_time"`
@@ -1471,6 +1473,10 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 			Subnet         string   `json:"subnet"`
 		}
 		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if req.RoutingMode != nil || req.RoutingGroupID != nil {
+			writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "use the routing-token API for routing settings"})
 			return
 		}
 		expireAt := req.ExpiredAt
@@ -1498,6 +1504,8 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: tokenToMap(token, true)})
 	case http.MethodPut:
 		var req struct {
+			RoutingMode    *string  `json:"routing_mode"`
+			RoutingGroupID *int64   `json:"routing_group_id"`
 			ID             int64    `json:"id"`
 			Name           string   `json:"name"`
 			Models         []string `json:"models"`
@@ -1509,6 +1517,10 @@ func handleTokens(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsecas
 		}
 		req.RemainQuota = -1
 		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if req.RoutingMode != nil || req.RoutingGroupID != nil {
+			writeJSON(w, http.StatusBadRequest, apiResponse{Success: false, Message: "use the routing-token API for routing settings"})
 			return
 		}
 		if !hasTokenID {
@@ -1615,6 +1627,7 @@ func userToMap(user *biz.User) map[string]any {
 
 func tokenToMap(token *biz.Token, includeKey bool) map[string]any {
 	data := map[string]any{
+		"routing_mode": token.RoutingMode, "routing_group_id": token.RoutingGroupID, "routing_revision": token.RoutingRevision,
 		"id":              token.ID,
 		"name":            token.Name,
 		"status":          token.Status,

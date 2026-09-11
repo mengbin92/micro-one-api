@@ -137,6 +137,7 @@ func newSystemOptionsRepo(cfg *Config) systemOptionsResult {
 
 // subscriptionResult wraps the optional subscription usecase.
 type subscriptionResult struct {
+	Close   func()
 	SubUc   *subscriptionbiz.SubscriptionUsecase
 	GroupUc *subscriptionbiz.GroupUsecase
 	PlanUc  *subscriptionbiz.PlanUsecase
@@ -161,7 +162,12 @@ func newSubscriptionUsecases(cfg *Config) subscriptionResult {
 	// serializes concurrent changes to the same subscription.
 	subUc := subscriptionbiz.NewSubscriptionUsecase(repo, repo)
 	subUc.SetTxRunner(subscriptiondata.NewTxRunner(repo))
+	closeOutbox := func() {}
+	if subscriptionbiz.EntitlementsEnabled() {
+		closeOutbox = repo.StartEntitlementOutbox()
+	}
 	return subscriptionResult{
+		Close:   closeOutbox,
 		SubUc:   subUc,
 		GroupUc: subscriptionbiz.NewGroupUsecase(repo),
 		PlanUc:  subscriptionbiz.NewPlanUsecase(repo, repo),

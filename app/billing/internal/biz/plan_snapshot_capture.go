@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
 
 // PlanSnapshotter captures the immutable purchase-time view of a plan into a
@@ -20,12 +21,17 @@ type PlanSnapshotter interface {
 // completion path). The snapshot is then frozen on the payment order; later
 // edits to the plan do not retroactively change the order.
 type paymentPlanSnapshotter struct {
-	plans SubscriptionPlanGetter
+	plans     SubscriptionPlanGetter
+	validator subscriptionbiz.ContractGroupReader
 }
 
 // NewPaymentPlanSnapshotter builds a snapshotter from a plan getter.
-func NewPaymentPlanSnapshotter(plans SubscriptionPlanGetter) PlanSnapshotter {
-	return &paymentPlanSnapshotter{plans: plans}
+func NewPaymentPlanSnapshotter(plans SubscriptionPlanGetter, validators ...subscriptionbiz.ContractGroupReader) PlanSnapshotter {
+	s := &paymentPlanSnapshotter{plans: plans}
+	if len(validators) > 0 {
+		s.validator = validators[0]
+	}
+	return s
 }
 
 func (s *paymentPlanSnapshotter) CapturePlanSnapshot(ctx context.Context, planID int64) (PlanSnapshot, error) {
@@ -41,6 +47,21 @@ func (s *paymentPlanSnapshotter) CapturePlanSnapshot(ctx context.Context, planID
 	}
 	if plan == nil || plan.ID <= 0 {
 		return PlanSnapshot{}, nil
+	}
+	if subscriptionbiz.EntitlementsEnabled() {
+		if !plan.ForSale || plan.PriceQuota <= 0 || plan.Group == nil || plan.Group.Status != subscriptionbiz.SubscriptionGroupStatusEnabled {
+			return PlanSnapshot{}, subscriptionbiz.ErrSubscriptionPlanNotSaleable
+		}
+		if plan.Contract != nil {
+			if plan.Contract.Validate() != nil || s.validator == nil {
+				return PlanSnapshot{}, subscriptionbiz.ErrSubscriptionContractInvalid
+			}
+			for _, g := range plan.Contract.Coverage {
+				if _, err := s.validator.ValidateSubscriptionGroup(ctx, g.GroupID); err != nil {
+					return PlanSnapshot{}, err
+				}
+			}
+		}
 	}
 	return plan.ToPlanSnapshot(), nil
 }

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminApiClient } from '@/lib/api';
-import { unwrapApiData } from '@/lib/api-response';
+import { toast } from 'sonner';
+import { unwrapApiData, ensureApiSuccess } from '@/lib/api-response';
 import { t } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RoutingBillingEditor } from '@/components/admin/RoutingBillingEditor';
 import { EmptyState } from '@/components/EmptyState';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -26,6 +28,7 @@ export function AdminRoutingGroupsPage() {
   const [key, setKey] = useState('');
   const [pages, setPages] = useState(['']);
   const [selected, setSelected] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
   const token = pages[pages.length - 1];
   const groups = useQuery({
     queryKey: ['admin-routing-groups', key, token],
@@ -44,6 +47,17 @@ export function AdminRoutingGroupsPage() {
       return unwrapApiData<GroupDetail>(res.data, t('分组详情加载失败'));
     },
   });
+  const changeState = async (status: string, accessMode: string) => {
+    if (!detail.data) return;
+    setSaving(true);
+    try {
+      const res = await adminApiClient.patch(`/v1/admin/routing-groups/${detail.data.group.id}`, { expected_revision: detail.data.group.revision, status, access_mode: accessMode });
+      ensureApiSuccess(res.data, '更新分组失败');
+      await Promise.all([detail.refetch(), groups.refetch()]);
+      toast.success('分组已更新');
+    } catch (error) { toast.error(error instanceof Error ? error.message : '更新分组失败'); await detail.refetch(); }
+    finally { setSaving(false); }
+  };
   return <div className="space-y-6">
     <div className="space-y-2">
       <h2 className="text-2xl font-semibold">{t('分组')}</h2>
@@ -73,6 +87,12 @@ export function AdminRoutingGroupsPage() {
       {detail.isPending ? <p role="status">{t('加载中...')}</p> : detail.isError ? <div role="alert"><p>{t('分组详情加载失败。')}</p><Button variant="outline" onClick={() => void detail.refetch()}>{t('重试')}</Button></div> : detail.data && <>
         <div><h3 className="text-lg font-semibold">{detail.data.group.display_name || detail.data.group.key}</h3><p className="text-sm text-muted-foreground">ID {detail.data.group.id} · {detail.data.group.key} · {statusLabel(detail.data.group.status)}</p>
           {detail.data.group.description && <p className="mt-2 text-sm">{detail.data.group.description}</p>}</div>
+        {detail.data.group.status !== 'archived' && <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">停用后拒绝新调用，已接受的请求按原价格结算；切换为专属后仅显式授权用户可用。</p>
+          <div className="flex gap-2"><Button disabled={saving} variant={detail.data.group.status === 'enabled' ? 'destructive' : 'outline'} onClick={() => changeState(detail.data.group.status === 'enabled' ? 'disabled' : 'enabled', detail.data.group.access_mode)}>{detail.data.group.status === 'enabled' ? '停用分组' : '启用分组'}</Button>
+          <select aria-label="使用资格" disabled={saving} value={detail.data.group.access_mode} onChange={(e) => changeState(detail.data.group.status, e.target.value)} className="rounded-md border bg-background px-2"><option value="restricted">专属分组</option><option value="public">公开分组</option></select></div>
+        </div>}
+        <RoutingBillingEditor key={selected} id={selected} />
         <h4 className="font-medium">{t('资源成员')}</h4>
         <p className="text-sm text-muted-foreground">{t('优先级和权重继承资源配置；具体模型仍需通过模型授权检查。')}</p>
         {!detail.data.resources.length ? <p>{t('暂无资源成员')}</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t('资源类型')}</TableHead><TableHead>ID</TableHead><TableHead>{t('优先级')}</TableHead><TableHead>{t('权重')}</TableHead></TableRow></TableHeader><TableBody>

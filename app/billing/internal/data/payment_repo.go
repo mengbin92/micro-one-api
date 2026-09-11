@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	subscriptiondata "micro-one-api/domain/subscription/data"
 	"time"
 
 	"micro-one-api/app/billing/internal/biz"
@@ -34,9 +35,9 @@ type PaymentOrder struct {
 	PlanID           int64      `gorm:"column:plan_id;type:bigint;default:0"`
 	PlanSnapshot     string     `gorm:"column:plan_snapshot;type:text"`
 	SubscriptionID   int64      `gorm:"column:subscription_id;default:0;index:idx_payment_orders_subscription_id"`
-	PaidAt           *time.Time `gorm:"column:paid_at;index"`
-	CreatedAt        time.Time  `gorm:"column:created_at"`
-	UpdatedAt        time.Time  `gorm:"column:updated_at"`
+	PaidAt           *time.Time `gorm:"column:paid_at;index;serializer:billing_time"`
+	CreatedAt        time.Time  `gorm:"column:created_at;serializer:billing_time"`
+	UpdatedAt        time.Time  `gorm:"column:updated_at;serializer:billing_time"`
 }
 
 func (PaymentOrder) TableName() string { return "payment_orders" }
@@ -54,7 +55,21 @@ func (r *paymentRepo) CreateOrder(ctx context.Context, order *biz.PaymentOrder) 
 	if err != nil {
 		return nil, err
 	}
-	if err := r.data.db.WithContext(ctx).Create(po).Error; err != nil {
+	if err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if subscriptionbiz.EntitlementsEnabled() && order.AssetType == biz.PaymentAssetTypeSubscription {
+			if err := subscriptiondata.LockContractReferences(tx); err != nil {
+				return err
+			}
+			snap, err := subscriptionbiz.DecodePlanSnapshot(order.PlanSnapshot)
+			if err != nil {
+				return err
+			}
+			if err := subscriptiondata.ValidateContractBillingModes(tx, snap.Contract); err != nil {
+				return err
+			}
+		}
+		return tx.Create(po).Error
+	}); err != nil {
 		return nil, fmt.Errorf("failed to create payment order: %w", err)
 	}
 	return toBizPaymentOrder(po)

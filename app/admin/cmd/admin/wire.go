@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"micro-one-api/app/admin/internal/data/routingaccess"
 	"time"
 
 	"github.com/go-kratos/kratos/v3"
@@ -35,6 +36,8 @@ var ProviderSet = wire.NewSet(
 	newAuditAuditor,
 	channelclient.NewRoutingGroupReader,
 	biz.NewRoutingGroupUsecase,
+	routingaccess.NewRepo,
+	biz.NewRoutingAccessUsecase,
 	service.NewAdminService,
 	provideRegistrar,
 )
@@ -83,13 +86,18 @@ func newApp(
 	sub subscriptionResult,
 	svc *service.AdminService,
 	routingGroups *biz.RoutingGroupUsecase,
+	routingAccess *biz.RoutingAccessUsecase,
 	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetRoutingGroupUsecase(routingGroups)
+	svc.SetRoutingAccessUsecase(routingAccess)
 	// Wire optional subscription usecases onto the admin service.
 	if sub.SubUc != nil {
 		planUc := sub.PlanUc
+		routingAccess.SetRoutingEntitlements(sub.SubUc)
+		sub.SubUc.SetContractGroupReader(routingAccess)
+		planUc.SetContractGroupReader(routingAccess)
 		svc.SetSubscriptionUsecases(sub.SubUc, sub.GroupUc, planUc)
 	}
 
@@ -123,6 +131,9 @@ func newApp(
 
 	return app, func() {
 		cancelWorker()
+		if sub.Close != nil {
+			sub.Close()
+		}
 		if clients != nil {
 			clients.identityConn.Close()
 			clients.channelConn.Close()

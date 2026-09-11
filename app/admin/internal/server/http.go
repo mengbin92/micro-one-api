@@ -412,6 +412,7 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	srv.HandleFunc("/api/v1/subscriptions/plans", func(w http.ResponseWriter, r *http.Request) {
 		handlePurchasableSubscriptionPlans(w, r, svc)
 	})
+	srv.HandleFunc("/api/v1/subscriptions/change", func(w http.ResponseWriter, r *http.Request) { handleChangeSubscription(w, r, svc, true) })
 	srv.HandleFunc("/api/v1/subscriptions/purchase", func(w http.ResponseWriter, r *http.Request) {
 		handlePurchaseSubscription(w, r, svc)
 	})
@@ -441,6 +442,23 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 	srv.HandlePrefix("/api/v1/admin/subscriptions/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleSubscriptionByID(w, r, svc)
 	}))
+	srv.HandleFunc("/api/v1/routing-groups/available", func(w http.ResponseWriter, r *http.Request) { handleRoutingAvailable(w, r, svc) })
+	srv.HandleFunc("/api/v1/routing-access", func(w http.ResponseWriter, r *http.Request) {
+		user, ok := routingPrincipal(w, r, svc)
+		if ok {
+			handleRoutingAccess(w, r, svc, user, true)
+		}
+	})
+	srv.HandlePrefix("/api/v1/admin/routing-access/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
+		user, err := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/routing-access/"), 10, 64)
+		if err != nil || user <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		handleRoutingAccess(w, r, svc, user, false)
+	}))
+	srv.HandleFunc("/api/v1/routing-tokens", func(w http.ResponseWriter, r *http.Request) { handleRoutingToken(w, r, svc) })
+	srv.HandlePrefix("/api/v1/routing-tokens/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handleRoutingToken(w, r, svc) }))
 	srv.HandleFunc("/api/v1/admin/routing-groups", adminAuth(func(w http.ResponseWriter, r *http.Request) {
 		handleRoutingGroups(w, r, svc)
 	}))

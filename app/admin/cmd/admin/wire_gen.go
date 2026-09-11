@@ -17,6 +17,7 @@ import (
 	"micro-one-api/api/identity/v1"
 	"micro-one-api/app/admin/internal/biz"
 	"micro-one-api/app/admin/internal/data/channelclient"
+	"micro-one-api/app/admin/internal/data/routingaccess"
 	"micro-one-api/app/admin/internal/server"
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/platform/audit"
@@ -44,9 +45,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	adminService := service.NewAdminService(billingServiceClient, identityServiceClient, channelServiceClient, systemOptionsUsecase)
 	routingGroupReader := channelclient.NewRoutingGroupReader(channelServiceClient)
 	routingGroupUsecase := biz.NewRoutingGroupUsecase(routingGroupReader)
+	routingAccessRepo := routingaccess.NewRepo(identityServiceClient, channelServiceClient, billingServiceClient)
+	routingAccessUsecase := biz.NewRoutingAccessUsecase(routingGroupReader, routingAccessRepo)
 	auditor := newAuditAuditor()
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, mainClientsResult, mainSubscriptionResult, adminService, routingGroupUsecase, auditor, mainRegistrarResult)
+	app, cleanup := newApp(config, mainClientsResult, mainSubscriptionResult, adminService, routingGroupUsecase, routingAccessUsecase, auditor, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -62,7 +65,7 @@ var ProviderSet = wire.NewSet(
 	provideIdentityClient,
 	provideChannelClient,
 	provideBillingClient,
-	newAuditAuditor, channelclient.NewRoutingGroupReader, biz.NewRoutingGroupUsecase, service.NewAdminService, provideRegistrar,
+	newAuditAuditor, channelclient.NewRoutingGroupReader, biz.NewRoutingGroupUsecase, routingaccess.NewRepo, biz.NewRoutingAccessUsecase, service.NewAdminService, provideRegistrar,
 )
 
 // newAuditAuditor provides the audit sink for admin-api sensitive operations
@@ -104,13 +107,18 @@ func newApp(
 	sub subscriptionResult,
 	svc *service.AdminService,
 	routingGroups *biz.RoutingGroupUsecase,
+	routingAccess *biz.RoutingAccessUsecase,
 	auditor *audit.Auditor,
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	svc.SetRoutingGroupUsecase(routingGroups)
+	svc.SetRoutingAccessUsecase(routingAccess)
 
 	if sub.SubUc != nil {
 		planUc := sub.PlanUc
+		routingAccess.SetRoutingEntitlements(sub.SubUc)
+		sub.SubUc.SetContractGroupReader(routingAccess)
+		planUc.SetContractGroupReader(routingAccess)
 		svc.SetSubscriptionUsecases(sub.SubUc, sub.GroupUc, planUc)
 	}
 
@@ -139,6 +147,9 @@ func newApp(
 
 	return app, func() {
 		cancelWorker()
+		if sub.Close != nil {
+			sub.Close()
+		}
 		if clients != nil {
 			clients.identityConn.Close()
 			clients.channelConn.Close()

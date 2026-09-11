@@ -296,7 +296,7 @@ func (h httpRelayLifecycleHooks) CompleteStream(ctx context.Context, plan *relay
 	}
 	route := responseRoute{
 		Model: req.Model, GlobalModel: plan.BaseModel(), ResolvedModel: plan.ResolvedModel,
-		Channel: *plan.Channel, UserID: plan.Auth.UserID,
+		Channel: *plan.Channel, UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth),
 		SubscriptionAccountID: subscriptionAccountIDFromPlan(plan),
 	}
 	if route.SubscriptionAccountID > 0 && plan.Account != nil && plan.Account.ID == route.SubscriptionAccountID {

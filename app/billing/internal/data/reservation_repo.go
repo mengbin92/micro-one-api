@@ -362,3 +362,24 @@ func timeFromPtr(t *time.Time) time.Time {
 	}
 	return *t
 }
+
+func (r *reservationRepo) RequestSnapshots(ctx context.Context, ids []string) (map[string]*biz.RequestSnapshot, error) {
+	out := map[string]*biz.RequestSnapshot{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []reservationModel
+	if err := r.data.db.WithContext(ctx).Where("reservation_id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		v, err := reservationFromModel(&rows[i])
+		if err != nil {
+			return nil, err
+		}
+		if v.RequestSnapshot != nil {
+			out[rows[i].ReservationID] = v.RequestSnapshot
+		}
+	}
+	return out, nil
+}

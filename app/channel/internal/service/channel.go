@@ -146,6 +146,9 @@ func (s *ChannelService) GetChannel(ctx context.Context, req *channelv1.GetChann
 }
 
 func (s *ChannelService) ListAvailableModels(ctx context.Context, req *channelv1.ListAvailableModelsRequest) (*channelv1.ListAvailableModelsReply, error) {
+	if err := s.validateRoutingGroupPair(ctx, req.RoutingGroupId, req.Group); err != nil {
+		return nil, err
+	}
 	models, err := s.uc.ListAvailableModels(ctx, req.Group)
 	if err != nil {
 		mappedErr := errors.MapChannelError(err)

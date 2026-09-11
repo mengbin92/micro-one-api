@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { UserRoutingAccess } from '@/components/admin/UserRoutingAccess';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { adminApiClient } from '@/lib/api';
@@ -156,7 +157,7 @@ export function AdminUsersPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">{t('用户管理')}</h2>
       </div>
-      <p className="text-sm text-muted-foreground">{t("用户所属的路由分组决定上游资源访问范围，并作为价格倍率的查找键。订阅额度策略单独管理。")}</p>
+      <p className="text-sm text-muted-foreground">{t("默认分组用于跟随默认的 Key；固定分组 Key 按所选分组路由和计费。用户可以拥有多个来源的分组授权。")}</p>
 
       <AdminTableToolbar
         search={search}
@@ -173,7 +174,7 @@ export function AdminUsersPage() {
               { key: 'username', label: t('用户名') },
               { key: 'displayName', label: t('显示名称') },
               { key: 'email', label: t('邮箱') },
-              { key: 'group', label: t('路由分组') },
+              { key: 'group', label: t('默认分组') },
               { key: 'role', label: t('角色') },
               { key: 'balance', label: t('余额') },
               { key: 'usedAmount', label: t('已用金额') },
@@ -205,7 +206,7 @@ export function AdminUsersPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', t('用户名'), t('显示名称'), t('邮箱'), t('路由分组'), t('角色'), t('余额'), t('已用'), t('状态'), t('操作')]} />
+        <TableSkeleton columns={['ID', t('用户名'), t('显示名称'), t('邮箱'), t('默认分组'), t('角色'), t('余额'), t('已用'), t('状态'), t('操作')]} />
       ) : !users || users.length === 0 ? (
         <EmptyState title={t('未找到用户')} description={t('请尝试清除搜索词或查看其他页面。')} />
       ) : visibleUsers.length === 0 ? (
@@ -225,7 +226,7 @@ export function AdminUsersPage() {
                     {t('邮箱')}
                   </SortableHeader>
                   <SortableHeader<User> columnKey="group" sort={sort} onSortChange={setSort}>
-                    {t('路由分组')}
+                    {t('默认分组')}
                   </SortableHeader>
                   <SortableHeader<User> columnKey="role" sort={sort} onSortChange={setSort}>
                     {t('角色')}
@@ -274,6 +275,7 @@ export function AdminUsersPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
+ <UserRoutingAccess userId={user.id} />
                         <div className="flex justify-end gap-2">
                           <Button
                             variant="outline"

@@ -45,6 +45,7 @@ type AdminService struct {
 	groupUc         *subscriptionbiz.GroupUsecase
 	planUc          *subscriptionbiz.PlanUsecase
 	routingGroupUc  routingGroupUsecase
+	routingAccessUc routingAccessUsecase
 }
 
 type operatorCredentialKey struct{}
@@ -497,8 +498,9 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		"usageDecisionReason":    entry.GetUsageDecisionReason(),
 		"subsetCandidateCost":    entry.GetSubsetCandidateCost(),
 		"exclusiveCandidateCost": entry.GetExclusiveCandidateCost(),
-		"pricingConfigHash":      entry.GetPricingConfigHash(),
-		"pricingSnapshot":        pricingSnapshotToMap(entry.GetPricingSnapshot()),
+		"routingGroupId":         entry.GetRoutingGroupId(), "routingGroupKey": entry.GetRoutingGroupKey(), "requestSnapshotHash": entry.GetRequestSnapshotHash(), "requestSnapshot": entry.GetRequestSnapshotJson(),
+		"pricingConfigHash": entry.GetPricingConfigHash(),
+		"pricingSnapshot":   pricingSnapshotToMap(entry.GetPricingSnapshot()),
 	}, nil
 }
 
@@ -1954,6 +1956,9 @@ func (s *AdminService) GetOneAPIOption(ctx context.Context, key string) (string,
 }
 
 func (s *AdminService) UpdateOneAPIOption(ctx context.Context, key, value string) (*adminv1.UpdateSystemOptionsResponse, error) {
+	if key == "GroupRatio" && subscriptionbiz.EntitlementsEnabled() {
+		return nil, adminbiz.ErrRoutingGroupInvalid
+	}
 	if s.systemOptsUc == nil {
 		return &adminv1.UpdateSystemOptionsResponse{
 			Success: false,
@@ -2267,22 +2272,23 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"usageDecisionReason":    entry.GetUsageDecisionReason(),
 			"subsetCandidateCost":    entry.GetSubsetCandidateCost(),
 			"exclusiveCandidateCost": entry.GetExclusiveCandidateCost(),
-			"pricingConfigHash":      entry.GetPricingConfigHash(),
-			"channelId":              entry.GetChannelId(),
-			"channelName":            channelName,
-			"channelType":            channelType,
-			"channelTypeStr":         channelTypeStr,
-			"upstreamName":           upstream.Name,
-			"upstreamProtocol":       upstream.TypeStr,
-			"subscriptionAccountId":  entry.GetSubscriptionAccountId(),
-			"elapsedTime":            entry.GetElapsedTime(),
-			"isStream":               entry.GetIsStream(),
-			"endpoint":               entry.GetEndpoint(),
-			"costSource":             entry.GetCostSource(),
-			"subscriptionCost":       entry.GetSubscriptionCost(),
-			"balanceCost":            entry.GetBalanceCost(),
-			"ledgerDedupeKey":        entry.GetLedgerDedupeKey(),
-			"username":               entry.GetUsername(),
+			"routingGroupId":         entry.GetRoutingGroupId(), "routingGroupKey": entry.GetRoutingGroupKey(), "requestSnapshotHash": entry.GetRequestSnapshotHash(), "requestSnapshot": entry.GetRequestSnapshotJson(),
+			"pricingConfigHash":     entry.GetPricingConfigHash(),
+			"channelId":             entry.GetChannelId(),
+			"channelName":           channelName,
+			"channelType":           channelType,
+			"channelTypeStr":        channelTypeStr,
+			"upstreamName":          upstream.Name,
+			"upstreamProtocol":      upstream.TypeStr,
+			"subscriptionAccountId": entry.GetSubscriptionAccountId(),
+			"elapsedTime":           entry.GetElapsedTime(),
+			"isStream":              entry.GetIsStream(),
+			"endpoint":              entry.GetEndpoint(),
+			"costSource":            entry.GetCostSource(),
+			"subscriptionCost":      entry.GetSubscriptionCost(),
+			"balanceCost":           entry.GetBalanceCost(),
+			"ledgerDedupeKey":       entry.GetLedgerDedupeKey(),
+			"username":              entry.GetUsername(),
 		})
 	}
 

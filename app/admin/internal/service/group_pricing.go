@@ -1,6 +1,10 @@
 package service
 
-import "context"
+import (
+	"context"
+	"micro-one-api/app/admin/internal/biz"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
+)
 
 // ListGroups preserves the legacy /api/group contract. The records are pricing
 // overrides; routing membership is owned by identity and channel resources.
@@ -17,6 +21,9 @@ func (s *AdminService) ListGroups(ctx context.Context) ([]GroupConfig, error) {
 }
 
 func (s *AdminService) UpsertGroup(ctx context.Context, group string, ratio float64) (*GroupConfig, error) {
+	if subscriptionbiz.EntitlementsEnabled() {
+		return nil, biz.ErrRoutingGroupInvalid
+	}
 	result, err := s.systemOptsUc.UpsertRoutingGroupRatio(ctx, group, ratio)
 	if err != nil {
 		return nil, err
@@ -27,6 +34,9 @@ func (s *AdminService) UpsertGroup(ctx context.Context, group string, ratio floa
 // DeleteGroup deletes only the pricing override. Existing users, channels,
 // accounts, mappings and subscriptions retain their respective membership.
 func (s *AdminService) DeleteGroup(ctx context.Context, group string) (*GroupConfig, error) {
+	if subscriptionbiz.EntitlementsEnabled() {
+		return nil, biz.ErrRoutingGroupInvalid
+	}
 	result, err := s.systemOptsUc.DeleteRoutingGroupRatio(ctx, group)
 	if err != nil {
 		return nil, err

@@ -19,7 +19,7 @@ func TestBackfillCommandRehearsalApplyAndReplay(t *testing.T) {
 	db, err := sql.Open("sqlite3", path)
 	require.NoError(t, err)
 	defer db.Close()
-	for _, file := range []string{"../../internal/data/testdata/routing_group_legacy.sql", "../../../../migrations/sqlite/090_create_routing_groups.sql"} {
+	for _, file := range []string{"../../internal/data/testdata/routing_group_legacy.sql", "../../../../migrations/sqlite/090_create_routing_groups.sql", "../../../../migrations/sqlite/093_create_routing_change_outbox.sql"} {
 		raw, err := os.ReadFile(file)
 		require.NoError(t, err)
 		for _, s := range strings.Split(string(raw), ";") {

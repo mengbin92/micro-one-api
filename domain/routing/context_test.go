@@ -28,3 +28,37 @@ func TestResolveInheritedAccessFacts(t *testing.T) {
 	_, err = ResolveInherited(1, 2, facts, group, 100)
 	require.Error(t, err)
 }
+
+func TestFixedRoutingEligibilityAndIsolation(t *testing.T) {
+	f := &SubjectFacts{DefaultGroupID: 1, AccessRevision: 4, TokenMode: "fixed", TokenGroupID: 2, TokenRevision: 3, PublicGroupAccess: "explicit_only", Grants: []UserGroupGrant{{GroupID: 2, SourceType: "admin", SourceRef: "a", Status: "active", StartsAt: 100, ExpiresAt: 200}, {GroupID: 2, SourceType: "admin", SourceRef: "b", Status: "active"}}}
+	g := &Group{ID: 2, Key: "VIP", Status: "enabled", AccessMode: "restricted", Revision: 5}
+	c, err := Resolve(10, 20, f, g, 150)
+	require.NoError(t, err)
+	require.Equal(t, "token_fixed", c.SelectionSource)
+	require.EqualValues(t, 2, c.GroupID)
+	before := c.Digest()
+	f.DefaultGroupID = 9
+	after, err := Resolve(10, 20, f, g, 150)
+	require.NoError(t, err)
+	require.Equal(t, before, after.Digest())
+	f.Grants[0].Status = "revoked"
+	_, err = Resolve(10, 20, f, g, 200)
+	require.NoError(t, err, "other source remains valid")
+	f.Grants[1].ExpiresAt = 200
+	_, err = Resolve(10, 20, f, g, 200)
+	require.Error(t, err, "expiry is exclusive")
+	g.AccessMode = "public"
+	_, err = Resolve(10, 20, f, g, 200)
+	require.Error(t, err)
+	f.PublicGroupAccess = "all"
+	_, err = Resolve(10, 20, f, g, 200)
+	require.NoError(t, err)
+	g.Status = "disabled"
+	_, err = Resolve(10, 20, f, g, 200)
+	require.Error(t, err)
+	require.NotEqual(t, SessionKey(c, "conversation"), SessionKey(&ResolvedRoutingContext{UserID: 10, TokenID: 21, GroupID: 2}, "conversation"))
+	for _, mode := range []string{"", "auto", "ordered"} {
+		f.TokenMode = mode
+		require.Zero(t, SelectedGroupID(f))
+	}
+}

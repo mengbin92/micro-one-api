@@ -94,3 +94,16 @@ func (s *ChannelService) GetRoutingGroup(ctx context.Context, req *channelv1.Get
 	}
 	return reply, nil
 }
+
+func (s *ChannelService) SetRoutingGroupState(ctx context.Context, req *channelv1.SetRoutingGroupStateRequest) (*channelv1.RoutingGroupDetail, error) {
+	uc, ok := s.routingGroupUC.(interface {
+		SetState(context.Context, int64, int64, string, string) (*biz.RoutingGroupDetail, error)
+	})
+	if !ok {
+		return nil, biz.ErrRoutingGroupStorage
+	}
+	if _, err := uc.SetState(ctx, req.Id, req.ExpectedRevision, req.Status, req.AccessMode); err != nil {
+		return nil, err
+	}
+	return s.GetRoutingGroup(ctx, &channelv1.GetRoutingGroupRequest{Id: req.Id})
+}

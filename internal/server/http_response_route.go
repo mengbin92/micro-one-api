@@ -7,6 +7,8 @@ import (
 )
 
 type responseRoute struct {
+	TokenID               int64
+	RoutingGroupID        int64
 	Model                 string
 	GlobalModel           string
 	ResolvedModel         string

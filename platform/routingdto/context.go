@@ -10,14 +10,14 @@ func ContextToProto(r *routing.ResolvedRoutingContext) *commonv1.ResolvedRouting
 	if r == nil {
 		return nil
 	}
-	return &commonv1.ResolvedRoutingContext{Version: r.Version, UserId: r.UserID, TokenId: r.TokenID, GroupId: r.GroupID, GroupKey: r.GroupKey, TokenMode: r.TokenMode, TokenRevision: r.TokenRevision, UserAccessRevision: r.UserAccessRevision, GroupRevision: r.GroupRevision, SubscriptionEntitlementVersion: r.SubscriptionEntitlementVersion, SelectionSource: r.SelectionSource}
+	return &commonv1.ResolvedRoutingContext{Version: r.Version, UserId: r.UserID, TokenId: r.TokenID, GroupId: r.GroupID, GroupKey: r.GroupKey, TokenMode: r.TokenMode, TokenRevision: r.TokenRevision, UserAccessRevision: r.UserAccessRevision, GroupRevision: r.GroupRevision, SubscriptionEntitlementVersion: r.SubscriptionEntitlementVersion, SubscriptionId: r.SubscriptionID, SelectionSource: r.SelectionSource}
 }
 
 func ContextFromProto(r *commonv1.ResolvedRoutingContext) *routing.ResolvedRoutingContext {
 	if r == nil {
 		return nil
 	}
-	return &routing.ResolvedRoutingContext{Version: r.Version, UserID: r.UserId, TokenID: r.TokenId, GroupID: r.GroupId, GroupKey: r.GroupKey, TokenMode: r.TokenMode, TokenRevision: r.TokenRevision, UserAccessRevision: r.UserAccessRevision, GroupRevision: r.GroupRevision, SubscriptionEntitlementVersion: r.SubscriptionEntitlementVersion, SelectionSource: r.SelectionSource}
+	return &routing.ResolvedRoutingContext{Version: r.Version, UserID: r.UserId, TokenID: r.TokenId, GroupID: r.GroupId, GroupKey: r.GroupKey, TokenMode: r.TokenMode, TokenRevision: r.TokenRevision, UserAccessRevision: r.UserAccessRevision, GroupRevision: r.GroupRevision, SubscriptionEntitlementVersion: r.SubscriptionEntitlementVersion, SubscriptionID: r.SubscriptionId, SelectionSource: r.SelectionSource}
 }
 
 func FactsToProto(f *routing.SubjectFacts) *commonv1.RoutingSubjectFacts {

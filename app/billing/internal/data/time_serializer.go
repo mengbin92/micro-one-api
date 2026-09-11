@@ -21,6 +21,7 @@ func (billingTimeSerializer) Scan(ctx context.Context, field *schema.Field, dst 
 	var stamp time.Time
 	switch v := value.(type) {
 	case nil:
+		return field.Set(ctx, dst, nil)
 	case time.Time:
 		stamp = v
 	case int64:

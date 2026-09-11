@@ -30,6 +30,9 @@ func (s *HTTPServer) refreshStoredResponseRoute(ctx context.Context, auth *ident
 	if auth == nil || (route.UserID != 0 && route.UserID != auth.UserId) {
 		return responseRoute{}, false
 	}
+	if auth.RoutingContextVersion > 0 && (route.UserID != auth.UserId || route.TokenID != auth.TokenId || route.RoutingGroupID != selectedProtoGroupID(auth)) {
+		return responseRoute{}, false
+	}
 	model := strings.TrimSpace(clientModel)
 	if model == "" {
 		model = strings.TrimSpace(route.Model)

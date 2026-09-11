@@ -38,7 +38,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	identityService := service.NewIdentityService(identityUsecase)
 	providerRegistry := setupOAuth(config)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, identityUsecase, identityService, providerRegistry, mainRegistrarResult)
+	app, cleanup := newApp(config, repository, identityUsecase, identityService, providerRegistry, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -90,18 +90,21 @@ func provideRegistrar(cfg *Config) registrarResult {
 
 func newApp(
 	cfg *Config,
+	repo *data.Repository,
 	uc *biz.IdentityUsecase,
 	svc *service.IdentityService,
 	oauthRegistry *oauth.ProviderRegistry,
 	reg registrarResult,
 ) (*kratos.App, func()) {
 	closeRouting := func() {}
+	closeOutbox := func() {}
 	if biz.RoutingV2Enabled() {
 		reader, cleanup, err := routingclient.Dial(os.Getenv("CHANNEL_GRPC_ENDPOINT"))
 		if err != nil {
 			panic(err)
 		}
 		uc.SetRoutingGroupReader(reader)
+		closeOutbox = repo.StartRoutingOutbox()
 		closeRouting = cleanup
 	}
 	bootstrapAdmin(uc)
@@ -117,6 +120,7 @@ func newApp(
 	}
 	app := kratos.New(opts...)
 	return app, func() {
+		closeOutbox()
 		closeRouting()
 		if billingConn != nil {
 			billingConn.Close()

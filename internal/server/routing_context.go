@@ -6,6 +6,7 @@ import (
 
 	billingv1 "micro-one-api/api/billing/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	"micro-one-api/domain/routing"
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/platform/routingdto"
 )
@@ -15,7 +16,7 @@ func (s *HTTPServer) routingAuth(ctx context.Context, p *identityv1.GetAuthSnaps
 		return nil, fmt.Errorf("missing identity snapshot")
 	}
 	auth := &relaybiz.AuthSnapshot{UserID: p.UserId, TokenID: p.TokenId, TokenName: p.TokenName, Group: p.Group, AllowedModels: p.AllowedModels, UserEnabled: p.UserEnabled, TokenEnabled: p.TokenEnabled, RoutingFacts: routingdto.FactsFromProto(p.RoutingFacts), RoutingContextVersion: p.RoutingContextVersion}
-	if relaybiz.RoutingContextV2Enabled() {
+	if relaybiz.RoutingContextV2Enabled() || auth.RoutingFacts != nil && auth.RoutingFacts.TokenMode == "fixed" {
 		if s.relayUsecase == nil {
 			return nil, fmt.Errorf("routing context resolver unavailable")
 		}
@@ -32,4 +33,29 @@ func (s *HTTPServer) reserveAuthenticatedQuota(ctx context.Context, userID, requ
 		return nil, err
 	}
 	return s.reserveQuota(ctx, userID, requestID, estimatedTokens, model, channelID, accountID, resolved.RoutingContext)
+}
+
+func resolvedGroupID(auth *relaybiz.AuthSnapshot) int64 {
+	if auth == nil || auth.RoutingContext == nil {
+		return 0
+	}
+	return auth.RoutingContext.GroupID
+}
+func selectedProtoGroupID(auth *identityv1.GetAuthSnapshotReply) int64 {
+	if auth == nil || auth.RoutingFacts == nil {
+		return 0
+	}
+	return routing.SelectedGroupID(routingdto.FactsFromProto(auth.RoutingFacts))
+}
+func routingSessionScope(auth *relaybiz.AuthSnapshot) string {
+	if auth.RoutingContext == nil {
+		return auth.Group
+	}
+	return fmt.Sprintf("v2/u%d/t%d/g%d", auth.UserID, auth.TokenID, auth.RoutingContext.GroupID)
+}
+func protoSessionScope(auth *identityv1.GetAuthSnapshotReply) string {
+	if auth.RoutingContextVersion == 0 {
+		return auth.Group
+	}
+	return fmt.Sprintf("v2/u%d/t%d/g%d", auth.UserId, auth.TokenId, selectedProtoGroupID(auth))
 }

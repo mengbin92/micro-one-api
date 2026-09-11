@@ -68,9 +68,11 @@ func (s *HTTPServer) getAuthSnapshot(ctx context.Context, token string) (*identi
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.routingAuth(ctx, reply); err != nil {
+	resolved, err := s.routingAuth(ctx, reply)
+	if err != nil {
 		return nil, err
 	}
+	reply.Group = resolved.Group
 	// Stamp the audit actor so the audit middleware records the real caller
 	// instead of an empty actor. WithActor writes into the mutable
 	// *actorHolder injected by the audit middleware (when present), or falls
@@ -98,9 +100,10 @@ func auditSessionIDPrefix(token string) string {
 	return token[:maxLen]
 }
 
-func (s *HTTPServer) listAvailableModels(ctx context.Context, group string) (*channelv1.ListAvailableModelsReply, error) {
-	req := &channelv1.ListAvailableModelsRequest{
-		Group: group,
+func (s *HTTPServer) listAvailableModels(ctx context.Context, group string, ids ...int64) (*channelv1.ListAvailableModelsReply, error) {
+	req := &channelv1.ListAvailableModelsRequest{Group: group}
+	if len(ids) > 0 {
+		req.RoutingGroupId = ids[0]
 	}
 	return s.channelClient.ListAvailableModels(ctx, req)
 }

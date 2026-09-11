@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"micro-one-api/domain/routing"
 	"net/http"
 	"strings"
 	"sync"
@@ -835,6 +836,9 @@ func (s *HTTPServer) bindSubscriptionSession(ctx context.Context, group, session
 	if servedID <= 0 {
 		return
 	}
+	if served != nil && served.Auth != nil {
+		sessionHash = routing.SessionKey(served.Auth.RoutingContext, sessionHash)
+	}
 	prior := s.wsSticky.LookupSessionChannel(ctx, group, sessionHash)
 	s.wsSticky.BindSessionChannel(ctx, group, sessionHash, servedID, s.openAIWSStickyTTL())
 	result := "rebind"
@@ -864,6 +868,9 @@ func (s *HTTPServer) blockRuntimeAccount(ctx context.Context, accountID int64, s
 func (s *HTTPServer) selectSubscriptionFailoverPlan(ctx context.Context, base, current *relaybiz.RelayPlan, clientModel string, failed map[int64]bool) (*relaybiz.RelayPlan, error) {
 	if s == nil || s.relayUsecase == nil || base == nil || base.Auth == nil {
 		return nil, fmt.Errorf("relay usecase unavailable")
+	}
+	if err := relaybiz.RecheckRoutingAdmission(ctx, base.Auth, clientModel); err != nil {
+		return nil, err
 	}
 	// pass the GLOBALLY-resolved model (pre-channel-mapping),
 	// not base.ResolvedModel (which already carries account A's mapping).

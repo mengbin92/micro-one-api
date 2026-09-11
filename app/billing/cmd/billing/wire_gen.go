@@ -94,6 +94,10 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	}
 
 	subscriptionRepo := data2.NewRepository(d.DB(), d.Redis())
+	closeEntitlements := func() {}
+	if biz2.EntitlementsEnabled() {
+		closeEntitlements = subscriptionRepo.StartEntitlementOutbox()
+	}
 	subscriptionUc := biz2.NewSubscriptionUsecase(subscriptionRepo, subscriptionRepo)
 	uc := biz.NewBillingUsecaseWithPricing(
 		d.AccountRepo(),
@@ -103,6 +107,10 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		pricing,
 	)
 	uc.SetSubscriptionPrimatives(subscriptionUc)
+	if biz2.EntitlementsEnabled() {
+		uc.SetRoutingPolicyRepo(data.NewRoutingPolicyRepo(d))
+	}
+	subscriptionUc.SetContractGroupReader(uc)
 	uc.SetTxRunner(data.NewTxRunner(d))
 	uc.SetReceivableRepo(d.ReceivableRepo())
 	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
@@ -143,8 +151,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	}
 	paymentAssetIssuer := biz.NewPaymentAssetIssuer(uc)
 	paymentSubscriptionAssigner := biz.NewPaymentSubscriptionAssigner(subscriptionUc, subscriptionRepo, subscriptionRepo)
-	planSnapshotter := biz.NewPaymentPlanSnapshotter(subscriptionRepo)
+	planSnapshotter := biz.NewPaymentPlanSnapshotter(subscriptionRepo, uc)
 	paymentUc := biz.NewPaymentUsecaseWithAssignerAndSnapshotter(d.PaymentRepo(), paymentProvider, paymentAssetIssuer, paymentSubscriptionAssigner, planSnapshotter)
+	paymentUc.SetSubscriptionPurchaseValidator(subscriptionUc)
 
 	var alipayVerifier biz.PaymentNotifyVerifier
 	var configuredAlipayAppID string
@@ -163,6 +172,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	svc.SetRefundUsecase(refundUc)
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
+	svc.SetSubscriptionCommerce(biz.NewSubscriptionCommerce(uc, subscriptionUc, subscriptionRepo, data.NewSubscriptionCommerceRepo(d)))
 
 	reconUc.SetReservationReleaser(uc)
 
@@ -263,6 +273,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		if partitionStop != nil {
 			partitionStop()
 		}
+		closeEntitlements()
 		closeRouting()
 		d.Close()
 		if notifyConn != nil {

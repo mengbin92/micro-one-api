@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 	"micro-one-api/app/identity/internal/biz"
 	"micro-one-api/domain/routing"
+	"micro-one-api/platform/routingoutbox"
 )
 
 type routingGrantModel struct {
@@ -42,7 +43,7 @@ func (r *Repository) CheckRoutingSchema(ctx context.Context) error {
 			return biz.ErrRoutingFactsUnavailable
 		}
 	}
-	if !r.db.Migrator().HasTable(&routingGrantModel{}) {
+	if !r.db.Migrator().HasTable(&routingGrantModel{}) || !r.db.Migrator().HasTable("routing_change_outbox") {
 		return biz.ErrRoutingFactsUnavailable
 	}
 	var count int64
@@ -90,7 +91,7 @@ func (r *Repository) GetRoutingFacts(ctx context.Context, userID, tokenID int64,
 		if token.ExpiredTime > 0 && token.ExpiredTime <= time.Now().Unix() {
 			return biz.ErrTokenExpired
 		}
-		if token.RoutingMode != "inherit" || token.RoutingGroupID != 0 || token.RoutingRevision <= 0 {
+		if !routing.ValidPolicy(token.RoutingMode, token.RoutingGroupID) || token.RoutingRevision <= 0 {
 			return biz.ErrRoutingDefaultInvalid
 		}
 		var grants []routingGrantModel
@@ -149,7 +150,11 @@ func (r *Repository) updateRoutingUserDB(ctx context.Context, user *biz.User, up
 				return err
 			}
 		}
-		return tx.Model(&userModel{}).Where("id = ?", user.ID).Updates(updates).Error
+		updates["routing_access_revision"] = current.RoutingAccessRevision + 1
+		if err := tx.Model(&userModel{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		return routingoutbox.Enqueue(tx, "identity", "user", user.ID, current.RoutingAccessRevision+1)
 	})
 }
 

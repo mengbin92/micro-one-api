@@ -3,7 +3,11 @@ package server
 import (
 	"context"
 	"fmt"
+	commonv1 "micro-one-api/api/common/v1"
+	identityv1 "micro-one-api/api/identity/v1"
+	relaybiz "micro-one-api/internal/biz"
 	"testing"
+	"time"
 
 	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
@@ -89,4 +93,30 @@ func TestRoutingWebsocketReserveBeforeEachTurn(t *testing.T) {
 	_, err = turns.beforeWrite(ctx, coderws.MessageText, create)
 	require.ErrorIs(t, err, errWSRoutingAdmission)
 	require.Nil(t, turns.take())
+}
+
+func TestFixedContextRequiresExplicitBillingCapability(t *testing.T) {
+	t.Setenv("RELAY_ROUTING_CONTEXT_V2", "true")
+	f := &routingBillingFake{version: 2}
+	s := &HTTPServer{billingClient: f}
+	c := routingContextTestValue()
+	c.TokenMode = "fixed"
+	c.SelectionSource = "token_fixed"
+	_, err := s.reserveQuota(context.Background(), "1", "fixed", 100, "m", "7", 0, c)
+	require.Error(t, err)
+	require.Zero(t, f.reserves, "an older v2 billing instance must not accept fixed requests")
+}
+func TestResponseCacheRejectsOtherKeyOrGroup(t *testing.T) {
+	s := &HTTPServer{}
+	auth := &identityv1.GetAuthSnapshotReply{UserId: 1, TokenId: 2, RoutingContextVersion: 2, RoutingFacts: &commonv1.RoutingSubjectFacts{TokenMode: "fixed", TokenGroupId: 3}}
+	for _, route := range []responseRoute{{UserID: 1, TokenID: 9, RoutingGroupID: 3}, {UserID: 1, TokenID: 2, RoutingGroupID: 9}, {UserID: 1}, {UserID: 9, TokenID: 2, RoutingGroupID: 3}} {
+		_, allowed := s.refreshStoredResponseRoute(context.Background(), auth, "m", route)
+		require.False(t, allowed)
+	}
+	a := &relaybiz.AuthSnapshot{UserID: 1, TokenID: 2, RoutingContext: &routing.ResolvedRoutingContext{GroupID: 3}}
+	b := &relaybiz.AuthSnapshot{UserID: 1, TokenID: 4, RoutingContext: &routing.ResolvedRoutingContext{GroupID: 3}}
+	store := newOpenAIWSStickyStore(nil)
+	store.BindResponseChannel(context.Background(), routingSessionScope(a), "resp-known", 99, time.Minute)
+	require.EqualValues(t, 99, store.LookupResponseChannel(context.Background(), routingSessionScope(a), "resp-known"))
+	require.Zero(t, store.LookupResponseChannel(context.Background(), routingSessionScope(b), "resp-known"))
 }
