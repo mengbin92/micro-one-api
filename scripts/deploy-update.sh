@@ -1,6 +1,11 @@
 #!/bin/bash
-# Quick deploy script for billing-service and admin-api updates
-# This script handles cross-platform build and deployment to production
+# Cross-platform build + deploy for production.
+# Usage: scripts/deploy-update.sh [services...]
+#   No arguments -> deploys the historical default pair (billing-service, admin-api).
+#   With arguments -> deploys exactly the given services, e.g.
+#     scripts/deploy-update.sh identity-service channel-service billing-service admin-api relay-gateway
+# Each run tags the previously-live images with one shared rollback-<timestamp>
+# tag before loading the new build.
 
 set -e
 
@@ -26,7 +31,7 @@ PROJECT_ROOT="${SCRIPT_DIR}/.."
 log_info "======================================"
 log_info "  Micro-One-API Production Deploy"
 log_info "======================================"
-log_info "Services: billing-service, admin-api"
+log_info "Services: ${*:-(default: billing-service admin-api)}"
 log_info "Server: ${SERVER}"
 log_info "Project root: ${PROJECT_ROOT}"
 echo ""
@@ -76,11 +81,15 @@ service_dockerfile() {
     esac
 }
 
+# Rollback tag shared by every service deployed in this run, so a multi-service
+# deploy can be rolled back to one consistent point in time.
+ROLLBACK_TAG="rollback-$(date +%Y%m%d-%H%M%S)"
+
 # Function to build and deploy a service
 deploy_service() {
     local service=$1
     local image_name="docker-compose-${service}:latest"
-    local temp_file="/tmp/${service}-image.tar"
+    local temp_file="/tmp/${service}-image.tar.gz"
 
     log_step "========================================"
     log_step "Building ${service} (linux/amd64)..."
@@ -100,21 +109,25 @@ deploy_service() {
     local size=$(docker inspect ${image_name} --format='{{.Size}}' | awk '{printf "%.2f MB", $1/1024/1024}')
     log_info "Built image size: ${size}"
 
-    # Save image
+    # Save image (gzipped: the upload link is the bottleneck, docker load
+    # accepts .tar.gz directly)
     log_info "Saving ${service} image..."
-    docker save ${image_name} -o ${temp_file}
+    docker save ${image_name} | gzip > ${temp_file}
 
     # Transfer to server
     log_info "Uploading to server..."
     scp ${temp_file} ${SERVER}:/tmp/
 
     # Load and deploy on server
-    log_info "Deploying on server..."
+    log_info "Deploying on server (rollback tag: ${ROLLBACK_TAG})..."
     ssh ${SERVER} bash << EOF
         set -e
 
+        echo "Tagging current image for rollback..."
+        docker tag ${image_name} docker-compose-${service}:${ROLLBACK_TAG} 2>/dev/null || true
+
         echo "Loading image..."
-        docker load -i /tmp/${service}-image.tar
+        docker load -i /tmp/${service}-image.tar.gz
 
         echo "Updating container via docker compose..."
         cd ${COMPOSE_DIR}
@@ -123,7 +136,7 @@ deploy_service() {
         docker compose up -d --no-deps ${service}
 
         # Cleanup
-        rm -f /tmp/${service}-image.tar
+        rm -f /tmp/${service}-image.tar.gz
 
         echo "Deployed ${service}!"
 EOF
@@ -135,9 +148,18 @@ EOF
     echo ""
 }
 
-# Deploy services
-deploy_service "billing-service"
-deploy_service "admin-api"
+# Deploy services. Accepts an explicit service list (see service_path for the
+# valid names); falls back to the historical billing+admin pair when no
+# arguments are given.
+if [ "$#" -gt 0 ]; then
+    SERVICES=("$@")
+else
+    SERVICES=(billing-service admin-api)
+fi
+
+for svc in "${SERVICES[@]}"; do
+    deploy_service "${svc}"
+done
 
 # Apply database migrations
 log_step "Applying database migrations..."
