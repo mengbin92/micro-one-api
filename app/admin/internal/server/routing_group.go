@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/go-kratos/kratos/v3/errors"
+	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/admin/internal/service"
 	"micro-one-api/pkg/jsonx"
 	"net/http"
@@ -24,14 +25,37 @@ func routingGroupError(w http.ResponseWriter, err error) {
 	default:
 		code = http.StatusServiceUnavailable
 	}
+	// Creation conflicts carry a distinct reason; keep the generic revision
+	// message for every other conflict.
+	if e.Reason == channelv1.RoutingGroupErrorReason_ROUTING_GROUP_EXISTS.String() {
+		code, message = http.StatusConflict, "分组标识已存在，请换一个 key"
+	}
 	writeJSON(w, code, apiResponse(false, message, nil))
 }
 func handleRoutingGroups(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", "GET")
+	switch r.Method {
+	case http.MethodGet:
+		handleRoutingGroupList(w, r, svc)
+	case http.MethodPost:
+		var body service.RoutingGroupCreateRequest
+		if jsonx.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&body) != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		result, err := svc.CreateRoutingGroup(r.Context(), body)
+		routingMutationAudit(r, 0, "routing_group", body.Key, "create", err)
+		if err != nil {
+			routingGroupError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, apiResponse(true, "", result))
+	default:
+		w.Header().Set("Allow", "GET, POST")
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
 	}
+}
+
+func handleRoutingGroupList(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
 	q := r.URL.Query()
 	var size int64
 	var err error

@@ -261,14 +261,20 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 	}
 	repo := &Repository{db: db, redis: rdb}
 	if os.Getenv("CHANNEL_ROUTING_GROUP_DUAL_WRITE") == "true" {
-		if err := routingGroupSchemaReady(db); err != nil {
+		// Dual writes need both the schema and the explicit legacy backfill:
+		// without the backfill the relation projection would drift from the CSVs.
+		dualWriteErr := routingGroupSchemaReady(db)
+		if dualWriteErr == nil && !routingGroupBackfillRecorded(db) {
+			dualWriteErr = biz.ErrRoutingGroupMigrationRequired
+		}
+		if dualWriteErr != nil {
 			if rdb != nil {
 				_ = rdb.Close()
 			}
 			if sqlDB, e := db.DB(); e == nil {
 				_ = sqlDB.Close()
 			}
-			return nil, err
+			return nil, dualWriteErr
 		}
 		repo.routingGroupDualWrite = true
 	}

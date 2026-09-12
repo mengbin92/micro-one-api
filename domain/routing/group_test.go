@@ -2,6 +2,7 @@ package routing
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -35,5 +36,31 @@ func TestContainsGroup(t *testing.T) {
 				t.Fatalf("ContainsGroup(%q, %q) = %v, want %v", tt.membership, tt.group, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidNewGroupKey(t *testing.T) {
+	for _, key := range []string{"default", "vip", "VIP", "长中文分组", "a_b-c.d", strings.Repeat("k", 1024)} {
+		if !ValidNewGroupKey(key) {
+			t.Fatalf("ValidNewGroupKey(%q) = false, want true", key)
+		}
+	}
+	for _, key := range []string{"", " vip", "vip ", "a,b", "a\nb", "\x00", strings.Repeat("k", 1025)} {
+		if ValidNewGroupKey(key) {
+			t.Fatalf("ValidNewGroupKey(%q) = true, want false", key)
+		}
+	}
+}
+
+func TestValidGroupAccessMode(t *testing.T) {
+	for _, mode := range []string{"", "restricted", "public"} {
+		if !ValidGroupAccessMode(mode) {
+			t.Fatalf("ValidGroupAccessMode(%q) = false, want true", mode)
+		}
+	}
+	for _, mode := range []string{"Public", "everyone", "restricted "} {
+		if ValidGroupAccessMode(mode) {
+			t.Fatalf("ValidGroupAccessMode(%q) = true, want false", mode)
+		}
 	}
 }

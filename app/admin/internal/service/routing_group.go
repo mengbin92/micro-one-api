@@ -88,6 +88,36 @@ func (s *AdminService) GetRoutingGroup(ctx context.Context, id int64) (*RoutingG
 	if err != nil {
 		return nil, err
 	}
+	return routingGroupDetailReply(result), nil
+}
+
+// RoutingGroupCreateRequest carries operator input only. Status, revision and
+// model access scope are decided by the channel owner.
+type RoutingGroupCreateRequest struct {
+	Key         string `json:"key"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+	AccessMode  string `json:"access_mode"`
+}
+
+// CreateRoutingGroup creates a routing group. The group starts disabled and
+// restricted, so members are attached through resource CSVs and enabling runs
+// the existing capability and price gates.
+func (s *AdminService) CreateRoutingGroup(ctx context.Context, r RoutingGroupCreateRequest) (*RoutingGroupDetail, error) {
+	uc, ok := s.routingAccessUc.(interface {
+		CreateGroup(context.Context, string, string, string, string) (*routing.Group, error)
+	})
+	if !ok {
+		return nil, biz.ErrRoutingGroupUnavailable
+	}
+	g, err := uc.CreateGroup(ctx, r.Key, r.DisplayName, r.Description, r.AccessMode)
+	if err != nil {
+		return nil, err
+	}
+	return routingGroupDetailReply(&routing.GroupDetail{Group: g, Resources: []routing.GroupResource{}, ModelGrants: []routing.GroupModelGrant{}}), nil
+}
+
+func routingGroupDetailReply(result *routing.GroupDetail) *RoutingGroupDetail {
 	g := result.Group
 	reply := &RoutingGroupDetail{Group: RoutingGroup{ID: g.ID, Key: g.Key, DisplayName: g.DisplayName, Description: g.Description, Status: g.Status, AccessMode: g.AccessMode, ModelAccessMode: g.ModelAccessMode, SortOrder: g.SortOrder, Revision: g.Revision}, Resources: []RoutingGroupResource{}, ModelGrants: []RoutingGroupModelGrant{}}
 	for _, r := range result.Resources {
@@ -96,5 +126,5 @@ func (s *AdminService) GetRoutingGroup(ctx context.Context, id int64) (*RoutingG
 	for _, m := range result.ModelGrants {
 		reply.ModelGrants = append(reply.ModelGrants, RoutingGroupModelGrant{MappingID: m.MappingID, AccountID: m.AccountID, Model: m.Model, UpstreamModelID: m.UpstreamModelID, Enabled: m.Enabled, Priority: m.Priority, ExtraAuthorization: m.ExtraAuthorization})
 	}
-	return reply, nil
+	return reply
 }

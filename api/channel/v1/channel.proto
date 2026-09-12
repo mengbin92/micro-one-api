@@ -12,6 +12,10 @@ service ChannelService {
   // Phase B read-only group registry; mutations remain with the resource owners.
   rpc ListRoutingGroups(ListRoutingGroupsRequest) returns (ListRoutingGroupsReply);
   rpc GetRoutingGroup(GetRoutingGroupRequest) returns (RoutingGroupDetail);
+  // Explicit group creation (owner: channel). The group is created disabled and
+  // restricted: members arrive through resource CSVs and enabling keeps the
+  // existing capability/price gates in SetRoutingGroupState.
+  rpc CreateRoutingGroup(CreateRoutingGroupRequest) returns (RoutingGroupDetail);
   // Read-only, model-scoped authorization for stored/cached routing sources.
   // It never grants account-wide access and never returns credentials.
   rpc CheckRoute(CheckRouteRequest) returns (CheckRouteReply);
@@ -1306,3 +1310,13 @@ message CheckRouteReply {
 }
 
 message SetRoutingGroupStateRequest { int64 id = 1; int64 expected_revision = 2; string status = 3; string access_mode = 4; }
+
+// CreateRoutingGroupRequest carries operator input only: status, revision and
+// model access mode are decided by the owner, not by the caller.
+message CreateRoutingGroupRequest {
+  string key = 1;
+  string display_name = 2;
+  string description = 3;
+  // "restricted" (default) or "public".
+  string access_mode = 4;
+}

@@ -129,3 +129,64 @@ func TestListAvailableModelsUnionsOrderedCandidateGroups(t *testing.T) {
 	require.Equal(t, []string{"gpt-4o", "o3", "gpt-4o-mini"}, reply.Models,
 		"union must dedup across groups and skip disabled groups")
 }
+
+// createGroupsFake records the operator input the service forwards and returns
+// the owner-decided shape (disabled/restricted/version 1).
+type createGroupsFake struct {
+	key, displayName, description, accessMode string
+	err                                       error
+}
+
+func (f *createGroupsFake) List(context.Context, biz.RoutingGroupListOptions) ([]*biz.RoutingGroup, error) {
+	return nil, f.err
+}
+func (f *createGroupsFake) Get(_ context.Context, id int64) (*biz.RoutingGroupDetail, error) {
+	return nil, f.err
+}
+func (f *createGroupsFake) Create(_ context.Context, key, displayName, description, accessMode string) (*biz.RoutingGroupDetail, error) {
+	f.key, f.displayName, f.description, f.accessMode = key, displayName, description, accessMode
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &biz.RoutingGroupDetail{
+		Group:       &routing.Group{ID: 9, Key: key, DisplayName: displayName, Description: description, Status: "disabled", AccessMode: accessMode, ModelAccessMode: "all_authorized", Revision: 1},
+		Resources:   []routing.GroupResource{},
+		ModelGrants: []routing.GroupModelGrant{},
+	}, nil
+}
+
+func TestCreateRoutingGroupServiceForwardsOperatorInputOnly(t *testing.T) {
+	ctx := context.Background()
+	f := &createGroupsFake{}
+	s := &ChannelService{}
+	s.SetRoutingGroupUsecase(f)
+
+	reply, err := s.CreateRoutingGroup(ctx, &channelv1.CreateRoutingGroupRequest{Key: "vip", DisplayName: "VIP", Description: "付费客户", AccessMode: "public"})
+	require.NoError(t, err)
+	require.Equal(t, "vip", f.key)
+	require.Equal(t, "VIP", f.displayName)
+	require.Equal(t, "付费客户", f.description)
+	require.Equal(t, "public", f.accessMode)
+	require.Equal(t, int64(9), reply.Group.Id)
+	require.Equal(t, "disabled", reply.Group.Status)
+	require.NotNil(t, reply.Resources)
+	require.NotNil(t, reply.ModelGrants)
+
+	// A nil request is rejected before reaching the usecase.
+	calls := 1
+	_, err = s.CreateRoutingGroup(ctx, nil)
+	require.ErrorIs(t, err, biz.ErrRoutingGroupInvalid)
+	require.Equal(t, calls, 1)
+
+	// A usecase without the create capability reports "migration required"
+	// rather than pretending the group exists.
+	legacy := &ChannelService{}
+	legacy.SetRoutingGroupUsecase(&routingGroupFake{})
+	_, err = legacy.CreateRoutingGroup(ctx, &channelv1.CreateRoutingGroupRequest{Key: "vip"})
+	require.ErrorIs(t, err, biz.ErrRoutingGroupMigrationRequired)
+
+	// Owner errors pass through unchanged (no swallowing into success).
+	f.err = biz.ErrRoutingGroupExists
+	_, err = s.CreateRoutingGroup(ctx, &channelv1.CreateRoutingGroupRequest{Key: "vip"})
+	require.ErrorIs(t, err, biz.ErrRoutingGroupExists)
+}

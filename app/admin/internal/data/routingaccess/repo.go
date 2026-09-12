@@ -122,6 +122,21 @@ func (r *repo) SetState(ctx context.Context, id, revision int64, status, access 
 	return err
 }
 
+// CreateGroup delegates creation to the channel owner RPC and converts the
+// remote DTO into the shared domain DO. Only operator input crosses the
+// boundary: status, revision and model scope are decided by channel.
+func (r *repo) CreateGroup(ctx context.Context, key, displayName, description, accessMode string) (*routing.Group, error) {
+	p, err := r.channel.CreateRoutingGroup(ctx, &channelv1.CreateRoutingGroupRequest{Key: key, DisplayName: displayName, Description: description, AccessMode: accessMode})
+	if err != nil {
+		return nil, err
+	}
+	g := p.GetGroup()
+	if g == nil || g.GetId() <= 0 {
+		return nil, biz.ErrRoutingGroupUnavailable
+	}
+	return &routing.Group{ID: g.GetId(), Key: g.GetKey(), DisplayName: g.GetDisplayName(), Description: g.GetDescription(), Status: g.GetStatus(), AccessMode: g.GetAccessMode(), ModelAccessMode: g.GetModelAccessMode(), SortOrder: g.GetSortOrder(), Revision: g.GetRevision(), CreatedAt: g.GetCreatedAt(), UpdatedAt: g.GetUpdatedAt()}, nil
+}
+
 func (r *repo) GetBillingPolicy(ctx context.Context, id int64) (*routing.BillingPolicy, error) {
 	p, err := r.billing.GetRoutingBillingPolicy(ctx, &billingv1.GetRoutingBillingPolicyRequest{RoutingGroupId: id})
 	if err != nil {

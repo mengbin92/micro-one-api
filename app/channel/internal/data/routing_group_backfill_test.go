@@ -93,13 +93,17 @@ func verifyGroupBackfill(t *testing.T, db *sql.DB, gdb *gorm.DB, driver string) 
 	t.Helper()
 	ctx := context.Background()
 	report := groupBaseline(t, db, driver)
-	require.ErrorIs(t, routingGroupSchemaReady(gdb), biz.ErrRoutingGroupMigrationRequired)
+	// The schema alone is ready before the backfill (explicit creation only
+	// needs the tables); the recorded backfill is what gates dual writes.
+	require.NoError(t, routingGroupSchemaReady(gdb))
+	require.False(t, routingGroupBackfillRecorded(gdb))
 	require.NoError(t, applyGroupBaseline(t, db, driver, report, false))
 	var count int64
 	require.NoError(t, gdb.Model(&routingGroupModel{}).Count(&count).Error)
 	require.Zero(t, count)
 	require.NoError(t, applyGroupBaseline(t, db, driver, report, true))
 	require.NoError(t, routingGroupSchemaReady(gdb))
+	require.True(t, routingGroupBackfillRecorded(gdb))
 	var before []routingGroupModel
 	require.NoError(t, gdb.Order("id ASC").Find(&before).Error)
 	require.Len(t, before, 3)

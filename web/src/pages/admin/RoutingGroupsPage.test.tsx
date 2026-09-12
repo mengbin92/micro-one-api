@@ -46,4 +46,46 @@ describe('AdminRoutingGroupsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('分组加载失败');
     expect(screen.queryByText('暂无路由分组')).not.toBeInTheDocument();
   });
+  it('creates a group with operator input only and surfaces duplicate keys', async () => {
+    const posted: Record<string, unknown>[] = [];
+    server.use(http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [group], next_page_token: '' } })),
+      http.post('/api/v1/admin/routing-groups', async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        posted.push(body);
+        if (body.key === 'dup') return HttpResponse.json({ success: false, message: '分组标识已存在，请换一个 key' }, { status: 409 });
+        return HttpResponse.json({ success: true, data: { group: { ...group, id: 9, key: body.key as string, display_name: '新分组' }, resources: [], model_grants: [] } });
+      }),
+      http.get('/api/v1/admin/routing-groups/9', () => HttpResponse.json({ success: true, data: { group: { ...group, id: 9, key: 'newbie', display_name: '新分组' }, resources: [], model_grants: [] } })),
+    );
+    renderWithQuery(<AdminRoutingGroupsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: '新建分组' }));
+    await userEvent.type(screen.getByLabelText('分组键（必填）'), 'newbie');
+    await userEvent.type(screen.getByLabelText('显示名称'), '新分组');
+    await userEvent.click(screen.getByRole('button', { name: '创建分组' }));
+    // Only operator input crosses the boundary: status/revision stay server-side.
+    expect(posted.at(-1)).toEqual({ key: 'newbie', display_name: '新分组', description: '', access_mode: 'restricted' });
+    expect(await screen.findByRole('region', { name: '分组详情' })).toBeVisible();
+  });
+
+  it('keeps the create form open and selects nothing when the key is rejected', async () => {
+    // The toast host is not mounted in this harness, so the observable failure
+    // contract is: the request is attempted, no detail panel opens and the
+    // operator input is preserved for a retry.
+    const posted: Record<string, unknown>[] = [];
+    server.use(http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [], next_page_token: '' } })),
+      http.post('/api/v1/admin/routing-groups', async ({ request }) => {
+        posted.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ success: false, message: '分组标识已存在，请换一个 key' }, { status: 409 });
+      }),
+    );
+    renderWithQuery(<AdminRoutingGroupsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: '新建分组' }));
+    const keyInput = screen.getByLabelText('分组键（必填）');
+    await userEvent.type(keyInput, 'dup');
+    await userEvent.click(screen.getByRole('button', { name: '创建分组' }));
+    await screen.findByRole('button', { name: '创建分组' });
+    expect(posted.at(-1)).toMatchObject({ key: 'dup', access_mode: 'restricted' });
+    expect(screen.queryByRole('region', { name: '分组详情' })).not.toBeInTheDocument();
+    expect((screen.getByLabelText('分组键（必填）') as HTMLInputElement).value).toBe('dup');
+  });
 });

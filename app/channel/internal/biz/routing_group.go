@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"strings"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/domain/routing"
@@ -19,6 +20,7 @@ var (
 	ErrRoutingGroupMigrationRequired = errors.ServiceUnavailable(channelv1.RoutingGroupErrorReason_ROUTING_GROUP_MIGRATION_REQUIRED.String(), "routing group migration is required")
 	ErrRoutingGroupBaselineConflict  = errors.Conflict(channelv1.RoutingGroupErrorReason_ROUTING_GROUP_BASELINE_CONFLICT.String(), "routing group baseline differs; refresh the audit before backfill")
 	ErrRoutingGroupStorage           = errors.ServiceUnavailable(channelv1.RoutingGroupErrorReason_ROUTING_GROUP_STORAGE_UNAVAILABLE.String(), "routing group storage unavailable")
+	ErrRoutingGroupExists            = errors.Conflict(channelv1.RoutingGroupErrorReason_ROUTING_GROUP_EXISTS.String(), "routing group key already exists")
 )
 
 type RoutingGroupRepo interface {
@@ -50,6 +52,56 @@ func (uc *RoutingGroupUsecase) Get(ctx context.Context, id int64) (*RoutingGroup
 	}
 	return uc.repo.GetRoutingGroup(ctx, id)
 }
+
+// RoutingGroupCreateRepo is implemented by the data layer: it inserts the group
+// entity and enqueues the change outbox event in one transaction.
+type RoutingGroupCreateRepo interface {
+	CreateRoutingGroup(context.Context, *RoutingGroup) (*RoutingGroup, error)
+}
+
+// Create adds an explicitly created group. The caller supplies operator input
+// only: a new group always starts disabled and restricted, so enabling it later
+// keeps running the capability/price gates in SetState, and members arrive
+// through resource CSVs once the key resolves. Owner: channel.
+func (uc *RoutingGroupUsecase) Create(ctx context.Context, key, displayName, description, accessMode string) (*RoutingGroupDetail, error) {
+	if !routing.ValidNewGroupKey(key) {
+		return nil, ErrRoutingGroupInvalid
+	}
+	if !routing.ValidGroupAccessMode(accessMode) {
+		return nil, ErrRoutingGroupInvalid
+	}
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		displayName = key
+	}
+	if len(displayName) > maxGroupTextBytes || len(description) > maxGroupTextBytes {
+		return nil, ErrRoutingGroupInvalid
+	}
+	if accessMode == "" {
+		accessMode = "restricted"
+	}
+	repo, ok := uc.repo.(RoutingGroupCreateRepo)
+	if !ok {
+		return nil, ErrRoutingGroupStorage
+	}
+	created, err := repo.CreateRoutingGroup(ctx, &RoutingGroup{
+		Key:             key,
+		DisplayName:     displayName,
+		Description:     description,
+		Status:          "disabled",
+		AccessMode:      accessMode,
+		ModelAccessMode: "all_authorized",
+		Revision:        1,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return uc.Get(ctx, created.ID)
+}
+
+// maxGroupTextBytes bounds the free-text metadata columns (TEXT in MySQL) so a
+// single request cannot store unbounded payloads.
+const maxGroupTextBytes = 4096
 
 type RoutingGroupBackfillResult struct {
 	ReportHash string `json:"report_hash"`

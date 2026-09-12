@@ -35,3 +35,30 @@ func ContainsGroup(membership, group string) bool {
 	}
 	return false
 }
+
+// MaxGroupKeyBytes is the routing_groups.key column width. Keys stay byte-exact
+// (the column is VARBINARY) so the limit is in bytes, not runes.
+const MaxGroupKeyBytes = 1024
+
+// ValidNewGroupKey reports whether a key may be created explicitly. Legacy keys
+// are preserved byte-for-byte by the backfill, but a new key must be clean:
+// stated without surrounding whitespace, free of the CSV separator (a key with
+// a comma could never be referenced from a resource membership field), free of
+// control characters and within the column width.
+func ValidNewGroupKey(key string) bool {
+	if key == "" || key != strings.TrimSpace(key) || len(key) > MaxGroupKeyBytes {
+		return false
+	}
+	for _, r := range key {
+		if r == ',' || r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidGroupAccessMode accepts the two operator-selectable access modes. An
+// empty mode means "restricted", the safe default for a freshly created group.
+func ValidGroupAccessMode(mode string) bool {
+	return mode == "" || mode == "restricted" || mode == "public"
+}

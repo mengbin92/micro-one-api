@@ -252,6 +252,29 @@ type RoutingGroupStateWriter interface {
 	SetState(context.Context, int64, int64, string, string) error
 }
 
+// RoutingGroupCreateWriter is implemented by the data repo; the channel owner
+// RPC is the authoritative creator.
+type RoutingGroupCreateWriter interface {
+	CreateGroup(context.Context, string, string, string, string) (*routing.Group, error)
+}
+
+// CreateGroup adds a routing group owned by channel. Input rules come from
+// domain/routing so admin and channel cannot drift; the channel usecase
+// re-validates authoritatively. The capability gate matches the other group
+// writes: a new group must not exist where routing v2 is unavailable.
+func (uc *RoutingAccessUsecase) CreateGroup(ctx context.Context, key, displayName, description, accessMode string) (*routing.Group, error) {
+	if !routing.ValidNewGroupKey(key) || !routing.ValidGroupAccessMode(accessMode) {
+		return nil, ErrRoutingGroupInvalid
+	}
+	if err := uc.repo.CheckCapabilities(ctx); err != nil {
+		return nil, err
+	}
+	writer, ok := uc.repo.(RoutingGroupCreateWriter)
+	if !ok {
+		return nil, ErrRoutingGroupUnavailable
+	}
+	return writer.CreateGroup(ctx, key, strings.TrimSpace(displayName), description, accessMode)
+}
 func (uc *RoutingAccessUsecase) SetGroupState(ctx context.Context, id, revision int64, status, access string) error {
 	if id <= 0 || revision <= 0 || (status != "enabled" && status != "disabled") || (access != "public" && access != "restricted") {
 		return ErrRoutingGroupInvalid

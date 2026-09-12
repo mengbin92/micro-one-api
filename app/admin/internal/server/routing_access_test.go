@@ -27,9 +27,20 @@ func (routingSessionFake) GetUser(context.Context, *identityv1.GetUserRequest, .
 }
 
 type routingAccessHTTPFake struct {
-	calls int
-	user  int64
-	self  bool
+	calls     int
+	user      int64
+	self      bool
+	createErr error
+}
+
+// CreateGroup implements the optional creation capability the group POST
+// handler type-asserts for.
+func (f *routingAccessHTTPFake) CreateGroup(_ context.Context, key, displayName, description, accessMode string) (*routing.Group, error) {
+	f.calls++
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+	return &routing.Group{ID: 11, Key: key, DisplayName: displayName, Description: description, Status: "disabled", AccessMode: accessMode, ModelAccessMode: "all_authorized", Revision: 1}, nil
 }
 
 func (f *routingAccessHTTPFake) Facts(context.Context, int64) (*routing.SubjectFacts, error) {

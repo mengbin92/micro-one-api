@@ -85,6 +85,29 @@ func (s *ChannelService) GetRoutingGroup(ctx context.Context, req *channelv1.Get
 	if err != nil {
 		return nil, err
 	}
+	return routingGroupDetailReply(detail), nil
+}
+
+// CreateRoutingGroup creates a group owned by channel. New groups start
+// disabled and restricted; the caller cannot set status, revision or scope.
+func (s *ChannelService) CreateRoutingGroup(ctx context.Context, req *channelv1.CreateRoutingGroupRequest) (*channelv1.RoutingGroupDetail, error) {
+	if req == nil {
+		return nil, biz.ErrRoutingGroupInvalid
+	}
+	uc, ok := s.routingGroupUC.(interface {
+		Create(context.Context, string, string, string, string) (*biz.RoutingGroupDetail, error)
+	})
+	if !ok {
+		return nil, biz.ErrRoutingGroupMigrationRequired
+	}
+	detail, err := uc.Create(ctx, req.GetKey(), req.GetDisplayName(), req.GetDescription(), req.GetAccessMode())
+	if err != nil {
+		return nil, err
+	}
+	return routingGroupDetailReply(detail), nil
+}
+
+func routingGroupDetailReply(detail *biz.RoutingGroupDetail) *channelv1.RoutingGroupDetail {
 	g := detail.Group
 	reply := &channelv1.RoutingGroupDetail{Group: &channelv1.RoutingGroup{Id: g.ID, Key: g.Key, DisplayName: g.DisplayName, Description: g.Description, Status: g.Status, AccessMode: g.AccessMode, ModelAccessMode: g.ModelAccessMode, SortOrder: g.SortOrder, Revision: g.Revision, CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt}, Resources: []*channelv1.RoutingGroupResource{}, ModelGrants: []*channelv1.RoutingGroupModelGrant{}}
 	for _, r := range detail.Resources {
@@ -93,7 +116,7 @@ func (s *ChannelService) GetRoutingGroup(ctx context.Context, req *channelv1.Get
 	for _, m := range detail.ModelGrants {
 		reply.ModelGrants = append(reply.ModelGrants, &channelv1.RoutingGroupModelGrant{MappingId: m.MappingID, AccountId: m.AccountID, Model: m.Model, UpstreamModelId: m.UpstreamModelID, Enabled: m.Enabled, Priority: m.Priority, ExtraAuthorization: m.ExtraAuthorization})
 	}
-	return reply, nil
+	return reply
 }
 
 func (s *ChannelService) SetRoutingGroupState(ctx context.Context, req *channelv1.SetRoutingGroupStateRequest) (*channelv1.RoutingGroupDetail, error) {

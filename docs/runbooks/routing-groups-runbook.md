@@ -16,6 +16,7 @@
 | 能力 | 阶段 | 默认状态 | 说明 |
 | --- | --- | --- | --- |
 | 组实体 / 成员关系 / 双写 | B | 已启用（`CHANNEL_ROUTING_GROUP_DUAL_WRITE`） | `routing_groups` 及 channel/account 成员表；B 的组回填已完成 |
+| 显式新增分组 | 日常操作 | 已交付 | `POST /api/v1/admin/routing-groups`（页面「分组」→「新建分组」）；新建组固定停用 + 资格模式可选，见 §2.3 |
 | 请求快照 v2（冻结价格与上下文） | C | 关 | billing 按冻结快照结算，在途改价/换组不影响已预扣请求 |
 | identity 路由事实（默认组 / 授权 / revision） | C | 关 | 用户与 Token 携带路由事实，鉴权返回 `routing_context_version=2` |
 | fixed 组 Key / 多组授权 / 可用目录 / outbox 事件 | D | 关（创建开关） | Key 可绑定固定组；授权变更经 outbox 投递 |
@@ -115,6 +116,43 @@ INSERT INTO oneapi_<svc>.schema_migrations (version) VALUES ('0xx_<name>');
 
 切勿在补录前直接重跑：迁移文件不带 `IF NOT EXISTS` 的会因对象已存在而报错。
 
+### 2.3 新增分组（日常操作）
+
+分组由 channel 拥有，通过管理员接口显式创建；迁移工具 `group-backfill` 只负责把**遗留** group key
+一次性投影成组，日常新增不需要它。
+
+- 页面：管理后台「分组」→「新建分组」。
+- 接口：`POST /api/v1/admin/routing-groups`（admin 鉴权），body：
+
+  ```json
+  {"key": "vip", "display_name": "VIP 客户", "description": "付费客户", "access_mode": "restricted"}
+  ```
+
+- 入参规则（`domain/routing` 与 channel 共用一套校验，两边不会漂移）：`key` 必填、区分大小写、
+  不能含逗号（CSV 分隔符）或控制字符、不strip 首尾空格、≤1024 字节；`access_mode` 取
+  `restricted`（默认）或 `public`；`display_name` 留空则等于 `key`。
+- 创建后固定为 **停用 + 你选择的资格模式**，`revision=1`，并写入一条
+  `channel:group:<id>:1` outbox 事件。`status`/`revision` 不接受调用方设置，启用必须走既有
+  `PATCH /api/v1/admin/routing-groups/{id}`，那条路径会跑能力版本与价格闸门。
+- 重复 key 返回 `409` +「分组标识已存在，请换一个 key」（gRPC reason
+  `ROUTING_GROUP_EXISTS`）；key 非法返回 `400`。
+
+新建后的完整接线顺序（顺序不能颠倒：`AccessSources` 与 grant 都要求组已启用）：
+
+1. **加成员**：把新 key 加进渠道或订阅账号的「成员分组」CSV（双写开启时会自动投影到
+   `channel_routing_groups` / `account_routing_groups`；引用不存在的 key 会让整个写事务失败，
+   所以必须先创建组）。停用状态下也能加成员。
+2. **定价与结算模式（可选）**：`PATCH /api/v1/admin/routing-groups/{id}/billing`（倍率 +
+   `wallet_only` / `subscription_first` / `subscription_only`）。不发布时新组继承 billing 默认倍率
+   （`source=billing_default`，倍率 1）与 `subscription_first`。
+3. **启用**：`PATCH /api/v1/admin/routing-groups/{id}`（`status=enabled` + 回填当前
+   `revision`，新建组为 1）。启用会做能力版本检查与价格解析（新组走默认倍率即可通过），
+   任一项不满足会拒绝并保持停用。
+4. **授权用户**：`PATCH /api/v1/admin/routing-access/{userID}`（`operation=grant`）。
+   该操作要求组已启用；`public` 组且用户 `public_group_access=all` 时无需逐人授权。
+5. （可选）设为用户默认组 `operation=default`（要求该用户已有访问来源，即先完成第 4 步）、
+   组内资源优先级/权重覆盖 `PUT .../resource-overrides`、用户专属倍率 `PUT .../user-price/{userID}`。
+
 ## 三、运行时开关总表
 
 | 开关 | 服务 | 默认 | 阶段 | 作用与前置 |
@@ -206,7 +244,8 @@ Key 额度与会话行为不变。账单详情应显示实际组 ID/键与快照
 
 ### 5.3 页面
 
-- 管理后台「分组」（`/admin/routing-groups`）：组 CRUD、成员、资源覆盖（F）。
+- 管理后台「分组」（`/admin/routing-groups`）：新建分组（§2.3）、成员与模型授权查看、资源覆盖（F）、
+  状态与资格切换、结算策略编辑。
 - Tokens 页：各组模型 / 资格来源 / 有效倍率 / 价格来源版本 / 订阅费用覆盖。
 - 套餐管理（E）：覆盖组选择与结算策略版本编辑；用户侧售卖卡片与订阅进度。
 

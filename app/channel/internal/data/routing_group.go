@@ -144,6 +144,54 @@ func (r *routingGroupRepo) ListRoutingGroups(ctx context.Context, options biz.Ro
 	}
 	return result, nil
 }
+
+// CreateRoutingGroup inserts an explicitly created group and enqueues the
+// revision-1 change event. Both happen in one transaction so a crash cannot
+// leave an undelivered group revision. Callers (biz) validate the key; the
+// unique index is the authority, and a concurrent duplicate is mapped to
+// ErrRoutingGroupExists rather than surfacing as a storage failure.
+func (r *routingGroupRepo) CreateRoutingGroup(ctx context.Context, group *biz.RoutingGroup) (*biz.RoutingGroup, error) {
+	if r.data.db == nil || group == nil {
+		return nil, biz.ErrRoutingGroupMigrationRequired
+	}
+	if err := routingGroupSchemaReady(r.data.db); err != nil {
+		return nil, err
+	}
+	now := time.Now().Unix()
+	row := routingGroupModel{
+		Key:             group.Key,
+		DisplayName:     group.DisplayName,
+		Description:     group.Description,
+		Status:          group.Status,
+		AccessMode:      group.AccessMode,
+		ModelAccessMode: group.ModelAccessMode,
+		SortOrder:       group.SortOrder,
+		Revision:        1,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing int64
+		if err := tx.Model(&routingGroupModel{}).Where(map[string]any{"key": group.Key}).Count(&existing).Error; err != nil {
+			return biz.ErrRoutingGroupStorage
+		}
+		if existing > 0 {
+			return biz.ErrRoutingGroupExists
+		}
+		if err := tx.Create(&row).Error; err != nil {
+			if isDuplicateKeyErr(err) {
+				return biz.ErrRoutingGroupExists
+			}
+			return biz.ErrRoutingGroupStorage
+		}
+		return routingoutbox.Enqueue(tx, "channel", "group", row.ID, row.Revision)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toRoutingGroup(&row), nil
+}
+
 func (r *routingGroupRepo) GetRoutingGroup(ctx context.Context, id int64) (*biz.RoutingGroupDetail, error) {
 	if r.data.db == nil {
 		return nil, biz.ErrRoutingGroupMigrationRequired
@@ -389,7 +437,8 @@ func (r *Repository) mappingGroupScope(query *gorm.DB, group, alias string) *gor
 	return query.Where(alias+"routing_group_id IN (?)", ids)
 }
 
-// Enable dual writes only after the explicit migration and successful backfill.
+// routingGroupSchemaReady reports whether the routing-group tables and group
+// reference columns the dual-write and creation paths depend on all exist.
 func routingGroupSchemaReady(db *gorm.DB) error {
 	if !db.Migrator().HasTable("routing_change_outbox") {
 		return biz.ErrRoutingGroupMigrationRequired
@@ -404,11 +453,20 @@ func routingGroupSchemaReady(db *gorm.DB) error {
 			return biz.ErrRoutingGroupMigrationRequired
 		}
 	}
-	var count int64
-	if db.Table("routing_group_backfills").Limit(1).Count(&count).Error != nil || count == 0 {
-		return biz.ErrRoutingGroupMigrationRequired
-	}
 	return nil
+}
+
+// routingGroupBackfillRecorded reports whether an explicit legacy backfill was
+// committed. Enabling dual writes requires it, because the relation projection
+// would otherwise drift from the legacy CSVs. Creating a brand-new group does
+// not: a fresh deployment may create its first group without ever running the
+// legacy migration, so creation only needs the schema to exist.
+func routingGroupBackfillRecorded(db *gorm.DB) bool {
+	var count int64
+	if db.Table("routing_group_backfills").Limit(1).Count(&count).Error != nil {
+		return false
+	}
+	return count > 0
 }
 
 func (r *routingGroupRepo) SetRoutingGroupState(ctx context.Context, id, revision int64, status, access string) error {

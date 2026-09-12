@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { adminApiClient } from '@/lib/api';
 import { toast } from 'sonner';
 import { unwrapApiData, ensureApiSuccess } from '@/lib/api-response';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { t } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +49,9 @@ export function AdminRoutingGroupsPage() {
     },
   });
   const [overrideDrafts, setOverrideDrafts] = useState<Record<string, { priority: string; weight: string }>>({});
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDraft, setCreateDraft] = useState({ key: '', displayName: '', description: '', accessMode: 'restricted' });
+  const [creating, setCreating] = useState(false);
   // A draft belongs to one group's relation row, so switching groups resets it —
   // otherwise "保存覆盖" could write a stale value into another group's row.
   const selectGroup = (id: number | null) => {
@@ -78,6 +82,27 @@ export function AdminRoutingGroupsPage() {
     } catch (error) { toast.error(error instanceof Error ? error.message : t('保存覆盖失败')); }
     finally { setSaving(false); }
   };
+  const createGroup = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setCreating(true);
+    try {
+      const res = await adminApiClient.post('/v1/admin/routing-groups', {
+        key: createDraft.key.trim(),
+        display_name: createDraft.displayName.trim(),
+        description: createDraft.description.trim(),
+        access_mode: createDraft.accessMode,
+      });
+      const created = unwrapApiData<GroupDetail>(res.data, t('新建分组失败'));
+      setCreateDraft({ key: '', displayName: '', description: '', accessMode: 'restricted' });
+      setCreateOpen(false);
+      setKey('');
+      setPages(['']);
+      await groups.refetch();
+      selectGroup(created.group.id);
+      toast.success(t('分组 {name} 已创建，默认停用且需授权', { name: created.group.key }));
+    } catch (error) { toast.error(getApiErrorMessage(error, t('新建分组失败'))); }
+    finally { setCreating(false); }
+  };
   const changeState = async (status: string, accessMode: string) => {
     if (!detail.data) return;
     setSaving(true);
@@ -93,6 +118,32 @@ export function AdminRoutingGroupsPage() {
     <div className="space-y-2">
       <h2 className="text-2xl font-semibold">{t('分组')}</h2>
       <p className="text-sm text-muted-foreground">{t('查看路由分组的资源成员和模型授权。分组状态与上游资源健康状态分别管理。')}</p>
+    </div>
+    <div className="space-y-3 rounded-lg border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="font-medium">{t('新建分组')}</h3>
+          <p className="text-sm text-muted-foreground">{t('新建分组默认停用且需授权：先把分组键加入渠道或订阅账号的成员分组，再授权用户并启用。')}</p>
+        </div>
+        <Button type="button" variant="outline" aria-expanded={createOpen} onClick={() => setCreateOpen((open) => !open)}>{createOpen ? t('收起') : t('新建分组')}</Button>
+      </div>
+      {createOpen && <form className="grid gap-3 sm:grid-cols-2" onSubmit={createGroup}>
+        <div className="space-y-2"><Label htmlFor="new-routing-group-key">{t('分组键（必填）')}</Label>
+          <Input id="new-routing-group-key" required value={createDraft.key} placeholder="vip" onChange={(e) => setCreateDraft((d) => ({ ...d, key: e.target.value }))} />
+          <p className="text-xs text-muted-foreground">{t('区分大小写，不能包含逗号或首尾空格；创建后不可修改。')}</p></div>
+        <div className="space-y-2"><Label htmlFor="new-routing-group-name">{t('显示名称')}</Label>
+          <Input id="new-routing-group-name" value={createDraft.displayName} placeholder={createDraft.key || t('默认与分组键相同')} onChange={(e) => setCreateDraft((d) => ({ ...d, displayName: e.target.value }))} /></div>
+        <div className="space-y-2 sm:col-span-2"><Label htmlFor="new-routing-group-description">{t('说明')}</Label>
+          <Input id="new-routing-group-description" value={createDraft.description} onChange={(e) => setCreateDraft((d) => ({ ...d, description: e.target.value }))} /></div>
+        <div className="space-y-2"><Label htmlFor="new-routing-group-access">{t('使用资格')}</Label>
+          <select id="new-routing-group-access" value={createDraft.accessMode} onChange={(e) => setCreateDraft((d) => ({ ...d, accessMode: e.target.value }))} className="h-9 w-full rounded-md border bg-background px-2">
+            <option value="restricted">{t('专属分组')}</option><option value="public">{t('公开分组')}</option>
+          </select></div>
+        <div className="flex items-end gap-2 sm:col-span-2">
+          <Button type="submit" disabled={creating || !createDraft.key.trim()}>{creating ? t('创建中...') : t('创建分组')}</Button>
+          <Button type="button" variant="ghost" disabled={creating} onClick={() => setCreateOpen(false)}>{t('取消')}</Button>
+        </div>
+      </form>}
     </div>
     <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); setKey(search); setPages(['']); selectGroup(null); }}>
       <div className="space-y-2"><Label htmlFor="routing-group-key">{t('分组键（精确匹配）')}</Label>
