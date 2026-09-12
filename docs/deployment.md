@@ -27,7 +27,7 @@ Micro-One-API 由 9 个微服务组成：
 - MySQL、Lite、PostgreSQL 和 E2E overlay 的 Compose 配置能否完成变量展开。
 - `kustomize build` 能否渲染生产清单，以及渲染结果能否通过 Kubernetes 1.33 schema 的严格校验。
 - 清单引用的 ConfigMap、Secret 和 key 是否已在清单中定义，或在本文档中提供创建命令；生产必需引用不得设置 `optional: true`。
-- 根 README 和 `docs/**/*.md` 中的本地文件链接是否存在。
+- 根 README 和 `docs/**/*.md` 中的本地文件链接是否存在；链接必须留在仓库内，指向仓库外（如 `../../../new-api/...`）的相对路径会被拒绝，即便本机存在同名同级检出——CI 只检出本仓库，这类链接只会在本地通过。仓库外的参考材料请用代码跨度（反引号包路径）而不是链接。
 
 安装 Docker Compose、Go、Python 3、Kustomize 和 kubeconform 后，可在仓库根目录执行与 CI 相同的检查：
 
