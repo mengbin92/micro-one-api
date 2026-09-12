@@ -123,7 +123,7 @@ export function AdminRoutingGroupsPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="font-medium">{t('新建分组')}</h3>
-          <p className="text-sm text-muted-foreground">{t('新建分组默认停用且需授权：先把分组键加入渠道或订阅账号的成员分组，再授权用户并启用。')}</p>
+          <p className="text-sm text-muted-foreground">{t('新建分组固定为停用：先加成员并启用分组，再授权用户；启用的组才会进入选路。')}</p>
         </div>
         <Button type="button" variant="outline" aria-expanded={createOpen} onClick={() => setCreateOpen((open) => !open)}>{createOpen ? t('收起') : t('新建分组')}</Button>
       </div>

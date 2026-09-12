@@ -918,7 +918,7 @@ export const EN_US_MESSAGES: Record<string, string> = {
   "新建订阅分组": "Create a new subscription group",
   "新建订阅账号": "Create a new subscription account",
   "新建分组": "Create new group",
-  "新建分组默认停用且需授权：先把分组键加入渠道或订阅账号的成员分组，再授权用户并启用。": "Newly created groups are disabled by default and require authorization: first add the group key to the member group of the channel or subscription account, then authorize the user and enable it.",
+  "新建分组固定为停用：先加成员并启用分组，再授权用户；启用的组才会进入选路。": "New groups are always disabled: first add members and enable the group, and then authorize the user; only the enabled group will enter route selection.",
   "新建分组失败": "Failed to create new group",
   "新建模型": "New model",
   "新建套餐": "Create a new package",
