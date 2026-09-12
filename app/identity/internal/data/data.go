@@ -28,40 +28,46 @@ type Repository struct {
 }
 
 type userModel struct {
-	ID                int64  `gorm:"column:id"`
-	Username          string `gorm:"column:username;uniqueIndex"`
-	DisplayName       string `gorm:"column:display_name"`
-	Email             string `gorm:"column:email"`
-	Group             string `gorm:"column:group"`
-	Status            int32  `gorm:"column:status"`
-	Role              int32  `gorm:"column:role"`
-	PasswordHash      string `gorm:"column:password_hash"`
-	OAuthProvider     string `gorm:"column:oauth_provider;index"`
-	OAuthID           string `gorm:"column:oauth_id;index"`
-	Balance           int64  `gorm:"column:balance"`
-	AffCode           string `gorm:"column:aff_code;uniqueIndex"`
-	InviterID         int64  `gorm:"column:inviter_id;index"`
-	PasswordChangedAt int64  `gorm:"column:password_changed_at"`
+	DefaultRoutingGroupID int64  `gorm:"column:default_routing_group_id"`
+	RoutingAccessRevision int64  `gorm:"column:routing_access_revision"`
+	PublicGroupAccess     string `gorm:"column:public_group_access"`
+	ID                    int64  `gorm:"column:id"`
+	Username              string `gorm:"column:username;uniqueIndex"`
+	DisplayName           string `gorm:"column:display_name"`
+	Email                 string `gorm:"column:email"`
+	Group                 string `gorm:"column:group"`
+	Status                int32  `gorm:"column:status"`
+	Role                  int32  `gorm:"column:role"`
+	PasswordHash          string `gorm:"column:password_hash"`
+	OAuthProvider         string `gorm:"column:oauth_provider;index"`
+	OAuthID               string `gorm:"column:oauth_id;index"`
+	Balance               int64  `gorm:"column:balance"`
+	AffCode               string `gorm:"column:aff_code;uniqueIndex"`
+	InviterID             int64  `gorm:"column:inviter_id;index"`
+	PasswordChangedAt     int64  `gorm:"column:password_changed_at"`
 }
 
 func (userModel) TableName() string { return "users" }
 
 type tokenModel struct {
-	ID             int64   `gorm:"column:id"`
-	UserID         int64   `gorm:"column:user_id"`
-	Name           string  `gorm:"column:name"`
-	Key            string  `gorm:"column:key"`
-	KeyHash        string  `gorm:"column:key_hash"`
-	Status         int32   `gorm:"column:status"`
-	CreatedTime    int64   `gorm:"column:created_time"`
-	AccessedTime   int64   `gorm:"column:accessed_time"`
-	ExpiredTime    int64   `gorm:"column:expired_time"`
-	RemainQuota    int64   `gorm:"column:remain_quota"`
-	UnlimitedQuota bool    `gorm:"column:unlimited_quota"`
-	UsedQuota      int64   `gorm:"column:used_quota"`
-	Models         *string `gorm:"column:models"`
-	Subnet         *string `gorm:"column:subnet"`
-	CreatedAt      int64   `gorm:"column:created_at"`
+	RoutingMode     string  `gorm:"column:routing_mode"`
+	RoutingGroupID  *int64  `gorm:"column:routing_group_id"`
+	RoutingRevision int64   `gorm:"column:routing_revision"`
+	ID              int64   `gorm:"column:id"`
+	UserID          int64   `gorm:"column:user_id"`
+	Name            string  `gorm:"column:name"`
+	Key             string  `gorm:"column:key"`
+	KeyHash         string  `gorm:"column:key_hash"`
+	Status          int32   `gorm:"column:status"`
+	CreatedTime     int64   `gorm:"column:created_time"`
+	AccessedTime    int64   `gorm:"column:accessed_time"`
+	ExpiredTime     int64   `gorm:"column:expired_time"`
+	RemainQuota     int64   `gorm:"column:remain_quota"`
+	UnlimitedQuota  int32   `gorm:"column:unlimited_quota"`
+	UsedQuota       int64   `gorm:"column:used_quota"`
+	Models          *string `gorm:"column:models"`
+	Subnet          *string `gorm:"column:subnet"`
+	CreatedAt       int64   `gorm:"column:created_at"`
 }
 
 func (tokenModel) TableName() string { return "tokens" }
@@ -611,7 +617,10 @@ func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 		InviterID:         user.InviterID,
 		PasswordChangedAt: user.PasswordChangedAt,
 	}
-	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+	if biz.RoutingV2Enabled() {
+		return r.createRoutingUserDB(ctx, user, &model)
+	}
+	if err := r.db.WithContext(ctx).Omit("DefaultRoutingGroupID", "RoutingAccessRevision", "PublicGroupAccess").Create(&model).Error; err != nil {
 		return err
 	}
 	user.ID = model.ID
@@ -619,7 +628,7 @@ func (r *Repository) createUserDB(ctx context.Context, user *biz.User) error {
 }
 
 func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
-	return r.db.WithContext(ctx).Model(&userModel{}).Where("id = ?", user.ID).Updates(map[string]any{
+	updates := map[string]any{
 		"username":            user.Username,
 		"display_name":        user.DisplayName,
 		"email":               user.Email,
@@ -632,7 +641,11 @@ func (r *Repository) updateUserDB(ctx context.Context, user *biz.User) error {
 		"aff_code":            user.AffCode,
 		"inviter_id":          user.InviterID,
 		"password_changed_at": user.PasswordChangedAt,
-	}).Error
+	}
+	if biz.RoutingV2Enabled() {
+		return r.updateRoutingUserDB(ctx, user, updates)
+	}
+	return r.db.WithContext(ctx).Model(&userModel{}).Where("id = ?", user.ID).Updates(updates).Error
 }
 
 func (r *Repository) increaseUserBalanceDB(ctx context.Context, userID int64, amount int64) error {
@@ -657,6 +670,7 @@ func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error 
 	// HMAC hash in `key_hash` (indexed). The plaintext key never reaches disk;
 	// the prefix preserves the masked-key UI ("abcd****wxyz").
 	model := tokenModel{
+		RoutingMode: token.RoutingMode, RoutingRevision: token.RoutingRevision,
 		UserID:         token.UserID,
 		Name:           token.Name,
 		Key:            biz.TokenDisplayPrefix(token.Key),
@@ -664,7 +678,7 @@ func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error 
 		Status:         token.Status,
 		ExpiredTime:    token.ExpiredAt,
 		RemainQuota:    token.RemainQuota,
-		UnlimitedQuota: token.UnlimitedQuota,
+		UnlimitedQuota: boolInt(token.UnlimitedQuota),
 		UsedQuota:      token.UsedQuota,
 		Models:         new(strings.Join(token.Models, ",")),
 		Subnet:         new(token.Subnet),
@@ -672,7 +686,25 @@ func (r *Repository) createTokenDB(ctx context.Context, token *biz.Token) error 
 		CreatedTime:    token.CreatedAt,
 		AccessedTime:   token.AccessedAt,
 	}
-	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+	if token.RoutingGroupID > 0 {
+		model.RoutingGroupID = &token.RoutingGroupID
+	}
+	query := r.db.WithContext(ctx)
+	if !biz.RoutingV2Enabled() {
+		query = query.Omit("RoutingMode", "RoutingGroupID", "RoutingRevision")
+	}
+	ordered := biz.RoutingV2Enabled() && token.RoutingMode == "ordered" && len(token.RoutingGroupIDs) > 0
+	if ordered {
+		// Token row and its ordered candidate list commit atomically.
+		if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&model).Error; err != nil {
+				return err
+			}
+			return replaceTokenGroupOrders(tx, model.ID, token.RoutingGroupIDs)
+		}); err != nil {
+			return err
+		}
+	} else if err := query.Create(&model).Error; err != nil {
 		return err
 	}
 	token.ID = model.ID
@@ -716,7 +748,7 @@ func (r *Repository) updateTokenDB(ctx context.Context, token *biz.Token) error 
 			"status":          token.Status,
 			"expired_time":    token.ExpiredAt,
 			"remain_quota":    token.RemainQuota,
-			"unlimited_quota": token.UnlimitedQuota,
+			"unlimited_quota": boolInt(token.UnlimitedQuota),
 			"used_quota":      token.UsedQuota,
 			"models":          strings.Join(token.Models, ","),
 			"subnet":          token.Subnet,
@@ -751,7 +783,7 @@ func (r *Repository) consumeTokenQuotaDB(ctx context.Context, userID, tokenID, a
 			"remain_quota = CASE WHEN remain_quota <= ? THEN 0 ELSE remain_quota - ? END "+
 			"WHERE id = ? AND user_id = ? AND unlimited_quota = ? AND remain_quota > 0",
 		amount, amount, amount, biz.TokenStatusExhausted, amount, amount,
-		tokenID, userID, false,
+		tokenID, userID, 0,
 	)
 	if result.Error != nil {
 		return 0, result.Error
@@ -771,7 +803,12 @@ func (r *Repository) consumeTokenQuotaDB(ctx context.Context, userID, tokenID, a
 }
 
 func tokenModelToBiz(model tokenModel) *biz.Token {
+	var groupID int64
+	if model.RoutingGroupID != nil {
+		groupID = *model.RoutingGroupID
+	}
 	return &biz.Token{
+		RoutingMode: model.RoutingMode, RoutingGroupID: groupID, RoutingRevision: model.RoutingRevision,
 		ID:             model.ID,
 		UserID:         model.UserID,
 		Name:           model.Name,
@@ -780,7 +817,7 @@ func tokenModelToBiz(model tokenModel) *biz.Token {
 		Status:         model.Status,
 		ExpiredAt:      model.ExpiredTime,
 		RemainQuota:    model.RemainQuota,
-		UnlimitedQuota: model.UnlimitedQuota,
+		UnlimitedQuota: model.UnlimitedQuota != 0,
 		UsedQuota:      model.UsedQuota,
 		AccessedAt:     firstNonZero(model.AccessedTime, model.CreatedAt, model.CreatedTime),
 		Subnet:         stringPtrValue(model.Subnet),
@@ -807,20 +844,23 @@ func stringPtrValue(value *string) string {
 
 func userModelToBiz(model userModel) *biz.User {
 	return &biz.User{
-		ID:                model.ID,
-		Username:          model.Username,
-		DisplayName:       model.DisplayName,
-		Email:             model.Email,
-		Group:             model.Group,
-		Status:            model.Status,
-		Role:              model.Role,
-		PasswordHash:      model.PasswordHash,
-		OAuthProvider:     model.OAuthProvider,
-		OAuthID:           model.OAuthID,
-		Balance:           model.Balance,
-		AffCode:           model.AffCode,
-		InviterID:         model.InviterID,
-		PasswordChangedAt: model.PasswordChangedAt,
+		DefaultRoutingGroupID: model.DefaultRoutingGroupID,
+		RoutingAccessRevision: model.RoutingAccessRevision,
+		PublicGroupAccess:     model.PublicGroupAccess,
+		ID:                    model.ID,
+		Username:              model.Username,
+		DisplayName:           model.DisplayName,
+		Email:                 model.Email,
+		Group:                 model.Group,
+		Status:                model.Status,
+		Role:                  model.Role,
+		PasswordHash:          model.PasswordHash,
+		OAuthProvider:         model.OAuthProvider,
+		OAuthID:               model.OAuthID,
+		Balance:               model.Balance,
+		AffCode:               model.AffCode,
+		InviterID:             model.InviterID,
+		PasswordChangedAt:     model.PasswordChangedAt,
 	}
 }
 
@@ -961,4 +1001,12 @@ func (r *Repository) BackfillTokenHashes(ctx context.Context) {
 	applogger.Log.Info("identity-L6 backfill: hashed access-token keys",
 		zap.String("component", "identity.data"),
 		zap.Int("migrated", migrated), zap.Int("total", len(pending)))
+}
+
+// All supported schemas persist this flag as an integer, including PostgreSQL.
+func boolInt(v bool) int32 {
+	if v {
+		return 1
+	}
+	return 0
 }

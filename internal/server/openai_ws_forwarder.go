@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/routing"
+	"micro-one-api/platform/routingdto"
 	"net/http"
 	"net/url"
 	"strings"
@@ -167,7 +169,7 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 
 	// Reservations mirror the HTTP path: estimate tokens from the request body
 	// and commit per terminal turn.
-	reservation, err := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimateRawTokens(rewrittenFirstMessage), s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel), fmt.Sprintf("%d", plan.Channel.ID), subscriptionAccountIDFromPlan(plan))
+	reservation, err := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), requestID, estimateRawTokens(rewrittenFirstMessage), s.BillingModelName(clientModel, plan.ResolvedModel, plan.ResolvedModel), fmt.Sprintf("%d", plan.Channel.ID), subscriptionAccountIDFromPlan(plan), plan.Auth.RoutingContext)
 	if err != nil {
 		execution.resultLabel = "client_error"
 		closeOpenAIWSClientConn(wsConn, coderws.StatusTryAgainLater, "quota reservation failed")
@@ -254,11 +256,12 @@ func (s *HTTPServer) replaceResponsesWSReservation(
 	return s.reserveQuota(
 		ctx,
 		fmt.Sprintf("%d", plan.Auth.UserID),
-		requestID,
+		generateRequestID(), // A released attempt cannot reuse its idempotency key.
 		estimateRawTokens(rewritten),
 		s.BillingModelName(clientModel, resolvedModel, resolvedModel),
 		fmt.Sprintf("%d", channel.ID),
 		routingSubscriptionAccountID(channel),
+		plan.Auth.RoutingContext,
 	)
 }
 
@@ -611,6 +614,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 
 		turnCommits := 0
+		v2Turns := s.newRoutingWSTurns(extractOpenAIBearerToken(r), clientModel, resolvedModel, plan, currentChannel, reservation)
 		// Per-turn usage logging / quota commit. Closure captures the current
 		// channel so failover switches log against the right channel.
 		onTurnComplete := func(turn openAIWSTurnResult) {
@@ -663,10 +667,15 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			// long-lived and multi-turn, so reusing one reservation id for every
 			// turn would under-bill (or double-commit) every turn after the first.
 			turnReservationID := reservation.ReservationId
-			if turnCommits > 0 {
+			if v2Turns != nil {
+				turnReservationID = ""
+				if admitted := v2Turns.take(); admitted != nil {
+					turnReservationID = admitted.ReservationId
+				}
+			} else if turnCommits > 0 {
 				turnReservationID = ""
 				if s.billingClient != nil {
-					if turnRes, rerr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, s.BillingModelName(clientModel, resolvedModel, resolvedModel), fmt.Sprintf("%d", currentChannel.ID), routingSubscriptionAccountID(currentChannel)); rerr == nil && turnRes != nil {
+					if turnRes, rerr := s.reserveQuota(ctx, fmt.Sprintf("%d", plan.Auth.UserID), turnID, actualTotal, s.BillingModelName(clientModel, resolvedModel, resolvedModel), fmt.Sprintf("%d", currentChannel.ID), routingSubscriptionAccountID(currentChannel), plan.Auth.RoutingContext); rerr == nil && turnRes != nil {
 						turnReservationID = turnRes.ReservationId
 					} else {
 						applogger.Log.Warn("failed to reserve openai ws turn quota",
@@ -691,28 +700,33 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 			// resume the chain on the same channel.
 			if turn.requestID != "" {
 				s.storeResponseRoute(turn.requestID, responseRoute{
-					Model:                 clientModel,
-					GlobalModel:           plan.BaseModel(),
-					ResolvedModel:         resolvedModel,
-					Channel:               *currentChannel,
-					UserID:                plan.Auth.UserID,
+					Model:         clientModel,
+					GlobalModel:   plan.BaseModel(),
+					ResolvedModel: resolvedModel,
+					Channel:       *currentChannel,
+					UserID:        plan.Auth.UserID,
+					TokenID:       plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth),
 					SubscriptionAccountID: routingSubscriptionAccountID(currentChannel),
 				})
 				if s.wsSticky != nil {
-					s.wsSticky.BindResponseRoute(ctx, plan.Auth.Group, turn.requestID, currentChannel, s.openAIWSStickyTTL())
+					s.wsSticky.BindResponseRoute(ctx, routingSessionScope(plan.Auth), turn.requestID, currentChannel, s.openAIWSStickyTTL())
 				}
 			}
 			if s.wsSticky != nil && strings.TrimSpace(sessionHash) != "" {
-				s.wsSticky.BindSessionRoute(ctx, plan.Auth.Group, sessionHash, currentChannel, s.openAIWSStickyTTL())
+				s.wsSticky.BindSessionRoute(ctx, routingSessionScope(plan.Auth), sessionHash, currentChannel, s.openAIWSStickyTTL())
 			}
 			turnCommits++
 		}
 
-		relayResult, relayExit := relayOpenAIWSFrames(ctx, clientFrameConn, pooledConn.FrameConn(), rewrittenFirstMessage, openAIWSRelayOptions{
+		relayOptions := openAIWSRelayOptions{
 			writeTimeout:   s.openAIWSWriteTimeout(),
 			idleTimeout:    s.openAIWSIdleTimeout(),
 			onTurnComplete: onTurnComplete,
-		})
+		}
+		if v2Turns != nil {
+			relayOptions.beforeWriteUp = v2Turns.beforeWrite
+		}
+		relayResult, relayExit := relayOpenAIWSFrames(ctx, clientFrameConn, pooledConn.FrameConn(), rewrittenFirstMessage, relayOptions)
 
 		// Release the pooled connection. Mark broken if the relay errored so the
 		// pool doesn't hand a dead conn to the next request.
@@ -737,6 +751,7 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		// terminate; retrying would double-send to the client.
 		canFailover := relayExit != nil &&
 			relayExit.err != nil &&
+			!errors.Is(relayExit.err, errWSRoutingAdmission) &&
 			!relayExit.wroteDownstream &&
 			turnCommits == 0 &&
 			attempt < maxSwitches
@@ -768,7 +783,21 @@ func (s *HTTPServer) runResponsesWSRelayWithFailover(
 		}
 
 		// Terminal path: either success or unrecoverable failure.
-		if turnCommits == 0 {
+		pendingCovered := false
+		if v2Turns != nil {
+			if pending := v2Turns.take(); pending != nil {
+				// The pending turn reservation usually IS the connection-level
+				// reservation (seeded with it and untouched when no turn was
+				// admitted); release each distinct id exactly once.
+				if reservation != nil && pending.ReservationId == reservation.ReservationId {
+					pendingCovered = true
+				}
+				releaseCtx, cancel := detachedBillingContext(ctx)
+				_ = s.releaseQuota(releaseCtx, pending.ReservationId, "no completed websocket turn")
+				cancel()
+			}
+		}
+		if turnCommits == 0 && !pendingCovered {
 			if releaseErr := s.releaseQuota(ctx, reservation.ReservationId, "no completed ws turn"); releaseErr != nil {
 				applogger.Log.Warn("failed to release openai ws reservation", zap.String("request_id", requestID), zap.Error(releaseErr))
 			}
@@ -900,6 +929,9 @@ func (s *HTTPServer) maybeFailoverChannel(
 	if !relaybiz.DefaultRetryPolicy().IsRetryable(cause) {
 		return false
 	}
+	if err := relaybiz.RecheckRoutingAdmission(ctx, plan.Auth, clientModel); err != nil {
+		return false
+	}
 	selected, err := s.relayUsecase.SelectFallbackRoutingSource(ctx, plan.Auth.Group, clientModel, plan.BaseModel(), excluded)
 	if err != nil || selected == nil || relaybiz.SameRoutingSource(selected, failed) {
 		return false
@@ -920,8 +952,13 @@ func (s *HTTPServer) lookupWSStickyRoute(ctx context.Context, token, clientModel
 	if err != nil {
 		return false
 	}
-	source := s.wsSticky.LookupResponseRoute(ctx, authSnapshot.Group, responseID)
-	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, route)
+	source, groupID := s.lookupWSScopedSticky(ctx, authSnapshot, responseID, func(scope, id string) openAIWSStickySource {
+		return s.wsSticky.LookupResponseRoute(ctx, scope, id)
+	})
+	if source.id <= 0 {
+		return false
+	}
+	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, groupID, route)
 }
 
 func (s *HTTPServer) lookupWSStickySessionRoute(ctx context.Context, token, clientModel, sessionHash string, route *responseRoute) bool {
@@ -932,8 +969,41 @@ func (s *HTTPServer) lookupWSStickySessionRoute(ctx context.Context, token, clie
 	if err != nil {
 		return false
 	}
-	source := s.wsSticky.LookupSessionRoute(ctx, authSnapshot.Group, sessionHash)
-	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, route)
+	source, groupID := s.lookupWSScopedSticky(ctx, authSnapshot, sessionHash, func(scope, id string) openAIWSStickySource {
+		return s.wsSticky.LookupSessionRoute(ctx, scope, id)
+	})
+	if source.id <= 0 {
+		return false
+	}
+	return s.materializeWSStickySource(ctx, authSnapshot, clientModel, source, groupID, route)
+}
+
+// lookupWSScopedSticky tries the token's natural scope first, then — for
+// ordered tokens, whose bound group varies per conversation — every ordered
+// candidate scope. Binds are written under the resolved group
+// (routingSessionScope), so without the candidate scan an ordered-token
+// lookup under the proto scope (g0) would miss forever and a bound
+// conversation could silently move groups across replicas.
+func (s *HTTPServer) lookupWSScopedSticky(ctx context.Context, authSnapshot *identityv1.GetAuthSnapshotReply, id string, lookup func(scope, id string) openAIWSStickySource) (openAIWSStickySource, int64) {
+	source := lookup(protoSessionScope(authSnapshot), id)
+	if source.id > 0 {
+		return source, selectedProtoGroupID(authSnapshot)
+	}
+	if authSnapshot == nil || authSnapshot.RoutingFacts == nil || authSnapshot.RoutingFacts.TokenMode != "ordered" {
+		return openAIWSStickySource{}, 0
+	}
+	tried := map[int64]bool{selectedProtoGroupID(authSnapshot): true}
+	for _, gid := range routing.OrderedGroupIDs(routingdto.FactsFromProto(authSnapshot.RoutingFacts)) {
+		if gid <= 0 || tried[gid] {
+			continue
+		}
+		tried[gid] = true
+		scope := fmt.Sprintf("v2/u%d/t%d/g%d", authSnapshot.UserId, authSnapshot.TokenId, gid)
+		if source := lookup(scope, id); source.id > 0 {
+			return source, gid
+		}
+	}
+	return openAIWSStickySource{}, 0
 }
 
 func (s *HTTPServer) materializeWSStickySource(
@@ -941,6 +1011,7 @@ func (s *HTTPServer) materializeWSStickySource(
 	authSnapshot *identityv1.GetAuthSnapshotReply,
 	clientModel string,
 	source openAIWSStickySource,
+	routingGroupID int64,
 	route *responseRoute,
 ) bool {
 	if s == nil || authSnapshot == nil || route == nil || source.id <= 0 {
@@ -959,18 +1030,23 @@ func (s *HTTPServer) materializeWSStickySource(
 			return false
 		}
 		*route = responseRoute{
-			Channel:               *channel,
-			Account:               account,
-			UserID:                authSnapshot.UserId,
+			Channel: *channel,
+			Account: account,
+			UserID:  authSnapshot.UserId,
+			TokenID: authSnapshot.TokenId, RoutingGroupID: routingGroupID,
 			SubscriptionAccountID: account.ID,
 		}
 		return true
 	case relaybiz.UpstreamRouteChannel:
+		permission, err := s.checkStoredSource(ctx, authSnapshot.Group, clientModel, routing.Source{Kind: routing.Channel, ID: source.id})
+		if err != nil || !permission.Allowed {
+			return false
+		}
 		if s.channelClient == nil {
 			return false
 		}
 		chInfo, err := s.channelClient.GetChannel(ctx, &channelv1.GetChannelRequest{ChannelId: source.id})
-		if err != nil || chInfo == nil || chInfo.Channel == nil {
+		if err != nil || chInfo == nil || chInfo.Channel == nil || chInfo.Channel.Status != 1 {
 			return false
 		}
 		ch := relaybiz.Channel{
@@ -985,13 +1061,13 @@ func (s *HTTPServer) materializeWSStickySource(
 			Weight:          chInfo.Channel.Weight,
 			Key:             chInfo.Channel.Key,
 			ModelMapping:    chInfo.Channel.ModelMapping,
-			UpstreamModelID: chInfo.Channel.UpstreamModelId,
+			UpstreamModelID: permission.UpstreamModelID,
 			RestrictModels:  chInfo.Channel.RestrictModels,
 		}
 		if chInfo.Channel.Config != nil {
 			ch.Config = relaybiz.ChannelConfig{APIVersion: chInfo.Channel.Config.ApiVersion}
 		}
-		*route = responseRoute{Channel: ch, UserID: authSnapshot.UserId}
+		*route = responseRoute{Channel: ch, UserID: authSnapshot.UserId, TokenID: authSnapshot.TokenId, RoutingGroupID: routingGroupID}
 		return true
 	default:
 		return false

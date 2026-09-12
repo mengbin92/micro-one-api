@@ -3,9 +3,11 @@ package data
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"micro-one-api/app/billing/internal/biz"
+	"micro-one-api/pkg/jsonx"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 
@@ -33,7 +35,11 @@ func (r *reservationRepo) CreateReservation(ctx context.Context, reservation *bi
 
 func (r *reservationRepo) CreateReservationInTx(ctx context.Context, tx subscriptionbiz.Tx, reservation *biz.Reservation) error {
 	db := txDB(tx)
+	if reservation.RequestSnapshot == nil {
+		db = db.Omit("RequestSnapshot", "RequestSnapshotHash", "SubscriptionAccountingUSD")
+	}
 	model := &reservationModel{
+		SubscriptionAccountingUSD:      reservation.SubscriptionAccountingUSD,
 		ReservationID:                  reservation.ReservationID,
 		UserID:                         reservation.UserID,
 		RequestID:                      reservation.RequestID,
@@ -54,6 +60,20 @@ func (r *reservationRepo) CreateReservationInTx(ctx context.Context, tx subscrip
 		ExpiredAt:                      timePtr(reservation.ExpiredAt),
 	}
 
+	if reservation.RequestSnapshot != nil {
+		if err := reservation.RequestSnapshot.Validate(); err != nil {
+			return err
+		}
+		encoded, err := jsonx.Marshal(reservation.RequestSnapshot)
+		if err != nil {
+			return biz.ErrRequestSnapshotInvalid
+		}
+		hash, err := reservation.RequestSnapshot.Digest()
+		if err != nil {
+			return biz.ErrRequestSnapshotInvalid
+		}
+		model.RequestSnapshot, model.RequestSnapshotHash = stringPtr(string(encoded)), &hash
+	}
 	if err := db.Create(model).Error; err != nil {
 		return err
 	}
@@ -78,7 +98,7 @@ func (r *reservationRepo) GetReservationInTx(ctx context.Context, tx subscriptio
 		return nil, err
 	}
 
-	return reservationFromModel(&model), nil
+	return reservationFromModel(&model)
 }
 
 func (r *reservationRepo) FindByRequestID(ctx context.Context, requestID string) (*biz.Reservation, error) {
@@ -90,7 +110,7 @@ func (r *reservationRepo) FindByRequestID(ctx context.Context, requestID string)
 		return nil, err
 	}
 
-	return reservationFromModel(&model), nil
+	return reservationFromModel(&model)
 }
 
 // FindByRequestIDInTx is the row-locked variant of FindByRequestID. It
@@ -112,7 +132,7 @@ func (r *reservationRepo) FindByRequestIDInTx(ctx context.Context, tx subscripti
 		}
 		return nil, err
 	}
-	return reservationFromModel(&model), nil
+	return reservationFromModel(&model)
 }
 
 func (r *reservationRepo) UpdateReservationStatus(ctx context.Context, reservationID string, status string) error {
@@ -225,28 +245,63 @@ func (r *reservationRepo) SumActiveFrozenInTx(ctx context.Context, tx subscripti
 func (r *reservationRepo) GetExpiredReservations(ctx context.Context) ([]*biz.Reservation, error) {
 	var models []reservationModel
 	now := time.Now()
-	if err := r.data.db.WithContext(ctx).
-		Where("status = ? AND expired_at < ?", "reserved", now).
-		Find(&models).Error; err != nil {
+	query := r.data.db.WithContext(ctx).Where("status = ?", biz.ReservationStatusReserved)
+	if isSQLite(dialectorName(r.data.db)) {
+		// INTEGER epochs and GORM timestamps coexist in historical SQLite
+		// databases. Comparing a number to a text parameter expires future
+		// numeric rows too; normalize both representations before comparing.
+		query = query.Where("CASE WHEN typeof(expired_at) IN ('integer', 'real') THEN julianday(expired_at, 'unixepoch') ELSE julianday(expired_at) END < julianday(?)", now.UTC().Format(time.RFC3339Nano))
+	} else {
+		query = query.Where("expired_at < ?", now)
+	}
+	if err := query.Find(&models).Error; err != nil {
 		return nil, err
 	}
 
 	reservations := make([]*biz.Reservation, len(models))
 	for i := range models {
-		reservations[i] = reservationFromModel(&models[i])
+		var err error
+		reservations[i], err = reservationFromModel(&models[i])
+		if err != nil {
+			return nil, err
+		}
 	}
 	return reservations, nil
 }
 
-func reservationFromModel(model *reservationModel) *biz.Reservation {
+func reservationFromModel(model *reservationModel) (*biz.Reservation, error) {
 	if model == nil {
-		return nil
+		return nil, nil
+	}
+	var snapshot *biz.RequestSnapshot
+	if model.RequestSnapshot != nil {
+		snapshot = &biz.RequestSnapshot{}
+		if jsonx.Unmarshal([]byte(*model.RequestSnapshot), snapshot) != nil || snapshot.Validate() != nil {
+			return nil, biz.ErrRequestSnapshotInvalid
+		}
+		hash, err := snapshot.Digest()
+		if err != nil || model.RequestSnapshotHash == nil || hash != *model.RequestSnapshotHash || snapshot.Model != stringFromPtr(model.Model) {
+			return nil, biz.ErrRequestSnapshotInvalid
+		}
+		if snapshot.Routing != nil && strconv.FormatInt(snapshot.Routing.UserID, 10) != model.UserID {
+			return nil, biz.ErrRequestSnapshotInvalid
+		}
+		if (snapshot.Subscription != nil) != (model.SubscriptionID > 0) {
+			return nil, biz.ErrRequestSnapshotInvalid
+		}
+		if f := snapshot.Subscription; f != nil && (f.SubscriptionID != model.SubscriptionID || f.DailyWindowStart != model.SubscriptionDailyWindowStart || f.WeeklyWindowStart != model.SubscriptionWeeklyWindowStart || f.MonthlyWindowStart != model.SubscriptionMonthlyWindowStart || model.SubscriptionAccountingUSD == nil) {
+			return nil, biz.ErrRequestSnapshotInvalid
+		}
+	} else if model.RequestSnapshotHash != nil || model.SubscriptionAccountingUSD != nil {
+		return nil, biz.ErrRequestSnapshotInvalid
 	}
 	balanceAmount := model.BalanceAmount
 	if balanceAmount == 0 {
 		balanceAmount = model.LegacyBalanceAmountQuota
 	}
 	return &biz.Reservation{
+		RequestSnapshot:                snapshot,
+		SubscriptionAccountingUSD:      model.SubscriptionAccountingUSD,
 		ReservationID:                  model.ReservationID,
 		UserID:                         model.UserID,
 		RequestID:                      model.RequestID,
@@ -265,7 +320,19 @@ func reservationFromModel(model *reservationModel) *biz.Reservation {
 		CreatedAt:                      model.CreatedAt,
 		UpdatedAt:                      model.UpdatedAt,
 		ExpiredAt:                      timeFromPtr(model.ExpiredAt),
-	}
+	}, nil
+}
+
+// SumActiveFrozenAccountingInTx preserves each reservation's own Q. Only
+// pre-v2 rows use the legacy live multiplier because no prior evidence exists.
+func (r *reservationRepo) SumActiveFrozenAccountingInTx(ctx context.Context, tx subscriptionbiz.Tx, userID string, subscriptionID, dailyStart, weeklyStart, monthlyStart int64, legacyMultiplier float64) (float64, float64, float64, error) {
+	var sum struct{ Daily, Weekly, Monthly float64 }
+	err := txDB(tx).WithContext(ctx).Raw(`SELECT
+	 COALESCE(SUM(CASE WHEN subscription_daily_window_start = ? THEN COALESCE(subscription_accounting_usd, subscription_amount_usd * ?) ELSE 0 END), 0) AS daily,
+	 COALESCE(SUM(CASE WHEN subscription_weekly_window_start = ? THEN COALESCE(subscription_accounting_usd, subscription_amount_usd * ?) ELSE 0 END), 0) AS weekly,
+	 COALESCE(SUM(CASE WHEN subscription_monthly_window_start = ? THEN COALESCE(subscription_accounting_usd, subscription_amount_usd * ?) ELSE 0 END), 0) AS monthly
+	 FROM billing_reservations WHERE user_id = ? AND subscription_id = ? AND status = ?`, dailyStart, legacyMultiplier, weeklyStart, legacyMultiplier, monthlyStart, legacyMultiplier, userID, subscriptionID, biz.ReservationStatusReserved).Scan(&sum).Error
+	return sum.Daily, sum.Weekly, sum.Monthly, err
 }
 
 func stringPtr(s string) *string {
@@ -294,4 +361,25 @@ func timeFromPtr(t *time.Time) time.Time {
 		return time.Time{}
 	}
 	return *t
+}
+
+func (r *reservationRepo) RequestSnapshots(ctx context.Context, ids []string) (map[string]*biz.RequestSnapshot, error) {
+	out := map[string]*biz.RequestSnapshot{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []reservationModel
+	if err := r.data.db.WithContext(ctx).Where("reservation_id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		v, err := reservationFromModel(&rows[i])
+		if err != nil {
+			return nil, err
+		}
+		if v.RequestSnapshot != nil {
+			out[rows[i].ReservationID] = v.RequestSnapshot
+		}
+	}
+	return out, nil
 }

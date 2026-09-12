@@ -13,9 +13,12 @@ import (
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	"micro-one-api/domain/routing"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	relaybiz "micro-one-api/internal/biz"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
+	"micro-one-api/platform/routingdto"
 
 	"micro-one-api/pkg/safecast"
 )
@@ -109,7 +112,23 @@ func (s *HTTPServer) logPostResponseCommitError(err error) {
 	}
 }
 
-func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64) (*billingv1.ReserveQuotaResponse, error) {
+func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64, contexts ...*routing.ResolvedRoutingContext) (*billingv1.ReserveQuotaResponse, error) {
+	var routingContext *routing.ResolvedRoutingContext
+	if len(contexts) > 0 {
+		routingContext = contexts[0]
+	}
+	if relaybiz.RoutingContextV2Enabled() && routingContext == nil {
+		return nil, fmt.Errorf("missing resolved routing context")
+	}
+	if routingContext != nil {
+		if err := routingContext.Validate(); err != nil {
+			return nil, err
+		}
+		capability, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
+		if err != nil || capability.GetRequestSnapshotVersion() != 2 || (routingContext.TokenMode == "fixed" && !capability.GetFixedRouting()) || (subscriptionbiz.EntitlementsEnabled() && !capability.GetSubscriptionContracts()) {
+			return nil, fmt.Errorf("billing routing capability unavailable")
+		}
+	}
 	// P3 #6: the model name used for billing is derived from the configured
 	// billing_model_source. Callers ALREADY apply BillingModelName at each
 	// call site (chat/anthropic/responses/ws) before passing the result as
@@ -118,12 +137,17 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	// configured source, not necessarily plan.ResolvedModel. The client-
 	// facing name is threaded via the request context separately where needed.
 	req := &billingv1.ReserveQuotaRequest{
+		RoutingContext:        routingdto.ContextToProto(routingContext),
 		UserId:                userID,
 		RequestId:             requestID,
 		EstimatedTokens:       estimatedTokens,
 		Model:                 model,
 		ChannelId:             channelID,
 		SubscriptionAccountId: subscriptionAccountID,
+	}
+	bound := routing.GetCostBound(ctx)
+	if bound.Valid() {
+		req.CostBound = &billingv1.RequestCostBound{Protocol: bound.Protocol, InputTokens: bound.InputTokens, UpstreamModel: bound.UpstreamModel}
 	}
 	resp, err := s.billingClient.ReserveQuota(ctx, req)
 	if err != nil {
@@ -133,6 +157,12 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	if resp == nil || !resp.GetSuccess() {
 		recordRelayQuotaOutcome(ctx, "reserve_error")
 		return resp, stderrors.New(billingErrorMessage(resp, "reserve quota failed"))
+	}
+	if routingContext != nil && (resp.RequestSnapshotVersion != 2 || resp.RoutingContextHash != routingContext.Digest() || len(resp.RequestSnapshotHash) != 64) {
+		if resp.ReservationId != "" {
+			_ = s.releaseQuota(ctx, resp.ReservationId, "billing routing capability mismatch")
+		}
+		return nil, fmt.Errorf("billing routing snapshot mismatch")
 	}
 	recordRelayQuotaOutcome(ctx, "reserve_success")
 	return resp, nil

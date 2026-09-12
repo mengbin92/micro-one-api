@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/routing"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +63,19 @@ type recordingChannelClient struct {
 	byID                  map[int64]*SubscriptionAccount
 	getByIDErr            error
 	getByIDCalls          []int64
+}
+
+func (c *recordingChannelClient) CanRoute(_ context.Context, group, model string, source routing.Source) (routing.Permission, error) {
+	if source.Kind == routing.Channel {
+		return routing.Permission{Allowed: source.ID == 1}, nil
+	}
+	accounts := append([]*SubscriptionAccount{c.byID[source.ID], c.subscription}, c.subscriptions...)
+	for _, account := range accounts {
+		if account != nil && account.ID == source.ID {
+			return routing.Permission{Allowed: account.Status == 1 && routing.ContainsGroup(account.Group, group) && accountServesModel(account, model, model)}, nil
+		}
+	}
+	return routing.Permission{}, c.getByIDErr
 }
 
 func (c *recordingChannelClient) SelectChannel(_ context.Context, group, model string, _ bool) (*Channel, error) {
@@ -1181,4 +1196,23 @@ func TestApplyPerAccountModelMapping_MostSpecificWildcard(t *testing.T) {
 			t.Fatalf("iter %d: claude-opus-4 = %s, want claude-family", i, got)
 		}
 	}
+}
+
+// accountServesModel implements the explicit model grants in this test double.
+func accountServesModel(account *SubscriptionAccount, clientModel, resolvedModel string) bool {
+	if account == nil || len(account.Models) == 0 {
+		return true
+	}
+	client := RelayModelName(clientModel)
+	resolved := RelayModelName(resolvedModel)
+	for _, m := range account.Models {
+		m = RelayModelName(m)
+		if m == "" {
+			continue
+		}
+		if strings.EqualFold(m, client) || (resolved != "" && strings.EqualFold(m, resolved)) {
+			return true
+		}
+	}
+	return false
 }

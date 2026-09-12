@@ -31,6 +31,12 @@ func (r *capturingPaymentRepo) CreateOrder(ctx context.Context, order *PaymentOr
 func (r *capturingPaymentRepo) GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error) {
 	return nil, nil
 }
+func (r *capturingPaymentRepo) AttachProviderResult(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error) {
+	return order, nil
+}
+func (r *capturingPaymentRepo) DeletePendingOrder(ctx context.Context, tradeNo string) error {
+	return nil
+}
 func (r *capturingPaymentRepo) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
 	return nil, 0, nil
 }

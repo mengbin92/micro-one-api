@@ -190,12 +190,12 @@ export function AdminSubscriptionGroupsPage() {
   const createMutation = useMutation({
     mutationFn: async (payload: GroupPayload) => {
       const res = await adminApiClient.post('/v1/admin/subscription-groups', payload);
-      ensureApiSuccess(res.data, t("分组创建失败"));
+      ensureApiSuccess(res.data, t("额度策略创建失败"));
     },
     onSuccess: () => {
       invalidate();
       setIsCreateOpen(false);
-      toast.success(t("订阅分组已创建"));
+      toast.success(t("订阅额度策略已创建"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -203,12 +203,12 @@ export function AdminSubscriptionGroupsPage() {
   const updateMutation = useMutation({
     mutationFn: async (payload: GroupPayload) => {
       const res = await adminApiClient.put(`/v1/admin/subscription-groups/${payload.id}`, payload);
-      ensureApiSuccess(res.data, t("分组更新失败"));
+      ensureApiSuccess(res.data, t("额度策略更新失败"));
     },
     onSuccess: () => {
       invalidate();
       setEditingDraft(null);
-      toast.success(t("订阅分组已保存"));
+      toast.success(t("订阅额度策略已保存"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -216,11 +216,11 @@ export function AdminSubscriptionGroupsPage() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await adminApiClient.delete(`/v1/admin/subscription-groups/${id}`);
-      ensureApiSuccess(res.data, t("分组删除失败"));
+      ensureApiSuccess(res.data, t("额度策略删除失败"));
     },
     onSuccess: () => {
       invalidate();
-      toast.success(t("订阅分组已删除"));
+      toast.success(t("订阅额度策略已删除"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -240,7 +240,7 @@ export function AdminSubscriptionGroupsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">{t("订阅分组")}</h2>
+        <h2 className="text-2xl font-semibold">{t("订阅额度策略")}</h2>
         <GroupDialog
           mode="create"
           open={isCreateOpen}
@@ -250,6 +250,8 @@ export function AdminSubscriptionGroupsPage() {
         />
       </div>
 
+      <p className="text-sm text-muted-foreground">{t("额度策略控制订阅的日、周、月额度。分配订阅不会改变用户的路由分组，也不会授予新的模型访问权限。")}</p>
+
       <AdminTableToolbar
         search={search}
         searchPlaceholder={t("按名称搜索...")}
@@ -258,11 +260,11 @@ export function AdminSubscriptionGroupsPage() {
       />
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', t("名称"), t("平台"), t("类型"), t("日限额"), t("周限额"), t("月限额"), t("倍率"), t("售价/有效期"), t("状态"), t("操作")]} />
+        <TableSkeleton columns={['ID', t("名称"), t("平台"), t("类型"), t("日限额"), t("周限额"), t("月限额"), t("额度消耗倍率"), t("售价/有效期"), t("状态"), t("操作")]} />
       ) : !groups || groups.length === 0 ? (
-        <EmptyState title={t("暂无订阅分组")} description={t("新建一个订阅分组以配置平台、配额限额与计费倍率。")} />
+        <EmptyState title={t("暂无订阅额度策略")} description={t("新建一个订阅额度策略以配置平台、配额限额与额度消耗倍率。")} />
       ) : visibleGroups.length === 0 ? (
-        <EmptyState title={t("没有匹配的分组")} description={t("清除搜索条件以查看全部分组。")} />
+        <EmptyState title={t("没有匹配的额度策略")} description={t("清除搜索条件以查看全部额度策略。")} />
       ) : (
         <div className="border rounded-lg">
           <Table>
@@ -275,7 +277,7 @@ export function AdminSubscriptionGroupsPage() {
                 <TableHead className="hidden lg:table-cell">{t("日限额")}</TableHead>
                 <TableHead className="hidden xl:table-cell">{t("周限额")}</TableHead>
                 <TableHead className="hidden xl:table-cell">{t("月限额")}</TableHead>
-                <TableHead className="hidden md:table-cell">{t("倍率")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("额度消耗倍率")}</TableHead>
                 <TableHead className="hidden lg:table-cell">{t("售价/有效期")}</TableHead>
                 <TableHead>{t("状态")}</TableHead>
                 <TableHead className="text-right">{t("操作")}</TableHead>
@@ -318,7 +320,7 @@ export function AdminSubscriptionGroupsPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        if (confirm(t(`确认删除订阅分组「${group.display_name || group.name}」？`))) {
+                        if (confirm(t("确认删除订阅额度策略「{name}」？", { name: group.display_name || group.name }))) {
                           deleteMutation.mutate(group.id);
                         }
                       }}
@@ -364,7 +366,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
 
   const handleSubmit = () => {
     if (!form.name.trim()) {
-      toast.error(t("分组名称为必填项"));
+      toast.error(t("额度策略名称为必填项"));
       return;
     }
     onSubmit(draftToPayload(form));
@@ -374,8 +376,8 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
   const body = (
     <DialogContent className="sm:max-w-lg">
       <DialogHeader>
-        <DialogTitle>{mode === 'create' ? t("新建订阅分组") : t("编辑订阅分组")}</DialogTitle>
-        <DialogDescription>{t("配置平台、订阅类型、日/周/月 USD 配额限额(留空表示不限)、计费倍率，以及用户自助购买的价格与有效期。")}</DialogDescription>
+        <DialogTitle>{mode === 'create' ? t("新建订阅额度策略") : t("编辑订阅额度策略")}</DialogTitle>
+        <DialogDescription>{t("配置平台、订阅类型、日/周/月 USD 配额限额(留空表示不限)、额度消耗倍率，以及用户自助购买的价格与有效期。")}</DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 pt-2 sm:grid-cols-2">
         <div className="space-y-2">
@@ -448,7 +450,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grp-rate">{t("计费倍率")}</Label>
+          <Label htmlFor="grp-rate">{t("额度消耗倍率")}</Label>
           <Input
             id="grp-rate"
             type="number"
@@ -457,6 +459,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
             onChange={(e) => setForm({ ...form, rateMultiplier: e.target.value })}
           />
         </div>
+        <p className="text-xs text-muted-foreground sm:col-span-2">{t("额度消耗倍率只影响订阅额度消耗速度；用户请求的价格由模型价格和路由分组价格倍率决定。平台是策略描述，不限制可调用模型。")}</p>
         <div className="space-y-2">
           <Label htmlFor="grp-price">{t("购买价格(USD)")}</Label>
           <Input
@@ -479,7 +482,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
             placeholder="30"
           />
         </div>
-        <p className="text-xs text-muted-foreground sm:col-span-2">{t("价格与有效期任一为 0 时，该分组仅供管理员分配、不在用户端出售。")}</p>
+        <p className="text-xs text-muted-foreground sm:col-span-2">{t("价格与有效期任一为 0 时，该额度策略仅供管理员分配、不在用户端出售。")}</p>
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="grp-status">{t("状态")}</Label>
           <select
@@ -504,7 +507,7 @@ function GroupDialog({ mode, open, onOpenChange, onSubmit, pending, draft }: Gro
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogTrigger render={<Button />}>
-          <Layers className="size-4" />{t("新建分组")}</DialogTrigger>
+          <Layers className="size-4" />{t("新建额度策略")}</DialogTrigger>
         {body}
       </Dialog>
     );

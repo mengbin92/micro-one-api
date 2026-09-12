@@ -73,6 +73,7 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 		billingModel,
 		fmt.Sprintf("%d", channel.ID),
 		subscriptionAccountIDFromPlan(plan),
+		plan.Auth.RoutingContext,
 	)
 	if err != nil {
 		return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: err}

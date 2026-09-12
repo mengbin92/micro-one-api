@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/routing"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"net/http"
 	"time"
+
+	"micro-one-api/platform/routingdto"
 
 	"micro-one-api/pkg/jsonx"
 
@@ -26,6 +30,7 @@ import (
 )
 
 type BillingService struct {
+	commerceUc *biz.SubscriptionCommerce
 	billingv1.UnimplementedBillingServiceServer
 	uc             *biz.BillingUsecase
 	asyncUc        *biz.AsyncBillingUsecase // optional; nil = synchronous path
@@ -89,8 +94,17 @@ func (s *BillingService) SetAsyncBillingUsecase(uc *biz.AsyncBillingUsecase) {
 }
 
 func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest) (*billingv1.ReserveQuotaResponse, error) {
-	reservation, err := s.uc.ReserveQuota(ctx, req.UserId, req.RequestId, req.EstimatedTokens, req.Model, req.ChannelId, req.SubscriptionAccountId)
+	if req == nil || req.UserId == "" || req.RequestId == "" || req.Model == "" || req.EstimatedTokens < 0 {
+		return nil, biz.ErrRoutingContextInvalid
+	}
+	if req.CostBound != nil {
+		ctx = routing.WithCostBound(ctx, routing.CostBound{Protocol: req.CostBound.Protocol, InputTokens: req.CostBound.InputTokens, UpstreamModel: req.CostBound.UpstreamModel})
+	}
+	reservation, err := s.uc.ReserveQuota(ctx, req.UserId, req.RequestId, req.EstimatedTokens, req.Model, req.ChannelId, req.SubscriptionAccountId, routingdto.ContextFromProto(req.RoutingContext))
 	if err != nil {
+		if req.RoutingContext != nil || errors.Is(err, biz.ErrRoutingContextConflict) {
+			return nil, err
+		}
 		return &billingv1.ReserveQuotaResponse{
 			Success:      false,
 			ErrorMessage: err.Error(),
@@ -109,11 +123,52 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 		SubscriptionId:     reservation.SubscriptionID,
 		BalanceAmount:      reservation.BalanceAmount,
 	}
+	if snapshot := reservation.RequestSnapshot; snapshot != nil {
+		resp.RequestSnapshotVersion = snapshot.Version
+		resp.RequestSnapshotHash, err = snapshot.Digest()
+		if err != nil {
+			return nil, err
+		}
+		if snapshot.Routing != nil {
+			resp.RoutingContextHash = snapshot.Routing.Digest()
+		}
+	}
 	if reservation.SubscriptionAmountUSD > 0 {
 		// Convert to nanodollars for stable int64 transport.
 		resp.SubscriptionAmountUsd = int64(reservation.SubscriptionAmountUSD * 1e9)
 	}
 	return resp, nil
+}
+
+func (s *BillingService) GetRoutingCapabilities(context.Context, *billingv1.GetRoutingCapabilitiesRequest) (*billingv1.GetRoutingCapabilitiesResponse, error) {
+	var version int32
+	if s.uc.RoutingSnapshotsAvailable() {
+		version = 2
+	}
+	return &billingv1.GetRoutingCapabilitiesResponse{RequestSnapshotVersion: version, FixedRouting: version == 2, SubscriptionContracts: version == 2 && subscriptionbiz.EntitlementsEnabled(), UserPriceOverrides: version == 2 && subscriptionbiz.EntitlementsEnabled()}, nil
+}
+
+func (s *BillingService) SetUserRoutingPrice(ctx context.Context, req *billingv1.SetUserRoutingPriceRequest) (*billingv1.SetUserRoutingPriceReply, error) {
+	version, err := s.uc.SetUserRoutingPrice(ctx, req.GetUserId(), req.GetRoutingGroupId(), req.GetPriceRatio())
+	if err != nil {
+		return nil, err
+	}
+	return &billingv1.SetUserRoutingPriceReply{Version: version}, nil
+}
+
+func (s *BillingService) ClearUserRoutingPrice(ctx context.Context, req *billingv1.ClearUserRoutingPriceRequest) (*billingv1.ClearUserRoutingPriceReply, error) {
+	if err := s.uc.ClearUserRoutingPrice(ctx, req.GetUserId(), req.GetRoutingGroupId()); err != nil {
+		return nil, err
+	}
+	return &billingv1.ClearUserRoutingPriceReply{}, nil
+}
+
+func (s *BillingService) CheckRoutingSettlement(ctx context.Context, req *billingv1.CheckRoutingSettlementRequest) (*billingv1.CheckRoutingSettlementReply, error) {
+	settlement, err := s.uc.CheckRoutingSettlement(ctx, req.GetUserId(), req.GetRoutingGroupId())
+	if err != nil {
+		return nil, err
+	}
+	return &billingv1.CheckRoutingSettlementReply{Allowed: settlement.Allowed, Reason: settlement.Reason}, nil
 }
 
 func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQuotaRequest) (*billingv1.CommitQuotaResponse, error) {
@@ -491,9 +546,26 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 		return nil, err
 	}
 
+	snapshots, err := s.uc.LedgerRequestSnapshots(ctx, ledgers)
+	if err != nil {
+		return nil, err
+	}
 	entries := make([]*commonv1.LedgerEntry, len(ledgers))
 	for i, ledger := range ledgers {
+		var groupID int64
+		var groupKey, hash string
+		if snap := snapshots[ledger.ReferenceID]; snap != nil {
+			groupKey = snap.GroupKey
+			hash, err = snap.Digest()
+			if err != nil {
+				return nil, err
+			}
+			if snap.Routing != nil {
+				groupID = snap.Routing.GroupID
+			}
+		}
 		entries[i] = &commonv1.LedgerEntry{
+			RoutingGroupId: groupID, RoutingGroupKey: groupKey, RequestSnapshotHash: hash,
 			Id:                     fmt.Sprintf("%d", ledger.ID),
 			UserId:                 ledger.UserID,
 			Amount:                 ledger.Amount,
@@ -577,8 +649,32 @@ func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetL
 		}
 	}
 
+	requestSnapshot, err := s.uc.GetRequestSnapshot(ctx, ledger.ReferenceID)
+	if err != nil {
+		return nil, err
+	}
+	var snapshotHash, snapshotJSON, groupKey string
+	var groupID int64
+	if requestSnapshot != nil {
+		snapshotHash, err = requestSnapshot.Digest()
+		if err != nil {
+			return nil, err
+		}
+		encoded, err := jsonx.Marshal(requestSnapshot)
+		if err != nil {
+			return nil, err
+		}
+		snapshotJSON, groupKey = string(encoded), requestSnapshot.GroupKey
+		if requestSnapshot.Routing != nil {
+			groupID = requestSnapshot.Routing.GroupID
+		}
+	}
 	return &billingv1.GetLedgerEntryResponse{
 		Entry: &commonv1.LedgerEntry{
+			RoutingGroupId:         groupID,
+			RoutingGroupKey:        groupKey,
+			RequestSnapshotHash:    snapshotHash,
+			RequestSnapshotJson:    snapshotJSON,
 			Id:                     fmt.Sprintf("%d", ledger.ID),
 			UserId:                 ledger.UserID,
 			Amount:                 ledger.Amount,
@@ -791,6 +887,7 @@ func (s *BillingService) CreatePaymentOrder(ctx context.Context, req *billingv1.
 		return &billingv1.PaymentOrderResponse{Success: false, ErrorMessage: "payment service is not configured"}, nil
 	}
 	order, err := s.paymentUc.CreateOrder(ctx, biz.CreatePaymentOrderRequest{
+		RequestID:   req.GetRequestId(),
 		UserID:      req.GetUserId(),
 		Channel:     req.GetChannel(),
 		AssetType:   req.GetAssetType(),

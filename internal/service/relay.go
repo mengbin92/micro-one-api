@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/routing"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	relayprovider "micro-one-api/domain/upstream/provider"
 	relaybiz "micro-one-api/internal/biz"
 	"micro-one-api/pkg/safecast"
+	"micro-one-api/platform/routingdto"
 
 	billingv1 "micro-one-api/api/billing/v1"
 	channelv1 "micro-one-api/api/channel/v1"
@@ -85,8 +88,15 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		estimatedTokens := estimateTokensForGRPC(providerReq)
 		resolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel())
 		providerReq.Model = resolvedModel
+		if plan.Auth.RoutingContext != nil {
+			capability, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
+			if err != nil || capability.GetRequestSnapshotVersion() != 2 || (plan.Auth.RoutingContext.TokenMode == "fixed" && !capability.GetFixedRouting()) || (subscriptionbiz.EntitlementsEnabled() && !capability.GetSubscriptionContracts()) {
+				return fmt.Errorf("billing routing capability unavailable")
+			}
+		}
 
 		reservation, reserveErr := s.billingClient.ReserveQuota(ctx, &billingv1.ReserveQuotaRequest{
+			RoutingContext:  routingdto.ContextToProto(plan.Auth.RoutingContext),
 			UserId:          fmt.Sprintf("%d", plan.Auth.UserID),
 			RequestId:       requestID,
 			EstimatedTokens: estimatedTokens,
@@ -95,6 +105,13 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		})
 		if reserveErr != nil {
 			return reserveErr
+		}
+		if reservation == nil || !reservation.Success {
+			return fmt.Errorf("quota reservation failed")
+		}
+		if c := plan.Auth.RoutingContext; c != nil && (reservation.RequestSnapshotVersion != 2 || reservation.RoutingContextHash != c.Digest() || len(reservation.RequestSnapshotHash) != 64) {
+			_, _ = s.billingClient.ReleaseQuota(ctx, &billingv1.ReleaseQuotaRequest{ReservationId: reservation.ReservationId, Reason: "routing snapshot mismatch"})
+			return fmt.Errorf("billing routing snapshot mismatch")
 		}
 
 		provider, provErr := s.providerFactory.CreateProviderWithConfig(ch.Type, ch.BaseURL, ch.Key, relayprovider.ProviderConfig{
@@ -157,9 +174,26 @@ func (s *RelayGrpcService) ListModels(ctx context.Context, req *relayv1.ListMode
 		return nil, err
 	}
 
-	modelsResp, err := s.channelClient.ListAvailableModels(ctx, &channelv1.ListAvailableModelsRequest{
-		Group: authResp.Group,
-	})
+	auth := &relaybiz.AuthSnapshot{UserID: authResp.UserId, TokenID: authResp.TokenId, Group: authResp.Group,
+		UserEnabled: authResp.UserEnabled, TokenEnabled: authResp.TokenEnabled, RoutingFacts: routingdto.FactsFromProto(authResp.RoutingFacts), RoutingContextVersion: authResp.RoutingContextVersion}
+	if err := s.relayUsecase.ResolveRoutingContext(ctx, auth, relaybiz.RoutingResolveOptions{}); err != nil {
+		return nil, err
+	}
+	authResp.Group = auth.Group
+	routingGroupID := routing.SelectedGroupID(auth.RoutingFacts)
+	if auth.RoutingContext != nil {
+		routingGroupID = auth.RoutingContext.GroupID
+	}
+	modelsReq := &channelv1.ListAvailableModelsRequest{
+		Group:          authResp.Group,
+		RoutingGroupId: routingGroupID,
+	}
+	if candidates := routing.OrderedGroupIDs(auth.RoutingFacts); len(candidates) > 0 {
+		// Ordered tokens list the union of their candidate groups' models.
+		modelsReq.RoutingGroupId = 0
+		modelsReq.RoutingGroupIds = candidates
+	}
+	modelsResp, err := s.channelClient.ListAvailableModels(ctx, modelsReq)
 	if err != nil {
 		return nil, err
 	}

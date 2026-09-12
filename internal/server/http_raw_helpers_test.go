@@ -60,6 +60,12 @@ type rawChannelClient struct {
 	upstreamModel  string
 	usageRequests  []*channelv1.RecordChannelUsageRequest
 	healthRequests []*channelv1.RecordChannelHealthRequest
+	denyRoute      bool
+	routeError     error
+}
+
+func (c rawChannelClient) CheckRoute(_ context.Context, req *channelv1.CheckRouteRequest, _ ...grpc.CallOption) (*channelv1.CheckRouteReply, error) {
+	return &channelv1.CheckRouteReply{Allowed: !c.denyRoute && req.Group == "default" && req.Model != "" && req.SourceId > 0 && req.SourceKind == "channel", UpstreamModelId: c.upstreamModel}, c.routeError
 }
 
 func (c rawChannelClient) ListAvailableModels(context.Context, *channelv1.ListAvailableModelsRequest, ...grpc.CallOption) (*channelv1.ListAvailableModelsReply, error) {

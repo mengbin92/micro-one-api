@@ -18,12 +18,22 @@ import (
 // Exercise the production single-connection pool and real migrations, rather
 // than AutoMigrate schemas or mocks that can hide nested pool acquisitions.
 func TestSQLiteSettlementSingleConnection(t *testing.T) {
-	for _, subscription := range []bool{false, true} {
-		name := "wallet"
-		if subscription {
-			name = "subscription"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		subscription bool
+		snapshot     bool
+	}{
+		{name: "wallet"},
+		{name: "subscription", subscription: true},
+		{name: "wallet_snapshot", snapshot: true},
+		{name: "subscription_snapshot", subscription: true, snapshot: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			subscription := tc.subscription
+			t.Setenv("BILLING_REQUEST_SNAPSHOT_V2", "false")
+			if tc.snapshot {
+				t.Setenv("BILLING_REQUEST_SNAPSHOT_V2", "true")
+			}
 			db, err := xdb.Open(xdb.DatabaseConfig{Driver: "sqlite3", DSN: filepath.Join(t.TempDir(), "lite.db")})
 			require.NoError(t, err)
 			sqlDB, err := db.DB()
@@ -51,6 +61,10 @@ func TestSQLiteSettlementSingleConnection(t *testing.T) {
 			defer cancel()
 			reservation, err := uc.ReserveQuota(ctx, "1", "lite-request", 100, "gpt-3.5-turbo", "1", 0)
 			require.NoError(t, err)
+			if tc.snapshot {
+				require.NotNil(t, reservation.RequestSnapshot)
+				require.NoError(t, db.Exec(`UPDATE system_options SET option_value = '{"gpt-3.5-turbo":9}' WHERE option_key = 'ModelRatio'`).Error)
+			}
 			cost, _, err := uc.CommitQuotaWithUsage(ctx, reservation.ReservationID, 10, true,
 				biz.LedgerUsage{PromptTokens: 10})
 			require.NoError(t, err)

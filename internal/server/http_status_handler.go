@@ -9,7 +9,9 @@ import (
 	"strings"
 
 	billingv1 "micro-one-api/api/billing/v1"
+	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/routingdto"
 )
 
 func (s *HTTPServer) handleModels(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +245,16 @@ func (s *HTTPServer) availableModelsForRequest(w http.ResponseWriter, r *http.Re
 		s.handleIdentityError(w, err)
 		return nil, false
 	}
-	modelsReply, err := s.listAvailableModels(r.Context(), authSnapshot.Group)
+	// Ordered tokens list the union of their candidate groups' models; a
+	// single group id would silently narrow the list to nothing (ordered
+	// tokens have no pinned group).
+	groupIDs := []int64{selectedProtoGroupID(authSnapshot)}
+	if authSnapshot.RoutingFacts != nil && authSnapshot.RoutingFacts.TokenMode == "ordered" {
+		if candidates := routing.OrderedGroupIDs(routingdto.FactsFromProto(authSnapshot.RoutingFacts)); len(candidates) > 0 {
+			groupIDs = candidates
+		}
+	}
+	modelsReply, err := s.listAvailableModels(r.Context(), authSnapshot.Group, groupIDs...)
 	if err != nil {
 		s.handleChannelError(w, err)
 		return nil, false

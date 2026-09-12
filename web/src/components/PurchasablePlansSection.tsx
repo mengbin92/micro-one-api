@@ -1,3 +1,4 @@
+import { ContractSummary, type SubscriptionContract } from '@/components/SubscriptionContract';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Check, Loader2, Wallet } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -21,6 +22,8 @@ import { t } from '@/lib/i18n';
 // Mirrors the subscription-group DTO returned by /api/v1/subscriptions/groups.
 // Only enabled groups with price_quota>0 and duration_days>0 are returned there.
 interface PurchasableGroup {
+  plan_id?: number;
+  contract?: SubscriptionContract;
   id: number;
   name: string;
   display_name: string;
@@ -43,6 +46,8 @@ interface PurchaseResponse {
 }
 
 interface PurchaseVariables {
+  planId?: number;
+  changeSubscriptionId?: number;
   groupId: number;
   paymentWindow?: Window | null;
 }
@@ -85,7 +90,7 @@ export function PurchasablePlansSection() {
     },
   });
 
-  const { data: plans, isLoading: plansLoading } = useQuery({
+  const { data: legacyGroups, isLoading: groupsLoading } = useQuery({
     queryKey: ['purchasable-subscription-groups'],
     queryFn: async () => {
       const res = await apiClient.get('/v1/subscriptions/groups');
@@ -94,15 +99,29 @@ export function PurchasablePlansSection() {
     },
   });
 
+
+  const { data: contractPlans, isLoading: contractPlansLoading } = useQuery({
+    queryKey: ['purchasable-subscription-plans'],
+    queryFn: async () => {
+      const res = await apiClient.get('/v1/subscriptions/plans');
+      if (res.data?.success === false) throw new Error(res.data.message || '套餐加载失败');
+      const rows = (res.data?.data ?? []) as { id: number; name: string; price_quota: number; validity_days: number; contract?: SubscriptionContract; group?: PurchasableGroup }[];
+      return rows.map((p): PurchasableGroup => ({ id: p.id, plan_id: p.id, name: p.name, display_name: p.name, platform: p.group?.platform ?? '', price_quota: p.price_quota, duration_days: p.validity_days, contract: p.contract, daily_limit_usd: p.contract ? p.contract.quota_policy.daily_limit_usd : p.group?.daily_limit_usd ?? null, weekly_limit_usd: p.contract ? p.contract.quota_policy.weekly_limit_usd : p.group?.weekly_limit_usd ?? null, monthly_limit_usd: p.contract ? p.contract.quota_policy.monthly_limit_usd : p.group?.monthly_limit_usd ?? null }));
+    },
+  });
+  const plans = contractPlans?.length ? contractPlans : legacyGroups;
+  const plansLoading = groupsLoading || contractPlansLoading;
+
   const purchase = useMutation({
-    mutationFn: async ({ groupId }: PurchaseVariables) => {
+    mutationFn: async ({ groupId, planId, changeSubscriptionId }: PurchaseVariables) => {
       if (!purchaseKeyRef.current) {
         purchaseKeyRef.current = crypto.randomUUID();
       }
       const res = await apiClient.post(
-        '/v1/subscriptions/purchase/payment',
+        changeSubscriptionId ? '/v1/subscriptions/change' : '/v1/subscriptions/purchase/payment',
         {
-          group_id: groupId,
+          ...(changeSubscriptionId ? { from_subscription_id: changeSubscriptionId, to_plan_id: planId } : {}),
+          ...(planId ? { plan_id: planId } : { group_id: groupId }),
           channel: 'alipay',
         },
         { headers: { 'Idempotency-Key': purchaseKeyRef.current } }
@@ -116,9 +135,9 @@ export function PurchasablePlansSection() {
       // The intent is definitively done (order created or subscription
       // granted): a fresh key is fine for the next purchase.
       purchaseKeyRef.current = null;
-      if (data.subscription) {
+      if (data.subscription || variables.changeSubscriptionId) {
         variables.paymentWindow?.close();
-        toast.success(t("订阅购买成功"));
+        toast.success(variables.changeSubscriptionId ? '订阅更换已受理，请查看当前权益；降档在目标套餐续费时生效。' : t("订阅购买成功"));
         setPendingPlan(null);
         void queryClient.invalidateQueries({ queryKey: ['my-subscription-progress'] });
         void queryClient.invalidateQueries({ queryKey: ['user-dashboard'] });
@@ -161,6 +180,7 @@ export function PurchasablePlansSection() {
   });
 
   const hasActive = !!progress;
+  const changeIntent = !!(progress && pendingPlan?.contract && progress.contract?.digest !== pendingPlan.contract.digest);
 
   return (
     <div className="space-y-3">
@@ -208,6 +228,7 @@ export function PurchasablePlansSection() {
                 <div className="text-2xl font-bold">
                   {formatUsd(plan.price_quota)}
                 </div>
+                <ContractSummary contract={plan.contract} />
                 <ul className="space-y-1.5 text-sm text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <CalendarClock className="size-4" />{t("有效期")}{plan.duration_days}{t("天")}</li>
@@ -220,11 +241,11 @@ export function PurchasablePlansSection() {
                 </ul>
                 <Button
                   className="mt-auto"
-                  disabled={hasActive || purchase.isPending}
+                  disabled={(hasActive && !plan.contract) || purchase.isPending}
                   onClick={() => setPendingPlan(plan)}
                 >
                   <Wallet className="size-4" />
-                  {hasActive ? t("已有生效订阅") : t("购买订阅")}
+                  {hasActive && plan.contract && progress?.contract?.digest === plan.contract.digest ? '续费订阅' : hasActive && plan.contract ? '更换套餐' : hasActive ? t("已有生效订阅") : t("购买订阅")}
                 </Button>
               </CardContent>
             </Card>
@@ -236,7 +257,7 @@ export function PurchasablePlansSection() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t("确认购买订阅")}</DialogTitle>
-            <DialogDescription>{t("将创建支付订单并跳转支付。套餐价格")}{' '}
+            <DialogDescription>{changeIntent ? '更换为所选合同；升级从钱包收取差价，降档在目标套餐续费时生效。已用额度保留。目标套餐价格' : t("将创建支付订单并跳转支付。套餐价格")}{' '}
               <strong>{pendingPlan ? formatUsd(pendingPlan.price_quota) : ''}</strong>{t("，开通「")}{pendingPlan?.display_name || pendingPlan?.name}{t("」订阅，有效期")}{' '}
               {pendingPlan?.duration_days}{t("天。")}</DialogDescription>
           </DialogHeader>
@@ -245,13 +266,13 @@ export function PurchasablePlansSection() {
             <Button
               onClick={() => {
                 if (!pendingPlan) return;
-                const paymentWindow = window.open('about:blank', '_blank');
+                const paymentWindow = changeIntent ? null : window.open('about:blank', '_blank');
                 if (paymentWindow) {
                   paymentWindow.opener = null;
                   paymentWindow.document.title = t("正在前往支付");
                   paymentWindow.document.body.innerHTML = t("<p style=\"font-family: sans-serif; padding: 24px;\">正在创建支付订单，请稍候...</p>");
                 }
-                purchase.mutate({ groupId: pendingPlan.id, paymentWindow });
+                purchase.mutate({ groupId: pendingPlan.id, planId: pendingPlan.plan_id, changeSubscriptionId: changeIntent ? progress?.id : undefined, paymentWindow });
               }}
               disabled={purchase.isPending}
             >

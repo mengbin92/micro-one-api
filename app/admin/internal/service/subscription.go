@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/pkg/jsonx"
 	"strconv"
 	"time"
 
@@ -43,6 +44,9 @@ func (s *AdminService) ResolveUserIDFromToken(ctx context.Context, token string)
 // ListPurchasableSubscriptionGroups returns only groups that admins have made
 // available for self-purchase: enabled, with a positive price and duration.
 func (s *AdminService) ListPurchasableSubscriptionGroups(ctx context.Context) ([]*subscriptionbiz.SubscriptionGroup, error) {
+	if subscriptionbiz.EntitlementsEnabled() {
+		return []*subscriptionbiz.SubscriptionGroup{}, nil
+	}
 	if s == nil || s.groupUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
 	}
@@ -163,6 +167,9 @@ func isPurchasablePlan(p *subscriptionbiz.SubscriptionPlan) bool {
 // double-charge the wallet (v0.18 P0). An empty requestID yields an auto key
 // (no idempotency guarantee, legacy-compatible).
 func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID int64, requestID string) (*subscriptionbiz.UserSubscription, error) {
+	if subscriptionbiz.EntitlementsEnabled() {
+		return nil, ErrSubscriptionNotPurchasable
+	}
 	if s == nil || s.subscriptionUc == nil || s.groupUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
 	}
@@ -223,6 +230,13 @@ func (s *AdminService) PurchaseSubscription(ctx context.Context, userID, groupID
 }
 
 func (s *AdminService) PurchaseSubscriptionPlan(ctx context.Context, userID, planID int64, requestID string) (*subscriptionbiz.UserSubscription, error) {
+	if subscriptionbiz.EntitlementsEnabled() {
+		result, err := s.executeSubscriptionCommerce(ctx, userID, planID, 0, "", requestID)
+		if err != nil {
+			return nil, err
+		}
+		return result.Subscription, nil
+	}
 	if s == nil || s.subscriptionUc == nil || s.groupUc == nil || s.planUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
 	}
@@ -395,6 +409,13 @@ func (s *AdminService) ExtendSubscription(ctx context.Context, id int64, expires
 // Now the wallet charge happens here, before ChangeSubscription, and the
 // ChargeResult.ChargedQuota only reflects a real charge.
 func (s *AdminService) ChangeSubscription(ctx context.Context, req subscriptionbiz.ChangeRequest, requestID string) (*subscriptionbiz.ChangeResult, error) {
+	if subscriptionbiz.EntitlementsEnabled() {
+		result, err := s.executeSubscriptionCommerce(ctx, req.UserID, req.ToPlanID, req.FromSubscriptionID, req.Policy, requestID)
+		if err != nil {
+			return nil, err
+		}
+		return result.Change, nil
+	}
 	if s == nil || s.subscriptionUc == nil {
 		return nil, ErrSubscriptionServiceNotConfigured
 	}
@@ -552,7 +573,7 @@ func (s *AdminService) ListSubscriptionGroups(ctx context.Context) ([]*subscript
 }
 
 // CreateSubscriptionPaymentOrder creates a payment order for subscription purchase.
-func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userID, groupID, planID int64, channel string, moneyCents int64, currency string) (subscription *subscriptionbiz.UserSubscription, paymentOrder *PaymentOrderInfo, err error) {
+func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userID, groupID, planID int64, channel string, moneyCents int64, currency string, requestIDs ...string) (subscription *subscriptionbiz.UserSubscription, paymentOrder *PaymentOrderInfo, err error) {
 	if s == nil || s.subscriptionUc == nil || s.groupUc == nil {
 		return nil, nil, ErrSubscriptionServiceNotConfigured
 	}
@@ -563,6 +584,16 @@ func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userI
 		return nil, nil, fmt.Errorf("invalid user id")
 	}
 
+	requestID := ""
+	if len(requestIDs) > 0 {
+		requestID = requestIDs[0]
+	}
+	if subscriptionbiz.EntitlementsEnabled() && (planID <= 0 || requestID == "") {
+		return nil, nil, ErrSubscriptionNotPurchasable
+	}
+	if subscriptionbiz.EntitlementsEnabled() {
+		return s.createContractPaymentOrder(ctx, userID, planID, channel, currency, requestID)
+	}
 	var group *subscriptionbiz.SubscriptionGroup
 	var plan *subscriptionbiz.SubscriptionPlan
 	priceQuota := int64(0)
@@ -610,6 +641,7 @@ func (s *AdminService) CreateSubscriptionPaymentOrder(ctx context.Context, userI
 	}
 
 	paymentResp, err := s.billingClient.CreatePaymentOrder(ctx, &billingv1.CreatePaymentOrderRequest{
+		RequestId:   requestID,
 		UserId:      userIDStr,
 		Channel:     channel,
 		AssetType:   "subscription",
@@ -832,4 +864,51 @@ func (s *AdminService) completeFromPlanSnapshot(ctx context.Context, userID int6
 		name = snap.ProductName
 	}
 	return s.assignOrExtendGroupSubscription(ctx, userID, group, durationDays, name, "")
+}
+
+type subscriptionCommerceResult struct {
+	Subscription *subscriptionbiz.UserSubscription
+	Change       *subscriptionbiz.ChangeResult
+	Balance      int64
+}
+
+func (s *AdminService) executeSubscriptionCommerce(ctx context.Context, user, plan, from int64, policy, request string) (*subscriptionCommerceResult, error) {
+	if s.billingClient == nil {
+		return nil, ErrSubscriptionServiceNotConfigured
+	}
+	key, err := normalizeRequestID(request)
+	if err != nil {
+		return nil, err
+	}
+	if key == "" {
+		return nil, fmt.Errorf("Idempotency-Key is required for subscription purchases and changes")
+	}
+	reply, err := s.billingClient.ExecuteSubscriptionCommerce(ctx, &billingv1.SubscriptionCommerceRequest{UserId: user, PlanId: plan, FromSubscriptionId: from, ChangePolicy: policy, RequestId: key})
+	if err != nil {
+		return nil, err
+	}
+	var result subscriptionCommerceResult
+	if err := jsonx.Unmarshal([]byte(reply.ResultJson), &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Billing owns new purchase snapshots and replay, including after a plan retires.
+func (s *AdminService) createContractPaymentOrder(ctx context.Context, userID, planID int64, channel, currency, requestID string) (*subscriptionbiz.UserSubscription, *PaymentOrderInfo, error) {
+	if channel == "" {
+		channel = "alipay"
+	}
+	if currency == "" {
+		currency = "CNY"
+	}
+	resp, err := s.billingClient.CreatePaymentOrder(ctx, &billingv1.CreatePaymentOrderRequest{UserId: strconv.FormatInt(userID, 10), PlanId: planID, RequestId: requestID, Channel: channel, Currency: currency, AssetType: "subscription", AssetAmount: 1, MoneyCents: 1})
+	if err != nil {
+		return nil, nil, err
+	}
+	if !resp.Success || resp.Order == nil {
+		return nil, nil, errors.New(resp.GetErrorMessage())
+	}
+	o := resp.Order
+	return nil, &PaymentOrderInfo{TradeNo: o.TradeNo, Channel: o.Channel, MoneyCents: o.MoneyCents, Currency: o.Currency, Status: o.Status, PayURL: o.PayUrl, AssetAmount: o.AssetAmount, GroupId: o.GroupId, PlanId: o.PlanId, CreatedAt: o.CreatedAt.AsTime().Unix()}, nil
 }

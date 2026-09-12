@@ -11,8 +11,11 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	"micro-one-api/domain/routing"
 	relaycredential "micro-one-api/domain/upstream/credential"
 	relaybiz "micro-one-api/internal/biz"
+	"micro-one-api/platform/routingclient"
+	"micro-one-api/platform/routingdto"
 )
 
 // IdentityAdapter wraps a gRPC IdentityServiceClient to implement biz.IdentityClient.
@@ -36,13 +39,15 @@ func (a *IdentityAdapter) GetAuthSnapshot(ctx context.Context, token, clientIP s
 		return nil, errors.New("token quota temporarily unavailable")
 	}
 	return &relaybiz.AuthSnapshot{
-		UserID:        reply.UserId,
-		TokenID:       reply.TokenId,
-		TokenName:     reply.TokenName,
-		Group:         reply.Group,
-		AllowedModels: reply.AllowedModels,
-		UserEnabled:   reply.UserEnabled,
-		TokenEnabled:  reply.TokenEnabled,
+		RoutingFacts:          routingdto.FactsFromProto(reply.RoutingFacts),
+		RoutingContextVersion: reply.RoutingContextVersion,
+		UserID:                reply.UserId,
+		TokenID:               reply.TokenId,
+		TokenName:             reply.TokenName,
+		Group:                 reply.Group,
+		AllowedModels:         reply.AllowedModels,
+		UserEnabled:           reply.UserEnabled,
+		TokenEnabled:          reply.TokenEnabled,
 	}, nil
 }
 
@@ -104,6 +109,20 @@ type ChannelAdapter struct {
 	// modelHealth moves the passive RecordModelHealth RPC off the request
 	// goroutine; see modelHealthQueue. Other methods stay synchronous.
 	modelHealth *modelHealthQueue
+}
+
+func (a *ChannelAdapter) GetRoutingGroup(ctx context.Context, id int64) (*routing.Group, error) {
+	return routingclient.New(a.client).GetRoutingGroup(ctx, id)
+}
+
+// HasRoutingCandidates is the read-only ordered-routing probe; it never
+// advances weighted-scheduler state.
+func (a *ChannelAdapter) HasRoutingCandidates(ctx context.Context, groupID int64, model string) (bool, error) {
+	reply, err := a.client.HasRoutingCandidates(ctx, &channelv1.HasRoutingCandidatesRequest{RoutingGroupId: groupID, Model: model})
+	if err != nil {
+		return false, err
+	}
+	return reply.GetHasCandidates(), nil
 }
 
 // NewChannelAdapter creates a new ChannelAdapter.

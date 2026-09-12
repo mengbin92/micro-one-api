@@ -16,6 +16,7 @@ import (
 
 // openAIWSRelayOptions configures the bidirectional Responses WebSocket relay.
 type openAIWSRelayOptions struct {
+	beforeWriteUp   func(context.Context, coderws.MessageType, []byte) ([]byte, error)
 	writeTimeout    time.Duration
 	idleTimeout     time.Duration
 	onTurnComplete  func(turn openAIWSTurnResult)
@@ -116,8 +117,8 @@ func shouldParseOpenAIWSUsage(eventType string) bool {
 // openAIWSRelayState tracks the accumulated usage, request model and turn
 // timing bookkeeping for a relay session.
 type openAIWSRelayState struct {
-	mu             sync.Mutex
-	usage          openAIWSRelayUsage
+	mu    sync.Mutex
+	usage openAIWSRelayUsage
 	// billedUsage is the cumulative usage already reported through
 	// onTurnComplete. st.usage accumulates across the whole connection, so
 	// per-turn callbacks must report only the delta since the last turn —
@@ -137,8 +138,8 @@ type openAIWSRelayState struct {
 // openAIWSTurnOutcome is the outcome evidence carried by a terminal event
 // payload (response.status plus response.error), independent of the event name.
 type openAIWSTurnOutcome struct {
-	status      string
-	errorCode   string
+	status       string
+	errorCode    string
 	errorMessage string
 }
 
@@ -411,6 +412,13 @@ func relayOpenAIWSFrames(
 	}
 
 	writeUpstream := func(msgType coderws.MessageType, payload []byte) error {
+		if opts.beforeWriteUp != nil {
+			var err error
+			payload, err = opts.beforeWriteUp(relayCtx, msgType, payload)
+			if err != nil {
+				return err
+			}
+		}
 		writeCtx, cancel := context.WithTimeout(relayCtx, writeTimeout)
 		defer cancel()
 		return upstreamConn.WriteFrame(writeCtx, msgType, payload)
@@ -433,9 +441,12 @@ func relayOpenAIWSFrames(
 	markActivity()
 
 	exitCh := make(chan openAIWSRelayExit, 3)
+	var pumps sync.WaitGroup
+	pumps.Add(2)
 
 	// client -> upstream pump
 	go func() {
+		defer pumps.Done()
 		for {
 			msgType, payload, err := readClientFrame(relayCtx, clientConn)
 			if err != nil {
@@ -458,6 +469,7 @@ func relayOpenAIWSFrames(
 
 	// upstream -> client pump
 	go func() {
+		defer pumps.Done()
 		wroteDownstream := false
 		for {
 			msgType, payload, err := upstreamConn.ReadFrame(relayCtx)
@@ -528,6 +540,7 @@ func relayOpenAIWSFrames(
 	// Best-effort close both sides; the pump that errored already noticed.
 	_ = upstreamConn.Close()
 	_ = clientConn.Close()
+	pumps.Wait()
 
 	usage, lastID, terminal := state.snapshot()
 	result.usage = usage

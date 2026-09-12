@@ -25,6 +25,12 @@ func (r *fakeRefundRepo) CreateOrder(ctx context.Context, order *PaymentOrder) (
 func (r *fakeRefundRepo) GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error) {
 	return nil, nil
 }
+func (r *fakeRefundRepo) AttachProviderResult(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error) {
+	return order, nil
+}
+func (r *fakeRefundRepo) DeletePendingOrder(ctx context.Context, tradeNo string) error {
+	return nil
+}
 func (r *fakeRefundRepo) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
 	return nil, 0, nil
 }

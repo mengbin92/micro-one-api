@@ -55,8 +55,13 @@ type ModelRoutingRepo interface {
 
 // ModelRoutingUsecase wraps ModelRoutingRepo with domain-level operations.
 type ModelRoutingUsecase struct {
-	repo ModelRoutingRepo
-	now  func() time.Time
+	repo             ModelRoutingRepo
+	now              func() time.Time
+	cacheInvalidator ModelsListCacheInvalidator
+}
+
+func (uc *ModelRoutingUsecase) SetCacheInvalidator(inv ModelsListCacheInvalidator) {
+	uc.cacheInvalidator = inv
 }
 
 // NewModelRoutingUsecase creates a new ModelRoutingUsecase.
@@ -99,7 +104,13 @@ func (uc *ModelRoutingUsecase) UpsertModelRouting(ctx context.Context, r *ModelR
 		r.CreatedAt = now
 	}
 	r.UpdatedAt = now
-	return uc.repo.UpsertModelRouting(ctx, r)
+	if err := uc.repo.UpsertModelRouting(ctx, r); err != nil {
+		return err
+	}
+	if uc.cacheInvalidator != nil {
+		uc.cacheInvalidator.invalidateModelsListCache()
+	}
+	return nil
 }
 
 // DeleteModelRouting removes a routing row by id.
@@ -110,7 +121,13 @@ func (uc *ModelRoutingUsecase) DeleteModelRouting(ctx context.Context, id int64)
 	if id <= 0 {
 		return ErrModelRoutingNotFound
 	}
-	return uc.repo.DeleteModelRouting(ctx, id)
+	if err := uc.repo.DeleteModelRouting(ctx, id); err != nil {
+		return err
+	}
+	if uc.cacheInvalidator != nil {
+		uc.cacheInvalidator.invalidateModelsListCache()
+	}
+	return nil
 }
 
 // RoutingMatchForSelect returns the enabled routing rows that match a

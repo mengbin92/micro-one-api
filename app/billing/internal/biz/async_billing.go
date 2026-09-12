@@ -309,13 +309,15 @@ func (uc *AsyncBillingUsecase) getCheckAndDeductScript() *string {
 	return uc.quotaLuaScript
 }
 
-// Settle performs the actual billing asynchronously. The provided ctx is
-// preserved for the fallback (queue-full) synchronous path so tracing and
-// deadlines are not lost (REVIEW_v1 P1-5). The background worker runs the
-// full CommitQuotaWithUsageAndSplit pipeline so the reservation lifecycle,
-// wallet settlement, ledger entry and subscription usage write all happen
-// exactly as on the synchronous path; only the gRPC caller is unblocked
-// before the DB work completes.
+// Settle performs the actual billing asynchronously. The provided ctx's
+// values are preserved for the fallback (queue-full or post-Close)
+// synchronous path so tracing survives, but its cancellation is dropped —
+// the caller may be shutting down by then, and a canceled ctx would skip
+// billing for an already-served request (REVIEW_v1 P1-5). The background
+// worker runs the full CommitQuotaWithUsageAndSplit pipeline so the
+// reservation lifecycle, wallet settlement, ledger entry and subscription
+// usage write all happen exactly as on the synchronous path; only the gRPC
+// caller is unblocked before the DB work completes.
 func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) {
 	if task == nil {
 		return
@@ -325,20 +327,35 @@ func (uc *AsyncBillingUsecase) Settle(ctx context.Context, task *SettleTask) {
 	// enqueued task would be silently dropped. Fall back to the
 	// synchronous commit pipeline instead. The pipeline is idempotent
 	// (see CommitQuotaWithUsageAndSplit -> CASReservationStatus), so
-	// concurrent retries are safe.
+	// concurrent retries are safe. The commit keeps the caller's context
+	// values (tracing) but drops cancellation: by the time this runs during
+	// shutdown the caller's ctx is often already canceled, which would
+	// silently skip billing for a served request.
 	if uc.closed.Load() {
 		metrics.AsyncBillingFallbackToSync.WithLabelValues().Inc()
-		uc.settleSync(ctx, task)
+		fallbackCtx, cancel := detachedSettleContext(ctx)
+		uc.settleSync(fallbackCtx, task)
+		cancel()
 		return
 	}
 	select {
 	case uc.settleQueue <- task:
 		metrics.AsyncBillingQueueSize.WithLabelValues().Set(float64(len(uc.settleQueue)))
 	default:
-		// Queue full: fallback to synchronous settle, preserving ctx.
+		// Queue full: fallback to synchronous settle, preserving values but
+		// not cancellation (see above).
 		metrics.AsyncBillingFallbackToSync.WithLabelValues().Inc()
-		uc.settleSync(ctx, task)
+		fallbackCtx, cancel := detachedSettleContext(ctx)
+		uc.settleSync(fallbackCtx, task)
+		cancel()
 	}
+}
+
+// detachedSettleContext keeps the caller's context values (trace spans) but
+// shields the synchronous commit pipeline from caller cancellation, with a
+// bounded deadline so a wedged commit cannot outlive the drain window.
+func detachedSettleContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 }
 
 // settleSync performs synchronous settlement as fallback. It runs the full
@@ -495,7 +512,11 @@ func (uc *AsyncBillingUsecase) processSettlement(task *SettleTask) {
 			)
 		}
 	}()
-	uc.runCommitPipeline(uc.workerCtx, task)
+	// Close cancels workerCtx to stop accepting queue work, but queued billing
+	// still has to commit. A bounded detached context also covers the drain.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(uc.workerCtx), 30*time.Second)
+	defer cancel()
+	uc.runCommitPipeline(ctx, task)
 }
 
 // Close closes the async billing use case and waits for workers to finish.

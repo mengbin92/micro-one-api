@@ -154,12 +154,15 @@ func TestSQLiteDialect_IncrementalUpgrade(t *testing.T) {
 		}
 	}
 	sort.Strings(files)
-	require.Len(t, files, 32, "sqlite tree has a known migration count; bump this test when adding mirrors")
+	require.Len(t, files, 41, "sqlite tree has a known migration count; bump this test when adding mirrors")
 
-	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql") // preserve the pre-price-normalization upgrade boundary
+	// Keep seeded legacy prices before 084 regardless of later appended migrations.
+	cut := sort.SearchStrings(files, "084_add_model_pricing_cache_read.sql")
+	require.Less(t, cut, len(files))
+	require.Equal(t, "084_add_model_pricing_cache_read.sql", files[cut])
 
 	db := openScratchSqlite(t)
-	// Stage 1: apply the tree up to (not including) 084 and later.
+	// Stage 1: apply the tree up to (not including) migration 084.
 	stage1 := tempDirWithFiles(t, files[:cut], dir)
 	r1 := NewWithDriver(db, stage1, "sqlite3")
 	applied1, err := r1.Apply(context.Background())

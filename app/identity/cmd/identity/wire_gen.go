@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"github.com/go-kratos/kratos/v3"
 	"github.com/go-kratos/kratos/v3/registry"
 	"github.com/google/wire"
@@ -16,7 +17,9 @@ import (
 	"micro-one-api/app/identity/internal/service"
 	"micro-one-api/platform/audit"
 	registry2 "micro-one-api/platform/registry"
+	"micro-one-api/platform/routingclient"
 	"micro-one-api/platform/security"
+	"os"
 )
 
 // Injectors from wire.go:
@@ -35,7 +38,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	identityService := service.NewIdentityService(identityUsecase)
 	providerRegistry := setupOAuth(config)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, identityUsecase, identityService, providerRegistry, mainRegistrarResult)
+	app, cleanup := newApp(config, repository, identityUsecase, identityService, providerRegistry, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -61,7 +64,16 @@ func newRepo(cfg *Config) (*data.Repository, error) {
 			return nil, err
 		}
 	}
-	return data.NewRepositoryFromEnv(cfg.Bootstrap.Data.Database.Driver, cfg.Bootstrap.Data.Database.Source, cfg.Bootstrap.Data.Database.Schema)
+	repo, err := data.NewRepositoryFromEnv(cfg.Bootstrap.Data.Database.Driver, cfg.Bootstrap.Data.Database.Source, cfg.Bootstrap.Data.Database.Schema)
+	if err != nil {
+		return nil, err
+	}
+	if biz.RoutingV2Enabled() {
+		if err := repo.CheckRoutingSchema(context.Background()); err != nil {
+			return nil, err
+		}
+	}
+	return repo, nil
 }
 
 type registrarResult struct {
@@ -78,11 +90,23 @@ func provideRegistrar(cfg *Config) registrarResult {
 
 func newApp(
 	cfg *Config,
+	repo *data.Repository,
 	uc *biz.IdentityUsecase,
 	svc *service.IdentityService,
 	oauthRegistry *oauth.ProviderRegistry,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	closeRouting := func() {}
+	closeOutbox := func() {}
+	if biz.RoutingV2Enabled() {
+		reader, cleanup, err := routingclient.Dial(os.Getenv("CHANNEL_GRPC_ENDPOINT"))
+		if err != nil {
+			panic(err)
+		}
+		uc.SetRoutingGroupReader(reader)
+		closeOutbox = repo.StartRoutingOutbox()
+		closeRouting = cleanup
+	}
 	bootstrapAdmin(uc)
 	grpcSrv := server.NewGRPCServer(cfg.Bootstrap.Server.Grpc.Addr, svc)
 	billingClient, billingConn, _ := newBillingClient(cfg)
@@ -96,6 +120,8 @@ func newApp(
 	}
 	app := kratos.New(opts...)
 	return app, func() {
+		closeOutbox()
+		closeRouting()
 		if billingConn != nil {
 			billingConn.Close()
 		}

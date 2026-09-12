@@ -26,6 +26,24 @@ func (r *memoryPaymentRepo) GetOrderByTradeNo(ctx context.Context, tradeNo strin
 	return &copy, nil
 }
 
+func (r *memoryPaymentRepo) AttachProviderResult(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error) {
+	if r.order == nil || r.order.TradeNo != order.TradeNo {
+		return nil, nil
+	}
+	r.order.PayURL = order.PayURL
+	r.order.ProviderPayload = order.ProviderPayload
+	r.order.ProviderTradeNo = order.ProviderTradeNo
+	copy := *r.order
+	return &copy, nil
+}
+
+func (r *memoryPaymentRepo) DeletePendingOrder(ctx context.Context, tradeNo string) error {
+	if r.order != nil && r.order.TradeNo == tradeNo && r.order.Status == PaymentOrderStatusPending {
+		r.order = nil
+	}
+	return nil
+}
+
 func (r *memoryPaymentRepo) ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error) {
 	if r.order == nil {
 		return nil, 0, nil

@@ -6,6 +6,7 @@ import (
 	"google.golang.org/grpc"
 
 	identityv1 "micro-one-api/api/identity/v1"
+	relaybiz "micro-one-api/internal/biz"
 	appcache "micro-one-api/platform/cache"
 )
 
@@ -24,7 +25,7 @@ func NewCachedIdentityClient(client identityv1.IdentityServiceClient, cache *app
 }
 
 func (c *CachedIdentityClient) GetAuthSnapshot(ctx context.Context, req *identityv1.GetAuthSnapshotRequest, opts ...grpc.CallOption) (*identityv1.GetAuthSnapshotReply, error) {
-	if c.cache == nil {
+	if relaybiz.RoutingContextV2Enabled() || c.cache == nil {
 		return c.IdentityServiceClient.GetAuthSnapshot(ctx, req, opts...)
 	}
 	return c.cache.Get(ctx, req.GetToken())

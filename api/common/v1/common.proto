@@ -6,6 +6,43 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "micro-one-api/api/common/v1;commonv1";
 
+message ResolvedRoutingContext {
+  int32 version = 1;
+  int64 user_id = 2;
+  int64 token_id = 3;
+  int64 group_id = 4;
+  string group_key = 5;
+  string token_mode = 6;
+  int64 token_revision = 7;
+  int64 user_access_revision = 8;
+  int64 group_revision = 9;
+  int64 subscription_entitlement_version = 10;
+  string selection_source = 11;
+  int64 subscription_id = 12;
+  repeated int64 candidate_group_ids = 13;
+  int64 attempt_ordinal = 14;
+}
+
+message RoutingSubjectFacts {
+  int64 default_group_id = 1;
+  string public_group_access = 2;
+  int64 access_revision = 3;
+  string token_mode = 4;
+  int64 token_group_id = 5;
+  int64 token_revision = 6;
+  repeated UserRoutingGroupGrant grants = 7;
+  repeated int64 token_group_ids = 8;
+}
+
+message UserRoutingGroupGrant {
+  int64 group_id = 1;
+  string source_type = 2;
+  string source_ref = 3;
+  int64 starts_at = 4;
+  int64 expires_at = 5;
+  string status = 6;
+}
+
 // ========== 用户信息 ==========
 
 message UserInfo {
@@ -301,6 +338,11 @@ message LedgerEntry {
   // admin can show the actual per-bucket unit prices. Nil on list rows and
   // when the hash is empty.
   PricingSnapshot pricing_snapshot = 47;
+  // Reserve-time v2 evidence, detail only. Empty for historical records.
+  int64 routing_group_id = 48;
+  string routing_group_key = 49;
+  string request_snapshot_hash = 50;
+  string request_snapshot_json = 51;
 }
 
 // PricingSnapshot is the immutable per-request pricing evidence stored in

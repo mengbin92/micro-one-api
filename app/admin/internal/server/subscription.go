@@ -190,18 +190,11 @@ func handleSubscriptionGroups(w http.ResponseWriter, r *http.Request, svc *servi
 		groups, err := svc.ListSubscriptionGroups(r.Context())
 		writeSubscriptionResponse(w, groups, err)
 	case http.MethodPost:
-		var group subscriptionbiz.SubscriptionGroup
+		// Apply the default before decoding so an explicit status:0 remains
+		// disabled. This flag controls the quota policy, not routing membership.
+		group := subscriptionbiz.SubscriptionGroup{Status: subscriptionbiz.SubscriptionGroupStatusEnabled}
 		if !decodeBody(w, r, &group) {
 			return
-		}
-		// domain-L3: default status to Enabled at the DTO/service boundary
-		// (the common create case). The biz layer no longer silently coerces
-		// Status==0 (which is the Disabled constant) to Enabled, so a caller that
-		// genuinely wants to create a pre-disabled group can pass an explicit
-		// status; the admin update path (PATCH) is the canonical way to toggle a
-		// group to Disabled after creation.
-		if group.Status == 0 {
-			group.Status = subscriptionbiz.SubscriptionGroupStatusEnabled
 		}
 		err := svc.CreateSubscriptionGroup(r.Context(), &group)
 		writeSubscriptionResponse(w, &group, err)
@@ -364,7 +357,7 @@ func handlePurchaseSubscriptionWithPayment(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	sub, paymentOrder, err := svc.CreateSubscriptionPaymentOrder(r.Context(), userID, req.GroupID, req.PlanID, req.Channel, req.MoneyCents, req.Currency)
+	sub, paymentOrder, err := svc.CreateSubscriptionPaymentOrder(r.Context(), userID, req.GroupID, req.PlanID, req.Channel, req.MoneyCents, req.Currency, r.Header.Get("Idempotency-Key"))
 	if err != nil {
 		writeJSON(w, http.StatusOK, apiResponse(false, err.Error(), nil))
 		return
@@ -444,22 +437,25 @@ func normalizeSubscriptionResponse(data any) any {
 }
 
 type subscriptionDTO struct {
-	ID                 int64                              `json:"id"`
-	UserID             int64                              `json:"user_id"`
-	GroupID            int64                              `json:"group_id"`
-	SubscriptionName   string                             `json:"subscription_name"`
-	Status             subscriptionbiz.SubscriptionStatus `json:"status"`
-	StartsAt           int64                              `json:"starts_at"`
-	ExpiresAt          int64                              `json:"expires_at"`
-	DailyUsageUSD      float64                            `json:"daily_usage_usd"`
-	WeeklyUsageUSD     float64                            `json:"weekly_usage_usd"`
-	MonthlyUsageUSD    float64                            `json:"monthly_usage_usd"`
-	DailyWindowStart   int64                              `json:"daily_window_start"`
-	WeeklyWindowStart  int64                              `json:"weekly_window_start"`
-	MonthlyWindowStart int64                              `json:"monthly_window_start"`
-	Metadata           string                             `json:"metadata"`
-	CreatedAt          int64                              `json:"created_at"`
-	UpdatedAt          int64                              `json:"updated_at"`
+	Contract            *subscriptionbiz.SubscriptionContract `json:"contract,omitempty"`
+	EntitlementRevision int64                                 `json:"entitlement_revision"`
+	QuotaPolicyID       int64                                 `json:"quota_policy_id"`
+	ID                  int64                                 `json:"id"`
+	UserID              int64                                 `json:"user_id"`
+	GroupID             int64                                 `json:"group_id"`
+	SubscriptionName    string                                `json:"subscription_name"`
+	Status              subscriptionbiz.SubscriptionStatus    `json:"status"`
+	StartsAt            int64                                 `json:"starts_at"`
+	ExpiresAt           int64                                 `json:"expires_at"`
+	DailyUsageUSD       float64                               `json:"daily_usage_usd"`
+	WeeklyUsageUSD      float64                               `json:"weekly_usage_usd"`
+	MonthlyUsageUSD     float64                               `json:"monthly_usage_usd"`
+	DailyWindowStart    int64                                 `json:"daily_window_start"`
+	WeeklyWindowStart   int64                                 `json:"weekly_window_start"`
+	MonthlyWindowStart  int64                                 `json:"monthly_window_start"`
+	Metadata            string                                `json:"metadata"`
+	CreatedAt           int64                                 `json:"created_at"`
+	UpdatedAt           int64                                 `json:"updated_at"`
 }
 
 func subscriptionResponse(sub *subscriptionbiz.UserSubscription) subscriptionDTO {
@@ -467,6 +463,7 @@ func subscriptionResponse(sub *subscriptionbiz.UserSubscription) subscriptionDTO
 		return subscriptionDTO{}
 	}
 	return subscriptionDTO{
+		Contract: sub.Contract, EntitlementRevision: sub.EntitlementRevision, QuotaPolicyID: sub.GroupID,
 		ID:                 sub.ID,
 		UserID:             sub.UserID,
 		GroupID:            sub.GroupID,
@@ -526,21 +523,25 @@ func groupResponse(group *subscriptionbiz.SubscriptionGroup) subscriptionGroupDT
 }
 
 type subscriptionPlanDTO struct {
-	ID            int64                 `json:"id"`
-	GroupID       int64                 `json:"group_id"`
-	Name          string                `json:"name"`
-	Description   string                `json:"description"`
-	PriceQuota    int64                 `json:"price_quota"`
-	OriginalPrice *int64                `json:"original_price,omitempty"`
-	ValidityDays  int32                 `json:"validity_days"`
-	ValidityUnit  string                `json:"validity_unit"`
-	Features      string                `json:"features"`
-	ProductName   string                `json:"product_name"`
-	ForSale       bool                  `json:"for_sale"`
-	SortOrder     int32                 `json:"sort_order"`
-	Group         *subscriptionGroupDTO `json:"group,omitempty"`
-	CreatedAt     int64                 `json:"created_at"`
-	UpdatedAt     int64                 `json:"updated_at"`
+	Contract      *subscriptionbiz.SubscriptionContract `json:"contract,omitempty"`
+	Coverage      []subscriptionbiz.RoutingCoverage     `json:"coverage"`
+	Revision      int64                                 `json:"revision"`
+	QuotaPolicyID int64                                 `json:"quota_policy_id"`
+	ID            int64                                 `json:"id"`
+	GroupID       int64                                 `json:"group_id"`
+	Name          string                                `json:"name"`
+	Description   string                                `json:"description"`
+	PriceQuota    int64                                 `json:"price_quota"`
+	OriginalPrice *int64                                `json:"original_price,omitempty"`
+	ValidityDays  int32                                 `json:"validity_days"`
+	ValidityUnit  string                                `json:"validity_unit"`
+	Features      string                                `json:"features"`
+	ProductName   string                                `json:"product_name"`
+	ForSale       bool                                  `json:"for_sale"`
+	SortOrder     int32                                 `json:"sort_order"`
+	Group         *subscriptionGroupDTO                 `json:"group,omitempty"`
+	CreatedAt     int64                                 `json:"created_at"`
+	UpdatedAt     int64                                 `json:"updated_at"`
 }
 
 func planResponse(plan *subscriptionbiz.SubscriptionPlan) subscriptionPlanDTO {
@@ -553,6 +554,7 @@ func planResponse(plan *subscriptionbiz.SubscriptionPlan) subscriptionPlanDTO {
 		group = &dto
 	}
 	return subscriptionPlanDTO{
+		Contract: plan.Contract, Coverage: plan.Coverage, Revision: plan.Revision, QuotaPolicyID: plan.GroupID,
 		ID:            plan.ID,
 		GroupID:       plan.GroupID,
 		Name:          plan.Name,
@@ -655,7 +657,7 @@ func handleSubscriptionOperationReport(w http.ResponseWriter, r *http.Request, s
 // (phase 2.4). POST only. The body carries the from-subscription, target
 // plan/group and the prices needed to infer the policy (immediate upgrade vs
 // next-cycle downgrade). The operator id is taken from the admin identity.
-func handleChangeSubscription(w http.ResponseWriter, r *http.Request, svc *service.AdminService) {
+func handleChangeSubscription(w http.ResponseWriter, r *http.Request, svc *service.AdminService, self ...bool) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
@@ -673,6 +675,17 @@ func handleChangeSubscription(w http.ResponseWriter, r *http.Request, svc *servi
 	if !decodeBody(w, r, &req) {
 		return
 	}
+	if len(self) > 0 && self[0] {
+		if !subscriptionbiz.EntitlementsEnabled() {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		user, ok := authenticatedUserID(w, r, svc)
+		if !ok {
+			return
+		}
+		req.UserID = user
+	}
 	if req.UserID <= 0 {
 		writeJSON(w, http.StatusBadRequest, apiResponse(false, "user_id is required", nil))
 		return
@@ -681,7 +694,7 @@ func handleChangeSubscription(w http.ResponseWriter, r *http.Request, svc *servi
 		writeJSON(w, http.StatusBadRequest, apiResponse(false, "from_subscription_id is required", nil))
 		return
 	}
-	if req.ToGroupID <= 0 {
+	if req.ToGroupID <= 0 && req.ToPlanID <= 0 {
 		writeJSON(w, http.StatusBadRequest, apiResponse(false, "to_group_id is required", nil))
 		return
 	}

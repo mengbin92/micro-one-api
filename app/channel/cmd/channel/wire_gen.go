@@ -17,6 +17,7 @@ import (
 	"micro-one-api/app/channel/internal/service"
 	"micro-one-api/platform/events"
 	registry2 "micro-one-api/platform/registry"
+	"os"
 	"time"
 )
 
@@ -35,9 +36,11 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	channelUsecase := biz.NewChannelUsecase(repository, eventBus)
 	modelUsecase := biz.NewModelUsecase(repository)
 	modelRoutingUsecase := biz.NewModelRoutingUsecase(repository)
+	routingGroupRepo := data.NewRoutingGroupRepo(repository)
+	routingGroupUsecase := biz.NewRoutingGroupUsecase(routingGroupRepo)
 	channelService := service.NewChannelService(channelUsecase)
 	mainRegistrarResult := provideRegistrar(config)
-	app, cleanup := newApp(config, repository, eventBus, channelUsecase, modelUsecase, modelRoutingUsecase, channelService, mainRegistrarResult)
+	app, cleanup := newApp(config, repository, eventBus, channelUsecase, modelUsecase, modelRoutingUsecase, routingGroupUsecase, channelService, mainRegistrarResult)
 	return app, func() {
 		cleanup()
 	}, nil
@@ -47,7 +50,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 
 var ProviderSet = wire.NewSet(
 	newRepo,
-	newEventBus, biz.NewChannelUsecase, biz.NewModelUsecase, biz.NewModelRoutingUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRoutingRepo), new(*data.Repository)),
+	newEventBus, biz.NewChannelUsecase, biz.NewModelUsecase, biz.NewModelRoutingUsecase, data.NewRoutingGroupRepo, biz.NewRoutingGroupUsecase, service.NewChannelService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ChannelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRepo), new(*data.Repository)), wire.Bind(new(biz.ModelRoutingRepo), new(*data.Repository)),
 )
 
 func newRepo(cfg *Config) (*data.Repository, error) {
@@ -77,11 +80,18 @@ func newApp(
 	uc *biz.ChannelUsecase,
 	modelUC *biz.ModelUsecase,
 	routingUC *biz.ModelRoutingUsecase,
+	groupUC *biz.RoutingGroupUsecase,
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	closeOutbox := func() {}
+	if os.Getenv("CHANNEL_ROUTING_GROUP_DUAL_WRITE") == "true" {
+		closeOutbox = repo.StartRoutingOutbox()
+	}
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
+	svc.SetRoutingGroupUsecase(groupUC)
+	routingUC.SetCacheInvalidator(uc)
 	uc.SetModelRoutingRepo(repo)
 
 	uc.SetLoadOracle(data.NewRedisLoadOracle(repo.Redis()))
@@ -123,6 +133,7 @@ func newApp(
 	app := kratos.New(opts...)
 
 	return app, func() {
+		closeOutbox()
 		if stopOpsAutomation != nil {
 			stopOpsAutomation()
 		}

@@ -336,7 +336,8 @@ type RetryExecutor struct {
 	// fallback, when wired, is the unified cross-namespace fallback used after
 	// the request-scoped candidate list is exhausted (sub2api #2). It replaces
 	// the coarse excludeFirstPriority tier-skip with per-candidate exclusion.
-	fallback RoutingFallbackSelector
+	fallback  RoutingFallbackSelector
+	authorize func(context.Context, string, string, string, *Channel) error
 }
 
 // NewRetryExecutor creates a RetryExecutor with the given policy and channel selector.
@@ -353,6 +354,14 @@ func (e *RetryExecutor) WithFallbackSelector(f RoutingFallbackSelector) *RetryEx
 	if e != nil {
 		e.fallback = f
 	}
+	return e
+}
+
+// WithRouteAuthorization rechecks persisted candidates and same-source retries
+// immediately before a new upstream attempt. Normal attempt zero was selected
+// by the channel authority; a retry may outlive the grant that selected it.
+func (e *RetryExecutor) WithRouteAuthorization(check func(context.Context, string, string, string, *Channel) error) *RetryExecutor {
+	e.authorize = check
 	return e
 }
 
@@ -437,13 +446,16 @@ func (e *RetryExecutor) ExecuteWithCandidates(
 	}
 	initialChannel := plan.Channel
 	wrapped := func(ctx context.Context, ch *Channel) error {
+		if err := RecheckRoutingAdmission(ctx, plan.Auth, plan.ClientModel); err != nil {
+			return err
+		}
 		err := fn(ctx, ch)
 		if ch == initialChannel {
 			e.RecordAccountHealth(ctx, accountID, upstreamAttemptHealthy(err))
 		}
 		return err
 	}
-	return e.execute(ctx, group, model, plan.ModelHealthID(), initialChannel, plan.Candidates, wrapped)
+	return e.execute(ctx, group, model, plan.ClientModel, plan.ModelHealthID(), initialChannel, plan.Candidates, wrapped)
 }
 
 func (e *RetryExecutor) ExecuteWithInitialChannel(
@@ -452,12 +464,12 @@ func (e *RetryExecutor) ExecuteWithInitialChannel(
 	initialChannel *Channel,
 	fn func(ctx context.Context, ch *Channel) error,
 ) *ExecuteResult {
-	return e.execute(ctx, group, model, model, initialChannel, nil, fn)
+	return e.execute(ctx, group, model, model, model, initialChannel, nil, fn)
 }
 
 func (e *RetryExecutor) execute(
 	ctx context.Context,
-	group, model, healthModel string,
+	group, model, clientModel, healthModel string,
 	initialChannel *Channel,
 	candidates *RoutingCandidateList,
 	fn func(ctx context.Context, ch *Channel) error,
@@ -556,6 +568,12 @@ func (e *RetryExecutor) execute(
 			lastChannel = ch
 		}
 
+		if attempt > 0 && e.authorize != nil {
+			if err := e.authorize(ctx, group, clientModel, model, lastChannel); err != nil {
+				flushHealth()
+				return &ExecuteResult{Channel: lastChannel, Err: err, Attempt: attempt, Fallback: switched, FirstErr: firstErr, FallbackReason: ClassifyRetryFallbackReason(firstErr)}
+			}
+		}
 		startedAt := time.Now()
 		err := fn(ctx, lastChannel)
 		responseTime := time.Since(startedAt).Milliseconds()

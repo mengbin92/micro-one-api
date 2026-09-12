@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"micro-one-api/domain/routing"
+
 	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
@@ -36,15 +38,21 @@ func now() int64 {
 }
 
 type Repository struct {
-	db          *gorm.DB
-	redis       *redis.Client
-	channels    map[int64]*biz.Channel
-	subAccounts map[int64]*biz.SubscriptionAccount
-	quotaEvents map[string]biz.SubscriptionAccountQuotaEventAggregate
-	usageEvents map[string]bool
-	resetRuns   map[string]bool
-	lock        sync.RWMutex
-	encKey      []byte // AES key for encrypting API keys at rest (nil = no encryption)
+	routingGroupDualWrite bool
+	routingGroupRelations bool
+	// overrideColsReady caches the 098 column probe so old schemas (pre-F)
+	// keep working without per-query migrator checks.
+	overrideColsReadyOnce sync.Once
+	overrideColsReady     bool
+	db                    *gorm.DB
+	redis                 *redis.Client
+	channels              map[int64]*biz.Channel
+	subAccounts           map[int64]*biz.SubscriptionAccount
+	quotaEvents           map[string]biz.SubscriptionAccountQuotaEventAggregate
+	usageEvents           map[string]bool
+	resetRuns             map[string]bool
+	lock                  sync.RWMutex
+	encKey                []byte // AES key for encrypting API keys at rest (nil = no encryption)
 
 	// Model registry memory store (方案B) — used only when db == nil.
 	models                    map[int64]*biz.Model
@@ -252,6 +260,18 @@ func NewRepositoryFromEnv(driver string, dsn ...string) (*Repository, error) {
 		}
 	}
 	repo := &Repository{db: db, redis: rdb}
+	if os.Getenv("CHANNEL_ROUTING_GROUP_DUAL_WRITE") == "true" {
+		if err := routingGroupSchemaReady(db); err != nil {
+			if rdb != nil {
+				_ = rdb.Close()
+			}
+			if sqlDB, e := db.DB(); e == nil {
+				_ = sqlDB.Close()
+			}
+			return nil, err
+		}
+		repo.routingGroupDualWrite = true
+	}
 	repo.encKey = key
 	return repo, nil
 }
@@ -337,14 +357,17 @@ func (r *Repository) ListUnrestrictedChannelsByGroup(ctx context.Context, group 
 // listUnrestrictedChannelsByGroupDB returns enabled channels in the group
 // whose restrict_models flag is false (catch-all channels). They accept any
 // model not matched by the abilities table. See docs §9.3 #2.
-func (r *Repository) listUnrestrictedChannelsByGroupDB(ctx context.Context, group string) ([]*biz.Channel, error) {
+func (r *Repository) listUnrestrictedChannelsByGroupDB(ctx context.Context, group string, columns ...string) ([]*biz.Channel, error) {
 	var models []channelModel
+	query := r.db.WithContext(ctx)
+	if len(columns) > 0 {
+		query = query.Select(columns)
+	}
 	// channels.group is a CSV; match exact, prefix, suffix, or infix to stay
 	// cross-driver compatible (no FIND_IN_SET in SQLite/Postgres).
-	if err := r.db.WithContext(ctx).
+	query = r.csvGroupScope(query, group, "`group`", "id")
+	if err := query.
 		Where("status = ? AND restrict_models = ?", biz.ChannelStatusEnabled, false).
-		Where("`group` = ? OR `group` LIKE ? OR `group` LIKE ? OR `group` LIKE ?",
-			group, group+",%", "%,"+group, "%,"+group+",%").
 		Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -366,7 +389,7 @@ func (r *Repository) listUnrestrictedChannelsByGroupMemory(_ context.Context, gr
 		if channel.RestrictModels {
 			continue
 		}
-		if slices.Contains(biz.SplitCSV(channel.Group), group) {
+		if routing.ContainsGroup(channel.Group, group) {
 			cloned := *channel
 			cloned.Models = append([]string(nil), channel.Models...)
 			result = append(result, &cloned)
@@ -427,7 +450,7 @@ func (r *Repository) ListSubscriptionAccountAbilities(ctx context.Context, group
 		if platform != "" && account.Platform != platform {
 			continue
 		}
-		for _, accountGroup := range biz.SplitCSV(account.Group) {
+		for _, accountGroup := range routing.Groups(account.Group) {
 			if accountGroup != group {
 				continue
 			}
@@ -986,9 +1009,12 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 	// rows and keep those matching the requested model. See
 	// docs/model-management-design.md §9.3 #4.
 	query := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
-		Where("`group` = ? AND LOWER(model) = ? AND enabled = ?", group, strings.ToLower(model), true)
+		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = ?"), group, strings.ToLower(model), 1)
 	if platform != "" {
 		query = query.Where("platform = ?", platform)
+	}
+	if r.routingGroupRelations {
+		query = r.memberScope(query, group, "account_id", true)
 	}
 	var rows []subscriptionAccountAbilityModel
 	if err := query.Find(&rows).Error; err != nil {
@@ -996,9 +1022,12 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 	}
 	if len(rows) == 0 {
 		patternQuery := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
-			Where("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)", group, true, "%*%", "%?%")
+			Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)"), group, 1, "%*%", "%?%")
 		if platform != "" {
 			patternQuery = patternQuery.Where("platform = ?", platform)
+		}
+		if r.routingGroupRelations {
+			patternQuery = r.memberScope(patternQuery, group, "account_id", true)
 		}
 		var patternRows []subscriptionAccountAbilityModel
 		if err := patternQuery.Find(&patternRows).Error; err != nil {
@@ -1010,12 +1039,18 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 			}
 		}
 	}
+	overrides, err := r.relationOverrides(ctx, group, true)
+	if err != nil {
+		return nil, err
+	}
 	abilities := make([]biz.SubscriptionAccountAbility, 0, len(rows))
 	for _, row := range rows {
 		priority := int64(0)
 		if row.Priority != nil {
 			priority = *row.Priority
 		}
+		var weight int64
+		priority, weight = applyRelationOverride(overrides, row.AccountID, priority, weight)
 		abilities = append(abilities, biz.SubscriptionAccountAbility{
 			Group:     row.Group,
 			Model:     row.Model,
@@ -1023,6 +1058,7 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 			AccountID: row.AccountID,
 			Enabled:   row.Enabled,
 			Priority:  priority,
+			Weight:    weight,
 		})
 	}
 	return abilities, nil
@@ -1034,7 +1070,7 @@ func (r *Repository) listSubscriptionAccountsDB(ctx context.Context, page, pageS
 		query = query.Where("name LIKE ? ESCAPE '!' OR account_id LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%", "%"+escapeLike(keyword)+"%")
 	}
 	if group != "" {
-		query = query.Where("`group` = ?", group)
+		query = query.Where(r.routingGroupSQL("`group` = ?"), group)
 	}
 	if status != 0 {
 		query = query.Where("status = ?", status)
@@ -1170,6 +1206,9 @@ func (r *Repository) updateSubscriptionAccountDB(ctx context.Context, account *b
 
 func (r *Repository) deleteSubscriptionAccountDB(ctx context.Context, accountID int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Subscription, ID: accountID}, ""); err != nil {
+			return err
+		}
 		if err := tx.Where("id = ?", accountID).Delete(&subscriptionAccountModel{}).Error; err != nil {
 			return err
 		}
@@ -1528,15 +1567,25 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 	// "claude-sonnet-4"). This lets a single ability row route a whole
 	// family of model names. See docs/model-management-design.md §9.3 #4.
 	var rows []abilityModel
-	if err := r.db.WithContext(ctx).
-		Where("`group` = ? AND LOWER(model) = ? AND enabled = ?", group, strings.ToLower(model), true).
+	if err := r.db.WithContext(ctx).Scopes(func(q *gorm.DB) *gorm.DB {
+		if r.routingGroupRelations {
+			return r.memberScope(q, group, "channel_id", false)
+		}
+		return q
+	}).
+		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = ?"), group, strings.ToLower(model), 1).
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	if len(rows) == 0 {
 		var patternRows []abilityModel
-		if err := r.db.WithContext(ctx).
-			Where("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)", group, true, "%*%", "%?%").
+		if err := r.db.WithContext(ctx).Scopes(func(q *gorm.DB) *gorm.DB {
+			if r.routingGroupRelations {
+				return r.memberScope(q, group, "channel_id", false)
+			}
+			return q
+		}).
+			Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)"), group, 1, "%*%", "%?%").
 			Find(&patternRows).Error; err != nil {
 			return nil, err
 		}
@@ -1546,18 +1595,25 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 			}
 		}
 	}
+	overrides, err := r.relationOverrides(ctx, group, false)
+	if err != nil {
+		return nil, err
+	}
 	abilities := make([]biz.Ability, 0, len(rows))
 	for _, row := range rows {
 		priority := int64(0)
 		if row.Priority != nil {
 			priority = *row.Priority
 		}
+		var weight int64
+		priority, weight = applyRelationOverride(overrides, row.ChannelID, priority, weight)
 		abilities = append(abilities, biz.Ability{
 			Group:     row.Group,
 			Model:     row.Model,
 			ChannelID: row.ChannelID,
 			Enabled:   row.Enabled,
 			Priority:  priority,
+			Weight:    weight,
 		})
 	}
 	return abilities, nil
@@ -1587,13 +1643,16 @@ type registryChannelAbilityRow struct {
 
 func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, model string) ([]biz.Ability, error) {
 	var rows []registryChannelAbilityRow
-	err := r.db.WithContext(ctx).Table("model_channel_mapping AS mcm").
+	query := r.db.WithContext(ctx).Table("model_channel_mapping AS mcm").
 		Select("mcm.channel_id, m.model_id AS model, mcm.upstream_model_id, mcm.priority AS mapping_priority, COALESCE(c.priority, 0) AS source_priority").
 		Joins("JOIN models AS m ON m.id = mcm.model_id").
 		Joins("JOIN channels AS c ON c.id = mcm.channel_id").
 		Where("LOWER(m.model_id) = ? AND mcm.enabled = ? AND m.status = ? AND c.status = ?", strings.ToLower(model), true, biz.ModelStatusEnabled, biz.ChannelStatusEnabled).
-		Where("c.`group` = ? OR c.`group` LIKE ? OR c.`group` LIKE ? OR c.`group` LIKE ?", group, group+",%", "%,"+group, "%,"+group+",%").
-		Scan(&rows).Error
+		Scopes(func(q *gorm.DB) *gorm.DB { return r.csvGroupScope(q, group, "c.`group`", "c.id") })
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	overrides, err := r.relationOverrides(ctx, group, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1603,8 +1662,11 @@ func (r *Repository) listRegistryChannelAbilitiesDB(ctx context.Context, group, 
 		if priority == 0 {
 			priority = row.SourcePriority
 		}
+		var weight int64
+		// Complete chain: relation override > mapping priority > source priority.
+		priority, weight = applyRelationOverride(overrides, row.ChannelID, priority, weight)
 		out = append(out, biz.Ability{
-			Group: group, Model: row.Model, ChannelID: row.ChannelID, Enabled: true, Priority: priority,
+			Group: group, Model: row.Model, ChannelID: row.ChannelID, Enabled: true, Priority: priority, Weight: weight,
 			// Empty is meaningful: ResolveChannelModel must still be able to apply
 			// channel.model_mapping or preserve the exact spelling in channel.Models.
 			UpstreamModelID: strings.TrimSpace(row.UpstreamModelID),
@@ -1628,11 +1690,16 @@ func (r *Repository) listRegistrySubscriptionAbilitiesDB(ctx context.Context, gr
 		Select("msm.subscription_account_id AS account_id, m.model_id AS model, sa.platform, msm.upstream_model_id, msm.priority AS mapping_priority, COALESCE(sa.priority, 0) AS source_priority").
 		Joins("JOIN models AS m ON m.id = msm.model_id").
 		Joins("JOIN subscription_accounts AS sa ON sa.id = msm.subscription_account_id").
-		Where("LOWER(m.model_id) = ? AND msm.group_name = ? AND msm.enabled = ? AND m.status = ? AND sa.status = ?", strings.ToLower(model), group, true, biz.ModelStatusEnabled, biz.ChannelStatusEnabled)
+		Where("LOWER(m.model_id) = ? AND msm.enabled = ? AND m.status = ? AND sa.status = ?", strings.ToLower(model), true, biz.ModelStatusEnabled, biz.ChannelStatusEnabled).
+		Scopes(func(q *gorm.DB) *gorm.DB { return r.mappingGroupScope(q, group, "msm.") })
 	if platform != "" {
 		query = query.Where("sa.platform = ?", platform)
 	}
 	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	overrides, err := r.relationOverrides(ctx, group, true)
+	if err != nil {
 		return nil, err
 	}
 	out := make([]biz.SubscriptionAccountAbility, 0, len(rows))
@@ -1641,11 +1708,14 @@ func (r *Repository) listRegistrySubscriptionAbilitiesDB(ctx context.Context, gr
 		if priority == 0 {
 			priority = row.SourcePriority
 		}
+		var weight int64
+		// Complete chain: relation override > mapping priority > source priority.
+		priority, weight = applyRelationOverride(overrides, row.AccountID, priority, weight)
 		upstream := strings.TrimSpace(row.UpstreamModelID)
 		if upstream == "" {
 			upstream = row.Model
 		}
-		out = append(out, biz.SubscriptionAccountAbility{Group: group, Model: row.Model, Platform: row.Platform, AccountID: row.AccountID, Enabled: true, Priority: priority, UpstreamModelID: upstream})
+		out = append(out, biz.SubscriptionAccountAbility{Group: group, Model: row.Model, Platform: row.Platform, AccountID: row.AccountID, Enabled: true, Priority: priority, Weight: weight, UpstreamModelID: upstream})
 	}
 	return out, nil
 }
@@ -1673,7 +1743,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 	var channelModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&abilityModel{}).
-		Where("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?", group, true, "%*%", "%?%").
+		Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?"), group, 1, "%*%", "%?%").
 		Distinct("model").
 		Pluck("model", &channelModels).Error; err != nil {
 		return nil, err
@@ -1686,7 +1756,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 	var subscriptionModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&subscriptionAccountAbilityModel{}).
-		Where("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?", group, true, "%*%", "%?%").
+		Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?"), group, 1, "%*%", "%?%").
 		Distinct("model").
 		Pluck("model", &subscriptionModels).Error; err != nil {
 		return nil, err
@@ -1722,8 +1792,7 @@ func (r *Repository) addRegistryChannelModelsDB(ctx context.Context, group strin
 		Joins("JOIN models AS m ON m.id = mcm.model_id").
 		Joins("JOIN channels AS c ON c.id = mcm.channel_id").
 		Where("mcm.enabled = ? AND m.status = ? AND m.is_public = ? AND c.status = ?", true, biz.ModelStatusEnabled, true, biz.ChannelStatusEnabled).
-		Where("c.`group` = ? OR c.`group` LIKE ? OR c.`group` LIKE ? OR c.`group` LIKE ?",
-			group, group+",%", "%,"+group, "%,"+group+",%").
+		Scopes(func(q *gorm.DB) *gorm.DB { return r.csvGroupScope(q, group, "c.`group`", "c.id") }).
 		Distinct("m.model_id")
 	if err := query.Pluck("m.model_id", &registryModels).Error; err != nil {
 		return // registry tables may not exist yet; silently skip
@@ -1742,7 +1811,7 @@ func (r *Repository) addRegistrySubscriptionModelsDB(ctx context.Context, group 
 		Joins("JOIN models AS m ON m.id = msm.model_id").
 		Joins("JOIN subscription_accounts AS sa ON sa.id = msm.subscription_account_id").
 		Where("msm.enabled = ? AND m.status = ? AND m.is_public = ? AND sa.status = ?", true, biz.ModelStatusEnabled, true, biz.ChannelStatusEnabled).
-		Where("msm.group_name = ?", group).
+		Scopes(func(q *gorm.DB) *gorm.DB { return r.mappingGroupScope(q, group, "msm.") }).
 		Distinct("m.model_id")
 	if err := query.Pluck("m.model_id", &registryModels).Error; err != nil {
 		return // registry tables may not exist yet; silently skip
@@ -1781,7 +1850,7 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 				continue
 			}
 			channel, ok := r.channels[mapping.ChannelID]
-			if !ok || channel.Status != biz.ChannelStatusEnabled || !csvContains(channel.Group, group) {
+			if !ok || channel.Status != biz.ChannelStatusEnabled || !routing.ContainsGroup(channel.Group, group) {
 				continue
 			}
 			priority := int64(mapping.Priority)
@@ -1811,7 +1880,7 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 		if channel.Status != biz.ChannelStatusEnabled {
 			continue
 		}
-		for _, channelGroup := range biz.SplitCSV(channel.Group) {
+		for _, channelGroup := range routing.Groups(channel.Group) {
 			if channelGroup != group {
 				continue
 			}
@@ -1838,10 +1907,6 @@ func (r *Repository) listAbilitiesByGroupAndModelMemory(_ context.Context, group
 	return wild, nil
 }
 
-func csvContains(csv, value string) bool {
-	return slices.Contains(biz.SplitCSV(csv), value)
-}
-
 func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) ([]string, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
@@ -1860,7 +1925,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 			if channel.Status != biz.ChannelStatusEnabled {
 				continue
 			}
-			for _, channelGroup := range biz.SplitCSV(channel.Group) {
+			for _, channelGroup := range routing.Groups(channel.Group) {
 				if channelGroup != group {
 					continue
 				}
@@ -1878,7 +1943,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 			if account.Status != biz.ChannelStatusEnabled {
 				continue
 			}
-			for _, accountGroup := range biz.SplitCSV(account.Group) {
+			for _, accountGroup := range routing.Groups(account.Group) {
 				if accountGroup != group {
 					continue
 				}
@@ -1907,7 +1972,7 @@ func (r *Repository) listAvailableModelsMemory(_ context.Context, group string) 
 		if !ok || channel.Status != biz.ChannelStatusEnabled {
 			continue
 		}
-		if slices.Contains(biz.SplitCSV(channel.Group), group) {
+		if routing.ContainsGroup(channel.Group, group) {
 			seen[strings.ToLower(model.ModelID)] = struct{}{}
 		}
 	}
@@ -1939,7 +2004,7 @@ func (r *Repository) listChannelsDB(ctx context.Context, page, pageSize int32, k
 		query = query.Where("name LIKE ? ESCAPE '!'", "%"+escapeLike(keyword)+"%")
 	}
 	if group != "" {
-		query = query.Where("`group` = ?", group)
+		query = query.Where(r.routingGroupSQL("`group` = ?"), group)
 	}
 	if status != 0 {
 		query = query.Where("status = ?", status)
@@ -2021,6 +2086,9 @@ func (r *Repository) updateChannelDB(ctx context.Context, channel *biz.Channel) 
 
 func (r *Repository) deleteChannelDB(ctx context.Context, channelID int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Channel, ID: channelID}, ""); err != nil {
+			return err
+		}
 		if err := tx.Where("id = ?", channelID).Delete(&channelModel{}).Error; err != nil {
 			return err
 		}
@@ -2045,13 +2113,16 @@ func (r *Repository) changeStatusDB(ctx context.Context, channelID int64, status
 // channel_id is deleted, then a fresh row is inserted for each (group, model)
 // pair derived from the channel. Caller MUST pass an active gorm transaction.
 func (r *Repository) syncAbilitiesTx(tx *gorm.DB, channel *biz.Channel) error {
+	if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Channel, ID: channel.ID}, channel.Group); err != nil {
+		return err
+	}
 	if err := tx.Where("channel_id = ?", channel.ID).Delete(&abilityModel{}).Error; err != nil {
 		return err
 	}
 	enabled := channel.Status == biz.ChannelStatusEnabled
 	priority := channel.Priority
 	rows := make([]abilityModel, 0)
-	for _, group := range biz.SplitCSV(channel.Group) {
+	for _, group := range routing.Groups(channel.Group) {
 		if group == "" {
 			continue
 		}
@@ -2260,13 +2331,16 @@ func providerForModelID(modelID string) string {
 }
 
 func (r *Repository) syncSubscriptionAccountAbilitiesTx(tx *gorm.DB, account *biz.SubscriptionAccount) error {
+	if err := r.syncRoutingMembersTx(tx, routing.Source{Kind: routing.Subscription, ID: account.ID}, account.Group); err != nil {
+		return err
+	}
 	if err := tx.Where("account_id = ?", account.ID).Delete(&subscriptionAccountAbilityModel{}).Error; err != nil {
 		return err
 	}
 	enabled := account.Status == biz.ChannelStatusEnabled
 	priority := account.Priority
 	rows := make([]subscriptionAccountAbilityModel, 0)
-	for _, group := range biz.SplitCSV(account.Group) {
+	for _, group := range routing.Groups(account.Group) {
 		if group == "" {
 			continue
 		}

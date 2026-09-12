@@ -681,6 +681,9 @@ func (r *Repository) applyImportSubscriptionMappings(tx *gorm.DB, modelPK int64,
 			}
 			return err
 		}
+		if err := r.syncRoutingMappingTx(tx, "model_subscription_mapping", map[string]any{"id": po.ID}, group); err != nil {
+			return err
+		}
 	}
 	return nil
 }

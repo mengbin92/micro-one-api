@@ -38,6 +38,9 @@ const AdminModelsPage = lazy(() =>
 const AdminSubscriptionAccountsPage = lazy(() =>
   routeLoaders['/admin/subscription-accounts']().then((m) => ({ default: m.AdminSubscriptionAccountsPage }))
 );
+const AdminRoutingGroupsPage = lazy(() =>
+  routeLoaders['/admin/routing-groups']().then((m) => ({ default: m.AdminRoutingGroupsPage }))
+);
 const AdminSubscriptionGroupsPage = lazy(() =>
   routeLoaders['/admin/subscription-groups']().then((m) => ({ default: m.AdminSubscriptionGroupsPage }))
 );
@@ -182,6 +185,10 @@ export const router = createBrowserRouter([
           {
             path: 'subscription-accounts',
             element: withSuspense(<AdminSubscriptionAccountsPage />),
+          },
+          {
+            path: 'routing-groups',
+            element: withSuspense(<AdminRoutingGroupsPage />),
           },
           {
             path: 'subscription-groups',

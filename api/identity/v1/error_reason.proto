@@ -1,0 +1,10 @@
+syntax = "proto3";
+package api.identity.v1;
+option go_package = "micro-one-api/api/identity/v1;identityv1";
+enum RoutingIdentityErrorReason {
+  ROUTING_IDENTITY_ERROR_REASON_UNSPECIFIED = 0;
+  ROUTING_FACTS_UNAVAILABLE = 1;
+  ROUTING_DEFAULT_INVALID = 2;
+  ROUTING_ACCESS_CONFLICT = 3;
+ ROUTING_ACCESS_DENIED = 4;
+}
