@@ -76,6 +76,7 @@ canonical usage 48h Observe 已通过，K3 有限 charge 的 72h 窗口已按书
 | 文档 | 用途 |
 |------|------|
 | [subscription-production-runbook.md](./runbooks/subscription-production-runbook.md) | 订阅系统生产发布、回滚与排障总入口 |
+| [routing-groups-runbook.md](./runbooks/routing-groups-runbook.md) | 路由分组 / 订阅合约 / 结算模式的迁移核对、开关启用、验证与回退 |
 | [subscription-account-setup-guide.md](./runbooks/subscription-account-setup-guide.md) | 上游订阅号配置与导入实操 |
 | [subscription-account-ops-runbook.md](./runbooks/subscription-account-ops-runbook.md) | 订阅账号治理（阶段 1） |
 | [subscription-account-quota-governance-runbook.md](./runbooks/subscription-account-quota-governance-runbook.md) | 订阅账号额度治理 |

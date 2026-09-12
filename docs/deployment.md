@@ -787,6 +787,17 @@ mysql -h <host> -u root -p < migrations/schema_split.sql
    done
    ```
 
+   > **生产注意（2026-09-12 实录）**：
+   > - 生产服务器通常没有 Go 工具链。交叉构建静态 `migrate` 二进制（linux/amd64），
+   >   上传后经 `docker run --rm --network <backend-net> mysql:8.0 /opt/micro-one-api/migrate`
+   >   在容器网络内执行；完整命令模板见
+   >   [routing-groups-runbook.md](./runbooks/routing-groups-runbook.md) §2.1。
+   > - 早期建立的 per-service `schema_migrations` 可能是 `applied_at BIGINT NOT NULL`
+   >   无默认值，runner 只插 `version` 列会报 `Error 1364`，且 DDL 已隐式提交。
+   >   修复：`ALTER TABLE oneapi_<svc>.schema_migrations MODIFY applied_at BIGINT NOT NULL
+   >   DEFAULT (UNIX_TIMESTAMP());`，再手工补录该迁移的版本记录后重跑。详见
+   >   [routing-groups-runbook.md](./runbooks/routing-groups-runbook.md) §2.2。
+
 3. 滚动重启各服务，环境变量从 `DATABASE_DSN=.../oneapi?...` 切到 `DATABASE_DSN=.../oneapi?...` + `<SVC>_SCHEMA=oneapi_<svc>`。
 4. 观察 30 分钟；任何异常只需把 `<SVC>_SCHEMA` 置空并重启对应服务即可回滚（源库未变）。
 
