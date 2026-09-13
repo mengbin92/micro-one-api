@@ -201,7 +201,7 @@ test('admin channels creates a channel from the web page', async ({ page }) => {
   // the model ID and use the "Add <id>" custom-entry button instead.
   await dialog.getByPlaceholder(/搜索模型|Search models/i).fill('gpt-4o-mini');
   await dialog.getByRole('button', { name: /^(添加|Add) gpt-4o-mini$/i }).click();
-  await dialog.getByLabel(/^(分组|Group)$/i).fill('default');
+  await dialog.getByLabel(/^(路由分组|Routing Group)$/i).fill('default');
   await dialog.getByRole('button', { name: /^(创建|Create)$/i }).click();
 
   await expect.poll(() => channelRequests.length).toBe(1);
