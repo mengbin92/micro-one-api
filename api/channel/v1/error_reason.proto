@@ -1,0 +1,12 @@
+syntax = "proto3";
+package api.channel.v1;
+option go_package = "micro-one-api/api/channel/v1;channelv1";
+enum RoutingGroupErrorReason {
+  ROUTING_GROUP_ERROR_UNSPECIFIED = 0;
+  ROUTING_GROUP_NOT_FOUND = 1;
+  ROUTING_GROUP_INVALID = 2;
+  ROUTING_GROUP_MIGRATION_REQUIRED = 3;
+  ROUTING_GROUP_BASELINE_CONFLICT = 4;
+  ROUTING_GROUP_STORAGE_UNAVAILABLE = 5;
+  ROUTING_GROUP_EXISTS = 6;
+}

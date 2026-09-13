@@ -121,6 +121,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			billingModel,
 			fmt.Sprintf("%d", ch.ID),
 			subscriptionAccountIDFromPlan(plan),
+			plan.Auth.RoutingContext,
 		)
 		if reserveErr != nil {
 			return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}
@@ -167,7 +168,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 					upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 					responseChannel = ch
 					if responseID := usage.ResponseID(); responseID != "" {
-						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
+						s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth), SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
 					}
 					return nil
 				}
@@ -209,7 +210,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 						upstreamResp = &relayprovider.RawResponse{StatusCode: fallbackResp.Stream.StatusCode}
 						responseChannel = ch
 						if responseID := usage.ResponseID(); responseID != "" {
-							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
+							s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth), SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
 						}
 						return nil
 					}
@@ -248,7 +249,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 			upstreamResp = &relayprovider.RawResponse{StatusCode: streamResp.StatusCode}
 			responseChannel = ch
 			if responseID := usage.ResponseID(); responseID != "" {
-				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
+				s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth), SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
 			}
 			return nil
 		}
@@ -287,7 +288,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 				upstreamResp = fallbackResp.Response
 				responseChannel = ch
 				if responseID := extractResponseID(fallbackResp.Response.Body); responseID != "" {
-					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
+					s.storeResponseRoute(responseID, responseRoute{Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: currentResolvedModel, Channel: *ch, UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth), SubscriptionAccountID: subscriptionAccountIDFromChannel(ch)})
 				}
 				return nil
 			}
@@ -399,7 +400,7 @@ func (s *HTTPServer) handleResponsesCreateLike(w http.ResponseWriter, r *http.Re
 	if responseID := extractResponseID(upstreamResp.Body); responseID != "" {
 		route := responseRoute{
 			Model: clientModel, GlobalModel: plan.BaseModel(), ResolvedModel: plan.ResolvedModel,
-			Channel: *responseChannel, UserID: plan.Auth.UserID,
+			Channel: *responseChannel, UserID: plan.Auth.UserID, TokenID: plan.Auth.TokenID, RoutingGroupID: resolvedGroupID(plan.Auth),
 			SubscriptionAccountID: subscriptionAccountIDFromChannel(responseChannel),
 		}
 		// v0.11.0 review M2: when the executed channel belongs to the planned
@@ -467,6 +468,12 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		})
 		return
 	}
+	refreshed, allowed := s.refreshStoredResponseRoute(r.Context(), authSnapshot, route.Model, route)
+	if !allowed {
+		s.writeError(w, http.StatusNotFound, "response route not found")
+		return
+	}
+	route = refreshed
 	if err := s.checkUserRPM(r.Context(), authSnapshot.UserId); err != nil {
 		s.writeUserRPMError(w)
 		return
@@ -476,7 +483,7 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 	resolvedModel := routeResolvedModel(route)
 	fallbackBody := ensureRawModel(body, resolvedModel)
 	billingModel := s.BillingModelName(route.Model, routeResolvedModel(route), resolvedModel)
-	reservation, err := s.reserveQuota(
+	reservation, err := s.reserveAuthenticatedQuota(
 		r.Context(),
 		fmt.Sprintf("%d", authSnapshot.UserId),
 		requestID,
@@ -484,6 +491,8 @@ func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *htt
 		billingModel,
 		fmt.Sprintf("%d", route.Channel.ID),
 		route.SubscriptionAccountID,
+		authSnapshot,
+		route.RoutingGroupID,
 	)
 	if err != nil {
 		s.writeError(w, http.StatusPaymentRequired, "quota reservation failed")

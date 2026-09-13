@@ -65,8 +65,8 @@ describe('AdminSubscriptionGroupsPage', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText('暂无订阅分组');
-    await userEvent.click(screen.getByRole('button', { name: /新建分组/ }));
+    await screen.findByText('暂无订阅额度策略');
+    await userEvent.click(screen.getByRole('button', { name: /新建额度策略/ }));
     await userEvent.type(screen.getByLabelText('名称(唯一)'), 'team-plan');
     await userEvent.clear(screen.getByLabelText('购买价格(USD)'));
     await userEvent.type(screen.getByLabelText('购买价格(USD)'), '10');

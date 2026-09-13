@@ -44,6 +44,8 @@ type AdminService struct {
 	subscriptionUc  *subscriptionbiz.SubscriptionUsecase
 	groupUc         *subscriptionbiz.GroupUsecase
 	planUc          *subscriptionbiz.PlanUsecase
+	routingGroupUc  routingGroupUsecase
+	routingAccessUc routingAccessUsecase
 }
 
 type operatorCredentialKey struct{}
@@ -62,6 +64,7 @@ type OneAPIOption struct {
 	Value string `json:"value"`
 }
 
+// GroupConfig is the legacy /api/group pricing DTO, not a routing-group record.
 type GroupConfig struct {
 	Group string  `json:"group"`
 	Ratio float64 `json:"ratio"`
@@ -495,8 +498,9 @@ func (s *AdminService) GetLedgerEntry(ctx context.Context, id int64) (map[string
 		"usageDecisionReason":    entry.GetUsageDecisionReason(),
 		"subsetCandidateCost":    entry.GetSubsetCandidateCost(),
 		"exclusiveCandidateCost": entry.GetExclusiveCandidateCost(),
-		"pricingConfigHash":      entry.GetPricingConfigHash(),
-		"pricingSnapshot":        pricingSnapshotToMap(entry.GetPricingSnapshot()),
+		"routingGroupId":         entry.GetRoutingGroupId(), "routingGroupKey": entry.GetRoutingGroupKey(), "requestSnapshotHash": entry.GetRequestSnapshotHash(), "requestSnapshot": entry.GetRequestSnapshotJson(),
+		"pricingConfigHash": entry.GetPricingConfigHash(),
+		"pricingSnapshot":   pricingSnapshotToMap(entry.GetPricingSnapshot()),
 	}, nil
 }
 
@@ -1951,103 +1955,10 @@ func (s *AdminService) GetOneAPIOption(ctx context.Context, key string) (string,
 	return oneAPIOptionDefaults[key], nil
 }
 
-func (s *AdminService) ListGroups(ctx context.Context) ([]GroupConfig, error) {
-	ratios, err := s.groupRatios(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if _, ok := ratios["default"]; !ok {
-		ratios["default"] = 1
-	}
-	keys := make([]string, 0, len(ratios))
-	for group := range ratios {
-		keys = append(keys, group)
-	}
-	sort.Strings(keys)
-	result := make([]GroupConfig, 0, len(keys))
-	for _, group := range keys {
-		result = append(result, GroupConfig{Group: group, Ratio: ratios[group]})
-	}
-	return result, nil
-}
-
-func (s *AdminService) UpsertGroup(ctx context.Context, group string, ratio float64) (*GroupConfig, error) {
-	group = strings.TrimSpace(group)
-	if group == "" {
-		return nil, fmt.Errorf("group is required")
-	}
-	if ratio <= 0 {
-		return nil, fmt.Errorf("ratio must be greater than 0")
-	}
-	ratios, err := s.groupRatios(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ratios[group] = ratio
-	if err := s.saveGroupRatios(ctx, ratios); err != nil {
-		return nil, err
-	}
-	return &GroupConfig{Group: group, Ratio: ratio}, nil
-}
-
-func (s *AdminService) DeleteGroup(ctx context.Context, group string) (*GroupConfig, error) {
-	group = strings.TrimSpace(group)
-	if group == "" {
-		return nil, fmt.Errorf("group is required")
-	}
-	if group == "default" {
-		return nil, fmt.Errorf("default group cannot be deleted")
-	}
-	ratios, err := s.groupRatios(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ratio := ratios[group]
-	delete(ratios, group)
-	if _, ok := ratios["default"]; !ok {
-		ratios["default"] = 1
-	}
-	if err := s.saveGroupRatios(ctx, ratios); err != nil {
-		return nil, err
-	}
-	return &GroupConfig{Group: group, Ratio: ratio}, nil
-}
-
-func (s *AdminService) groupRatios(ctx context.Context) (map[string]float64, error) {
-	raw, err := s.GetOneAPIOption(ctx, "GroupRatio")
-	if err != nil {
-		return nil, err
-	}
-	ratios := map[string]float64{}
-	if strings.TrimSpace(raw) != "" {
-		if err := jsonx.Unmarshal([]byte(raw), &ratios); err != nil {
-			return nil, fmt.Errorf("invalid GroupRatio option: %w", err)
-		}
-	}
-	return ratios, nil
-}
-
-func (s *AdminService) saveGroupRatios(ctx context.Context, ratios map[string]float64) error {
-	if s.systemOptsUc == nil {
-		return fmt.Errorf("system options storage not configured")
-	}
-	keys := make([]string, 0, len(ratios))
-	for group := range ratios {
-		keys = append(keys, group)
-	}
-	sort.Strings(keys)
-	ordered := make(map[string]float64, len(keys))
-	for _, group := range keys {
-		ordered[group] = ratios[group]
-	}
-	payload, err := jsonx.Marshal(ordered)
-	if err != nil {
-		return err
-	}
-	return s.systemOptsUc.Set(ctx, "GroupRatio", string(payload))
-}
-
 func (s *AdminService) UpdateOneAPIOption(ctx context.Context, key, value string) (*adminv1.UpdateSystemOptionsResponse, error) {
+	if key == "GroupRatio" && subscriptionbiz.EntitlementsEnabled() {
+		return nil, adminbiz.ErrRoutingGroupInvalid
+	}
 	if s.systemOptsUc == nil {
 		return &adminv1.UpdateSystemOptionsResponse{
 			Success: false,
@@ -2361,22 +2272,23 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 			"usageDecisionReason":    entry.GetUsageDecisionReason(),
 			"subsetCandidateCost":    entry.GetSubsetCandidateCost(),
 			"exclusiveCandidateCost": entry.GetExclusiveCandidateCost(),
-			"pricingConfigHash":      entry.GetPricingConfigHash(),
-			"channelId":              entry.GetChannelId(),
-			"channelName":            channelName,
-			"channelType":            channelType,
-			"channelTypeStr":         channelTypeStr,
-			"upstreamName":           upstream.Name,
-			"upstreamProtocol":       upstream.TypeStr,
-			"subscriptionAccountId":  entry.GetSubscriptionAccountId(),
-			"elapsedTime":            entry.GetElapsedTime(),
-			"isStream":               entry.GetIsStream(),
-			"endpoint":               entry.GetEndpoint(),
-			"costSource":             entry.GetCostSource(),
-			"subscriptionCost":       entry.GetSubscriptionCost(),
-			"balanceCost":            entry.GetBalanceCost(),
-			"ledgerDedupeKey":        entry.GetLedgerDedupeKey(),
-			"username":               entry.GetUsername(),
+			"routingGroupId":         entry.GetRoutingGroupId(), "routingGroupKey": entry.GetRoutingGroupKey(), "requestSnapshotHash": entry.GetRequestSnapshotHash(), "requestSnapshot": entry.GetRequestSnapshotJson(),
+			"pricingConfigHash":     entry.GetPricingConfigHash(),
+			"channelId":             entry.GetChannelId(),
+			"channelName":           channelName,
+			"channelType":           channelType,
+			"channelTypeStr":        channelTypeStr,
+			"upstreamName":          upstream.Name,
+			"upstreamProtocol":      upstream.TypeStr,
+			"subscriptionAccountId": entry.GetSubscriptionAccountId(),
+			"elapsedTime":           entry.GetElapsedTime(),
+			"isStream":              entry.GetIsStream(),
+			"endpoint":              entry.GetEndpoint(),
+			"costSource":            entry.GetCostSource(),
+			"subscriptionCost":      entry.GetSubscriptionCost(),
+			"balanceCost":           entry.GetBalanceCost(),
+			"ledgerDedupeKey":       entry.GetLedgerDedupeKey(),
+			"username":              entry.GetUsername(),
 		})
 	}
 

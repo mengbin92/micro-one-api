@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/go-kratos/kratos/v3"
@@ -26,6 +27,8 @@ var ProviderSet = wire.NewSet(
 	biz.NewChannelUsecase,
 	biz.NewModelUsecase,
 	biz.NewModelRoutingUsecase,
+	data.NewRoutingGroupRepo,
+	biz.NewRoutingGroupUsecase,
 	service.NewChannelService,
 	server.NewGRPCServer,
 	server.NewHTTPServer,
@@ -70,11 +73,18 @@ func newApp(
 	uc *biz.ChannelUsecase,
 	modelUC *biz.ModelUsecase,
 	routingUC *biz.ModelRoutingUsecase,
+	groupUC *biz.RoutingGroupUsecase,
 	svc *service.ChannelService,
 	reg registrarResult,
 ) (*kratos.App, func()) {
+	closeOutbox := func() {}
+	if os.Getenv("CHANNEL_ROUTING_GROUP_DUAL_WRITE") == "true" {
+		closeOutbox = repo.StartRoutingOutbox()
+	}
 	svc.SetModelUsecase(modelUC)
 	svc.SetModelRoutingUsecase(routingUC)
+	svc.SetRoutingGroupUsecase(groupUC)
+	routingUC.SetCacheInvalidator(uc)
 	uc.SetModelRoutingRepo(repo)
 	// Phase D #12: wire the cross-replica in-flight oracle so the
 	// subscription-account selector de-rates saturated accounts across all
@@ -128,6 +138,7 @@ func newApp(
 	app := kratos.New(opts...)
 
 	return app, func() {
+		closeOutbox()
 		if stopOpsAutomation != nil {
 			stopOpsAutomation()
 		}

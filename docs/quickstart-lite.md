@@ -190,6 +190,10 @@ SQLite/Postgres 的 `011` 补齐渠道列，`090` 修复旧库账务时间类型
 重建相关表，保留金额、ID、自增序列和索引。升级前停止服务并备份，预留至少一份相关表的
 额外磁盘空间。它们是方言专用迁移，不改变 MySQL schema。
 本指南保持 executor 默认关闭、canonical observe 默认值，不包含 charge 灰度或历史冲正。
+分组重设计（路由分组 / 订阅合约 / 有序候选组等，迁移 092–100 由 lite 的 migrate 容器
+自动应用）的全部运行时开关在 Lite 中同样默认关闭：不设置即保持旧行为。如需试用，
+开关清单与启用顺序见 [runbooks/routing-groups-runbook.md](./runbooks/routing-groups-runbook.md)
+（Lite 用 `--driver=sqlite3` 方言，无需 per-schema `-ownership` 步骤）。
 
 ## 6. 可重复的空环境 smoke
 

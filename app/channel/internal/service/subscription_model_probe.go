@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"micro-one-api/domain/routing"
+
 	"micro-one-api/pkg/jsonx"
 
 	"micro-one-api/app/channel/internal/biz"
@@ -244,7 +246,7 @@ func (s *CodexModelProbeService) syncRegistryModelsForAccount(ctx context.Contex
 			routes[model.ID] = discoveredRoute{model: model, upstreamModelID: upstreamModelID, rank: rank}
 		}
 	}
-	groups := biz.SplitCSV(account.Group)
+	groups := routing.Groups(account.Group)
 	if len(groups) == 0 {
 		groups = []string{"default"}
 	}

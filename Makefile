@@ -320,13 +320,35 @@ clean:
 	rm -f gosec-report.json vulncheck-report.json gitleaks-report.json sbom.json
 	rm -f gosec.sarif trivy-results.sarif
 
+.PHONY: format
+# apply gofmt to every tracked or not-yet-ignored Go file.
+format:
+	@gofmt -w $$(git ls-files -co --exclude-standard '*.go') && echo "gofmt: applied"
+
+.PHONY: format-check
+# static formatting gate: fails when any Go file in the tree is not gofmt-clean.
+# Generated stubs (*.pb.go, *_grpc.pb.go, *_http.pb.go, wire_gen.go) are emitted
+# already formatted, so the whole tree is checked rather than an allowlist that
+# drifts out of date. Run `make format` to fix.
+format-check:
+	@files="$$(git ls-files -co --exclude-standard '*.go')"; \
+	if [ -z "$$files" ]; then echo "gofmt: no Go files"; exit 0; fi; \
+	unformatted="$$(gofmt -l $$files)"; \
+	if [ -n "$$unformatted" ]; then \
+		echo "gofmt required for:"; echo "$$unformatted"; echo "run: make format"; exit 1; \
+	fi; \
+	echo "gofmt: clean"
+
 .PHONY: verify
 # v0.19 P2.2: aggregate the per-PR quality gates in one command:
-# unit + race + architecture + migration governance + frontend (lint/test/build).
+# format + unit + race + architecture + migration governance + frontend
+# (lint/test/build).
 # This mirrors what ci.yml runs for every PR, so local `make verify` and CI
 # cannot drift apart. Integration/e2e suites need external services and are
 # deliberately not part of this gate (see `make help` for test-e2e-*).
 verify:
+	@echo "== make verify: format =="
+	@make format-check
 	@echo "== make verify: unit =="
 	@make test-unit
 	@echo "== make verify: race =="

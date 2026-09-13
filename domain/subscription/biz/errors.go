@@ -15,3 +15,9 @@ var (
 	ErrQuotaExceeded               = errors.New("quota exceeded")
 	ErrInvalidQuotaScope           = errors.New("invalid quota scope")
 )
+
+var (
+	ErrSubscriptionContractInvalid    = errors.New("invalid subscription coverage contract")
+	ErrSubscriptionContractConflict   = errors.New("subscription contract differs; use an explicit plan change")
+	ErrSubscriptionRoutingUnavailable = errors.New("subscription routing dependency unavailable")
+)

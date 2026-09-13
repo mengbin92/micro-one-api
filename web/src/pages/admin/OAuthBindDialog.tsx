@@ -196,7 +196,7 @@ export function OAuthBindDialog({ onBound }: OAuthBindDialogProps) {
                   <Input id="oauth-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="claude-pro-1" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="oauth-group">{t("分组")}</Label>
+                  <Label htmlFor="oauth-group">{t("路由分组")}</Label>
                   <Input id="oauth-group" value={group} onChange={(e) => setGroup(e.target.value)} />
                 </div>
                 <div className="space-y-2 sm:col-span-2">

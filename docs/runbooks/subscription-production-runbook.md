@@ -2,14 +2,14 @@
 
 > 对应 `docs/design/subscription-follow-up-roadmap.md` 阶段 4：文档与 Runbook。
 > 范围：订阅系统（套餐、用户订阅、订阅账号、额度治理、Relay 订阅路径）的生产发布、回滚与排障。
-> 相关 runbook：[OAuth 绑定](./subscription-oauth-binding-runbook.md)、[套餐配置](./subscription-plan-runbook.md)、[账号额度治理](./subscription-account-quota-governance-runbook.md)、[Redis 多副本](./subscription-redis-multi-replica-runbook.md)、[Relay 压测](./relay-stress-runbook.md)。
+> 相关 runbook：[OAuth 绑定](./subscription-oauth-binding-runbook.md)、[套餐配置](./subscription-plan-runbook.md)、[账号额度治理](./subscription-account-quota-governance-runbook.md)、[Redis 多副本](./subscription-redis-multi-replica-runbook.md)、[Relay 压测](./relay-stress-runbook.md)、[分组与订阅合约](./routing-groups-runbook.md)。
 > 通用部署见 [部署运维文档](../deployment.md)。
 
 本 runbook 让新部署人员只按本文档即可完成订阅系统的数据库迁移、滚动发布、回滚与生产排障。release 文档（`docs/releases/release-*.md`）只保留发布摘要，长期操作细节集中在本 runbook 与上述专题 runbook。
 
 ## 一、前置条件
 
-1. **备份**：发布前 `mysqldump --single-transaction --routines oneapi > backup.sql`。`scripts/deploy.sh` 默认迁移前自动备份（`DEPLOY_SKIP_DB_BACKUP=0`）。
+1. **备份**：发布前 `mysqldump --single-transaction --routines oneapi > backup.sql`；启用 schema 隔离的部署必须改为 `--databases oneapi oneapi_identity oneapi_channel oneapi_billing oneapi_log oneapi_config oneapi_monitor oneapi_notify oneapi_admin` 全量备份（只备 `oneapi` 会漏掉真实业务数据）。`scripts/deploy.sh` 默认迁移前自动备份（`DEPLOY_SKIP_DB_BACKUP=0`）。
 2. **镜像已构建**：`make build` 或 `scripts/deploy.sh` 的镜像构建步骤。多架构用 `DEPLOY_TARGET_PLATFORM`。
 3. **维护窗口**：订阅迁移涉及 `payment_orders` / `subscription_accounts` 加列，大表可能锁；建议低峰。
 4. **回滚镜像就绪**：保留上一版本镜像 tag，回滚时切回。
@@ -80,8 +80,64 @@ DSN 读取顺序：`MIGRATIONS_DSN` → `SQL_DSN`。驱动：`MIGRATIONS_DRIVER`
 | `057_create_subscription_account_quota_reset_runs.sql` | fixed 策略额度重置运行记录 | 新表 + 唯一索引 |
 | `058_add_subscription_id_to_payment_orders.sql` | 订单记录实际发放的 subscription_id | 加列 |
 | `059_enforce_single_active_subscription.sql` | 单用户单 active 订阅约束 | 生成列 + 唯一索引 |
+| `061_add_billing_schema_system_options.sql` | billing schema 的 system_options 视图 | 视图 |
+| `062_create_model_management_tables.sql` | 模型管理表（models/aliases/mapping） | 新表 |
+| `063_add_subscription_account_model_mapping.sql` | 订阅号模型映射 | 加列/新表 |
+| `064_add_channel_restrict_models.sql` | 渠道限定模型 | 加列 |
+| `065_add_model_routings.sql` | 模型路由表 | 新表 |
+| `066_add_upstream_model_ids.sql` | 上游模型 ID | 加列 |
+| `067_add_cache_creation_token_usage_fields.sql` | cache-creation token 用量字段 | 加列 |
+| `068_add_canonical_model_id_constraint.sql` | canonical model 约束 | 约束 |
+| `069_add_subscription_account_weight.sql` | 订阅号权重 | 加列 |
+| `070_clean_orphan_model_mappings.sql` | 孤儿映射清理 + 级联 FK | 数据清理 |
+| `071_add_per_bucket_cost.sql` | ledger 分桶成本 | 加列 |
+| `072_add_unique_request_id_billing_reservations.sql` | 每用户 request_id 唯一 | 唯一索引 |
+| `073_add_refund_reason_to_payment_orders.sql` | 退款原因列 | 加列 |
+| `074_add_actual_cost_to_billing_reservations.sql` | reservation 实际结算成本 | 加列 |
+| `075_add_password_changed_at_to_users.sql` | 密码变更 epoch（会话吊销） | 加列 |
+| `076_add_key_hash_to_tokens.sql` | access-token key HMAC | 加列 |
+| `077_add_subscription_renewal_strategy.sql` | 续费策略 | 加列 |
+| `078_create_billing_ledger_dedupe_claims.sql` | 分区安全的全局 ledger 幂等表 + 存量回填 | 新表 + 数据回填 |
+| `079_add_balance_amount_to_billing_reservations.sql` | 钱包金额列（双写过渡） | 加列 |
+| `080_add_billing_ledger_cost_audit_fields.sql` | 执行来源 + 上游成本审计 | 加列 |
+| `081_create_channel_usage_events.sql` | reservation 键控的额度事件 | 新表 |
+| `082_create_log_ingest_dedupe_claims.sql` | relay 用量日志幂等表 | 新表 |
+| `083_add_model_modalities.sql` | 模型输入/输出模态 | 加列 |
+| `084_add_model_pricing_cache_read.sql` | cache-read 价格 + 1M 单位开关 | 加列 |
+| `085_add_billing_usage_semantics.sql` | ledger reported/canonical 用量拆分 + 解析判定 | 加列 |
+| `086_add_log_usage_semantics.sql` | logs 用量语义拆分 | 加列 |
+| `087_create_usage_semantic_source_blocks.sql` | 用量语义隔离表 | 新表 |
+| `088_create_billing_pricing_snapshots.sql` | 不可变逐请求定价证据 | 新表 + 加列 |
+| `089_add_billing_ledger_dashboard_index.sql` | 看板 consume 聚合索引 | 索引 |
+| `091_create_model_health_states.sql` | 按来源模型健康快照 | 新表 |
+| `092`–`100`（分组重设计 v2） | 组实体 / 请求快照 / 路由事实 / outbox / 订阅合约 / 结算策略 / 有序候选组 / 用户倍率 / 关系覆盖 | 见 [分组与订阅合约 Runbook](./routing-groups-runbook.md) §二 |
 
 > SQLite / Postgres 部署以 `migrations/sqlite/000_create_full_schema.sql` 与 `migrations/postgres/000_create_full_schema.sql` 为全量 schema；方言专用增量见 `migrations/sqlite/` 与 `migrations/postgres/`。
+
+### 2.2a schema 隔离部署的迁移执行（生产必读）
+
+生产为 per-service schema（`oneapi_identity` / `oneapi_channel` / `oneapi_billing` / …，
+通过 `<SVC>_SCHEMA` 环境变量生效）时，**只跑共享库 `oneapi` 的迁移是不够的**——
+每个服务 schema 有独立的 `schema_migrations`，必须逐 schema 带 `-ownership` 执行：
+
+```bash
+for pair in identity:oneapi_identity channel:oneapi_channel billing:oneapi_billing \
+            log:oneapi_log config:oneapi_config notify:oneapi_notify monitor:oneapi_monitor; do
+  svc=${pair%%:*}; db=${pair##*:}
+  MIGRATIONS_DSN="root:pw@tcp(host:3306)/${db}?charset=utf8mb4&parseTime=True&loc=Local" \
+    go run ./cmd/migrate -dir ./migrations -ownership "$svc"          # 先加 -status 预检
+done
+```
+
+- 只应用**编号迁移**；`phase1_indexes.sql` / `phase3_partitioning.sql` /
+  `schema_split.sql` 是参考 DDL，不得进入自动迁移目录。
+- 生产服务器无 Go 工具链时，用静态 `migrate` 二进制经 `docker run` 执行，完整命令
+  模板见 [分组与订阅合约 Runbook](./routing-groups-runbook.md) §2.1。
+- **已知坑（2026-09-12 实录）**：早期 per-service `schema_migrations` 是
+  `applied_at BIGINT NOT NULL` 无默认值，runner 只插 `version` 列会报
+  `Error 1364: Field 'applied_at' doesn't have a default value`，且此时 DDL 已隐式提交。
+  处置（补默认值 → 手工补录版本 → 重跑）见
+  [分组与订阅合约 Runbook](./routing-groups-runbook.md) §2.2。
 
 ### 2.3 迁移前预检
 

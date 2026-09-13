@@ -8,6 +8,17 @@ import "api/common/v1/common.proto";
 option go_package = "micro-one-api/api/billing/v1;billingv1";
 
 service BillingService {
+ rpc ExecuteSubscriptionCommerce(SubscriptionCommerceRequest) returns (SubscriptionCommerceReply);
+ rpc GetRoutingBillingPolicy(GetRoutingBillingPolicyRequest) returns (RoutingBillingPolicy);
+ rpc PublishRoutingBillingPolicy(PublishRoutingBillingPolicyRequest) returns (RoutingBillingPolicy);
+ rpc GetRoutingGroupPrice(GetRoutingGroupPriceRequest) returns (GetRoutingGroupPriceReply);
+ // Phase F: user-specific routing-group price ratio overrides (admin-managed).
+ rpc SetUserRoutingPrice(SetUserRoutingPriceRequest) returns (SetUserRoutingPriceReply);
+ rpc ClearUserRoutingPrice(ClearUserRoutingPriceRequest) returns (ClearUserRoutingPriceReply);
+ // Phase F: ordered-routing settlement qualification probe. Relay terminates
+ // (never advances to a pricier group) when the user cannot settle in a group.
+ rpc CheckRoutingSettlement(CheckRoutingSettlementRequest) returns (CheckRoutingSettlementReply);
+  rpc GetRoutingCapabilities(GetRoutingCapabilitiesRequest) returns (GetRoutingCapabilitiesResponse);
   rpc ReserveQuota(ReserveQuotaRequest) returns (ReserveQuotaResponse);
   rpc CommitQuota(CommitQuotaRequest) returns (CommitQuotaResponse);
   rpc ReleaseQuota(ReleaseQuotaRequest) returns (ReleaseQuotaResponse);
@@ -48,6 +59,15 @@ service BillingService {
   rpc AggregateUsage(AggregateUsageRequest) returns (AggregateUsageResponse);
 }
 
+message GetRoutingCapabilitiesRequest {}
+message GetRoutingCapabilitiesResponse { int32 request_snapshot_version = 1; bool fixed_routing = 2; bool subscription_contracts = 3; bool user_price_overrides = 4; }
+message SetUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; double price_ratio = 3; }
+message SetUserRoutingPriceReply { int64 version = 1; }
+message ClearUserRoutingPriceRequest { int64 user_id = 1; int64 routing_group_id = 2; }
+message ClearUserRoutingPriceReply {}
+message CheckRoutingSettlementRequest { int64 user_id = 1; int64 routing_group_id = 2; }
+message CheckRoutingSettlementReply { bool allowed = 1; string reason = 2; }
+
 // ========== 金额预扣（RPC 名称为兼容既有客户端保留） ==========
 
 message ReserveQuotaRequest {
@@ -57,6 +77,8 @@ message ReserveQuotaRequest {
   string model = 4;
   string channel_id = 5;
   int64 subscription_account_id = 6;  // 订阅账号 ID（0 = 非订阅账号请求）
+  common.v1.ResolvedRoutingContext routing_context = 7;
+  RequestCostBound cost_bound = 8;
 }
 
 message ReserveQuotaResponse {
@@ -73,6 +95,9 @@ message ReserveQuotaResponse {
   int64 balance_amount_quota = 6 [deprecated = true]; // Compatibility alias for balance_amount.
   int64 subscription_id = 7;           // 0 when the reservation was created via the legacy balance-only path
   int64 balance_amount = 8;            // Fixed-point amount pre-deducted from the wallet.
+  int32 request_snapshot_version = 9;
+  string routing_context_hash = 10;
+  string request_snapshot_hash = 11;
 }
 
 message CommitQuotaRequest {
@@ -431,6 +456,7 @@ message PaymentOrder {
 }
 
 message CreatePaymentOrderRequest {
+  string request_id = 9;
   string user_id = 1;
   string channel = 2;
   string asset_type = 3;
@@ -696,3 +722,24 @@ message UsageTotals {
   int64 cache_creation_5m_tokens = 9;   // SUM of 5 分钟 TTL cache 创建 token
   int64 cache_creation_1h_tokens = 10;  // SUM of 1 小时 TTL cache 创建 token
 }
+
+message GetRoutingGroupPriceRequest { int64 routing_group_id = 1; int64 user_id = 2; }
+message GetRoutingGroupPriceReply {
+ string group_key = 1;
+ double price_ratio = 2;
+ string version = 3;
+ string source = 4;
+ string billing_mode = 5;
+ bool subscription_covered = 6;
+ // Phase F: set when a user-specific override is the effective ratio.
+ optional double user_price_ratio = 7;
+ optional int64 user_price_version = 8;
+}
+
+message RequestCostBound { string protocol = 1; int64 input_tokens = 2; string upstream_model = 3; }
+message GetRoutingBillingPolicyRequest { int64 routing_group_id = 1; }
+message RoutingBillingPolicy { int64 routing_group_id = 1; int64 version = 2; string billing_mode = 3; double price_ratio = 4; int64 effective_at = 5; }
+message PublishRoutingBillingPolicyRequest { int64 routing_group_id = 1; int64 expected_version = 2; string billing_mode = 3; double price_ratio = 4; }
+
+message SubscriptionCommerceRequest { int64 user_id = 1; string request_id = 2; int64 plan_id = 3; int64 from_subscription_id = 4; string change_policy = 5; }
+message SubscriptionCommerceReply { string result_json = 1; }

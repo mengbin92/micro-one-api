@@ -114,7 +114,7 @@ function getGroupID(order: PaymentOrder) {
 
 function formatAsset(order: PaymentOrder) {
   if (getAssetType(order) === 'subscription') {
-    return t(`订阅分组 #${getGroupID(order) || '-'}`);
+    return t("订阅额度策略 #{id}", { id: getGroupID(order) || '-' });
   }
   return formatAmount(getAssetAmount(order));
 }

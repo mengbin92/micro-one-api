@@ -25,6 +25,9 @@ var (
 // during server construction (NewHTTPServer). If never called, a default
 // enabled auditor is lazily created on first use for backwards compatibility.
 func SetAdminAuditor(a *audit.Auditor) {
+	if a == nil {
+		return
+	}
 	adminAuditorOnce.Do(func() {
 		adminAuditorInst = a
 	})

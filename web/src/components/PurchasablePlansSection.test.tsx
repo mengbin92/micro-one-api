@@ -19,6 +19,7 @@ describe('PurchasablePlansSection', () => {
       idempotencyKey: null as string | null,
     };
     server.use(
+      http.get('/api/v1/subscriptions/plans', () => HttpResponse.json({ success: true, data: [] })),
       http.get('/api/v1/subscriptions/progress', () =>
         HttpResponse.json({ success: false, message: 'not found' }),
       ),
@@ -76,4 +77,24 @@ describe('PurchasablePlansSection', () => {
     expect(openSpy).toHaveBeenCalledWith('about:blank', '_blank');
     expect(openSpy).toHaveBeenCalledWith('https://pay.example/PAY-1', '_blank', 'noopener,noreferrer');
   });
+});
+
+it('buys the frozen plan and keeps unlimited snapshot limits', async () => {
+  window.localStorage.setItem('userId', '42');
+  vi.spyOn(window, 'open').mockReturnValue(null);
+  let body: Record<string, unknown> | undefined;
+  server.use(
+    http.get('/api/v1/subscriptions/progress', () => HttpResponse.json({ success: false })),
+    http.get('/api/v1/subscriptions/groups', () => HttpResponse.json({ success: true, data: [] })),
+    http.get('/api/v1/subscriptions/plans', () => HttpResponse.json({ success: true, data: [{ id: 8, name: 'Frozen plan', price_quota: 10, validity_days: 30, group: { daily_limit_usd: 999 }, contract: { digest: 'frozen', coverage_mode: 'selected_groups', coverage: [{ routing_group_id: 9, routing_group_key: 'vip', grants_access: false }], quota_policy: { id: 1, version: 'q1', rate_multiplier: 2, daily_limit_usd: null, weekly_limit_usd: null, monthly_limit_usd: null } } }] })),
+    http.post('/api/v1/subscriptions/purchase/payment', async ({ request }) => { body = await request.json() as Record<string, unknown>; return HttpResponse.json({ success: true, data: { payment: { trade_no: 'P8' } } }); }),
+  );
+  renderWithQuery(<MemoryRouter><PurchasablePlansSection /></MemoryRouter>);
+  expect(await screen.findByText('Frozen plan')).toBeInTheDocument();
+  expect(screen.getByText('每日额度 不限')).toBeInTheDocument();
+  expect(screen.getByText('vip（仅费用覆盖）')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: '购买订阅' }));
+  await userEvent.click(screen.getByRole('button', { name: '确认购买' }));
+  await waitFor(() => expect(body).toMatchObject({ plan_id: 8 }));
+  expect(body).not.toHaveProperty('group_id');
 });

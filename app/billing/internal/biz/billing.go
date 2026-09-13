@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	billingdomain "micro-one-api/domain/billing"
+	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	applogger "micro-one-api/platform/logging"
 	"micro-one-api/platform/metrics"
@@ -97,6 +98,8 @@ type SubscriptionPrimatives interface {
 	GetActiveSubscriptionForUserInTx(ctx context.Context, tx subscriptionbiz.Tx, userID int64) (*subscriptionbiz.UserSubscription, error)
 	// GetGroupForSubscription loads the subscription group (limits
 	// and multiplier) for the given subscription.
+	GetGroupForSubscription(ctx context.Context, subscription *subscriptionbiz.UserSubscription) (*subscriptionbiz.SubscriptionGroup, error)
+	// GetGroupForSubscriptionInTx reads the policy in the caller transaction.
 	GetGroupForSubscriptionInTx(ctx context.Context, tx subscriptionbiz.Tx, subscription *subscriptionbiz.UserSubscription) (*subscriptionbiz.SubscriptionGroup, error)
 	// RecordUsageForSubscriptionInTx adds the given USD cost to every
 	// window of the subscription's usage counters, performing the
@@ -105,6 +108,9 @@ type SubscriptionPrimatives interface {
 }
 
 type BillingUsecase struct {
+	routingPolicies     RoutingPolicyRepo
+	routingGroups       RoutingGroupReader
+	userPriceOverrides  UserPriceOverrideRepo
 	accountRepo         AccountRepo
 	reservationRepo     ReservationRepo
 	ledgerRepo          LedgerRepo
@@ -288,7 +294,17 @@ func (uc *BillingUsecase) usdToAmountFloor(usd float64) int64 {
 	return int64(v)
 }
 
-func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64) (*Reservation, error) {
+func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64, contexts ...*routing.ResolvedRoutingContext) (*Reservation, error) {
+	var routingContext *routing.ResolvedRoutingContext
+	if len(contexts) > 0 {
+		routingContext = contexts[0]
+	}
+	if subscriptionbiz.EntitlementsEnabled() && (routingContext == nil || uc.routingPolicies == nil) {
+		return nil, ErrRequestSnapshotUnavailable
+	}
+	if routingContext != nil && (!RequestSnapshotsEnabled() || routingContext.Validate() != nil || strconv.FormatInt(routingContext.UserID, 10) != userID) {
+		return nil, ErrRoutingContextInvalid
+	}
 	// v0.18 P2 C5: instrument the sync reserve path (mode=sync). The async
 	// path already observes mode=async in AsyncBillingUsecase.PreCheck; the
 	// metric was previously only observed on one path, so the sync baseline
@@ -313,7 +329,13 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 		if err != nil {
 			return nil, fmt.Errorf("find by request id: %w", err)
 		}
-		if existing != nil && existing.UserID == userID && (existing.IsReserved() || existing.Status == ReservationStatusCommitted) {
+		if existing != nil && existing.UserID == userID {
+			if err := validateReservationReplay(existing, model, routingContext); err != nil {
+				return nil, err
+			}
+			if !existing.IsReserved() && existing.Status != ReservationStatusCommitted {
+				return nil, ErrReservationReleased
+			}
 			return existing, nil
 		}
 	}
@@ -323,16 +345,30 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 		return nil, fmt.Errorf("get account snapshot: %w", err)
 	}
 
-	cost := uc.calculateCost(ctx, account.Group, model, estimatedTokens, 0, 0, false)
+	snapshot, err := uc.prepareRequestSnapshot(ctx, userID, account.Group, model, routingContext)
+	if err != nil {
+		return nil, err
+	}
+	calculator, priceGroup := uc, account.Group
+	if snapshot != nil {
+		calculator, priceGroup = uc.requestCalculator(snapshot), snapshot.GroupKey
+	}
+	if snapshot != nil && snapshot.BillingMode == routing.SubscriptionOnly {
+		estimatedTokens = snapshot.CostBound.InputTokens
+	}
+	cost := calculator.calculateCost(ctx, priceGroup, model, estimatedTokens, 0, 0, false)
 	if cost <= 0 {
 		cost = 1
 	}
 
+	if snapshot != nil && snapshot.BillingMode == routing.SubscriptionOnly {
+		snapshot.MaxCost = cost
+	}
 	// Dual-track path: when subscription priority is enabled and the
 	// user has an active subscription, we split the cost between the
 	// subscription (absorbs up to its remaining window) and the wallet.
-	if uc.subscriptionPriorityEnabled() {
-		if reservation, err := uc.reserveQuotaDualTrack(ctx, userID, account, requestID, model, channelID, subscriptionAccountID, cost, estimatedTokens); err == nil {
+	if uc.subscriptionPriorityEnabled() && (snapshot == nil || snapshot.BillingMode != routing.WalletOnly) {
+		if reservation, err := uc.reserveQuotaDualTrack(ctx, userID, account, requestID, model, channelID, subscriptionAccountID, cost, estimatedTokens, snapshot); err == nil {
 			return reservation, nil
 		} else if !errors.Is(err, subscriptionbiz.ErrSubscriptionNotFound) && !errors.Is(err, ErrCrossDBReservation) {
 			// We do NOT fall through to the legacy path on
@@ -340,9 +376,14 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 			// double-charge window. Instead, surface the
 			// error so the caller can decide.
 			return nil, err
+		} else if snapshot != nil && errors.Is(err, ErrCrossDBReservation) {
+			return nil, ErrRequestSnapshotUnavailable
 		}
 		// subscriptionbiz.ErrSubscriptionNotFound / ErrCrossDBReservation fall
 		// through to the legacy balance-only path.
+	}
+	if snapshot != nil && snapshot.BillingMode == routing.SubscriptionOnly {
+		return nil, ErrSubscriptionCoverageRequired
 	}
 
 	// Legacy balance-only path. The three writes (create reservation,
@@ -372,7 +413,13 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 			if err != nil {
 				return nil, fmt.Errorf("find by request id in tx: %w", err)
 			}
-			if existing != nil && (existing.IsReserved() || existing.Status == ReservationStatusCommitted) {
+			if existing != nil {
+				if err := validateReservationReplay(existing, model, routingContext); err != nil {
+					return nil, err
+				}
+				if !existing.IsReserved() && existing.Status != ReservationStatusCommitted {
+					return nil, ErrReservationReleased
+				}
 				return existing, nil
 			}
 		}
@@ -383,6 +430,7 @@ func (uc *BillingUsecase) ReserveQuota(ctx context.Context, userID, requestID st
 		now := uc.Now()
 		expiredAt := now.Add(5 * time.Minute)
 		reservation := &Reservation{
+			RequestSnapshot:       snapshot,
 			ReservationID:         reservationID,
 			UserID:                userID,
 			RequestID:             requestID,
@@ -443,7 +491,12 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 	subscriptionAccountID int64,
 	cost int64,
 	estimatedTokens int64,
+	snapshots ...*RequestSnapshot,
 ) (*Reservation, error) {
+	var snapshot *RequestSnapshot
+	if len(snapshots) > 0 {
+		snapshot = snapshots[0]
+	}
 	if uc.subscription == nil {
 		return nil, subscriptionbiz.ErrSubscriptionNotFound
 	}
@@ -463,6 +516,12 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 	subscription, err := uc.subscription.GetActiveSubscriptionForUser(ctx, parsedUserID)
 	if err != nil {
 		return nil, err
+	}
+	if subscription == nil {
+		return nil, subscriptionbiz.ErrSubscriptionNotFound
+	}
+	if snapshot != nil && snapshot.Routing != nil && !subscription.Contract.Covers(snapshot.Routing.GroupID) {
+		return nil, subscriptionbiz.ErrSubscriptionNotFound
 	}
 	// row lock and read the frozen-aggregate. The dual-track pre-deduction
 	// therefore requires the caller's billing repo to expose its
@@ -487,7 +546,17 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 			if err != nil {
 				return fmt.Errorf("find by request id in tx: %w", err)
 			}
-			if existing != nil && (existing.IsReserved() || existing.Status == ReservationStatusCommitted) {
+			if existing != nil {
+				var rc *routing.ResolvedRoutingContext
+				if snapshot != nil {
+					rc = snapshot.Routing
+				}
+				if err := validateReservationReplay(existing, model, rc); err != nil {
+					return err
+				}
+				if !existing.IsReserved() && existing.Status != ReservationStatusCommitted {
+					return ErrReservationReleased
+				}
 				reservation = existing
 				return nil
 			}
@@ -503,13 +572,25 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 		if lerr != nil {
 			return lerr
 		}
-		// The active subscription could have changed between the pre-lock
-		// read and the lock (revoke/renew). Fall back to the pre-lock row's
-		// id so the reservation still binds to a concrete subscription; the
-		// absorber will simply absorb 0 when the window no longer matches.
+		// A replacement between the preliminary read and the lock must retry
+		// admission; never combine the old row ID with the new row's capacity.
+		if lockedSub == nil {
+			return subscriptionbiz.ErrSubscriptionNotFound
+		}
+		if (subscriptionbiz.EntitlementsEnabled() || lockedSub.Contract != nil) && (lockedSub.StartsAt > uc.Now().Unix() || lockedSub.ExpiresAt <= uc.Now().Unix()) {
+			return subscriptionbiz.ErrSubscriptionNotFound
+		}
+		if snapshot != nil && snapshot.Routing != nil {
+			if !lockedSub.Contract.Covers(snapshot.Routing.GroupID) {
+				return subscriptionbiz.ErrSubscriptionNotFound
+			}
+			if snapshot.Routing.SubscriptionID > 0 && (snapshot.Routing.SubscriptionID != lockedSub.ID || snapshot.Routing.SubscriptionEntitlementVersion != lockedSub.EntitlementRevision) {
+				return ErrRoutingContextConflict
+			}
+		}
 		lockedID := lockedSub.ID
 		if lockedID != subscription.ID {
-			lockedID = subscription.ID
+			return ErrRoutingContextConflict
 		}
 		group, gerr := uc.subscription.GetGroupForSubscriptionInTx(ctx, tx, lockedSub)
 		if gerr != nil {
@@ -524,7 +605,7 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 
 		now := uc.Now()
 		rolled := subscriptionbiz.RollUsageWindowsPure(lockedSub, now.Unix())
-		frozenDailyUSD, frozenWeeklyUSD, frozenMonthlyUSD, _, err := uc.reservationRepo.SumActiveFrozenInTx(ctx, tx, userID, lockedID, rolled.DailyWindowStart, rolled.WeeklyWindowStart, rolled.MonthlyWindowStart)
+		frozenDailyUSD, frozenWeeklyUSD, frozenMonthlyUSD, err := uc.frozenAccounting(ctx, tx, userID, lockedID, rolled.DailyWindowStart, rolled.WeeklyWindowStart, rolled.MonthlyWindowStart, multiplier, snapshot != nil)
 		if err != nil {
 			return fmt.Errorf("sum active frozen: %w", err)
 		}
@@ -538,9 +619,9 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 			DailyLimit:                 group.DailyLimitUSD,
 			WeeklyLimit:                group.WeeklyLimitUSD,
 			MonthlyLimit:               group.MonthlyLimitUSD,
-			FrozenDailyAccountingUSD:   frozenDailyUSD * multiplier,
-			FrozenWeeklyAccountingUSD:  frozenWeeklyUSD * multiplier,
-			FrozenMonthlyAccountingUSD: frozenMonthlyUSD * multiplier,
+			FrozenDailyAccountingUSD:   frozenDailyUSD,
+			FrozenWeeklyAccountingUSD:  frozenWeeklyUSD,
+			FrozenMonthlyAccountingUSD: frozenMonthlyUSD,
 		}
 		absorbResult := subscriptionbiz.ComputeAbsorbablePure(window, multiplier, 0)
 		absorbUSD := costUSD
@@ -562,6 +643,9 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 			subscriptionAmount = cost
 		}
 		balanceAmount := cost - subscriptionAmount
+		if snapshot != nil && snapshot.BillingMode == routing.SubscriptionOnly && balanceAmount > 0 {
+			return ErrSubscriptionQuotaInsufficient
+		}
 		// Wallet pre-deduction.
 		if balanceAmount > 0 {
 			_, _, _, err = uc.accountRepo.ReserveBalanceInTx(ctx, tx, userID, balanceAmount, false)
@@ -578,6 +662,7 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 		nowTime := uc.Now()
 		expiredAt := nowTime.Add(5 * time.Minute)
 		r := &Reservation{
+			RequestSnapshot:                snapshot,
 			ReservationID:                  reservationID,
 			UserID:                         userID,
 			RequestID:                      requestID,
@@ -595,6 +680,15 @@ func (uc *BillingUsecase) reserveQuotaDualTrack(
 			CreatedAt:                      nowTime,
 			UpdatedAt:                      nowTime,
 			ExpiredAt:                      expiredAt,
+		}
+		if snapshot != nil {
+			snapshot.Subscription, err = freezeSubscription(group, rolled, multiplier)
+			if err != nil {
+				return err
+			}
+			r.SubscriptionAmountUSD = uc.amountToUSD(subscriptionAmount)
+			accounting := r.SubscriptionAmountUSD * multiplier
+			r.SubscriptionAccountingUSD = &accounting
 		}
 		if err := uc.reservationRepo.CreateReservationInTx(ctx, tx, r); err != nil {
 			return fmt.Errorf("create reservation in tx: %w", err)
@@ -808,7 +902,10 @@ func (uc *BillingUsecase) commitQuotaLegacy(ctx context.Context, reservationID s
 	}
 
 	usage.SubscriptionAccountID = resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
-	actualCost, costBreakdown, usageAudit := uc.calculateCostWithUsage(ctx, account.Group, reservation.Model, actualTokens, usage)
+	actualCost, costBreakdown, usageAudit, err := uc.reservationCost(ctx, reservation, account.Group, actualTokens, usage)
+	if err != nil {
+		return 0, 0, err
+	}
 	if actualCost <= 0 {
 		actualCost = 1
 	}
@@ -994,9 +1091,15 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 			return fmt.Errorf("get account in tx: %w", err)
 		}
 		usage.SubscriptionAccountID = resolveSubscriptionAccountID(usage.SubscriptionAccountID, reservation.SubscriptionAccountID)
-		actualCost, costBreakdown, usageAudit := uc.calculateCostWithPricing(ctx, pricing, account.Group, reservation.Model, actualTokens, usage)
+		actualCost, costBreakdown, usageAudit, err := uc.reservationCostWithPricing(ctx, pricing, reservation, account.Group, actualTokens, usage)
+		if err != nil {
+			return err
+		}
 		if actualCost <= 0 {
 			actualCost = 1
+		}
+		if reservation.RequestSnapshot != nil && reservation.RequestSnapshot.BillingMode == routing.SubscriptionOnly && actualCost > reservation.Amount {
+			return ErrSubscriptionBoundExceeded
 		}
 		// §6.3: the pricing snapshot is claimed in the SAME transaction as the
 		// ledger rows below, so a row and its pricing evidence commit or roll
@@ -1009,7 +1112,15 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		// holding the subscription row lock we let remaining subscription capacity
 		// absorb the delta before falling back to wallet balance.
 		costUSD := uc.amountToUSD(actualCost)
-		actualAbsorbUSD := uc.commitSubscriptionAbsorbUSD(ctx, tx, reservation, costUSD)
+		var actualAbsorbUSD float64
+		if reservation.RequestSnapshot != nil {
+			actualAbsorbUSD, err = uc.frozenSubscriptionAbsorbUSD(ctx, tx, reservation, costUSD)
+			if err != nil {
+				return err
+			}
+		} else {
+			actualAbsorbUSD = uc.commitSubscriptionAbsorbUSD(ctx, tx, reservation, costUSD)
+		}
 		var actualSubscriptionAmount int64
 		if actualAbsorbUSD >= costUSD {
 			actualSubscriptionAmount = actualCost
@@ -1019,15 +1130,21 @@ func (uc *BillingUsecase) commitQuotaDualTrack(ctx context.Context, reservationI
 		if actualSubscriptionAmount > actualCost {
 			actualSubscriptionAmount = actualCost
 		}
+		if reservation.RequestSnapshot != nil {
+			actualAbsorbUSD = uc.amountToUSD(actualSubscriptionAmount)
+		}
 		actualBalanceAmount := actualCost - actualSubscriptionAmount
 		if actualBalanceAmount < 0 {
 			actualBalanceAmount = 0
+		}
+		if reservation.RequestSnapshot != nil && reservation.RequestSnapshot.BillingMode == routing.SubscriptionOnly && actualBalanceAmount > 0 {
+			return ErrSubscriptionBoundExceeded
 		}
 		// Subscription side: record the (un-multiplied) actual cost. The
 		// subscription Usecase multiplies by RateMultiplier inside the
 		// row-locked update.
 		if reservation.SubscriptionID > 0 {
-			if err := uc.subscription.RecordUsageForSubscriptionInTx(ctx, tx, reservation.SubscriptionID, actualAbsorbUSD, now); err != nil {
+			if err := uc.recordReservedSubscriptionUsage(ctx, tx, reservation, actualAbsorbUSD, now); err != nil {
 				return fmt.Errorf("record subscription usage: %w", err)
 			}
 		}
@@ -1233,7 +1350,10 @@ func (uc *BillingUsecase) commitSubscriptionAbsorbUSD(ctx context.Context, tx su
 		multiplier = 1.0
 	}
 	rolled := subscriptionbiz.RollUsageWindowsPure(subscription, uc.Now().Unix())
-	frozenDailyUSD, frozenWeeklyUSD, frozenMonthlyUSD, _, err := uc.reservationRepo.SumActiveFrozenInTx(ctx, tx, reservation.UserID, reservation.SubscriptionID, rolled.DailyWindowStart, rolled.WeeklyWindowStart, rolled.MonthlyWindowStart)
+	// Use each sibling reservation's own frozen accounting Q (falling back to
+	// the live multiplier only for pre-v2 rows); re-pricing frozen v2 siblings
+	// at the current group multiplier mis-counts them after a multiplier change.
+	frozenDailyUSD, frozenWeeklyUSD, frozenMonthlyUSD, err := uc.frozenAccounting(ctx, tx, reservation.UserID, reservation.SubscriptionID, rolled.DailyWindowStart, rolled.WeeklyWindowStart, rolled.MonthlyWindowStart, multiplier, false)
 	if err != nil {
 		return absorbUSD
 	}
@@ -1247,9 +1367,9 @@ func (uc *BillingUsecase) commitSubscriptionAbsorbUSD(ctx context.Context, tx su
 		DailyLimit:                 group.DailyLimitUSD,
 		WeeklyLimit:                group.WeeklyLimitUSD,
 		MonthlyLimit:               group.MonthlyLimitUSD,
-		FrozenDailyAccountingUSD:   frozenDailyUSD * multiplier,
-		FrozenWeeklyAccountingUSD:  frozenWeeklyUSD * multiplier,
-		FrozenMonthlyAccountingUSD: frozenMonthlyUSD * multiplier,
+		FrozenDailyAccountingUSD:   frozenDailyUSD,
+		FrozenWeeklyAccountingUSD:  frozenWeeklyUSD,
+		FrozenMonthlyAccountingUSD: frozenMonthlyUSD,
 	}
 	maxAbsorbUSD := subscriptionbiz.ComputeAbsorbablePure(window, multiplier, 0).AbsorbableUSD
 	if maxAbsorbUSD < reservedUSD {

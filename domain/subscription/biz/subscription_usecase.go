@@ -17,15 +17,18 @@ const (
 )
 
 type SubscriptionUsecase struct {
-	repo      SubscriptionRepository
-	groupRepo GroupRepository
-	now       func() time.Time
+	routingGroups ContractGroupReader
+	repo          SubscriptionRepository
+	groupRepo     GroupRepository
+	now           func() time.Time
 	// txRunner, when wired, lets ChangeSubscription run its read-validate-
 	// mutate-write inside a single row-locked transaction (code-review M6,
 	// 2026-08-05). Left nil in memory/test mode, where the unlocked path is
 	// used and the in-memory repo's own lock protects the map.
 	txRunner TxRunner
 }
+
+func (uc *SubscriptionUsecase) SetContractGroupReader(r ContractGroupReader) { uc.routingGroups = r }
 
 func NewSubscriptionUsecase(repo SubscriptionRepository, groupRepo GroupRepository) *SubscriptionUsecase {
 	return &SubscriptionUsecase{
@@ -44,7 +47,7 @@ func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscripti
 	if req == nil {
 		return nil, fmt.Errorf("nil request")
 	}
-	group, err := uc.groupRepo.GetGroupByID(ctx, req.GroupID)
+	group, err := uc.prepareAssignment(ctx, nil, req)
 	if err != nil {
 		return nil, err
 	}
@@ -68,6 +71,7 @@ func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscripti
 		startsAt = now
 	}
 	subscription := &UserSubscription{
+		PricePaid: req.PricePaid, Contract: CloneContract(req.Contract), SourceOrder: req.SourceOrder, EntitlementRevision: 1,
 		UserID:           req.UserID,
 		GroupID:          req.GroupID,
 		SubscriptionName: req.SubscriptionName,
@@ -101,7 +105,7 @@ func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *Assig
 	if req == nil {
 		return nil, fmt.Errorf("nil request")
 	}
-	group, err := uc.groupRepo.GetGroupByID(ctx, req.GroupID)
+	group, err := uc.prepareAssignment(ctx, tx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -121,6 +125,7 @@ func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *Assig
 		startsAt = now
 	}
 	subscription := &UserSubscription{
+		PricePaid: req.PricePaid, Contract: CloneContract(req.Contract), SourceOrder: req.SourceOrder, EntitlementRevision: 1,
 		UserID:           req.UserID,
 		GroupID:          req.GroupID,
 		SubscriptionName: req.SubscriptionName,
@@ -145,6 +150,19 @@ func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *Assig
 }
 
 func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
+	if uc.txRunner != nil && req != nil && (EntitlementsEnabled() || req.Contract != nil) {
+		if _, err := uc.prepareAssignment(ctx, nil, req); err != nil {
+			return nil, false, err
+		}
+		var sub *UserSubscription
+		var extended bool
+		err := uc.txRunner.RunInTx(ctx, func(c context.Context, tx Tx) error {
+			var err error
+			sub, extended, err = uc.assignOrExtend(c, tx, req)
+			return err
+		})
+		return sub, extended, err
+	}
 	return uc.assignOrExtend(ctx, nil, req)
 }
 
@@ -165,7 +183,7 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *A
 	if req == nil {
 		return nil, false, fmt.Errorf("nil request")
 	}
-	group, err := uc.groupRepo.GetGroupByID(ctx, req.GroupID)
+	group, err := uc.prepareAssignment(ctx, tx, req)
 	if err != nil {
 		return nil, false, err
 	}
@@ -191,6 +209,17 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *A
 		}
 		return sub, false, sErr
 	}
+	contractChanged := false
+	if (active.Contract != nil || req.Contract != nil) && (active.Contract == nil || req.Contract == nil || active.Contract.Digest != req.Contract.Digest) {
+		pending, ok := pendingChangeMetadata(active.Metadata)
+		if !ok || req.Contract == nil || pending.Contract == nil || pending.Contract.Digest != req.Contract.Digest {
+			return nil, true, ErrSubscriptionContractConflict
+		}
+		active.Contract = CloneContract(req.Contract)
+		active.SourceOrder = req.SourceOrder
+		active.Metadata = clearPendingChangeMetadata(active.Metadata)
+		contractChanged = true
+	}
 	// Apply a scheduled next-cycle change (downgrade) when the renewal targets
 	// the pending group. The renewal-initiation layer (admin/service) is
 	// responsible for reading pending_change and creating the renewal order for
@@ -201,7 +230,7 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *A
 	groupChanged := false
 	if active.GroupID != req.GroupID {
 		pending, ok := pendingChangeMetadata(active.Metadata)
-		if !ok || pending.ToGroupID != req.GroupID {
+		if !contractChanged && (!ok || pending.ToGroupID != req.GroupID) {
 			return nil, true, ErrSubscriptionAlreadyAssigned
 		}
 		active.GroupID = req.GroupID
@@ -237,7 +266,14 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *A
 	// domain-H1: write ONLY the columns this renewal changes. The usage/window
 	// columns are owned by AddUsage; writing them here from a read snapshot
 	// taken before a concurrent AddUsage commits would clobber that increment.
+	active.PricePaid = req.PricePaid
 	fields := []SubscriptionField{SubscriptionFieldExpiresAt, SubscriptionFieldMetadata, SubscriptionFieldRenewalStrategy}
+	if active.Contract != nil {
+		fields = append(fields, SubscriptionFieldPricePaid)
+	}
+	if contractChanged {
+		fields = append(fields, SubscriptionFieldContract)
+	}
 	if req.SubscriptionName != "" {
 		fields = append(fields, SubscriptionFieldSubscriptionName)
 	}
@@ -402,7 +438,7 @@ func (uc *SubscriptionUsecase) RecordUsage(ctx context.Context, userID int64, co
 	// (quota is charged at the multiplier via CheckQuota), letting users exceed
 	// their paid window. Propagate the error so the usage write fails and can be
 	// retried. A zero/unset multiplier legitimately means "no scaling" (1.0).
-	group, gerr := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID)
+	group, gerr := uc.GetGroupForSubscription(ctx, subscription)
 	if gerr != nil {
 		return fmt.Errorf("lookup billing group %d for usage recording: %w", subscription.GroupID, gerr)
 	}
@@ -439,7 +475,7 @@ func (uc *SubscriptionUsecase) RecordUsageForSubscriptionInTx(ctx context.Contex
 	// back to 1.0x (see RecordUsage). This runs inside the dual-track commit tx,
 	// so failing here rolls the whole settlement back for retry rather than
 	// persisting under-recorded usage.
-	group, gerr := uc.groupRepo.GetGroupByIDInTx(ctx, tx, subscription.GroupID)
+	group, gerr := uc.GetGroupForSubscriptionInTx(ctx, tx, subscription)
 	if gerr != nil {
 		return fmt.Errorf("lookup billing group %d for usage recording: %w", subscription.GroupID, gerr)
 	}
@@ -478,6 +514,12 @@ func (uc *SubscriptionUsecase) GetGroupForSubscription(ctx context.Context, subs
 	if subscription == nil {
 		return nil, ErrSubscriptionNotFound
 	}
+	if subscription.Contract != nil {
+		if err := subscription.Contract.Validate(); err != nil {
+			return nil, err
+		}
+		return subscription.Contract.Group(), nil
+	}
 	return uc.groupRepo.GetGroupByID(ctx, subscription.GroupID)
 }
 
@@ -485,6 +527,9 @@ func (uc *SubscriptionUsecase) GetGroupForSubscription(ctx context.Context, subs
 func (uc *SubscriptionUsecase) GetGroupForSubscriptionInTx(ctx context.Context, tx Tx, subscription *UserSubscription) (*SubscriptionGroup, error) {
 	if subscription == nil {
 		return nil, ErrSubscriptionNotFound
+	}
+	if subscription.Contract != nil {
+		return uc.GetGroupForSubscription(ctx, subscription)
 	}
 	return uc.groupRepo.GetGroupByIDInTx(ctx, tx, subscription.GroupID)
 }
@@ -494,7 +539,7 @@ func (uc *SubscriptionUsecase) CheckQuota(ctx context.Context, userID int64, est
 	if err != nil {
 		return nil, err
 	}
-	group, err := uc.groupRepo.GetGroupByID(ctx, subscription.GroupID)
+	group, err := uc.GetGroupForSubscription(ctx, subscription)
 	if err != nil {
 		return nil, err
 	}
@@ -513,14 +558,24 @@ func (uc *SubscriptionUsecase) GetProgress(ctx context.Context, userID int64) (*
 	// dimension reported Remaining=0, indistinguishable from "quota exhausted".
 	var dailyLimit, weeklyLimit, monthlyLimit *float64
 	groupName := ""
-	if group, gerr := uc.groupRepo.GetGroupByID(ctx, rolled.GroupID); gerr == nil && group != nil {
+	if rolled.Contract != nil {
+		groupName = rolled.SubscriptionName
+	}
+	group, gerr := uc.GetGroupForSubscription(ctx, rolled)
+	if gerr != nil && rolled.Contract != nil {
+		return nil, gerr
+	}
+	if gerr == nil && group != nil {
 		dailyLimit, weeklyLimit, monthlyLimit = group.DailyLimitUSD, group.WeeklyLimitUSD, group.MonthlyLimitUSD
-		groupName = group.DisplayName
+		if groupName == "" {
+			groupName = group.DisplayName
+		}
 		if groupName == "" {
 			groupName = group.Name
 		}
 	}
 	return &SubscriptionProgress{
+		Contract:         CloneContract(rolled.Contract),
 		ID:               rolled.ID,
 		Status:           rolled.Status,
 		StartsAt:         rolled.StartsAt,
@@ -684,4 +739,11 @@ func mergeSubscriptionMetadata(existing, next string) string {
 		return next
 	}
 	return next
+}
+
+func (uc *SubscriptionUsecase) GetInTx(ctx context.Context, tx Tx, id int64) (*UserSubscription, error) {
+	return uc.repo.GetByIDInTx(ctx, tx, id)
+}
+func (uc *SubscriptionUsecase) ChangeSubscriptionInTx(ctx context.Context, tx Tx, req ChangeRequest) (*ChangeResult, error) {
+	return uc.changeSubscription(ctx, tx, req)
 }

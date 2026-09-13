@@ -8,29 +8,34 @@ import (
 	"time"
 
 	"micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/routingoutbox"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type subscriptionModel struct {
-	ID                 int64   `gorm:"column:id"`
-	UserID             int64   `gorm:"column:user_id"`
-	GroupID            int64   `gorm:"column:group_id"`
-	SubscriptionName   string  `gorm:"column:subscription_name"`
-	Status             string  `gorm:"column:status"`
-	StartsAt           int64   `gorm:"column:starts_at"`
-	ExpiresAt          int64   `gorm:"column:expires_at"`
-	RenewalStrategy    string  `gorm:"column:renewal_strategy"`
-	DailyUsageUSD      float64 `gorm:"column:daily_usage_usd"`
-	WeeklyUsageUSD     float64 `gorm:"column:weekly_usage_usd"`
-	MonthlyUsageUSD    float64 `gorm:"column:monthly_usage_usd"`
-	DailyWindowStart   int64   `gorm:"column:daily_window_start"`
-	WeeklyWindowStart  int64   `gorm:"column:weekly_window_start"`
-	MonthlyWindowStart int64   `gorm:"column:monthly_window_start"`
-	Metadata           string  `gorm:"column:metadata"`
-	CreatedAt          int64   `gorm:"column:created_at"`
-	UpdatedAt          int64   `gorm:"column:updated_at"`
+	PricePaid           int64   `gorm:"column:price_paid"`
+	ContractSnapshot    *string `gorm:"column:contract_snapshot"`
+	EntitlementRevision int64   `gorm:"column:entitlement_revision"`
+	SourceOrder         string  `gorm:"column:source_order"`
+	ID                  int64   `gorm:"column:id"`
+	UserID              int64   `gorm:"column:user_id"`
+	GroupID             int64   `gorm:"column:group_id"`
+	SubscriptionName    string  `gorm:"column:subscription_name"`
+	Status              string  `gorm:"column:status"`
+	StartsAt            int64   `gorm:"column:starts_at"`
+	ExpiresAt           int64   `gorm:"column:expires_at"`
+	RenewalStrategy     string  `gorm:"column:renewal_strategy"`
+	DailyUsageUSD       float64 `gorm:"column:daily_usage_usd"`
+	WeeklyUsageUSD      float64 `gorm:"column:weekly_usage_usd"`
+	MonthlyUsageUSD     float64 `gorm:"column:monthly_usage_usd"`
+	DailyWindowStart    int64   `gorm:"column:daily_window_start"`
+	WeeklyWindowStart   int64   `gorm:"column:weekly_window_start"`
+	MonthlyWindowStart  int64   `gorm:"column:monthly_window_start"`
+	Metadata            string  `gorm:"column:metadata"`
+	CreatedAt           int64   `gorm:"column:created_at"`
+	UpdatedAt           int64   `gorm:"column:updated_at"`
 }
 
 func (subscriptionModel) TableName() string { return "user_subscriptions" }
@@ -259,19 +264,7 @@ func (r *Repository) addUsageMemory(ctx context.Context, userID int64, costUSD f
 }
 
 func (r *Repository) createSubscriptionDB(ctx context.Context, subscription *biz.UserSubscription) error {
-	model := subscriptionToModel(subscription)
-	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
-		// The unique index on (active_user_id) (review H10) makes a concurrent
-		// duplicate-active creation collide here. Map it to the sentinel so the
-		// usecase layer returns ErrSubscriptionAlreadyAssigned instead of a
-		// raw driver error.
-		if isDuplicateKeyErr(err) {
-			return biz.ErrSubscriptionAlreadyAssigned
-		}
-		return err
-	}
-	subscription.ID = model.ID
-	return nil
+	return r.createSubscriptionInTxDB(ctx, r.db, subscription)
 }
 
 // createSubscriptionInTxDB is the in-transaction variant of
@@ -280,13 +273,33 @@ func (r *Repository) createSubscriptionDB(ctx context.Context, subscription *biz
 // sentinel error to the caller.
 func (r *Repository) createSubscriptionInTxDB(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
 	model := subscriptionToModel(subscription)
-	if err := tx.WithContext(ctx).Create(&model).Error; err != nil {
+	model.EntitlementRevision = 1
+	err := tx.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+		if !biz.EntitlementsEnabled() && subscription.Contract == nil {
+			return db.Omit("ContractSnapshot", "EntitlementRevision", "SourceOrder", "PricePaid").Create(&model).Error
+		}
+		if err := LockContractReferences(db); err != nil {
+			return err
+		}
+		if err := ValidateContractBillingModes(db, subscription.Contract); err != nil {
+			return err
+		}
+		if err := db.Create(&model).Error; err != nil {
+			return err
+		}
+		if err := syncContractCoverage(db, "subscription_routing_entitlements", "subscription_id", model.ID, subscription.Contract); err != nil {
+			return err
+		}
+		return routingoutbox.Enqueue(db, "subscription", "subscription", model.ID, 1)
+	})
+	if err != nil {
 		if isDuplicateKeyErr(err) {
 			return biz.ErrSubscriptionAlreadyAssigned
 		}
 		return err
 	}
 	subscription.ID = model.ID
+	subscription.EntitlementRevision = 1
 	return nil
 }
 
@@ -295,8 +308,12 @@ func (r *Repository) updateSubscriptionDB(ctx context.Context, subscription *biz
 }
 
 func updateSubscriptionWithTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
+	return subscriptionMutation(ctx, tx, subscription, func(db *gorm.DB) error { return updateSubscriptionWithTxCore(ctx, db, subscription) })
+}
+
+func updateSubscriptionWithTxCore(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription) error {
 	model := subscriptionToModel(subscription)
-	return tx.WithContext(ctx).Model(&subscriptionModel{}).Where("id = ?", subscription.ID).Updates(map[string]any{
+	values := map[string]any{
 		"user_id":              model.UserID,
 		"group_id":             model.GroupID,
 		"subscription_name":    model.SubscriptionName,
@@ -311,7 +328,13 @@ func updateSubscriptionWithTx(ctx context.Context, tx *gorm.DB, subscription *bi
 		"monthly_window_start": model.MonthlyWindowStart,
 		"metadata":             model.Metadata,
 		"updated_at":           model.UpdatedAt,
-	}).Error
+	}
+	if biz.EntitlementsEnabled() || subscription.Contract != nil {
+		values["contract_snapshot"] = model.ContractSnapshot
+		values["source_order"] = model.SourceOrder
+		values["price_paid"] = model.PricePaid
+	}
+	return tx.WithContext(ctx).Model(&subscriptionModel{}).Where("id = ?", subscription.ID).Updates(values).Error
 }
 
 // subscriptionFieldColumns maps the semantic biz.SubscriptionField tags to the
@@ -327,6 +350,11 @@ func subscriptionFieldColumns(fields []biz.SubscriptionField) map[string]any {
 	cols := make(map[string]any)
 	for f := range seen {
 		switch f {
+		case biz.SubscriptionFieldPricePaid:
+			cols["price_paid"] = nil
+		case biz.SubscriptionFieldContract:
+			cols["contract_snapshot"] = nil
+			cols["source_order"] = nil
 		case biz.SubscriptionFieldStatus:
 			cols["status"] = nil
 		case biz.SubscriptionFieldExpiresAt:
@@ -364,6 +392,10 @@ func subscriptionFieldColumns(fields []biz.SubscriptionField) map[string]any {
 // increment committed between the caller's read and this write is preserved
 // (code-review 2026-07-30 domain-H1).
 func updateSubscriptionFieldsWithTx(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
+	return subscriptionMutation(ctx, tx, subscription, func(db *gorm.DB) error { return updateSubscriptionFieldsWithTxCore(ctx, db, subscription, fields) })
+}
+
+func updateSubscriptionFieldsWithTxCore(ctx context.Context, tx *gorm.DB, subscription *biz.UserSubscription, fields []biz.SubscriptionField) error {
 	if subscription == nil {
 		return errors.New("nil subscription")
 	}
@@ -379,6 +411,12 @@ func updateSubscriptionFieldsWithTx(ctx context.Context, tx *gorm.DB, subscripti
 	values := make(map[string]any, len(cols))
 	for col := range cols {
 		switch col {
+		case "price_paid":
+			values[col] = model.PricePaid
+		case "contract_snapshot":
+			values[col] = model.ContractSnapshot
+		case "source_order":
+			values[col] = model.SourceOrder
 		case "status":
 			values[col] = model.Status
 		case "expires_at":
@@ -453,6 +491,11 @@ func (r *Repository) updateSubscriptionFieldsMemory(ctx context.Context, subscri
 	}
 	for f := range seen {
 		switch f {
+		case biz.SubscriptionFieldPricePaid:
+			merged.PricePaid = subscription.PricePaid
+		case biz.SubscriptionFieldContract:
+			merged.Contract = biz.CloneContract(subscription.Contract)
+			merged.SourceOrder = subscription.SourceOrder
 		case biz.SubscriptionFieldStatus:
 			merged.Status = subscription.Status
 		case biz.SubscriptionFieldExpiresAt:
@@ -597,6 +640,8 @@ func subscriptionToModel(subscription *biz.UserSubscription) subscriptionModel {
 		return subscriptionModel{}
 	}
 	return subscriptionModel{
+		PricePaid:        subscription.PricePaid,
+		ContractSnapshot: encodeContract(subscription.Contract), EntitlementRevision: subscription.EntitlementRevision, SourceOrder: subscription.SourceOrder,
 		ID:                 subscription.ID,
 		UserID:             subscription.UserID,
 		GroupID:            subscription.GroupID,
@@ -622,6 +667,8 @@ func subscriptionFromModel(model *subscriptionModel) biz.UserSubscription {
 		return biz.UserSubscription{}
 	}
 	return biz.UserSubscription{
+		PricePaid: model.PricePaid,
+		Contract:  decodeContract(model.ContractSnapshot), EntitlementRevision: model.EntitlementRevision, SourceOrder: model.SourceOrder,
 		ID:                 model.ID,
 		UserID:             model.UserID,
 		GroupID:            model.GroupID,
@@ -648,6 +695,7 @@ func (r *Repository) createSubscriptionMemory(ctx context.Context, subscription 
 	subscription.ID = r.nextSubID
 	r.nextSubID++
 	cloned := *subscription
+	cloned.Contract = biz.CloneContract(subscription.Contract)
 	r.subscriptions[subscription.ID] = &cloned
 	return nil
 }
@@ -656,6 +704,7 @@ func (r *Repository) updateSubscriptionMemory(ctx context.Context, subscription 
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	cloned := *subscription
+	cloned.Contract = biz.CloneContract(subscription.Contract)
 	r.subscriptions[subscription.ID] = &cloned
 	return nil
 }
@@ -675,6 +724,7 @@ func (r *Repository) getSubscriptionByIDMemory(ctx context.Context, subscription
 		return nil, biz.ErrSubscriptionNotFound
 	}
 	cloned := *subscription
+	cloned.Contract = biz.CloneContract(subscription.Contract)
 	return &cloned, nil
 }
 
@@ -687,6 +737,7 @@ func (r *Repository) listSubscriptionsByUserMemory(ctx context.Context, userID i
 			continue
 		}
 		cloned := *subscription
+		cloned.Contract = biz.CloneContract(subscription.Contract)
 		result = append(result, &cloned)
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -704,6 +755,7 @@ func (r *Repository) listActiveSubscriptionsMemory(ctx context.Context) ([]*biz.
 			continue
 		}
 		cloned := *subscription
+		cloned.Contract = biz.CloneContract(subscription.Contract)
 		result = append(result, &cloned)
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -721,6 +773,7 @@ func (r *Repository) listAllSubscriptionsMemory(ctx context.Context) ([]*biz.Use
 	result := make([]*biz.UserSubscription, 0, len(r.subscriptions))
 	for _, subscription := range r.subscriptions {
 		cloned := *subscription
+		cloned.Contract = biz.CloneContract(subscription.Contract)
 		result = append(result, &cloned)
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -744,6 +797,7 @@ func (r *Repository) getActiveSubscriptionByUserMemory(ctx context.Context, user
 		}
 		if chosen == nil || subscription.UpdatedAt > chosen.UpdatedAt || (subscription.UpdatedAt == chosen.UpdatedAt && subscription.ID > chosen.ID) {
 			cloned := *subscription
+			cloned.Contract = biz.CloneContract(subscription.Contract)
 			chosen = &cloned
 		}
 	}

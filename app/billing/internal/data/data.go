@@ -49,6 +49,16 @@ func NewData(driver string, dsn ...string) (*Data, error) {
 	if err != nil {
 		return nil, err
 	}
+	if biz.RequestSnapshotsEnabled() {
+		for _, column := range []string{"request_snapshot", "request_snapshot_hash", "subscription_accounting_usd"} {
+			if !db.Migrator().HasColumn("billing_reservations", column) {
+				return nil, biz.ErrRequestSnapshotUnavailable
+			}
+		}
+		if !db.Migrator().HasTable("subscription_window_charges") {
+			return nil, biz.ErrRequestSnapshotUnavailable
+		}
+	}
 
 	redisAddr := os.Getenv("REDIS_ADDR")
 	redisPassword := os.Getenv("REDIS_PASSWORD")

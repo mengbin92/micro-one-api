@@ -354,6 +354,9 @@ func (s *EnhancedHTTPServer) getAuthSnapshot(ctx context.Context, token string) 
 	if err != nil {
 		return nil, err
 	}
+	if reply.RoutingContextVersion > 0 {
+		return nil, fmt.Errorf("enhanced legacy handler does not support routing v2")
+	}
 	// Stamp the audit actor so the audit middleware records the real caller.
 	// The session id is a display prefix, never the full token credential
 	// (see auditSessionIDPrefix in http_helpers.go).

@@ -18,6 +18,25 @@ function renderTokensPage() {
 }
 
 describe('TokensPage', () => {
+  it('keeps unavailable ordered candidates visible and reorders the actual IDs', async () => {
+    const posted: Record<string, unknown>[] = [];
+    server.use(
+      http.get('/api/token', () => HttpResponse.json({ success: true, data: [{ id: 1, name: 'ordered key', status: 1, created_time: 1, routing_mode: 'ordered', routing_group_ids: [10, 20, 30], routing_revision: 1 }] })),
+      http.get('/api/v1/routing-groups/available', () => HttpResponse.json({ success: true, data: { creation_enabled: true, default_available: true, facts: {}, groups: [20, 30].map((id) => ({ id, key: `group-${id}`, display_name: `Group ${id}`, price_ratio: 1, models: [], sources: [], ordered_eligible: true })), next_page_token: '' } })),
+      http.patch('/api/v1/routing-tokens/1', async ({ request }) => {
+        posted.push(await request.json() as Record<string, unknown>);
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    renderTokensPage();
+    await userEvent.click(await screen.findByRole('button', { name: '分组设置' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/#10/)).toBeVisible();
+    const up = within(dialog).getAllByRole('button', { name: '↑' });
+    await userEvent.click(up[1]);
+    await userEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(posted[0]?.routing_group_ids).toEqual([20, 10, 30]));
+  });
   beforeEach(() => {
     server.use(
       http.get('/api/status', () => HttpResponse.json({ success: true, data: {} })),
@@ -143,5 +162,28 @@ describe('TokensPage', () => {
     expect(screen.queryByText(fullKey)).not.toBeInTheDocument();
     expect(screen.getByText(maskedKey)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CC Switch' })).not.toBeInTheDocument();
+  });
+});
+
+describe('fixed routing keys', () => {
+  const available = { success: true, data: { creation_enabled: true, default_available: false, next_page_token: '', facts: { default_routing_group_id: 1, revision: 3, public_group_access: 'explicit_only', grants: [] }, groups: [{ id: 2, key: 'vip', display_name: 'VIP', price_ratio: 2, price_source: 'GroupRatio', price_version: 'v1', billing_mode: 'subscription_first', subscription_covered: false, models: ['model-vip'], sources: [{ source_type: 'admin', expires_at: 0 }] }] } };
+  it('shows the invalid default and sends the selected fixed group', async () => {
+    const user = userEvent.setup();
+    let body: unknown;
+    server.use(
+      http.get('/api/v1/routing-groups/available', () => HttpResponse.json(available)),
+      http.get('/api/token', () => HttpResponse.json({ success: true, data: [] })),
+      http.get('/api/pricing', () => HttpResponse.json({ success: true, data: { prices: [] } })),
+      http.post('/api/v1/routing-tokens', async ({ request }) => { body = await request.json(); return HttpResponse.json({ success: true, data: { id: 20, key: 'sk-fixed-secret', name: 'vip-key', status: 1, routing_mode: 'fixed', routing_group_id: 2, routing_revision: 1 } }); }),
+    );
+    renderTokensPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent('默认分组失效');
+    await user.click(screen.getByRole('button', { name: '创建 Token' }));
+    await user.type(screen.getByLabelText('Token 名称'), 'vip-key');
+    expect(screen.getByRole('button', { name: '创建' })).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('路由分组'), '2');
+    await user.click(screen.getByRole('button', { name: '创建' }));
+    await waitFor(() => expect(body).toEqual({ name: 'vip-key', routing_mode: 'fixed', routing_group_id: 2 }));
+    expect(await screen.findByDisplayValue('sk-fixed-secret')).toBeInTheDocument();
   });
 });

@@ -27,7 +27,7 @@ Micro-One-API 由 9 个微服务组成：
 - MySQL、Lite、PostgreSQL 和 E2E overlay 的 Compose 配置能否完成变量展开。
 - `kustomize build` 能否渲染生产清单，以及渲染结果能否通过 Kubernetes 1.33 schema 的严格校验。
 - 清单引用的 ConfigMap、Secret 和 key 是否已在清单中定义，或在本文档中提供创建命令；生产必需引用不得设置 `optional: true`。
-- 根 README 和 `docs/**/*.md` 中的本地文件链接是否存在。
+- 根 README 和 `docs/**/*.md` 中的本地文件链接是否存在；链接必须留在仓库内，指向仓库外（如 `../../../new-api/...`）的相对路径会被拒绝，即便本机存在同名同级检出——CI 只检出本仓库，这类链接只会在本地通过。仓库外的参考材料请用代码跨度（反引号包路径）而不是链接。
 
 安装 Docker Compose、Go、Python 3、Kustomize 和 kubeconform 后，可在仓库根目录执行与 CI 相同的检查：
 
@@ -786,6 +786,17 @@ mysql -h <host> -u root -p < migrations/schema_split.sql
      MIGRATIONS_DSN="root:pw@tcp(host:3306)/oneapi_${svc}"        go run ./cmd/migrate -ownership ${svc%-*}
    done
    ```
+
+   > **生产注意（2026-09-12 实录）**：
+   > - 生产服务器通常没有 Go 工具链。交叉构建静态 `migrate` 二进制（linux/amd64），
+   >   上传后经 `docker run --rm --network <backend-net> mysql:8.0 /opt/micro-one-api/migrate`
+   >   在容器网络内执行；完整命令模板见
+   >   [routing-groups-runbook.md](./runbooks/routing-groups-runbook.md) §2.1。
+   > - 早期建立的 per-service `schema_migrations` 可能是 `applied_at BIGINT NOT NULL`
+   >   无默认值，runner 只插 `version` 列会报 `Error 1364`，且 DDL 已隐式提交。
+   >   修复：`ALTER TABLE oneapi_<svc>.schema_migrations MODIFY applied_at BIGINT NOT NULL
+   >   DEFAULT (UNIX_TIMESTAMP());`，再手工补录该迁移的版本记录后重跑。详见
+   >   [routing-groups-runbook.md](./runbooks/routing-groups-runbook.md) §2.2。
 
 3. 滚动重启各服务，环境变量从 `DATABASE_DSN=.../oneapi?...` 切到 `DATABASE_DSN=.../oneapi?...` + `<SVC>_SCHEMA=oneapi_<svc>`。
 4. 观察 30 分钟；任何异常只需把 `<SVC>_SCHEMA` 置空并重启对应服务即可回滚（源库未变）。

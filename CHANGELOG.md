@@ -7,6 +7,37 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-13
+
+v0.29.0 是 v0.28.1 之后的 **MINOR 路由分组重设计版本**：交付分组重设计 v2 全部阶段（A–F），把分组从散落各处的字符串升级为有稳定 ID、生命周期、资源成员和使用权限的路由分组实体，并交付订阅合约、按组结算模式、有序候选组和用户专属倍率；配套修复一轮跨服务审查问题。全部能力默认关闭（新代码 + 旧行为），proto additive，三方言新增迁移 `092`–`100`（全部 additive）。详见 [release-v0.29.0.md](docs/releases/release-v0.29.0.md)。
+
+### Added
+
+- 路由分组实体（`routing_groups`）及 channel/account 成员关系，稳定 ID、生命周期、资格模式与 revision；随既有 CSV 配置双写回填（迁移 `092`）。
+- 用户路由资格与 Key 选组分离：默认组 + 显式授权组（含来源与有效期）；管理台分组列表与显式新建分组（`POST /api/v1/admin/routing-groups`，新建组固定停用）。
+- billing 请求快照：reservation 冻结价格与路由上下文，`LedgerEntry` 记录 `routing_group_id/key` 与 `request_snapshot_hash/json` 证据（迁移 `093`，开关默认关）。
+- identity 路由事实：用户与 Token 携带默认组、授权与 revision，鉴权返回 `routing_context_version=2`；`common.v1` 新增 `ResolvedRoutingContext` / `RoutingSubjectFacts` / `UserRoutingGroupGrant`（迁移 `094`，默认关）。
+- Token `inherit` / `fixed` 组模式与多组授权；授权与生命周期变更经 `routing_change_outbox` 投递（迁移 `095`，默认关）。
+- 订阅合约：套餐声明覆盖组与访问权益，订阅冻结购买时合同快照，权益版本化、到期按来源撤销（迁移 `096`，默认关）。
+- 按组计费策略：`routing_billing_policies` 版本化价格/模式，支持 `wallet_only` / `subscription_first` / `subscription_only` 结算模式（迁移 `097`，默认关）。
+- 有序候选组（ordered/Auto）：Token 显式有序组列表，前置组无资源才切换，绑定失效不静默漂移（迁移 `098`，默认关）。
+- 用户专属组倍率（heads + history，迁移 `099`）与组成员关系 priority/weight 覆盖（迁移 `100`），均默认关。
+- 路由分组运维 runbook（`docs/runbooks/routing-groups-runbook.md`）：迁移核对、逐阶段开关启用、验证与回退。
+- `scripts/test-deploy-update.py`：deploy 参数校验回归测试。
+
+### Fixed
+
+- relay 有序路由把非 NotFound 的组读取错误当作组不存在静默穿透；现在仅 NotFound 穿透，真实错误中止尝试。
+- channel `HasRoutingCandidates` 在注册表读取失败时放宽访问、并吞掉非 NotFound 探测错误；注册表拒绝不再放宽，意外错误向上传播。
+- billing 订阅覆盖判定与 reserve 语义不一致（未滚动窗口 + 最宽松限额）；统一为滚动窗口 + 最严格限额。
+- 无订阅的钱包用户查询组价格误报 `ErrSubscriptionNotFound`；现在回落到钱包价格。
+- 订阅购买事务在事务连接外读取 plan / group / billing policy，单连接 SQLite 死锁；新增 `GetPlanByIDInTx` / `GetGroupByIDInTx` / policy `GetInTx` 把读取留在事务内。
+- identity v2 默认组命令改写 migration 授权，把临时/订阅访问变成永久访问；现在只改偏好。
+- web 有序组选择器丢弃不可用候选导致序号静默重排；管理台覆盖解析拒绝小数优先级/权重。
+- `deploy-update.sh` 在参数校验前部分部署靠前服务；现在任何构建/远程调用前校验完整服务列表。
+- 跨服务 schema 路由数据清点发现的问题；文档链接门禁拒绝仓外 Markdown 链接。
+
+
 ## [0.28.1] - 2026-09-11
 
 v0.28.1 是 v0.28.0 之后的 **PATCH 修复版本**：修复 v0.28.0 引入的模型健康监测在**线上主流量路径上从未生效**的问题——订阅适配器（hybrid adaptor）路径整体替换了 RetryExecutor，却只记录账号维度健康、遗漏模型维度，导致管理台"模型健康"页面自 v0.28.0 上线起一直为空、`model_health_states` 始终 0 行。无 proto 变更、无数据库迁移、无新增配置项，不改变路由与计费决策。详见 [release-v0.28.1.md](docs/releases/release-v0.28.1.md)。

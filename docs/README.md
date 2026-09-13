@@ -31,6 +31,8 @@ docs/
 | 发布后强制失败验证（§9.2） | [runbooks/post-release-forced-failure-verification.md](./runbooks/post-release-forced-failure-verification.md) |
 | 理解整体架构 | [design/ARCHITECTURE_REFACTOR.md](./design/ARCHITECTURE_REFACTOR.md) |
 | 了解大模型如何计费 | [design/llm-billing-explained.md](./design/llm-billing-explained.md) |
+| 理解路由分组、价格倍率与订阅额度策略 | [design/group-concepts-and-implementation.md](./design/group-concepts-and-implementation.md) |
+| 清点分组数据、检查模型与来源授权 | [design/group-audit-and-routing-authorization.md](./design/group-audit-and-routing-authorization.md) |
 | 了解订阅系统路线图 | [design/subscription-follow-up-roadmap.md](./design/subscription-follow-up-roadmap.md) |
 | 查看 Kratos 大仓 / buf / v3 升级迁移方案 | [migration/](./migration/) |
 
@@ -74,6 +76,7 @@ canonical usage 48h Observe 已通过，K3 有限 charge 的 72h 窗口已按书
 | 文档 | 用途 |
 |------|------|
 | [subscription-production-runbook.md](./runbooks/subscription-production-runbook.md) | 订阅系统生产发布、回滚与排障总入口 |
+| [routing-groups-runbook.md](./runbooks/routing-groups-runbook.md) | 路由分组 / 订阅合约 / 结算模式的迁移核对、开关启用、验证与回退 |
 | [subscription-account-setup-guide.md](./runbooks/subscription-account-setup-guide.md) | 上游订阅号配置与导入实操 |
 | [subscription-account-ops-runbook.md](./runbooks/subscription-account-ops-runbook.md) | 订阅账号治理（阶段 1） |
 | [subscription-account-quota-governance-runbook.md](./runbooks/subscription-account-quota-governance-runbook.md) | 订阅账号额度治理 |

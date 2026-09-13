@@ -20,9 +20,11 @@ const (
 // and the subscription usage counters, so the new "subscription priority"
 // deduction flow is safe to retry.
 type Reservation struct {
-	ReservationID string
-	UserID        string
-	RequestID     string
+	RequestSnapshot           *RequestSnapshot
+	SubscriptionAccountingUSD *float64
+	ReservationID             string
+	UserID                    string
+	RequestID                 string
 	// Amount is the original fixed-point amount estimate. For the dual-track
 	// flow it equals the total estimated request cost and is kept populated so legacy readers
 	// continue to work; the field is not authoritative for the subscription

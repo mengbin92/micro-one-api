@@ -3,9 +3,10 @@ package biz
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
+
+	"micro-one-api/domain/routing"
 
 	billingdomain "micro-one-api/domain/billing"
 	relayprovider "micro-one-api/domain/upstream/provider"
@@ -106,13 +107,17 @@ type RelayRequest struct {
 }
 
 type AuthSnapshot struct {
-	UserID        int64
-	TokenID       int64
-	TokenName     string
-	Group         string
-	AllowedModels []string
-	UserEnabled   bool
-	TokenEnabled  bool
+	recheckRouting        func(context.Context, string) error
+	RoutingFacts          *routing.SubjectFacts
+	RoutingContextVersion int32
+	RoutingContext        *routing.ResolvedRoutingContext
+	UserID                int64
+	TokenID               int64
+	TokenName             string
+	Group                 string
+	AllowedModels         []string
+	UserEnabled           bool
+	TokenEnabled          bool
 }
 
 type Channel struct {
@@ -279,9 +284,11 @@ type SubscriptionAccount struct {
 // keeps the access token out of Channel.Key, where it could otherwise leak
 // through logging, health reporting or the OneAPI-compatible admin API.
 type RelayPlan struct {
-	Auth    *AuthSnapshot
-	Channel *Channel
-	Account *SubscriptionAccount
+	// ClientModel retains the authorization key before global alias resolution.
+	ClientModel string
+	Auth        *AuthSnapshot
+	Channel     *Channel
+	Account     *SubscriptionAccount
 	// SelectionEvent carries the routing selection metadata (source kind,
 	// provider family, priority tier, etc.) from Plan() to the execution
 	// boundary so the orchestrator can finalize it with the execution result
@@ -347,15 +354,17 @@ func (p *RelayPlan) ModelHealthID() string {
 // RelayUsecase orchestrates the relay planning flow:
 // model mapping → auth → model validation → channel selection.
 type RelayUsecase struct {
-	identity      IdentityClient
-	channel       ChannelClient
-	subscription  SubscriptionAccountClient
-	modelMapper   *ModelMapper
-	retryPolicy   *RetryPolicy
-	blocker       RuntimeBlocker
-	accountPool   *AccountPool
-	routeSelector *UpstreamRouteSelector
-	now           func() time.Time
+	routingEntitlements RoutingEntitlementReader
+	routingSettlement   RoutingSettlementClient
+	identity            IdentityClient
+	channel             ChannelClient
+	subscription        SubscriptionAccountClient
+	modelMapper         *ModelMapper
+	retryPolicy         *RetryPolicy
+	blocker             RuntimeBlocker
+	accountPool         *AccountPool
+	routeSelector       *UpstreamRouteSelector
+	now                 func() time.Time
 	// v0.11.0 Phase 3 §3.4: selection/execution boundary recorder. No-op by
 	// default; SetSelectionRecorder wires the logging+metrics recorder.
 	selectionRec selectionRecorderHolder
@@ -518,6 +527,11 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	if err != nil {
 		return nil, err
 	}
+	if err := uc.ResolveRoutingContext(ctx, authSnapshot, RoutingResolveOptions{SessionHash: req.SessionHash, Model: req.Model}); err != nil {
+		return nil, err
+	}
+
+	uc.BindRoutingAdmission(authSnapshot, req.Token, req.ClientIP)
 
 	// 3. Validate model permission
 	if len(authSnapshot.AllowedModels) > 0 {
@@ -538,7 +552,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	// accounts participate in one priority/weight selection instead of treating
 	// subscription accounts as a fallback that can only run when every channel
 	// fails.
-	if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, req.SessionHash, req.Model, resolvedModel); ok {
+	if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, routing.SessionKey(authSnapshot.RoutingContext, req.SessionHash), req.Model, resolvedModel); ok {
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:      req.RequestID,
 			Group:          authSnapshot.Group,
@@ -548,7 +562,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			FinalSourceID:  acct.ID,
 			ProviderFamily: ProviderFamilyForModel(req.Model),
 		}, planStartedAt)
-		_plan := newRelayPlan(authSnapshot, ch, acct, resolvedModel)
+		_plan := newRelayPlan(authSnapshot, ch, acct, req.Model, resolvedModel)
 		_plan.SelectionEvent = _sel
 		return _plan, nil
 	}
@@ -586,7 +600,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 				PriorityTier:   subAccount.Priority,
 				ProviderFamily: ProviderFamilyForModel(req.Model),
 			}, planStartedAt)
-			_plan := newRelayPlan(authSnapshot, subChannel, subAccount, resolvedModel)
+			_plan := newRelayPlan(authSnapshot, subChannel, subAccount, req.Model, resolvedModel)
 			_plan.SelectionEvent = _sel
 			_plan.Candidates = newRoutingCandidateList(authSnapshot.Group, req.Model, resolvedModel, subCand, channelCand)
 			return _plan, nil
@@ -601,7 +615,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			PriorityTier:   channel.Priority,
 			ProviderFamily: ProviderFamilyForModel(req.Model),
 		}, planStartedAt)
-		_plan := newRelayPlan(authSnapshot, channel, nil, resolvedModel)
+		_plan := newRelayPlan(authSnapshot, channel, nil, req.Model, resolvedModel)
 		_plan.SelectionEvent = _sel
 		_plan.Candidates = newRoutingCandidateList(authSnapshot.Group, req.Model, resolvedModel, channelCand, subCand)
 		return _plan, nil
@@ -616,7 +630,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			PriorityTier:   channel.Priority,
 			ProviderFamily: ProviderFamilyForModel(req.Model),
 		}, planStartedAt)
-		_plan := newRelayPlan(authSnapshot, channel, nil, resolvedModel)
+		_plan := newRelayPlan(authSnapshot, channel, nil, req.Model, resolvedModel)
 		_plan.SelectionEvent = _sel
 		return _plan, nil
 	case subChannel != nil:
@@ -630,7 +644,7 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 			PriorityTier:   subAccount.Priority,
 			ProviderFamily: ProviderFamilyForModel(req.Model),
 		}, planStartedAt)
-		_plan := newRelayPlan(authSnapshot, subChannel, subAccount, resolvedModel)
+		_plan := newRelayPlan(authSnapshot, subChannel, subAccount, req.Model, resolvedModel)
 		_plan.SelectionEvent = _sel
 		return _plan, nil
 	case uc.subscription == nil:
@@ -653,8 +667,9 @@ func (uc *RelayUsecase) selectAPIKeyChannel(ctx context.Context, group, clientMo
 	return nil, err
 }
 
-func newRelayPlan(auth *AuthSnapshot, channel *Channel, account *SubscriptionAccount, resolvedModel string) *RelayPlan {
+func newRelayPlan(auth *AuthSnapshot, channel *Channel, account *SubscriptionAccount, clientModel, resolvedModel string) *RelayPlan {
 	return &RelayPlan{
+		ClientModel:   clientModel,
 		Auth:          auth,
 		Channel:       channel,
 		Account:       account,
@@ -782,20 +797,11 @@ func (uc *RelayUsecase) stickySubscriptionAccountValid(ctx context.Context, acco
 	if account.Status != subscriptionAccountStatusEnabled {
 		return false
 	}
-	// Group is the subscription-account tenancy boundary: never reuse a binding
-	// across groups.
-	if account.Group != group {
+	permission, err := uc.CanRoute(ctx, group, clientModel, resolvedModel, routing.Source{Kind: routing.Subscription, ID: account.ID})
+	if err != nil || !permission.Allowed {
 		return false
 	}
-	// Explicit account models are the source of truth and support operator-defined
-	// aliases. Only infer from the platform when the account has no model list.
-	if len(account.Models) > 0 {
-		if !accountServesModel(account, clientModel, resolvedModel) {
-			return false
-		}
-	} else if !platformServesModel(account.Platform, clientModel) && !platformServesModel(account.Platform, resolvedModel) {
-		return false
-	}
+	account.UpstreamModelID = permission.UpstreamModelID
 	return uc.isSubscriptionAccountSchedulable(ctx, account)
 }
 
@@ -826,6 +832,7 @@ func (uc *RelayUsecase) SelectSubscriptionFailover(ctx context.Context, group, c
 	// verbatim — but callers were passing base.ResolvedModel (already mapped
 	// by A), so the result was A's mapped name fed into B's mapping lookup.
 	return &RelayPlan{
+		ClientModel:   clientModel,
 		Channel:       ch,
 		Account:       account,
 		GlobalModel:   resolvedModel,
@@ -836,8 +843,7 @@ func (uc *RelayUsecase) SelectSubscriptionFailover(ctx context.Context, group, c
 // ResolveSubscriptionRoutingSource materializes and validates an exact
 // subscription-account sticky binding. It returns both the account projection
 // used by generic transports and the full account DO required by adaptor
-// transports. Empty model arguments skip model validation for legacy stored
-// response routes that did not persist the client model.
+// transports. A stored route must retain a model to prove current authorization.
 func (uc *RelayUsecase) ResolveSubscriptionRoutingSource(
 	ctx context.Context,
 	accountID int64,
@@ -850,18 +856,17 @@ func (uc *RelayUsecase) ResolveSubscriptionRoutingSource(
 	if err != nil {
 		return nil, nil, err
 	}
-	if account == nil || account.ID <= 0 || account.Status != subscriptionAccountStatusEnabled || account.Group != group {
+	if account == nil || account.ID <= 0 || account.Status != subscriptionAccountStatusEnabled {
 		return nil, nil, fmt.Errorf("subscription account %d is not reusable", accountID)
 	}
-	if strings.TrimSpace(clientModel) != "" || strings.TrimSpace(resolvedModel) != "" {
-		if len(account.Models) > 0 {
-			if !accountServesModel(account, clientModel, resolvedModel) {
-				return nil, nil, fmt.Errorf("subscription account %d does not serve model", accountID)
-			}
-		} else if !platformServesModel(account.Platform, clientModel) && !platformServesModel(account.Platform, resolvedModel) {
-			return nil, nil, fmt.Errorf("subscription account %d does not serve model", accountID)
-		}
+	permission, err := uc.CanRoute(ctx, group, clientModel, resolvedModel, routing.Source{Kind: routing.Subscription, ID: account.ID})
+	if err != nil {
+		return nil, nil, err
 	}
+	if !permission.Allowed {
+		return nil, nil, fmt.Errorf("subscription account %d is not authorized for model", accountID)
+	}
+	account.UpstreamModelID = permission.UpstreamModelID
 	if !uc.isSubscriptionAccountSchedulable(ctx, account) {
 		return nil, nil, fmt.Errorf("subscription account %d is not schedulable", accountID)
 	}
@@ -989,36 +994,6 @@ func subscriptionPlatformsForModel(model string) []string {
 	default:
 		return nil
 	}
-}
-
-// platformServesModel reports whether platform is a candidate platform for the
-// given client-facing model, reusing the model->platform inference.
-func platformServesModel(platform, model string) bool {
-	if strings.TrimSpace(model) == "" {
-		return false
-	}
-	return slices.Contains(subscriptionPlatformsForModel(model), platform)
-}
-
-// accountServesModel reports whether the account exposes the requested model.
-// When the account carries no explicit model list we defer to the platform
-// match (see platformServesModel) rather than rejecting the reuse.
-func accountServesModel(account *SubscriptionAccount, clientModel, resolvedModel string) bool {
-	if account == nil || len(account.Models) == 0 {
-		return true
-	}
-	client := RelayModelName(clientModel)
-	resolved := RelayModelName(resolvedModel)
-	for _, m := range account.Models {
-		m = RelayModelName(m)
-		if m == "" {
-			continue
-		}
-		if strings.EqualFold(m, client) || (resolved != "" && strings.EqualFold(m, resolved)) {
-			return true
-		}
-	}
-	return false
 }
 
 func platformOrUnknown(platform string) string {
@@ -1198,7 +1173,7 @@ func subscriptionPlatformChannelType(platform string) int32 {
 // request-scoped candidate list first and only re-select with per-candidate
 // exclusion when it is exhausted.
 func (uc *RelayUsecase) NewRetryExecutor() *RetryExecutor {
-	return NewRetryExecutor(uc.retryPolicy, uc.channel).WithFallbackSelector(uc)
+	return NewRetryExecutor(uc.retryPolicy, uc.channel).WithFallbackSelector(uc).WithRouteAuthorization(uc.authorizeRetry)
 }
 
 // SelectFallbackChannel selects from a lower-priority channel tier. It is a

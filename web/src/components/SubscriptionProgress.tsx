@@ -1,3 +1,4 @@
+import { ContractSummary, type SubscriptionContract } from '@/components/SubscriptionContract';
 import { Infinity as InfinityIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { locale, t } from '@/lib/i18n';
@@ -18,6 +19,7 @@ export interface QuotaDimension {
 // Mirrors subscription.biz.SubscriptionProgress JSON tags. The endpoint returns
 // the single active subscription for a user (or success:false when none).
 export interface SubscriptionProgressData {
+  contract?: SubscriptionContract;
   id: number;
   status: string;
   starts_at: number;
@@ -158,6 +160,7 @@ export function SubscriptionProgressCard({ progress, title, className }: Subscri
         </div>
       </div>
       <div className="space-y-2">
+        <ContractSummary contract={progress.contract} />
         <QuotaBar label={t("日")} dimension={progress.daily_used} />
         <QuotaBar label={t("周")} dimension={progress.weekly_used} />
         <QuotaBar label={t("月")} dimension={progress.monthly_used} />

@@ -121,6 +121,7 @@ func (a *paymentSubscriptionAssigner) assignGroup(ctx context.Context, tx subscr
 		"provider_trade_no": order.ProviderTradeNo,
 	})
 	req := &subscriptionbiz.AssignSubscriptionRequest{
+		LegacyPurchase: true, SourceOrder: order.TradeNo,
 		UserID:           userID,
 		GroupID:          order.GroupID,
 		SubscriptionName: name,
@@ -196,6 +197,7 @@ func (a *paymentSubscriptionAssigner) assignPlan(ctx context.Context, tx subscri
 		"plan_name":         plan.Name,
 	})
 	req := &subscriptionbiz.AssignSubscriptionRequest{
+		LegacyPurchase: true, SourceOrder: order.TradeNo,
 		UserID:           userID,
 		GroupID:          plan.GroupID,
 		SubscriptionName: name,
@@ -252,8 +254,10 @@ func (a *paymentSubscriptionAssigner) assignFromSnapshot(ctx context.Context, tx
 		"plan_snapshot":     "true",
 	})
 	req := &subscriptionbiz.AssignSubscriptionRequest{
-		UserID:           userID,
-		GroupID:          snap.GroupID,
+		LegacyPurchase: true, SourceOrder: order.TradeNo,
+		UserID:   userID,
+		GroupID:  snap.GroupID,
+		Contract: subscriptionbiz.CloneContract(snap.Contract), PricePaid: snap.PriceQuota,
 		SubscriptionName: name,
 		StartsAt:         now,
 		ExpiresAt:        expiresAt,

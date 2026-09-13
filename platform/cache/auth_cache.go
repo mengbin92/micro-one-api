@@ -150,3 +150,9 @@ func (l *AuthCacheLoader) Load(ctx context.Context, token string) (*identityv1.G
 
 	return call(ctx)
 }
+
+// InvalidateAll evicts both levels without publishing a credential in an event.
+func (c *AuthCache) InvalidateAll(ctx context.Context) error {
+	c.cache.ClearAll()
+	return c.cache.InvalidateByPattern(ctx, "*")
+}

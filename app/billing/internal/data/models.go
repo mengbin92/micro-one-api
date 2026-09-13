@@ -19,15 +19,18 @@ type accountModel struct {
 func (accountModel) TableName() string { return "users" }
 
 type reservationModel struct {
-	ID                    uint    `gorm:"primaryKey;column:id"`
-	ReservationID         string  `gorm:"uniqueIndex;column:reservation_id"`
-	UserID                string  `gorm:"index;column:user_id"`
-	RequestID             string  `gorm:"index;column:request_id"`
-	Amount                int64   `gorm:"column:amount"`
-	Status                string  `gorm:"column:status"`
-	Model                 *string `gorm:"column:model"`
-	ChannelID             *string `gorm:"column:channel_id"`
-	SubscriptionAccountID *string `gorm:"column:subscription_account_id"`
+	RequestSnapshot           *string  `gorm:"column:request_snapshot"`
+	RequestSnapshotHash       *string  `gorm:"column:request_snapshot_hash"`
+	SubscriptionAccountingUSD *float64 `gorm:"column:subscription_accounting_usd"`
+	ID                        uint     `gorm:"primaryKey;column:id"`
+	ReservationID             string   `gorm:"uniqueIndex;column:reservation_id"`
+	UserID                    string   `gorm:"index;column:user_id"`
+	RequestID                 string   `gorm:"index;column:request_id"`
+	Amount                    int64    `gorm:"column:amount"`
+	Status                    string   `gorm:"column:status"`
+	Model                     *string  `gorm:"column:model"`
+	ChannelID                 *string  `gorm:"column:channel_id"`
+	SubscriptionAccountID     *string  `gorm:"column:subscription_account_id"`
 
 	// Subscription-side pre-deduction. SubscriptionID==0 means the reservation
 	// was created via the legacy balance-only path. SubscriptionAmountUSD is
@@ -52,9 +55,9 @@ type reservationModel struct {
 	// the final CAS to "committed".
 	ActualCost int64 `gorm:"column:actual_cost"`
 
-	CreatedAt time.Time  `gorm:"column:created_at"`
-	UpdatedAt time.Time  `gorm:"column:updated_at"`
-	ExpiredAt *time.Time `gorm:"index;column:expired_at"`
+	CreatedAt time.Time  `gorm:"column:created_at;serializer:billing_time"`
+	UpdatedAt time.Time  `gorm:"column:updated_at;serializer:billing_time"`
+	ExpiredAt *time.Time `gorm:"index;column:expired_at;serializer:billing_time"`
 }
 
 func (reservationModel) TableName() string { return "billing_reservations" }
@@ -90,7 +93,7 @@ type ledgerModel struct {
 	UpstreamModelID       string `gorm:"column:upstream_model_id"`
 	CostAuditStatus       string `gorm:"column:cost_audit_status"`
 	ElapsedTime           int64  `gorm:"column:elapsed_time"`
-	IsStream              bool   `gorm:"column:is_stream"`
+	IsStream              int32  `gorm:"column:is_stream"`
 	Endpoint              string `gorm:"column:endpoint"`
 	// Cost dimension tracking for the dual-track reservation flow. The dedupe
 	// key is the unique idempotency anchor for the commit pipeline and is
@@ -118,7 +121,7 @@ type ledgerModel struct {
 	// Global uniqueness is owned by billing_ledger_dedupe_claims, whose primary
 	// key is claimed in the same transaction before the ledger row is inserted.
 	LedgerDedupeKey string    `gorm:"index:idx_ledger_dedupe_key;column:ledger_dedupe_key"`
-	CreatedAt       time.Time `gorm:"index;column:created_at"`
+	CreatedAt       time.Time `gorm:"index;column:created_at;serializer:billing_time"`
 	// Username is not a real column — it is scanned from the users table
 	// via a LEFT JOIN in list/get queries. It must be tagged with `-:migration`
 	// so GORM AutoMigrate does not try to add it to billing_ledgers.

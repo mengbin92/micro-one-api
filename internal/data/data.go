@@ -10,10 +10,13 @@ import (
 	channelv1 "micro-one-api/api/channel/v1"
 	commonv1 "micro-one-api/api/common/v1"
 	identityv1 "micro-one-api/api/identity/v1"
+	"micro-one-api/domain/routing"
 	relaycredential "micro-one-api/domain/upstream/credential"
 	"micro-one-api/internal/biz"
 	grpcauth "micro-one-api/platform/grpc"
 	"micro-one-api/platform/grpc/xgrpc"
+	"micro-one-api/platform/routingclient"
+	"micro-one-api/platform/routingdto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -75,18 +78,24 @@ func (c *identityClient) GetAuthSnapshot(ctx context.Context, token, clientIP st
 		return nil, err
 	}
 	return &biz.AuthSnapshot{
-		UserID:        resp.UserId,
-		TokenID:       resp.TokenId,
-		TokenName:     resp.TokenName,
-		Group:         resp.Group,
-		AllowedModels: append([]string(nil), resp.AllowedModels...),
-		UserEnabled:   resp.UserEnabled,
-		TokenEnabled:  resp.TokenEnabled,
+		RoutingFacts:          routingdto.FactsFromProto(resp.RoutingFacts),
+		RoutingContextVersion: resp.RoutingContextVersion,
+		UserID:                resp.UserId,
+		TokenID:               resp.TokenId,
+		TokenName:             resp.TokenName,
+		Group:                 resp.Group,
+		AllowedModels:         append([]string(nil), resp.AllowedModels...),
+		UserEnabled:           resp.UserEnabled,
+		TokenEnabled:          resp.TokenEnabled,
 	}, nil
 }
 
 type channelClient struct {
 	client channelv1.ChannelServiceClient
+}
+
+func (c *channelClient) GetRoutingGroup(ctx context.Context, id int64) (*routing.Group, error) {
+	return routingclient.New(c.client).GetRoutingGroup(ctx, id)
 }
 
 func (c *channelClient) SelectSubscriptionAccount(ctx context.Context, group, model, platform string, excludeFirstPriority bool) (*biz.SubscriptionAccount, error) {

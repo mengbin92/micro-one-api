@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"errors"
+	"github.com/stretchr/testify/require"
+	appcache "micro-one-api/platform/cache"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -13,9 +15,50 @@ import (
 
 type fakeChannelClient struct {
 	channelv1.ChannelServiceClient
-	calls        int
-	channelToRet *commonv1.ChannelInfo
-	err          error
+	calls         int
+	channelToRet  *commonv1.ChannelInfo
+	err           error
+	permission    *channelv1.CheckRouteReply
+	permissionErr error
+}
+
+func (f *fakeChannelClient) CheckRoute(context.Context, *channelv1.CheckRouteRequest, ...grpc.CallOption) (*channelv1.CheckRouteReply, error) {
+	return f.permission, f.permissionErr
+}
+
+func TestCachedChannelRechecksPermissionAndRefreshesMapping(t *testing.T) {
+	for _, mode := range []string{"allow", "deny", "error"} {
+		t.Run(mode, func(t *testing.T) {
+			cached := &commonv1.ChannelInfo{Id: 7, UpstreamModelId: "old-upstream"}
+			cache, err := appcache.NewChannelCache(nil, nil, func(context.Context, string) ([]*commonv1.ChannelInfo, error) {
+				return []*commonv1.ChannelInfo{cached}, nil
+			})
+			require.NoError(t, err)
+			defer cache.Close()
+			fake := &fakeChannelClient{channelToRet: &commonv1.ChannelInfo{Id: 8}, permission: &channelv1.CheckRouteReply{Allowed: mode == "allow", UpstreamModelId: "current-upstream"}}
+			if mode == "error" {
+				fake.permissionErr = errors.New("authority offline")
+			}
+			wrapper := &CachedChannelClient{ChannelServiceClient: fake, cache: cache}
+			reply, err := wrapper.SelectChannel(context.Background(), &channelv1.SelectChannelRequest{Group: "vip", Model: "managed"})
+			switch mode {
+			case "allow":
+				require.NoError(t, err)
+				require.Equal(t, int64(7), reply.Channel.Id)
+				require.Equal(t, "current-upstream", reply.Channel.UpstreamModelId)
+				require.Zero(t, fake.calls)
+				require.Equal(t, "old-upstream", cached.UpstreamModelId)
+			case "deny":
+				require.NoError(t, err)
+				require.Equal(t, int64(8), reply.Channel.Id)
+				require.Equal(t, 1, fake.calls)
+			case "error":
+				require.Error(t, err)
+				require.Nil(t, reply)
+				require.Zero(t, fake.calls)
+			}
+		})
+	}
 }
 
 func (f *fakeChannelClient) SelectChannel(ctx context.Context, req *channelv1.SelectChannelRequest, opts ...grpc.CallOption) (*channelv1.SelectChannelReply, error) {

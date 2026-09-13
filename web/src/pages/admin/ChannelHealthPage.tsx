@@ -407,7 +407,7 @@ export function ChannelHealthPage() {
                           </span>
                         )}
                         {channel.group && (
-                          <span className="flex items-center gap-1">{t("分组:")}{channel.group}
+                          <span className="flex items-center gap-1">{t("路由分组:")}{channel.group}
                           </span>
                         )}
                       </div>

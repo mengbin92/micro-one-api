@@ -344,7 +344,7 @@ export function AdminModelsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">{t("模型管理")}</h2>
-          <p className="text-sm text-muted-foreground">{t("统一管理所有可用模型，支持启用/禁用、分组和映射")}</p>
+          <p className="text-sm text-muted-foreground">{t("统一管理所有可用模型，支持启用/禁用、分类和映射")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setExchangeOpen(true)}>

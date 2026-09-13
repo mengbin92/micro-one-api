@@ -281,7 +281,7 @@ export function AdminChannelsPage() {
 
   const handleCreate = () => {
     if (!newChannelName.trim() || !newChannelBaseUrl.trim() || !newChannelKey.trim() || !newChannelGroup.trim()) {
-      toast.error(t('名称、基础 URL、API 密钥和分组为必填项'));
+      toast.error(t('名称、基础 URL、API 密钥和路由分组为必填项'));
       return;
     }
     createMutation.mutate();
@@ -301,7 +301,7 @@ export function AdminChannelsPage() {
   const handleUpdate = () => {
     if (!editingChannel) return;
     if (!editingChannel.name.trim() || !editingChannel.models.trim() || !editingChannel.group.trim()) {
-      toast.error(t('名称、模型和分组为必填项'));
+      toast.error(t('名称、模型和路由分组为必填项'));
       return;
     }
     updateMutation.mutate(editingChannel);
@@ -353,8 +353,9 @@ export function AdminChannelsPage() {
                 <ModelMultiSelect value={newChannelModels} onChange={setNewChannelModels} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="channel-group">{t('分组')}</Label>
+                <Label htmlFor="channel-group">{t('路由分组')}</Label>
                 <Input id="channel-group" value={newChannelGroup} onChange={(e) => setNewChannelGroup(e.target.value)} />
+                <p className="text-xs text-muted-foreground">{t("多个路由分组用英文逗号分隔，例如 default,vip。")}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
@@ -402,7 +403,7 @@ export function AdminChannelsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-channel-group">{t('分组')}</Label>
+                <Label htmlFor="edit-channel-group">{t('路由分组')}</Label>
                 <Input
                   id="edit-channel-group"
                   value={editingChannel.group}
@@ -457,7 +458,7 @@ export function AdminChannelsPage() {
               { key: 'id', label: 'ID' },
               { key: 'name', label: t('名称') },
               { key: 'type', label: t('类型') },
-              { key: 'group', label: t('分组') },
+              { key: 'group', label: t('路由分组') },
               { key: 'priority', label: t('优先级') },
               { key: 'balance', label: t('余额') },
               { key: 'healthStatus', label: t('健康状态') },
@@ -544,7 +545,7 @@ export function AdminChannelsPage() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={['ID', t('名称'), t('类型'), t('分组'), t('优先级'), t('余额'), t('健康状态'), t('状态'), t('操作')]} />
+        <TableSkeleton columns={['ID', t('名称'), t('类型'), t('路由分组'), t('优先级'), t('余额'), t('健康状态'), t('状态'), t('操作')]} />
       ) : !channels || channels.length === 0 ? (
         <EmptyState title={t('未找到渠道')} description={t('请尝试清除搜索词或查看其他页面。')} />
       ) : visibleChannels.length === 0 ? (
@@ -563,7 +564,7 @@ export function AdminChannelsPage() {
                     {t('类型')}
                   </SortableHeader>
                   <SortableHeader<Channel> columnKey="group" sort={sort} onSortChange={setSort}>
-                    {t('分组')}
+                    {t('路由分组')}
                   </SortableHeader>
                   <SortableHeader<Channel> columnKey="priority" sort={sort} onSortChange={setSort} className="hidden lg:table-cell">
                     {t('优先级')}

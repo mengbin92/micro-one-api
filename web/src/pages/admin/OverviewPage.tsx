@@ -780,7 +780,7 @@ export function AdminOverviewPage() {
           <CardContent className="p-0">
             {isLoading ? (
               <div className="p-4">
-                <TableSkeleton columns={[t("名称"), t("平台"), t("分组"), t("优先级"), t("过期"), t("状态")]} rows={5} />
+                <TableSkeleton columns={[t("名称"), t("平台"), t("路由分组"), t("优先级"), t("过期"), t("状态")]} rows={5} />
               </div>
             ) : subscriptionAccounts.length === 0 ? (
               <EmptyState title={t("暂无订阅账号")} description={t("新建 Claude / Codex 订阅账号后会显示在这里。")} />
@@ -791,7 +791,7 @@ export function AdminOverviewPage() {
                     <TableRow>
                       <TableHead>{t("名称")}</TableHead>
                       <TableHead>{t("平台")}</TableHead>
-                      <TableHead>{t("分组")}</TableHead>
+                      <TableHead>{t("路由分组")}</TableHead>
                       <TableHead className="hidden md:table-cell">{t("优先级")}</TableHead>
                       <TableHead className="hidden lg:table-cell">{t("过期")}</TableHead>
                       <TableHead className="hidden xl:table-cell">{t("限额")}</TableHead>
@@ -911,7 +911,7 @@ export function AdminOverviewPage() {
           <CardContent className="p-0">
             {isLoading ? (
               <div className="p-4">
-                <TableSkeleton columns={[t("用户"), t("分组"), t("状态")]} rows={5} />
+                <TableSkeleton columns={[t("用户"), t("路由分组"), t("状态")]} rows={5} />
               </div>
             ) : users.length === 0 ? (
               <EmptyState title={t("暂无用户")} description={t("注册或创建用户后会显示在这里。")} />
@@ -920,7 +920,7 @@ export function AdminOverviewPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("用户")}</TableHead>
-                    <TableHead>{t("分组")}</TableHead>
+                    <TableHead>{t("路由分组")}</TableHead>
                     <TableHead>{t("状态")}</TableHead>
                   </TableRow>
                 </TableHeader>

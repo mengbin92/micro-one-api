@@ -387,6 +387,10 @@ func (m *mockSubscriptionPrimitives) GetActiveSubscriptionForUserInTx(ctx contex
 	return m.GetActiveSubscriptionForUser(ctx, userID)
 }
 
+func (m *mockSubscriptionPrimitives) GetGroupForSubscription(ctx context.Context, subscription *subscriptionbiz.UserSubscription) (*subscriptionbiz.SubscriptionGroup, error) {
+	return m.GetGroupForSubscriptionInTx(ctx, nil, subscription)
+}
+
 func (m *mockSubscriptionPrimitives) GetGroupForSubscriptionInTx(ctx context.Context, tx subscriptionbiz.Tx, subscription *subscriptionbiz.UserSubscription) (*subscriptionbiz.SubscriptionGroup, error) {
 	return m.group, nil
 }

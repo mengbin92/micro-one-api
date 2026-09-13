@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/routing"
 	"net/http"
 	"strings"
 	"time"
@@ -74,6 +75,9 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 			retriedBody := rewriteRawModel(upstreamBody, currentResolvedModel)
 			// P3 #6: derive the billing model name from billing_model_source.
 			billingModel := s.BillingModelName(clientModel, plan.ResolvedModel, currentResolvedModel)
+			if bound := embeddingCostBound(upstreamPath, ch.Type, currentResolvedModel, retriedBody); bound.Valid() {
+				ctx = routing.WithCostBound(ctx, bound)
+			}
 			reservation, reserveErr := s.reserveQuota(
 				ctx,
 				fmt.Sprintf("%d", plan.Auth.UserID),
@@ -82,6 +86,7 @@ func (s *HTTPServer) handleRawRelay(upstreamPath string, requireModel bool) http
 				billingModel,
 				fmt.Sprintf("%d", ch.ID),
 				subscriptionAccountIDFromPlan(plan),
+				plan.Auth.RoutingContext,
 			)
 			if reserveErr != nil {
 				return &relaybiz.RetryableError{Status: http.StatusPaymentRequired, Err: reserveErr}

@@ -43,6 +43,7 @@ const (
 
 // ChangeRequest is the input to ChangeSubscription.
 type ChangeRequest struct {
+	Contract           *SubscriptionContract
 	UserID             int64
 	FromSubscriptionID int64
 	ToPlanID           int64
@@ -124,6 +125,12 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 		return nil, fmt.Errorf("subscription %d does not belong to user %d", req.FromSubscriptionID, req.UserID)
 	}
 
+	if req.Contract != nil && (req.Contract.Validate() != nil || req.Contract.QuotaPolicy.ID != req.ToGroupID) {
+		return nil, ErrSubscriptionContractInvalid
+	}
+	if sub.Contract != nil && req.Contract == nil {
+		return nil, ErrSubscriptionContractConflict
+	}
 	policy := req.Policy
 	if policy == "" {
 		// Infer: more expensive = immediate upgrade; cheaper = next-cycle downgrade.
@@ -138,12 +145,19 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 	if now == 0 {
 		now = uc.now().Unix()
 	}
+	if (EntitlementsEnabled() || sub.Contract != nil) && (sub.StartsAt > now || sub.ExpiresAt <= now) {
+		return nil, ErrSubscriptionNotFound
+	}
 
 	switch policy {
 	case SubscriptionChangePolicyImmediate:
 		// Mutate the active row in place. expires_at is preserved (a change
 		// is not a renewal). The audit metadata records the from→to transition.
 		fromGroupID := sub.GroupID
+		if req.Contract != nil {
+			sub.PricePaid = req.NewPriceQuota
+			sub.Contract = CloneContract(req.Contract)
+		}
 		sub.GroupID = req.ToGroupID
 		if req.NewPlanName != "" {
 			sub.SubscriptionName = req.NewPlanName
@@ -170,13 +184,16 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 			SubscriptionFieldGroupID,
 			SubscriptionFieldMetadata,
 		}
+		if req.Contract != nil {
+			fields = append(fields, SubscriptionFieldContract, SubscriptionFieldPricePaid)
+		}
 		// Only write subscription_name when the request actually changes it;
 		// writing the read-snapshot value back would violate the narrow-write
 		// rule (domain-H1) and could clobber a concurrent name change.
 		if req.NewPlanName != "" {
 			fields = append(fields, SubscriptionFieldSubscriptionName)
 		}
-		if groupChanged {
+		if groupChanged && sub.Contract == nil {
 			sub.DailyUsageUSD = 0
 			sub.WeeklyUsageUSD = 0
 			sub.MonthlyUsageUSD = 0
@@ -210,6 +227,7 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 		// The next AssignOrExtend (renewal) will read pending_change and
 		// apply the new group.
 		sub.Metadata = mergePendingChangeMetadata(sub.Metadata, changeAudit{
+			Contract:  CloneContract(req.Contract),
 			ToPlanID:  req.ToPlanID,
 			ToGroupID: req.ToGroupID,
 			Policy:    policy,
@@ -240,14 +258,15 @@ func (uc *SubscriptionUsecase) changeSubscription(ctx context.Context, tx Tx, re
 }
 
 type changeAudit struct {
-	FromPlanID  int64  `json:"from_plan_id,omitempty"`
-	ToPlanID    int64  `json:"to_plan_id,omitempty"`
-	FromGroupID int64  `json:"from_group_id,omitempty"`
-	ToGroupID   int64  `json:"to_group_id,omitempty"`
-	Policy      string `json:"policy"`
-	Charged     int64  `json:"charged,omitempty"`
-	Operator    string `json:"operator,omitempty"`
-	At          int64  `json:"at"`
+	Contract    *SubscriptionContract `json:"contract,omitempty"`
+	FromPlanID  int64                 `json:"from_plan_id,omitempty"`
+	ToPlanID    int64                 `json:"to_plan_id,omitempty"`
+	FromGroupID int64                 `json:"from_group_id,omitempty"`
+	ToGroupID   int64                 `json:"to_group_id,omitempty"`
+	Policy      string                `json:"policy"`
+	Charged     int64                 `json:"charged,omitempty"`
+	Operator    string                `json:"operator,omitempty"`
+	At          int64                 `json:"at"`
 }
 
 func mergeChangeMetadata(existing string, audit changeAudit) string {

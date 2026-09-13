@@ -3,9 +3,12 @@ package biz
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"time"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
@@ -63,6 +66,7 @@ type PaymentOrder struct {
 }
 
 type CreatePaymentOrderRequest struct {
+	RequestID   string
 	UserID      string
 	Channel     string
 	AssetType   string
@@ -124,6 +128,15 @@ type PaymentNotify struct {
 type PaymentRepo interface {
 	CreateOrder(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error)
 	GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error)
+	// AttachProviderResult persists the provider-side identifiers (pay URL,
+	// provider trade no, payload) on the pre-inserted pending order after the
+	// provider order was created. It returns the reloaded order.
+	AttachProviderResult(ctx context.Context, order *PaymentOrder) (*PaymentOrder, error)
+	// DeletePendingOrder removes a pre-inserted placeholder that never reached
+	// the provider (or whose provider result could not be persisted) so a
+	// retry can recreate it. It only deletes rows still pending with no
+	// provider trade number. Best-effort: callers ignore the error.
+	DeletePendingOrder(ctx context.Context, tradeNo string) error
 	ListOrders(ctx context.Context, req ListPaymentOrdersRequest) ([]*PaymentOrder, int64, error)
 	MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string, issue func(*PaymentOrder, subscriptionbiz.Tx) error) (*PaymentOrder, bool, error)
 	MarkOrderClosed(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, bool, error)
@@ -157,6 +170,9 @@ type PaymentNotifyVerifier interface {
 }
 
 type PaymentUsecase struct {
+	purchaseValidator interface {
+		ValidateRenewalContract(context.Context, int64, int64, *subscriptionbiz.SubscriptionContract) error
+	}
 	repo        PaymentRepo
 	provider    PaymentProvider
 	issuer      PaymentAssetIssuer
@@ -225,13 +241,29 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 	if err := validateCreatePaymentOrderRequest(req); err != nil {
 		return nil, err
 	}
+	keyed := subscriptionbiz.EntitlementsEnabled() && req.AssetType == PaymentAssetTypeSubscription
+	tradeNo := generatePaymentTradeNo(req.UserID)
+	if keyed {
+		if req.RequestID == "" || len(req.RequestID) > 128 || req.PlanID <= 0 || uc.snapshotter == nil {
+			return nil, ErrRoutingContextInvalid
+		}
+		sum := sha256.Sum256([]byte(req.UserID + ":" + req.RequestID))
+		tradeNo = fmt.Sprintf("S%x", sum[:20])
+		existing, err := uc.repo.GetOrderByTradeNo(ctx, tradeNo)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			return matchSubscriptionOrder(existing, req)
+		}
+	}
 	currency := req.Currency
 	if currency == "" {
 		currency = "CNY"
 	}
 	order := &PaymentOrder{
 		UserID:           req.UserID,
-		TradeNo:          generatePaymentTradeNo(req.UserID),
+		TradeNo:          tradeNo,
 		Channel:          req.Channel,
 		AssetType:        req.AssetType,
 		AssetAmount:      req.AssetAmount,
@@ -253,7 +285,56 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 		if snapErr != nil {
 			return nil, fmt.Errorf("capture plan snapshot: %w", snapErr)
 		}
+		if keyed {
+			if snapshot.PlanID <= 0 || snapshot.PriceQuota <= 0 || snapshot.PriceQuota > math.MaxInt64/100 || snapshot.ValidityDays <= 0 {
+				return nil, subscriptionbiz.ErrSubscriptionPlanNotSaleable
+			}
+			if uc.purchaseValidator == nil {
+				return nil, ErrRequestSnapshotUnavailable
+			}
+			user, err := strconv.ParseInt(req.UserID, 10, 64)
+			if err != nil {
+				return nil, ErrRoutingContextInvalid
+			}
+			if err := uc.purchaseValidator.ValidateRenewalContract(ctx, user, snapshot.GroupID, snapshot.Contract); err != nil {
+				return nil, err
+			}
+			order.MoneyCents = snapshot.PriceQuota * 100
+			order.AssetAmount = int64(snapshot.ValidityDays)
+			order.GroupID = snapshot.GroupID
+		}
 		ApplyPlanSnapshotToOrder(order, snapshot)
+	}
+	if keyed {
+		// Pre-insert the row before calling the provider: the deterministic
+		// trade_no unique key turns concurrent duplicate (user, request) calls
+		// into a single provider order — the loser's insert fails and it
+		// returns the winner's row instead of minting an orphan provider
+		// order that the database dedupe would discard anyway.
+		created, err := uc.repo.CreateOrder(ctx, order)
+		if err != nil {
+			if existing, lookupErr := uc.repo.GetOrderByTradeNo(ctx, tradeNo); lookupErr == nil && existing != nil {
+				return matchSubscriptionOrder(existing, req)
+			}
+			return nil, err
+		}
+		order = created
+		providerOrder, err := uc.provider.CreateOrder(ctx, order)
+		if err != nil {
+			_ = uc.repo.DeletePendingOrder(ctx, tradeNo)
+			return nil, err
+		}
+		if providerOrder != nil {
+			order.PayURL = providerOrder.PayURL
+			order.ProviderPayload = providerOrder.Payload
+			order.ProviderTradeNo = providerOrder.ProviderTradeNo
+		}
+		attached, err := uc.repo.AttachProviderResult(ctx, order)
+		if err != nil {
+			_ = uc.repo.DeletePendingOrder(ctx, tradeNo)
+			return nil, err
+		}
+		return attached, nil
 	}
 	providerOrder, err := uc.provider.CreateOrder(ctx, order)
 	if err != nil {
@@ -264,7 +345,13 @@ func (uc *PaymentUsecase) CreateOrder(ctx context.Context, req CreatePaymentOrde
 		order.ProviderPayload = providerOrder.Payload
 		order.ProviderTradeNo = providerOrder.ProviderTradeNo
 	}
-	return uc.repo.CreateOrder(ctx, order)
+	created, err := uc.repo.CreateOrder(ctx, order)
+	if err != nil {
+		if existing, lookupErr := uc.repo.GetOrderByTradeNo(ctx, tradeNo); lookupErr == nil && existing != nil {
+			return matchSubscriptionOrder(existing, req)
+		}
+	}
+	return created, err
 }
 
 func (uc *PaymentUsecase) GetOrderByTradeNo(ctx context.Context, tradeNo string) (*PaymentOrder, error) {
@@ -501,4 +588,17 @@ func (p *routedPaymentProvider) QueryOrder(ctx context.Context, order *PaymentOr
 		return nil, nil
 	}
 	return querier.QueryOrder(ctx, order)
+}
+
+func matchSubscriptionOrder(order *PaymentOrder, req CreatePaymentOrderRequest) (*PaymentOrder, error) {
+	if order.UserID != req.UserID || order.PlanID != req.PlanID || order.Channel != req.Channel || order.AssetType != req.AssetType {
+		return nil, ErrRoutingContextConflict
+	}
+	return order, nil
+}
+
+func (uc *PaymentUsecase) SetSubscriptionPurchaseValidator(v interface {
+	ValidateRenewalContract(context.Context, int64, int64, *subscriptionbiz.SubscriptionContract) error
+}) {
+	uc.purchaseValidator = v
 }

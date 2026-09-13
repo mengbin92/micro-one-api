@@ -30,6 +30,9 @@ jobs:
           make init
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
+      - name: Check Go formatting
+        run: make format-check
+
       - name: Check OpenAPI generation
         run: make api-check
 

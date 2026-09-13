@@ -7,6 +7,9 @@ import "api/common/v1/common.proto";
 option go_package = "micro-one-api/api/identity/v1;identityv1";
 
 service IdentityService {
+  rpc GetUserRoutingFacts(GetUserRoutingFactsRequest) returns (GetUserRoutingFactsReply);
+  rpc UpdateUserRoutingAccess(UpdateUserRoutingAccessRequest) returns (GetUserRoutingFactsReply);
+  rpc SetTokenRouting(SetTokenRoutingRequest) returns (SetTokenRoutingReply);
   rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenReply);
   rpc GetAuthSnapshot(GetAuthSnapshotRequest) returns (GetAuthSnapshotReply);
   rpc GetUser(GetUserRequest) returns (GetUserReply);
@@ -50,6 +53,8 @@ message GetAuthSnapshotReply {
   bool user_enabled = 5;
   bool token_enabled = 6;
   string token_name = 7;
+  common.v1.RoutingSubjectFacts routing_facts = 8;
+  int32 routing_context_version = 9;
 }
 
 message GetUserRequest {
@@ -90,6 +95,9 @@ message RegisterResponse {
 // ========== Token 管理 ==========
 
 message CreateAccessTokenRequest {
+  string routing_mode = 5;
+  int64 routing_group_id = 6;
+  repeated int64 routing_group_ids = 7;
   int64 user_id = 1;
   string name = 2;
   repeated string models = 3;
@@ -186,3 +194,29 @@ message ConsumeTokenQuotaReply {
   int64 remaining = 2;
   string message = 3;
 }
+
+// Trusted internal writes: admin biz validates channel facts and user eligibility.
+message GetUserRoutingFactsRequest { int64 user_id = 1; }
+message GetUserRoutingFactsReply { common.v1.RoutingSubjectFacts facts = 1; repeated RoutingTokenReference tokens = 2; }
+message RoutingTokenReference { int64 id = 1; string name = 2; string mode = 3; int64 group_id = 4; int64 revision = 5; repeated int64 group_ids = 6; }
+message UpdateUserRoutingAccessRequest {
+ int64 user_id = 1;
+ int64 expected_revision = 2;
+ string operation = 3; // grant, revoke, default, public_access
+ int64 routing_group_id = 4;
+ string group_key = 5;
+ string source_type = 6;
+ string source_ref = 7;
+ int64 starts_at = 8;
+ int64 expires_at = 9;
+ string public_group_access = 10;
+}
+message SetTokenRoutingRequest {
+ int64 user_id = 1;
+ int64 token_id = 2;
+ string routing_mode = 3;
+ int64 routing_group_id = 4;
+ int64 expected_revision = 5;
+ repeated int64 routing_group_ids = 6;
+}
+message SetTokenRoutingReply { int64 revision = 1; }

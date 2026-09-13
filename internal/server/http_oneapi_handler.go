@@ -86,13 +86,15 @@ func (s *HTTPServer) handleOneAPIProxy(w http.ResponseWriter, r *http.Request) {
 		billingClientModel = model
 	}
 	billingModel := s.BillingModelName(billingClientModel, model, model)
-	reservation, err := s.reserveQuota(
+	reservation, err := s.reserveAuthenticatedQuota(
 		r.Context(),
 		fmt.Sprintf("%d", authSnapshot.UserId),
 		requestID,
 		estimateRawTokens(body),
 		billingModel,
 		fmt.Sprintf("%d", channelReply.Channel.Id),
+		0,
+		authSnapshot,
 		0,
 	)
 	if err != nil {

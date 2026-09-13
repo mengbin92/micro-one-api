@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.28.0 发布公告](./docs/releases/release-v0.28.0.md)（模型健康被动监测、Websocket 多轮计费修复与控制台布局升级） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.28.0)
+> 📣 **最新发布**：[v0.29.0 发布公告](./docs/releases/release-v0.29.0.md)（路由分组重设计 v2：分组实体、订阅合约与有序候选组，全部能力默认关闭） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.29.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.29.0
+
+v0.29.0 是 v0.28.1 之后的 **MINOR 路由分组重设计版本**：交付分组重设计 v2 全部阶段（A–F），把分组升级为有稳定 ID、生命周期、资源成员和使用权限的路由分组实体，并交付订阅合约（contracts / entitlements）、按组结算模式（`wallet_only` / `subscription_first` / `subscription_only`）、有序候选组（ordered/Auto）和用户专属倍率。**proto additive**；MySQL / SQLite / PostgreSQL 三方言新增迁移 `092`–`100`（全部 additive，生产须逐 schema 带 `-ownership` 执行）；新增能力开关全部默认关闭，不打开开关则行为与 v0.28.1 完全一致；启用须按路由分组 runbook 逐阶段灰度。详见 [docs/releases/release-v0.29.0.md](./docs/releases/release-v0.29.0.md)。
 
 ### 升级到 v0.28.0
 

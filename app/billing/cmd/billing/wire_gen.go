@@ -28,6 +28,7 @@ import (
 	"micro-one-api/platform/grpc/xgrpc"
 	"micro-one-api/platform/logging"
 	registry2 "micro-one-api/platform/registry"
+	"micro-one-api/platform/routingclient"
 	"os"
 	"os/signal"
 	"syscall"
@@ -93,6 +94,10 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	}
 
 	subscriptionRepo := data2.NewRepository(d.DB(), d.Redis())
+	closeEntitlements := func() {}
+	if biz2.EntitlementsEnabled() {
+		closeEntitlements = subscriptionRepo.StartEntitlementOutbox()
+	}
 	subscriptionUc := biz2.NewSubscriptionUsecase(subscriptionRepo, subscriptionRepo)
 	uc := biz.NewBillingUsecaseWithPricing(
 		d.AccountRepo(),
@@ -102,9 +107,23 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		pricing,
 	)
 	uc.SetSubscriptionPrimatives(subscriptionUc)
+	if biz2.EntitlementsEnabled() {
+		uc.SetRoutingPolicyRepo(data.NewRoutingPolicyRepo(d))
+		uc.SetUserPriceOverrideRepo(data.NewUserPriceOverrideRepo(d))
+	}
+	subscriptionUc.SetContractGroupReader(uc)
 	uc.SetTxRunner(data.NewTxRunner(d))
 	uc.SetReceivableRepo(d.ReceivableRepo())
 	uc.SetPricingSnapshotRepo(d.PricingSnapshotRepo())
+	closeRouting := func() {}
+	if biz.RequestSnapshotsEnabled() {
+		reader, cleanup, err := routingclient.Dial(os.Getenv("CHANNEL_GRPC_ENDPOINT"))
+		if err != nil {
+			panic(err)
+		}
+		uc.SetRoutingGroupReader(reader)
+		closeRouting = cleanup
+	}
 
 	var asyncBilling *biz.AsyncBillingUsecase
 	if cfg.Bootstrap.Billing != nil && cfg.Bootstrap.Billing.Async != nil && cfg.Bootstrap.Billing.Async.Enabled {
@@ -133,8 +152,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	}
 	paymentAssetIssuer := biz.NewPaymentAssetIssuer(uc)
 	paymentSubscriptionAssigner := biz.NewPaymentSubscriptionAssigner(subscriptionUc, subscriptionRepo, subscriptionRepo)
-	planSnapshotter := biz.NewPaymentPlanSnapshotter(subscriptionRepo)
+	planSnapshotter := biz.NewPaymentPlanSnapshotter(subscriptionRepo, uc)
 	paymentUc := biz.NewPaymentUsecaseWithAssignerAndSnapshotter(d.PaymentRepo(), paymentProvider, paymentAssetIssuer, paymentSubscriptionAssigner, planSnapshotter)
+	paymentUc.SetSubscriptionPurchaseValidator(subscriptionUc)
 
 	var alipayVerifier biz.PaymentNotifyVerifier
 	var configuredAlipayAppID string
@@ -153,6 +173,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	svc.SetRefundUsecase(refundUc)
 	reportUc := biz.NewSubscriptionReportUsecase(data.NewOperationReportRepo(d))
 	svc.SetSubscriptionReportUsecase(reportUc)
+	svc.SetSubscriptionCommerce(biz.NewSubscriptionCommerce(uc, subscriptionUc, subscriptionRepo, data.NewSubscriptionCommerceRepo(d)))
 
 	reconUc.SetReservationReleaser(uc)
 
@@ -245,14 +266,17 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 
 	_ = fmt.Sprintf
 	return app, func() {
-		d.Close()
 		cancel()
+
 		if asyncBilling != nil {
 			_ = asyncBilling.Close()
 		}
 		if partitionStop != nil {
 			partitionStop()
 		}
+		closeEntitlements()
+		closeRouting()
+		d.Close()
 		if notifyConn != nil {
 			_ = notifyConn.Close()
 		}

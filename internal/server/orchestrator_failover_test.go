@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"micro-one-api/domain/routing"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -299,4 +300,8 @@ func TestRelayOrchestratorFailoverUsesFinalAttemptSemantics(t *testing.T) {
 	if env.BillableTotal() != 45195 {
 		t.Fatalf("billable total = %d, want 45195", env.BillableTotal())
 	}
+}
+
+func (c orchestratorFailoverChannelClient) CanRoute(_ context.Context, group, model string, source routing.Source) (routing.Permission, error) {
+	return routing.Permission{Allowed: source.Kind == routing.Channel && model != "" && ((c.first != nil && c.first.ID == source.ID) || (c.second != nil && c.second.ID == source.ID))}, nil
 }

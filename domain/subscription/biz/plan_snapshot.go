@@ -20,13 +20,15 @@ import (
 // plan id, because the assigner must not re-read the live plan row at
 // fulfillment time.
 type PlanSnapshot struct {
-	PlanID       int64  `json:"plan_id"`
-	Name         string `json:"name"`
-	ProductName  string `json:"product_name"`
-	GroupID      int64  `json:"group_id"`
-	PriceQuota   int64  `json:"price_quota"`
-	ValidityDays int32  `json:"validity_days"`
-	CapturedAt   int64  `json:"captured_at"`
+	Version      int32                 `json:"version,omitempty"`
+	Contract     *SubscriptionContract `json:"contract,omitempty"`
+	PlanID       int64                 `json:"plan_id"`
+	Name         string                `json:"name"`
+	ProductName  string                `json:"product_name"`
+	GroupID      int64                 `json:"group_id"`
+	PriceQuota   int64                 `json:"price_quota"`
+	ValidityDays int32                 `json:"validity_days"`
+	CapturedAt   int64                 `json:"captured_at"`
 }
 
 // EncodePlanSnapshot serialises a snapshot into the JSON string persisted in
@@ -57,6 +59,15 @@ func DecodePlanSnapshot(raw string) (PlanSnapshot, error) {
 	if err := jsonx.Unmarshal([]byte(raw), &s); err != nil {
 		return PlanSnapshot{}, fmt.Errorf("decode plan_snapshot: %w", err)
 	}
+	if s.Version != 0 && s.Version != 2 {
+		return PlanSnapshot{}, ErrSubscriptionContractInvalid
+	}
+	if s.Version == 2 && (s.Contract == nil || s.Contract.Validate() != nil || s.Contract.QuotaPolicy.ID != s.GroupID) {
+		return PlanSnapshot{}, ErrSubscriptionContractInvalid
+	}
+	if s.Version == 0 && s.Contract != nil {
+		return PlanSnapshot{}, ErrSubscriptionContractInvalid
+	}
 	return s, nil
 }
 
@@ -75,7 +86,12 @@ func (p *SubscriptionPlan) ToPlanSnapshot() PlanSnapshot {
 	if p == nil {
 		return PlanSnapshot{}
 	}
+	var version int32
+	if p.Contract != nil {
+		version = 2
+	}
 	return PlanSnapshot{
+		Version: version, Contract: CloneContract(p.Contract),
 		PlanID:       p.ID,
 		Name:         p.Name,
 		ProductName:  p.ProductName,

@@ -8,8 +8,22 @@ import "google/protobuf/empty.proto";
 option go_package = "micro-one-api/api/channel/v1;channelv1";
 
 service ChannelService {
+ rpc SetRoutingGroupState(SetRoutingGroupStateRequest) returns (RoutingGroupDetail);
+  // Phase B read-only group registry; mutations remain with the resource owners.
+  rpc ListRoutingGroups(ListRoutingGroupsRequest) returns (ListRoutingGroupsReply);
+  rpc GetRoutingGroup(GetRoutingGroupRequest) returns (RoutingGroupDetail);
+  // Explicit group creation (owner: channel). The group is created disabled and
+  // restricted: members arrive through resource CSVs and enabling keeps the
+  // existing capability/price gates in SetRoutingGroupState.
+  rpc CreateRoutingGroup(CreateRoutingGroupRequest) returns (RoutingGroupDetail);
+  // Read-only, model-scoped authorization for stored/cached routing sources.
+  // It never grants account-wide access and never returns credentials.
+  rpc CheckRoute(CheckRouteRequest) returns (CheckRouteReply);
   rpc SelectChannel(SelectChannelRequest) returns (SelectChannelReply);
   rpc SelectSubscriptionAccount(SelectSubscriptionAccountRequest) returns (SelectSubscriptionAccountReply);
+  // Phase F: relation-level priority/weight overrides (owner: channel).
+  rpc SetRoutingGroupResourceOverrides(SetRoutingGroupResourceOverridesRequest) returns (SetRoutingGroupResourceOverridesReply);
+  rpc HasRoutingCandidates(HasRoutingCandidatesRequest) returns (HasRoutingCandidatesReply);
   rpc GetSubscriptionAccount(GetSubscriptionAccountRequest) returns (GetSubscriptionAccountReply);
   // Internal relay credential lookup. Unlike the management RPC above, this
   // response contains decrypted account secrets and must stay on the private
@@ -115,6 +129,70 @@ service ChannelService {
 
 }
 
+message RoutingGroup {
+  int64 id = 1;
+  string key = 2;
+  string display_name = 3;
+  string description = 4;
+  string status = 5;
+  string access_mode = 6;
+  string model_access_mode = 7;
+  int32 sort_order = 8;
+  int64 revision = 9;
+  int64 created_at = 10;
+  int64 updated_at = 11;
+}
+message ListRoutingGroupsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  // Equality filters on key, status, access_mode joined with AND.
+  string filter = 3;
+  // id, key, sort_order with optional asc/desc; id is the stable tie breaker.
+  string order_by = 4;
+}
+message ListRoutingGroupsReply {
+  repeated RoutingGroup groups = 1;
+  string next_page_token = 2;
+}
+message GetRoutingGroupRequest { int64 id = 1; }
+message RoutingGroupResource {
+  string source_kind = 1;
+  int64 source_id = 2;
+  // Effective values (relation override > resource's own values).
+  int64 priority = 3;
+  int64 weight = 4;
+  // Raw relation-level overrides; unset (nil) = inherit.
+  optional int64 priority_override = 5;
+  optional int64 weight_override = 6;
+}
+message SetRoutingGroupResourceOverridesRequest {
+  int64 routing_group_id = 1;
+  string source_kind = 2; // channel | subscription
+  int64 source_id = 3;
+  optional int64 priority_override = 4;
+  optional int64 weight_override = 5;
+}
+message SetRoutingGroupResourceOverridesReply {}
+// Read-only candidate probe for ordered (auto) routing: true when the group
+// has any routable upstream for the model. Never selects, so it never
+// advances weighted-scheduler state.
+message HasRoutingCandidatesRequest { int64 routing_group_id = 1; string model = 2; }
+message HasRoutingCandidatesReply { bool has_candidates = 1; }
+message RoutingGroupModelGrant {
+  int64 mapping_id = 1;
+  int64 account_id = 2;
+  string model = 3;
+  string upstream_model_id = 4;
+  bool enabled = 5;
+  int32 priority = 6;
+  bool extra_authorization = 7;
+}
+message RoutingGroupDetail {
+  RoutingGroup group = 1;
+  repeated RoutingGroupResource resources = 2;
+  repeated RoutingGroupModelGrant model_grants = 3;
+}
+
 message SelectChannelRequest {
   string group = 1;
   string model = 2;
@@ -124,6 +202,7 @@ message SelectChannelRequest {
   // walk healthy channels in any tier. Supersedes exclude_first_priority for
   // callers that track per-request failures.
   repeated int64 excluded_channel_ids = 4;
+  int64 routing_group_id = 5;
 }
 
 message SelectChannelReply {
@@ -140,6 +219,7 @@ message SelectSubscriptionAccountRequest {
   // failover can still walk healthy accounts in any tier. Supersedes
   // exclude_first_priority for callers that track per-request failures.
   repeated int64 excluded_account_ids = 5;
+  int64 routing_group_id = 6;
 }
 
 message SelectSubscriptionAccountReply {
@@ -163,7 +243,12 @@ message GetChannelReply {
 }
 
 message ListAvailableModelsRequest {
+ int64 routing_group_id = 2;
   string group = 1;
+  // Ordered-candidate (or multi-group) model listing: the reply is the union
+  // of the models available in each routing group. Empty keeps the
+  // single-group behavior.
+  repeated int64 routing_group_ids = 3;
 }
 
 message ListAvailableModelsReply {
@@ -1210,4 +1295,28 @@ message ListUsageSemanticBlocksRequest {
 message ListUsageSemanticBlocksResponse {
   repeated UsageSemanticBlock blocks = 1;
   int64 total = 2;
+}
+
+message CheckRouteRequest {
+  string group = 1;
+  string model = 2;
+  string source_kind = 3; // channel | subscription
+  int64 source_id = 4;
+  int64 routing_group_id = 5;
+}
+message CheckRouteReply {
+  bool allowed = 1;
+  string upstream_model_id = 2;
+}
+
+message SetRoutingGroupStateRequest { int64 id = 1; int64 expected_revision = 2; string status = 3; string access_mode = 4; }
+
+// CreateRoutingGroupRequest carries operator input only: status, revision and
+// model access mode are decided by the owner, not by the caller.
+message CreateRoutingGroupRequest {
+  string key = 1;
+  string display_name = 2;
+  string description = 3;
+  // "restricted" (default) or "public".
+  string access_mode = 4;
 }

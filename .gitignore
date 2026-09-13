@@ -82,6 +82,9 @@ test/e2e/e2e-test
 web/node_modules
 web/dist
 web/.env
+# Root-level node_modules, e.g. from a stray `npm install` at the repo root.
+# The web workspace keeps its own .gitignore; this only covers the root.
+/node_modules
 # Admin frontend build output. The Dockerfiles build the web in a
 # dedicated web-builder stage and copy it into the embed path right
 # before `go build`, so these built assets must never be tracked in
@@ -98,6 +101,9 @@ cert/
 .codex
 # Local build/save outputs
 dist/
+
+# Local reports from real database routing audits (never commit live records)
+/artifacts/group-audit/
 
 # Subscription account import payloads (contain plaintext OAuth tokens)
 subscription-account.*.payload.json
