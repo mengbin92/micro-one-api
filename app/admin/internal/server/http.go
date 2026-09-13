@@ -804,42 +804,52 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		return
 	}
 
-	users, err := svc.ListUsers(r.Context(), &adminv1.AdminListUsersRequest{Page: 1, PageSize: 5})
+	// The summary fans out ~20 serial RPCs (users, channels, ledgers, orders,
+	// stats, top-N aggregates, enrichments). Under the ambient request
+	// context the tail calls regularly inherited a nearly-expired deadline
+	// and failed with DeadlineExceeded even though every backend was
+	// healthy — the admin-api error log showed a steady stream of exactly
+	// that. Give the aggregation its own bounded budget, still tied to the
+	// client connection so a disconnect cancels everything.
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	users, err := svc.ListUsers(ctx, &adminv1.AdminListUsersRequest{Page: 1, PageSize: 5})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, apiResponse(false, "failed to load users", nil))
 		return
 	}
-	activeUsers, err := svc.ListUsers(r.Context(), &adminv1.AdminListUsersRequest{Page: 1, PageSize: 1, Status: 1})
+	activeUsers, err := svc.ListUsers(ctx, &adminv1.AdminListUsersRequest{Page: 1, PageSize: 1, Status: 1})
 	if err != nil {
 		activeUsers = &adminv1.AdminListUsersResponse{}
 	}
-	channels, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{Page: 1, PageSize: 5})
+	channels, err := svc.ListChannels(ctx, &adminv1.AdminListChannelsRequest{Page: 1, PageSize: 5})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, apiResponse(false, "failed to load channels", nil))
 		return
 	}
-	activeChannels, err := svc.ListChannels(r.Context(), &adminv1.AdminListChannelsRequest{Page: 1, PageSize: 1, Status: 1})
+	activeChannels, err := svc.ListChannels(ctx, &adminv1.AdminListChannelsRequest{Page: 1, PageSize: 1, Status: 1})
 	if err != nil {
 		activeChannels = &adminv1.AdminListChannelsResponse{}
 	}
-	recentLogs, recentLogsTotal, err := svc.ListLedgerEntries(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 8})
+	recentLogs, recentLogsTotal, err := svc.ListLedgerEntries(ctx, &adminv1.ListLogsRequest{Page: 1, PageSize: 8})
 	if err != nil {
 		recentLogs = []map[string]any{}
 		recentLogsTotal = 0
 	}
-	paymentOrders, err := svc.ListPaymentOrders(r.Context(), &billingv1.ListPaymentOrdersRequest{Page: 1, PageSize: 8, Status: "paid"})
+	paymentOrders, err := svc.ListPaymentOrders(ctx, &billingv1.ListPaymentOrdersRequest{Page: 1, PageSize: 8, Status: "paid"})
 	if err != nil {
 		paymentOrders = &billingv1.ListPaymentOrdersResponse{}
 	}
-	stats, err := svc.GetLogStats(r.Context(), &adminv1.ListLogsRequest{Page: 1, PageSize: 1000})
+	stats, err := svc.GetLogStats(ctx, &adminv1.ListLogsRequest{Page: 1, PageSize: 1000})
 	if err != nil {
 		stats = map[string]any{}
 	}
-	topModels, err := svc.AggregateUsageTopN(r.Context(), "model", 5)
+	topModels, err := svc.AggregateUsageTopN(ctx, "model", 5)
 	if err != nil {
 		topModels = []service.UsageAggregateView{}
 	}
-	topChannels, err := svc.AggregateUsageTopN(r.Context(), "channel", 5)
+	topChannels, err := svc.AggregateUsageTopN(ctx, "channel", 5)
 	if err != nil {
 		topChannels = []service.UsageAggregateView{}
 	}
@@ -855,20 +865,20 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	for id := range channelIDsForEnrichment {
 		enrichmentChannelIDs = append(enrichmentChannelIDs, id)
 	}
-	enrichmentChannels := svc.FetchChannelSummariesByID(r.Context(), enrichmentChannelIDs)
-	topUsers, err := svc.AggregateUsageTopN(r.Context(), "user", 5)
+	enrichmentChannels := svc.FetchChannelSummariesByID(ctx, enrichmentChannelIDs)
+	topUsers, err := svc.AggregateUsageTopN(ctx, "user", 5)
 	if err != nil {
 		topUsers = []service.UsageAggregateView{}
 	}
-	topTokens, err := svc.AggregateUsageTopN(r.Context(), "token", 5)
+	topTokens, err := svc.AggregateUsageTopN(ctx, "token", 5)
 	if err != nil {
 		topTokens = []service.UsageAggregateView{}
 	}
-	topSubscriptionAccounts, err := svc.AggregateUsageTopN(r.Context(), "subscription_account", 5)
+	topSubscriptionAccounts, err := svc.AggregateUsageTopN(ctx, "subscription_account", 5)
 	if err != nil {
 		topSubscriptionAccounts = []service.UsageAggregateView{}
 	}
-	topSubscriptionAccountQuotaEvents, err := svc.AggregateSubscriptionAccountQuotaEventsTopN(r.Context(), 5)
+	topSubscriptionAccountQuotaEvents, err := svc.AggregateSubscriptionAccountQuotaEventsTopN(ctx, 5)
 	if err != nil {
 		topSubscriptionAccountQuotaEvents = []service.SubscriptionAccountQuotaEventAggregateView{}
 	}
@@ -891,21 +901,21 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 	for id := range subscriptionAccountIDsForEnrichment {
 		enrichmentIDs = append(enrichmentIDs, id)
 	}
-	enrichmentAccounts := svc.FetchSubscriptionAccountSummariesByID(r.Context(), enrichmentIDs)
-	reconciliation, err := svc.ListReconciliationRuns(r.Context(), 1, 1)
+	enrichmentAccounts := svc.FetchSubscriptionAccountSummariesByID(ctx, enrichmentIDs)
+	reconciliation, err := svc.ListReconciliationRuns(ctx, 1, 1)
 	if err != nil {
 		reconciliation = &service.ListReconciliationRunsResult{}
 	}
-	options, err := svc.ListOneAPIOptions(r.Context())
+	options, err := svc.ListOneAPIOptions(ctx)
 	if err != nil {
 		options = nil
 	}
 
-	subscriptionAccounts, err := svc.ListSubscriptionAccounts(r.Context(), &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 5})
+	subscriptionAccounts, err := svc.ListSubscriptionAccounts(ctx, &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 5})
 	if err != nil {
 		subscriptionAccounts = &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}
 	}
-	activeSubscriptionAccounts, err := svc.ListSubscriptionAccounts(r.Context(), &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 1, Status: 1})
+	activeSubscriptionAccounts, err := svc.ListSubscriptionAccounts(ctx, &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 1, Status: 1})
 	if err != nil {
 		activeSubscriptionAccounts = &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}
 	}

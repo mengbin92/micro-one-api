@@ -1,6 +1,7 @@
 package xdb
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"gorm.io/driver/postgres"
 	sqlitedriver "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 
 	// Register the CGO-backed SQLite driver as the canonical
 	// "sqlite3" database/sql driver. The GORM open path uses
@@ -207,6 +209,49 @@ func InferDriver(dsn string) string {
 	return DriverMySQL
 }
 
+// gormConfig returns the shared GORM configuration. The default logger
+// prints every SQL error at Error level, including ones the data layer
+// intentionally handles — unique-key races on idempotent claim inserts
+// (pricing snapshots, ledger dedupe claims) and ordinary not-found reads.
+// Those already map to typed biz results, so logging them at Error is pure
+// noise (production billing logs showed a steady stream of benign
+// "Duplicate entry ... uk_billing_pricing_snapshots_hash" lines).
+// benignGormLogger downgrades exactly those known-benign statements to
+// Silent; slow queries and every other error still surface at their
+// original level.
+func gormConfig() *gorm.Config {
+	return &gorm.Config{Logger: benignGormLogger{
+		gormlogger.Default.LogMode(gormlogger.Warn),
+	}}
+}
+
+// benignGormLogger wraps the standard GORM logger and suppresses the two
+// statement outcomes the data layer treats as control flow:
+//   - ErrRecordNotFound on reads (mapped to typed NotFound by callers)
+//   - unique-key violations on writes (idempotent claim races; the caller
+//     reuses the existing row)
+//
+// Everything else — connectivity, syntax, deadlocks, slow queries — is
+// logged unchanged.
+type benignGormLogger struct{ gormlogger.Interface }
+
+func (l benignGormLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	if err != nil && (errors.Is(err, gorm.ErrRecordNotFound) || isUniqueKeyViolation(err)) {
+		err = nil
+	}
+	l.Interface.Trace(ctx, begin, fc, err)
+}
+
+// isUniqueKeyViolation mirrors the data layer's isUniqueConstraintError.
+// Duplicated here (rather than exported) to keep platform/xdb free of
+// service-specific imports; both match the three supported dialects.
+func isUniqueKeyViolation(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate entry") ||
+		strings.Contains(msg, "unique constraint failed") ||
+		strings.Contains(msg, "duplicate key value violates unique constraint")
+}
+
 func openMySQL(dsn string, schema string, pool *PoolConfig) (*gorm.DB, error) {
 	if schema != "" {
 		rewritten, err := withMySQLDBName(dsn, schema)
@@ -225,7 +270,7 @@ func openMySQL(dsn string, schema string, pool *PoolConfig) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(mysql.Open(dsn), gormConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +320,7 @@ func openSQLite3(dsn string, pool *PoolConfig, pragmas []string) (*gorm.DB, erro
 	// Hand the already-configured *sql.DB to gorm.io/driver/sqlite so
 	// the same pool and pragmas are shared with callers that go
 	// through database/sql directly.
-	db, err := gorm.Open(sqlitedriver.New(sqlitedriver.Config{Conn: sqlDB}), &gorm.Config{})
+	db, err := gorm.Open(sqlitedriver.New(sqlitedriver.Config{Conn: sqlDB}), gormConfig())
 	if err != nil {
 		_ = sqlDB.Close()
 		return nil, err
@@ -294,7 +339,7 @@ func openPostgres(dsn string, schema string, pool *PoolConfig) (*gorm.DB, error)
 		}
 		dsn = rewritten
 	}
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(dsn), gormConfig())
 	if err != nil {
 		return nil, err
 	}

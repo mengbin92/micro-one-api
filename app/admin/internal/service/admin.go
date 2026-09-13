@@ -1006,7 +1006,14 @@ func (s *AdminService) ListSubscriptionAccounts(ctx context.Context, req *adminv
 		// (network, DB schema mismatch, panic) indistinguishable from "no
 		// accounts exist", so the admin UI showed an empty table and hid the
 		// real cause. Log and propagate so the HTTP layer maps it to 500.
-		applogger.Log.Error("channel-service ListSubscriptionAccounts failed", zap.Error(err))
+		// An already-expired context (client gone, or the aggregated summary
+		// budget spent by earlier fanners) is not a channel-service fault:
+		// log at Info to keep the error budget signal clean.
+		if ctx.Err() != nil || status.Code(err) == codes.DeadlineExceeded {
+			applogger.Log.Info("channel-service ListSubscriptionAccounts aborted", zap.Error(err))
+		} else {
+			applogger.Log.Error("channel-service ListSubscriptionAccounts failed", zap.Error(err))
+		}
 		return nil, status.Error(codes.Internal, "failed to list subscription accounts")
 	}
 	return &adminv1.AdminListSubscriptionAccountsResponse{

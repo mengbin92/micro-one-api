@@ -1,12 +1,20 @@
 package xdb
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
+	"errors"
+	"log"
 	"net/url"
 	"strings"
+	"sync"
+	"testing"
+	"time"
 
 	mysqldriver "github.com/go-sql-driver/mysql"
-	"testing"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func TestInferDriver(t *testing.T) {
@@ -509,4 +517,55 @@ func TestWithClientFoundRowsSharedByBothMySQLPaths(t *testing.T) {
 	if _, err := withClientFoundRows("not a dsn"); err == nil {
 		t.Fatal("withClientFoundRows must reject an unparseable DSN")
 	}
+}
+
+func TestBenignGormLoggerSuppressesHandledErrors(t *testing.T) {
+	var buf safeBuffer
+	base := gormlogger.New(log.New(&buf, "", 0), gormlogger.Config{LogLevel: gormlogger.Warn, Colorful: false})
+	l := benignGormLogger{base}
+
+	benign := []error{
+		gorm.ErrRecordNotFound,
+		errors.New("Error 1062 (23000): Duplicate entry 'abc' for key 'uk_hash'"),
+		errors.New("UNIQUE constraint failed: t.c"),
+		errors.New(`duplicate key value violates unique constraint "t_pkey"`),
+	}
+	for _, err := range benign {
+		buf.Reset()
+		l.Trace(context.Background(), time.Now(), func() (string, int64) { return "SQL", 1 }, err)
+		if buf.String() != "" {
+			t.Fatalf("benign error %v should be suppressed, got %q", err, buf.String())
+		}
+	}
+
+	buf.Reset()
+	realErr := errors.New("Error 1213 (40001): Deadlock found when trying to get lock")
+	l.Trace(context.Background(), time.Now(), func() (string, int64) { return "SQL", 1 }, realErr)
+	if !strings.Contains(buf.String(), "Deadlock") {
+		t.Fatalf("real errors must still be logged, got %q", buf.String())
+	}
+}
+
+// safeBuffer is a goroutine-safe bytes.Buffer for logger output.
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func (b *safeBuffer) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf.Reset()
 }
