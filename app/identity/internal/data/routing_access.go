@@ -137,17 +137,9 @@ func (r *Repository) UpdateRoutingAccess(ctx context.Context, c biz.RoutingAcces
 		if result.RowsAffected != 1 {
 			return biz.ErrRoutingAccessConflict
 		}
-		if c.Operation == "default" {
-			// Mirror updateRoutingUserDB: moving the default group replaces the
-			// migration grant, otherwise the stale grant keeps the old group
-			// reachable forever.
-			if err := tx.Where("user_id = ? AND source_type = ? AND source_ref = ?", c.UserID, "migration", "legacy_group").Delete(&routingGrantModel{}).Error; err != nil {
-				return err
-			}
-			if err := tx.Create(migrationGrant(c.UserID, c.GroupID)).Error; err != nil {
-				return err
-			}
-		}
+		// The v2 default command changes preference only. Moving a migration
+		// grant would turn temporary or subscription access into permanent
+		// access; that legacy behavior belongs only to updateRoutingUserDB.
 		if c.Operation == "grant" || c.Operation == "revoke" {
 			status := "active"
 			if c.Operation == "revoke" {

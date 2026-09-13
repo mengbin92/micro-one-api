@@ -18,6 +18,25 @@ function renderTokensPage() {
 }
 
 describe('TokensPage', () => {
+  it('keeps unavailable ordered candidates visible and reorders the actual IDs', async () => {
+    const posted: Record<string, unknown>[] = [];
+    server.use(
+      http.get('/api/token', () => HttpResponse.json({ success: true, data: [{ id: 1, name: 'ordered key', status: 1, created_time: 1, routing_mode: 'ordered', routing_group_ids: [10, 20, 30], routing_revision: 1 }] })),
+      http.get('/api/v1/routing-groups/available', () => HttpResponse.json({ success: true, data: { creation_enabled: true, default_available: true, facts: {}, groups: [20, 30].map((id) => ({ id, key: `group-${id}`, display_name: `Group ${id}`, price_ratio: 1, models: [], sources: [], ordered_eligible: true })), next_page_token: '' } })),
+      http.patch('/api/v1/routing-tokens/1', async ({ request }) => {
+        posted.push(await request.json() as Record<string, unknown>);
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    renderTokensPage();
+    await userEvent.click(await screen.findByRole('button', { name: '分组设置' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/#10/)).toBeVisible();
+    const up = within(dialog).getAllByRole('button', { name: '↑' });
+    await userEvent.click(up[1]);
+    await userEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(posted[0]?.routing_group_ids).toEqual([20, 10, 30]));
+  });
   beforeEach(() => {
     server.use(
       http.get('/api/status', () => HttpResponse.json({ success: true, data: {} })),

@@ -36,20 +36,6 @@ log_info "Server: ${SERVER}"
 log_info "Project root: ${PROJECT_ROOT}"
 echo ""
 
-# Check prerequisites
-log_step "Checking prerequisites..."
-if ! docker buildx version &>/dev/null; then
-    log_error "docker buildx not available"
-    exit 1
-fi
-
-if ! ssh -o ConnectTimeout=5 ${SERVER} "echo 'Connected'" &>/dev/null; then
-    log_error "Cannot connect to server ${SERVER}"
-    exit 1
-fi
-log_info "Prerequisites OK"
-echo ""
-
 # Map service name to build path
 service_path() {
     case "$1" in
@@ -80,6 +66,38 @@ service_dockerfile() {
         *)                  echo "Unknown service: ${1}" >&2; exit 1 ;;
     esac
 }
+
+# Deploy services. Accepts an explicit service list (see service_path for the
+# valid names); falls back to the historical billing+admin pair when no
+# arguments are given.
+if [ "$#" -gt 0 ]; then
+    SERVICES=("$@")
+else
+    SERVICES=(billing-service admin-api)
+fi
+
+# Validate the entire list before any build or remote call. A typo in a later
+# argument must not leave an earlier service already deployed.
+for svc in "${SERVICES[@]}"; do
+    if [ -z "$(service_path "$svc")" ]; then
+        log_error "Unknown service: ${svc}"
+        exit 1
+    fi
+done
+
+# Check prerequisites
+log_step "Checking prerequisites..."
+if ! docker buildx version &>/dev/null; then
+    log_error "docker buildx not available"
+    exit 1
+fi
+
+if ! ssh -o ConnectTimeout=5 ${SERVER} "echo 'Connected'" &>/dev/null; then
+    log_error "Cannot connect to server ${SERVER}"
+    exit 1
+fi
+log_info "Prerequisites OK"
+echo ""
 
 # Rollback tag shared by every service deployed in this run, so a multi-service
 # deploy can be rolled back to one consistent point in time.
@@ -147,15 +165,6 @@ EOF
     log_info "${service} deployed successfully!"
     echo ""
 }
-
-# Deploy services. Accepts an explicit service list (see service_path for the
-# valid names); falls back to the historical billing+admin pair when no
-# arguments are given.
-if [ "$#" -gt 0 ]; then
-    SERVICES=("$@")
-else
-    SERVICES=(billing-service admin-api)
-fi
 
 for svc in "${SERVICES[@]}"; do
     deploy_service "${svc}"

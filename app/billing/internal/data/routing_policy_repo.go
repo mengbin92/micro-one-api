@@ -34,6 +34,12 @@ func (routingPolicyHead) TableName() string { return "routing_billing_policy_hea
 type routingPolicyRepo struct{ db *gorm.DB }
 
 func NewRoutingPolicyRepo(d *Data) biz.RoutingPolicyRepo { return &routingPolicyRepo{db: d.DB()} }
+func (r *routingPolicyRepo) GetInTx(ctx context.Context, tx subscriptionbiz.Tx, id int64) (*routing.BillingPolicy, error) {
+	if tx == nil {
+		return nil, biz.ErrRequestSnapshotUnavailable
+	}
+	return (&routingPolicyRepo{db: txDB(tx)}).Get(ctx, id)
+}
 func (r *routingPolicyRepo) Get(ctx context.Context, id int64) (*routing.BillingPolicy, error) {
 	var row routingPolicyModel
 	err := r.db.WithContext(ctx).Table("routing_billing_policies p").Select("p.*").Joins("JOIN routing_billing_policy_heads h ON h.routing_group_id=p.routing_group_id AND h.version=p.version").Where("p.routing_group_id = ?", id).Take(&row).Error

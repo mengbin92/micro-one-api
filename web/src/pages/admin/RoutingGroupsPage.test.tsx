@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -8,6 +8,22 @@ import { server } from '@/test/msw/server';
 
 const group = { id: 2, key: 'vip', display_name: 'VIP', status: 'disabled', access_mode: 'restricted', model_access_mode: 'all_authorized', description: '' };
 describe('AdminRoutingGroupsPage', () => {
+  it('preserves displayed overrides when saved without edits', async () => {
+    const posted: unknown[] = [];
+    server.use(
+      http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [group], next_page_token: '' } })),
+      http.get('/api/v1/admin/routing-groups/2', () => HttpResponse.json({ success: true, data: { group, resources: [{ source_kind: 'channel', source_id: 1, priority: 7, weight: 5, priority_override: 7, weight_override: 5 }], model_grants: [] } })),
+      http.put('/api/v1/admin/routing-groups/2/resource-overrides', async ({ request }) => {
+        posted.push(await request.json());
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    renderWithQuery(<AdminRoutingGroupsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: '查看分组 vip' }));
+    expect(await screen.findByLabelText('优先级覆盖')).toHaveValue('7');
+    await userEvent.click(screen.getByRole('button', { name: '保存覆盖' }));
+    await waitFor(() => expect(posted).toEqual([{ source_kind: 'channel', source_id: 1, priority_override: 7, weight_override: 5 }]));
+  });
   it('keeps model-only grants separate from members and lists mixed source IDs', async () => {
     server.use(http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [group], next_page_token: '' } })),
       http.get('/api/v1/admin/routing-groups/2', () => HttpResponse.json({ success: true, data: { group,

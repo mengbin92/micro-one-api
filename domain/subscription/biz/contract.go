@@ -149,7 +149,7 @@ func (s *UserSubscription) RoutingGrants(now int64) []routing.UserGroupGrant {
 	return grants
 }
 
-func (uc *SubscriptionUsecase) prepareAssignment(ctx context.Context, req *AssignSubscriptionRequest) (*SubscriptionGroup, error) {
+func (uc *SubscriptionUsecase) prepareAssignment(ctx context.Context, tx Tx, req *AssignSubscriptionRequest) (*SubscriptionGroup, error) {
 	if req.Contract != nil {
 		if req.Contract.Validate() != nil || req.Contract.QuotaPolicy.ID != req.GroupID {
 			return nil, ErrSubscriptionContractInvalid
@@ -159,7 +159,13 @@ func (uc *SubscriptionUsecase) prepareAssignment(ctx context.Context, req *Assig
 	if !EntitlementsEnabled() && len(req.Coverage) > 0 {
 		return nil, ErrSubscriptionRoutingUnavailable
 	}
-	group, err := uc.groupRepo.GetGroupByID(ctx, req.GroupID)
+	var group *SubscriptionGroup
+	var err error
+	if tx != nil {
+		group, err = uc.groupRepo.GetGroupByIDInTx(ctx, tx, req.GroupID)
+	} else {
+		group, err = uc.groupRepo.GetGroupByID(ctx, req.GroupID)
+	}
 	if err != nil {
 		return nil, err
 	}

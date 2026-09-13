@@ -10,6 +10,17 @@ import (
 	"micro-one-api/domain/routing"
 )
 
+func TestRoutingCandidateProbeIncludesUnrestrictedChannels(t *testing.T) {
+	repo := &mockChannelRepo{channels: map[int64]*Channel{1: {ID: 1, Status: ChannelStatusEnabled, Group: "default"}}}
+	uc := NewChannelUsecase(repo, nil)
+	ctx := context.Background()
+	_, err := uc.SelectChannel(ctx, "default", "unlisted-model", false)
+	require.NoError(t, err)
+	has, err := uc.HasRoutingCandidates(ctx, &routing.Group{ID: 10, Key: "default", Status: "enabled"}, "unlisted-model")
+	require.NoError(t, err)
+	require.True(t, has, "ordered routing must see the same catch-all candidate as selection")
+}
+
 type failingRoutingRepo struct{ ModelRoutingRepo }
 
 func (failingRoutingRepo) ListModelRoutingsForSelect(context.Context, string, string, string) ([]*ModelRouting, error) {

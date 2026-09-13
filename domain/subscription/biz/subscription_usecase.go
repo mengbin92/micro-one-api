@@ -47,7 +47,7 @@ func (uc *SubscriptionUsecase) Assign(ctx context.Context, req *AssignSubscripti
 	if req == nil {
 		return nil, fmt.Errorf("nil request")
 	}
-	group, err := uc.prepareAssignment(ctx, req)
+	group, err := uc.prepareAssignment(ctx, nil, req)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *Assig
 	if req == nil {
 		return nil, fmt.Errorf("nil request")
 	}
-	group, err := uc.prepareAssignment(ctx, req)
+	group, err := uc.prepareAssignment(ctx, tx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (uc *SubscriptionUsecase) AssignInTx(ctx context.Context, tx Tx, req *Assig
 
 func (uc *SubscriptionUsecase) AssignOrExtend(ctx context.Context, req *AssignSubscriptionRequest) (*UserSubscription, bool, error) {
 	if uc.txRunner != nil && req != nil && (EntitlementsEnabled() || req.Contract != nil) {
-		if _, err := uc.prepareAssignment(ctx, req); err != nil {
+		if _, err := uc.prepareAssignment(ctx, nil, req); err != nil {
 			return nil, false, err
 		}
 		var sub *UserSubscription
@@ -183,7 +183,7 @@ func (uc *SubscriptionUsecase) assignOrExtend(ctx context.Context, tx Tx, req *A
 	if req == nil {
 		return nil, false, fmt.Errorf("nil request")
 	}
-	group, err := uc.prepareAssignment(ctx, req)
+	group, err := uc.prepareAssignment(ctx, tx, req)
 	if err != nil {
 		return nil, false, err
 	}

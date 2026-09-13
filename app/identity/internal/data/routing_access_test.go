@@ -11,6 +11,24 @@ import (
 	"testing"
 )
 
+func TestDefaultRoutingPreferenceDoesNotGrantAccess(t *testing.T) {
+	db := testutil.RoutingContextDB(t, "sqlite")
+	r := NewRoutingBackfillRepository(db)
+	ctx := context.Background()
+	require.NoError(t, db.Table("users").Create(map[string]any{"id": 1, "username": "preference", "group": "default", "status": 1}).Error)
+	_, err := r.BackfillRoutingGroups(ctx, []*routing.Group{{ID: 10, Key: "default"}}, true)
+	require.NoError(t, err)
+	require.NoError(t, r.UpdateRoutingAccess(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 1, Operation: "grant", GroupID: 20, SourceType: "admin", SourceRef: "temporary", StartsAt: 100, ExpiresAt: 200}))
+	before, err := r.UserRoutingFacts(ctx, 1)
+	require.NoError(t, err)
+	require.NoError(t, r.UpdateRoutingAccess(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 2, Operation: "default", GroupID: 20, GroupKey: "vip"}))
+	after, err := r.UserRoutingFacts(ctx, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 20, after.DefaultGroupID)
+	require.Equal(t, before.Grants, after.Grants, "a preference must not add or remove any grant")
+	require.Empty(t, routing.AccessSources(after, &routing.Group{ID: 20, Status: "enabled"}, 200), "expired access must not survive a default change")
+}
+
 func TestRoutingAccessAndFixedTokens(t *testing.T) {
 	for _, driver := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(driver, func(t *testing.T) {
@@ -48,9 +66,8 @@ func TestRoutingAccessAndFixedTokens(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, routing.AccessSources(f, g, 300), 1)
 			require.Len(t, f.TokenReferences, 1)
-			// Changing the preference keeps every independent source; the
-			// migration grant follows the new default (mirroring the legacy
-			// user-update path) instead of staying pinned to the old group.
+			// Changing the preference keeps every independent source, including
+			// the original migration grant.
 			require.NoError(t, r.UpdateRoutingAccess(ctx, biz.RoutingAccessChange{UserID: 1, ExpectedRevision: 4, Operation: "default", GroupID: 20, GroupKey: "vip"}))
 			f, err = r.UserRoutingFacts(ctx, 1)
 			require.NoError(t, err)
@@ -69,17 +86,16 @@ func TestRoutingAccessAndFixedTokens(t *testing.T) {
 			f, err = r.UserRoutingFacts(ctx, 1)
 			require.NoError(t, err)
 			require.EqualValues(t, 5, f.AccessRevision)
-			require.Len(t, routing.AccessSources(f, g, 300), 2)
+			require.Len(t, routing.AccessSources(f, g, 300), 1)
 			oldGroup := &routing.Group{ID: 10, Key: "default", Status: "enabled", Revision: 1}
-			require.Empty(t, routing.AccessSources(f, oldGroup, 300), "the moved migration grant must not keep the old group reachable")
+			require.Len(t, routing.AccessSources(f, oldGroup, 300), 1, "changing a preference must not revoke an independent grant")
 			require.NoError(t, r.UpdateRoutingAccess(ctx, c))
 			f, err = r.GetRoutingFacts(ctx, 1, token.ID, "vip")
 			require.NoError(t, err)
-			// Revoking the last explicit grant still resolves: the migration
-			// grant followed the default change to group 20 (legacy semantics).
-			resolved, err := routing.Resolve(1, token.ID, f, g, 300)
-			require.NoError(t, err)
-			require.EqualValues(t, 20, resolved.GroupID)
+			// Revoking the last explicit grant denies access even if the group
+			// is still the user's default preference.
+			_, err = routing.Resolve(1, token.ID, f, g, 300)
+			require.Error(t, err)
 			_, err = r.SetTokenRouting(ctx, 999, token.ID, "inherit", 0, 1, nil)
 			require.ErrorIs(t, err, biz.ErrRoutingAccessConflict)
 			rev, err := r.SetTokenRouting(ctx, 1, token.ID, "inherit", 0, 1, nil)

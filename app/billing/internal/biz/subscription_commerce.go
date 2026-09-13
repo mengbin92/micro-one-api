@@ -23,14 +23,17 @@ type SubscriptionCommerceResult struct {
 type SubscriptionCommerceRepo interface {
 	Execute(context.Context, int64, string, string, func(context.Context, subscriptionbiz.Tx) (*SubscriptionCommerceResult, error)) (*SubscriptionCommerceResult, error)
 }
+type SubscriptionCommercePlanReader interface {
+	GetPlanByIDInTx(context.Context, subscriptionbiz.Tx, int64) (*subscriptionbiz.SubscriptionPlan, error)
+}
 type SubscriptionCommerce struct {
 	billing       *BillingUsecase
 	subscriptions *subscriptionbiz.SubscriptionUsecase
-	plans         SubscriptionPlanGetter
+	plans         SubscriptionCommercePlanReader
 	repo          SubscriptionCommerceRepo
 }
 
-func NewSubscriptionCommerce(b *BillingUsecase, s *subscriptionbiz.SubscriptionUsecase, p SubscriptionPlanGetter, r SubscriptionCommerceRepo) *SubscriptionCommerce {
+func NewSubscriptionCommerce(b *BillingUsecase, s *subscriptionbiz.SubscriptionUsecase, p SubscriptionCommercePlanReader, r SubscriptionCommerceRepo) *SubscriptionCommerce {
 	return &SubscriptionCommerce{b, s, p, r}
 }
 func (uc *SubscriptionCommerce) Execute(ctx context.Context, req SubscriptionCommerceRequest) (*SubscriptionCommerceResult, error) {
@@ -42,7 +45,7 @@ func (uc *SubscriptionCommerce) Execute(ctx context.Context, req SubscriptionCom
 		return nil, err
 	}
 	return uc.repo.Execute(ctx, req.UserID, req.RequestID, digest, func(ctx context.Context, tx subscriptionbiz.Tx) (*SubscriptionCommerceResult, error) {
-		plan, err := uc.plans.GetPlanByID(ctx, req.PlanID)
+		plan, err := uc.plans.GetPlanByIDInTx(ctx, tx, req.PlanID)
 		if err != nil {
 			return nil, err
 		}
@@ -54,7 +57,7 @@ func (uc *SubscriptionCommerce) Execute(ctx context.Context, req SubscriptionCom
 				return nil, subscriptionbiz.ErrSubscriptionContractInvalid
 			}
 			for _, g := range plan.Contract.Coverage {
-				if _, err := uc.billing.ValidateSubscriptionGroup(ctx, g.GroupID); err != nil {
+				if _, err := uc.billing.validateSubscriptionGroup(ctx, tx, g.GroupID); err != nil {
 					return nil, err
 				}
 			}

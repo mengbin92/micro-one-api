@@ -197,9 +197,12 @@ func (r *routingGroupRepo) GetRoutingGroup(ctx context.Context, id int64) (*biz.
 		return nil, biz.ErrRoutingGroupMigrationRequired
 	}
 	var result *biz.RoutingGroupDetail
+	// Schema probes use the pool, so finish them before the transaction owns
+	// SQLite's only connection (and before concurrent readers hold the pool).
+	overridesReady := r.data.relationOverrideColsReady()
 	err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
-		result, err = getRoutingGroupTx(tx, id, r.data.relationOverrideColsReady())
+		result, err = getRoutingGroupTx(tx, id, overridesReady)
 		return err
 	}, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {

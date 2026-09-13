@@ -63,6 +63,31 @@ func (r *Repository) GetPlanByID(ctx context.Context, planID int64) (*biz.Subscr
 	return r.getPlanByIDMemory(ctx, planID)
 }
 
+// GetPlanByIDInTx keeps both the plan and its quota policy on the purchase
+// transaction's connection. Reacquiring the pool deadlocks single-connection SQLite.
+func (r *Repository) GetPlanByIDInTx(ctx context.Context, tx biz.Tx, planID int64) (*biz.SubscriptionPlan, error) {
+	if tx == nil {
+		return nil, errors.New("nil plan transaction")
+	}
+	if r.db == nil {
+		return r.getPlanByIDMemory(ctx, planID)
+	}
+	var model planModel
+	if err := txDB(tx).WithContext(ctx).Where("id = ?", planID).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, biz.ErrSubscriptionPlanNotFound
+		}
+		return nil, err
+	}
+	plan := planFromModel(&model)
+	group, err := r.GetGroupByIDInTx(ctx, tx, plan.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	plan.Group = group
+	return &plan, nil
+}
+
 func (r *Repository) ListPlans(ctx context.Context) ([]*biz.SubscriptionPlan, error) {
 	if r.db != nil {
 		return r.listPlansDB(ctx, false)

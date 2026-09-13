@@ -3,8 +3,10 @@ package biz
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"micro-one-api/domain/routing"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/jsonx"
 )
 
@@ -75,6 +77,9 @@ func (uc *BillingUsecase) RoutingGroupPrice(ctx context.Context, groupID, userID
 	}
 	if uc.subscription != nil && userID > 0 {
 		sub, err := uc.subscription.GetActiveSubscriptionForUser(ctx, userID)
+		if errors.Is(err, subscriptionbiz.ErrSubscriptionNotFound) {
+			return p, nil
+		}
 		if err != nil {
 			return nil, err
 		}

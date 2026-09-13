@@ -103,7 +103,8 @@ func (uc *BillingUsecase) subscriptionCoverage(ctx context.Context, userID, grou
 	if group == nil {
 		return true, true, nil
 	}
-	limited := false
+	// Match reserve's rolling windows and strictest-limit semantics.
+	sub = subscriptionbiz.RollUsageWindowsPure(sub, uc.Now().Unix())
 	for _, window := range []struct {
 		limit *float64
 		usage float64
@@ -115,10 +116,9 @@ func (uc *BillingUsecase) subscriptionCoverage(ctx context.Context, userID, grou
 		if window.limit == nil {
 			continue
 		}
-		limited = true
-		if window.usage < *window.limit {
-			return true, true, nil
+		if window.usage >= *window.limit {
+			return true, false, nil
 		}
 	}
-	return true, !limited, nil
+	return true, true, nil
 }

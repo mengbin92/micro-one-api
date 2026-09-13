@@ -164,13 +164,29 @@ func (uc *ChannelUsecase) HasRoutingCandidates(ctx context.Context, group *routi
 	if err != nil && !errors.Is(err, ErrChannelNotFound) {
 		return false, err
 	}
+	// Only an empty successful ability read permits the serving path's
+	// unrestricted fallback. A registry denial must never widen access.
+	if err == nil && len(abilities) == 0 {
+		channels, err := uc.repo.ListUnrestrictedChannelsByGroup(ctx, group.Key)
+		if err != nil {
+			return false, err
+		}
+		for _, channel := range channels {
+			if channel.SelectableAt(now) {
+				return true, nil
+			}
+		}
+	}
 	for _, ability := range abilities {
 		if !ability.Enabled {
 			continue
 		}
 		channel, err := uc.repo.FindByID(ctx, ability.ChannelID)
 		if err != nil {
-			continue
+			if errors.Is(err, ErrChannelNotFound) {
+				continue
+			}
+			return false, err
 		}
 		if channel.SelectableAt(now) && !uc.IsUsageSemanticBlocked(ctx, UsageSemanticSourceKindChannel, channel.ID, ability.UpstreamModelID) {
 			return true, nil
@@ -189,7 +205,10 @@ func (uc *ChannelUsecase) HasRoutingCandidates(ctx context.Context, group *routi
 		}
 		account, err := uc.repo.FindSubscriptionAccountByID(ctx, ability.AccountID)
 		if err != nil {
-			continue
+			if errors.Is(err, ErrSubscriptionAccountNotFound) {
+				continue
+			}
+			return false, err
 		}
 		if account.Status == ChannelStatusEnabled && account.IsSchedulableAt(now) {
 			return true, nil

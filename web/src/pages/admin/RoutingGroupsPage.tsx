@@ -60,12 +60,14 @@ export function AdminRoutingGroupsPage() {
   };
   const saveOverrides = async (sourceKind: string, sourceID: number) => {
     if (!detail.data) return;
-    const draft = overrideDrafts[`${sourceKind}:${sourceID}`] || { priority: '', weight: '' };
+    const resource = detail.data.resources.find((r) => r.source_kind === sourceKind && r.source_id === sourceID);
+    if (!resource) return;
+    const draft = overrideDrafts[`${sourceKind}:${sourceID}`] || { priority: resource.priority_override?.toString() ?? '', weight: resource.weight_override?.toString() ?? '' };
     const parse = (value: string) => {
       const trimmed = value.trim();
       if (!trimmed) return null;
       const parsed = Number(trimmed);
-      return Number.isFinite(parsed) && parsed >= 0 ? parsed : NaN;
+      return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : NaN;
     };
     const priority = parse(draft.priority);
     const weight = parse(draft.weight);

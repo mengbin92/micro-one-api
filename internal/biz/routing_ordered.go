@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 	"micro-one-api/domain/routing"
 )
 
@@ -57,16 +58,19 @@ func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSna
 	}
 	now := time.Now().Unix()
 	groups := make(map[int64]*routing.Group, len(candidates))
-	load := func(gid int64) *routing.Group {
+	load := func(gid int64) (*routing.Group, error) {
 		if g, seen := groups[gid]; seen {
-			return g
+			return g, nil
 		}
 		g, err := reader.GetRoutingGroup(ctx, gid)
-		if err != nil || g == nil {
+		if err != nil {
+			if !kratoserrors.IsNotFound(err) {
+				return nil, err
+			}
 			g = nil
 		}
 		groups[gid] = g
-		return g
+		return g, nil
 	}
 	if opts.BoundGroupID > 0 {
 		return uc.bindOrderedGroup(auth, candidates, load, opts.BoundGroupID, now)
@@ -76,7 +80,10 @@ func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSna
 	// earlier candidate now has resources.
 	if uc.stickyEnabled && uc.sessionStore != nil && strings.TrimSpace(opts.SessionHash) != "" {
 		for _, gid := range candidates {
-			g := load(gid)
+			g, err := load(gid)
+			if err != nil {
+				return err
+			}
 			if g == nil {
 				continue
 			}
@@ -92,7 +99,10 @@ func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSna
 		}
 	}
 	for i, gid := range candidates {
-		g := load(gid)
+		g, err := load(gid)
+		if err != nil {
+			return err
+		}
 		if g == nil || g.Status != "enabled" {
 			continue // disabled/archived/deleted group: advance
 		}
@@ -130,7 +140,7 @@ func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSna
 // (Responses/WS turns, pre-send rechecks). It never advances: when the bound
 // group drops out of the candidate list, loses access, or is disabled, the
 // binding is stale and the client must start a new request.
-func (uc *RelayUsecase) bindOrderedGroup(auth *AuthSnapshot, candidates []int64, load func(int64) *routing.Group, boundGID, now int64) error {
+func (uc *RelayUsecase) bindOrderedGroup(auth *AuthSnapshot, candidates []int64, load func(int64) (*routing.Group, error), boundGID, now int64) error {
 	ordinal := -1
 	for i, gid := range candidates {
 		if gid == boundGID {
@@ -144,8 +154,11 @@ func (uc *RelayUsecase) bindOrderedGroup(auth *AuthSnapshot, candidates []int64,
 	return uc.finishOrderedAttempt(auth, candidates, load, boundGID, ordinal, now)
 }
 
-func (uc *RelayUsecase) finishOrderedAttempt(auth *AuthSnapshot, candidates []int64, load func(int64) *routing.Group, gid int64, ordinal int, now int64) error {
-	g := load(gid)
+func (uc *RelayUsecase) finishOrderedAttempt(auth *AuthSnapshot, candidates []int64, load func(int64) (*routing.Group, error), gid int64, ordinal int, now int64) error {
+	g, err := load(gid)
+	if err != nil {
+		return err
+	}
 	resolved, err := routing.ResolveOrdered(auth.UserID, auth.TokenID, auth.RoutingFacts, g, ordinal, now)
 	if err != nil {
 		return err

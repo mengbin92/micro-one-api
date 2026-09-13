@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 	"micro-one-api/domain/routing"
 )
 
@@ -39,14 +40,36 @@ type orderedChannelFake struct {
 	candidates map[int64]bool
 	probed     []int64
 	selected   []string
+	loadErrors map[int64]error
 }
 
 func (c *orderedChannelFake) GetRoutingGroup(_ context.Context, id int64) (*routing.Group, error) {
+	if err := c.loadErrors[id]; err != nil {
+		return nil, err
+	}
 	status, ok := c.statuses[id]
 	if !ok {
-		return nil, fmt.Errorf("routing group %d not found", id)
+		return nil, kratoserrors.NotFound("ROUTING_GROUP_NOT_FOUND", "routing group not found")
 	}
 	return &routing.Group{ID: id, Key: fmt.Sprintf("group-%d", id), Status: status, Revision: 1}, nil
+}
+
+func TestOrderedRoutingGroupReadFailureNeverAdvances(t *testing.T) {
+	t.Setenv("RELAY_ROUTING_CONTEXT_V2", "true")
+	t.Setenv("RELAY_ROUTING_ORDERED", "true")
+	for _, session := range []string{"", "existing-session"} {
+		t.Run(session, func(t *testing.T) {
+			_, channel, uc := orderedFixture([]int64{10, 20}, []int64{10, 20})
+			channel.statuses[20], channel.candidates[20] = "enabled", true
+			channel.loadErrors = map[int64]error{10: fmt.Errorf("channel unavailable")}
+			uc.SetSessionAccountStore(&stickyStoreFake{bound: map[string]int64{}}, time.Minute, true)
+			auth := orderedFactsAuth(t, uc)
+			err := uc.ResolveRoutingContext(context.Background(), auth, RoutingResolveOptions{Model: "m", SessionHash: session})
+			require.ErrorContains(t, err, "channel unavailable")
+			require.Nil(t, auth.RoutingContext)
+			require.Empty(t, channel.probed)
+		})
+	}
 }
 
 func (c *orderedChannelFake) HasRoutingCandidates(_ context.Context, groupID int64, _ string) (bool, error) {

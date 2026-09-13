@@ -96,8 +96,8 @@ export function TokensPage() {
   const [editingToken, setEditingToken] = useState<Token | null>(null);
   const available = useQuery({ queryKey: ['available-routing-groups'], queryFn: loadAvailableGroups, retry: false });
   const selected = available.data?.groups.find((g) => String(g.id) === selectedGroup);
-  const orderedSelection = (orderedGroupIDs || []).map((id) => available.data?.groups.find((g) => g.id === id)).filter((g): g is NonNullable<typeof g> => Boolean(g));
-  const orderedPrices = orderedSelection.map((g) => g.price_ratio);
+  const orderedSelection = orderedGroupIDs.map((id) => ({ id, group: available.data?.groups.find((g) => g.id === id) }));
+  const orderedPrices = orderedSelection.flatMap(({ group }) => group ? [group.price_ratio] : []);
   const [createdToken, setCreatedToken] = useState<Token | null>(null);
   const [ccSwitchOpen, setCCSwitchOpen] = useState(false);
   const [ccSwitchKey, setCCSwitchKey] = useState('');
@@ -214,12 +214,12 @@ export function TokensPage() {
     </select>
     {selectedGroup === 'ordered' && <div className="space-y-2 rounded-md border p-3">
       <p className="text-sm text-muted-foreground">按顺序尝试候选组：仅在前置组无可用资源时切换到下一组，各组价格可能不同。</p>
-      {orderedSelection.map((g, index) => <div key={g.id} className="flex items-center justify-between gap-2 text-sm">
-        <span>{index + 1}. {g.display_name || g.key} · ×{g.price_ratio}</span>
+      {orderedSelection.map(({ id, group: g }, index) => <div key={id} className="flex items-center justify-between gap-2 text-sm">
+        <span>{index + 1}. {g ? `${g.display_name || g.key} · ×${g.price_ratio}` : `分组 #${id}（当前不可用）`}</span>
         <span className="flex gap-1">
           <Button type="button" variant="outline" size="sm" disabled={index === 0} onClick={() => setOrderedGroupIDs((ids) => { const next = [...ids]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</Button>
           <Button type="button" variant="outline" size="sm" disabled={index === orderedSelection.length - 1} onClick={() => setOrderedGroupIDs((ids) => { const next = [...ids]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => setOrderedGroupIDs((ids) => ids.filter((id) => id !== g.id))}>移除</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setOrderedGroupIDs((ids) => ids.filter((candidate) => candidate !== id))}>移除</Button>
         </span>
       </div>)}
       <select className="h-10 w-full rounded-md border bg-background px-3" value="" onChange={(e) => { const id = Number(e.target.value); if (id > 0 && !orderedGroupIDs.includes(id)) setOrderedGroupIDs((ids) => [...ids, id]); }}>

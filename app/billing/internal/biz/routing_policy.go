@@ -5,10 +5,12 @@ import (
 	"github.com/go-kratos/kratos/v3/errors"
 	billingv1 "micro-one-api/api/billing/v1"
 	"micro-one-api/domain/routing"
+	subscriptionbiz "micro-one-api/domain/subscription/biz"
 )
 
 type RoutingPolicyRepo interface {
 	Get(context.Context, int64) (*routing.BillingPolicy, error)
+	GetInTx(context.Context, subscriptionbiz.Tx, int64) (*routing.BillingPolicy, error)
 	Publish(context.Context, *routing.BillingPolicy, int64) error
 }
 
@@ -49,6 +51,10 @@ func (uc *BillingUsecase) PublishRoutingBillingPolicy(ctx context.Context, p *ro
 
 // ValidateSubscriptionGroup is injected into the shared subscription domain.
 func (uc *BillingUsecase) ValidateSubscriptionGroup(ctx context.Context, id int64) (string, error) {
+	return uc.validateSubscriptionGroup(ctx, nil, id)
+}
+
+func (uc *BillingUsecase) validateSubscriptionGroup(ctx context.Context, tx subscriptionbiz.Tx, id int64) (string, error) {
 	if !uc.RoutingSnapshotsAvailable() || uc.routingPolicies == nil {
 		return "", ErrRequestSnapshotUnavailable
 	}
@@ -59,11 +65,16 @@ func (uc *BillingUsecase) ValidateSubscriptionGroup(ctx context.Context, id int6
 	if g == nil || g.Status != "enabled" {
 		return "", ErrRoutingContextInvalid
 	}
-	price, err := uc.RoutingGroupPrice(ctx, id, 0)
+	var policy *routing.BillingPolicy
+	if tx != nil {
+		policy, err = uc.routingPolicies.GetInTx(ctx, tx, id)
+	} else {
+		policy, err = uc.routingPolicies.Get(ctx, id)
+	}
 	if err != nil {
 		return "", err
 	}
-	if price.BillingMode == routing.WalletOnly {
+	if policy != nil && policy.BillingMode == routing.WalletOnly {
 		return "", ErrRoutingContextInvalid
 	}
 	return g.Key, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"micro-one-api/app/channel/internal/biz"
 
@@ -11,6 +12,17 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestCreateRoutingGroupWithSingleConnection(t *testing.T) {
+	db, gdb := routingGroupFixture(t)
+	db.SetMaxOpenConns(1)
+	uc := biz.NewRoutingGroupUsecase(NewRoutingGroupRepo(&Repository{db: gdb}))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	detail, err := uc.Create(ctx, "single", "Single", "", "restricted")
+	require.NoError(t, err)
+	require.Equal(t, "single", detail.Group.Key)
+}
 
 func TestCreateRoutingGroupPersistsAndRejectsDuplicates(t *testing.T) {
 	_, gdb := routingGroupFixture(t)

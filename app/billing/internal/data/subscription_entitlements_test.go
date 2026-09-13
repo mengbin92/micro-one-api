@@ -13,6 +13,32 @@ import (
 	"time"
 )
 
+func TestLegacyPlanCommerceWithSingleConnection(t *testing.T) {
+	t.Setenv("SUBSCRIPTION_ENTITLEMENTS_V2", "true")
+	db := testutil.RoutingContextDB(t, "sqlite")
+	billing, _, d, repo, _ := snapshotBillingFixture(t, db, false, 1, 1)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	group := &subscriptionbiz.SubscriptionGroup{Name: "legacy commerce", Status: 1, RateMultiplier: 1}
+	require.NoError(t, repo.CreateGroup(ctx, group))
+	plan := &subscriptionbiz.SubscriptionPlan{GroupID: group.ID, Name: "legacy", PriceQuota: 100, ValidityDays: 30, ForSale: true}
+	require.NoError(t, repo.CreatePlan(ctx, plan))
+	subs := subscriptionbiz.NewSubscriptionUsecase(repo, repo)
+	commerce := biz.NewSubscriptionCommerce(billing, subs, repo, NewSubscriptionCommerceRepo(d))
+	req := biz.SubscriptionCommerceRequest{UserID: 7001, PlanID: plan.ID, RequestID: "legacy-purchase"}
+	first, err := commerce.Execute(ctx, req)
+	require.NoError(t, err)
+	require.Nil(t, first.Subscription.Contract)
+	require.EqualValues(t, 999900, first.Balance)
+	require.NoError(t, repo.DeletePlan(ctx, plan.ID))
+	replay, err := commerce.Execute(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, first, replay, "completed purchases replay even after the plan is removed")
+}
+
 func TestSubscriptionCommerceAtomic(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
@@ -21,7 +47,13 @@ func TestSubscriptionCommerceAtomic(t *testing.T) {
 			db := testutil.RoutingContextDB(t, dialect)
 			billing, _, d, repo, _ := snapshotBillingFixture(t, db, false, 1, 1)
 			billing.SetRoutingPolicyRepo(NewRoutingPolicyRepo(d))
-			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if dialect == "sqlite" {
+				sqlDB, err := db.DB()
+				require.NoError(t, err)
+				sqlDB.SetMaxOpenConns(1)
+			}
 			limit := 1.0
 			group := &subscriptionbiz.SubscriptionGroup{Name: "commerce", Status: 1, RateMultiplier: 2, DailyLimitUSD: &limit}
 			require.NoError(t, repo.CreateGroup(ctx, group))
