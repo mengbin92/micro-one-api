@@ -32,7 +32,7 @@ func OpenMySQL(dsn string) (*gorm.DB, error) {
 
 // OpenMySQLWithPool opens a MySQL connection with custom pool settings
 func OpenMySQLWithPool(dsn string, pool *PoolConfig) (*gorm.DB, error) {
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(mysql.Open(dsn), gormConfig())
 	if err != nil {
 		return nil, err
 	}
