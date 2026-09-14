@@ -6,22 +6,20 @@
 本 runbook 让运维人员只按本文档即可完成分组重设计（routing group v2）与订阅合约
 （subscription contracts / entitlements）在生产环境的迁移核对、开关启用、验证与回退。
 
-**当前生产基线（2026-09-12）**：代码与迁移已全部部署到生产，但 **所有阶段开关默认关闭**——
-即「新代码 + 旧行为」。在不打开任何开关的情况下，系统行为与重设计前完全一致
-（所有用户走服务端默认组、legacy 订阅合同、inherit 模式）。本文的启用步骤是
-**逐阶段、可灰度、可回退** 的；不要在同一窗口内跳阶段全开。
+**当前生产基线（2026-09-13）**：只读核查确认 B–F 运行时与创建开关均已开启，相关 ownership 迁移和回填齐全，阶段 F 能力预检通过。现有 Key 全为 inherit，另有 1 份 selected_groups 合约；本次没有执行生产模型请求或扣费验收，详见[运行基线与证据](./routing-baseline-2026-09-13.md)。
 
+**仓库新部署默认值**：全部布尔开关为 false，默认组为 default。以下启用步骤适用于新部署或尚未启用的环境；已启用环境不能照抄默认值覆盖现有配置。
 ## 一、能力地图（这一阶段族到底交付了什么）
 
-| 能力 | 阶段 | 默认状态 | 说明 |
+| 能力 | 阶段 | 09-13 生产状态 | 说明 |
 | --- | --- | --- | --- |
 | 组实体 / 成员关系 / 双写 | B | 已启用（`CHANNEL_ROUTING_GROUP_DUAL_WRITE`） | `routing_groups` 及 channel/account 成员表；B 的组回填已完成 |
 | 显式新增分组 | 日常操作 | 已交付 | `POST /api/v1/admin/routing-groups`（页面「分组」→「新建分组」）；新建组固定停用 + 资格模式可选，见 §2.3 |
-| 请求快照 v2（冻结价格与上下文） | C | 关 | billing 按冻结快照结算，在途改价/换组不影响已预扣请求 |
-| identity 路由事实（默认组 / 授权 / revision） | C | 关 | 用户与 Token 携带路由事实，鉴权返回 `routing_context_version=2` |
-| fixed 组 Key / 多组授权 / 可用目录 / outbox 事件 | D | 关（创建开关） | Key 可绑定固定组；授权变更经 outbox 投递 |
-| 订阅合约 / 覆盖组 / 结算模式 | E | 关 | 冻结合同 + `wallet_only` / `subscription_first` / `subscription_only` |
-| 有序候选组（ordered/Auto）/ 用户专属倍率 / 组内优先级权重覆盖 | F | 关 | Key 携带显式有序组列表；用户倍率替换组基础倍率 |
+| 请求快照 v2（冻结价格与上下文） | C | 已启用 | billing 按冻结快照结算，在途改价/换组不影响已预扣请求 |
+| identity 路由事实（默认组 / 授权 / revision） | C | 已启用 | 用户与 Token 携带路由事实，鉴权返回 `routing_context_version=2` |
+| fixed 组 Key / 多组授权 / 可用目录 / outbox 事件 | D | 已启用，fixed Key 为 0 | Key 可绑定固定组；授权变更经 outbox 投递 |
+| 订阅合约 / 覆盖组 / 结算模式 | E | 已启用 | 冻结合同 + `wallet_only` / `subscription_first` / `subscription_only` |
+| 有序候选组（ordered/Auto）/ 用户专属倍率 / 组内优先级权重覆盖 | F | 已启用，ordered Key 为 0 | Key 携带显式有序组列表；用户倍率替换组基础倍率 |
 
 ## 二、迁移清单（091–100）与 per-schema 执行
 
@@ -157,7 +155,7 @@ INSERT INTO oneapi_<svc>.schema_migrations (version) VALUES ('0xx_<name>');
 
 | 开关 | 服务 | 默认 | 阶段 | 作用与前置 |
 | --- | --- | --- | --- | --- |
-| `CHANNEL_ROUTING_GROUP_DUAL_WRITE` | channel-service | （B 起应为 `true`） | B | 成员变更双写组关系；C/D/E/F 全程必须保持 `true` |
+| `CHANNEL_ROUTING_GROUP_DUAL_WRITE` | channel-service | `false`（B 起必须 `true`） | B | 成员变更双写组关系；C/D/E/F 全程必须保持 `true` |
 | `BILLING_REQUEST_SNAPSHOT_V2` | billing-service | `false` | C | 预扣写 v2 请求快照、按快照结算。前置：093、全部 billing 实例与异步消费者已升级 |
 | `IDENTITY_ROUTING_V2` | identity-service | `false` | C | 鉴权返回 `routing_context_version=2`。前置：094 + 用户回填完成 |
 | `IDENTITY_DEFAULT_ROUTING_GROUP` | identity-service | `default` | C | （非布尔）开启 v2 后新用户的服务端默认组 |
@@ -166,6 +164,23 @@ INSERT INTO oneapi_<svc>.schema_migrations (version) VALUES ('0xx_<name>');
 | `SUBSCRIPTION_ENTITLEMENTS_V2` | admin-api + billing-service + relay-gateway | `false` | E | 订阅合约与结算模式；**三处必须一致开启** |
 | `ADMIN_ROUTING_ORDERED_KEYS` | admin-api | `false` | F | 开放创建 ordered Key |
 | `RELAY_ROUTING_ORDERED` | relay-gateway | `false` | F | relay 服务 ordered 候选组 |
+
+### 3.1 模板接线和只读预检
+
+MySQL / Lite / PostgreSQL Compose 已逐服务透传本节变量；修改对应示例复制出的 .env 后，必须 recreate 受影响服务。Kubernetes 的 app-config ConfigMap 提供相同键，Deployment 仅引用所属服务的开关。**Kubernetes 中历史镜像标签不能证明具备 v2 能力**：启用前需通过部署 overlay 指定当前兼容镜像、完成 ownership 迁移和回填，逐实例执行能力检查。本次验证包括 manifest 渲染与引用检查，未运行 Kubernetes 集群验收。
+
+identity / billing 的 v2 启动依赖 `CHANNEL_GRPC_ENDPOINT`，模板已补齐。relay 的订阅权益读取还依赖数据库：三种 Compose 均提供 `DATABASE_DSN`；Lite 额外挂载共享 `sqlite_data:/data`。缺少连接时订阅仓库会回退到内存，无法读取已购买合同；仅核对开关不足以证明接线完整。配置断言同时检查这些依赖。
+
+配置回归检查不启动服务：
+
+```bash
+python3 scripts/check-routing-config.py
+scripts/check-deployment-docs.sh
+```
+
+预检工具说明及命令见 [routing-preflight](../../scripts/routing-preflight/README.md)。它读取渲染配置、现存迁移记录、回填和对象数量，再调用只读能力 / 事实 RPC；失败返回非零值。开关配置检查针对输入的目标配置，RPC 针对实际运行实例，两者必须分别核实；将创建开关开放给用户前应通过目标阶段预检。
+
+`migrate -status` 会尝试初始化迁移记录表，不能称作严格只读检查；group-backfill / routing-backfill 默认演练也会事务写入并加锁。它们与本预检是不同操作。
 
 ## 四、生产启用顺序
 

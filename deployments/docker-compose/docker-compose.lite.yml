@@ -81,6 +81,10 @@ services:
         SERVICE_NAME: identity-service
         SERVICE_PATH: ./app/identity/cmd/identity
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - IDENTITY_ROUTING_V2=${IDENTITY_ROUTING_V2:-false}
+      - CHANNEL_GRPC_ENDPOINT=channel-service:9002
+      - IDENTITY_DEFAULT_ROUTING_GROUP=${IDENTITY_DEFAULT_ROUTING_GROUP:-default}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
@@ -124,6 +128,8 @@ services:
         SERVICE_NAME: channel-service
         SERVICE_PATH: ./app/channel/cmd/channel
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - CHANNEL_ROUTING_GROUP_DUAL_WRITE=${CHANNEL_ROUTING_GROUP_DUAL_WRITE:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
@@ -165,6 +171,10 @@ services:
         SERVICE_NAME: billing-service
         SERVICE_PATH: ./app/billing/cmd/billing
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - BILLING_REQUEST_SNAPSHOT_V2=${BILLING_REQUEST_SNAPSHOT_V2:-false}
+      - CHANNEL_GRPC_ENDPOINT=channel-service:9002
+      - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
@@ -366,7 +376,13 @@ services:
         SERVICE_NAME: relay-gateway
         SERVICE_PATH: ./cmd/relay-gateway
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - RELAY_ROUTING_CONTEXT_V2=${RELAY_ROUTING_CONTEXT_V2:-false}
+      - RELAY_ROUTING_ORDERED=${RELAY_ROUTING_ORDERED:-false}
+      - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
@@ -403,6 +419,8 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+    volumes:
+      - sqlite_data:/data:rw
 
   admin-api:
     build:
@@ -413,6 +431,10 @@ services:
         SERVICE_PATH: ./app/admin/cmd/admin
         VITE_RECHARGE_AMOUNT_MULTIPLIER: ${RECHARGE_AMOUNT_MULTIPLIER:-10}
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - ADMIN_ROUTING_FIXED_KEYS=${ADMIN_ROUTING_FIXED_KEYS:-false}
+      - ADMIN_ROUTING_ORDERED_KEYS=${ADMIN_ROUTING_ORDERED_KEYS:-false}
+      - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-sqlite3}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}

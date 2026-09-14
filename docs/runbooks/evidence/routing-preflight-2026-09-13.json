@@ -1,0 +1,215 @@
+{
+  "stage": "f",
+  "observed_at": "2026-09-13T13:19:44Z",
+  "checks": [
+    {
+      "name": "channel-service.CHANNEL_ROUTING_GROUP_DUAL_WRITE",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "identity-service.IDENTITY_ROUTING_V2",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "billing-service.BILLING_REQUEST_SNAPSHOT_V2",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "billing-service.SUBSCRIPTION_ENTITLEMENTS_V2",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "relay-gateway.RELAY_ROUTING_CONTEXT_V2",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "relay-gateway.SUBSCRIPTION_ENTITLEMENTS_V2",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "relay-gateway.RELAY_ROUTING_ORDERED",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "admin-api.ADMIN_ROUTING_FIXED_KEYS",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "admin-api.SUBSCRIPTION_ENTITLEMENTS_V2",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "admin-api.ADMIN_ROUTING_ORDERED_KEYS",
+      "ok": true,
+      "detail": "required for target stage; configure and recreate this service after prerequisites pass"
+    },
+    {
+      "name": "entitlements.consistent",
+      "ok": true,
+      "detail": "admin, billing and relay must agree"
+    },
+    {
+      "name": "channel.092_create_routing_groups",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "channel.095_create_routing_change_outbox",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "channel.100_channel_routing_relation_overrides",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "channel.backfills.readable",
+      "ok": true,
+      "detail": "required schema/columns must exist and be readable"
+    },
+    {
+      "name": "channel.backfill",
+      "ok": true,
+      "detail": "Phase B group audit/backfill must have a completion record"
+    },
+    {
+      "name": "channel.groups.readable",
+      "ok": true,
+      "detail": "required schema/columns must exist and be readable"
+    },
+    {
+      "name": "identity.094_add_identity_routing_facts",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "identity.095_create_routing_change_outbox",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "identity.098_identity_ordered_token_groups",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "identity.unmapped_users.readable",
+      "ok": true,
+      "detail": "required schema/columns must exist and be readable"
+    },
+    {
+      "name": "identity.backfill",
+      "ok": true,
+      "detail": "all users need routing facts; backfill is a separate write operation"
+    },
+    {
+      "name": "identity.fixed_keys.readable",
+      "ok": true,
+      "detail": "required schema/columns must exist and be readable"
+    },
+    {
+      "name": "identity.ordered_keys.readable",
+      "ok": true,
+      "detail": "required schema/columns must exist and be readable"
+    },
+    {
+      "name": "billing.093_add_request_snapshots",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "billing.095_create_routing_change_outbox",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "billing.096_add_subscription_contracts",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "billing.097_create_routing_billing_policies",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "billing.099_billing_user_routing_price_overrides",
+      "ok": true,
+      "detail": "apply missing migration through the owning schema's migration workflow"
+    },
+    {
+      "name": "billing.active_v2_reservations.readable",
+      "ok": true,
+      "detail": "required schema/columns must exist and be readable"
+    },
+    {
+      "name": "billing.contracts.readable",
+      "ok": true,
+      "detail": "required schema/columns must exist and be readable"
+    },
+    {
+      "name": "channel.rpc",
+      "ok": true,
+      "detail": "read-only routing RPC must succeed; check endpoint, service authentication and deployed version"
+    },
+    {
+      "name": "identity.facts",
+      "ok": true,
+      "detail": "probe user must have mapped routing facts"
+    },
+    {
+      "name": "identity.rpc",
+      "ok": true,
+      "detail": "read-only routing RPC must succeed; check endpoint, service authentication and deployed version"
+    },
+    {
+      "name": "billing.snapshot_v2",
+      "ok": true,
+      "detail": "all billing instances and consumers must understand v2 snapshots"
+    },
+    {
+      "name": "billing.fixed",
+      "ok": true,
+      "detail": "fixed routing capability required"
+    },
+    {
+      "name": "billing.contracts",
+      "ok": true,
+      "detail": "subscription contract capability required"
+    },
+    {
+      "name": "billing.user_price",
+      "ok": true,
+      "detail": "user price override capability required"
+    },
+    {
+      "name": "billing.rpc",
+      "ok": true,
+      "detail": "read-only routing RPC must succeed; check endpoint, service authentication and deployed version"
+    },
+    {
+      "name": "rollback.compatible_binary",
+      "ok": true,
+      "detail": "retain v2-compatible readers for existing fixed/ordered keys, contracts and in-flight snapshots; do not downgrade their semantics"
+    }
+  ],
+  "counts": {
+    "billing.active_v2_reservations": 0,
+    "billing.contracts": 1,
+    "channel.backfills": 1,
+    "channel.groups": 2,
+    "identity.fixed_keys": 0,
+    "identity.ordered_keys": 0,
+    "identity.unmapped_users": 0
+  }
+}

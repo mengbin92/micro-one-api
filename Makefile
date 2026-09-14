@@ -281,6 +281,12 @@ test-e2e: compose-prereq
 test-lite-smoke:
 	python3 scripts/test-lite-smoke.py
 
+.PHONY: test-routing-e2e
+# Private MySQL/SQLite Compose stack; only the upstream is mocked.
+ROUTING_E2E_DRIVER ?= mysql
+test-routing-e2e:
+	python3 scripts/test-routing-e2e.py --driver $(ROUTING_E2E_DRIVER)
+
 .PHONY: test-e2e-suite
 # run e2e Go test suite (docker-compose environment)
 test-e2e-suite: compose-prereq

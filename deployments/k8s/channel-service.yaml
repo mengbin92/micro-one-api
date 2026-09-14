@@ -48,6 +48,11 @@ spec:
           privileged: false
           readOnlyRootFilesystem: true
         env:
+        - name: CHANNEL_ROUTING_GROUP_DUAL_WRITE
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: CHANNEL_ROUTING_GROUP_DUAL_WRITE
         - name: CONF_PATH
           value: "/configs/config.yaml"
         - name: DATABASE_DSN

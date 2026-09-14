@@ -61,11 +61,17 @@ func providerConfigFromChannelInfo(channel *commonv1.ChannelInfo) relayprovider.
 }
 
 func (s *HTTPServer) getAuthSnapshot(ctx context.Context, token string) (*identityv1.GetAuthSnapshotReply, error) {
+	return s.getAuthSnapshotForGroup(ctx, token, 0)
+}
+
+// Stored conversations resolve their existing group before authorizing the
+// cached source. An unbound ordered walk could select an unrelated candidate.
+func (s *HTTPServer) getAuthSnapshotForGroup(ctx context.Context, token string, boundGroupID int64) (*identityv1.GetAuthSnapshotReply, error) {
 	reply, err := s.getRawAuthSnapshot(ctx, token)
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := s.routingAuth(ctx, reply, 0)
+	resolved, err := s.routingAuth(ctx, reply, boundGroupID)
 	if err != nil {
 		return nil, err
 	}

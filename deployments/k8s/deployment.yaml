@@ -47,6 +47,21 @@ spec:
           privileged: false
           readOnlyRootFilesystem: true
         env:
+        - name: RELAY_ROUTING_CONTEXT_V2
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: RELAY_ROUTING_CONTEXT_V2
+        - name: RELAY_ROUTING_ORDERED
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: RELAY_ROUTING_ORDERED
+        - name: SUBSCRIPTION_ENTITLEMENTS_V2
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: SUBSCRIPTION_ENTITLEMENTS_V2
         - name: CONF_PATH
           value: "/configs/config.yaml"
         - name: DATABASE_DRIVER
@@ -180,6 +195,16 @@ metadata:
   name: app-config
   namespace: one-api
 data:
+  # Routing gates: enable by stage after migration and backfill.
+  CHANNEL_ROUTING_GROUP_DUAL_WRITE: "false"
+  IDENTITY_ROUTING_V2: "false"
+  IDENTITY_DEFAULT_ROUTING_GROUP: "default"
+  BILLING_REQUEST_SNAPSHOT_V2: "false"
+  SUBSCRIPTION_ENTITLEMENTS_V2: "false"
+  RELAY_ROUTING_CONTEXT_V2: "false"
+  RELAY_ROUTING_ORDERED: "false"
+  ADMIN_ROUTING_FIXED_KEYS: "false"
+  ADMIN_ROUTING_ORDERED_KEYS: "false"
   database-driver: "mysql"
   identity-grpc-endpoint: "identity-service:9001"
   identity-http-endpoint: "http://identity-service:8001"

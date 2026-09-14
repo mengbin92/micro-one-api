@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 补齐三种 Compose / Kubernetes 的分组 v2 开关与 identity / billing 的 channel 依赖；Lite / PostgreSQL relay 补齐订阅数据库连接，Lite 同时挂载共享数据库卷，避免合同权益被空内存仓库误判。
+- ordered Responses 恢复时直接重新校验会话绑定组，避免较早候选覆盖或阻断仍有效的绑定路由。
+- channel 的旧能力查询兼容 PostgreSQL BOOLEAN 与历史整数 enabled 字段。
+
+### Added
+
+- 分阶段 SELECT / RPC 只读预检、部署配置断言，以及 MySQL / SQLite 真实服务验收；覆盖合同、三种结算模式、会话、撤权、Redis 故障和创建入口回退，并接入共享 nightly / release E2E。
+- [v0.30 阶段路线图](docs/design/v0.30-roadmap.md)与脱敏生产运行基线，统一 P0 交付和后续 P1 状态。
+
 ## [0.29.0] - 2026-09-13
 
 v0.29.0 是 v0.28.1 之后的 **MINOR 路由分组重设计版本**：交付分组重设计 v2 全部阶段（A–F），把分组从散落各处的字符串升级为有稳定 ID、生命周期、资源成员和使用权限的路由分组实体，并交付订阅合约、按组结算模式、有序候选组和用户专属倍率；配套修复一轮跨服务审查问题。全部能力默认关闭（新代码 + 旧行为），proto additive，三方言新增迁移 `092`–`100`（全部 additive）。详见 [release-v0.29.0.md](docs/releases/release-v0.29.0.md)。

@@ -1014,8 +1014,10 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 	// Exact (case-insensitive) match first; if none, scan wildcard-pattern
 	// rows and keep those matching the requested model. See
 	// docs/model-management-design.md §9.3 #4.
+	// The quoted constant is accepted by both legacy integer flags and
+	// PostgreSQL BOOLEAN snapshots; binding an int fails for BOOLEAN columns.
 	query := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
-		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = ?"), group, strings.ToLower(model), 1)
+		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = '1'"), group, strings.ToLower(model))
 	if platform != "" {
 		query = query.Where("platform = ?", platform)
 	}
@@ -1028,7 +1030,7 @@ func (r *Repository) listSubscriptionAccountAbilitiesDB(ctx context.Context, gro
 	}
 	if len(rows) == 0 {
 		patternQuery := r.db.WithContext(ctx).Model(&subscriptionAccountAbilityModel{}).
-			Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)"), group, 1, "%*%", "%?%")
+			Where(r.routingGroupSQL("`group` = ? AND enabled = '1' AND (model LIKE ? OR model LIKE ?)"), group, "%*%", "%?%")
 		if platform != "" {
 			patternQuery = patternQuery.Where("platform = ?", platform)
 		}
@@ -1579,7 +1581,7 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 		}
 		return q
 	}).
-		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = ?"), group, strings.ToLower(model), 1).
+		Where(r.routingGroupSQL("`group` = ? AND LOWER(model) = ? AND enabled = '1'"), group, strings.ToLower(model)).
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -1591,7 +1593,7 @@ func (r *Repository) listAbilitiesByGroupAndModelDB(ctx context.Context, group, 
 			}
 			return q
 		}).
-			Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND (model LIKE ? OR model LIKE ?)"), group, 1, "%*%", "%?%").
+			Where(r.routingGroupSQL("`group` = ? AND enabled = '1' AND (model LIKE ? OR model LIKE ?)"), group, "%*%", "%?%").
 			Find(&patternRows).Error; err != nil {
 			return nil, err
 		}
@@ -1749,7 +1751,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 	var channelModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&abilityModel{}).
-		Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?"), group, 1, "%*%", "%?%").
+		Where(r.routingGroupSQL("`group` = ? AND enabled = '1' AND model NOT LIKE ? AND model NOT LIKE ?"), group, "%*%", "%?%").
 		Distinct("model").
 		Pluck("model", &channelModels).Error; err != nil {
 		return nil, err
@@ -1762,7 +1764,7 @@ func (r *Repository) listAvailableModelsDB(ctx context.Context, group string) ([
 	var subscriptionModels []string
 	if err := r.db.WithContext(ctx).
 		Model(&subscriptionAccountAbilityModel{}).
-		Where(r.routingGroupSQL("`group` = ? AND enabled = ? AND model NOT LIKE ? AND model NOT LIKE ?"), group, 1, "%*%", "%?%").
+		Where(r.routingGroupSQL("`group` = ? AND enabled = '1' AND model NOT LIKE ? AND model NOT LIKE ?"), group, "%*%", "%?%").
 		Distinct("model").
 		Pluck("model", &subscriptionModels).Error; err != nil {
 		return nil, err

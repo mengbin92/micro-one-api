@@ -36,7 +36,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveStoredRoute(ctx context.Context, token
 		if s.server.identityClient == nil {
 			return nil, false
 		}
-		authSnapshot, err := s.server.getAuthSnapshot(ctx, token)
+		authSnapshot, err := s.server.getAuthSnapshotForGroup(ctx, token, route.RoutingGroupID)
 		if err == nil && (route.UserID == 0 || route.UserID == authSnapshot.UserId) {
 			modelForPermission := strings.TrimSpace(clientModel)
 			if modelForPermission == "" {
@@ -96,7 +96,7 @@ func (s *OpenAIWSRoutingScheduler) ResolveSessionRoute(ctx context.Context, toke
 	if s.server.identityClient == nil {
 		return nil, false
 	}
-	authSnapshot, err := s.server.getAuthSnapshot(ctx, token)
+	authSnapshot, err := s.server.getAuthSnapshotForGroup(ctx, token, route.RoutingGroupID)
 	if err != nil || (route.UserID != 0 && route.UserID != authSnapshot.UserId) {
 		return nil, false
 	}

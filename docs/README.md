@@ -22,7 +22,7 @@ docs/
 |---------|--------|
 | 个人单机，创建首个渠道和 Token | [quickstart-lite.md](./quickstart-lite.md) |
 | 部署 / 升级服务 | [deployment.md](./deployment.md) |
-| 查看下一阶段执行路线 | [design/v0.27-roadmap.md](./design/v0.27-roadmap.md) |
+| 查看下一阶段执行路线 | [design/v0.30-roadmap.md](./design/v0.30-roadmap.md) |
 | 查看当前待办和历史完成记录 | [TODO.md](./TODO.md) |
 | 查看产品界面预览 | [根 README 界面预览](../README.md#界面预览) |
 | 查看某版本发布内容 | [releases/](./releases/) |
@@ -38,11 +38,7 @@ docs/
 
 > **路线图入口治理**：「当前执行路线图」只有一个事实源——`design/` 下最新版本路线图，其头部标注「状态：进行中，当前唯一执行入口」。新阶段立项时：新建 `design/vX.Y-roadmap.md` 作为唯一入口 → 旧路线图头部降级为「已归档」并指回新入口 → 同步本表「查看下一阶段执行路线」行、`design/` 表格与 [TODO.md](./TODO.md) 顶部。三处不一致即视为文档漂移。
 
-当前 v0.27 状态（2026-09-09）：[v0.26.6](./releases/release-v0.26.6.md) 已于
-2026-09-06 发布，为当前发布基线。executor 第五次正式观察已判定 FAIL 并回滚 legacy；
-canonical usage 48h Observe 已通过，K3 有限 charge 的 72h 窗口已按书面范围决策 PASS。
-历史账务只读审计入口已完成，确定性 CSV/JSON 和 MySQL SELECT-only 权限已在隔离环境验证；
-后续完成个人部署 smoke 与文档收口，charge 回滚演练与全量范围决策仍按路线图 §5 保留。
+当前状态（2026-09-14）：代码基线 v0.29 已交付分组 A–F；P0 文档与运行基线、部署接线、只读预检和 MySQL / SQLite 真实链路验收均已完成。生产 B–F 已启用，详见[运行基线](./runbooks/routing-baseline-2026-09-13.md)。[v0.30 路线图](./design/v0.30-roadmap.md) 保存验收记录并管理后续 P1；v0.27 已归档。
 
 ---
 
@@ -67,7 +63,8 @@ canonical usage 48h Observe 已通过，K3 有限 charge 的 72h 窗口已按书
 - [v0.20.0](./releases/release-v0.20.0.md) · [v0.20.1](./releases/release-v0.20.1.md) · [v0.20.2](./releases/release-v0.20.2.md) · [v0.20.3](./releases/release-v0.20.3.md) · [v0.20.4](./releases/release-v0.20.4.md) · [v0.20.5](./releases/release-v0.20.5.md)
 - [v0.21.0](./releases/release-v0.21.0.md) · [v0.22.0](./releases/release-v0.22.0.md)
 - [v0.23.0](./releases/release-v0.23.0.md) · [v0.23.1](./releases/release-v0.23.1.md) · [v0.23.2](./releases/release-v0.23.2.md) · [v0.23.3](./releases/release-v0.23.3.md)
-- [v0.24.0](./releases/release-v0.24.0.md) · [v0.25.0](./releases/release-v0.25.0.md) · [v0.26.0](./releases/release-v0.26.0.md) · [v0.26.1](./releases/release-v0.26.1.md) · [v0.26.2](./releases/release-v0.26.2.md) · [v0.26.3](./releases/release-v0.26.3.md) · [v0.26.4](./releases/release-v0.26.4.md) · [v0.26.5](./releases/release-v0.26.5.md) · [v0.26.6](./releases/release-v0.26.6.md)（最新）
+- [v0.24.0](./releases/release-v0.24.0.md) · [v0.25.0](./releases/release-v0.25.0.md) · [v0.26.0](./releases/release-v0.26.0.md) · [v0.26.1](./releases/release-v0.26.1.md) · [v0.26.2](./releases/release-v0.26.2.md) · [v0.26.3](./releases/release-v0.26.3.md) · [v0.26.4](./releases/release-v0.26.4.md) · [v0.26.5](./releases/release-v0.26.5.md) · [v0.26.6](./releases/release-v0.26.6.md)
+- [v0.27.0](./releases/release-v0.27.0.md) · [v0.28.0](./releases/release-v0.28.0.md) · [v0.28.1](./releases/release-v0.28.1.md) · [v0.29.0](./releases/release-v0.29.0.md)（最新）
 
 ### runbooks/ — 运维操作手册
 
@@ -103,7 +100,8 @@ canonical usage 48h Observe 已通过，K3 有限 charge 的 72h 窗口已按书
 | [v0.23-roadmap.md](./design/v0.23-roadmap.md) | v0.23 路线图：上线观察与 Relay executor 首切片（已归档） |
 | [v0.23-executor-observation.md](./design/v0.23-executor-observation.md) | executor 新旧路径 7 天生产观察与回滚事实源 |
 | [v0.24-web-release-readiness.md](./design/v0.24-web-release-readiness.md) | v0.24 双语 Web、中国法律协议与发布隔离准备清单 |
-| [v0.27-roadmap.md](./design/v0.27-roadmap.md) | v0.27 路线图：发布完整性、双灰度闭环与轻量产品化（当前） |
+| [v0.30-roadmap.md](./design/v0.30-roadmap.md) | 当前路线图：分组 v2 配置、真实链路验收与稳定性收口 |
+| [v0.27-roadmap.md](./design/v0.27-roadmap.md) | 已归档：发布完整性、双灰度闭环与轻量产品化 |
 | [web-playground-implementation-plan.md](./design/web-playground-implementation-plan.md) | 用户侧 Web Playground：交互、密钥安全、SSE、Relay CORS、测试与发布方案 |
 | [architecture-review-remediation-report-2026-08-25.md](./design/architecture-review-remediation-report-2026-08-25.md) | 系统架构审查复核、修复方案与执行状态（2026-08-25） |
 | [systematic-code-review-remediation-2026-08-25.md](./design/systematic-code-review-remediation-2026-08-25.md) | 系统性代码审查方案复核、优化与修复状态（2026-08-25） |

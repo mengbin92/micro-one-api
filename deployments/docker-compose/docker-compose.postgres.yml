@@ -74,6 +74,10 @@ services:
         SERVICE_PATH: ./app/identity/cmd/identity
     container_name: identity-service
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - IDENTITY_ROUTING_V2=${IDENTITY_ROUTING_V2:-false}
+      - CHANNEL_GRPC_ENDPOINT=channel-service:9002
+      - IDENTITY_DEFAULT_ROUTING_GROUP=${IDENTITY_DEFAULT_ROUTING_GROUP:-default}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
@@ -117,6 +121,8 @@ services:
         SERVICE_PATH: ./app/channel/cmd/channel
     container_name: channel-service
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - CHANNEL_ROUTING_GROUP_DUAL_WRITE=${CHANNEL_ROUTING_GROUP_DUAL_WRITE:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
@@ -157,6 +163,10 @@ services:
         SERVICE_PATH: ./app/billing/cmd/billing
     container_name: billing-service
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - BILLING_REQUEST_SNAPSHOT_V2=${BILLING_REQUEST_SNAPSHOT_V2:-false}
+      - CHANNEL_GRPC_ENDPOINT=channel-service:9002
+      - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
@@ -352,7 +362,13 @@ services:
         SERVICE_PATH: ./cmd/relay-gateway
     container_name: relay-gateway
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - RELAY_ROUTING_CONTEXT_V2=${RELAY_ROUTING_CONTEXT_V2:-false}
+      - RELAY_ROUTING_ORDERED=${RELAY_ROUTING_ORDERED:-false}
+      - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
+      - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
+      - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - IDENTITY_GRPC_ENDPOINT=identity-service:9001
       - CHANNEL_GRPC_ENDPOINT=channel-service:9002
       - BILLING_GRPC_ENDPOINT=billing-service:9004
@@ -398,6 +414,10 @@ services:
         VITE_RECHARGE_AMOUNT_MULTIPLIER: ${RECHARGE_AMOUNT_MULTIPLIER:-10}
     container_name: admin-api
     environment:
+      # Routing v2: enable by stage after migration/backfill (routing-groups runbook).
+      - ADMIN_ROUTING_FIXED_KEYS=${ADMIN_ROUTING_FIXED_KEYS:-false}
+      - ADMIN_ROUTING_ORDERED_KEYS=${ADMIN_ROUTING_ORDERED_KEYS:-false}
+      - SUBSCRIPTION_ENTITLEMENTS_V2=${SUBSCRIPTION_ENTITLEMENTS_V2:-false}
       - CONF_PATH=/configs/config.yaml
       - DATABASE_DRIVER=${DATABASE_DRIVER:-postgres}
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}

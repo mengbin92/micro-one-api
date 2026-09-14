@@ -1,0 +1,39 @@
+Routing P0 acceptance, 2026-09-14, driver=mysql
+Real isolated Compose services, two relays, local mock upstream.
+Top-level runs in order: legacy, v2, redis-down, redis-recovered,
+missing-capability, creation-rollback. Stage F preflight also passed.
+
+=== RUN   TestRoutingAcceptance
+--- PASS: TestRoutingAcceptance (0.24s)
+PASS
+=== RUN   TestRoutingAcceptance
+=== RUN   TestRoutingAcceptance/fixed_and_revocation
+=== RUN   TestRoutingAcceptance/frozen_price_and_idempotency
+=== RUN   TestRoutingAcceptance/ordered
+=== RUN   TestRoutingAcceptance/contracts_and_settlement
+=== RUN   TestRoutingAcceptance/contracts_and_settlement/subscription_only_purchase_renew_revoke
+=== RUN   TestRoutingAcceptance/contracts_and_settlement/subscription_first_split_and_expiry
+=== RUN   TestRoutingAcceptance/contracts_and_settlement/change_and_mock_payment_refund
+=== RUN   TestRoutingAcceptance/sessions
+--- PASS: TestRoutingAcceptance (2.68s)
+    --- PASS: TestRoutingAcceptance/fixed_and_revocation (0.31s)
+    --- PASS: TestRoutingAcceptance/frozen_price_and_idempotency (1.58s)
+    --- PASS: TestRoutingAcceptance/ordered (0.11s)
+    --- PASS: TestRoutingAcceptance/contracts_and_settlement (0.38s)
+        --- PASS: TestRoutingAcceptance/contracts_and_settlement/subscription_only_purchase_renew_revoke (0.12s)
+        --- PASS: TestRoutingAcceptance/contracts_and_settlement/subscription_first_split_and_expiry (0.10s)
+        --- PASS: TestRoutingAcceptance/contracts_and_settlement/change_and_mock_payment_refund (0.16s)
+    --- PASS: TestRoutingAcceptance/sessions (0.24s)
+PASS
+=== RUN   TestRoutingAcceptance
+--- PASS: TestRoutingAcceptance (3.57s)
+PASS
+=== RUN   TestRoutingAcceptance
+--- PASS: TestRoutingAcceptance (0.09s)
+PASS
+=== RUN   TestRoutingAcceptance
+--- PASS: TestRoutingAcceptance (0.08s)
+PASS
+=== RUN   TestRoutingAcceptance
+--- PASS: TestRoutingAcceptance (0.13s)
+PASS
