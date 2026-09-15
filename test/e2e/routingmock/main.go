@@ -64,7 +64,17 @@ func main() {
 		}
 		jsonx.NewEncoder(w).Encode(map[string]any{"id": id, "object": "chat.completion", "model": req["model"], "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "routing e2e"}, "finish_reason": "stop"}}, "usage": usage})
 	})
-	if err := http.ListenAndServe(":9999", nil); err != nil {
+	// G114: serve through an explicit *http.Server so read-side timeouts
+	// apply. WriteTimeout deliberately stays unset: this mock streams SSE
+	// chunks and hosts websocket upgrades (and sleeps 1.5s on freeze-price
+	// fixtures), which a write deadline would truncate mid-stream.
+	server := &http.Server{
+		Addr:              ":9999",
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
