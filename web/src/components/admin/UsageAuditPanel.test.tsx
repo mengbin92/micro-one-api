@@ -154,6 +154,38 @@ describe('UsageSummaryCell', () => {
   });
 });
 
+it('explains the frozen routing and charge split from the request snapshot', () => {
+  const requestSnapshot = JSON.stringify({
+    version: 2,
+    routing: { tokenMode: 'ordered', selectionSource: 'token_ordered', groupID: 7, groupKey: 'vip', candidateGroupIDs: [7, 8], attemptOrdinal: 0 },
+    groupKey: 'vip',
+    model: 'model-vip',
+    billingMode: 'subscription_first',
+    billingPolicyVersion: 'routing_policy:7:3',
+    pricing: { method: 'model_price', groupRatio: 0.8, modelRatio: 1, completionRatio: 1 },
+    subscription: { subscriptionID: 12, policyID: 7, policyVersion: 'p1', contractVersion: 'c1', coverageMode: 'selected_groups', rateMultiplier: 1 },
+  });
+  render(<UsageAuditPanel log={{
+    promptTokens: 100,
+    routingGroupId: 7,
+    routingGroupKey: 'vip',
+    requestSnapshotHash: 'frozen-hash',
+    requestSnapshot,
+    costSource: 'mixed',
+    subscriptionCost: 8000,
+    balanceCost: 2000,
+  }} />);
+
+  expect(screen.getByText(/有序候选组（第 1 \/ 2 个候选）/)).toBeInTheDocument();
+  expect(screen.getByText(/订阅优先，余额补足/)).toBeInTheDocument();
+  expect(screen.getAllByText(/routing_policy:7:3/).at(0)).toBeInTheDocument();
+  expect(screen.getByText((_, element) => element?.textContent === '有效倍率：×0.8（预扣时冻结，后续改价不影响本账单）')).toBeInTheDocument();
+  expect(screen.getByText(/预扣时冻结，后续改价不影响本账单/)).toBeInTheDocument();
+  expect(screen.getByText(/模型五桶单价/)).toBeInTheDocument();
+  expect(screen.getByText(/订阅 \$0\.8000/)).toBeInTheDocument();
+  expect(screen.getByText(/钱包 \$0\.2000/)).toBeInTheDocument();
+});
+
 it('shows recorded routing evidence and keeps historical groups unknown', () => {
   const { rerender } = render(<UsageAuditPanel log={{ promptTokens: 100, routingGroupId: 7, routingGroupKey: 'vip', requestSnapshotHash: 'frozen-hash' }} />);
   expect(screen.getByText('vip (#7)')).toBeInTheDocument();

@@ -4,7 +4,7 @@
 >
 > **当前执行入口**：[v0.30 阶段路线图](./design/v0.30-roadmap.md)。优先级、依赖与验收以该路线图为准；本文件下文保留历史登记，不作为当前待办。
 >
-> **当前进展**：v0.29 已交付分组 A–F。P0-1 文档与运行基线、P0-2 部署接线与只读预检、P0-3 MySQL / SQLite 真实服务验收均已完成，结果见[路线图验收记录](./design/v0.30-roadmap.md)。生产 B–F 开关已开启，详见[只读基线](./runbooks/routing-baseline-2026-09-13.md)。P1-1 outbox 可观测性、P1-2 管理台汇总性能与 P1-3 迁移元数据预检均已完成，后续为 P2 分组日常操作与账务解释。
+> **当前进展**：v0.29 已交付分组 A–F。P0-1 文档与运行基线、P0-2 部署接线与只读预检、P0-3 MySQL / SQLite 真实服务验收均已完成，结果见[路线图验收记录](./design/v0.30-roadmap.md)。生产 B–F 开关已开启，详见[只读基线](./runbooks/routing-baseline-2026-09-13.md)。P0、P1 与 P2 均已完成；P2 分组日常操作与账务解释见[验收记录](./runbooks/routing-ops-experience-2026-09-15.md)。
 >
 > **v0.27 已归档**：charge 回滚演练、K3 范围决策、Lite smoke 与文档收尾均已完成；扩面顺延，executor 保持 legacy。后续工作转入 v0.30，不重复立项。
 >

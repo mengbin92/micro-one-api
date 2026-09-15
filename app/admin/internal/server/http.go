@@ -450,9 +450,18 @@ func NewHTTPServer(addr string, svc *service.AdminService, auditor *audit.Audito
 		}
 	})
 	srv.HandlePrefix("/api/v1/admin/routing-access/", adminAuth(func(w http.ResponseWriter, r *http.Request) {
-		user, err := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/routing-access/"), 10, 64)
+		path := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/routing-access/")
+		available := strings.HasSuffix(path, "/available")
+		if available {
+			path = strings.TrimSuffix(path, "/available")
+		}
+		user, err := strconv.ParseInt(path, 10, 64)
 		if err != nil || user <= 0 {
 			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if available {
+			handleRoutingAvailableForUser(w, r, svc, user)
 			return
 		}
 		handleRoutingAccess(w, r, svc, user, false)

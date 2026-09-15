@@ -96,6 +96,9 @@ interface LogEntry {
   requestSnapshot?: string;
   pricingConfigHash?: string;
   pricingSnapshot?: UsageAuditLog['pricingSnapshot'];
+  costSource?: string;
+  subscriptionCost?: number | string;
+  balanceCost?: number | string;
 }
 
 interface LogListData {

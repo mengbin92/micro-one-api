@@ -7,12 +7,15 @@ import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
 const group = { id: 2, key: 'vip', display_name: 'VIP', status: 'disabled', access_mode: 'restricted', model_access_mode: 'all_authorized', description: '' };
+const billingPolicy = { version: 1, billing_mode: 'subscription_first', price_ratio: 1.5 };
+const billingHandler = () => HttpResponse.json({ success: true, data: billingPolicy });
 describe('AdminRoutingGroupsPage', () => {
   it('preserves displayed overrides when saved without edits', async () => {
     const posted: unknown[] = [];
     server.use(
       http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [group], next_page_token: '' } })),
       http.get('/api/v1/admin/routing-groups/2', () => HttpResponse.json({ success: true, data: { group, resources: [{ source_kind: 'channel', source_id: 1, priority: 7, weight: 5, priority_override: 7, weight_override: 5 }], model_grants: [] } })),
+      http.get('/api/v1/admin/routing-groups/2/billing', billingHandler),
       http.put('/api/v1/admin/routing-groups/2/resource-overrides', async ({ request }) => {
         posted.push(await request.json());
         return HttpResponse.json({ success: true });
@@ -26,6 +29,7 @@ describe('AdminRoutingGroupsPage', () => {
   });
   it('keeps model-only grants separate from members and lists mixed source IDs', async () => {
     server.use(http.get('/api/v1/admin/routing-groups', () => HttpResponse.json({ success: true, data: { groups: [group], next_page_token: '' } })),
+      http.get('/api/v1/admin/routing-groups/2/billing', billingHandler),
       http.get('/api/v1/admin/routing-groups/2', () => HttpResponse.json({ success: true, data: { group,
         resources: [{ source_kind: 'channel', source_id: 1, priority: 7, weight: 5 }, { source_kind: 'subscription', source_id: 1, priority: 9, weight: 4 }],
         model_grants: [{ mapping_id: 3, account_id: 2, model: 'managed', upstream_model_id: 'upstream-model', priority: 13, enabled: true, extra_authorization: true }],
@@ -71,6 +75,7 @@ describe('AdminRoutingGroupsPage', () => {
         if (body.key === 'dup') return HttpResponse.json({ success: false, message: '分组标识已存在，请换一个 key' }, { status: 409 });
         return HttpResponse.json({ success: true, data: { group: { ...group, id: 9, key: body.key as string, display_name: '新分组' }, resources: [], model_grants: [] } });
       }),
+      http.get('/api/v1/admin/routing-groups/9/billing', billingHandler),
       http.get('/api/v1/admin/routing-groups/9', () => HttpResponse.json({ success: true, data: { group: { ...group, id: 9, key: 'newbie', display_name: '新分组' }, resources: [], model_grants: [] } })),
     );
     renderWithQuery(<AdminRoutingGroupsPage />);
@@ -80,7 +85,11 @@ describe('AdminRoutingGroupsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '创建分组' }));
     // Only operator input crosses the boundary: status/revision stay server-side.
     expect(posted.at(-1)).toEqual({ key: 'newbie', display_name: '新分组', description: '', access_mode: 'restricted' });
-    expect(await screen.findByRole('region', { name: '分组详情' })).toBeVisible();
+    const detail = await screen.findByRole('region', { name: '分组详情' });
+    expect(detail).toBeVisible();
+    expect(within(detail).getAllByText(/暂无资源成员/)[0]).toBeVisible();
+    expect(within(detail).getByText(/价格解析可用/)).toBeVisible();
+    expect(within(detail).getByRole('button', { name: '启用分组' })).toBeEnabled();
   });
 
   it('keeps the create form open and selects nothing when the key is rejected', async () => {
