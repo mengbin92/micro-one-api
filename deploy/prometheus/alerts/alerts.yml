@@ -405,3 +405,79 @@ groups:
         annotations:
           summary: "Canonical vs legacy cost delta detected"
           description: "Observed non-zero canonical/legacy cost delta over 15m — investigate before flipping BILLING_CANONICAL_USAGE_MODE to charge"
+
+  # v0.30 P1-1: database gauges are per worker/owner, never summed across replicas.
+  - name: routing-operations
+    rules:
+      - alert: RoutingOutboxDeliveryFailing
+        expr: (increase(micro_one_api_routing_outbox_failures_total{operation="publish"}[1m]) > 0) and on(job, instance, owner) (micro_one_api_routing_outbox_pending > 0)
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Routing outbox delivery failing"
+          description: "{{ $labels.instance }} owner={{ $labels.owner }} cannot publish pending invalidations. Check Redis and routing outbox operation logs; see routing-observability-runbook.md."
+      - alert: RoutingOutboxBacklog
+        expr: micro_one_api_routing_outbox_oldest_pending_age_seconds > 60
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Routing outbox backlog is aging"
+          description: "{{ $labels.instance }} owner={{ $labels.owner }} oldest pending event is {{ $value }} seconds old. Check publish/acknowledge failures and database availability."
+      - alert: RoutingOutboxScanStale
+        expr: time() - micro_one_api_routing_outbox_last_scan_timestamp_seconds > 30
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Routing outbox pending scan is stale"
+          description: "{{ $labels.instance }} owner={{ $labels.owner }} has no successful scan for over 30s. Pending gauges may be stale; check database and worker logs."
+      - alert: RoutingOutboxStorageFailing
+        expr: increase(micro_one_api_routing_outbox_failures_total{operation=~"scan|load|acknowledge|gc"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Routing outbox storage operation failing"
+          description: "{{ $labels.instance }} owner={{ $labels.owner }} operation={{ $labels.operation }} failed. Check migrations, database permissions and connectivity."
+      - alert: RoutingCapabilityRejected
+        expr: increase(micro_one_api_routing_admission_rejected_total{reason=~".*_capability|entitlements"}[5m]) > 0
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Routing admission capability rejected"
+          description: "{{ $labels.instance }} operation={{ $labels.operation }} reason={{ $labels.reason }}. Verify identity/channel/billing capability versions and consistent v2 gates."
+      - alert: RoutingSnapshotValidationFailed
+        expr: increase(micro_one_api_routing_snapshot_validation_failures_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Routing request snapshot validation failed"
+          description: "{{ $labels.instance }} operation={{ $labels.operation }} reason={{ $labels.reason }}. Preserve reservation evidence and investigate; never rewrite frozen billing snapshots."
+      - alert: RoutingAuthorityRPCFailing
+        expr: sum by (instance, service, method, status) (rate(micro_one_api_dependency_grpc_latency_seconds_count{method=~".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)",status!="OK"}[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Routing authority RPC failures"
+          description: "{{ $labels.instance }} dependency={{ $labels.service }} method={{ $labels.method }} status={{ $labels.status }}. Check the authority service and its database."
+      - alert: RoutingAuthorityRPCSlow
+        expr: histogram_quantile(0.95, sum by (instance, service, method, le) (rate(micro_one_api_dependency_grpc_latency_seconds_bucket{method=~".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)"}[5m]))) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Routing authority RPC latency high"
+          description: "{{ $labels.instance }} dependency={{ $labels.service }} method={{ $labels.method }} p95 exceeds 500ms. Check dependency latency dashboard and authority logs."
+      - alert: RoutingMetricsTargetDown
+        expr: up{job="micro-one-api",instance=~"(relay-gateway:8080|admin-api:8000|identity-service:8001|channel-service:8002|billing-service:8004)"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Routing metrics target unavailable"
+          description: "{{ $labels.instance }} cannot be scraped. Restore the service or metrics endpoint before trusting routing/outbox gauges."

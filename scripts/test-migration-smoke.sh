@@ -8,6 +8,9 @@
 #   3. status audit      — every listed migration must be recorded as applied;
 #   4. negative gate     — a deliberately invalid pending migration must fail
 #                          before its version can be recorded as applied.
+#   5. metadata preflight — a historical applied_at NOT NULL/no-default table
+#                          must block business DDL, then upgrade / repeat /
+#                          half-completed recovery must behave correctly.
 #
 # Usage:
 #   scripts/test-migration-smoke.sh mysql
@@ -128,4 +131,12 @@ if printf '%s\n' "$negative_output" | grep -q '^applied 1 migration'; then
   exit 1
 fi
 
-echo "== $dialect migration smoke passed =="
+echo "== legacy schema_migrations metadata preflight =="
+
+# Reuse the real service database with a minimal, isolated migration set. The
+# integration test recreates applied_at as BIGINT NOT NULL without a default,
+# proves business DDL is blocked, repairs metadata, verifies repeat execution,
+# and requires explicit recording for a half-completed migration.
+MIGRATIONS_PREFLIGHT_INTEGRATION=1 go test ./platform/database/migrate -run '^TestMigrationMetadataPreflightIntegration$'
+
+echo "== $dialect migration smoke passed ="

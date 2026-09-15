@@ -25,7 +25,7 @@ func (s *HTTPServer) lookupResponseRouteWithSticky(ctx context.Context, token, c
 		if s.identityClient == nil {
 			return responseRoute{}, false
 		}
-		auth, err := s.getAuthSnapshot(ctx, token)
+		auth, err := s.getAuthSnapshotForGroup(ctx, token, route.RoutingGroupID)
 		if err != nil {
 			return responseRoute{}, false
 		}

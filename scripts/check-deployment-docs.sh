@@ -75,6 +75,9 @@ kubeconform \
     -kubernetes-version 1.33.0 \
     "$rendered_manifest"
 
+echo "==> Routing gate defaults and overrides"
+python3 "$SCRIPT_DIR/check-routing-config.py"
+
 echo "==> Kubernetes Secret/ConfigMap references"
 (
     cd "$PROJECT_ROOT"

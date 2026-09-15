@@ -49,7 +49,12 @@ func (f *routingAccessHTTPFake) Facts(context.Context, int64) (*routing.SubjectF
 func (f *routingAccessHTTPFake) Available(_ context.Context, u int64, _ routing.GroupListRequest) (*biz.AvailableRoutingGroups, error) {
 	f.calls++
 	f.user = u
-	return &biz.AvailableRoutingGroups{Facts: &routing.SubjectFacts{DefaultGroupID: 1, AccessRevision: 2}, Groups: []biz.AvailableRoutingGroup{}}, nil
+	return &biz.AvailableRoutingGroups{Facts: &routing.SubjectFacts{DefaultGroupID: 1, AccessRevision: 2}, Groups: []biz.AvailableRoutingGroup{{
+		Group:   &routing.Group{ID: 2, Key: "vip", DisplayName: "VIP", Status: "enabled"},
+		Sources: []routing.UserGroupGrant{{GroupID: 2, SourceType: "admin", SourceRef: "manual", Status: "active"}},
+		Price:   biz.RoutingPrice{Ratio: 0.8, Source: "user_routing_price_override", Version: "user_routing_price:2:9:1", BillingMode: "subscription_first", UserRatio: 0.8, UserVersion: 1},
+		Models:  []string{"model-vip"},
+	}}}, nil
 }
 func (f *routingAccessHTTPFake) Change(_ context.Context, c biz.RoutingAccessChange, self bool) (*routing.SubjectFacts, error) {
 	f.calls++
@@ -96,4 +101,18 @@ func TestRoutingAccessHTTPUsesAuthenticatedPrincipal(t *testing.T) {
 	require.Equal(t, n, f.calls)
 	w = call("GET", "/api/v1/routing-groups/available?page_size=-1", "", "user-session")
 	require.Equal(t, 400, w.Code)
+
+	// The admin directory explains the target user's effective access and price;
+	// the target ID comes from the path and never from the body.
+	n = f.calls
+	w = call("GET", "/api/v1/admin/routing-access/999/available", "", "")
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	require.Equal(t, n, f.calls)
+	w = call("GET", "/api/v1/admin/routing-access/999/available", "", "admin-system")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.EqualValues(t, 999, f.user)
+	require.Contains(t, w.Body.String(), `"price_source":"user_routing_price_override"`)
+	require.Contains(t, w.Body.String(), `"source_type":"admin"`)
+	w = call("GET", "/api/v1/admin/routing-access/bad/available", "", "admin-system")
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }

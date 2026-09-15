@@ -48,6 +48,10 @@ export function AdminRoutingGroupsPage() {
       return unwrapApiData<GroupDetail>(res.data, t('分组详情加载失败'));
     },
   });
+  const billingPolicy = useQuery({
+    queryKey: ['routing-billing', selected], enabled: selected !== null, retry: false,
+    queryFn: async () => unwrapApiData<{ version: number; billing_mode: string; price_ratio: number }>((await adminApiClient.get(`/v1/admin/routing-groups/${selected}/billing`)).data),
+  });
   const [overrideDrafts, setOverrideDrafts] = useState<Record<string, { priority: string; weight: string }>>({});
   const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState({ key: '', displayName: '', description: '', accessMode: 'restricted' });
@@ -171,6 +175,15 @@ export function AdminRoutingGroupsPage() {
       {detail.isPending ? <p role="status">{t('加载中...')}</p> : detail.isError ? <div role="alert"><p>{t('分组详情加载失败。')}</p><Button variant="outline" onClick={() => void detail.refetch()}>{t('重试')}</Button></div> : detail.data && <>
         <div><h3 className="text-lg font-semibold">{detail.data.group.display_name || detail.data.group.key}</h3><p className="text-sm text-muted-foreground">ID {detail.data.group.id} · {detail.data.group.key} · {statusLabel(detail.data.group.status)}</p>
           {detail.data.group.description && <p className="mt-2 text-sm">{detail.data.group.description}</p>}</div>
+        {detail.data.group.status !== 'archived' && <section className="space-y-2 rounded-md border p-3" aria-label={t('新组启用检查')}>
+          <h4 className="text-sm font-semibold">{t('新组启用检查')}</h4>
+          <ul className="space-y-1 text-sm">
+            <li>{detail.data.resources.length ? '✅' : '⚠️'} {detail.data.resources.length ? t('已有资源成员') : t('暂无资源成员：启用前建议先添加成员，否则组内没有可选上游')}</li>
+            <li>{billingPolicy.isSuccess ? '✅' : '⚠️'} {billingPolicy.isSuccess ? t('价格解析可用（默认或已发布策略）') : t('价格解析暂不可用：启用会被后端价格闸门拒绝')}</li>
+            <li>✅ {t('启用时会执行能力版本与价格闸门；失败保持停用')}</li>
+            <li>✅ {t('启用后还需显式授权，或让用户允许所有公开组')}</li>
+          </ul>
+        </section>}
         {detail.data.group.status !== 'archived' && <div className="space-y-2">
           <p className="text-sm text-muted-foreground">{t('停用后拒绝新调用，已接受的请求按原价格结算；切换为专属后仅显式授权用户可用。')}</p>
           <div className="flex gap-2"><Button disabled={saving} variant={detail.data.group.status === 'enabled' ? 'destructive' : 'outline'} onClick={() => changeState(detail.data.group.status === 'enabled' ? 'disabled' : 'enabled', detail.data.group.access_mode)}>{detail.data.group.status === 'enabled' ? t('停用分组') : t('启用分组')}</Button>
@@ -178,7 +191,7 @@ export function AdminRoutingGroupsPage() {
         </div>}
         <RoutingBillingEditor key={selected} id={selected} />
         <h4 className="font-medium">{t('资源成员')}</h4>
-        <p className="text-sm text-muted-foreground">{t('优先级和权重继承资源配置；具体模型仍需通过模型授权检查。')}</p>
+        <p className="text-sm text-muted-foreground">{t('优先级和权重继承资源配置；具体模型仍需通过模型授权检查。组内覆盖只替换该分组选路时的值，空值继承，不影响同一资源在其他分组的表现。')}</p>
         {!detail.data.resources.length ? <p>{t('暂无资源成员')}</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>{t('资源类型')}</TableHead><TableHead>ID</TableHead><TableHead>{t('优先级')}</TableHead><TableHead>{t('权重')}</TableHead><TableHead>{t('组内覆盖（空=继承）')}</TableHead><TableHead>{t('操作')}</TableHead></TableRow></TableHeader><TableBody>
           {detail.data.resources.map((r) => { const key = `${r.source_kind}:${r.source_id}`; const draft = overrideDrafts[key] || { priority: r.priority_override?.toString() ?? '', weight: r.weight_override?.toString() ?? '' }; return <TableRow key={key}><TableCell>{r.source_kind === 'channel' ? t('API 渠道') : t('上游订阅账号')}</TableCell><TableCell>{r.source_id}</TableCell><TableCell>{r.priority}{r.priority_override != null ? `（覆盖 ${r.priority_override}）` : ''}</TableCell><TableCell>{r.weight}{r.weight_override != null ? `（覆盖 ${r.weight_override}）` : ''}</TableCell>
             <TableCell><div className="flex gap-1"><Input aria-label="优先级覆盖" className="w-20" placeholder="继承" value={draft.priority} onChange={(e) => setOverrideDrafts((d) => ({ ...d, [key]: { ...draft, priority: e.target.value } }))} /><Input aria-label="权重覆盖" className="w-20" placeholder="继承" value={draft.weight} onChange={(e) => setOverrideDrafts((d) => ({ ...d, [key]: { ...draft, weight: e.target.value } }))} /></div></TableCell>

@@ -15,6 +15,31 @@ permissions:
   contents: read
 
 jobs:
+  routing-e2e:
+    name: Routing v2 acceptance (${{ matrix.driver }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        driver: [mysql, sqlite3]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Run isolated routing acceptance
+        run: python3 scripts/test-routing-e2e.py --driver ${{ matrix.driver }}
+        timeout-minutes: 45
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: routing-acceptance-${{ matrix.driver }}
+          path: |
+            /tmp/routing-e2e-*/acceptance.log
+            /tmp/routing-e2e-*/preflight.json
+            /tmp/routing-e2e-*/build.log
+          if-no-files-found: ignore
+
   compose-e2e:
     name: Compose E2E suite
     runs-on: ubuntu-latest

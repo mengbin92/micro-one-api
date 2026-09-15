@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.29.0 发布公告](./docs/releases/release-v0.29.0.md)（路由分组重设计 v2：分组实体、订阅合约与有序候选组，全部能力默认关闭） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.29.0)
+> 📣 **最新发布**：[v0.30.0 发布公告](./docs/releases/release-v0.30.0.md)（分组 v2 生产启用收口：部署接线与真实链路验收、路由 / outbox 可观测性告警、迁移预检与操作解释，无破坏性变更） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.30.0)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.30.0
+
+v0.30.0 是 v0.29.0 之后的 **MINOR 启用与稳定性收口版本**：接通三种 Compose / Kubernetes 的分组 v2 开关并完成 MySQL / SQLite 真实服务验收，补齐路由 / outbox 指标、九项告警与 Grafana 看板，管理台汇总改为受限并发编排（同负载 P95 380.5ms → 109.3ms）且分项失败返回 `null` + 状态而非伪造零值，迁移 runner 在业务 DDL 前预检旧 `schema_migrations` 表，并补齐新组启用检查、目标用户可用组目录（新增 additive 只读接口）与冻结扣费解释。**无 proto 变更、无新增数据库迁移、无新增必填配置**；分组 v2 开关默认保持关闭，生产 B–F 已按 runbook 逐阶段开启。详见 [docs/releases/release-v0.30.0.md](./docs/releases/release-v0.30.0.md)。
 
 ### 升级到 v0.29.0
 

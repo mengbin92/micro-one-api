@@ -80,6 +80,16 @@ function maskApiKey(key?: string): string | undefined {
   return `${key.slice(0, 4)}${'*'.repeat(key.length - 8)}${key.slice(-4)}`;
 }
 
+function effectivePrice(group: { price_ratio: number; price_source: string }) {
+  return `×${group.price_ratio}${group.price_source === 'user_routing_price_override' ? t('（用户专属）') : ''}`;
+}
+function billingModeText(mode: string) {
+  return { wallet_only: t('仅钱包'), subscription_only: t('仅订阅'), subscription_first: t('订阅优先，余额补足') }[mode] ?? mode;
+}
+function sourceText(source: { source_type: string; source_ref?: string; expires_at?: number }) {
+  const label = { admin: t('管理员授权'), migration: t('迁移继承'), subscription: t('订阅权益'), public: t('公开分组') }[source.source_type] ?? source.source_type;
+  return `${label}${source.source_ref ? ` #${source.source_ref}` : ''}${source.expires_at ? `（${t('有效至')} ${new Date(source.expires_at * 1000).toLocaleString(locale())}）` : ''}`;
+}
 function tokenForList(token: Token): Token {
   const { key, ...safeToken } = token;
   return {
@@ -209,13 +219,13 @@ export function TokensPage() {
     <select id="token-routing-group" className="h-10 w-full rounded-md border bg-background px-3" value={selectedGroup} onChange={(e) => setSelectedGroup(e.target.value)}>
       <option value="inherit">跟随默认分组{available.data && !available.data.default_available ? '（需要重新选择分组）' : ''}</option>
       {selectedGroup !== 'inherit' && selectedGroup !== 'ordered' && !selected && <option value={selectedGroup}>固定分组 #{selectedGroup}（当前不可用）</option>}
-      {available.data?.groups.filter(() => available.data.creation_enabled).map((g) => <option key={g.id} value={g.id}>{g.display_name || g.key} · ×{g.price_ratio}</option>)}
+      {available.data?.groups.filter(() => available.data.creation_enabled).map((g) => <option key={g.id} value={g.id}>{g.display_name || g.key} · {effectivePrice(g)}</option>)}
       {available.data?.groups.some((g) => g.ordered_eligible) && <option value="ordered">有序候选组（自动跨组重试）</option>}
     </select>
     {selectedGroup === 'ordered' && <div className="space-y-2 rounded-md border p-3">
       <p className="text-sm text-muted-foreground">按顺序尝试候选组：仅在前置组无可用资源时切换到下一组，各组价格可能不同。</p>
       {orderedSelection.map(({ id, group: g }, index) => <div key={id} className="flex items-center justify-between gap-2 text-sm">
-        <span>{index + 1}. {g ? `${g.display_name || g.key} · ×${g.price_ratio}` : `分组 #${id}（当前不可用）`}</span>
+        <span>{index + 1}. {g ? `${g.display_name || g.key} · ${effectivePrice(g)}` : `分组 #${id}（当前不可用）`}</span>
         <span className="flex gap-1">
           <Button type="button" variant="outline" size="sm" disabled={index === 0} onClick={() => setOrderedGroupIDs((ids) => { const next = [...ids]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</Button>
           <Button type="button" variant="outline" size="sm" disabled={index === orderedSelection.length - 1} onClick={() => setOrderedGroupIDs((ids) => { const next = [...ids]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</Button>
@@ -224,11 +234,11 @@ export function TokensPage() {
       </div>)}
       <select className="h-10 w-full rounded-md border bg-background px-3" value="" onChange={(e) => { const id = Number(e.target.value); if (id > 0 && !orderedGroupIDs.includes(id)) setOrderedGroupIDs((ids) => [...ids, id]); }}>
         <option value="">添加候选组…</option>
-        {available.data?.groups.filter((g) => !orderedGroupIDs.includes(g.id)).map((g) => <option key={g.id} value={g.id}>{g.display_name || g.key} · ×{g.price_ratio}{g.ordered_eligible ? '' : '（当前无资格，可预列）'}</option>)}
+        {available.data?.groups.filter((g) => !orderedGroupIDs.includes(g.id)).map((g) => <option key={g.id} value={g.id}>{g.display_name || g.key} · {effectivePrice(g)}{g.ordered_eligible ? '' : '（当前无资格，可预列）'}</option>)}
       </select>
       {orderedSelection.length > 0 && orderedPrices.length > 1 && new Set(orderedPrices).size > 1 && <p className="text-sm text-amber-700">候选组价格不同，最终按实际命中的组计费。</p>}
     </div>}
-    {selected && <p className="text-sm text-muted-foreground">订阅优先，余额由钱包支付 · {selected.subscription_covered ? '当前订阅覆盖' : '当前无订阅覆盖'} · 价格来源：{selected.price_source}</p>}
+    {selected && <p className="text-sm text-muted-foreground">{billingModeText(selected.billing_mode)} · {selected.subscription_covered ? t('当前订阅覆盖') : t('当前无订阅覆盖')} · {t('有效价格')}：{effectivePrice(selected)} · {t('价格来源')}：{selected.price_source}</p>}
   </div>;
 
   const copyKey = async (key: string) => {
@@ -333,12 +343,12 @@ export function TokensPage() {
         {!available.data.default_available && <p role="alert" className="text-amber-700">默认分组失效：跟随默认分组的 Key 需要重新选择分组。</p>}
         {available.data.groups.length === 0 && <p>当前没有可用分组</p>}
         {available.data.groups.map((g) => <div key={g.id} className="border-t pt-2 text-sm">
-          <div className="flex items-center justify-between"><strong>{g.display_name || g.key} · ×{g.price_ratio}</strong>
+          <div className="flex items-center justify-between"><strong>{g.display_name || g.key} · {effectivePrice(g)}</strong>
             <Button variant="outline" size="sm" disabled={g.id === available.data.facts.default_routing_group_id} onClick={async () => {
               try { const res = await apiClient.patch('/v1/routing-access', { operation: 'default', routing_group_id: g.id, expected_revision: available.data.facts.revision }); ensureApiSuccess(res.data, '设置失败'); await available.refetch(); toast.success('默认分组已更新'); }
               catch (error) { toast.error(error instanceof Error ? error.message : '设置失败'); }
             }}>{g.id === available.data.facts.default_routing_group_id ? '默认分组' : '设为默认'}</Button></div>
-          <p className="text-muted-foreground">{g.sources.map((source) => `${source.source_type}${source.expires_at ? `（有效至 ${new Date(source.expires_at * 1000).toLocaleString(locale())}）` : ''}`).join('、')} · {g.subscription_covered ? '订阅覆盖，共享额度' : '钱包支付'} · {g.price_source}</p>
+          <p className="text-muted-foreground">{g.sources.map(sourceText).join('、')} · {g.subscription_covered ? '订阅覆盖，共享额度' : '钱包支付'} · {g.price_source}</p>
           <details className="text-muted-foreground"><summary>{t('价格版本')}</summary><code className="break-all">{g.price_version}</code></details>
           <p className="break-words text-muted-foreground">模型：{g.models?.join('、') || '暂无已授权模型'}</p>
         </div>)}

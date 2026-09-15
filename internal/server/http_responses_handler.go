@@ -452,7 +452,7 @@ func (s *HTTPServer) handleResponsesResource(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *HTTPServer) forwardResponsesToStoredRoute(w http.ResponseWriter, r *http.Request, upstreamPath string, body []byte, token string, route responseRoute, stream bool) {
-	authSnapshot, err := s.getAuthSnapshot(r.Context(), token)
+	authSnapshot, err := s.getAuthSnapshotForGroup(r.Context(), token, route.RoutingGroupID)
 	if err != nil {
 		s.handleIdentityError(w, err)
 		return

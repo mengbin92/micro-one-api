@@ -48,6 +48,21 @@ spec:
           privileged: false
           readOnlyRootFilesystem: true
         env:
+        - name: CHANNEL_GRPC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: channel-grpc-endpoint
+        - name: IDENTITY_ROUTING_V2
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: IDENTITY_ROUTING_V2
+        - name: IDENTITY_DEFAULT_ROUTING_GROUP
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: IDENTITY_DEFAULT_ROUTING_GROUP
         - name: CONF_PATH
           value: "/configs/config.yaml"
         - name: DATABASE_DSN

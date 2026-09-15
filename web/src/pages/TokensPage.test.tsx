@@ -166,7 +166,7 @@ describe('TokensPage', () => {
 });
 
 describe('fixed routing keys', () => {
-  const available = { success: true, data: { creation_enabled: true, default_available: false, next_page_token: '', facts: { default_routing_group_id: 1, revision: 3, public_group_access: 'explicit_only', grants: [] }, groups: [{ id: 2, key: 'vip', display_name: 'VIP', price_ratio: 2, price_source: 'GroupRatio', price_version: 'v1', billing_mode: 'subscription_first', subscription_covered: false, models: ['model-vip'], sources: [{ source_type: 'admin', expires_at: 0 }] }] } };
+  const available = { success: true, data: { creation_enabled: true, default_available: false, next_page_token: '', facts: { default_routing_group_id: 1, revision: 3, public_group_access: 'explicit_only', grants: [] }, groups: [{ id: 2, key: 'vip', display_name: 'VIP', price_ratio: 0.8, price_source: 'user_routing_price_override', price_version: 'user_routing_price:2:9:1', billing_mode: 'subscription_first', subscription_covered: false, models: ['model-vip'], sources: [{ source_type: 'admin', source_ref: 'manual', expires_at: 0 }] }] } };
   it('shows the invalid default and sends the selected fixed group', async () => {
     const user = userEvent.setup();
     let body: unknown;
@@ -181,7 +181,12 @@ describe('fixed routing keys', () => {
     await user.click(screen.getByRole('button', { name: '创建 Token' }));
     await user.type(screen.getByLabelText('Token 名称'), 'vip-key');
     expect(screen.getByRole('button', { name: '创建' })).toBeDisabled();
+    const routingSelect = screen.getByLabelText('路由分组') as HTMLSelectElement;
+    expect(routingSelect.textContent).toContain('VIP · ×0.8');
+    expect(routingSelect.textContent).toContain('（用户专属）');
     await user.selectOptions(screen.getByLabelText('路由分组'), '2');
+    expect(screen.getByText(/有效价格：×0.8/)).toBeInTheDocument();
+    expect(screen.getByText(/价格来源：user_routing_price_override/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '创建' }));
     await waitFor(() => expect(body).toEqual({ name: 'vip-key', routing_mode: 'fixed', routing_group_id: 2 }));
     expect(await screen.findByDisplayValue('sk-fixed-secret')).toBeInTheDocument();

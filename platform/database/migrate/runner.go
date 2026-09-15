@@ -100,6 +100,10 @@ type MigrationStatus struct {
 // from scratch.
 var brownfieldMarkerTables = []string{"users", "channels"}
 
+// metadataPreflightVersion is rolled back and never becomes a real migration
+// version. It is short enough for the historical VARCHAR(255) primary key.
+const metadataPreflightVersion = "__metadata_preflight__"
+
 // New constructs a Runner for the given *sql.DB. The driver is not
 // auto-inferred (Go's database/sql does not expose the registered
 // name of the driver bound to a *sql.DB), so the runner defaults to
@@ -183,6 +187,25 @@ func (r *Runner) Apply(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("load applied set: %w", err)
 	}
 
+	// The historical metadata table may predate the runner and define
+	// applied_at as NOT NULL without a default. The runner records only
+	// version, so such a table cannot accept the post-DDL insert. Probe the
+	// insert before any brownfield marking or business migration runs; a
+	// failed probe must not be followed by MySQL DDL, which commits
+	// implicitly and can leave an unrecorded migration.
+	needsMetadataWrite := len(applied) == 0 && len(files) > 0
+	for _, f := range files {
+		if _, ok := applied[versionOf(f)]; !ok {
+			needsMetadataWrite = true
+			break
+		}
+	}
+	if needsMetadataWrite {
+		if err := r.preflightSchemaMigrationsInsert(ctx); err != nil {
+			return nil, fmt.Errorf("preflight schema_migrations: %w", err)
+		}
+	}
+
 	// Brownfield baseline: schema_migrations is empty but the DB has been
 	// initialised some other way (e.g. docker-entrypoint-initdb.d already
 	// ran all the .sql files). Mark every file whose version is <=
@@ -230,9 +253,12 @@ func (r *Runner) Apply(ctx context.Context) ([]string, error) {
 }
 
 // Status returns every migration file with its applied flag, in filename order.
+// Unlike Apply, Status is read-only: if schema_migrations does not exist, all
+// files are reported as pending rather than initializing the metadata table.
 func (r *Runner) Status(ctx context.Context) ([]MigrationStatus, error) {
-	if err := r.ensureSchemaMigrationsTable(ctx); err != nil {
-		return nil, fmt.Errorf("ensure schema_migrations: %w", err)
+	exists, err := r.tableExists(ctx, "schema_migrations")
+	if err != nil {
+		return nil, fmt.Errorf("check schema_migrations: %w", err)
 	}
 	files, err := r.listMigrationFiles()
 	if err != nil {
@@ -248,9 +274,14 @@ func (r *Runner) Status(ctx context.Context) ([]MigrationStatus, error) {
 		files = filtered
 	}
 
-	applied, err := r.loadAppliedSet(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("load applied set: %w", err)
+	var applied map[string]struct{}
+	if exists {
+		applied, err = r.loadAppliedSet(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("load applied set: %w", err)
+		}
+	} else {
+		applied = make(map[string]struct{})
 	}
 	out := make([]MigrationStatus, 0, len(files))
 	for _, f := range files {
@@ -387,6 +418,24 @@ func (r *Runner) tableExists(ctx context.Context, name string) (bool, error) {
 		}
 		return n > 0, nil
 	}
+}
+
+// preflightSchemaMigrationsInsert verifies that the runner's minimal
+// "INSERT INTO schema_migrations (version)" statement is accepted by the
+// existing metadata table. The probe runs in a transaction and is always rolled
+// back, so it leaves no row and does not execute business DDL.
+func (r *Runner) preflightSchemaMigrationsInsert(ctx context.Context) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt := rebind("INSERT INTO schema_migrations (version) VALUES (?)", r.usePgPlaceholder())
+	if _, err := tx.ExecContext(ctx, stmt, metadataPreflightVersion); err != nil {
+		return fmt.Errorf("probe insert: %w\nschema_migrations.applied_at must be nullable or have a default value; repair the metadata table before running business DDL. If a previous attempt already committed DDL, verify its objects and record that version manually before retrying", err)
+	}
+	return nil
 }
 
 func (r *Runner) markApplied(ctx context.Context, version string) error {

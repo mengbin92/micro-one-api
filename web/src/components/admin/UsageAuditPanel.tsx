@@ -38,6 +38,41 @@ export interface UsageAuditLog {
   exclusiveCandidateCost?: number | string;
   pricingConfigHash?: string;
   pricingSnapshot?: PricingSnapshot | null;
+  costSource?: string;
+  subscriptionCost?: number | string;
+  balanceCost?: number | string;
+}
+
+interface RequestSnapshotRouting {
+  tokenMode?: string;
+  selectionSource?: string;
+  groupID?: number;
+  groupKey?: string;
+  candidateGroupIDs?: number[];
+  attemptOrdinal?: number;
+}
+
+interface RequestSnapshot {
+  version?: number;
+  routing?: RequestSnapshotRouting;
+  groupKey?: string;
+  model?: string;
+  billingMode?: string;
+  billingPolicyVersion?: string;
+  pricing?: {
+    method?: string;
+    groupRatio?: number;
+    modelRatio?: number;
+    completionRatio?: number;
+  };
+  subscription?: {
+    subscriptionID?: number;
+    policyID?: number;
+    policyVersion?: string;
+    contractVersion?: string;
+    coverageMode?: string;
+    rateMultiplier?: number;
+  };
 }
 
 export interface PricingSnapshot {
@@ -68,6 +103,28 @@ const SEMANTICS_LABELS: Record<string, string> = {
 function num(value: number | string | undefined | null): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseRequestSnapshot(value: string | undefined): RequestSnapshot | null {
+  if (!value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed as RequestSnapshot : null;
+  } catch {
+    return null;
+  }
+}
+
+function routingModeText(routing: RequestSnapshotRouting | undefined) {
+  const mode = { inherit: t('跟随用户默认组'), fixed: t('固定分组 Key'), ordered: t('有序候选组') }[routing?.tokenMode ?? ''] ?? routing?.tokenMode ?? '—';
+  if (routing?.tokenMode === 'ordered' && routing.candidateGroupIDs?.length) {
+    return `${mode}${t('（第 {index} / {total} 个候选）', { index: (routing.attemptOrdinal ?? 0) + 1, total: routing.candidateGroupIDs.length })}`;
+  }
+  return mode;
+}
+
+function billingModeText(mode: string | undefined) {
+  return { wallet_only: t('仅钱包'), subscription_only: t('仅订阅'), subscription_first: t('订阅优先，余额补足') }[mode ?? ''] ?? mode ?? '—';
 }
 
 function isLegacyUsageRow(log: UsageAuditLog) {
@@ -143,6 +200,7 @@ export function UsageAuditPanel({ log }: { log: UsageAuditLog }) {
   const legacy = isLegacyUsageRow(log);
   const ambiguous = log.usageParseStatus === 'ambiguous';
   const snapshot = log.pricingSnapshot ?? null;
+  const requestSnapshot = parseRequestSnapshot(log.requestSnapshot);
 
   // Legacy rows have no canonical buckets: prompt semantics are unknowable, so
   // only the raw reported buckets are shown (never a fabricated uncached值).
@@ -169,11 +227,21 @@ export function UsageAuditPanel({ log }: { log: UsageAuditLog }) {
 
   return (
     <div className="space-y-3">
-      <section className="rounded-lg border p-3 text-xs space-y-1">
-        <h4 className="font-semibold">实际路由与计费分组</h4>
-        <p>{log.routingGroupKey ? `${log.routingGroupKey} (#${log.routingGroupId || '—'})` : '未记录（历史账单）'}</p>
-        {log.requestSnapshotHash && <p className="break-all">请求快照：{log.requestSnapshotHash}</p>}
-        {log.requestSnapshot && <details><summary>查看冻结请求证据</summary><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all">{log.requestSnapshot}</pre></details>}
+      <section className="space-y-2 rounded-lg border p-3 text-xs">
+        <h4 className="font-semibold">{t('实际路由与扣费解释')}</h4>
+        <p>{log.routingGroupKey || requestSnapshot?.groupKey ? `${log.routingGroupKey || requestSnapshot?.groupKey} (#${log.routingGroupId || requestSnapshot?.routing?.groupID || '—'})` : '未记录（历史账单）'}</p>
+        {requestSnapshot ? <>
+          <p>{t('选择方式：')}<span className="font-medium">{routingModeText(requestSnapshot.routing)}</span>{requestSnapshot.routing?.selectionSource ? ` · ${requestSnapshot.routing.selectionSource}` : ''}</p>
+          <p>{t('结算策略：')}<span className="font-medium">{billingModeText(requestSnapshot.billingMode)}</span>{requestSnapshot.billingPolicyVersion ? ` · ${requestSnapshot.billingPolicyVersion}` : ''}</p>
+          <p>{t('有效倍率：')}<span className="font-medium">×{requestSnapshot.pricing?.groupRatio ?? '—'}</span>{t('（预扣时冻结，后续改价不影响本账单）')}</p>
+          <p>{t('计价方式：')}<span className="font-medium">{requestSnapshot.pricing?.method === 'model_price' ? t('模型五桶单价') : t('模型/完成倍率')}</span></p>
+          {requestSnapshot.subscription ? <p>{t('订阅证据：')}#{requestSnapshot.subscription.subscriptionID ?? '—'} · {requestSnapshot.subscription.policyVersion ?? '—'}{requestSnapshot.subscription.contractVersion ? ` / ${requestSnapshot.subscription.contractVersion}` : ''}{requestSnapshot.subscription.rateMultiplier ? ` · ×${requestSnapshot.subscription.rateMultiplier}` : ''}</p> : null}
+        </> : <p className="text-muted-foreground">{t('无请求快照：该账单早于 v2 预扣证据，不能反推当时授权或价格来源。')}</p>}
+        {log.costSource && (
+          <p>{t('实际分账：')}<span className="font-medium">{t('订阅')} {formatUSD(log.subscriptionCost)}</span> + <span className="font-medium">{t('钱包')} {formatUSD(log.balanceCost)}</span>{log.costSource ? ` · ${log.costSource}` : ''}</p>
+        )}
+        {log.requestSnapshotHash && <p className="break-all">{t('请求快照：')}{log.requestSnapshotHash}</p>}
+        {log.requestSnapshot && <details><summary>{t('查看冻结请求证据')}</summary><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all">{log.requestSnapshot}</pre></details>}
       </section>
       <div className="flex flex-wrap items-center gap-2">
         <ParseStatusBadge log={log} />

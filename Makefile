@@ -187,7 +187,7 @@ test-integration: proto
 # platform/security/auth carries the in-process JWT revocation blocklist
 # (global map + RWMutex) so its concurrent-access test runs under race too.
 test-race:
-	go test -race ./domain/subscription/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/...
+	go test -race ./domain/subscription/... ./internal/biz/... ./internal/server/... ./app/billing/... ./app/admin/... ./platform/security/auth/... ./platform/routingoutbox/... ./platform/grpc/xgrpc/...
 
 .PHONY: run-identity
 # run identity-service
@@ -280,6 +280,12 @@ test-e2e: compose-prereq
 # Fresh SQLite Compose project: bootstrap, channel, wallet, Token, chat, restart.
 test-lite-smoke:
 	python3 scripts/test-lite-smoke.py
+
+.PHONY: test-routing-e2e
+# Private MySQL/SQLite Compose stack; only the upstream is mocked.
+ROUTING_E2E_DRIVER ?= mysql
+test-routing-e2e:
+	python3 scripts/test-routing-e2e.py --driver $(ROUTING_E2E_DRIVER)
 
 .PHONY: test-e2e-suite
 # run e2e Go test suite (docker-compose environment)
@@ -395,7 +401,7 @@ migrate: migrate-prereq
 	go run ./cmd/migrate -dir ./migrations
 
 .PHONY: migrate-status
-# print migration status without applying anything
+# print migration status without applying anything or creating metadata
 migrate-status: migrate-prereq
 	go run ./cmd/migrate -dir ./migrations -status
 

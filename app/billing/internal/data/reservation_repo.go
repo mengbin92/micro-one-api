@@ -8,9 +8,12 @@ import (
 
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/pkg/jsonx"
+	applogger "micro-one-api/platform/logging"
+	"micro-one-api/platform/metrics"
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -269,30 +272,44 @@ func (r *reservationRepo) GetExpiredReservations(ctx context.Context) ([]*biz.Re
 	return reservations, nil
 }
 
-func reservationFromModel(model *reservationModel) (*biz.Reservation, error) {
+func reservationFromModel(model *reservationModel) (result *biz.Reservation, err error) {
+	defer func() {
+		if err == biz.ErrRequestSnapshotInvalid && model != nil {
+			applogger.Log.Error("request snapshot validation failed", zap.String("operation", "read"), zap.String("reservation_id", model.ReservationID), zap.String("request_id", model.RequestID), zap.String("user_id", model.UserID), zap.Error(err))
+		}
+	}()
 	if model == nil {
 		return nil, nil
 	}
 	var snapshot *biz.RequestSnapshot
 	if model.RequestSnapshot != nil {
 		snapshot = &biz.RequestSnapshot{}
-		if jsonx.Unmarshal([]byte(*model.RequestSnapshot), snapshot) != nil || snapshot.Validate() != nil {
+		if jsonx.Unmarshal([]byte(*model.RequestSnapshot), snapshot) != nil {
+			metrics.RoutingSnapshotFailures.WithLabelValues("read", "decode").Inc()
+			return nil, biz.ErrRequestSnapshotInvalid
+		}
+		if snapshot.Validate() != nil {
 			return nil, biz.ErrRequestSnapshotInvalid
 		}
 		hash, err := snapshot.Digest()
 		if err != nil || model.RequestSnapshotHash == nil || hash != *model.RequestSnapshotHash || snapshot.Model != stringFromPtr(model.Model) {
+			metrics.RoutingSnapshotFailures.WithLabelValues("read", "digest").Inc()
 			return nil, biz.ErrRequestSnapshotInvalid
 		}
 		if snapshot.Routing != nil && strconv.FormatInt(snapshot.Routing.UserID, 10) != model.UserID {
+			metrics.RoutingSnapshotFailures.WithLabelValues("read", "subject").Inc()
 			return nil, biz.ErrRequestSnapshotInvalid
 		}
 		if (snapshot.Subscription != nil) != (model.SubscriptionID > 0) {
+			metrics.RoutingSnapshotFailures.WithLabelValues("read", "subscription").Inc()
 			return nil, biz.ErrRequestSnapshotInvalid
 		}
 		if f := snapshot.Subscription; f != nil && (f.SubscriptionID != model.SubscriptionID || f.DailyWindowStart != model.SubscriptionDailyWindowStart || f.WeeklyWindowStart != model.SubscriptionWeeklyWindowStart || f.MonthlyWindowStart != model.SubscriptionMonthlyWindowStart || model.SubscriptionAccountingUSD == nil) {
+			metrics.RoutingSnapshotFailures.WithLabelValues("read", "subscription_window").Inc()
 			return nil, biz.ErrRequestSnapshotInvalid
 		}
 	} else if model.RequestSnapshotHash != nil || model.SubscriptionAccountingUSD != nil {
+		metrics.RoutingSnapshotFailures.WithLabelValues("read", "missing_snapshot").Inc()
 		return nil, biz.ErrRequestSnapshotInvalid
 	}
 	balanceAmount := model.BalanceAmount

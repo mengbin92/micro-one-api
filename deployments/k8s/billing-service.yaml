@@ -48,6 +48,21 @@ spec:
           privileged: false
           readOnlyRootFilesystem: true
         env:
+        - name: CHANNEL_GRPC_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: channel-grpc-endpoint
+        - name: BILLING_REQUEST_SNAPSHOT_V2
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: BILLING_REQUEST_SNAPSHOT_V2
+        - name: SUBSCRIPTION_ENTITLEMENTS_V2
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: SUBSCRIPTION_ENTITLEMENTS_V2
         - name: CONF_PATH
           value: "/configs/config.yaml"
         - name: DATABASE_DSN

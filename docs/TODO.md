@@ -1,22 +1,17 @@
 # 项目 TODO
 
-> 最后更新：2026-09-09
+> 最后更新：2026-09-15
 >
-> **当前执行入口**：[v0.27 阶段路线图](./design/v0.27-roadmap.md)。本文件保留既有阶段复盘和细项登记；新阶段的优先级、依赖、发布与验收以该路线图为准。
+> **当前执行入口**：[v0.30 阶段路线图](./design/v0.30-roadmap.md)。优先级、依赖与验收以该路线图为准；本文件下文保留历史登记，不作为当前待办。
 >
-> 📣 **v0.27 当前进展（2026-09-09）**：当前发布基线为
-> [v0.26.6](./releases/release-v0.26.6.md)（2026-09-06 已发布），包含 Canonical Charge
-> 精确门禁、Responses 错误语义、Admin 数据库就绪门禁和安全依赖更新。
-> Executor 第五次正式窗口因 Messages 流式 P95 相对 legacy 回归约 69.7% 判定 FAIL，
-> 已于 2026-09-02 回滚并保持 legacy。Canonical 48h Observe 已于 2026-09-06 满窗通过，
-> 覆盖 1718 条 consume；K3 固定 72h 窗口已按书面范围决策 PASS，1166 条 K3 请求无多扣。
-> 历史账务只读审计入口已实现并完成隔离 MySQL SELECT-only 验证，未改生产账本或配置。
-> 后续为个人部署 smoke 与文档收口；charge 回滚演练、全量范围决策及扩面前 SQL 舍入修订仍待执行。
+> **当前进展**：v0.29 已交付分组 A–F。P0-1 文档与运行基线、P0-2 部署接线与只读预检、P0-3 MySQL / SQLite 真实服务验收均已完成，结果见[路线图验收记录](./design/v0.30-roadmap.md)。生产 B–F 开关已开启，详见[只读基线](./runbooks/routing-baseline-2026-09-13.md)。P0、P1 与 P2 均已完成；P2 分组日常操作与账务解释见[验收记录](./runbooks/routing-ops-experience-2026-09-15.md)。
+>
+> **v0.27 已归档**：charge 回滚演练、K3 范围决策、Lite smoke 与文档收尾均已完成；扩面顺延，executor 保持 legacy。后续工作转入 v0.30，不重复立项。
 >
 > 📣 **v0.23 阶段（实现已完成，观察延续）**：HTTP / SSE executor 首切片、端口、
 > 新旧路径测试和回滚门均已落地；日检结论继续以
 > [executor 观察手册](./design/v0.23-executor-observation.md) 为准，阶段依赖和后续决策由
-> [v0.27 路线图](./design/v0.27-roadmap.md) 管理。
+> [v0.30 路线图](./design/v0.30-roadmap.md) 管理。
 >
 > 📣 **v0.21 阶段（2026-08-18，已收尾）**：资金对账、MySQL / PostgreSQL migration smoke、Release E2E 门禁与 P3-0 观察基线均已闭环，v0.21.0 已发布；验收记录归档于 [v0.21 阶段路线图](./design/v0.21-roadmap.md)。
 >

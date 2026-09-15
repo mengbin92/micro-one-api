@@ -45,6 +45,28 @@ func handleRoutingAvailable(w http.ResponseWriter, r *http.Request, s *service.A
 	}
 	writeJSON(w, http.StatusOK, apiResponse(true, "", out))
 }
+func handleRoutingAvailableForUser(w http.ResponseWriter, r *http.Request, s *service.AdminService, user int64) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	size := int64(50)
+	var err error
+	if q.Get("page_size") != "" {
+		size, err = strconv.ParseInt(q.Get("page_size"), 10, 32)
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	out, err := s.AvailableGroups(r.Context(), user, routing.GroupListRequest{PageSize: int32(size), PageToken: q.Get("page_token"), Filter: q.Get("filter"), OrderBy: q.Get("order_by")})
+	if err != nil {
+		routingGroupError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, apiResponse(true, "", out))
+}
 func handleRoutingAccess(w http.ResponseWriter, r *http.Request, s *service.AdminService, user int64, self bool) {
 	if r.Method == http.MethodGet {
 		out, err := s.RoutingFacts(r.Context(), user)

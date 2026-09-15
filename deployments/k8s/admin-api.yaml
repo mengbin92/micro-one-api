@@ -48,6 +48,21 @@ spec:
           privileged: false
           readOnlyRootFilesystem: true
         env:
+        - name: ADMIN_ROUTING_FIXED_KEYS
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: ADMIN_ROUTING_FIXED_KEYS
+        - name: ADMIN_ROUTING_ORDERED_KEYS
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: ADMIN_ROUTING_ORDERED_KEYS
+        - name: SUBSCRIPTION_ENTITLEMENTS_V2
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: SUBSCRIPTION_ENTITLEMENTS_V2
         - name: CONF_PATH
           value: "/configs/config.yaml"
         - name: DATABASE_DSN

@@ -7,6 +7,30 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-09-15
+
+v0.30.0 是 v0.29.0 之后的 **MINOR 启用与稳定性收口版本**：按 [v0.30 阶段路线图](docs/design/v0.30-roadmap.md)完成 P0–P2 共 7 项任务——接通分组 v2 部署开关并完成 MySQL / SQLite 真实服务验收、补齐路由 / outbox 可观测性与告警、收口管理台汇总性能与降级语义、迁移 runner 旧元数据表预检，以及分组日常操作与账务解释链路。**无 proto 变更、无新增数据库迁移、无新增必填配置**；唯一语义变化是 `/api/admin/summary` 分项失败由伪造零值改为 `null` + 状态字段（响应键稳定）。详见 [release-v0.30.0.md](docs/releases/release-v0.30.0.md)。
+
+### Added
+
+- 分阶段 SELECT / RPC 只读预检、部署配置断言，以及 MySQL / SQLite 真实服务验收；覆盖合同、三种结算模式、会话、撤权、Redis 故障和创建入口回退，并接入共享 nightly / release E2E。
+- 路由 / outbox 可观测性：三个 owner 的积压 / 最老消息年龄 / 投递成功失败与扫描时间指标，权威 RPC 错误、准入 reason 与快照校验失败计数；九项 Prometheus 告警、Routing and Outbox Operations Grafana 看板与[可观测性 runbook](docs/runbooks/routing-observability-runbook.md)。
+- 管理员只读接口 `GET /api/v1/admin/routing-access/{user}/available`：目标用户可用组目录，返回访问来源、有效倍率、价格来源 / 版本、结算模式与订阅覆盖（additive）。
+- 管理台解释链路：新组启用条件检查、授权来源与有效价格解释、Token 页有效倍率与用户专属标识、调用日志 v2 冻结快照的扣费与分账解释。
+- [v0.30 阶段路线图](docs/design/v0.30-roadmap.md)与脱敏生产运行基线，统一 P0 交付和后续 P1 状态；三份 P1 验收记录合并为 [p1-acceptance-2026-09-15](docs/runbooks/p1-acceptance-2026-09-15.md)。
+
+### Fixed
+
+- 补齐三种 Compose / Kubernetes 的分组 v2 开关与 identity / billing 的 channel 依赖；Lite / PostgreSQL relay 补齐订阅数据库连接，Lite 同时挂载共享数据库卷，避免合同权益被空内存仓库误判。
+- ordered Responses 恢复时直接重新校验会话绑定组，避免较早候选覆盖或阻断仍有效的绑定路由。
+- channel 的旧能力查询兼容 PostgreSQL BOOLEAN 与历史整数 enabled 字段。
+- 迁移 runner 在 brownfield 标记和首个业务 DDL 前以事务探针预检 `schema_migrations` 写法，旧 `applied_at NOT NULL` 无默认值表在业务 DDL 前被阻断并给出可操作错误；`Status` 改为严格只读。
+- 订阅 outbox 补齐错误回调，投递失败不再被静默丢弃。
+
+### Changed
+
+- 管理台汇总聚合下沉到 service 层受限并发编排（每请求 4 路、总预算 8 秒 / 分项 2 秒）；分项失败语义由伪造零值改为 `null` + `partial` / `sections` / `alerts_complete` 状态，前端区分「暂无数据」与「数据暂不可用」；同负载 P95 380.5ms → 109.3ms。
+
 ## [0.29.0] - 2026-09-13
 
 v0.29.0 是 v0.28.1 之后的 **MINOR 路由分组重设计版本**：交付分组重设计 v2 全部阶段（A–F），把分组从散落各处的字符串升级为有稳定 ID、生命周期、资源成员和使用权限的路由分组实体，并交付订阅合约、按组结算模式、有序候选组和用户专属倍率；配套修复一轮跨服务审查问题。全部能力默认关闭（新代码 + 旧行为），proto additive，三方言新增迁移 `092`–`100`（全部 additive）。详见 [release-v0.29.0.md](docs/releases/release-v0.29.0.md)。
