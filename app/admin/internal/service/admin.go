@@ -1028,10 +1028,10 @@ func (s *AdminService) ListSubscriptionAccounts(ctx context.Context, req *adminv
 // account ID. This is used by the admin overview/cost-analysis handlers to
 // enrich top-N usage aggregates with human-readable account names, so rows
 // never fall back to bare numeric IDs or "Unknown".
-func (s *AdminService) FetchSubscriptionAccountSummariesByID(ctx context.Context, ids []int64) map[int64]*commonv1.SubscriptionAccountSummary {
+func (s *AdminService) FetchSubscriptionAccountSummariesByID(ctx context.Context, ids []int64) (map[int64]*commonv1.SubscriptionAccountSummary, error) {
 	result := make(map[int64]*commonv1.SubscriptionAccountSummary)
 	if s.channelClient == nil || len(ids) == 0 {
-		return result
+		return result, nil
 	}
 	wanted := make(map[int64]bool, len(ids))
 	for _, id := range ids {
@@ -1040,14 +1040,17 @@ func (s *AdminService) FetchSubscriptionAccountSummariesByID(ctx context.Context
 		}
 	}
 	if len(wanted) == 0 {
-		return result
+		return result, nil
 	}
 	resp, err := s.channelClient.ListSubscriptionAccounts(ctx, &channelv1.ListSubscriptionAccountsRequest{
 		Page:     1,
 		PageSize: safecast.IntToInt32Saturating(len(wanted)),
 	})
-	if err != nil || resp == nil {
-		return result
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, status.Error(codes.Unavailable, "empty summary response")
 	}
 	for _, account := range resp.GetAccounts() {
 		if account == nil {
@@ -1057,7 +1060,7 @@ func (s *AdminService) FetchSubscriptionAccountSummariesByID(ctx context.Context
 			result[account.GetId()] = account
 		}
 	}
-	return result
+	return result, nil
 }
 
 // FetchChannelSummariesByID fetches channel summaries for the given set of
@@ -1066,10 +1069,10 @@ func (s *AdminService) FetchSubscriptionAccountSummariesByID(ctx context.Context
 // by the admin overview/cost-analysis handlers to enrich top-N usage
 // aggregates with human-readable channel names, so rows never fall back to
 // "Unknown".
-func (s *AdminService) FetchChannelSummariesByID(ctx context.Context, ids []int64) map[int64]*commonv1.ChannelSummary {
+func (s *AdminService) FetchChannelSummariesByID(ctx context.Context, ids []int64) (map[int64]*commonv1.ChannelSummary, error) {
 	result := make(map[int64]*commonv1.ChannelSummary)
 	if s.channelClient == nil || len(ids) == 0 {
-		return result
+		return result, nil
 	}
 	wanted := make(map[int64]bool, len(ids))
 	for _, id := range ids {
@@ -1078,14 +1081,17 @@ func (s *AdminService) FetchChannelSummariesByID(ctx context.Context, ids []int6
 		}
 	}
 	if len(wanted) == 0 {
-		return result
+		return result, nil
 	}
 	resp, err := s.channelClient.ListChannels(ctx, &channelv1.ListChannelsRequest{
 		Page:     1,
 		PageSize: safecast.IntToInt32Saturating(len(wanted)),
 	})
-	if err != nil || resp == nil {
-		return result
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, status.Error(codes.Unavailable, "empty summary response")
 	}
 	for _, ch := range resp.GetChannels() {
 		if ch == nil {
@@ -1095,7 +1101,7 @@ func (s *AdminService) FetchChannelSummariesByID(ctx context.Context, ids []int6
 			result[ch.GetId()] = ch
 		}
 	}
-	return result
+	return result, nil
 }
 
 func (s *AdminService) GetSubscriptionAccount(ctx context.Context, accountID int64) (*commonv1.SubscriptionAccountInfo, error) {

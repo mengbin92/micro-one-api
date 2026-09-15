@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -105,6 +106,7 @@ func (c *adminHTTPIdentityClient) SetUserRole(ctx context.Context, req *identity
 }
 
 type adminHTTPChannelClient struct {
+	listMu sync.Mutex
 	channelv1.ChannelServiceClient
 	createdName          string
 	created              *channelv1.CreateChannelRequest
@@ -276,6 +278,8 @@ func (c *adminHTTPChannelClient) GetChannel(ctx context.Context, req *channelv1.
 }
 
 func (c *adminHTTPChannelClient) ListChannels(ctx context.Context, req *channelv1.ListChannelsRequest, opts ...grpc.CallOption) (*channelv1.ListChannelsResponse, error) {
+	c.listMu.Lock()
+	defer c.listMu.Unlock()
 	c.listChannelsCalls++
 	active := &commonv1.ChannelSummary{
 		Id:                 101,
@@ -335,6 +339,9 @@ func (c *adminHTTPChannelClient) ListChannels(ctx context.Context, req *channelv
 
 type adminHTTPBillingClient struct {
 	billingv1.BillingServiceClient
+	// aggregateMu guards aggregateReqs: the admin summary aggregates several
+	// group-bys concurrently within one request.
+	aggregateMu        sync.Mutex
 	topupUserID        string
 	topupAmount        int64
 	batchCreated       bool
@@ -438,7 +445,9 @@ func (c *adminHTTPBillingClient) GetLedgerEntry(ctx context.Context, req *billin
 }
 
 func (c *adminHTTPBillingClient) AggregateUsage(ctx context.Context, req *billingv1.AggregateUsageRequest, opts ...grpc.CallOption) (*billingv1.AggregateUsageResponse, error) {
+	c.aggregateMu.Lock()
 	c.aggregateReqs = append(c.aggregateReqs, req)
+	c.aggregateMu.Unlock()
 	switch {
 	case len(req.GetGroupBy()) == 1 && req.GetGroupBy()[0] == "model":
 		return &billingv1.AggregateUsageResponse{

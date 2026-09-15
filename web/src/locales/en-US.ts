@@ -519,4 +519,23 @@ export const EN_US_MESSAGES: Record<string, string> = {
   '消耗排行维度': 'Consumption Ranking Dimensions',
   // Count suffix for `t(`${n} 条账务日志`)` template strings (segment match).
   '条账务日志': 'billing log entries',
+  '部分数据暂不可用': 'Some data is temporarily unavailable',
+  '数据暂不可用': 'Data temporarily unavailable',
+  '暂不可用': 'Unavailable',
+  '部分数据加载失败，请重试。': 'Some data could not be loaded. Please retry.',
+  '告警数据不完整，暂时无法确认运行状态': 'Alert data is incomplete; system health cannot be confirmed',
+  '启用用户': 'Active users',
+  '启用渠道': 'Active channels',
+  '启用账号': 'Active accounts',
+  '用量统计': 'Usage statistics',
+  '最近对账': 'Latest reconciliation',
+  '定价配置': 'Pricing configuration',
+  '模型消耗排行': 'Model consumption ranking',
+  '渠道消耗排行': 'Channel consumption ranking',
+  '用户消耗排行': 'User consumption ranking',
+  'Token 消耗排行': 'Token consumption ranking',
+  '订阅账号消耗排行': 'Subscription account consumption ranking',
+  '订阅账号额度事件': 'Subscription account quota events',
+  '订阅账号名称': 'Subscription account names',
+
 };

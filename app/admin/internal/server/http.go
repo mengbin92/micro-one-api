@@ -804,121 +804,27 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		return
 	}
 
-	// The summary fans out ~20 serial RPCs (users, channels, ledgers, orders,
-	// stats, top-N aggregates, enrichments). Under the ambient request
-	// context the tail calls regularly inherited a nearly-expired deadline
-	// and failed with DeadlineExceeded even though every backend was
-	// healthy — the admin-api error log showed a steady stream of exactly
-	// that. Give the aggregation its own bounded budget, still tied to the
-	// client connection so a disconnect cancels everything.
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
-	defer cancel()
-
-	users, err := svc.ListUsers(ctx, &adminv1.AdminListUsersRequest{Page: 1, PageSize: 5})
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse(false, "failed to load users", nil))
-		return
-	}
-	activeUsers, err := svc.ListUsers(ctx, &adminv1.AdminListUsersRequest{Page: 1, PageSize: 1, Status: 1})
-	if err != nil {
-		activeUsers = &adminv1.AdminListUsersResponse{}
-	}
-	channels, err := svc.ListChannels(ctx, &adminv1.AdminListChannelsRequest{Page: 1, PageSize: 5})
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse(false, "failed to load channels", nil))
-		return
-	}
-	activeChannels, err := svc.ListChannels(ctx, &adminv1.AdminListChannelsRequest{Page: 1, PageSize: 1, Status: 1})
-	if err != nil {
-		activeChannels = &adminv1.AdminListChannelsResponse{}
-	}
-	recentLogs, recentLogsTotal, err := svc.ListLedgerEntries(ctx, &adminv1.ListLogsRequest{Page: 1, PageSize: 8})
-	if err != nil {
-		recentLogs = []map[string]any{}
-		recentLogsTotal = 0
-	}
-	paymentOrders, err := svc.ListPaymentOrders(ctx, &billingv1.ListPaymentOrdersRequest{Page: 1, PageSize: 8, Status: "paid"})
-	if err != nil {
-		paymentOrders = &billingv1.ListPaymentOrdersResponse{}
-	}
-	stats, err := svc.GetLogStats(ctx, &adminv1.ListLogsRequest{Page: 1, PageSize: 1000})
-	if err != nil {
-		stats = map[string]any{}
-	}
-	topModels, err := svc.AggregateUsageTopN(ctx, "model", 5)
-	if err != nil {
-		topModels = []service.UsageAggregateView{}
-	}
-	topChannels, err := svc.AggregateUsageTopN(ctx, "channel", 5)
-	if err != nil {
-		topChannels = []service.UsageAggregateView{}
-	}
-	// Collect channel IDs from top-N usage so we can fetch their summaries
-	// in one RPC, covering channels beyond the page-1 listing.
-	channelIDsForEnrichment := make(map[int64]bool)
-	for _, item := range topChannels {
-		if item.ChannelID > 0 {
-			channelIDsForEnrichment[item.ChannelID] = true
-		}
-	}
-	enrichmentChannelIDs := make([]int64, 0, len(channelIDsForEnrichment))
-	for id := range channelIDsForEnrichment {
-		enrichmentChannelIDs = append(enrichmentChannelIDs, id)
-	}
-	enrichmentChannels := svc.FetchChannelSummariesByID(ctx, enrichmentChannelIDs)
-	topUsers, err := svc.AggregateUsageTopN(ctx, "user", 5)
-	if err != nil {
-		topUsers = []service.UsageAggregateView{}
-	}
-	topTokens, err := svc.AggregateUsageTopN(ctx, "token", 5)
-	if err != nil {
-		topTokens = []service.UsageAggregateView{}
-	}
-	topSubscriptionAccounts, err := svc.AggregateUsageTopN(ctx, "subscription_account", 5)
-	if err != nil {
-		topSubscriptionAccounts = []service.UsageAggregateView{}
-	}
-	topSubscriptionAccountQuotaEvents, err := svc.AggregateSubscriptionAccountQuotaEventsTopN(ctx, 5)
-	if err != nil {
-		topSubscriptionAccountQuotaEvents = []service.SubscriptionAccountQuotaEventAggregateView{}
-	}
-	// Collect all subscription account IDs referenced by the top-N usage and
-	// quota-event aggregates so we can fetch their summaries in one RPC.
-	// Without this, accounts beyond the page-1 listing fall back to bare
-	// numeric IDs or "Unknown" in the cost-analysis dashboard.
-	subscriptionAccountIDsForEnrichment := make(map[int64]bool)
-	for _, item := range topSubscriptionAccounts {
-		if item.SubscriptionAccountID > 0 {
-			subscriptionAccountIDsForEnrichment[item.SubscriptionAccountID] = true
-		}
-	}
-	for _, item := range topSubscriptionAccountQuotaEvents {
-		if item.SubscriptionAccountID > 0 {
-			subscriptionAccountIDsForEnrichment[item.SubscriptionAccountID] = true
-		}
-	}
-	enrichmentIDs := make([]int64, 0, len(subscriptionAccountIDsForEnrichment))
-	for id := range subscriptionAccountIDsForEnrichment {
-		enrichmentIDs = append(enrichmentIDs, id)
-	}
-	enrichmentAccounts := svc.FetchSubscriptionAccountSummariesByID(ctx, enrichmentIDs)
-	reconciliation, err := svc.ListReconciliationRuns(ctx, 1, 1)
-	if err != nil {
-		reconciliation = &service.ListReconciliationRunsResult{}
-	}
-	options, err := svc.ListOneAPIOptions(ctx)
-	if err != nil {
-		options = nil
-	}
-
-	subscriptionAccounts, err := svc.ListSubscriptionAccounts(ctx, &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 5})
-	if err != nil {
-		subscriptionAccounts = &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}
-	}
-	activeSubscriptionAccounts, err := svc.ListSubscriptionAccounts(ctx, &adminv1.AdminListSubscriptionAccountsRequest{Page: 1, PageSize: 1, Status: 1})
-	if err != nil {
-		activeSubscriptionAccounts = &adminv1.AdminListSubscriptionAccountsResponse{Accounts: []*commonv1.SubscriptionAccountSummary{}, Total: 0}
-	}
+	summary := svc.LoadSummary(r.Context())
+	users := summary.Users
+	channels := summary.Channels
+	stats := summary.Stats
+	subscriptionAccounts := summary.SubscriptionAccounts
+	activeUsers := summary.ActiveUsers
+	activeChannels := summary.ActiveChannels
+	activeSubscriptionAccounts := summary.ActiveSubscriptionAccounts
+	paymentOrders := summary.PaymentOrders
+	reconciliation := summary.Reconciliation
+	options := summary.Options
+	topModels := summary.TopModels
+	topChannels := summary.TopChannels
+	topUsers := summary.TopUsers
+	topTokens := summary.TopTokens
+	topSubscriptionAccounts := summary.TopSubscriptionAccounts
+	topSubscriptionAccountQuotaEvents := summary.TopSubscriptionAccountQuotaEvents
+	recentLogs := summary.RecentLogs
+	recentLogsTotal := summary.RecentLogsTotal
+	enrichmentChannels := summary.EnrichmentChannels
+	enrichmentAccounts := summary.EnrichmentAccounts
 
 	requestCount := int64(0)
 	quotaUsed := int64(0)
@@ -949,7 +855,7 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		configuredModels = len(oneAPIChannelModelCatalog())
 	}
 
-	writeJSON(w, http.StatusOK, apiResponse(true, "", map[string]any{
+	data := map[string]any{
 		"totals": map[string]any{
 			"users":                        users.GetTotal(),
 			"active_users":                 activeUsers.GetTotal(),
@@ -984,7 +890,9 @@ func handleAdminSummary(w http.ResponseWriter, r *http.Request, svc *service.Adm
 		"model_catalog":                         oneAPIChannelModelCatalog(),
 		"pricing_options":                       optionsByKey(options, "ModelRatio", "CompletionRatio", "ModelPrice", "GroupRatio", "AmountPerUnit"),
 		"payment_summary":                       paymentSummaryFromOrders(paymentOrders),
-	}))
+	}
+	applySummaryAvailability(data, summary.Sections)
+	writeJSON(w, http.StatusOK, apiResponse(true, "", data))
 }
 
 func costAnalysisSummary(quotaUsed, upstreamCost, grossProfit int64) map[string]any {

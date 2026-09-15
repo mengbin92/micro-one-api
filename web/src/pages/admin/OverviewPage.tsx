@@ -22,20 +22,20 @@ import {
 import { locale, t } from '@/lib/i18n';
 
 interface AdminTotals {
-  users?: number;
-  active_users?: number;
-  channels?: number;
-  active_channels?: number;
-  configured_models?: number;
-  request_count?: number;
-  quota_used?: number;
-  upstream_cost?: number;
-  gross_profit?: number;
-  channel_balance?: number;
-  stale_balance_channels?: number;
-  log_count?: number;
-  subscription_accounts?: number;
-  active_subscription_accounts?: number;
+  users?: number | null;
+  active_users?: number | null;
+  channels?: number | null;
+  active_channels?: number | null;
+  configured_models?: number | null;
+  request_count?: number | null;
+  quota_used?: number | null;
+  upstream_cost?: number | null;
+  gross_profit?: number | null;
+  channel_balance?: number | null;
+  stale_balance_channels?: number | null;
+  log_count?: number | null;
+  subscription_accounts?: number | null;
+  active_subscription_accounts?: number | null;
 }
 
 interface AdminUser {
@@ -118,27 +118,30 @@ interface ReconciliationSummary {
 }
 
 interface AdminSummary {
+  partial?: boolean;
+  alerts_complete?: boolean;
+  sections?: Record<string, { available: boolean; reason?: 'timeout' | 'canceled' | 'unavailable' }>;
   totals?: AdminTotals;
-  recent_users?: AdminUser[];
-  channels?: AdminChannel[];
-  subscription_accounts?: RawSubscriptionAccount[];
-  recent_logs?: AdminLog[];
-  cost_analysis?: CostAnalysis;
-  top_models?: UsageAggregateItem[];
-  top_channels?: UsageAggregateItem[];
-  top_users?: UsageAggregateItem[];
-  top_tokens?: UsageAggregateItem[];
-  top_subscription_accounts?: UsageAggregateItem[];
+  recent_users?: AdminUser[] | null;
+  channels?: AdminChannel[] | null;
+  subscription_accounts?: RawSubscriptionAccount[] | null;
+  recent_logs?: AdminLog[] | null;
+  cost_analysis?: CostAnalysis | null;
+  top_models?: UsageAggregateItem[] | null;
+  top_channels?: UsageAggregateItem[] | null;
+  top_users?: UsageAggregateItem[] | null;
+  top_tokens?: UsageAggregateItem[] | null;
+  top_subscription_accounts?: UsageAggregateItem[] | null;
   alerts?: SummaryAlert[];
-  latest_reconciliation?: ReconciliationSummary;
+  latest_reconciliation?: ReconciliationSummary | null;
   model_catalog?: Array<{ id?: string; owned_by?: string }>;
-  pricing_options?: Record<string, string>;
+  pricing_options?: Record<string, string> | null;
   payment_summary?: {
     recent_order_count?: number;
     recent_amount?: number;
     recent_amount_cents?: number;
     recent_amount_money_cents?: number;
-  };
+  } | null;
 }
 
 const PROVIDER_NAMES: Record<number, string> = {
@@ -270,11 +273,11 @@ function numberValue(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function formatQuota(value?: number | string, quotaPerUnit?: number) {
-  return quotaToCurrencyUnits(value, quotaPerUnit).toFixed(4);
+function formatQuota(value?: number | string | null, quotaPerUnit?: number) {
+  return quotaToCurrencyUnits(value ?? undefined, quotaPerUnit).toFixed(4);
 }
 
-function formatInteger(value?: number): string {
+function formatInteger(value?: number | null): string {
   return numberValue(value).toLocaleString(locale());
 }
 
@@ -507,14 +510,39 @@ function TopUsageList({
   );
 }
 
+const summarySectionLabels: Record<string, string> = {
+  users: '最近用户', active_users: '启用用户', channels: '上游供应商',
+  active_channels: '启用渠道', subscription_accounts: '订阅账号',
+  active_subscription_accounts: '启用账号', usage_stats: '用量统计',
+  recent_logs: '最近调用与订单动态', payment_orders: '账务记录',
+  reconciliation: '最近对账', pricing_options: '定价配置',
+  top_models: '模型消耗排行', top_channels: '渠道消耗排行',
+  top_users: '用户消耗排行', top_tokens: 'Token 消耗排行',
+  top_subscription_accounts: '订阅账号消耗排行',
+  top_subscription_account_quota_events: '订阅账号额度事件',
+  channel_names: '渠道名称', subscription_account_names: '订阅账号名称',
+};
+
+function UnavailableSection() {
+  return <EmptyState title={t('数据暂不可用')} description={t('部分数据加载失败，请重试。')} />;
+}
+
 export function AdminOverviewPage() {
   const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['admin-summary'],
-    queryFn: async () => {
-      const res = await adminApiClient.get('/admin/summary');
+    queryFn: async ({ signal }) => {
+      const res = await adminApiClient.get('/admin/summary', { signal, timeout: 10_000 });
       return unwrapApiData<AdminSummary>(res.data);
     },
+    retry: false,
   });
+
+  const unavailable = (...sections: string[]) => sections.some((key) => data?.sections?.[key]?.available === false);
+  const summaryValue = (section: string, value: string) => isLoading ? '—' : unavailable(section) ? t('暂不可用') : value;
+  const unavailableLabels = Object.entries(data?.sections ?? {})
+    .filter(([, state]) => !state.available)
+    .map(([key]) => t(summarySectionLabels[key] ?? '数据暂不可用'));
+  const alertsIncomplete = data?.alerts_complete === false;
 
   // Render clock derived from the query fetch time (pure render).
   const nowUnix = dataUpdatedAt ? Math.floor(dataUpdatedAt / 1000) : 0;
@@ -545,16 +573,17 @@ export function AdminOverviewPage() {
 
   const rankingTabs: Array<{
     key: TopUsageKind;
+    sections: string[];
     label: string;
     items: UsageAggregateItem[];
     emptyTitle: string;
     emptyDescription: string;
   }> = [
-    { key: 'user', label: t("用户"), items: topUsers, emptyTitle: t("暂无用户用量"), emptyDescription: t("产生调用后会显示高消耗用户。") },
-    { key: 'model', label: t("模型"), items: topModels, emptyTitle: t("暂无模型用量"), emptyDescription: t("产生调用后会显示模型消耗排行。") },
-    { key: 'channel', label: t("渠道"), items: topChannels, emptyTitle: t("暂无渠道用量"), emptyDescription: t("渠道产生调用后会显示消耗排行。") },
-    { key: 'token', label: 'Token', items: topTokens, emptyTitle: t("暂无 Token 用量"), emptyDescription: t("API Token 产生调用后会显示消耗排行。") },
-    { key: 'subscription_account', label: t("订阅账号"), items: topSubscriptionAccounts, emptyTitle: t("暂无订阅账号用量"), emptyDescription: t("订阅账号产生调用后会显示消耗排行。") },
+    { key: 'user', sections: ['top_users'], label: t("用户"), items: topUsers, emptyTitle: t("暂无用户用量"), emptyDescription: t("产生调用后会显示高消耗用户。") },
+    { key: 'model', sections: ['top_models'], label: t("模型"), items: topModels, emptyTitle: t("暂无模型用量"), emptyDescription: t("产生调用后会显示模型消耗排行。") },
+    { key: 'channel', sections: ['top_channels'], label: t("渠道"), items: topChannels, emptyTitle: t("暂无渠道用量"), emptyDescription: t("渠道产生调用后会显示消耗排行。") },
+    { key: 'token', sections: ['top_tokens'], label: 'Token', items: topTokens, emptyTitle: t("暂无 Token 用量"), emptyDescription: t("API Token 产生调用后会显示消耗排行。") },
+    { key: 'subscription_account', sections: ['top_subscription_accounts', 'top_subscription_account_quota_events'], label: t("订阅账号"), items: topSubscriptionAccounts, emptyTitle: t("暂无订阅账号用量"), emptyDescription: t("订阅账号产生调用后会显示消耗排行。") },
   ];
   if (isError) {
     return (
@@ -575,6 +604,16 @@ export function AdminOverviewPage() {
           <p className="mt-1 text-sm font-medium text-muted-foreground">{t("按业务域进入管理，先处理异常，再查看运营指标。")}</p>
         </div>
       </div>
+
+      {data?.partial && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div>
+            <p className="font-semibold">{t('部分数据暂不可用')}</p>
+            <p className="mt-1 text-muted-foreground">{unavailableLabels.join('、')}</p>
+          </div>
+          <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>{t('重试')}</Button>
+        </div>
+      )}
 
       {isLoading ? (
         <Card>
@@ -607,17 +646,23 @@ export function AdminOverviewPage() {
         </Card>
       ) : (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 text-sm">
-          <span className="flex items-center gap-2 font-medium text-emerald-600 dark:text-emerald-300">
-            <CheckCircle2 className="size-4" />{t("运行正常，暂无告警")}
+          {alertsIncomplete ? (
+            <span className="flex items-center gap-2 font-medium text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="size-4" />{t('告警数据不完整，暂时无法确认运行状态')}
+            </span>
+          ) : (
+            <span className="flex items-center gap-2 font-medium text-emerald-600 dark:text-emerald-300">
+              <CheckCircle2 className="size-4" />{t("运行正常，暂无告警")}
+            </span>
+          )}
+          <span className="text-muted-foreground">
+            {t("渠道余额")} <span className="font-semibold text-foreground">{summaryValue("channels", `$${numberValue(totals.channel_balance).toFixed(2)}`)}</span>
           </span>
           <span className="text-muted-foreground">
-            {t("渠道余额")} <span className="font-semibold text-foreground">${numberValue(totals.channel_balance).toFixed(2)}</span>
+            {t("可用模型")} <span className="font-semibold text-foreground">{summaryValue("channels", String(configuredModels))}</span>
           </span>
           <span className="text-muted-foreground">
-            {t("可用模型")} <span className="font-semibold text-foreground">{configuredModels}</span>
-          </span>
-          <span className="text-muted-foreground">
-            {latestReconciliation?.run_id ? t(`最近对账 #${latestReconciliation.run_id}`) : t("暂无对账记录")}
+            {summaryValue("reconciliation", latestReconciliation?.run_id ? t(`最近对账 #${latestReconciliation.run_id}`) : t("暂无对账记录"))}
           </span>
           {latestReconciliation?.run_id ? (
             <Link to="/admin/reconciliation" className="font-medium text-foreground hover:underline">{t("查看对账")}</Link>
@@ -628,53 +673,53 @@ export function AdminOverviewPage() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title={t("用户")}
-          value={formatInteger(totals.users)}
-          detail={t(`${formatInteger(totals.active_users)} 个启用用户`)}
+          value={summaryValue("users", formatInteger(totals.users))}
+          detail={summaryValue("active_users", t(`${formatInteger(totals.active_users)} 个启用用户`))}
           icon={Users}
         />
         <StatCard
           title={t("上游供应商")}
-          value={formatInteger(totals.channels)}
-          detail={t(`${formatInteger(totals.active_channels)} 个启用渠道`)}
+          value={summaryValue("channels", formatInteger(totals.channels))}
+          detail={summaryValue("active_channels", t(`${formatInteger(totals.active_channels)} 个启用渠道`))}
           icon={Database}
         />
         <StatCard
           title={t("订阅账号")}
-          value={formatInteger(totals.subscription_accounts)}
-          detail={t(`${formatInteger(totals.active_subscription_accounts)} 个启用账号`)}
+          value={summaryValue("subscription_accounts", formatInteger(totals.subscription_accounts))}
+          detail={summaryValue("active_subscription_accounts", t(`${formatInteger(totals.active_subscription_accounts)} 个启用账号`))}
           icon={KeyRound}
         />
         <StatCard
           title={t("调用请求")}
-          value={formatInteger(totals.request_count)}
-          detail={t(`${formatInteger(totals.log_count)} 条账务日志`)}
+          value={summaryValue("usage_stats", formatInteger(totals.request_count))}
+          detail={summaryValue("recent_logs", t(`${formatInteger(totals.log_count)} 条账务日志`))}
           icon={Activity}
         />
         <CostCard
           title={t("用户侧收入")}
-          value={formatQuota(costAnalysis.revenue_quota ?? totals.quota_used, quotaPerUnit)}
+          value={summaryValue("usage_stats", formatQuota(costAnalysis.revenue_quota ?? totals.quota_used, quotaPerUnit))}
           detail={t("consume 账本计费金额")}
           icon={TrendingUp}
           tone="green"
         />
         <CostCard
           title={t("上游成本")}
-          value={formatQuota(costAnalysis.upstream_cost ?? totals.upstream_cost, quotaPerUnit)}
+          value={summaryValue("usage_stats", formatQuota(costAnalysis.upstream_cost ?? totals.upstream_cost, quotaPerUnit))}
           detail={t("渠道侧成本汇总")}
           icon={Database}
           tone="blue"
         />
         <CostCard
           title={t("毛利")}
-          value={formatQuota(costAnalysis.gross_profit ?? totals.gross_profit, quotaPerUnit)}
-          detail={t(`毛利率 ${formatMargin(costAnalysis.gross_margin)}`)}
+          value={summaryValue("usage_stats", formatQuota(costAnalysis.gross_profit ?? totals.gross_profit, quotaPerUnit))}
+          detail={summaryValue("usage_stats", t(`毛利率 ${formatMargin(costAnalysis.gross_margin)}`))}
           icon={LineChart}
           tone={numberValue(costAnalysis.gross_profit ?? totals.gross_profit) >= 0 ? 'green' : 'red'}
         />
         <StatCard
           title={t("账务记录")}
-          value={formatMoneyCents(paymentAmountCents)}
-          detail={t(`${formatInteger(data?.payment_summary?.recent_order_count)} 条近期充值/兑换/退款`)}
+          value={summaryValue("payment_orders", formatMoneyCents(paymentAmountCents))}
+          detail={summaryValue("payment_orders", t(`${formatInteger(data?.payment_summary?.recent_order_count)} 条近期充值/兑换/退款`))}
           icon={CreditCard}
         />
       </div>
@@ -719,14 +764,14 @@ export function AdminOverviewPage() {
           </CardHeader>
           {rankingTabs.map((tab) => (
             <Tabs.Panel key={tab.key} value={tab.key} className="p-4">
-              <TopUsageList
+              {unavailable(...tab.sections) ? <UnavailableSection /> : <TopUsageList
                 kind={tab.key}
                 items={tab.items}
                 isLoading={isLoading}
                 emptyTitle={tab.emptyTitle}
                 emptyDescription={tab.emptyDescription}
                 quotaPerUnit={quotaPerUnit}
-              />
+              />}
             </Tabs.Panel>
           ))}
         </Tabs.Root>
@@ -742,6 +787,8 @@ export function AdminOverviewPage() {
               <div className="p-4">
                 <TableSkeleton columns={[t("渠道"), t("供应商"), t("模型"), t("状态"), t("余额")]} rows={5} />
               </div>
+            ) : unavailable("channels") ? (
+              <UnavailableSection />
             ) : channels.length === 0 ? (
               <EmptyState title={t("暂无渠道")} description={t("创建上游渠道后会显示在这里。")} />
             ) : (
@@ -782,6 +829,8 @@ export function AdminOverviewPage() {
               <div className="p-4">
                 <TableSkeleton columns={[t("名称"), t("平台"), t("路由分组"), t("优先级"), t("过期"), t("状态")]} rows={5} />
               </div>
+            ) : unavailable("subscription_accounts") ? (
+              <UnavailableSection />
             ) : subscriptionAccounts.length === 0 ? (
               <EmptyState title={t("暂无订阅账号")} description={t("新建 Claude / Codex 订阅账号后会显示在这里。")} />
             ) : (
@@ -858,6 +907,8 @@ export function AdminOverviewPage() {
               <div className="p-4">
                 <TableSkeleton columns={[t("用户"), t("类型"), t("模型"), t("费用"), t("端点"), t("时间")]} rows={8} />
               </div>
+            ) : unavailable("recent_logs") ? (
+              <UnavailableSection />
             ) : logs.length === 0 ? (
               <EmptyState title={t("暂无流水")} description={t("用户调用、充值、兑换或退款后会显示在这里。")} />
             ) : (
@@ -913,6 +964,8 @@ export function AdminOverviewPage() {
               <div className="p-4">
                 <TableSkeleton columns={[t("用户"), t("路由分组"), t("状态")]} rows={5} />
               </div>
+            ) : unavailable("users") ? (
+              <UnavailableSection />
             ) : users.length === 0 ? (
               <EmptyState title={t("暂无用户")} description={t("注册或创建用户后会显示在这里。")} />
             ) : (
