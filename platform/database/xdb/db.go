@@ -22,8 +22,9 @@ import (
 	// Register the CGO-backed SQLite driver as the canonical
 	// "sqlite3" database/sql driver. The GORM open path uses
 	// gorm.io/driver/sqlite, which under the hood also imports this
-	// package, so the driver is registered exactly once.
-	_ "github.com/mattn/go-sqlite3"
+	// package, so the driver is registered exactly once. Imported
+	// non-blank for sqlite3.Error / sqlite3.ErrBusy in IsSQLiteBusy.
+	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 // Driver names accepted by Open / OpenSQL.
@@ -400,22 +401,20 @@ func defaultSQLite3Pragmas() []string {
 // DSN does not already specify it (honouring the driver's aliases), so a
 // deployment DSN always wins.
 //
-// _txlock=immediate is the load-bearing default (routing acceptance v0.30.0,
-// sqlite3 lane): gorm Transaction() begins DEFERRED transactions, so a
-// read-modify-write transaction (billing MarkOrderPaid: SELECT payment_orders
-// -> grant subscription -> UPDATE payment_orders) first takes a WAL read
-// snapshot and only upgrades to a write at its first write. When any other
-// connection commits in that window — on the shared-file lite/e2e topology
-// every service and the runner write the same SQLite file — the upgrade fails
-// immediately with SQLITE_BUSY_SNAPSHOT ("database is locked"), which
-// busy_timeout cannot resolve because waiting cannot un-stale a snapshot.
-// BEGIN IMMEDIATE acquires the write lock before the first read, so the
-// snapshot can never go stale; concurrent writers queue on busy_timeout
-// exactly like the MySQL row-lock serialisation the same code expects.
+// Deliberately NOT defaulted: _txlock=immediate. gorm Transaction() begins
+// DEFERRED, so a read-then-write transaction can fail with SQLITE_BUSY_SNAPSHOT
+// ("database is locked") when another connection commits between its read and
+// its first write — busy_timeout cannot resolve that (run 34939990807, billing
+// MarkOrderPaid). But defaulting every transaction to BEGIN IMMEDIATE acquires
+// the single SQLite write lock for EVERY transaction, including read-only ones,
+// file-wide across all services; on the shared-file lite/e2e topology (9
+// services, one database) that serialises the whole stack behind one lock and
+// starved gRPC calls past their deadlines (run 34943654594, "context deadline
+// exceeded" on subscription purchase). Transactions therefore stay DEFERRED and
+// the exposed read-then-write seams retry on SQLITE_BUSY via RetryTxOnBusy.
 func withSQLite3Pragmas(dsn string) string {
 	defaults := []struct{ param, alias, value string }{
 		{"_journal_mode", "_journal", "WAL"},
-		{"_txlock", "", "immediate"},
 		{"_busy_timeout", "_busy", "5000"},
 		{"_foreign_keys", "_fk", "on"},
 	}
@@ -451,6 +450,64 @@ func sqlite3OpenPragmas(dsn string) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+// IsSQLiteBusy reports whether err is an SQLite write contention failure —
+// either plain SQLITE_BUSY (busy_timeout expired while waiting for the write
+// lock) or SQLITE_BUSY_SNAPSHOT (a DEFERRED read-then-write transaction whose
+// WAL snapshot was staled by a concurrent commit; the busy handler returns it
+// immediately because waiting cannot un-stale a snapshot). mattn/go-sqlite3
+// surfaces both as ErrNo 5 with the message "database is locked".
+//
+// The string fallback covers errors wrapped/re-marshalled above the driver
+// (gorm, fmt.Errorf %w chains keep the message; gRPC proxies re-wrap it too).
+func IsSQLiteBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite3.ErrBusy {
+		return true
+	}
+	return strings.Contains(err.Error(), "database is locked")
+}
+
+// RetryTxOnBusy runs fn inside db.Transaction and retries the WHOLE
+// transaction when it fails with SQLite write contention (IsSQLiteBusy).
+//
+// Why a whole-transaction retry: SQLITE_BUSY_SNAPSHOT poisons the running
+// transaction — statement-level retries cannot recover it. A rollback and
+// replay re-reads a fresh snapshot, which is exactly the convergence SQLite's
+// documentation prescribes. The callback must therefore be replay-safe: only
+// use it around transactions whose effects live entirely inside the
+// transaction (standard gorm Transaction usage), so a failed attempt has
+// committed nothing.
+//
+// Retries stop early on context cancellation so a caller's deadline is
+// respected. attempts <= 1 means a single attempt (plain Transaction).
+func RetryTxOnBusy(ctx context.Context, db *gorm.DB, attempts int, fn func(tx *gorm.DB) error) error {
+	if attempts < 1 {
+		attempts = 1
+	}
+	db = db.WithContext(ctx)
+	var err error
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			// Small fixed backoff: contention windows on the shared-file
+			// topology are milliseconds; sleeping far longer than the
+			// competing write would just add latency.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(i) * 10 * time.Millisecond):
+			}
+		}
+		err = db.Transaction(fn)
+		if err == nil || !IsSQLiteBusy(err) {
+			return err
+		}
+	}
+	return err
 }
 
 // ResolveSchema picks the effective schema for a service connection.

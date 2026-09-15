@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/database/xdb"
 
 	"gorm.io/gorm"
 )
@@ -41,8 +42,12 @@ func NewTxRunner(d *Data) biz.TxRunner {
 
 // RunInTx runs fn inside a database transaction. gorm commits when fn returns
 // nil and rolls back on any non-nil error.
+//
+// Retried on SQLite write contention for the same reason as the domain
+// runner: read-then-write callbacks cannot survive a stale WAL snapshot on
+// the shared-file topology, and a rolled-back attempt commits nothing.
 func (r *runner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx biz.Tx) error) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return xdb.RetryTxOnBusy(ctx, r.db, 3, func(tx *gorm.DB) error {
 		return fn(ctx, &gormTx{db: tx})
 	})
 }

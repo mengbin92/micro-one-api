@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"micro-one-api/domain/subscription/biz"
+	"micro-one-api/platform/database/xdb"
 
 	"gorm.io/gorm"
 )
@@ -41,8 +42,17 @@ func NewTxRunner(r *Repository) biz.TxRunner { return &runner{db: r.db} }
 // RunInTx runs fn inside a database transaction. gorm commits when fn
 // returns nil and rolls back on any non-nil error, so the biz callback only
 // has to signal success/failure — it never manages Begin/Commit/Rollback.
+//
+// The transaction is retried on SQLite write contention ("database is
+// locked"): the assign/change flows this runner serves read the active
+// subscription before writing it, so on the shared-file SQLite topology
+// (every service on one database) a concurrent cross-service commit between
+// the read and the first write stales the WAL snapshot and SQLite fails the
+// upgrade immediately (SQLITE_BUSY_SNAPSHOT; busy_timeout cannot fix a stale
+// snapshot). A failed attempt has committed nothing and the callback re-reads
+// its guards each run, so replaying is safe. On MySQL the retry never fires.
 func (r *runner) RunInTx(ctx context.Context, fn func(ctx context.Context, tx biz.Tx) error) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return xdb.RetryTxOnBusy(ctx, r.db, 3, func(tx *gorm.DB) error {
 		return fn(ctx, &gormTx{db: tx})
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"micro-one-api/app/billing/internal/biz"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/database/xdb"
 )
 
 type commerceReceipt struct {
@@ -25,7 +26,12 @@ func NewSubscriptionCommerceRepo(d *Data) biz.SubscriptionCommerceRepo {
 }
 func (r *subscriptionCommerceRepo) Execute(ctx context.Context, user int64, request, hash string, fn func(context.Context, subscriptionbiz.Tx) (*biz.SubscriptionCommerceResult, error)) (*biz.SubscriptionCommerceResult, error) {
 	var result *biz.SubscriptionCommerceResult
-	err := r.data.DB().WithContext(ctx).Transaction(func(db *gorm.DB) error {
+	// Retry on SQLite write contention ("database is locked"): the receipt
+	// insert makes this transaction a writer from the start, so plain
+	// busy-timeout expiry under cross-service load is the exposure; a failed
+	// attempt commits nothing and the receipt idempotency row lives inside
+	// the transaction, so replaying is safe.
+	runTx := func(db *gorm.DB) error {
 		row := commerceReceipt{UserID: user, RequestID: request, RequestHash: hash}
 		if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
 			return err
@@ -52,6 +58,7 @@ func (r *subscriptionCommerceRepo) Execute(ctx context.Context, user int64, requ
 			return err
 		}
 		return db.Model(&commerceReceipt{}).Where("user_id = ? AND request_id = ?", user, request).Update("result", string(raw)).Error
-	})
+	}
+	err := xdb.RetryTxOnBusy(ctx, r.data.DB(), 3, runTx)
 	return result, err
 }
