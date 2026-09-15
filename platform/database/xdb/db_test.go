@@ -153,13 +153,16 @@ func TestWithSQLite3Pragmas(t *testing.T) {
 		dsn  string
 		want string
 	}{
-		{name: "file DSN existing parameters", dsn: "file:/tmp/app.db?_busy_timeout=5000&_foreign_keys=on", want: "file:/tmp/app.db?_busy_timeout=5000&_foreign_keys=on&_journal_mode=WAL"},
-		{name: "file DSN no parameters", dsn: "file:/tmp/app.db", want: "file:/tmp/app.db?_journal_mode=WAL"},
-		{name: "path DSN existing parameters", dsn: "/tmp/app.db?_busy_timeout=5000", want: "/tmp/app.db?_busy_timeout=5000&_journal_mode=WAL"},
-		{name: "path DSN no parameters", dsn: "/tmp/app.db", want: "/tmp/app.db?_journal_mode=WAL"},
-		{name: "path explicit journal preserved", dsn: "/tmp/app.db?_journal_mode=DELETE", want: "/tmp/app.db?_journal_mode=DELETE"},
-		{name: "journal alias preserved", dsn: "file:/tmp/app.db?_journal=MEMORY", want: "file:/tmp/app.db?_journal=MEMORY"},
-		{name: "explicit journal mode preserved", dsn: "file:/tmp/app.db?_journal_mode=DELETE", want: "file:/tmp/app.db?_journal_mode=DELETE"},
+		{name: "file DSN existing parameters", dsn: "file:/tmp/app.db?_busy_timeout=5000&_foreign_keys=on", want: "file:/tmp/app.db?_busy_timeout=5000&_foreign_keys=on&_journal_mode=WAL&_txlock=immediate"},
+		{name: "file DSN no parameters", dsn: "file:/tmp/app.db", want: "file:/tmp/app.db?_journal_mode=WAL&_txlock=immediate&_busy_timeout=5000&_foreign_keys=on"},
+		{name: "path DSN existing parameters", dsn: "/tmp/app.db?_busy_timeout=5000", want: "/tmp/app.db?_busy_timeout=5000&_journal_mode=WAL&_txlock=immediate&_foreign_keys=on"},
+		{name: "path DSN no parameters", dsn: "/tmp/app.db", want: "/tmp/app.db?_journal_mode=WAL&_txlock=immediate&_busy_timeout=5000&_foreign_keys=on"},
+		{name: "path explicit journal preserved", dsn: "/tmp/app.db?_journal_mode=DELETE", want: "/tmp/app.db?_journal_mode=DELETE&_txlock=immediate&_busy_timeout=5000&_foreign_keys=on"},
+		{name: "journal alias preserved", dsn: "file:/tmp/app.db?_journal=MEMORY", want: "file:/tmp/app.db?_journal=MEMORY&_txlock=immediate&_busy_timeout=5000&_foreign_keys=on"},
+		{name: "explicit journal mode preserved", dsn: "file:/tmp/app.db?_journal_mode=DELETE", want: "file:/tmp/app.db?_journal_mode=DELETE&_txlock=immediate&_busy_timeout=5000&_foreign_keys=on"},
+		{name: "explicit txlock preserved", dsn: "file:/tmp/app.db?_txlock=deferred", want: "file:/tmp/app.db?_txlock=deferred&_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on"},
+		{name: "busy alias preserved", dsn: "file:/tmp/app.db?_busy=8000", want: "file:/tmp/app.db?_busy=8000&_journal_mode=WAL&_txlock=immediate&_foreign_keys=on"},
+		{name: "foreign keys alias preserved", dsn: "file:/tmp/app.db?_fk=off", want: "file:/tmp/app.db?_fk=off&_journal_mode=WAL&_txlock=immediate&_busy_timeout=5000"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

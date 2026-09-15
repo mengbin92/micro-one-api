@@ -123,16 +123,17 @@ func OpenSQLWithPool(driver, dsn string, pool *PoolConfig) (*sql.DB, error) {
 			pool = SQLite3PoolConfig()
 		}
 		// Open with the registered "sqlite3" driver (mattn/go-sqlite3).
-		// Pragmas are connection-local; the DSN should therefore carry the
-		// deployment's required settings. Apply the defaults once on the
-		// initial connection as a compatibility fallback for callers that
-		// hand-built a minimal DSN.
+		// The defaults (journal mode, txlock, busy timeout, foreign keys)
+		// are carried in the DSN so every physical connection — including
+		// ones opened after a pool recycle — applies them. The one-shot
+		// PRAGMAs below remain as a compatibility fallback for callers
+		// that hand-built a minimal DSN, minus any default the DSN pins.
 		db, err := sql.Open("sqlite3", withSQLite3Pragmas(dsn))
 		if err != nil {
 			return nil, err
 		}
 		applyPool(db, pool)
-		for _, pragma := range defaultSQLite3Pragmas() {
+		for _, pragma := range sqlite3OpenPragmas(dsn) {
 			if _, err := db.Exec(pragma); err != nil {
 				_ = db.Close()
 				return nil, err
@@ -309,7 +310,9 @@ func openSQLite3(dsn string, pool *PoolConfig, pragmas []string) (*gorm.DB, erro
 		return nil, err
 	}
 	if len(pragmas) == 0 {
-		pragmas = defaultSQLite3Pragmas()
+		// Same DSN-aware default set OpenSQLWithPool applies, so the
+		// explicit-pragma path cannot downgrade a DSN-pinned busy timeout.
+		pragmas = sqlite3OpenPragmas(dsn)
 	}
 	for _, p := range pragmas {
 		if _, err := sqlDB.Exec(p); err != nil {
@@ -389,19 +392,65 @@ func defaultSQLite3Pragmas() []string {
 	}
 }
 
-// withSQLite3Pragmas carries the default journal mode into every physical
-// connection. Preserve an explicit mode, including mattn/go-sqlite3's alias.
-// The remaining defaults are applied by OpenSQLWithPool; deployments that
-// need connection-local settings on recycled connections should supply them
-// in the DSN, as the lite compose example does.
+// withSQLite3Pragmas carries the connection-scoped defaults into every
+// physical SQLite connection as mattn/go-sqlite3 DSN parameters. Unlike the
+// one-shot PRAGMAs executed at open time, DSN parameters are reapplied by the
+// driver on every (re)connect, so pooled connections recycled after
+// ConnMaxIdleTime keep the settings. Each parameter is appended only when the
+// DSN does not already specify it (honouring the driver's aliases), so a
+// deployment DSN always wins.
+//
+// _txlock=immediate is the load-bearing default (routing acceptance v0.30.0,
+// sqlite3 lane): gorm Transaction() begins DEFERRED transactions, so a
+// read-modify-write transaction (billing MarkOrderPaid: SELECT payment_orders
+// -> grant subscription -> UPDATE payment_orders) first takes a WAL read
+// snapshot and only upgrades to a write at its first write. When any other
+// connection commits in that window — on the shared-file lite/e2e topology
+// every service and the runner write the same SQLite file — the upgrade fails
+// immediately with SQLITE_BUSY_SNAPSHOT ("database is locked"), which
+// busy_timeout cannot resolve because waiting cannot un-stale a snapshot.
+// BEGIN IMMEDIATE acquires the write lock before the first read, so the
+// snapshot can never go stale; concurrent writers queue on busy_timeout
+// exactly like the MySQL row-lock serialisation the same code expects.
 func withSQLite3Pragmas(dsn string) string {
-	if strings.Contains(dsn, "_journal_mode=") || strings.Contains(dsn, "_journal=") {
-		return dsn
+	defaults := []struct{ param, alias, value string }{
+		{"_journal_mode", "_journal", "WAL"},
+		{"_txlock", "", "immediate"},
+		{"_busy_timeout", "_busy", "5000"},
+		{"_foreign_keys", "_fk", "on"},
 	}
-	if strings.Contains(dsn, "?") {
-		return dsn + "&_journal_mode=WAL"
+	out := dsn
+	for _, d := range defaults {
+		if strings.Contains(out, d.param+"=") {
+			continue
+		}
+		if d.alias != "" && strings.Contains(out, d.alias+"=") {
+			continue
+		}
+		sep := "?"
+		if strings.Contains(out, "?") {
+			sep = "&"
+		}
+		out += sep + d.param + "=" + d.value
 	}
-	return dsn + "?_journal_mode=WAL"
+	return out
+}
+
+// sqlite3OpenPragmas returns the PRAGMAs to execute once at open time. The
+// busy_timeout default is dropped when the DSN already pins a timeout
+// (_busy_timeout/_busy): executing it anyway would silently downgrade a
+// deployment-configured timeout on the initial pooled connection (the
+// routing e2e sets 10s; the unconditional PRAGMA used to reset it to 5s).
+func sqlite3OpenPragmas(dsn string) []string {
+	out := make([]string, 0, len(defaultSQLite3Pragmas()))
+	for _, p := range defaultSQLite3Pragmas() {
+		if strings.HasPrefix(p, "PRAGMA busy_timeout") &&
+			(strings.Contains(dsn, "_busy_timeout=") || strings.Contains(dsn, "_busy=")) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // ResolveSchema picks the effective schema for a service connection.
