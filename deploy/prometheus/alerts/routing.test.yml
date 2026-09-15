@@ -1,0 +1,184 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 15s
+tests:
+  - name: redis outage fires and recovery clears delivery and backlog alerts
+    interval: 15s
+    input_series:
+      - series: 'micro_one_api_routing_outbox_pending{job="micro-one-api",instance="identity-service:8001",owner="identity"}'
+        values: '1+0x10 0+0x10'
+      - series: 'micro_one_api_routing_outbox_oldest_pending_age_seconds{job="micro-one-api",instance="identity-service:8001",owner="identity"}'
+        values: '0+15x10 0+0x10'
+      - series: 'micro_one_api_routing_outbox_failures_total{job="micro-one-api",instance="identity-service:8001",owner="identity",operation="publish"}'
+        values: '0+1x10 10+0x10'
+    alert_rule_test:
+      - eval_time: 15s
+        alertname: RoutingOutboxDeliveryFailing
+        exp_alerts: []
+      - eval_time: 2m30s
+        alertname: RoutingOutboxDeliveryFailing
+        exp_alerts:
+          - exp_labels:
+              job: micro-one-api
+              instance: identity-service:8001
+              owner: identity
+              operation: publish
+              severity: warning
+            exp_annotations:
+              summary: Routing outbox delivery failing
+              description: 'identity-service:8001 owner=identity cannot publish pending invalidations. Check Redis and routing outbox operation logs; see routing-observability-runbook.md.'
+      - eval_time: 2m30s
+        alertname: RoutingOutboxBacklog
+        exp_alerts:
+          - exp_labels:
+              job: micro-one-api
+              instance: identity-service:8001
+              owner: identity
+              severity: warning
+            exp_annotations:
+              summary: Routing outbox backlog is aging
+              description: 'identity-service:8001 owner=identity oldest pending event is 150 seconds old. Check publish/acknowledge failures and database availability.'
+      - eval_time: 3m
+        alertname: RoutingOutboxDeliveryFailing
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: RoutingOutboxBacklog
+        exp_alerts: []
+  - name: idle worker has no delivery alert; stale scans are detected
+    interval: 15s
+    input_series:
+      - series: 'micro_one_api_routing_outbox_pending{instance="billing-service:8004",owner="subscription"}'
+        values: '0+0x12'
+      - series: 'micro_one_api_routing_outbox_oldest_pending_age_seconds{instance="billing-service:8004",owner="subscription"}'
+        values: '0+0x12'
+      - series: 'micro_one_api_routing_outbox_last_success_timestamp_seconds{instance="billing-service:8004",owner="subscription"}'
+        values: '0+0x12'
+      - series: 'micro_one_api_routing_outbox_last_scan_timestamp_seconds{instance="billing-service:8004",owner="subscription"}'
+        values: '0+0x12'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: RoutingOutboxDeliveryFailing
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: RoutingOutboxBacklog
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: RoutingOutboxScanStale
+        exp_alerts:
+          - exp_labels:
+              instance: billing-service:8004
+              owner: subscription
+              severity: warning
+            exp_annotations:
+              summary: Routing outbox pending scan is stale
+              description: 'billing-service:8004 owner=subscription has no successful scan for over 30s. Pending gauges may be stale; check database and worker logs.'
+  - name: first capability and snapshot failures fire then age out
+    interval: 15s
+    input_series:
+      - series: 'micro_one_api_routing_admission_rejected_total{instance="relay-gateway:8080",operation="reserve",reason="billing_capability"}'
+        values: '0 1+0x24'
+      - series: 'micro_one_api_routing_snapshot_validation_failures_total{instance="billing-service:8004",operation="read",reason="digest"}'
+        values: '0 1+0x24'
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: RoutingCapabilityRejected
+        exp_alerts:
+          - exp_labels:
+              instance: relay-gateway:8080
+              operation: reserve
+              reason: billing_capability
+              severity: warning
+            exp_annotations:
+              summary: Routing admission capability rejected
+              description: 'relay-gateway:8080 operation=reserve reason=billing_capability. Verify identity/channel/billing capability versions and consistent v2 gates.'
+      - eval_time: 30s
+        alertname: RoutingSnapshotValidationFailed
+        exp_alerts:
+          - exp_labels:
+              instance: billing-service:8004
+              operation: read
+              reason: digest
+              severity: critical
+            exp_annotations:
+              summary: Routing request snapshot validation failed
+              description: 'billing-service:8004 operation=read reason=digest. Preserve reservation evidence and investigate; never rewrite frozen billing snapshots.'
+      - eval_time: 6m
+        alertname: RoutingCapabilityRejected
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: RoutingSnapshotValidationFailed
+        exp_alerts: []
+  - name: unavailable metrics target fires and clears on scrape recovery
+    interval: 15s
+    input_series:
+      - series: 'up{job="micro-one-api",instance="identity-service:8001"}'
+        values: '0+0x8 1+0x4'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: RoutingMetricsTargetDown
+        exp_alerts:
+          - exp_labels:
+              job: micro-one-api
+              instance: identity-service:8001
+              severity: warning
+            exp_annotations:
+              summary: Routing metrics target unavailable
+              description: 'identity-service:8001 cannot be scraped. Restore the service or metrics endpoint before trusting routing/outbox gauges.'
+      - eval_time: 3m
+        alertname: RoutingMetricsTargetDown
+        exp_alerts: []
+  - name: storage and authority RPC failures are attributable
+    interval: 15s
+    input_series:
+      - series: 'micro_one_api_routing_outbox_failures_total{instance="channel-service:8002",owner="channel",operation="acknowledge"}'
+        values: '0+1x40'
+      - series: 'micro_one_api_dependency_grpc_latency_seconds_count{instance="relay-gateway:8080",service="channel-service",method="/api.channel.v1.ChannelService/GetRoutingGroup",status="Unavailable"}'
+        values: '0+2x40'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: RoutingOutboxStorageFailing
+        exp_alerts:
+          - exp_labels:
+              instance: channel-service:8002
+              owner: channel
+              operation: acknowledge
+              severity: warning
+            exp_annotations:
+              summary: Routing outbox storage operation failing
+              description: 'channel-service:8002 owner=channel operation=acknowledge failed. Check migrations, database permissions and connectivity.'
+      - eval_time: 5m
+        alertname: RoutingAuthorityRPCFailing
+        exp_alerts:
+          - exp_labels:
+              instance: relay-gateway:8080
+              service: channel-service
+              method: /api.channel.v1.ChannelService/GetRoutingGroup
+              status: Unavailable
+              severity: warning
+            exp_annotations:
+              summary: Routing authority RPC failures
+              description: 'relay-gateway:8080 dependency=channel-service method=/api.channel.v1.ChannelService/GetRoutingGroup status=Unavailable. Check the authority service and its database.'
+  - name: slow authority RPC has sustained latency alert
+    interval: 15s
+    input_series:
+      - series: 'micro_one_api_dependency_grpc_latency_seconds_bucket{instance="relay-gateway:8080",service="identity-service",method="/api.identity.v1.IdentityService/GetAuthSnapshot",status="OK",le="0.1"}'
+        values: '0+0x40'
+      - series: 'micro_one_api_dependency_grpc_latency_seconds_bucket{instance="relay-gateway:8080",service="identity-service",method="/api.identity.v1.IdentityService/GetAuthSnapshot",status="OK",le="1"}'
+        values: '0+2x40'
+      - series: 'micro_one_api_dependency_grpc_latency_seconds_bucket{instance="relay-gateway:8080",service="identity-service",method="/api.identity.v1.IdentityService/GetAuthSnapshot",status="OK",le="+Inf"}'
+        values: '0+2x40'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: RoutingAuthorityRPCSlow
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: RoutingAuthorityRPCSlow
+        exp_alerts:
+          - exp_labels:
+              instance: relay-gateway:8080
+              service: identity-service
+              method: /api.identity.v1.IdentityService/GetAuthSnapshot
+              severity: warning
+            exp_annotations:
+              summary: Routing authority RPC latency high
+              description: 'relay-gateway:8080 dependency=identity-service method=/api.identity.v1.IdentityService/GetAuthSnapshot p95 exceeds 500ms. Check dependency latency dashboard and authority logs.'

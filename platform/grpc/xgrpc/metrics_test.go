@@ -253,3 +253,13 @@ func TestUnaryClientMetricsInterceptor_NilGuard(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "boom")
 }
+
+func TestDependencyErrorCounterPreservesStatus(t *testing.T) {
+	metric := metrics.ServiceDependencyErrors.WithLabelValues("channel-service", "/api.channel.v1.ChannelService/GetRoutingGroup", "Unavailable")
+	before := testutil.ToFloat64(metric)
+	failure := status.Error(codes.Unavailable, "private detail")
+	err := UnaryClientMetricsInterceptor("channel-service")(context.Background(), "/api.channel.v1.ChannelService/GetRoutingGroup", nil, nil, nil,
+		func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error { return failure })
+	require.ErrorIs(t, err, failure)
+	require.Equal(t, before+1, testutil.ToFloat64(metric))
+}

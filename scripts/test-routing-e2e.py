@@ -107,6 +107,7 @@ def main():
                   "GROUP_AUDIT_DSN": dsn, "GROUP_BACKFILL_DSN": dsn, "IDENTITY_SQL_DSN": dsn,
                   # Actual static billing base in app/billing/configs/config.yaml.
                   "ROUTING_E2E_BASE_RATIOS": '{"default":1,"vip":1,"svip":1}',
+                  "PROMETHEUS_HTTP_BASE": "http://prometheus:9090",
                   "ROUTING_STATE": "/state/state.json"}
     if suffix:
         runner_env["GROUP_AUDIT_DSN"] = "/data/oneapi.db"
@@ -116,6 +117,20 @@ def main():
     base["services"]["test-runner"] = {"image": args.image, "user": "0:0", "profiles": ["test"],
         "entrypoint": ["/out/routing-e2e"], "environment": runner_env, "networks": ["backend"],
         "volumes": ["test_state:/state"] + (["sqlite_data:/data"] if suffix else [])}
+    # Run the shipped rule expressions and timings in the private network.
+    # Mount copies so Docker's unprivileged Prometheus user can read them.
+    monitoring = scratch / "monitoring"
+    monitoring.mkdir(mode=0o755)
+    for source, target in ((ROOT / "deploy/prometheus/prometheus.yml", "prometheus.yml"),
+                           (ROOT / "deploy/prometheus/alerts/alerts.yml", "alerts.yml"),
+                           (ROOT / "deploy/prometheus/alerts/routing.test.yml", "routing.test.yml")):
+        shutil.copyfile(source, monitoring / target)
+        (monitoring / target).chmod(0o644)
+    base["services"]["prometheus"] = {
+        "image": "prom/prometheus:v3.6.0", "networks": ["backend"], "restart": "no",
+        "volumes": [{"type": "bind", "source": str(monitoring / filename),
+                     "target": "/etc/prometheus/" + filename, "read_only": True}
+                    for filename in ("prometheus.yml", "alerts.yml", "routing.test.yml")]}
     config_file = scratch / "compose.json"
     def save():
         config_file.write_text(json.dumps(base))
@@ -142,11 +157,14 @@ def main():
             log.write(result.stdout)
         # Assertions never print authentication values; retain full fixture logs privately.
         for line in result.stdout.splitlines():
-            if line.startswith(("=== RUN", "--- PASS", "--- FAIL", "PASS", "FAIL")):
+            if line.startswith(("=== RUN", "--- PASS", "--- FAIL", "PASS", "FAIL", "    observability_test.go:")):
                 print(line, flush=True)
         if result.returncode:
             raise RuntimeError(f"{phase} acceptance failed; see {scratch}/compose.log")
     try:
+        run("run", "--rm", "-T", "--no-deps", "--workdir", "/etc/prometheus",
+            "--entrypoint", "/bin/promtool", "prometheus", "test", "rules", "routing.test.yml")
+        print("[routing-e2e] production alert rule tests PASS", flush=True)
         run("up", "-d")
         test("legacy")
         print("[routing-e2e] legacy compatibility PASS; applying fixture backfills", flush=True)

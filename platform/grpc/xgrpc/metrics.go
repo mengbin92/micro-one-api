@@ -27,6 +27,9 @@ func UnaryClientMetricsInterceptor(serviceName string) grpc.UnaryClientIntercept
 				serviceName, method, status.Code(err).String(),
 			).Observe(time.Since(start).Seconds())
 		}
+		if err != nil {
+			metrics.ServiceDependencyErrors.WithLabelValues(serviceName, method, status.Code(err).String()).Inc()
+		}
 		return err
 	}
 }

@@ -102,7 +102,7 @@ func subscriptionMutation(ctx context.Context, db *gorm.DB, s *biz.UserSubscript
 	return err
 }
 func (r *Repository) StartEntitlementOutbox() func() {
-	return routingoutbox.Start(r.db, r.redis, "subscription", nil)
+	return routingoutbox.Start(r.db, r.redis, "subscription", routingoutbox.Report)
 }
 
 // LockContractReferences serializes contract publication with billing-mode changes.

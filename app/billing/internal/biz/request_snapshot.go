@@ -14,6 +14,7 @@ import (
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/jsonx"
+	"micro-one-api/platform/metrics"
 )
 
 var (
@@ -188,7 +189,12 @@ func (uc *BillingUsecase) GetRequestSnapshot(ctx context.Context, reservationID 
 	return r.RequestSnapshot, nil
 }
 
-func (s *RequestSnapshot) Validate() error {
+func (s *RequestSnapshot) Validate() (err error) {
+	defer func() {
+		if err != nil {
+			metrics.RoutingSnapshotFailures.WithLabelValues("validate", "content").Inc()
+		}
+	}()
 	if s == nil || s.Version != 2 || s.Model == "" || s.GroupKey == "" || !routing.ValidBillingMode(s.BillingMode) || s.BillingPolicyVersion == "" {
 		return ErrRequestSnapshotInvalid
 	}

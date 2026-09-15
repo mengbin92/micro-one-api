@@ -41,17 +41,26 @@ func (uc *RelayUsecase) SetRoutingSettlementClient(c RoutingSettlementClient) {
 // groups without candidate resources advance; missing access, failed
 // settlement qualification and an exhausted list terminate (never falling
 // back to the global group list).
-func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSnapshot, opts RoutingResolveOptions) error {
+func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSnapshot, opts RoutingResolveOptions) (err error) {
+	reason := "relay_capability"
+	defer func() {
+		if err != nil {
+			reportRoutingRejection(ctx, auth, "ordered", reason, err)
+		}
+	}()
 	if !RoutingOrderedEnabled() {
 		return fmt.Errorf("ordered routing requires relay ordered capability")
 	}
+	reason = "channel_capability"
 	reader, ok := uc.channel.(RoutingGroupReader)
 	if !ok {
 		return fmt.Errorf("channel routing capability unavailable")
 	}
+	reason = "entitlements"
 	if err := uc.mergeRoutingEntitlements(ctx, auth); err != nil {
 		return err
 	}
+	reason = "candidate_list"
 	candidates := routing.OrderedGroupIDs(auth.RoutingFacts)
 	if len(candidates) == 0 {
 		return fmt.Errorf("ordered candidate list unavailable")
@@ -72,6 +81,7 @@ func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSna
 		groups[gid] = g
 		return g, nil
 	}
+	reason = "bound_group"
 	if opts.BoundGroupID > 0 {
 		return uc.bindOrderedGroup(auth, candidates, load, opts.BoundGroupID, now)
 	}
@@ -99,6 +109,7 @@ func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSna
 		}
 	}
 	for i, gid := range candidates {
+		reason = "group_lookup"
 		g, err := load(gid)
 		if err != nil {
 			return err
@@ -106,9 +117,11 @@ func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSna
 		if g == nil || g.Status != "enabled" {
 			continue // disabled/archived/deleted group: advance
 		}
+		reason = "access_denied"
 		if len(routing.AccessSources(auth.RoutingFacts, g, now)) == 0 {
 			return fmt.Errorf("routing group %d access denied", gid)
 		}
+		reason = "settlement"
 		if uc.routingSettlement != nil {
 			allowed, _, err := uc.routingSettlement.CheckRoutingSettlement(ctx, auth.UserID, gid)
 			if err != nil {
@@ -119,10 +132,12 @@ func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSna
 			}
 		}
 		if strings.TrimSpace(opts.Model) != "" {
+			reason = "channel_capability"
 			prober, ok := uc.channel.(RoutingGroupProber)
 			if !ok {
 				return fmt.Errorf("channel routing probe capability unavailable")
 			}
+			reason = "candidate_probe"
 			has, err := prober.HasRoutingCandidates(ctx, gid, opts.Model)
 			if err != nil {
 				return err
@@ -131,8 +146,10 @@ func (uc *RelayUsecase) resolveOrderedRouting(ctx context.Context, auth *AuthSna
 				continue // the group has no candidate resources for the model: advance
 			}
 		}
+		reason = "policy_denied"
 		return uc.finishOrderedAttempt(auth, candidates, load, gid, i, now)
 	}
+	reason = "no_candidates"
 	return fmt.Errorf("no ordered routing group has candidate resources")
 }
 

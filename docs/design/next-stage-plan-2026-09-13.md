@@ -135,3 +135,6 @@
 - 发布时按仓库要求同步 release note、CHANGELOG、README，完成 develop → main → tag 工作流。
 
 执行结果（2026-09-14）：P0 三项已完成，文档统一到 v0.30 入口；三种 Compose 与 Kubernetes 接线、只读预检、MySQL / SQLite 全链路验收已交付并通过验证。生产复核确认 B–F 已启用，未修改生产。完整命令、缺陷修复与证据见 [v0.30 路线图](./v0.30-roadmap.md)。本节“第一轮”还包含 P1 的指标 / 告警和后续生产观察，P0 完成不代表这些规划项已完成，也不代表发布了新版本。
+
+
+执行补充（2026-09-15）：P1-1 路由 / outbox 观察已实现，包含有限标签指标、结构化日志、告警、Grafana 看板和隔离 Redis 故障恢复验收。退出证据统一见 [v0.30 路线图](./v0.30-roadmap.md) 与[观察运行手册](../runbooks/routing-observability-runbook.md)；管理台性能、旧迁移记录表预检及生产观察仍是独立后续工作。

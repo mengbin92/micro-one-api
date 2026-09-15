@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	applogger "micro-one-api/platform/logging"
+	"micro-one-api/platform/metrics"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 
 	relayv1 "micro-one-api/api/relay/v1"
@@ -91,6 +94,8 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		if plan.Auth.RoutingContext != nil {
 			capability, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
 			if err != nil || capability.GetRequestSnapshotVersion() != 2 || (plan.Auth.RoutingContext.TokenMode == "fixed" && !capability.GetFixedRouting()) || (subscriptionbiz.EntitlementsEnabled() && !capability.GetSubscriptionContracts()) {
+				metrics.RoutingAdmissionRejected.WithLabelValues("reserve", "billing_capability").Inc()
+				applogger.Log.Warn("routing admission rejected", zap.String("operation", "reserve"), zap.String("reason", "billing_capability"), zap.Int64("user_id", plan.Auth.UserID), zap.Int64("token_id", plan.Auth.TokenID), zap.String("request_id", requestID), zap.Error(err))
 				return fmt.Errorf("billing routing capability unavailable")
 			}
 		}

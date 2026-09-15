@@ -1,6 +1,6 @@
 # 分组 v2 真实链路验收
 
-使用仓库真实服务二进制、数据库和 Redis，通过 admin HTTP 与内部 RPC 建立测试数据，经 relay 调用本地 mock 上游并核对账务。mock 只替代付费上游；mock 支付使用 billing 自带的本地 provider。两个 relay 实例验证撤权广播。
+使用仓库真实服务二进制、数据库、Redis 和 Prometheus，通过 admin HTTP 与内部 RPC 建立测试数据，经 relay 调用本地 mock 上游并核对账务。mock 只替代付费上游；mock 支付使用 billing 自带的本地 provider。两个 relay 实例验证撤权广播。
 
 ## 运行
 
@@ -39,4 +39,6 @@ python3 scripts/test-routing-e2e.py --driver=sqlite3 --skip-build
 
 此入口验收 MySQL 与 SQLite 的完整服务接线；PostgreSQL 继续运行现有数据边界和迁移测试，未加入完整服务 E2E。Kubernetes 本次只验证 manifest / 引用。测试不代替生产小额样本、告警窗口、外部支付签名链路或新订阅协议的费用上界证明。
 
-运维指标与告警属于 [v0.30 P1](../../../docs/design/v0.30-roadmap.md)，此处只验证持久化、投递和权限不变式。
+[v0.30 P1-1](../../../docs/design/v0.30-roadmap.md) 已将指标与告警接入此入口：先运行 promtool 规则测试，再使用仓库原始 Prometheus 配置 / 规则观察真实采集结果。Redis 断开时验证 pending、publish 失败及 DeliveryFailing / Backlog firing；恢复后验证 pending / age 归零、最后成功时间、告警解除和权限正确；billing 缺能力时验证 reason 指标与 CapabilityRejected firing。故障阶段额外等待约两分钟，阈值未为测试缩短。告警取证记录在 `acceptance.log` 的 `observability:` 行中。
+
+详见[观察与处置说明](../../../docs/runbooks/routing-observability-runbook.md)。本地 Prometheus 不连接外部 Alertmanager，不发送外部通知。

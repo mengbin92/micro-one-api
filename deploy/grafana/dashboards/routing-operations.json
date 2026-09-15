@@ -1,0 +1,259 @@
+{
+  "uid": "routing-operations",
+  "title": "Routing and Outbox Operations",
+  "tags": [
+    "routing",
+    "outbox",
+    "micro-one-api"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Pending events by worker / owner",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "micro_one_api_routing_outbox_pending",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Oldest pending event age",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "micro_one_api_routing_outbox_oldest_pending_age_seconds",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Outbox failures / second",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(micro_one_api_routing_outbox_failures_total[5m])",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Time since worker last delivered (idle workers may be old)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - (micro_one_api_routing_outbox_last_success_timestamp_seconds > 0)",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Time since successful pending scan",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - micro_one_api_routing_outbox_last_scan_timestamp_seconds",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Routing admission rejections",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(micro_one_api_routing_admission_rejected_total[5m])",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Request snapshot validation failures",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(micro_one_api_routing_snapshot_validation_failures_total[5m])",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Authority RPC p95",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (instance, service, method, le) (rate(micro_one_api_dependency_grpc_latency_seconds_bucket{method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\"}[5m])))",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "Authority RPC failures / second",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (instance, service, method, status) (rate(micro_one_api_dependency_grpc_latency_seconds_count{method=~\".*/(GetAuthSnapshot|GetRoutingGroup|GetRoutingCapabilities|GetRoutingEntitlements|CheckRoutingSettlement|HasRoutingCandidates)\",status!=\"OK\"}[5m]))",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "title": "Active routing alerts",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ALERTS{alertname=~\"RoutingOutbox.*|RoutingCapability.*|RoutingSnapshot.*|RoutingAuthority.*|RoutingMetrics.*\",alertstate=\"firing\"}",
+          "legendFormat": "{{instance}} {{owner}} {{service}} {{method}} {{operation}} {{reason}} {{status}} {{alertname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

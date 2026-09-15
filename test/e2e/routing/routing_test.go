@@ -33,15 +33,18 @@ func TestRoutingAcceptance(t *testing.T) {
 		s.access(s.state.Groups["p0-wallet"], "revoke", "fixture")
 		require.Positive(t, s.scalar("SELECT COUNT(*) FROM routing_change_outbox WHERE delivered_at=0"))
 		s.reject(s.state.Fixed, "routing-redis-down")
+		s.observeRedisOutage()
 	case "redis-recovered":
 		require.Eventually(t, func() bool { return s.scalar("SELECT COUNT(*) FROM routing_change_outbox WHERE delivered_at=0") == 0 }, 20*time.Second, 200*time.Millisecond)
 		s.reject(s.state.Fixed, "routing-redis-recovered-denied")
 		s.access(s.state.Groups["p0-wallet"], "grant", "fixture")
 		s.chat(s.state.Fixed, "routing-redis-recovered", false)
 		s.settled("routing-redis-recovered")
+		s.observeRedisRecovery()
 	case "missing-capability":
 		s.reject(s.state.Fixed, "routing-no-billing-capability")
 		s.reject(s.state.Ordered, "routing-no-ordered-capability")
+		s.observeCapabilityRejection()
 	default:
 		t.Fatal("unknown acceptance phase")
 	}

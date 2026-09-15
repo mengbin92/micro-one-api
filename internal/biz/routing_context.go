@@ -7,8 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
+	applogger "micro-one-api/platform/logging"
+	"micro-one-api/platform/metrics"
+	appmiddleware "micro-one-api/platform/middleware"
+	xtrace "micro-one-api/platform/tracing"
 )
 
 type RoutingEntitlementReader interface {
@@ -43,7 +48,13 @@ type RoutingResolveOptions struct {
 	BoundGroupID int64
 }
 
-func (uc *RelayUsecase) ResolveRoutingContext(ctx context.Context, auth *AuthSnapshot, opts RoutingResolveOptions) error {
+func (uc *RelayUsecase) ResolveRoutingContext(ctx context.Context, auth *AuthSnapshot, opts RoutingResolveOptions) (err error) {
+	reason := "relay_capability"
+	defer func() {
+		if err != nil && reason != "ordered" {
+			reportRoutingRejection(ctx, auth, "resolve", reason, err)
+		}
+	}()
 	if !RoutingContextV2Enabled() {
 		if subscriptionbiz.EntitlementsEnabled() {
 			return fmt.Errorf("subscription entitlements require v2 relay")
@@ -53,27 +64,34 @@ func (uc *RelayUsecase) ResolveRoutingContext(ctx context.Context, auth *AuthSna
 		}
 		return nil
 	}
+	reason = "identity_capability"
 	if auth == nil || auth.RoutingContextVersion != routing.ContextVersion || auth.RoutingFacts == nil || !auth.UserEnabled || !auth.TokenEnabled {
 		return fmt.Errorf("identity routing capability unavailable")
 	}
 	if auth.RoutingFacts.TokenMode == "ordered" {
+		reason = "ordered"
 		return uc.resolveOrderedRouting(ctx, auth, opts)
 	}
+	reason = "channel_capability"
 	reader, ok := uc.channel.(RoutingGroupReader)
 	if !ok {
 		return fmt.Errorf("channel routing capability unavailable")
 	}
+	reason = "group_lookup"
 	group, err := reader.GetRoutingGroup(ctx, routing.SelectedGroupID(auth.RoutingFacts))
 	if err != nil {
 		return err
 	}
+	reason = "entitlements"
 	if err := uc.mergeRoutingEntitlements(ctx, auth); err != nil {
 		return err
 	}
+	reason = "policy_denied"
 	resolved, err := routing.Resolve(auth.UserID, auth.TokenID, auth.RoutingFacts, group, time.Now().Unix())
 	if err != nil {
 		return err
 	}
+	reason = "projection_mismatch"
 	if resolved.TokenMode == "inherit" && resolved.GroupKey != auth.Group {
 		return fmt.Errorf("identity default group projection mismatch")
 	}
@@ -129,7 +147,12 @@ func (uc *RelayUsecase) BindRoutingAdmission(auth *AuthSnapshot, token, clientIP
 }
 
 // RecheckRoutingAdmission is used by transports with their own retry loop.
-func RecheckRoutingAdmission(ctx context.Context, auth *AuthSnapshot, model string) error {
+func RecheckRoutingAdmission(ctx context.Context, auth *AuthSnapshot, model string) (err error) {
+	defer func() {
+		if err != nil {
+			reportRoutingRejection(ctx, auth, "recheck", "admission_changed", err)
+		}
+	}()
 	if auth == nil || auth.RoutingContext == nil {
 		return nil
 	}
@@ -137,4 +160,13 @@ func RecheckRoutingAdmission(ctx context.Context, auth *AuthSnapshot, model stri
 		return fmt.Errorf("routing admission checker unavailable")
 	}
 	return auth.recheckRouting(ctx, model)
+}
+
+func reportRoutingRejection(ctx context.Context, auth *AuthSnapshot, operation, reason string, err error) {
+	metrics.RoutingAdmissionRejected.WithLabelValues(operation, reason).Inc()
+	fields := []zap.Field{zap.String("operation", operation), zap.String("reason", reason), zap.String("request_id", appmiddleware.GetRequestID(ctx)), zap.String("trace_id", xtrace.ExtractTraceID(ctx)), zap.Error(err)}
+	if auth != nil {
+		fields = append(fields, zap.Int64("user_id", auth.UserID), zap.Int64("token_id", auth.TokenID))
+	}
+	applogger.Log.Warn("routing admission rejected", fields...)
 }

@@ -126,6 +126,8 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 		}
 		capability, err := s.billingClient.GetRoutingCapabilities(ctx, &billingv1.GetRoutingCapabilitiesRequest{})
 		if err != nil || capability.GetRequestSnapshotVersion() != 2 || (routingContext.TokenMode == "fixed" && !capability.GetFixedRouting()) || (subscriptionbiz.EntitlementsEnabled() && !capability.GetSubscriptionContracts()) {
+			metrics.RoutingAdmissionRejected.WithLabelValues("reserve", "billing_capability").Inc()
+			applogger.Log.Warn("routing admission rejected", zap.String("operation", "reserve"), zap.String("reason", "billing_capability"), zap.String("user_id", userID), zap.Int64("token_id", routingContext.TokenID), zap.String("request_id", requestID), zap.Error(err))
 			return nil, fmt.Errorf("billing routing capability unavailable")
 		}
 	}

@@ -1,0 +1,41 @@
+P1-1 routing observability acceptance · 2026-09-15
+Command: python3 scripts/test-routing-e2e.py --driver=mysql
+Private diagnostics path omitted; no fixture credentials included.
+
+[routing-e2e] building isolated acceptance image
+[routing-e2e] build PASS
+[routing-e2e] production alert rule tests PASS
+=== RUN   TestRoutingAcceptance
+--- PASS: TestRoutingAcceptance (0.26s)
+PASS
+[routing-e2e] legacy compatibility PASS; applying fixture backfills
+=== RUN   TestRoutingAcceptance
+=== RUN   TestRoutingAcceptance/fixed_and_revocation
+=== RUN   TestRoutingAcceptance/frozen_price_and_idempotency
+=== RUN   TestRoutingAcceptance/ordered
+=== RUN   TestRoutingAcceptance/contracts_and_settlement
+=== RUN   TestRoutingAcceptance/contracts_and_settlement/subscription_only_purchase_renew_revoke
+=== RUN   TestRoutingAcceptance/contracts_and_settlement/subscription_first_split_and_expiry
+=== RUN   TestRoutingAcceptance/contracts_and_settlement/change_and_mock_payment_refund
+=== RUN   TestRoutingAcceptance/sessions
+--- PASS: TestRoutingAcceptance (2.85s)
+PASS
+[routing-e2e] stage F preflight PASS
+=== RUN   TestRoutingAcceptance
+    observability_test.go:59: observability: Redis stopped; RoutingOutboxDeliveryFailing firing for identity
+    observability_test.go:59: observability: Redis stopped; RoutingOutboxBacklog firing for identity
+--- PASS: TestRoutingAcceptance (144.41s)
+PASS
+=== RUN   TestRoutingAcceptance
+    observability_test.go:67: observability: Redis recovered; pending=0 oldest_age=0 last_success>0; delivery/backlog alerts cleared; revoked access denied and regrant settled
+--- PASS: TestRoutingAcceptance (14.38s)
+PASS
+=== RUN   TestRoutingAcceptance
+    observability_test.go:72: observability: missing billing capability rejected; bounded reason metric and RoutingCapabilityRejected firing
+--- PASS: TestRoutingAcceptance (15.09s)
+PASS
+=== RUN   TestRoutingAcceptance
+--- PASS: TestRoutingAcceptance (0.16s)
+PASS
+[routing-e2e] PASS all phases
+[routing-e2e] removed this project's containers, network and volumes
