@@ -793,6 +793,7 @@ mysql -h <host> -u root -p < migrations/schema_split.sql
    >   在容器网络内执行；完整命令模板见
    >   [routing-groups-runbook.md](./runbooks/routing-groups-runbook.md) §2.1。
    > - 早期建立的 per-service `schema_migrations` 可能是 `applied_at BIGINT NOT NULL`
+   >   无默认值。当前 runner 会在业务 DDL 前预检并阻断；历史半完成迁移仍需按下方说明修复。
    >   无默认值，runner 只插 `version` 列会报 `Error 1364`，且 DDL 已隐式提交。
    >   修复：`ALTER TABLE oneapi_<svc>.schema_migrations MODIFY applied_at BIGINT NOT NULL
    >   DEFAULT (UNIX_TIMESTAMP());`，再手工补录该迁移的版本记录后重跑。详见

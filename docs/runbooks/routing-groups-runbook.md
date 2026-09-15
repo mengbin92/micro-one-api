@@ -180,7 +180,7 @@ scripts/check-deployment-docs.sh
 
 预检工具说明及命令见 [routing-preflight](../../scripts/routing-preflight/README.md)。它读取渲染配置、现存迁移记录、回填和对象数量，再调用只读能力 / 事实 RPC；失败返回非零值。开关配置检查针对输入的目标配置，RPC 针对实际运行实例，两者必须分别核实；将创建开关开放给用户前应通过目标阶段预检。
 
-`migrate -status` 会尝试初始化迁移记录表，不能称作严格只读检查；group-backfill / routing-backfill 默认演练也会事务写入并加锁。它们与本预检是不同操作。
+`migrate -status` 不应用迁移，也不会初始化迁移记录表；group-backfill / routing-backfill 默认演练会事务写入并加锁。它们与本预检是不同操作。
 
 ## 四、生产启用顺序
 

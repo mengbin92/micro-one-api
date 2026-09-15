@@ -3,7 +3,7 @@
 // Usage:
 //
 //	migrate              apply all pending migrations
-//	migrate -status      print status table without applying
+//	migrate -status      print status table without applying or creating
 //	migrate -baseline V  override the brownfield baseline cutoff (default:
 //	                     022_create_schema_migrations)
 //	migrate -dir PATH    override the migrations directory (default: ./migrations)
@@ -37,7 +37,7 @@ func main() {
 	var (
 		dir       = flag.String("dir", "./migrations", "directory containing .sql migration files")
 		baseline  = flag.String("baseline", defaultBaseline, "brownfield baseline cutoff version (file basename without .sql)")
-		status    = flag.Bool("status", false, "print status table and exit without applying")
+		status    = flag.Bool("status", false, "print status table and exit without applying or creating migration metadata")
 		driver    = flag.String("driver", "", "database driver: mysql (default) or sqlite; inferred from DSN when empty")
 		ownership = flag.String("ownership", "", "restrict to migrations owned by this service key (Phase 2.4 schema isolation; see migrations/ownership.yaml)")
 	)

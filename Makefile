@@ -401,7 +401,7 @@ migrate: migrate-prereq
 	go run ./cmd/migrate -dir ./migrations
 
 .PHONY: migrate-status
-# print migration status without applying anything
+# print migration status without applying anything or creating metadata
 migrate-status: migrate-prereq
 	go run ./cmd/migrate -dir ./migrations -status
 
