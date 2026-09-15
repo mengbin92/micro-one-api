@@ -85,4 +85,4 @@ docker run --rm --entrypoint /bin/promtool \
 5. 关闭 billing 快照能力，确认接口可达但请求被拒绝，`reserve/billing_capability` 指标递增且 CapabilityRejected firing。
 6. 清理本项目容器、网络和卷；不接触生产。
 
-演练证据见 [P1-1 验收记录](./routing-observability-2026-09-15.md)。本次故障演练覆盖 identity 发布路径，三个 owner 的扫描、投递失败和恢复由数据边界测试覆盖；PostgreSQL 不在完整服务 E2E 矩阵中。订阅与多 relay 的重复 / 乱序事件、冻结账单和授权不变式继续由已有验收场景覆盖。
+演练证据见 [P1-1 验收记录](./p1-acceptance-2026-09-15.md#p1-1-路由与-outbox-可观测性验收)。本次故障演练覆盖 identity 发布路径，三个 owner 的扫描、投递失败和恢复由数据边界测试覆盖；PostgreSQL 不在完整服务 E2E 矩阵中。订阅与多 relay 的重复 / 乱序事件、冻结账单和授权不变式继续由已有验收场景覆盖。
