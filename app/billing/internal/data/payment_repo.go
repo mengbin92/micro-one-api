@@ -11,6 +11,7 @@ import (
 
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"micro-one-api/pkg/safecast"
+	"micro-one-api/platform/database/xdb"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -171,7 +172,13 @@ func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeN
 	var result *biz.PaymentOrder
 	changed := false
 
-	err := r.data.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// This transaction reads payment_orders before the issue callback writes,
+	// so on the shared-file SQLite topology a concurrent cross-service commit
+	// between the read and the first write stales the WAL snapshot and SQLite
+	// returns "database is locked" (SQLITE_BUSY_SNAPSHOT) immediately. Retry
+	// the whole transaction: a failed attempt commits nothing, so replaying is
+	// safe (run 34939990807). MySQL row locks make the retry a no-op there.
+	runTx := func(tx *gorm.DB) error {
 		var po PaymentOrder
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("trade_no = ? OR provider_trade_no = ?", tradeNo, tradeNo).
@@ -236,7 +243,8 @@ func (r *paymentRepo) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeN
 		}
 		changed = true
 		return nil
-	})
+	}
+	err := xdb.RetryTxOnBusy(ctx, r.data.db, 3, runTx)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to mark payment order paid: %w", err)
 	}
