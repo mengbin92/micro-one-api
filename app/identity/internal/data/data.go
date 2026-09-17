@@ -330,19 +330,57 @@ func (r *Repository) IncreaseUserBalance(ctx context.Context, userID int64, amou
 	return nil
 }
 
+// systemOptionsTables locates the shared system_options table. one-api
+// semantics treat system_options as a single global table owned by the admin
+// service: with schema isolation (ADMIN_SCHEMA set, or the production
+// oneapi_admin convention) it lives in the admin schema; in shared-database
+// deployments it sits in the service's own database. The own-schema name is
+// tried first so shared deployments never touch the admin-qualified name.
+func systemOptionsTables() []string {
+	if schema := strings.TrimSpace(os.Getenv("ADMIN_SCHEMA")); schema != "" {
+		return []string{schema + ".system_options"}
+	}
+	return []string{"system_options", "oneapi_admin.system_options"}
+}
+
 // GetSystemOption reads a value from the shared system_options table (owned
 // by the admin service). It returns ("", nil) when the key is not configured
-// so callers can fall back to their own defaults.
+// so callers can fall back to their own defaults, and only errors when no
+// candidate table was readable at all.
 func (r *Repository) GetSystemOption(ctx context.Context, key string) (string, error) {
 	if r.db == nil {
 		r.identityLock.RLock()
 		defer r.identityLock.RUnlock()
 		return r.systemOptions[key], nil
 	}
+	readable := false
+	var firstErr error
+	for _, table := range systemOptionsTables() {
+		value, err := r.getSystemOptionFrom(ctx, table, key)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		readable = true
+		if value != "" {
+			return value, nil
+		}
+	}
+	if !readable && firstErr != nil {
+		applogger.Log.Warn("identity: system_options unreadable; option-driven features degrade to defaults",
+			zap.String("key", key), zap.Error(firstErr))
+		return "", firstErr
+	}
+	return "", nil
+}
+
+func (r *Repository) getSystemOptionFrom(ctx context.Context, table, key string) (string, error) {
 	var row struct {
 		Value string `gorm:"column:option_value"`
 	}
-	err := r.db.WithContext(ctx).Table("system_options").Select("option_value").Where("option_key = ?", key).Take(&row).Error
+	err := r.db.WithContext(ctx).Table(table).Select("option_value").Where("option_key = ?", key).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", nil
 	}
