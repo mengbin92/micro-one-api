@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm/clause"
 	"micro-one-api/app/identity/internal/biz"
 	"micro-one-api/domain/routing"
+	"micro-one-api/platform/database/xdb"
 	"micro-one-api/platform/routingoutbox"
 )
 
@@ -103,7 +104,20 @@ func (r *Repository) UpdateRoutingAccess(ctx context.Context, c biz.RoutingAcces
 	if r.db == nil {
 		return biz.ErrRoutingFactsUnavailable
 	}
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// Retry the whole transaction on SQLite write contention ("database is
+	// locked"). On the shared-file lite topology nine services hold one
+	// database; a DEFERRED transaction that reads before its first write can
+	// hit SQLITE_BUSY_SNAPSHOT when a concurrent writer commits in that
+	// window (busy_timeout cannot resolve a stale snapshot). A failed attempt
+	// commits nothing — the revision CAS and outbox row live inside the
+	// transaction — so replaying is safe (release run 35197009912, sessions
+	// phase: PATCH /api/v1/admin/routing-access/2 -> 503).
+	//
+	// The grant-ledger read below is the transaction's first statement:
+	// gorm begins DEFERRED, so SQLite pins the WAL snapshot there. A
+	// concurrent commit afterwards fails the first write with
+	// SQLITE_BUSY_SNAPSHOT — exactly the window the retry replays.
+	return xdb.RetryTxOnBusy(ctx, r.db, 3, func(tx *gorm.DB) error {
 		// A revoke targeting a grant that is not active is a no-op: it must not
 		// mint a dead 'revoked' row, bump the revision, or emit an outbox event.
 		//
@@ -119,6 +133,18 @@ func (r *Repository) UpdateRoutingAccess(ctx context.Context, c biz.RoutingAcces
 			}
 			if active == 0 {
 				return nil
+			}
+		} else {
+			// Grant/default/public_access have no read of their own, but the
+			// snapshot must still be pinned before the first write — a
+			// write-first transaction would hit plain SQLITE_BUSY on the CAS
+			// instead, which busy_timeout resolves silently and the retry
+			// never sees (it would mask a lost-update: the revision CAS below
+			// is the only guard against a concurrently committed access
+			// change, and reading first keeps it authoritative).
+			var noop int64
+			if err := tx.Model(&routingGrantModel{}).Where("user_id = ?", c.UserID).Limit(1).Count(&noop).Error; err != nil {
+				return err
 			}
 		}
 		// CAS is also a write lock on SQLite. Every grant mutation shares this row.

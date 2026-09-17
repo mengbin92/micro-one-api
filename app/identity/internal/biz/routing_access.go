@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"micro-one-api/domain/routing"
+	"micro-one-api/platform/database/xdb"
+	"time"
 )
 
 // RoutingAccessChange is an identity-owned command. Remote group references
@@ -59,7 +61,26 @@ func (uc *IdentityUsecase) UpdateRoutingAccess(ctx context.Context, c RoutingAcc
 	if err = r.UpdateRoutingAccess(ctx, c); err != nil {
 		return nil, err
 	}
-	return r.UserRoutingFacts(ctx, c.UserID)
+	// The facts re-read runs in its own transaction, outside the retried
+	// write above (data owns RetryTxOnBusy; biz never touches storage
+	// clients). On the shared-file SQLite topology it can still collide with
+	// a concurrent writer committing between its first read and the WAL
+	// snapshot upgrade ("database is locked"), which previously surfaced to
+	// the admin API as a spurious 503 right after a successful grant
+	// (release run 35197009912, sessions phase). A read is idempotent, so
+	// retry the typed transient here. MySQL row locks never trip the guard.
+	var f *routing.SubjectFacts
+	for attempt := 0; ; attempt++ {
+		f, err = r.UserRoutingFacts(ctx, c.UserID)
+		if err == nil || !xdb.IsSQLiteBusy(err) || attempt >= 2 {
+			return f, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 10 * time.Millisecond):
+		}
+	}
 }
 func (uc *IdentityUsecase) SetTokenRouting(ctx context.Context, userID, tokenID int64, mode string, groupID, revision int64, groupIDs []int64) (int64, error) {
 	r, err := uc.routingAccessRepo()
