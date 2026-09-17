@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-09-17
+
+v0.30.1 是 v0.30.0 之后的 **PATCH 修复版本**：管理台"系统选项"中的注册奖励金额（新用户默认金额 / 邀请人奖励金额 / 被邀请人奖励金额）此前是只写不读的死配置，注册流程从未读取，且前端存在二次换算 Bug（输入 2 显示并存成 0.0002）。本版让 identity 注册时从 `system_options` 解析三项奖励（兼容 legacy `QuotaFor*` 别名）并经 billing `TopUpQuota` 落账本发放，修复金额输入换算，并解决 schema 隔离部署下选项表读不到导致的静默零值。**无 proto 变更、无数据库迁移、无新增必填配置**；未配置选项时行为与 v0.30.0 一致（邀请奖励仍由 `INVITER/INVITEE_BONUS_*` 环境变量兜底）。详见 [release-v0.30.1.md](docs/releases/release-v0.30.1.md)。
+
+### Added
+
+- identity 注册奖励发放：新用户默认金额覆盖密码注册与 OAuth 首次注册；邀请人 / 被邀请人奖励优先取 `AmountFor*` 系统选项，未配置时回退既有环境变量，显式配置 0 表示禁用；所有奖励经 billing `TopUpQuota` 写入账本。
+
+### Fixed
+
+- 系统选项页金额行草稿值被二次换算：输入 2 重新渲染为 0.0002 并按错误值保存，现草稿保持显示单位、保存时单次换算；被写坏的存量配置需在选项页重新保存一次。
+- schema 隔离部署（如 `IDENTITY_SCHEMA=oneapi_identity`）下 identity 查询不到 admin 所属的 `system_options` 表导致奖励静默为 0：按 `ADMIN_SCHEMA` / 本库 / `oneapi_admin` 候选链解析，全部不可读时记录告警而非静默失败；Compose 模板向 identity-service 透传 `ADMIN_SCHEMA`。
+- `internal/integration` 的 `testIdentityRepo` 补齐 `GetSystemOption`，修复 govulncheck 与 Integration 两个 CI 任务的编译失败。
+
 ## [0.30.0] - 2026-09-15
 
 v0.30.0 是 v0.29.0 之后的 **MINOR 启用与稳定性收口版本**：按 [v0.30 阶段路线图](docs/design/v0.30-roadmap.md)完成 P0–P2 共 7 项任务——接通分组 v2 部署开关并完成 MySQL / SQLite 真实服务验收、补齐路由 / outbox 可观测性与告警、收口管理台汇总性能与降级语义、迁移 runner 旧元数据表预检，以及分组日常操作与账务解释链路。**无 proto 变更、无新增数据库迁移、无新增必填配置**；唯一语义变化是 `/api/admin/summary` 分项失败由伪造零值改为 `null` + 状态字段（响应键稳定）。详见 [release-v0.30.0.md](docs/releases/release-v0.30.0.md)。
