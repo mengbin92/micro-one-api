@@ -313,6 +313,10 @@ func (m *testIdentityRepo) IncreaseUserBalance(ctx context.Context, userID int64
 	return nil
 }
 
+func (m *testIdentityRepo) GetSystemOption(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+
 func (m *testIdentityRepo) CreateToken(ctx context.Context, token *identitytestutil.Token) error {
 	token.ID = int64(len(m.tokens) + 1)
 	m.tokens[token.Key] = token

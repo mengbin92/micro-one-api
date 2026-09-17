@@ -74,6 +74,9 @@ services:
       - DATABASE_DSN=${DATABASE_DSN:?DATABASE_DSN is required}
       - SQL_DSN=${DATABASE_DSN}
       - IDENTITY_SCHEMA=${IDENTITY_SCHEMA:-}
+      # system_options is owned by the admin schema; with schema isolation
+      # identity resolves registration rewards from this table.
+      - ADMIN_SCHEMA=${ADMIN_SCHEMA:-}
       - REDIS_ADDR=redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}

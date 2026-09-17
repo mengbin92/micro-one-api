@@ -13,6 +13,7 @@ type mockIdentityRepo struct {
 	tokens          map[string]*Token
 	users           map[int64]*User
 	oauthIdentities map[string]*OAuthIdentity
+	systemOptions   map[string]string
 }
 
 type distributedRateRepo struct {
@@ -155,6 +156,10 @@ func (m *mockIdentityRepo) IncreaseUserBalance(ctx context.Context, userID int64
 	return nil
 }
 
+func (m *mockIdentityRepo) GetSystemOption(_ context.Context, key string) (string, error) {
+	return m.systemOptions[key], nil
+}
+
 func TestIdentityUsecase_BindOAuthIdentityUpdatesCurrentUser(t *testing.T) {
 	repo := &mockIdentityRepo{
 		users:           map[int64]*User{1: {ID: 1, Username: "alice", Status: UserStatusEnabled}},
@@ -244,7 +249,7 @@ func TestIdentityUsecase_OAuthLoginFindsUserByOAuthIdentity(t *testing.T) {
 	}
 	uc := NewIdentityUsecase(repo, nil)
 
-	user, _, err := uc.OAuthLogin(context.Background(), "oidc", "sub-1", "ignored", "ignored@example.com", "Ignored")
+	user, _, _, err := uc.OAuthLogin(context.Background(), "oidc", "sub-1", "ignored", "ignored@example.com", "Ignored")
 	if err != nil {
 		t.Fatalf("OAuthLogin() error = %v", err)
 	}
@@ -263,7 +268,7 @@ func TestIdentityUsecase_OAuthLoginFallsBackToLegacyOAuthFields(t *testing.T) {
 	}
 	uc := NewIdentityUsecase(repo, nil)
 
-	user, _, err := uc.OAuthLogin(context.Background(), "github", "gh-1", "ignored", "ignored@example.com", "Ignored")
+	user, _, _, err := uc.OAuthLogin(context.Background(), "github", "gh-1", "ignored", "ignored@example.com", "Ignored")
 	if err != nil {
 		t.Fatalf("OAuthLogin() error = %v", err)
 	}
@@ -1033,6 +1038,52 @@ func TestIdentityUsecase_GetOrCreateAffCode_GeneratesWhenMissing(t *testing.T) {
 	}
 	if repo.users[1].AffCode != code {
 		t.Fatalf("persisted code = %q, want %q", repo.users[1].AffCode, code)
+	}
+}
+
+func TestIdentityUsecase_GetRegistrationRewards(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users: make(map[int64]*User),
+		systemOptions: map[string]string{
+			OptionAmountForNewUser: "50000",
+			OptionAmountForInviter: "0",
+			optionQuotaForInvitee:  "20000",
+		},
+	}
+	uc := NewIdentityUsecase(repo, nil)
+
+	rewards := uc.GetRegistrationRewards(context.Background())
+	if rewards.NewUser != 50000 || !rewards.NewUserSet {
+		t.Fatalf("new user reward = %d (set=%v), want 50000 (set=true)", rewards.NewUser, rewards.NewUserSet)
+	}
+	if rewards.Inviter != 0 || !rewards.InviterSet {
+		t.Fatalf("inviter reward = %d (set=%v), want 0 (set=true, explicit zero disables)", rewards.Inviter, rewards.InviterSet)
+	}
+	if rewards.Invitee != 20000 || !rewards.InviteeSet {
+		t.Fatalf("invitee reward = %d (set=%v), want 20000 from legacy QuotaForInvitee alias (set=true)", rewards.Invitee, rewards.InviteeSet)
+	}
+}
+
+func TestIdentityUsecase_GetRegistrationRewardsUnset(t *testing.T) {
+	repo := &mockIdentityRepo{users: make(map[int64]*User)}
+	uc := NewIdentityUsecase(repo, nil)
+
+	rewards := uc.GetRegistrationRewards(context.Background())
+	if rewards.NewUserSet || rewards.InviterSet || rewards.InviteeSet {
+		t.Fatalf("expected all rewards unset, got %+v", rewards)
+	}
+}
+
+func TestIdentityUsecase_GetRegistrationRewardsInvalidValueDisables(t *testing.T) {
+	repo := &mockIdentityRepo{
+		users:         make(map[int64]*User),
+		systemOptions: map[string]string{OptionAmountForNewUser: "abc"},
+	}
+	uc := NewIdentityUsecase(repo, nil)
+
+	rewards := uc.GetRegistrationRewards(context.Background())
+	if rewards.NewUser != 0 || !rewards.NewUserSet {
+		t.Fatalf("invalid option value = %d (set=%v), want 0 (set=true, no env fallback)", rewards.NewUser, rewards.NewUserSet)
 	}
 }
 

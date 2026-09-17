@@ -111,10 +111,12 @@ export function AdminOptionsPage() {
   const featuredRows = useMemo(
     () =>
       FEATURED_OPTIONS.map((item) => {
-        const current = drafts[item.key] ?? optionValue(options, item.key);
+        // Amount rows keep the draft in display units (currency): only convert
+        // the untouched server value from quota units, never re-convert a draft.
+        const draft = drafts[item.key];
         return {
           ...item,
-          value: item.type === 'amount' ? amountToDisplay(current) : current,
+          value: draft ?? (item.type === 'amount' ? amountToDisplay(optionValue(options, item.key)) : optionValue(options, item.key)),
         };
       }),
     [drafts, options]

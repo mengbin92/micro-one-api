@@ -6,7 +6,7 @@
 
 本项目面向需要统一管理多个上游模型供应商、钱包余额、访问令牌、账务和运营后台的场景。它不是上游服务的替代品，也不提供任何第三方模型账号、订阅或 API Key。
 
-> 📣 **最新发布**：[v0.30.0 发布公告](./docs/releases/release-v0.30.0.md)（分组 v2 生产启用收口：部署接线与真实链路验收、路由 / outbox 可观测性告警、迁移预检与操作解释，无破坏性变更） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.30.0)
+> 📣 **最新发布**：[v0.30.1 发布公告](./docs/releases/release-v0.30.1.md)（注册奖励接入系统选项并修复金额配置双重换算，无破坏性变更） · [GitHub Release](https://github.com/mengbin92/micro-one-api/releases/tag/v0.30.1)
 
 ## 功能概览
 
@@ -179,6 +179,10 @@ make web-dist
 ```
 
 完整部署说明见 [docs/deployment.md](./docs/deployment.md)。
+
+### 升级到 v0.30.1
+
+v0.30.1 是 v0.30.0 之后的 **PATCH 修复版本**：管理台注册奖励金额（新用户默认金额 / 邀请人奖励金额 / 被邀请人奖励金额）此前为只写不读的死配置且前端存在二次换算 Bug，现 identity 注册时从 `system_options` 解析三项奖励（兼容 legacy 别名）并经 billing 账本发放，同时修复 schema 隔离部署下选项表读不到导致的静默零值。**无 proto 变更、无数据库迁移、无新增必填配置**；未配置选项时行为与 v0.30.0 一致（邀请奖励仍由环境变量兜底）。详见 [docs/releases/release-v0.30.1.md](./docs/releases/release-v0.30.1.md)。
 
 ### 升级到 v0.30.0
 
