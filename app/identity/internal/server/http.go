@@ -125,7 +125,7 @@ func NewHTTPServerWithRegistrationPolicy(addr string, uc *biz.IdentityUsecase, o
 			})
 		})
 		srv.HandlePrefix("/v1/oauth/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			handleOAuth(w, r, oauthRegistry, uc)
+			handleOAuth(w, r, oauthRegistry, uc, billingClient)
 		}))
 	}
 	srv.HandleFunc("/api/oauth/state", handleOAuthState)
@@ -394,28 +394,54 @@ func handleRegister(w http.ResponseWriter, r *http.Request, uc *biz.IdentityUsec
 		writeJSON(w, http.StatusOK, apiResponse{Success: false, Message: err.Error()})
 		return
 	}
-	creditInvitationBonus(r.Context(), user, billingClient)
+	creditRegistrationRewards(r.Context(), user, uc, billingClient)
 	writeJSON(w, http.StatusOK, apiResponse{Success: true, Message: "", Data: map[string]any{"user_id": user.ID}})
 }
 
-// creditInvitationBonus best-effort credits the invitee + inviter via the billing service so a ledger row is written.
-// Failure is swallowed because the user record is already committed; admin /api/topup can grant the bonus manually if needed.
-func creditInvitationBonus(ctx context.Context, user *biz.User, billingClient billingv1.BillingServiceClient) {
-	if user == nil || user.InviterID == 0 || billingClient == nil {
+// creditRegistrationRewards best-effort credits the registration rewards
+// (new-user amount plus invitee/inviter invitation bonuses) via the billing
+// service so a ledger row is written for each grant. Amounts come from the
+// AmountForNewUser / AmountForInviter / AmountForInvitee system options
+// configured in the admin UI (quota units); when an invitation bonus option
+// is not configured, the legacy INVITE*_BONUS_* env vars are used instead.
+// Failures are swallowed because the user record is already committed;
+// admin /api/topup can grant the reward manually if needed.
+func creditRegistrationRewards(ctx context.Context, user *biz.User, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {
+	if user == nil || billingClient == nil {
 		return
 	}
-	if bonus := positiveEnvInt64("INVITEE_BONUS_AMOUNT", "INVITEE_BONUS_QUOTA"); bonus > 0 {
+	rewards := uc.GetRegistrationRewards(ctx)
+	if rewards.NewUser > 0 {
 		_, _ = billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
 			UserId:     strconv.FormatInt(user.ID, 10),
-			Amount:     bonus,
+			Amount:     rewards.NewUser,
+			OperatorId: "system_register",
+			Remark:     "new user registration reward",
+		})
+	}
+	if user.InviterID == 0 {
+		return
+	}
+	inviteeAmount := rewards.Invitee
+	if !rewards.InviteeSet {
+		inviteeAmount = positiveEnvInt64("INVITEE_BONUS_AMOUNT", "INVITEE_BONUS_QUOTA")
+	}
+	inviterAmount := rewards.Inviter
+	if !rewards.InviterSet {
+		inviterAmount = positiveEnvInt64("INVITER_BONUS_AMOUNT", "INVITER_BONUS_QUOTA")
+	}
+	if inviteeAmount > 0 {
+		_, _ = billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
+			UserId:     strconv.FormatInt(user.ID, 10),
+			Amount:     inviteeAmount,
 			OperatorId: "system_invitation",
 			Remark:     "invitation invitee bonus",
 		})
 	}
-	if bonus := positiveEnvInt64("INVITER_BONUS_AMOUNT", "INVITER_BONUS_QUOTA"); bonus > 0 {
+	if inviterAmount > 0 {
 		_, _ = billingClient.TopUpQuota(ctx, &billingv1.TopUpQuotaRequest{
 			UserId:     strconv.FormatInt(user.InviterID, 10),
-			Amount:     bonus,
+			Amount:     inviterAmount,
 			OperatorId: "system_invitation",
 			Remark:     fmt.Sprintf("invitation inviter bonus, invitee=%d", user.ID),
 		})
@@ -1657,7 +1683,7 @@ func maskTokenKey(key string) string {
 }
 
 // handleOAuth routes /v1/oauth/{provider}/{action} requests.
-func handleOAuth(w http.ResponseWriter, r *http.Request, registry *oauth.ProviderRegistry, uc *biz.IdentityUsecase) {
+func handleOAuth(w http.ResponseWriter, r *http.Request, registry *oauth.ProviderRegistry, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {
 	// Parse: /v1/oauth/{provider}/{action}
 	path := r.URL.Path[len("/v1/oauth/"):]
 	// Find first slash
@@ -1685,7 +1711,7 @@ func handleOAuth(w http.ResponseWriter, r *http.Request, registry *oauth.Provide
 	case "authorize":
 		handleOAuthAuthorize(w, r, provider)
 	case "callback":
-		handleOAuthCallback(w, r, provider, uc)
+		handleOAuthCallback(w, r, provider, uc, billingClient)
 	default:
 		http.Error(w, `{"error":"unknown action"}`, http.StatusBadRequest)
 	}
@@ -1747,7 +1773,7 @@ func setOAuthStateCookie(w http.ResponseWriter, state string) {
 	})
 }
 
-func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.Provider, uc *biz.IdentityUsecase) {
+func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.Provider, uc *biz.IdentityUsecase, billingClient billingv1.BillingServiceClient) {
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing code"})
@@ -1805,10 +1831,13 @@ func handleOAuthCallback(w http.ResponseWriter, r *http.Request, provider oauth.
 		return
 	}
 
-	user, token, err := uc.OAuthLogin(r.Context(), userInfo.Provider, userInfo.ProviderID, userInfo.Username, userInfo.Email, userInfo.DisplayName)
+	user, token, created, err := uc.OAuthLogin(r.Context(), userInfo.Provider, userInfo.ProviderID, userInfo.Username, userInfo.Email, userInfo.DisplayName)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
+	}
+	if created {
+		creditRegistrationRewards(r.Context(), user, uc, billingClient)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{

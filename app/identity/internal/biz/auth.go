@@ -175,6 +175,9 @@ type IdentityRepo interface {
 	UpdateUser(ctx context.Context, user *User) error
 	DeleteUser(ctx context.Context, userID int64) error
 	IncreaseUserBalance(ctx context.Context, userID int64, amount int64) error
+	// GetSystemOption reads a key from the shared system_options table.
+	// It returns ("", nil) when the key is not configured.
+	GetSystemOption(ctx context.Context, key string) (string, error)
 	CreateToken(ctx context.Context, token *Token) error
 	FindTokenByID(ctx context.Context, userID, tokenID int64) (*Token, error)
 	ListTokens(ctx context.Context, userID int64, page, pageSize int32, keyword string) ([]*Token, int64, error)
@@ -582,6 +585,58 @@ func (uc *IdentityUsecase) Login(ctx context.Context, username, password, client
 
 func (uc *IdentityUsecase) Register(ctx context.Context, username, password, email, group string) (*User, error) {
 	return uc.RegisterWithAffCode(ctx, username, password, email, group, "")
+}
+
+// System option keys (admin UI "系统选项") for registration rewards, stored in
+// quota units. The QuotaFor* keys are legacy one-api aliases kept for
+// backward compatibility with older deployments.
+const (
+	OptionAmountForNewUser = "AmountForNewUser"
+	OptionAmountForInviter = "AmountForInviter"
+	OptionAmountForInvitee = "AmountForInvitee"
+	optionQuotaForNewUser  = "QuotaForNewUser"
+	optionQuotaForInviter  = "QuotaForInviter"
+	optionQuotaForInvitee  = "QuotaForInvitee"
+)
+
+// RegistrationRewards holds the configured registration reward amounts in
+// quota units. The Set flags distinguish "option not configured" (callers may
+// fall back to legacy env vars) from "configured as 0" (explicitly disabled).
+type RegistrationRewards struct {
+	NewUser    int64
+	Inviter    int64
+	Invitee    int64
+	NewUserSet bool
+	InviterSet bool
+	InviteeSet bool
+}
+
+// GetRegistrationRewards resolves the registration reward amounts from the
+// shared system options, honoring the legacy QuotaFor* aliases. Read failures
+// degrade to zero so registration is never blocked by the options store.
+func (uc *IdentityUsecase) GetRegistrationRewards(ctx context.Context) RegistrationRewards {
+	var rewards RegistrationRewards
+	rewards.NewUser, rewards.NewUserSet = uc.registrationReward(ctx, OptionAmountForNewUser, optionQuotaForNewUser)
+	rewards.Inviter, rewards.InviterSet = uc.registrationReward(ctx, OptionAmountForInviter, optionQuotaForInviter)
+	rewards.Invitee, rewards.InviteeSet = uc.registrationReward(ctx, OptionAmountForInvitee, optionQuotaForInvitee)
+	return rewards
+}
+
+func (uc *IdentityUsecase) registrationReward(ctx context.Context, keys ...string) (int64, bool) {
+	for _, key := range keys {
+		raw, err := uc.repo.GetSystemOption(ctx, key)
+		if err != nil || strings.TrimSpace(raw) == "" {
+			continue
+		}
+		amount, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if parseErr != nil || amount < 0 {
+			// Configured but invalid/negative: treat as explicitly disabled
+			// rather than falling through to env defaults.
+			return 0, true
+		}
+		return amount, true
+	}
+	return 0, false
 }
 
 func (uc *IdentityUsecase) RegisterWithAffCode(ctx context.Context, username, password, email, group, affCode string) (*User, error) {
@@ -1167,24 +1222,25 @@ func (uc *IdentityUsecase) generateSessionToken(user *User) (string, error) {
 	return token.SignedString(uc.sessionSecret)
 }
 
-// OAuthLogin finds or creates a user by OAuth provider identity, then returns a token.
-func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, username, email, displayName string) (*User, string, error) {
+// OAuthLogin finds or creates a user by OAuth provider identity, then returns
+// a token. created reports whether this call registered a brand-new user (so
+// the transport layer can grant the new-user registration reward).
+func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, username, email, displayName string) (user *User, token string, created bool, err error) {
 	identity, err := uc.repo.FindOAuthIdentity(ctx, provider, oauthID)
 	if err != nil && !errors.Is(err, ErrOAuthUserNotFound) {
-		return nil, "", err
+		return nil, "", false, err
 	}
-	var user *User
 	if identity != nil {
 		user, err = uc.repo.FindUserByID(ctx, identity.UserID)
 		if err != nil {
-			return nil, "", err
+			return nil, "", false, err
 		}
 	}
 	if user == nil {
 		user, err = uc.repo.FindUserByOAuth(ctx, provider, oauthID)
 	}
 	if err != nil && !errors.Is(err, ErrOAuthUserNotFound) {
-		return nil, "", err
+		return nil, "", false, err
 	}
 
 	if user == nil {
@@ -1203,8 +1259,9 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 		}
 		user.Group = registrationGroup(user.Group)
 		if err := uc.createUser(ctx, user); err != nil {
-			return nil, "", err
+			return nil, "", false, err
 		}
+		created = true
 		_, identityErr := uc.repo.FindOAuthIdentity(ctx, provider, oauthID)
 		if errors.Is(identityErr, ErrOAuthUserNotFound) {
 			now := uc.now().Unix()
@@ -1215,23 +1272,23 @@ func (uc *IdentityUsecase) OAuthLogin(ctx context.Context, provider, oauthID, us
 				CreatedAt:  now,
 				UpdatedAt:  now,
 			}); err != nil {
-				return nil, "", err
+				return nil, "", false, err
 			}
 		} else if identityErr != nil {
-			return nil, "", identityErr
+			return nil, "", false, identityErr
 		}
 	}
 
 	if user.Status != UserStatusEnabled {
-		return nil, "", ErrUserDisabled
+		return nil, "", false, ErrUserDisabled
 	}
 
-	token, err := uc.generateSessionToken(user)
+	token, err = uc.generateSessionToken(user)
 	if err != nil {
-		return nil, "", err
+		return nil, "", false, err
 	}
 
-	return user, token, nil
+	return user, token, created, nil
 }
 
 func (uc *IdentityUsecase) BindOAuthIdentity(ctx context.Context, userID int64, provider, oauthID string) (*User, error) {

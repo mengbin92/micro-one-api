@@ -205,6 +205,106 @@ func TestIdentityHTTPRegisterWithAffCodeCreditsInvitationBonusViaBilling(t *test
 	}
 }
 
+func TestIdentityHTTPRegisterCreditsNewUserRewardFromSystemOption(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	repo.SeedSystemOptionForTest("AmountForNewUser", "50000")
+	uc := biz.NewIdentityUsecase(repo, nil)
+	billingClient := &identityHTTPBillingClient{}
+	srv := NewHTTPServer(":0", uc, nil, billingClient)
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"carol","password":"password123","email":"carol@example.com"}`))
+	registerRec := httptest.NewRecorder()
+	srv.ServeHTTP(registerRec, registerReq)
+
+	if registerRec.Code != http.StatusOK {
+		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	}
+	if !strings.Contains(registerRec.Body.String(), `"success":true`) {
+		t.Fatalf("register failed: %s", registerRec.Body.String())
+	}
+	carol, err := repo.FindUserByUsername(context.Background(), "carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(billingClient.topUpCalls) != 1 {
+		t.Fatalf("topup calls = %d, want 1: %#v", len(billingClient.topUpCalls), billingClient.topUpCalls)
+	}
+	call := billingClient.topUpCalls[0]
+	if call.UserID != strconv.FormatInt(carol.ID, 10) || call.Amount != 50000 || call.OperatorID != "system_register" {
+		t.Fatalf("new user credit = %#v", call)
+	}
+}
+
+func TestIdentityHTTPRegisterWithAffCodeCreditsAllRewardsFromSystemOptions(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	repo.SeedSystemOptionForTest("AmountForNewUser", "50000")
+	repo.SeedSystemOptionForTest("AmountForInviter", "30000")
+	repo.SeedSystemOptionForTest("AmountForInvitee", "10000")
+	// Env fallbacks must be ignored once the options are configured.
+	t.Setenv("INVITEE_BONUS_AMOUNT", "25")
+	t.Setenv("INVITER_BONUS_AMOUNT", "50")
+	uc := biz.NewIdentityUsecase(repo, nil)
+	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	billingClient := &identityHTTPBillingClient{}
+	srv := NewHTTPServer(":0", uc, nil, billingClient)
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	registerRec := httptest.NewRecorder()
+	srv.ServeHTTP(registerRec, registerReq)
+
+	if registerRec.Code != http.StatusOK {
+		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	}
+	bob, err := repo.FindUserByUsername(context.Background(), "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(billingClient.topUpCalls) != 3 {
+		t.Fatalf("topup calls = %d, want 3: %#v", len(billingClient.topUpCalls), billingClient.topUpCalls)
+	}
+	newUser := billingClient.topUpCalls[0]
+	if newUser.UserID != strconv.FormatInt(bob.ID, 10) || newUser.Amount != 50000 || newUser.OperatorID != "system_register" {
+		t.Fatalf("new user credit = %#v", newUser)
+	}
+	invitee := billingClient.topUpCalls[1]
+	if invitee.UserID != strconv.FormatInt(bob.ID, 10) || invitee.Amount != 10000 || invitee.OperatorID != "system_invitation" {
+		t.Fatalf("invitee credit = %#v", invitee)
+	}
+	inviterCall := billingClient.topUpCalls[2]
+	if inviterCall.UserID != strconv.FormatInt(inviter.ID, 10) || inviterCall.Amount != 30000 || inviterCall.OperatorID != "system_invitation" {
+		t.Fatalf("inviter credit = %#v", inviterCall)
+	}
+}
+
+func TestIdentityHTTPRegisterOptionZeroDisablesEnvFallback(t *testing.T) {
+	repo := identitydata.NewMemoryRepositoryForTest()
+	repo.SeedSystemOptionForTest("AmountForInvitee", "0")
+	repo.SeedSystemOptionForTest("AmountForInviter", "0")
+	t.Setenv("INVITEE_BONUS_AMOUNT", "25")
+	t.Setenv("INVITER_BONUS_AMOUNT", "50")
+	uc := biz.NewIdentityUsecase(repo, nil)
+	inviter, err := uc.Register(context.Background(), "alice", "password123", "alice@example.com", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	billingClient := &identityHTTPBillingClient{}
+	srv := NewHTTPServer(":0", uc, nil, billingClient)
+
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/user/register", strings.NewReader(`{"username":"bob","password":"password123","email":"bob@example.com","aff_code":"`+inviter.AffCode+`"}`))
+	registerRec := httptest.NewRecorder()
+	srv.ServeHTTP(registerRec, registerReq)
+
+	if registerRec.Code != http.StatusOK {
+		t.Fatalf("register status = %d, body=%s", registerRec.Code, registerRec.Body.String())
+	}
+	if len(billingClient.topUpCalls) != 0 {
+		t.Fatalf("expected no topup calls when options are explicitly 0, got %#v", billingClient.topUpCalls)
+	}
+}
+
 func TestIdentityHTTPRegisterWithAffCodeCreditsLegacyInvitationBonusEnv(t *testing.T) {
 	t.Setenv("INVITEE_BONUS_QUOTA", "25")
 	t.Setenv("INVITER_BONUS_QUOTA", "50")
@@ -1527,7 +1627,7 @@ func TestIdentityHTTPOAuthAuthorizeRejectsUnsafeRedirectURL(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/oauth/unsafe/authorize", nil)
 	rec := httptest.NewRecorder()
-	handleOAuth(rec, req, registry, uc)
+	handleOAuth(rec, req, registry, uc, nil)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500, body=%s", rec.Code, rec.Body.String())
@@ -1717,7 +1817,7 @@ func TestIdentityHTTPOAuthBindRejectsDuplicateProviderIdentity(t *testing.T) {
 	registry.Register(&fakeOAuthProvider{name: "lark", providerID: "union-1"})
 	repo := identitydata.NewMemoryRepositoryForTest()
 	uc := biz.NewIdentityUsecase(repo, nil)
-	if _, _, err := uc.OAuthLogin(context.Background(), "lark", "union-1", "bob", "bob@example.com", "Bob"); err != nil {
+	if _, _, _, err := uc.OAuthLogin(context.Background(), "lark", "union-1", "bob", "bob@example.com", "Bob"); err != nil {
 		t.Fatal(err)
 	}
 	_, authToken := registerAndLoginForHTTPTest(t, uc)

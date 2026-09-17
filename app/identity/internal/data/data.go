@@ -24,6 +24,7 @@ type Repository struct {
 	tokensByHash        map[string]*biz.Token
 	oauthIdentities     map[string]*biz.OAuthIdentity
 	nextOAuthIdentityID int64
+	systemOptions       map[string]string
 	identityLock        sync.RWMutex
 }
 
@@ -327,6 +328,39 @@ func (r *Repository) IncreaseUserBalance(ctx context.Context, userID int64, amou
 	}
 	user.Balance += amount
 	return nil
+}
+
+// GetSystemOption reads a value from the shared system_options table (owned
+// by the admin service). It returns ("", nil) when the key is not configured
+// so callers can fall back to their own defaults.
+func (r *Repository) GetSystemOption(ctx context.Context, key string) (string, error) {
+	if r.db == nil {
+		r.identityLock.RLock()
+		defer r.identityLock.RUnlock()
+		return r.systemOptions[key], nil
+	}
+	var row struct {
+		Value string `gorm:"column:option_value"`
+	}
+	err := r.db.WithContext(ctx).Table("system_options").Select("option_value").Where("option_key = ?", key).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return row.Value, nil
+}
+
+// SeedSystemOptionForTest sets a system option in the in-memory store so
+// tests can exercise option-driven behavior without a database.
+func (r *Repository) SeedSystemOptionForTest(key, value string) {
+	r.identityLock.Lock()
+	defer r.identityLock.Unlock()
+	if r.systemOptions == nil {
+		r.systemOptions = make(map[string]string)
+	}
+	r.systemOptions[key] = value
 }
 
 func (r *Repository) CreateToken(ctx context.Context, token *biz.Token) error {
