@@ -1,0 +1,44 @@
+{
+  "captured_at_utc": "2026-09-19T22:37:39.836462+00:00",
+  "window_start_utc": "2026-09-18T22:27:39+00:00",
+  "window_end_utc": "2026-09-19T22:27:39+00:00",
+  "sql": {
+    "consume_source_24h": {
+      "status": "OBSERVED",
+      "tsv": "ledger_rows\treservations\tmissing_source_kind\tmissing_upstream_model\tcontract_v1\tcanonical_present\tmissing_pricing_hash\n438\t438\t0\t260\t438\t438\t0"
+    },
+    "kimi_channel_1_history": {
+      "status": "OBSERVED",
+      "tsv": "ledger_rows\tfirst_at\tlast_at\tmissing_source_kind\tmissing_upstream_model\tin_window\tmissing_source_in_window\tmissing_model_in_window\tlast_missing_model\n3566\t2026-07-30 12:54:36.861\t2026-09-19 09:44:41.040\t81\t85\t178\t0\t0\t2026-08-31 01:14:21.002"
+    },
+    "consume_source_breakdown_24h": {
+      "status": "OBSERVED",
+      "tsv": "channel_id\tsource_kind\tmodel_name\tledger_rows\tmissing_upstream_model\n1\tchannel\tglm-5.3\t260\t260\n1\tchannel\tkimi-k3\t178\t0"
+    }
+  },
+  "flags": {
+    "billing-service": {
+      "BILLING_CANONICAL_USAGE_MODE": "charge",
+      "BILLING_CACHE_CREATION_MODE": "charge",
+      "BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST": "5:k3"
+    },
+    "relay-gateway": {
+      "BILLING_CANONICAL_USAGE_MODE": "<unset>",
+      "BILLING_CACHE_CREATION_MODE": "<unset>",
+      "BILLING_CANONICAL_USAGE_CHARGE_ALLOWLIST": "<unset>"
+    }
+  },
+  "image_ids": {
+    "admin-api": "sha256:e0b2548cb67767e0f3074cd6784489fd6852a4da589c2a737b3d6d15ba79413e",
+    "billing-service": "sha256:ae152bfb3a6d7176b2f8193ca6e44dbf62d665fa464871a4e6d74519c35110d5",
+    "relay-gateway": "sha256:969aa817dd0f11231c4cd8f4afc7838cc0b898e679de983b1c96d782c8f931b9"
+  },
+  "notification_admin_read": {
+    "http_status": 200,
+    "total": 95,
+    "returned_rows": 1,
+    "statuses": [
+      "sent"
+    ]
+  }
+}
