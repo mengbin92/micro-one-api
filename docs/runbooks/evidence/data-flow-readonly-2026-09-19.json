@@ -1,0 +1,22 @@
+{
+  "captured_at_utc": "2026-09-19T05:52:41.814965+00:00",
+  "completed_logs_3h": 3,
+  "reconciliation_history_rows": 0,
+  "alert_sent_logs_3h": 3,
+  "notification_rows_3h": 0,
+  "recon_alert_enabled_env": "false",
+  "stale_reservations_over_10m": 0,
+  "image_ids": {
+    "admin-api": "sha256:e0b2548cb67767e0f3074cd6784489fd6852a4da589c2a737b3d6d15ba79413e",
+    "billing-service": "sha256:ae152bfb3a6d7176b2f8193ca6e44dbf62d665fa464871a4e6d74519c35110d5",
+    "relay-gateway": "sha256:969aa817dd0f11231c4cd8f4afc7838cc0b898e679de983b1c96d782c8f931b9"
+  },
+  "admin_history_read": {
+    "http_status": 200,
+    "success": true,
+    "total": 0,
+    "returned_rows": 0
+  },
+  "history_check": "FAIL",
+  "alert_log_conflicts_with_disabled_setting": true
+}
