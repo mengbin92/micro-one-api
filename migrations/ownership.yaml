@@ -148,6 +148,7 @@ services:
     # notifications table (a subset of 000_create_core_tables).
     - 000_create_core_tables
     - 033_add_notification_last_error
+    - 104_add_notification_processing_lease
 
   monitor:
     # health_checks + alert_rules (subset of 000_create_core_tables).

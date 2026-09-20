@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -11,8 +12,10 @@ const (
 )
 
 type SubscriptionExpiryChecker struct {
-	repo SubscriptionRepository
-	now  func() time.Time
+	repo     SubscriptionRepository
+	now      func() time.Time
+	notifier ExpiryNotifier
+	notified map[string]struct{}
 }
 
 type ExpiryNotification struct {
@@ -21,12 +24,19 @@ type ExpiryNotification struct {
 	ExpiresAt      int64
 }
 
+type ExpiryNotifier interface {
+	NotifyExpiry(ctx context.Context, notification ExpiryNotification) error
+}
+
 func NewSubscriptionExpiryChecker(repo SubscriptionRepository) *SubscriptionExpiryChecker {
 	return &SubscriptionExpiryChecker{
-		repo: repo,
-		now:  time.Now,
+		repo:     repo,
+		now:      time.Now,
+		notified: make(map[string]struct{}),
 	}
 }
+
+func (c *SubscriptionExpiryChecker) SetNotifier(n ExpiryNotifier) { c.notifier = n }
 
 func (c *SubscriptionExpiryChecker) Run(ctx context.Context) {
 	if c == nil {
@@ -34,14 +44,36 @@ func (c *SubscriptionExpiryChecker) Run(ctx context.Context) {
 	}
 	ticker := time.NewTicker(ExpiryCheckInterval)
 	defer ticker.Stop()
-	_, _ = c.Tick(ctx)
+	c.notify(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_, _ = c.Tick(ctx)
+			c.notify(ctx)
 		}
+	}
+}
+
+func (c *SubscriptionExpiryChecker) notify(ctx context.Context) {
+	notifications, err := c.Tick(ctx)
+	if err != nil {
+		fmt.Printf("subscription expiry scan failed: %v\n", err)
+		return
+	}
+	if c.notifier == nil {
+		return
+	}
+	for _, notification := range notifications {
+		key := fmt.Sprintf("%d:%d", notification.SubscriptionID, notification.ExpiresAt)
+		if _, seen := c.notified[key]; seen {
+			continue
+		}
+		if err := c.notifier.NotifyExpiry(ctx, notification); err != nil {
+			fmt.Printf("subscription expiry reminder failed for %d: %v\n", notification.SubscriptionID, err)
+			continue
+		}
+		c.notified[key] = struct{}{}
 	}
 }
 

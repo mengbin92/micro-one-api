@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // baseTokenProvider holds the shared state and logic common to all platform
@@ -104,7 +105,7 @@ func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force 
 	if newCreds.RefreshURL == "" {
 		newCreds.RefreshURL = creds.RefreshURL
 	}
-	if storeErr := b.lookup.Store(ctx, accountID, newCreds); storeErr != nil {
+	if storeErr := persistWithRetry(ctx, b.lookup, accountID, newCreds); storeErr != nil {
 		// domain-M1: persistence failed but we hold a fully-valid refreshed
 		// credential set, including the ROTATED refresh token. Cache the whole
 		// set in-process so (a) the current request succeeds with the new access
@@ -120,6 +121,31 @@ func (b *baseTokenProvider) resolve(ctx context.Context, accountID int64, force 
 	}
 	b.cache.setCreds(accountID, newCreds)
 	return newCreds.AccessToken, nil
+}
+
+// persistWithRetry closes the refresh -> durable credential gap for transient
+// channel RPC/database failures. The refreshed credential remains cached when
+// all attempts fail, so request traffic keeps using the valid token while the
+// next refresh retries persistence with the rotated refresh token.
+func persistWithRetry(ctx context.Context, lookup AccountLookup, accountID int64, creds *AccountCredentials) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := lookup.Store(ctx, accountID, creds); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt < 2 {
+			timer := time.NewTimer(time.Duration(attempt+1) * 100 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+	return lastErr
 }
 
 func (b *baseTokenProvider) lockFor(accountID int64) *sync.Mutex {

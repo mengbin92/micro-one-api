@@ -192,10 +192,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	}
 
 	// Build the optional notify-worker gRPC client. When the endpoint is empty
-	// or alerts are disabled, the job receives a noop notifier so legacy log
-	// behaviour is preserved.
+	// or alerts are disabled, leave the notifier nil.
 	var notifyConn *grpc.ClientConn
-	var notifier biz.Notifier = biz.NoopNotifier()
+	var notifier biz.Notifier
 	interval := 1 * time.Hour
 	recipients := []string{""}
 	if cfg.Bootstrap.Recon != nil && cfg.Bootstrap.Recon.Enabled {
@@ -253,13 +252,19 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cleanupJob := biz.NewCleanupJob(uc, 1*time.Minute)
-	reconJobOpts := []biz.JobOption{biz.WithNotifier(notifier), biz.WithRecipients(recipients)}
+	reconJobOpts := []biz.JobOption{biz.WithRecipients(recipients)}
+	if notifier != nil {
+		reconJobOpts = append(reconJobOpts, biz.WithNotifier(notifier))
+	}
 	if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Notify != nil {
 		reconJobOpts = append(reconJobOpts, biz.WithNotifyType(cfg.Bootstrap.Clients.Notify.NotifyType))
 	}
 	reconJob := biz.NewReconciliationJob(reconUc, interval, reconJobOpts...)
 
 	expiryChecker := biz2.NewSubscriptionExpiryChecker(subscriptionRepo)
+	if notifier != nil {
+		expiryChecker.SetNotifier(expiryNotifier{notifier: notifier})
+	}
 	go expiryChecker.Run(ctx)
 	go cleanupJob.Start(ctx)
 	go reconJob.Start(ctx)

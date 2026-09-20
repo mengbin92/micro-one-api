@@ -64,6 +64,15 @@ type ReconciliationRepo interface {
 	ListStuckIssuedOrders(ctx context.Context) ([]*PaymentOrder, error)
 }
 
+// WindowedConsumeSummaryRepo is implemented by storage drivers that can
+// compare only the shared retention window. The fallback methods above remain
+// available for older drivers, but must not be used to compare an unbounded
+// ledger with logs that are routinely deleted.
+type WindowedConsumeSummaryRepo interface {
+	GetLedgerConsumeSummarySince(ctx context.Context, start, end time.Time) (*ConsumeSummary, error)
+	GetLogConsumeSummarySince(ctx context.Context, start, end time.Time) (*ConsumeSummary, error)
+}
+
 // ReconciliationRunStore persists historical reconciliation runs so admins can review them.
 type ReconciliationRunStore interface {
 	SaveRun(ctx context.Context, result *ReconciliationResult) (int64, error)
@@ -469,11 +478,23 @@ func (uc *ReconciliationUsecase) RunReconciliation(ctx context.Context) (result 
 	// Step 4: Log<->ledger consume summary. The legacy
 	// duplicate-write path is still in place, so the existing
 	// tolerance check stays.
-	ledgerSummary, err := uc.reconRepo.GetLedgerConsumeSummary(ctx)
+	windowStart := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	windowEnd := time.Now().UTC()
+	var ledgerSummary *ConsumeSummary
+	var logSummary *ConsumeSummary
+	if windowed, ok := uc.reconRepo.(WindowedConsumeSummaryRepo); ok {
+		ledgerSummary, err = windowed.GetLedgerConsumeSummarySince(ctx, windowStart, windowEnd)
+	} else {
+		ledgerSummary, err = uc.reconRepo.GetLedgerConsumeSummary(ctx)
+	}
 	if err != nil {
 		return result, fmt.Errorf("get ledger consume summary: %w", err)
 	}
-	logSummary, err := uc.reconRepo.GetLogConsumeSummary(ctx)
+	if windowed, ok := uc.reconRepo.(WindowedConsumeSummaryRepo); ok {
+		logSummary, err = windowed.GetLogConsumeSummarySince(ctx, windowStart, windowEnd)
+	} else {
+		logSummary, err = uc.reconRepo.GetLogConsumeSummary(ctx)
+	}
 	if err != nil {
 		return result, fmt.Errorf("get log consume summary: %w", err)
 	}
