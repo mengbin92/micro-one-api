@@ -36,6 +36,7 @@ services:
     - 094_add_identity_routing_facts
     - 095_create_routing_change_outbox
     - 098_identity_ordered_token_groups
+    - 103_create_identity_token_quota_dedupe
 
   channel:
     - 092_create_routing_groups
@@ -121,6 +122,8 @@ services:
     - 096_add_subscription_contracts
     - 097_create_routing_billing_policies
     - 099_billing_user_routing_price_overrides
+    - 101_add_reconciliation_run_status
+    - 102_create_billing_settlement_tasks
 
   log:
     # logs table (a subset of 000_create_core_tables on the shared schema,

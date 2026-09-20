@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	channelv1 "micro-one-api/api/channel/v1"
 	notifyv1 "micro-one-api/api/notify/v1"
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/app/billing/internal/data"
@@ -124,6 +125,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 			defaultInt(int(asyncCfg.BatchSize), 100),
 			parseDurationOrDefault(asyncCfg.BatchInterval, 5*time.Second),
 		)
+		asyncBilling.SetTaskStore(d.SettlementTaskStore())
 	}
 
 	reconUc := biz.NewReconciliationUsecase(
@@ -183,6 +185,16 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	// CommitQuota can enqueue settlement and return a provisional response
 	// when cfg.Billing.Async.Enabled. asyncBilling is nil when disabled.
 	svc.SetAsyncBillingUsecase(asyncBilling)
+	var channelConn *grpc.ClientConn
+	if cfg.Bootstrap.Clients != nil && cfg.Bootstrap.Clients.Channel != nil && cfg.Bootstrap.Clients.Channel.Endpoint != "" {
+		var err error
+		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpcauth.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))))
+		if err != nil {
+			applogger.Log.Error("dial channel endpoint", zap.Error(err))
+		} else {
+			svc.SetSettlementSideEffectReporter(service.NewChannelSettlementReporter(channelv1.NewChannelServiceClient(channelConn)))
+		}
+	}
 
 	// Build the optional notify-worker gRPC client. When the endpoint is empty
 	// or alerts are disabled, the job receives a noop notifier so legacy log
@@ -297,6 +309,9 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		d.Close()
 		if notifyConn != nil {
 			_ = notifyConn.Close()
+		}
+		if channelConn != nil {
+			_ = channelConn.Close()
 		}
 	}
 }

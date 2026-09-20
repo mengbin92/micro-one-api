@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"micro-one-api/app/identity/internal/biz"
 	"micro-one-api/platform/database/xdb"
@@ -15,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Repository struct {
@@ -70,6 +72,18 @@ type tokenModel struct {
 	Subnet          *string `gorm:"column:subnet"`
 	CreatedAt       int64   `gorm:"column:created_at"`
 }
+
+type tokenQuotaDedupeModel struct {
+	ID            int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	ReservationID string `gorm:"column:reservation_id;uniqueIndex:uq_token_quota_dedupe"`
+	UserID        int64  `gorm:"column:user_id;uniqueIndex:uq_token_quota_dedupe"`
+	TokenID       int64  `gorm:"column:token_id;uniqueIndex:uq_token_quota_dedupe"`
+	Amount        int64  `gorm:"column:amount"`
+	Remaining     int64  `gorm:"column:remaining"`
+	CreatedAt     int64  `gorm:"column:created_at"`
+}
+
+func (tokenQuotaDedupeModel) TableName() string { return "identity_token_quota_dedupe" }
 
 func (tokenModel) TableName() string { return "tokens" }
 
@@ -515,6 +529,51 @@ func (r *Repository) ConsumeTokenQuota(ctx context.Context, userID, tokenID, amo
 		}
 	}
 	return 0, biz.ErrTokenNotFound
+}
+
+// ConsumeTokenQuotaWithDedupe applies a quota decrement once per billing
+// reservation. The claim and token update share one transaction so a lost RPC
+// response can be retried without charging the key twice.
+func (r *Repository) ConsumeTokenQuotaWithDedupe(ctx context.Context, userID, tokenID, amount int64, reservationID string) (int64, bool, error) {
+	if r.db == nil || strings.TrimSpace(reservationID) == "" {
+		remaining, err := r.ConsumeTokenQuota(ctx, userID, tokenID, amount)
+		return remaining, err == nil, err
+	}
+	var remaining int64
+	applied := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		claim := &tokenQuotaDedupeModel{ReservationID: reservationID, UserID: userID, TokenID: tokenID, Amount: amount, CreatedAt: time.Now().Unix()}
+		insert := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(claim)
+		if insert.Error != nil {
+			return insert.Error
+		}
+		if insert.RowsAffected == 0 {
+			var existing tokenQuotaDedupeModel
+			if findErr := tx.Where("reservation_id = ? AND user_id = ? AND token_id = ?", reservationID, userID, tokenID).First(&existing).Error; findErr != nil {
+				return findErr
+			}
+			remaining = existing.Remaining
+			return nil
+		}
+		var token tokenModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ?", tokenID, userID).First(&token).Error; err != nil {
+			return err
+		}
+		consumed := amount
+		if consumed > token.RemainQuota {
+			consumed = token.RemainQuota
+		}
+		remaining = token.RemainQuota - consumed
+		if err := tx.Model(&tokenModel{}).Where("id = ? AND user_id = ?", tokenID, userID).Updates(map[string]any{"remain_quota": remaining, "used_quota": gorm.Expr("used_quota + ?", consumed), "status": gorm.Expr("CASE WHEN ? = 0 THEN ? ELSE status END", remaining, biz.TokenStatusExhausted)}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(claim).Update("remaining", remaining).Error; err != nil {
+			return err
+		}
+		applied = true
+		return nil
+	})
+	return remaining, applied, err
 }
 
 func (r *Repository) DeleteToken(ctx context.Context, userID, tokenID int64) error {

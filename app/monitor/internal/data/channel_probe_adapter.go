@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 
 	channelv1 "micro-one-api/api/channel/v1"
 	"micro-one-api/app/monitor/internal/biz"
@@ -69,7 +70,7 @@ func (a *ChannelProbeAdapter) RecordChannelHealth(ctx context.Context, channelID
 		return err
 	}
 	if resp != nil && !resp.GetSuccess() {
-		return nil
+		return fmt.Errorf("record channel health failed: %s", resp.GetMessage())
 	}
 	return nil
 }

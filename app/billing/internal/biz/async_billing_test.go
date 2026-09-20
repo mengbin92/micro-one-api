@@ -401,3 +401,42 @@ func TestAsyncBillingUsecase_CloseDrainsQueuedTasks(t *testing.T) {
 		t.Fatalf("settleQueue not empty after Close: %d", len(uc.settleQueue))
 	}
 }
+
+type memorySettlementTaskStore struct {
+	mu        sync.Mutex
+	saved     []*SettleTask
+	completed []string
+}
+
+func (s *memorySettlementTaskStore) SaveTask(_ context.Context, task *SettleTask) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.saved = append(s.saved, task)
+	return nil
+}
+func (s *memorySettlementTaskStore) ListPending(context.Context, int) ([]*SettleTask, error) {
+	return nil, nil
+}
+func (s *memorySettlementTaskStore) MarkCompleted(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.completed = append(s.completed, id)
+	return nil
+}
+func (s *memorySettlementTaskStore) MarkFailed(context.Context, string, string, time.Time) error {
+	return nil
+}
+
+func TestAsyncBillingPersistsAcceptedSettlementBeforeQueueing(t *testing.T) {
+	uc := NewAsyncBillingUsecase(nil, nil, 1, 1, time.Hour)
+	defer func() { _ = uc.Close() }()
+	store := &memorySettlementTaskStore{}
+	uc.SetTaskStore(store)
+	uc.Settle(context.Background(), &SettleTask{ReservationID: "res-1", Timestamp: time.Now()})
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.saved) != 1 || store.saved[0].ReservationID != "res-1" {
+		t.Fatalf("saved tasks = %+v", store.saved)
+	}
+}

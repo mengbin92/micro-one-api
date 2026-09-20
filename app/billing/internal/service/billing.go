@@ -34,6 +34,7 @@ type BillingService struct {
 	billingv1.UnimplementedBillingServiceServer
 	uc             *biz.BillingUsecase
 	asyncUc        *biz.AsyncBillingUsecase // optional; nil = synchronous path
+	reporter       biz.SettlementSideEffectReporter
 	paymentUc      *biz.PaymentUsecase
 	alipayVerifier biz.PaymentNotifyVerifier
 	// expectedAlipayAppID is the locally-configured Alipay merchant app id.
@@ -91,6 +92,16 @@ func (s *BillingService) SetAsyncBillingUsecase(uc *biz.AsyncBillingUsecase) {
 		return
 	}
 	s.asyncUc = uc
+}
+
+func (s *BillingService) SetSettlementSideEffectReporter(reporter biz.SettlementSideEffectReporter) {
+	if s == nil {
+		return
+	}
+	s.reporter = reporter
+	if s.asyncUc != nil {
+		s.asyncUc.SetSideEffectReporter(reporter)
+	}
 }
 
 func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.ReserveQuotaRequest) (*billingv1.ReserveQuotaResponse, error) {
@@ -219,14 +230,20 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 				ErrorMessage: "reservation_id is required for async commit on the success path",
 			}, nil
 		}
-		s.asyncUc.Settle(ctx, &biz.SettleTask{
-			RequestID:     req.ReservationId,
-			ReservationID: req.ReservationId,
-			ActualTokens:  req.ActualTokens,
-			Success:       true,
-			Usage:         usage,
-			Timestamp:     time.Now(),
-		})
+		if err := s.asyncUc.Settle(ctx, &biz.SettleTask{
+			RequestID:             req.ReservationId,
+			ReservationID:         req.ReservationId,
+			UserID:                "",
+			Model:                 req.UpstreamModelId,
+			ChannelID:             "",
+			SubscriptionAccountID: req.SubscriptionAccountId,
+			ActualTokens:          req.ActualTokens,
+			Success:               true,
+			Usage:                 usage,
+			Timestamp:             time.Now(),
+		}); err != nil {
+			return &billingv1.CommitQuotaResponse{Success: false, ErrorMessage: fmt.Sprintf("async settlement not accepted: %v", err)}, nil
+		}
 		return &billingv1.CommitQuotaResponse{
 			Success:         true,
 			CommittedAmount: 0, // provisional; authoritative amount written by the worker
@@ -250,6 +267,11 @@ func (s *BillingService) CommitQuota(ctx context.Context, req *billingv1.CommitQ
 			Success:      false,
 			ErrorMessage: err.Error(),
 		}, nil
+	}
+	if s.reporter != nil && req.Success && req.SubscriptionAccountId > 0 && committedAmount > 0 {
+		if reportErr := s.reporter.RecordSubscriptionAccountQuotaUsage(ctx, req.SubscriptionAccountId, req.ReservationId, float64(committedAmount)/float64(biz.AmountScale), time.Now()); reportErr != nil {
+			applogger.Log.Warn("subscription account quota reporting failed", zap.String("reservation_id", req.ReservationId), zap.Error(reportErr))
+		}
 	}
 
 	return &billingv1.CommitQuotaResponse{
@@ -1294,6 +1316,8 @@ func reconciliationRunToProto(run *biz.ReconciliationResult) (*billingv1.Reconci
 		TotalChannels:     totalChannels,
 		TotalReservations: totalReservations,
 		DiscrepancyCount:  discrepancyCount,
+		Status:            run.Status,
+		ErrorMessage:      run.ErrorMessage,
 	}
 	for _, d := range run.AccountInconsistencies {
 		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{
@@ -1326,6 +1350,18 @@ func reconciliationRunToProto(run *biz.ReconciliationResult) (*billingv1.Reconci
 			CountDiff:   d.CountDiff,
 			QuotaDiff:   d.QuotaDiff,
 		})
+	}
+	for _, d := range run.SubscriptionInconsistencies {
+		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeSubscription, UserId: fmt.Sprintf("%d", d.UserID), SubscriptionId: d.SubscriptionID, Window: d.Window, WindowStart: d.WindowStart, SubscriptionUsedUsd: d.SubscriptionUsedUSD, LedgerSubscriptionCost: d.LedgerSubscriptionCost, SubscriptionDifference: d.Difference})
+	}
+	for _, d := range run.ReceivableInconsistencies {
+		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeReceivable, UserId: d.UserID, PendingReceivableQuota: d.PendingReceivableQuota, OverdraftQuota: d.OverdraftQuota, Difference: d.Difference})
+	}
+	for _, d := range run.RefundInconsistencies {
+		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeRefund, RefundedOrderCount: d.RefundedOrderCount, RefundedOrderMoneyCents: d.RefundedOrderMoneyCents, ReversalLedgerCount: d.ReversalLedgerCount, ReversalLedgerAmount: d.ReversalLedgerAmount, MoneyCentsDiff: d.MoneyCentsDiff})
+	}
+	for _, d := range run.StuckIssuanceInconsistencies {
+		out.Discrepancies = append(out.Discrepancies, &billingv1.ReconciliationDiscrepancy{Type: biz.ReconciliationDiscrepancyTypeStuckIssuance, TradeNo: d.TradeNo, UserId: d.UserID, GroupId: d.GroupID, PlanId: d.PlanID, MoneyCents: d.MoneyCents, StuckSince: d.StuckSince.Unix()})
 	}
 	return out, nil
 }

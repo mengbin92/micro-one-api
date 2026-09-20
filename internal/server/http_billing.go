@@ -258,7 +258,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 			s.recordChannelUsageFromDetail(ctx, details[0], actualTokens, reservationID)
 			s.recordModelUsage(ctx, details[0].ModelName, actualTokens, details[0].ElapsedTime, false)
 			// High #5: consume per-key token quota even on the async path.
-			s.consumeTokenQuota(ctx, details[0].UserID, details[0].TokenID, actualTokens)
+			s.consumeTokenQuota(ctx, details[0].UserID, details[0].TokenID, actualTokens, reservationID)
 		}
 		recordRelayQuotaOutcome(ctx, "commit_async")
 		return resp, nil
@@ -279,7 +279,7 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 		s.recordSubscriptionUsage(ctx, detail.UserID, actualTokens)
 		// Enforce per-key quota after billing settles. Persistent identity
 		// failures fail-close this token in the relay until validation recovers.
-		s.consumeTokenQuota(ctx, detail.UserID, detail.TokenID, actualTokens)
+		s.consumeTokenQuota(ctx, detail.UserID, detail.TokenID, actualTokens, reservationID)
 	}
 	recordRelayQuotaOutcome(ctx, "commit_success")
 	return resp, nil
@@ -321,7 +321,7 @@ func (s *HTTPServer) recordSubscriptionSessionWindowUsage(ctx context.Context, d
 // Billing has already committed when this runs, so transient failures are
 // retried. Persistent failure fail-closes the token locally until identity can
 // be checked again instead of allowing unmetered follow-up requests.
-func (s *HTTPServer) consumeTokenQuota(ctx context.Context, userID, tokenID, amount int64) {
+func (s *HTTPServer) consumeTokenQuota(ctx context.Context, userID, tokenID, amount int64, reservationID string) {
 	if s == nil || s.identityClient == nil || tokenID <= 0 || amount <= 0 {
 		return
 	}
@@ -332,7 +332,7 @@ func (s *HTTPServer) consumeTokenQuota(ctx context.Context, userID, tokenID, amo
 	consumed := false
 	for attempt := 0; attempt < 3; attempt++ {
 		resp, err = s.identityClient.ConsumeTokenQuota(tokenCtx, &identityv1.ConsumeTokenQuotaRequest{
-			UserId: userID, TokenId: tokenID, Amount: amount,
+			UserId: userID, TokenId: tokenID, Amount: amount, ReservationId: reservationID,
 		})
 		if err == nil && resp != nil && resp.GetSuccess() {
 			consumed = true

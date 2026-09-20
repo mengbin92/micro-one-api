@@ -29,6 +29,27 @@ type mockReconRepo struct {
 	subscriptionCosts    map[int64]map[int64]int64 // subscription id -> window start unix -> amount
 }
 
+type recordingReconciliationRunStore struct {
+	saved []*ReconciliationResult
+	err   error
+}
+
+func (s *recordingReconciliationRunStore) SaveRun(_ context.Context, result *ReconciliationResult) (int64, error) {
+	s.saved = append(s.saved, result)
+	if s.err != nil {
+		return 0, s.err
+	}
+	return int64(len(s.saved)), nil
+}
+
+func (*recordingReconciliationRunStore) ListRuns(context.Context, int32, int32) ([]*ReconciliationResult, int64, error) {
+	return nil, 0, nil
+}
+
+func (*recordingReconciliationRunStore) GetRun(context.Context, int64) (*ReconciliationResult, error) {
+	return nil, nil
+}
+
 func (m *mockReconRepo) ListAllAccounts(ctx context.Context) ([]*Account, error) {
 	return m.accounts, nil
 }
@@ -167,6 +188,24 @@ func TestRunReconciliation_NoInconsistencies(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, result.AccountInconsistencies)
 	assert.Equal(t, 1, result.TotalAccounts)
+}
+
+func TestRunReconciliation_PersistsExactlyOneCompletedRun(t *testing.T) {
+	account := &Account{UserID: "user1", Balance: 1000}
+	store := &recordingReconciliationRunStore{}
+	uc := NewReconciliationUsecase(
+		&mockAccountRepo{account: account},
+		&mockReservationRepo{reservations: map[string]*Reservation{}},
+		&mockReconRepo{accounts: []*Account{account}, ledgerSums: map[string]int64{"user1": 1000}},
+		store,
+	)
+
+	result, err := uc.RunReconciliation(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, store.saved, 1)
+	assert.Equal(t, int64(1), result.RunID)
+	assert.Same(t, result, store.saved[0])
 }
 
 func TestRunReconciliation_ActiveFrozenBalanceMatchesSettledSnapshot(t *testing.T) {

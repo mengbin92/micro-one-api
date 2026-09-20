@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"micro-one-api/app/billing/internal/biz"
@@ -248,7 +249,9 @@ func (r *reservationRepo) SumActiveFrozenInTx(ctx context.Context, tx subscripti
 func (r *reservationRepo) GetExpiredReservations(ctx context.Context) ([]*biz.Reservation, error) {
 	var models []reservationModel
 	now := time.Now()
-	query := r.data.db.WithContext(ctx).Where("status = ?", biz.ReservationStatusReserved)
+	query := r.data.db.WithContext(ctx).
+		Where("status = ?", biz.ReservationStatusReserved).
+		Where("NOT EXISTS (SELECT 1 FROM billing_settlement_tasks st WHERE st.reservation_id = billing_reservations.reservation_id AND st.status IN (?, ?, ?))", "pending", "failed", "processing")
 	if isSQLite(dialectorName(r.data.db)) {
 		// INTEGER epochs and GORM timestamps coexist in historical SQLite
 		// databases. Comparing a number to a text parameter expires future
@@ -258,7 +261,24 @@ func (r *reservationRepo) GetExpiredReservations(ctx context.Context) ([]*biz.Re
 		query = query.Where("expired_at < ?", now)
 	}
 	if err := query.Find(&models).Error; err != nil {
-		return nil, err
+		// Keep cleanup readable during the migration window; once the task
+		// table exists, pending settlement rows protect reservations from
+		// expiry. Older databases use the original query until migration runs.
+		errorText := strings.ToLower(err.Error())
+		if strings.Contains(errorText, "billing_settlement_tasks") && (strings.Contains(errorText, "no such table") || strings.Contains(errorText, "doesn't exist") || strings.Contains(errorText, "undefined table")) {
+			models = nil
+			fallback := r.data.db.WithContext(ctx).Where("status = ?", biz.ReservationStatusReserved)
+			if isSQLite(dialectorName(r.data.db)) {
+				fallback = fallback.Where("CASE WHEN typeof(expired_at) IN ('integer', 'real') THEN julianday(expired_at, 'unixepoch') ELSE julianday(expired_at) END < julianday(?)", now.UTC().Format(time.RFC3339Nano))
+			} else {
+				fallback = fallback.Where("expired_at < ?", now)
+			}
+			if fallback.Find(&models).Error != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 
 	reservations := make([]*biz.Reservation, len(models))

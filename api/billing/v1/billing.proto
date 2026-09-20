@@ -583,6 +583,8 @@ message ReconciliationRun {
   int32 discrepancy_count = 6;
   repeated ReconciliationDiscrepancy discrepancies = 7;
   int32 total_channels = 8;
+	string status = 9;
+	string error_message = 10;
 }
 
 message ReconciliationDiscrepancy {
@@ -603,6 +605,24 @@ message ReconciliationDiscrepancy {
   int64 log_quota = 15;
   int64 count_diff = 16;
   int64 quota_diff = 17;
+	int64 subscription_id = 18;
+	string window = 19;
+	int64 window_start = 20;
+	double subscription_used_usd = 21;
+	int64 ledger_subscription_cost = 22;
+	double subscription_difference = 23;
+	int64 pending_receivable_quota = 24;
+	int64 overdraft_quota = 25;
+	int64 refunded_order_count = 26;
+	int64 refunded_order_money_cents = 27;
+	int64 reversal_ledger_count = 28;
+	int64 reversal_ledger_amount = 29;
+	int64 money_cents_diff = 30;
+	string trade_no = 31;
+	int64 group_id = 32;
+	int64 plan_id = 33;
+	int64 money_cents = 34;
+	int64 stuck_since = 35;
 }
 
 message ListReconciliationRunsRequest {

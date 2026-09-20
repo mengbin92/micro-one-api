@@ -87,12 +87,15 @@ message Alipay {
 // Clients holds the gRPC endpoints for downstream services.
 message Clients {
   Notify notify = 1 [json_name = "notify"];
+	Channel channel = 2 [json_name = "channel"];
 }
 
 message Notify {
   string endpoint = 1 [json_name = "endpoint"];
   string notify_type = 2 [json_name = "notify_type"];
 }
+
+message Channel { string endpoint = 1 [json_name = "endpoint"]; }
 
 // ReconAlertConfig configures reconciliation job alert delivery.
 message Recon {

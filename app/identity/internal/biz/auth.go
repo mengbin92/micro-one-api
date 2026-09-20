@@ -192,6 +192,10 @@ type IdentityRepo interface {
 	CountUsers(ctx context.Context) (int64, error)
 }
 
+type TokenQuotaDedupeRepo interface {
+	ConsumeTokenQuotaWithDedupe(ctx context.Context, userID, tokenID, amount int64, reservationID string) (remaining int64, applied bool, err error)
+}
+
 // loginAttempt tracks failed login attempts for rate limiting
 type loginAttempt struct {
 	count    int
@@ -902,6 +906,24 @@ func (uc *IdentityUsecase) ConsumeTokenQuota(ctx context.Context, userID, tokenI
 		return 0, err
 	}
 	return remaining, nil
+}
+
+func (uc *IdentityUsecase) ConsumeTokenQuotaWithDedupe(ctx context.Context, userID, tokenID, amount int64, reservationID string) (int64, error) {
+	if amount <= 0 {
+		return 0, nil
+	}
+	token, err := uc.repo.FindTokenByID(ctx, userID, tokenID)
+	if err != nil {
+		return 0, err
+	}
+	if token.UnlimitedQuota {
+		return -1, nil
+	}
+	if dedupe, ok := uc.repo.(TokenQuotaDedupeRepo); ok && strings.TrimSpace(reservationID) != "" {
+		remaining, _, err := dedupe.ConsumeTokenQuotaWithDedupe(ctx, userID, tokenID, amount, reservationID)
+		return remaining, err
+	}
+	return uc.ConsumeTokenQuota(ctx, userID, tokenID, amount)
 }
 
 func (uc *IdentityUsecase) DeleteAccessToken(ctx context.Context, userID, tokenID int64) error {

@@ -441,7 +441,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 
 	srv := newKratosHTTPServer(cfg, httpServer, providerTimeout)
 
-	grpcSvc := relayservice.NewRelayGrpcService(identityClient, channelClient, billingClient, providerFactory, relayUsecase)
+	grpcSvc := relayservice.NewRelayGrpcService(identityClient, channelClient, logClient, billingClient, providerFactory, relayUsecase)
 	var relayGRPCOpts []grpc.ServerOption
 	if cfg.Bootstrap.Mtls.Enabled {
 		mtlsOpts, mtlsErr := appgrpc.MTLSServerOptions(cfg.Bootstrap.Mtls.CertFile, cfg.Bootstrap.Mtls.KeyFile, cfg.Bootstrap.Mtls.CaFile)

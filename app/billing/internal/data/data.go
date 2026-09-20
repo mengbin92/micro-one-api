@@ -24,6 +24,7 @@ type Data struct {
 	paymentRepo         biz.PaymentRepo
 	reconRepo           biz.ReconciliationRepo
 	reconRunStore       biz.ReconciliationRunStore
+	settlementTaskStore biz.SettlementTaskStore
 	receivableRepo      biz.ReceivableRepo
 }
 
@@ -84,6 +85,7 @@ func NewData(driver string, dsn ...string) (*Data, error) {
 	d.paymentRepo = NewPaymentRepo(d)
 	d.reconRepo = NewReconciliationRepo(d)
 	d.reconRunStore = NewReconciliationRunRepo(d)
+	d.settlementTaskStore = NewSettlementTaskRepo(d)
 	d.receivableRepo = NewReceivableRepo(d)
 
 	return d, nil
@@ -123,6 +125,13 @@ func (d *Data) ReconciliationRepo() biz.ReconciliationRepo {
 
 func (d *Data) ReconciliationRunStore() biz.ReconciliationRunStore {
 	return d.reconRunStore
+}
+
+func (d *Data) SettlementTaskStore() biz.SettlementTaskStore {
+	if d == nil {
+		return nil
+	}
+	return d.settlementTaskStore
 }
 
 func (d *Data) ReceivableRepo() biz.ReceivableRepo {
