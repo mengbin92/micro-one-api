@@ -656,7 +656,10 @@ func (uc *ModelUsecase) RecordModelUsage(ctx context.Context, modelID string, re
 	}
 	model, err := uc.repo.GetModelByID(ctx, NormalizeModelID(modelID))
 	if err != nil {
-		return nil // best-effort: model not registered, skip
+		if errors.Is(err, ErrModelNotFound) {
+			return nil // an unregistered model is outside the managed registry
+		}
+		return err // storage failures must remain observable to the caller
 	}
 	if date == "" {
 		date = uc.now().Format("2006-01-02")

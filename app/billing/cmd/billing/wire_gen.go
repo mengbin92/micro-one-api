@@ -260,6 +260,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		reconJobOpts = append(reconJobOpts, biz.WithNotifyType(cfg.Bootstrap.Clients.Notify.NotifyType))
 	}
 	reconJob := biz.NewReconciliationJob(reconUc, interval, reconJobOpts...)
+	paymentReconcileJob := biz.NewPaymentReconcileJob(paymentUc, 1*time.Minute)
 
 	expiryChecker := biz2.NewSubscriptionExpiryChecker(subscriptionRepo)
 	if notifier != nil {
@@ -268,6 +269,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	go expiryChecker.Run(ctx)
 	go cleanupJob.Start(ctx)
 	go reconJob.Start(ctx)
+	go paymentReconcileJob.Start(ctx)
 	partitionStop := startPartitionMaintenance(ctx, d.DB(), cfg.Bootstrap.Partition)
 	go func() {
 		sigChan := make(chan os.Signal, 1)

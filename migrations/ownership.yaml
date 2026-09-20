@@ -143,6 +143,7 @@ services:
   config:
     # configs table (a subset of 000_create_core_tables).
     - 000_create_core_tables
+    - 105_add_config_revision
 
   notify:
     # notifications table (a subset of 000_create_core_tables).

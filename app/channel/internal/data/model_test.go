@@ -690,7 +690,7 @@ func TestRepository_RecordAndListModelUsageStats(t *testing.T) {
 	assert.Len(t, stats, 1)
 	assert.Equal(t, int32(2), stats[0].RequestCount)
 	assert.Equal(t, int64(300), stats[0].TokenCount)
-	assert.Equal(t, int32(60), stats[0].AvgLatency)
+	assert.Equal(t, int32(55), stats[0].AvgLatency)
 }
 
 func TestRepository_ModelUsageStatsMemory(t *testing.T) {

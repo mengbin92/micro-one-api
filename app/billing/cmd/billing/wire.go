@@ -270,6 +270,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		reconJobOpts = append(reconJobOpts, biz.WithNotifyType(cfg.Bootstrap.Clients.Notify.NotifyType))
 	}
 	reconJob := biz.NewReconciliationJob(reconUc, interval, reconJobOpts...)
+	paymentReconcileJob := biz.NewPaymentReconcileJob(paymentUc, 1*time.Minute)
 	// Code-review 2026-07-30 domain-C1: the SubscriptionExpiryChecker is the
 	// ONLY component that flips an active subscription's status to expired.
 	// Without it, subscriptions continue to absorb quota and serve relay
@@ -283,6 +284,7 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 	go expiryChecker.Run(ctx)
 	go cleanupJob.Start(ctx)
 	go reconJob.Start(ctx)
+	go paymentReconcileJob.Start(ctx)
 	partitionStop := startPartitionMaintenance(ctx, d.DB(), cfg.Bootstrap.Partition)
 	go func() {
 		sigChan := make(chan os.Signal, 1)

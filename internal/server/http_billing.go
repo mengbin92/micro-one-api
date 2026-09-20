@@ -239,6 +239,13 @@ func (s *HTTPServer) commitQuotaWithResponse(ctx context.Context, reservationID 
 	// has no consume ledger. Do not increment channel/model/token counters for
 	// it; doing so was the source of the persistent channel-vs-ledger drift.
 	if !success {
+		if len(details) > 0 {
+			// A final upstream failure is a completed user-request outcome even
+			// though it has no billable usage. Keep it in model statistics so
+			// error rates have a real denominator; retries that later succeed
+			// only report the final successful outcome here.
+			s.recordModelUsage(ctx, details[0].ModelName, 0, details[0].ElapsedTime, true)
+		}
 		recordRelayQuotaOutcome(ctx, "commit_failure_settlement")
 		return resp, nil
 	}

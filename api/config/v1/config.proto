@@ -42,6 +42,7 @@ message GetConfigResponse {
   string value = 4;
   string comment = 5;
   int64 updated_at = 6;
+  int64 revision = 7;
 }
 
 message ListConfigsRequest {
@@ -64,6 +65,7 @@ message SetConfigRequest {
 
 message SetConfigResponse {
   bool success = 1;
+  int64 revision = 2;
 }
 
 message DeleteConfigRequest {

@@ -14,7 +14,6 @@ import (
 	"micro-one-api/app/config/internal/data"
 	"micro-one-api/app/config/internal/server"
 	"micro-one-api/app/config/internal/service"
-	"micro-one-api/platform/events"
 	registry2 "micro-one-api/platform/registry"
 )
 
@@ -29,8 +28,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	eventBus := newEventBus(repository)
-	configUsecase := biz.NewConfigUsecase(repository, eventBus)
+	configUsecase := biz.NewConfigUsecase(repository)
 	configService := service.NewConfigService(configUsecase)
 	mainRegistrarResult := provideRegistrar(config)
 	app, cleanup := newApp(config, configService, mainRegistrarResult)
@@ -45,18 +43,13 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 // config_loader.go so it is visible under both build tags.
 var ProviderSet = wire.NewSet(
 	newRepo,
-	newEventBus, biz.NewConfigUsecase, service.NewConfigService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ConfigRepo), new(*data.Repository)),
+	biz.NewConfigUsecase, service.NewConfigService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ConfigRepo), new(*data.Repository)),
 )
 
 // newRepo wraps data.NewRepositoryFromEnv so Wire can resolve it from a
 // *Config (it passes the configured driver + DSN).
 func newRepo(cfg *Config) (*data.Repository, error) {
 	return data.NewRepositoryFromEnv(cfg.Bootstrap.Data.Database.Driver, cfg.Bootstrap.Data.Database.Source, cfg.Bootstrap.Data.Database.Schema)
-}
-
-// newEventBus builds the EventBus from the repository's Redis client.
-func newEventBus(repo *data.Repository) events.EventBus {
-	return events.NewConfiguredEventBus(repo.Redis(), "config-service")
 }
 
 // registrarResult wraps an optional kratos Registrar so Wire can thread it

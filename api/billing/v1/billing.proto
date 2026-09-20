@@ -536,6 +536,7 @@ message RefundPaymentOrderResponse {
   int64 subscription_id = 5;
   string subscription_action = 6;  // revoked / shortened / kept
   string ledger_dedupe_key = 7;
+  string external_refund_status = 8;
 }
 
 // ========== 订阅运营报表 ==========

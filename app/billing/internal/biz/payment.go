@@ -102,6 +102,17 @@ type PaymentProviderStatus struct {
 	Closed          bool
 }
 
+// PaymentReconcileReport describes one bounded pending-order scan. Query
+// failures remain visible so operators can distinguish "still pending" from
+// "provider could not be checked".
+type PaymentReconcileReport struct {
+	Scanned       int
+	Paid          int
+	Closed        int
+	StillPending  int
+	QueryFailures int
+}
+
 type PaymentNotify struct {
 	TradeNo         string
 	ProviderTradeNo string
@@ -378,6 +389,39 @@ func (uc *PaymentUsecase) ListOrders(ctx context.Context, req ListPaymentOrdersR
 	return uc.repo.ListOrders(ctx, req)
 }
 
+// ReconcilePendingOrders actively converges provider callbacks that were lost.
+// The scan is bounded and only touches provider-backed pending orders; normal
+// user reads remain a separate path.
+func (uc *PaymentUsecase) ReconcilePendingOrders(ctx context.Context, limit int32) (PaymentReconcileReport, error) {
+	if uc == nil || uc.repo == nil {
+		return PaymentReconcileReport{}, errors.New("payment service is not configured")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	orders, _, err := uc.repo.ListOrders(ctx, ListPaymentOrdersRequest{Page: 1, PageSize: limit, Status: PaymentOrderStatusPending, Channel: PaymentChannelAlipay})
+	if err != nil {
+		return PaymentReconcileReport{}, err
+	}
+	report := PaymentReconcileReport{Scanned: len(orders)}
+	for _, order := range orders {
+		updated, err := uc.refreshProviderStatus(ctx, order)
+		if err != nil {
+			report.QueryFailures++
+			continue
+		}
+		switch updated.Status {
+		case PaymentOrderStatusPaid:
+			report.Paid++
+		case PaymentOrderStatusClosed:
+			report.Closed++
+		case PaymentOrderStatusPending:
+			report.StillPending++
+		}
+	}
+	return report, nil
+}
+
 func (uc *PaymentUsecase) MarkOrderPaid(ctx context.Context, tradeNo, providerTradeNo string) (*PaymentOrder, error) {
 	if tradeNo == "" {
 		return nil, errors.New("trade_no is required")
@@ -457,8 +501,11 @@ func (uc *PaymentUsecase) refreshProviderStatus(ctx context.Context, order *Paym
 		return order, nil
 	}
 	status, err := querier.QueryOrder(ctx, order)
-	if err != nil || status == nil {
-		return order, nil
+	if err != nil {
+		return order, fmt.Errorf("query payment provider status: %w", err)
+	}
+	if status == nil {
+		return order, errors.New("payment provider returned empty status")
 	}
 	providerTradeNo := firstNonEmptyString(status.ProviderTradeNo, order.ProviderTradeNo)
 	if status.Paid {

@@ -1103,12 +1103,13 @@ func (s *BillingService) RefundPaymentOrder(ctx context.Context, req *billingv1.
 		return &billingv1.RefundPaymentOrderResponse{Success: false, ErrorMessage: err.Error()}, nil
 	}
 	return &billingv1.RefundPaymentOrderResponse{
-		Success:            true,
-		RefundedQuota:      res.RefundedQuota,
-		BalanceAfter:       res.BalanceAfter,
-		SubscriptionId:     res.SubscriptionID,
-		SubscriptionAction: res.SubscriptionAct,
-		LedgerDedupeKey:    res.LedgerDedupeKey,
+		Success:              true,
+		RefundedQuota:        res.RefundedQuota,
+		BalanceAfter:         res.BalanceAfter,
+		SubscriptionId:       res.SubscriptionID,
+		SubscriptionAction:   res.SubscriptionAct,
+		LedgerDedupeKey:      res.LedgerDedupeKey,
+		ExternalRefundStatus: res.ExternalRefundStatus,
 	}, nil
 }
 

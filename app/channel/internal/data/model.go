@@ -866,11 +866,17 @@ func (r *Repository) RecordModelUsage(ctx context.Context, modelPK int64, stat *
 		var existing modelUsageStatModel
 		err := tx.Where("model_id = ? AND date = ?", modelPK, po.Date).First(&existing).Error
 		if err == nil {
+			requestCount := int64(existing.RequestCount) + int64(po.RequestCount)
+			weightedLatency := int64(existing.AvgLatency)*int64(existing.RequestCount) + int64(po.AvgLatency)*int64(po.RequestCount)
+			avgLatency := int32(0)
+			if requestCount > 0 {
+				avgLatency = int32(weightedLatency / requestCount)
+			}
 			return tx.Model(&modelUsageStatModel{}).Where("id = ?", existing.ID).Updates(map[string]any{
-				"request_count": existing.RequestCount + po.RequestCount,
+				"request_count": requestCount,
 				"token_count":   existing.TokenCount + po.TokenCount,
 				"error_count":   existing.ErrorCount + po.ErrorCount,
-				"avg_latency":   po.AvgLatency, // overwrite with latest
+				"avg_latency":   avgLatency,
 			}).Error
 		}
 		if !isGormNotFound(err) {
@@ -1400,10 +1406,14 @@ func (r *Repository) recordModelUsageMemory(modelPK int64, stat *biz.ModelUsageS
 	}
 	for _, s := range r.modelUsageStats {
 		if s.ModelPK == modelPK && s.Date == stat.Date {
+			requestCount := int64(s.RequestCount) + int64(stat.RequestCount)
+			weightedLatency := int64(s.AvgLatency)*int64(s.RequestCount) + int64(stat.AvgLatency)*int64(stat.RequestCount)
 			s.RequestCount += stat.RequestCount
 			s.TokenCount += stat.TokenCount
 			s.ErrorCount += stat.ErrorCount
-			s.AvgLatency = stat.AvgLatency
+			if requestCount > 0 {
+				s.AvgLatency = int32(weightedLatency / requestCount)
+			}
 			return nil
 		}
 	}

@@ -23,6 +23,7 @@ type Repository struct {
 
 type configModel struct {
 	ID        int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	Revision  int64  `gorm:"column:revision"`
 	Namespace string `gorm:"column:namespace;index"`
 	Key       string `gorm:"column:key;index"`
 	Value     string `gorm:"column:value"`
@@ -129,6 +130,7 @@ func (r *Repository) getDB(ctx context.Context, namespace, key string) (*biz.Con
 	}
 	return &biz.ConfigEntry{
 		ID:        m.ID,
+		Revision:  m.Revision,
 		Namespace: m.Namespace,
 		Key:       m.Key,
 		Value:     m.Value,
@@ -155,6 +157,7 @@ func (r *Repository) listDB(ctx context.Context, namespace string, page, pageSiz
 	for i, m := range models {
 		entries[i] = &biz.ConfigEntry{
 			ID:        m.ID,
+			Revision:  m.Revision,
 			Namespace: m.Namespace,
 			Key:       m.Key,
 			Value:     m.Value,
@@ -175,16 +178,24 @@ func (r *Repository) setDB(ctx context.Context, entry *biz.ConfigEntry) error {
 			Value:     entry.Value,
 			Comment:   entry.Comment,
 			UpdatedAt: entry.UpdatedAt.Unix(),
+			Revision:  1,
 		}
-		return r.db.WithContext(ctx).Create(&m).Error
+		if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
+			return err
+		}
+		entry.ID, entry.Revision = int64(m.ID), m.Revision
+		return nil
 	}
 	if err != nil {
 		return err
 	}
+	entry.ID = int64(existing.ID)
+	entry.Revision = existing.Revision + 1
 	return r.db.WithContext(ctx).Model(&existing).Updates(map[string]any{
 		"value":      entry.Value,
 		"comment":    entry.Comment,
 		"updated_at": entry.UpdatedAt.Unix(),
+		"revision":   entry.Revision,
 	}).Error
 }
 
@@ -234,6 +245,11 @@ func (r *Repository) setMemory(entry *biz.ConfigEntry) error {
 		entry.ID = existing.ID
 	} else {
 		entry.ID = int64(len(r.mem) + 1)
+	}
+	if entry.Revision <= 0 {
+		entry.Revision = 1
+	} else {
+		entry.Revision++
 	}
 	r.mem[k] = entry
 	return nil
