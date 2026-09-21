@@ -43,3 +43,21 @@ func TestExecutionIdentityRoundTripSingleAndBatch(t *testing.T) {
 		}
 	}
 }
+
+func TestRepositoryListSelectionAuditScopesByUserAndRoot(t *testing.T) {
+	repo := NewMemoryRepositoryForTest()
+	ctx := context.Background()
+	for _, entry := range []*biz.LogEntry{
+		{Source: "routing-selection", UserID: 7, RootRequestID: "root-a", Message: `{"planned":true}`},
+		{Source: "routing-selection", UserID: 7, RootRequestID: "root-a", Message: `{"planned":false}`},
+		{Source: "routing-selection", UserID: 8, RootRequestID: "root-a"},
+		{Source: "relay", UserID: 7, RootRequestID: "root-a"},
+	} {
+		require.NoError(t, repo.Create(ctx, entry))
+	}
+
+	rows, err := repo.ListSelectionAudit(ctx, 7, "root-a")
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	require.Less(t, rows[0].ID, rows[1].ID)
+}

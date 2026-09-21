@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	channelv1 "micro-one-api/api/channel/v1"
+	"micro-one-api/api/channel/v1"
 	"micro-one-api/api/notify/v1"
 	"micro-one-api/app/billing/internal/biz"
 	"micro-one-api/app/billing/internal/data"
@@ -185,14 +185,16 @@ func newApp(cfg *Config, d *data.Data, reg registrarResult) (*kratos.App, func()
 		var err error
 		channelConn, err = grpc.NewClient(cfg.Bootstrap.Clients.Channel.Endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithPerRPCCredentials(grpc2.NewInsecureTokenAuth(os.Getenv("SERVICE_TOKEN"))))
 		if err != nil {
-			logger.Log.Error("dial channel endpoint", zap.Error(err))
+			logger.Log.
+				Error("dial channel endpoint", zap.Error(err))
 		} else {
 			svc.SetSettlementSideEffectReporter(service.NewChannelSettlementReporter(channelv1.NewChannelServiceClient(channelConn)))
 		}
 	}
 
 	// Build the optional notify-worker gRPC client. When the endpoint is empty
-	// or alerts are disabled, leave the notifier nil.
+	// or alerts are disabled, leave the notifier nil so no notification is
+	// created and no downstream "sent" state can be inferred.
 	var notifyConn *grpc.ClientConn
 	var notifier biz.Notifier
 	interval := 1 * time.Hour

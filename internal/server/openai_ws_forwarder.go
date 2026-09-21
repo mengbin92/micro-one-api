@@ -13,6 +13,7 @@ import (
 
 	coderws "github.com/coder/websocket"
 	"go.uber.org/zap"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/pkg/jsonx"
 
 	billingv1 "micro-one-api/api/billing/v1"
@@ -107,6 +108,10 @@ func (s *HTTPServer) handleResponsesWebSocket(ctx context.Context, w http.Respon
 	//
 	var plan *relaybiz.RelayPlan
 	requestID := generateRequestID()
+	// Keep the WS selection event and every reservation attempt under the same
+	// durable root. Stored/session routes may bypass RelayUsecase.Plan, so the
+	// context remains the fallback correlation source for those paths.
+	ctx = requesttrace.WithAttempt(ctx, requesttrace.Attempt{RootRequestID: requestID})
 	selectionStartedAt := time.Now()
 	previousResponseID := extractOpenAIWSPreviousResponseIDFromRequest(firstMessage)
 	sessionHash := extractOpenAIWSSessionHashFromRequest(r, firstMessage)

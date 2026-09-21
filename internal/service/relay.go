@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 
@@ -58,14 +59,18 @@ func NewRelayGrpcService(
 
 // ChatCompletion handles synchronous chat completion via gRPC.
 func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.ChatCompletionRequest) (*relayv1.ChatCompletionResponse, error) {
+	startedAt := time.Now()
 	token, err := extractTokenFromMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	rootRequestID := "grpc_root_" + uuid.NewString()
+	ctx = requesttrace.WithAttempt(ctx, requesttrace.Attempt{RootRequestID: rootRequestID})
 	plan, err := s.relayUsecase.Plan(ctx, relaybiz.RelayRequest{
-		Token: token,
-		Model: req.Model,
+		Token:     token,
+		Model:     req.Model,
+		RequestID: rootRequestID,
 	})
 	if err != nil {
 		return nil, err
@@ -211,6 +216,21 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 		}
 		return nil
 	})
+	resultLabel := "success"
+	if result.Err != nil {
+		resultLabel = "error"
+	}
+	if plan.SelectionEvent != nil {
+		if result.Channel != nil {
+			plan.SelectionEvent.FinalSourceID = result.Channel.ID
+			plan.SelectionEvent.FinalKind = relaybiz.UpstreamSourceChannel
+			if result.Channel.SubscriptionAccountID > 0 {
+				plan.SelectionEvent.FinalSourceID = result.Channel.SubscriptionAccountID
+				plan.SelectionEvent.FinalKind = relaybiz.UpstreamSourceSubscription
+			}
+		}
+		relaybiz.FinalizeSelectionResult(s.relayUsecase.GetSelectionRecorder(), *plan.SelectionEvent, resultLabel, result.FallbackReason, result.Fallback, time.Since(startedAt))
+	}
 
 	if result.Err != nil {
 		return nil, result.Err

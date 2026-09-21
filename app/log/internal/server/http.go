@@ -64,6 +64,9 @@ func NewHTTPServer(addr string, svc *service.LogService, identityClients ...iden
 	})
 
 	// Protected log endpoints
+	srv.HandleFunc("/v1/selection-events", ServiceAuth(func(w http.ResponseWriter, r *http.Request) {
+		svc.HandleListSelectionAudit(w, r)
+	}))
 	srv.HandleFunc("/v1/logs", ServiceAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

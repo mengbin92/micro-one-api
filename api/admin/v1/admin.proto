@@ -559,6 +559,8 @@ message ListLogsRequest {
   string type = 4;
   int64 start_time = 5;
   int64 end_time = 6;
+  string sort = 7;
+  string order = 8;
 }
 
 message ListLogsResponse {

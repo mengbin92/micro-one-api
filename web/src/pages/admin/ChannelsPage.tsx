@@ -16,7 +16,7 @@ import { useAdminTableState } from '@/hooks/useAdminTableState';
 import { buildAdminListParams } from '@/lib/admin-table-query';
 import { ensureApiSuccess, unwrapApiData } from '@/lib/api-response';
 import { sortRows, type SortState } from '@/lib/table-utils';
-import { summarizeChannelHealth } from './channel-health-summary';
+import { channelHealthStatus, summarizeChannelHealth } from './channel-health-summary';
 import {
   Table,
   TableBody,
@@ -83,10 +83,6 @@ const PROVIDER_NAMES: Record<number, string> = {
   37: 'SiliconFlow',
 };
 
-function channelHealthStatus(channel: Channel) {
-  return channel.healthStatus || channel.health_status || 'healthy';
-}
-
 function channelHealthError(channel: Channel) {
   return channel.healthLastError || channel.health_last_error || '';
 }
@@ -102,12 +98,14 @@ function channelCircuitUntil(channel: Channel) {
 function healthBadgeClass(status: string) {
   if (status === 'unavailable') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
   if (status === 'degraded') return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
+  if (status === 'unknown') return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200';
   return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
 }
 
 function healthStatusLabel(status: string) {
   if (status === 'unavailable') return t('不可用');
   if (status === 'degraded') return t('性能下降');
+  if (status === 'unknown') return t('未知');
   return t('正常');
 }
 

@@ -575,15 +575,16 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 		endTime = req.GetEndTime().AsTime()
 	}
 
-	// Use filtered query if type or time range is specified
 	ledgerType := req.GetType()
-	if req.GetSubscriptionAccountId() != 0 {
-		ledgers, total, err = s.uc.ListLedgersBySubscriptionAccount(ctx, req.GetSubscriptionAccountId(), page, pageSize)
-	} else if ledgerType != "" || !startTime.IsZero() || !endTime.IsZero() {
-		ledgers, total, err = s.uc.ListLedgersWithFilters(ctx, req.UserId, page, pageSize, ledgerType, startTime, endTime)
-	} else {
-		ledgers, total, err = s.uc.ListLedgers(ctx, req.UserId, page, pageSize)
+	orderBy, order, orderErr := normalizeLedgerOrder(req.GetOrderBy())
+	if orderErr != nil {
+		return nil, orderErr
 	}
+	ledgers, total, err = s.uc.ListLedgersWithOptions(ctx, biz.LedgerListOptions{
+		UserID: req.UserId, Page: page, PageSize: pageSize, Type: ledgerType,
+		StartTime: startTime, EndTime: endTime, SubscriptionAccountID: req.GetSubscriptionAccountId(),
+		OrderBy: orderBy, Order: order,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -661,6 +662,25 @@ func (s *BillingService) ListLedger(ctx context.Context, req *billingv1.ListLedg
 		Entries: entries,
 		Total:   total,
 	}, nil
+}
+
+func normalizeLedgerOrder(value string) (string, string, error) {
+	parts := strings.Fields(strings.ToLower(strings.TrimSpace(value)))
+	if len(parts) == 0 {
+		return "created_at", "desc", nil
+	}
+	allowed := map[string]bool{"id": true, "user_id": true, "type": true, "amount": true, "balance_after": true, "reference_id": true, "created_at": true}
+	if len(parts) > 2 || !allowed[parts[0]] {
+		return "", "", status.Error(codes.InvalidArgument, "invalid ledger order_by")
+	}
+	direction := "asc"
+	if len(parts) == 2 {
+		direction = parts[1]
+	}
+	if direction != "asc" && direction != "desc" {
+		return "", "", status.Error(codes.InvalidArgument, "invalid ledger order direction")
+	}
+	return parts[0], direction, nil
 }
 
 func (s *BillingService) GetLedgerEntry(ctx context.Context, req *billingv1.GetLedgerEntryRequest) (*billingv1.GetLedgerEntryResponse, error) {

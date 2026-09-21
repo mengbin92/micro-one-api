@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,11 +20,18 @@ import (
 // LogService is the transport layer entry for log-service.
 type LogService struct {
 	logv1.UnimplementedLogServiceServer
-	uc *biz.LogUsecase
+	uc            *biz.LogUsecase
+	retentionDays int
 }
 
 func NewLogService(uc *biz.LogUsecase) *LogService {
-	return &LogService{uc: uc}
+	return &LogService{uc: uc, retentionDays: 30}
+}
+
+func (s *LogService) SetRetentionDays(days int) {
+	if s != nil && days > 0 {
+		s.retentionDays = days
+	}
 }
 
 // gRPC interface implementation
@@ -282,6 +290,53 @@ func (s *LogService) HandleDeleteLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
+}
+
+func (s *LogService) HandleListSelectionAudit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, err := strconv.ParseInt(r.URL.Query().Get("user_id"), 10, 64)
+	rootID := strings.TrimSpace(r.URL.Query().Get("root_request_id"))
+	if err != nil || userID <= 0 || rootID == "" || len(rootID) > 128 {
+		writeError(w, http.StatusBadRequest, "user_id and root_request_id are required")
+		return
+	}
+	entries, err := s.uc.ListSelectionAudit(r.Context(), userID, rootID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	items := make([]map[string]any, 0, len(entries))
+	for _, entry := range entries {
+		payload := map[string]any{}
+		if err := jsonx.Unmarshal([]byte(entry.Message), &payload); err != nil || payload == nil {
+			payload = map[string]any{}
+			payload["decode_error"] = true
+		}
+		payload["id"] = entry.ID
+		payload["request_id"] = entry.RequestID
+		payload["root_request_id"] = entry.RootRequestID
+		payload["user_id"] = entry.UserID
+		payload["model"] = entry.ModelName
+		payload["source_kind"] = entry.SourceKind
+		payload["source_id"] = selectionSourceID(entry)
+		payload["elapsed_ms"] = entry.ElapsedTime
+		payload["created_at"] = entry.CreatedAt.Unix()
+		items = append(items, payload)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":     items,
+		"retention": fmt.Sprintf("log-service retention: %d days", s.retentionDays),
+	})
+}
+
+func selectionSourceID(entry *biz.LogEntry) int64 {
+	if entry.SubscriptionAccountID > 0 {
+		return entry.SubscriptionAccountID
+	}
+	return entry.ChannelID
 }
 
 func parseUnixQuery(raw string) (time.Time, error) {

@@ -122,6 +122,9 @@ func (s *HTTPServer) handleSubscriptionAccountViaAdaptor(
 	var finalSuccess bool
 
 	rootID := generateRequestID()
+	if plan.SelectionEvent != nil && plan.SelectionEvent.RootRequestID != "" {
+		rootID = plan.SelectionEvent.RootRequestID
+	}
 	attemptNumber := int32(1)
 	for range maxAttempts {
 		if current == nil || current.Channel == nil {

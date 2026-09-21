@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { toCsv } from './csv';
 
 describe('toCsv', () => {
+  it('neutralizes formulas in text while preserving numeric losses', () => {
+    expect(toCsv([{ name: '=HYPERLINK("evil")', loss: -12 }], [
+      { key: 'name', label: 'Name' }, { key: 'loss', label: 'Loss' },
+    ])).toContain('"\'=HYPERLINK(""evil"")","-12"');
+  });
   it('keeps headers in configured order', () => {
     const csv = toCsv([{ name: 'Alice', id: 1 }], [
       { key: 'id', label: 'ID' },

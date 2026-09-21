@@ -2106,6 +2106,7 @@ func (s *AdminService) ListLogs(ctx context.Context, req *adminv1.ListLogsReques
 		Page:     page,
 		PageSize: pageSize,
 		Type:     req.Type,
+		OrderBy:  ledgerOrderBy(req.Sort, req.Order),
 	}
 
 	// Pass time range filters to billing service
@@ -2227,6 +2228,7 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 		Page:     page,
 		PageSize: pageSize,
 		Type:     req.Type,
+		OrderBy:  ledgerOrderBy(req.Sort, req.Order),
 	}
 
 	if req.StartTime > 0 {
@@ -2330,6 +2332,24 @@ func (s *AdminService) ListLedgerEntries(ctx context.Context, req *adminv1.ListL
 	}
 
 	return entries, billingResp.GetTotal(), nil
+}
+
+func ledgerOrderBy(sortKey, direction string) string {
+	column := map[string]string{
+		"id": "id", "userId": "user_id", "user_id": "user_id", "type": "type",
+		"amount": "amount", "balanceAfter": "balance_after", "balance_after": "balance_after",
+		"referenceId": "reference_id", "reference_id": "reference_id",
+		"createdAt": "created_at", "created_at": "created_at",
+	}[sortKey]
+	if column == "" {
+		return "created_at desc"
+	}
+	if strings.EqualFold(direction, "desc") {
+		direction = "desc"
+	} else {
+		direction = "asc"
+	}
+	return column + " " + direction
 }
 
 // 辅助函数：将 time.Time 转换为 Unix 时间戳

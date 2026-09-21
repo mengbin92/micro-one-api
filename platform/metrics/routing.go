@@ -71,6 +71,18 @@ var RoutingSelectionDuration = prometheus.NewHistogramVec(
 	[]string{"source_kind"},
 )
 
+// RoutingAuditWritesTotal makes persistence failures visible without using
+// request identifiers as metric labels.
+var RoutingAuditWritesTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "micro_one_api",
+		Subsystem: "routing",
+		Name:      "audit_writes_total",
+		Help:      "Routing audit persistence attempts by result",
+	},
+	[]string{"result"},
+)
+
 // RoutingStickyHitTotal counts subscription-account sticky-binding hits so ops
 // can see how often a conversation reuses the same upstream account.
 var RoutingStickyHitTotal = prometheus.NewCounterVec(

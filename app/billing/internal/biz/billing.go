@@ -2946,6 +2946,16 @@ func (uc *BillingUsecase) ListLedgers(ctx context.Context, userID string, page, 
 	return uc.ledgerRepo.ListLedgers(ctx, userID, page, pageSize)
 }
 
+func (uc *BillingUsecase) ListLedgersWithOptions(ctx context.Context, options LedgerListOptions) ([]*Ledger, int64, error) {
+	if repo, ok := uc.ledgerRepo.(OrderedLedgerRepo); ok {
+		return repo.ListLedgersWithOptions(ctx, options)
+	}
+	if options.SubscriptionAccountID != 0 {
+		return uc.ledgerRepo.ListLedgersBySubscriptionAccount(ctx, options.SubscriptionAccountID, options.Page, options.PageSize)
+	}
+	return uc.ledgerRepo.ListLedgersWithFilters(ctx, options.UserID, options.Page, options.PageSize, options.Type, options.StartTime, options.EndTime)
+}
+
 // GetLedgerByID returns a single ledger entry by its primary key.
 func (uc *BillingUsecase) GetLedgerByID(ctx context.Context, id int64) (*Ledger, error) {
 	return uc.ledgerRepo.GetLedgerByID(ctx, id)

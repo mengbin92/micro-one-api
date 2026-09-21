@@ -450,6 +450,7 @@ message ListLedgerRequest {
   google.protobuf.Timestamp end_time = 5;
   string type = 6;
   int64 subscription_account_id = 7;  // 可选：限定订阅账号（0 表示不限定）
+  string order_by = 8; // id, user_id, type, amount, balance_after, reference_id, created_at + asc/desc
 }
 
 message ListLedgerResponse {

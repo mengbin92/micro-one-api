@@ -7,6 +7,23 @@ import { renderWithQuery } from '@/test/render';
 import { server } from '@/test/msw/server';
 
 describe('OrdersPage', () => {
+  it('ignores a stale admin token for a normal user session', async () => {
+    localStorage.setItem('adminToken', 'stale');
+    let adminCalls = 0;
+    let userCalls = 0;
+    server.use(
+      http.get('/api/user/self', () => HttpResponse.json({ success: true, data: { id: 7, role: 1 } })),
+      http.get('/api/payment/orders', () => { adminCalls += 1; return HttpResponse.json({ success: true, data: { orders: [] } }); }),
+      http.get('/api/user/payment/orders', () => { userCalls += 1; return HttpResponse.json({ success: true, data: { orders: [] } }); }),
+      http.get('/api/user/logs', () => HttpResponse.json({ success: true, data: { logs: [] } })),
+    );
+
+    renderWithQuery(<OrdersPage />);
+    await screen.findByText('暂无订单记录');
+    expect(userCalls).toBe(1);
+    expect(adminCalls).toBe(0);
+  });
+
   it('opens pending payment order details and continues payment', async () => {
     const user = userEvent.setup();
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);

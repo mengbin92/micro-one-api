@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 
 	billingdomain "micro-one-api/domain/billing"
@@ -480,6 +481,9 @@ func (uc *RelayUsecase) recordSelection(ctx context.Context, event SelectionEven
 // MEDIUM-4): the duration histogram records Plan-boundary selection time.
 func (uc *RelayUsecase) recordSelectionForPlan(ctx context.Context, event SelectionEvent, planStartedAt time.Time) *SelectionEvent {
 	event.Planned = true
+	if event.RootRequestID == "" {
+		event.RootRequestID = event.RequestID
+	}
 	if !planStartedAt.IsZero() {
 		event.ElapsedMS = uc.now().Sub(planStartedAt).Milliseconds()
 	}
@@ -510,7 +514,10 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	// generate it later for billing), Plan mints a short id so the event can
 	// still be traced.
 	if req.RequestID == "" {
-		req.RequestID = generateSelectionRequestID()
+		req.RequestID = requesttrace.FromContext(ctx).RootRequestID
+		if req.RequestID == "" {
+			req.RequestID = generateSelectionRequestID()
+		}
 	}
 	// A terminal [1M] is a client-side extended-context hint, not part of the
 	// model identifier understood by the registry or upstream provider.
@@ -555,6 +562,8 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	if ch, acct, ok := uc.trySubscriptionSticky(ctx, authSnapshot.Group, routing.SessionKey(authSnapshot.RoutingContext, req.SessionHash), req.Model, resolvedModel); ok {
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:      req.RequestID,
+			RootRequestID:  req.RequestID,
+			UserID:         authSnapshot.UserID,
 			Group:          authSnapshot.Group,
 			Model:          req.Model,
 			StickyHit:      true,
@@ -592,6 +601,8 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 		if choice.Kind == UpstreamRouteSubscription {
 			_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 				RequestID:      req.RequestID,
+				RootRequestID:  req.RequestID,
+				UserID:         authSnapshot.UserID,
 				Group:          authSnapshot.Group,
 				Model:          req.Model,
 				CandidateKinds: []string{"channel", "subscription"},
@@ -607,6 +618,8 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 		}
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:      req.RequestID,
+			RootRequestID:  req.RequestID,
+			UserID:         authSnapshot.UserID,
 			Group:          authSnapshot.Group,
 			Model:          req.Model,
 			CandidateKinds: []string{"channel", "subscription"},
@@ -622,6 +635,8 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	case channel != nil:
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:      req.RequestID,
+			RootRequestID:  req.RequestID,
+			UserID:         authSnapshot.UserID,
 			Group:          authSnapshot.Group,
 			Model:          req.Model,
 			CandidateKinds: []string{"channel"},
@@ -636,6 +651,8 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 	case subChannel != nil:
 		_sel := uc.recordSelectionForPlan(ctx, SelectionEvent{
 			RequestID:      req.RequestID,
+			RootRequestID:  req.RequestID,
+			UserID:         authSnapshot.UserID,
 			Group:          authSnapshot.Group,
 			Model:          req.Model,
 			CandidateKinds: []string{"subscription"},
@@ -647,12 +664,22 @@ func (uc *RelayUsecase) Plan(ctx context.Context, req RelayRequest) (*RelayPlan,
 		_plan := newRelayPlan(authSnapshot, subChannel, subAccount, req.Model, resolvedModel)
 		_plan.SelectionEvent = _sel
 		return _plan, nil
-	case uc.subscription == nil:
-		return nil, channelErr
-	case subErr != nil:
-		return nil, subErr
 	default:
-		return nil, channelErr
+		selectionErr := channelErr
+		if uc.subscription != nil && subErr != nil {
+			selectionErr = subErr
+		}
+		uc.recordSelection(ctx, SelectionEvent{
+			RequestID:       req.RequestID,
+			RootRequestID:   req.RequestID,
+			UserID:          authSnapshot.UserID,
+			Group:           authSnapshot.Group,
+			Model:           req.Model,
+			SelectionReason: "no_available_source",
+			Result:          "error",
+			ProviderFamily:  ProviderFamilyForModel(req.Model),
+		})
+		return nil, selectionErr
 	}
 }
 

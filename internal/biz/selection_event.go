@@ -25,6 +25,10 @@ import (
 type SelectionEvent struct {
 	// RequestID ties the event to the relay request span.
 	RequestID string
+	// RootRequestID is stable across every upstream attempt for one client
+	// request. UserID scopes the admin audit query.
+	RootRequestID string
+	UserID        int64
 	// Group is the tenancy group (low cardinality, safe for labels).
 	Group string
 	// Model is the canonical public model id (HIGH cardinality — labels only

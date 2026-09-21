@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -160,6 +161,39 @@ func (r *Repository) ListByUser(ctx context.Context, userID int64, page, pageSiz
 	return r.listByUserMemory(userID, page, pageSize, level, keyword)
 }
 
+func (r *Repository) ListSelectionAudit(ctx context.Context, userID int64, rootRequestID string) ([]*biz.LogEntry, error) {
+	if r.db != nil {
+		var models []logModel
+		err := r.db.WithContext(ctx).
+			Where("user_id = ? AND root_request_id = ? AND source = ?", userID, rootRequestID, "routing-selection").
+			Order("created_at ASC, id ASC").Find(&models).Error
+		if err != nil {
+			return nil, err
+		}
+		entries := make([]*biz.LogEntry, len(models))
+		for i := range models {
+			entries[i] = logModelToEntry(models[i])
+		}
+		return entries, nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	entries := make([]*biz.LogEntry, 0, 2)
+	for _, entry := range r.mem {
+		if entry.UserID == userID && entry.RootRequestID == rootRequestID && entry.Source == "routing-selection" {
+			cloned := *entry
+			entries = append(entries, &cloned)
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].CreatedAt.Equal(entries[j].CreatedAt) {
+			return entries[i].ID < entries[j].ID
+		}
+		return entries[i].CreatedAt.Before(entries[j].CreatedAt)
+	})
+	return entries, nil
+}
+
 func (r *Repository) Create(ctx context.Context, entry *biz.LogEntry) error {
 	if r.db != nil {
 		return r.createDB(ctx, entry)
@@ -270,7 +304,7 @@ func (r *Repository) listDB(ctx context.Context, page, pageSize int32, level, so
 }
 
 func (r *Repository) listByUserDB(ctx context.Context, userID int64, page, pageSize int32, level, keyword string) ([]*biz.LogEntry, int64, error) {
-	query := r.db.WithContext(ctx).Model(&logModel{}).Where("user_id = ?", userID)
+	query := r.db.WithContext(ctx).Model(&logModel{}).Where("user_id = ? AND COALESCE(source, '') <> ?", userID, "routing-selection")
 	if level != "" {
 		query = query.Where("level = ?", level)
 	}
@@ -495,7 +529,7 @@ func (r *Repository) usageByUserDB(ctx context.Context, userID int64, startTime,
 	}
 	query := r.db.WithContext(ctx).Table("logs").
 		Select(dayExpr+" AS day, model_name, COUNT(1) AS request_count, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens, COALESCE(SUM(cache_creation_5m_tokens), 0) AS cache_creation_5m_tokens, COALESCE(SUM(cache_creation_1h_tokens), 0) AS cache_creation_1h_tokens").
-		Where("user_id = ? AND model_name <> ''", userID)
+		Where("user_id = ? AND COALESCE(source, '') <> ? AND model_name <> ''", userID, "routing-selection")
 	if !startTime.IsZero() {
 		query = query.Where("created_at >= ?", startTime.Unix())
 	}
@@ -594,7 +628,7 @@ func (r *Repository) listByUserMemory(userID int64, page, pageSize int32, level,
 	defer r.mu.RUnlock()
 	var all []*biz.LogEntry
 	for _, entry := range r.mem {
-		if entry.UserID != userID {
+		if entry.UserID != userID || entry.Source == "routing-selection" {
 			continue
 		}
 		if level != "" && entry.Level != level {
@@ -680,7 +714,7 @@ func (r *Repository) usageByUserMemory(userID int64, startTime, endTime time.Tim
 	defer r.mu.RUnlock()
 	statsByKey := map[string]*biz.UsageStat{}
 	for _, entry := range r.mem {
-		if entry.UserID != userID || entry.ModelName == "" {
+		if entry.UserID != userID || entry.Source == "routing-selection" || entry.ModelName == "" {
 			continue
 		}
 		if !startTime.IsZero() && entry.CreatedAt.Before(startTime) {

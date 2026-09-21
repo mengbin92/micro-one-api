@@ -42,8 +42,7 @@ func InitApp(confPath string) (*kratos.App, func(), error) {
 // ProviderSet declares config-service providers. loadConfig lives in
 // config_loader.go so it is visible under both build tags.
 var ProviderSet = wire.NewSet(
-	newRepo,
-	biz.NewConfigUsecase, service.NewConfigService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ConfigRepo), new(*data.Repository)),
+	newRepo, biz.NewConfigUsecase, service.NewConfigService, server.NewGRPCServer, server.NewHTTPServer, provideRegistrar, wire.Bind(new(biz.ConfigRepo), new(*data.Repository)),
 )
 
 // newRepo wraps data.NewRepositoryFromEnv so Wire can resolve it from a

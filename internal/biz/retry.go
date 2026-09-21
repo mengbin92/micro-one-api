@@ -442,6 +442,10 @@ func (e *RetryExecutor) ExecuteWithCandidates(
 	if plan == nil {
 		return &ExecuteResult{Err: fmt.Errorf("relay plan is nil")}
 	}
+	if trace := requesttrace.FromContext(ctx); trace.RootRequestID == "" && plan.SelectionEvent != nil && plan.SelectionEvent.RootRequestID != "" {
+		trace.RootRequestID = plan.SelectionEvent.RootRequestID
+		ctx = requesttrace.WithAttempt(ctx, trace)
+	}
 	group, model := "", plan.BaseModel()
 	if plan.Auth != nil {
 		group = plan.Auth.Group

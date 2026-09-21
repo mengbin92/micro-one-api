@@ -34,6 +34,7 @@ import {
 } from '@/lib/subscription-account';
 import { cn } from '@/lib/utils';
 import { locale, t } from '@/lib/i18n';
+import { channelHealthStatus } from './channel-health-summary';
 
 interface ChannelHealth {
   id: string;
@@ -65,20 +66,6 @@ const PROVIDER_NAMES: Record<number, string> = {
   23: 'OpenRouter',
   37: 'SiliconFlow',
 };
-
-function channelHealthStatus(channel: ChannelHealth) {
-  // If channel has explicit health status, use it
-  if (channel.healthStatus || channel.health_status) {
-    return channel.healthStatus || channel.health_status || 'healthy';
-  }
-  // If channel is disabled, consider it "unavailable" for health monitoring purposes
-  if (Number(channel.status) !== 1) {
-    return 'unavailable';
-  }
-  // For enabled channels without explicit health data, mark as "unknown" rather than assuming healthy
-  // This provides a more accurate picture when health checks haven't run yet
-  return 'unknown';
-}
 
 function channelHealthError(channel: ChannelHealth) {
   return channel.healthLastError || channel.health_last_error || '';

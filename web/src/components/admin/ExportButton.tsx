@@ -8,9 +8,10 @@ interface ExportButtonProps<T extends object> {
   rows?: T[];
   columns?: Array<CsvColumn<T>>;
   href?: string;
+  label?: string;
 }
 
-export function ExportButton<T extends object>({ filename, rows, columns, href }: ExportButtonProps<T>) {
+export function ExportButton<T extends object>({ filename, rows, columns, href, label = 'Export CSV' }: ExportButtonProps<T>) {
   const downloadBlob = (blob: Blob) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -34,7 +35,7 @@ export function ExportButton<T extends object>({ filename, rows, columns, href }
     return (
       <button type="button" onClick={handleExport} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
         <Download className="size-3.5" />
-        Export CSV
+        {label}
       </button>
     );
   }
@@ -42,7 +43,7 @@ export function ExportButton<T extends object>({ filename, rows, columns, href }
   return (
     <Button type="button" variant="outline" size="sm" onClick={handleExport} disabled={!rows || !columns || rows.length === 0}>
       <Download className="size-3.5" />
-      Export CSV
+      {label}
     </Button>
   );
 }

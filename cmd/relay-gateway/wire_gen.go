@@ -324,7 +324,7 @@ func newApp(cfg *Config) (*kratos.App, func(), error) {
 	relayUsecase.SetRoutingSettlementClient(data.NewBillingSettlementAdapter(billingClient))
 	relayUsecase.SetRuntimeBlocker(biz.NewMemoryRuntimeBlocker())
 
-	relayUsecase.SetSelectionRecorder(biz.NewMetricsSelectionRecorder(logger.Current()))
+	relayUsecase.SetSelectionRecorder(service.NewSelectionAuditRecorder(biz.NewMetricsSelectionRecorder(logger.Current()), logClient))
 
 	httpServer := server.NewHTTPServer(identityClient, channelClient, billingClient, providerFactory, relayUsecase, logClient)
 	httpServer.SetTokenQuotaBlocker(identityAdapter)
