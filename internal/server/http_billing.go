@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"micro-one-api/domain/requesttrace"
 	"os"
 	"strings"
 	"time"
@@ -113,6 +114,13 @@ func (s *HTTPServer) logPostResponseCommitError(err error) {
 }
 
 func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string, estimatedTokens int64, model, channelID string, subscriptionAccountID int64, contexts ...*routing.ResolvedRoutingContext) (*billingv1.ReserveQuotaResponse, error) {
+	trace := requesttrace.FromContext(ctx)
+	if trace.RootRequestID == "" {
+		trace.RootRequestID = requestID
+	}
+	if trace.Number == 0 {
+		trace.Number = 1
+	}
 	var routingContext *routing.ResolvedRoutingContext
 	if len(contexts) > 0 {
 		routingContext = contexts[0]
@@ -139,6 +147,10 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 	// configured source, not necessarily plan.ResolvedModel. The client-
 	// facing name is threaded via the request context separately where needed.
 	req := &billingv1.ReserveQuotaRequest{
+		RootRequestId:         trace.RootRequestID,
+		AttemptNumber:         trace.Number,
+		SourceKind:            trace.SourceKind,
+		UpstreamModelId:       trace.UpstreamModelID,
 		RoutingContext:        routingdto.ContextToProto(routingContext),
 		UserId:                userID,
 		RequestId:             requestID,
@@ -165,6 +177,23 @@ func (s *HTTPServer) reserveQuota(ctx context.Context, userID, requestID string,
 			_ = s.releaseQuota(ctx, resp.ReservationId, "billing routing capability mismatch")
 		}
 		return nil, fmt.Errorf("billing routing snapshot mismatch")
+	}
+	// Older billing replicas do not echo attempt metadata during rolling
+	// upgrades. Preserve the submitted identity for detached logs and WS retries.
+	if resp.RootRequestId == "" {
+		resp.RootRequestId = req.RootRequestId
+	}
+	if resp.AttemptNumber == 0 {
+		resp.AttemptNumber = req.AttemptNumber
+	}
+	if resp.RequestId == "" {
+		resp.RequestId = req.RequestId
+	}
+	if resp.SourceKind == "" {
+		resp.SourceKind = req.SourceKind
+	}
+	if resp.UpstreamModelId == "" {
+		resp.UpstreamModelId = req.UpstreamModelId
 	}
 	recordRelayQuotaOutcome(ctx, "reserve_success")
 	return resp, nil

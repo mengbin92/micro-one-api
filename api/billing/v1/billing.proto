@@ -20,6 +20,7 @@ service BillingService {
  rpc CheckRoutingSettlement(CheckRoutingSettlementRequest) returns (CheckRoutingSettlementReply);
   rpc GetRoutingCapabilities(GetRoutingCapabilitiesRequest) returns (GetRoutingCapabilitiesResponse);
   rpc ReserveQuota(ReserveQuotaRequest) returns (ReserveQuotaResponse);
+  rpc ListRequestAttempts(ListRequestAttemptsRequest) returns (ListRequestAttemptsResponse);
   rpc CommitQuota(CommitQuotaRequest) returns (CommitQuotaResponse);
   rpc ReleaseQuota(ReleaseQuotaRequest) returns (ReleaseQuotaResponse);
   rpc GetAccountSnapshot(GetAccountSnapshotRequest) returns (GetAccountSnapshotResponse);
@@ -79,6 +80,34 @@ message ReserveQuotaRequest {
   int64 subscription_account_id = 6;  // 订阅账号 ID（0 = 非订阅账号请求）
   common.v1.ResolvedRoutingContext routing_context = 7;
   RequestCostBound cost_bound = 8;
+  string root_request_id = 9;
+  int32 attempt_number = 10;
+  string source_kind = 11;
+  string upstream_model_id = 12;
+}
+
+message ListRequestAttemptsRequest {
+  string user_id = 1;
+  string root_request_id = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+message RequestAttempt {
+  string root_request_id = 1;
+  string request_id = 2;
+  int32 attempt_number = 3;
+  string reservation_id = 4;
+  string status = 5;
+  string channel_id = 6;
+  string subscription_account_id = 7;
+  string source_kind = 8;
+  string upstream_model_id = 9;
+  int64 actual_cost = 10;
+  int64 created_at = 11;
+}
+message ListRequestAttemptsResponse {
+  repeated RequestAttempt items = 1;
+  int64 total = 2;
 }
 
 message ReserveQuotaResponse {
@@ -98,6 +127,11 @@ message ReserveQuotaResponse {
   int32 request_snapshot_version = 9;
   string routing_context_hash = 10;
   string request_snapshot_hash = 11;
+  string root_request_id = 12;
+  int32 attempt_number = 13;
+  string request_id = 14;
+  string source_kind = 15;
+  string upstream_model_id = 16;
 }
 
 message CommitQuotaRequest {

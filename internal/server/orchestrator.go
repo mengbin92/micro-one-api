@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"micro-one-api/domain/requesttrace"
 	"net/http"
 	"time"
 
@@ -61,7 +62,10 @@ type RelayRequest struct {
 	// ClientID is a unique identifier for the client (for sticky routing).
 	ClientID string
 	// RequestID is a unique identifier for this request (for idempotency).
-	RequestID string
+	RequestID     string
+	RootRequestID string
+	AttemptNumber int32
+	ReservationID string
 	// SessionHash preserves caller stickiness without exposing transport types.
 	SessionHash string
 }
@@ -250,6 +254,7 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 	if req.RequestID == "" {
 		req.RequestID = generateRequestID()
 	}
+	ctx = requesttrace.WithAttempt(ctx, requesttrace.Attempt{RootRequestID: req.RequestID})
 
 	// Stage 1-3: Planning (auth, model mapping, channel selection)
 	// This reuses the existing RelayUsecase.Plan() logic
@@ -331,14 +336,16 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 			}
 			attemptBody := rewriteRequestModel(rawBody, attemptPlan.ResolvedModel)
 			attemptRequest := relaybiz.ExecutorRequest{
-				Token:       req.Token,
-				Model:       req.Model,
-				Endpoint:    string(req.Endpoint),
-				Body:        attemptBody,
-				Headers:     httpHeaderToMap(req.Headers),
-				RequestID:   req.RequestID,
-				SessionHash: req.SessionHash,
-				Stream:      true,
+				Token:         req.Token,
+				Model:         req.Model,
+				Endpoint:      string(req.Endpoint),
+				Body:          attemptBody,
+				Headers:       httpHeaderToMap(req.Headers),
+				RequestID:     req.RequestID,
+				RootRequestID: req.RequestID,
+				AttemptNumber: int32(attemptNumber + 1),
+				SessionHash:   req.SessionHash,
+				Stream:        true,
 			}
 			if attemptNumber > 0 {
 				attemptRequest.RequestID = generateRequestID()
@@ -459,11 +466,18 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				}
 			}
 			if o.eventLogger != nil {
+				reservationID := ""
+				if finalReservation != nil {
+					reservationID = finalReservation.ID
+				}
 				o.eventLogger.LogUsage(settleCtx, finalPlan, relaybiz.UsageEvent{
-					Model:     finalRequest.Model,
-					Endpoint:  finalRequest.Endpoint,
-					RequestID: finalRequest.RequestID,
-					Stream:    true,
+					Model:         finalRequest.Model,
+					Endpoint:      finalRequest.Endpoint,
+					RequestID:     finalRequest.RequestID,
+					RootRequestID: finalRequest.RootRequestID,
+					AttemptNumber: finalRequest.AttemptNumber,
+					ReservationID: reservationID,
+					Stream:        true,
 				}, streamUsage, latency, true)
 			}
 			if hook, ok := o.hooks.(relayStreamCompletionHook); ok {
@@ -489,14 +503,16 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 		}
 		attemptBody := rewriteRequestModel(rawBody, attemptPlan.ResolvedModel)
 		attemptReq := relaybiz.ExecutorRequest{
-			Token:       req.Token,
-			Model:       req.Model,
-			Endpoint:    string(req.Endpoint),
-			Body:        attemptBody,
-			Headers:     httpHeaderToMap(req.Headers),
-			RequestID:   req.RequestID,
-			SessionHash: req.SessionHash,
-			Stream:      false,
+			Token:         req.Token,
+			Model:         req.Model,
+			Endpoint:      string(req.Endpoint),
+			Body:          attemptBody,
+			Headers:       httpHeaderToMap(req.Headers),
+			RequestID:     req.RequestID,
+			RootRequestID: req.RequestID,
+			AttemptNumber: int32(attemptNumber + 1),
+			SessionHash:   req.SessionHash,
+			Stream:        false,
 		}
 		// Billing reserves are idempotent by (user_id, request_id). Keep the
 		// original ID for the first attempt, but mint a new one before retrying:
@@ -574,14 +590,21 @@ func (o *relayOrchestrator) Execute(ctx context.Context, req *RelayRequest) (*Re
 				return relaybiz.MarkPostForwardError(err)
 			}
 			if o.eventLogger != nil {
+				reservationID := ""
+				if reservation != nil {
+					reservationID = reservation.ID
+				}
 				// Usage logging only needs request metadata. Do not pass the
 				// transport request through this boundary: it contains client
 				// headers, body, and bearer credentials.
 				o.eventLogger.LogUsage(attemptCtx, attemptPlan, relaybiz.UsageEvent{
-					Model:     attemptReq.Model,
-					Endpoint:  attemptReq.Endpoint,
-					RequestID: attemptReq.RequestID,
-					Stream:    false,
+					Model:         attemptReq.Model,
+					Endpoint:      attemptReq.Endpoint,
+					RequestID:     attemptReq.RequestID,
+					RootRequestID: attemptReq.RootRequestID,
+					AttemptNumber: attemptReq.AttemptNumber,
+					ReservationID: reservationID,
+					Stream:        false,
 				}, *attemptResult.Usage, latency, false)
 			}
 		}

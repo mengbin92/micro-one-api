@@ -9,14 +9,16 @@ import (
 // Transport adapters read and validate the request before constructing it;
 // the executor never receives an http.Request or owns a response writer.
 type ExecutorRequest struct {
-	Token       string
-	Model       string
-	Endpoint    string
-	Body        []byte
-	Headers     map[string][]string
-	RequestID   string
-	SessionHash string
-	Stream      bool
+	Token         string
+	Model         string
+	Endpoint      string
+	Body          []byte
+	Headers       map[string][]string
+	RequestID     string
+	RootRequestID string
+	AttemptNumber int32
+	SessionHash   string
+	Stream        bool
 }
 
 // ExecutionResponse is the transport-neutral result of an upstream call.
@@ -96,10 +98,13 @@ type StreamForwarder interface {
 // UsageEvent contains only the non-sensitive request metadata needed by usage
 // logging. Credentials, headers, and bodies cannot cross this boundary.
 type UsageEvent struct {
-	Model     string
-	Endpoint  string
-	RequestID string
-	Stream    bool
+	RootRequestID string
+	AttemptNumber int32
+	ReservationID string
+	Model         string
+	Endpoint      string
+	RequestID     string
+	Stream        bool
 }
 
 // EventLogger records the successful execution usage event. Error and route

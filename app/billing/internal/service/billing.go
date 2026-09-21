@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	"net/http"
@@ -111,6 +112,20 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	if req.CostBound != nil {
 		ctx = routing.WithCostBound(ctx, routing.CostBound{Protocol: req.CostBound.Protocol, InputTokens: req.CostBound.InputTokens, UpstreamModel: req.CostBound.UpstreamModel})
 	}
+	if req.AttemptNumber < 0 || len(req.RootRequestId) > 128 || len(req.UpstreamModelId) > 255 || (req.SourceKind != "" && req.SourceKind != "channel" && req.SourceKind != "subscription") {
+		return nil, biz.ErrRoutingContextInvalid
+	}
+	trace := requesttrace.Attempt{RootRequestID: req.RootRequestId, Number: req.AttemptNumber, SourceKind: req.SourceKind, UpstreamModelID: req.UpstreamModelId}
+	if trace.RootRequestID == "" {
+		trace.RootRequestID = req.RequestId
+	}
+	if len(trace.RootRequestID) > 128 {
+		return nil, biz.ErrRoutingContextInvalid
+	}
+	if trace.Number == 0 {
+		trace.Number = 1
+	}
+	ctx = requesttrace.WithAttempt(ctx, trace)
 	reservation, err := s.uc.ReserveQuota(ctx, req.UserId, req.RequestId, req.EstimatedTokens, req.Model, req.ChannelId, req.SubscriptionAccountId, routingdto.ContextFromProto(req.RoutingContext))
 	if err != nil {
 		if req.RoutingContext != nil || errors.Is(err, biz.ErrRoutingContextConflict) {
@@ -127,6 +142,11 @@ func (s *BillingService) ReserveQuota(ctx context.Context, req *billingv1.Reserv
 	// regardless of float precision; the relay converts back to a
 	// display USD when needed.
 	resp := &billingv1.ReserveQuotaResponse{
+		RootRequestId:      reservation.RootRequestID,
+		AttemptNumber:      reservation.AttemptNumber,
+		RequestId:          reservation.RequestID,
+		SourceKind:         reservation.SourceKind,
+		UpstreamModelId:    reservation.UpstreamModelID,
 		Success:            true,
 		ReservationId:      reservation.ReservationID,
 		ReservedAmount:     reservation.Amount,

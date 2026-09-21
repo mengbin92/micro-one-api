@@ -25,6 +25,10 @@ type Reservation struct {
 	ReservationID             string
 	UserID                    string
 	RequestID                 string
+	RootRequestID             string
+	AttemptNumber             int32
+	SourceKind                string
+	UpstreamModelID           string
 	// Amount is the original fixed-point amount estimate. For the dual-track
 	// flow it equals the total estimated request cost and is kept populated so legacy readers
 	// continue to work; the field is not authoritative for the subscription

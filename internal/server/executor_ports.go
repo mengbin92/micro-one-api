@@ -97,10 +97,13 @@ func (l relayEventLogger) LogUsage(ctx context.Context, plan *relaybiz.RelayPlan
 		return
 	}
 	l.hooks.LogUsage(ctx, plan, &RelayRequest{
-		Model:     event.Model,
-		Endpoint:  APIEndpoint(event.Endpoint),
-		RequestID: event.RequestID,
-		IsStream:  event.Stream,
+		Model:         event.Model,
+		Endpoint:      APIEndpoint(event.Endpoint),
+		RequestID:     event.RequestID,
+		RootRequestID: event.RootRequestID,
+		AttemptNumber: event.AttemptNumber,
+		ReservationID: event.ReservationID,
+		IsStream:      event.Stream,
 	}, usage, latency, stream)
 }
 
@@ -166,14 +169,16 @@ func (f relayProviderStreamForwarder) ForwardStream(ctx context.Context, plan *r
 
 func relayRequestFromExecutorRequest(req relaybiz.ExecutorRequest) *RelayRequest {
 	return &RelayRequest{
-		Token:       req.Token,
-		Model:       req.Model,
-		Endpoint:    APIEndpoint(req.Endpoint),
-		Body:        bytes.NewReader(req.Body),
-		IsStream:    req.Stream,
-		Headers:     headerMapToHTTP(req.Headers),
-		RequestID:   req.RequestID,
-		SessionHash: req.SessionHash,
+		Token:         req.Token,
+		Model:         req.Model,
+		Endpoint:      APIEndpoint(req.Endpoint),
+		Body:          bytes.NewReader(req.Body),
+		IsStream:      req.Stream,
+		Headers:       headerMapToHTTP(req.Headers),
+		RequestID:     req.RequestID,
+		RootRequestID: req.RootRequestID,
+		AttemptNumber: req.AttemptNumber,
+		SessionHash:   req.SessionHash,
 	}
 }
 

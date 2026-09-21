@@ -143,6 +143,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 			// v0.11.0 review M1: record the source that actually executed the
 			// request, not the original plan, so failover attribution is correct.
 			streamLogInput.applyChannelInputs(ch)
+			streamLogInput.applyReservation(reservation)
 			return s.handleStreamingResponse(w, r, provider, &req, reservation, streamLogInput)
 		}
 
@@ -176,6 +177,7 @@ func (s *HTTPServer) handleChatCompletions(w http.ResponseWriter, r *http.Reques
 		// v0.11.0 review M1: record the source that actually executed the
 		// request, not the original plan, so failover attribution is correct.
 		logInput.applyChannelInputs(ch)
+		logInput.applyReservation(reservation)
 		// §4.3: the envelope comes from the provider-proven canonical buckets
 		// (Anthropic) or the OpenAI field shape — never the channel type.
 		logInput.applyEnvelope(envelopeFromProviderUsage(resp.Usage, resp.Canonical))

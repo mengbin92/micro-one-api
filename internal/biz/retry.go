@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"math"
+	"micro-one-api/domain/requesttrace"
 	"strings"
 	"time"
 
@@ -475,6 +477,10 @@ func (e *RetryExecutor) execute(
 	fn func(ctx context.Context, ch *Channel) error,
 ) *ExecuteResult {
 	maxAttempts := e.policy.MaxAttempts
+	trace := requesttrace.FromContext(ctx)
+	if trace.RootRequestID == "" {
+		trace.RootRequestID = uuid.NewString()
+	}
 	if maxAttempts <= 0 {
 		maxAttempts = 1
 	}
@@ -575,7 +581,13 @@ func (e *RetryExecutor) execute(
 			}
 		}
 		startedAt := time.Now()
-		err := fn(ctx, lastChannel)
+		trace.Number = int32(attempt + 1)
+		trace.SourceKind = UpstreamSourceChannel
+		if lastChannel.SubscriptionAccountID > 0 {
+			trace.SourceKind = UpstreamSourceSubscription
+		}
+		trace.UpstreamModelID = ResolveChannelModel(lastChannel, model)
+		err := fn(requesttrace.WithAttempt(ctx, trace), lastChannel)
 		responseTime := time.Since(startedAt).Milliseconds()
 		if err == nil {
 			queueHealth(lastChannel, nil, responseTime)

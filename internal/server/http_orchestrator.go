@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"micro-one-api/domain/requesttrace"
 	"net/http"
 	"strconv"
 	"strings"
@@ -222,6 +223,10 @@ type httpRelayLifecycleHooks struct {
 }
 
 func (h httpRelayLifecycleHooks) ReserveQuota(ctx context.Context, plan *relaybiz.RelayPlan, req *RelayRequest, estimated relaybiz.UsageEnvelope) (*Reservation, error) {
+	trace := requesttrace.FromContext(ctx)
+	trace.RootRequestID, trace.Number = req.RootRequestID, req.AttemptNumber
+	trace.SourceKind, trace.UpstreamModelID = upstreamCostKeyInputsFromPlan(plan)
+	ctx = requesttrace.WithAttempt(ctx, trace)
 	if h.s == nil || h.s.billingClient == nil {
 		return nil, errors.New("billing service unavailable")
 	}
@@ -350,6 +355,9 @@ func orchestratorUsageLogInput(h httpRelayLifecycleHooks, plan *relaybiz.RelayPl
 		TokenID:               plan.Auth.TokenID,
 		TokenName:             plan.Auth.TokenName,
 		RequestID:             req.RequestID,
+		RootRequestID:         req.RootRequestID,
+		AttemptNumber:         req.AttemptNumber,
+		ReservationID:         req.ReservationID,
 		Endpoint:              endpoint,
 		ModelName:             h.s.BillingModelName(req.Model, plan.ResolvedModel, plan.ResolvedModel),
 		ChannelID:             plan.Channel.ID,

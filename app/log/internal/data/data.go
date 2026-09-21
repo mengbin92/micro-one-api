@@ -30,6 +30,11 @@ type logModel struct {
 	Message               string `gorm:"column:message"`
 	Source                string `gorm:"column:source;index"`
 	RequestID             string `gorm:"column:request_id"`
+	RootRequestID         string `gorm:"column:root_request_id"`
+	AttemptNumber         int32  `gorm:"column:attempt_number"`
+	ReservationID         string `gorm:"column:reservation_id"`
+	SourceKind            string `gorm:"column:source_kind"`
+	UpstreamModelID       string `gorm:"column:upstream_model_id"`
 	UserID                int64  `gorm:"column:user_id"`
 	CreatedAt             int64  `gorm:"column:created_at;index"`
 	Username              string `gorm:"column:username"`
@@ -203,6 +208,11 @@ func (r *Repository) getDB(ctx context.Context, id int64) (*biz.LogEntry, error)
 		Message:               m.Message,
 		Source:                m.Source,
 		RequestID:             m.RequestID,
+		RootRequestID:         m.RootRequestID,
+		AttemptNumber:         m.AttemptNumber,
+		ReservationID:         m.ReservationID,
+		SourceKind:            m.SourceKind,
+		UpstreamModelID:       m.UpstreamModelID,
 		UserID:                m.UserID,
 		CreatedAt:             time.Unix(m.CreatedAt, 0),
 		Username:              m.Username,
@@ -289,6 +299,11 @@ func (r *Repository) createDB(ctx context.Context, entry *biz.LogEntry) error {
 		Message:               entry.Message,
 		Source:                entry.Source,
 		RequestID:             entry.RequestID,
+		RootRequestID:         entry.RootRequestID,
+		AttemptNumber:         entry.AttemptNumber,
+		ReservationID:         entry.ReservationID,
+		SourceKind:            entry.SourceKind,
+		UpstreamModelID:       entry.UpstreamModelID,
 		UserID:                entry.UserID,
 		CreatedAt:             entry.CreatedAt.Unix(),
 		Username:              entry.Username,
@@ -389,6 +404,11 @@ func (r *Repository) CreateBatch(ctx context.Context, entries []*biz.LogEntry) e
 				Message:               e.Message,
 				Source:                e.Source,
 				RequestID:             e.RequestID,
+				RootRequestID:         e.RootRequestID,
+				AttemptNumber:         e.AttemptNumber,
+				ReservationID:         e.ReservationID,
+				SourceKind:            e.SourceKind,
+				UpstreamModelID:       e.UpstreamModelID,
 				UserID:                e.UserID,
 				CreatedAt:             e.CreatedAt.Unix(),
 				Username:              e.Username,
@@ -496,6 +516,11 @@ func logModelToEntry(m logModel) *biz.LogEntry {
 		Message:               m.Message,
 		Source:                m.Source,
 		RequestID:             m.RequestID,
+		RootRequestID:         m.RootRequestID,
+		AttemptNumber:         m.AttemptNumber,
+		ReservationID:         m.ReservationID,
+		SourceKind:            m.SourceKind,
+		UpstreamModelID:       m.UpstreamModelID,
 		UserID:                m.UserID,
 		CreatedAt:             time.Unix(m.CreatedAt, 0),
 		Username:              m.Username,

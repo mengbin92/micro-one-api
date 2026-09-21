@@ -115,6 +115,7 @@ func (s *HTTPServer) executeAnthropicChannelAttempt(
 		IsStream:              request.Stream,
 	}
 	logInput.applyChannelInputs(channel)
+	logInput.applyReservation(reservation)
 	logInput.PromptExclusive = isPromptExclusiveChannelType(channel.Type)
 
 	if request.Stream {

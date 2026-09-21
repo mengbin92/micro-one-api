@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"micro-one-api/domain/requesttrace"
 	"time"
 
+	billingv1 "micro-one-api/api/billing/v1"
 	logv1 "micro-one-api/api/log/v1"
 	relaybiz "micro-one-api/internal/biz"
 	applogger "micro-one-api/platform/logging"
@@ -56,6 +58,9 @@ type usageLogInput struct {
 	TokenID               int64
 	TokenName             string
 	RequestID             string
+	RootRequestID         string
+	AttemptNumber         int32
+	ReservationID         string
 	Endpoint              string
 	ModelName             string
 	Quota                 int64
@@ -92,6 +97,24 @@ type usageLogInput struct {
 	// only on legacy handler paths that have not been migrated to envelope
 	// parsing; those keep the flat legacy fields above.
 	Usage *relaybiz.UsageEnvelope
+}
+
+func (in *usageLogInput) applyReservation(r *billingv1.ReserveQuotaResponse) {
+	if r == nil {
+		return
+	}
+	in.ReservationID = r.ReservationId
+	in.RootRequestID = r.RootRequestId
+	in.AttemptNumber = r.AttemptNumber
+	if r.RequestId != "" {
+		in.RequestID = r.RequestId
+	}
+	if r.SourceKind != "" {
+		in.SourceKind = r.SourceKind
+	}
+	if r.UpstreamModelId != "" {
+		in.UpstreamModelID = r.UpstreamModelId
+	}
 }
 
 // applyEnvelope fills the legacy dual-write fields from the envelope's
@@ -161,6 +184,19 @@ func safeRelayCanonicalTotal(u *relaybiz.CanonicalUsage) (int64, bool) {
 }
 
 func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
+	trace := requesttrace.FromContext(ctx)
+	if in.RootRequestID == "" {
+		in.RootRequestID = trace.RootRequestID
+		in.AttemptNumber = trace.Number
+	}
+	if in.RootRequestID == "" {
+		in.RootRequestID = in.RequestID
+		in.AttemptNumber = 1
+	}
+	if in.UpstreamModelID == "" && trace.UpstreamModelID != "" {
+		in.UpstreamModelID = trace.UpstreamModelID
+		in.SourceKind = trace.SourceKind
+	}
 	if s.logClient == nil {
 		metrics.UsageLogIngestTotal.WithLabelValues("skipped").Inc()
 		return
@@ -175,6 +211,11 @@ func (s *HTTPServer) ingestUsageLog(ctx context.Context, in usageLogInput) {
 		Message:                message,
 		Source:                 "relay-gateway",
 		RequestId:              in.RequestID,
+		RootRequestId:          in.RootRequestID,
+		AttemptNumber:          in.AttemptNumber,
+		ReservationId:          in.ReservationID,
+		SourceKind:             in.SourceKind,
+		UpstreamModelId:        in.UpstreamModelID,
 		UserId:                 in.UserID,
 		TokenName:              usageTokenName(in),
 		ModelName:              in.ModelName,

@@ -3432,6 +3432,27 @@ func handleOneAPILogByID(w http.ResponseWriter, r *http.Request, svc *service.Ad
 		handleOneAPILogs(w, r, svc)
 		return
 	}
+	if trimmed == "api/log/attempts" {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, apiResponse(false, "method not allowed", nil))
+			return
+		}
+		q := r.URL.Query()
+		userID, err := strconv.ParseInt(q.Get("user_id"), 10, 64)
+		rootID := strings.TrimSpace(q.Get("root_request_id"))
+		if err != nil || userID <= 0 || rootID == "" || len(rootID) > 128 {
+			writeJSON(w, http.StatusBadRequest, apiResponse(false, "user_id and root_request_id are required", nil))
+			return
+		}
+		page, size := oneAPIPage(r), oneAPIPageSize(r)
+		result, err := svc.ListRequestAttempts(r.Context(), strconv.FormatInt(userID, 10), rootID, int32(page), int32(size))
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, apiResponse(false, "request attempts unavailable", nil))
+			return
+		}
+		writeJSON(w, http.StatusOK, apiResponse(true, "", result))
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return

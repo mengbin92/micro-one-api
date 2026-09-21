@@ -95,7 +95,9 @@ func (s *HTTPServer) newRoutingWSTurns(token, clientModel, resolvedModel string,
 			return nil, nil, fmt.Errorf("routing source no longer authorized")
 		}
 		rewritten := rewriteOpenAIWSModel(payload, clientModel, resolvedModel)
-		reservation, err := s.reserveQuota(ctx, strconv.FormatInt(auth.UserID, 10), generateRequestID(), estimateRawTokens(rewritten), s.BillingModelName(clientModel, resolvedModel, resolvedModel), strconv.FormatInt(channel.ID, 10), routingSubscriptionAccountID(channel), auth.RoutingContext)
+		requestID := generateRequestID()
+		ctx = channelAttemptContext(ctx, requestID, 1, channel, resolvedModel)
+		reservation, err := s.reserveQuota(ctx, strconv.FormatInt(auth.UserID, 10), requestID, estimateRawTokens(rewritten), s.BillingModelName(clientModel, resolvedModel, resolvedModel), strconv.FormatInt(channel.ID, 10), routingSubscriptionAccountID(channel), auth.RoutingContext)
 		return reservation, rewritten, err
 	}}
 }

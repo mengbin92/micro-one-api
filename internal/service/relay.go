@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"micro-one-api/domain/requesttrace"
 	"micro-one-api/domain/routing"
 	subscriptionbiz "micro-one-api/domain/subscription/biz"
 	applogger "micro-one-api/platform/logging"
@@ -91,6 +92,7 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 	var resp *relayprovider.ChatCompletionsResponse
 
 	result := retryExecutor.ExecuteWithCandidates(ctx, plan, 0, func(ctx context.Context, ch *relaybiz.Channel) error {
+		trace := requesttrace.FromContext(ctx)
 		requestID := fmt.Sprintf("grpc_%d", time.Now().UnixNano())
 		estimatedTokens := estimateTokensForGRPC(providerReq)
 		resolvedModel := relaybiz.ResolveChannelModel(ch, plan.BaseModel())
@@ -108,6 +110,10 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			RoutingContext:  routingdto.ContextToProto(plan.Auth.RoutingContext),
 			UserId:          fmt.Sprintf("%d", plan.Auth.UserID),
 			RequestId:       requestID,
+			RootRequestId:   trace.RootRequestID,
+			AttemptNumber:   trace.Number,
+			SourceKind:      trace.SourceKind,
+			UpstreamModelId: resolvedModel,
 			EstimatedTokens: estimatedTokens,
 			Model:           resolvedModel,
 			ChannelId:       fmt.Sprintf("%d", ch.ID),
@@ -145,9 +151,13 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 
 		actualTokens := int64(resp.Usage.TotalTokens)
 		commitResp, commitErr := s.billingClient.CommitQuota(ctx, &billingv1.CommitQuotaRequest{
-			ReservationId: reservation.ReservationId,
-			ActualTokens:  actualTokens,
-			Success:       true,
+			ReservationId:    reservation.ReservationId,
+			ActualTokens:     actualTokens,
+			Success:          true,
+			SourceKind:       trace.SourceKind,
+			UpstreamModelId:  resolvedModel,
+			PromptTokens:     int64(resp.Usage.PromptTokens),
+			CompletionTokens: int64(resp.Usage.CompletionTokens),
 		})
 		if commitErr != nil {
 			// The upstream response has already completed. Do not let the
@@ -194,7 +204,7 @@ func (s *RelayGrpcService) ChatCompletion(ctx context.Context, req *relayv1.Chat
 			}
 		}
 		if s.logClient != nil {
-			logResp, logErr := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{Level: "info", Message: "grpc chat completion completed", Source: "relay-grpc", RequestId: requestID, UserId: plan.Auth.UserID, ModelName: resolvedModel, Quota: actualTokens, PromptTokens: int64(resp.Usage.PromptTokens), CompletionTokens: int64(resp.Usage.CompletionTokens), ChannelId: ch.ID, DedupeKey: reservation.ReservationId})
+			logResp, logErr := s.logClient.IngestLog(ctx, &logv1.IngestLogRequest{Level: "info", Message: "grpc chat completion completed", Source: "relay-grpc", RequestId: requestID, RootRequestId: trace.RootRequestID, AttemptNumber: trace.Number, ReservationId: reservation.ReservationId, SourceKind: trace.SourceKind, UpstreamModelId: resolvedModel, UserId: plan.Auth.UserID, ModelName: resolvedModel, Quota: actualTokens, PromptTokens: int64(resp.Usage.PromptTokens), CompletionTokens: int64(resp.Usage.CompletionTokens), ChannelId: ch.ID, DedupeKey: reservation.ReservationId})
 			if logErr != nil || logResp == nil {
 				applogger.Log.Warn("grpc usage log failed", zap.String("reservation_id", reservation.ReservationId), zap.Error(logErr))
 			}
