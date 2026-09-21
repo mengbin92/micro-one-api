@@ -870,7 +870,7 @@ func (r *Repository) RecordModelUsage(ctx context.Context, modelPK int64, stat *
 			weightedLatency := int64(existing.AvgLatency)*int64(existing.RequestCount) + int64(po.AvgLatency)*int64(po.RequestCount)
 			avgLatency := int32(0)
 			if requestCount > 0 {
-				avgLatency = int32(weightedLatency / requestCount)
+				avgLatency = safecast.Int64ToInt32Saturating(weightedLatency / requestCount)
 			}
 			return tx.Model(&modelUsageStatModel{}).Where("id = ?", existing.ID).Updates(map[string]any{
 				"request_count": requestCount,
@@ -1412,7 +1412,7 @@ func (r *Repository) recordModelUsageMemory(modelPK int64, stat *biz.ModelUsageS
 			s.TokenCount += stat.TokenCount
 			s.ErrorCount += stat.ErrorCount
 			if requestCount > 0 {
-				s.AvgLatency = int32(weightedLatency / requestCount)
+				s.AvgLatency = safecast.Int64ToInt32Saturating(weightedLatency / requestCount)
 			}
 			return nil
 		}

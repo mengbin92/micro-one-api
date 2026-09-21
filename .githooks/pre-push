@@ -3,10 +3,35 @@
 # Exclusions mirror .github/workflows/security.yml so a local pass means CI's
 # code-scanning upload stays clean.
 
-if ! command -v gosec >/dev/null 2>&1; then
-	echo "pre-push: gosec not found on PATH." >&2
-	echo "Install: go install github.com/securego/gosec/v2/cmd/gosec@latest" >&2
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+	echo "pre-push: unable to locate the repository root." >&2
 	exit 1
+}
+cd "$REPO_ROOT" || exit 1
+
+# Git does not necessarily inherit the interactive shell's PATH. Include the
+# Go tool directory so `go install`ed tools work when Git invokes this hook.
+if ! command -v go >/dev/null 2>&1; then
+	echo "pre-push: Go is required to run gosec." >&2
+	exit 1
+fi
+GOBIN=$(go env GOBIN 2>/dev/null || true)
+if [ -z "$GOBIN" ]; then
+	GOPATH=$(go env GOPATH 2>/dev/null || true)
+	GOBIN=${GOPATH%%:*}/bin
+fi
+case ":$PATH:" in
+	*":$GOBIN:"*) ;;
+	*) PATH="$GOBIN:$PATH"; export PATH ;;
+esac
+
+. "$REPO_ROOT/scripts/tool-versions.env"
+if ! command -v gosec >/dev/null 2>&1; then
+	echo "pre-push: gosec not found; installing ${GOSEC_VERSION}..." >&2
+	if ! go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"; then
+		echo "pre-push: failed to install gosec ${GOSEC_VERSION}." >&2
+		exit 1
+	fi
 fi
 
 echo "pre-push: running gosec..."
